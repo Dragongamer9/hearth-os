@@ -318,7 +318,7 @@ class AdminChecks(unittest.TestCase):
 
     def admin(self, *args, ok=True):
         p = subprocess.run([sys.executable, str(ADMIN)] + list(args), capture_output=True, text=True, timeout=30,
-                           env={k: v for k, v in os.environ.items() if k != 'PKEXEC_UID'})
+                           env=dict({k: v for k, v in os.environ.items()}, PKEXEC_UID=str(os.getuid())))
         last = (p.stdout.strip().splitlines() or [''])[-1]
         if ok:
             self.assertEqual(p.returncode, 0, p.stdout + p.stderr)
@@ -356,14 +356,144 @@ class AdminChecks(unittest.TestCase):
         self.assertEqual(self.admin('files-delete', d)['deleted'], [d])
         self.assertFalse(os.path.exists(d))
 
-    def test_the_polkit_rule_always_asks(self):
-        rules = (ROOT / 'os' / 'system_files' / 'usr' / 'share' / 'polkit-1' / 'rules.d' / '49-hearth-admin.rules').read_text()
+    def test_the_polkit_rules(self):
+        """Its own action keeps the password a few minutes for this program only; nothing shared keeps it, and making
+        an account an administrator always asks."""
+        pol = (ROOT / 'os' / 'system_files' / 'usr' / 'share' / 'polkit-1' / 'actions' / 'fun.hearthos.files-admin.policy').read_text()
+        self.assertIn('<annotate key="org.freedesktop.policykit.exec.path">/usr/libexec/nimbus/hearth-files-admin</annotate>', pol)
+        self.assertIn('<allow_active>auth_admin_keep</allow_active>', pol)
+        self.assertIn('<allow_any>auth_admin</allow_any>', pol)
+        rules_dir = ROOT / 'os' / 'system_files' / 'usr' / 'share' / 'polkit-1' / 'rules.d'
+        for f in rules_dir.iterdir():
+            self.assertNotIn('AUTH_ADMIN_KEEP', f.read_text(), f.name + ' keeps a password for a shared action')
+        rules = (rules_dir / '49-hearth-admin.rules').read_text()
+        yes = rules.index('polkit.Result.YES')
         i = rules.index('files-\\S+')
-        self.assertIn('AUTH_ADMIN_KEEP', rules[i:i + 200])
-        self.assertLess(i, rules.index('polkit.Result.YES'), 'asked before the rule that lets Settings through without a password')
+        self.assertIn('Result.NO', rules[i:i + 200])
+        j = rules.index('user-type(')
+        self.assertIn('Result.AUTH_ADMIN;', rules[j:j + 200])
+        self.assertLess(max(i, j), yes, 'decided before the rule that lets Settings through without a password')
         src = (ROOT / 'os' / 'system_files' / 'usr' / 'libexec' / 'nimbus' / 'hearth-admin').read_text()
-        self.assertIn("'files-chown'", src)
+        self.assertNotIn("'files-chown'", src, 'hearth-admin no longer runs Files changes')
+        for q in ('FilesExtras.qml', 'FileProperties.qml'):
+            self.assertIn('"/usr/libexec/nimbus/hearth-files-admin"', (SHELL / q).read_text())
 
+
+class AdminFakeRoot(unittest.TestCase):
+    """The security review's cases, against hearth-files-admin itself with its refused list moved into a throwaway
+    "root": nothing it refuses can be replaced, made, renamed onto, changed or reached through a link."""
+
+    def setUp(self):
+        import importlib.machinery
+        import importlib.util
+        self.r = os.path.realpath(tempfile.mkdtemp(prefix='hearth-fake-root-'))
+        self.addCleanup(shutil.rmtree, self.r, True)
+        self.addCleanup(os.environ.pop, 'PKEXEC_UID', None)
+        os.environ['PKEXEC_UID'] = str(os.getuid())        # as pkexec runs it (the helper refuses root without it)
+        loader = importlib.machinery.SourceFileLoader('hearth_files_admin', str(ADMIN))
+        spec = importlib.util.spec_from_loader('hearth_files_admin', loader)
+        self.m = importlib.util.module_from_spec(spec)
+        loader.exec_module(self.m)
+        R = self.r
+        self.m.REFUSED = tuple(R + x for x in ('/boot', '/etc/fstab', '/etc/pam.d', '/etc/sudoers', '/etc/sudoers.d', '/etc/default/grub',
+                                                '/etc/shadow', '/etc/polkit-1', '/usr'))
+        self.m.ALLOWED_UNDER_REFUSED = (R + '/usr/local',)
+        for d in ('/etc/pam.d', '/etc/default', '/boot', '/opt', '/var/data', '/usr/local', '/src/pam.d', '/src/sudoers.d', '/src/grub'):
+            os.makedirs(R + d, exist_ok=True)
+        for f, t in (('/etc/pam.d/login', 'auth required pam_unix.so'), ('/etc/fstab', 'UUID=x / ext4'), ('/boot/vmlinuz', 'kernel'),
+                     ('/src/fstab', 'evil'), ('/src/pam.d/login', 'auth sufficient pam_permit.so'), ('/src/grub', 'evil'),
+                     ('/src/sudoers.d/x', 'ALL ALL=(ALL) NOPASSWD: ALL'), ('/etc/app.conf', 'ok')):
+            if os.path.isdir(R + f):
+                continue
+            with open(R + f, 'w') as fh:
+                fh.write(t)
+        os.rmdir(R + '/src/grub') if os.path.isdir(R + '/src/grub') else None
+        with open(R + '/src/grub', 'w') as fh:
+            fh.write('evil')
+
+    def run_m(self, *args):
+        import contextlib
+        import io
+        with contextlib.redirect_stdout(io.StringIO()):
+            return self.m.main(['hearth-files-admin'] + list(args))
+
+    def refused(self, *args):
+        with self.assertRaises(self.m.Fail) as c:
+            self.run_m(*args)
+        return str(c.exception)
+
+    def intact(self):
+        R = self.r
+        self.assertEqual(open(R + '/etc/pam.d/login').read(), 'auth required pam_unix.so')
+        self.assertEqual(open(R + '/etc/fstab').read(), 'UUID=x / ext4')
+        self.assertEqual(open(R + '/boot/vmlinuz').read(), 'kernel')
+        self.assertFalse(os.path.exists(R + '/etc/sudoers.d'))
+        self.assertFalse(os.path.exists(R + '/etc/default/grub'))
+
+    def test_copy_or_move_onto_refused_names(self):
+        R = self.r
+        for verb in ('files-copy', 'files-move'):
+            for how in ('replace', 'rename', 'skip'):
+                self.refused(verb, R + '/src/pam.d', R + '/etc', '--default', how) if how == 'replace' else None
+            self.assertIn('keeps it safe', self.refused(verb, R + '/src/pam.d', R + '/etc', '--default', 'replace'))
+            self.refused(verb, R + '/src/pam.d', R + '/etc', '--decide', json.dumps({'pam.d': 'replace'}))
+            self.refused(verb, R + '/src/fstab', R + '/etc', '--default', 'replace')
+            self.refused(verb, R + '/src/sudoers.d', R + '/etc')          # not there yet: still refused
+            self.refused(verb, R + '/src/grub', R + '/etc/default')
+            self.intact()
+        # "Keep both" makes a new name, which is fine; nothing refused was touched.
+        r = self.run_m('files-copy', R + '/src/fstab', R + '/etc', '--default', 'rename')
+        self.assertEqual(r['items'], [R + '/etc/fstab (2)'])
+        self.intact()
+
+    def test_symlinked_destination_and_parents(self):
+        R = self.r
+        os.symlink(R + '/boot', R + '/opt/x')                   # a destination that is a link to a refused place
+        self.refused('files-copy', R + '/src/fstab', R + '/opt/x')
+        os.symlink(R + '/var/data', R + '/opt/plain')             # a link to an allowed place is refused too
+        self.assertIn('link', self.refused('files-copy', R + '/src/fstab', R + '/opt/plain'))
+        os.symlink(R + '/etc', R + '/opt/etc')                  # a link in the parents
+        self.refused('files-mkdir', R + '/opt/etc/pam.d/new')
+        self.refused('files-new-file', R + '/opt/etc/new.conf')
+        self.refused('files-delete', R + '/opt/etc/app.conf')
+        self.refused('files-chmod', R + '/opt/etc/app.conf', '777')
+        os.symlink(R + '/etc/fstab', R + '/var/data/fs')          # a link that leads into a refused file
+        self.refused('files-chmod', R + '/var/data/fs', '666')
+        self.refused('files-delete', R + '/var/data/fs')
+        self.intact()
+
+    def test_open_dir_never_follows_a_swapped_link(self):
+        R = self.r
+        fd = self.m.open_dir(R + '/var/data')
+        os.close(fd)
+        os.symlink(R + '/boot', R + '/var/swap')
+        with self.assertRaises(self.m.Fail):
+            self.m.open_dir(R + '/var/swap')
+
+    def test_every_operation_refuses_refused_paths(self):
+        R = self.r
+        self.refused('files-rename', R + '/etc/app.conf', 'fstab')          # rename onto a refused name
+        self.refused('files-rename', R + '/etc/app.conf', 'sudoers.d')
+        self.refused('files-rename', R + '/etc/pam.d', 'pam.old')           # rename a refused one away
+        self.refused('files-mkdir', R + '/etc/sudoers.d')
+        self.refused('files-mkdir', R + '/usr/lib/x')
+        self.refused('files-new-file', R + '/etc/default/grub')
+        self.refused('files-delete', R + '/etc/app.conf', R + '/etc/pam.d/login')   # one refused: none deleted
+        self.assertTrue(os.path.exists(R + '/etc/app.conf'))
+        self.refused('files-chmod', R + '/boot/vmlinuz', '777')
+        self.refused('files-chown', R + '/etc/fstab', 'root', 'root')
+        self.refused('files-move', R + '/etc/pam.d', R + '/var/data')
+        self.intact()
+        # What isn't refused still works, through the folder fds.
+        self.assertEqual(self.run_m('files-mkdir', R + '/usr/local/tool')['path'], R + '/usr/local/tool')
+        self.run_m('files-chmod', R + '/etc/app.conf', '640')
+        self.assertEqual(stat.S_IMODE(os.stat(R + '/etc/app.conf').st_mode), 0o640)
+        self.assertEqual(self.run_m('files-copy', R + '/src/pam.d', R + '/var/data')['items'], [R + '/var/data/pam.d'])
+        self.assertEqual(open(R + '/var/data/pam.d/login').read(), 'auth sufficient pam_permit.so')
+        self.run_m('files-move', R + '/var/data/pam.d', R + '/opt')
+        self.assertTrue(os.path.isdir(R + '/opt/pam.d') and not os.path.exists(R + '/var/data/pam.d'))
+        self.run_m('files-delete', R + '/opt/pam.d')
+        self.assertFalse(os.path.exists(R + '/opt/pam.d'))
 
 if __name__ == '__main__':
     unittest.main(verbosity=2)
