@@ -193,6 +193,13 @@ ipc wayland-hearth activities close
 ipc wayland-hearth settings page store:drivers; sleep 5
 shot kwin-w3-store-drivers
 ipc wayland-hearth settings close
+# Settings › Users on a pre-installed PC (w3-firstrun: hearth-oem-account's marker for this account), then taken away.
+OEM_M=/var/lib/hearth/oem-setup.json; OEM_MADE=""
+if [ ! -e "$OEM_M" ]; then mkdir -p /var/lib/hearth && chmod 755 /var/lib/hearth && printf '{"user": "%s", "at": 1}\n' "$(id -un)" > "$OEM_M" && OEM_MADE=1; fi
+ipc wayland-hearth settings page users; sleep 5
+shot kwin-w3-users-oem
+ipc wayland-hearth settings close
+[ -n "$OEM_MADE" ] && rm -f "$OEM_M"
 grep -E "(SearchBar|Activit|StoreDrivers|SetStore)[A-Za-z]*\.qml.*(TypeError|ReferenceError|Cannot assign|is not a type|is not defined)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null \
   | head -5 | while read -r l; do fail "Wave 3 (KWin)" "$(echo "$l" | cut -c1-300)"; done
 cp "$HOME/.local/share/nimbus/kwin.log" shots/kwin-B.log 2>/dev/null
