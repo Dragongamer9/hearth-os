@@ -7,7 +7,8 @@
 // The groups the bar knows by name. Plugins it doesn't know (a new search/*.js) still show, after these, under their
 // own group name; with a "help" line here they're in the "?" list too.
 var BUILTIN = ["apps", "games", "pages", "files"];
-var DEFAULT_ORDER = ["apps", "commands", "web", "calc", "units", "currency", "windows", "pages", "games", "files", "recent", "emoji"];
+var DEFAULT_ORDER = ["apps", "commands", "web", "calc", "units", "currency", "windows", "pages", "games", "files", "recent", "emoji",
+                     "power", "kill", "desktops", "media", "worldclock", "colours", "chars", "spell", "browser", "contacts", "events", "notes", "store"];
 var NAMES = {
     apps: ["Apps", "Apps by name, what they do, or their Windows names", "", "grid"],
     games: ["Games", "Your installed games", "", "pad"],
@@ -20,7 +21,20 @@ var NAMES = {
     currency: ["Currency conversion", "20 usd to eur", "20 usd to eur", "sync"],
     windows: ["Open windows", "Switch to a window by its title", "", "window"],
     recent: ["Recent documents", "Files you opened lately", "", "clock"],
-    emoji: ["Emoji", ":fire, heart, thumbs up; Enter copies it", ":", "sparkle"]
+    emoji: ["Emoji", ":fire, heart, thumbs up; Enter copies it", ":", "sparkle"],
+    browser: ["Bookmarks and browser history", "Firefox's and Chromium's, by title or address", "", "globe"],
+    desktops: ["Virtual desktops and activities", "desktop 2, or an activity's name", "desktop ", "desktops"],
+    kill: ["Kill an app", "kill firefox (asks first)", "kill ", "close"],
+    worldclock: ["World clock", "time in tokyo, 3pm london to new york", "time in ", "clock"],
+    spell: ["Spell check and dictionary", "spell recieve, define hearth", "spell ", "check"],
+    chars: ["Special characters", "degree, euro, em dash, u+00e9; char arrow lists them", "char ", "kbd"],
+    colours: ["Colours", "#ff8800, rgb(255, 136, 0), hsl(32, 100%, 50%)", "#", "palette"],
+    power: ["Power and session", "sleep, lock, restart, shut down, log out (asks first when it closes apps)", "", "power"],
+    media: ["Media control", "play, pause, next, previous", "", "play"],
+    store: ["App store", "install krita: apps on Flathub", "install ", "store"],
+    contacts: ["Contacts", "People in Hearth Contacts by name, e-mail or phone", "", "user"],
+    events: ["Calendar events", "What's coming up; today, tomorrow, this week", "", "calendar"],
+    notes: ["Notes", "Hearth Notes by title and by what's in them", "", "edit"]
 };
 
 function name(p) { return (NAMES[p] || [p.charAt(0).toUpperCase() + p.slice(1)])[0]; }

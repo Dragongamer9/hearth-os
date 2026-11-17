@@ -143,7 +143,7 @@ Item {
                         implicitWidth: 72 * ms.k; implicitHeight: 72 * ms.k
                         AppIcon { anchors.centerIn: parent; visible: !!ms.row && ms.row.kind === "app"; size: 68 * ms.k; icon: ms.row && ms.row.kind === "app" ? (ms.row.item.icon || "") : ""; appId: ms.row && ms.row.kind === "app" ? (ms.row.item.id || "") : "" }
                         Rectangle {
-                            anchors.fill: parent; visible: !!ms.row && ms.row.kind !== "app"; radius: Theme.r(16); color: Theme.panel3; clip: true
+                            anchors.fill: parent; visible: !!ms.row && ms.row.kind !== "app"; radius: Theme.r(16); color: (ms.row && ms.row.kind === "answer" && ms.row.item.swatch) || Theme.panel3; clip: true
                             Image { anchors.fill: parent; visible: status === Image.Ready; fillMode: Image.PreserveAspectCrop; asynchronous: true; source: ms.row && ms.row.kind === "game" ? (ms.row.item.cover || ms.row.item.icon || "") : "" }
                             Icon { anchors.centerIn: parent; size: 30 * ms.k; visible: !ms.row || (ms.row.kind !== "game" && !(ms.row.kind === "answer" && ms.row.item.glyph)); name: !ms.row ? "file" : ms.row.kind === "page" ? (ms.row.item.icon || "gear") : ms.row.kind === "answer" ? (ms.row.item.icon || "search") : ms.row.item.dir ? "folder" : "file" }
                             Text { anchors.centerIn: parent; visible: !!ms.row && ms.row.kind === "answer" && !!ms.row.item.glyph; text: ms.row && ms.row.kind === "answer" ? (ms.row.item.glyph || "") : ""; font.pixelSize: 40 * ms.k }
