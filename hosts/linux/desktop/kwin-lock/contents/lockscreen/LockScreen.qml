@@ -73,7 +73,8 @@ Item {
         function onErrorMessageChanged() { if (authenticator.errorMessage) root.message = authenticator.errorMessage; }
     }
     Timer { id: retry; interval: 400; onTriggered: root.begin() }
-    Component.onCompleted: { begin(); kb.forceActiveFocus(); }
+    // hearth-lockcheck's test run looks for this line: only a lock screen that really loaded may lock the screen.
+    Component.onCompleted: { console.warn("hearth-lock-screen: loaded"); begin(); kb.forceActiveFocus(); }
 
     Rectangle {
         anchors.fill: parent

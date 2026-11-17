@@ -492,8 +492,8 @@ def serve():
                         buf += c
                     req = json.loads(buf.split(b'\n', 1)[0] or b'{}')
                     ans = handle(kb, req)
-                except (OSError, ValueError) as err:
-                    ans = {'ok': False, 'error': str(err)}
+                except Exception as err:      # anything malformed: answered, the service stays
+                    ans = {'ok': False, 'error': '%s: %s' % (type(err).__name__, err)}
                 try:
                     conn.sendall(json.dumps(ans).encode() + b'\n')
                 except OSError:
@@ -508,12 +508,12 @@ def serve():
 
 
 def handle(kb, req):
-    if req.get('cmd') == 'status':
+    if isinstance(req, dict) and req.get('cmd') == 'status':
         return {'ok': True}
-    ev = req.get('ev')
-    if not isinstance(ev, list):
+    if not isinstance(req, dict) or not isinstance(req.get('ev'), list):
         return {'ok': False, 'error': 'nothing to type'}
-    pairs = [(str(c), 1 if v else 0) for c, v in ev if isinstance(c, str) and c.startswith('KEY_')]
+    pairs = [(e[0], 1 if e[1] else 0) for e in req['ev'][:20000]
+             if isinstance(e, (list, tuple)) and len(e) == 2 and isinstance(e[0], str) and e[0].startswith('KEY_')]
     kb.send(pairs)
     if req.get('release'):
         kb.release_all()

@@ -11,6 +11,8 @@
                                         the name before Dolphin, Nautilus or Thunar could be started for it.
   hearth-portal show PATH [--props]     Hearth Files at PATH (a file: its folder with it picked; --props: its Properties)
   hearth-portal pick REQUEST.json       the picker for a request (as the portal builds it); prints what was picked
+  hearth-portal cast outputs | shot FILE [TARGET] | stream KIND ARG SECONDS   KWin's screens, a screenshot, a stream
+                                        (checks; hearth-kwin-cast works only for hearth-portal)
 
 How the window opens: in Desktop Mode, ShowFolders and friends use the desktop's own Hearth Files (quickshell ipc).
 The picker, and Hearth Files in Game Mode, are picker.qml: Hearth Files (FileManager.qml) in its own Quickshell
@@ -746,6 +748,28 @@ def main(argv):
         if cmd == 'show' and rest:
             p = uri_path(rest[0]) or rest[0]
             return show(os.path.abspath(os.path.expanduser(p)), '--props' in rest[1:])
+        if cmd == 'cast' and rest:
+            # Checks (kwin-input.yml) and Send logs: what hearth_screencast does, from hearth-portal (hearth-kwin-cast
+            # only works for it): outputs | shot FILE [screen NAME | window ID | workspace] | stream KIND ARG SECONDS
+            import hearth_screencast as hs
+            if rest[0] == 'outputs':
+                outs, v = hs.list_outputs()
+                print(json.dumps({'screens': outs, 'screencast': v}))
+                return 0 if outs else 1
+            if rest[0] == 'shot' and len(rest) >= 2:
+                ok = hs.shot(tuple(rest[2:]) or ('workspace',), rest[1])
+                print(json.dumps({'ok': ok, 'error': hs.LAST_ERROR[0]}))
+                return 0 if ok else 1
+            if rest[0] == 'stream' and len(rest) == 4:
+                st = hs.Stream((rest[1], rest[2]), hs.CURSOR_EMBEDDED)
+                node = st.wait_node()
+                print(json.dumps({'node': node, 'error': st.error}), flush=True)
+                if node is not None:
+                    time.sleep(min(float(rest[3]), 120))
+                st.stop()
+                return 0 if node is not None else 1
+            print(__doc__)
+            return 2
         if cmd == 'pick' and rest:
             with open(rest[0]) as f:
                 req = json.load(f)

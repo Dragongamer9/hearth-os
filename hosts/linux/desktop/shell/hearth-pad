@@ -27,7 +27,8 @@ Out: ready, error, radial {open, sel, pick}, osk {open} (Y: please open the on-s
      mouse {on}, toast {text}, owner {app, mouse} (the app that owns the controller now, '' for none; mouse: Guide + R3
      gave the pointer back); while the keyboard is open: oskpad {b, down} (every button but Guide and RT) and
      oskaxes {lx, ly, rx, ry} (the left stick; the right one too with split sticks).
-In:  focus {app, title} (the window in front: its Wayland app id), padmouse (the pointer in the controller app in
+In:  locked {on} (the screen is locked: D-pad arrows, A Enter, B Esc, X Backspace only, the controller held from
+     everything else), focus {app, title} (the window in front: its Wayland app id), padmouse (the pointer in the controller app in
      front, on / off), pause {on} (a fullscreen app is in front), keys {on, why, ttl} (a menu or window with keyboard
      focus is in front: A is Enter, B is Esc, the D-pad arrows; RT / LT still click, and A / X click once the right
      stick has moved the pointer, until the D-pad is used again; ttl: it ends by itself unless said again in time;
@@ -334,6 +335,7 @@ class Pad:
         self.mode = 'desk'         # desk | radial | osk
         self.fs_pause = False      # a fullscreen app (a game) is in front
         self.user_off = False      # turned off from the menu
+        self.locked = False        # the screen is locked (Pad.qml: locked {on}): the controller is the lock screen's keys only
         self.keys_ctx = False
         self.keys_why = ''         # what the shell said has the keys (pad.log)
         self.keys_until = 0.0      # keys {on, ttl}: ends by itself unless the shell says it again (0: no time limit)
@@ -537,6 +539,8 @@ class Pad:
 
         if self.game:
             return self.game_button(name, down, now)
+        if self.locked:
+            return self.locked_button(name, down)
         if name == 'guide':
             if down:
                 self.guide_from = self.mode
@@ -577,11 +581,39 @@ class Pad:
             self.close_osk()
         self.guide_from = None
 
+    def locked_button(self, name, down):
+        """The lock screen (Lock.qml's or KWin's with Hearth's screen): D-pad arrows, A Enter (presses the lit key or
+        unlocks), B Esc (clears), X Backspace. Nothing else: no menu, no keyboard, no pointer, no shortcuts, and
+        nothing for the app or game behind it (the controller is held: wants_grab)."""
+        if name in ARROWS:
+            return self.hold_key(ARROWS[name], down)
+        if not down:
+            return
+        key = {'a': 'KEY_ENTER', 'b': 'KEY_ESC', 'x': 'KEY_BACKSPACE'}.get(name)
+        if key:
+            self.tap(key)
+
+    def set_locked(self, on):
+        on = bool(on)
+        if on == self.locked:
+            return
+        self.release_all()
+        if on:
+            if self.mode == 'radial':
+                self.close_radial()
+            elif self.mode == 'osk':
+                self.close_osk()
+        self.locked = on
+        note('locked: the controller is the lock screen\'s keys only' if on else 'unlocked')
+
     @property
     def wants_grab(self):
-        """--osk / --plasma: the controller is the keyboard's alone while it's open. Over a controller app: the
+        """Locked: always (a game behind the lock screen never sees the presses).
+        --osk / --plasma: the controller is the keyboard's alone while it's open. Over a controller app: the
         controller is Hearth's alone while the Hearth menu or the keyboard is open (or Guide + R3's pointer is on), so
         the app doesn't act on the same presses; the rest of the time it's never held (the app reads it)."""
+        if self.locked:
+            return True
         if (self.osk_only or self.plasma) and self.mode == 'osk':
             return True
         return bool(self.owner) and (self.mode in ('radial', 'osk') or self.owner_mouse)
@@ -812,6 +844,8 @@ class Pad:
             self.fs_pause = bool(m.get('on'))
             if self.paused and self.mode == 'desk':
                 self.release_all()
+        elif c == 'locked':
+            self.set_locked(m.get('on'))
         elif c == 'keys':
             self.set_keys(m.get('on'), m.get('why', ''), m.get('ttl'), m.get('now'))
         elif c == 'osk':

@@ -297,27 +297,33 @@ class ScreenCast(unittest.TestCase):
 
 
 class LockCheck(unittest.TestCase):
-    """Never lock on KWin unless its locker will show Hearth's lock screen (a lockout on a handheld otherwise)."""
+    """Never lock on KWin unless its locker will show Hearth's lock screen (a lockout on a handheld otherwise). It goes
+    by KWin's own environment, and only a test run that shows Hearth's lock screen loading passes."""
 
     def setUp(self):
         self.env = dict(os.environ)
         self.d = tempfile.mkdtemp()
-        os.environ['XDG_DATA_HOME'] = os.path.join(self.d, 'home')
-        os.environ['XDG_DATA_DIRS'] = os.path.join(self.d, 'share')
         os.environ['XDG_RUNTIME_DIR'] = os.path.join(self.d, 'run')
-        os.environ['PLASMA_DEFAULT_SHELL'] = lc.PACKAGE
+        self.kenv = {'PLASMA_DEFAULT_SHELL': lc.PACKAGE, 'XDG_DATA_DIRS': os.path.join(self.d, 'share'),
+                     'HOME': os.path.join(self.d, 'home')}
         self.greeter = os.path.join(self.d, 'greet')
-        self.greet_says('Locked at 1')
+        self.greet_says(lc.LOADED)
+        self.saved = list(lc.GREETERS)
 
     def tearDown(self):
+        lc.GREETERS[:] = self.saved
         os.environ.clear()
         os.environ.update(self.env)
 
     def greet_says(self, text):
         with open(self.greeter, 'w') as f:
-            f.write('#!/bin/sh\necho "%s"\n' % text)
+            f.write('#!/bin/sh\necho "%s" >&2\n' % text)
         os.chmod(self.greeter, 0o755)
         os.environ['HEARTH_LOCK_GREETER'] = self.greeter
+        try:
+            os.unlink(os.path.join(self.d, 'run', 'hearth', 'lockcheck.json'))
+        except OSError:
+            pass
 
     def install(self, kind='shells', api='2', qml=True):
         p = os.path.join(self.d, 'share', 'plasma', kind, lc.PACKAGE)
@@ -330,41 +336,65 @@ class LockCheck(unittest.TestCase):
         elif os.path.exists(q):
             os.unlink(q)
 
+    def test_ok(self):
+        self.install()
+        self.assertTrue(lc.check(kenv=self.kenv)['ok'])
+
     def test_no_greeter(self):
         os.environ['HEARTH_LOCK_GREETER'] = '/nonexistent'
         lc.GREETERS[:] = []
-        self.assertFalse(lc.check()['ok'])
+        self.install()
+        self.assertFalse(lc.check(kenv=self.kenv)['ok'])
 
-    def test_no_package(self):
-        self.assertIn('isn\'t where', lc.check()['why'])
+    def test_no_kwin(self):
+        self.install()
+        lc_orig = lc.kwin_environ
+        lc.kwin_environ = lambda: None
+        try:
+            self.assertIn('KWin isn\'t running', lc.check()['why'])
+        finally:
+            lc.kwin_environ = lc_orig
+
+    def test_kwin_must_name_the_package(self):
+        self.install()
+        for v in (None, 'org.kde.plasma.desktop'):
+            k = dict(self.kenv)
+            k.pop('PLASMA_DEFAULT_SHELL')
+            if v:
+                k['PLASMA_DEFAULT_SHELL'] = v
+            r = lc.check(kenv=k)
+            self.assertFalse(r['ok'])
+            self.assertIn('PLASMA_DEFAULT_SHELL', r['why'])
+
+    def test_look_and_feel_copy_is_not_enough(self):
+        self.install('look-and-feel')
+        self.assertFalse(lc.check(kenv=self.kenv)['ok'])
 
     def test_incomplete_package(self):
         self.install(api='1')
-        self.assertFalse(lc.check()['ok'])
+        self.assertFalse(lc.check(kenv=self.kenv)['ok'])
         self.install(qml=False, api='2')
-        self.assertFalse(lc.check(False)['ok'])
+        self.assertFalse(lc.check(kenv=self.kenv)['ok'])
 
-    def test_shell_package_needs_the_env(self):
-        self.install()
-        self.assertTrue(lc.check()['ok'])
-        os.environ['PLASMA_DEFAULT_SHELL'] = 'org.kde.plasma.desktop'
-        self.assertFalse(lc.check()['ok'])
-        self.install('look-and-feel')
-        self.assertTrue(lc.check()['ok'])
-
-    def test_greeter_that_cant_load_it(self):
+    def test_needs_a_positive_sign(self):
         self.install()
         self.greet_says('kscreenlocker_greet: Failed to load lockscreen QML, falling back to built-in locker')
-        r = lc.check()
+        r = lc.check(kenv=self.kenv)
         self.assertFalse(r['ok'])
         self.assertIn('Failed to load lockscreen QML', r['why'])
+        self.greet_says('something else entirely')          # no failure seen, but no sign it loaded either
+        self.assertFalse(lc.check(kenv=self.kenv)['ok'])
+
+    def test_reads_kwins_environment(self):
+        env = lc.kwin_environ()
+        self.assertTrue(env is None or isinstance(env, dict))
 
     def test_lock_qml_asks_first(self):
         lock = read('hosts/linux/desktop/shell/Lock.qml')
         self.assertLess(lock.index('out=$(python3'), lock.index('org.freedesktop.ScreenSaver.Lock'))
         self.assertIn('"nolock ', lock)
         b = read('os-bases/peppermint/build.sh')
-        self.assertIn('XDG_RUNTIME_DIR=/tmp python3 /usr/share/nimbus/desktop/shell/hearth-lockcheck\n', b)
+        self.assertIn('hearth-lockcheck --as-kwin', b)
         self.assertIn('kwin-lock/install.sh', b)
         i = read('hosts/linux/desktop/kwin-lock/install.sh')
         self.assertIn('kscreenlocker_greet isn\'t installed', i)
@@ -408,7 +438,7 @@ class Wiring(unittest.TestCase):
         self.assertIn('GetActive', lock)
         self.assertIn('"critical"', lock)
         rc = read('hosts/linux/desktop/kwin/xdg/kscreenlockerrc')
-        for line in ('Autolock=false', 'LockOnResume=false', 'Theme=org.hearth.mantel-lock'):
+        for line in ('Autolock=false', 'LockOnResume=false'):
             self.assertIn(line, rc)
         meta = json.loads(read('hosts/linux/desktop/kwin-lock/metadata.json'))
         self.assertEqual(meta['KPlugin']['Id'], 'org.hearth.mantel-lock')
@@ -416,7 +446,8 @@ class Wiring(unittest.TestCase):
         # (older: "Lockscreen QML outdated", it falls back to Plasma's own).
         self.assertEqual(meta['KPackageStructure'], 'Plasma/Shell')
         self.assertGreaterEqual(int(meta['X-Plasma-APIVersion']), 2)
-        self.assertIn('for kind in shells look-and-feel', read('hosts/linux/desktop/kwin-lock/install.sh'))
+        self.assertIn('/usr/share/plasma/shells/$ID', read('hosts/linux/desktop/kwin-lock/install.sh'))
+        self.assertIn('hearth-lock-screen: loaded', read('hosts/linux/desktop/kwin-lock/contents/lockscreen/LockScreen.qml'))
         qml = read('hosts/linux/desktop/kwin-lock/contents/lockscreen/LockScreen.qml')
         self.assertIn('authenticator.respond', qml)
         self.assertIn('Qt.quit()', qml)
