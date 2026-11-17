@@ -146,6 +146,41 @@ class Shortcuts(unittest.TestCase):
         self.assertIn('NextPreview', kb.XML)
         self.assertIn('HoverMax', kb.XML)
 
+    def test_only_kwin_sends_the_list_and_takes_commands(self):
+        self.assertEqual(set(kb.KWIN_ONLY), {'Update', 'Next', 'NextPreview', 'ForceClose'})
+
+        class Owner:
+            def unpack(self): return (':1.5',)
+
+        class Bus:
+            def call_sync(self, *a): return Owner()
+
+        class Inv:
+            err = None
+            def return_dbus_error(self, name, msg): self.err = name
+            def return_value(self, v): pass
+
+        class GLib:
+            @staticmethod
+            def Variant(*a): return a
+            class VariantType:
+                @staticmethod
+                def new(s): return s
+
+        class Gio:
+            class DBusCallFlags:
+                NONE = 0
+
+        b = object.__new__(kb.Bridge)
+        b.bus, b.GLib, b.Gio, b.kwin_owner = Bus(), GLib, Gio, None
+        self.assertTrue(b.from_kwin(':1.5'))
+        self.assertFalse(b.from_kwin(':1.77'))
+        self.assertFalse(b.from_kwin(''))
+        for m in kb.KWIN_ONLY:
+            inv = Inv()
+            b.on_call(None, ':1.77', '/org/hearth/Windows', 'org.hearth.Windows', m, None, inv)
+            self.assertEqual(inv.err, 'org.freedesktop.DBus.Error.AccessDenied', m + ' from another program is refused')
+
     def test_killable(self):
         import os
         self.assertFalse(kb.killable(1))
