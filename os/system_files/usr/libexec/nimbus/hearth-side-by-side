@@ -16,6 +16,9 @@ LOG="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/session.log"
 UNIT="hearth-side-game@$(id -un).service"
 WAIT="${HEARTH_SIDE_WAIT:-25}"
 IO="${HEARTH_SETTINGS_IO:-${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell/hearth_settings_io.py}"
+# The log's folder first: a "2>>$LOG" into a folder that isn't there would make the shell skip the command itself
+# (loginctl activate never ran when ~/.local/share/nimbus was missing).
+mkdir -p "$(dirname "$LOG")" 2>/dev/null || LOG=/dev/null
 log() { mkdir -p "$(dirname "$LOG")"; echo "$(date '+%F %T') side by side: $*" >>"$LOG" 2>/dev/null; }
 is_on() { grep -Eq '^[[:space:]]*(export[[:space:]]+)?HEARTH_SIDE_BY_SIDE=("?)1\2[[:space:]]*$' "$CONF" 2>/dev/null; }
 running() { systemctl is-active --quiet "$UNIT" 2>/dev/null; }
@@ -27,6 +30,27 @@ side_session() {
   return 1
 }
 desktop_session() { cat "$RUN/hearth-side-desktop-session" 2>/dev/null; }
+# Another graphical session of yours that's still there (not the side screen's): "<session> <VT>", one per line. The
+# fallback when the desktop's own session can't be shown, so tty9 is never left blank (red flag 2).
+other_sessions() {
+  side=$(side_session)
+  for s in $(loginctl list-sessions --no-legend 2>/dev/null | awk -v u="$(id -u)" '$2 == u {print $1}'); do
+    [ "$s" = "$side" ] && continue
+    p=$(loginctl show-session "$s" -p Type -p State -p VTNr 2>/dev/null)
+    ty=$(printf '%s\n' "$p" | sed -n 's/^Type=//p'); st=$(printf '%s\n' "$p" | sed -n 's/^State=//p'); vt=$(printf '%s\n' "$p" | sed -n 's/^VTNr=//p')
+    case "$ty" in wayland|x11) ;; *) continue ;; esac
+    case "$st" in active|online) echo "$s ${vt:-0}" ;; esac
+  done
+}
+show_other() {
+  other_sessions | {
+    while read -r s vt; do
+      if loginctl activate "$s" 2>>"$LOG"; then log "showing your other session $s instead"; exit 0; fi
+      if [ "${vt:-0}" -gt 0 ] && chvt "$vt" 2>>"$LOG"; then log "switched to tty$vt (session $s) instead"; exit 0; fi
+    done
+    exit 1
+  }
+}
 
 case "$1" in
   on|off)
@@ -65,7 +89,9 @@ case "$1" in
   desktop)
     s=$(desktop_session)
     [ -n "$s" ] && loginctl activate "$s" 2>>"$LOG" && { log "showing Desktop Mode (session $s)"; exit 0; }
-    log "couldn't show Desktop Mode's screen (session ${s:-unknown})"
+    log "couldn't show Desktop Mode's screen (session ${s:-unknown}); trying your other sessions"
+    show_other && exit 0
+    log "no other screen of yours to show"
     exit 1 ;;
   *) sed -n '2,14p' "$0" >&2; exit 2 ;;
 esac

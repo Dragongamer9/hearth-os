@@ -172,6 +172,31 @@ class NotifyHelper(unittest.TestCase):
         d.job_terminate_v3(k, 117, 'Disk full')
         self.assertEqual((k['state'], k['error']), ('failed', 'Disk full'))
 
+    def test_only_the_jobs_own_app_changes_it_and_jobs_are_capped(self):
+        d = self.d
+
+        class Inv:
+            def __init__(self): self.err, self.ret = None, 'unset'
+            def return_dbus_error(self, name, msg): self.err = name
+            def return_value(self, v): self.ret = v
+
+        class P:
+            def __init__(self, a): self.a = a
+            def unpack(self): return self.a
+
+        hub = object.__new__(d.Hub)
+        hub.GLib, hub.jobs, hub.regs, hub.seq = None, {}, {}, 0
+        hub.jobs[1] = {'id': 1, 'sender': ':1.10', 'path': '/JobViewServer/JobView_1', 'v3': True, 'state': 'running', 'caps': 0}
+        inv = Inv()
+        hub.job_call(None, ':1.99', '/JobViewServer/JobView_1', 'org.kde.JobViewV3', 'terminate', P((1, '')), inv)
+        self.assertEqual(inv.err, 'org.freedesktop.DBus.Error.AccessDenied', 'another app can\'t end this job')
+        self.assertEqual(hub.jobs[1]['state'], 'running')
+        for i in range(2, 2 + d.MAX_JOBS_PER_SENDER):
+            hub.jobs[i] = {'id': i, 'sender': ':1.50', 'state': 'running'}
+        inv = Inv()
+        hub.job_call(None, ':1.50', d.JOB_PATH, 'org.kde.JobViewServerV2', 'requestView', P(('app', 0, {})), inv)
+        self.assertEqual(inv.err, 'org.freedesktop.DBus.Error.LimitsExceeded', 'one app can\'t fill the shell with jobs')
+
     def test_tray_readers(self):
         d = self.d
         lsblk = {'blockdevices': [

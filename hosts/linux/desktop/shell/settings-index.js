@@ -698,6 +698,18 @@ var ENTRIES = [
 "i": "sun"
 },
 {
+"t": "Auto-brightness",
+"p": "display",
+"d": "The screen follows the light in the room",
+"i": "sun"
+},
+{
+"t": "How bright",
+"p": "display",
+"d": "Darker or brighter than Auto-brightness picks for the room",
+"i": "sun"
+},
+{
 "t": "Night light",
 "p": "display",
 "d": "Warmer colours from sunset to sunrise, to help you sleep",
@@ -717,6 +729,17 @@ var ENTRIES = [
 {
 "t": "When",
 "p": "display",
+"i": "clock"
+},
+{
+"t": "Which one",
+"p": "display",
+"i": "globe"
+},
+{
+"t": "Fade",
+"p": "display",
+"d": "How long the colours take to change",
 "i": "clock"
 },
 {
@@ -743,6 +766,23 @@ var ENTRIES = [
 "i": "sun"
 },
 {
+"t": "Colour intensity",
+"p": "display",
+"d": "Ordinary apps and videos while HDR is on: left is accurate, right more vivid",
+"i": "palette"
+},
+{
+"t": "Calibrate HDR",
+"p": "display",
+"i": "sparkle"
+},
+{
+"t": "Extended Dynamic Range",
+"p": "display",
+"d": "HDR videos and games brighter on this screen by turning its backlight up for them",
+"i": "sun"
+},
+{
 "t": "Wide colour",
 "p": "display",
 "i": "palette"
@@ -750,6 +790,24 @@ var ENTRIES = [
 {
 "t": "Colour profile",
 "p": "display",
+"i": "palette"
+},
+{
+"t": "Colour accuracy",
+"p": "display",
+"d": "Accurate colours cost a little more power and speed",
+"i": "palette"
+},
+{
+"t": "Overscan",
+"p": "display",
+"d": "For a TV that cuts off the picture's edges: shrinks the picture to fit",
+"i": "display"
+},
+{
+"t": "RGB range",
+"p": "display",
+"d": "Washed-out blacks or crushed shadows on a TV? Try Full or Limited",
 "i": "palette"
 },
 {
@@ -761,6 +819,11 @@ var ENTRIES = [
 "t": "Allow tearing in full-screen games",
 "p": "display",
 "i": "pad"
+},
+{
+"t": "Scaling X11 apps",
+"p": "display",
+"i": "window"
 },
 {
 "t": "Scale",
@@ -780,9 +843,20 @@ var ENTRIES = [
 "i": "bolt"
 },
 {
+"t": "Rotation",
+"p": "display",
+"d": "Turn the picture for a screen that's on its side or upside down",
+"i": "restart"
+},
+{
 "t": "Where this screen is",
 "p": "display",
 "i": "desktops"
+},
+{
+"t": "Make this the main screen",
+"p": "display",
+"i": "display"
 },
 {
 "t": "Use this screen",
@@ -790,10 +864,19 @@ var ENTRIES = [
 "i": "display"
 },
 {
-"t": "Rotation",
+"t": "Sticky edge between screens",
 "p": "display",
-"d": "Turn the picture for a screen that's on its side or upside down",
-"i": "restart"
+"i": "mouse"
+},
+{
+"t": "Sticky corners",
+"p": "display",
+"i": "mouse"
+},
+{
+"t": "Virtual desktops",
+"p": "display",
+"i": "desktops"
 },
 {
 "t": "Show the same thing on both screens (mirror)",
@@ -2293,6 +2376,12 @@ var ENTRIES = [
 "d": "Press it to go to the next layout"
 },
 {
+"t": "Remember the layout",
+"p": "keyboard",
+"d": "One layout for everything, or each app or window keeps the one you switched it to",
+"i": "kbd"
+},
+{
 "t": "Wait before a held key repeats",
 "p": "keyboard",
 "i": "kbd"
@@ -2300,6 +2389,18 @@ var ENTRIES = [
 {
 "t": "Repeat speed",
 "p": "keyboard",
+"i": "kbd"
+},
+{
+"t": "Num Lock when Desktop Mode starts",
+"p": "keyboard",
+"d": "Used from the next time Desktop Mode starts",
+"i": "kbd"
+},
+{
+"t": "Compose key",
+"p": "keyboard",
+"d": "Press it, then two keys, to type a letter that isn't on the keyboard: Compose, e, ' types é",
 "i": "kbd"
 },
 {
@@ -3570,7 +3671,7 @@ var ENTRIES = [
 "i": "globe"
 },
 {
-"t": "This PC's certificate",
+"t": "This PC's certificate (SHA-256)",
 "p": "remote-desktop",
 "i": "shield"
 },
