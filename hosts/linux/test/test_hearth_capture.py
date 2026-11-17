@@ -373,12 +373,13 @@ class Draw(unittest.TestCase):
         self.assertIn('clip', r['calls'])
         self.assertEqual(r['calls'].count('fillText'), 3)       # two lines of text, the step's number
         # Pixelate (picture 14..70 × 14..42, squares of 14): 4 × 2 squares, each the picture's pixel in its middle
-        # stretched over 7 px (half size); Blur (0..24, squares of 12): 2 × 2, then 3 × 3 half a square across.
+        # stretched over 7 px (half size); Blur (0..24, squares of 24): 1, then 2 × 2 a third and two thirds across.
         pix, blur = r['drew'][:8], r['drew'][8:]
         self.assertEqual([d[:2] for d in pix], [[x, y] for y in (21, 35) for x in (21, 35, 49, 63)])
         self.assertEqual(pix[0][2:], [7, 7, 7.6, 7.6])
-        self.assertEqual(len(blur), 4 + 9)
-        self.assertEqual(blur[4][:4], [0, 0, -3, -3])
+        self.assertEqual(len(blur), 1 + 4 + 4)
+        self.assertEqual(blur[0], [12, 12, 0, 0, 12.6, 12.6])
+        self.assertEqual(blur[1][2:4], [-8, -8])
         self.assertEqual(r['next'], 4)
         self.assertEqual(r['keep'], [False, False, True, True])
         self.assertEqual(r['name'], 'Screenshot 2026-11-16 21-04-05.png')
