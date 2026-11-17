@@ -62,6 +62,10 @@ unset a d f
 # rate and graphics card come from hearth-seats this way): kept, after session.conf's, every Game Mode start.
 ENV_GAMESCOPE_ARGS="$NIMBUS_GAMESCOPE_ARGS"
 [ -f "$CONF/session.conf" ] && . "$CONF/session.conf"
+# Hearth's own login screen (1.14, hearth-session-start): Game Mode or Desktop Mode picked there, for this sign-in
+# only (session.conf is never changed). Anything else in it is ignored.
+case "${HEARTH_LOGIN_MODE:-}" in game|desktop) NIMBUS_START_MODE="$HEARTH_LOGIN_MODE" ;; esac
+unset HEARTH_LOGIN_MODE
 # HEARTH_DESKTOP=plasma|gnome|cosmic|deepin left by an earlier Hearth: Mantel anyway (nothing here or in what this
 # session starts may act on it).
 # HEARTH_DESKTOP is read again from session.conf at every Desktop Mode start (desktop_choice); not kept here.

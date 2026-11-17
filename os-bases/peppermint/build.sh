@@ -251,6 +251,10 @@ optional dmidecode
 optional qml6-module-qtquick-virtualkeyboard qml6-module-qtmultimedia
 # AMD's X driver for the login screen's X server (it came with the Xfce session before that went off by default).
 optional xserver-xorg-video-amdgpu
+# Hearth's own login screen (1.14, a test, off by default: hearth-login-screen): greetd signs in, cage shows Hearth's
+# greeter (Quickshell). Optional: without them hearth-login-select keeps SDDM. Installed before the display-manager
+# link below, so SDDM stays the display manager whatever greetd's package does (checked at the end of this file).
+optional greetd cage
 
 # ------------------------------------------------------------------ Xfce session (optional, off by default)
 # Hearth OS is Debian-based now; the Xfce session (a plain fallback desktop on the login screen) is off by default
@@ -1054,6 +1058,11 @@ for f in wayland-sessions/plasma.desktop wayland-sessions/plasmawayland.desktop 
   dpkg-divert --list "/usr/share/$f" | grep -q . || dpkg-divert --local --no-rename --divert "/usr/share/hearth/desktop-sessions/$(echo "$f" | tr / -)" --add "/usr/share/$f"
 done
 cp -a /ctx/desktop /usr/share/nimbus/desktop
+# Hearth's own login screen uses Mantel's on-screen keyboard: its board, keys and engine, copied next to the greeter.
+mkdir -p /usr/share/hearth/greeter
+cp -a /usr/share/nimbus/desktop/shell/OskBoard.qml /usr/share/nimbus/desktop/shell/OskKey.qml /usr/share/hearth/greeter/
+rm -rf /usr/share/hearth/greeter/osk && mkdir -p /usr/share/hearth/greeter/osk
+cp -a /usr/share/nimbus/desktop/shell/osk/hearth-osk.js /usr/share/hearth/greeter/osk/
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-desktops /usr/share/nimbus/desktop/shell/hearth-companion /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/share/nimbus/desktop/shell/hearth_proton_run.py /usr/bin/hearth-proton-run /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # Server mode (docs/SERVER-MODE.md): its helper and its labwc's autostart (the session runs them only when the owner turned
 # Server mode on; nothing here is enabled or started).
@@ -1765,6 +1774,11 @@ if [ -d /etc/X11 ]; then echo /usr/bin/sddm > /etc/X11/default-display-manager; 
 # ------------------------------------------------------------------ boot straight into Hearth
 systemctl enable nimbus-autologin.service
 systemctl enable hearth-greeter-pad.service
+# Hearth's own login screen (1.14, a test): inert unless turned on in Settings (hearth-login-select picks SDDM by
+# default and whenever anything is missing; SDDM stays display-manager.service).
+chmod 755 /usr/libexec/nimbus/hearth-login-screen /usr/libexec/nimbus/hearth-greeter /usr/libexec/nimbus/hearth-session-start /usr/share/hearth/greeter/greeter-info
+systemctl enable hearth-login-select.service hearth-greetd.service
+systemctl --global enable hearth-login-notice.service
 systemctl enable hearth-boot-first.service
 systemctl enable hearth-groups.service        # accounts in video (screen brightness)
 systemctl enable hearth-home-repair.service   # home folders' Flatpak/cache folders yours, container id ranges
@@ -1925,6 +1939,9 @@ ls -la /etc/kernel/*.d 2>/dev/null || true
 # The display manager stays Hearth's when a package brings another (gdm3, lightdm): debconf's answer, kept in the
 # image and copied to /var/cache/debconf at the first start (tmpfiles, below).
 echo "sddm shared/default-x-display-manager select sddm" | debconf-set-selections
+# SDDM is still the display manager after everything above (Hearth's own login screen never takes its place).
+test "$(readlink /etc/systemd/system/display-manager.service)" = /usr/lib/systemd/system/sddm.service
+if [ -f /etc/X11/default-display-manager ]; then grep -qx /usr/bin/sddm /etc/X11/default-display-manager; fi
 mkdir -p /usr/share/hearth/debconf && cp -a /var/cache/debconf/. /usr/share/hearth/debconf/
 # The core of the system stays at the image's own versions (apt can't swap them under Hearth: systemd, udev, glibc,
 # D-Bus, Mesa), generated from what's installed (systemd-boot is left to the boot-chain pin: never from apt).
