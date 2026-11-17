@@ -10,9 +10,10 @@ Singleton {
     id: root
     property var vaults: []
     readonly property var opened: vaults.filter(v => v.open)
-    readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-vaults").toString().replace(/^file:\/\//, ""))
+    // The shell's own folder (a singleton's Qt.resolvedUrl isn't always this file's folder).
+    readonly property string helper: Quickshell.shellDir + "/hearth-vaults"
     readonly property string tip: opened.length ? opened.map(v => v.name).join(", ") + (opened.length === 1 ? " is unlocked" : " are unlocked") : "Vaults: all locked"
-    function refresh() { if (!list.running) list.running = true; }
+    function refresh() { file.reload(); if (!list.running) list.running = true; }
     function act(args) { run.command = ["python3", helper].concat(args); run.running = true; }
     // The bar's menu: lock or open each unlocked vault, unlock (in Settings) each locked one. openSettings(page).
     function menu(openSettings) {
@@ -46,7 +47,7 @@ Singleton {
             const open = {};
             for (const v of root.vaults) open[v.id] = v.open;
             root.vaults = Object.keys(vs).map(id => ({ id: id, name: vs[id].name || id, open: !!open[id], mount: "", backend: vs[id].backend || "gocryptfs" }));
-            root.refresh();
+            if (!list.running) list.running = true;
         }
         onLoadFailed: root.vaults = []
     }
