@@ -439,6 +439,52 @@ jobs:
           else
             echo "::notice title=Settings (more of KDE's)::$(ls shots/system-settings | wc -l) pictures in system-settings, no QML errors from the new pages"
           fi
+          # ---- 1.14, the rest of KDE's System Settings (test_settings_more_114_b.py): receiving files over Bluetooth and
+          # this PC's name, Temperatures & fans / Kernel modules / Interrupts, Scan to PDF, Ink & toner (a stand-in CUPS
+          # answering IPP on its socket), the firmware history and Translations & dictionaries. Stand-ins only for these
+          # pictures, all put back afterwards.
+          SM2=/tmp/sm2-before; mkdir -p "$SM2"; cp -p "$D" "$SM2/desktop.json"
+          ipc notify unpopAll
+          for f in bluetoothctl scanimage lpstat flatpak fwupdmgr sensors; do
+            printf '#!/bin/sh\nexec python3 "%s/fake.py" %s "$@"\n' "$SMF" "$f" > "/tmp/fakebin/$f"; chmod +x "/tmp/fakebin/$f"
+          done
+          CUPS_MADE=""; if [ ! -e /run/cups/cups.sock ]; then mkdir -p /run/cups; CUPS_MADE=1
+            python3 "$SMF/fake_ipp.py" /run/cups/cups.sock & echo $! > /tmp/fake-ipp.pid; sleep 1; fi
+          mkdir -p "$HOME/.config/environment.d" "$HOME/.local/state/nimbus"
+          printf '# Written by Hearth Settings \xe2\x80\xba Region & language; delete this file to keep your own.\nLANGUAGE=de_DE:fr_FR:en_US\n' > "$HOME/.config/environment.d/60-hearth-language.conf"
+          NOW=$(date +%s%3N)
+          printf '{"items": [{"path": "%s/Downloads/IMG_2041.jpg", "name": "IMG_2041.jpg", "from": "Pixel 8", "at": %s}, {"path": "%s/Downloads/Boarding pass.pdf", "name": "Boarding pass.pdf", "from": "Pixel 8", "at": %s}]}\n' "$HOME" "$NOW" "$HOME" "$((NOW - 7200000))" > "$HOME/.local/state/nimbus/bt-received.json"
+          python3 - "$D" <<'PY'
+          import json, sys
+          p = sys.argv[1]; d = json.load(open(p))
+          d.update(btReceive=True, btReceiveTrusted=True)
+          open(p, "w").write(json.dumps(d, indent=2) + "\n")
+          PY
+          SCANDEV="airscan:e0:HP OfficeJet Pro 9010"
+          python3 hosts/linux/desktop/shell/hearth-scan clear >/dev/null || true
+          python3 hosts/linux/desktop/shell/hearth-scan page "$SCANDEV" 75 Color Flatbed >/dev/null || true
+          python3 hosts/linux/desktop/shell/hearth-scan page "$SCANDEV" 75 Color Flatbed >/dev/null || true
+          sleep 3
+          ss bluetooth-receive ss-bluetooth-receive
+          ss info-sensors ss-info-sensors; ss info-modules ss-info-modules; ss info-interrupts ss-info-interrupts
+          ss scan-pdf ss-scan-pdf; ss ink-levels ss-ink-levels
+          ss firmware-history ss-firmware-history; ss language-packs ss-language-packs
+          ipc settings close; ipc notify unpopAll; ipc inkwatch check; sleep 5; grim shots/system-settings/ss-ink-notice.png || true
+          echo "::notice title=Ink notice::$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call notify history 2>&1 | grep -o '"summary":"[^"]*low[^"]*"' | head -2 | tr '\n' ' ') $(grep -a 'InkWatch' "$LOG" | tail -2 | cut -c1-200 | tr '\n' ' ')"
+          ipc notify unpopAll; ipc btreceive test; sleep 2; grim shots/system-settings/ss-bt-receive-ask.png || true
+          ipc notify unpopAll
+          for f in bluetoothctl scanimage lpstat flatpak fwupdmgr sensors; do rm -f "/tmp/fakebin/$f"; done
+          [ -n "$CUPS_MADE" ] && { kill "$(cat /tmp/fake-ipp.pid)" 2>/dev/null; rm -f /run/cups/cups.sock; }
+          python3 hosts/linux/desktop/shell/hearth-scan clear >/dev/null || true
+          rm -f "$HOME/.config/environment.d/60-hearth-language.conf" "$HOME/.local/state/nimbus/bt-received.json" "$HOME/.local/state/nimbus/ink-told.json"
+          cp -p "$SM2/desktop.json" "$D"; sleep 3
+          SMQ2='(Set(BtReceive|ScanPdf|InkLevels|LanguagePacks|FirmwareHistory|InfoCenter|BtDevices|Printers|Scanners|Languages|Firmware)|BtReceive|InkWatch)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Type .* unavailable)'
+          if grep -E "$SMQ2" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=Settings (rest of KDE's)::$(grep -E "$SMQ2" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+            touch shots/FAILED
+          else
+            echo "::notice title=Settings (rest of KDE's)::no QML errors from the new pages; $(ls shots/system-settings | tr '\n' ' ' | cut -c1-900)"
+          fi
           # ---- end of more of KDE's System Settings
           # ---- Mantel on KWin's Settings pages (1.14, docs/KWIN-SETTINGS.md): first as they are under labwc (greyed, with
           # "Needs Mantel on KWin"), then in the preview with saved settings, at 1920×1080 (the kwin-pages-shots jobs post
@@ -3022,7 +3068,9 @@ jobs:
                ss-menu-editor, ss-app-permissions, ss-wallpaper-more, ss-my-looks, ss-look-more, ss-fonts-small, ss-languages, ss-spellcheck,
                ss-input-methods, ss-bluetooth-devices, ss-print-queue, ss-scanners, ss-usb-devices, ss-info-cpu, ss-info-gpu, ss-info-memory,
                ss-info-graphics, ss-info-pci, ss-info-usb, ss-updates-shutdown, ss-signin-splash, ss-welcome, ss-oom-notice, ss-drive-plugged,
-               ss-wallpaper-potd, ss-look-apps, ss-fonts-subpixel, ss-power-hybrid, ss-sound-apps-mic]
+               ss-wallpaper-potd, ss-look-apps, ss-fonts-subpixel, ss-power-hybrid, ss-sound-apps-mic,
+               ss-bluetooth-receive, ss-bt-receive-ask, ss-info-sensors, ss-info-modules, ss-info-interrupts, ss-scan-pdf, ss-ink-levels,
+               ss-ink-notice, ss-firmware-history, ss-language-packs]
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

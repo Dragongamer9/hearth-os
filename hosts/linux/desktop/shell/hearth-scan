@@ -1,0 +1,271 @@
+#!/usr/bin/python3
+"""hearth-scan: Hearth Settings › Printers › Scan to PDF (1.14, KDE's multi-page scanning, in Hearth's look), as you
+(no root). Scans pages one after another (or every page in the document feeder) with SANE's scanimage, keeps them in
+memory ($XDG_RUNTIME_DIR/hearth-scan, gone at shutdown) until you save, then writes one PDF of them all (made here: each
+page a JPEG in the PDF, its size from the resolution). Programs always run with argument lists.
+
+  hearth-scan options DEVICE        JSON: {sources: [...], modes: [...], resolutions: [...], feeder}
+  hearth-scan page DEVICE DPI MODE SOURCE     one page (SOURCE "" = the scanner's own choice)
+  hearth-scan feeder DEVICE DPI MODE SOURCE   every page in the feeder
+  hearth-scan pages                 JSON: {pages: [{file, dpi}]}
+  hearth-scan remove N | up N | clear
+  hearth-scan save NAME             JSON: {file}: ~/Documents/NAME.pdf (never over a file that's there)
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+
+RUN = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or tempfile.gettempdir(), 'hearth-scan')
+LIST = os.path.join(RUN, 'pages.json')
+DEV_RE = re.compile(r'^[A-Za-z0-9_.:@/=,+%() -]{1,200}$')
+WORD_RE = re.compile(r'^[A-Za-z0-9 ._-]{0,40}$')
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=300):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, LC_ALL='C'))
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, '', str(e)
+    return p.returncode, p.stdout, p.stderr
+
+
+def need():
+    if not shutil.which('scanimage'):
+        raise Fail("scanimage isn't on this system (SANE's tools)")
+
+
+def check(device, dpi='150', mode='', source=''):
+    if not DEV_RE.match(device or ''):
+        raise Fail('not a scanner')
+    if not str(dpi).isdigit() or not 50 <= int(dpi) <= 1200:
+        raise Fail('a resolution from 50 to 1200')
+    if not WORD_RE.match(mode or '') or not WORD_RE.match(source or ''):
+        raise Fail('not a scanner setting')
+
+
+def parse_options(text):
+    def choices(opt):
+        m = re.search(r'^\s+--?%s\s+([^\n]*?)\s*\[' % re.escape(opt), text, re.M) or re.search(r'^\s+--?%s\s+(\S[^\n]*)$' % re.escape(opt), text, re.M)
+        if not m:
+            return []
+        return [c for c in m.group(1).split('|') if c and WORD_RE.match(c)]
+    res = []
+    m = re.search(r'^\s+--resolution\s+(\S+)', text, re.M)
+    if m:
+        r = m.group(1).replace('dpi', '')
+        if '..' in r:
+            lo, _, hi = r.partition('..')
+            lo, hi = int(float(lo or 75)), int(float(re.sub(r'\(.*$', '', hi) or 600))
+            res = [x for x in (75, 100, 150, 200, 300, 600) if lo <= x <= hi]
+        else:
+            res = [int(x) for x in r.split('|') if x.isdigit()]
+    sources = choices('source')
+    return {'sources': sources, 'modes': choices('mode'), 'resolutions': res or [150, 300],
+            'feeder': any(re.search(r'adf|feeder|duplex', s, re.I) for s in sources)}
+
+
+def options(device):
+    need()
+    check(device)
+    code, out, err = run(['scanimage', '-d', device, '-A'], timeout=60)
+    if code != 0:
+        raise Fail("the scanner didn't answer: " + ((err or out).strip().splitlines() or ['no answer'])[-1][:160])
+    return parse_options(out)
+
+
+def pages():
+    try:
+        with open(LIST) as f:
+            ps = json.load(f)
+    except (OSError, ValueError):
+        ps = []
+    return [p for p in ps if isinstance(p, dict) and os.path.isfile(os.path.join(RUN, p.get('file', '')))]
+
+
+def save_list(ps):
+    os.makedirs(RUN, mode=0o700, exist_ok=True)
+    tmp = LIST + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(ps, f)
+    os.replace(tmp, LIST)
+    return {'pages': [dict(p, path=os.path.join(RUN, p['file'])) for p in ps]}
+
+
+def scan_args(device, dpi, mode, source):
+    a = ['scanimage', '-d', device, '--format=jpeg', '--resolution', str(dpi)]
+    if mode:
+        a += ['--mode', mode]
+    if source:
+        a += ['--source', source]
+    return a
+
+
+def page(device, dpi, mode, source):
+    need()
+    check(device, dpi, mode, source)
+    os.makedirs(RUN, mode=0o700, exist_ok=True)
+    name = 'page-%d.jpg' % int(time.time() * 1000)
+    code, out, err = run(scan_args(device, dpi, mode, source) + ['-o', os.path.join(RUN, name)])
+    if code != 0 or not os.path.isfile(os.path.join(RUN, name)) or not jpeg_size(os.path.join(RUN, name)):
+        raise Fail("the scanner didn't scan: " + ((err or out).strip().splitlines() or ['no answer'])[-1][:160])
+    return save_list(pages() + [{'file': name, 'dpi': int(dpi)}])
+
+
+def feeder(device, dpi, mode, source):
+    need()
+    check(device, dpi, mode, source)
+    os.makedirs(RUN, mode=0o700, exist_ok=True)
+    stamp = int(time.time() * 1000)
+    code, out, err = run(scan_args(device, dpi, mode, source) + ['--batch=' + os.path.join(RUN, 'feed-%d-%%03d.jpg' % stamp)], timeout=1800)
+    got = sorted(n for n in os.listdir(RUN) if n.startswith('feed-%d-' % stamp) and jpeg_size(os.path.join(RUN, n)))
+    if not got:
+        raise Fail('no pages came: is there paper in the feeder? ' + ((err or out).strip().splitlines() or [''])[-1][:120])
+    return save_list(pages() + [{'file': n, 'dpi': int(dpi)} for n in got])
+
+
+def change(what, n=None):
+    ps = pages()
+    if what == 'clear':
+        for p in ps:
+            try:
+                os.remove(os.path.join(RUN, p['file']))
+            except OSError:
+                pass
+        return save_list([])
+    if not str(n).isdigit() or int(n) >= len(ps):
+        raise Fail('no such page')
+    i = int(n)
+    if what == 'remove':
+        try:
+            os.remove(os.path.join(RUN, ps[i]['file']))
+        except OSError:
+            pass
+        ps.pop(i)
+    elif what == 'up' and i > 0:
+        ps[i - 1], ps[i] = ps[i], ps[i - 1]
+    return save_list(ps)
+
+
+def jpeg_size(path):
+    """(width, height, components) from a JPEG's frame header, or None."""
+    try:
+        with open(path, 'rb') as f:
+            data = f.read()
+    except OSError:
+        return None
+    if data[:2] != b'\xff\xd8':
+        return None
+    i = 2
+    while i + 9 < len(data):
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if marker in (0xD8, 0x01) or 0xD0 <= marker <= 0xD7:
+            i += 2
+            continue
+        seg = int.from_bytes(data[i + 2:i + 4], 'big')
+        if marker in (0xC0, 0xC1, 0xC2):
+            h = int.from_bytes(data[i + 5:i + 7], 'big')
+            w = int.from_bytes(data[i + 7:i + 9], 'big')
+            return (w, h, data[i + 9]) if w and h else None
+        i += 2 + seg
+    return None
+
+
+def make_pdf(items):
+    """items: [(jpeg bytes, width, height, components, dpi)] -> PDF bytes, one page each."""
+    objs = []
+    kids = []
+    for n, (jpg, w, h, comp, dpi) in enumerate(items):
+        pw, ph = w * 72.0 / dpi, h * 72.0 / dpi
+        img = 3 + n * 3
+        cs = '/DeviceGray' if comp == 1 else '/DeviceCMYK' if comp == 4 else '/DeviceRGB'
+        objs.append((img, b'<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace %s /BitsPerComponent 8 /Filter /DCTDecode /Length %d >>\nstream\n'
+                     % (w, h, cs.encode(), len(jpg)) + jpg + b'\nendstream'))
+        content = b'q %.2f 0 0 %.2f 0 0 cm /Im0 Do Q' % (pw, ph)
+        objs.append((img + 1, b'<< /Length %d >>\nstream\n' % len(content) + content + b'\nendstream'))
+        objs.append((img + 2, b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 %.2f %.2f] /Resources << /XObject << /Im0 %d 0 R >> >> /Contents %d 0 R >>'
+                     % (pw, ph, img, img + 1)))
+        kids.append(img + 2)
+    objs.append((1, b'<< /Type /Catalog /Pages 2 0 R >>'))
+    objs.append((2, b'<< /Type /Pages /Kids [%s] /Count %d >>' % (b' '.join(b'%d 0 R' % k for k in kids), len(kids))))
+    objs.sort()
+    out = bytearray(b'%PDF-1.4\n%\xe2\xe3\xcf\xd3\n')
+    offsets = {}
+    for num, body in objs:
+        offsets[num] = len(out)
+        out += b'%d 0 obj\n' % num + body + b'\nendobj\n'
+    xref = len(out)
+    size = max(offsets) + 1
+    out += b'xref\n0 %d\n0000000000 65535 f \n' % size
+    for i in range(1, size):
+        out += b'%010d 00000 n \n' % offsets.get(i, 0)
+    out += b'trailer\n<< /Size %d /Root 1 0 R >>\nstartxref\n%d\n%%%%EOF\n' % (size, xref)
+    return bytes(out)
+
+
+def save(name):
+    ps = pages()
+    if not ps:
+        raise Fail('scan a page first')
+    name = re.sub(r'[\x00-\x1f\x7f/\\]', '', (name or '').strip()).lstrip('.')[:120] or time.strftime('Scan %Y-%m-%d %H%M')
+    if name.lower().endswith('.pdf'):
+        name = name[:-4]
+    items = []
+    for p in ps:
+        path = os.path.join(RUN, p['file'])
+        s = jpeg_size(path)
+        if not s:
+            raise Fail('a page is broken: scan it again')
+        with open(path, 'rb') as f:
+            items.append((f.read(), s[0], s[1], s[2], int(p.get('dpi') or 150)))
+    docs = os.path.expanduser('~/Documents')
+    os.makedirs(docs, exist_ok=True)
+    dest, i = os.path.join(docs, name + '.pdf'), 2
+    while os.path.exists(dest):
+        dest = os.path.join(docs, '%s (%d).pdf' % (name, i))
+        i += 1
+    fd, tmp = tempfile.mkstemp(dir=docs, prefix='.hearth-scan-')
+    with os.fdopen(fd, 'wb') as f:
+        f.write(make_pdf(items))
+    os.replace(tmp, dest)
+    return {'file': dest, 'pages': len(items)}
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['options'] and len(argv) == 2:
+            r = options(argv[1])
+        elif argv[:1] in (['page'], ['feeder']) and len(argv) == 5:
+            r = (page if argv[0] == 'page' else feeder)(*argv[1:])
+        elif argv[:1] == ['pages']:
+            r = {'pages': [dict(p, path=os.path.join(RUN, p['file'])) for p in pages()]}
+        elif argv[:1] == ['clear']:
+            r = change('clear')
+        elif argv[:1] and argv[0] in ('remove', 'up') and len(argv) == 2:
+            r = change(argv[0], argv[1])
+        elif argv[:1] == ['save'] and len(argv) == 2:
+            r = save(argv[1])
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

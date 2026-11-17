@@ -22,7 +22,9 @@ Scope {
     }
     Timer { interval: 300000; running: true; onTriggered: fw.check() }
     Timer { interval: 86400000; running: true; repeat: true; onTriggered: fw.check() }
-    function check() { if (Settings.firmwareNotify && fw.toldRead && !look.running) look.running = true; }
+    // Not gated on toldRead: with no told file yet (a fresh account) FileView may never say it was read, and the notice
+    // would never come. The first check is 5 minutes after start, long after an existing file has loaded.
+    function check() { if (Settings.firmwareNotify && !look.running) look.running = true; }
     Process {
         id: look
         command: ["python3", fw.helper, "devices"]

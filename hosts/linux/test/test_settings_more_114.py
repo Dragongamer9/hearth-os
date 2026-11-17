@@ -548,5 +548,17 @@ class Pages(unittest.TestCase):
                 self.assertNotRegex(m.group(1), r'"(set|save|add-|remove|languages-set|spell-set|im-set|trust|block|cancel)', f)
 
 
+
+
+class FirmwareWatchFreshAccount(unittest.TestCase):
+    def test_check_does_not_wait_for_a_told_file(self):
+        """A fresh account has no firmware-told.json: check() must not wait for it to be read, or no notice ever comes."""
+        src = (pathlib.Path(__file__).resolve().parents[1] / 'desktop' / 'shell' / 'FirmwareWatch.qml').read_text()
+        check = next(l for l in src.splitlines() if l.strip().startswith('function check()'))
+        self.assertNotIn('toldRead', check)
+        self.assertIn('Settings.firmwareNotify', check)
+        self.assertIn('interval: 300000', src)   # the first check comes 5 minutes after start
+
+
 if __name__ == '__main__':
     unittest.main()

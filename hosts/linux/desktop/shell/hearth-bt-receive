@@ -1,0 +1,249 @@
+#!/usr/bin/python3
+"""hearth-bt-receive: Hearth Settings › Bluetooth › Receive files & this PC's name (1.14, KDE's Bluetooth file
+receiving and adapter name), as you (no root). Renaming goes to BlueZ (bluetoothctl system-alias; BlueZ remembers it,
+Hearth keeps no file). Receiving is an OBEX agent on your session bus (obexd's org.bluez.obex.AgentManager1): every
+file pushed to this PC is asked about first (BtReceive.qml shows Accept / Decline), lands in obexd's own folder
+(~/.cache/obexd) and is moved to your folder when it's complete. Nothing is accepted without an answer; no answer in
+60 s is a no. Programs always run with argument lists.
+
+  hearth-bt-receive name             JSON: {name, address, powered, discoverable, present}
+  hearth-bt-receive rename NAME      this PC's Bluetooth name (what phones see)
+  hearth-bt-receive reset-name       BlueZ's usual name again
+  hearth-bt-receive agent FOLDER     runs until stopped: JSON lines {"ask": ID, name, size, from, mac, trusted},
+                                     {"received": PATH, name, from}, {"failed": NAME, from}; reads "yes ID" / "no ID"
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+OBEXD_ROOT = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.expanduser('~/.cache'), 'obexd')
+AGENT_PATH = '/org/hearth/obexagent'
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=15):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, '', str(e)
+    return p.returncode, p.stdout, p.stderr
+
+
+def parse_show(text):
+    d = {}
+    for line in text.splitlines():
+        line = line.strip()
+        m = re.match(r'^Controller ([0-9A-Fa-f:]{17})', line)
+        if m:
+            d['address'] = m.group(1).upper()
+            continue
+        if ':' in line:
+            k, _, v = line.partition(':')
+            d.setdefault(k.strip(), v.strip())
+    return {'present': 'address' in d, 'address': d.get('address', ''), 'name': d.get('Alias') or d.get('Name') or '',
+            'systemName': d.get('Name', ''), 'powered': d.get('Powered') == 'yes', 'discoverable': d.get('Discoverable') == 'yes'}
+
+
+def name():
+    if not shutil.which('bluetoothctl'):
+        raise Fail("bluetoothctl isn't on this system")
+    code, out, err = run(['bluetoothctl', '--timeout', '5', 'show'])
+    return parse_show(out)
+
+
+def check_name(n):
+    n = (n or '').strip()
+    if not n or len(n.encode()) > 248 or re.search(r'[\x00-\x1f\x7f]', n):
+        raise Fail('a name of 1 to 248 letters, without line breaks')
+    return n
+
+
+def rename(n):
+    n = check_name(n)
+    code, out, err = run(['bluetoothctl', '--timeout', '5', 'system-alias', n])
+    if code != 0:
+        raise Fail((err or out).strip()[:160] or 'BlueZ said no')
+    return name()
+
+
+def reset_name():
+    code, out, err = run(['bluetoothctl', '--timeout', '5', 'reset-alias'])
+    return name()
+
+
+def safe_name(n):
+    """A file name from what the other device says: no folders, no hidden files, no control characters."""
+    n = os.path.basename((n or '').replace('\\', '/'))
+    n = re.sub(r'[\x00-\x1f\x7f/]', '', n).strip().lstrip('.')
+    return n[:200] or 'received-file'
+
+
+def unique(folder, n):
+    base, ext = os.path.splitext(n)
+    p, i = os.path.join(folder, n), 2
+    while os.path.exists(p):
+        p = os.path.join(folder, '%s (%d)%s' % (base, i, ext))
+        i += 1
+    return p
+
+
+def emit(o):
+    sys.stdout.write(json.dumps(o) + '\n')
+    sys.stdout.flush()
+
+
+def agent(folder):
+    import dbus
+    import dbus.service
+    import dbus.mainloop.glib
+    from gi.repository import GLib
+
+    folder = os.path.realpath(os.path.expanduser(folder or '~/Downloads'))
+    os.makedirs(folder, exist_ok=True)
+    os.makedirs(OBEXD_ROOT, exist_ok=True)
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SessionBus()
+    try:
+        system = dbus.SystemBus()
+    except dbus.DBusException:
+        system = None
+    pending, watching = {}, {}
+    counter = [0]
+
+    def device_of(transfer):
+        try:
+            t = bus.get_object('org.bluez.obex', transfer)
+            props = dbus.Interface(t, 'org.freedesktop.DBus.Properties').GetAll('org.bluez.obex.Transfer1')
+            s = bus.get_object('org.bluez.obex', props.get('Session'))
+            mac = str(dbus.Interface(s, 'org.freedesktop.DBus.Properties').Get('org.bluez.obex.Session1', 'Destination')).upper()
+        except dbus.DBusException:
+            return {}, '', '', False
+        dev_name, trusted = mac, False
+        if system is not None:
+            try:
+                om = dbus.Interface(system.get_object('org.bluez', '/'), 'org.freedesktop.DBus.ObjectManager')
+                for path, ifs in om.GetManagedObjects().items():
+                    d = ifs.get('org.bluez.Device1')
+                    if d and str(d.get('Address', '')).upper() == mac:
+                        dev_name, trusted = str(d.get('Alias') or d.get('Name') or mac), bool(d.get('Trusted'))
+            except dbus.DBusException:
+                pass
+        return props, mac, dev_name, trusted
+
+    def watch(transfer, tmp, final, shown, who):
+        def changed(iface, ch, inv, path=None):
+            st = ch.get('Status')
+            if st == 'complete':
+                try:
+                    dest = unique(final, shown)
+                    shutil.move(tmp, dest)
+                    emit({'received': dest, 'name': os.path.basename(dest), 'from': who})
+                except OSError as e:
+                    emit({'failed': shown, 'from': who, 'why': str(e)})
+                m = watching.pop(transfer, None)
+                if m:
+                    m.remove()
+            elif st == 'error':
+                try:
+                    os.remove(tmp)
+                except OSError:
+                    pass
+                emit({'failed': shown, 'from': who})
+                m = watching.pop(transfer, None)
+                if m:
+                    m.remove()
+        watching[transfer] = bus.add_signal_receiver(changed, 'PropertiesChanged', 'org.freedesktop.DBus.Properties',
+                                                     'org.bluez.obex', transfer)
+
+    class Agent(dbus.service.Object):
+        @dbus.service.method('org.bluez.obex.Agent1', in_signature='o', out_signature='s',
+                             async_callbacks=('ok', 'no'))
+        def AuthorizePush(self, transfer, ok, no):
+            props, mac, who, trusted = device_of(transfer)
+            shown = safe_name(str(props.get('Name', '')) if props else '')
+            counter[0] += 1
+            aid = str(counter[0])
+
+            def answer(yes):
+                if aid not in pending:
+                    return False
+                pending.pop(aid)
+                if yes:
+                    tmp = unique(OBEXD_ROOT, 'hearth-' + aid + '-' + shown)
+                    watch(str(transfer), tmp, folder, shown, who)
+                    ok(tmp)
+                else:
+                    no(dbus.DBusException('Not accepted', name='org.bluez.obex.Error.Rejected'))
+                return False
+            pending[aid] = answer
+            GLib.timeout_add_seconds(60, lambda: answer(False))
+            emit({'ask': aid, 'name': shown, 'size': int(props.get('Size', 0)) if props else 0, 'from': who, 'mac': mac,
+                  'trusted': trusted})
+
+        @dbus.service.method('org.bluez.obex.Agent1', in_signature='', out_signature='')
+        def Cancel(self):
+            for aid in list(pending):
+                pending[aid](False)
+
+        @dbus.service.method('org.bluez.obex.Agent1', in_signature='', out_signature='')
+        def Release(self):
+            loop.quit()
+
+    Agent(bus, AGENT_PATH)
+    try:
+        mgr = dbus.Interface(bus.get_object('org.bluez.obex', '/org/bluez/obex'), 'org.bluez.obex.AgentManager1')
+        mgr.RegisterAgent(AGENT_PATH)
+    except dbus.DBusException as e:
+        raise Fail("couldn't start receiving: obexd isn't answering (%s)" % str(e)[:120])
+    emit({'ready': True, 'folder': folder})
+
+    def line(src, cond):
+        l = sys.stdin.readline()
+        if not l:
+            loop.quit()
+            return False
+        m = re.match(r'^(yes|no) (\d+)$', l.strip())
+        if m and m.group(2) in pending:
+            pending[m.group(2)](m.group(1) == 'yes')
+        return True
+    loop = GLib.MainLoop()
+    GLib.io_add_watch(sys.stdin.fileno(), GLib.IO_IN | GLib.IO_HUP, line)
+    try:
+        loop.run()
+    finally:
+        try:
+            mgr.UnregisterAgent(AGENT_PATH)
+        except dbus.DBusException:
+            pass
+    return {'ok': True}
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['name']:
+            r = name()
+        elif argv[:1] == ['rename'] and len(argv) == 2:
+            r = rename(argv[1])
+        elif argv[:1] == ['reset-name']:
+            r = reset_name()
+        elif argv[:1] == ['agent'] and len(argv) <= 2:
+            r = agent(argv[1] if len(argv) == 2 else '')
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e), flush=True)
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
