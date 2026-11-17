@@ -336,6 +336,11 @@ var ENTRIES = [
 "i": "speed"
 },
 {
+"t": "Arrange the bar",
+"p": "bar-dock",
+"i": "grid"
+},
+{
 "t": "Right-click menu",
 "p": "bar-dock",
 "d": "How the menu looks on files, the desktop, the bar, the dock and the app menus",
@@ -575,6 +580,18 @@ var ENTRIES = [
 "i": "back"
 },
 {
+"t": "Another calendar",
+"p": "datetime",
+"d": "Its date under each day of the month",
+"i": "calendar"
+},
+{
+"t": "Holidays",
+"p": "datetime",
+"d": "Marked on the month, the next one under it",
+"i": "sparkle"
+},
+{
 "t": "Reset to Hearth's default",
 "p": "defaults",
 "i": "restart"
@@ -687,6 +704,12 @@ var ENTRIES = [
 "i": "sun"
 },
 {
+"t": "Auto-brightness",
+"p": "display",
+"d": "The screen follows the light in the room",
+"i": "sun"
+},
+{
 "t": "Night light",
 "p": "display",
 "d": "Warmer colours from sunset to sunrise, to help you sleep",
@@ -706,6 +729,17 @@ var ENTRIES = [
 {
 "t": "When",
 "p": "display",
+"i": "clock"
+},
+{
+"t": "Which one",
+"p": "display",
+"i": "globe"
+},
+{
+"t": "Fade",
+"p": "display",
+"d": "How long the colours take to change",
 "i": "clock"
 },
 {
@@ -732,6 +766,23 @@ var ENTRIES = [
 "i": "sun"
 },
 {
+"t": "Colour intensity",
+"p": "display",
+"d": "Ordinary apps and videos while HDR is on: left is accurate, right more vivid",
+"i": "palette"
+},
+{
+"t": "Calibrate HDR",
+"p": "display",
+"i": "sparkle"
+},
+{
+"t": "Extended Dynamic Range",
+"p": "display",
+"d": "HDR videos and games brighter on this screen by turning its backlight up for them",
+"i": "sun"
+},
+{
 "t": "Wide colour",
 "p": "display",
 "i": "palette"
@@ -739,6 +790,24 @@ var ENTRIES = [
 {
 "t": "Colour profile",
 "p": "display",
+"i": "palette"
+},
+{
+"t": "Colour accuracy",
+"p": "display",
+"d": "Accurate colours cost a little more power and speed",
+"i": "palette"
+},
+{
+"t": "Overscan",
+"p": "display",
+"d": "For a TV that cuts off the picture's edges: shrinks the picture to fit",
+"i": "display"
+},
+{
+"t": "RGB range",
+"p": "display",
+"d": "Washed-out blacks or crushed shadows on a TV? Try Full or Limited",
 "i": "palette"
 },
 {
@@ -750,6 +819,11 @@ var ENTRIES = [
 "t": "Allow tearing in full-screen games",
 "p": "display",
 "i": "pad"
+},
+{
+"t": "Scaling X11 apps",
+"p": "display",
+"i": "window"
 },
 {
 "t": "Scale",
@@ -769,9 +843,20 @@ var ENTRIES = [
 "i": "bolt"
 },
 {
+"t": "Rotation",
+"p": "display",
+"d": "Turn the picture for a screen that's on its side or upside down",
+"i": "restart"
+},
+{
 "t": "Where this screen is",
 "p": "display",
 "i": "desktops"
+},
+{
+"t": "Make this the main screen",
+"p": "display",
+"i": "display"
 },
 {
 "t": "Use this screen",
@@ -779,10 +864,19 @@ var ENTRIES = [
 "i": "display"
 },
 {
-"t": "Rotation",
+"t": "Sticky edge between screens",
 "p": "display",
-"d": "Turn the picture for a screen that's on its side or upside down",
-"i": "restart"
+"i": "mouse"
+},
+{
+"t": "Sticky corners",
+"p": "display",
+"i": "mouse"
+},
+{
+"t": "Virtual desktops",
+"p": "display",
+"i": "desktops"
 },
 {
 "t": "Show the same thing on both screens (mirror)",
@@ -2309,6 +2403,12 @@ var ENTRIES = [
 "d": "Press it to go to the next layout"
 },
 {
+"t": "Remember the layout",
+"p": "keyboard",
+"d": "One layout for everything, or each app or window keeps the one you switched it to",
+"i": "kbd"
+},
+{
 "t": "Wait before a held key repeats",
 "p": "keyboard",
 "i": "kbd"
@@ -2316,6 +2416,18 @@ var ENTRIES = [
 {
 "t": "Repeat speed",
 "p": "keyboard",
+"i": "kbd"
+},
+{
+"t": "Num Lock when Desktop Mode starts",
+"p": "keyboard",
+"d": "Used from the next time Desktop Mode starts",
+"i": "kbd"
+},
+{
+"t": "Compose key",
+"p": "keyboard",
+"d": "Press it, then two keys, to type a letter that isn't on the keyboard: Compose, e, ' types é",
 "i": "kbd"
 },
 {
@@ -2380,6 +2492,11 @@ var ENTRIES = [
 "t": "Clear learned words",
 "p": "keyboard",
 "d": "Word suggestions go back to the word list (Game Mode's keyboard forgets them too)"
+},
+{
+"t": "Bring back KDE's own shortcuts",
+"p": "keyboard",
+"i": "undo"
 },
 {
 "t": "How many",
@@ -3200,9 +3317,60 @@ var ENTRIES = [
 "i": "bell-off"
 },
 {
+"t": "Quiet right now",
+"p": "notifications",
+"i": "moon"
+},
+{
 "t": "Clear the notification list",
 "p": "notifications",
 "i": "bell"
+},
+{
+"t": "While a full-screen app is in front",
+"p": "notifications",
+"d": "Games and videos: pop-ups wait in the list, and you're told how many came in when you leave full screen",
+"i": "pad"
+},
+{
+"t": "While you share or record your screen",
+"p": "notifications",
+"d": "Screen sharing in a call, Hearth's recorder, Remote desktop: nobody else sees your notifications",
+"i": "share"
+},
+{
+"t": "On a schedule",
+"p": "notifications",
+"d": "Every day between the times below. Press Super+Alt+N any time for Do not disturb",
+"i": "clock"
+},
+{
+"t": "From",
+"p": "notifications",
+"i": "moon"
+},
+{
+"t": "Until",
+"p": "notifications",
+"i": "sun"
+},
+{
+"t": "Hearth's own warnings always show",
+"p": "notifications",
+"d": "Low space, a low battery, a settings file put back: they pop up even when it's quiet, and can't be muted",
+"i": "warn"
+},
+{
+"t": "Keep the list after a restart",
+"p": "notifications",
+"d": "The last 100, with their buttons while their app can still answer. Off: the list starts empty each time (what's kept now is cleared)",
+"i": "list"
+},
+{
+"t": "Sounds",
+"p": "notifications",
+"d": "Hearth's own short sounds, the freedesktop set, or none, and which events play one",
+"i": "vol"
 },
 {
 "t": "Notifications",
@@ -3260,6 +3428,17 @@ var ENTRIES = [
 "i": "close"
 },
 {
+"t": "Open",
+"p": "phone",
+"d": "In your browser",
+"i": "open"
+},
+{
+"t": "Copy",
+"p": "phone",
+"i": "clipboard"
+},
+{
 "t": "Close the phone's files",
 "p": "phone",
 "i": "close"
@@ -3274,6 +3453,24 @@ var ENTRIES = [
 "p": "phone",
 "d": "On the phone too",
 "i": "close"
+},
+{
+"t": "Include what they say",
+"p": "phone",
+"d": "Off: only the app and the title go",
+"i": "doc"
+},
+{
+"t": "Only ones that stay",
+"p": "phone",
+"d": "Leaves out pop-ups that go away by themselves",
+"i": "pin"
+},
+{
+"t": "Which ones",
+"p": "phone",
+"d": "By how urgent the app says it is",
+"i": "warn"
 },
 {
 "t": "Phone not listed?",
@@ -3390,6 +3587,28 @@ var ENTRIES = [
 "p": "quick",
 "d": "What this PC opens when it turns on or you sign in",
 "i": "power"
+},
+{
+"t": "Remember the files I open",
+"p": "recent-files",
+"i": "clock"
+},
+{
+"t": "Keep them for",
+"p": "recent-files",
+"d": "Older ones are forgotten",
+"i": "calendar"
+},
+{
+"t": "Forget the last hour",
+"p": "recent-files",
+"i": "undo"
+},
+{
+"t": "Forget today",
+"p": "recent-files",
+"d": "The last 24 hours",
+"i": "undo"
 },
 {
 "t": "Language",
@@ -3797,6 +4016,16 @@ var ENTRIES = [
 "t": "Play it back",
 "p": "sound",
 "i": "play"
+},
+{
+"t": "System sounds",
+"p": "sounds",
+"i": "vol"
+},
+{
+"t": "Where they come from",
+"p": "sounds",
+"i": "info"
 },
 {
 "t": "When this PC turns on",

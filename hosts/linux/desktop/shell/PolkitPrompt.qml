@@ -62,7 +62,24 @@ Scope {
     }
     Binding { target: SettingsNav; property: "polkitShown"; value: pk.active }
 
-    PolkitAgent { id: agent }
+    // Polkit only takes an agent for a logind session: without one (a desktop started outside a sign-in, as in CI)
+    // registering only fails with warnings, so it isn't tried; the classic agent asks (the marker isn't written).
+    // Asked once at the start, through loginctl (this shell's own session, found by its process); a real sign-in
+    // always has one, so nothing changes there.
+    property bool sessionKnown: false
+    property bool sessionChecked: false
+    Process {
+        running: true
+        command: ["sh", "-c", "loginctl session-status >/dev/null 2>&1 || loginctl show-session \"${XDG_SESSION_ID:-}\" >/dev/null 2>&1"]
+        onExited: code => {
+            pk.sessionKnown = code === 0;
+            pk.sessionChecked = true;
+            if (!pk.sessionKnown) console.info("Mantel's password prompt: no logind session for this desktop, so it doesn't register; the classic agent asks");
+        }
+    }
+    Loader { id: agentLoader; active: pk.sessionKnown; sourceComponent: Component { PolkitAgent {} } }
+    QtObject { id: noAgent; property bool isRegistered: false; property bool isActive: false; property var flow: null }
+    readonly property var agent: agentLoader.item || noAgent
 
     // Registered: the fallback watcher (hearth-polkit-fallback) sees quickshell's PID here and leaves the classic agent
     // off; gone (or a PID that isn't running) and it starts the classic one.
@@ -79,7 +96,8 @@ Scope {
         target: agent
         function onIsRegisteredChanged() { pk.writeMarker(); }
     }
-    Component.onCompleted: { if (agent.isRegistered) writeMarker(); noRegister.start(); }
+    Component.onCompleted: noRegister.start()
+    onAgentChanged: if (agent.isRegistered) writeMarker()
     Timer {
         id: noRegister; interval: 6000
         // Not registered after a while: a marker left by an earlier agent in this same shell is taken away.

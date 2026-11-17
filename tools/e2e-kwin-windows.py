@@ -199,6 +199,146 @@ def keys_check():
     kbd.close()
 
 
+PAD_LOG = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'nimbus', 'pad.log')
+
+
+def pad_log():
+    try:
+        with open(PAD_LOG, encoding='utf-8', errors='replace') as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def focus():
+    try:
+        return json.loads(ipc('focus', 'state'))
+    except ValueError:
+        return {}
+
+
+def pad_and_focus_check():
+    """The controller in Desktop Mode on KWin (Mantel's hearth-pad, started by Pad.qml, reading a uinput gamepad and
+    typing through its own uinput keyboard, which KWin reads through libinput): View + D-pad snaps, View + B closes the
+    window, LB / RB switch windows. Then a real keyboard types into each of Mantel's panels (the app menu, Quick
+    Access, Hearth Settings): the keys must reach the panel that's open (layer shell's keyboard focus under KWin)."""
+    try:
+        import evdev
+        from evdev import ecodes as e, AbsInfo
+        stick = AbsInfo(0, -32768, 32767, 16, 128, 0)
+        hat = AbsInfo(0, -1, 1, 0, 0, 0)
+        pad = evdev.UInput({e.EV_KEY: [e.BTN_SOUTH, e.BTN_EAST, e.BTN_NORTH, e.BTN_WEST, e.BTN_TL, e.BTN_TR, e.BTN_SELECT,
+                                       e.BTN_START, e.BTN_MODE, e.BTN_THUMBL, e.BTN_THUMBR],
+                            e.EV_ABS: [(e.ABS_X, stick), (e.ABS_Y, stick), (e.ABS_RX, stick), (e.ABS_RY, stick),
+                                       (e.ABS_HAT0X, hat), (e.ABS_HAT0Y, hat)]},
+                           name='Test Gamepad', vendor=0x045e, product=0x028e, version=0x110, bustype=0x03)
+        kbd = evdev.UInput({e.EV_KEY: [e.KEY_LEFTCTRL, e.KEY_F, e.KEY_D, e.KEY_I, e.KEY_S, e.KEY_P, e.KEY_L, e.KEY_A, e.KEY_Y,
+                                       e.KEY_DOWN, e.KEY_RIGHT, e.KEY_ESC, e.KEY_BACKSPACE]}, name='Test keyboard')
+    except Exception as ex:
+        check('a virtual controller and keyboard for the controller checks', False, ex)
+        return
+    found = wait(lambda: 'Test Gamepad' in pad_log(), 15)
+    check('hearth-pad finds the controller under KWin', found, pad_log()[-400:])
+
+    def btn(code, down):
+        pad.write(e.EV_KEY, code, 1 if down else 0)
+        pad.syn()
+        time.sleep(0.08)
+
+    def dpad(axis, v):
+        pad.write(e.EV_ABS, axis, v)
+        pad.syn()
+        time.sleep(0.08)
+
+    def view_with(fn):
+        btn(e.BTN_SELECT, True)
+        time.sleep(0.15)
+        fn()
+        time.sleep(0.15)
+        btn(e.BTN_SELECT, False)
+        time.sleep(0.8)
+
+    def press(*codes):
+        for c in codes:
+            kbd.write(e.EV_KEY, c, 1); kbd.syn(); time.sleep(0.03)
+        for c in reversed(codes):
+            kbd.write(e.EV_KEY, c, 0); kbd.syn(); time.sleep(0.03)
+        time.sleep(0.4)
+
+    # View + D-pad left: Super+Left, Hearth's snap.
+    ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test A', 'zone': 'center'}))
+    wait(lambda: (win('Test A') or {}).get('zone') == 'center')
+    ipc('winlist', 'act', 'Test A', 'activate')
+    wait(lambda: listed().get('active') == (win('Test A') or {}).get('id'))
+    time.sleep(0.5)
+    view_with(lambda: (dpad(e.ABS_HAT0X, -1), dpad(e.ABS_HAT0X, 0)))
+    check('controller: View + D-pad left snaps the window to the left half',
+          wait(lambda: (win('Test A') or {}).get('zone') == 'left-half', 6), [win('Test A'), pad_log()[-300:]])
+    view_with(lambda: (dpad(e.ABS_HAT0X, 1), dpad(e.ABS_HAT0X, 0)))
+    check('controller: View + D-pad right snaps it to the right half',
+          wait(lambda: (win('Test A') or {}).get('zone') == 'right-half', 6), win('Test A'))
+    # LB / RB: the window switcher (Alt+Tab, KWin's own), the other window comes in front.
+    before = listed().get('active')
+    btn(e.BTN_TR, True)
+    btn(e.BTN_TR, False)
+    time.sleep(1.6)                    # the switcher closes by itself (hearth-pad's ALT_HOLD)
+    after = wait(lambda: listed().get('active') not in (None, before) and listed().get('active'), 6)
+    check('controller: RB switches to the other window', after, [before, listed().get('active')])
+    before = listed().get('active')
+    btn(e.BTN_TL, True)
+    btn(e.BTN_TL, False)
+    time.sleep(1.6)
+    check('controller: LB switches back', wait(lambda: listed().get('active') not in (None, before), 6), [before, listed().get('active')])
+    # View + B: Super+Q closes the window in front (a window of its own for it).
+    p = subprocess.Popen(['foot', '--app-id=hearth.test.pad', '--title=Test Pad', 'sleep', '600'],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    wait(lambda: win('Test Pad'), 15)
+    ipc('winlist', 'act', 'Test Pad', 'activate')
+    wait(lambda: listed().get('active') == (win('Test Pad') or {}).get('id'))
+    time.sleep(0.5)
+    view_with(lambda: (btn(e.BTN_EAST, True), btn(e.BTN_EAST, False)))
+    check('controller: View + B closes the window in front', wait(lambda: listed().get('windows') is not None and not win('Test Pad'), 8),
+          [w.get('title') for w in listed().get('windows', [])])
+    try:
+        p.kill()
+    except OSError:
+        pass
+    pad.close()
+
+    # Keyboard focus on each panel: what's typed shows up in that panel.
+    ipc('launcher', 'open')
+    time.sleep(1.2)
+    press(e.KEY_D)
+    press(e.KEY_I)
+    press(e.KEY_S)
+    check('typing reaches the app menu (keyboard focus on the panel)', wait(lambda: focus().get('launcher', {}).get('typed') == 'dis', 4),
+          focus().get('launcher'))
+    press(e.KEY_ESC)
+    ipc('launcher', 'close')
+    time.sleep(0.6)
+    ipc('quick', 'toggle')
+    time.sleep(1.2)
+    first = focus().get('quick', {}).get('current')
+    press(e.KEY_DOWN)
+    press(e.KEY_RIGHT)
+    check('the arrow keys move along Quick Access (keyboard focus on the panel)',
+          wait(lambda: focus().get('quick', {}).get('current') not in ('', None, first), 4), [first, focus().get('quick')])
+    press(e.KEY_ESC)
+    check('Esc closes Quick Access', wait(lambda: focus().get('quick', {}).get('shown') is False, 4), focus().get('quick'))
+    ipc('settings', 'open')
+    time.sleep(3)
+    press(e.KEY_LEFTCTRL, e.KEY_F)
+    press(e.KEY_D)
+    press(e.KEY_I)
+    press(e.KEY_S)
+    press(e.KEY_P)
+    check('typing reaches Hearth Settings\' search (its window has the keys)', wait(lambda: focus().get('settings', {}).get('query') == 'disp', 4),
+          focus().get('settings'))
+    ipc('settings', 'close')
+    kbd.close()
+    time.sleep(1)
+
+
 def crop(name, box, out):
     """OUT_DIR/kwin-OUT.png: part of the picture NAME (the frames close up), and whether it's more than one colour."""
     try:
@@ -348,6 +488,7 @@ def frames_check(procs):
     check('the frame picture (Hearth look, gold) is more than one colour', many, size)
     desk({'look': 'steam', 'accent': ''})
     shadow_check(theme)
+    pip_check(procs)
 
 
 def luma(im, x, y, r=2):
@@ -394,6 +535,8 @@ def shadow_check(theme):
             darkness[name] = (left_out - left_in, below_out - below_in)
             check('the frame has a shadow on a %s wallpaper (just outside darker than the wallpaper)' % name, ok,
                   'left %.0f vs %.0f, below %.0f vs %.0f (frame %s)' % (left_in, left_out, below_in, below_out, fr))
+            if name == 'light':
+                corners_check(im, x, y, w, h, fr)
         except Exception as ex:
             check('the frame has a shadow on a %s wallpaper (just outside darker than the wallpaper)' % name, False, '%s (frame %s)' % (ex, fr))
     # Behind another window: the lighter shadow (labwc's 40 px at 25 %), on the light wallpaper.
@@ -415,6 +558,249 @@ def shadow_check(theme):
     except Exception as ex:
         check('a window behind has a lighter shadow than the one in front', False, '%s (frame %s)' % (ex, fr))
     desk({'wallpaper': ''})
+
+
+def corners_check(im, x, y, w, h, fr):
+    """1.14: the frame's bottom corners are rounded (the very corner pixel is the wallpaper's shadow, not the frame)
+    and a light outline runs round it (its outer pixel lighter than the title colour just inside), on the light
+    wallpaper with Test A in front."""
+    corner = max(luma(im, x + w - 1, y + h - 1, 0), luma(im, x, y + h - 1, 0))
+    edge = luma(im, x + w // 2, y + h - 1, 0)
+    check('the frame\'s bottom corners are rounded (the corner is the wallpaper, the edge is the frame)', corner - edge >= 20,
+          'corner %.0f, bottom edge %.0f (frame %s)' % (corner, edge, fr))
+    mid = y + h // 2
+    line = max(luma(im, x, mid, 0), luma(im, x + w - 1, mid, 0))
+    inside = min(luma(im, x + 2, mid, 0), luma(im, x + w - 3, mid, 0))
+    check('the frame has a light outline round it (lighter than the frame just inside)', line - inside >= 6,
+          'outline %.0f, inside %.0f (frame %s)' % (line, inside, fr))
+
+
+def pip_check(procs):
+    """Picture-in-picture windows stay on top under KWin (shortcuts.json's "picture-in-picture" rule, run by the
+    script): Firefox's ("Picture-in-Picture") and Chromium's ("Picture in picture"), played here by foot with those
+    app ids and titles; another app's window with the same title is left alone. The picture: the Firefox one in the
+    bottom right corner, still on top while Test A is in front."""
+    for app, title in (('firefox', 'Picture-in-Picture'), ('chromium', 'Picture in picture'), ('hearth.test.p', 'Picture-in-Picture')):
+        procs.append(subprocess.Popen(['foot', '--app-id=' + app, '--title=' + title, 'sleep', '600'],
+                                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+
+    def find(app):
+        for w in listed().get('windows', []):
+            if str(w.get('appId', '')).lower() == app:
+                return w
+        return None
+    check('Firefox\'s picture-in-picture window stays on top', wait(lambda: (find('firefox') or {}).get('keepAbove') is True, 15),
+          find('firefox') or [w.get('appId') for w in listed().get('windows', [])])
+    check('Chromium\'s picture-in-picture window stays on top', wait(lambda: (find('chromium') or {}).get('keepAbove') is True, 15),
+          find('chromium'))
+    other = wait(lambda: find('hearth.test.p'), 10) and find('hearth.test.p')
+    time.sleep(1)
+    other = find('hearth.test.p') or other
+    check('another app\'s window with that title is not kept on top', bool(other) and other.get('keepAbove') is False, other)
+    for app in ('chromium', 'hearth.test.p'):
+        if find(app):
+            do({'op': 'close', 'id': find(app)['id']})
+    ff = find('firefox')
+    if ff:
+        do({'op': 'place', 'id': ff['id'], 'x': 1400, 'y': 640, 'w': 480, 'h': 300})
+    ipc('winlist', 'act', 'Test A', 'activate')
+    a_front = wait(lambda: listed().get('active') == (win('Test A') or {}).get('id'), 8)
+    time.sleep(1.5)
+    ff = find('firefox') or {}
+    check('the picture-in-picture window is still on top with another window in front', a_front and ff.get('keepAbove') is True,
+          (ff, 'Test A in front' if a_front else 'Test A never came in front'))
+    shot('pip-on-top')
+    if ff.get('id'):
+        do({'op': 'close', 'id': ff['id']})
+
+
+def differs(a, b):
+    """How different two of the pictures are (0..255 on average); -1 if either is missing."""
+    try:
+        from PIL import Image, ImageChops, ImageStat
+        x = Image.open(os.path.join(OUT, 'kwin-%s.png' % a)).convert('L')
+        y = Image.open(os.path.join(OUT, 'kwin-%s.png' % b)).convert('L').resize(x.size)
+        return ImageStat.Stat(ImageChops.difference(x, y)).mean[0]
+    except Exception:
+        return -1
+
+
+def extras_check(procs):
+    """The KDE extras on KWin (feature/kwin-window-extras): live previews, Hearth's Alt+Tab, Snap layouts from resting on
+    Maximize, force closing a frozen window, hiding a window from screen sharing, KWin's Overview / Present windows /
+    Desktop grid opened from Mantel, and the keys in Settings › Keyboard. A picture of each."""
+    try:
+        import evdev
+        from evdev import ecodes as e
+        kbd = evdev.UInput({e.EV_KEY: [e.KEY_LEFTALT, e.KEY_TAB, e.KEY_ESC, e.KEY_LEFTMETA, e.KEY_W, e.KEY_DOWN, e.KEY_RIGHT, e.KEY_UP]}, name='Hearth test keyboard 2')
+        time.sleep(2)
+    except Exception as ex:
+        kbd = None
+        log('::warning title=KWin extras::no virtual keyboard: %s' % ex)
+
+    def key(*names, hold=0.08):
+        if not kbd:
+            return
+        for n in names:
+            kbd.write(e.EV_KEY, getattr(e, n), 1); kbd.syn(); time.sleep(0.03)
+        time.sleep(hold)
+        for n in reversed(names):
+            kbd.write(e.EV_KEY, getattr(e, n), 0); kbd.syn(); time.sleep(0.03)
+        time.sleep(0.5)
+
+    ipc('browserpick', 'close')          # the first-run "Pick your browser" card would cover the pictures
+    for t in ('Test A', 'Test B'):
+        ipc('winlist', 'act', t, 'activate')
+        wait(lambda: (win(t) or {}).get('minimized') is False, 5)
+    ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test A', 'zone': 'left-half'}))
+    ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test B', 'zone': 'right-half'}))
+    wait(lambda: (win('Test A') or {}).get('zone') == 'left-half' and (win('Test B') or {}).get('zone') == 'right-half')
+    time.sleep(1)
+    shot('extras-before')
+    blog = bridge_log()
+    check('the script follows the pointer (resting on Maximize can open Snap layouts)', 'no cursorPosChanged' not in blog, blog[-300:])
+
+    # ---- live previews (KWin's previews script, above the dock as the dock asks)
+    ready = wait(lambda: state().get('previews'), 20)
+    check('KWin\'s previews script is loaded and asking the bridge', ready, [l for l in bridge_log().splitlines() if 'preview' in l.lower()][-3:])
+    ipc('winlist', 'previewAt', '*', 960, 960)
+    time.sleep(2)
+    log('::notice title=KWin previews::%s' % ' | '.join(l for l in bridge_log().splitlines() if 'preview' in l.lower())[-600:])
+    shot('preview')
+    crop('preview', (240, 420, 1680, 1080), 'preview-zoom')
+    d = differs('preview', 'extras-before')
+    check('the previews card shows over the desktop', d > 0.15, 'picture difference %.2f' % d)
+    ipc('winlist', 'previewHide')
+
+    # ---- Hearth's Alt+Tab (hold Alt, Tab once: the switcher stays up while Alt is held)
+    a_id = (win('Test A') or {}).get('id')
+    ipc('winlist', 'act', 'Test A', 'activate')
+    wait(lambda: listed().get('active') == a_id)
+    if kbd:
+        kbd.write(e.EV_KEY, e.KEY_LEFTALT, 1); kbd.syn(); time.sleep(0.1)
+        kbd.write(e.EV_KEY, e.KEY_TAB, 1); kbd.syn(); time.sleep(0.05)
+        kbd.write(e.EV_KEY, e.KEY_TAB, 0); kbd.syn()
+        time.sleep(1.2)
+        shot('alt-tab')
+        kbd.write(e.EV_KEY, e.KEY_LEFTALT, 0); kbd.syn()
+        switched = wait(lambda: listed().get('active') == (win('Test B') or {}).get('id'), 6)
+        check('Alt+Tab switches to the other window', switched, listed().get('active'))
+        d = differs('alt-tab', 'extras-before')
+        check('the Alt+Tab switcher shows (Hearth\'s, org.hearth.switcher)', d > 0.4, 'picture difference %.2f' % d)
+
+    # ---- Snap layouts from resting on Maximize: what the script sends when the pointer is on the button
+    a = win('Test A') or {}
+    f = a.get('frame') or {}
+    if f:
+        btn = {'id': a['id'], 'x': f['x'] + f['w'] - 5 - 34 - 2 - 34, 'y': f['y'] + 2, 'w': 34, 'h': 24, 'output': a.get('output', '')}
+        bridge('HoverMax', GLib.Variant('(s)', (json.dumps(btn),)))
+        st = wait(lambda: json.loads(ipc('snap', 'state') or '{}').get('hover') and json.loads(ipc('snap', 'state')), 6)
+        check('resting on Maximize opens Snap layouts under the button', st, ipc('snap', 'state'))
+        time.sleep(1)
+        shot('snap-maximize')
+        crop('snap-maximize', (max(0, btn['x'] - 420), max(0, btn['y'] - 20), btn['x'] + 300, btn['y'] + 330), 'snap-maximize-zoom')
+        bridge('HoverMax', GLib.Variant('(s)', (json.dumps({'id': ''}),)))
+        gone = wait(lambda: not json.loads(ipc('snap', 'state') or '{}').get('shown'), 5)
+        check('Snap layouts goes away when the pointer leaves the button', gone, ipc('snap', 'state'))
+        ipc('snap', 'close')
+
+    # ---- hidden from screen sharing: the title bar menu's entry, then the portal's picker leaves it out
+    ipc('winlist', 'run', json.dumps({'op': 'noShare', 'title': 'Test B', 'on': True}))
+    hid = wait(lambda: (win('Test B') or {}).get('noShare') is True, 6)
+    check('Hide from screen sharing marks the window', hid, win('Test B'))
+    try:
+        sys.path.insert(0, SHELL)
+        import hearth_screencast as hs
+        wins = [{'id': w['id'], 'title': w['title'], 'app': w.get('appId', '')} for w in listed().get('windows', [])]
+        outs = [{'name': 'Virtual-1', 'desc': 'Screen', 'x': 0, 'y': 0, 'w': 1920, 'h': 1080}]
+        req = hs.build_request('cast', 'com.discordapp.Discord', hs.MONITOR | hs.WINDOW, False, outs, wins, '/nonexistent', False)
+        check('the screen-sharing picker leaves the hidden window out', [w['title'] for w in req['windows']] == ['Test A'] and req['hiddenCount'] == 1,
+              [w['title'] for w in req['windows']])
+        rq = os.path.join(OUT, 'cast-request.json')
+        with open(rq, 'w') as fh:
+            json.dump(req, fh)
+        picker = subprocess.Popen(['python3', os.path.join(SHELL, 'hearth_screencast.py'), 'picker', rq], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(5)
+        subprocess.run(['quickshell', 'ipc', '-p', os.path.join(SHELL, 'cast-picker.qml'), 'call', 'cast', 'tab', 'windows'], timeout=10, capture_output=True)
+        time.sleep(1)
+        shot('cast-hidden')
+        subprocess.run(['quickshell', 'ipc', '-p', os.path.join(SHELL, 'cast-picker.qml'), 'call', 'cast', 'cancel'], timeout=10, capture_output=True)
+        try:
+            picker.wait(10)
+        except subprocess.TimeoutExpired:
+            picker.kill()
+    except Exception as ex:
+        check('the screen-sharing picker leaves the hidden window out', False, ex)
+    ipc('winlist', 'run', json.dumps({'op': 'noShare', 'title': 'Test B', 'on': False}))
+    ipc('winlist', 'act', 'Test A', 'activate')
+    time.sleep(0.5)
+    do({'op': 'menu'})
+    time.sleep(1.5)
+    # KWin puts scripts' entries under its menu's last group ("Extensions" here): the keys walk to it and open it.
+    # (Up from nothing picked: the last entry, Close; once more: Extensions, just above it.)
+    for _ in range(2):
+        key('KEY_UP', hold=0.03)
+    key('KEY_RIGHT')
+    time.sleep(1)
+    shot('window-menu-extras')
+    key('KEY_ESC'); key('KEY_ESC')
+
+    # ---- force closing a frozen window: KWin's click-a-window first (then Esc), then the prompt for a stopped app
+    ipc('forceclose', 'start')
+    picking = wait(lambda: json.loads(ipc('forceclose', 'state') or '{}').get('phase') == 'picking', 5)
+    check('Ctrl+Alt+Esc\'s pick starts (KWin\'s click-a-window)', picking, ipc('forceclose', 'state'))
+    time.sleep(1)
+    shot('force-close-pick')
+    key('KEY_ESC')
+    cancelled = wait(lambda: json.loads(ipc('forceclose', 'state') or '{}').get('phase') == '', 6)
+    check('Esc cancels the pick', cancelled, ipc('forceclose', 'state'))
+    ipc('forceclose', 'cancel')
+    k = subprocess.Popen(['foot', '--app-id=hearth.test.k', '--title=Test K', 'sleep', '600'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    procs.append(k)
+    if wait(lambda: win('Test K'), 15):
+        ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test K', 'zone': 'center'}))
+        time.sleep(1.5)
+        os.kill(k.pid, 19)                      # SIGSTOP: it really stops answering
+        ipc('forceclose', 'ask', 'Test K')
+        time.sleep(1.5)
+        shot('force-close')
+        ipc('forceclose', 'confirm')
+        closed = wait(lambda: not win('Test K') and k.poll() is not None, 12)
+        check('Force close ends a frozen window (asked, then made to)', closed, [w.get('title') for w in listed().get('windows', [])])
+    else:
+        check('a window to force close', False, 'Test K never came')
+
+    # ---- KWin's own views, opened the way Mantel's Task view button and keys do
+    for name, pic in (('overview', 'overview'), ('windows', 'present-windows'), ('grid', 'desktop-grid')):
+        ipc('winlist', 'effect', name)
+        time.sleep(2.5)
+        shot(pic)
+        d = differs(pic, 'extras-before')
+        check('KWin\'s %s opens from Mantel' % pic.replace('-', ' '), d > 1.0, 'picture difference %.2f' % d)
+        key('KEY_ESC')
+        time.sleep(1.5)
+    # Super+W: Hearth's key for the Overview (KDE's own freed for it).
+    if kbd:
+        key('KEY_LEFTMETA', 'KEY_W')
+        time.sleep(2.5)
+        shot('overview-key')
+        d = differs('overview-key', 'extras-before')
+        check('Super+W opens the Overview', d > 1.0, 'picture difference %.2f' % d)
+        key('KEY_ESC')
+        time.sleep(1)
+    kk = keys_now()
+    check('Hearth\'s Super+W has its key (KDE\'s Overview freed)', kk.get('kwin/Hearth overview') == [[0x10000000 | 0x57]], kk.get('kwin/Hearth overview', kk))
+    check('Hearth\'s Ctrl+Alt+Esc has its key (KDE\'s Kill Window freed)', kk.get('kwin/Hearth kill-window') == [[0x04000000 | 0x08000000 | 0x01000000]],
+          kk.get('kwin/Hearth kill-window', kk))
+
+    # ---- the keys in Settings › Keyboard › Keyboard shortcuts
+    ipc('browserpick', 'close')
+    ipc('settings', 'page', 'keyboard:shortcuts')
+    time.sleep(4)
+    shot('shortcuts')
+    ipc('settings', 'close')
+    if kbd:
+        kbd.close()
 
 
 def main():
@@ -480,6 +866,8 @@ def main():
 
     # Real key presses (a uinput keyboard, read by KWin through libinput): KDE's own keys must not win over Mantel's.
     keys_check()
+    # The controller (View + D-pad, View + B, LB / RB) and keyboard focus on each panel, with real devices.
+    pad_and_focus_check()
 
     # Snap layouts' flyout from the shortcut (the bridge runs its command), then a zone picked the way the flyout does.
     try:
@@ -551,7 +939,10 @@ def main():
     want = ['Apps', 'Return to Game Mode', 'Reconfigure', 'Log out']     # Terminal, Files: Mantel's own entries
     check('the desktop menu has menu.xml\'s entries', [i for i in items if i != '-'] == want, items)
     ipc('desktop', 'close')
+    for t in ('Test A', 'Test B'):
+        ipc('winlist', 'act', t, 'activate')
 
+    extras_check(procs)
     frames_check(procs)
 
     for p in procs:

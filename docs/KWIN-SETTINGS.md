@@ -35,7 +35,11 @@ screens.
 
 - The session (KWin's autostart) runs `hearth-access apply kwin`, `hearth-kwin-settings pointer-apply` and
   `hearth-kwin-settings input-watch` (the last stays running: devices plugged in later get the mouse and touchpad
-  settings). All three are idempotent and write nothing when nothing changed (only keys that differ from what KWin sees
+  settings; it first runs `keyboard-apply`: Settings › Keyboard's keyboard.json into kxkbrc [Layout] (LayoutList,
+  VariantList, Options with the switch shortcut and compose key, SwitchMode) and kcminputrc [Keyboard] (RepeatDelay,
+  RepeatRate, NumLock), then org.kde.keyboard's `reloadConfig` and KDE's config-changed signal; only what the person
+  chose in Hearth, and KDE options of their own like caps:escape are kept). `hearth-system keyboard-set` runs
+  `keyboard-apply` too when Mantel is on KWin. All three are idempotent and write nothing when nothing changed (only keys that differ from what KWin sees
   are written; device properties only when they differ). Inverted colours: KWin's invert effect has no setting, so
   `$XDG_RUNTIME_DIR/hearth-kwin-inverted` holds the KWin process id it was switched on for; a mark from an earlier
   KWin counts as not inverted.

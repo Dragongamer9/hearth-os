@@ -114,7 +114,7 @@ class LayoutRules(unittest.TestCase):
     def test_every_widget_has_its_file_and_icon(self):
         r = run_js('widget-layout.js', 'console.log(JSON.stringify(CATALOG.map(c => [c.type, c.icon, c.bar])));')
         icons = set(p.name.rsplit('-', 1)[0] for p in (SHELL / 'icons').glob('*.svg'))
-        self.assertEqual(len(r), 13)
+        self.assertEqual(len(r), 19)        # 1.14 round 2: web page, calculator, colour picker, keyboard, pager, window list
         for t, icon, bar in r:
             f = 'Widget' + t[0].upper() + t[1:].replace('notes', 'Notes') + '.qml'
             if t == 'notes':
@@ -122,7 +122,7 @@ class LayoutRules(unittest.TestCase):
             self.assertTrue((SHELL / f).exists(), f)
             self.assertIn(icon, icons, t)
             self.assertIn('WidgetBase {', (SHELL / f).read_text(), f)
-        self.assertEqual(sorted(t for t, _, b in r if b), ['battery', 'clock', 'monitor', 'timer', 'weather'])
+        self.assertEqual(sorted(t for t, _, b in r if b), ['battery', 'clock', 'colour', 'keys', 'monitor', 'pager', 'timer', 'weather', 'windowlist'])
 
 
 @unittest.skipUnless(NODE, 'node is needed for the activities rules')
