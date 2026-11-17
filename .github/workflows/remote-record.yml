@@ -58,6 +58,8 @@ jobs:
           export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
           mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.config/nimbus" "$HOME/.local/share/nimbus" "$HOME/Videos/Recordings" /tmp/fakebin && chmod 700 "$XDG_RUNTIME_DIR"
           echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          # The one-time "Pick your browser" was answered (it would cover the pictures), through its own helper.
+          python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1 || true
           export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
           export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
           chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
