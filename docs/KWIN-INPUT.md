@@ -85,6 +85,15 @@ emergency screen, which on a handheld without a keyboard would be a lockout. So:
   gets to `$XDG_RUNTIME_DIR/hearth/kwin.env` (`env -0`; mode 600 in a 700 folder; written whole, then moved into
   place), since KWin's file capability hides its `/proc/<pid>/environ`. A failed write doesn't stop KWin (it's
   logged; Lock.qml then won't lock). It's removed when KWin ends.
+- **If the locker breaks anyway** (its "the screen locker is broken" emergency screen, on a device that passed every
+  check): the screen stays covered, which is KWin's choice and the safe one. To get back in without a keyboard: hold
+  the power button to restart (the next start shows Hearth's login screen or SDDM as usual); with a keyboard, Ctrl+Alt+F3
+  for a text console, sign in, run `loginctl unlock-session` (for your session, `loginctl list-sessions` shows its
+  number), then Ctrl+Alt+F1 (or the number your desktop is on) to go back. Over SSH or Hearth Link's terminal the same
+  command works. The Guide button deliberately does **not** unlock: anything that unlocks without your password
+  because the lock screen "looks broken" could be triggered on purpose (crash the greeter, get in), so a broken locker
+  is only ever left through a restart or `loginctl` by someone who can sign in. Send logs afterwards: kwin.log has the
+  greeter's error.
 - CI (`kwin-input.yml`) checks all of this, and on Debian trixie (`lock-debian`) locks for real, types a wrong
   password with hearth-type (still locked) and the right one (unlocked: PAM).
 - Left: something else asking the system to lock (`loginctl lock-session`, an app's "lock now") goes to KWin's
