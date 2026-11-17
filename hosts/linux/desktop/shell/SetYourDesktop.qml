@@ -17,7 +17,7 @@ SetPage {
     function refresh() { job.run(["status"], r => page.st = r, e => page.say(e, true)); }
     function run(args, done) { act.run(args, r => { page.st = r; if (done) page.say(done); }, e => { page.say(e, true); page.refresh(); }); }
     readonly property string wmName: !st ? "KWin" : st.wm === "labwc" ? "labwc" : "KWin"
-    readonly property string nowName: !st || !st.wmNow ? "" : st.wmNow === "labwc" ? "labwc" : "KWin"
+    readonly property string nowName: !st || !st.wmNow ? "" : st.wmNow === "labwc" ? "labwc" : st.wmNow === "hearth" ? "Hearth's compositor" : "KWin"
     Component.onCompleted: refresh()
     SetJob { id: job; helper: "hearth-your-desktop" }
     SetJob { id: act; helper: "hearth-your-desktop" }
@@ -75,17 +75,36 @@ SetPage {
         title: "Window manager"
         sub: "What draws, moves and snaps Mantel's windows, from the next time Desktop Mode starts. KWin (KDE's) is the default from Hearth 1.14; labwc is the one Mantel used before."
         options: [{ value: "kwin", label: "KWin" }, { value: "labwc", label: "labwc" }]
-        current: page.st ? page.st.wm : "kwin"
+        current: !page.st ? "kwin" : page.st.wm === "hearth" ? page.st.wmBefore : page.st.wm
         boxWidth: 200
         onChosen: v => page.run(["wm", v], "Mantel uses " + (v === "labwc" ? "labwc" : "KWin") + " from the next time Desktop Mode starts ✓")
+    }
+    // 2.0 preview: Hearth's own compositor (docs/COMPOSITOR.md). Off unless you turn it on; if it doesn't start,
+    // Mantel opens on KWin (then labwc) and says why. Turning it off goes back to what was picked before.
+    SetSwitch {
+        icon: "desktops"; title: "Hearth compositor (preview)"
+        sub: !page.st ? "" : !page.st.hearthHere && !page.st.hearthPreview
+            ? "Hearth's own window manager for Hearth 2.0, still being built. It isn't on this device yet."
+            : page.st.hearthPaused ? "It didn't start twice in a row, so Mantel is on KWin. Turn it off and on to try again."
+            : "Hearth's own window manager for Hearth 2.0, still being built: a preview, so some things don't work yet. From the next time Desktop Mode starts; if it doesn't start, Mantel opens on KWin and tells you."
+        chip: "preview"; chipKind: "warn"
+        checked: !!page.st && page.st.hearthPreview
+        enabled: !!page.st && (page.st.hearthHere || page.st.hearthPreview)
+        onToggled: v => {
+            if (!page.st) return;
+            if (v && !page.st.hearthHere) { page.say("Hearth's compositor isn't on this device yet", true); return; }
+            if (v) page.run(["wm", "hearth"], "Mantel uses Hearth's compositor (preview) from the next time Desktop Mode starts ✓");
+            else page.run(["wm", page.st.wmBefore || "kwin"], "The preview is off: Mantel uses " + (page.st.wmBefore === "labwc" ? "labwc" : "KWin") + " from the next time Desktop Mode starts ✓");
+        }
     }
     SetRow {
         title: "Running now"
         sub: !page.st ? "" : page.nowName === "" ? "Desktop Mode isn't open"
             : page.st.kwinPaused ? "KWin didn't start twice in a row, so Mantel is on labwc until you use KWin again"
+            : page.st.wm === "hearth" && page.st.wmNow !== "hearth" ? (page.st.safeGraphics ? "Safe graphics this time, so labwc" : !page.st.hearthHere ? "Hearth's compositor isn't installed, so " + page.nowName : "Hearth's compositor didn't start this time, so " + page.nowName)
             : page.st.wm === "kwin" && page.nowName === "labwc" ? (page.st.safeGraphics ? "Safe graphics this time, so labwc" : !page.st.kwinHere ? "KWin isn't installed, so labwc" : "KWin didn't start this time, so labwc")
             : "Mantel on " + page.nowName
-        chip: page.nowName; chipKind: page.st && page.st.wm === "kwin" && page.nowName === "labwc" ? "warn" : "ok"
+        chip: page.nowName; chipKind: page.st && ((page.st.wm === "kwin" && page.nowName === "labwc") || (page.st.wm === "hearth" && page.st.wmNow !== "hearth")) ? "warn" : "ok"
         interactive: false
     }
     SetRow {
