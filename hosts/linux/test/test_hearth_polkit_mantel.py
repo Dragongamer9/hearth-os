@@ -134,6 +134,27 @@ class Fallback(unittest.TestCase):
         self.assertEqual(mine, auto)
         self.assertEqual(mine, agents((ROOT / 'hosts/linux/session/nimbus-watchdog').read_text()))
 
+    def test_desktop_mode_starts_the_fallback(self):
+        auto = (ROOT / 'hosts/linux/desktop/labwc/autostart').read_text()
+        block = auto[auto.index('# Password prompts for apps'):]
+        block = block[:block.index('\nfi\n') + 4]
+        # The fallback watcher, with the compositor's PID; the classic loop only when the script isn't there.
+        self.assertIn('if [ -f "$SHARE/desktop/shell/hearth-polkit-fallback" ]; then\n'
+                      '  sh "$SHARE/desktop/shell/hearth-polkit-fallback" "$LABWC_PID" >/dev/null 2>&1 &\nelse\n', block)
+        self.assertLess(block.index('hearth-polkit-fallback" "$LABWC_PID"'), block.index('for agent in'))
+        self.assertIn('\nfor agent in', block)             # base-peppermint.yml's image check reads it from a line start
+        self.assertEqual(subprocess.run(['bash', '-n', str(ROOT / 'hosts/linux/desktop/labwc/autostart')]).returncode, 0)
+        # Run the block as autostart would: the fallback starts (and with it a classic agent: no Mantel here).
+        with open(os.path.join(self.t, 'block.sh'), 'w') as f:
+            f.write(block)
+        share = os.path.join(self.t, 'share')
+        os.makedirs(os.path.join(share, 'desktop/shell'))
+        shutil.copy(FALLBACK, os.path.join(share, 'desktop/shell/hearth-polkit-fallback'))
+        env = dict(os.environ, SHARE=share, LABWC_PID=str(os.getpid()), XDG_RUNTIME_DIR=self.run_dir,
+                   HEARTH_POLKIT_AGENTS=self.agent, HEARTH_POLKIT_WAIT='1', HEARTH_POLKIT_POLL='0.3')
+        subprocess.run(['sh', os.path.join(self.t, 'block.sh')], env=env, timeout=10)
+        self.assertTrue(wait_for(lambda: len(self.starts()) == 1, 6))
+
     def test_posix_sh(self):
         self.assertEqual(subprocess.run(['sh', '-n', str(FALLBACK)]).returncode, 0)
         self.assertTrue(os.access(FALLBACK, os.X_OK))
@@ -173,6 +194,61 @@ class Prompt(unittest.TestCase):
         self.assertIn('SettingsNav.polkitShown', (SHELL / 'ShellHealth.qml').read_text())   # no refresh mid-prompt
 
 
+@unittest.skipUnless(NODE, 'node is needed for the on-screen keyboard')
+class KeyboardForPasswords(unittest.TestCase):
+    """The on-screen keyboard over the password prompt is in password mode: no learned words (osk-words.json), no
+    suggestions, nothing of what's typed kept (typedLog) or shown over the "keyboard" IPC."""
+    def test_engine_learns_and_suggests_nothing(self):
+        osk = SHELL / 'osk' / 'hearth-osk.js'
+        js = """
+const O = require(%s);
+let saves = 0;
+O.configure({ save: () => { saves++; } });
+O.words('en', 'hunter hello house horse');
+function run(mode) {
+  saves = 0;
+  let typed = '';
+  const e = O.createEngine({ host: 'mantel', adapter: { insert: t => { typed += t; }, deleteBack: () => {}, key: () => {} }, onChange: () => {}, onHide: () => {} });
+  e.reset(mode, '');
+  let sugg = 0;
+  for (const ch of 'hunter2 hunter2 hunter2 ') {
+    const v = e.view(); let done = false;
+    for (let r = 0; r < v.rows.length && !done; r++) for (let c = 0; c < v.rows[r].length; c++) {
+      const k = v.rows[r][c];
+      if ((ch === ' ' && k.t === 'space') || (k.t === 'ch' && k.v === ch)) { e.tap(r, c); done = true; break; }
+    }
+    sugg += (e.view().suggestions || []).length;
+  }
+  return { saves: saves, sugg: sugg, learned: O.learnedCount(), typed: typed };
+}
+const pw = run('password');
+const text = run('text');
+console.log(JSON.stringify({ pw: pw, text: text }));
+""" % json.dumps(str(osk))
+        r = subprocess.run([NODE, '-e', js], capture_output=True, text=True, timeout=30)
+        self.assertEqual(r.returncode, 0, r.stderr)
+        d = json.loads(r.stdout.strip().splitlines()[-1])
+        self.assertEqual((d['pw']['saves'], d['pw']['sugg'], d['pw']['learned']), (0, 0, 0))
+        self.assertIn('hunter', d['pw']['typed'])            # it did type
+        self.assertGreater(d['text']['sugg'], 0)             # (the same typing in text mode does suggest and learn)
+        self.assertGreater(d['text']['learned'], 0)
+
+    def test_mantel_keyboard_keeps_nothing_in_password_mode(self):
+        kb = code((SHELL / 'Keyboard.qml').read_text())
+        self.assertIn('engine.reset(mode, "")', kb)
+        self.assertIn('if (!secret) typedLog = (typedLog + text).slice(-200);', kb)
+        self.assertIn('if (name === "bksp" && !secret) typedLog', kb)
+        self.assertIn('typed: secret ? "" : typedLog', kb)
+        self.assertIn('suggestions: vm && !secret ? vm.suggestions : []', kb)
+        self.assertEqual(kb.count('typedLog = (typedLog'), 1)      # nowhere else adds to it
+        pad = code((SHELL / 'Pad.qml').read_text())
+        self.assertIn('keyboard.openKb(mode || (SettingsNav.polkitShown ? "password" : "text"))', pad)
+        q = code((SHELL / 'PolkitPrompt.qml').read_text())
+        self.assertIn('openKeyboard("password")', q)
+        self.assertNotRegex(q, r'openKeyboard\(\)')
+        self.assertIn('pad.keyboard.open) pad.openKeyboard("password")', q)   # one already open is switched over
+
+
 @unittest.skipUnless(NODE, 'node is needed for polkit-actions.js')
 class Words(unittest.TestCase):
     def js(self, body):
@@ -185,8 +261,8 @@ class Words(unittest.TestCase):
         r = self.js('''console.log(JSON.stringify([describe("org.freedesktop.policykit.exec"), describe("org.freedesktop.udisks2.filesystem-mount-system"),
             describe("org.freedesktop.Flatpak.app-install"), describe("com.example.whatever"), describe(""),
             program("Authentication is needed to run `/usr/bin/hearth-admin update-status' as the super user"), program("Hi"),
-            personLabel({string: "unix-user:dragon", displayName: "Dragon"}), personLabel({string: "unix-group:wheel", isGroup: true}),
-            userName({string: "unix-user:dragon"}), initial("Someone in wheel"), initial("")]))''')
+            personLabel({string: "unix-user:sam", displayName: "Sam"}), personLabel({string: "unix-group:wheel", isGroup: true}),
+            userName({string: "unix-user:sam"}), initial("Someone in wheel"), initial("")]))''')
         self.assertEqual(r[0], {'who': 'An app', 'what': 'Run something as an administrator'})
         self.assertEqual(r[1], {'who': 'Disks', 'what': 'Open a drive'})
         self.assertEqual(r[2]['who'], 'Bazaar')
@@ -194,9 +270,9 @@ class Words(unittest.TestCase):
         self.assertEqual(r[4], r[3])
         self.assertEqual(r[5], 'hearth-admin')
         self.assertEqual(r[6], '')
-        self.assertEqual(r[7], 'Dragon')
+        self.assertEqual(r[7], 'Sam')
         self.assertEqual(r[8], 'Someone in wheel')
-        self.assertEqual(r[9], 'dragon')
+        self.assertEqual(r[9], 'sam')
         self.assertEqual((r[10], r[11]), ('W', '?'))
 
 

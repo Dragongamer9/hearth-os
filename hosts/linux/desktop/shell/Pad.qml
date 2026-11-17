@@ -123,7 +123,9 @@ Scope {
         send({ cmd: "radial", open: true });
     }
     // The on-screen keyboard (Keyboard.qml) works without hearth-pad too: touch, the mouse, and typing through wtype.
-    function openKeyboard() { keyboard.openKb(); }
+    // A password prompt (PolkitPrompt.qml) is up: the keyboard opens in password mode (no learned words, no suggestions,
+    // nothing kept of what's typed).
+    function openKeyboard(mode) { keyboard.openKb(mode || (SettingsNav.polkitShown ? "password" : "text")); }
     function closeKeyboard() { keyboard.closeKb(); }
     function setMouse(on) { mouseOn = on; send({ cmd: "mouse", on: on }); help.toast("Controller mouse " + (on ? "on" : "off")); }
     // The Hearth menu's Controller mouse over a controller app: the pointer in that app (like Guide + R3), on / off.

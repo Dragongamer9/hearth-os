@@ -60,7 +60,7 @@ def decode_png(data):
     return w, h, rows
 
 
-STAND_INS = ('grim', 'hearth-screens', 'tesseract', 'zbarimg', 'wl-copy', 'hearth-record', 'hearth-recorder', 'xdg-user-dir')
+STAND_INS = ('grim', 'hearth-screens', 'hearth-screenshot', 'tesseract', 'zbarimg', 'wl-copy', 'hearth-record', 'hearth-recorder', 'xdg-user-dir')
 _SYS = []
 
 
@@ -88,6 +88,8 @@ class Sandbox(unittest.TestCase):
         self.env.pop('HEARTH_WM', None)
         os.makedirs(self.env['HOME'])
         self.env['PATH'] = self.bin + ':' + sysbin()
+        # hearth-screens lives next to the helper (not on PATH): the tests point at their own (none, unless a test makes it).
+        self.env['HEARTH_CAPTURE_SCREENS'] = os.path.join(self.bin, 'hearth-screens')
 
     def tearDown(self):
         shutil.rmtree(self.t, ignore_errors=True)
@@ -158,15 +160,25 @@ class Grab(Sandbox):
         _, j = self.helper('grab', 'window')
         self.assertTrue(j['pick'])
 
-    def test_kwin_failure_is_said_not_a_crash(self):
+    def test_kwin_uses_hearth_screenshot(self):
         self.grim()
+        png = os.path.join(self.t, 'k.png')
+        self.png(png, 3, 3)
+        self.fake('hearth-screenshot', 'echo "$@" >> "%s/hs.log"; for a; do last="$a"; done; cp "%s" "$last"' % (self.t, png))
         self.env['HEARTH_WM'] = 'kwin'
-        self.env['DBUS_SESSION_BUS_ADDRESS'] = 'unix:path=' + os.path.join(self.t, 'nobus')
-        code_, j = self.helper('grab', 'all')
-        self.assertEqual(code_, 1)
-        self.assertFalse(j['ok'])
-        self.assertIn('KWin', j['error'])
-        self.assertEqual(self.log(), [])          # not grim under KWin
+        code_, j = self.helper('grab', 'screen', '--screen', 'DP-2', '--pointer')
+        self.assertTrue(j['ok'], j)
+        self.assertEqual(j['width'], 3)
+        self.assertEqual(self.log(), [])                      # not grim under KWin
+        self.assertTrue(self.log('hs.log')[0].startswith('-c -o DP-2 '))
+        self.assertTrue(self.helper('grab', 'window')[1]['pick'])   # a grim-like tool can't find a window
+        # Never KWin's D-Bus from here (KWin refuses plain python3).
+        self.assertNotIn('ScreenShot2', HELPER.read_text())
+        self.assertNotIn('UnixFDList', HELPER.read_text())
+        # On labwc, hearth-screenshot isn't used even when it's there.
+        self.env.pop('HEARTH_WM')
+        self.helper('grab', 'all')
+        self.assertEqual(len(self.log()), 1)
 
     def test_no_grim(self):
         code_, j = self.helper('grab', 'all')
@@ -185,32 +197,14 @@ class Grab(Sandbox):
         self.assertEqual(self.helper('grab', 'nope')[0], 1)
 
 
-class Kwin(unittest.TestCase):
-    """KWin's raw picture → PNG (QImage's formats)."""
-    def test_formats(self):
-        m = load()
-        bgra = bytes([10, 20, 30, 40, 1, 2, 3, 4]) + b'\x00' * 8      # stride 16 for 2 pixels
-        rows = m.raw_to_rows(bgra + bgra, 2, 2, 16, 6)
-        self.assertEqual(rows[0], bytes([30, 20, 10, 40, 3, 2, 1, 4]))
-        rows = m.raw_to_rows(bgra, 2, 1, 16, 4)                        # RGB32: opaque
-        self.assertEqual(rows[0], bytes([30, 20, 10, 255, 3, 2, 1, 255]))
-        rows = m.raw_to_rows(bgra, 2, 1, 16, 17)                       # RGBA8888 as it is
-        self.assertEqual(rows[0], bgra[:8])
-        with self.assertRaises(ValueError):
-            m.raw_to_rows(bgra, 2, 1, 16, 99)
-        with self.assertRaises(ValueError):
-            m.raw_to_rows(bgra[:4], 2, 1, 16, 6)
-        w, h, back = decode_png(m.png_bytes(2, 2, m.raw_to_rows(bgra + bgra, 2, 2, 16, 5)))
-        self.assertEqual((w, h), (2, 2))
-        self.assertEqual(back[1], bytes([30, 20, 10, 40, 3, 2, 1, 4]))
-
+class OneGrab(unittest.TestCase):
     def test_one_grab_function(self):
         src = (HELPER).read_text()
         # Everything that takes a picture goes through grab(): the commands never call grim or KWin themselves.
         body = src.split('def main(argv):')[1]
         self.assertNotIn("'grim'", body)
-        self.assertNotIn('grab_kwin(', body)
-        self.assertIn('hearth-screens', src.split('def grab(')[1].split('def parse_geometry')[0])
+        self.assertIn('screens_cmd(env)', src.split('def grab(')[1].split('def parse_geometry')[0])
+        self.assertIn("os.path.join(HERE, 'hearth-screens')", src)       # next to the helper, not on PATH
 
 
 class SaveAndRecent(Sandbox):
@@ -247,6 +241,11 @@ class SaveAndRecent(Sandbox):
         self.assertEqual((j['width'], j['height']), (6, 2))
         self.assertTrue(j['path'].startswith(self.env['XDG_RUNTIME_DIR'] + '/hearth-capture/edit-'))
         self.assertEqual(self.helper('put', input='bm90IGEgcG5n')[0], 1)
+        # A JPEG (Save as .jpg) is kept as one.
+        jpeg = b'\xff\xd8\xff\xe0' + b'\x00' * 60
+        code_, j = self.helper('put', input=base64.b64encode(jpeg).decode())
+        self.assertEqual(j['kind'], 'jpeg')
+        self.assertTrue(j['path'].endswith('.jpg'))
 
     def test_save_as_never_over_a_file(self):
         src = os.path.join(self.t, 'edit.png')
@@ -264,6 +263,16 @@ class SaveAndRecent(Sandbox):
         code_, j = self.helper('save', src, '--to', dest + '.png', '--replace')
         self.assertTrue(j['ok'])
         self.assertNotEqual(open(dest + '.png', 'rb').read(), before)
+        # Someone's own "<name>.part" is never touched, and no temporary file is left behind.
+        part = pathlib.Path(dest + '.png.part')
+        part.write_text('mine')
+        self.helper('save', src, '--to', dest + '.png', '--replace')
+        self.assertEqual(part.read_text(), 'mine')
+        self.assertEqual(sorted(os.listdir(os.path.dirname(dest))), ['mine.png', 'mine.png.part'])
+        # The kind must match the ending: a PNG isn't saved as .jpg.
+        code_, j = self.helper('save', src, '--to', dest + '.jpg')
+        self.assertEqual((code_, j['kind']), (1, 'jpeg'))
+        self.assertFalse(os.path.exists(dest + '.jpg'))
 
     def test_opening_writes_nothing(self):
         self.helper('tools')
@@ -292,10 +301,16 @@ class SaveAndRecent(Sandbox):
         self.assertEqual(self.helper('record')[0], 1)
         self.fake('hearth-recorder', 'echo "$@" > "%s/rec.log"' % self.t)
         self.assertEqual(self.helper('tools')[1]['record'], 'hearth-recorder')
-        self.fake('hearth-record', 'echo hr > "%s/rec.log"' % self.t)
+        self.fake('hearth-record', 'echo "$@" > "%s/rec.log"' % self.t)
         self.assertEqual(self.helper('tools')[1]['record'], 'hearth-record')   # the other branch's recorder first
-        self.env['HEARTH_WM'] = 'kwin'
-        self.assertFalse(self.helper('tools')[1]['windowPick'])
+        self.assertEqual(self.helper('record')[1], {'ok': True})
+        for _ in range(50):
+            if os.path.exists(os.path.join(self.t, 'rec.log')):
+                break
+            time.sleep(0.05)
+        self.assertEqual(pathlib.Path(self.t, 'rec.log').read_text().strip(), 'toggle')
+        self.fake('hearth-screens', 'exit 0')
+        self.assertFalse(self.helper('tools')[1]['windowPick'])           # hearth-screens finds the window
 
 
 class TextAndQr(Sandbox):
@@ -442,11 +457,11 @@ class Wiring(unittest.TestCase):
         rc = (ROOT / 'hosts/linux/desktop/labwc/rc.xml').read_text()
         self.assertIn('<keybind key="W-S-s"><action name="Execute" command="sh -c \'sh $NIMBUS_SHARE/desktop/open.sh capture-region\'" /></keybind>', rc)
         self.assertIn("open.sh screenshot'", rc)               # Print Screen still saves one right away
-        entry = (ROOT / 'os/system_files/usr/share/applications/hearth-screenshot.desktop').read_text()
+        entry = (ROOT / 'os/system_files/usr/share/applications/hearth-capture.desktop').read_text()
         self.assertIn('Exec=/usr/bin/hearth-capture\n', entry)
         self.assertIn('OnlyShowIn=Nimbus;', entry)
         kinds = json.loads((ROOT / 'os/system_files/usr/share/hearth/app-kinds.json').read_text())
-        self.assertEqual(kinds['kinds']['screenshot']['apps']['Nimbus'], ['hearth-screenshot.desktop'])
+        self.assertEqual(kinds['kinds']['screenshot']['apps']['Nimbus'], ['hearth-capture.desktop'])
         launcher = (ROOT / 'os/system_files/usr/bin/hearth-capture').read_text()
         self.assertIn('call capture "$@"', launcher)
         self.assertTrue(os.access(ROOT / 'os/system_files/usr/bin/hearth-capture', os.X_OK))

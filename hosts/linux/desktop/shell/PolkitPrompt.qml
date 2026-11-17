@@ -30,7 +30,7 @@ Scope {
     readonly property string message: demo ? "Authentication is needed to run `/usr/bin/hearth-admin update-status' as the super user" : flow ? flow.message : ""
     readonly property string actionId: demo ? "org.freedesktop.policykit.exec" : flow ? flow.actionId : ""
     readonly property string iconName: demo ? "" : flow ? flow.iconName : ""
-    readonly property var identities: demo ? [{ id: 1000, string: "unix-user:" + (Quickshell.env("USER") || "dragon"), displayName: "", isGroup: false }] : flow ? flow.identities : []
+    readonly property var identities: demo ? [{ id: 1000, string: "unix-user:" + (Quickshell.env("USER") || "you"), displayName: "", isGroup: false }] : flow ? flow.identities : []
     readonly property var selected: demo ? identities[0] : flow ? flow.selectedIdentity : null
     readonly property string inputPrompt: demo ? "Password:" : flow ? flow.inputPrompt : ""
     readonly property bool visibleResponse: demo ? false : flow ? flow.responseVisible : false
@@ -43,9 +43,20 @@ Scope {
     property string wrong: ""
     property int shakes: 0
 
+    // The screen in use when a request comes (the window in front's, else the main one), kept while it's up.
+    property var promptScreen: null
+    function screenInUse() {
+        const t = ToplevelManager.activeToplevel;
+        const s = t && t.screens && t.screens.length ? t.screens[0] : null;
+        return s || Quickshell.screens[0];
+    }
     onActiveChanged: {
+        if (active) promptScreen = screenInUse();
         busy = false; wrong = "";
-        if (!active && SettingsNav.pad) SettingsNav.pad.closeKeyboard();
+        const pad = SettingsNav.pad;
+        if (!active && pad) pad.closeKeyboard();
+        // A keyboard already open in text mode would learn the password: open it again in password mode.
+        else if (active && pad && pad.keyboard && pad.keyboard.open) pad.openKeyboard("password");
     }
     Binding { target: SettingsNav; property: "polkitShown"; value: pk.active }
 
@@ -112,7 +123,7 @@ Scope {
         active: pk.active
         PanelWindow {
             id: win
-            screen: Quickshell.screens[0]
+            screen: pk.promptScreen || Quickshell.screens[0]
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.namespace: "hearth-password"
             WlrLayershell.keyboardFocus: WlrKeyboardFocus.Exclusive
@@ -274,7 +285,7 @@ Scope {
                     RowLayout {
                         Layout.fillWidth: true
                         spacing: 10
-                        CaptureBtn { icon: "kbd"; text: "Keyboard"; onActivated: { field.forceActiveFocus(); if (SettingsNav.pad) SettingsNav.pad.openKeyboard(); } }
+                        CaptureBtn { icon: "kbd"; text: "Keyboard"; onActivated: { field.forceActiveFocus(); if (SettingsNav.pad) SettingsNav.pad.openKeyboard("password"); } }
                         Item { Layout.fillWidth: true }
                         CaptureBtn { id: cancelBtn; text: "Cancel"; onActivated: pk.cancel(); }
                         CaptureBtn { id: allowBtn; primary: true; icon: "lock"; text: "Allow"; enabledLook: !pk.busy; onActivated: pk.submit(field.text); }

@@ -102,7 +102,7 @@ hearth-files-kde.desktop      dolphin   org.kde.dolphin.desktop    Files        
 hearth-terminal-kde.desktop   konsole   org.kde.konsole.desktop    Terminal     hearth-terminal    hearth-terminal.desktop
 hearth-text-kde.desktop       kate      org.kde.kate.desktop       Text_Editor  hearth-text        hearth-text.desktop
 hearth-reader.desktop         okular    org.kde.okular.desktop     Reader       hearth-reader      -
-hearth-capture.desktop        spectacle org.kde.spectacle.desktop  Capture      hearth-capture     -
+hearth-capture-kde.desktop    spectacle org.kde.spectacle.desktop  Capture      hearth-capture     -
 hearth-calculator-kde.desktop kcalc     org.kde.kcalc.desktop      Calculator   hearth-calculator  hearth-calculator.desktop
 LIST
 
