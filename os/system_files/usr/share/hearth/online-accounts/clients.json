@@ -1,0 +1,30 @@
+{
+  "_readme": "Hearth's online accounts (docs/ONLINE-ACCOUNTS.md). The client ids are EMPTY on purpose: the owner registers Hearth with Google and Microsoft and puts the ids in /etc/hearth/online-accounts.json (same shape; only the keys set there replace these). Never put a token or password here.",
+  "providers": {
+    "google": {
+      "clientId": "",
+      "clientSecret": "",
+      "authUrl": "https://accounts.google.com/o/oauth2/v2/auth",
+      "tokenUrl": "https://oauth2.googleapis.com/token",
+      "authParams": {"access_type": "offline", "prompt": "consent"},
+      "scopes": "openid email https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/carddav https://mail.google.com/",
+      "redirectHost": "127.0.0.1",
+      "caldav": "https://apidata.googleusercontent.com/caldav/v2/",
+      "carddav": "https://www.googleapis.com/.well-known/carddav",
+      "imapHost": "imap.gmail.com",
+      "imapPort": 993
+    },
+    "microsoft": {
+      "clientId": "",
+      "authUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/authorize",
+      "tokenUrl": "https://login.microsoftonline.com/common/oauth2/v2.0/token",
+      "authParams": {"prompt": "select_account"},
+      "scopes": "openid email profile offline_access https://graph.microsoft.com/Calendars.Read https://graph.microsoft.com/Contacts.Read",
+      "mailScopes": "offline_access https://outlook.office.com/IMAP.AccessAsUser.All",
+      "redirectHost": "localhost",
+      "graph": "https://graph.microsoft.com/v1.0",
+      "imapHost": "outlook.office365.com",
+      "imapPort": 993
+    }
+  }
+}

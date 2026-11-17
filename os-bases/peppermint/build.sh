@@ -1084,6 +1084,12 @@ install -d /usr/libexec/nimbus
 cp -p "$py" /usr/libexec/nimbus/hearth-shot-python
 /usr/libexec/nimbus/hearth-shot-python -c 'import gi; gi.require_version("Gio", "2.0"); from gi.repository import Gio; print("hearth-shot-python can reach D-Bus")' \
   || echo "hearth-shot-python can't load GLib: screenshots under KWin will say so (grim under labwc is unaffected)"
+# Online accounts (docs/ONLINE-ACCOUNTS.md): `hearth-accounts` for Hearth's apps (list, token, events, mount). Nothing
+# runs by itself; Google/Microsoft stay off until the owner's client ids are in /etc/hearth/online-accounts.json.
+if [ -f /usr/share/nimbus/desktop/shell/hearth_accounts.py ]; then
+  chmod 755 /usr/share/nimbus/desktop/shell/hearth_accounts.py
+  ln -sfn /usr/share/nimbus/desktop/shell/hearth_accounts.py /usr/bin/hearth-accounts
+fi
 # Hearth OS's player count (desktop/shell/hearth-counter): the anonymous "I'm here" the Hearth app sent while it ran,
 # 20 seconds after signing in and every 10 minutes, in Steam Game Mode and Desktop Mode alike. Off in Settings › About ›
 # Privacy (countMe in desktop.json). docs/SETTINGS-MOVE.md.
