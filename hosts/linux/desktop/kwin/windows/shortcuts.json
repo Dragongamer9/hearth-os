@@ -60,6 +60,13 @@
    "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call calendar toggle'"
   },
   {
+   "id": "dnd",
+   "title": "Do not disturb on or off",
+   "keys": "Meta+Alt+N",
+   "labwc": "W-A-n",
+   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call notifications dnd toggle'"
+  },
+  {
    "id": "search",
    "title": "Search the app menu",
    "keys": "Meta+S",

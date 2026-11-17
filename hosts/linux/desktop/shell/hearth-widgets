@@ -9,6 +9,11 @@
   hearth-widgets photos SOURCE          pictures for the photo frame: pictures | favorites | album:<id> | folder:<path>
   hearth-widgets events                 today's and the next two weeks' events (Hearth Time, if it's there, and the
                                         online accounts with Calendar on: hearth-accounts events)
+  hearth-widgets webshot URL W H        the web page widget (1.14): a picture of URL at W × H, drawn by a browser with
+                                        no window (Firefox, else Chromium or Chrome) in a profile of its own under
+                                        ~/.cache/hearth/widgets (your own browser profile is never touched)
+  hearth-widgets pick-colour            the colour picker widget: a colour from the screen (KWin's picker, else
+                                        slurp + grim on labwc)
 
 Nothing here writes a setting: the widgets keep their own choices in ~/.config/nimbus/widgets.json (WidgetStore.qml,
 merged through hearth_settings_io.py). Hearth Photos' favourites and albums (~/.local/share/nimbus/photos.json) are
@@ -396,6 +401,82 @@ def events():
     return {'events': out}
 
 
+WEB_OK = re.compile(r'^(https?://[^\s]+|file:///[^\s]+)$', re.I)
+
+
+def page_title(url):
+    try:
+        if url.lower().startswith('file://'):
+            body = open(urllib.parse.unquote(url[7:]), 'rb').read(200000)
+        else:
+            body = fetch(url, 600, timeout=8)
+        m = re.search(rb'<title[^>]*>(.*?)</title>', body or b'', re.I | re.S)
+        return html.unescape(m.group(1).decode('utf-8', 'replace')).strip()[:120] if m else ''
+    except Exception:
+        return ''
+
+
+def webshot(url, w, h):
+    """A picture of a web page (the web page widget). A browser in headless mode draws it in a profile of its own."""
+    if not WEB_OK.match(url or ''):
+        return {'error': 'That isn\'t a web address (it starts with https:// or http://)'}
+    w, h = max(200, min(2400, int(w))), max(150, min(2400, int(h)))
+    key = hashlib.sha1(('%s %d %d' % (url, w, h)).encode()).hexdigest()[:16]
+    out = os.path.join(cache_dir(), 'web-%s.png' % key)
+    prof = os.path.join(cache_dir(), 'web-profile')
+    os.makedirs(prof, exist_ok=True)
+    tmp = out + '.new.png'
+    tried = []
+    for b in ('firefox', 'firefox-esr', 'chromium', 'chromium-browser', 'google-chrome', 'google-chrome-stable'):
+        exe = shutil.which(b)
+        if not exe:
+            continue
+        tried.append(b)
+        if 'firefox' in b:
+            cmd = [exe, '--headless', '--no-remote', '--profile', prof, '--window-size=%d,%d' % (w, h), '--screenshot', tmp, url]
+        else:
+            cmd = [exe, '--headless=new', '--disable-gpu', '--hide-scrollbars', '--no-first-run', '--user-data-dir=' + prof + '-chrome',
+                   '--window-size=%d,%d' % (w, h), '--screenshot=' + tmp, url]
+        try:
+            subprocess.run(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=60,
+                           env=dict(os.environ, MOZ_HEADLESS='1'))
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if os.path.exists(tmp) and os.path.getsize(tmp) > 0:
+            os.replace(tmp, out)
+            return {'image': out, 'title': page_title(url), 'time': int(time.time()), 'by': b}
+    fx = fixture('web.png')
+    if fx:
+        with open(out, 'wb') as f:
+            f.write(fx)
+        return {'image': out, 'title': page_title(url), 'time': int(time.time()), 'by': 'fixture'}
+    return {'error': 'No browser to draw it with' if not tried else 'The page didn\'t load'}
+
+
+def pick_colour():
+    fx = fixture('colour.txt')
+    if fx:
+        return {'hex': fx.decode().strip()}
+    if os.environ.get('HEARTH_WM') == 'kwin' and shutil.which('gdbus'):
+        r = subprocess.run(['gdbus', 'call', '--session', '--dest', 'org.kde.KWin', '--object-path', '/ColorPicker',
+                            '--method', 'org.kde.kwin.ColorPicker.pick'], capture_output=True, text=True, timeout=120)
+        m = re.search(r'(\d+)', r.stdout or '')
+        if m:
+            n = int(m.group(1))
+            return {'hex': '#%02x%02x%02x' % ((n >> 16) & 255, (n >> 8) & 255, n & 255)}
+        return {'error': 'Picking was cancelled'}
+    if shutil.which('slurp') and shutil.which('grim'):
+        r = subprocess.run(['slurp', '-p'], capture_output=True, text=True, timeout=120)
+        geo = (r.stdout or '').strip()
+        if not geo:
+            return {'error': 'Picking was cancelled'}
+        img = subprocess.run(['grim', '-g', geo, '-t', 'ppm', '-'], capture_output=True, timeout=20).stdout
+        if len(img) >= 3:
+            rgb = img[-3:]
+            return {'hex': '#%02x%02x%02x' % (rgb[0], rgb[1], rgb[2])}
+    return {'error': "This desktop can't pick colours from the screen"}
+
+
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ''
     a = argv[2:]
@@ -416,6 +497,10 @@ def main(argv):
             out = photos(a[0] if a else 'pictures')
         elif cmd == 'events':
             out = events()
+        elif cmd == 'webshot' and len(a) >= 3:
+            out = webshot(a[0], a[1], a[2])
+        elif cmd == 'pick-colour':
+            out = pick_colour()
         else:
             print(__doc__, file=sys.stderr)
             return 2

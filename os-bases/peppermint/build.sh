@@ -1096,6 +1096,8 @@ for f in wayland-sessions/plasma.desktop wayland-sessions/plasmawayland.desktop 
   dpkg-divert --list "/usr/share/$f" | grep -q . || dpkg-divert --local --no-rename --divert "/usr/share/hearth/desktop-sessions/$(echo "$f" | tr / -)" --add "/usr/share/$f"
 done
 cp -a /ctx/desktop /usr/share/nimbus/desktop
+# 1.14: Hearth's own system sounds (desktop/sounds, GPL-3.0 like Hearth) as a freedesktop sound theme other apps can use too.
+mkdir -p /usr/share/sounds && ln -sfn /usr/share/nimbus/desktop/sounds/hearth /usr/share/sounds/hearth || echo "warning: couldn't link Hearth's sound theme"
 # Hearth's own login screen uses Mantel's on-screen keyboard: its board, keys and engine, copied next to the greeter.
 mkdir -p /usr/share/hearth/greeter
 cp -a /usr/share/nimbus/desktop/shell/OskBoard.qml /usr/share/nimbus/desktop/shell/OskKey.qml /usr/share/hearth/greeter/
