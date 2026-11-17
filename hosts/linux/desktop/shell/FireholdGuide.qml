@@ -90,7 +90,18 @@ PanelWindow {
     readonly property string outName: gameScreen ? gameScreen.name : ""
     readonly property var out: (screens.outputs || []).find(o => o.name === outName) || null
     readonly property bool kwin: WinList.kwin
-    function refresh() { infoProc.running = true; powerProc.running = true; brightProc.command = ["brightnessctl", "-m", "-c", "backlight", "info"]; brightProc.running = true; }
+    // Firehold's own compositor's controls (`firehold-comp ctl`, docs/FIREHOLD.md): the frame limit and scaling rows
+    // work once it answers (`ctl scanout status`); until then they say "Not yet".
+    property bool comp: false
+    property string frameLimit: "Off"
+    property string scaling: "Off"
+    readonly property var limits: ["Off", "30", "40", "60", "90", "120"]
+    readonly property var scales: ["Off", "Quality", "Balanced", "Performance"]
+    readonly property string compCmd: "b=$(command -v firehold-comp || ls /usr/libexec/hearth/firehold-comp 2>/dev/null) && exec \"$b\" ctl \"$@\""
+    Process { id: compProbe; command: ["sh", "-c", gp.compCmd, "sh", "scanout", "status"]; onExited: code => gp.comp = code === 0 }
+    Process { id: compSet; stdout: StdioCollector { onStreamFinished: if (text.trim().startsWith("error")) SettingsNav.toast(text.trim()) } }
+    function compCtl(args) { compSet.command = ["sh", "-c", compCmd, "sh"].concat(args); compSet.running = true; }
+    function refresh() { compProbe.running = true; infoProc.running = true; powerProc.running = true; brightProc.command = ["brightnessctl", "-m", "-c", "backlight", "info"]; brightProc.running = true; }
     Process {
         id: infoProc
         command: ["python3", Quickshell.shellDir + "/hearth-screens", "info"]
@@ -116,8 +127,8 @@ PanelWindow {
     readonly property var overlays: ["off", "basic", "full"]
     // [title, sub, value, colour, works today]
     readonly property var rows: [
-        ["Frame limit", "Steadier, cooler, longer battery", "Not yet", pal.muted, false],
-        ["Resolution scaling", "Firehold upscales the game itself", "Not yet", pal.muted, false],
+        ["Frame limit", "Steadier, cooler, longer battery", comp ? frameLimit : "Not yet", comp && frameLimit !== "Off" ? pal.text : pal.muted, comp],
+        ["Resolution scaling", "Firehold upscales the game itself", comp ? scaling : "Not yet", comp && scaling !== "Off" ? pal.text : pal.muted, comp],
         ["VRR / FreeSync", "Smooth when it dips below 60", !kwin || !vrr.capable ? "Not on this screen" : vrr.policy === "never" ? "Off" : "On", kwin && vrr.capable && vrr.policy !== "never" ? pal.green : pal.muted, kwin && vrr.capable],
         ["Allow tearing", "Lowest delay for fast games", !tearCapable ? "Needs KWin" : tearOn ? "On" : "Off", tearCapable && tearOn ? pal.green : pal.muted, tearCapable],
         ["Power", "Handhelds and laptops", powerMode ? (modeNames[powerMode] || powerMode) + (tdp.watts ? " · " + Math.round(tdp.watts) + " W" : "") : "Set by this PC", pal.text, powerMode !== ""],
@@ -126,7 +137,9 @@ PanelWindow {
     function step(i, d) {
         const r = rows[i];
         if (!r[4]) { SettingsNav.toast(r[0] + ": " + (i < 2 ? "comes with Firehold's own compositor" : r[2])); return; }
-        if (i === 2) runSet(["python3", Quickshell.shellDir + "/hearth-screens", "set", JSON.stringify({ outputs: { [outName]: { vrr: vrr.policy === "never" ? "automatic" : "never" } } })]);
+        if (i === 0) { frameLimit = limits[(limits.indexOf(frameLimit) + (d > 0 ? 1 : limits.length - 1)) % limits.length]; compCtl(["frame-limit", frameLimit === "Off" ? "off" : frameLimit]); }
+        else if (i === 1) { scaling = scales[(scales.indexOf(scaling) + (d > 0 ? 1 : scales.length - 1)) % scales.length]; compCtl(["scale", scaling.toLowerCase()]); }
+        else if (i === 2) runSet(["python3", Quickshell.shellDir + "/hearth-screens", "set", JSON.stringify({ outputs: { [outName]: { vrr: vrr.policy === "never" ? "automatic" : "never" } } })]);
         else if (i === 3) runSet(["python3", Quickshell.shellDir + "/hearth-screens", "set", JSON.stringify({ tearing: !tearOn })]);
         else if (i === 4) { const n = modes[(modes.indexOf(powerMode) + (d > 0 ? 1 : modes.length - 1)) % modes.length]; runSet(["python3", Quickshell.shellDir + "/hearth-power", "mode", n]); }
         else if (i === 5) fh.set("overlay", overlays[(overlays.indexOf(fh.overlay) + (d > 0 ? 1 : overlays.length - 1)) % overlays.length]);
