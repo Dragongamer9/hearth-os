@@ -386,7 +386,7 @@ PanelWindow {
                     width: parent.width; font.pixelSize: 20 * cw.k; color: cw.pal.sub
                     text: !hero.game ? "Play something from your Library, or open an app; everything you open stays open on the Desk too."
                         : [hero.game.store, hero.game.minutes > 0 ? F.duration(hero.game.minutes * 60000) + " played" : "",
-                           hero.game.savesBackedUp ? "Saved on this PC and backed up" : "", "runs natively, no Game Mode"].filter(Boolean).join(" · ")
+                           hero.game.cloudSaves ? "Saved on this PC and in the cloud" : hero.game.savesBackedUp ? "Saved on this PC and backed up" : "", "runs natively, no Game Mode"].filter(Boolean).join(" · ")
                 }
                 Row {
                     visible: !!hero.game

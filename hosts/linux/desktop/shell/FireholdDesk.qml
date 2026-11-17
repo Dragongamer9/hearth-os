@@ -22,7 +22,7 @@ Scope {
     readonly property var front: WinList.activeToplevel
     readonly property string frontName: {
         if (!front) return "Firehold";
-        if (F.ownWindow(front)) return front.title || "Firehold";     // Hearth's own windows (Settings, Files): their title
+        if (F.ownWindow(front)) return F.windowName(front, "").name;     // Hearth's own windows: Hearth Files, Settings...
         const g = F.gameFor(front, fh.library);
         if (g) return g.title;
         const e = AppIcons.entryFor(front.appId);

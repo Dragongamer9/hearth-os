@@ -2,7 +2,7 @@
 """Stand-ins for Firehold's shell test (.github/workflows/firehold-shell.yml): Hearth's library (`nimbus --list-games
 --all`), Windows apps and Saved Games, written into DIR. The names are the mockups' placeholders, so each picture can
 be held next to its mockup.  firehold-fixtures.py DIR"""
-import json, sys, time
+import json, os, sys, time
 d = sys.argv[1]
 now = int(time.time() * 1000)
 m = lambda mins: now - mins * 60000
@@ -25,3 +25,7 @@ apps = {'apps': [{'id': 'old-office', 'name': 'Old Office', 'icon': '', 'last': 
 open(d + '/hearth-winapps', 'w').write('#!/bin/sh\n[ "$1" = list ] && echo \'%s\'\n' % json.dumps(apps))
 saves = {'games': [{'name': 'Cloud Lanes', 'backedUp': True}, {'name': 'Ember Trails', 'backedUp': True}]}
 open(d + '/hearth-saves', 'w').write('#!/bin/sh\n[ "$1" = status ] && echo \'%s\'\n' % json.dumps(saves))
+# Steam Cloud keeps Ember Trails' saves: Steam's own folder for it (userdata/<account>/<appid>/remote) has a file.
+cloud = os.path.join(os.path.expanduser('~'), '.local/share/Steam/userdata/10001/1000/remote')
+os.makedirs(cloud, exist_ok=True)
+open(os.path.join(cloud, 'save1.dat'), 'w').write('fixture')

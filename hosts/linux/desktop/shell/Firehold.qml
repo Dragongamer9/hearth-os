@@ -134,7 +134,7 @@ Scope {
     // The windows you went to, most recent first (KWin raises a window you activate): how Firehold's title bars know
     // which window is above which (FireholdFrames.qml). Runtime only.
     property var recent: []
-    property string frameLimit: "Off"          // the Guide's frame limit (firehold-comp), for a game window's title line
+    property string frameLimit: "Off"          // the Guide's frame limit (hearth-firehold-game), for a game window's title line
     property string deskMenu: ""               // the Desk bar's open menu (File, Edit, View), "" for none
     property string view: "home"
     property string tab: "home"          // home | library | apps | store
