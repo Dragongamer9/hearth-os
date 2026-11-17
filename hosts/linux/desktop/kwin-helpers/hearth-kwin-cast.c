@@ -15,8 +15,12 @@
  *   hearth-kwin-cast input
  *       remote control (the RemoteDesktop portal, after you allowed it): KWin's fake input; one command per line on
  *       stdin: "m DX DY" (pointer motion), "a X Y" (pointer to a place, KWin's coordinates), "b BUTTON 1|0" (evdev
- *       button code, down/up), "x AXIS VALUE" (0 vertical, 1 horizontal scroll), "k KEYCODE 1|0" (evdev key code).
+ *       button code, down/up), "x AXIS VALUE" (0 vertical, 1 horizontal scroll), "k KEYCODE 1|0" (evdev key code),
+ *       "td ID X Y" / "tm ID X Y" / "tu ID" (a finger down, moving, up; KWin's coordinates), "tf" (the touch frame).
  *       Ends when stdin closes; prints "ready" once KWin took it.
+ *   hearth-kwin-cast pick
+ *       KWin's colour picker (org.kde.KWin /ColorPicker: the pointer becomes a crosshair until you click; Esc cancels):
+ *       prints "color R G B" (0 to 1) or "cancelled".
  *   hearth-kwin-cast shot screen NAME | window UUID | workspace | area X Y W H  [CURSOR 0|1]
  *       a screenshot: one line "W H STRIDE FORMAT SCALE" (FORMAT: Qt's QImage format number) and the raw pixels.
  * Exit codes: 1 failed, 2 KWin didn't give this program what it asked for (its .desktop file isn't installed),
@@ -230,6 +234,15 @@ static int do_input(void) {
             org_kde_kwin_fake_input_axis(fake, i ? WL_POINTER_AXIS_HORIZONTAL_SCROLL : WL_POINTER_AXIS_VERTICAL_SCROLL, wl_fixed_from_double(a));
         } else if (line[0] == 'k' && sscanf(line + 1, "%d %d", &i, &j) == 2 && i > 0 && i < 0x300 && v >= ORG_KDE_KWIN_FAKE_INPUT_KEYBOARD_KEY_SINCE_VERSION) {
             org_kde_kwin_fake_input_keyboard_key(fake, (uint32_t)i, j ? WL_KEYBOARD_KEY_STATE_PRESSED : WL_KEYBOARD_KEY_STATE_RELEASED);
+        } else if (line[0] == 't' && (line[1] == 'd' || line[1] == 'm') && sscanf(line + 2, "%d %lf %lf", &i, &a, &b) == 3 &&
+                   i >= 0 && i < 64 && v >= ORG_KDE_KWIN_FAKE_INPUT_TOUCH_DOWN_SINCE_VERSION) {
+            if (line[1] == 'd') org_kde_kwin_fake_input_touch_down(fake, (uint32_t)i, wl_fixed_from_double(a), wl_fixed_from_double(b));
+            else org_kde_kwin_fake_input_touch_motion(fake, (uint32_t)i, wl_fixed_from_double(a), wl_fixed_from_double(b));
+        } else if (line[0] == 't' && line[1] == 'u' && sscanf(line + 2, "%d", &i) == 1 && i >= 0 && i < 64 &&
+                   v >= ORG_KDE_KWIN_FAKE_INPUT_TOUCH_UP_SINCE_VERSION) {
+            org_kde_kwin_fake_input_touch_up(fake, (uint32_t)i);
+        } else if (line[0] == 't' && line[1] == 'f' && v >= ORG_KDE_KWIN_FAKE_INPUT_TOUCH_FRAME_SINCE_VERSION) {
+            org_kde_kwin_fake_input_touch_frame(fake);
         } else {
             continue;
         }
@@ -340,6 +353,26 @@ static int do_shot(int argc, char **argv) {
     return 0;
 }
 
+/* ------------------------------------------------------------------ colour picker (org.kde.KWin /ColorPicker) */
+
+static int do_pick(void) {
+    GError *err = NULL;
+    GDBusConnection *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, NULL, &err);
+    if (!bus) { printf("failed no session bus\n"); return 1; }
+    /* No time limit worth speaking of: the person is choosing a spot. */
+    GVariant *res = g_dbus_connection_call_sync(bus, "org.kde.KWin", "/ColorPicker", "org.kde.kwin.ColorPicker", "pick",
+                                                NULL, G_VARIANT_TYPE("(u)"), G_DBUS_CALL_FLAGS_NONE, 110000, NULL, &err);
+    if (!res) {
+        int cancelled = err && err->message && strstr(err->message, "ancel") != NULL;
+        printf(cancelled ? "cancelled\n" : "failed %s\n", err && err->message ? err->message : "");
+        return cancelled ? 0 : 1;
+    }
+    guint32 argb = 0;
+    g_variant_get(res, "(u)", &argb);
+    printf("color %.6f %.6f %.6f\n", ((argb >> 16) & 255) / 255.0, ((argb >> 8) & 255) / 255.0, (argb & 255) / 255.0);
+    return 0;
+}
+
 /* Only Hearth's portal backend may use this program: KWin trusts it by its path (its .desktop file), so anything
  * else running it could capture the screen. Its parent must be the interpreter running hearth-portal, a file owned
  * by root that nobody else can change, in a folder owned by root that nobody else can change. Not a wall against
@@ -380,6 +413,7 @@ int main(int argc, char **argv) {
     if (argc >= 2 && strcmp(argv[1], "stream") == 0) return do_stream(argc - 2, argv + 2);
     if (argc >= 2 && strcmp(argv[1], "shot") == 0) return do_shot(argc - 2, argv + 2);
     if (argc >= 2 && strcmp(argv[1], "input") == 0) return do_input();
+    if (argc >= 2 && strcmp(argv[1], "pick") == 0) return do_pick();
     fprintf(stderr, "usage: hearth-kwin-cast outputs | stream ... | shot ...\n");
     return 1;
 }

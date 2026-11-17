@@ -11,10 +11,11 @@ var NAMES = {
     panelGlass: "Panel transparency", sunset: "Sunset mode", sunsetLight: "Light from", sunsetDark: "Dark from",
     barLayout: "Bar layout", barEdge: "Main bar's edge", dockFloat: "Floating dock", appMenu: "App menu",
     shareStatus: "Share this device's status", menuStyle: "Right-click menu", subTheme: "Sub theme", wallMatch: "Match sub theme",
-    nightTemp: "Night light warmth", nightMode: "Night light on", nightFrom: "Night light from", nightTo: "Night light until"
+    nightTemp: "Night light warmth", nightMode: "Night light on", nightFrom: "Night light from", nightTo: "Night light until",
+    nightPlace: "Night light's place", nightFade: "Night light's fade"
 };
 // Keys that change with another one and mean nothing on their own: never listed.
-var HIDDEN = { accentFrom: true, wallSwatches: true, menuTiles: true };
+var HIDDEN = { accentFrom: true, wallSwatches: true, menuTiles: true, nightLat: true, nightLon: true };
 
 function name(key) { return NAMES[key] || key; }
 function shown(c) { return !HIDDEN[c.key]; }
@@ -32,7 +33,8 @@ function value(key, v, accents) {
     if (key === "screenOffMinutes" || key === "sleepMinutes") return minutes(Number(v));
     if (key === "pointerSpeed") return Math.round(Number(v) * 100) + "%";
     if (key === "nightTemp") return Number(v) + " K";
-    if (key === "nightMode") return v === "always" ? "All the time" : "Evenings";
+    if (key === "nightFade") return Number(v) + " min";
+    if (key === "nightMode") return v === "always" ? "All the time" : v === "location" ? "Sunset to sunrise" : "Evenings";
     if (key === "accent") {
         const a = (accents || []).find(x => String(x.color).toLowerCase() === String(v).toLowerCase());
         return a ? a.name : String(v);
@@ -67,5 +69,6 @@ var DEFAULTS = {
     clipboardHistory: true, screenOffMinutes: 10, sleepMinutes: 0, mode: "dark", accent: "", countMe: true,
     barStyle: "", dockMode: "", deskClock: "", panelGlass: "", sunset: false, sunsetLight: "07:00", sunsetDark: "19:30",
     barLayout: "", barEdge: "", dockFloat: "", appMenu: "", shareStatus: true, menuStyle: "", subTheme: "", wallMatch: true,
-    nightTemp: 3700, nightMode: "times", nightFrom: "19:30", nightTo: "07:00"
+    nightTemp: 3700, nightMode: "times", nightFrom: "19:30", nightTo: "07:00",
+    nightPlace: "", nightLat: 0, nightLon: 0, nightFade: 30
 };
