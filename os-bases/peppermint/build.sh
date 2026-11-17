@@ -1134,16 +1134,12 @@ ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
 # Screens and screenshots on both of Mantel's compositors (1.14, docs/SCREENS.md): hearth-screens (Settings › Display,
 # restore at start) and hearth-screen-power (screen off when idle). Under KWin they use kscreen-doctor (libkscreen-bin:
 # KWin's output management and DPMS) and KWin's D-Bus. KWin answers its screenshot interface only for a program whose
-# .desktop file lists it, found by the program's executable: hearth-screenshot runs through its own copy of Python
-# (a real copy, not a link: KWin may compare the file itself, and then every Python program would be trusted), named
-# by hearth-screenshot.desktop (os/system_files).
+# .desktop file lists it, found by the program's executable: hearth-screens takes its screenshots through the small
+# helper hearth-kwin-cast (hearth-kwin-cast.desktop), which answers only hearth-portal and hearth-screens. (1.14
+# before this trusted a copy of Python, hearth-shot-python: any script it ran could take screenshots; it's gone.)
 optional libkscreen-bin libkf6config-bin   # kscreen-doctor; kwriteconfig6 (KWin's Night Light and tearing settings, told to KWin)
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-screens /usr/share/nimbus/desktop/shell/hearth-screen-power /usr/bin/hearth-screenshot
-py=$(readlink -f /usr/bin/python3)
-install -d /usr/libexec/nimbus
-cp -p "$py" /usr/libexec/nimbus/hearth-shot-python
-/usr/libexec/nimbus/hearth-shot-python -c 'import gi; gi.require_version("Gio", "2.0"); from gi.repository import Gio; print("hearth-shot-python can reach D-Bus")' \
-  || echo "hearth-shot-python can't load GLib: screenshots under KWin will say so (grim under labwc is unaffected)"
+rm -f /usr/libexec/nimbus/hearth-shot-python /usr/share/applications/hearth-screenshot.desktop
 # Online accounts (docs/ONLINE-ACCOUNTS.md): `hearth-accounts` for Hearth's apps (list, token, events, mount). Nothing
 # runs by itself; Google/Microsoft stay off until the owner's client ids are in /etc/hearth/online-accounts.json.
 if [ -f /usr/share/nimbus/desktop/shell/hearth_accounts.py ]; then
@@ -1900,6 +1896,11 @@ if [ -d /etc/X11 ]; then echo /usr/bin/sddm > /etc/X11/default-display-manager; 
 
 # ------------------------------------------------------------------ boot straight into Hearth
 systemctl enable nimbus-autologin.service
+# A pre-installed PC (bootc install, no Hearth installer) has no account: a stand-in one for first-time setup, made
+# before the autologin (hearth-oem-account; does nothing once there's an account, never a stop).
+chmod 755 /usr/libexec/nimbus/hearth-oem-account
+systemctl enable hearth-oem-account.service
+systemctl --global enable hearth-oem-notice.service   # and tells you once after you sign in, until it's done
 systemctl enable hearth-greeter-pad.service
 # Hearth's own login screen (1.14, a test): inert unless turned on in Settings (hearth-login-select picks SDDM by
 # default and whenever anything is missing; SDDM stays display-manager.service).

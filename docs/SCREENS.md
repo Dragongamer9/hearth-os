@@ -73,11 +73,14 @@ Preview (CI pictures only): `HEARTH_SCREENS_FIXTURE=<folder>` with `kscreen.json
 
 KWin answers `org.kde.KWin.ScreenShot2` only for a program whose `.desktop` file lists that interface in
 `X-KDE-DBUS-Restricted-Interfaces`. KWin finds that file by the program's executable. A Python script's executable
-is Python itself, so trusting it would trust every Python program. Instead the image copies Python (a real copy, not
-a link) to
-`/usr/libexec/nimbus/hearth-shot-python`, and `/usr/share/applications/hearth-screenshot.desktop` trusts only that.
-`/usr/bin/hearth-screenshot` takes grim's arguments (`[-g "X,Y WxH"] [-o SCREEN] [-c] FILE|-`): it is grim under
-labwc, and under KWin it runs `hearth-screens shot` through that Python. `open.sh` (Print Screen, Quick Access, the
+is Python itself, so trusting it would trust every Python program. Instead `hearth-screens` asks the small C helper
+`/usr/libexec/hearth/hearth-kwin-cast` (`shot screen NAME | active-window | active-screen | workspace | area X Y W H
+[CURSOR 0|1 [FULL 0|1]]`, full resolution unless FULL is 0), which `hearth-kwin-cast.desktop` trusts. The helper
+answers only when its parent is `hearth-portal` or `hearth-screens`, root's files in a folder only root can change,
+and `hearth-screens` gets only screenshots and the list of screens from it (no streams, remote input or colour
+picking). `/usr/bin/hearth-screenshot` takes grim's arguments (`[-g "X,Y WxH"] [-o SCREEN] [-c] FILE|-`): it is grim
+under labwc, and under KWin it runs `hearth-screens shot`. (Before this, 1.14's development builds trusted a copy of
+Python, `hearth-shot-python`, so any Python script run with it could take screenshots; the image removes it.) `open.sh` (Print Screen, Quick Access, the
 controller's screenshot), Hearth Paint, the Hearth app and hearth-core all use it.
 
 ## For other parts of Hearth
@@ -89,7 +92,7 @@ controller's screenshot), Hearth Paint, the Hearth app and hearth-core all use i
 - Capture: `$NIMBUS_SHARE/desktop/shell/hearth-screens grab MODE [--screen N] [--geometry X,Y,W,H] [--pointer] --out FILE`.
   MODE is `screen` (`--screen`: a name, or 1 for the first screen that's on; without it the active screen), `all`,
   `window` (KWin's active window; under labwc only with `--geometry`, since labwc can't say which window is active) or
-  `area` (`--geometry`). Exit 3: no window to take. Under KWin it runs itself again through `hearth-shot-python`.
+  `area` (`--geometry`). Exit 3: no window to take. Under KWin the picture comes through `hearth-kwin-cast shot`.
 - The Hearth app's Settings › Display (hearth-core `display.rs`, `hosts/linux/src/display.js`) goes through
   `hearth-screens get` / `set` in Mantel's session (`HEARTH_WM` labwc or kwin), so it never writes `display.sh` or
   `screens.json` itself there.
