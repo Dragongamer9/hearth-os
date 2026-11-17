@@ -355,9 +355,22 @@ def valid(s, mem, var_free=None, algos=None):
     return out
 
 
+# What Keep memory free and swappiness were before 1.14 made Auto the recommendation. A memory.json from then that
+# never set them meant these (red flag 9: a default that changes must not change what you already had); only a PC with
+# no memory.json at all gets Auto. Settings shows Auto as a choice you can pick.
+LEGACY_KEEP = {'mode': '2gb'}
+LEGACY_SWAPPINESS = 200
+
+
 def merged(saved, mem):
-    """Recommended values under what you saved (what's used; nothing is written)."""
+    """Recommended values under what you saved (what's used; nothing is written). A saved file without keep or
+    swappiness keeps what those were before 1.14 (LEGACY_*), not the new Auto."""
     base = recommended(mem)
+    if saved:
+        if 'keep' not in saved:
+            base['keep'] = dict(LEGACY_KEEP)
+        if 'swappiness' not in saved:
+            base['swappiness'] = LEGACY_SWAPPINESS
     for k, v in (saved or {}).items():
         if isinstance(v, dict) and isinstance(base.get(k), dict):
             base[k] = dict(base[k], **v)
