@@ -252,6 +252,11 @@ ShellRoot {
     // either only loses that window. IPC targets "restore" and "reliability" (hearth-restore, hearth-reliability).
     Loader { source: "Restore.qml" }
     Loader { source: "Reliability.qml" }
+    // 1.14: Hearth Capture (Hearth's own screenshot tool, in place of Spectacle) and Hearth's own password prompt (its
+    // polkit agent; hearth-polkit-fallback starts the classic one when this isn't registered). Loaded by file name, so a
+    // problem in either (or a Quickshell without its Polkit module) only loses that one.
+    Loader { source: "Capture.qml" }
+    Loader { active: Quickshell.env("HEARTH_POLKIT") !== "classic"; source: "PolkitPrompt.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the password prompt (PolkitPrompt.qml) couldn't load; the classic agent asks (hearth-polkit-fallback)") }
     // 1.11: the shell watches its own memory and CPU (hearth-shell-health) and refreshes itself only while nobody is
     // looking and none of its own windows (Settings, Task Manager, Files) is open.
     Loader { source: "ShellHealth.qml"; onLoaded: item.inUse = Qt.binding(() => settings.shown || tasks.shown || files.shown) }
