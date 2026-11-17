@@ -237,6 +237,7 @@ def title_matches(name, theme, label):
         w = tuple(int(want[i:i + 2], 16) for i in (1, 3, 5))
         im = Image.open(os.path.join(OUT, 'kwin-%s.png' % name)).convert('RGB')
         got = im.getpixel((300, 58))
+        log('::notice title=frame pixels %s::size %s; column at x=300: %s' % (label, im.size, ' '.join('%d:#%02x%02x%02x' % ((y,) + im.getpixel((300, y))) for y in range(0, 120, 6))))
         ok = max(abs(a - b) for a, b in zip(w, got)) <= 12
         check('the title bar has the look\'s colour (%s)' % label, ok, 'theme %s, picture %s' % (want, '#%02x%02x%02x' % got))
     except Exception as ex:
@@ -254,10 +255,31 @@ def set_look(theme, look, accent):
     return changed
 
 
+def bridge_info():
+    """KWin's own account of its decoration (supportInformation's Decoration section) and the screen size."""
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    text = bus.call_sync('org.kde.KWin', '/KWin', 'org.kde.KWin', 'supportInformation', None, GLib.VariantType.new('(s)'),
+                         Gio.DBusCallFlags.NONE, 10000, None).unpack()[0]
+    keep, on = [], False
+    for line in text.splitlines():
+        if line.strip().lower().startswith('decoration'):
+            on = True
+        elif on and line and not line.startswith(' ') and ':' not in line:
+            on = False
+        if on or 'Geometry:' in line or 'theme' in line.lower() or 'plugin' in line.lower():
+            keep.append(line.strip())
+    return ' | '.join(keep)[:3000]
+
+
 def frames_check(procs):
     """Hearth's window frames on KWin (theme/hearth_aurorae.py): written for the look, picked by Hearth's kwinrc,
     following a look change live; apps that draw their own title bar get no second frame."""
     theme = os.path.join(os.environ['HOME'], '.local', 'share', 'aurorae', 'themes', 'hearth')
+    try:
+        info = bridge_info()
+        log('::notice title=KWin decoration::%s' % info)
+    except Exception as ex:
+        log('::warning title=KWin decoration::%s' % ex)
     ok = wait(lambda: os.path.isfile(os.path.join(theme, 'decoration.svg')) and os.path.isfile(os.path.join(theme, 'close.svg')), 20)
     check('Hearth\'s window frames are written for the look', ok, sorted(os.listdir(theme)) if os.path.isdir(theme) else 'no ' + theme)
     a, b = win('Test A') or {}, win('Test B') or {}
