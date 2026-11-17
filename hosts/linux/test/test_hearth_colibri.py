@@ -489,6 +489,17 @@ class Service(Base):
         self.assertFalse(self.hc.from_tailscale('192.168.1.20'))
         self.assertFalse(self.hc.from_tailscale('8.8.8.8'))
 
+    def test_only_engine_settings_reach_colibris_environment(self):
+        rec = {'dir': '/m', 'env': {'COLI_VULKAN': '1', 'GGML_VK_VISIBLE_DEVICES': '0', 'OMP_NUM_THREADS': '8',
+                                    'CUDA_VISIBLE_DEVICES': '0', 'LD_PRELOAD': '/tmp/x.so', 'LD_LIBRARY_PATH': '/tmp',
+                                    'PYTHONPATH': '/tmp', 'PYTHONSTARTUP': '/tmp/x.py', 'PATH': '/tmp', 'HOME': '/tmp',
+                                    'GGML_BACKEND_PATH': '/tmp', 'VK_ICD_FILENAMES': '/tmp/x.json', 'COLI_SETUP_HOME': '/tmp',
+                                    'COLI_LOG': 'a\nb', 'lower': '1'}}
+        _argv, env = self.hc.run_argv('m', rec)
+        self.assertEqual(env, {'COLI_VULKAN': '1', 'GGML_VK_VISIBLE_DEVICES': '0', 'OMP_NUM_THREADS': '8', 'CUDA_VISIBLE_DEVICES': '0'})
+        self.assertEqual(self.hc.safe_env(None), {})
+        self.assertEqual(self.hc.safe_env(['LD_PRELOAD']), {})
+
     def test_the_unit_is_opt_in_and_never_part_of_starting(self):
         unit = (UNITS / 'hearth-colibri.service').read_text()
         self.assertNotIn('[Install]', unit)

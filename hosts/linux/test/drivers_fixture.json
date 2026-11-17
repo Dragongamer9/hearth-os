@@ -1,0 +1,11 @@
+{
+  "lspci": "00:02.0 \"0300\" \"8086\" \"a780\" -r04 \"1043\" \"8882\"\n01:00.0 \"0300\" \"10de\" \"2786\" -ra1 \"1043\" \"8932\"\n00:1f.3 \"0403\" \"8086\" \"7a50\" -r11 \"1043\" \"1f33\"\n00:14.3 \"0280\" \"8086\" \"7a70\" -r11 \"8086\" \"0094\"\n04:00.0 \"0200\" \"10ec\" \"8125\" -r05 \"1043\" \"87d7\"\n05:00.0 \"0280\" \"14c3\" \"0616\" \"1a3b\" \"5300\"",
+  "cpu": "processor\t: 0\nvendor_id\t: GenuineIntel\nmodel name\t: 13th Gen Intel(R) Core(TM) i7-13700K\n",
+  "kernlog": "r8169 0000:04:00.0: Direct firmware load for rtl_nic/rtl8125b-2.fw failed with error -2\nmt7921e 0000:05:00.0: Direct firmware load for mediatek/WIFI_MT7922_patch_mcu_1_1_hdr.bin failed with error -2\n",
+  "installed": {"nvidia-open": "580.95.05-1", "firmware-nvidia-graphics": "20250410-2", "firmware-iwlwifi": "20250410-2",
+                "firmware-intel-graphics": "20250410-2", "firmware-sof-signed": "2025.01-1", "intel-microcode": "3.20250512.1"},
+  "candidates": {"nvidia-open": "580.95.05-1", "firmware-nvidia-graphics": "20250410-2", "firmware-iwlwifi": "20250410-2",
+                 "firmware-intel-graphics": "20250410-2", "firmware-sof-signed": "2025.01-1", "intel-microcode": "3.20250512.1",
+                 "firmware-realtek": "20250410-2", "firmware-mediatek": "20250410-2"},
+  "nvidiaLoaded": true
+}

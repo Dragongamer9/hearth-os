@@ -414,5 +414,5 @@
 "/sys/devices/virtual/net-fixture/enp4s0/device": "/sys/devices/pci0000:00/0000:00:1c.2/0000:04:00.0",
 "/sys/devices/virtual/net-fixture/wlo1/device": "/sys/devices/pci0000:00/0000:00:14.3"
 },
-"name": "owner-atx"
+"name": "atx-desktop"
 }

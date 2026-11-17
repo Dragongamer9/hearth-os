@@ -104,6 +104,10 @@ ipc() { WAYLAND_DISPLAY="${1}" quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" c
 labwc_display() { basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)"; }
 labwc_size() { d=$(labwc_display); [ -n "$d" ] && WAYLAND_DISPLAY=$d wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 >/dev/null 2>&1; }
 
+# Pictures without the two one-time cards that aren't what's checked here: "Pick your browser" (1.12) and the lock
+# guard's "The lock screen is off" (this runner has no lock screen package; test_kwin_session.py checks that card).
+python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1 || true
+mkdir -p "$STATE" && : >"$STATE/kwin-lock-off-told"
 # ---- A: KWin, with 1.13's KDE Plasma still picked.
 printf 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP=kde\n' > "$CONF"
 cp "$CONF" /tmp/conf-before
@@ -128,7 +132,7 @@ end_session
 # ---- B: KWin: the desktop and Settings › System › Your desktop.
 printf 'NIMBUS_START_MODE=desktop\n' > "$CONF"
 # Settings › Keyboard as someone saved it on labwc: two layouts, faster repeat, Num Lock on, a compose key.
-printf '%s' '{"layouts": [{"layout": "de", "variant": ""}, {"layout": "fr", "variant": ""}], "switch": "grp:alt_shift_toggle", "delay": 300, "rate": 40, "numlock": "on", "compose": "compose:ralt", "switchMode": "Window"}' > "$HOME/.config/nimbus/keyboard.json"
+printf '%s' '{"layouts": [{"layout": "de", "variant": ""}, {"layout": "fr", "variant": ""}], "switch": "grp:alt_shift_toggle", "delay": 300, "rate": 40, "numlock": "on", "compose": "compose:ralt", "switchMode": "Window"}' > "$HOME/.config/nimbus/keyboard.json.tmp" && mv -f "$HOME/.config/nimbus/keyboard.json.tmp" "$HOME/.config/nimbus/keyboard.json"
 start_session B
 wait_up 90 || fail "KWin" "Mantel didn't come up under KWin the second time"
 sleep 10
@@ -167,6 +171,75 @@ command -v wayland-info >/dev/null && echo "::notice title=keyboard repeat (wayl
 ipc wayland-hearth settings page keyboard; sleep 4
 shot kwin-9-keyboard-kwin
 ipc wayland-hearth settings close
+# ---- Wave 3 under KWin (1.14's Desktop Mode is Mantel on KWin): the search bar, Activities, the App store's Drivers.
+qk() { WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" 2>/dev/null | grep -v WARN | tail -n1; }
+sb_shown() { qk searchbar state | python3 -c 'import json,sys; print(json.load(sys.stdin)["shown"])' 2>/dev/null; }
+ipc wayland-hearth searchbar open; sleep 2
+[ "$(sb_shown)" = True ] || fail "search bar (KWin)" "it didn't open under KWin: $(qk searchbar state | head -c 300)"
+shot kwin-w3-search-empty
+ipc wayland-hearth searchbar type "(3+4)*2^3"; sleep 2
+qk searchbar state | grep -q '"plugin":"calc"' || fail "search bar (KWin)" "the calculator didn't answer under KWin: $(qk searchbar state | head -c 300)"
+shot kwin-w3-search-calc
+ipc wayland-hearth searchbar type "display"; sleep 2
+shot kwin-w3-search-settings
+ipc wayland-hearth searchbar close
+r=$(qk searchbar desk "terminal"); sleep 2
+[ "$r" = opened ] && [ "$(sb_shown)" = True ] || fail "search bar (KWin)" "typing on the desktop didn't open it under KWin: $r"
+shot kwin-w3-search-typed-on-desktop
+ipc wayland-hearth searchbar close
+ipc wayland-hearth searchbar pad; sleep 3
+shot kwin-w3-search-controller
+ipc wayland-hearth searchbar close
+ipc wayland-hearth activities create "Work" >/dev/null; sleep 1
+ipc wayland-hearth activities switcher; sleep 2
+shot kwin-w3-activities
+ipc wayland-hearth activities close
+ipc wayland-hearth settings page store:drivers; sleep 5
+shot kwin-w3-store-drivers
+ipc wayland-hearth settings close
+# Settings › Users on a pre-installed PC (w3-firstrun: hearth-oem-account's marker for this account), then taken away.
+OEM_M=/var/lib/hearth/oem-setup.json; OEM_MADE=""
+if [ ! -e "$OEM_M" ]; then mkdir -p /var/lib/hearth && chmod 755 /var/lib/hearth && printf '{"user": "%s", "at": 1}\n' "$(id -un)" > "$OEM_M" && OEM_MADE=1; fi
+ipc wayland-hearth settings page users; sleep 5
+shot kwin-w3-users-oem
+ipc wayland-hearth settings close
+[ -n "$OEM_MADE" ] && rm -f "$OEM_M"
+# The App store's app page and Hearth Files' terminal panel (search-store).
+ipc wayland-hearth settings page store:app-org_kde_krita; sleep 12
+shot kwin-w3-store-app
+ipc wayland-hearth settings close
+ipc wayland-hearth filemanager home; sleep 3
+ipc wayland-hearth filemanager terminal on; sleep 3
+shot kwin-w3-files-terminal
+ipc wayland-hearth filemanager terminal off
+ipc wayland-hearth filemanager close
+# The search plugins (w3-search-plugins) under KWin: world clock, kill asks first, a colour, the bar's "?" list, and
+# virtual desktops (KWin's own: WinList.desktops) listed by the desktops plugin.
+cp "$(command -v sleep)" /tmp/hearth-demo-timer; /tmp/hearth-demo-timer 600 &
+ipc wayland-hearth launcher open; sleep 3; ipc wayland-hearth launcher close
+chk() { got=$(qk launcher answers "$1"); case "$got" in *"$2"*) echo "::notice title=search plugins (KWin)::$1 → $(echo "$got" | cut -c1-200)" ;; *) fail "search plugins (KWin)" "\"$1\" didn't answer $2: $(echo "$got" | cut -c1-300)" ;; esac; }
+chk "3pm london to tokyo" 'in Tokyo'
+chk "#ff8800" 'rgb(255, 136, 0)'
+chk "kill hearth-demo" '"type":"kill"'
+chk "desktop 2" '"type":"desktop"'
+ipc wayland-hearth searchbar type "3pm london to tokyo"; sleep 3
+shot kwin-w3-search-world-clock
+ipc wayland-hearth searchbar type "#ff8800"; sleep 3
+shot kwin-w3-search-colour
+ipc wayland-hearth searchbar type "?"; sleep 3
+qk searchbar state | grep -q '"plugin":"worldclock"' || fail "search plugins (KWin)" "the search bar's ? doesn't list the new plugins: $(qk searchbar state | cut -c1-300)"
+shot kwin-w3-search-help
+ipc wayland-hearth searchbar type "kill hearth-demo"; sleep 3
+ipc wayland-hearth searchbar enter; sleep 2
+shot kwin-w3-search-kill-asks-first
+ipc wayland-hearth searchbar close; sleep 2
+pgrep -f hearth-demo-timer >/dev/null && echo "::notice title=search plugins (KWin)::kill asked first; closing it kept the program running" \
+  || fail "search plugins (KWin)" "kill ended the program without asking"
+pkill -f hearth-demo-timer 2>/dev/null
+grep -E "(Launcher|SearchSources|FilesTerminal|FileManager)\.qml.*(TypeError|ReferenceError|Cannot assign|is not a type|is not defined)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null \
+  | head -5 | while read -r l; do fail "Wave 3 (KWin)" "$(echo "$l" | cut -c1-300)"; done
+grep -E "(SearchBar|Activit|StoreDrivers|SetStore)[A-Za-z]*\.qml.*(TypeError|ReferenceError|Cannot assign|is not a type|is not defined)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null \
+  | head -5 | while read -r l; do fail "Wave 3 (KWin)" "$(echo "$l" | cut -c1-300)"; done
 cp "$HOME/.local/share/nimbus/kwin.log" shots/kwin-B.log 2>/dev/null
 cp "$XDG_RUNTIME_DIR/nimbus-shell.log" shots/shell-B.log 2>/dev/null
 end_session

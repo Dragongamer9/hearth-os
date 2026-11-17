@@ -23,6 +23,25 @@ SetPage {
         checked: Settings.clipboardHistory
         onToggled: v => { Settings.clipboardHistory = v; page.say(v ? "Clipboard history is on." : "Clipboard history is off. What's already kept stays until you clear it."); }
     }
+    // The selection (1.14): what you highlight, which middle-click pastes. Both off until you turn them on; kept in
+    // ~/.config/nimbus/clipboard.json by Clipboard.qml (only the key you change).
+    readonly property var cbx: SettingsNav.clipboard
+    SetSwitch {
+        visible: !!page.st && page.st.available
+        enabled: !!page.cbx && Settings.clipboardHistory
+        icon: "clipboard"; title: "Selection history"
+        sub: !Settings.clipboardHistory ? "Turn on clipboard history first" : "Also keep what you highlight (middle-click pastes it), marked Selection"
+        checked: !!page.cbx && page.cbx.selectionOn
+        onToggled: v => { if (page.cbx) page.cbx.setPref("selection", v); page.say(v ? "What you highlight is kept too." : "Highlighted text isn't kept any more."); }
+    }
+    SetSwitch {
+        visible: !!page.st && page.st.available
+        enabled: !!page.cbx && Settings.clipboardHistory
+        icon: "sync"; title: "Keep the clipboard and selection in step"
+        sub: !Settings.clipboardHistory ? "Turn on clipboard history first" : "Text you copy can be middle-clicked, and text you highlight can be pasted with Ctrl+V"
+        checked: !!page.cbx && page.cbx.syncOn
+        onToggled: v => { if (page.cbx) page.cbx.setPref("sync", v); page.say(v ? "The clipboard and the selection are kept in step." : "The clipboard and the selection are separate again."); }
+    }
     SetRow {
         visible: !!page.st && page.st.available
         icon: "clipboard"; title: "Open clipboard history"; sub: "Super+V"
@@ -51,7 +70,7 @@ SetPage {
     }
     Text {
         Layout.fillWidth: true; Layout.topMargin: 6
-        text: "Passwords copied from password managers that mark them as secret are never kept. Super+. opens the emoji picker."
+        text: "Passwords copied from password managers that mark them as secret are never kept or put on the selection. In Super+V, ⋯ on a text item opens it in a browser, shows it as a QR code, or edits it. Super+. opens the emoji picker."
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
     }
 }

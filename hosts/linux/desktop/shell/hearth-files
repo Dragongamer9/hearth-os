@@ -141,7 +141,7 @@ class Fail(Exception):
 # hearth_files_extras.py's commands (its run() does them).
 EXTRA_COMMANDS = ('tags', 'tag-set', 'tag-list', 'tag-find', 'git-status', 'iso-mount', 'iso-unmount', 'portable', 'portable-mount',
                   'portable-unmount', 'service-menus', 'service-run', 'sharing', 'share', 'recent-prefs', 'recent-prefs-set',
-                  'recent-forget', 'chmod-tree', 'groups', 'chgrp')
+                  'recent-forget', 'activity-mark', 'activity-tidy', 'chmod-tree', 'groups', 'chgrp')
 
 
 class Cancelled(Exception):
@@ -504,10 +504,13 @@ def recent_files(limit=40):
     found = hx.xbel_items(text) if hx else [
         (m.group(0), a, urllib.parse.unquote(a.get('href', '')[7:], errors='surrogateescape') if a.get('href', '').startswith('file://') else '', [])
         for m in re.finditer(r'<bookmark\b([^>]*)>', text) for a in [dict(re.findall(r'(\w+)="([^"]*)"', m.group(1)))]]
+    # Activities (1.14): on one with its own list, only the files opened on it.
+    aconf = hx.activities_conf() if hx else None
+    spans = hx.activity_spans() if hx and aconf['many'] else []
     for whole, attrs, p, apps in found:
         if not p or not os.path.isfile(p):
             continue
-        if rprefs is not None and not hx.recent_allowed(rprefs, p, apps, hx._when(attrs)):
+        if rprefs is not None and not hx.recent_visible(rprefs, p, apps, hx._when(attrs), aconf, spans):
             continue
         when = attrs.get('visited') or attrs.get('modified') or attrs.get('added') or ''
         items.append((when, p))

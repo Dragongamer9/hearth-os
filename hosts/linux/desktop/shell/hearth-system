@@ -513,12 +513,25 @@ def labwc_config(src=None, dest=None):
     if os.path.exists(POINTER_JSON):
         rc = rc_with_pointer(rc, pointer_saved())
     rc = rc_with_theme(rc)
+    rc = rc_with_search_key(rc, parse_env(env))
     # ---- Accessibility: the magnifier's size and steps, window titles at your text size
     if access:
         rc = access.rc_with_access(rc)
     # ---- end Accessibility
     write_atomic(os.path.join(dest, 'rc.xml'), rc)
     return dest
+
+
+def rc_with_search_key(text, env):
+    """rc.xml text with the search bar's Alt+Space line made "None" when Alt+Space switches keyboard layouts (Settings ›
+    Keyboard: grp:alt_space_toggle in XKB_DEFAULT_OPTIONS, only there with two or more layouts): the layout switch
+    wins, and Alt+F2 still opens the search bar (SearchBar.qml)."""
+    opts = [o.strip() for o in env.get('XKB_DEFAULT_OPTIONS', '').split(',')]
+    if 'grp:alt_space_toggle' not in opts:
+        return text
+    # "None" takes the key from labwc altogether (its own default Alt+Space window menu too), so xkb gets it.
+    return re.sub(r'<keybind key="A-space"><action name="Execute" command="[^"]*call searchbar key\'" /></keybind>',
+                  '<keybind key="A-space"><action name="None" /></keybind>', text)
 
 
 def rc_with_theme(text):
@@ -613,6 +626,7 @@ COMMAND_WORDS = [
     (r'call tasks toggle', 'Open Task Manager'), (r'call lock lock', 'Lock the screen'),
     (r'call clipboard toggle', 'Clipboard history'), (r'call snap ', 'Snap layouts'), (r'call mixer ', 'Volume mixer'),
     (r'call settings', 'Open Settings'),
+    (r'call searchbar', 'Search bar: apps, Settings, files, sums, the web (like KRunner)'),
     (r'call run toggle', 'Run: open an app, folder, website or Windows command'), (r'call winx toggle', 'Quick links menu (like Windows\' Win+X)'),
     (r'call devices', 'Open Device Manager'),
     (r'call apps', 'Open Bazaar (app store)'), (r'call quick toggle', 'Quick Access'), (r'call power menu', 'Power menu'),
@@ -697,9 +711,12 @@ def parse_keybinds(text):
         if not key or not actions:
             continue
         seen.add(key)
+        if all(a.get('name') == 'None' for a in actions):      # a key taken away (the layout switch's Alt+Space)
+            continue
         out.append({'key': key, 'keys': key_words(key), 'action': ', then '.join(action_words(a) for a in actions)})
     if kb.find('default') is not None:
-        out += [{'key': k, 'keys': key_words(k), 'action': w} for k, w in LABWC_DEFAULTS if k not in seen]
+        low = {k.lower() for k in seen}      # labwc's key names don't care about case (A-Space is A-space)
+        out += [{'key': k, 'keys': key_words(k), 'action': w} for k, w in LABWC_DEFAULTS if k.lower() not in low]
     return out
 
 
@@ -1358,7 +1375,35 @@ def users():
         u['picture'] = pic
     out.sort(key=lambda u: (not u['me'], u['player'], u['name']))
     meinfo = next((u for u in out if u['me']), None)
-    return {'users': out, 'me': me, 'admin': bool(meinfo and meinfo['admin']), 'canAdmin': os.access(ADMIN, os.X_OK)}
+    return {'users': out, 'me': me, 'admin': bool(meinfo and meinfo['admin']), 'canAdmin': os.access(ADMIN, os.X_OK),
+            'oemSetup': oem_pending() and oem_user() == me}
+
+
+OEM_MARK = '/var/lib/hearth/oem-setup.json'
+OEM_OWNER = 0
+
+
+def oem_pending(path=None):
+    """A pre-installed PC's first-time setup still to do (hearth-oem-account's marker): only a regular file of root's
+    (not a link) in a folder only root can write to, as hearth-admin and Hearth's core check it."""
+    import stat as st_
+    path = path or OEM_MARK
+    try:
+        st = os.lstat(path)
+        dst = os.stat(os.path.dirname(path))
+    except OSError:
+        return False
+    return (st_.S_ISREG(st.st_mode) and st.st_uid == OEM_OWNER and dst.st_uid == OEM_OWNER
+            and not dst.st_mode & (st_.S_IWGRP | st_.S_IWOTH))
+
+
+def oem_user(path=None):
+    """The stand-in account the marker names ("hearth"): the notice is only for it."""
+    try:
+        with open(path or OEM_MARK) as f:
+            return (json.load(f) or {}).get('user')
+    except (OSError, ValueError, AttributeError):
+        return None
 
 
 def picture_kind(data):

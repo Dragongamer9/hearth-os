@@ -137,7 +137,7 @@ fn draw_screen<R>(
     lock: Option<&LockView>,
 ) -> Result<(Size<i32, Physical>, Vec<u8>), String>
 where
-    R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<GlesRenderbuffer> + Bind<GlesRenderbuffer>,
+    R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<GlesRenderbuffer> + Bind<GlesRenderbuffer> + crate::render::GameFilter,
     R::TextureId: Clone + Send + 'static,
 {
     let size = output_size(output).ok_or("the screen has no mode")?;
@@ -156,7 +156,11 @@ where
     let mapping = renderer
         .copy_framebuffer(&fb, Rectangle::from_size(buf_size), Fourcc::Abgr8888)
         .map_err(|e| format!("reading it back failed: {e:?}"))?;
-    let flipped = mapping.flipped();
+    // Smithay's GLES renderer already draws offscreen targets upside down for GL (its projection flips Y), so
+    // glReadPixels hands back the rows top first even though the mapping says "flipped" (that's meant for window
+    // surfaces). Taking the flag at its word gave upside-down pictures (grim, wf-recorder): the rows are used as they
+    // come, and the frames go out without Y_INVERT. firehold-orientation.py checks it in CI, nested and headless.
+    let _ = mapping.flipped();
     let bytes = renderer
         .map_texture(&mapping)
         .map_err(|e| format!("reading it back failed: {e:?}"))?;
@@ -166,8 +170,7 @@ where
     }
     let mut out = vec![0u8; row * size.h as usize];
     for y in 0..size.h as usize {
-        let src = if flipped { size.h as usize - 1 - y } else { y };
-        out[y * row..(y + 1) * row].copy_from_slice(&bytes[src * row..(src + 1) * row]);
+        out[y * row..(y + 1) * row].copy_from_slice(&bytes[y * row..(y + 1) * row]);
     }
     Ok((size, out))
 }
@@ -227,7 +230,7 @@ pub fn run_captures<R>(
     lock: Option<&LockView>,
     now: Duration,
 ) where
-    R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<GlesRenderbuffer> + Bind<GlesRenderbuffer>,
+    R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<GlesRenderbuffer> + Bind<GlesRenderbuffer> + crate::render::GameFilter,
     R::TextureId: Clone + Send + 'static,
 {
     if !captures.wants(output) {

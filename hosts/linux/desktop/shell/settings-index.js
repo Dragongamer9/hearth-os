@@ -594,6 +594,16 @@ var ENTRIES = [
 "i": "clipboard"
 },
 {
+"t": "Selection history",
+"p": "clipboard",
+"i": "clipboard"
+},
+{
+"t": "Keep the clipboard and selection in step",
+"p": "clipboard",
+"i": "sync"
+},
+{
 "t": "Open clipboard history",
 "p": "clipboard",
 "d": "Super+V",
@@ -815,6 +825,12 @@ var ENTRIES = [
 "t": "Auto-brightness",
 "p": "display",
 "d": "The screen follows the light in the room",
+"i": "sun"
+},
+{
+"t": "How bright",
+"p": "display",
+"d": "Darker or brighter than Auto-brightness picks for the room",
 "i": "sun"
 },
 {
@@ -4091,7 +4107,7 @@ var ENTRIES = [
 "i": "globe"
 },
 {
-"t": "This PC's certificate",
+"t": "This PC's certificate (SHA-256)",
 "p": "remote-desktop",
 "i": "shield"
 },
@@ -4225,6 +4241,32 @@ var ENTRIES = [
 "p": "search",
 "d": "Once a day, from the European Central Bank, when you're online. Off: the built-in rates only (the answer says how old they are).",
 "i": "cloud"
+},
+{
+"t": "Alt+Space or Alt+F2 opens it at the top of the screen",
+"p": "search",
+"d": "Like KDE's KRunner: everything the app menus find, in the order below. Type ? in it to see what you can type. When Settings › Keyboard switches layouts with Alt+Space, Alt+F2 opens it.",
+"i": "search"
+},
+{
+"t": "Type on the desktop to search",
+"p": "search",
+"d": "With the desktop in front, typing opens the search bar with what you typed",
+"i": "kbd"
+},
+{
+"t": "Move up",
+"p": "search"
+},
+{
+"t": "Move down",
+"p": "search"
+},
+{
+"t": "Hearth's own order",
+"p": "search",
+"d": "Put the groups back in the order Hearth started with",
+"i": "restart"
 },
 {
 "t": "Use Server mode",
@@ -4612,6 +4654,11 @@ var ENTRIES = [
 "t": "Website",
 "p": "store",
 "i": "globe"
+},
+{
+"t": "Tell me when app updates are there",
+"p": "store",
+"i": "bell"
 },
 {
 "t": "Update all apps",
