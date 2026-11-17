@@ -2,7 +2,7 @@
 
 use std::{path::PathBuf, sync::OnceLock};
 
-pub const USAGE: &str = "usage: hearth-compositor [--winit | --tty-udev | --auto] [--socket NAME] [--config FILE] \
+pub const USAGE: &str = "usage: albireo [--winit | --tty-udev | --auto] [--socket NAME] [--config FILE] \
 [--labwc-rc FILE] [--size WxH] [--no-xwayland] [-- COMMAND ARGS...]";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -17,7 +17,7 @@ pub struct Options {
     pub backend: Backend,
     /// The Wayland socket's name in $XDG_RUNTIME_DIR (None: the first free wayland-N).
     pub socket: Option<String>,
-    /// The compositor's own settings (read only). None: $HEARTH_COMPOSITOR_CONFIG or ~/.config/hearth/compositor.json.
+    /// The compositor's own settings (read only). None: $ALBIREO_CONFIG or ~/.config/hearth/compositor.json.
     pub config: Option<PathBuf>,
     /// The labwc rc.xml Desktop Mode uses (keybinds, key repeat), read only.
     pub labwc_rc: Option<PathBuf>,
@@ -53,7 +53,7 @@ fn parse_size(s: &str) -> Option<(i32, i32)> {
 impl Options {
     pub fn parse<I: Iterator<Item = String>>(mut args: I) -> Result<Options, String> {
         let mut o = Options::default();
-        if let Some(s) = std::env::var("HEARTH_COMPOSITOR_SIZE").ok().and_then(|s| parse_size(&s)) {
+        if let Some(s) = std::env::var("ALBIREO_SIZE").ok().and_then(|s| parse_size(&s)) {
             o.size = s;
         }
         while let Some(a) = args.next() {

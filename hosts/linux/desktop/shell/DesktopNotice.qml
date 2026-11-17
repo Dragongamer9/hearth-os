@@ -1,7 +1,7 @@
 // Why Desktop Mode started the way it did, shown once a few seconds after Mantel starts (1.14): 1.13's KDE Plasma or
 // GNOME choice was retired (the owner, Nov 16: a choice that changes must tell the person), or KWin didn't start and
 // Mantel opened on labwc (nimbus-session's safe start; twice in a row: "Use KWin again" turns it back on), or (2.0 preview)
-// Hearth's own compositor didn't start and Mantel opened on KWin. The session leaves the
+// Albireo (Hearth's own compositor) didn't start and Mantel opened on KWin. The session leaves the
 // notice (nimbus-session's desk_notice); `hearth-your-desktop notice` hands it over once and marks it as shown, and
 // Settings › System › Your desktop keeps showing the last one. Controller: Up/Down and A; B closes it.
 import QtQuick
@@ -21,7 +21,7 @@ PanelWindow {
             ? [{ icon: "check", label: "Use KWin again", sub: "From the next time Desktop Mode starts", cmd: "kwin" },
                { icon: "close", label: "Stay on labwc", sub: "Settings › System › Your desktop changes it any time", cmd: "" }]
             : [{ icon: "check", label: "Got it", sub: notice.what === "kwin" ? "Mantel works the same on labwc"
-                    : notice.what === "hearth" ? "Mantel works the same on KWin" : "Mantel is your desktop", cmd: "" }])
+                    : notice.what === "albireo" ? "Mantel works the same on KWin" : "Mantel is your desktop", cmd: "" }])
         .concat([{ icon: "desktops", label: "Open Your desktop in Settings", sub: "Settings › System › Your desktop", cmd: "settings" }])
     function pick(i) {
         shown = false;

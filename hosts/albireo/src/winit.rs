@@ -102,7 +102,7 @@ pub fn run_winit() {
     let (w, h) = crate::options::get().size;
     let attributes = smithay::reexports::winit::window::Window::default_attributes()
         .with_inner_size(smithay::reexports::winit::dpi::PhysicalSize::new(w as u32, h as u32))
-        .with_title("Hearth compositor (preview)")
+        .with_title("Albireo (preview)")
         .with_visible(true);
     let (mut backend, mut winit) = match winit::init_from_attributes::<GlesRenderer>(attributes) {
         Ok(ret) => ret,

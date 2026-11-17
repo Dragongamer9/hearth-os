@@ -1,4 +1,4 @@
-//! Hearth's own Wayland compositor (docs/COMPOSITOR.md). Started from Smithay's Anvil (MIT; LICENSE-SMITHAY-ANVIL.txt):
+//! Hearth's own Wayland compositor (docs/ALBIREO.md). Started from Smithay's Anvil (MIT; LICENSE-SMITHAY-ANVIL.txt):
 //! its backends, shells, input and rendering, with Hearth's parts added: window frames in Mantel's colours
 //! (shell/ssd.rs, theme.rs), the taskbar protocol Mantel uses on labwc (foreign_toplevel.rs), Mantel's shortcuts
 //! from rc.xml (keybinds.rs), minimizing, snapping and the rest of the window management (wm.rs).

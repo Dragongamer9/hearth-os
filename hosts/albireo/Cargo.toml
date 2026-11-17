@@ -1,15 +1,15 @@
-# Hearth's own Wayland compositor (docs/COMPOSITOR.md): Mantel's window manager for 2.0, on Smithay.
+# Hearth's own Wayland compositor (docs/ALBIREO.md): Mantel's window manager for 2.0, on Smithay.
 # Started from Smithay's example compositor Anvil (MIT, LICENSE-SMITHAY-ANVIL.txt), pinned to the same Smithay release.
 # No version line: the owner picks every version number (Cargo reads a missing one as 0.0.0).
 [package]
-name = "hearth-compositor"
+name = "albireo"
 edition = "2021"
 description = "Hearth's own Wayland compositor (preview): Mantel's window manager, on Smithay"
 license = "GPL-3.0-or-later"
 publish = false
 
 [[bin]]
-name = "hearth-compositor"
+name = "albireo"
 path = "src/main.rs"
 
 [dependencies]
@@ -20,7 +20,7 @@ thiserror = "1"
 xcursor = { version = "0.3.3", optional = true }
 xkbcommon = "0.8.0"
 image = { version = "0.25.1", default-features = false, optional = true, features = ["png"] }
-smithay-drm-extras = { version = "=0.1.0", optional = true }
+smithay-drm-extras = { version = "=0.1.0", optional = true, default-features = false }
 profiling = { version = "1.0" }
 # Hearth's parts: the settings it reads (never writes), the titlebars' text, a clean end on SIGTERM.
 serde = { version = "1", features = ["derive"] }

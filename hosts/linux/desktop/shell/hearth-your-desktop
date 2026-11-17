@@ -4,11 +4,11 @@
   hearth-your-desktop status      JSON: the last notice (why Desktop Mode started the way it did), Mantel's window
                                   manager (picked, running now, KWin's failed starts) and what's here
   hearth-your-desktop notice      JSON: the notice Mantel hasn't shown yet ({} when there's none), marked as shown
-  hearth-your-desktop wm kwin|labwc|hearth
+  hearth-your-desktop wm kwin|labwc|albireo
                                   Mantel's window manager from the next start of Desktop Mode (session.conf's
                                   HEARTH_DESKTOP_WM, only that line, through hearth_settings_io). Picking KWin also
                                   turns it back on after it didn't start twice (nimbus-session's safe start).
-                                  hearth is 2.0's own compositor, a preview (docs/COMPOSITOR.md): turning it on keeps
+                                  albireo is Albireo, 2.0's own desktop compositor, a preview (docs/ALBIREO.md): turning it on keeps
                                   what was picked before in HEARTH_DESKTOP_WM_BEFORE, which turning it off goes back
                                   to (Settings shows it as a switch, off unless you turn it on).
 
@@ -41,8 +41,8 @@ SHOWN = NOTICE + '.shown'
 RETIRED_TOLD = os.path.join(DESK_STATE, 'desktop-retired-told')
 FAILS = os.path.join(DESK_STATE, 'desktop-fails')
 NAMES = {'kde': 'KDE Plasma', 'gnome': 'GNOME'}
-WMS = {'kwin': 'KWin', 'labwc': 'labwc', 'hearth': "Hearth's compositor"}
-HEARTH_COMP_PATHS = ('/usr/libexec/hearth/hearth-compositor', '/usr/local/lib/nimbus/hearth-compositor')
+WMS = {'kwin': 'KWin', 'labwc': 'labwc', 'albireo': 'Albireo'}
+ALBIREO_PATHS = ('/usr/libexec/hearth/albireo', '/usr/local/lib/nimbus/albireo')
 
 
 class Fail(Exception):
@@ -57,13 +57,13 @@ def texts(what, why):
                 'You had %s picked for Desktop Mode. Hearth 1.14 retired KDE Plasma and GNOME as desktops: Desktop '
                 'Mode is Mantel, which now runs on KWin, KDE\'s own window manager. Your apps, files and settings are '
                 'all still here.' % name)
-    if what == 'hearth':
+    if what == 'albireo':
         return {
-            'missing': ('Hearth\'s compositor isn\'t on this device yet', 'You turned on the Hearth compositor preview, '
+            'missing': ('Albireo isn\'t on this device yet', 'You turned on the Albireo preview, '
                         'but it isn\'t installed here, so Mantel opened on KWin as usual. Your choice stays saved.'),
-            'failed': ('Hearth\'s compositor didn\'t start', 'Mantel opened on KWin instead for this sign-in. The Hearth '
-                       'compositor is a preview; next time Hearth tries it again.'),
-            'twice': ('Hearth\'s compositor didn\'t start twice in a row', 'Mantel uses KWin until you turn the preview '
+            'failed': ('Albireo didn\'t start', 'Mantel opened on KWin instead for this sign-in. Albireo is a '
+                       'preview; next time Hearth tries it again.'),
+            'twice': ('Albireo didn\'t start twice in a row', 'Mantel uses KWin until you turn the preview '
                       'on again in Settings › System › Your desktop.'),
         }.get(why, ('', ''))
     if what == 'kwin':
@@ -130,9 +130,9 @@ def kwin_fails(name='kwin'):
     return 0
 
 
-def hearth_comp_here():
-    return bool(shutil.which(E('HEARTH_COMPOSITOR_BIN') or 'hearth-compositor')
-                or any(os.access(p, os.X_OK) for p in HEARTH_COMP_PATHS))
+def albireo_here():
+    return bool(shutil.which(E('ALBIREO_BIN') or 'albireo')
+                or any(os.access(p, os.X_OK) for p in ALBIREO_PATHS))
 
 
 def wm_now():
@@ -146,7 +146,7 @@ def wm_now():
                 return ''
     except OSError:
         return ''
-    for name, pidfile in (('hearth', 'hearth-comp.pid'), ('kwin', 'hearth-kwin.pid')):
+    for name, pidfile in (('albireo', 'albireo.pid'), ('kwin', 'hearth-kwin.pid')):
         try:
             with open(os.path.join(RUN, pidfile), encoding='utf-8') as f:
                 os.kill(int(f.read().strip()), 0)
@@ -160,14 +160,14 @@ def status():
     pending, seen = read_notices(NOTICE), read_notices(SHOWN)
     n, shown = (pending[0], False) if pending else ((seen[-1], True) if seen else (None, False))
     v = conf_value('HEARTH_DESKTOP_WM')
-    picked = v if v in ('labwc', 'hearth') else 'kwin'
+    picked = v if v in ('labwc', 'albireo') else 'kwin'
     before = conf_value('HEARTH_DESKTOP_WM_BEFORE')
     fails = kwin_fails()
-    hfails = kwin_fails('hearth')
+    hfails = kwin_fails('albireo')
     return {'notice': n, 'noticeShown': shown, 'notices': pending + seen, 'wm': picked, 'wmNow': wm_now(), 'kwinFails': fails,
             'kwinPaused': picked == 'kwin' and fails >= 2,
-            'hearthPreview': picked == 'hearth', 'wmBefore': before if before in ('kwin', 'labwc') else 'kwin',
-            'hearthHere': hearth_comp_here(), 'hearthFails': hfails, 'hearthPaused': picked == 'hearth' and hfails >= 2,
+            'albireoPreview': picked == 'albireo', 'wmBefore': before if before in ('kwin', 'labwc') else 'kwin',
+            'albireoHere': albireo_here(), 'albireoFails': hfails, 'albireoPaused': picked == 'albireo' and hfails >= 2,
             'kwinHere': bool(shutil.which('kwin_wayland')),
             'labwcHere': bool(shutil.which('labwc')),
             'safeGraphics': os.path.exists(E('HEARTH_SAFE_FLAG') or '/run/hearth/safe-graphics')}
@@ -189,17 +189,17 @@ def forget_fails(name):
 
 def cmd_wm(w):
     if w not in WMS:
-        raise Fail('kwin, labwc or hearth')
-    if w == 'hearth':
+        raise Fail('kwin, labwc or albireo')
+    if w == 'albireo':
         # The preview on: what was picked before is kept, for turning it off again.
         def change(t):
             cur = re.findall(r'''^[ \t]*(?:export[ \t]+)?HEARTH_DESKTOP_WM=["']?([a-z]*)''', t, re.M)
             cur = cur[-1] if cur else ''
             if cur in ('kwin', 'labwc'):
                 t = sio.conf_set_text(t, 'HEARTH_DESKTOP_WM_BEFORE', cur)
-            return sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', 'hearth')
+            return sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', 'albireo')
         sio.update_text(SESSION_CONF, change)
-        forget_fails('hearth')
+        forget_fails('albireo')
     else:
         sio.update_text(SESSION_CONF, lambda t: sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', w))
     if w == 'kwin':

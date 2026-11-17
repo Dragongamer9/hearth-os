@@ -1,6 +1,6 @@
-//! hearth-compositor: Hearth's own Wayland compositor (preview), Mantel's window manager for 2.0 (docs/COMPOSITOR.md).
+//! albireo: Hearth's own Wayland compositor (preview), Mantel's window manager for 2.0 (docs/ALBIREO.md).
 //!
-//!   hearth-compositor [--winit | --tty-udev | --auto] [--socket NAME] [--config FILE] [--labwc-rc FILE]
+//!   albireo [--winit | --tty-udev | --auto] [--socket NAME] [--config FILE] [--labwc-rc FILE]
 //!                     [--size WxH] [--no-xwayland] [-- COMMAND ARGS...]
 //!
 //! --winit runs it in a window (nested, for tests and development), --tty-udev on the screens and input devices
@@ -9,10 +9,10 @@
 //! WAYLAND_DISPLAY, and DISPLAY once XWayland is ready): Desktop Mode's autostart, as KWin and labwc are given theirs.
 //! It reads Hearth's settings and never writes them; it ends cleanly on SIGTERM, SIGINT or SIGHUP.
 
-use hearth_compositor::options::{Backend, Options};
+use albireo::options::{Backend, Options};
 
 fn main() {
-    let filter = std::env::var("HEARTH_COMPOSITOR_LOG")
+    let filter = std::env::var("ALBIREO_LOG")
         .ok()
         .or_else(|| std::env::var("RUST_LOG").ok())
         .unwrap_or_else(|| "info".into());
@@ -24,27 +24,27 @@ fn main() {
     let opts = match Options::parse(std::env::args().skip(1)) {
         Ok(o) => o,
         Err(e) => {
-            eprintln!("hearth-compositor: {e}");
-            eprintln!("{}", hearth_compositor::options::USAGE);
+            eprintln!("albireo: {e}");
+            eprintln!("{}", albireo::options::USAGE);
             std::process::exit(2);
         }
     };
     if opts.help {
-        println!("{}", hearth_compositor::options::USAGE);
+        println!("{}", albireo::options::USAGE);
         return;
     }
     let backend = opts.backend();
-    hearth_compositor::options::set(opts);
+    albireo::options::set(opts);
     match backend {
         #[cfg(feature = "winit")]
         Backend::Winit => {
-            tracing::info!("Hearth compositor: nested (winit)");
-            hearth_compositor::winit::run_winit();
+            tracing::info!("Albireo: nested (winit)");
+            albireo::winit::run_winit();
         }
         #[cfg(feature = "udev")]
         Backend::Udev => {
-            tracing::info!("Hearth compositor: on the screens (DRM/KMS, libinput)");
-            hearth_compositor::udev::run_udev();
+            tracing::info!("Albireo: on the screens (DRM/KMS, libinput)");
+            albireo::udev::run_udev();
         }
         #[allow(unreachable_patterns)]
         other => {
@@ -52,5 +52,5 @@ fn main() {
             std::process::exit(2);
         }
     }
-    tracing::info!("Hearth compositor ended");
+    tracing::info!("Albireo ended");
 }

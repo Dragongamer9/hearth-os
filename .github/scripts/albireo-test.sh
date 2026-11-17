@@ -1,21 +1,21 @@
 #!/bin/bash
-# Hearth's own compositor, nested (hearth-compositor.yml; docs/COMPOSITOR.md "How it's tested"): the compositor built by
+# Hearth's own compositor, nested (albireo.yml; docs/ALBIREO.md "How it's tested"): the compositor built by
 # the build job runs in a 1920x1080 window (its winit backend) on a virtual X screen (Xvfb, software GL), started by
 # nimbus-session itself with the preview turned on, so the real Desktop Mode comes up on it: the autostart, Mantel
 # (Quickshell) with its bar, dock and wallpaper (layer shell), and a test window (foot) on Mantel's taskbar (foreign
 # toplevel). Then the window is minimized and brought back through the taskbar protocol, dragged to the screen's left
 # edge with the pointer (snapping), and Settings › System › Your desktop shows the preview switch. A picture after each
 # step (Xvfb's screen), each checked not to be one flat colour; failures are ::error:: annotations and shots/FAILED.
-#   comp-1-empty   the compositor on its own: Mantel's background colour
-#   comp-2-mantel  Mantel's bar, dock and wallpaper on it
-#   comp-3-window  a window with Hearth's frame, listed on Mantel's taskbar
-#   comp-4-minimized  minimized through the taskbar protocol, then back
-#   comp-5-snapped the window dragged to the left edge: the left half
-#   comp-6-your-desktop  Settings › System › Your desktop with the preview switch
+#   albireo-1-empty   the compositor on its own: Mantel's background colour
+#   albireo-2-mantel  Mantel's bar, dock and wallpaper on it
+#   albireo-3-window  a window with Hearth's frame, listed on Mantel's taskbar
+#   albireo-4-minimized  minimized through the taskbar protocol, then back
+#   albireo-5-snapped the window dragged to the left edge: the left half
+#   albireo-6-your-desktop  Settings › System › Your desktop with the preview switch
 set -u +e +o pipefail
 mkdir -p shots
 SRC=$PWD
-BIN=${HEARTH_COMPOSITOR:-$SRC/hearth-compositor}
+BIN=${ALBIREO:-$SRC/albireo}
 chmod +x "$BIN"
 fail() { echo "::error title=$1::$2"; touch shots/FAILED; }
 note() { echo "::notice title=$1::$2"; }
@@ -25,8 +25,8 @@ dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 export QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 QT_FORCE_STDERR_LOGGING=1
 export NIMBUS_SHARE="$SRC/hosts/linux" NIMBUS_APP=/nonexistent
-export HEARTH_COMPOSITOR_LOG="info,smithay=warn"
-chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/hearth-compositor/autostart hosts/linux/desktop/theme/apply.sh
+export ALBIREO_LOG="info,smithay=warn"
+chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/albireo/autostart hosts/linux/desktop/theme/apply.sh
 mkdir -p "$HOME/.cache/hearth" "$HOME/.local/share/nimbus" "$HOME/.config/nimbus"
 printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""}]' > "$HOME/.cache/hearth/desktop-games.json"
 python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$HOME/.local/share/nimbus/desktop.json" '{}' >/dev/null
@@ -40,7 +40,7 @@ shot() {   # the whole virtual screen
   timeout 20 import -window root -display :99 "shots/$1.png" 2>>shots/shot-errors.txt || echo "no screenshot $1" >>shots/shot-errors.txt
   sleep 0.5
 }
-STATUS="$XDG_RUNTIME_DIR/hearth-compositor.json"
+STATUS="$XDG_RUNTIME_DIR/albireo.json"
 status() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print(eval(sys.argv[2], {"d": d}))' "$STATUS" "$1" 2>/dev/null; }
 wait_for() {   # $1 seconds, $2 a Python expression on the status file (d)
   for i in $(seq 1 $(( $1 * 2 ))); do [ "$(status "$2")" = True ] && return 0; sleep 0.5; done; return 1
@@ -57,7 +57,7 @@ else
   fail "compositor" "didn't open its socket: $(tail -c 900 shots/compositor-alone.log | tr '\n' '|')"
 fi
 sleep 3
-shot comp-1-empty
+shot albireo-1-empty
 if command -v wayland-info >/dev/null; then
   W timeout 10 wayland-info >shots/wayland-info.txt 2>&1
   for g in xdg_wm_base zwlr_layer_shell_v1 zwlr_foreign_toplevel_manager_v1 zxdg_decoration_manager_v1 wl_data_device_manager \
@@ -77,33 +77,33 @@ grep -q "ending cleanly" shots/compositor-alone.log || fail "SIGTERM" "didn't sa
 
 # ---- 2: Desktop Mode for real: nimbus-session with the preview on starts the compositor, which starts Mantel.
 CONF="$HOME/.config/nimbus/session.conf"
-printf 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=hearth\n' > "$CONF"
+printf 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=albireo\n' > "$CONF"
 LOG="$HOME/.local/share/nimbus/session.log"
 rm -f "$XDG_RUNTIME_DIR/nimbus-next" "$XDG_RUNTIME_DIR/hearth-shell-up"
-HEARTH_COMPOSITOR_BIN="$BIN" HEARTH_COMP_ARGS="--winit --size 1920x1080 --socket wayland-hearth" HEARTH_KWIN_BIN=no-kwin-here \
+ALBIREO_BIN="$BIN" ALBIREO_ARGS="--winit --size 1920x1080 --socket wayland-hearth" HEARTH_KWIN_BIN=no-kwin-here \
   sh hosts/linux/session/nimbus-session >shots/session-out.log 2>&1 &
 SPID=$!
 for i in $(seq 1 90); do [ -e "$XDG_RUNTIME_DIR/hearth-shell-up" ] && break; sleep 1; done
 if [ -e "$XDG_RUNTIME_DIR/hearth-shell-up" ]; then
-  note "Mantel" "says it's up on Hearth's compositor ($(grep -o "hearth-compositor: Mantel up after [0-9]*s" "$LOG" | tail -1))"
+  note "Mantel" "says it's up on Albireo ($(grep -o "albireo: Mantel up after [0-9]*s" "$LOG" | tail -1))"
 else
-  fail "Mantel" "didn't come up: $(tail -6 "$LOG" | tr '\n' '|' | cut -c1-400) compositor: $(tail -c 700 "$HOME/.local/share/nimbus/hearth-compositor.log" 2>/dev/null | tr '\n' '|')"
+  fail "Mantel" "didn't come up: $(tail -6 "$LOG" | tr '\n' '|' | cut -c1-400) compositor: $(tail -c 700 "$HOME/.local/share/nimbus/albireo.log" 2>/dev/null | tr '\n' '|')"
 fi
-grep -q "desktop mode: Mantel on Hearth's compositor (preview)" "$LOG" || fail "session" "nimbus-session didn't start Hearth's compositor: $(tail -6 "$LOG" | tr '\n' '|' | cut -c1-400)"
+grep -q "desktop mode: Mantel on Albireo (preview)" "$LOG" || fail "session" "nimbus-session didn't start Albireo: $(tail -6 "$LOG" | tr '\n' '|' | cut -c1-400)"
 # The bar and the dock (and the wallpaper): Mantel's layer surfaces, on the screen.
 wait_for 40 'len([l for o in d["outputs"] for l in o["layers"]]) >= 2' \
   || fail "layer shell" "Mantel's bar and dock aren't up: $(head -c 700 "$STATUS" 2>/dev/null)"
 note "layer shell" "$(status '"; ".join("%s %s %dx%d at %d,%d" % (l["namespace"], l["layer"], l["w"], l["h"], l["x"], l["y"]) for o in d["outputs"] for l in o["layers"])' | cut -c1-900)"
 note "work area" "$(status 'd["outputs"][0]["workArea"]') of $(status '[d["outputs"][0]["w"], d["outputs"][0]["h"]]') (Mantel's bar and dock keep their room)"
 sleep 8   # Mantel's cards and the wallpaper settle
-shot comp-2-mantel
+shot albireo-2-mantel
 grep -iE "layer.?shell.*(not|fail|unsupported)|ToplevelManager.*(not|fail)|foreign.?toplevel.*(not|unsupported)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null \
   | head -3 | while read -r l; do fail "Mantel" "$(echo "$l" | cut -c1-300)"; done
 [ "$(status 'd["taskbars"] >= 1')" = True ] && note "foreign toplevel" "Mantel's taskbar is listening ($(status 'd["taskbars"]') listener(s))" \
   || fail "foreign toplevel" "Mantel's taskbar (Quickshell's ToplevelManager) never asked for the windows"
 
 # ---- 3: a window: Hearth's frame on it, and on Mantel's taskbar.
-W foot --app-id=hearth-test-window --title="Hearth compositor test" sh -c 'echo "A window on Hearth'"'"'s compositor"; sleep 600' >shots/foot.log 2>&1 &
+W foot --app-id=hearth-test-window --title="Albireo test" sh -c 'echo "A window on Hearth'"'"'s compositor"; sleep 600' >shots/foot.log 2>&1 &
 FPID=$!
 wait_for 30 'any(w["appId"] == "hearth-test-window" for w in d["windows"])' \
   || fail "window" "the test window never showed up: $(head -c 500 "$STATUS") foot: $(tail -c 300 shots/foot.log | tr '\n' '|')"
@@ -117,7 +117,7 @@ if command -v wlrctl >/dev/null; then
     || fail "foreign toplevel" "wlrctl doesn't list the window: $(tr '\n' '|' < shots/toplevels.txt | cut -c1-300)"
 fi
 sleep 3
-shot comp-3-window
+shot albireo-3-window
 
 # ---- 4: minimized and back, as Mantel's taskbar does it (foreign toplevel requests).
 if command -v wlrctl >/dev/null; then
@@ -125,13 +125,13 @@ if command -v wlrctl >/dev/null; then
   wait_for 10 'any(w["appId"] == "hearth-test-window" and w["minimized"] for w in d["windows"])' \
     || fail "minimize" "the taskbar's minimize didn't minimize it"
   sleep 2
-  shot comp-4-minimized
+  shot albireo-4-minimized
   W timeout 10 wlrctl toplevel focus app_id:hearth-test-window
   wait_for 10 'any(w["appId"] == "hearth-test-window" and not w["minimized"] and w["activated"] for w in d["windows"])' \
     || fail "minimize" "activating it from the taskbar didn't bring it back"
 else
   note "minimize" "no wlrctl here: skipped"
-  shot comp-4-minimized
+  shot albireo-4-minimized
 fi
 
 # ---- 5: dragged by its title bar to the left edge: the left half of the work area.
@@ -153,34 +153,34 @@ else
   note "snapping" "no xdotool here: skipped"
 fi
 sleep 2
-shot comp-5-snapped
+shot albireo-5-snapped
 
 # ---- 6: Settings › System › Your desktop, with the preview switch.
 WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call settings page your-desktop >/dev/null 2>&1 || fail "settings" "Mantel's ipc didn't answer"
 sleep 5
-shot comp-6-your-desktop
+shot albireo-6-your-desktop
 python3 hosts/linux/desktop/shell/hearth-your-desktop status > shots/status.json
-grep -q '"wmNow": "hearth"' shots/status.json || fail "Your desktop" "doesn't say Mantel is on Hearth's compositor: $(head -c 400 shots/status.json)"
-grep -q '"hearthPreview": true' shots/status.json || fail "Your desktop" "doesn't show the preview as on"
+grep -q '"wmNow": "albireo"' shots/status.json || fail "Your desktop" "doesn't say Mantel is on Albireo: $(head -c 400 shots/status.json)"
+grep -q '"albireoPreview": true' shots/status.json || fail "Your desktop" "doesn't show the preview as on"
 
 # ---- The end: Desktop Mode ends as a switch does (nimbus-mode), the compositor ends cleanly.
 kill "$FPID" 2>/dev/null
 echo logout > "$XDG_RUNTIME_DIR/nimbus-next"
-CP=$(cat "$XDG_RUNTIME_DIR/hearth-comp.pid" 2>/dev/null)
-HEARTH_DESKTOP_PID=$(pgrep -x hearth-composit | head -1) HEARTH_WM=hearth sh hosts/linux/session/nimbus-mode logout
+CP=$(cat "$XDG_RUNTIME_DIR/albireo.pid" 2>/dev/null)
+HEARTH_DESKTOP_PID=$(pgrep -x albireo | head -1) HEARTH_WM=albireo sh hosts/linux/session/nimbus-mode logout
 for i in $(seq 1 30); do kill -0 "$SPID" 2>/dev/null || break; sleep 0.5; done
 kill -0 "$SPID" 2>/dev/null && { fail "logout" "the session didn't end after nimbus-mode logout"; kill -KILL "$SPID"; }
-grep -q "hearth-compositor ended (code 0)" "$LOG" && note "logout" "the compositor ended cleanly" \
-  || fail "logout" "the compositor didn't end cleanly: $(grep hearth-compositor "$LOG" | tail -3 | tr '\n' '|')"
-pkill -TERM quickshell; pkill -KILL -x hearth-composit; sleep 1
+grep -q "albireo ended (code 0)" "$LOG" && note "logout" "the compositor ended cleanly" \
+  || fail "logout" "the compositor didn't end cleanly: $(grep albireo "$LOG" | tail -3 | tr '\n' '|')"
+pkill -TERM quickshell; pkill -KILL -x albireo; sleep 1
 
-cp "$LOG" shots/session.log 2>/dev/null; cp "$HOME/.local/share/nimbus/hearth-compositor.log" shots/hearth-compositor.log 2>/dev/null
+cp "$LOG" shots/session.log 2>/dev/null; cp "$HOME/.local/share/nimbus/albireo.log" shots/albireo.log 2>/dev/null
 cp "$XDG_RUNTIME_DIR/nimbus-shell.log" shots/shell.log 2>/dev/null
-grep -iE "panic|thread .* panicked" shots/hearth-compositor.log shots/compositor-alone.log 2>/dev/null | head -3 | while read -r l; do fail "panic" "$(echo "$l" | cut -c1-400)"; done
-grep -E "WARN|ERROR" shots/hearth-compositor.log 2>/dev/null | sort | uniq -c | sort -rn | head -6 | cut -c1-300 | while read -r l; do note "compositor log" "$l"; done
-grep -E 'desktop|hearth-compositor' "$LOG" | tail -8 | cut -c1-200 | while read -r l; do note "session" "$l"; done
+grep -iE "panic|thread .* panicked" shots/albireo.log shots/compositor-alone.log 2>/dev/null | head -3 | while read -r l; do fail "panic" "$(echo "$l" | cut -c1-400)"; done
+grep -E "WARN|ERROR" shots/albireo.log 2>/dev/null | sort | uniq -c | sort -rn | head -6 | cut -c1-300 | while read -r l; do note "compositor log" "$l"; done
+grep -E 'desktop|albireo' "$LOG" | tail -8 | cut -c1-200 | while read -r l; do note "session" "$l"; done
 ls -la shots
-for s in comp-1-empty comp-2-mantel comp-3-window comp-4-minimized comp-5-snapped comp-6-your-desktop; do
+for s in albireo-1-empty albireo-2-mantel albireo-3-window albireo-4-minimized albireo-5-snapped albireo-6-your-desktop; do
   [ -s "shots/$s.png" ] || fail "screenshot" "$s is missing ($(tail -2 shots/shot-errors.txt 2>/dev/null | tr '\n' '|'))"
 done
 python3 - <<'PY'
@@ -194,7 +194,7 @@ for n in sorted(os.listdir('shots')):
         print('::notice title=picture %s::%dx%d, brightness %.0f, spread %.1f, %d colours' % (n, im.width, im.height, st.mean[0], st.stddev[0], colours))
         # The first picture is the background on its own: one colour on purpose, and it must be Mantel's (Hearth
         # dark's bg, #0f0b09: the compositor drew it; black would be nothing drawn). Every other one must show something.
-        if n.startswith('comp-1-'):
+        if n.startswith('albireo-1-'):
             px = im.getpixel((im.width // 2, im.height // 2))
             if max(abs(a - b) for a, b in zip(px, (15, 11, 9))) > 3:
                 print('::error title=screenshot::%s: the middle is %s, not Mantel\'s background #0f0b09' % (n, px))
