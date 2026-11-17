@@ -56,7 +56,7 @@ PanelWindow {
     property bool remapping: false
     // Off screen for a moment (not within one frame, or the compositor wouldn't see it go), then back.
     Timer { id: remapTimer; interval: 150; onTriggered: dock.remapping = false }
-    visible: settingsReady && !remapping
+    visible: settingsReady && !remapping && !SettingsNav.fireholdDesk   // Firehold's Desk has its own dock (FireholdDesk.qml)
     property int lastReserved: -1
     onSettingsReadyChanged: refit()
     function refit() {

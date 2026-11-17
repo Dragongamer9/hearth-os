@@ -191,8 +191,25 @@ class Guards(unittest.TestCase):
         row = code((SHELL / 'FireholdAboutRow.qml').read_text())
         self.assertIn('visible: unlocked', row)
 
+    def test_the_desk_only_hides_mantels_bar_and_dock_while_it_is_up(self):
+        for name in ('Islands.qml', 'Dock.qml'):
+            self.assertIn('visible: settingsReady && !remapping && !SettingsNav.fireholdDesk', (SHELL / name).read_text(), name)
+        d = code((SHELL / 'FireholdDesk.qml').read_text())
+        self.assertIn('Component.onCompleted: SettingsNav.fireholdDesk = true', d)
+        self.assertIn('Component.onDestruction: SettingsNav.fireholdDesk = false', d)
+        f = code((SHELL / 'Firehold.qml').read_text())
+        self.assertIn('active: fhs.unlocked && fhs.started && fhs.posture === "desk"', f)
+        self.assertIn('readonly property bool picturesWanted: unlocked && WinList.kwin && couchUp && page === "switcher"', f)
+
+    def test_window_pictures_only_on_kwin_and_only_real_ids(self):
+        h = load(SHELL / 'hearth-firehold', 'hearth_firehold2')
+        os.environ.pop('HEARTH_WM', None)
+        self.assertEqual(h.pictures('/nonexistent', ['{0b0f3c2e-1111-2222-3333-444455556666}']), {})
+        self.assertTrue(h.WIN_ID.match('{0b0f3c2e-1111-2222-3333-444455556666}'))
+        self.assertFalse(h.WIN_ID.match('../../etc/passwd'))
+
     def test_settings_only_through_settings_writer_and_never_on_open(self):
-        for name in ('Firehold.qml', 'FireholdCouch.qml', 'FireholdGuide.qml', 'FireholdSettings.qml', 'FireholdAboutRow.qml', 'FireholdNotice.qml', 'FireholdPerf.qml'):
+        for name in ('Firehold.qml', 'FireholdCouch.qml', 'FireholdGuide.qml', 'FireholdSettings.qml', 'FireholdAboutRow.qml', 'FireholdNotice.qml', 'FireholdPerf.qml', 'FireholdDesk.qml', 'FireholdGameFrame.qml'):
             src = code((SHELL / name).read_text())
             self.assertNotIn('setText(', src, name)
             self.assertNotRegex(src, r'firehold\.json.*(>|tee|cp )', name)

@@ -675,6 +675,11 @@ PanelWindow {
                     width: parent.width; height: 300 * cw.k; radius: 18 * cw.k
                     color: sw.game ? "transparent" : F.WINDOW_CARDS[sw.nth % F.WINDOW_CARDS.length]
                     border.width: sw.ring ? 3 * cw.k : 1; border.color: sw.ring ? cw.pal.accent : cw.pal.line
+                    // The window's picture (KWin takes one every 3 seconds while this is open: Firehold.qml pictures).
+                    FhArt {
+                        anchors.fill: parent; anchors.margins: sw.ring ? 3 * cw.k : 1; radius: 16 * cw.k
+                        source: cw.fh.pictureOf(sw.modelData.win); live: true
+                    }
                     Rectangle {
                         anchors { top: parent.top; right: parent.right; margins: 14 * cw.k }
                         width: tg2.implicitWidth + 24 * cw.k; height: tg2.implicitHeight + 10 * cw.k; radius: 10 * cw.k; color: Qt.rgba(15 / 255, 11 / 255, 9 / 255, 0.65)
