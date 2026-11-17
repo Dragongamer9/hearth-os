@@ -82,9 +82,11 @@ SetPage {
         console.info("Phone link: Settings › Phone at '" + SettingsNav.pageAnchor + "'");
         if (!["notifications", "commands", "pair"].includes(SettingsNav.pageAnchor)) return;
         anchor = SettingsNav.pageAnchor;
-        SettingsNav.pageAnchor = "";
+        anchorClear.restart();
         if (st) goAnchor();
     }
+    // Settings may load the page a second time as it opens: the part stays asked for a moment, so that one gets it too.
+    Timer { id: anchorClear; interval: 2500; onTriggered: if (["notifications", "commands", "pair"].includes(SettingsNav.pageAnchor)) SettingsNav.pageAnchor = "" }
     // After Settings has put the focus on the page's first card (it does once the page is in), not before.
     function goAnchor() { if (anchor !== "" && on) anchorFocus.restart(); }
     Timer {
