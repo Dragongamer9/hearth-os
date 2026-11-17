@@ -206,7 +206,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 
 - [x] Search apps, Settings pages and single settings, games — `Launcher.qml`, `menu-search.js`, `settings-index.js`
 - [x] Run box (Super+R) — `WinTools.qml`, `RunView.qml`, `run-map.js`
-- [ ] KRunner-style search bar (Alt+Space) with plugins in an order you choose, "?" help (L)
+- [x] KRunner-style search bar (Alt+Space) with plugins in an order you choose, "?" help — SearchBar.qml "target: \"searchbar\"", search-bar.js "function arrange" / "function helpRows", SetSearch.qml "Search bar (Alt+Space)" (pluginOrder in hearth-search), Pad.qml "deskY" (Y on the desktop, D-pad / A / B); Alt+Space vs the layout switch: hearth-system "rc_with_search_key" (labwc gets a None binding, Alt+F2 still opens it), SearchBar.qml "altSpaceIsLayout", SetKeyboard.qml note; test_search_bar.py; searchbar.yml pictures "sb-01-empty" … "sb-12-keyboard-layout-switch" (needs testing on a device)
 - [x] Plugin: calculator, unit conversion, currency — search/calc.js, search/units.js, search/currency.js (needs testing on a device)
 - [x] Plugin: files and folders by name and content — hearth-search (SQLite FTS5 index) (needs testing on a device)
 - [ ] Plugin: recent files and places, bookmarks, browser history (M)
@@ -217,7 +217,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [ ] Plugin: spell check, dictionary, special characters, emoji, colours (S each)
 - [ ] Plugin: power and session, media control, store results (S)
 - [ ] Plugin: Hearth contacts, calendar events, notes (M)
-- [ ] Type on the desktop to search (S)
+- [x] Type on the desktop to search — Desktop.qml "SettingsNav.searchBar.openWith(event.text)", Settings › Search "Type on the desktop to search" (typeToSearch); test_search_bar.py "test_type_on_the_desktop"; searchbar.yml picture "sb-10-typed-on-desktop" (needs testing on a device)
 
 ### Notifications
 
@@ -286,13 +286,13 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 
 ### Activities
 
-- [ ] Activities — partly: Activities.qml, ActivitySwitcher.qml, ActivityChip.qml, activities.js (windows, wallpaper, widgets and pinned apps per activity, switcher in the bar, Quick Access and the controller, Meta+Ctrl+Q / Meta+Ctrl+Shift+Q, Move to activity in the window menus); test_desktop_widgets.py, widgets-test.yml. Left: recent files and privacy per activity; Super+Q is still Close, not the switcher (shortcuts.json "close" Meta+Q); the ROADMAP line is unticked (M)
+- [x] Activities — Activities.qml, ActivitySwitcher.qml, ActivityChip.qml, activities.js (windows, wallpaper, widgets and pinned apps per activity, switcher in the bar, Quick Access and the controller, Meta+Ctrl+Q / Meta+Ctrl+Shift+Q, Move to activity in the window menus); test_desktop_widgets.py, widgets-test.yml. Recent files and privacy per activity (1.14 wave 3): each activity its own list, shared, or "Don't remember" — activities.js RECENT, Activities.setRecent, ActivitySwitcher.qml "Recent files" row, SetRecentFiles.qml "Activities", hearth_files_extras.py activity_mark / activity_tidy / recent_visible; test_store_extras.py "RecentPerActivity", activities-store.yml "Recent on Work" notice, "as-5-recent-activities", "as-6-activity-recent", "as-9-private-dont-remember" (needs testing on a device). Super+Q stays Close (the owner's decision; shortcuts.json "close" Meta+Q) (M)
 
 ### App store and updates
 
 - [x] App store (Flathub, Debian packages) — Bazaar + `SetApps.qml`, `DebInstaller.qml`
 - [x] System updates with the previous version kept — `SetUpdates.qml`, bootc
-- [ ] Discover's extras (update notifications, reviews, permission changes, verified label, links, fonts, drivers) — Hearth's own App store is on feature/search-store (merged) (L)
+- [ ] Discover's extras — partly: reviews and ratings, the verified label and links (SetStore.qml, on feature/search-store, merged); update notifications with Update all, off-able — StoreWatch.qml, hearth_store_extras.py check / prefs-set: "as-1-update-notice", "as-2-store-updates"; permission changes shown and asked before updating (Update all leaves them out) — hearth_store_extras.py new_perms / update_apps, SetStore.qml "Update and allow": "as-3-new-permissions"; drivers (Nvidia, firmware-*, microcode: read-only list, install with a password through hearth-admin driver-install → hearth-unlock --install-package) — StoreDrivers.qml, hearth_store_extras.py drivers: "as-4-drivers"; test_store_extras.py, test_hearth_unlock.py "test_driver_install_only_takes_drivers", polkit-rules.test.js, activities-store.yml (needs testing on a device). Left: fonts (L)
 - [ ] App permissions page (Flatpak overrides) (M)
 - [ ] Firmware updates (fwupd) with a notification — partly: SetFirmware.qml, hearth-firmware, hearth-sysset-admin (parts install after a password; system firmware shown, never installed: red flag 2, docs/SYSTEM-SETTINGS.md); test_system_settings_114.py "test_one_rule_for_system_firmware". Left: a notification when an update is there, the history (S)
 - [x] Firmware security (Secure Boot, TPM, HSI level) — SetFirmware.qml, hearth-firmware; test_system_settings_114.py "test_security_level", "test_secure_boot_words" (needs testing on a device)

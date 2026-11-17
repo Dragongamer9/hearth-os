@@ -1,11 +1,13 @@
 // Hearth Settings › Search (like KDE's File Search and KRunner settings): the file index (hearth-search, like Baloo)
 // on or off, which folders it covers and leaves out, whether it reads the text inside documents, on battery or not,
 // rebuild; and which of the search plugins the app menus use (calculator, units, currency, web shortcuts, commands,
-// emoji, recent documents, open windows), with currency rates online or not. Saved through hearth-search prefs-set
+// emoji, recent documents, open windows), with currency rates online or not; and the search bar (Alt+Space, like
+// KRunner: SearchBar.qml): the order of its groups and typing on the desktop to search. Saved through hearth-search prefs-set
 // (hearth_settings_io: only what you change, merge-on-write, .bak); nothing is written when the page opens.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import "search-bar.js" as SB
 
 SetPage {
     id: page
@@ -146,6 +148,69 @@ SetPage {
             sub: "Once a day, from the European Central Bank, when you're online. Off: the built-in rates only (the answer says how old they are)."
             checked: !!page.pr && page.pr.currencyOnline
             onToggled: v => page.set({ currencyOnline: v })
+        }
+    }
+
+    // ---- the search bar (SearchBar.qml): its groups in your order (pluginOrder), typing on the desktop
+    property int barPicked: -1
+    readonly property var barOrder: SB.order(page.pr ? page.pr.pluginOrder : [], page.st ? page.st.plugins : [])
+    function barName(p) { return page.pluginNames[p] ? page.pluginNames[p][0] : SB.name(p); }
+    function barMove(i, d) {
+        const p = barOrder[i], l = SB.move(barOrder, p, d);
+        if (l.indexOf(p) === i) return;
+        barPicked = l.indexOf(p);
+        page.set({ pluginOrder: l }, barName(p) + (d < 0 ? " moved up." : " moved down."));
+    }
+    // "search:bar": Settings opened at the search bar's part (once it's drawn).
+    Timer {
+        id: toBar
+        interval: 600
+        running: SettingsNav.pageAnchor === "bar" && !!page.st
+        onTriggered: { SettingsNav.pageAnchor = ""; page.contentY = Math.max(0, Math.min(barCard.mapToItem(page.contentItem, 0, 0).y - 12, page.contentHeight - page.height)); }
+    }
+    SetCardGroup {
+        id: barCard
+        title: "Search bar (Alt+Space)"
+        SetRow {
+            interactive: false; icon: "search"; chevron: false; title: "Alt+Space or Alt+F2 opens it at the top of the screen"
+            sub: "Like KDE's KRunner: everything the app menus find, in the order below. Type ? in it to see what you can type. When Settings › Keyboard switches layouts with Alt+Space, Alt+F2 opens it."
+        }
+        SetSwitch {
+            icon: "kbd"; title: "Type on the desktop to search"
+            sub: "With the desktop in front, typing opens the search bar with what you typed"
+            checked: !page.pr || page.pr.typeToSearch !== false
+            onToggled: v => page.set({ typeToSearch: v })
+        }
+        Repeater {
+            model: page.barOrder
+            delegate: ColumnLayout {
+                id: ord
+                required property var modelData
+                required property int index
+                Layout.fillWidth: true
+                spacing: 6
+                SetRow {
+                    icon: SB.icon(ord.modelData)
+                    title: (ord.index + 1) + ". " + page.barName(ord.modelData)
+                    sub: page.pr && (page.pr.pluginsOff || {})[ord.modelData] ? "Off (above)" : ""
+                    value: page.barPicked === ord.index ? "" : "Move"
+                    onActivated: page.barPicked = page.barPicked === ord.index ? -1 : ord.index
+                }
+                RowLayout {
+                    visible: page.barPicked === ord.index
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 52
+                    spacing: 8
+                    SetRow { visible: ord.index > 0; title: "Move up"; chevron: false; onActivated: page.barMove(ord.index, -1) }
+                    SetRow { visible: ord.index < page.barOrder.length - 1; title: "Move down"; chevron: false; onActivated: page.barMove(ord.index, 1) }
+                }
+            }
+        }
+        SetRow {
+            visible: !!page.pr && (page.pr.pluginOrder || []).length > 0
+            icon: "restart"; chevron: false; title: "Hearth's own order"
+            sub: "Put the groups back in the order Hearth started with"
+            onActivated: { page.barPicked = -1; page.set({ pluginOrder: null }, "Back in Hearth's order."); }
         }
     }
 
