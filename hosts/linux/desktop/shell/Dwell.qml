@@ -44,6 +44,8 @@ Scope {
     Process {
         id: proc
         command: ["python3", root.helper, "serve"]
+        // Kept open: the helper ends when it closes (Mantel gone), so it can never click on without its ring.
+        stdinEnabled: true
         stdout: SplitParser { onRead: line => root.handle(line) }
         stderr: SplitParser { onRead: line => console.warn("hearth-dwell:", line) }
         onExited: code => {

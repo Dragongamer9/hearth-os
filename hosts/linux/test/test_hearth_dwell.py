@@ -264,6 +264,7 @@ class Page(unittest.TestCase):
         self.assertIn('mask: Region {}', d)
         self.assertIn('WlrKeyboardFocus.None', d)
         self.assertIn('"release"', d)
+        self.assertIn('stdinEnabled: true', d)
         self.assertTrue(os.access(SHELL / 'hearth-dwell', os.X_OK))
 
 
