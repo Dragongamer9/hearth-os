@@ -54,7 +54,15 @@ jobs:
         run: |
           mkdir -p shots
           exec > >(tee shots/step.log) 2>&1
-          set -x
+          set +e -x
+          # Logs can't be downloaded here: what went wrong goes on the run page as notices.
+          report() {
+            for f in shots/greeter.log shots/greetd.log; do
+              [ -s "$f" ] && echo "::notice title=LOG $f::$(tail -c 2500 "$f" | tr '\n' '|')"
+            done
+            echo "::notice title=LOG step::$(grep -v '^+' shots/step.log | tail -c 2500 | tr '\n' '|')"
+          }
+          trap report EXIT
           export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
           mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
           # The greeter as the image has it: its folder plus Mantel's on-screen keyboard (build.sh copies the same files).
@@ -64,9 +72,7 @@ jobs:
           # Made-up accounts (alex with a picture), sessions as the image installs them, two keyboard layouts.
           F=/tmp/fixture; mkdir -p $F/icons $F/sessions
           printf 'root:x:0:0:root:/root:/bin/bash\n_greetd:x:990:990::/var/lib/greetd:/usr/sbin/nologin\nalex:x:1000:1000:Alex Fire,,,:/home/alex:/bin/bash\nsam:x:1001:1001:Sam Ash:/home/sam:/bin/bash\njordan:x:1002:1002:Jordan:/home/jordan:/bin/bash\n' > $F/passwd
-          magick -size 256x256 radial-gradient:'#ffb36b'-'#7a2d0c' -fill '#2a1206' -font DejaVu-Sans -pointsize 120 -gravity center -annotate 0 'A' $F/icons/alex 2>/dev/null \
-            || convert -size 256x256 radial-gradient:'#ffb36b'-'#7a2d0c' $F/icons/alex
-          file $F/icons/alex || true
+          magick -size 256x256 radial-gradient:'#ffb36b'-'#7a2d0c' png:$F/icons/alex || echo "no picture for alex (ImageMagick)"
           for f in nimbus.desktop hearth-classic.desktop hearth-kde.desktop hearth-gnome.desktop; do
             sed 's#/usr/local/bin/nimbus-session#/bin/sh#g' hosts/linux/session/$f > $F/sessions/$f
           done
