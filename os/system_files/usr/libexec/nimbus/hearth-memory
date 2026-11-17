@@ -56,7 +56,13 @@ KEEP_FREE_ON_C = 20 * GIB
 SWAPFILE_MAX_GB = 64
 ZRAM_PRIO, SWAPFILE_PRIO = 100, 10
 ALGOS = ['zstd', 'lz4', 'lz4hc', 'deflate', 'lzo-rle', 'lzo', '842']
-KEEP_CHOICES = ['off', '2gb', '25%', '50%', 'custom']
+KEEP_CHOICES = ['auto', 'off', '2gb', '25%', '50%', 'custom']
+# 1.14 (the owner asked for the best setting for any PC, Nov 16; his 7.6 GB laptop lagged keeping 2 GB free): Auto is
+# what Pop!_OS and the common zram tuning use, a share of memory instead of a fixed amount: watermark_scale_factor 125
+# (it starts freeing about 1.25 % above the minimum and stops at about 2.5 %: ~200 MB on 8 GB, ~800 MB on 32 GB), with
+# swappiness 180, page-cluster 0 and watermark_boost_factor 0 for zram.
+AUTO_FACTOR = 125
+AUTO_SWAPPINESS = 180
 DEFAULT_NEVER = ['desktop', 'steam', 'game', 'aicc']
 NEVER_LABEL = {'desktop': 'Desktop', 'steam': 'Steam', 'game': "The game you're playing", 'aicc': 'AI Command Center'}
 NEVER_COMMS = {
@@ -229,13 +235,13 @@ def free_on(path):
 
 # ------------------------------------------------------------------ what's recommended, and the limits
 def recommended(mem):
-    """For this PC (mem in bytes): zram first, sized by memory; 2 GB kept free; the guard gentle."""
+    """For this PC (mem in bytes): zram first, sized by memory; Auto kept free (1.14); the guard gentle."""
     g = mem / GIB
     mult = 1.5 if g <= 8.5 else 1.0 if g <= 16.5 else 0.5
     return {'zram': {'on': True, 'gb': max(1, int(round(g * mult))), 'algo': 'zstd'},
             'swapfile': {'everyday': True},
-            'keep': {'mode': '2gb', 'mb': 2048},
-            'swappiness': 200,
+            'keep': {'mode': 'auto'},
+            'swappiness': AUTO_SWAPPINESS,
             'guard': {'level': 'gentle', 'never': list(DEFAULT_NEVER), 'extra': [], 'checkpoint': []}}
 
 
@@ -248,9 +254,11 @@ def limits(mem, var_free):
 def watermark_for(keep, mem):
     """vm.watermark_scale_factor for 'keep this much free': the high watermark sits ~2×factor/10000 of memory above
     min, where kswapd works until it's back above high. Off = the kernel's 10."""
-    mode = (keep or {}).get('mode', '2gb')
+    mode = (keep or {}).get('mode', 'auto')
     if mode == 'off':
         return 10
+    if mode == 'auto':
+        return AUTO_FACTOR
     if mode == 'custom' and isinstance(keep.get('factor'), int):
         return max(10, min(3000, keep['factor']))
     if mode == '25%':
@@ -268,6 +276,8 @@ def keep_from_factor(factor, mem):
     """The Keep memory free choice that a watermark_scale_factor stands for (your test file's 2300 = 50%)."""
     if factor is None or factor <= 10:
         return {'mode': 'off'}
+    if abs(factor - AUTO_FACTOR) <= 10:
+        return {'mode': 'auto'}
     for mode in ('2gb', '25%', '50%'):
         if abs(watermark_for({'mode': mode}, mem) - factor) <= max(25, factor * 0.1):
             return {'mode': mode, 'factor': factor}
@@ -278,7 +288,7 @@ def wanted_vm(s, mem, zram_on):
     keep = s.get('keep') or {}
     # A factor you had (your test file's 2300) is kept exactly; otherwise it's worked out from the choice.
     factor = keep.get('factor') if isinstance(keep.get('factor'), int) and keep.get('mode') != 'off' else None
-    out = {'swappiness': int(s.get('swappiness', 200 if zram_on else 100)),
+    out = {'swappiness': int(s.get('swappiness', AUTO_SWAPPINESS if zram_on else 100)),
            'watermark_scale_factor': max(10, min(3000, factor)) if factor else watermark_for(keep, mem),
            'page-cluster': 0 if zram_on else 3,
            'watermark_boost_factor': 0,

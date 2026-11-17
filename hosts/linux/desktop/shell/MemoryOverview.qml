@@ -48,8 +48,8 @@ ColumnLayout {
     Timer { interval: 30000; repeat: true; running: mo.visible; triggeredOnStart: true; onTriggered: if (!statusProc.running) statusProc.running = true }
     readonly property var set: st && st.settings ? st.settings : null
     function keepLabel(k) {
-        const mode = k && k.mode ? k.mode : "2gb";
-        return mode === "off" ? "Off" : mode === "2gb" ? "2 GB" : mode === "50%" ? "Half (50%)" : mode === "25%" ? "A quarter (25%)" : mode === "custom" ? "Custom" : mode;
+        const mode = k && k.mode ? k.mode : "auto";
+        return mode === "auto" ? "Auto" : mode === "off" ? "Off" : mode === "2gb" ? "2 GB" : mode === "50%" ? "Half (50%)" : mode === "25%" ? "A quarter (25%)" : mode === "custom" ? "Custom" : mode;
     }
 
     component Lbl: Text { color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
