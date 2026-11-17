@@ -17,8 +17,8 @@ var BUS = "org.hearth.Windows", OBJ = "/org/hearth/Windows", IFACE = "org.hearth
 var order = [];       // the windows in the order they opened (the taskbar's order, as labwc gives it)
 var hooked = {};      // id -> true once its signals are connected
 var maxMode = {};     // id -> KWin's maximize mode from maximizedAboutToChange (0 none, 1 vertical, 2 horizontal, 3 both)
-var ruled = {};
-var placeSeen = {};    // id -> the zone and screen last sent (frameGeometryChanged)       // id -> the rule that set keep-above, so it can be taken off again
+var ruled = {};       // id -> the rule that set keep-above, so it can be taken off again
+var placeSeen = {};   // id -> the zone and screen last sent (frameGeometryChanged)
 var lastSent = "";
 
 function idOf(w) { return String(w.internalId); }
@@ -50,6 +50,16 @@ function isMax(w) {
     return Math.abs(g.x - a.x) < 2 && Math.abs(g.y - a.y) < 2 && Math.abs(g.width - a.width) < 2 && Math.abs(g.height - a.height) < 2;
 }
 
+// Whether KWin draws a frame round the window: its frame is taller than the app's own surface (noBorder when this
+// KWin doesn't say where the app's surface is).
+function framed(w) {
+    try {
+        var f = w.frameGeometry, c = w.clientGeometry;
+        if (c && f && c.height > 0) return f.height - c.height > 2;
+    } catch (e) {}
+    return w.noBorder !== true;
+}
+
 function deskIndex(d) {
     var all = workspace.desktops;
     for (var i = 0; i < all.length; i++) if (all[i] === d || (d && all[i].id === d.id)) return i + 1;
@@ -77,7 +87,8 @@ function info(w) {
         frame: { x: Math.round(w.frameGeometry.x), y: Math.round(w.frameGeometry.y), w: Math.round(w.frameGeometry.width), h: Math.round(w.frameGeometry.height) },
         dialog: w.dialog === true,
         parent: parent,
-        zone: zoneOf(w)
+        zone: zoneOf(w),
+        framed: framed(w)                  // KWin draws a frame for it (false: the app draws its own title bar)
     };
 }
 
