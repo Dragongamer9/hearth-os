@@ -138,9 +138,9 @@ jobs:
           ipc activities change; sleep 2; grim shots/as-6-activity-recent.png || true
           wtype -k Escape; sleep 1; ipc activities close
           # 7: Hearth Files' Home on Work: only Work's recent files
-          ipc files toggle; sleep 3; grim shots/as-7-files-recent-work.png || true; ipc files close
+          ipc files toggle; ipc filemanager home; sleep 3; grim shots/as-7-files-recent-work.png || true; ipc files close
           # 8: on Main: Main's file
-          ipc activities switchTo default; sleep 2; ipc files toggle; sleep 3; grim shots/as-8-files-recent-main.png || true; ipc files close
+          ipc activities switchTo default; sleep 2; ipc files toggle; ipc filemanager home; sleep 3; grim shots/as-8-files-recent-main.png || true; ipc files close
           # 9: Private's Change panel: Recent files "Don't remember"
           ipc activities switchTo private; sleep 2; ipc activities change; sleep 2; grim shots/as-9-private-dont-remember.png || true; ipc activities close; ipc activities switchTo default
           spans=$(cat "$HOME/.local/share/hearth/activity-history.json" 2>&1 | cut -c1-300)
