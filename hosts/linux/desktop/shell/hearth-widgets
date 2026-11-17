@@ -7,7 +7,8 @@
   hearth-widgets feed URL               an RSS or Atom feed's newest headlines
   hearth-widgets folder PATH            a folder's files (name, path, kind, size, modified), folders first
   hearth-widgets photos SOURCE          pictures for the photo frame: pictures | favorites | album:<id> | folder:<path>
-  hearth-widgets events                 today's and the next two weeks' events (Hearth Time, if it's there)
+  hearth-widgets events                 today's and the next two weeks' events (Hearth Time, if it's there, and the
+                                        online accounts with Calendar on: hearth-accounts events)
 
 Nothing here writes a setting: the widgets keep their own choices in ~/.config/nimbus/widgets.json (WidgetStore.qml,
 merged through hearth_settings_io.py). Hearth Photos' favourites and albums (~/.local/share/nimbus/photos.json) are
@@ -22,6 +23,7 @@ import html
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import time
@@ -318,14 +320,70 @@ def photos(source):
 
 
 # ---------------------------------------------------------------------- calendar
-def events():
+EVENT_DAYS = 15         # today and the next two weeks
+
+
+def _last_json(cmd, timeout):
+    """The last line CMD prints, as JSON (None when it isn't there, fails or answers something else)."""
     try:
-        r = subprocess.run(['hearth-time', '--events'], capture_output=True, text=True, timeout=10)
-        line = (r.stdout.strip().splitlines() or ['{}'])[-1]
-        d = json.loads(line)
-        return {'events': d.get('events') or []}
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        d = json.loads((r.stdout.strip().splitlines() or ['{}'])[-1])
+        return d if isinstance(d, dict) else None
     except (OSError, subprocess.SubprocessError, ValueError):
-        return {'events': []}
+        return None
+
+
+def accounts_cmd():
+    """Online accounts' `hearth-accounts` (docs/ONLINE-ACCOUNTS.md), or None on a system without it."""
+    if shutil.which('hearth-accounts'):
+        return ['hearth-accounts']
+    here = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'hearth_accounts.py')
+    return ['python3', here] if os.path.isfile(here) else None
+
+
+def account_events():
+    """Events of the online accounts with Calendar on. They come over the network, so the last good answer is kept
+    (~/.cache/hearth/widgets/account-events.json) and shown when an account can't be reached right now. No accounts,
+    or no hearth-accounts: none."""
+    cmd = accounts_cmd()
+    if not cmd:
+        return []
+    cache = os.path.join(cache_dir(), 'account-events.json')
+    d = _last_json(cmd + ['events', '--days', str(EVENT_DAYS)], 40)
+    got = d.get('events') if d else None
+    if isinstance(got, list) and not (d.get('errors') and not got):
+        try:
+            tmp = cache + '.tmp'
+            with open(tmp, 'w', encoding='utf-8') as f:
+                json.dump(got, f)
+            os.replace(tmp, cache)
+        except OSError:
+            pass
+        return got
+    try:
+        with open(cache, encoding='utf-8') as f:
+            old = json.load(f)
+        return old if isinstance(old, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def events():
+    """Hearth Time's events and the online accounts' (Calendar on), in time order, each event once."""
+    d = _last_json(['hearth-time', '--events'], 10)
+    mine = (d.get('events') or []) if d else []
+    out, seen = [], set()
+    for e in list(mine) + list(account_events()):
+        if not isinstance(e, dict):
+            continue
+        k = (e.get('uid'), e.get('start')) if e.get('uid') else None
+        if k and k in seen:
+            continue
+        if k:
+            seen.add(k)
+        out.append(e)
+    out.sort(key=lambda e: (str(e.get('date') or ''), e.get('start') or 0, str(e.get('title') or '')))
+    return {'events': out}
 
 
 def main(argv):

@@ -291,6 +291,87 @@ class Helper(unittest.TestCase):
             shutil.rmtree(d, ignore_errors=True)
 
 
+class CalendarAccounts(unittest.TestCase):
+    """The calendar widget's events: Hearth Time's and the online accounts' (hearth-accounts events), guarded."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.hw = load(SHELL / 'hearth-widgets', 'hearth_widgets_cal')
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+        self.env = {'XDG_CACHE_HOME': os.environ.get('XDG_CACHE_HOME'), 'PATH': os.environ.get('PATH')}
+        os.environ['XDG_CACHE_HOME'] = os.path.join(self.tmp, 'cache')
+        self.bin = os.path.join(self.tmp, 'bin')
+        os.makedirs(self.bin)
+        os.environ['PATH'] = self.bin + os.pathsep + '/usr/bin' + os.pathsep + '/bin'
+        self.orig_cmd = self.hw.accounts_cmd
+
+    def tearDown(self):
+        self.hw.accounts_cmd = self.orig_cmd
+        for k, v in self.env.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+    def fake(self, name, out, code=0):
+        p = os.path.join(self.bin, name)
+        with open(p, 'w') as f:
+            f.write('#!/bin/sh\ncat <<\'EOF\'\n%s\nEOF\nexit %d\n' % (out, code))
+        os.chmod(p, 0o755)
+        return p
+
+    def ev(self, title, date, start, uid=''):
+        return {'title': title, 'date': date, 'lastDate': date, 'allDay': False, 'start': start, 'end': start + 1, 'uid': uid}
+
+    def test_both_merged_in_order_each_once(self):
+        self.fake('hearth-time', json.dumps({'events': [self.ev('Dentist', '2026-11-18', 300, 'a')]}))
+        acc = [self.ev('Standup', '2026-11-17', 100, 'b'), self.ev('Dentist', '2026-11-18', 300, 'a')]
+        self.fake('hearth-accounts', json.dumps({'events': acc, 'errors': []}))
+        self.hw.accounts_cmd = lambda: [os.path.join(self.bin, 'hearth-accounts')]
+        got = self.hw.events()['events']
+        self.assertEqual([e['title'] for e in got], ['Standup', 'Dentist'])
+
+    def test_without_accounts_or_hearth_accounts(self):
+        self.fake('hearth-time', json.dumps({'events': [self.ev('Mine', '2026-11-17', 5)]}))
+        self.hw.accounts_cmd = lambda: None
+        self.assertEqual([e['title'] for e in self.hw.events()['events']], ['Mine'])
+        self.fake('hearth-accounts', json.dumps({'events': [], 'errors': []}))     # no accounts with Calendar on
+        self.hw.accounts_cmd = lambda: [os.path.join(self.bin, 'hearth-accounts')]
+        self.assertEqual([e['title'] for e in self.hw.events()['events']], ['Mine'])
+
+    def test_no_hearth_time_and_a_broken_answer(self):
+        self.fake('hearth-accounts', 'error: something went wrong', 1)
+        self.hw.accounts_cmd = lambda: [os.path.join(self.bin, 'hearth-accounts')]
+        self.assertEqual(self.hw.events(), {'events': []})
+
+    def test_last_good_answer_kept_when_offline(self):
+        self.hw.accounts_cmd = lambda: [os.path.join(self.bin, 'hearth-accounts')]
+        self.fake('hearth-accounts', json.dumps({'events': [self.ev('Trip', '2026-11-20', 9, 'x')], 'errors': []}))
+        self.assertEqual([e['title'] for e in self.hw.events()['events']], ['Trip'])
+        self.fake('hearth-accounts', json.dumps({'events': [], 'errors': [{'account': 'n1', 'error': 'offline'}]}))
+        self.assertEqual([e['title'] for e in self.hw.events()['events']], ['Trip'])
+        self.fake('hearth-accounts', 'not json', 1)
+        self.assertEqual([e['title'] for e in self.hw.events()['events']], ['Trip'])
+
+    def test_asks_for_two_weeks_and_finds_the_shell_copy(self):
+        log = os.path.join(self.tmp, 'args')
+        p = os.path.join(self.bin, 'hearth-accounts')
+        with open(p, 'w') as f:
+            f.write('#!/bin/sh\necho "$@" > %s\necho \'{"events": [], "errors": []}\'\n' % log)
+        os.chmod(p, 0o755)
+        self.assertEqual(self.orig_cmd(), ['hearth-accounts'])           # on PATH (the image's /usr/bin link)
+        self.hw.events()
+        with open(log) as f:
+            self.assertEqual(f.read().split(), ['events', '--days', '15'])
+        os.remove(p)
+        cmd = self.orig_cmd()                                             # else the shell's own hearth_accounts.py
+        if (SHELL / 'hearth_accounts.py').is_file():
+            self.assertEqual(cmd[-1], str(SHELL / 'hearth_accounts.py'))
+
+
 class Wiring(unittest.TestCase):
     def test_store_writes_only_merges_and_never_saves_over_a_damaged_file(self):
         s = code((SHELL / 'WidgetStore.qml').read_text())
