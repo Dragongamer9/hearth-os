@@ -34,7 +34,10 @@ class Recommended(unittest.TestCase):
         self.assertEqual(hm.recommended(16 * GIB)['zram']['gb'], 16)
         self.assertEqual(hm.recommended(DESKTOP)['zram']['gb'], 16)
         r = hm.recommended(LAPTOP)
-        self.assertEqual(r['keep']['mode'], '2gb')
+        self.assertEqual(r['keep']['mode'], 'auto')
+        self.assertEqual(r['swappiness'], 180)
+        self.assertEqual(hm.watermark_for({'mode': 'auto'}, LAPTOP), 125)
+        self.assertEqual(hm.keep_from_factor(125, LAPTOP), {'mode': 'auto'})
         self.assertEqual(r['guard']['never'], ['desktop', 'steam', 'game', 'aicc'])
 
     def test_limits(self):

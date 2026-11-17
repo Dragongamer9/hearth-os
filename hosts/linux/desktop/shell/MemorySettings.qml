@@ -34,7 +34,7 @@ Item {
     }
     function putKeep(mode) { const d = JSON.parse(JSON.stringify(draft)); d.keep = { mode: mode }; draft = d; }
     readonly property bool dirty: Object.keys(draft).length > 0
-    readonly property string keepMode: draft.keep ? draft.keep.mode : (cur && cur.keep ? cur.keep.mode : "2gb")
+    readonly property string keepMode: draft.keep ? draft.keep.mode : (cur && cur.keep ? cur.keep.mode : "auto")
     readonly property int swappiness: draft.swappiness !== undefined ? draft.swappiness : (cur ? cur.swappiness : 200)
     readonly property int swapGb: draft.swapGb !== undefined ? draft.swapGb : (st ? st.swapfile.gb : 0)
     function gb(b) { return (b / gib).toFixed(b >= 10 * gib ? 0 : 1); }
@@ -290,7 +290,7 @@ Item {
                 Line {
                     title: "Target"
                     Chips {
-                        options: [["off", "Off"], ["2gb", "2 GB"], ["25%", "25%"], ["50%", "50%"], ["custom", "Custom"]]; value: ms.keepMode
+                        options: [["auto", "Auto"], ["off", "Off"], ["2gb", "2 GB"], ["25%", "25%"], ["50%", "50%"], ["custom", "Custom"]]; value: ms.keepMode
                         onChose: v => {
                             if (v !== "custom") { ms.putKeep(v); return; }
                             const d = JSON.parse(JSON.stringify(ms.draft));
@@ -341,13 +341,30 @@ Item {
                         Button { text: "Use these settings"; enabled: !ms.busy; onClicked: ms.run(["handover"]) }
                     }
                 }
+                // 1.14: Auto is recommended for every PC (a share of memory: ~200 MB kept free on 8 GB, ~800 MB on 32 GB);
+                // a choice you saved stays as it is, with this to switch when you want.
+                Rectangle {
+                    visible: ms.keepMode !== "auto" && !ms.draft.keep
+                    Layout.fillWidth: true; implicitHeight: ar.implicitHeight + 20; radius: Theme.r(6)
+                    color: "transparent"; border.color: Theme.line
+                    RowLayout {
+                        id: ar
+                        anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
+                        spacing: 12
+                        Text {
+                            Layout.fillWidth: true; wrapMode: Text.WordWrap; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
+                            text: "Recommended: Auto. It keeps a small share of memory free (about " + (ms.st ? Math.max(1, Math.round(ms.st.memory.total * 0.025 / 1048576 / 10) * 10) : 200) + " MB here) instead of a fixed amount, so the PC isn't busy freeing memory all the time. Your choice stays until you change it."
+                        }
+                        Button { text: "Use Auto"; enabled: !ms.busy; onClicked: ms.putKeep("auto") }
+                    }
+                }
                 Rectangle {
                     visible: ms.keepMode === "50%" || ms.keepMode === "25%"
                     Layout.fillWidth: true; implicitHeight: kw.implicitHeight + 18; radius: Theme.r(6)
                     color: "transparent"; border.color: Theme.ember
                     Text { id: kw; anchors { left: parent.left; right: parent.right; verticalCenter: parent.verticalCenter; margins: 12 }
                         wrapMode: Text.WordWrap; color: Theme.ember; font.family: Theme.font; font.pixelSize: 12
-                        text: ms.keepMode + " works your memory harder: more compressing, a little more battery. Fine for browsing and AI work; if a game stutters, try 2 GB." }
+                        text: ms.keepMode + " works your memory harder: more compressing, a little more battery. Fine for browsing and AI work; if a game stutters, try Auto." }
                 }
             }
 
