@@ -176,8 +176,9 @@ class Flatpak(unittest.TestCase):
         code, r, lines = self.run_h('update', 'org.kde.krita')
         self.assertEqual(code, 0)
         self.assertIn('progress: 40 Updating org.kde.krita', lines)
-        self.assertIn('update -y --noninteractive --user org.kde.krita', self.log.read_text())
-        self.assertIn('update -y --noninteractive --system org.kde.krita', self.log.read_text())
+        # 1.14: only where the update is (yours here), by its branch (hearth_store_extras.update_apps)
+        self.assertIn('update -y --noninteractive --user org.kde.krita//stable', self.log.read_text())
+        self.assertNotIn('update -y --noninteractive --system org.kde.krita', self.log.read_text())
 
     def test_install_on_a_stock_system_uses_the_systems_flathub(self):
         # Hearth OS keeps Flathub in the system installation only (hearth-flatpak-setup), like Bazaar uses it

@@ -3,6 +3,9 @@
 // size, license and Install / Open / Remove; Updates (your Flatpaks and the system's, with links to Hearth OS updates
 // and Firmware); Sources (Flatpak remotes: add a .flatpakrepo, remove yours). All through hearth-store. Up/Down move,
 // A opens or installs, B goes back (from an app to the list it came from).
+// 1.14 extras (hearth_store_extras.py): "Tell me when app updates are there" (StoreWatch.qml's notice with Update all,
+// store.json notifyUpdates); an update that asks for new permissions shows them and waits for your yes (Update all
+// leaves it out); Drivers (StoreDrivers.qml): the PC's parts and the Debian packages that drive them.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -10,7 +13,9 @@ import Quickshell
 SetPage {
     id: page
     title: "App store"
-    property string view: "discover"      // discover | category | search | app | updates | sources
+    property string view: "discover"      // discover | category | search | app | updates | sources | drivers
+    property var storePrefs: ({ notifyUpdates: true })
+    property string reviewing: ""          // the update whose new permissions are shown (its app id)
     property string back: "discover"
     property var home: null
     property var apps: []                 // the category's or the search's
@@ -31,12 +36,21 @@ SetPage {
     function openCategory(c) { catLabel = c.label; apps = []; go("category"); loading = true; reader.run(["category", c.id], r => { page.apps = r.apps; page.loading = false; }, page.fail); }
     function search(t) { if (t.trim().length < 2) return; catLabel = "“" + t.trim() + "”"; apps = []; go("search"); loading = true; reader.run(["search", t.trim()], r => { page.apps = r.apps; page.loading = false; }, page.fail); }
     function openApp(id) { back = view === "app" ? back : view; appId = id; app = null; go("app"); loading = true; reader.run(["app", id], r => { page.app = r; page.loading = false; }, page.fail); }
-    function loadUpdates() { go("updates"); loading = true; reader.run(["updates"], r => { page.ups = r; page.loading = false; }, page.fail); }
+    property string reviewNext: ""        // store:review-<app id with "_" for ".">: Updates, with that app's new permissions open
+    function loadUpdates() { go("updates"); reviewing = ""; loading = true; reader.run(["updates"], r => { page.ups = r; page.loading = false; page.reviewing = page.reviewNext; page.reviewNext = ""; }, page.fail); prefsJob.run(["prefs"], r => page.storePrefs = r.prefs, () => {}); }
+    readonly property var asking: ups ? ups.flatpaks.filter(f => (f.newPerms || []).length > 0) : []
+    function updateAll() {
+        work(["update"], "", () => page.loadUpdates());
+    }
     function loadSources() { go("sources"); loading = true; reader.run(["sources"], r => { page.srcs = r.sources; page.loading = false; }, page.fail); }
     function work(args, okText, then) {
         if (worker.busy) return;
         confirm = ""; say("");
-        worker.run(args, () => { page.say(okText); SettingsNav.toast(okText); if (then) then(); }, e => page.say(e, true));
+        worker.run(args, r => {
+            const w = r && r.waiting ? r.waiting : [];
+            const t = okText || (w.length ? "Updated. " + w.map(x => x.name).join(", ") + (w.length === 1 ? " waits" : " wait") + " for you: new permissions to look at." : "Your apps are up to date.");
+            page.say(t); SettingsNav.toast(t); if (then) then();
+        }, e => page.say(e, true));
     }
     function stars(n) { const f = Math.round(n || 0); return "★★★★★".slice(0, f) + "☆☆☆☆☆".slice(0, 5 - f); }
     function mb(b) { return !b ? "" : b > 1e9 ? (b / 1e9).toFixed(1) + " GB" : Math.round(b / 1e6) + " MB"; }
@@ -44,10 +58,12 @@ SetPage {
     // Also when Settings is opened at one while this page is already loaded (Settings keeps it).
     function openAnchor(first) {
         const a = SettingsNav.pageAnchor || "";
-        const mine = a === "updates" || a === "sources" || a.startsWith("app-");
+        const mine = a === "updates" || a === "sources" || a === "drivers" || a.startsWith("app-") || a.startsWith("review-");
         if (mine) SettingsNav.pageAnchor = "";
         if (a === "updates") loadUpdates();
         else if (a === "sources") loadSources();
+        else if (a === "drivers") go("drivers");
+        else if (a.startsWith("review-")) { reviewNext = a.slice(7).replace(/_/g, "."); loadUpdates(); }
         else if (a.startsWith("app-")) { if (!home) loadHome(); openApp(a.slice(4).replace(/_/g, ".")); }
         else if (first) loadHome();
     }
@@ -55,6 +71,7 @@ SetPage {
     Connections { target: SettingsNav; function onPageAnchorChanged() { if (SettingsNav.pageAnchor !== "") page.openAnchor(false); } }
     SetJob { id: reader; helper: "hearth-store" }
     SetJob { id: worker; helper: "hearth-store" }
+    SetJob { id: prefsJob; helper: "hearth-store" }
     // B on an app's page goes back to the list it came from.
     Keys.onEscapePressed: event => { if (view === "app") { go(back); event.accepted = true; } else if (view !== "discover") { go("discover"); event.accepted = true; } else event.accepted = false; }
 
@@ -94,6 +111,7 @@ SetPage {
         SetButton { text: "Discover"; icon: "store"; primary: page.view === "discover" || page.view === "category" || page.view === "search"; onActivated: { page.go("discover"); if (!page.home) page.loadHome(); } }
         SetButton { text: "Updates" + (page.ups && page.ups.flatpaks.length ? " (" + page.ups.flatpaks.length + ")" : ""); icon: "update"; primary: page.view === "updates"; onActivated: page.loadUpdates() }
         SetButton { text: "Sources"; icon: "link"; primary: page.view === "sources"; onActivated: page.loadSources() }
+        SetButton { text: "Drivers"; icon: "cpu"; primary: page.view === "drivers"; onActivated: page.go("drivers") }
         SetButton { text: "Installed apps"; icon: "grid"; ghost: true; onActivated: SettingsNav.openPage("apps") }
         Item { Layout.fillWidth: true }
     }
@@ -260,26 +278,79 @@ SetPage {
     SetCardGroup {
         title: "Updates"
         visible: page.view === "updates"
+        SetSwitch {
+            icon: "bell"; title: "Tell me when app updates are there"
+            sub: page.storePrefs.notifyUpdates ? "A Hearth notice with Update all, every few hours when there's something new" : "Off: look here yourself"
+            checked: page.storePrefs.notifyUpdates !== false
+            onToggled: v => prefsJob.run(["prefs-set", "notifyUpdates", v ? "on" : "off"], r => { page.storePrefs = r.prefs; page.say(v ? "Hearth tells you when app updates are there." : "No more app update notices."); }, e => page.say(e, true))
+        }
         SetRow {
-            visible: !!page.ups && page.ups.flatpaks.length > 0
+            visible: !!page.ups && page.ups.flatpaks.length > page.asking.length
             icon: "update"; chevron: false; title: "Update all apps"
-            sub: page.ups ? page.ups.flatpaks.length + " Flatpak " + (page.ups.flatpaks.length === 1 ? "update" : "updates") : ""
-            onActivated: page.work(["update"], "Your apps are up to date.", () => page.loadUpdates())
+            sub: !page.ups ? "" : (page.ups.flatpaks.length - page.asking.length) + " Flatpak " + (page.ups.flatpaks.length - page.asking.length === 1 ? "update" : "updates")
+                 + (page.asking.length ? " · " + page.asking.length + " " + (page.asking.length === 1 ? "waits" : "wait") + " for you: new permissions" : "")
+            onActivated: page.updateAll()
         }
         SetRow { visible: !!page.ups && page.ups.flatpaks.length === 0; interactive: false; icon: "check"; chevron: false; title: "Your apps are up to date" }
         Repeater {
             model: page.ups ? page.ups.flatpaks : []
-            delegate: SetRow {
+            delegate: ColumnLayout {
+                id: upd
                 required property var modelData
-                icon: "store"; chevron: false
-                title: modelData.name || modelData.id
-                sub: [modelData.version, modelData.size, modelData.where === "system" ? "for everyone" : "yours", modelData.origin].filter(x => x).join(" · ")
-                value: "Update"
-                onActivated: page.work(["update", modelData.id], (modelData.name || modelData.id) + " is up to date.", () => page.loadUpdates())
+                readonly property var np: modelData.newPerms || []
+                Layout.fillWidth: true
+                spacing: 6
+                SetRow {
+                    Layout.fillWidth: true
+                    icon: "store"; chevron: false
+                    title: upd.modelData.name || upd.modelData.id
+                    sub: [upd.modelData.version, upd.modelData.size, upd.modelData.where === "system" ? "for everyone" : "yours", upd.modelData.origin].filter(x => x).join(" · ")
+                         + (upd.np.length ? " · asks for " + upd.np.length + " new " + (upd.np.length === 1 ? "permission" : "permissions") : "")
+                    chip: upd.np.length ? "New permissions" : ""; chipKind: "warn"
+                    value: upd.np.length ? (page.reviewing === upd.modelData.id ? "Hide" : "Look first…") : "Update"
+                    onActivated: {
+                        if (upd.np.length) page.reviewing = page.reviewing === upd.modelData.id ? "" : upd.modelData.id;
+                        else page.work(["update", upd.modelData.id], (upd.modelData.name || upd.modelData.id) + " is up to date.", () => page.loadUpdates());
+                    }
+                }
+                // What the update asks for that the app couldn't do before; it updates only after your yes.
+                Rectangle {
+                    visible: page.reviewing === upd.modelData.id
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 24
+                    implicitHeight: permCol.implicitHeight + 28
+                    radius: SetStyle.radius; color: SetStyle.card
+                    border.width: 1; border.color: Theme.flame
+                    ColumnLayout {
+                        id: permCol
+                        anchors { left: parent.left; right: parent.right; top: parent.top; margins: 14 }
+                        spacing: 6
+                        Text { Layout.fillWidth: true; text: "The new version of " + (upd.modelData.name || upd.modelData.id) + " asks to:"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
+                        Repeater {
+                            model: upd.np
+                            delegate: Text { required property var modelData; Layout.fillWidth: true; text: "•  " + modelData.label; color: Theme.text; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap }
+                        }
+                        Text { Layout.fillWidth: true; text: "It can't do these now. Update only if you trust it with them; you can take them away later in Settings › Apps."; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap }
+                        RowLayout {
+                            spacing: 10
+                            SetButton { primary: true; text: "Update and allow"; icon: "check"; onActivated: page.work(["update", upd.modelData.id, "--allow-new"], (upd.modelData.name || upd.modelData.id) + " is up to date.", () => page.loadUpdates()) }
+                            SetButton { ghost: true; text: "Not now"; icon: "close"; onActivated: page.reviewing = "" }
+                        }
+                    }
+                }
             }
         }
         SetRow { icon: "update"; title: "Hearth OS updates"; sub: "The system itself: Settings › Updates"; onActivated: SettingsNav.openPage("updates") }
         SetRow { icon: "cpu"; title: "Firmware"; sub: "Your PC's and devices' firmware: Settings › Firmware"; onActivated: SettingsNav.openPage("firmware") }
+    }
+
+    // ---------------------------------------------------------------- Drivers (StoreDrivers.qml)
+    Loader {
+        active: page.view === "drivers"
+        visible: active
+        Layout.fillWidth: true
+        source: "StoreDrivers.qml"
+        onLoaded: item.page = page
     }
 
     // ---------------------------------------------------------------- Sources

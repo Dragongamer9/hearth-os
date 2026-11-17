@@ -1,0 +1,189 @@
+# Recent files per activity and the App store's extras (1.14: Activities.qml, ActivitySwitcher.qml, SetRecentFiles.qml,
+# hearth_files_extras.py's activity_*; StoreWatch.qml, SetStore.qml, StoreDrivers.qml, hearth_store_extras.py,
+# hearth-admin driver-install, hearth-unlock --install-package):
+#   tests:  hosts/linux/test/test_store_extras.py, test_hearth_store.py, test_files_extras.py, test_hearth_unlock.py,
+#           polkit-rules.test.js
+#   shots:  Desktop Mode (labwc + Mantel) at 1920x1080 with three activities, recent files opened on each, and a stand-in
+#           flatpak (hosts/linux/test/fake_flatpak_store.py: three updates, one asking for new permissions) and PC
+#           (drivers_fixture.json): every new part as a picture; post-1 and post-2 put them up as SHOT notices
+name: Activities and App store extras
+
+on:
+  push:
+    branches: [feature/w3-activities-store]
+    paths: ['hosts/linux/desktop/shell/Activit*', 'hosts/linux/desktop/shell/activities.js', 'hosts/linux/desktop/shell/SetRecentFiles.qml',
+            'hosts/linux/desktop/shell/hearth_files_extras.py', 'hosts/linux/desktop/shell/SetStore.qml', 'hosts/linux/desktop/shell/Store*.qml',
+            'hosts/linux/desktop/shell/hearth-store', 'hosts/linux/desktop/shell/hearth_store_extras.py', 'hosts/linux/test/test_store_extras.py',
+            '.github/workflows/activities-store.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: activities-store-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: The extras' tests, and the helpers they change
+        run: |
+          python3 -m py_compile hosts/linux/desktop/shell/hearth_store_extras.py hosts/linux/desktop/shell/hearth-store hosts/linux/desktop/shell/hearth_files_extras.py \
+            hosts/linux/desktop/shell/hearth-files hosts/linux/desktop/shell/hearth-appmenu os/system_files/usr/libexec/nimbus/hearth-admin os-bases/peppermint/system_files/usr/bin/hearth-unlock
+          set +e
+          fails=""
+          for t in test_store_extras test_hearth_store test_files_extras test_hearth_unlock test_desktop_widgets; do
+            python3 -W ignore -m unittest -v hosts/linux/test/$t.py > $t.log 2>&1 || fails="$fails $t"
+            echo "::notice title=$t::$(grep -E '^(Ran|OK|FAILED)' $t.log | tr '\n' ' ')"
+          done
+          node --test hosts/linux/test/polkit-rules.test.js > polkit.log 2>&1 || fails="$fails polkit-rules"
+          echo "::notice title=polkit rules::$(grep -E '^# (pass|fail)' polkit.log | tr '\n' ' ')"
+          for t in $fails; do echo "::error title=$t::$(sed -n '/^\(FAIL\|ERROR\):/,/^\(Ran \|=====\)/p' $t.log 2>/dev/null | tr '\n' '|' | cut -c1-3900) $(grep -E 'not ok|Error' polkit.log 2>/dev/null | head -5 | tr '\n' '|')"; done
+          [ -z "$fails" ]
+
+  shots:
+    name: Screenshots
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install labwc, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 wtype \
+            google-noto-sans-fonts adwaita-icon-theme breeze-icon-theme dbus-daemon libnotify wl-clipboard rsms-inter-fonts \
+            ImageMagick glib2 shared-mime-info >/dev/null
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+      - uses: actions/checkout@v4
+      - name: Three activities with their recent files, app updates, new permissions and drivers
+        shell: bash
+        run: |
+          mkdir -p shots
+          exec > >(tee shots/step.log) 2>&1
+          set -x
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home USER=me LANG=C.UTF-8
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" "$HOME/.local/share/hearth" "$HOME/.config/nimbus" "$HOME/Documents" && chmod 700 "$XDG_RUNTIME_DIR"
+          echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          T="$PWD/hosts/linux/test"; SH="$PWD/hosts/linux/desktop/shell"
+          # ---- recent files: opened 3 hours ago on Main, 2 on Work, 1 on Private ("Don't remember"); you're on Work
+          python3 - "$HOME" <<'EOF'
+          import json, os, sys, time
+          h = sys.argv[1]; now = int(time.time())
+          files = [('Budget.ods', now - 3 * 3600), ('Quarterly report.odt', now - 2 * 3600), ('Slides.odp', now - 2 * 3600 + 300),
+                   ('Diary.txt', now - 3600)]
+          out = ['<?xml version="1.0" encoding="UTF-8"?>', '<xbel version="1.0" xmlns:bookmark="http://www.freedesktop.org/standards/desktop-bookmarks">']
+          for name, t in files:
+              p = os.path.join(h, 'Documents', name); open(p, 'w').write(name)
+              w = time.strftime('%Y-%m-%dT%H:%M:%SZ', time.gmtime(t))
+              out.append('  <bookmark href="file://%s" added="%s" modified="%s" visited="%s"><info><metadata owner="http://freedesktop.org"><bookmark:applications><bookmark:application name="Hearth Office" exec="hearth-office %%u" modified="%s" count="1"/></bookmark:applications></metadata></info></bookmark>' % (p.replace(' ', '%20'), w, w, w, w))
+          out.append('</xbel>')
+          open(os.path.join(h, '.local/share/recently-used.xbel'), 'w').write('\n'.join(out) + '\n')
+          json.dump({'spans': [[now - 2 * 3600 - 600, 'work'], [now - 3600 - 600, 'private'], [now - 1200, 'work']]}, open(os.path.join(h, '.local/share/hearth/activity-history.json'), 'w'))
+          json.dump({'current': 'work', 'act:default': {'name': 'Main', 'icon': 'home', 'order': -1},
+                     'act:work': {'name': 'Work', 'icon': 'doc', 'order': 1, 'wallpaper': 'builtin:slate-nebula', 'recent': 'own'},
+                     'act:games': {'name': 'Games', 'icon': 'pad', 'order': 2, 'recent': 'all'},
+                     'act:private': {'name': 'Private', 'icon': 'leaf', 'order': 3, 'recent': 'off'}}, open(os.path.join(h, '.config/nimbus/activities.json'), 'w'))
+          EOF
+          # ---- a stand-in flatpak with three updates (Krita's asks for the internet, your home folder and the password store)
+          python3 - <<'EOF'
+          import json
+          old = '[Application]\nname=org.kde.krita\n\n[Context]\nshared=ipc;\nsockets=wayland;fallback-x11;pulseaudio;\ndevices=dri;\nfilesystems=xdg-pictures;\n'
+          new = old.replace('shared=ipc;', 'shared=ipc;network;').replace('filesystems=xdg-pictures;', 'filesystems=xdg-pictures;home;') + '\n[Session Bus Policy]\norg.freedesktop.secrets=talk\n'
+          json.dump({'updates': {'user': [['org.kde.krita', 'Krita', '5.3.0', 'stable', 'flathub', '128.4 MB'], ['org.gnome.Calculator', 'Calculator', '48.1', 'stable', 'flathub', '3.1 MB']],
+                                 'system': [['com.valvesoftware.Steam', 'Steam', '1.0.0.82', 'stable', 'flathub', '9.7 MB']]},
+                     'meta': {'org.kde.krita': {'old': old, 'new': new}},
+                     'remotes': {'user': [['flathub', 'Flathub', 'https://dl.flathub.org/repo/', '']], 'system': [['flathub', 'Flathub', 'https://dl.flathub.org/repo/', 'system']]}},
+                    open('/tmp/fake-flatpak.json', 'w'))
+          EOF
+          chmod +x "$T/fake_flatpak_store.py"
+          export HEARTH_FLATPAK="$T/fake_flatpak_store.py" FAKE_STATE=/tmp/fake-flatpak.json HEARTH_DRIVERS_FIXTURE="$T/drivers_fixture.json"
+          python3 "$SH/hearth-store" updates > shots/updates.json 2>&1 || true
+          python3 "$SH/hearth-store" drivers > shots/drivers.json 2>&1 || true
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          ICONS="$HOME/.local/share/icons/hicolor"
+          for d in branding/icons/png/*x*; do mkdir -p "$ICONS/$(basename "$d")/apps" && cp "$d"/*.png "$ICONS/$(basename "$d")/apps/"; done
+          labwc -C hosts/linux/desktop/labwc > shots/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          ipc() { quickshell ipc -p "$SH" call "$@" || echo "ipc $* failed"; sleep 3; }
+          q() { quickshell ipc -p "$SH" call "$@" 2>/dev/null | grep -v 'WARN' | tail -n1; }
+          ( sleep 45; quickshell ipc -p "$SH" call browserpick close ) >/dev/null 2>&1 &
+          # the shell noted Work at start and forgot what was opened on Private ("Don't remember")
+          grep -q 'Diary.txt' "$HOME/.local/share/recently-used.xbel" && { echo "::error title=Recent files::Diary.txt (opened on Private: Don't remember) is still remembered"; touch shots/FAILED; } \
+            || echo "::notice title=Recent files::Private's file was forgotten; Main's and Work's kept: $(grep -o 'Documents/[^"]*' "$HOME/.local/share/recently-used.xbel" | tr '\n' ' ')"
+          python3 "$SH/hearth-files" recent > shots/recent-on-work.json 2>&1 || true
+          echo "::notice title=Recent on Work::current=$(q activities current) $(python3 -c "import json;print([e['name'] for e in json.load(open('shots/recent-on-work.json'))['recent']])" 2>&1)"
+          # 1: the app updates notice (Update all, See updates)
+          ipc storewatch check; sleep 8; grim shots/as-1-update-notice.png || true
+          # 2-3: Settings › App store › Updates, and Krita's new permissions
+          ipc settings page store:updates; sleep 5; grim shots/as-2-store-updates.png || true
+          ipc settings close; ipc settings page store:review-org_kde_krita; sleep 5; grim shots/as-3-new-permissions.png || true
+          # 4: Drivers
+          ipc settings close; ipc settings page store:drivers; sleep 5; grim shots/as-4-drivers.png || true
+          # 5: Settings › Privacy › Recent files with the activities
+          ipc settings close; ipc settings page recent-files; sleep 5; grim shots/as-5-recent-activities.png || true
+          ipc settings close
+          # 6: the activity switcher's Change panel with Recent files
+          ipc activities switcher; sleep 1; wtype -k Menu; sleep 2; grim shots/as-6-activity-recent.png || true
+          wtype -k Escape; sleep 1; ipc activities close
+          # 7: the Hearth menu on Work: only Work's recent files
+          ipc launcher toggle; sleep 3; grim shots/as-7-menu-recent-work.png || true; ipc launcher toggle
+          # 8: on Main: Main's file
+          ipc activities switchTo default; sleep 2; ipc launcher toggle; sleep 3; grim shots/as-8-menu-recent-main.png || true; ipc launcher toggle
+          spans=$(cat "$HOME/.local/share/hearth/activity-history.json" 2>&1 | cut -c1-300)
+          case "$spans" in *'"default"]]'*) echo "::notice title=Activity history::$spans" ;; *) echo "::error title=Activity history::the switch to Main wasn't noted: $spans"; touch shots/FAILED ;; esac
+          grep -E "(Activities|ActivitySwitcher|SetRecentFiles|SetStore|StoreDrivers|StoreWatch)\.qml" "$LOG" > shots/shell-errors.txt 2>/dev/null || true
+          cp "$LOG" shots/shell.log 2>/dev/null || true
+          if grep -qE "(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Cannot read|Expected token|Type .* unavailable)" shots/shell-errors.txt; then
+            echo "::error title=Activities and store pages::$(sort -u shots/shell-errors.txt | head -8 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
+          else
+            echo "::notice title=Activities and store pages::no QML errors ($(wc -l < shots/shell-errors.txt) lines mention them); updates: $(cut -c1-400 shots/updates.json)"
+          fi
+          ls -la shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: activities-store-shots
+          path: shots
+      - name: Failed?
+        run: test ! -f shots/FAILED
+
+  post-1:
+    name: Pictures 1-4
+    needs: shots
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: activities-store-shots, path: shots }
+        continue-on-error: true
+      - run: sudo apt-get install -y -qq imagemagick >/dev/null 2>&1 || true
+      - run: sh hosts/hearth-connect/tests/post-shot.sh as-1-update-notice shots/as-1-update-notice.png
+      - run: sh hosts/hearth-connect/tests/post-shot.sh as-2-store-updates shots/as-2-store-updates.png
+      - run: sh hosts/hearth-connect/tests/post-shot.sh as-3-new-permissions shots/as-3-new-permissions.png
+      - run: sh hosts/hearth-connect/tests/post-shot.sh as-4-drivers shots/as-4-drivers.png
+
+  post-2:
+    name: Pictures 5-8
+    needs: shots
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: activities-store-shots, path: shots }
+        continue-on-error: true
+      - run: sudo apt-get install -y -qq imagemagick >/dev/null 2>&1 || true
+      - run: sh hosts/hearth-connect/tests/post-shot.sh as-5-recent-activities shots/as-5-recent-activities.png
+      - run: sh hosts/hearth-connect/tests/post-shot.sh as-6-activity-recent shots/as-6-activity-recent.png
+      - run: sh hosts/hearth-connect/tests/post-shot.sh as-7-menu-recent-work shots/as-7-menu-recent-work.png
+      - run: sh hosts/hearth-connect/tests/post-shot.sh as-8-menu-recent-main shots/as-8-menu-recent-main.png

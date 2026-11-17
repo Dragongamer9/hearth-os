@@ -447,6 +447,30 @@ class Switch(Base):
             self.assertEqual(self.u.main(['hearth-unlock', '--install-deb', '/tmp/x.deb']), 1)
         self.assertIn('locked', out.getvalue())
 
+    def test_install_package_refused_when_locked_and_checks_the_name(self):
+        """Settings › App store › Drivers (1.14): --install-package, the same rules as a .deb."""
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out), mock.patch.object(self.u.os, 'geteuid', return_value=0), \
+                mock.patch.object(self.u, 'mounted', return_value=False):
+            self.assertEqual(self.u.main(['hearth-unlock', '--install-package', 'firmware-realtek']), 1)
+        self.assertIn('locked', out.getvalue())
+        with mock.patch.object(self.u.os, 'geteuid', return_value=0), mock.patch.object(self.u, 'need_writable'):
+            with self.assertRaises(self.u.Fail):
+                self.u.cmd_install_package('bad name; rm')
+
+    def test_install_package_runs_apt_and_records(self):
+        seen = []
+        with mock.patch.object(self.u.os, 'geteuid', return_value=0), mock.patch.object(self.u, 'need_writable'), \
+                mock.patch.object(self.u, 'run', side_effect=lambda *a, **k: (0, '')), \
+                mock.patch.object(self.u, 'apt_stream', side_effect=lambda cmd, lo, hi, timeout=0: seen.append(cmd) or (0, ['ok'])), \
+                mock.patch.object(self.u, 'cmd_record', side_effect=lambda wait=0: seen.append('record')), \
+                contextlib.redirect_stdout(io.StringIO()):
+            r = self.u.cmd_install_package('firmware-realtek')
+        self.assertEqual(r['package'], 'firmware-realtek')
+        self.assertEqual(seen[0][:3], ['apt-get', 'install', '-y'])
+        self.assertEqual(seen[0][-1], 'firmware-realtek')
+        self.assertEqual(seen[1], 'record')        # kept for after the next update, like any apt install
+
 
 
 class BootSafety(Base):
@@ -699,6 +723,16 @@ class Admin(unittest.TestCase):
         self.assertEqual(ex, [[self.ha.UNLOCK, '--install-deb', '/home/me/a.deb']])
         _, _, ex = self.main(['hearth-admin', 'deb-remove', 'a'])
         self.assertEqual(ex, [[self.ha.UNLOCK, '--remove-package', 'a']])
+
+    def test_driver_install_only_takes_drivers(self):
+        _, _, ex = self.main(['hearth-admin', 'driver-install', 'firmware-iwlwifi'])
+        self.assertEqual(ex, [[self.ha.UNLOCK, '--install-package', 'firmware-iwlwifi']])
+        _, _, ex = self.main(['hearth-admin', 'driver-install', 'nvidia-open'])
+        self.assertEqual(ex, [[self.ha.UNLOCK, '--install-package', 'nvidia-open']])
+        for bad in ('bash', 'grub-efi-amd64', 'linux-image-amd64', 'firmware-x;rm', 'steam'):
+            code, out, ex = self.main(['hearth-admin', 'driver-install', bad])
+            self.assertEqual(ex, [], bad)
+            self.assertNotEqual(code, 0, bad)
 
     def test_anatase_is_always_locked(self):
         code, out, ex = self.main(['hearth-admin', 'unlock', 'on'], have=False)
