@@ -56,7 +56,9 @@ jobs:
           mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.config/nimbus"; chmod 700 "$XDG_RUNTIME_DIR"
           dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus" || true
           python3 hosts/linux/test/colibri_shots_fixture.py /tmp/colibri.json hosts/linux/test/fixtures/server-dash.json /tmp/server-dash.json /tmp/tile-n
+          echo 0 > /tmp/shot-scroll
           export HEARTH_SERVER_DASH_FIXTURE=/tmp/server-dash.json HEARTH_COLIBRI_FIXTURE=/tmp/colibri.json HEARTH_SERVER_NO_PAD=1 HEARTH_NIMBUS_MODE=/bin/true
+          export HEARTH_SHOT_SCROLL=/tmp/shot-scroll   # SetAIEngine.qml scrolls to the number in it (CI only)
           printf '%s\n' '{"on": true}' > "$HOME/.config/nimbus/server-mode.json"
           QML="$PWD/hosts/linux/desktop/shell/server-mode.qml"
           HEARTH_SERVER_MODE=1 HEARTH_SERVER_QML="$QML" labwc -C hosts/linux/desktop/server/labwc > shots/colibri/labwc.log 2>&1 &
@@ -69,14 +71,15 @@ jobs:
           ipc() { timeout 20 quickshell ipc -p "$QML" call "$@" || echo "::warning title=Colibri shots::ipc $* failed"; sleep 2; }
           down() { for i in $(seq 1 "$1"); do timeout 10 wtype -k Down; done; sleep 1; }
           timeout 15 grim shots/colibri/01-dashboard.png || true
-          ipc server pick "$(cat /tmp/tile-n)"; sleep 1; ipc server detail "$(cat /tmp/tile-n)"; sleep 2
+          ipc server pick "$(cat /tmp/tile-n)"; sleep 1; ipc server detail "$(cat /tmp/tile-n)"; sleep 5
           timeout 15 grim shots/colibri/02-big-ai-opened.png || true
           ipc server close
           ipc settings page hs-aiengine; sleep 6
           timeout 15 grim shots/colibri/03-ai-engine.png || true
-          timeout 10 wtype -k Right; sleep 1; down 9; timeout 15 grim shots/colibri/04-standard-models.png || true
-          down 12; timeout 15 grim shots/colibri/05-uncensored.png || true
-          timeout 10 wtype -k Return; sleep 2; down 3; timeout 15 grim shots/colibri/06-uncensored-sizes.png || true
+          echo 650 > /tmp/shot-scroll; sleep 3; timeout 15 grim shots/colibri/04-standard-models.png || true
+          echo 1500 > /tmp/shot-scroll; sleep 3; timeout 15 grim shots/colibri/05-uncensored.png || true
+          echo 1650 open > /tmp/shot-scroll; sleep 3; timeout 15 grim shots/colibri/06-uncensored-sizes.png || true
+          echo 99999 > /tmp/shot-scroll; sleep 3; timeout 15 grim shots/colibri/07-end.png || true
           cp "$HOME/.local/share/nimbus/server-dash.log" shots/colibri/dashboard.log 2>/dev/null || true
           bad=$(grep -E "SetAIEngine|ServerDash|ServerTile|ServerDetail" shots/colibri/dashboard.log 2>/dev/null | grep -E "TypeError|ReferenceError|is not a type|Cannot assign|non-existent|is not defined|Unable to assign" | head -6 | cut -c1-240 | tr '\n' '|' || true)
           [ -z "$bad" ] || echo "::error title=Colibri shots::$bad"
@@ -88,7 +91,7 @@ jobs:
           python3 - <<'PY'
           import base64, io, os
           from PIL import Image
-          for name in ('01-dashboard', '02-big-ai-opened', '03-ai-engine', '04-standard-models', '05-uncensored', '06-uncensored-sizes'):
+          for name in ('01-dashboard', '02-big-ai-opened', '03-ai-engine', '04-standard-models', '05-uncensored', '06-uncensored-sizes', '07-end'):
               p = 'shots/colibri/%s.png' % name
               if not os.path.exists(p):
                   print('::warning title=Colibri shots::no %s' % name); continue
@@ -114,7 +117,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        pair: [['01-dashboard', '02-big-ai-opened'], ['03-ai-engine', '04-standard-models'], ['05-uncensored', '06-uncensored-sizes']]
+        pair: [['01-dashboard', '02-big-ai-opened'], ['03-ai-engine', '04-standard-models'], ['05-uncensored', '06-uncensored-sizes'], ['07-end', '']]
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

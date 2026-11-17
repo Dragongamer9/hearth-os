@@ -9,6 +9,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 
 SetPage {
     id: page
@@ -37,6 +38,21 @@ SetPage {
     function fitKind(f) { return f === "good" ? "ok" : f === "slow" ? "warn" : f === "very-slow" ? "warn" : "bad"; }
     function size(g) { return g >= 1000 ? (g / 1000).toFixed(2) + " TB" : g >= 10 ? Math.round(g) + " GB" : g.toFixed(1) + " GB"; }
     Component.onCompleted: { refresh(); Qt.callLater(loadCatalog); }
+    // CI screenshots only (colibri.yml): HEARTH_SHOT_SCROLL names a file holding "Y" or "Y open"; the page scrolls to
+    // Y and opens the first Uncensored family. Never set on a real PC (reads nothing then, writes nothing ever).
+    readonly property string shotFile: Quickshell.env("HEARTH_SHOT_SCROLL") || ""
+    property bool shotOpen: false
+    Timer { interval: 700; running: page.shotFile !== ""; repeat: true; onTriggered: shotView.reload() }
+    FileView {
+        id: shotView
+        path: page.shotFile
+        onLoaded: {
+            const w = text().trim().split(/\s+/);
+            const y = parseInt(w[0]);
+            page.shotOpen = w[1] === "open";
+            if (!isNaN(y)) page.contentY = Math.max(0, Math.min(y, page.contentHeight - page.height));
+        }
+    }
     onInstChanged: if (inst && !cat) loadCatalog()
     Timer { interval: 3000; running: page.visible; repeat: true; onTriggered: if (!job.busy && !aj.busy) page.refresh() }
     SetJob { id: job; helper: "hearth-colibri" }
@@ -132,8 +148,8 @@ SetPage {
     SetRow {
         visible: !!page.dl && !page.dl.running && !!page.dl.error
         icon: "info"; chevron: false; interactive: false
-        title: page.dl ? (page.dl.name || page.dl.id) + " didn't finish" : ""
-        sub: page.dl ? page.dl.error : ""
+        title: page.dl ? (page.dl.name || page.dl.id || "") + " didn't finish" : ""
+        sub: page.dl ? (page.dl.error || "") : ""
     }
     Component {
         id: modelRow
@@ -174,12 +190,14 @@ SetPage {
         model: page.families
         delegate: SetExpander {
             required property var modelData
+            required property int index
+            open: page.shotOpen && index === 0
             readonly property var rows: page.cat ? page.cat.models.filter(m => m.group === "uncensored" && m.family === modelData) : []
-            readonly property var best: rows.find(m => m.quant === "Q4_K_M") || rows[0]
+            readonly property var best: rows.find(m => m.recommended) || rows.find(m => m.quant === "Q4_K_M" || m.quant === "Q4_K") || rows[0]
             icon: rows.some(m => m.chosen) ? "check" : rows.some(m => m.have) ? "drive" : "lock"
             title: best ? best.familyName : modelData
-            sub: rows.length + " sizes, " + (rows.length ? page.size(rows[0].downloadGb) + " to " + page.size(rows[rows.length - 1].downloadGb) : "") + (best ? " · " + best.summary : "")
-            chip: best ? "Q4_K_M: " + best.fitLabel : ""; chipKind: best ? page.fitKind(best.fit) : "ok"
+            sub: rows.length + " sizes, " + (rows.length ? page.size(Math.min(...rows.map(r => r.downloadGb))) + " to " + page.size(Math.max(...rows.map(r => r.downloadGb))) : "") + (best ? " · " + best.summary : "")
+            chip: best ? best.quant + ": " + best.fitLabel : ""; chipKind: best ? page.fitKind(best.fit) : "ok"
             Repeater { model: rows; delegate: modelRow }
         }
     }

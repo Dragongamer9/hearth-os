@@ -210,14 +210,28 @@ anything about Ollama, Server mode or Game Mode unless you pick it.
     models appear when Colibri adds them. On the owner's PC (32 GB, RTX 5070 12 GB): Qwen3.6 35B and Qwen3 Coder 30B
     run well; DeepSeek V4 Flash, Qwen3.8, MiMo Flash, GLM-5.2/5.3 and Kimi K3 (1.56 TB) are very slow from the drive;
     MiMo Pro and Inkling need more memory than it has. The recommended one is marked.
-  - **Uncensored**: "abliterated" builds (refusals taken out) on Hugging Face of models Colibri runs, each in every size
-    its maker published (Q2_K to Q8_0). Only builds confirmed to exist are listed: Qwen3.6 35B A3B, Qwen3.5 35B A3B,
-    Qwen3 30B A3B Instruct 2507 and Qwen3 Coder 30B A3B, from `mradermacher/Huihui-…-abliterated-GGUF` (Apache-2.0, like
-    the Qwen models they come from). They answer anything: keep them off a PC children use.
+  - **Uncensored**: "abliterated" builds (refusals taken out) on Hugging Face of models Colibri runs, each in every
+    size its repository has, from the smallest to the largest. Only builds checked on Hugging Face are listed (repo,
+    every file and its exact size; Nov 16, 2026), the same list Hearth AI uses:
+
+    | Model | Repository | Colibri reads it as | Sizes | Licence |
+    |---|---|---|---|---|
+    | Huihui Qwen3.6-35B-A3B abliterated | `huihui-ai/Huihui-Qwen3.6-35B-A3B-abliterated-MTP-GGUF` | qwen35moe | Q2_K 13.2 … **Q4_K 21.7** … F16 71.1 GB (7) | Apache-2.0 |
+    | Qwen3-30B-A3B abliterated (mlabonne) | `mradermacher/Qwen3-30B-A3B-abliterated-GGUF` | qwen3moe | Q2_K 11.3 … Q8_0 32.5 GB (11) | Apache-2.0 |
+    | Huihui Qwen3-8B abliterated v2 | `mradermacher/Huihui-Qwen3-8B-abliterated-v2-GGUF` | qwen3 | Q2_K 3.3 … F16 16.4 GB (12) | Apache-2.0 |
+    | Huihui Qwen3.8-Flash-Next abliterated | `huihui-ai/Huihui-Qwen3.8-Flash-Next-abliterated-GGUF` | qwen4exp | Swift IQ2_XS 68.2, UD-IQ4_XS 93.7 … BF16 354 GB, split files (7) | Qwen community licence 1.0 |
+    | Huihui Qwen3.6-35B-A3B abliterated (more sizes) | `mradermacher/Huihui-Qwen3.6-35B-A3B-abliterated-GGUF` | qwen35moe | Q2_K 12.9 … Q8_0 36.9 GB (11) | Apache-2.0 |
+    | Huihui Qwen3.5-35B-A3B abliterated | `mradermacher/Huihui-Qwen3.5-35B-A3B-abliterated-GGUF` | qwen35moe | Q2_K 12.8 … Q8_0 36.9 GB (11) | Apache-2.0 |
+    | Huihui Qwen3-30B-A3B Instruct 2507 abliterated | `mradermacher/Huihui-Qwen3-30B-A3B-Instruct-2507-abliterated-GGUF` | qwen3moe | Q2_K 11.3 … Q8_0 32.5 GB (11) | Apache-2.0 |
+    | Huihui Qwen3-Coder-30B-A3B abliterated | `mradermacher/Huihui-Qwen3-Coder-30B-A3B-Instruct-abliterated-GGUF` | qwen3moe | Q2_K 11.3 … Q8_0 32.5 GB (11) | Apache-2.0 |
+
+    Marked for the owner's PC (32 GB): Huihui Qwen3.6-35B-A3B abliterated, Q4_K. The memory figures for these builds are
+    estimates from the file size (Colibri's planner decides on the real files). They answer anything: keep them off a
+    PC children use. The list is a data file (`/usr/share/hearth/ai-models.json`, below), updated without touching code.
 - **Downloads** start only when you press a model **twice**, one at a time, and only after a free-space check. A catalog
   model is downloaded by Colibri's own setup (resumable, every file checked). An uncensored build is downloaded over
   https from Hugging Face (resumable), its size and SHA-256 checked against what Hugging Face lists for it (a wrong one is
-  deleted), then made ready by `coli import`. Progress shows on the page; Cancel keeps what's there.
+  deleted), then made ready by `coli import` (split models: every part, then the first one imported). Progress shows on the page; Cancel keeps what's there.
 - **Models folder**: your Home (`~/colibri-models`) or any drive you can write to.
 - **Hearth's own AI uses**: Ollama (the default) or Colibri, for Hearth's AI pieces. It changes only when you change it.
 - **Stop Colibri while you play** (on): it holds the graphics card's memory, so it stops when Game Mode or a game starts
@@ -245,12 +259,15 @@ this PC. Two files tell them more:
   the addresses that follow from them (`[{"id": "ollama", "baseUrl": "http://127.0.0.1:11434/v1"}, {"id": "colibri",
   "baseUrl": "http://127.0.0.1:11440/v1", "model": "…", "cli": "…/engine/coli", "setupHome": "…", "modelsDir": "…",
   "use": [...]}]`), written again with each change you make, never by itself. No file: Ollama, as before 1.14.
-- `/usr/share/hearth/ai-models.json`: every model Hearth offers, both groups (id, name, group, source repo and file,
-  size, quant, architecture, memory and disk needs, what it's good at, licence). It's in the image and updated with
-  Hearth; the Standard group in it is a copy of Colibri's v2.1.0 catalog (Hearth itself reads Colibri's live).
-- An app that downloads a model itself (Ithil's "Install & use" runs `coli setup --model ID --no-start`) then runs
-  `hearth-colibri use ID`: Hearth finds the model (in its setup folder, Colibri's own, or a models folder with Colibri's
-  complete download record), serves it, and restarts Colibri if it's running.
+- `/usr/share/hearth/ai-models.json`: every model Hearth offers, in Hearth AI's shape (its docs/colibri.md
+  "Uncensored models"): `{"updated", "recommend": [{"min_ram_gb", "model", "quant"}], "models": [{"id", "group":
+  "uncensored", "name", "repo", "arch", "engine", "license", "base", "method", "size", "summary", "quants": [{"quant",
+  "files", "bytes", "download_gb", "ram_min_gb", "ram_good_gb"}]}], "standard": {"models": [Colibri's catalog]}}`. It's
+  in the image and updated with Hearth; `standard` is a copy of Colibri's v2.1.0 catalog (Hearth reads Colibri's live).
+- An app that downloads a model itself (Ithil's "Install & use" runs `coli setup --model ID --no-start`, or downloads
+  a GGUF and runs `coli import --out FOLDER`) then runs `hearth-colibri use ID` (or `hearth-colibri use ID FOLDER` for
+  an imported one): Hearth finds the model (its setup folder, Colibri's own, a models folder with Colibri's complete
+  download record, or FOLDER), picks it, serves it, and restarts Colibri if it's running.
 
 **Licences**: Colibri is Apache-2.0 (Copyright 2026 Vincenzo Fornaro), downloaded from its release by you, never
 bundled. Each model keeps its authors' licence (shown beside it; Qwen-Image-2.1 is non-commercial only). The uncensored
