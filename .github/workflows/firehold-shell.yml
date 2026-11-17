@@ -1,0 +1,377 @@
+# Firehold's Couch screens in Mantel (a hidden preview): their unit tests, hearth-core's list of the whole library
+# (--list-games --all), then Desktop Mode for real on a virtual 1920 × 1080 screen (labwc headless + Quickshell on
+# Fedora, as widgets-test.yml) with a stand-in library and open windows: locked (nothing of it shows), then unlocked,
+# each screen screenshotted next to its mockup (the pictures as SHOT notices: tools/shot-notices.py). Fails if the
+# shell reports errors in these files, anything shows while locked, or firehold.json changes by itself.
+name: Firehold shell
+
+on:
+  push:
+    branches: [feature/firehold-shell]
+
+jobs:
+  core:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-core
+      - name: hearth-core's games for the desktop (desktop_games)
+        working-directory: hosts/hearth-core
+        run: |
+          set -o pipefail
+          cargo test --lib desktop_games 2>&1 | tee test.log || { echo "::error title=hearth-core::$(grep -E '^(error|---- |thread .* panicked)' -A8 test.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+
+  couch:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install labwc, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 python3-pillow qt6ct \
+            google-noto-sans-fonts adwaita-icon-theme pciutils breeze-icon-theme >/dev/null
+          dnf -y install dbus-daemon libnotify wl-clipboard wtype foot hicolor-icon-theme rsms-inter-fonts nodejs >/dev/null || true
+          dnf -y install mesa-dri-drivers mesa-libEGL mesa-libGL >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          quickshell --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: Unit tests (the Couch's rules, the library helper, the input watcher, the guards)
+        run: |
+          python3 -m unittest discover -s hosts/linux/test -p 'test_firehold.py' -v 2>&1 | tail -30
+          python3 -m unittest discover -s hosts/linux/test -p 'test_firehold.py' >/dev/null 2>&1 || { echo "::error title=firehold unit tests::failed (see the log)"; exit 1; }
+
+      - name: Desktop Mode with Firehold, locked and unlocked
+        shell: bash
+        run: |
+          mkdir -p shots/post
+          exec > >(tee shots/step.log) 2>&1
+          set +e +o pipefail
+          set -x
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
+          export LANG=C.UTF-8 LC_ALL=C.UTF-8
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          # Qt's own OpenGL renderer on Mesa's software GL (llvmpipe), as on a real screen: whole frames, and the effects
+          # (rounded art) drawn. Qt's software renderer left Home's lower part shifted in pictures (a partial-repaint
+          # problem of that renderer only).
+          export LIBGL_ALWAYS_SOFTWARE=1 NIMBUS_SHARE="$PWD/hosts/linux"
+          chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
+          if command -v dbus-daemon >/dev/null; then
+            dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          fi
+          # ---- stand-ins: Hearth's library (nimbus --list-games --all), Windows apps and Saved Games. The names are the
+          # mockups' placeholders, so each picture can be held next to its mockup.
+          mkdir -p /tmp/fakebin
+          python3 .github/scripts/firehold-fixtures.py /tmp/fakebin
+          chmod +x /tmp/fakebin/*
+          export PATH="/tmp/fakebin:$PATH" NIMBUS_APP=/tmp/fakebin/nimbus
+          mkdir -p "$HOME/.local/share/nimbus" "$HOME/.config/nimbus"
+          [ -s "$HOME/.local/share/nimbus/desktop.json" ] || echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1 || true
+          # ---- the desktop
+          labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          SH="$NIMBUS_SHARE/desktop/shell"
+          IO="$SH/hearth_settings_io.py"
+          F="$HOME/.config/nimbus/firehold.json"
+          q() { quickshell ipc -p "$SH" call "$@" 2>/dev/null | grep -v 'WARN' | tail -n1; }
+          shot() { sleep "${2:-3}"; grim "shots/post/$1.png" || echo "::warning title=firehold::no picture $1"; }
+          fail() { echo "::error title=firehold::$1"; touch shots/FAILED; }
+          for i in $(seq 1 60); do [ -n "$(q firehold state)" ] && break; sleep 2; done
+          [ -n "$(q firehold state)" ] || fail "Firehold.qml didn't load: $(grep -E 'Firehold|firehold' "$LOG" | head -8 | cut -c1-220 | tr '\n' '|')"
+          # ---- the windows: a Steam game, an emulator, four apps (foot stands in for each)
+          w() { foot --app-id="$1" -T "$2" -W 80x20 sh -c 'sleep 100000' >/dev/null 2>&1 & }
+          w steam_app_1000 "Ember Trails"; sleep 1
+          w retroarch "Pixel Rally"; sleep 1
+          w org.hearth.files "Pictures › Trips — Hearth Files"; sleep 1
+          w firefox "3 tabs — Firefox"; sleep 1
+          w discord "2 new messages — Discord"; sleep 1
+          w steam "Downloading 1 update — Steam"; sleep 4
+          q winlist state | head -c 1500; echo
+
+          # ---- locked: nothing of it shows, its IPC does nothing, nothing is written
+          [ ! -e "$F" ] || fail "firehold.json exists before anything was chosen"
+          q firehold couch; q firehold open guide; q firehold open settings; q firehold open switcher; sleep 3
+          st=$(q firehold state); echo "locked: $st"
+          echo "$st" | python3 -c 'import json,sys; s=json.load(sys.stdin); sys.exit(0 if not s["unlocked"] and s["posture"]=="desk" and not s["couchUp"] and not s["guide"] and not s["settings"] else 1)' \
+            || fail "something of Firehold is up while it's locked: $st"
+          shot 00-locked-desktop 2
+          q settings page about; shot 00b-locked-about 4; q settings close
+          [ ! -e "$F" ] || fail "firehold.json was written while it's locked"
+
+          # ---- unlocked: seven taps on the version in Settings › About (SettingsNav.tapVersion)
+          for i in 1 2 3 4 5 6 7; do q settings tapversion; sleep 0.3; done
+          sleep 2; cat "$F"
+          for i in $(seq 1 20); do q firehold state | grep -q '"unlocked":true' && break; sleep 1; done
+          for i in $(seq 1 30); do q firehold state | grep -q '"games":1[0-9]' && break; sleep 2; done
+          echo "::notice title=firehold::unlocked: $(q firehold state | head -c 900)"
+          before=$(sha256sum "$F" | cut -c1-64)
+
+          # 1. Couch Home (the game's window is behind it; the windows are in Open on this PC)
+          q firehold couch; sleep 4
+          # 5. Library, the first tile focused; then a filter and the search
+          q firehold tab library; shot 05-library 5
+          # (Home's clock line repaints once a minute; the software renderer's partial repaint under labwc headless can
+          # shift the rest of a picture taken then, so the picture is taken right after a full repaint, away from :00.)
+          while [ "$(date +%S)" -gt 45 ] || [ "$(date +%S)" -lt 3 ]; do sleep 1; done
+          q firehold tab home; sleep 4; q firehold redraw; shot 01-couch-home 2
+          q firehold filter epic; shot 05b-library-epic 3; q firehold filter all
+          q firehold search "deep"; shot 05c-library-search 3; q firehold search ""
+          q firehold tab apps; shot 07-apps 4
+          q firehold tab store; shot 08-store 3
+          # 4. Everything open
+          q firehold tab home; q firehold open switcher; shot 04-everything-open 4
+          q firehold press right; shot 04b-everything-open-moved 2
+          q firehold press b
+          # 3. The Guide panel over the game (A on Ember Trails in Everything open goes to it, full screen)
+          q firehold open switcher; sleep 1; q firehold press a; sleep 3
+          echo "::notice title=firehold::windows after A: $(q winlist state | head -c 900)"
+          q firehold open guide; shot 03-guide 5
+          echo "::notice title=firehold::with the guide: $(q firehold state | head -c 700)"
+          q firehold press b; sleep 1
+          # 2. Mouse moved: Desk, everything still open, the notice
+          q firehold input mouse; shot 02-desk-switch 4
+          echo "::notice title=firehold::after the mouse: $(q firehold state | head -c 700)"
+          q firehold state | grep -q '"posture":"desk"' || fail "moving the mouse didn't switch to Desk"
+          q firehold state | grep -q '"notice":"Switched to Desk"' || fail "no Switched to Desk notice"
+          n=$(q winlist state | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["windows"]))' 2>/dev/null)
+          [ "${n:-0}" -ge 6 ] || fail "a window closed when switching to Desk ($n left)"
+          # 6. Settings › Couch and Desk; and Settings › About's row
+          q firehold open settings; shot 06-settings-couch-desk 4
+          after=$(sha256sum "$F" | cut -c1-64)
+          [ "$before" = "$after" ] && echo "::notice title=firehold::opening every Firehold screen changed nothing in firehold.json" || fail "opening Firehold's screens changed firehold.json: $(cat "$F")"
+          q firehold close; q settings page about; shot 09-about-row 4; q settings close
+          # A choice: Always Couch (the settings panel with the controller: right, A), then back to Automatic
+          q firehold open settings; sleep 2; q firehold press right; q firehold press a; sleep 2
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); sys.exit(0 if d.get("posture")=="couch" and d.get("firehold", {}).get("unlocked") is True else 1)' "$F" || fail "Always Couch wasn't saved as one key: $(cat "$F")"
+          shot 06b-settings-always-couch 2
+          q firehold press left; q firehold press a; sleep 2; q firehold press b
+          cp "$F" shots/firehold.json; cat "$F"
+          # Nothing changes by itself across a restart of the shell
+          sleep 3; before=$(sha256sum "$F" | cut -c1-64)
+          pkill -f "quickshell -p $SH" || true
+          for i in $(seq 1 40); do sleep 2; [ -n "$(q firehold state)" ] && break; done
+          sleep 12
+          after=$(sha256sum "$F" | cut -c1-64)
+          [ "$before" = "$after" ] && echo "::notice title=firehold::firehold.json unchanged across a shell restart" || fail "firehold.json changed by itself when the shell restarted"
+
+          # ---- each picture next to its mockup (scratch: the mockups are drawn from their HTML in the compositor's branch;
+          # here the picture alone at 1920 × 1080, with its size checked)
+          python3 - shots/post <<'PY'
+          import glob, sys
+          from PIL import Image
+          for p in sorted(glob.glob(sys.argv[1] + '/*.png')):
+              im = Image.open(p)
+              print(p, im.size)
+              if im.size != (1920, 1080):
+                  print('::warning title=firehold::%s is %dx%d, not 1920x1080' % (p, im.size[0], im.size[1]))
+          PY
+          # ---- the shell's log: any error in these files fails the run
+          cp "$LOG" shots/shell.log 2>/dev/null || true
+          P='(Firehold[A-Za-z]*|Fh[A-Z][A-Za-z]*|firehold)\.(qml|js)'
+          if grep -E "$P.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Expected token|Syntax|Cannot read|Invalid|Type error|unavailable)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=firehold::$(grep -E "$P" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
+          fi
+          grep -E "$P|Mantel: Firehold" "$LOG" | sed 's/^.*file:\/\/[^ ]*shell\///' | sort -u | head -9 | while read -r l; do echo "::warning title=shell log::${l:0:400}"; done
+          ls -la shots/post
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firehold-screenshots
+          path: shots
+          retention-days: 14
+
+      - name: Fail if the shell had problems
+        if: always()
+        run: test ! -e shots/FAILED
+
+  # The same Couch on KWin (Mantel's other window manager) on a virtual KMS screen (vkms), as kwin-windows.yml runs it:
+  # Home, Everything open with KWin's window pictures, the Desk (Firehold's bar and dock, a game in a window with its
+  # frame, the Switched to Desk notice) and the Guide panel. Pictures through KWin's screenshot API.
+  couch-kwin:
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      options: --privileged -v /dev:/dev -v /lib/modules:/lib/modules:ro
+    steps:
+      - name: Install KWin, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git python3 python3-gobject nodejs procps-ng dbus-daemon dbus-tools kwin \
+            foot qt6-qtsvg qt6ct xorg-x11-server-Xwayland mesa-dri-drivers google-noto-sans-fonts breeze-icon-theme adwaita-icon-theme \
+            hicolor-icon-theme ImageMagick wl-clipboard libnotify kmod python3-dbus python3-pillow systemd-udev libinput gtk3 \
+            gcc pkgconf-pkg-config wayland-devel wayland-protocols-devel glib2-devel >/dev/null
+          dnf -y install --skip-unavailable aurorae libkscreen kscreen rsms-inter-fonts plasma-wayland-protocols-devel plasma-wayland-protocols >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          for b in kwin_wayland quickshell foot; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
+
+      - uses: actions/checkout@v4
+
+      - name: Firehold on KWin
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          set +e +o pipefail
+          mkdir -p shots/post
+          exec > >(tee shots/step-kwin.log) 2>&1
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home LANG=C.UTF-8 LC_ALL=C.UTF-8
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" "$HOME/.config/nimbus" && chmod 700 "$XDG_RUNTIME_DIR"
+          echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          export NIMBUS_SHARE="$PWD/hosts/linux" LIBGL_ALWAYS_SOFTWARE=1 QT_FORCE_STDERR_LOGGING=1
+          mkdir -p /tmp/fakebin
+          python3 .github/scripts/firehold-fixtures.py /tmp/fakebin
+          printf '#!/bin/sh\necho "$*" >> /tmp/nimbus-mode-asked\n' > /tmp/fakebin/nimbus-mode
+          chmod +x /tmp/fakebin/*
+          export PATH="/tmp/fakebin:$PATH" NIMBUS_APP=/tmp/fakebin/nimbus
+          python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1 || true
+          # KWin's pictures of single windows (Everything open) go through hearth-kwin-cast, as on the image: built here,
+          # and it answers hearth-screens only when that's root's and nobody else can change it.
+          bash hosts/linux/desktop/kwin-helpers/build.sh /tmp/kwin-helpers > shots/helpers-build.log 2>&1 \
+            || echo "::error title=firehold kwin::hearth-kwin-cast didn't build: $(grep -E 'error' shots/helpers-build.log | head -4 | tr '\n' '|' | cut -c1-500)"
+          install -Dm755 /tmp/kwin-helpers/hearth-kwin-cast /usr/libexec/hearth/hearth-kwin-cast
+          install -Dm644 os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/hearth-kwin-cast.desktop
+          chown -R root:root hosts/linux/desktop && chmod -R go-w hosts/linux/desktop
+          cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
+          modprobe vgem 2>/dev/null || echo "::warning title=KWin::no vgem module"
+          for u in /usr/lib/systemd/systemd-udevd /lib/systemd/systemd-udevd; do [ -x "$u" ] && { "$u" --daemon; break; }; done
+          export XDG_CONFIG_DIRS="$PWD/hosts/linux/desktop/kwin/windows/xdg:/etc/xdg" KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1
+          HEARTH_WM=kwin python3 hosts/linux/desktop/theme/hearth-theme >/dev/null 2>&1 || true
+          modprobe vkms 2>/dev/null || echo "::warning title=KWin::no vkms module"
+          udevadm trigger --action=add 2>/dev/null; udevadm settle -t 10 2>/dev/null
+          VKMS=""
+          for c in /sys/class/drm/card[0-9]*; do case "$c" in *-*) continue;; esac; ls -d "$c"-* >/dev/null 2>&1 && VKMS=/dev/dri/$(basename "$c"); done
+          if [ -n "$VKMS" ]; then
+            KWIN_DRM_DEVICES=$VKMS /tmp/kwin_wayland --drm --xwayland --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
+            for i in $(seq 1 30); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+          fi
+          if [ ! -S "$XDG_RUNTIME_DIR/wayland-hearth" ]; then
+            echo "::warning title=KWin::not on vkms; on its own virtual screen"
+            pkill -f /tmp/kwin_wayland; sleep 1
+            /tmp/kwin_wayland --virtual --xwayland --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
+            for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+          fi
+          [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { echo "::error title=KWin::didn't start: $(tail -5 shots/kwin.log | tr '\n' '|' | cut -c1-600)"; exit 1; }
+          if command -v kscreen-doctor >/dev/null; then
+            sleep 2
+            OUT1=$(WAYLAND_DISPLAY=wayland-hearth kscreen-doctor -j 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["outputs"][0]["name"])' 2>/dev/null)
+            [ -n "$OUT1" ] && WAYLAND_DISPLAY=wayland-hearth kscreen-doctor "output.$OUT1.mode.1920x1080@60" >/dev/null 2>&1 || echo "::warning title=pictures::couldn't set 1920x1080"
+          fi
+          sleep 3
+          cat > /tmp/shot.py <<'PY'
+          import dbus, os, sys
+          from PIL import Image
+          i = dbus.Interface(dbus.SessionBus().get_object('org.kde.KWin', '/org/kde/KWin/ScreenShot2'), 'org.kde.KWin.ScreenShot2')
+          r, w = os.pipe()
+          res = i.CaptureWorkspace({'native-resolution': True}, dbus.types.UnixFd(w), timeout=15)
+          os.close(w)
+          data = b''
+          while True:
+              c = os.read(r, 1 << 20)
+              if not c:
+                  break
+              data += c
+          W, H, S = int(res['width']), int(res['height']), int(res['stride'])
+          raw = 'RGBA' if int(res.get('format', 6)) in (16, 17, 18, 19) else 'BGRA'
+          Image.frombuffer('RGBA', (W, H), data, 'raw', raw, S, 1).convert('RGB').save(sys.argv[1])
+          PY
+          sed -i 's/^          //' /tmp/shot.py
+          shot() { sleep "${2:-3}"; timeout 25 python3 /tmp/shot.py "shots/post/$1.png" 2>>shots/shot-errors.txt || echo "::warning title=firehold kwin::no picture $1"; }
+          fail() { echo "::error title=firehold kwin::$1"; touch shots/FAILED; }
+          export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland HEARTH_WM=kwin
+          SH="$NIMBUS_SHARE/desktop/shell"; F="$HOME/.config/nimbus/firehold.json"; LOG=shots/shell-kwin.log
+          q() { quickshell ipc -p "$SH" call "$@" 2>/dev/null | grep -v 'WARN' | tail -n1; }
+          quickshell -p "$SH" >$LOG 2>&1 &
+          for i in $(seq 1 60); do [ -n "$(q firehold state)" ] && break; sleep 2; done
+          [ -n "$(q firehold state)" ] || fail "Firehold.qml didn't load under KWin"
+          for i in $(seq 1 30); do q winlist state | grep -q '"connected":true' && break; sleep 2; done
+          # Each window shows its name in colour, so KWin's pictures of them can be told apart.
+          w() { foot --app-id="$1" -T "$2" -W "${3:-80x20}" sh -c 'printf "\033[1;3%sm\n\n   %s\n\033[0m" "$1" "$0"; sleep 100000' "$2" "$((RANDOM % 6 + 1))" >/dev/null 2>&1 & sleep 2; }
+          w org.hearth.files "Pictures › Trips — Hearth Files" 110x32
+          w firefox "3 tabs — Firefox"; w discord "2 new messages — Discord"; w steam "Downloading 1 update — Steam"
+          w retroarch "Pixel Rally"; w steam_app_1000 "Ember Trails" 100x28
+          sleep 3
+          echo "::notice title=firehold kwin::windows: $(q winlist state | head -c 700)"
+          python3 "$SH/hearth_settings_io.py" merge "$F" '{"firehold": {"unlocked": true}}'
+          for i in $(seq 1 30); do q firehold state | grep -q '"games":1[0-9]' && break; sleep 2; done
+          # 1. Couch Home
+          q firehold couch; sleep 3; q firehold tab library; sleep 2; q firehold tab home; shot k01-couch-home 4
+          # 4. Everything open with KWin's pictures of the windows (taken every 3 seconds)
+          q firehold open switcher; shot k04-everything-open 9
+          ls -la "$XDG_RUNTIME_DIR/hearth-firehold/pictures" 2>&1 | head -12
+          n=$(ls "$XDG_RUNTIME_DIR/hearth-firehold/pictures"/*.png 2>/dev/null | wc -l)
+          [ "$n" -ge 4 ] && echo "::notice title=firehold kwin::KWin took $n window pictures" || fail "KWin took $n window pictures for Everything open (6 windows open)"
+          q firehold press b
+          # 2. The Desk as in the mockup: Hearth Files on the left, the game in a window in front, the others minimized
+          for t in "3 tabs — Firefox" "2 new messages — Discord" "Downloading 1 update — Steam" "Pixel Rally"; do q winlist act "$t" minimize; done
+          q winlist run '{"op":"place","title":"Pictures › Trips — Hearth Files","x":120,"y":100,"w":980,"h":620}'
+          q winlist run '{"op":"place","title":"Ember Trails","x":1020,"y":300,"w":800,"h":500}'
+          q winlist act "Pictures › Trips — Hearth Files" activate; sleep 1; q winlist act "Ember Trails" activate; sleep 2
+          q firehold input mouse; shot k02-desk 5
+          q winlist state | grep -q '"fullscreen":true' && echo "::warning title=firehold kwin::a window is full screen on the Desk"
+          q firehold menu Edit; shot k02b-desk-edit-menu 2; q firehold menu ""
+          echo "::notice title=firehold kwin::desk: $(q firehold state | head -c 400) active: $(q winlist state | python3 -c 'import json,sys; print(json.load(sys.stdin).get("active"))')"
+          # 3. The Guide over the game
+          q firehold couch; sleep 2; q firehold go "Ember Trails"; sleep 3; q firehold open guide; shot k03-guide 4
+          q firehold press b; q firehold tab library; shot k05-library 4
+          q firehold open settings; shot k06-settings 3; q firehold close
+          cp "$LOG" shots/ 2>/dev/null
+          P='(Firehold[A-Za-z]*|Fh[A-Z][A-Za-z]*|firehold)\.(qml|js)'
+          if grep -E "$P.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Expected token|Syntax|Cannot read)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=firehold kwin::$(grep -E "$P" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"; touch shots/FAILED
+          fi
+          grep -E "$P|Mantel: Firehold" "$LOG" | sed 's/^.*file:\/\/[^ ]*shell\///' | sort -u | head -9 | while read -r l; do echo "::warning title=shell log (kwin)::${l:0:400}"; done
+          [ -s shots/shot-errors.txt ] && echo "::warning title=pictures::$(head -c 400 shots/shot-errors.txt | tr '\n' '|')"
+          pkill -f quickshell; pkill -f /tmp/kwin_wayland; true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firehold-kwin-screenshots
+          path: shots
+          retention-days: 14
+
+      - name: Fail if the shell had problems
+        if: always()
+        run: test ! -e shots/FAILED
+
+  # The pictures as notices (title "SHOT <name> <n>", a JPEG in base64 pieces): 50 to a job, 10 to a step.
+  shots:
+    needs: [couch, couch-kwin]
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/shot-notices.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: firehold-*screenshots
+          path: shots
+          merge-multiple: true
+      - run: pip install --quiet pillow >/dev/null 2>&1 || true
+      - name: Pictures 1
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 0
+      - name: Pictures 2
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 1
+      - name: Pictures 3
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 2
+      - name: Pictures 4
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 3
+      - name: Pictures 5
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 4
