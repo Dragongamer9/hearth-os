@@ -2585,7 +2585,7 @@ jobs:
           # bus, fixtures/fake-sensor-proxy.py, with Auto-brightness on and "How bright" at +10), and night light from
           # sunset to sunrise in Austin with a 15 minute fade. Then Super+P's switcher and the screen-sharing picker's Area.
           pkill quickshell; sleep 2
-          python3 hosts/linux/test/fixtures/fake-sensor-proxy.py 120 > shots/kwin/fake-sensor.log 2>&1 &
+          python3 -W ignore hosts/linux/test/fixtures/fake-sensor-proxy.py 120 > shots/kwin/fake-sensor.log 2>&1 &
           sleep 2
           export HEARTH_SCREENS_SENSOR_BUS=session
           lt=$(timeout 20 python3 $SH light 2>&1 | tail -1)
@@ -2602,7 +2602,7 @@ jobs:
           sleep 25
           scr :bright kwin-6-brightness-and-night
           echo "::notice title=KWin screens: auto-brightness::$(timeout 20 python3 $SH info 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["autoBrightness"])' 2>&1 | cut -c1-300); the fake sensor: $(tail -3 shots/kwin/fake-sensor.log | tr '\n' '|')"
-          scr scr :hdr kwin-7-hdr-colour-intensity; scr :signal kwin-8-picture-signal
+          scr :hdr kwin-7-hdr-colour-intensity; scr :signal kwin-8-picture-signal
           scr :several kwin-9-several-screens
           # Full-screen overlays go to the shell's first screen: both screens are taken, before and with the overlay
           # (the shots job keeps the screen that changed).
