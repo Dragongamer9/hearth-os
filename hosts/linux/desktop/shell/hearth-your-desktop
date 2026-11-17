@@ -159,6 +159,11 @@ def cmd_wm(w):
             sio.write_text(FAILS, ''.join(rest)) if rest else os.remove(FAILS)
         except OSError:
             pass
+        # ...and this sign-in too: "didn't start earlier this sign-in" is forgotten (nimbus-session's hearth-kwin-failed).
+        try:
+            os.remove(os.path.join(RUN, 'hearth-kwin-failed'))
+        except OSError:
+            pass
         for p in (NOTICE, SHOWN):
             ns = read_notices(p)
             if any(n['what'] == 'kwin' for n in ns):
