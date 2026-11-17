@@ -90,6 +90,18 @@ class Flathub(unittest.TestCase):
         # ODRS gets the same anonymous hash from everybody
         fetch = [b for u, b in self.urls if u.endswith('/fetch')][0]
         self.assertEqual(fetch['user_hash'], '0' * 40)
+        # Flathub's newer shape: sizes as a list of {src, width, height}
+        ANSWERS['appstream/org.kde.krita'] = dict(APPSTREAM, screenshots=[{'caption': 'New', 'sizes': [
+            {'src': 'https://x/n624.png', 'width': '624', 'height': '351', 'scale': '1x'},
+            {'src': 'https://x/n1248.png', 'width': '1248', 'height': '702', 'scale': '1x'},
+            {'src': 'https://x/n2496.png', 'width': '2496', 'height': '1404', 'scale': '1x'}]}], urls=None, metadata=None)
+        self.mod.CACHE = self.tmp.name + '/2'
+        try:
+            b = self.mod.app('org.kde.krita', getter=self.web)
+        finally:
+            ANSWERS['appstream/org.kde.krita'] = APPSTREAM
+        self.assertEqual(b['screenshots'], [{'url': 'https://x/n1248.png', 'caption': 'New'}])
+        self.assertEqual((b['homepage'], b['verified']), ('', False))
         for bad in ('krita', '../x.y.z', 'org.kde.krita; rm'):
             with self.assertRaises(self.mod.Fail):
                 self.mod.app(bad, getter=self.web)
@@ -176,8 +188,9 @@ class Flatpak(unittest.TestCase):
         code, r, lines = self.run_h('update', 'org.kde.krita')
         self.assertEqual(code, 0)
         self.assertIn('progress: 40 Updating org.kde.krita', lines)
-        self.assertIn('update -y --noninteractive --user org.kde.krita', self.log.read_text())
-        self.assertIn('update -y --noninteractive --system org.kde.krita', self.log.read_text())
+        # 1.14: only where the update is (yours here), by its branch (hearth_store_extras.update_apps)
+        self.assertIn('update -y --noninteractive --user org.kde.krita//stable', self.log.read_text())
+        self.assertNotIn('update -y --noninteractive --system org.kde.krita', self.log.read_text())
 
     def test_install_on_a_stock_system_uses_the_systems_flathub(self):
         # Hearth OS keeps Flathub in the system installation only (hearth-flatpak-setup), like Bazaar uses it

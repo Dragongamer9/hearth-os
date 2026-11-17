@@ -335,14 +335,14 @@ class SysAdmin(Home):
         self.assertEqual(calls[-1], ['localectl', 'set-locale', 'LANG=de_DE.UTF-8'])
 
     def test_user_type_plan(self):
-        accts = [{'name': 'me', 'admin': True}, {'name': 'kid', 'admin': False}, {'name': 'dad', 'admin': True}]
+        accts = [{'name': 'me', 'admin': True}, {'name': 'kid', 'admin': False}, {'name': 'alex', 'admin': True}]
         groups = {'wheel', 'kid'}
         self.assertEqual(self.a.user_type_plan('kid', 'admin', 'me', accts, groups), [['gpasswd', '-a', 'kid', 'wheel']])
         self.assertEqual(self.a.user_type_plan('kid', 'standard', 'me', accts, groups), [])
         with self.assertRaises(ValueError):
             self.a.user_type_plan('me', 'standard', 'me', accts, groups)             # never yourself
         with self.assertRaises(ValueError):
-            self.a.user_type_plan('dad', 'standard', 'kid', [{'name': 'dad', 'admin': True}, {'name': 'kid', 'admin': False}], groups)   # last admin
+            self.a.user_type_plan('alex', 'standard', 'kid', [{'name': 'alex', 'admin': True}, {'name': 'kid', 'admin': False}], groups)   # last admin
         for bad in ('root', 'Bad Name', '-rf', 'nobody'):
             with self.assertRaises(ValueError):
                 self.a.user_type_plan(bad, 'admin', 'me', accts, groups)

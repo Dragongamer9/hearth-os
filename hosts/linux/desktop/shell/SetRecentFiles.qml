@@ -3,6 +3,9 @@
 // today or all of them, and folders and apps left out. Your choice is ~/.config/nimbus/recent.json (hearth_settings_io:
 // atomic, .bak, merged); the list itself is the shared recently-used.xbel that GTK, KDE and Hearth's apps keep (written
 // atomically with a .bak when something is forgotten). Opening this page changes nothing.
+// Activities (1.14, KDE's per-activity privacy): with more than one activity, each has its own list, shares every
+// one's, or remembers nothing (activities.json's "act:<id>".recent through Activities.setRecent), and "Forget its
+// recent files" (hearth-files recent-forget activity:ID).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -55,6 +58,38 @@ SetPage {
         sub: "Only the list: your files stay where they are"
         onActivated: { if (page.confirmAll === "all") { page.confirmAll = ""; page.forget("all", "Forgot every recent file"); } else page.confirmAll = "all"; }
     }
+
+    SetHeader { text: "Activities"; visible: page.st && (page.st.activities || []).length > 1 }
+    Text {
+        visible: page.st && (page.st.activities || []).length > 1
+        Layout.fillWidth: true; Layout.leftMargin: 4
+        text: "A file belongs to the activity you were on when you opened it. Change these here or in the activity switcher (X)."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+    }
+    Repeater {
+        model: page.st && (page.st.activities || []).length > 1 ? page.st.activities : []
+        delegate: ColumnLayout {
+            required property var modelData
+            Layout.fillWidth: true
+            spacing: 4
+            SetChoice {
+                Layout.fillWidth: true
+                icon: modelData.id === Activities.current ? "check" : "desktops"
+                title: modelData.name + (modelData.id === Activities.current ? " (you're here)" : "")
+                sub: modelData.files + (modelData.files === 1 ? " recent file" : " recent files")
+                options: [{ value: "own", label: "Its own list" }, { value: "all", label: "Shared" }, { value: "off", label: "Don't remember" }]
+                current: Activities.recentOf(modelData.id)
+                onChosen: v => { Activities.setRecent(modelData.id, v); page.say(modelData.name + ": " + ({ own: "its own recent files", all: "every activity's recent files", off: "files opened on it aren't remembered" })[v]); refreshLater.restart(); }
+            }
+            SetRow {
+                Layout.fillWidth: true
+                visible: modelData.files > 0
+                icon: "undo"; chevron: false; title: "Forget " + modelData.name + "'s recent files"; sub: "Only the list: your files stay where they are"
+                onActivated: page.forget("activity:" + modelData.id, "Forgot " + modelData.name + "'s recent files")
+            }
+        }
+    }
+    Timer { id: refreshLater; interval: 1500; onTriggered: page.refresh() }
 
     SetHeader { text: "Left out" }
     Text {

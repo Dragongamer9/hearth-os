@@ -3,7 +3,7 @@
 // Settings page. Closing it marks this version as seen (~/.local/state/nimbus/welcome.json, state, not a setting);
 // "Show after updates" off (Settings.welcomeAfterUpdates) keeps it away. Never in the way of signing in: it waits, it
 // closes with Esc, B or a click outside, and shell.qml loads it by file name, so a problem here only loses it.
-//   quickshell ipc -p <shell folder> call welcome open|close|show VERSION
+//   quickshell ipc -p <shell folder> call welcome open|close|preview VERSION
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -55,7 +55,7 @@ Scope {
         target: "welcome"
         function open(): void { wl.shown = true; }
         // A version's page shown as it would be (Desktop Mode test's picture); doesn't mark anything as seen until closed.
-        function show(v: string): void { wl.forceVer = v; wl.shown = true; }
+        function preview(v: string): void { wl.forceVer = v; wl.shown = true; }
         function close(): void { wl.close(); }
     }
 

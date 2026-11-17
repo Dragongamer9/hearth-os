@@ -184,6 +184,10 @@ optional avahi-utils
 # documents) and pdftoppm draws PDFs' first page as their preview in Files (poppler-utils, about 1 MB). Optional:
 # without it PDFs are found by name and shown with their icon.
 optional poppler-utils
+# Auto-brightness (Settings › Display, 1.14): iio-sensor-proxy reads a laptop's or handheld's light sensor for
+# hearth-screens (net.hadess.SensorProxy, as KDE and GNOME use it). udev starts it only on a PC with a sensor; off in
+# Settings until you turn it on. Optional: without it the kernel's sensor files are read instead.
+optional iio-sensor-proxy
 command -v gio secret-tool
 # Hearth Files' locked Briefcases (hearth-briefcase): gocryptfs keeps a Briefcase's files encrypted inside the folder
 # (FUSE: fuse3, below), so a lost USB stick gives nothing away. Required: the image fails here without it.
@@ -245,7 +249,7 @@ command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/lib
 #                        KDE's portal (optional; not picked for ScreenCast or RemoteDesktop: hearth-portals.conf
 #                        names Hearth's own. In 1.14 Remote desktop (hearth-vnc) types and clicks under KWin through its
 #                        uinput fallback; a RemoteDesktop in Hearth's portal backend comes later)
-#   libkf6screen-bin / kscreen
+#   libkscreen-bin / kscreen
 #                        kscreen-doctor, screens under KWin (optional; hearth-screens uses it)
 #   polkit-kde-agent-1   Mantel's password prompts (labwc/autostart and nimbus-watchdog try it first)
 #   breeze               the Breeze Qt style and cursors Hearth's look uses (theme/apply.sh, labwc/environment)
@@ -262,15 +266,17 @@ if ! command -v kwin_wayland >/dev/null; then
 fi
 # Hearth's own window frames under KWin are an Aurorae theme (theme/hearth_aurorae.py writes it): without Aurorae KWin
 # falls back to Breeze's frames (still works, just not Hearth's look).
-optional aurorae
+# Debian packages it as kwin-style-aurorae (the source is aurorae).
+if have_pkg kwin-style-aurorae; then optional kwin-style-aurorae; else optional aurorae; fi
 [ -n "$(ls /usr/lib/*/qt6/plugins/org.kde.kdecoration2/*aurorae* /usr/lib/qt6/plugins/org.kde.kdecoration2/*aurorae* 2>/dev/null)" ] \
   || echo "::warning title=KWin::Aurorae isn't installed: KWin's window frames fall back to Breeze instead of Hearth's"
 optional kglobalacceld xdg-desktop-portal-kde
 # KWin's Overview and Desktop grid (Mantel's Task view button, Super+W, View + Y) load Milou's search QML
 # (org.kde.milou): without it they don't open (Present windows still does).
 optional milou
-if have_pkg libkf6screen-bin; then optional libkf6screen-bin; else optional kscreen; fi
-command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkf6screen-bin / kscreen): screens under KWin need it"
+# kscreen-doctor is in Debian's libkscreen-bin (Plasma 6's libkscreen; there's no libkf6screen-bin).
+if have_pkg libkscreen-bin; then optional libkscreen-bin; else optional kscreen; fi
+command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkscreen-bin / kscreen): screens under KWin need it"
 # Hearth Capture (1.14, Capture.qml): Read text (tesseract, English) and QR codes (zbarimg) on a screenshot; optional,
 # Capture says so when they're missing
 optional tesseract-ocr tesseract-ocr-eng zbar-tools
@@ -1132,16 +1138,12 @@ ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
 # Screens and screenshots on both of Mantel's compositors (1.14, docs/SCREENS.md): hearth-screens (Settings › Display,
 # restore at start) and hearth-screen-power (screen off when idle). Under KWin they use kscreen-doctor (libkscreen-bin:
 # KWin's output management and DPMS) and KWin's D-Bus. KWin answers its screenshot interface only for a program whose
-# .desktop file lists it, found by the program's executable: hearth-screenshot runs through its own copy of Python
-# (a real copy, not a link: KWin may compare the file itself, and then every Python program would be trusted), named
-# by hearth-screenshot.desktop (os/system_files).
+# .desktop file lists it, found by the program's executable: hearth-screens takes its screenshots through the small
+# helper hearth-kwin-cast (hearth-kwin-cast.desktop), which answers only hearth-portal and hearth-screens. (1.14
+# before this trusted a copy of Python, hearth-shot-python: any script it ran could take screenshots; it's gone.)
 optional libkscreen-bin libkf6config-bin   # kscreen-doctor; kwriteconfig6 (KWin's Night Light and tearing settings, told to KWin)
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-screens /usr/share/nimbus/desktop/shell/hearth-screen-power /usr/bin/hearth-screenshot
-py=$(readlink -f /usr/bin/python3)
-install -d /usr/libexec/nimbus
-cp -p "$py" /usr/libexec/nimbus/hearth-shot-python
-/usr/libexec/nimbus/hearth-shot-python -c 'import gi; gi.require_version("Gio", "2.0"); from gi.repository import Gio; print("hearth-shot-python can reach D-Bus")' \
-  || echo "hearth-shot-python can't load GLib: screenshots under KWin will say so (grim under labwc is unaffected)"
+rm -f /usr/libexec/nimbus/hearth-shot-python /usr/share/applications/hearth-screenshot.desktop
 # Online accounts (docs/ONLINE-ACCOUNTS.md): `hearth-accounts` for Hearth's apps (list, token, events, mount). Nothing
 # runs by itself; Google/Microsoft stay off until the owner's client ids are in /etc/hearth/online-accounts.json.
 if [ -f /usr/share/nimbus/desktop/shell/hearth_accounts.py ]; then
@@ -1262,7 +1264,12 @@ DESKTOP
 if [ -x /ctx/nimbus-app/hearth-text ]; then
   install -Dm755 /ctx/nimbus-app/hearth-text /usr/bin/hearth-text
   # An editor that can't start is worse than none: then text files open in whatever else is installed.
-  if ldd /usr/bin/hearth-text | grep 'not found'; then echo "Hearth Text needs libraries this image doesn't have (above); left out"; rm -f /usr/bin/hearth-text; fi
+  if ldd /usr/bin/hearth-text | grep 'not found'; then
+    echo "::warning title=Hearth Text::it needs libraries this image doesn't have, so it's left out: $(ldd /usr/bin/hearth-text | grep 'not found' | tr -s ' \t' ' ' | tr '\n' '|' | cut -c1-400)"
+    rm -f /usr/bin/hearth-text
+  fi
+else
+  echo "::warning title=Hearth Text::the Hearth app's build didn't carry hearth-text (os/nimbus-app), so the image has no Hearth Text"
 fi
 if [ -x /usr/bin/hearth-text ]; then
   command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
@@ -1898,6 +1905,11 @@ if [ -d /etc/X11 ]; then echo /usr/bin/sddm > /etc/X11/default-display-manager; 
 
 # ------------------------------------------------------------------ boot straight into Hearth
 systemctl enable nimbus-autologin.service
+# A pre-installed PC (bootc install, no Hearth installer) has no account: a stand-in one for first-time setup, made
+# before the autologin (hearth-oem-account; does nothing once there's an account, never a stop).
+chmod 755 /usr/libexec/nimbus/hearth-oem-account
+systemctl enable hearth-oem-account.service
+systemctl --global enable hearth-oem-notice.service   # and tells you once after you sign in, until it's done
 systemctl enable hearth-greeter-pad.service
 # Hearth's own login screen (1.14, a test): inert unless turned on in Settings (hearth-login-select picks SDDM by
 # default and whenever anything is missing; SDDM stays display-manager.service).

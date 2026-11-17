@@ -549,19 +549,170 @@ class Screens114(Base):
 
     def test_auto_brightness_needs_a_sensor(self):
         iio = os.path.join(self.d.name, 'iio')
-        with mock.patch.object(hs, 'IIO', iio):
+        with mock.patch.object(hs, 'IIO', iio), mock.patch.object(hs.ProxyLight, 'present', return_value=False):
             self.assertIsNone(hs.light_sensor())
             self.assertIsNone(hs.lux())
+            self.assertFalse(hs.auto_status(hs.saved())['capable'])      # no sensor: the rows stay hidden
+            with mock.patch.object(hs, 'have', return_value=True):
+                self.assertEqual(hs.autobright()['why'], 'no light sensor')
             dev = os.path.join(iio, 'iio:device0')
             os.makedirs(dev)
             pathlib.Path(dev, 'in_illuminance_raw').write_text('200\n')
             pathlib.Path(dev, 'in_illuminance_scale').write_text('1.5\n')
-            self.assertEqual(hs.lux(), 300.0)
-            with mock.patch.object(hs, 'have', return_value=True):
-                self.assertFalse(hs.autobright()['running'])     # off in screens.json: ends at once
+            self.assertEqual(hs.lux(), 300.0)                              # the kernel's files where the proxy isn't running
+            self.assertEqual(hs.light_source()[0], 'sysfs')
         self.assertEqual(hs.lux_to_pct(0), 10)
         self.assertLess(hs.lux_to_pct(50), hs.lux_to_pct(300))
         self.assertEqual(hs.lux_to_pct(100000), 100)
+        self.assertFalse(hs.saved()['autoBrightness'])                     # off until you turn it on
+        self.assertFalse(os.path.exists(hs.SAVED))
+
+    def test_auto_brightness_reads_iio_sensor_proxy(self):
+        class Bus:
+            def __init__(self):
+                self.calls = []
+
+            def call_sync(self, dest, path, iface, method, args, rtype, flags, timeout, cancel):
+                self.calls.append((dest, path, iface, method, args.unpack() if args is not None else None, flags))
+                if method == 'Get':
+                    val = {'HasAmbientLight': GLib.Variant('b', True), 'LightLevel': GLib.Variant('d', 250.0),
+                           'LightLevelUnit': GLib.Variant('s', 'lux')}[args.unpack()[1]]
+                    return GLib.Variant('(v)', (val,))
+                return GLib.Variant('()', ())
+        try:
+            import gi
+            gi.require_version('Gio', '2.0')
+            from gi.repository import Gio, GLib
+        except (ImportError, ValueError):
+            self.skipTest('no python3-gi')
+        bus = Bus()
+        with mock.patch.object(hs, '_gio', return_value=(Gio, GLib)), mock.patch.object(Gio, 'bus_get_sync', return_value=bus):
+            p = hs.ProxyLight()
+            self.assertTrue(p.present())
+            self.assertTrue(p.claim())
+            self.assertEqual(p.read(), 250.0)
+            p.release()
+            self.assertEqual(hs.light_source()[0], 'iio-sensor-proxy')
+        methods = [c[3] for c in bus.calls]
+        self.assertIn('ClaimLight', methods)
+        self.assertIn('ReleaseLight', methods)
+        self.assertTrue(all(c[0] == 'net.hadess.SensorProxy' and c[1] == '/net/hadess/SensorProxy' for c in bus.calls))
+        self.assertTrue(all(c[5] == Gio.DBusCallFlags.NO_AUTO_START for c in bus.calls))   # never waits for a proxy that isn't there
+
+    def test_auto_brightness_smooths_offsets_and_pauses(self):
+        ab = hs.AutoBright()
+        self.assertEqual(ab.tick(300, 50), 56)          # toward about 66 %, in a small step
+        cur = 56
+        for _ in range(10):
+            w = ab.tick(300, cur)
+            cur = w if w is not None else cur
+        self.assertAlmostEqual(cur, hs.lux_to_pct(300), delta=3)
+        self.assertIsNone(ab.tick(310, cur))            # a small change in the room: left alone
+        # A hand over the sensor for one reading doesn't drop the screen far.
+        w = ab.tick(0, cur)
+        self.assertGreaterEqual(w, cur - hs.AutoBright.STEP)
+        cur = w
+        for _ in range(12):
+            w = ab.tick(300, cur)
+            cur = w if w is not None else cur
+        # "How bright": +20 puts it 20 above what the room picks.
+        for _ in range(12):
+            w = ab.tick(300, cur, 20)
+            cur = w if w is not None else cur
+        self.assertAlmostEqual(cur, hs.lux_to_pct(300) + 20, delta=3)
+        self.assertEqual(hs.clamp_offset(99), 40)
+        self.assertEqual(hs.clamp_offset('x'), 0)
+        # Set by hand (the keys, Quick settings, the slider): paused while the light stays the same.
+        self.assertIsNone(ab.tick(300, 30, 20))
+        self.assertTrue(ab.paused)
+        for _ in range(10):
+            self.assertIsNone(ab.tick(300, 30, 20))
+        # The room gets much darker: it follows again, from where you left it.
+        w = None
+        for _ in range(10):
+            w = ab.tick(10, 30, 20)
+            if w is not None:
+                break
+        self.assertFalse(ab.paused)
+        self.assertIsNotNone(w)
+        self.assertLessEqual(abs(w - 30), hs.AutoBright.STEP)
+
+    def test_auto_brightness_loop_with_a_fake_sensor(self):
+        class FakeSensor:
+            def __init__(self, levels):
+                self.levels, self.claimed, self.released = list(levels), False, False
+
+            def present(self):
+                return True
+
+            def claim(self):
+                self.claimed = True
+                return True
+
+            def release(self):
+                self.released = True
+
+            def read(self):
+                return self.levels.pop(0) if len(self.levels) > 1 else self.levels[0]
+        state = {'pct': 40}
+        sets = []
+
+        def run(cmd, timeout=10, env=None):
+            if cmd[:2] == ['brightnessctl', '-m']:
+                return 0, 'intel_backlight,backlight,%d,%d%%,1000\n' % (state['pct'] * 10, state['pct']), ''
+            if cmd[:2] == ['brightnessctl', '-q']:
+                state['pct'] = int(cmd[-1].rstrip('%'))
+                sets.append(state['pct'])
+                return 0, '', ''
+            return 127, '', ''
+        status = os.path.join(self.d.name, 'ab.json')
+        sensor = FakeSensor([1000] * 8)
+        pathlib.Path(hs.SAVED).write_text(json.dumps({'version': 1, 'autoBrightness': True, 'autoBrightnessOffset': -10}))
+        with mock.patch.object(hs, 'light_source', return_value=('iio-sensor-proxy', sensor)), mock.patch.object(hs, 'RUN', run), \
+                mock.patch.object(hs, 'have', return_value=True), mock.patch.object(hs, 'STATUS', status), mock.patch.object(hs.time, 'sleep'):
+            hs.autobright(rounds=8)
+            self.assertTrue(sensor.claimed and sensor.released)
+            self.assertTrue(sets and all(abs(b - a) <= hs.AutoBright.STEP for a, b in zip([40] + sets, sets)))   # it fades
+            self.assertAlmostEqual(state['pct'], hs.lux_to_pct(1000) - 10, delta=3)
+            # Someone sets 20 % by hand partway through: it's left there while the light stays.
+            sensor2 = FakeSensor([1000] * 30)
+            with mock.patch.object(hs, 'light_source', return_value=('iio-sensor-proxy', sensor2)):
+                ticks = {'n': 0}
+                real_tick = hs.AutoBright.tick
+
+                def tick(self, lx, current, offset=0):
+                    ticks['n'] += 1
+                    if ticks['n'] == 4:
+                        state['pct'] = 20          # the brightness keys
+                        current = 20
+                    return real_tick(self, lx, current, offset)
+                with mock.patch.object(hs.AutoBright, 'tick', tick):
+                    hs.autobright(rounds=12)
+            self.assertEqual(state['pct'], 20)
+            self.assertTrue(json.loads(pathlib.Path(status).read_text()).get('running') is False)
+            # Turned off in Settings: the loop ends at once and sets nothing.
+            hs.save_entries({}, {'autoBrightness': False})
+            n = len(sets)
+            hs.autobright(rounds=5)
+            self.assertEqual(len(sets), n)
+        sv = json.loads(pathlib.Path(hs.SAVED).read_text())
+        self.assertEqual(sv['autoBrightnessOffset'], -10)       # the loop never writes your settings
+
+    def test_auto_brightness_option_saves_through_the_helpers(self):
+        pathlib.Path(hs.SAVED).write_text(json.dumps({'version': 1, 'outputs': {'DP-1': {'scale': 1.5}}, 'autoBrightness': True}))
+        with mock.patch.object(hs, 'light_source', return_value=('iio-sensor-proxy', object())), mock.patch.object(hs, 'wm', return_value='labwc'), \
+                mock.patch.object(hs, 'info', return_value={}), contextlib.redirect_stdout(io.StringIO()):
+            hs.main(['hearth-screens', 'option', json.dumps({'autoBrightnessOffset': 75})])
+        sv = hs.saved()
+        self.assertEqual((sv['autoBrightness'], sv['autoBrightnessOffset'], sv['outputs']['DP-1']['scale']), (True, 40, 1.5))
+        self.assertTrue(os.path.exists(hs.SAVED + '.bak'))
+        with mock.patch.object(hs, 'light_source', return_value=('iio-sensor-proxy', object())):
+            st = hs.auto_status(sv)
+        self.assertEqual((st['capable'], st['on'], st['offset']), (True, True, 40))
+        t = (SHELL / 'SetDisplay.qml').read_text()
+        for part in ('title: "How bright"', 'page.option({ autoBrightnessOffset: page.autoOffWant }, "")', 'visible: !!page.autoB && page.autoB.capable',
+                     'Auto-brightness is paused'):
+            self.assertIn(part, t)
 
     def test_page_and_switcher(self):
         t = (SHELL / 'SetDisplay.qml').read_text()
@@ -677,15 +828,52 @@ class Wiring(unittest.TestCase):
             self.assertIn('on%sChanged: save("%s")' % (k[0].upper() + k[1:], k), s)
 
     def test_screenshot_trust_for_kwin(self):
-        d = (REPO / 'os' / 'system_files' / 'usr' / 'share' / 'applications' / 'hearth-screenshot.desktop').read_text()
-        self.assertIn('X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2', d)
-        self.assertIn('Exec=/usr/libexec/nimbus/hearth-shot-python ', d)
+        # KWin trusts the small C helper for screenshots, never a copy of Python (any script it ran could take them).
+        apps = REPO / 'os' / 'system_files' / 'usr' / 'share' / 'applications'
+        self.assertFalse((apps / 'hearth-screenshot.desktop').exists())
+        d = (apps / 'hearth-kwin-cast.desktop').read_text()
+        self.assertIn('Exec=/usr/libexec/hearth/hearth-kwin-cast', d)
+        self.assertIn('org.kde.KWin.ScreenShot2', d)
         w = (REPO / 'os' / 'system_files' / 'usr' / 'bin' / 'hearth-screenshot').read_text()
-        self.assertIn('py=/usr/libexec/nimbus/hearth-shot-python', w)
+        self.assertNotIn('hearth-shot-python', w)
+        self.assertIn('exec python3 "$SHELL_DIR/hearth-screens" shot "$@"', w)
         self.assertIn('exec grim "$@"', w)
         b = (REPO / 'os-bases' / 'peppermint' / 'build.sh').read_text()
-        self.assertIn('/usr/libexec/nimbus/hearth-shot-python', b)
+        self.assertIn('rm -f /usr/libexec/nimbus/hearth-shot-python /usr/share/applications/hearth-screenshot.desktop', b)
+        self.assertNotIn('cp -p "$py" /usr/libexec/nimbus/hearth-shot-python', b)
         self.assertIn('optional libkscreen-bin', b)
+        s = (SHELL / 'hearth-screens').read_text()
+        self.assertNotIn('hearth-shot-python', s)
+        c = (REPO / 'hosts' / 'linux' / 'desktop' / 'kwin-helpers' / 'hearth-kwin-cast.c').read_text()
+        for x in ('"CaptureActiveWindow"', '"CaptureActiveScreen"', '"native-resolution", g_variant_new_boolean(full != 0)',
+                  'strcmp(base + 1, "hearth-screens") == 0) who = 2', 'hearth-screens may only take screenshots'):
+            self.assertIn(x, c)
+
+    def test_kwin_shot_asks_hearth_kwin_cast(self):
+        o = {'geometry': None, 'output': None, 'cursor': False, 'file': '-'}
+        self.assertEqual(hs.kwin_cast_args(o), ['shot', 'workspace', '0', '1'])
+        self.assertEqual(hs.kwin_cast_args(dict(o, window=True, cursor=True)), ['shot', 'active-window', '1', '1'])
+        self.assertEqual(hs.kwin_cast_args(dict(o, geometry=(10, -5, 300, 200))), ['shot', 'area', '10', '-5', '300', '200', '0', '1'])
+        self.assertEqual(hs.kwin_cast_args(dict(o, activeScreen=True)), ['shot', 'active-screen', '0', '1'])
+        self.assertEqual(hs.kwin_cast_args(dict(o, output='DP-1')), ['shot', 'screen', 'DP-1', '0', '1'])
+        w, h, st, fmt, data = hs.parse_cast_shot(b'2 1 8 4 1\n' + bytes(range(8)))
+        self.assertEqual((w, h, st, fmt, len(data)), (2, 1, 8, 4, 8))
+        with self.assertRaises(hs.Refused):
+            hs.parse_cast_shot(b'4 4 16 4 1\nshort')
+        with self.assertRaises(hs.Refused):
+            hs.parse_cast_shot(b'no header')
+        # The helper's exit codes: 4 no window (Capture's exit 3), anything else a plain reason.
+        fake = os.path.join(tempfile.mkdtemp(), 'fake-cast')
+        with open(fake, 'w') as f:
+            f.write('#!/bin/sh\necho "hearth-kwin-cast: CaptureActiveWindow failed: NoActiveWindow" >&2\nexit 4\n')
+        os.chmod(fake, 0o755)
+        old = hs.KWIN_CAST
+        hs.KWIN_CAST = fake
+        try:
+            with self.assertRaises(hs.NoWindow):
+                hs.kwin_shot(dict(o, window=True))
+        finally:
+            hs.KWIN_CAST = old
 
 
 if __name__ == '__main__':
