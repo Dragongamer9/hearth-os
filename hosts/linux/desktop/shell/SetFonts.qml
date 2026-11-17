@@ -103,12 +103,22 @@ SetPage {
             }
         }
         SetExpander {
+            anchor: "smoothing"
             icon: "gear"; title: "Font smoothing and DPI"; sub: "For sharp or soft text on your screen"
             SetChoice {
                 title: "Smoothing"
                 options: [{ value: "grayscale", label: "Normal" }, { value: "rgba", label: "Subpixel (LCD)" }, { value: "none", label: "Off" }]
                 current: page.e.antialias || "grayscale"
                 onChosen: v => page.pick("antialias", v)
+            }
+            // The order of the screen's sub-pixels (KDE's "Sub-pixel rendering"): only used with Subpixel (LCD).
+            SetChoice {
+                title: "Sub-pixel order"; sub: (page.e.antialias || "grayscale") === "rgba" ? "Look at a zoomed letter: pick the one with no coloured fringes" : "Used when smoothing is Subpixel (LCD)"
+                enabled: (page.e.antialias || "grayscale") === "rgba"
+                opacity: enabled ? 1 : 0.5
+                options: [{ value: "rgb", label: "RGB" }, { value: "bgr", label: "BGR" }, { value: "vrgb", label: "V-RGB" }, { value: "vbgr", label: "V-BGR" }]
+                current: page.e.subpixel || "rgb"
+                onChosen: v => page.pick("subpixel", v === "rgb" ? "" : v)
             }
             SetChoice {
                 title: "Hinting"

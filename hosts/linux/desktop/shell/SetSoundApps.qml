@@ -1,7 +1,9 @@
 // Hearth Settings › Sound › Apps' sound (1.14, KDE's per-app device and the task manager's scroll-for-volume, in
 // Hearth's look): each app playing sound with its volume and which speakers or headphones it plays on (moved through
 // the volume mixer's "Play on…": WirePlumber moves it and remembers it for that app), and the dock switch. Levels are
-// the mixer's, remembered the same way (app-volumes.json, only when you move a slider). Opening the page writes nothing.
+// the mixer's, remembered the same way (app-volumes.json, only when you move a slider). Also (1.14) each app recording
+// and which microphone it records from (Mixer.takeFrom: WirePlumber moves it and remembers it for that app). Opening the
+// page writes nothing.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -11,6 +13,11 @@ SetPage {
     title: "Apps' sound"
     readonly property var mixer: SettingsNav.mixer
     readonly property var outs: mixer ? mixer.outList : []
+    readonly property var ins: mixer ? mixer.inList : []
+    // `settings page sound-apps:mic` opens it at the microphones (the Desktop Mode test's picture); only scrolls.
+    function reveal() { if (SettingsNav.pageAnchor === "mic") { SettingsNav.pageAnchor = ""; revealTimer.start(); } }
+    Timer { id: revealTimer; interval: 600; onTriggered: page.contentY = Math.max(0, Math.min(micCard.mapToItem(page.contentItem, 0, 0).y - 16, page.contentHeight - page.height)) }
+    Component.onCompleted: reveal()
 
     SetCardGroup {
         title: "Apps playing sound"
@@ -44,6 +51,35 @@ SetPage {
                     onChosen: v => { const o = page.outs.find(x => x.name === v); if (o) page.mixer.sendTo(app.modelData, o); }
                 }
             }
+        }
+    }
+    SetCardGroup {
+        id: micCard
+        title: "Apps using a microphone"
+        SetRow {
+            visible: !page.mixer || page.mixer.recKeys.length === 0
+            interactive: false; icon: "mic"; title: "No app is recording right now"
+            sub: "Join a call or start recording and it shows up here"
+        }
+        Repeater {
+            model: page.mixer ? page.mixer.recKeys : []
+            delegate: SetDropdown {
+                id: rec
+                required property string modelData
+                Layout.fillWidth: true
+                icon: "mic"; title: modelData
+                sub: page.mixer.inOf(modelData) === "" ? "Records from the default microphone (" + page.mixer.defaultIn + ")" : "Records from " + page.mixer.inOf(modelData) + "; other apps stay as they are"
+                options: [{ value: "", label: "The default microphone" }].concat(page.ins.map(o => ({ value: o.name, label: o.name })))
+                current: page.mixer.inOf(modelData)
+                boxWidth: 300
+                onChosen: v => page.mixer.takeFrom(rec.modelData, v === "" ? null : page.ins.find(x => x.name === v) || null)
+            }
+        }
+        Text {
+            Layout.fillWidth: true; Layout.leftMargin: 4
+            visible: !!page.mixer && page.mixer.recKeys.length > 0
+            text: "The app keeps this microphone the next time it records, until you pick another. The default microphone is in Sound."
+            color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
         }
     }
     SetCardGroup {

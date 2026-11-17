@@ -377,6 +377,23 @@ jobs:
           ss power-profiles ss-power-profiles; ss power-awake ss-power-awake; ss battery ss-battery
           ss autostart ss-autostart; ss file-types ss-file-types; ss menu-editor:org.kde.kcalc ss-menu-editor; ss app-permissions ss-app-permissions
           ss wallpaper-more ss-wallpaper-more; ss my-looks ss-my-looks; ss look-more ss-look-more; ss fonts:small ss-fonts-small
+          # 1.14 settings bits (test_settings_bits_114.py): the picture of the day (today's kept in the cache, so no
+          # internet), the light/dark pair, "Apps follow Hearth", the sub-pixel order, Hybrid sleep (a stand-in answer).
+          WP="$PWD/hosts/linux/desktop/shell/images/wallpapers"; PC="$HOME/.cache/hearth/potd"; mkdir -p "$PC"; TD=$(date +%F)
+          cp "$WP/$(ls "$WP" | grep -m1 '\.jpg$')" "$PC/bing-$TD.jpg"
+          printf '{"path": "%s", "title": "Lake Bled at dawn, Slovenia", "credit": "A stand-in for the Desktop Mode test", "source": "bing", "date": "%s"}\n' "$PC/bing-$TD.jpg" "$TD" > "$PC/bing-$TD.json"
+          FCI="$HOME/.config/nimbus/fonts-cursor-icons.json"; [ -e "$FCI" ] && cp -p "$FCI" "$SM/fci.json"
+          printf '{"antialias": "rgba", "subpixel": "bgr"}\n' > "$FCI"
+          printf '{"hibernate": {"can": true, "why": "", "proven": false}, "hybrid": {"can": true, "why": ""}}\n' > "$XDG_RUNTIME_DIR/hearth-powerset-preview.json"
+          python3 - "$D" "$WP" <<'PY'
+          import json, os, sys
+          p, wp = sys.argv[1], sys.argv[2]; d = json.load(open(p)); jpg = sorted(f for f in os.listdir(wp) if f.endswith(".jpg"))
+          d.update(wallPotd={"on": True, "source": "bing"}, wallPair={"on": True, "light": os.path.join(wp, jpg[-1]), "dark": os.path.join(wp, jpg[0])})
+          open(p, "w").write(json.dumps(d, indent=2) + "\n")
+          PY
+          sleep 4
+          ss wallpaper-more:potd ss-wallpaper-potd; ss look-more:apps ss-look-apps; ss fonts:smoothing ss-fonts-subpixel; ss power:off ss-power-hybrid
+          rm -rf "$PC" "$XDG_RUNTIME_DIR/hearth-powerset-preview.json"; rm -f "$FCI"; [ -e "$SM/fci.json" ] && mv -f "$SM/fci.json" "$FCI"
           ss languages ss-languages; ss spellcheck ss-spellcheck; ss input-methods ss-input-methods
           ss bluetooth-devices ss-bluetooth-devices; ss print-queue ss-print-queue; ss scanners ss-scanners; ss usb-devices ss-usb-devices
           ss info-cpu ss-info-cpu; ss info-gpu ss-info-gpu; ss info-memory ss-info-memory; ss info-graphics ss-info-graphics
@@ -2058,6 +2075,7 @@ jobs:
           ipc settings page sound; sleep 4; grim shots/system-settings/ss-sound.png || true; ipc settings close
           # 1.14, more of KDE's Sound (test_settings_more_114.py): Speakers & balance, Apps' sound, Push to talk.
           for pg in sound-speakers sound-apps push-to-talk; do ipc settings page $pg; sleep 4; grim shots/system-settings/ss-$pg.png || true; ipc settings close; done
+          ipc settings page sound-apps:mic; sleep 4; grim shots/system-settings/ss-sound-apps-mic.png || true; ipc settings close   # which microphone each app uses (1.14)
           if grep -E "(SetSound[A-Za-z]*|SetPushToTalk|Mixer|Dock)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined)" "$LOG" >/dev/null 2>&1; then
             bad "sound pages: $(grep -E '(SetSound[A-Za-z]*|SetPushToTalk|Mixer|Dock)\.qml' "$LOG" | sort -u | head -5 | cut -c1-220 | tr '\n' '|')"
           fi
@@ -2737,7 +2755,8 @@ jobs:
                ss-sound-speakers, ss-sound-apps, ss-push-to-talk, ss-power-profiles, ss-power-awake, ss-battery, ss-autostart, ss-file-types,
                ss-menu-editor, ss-app-permissions, ss-wallpaper-more, ss-my-looks, ss-look-more, ss-fonts-small, ss-languages, ss-spellcheck,
                ss-input-methods, ss-bluetooth-devices, ss-print-queue, ss-scanners, ss-usb-devices, ss-info-cpu, ss-info-gpu, ss-info-memory,
-               ss-info-graphics, ss-info-pci, ss-info-usb, ss-updates-shutdown, ss-signin-splash, ss-welcome, ss-oom-notice, ss-drive-plugged]
+               ss-info-graphics, ss-info-pci, ss-info-usb, ss-updates-shutdown, ss-signin-splash, ss-welcome, ss-oom-notice, ss-drive-plugged,
+               ss-wallpaper-potd, ss-look-apps, ss-fonts-subpixel, ss-power-hybrid, ss-sound-apps-mic]
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

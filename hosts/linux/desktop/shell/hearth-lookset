@@ -10,7 +10,8 @@ Hearth's in ~/.config/fontconfig/conf.d) and programs started later (~/.config/e
   hearth-lookset set       stdin {"font": "Noto Sans", "fontSize": 10, "mono": "Hack", "monoSize": 10,
                            "antialias": "grayscale|rgba|none", "hinting": "none|slight|medium|full", "dpi": 96,
                            "cursor": "breeze_cursors", "cursorSize": 24, "icons": "breeze-dark", "smallFont": "Noto Sans",
-                           "smallSize": 8, "titleFont": "Noto Sans", "titleSize": 10}; null = Hearth's default
+                           "smallSize": 8, "titleFont": "Noto Sans", "titleSize": 10,
+                           "subpixel": "rgb|bgr|vrgb|vbgr"}; null = Hearth's default
   hearth-lookset apply     hand the saved choices on again (theme/apply.sh runs it at each sign-in; writes nothing
                            of yours, and nothing at all when you chose nothing)
 Output: one JSON line; failures print "error: ..." and exit 1.
@@ -40,7 +41,10 @@ ICON_DIRS = [os.path.join(DATA, 'icons'), os.path.join(HOME, '.icons')] + \
 DEFAULTS = {'font': 'Noto Sans', 'fontSize': 10, 'mono': 'Hack', 'monoSize': 10, 'antialias': 'grayscale',
             'hinting': 'slight', 'dpi': 96, 'cursor': 'breeze_cursors', 'cursorSize': 24, 'icons': '',
             # 1.14: the small font (tooltips, captions) and the window title font (KWin's frames, KDE and GNOME apps)
-            'smallFont': 'Noto Sans', 'smallSize': 8, 'titleFont': 'Noto Sans', 'titleSize': 10}
+            'smallFont': 'Noto Sans', 'smallSize': 8, 'titleFont': 'Noto Sans', 'titleSize': 10,
+            # 1.14: the order of the screen's red, green and blue sub-pixels, used with Subpixel (LCD) smoothing
+            'subpixel': 'rgb'}
+SUBPIXELS = ('rgb', 'bgr', 'vrgb', 'vbgr')
 QT_MARK = '# Written by Hearth Desktop Mode; delete this line to keep your own settings.'
 KDE_MARK = '# Written by Hearth'
 FC_MARK = '<!-- Written by Hearth Settings > Fonts, cursor & icons; delete this line to keep your own. -->'
@@ -177,6 +181,8 @@ def clean(req):
             raise Fail('smoothing is grayscale, rgba or none')
         elif k == 'hinting' and v not in ('none', 'slight', 'medium', 'full'):
             raise Fail('hinting is none, slight, medium or full')
+        elif k == 'subpixel' and v not in SUBPIXELS:
+            raise Fail('the sub-pixel order is rgb, bgr, vrgb or vbgr')
         out[k] = v
     return out
 
@@ -194,6 +200,8 @@ def gsettings_cmds(e, s):
         cmds.append([base, 'font-antialiasing', e['antialias']])
     if 'hinting' in s:
         cmds.append([base, 'font-hinting', e['hinting']])
+    if 'subpixel' in s:
+        cmds.append([base, 'font-rgba-order', e['subpixel']])
     if 'dpi' in s:
         cmds.append([base, 'text-scaling-factor', '%.2f' % (e['dpi'] / 96.0)])
     if 'cursor' in s:
@@ -254,10 +262,10 @@ def qt_values(e, s):
 
 
 def fontconfig_text(e, s):
-    if not any(k in s for k in ('antialias', 'hinting', 'dpi')):
+    if not any(k in s for k in ('antialias', 'hinting', 'dpi', 'subpixel')):
         return None
     aa = e['antialias'] != 'none'
-    rgba = 'rgb' if e['antialias'] == 'rgba' else 'none'
+    rgba = e['subpixel'] if e['antialias'] == 'rgba' else 'none'
     hint = {'none': 'hintnone', 'slight': 'hintslight', 'medium': 'hintmedium', 'full': 'hintfull'}[e['hinting']]
     return ('<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "fonts.dtd">\n' + FC_MARK + '\n<fontconfig>\n'
             '  <match target="font">\n'
@@ -317,6 +325,9 @@ def apply(s=None):
             gen['fixed'] = qt_font(e['mono'], e['monoSize']).strip('"')
         if 'smallFont' in s or 'smallSize' in s:
             gen['smallestReadableFont'] = qt_font(e['smallFont'], e['smallSize']).strip('"')
+        if 'subpixel' in s or 'antialias' in s:
+            # KDE apps' own sub-pixel setting (System Settings › Fonts): the order with Subpixel smoothing, else none.
+            gen['XftSubPixel'] = e['subpixel'] if e['antialias'] == 'rgba' else 'none'
         if gen:
             new = ini_set(new, 'General', gen)
         if 'titleFont' in s or 'titleSize' in s:

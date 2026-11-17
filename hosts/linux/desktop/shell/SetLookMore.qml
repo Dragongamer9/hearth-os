@@ -10,6 +10,10 @@ SetPage {
     id: page
     title: "Window frames & sign-in splash"
     property int tint: Settings.frameTint
+    // `settings page look-more:apps` opens it at "Apps follow Hearth" (the Desktop Mode test's picture); only scrolls.
+    function reveal() { if (SettingsNav.pageAnchor === "apps") { SettingsNav.pageAnchor = ""; revealTimer.start(); } }
+    Timer { id: revealTimer; interval: 600; onTriggered: page.contentY = Math.max(0, Math.min(appsCard.mapToItem(page.contentItem, 0, 0).y - 16, page.contentHeight - page.height)) }
+    Component.onCompleted: reveal()
     function mix(a, b, t) { return Qt.rgba(a.r * (1 - t) + b.r * t, a.g * (1 - t) + b.g * t, a.b * (1 - t) + b.b * t, 1); }
 
     SetCardGroup {
@@ -48,6 +52,23 @@ SetPage {
             valueText: page.tint === 0 ? "Off" : page.tint + "%"
             onMoved: v => { page.tint = Math.round(v * 20) * 5; tintApply.restart(); }
             Timer { id: tintApply; interval: 400; onTriggered: Settings.frameTint = page.tint }
+        }
+    }
+    // KDE's "Apply colours to non-Qt applications" and Plasma's colour scheme, as one switch: Qt, KDE and GTK apps take
+    // Hearth's colours (on, as before) or keep their own (theme/apply.sh writes Hearth's files without its palette).
+    SetCardGroup {
+        id: appsCard
+        title: "Apps"
+        SetSwitch {
+            icon: "palette"; title: "Apps follow Hearth"
+            sub: Settings.appsFollow ? "Qt, KDE and GTK apps use the look's colours and your accent" : "Qt, KDE and GTK apps keep their own colours (Breeze and Adwaita)"
+            checked: Settings.appsFollow
+            onToggled: v => Settings.appsFollow = v
+        }
+        Text {
+            Layout.fillWidth: true; Layout.leftMargin: 4
+            text: "Apps already open change the next time they're opened. Hearth's own apps always follow the look."
+            color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
         }
     }
     SetCardGroup {

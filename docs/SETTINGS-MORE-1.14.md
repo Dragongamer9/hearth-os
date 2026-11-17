@@ -10,21 +10,25 @@ Tests: `hosts/linux/test/test_settings_more_114.py`. The master list with what's
 |---|---|---|---|---|
 | Sound | Speakers & balance (`sound-speakers`) | SetSoundSpeakers.qml | hearth-sound `outputs`, `balance`, `speaker-test` | PipeWire's own volumes (it remembers them) |
 | Sound | Apps' sound (`sound-apps`) | SetSoundApps.qml | Mixer.qml | an app's output (WirePlumber), `dockScrollVolume` |
+| Sound | Which microphone each app records from (`sound-apps:mic`) | SetSoundApps.qml | Mixer.qml `takeFrom`, hearth-sound `route` | the app's input (WirePlumber's target; it remembers it for that app). Hearth saves nothing |
 | Sound | Push to talk (`push-to-talk`) | SetPushToTalk.qml, PushToTalk.qml | hearth-ptt (KWin's global shortcuts) | `pttOn`, `pttKey` |
 | Sound | Over-amplification asks first | SetSound.qml | — | `buttons.json` overamp (as before) |
 | Power | Plugged in, battery & lid (`power-profiles`) | SetPowerProfiles.qml | hearth-powerset, hearth-admin `lid` | `screenOffBattery`, `sleepBattery`, hardware.json `power.plugged/unplugged`, `/etc/systemd/logind.conf.d/60-hearth-lid.conf` |
 | Power | Apps keeping it awake (`power-awake`) | SetPowerAwake.qml | hearth-powerset | nothing |
 | Power | Hibernate (on Power) | SetPower.qml | hearth-powerset `hibernate_check` | nothing (offered only where it can; booting never changed) |
+| Power | Hybrid sleep (on Power, `power:off`) | SetPower.qml | hearth-powerset `hybrid_check` | nothing (only where Hibernate is offered and logind's CanHybridSleep says yes; asked first until a hibernate has come back) |
 | Power | Battery health & history (`battery`, `info-energy`) | SetBattery.qml | hearth-powerset `history` | nothing |
 | Power | Device batteries | QuickAccess.qml, SetBattery.qml | UPower | nothing |
 | Apps | Autostart (`autostart`) | SetAutostart.qml | hearth-autostart | `~/.config/autostart/*.desktop` |
 | Apps | File types (`file-types`) | SetFileTypes.qml | hearth-mime | `~/.config/mimeapps.list`, `~/.local/share/mime/packages/hearth-user.xml` |
 | Apps | App menu editor (`menu-editor`, "Edit app…") | SetMenuEditor.qml | hearth-menu | your copy in `~/.local/share/applications` (X-Hearth-Edited) |
 | Apps | App permissions (`app-permissions`) | SetAppPermissions.qml | hearth-flatpak-perms | Flatpak's overrides for you |
-| Look | Wallpaper per screen & slideshow (`wallpaper-more`) | SetWallpaperMore.qml, WallShow.qml | — | `wallScreens`, `wallShow` |
+| Look | Wallpaper per screen, slideshow & picture of the day (`wallpaper-more`, `wallpaper-more:potd`) | SetWallpaperMore.qml, WallShow.qml | hearth-potd (Bing, NASA APOD, Wikimedia Commons; once a day, kept 7 days in `~/.cache/hearth/potd`) | `wallScreens`, `wallShow`, `wallPotd` {on, source} (off by default), `wallPair` {on, light, dark} |
 | Look | My looks (`my-looks`) | SetMyLooks.qml | hearth-lookset | `~/.config/nimbus/my-looks.json` |
 | Look | Small and window title fonts (`fonts:small`) | SetFonts.qml | hearth-lookset | fonts-cursor-icons.json (smallFont, smallSize, titleFont, titleSize) |
+| Look | Sub-pixel order (`fonts:smoothing`) | SetFonts.qml | hearth-lookset | fonts-cursor-icons.json `subpixel` (rgb, bgr, vrgb, vbgr): fontconfig's rgba, GNOME's font-rgba-order, kdeglobals XftSubPixel while it's Hearth's |
 | Look | Window frames & sign-in splash (`look-more`) | SetLookMore.qml, SigninSplash.qml | hearth-theme, hearth_aurorae.py | `frameTint`, `signinSplash` |
+| Look | Apps follow Hearth (`look-more:apps`) | SetLookMore.qml | hearth-theme `apps_follow`, theme/apply.sh | `appsFollow` (on by default): off, Hearth's own qt6ct/qt5ct, gtk.css and kdeglobals (only while they carry its mark) are written without its palette, so on again puts it back |
 | Region | Languages in order (`languages`) | SetLanguages.qml | hearth-region | `~/.config/environment.d/60-hearth-language.conf`, plasma-localerc |
 | Region | Spell check (`spellcheck`) | SetSpellcheck.qml | hearth-region | `~/.config/KDE/Sonnet.conf` [General] |
 | Region | Chinese, Japanese & Korean typing (`input-methods`) | SetInputMethods.qml | hearth-region `im*` | `~/.config/kwinrc` [Wayland] InputMethod, environment.d; fcitx5 from Flathub only when asked |

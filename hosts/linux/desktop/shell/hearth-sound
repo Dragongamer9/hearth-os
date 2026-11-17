@@ -16,6 +16,10 @@ by itself; Hearth keeps no file for it. The test recording is in $XDG_RUNTIME_DI
   hearth-sound balance SINK N      left/right balance -100 (all left) .. 100 (all right); the loudest channel keeps
                                    its level, centre and LFE are left alone (PipeWire remembers it itself)
   hearth-sound speaker-test SINK CHANNEL   a short tone from one speaker (CHANNEL as in outputs, e.g. front-left)
+  hearth-sound route SERIAL ID STREAM...   send an app's streams to one device (1.14, Apps' sound: which microphone an
+                                   app records from): WirePlumber's target for each stream (pw-metadata
+                                   target.object = the device's serial, target.node = its id); WirePlumber moves
+                                   them and remembers it for that app. SERIAL "-1" and ID "-1" go back to the default.
 Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import array
@@ -283,6 +287,39 @@ def speaker_test(sink, channel):
     return {'ok': True, 'sink': sink, 'channel': channel}
 
 
+def route_cmds(serial, node, streams):
+    """pw-metadata calls (argument lists) that point STREAMS at a device; "-1" for both = back to the default."""
+    for v in [serial, node] + list(streams):
+        if not re.match(r'^(-1|[0-9]{1,12})$', str(v)):
+            raise Fail('not a sound device or stream')
+    if not streams:
+        raise Fail('no stream to move')
+    if (serial == '-1') != (node == '-1'):
+        raise Fail('not a sound device')
+    cmds = []
+    for sid in streams:
+        if sid == '-1':
+            raise Fail('not a sound stream')
+        if serial == '-1':
+            cmds.append(['pw-metadata', '-d', sid, 'target.object'])
+            cmds.append(['pw-metadata', '-d', sid, 'target.node'])
+        else:
+            cmds.append(['pw-metadata', sid, 'target.object', serial])
+            cmds.append(['pw-metadata', sid, 'target.node', node])
+    return cmds
+
+
+def route(serial, node, streams):
+    cmds = route_cmds(serial, node, streams)
+    if not shutil.which('pw-metadata'):
+        raise Fail("moving an app's sound needs pw-metadata (PipeWire's tools)")
+    for c in cmds:
+        code, out, err = run(c, timeout=10)
+        if code != 0:
+            raise Fail((err or out).strip()[:200] or 'PipeWire said no')
+    return {'ok': True, 'streams': list(streams)}
+
+
 def main(argv):
     try:
         if argv[:1] == ['cards']:
@@ -299,6 +336,8 @@ def main(argv):
             r = outputs()
         elif argv[:1] == ['balance'] and len(argv) == 3:
             r = balance(argv[1], argv[2])
+        elif argv[:1] == ['route'] and len(argv) >= 4:
+            r = route(argv[1], argv[2], argv[3:])
         elif argv[:1] == ['speaker-test'] and len(argv) == 3:
             r = speaker_test(argv[1], argv[2])
         else:
