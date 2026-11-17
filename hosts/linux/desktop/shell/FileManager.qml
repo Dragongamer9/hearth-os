@@ -238,12 +238,6 @@ Scope {
         let net = null;
         if (target.startsWith("hearthnet://")) { try { net = JSON.parse(decodeURIComponent(target.slice(12))); } catch (e) { net = null; } target = ""; }
         if (smb) target = "";
-        // Opened again while its window is still made (warm, 1.14): shown at once as it was, then brought up to date
-        // a moment later, so the window is on screen before the folder is read again.
-        if (ui && !target && !net && !smb && !pendingArchive && listing && prefsLoaded && !picking) {
-            Qt.callLater(() => { if (app.shown) { app.reload(); app.refreshCPrefs(); app.refreshPlaces(); } });
-            return;
-        }
         const go = () => {
             if (net) { if (!listing) navigate(home, ""); netOpen(net); return; }
             if (smb) { if (!listing) navigate(home, ""); netOpen({ name: smb[1].split(".")[0], share: decodeURIComponent(smb[2] || ""), home: smb[1].endsWith(".ts.net") ? "" : smb[1], away: smb[1].endsWith(".ts.net") ? smb[1] : "" }); return; }

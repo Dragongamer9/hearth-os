@@ -311,7 +311,7 @@ class WindowsApps(Base):
 class FilesWindow(unittest.TestCase):
     """FileManager.qml keeps the pages behind Loaders and offers what the owner asked for."""
     def test_pages_and_menus(self):
-        q = (SHELL / 'FileManager.qml').read_text() + (SHELL / 'shell.qml').read_text()  # (1.14: its "filemanager" IPC is in shell.qml, which makes Files when first used)
+        q = (SHELL / 'FileManager.qml').read_text() + (SHELL / 'FilesIpc.qml').read_text()  # (1.14: its "filemanager" IPC is in FilesIpc.qml, shared with the file chooser)
         for needle in ('setSource("FilesThisPc.qml"', 'setSource("FilesApps.qml"', '"Open Files to: This PC"', '"Change drive letter…"',
                        '"Copy Linux path"', 'import "drive-paths.js" as DrivePaths', 'label: "This PC", path: thisPcPage',
                        'label: "Installed apps", path: appsPage', 'function thispc(): void', 'function installed(): void'):
