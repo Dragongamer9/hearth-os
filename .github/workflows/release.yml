@@ -304,8 +304,6 @@ jobs:
         # The tests read Hearth's files as UTF-8 (they hold "›", "·" and the like); the runner's default can be ASCII.
         env:
           PYTHONUTF8: '1'
-          LANG: C.UTF-8
-          LC_ALL: C.UTF-8
         run: |
           npm test 2>&1 | tee /tmp/npm-test.log || { grep -E '^not ok|^# fail' /tmp/npm-test.log | head -20 | sed 's/^/::error title=npm test::/'; exit 1; }
           # Failing tests as annotations (CI logs can't always be read): each FAIL/ERROR with the end of its traceback.
