@@ -131,6 +131,11 @@ Scope {
     // ------------------------------------------------------------------ what's on screen
     // view: "home" (Firehold's own screens are up on Couch screens) or "app" (a game or window you went to is in front).
     property int redraws: 0
+    // The windows you went to, most recent first (KWin raises a window you activate): how Firehold's title bars know
+    // which window is above which (FireholdFrames.qml). Runtime only.
+    property var recent: []
+    property string frameLimit: "Off"          // the Guide's frame limit (firehold-comp), for a game window's title line
+    property string deskMenu: ""               // the Desk bar's open menu (File, Edit, View), "" for none
     property string view: "home"
     property string tab: "home"          // home | library | apps | store
     property string page: "tabs"         // tabs | switcher (Everything open)
@@ -178,6 +183,8 @@ Scope {
         function onActiveToplevelChanged() {
             if (!fhs.unlocked || !fhs.started) return;
             const a = WinList.activeToplevel;
+            const id = a ? WinList.widOf(a) : "";
+            if (id) fhs.recent = [id].concat(fhs.recent.filter(x => x !== id)).slice(0, 50);
             // Games: Always full screen, on the Desk too.
             if (a && F.isGame(a, fhs.library) && fhs.posture === "desk" && fhs.gamesOpen === "fullscreen" && !a.fullscreen) a.fullscreen = true;
         }
@@ -341,13 +348,10 @@ Scope {
         active: fhs.unlocked && fhs.started && fhs.posture === "desk"
         FireholdDesk { fh: fhs }
     }
-    readonly property var frameGame: {
-        const a = WinList.activeToplevel;
-        return unlocked && WinList.kwin && posture === "desk" && a && !a.fullscreen && !a.minimized && a.frame && a.frame.w > 0 && F.isGame(a, library) ? a : null;
-    }
+    // Every window's title bar in Firehold's look (KWin tells where the windows are).
     LazyLoader {
-        active: fhs.frameGame !== null
-        FireholdGameFrame { fh: fhs; win: fhs.frameGame }
+        active: fhs.unlocked && fhs.started && fhs.posture === "desk" && WinList.kwin
+        FireholdFrames { fh: fhs }
     }
     LazyLoader {
         active: fhs.unlocked && fhs.settingsShown
@@ -386,7 +390,9 @@ Scope {
         function filter(key: string): void { fhs.libFilter = key; }
         function search(text: string): void { fhs.libQuery = text; }
         function library(): void { fhs.loadLibrary(false); }
-        function close(): void { fhs.closeAll(); }
+        function close(): void { fhs.closeAll(); fhs.deskMenu = ""; }
+        // Checks: the Desk bar's File, Edit or View menu open ("" closes it).
+        function menu(name: string): void { fhs.deskMenu = name; }
         // Checks: every Couch screen drawn again whole (CI's software renderer under labwc headless can leave a partial
         // repaint shifted in a screenshot; a real screen draws whole frames).
         function redraw(): void { fhs.redraws++; }

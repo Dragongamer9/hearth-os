@@ -48,9 +48,30 @@ Scope {
     component T: Text { color: F.C.text; font.family: F.font(Theme.font); textFormat: Text.PlainText; elide: Text.ElideRight }
 
     // ------------------------------------------------------------------ the top bar
+    // The app's menus: File, Edit, View, with what every app understands, sent to the window in front (its own
+    // shortcuts, typed by hearth-type; Close and Full screen through the window list). The bar never takes the keyboard,
+    // so the keys go to that window.
+    readonly property var menus: ({
+        "File": [["New window", ["-M", "ctrl", "-k", "n", "-m", "ctrl"]], ["Close window", "close"], ["Quit", ["-M", "ctrl", "-k", "q", "-m", "ctrl"]]],
+        "Edit": [["Undo", ["-M", "ctrl", "-k", "z", "-m", "ctrl"]], ["Redo", ["-M", "ctrl", "-M", "shift", "-k", "z", "-m", "shift", "-m", "ctrl"]],
+                 ["Cut", ["-M", "ctrl", "-k", "x", "-m", "ctrl"]], ["Copy", ["-M", "ctrl", "-k", "c", "-m", "ctrl"]],
+                 ["Paste", ["-M", "ctrl", "-k", "v", "-m", "ctrl"]], ["Select all", ["-M", "ctrl", "-k", "a", "-m", "ctrl"]]],
+        "View": [["Full screen", "full"], ["Zoom in", ["-M", "ctrl", "-k", "plus", "-m", "ctrl"]], ["Zoom out", ["-M", "ctrl", "-k", "minus", "-m", "ctrl"]],
+                 ["Actual size", ["-M", "ctrl", "-k", "0", "-m", "ctrl"]]]
+    })
+    function pick(item) {
+        const w = dk.front, what = item[1];
+        dk.fh.deskMenu = "";
+        if (!w) return;
+        if (what === "close") w.close();
+        else if (what === "full") w.fullscreen = !w.fullscreen;
+        else Quickshell.execDetached(["python3", Quickshell.shellDir + "/hearth-type"].concat(what));
+    }
     PanelWindow {
+        id: bar
         screen: dk.scr
         WlrLayershell.layer: WlrLayer.Top
+        WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
         WlrLayershell.namespace: "hearth-firehold-desk-bar"
         anchors { top: true; left: true; right: true }
         implicitHeight: 44 * dk.k
@@ -66,6 +87,20 @@ Scope {
                 TapHandler { onTapped: dk.fh.couchHome() }
             }
             T { anchors.verticalCenter: parent.verticalCenter; text: dk.frontName; font.pixelSize: 15 * dk.k; font.weight: Font.Bold; width: Math.min(implicitWidth, 520 * dk.k) }
+            Repeater {
+                model: ["File", "Edit", "View"]
+                delegate: T {
+                    id: mt
+                    required property string modelData
+                    anchors.verticalCenter: parent ? parent.verticalCenter : undefined
+                    text: modelData; font.pixelSize: 14 * dk.k
+                    color: dk.fh.deskMenu === modelData ? F.C.text : F.C.muted
+                    TapHandler {
+                        onTapped: dk.fh.deskMenu = dk.fh.deskMenu === mt.modelData ? "" : mt.modelData
+                    }
+                    Component.onCompleted: { const m = Object.assign({}, dk.menuItems); m[modelData] = mt; dk.menuItems = m; }
+                }
+            }
         }
         T {
             anchors.centerIn: parent
@@ -86,6 +121,37 @@ Scope {
             T {
                 anchors.verticalCenter: parent.verticalCenter; text: dk.status; color: F.C.muted; font.pixelSize: 14 * dk.k; visible: text !== ""
                 TapHandler { onTapped: if (dk.fh.quick) dk.fh.quick.toggle() }
+            }
+        }
+    }
+
+    property var menuItems: ({})
+    // The open menu, under its name.
+    PopupWindow {
+        anchor.window: bar
+        anchor.rect.x: dk.menuItems[dk.fh.deskMenu] ? dk.menuItems[dk.fh.deskMenu].mapToItem(null, 0, 0).x - 12 * dk.k : 0
+        anchor.rect.y: 44 * dk.k
+        visible: dk.fh.deskMenu !== "" && !!dk.menus[dk.fh.deskMenu]
+        implicitWidth: 240 * dk.k
+        implicitHeight: menuCol.implicitHeight + 16 * dk.k
+        color: "transparent"
+        Rectangle {
+            anchors.fill: parent; radius: 12 * dk.k; color: F.C.card; border.width: 1; border.color: F.C.line
+            Column {
+                id: menuCol
+                x: 8 * dk.k; y: 8 * dk.k; width: parent.width - 16 * dk.k
+                Repeater {
+                    model: dk.menus[dk.fh.deskMenu] || []
+                    delegate: Rectangle {
+                        id: mi
+                        required property var modelData
+                        width: parent.width; height: 34 * dk.k; radius: 8 * dk.k
+                        color: hov.hovered ? F.C.card2 : "transparent"
+                        T { x: 12 * dk.k; anchors.verticalCenter: parent.verticalCenter; text: mi.modelData[0]; font.pixelSize: 14 * dk.k }
+                        HoverHandler { id: hov }
+                        TapHandler { onTapped: dk.pick(mi.modelData) }
+                    }
+                }
             }
         }
     }

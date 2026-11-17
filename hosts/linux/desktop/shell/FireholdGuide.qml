@@ -93,7 +93,6 @@ PanelWindow {
     // Firehold's own compositor's controls (`firehold-comp ctl`, docs/FIREHOLD.md): the frame limit and scaling rows
     // work once it answers (`ctl scanout status`); until then they say "Not yet".
     property bool comp: false
-    property string frameLimit: "Off"
     property string scaling: "Off"
     readonly property var limits: ["Off", "30", "40", "60", "90", "120"]
     readonly property var scales: ["Off", "Quality", "Balanced", "Performance"]
@@ -127,7 +126,7 @@ PanelWindow {
     readonly property var overlays: ["off", "basic", "full"]
     // [title, sub, value, colour, works today]
     readonly property var rows: [
-        ["Frame limit", "Steadier, cooler, longer battery", comp ? frameLimit : "Not yet", comp && frameLimit !== "Off" ? pal.text : pal.muted, comp],
+        ["Frame limit", "Steadier, cooler, longer battery", comp ? fh.frameLimit : "Not yet", comp && fh.frameLimit !== "Off" ? pal.text : pal.muted, comp],
         ["Resolution scaling", "Firehold upscales the game itself", comp ? scaling : "Not yet", comp && scaling !== "Off" ? pal.text : pal.muted, comp],
         ["VRR / FreeSync", "Smooth when it dips below 60", !kwin || !vrr.capable ? "Not on this screen" : vrr.policy === "never" ? "Off" : "On", kwin && vrr.capable && vrr.policy !== "never" ? pal.green : pal.muted, kwin && vrr.capable],
         ["Allow tearing", "Lowest delay for fast games", !tearCapable ? "Needs KWin" : tearOn ? "On" : "Off", tearCapable && tearOn ? pal.green : pal.muted, tearCapable],
@@ -137,7 +136,7 @@ PanelWindow {
     function step(i, d) {
         const r = rows[i];
         if (!r[4]) { SettingsNav.toast(r[0] + ": " + (i < 2 ? "comes with Firehold's own compositor" : r[2])); return; }
-        if (i === 0) { frameLimit = limits[(limits.indexOf(frameLimit) + (d > 0 ? 1 : limits.length - 1)) % limits.length]; compCtl(["frame-limit", frameLimit === "Off" ? "off" : frameLimit]); }
+        if (i === 0) { fh.frameLimit = limits[(limits.indexOf(fh.frameLimit) + (d > 0 ? 1 : limits.length - 1)) % limits.length]; compCtl(["frame-limit", fh.frameLimit === "Off" ? "off" : fh.frameLimit]); }
         else if (i === 1) { scaling = scales[(scales.indexOf(scaling) + (d > 0 ? 1 : scales.length - 1)) % scales.length]; compCtl(["scale", scaling.toLowerCase()]); }
         else if (i === 2) runSet(["python3", Quickshell.shellDir + "/hearth-screens", "set", JSON.stringify({ outputs: { [outName]: { vrr: vrr.policy === "never" ? "automatic" : "never" } } })]);
         else if (i === 3) runSet(["python3", Quickshell.shellDir + "/hearth-screens", "set", JSON.stringify({ tearing: !tearOn })]);
