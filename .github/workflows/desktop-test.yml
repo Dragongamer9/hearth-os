@@ -2592,12 +2592,12 @@ jobs:
           sleep 25
           scr :bright kwin-6-brightness-and-night; scr :hdr kwin-7-hdr-colour-intensity; scr :signal kwin-8-picture-signal
           scr :several kwin-9-several-screens
-          # Full-screen overlays go to the shell's first screen: both screens are taken (the shots job keeps the one
-          # with the overlay on it).
+          # Full-screen overlays go to the shell's first screen: both screens are taken, before and with the overlay
+          # (the shots job keeps the screen that changed).
           shotall() { if [ -n "$OUTER" ]; then WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/kwin/$1.png"; else timeout 30 hearth-screenshot "shots/kwin/$1.png"; fi 2>>shots/kwin/shot-errors.txt; }
-          ipc settings close; ipc settings page display:calibrate; sleep 5; shotall kwin-10-hdr-calibrate
+          ipc settings close; shotall before-10; ipc settings page display:calibrate; sleep 5; shotall kwin-10-hdr-calibrate
           ipc settings close
-          ipc screens switcher; sleep 2; shotall kwin-11-super-p
+          shotall before-11; ipc screens switcher; sleep 2; shotall kwin-11-super-p
           echo "::notice title=KWin screens: Super+P::$(quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call screens state 2>&1 | tail -1 | cut -c1-300)"
           ipc screens close
           grep -A9 '^\[NightColor\]' "$HOME/.config/kwinrc" > shots/kwin/nightcolor-location.txt 2>&1
@@ -2611,6 +2611,7 @@ jobs:
           cp shots/kwin/kwin-1-display-top.png /tmp/thumb-0.png 2>/dev/null
           printf '%s' '{"kind": "cast", "app": "org.mozilla.firefox", "multiple": false, "desktop": false, "area": true, "windows": [], "screens": [{"name": "Virtual-0", "label": "Virtual-0", "w": 1920, "h": 1080, "thumb": "/tmp/thumb-0.png"}, {"name": "Virtual-1", "label": "Virtual-1", "w": 1920, "h": 1080, "thumb": "/tmp/thumb-0.png"}]}' > /tmp/cast-req.json
           HEARTH_CAST_REQUEST=/tmp/cast-req.json HEARTH_CAST_RESULT=/tmp/cast-res.json quickshell -p hosts/linux/desktop/shell/cast-picker.qml >shots/kwin/cast-picker.log 2>&1 &
+          shotall before-12
           sleep 8
           CP="quickshell ipc -p $PWD/hosts/linux/desktop/shell/cast-picker.qml call cast"
           $CP tab area; $CP preset 4; sleep 2; shotall kwin-12-area-picker
@@ -2725,10 +2726,15 @@ jobs:
               if n < 6:
                   continue
               im = Image.open(p).convert('RGB')
-              if im.width >= 2 * im.height * 1.5:          # both screens side by side: the one with more on it
-                  from PIL import ImageStat
-                  halves = [im.crop((0, 0, im.width // 2, im.height)), im.crop((im.width // 2, 0, im.width, im.height))]
-                  im = max(halves, key=lambda h: sum(ImageStat.Stat(h).stddev))
+              if im.width >= 2 * im.height * 1.5:          # both screens side by side: the one the overlay is on
+                  from PIL import ImageChops, ImageStat
+                  halves = lambda x: [x.crop((0, 0, x.width // 2, x.height)), x.crop((x.width // 2, 0, x.width, x.height))]
+                  cur = halves(im)
+                  try:
+                      was = halves(Image.open('shots/before-%d.png' % n).convert('RGB').resize(im.size))
+                      im = cur[max(range(2), key=lambda i: sum(ImageStat.Stat(ImageChops.difference(cur[i], was[i])).mean))]
+                  except OSError:
+                      im = max(cur, key=lambda h: sum(ImageStat.Stat(h).stddev))
               for w, q in ((1000, 55), (900, 45), (800, 38), (700, 30), (600, 25)):
                   b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q, optimize=True)
                   if len(base64.b64encode(b.getvalue())) <= 7 * 3800:
