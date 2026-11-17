@@ -1,0 +1,472 @@
+#!/usr/bin/python3
+"""hearth-capture-helper: the work behind Hearth Capture (Capture.qml), Hearth's own screenshot tool (1.14; it
+replaces KDE's Spectacle in Desktop Mode). The window, the area picker and the markup editor are QML; this takes the
+picture, keeps the recent ones, copies, reads text and QR codes, and opens the folder.
+
+  hearth-capture-helper tools                       JSON: what this PC has (grim, KWin, tesseract, zbarimg, wl-copy, recorder)
+  hearth-capture-helper grab MODE [--screen NAME] [--geometry X,Y,W,H] [--pointer]
+                                                    take a picture: MODE all | screen | window | area. JSON {ok, path}
+                                                    or {ok: false, pick: true} when this compositor can't find the
+                                                    window by itself (labwc): the area picker is used instead
+  hearth-capture-helper grab-each [--pointer] NAME...  the area picker's still pictures: one per screen, JSON {ok, shots}
+  hearth-capture-helper tmp                         JSON {path}: a new file for the editor to write the finished picture to
+  hearth-capture-helper save SRC [--to PATH] [--replace]
+                                                    keep SRC in Pictures/Screenshots ("Screenshot 2026-11-16 21-04-05.png",
+                                                    " (2)" for a second one that second) or at PATH (Save as: never over
+                                                    a file that's there unless --replace), and in the recent list
+  hearth-capture-helper copy PATH                   the picture to the clipboard (wl-copy)
+  hearth-capture-helper copy-text                   standard input to the clipboard (recognised text, a QR code's text)
+  hearth-capture-helper history                     JSON {items}: recent captures, newest first, only files still there
+  hearth-capture-helper forget PATH                 take one off the recent list (the file stays)
+  hearth-capture-helper trash PATH                  move the file to the Trash and take it off the list
+  hearth-capture-helper ocr PATH [--lang eng]       JSON {ok, text} (tesseract), or {ok: false, missing: "tesseract"}
+  hearth-capture-helper qr PATH                     JSON {ok, codes} (zbarimg), or {ok: false, missing: "zbarimg"}
+  hearth-capture-helper folder PATH                 show the file in Hearth Files
+  hearth-capture-helper record                      start or stop the screen recorder (hearth-record, else Hearth Recorder)
+  hearth-capture-helper clean                       remove the editor's own temporary pictures older than a day
+
+The recent list is state, not a setting: ~/.local/state/nimbus/capture-history.json, written through
+hearth_settings_io (lock, atomic, .bak). Capture's own choices (mode, delay, pointer) are in ~/.config/nimbus/
+capture.json, written by Capture.qml through SettingsWriter, only when you change one.
+
+Taking the picture is one function, grab(), so the way it's done can be swapped in one place:
+  1. `hearth-screens grab MODE [--screen N] [--geometry G] [--pointer] --out FILE` when that's installed (the shared
+     helper that knows both compositors);
+  2. under KWin (HEARTH_WM=kwin): KWin's org.kde.KWin.ScreenShot2 over D-Bus (the picture comes back through a pipe);
+  3. otherwise grim (labwc and other wlroots compositors).
+Output: one JSON line. Nothing here ever reads or keeps a password.
+"""
+import json
+import os
+import re
+import shutil
+import struct
+import subprocess
+import sys
+import threading
+import time
+import zlib
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+import hearth_settings_io as hsio  # noqa: E402  (the safe writer, next to this file)
+
+HISTORY_MAX = 40
+HERE = os.path.dirname(os.path.realpath(__file__))
+
+
+def out(obj):
+    print(json.dumps(obj))
+
+
+def have(cmd):
+    return shutil.which(cmd) is not None
+
+
+def runtime_dir():
+    d = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-capture')
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    return d
+
+
+def history_path():
+    base = os.environ.get('XDG_STATE_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'state')
+    return os.path.join(base, 'nimbus', 'capture-history.json')
+
+
+def pictures_dir():
+    try:
+        r = subprocess.run(['xdg-user-dir', 'PICTURES'], capture_output=True, text=True, timeout=3)
+        p = r.stdout.strip()
+        if r.returncode == 0 and p and p != os.path.expanduser('~'):
+            return p
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return os.path.join(os.path.expanduser('~'), 'Pictures')
+
+
+def shots_dir():
+    return os.path.join(pictures_dir(), 'Screenshots')
+
+
+def free_name(folder, when=None):
+    """A free "Screenshot YYYY-MM-DD HH-MM-SS.png" in FOLDER, the way open.sh names them; the file is created here
+    (O_EXCL) so two at the same second can't take the same name."""
+    os.makedirs(folder, exist_ok=True)
+    base = os.path.join(folder, 'Screenshot ' + time.strftime('%Y-%m-%d %H-%M-%S', time.localtime(when)))
+    for n in range(1, 200):
+        p = base + ('.png' if n == 1 else ' (%d).png' % n)
+        try:
+            fd = os.open(p, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o644)
+            os.close(fd)
+            return p
+        except FileExistsError:
+            continue
+    raise OSError('no free name in ' + folder)
+
+
+def save_as_path(path):
+    """A Save as path: ~ expanded, .png added when there's no picture ending."""
+    p = os.path.expanduser(path.strip())
+    if not os.path.isabs(p):
+        p = os.path.join(shots_dir(), p)
+    if not re.search(r'\.(png|jpe?g|webp)$', p, re.I):
+        p += '.png'
+    return p
+
+
+# ------------------------------------------------------------------ taking the picture
+def png_bytes(width, height, rows):
+    """A PNG (8-bit RGBA) from ROWS, an iterable of RGBA byte rows (no filter)."""
+    def chunk(kind, data):
+        c = kind + data
+        return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+    raw = b''.join(b'\x00' + r for r in rows)
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0))
+            + chunk(b'IDAT', zlib.compress(raw, 3)) + chunk(b'IEND', b''))
+
+
+# QImage formats KWin sends: RGB32 (4), ARGB32 (5), ARGB32_Premultiplied (6) are B,G,R,A in memory on little-endian
+# machines; RGBX8888 (16), RGBA8888 (17), RGBA8888_Premultiplied (18) are R,G,B,A.
+BGRA_FORMATS = (4, 5, 6)
+RGBA_FORMATS = (16, 17, 18)
+
+
+def raw_to_rows(data, width, height, stride, fmt):
+    rows = []
+    for y in range(height):
+        row = data[y * stride: y * stride + width * 4]
+        if len(row) < width * 4:
+            raise ValueError('the picture came back cut short')
+        if fmt in BGRA_FORMATS:
+            b = bytearray(row)
+            b[0::4], b[2::4] = row[2::4], row[0::4]
+            if fmt == 4:
+                b[3::4] = b'\xff' * width
+            row = bytes(b)
+        elif fmt == 16:
+            b = bytearray(row)
+            b[3::4] = b'\xff' * width
+            row = bytes(b)
+        elif fmt not in RGBA_FORMATS:
+            raise ValueError('KWin sent a picture format Hearth Capture doesn\'t know (%d)' % fmt)
+        rows.append(row)
+    return rows
+
+
+def grab_kwin(mode, path, screen='', geometry=None, pointer=False):
+    """KWin's ScreenShot2: the picture comes back raw through a pipe, read on a thread while KWin writes it."""
+    import gi  # noqa: F401
+    from gi.repository import Gio, GLib
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    opts = {'include-cursor': GLib.Variant('b', bool(pointer)), 'native-resolution': GLib.Variant('b', True)}
+    if mode == 'window':
+        opts['include-decoration'] = GLib.Variant('b', True)
+    rfd, wfd = os.pipe()
+    fds = Gio.UnixFDList.new()
+    fds.append(wfd)
+    os.close(wfd)
+    chunks = []
+
+    def reader():
+        with os.fdopen(rfd, 'rb') as f:
+            while True:
+                b = f.read(1 << 20)
+                if not b:
+                    break
+                chunks.append(b)
+    t = threading.Thread(target=reader, daemon=True)
+    t.start()
+    if mode == 'all':
+        method, args, sig = 'CaptureWorkspace', (opts, 0), '(a{sv}h)'
+    elif mode == 'screen' and screen:
+        method, args, sig = 'CaptureScreen', (screen, opts, 0), '(sa{sv}h)'
+    elif mode == 'screen':
+        method, args, sig = 'CaptureActiveScreen', (opts, 0), '(a{sv}h)'
+    elif mode == 'window':
+        method, args, sig = 'CaptureActiveWindow', (opts, 0), '(a{sv}h)'
+    else:
+        x, y, w, h = geometry
+        method, args, sig = 'CaptureArea', (x, y, w, h, opts, 0), '(iiuua{sv}h)'
+    res, _ = bus.call_with_unix_fd_list_sync('org.kde.KWin', '/org/kde/KWin/ScreenShot2', 'org.kde.KWin.ScreenShot2',
+                                             method, GLib.Variant(sig, args), GLib.VariantType('(a{sv})'),
+                                             Gio.DBusCallFlags.NONE, 15000, fds, None)
+    info = res.unpack()[0]
+    t.join(15)
+    data = b''.join(chunks)
+    w, h = int(info.get('width', 0)), int(info.get('height', 0))
+    stride, fmt = int(info.get('stride', w * 4)), int(info.get('format', 6))
+    if not w or not h:
+        raise ValueError('KWin sent no picture')
+    with open(path, 'wb') as f:
+        f.write(png_bytes(w, h, raw_to_rows(data, w, h, stride, fmt)))
+
+
+def grim_args(mode, path, screen='', geometry=None, pointer=False):
+    a = ['grim']
+    if pointer:
+        a.append('-c')
+    if mode == 'screen' and screen:
+        a += ['-o', screen]
+    elif mode == 'area' and geometry:
+        x, y, w, h = geometry
+        a += ['-g', '%d,%d %dx%d' % (x, y, w, h)]
+    return a + [path]
+
+
+def grab(mode, path, screen='', geometry=None, pointer=False, env=None):
+    """THE one place a picture of the screen is taken (swap the way it's done here). Returns (ok, error, pick):
+    pick=True means "this compositor can't find the window itself: let the person draw around it"."""
+    env = env if env is not None else os.environ
+    if have('hearth-screens'):
+        a = ['hearth-screens', 'grab', mode]
+        if screen:
+            a += ['--screen', screen]
+        if geometry:
+            a += ['--geometry', ','.join(str(int(v)) for v in geometry)]
+        if pointer:
+            a.append('--pointer')
+        r = subprocess.run(a + ['--out', path], capture_output=True, text=True, timeout=30)
+        if r.returncode == 0 and os.path.isfile(path) and os.path.getsize(path) > 0:
+            return True, '', False
+        if r.returncode == 3:      # hearth-screens: "can't find the window here"
+            return False, '', True
+    if env.get('HEARTH_WM') == 'kwin':
+        try:
+            grab_kwin(mode, path, screen, geometry, pointer)
+            return True, '', False
+        except Exception as e:  # noqa: BLE001  (any D-Bus or format problem: said, never a crash)
+            return False, 'KWin didn\'t give a picture (%s)' % str(e).split('\n')[0][:160], False
+    if mode == 'window':
+        return False, '', True     # labwc has no way to ask where a window is: the area picker draws around it
+    if not have('grim'):
+        return False, 'Taking a picture needs grim, which isn\'t installed', False
+    r = subprocess.run(grim_args(mode, path, screen, geometry, pointer), capture_output=True, text=True, timeout=30)
+    if r.returncode != 0:
+        return False, (r.stderr.strip().split('\n')[-1] or 'grim couldn\'t take the picture')[:200], False
+    return True, '', False
+
+
+def parse_geometry(s):
+    m = re.match(r'^\s*(-?\d+),(-?\d+),(\d+),(\d+)\s*$', s or '')
+    if not m:
+        return None
+    g = tuple(int(v) for v in m.groups())
+    return g if g[2] > 0 and g[3] > 0 else None
+
+
+# ------------------------------------------------------------------ the recent list
+def history_read():
+    data = hsio.load_json(history_path(), {'items': []})
+    items = data.get('items') if isinstance(data.get('items'), list) else []
+    return [i for i in items if isinstance(i, dict) and isinstance(i.get('path'), str) and os.path.isfile(i['path'])]
+
+
+def history_add(path, w=0, h=0):
+    def change(d):
+        items = [i for i in (d.get('items') or []) if isinstance(i, dict) and i.get('path') != path]
+        items.insert(0, {'path': path, 'time': int(time.time()), 'width': int(w), 'height': int(h)})
+        d['items'] = items[:HISTORY_MAX]
+    os.makedirs(os.path.dirname(history_path()), exist_ok=True)
+    hsio.update_json(history_path(), change)
+
+
+def history_forget(path):
+    def change(d):
+        d['items'] = [i for i in (d.get('items') or []) if isinstance(i, dict) and i.get('path') != path]
+    if os.path.exists(history_path()):
+        hsio.update_json(history_path(), change)
+
+
+def png_size(path):
+    try:
+        with open(path, 'rb') as f:
+            head = f.read(24)
+        if head[:8] == b'\x89PNG\r\n\x1a\n':
+            return struct.unpack('>II', head[16:24])
+    except OSError:
+        pass
+    return 0, 0
+
+
+# ------------------------------------------------------------------ text and QR codes
+def ocr(path, lang='eng'):
+    if not have('tesseract'):
+        return {'ok': False, 'missing': 'tesseract'}
+    lang = lang if re.match(r'^[a-z_+]{2,40}$', lang or '') else 'eng'
+    r = subprocess.run(['tesseract', path, '-', '-l', lang], capture_output=True, text=True, timeout=120)
+    if r.returncode != 0 and lang != 'eng':
+        r = subprocess.run(['tesseract', path, '-'], capture_output=True, text=True, timeout=120)
+    if r.returncode != 0:
+        return {'ok': False, 'error': (r.stderr.strip().split('\n') or ['tesseract failed'])[-1][:200]}
+    text = re.sub(r'\n{3,}', '\n\n', r.stdout.replace('\f', '')).strip()
+    return {'ok': True, 'text': text}
+
+
+def qr(path):
+    if not have('zbarimg'):
+        return {'ok': False, 'missing': 'zbarimg'}
+    r = subprocess.run(['zbarimg', '-q', '--raw', '-Sbinary', path], capture_output=True, timeout=60)
+    if r.returncode not in (0, 4):     # 4: no code found
+        r = subprocess.run(['zbarimg', '-q', '--raw', path], capture_output=True, timeout=60)
+    text = r.stdout.decode('utf-8', 'replace')
+    codes = [c for c in text.split('\n') if c.strip()] if r.returncode == 0 else []
+    return {'ok': True, 'codes': codes}
+
+
+def recorder():
+    if have('hearth-record'):
+        return ['hearth-record']
+    if have('hearth-recorder'):
+        return ['hearth-recorder', '--toggle']
+    return None
+
+
+def tools(env=None):
+    env = env if env is not None else os.environ
+    rec = recorder()
+    return {'grim': have('grim'), 'kwin': env.get('HEARTH_WM') == 'kwin', 'screens': have('hearth-screens'),
+            'tesseract': have('tesseract'), 'zbar': have('zbarimg'), 'wlcopy': have('wl-copy'),
+            'record': rec[0] if rec else '', 'wm': env.get('HEARTH_WM') or 'labwc',
+            'windowPick': not (have('hearth-screens') or env.get('HEARTH_WM') == 'kwin'),
+            'folder': shots_dir()}
+
+
+def opt(args, name, default=''):
+    if name in args:
+        i = args.index(name)
+        if i + 1 < len(args):
+            return args[i + 1]
+    return default
+
+
+def main(argv):
+    if not argv:
+        print(__doc__)
+        return 2
+    cmd, args = argv[0], argv[1:]
+    if cmd == 'tools':
+        out(tools())
+    elif cmd == 'grab':
+        mode = args[0] if args and not args[0].startswith('--') else 'all'
+        if mode not in ('all', 'screen', 'window', 'area'):
+            out({'ok': False, 'error': 'unknown mode ' + mode})
+            return 1
+        geo = parse_geometry(opt(args, '--geometry'))
+        if mode == 'area' and not geo:
+            out({'ok': False, 'error': 'an area needs --geometry X,Y,W,H'})
+            return 1
+        path = os.path.join(runtime_dir(), 'grab-%d-%s.png' % (int(time.time() * 1000), mode))
+        ok, err, pick = grab(mode, path, opt(args, '--screen'), geo, '--pointer' in args)
+        if not ok:
+            try:
+                os.unlink(path)
+            except OSError:
+                pass
+            out({'ok': False, 'error': err, 'pick': pick})
+            return 0 if pick else 1
+        w, h = png_size(path)
+        out({'ok': True, 'path': path, 'width': w, 'height': h})
+    elif cmd == 'grab-each':
+        # The area picker's still pictures: one per screen, taken one after another, before the picker is drawn.
+        names = [a for a in args if not a.startswith('--')]
+        shots = {}
+        for n in names:
+            path = os.path.join(runtime_dir(), 'freeze-%d-%s.png' % (int(time.time() * 1000), re.sub(r'[^A-Za-z0-9_-]', '_', n)))
+            ok, err, _ = grab('screen', path, n, None, '--pointer' in args)
+            if not ok and len(names) == 1:
+                ok, err, _ = grab('all', path, '', None, '--pointer' in args)   # one screen: the whole picture is it
+            if not ok:
+                out({'ok': False, 'error': err or 'Couldn\'t take a picture of ' + n})
+                return 1
+            w, h = png_size(path)
+            shots[n] = {'path': path, 'width': w, 'height': h}
+        out({'ok': True, 'shots': shots})
+    elif cmd == 'tmp':
+        out({'path': os.path.join(runtime_dir(), 'edit-%d.png' % int(time.time() * 1000))})
+    elif cmd == 'save':
+        src = args[0] if args else ''
+        if not os.path.isfile(src):
+            out({'ok': False, 'error': 'The picture to save is gone'})
+            return 1
+        to = opt(args, '--to')
+        try:
+            if to:
+                dest = save_as_path(to)
+                if os.path.exists(dest) and '--replace' not in args:
+                    out({'ok': False, 'exists': True, 'path': dest, 'error': os.path.basename(dest) + ' is already there'})
+                    return 1
+                os.makedirs(os.path.dirname(dest), exist_ok=True)
+            else:
+                dest = free_name(shots_dir())
+            shutil.copyfile(src, dest + '.part')
+            os.replace(dest + '.part', dest)
+        except OSError as e:
+            out({'ok': False, 'error': 'Couldn\'t save it: ' + (e.strerror or str(e))})
+            return 1
+        w, h = png_size(dest)
+        history_add(dest, w, h)
+        out({'ok': True, 'path': dest, 'name': os.path.basename(dest)})
+    elif cmd == 'copy':
+        p = args[0] if args else ''
+        if not have('wl-copy') or not os.path.isfile(p):
+            out({'ok': False, 'error': 'Copying needs wl-clipboard' if not have('wl-copy') else 'The picture is gone'})
+            return 1
+        with open(p, 'rb') as f:
+            subprocess.Popen(['wl-copy', '--type', 'image/png'], stdin=f, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+        out({'ok': True})
+    elif cmd == 'copy-text':
+        if not have('wl-copy'):
+            out({'ok': False, 'error': 'Copying needs wl-clipboard'})
+            return 1
+        p = subprocess.Popen(['wl-copy'], stdin=subprocess.PIPE, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+        p.stdin.write(sys.stdin.buffer.read())
+        p.stdin.close()
+        out({'ok': True})
+    elif cmd == 'history':
+        out({'items': history_read()})
+    elif cmd == 'forget':
+        history_forget(args[0] if args else '')
+        out({'ok': True})
+    elif cmd == 'trash':
+        p = args[0] if args else ''
+        if os.path.isfile(p):
+            r = subprocess.run(['gio', 'trash', p], capture_output=True, text=True) if have('gio') else None
+            if r is None or r.returncode != 0:
+                out({'ok': False, 'error': 'Couldn\'t move it to the Trash'})
+                return 1
+        history_forget(p)
+        out({'ok': True})
+    elif cmd == 'ocr':
+        out(ocr(args[0] if args else '', opt(args, '--lang', 'eng')))
+    elif cmd == 'qr':
+        out(qr(args[0] if args else ''))
+    elif cmd == 'folder':
+        p = args[0] if args else shots_dir()
+        subprocess.Popen(['sh', os.path.join(os.path.dirname(HERE), 'open.sh'), 'files-at', p],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        out({'ok': True})
+    elif cmd == 'record':
+        rec = recorder()
+        if not rec:
+            out({'ok': False, 'error': 'No screen recorder is installed'})
+            return 1
+        subprocess.Popen(rec, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        out({'ok': True})
+    elif cmd == 'clean':
+        d, now, n = runtime_dir(), time.time(), 0
+        for f in os.listdir(d):
+            p = os.path.join(d, f)
+            if f.endswith('.png') and now - os.path.getmtime(p) > 86400:
+                os.unlink(p)
+                n += 1
+        out({'ok': True, 'removed': n})
+    else:
+        print('error: unknown command ' + cmd)
+        return 2
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

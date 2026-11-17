@@ -24,6 +24,12 @@ Singleton {
     // Open windows that want the controller to type arrow keys / Enter / Esc (read by Pad.qml).
     property bool appsShown: false    // Apps
     property bool clipShown: false    // the clipboard history picker (Super+V)
+    // 1.14: Hearth Capture (Capture.qml) and the password prompt (PolkitPrompt.qml). captureShown: its Take / Recent
+    // pages or the area picker (the controller types keys there; in the editor it's the pointer); captureOpen: any of
+    // it is open or a picture is being taken; polkitShown: a password prompt is up. ShellHealth never refreshes then.
+    property bool captureShown: false
+    property bool captureOpen: false
+    property bool polkitShown: false
     // Hearth 1.10's volume mixer (Mixer.qml) and snap layouts (SnapLayouts.qml, Super+Z): set while open, so the
     // controller types arrow keys / Enter / Esc there; the objects themselves for the bar and Settings › Sound.
     property var mixer: null

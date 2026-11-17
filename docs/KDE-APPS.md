@@ -11,7 +11,7 @@ Hearth Files' About adds what Hearth changed and where to find it.
 | **Terminal** (Hearth Terminal) | KDE Konsole | the base's package, Hearth's profile and colors | `hearth-terminal-kde.desktop` | the old Terminal (same name; one shows per desktop) |
 | **Text Editor** (Hearth Text) | KDE Kate | the base's package, Hearth's colors | `hearth-text-kde.desktop` | the old Text Editor (same name; one shows per desktop) |
 | **Reader** (document viewer) | KDE Okular | the base's package, Hearth's colors | `hearth-reader.desktop` | nothing: Documents stays the default for PDFs and e-books |
-| **Capture** (Hearth Capture) | KDE Spectacle | the base's package, Hearth's colors | `hearth-capture.desktop` | nothing (Recorder stays as it is) |
+| **Capture** (Hearth Capture) | KDE Spectacle, only in KDE Plasma now: Hearth Classic has Hearth's own Capture (1.14, Mantel's `Capture.qml`, `hearth-screenshot.desktop`, `hearth-capture`) | the base's package, Hearth's colors | `hearth-capture.desktop` | nothing (Recorder stays as it is) |
 | **Calculator** (Hearth Calculator) | KDE KCalc | the base's package, Hearth's colors | `hearth-calculator-kde.desktop` | the old Calculator (same name; one shows per desktop) |
 
 Kept as they are: Photos, Contacts, Time, Paint, Office and every other Hearth app.

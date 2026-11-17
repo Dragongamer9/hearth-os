@@ -7,6 +7,9 @@
 #   open.sh screenshot             the whole screen (every screen)
 #   open.sh screenshot-region      drag a box around what you want (slurp); Esc cancels
 #   open.sh screenshot-clipboard   the whole screen, to the clipboard only (no file)
+#   open.sh capture [MODE]         Hearth Capture (Mantel's screenshot tool, 1.14): the window, or straight to taking
+#                                  one (area | window | screen | all) and its editor
+#   open.sh capture-region         Hearth Capture's area picker (Super+Shift+S); slurp + grim when Mantel isn't running
 #   open.sh record | record-area | replay-save   Hearth Recorder's shortcuts (see the end)
 # Screenshots are saved in Pictures/Screenshots, copied to the clipboard (wl-copy), and a notification says so
 # (click it to open the picture).
@@ -51,13 +54,21 @@ case "$1" in
               first 'quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call files open "$FILE"' \
                     'dbus-send --session --dest=org.freedesktop.FileManager1 --type=method_call /org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:"file://$FILE" string:""' \
                     'xdg-open "$DIR"' ;;
+  # Hearth Capture (Capture.qml): Mantel's own, in place of KDE's Spectacle.
+  capture)    cap_ipc() { quickshell ipc -p "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell" call capture "$@" >/dev/null 2>&1; }
+              if [ -n "$2" ]; then cap_ipc take "$2" && exit 0; else cap_ipc open && exit 0; fi
+              notify-send -a Capture "Capture" "Capture is part of Hearth's desktop (Mantel), which isn't running" 2>/dev/null; exit 1 ;;
+  capture-region)
+              quickshell ipc -p "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell" call capture take area >/dev/null 2>&1 && exit 0
+              exec sh "$0" screenshot-region ;;
   screenshot)
-              if ! have grim; then first "spectacle -b -n"; exit 1; fi    # spectacle names its own files
+              # No grim (KWin): Hearth Capture takes it (it knows KWin's own way), else nothing to do it with.
+              if ! have grim; then exec sh "$0" capture all; fi
               new_shot
               grim "$SHOT" || fail_shot "Couldn't take a screenshot"
               done_shot ;;
   screenshot-region)
-              have grim || { first "spectacle -b -n -r"; exit 1; }
+              have grim || exec sh "$0" capture area
               have slurp || { notify-send -a Screenshot "Screenshot" "Choosing an area needs slurp, which isn't installed. Print Screen takes the whole screen." 2>/dev/null; exit 1; }
               # Choose first, then make the file (Esc leaves nothing behind).
               geo=$(slurp -d -b '#00000066' -c '#ff8a3d' -s '#ff8a3d22' -w 2 2>/dev/null) || exit 0
