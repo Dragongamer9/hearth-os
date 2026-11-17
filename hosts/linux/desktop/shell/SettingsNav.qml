@@ -52,6 +52,12 @@ Singleton {
     property string activityIcon: ""
     property bool activitiesMany: false
     property bool widgetsShown: false // desktop widgets: Add widgets, Arrange, a widget's settings, the activity switcher (Widgets.qml)
+    // Firehold's Couch (Firehold.qml, a hidden preview; all false / null while it's locked): fireholdShown, a Couch
+    // screen is in front and takes the controller's buttons as they are (hearth-pad's fhpad); fireholdCouch, the
+    // Couch posture is on (Guide goes to it); fireholdPad(button, down), where those buttons go.
+    property bool fireholdShown: false
+    property bool fireholdCouch: false
+    property var fireholdPad: null
     function toNav() {
         if (debNav && debNav.Window.active) { debNav.back(); return; }
         const t = appsNav && appsNav.Window.active ? appsNav : navTarget;

@@ -282,6 +282,13 @@ ShellRoot {
     // Desktop widgets and Activities (1.14, docs/WIDGETS.md): loaded by file name, so a problem in them only loses
     // widgets and activities, never the shell. IPC targets "widgets" and "activities".
     Loader { source: "Widgets.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: desktop widgets (Widgets.qml) couldn't load") }
+    // Firehold (a hidden preview of the 2.0 desktop: Couch and Desk, Firehold.qml): nothing of it shows or runs until it's
+    // unlocked. Loaded by file name, so a problem in it only loses Firehold, never Desktop Mode or Game Mode.
+    Loader {
+        source: "Firehold.qml"
+        onLoaded: item.wire({ pad: pad, quick: quick, settingsApp: settings, keyboard: keyboard })
+        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Firehold (Firehold.qml) couldn't load")
+    }
     FileManager { id: files }
     FilesIpc { get: () => files; peek: () => files }
     VolumeOsd { id: osd }

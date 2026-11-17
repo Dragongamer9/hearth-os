@@ -338,6 +338,10 @@ class Pad:
         self.locked = False        # the screen is locked (Pad.qml: locked {on}): the controller is the lock screen's keys only
         self.keys_ctx = False
         self.keys_why = ''         # what the shell said has the keys (pad.log)
+        # Firehold's Couch (Firehold.qml, a hidden preview): Guide goes to the shell (fhpad) instead of the Hearth menu,
+        # and while the Couch has the keys (keys_why "Firehold") every button and the left stick go to it as they are.
+        self.firehold = False
+        self.fh_stick = (None, 0.0)
         self.keys_until = 0.0      # keys {on, ttl}: ends by itself unless the shell says it again (0: no time limit)
         self.pointer_at = -1e9     # when the right stick last moved the pointer
         self.nav_at = -1e9         # when the D-pad was last used in a menu with the keys (or the menu opened)
@@ -533,7 +537,7 @@ class Pad:
             # 1.14: Settings shows its controller look while the controller is what you use (at most once a second).
             if now - getattr(self, 'used_sent', 0) >= 1.0:
                 self.used_sent = now
-                emit({'type': 'used'})
+                emit({'t': 'used'})
         else:
             self.held.pop(name, None)
 
@@ -541,6 +545,11 @@ class Pad:
             return self.game_button(name, down, now)
         if self.locked:
             return self.locked_button(name, down)
+        if name == 'guide' and self.firehold and not self.osk_only and self.mode != 'radial':
+            if down:
+                self.guide_from = self.mode
+                self.out.send({'t': 'fhpad', 'b': 'guide', 'down': True})
+            return
         if name == 'guide':
             if down:
                 self.guide_from = self.mode
@@ -554,6 +563,9 @@ class Pad:
         if down and name in ARROWS:
             self.nav_at = now
         if self.osk_only and self.mode != 'osk':
+            return
+        if self.fh_keys() and self.mode == 'desk':
+            self.out.send({'t': 'fhpad', 'b': name, 'down': bool(down)})
             return
 
         if self.mode == 'radial':
@@ -569,6 +581,23 @@ class Pad:
         if self.keys_ctx:
             return self.keys_button(name, down, now)
         return self.desk_button(name, down, now)
+
+    def fh_keys(self):
+        """Firehold's Couch is in front and has the keys: its buttons are its own (fhpad)."""
+        return self.keys_ctx and self.keys_why == 'Firehold'
+
+    def fh_stick_tick(self, now):
+        """The left stick moves Firehold's focus like the D-pad: a push, then again every 0.28 s while held."""
+        lx, ly = self.sticks[0], self.sticks[1]
+        d = None
+        if abs(lx) > 0.6 or abs(ly) > 0.6:
+            d = ('right' if lx > 0 else 'left') if abs(lx) >= abs(ly) else ('down' if ly > 0 else 'up')
+        last, at = self.fh_stick
+        if d and (d != last or now - at >= 0.28):
+            self.out.send({'t': 'fhpad', 'b': d, 'down': True, 'stick': True})
+            self.fh_stick = (d, now)
+        elif not d:
+            self.fh_stick = (None, 0.0)
 
     def osk_chord(self):
         """Guide + X: the on-screen keyboard, like Steam + X. The radial menu that Guide's press opened goes away again;
@@ -776,6 +805,8 @@ class Pad:
             self.keys_why = ''
             self.keys_until = 0.0
 
+        if self.fh_keys() and self.mode == 'desk':
+            return self.fh_stick_tick(now)
         if self.mode == 'radial':
             # Point either stick at an item.
             for x, y in ((rx, ry), (lx, ly)):
@@ -846,6 +877,9 @@ class Pad:
                 self.release_all()
         elif c == 'locked':
             self.set_locked(m.get('on'))
+        elif c == 'firehold':
+            self.firehold = bool(m.get('on'))
+            note('firehold couch: %s' % ('on (Guide goes to the Couch)' if self.firehold else 'off'))
         elif c == 'keys':
             self.set_keys(m.get('on'), m.get('why', ''), m.get('ttl'), m.get('now'))
         elif c == 'osk':
