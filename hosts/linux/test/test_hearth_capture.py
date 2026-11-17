@@ -368,7 +368,9 @@ class Draw(unittest.TestCase):
               keep: [worthKeeping({t: "box", x1: 1, y1: 1, x2: 2, y2: 2}), worthKeeping({t: "text", text: " "}), worthKeeping({t: "pen", pts: [1, 2]}), worthKeeping({t: "arrow", x1: 0, y1: 0, x2: 10, y2: 0})],
               name: defaultName(new Date(2026, 10, 16, 21, 4, 5)), head: arrowHead(0, 0, 10, 0, 5).map(Math.round)}));''')
         self.assertIn('fill', r['calls'])                       # the arrow's head
-        self.assertIn('putImageData', r['calls'])               # pixelate wrote its pixels back
+        self.assertIn('getImageData', r['calls'])               # pixelate read the picture's pixels there
+        self.assertNotIn('putImageData', r['calls'])            # and painted squares over them (QML ignores writes)
+        self.assertGreater(r['calls'].count('fillRect'), 3)
         self.assertEqual(r['calls'].count('fillText'), 3)       # two lines of text, the step's number
         self.assertEqual(r['drew'], [[10, 10, 50, 30, 5, 5, 25, 15]])   # the picture's own pixels for that area
         self.assertEqual(r['next'], 4)

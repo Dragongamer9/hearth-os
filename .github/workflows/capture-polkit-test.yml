@@ -99,6 +99,10 @@ jobs:
           q capture save; sleep 6
           note "capture saved" "$(q capture state)"
           ls -la "$HOME/Pictures/Screenshots" 2>&1 | tail -3 || true
+          f=$(ls -t "$HOME/Pictures/Screenshots"/*.png 2>/dev/null | head -1 || true)
+          if [ -n "$f" ]; then
+            if zbarimg -q --raw "$f" >/dev/null 2>&1; then echo "::error title=blur::the QR code can still be read through Blur in the saved picture"; else echo "::notice title=blur::the blurred QR code can't be read in the saved picture"; fi
+          fi
           q capture edit /tmp/capture-test.png; sleep 3
           q capture qr; sleep 6
           note "capture qr" "$(q capture state)"
