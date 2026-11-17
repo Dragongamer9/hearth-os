@@ -107,6 +107,10 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      ISOs (see hearth-usb). Only whole
                                      removable/USB drives, never the drive Hearth runs from; --allow-internal makes
                                      polkit ask for an administrator's password (49-hearth-admin.rules)
+  hearth-admin files-mkdir|files-new-file|files-rename|files-delete|files-copy|files-move|files-chmod|files-chown ...
+                                     Hearth Files' "Act as administrator": file changes outside your home folder (see
+                                     hearth-files-admin; never the parts that start the PC). polkit always asks for an
+                                     administrator's password (remembered a few minutes)
   hearth-admin write-file PATH       Hearth Text's Edit as administrator: replace the existing regular file PATH with
                                      stdin (at most 32 MB), keeping its owner, permissions and SELinux label. PATH must
                                      be absolute and plain (no links, .. or devices). polkit always asks for an
@@ -2812,6 +2816,12 @@ def main(argv):
     elif cmd == 'write-file' and len(argv) == 3:
         caller()
         write_file(argv[2])
+    elif cmd in ('files-mkdir', 'files-new-file', 'files-rename', 'files-delete', 'files-copy', 'files-move', 'files-chmod', 'files-chown'):
+        # Hearth Files' "Act as administrator" (1.14): its own script checks every path again and never touches what
+        # starts the PC; polkit always asks for an administrator's password for these (49-hearth-admin.rules).
+        caller()
+        helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-files-admin')
+        os.execv(sys.executable, [sys.executable, helper, cmd] + argv[2:])
     elif cmd in ('firmware-refresh', 'firmware-update', 'locale', 'user-type', 'login-background'):
         # Settings' system pages added in 1.14 (firmware, region, account type, the login screen's picture): their own
         # script checks every argument again.

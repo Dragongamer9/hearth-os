@@ -3172,6 +3172,17 @@ var ENTRIES = [
 "i": "close"
 },
 {
+"t": "Open",
+"p": "phone",
+"d": "In your browser",
+"i": "open"
+},
+{
+"t": "Copy",
+"p": "phone",
+"i": "clipboard"
+},
+{
 "t": "Close the phone's files",
 "p": "phone",
 "i": "close"
@@ -3186,6 +3197,24 @@ var ENTRIES = [
 "p": "phone",
 "d": "On the phone too",
 "i": "close"
+},
+{
+"t": "Include what they say",
+"p": "phone",
+"d": "Off: only the app and the title go",
+"i": "doc"
+},
+{
+"t": "Only ones that stay",
+"p": "phone",
+"d": "Leaves out pop-ups that go away by themselves",
+"i": "pin"
+},
+{
+"t": "Which ones",
+"p": "phone",
+"d": "By how urgent the app says it is",
+"i": "warn"
 },
 {
 "t": "Phone not listed?",
@@ -3302,6 +3331,28 @@ var ENTRIES = [
 "p": "quick",
 "d": "What this PC opens when it turns on or you sign in",
 "i": "power"
+},
+{
+"t": "Remember the files I open",
+"p": "recent-files",
+"i": "clock"
+},
+{
+"t": "Keep them for",
+"p": "recent-files",
+"d": "Older ones are forgotten",
+"i": "calendar"
+},
+{
+"t": "Forget the last hour",
+"p": "recent-files",
+"i": "undo"
+},
+{
+"t": "Forget today",
+"p": "recent-files",
+"d": "The last 24 hours",
+"i": "undo"
 },
 {
 "t": "Language",
