@@ -33,8 +33,12 @@ Scope {
         return viewers.length > 1 ? n + " and " + (viewers.length - 1) + " more" : n;
     }
 
+    // A file that isn't there yet can't be watched (it's made when the first recording or connection starts), so both
+    // are also read again every 2 seconds: two tiny reads, with "file not found" kept out of the log.
     FileView {
+        id: recFile
         path: ci.run + "/hearth-record/state.json"
+        printErrors: false
         watchChanges: true
         onFileChanged: reload()
         onLoaded: { try { ci.rec = JSON.parse(text()); } catch (e) {} }
@@ -43,13 +47,15 @@ Scope {
     FileView {
         id: vncFile
         path: ci.run + "/hearth-vnc/clients.json"
+        printErrors: false
         watchChanges: true
         onFileChanged: reload()
         onLoaded: { try { ci.vnc = JSON.parse(text()); } catch (e) {} }
         onLoadFailed: ci.vnc = { clients: [] }
     }
-    // The time, and a check that a server that went away (its file left behind) doesn't keep the dot up.
-    Timer { interval: 1000; running: ci.shown; repeat: true; onTriggered: { ci.tick++; if (ci.tick % 10 === 0) vncFile.reload(); } }
+    Timer { interval: 2000; running: true; repeat: true; onTriggered: { recFile.reload(); vncFile.reload(); } }
+    // The time while the dot shows.
+    Timer { interval: 1000; running: ci.shown; repeat: true; onTriggered: ci.tick++ }
 
     Process { id: stopRec; command: ["python3", ci.shell("hearth-record"), "stop"] }
     Process { id: kick; command: ["python3", ci.shell("hearth-vnc"), "disconnect", "all"] }
