@@ -3,9 +3,8 @@
 # os-bases/peppermint/build.sh and .github/workflows/kwin-input.yml (the same steps in both), as root.
 #   install.sh SOURCE_FOLDER   (this folder: metadata.json, contents/lockscreen/LockScreen.qml)
 # 1. KWin's screen locker: Debian's libkscreenlocker6 (kscreenlocker_greet).
-# 2. The "Plasma/Shell" package type the greeter reads the lock screen as: libplasma's plugins (Debian's
-#    plasma-framework; not the Plasma desktop). If this Debian has it elsewhere, it's looked for in plasma-workspace's
-#    package and only that one plugin taken, with every library it needs already there.
+# 2. The "Plasma/Shell" package type the greeter reads the lock screen as (Hearth's own on Debian trixie, which ships
+#    none: kwin-helpers/shell-package).
 # 3. The lock screen itself, as that shell package.
 # Fails (exit 1) when any of it is missing: a lock screen that can't show would be a lockout.
 set -Eeuo pipefail
@@ -18,37 +17,27 @@ APT=(apt-get install -y --no-install-recommends)
 pick() { for p in "$@"; do apt-cache show "$p" >/dev/null 2>&1 && { echo "$p"; return 0; }; done; return 1; }
 KSL=$(pick kscreenlocker libkscreenlocker6 libkscreenlocker5) || { echo "install.sh: KWin's screen locker isn't in the repositories"; exit 1; }
 PLS=$(pick libplasma6 libplasma5 || true)
-# plasma-framework: libplasma's plugins, among them the Plasma/Shell package type (not the Plasma desktop).
-PFW=$(pick plasma-framework || true)
+PFW=""
 # The lock screen is plain QtQuick + QtQuick.Layouts (Quickshell needs them too).
 "${APT[@]}" "$KSL" ${PLS:+"$PLS"} ${PFW:+"$PFW"} qml6-module-qtquick qml6-module-qtquick-layouts
 GREETER=$( (ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null || true) | head -1)
 [ -x "$GREETER" ] || { echo "install.sh: kscreenlocker_greet isn't installed ($KSL)"; exit 1; }
 
-# The package types already there (from what's installed), else the one plugin from whichever Debian package has it.
-have_shell_type() { find /usr/lib/*/qt6/plugins/kf6/packagestructure/ -iname '*shell*' 2>/dev/null | grep -q .; }
+# The Plasma/Shell package type: newer libplasma has it (plasma_shell); Debian trixie's doesn't, so Hearth's own
+# (hearth_plasma_shell.so, built by the image's builder from kwin-helpers/shell-package; HEARTH_SHELL_PACKAGE_SO
+# points elsewhere for CI) goes in KDE's package-type folder.
+have_shell_type() { grep -rlqF 'Plasma/Shell' /usr/lib/*/qt6/plugins/kf6/packagestructure/ /usr/lib64/qt6/plugins/kf6/packagestructure/ 2>/dev/null; }
 if ! have_shell_type; then
-  tmp=$(mktemp -d)
-  seen=""
-  for pkg in libplasma6 plasma-framework libplasmaquick6 plasma-workspace plasma-desktop; do
-    apt-cache show "$pkg" >/dev/null 2>&1 || continue
-    ( cd "$tmp" && apt-get download "$pkg" >/dev/null 2>&1 ) || continue
-    deb=$(ls "$tmp"/"$pkg"_*.deb 2>/dev/null | head -1 || true)
-    [ -n "$deb" ] || continue
-    rm -rf "$tmp/x" && dpkg-deb -x "$deb" "$tmp/x"
-    seen="$seen $pkg:[$(find "$tmp/x" -ipath '*packagestructure*' -name '*.so' -printf '%f ' 2>/dev/null || true)]"
-    found=$(find "$tmp/x" -ipath '*packagestructure*' -iname '*shell*.so' -print -quit)
-    [ -n "$found" ] || continue
-    missing=$(ldd "$found" | awk '/not found/{print $1}')
-    [ -z "$missing" ] || { echo "install.sh: the shell package type ($pkg) needs libraries that aren't installed: $missing"; exit 1; }
-    dest="/${found#"$tmp/x/"}"
-    install -Dm644 "$found" "$dest"
-    echo "install.sh: Plasma/Shell package type from $(basename "$deb"): $dest"
-    break
-  done
-  rm -rf "$tmp"
-  have_shell_type || { echo "install.sh: no Debian package here has the Plasma/Shell package type;$seen"; exit 1; }
+  so=${HEARTH_SHELL_PACKAGE_SO:-/usr/lib/hearth/hearth_plasma_shell.so}
+  [ -f "$so" ] || { echo "install.sh: no Plasma/Shell package type here and no $so"; exit 1; }
+  qtp=$( (ls -d /usr/lib/*/qt6/plugins 2>/dev/null || true) | head -1)
+  [ -n "$qtp" ] || { echo "install.sh: Qt's plugin folder isn't there"; exit 1; }
+  missing=$(ldd "$so" | awk '/not found/{print $1}')
+  [ -z "$missing" ] || { echo "install.sh: $so needs libraries that aren't installed: $missing"; exit 1; }
+  install -Dm644 "$so" "$qtp/kf6/packagestructure/hearth_plasma_shell.so"
+  echo "install.sh: Hearth's Plasma/Shell package type: $qtp/kf6/packagestructure/hearth_plasma_shell.so"
 fi
+have_shell_type || { echo "install.sh: the Plasma/Shell package type still isn't found"; exit 1; }
 
 # KWin's locker checks the password with PAM's "kde" service: Debian's common-auth if no package brought one.
 if [ ! -e /etc/pam.d/kde ]; then
