@@ -45,20 +45,21 @@ SetPage {
         job.run(["list"], r => { page.accounts = r.accounts || []; page.loaded = true; }, e => { page.loaded = true; page.say(e, true); });
         job.run(["providers"], r => page.prov = r || {});
     }
-    // Opened at a form (`online-accounts:add-nextcloud`): Settings loads the page afresh each time it opens one, so
-    // the page takes the anchor once it's made (as SetExpander does).
+    // Opened at a form (`online-accounts:add-nextcloud`). Settings can make the page more than once while it opens
+    // (its frame is made when the window shows), so the anchor is left for a moment for the page that stays, then
+    // cleared (Settings' close clears it too).
     function takeAnchor() {
         const a = SettingsNav.pageAnchor;
-        if (a.startsWith("add-") && kinds.find(o => o.id === a.slice(4))) { SettingsNav.pageAnchor = ""; adding = ""; openForm(a.slice(4)); }
+        if (a.startsWith("add-") && kinds.find(o => o.id === a.slice(4))) { adding = ""; openForm(a.slice(4)); anchorDone.restart(); }
     }
+    Timer { id: anchorDone; interval: 1500; onTriggered: if (SettingsNav.pageAnchor.startsWith("add-")) SettingsNav.pageAnchor = "" }
     Component.onCompleted: { load(); takeAnchor(); }
     function openForm(k) {
         if (flowing) return;
         adding = adding === k ? "" : k;
         say("");
-        if (adding === "nextcloud") Qt.callLater(() => ncServer.focusInput());
-        if (adding === "dav" || adding === "webdav") Qt.callLater(() => davServer.focusInput());
-        if (adding === "imap") Qt.callLater(() => imapHost.focusInput());
+        const first = adding === "nextcloud" ? ncServer : adding === "dav" || adding === "webdav" ? davServer : adding === "imap" ? imapHost : null;
+        if (first) Qt.callLater(() => { if (first && typeof first.focusInput === "function") first.focusInput(); });
         if (adding !== "") toForm.restart();
     }
     // The form in view: it opens under the list of kinds.
