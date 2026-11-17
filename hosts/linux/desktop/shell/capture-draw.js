@@ -103,27 +103,29 @@ function blur(data, w, h, radius) {
     return data;
 }
 
-// Blur and Pixelate never read the canvas's pixels back (QML's canvas gives zeros there): they draw from small copies of
-// the picture that Qt decoded at a lower size (CaptureEditor.qml's pixSrc and blurSrc, PIX and BLUR of the picture's
-// width). Pixelate: each pixel of the small copy as one flat square; Blur: the small copy stretched back up, smoothly.
+// Blur and Pixelate never read the canvas's pixels back (QML's canvas gives nothing useful there). On the saving canvas
+// they're squares, each one pixel of the picture (its middle) stretched flat over the square: Pixelate one grid of
+// PIX-sized squares, Blur a finer grid and a second one half a square across, half see-through, so it's soft. In the
+// editor's view the same areas show Qt's own small copies of the picture (CaptureEditor.qml), PIX and BLUR of its size.
 var PIX = 1 / 14;
 var BLUR = 1 / 12;
-// The squares for an area of the picture (IX0..IX1, IY0..IY1 in its pixels) at scale S, picture pixel (OX, OY) at the
-// canvas's top left; KP: the small copy's size / the picture's. DRAW(tx, ty, dx, dy, dw, dh) draws small-copy pixel
-// (tx, ty) as that square. Returns how many.
-function pixelSquares(draw, ix0, iy0, ix1, iy1, kp, s, ox, oy) {
-    var n = 0, side = s / kp;
-    for (var ty = Math.floor(iy0 * kp); ty < Math.ceil(iy1 * kp); ty++)
-        for (var tx = Math.floor(ix0 * kp); tx < Math.ceil(ix1 * kp); tx++) {
-            draw(tx, ty, (tx / kp - ox) * s, (ty / kp - oy) * s, side + 0.6, side + 0.6);
+// The squares for an area of the picture (IX0..IX1, IY0..IY1 in its pixels): squares of 1/K picture pixels on a grid
+// moved by SHIFT squares, drawn at scale S with picture pixel (OX, OY) at the canvas's top left. DRAW(sx, sy, dx, dy,
+// dw, dh): picture pixel (sx, sy) stretched over that square. Returns how many.
+function pixelSquares(draw, ix0, iy0, ix1, iy1, k, s, ox, oy, shift) {
+    var n = 0, side = 1 / k, sh = shift || 0;
+    for (var ty = Math.floor(iy0 * k - sh); ty < Math.ceil(iy1 * k - sh); ty++)
+        for (var tx = Math.floor(ix0 * k - sh); tx < Math.ceil(ix1 * k - sh); tx++) {
+            var gx = (tx + sh) * side, gy = (ty + sh) * side;
+            draw(Math.max(0, Math.floor(gx + side / 2)), Math.max(0, Math.floor(gy + side / 2)), (gx - ox) * s, (gy - oy) * s, side * s + 0.6, side * s + 0.6);
             n++;
         }
     return n;
 }
 
 // Draws SHAPES on CTX (a Canvas 2D context) at scale S, with the picture's pixel (OX, OY) at the canvas's top left.
-// SRC: {kp, kb, draw(kind, sx, sy, sw, sh, dx, dy, dw, dh)} draws part of the small copy KIND ("pix" or "blur", whose
-// sizes are KP and KB of the picture's) for Blur and Pixelate, or null while they aren't loaded; CW, CH: the canvas's size.
+// SRC(sx, sy, dx, dy, dw, dh) stretches picture pixel (sx, sy) over a square, for Blur and Pixelate (null: they're
+// drawn some other way, as in the editor's view); CW, CH: the canvas's size.
 function paint(ctx, shapes, s, ox, oy, src, cw, ch) {
     var X = function (v) { return (v - ox) * s; }, Y = function (v) { return (v - oy) * s; };
     for (var i = 0; i < shapes.length; i++) {
@@ -174,13 +176,11 @@ function paint(ctx, shapes, s, ox, oy, src, cw, ch) {
             if (dw >= 2 && dh >= 2) {
                 var ix0 = ox + dx / s, iy0 = oy + dy / s, ix1 = ox + (dx + dw) / s, iy1 = oy + (dy + dh) / s;
                 ctx.beginPath(); ctx.rect(dx, dy, dw, dh); ctx.clip();
-                if (sh.t === "pix")
-                    pixelSquares(function (tx, ty, x, y, w, h) { src.draw("pix", tx, ty, 1, 1, x, y, w, h); }, ix0, iy0, ix1, iy1, src.kp, s, ox, oy);
+                if (sh.t === "pix") pixelSquares(src, ix0, iy0, ix1, iy1, PIX, s, ox, oy, 0);
                 else {
-                    // A margin of the small copy around it, so the edges are as soft as the middle.
-                    var m = 2 / src.kb;
-                    src.draw("blur", (ix0 - m) * src.kb, (iy0 - m) * src.kb, (ix1 - ix0 + 2 * m) * src.kb, (iy1 - iy0 + 2 * m) * src.kb,
-                             dx - m * s, dy - m * s, dw + 2 * m * s, dh + 2 * m * s);
+                    pixelSquares(src, ix0, iy0, ix1, iy1, BLUR, s, ox, oy, 0);
+                    ctx.globalAlpha = 0.5;
+                    pixelSquares(src, ix0, iy0, ix1, iy1, BLUR, s, ox, oy, 0.5);
                 }
             }
         }
