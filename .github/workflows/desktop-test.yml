@@ -410,6 +410,7 @@ jobs:
           # answering IPP on its socket), the firmware history and Translations & dictionaries. Stand-ins only for these
           # pictures, all put back afterwards.
           SM2=/tmp/sm2-before; mkdir -p "$SM2"; cp -p "$D" "$SM2/desktop.json"
+          ipc notify unpopAll
           for f in bluetoothctl scanimage lpstat flatpak fwupdmgr sensors; do
             printf '#!/bin/sh\nexec python3 "%s/fake.py" %s "$@"\n' "$SMF" "$f" > "/tmp/fakebin/$f"; chmod +x "/tmp/fakebin/$f"
           done
@@ -431,12 +432,12 @@ jobs:
           python3 hosts/linux/desktop/shell/hearth-scan page "$SCANDEV" 75 Color Flatbed >/dev/null || true
           sleep 3
           ss bluetooth-receive ss-bluetooth-receive
-          ipc settings close; ipc btreceive test; sleep 2; grim shots/system-settings/ss-bt-receive-ask.png || true; sleep 1
           ss info-sensors ss-info-sensors; ss info-modules ss-info-modules; ss info-interrupts ss-info-interrupts
           ss scan-pdf ss-scan-pdf; ss ink-levels ss-ink-levels
-          ipc settings close; ipc inkwatch check; sleep 4; grim shots/system-settings/ss-ink-notice.png || true
           ss firmware-history ss-firmware-history; ss language-packs ss-language-packs
-          ipc settings close
+          ipc settings close; ipc notify unpopAll; ipc inkwatch check; sleep 5; grim shots/system-settings/ss-ink-notice.png || true
+          ipc notify unpopAll; ipc btreceive test; sleep 2; grim shots/system-settings/ss-bt-receive-ask.png || true
+          ipc notify unpopAll
           for f in bluetoothctl scanimage lpstat flatpak fwupdmgr sensors; do rm -f "/tmp/fakebin/$f"; done
           [ -n "$CUPS_MADE" ] && { kill "$(cat /tmp/fake-ipp.pid)" 2>/dev/null; rm -f /run/cups/cups.sock; }
           python3 hosts/linux/desktop/shell/hearth-scan clear >/dev/null || true

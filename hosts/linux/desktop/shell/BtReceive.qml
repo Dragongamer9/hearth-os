@@ -53,7 +53,7 @@ Scope {
         if (!asks.length) return;
         const o = asks[0];
         ask.id = o.ask;
-        ask.command = ["notify-send", "-a", "Bluetooth", "-i", "bluetooth", "-u", "critical", "-A", "accept=Accept", "-A", "decline=Decline", "-w",
+        ask.command = ["notify-send", "-a", "Bluetooth", "-u", "critical", "-A", "accept=Accept", "-A", "decline=Decline", "-w",
                        (o.from || "A Bluetooth device") + " wants to send you a file", o.name + (o.size ? " · " + size(o.size) : "")];
         ask.answered = false;
         ask.running = true;
@@ -73,7 +73,7 @@ Scope {
     }
     function tell(title, body, path) {
         done.path = path;
-        done.command = ["notify-send", "-a", "Bluetooth", "-i", "bluetooth"].concat(path ? ["-A", "open=Open", "-A", "folder=Show in folder", "-w"] : []).concat([title, body]);
+        done.command = ["notify-send", "-a", "Bluetooth"].concat(path ? ["-A", "open=Open", "-A", "folder=Show in folder", "-w"] : []).concat([title, body]);
         if (!done.running) done.running = true;
     }
     Process {

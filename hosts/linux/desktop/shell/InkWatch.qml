@@ -45,7 +45,7 @@ Scope {
                 const what = /toner/i.test(one.m.type + one.m.name) ? "toner" : "ink";
                 const title = low.length === 1 ? (one.m.name + (/(ink|toner)/i.test(one.m.name) ? "" : " " + what) + " is low") : low.length + " cartridges are low";
                 const body = low.length === 1 ? one.m.level + " % left in " + one.printer : low.map(l => l.m.name + " (" + l.m.level + " %)").slice(0, 4).join(", ") + " · " + one.printer;
-                tell.command = ["notify-send", "-a", "Printers", "-i", "printer", "-A", "open=Open", "-w", title, body];
+                tell.command = ["notify-send", "-a", "Printers", "-A", "open=Open", "-w", title, body];
                 if (!tell.running) tell.running = true;
             }
         }
