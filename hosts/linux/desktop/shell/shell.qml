@@ -8,6 +8,7 @@
 //   launcher toggle|open|close|section <apps|games>   quick toggle   keyboard open|close|press <button>|tap <key>|state   menu open   settings open|page <name>|close
 //   tasks open|tab <processes|performance[:cpu|memory|disk|net|gpu]|startup|details|services|settings>|close|toggle   files open <path>|home|toggle|close
 //   devices open|close|toggle|scan   run open|close|toggle   winx open|close|toggle (WinTools.qml)
+//   searchbar toggle|open|close|key|type <text>|state (SearchBar.qml, Alt+Space)
 //   resmon open|tab <pc|overview|cpu|memory|disk|network|gpu>|select <part>|close|toggle (ResourceMonitor.qml)
 //   calendar toggle|open|close   notifications dnd on|off|toggle, clear   desktop menu|close, icons on|off|toggle
 //   taskbar activate <1-9>|showDesktop   brightness up|down   media playPause|next|previous|stop
@@ -271,6 +272,7 @@ ShellRoot {
     // looking and none of its own windows (Settings, Task Manager, Files) is open.
     Loader { source: "ShellHealth.qml"; onLoaded: item.inUse = Qt.binding(() => settings.shown || tasks.shown || files.shown) }
     Loader { source: "SpaceWatch.qml"; onLoaded: { item.dialog = deskDialog; item.openStorage = () => settings.open("storage"); } }   // 1.11: main drive almost full
+    Loader { source: "StoreWatch.qml"; onLoaded: item.openStore = part => settings.open("store:" + part) }   // 1.14: app updates notice
     Loader { source: "BatteryWatch.qml" }   // 1.11: low battery warnings, then hibernate (where proven) or a clean shutdown
     // Device Manager, the Run box (Super+R) and the Super+X menu (WinTools.qml): loaded by file name, so a problem in
     // them only loses those three, never the shell.
@@ -278,6 +280,13 @@ ShellRoot {
         source: "WinTools.qml"
         onLoaded: item.wire({ tasks: tasks, files: files, settings: settings, launcher: launcher, lockScreen: lockScreen })
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Device Manager, Run and the Super+X menu (WinTools.qml) couldn't load")
+    }
+    // The search bar (1.14, Alt+Space, like KRunner: SearchBar.qml): loaded by file name, so a problem in it only loses
+    // the bar, never the shell. IPC target "searchbar".
+    Loader {
+        source: "SearchBar.qml"
+        onLoaded: item.wire({ launcher: launcher })
+        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the search bar (SearchBar.qml) couldn't load")
     }
     // Resource Monitor (docs/RESOURCE-MONITOR.md): loaded by file name, so a problem in it only loses that window, never
     // the shell. IPC target "resmon" (hearth-resmon).
