@@ -8,7 +8,7 @@ over the last two seconds (the frame limit's measure). Its picture: a dark backg
 200 x 200 buffer pixels at (100, 100), and a label with its render size (with Pillow, when it's there), so a screen
 picture shows the upscaling: on a 1920 x 1080 screen at Quality the square is 300 x 300 at (150, 150).
 
-  firehold-game-client.py STATS [--app-id ID] [--seconds N] [--windowed]
+  firehold-game-client.py STATS [--app-id ID] [--title TITLE] [--seconds N] [--windowed]
 """
 import json
 import mmap
@@ -30,6 +30,7 @@ def opt(name, default):
 
 
 APP_ID = opt('--app-id', 'firehold-test-game')
+TITLE = opt('--title', 'Firehold test game')
 SECONDS = float(opt('--seconds', '120'))
 FULLSCREEN = '--windowed' not in args
 
@@ -177,7 +178,7 @@ xdg_surface = new_id('xdg_surface', on_xdg_surface)
 send(wm_base, 2, u32(xdg_surface, surface))
 toplevel = new_id('xdg_toplevel', on_toplevel)
 send(xdg_surface, 1, u32(toplevel))
-send(toplevel, 2, s_arg('Firehold test game'))
+send(toplevel, 2, s_arg(TITLE))
 send(toplevel, 3, s_arg(APP_ID))
 if FULLSCREEN:
     send(toplevel, 11, u32(0))   # set_fullscreen(no output: the compositor picks)

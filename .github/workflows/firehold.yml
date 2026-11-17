@@ -7,6 +7,9 @@
 #             on Mantel's taskbar (foreign toplevel), minimizing, snapping, Settings › Your desktop, a clean end
 #   game      the Guide's game rows (frame limit, resolution scaling, direct scanout's choice), nested and headless,
 #             with a stand-in game and the Guide's helper (.github/scripts/firehold-game-test.sh)
+#   shell     the Firehold shell (Couch Home, the Library, the Guide over a fullscreen stand-in game with its rows live,
+#             Everything open, the Desk) on firehold-comp headless, and what falls back there
+#             (.github/scripts/firehold-comp-shell-test.sh)
 #   pictures  each picture as notices ("SHOT comp-<n>-<what> <i>", a JPEG in base64 pieces of 3800, at most 8, after
 #             a "SHOT-PARTS" count), one job and one step per picture
 name: Firehold
@@ -20,7 +23,9 @@ on:
             'hosts/linux/test/test_firehold_session.py', 'hosts/linux/test/test_kwin_session.py',
             'hosts/linux/desktop/shell/hearth-firehold-game', 'hosts/linux/test/test_firehold_game.py',
             '.github/workflows/firehold.yml', '.github/scripts/firehold-test.sh', '.github/scripts/firehold-headless-test.sh',
-            '.github/scripts/firehold-game-test.sh', '.github/scripts/firehold-game-client.py', '.github/scripts/firehold-shot.py']
+            '.github/scripts/firehold-game-test.sh', '.github/scripts/firehold-game-client.py', '.github/scripts/firehold-shot.py',
+            '.github/scripts/firehold-comp-shell-test.sh', '.github/scripts/firehold-fixtures.py', 'hosts/linux/desktop/shell/Firehold*.qml',
+            'hosts/linux/desktop/shell/firehold.js']
   workflow_dispatch:
 
 permissions:
@@ -274,6 +279,50 @@ jobs:
         if: always()
         with:
           name: firehold-game-shots
+          path: shots
+          retention-days: 14
+
+  shell:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install Quickshell and friends (no virtual screen)
+        run: |
+          dnf -y install dnf5-plugins git xorg-x11-server-Xwayland mesa-dri-drivers mesa-libEGL libinput libseat \
+            libxkbcommon labwc qt6-qtsvg procps-ng python3 python3-pillow foot dbus-daemon dbus-tools grim \
+            google-noto-sans-fonts dejavu-sans-fonts adwaita-icon-theme breeze-icon-theme hicolor-icon-theme fontconfig libnotify >/dev/null
+          dnf -y install --skip-unavailable rsms-inter-fonts wl-clipboard wtype >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firehold
+          path: .
+      - name: The Firehold shell on firehold-comp, headless
+        timeout-minutes: 15
+        run: bash .github/scripts/firehold-comp-shell-test.sh
+      - name: Picture firehold-c1-couch-home
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-c1-couch-home
+      - name: Picture firehold-c2-library
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-c2-library
+      - name: Picture firehold-c3-guide
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-c3-guide
+      - name: Picture firehold-c4-everything-open
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-c4-everything-open
+      - name: Picture firehold-c5-desk
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-c5-desk
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firehold-comp-shell-shots
           path: shots
           retention-days: 14
 
