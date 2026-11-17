@@ -444,6 +444,10 @@ impl<B: Backend + 'static> HearthState<B> {
 
     fn handle_toplevel_requests(&mut self) {
         let requests = std::mem::take(&mut self.foreign_toplevel_state.requests);
+        if self.lock.locked {
+            // Nothing is raised, closed or focused behind the lock screen.
+            return;
+        }
         for r in requests {
             let id = match &r {
                 ToplevelRequest::Activate(id)
@@ -499,6 +503,7 @@ impl<B: Backend + 'static> HearthState<B> {
             self.running.store(false, Ordering::SeqCst);
         }
         self.minimized.retain(|m| m.window.alive());
+        self.lock_tick();
         self.handle_toplevel_requests();
         let infos = self.toplevel_infos();
         let dh = self.display_handle.clone();
@@ -513,6 +518,30 @@ impl<B: Backend + 'static> HearthState<B> {
                     w.decoration_state().header_bar.theme_changed();
                 }
             }
+        }
+    }
+
+    /// The status file at once (the lock's changes shouldn't wait for the next half second).
+    pub fn write_status_now(&mut self) {
+        self.write_status();
+    }
+
+    /// What has the keyboard, for the status file (tests check nothing behind the lock screen has it).
+    fn keyboard_focus_name(&self) -> String {
+        let Some(f) = self.seat.get_keyboard().and_then(|k| k.current_focus()) else { return "none".into() };
+        match f {
+            KeyboardFocusTarget::Window(w) => {
+                let app = self
+                    .space
+                    .elements()
+                    .find(|e| e.0 == w)
+                    .map(|e| title_and_app_id(e).1)
+                    .unwrap_or_default();
+                format!("window:{app}")
+            }
+            KeyboardFocusTarget::LayerSurface(l) => format!("layer:{}", l.namespace()),
+            KeyboardFocusTarget::Popup(_) => "popup".into(),
+            KeyboardFocusTarget::Lock(_) => "lock".into(),
         }
     }
 
@@ -569,6 +598,14 @@ impl<B: Backend + 'static> HearthState<B> {
             "outputs": outputs,
             "windows": windows,
             "taskbars": self.foreign_toplevel_state.listeners(),
+            "keyboardFocus": self.keyboard_focus_name(),
+            "lock": {
+                "locked": self.lock.locked,
+                "client": self.lock.locked && self.lock.client_alive() && !self.lock.client_gone,
+                "prompt": self.lock.prompt_active(),
+                "surfaces": self.lock.surfaces.iter().filter(|(_, s)| s.alive()).count(),
+                "message": self.lock.prompt.message,
+            },
         });
         let text = v.to_string();
         if text == self.last_status.1 {

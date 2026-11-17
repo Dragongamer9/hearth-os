@@ -136,7 +136,7 @@ jobs:
           dnf -y install dnf5-plugins git xorg-x11-server-Xvfb xorg-x11-server-Xwayland mesa-dri-drivers mesa-libEGL \
             libinput libseat libxkbcommon libxkbcommon-x11 libX11 libXcursor libXrandr libXi \
             labwc qt6-qtsvg procps-ng python3 python3-pillow ImageMagick xdotool foot dbus-daemon dbus-tools \
-            google-noto-sans-fonts adwaita-icon-theme fontconfig libnotify wl-clipboard wtype >/dev/null
+            google-noto-sans-fonts adwaita-icon-theme fontconfig libnotify wl-clipboard wtype pam shadow-utils >/dev/null
           dnf -y install --skip-unavailable wayland-utils wlrctl rsms-inter-fonts >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
@@ -156,7 +156,8 @@ jobs:
           import base64, io, os
           from PIL import Image
           # One step per picture later (GitHub keeps 10 notices a step, 50 a job): at most 8 pieces of 3800.
-          for name in ('albireo-1-empty', 'albireo-2-mantel', 'albireo-3-window', 'albireo-4-minimized', 'albireo-5-snapped', 'albireo-6-your-desktop'):
+          for name in ('albireo-1-empty', 'albireo-2-mantel', 'albireo-3-window', 'albireo-4-minimized', 'albireo-5-snapped', 'albireo-6-your-desktop',
+                       'albireo-7-locked', 'albireo-8-lock-prompt', 'albireo-9-unlocked'):
               p = 'shots/%s.png' % name
               if not os.path.exists(p):
                   print('::warning title=pictures::no %s' % name); continue
@@ -185,7 +186,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        name: ['albireo-1-empty', 'albireo-2-mantel', 'albireo-3-window', 'albireo-4-minimized', 'albireo-5-snapped', 'albireo-6-your-desktop']
+        name: ['albireo-1-empty', 'albireo-2-mantel', 'albireo-3-window', 'albireo-4-minimized', 'albireo-5-snapped', 'albireo-6-your-desktop',
+               'albireo-7-locked', 'albireo-8-lock-prompt', 'albireo-9-unlocked']
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

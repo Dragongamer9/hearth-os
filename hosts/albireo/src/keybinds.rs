@@ -198,6 +198,23 @@ impl Keymap {
             .find(|b| b.on_release == on_release && b.key == key && b.mods == mods)
     }
 
+    /// Mantel's lock command (Super+L's Execute): the compositor asks Mantel to lock again with it when the lock
+    /// screen went away while locked (lock.rs). Falls back to Mantel's ipc call.
+    pub fn lock_command(&self) -> Option<String> {
+        let l = keysym("l")?;
+        let logo = Mods { logo: true, ..Mods::default() };
+        let from_rc = self.find(logo, l, false).and_then(|b| {
+            b.actions.iter().find_map(|a| match a {
+                Action::Execute(c) if c.contains("lock") => Some(c.clone()),
+                _ => None,
+            })
+        });
+        from_rc.or_else(|| {
+            let share = std::env::var("NIMBUS_SHARE").unwrap_or_else(|_| "/usr/local/share/nimbus".into());
+            Some(format!("quickshell ipc -p '{share}/desktop/shell' call lock lock"))
+        })
+    }
+
     /// A lone modifier bind (Super_L onRelease: the launcher) wants the modifier itself to count as no modifier.
     pub fn find_lone(&self, key: Keysym) -> Option<&Bind> {
         self.binds
@@ -240,6 +257,7 @@ mod tests {
             a => panic!("{a:?}"),
         }
         assert!(km.find_lone(keysym("Super_L").unwrap()).is_some());
+        assert!(km.lock_command().unwrap().contains("call lock lock"));
         assert!(km.find(Mods::default(), keysym("XF86AudioRaiseVolume").unwrap(), false).is_some());
         // SendToDesktop isn't there yet: skipped, and said so.
         assert!(km.skipped.iter().any(|s| s == "SendToDesktop"));

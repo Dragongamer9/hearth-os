@@ -142,8 +142,13 @@ impl<BackendData: Backend> HearthState<BackendData> {
         let time = Event::time_msec(&evt);
         let mut suppressed_keys = self.suppressed_keys.clone();
         let keyboard = self.seat.get_keyboard().unwrap();
+        let locked = self.lock.locked;
+        if locked {
+            self.lone_modifier = None;
+            self.enforce_lock_focus();
+        }
 
-        for layer in self.layer_shell_state.layer_surfaces().rev() {
+        for layer in self.layer_shell_state.layer_surfaces().rev().filter(|_| !locked) {
             let data = with_states(layer.wl_surface(), |states| {
                 *states.cached_state.get::<LayerSurfaceCachedState>().current()
             });
@@ -193,6 +198,24 @@ impl<BackendData: Backend> HearthState<BackendData> {
                 // Additionally add the key to the suppressed keys
                 // so that we can decide on a release if the key
                 // should be forwarded to the client or not.
+                // Locked (lock.rs): no shortcuts but switching consoles; the keys are the lock screen's, or the
+                // built-in prompt's when the lock screen went away.
+                if data.lock.locked {
+                    let pressed = matches!(state, KeyState::Pressed);
+                    if pressed {
+                        if let Some(a) = crate::keybinds::builtin(keysym) {
+                            suppressed_keys.push(keysym);
+                            return FilterResult::Intercept(KeyAction::Hearth(vec![a]));
+                        }
+                    } else if suppressed_keys.contains(&keysym) {
+                        suppressed_keys.retain(|k| *k != keysym);
+                        return FilterResult::Intercept(KeyAction::None);
+                    }
+                    if data.lock_prompt_key(keysym, pressed) {
+                        return FilterResult::Intercept(KeyAction::None);
+                    }
+                    return FilterResult::Forward;
+                }
                 if let KeyState::Pressed = state {
                     data.lone_modifier = matches!(raw, Keysym::Super_L | Keysym::Super_R).then_some(raw);
                     if !inhibited {
@@ -258,6 +281,10 @@ impl<BackendData: Backend> HearthState<BackendData> {
     }
 
     fn update_keyboard_focus(&mut self, location: Point<f64, Logical>, serial: Serial) {
+        if self.lock.locked {
+            self.enforce_lock_focus();
+            return;
+        }
         let keyboard = self.seat.get_keyboard().unwrap();
         let touch = self.seat.get_touch();
         let input_method = self.seat.input_method();
@@ -349,6 +376,9 @@ impl<BackendData: Backend> HearthState<BackendData> {
         &self,
         pos: Point<f64, Logical>,
     ) -> Option<(PointerFocusTarget, Point<f64, Logical>)> {
+        if self.lock.locked {
+            return self.lock_surface_under(pos);
+        }
         let output = self.space.outputs().find(|o| {
             let geometry = self.space.output_geometry(o).unwrap();
             geometry.contains(pos.to_i32_round())
