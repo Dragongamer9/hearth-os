@@ -12,6 +12,21 @@ Item {
     signal tapped(int r, int c)
     signal longPressed(int r, int c)
     signal altPicked(int i)
+    signal altHovered(int i)     // a long touch's finger slid onto accent i (the owner: engine.hoverAlt)
+
+    // A long touch that opened the accents: sliding the finger onto one lights it, lifting there types it; lifting
+    // anywhere else leaves them open to tap (OskKey.qml calls these with the finger's place on the board).
+    function altAt(x, y) {
+        if (!pop.visible) return -1;
+        const p = popRow.mapFromItem(board, x, y), ch = popRow.childAt(p.x, p.y);
+        return ch && ch.altIndex !== undefined ? ch.altIndex : -1;
+    }
+    function altCenter(i) {   // where accent i is on the board (for the checks: a finger put there)
+        for (let n = 0; n < popRow.children.length; n++) { const ch = popRow.children[n]; if (ch.altIndex === i) return ch.mapToItem(board, ch.width / 2, ch.height / 2); }
+        return null;
+    }
+    function slideTo(i) { if (i >= 0) altHovered(i); }
+    function liftOn(i) { if (i >= 0) altPicked(i); }
 
     readonly property var s: vm && vm.settings ? vm.settings : ({})
     // Its look. Mantel's keyboard (Keyboard.qml) hands it the OskThemes.qml looks and the one picked in Settings ›
@@ -253,6 +268,7 @@ Item {
                 x: board.selPlaced ? Math.max(0, Math.min(keysArea.width - width, board.selX + board.selItem.width / 2 - width / 2)) : 0
                 y: board.selPlaced ? Math.max(-height / 2, board.selY - height - 6) : 0
                 Row {
+                    id: popRow
                     anchors.centerIn: parent
                     spacing: 6
                     Repeater {
@@ -261,6 +277,7 @@ Item {
                             required property string modelData
                             required property int index
                             readonly property bool sel: board.vm.popup && board.vm.popup.i === index
+                            readonly property int altIndex: index
                             width: board.keyH; height: board.keyH; radius: 10
                             color: sel ? board.th.sel : board.th.key
                             border.width: sel ? 3 : 0

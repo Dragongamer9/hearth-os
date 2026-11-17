@@ -13,7 +13,7 @@ use tauri::{WebviewUrl, WebviewWindowBuilder};
 #[tauri::command]
 fn init() -> Value {
     let s = hearth_emoji::load();
-    json!({"recent": s.recent, "most": hearth_emoji::most_used(&s, 28), "tone": s.tone, "platform": if cfg!(windows) { "windows" } else { "linux" }})
+    json!({"recent": s.recent, "most": hearth_emoji::most_used(&s, 28), "tone": s.tone, "size": s.size, "platform": if cfg!(windows) { "windows" } else { "linux" }})
 }
 
 #[tauri::command]
@@ -22,6 +22,10 @@ fn set_tone(tone: u8) -> Result<(), String> {
     s.tone = tone.min(5);
     hearth_emoji::save(&s)
 }
+
+/// How big the emoji are (0 medium, 1 small, 2 large): only this key of the saved file changes.
+#[tauri::command]
+fn set_size(size: u8) -> Result<(), String> { hearth_emoji::save_size(size) }
 
 /// The pick: remembered, copied, and (unless `copy_only`) typed into the app you were in after the window closes.
 #[tauri::command]
@@ -45,7 +49,7 @@ fn main() {
     #[cfg(target_os = "linux")]
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
     tauri::Builder::default().plugin(apptheme::plugin())
-        .invoke_handler(tauri::generate_handler![init, set_tone, pick, close])
+        .invoke_handler(tauri::generate_handler![init, set_tone, set_size, pick, close])
         .setup(|app| {
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Emoji")

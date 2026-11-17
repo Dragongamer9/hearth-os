@@ -354,6 +354,7 @@ PanelWindow {
         const cmds = { game: ["nimbus-mode", "game"], sleep: ["python3", Buttons.helper, "sleep", "Desktop Mode: menu"], restart: ["systemctl", "reboot"],
             shutdown: ["systemctl", "poweroff"], logout: ["nimbus-mode", "logout"], lock: ["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "lock", "lock"] };
         if (kind === "settings") settingsRequested();
+        else if (kind === "logout") Leave.logout();   // asks first when Settings › Startup says so
         else if (cmds[kind]) Quickshell.execDetached(cmds[kind]);
     }
 
@@ -896,7 +897,7 @@ PanelWindow {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
-            onClicked: { root.shown = false; if (ab.command.length) Quickshell.execDetached(ab.command); else root.settingsRequested(); }
+            onClicked: { root.shown = false; if (ab.command.join(" ") === "nimbus-mode logout") Leave.logout(); else if (ab.command.length) Quickshell.execDetached(ab.command); else root.settingsRequested(); }
         }
     }
 }

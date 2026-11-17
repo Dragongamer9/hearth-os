@@ -290,6 +290,26 @@ SetPage {
         }
     }
 
+    // 1.14: the keyboard's RGB lights follow the accent (KbdLights.qml). Off unless you turn it on; opening this page
+    // only asks hearth-kbd-lights which way it would work here (it reads, never writes).
+    SetSwitch {
+        id: kbdLightsRow
+        icon: "kbd"; title: "Keyboard lights follow the accent"
+        property var st: null
+        sub: !st ? "Colours an RGB keyboard with your accent colour"
+            : st.way === "openrgb" ? "Through OpenRGB: keyboards only, your mouse and the rest stay as they are"
+            : st.way === "kernel" ? "This keyboard's own coloured light" + (st.leds.some(l => !l.writable) ? " (it needs Hearth's backlight permission: restart once after the update)" : "")
+            : "No coloured keyboard found here (OpenRGB, or a laptop keyboard with coloured lights)"
+        checked: Settings.kbdLights
+        onToggled: v => Settings.kbdLights = v
+        SetJob { id: kbdJob; helper: "hearth-kbd-lights" }
+        // `settings page appearance:kbd-lights` opens the page at it
+        Component.onCompleted: {
+            kbdJob.run(["status"], r => kbdLightsRow.st = r, () => {});
+            if (SettingsNav.pageAnchor === "kbd-lights") { SettingsNav.pageAnchor = ""; Qt.callLater(() => kbdLightsRow.forceActiveFocus()); }
+        }
+    }
+
     SetHeader { text: "Desktop" }
     SetLinkCard { target: "bar-dock"; value: Settings.barStyle === "" && Settings.dockMode === "" ? "Look's own" : [Settings.barStyle === "bar" ? "Full-width bar" : Settings.barStyle === "floating" ? "Islands" : "", Settings.dockMode === "autohide" ? "dock auto-hides" : Settings.dockMode === "shown" ? "dock shown" : ""].filter(x => x).join(", ") }
     SetChoice {

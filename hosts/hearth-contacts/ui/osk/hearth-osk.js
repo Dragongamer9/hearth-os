@@ -816,6 +816,8 @@ var HearthOSK = (function () {
     var api = {
       handle: handle, axes: axes, tick: tick, tap: tap, longPress: longPress, view: view, reset: reset,
       pickSuggestion: pickSuggestion, pickAlt: function (i) { pickAlt(i); }, closePopup: function () { E.popup = null; changed(); },
+      /** A long touch's finger slid onto accent i (it's picked when the finger lifts there: pickAlt). */
+      hoverAlt: function (i) { if (E.popup && i >= 0 && i < E.popup.alts.length && E.popup.i !== i) { E.popup.i = i; changed(); } },
       move: move, press: function (r, c) { tap(r, c); },
       /** The text changed outside the keyboard (typed on a real keyboard, the caret moved): redo capitals and suggestions. */
       refresh: function () { E.shadow = ''; E.shadowKnown = false; refresh(); changed(); },
@@ -921,7 +923,7 @@ var HearthOSK = (function () {
     var top = el(doc, 'div', 'hosk-top'), keys = el(doc, 'div', 'hosk-keys'), grid = el(doc, 'div', 'hosk-grid'), ember = el(doc, 'div', 'hosk-ember');
     root.appendChild(top); root.appendChild(keys); keys.appendChild(grid); keys.appendChild(ember);
     var extra = [];
-    var lastRect = null, longTimer = null, pressed = null, sparks = 0;
+    var lastRect = null, longTimer = null, pressed = null, sparks = 0, sliding = false;
 
     function cls(v) {
       var s = v.settings;
@@ -1025,7 +1027,9 @@ var HearthOSK = (function () {
       return w;
     }
 
-    // touch and the mouse: type on release, a long touch opens the alternates
+    // touch and the mouse: type on release, a long touch opens the alternates; slide onto one and lift to type it
+    // (a touch keeps its first target, so what's under the finger is looked up by where it is)
+    function under(e) { var el = e && e.clientX !== undefined && doc.elementFromPoint ? doc.elementFromPoint(e.clientX, e.clientY) : null; return el ? at({ target: el }) : null; }
     function at(e) { var t = e.target; while (t && t !== root && !(t.getAttribute && (t.getAttribute('data-r') !== null || t.getAttribute('data-alt') !== null))) t = t.parentNode; return t && t !== root ? t : null; }
     function down(e) {
       var t = at(e); if (!t) return;
@@ -1034,10 +1038,21 @@ var HearthOSK = (function () {
       if (longTimer && win) win.clearTimeout(longTimer);
       if (t.getAttribute('data-r') !== null && win) {
         var r = +t.getAttribute('data-r'), c = +t.getAttribute('data-c');
-        longTimer = win.setTimeout(function () { longTimer = null; if (pressed === t && engine.longPress(r, c)) { pressed = null; t.classList.remove('down'); } }, 480);
+        longTimer = win.setTimeout(function () { longTimer = null; if (pressed === t && engine.longPress(r, c)) { pressed = null; sliding = true; t.classList.remove('down'); } }, 480);
       }
     }
+    function slide(e) {
+      if (!sliding) return;
+      var o = under(e);
+      if (o && o.getAttribute('data-alt') !== null) engine.hoverAlt(+o.getAttribute('data-alt'));
+    }
     function up(e) {
+      if (sliding) {   // the finger that opened the accents lifted: on one, it's typed; elsewhere they stay open
+        sliding = false;
+        var o = e.type === 'pointerup' ? under(e) : null;
+        if (o && o.getAttribute('data-alt') !== null) engine.pickAlt(+o.getAttribute('data-alt'));
+        return;
+      }
       var t = pressed; pressed = null;
       if (longTimer && win) { win.clearTimeout(longTimer); longTimer = null; }
       if (!t) return;
@@ -1049,6 +1064,7 @@ var HearthOSK = (function () {
     }
     root.addEventListener('pointerdown', down);
     root.addEventListener('pointerup', up);
+    root.addEventListener('pointermove', slide);
     root.addEventListener('pointercancel', up);
     root.addEventListener('mousedown', function (e) { if (at(e)) e.preventDefault(); });
     root.addEventListener('click', function (e) { if (at(e) || e.target === root) e.stopPropagation(); });

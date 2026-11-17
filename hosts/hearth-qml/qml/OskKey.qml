@@ -1,4 +1,4 @@
-// One key of Hearth's on-screen keyboard (OskBoard.qml). A tap types it; a long touch opens its accents.
+// One key of Hearth's on-screen keyboard (OskBoard.qml). A tap types it; a long touch opens its accents (slide onto one, lift).
 import QtQuick
 
 Rectangle {
@@ -57,7 +57,10 @@ Rectangle {
         property bool held: false
         onPressed: held = false
         onPressAndHold: { held = true; owner.longPressed(k.row, k.col); }
-        onReleased: if (!held && containsMouse) owner.tapped(k.row, k.col)
+        // after a long touch: slide onto an accent to light it, lift there to type it (elsewhere they stay open)
+        function onBoard(m) { return mapToItem(owner, m.x, m.y); }
+        onPositionChanged: m => { if (held) { const p = onBoard(m); owner.slideTo(owner.altAt(p.x, p.y)); } }
+        onReleased: m => { if (held) { const p = onBoard(m); owner.liftOn(owner.altAt(p.x, p.y)); } else if (containsMouse) owner.tapped(k.row, k.col); }
         hoverEnabled: false
     }
 }

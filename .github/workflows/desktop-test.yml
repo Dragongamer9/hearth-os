@@ -2325,6 +2325,93 @@ jobs:
           fi
           ls -la shots/server-mode
 
+      # 1.14 (wave 3): the keyboard's lights following the accent (a pretend multicolour keyboard LED: written only
+      # while the switch is on), "Log out?" and the power menu's default leave option (Settings › Startup), and the
+      # on-screen keyboard's accents by a long touch (slide onto one, lift) and by holding A.
+      - name: Keyboard lights, Log out?, accents by touch (1.14)
+        if: always()
+        shell: bash
+        run: |
+          o=shots/shell-bits; mkdir -p $o
+          exec > >(tee $o/step.log) 2>&1
+          say() { echo "::notice title=Shell bits::$*"; }
+          bad() { echo "::error title=Shell bits::$*"; touch shots/FAILED; }
+          python3 -m unittest discover -s hosts/linux/test -p 'test_shell_bits_114.py' -v > $o/unit.log 2>&1 && say "unit tests pass: $(tail -3 $o/unit.log | tr '\n' ' ')" || bad "unit tests: $(grep -E '^(FAIL|ERROR):|Error' $o/unit.log | head -6 | tr '\n' '|' | cut -c1-700)"
+          set -x
+          pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; sleep 2
+          # a pretend keyboard with a coloured light, and a nimbus-mode that only notes what it was asked
+          L=/tmp/fakeleds/rgb:kbd_backlight; mkdir -p $L /tmp/fakebin-sb
+          echo "0 0 0" > $L/multi_intensity; echo "red green blue" > $L/multi_index; echo 255 > $L/max_brightness; echo 0 > $L/brightness
+          printf '#!/bin/sh\necho "$*" >> /tmp/nimbus-mode.log\n' > /tmp/fakebin-sb/nimbus-mode && chmod +x /tmp/fakebin-sb/nimbus-mode; rm -f /tmp/nimbus-mode.log
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH="/tmp/fakebin-sb:/tmp/fakebin:$PATH" HEARTH_LEDS_DIR=/tmp/fakeleds
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          [ -S "$XDG_RUNTIME_DIR/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          unset XDG_DATA_DIRS; eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session)"
+          SH="$PWD/hosts/linux/desktop/shell"
+          D="$HOME/.local/share/nimbus/desktop.json"; mkdir -p "$(dirname "$D")"; [ -s "$D" ] || echo '{}' > "$D"
+          python3 $SH/hearth_settings_io.py merge "$D" '{"kbdLights": null, "confirmLogout": null, "leaveDefault": null, "accent": "#ff7a2f"}' >/dev/null
+          rm -f "$XDG_RUNTIME_DIR"/wayland-*
+          CONF=$(python3 $SH/hearth-system labwc-config)
+          labwc -C "$CONF" > $o/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          ipc() { quickshell ipc -p "$SH" call "$@" 2>/dev/null | tail -n1 || echo "ipc $* failed"; }
+          merge() { python3 $SH/hearth_settings_io.py merge "$D" "$1" >/dev/null; }
+          leds() { cat $L/multi_intensity; }
+          wtype -k Shift_L; sleep 1
+          # ---- keyboard lights: off (the default) writes nothing; on follows the accent; off again writes nothing
+          sleep 3; [ "$(leds)" = "0 0 0" ] && say "keyboard lights: off by default, nothing written" || bad "keyboard lights wrote while off: $(leds)"
+          merge '{"kbdLights": true}'; sleep 5
+          [ "$(leds)" = "255 122 47" ] && say "keyboard lights: on, the accent #ff7a2f went to the keyboard ($(leds))" || bad "keyboard lights didn't follow the accent: $(leds) · $(ipc kbdlights state)"
+          merge '{"accent": "#1a9fff"}'; sleep 5
+          [ "$(leds)" = "26 159 255" ] && say "keyboard lights: a new accent follows ($(leds))" || bad "keyboard lights didn't follow the new accent: $(leds) · $(ipc kbdlights state)"
+          merge '{"kbdLights": false}'; sleep 2; merge '{"accent": "#ff7a2f"}'; sleep 5
+          [ "$(leds)" = "26 159 255" ] && say "keyboard lights: turned off, the next accent wrote nothing" || bad "keyboard lights wrote after being turned off: $(leds)"
+          merge '{"kbdLights": true}'; sleep 3
+          sp() { ipc settings close; sleep 1; ipc settings page "$1"; sleep "${3:-5}"; grim "$o/$2.png" || true; }
+          sp appearance:kbd-lights set-kbd-lights
+          ipc settings close; merge '{"kbdLights": false}'
+          # ---- Log out? and the default leave option
+          ipc leave logout; sleep 2
+          [ -s /tmp/nimbus-mode.log ] && say "confirm off (the default): Log out logged out at once" || bad "Log out with the question off didn't log out: $(ipc leave state)"
+          rm -f /tmp/nimbus-mode.log
+          merge '{"confirmLogout": true, "leaveDefault": "Restart"}'; sleep 3
+          ipc leave logout; sleep 2; grim $o/leave-confirm.png || true
+          [ -e /tmp/nimbus-mode.log ] && bad "Log out with the question on didn't ask first" || say "confirm on: Log out asked first"
+          wtype -k Escape; sleep 1.5
+          [ -e /tmp/nimbus-mode.log ] && bad "Cancel (Esc) logged out" || say "Esc cancelled Log out?"
+          ipc leave logout; sleep 1.5; wtype -k Return; sleep 2
+          grep -q logout /tmp/nimbus-mode.log 2>/dev/null && say "Log out? then Enter logged out" || bad "Enter on Log out? didn't log out: $(ipc leave state)"
+          ipc leave powermenu; sleep 2; grim $o/power-default.png || true
+          st=$(ipc leave state); case "$st" in *'"power":"Restart"'*) say "the power menu opens on the default leave option (Restart)" ;; *) bad "the power menu didn't open on Restart: $st" ;; esac
+          ipc leave powerclose; sleep 1
+          sp startup:leave set-leave
+          ipc settings close
+          merge '{"confirmLogout": null, "leaveDefault": null}'
+          # ---- the on-screen keyboard's accents: a long touch, the finger slid onto the third one and lifted; then A held
+          kb() { quickshell ipc -p "$SH" call keyboard "$@" 2>&1 | tail -n1; }
+          kb open; sleep 2
+          kb touchhold e; sleep 1.2; grim $o/osk-touch-hold.png || true
+          s1=$(kb state)
+          got=$(kb touchslide 2); sleep 0.8; grim $o/osk-touch-slide.png || true
+          lifted=$(kb touchlift); sleep 1
+          s2=$(kb state)
+          case "$s1" in *'"popup":{'*) say "a long touch on e opened its accents" ;; *) bad "a long touch didn't open the accents: $(echo "$s1" | cut -c1-300)" ;; esac
+          [ "$got" = 2 ] && [ "$lifted" = 2 ] && say "the finger slid onto the third accent (found by its place on screen) and lifted there" || bad "sliding onto an accent: found $got, lifted $lifted"
+          case "$s2" in *'ê'*'"popup":null'*) say "lifting typed ê and closed the accents" ;; *) bad "lifting on ê didn't type it: $(echo "$s2" | cut -c1-300)" ;; esac
+          kb select a; sleep 0.3; kb hold a 750; sleep 1.3; grim $o/osk-pad-hold.png || true
+          s3=$(kb state); case "$s3" in *'"popup":{"alts":["à'*|*'"popup":{"alts":["á'*) say "holding A on a opened its accents (controller)" ;; *) bad "holding A didn't open the accents: $(echo "$s3" | cut -c1-300)" ;; esac
+          kb press b; sleep 0.5; kb close
+          cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
+          xbad=$(grep -E "(KbdLights|Leave|LeaveConfirm|PowerMenu|SetStartup|SetAppearance|OskBoard|OskKey|Keyboard|Launcher|WinTools|DesktopMenu)\.qml.*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|non-existent|Unable to assign)" "$LOG" 2>/dev/null | head -8 | cut -c1-240 | tr '\n' '|' || true)
+          [ -z "$xbad" ] && say "no QML errors from the changed views" || bad "$xbad"
+          ls -la $o
+          pkill -x labwc || true; pkill -f quickshell || true
+
       # The screenshots and logs also go to the ci/desktop-shots branch, so they can be looked at without
       # downloading the artifact.
       # A run started by hand on another branch publishes to ci/desktop-shots-<branch> instead.
@@ -2828,3 +2915,51 @@ jobs:
         run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f4); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
       - name: Picture 5
         run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f5); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+
+  # 1.14 (wave 3): the pictures of the step above as notices ("SHOT <name> <n>").
+  shell-bits-shots:
+    needs: desktop
+    if: always() && !inputs.kwin_only
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shots: ["set-kbd-lights set-leave leave-confirm power-default", "osk-touch-hold osk-touch-slide osk-pad-hold"]
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: desktop-screenshots
+          path: shots
+      - name: Make the JPEGs
+        env:
+          SHOTS: ${{ matrix.shots }}
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, io, os
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          for name in os.environ['SHOTS'].split():
+              p = 'shots/shell-bits/%s.png' % name
+              if not os.path.exists(p):
+                  print('::warning title=SHOT %s::no picture' % name)
+                  continue
+              im = Image.open(p).convert('RGB')
+              print('%s: %dx%d' % (name, im.width, im.height))
+              for w, q in ((800, 50), (720, 45), (640, 38), (560, 30), (480, 25)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open('shots/shell-bits/%s.jpg' % name, 'wb').write(b.getvalue())
+          PY
+      - name: Picture 1
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f1); f=shots/shell-bits/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 2
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f2); f=shots/shell-bits/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 3
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f3); f=shots/shell-bits/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 4
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f4); f=shots/shell-bits/$n.jpg; [ -n "$n" ] && [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
