@@ -1,0 +1,126 @@
+{
+ "idle": {
+  "hearth-notifyd": {
+   "cpu": 0.23,
+   "mb": 35.3,
+   "n": 1
+  },
+  "quickshell shell": {
+   "cpu": 0.13,
+   "mb": 348.6,
+   "n": 3
+  },
+  "hearth-buttons": {
+   "cpu": 0.07,
+   "mb": 23.0,
+   "n": 1
+  },
+  "perf-measure.py": {
+   "cpu": 0.03,
+   "mb": 16.9,
+   "n": 1
+  },
+  "labwc": {
+   "cpu": 0.0,
+   "mb": 102.8,
+   "n": 1
+  },
+  "python3": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 171
+  },
+  "nimbus": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-disks": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-text": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-portal": {
+   "cpu": 0.0,
+   "mb": 76.7,
+   "n": 2
+  }
+ },
+ "Settings (cold)": {
+  "first": 0.59,
+  "ready": 0.72,
+  "mbBefore": 348.6,
+  "mbAfter": 371.3
+ },
+ "Settings \u203a Display (cold)": {
+  "first": 0.57,
+  "ready": 0.71,
+  "mbBefore": 352.7,
+  "mbAfter": 375.5
+ },
+ "Hearth Files (cold)": {
+  "first": 0.43,
+  "ready": 0.56,
+  "mbBefore": 356.9,
+  "mbAfter": 356.5
+ },
+ "Task Manager (cold)": {
+  "first": 0.24,
+  "ready": 0.49,
+  "mbBefore": 356.0,
+  "mbAfter": 382.0
+ },
+ "App menu (cold)": {
+  "first": 0.24,
+  "ready": null,
+  "mbBefore": 374.5,
+  "mbAfter": 393.9
+ },
+ "Quick Access (cold)": {
+  "first": 0.26,
+  "ready": 0.53,
+  "mbBefore": 358.7,
+  "mbAfter": 378.0
+ },
+ "Settings (warm)": {
+  "first": 0.49,
+  "ready": 0.75,
+  "mbBefore": 361.5,
+  "mbAfter": 376.6
+ },
+ "Settings \u203a Display (warm)": {
+  "first": 0.61,
+  "ready": 0.73,
+  "mbBefore": 364.6,
+  "mbAfter": 377.1
+ },
+ "Hearth Files (warm)": {
+  "first": 0.37,
+  "ready": 0.37,
+  "mbBefore": 364.2,
+  "mbAfter": 364.4
+ },
+ "Task Manager (warm)": {
+  "first": 0.23,
+  "ready": 0.49,
+  "mbBefore": 364.4,
+  "mbAfter": 384.4
+ },
+ "App menu (warm)": {
+  "first": 0.24,
+  "ready": null,
+  "mbBefore": 377.0,
+  "mbAfter": 388.8
+ },
+ "Quick Access (warm)": {
+  "first": 0.26,
+  "ready": 0.53,
+  "mbBefore": 363.6,
+  "mbAfter": 383.2
+ }
+}

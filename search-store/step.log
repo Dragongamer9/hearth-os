@@ -1,0 +1,445 @@
+::notice title=Search and store::unit tests: search plugins, file index, passwords, app store and Files all pass
++ pkill -f labwc/autostart
++ true
++ pkill -x labwc
++ pkill -f quickshell
++ sleep 2
++ export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH=/tmp/fakebin:/usr/local/bin:/usr/bin
++ XDG_RUNTIME_DIR=/tmp/xdg
++ HOME=/tmp/home
++ PATH=/tmp/fakebin:/usr/local/bin:/usr/bin
++ export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
++ WLR_BACKENDS=headless
++ WLR_RENDERER=pixman
++ WLR_LIBINPUT_NO_DEVICES=1
++ WLR_HEADLESS_OUTPUTS=1
++ export QT_QUICK_BACKEND=software NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ QT_QUICK_BACKEND=software
++ NIMBUS_SHARE=/__w/hearth-os/hearth-os/hosts/linux
++ '[' -S /tmp/xdg/bus ']'
++ export DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/xdg/bus
++ unset XDG_DATA_DIRS
+++ sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session
++ eval $'# >>> data dirs\ndata_dirs="${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"\nfor d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"; do\n  case ":$data_dirs:" in *":$d:"*|*":$d/:"*) ;; *) data_dirs="$d:$data_dirs" ;; esac\ndone\ncase ":$data_dirs:" in *":/usr/share:"*|*":/usr/share/:"*) ;; *) data_dirs="$data_dirs:/usr/local/share:/usr/share" ;; esac\n# One app of each kind per desktop (docs/APP-KINDS.md): hearth-app-kinds\' copies of the menu entries, with the\n# OnlyShowIn/NotShowIn that say which desktop shows them, come before the packages\' own (same ids).\nif [ -d /usr/share/hearth/app-kinds/applications ]; then\n  case ":$data_dirs:" in *":/usr/share/hearth/app-kinds:"*) ;; *) data_dirs="/usr/share/hearth/app-kinds:$data_dirs" ;; esac\nfi\n# Apps for hardware this PC doesn\'t have (NVIDIA Settings without an Nvidia card) are hidden from every menu: NoDisplay\n# copies in this sign-in\'s runtime folder, worked out again at every sign-in (a new card shows them at once). Never\n# holds the session up: 5 seconds at most, and nothing changes when it fails.\nhw_dir="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hearth-hw-apps"\nif [ -x /usr/libexec/hearth-app-kinds ] && XDG_DATA_DIRS="$data_dirs" timeout 5 python3 /usr/libexec/hearth-app-kinds hardware --out "$hw_dir" >/dev/null 2>&1 && [ -d "$hw_dir/applications" ]; then\n  case ":$data_dirs:" in *":$hw_dir:"*) ;; *) data_dirs="$hw_dir:$data_dirs" ;; esac\nfi\nexport XDG_DATA_DIRS="$data_dirs"\nunset data_dirs d hw_dir\n# <<< data dirs'
+++ data_dirs=/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ for d in /var/lib/snapd/desktop /var/lib/flatpak/exports/share "${XDG_DATA_HOME:-$HOME/.local/share}/flatpak/exports/share"
+++ case ":$data_dirs:" in
+++ data_dirs=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ case ":$data_dirs:" in
+++ '[' -d /usr/share/hearth/app-kinds/applications ']'
+++ hw_dir=/tmp/xdg/hearth-hw-apps
+++ '[' -x /usr/libexec/hearth-app-kinds ']'
+++ export XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ XDG_DATA_DIRS=/tmp/home/.local/share/flatpak/exports/share:/var/lib/flatpak/exports/share:/var/lib/snapd/desktop:/usr/local/share:/usr/share
+++ unset data_dirs d hw_dir
++ SH=/__w/hearth-os/hearth-os/hosts/linux/desktop/shell
++ command -v gnome-keyring-daemon
+++ command -v gnome-keyring-daemon
++ cp /usr/bin/gnome-keyring-daemon /tmp/gkd
++ chmod 755 /tmp/gkd
++ printf ''
++ /tmp/gkd --unlock --components=secrets
++ true
+++ /tmp/gkd --start --components=secrets
++ eval ''
++ sleep 2
++ printf demo
++ secret-tool store '--label=Chromium Safe Storage' application chromium xdg:schema chrome_libsecret_os_crypt_password_v2
+secret-tool: Error calling StartServiceByName for org.freedesktop.secrets: Process org.freedesktop.secrets exited with status 1
++ true
++ printf demo
++ secret-tool store --label=smb://nas/photos xdg:schema org.gnome.keyring.NetworkPassword user sam server nas protocol smb
+secret-tool: Error calling StartServiceByName for org.freedesktop.secrets: Process org.freedesktop.secrets exited with status 1
++ true
+++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth-secrets status
+++ tail -1
+++ cut -c1-300
+++ for x in busctl secret-tool gnome-keyring-daemon
+++ command -v busctl
+++ printf '%s ' busctl
+++ for x in busctl secret-tool gnome-keyring-daemon
+++ command -v secret-tool
+++ printf '%s ' secret-tool
+++ for x in busctl secret-tool gnome-keyring-daemon
+++ command -v gnome-keyring-daemon
+++ printf '%s ' gnome-keyring-daemon
+++ tr '\n' ' '
+++ cut -c1-200
++ say $'passwords: {"provider": null, "running": false, "keyrings": [], "default": "", "prompter": true, "pam": {"auth": false, "session": false}, "why": "Call failed: Could not get PID of name \'org.freedesktop.secrets\': no such name"} \302\267 tools: busctl secret-tool gnome-keyring-daemon  \302\267 bus: unix:path=/tmp/xdg/bus \302\267 gnome-keyring-daemon: error dropping process capabilities - -5, aborting gnome-keyring-daemon: error dropping process capabilities - -5, aborting '
++ echo $'::notice title=Search and store::passwords: {"provider": null, "running": false, "keyrings": [], "default": "", "prompter": true, "pam": {"auth": false, "session": false}, "why": "Call failed: Could not get PID of name \'org.freedesktop.secrets\': no such name"} \302\267 tools: busctl secret-tool gnome-keyring-daemon  \302\267 bus: unix:path=/tmp/xdg/bus \302\267 gnome-keyring-daemon: error dropping process capabilities - -5, aborting gnome-keyring-daemon: error dropping process capabilities - -5, aborting '
+::notice title=Search and store::passwords: {"provider": null, "running": false, "keyrings": [], "default": "", "prompter": true, "pam": {"auth": false, "session": false}, "why": "Call failed: Could not get PID of name 'org.freedesktop.secrets': no such name"} · tools: busctl secret-tool gnome-keyring-daemon  · bus: unix:path=/tmp/xdg/bus · gnome-keyring-daemon: error dropping process capabilities - -5, aborting gnome-keyring-daemon: error dropping process capabilities - -5, aborting 
++ flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth-store home
+++ tail -1
+++ cut -c1-200
++ say 'store: {"categories": [{"id": "AudioVideo", "label": "Audio & video", "icon": "film"}, {"id": "Development", "label": "Developer tools", "icon": "kbd"}, {"id": "Education", "label": "Education", "icon": "bul'
++ echo '::notice title=Search and store::store: {"categories": [{"id": "AudioVideo", "label": "Audio & video", "icon": "film"}, {"id": "Development", "label": "Developer tools", "icon": "kbd"}, {"id": "Education", "label": "Education", "icon": "bul'
+::notice title=Search and store::store: {"categories": [{"id": "AudioVideo", "label": "Audio & video", "icon": "film"}, {"id": "Development", "label": "Developer tools", "icon": "kbd"}, {"id": "Education", "label": "Education", "icon": "bul
++ mkdir -p /tmp/home/Documents/Taxes /tmp/home/Projects
++ printf 'the quarterly budget numbers\n'
++ printf 'the quarterly budget numbers\nand more\n'
++ :
++ echo '{"contents": true}'
++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth-search prefs-set
+++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth-search index
+++ tail -1
+++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth-search query budget
+++ cut -c1-200
++ say $'file index: {"ok": true, "files": 76, "added": 76, "changed": 0, "removed": 0, "seconds": 0.02, "stopped": ""} \302\267 query budget: [{"path": "/tmp/home/Documents/Taxes/Budget-2026.ods", "name": "Budget-2026.ods", "folder": "Documents \342\200\272 Taxes", "dir": false, "when": 1794914832955}, {"path": "/tmp/home/Documents/budget.ods", "nam'
++ echo $'::notice title=Search and store::file index: {"ok": true, "files": 76, "added": 76, "changed": 0, "removed": 0, "seconds": 0.02, "stopped": ""} \302\267 query budget: [{"path": "/tmp/home/Documents/Taxes/Budget-2026.ods", "name": "Budget-2026.ods", "folder": "Documents \342\200\272 Taxes", "dir": false, "when": 1794914832955}, {"path": "/tmp/home/Documents/budget.ods", "nam'
+::notice title=Search and store::file index: {"ok": true, "files": 76, "added": 76, "changed": 0, "removed": 0, "seconds": 0.02, "stopped": ""} · query budget: [{"path": "/tmp/home/Documents/Taxes/Budget-2026.ods", "name": "Budget-2026.ods", "folder": "Documents › Taxes", "dir": false, "when": 1794914832955}, {"path": "/tmp/home/Documents/budget.ods", "nam
++ rm -f '/tmp/xdg/wayland-*'
+++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth-system labwc-config
++ CONF=/tmp/xdg/hearth-labwc
++ labwc -C /tmp/xdg/hearth-labwc
+++ seq 1 30
++ for i in $(seq 1 30)
++ ls '/tmp/xdg/wayland-?'
++ sleep 1
++ for i in $(seq 1 30)
++ ls /tmp/xdg/wayland-0
++ break
++++ ls /tmp/xdg/wayland-0
++++ head -1
+++ basename /tmp/xdg/wayland-0
++ export WAYLAND_DISPLAY=wayland-0
++ WAYLAND_DISPLAY=wayland-0
++ wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
++ sleep 15
++ LOG=/tmp/xdg/nimbus-shell.log
++ wtype -k Shift_L
++ sleep 1
+++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher answers '10 km to mi'
+++ tail -1
++ got='[{"plugin":"units","title":"6.2137 mi","action":{"type":"copy","value":"6.2137"}}]'
++ case "$got" in
++ say 'the shell'\''s search answers 10 km to mi: [{"plugin":"units","title":"6.2137 mi","action":{"type":"copy","value":"6.2137"}}]'
++ echo '::notice title=Search and store::the shell'\''s search answers 10 km to mi: [{"plugin":"units","title":"6.2137 mi","action":{"type":"copy","value":"6.2137"}}]'
+::notice title=Search and store::the shell's search answers 10 km to mi: [{"plugin":"units","title":"6.2137 mi","action":{"type":"copy","value":"6.2137"}}]
++ shot s-calc '(3+4)*2^3'
++ ipc launcher query '(3+4)*2^3'
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher query '(3+4)*2^3'
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 2
++ grim shots/search-store/s-calc.png
++ ipc launcher close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ shot s-convert '72 f in c'
++ ipc launcher query '72 f in c'
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher query '72 f in c'
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 2
++ grim shots/search-store/s-convert.png
++ ipc launcher close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ shot s-currency '20 usd to eur'
++ ipc launcher query '20 usd to eur'
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher query '20 usd to eur'
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 2
++ grim shots/search-store/s-currency.png
++ ipc launcher close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ shot s-web 'gg:hearth os'
++ ipc launcher query 'gg:hearth os'
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher query 'gg:hearth os'
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 2
++ grim shots/search-store/s-web.png
++ ipc launcher close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ shot s-command '>htop'
++ ipc launcher query '>htop'
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher query '>htop'
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 2
++ grim shots/search-store/s-command.png
++ ipc launcher close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ shot s-emoji :fire
++ ipc launcher query :fire
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher query :fire
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 2
++ grim shots/search-store/s-emoji.png
++ ipc launcher close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ D=/tmp/home/.local/share/nimbus/desktop.json
+++ dirname /tmp/home/.local/share/nimbus/desktop.json
++ mkdir -p /tmp/home/.local/share/nimbus
++ '[' -s /tmp/home/.local/share/nimbus/desktop.json ']'
++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth_settings_io.py merge /tmp/home/.local/share/nimbus/desktop.json '{"appMenu": "centred"}'
++ sleep 4
++ ipc launcher query ''
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher query ''
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 1
++ wtype 2+2
++ sleep 2
++ grim shots/search-store/s-centred-menu.png
++ ipc launcher close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call launcher close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ python3 /__w/hearth-os/hearth-os/hosts/linux/desktop/shell/hearth_settings_io.py merge /tmp/home/.local/share/nimbus/desktop.json '{"appMenu": null}'
++ sleep 3
++ sp search set-search
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ ipc settings page search
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page search
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 4
++ grim shots/search-store/set-search.png
++ sp passwords set-passwords
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ ipc settings page passwords
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page passwords
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 4
++ grim shots/search-store/set-passwords.png
++ sp store set-store 12
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ ipc settings page store
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page store
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 12
++ grim shots/search-store/set-store.png
++ sp store:app-org_kde_krita store-app 14
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ ipc settings page store:app-org_kde_krita
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page store:app-org_kde_krita
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 14
++ grim shots/search-store/store-app.png
++ sp store:updates store-updates 10
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ ipc settings page store:updates
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings page store:updates
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 10
++ grim shots/search-store/store-updates.png
++ ipc settings close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call settings close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ ipc files open /tmp/home/Documents
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files open /tmp/home/Documents
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 3
++ ipc filemanager terminal on
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager terminal on
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 2
++ wtype 'ls -la'
++ wtype -k Return
++ sleep 3
++ grim shots/search-store/files-terminal.png
++ ipc filemanager terminal off
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager terminal off
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ ipc filemanager split on
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager split on
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 3
++ grim shots/search-store/files-split.png
++ ipc filemanager split off
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager split off
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ ipc filemanager compare report.txt/report-v2.txt
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call filemanager compare report.txt/report-v2.txt
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ sleep 2
++ grim shots/search-store/files-compare.png
++ ipc files close
++ quickshell ipc -p /__w/hearth-os/hearth-os/hosts/linux/desktop/shell call files close
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
++ sleep 2
++ cp /tmp/xdg/nimbus-shell.log shots/search-store/nimbus-shell.log
+++ grep -E '(Launcher|MenuSearch|SetSearch|SetPasswords|SetStore|FilesTerminal|FilesSplitPane|FileManager|FilesIpc)\.qml.*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|non-existent|Unable to assign)|search/[a-z-]+\.js' /tmp/xdg/nimbus-shell.log
+++ head -8
+++ tr '\n' '|'
+++ cut -c1-240
+++ true
++ xbad=
++ '[' -z '' ']'
++ say 'no QML errors from the new views'
++ echo '::notice title=Search and store::no QML errors from the new views'
+::notice title=Search and store::no QML errors from the new views
++ ls -la shots/search-store
+total 2820
+drwxr-xr-x  2 root root   4096 Nov 17 11:29 .
+drwxr-xr-x 26 root root  12288 Nov 17 11:26 ..
+-rw-r--r--  1 root root 278200 Nov 17 11:29 files-compare.png
+-rw-r--r--  1 root root 299288 Nov 17 11:29 files-split.png
+-rw-r--r--  1 root root 282863 Nov 17 11:29 files-terminal.png
+-rw-r--r--  1 root root    146 Nov 17 11:27 gkr.log
+-rw-r--r--  1 root root    412 Nov 17 11:27 labwc.log
+-rw-r--r--  1 root root   2705 Nov 17 11:29 nimbus-shell.log
+-rw-r--r--  1 root root 115671 Nov 17 11:27 s-calc.png
+-rw-r--r--  1 root root 214417 Nov 17 11:28 s-centred-menu.png
+-rw-r--r--  1 root root 122215 Nov 17 11:27 s-command.png
+-rw-r--r--  1 root root 115385 Nov 17 11:27 s-convert.png
+-rw-r--r--  1 root root 117704 Nov 17 11:27 s-currency.png
+-rw-r--r--  1 root root 119834 Nov 17 11:28 s-emoji.png
+-rw-r--r--  1 root root 121680 Nov 17 11:27 s-web.png
+-rw-r--r--  1 root root 149334 Nov 17 11:28 set-passwords.png
+-rw-r--r--  1 root root 196407 Nov 17 11:28 set-search.png
+-rw-r--r--  1 root root 216643 Nov 17 11:28 set-store.png
+-rw-r--r--  1 root root  25497 Nov 17 11:29 step.log
+-rw-r--r--  1 root root 216635 Nov 17 11:29 store-app.png
+-rw-r--r--  1 root root 216635 Nov 17 11:29 store-updates.png
+-rw-r--r--  1 root root    104 Nov 17 11:27 test_files_dolphin_gaps.log
+-rw-r--r--  1 root root    330 Nov 17 11:27 test_hearth_search.log
+-rw-r--r--  1 root root    106 Nov 17 11:27 test_hearth_secrets.log
+-rw-r--r--  1 root root    110 Nov 17 11:27 test_hearth_store.log
+-rw-r--r--  1 root root    109 Nov 17 11:27 test_search_plugins.log
++ pkill -x labwc
++ pkill -f quickshell
