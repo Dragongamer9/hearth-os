@@ -26,6 +26,18 @@ picture, keeps the recent ones, copies, reads text and QR codes, and opens the f
   hearth-capture-helper folder PATH                 show the file in Hearth Files
   hearth-capture-helper record                      start or stop the screen recorder (hearth-record, else Hearth Recorder)
   hearth-capture-helper clean                       remove the editor's own temporary pictures older than a day
+  hearth-capture-helper scroll --geometry X,Y,W,H [--auto] [--pointer]
+                                                    scrolling capture (1.14): pictures of that area one after another
+                                                    while it scrolls (by itself with --auto: the mouse wheel, through
+                                                    a virtual mouse; or as you scroll it), stitched into one long
+                                                    picture where each new one overlaps the last. Until it reaches the
+                                                    end, `scroll-stop`, or the limits. JSON {ok, path, width, height,
+                                                    frames, why} ({ok: false, cancelled: true} after scroll-stop --cancel)
+  hearth-capture-helper scroll-stop [--cancel]      finish the scrolling capture now (or throw it away)
+  hearth-capture-helper apps                        JSON {apps}: the apps that open pictures, for Share › Open with
+  hearth-capture-helper open-with APP PATH          open the picture in APP (its .desktop id)
+  hearth-capture-helper phones                      JSON {on, phones}: Phone link's connected phones (hearth-phone)
+  hearth-capture-helper send-phone PATH ID          send the picture to phone ID (Phone link's share)
 
 The recent list is state, not a setting: ~/.local/state/nimbus/capture-history.json, written through
 hearth_settings_io (lock, atomic, .bak). Capture's own choices (mode, delay, pointer) are in ~/.config/nimbus/
@@ -49,6 +61,7 @@ import zlib
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 import hearth_settings_io as hsio  # noqa: E402  (the safe writer, next to this file)
+import hearth_desktop_apps as apps  # noqa: E402
 
 HISTORY_MAX = 40
 HERE = os.path.dirname(os.path.realpath(__file__))
@@ -166,13 +179,13 @@ def save_as_path(path):
 
 
 # ------------------------------------------------------------------ taking the picture
-def png_bytes(width, height, rows):
-    """A PNG (8-bit RGBA) from ROWS, an iterable of RGBA byte rows (no filter)."""
+def png_bytes(width, height, rows, channels=4):
+    """A PNG (8-bit RGBA, or RGB with CHANNELS=3) from ROWS, an iterable of byte rows (no filter)."""
     def chunk(kind, data):
         c = kind + data
         return struct.pack('>I', len(data)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
     raw = b''.join(b'\x00' + r for r in rows)
-    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6, 0, 0, 0))
+    return (b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', width, height, 8, 6 if channels == 4 else 2, 0, 0, 0))
             + chunk(b'IDAT', zlib.compress(raw, 3)) + chunk(b'IEND', b''))
 
 
@@ -320,6 +333,370 @@ def qr(path):
     text = r.stdout.decode('utf-8', 'replace')
     codes = [c for c in text.split('\n') if c.strip()] if r.returncode == 0 else []
     return {'ok': True, 'codes': codes}
+
+
+# ------------------------------------------------------------------ scrolling capture
+def read_ppm(data):
+    """A binary PPM (P6, 8 bits; grim -t ppm) -> (width, height, rgb)."""
+    if data[:2] != b'P6':
+        raise ValueError('not a PPM')
+    fields, i = [], 2
+    while len(fields) < 3:
+        while data[i:i + 1].isspace():
+            i += 1
+        if data[i:i + 1] == b'#':
+            while data[i:i + 1] not in (b'\n', b''):
+                i += 1
+            continue
+        j = i
+        while not data[j:j + 1].isspace():
+            j += 1
+        fields.append(int(data[i:j]))
+        i = j
+    w, h, mx = fields
+    if mx != 255:
+        raise ValueError('only 8-bit PPM')
+    i += 1
+    return w, h, bytes(data[i:i + w * h * 3])
+
+
+def read_png(data):
+    """An 8-bit PNG (grey, RGB, grey+alpha, RGBA; not interlaced) -> (width, height, rgb). Rows written without a
+    filter (KWin's pictures through hearth-screens) are only sliced; the others are undone in Python."""
+    if data[:8] != b'\x89PNG\r\n\x1a\n':
+        raise ValueError('not a PNG')
+    pos, idat, w = 8, [], 0
+    while pos + 8 <= len(data):
+        n, t = struct.unpack('>I4s', data[pos:pos + 8])
+        body = data[pos + 8:pos + 8 + n]
+        if t == b'IHDR':
+            w, h, depth, ctype, _c, _f, inter = struct.unpack('>IIBBBBB', body)
+            if depth != 8 or inter != 0 or ctype not in (0, 2, 4, 6):
+                raise ValueError('a PNG kind this can\'t read')
+        elif t == b'IDAT':
+            idat.append(body)
+        elif t == b'IEND':
+            break
+        pos += 12 + n
+    if not w:
+        raise ValueError('a PNG without a header')
+    bpp = {0: 1, 2: 3, 4: 2, 6: 4}[ctype]
+    raw = zlib.decompress(b''.join(idat))
+    stride = w * bpp
+    prev = bytearray(stride)
+    rows = []
+    for y in range(h):
+        f = raw[y * (stride + 1)]
+        line = bytearray(raw[y * (stride + 1) + 1:(y + 1) * (stride + 1)])
+        if f == 1:
+            for i in range(bpp, stride):
+                line[i] = (line[i] + line[i - bpp]) & 255
+        elif f == 2:
+            line = bytearray((a + b) & 255 for a, b in zip(line, prev))
+        elif f == 3:
+            for i in range(stride):
+                left = line[i - bpp] if i >= bpp else 0
+                line[i] = (line[i] + ((left + prev[i]) >> 1)) & 255
+        elif f == 4:
+            for i in range(stride):
+                a = line[i - bpp] if i >= bpp else 0
+                b = prev[i]
+                c = prev[i - bpp] if i >= bpp else 0
+                pa, pb, pc = abs(b - c), abs(a - c), abs(a + b - 2 * c)
+                line[i] = (line[i] + (a if pa <= pb and pa <= pc else b if pb <= pc else c)) & 255
+        rows.append(line)
+        prev = line
+    px = b''.join(rows)
+    if ctype == 2:
+        return w, h, px
+    out = bytearray(w * h * 3)
+    if ctype == 6:
+        out[0::3], out[1::3], out[2::3] = px[0::4], px[1::4], px[2::4]
+    elif ctype == 4:
+        out[0::3] = out[1::3] = out[2::3] = px[0::2]
+    else:
+        out[0::3] = out[1::3] = out[2::3] = px
+    return w, h, bytes(out)
+
+
+def rgb_png(w, h, rgb):
+    row = w * 3
+    return png_bytes(w, h, (rgb[y * row:(y + 1) * row] for y in range(h)), channels=3)
+
+
+class Frame:
+    """One picture of the area: its rows (packed RGB) and a signature for each (the right edge, where a scroll bar
+    moves, left out)."""
+
+    def __init__(self, w, h, rgb):
+        self.w, self.h = w, h
+        row = w * 3
+        self.rows = [rgb[y * row:(y + 1) * row] for y in range(h)]
+        cut = row - 3 * min(24, w // 10)
+        self.sig = [hash(r[:cut]) for r in self.rows]
+        self.flat = [r[:cut] == r[:3] * (cut // 3) for r in self.rows]    # one colour: nothing to match on
+
+
+def fixed_rows(a, b, from_top):
+    """How many rows at the top (or bottom) are the same in both pictures: a toolbar or footer that doesn't scroll."""
+    n, lim = 0, min(a.h, b.h) // 3
+    while n < lim:
+        i = n if from_top else a.h - 1 - n
+        if a.sig[i] != b.sig[i]:
+            break
+        n += 1
+    return n
+
+
+def find_shift(a, b, top=0, bottom=0):
+    """How far B has scrolled past A (rows), from rows found once in each that aren't one colour; 0 when it hasn't
+    moved, None when there's no overlap to be sure of."""
+    if a.sig == b.sig:
+        return 0
+    lo, hi = top, a.h - bottom
+    if hi - lo < 16:
+        return None
+    count_a, count_b = {}, {}
+    for i in range(lo, hi):
+        if not a.flat[i]:
+            count_a[a.sig[i]] = count_a.get(a.sig[i], 0) + 1
+        if not b.flat[i]:
+            count_b[b.sig[i]] = count_b.get(b.sig[i], 0) + 1
+    pos_a = {a.sig[i]: i for i in range(lo, hi) if not a.flat[i] and count_a[a.sig[i]] == 1}
+    votes = {}
+    for r in range(lo, hi):
+        sg = b.sig[r]
+        if b.flat[r] or count_b.get(sg) != 1 or sg not in pos_a:
+            continue
+        d = pos_a[sg] - r
+        if d > 0:
+            votes[d] = votes.get(d, 0) + 1
+    best = None
+    for d, v in sorted(votes.items(), key=lambda kv: -kv[1]):
+        overlap = (hi - lo) - d
+        if overlap < 8 or v < 3:
+            continue
+        same = sum(1 for r in range(lo, hi - d) if b.sig[r] == a.sig[r + d])
+        if same >= 0.6 * overlap:
+            best = d
+            break
+    return best
+
+
+class Stitcher:
+    """The long picture, built one frame at a time. Each new frame's new rows go in above the rows that don't
+    scroll at the bottom (a footer), which stay last; the ones at the top (a toolbar) are in once, from the first."""
+
+    def __init__(self, first, max_height=16000):
+        self.w = first.w
+        self.rows = list(first.rows)
+        self.last = first
+        self.frames = 1
+        self.max_height = max_height
+        self.full = False
+
+    def add(self, f):
+        """'same' (it hasn't moved), 'added', 'lost' (no overlap: scrolled too far at once) or 'full'."""
+        if f.w != self.w or f.h != self.last.h:
+            return 'lost'
+        top = fixed_rows(self.last, f, True)
+        bottom = fixed_rows(self.last, f, False)
+        d = find_shift(self.last, f, top, bottom)
+        if d == 0:
+            return 'same'
+        if d is None:
+            return 'lost'
+        room = self.max_height - len(self.rows)
+        if room <= 0:
+            self.full = True
+            return 'full'
+        new = f.rows[f.h - bottom - d:f.h - bottom][:room]
+        foot = self.rows[len(self.rows) - bottom:] if bottom else []
+        if bottom:
+            del self.rows[len(self.rows) - bottom:]
+        self.rows.extend(new)
+        self.rows.extend(foot)
+        self.last = f
+        self.frames += 1
+        return 'added'
+
+    def png(self):
+        return png_bytes(self.w, len(self.rows), self.rows, channels=3)
+
+
+def grab_frame(geo, pointer=False, env=None):
+    """One picture of the area (global logical pixels) as a Frame: grim's PPM on labwc (nothing to unpack), Hearth's
+    hearth-screenshot (KWin's own screenshot interface) under KWin."""
+    env = env if env is not None else os.environ
+    x, y, w, h = geo
+    g = '%d,%d %dx%d' % (x, y, w, h)
+    if env.get('HEARTH_WM') == 'kwin':
+        tool = grim_tool(env) or 'hearth-screenshot'
+        cmd = [tool] + (['-c'] if pointer else []) + ['-g', g, '-']
+    else:
+        if not have('grim'):
+            raise OSError('Taking a picture needs grim, which isn\'t installed')
+        cmd = ['grim', '-t', 'ppm'] + (['-c'] if pointer else []) + ['-g', g, '-']
+    r = subprocess.run(cmd, capture_output=True, timeout=30)
+    if r.returncode != 0 or not r.stdout:
+        raise OSError((r.stderr.decode('utf-8', 'replace').strip().split('\n') or [''])[-1][:200] or 'Couldn\'t take the picture')
+    data = r.stdout
+    fw, fh, rgb = read_ppm(data) if data[:2] == b'P6' else read_png(data)
+    return Frame(fw, fh, rgb)
+
+
+class Wheel:
+    """A virtual mouse that only turns its wheel (python3-evdev and /dev/uinput, the access Hearth's controller support
+    has): it scrolls whatever is under the pointer, on labwc and KWin alike. None when it can't be made."""
+
+    def __init__(self):
+        from evdev import UInput, ecodes as e
+        self.e = e
+        self.ui = UInput({e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT], e.EV_REL: [e.REL_X, e.REL_Y, e.REL_WHEEL]},
+                         name='hearth-capture-scroll')
+        time.sleep(0.4)            # the compositor picks the new mouse up
+
+    def scroll(self, clicks=3):
+        for _ in range(clicks):
+            self.ui.write(self.e.EV_REL, self.e.REL_WHEEL, -1)
+            self.ui.syn()
+            time.sleep(0.03)
+
+    def close(self):
+        try:
+            self.ui.close()
+        except Exception:
+            pass
+
+
+def scroll_state(st):
+    p = os.path.join(runtime_dir(), 'scroll.json')
+    with open(p + '.tmp', 'w') as f:
+        json.dump(st, f)
+    os.replace(p + '.tmp', p)
+
+
+def scroll_capture(geo, grab=None, wheel=None, stop=None, pause=0.45, max_frames=120, max_height=16000, now=time.time,
+                   sleep=time.sleep, timeout=600):
+    """Pictures of GEO until the end (no change twice after scrolling by itself, or for 20 s as you scroll), a stop,
+    or the limits; stitched. Returns (stitcher or None, why)."""
+    grab = grab or (lambda: grab_frame(geo))
+    stop = stop or (lambda: '')
+    st = Stitcher(grab(), max_height)
+    still, lost, started, last_move = 0, 0, now(), now()
+    why = 'stopped'
+    scroll_state({'frames': 1, 'height': len(st.rows), 'width': st.w, 'auto': bool(wheel)})
+    while True:
+        s = stop()
+        if s:
+            why = s
+            break
+        if st.frames >= max_frames:
+            why = 'limit'
+            break
+        if now() - started > timeout:
+            why = 'limit'
+            break
+        if wheel:
+            wheel.scroll()
+        sleep(pause)
+        res = st.add(grab())
+        if res == 'added':
+            still, lost, last_move = 0, 0, now()
+        elif res == 'same':
+            still += 1
+            if (wheel and still >= 2) or (not wheel and now() - last_move > 20):
+                why = 'end'
+                break
+        elif res == 'lost':
+            lost += 1
+            if wheel or lost >= 8:
+                why = 'lost'
+                break
+        elif res == 'full':
+            why = 'full'
+            break
+        scroll_state({'frames': st.frames, 'height': len(st.rows), 'width': st.w, 'auto': bool(wheel)})
+    scroll_state({'frames': st.frames, 'height': len(st.rows), 'width': st.w, 'auto': bool(wheel), 'done': True})
+    return st, why
+
+
+SCROLL_WHY = {'end': 'It reached the end.', 'stopped': '', 'limit': 'It stopped at its limit (120 pictures).',
+              'full': 'It stopped at 16000 pixels tall.',
+              'lost': 'It moved too far at once to join up, so the picture ends there.'}
+
+
+def cmd_scroll(args):
+    geo = parse_geometry(opt(args, '--geometry'))
+    if not geo:
+        out({'ok': False, 'error': 'a scrolling capture needs --geometry X,Y,W,H'})
+        return 1
+    stop_file = os.path.join(runtime_dir(), 'scroll.stop')
+    try:
+        os.unlink(stop_file)
+    except OSError:
+        pass
+
+    def stop():
+        try:
+            with open(stop_file) as f:
+                return 'cancel' if f.read().strip() == 'cancel' else 'stopped'
+        except OSError:
+            return ''
+    wheel, note = None, ''
+    if '--auto' in args:
+        try:
+            wheel = Wheel()
+        except Exception:
+            note = 'Hearth couldn\'t scroll it by itself here (no access to a virtual mouse): scroll it yourself.'
+    try:
+        st, why = scroll_capture(geo, grab=lambda: grab_frame(geo, '--pointer' in args), wheel=wheel, stop=stop)
+    except (OSError, ValueError, subprocess.SubprocessError, zlib.error) as e:
+        out({'ok': False, 'error': str(e)[:200] or 'Couldn\'t take the pictures'})
+        return 1
+    finally:
+        if wheel:
+            wheel.close()
+    try:
+        os.unlink(stop_file)
+    except OSError:
+        pass
+    if why == 'cancel':
+        out({'ok': False, 'cancelled': True})
+        return 0
+    path = os.path.join(runtime_dir(), 'scroll-%d.png' % int(time.time() * 1000))
+    write_new(path, st.png(), replace=True)
+    out({'ok': True, 'path': path, 'width': st.w, 'height': len(st.rows), 'frames': st.frames,
+         'why': (note + ' ' + SCROLL_WHY.get(why, '')).strip()})
+    return 0
+
+
+# ------------------------------------------------------------------ share
+def phones():
+    """Phone link's paired phones that are connected now (hearth-phone tile), or on: False."""
+    hp = os.path.join(HERE, 'hearth-phone')
+    try:
+        r = subprocess.run([sys.executable, hp, 'tile'], capture_output=True, text=True, timeout=15)
+        j = json.loads(r.stdout.strip().splitlines()[-1]) if r.returncode == 0 and r.stdout.strip() else {}
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        j = {}
+    near = [{'id': p['id'], 'name': p['name']} for p in (j.get('phones') or []) if p.get('reachable')]
+    return {'on': bool(j.get('running')), 'phones': near}
+
+
+def send_phone(path, pid):
+    if not os.path.isfile(path):
+        return {'ok': False, 'error': 'The picture is gone'}
+    hp = os.path.join(HERE, 'hearth-phone')
+    try:
+        r = subprocess.run([sys.executable, hp, 'call', 'share'], input=json.dumps({'id': pid, 'paths': [path]}),
+                           capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError) as e:
+        return {'ok': False, 'error': str(e)[:200]}
+    last = (r.stdout.strip().splitlines() or [''])[-1]
+    if r.returncode != 0 or last.startswith('error: '):
+        return {'ok': False, 'error': last[7:] if last.startswith('error: ') else 'Phone link couldn\'t send it'}
+    return {'ok': True}
 
 
 def recorder():
@@ -484,6 +861,30 @@ def main(argv):
             return 1
         subprocess.Popen(rec, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
         out({'ok': True})
+    elif cmd == 'scroll':
+        return cmd_scroll(args)
+    elif cmd == 'scroll-stop':
+        with open(os.path.join(runtime_dir(), 'scroll.stop'), 'w') as f:
+            f.write('cancel' if '--cancel' in args else 'stop')
+        out({'ok': True})
+    elif cmd == 'apps':
+        out({'apps': apps.apps_for('image/png')})
+    elif cmd == 'open-with':
+        if len(args) < 2 or not os.path.isfile(args[1]):
+            out({'ok': False, 'error': 'The picture is gone' if len(args) >= 2 else 'open-with APP PATH'})
+            return 1
+        try:
+            apps.launch(args[0], args[1])
+        except (ValueError, OSError) as e:
+            out({'ok': False, 'error': str(e)})
+            return 1
+        out({'ok': True})
+    elif cmd == 'phones':
+        out(phones())
+    elif cmd == 'send-phone':
+        r = send_phone(args[0] if args else '', args[1] if len(args) > 1 else '')
+        out(r)
+        return 0 if r['ok'] else 1
     elif cmd == 'clean':
         d, now, n = runtime_dir(), time.time(), 0
         for f in os.listdir(d):

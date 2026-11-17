@@ -1,6 +1,6 @@
 // Hearth Capture's tool pictures, drawn (Hearth's icon set has no arrow, highlighter or QR code): one colour, rounded
 // 2px lines, like the rest of Mantel's icons. Names: arrow box pen highlighter text blur pixelate steps crop area
-// window screen all qr scan record timer pointer redo.
+// window screen all qr scan record timer pointer redo scroll share phone.
 import QtQuick
 
 Canvas {
@@ -63,6 +63,10 @@ Canvas {
         case "timer":
             c.beginPath(); c.arc(12, 13, 8, 0, Math.PI * 2); c.stroke(); line([12, 13, 12, 9]); line([10, 3, 14, 3]); break;
         case "pointer": c.beginPath(); c.moveTo(6, 3); c.lineTo(18, 14); c.lineTo(12.5, 14.5); c.lineTo(15.5, 20.5); c.lineTo(13, 21.5); c.lineTo(10, 15.5); c.lineTo(6, 19); c.closePath(); c.stroke(); break;
+        case "scroll": rect(6, 2, 12, 20); line([12, 7, 12, 15]); line([9, 12, 12, 15, 15, 12]); break;
+        case "share": c.beginPath(); c.arc(6, 12, 2.4, 0, Math.PI * 2); c.stroke(); c.beginPath(); c.arc(18, 6, 2.4, 0, Math.PI * 2); c.stroke();
+            c.beginPath(); c.arc(18, 18, 2.4, 0, Math.PI * 2); c.stroke(); line([8.2, 10.9, 15.8, 7.1]); line([8.2, 13.1, 15.8, 16.9]); break;
+        case "phone": c.beginPath(); c.roundedRect(7, 2.5, 10, 19, 2, 2); c.stroke(); line([10.5, 18.5, 13.5, 18.5]); break;
         case "redo": c.beginPath(); c.arc(11, 13, 6, Math.PI * 1.1, Math.PI * 0.1, false); c.stroke(); line([17, 7, 17, 12, 12, 12]); break;
         default: c.beginPath(); c.arc(12, 12, 3, 0, Math.PI * 2); c.fill();
         }
