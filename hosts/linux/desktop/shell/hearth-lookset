@@ -9,7 +9,8 @@ Hearth's in ~/.config/fontconfig/conf.d) and programs started later (~/.config/e
   hearth-lookset status    JSON: {saved, effective, fonts, monoFonts, cursors, icons}
   hearth-lookset set       stdin {"font": "Noto Sans", "fontSize": 10, "mono": "Hack", "monoSize": 10,
                            "antialias": "grayscale|rgba|none", "hinting": "none|slight|medium|full", "dpi": 96,
-                           "cursor": "breeze_cursors", "cursorSize": 24, "icons": "breeze-dark"}; null = Hearth's default
+                           "cursor": "breeze_cursors", "cursorSize": 24, "icons": "breeze-dark", "smallFont": "Noto Sans",
+                           "smallSize": 8, "titleFont": "Noto Sans", "titleSize": 10}; null = Hearth's default
   hearth-lookset apply     hand the saved choices on again (theme/apply.sh runs it at each sign-in; writes nothing
                            of yours, and nothing at all when you chose nothing)
 Output: one JSON line; failures print "error: ..." and exit 1.
@@ -37,7 +38,9 @@ CURSOR_ENV = os.path.join(CONFIG, 'environment.d', '90-hearth-cursor.conf')
 ICON_DIRS = [os.path.join(DATA, 'icons'), os.path.join(HOME, '.icons')] + \
     [os.path.join(d, 'icons') for d in (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':') if d]
 DEFAULTS = {'font': 'Noto Sans', 'fontSize': 10, 'mono': 'Hack', 'monoSize': 10, 'antialias': 'grayscale',
-            'hinting': 'slight', 'dpi': 96, 'cursor': 'breeze_cursors', 'cursorSize': 24, 'icons': ''}
+            'hinting': 'slight', 'dpi': 96, 'cursor': 'breeze_cursors', 'cursorSize': 24, 'icons': '',
+            # 1.14: the small font (tooltips, captions) and the window title font (KWin's frames, KDE and GNOME apps)
+            'smallFont': 'Noto Sans', 'smallSize': 8, 'titleFont': 'Noto Sans', 'titleSize': 10}
 QT_MARK = '# Written by Hearth Desktop Mode; delete this line to keep your own settings.'
 KDE_MARK = '# Written by Hearth'
 FC_MARK = '<!-- Written by Hearth Settings > Fonts, cursor & icons; delete this line to keep your own. -->'
@@ -156,10 +159,10 @@ def clean(req):
         if v is None:
             out[k] = None
             continue
-        if k in ('font', 'mono', 'cursor', 'icons'):
+        if k in ('font', 'mono', 'cursor', 'icons', 'smallFont', 'titleFont'):
             if not isinstance(v, str) or not NAME_RE.match(v) or (k in ('cursor', 'icons') and '/' in v):
                 raise Fail('that name has letters Hearth can\'t use')
-        elif k in ('fontSize', 'monoSize'):
+        elif k in ('fontSize', 'monoSize', 'smallSize', 'titleSize'):
             if not isinstance(v, (int, float)) or not 6 <= v <= 32:
                 raise Fail('font sizes are 6 to 32')
             v = round(float(v) * 2) / 2
@@ -199,6 +202,8 @@ def gsettings_cmds(e, s):
         cmds.append([base, 'cursor-size', str(e['cursorSize'])])
     if 'icons' in s and e['icons']:
         cmds.append([base, 'icon-theme', e['icons']])
+    if 'titleFont' in s or 'titleSize' in s:
+        cmds.append(['org.gnome.desktop.wm.preferences', 'titlebar-font', '%s Bold %s' % (e['titleFont'], e['titleSize'])])
     return cmds
 
 
@@ -310,10 +315,17 @@ def apply(s=None):
             gen['font'] = qt_font(e['font'], e['fontSize']).strip('"')
         if 'mono' in s or 'monoSize' in s:
             gen['fixed'] = qt_font(e['mono'], e['monoSize']).strip('"')
+        if 'smallFont' in s or 'smallSize' in s:
+            gen['smallestReadableFont'] = qt_font(e['smallFont'], e['smallSize']).strip('"')
         if gen:
             new = ini_set(new, 'General', gen)
+        if 'titleFont' in s or 'titleSize' in s:
+            new = ini_set(new, 'WM', {'activeFont': '%s,%s,-1,5,700,0,0,0,0,0' % (e['titleFont'], e['titleSize'])})
         if write(kg, new):
             changed.append(kg)
+            # KWin draws its frames' titles with [WM] activeFont: it reads it again when asked (1.14).
+            if ('titleFont' in s or 'titleSize' in s) and os.environ.get('HEARTH_WM') == 'kwin' and shutil.which('dbus-send'):
+                run(['dbus-send', '--session', '--type=method_call', '--dest=org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure'], timeout=5)
     if 'cursor' in s or 'cursorSize' in s:
         f = os.path.join(CONFIG, 'kcminputrc')
         if write(f, ini_set(read(f), 'Mouse', {'cursorTheme': e['cursor'], 'cursorSize': str(e['cursorSize'])})):

@@ -163,7 +163,7 @@ Singleton {
 
     // Apps and window decorations follow (theme/apply.sh runs theme/hearth-theme, which rewrites the Qt / GTK / KDE
     // colours and labwc's theme and asks labwc to reload). Once things settle, not on every step of a change.
-    readonly property string key: look + "/" + subTheme + "/" + mode + "/" + accent
+    readonly property string key: look + "/" + subTheme + "/" + mode + "/" + accent + "/" + Settings.frameTint   // (1.14: the frames' tint too)
     property string appliedKey: ""
     onKeyChanged: if (Settings.loaded) applyTimer.restart()
     Timer {

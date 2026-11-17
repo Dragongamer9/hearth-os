@@ -342,6 +342,13 @@ def main():
     themerc = m.text(read(os.path.join(DESKTOP, 'labwc', 'themerc-override')), 'labwc')
     themerc = cap_radii(themerc, cap, r'(corner-radius:\s*)(\d+)')
     themerc = themerc.replace('# Hearth colors', '# Written by hearth-theme (%s, %s, accent %s) from Hearth colors' % (look, mode, m.accent), 1)
+    # 1.14: the window frames tinted with the accent (desktop.json "frameTint", 0-100; missing or 0 = as before).
+    frame_tint = (load(os.path.join(DATA, 'nimbus', 'desktop.json'), {}) or {}).get('frameTint', 0)
+    try:
+        import hearth_aurorae as _ha
+        themerc = _ha.tint_themerc(themerc, m.accent if isinstance(m.accent, str) else hexc(m.accent), frame_tint)
+    except Exception as e:
+        print('hearth-theme: frame tint: %s' % e, file=sys.stderr)
     labwc_changed |= write(os.path.join(OUT, 'themerc-override'), themerc)
     labwc_changed |= write(os.path.join(OUT, 'labwc.json'), json.dumps({'cornerRadius': int(lk.get('windowCorner') or 10),
                                                                          'font': lk.get('font') if lk.get('font') not in (None, 'sans-serif') else 'sans'}) + '\n')
@@ -352,6 +359,7 @@ def main():
         import hearth_aurorae
         cols = {k: m.color(v) for k, v in hearth_aurorae.themerc_colors(read(os.path.join(DESKTOP, 'labwc', 'themerc-override'))).items()}
         cols['danger'] = hexc(m.tgt['danger']) if 'danger' in m.tgt else '#e5484d'
+        cols = hearth_aurorae.tint_colors(cols, m.accent if isinstance(m.accent, str) else hexc(m.accent), frame_tint)
         radius = min(int(lk.get('windowCorner') or 10), cap) if cap else int(lk.get('windowCorner') or 10)
         kwin_changed, kwin_theme = hearth_aurorae.write_theme(DATA, cols, radius, write_setting)
     except Exception as e:
