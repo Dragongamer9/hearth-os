@@ -2581,16 +2581,28 @@ jobs:
           [ -s shots/kwin/shot-errors.txt ] && echo "::warning title=KWin screens: shot errors::$(tail -5 shots/kwin/shot-errors.txt | tr '\n' '|' | cut -c1-500)"
           # ---- 1.14's KDE rows for the pictures. KWin's virtual screens have no HDR, overscan, RGB range, colour accuracy
           # or DDC/CI, so the shell starts again with a preview of two screens (hosts/linux/test/fixtures/screens-preview:
-          # an HDR monitor and a TV; nothing is sent to KWin), a light sensor, and night light from sunset to sunrise in
-          # Austin with a 15 minute fade. Then Super+P's switcher and the screen-sharing picker's Area.
+          # an HDR monitor and a TV; nothing is sent to KWin), a light sensor (a stand-in iio-sensor-proxy on the session
+          # bus, fixtures/fake-sensor-proxy.py, with Auto-brightness on and "How bright" at +10), and night light from
+          # sunset to sunrise in Austin with a 15 minute fade. Then Super+P's switcher and the screen-sharing picker's Area.
           pkill quickshell; sleep 2
-          mkdir -p /tmp/iio/iio:device0 && echo 120 > /tmp/iio/iio:device0/in_illuminance_input
+          python3 -W ignore hosts/linux/test/fixtures/fake-sensor-proxy.py 120 > shots/kwin/fake-sensor.log 2>&1 &
+          sleep 2
+          export HEARTH_SCREENS_SENSOR_BUS=session
+          lt=$(timeout 20 python3 $SH light 2>&1 | tail -1)
+          echo "::notice title=KWin screens: light sensor::$lt"
+          echo "$lt" | grep -q '"source": "iio-sensor-proxy", "lux": 120.0' || fail "hearth-screens didn't read the fake iio-sensor-proxy: $lt $(head -c 300 shots/kwin/fake-sensor.log | tr '\n' '|')"
+          timeout 20 python3 $SH option '{"autoBrightness": true, "autoBrightnessOffset": 10}' >/dev/null 2>shots/kwin/autobright-option.txt \
+            || fail "Auto-brightness on: $(head -c 300 shots/kwin/autobright-option.txt)"
+          python3 -c 'import json,os,sys; d=json.load(open(os.path.expanduser("~/.config/nimbus/screens.json"))); assert d["autoBrightness"] is True and d["autoBrightnessOffset"] == 10, d' \
+            || fail "Auto-brightness didn't reach screens.json"
           python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$HOME/.local/share/nimbus/desktop.json" \
             '{"nightMode": "location", "nightPlace": "Austin", "nightLat": 30.2672, "nightLon": -97.7431, "nightFade": 15}' >/dev/null
-          HEARTH_SCREENS_FIXTURE=$PWD/hosts/linux/test/fixtures/screens-preview HEARTH_SCREENS_IIO=/tmp/iio \
+          HEARTH_SCREENS_FIXTURE=$PWD/hosts/linux/test/fixtures/screens-preview \
             quickshell -p hosts/linux/desktop/shell >shots/kwin/shell-preview.log 2>&1 &
           sleep 25
-          scr :bright kwin-6-brightness-and-night; scr :hdr kwin-7-hdr-colour-intensity; scr :signal kwin-8-picture-signal
+          scr :bright kwin-6-brightness-and-night
+          echo "::notice title=KWin screens: auto-brightness::$(timeout 20 python3 $SH info 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin)["autoBrightness"])' 2>&1 | cut -c1-300); the fake sensor: $(tail -3 shots/kwin/fake-sensor.log | tr '\n' '|')"
+          scr :hdr kwin-7-hdr-colour-intensity; scr :signal kwin-8-picture-signal
           scr :several kwin-9-several-screens
           # Full-screen overlays go to the shell's first screen: both screens are taken, before and with the overlay
           # (the shots job keeps the screen that changed).
@@ -2647,6 +2659,7 @@ jobs:
           sleep 3; pgrep -f /tmp/kwin_wayland >/dev/null && echo "::notice title=KWin screens: tearing::kwinrc AllowTearing=false, KWin reconfigured and still running" \
             || echo "::warning title=KWin screens: tearing::kwinrc has it; this nested KWin quit on reconfigure: $(grep -v -i locale shots/kwin/kwin.log | tail -4 | tr '\n' '|' | cut -c1-400)"
           ls -la shots/kwin
+          pkill -f fake-sensor-proxy.py; unset HEARTH_SCREENS_SENSOR_BUS
           pkill quickshell; pkill -f /tmp/kwin_wayland; pkill labwc; pkill dbus-daemon
           true
 
