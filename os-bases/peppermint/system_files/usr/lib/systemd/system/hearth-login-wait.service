@@ -1,0 +1,8 @@
+# Hearth's own login screen: greetd ended while someone was signed in through it. SDDM starts once that session has
+# ended (SDDM's automatic sign-in right away would make a second session). Started only by hearth-login-fallback.
+[Unit]
+Description=Hearth's login screen: SDDM once the session greetd started has ended
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/nimbus/hearth-login-screen wait

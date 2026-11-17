@@ -26,8 +26,10 @@ Instead, each start decides which of the two runs, and anything that goes wrong 
   Falling back (`fallback`, run by hearth-login-fallback.service from hearth-greetd.service's OnFailure=, and by
   `watch`): greetd failed to start, the greeter crashed (greetd ends when its greeter exits without a session), or
   hearth-login-watch.service saw neither the greeter on screen (it writes $XDG_RUNTIME_DIR/hearth-greeter-ready) nor
-  an automatic sign-in within 60 s. Then: the file is removed, greetd stopped, SDDM started; once per start. Not
-  while the PC is shutting down.
+  an automatic sign-in within 60 s. Then, first: the file is removed, greetd stopped, SDDM started (systemctl only);
+  counting it comes after and can't stop that. Once per start; not while the PC is shutting down. If someone is
+  still signed in through greetd (it ended under them), SDDM waits until that session ends (hearth-login-wait), so
+  SDDM's automatic sign-in never makes a second session.
   A start that showed the greeter but ended without anyone signing in and without the greeter's own Restart / Shut
   down / Sleep or a clean shutdown (a black screen someone held the power button on) counts as a failure at the next
   start. Two failures in a row: paused, SDDM at every start until you turn it on again (Settings: "Turn on again"),
@@ -39,7 +41,7 @@ Commands:
   on | off                   the setting (root: Settings runs it through pkexec; takes effect at the next start)
   preview                    the greeter in a window in your session, signing in off (anyone)
   notice                     tell the person once about a fallback (the user service)
-  select | watch | fallback WHY | run-greetd     the start-up steps (systemd only)
+  select | watch | fallback WHY | wait | run-greetd     the start-up steps (systemd only)
 Python standard library only (and hearth_settings_io, next to Mantel's shell).
 """
 import fcntl
@@ -377,25 +379,63 @@ class locked:
         os.close(self.fd)
 
 
-def cmd_fallback(why):
-    with locked():
-        if shutting_down():
-            log('shutting down: no fallback (%s)' % why)
-            return 0
-        if os.path.exists(FELL_BACK):
-            systemctl('start', '--no-block', SDDM_UNIT)
-            return 0
-        write_run(FELL_BACK, why + '\n')
-        boot = boot_id()
-        st = update_state(lambda s: count_failure(s, why, boot))
+def safe(what, fn, *args, **kw):
+    """Runs a step that only records something; its failure (a full drive, a damaged file) is logged, never fatal."""
+    try:
+        return fn(*args, **kw)
+    except Exception as e:
+        log('%s failed (%s); carrying on' % (what, e))
+        return None
+
+
+def start_sddm(why):
+    """SDDM now. Only systemctl calls and removing a file in /run: nothing that can fail on a full or damaged drive."""
+    try:
         rm(FLAG)
-        write_mode('sddm', 'fell back: ' + why, fellBack=True, tripped=bool(st.get('tripped')))
-        systemctl('stop', UNIT, timeout=40)
-        rc, out = systemctl('start', '--no-block', SDDM_UNIT)
-        log('SDDM started instead (%s)%s' % (why, '' if rc == 0 else ': systemctl said ' + out))
-        if st.get('tripped'):
-            log('paused after %d failures in a row: SDDM until it\'s turned on again' % st.get('failures', 0))
+    except OSError as e:
+        log('could not remove %s (%s)' % (FLAG, e))
+    systemctl('stop', UNIT, timeout=40)
+    rc, out = systemctl('start', '--no-block', SDDM_UNIT)
+    log('SDDM started instead (%s)%s' % (why, '' if rc == 0 else ': systemctl said ' + out))
+
+
+def cmd_fallback(why):
+    if safe('checking for a shutdown', shutting_down):
+        log('shutting down: no fallback (%s)' % why)
+        return 0
+    if safe('looking for a sign-in', signed_in_through_greetd):
+        # Someone is signed in through greetd at this start (greetd ended under them): SDDM now would sign in a second
+        # time (its automatic sign-in). hearth-login-wait starts SDDM once that session has ended.
+        safe('removing the flag', rm, FLAG)
+        systemctl('start', '--no-block', 'hearth-login-wait.service')
+        log('greetd stopped (%s) while someone is signed in: SDDM once that session ends' % why)
+        return 0
+    first = not os.path.exists(FELL_BACK)
+    start_sddm(why)                     # first, always; recording it comes after
+    if not first:
+        return 0
+
+    def record():
+        with locked():
+            if os.path.exists(FELL_BACK):
+                return
+            write_run(FELL_BACK, why + '\n')
+            boot = boot_id()
+            st = update_state(lambda s: count_failure(s, why, boot))
+            write_mode('sddm', 'fell back: ' + why, fellBack=True, tripped=bool(st.get('tripped')))
+            if st.get('tripped'):
+                log('paused after %d failures in a row: SDDM until it\'s turned on again' % st.get('failures', 0))
+    safe('recording the fallback', record)
     return 0
+
+
+def cmd_wait(poll=3.0):
+    """hearth-login-wait: greetd ended while someone was signed in through it; SDDM once nobody is (never two sessions)."""
+    while safe('looking for a sign-in', signed_in_through_greetd):
+        if safe('checking for a shutdown', shutting_down):
+            return 0
+        time.sleep(poll)
+    return cmd_fallback('greetd stopped while someone was signed in')
 
 
 def mark_good(why):
@@ -433,29 +473,32 @@ def signed_in_through_greetd():
                         vals[k] = v
         except OSError:
             continue
-        if vals.get('SERVICE', '').startswith('greetd') and vals.get('CLASS') == 'user':
+        # a session that's closing (signed out, a few programs still ending) no longer counts
+        if vals.get('SERVICE', '').startswith('greetd') and vals.get('CLASS') == 'user' and vals.get('STATE', 'active') != 'closing':
             return True
     return False
 
 
 def cmd_watch(poll=1.0):
+    """Every step that records something is guarded: nothing but SIGTERM can keep the 60 s fallback from happening.
+    The unit also has OnFailure=hearth-login-fallback.service, for anything this misses."""
     start = time.monotonic()
     shown = [False]
 
     def stop(*_):
         if shown[0]:
-            mark_good('shut down cleanly with the greeter up')
+            safe('recording a clean shutdown', mark_good, 'shut down cleanly with the greeter up')
         sys.exit(0)
     signal.signal(signal.SIGTERM, stop)
-    rt = greeter_runtime()
+    rt = safe('finding the greeter', greeter_runtime) or ''
     while True:
         if not os.path.exists(FLAG):
             return 0
-        if signed_in_through_greetd():
-            mark_good('signed in')
+        if safe('looking for a sign-in', signed_in_through_greetd):
+            safe('recording a sign-in', mark_good, 'signed in')
             return 0
         if rt and os.path.exists(os.path.join(rt, 'hearth-greeter-ok')):
-            mark_good('the greeter\'s Restart, Shut down or Sleep')
+            safe('recording the greeter\'s power button', mark_good, 'the greeter\'s Restart, Shut down or Sleep')
             return 0
         if not shown[0] and rt and os.path.exists(os.path.join(rt, 'hearth-greeter-ready')):
             shown[0] = True
@@ -464,8 +507,8 @@ def cmd_watch(poll=1.0):
                 if isinstance(st.get('pending'), dict):
                     st['pending']['shown'] = True
                 return st
-            update_state(seen)
-            write_mode('greetd', 'turned on in Settings', shown=True)
+            safe('recording that it showed', update_state, seen)
+            safe('noting this start', write_mode, 'greetd', 'turned on in Settings', shown=True)
         elapsed = time.monotonic() - start
         if elapsed > 3:
             _, state = systemctl('is-active', UNIT, timeout=10)
@@ -594,7 +637,7 @@ def main(argv):
         return cmd_preview()
     if cmd == 'notice':
         return cmd_notice()
-    if cmd in ('select', 'watch', 'fallback', 'run-greetd'):
+    if cmd in ('select', 'watch', 'fallback', 'wait', 'run-greetd'):
         # The start-up steps run from systemd only (pkexec's rule allows on/off only, too).
         if not os.environ.get('INVOCATION_ID') and not ROOT:
             print('error: %s runs from systemd' % cmd)
@@ -610,6 +653,8 @@ def main(argv):
             return cmd_watch()
         if cmd == 'fallback':
             return cmd_fallback(' '.join(argv[2:]) or 'greetd failed')
+        if cmd == 'wait':
+            return cmd_wait()
         return cmd_run_greetd()
     print('usage: hearth-login-screen status | on | off | preview | notice')
     return 2

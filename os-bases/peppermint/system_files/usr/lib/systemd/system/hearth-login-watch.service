@@ -4,6 +4,8 @@
 Description=Hearth's login screen: back to SDDM if it doesn't show
 After=hearth-greetd.service
 ConditionPathExists=/run/hearth/login-greetd
+# If the watch itself fails, SDDM anyway (the fallback does nothing once someone is signed in, or while shutting down).
+OnFailure=hearth-login-fallback.service
 
 [Service]
 Type=simple

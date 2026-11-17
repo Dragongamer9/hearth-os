@@ -5,4 +5,5 @@ Description=Hearth's login screen didn't work: SDDM instead
 
 [Service]
 Type=oneshot
+TimeoutStartSec=90
 ExecStart=/usr/libexec/nimbus/hearth-login-screen fallback greetd stopped or the greeter crashed

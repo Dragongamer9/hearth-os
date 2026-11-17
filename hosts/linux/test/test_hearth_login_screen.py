@@ -346,6 +346,42 @@ class Fallback(Box):
         self.assertTrue(self.state()['tripped'])
         self.assertFalse(self.exists('/run/hearth/login-greetd'))
 
+    def test_sddm_starts_even_if_recording_it_fails(self):
+        # a full drive or a damaged state file: SDDM must still start (review, Nov 17)
+        with mock.patch.object(self.m, 'update_state', side_effect=OSError(28, 'No space left on device')):
+            self.assertEqual(self.m.cmd_fallback('the greeter crashed'), 0)
+        calls = self.systemctl_calls()
+        self.assertIn('start --no-block sddm.service', calls)
+        self.assertIn('stop hearth-greetd.service', calls)
+        self.assertFalse(self.exists('/run/hearth/login-greetd'))
+        with mock.patch.object(self.m, 'locked', side_effect=OSError('no /run')):
+            self.m.cmd_fallback('again')
+        self.assertEqual(self.systemctl_calls().count('start --no-block sddm.service'), 2)
+
+    def test_sddm_is_started_before_anything_is_recorded(self):
+        order = []
+        real_sys, real_upd = self.m.systemctl, self.m.update_state
+        with mock.patch.object(self.m, 'systemctl', side_effect=lambda *a, **k: (order.append(('systemctl',) + a), real_sys(*a, **k))[1]), \
+                mock.patch.object(self.m, 'update_state', side_effect=lambda f: (order.append(('state',)), real_upd(f))[1]):
+            self.m.cmd_fallback('it didn\'t show within 60 s')
+        i_sddm = order.index(('systemctl', 'start', '--no-block', 'sddm.service'))
+        i_state = order.index(('state',))
+        self.assertLess(i_sddm, i_state)
+
+    def test_no_second_session_when_someone_is_signed_in(self):
+        self.write('/run/systemd/sessions/4', 'SERVICE=greetd\nCLASS=user\nSTATE=active\n')
+        self.m.cmd_fallback('greetd crashed under a session')
+        calls = self.systemctl_calls()
+        self.assertNotIn('start --no-block sddm.service', calls)
+        self.assertIn('start --no-block hearth-login-wait.service', calls)
+        self.assertEqual(self.state().get('failures', 0), 0)
+        self.assertFalse(self.exists('/run/hearth/login-greetd'))
+        # the session ends (closing: a few programs still going): then SDDM, counted once
+        self.write('/run/systemd/sessions/4', 'SERVICE=greetd\nCLASS=user\nSTATE=closing\n')
+        self.m.cmd_wait(poll=0)
+        self.assertIn('start --no-block sddm.service', self.systemctl_calls())
+        self.assertEqual(self.state()['failures'], 1)
+
     def test_nothing_happens_while_shutting_down(self):
         with open(self.tmp + '/sysstate', 'w') as f:
             f.write('stopping\n')
@@ -391,6 +427,28 @@ class Watch(Box):
         self.assertEqual(st['failures'], 0)
         self.assertNotIn('pending', st)
         self.assertTrue(self.exists('/run/hearth/login-greetd'), 'shown: no timeout once it was on screen')
+
+    def test_a_state_error_never_skips_the_fallback(self):
+        self.m.TIMEOUT = 0.3
+        self.write('/run/user/990/hearth-greeter-ready', '')
+        os.remove(self.root + '/run/user/990/hearth-greeter-ready')
+        with mock.patch.object(self.m, 'update_state', side_effect=ValueError('damaged')), \
+                mock.patch.object(self.m, 'greeter_runtime', side_effect=KeyError('_greetd')):
+            self.m.cmd_watch(poll=0.05)
+        self.assertIn('start --no-block sddm.service', self.systemctl_calls())
+        self.assertFalse(self.exists('/run/hearth/login-greetd'))
+
+    def test_a_state_error_after_it_showed_is_not_a_crash(self):
+        self.write('/run/user/990/hearth-greeter-ready', '')
+        n = {'i': 0}
+
+        def later():
+            n['i'] += 1
+            return n['i'] > 5
+        with mock.patch.object(self.m, 'update_state', side_effect=OSError('full')), \
+                mock.patch.object(self.m, 'signed_in_through_greetd', side_effect=later):
+            self.assertEqual(self.m.cmd_watch(poll=0.01), 0)
+        self.assertNotIn('start --no-block sddm.service', self.systemctl_calls())
 
     def test_the_greeters_own_restart_counts_as_working(self):
         self.write('/run/user/990/hearth-greeter-ok', '')
@@ -455,7 +513,9 @@ class UnitsAndRules(unittest.TestCase):
         self.assertIn('ConditionPathExists=/run/hearth/login-greetd', g)
         self.assertIn('OnFailure=hearth-login-fallback.service', g)
         self.assertIn('Restart=no', g)
-        for name in ('hearth-greetd.service', 'hearth-login-select.service', 'hearth-login-watch.service', 'hearth-login-fallback.service'):
+        self.assertIn('OnFailure=hearth-login-fallback.service', self.unit('hearth-login-watch.service'))
+        self.assertIn('TimeoutStartSec=', self.unit('hearth-login-fallback.service'))
+        for name in ('hearth-greetd.service', 'hearth-login-select.service', 'hearth-login-watch.service', 'hearth-login-fallback.service', 'hearth-login-wait.service'):
             text = self.unit(name)
             self.assertNotIn('Conflicts=', text, name)
             self.assertNotIn('display-manager.service\n', text.split('[Install]')[-1] if '[Install]' in text else '', name)
@@ -499,7 +559,7 @@ class UnitsAndRules(unittest.TestCase):
         bg = (ROOT / 'os' / 'system_files' / 'usr' / 'libexec' / 'nimbus' / 'hearth-boot-guard').read_text()
         self.assertIn("'cage')", bg)
         pad = (ROOT / 'os' / 'system_files' / 'usr' / 'libexec' / 'nimbus' / 'hearth-greeter-pad').read_text()
-        self.assertIn("'plasma-login-gr', 'cage')", pad)
+        self.assertIn("name == 'cage' or", pad)
 
     def test_the_greeter_never_keeps_the_password(self):
         q = (GREETER / 'Login.qml').read_text()
