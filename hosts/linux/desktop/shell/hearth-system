@@ -261,7 +261,7 @@ def keyboard_status():
         l['name'] = names.get((l['layout'], l['variant'])) or names.get((l['layout'], '')) or l['layout']
     return {'layouts': lays, 'switch': switch, 'switchOptions': SWITCH_OPTIONS,
             'delay': int(saved.get('delay') or REPEAT_DEFAULT['delay']), 'rate': int(saved.get('rate') or REPEAT_DEFAULT['rate']),
-            'live': bool(os.environ.get('LABWC_PID')), 'configDir': runtime_dir() if os.path.isdir(runtime_dir()) else ''}
+            'live': bool(os.environ.get('LABWC_PID') and os.environ.get('HEARTH_WM', 'labwc') != 'kwin'), 'configDir': runtime_dir() if os.path.isdir(runtime_dir()) else ''}
 
 
 def keyboard_request(req, known):
@@ -436,7 +436,7 @@ def pointer_set(raw):
         labwc_config()
         live = True
     reloaded = False
-    if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+    if os.environ.get('LABWC_PID') and os.environ.get('HEARTH_WM', 'labwc') != 'kwin' and shutil.which('labwc'):   # labwc only (1.14: never under KWin)
         reloaded = run(['labwc', '--reconfigure'])[0] == 0
     return dict(settings, ok=True, reloaded=reloaded and live, hasTouchpad=has_touchpad())
 
@@ -537,7 +537,7 @@ def keyboard_set(raw):
         labwc_config()
         live = True
     reloaded = False
-    if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+    if os.environ.get('LABWC_PID') and os.environ.get('HEARTH_WM', 'labwc') != 'kwin' and shutil.which('labwc'):   # labwc only (1.14: never under KWin)
         reloaded = run(['labwc', '--reconfigure'])[0] == 0
     return {'ok': True, 'reloaded': reloaded and live, 'needsSignIn': not (reloaded and live)}
 

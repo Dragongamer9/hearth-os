@@ -50,9 +50,9 @@ pub fn without_dump_details(journal: &str) -> String {
     out.join("\n")
 }
 
-/// The other desktops' logs in ~/.local/share/nimbus: KDE Plasma and GNOME, downloaded when picked (1.13: the session
-/// writes kde.log and gnome.log), and an earlier Hearth's Plasma / COSMIC (still in a report when an old one is there).
-const DESKTOP_LOGS: [(&str, &str); 5] = [("kde.log", "KDE Plasma"), ("gnome.log", "GNOME"), ("plasma.log", "Hearth Plasma (before 1.13)"),
+/// The older desktops' logs in ~/.local/share/nimbus: 1.13's KDE Plasma and GNOME (retired in 1.14) and an earlier
+/// Hearth's Plasma / COSMIC. Nothing writes them any more; a report still shows old ones when they're there.
+const DESKTOP_LOGS: [(&str, &str); 5] = [("kde.log", "KDE Plasma (1.13, retired)"), ("gnome.log", "GNOME (1.13, retired)"), ("plasma.log", "Hearth Plasma (before 1.13)"),
                                          ("cosmic.log", "Hearth COSMIC"), ("cosmic-companion.log", "Hearth COSMIC companion")];
 
 /// Steam Game Mode (Decky plugin): whether Decky and its service are installed and running, Hearth Sync's state
@@ -326,6 +326,9 @@ pub fn report(version: &str) -> String {
     }
     for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log"), (data.join("pad.log"), "Desktop controller helper (hearth-pad)"),
                       (data.join("labwc.log"), "Desktop Mode compositor (labwc)"),
+                      // 1.14: Mantel on KWin (nimbus-session's run_kwin), and the bridge between them.
+                      (data.join("kwin.log"), "Desktop Mode compositor (KWin)"),
+                      (run.join("hearth-kwin-bridge.log"), "Mantel's KWin bridge (hearth-kwin-bridge)"),
                       (data.join("briefcase.log"), "Hearth Files: Briefcase auto-sync"),
                       (std::env::var_os("XDG_STATE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| crate::paths::home().join(".local/state")).join("nimbus/settings-events.log"),
                        "Settings restored or kept aside (docs/SETTINGS-PERSISTENCE.md)")] {
@@ -357,18 +360,14 @@ pub fn report(version: &str) -> String {
         }
         if !body.trim().is_empty() { section("Server mode and its services", body); }
     }
-    // Hearth Plasma, Hearth GNOME and Hearth COSMIC: each desktop's own log (the desktop's messages, and what
-    // hearth-companion decided about the controller and why), and whether Quickshell is there (it runs the controller
-    // in Plasma and COSMIC).
+    // The older desktops (1.13's KDE Plasma and GNOME, Hearth Plasma, Hearth GNOME and Hearth COSMIC): each one's own log
+    // if an old one is still there, and whether Quickshell is there.
     {
         let mut body = format!("quickshell: {}\n", sh("command -v quickshell || echo 'not installed'").trim());
         for (f, name) in DESKTOP_LOGS {
             if let Ok(t) = std::fs::read_to_string(data.join(f)) { body.push_str(&format!("\n--- {name} ({f}):\n{}\n", tail(&t, 150))); }
         }
-        // 1.14 (the owner, Nov 16: KDE wasn't installing): the downloads of KDE Plasma and GNOME, their progress, the
-        // record of what was added, and the last lines of each download's own run (hearth-desktops-helper's units).
-        body.push_str(&format!("\n--- Downloading KDE Plasma and GNOME (Settings › Your desktop):\n{}\n", sh("timeout 20 python3 /usr/share/nimbus/desktop/shell/hearth-desktops status 2>&1 | head -c 3000; echo; for n in kde gnome; do echo \"-- $n:\"; cat /run/hearth/desktops/$n.json /var/lib/hearth/desktops/$n.json 2>/dev/null; echo; journalctl -b --no-pager -o short-iso -u hearth-desktop-$n 2>/dev/null | tail -30; done")));
-        section("Desktop Mode: Hearth Plasma, GNOME and COSMIC", body);
+        section("Desktop Mode: the older desktops (KDE Plasma, GNOME, Hearth Plasma, COSMIC)", body);
     }
     // Hearth Theater (docs/THEATER.md): its own log (start, the renderer and graphics it got, pages that loaded or
     // failed, the controller pointer), when it has been opened on this device.
@@ -709,10 +708,12 @@ mod tests {
     #[test]
     fn desktop_logs_are_the_ones_the_session_writes() {
         let session = include_str!("../../linux/session/nimbus-session");
-        // KDE Plasma and GNOME (1.13) write theirs through the session; the older desktops' aren't written any more
-        // (a report still shows old ones).
-        for f in ["kde.log", "gnome.log"] { assert!(session.contains(&format!("/{f}\"")), "{f}"); }
-        for f in ["plasma.log", "cosmic.log"] { assert!(!session.contains(&format!("/{f}\"")), "{f}"); }
+        // None of the older desktops' logs is written any more (1.13's KDE Plasma and GNOME were retired in 1.14); a
+        // report still shows old ones.
+        for f in ["kde.log", "gnome.log", "plasma.log", "cosmic.log"] { assert!(!session.contains(&format!("/{f}\"")), "{f}"); }
+        // 1.14: KWin's log is written by the session (run_kwin) and is in the report.
+        assert!(session.contains("/kwin.log\""));
+        assert!(include_str!("logs.rs").contains("data.join(\"kwin.log\")"));
         assert!(include_str!("../../linux/desktop/cosmic/hearth-cosmic").contains("cosmic-companion.log"));
     }
     #[test]

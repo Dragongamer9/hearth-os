@@ -1,0 +1,44 @@
+# Hearth's KWin defaults for Mantel (1.14, docs/DESKTOPS.md "Mantel on KWin"). A system default: nimbus-session puts
+# this folder first in XDG_CONFIG_DIRS, under your own ~/.config/kwinrc, so anything you (or KWin's own settings)
+# change there wins and this file is never written to.
+
+[Windows]
+FocusPolicy=ClickToFocus
+# Mantel's bar has its own Show desktop and window list; no hot corners.
+ElectricBorderMaximize=true
+ElectricBorderTiling=true
+
+[ElectricBorders]
+Top=None
+TopRight=None
+Right=None
+BottomRight=None
+Bottom=None
+BottomLeft=None
+Left=None
+TopLeft=None
+
+[TouchEdges]
+Top=None
+Right=None
+Bottom=None
+Left=None
+
+# Breeze window borders with Hearth's colours (theme/apply.sh writes kdeglobals), buttons on the right.
+[org.kde.kdecoration2]
+library=org.kde.breeze
+theme=Breeze
+ButtonsOnLeft=
+ButtonsOnRight=IAX
+BorderSize=Normal
+
+# Hearth's on-screen keyboard as KWin's input method (feature/kwin-input: hearth-kwin-im.desktop).
+[Wayland]
+InputMethod[$e]=/usr/share/applications/hearth-kwin-im.desktop
+VirtualKeyboardEnabled=true
+
+[NightColor]
+Active=false
+
+[Xwayland]
+XwaylandEavesdrops=None

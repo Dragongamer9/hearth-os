@@ -1096,6 +1096,8 @@ def stream_run():
         env['NIMBUS_START_MODE'] = 'game'
         env['NIMBUS_GAMESCOPE_ARGS'] = ' '.join(shlex.quote(a) for a in stream_gamescope_args(env))
         env.pop('LABWC_PID', None)      # nimbus-mode must see Game Mode, not the virtual screen
+        env.pop('HEARTH_DESKTOP_PID', None)
+        env.pop('HEARTH_WM', None)
         env.pop('DISPLAY', None)
         code = subprocess.call(['/usr/bin/nimbus-session'], env=env)
     finally:
@@ -1879,6 +1881,8 @@ def host_run(cmd):
         env = dict(os.environ)
         env['WAYLAND_DISPLAY'] = opened[0][0]
         env.pop('LABWC_PID', None)       # nimbus-mode must see Game Mode, not the host
+        env.pop('HEARTH_DESKTOP_PID', None)
+        env.pop('HEARTH_WM', None)
         env.pop('DISPLAY', None)
         env['HEARTH_SEAT_HOSTED'] = '1'  # Hearth reads the controllers itself (the host gives only one window input)
         p = subprocess.Popen(cmd, env=env)
