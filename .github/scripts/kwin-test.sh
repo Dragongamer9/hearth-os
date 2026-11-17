@@ -4,6 +4,8 @@
 # through KWin's screenshot API. labwc's fallback runs headless; grim takes its pictures):
 #   A  KWin, with 1.13's KDE Plasma still picked: the "KDE Plasma and GNOME were retired" card     kwin-1-retired-card
 #   B  KWin: Mantel's bar up (layer shell), the desktop and Settings › System › Your desktop         kwin-2-desktop, kwin-3-your-desktop
+#      Settings › Keyboard on KWin: keyboard.json's layouts are KWin's at the start, and a layout set in Settings is
+#      KWin's active one right away (org.kde.keyboard); the KWin-only rows                            kwin-9-keyboard-kwin
 #   C  KWin ending right away: the safe start opens Mantel on labwc, with its card                  kwin-4-fallback-card
 #   D  the same on the next sign-in: twice in a row, labwc until KWin is turned back on              kwin-5-twice-card, kwin-6-your-desktop-paused
 #   E  KWin with your own kscreenlockerrc / kwinrc from KDE Plasma (Autolock, LockOnResume, an input method): Hearth's
@@ -125,6 +127,8 @@ end_session
 
 # ---- B: KWin: the desktop and Settings › System › Your desktop.
 printf 'NIMBUS_START_MODE=desktop\n' > "$CONF"
+# Settings › Keyboard as someone saved it on labwc: two layouts, faster repeat, Num Lock on, a compose key.
+printf '%s' '{"layouts": [{"layout": "de", "variant": ""}, {"layout": "fr", "variant": ""}], "switch": "grp:alt_shift_toggle", "delay": 300, "rate": 40, "numlock": "on", "compose": "compose:ralt", "switchMode": "Window"}' > "$HOME/.config/nimbus/keyboard.json.tmp" && mv -f "$HOME/.config/nimbus/keyboard.json.tmp" "$HOME/.config/nimbus/keyboard.json"
 start_session B
 wait_up 90 || fail "KWin" "Mantel didn't come up under KWin the second time"
 sleep 10
@@ -134,6 +138,63 @@ ipc wayland-hearth settings page your-desktop; sleep 3
 shot kwin-3-your-desktop
 ipc wayland-hearth settings close
 python3 hosts/linux/desktop/shell/hearth-your-desktop status > shots/status-B.json
+# Keyboard: KWin started with keyboard.json in its kxkbrc / kcminputrc (input-watch, in the background).
+kbd_layouts() { gdbus call --session --dest org.kde.keyboard --object-path /Layouts --method org.kde.KeyboardLayouts.getLayoutsList 2>&1 | tr '\n' ' ' | cut -c1-300; }
+kbd_active() {   # the short name of KWin's active layout
+  i=$(gdbus call --session --dest org.kde.keyboard --object-path /Layouts --method org.kde.KeyboardLayouts.getLayout 2>/dev/null | sed -n 's/.*uint32 \([0-9]*\).*/\1/p')
+  gdbus call --session --dest org.kde.keyboard --object-path /Layouts --method org.kde.KeyboardLayouts.getLayoutsList 2>/dev/null \
+    | python3 -c 'import re,sys; l=re.findall(r"\(\x27([^\x27]*)\x27, \x27[^\x27]*\x27, \x27[^\x27]*\x27\)", sys.stdin.read()); i=int(sys.argv[1] or -1); print(l[i] if 0 <= i < len(l) else "?")' "$i"
+}
+for i in $(seq 1 15); do grep -q '^LayoutList=de,fr$' "$HOME/.config/kxkbrc" 2>/dev/null && break; sleep 1; done
+cp "$HOME/.config/kxkbrc" shots/kxkbrc-B.txt 2>/dev/null; cp "$HOME/.config/kcminputrc" shots/kcminputrc-B.txt 2>/dev/null
+grep -q '^LayoutList=de,fr$' "$HOME/.config/kxkbrc" 2>/dev/null || fail "keyboard" "KWin's kxkbrc didn't get your layouts at the start: $(tr '\n' '|' < "$HOME/.config/kxkbrc" 2>/dev/null | cut -c1-300)"
+grep -q '^Options=grp:alt_shift_toggle,compose:ralt$' "$HOME/.config/kxkbrc" 2>/dev/null || fail "keyboard" "kxkbrc's Options: $(grep Options "$HOME/.config/kxkbrc" 2>/dev/null)"
+grep -q '^SwitchMode=Window$' "$HOME/.config/kxkbrc" 2>/dev/null || fail "keyboard" "kxkbrc has no SwitchMode=Window"
+for l in RepeatDelay=300 RepeatRate=40 NumLock=0; do grep -q "^$l\$" "$HOME/.config/kcminputrc" 2>/dev/null || fail "keyboard" "kcminputrc has no $l: $(tr '\n' '|' < "$HOME/.config/kcminputrc" 2>/dev/null | cut -c1-300)"; done
+sleep 2
+a=$(kbd_active); echo "::notice title=keyboard at the start::KWin's layouts: $(kbd_layouts); active: $a"
+[ "$a" = de ] || fail "keyboard" "KWin's active layout at the start is '$a', not de (KWin: $(kbd_layouts))"
+# Set in Settings (what SetKeyboard.qml sends): French first. KWin's active layout is French right away.
+m=$(printf '%s' '{"layouts": [{"layout": "fr", "variant": ""}, {"layout": "de", "variant": ""}], "switch": "grp:alt_shift_toggle", "delay": 300, "rate": 40}' \
+  | HEARTH_WM=kwin python3 hosts/linux/desktop/shell/hearth-system keyboard-set 2>&1 | tail -1)
+echo "::notice title=keyboard-set on KWin::$m"
+echo "$m" | grep -q '"reloaded": true' || fail "keyboard" "keyboard-set on KWin didn't say KWin took it: $(echo "$m" | cut -c1-300)"
+sleep 2
+a=$(kbd_active); echo "::notice title=keyboard after Settings::KWin's layouts: $(kbd_layouts); active: $a"
+[ "$a" = fr ] || fail "keyboard" "the layout set in Settings (fr) isn't KWin's active one: '$a' (KWin: $(kbd_layouts))"
+grep -q '"numlock": "on"' "$HOME/.config/nimbus/keyboard.json" || fail "keyboard" "keyboard.json lost Num Lock (merge-on-write): $(head -c 300 "$HOME/.config/nimbus/keyboard.json")"
+command -v wayland-info >/dev/null && echo "::notice title=keyboard repeat (wayland-info)::$(WAYLAND_DISPLAY=wayland-hearth timeout 10 wayland-info 2>/dev/null | grep -i 'repeat' | head -2 | tr '\n\t' '| ')"
+ipc wayland-hearth settings page keyboard; sleep 4
+shot kwin-9-keyboard-kwin
+ipc wayland-hearth settings close
+# ---- Wave 3 under KWin (1.14's Desktop Mode is Mantel on KWin): the search bar, Activities, the App store's Drivers.
+qk() { WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" 2>/dev/null | grep -v WARN | tail -n1; }
+sb_shown() { qk searchbar state | python3 -c 'import json,sys; print(json.load(sys.stdin)["shown"])' 2>/dev/null; }
+ipc wayland-hearth searchbar open; sleep 2
+[ "$(sb_shown)" = True ] || fail "search bar (KWin)" "it didn't open under KWin: $(qk searchbar state | head -c 300)"
+shot kwin-w3-search-empty
+ipc wayland-hearth searchbar type "(3+4)*2^3"; sleep 2
+qk searchbar state | grep -q '"plugin":"calc"' || fail "search bar (KWin)" "the calculator didn't answer under KWin: $(qk searchbar state | head -c 300)"
+shot kwin-w3-search-calc
+ipc wayland-hearth searchbar type "display"; sleep 2
+shot kwin-w3-search-settings
+ipc wayland-hearth searchbar close
+r=$(qk searchbar desk "terminal"); sleep 2
+[ "$r" = opened ] && [ "$(sb_shown)" = True ] || fail "search bar (KWin)" "typing on the desktop didn't open it under KWin: $r"
+shot kwin-w3-search-typed-on-desktop
+ipc wayland-hearth searchbar close
+ipc wayland-hearth searchbar pad; sleep 3
+shot kwin-w3-search-controller
+ipc wayland-hearth searchbar close
+ipc wayland-hearth activities create "Work" >/dev/null; sleep 1
+ipc wayland-hearth activities switcher; sleep 2
+shot kwin-w3-activities
+ipc wayland-hearth activities close
+ipc wayland-hearth settings page store:drivers; sleep 5
+shot kwin-w3-store-drivers
+ipc wayland-hearth settings close
+grep -E "(SearchBar|Activit|StoreDrivers|SetStore)[A-Za-z]*\.qml.*(TypeError|ReferenceError|Cannot assign|is not a type|is not defined)" "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null \
+  | head -5 | while read -r l; do fail "Wave 3 (KWin)" "$(echo "$l" | cut -c1-300)"; done
 cp "$HOME/.local/share/nimbus/kwin.log" shots/kwin-B.log 2>/dev/null
 cp "$XDG_RUNTIME_DIR/nimbus-shell.log" shots/shell-B.log 2>/dev/null
 end_session
@@ -206,7 +267,7 @@ cp "$LOG" shots/session.log 2>/dev/null; cp "$HOME/.local/share/nimbus/kwin.log"
 cp "$HOME/.local/share/nimbus/labwc.log" shots/labwc.log 2>/dev/null
 grep -E 'desktop|kwin|labwc' "$LOG" | tail -30 | cut -c1-200 | while read -r l; do echo "::notice title=session::$l"; done | head -8
 ls -la shots
-for s in kwin-1-retired-card kwin-2-desktop kwin-3-your-desktop kwin-4-fallback-card kwin-5-twice-card kwin-6-your-desktop-paused kwin-7-kde-settings-card kwin-8-keyboard-kde-keys; do
+for s in kwin-1-retired-card kwin-2-desktop kwin-3-your-desktop kwin-4-fallback-card kwin-5-twice-card kwin-6-your-desktop-paused kwin-7-kde-settings-card kwin-8-keyboard-kde-keys kwin-9-keyboard-kwin; do
   [ -s "shots/$s.png" ] || fail "screenshot" "$s is missing ($(tail -2 shots/shot-errors.txt 2>/dev/null | tr '\n' '|'))"
 done
 python3 - <<'PY'
