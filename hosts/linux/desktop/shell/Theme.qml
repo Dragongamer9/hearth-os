@@ -138,7 +138,10 @@ Singleton {
     // The wallpaper on show: yours, or the look's own ("" = Hearth's fireside). With Match sub theme on (the
     // default), the look's own is the sub theme's; a wallpaper you chose always wins (subthemes.js shownWallpaper).
     readonly property string ownWall: SubThemes.ownWallpaper(palettes, look, Settings.subTheme, Settings.wallMatch)
-    readonly property string wall: Settings.wallpaper !== "" ? Settings.wallpaper : ownWall
+    // Activities (1.14): an activity with its own wallpaper shows it while you're on it ("" = the desktop's own). Set by
+    // Widgets.qml (Activities.qml), so Theme never depends on it.
+    property string activityWall: ""
+    readonly property string wall: activityWall !== "" ? activityWall : Settings.wallpaper !== "" ? Settings.wallpaper : ownWall
     // A controller focus ring: crisp, in the accent.
     readonly property int focusWidth: 2
 

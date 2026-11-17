@@ -120,7 +120,7 @@ PanelWindow {
 
     // ------------------------------------------------------------------ controller / keyboard navigation
     readonly property var navRows: {
-        const rows = [["settings", "lock", "power"], ["game"], ["wifi", "bluetooth"], ["night", "mouse"], ["dnd", "keyboard"], ["volume"]];
+        const rows = [["settings", "lock", "power"], ["game"], ["wifi", "bluetooth"], ["night", "mouse"], ["dnd", "keyboard"], ["activity", "widgets"], ["volume"]];
         if (brightness >= 0) rows.push(["brightness"]);
         if (profile !== "") rows.push(["power-saver", "balanced", "performance"]);
         const last = [];
@@ -160,6 +160,8 @@ PanelWindow {
         case "settings": shown = false; root.settingsRequested(); break;
         case "handheld": shown = false; root.pageRequested("handheld"); break;
         case "keyboard": shown = false; root.keyboardRequested(); break;
+        case "activity": shown = false; if (SettingsNav.widgets) SettingsNav.widgets.openActivities(); break;   // 1.14: Activities.qml
+        case "widgets": shown = false; if (SettingsNav.widgets) SettingsNav.widgets.openGallery(""); break;  // 1.14: desktop widgets (Widgets.qml)
         case "screenshot": shown = false; run(["sh", "-c", "sleep 0.4; sh \"${NIMBUS_SHARE:-/usr/local/share/nimbus}/desktop/open.sh\" screenshot"]); break;
         case "game": run(["nimbus-mode", "game"]); break;
         case "sleep": shown = false; Buttons.sleep("Quick Access"); break;
@@ -278,6 +280,8 @@ PanelWindow {
                     Tile { navId: "mouse"; icon: "mouse"; label: "Controller mouse"; detail: root.mouseOn ? "On" : "Off"; lit: root.mouseOn }
                     Tile { navId: "dnd"; icon: "bell-off"; label: "Do not disturb"; detail: DeskState.dnd ? "On" : "Off"; lit: DeskState.dnd }
                     Tile { navId: "keyboard"; icon: "kbd"; label: "Keyboard"; detail: "On-screen" }
+                    Tile { navId: "activity"; icon: SettingsNav.activityIcon || "desktops"; label: "Activity"; detail: SettingsNav.activitiesMany ? SettingsNav.activityName : "Make one"; lit: SettingsNav.activitiesMany; enabled: SettingsNav.widgets !== null }
+                    Tile { navId: "widgets"; icon: "grid"; label: "Widgets"; detail: "Add or arrange"; enabled: SettingsNav.widgets !== null }
                 }
 
                 // ---- sliders

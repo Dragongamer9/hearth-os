@@ -1,0 +1,361 @@
+#!/usr/bin/python3
+"""hearth-widgets: what Mantel's desktop widgets (Widgets.qml) read from outside the shell. Prints one JSON line.
+
+  hearth-widgets places NAME            places called NAME (Open-Meteo geocoding: free, no account or key)
+  hearth-widgets weather LAT LON [imperial]   the forecast there now and for the next days (Open-Meteo)
+  hearth-widgets zones TZ...            each time zone's UTC offset now, in minutes, and its city name
+  hearth-widgets feed URL               an RSS or Atom feed's newest headlines
+  hearth-widgets folder PATH            a folder's files (name, path, kind, size, modified), folders first
+  hearth-widgets photos SOURCE          pictures for the photo frame: pictures | favorites | album:<id> | folder:<path>
+  hearth-widgets events                 today's and the next two weeks' events (Hearth Time, if it's there)
+
+Nothing here writes a setting: the widgets keep their own choices in ~/.config/nimbus/widgets.json (WidgetStore.qml,
+merged through hearth_settings_io.py). Hearth Photos' favourites and albums (~/.local/share/nimbus/photos.json) are
+only read. Answers from the internet are kept for a while in ~/.cache/hearth/widgets/, so a widget shows something
+straight away and the network is asked at most every few minutes.
+HEARTH_WIDGETS_FIXTURES=<folder> answers places/weather/feed from <folder>/places.json, weather.json, feed.xml (the
+Desktop Mode test, which has no network to count on). Python standard library only.
+"""
+import datetime
+import hashlib
+import html
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.parse
+import urllib.request
+import xml.etree.ElementTree as ET
+
+UA = 'HearthOS-widgets/1 (+https://hearthos.fun)'
+PICTURE_EXT = {'.jpg', '.jpeg', '.png', '.webp', '.gif', '.bmp', '.avif', '.heic', '.tif', '.tiff'}
+
+
+def home():
+    return os.path.expanduser('~')
+
+
+def cache_dir():
+    d = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(home(), '.cache'), 'hearth', 'widgets')
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def fixture(name):
+    d = os.environ.get('HEARTH_WIDGETS_FIXTURES')
+    if not d:
+        return None
+    p = os.path.join(d, name)
+    try:
+        with open(p, 'rb') as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def fetch(url, max_age, timeout=12):
+    """The body of URL, from the cache when it's younger than MAX_AGE seconds (or when the network fails)."""
+    key = hashlib.sha1(url.encode()).hexdigest()[:20]
+    p = os.path.join(cache_dir(), key)
+    try:
+        if time.time() - os.path.getmtime(p) < max_age:
+            with open(p, 'rb') as f:
+                return f.read()
+    except OSError:
+        pass
+    try:
+        req = urllib.request.Request(url, headers={'User-Agent': UA})
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            body = r.read(4 * 1024 * 1024)
+        tmp = p + '.tmp'
+        with open(tmp, 'wb') as f:
+            f.write(body)
+        os.replace(tmp, p)
+        return body
+    except Exception:
+        try:
+            with open(p, 'rb') as f:
+                return f.read()
+        except OSError:
+            raise
+
+
+# ---------------------------------------------------------------------- weather (Open-Meteo)
+def parse_places(data):
+    out = []
+    for r in (data or {}).get('results') or []:
+        try:
+            lat, lon = float(r['latitude']), float(r['longitude'])
+        except (KeyError, TypeError, ValueError):
+            continue
+        parts = [r.get('name') or '']
+        for k in ('admin1', 'country'):
+            if r.get(k) and r.get(k) not in parts:
+                parts.append(r[k])
+        out.append({'name': r.get('name') or '', 'label': ', '.join(p for p in parts if p), 'lat': round(lat, 4),
+                    'lon': round(lon, 4), 'tz': r.get('timezone') or ''})
+    return out
+
+
+def places(name):
+    name = (name or '').strip()
+    if not name:
+        return {'places': []}
+    raw = fixture('places.json')
+    if raw is None:
+        url = 'https://geocoding-api.open-meteo.com/v1/search?' + urllib.parse.urlencode({'name': name, 'count': 8, 'language': 'en', 'format': 'json'})
+        raw = fetch(url, 86400)
+    return {'places': parse_places(json.loads(raw.decode('utf-8', 'replace')))}
+
+
+def weather_url(lat, lon, imperial=False):
+    q = {'latitude': '%.4f' % lat, 'longitude': '%.4f' % lon,
+         'current': 'temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,is_day,wind_speed_10m',
+         'daily': 'weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max',
+         'timezone': 'auto', 'forecast_days': 6}
+    if imperial:
+        q.update({'temperature_unit': 'fahrenheit', 'wind_speed_unit': 'mph'})
+    return 'https://api.open-meteo.com/v1/forecast?' + urllib.parse.urlencode(q)
+
+
+def parse_weather(f):
+    c = (f or {}).get('current') or {}
+    d = (f or {}).get('daily') or {}
+    days = []
+    dates = d.get('time') or []
+    for i, ds in enumerate(dates):
+        def at(k):
+            v = d.get(k) or []
+            return v[i] if i < len(v) else None
+        try:
+            wd = datetime.date.fromisoformat(ds).strftime('%a')
+        except (TypeError, ValueError):
+            wd = ''
+        days.append({'date': ds, 'day': wd, 'code': at('weather_code'), 'max': at('temperature_2m_max'),
+                     'min': at('temperature_2m_min'), 'rain': at('precipitation_probability_max')})
+    units = (f or {}).get('current_units') or {}
+    return {'temp': c.get('temperature_2m'), 'feels': c.get('apparent_temperature'), 'humidity': c.get('relative_humidity_2m'),
+            'code': c.get('weather_code'), 'day': c.get('is_day', 1) == 1, 'wind': c.get('wind_speed_10m'),
+            'unit': units.get('temperature_2m') or '°C', 'windUnit': units.get('wind_speed_10m') or 'km/h', 'days': days}
+
+
+def weather(lat, lon, imperial=False):
+    raw = fixture('weather.json')
+    if raw is None:
+        raw = fetch(weather_url(float(lat), float(lon), imperial), 900)
+    out = parse_weather(json.loads(raw.decode('utf-8', 'replace')))
+    out['at'] = int(time.time())
+    return out
+
+
+# ---------------------------------------------------------------------- world clocks
+def zones(names):
+    try:
+        from zoneinfo import ZoneInfo
+    except ImportError:
+        ZoneInfo = None
+    now = datetime.datetime.now(datetime.timezone.utc)
+    out = []
+    for n in names:
+        off = None
+        if ZoneInfo:
+            try:
+                off = int(now.astimezone(ZoneInfo(n)).utcoffset().total_seconds() // 60)
+            except Exception:
+                off = None
+        city = n.split('/')[-1].replace('_', ' ')
+        out.append({'tz': n, 'city': city, 'offset': off})
+    local = datetime.datetime.now().astimezone().utcoffset()
+    return {'zones': out, 'local': int(local.total_seconds() // 60) if local is not None else 0}
+
+
+def all_zones():
+    try:
+        import zoneinfo
+        z = sorted(x for x in zoneinfo.available_timezones() if '/' in x and not x.startswith(('Etc/', 'SystemV/', 'posix/', 'right/')))
+    except Exception:
+        z = []
+    return {'zones': z}
+
+
+# ---------------------------------------------------------------------- RSS / Atom
+def _text(e):
+    if e is None:
+        return ''
+    t = ''.join(e.itertext()) if len(e) else (e.text or '')
+    t = re.sub(r'<[^>]+>', ' ', html.unescape(t))
+    return re.sub(r'\s+', ' ', t).strip()
+
+
+def _local(tag):
+    return tag.rsplit('}', 1)[-1].lower()
+
+
+def parse_feed(body, limit=20):
+    root = ET.fromstring(body)
+    items = []
+    title = ''
+    for el in root.iter():
+        n = _local(el.tag)
+        if n in ('channel', 'feed') and not title:
+            for c in el:
+                if _local(c.tag) == 'title':
+                    title = _text(c)
+                    break
+        if n not in ('item', 'entry'):
+            continue
+        it = {'title': '', 'link': '', 'when': '', 'summary': ''}
+        for c in el:
+            cn = _local(c.tag)
+            if cn == 'title':
+                it['title'] = _text(c)
+            elif cn == 'link':
+                it['link'] = it['link'] or (c.get('href') or (c.text or '').strip())
+            elif cn in ('pubdate', 'published', 'updated', 'date') and not it['when']:
+                it['when'] = (c.text or '').strip()
+            elif cn in ('description', 'summary') and not it['summary']:
+                it['summary'] = _text(c)[:220]
+        if it['title']:
+            items.append(it)
+        if len(items) >= limit:
+            break
+    return {'title': title, 'items': items}
+
+
+def feed(url):
+    raw = fixture('feed.xml')
+    if raw is None:
+        if not re.match(r'^https?://', url or ''):
+            return {'error': 'A feed address starts with https://', 'items': []}
+        raw = fetch(url, 900)
+    try:
+        return parse_feed(raw)
+    except ET.ParseError:
+        return {'error': "That address isn't an RSS or Atom feed", 'items': []}
+
+
+# ---------------------------------------------------------------------- folders and pictures
+def folder(path, limit=200):
+    p = os.path.expanduser(path or '~/Desktop')
+    out = []
+    try:
+        with os.scandir(p) as it:
+            for e in it:
+                if e.name.startswith('.'):
+                    continue
+                try:
+                    st = e.stat()
+                    is_dir = e.is_dir()
+                except OSError:
+                    continue
+                ext = os.path.splitext(e.name)[1].lower()
+                kind = 'folder' if is_dir else 'image' if ext in PICTURE_EXT else 'video' if ext in ('.mp4', '.mkv', '.webm', '.mov') \
+                    else 'audio' if ext in ('.mp3', '.flac', '.ogg', '.wav', '.m4a') else 'doc' if ext in ('.pdf', '.txt', '.md', '.odt', '.docx') else 'file'
+                out.append({'name': e.name, 'path': e.path, 'kind': kind, 'size': 0 if is_dir else st.st_size, 'mtime': int(st.st_mtime)})
+    except OSError as ex:
+        return {'path': p, 'error': "Can't open this folder (%s)" % (ex.strerror or 'error'), 'items': []}
+    out.sort(key=lambda x: (x['kind'] != 'folder', x['name'].lower()))
+    return {'path': p, 'name': os.path.basename(p.rstrip('/')) or p, 'items': out[:limit], 'more': max(0, len(out) - limit)}
+
+
+def pictures_dir():
+    try:
+        r = subprocess.run(['xdg-user-dir', 'PICTURES'], capture_output=True, text=True, timeout=3)
+        d = r.stdout.strip()
+        if d and d != home() and os.path.isdir(d):
+            return d
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return os.path.join(home(), 'Pictures')
+
+
+def walk_pictures(root, limit=400, depth=4):
+    out = []
+    root = os.path.expanduser(root)
+    base = root.rstrip('/').count('/')
+    for d, dirs, files in os.walk(root):
+        dirs[:] = sorted(x for x in dirs if not x.startswith('.'))
+        if d.rstrip('/').count('/') - base >= depth:
+            dirs[:] = []
+        for f in sorted(files):
+            if os.path.splitext(f)[1].lower() in PICTURE_EXT and not f.startswith('.'):
+                out.append(os.path.join(d, f))
+                if len(out) >= limit:
+                    return out
+    return out
+
+
+def photos_store():
+    p = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share'), 'nimbus', 'photos.json')
+    try:
+        with open(p, encoding='utf-8') as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def photos(source):
+    source = source or 'pictures'
+    st = photos_store()
+    albums = [{'id': a.get('id', ''), 'name': a.get('name', '')} for a in st.get('albums') or [] if isinstance(a, dict)]
+    if source == 'favorites':
+        items = [p for p in st.get('favorites') or [] if isinstance(p, str) and os.path.isfile(p)]
+        label = 'Favourites'
+    elif source.startswith('album:'):
+        al = next((a for a in st.get('albums') or [] if isinstance(a, dict) and a.get('id') == source[6:]), None)
+        items = [p for p in (al or {}).get('items') or [] if isinstance(p, str) and os.path.isfile(p)]
+        label = (al or {}).get('name') or 'Album'
+    elif source.startswith('folder:'):
+        items = walk_pictures(source[7:])
+        label = os.path.basename(source[7:].rstrip('/')) or source[7:]
+    else:
+        items = walk_pictures(pictures_dir())
+        label = 'Pictures'
+    return {'source': source, 'label': label, 'items': items, 'albums': albums}
+
+
+# ---------------------------------------------------------------------- calendar
+def events():
+    try:
+        r = subprocess.run(['hearth-time', '--events'], capture_output=True, text=True, timeout=10)
+        line = (r.stdout.strip().splitlines() or ['{}'])[-1]
+        d = json.loads(line)
+        return {'events': d.get('events') or []}
+    except (OSError, subprocess.SubprocessError, ValueError):
+        return {'events': []}
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    a = argv[2:]
+    try:
+        if cmd == 'places':
+            out = places(' '.join(a))
+        elif cmd == 'weather' and len(a) >= 2:
+            out = weather(a[0], a[1], len(a) > 2 and a[2] == 'imperial')
+        elif cmd == 'zones':
+            out = zones(a)
+        elif cmd == 'all-zones':
+            out = all_zones()
+        elif cmd == 'feed' and a:
+            out = feed(a[0])
+        elif cmd == 'folder':
+            out = folder(a[0] if a else '~/Desktop')
+        elif cmd == 'photos':
+            out = photos(a[0] if a else 'pictures')
+        elif cmd == 'events':
+            out = events()
+        else:
+            print(__doc__, file=sys.stderr)
+            return 2
+    except Exception as ex:  # a widget shows the reason, never a blank
+        out = {'error': "Couldn't get this right now (%s)" % (type(ex).__name__,)}
+    print(json.dumps(out))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
