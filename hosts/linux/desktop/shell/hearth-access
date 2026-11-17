@@ -639,12 +639,16 @@ def main(argv):
         out = {'screenReader': on}
     elif c == 'magnifier' and len(a) == 1 and a[0] in ('in', 'out', 'off'):
         if mode() == 'kwin':
-            # KWin's zoom (or magnifier) effect: its own Super+= / Super+- / Super+0 actions.
+            # KWin's zoom (or magnifier) effect: its own Super+= / Super+- / Super+0 actions (kwin-pages); when KWin
+            # doesn't take the call, the same keys typed by hearth-type (kwin-input).
             k = kwin_tool()
             try:
                 k.shortcut({'in': 'zoom-in', 'out': 'zoom-out', 'off': 'zoom-reset'}[a[0]])
             except k.Fail as e:
-                raise Fail(str(e))
+                typer = [sys.executable, os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-type')]
+                key = {'in': 'equal', 'out': 'minus', 'off': '0'}[a[0]]
+                if run(typer + ['-M', 'logo', '-k', key, '-m', 'logo'])[0] != 0:
+                    raise Fail(str(e))
             print(json.dumps({'ok': True}), flush=True)
             return
         # The same keys labwc has for it (rc.xml), typed: labwc reads keys typed by wtype like real ones.
