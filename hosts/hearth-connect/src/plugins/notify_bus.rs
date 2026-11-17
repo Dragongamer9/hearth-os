@@ -116,6 +116,7 @@ pub fn phone_notification(d: &Arc<Daemon>, id: &str, entry: &Value, summary: &st
     let dismissable = entry["dismissable"].as_bool().unwrap_or(true);
     let mut actions: Vec<(String, String)> = vec![("default".into(), "Open".into())];
     for a in entry["actions"].as_array().into_iter().flatten().filter_map(|a| a.as_str()) { actions.push((format!("phone:{a}"), a.to_string())); }
+    let wants_reply = reply_id.is_some();
     let (d2, dev) = (d.clone(), id.to_string());
     let on: Callback = Arc::new(move |ev| match ev {
         Event::Action(k) if k == "default" || k == "inline-reply" => open_settings(),
@@ -130,5 +131,5 @@ pub fn phone_notification(d: &Arc<Daemon>, id: &str, entry: &Value, summary: &st
         Event::Closed(2) => if dismissable { let _ = d2.send_body(&dev, "kdeconnect.notification.request", json!({"cancel": key})); },
         Event::Closed(_) => {}
     });
-    notify(summary, body, "smartphone", replaces, false, &actions, reply_id.as_ref().map(|_| "Reply…"), on)
+    notify(summary, body, "smartphone", replaces, false, &actions, if wants_reply { Some("Reply…") } else { None }, on)
 }
