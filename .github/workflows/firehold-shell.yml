@@ -139,7 +139,10 @@ jobs:
           q firehold couch; sleep 4
           # 5. Library, the first tile focused; then a filter and the search
           q firehold tab library; shot 05-library 5
-          q firehold tab home; shot 01-couch-home 6
+          # (Home's clock line repaints once a minute; the software renderer's partial repaint under labwc headless can
+          # shift the rest of a picture taken then, so the picture is taken right after a full repaint, away from :00.)
+          while [ "$(date +%S)" -gt 45 ] || [ "$(date +%S)" -lt 3 ]; do sleep 1; done
+          q firehold tab home; shot 01-couch-home 2
           q firehold filter epic; shot 05b-library-epic 3; q firehold filter all
           q firehold search "deep"; shot 05c-library-search 3; q firehold search ""
           q firehold tab apps; shot 07-apps 4
