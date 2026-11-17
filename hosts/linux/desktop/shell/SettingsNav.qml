@@ -46,6 +46,9 @@ Singleton {
     property bool discordShown: false // its "Which Discord?" chooser is open
     property var winTools: null       // Device Manager, Run and the Super+X menu (WinTools.qml): the Start button's right-click
     property bool winxShown: false    // the Super+X menu is open
+    // 1.14: the search bar (SearchBar.qml, Alt+Space): the controller types keys while it's open; Desktop.qml and Pad.qml open it.
+    property var searchBar: null
+    property bool searchBarShown: false
     // 1.14: desktop widgets and activities (Widgets.qml sets these; Quick Access and the desktop's menu use them, so
     // they never depend on Widgets.qml having loaded).
     property var widgets: null        // Widgets.qml: openGallery(screen), startArrange(screen), openActivities()
