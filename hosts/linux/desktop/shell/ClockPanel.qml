@@ -113,7 +113,6 @@ PanelWindow {
         command: ["python3", decodeURIComponent(Qt.resolvedUrl("hearth-widgets").toString().replace(/^file:\/\//, "")), "zones"].concat(BarLayout.clockZones)
         stdout: StdioCollector { onStreamFinished: { try { const o = JSON.parse(text.trim().split("\n").pop()); const m = {}; for (const z of o.zones || []) if (z.offset !== null) m[z.tz] = z.offset; root.zoneOffsets = m; } catch (e) {} } }
     }
-    onShownChanged: if (shown && BarLayout.clockZones.length && !zoneRead.running) zoneRead.running = true
     function zoneTime(tz) {
         const off = zoneOffsets[tz];
         if (off === undefined) return "…";
@@ -154,7 +153,7 @@ PanelWindow {
 
     visible: shown || closing.running
     Timer { id: closing; interval: Theme.calm + 60 }
-    onShownChanged: if (!shown) closing.restart()
+    onShownChanged: { if (!shown) closing.restart(); else if (BarLayout.clockZones.length && !zoneRead.running) zoneRead.running = true; }
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "hearth-calendar"
     WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
