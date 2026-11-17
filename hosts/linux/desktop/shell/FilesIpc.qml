@@ -34,6 +34,10 @@ Scope {
         function letter(l: string): void { const r = ipc.get().fromLetters(l + ":\\"); if (r && r.path) { ipc.get().open(""); ipc.get().navigate(r.path, ""); } }
         function details(on: string): void { ipc.get().detailsPane = on === "on"; ipc.get().rememberView(); }
         function undo(): void { ipc.get().undo(); }
+        // The terminal panel (F4) and split view (F9) on or off; Compare two items of this folder ("a.txt/b.txt").
+        function terminal(on: string): void { ipc.get().termPanel = on === "on"; }
+        function split(on: string): void { ipc.get().splitView = on === "on"; }
+        function compare(names: string): void { const ps = names.split("/").map(n => ipc.get().entries.find(x => x.name === n)).filter(Boolean).map(e => e.path); ipc.get().compareTwo(ps); }
         // Renaming in place (as F2 does with a keyboard); "" puts the name back without renaming.
         function rename(name: string): void { const e = ipc.get().entries.find(x => x.name === name); ipc.get().renaming = e ? e.path : ""; }
         function marks(names: string): void { const m = {}; for (const n of names.split("/")) { const e = ipc.get().entries.find(x => x.name === n); if (e) m[e.path] = true; } ipc.get().marked = m; }

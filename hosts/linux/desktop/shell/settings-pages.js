@@ -47,6 +47,7 @@ var PAGES = [
     { id: "boot", file: "SetBoot.qml", cat: "system", label: "Boot splash", icon: "sparkle", desc: "The boot splash Hearth OS shows while it starts", words: "boot splash startup plymouth", old: "Boot & startup", props: { part: "splash" } },
     { id: "datetime", file: "SetDateTime.qml", cat: "system", label: "Date & time", icon: "clock", desc: "Time zone, 24-hour clock", words: "clock time zone 24-hour", old: "Date & time" },
     { id: "clipboard", file: "SetClipboard.qml", cat: "system", label: "Clipboard", icon: "clipboard", desc: "Clipboard history (Super+V)", words: "copy paste history", old: "Clipboard" },
+    { id: "search", file: "SetSearch.qml", cat: "system", label: "Search", icon: "search", desc: "The file index, searching inside documents, and what the app menus' search finds", words: "file index indexing baloo krunner find files contents documents calculator units currency web shortcuts emoji commands" },
     { id: "about", file: "SetAbout.qml", cat: "system", label: "About", icon: "info", desc: "Version, this PC's parts and name", words: "system version hardware name", old: "About", props: { part: "about" } },
 
     // ---- Network & internet (Wi-Fi is the landing, as in the mockup; Tailscale follows it under "Reach your devices from anywhere")
@@ -71,6 +72,7 @@ var PAGES = [
     // ---- Apps
     { id: "apps-home", file: "SetCategory.qml", cat: "apps", label: "Apps", icon: "store", landing: true },
     { id: "apps", file: "SetApps.qml", cat: "apps", label: "Installed apps", icon: "store", desc: "Apps from Debian packages, Flathub and AppImages; uninstall", words: "install uninstall packages deb flatpak appimage", old: "Apps" },
+    { id: "store", file: "SetStore.qml", cat: "apps", label: "App store", icon: "store", desc: "Find and install apps from Flathub, updates and sources", words: "discover flathub flatpak install get apps software center store updates sources remotes reviews ratings screenshots" },
     { id: "winapps", file: "SetWinApps.qml", cat: "apps", label: "Windows apps", icon: "window", desc: "Windows programs (.exe, .msi) with the Proton built into Hearth OS: open, Proton, remove", words: "windows exe msi proton wine dxvk vkd3d ge-proton program installer" },
     { id: "defaults", file: "SetDefaults.qml", cat: "apps", label: "Default apps", icon: "grid", desc: "Which app opens web links, pictures, music and more", words: "default apps browser terminal", old: "Default apps" },
     { id: "browser", file: "SetBrowser.qml", cat: "apps", label: "Web browser", icon: "globe", desc: "Hearth's browser and its settings", words: "web firefox", old: "Web browser" },
@@ -116,6 +118,7 @@ var PAGES = [
     // ---- Privacy & security
     { id: "privacy", file: "SetCategory.qml", cat: "privacy", label: "Privacy & security", icon: "shield", landing: true },
     { id: "player-count", file: "SetAbout.qml", cat: "privacy", label: "Player count", icon: "users", desc: "Hearth OS's anonymous count of running devices", words: "privacy counter telemetry anonymous", old: "About › Privacy", props: { part: "privacy" }, status: "countMe" },
+    { id: "passwords", file: "SetPasswords.qml", cat: "privacy", label: "Passwords", icon: "key", desc: "Sign-ins apps keep in the password store, keyrings, lock", words: "keyring gnome keyring kwallet wallet secret service saved passwords sign-ins remove lock unlock" },
 
     // ---- Accessibility (the page is the landing)
     { id: "accessibility", file: "SetAccessibility.qml", cat: "a11y", label: "Accessibility", icon: "access", words: "magnifier contrast text size screen reader colour filters reduce motion", old: "Accessibility", landing: true },

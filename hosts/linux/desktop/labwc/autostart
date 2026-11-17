@@ -120,6 +120,10 @@ fi
 # auto-sync on, and nothing here waits for it or fails with it. Not for a second player's seat.
 [ -z "$HEARTH_SEAT" ] && command -v systemctl >/dev/null 2>&1 && systemctl --user start --no-block hearth-briefcase-sync.service >/dev/null 2>&1 &
 
+# The file index (hearth-search.service, like Baloo): asked for without waiting, lowest priority; it skips itself when
+# Settings › Search has indexing off, and nothing here waits for it or fails with it. Not for a second player's seat.
+[ -z "$HEARTH_SEAT" ] && command -v systemctl >/dev/null 2>&1 && systemctl --user start --no-block hearth-search.service >/dev/null 2>&1 &
+
 # ---- Welcome & Tips (hosts/hearth-tools): the first-run tour, the first time Desktop Mode starts on this account.
 # hearth-tools remembers it was shown (~/.local/share/nimbus/welcome-done) and does nothing after that. Not on a live
 # USB (the installer has its own welcome) or a second player's seat.

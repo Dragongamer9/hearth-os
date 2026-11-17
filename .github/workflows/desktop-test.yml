@@ -1894,6 +1894,92 @@ jobs:
           [ -z "$xbad" ] || bad "$xbad"
           pkill -x labwc || true; pkill -f quickshell || true
 
+      # Search like KRunner + Baloo, Passwords like KDE Wallet, the App store like Discover, and Hearth Files' terminal
+      # panel / split view / Compare (1.14, feature/search-store): the helpers' tests, then each new view on a real
+      # 1920x1080 screen. The search-store-shots job posts the pictures as SHOT notices (names in its matrix).
+      - name: Search, passwords, app store and Files (1.14)
+        if: always()
+        shell: bash
+        run: |
+          o=shots/search-store; mkdir -p $o
+          exec > >(tee $o/step.log) 2>&1
+          say() { echo "::notice title=Search and store::$*"; }
+          bad() { echo "::error title=Search and store::$*"; touch shots/FAILED; }
+          dnf -y install gnome-keyring libsecret systemd poppler-utils flatpak sqlite >/dev/null 2>&1 || true
+          fails=""
+          for t in test_search_plugins test_hearth_search test_hearth_secrets test_hearth_store test_files_dolphin_gaps; do
+            python3 -m unittest discover -s hosts/linux/test -p "$t.py" > $o/$t.log 2>&1 || { fails="$fails $t"; grep -E "^(FAIL|ERROR):|Error:" $o/$t.log | head -4 | tr '\n' '|' | sed "s/^/$t: /" > $o/$t.why; }
+          done
+          [ -z "$fails" ] && say "unit tests: search plugins, file index, passwords, app store and Files all pass" || bad "unit tests failed:$fails — $(cat $o/*.why 2>/dev/null | tr '\n' ' ' | cut -c1-600)"
+          set -x
+          pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; sleep 2
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH="/tmp/fakebin:$PATH"
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          [ -S "$XDG_RUNTIME_DIR/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          unset XDG_DATA_DIRS; eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session)"
+          SH="$PWD/hosts/linux/desktop/shell"
+          # The password store with two made-up sign-ins (no real secret: the values are the word "demo").
+          if command -v gnome-keyring-daemon >/dev/null; then
+            eval "$(printf '' | gnome-keyring-daemon --unlock --replace --components=secrets 2>/dev/null)" || true
+            sleep 2
+            printf demo | secret-tool store --label='Chromium Safe Storage' application chromium xdg:schema chrome_libsecret_os_crypt_password_v2 || true
+            printf demo | secret-tool store --label='smb://nas/photos' xdg:schema org.gnome.keyring.NetworkPassword user sam server nas protocol smb || true
+          fi
+          say "passwords: $(python3 $SH/hearth-secrets status 2>&1 | tail -1 | cut -c1-300)"
+          # Flathub for the App store (yours, no system helper needed), and the file index made once.
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo >/dev/null 2>&1 || true
+          say "store: $(python3 $SH/hearth-store home 2>&1 | tail -1 | cut -c1-200)"
+          mkdir -p "$HOME/Documents/Taxes" "$HOME/Projects"
+          printf 'the quarterly budget numbers\n' > "$HOME/Documents/report.txt"; printf 'the quarterly budget numbers\nand more\n' > "$HOME/Documents/report-v2.txt"
+          : > "$HOME/Documents/Taxes/Budget-2026.ods"
+          echo '{"contents": true}' | python3 $SH/hearth-search prefs-set >/dev/null
+          say "file index: $(python3 $SH/hearth-search index 2>&1 | tail -1) · query budget: $(python3 $SH/hearth-search query budget | cut -c1-200)"
+          rm -f "$XDG_RUNTIME_DIR"/wayland-*
+          CONF=$(python3 $SH/hearth-system labwc-config)
+          labwc -C "$CONF" > $o/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 2; }
+          wtype -k Shift_L; sleep 1
+          # ---- the launcher's search plugins (the Hearth menu)
+          got=$(quickshell ipc -p "$SH" call launcher answers "10 km to mi" 2>/dev/null | tail -1)
+          case "$got" in *'6.2137 mi'*) say "the shell's search answers 10 km to mi: $got" ;; *) bad "the shell's search plugins didn't answer 10 km to mi: $got" ;; esac
+          shot() { ipc launcher query "$2"; sleep 2; grim "$o/$1.png" || true; ipc launcher close; }
+          shot s-calc "(3+4)*2^3"
+          shot s-convert "72 f in c"
+          shot s-currency "20 usd to eur"
+          shot s-web "gg:hearth os"
+          shot s-command ">htop"
+          shot s-emoji ":fire"
+          # ---- the same in the Centred menu (MenuSearch.qml: answers in their groups, with the preview)
+          D="$HOME/.local/share/nimbus/desktop.json"; mkdir -p "$(dirname "$D")"; [ -s "$D" ] || echo '{}' > "$D"
+          python3 $SH/hearth_settings_io.py merge "$D" '{"appMenu": "centred"}' >/dev/null; sleep 4
+          ipc launcher query ""; sleep 1; wtype "2+2" 2>/dev/null || true; sleep 2; grim $o/s-centred-menu.png || true; ipc launcher close
+          python3 $SH/hearth_settings_io.py merge "$D" '{"appMenu": null}' >/dev/null; sleep 3
+          # ---- Settings › Search, Passwords, App store (home, an app, Updates)
+          sp() { ipc settings close; ipc settings page "$1"; sleep "${3:-4}"; grim "$o/$2.png" || true; }
+          sp search set-search
+          sp passwords set-passwords
+          sp store set-store 12
+          sp store:app-org_kde_krita store-app 14
+          sp store:updates store-updates 10
+          ipc settings close
+          # ---- Hearth Files: the terminal panel (F4), split view (F9), Compare
+          ipc files open "$HOME/Documents"; sleep 3
+          ipc filemanager terminal on; sleep 1; wtype "ls -la" 2>/dev/null; wtype -k Return; sleep 3; grim $o/files-terminal.png || true
+          ipc filemanager terminal off; ipc filemanager split on; sleep 3; grim $o/files-split.png || true
+          ipc filemanager split off; ipc filemanager compare "report.txt/report-v2.txt"; sleep 2; grim $o/files-compare.png || true
+          ipc files close
+          cp "$LOG" $o/nimbus-shell.log 2>/dev/null || true
+          xbad=$(grep -E "(Launcher|MenuSearch|SetSearch|SetPasswords|SetStore|FilesTerminal|FilesSplitPane|FileManager|FilesIpc)\.qml.*(rror|TypeError|ReferenceError|is not defined|is not a type|Cannot|non-existent|Unable to assign)|search/[a-z-]+\.js" "$LOG" 2>/dev/null | head -8 | cut -c1-240 | tr '\n' '|' || true)
+          [ -z "$xbad" ] && say "no QML errors from the new views" || bad "$xbad"
+          ls -la $o
+          pkill -x labwc || true; pkill -f quickshell || true
+
       # Server mode (docs/SERVER-MODE.md): its own labwc folder and dashboard started for real on a virtual screen, with the
       # dashboard's data from a fixture (the mockup's numbers); the AI tile opened, the 5-second switch countdown, a web
       # page's 10-second countdown, "Back in Server mode", the menu, the idle screen, Settings › Home server › Server mode
@@ -2152,3 +2238,55 @@ jobs:
         run: f=shots/hearth-game-mode/03-picked-hearth-switch-now.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-switch-now $i::$part"; done || true
       - name: Picture (gm-fallback)
         run: f=shots/hearth-game-mode/04-hearth-game-mode-didnt-start.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT gm-fallback $i::$part"; done || true
+
+  # Search, Passwords, the App store and Hearth Files' new parts (1.14, feature/search-store): their pictures as notices
+  # (a JPEG in base64 pieces, title "SHOT <name> <n>"), five a job, one step each (a job keeps 50 notices).
+  search-store-shots:
+    needs: desktop
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shots: ["s-calc s-convert s-currency s-web s-command", "s-emoji s-centred-menu set-search set-passwords set-store",
+                "store-app store-updates files-terminal files-split files-compare"]
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: desktop-screenshots
+          path: shots
+      - name: Make the JPEGs
+        env:
+          SHOTS: ${{ matrix.shots }}
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, io, os
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          for name in os.environ['SHOTS'].split():
+              p = 'shots/search-store/%s.png' % name
+              if not os.path.exists(p):
+                  print('::warning title=SHOT %s::no picture' % name)
+                  continue
+              im = Image.open(p).convert('RGB')
+              print('%s: %dx%d' % (name, im.width, im.height))
+              for w, q in ((800, 50), (720, 45), (640, 38), (560, 30), (480, 25)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open('shots/search-store/%s.jpg' % name, 'wb').write(b.getvalue())
+          PY
+      - name: Picture 1
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f1); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 2
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f2); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 3
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f3); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 4
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f4); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true
+      - name: Picture 5
+        run: n=$(echo "${{ matrix.shots }}" | cut -d' ' -f5); f=shots/search-store/$n.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT $n $i::$part"; done || true

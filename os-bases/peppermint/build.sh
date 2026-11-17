@@ -177,6 +177,10 @@ systemctl enable hhd.service
 "${APT[@]}" libglib2.0-bin gvfs gvfs-backends gvfs-fuse libsecret-tools
 # avahi-browse finds other computers sharing at home (a missing one only means they aren't listed).
 optional avahi-utils
+# Search and Hearth Files (1.14): pdftotext lets the file index read PDFs (Settings › Search › Search inside
+# documents) and pdftoppm draws PDFs' first page as their preview in Files (poppler-utils, about 1 MB). Optional:
+# without it PDFs are found by name and shown with their icon.
+optional poppler-utils
 command -v gio secret-tool
 # Hearth Files' locked Briefcases (hearth-briefcase): gocryptfs keeps a Briefcase's files encrypted inside the folder
 # (FUSE: fuse3, below), so a lost USB stick gives nothing away. Required: the image fails here without it.
@@ -251,6 +255,15 @@ optional dmidecode
 optional qml6-module-qtquick-virtualkeyboard qml6-module-qtmultimedia
 # AMD's X driver for the login screen's X server (it came with the Xfce session before that went off by default).
 optional xserver-xorg-video-amdgpu
+# HEARTH-PAM-KEYRING: signing in at the login screen with your password unlocks the password store (GNOME Keyring,
+# Settings › Passwords). Debian's sddm file usually has these lines already; add them only when missing. "-" and
+# "optional": a missing or failing module never stops anyone signing in (autologin has no password: the session's
+# own unprotected Hearth keyring stays, nimbus-session).
+for f in /etc/pam.d/sddm; do
+  [ -f "$f" ] || continue
+  grep -Eq '^-?auth[[:space:]]+optional[[:space:]]+pam_gnome_keyring\.so' "$f" || printf '%s\n' '-auth     optional  pam_gnome_keyring.so' >> "$f"
+  grep -Eq '^-?session[[:space:]]+optional[[:space:]]+pam_gnome_keyring\.so' "$f" || printf '%s\n' '-session  optional  pam_gnome_keyring.so auto_start' >> "$f"
+done
 
 # ------------------------------------------------------------------ Xfce session (optional, off by default)
 # Hearth OS is Debian-based now; the Xfce session (a plain fallback desktop on the login screen) is off by default

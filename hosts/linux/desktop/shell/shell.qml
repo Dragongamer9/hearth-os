@@ -377,6 +377,10 @@ ShellRoot {
         function section(name: string): void { launcher.openTab(name === "games" ? "games" : "apps"); }
         // For checks (CI's Desktop Mode test): the ids of the apps it lists, one per line.
         function listed(): string { return launcher.apps.map(a => a.id).join("\n"); }
+        // The search with this text typed (the Hearth menu; the other menus get their search field focused), and,
+        // for checks, what the search plugins answer for a text (search/runners.js) as JSON.
+        function query(text: string): void { launcher.searchFor(text); }
+        function answers(text: string): string { return JSON.stringify(launcher.answersFor(text).map(a => ({ plugin: a.plugin, title: a.title, action: a.action }))); }
     }
     // App icons (AppIcons.qml), for checks: what an Icon= value and/or a window's app id resolve to ("" = nothing
     // found), and which desktop entry a window's app id belongs to.
