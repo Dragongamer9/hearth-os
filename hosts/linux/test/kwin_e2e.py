@@ -66,12 +66,17 @@ def grim(name):
         if r.returncode != 0:
             print('no picture %s: %s' % (name, r.stderr.strip()), flush=True)
         # labwc shows nothing of KWin (its window never appeared there): KWin's own picture instead.
-        try:
-            from PIL import Image, ImageStat
-            if max(ImageStat.Stat(Image.open(p).convert('L')).mean) < 3 and hs.shot(('workspace',), p):
-                note('picture ' + name, 'labwc showed no KWin window; KWin\'s own screenshot used')
-        except Exception as e:
-            print('picture check %s: %r' % (name, e), flush=True)
+        dark = r.returncode != 0 or not os.path.exists(p)
+        if not dark:
+            try:
+                from PIL import Image, ImageStat
+                dark = max(ImageStat.Stat(Image.open(p).convert('L')).mean) < 3
+            except Exception as e:
+                print('picture check %s: %r' % (name, e), flush=True)
+        if dark:
+            ok = hs.shot(('workspace',), p)
+            note('picture ' + name, 'labwc gave %s; KWin\'s own screenshot %s' % (
+                'nothing (%s)' % r.stderr.strip()[:120] if r.returncode else 'a dark picture', 'used' if ok else 'failed too: ' + hs.LAST_ERROR[0][:160]))
     elif not hs.shot(('workspace',), p):
         print('no picture %s (KWin\'s screenshot)' % name, flush=True)
 
