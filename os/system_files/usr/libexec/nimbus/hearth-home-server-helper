@@ -2591,8 +2591,10 @@ SMALL_MODELS = (SMALL_MODEL, 'huihui_ai/qwen3-abliterated:14b')   # the choices 
 COMFY_QUEUE = '/run/hearth/comfyui-queue.json'   # ComfyUI's queue kept while it's stopped for your game (root only, 0600)
 GPU_LIMIT_STATE = '/run/hearth/server-gpu-limit'
 USER_APPS = {'comfyui': ('pictures', 'hearth-comfyui.service', True), 'kokoro': ('voices', 'hearth-kokoro.service', False),
-             'voicestudio': ('studio', 'hearth-voice-studio.service', True)}   # on the graphics card: stops while you play by default
-USER_APP_PORTS = {'comfyui': COMFY_PORT, 'kokoro': KOKORO_PORT, 'voicestudio': STUDIO_PORT}
+             'voicestudio': ('studio', 'hearth-voice-studio.service', True),   # on the graphics card: stops while you play by default
+             'colibri': ('colibri', 'hearth-colibri.service', True)}   # 1.14: Colibri, the second AI engine (graphics card too)
+COLIBRI_PORT = 11440               # Colibri (hearth-colibri: coli serve on 127.0.0.1, and this PC's Tailscale address)
+USER_APP_PORTS = {'comfyui': COMFY_PORT, 'kokoro': KOKORO_PORT, 'voicestudio': STUDIO_PORT, 'colibri': COLIBRI_PORT}
 ACCOUNT_RE = re.compile(r'^[a-z_][a-z0-9_-]{0,31}$')
 USER_RUN = '/run/user/%d'      # your user manager's runtime folder (its bus is there while you're signed in)
 GUARD_LIMITS = (500, 1000, 5000)
@@ -3225,8 +3227,8 @@ def rules_light(plan, playing, paused, did, st=None, now=None):
     st = {} if st is None else st
     now = time.time() if now is None else now
     for name, (key, unit, pdef) in USER_APPS.items():
-        if name == 'voicestudio' or not rule_wait(RULE_OF[name]) or name in paused:
-            continue                      # Voice Studio's own queue waits by itself (it reads the same file)
+        if name not in RULE_OF or name == 'voicestudio' or not rule_wait(RULE_OF[name]) or name in paused:
+            continue                      # Voice Studio's own queue waits by itself (it reads the same file); no rule is for Colibri
         cfg = clean_user_app(plan.get(key), pdef)
         if not cfg['on'] or user_systemctl(user, 'is-active', unit)[0] != 0:
             continue

@@ -74,6 +74,13 @@ SetPage {
         onActivated: SettingsNav.openPage("startup")
     }
 
+    SetRow {
+        chevron: true
+        icon: "chat"; title: "AI engine"
+        sub: "Ollama, Colibri or both. Colibri runs much bigger models: the busiest parts on the graphics card, the rest in memory and on your drive"
+        onActivated: SettingsNav.openPage("hs-aiengine")
+    }
+
     SetHeader { text: "Power when idle" }
     SetSwitch {
         visible: !!page.s

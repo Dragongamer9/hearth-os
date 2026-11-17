@@ -159,6 +159,7 @@ DEFAULTS = {
     'pictures': {'on': False, 'pause': True},     # ComfyUI on the graphics card: stopped while you play (it holds VRAM)
     'voices': {'on': False, 'pause': False},      # Kokoro-FastAPI on the CPU: keeps running while you play unless you choose
     'studio': {'on': False, 'pause': True},       # Voice Studio on the graphics card: stopped while you play (its queue waits)
+    'colibri': {'on': False, 'pause': True},      # Colibri (1.14, hearth-colibri) on the graphics card: stopped while you play
 }
 BOOL_KEYS = ('lightMode', 'tsOnly', 'tsBoot', 'exitNode', 'taildropReceive', 'wakeFromAway', 'snapshots', 'showHidden', 'setupDone', 'showAdult')
 KEEP_KEYS = {'keepHourly': 'hourly', 'keepDaily': 'daily', 'keepWeekly': 'weekly'}
@@ -183,6 +184,7 @@ NESTED = {
     'picturesOn': ('pictures', 'on', 'bool'), 'picturesPause': ('pictures', 'pause', 'bool'),
     'voicesOn': ('voices', 'on', 'bool'), 'voicesPause': ('voices', 'pause', 'bool'),
     'studioOn': ('studio', 'on', 'bool'), 'studioPause': ('studio', 'pause', 'bool'),
+    'colibriOn': ('colibri', 'on', 'bool'), 'colibriPause': ('colibri', 'pause', 'bool'),
 }
 WEB_KEYS = ('webOn', 'webReach')
 APPLY_KEYS = ('lightMode', 'tsOnly', 'tsBoot', 'snapshots') + tuple(KEEP_KEYS) + tuple(NESTED)
@@ -349,7 +351,8 @@ def apply_payload(data):
             'backups': backups, 'receive': {'on': rc.get('on') is True, 'path': rc.get('path') or ''},
             'alerts': data.get('alerts'), 'power': data.get('power'),
             'media': data.get('media'), 'ai': ai_payload(data), 'guard': data.get('guard'),
-            'pictures': data.get('pictures'), 'voices': data.get('voices'), 'studio': data.get('studio'), 'serverWeb': server_web_on()}
+            'pictures': data.get('pictures'), 'voices': data.get('voices'), 'studio': data.get('studio'), 'colibri': data.get('colibri'),
+            'serverWeb': server_web_on()}
 
 
 SERVER_MODE = os.path.join(CONFIG_HOME, 'nimbus', 'server-mode.json')
@@ -821,7 +824,7 @@ def side_effect(key, on):
         return {'notes': [n for n in notes if n]}
     elif key in WEB_KEYS:
         return web_apply()
-    elif key in ('picturesOn', 'voicesOn', 'studioOn'):
+    elif key in ('picturesOn', 'voicesOn', 'studioOn', 'colibriOn'):
         # Root's part first (their ports in the Tailscale-only rule, the Light mode timer); they listen only on this PC
         # and its Tailscale address either way, so a failed apply never stops them being yours to turn on or off.
         out = {}
@@ -829,7 +832,7 @@ def side_effect(key, on):
             out = apply_now()
         except Fail as e:
             out = {'note': str(e)}
-        out['app'] = user_app_switch({'picturesOn': 'comfyui', 'voicesOn': 'kokoro', 'studioOn': 'voicestudio'}[key], on)
+        out['app'] = user_app_switch({'picturesOn': 'comfyui', 'voicesOn': 'kokoro', 'studioOn': 'voicestudio', 'colibriOn': 'colibri'}[key], on)
         return out
     elif key in APPLY_KEYS:
         return apply_now()
@@ -1629,6 +1632,8 @@ def quick():
             paused.append('AI voices')
         if data['studio'].get('on') and data['studio'].get('pause'):
             paused.append('Voice Studio')
+        if (data.get('colibri') or {}).get('on') and (data.get('colibri') or {}).get('pause', True):
+            paused.append('Colibri')
     return {'available': True, 'host': socket.gethostname().split('.')[0], 'lightMode': data['lightMode'] is not False,
             'playing': playing, 'resumed': resumed(), 'paused': paused, 'shares': len(shares), 'people': len(data['people']),
             'usage': fs_usage([s['path'] for s in shares if os.path.isdir(s.get('path', ''))]),
@@ -2047,9 +2052,13 @@ KOKORO_DIGEST = 'sha256:cbcc28802fb5d1eaaba8b91e38b0e872a669e85831c513cf6a29c709
 KOKORO_PORT = 8880
 KOKORO_NAME = 'hearth-kokoro'
 HOME_AI_STATE = os.path.join(STATE_HOME, 'nimbus', 'home-ai.json')
-AI_UNITS = {'comfyui': 'hearth-comfyui.service', 'kokoro': 'hearth-kokoro.service', 'voicestudio': 'hearth-voice-studio.service'}
-AI_TIMERS = {'comfyui': 'hearth-comfyui.timer', 'kokoro': 'hearth-kokoro.timer', 'voicestudio': 'hearth-voice-studio.timer'}
-AI_KEYS = {'comfyui': 'picturesOn', 'kokoro': 'voicesOn', 'voicestudio': 'studioOn'}
+AI_UNITS = {'comfyui': 'hearth-comfyui.service', 'kokoro': 'hearth-kokoro.service', 'voicestudio': 'hearth-voice-studio.service',
+            'colibri': 'hearth-colibri.service'}
+AI_TIMERS = {'comfyui': 'hearth-comfyui.timer', 'kokoro': 'hearth-kokoro.timer', 'voicestudio': 'hearth-voice-studio.timer',
+             'colibri': 'hearth-colibri.timer'}
+AI_KEYS = {'comfyui': 'picturesOn', 'kokoro': 'voicesOn', 'voicestudio': 'studioOn', 'colibri': 'colibriOn'}
+# Colibri (1.14): its engine as hearth-colibri installs it (next to this file; its own install, run and models).
+COLIBRI_COLI = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'hearth', 'colibri', 'engine', 'coli')
 STUDIO_PORT = 8890
 OWNER_COMFY_UNIT = 'comfyui.service'       # the owner's own (from his install script), adopted only when he says so
 OWNER_KOKORO = 'kokoro'                    # his own container (podman run --name kokoro ...)
@@ -2194,7 +2203,8 @@ def user_app_switch(name, on):
     """Your own service on or off now (and its timer, which starts it a minute after you sign in). Off deletes nothing."""
     unit, timer = AI_UNITS[name], AI_TIMERS[name]
     if on:
-        installed = comfy_installed() if name == 'comfyui' else kokoro_installed() if name == 'kokoro' else studio_installed()
+        installed = comfy_installed() if name == 'comfyui' else kokoro_installed() if name == 'kokoro' \
+            else os.path.isfile(COLIBRI_COLI) if name == 'colibri' else studio_installed()
         if not installed:
             return 'not installed'
         cmd(['systemctl', '--user', 'enable', timer], 30)
@@ -2223,6 +2233,9 @@ def user_app_precheck(key, raw):
     elif key == 'studioOn':
         if not studio_installed():
             raise Fail('Install Voice Studio first')
+    elif key == 'colibriOn':
+        if not os.path.isfile(COLIBRI_COLI):
+            raise Fail('Install Colibri first (Settings › Home server › AI engine)')
 
 
 def free_gb(path):
@@ -3441,6 +3454,8 @@ def safety_view():
         reach.append({'what': 'AI voices (Kokoro)', 'where': 'tailscale', 'who': 'your devices on Tailscale'})
     if data['studio'].get('on'):
         reach.append({'what': 'Voice Studio', 'where': 'tailscale', 'who': 'your PIN (the page) and its key (apps)'})
+    if (data.get('colibri') or {}).get('on'):
+        reach.append({'what': 'AI engine (Colibri)', 'where': 'tailscale', 'who': 'your devices on Tailscale'})
     jobs = backups_state(data)
     last_ok = max([(j.get('state') or {}).get('lastOk') or 0 for j in jobs] or [0])
     guard = sio.load_json(GUARD_STATE, {}, repair=False) if os.path.exists(GUARD_STATE) else {}
