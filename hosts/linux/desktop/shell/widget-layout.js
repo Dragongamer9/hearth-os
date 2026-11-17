@@ -14,7 +14,7 @@
 var CATALOG = [
     { type: "clock", name: "Clock", icon: "clock", w: 300, h: 220, minW: 180, minH: 130, bar: true,
       about: "Analog or digital, with as many cities as you like" },
-    { type: "calendar", name: "Calendar", icon: "calendar", w: 340, h: 380, minW: 260, minH: 260, bar: false,
+    { type: "calendar", name: "Calendar", icon: "calendar", w: 340, h: 420, minW: 260, minH: 260, bar: false,
       about: "This month and what's coming up" },
     { type: "weather", name: "Weather", icon: "cloud", w: 330, h: 230, minW: 220, minH: 140, bar: true,
       about: "Open-Meteo forecast for a place you pick by name" },
@@ -39,6 +39,17 @@ var CATALOG = [
     { type: "quicknotes", settings: false, name: "Quick notes", icon: "list", w: 310, h: 330, minW: 220, minH: 180, bar: false,
       about: "A short list you can tick off" }
 ];
+
+// A list from the settings file, whatever form Qt hands it over in (a JavaScript array, or the list type a
+// value stored in a QML property can come back as, where Array.isArray says false); null when it isn't one.
+function asList(v) {
+    if (v === null || v === undefined || typeof v === "string" || typeof v !== "object") return null;
+    if (Array.isArray(v)) return v;
+    if (typeof v.length !== "number") return null;
+    var o = [];
+    for (var i = 0; i < v.length; i++) o.push(v[i]);
+    return o;
+}
 
 // Whether a widget has settings (its gear): all but those marked settings: false.
 function hasSettings(type) { var t = info(type); return !!t && t.settings !== false; }

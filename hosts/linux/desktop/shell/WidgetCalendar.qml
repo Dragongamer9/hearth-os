@@ -15,7 +15,8 @@ WidgetBase {
     property var events: []
     readonly property bool agenda: c("agenda", true) !== false
     readonly property date today: new Date()
-    implicitWidth: 340; implicitHeight: 380
+    implicitWidth: 340; implicitHeight: 420
+    readonly property int room: Math.max(1, Math.floor((height - 330) / 38))   // agenda rows that fit
 
     Process {
         id: ev
@@ -29,9 +30,9 @@ WidgetBase {
     function eventsOn(k) { return events.filter(e => (e.date || "") <= k && (e.lastDate || e.date || "") >= k); }
     readonly property var dotted: { const o = {}; for (const e of events) o[e.date] = true; return o; }
     readonly property var shownEvents: {
-        if (picked) return eventsOn(key(picked.y, picked.m, picked.d));
+        if (picked) return eventsOn(key(picked.y, picked.m, picked.d)).slice(0, room);
         const t = key(today.getFullYear(), today.getMonth(), today.getDate());
-        return events.filter(e => (e.lastDate || e.date || "") >= t).slice(0, 6);
+        return events.filter(e => (e.lastDate || e.date || "") >= t).slice(0, room);
     }
     function when(e) {
         if (e.allDay) return "All day";
@@ -63,7 +64,7 @@ WidgetBase {
                     readonly property bool isToday: modelData.y === w.today.getFullYear() && modelData.m === w.today.getMonth() && modelData.d === w.today.getDate()
                     readonly property bool isPicked: w.picked && w.picked.y === modelData.y && w.picked.m === modelData.m && w.picked.d === modelData.d
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Math.max(22, (w.height - (w.agenda ? 200 : 80)) / 6)
+                    Layout.preferredHeight: Math.max(22, Math.min(40, (w.height - (w.agenda ? 220 : 90)) / 6))
                     radius: Theme.r(8)
                     color: isToday ? Theme.accent : isPicked ? Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.15) : "transparent"
                     Text {

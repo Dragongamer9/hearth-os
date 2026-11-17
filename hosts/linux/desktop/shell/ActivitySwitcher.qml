@@ -37,7 +37,7 @@ PanelWindow {
     onEditingChanged: { editRow = 0; editCol = 0; if (editing) nameField.text = sel ? sel.name : ""; else keys.forceActiveFocus(); }
     function wallLabel(w) { return w === "" ? "Desktop's own" : w.startsWith("anim:") ? w.slice(5).replace(/^./, c => c.toUpperCase()) : w.startsWith("builtin:") ? w.slice(8).replace("slate-", "Slate ").replace(/\b./g, c => c.toUpperCase()) : w.split("/").pop(); }
     function wallUrl(w) { return w.startsWith("builtin:") ? Qt.resolvedUrl("images/wallpapers/" + w.slice(8) + ".jpg") : w.startsWith("/") ? "file://" + w : ""; }
-    function widgetsOn(id) { void WidgetStore.rev; return WidgetStore.widgets.filter(w => w.activity === id).length; }
+    function widgetsOn(id) { void WidgetStore.rev; return WidgetStore.widgets.filter(w => w.activity === id && w.place === "desk").length; }
     function choose() {
         if (at >= acts.length) { const id = Activities.create("", ""); at = Math.max(0, Activities.list.findIndex(a => a.id === id)); editing = true; return; }
         Activities.switchTo(sel.id);
@@ -61,7 +61,7 @@ PanelWindow {
                     if (sw.editRow === 0) nameField.input.forceActiveFocus();
                     else if (sw.editRow === 1) Activities.setIcon(sw.sel.id, A.ICONS[sw.editCol]);
                     else if (sw.editRow === 2) Activities.setWallpaper(sw.sel.id, sw.walls[sw.editCol]);
-                    else if (sw.editRow === 3) Activities.setOwnPins(sw.sel.id, !Array.isArray(sw.sel.pins));
+                    else if (sw.editRow === 3) Activities.setOwnPins(sw.sel.id, !sw.sel.pins);
                     else if (sw.editRow === 4) { Activities.remove(sw.sel.id); sw.editing = false; sw.at = 0; }
                 }
                 else return;
@@ -121,7 +121,7 @@ PanelWindow {
                                     GradientStop { position: 0; color: card.a && card.a.wallpaper === "anim:lava" ? "#5a1408" : card.a && card.a.wallpaper === "anim:aurora" ? "#0e1a2a" : Theme.bg2 }
                                     GradientStop { position: 1; color: card.a && card.a.wallpaper === "anim:lava" ? "#f07a2a" : card.a && card.a.wallpaper === "anim:aurora" ? "#3fae8a" : Theme.accent }
                                 }
-                                Image { anchors.fill: parent; visible: card.a !== null && status === Image.Ready; source: card.a ? sw.wallUrl(card.a.wallpaper) : ""; fillMode: Image.PreserveAspectCrop; sourceSize.width: 400; asynchronous: true }
+                                Image { anchors.fill: parent; visible: card.a !== null && status === Image.Ready; source: card.a ? sw.wallUrl(card.a.wallpaper || Settings.wallpaper || Theme.ownWall) : ""; fillMode: Image.PreserveAspectCrop; sourceSize.width: 400; asynchronous: true }
                                 Icon { anchors.centerIn: parent; visible: card.a === null; name: "plus"; size: 48; color: "white" }
                                 Rectangle {
                                     visible: card.on
@@ -144,7 +144,7 @@ PanelWindow {
                                     Text { Layout.fillWidth: true; text: card.a ? card.a.name : "New activity"; color: Theme.text; font.family: Theme.font; font.pixelSize: 18; font.weight: Font.DemiBold; elide: Text.ElideRight }
                                     Text {
                                         Layout.fillWidth: true
-                                        text: card.a ? Activities.windowsOn(card.a.id) + " windows · " + sw.widgetsOn(card.a.id) + " widgets" + (Array.isArray(card.a.pins) ? " · own apps" : "") : "Work, Games, Study…"
+                                        text: card.a ? Activities.windowsOn(card.a.id) + " windows · " + sw.widgetsOn(card.a.id) + " widgets" + (!!card.a.pins ? " · own apps" : "") : "Work, Games, Study…"
                                         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight
                                     }
                                 }
@@ -225,8 +225,8 @@ PanelWindow {
                 RowLayout {
                     spacing: 10
                     Text { Layout.preferredWidth: 120; text: "Pinned apps"; color: sw.editRow === 3 ? Theme.accent : Theme.muted; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
-                    WBtn { text: "The taskbar's own"; on: sw.sel && !Array.isArray(sw.sel.pins); border.width: sw.editRow === 3 ? Theme.focusWidth : 0; onClicked: if (sw.sel) Activities.setOwnPins(sw.sel.id, false) }
-                    WBtn { text: "Its own"; on: sw.sel && Array.isArray(sw.sel.pins); onClicked: if (sw.sel) Activities.setOwnPins(sw.sel.id, true) }
+                    WBtn { text: "The taskbar's own"; on: sw.sel && !sw.sel.pins; border.width: sw.editRow === 3 ? Theme.focusWidth : 0; onClicked: if (sw.sel) Activities.setOwnPins(sw.sel.id, false) }
+                    WBtn { text: "Its own"; on: sw.sel && !!sw.sel.pins; onClicked: if (sw.sel) Activities.setOwnPins(sw.sel.id, true) }
                     Text { text: "Pin and unpin while you're on it"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
                 }
                 RowLayout {

@@ -18,6 +18,17 @@
 var DEFAULT = "default";
 var ICONS = ["home", "doc", "pad", "film", "palette", "globe", "chat", "rocket", "leaf", "steam"];
 
+// A list from the settings file, whatever form Qt hands it over in (a JavaScript array, or the list type a
+// value stored in a QML property can come back as, where Array.isArray says false); null when it isn't one.
+function asList(v) {
+    if (v === null || v === undefined || typeof v === "string" || typeof v !== "object") return null;
+    if (Array.isArray(v)) return v;
+    if (typeof v.length !== "number") return null;
+    var o = [];
+    for (var i = 0; i < v.length; i++) o.push(v[i]);
+    return o;
+}
+
 function str(x) { return typeof x === "string" ? x : ""; }
 
 function parse(obj) {
@@ -30,7 +41,7 @@ function parse(obj) {
         seen[id] = true;
         list.push({ id: id, name: str(a.name).trim() || (id === DEFAULT ? "Main" : "Activity"),
                     icon: ICONS.indexOf(a.icon) >= 0 ? a.icon : (id === DEFAULT ? "home" : "desktops"),
-                    wallpaper: str(a.wallpaper), pins: Array.isArray(a.pins) ? a.pins.filter(function (p) { return typeof p === "string"; }) : null,
+                    wallpaper: str(a.wallpaper), pins: asList(a.pins) ? asList(a.pins).filter(function (p) { return typeof p === "string"; }) : null,
                     order: typeof a.order === "number" ? a.order : (id === DEFAULT ? -1 : 0) });
     }
     if (!seen[DEFAULT]) list.push({ id: DEFAULT, name: "Main", icon: "home", wallpaper: "", pins: null, order: -1 });
@@ -113,7 +124,7 @@ function step(list, cur, dir) {
 // The pins shown in the taskbar on activity ACT: its own list, or the taskbar's own (desk.json) when it has none.
 function pinsFor(list, act, deskPins) {
     var a = find(list, act);
-    return a && Array.isArray(a.pins) ? a.pins : deskPins;
+    return a && asList(a.pins) ? asList(a.pins) : deskPins;
 }
 
 // Pin or unpin ID on an activity with its own list (a copy; never touches desk.json's).

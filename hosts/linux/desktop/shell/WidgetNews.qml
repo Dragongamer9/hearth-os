@@ -13,7 +13,7 @@ WidgetBase {
         { n: "BBC News", u: "https://feeds.bbci.co.uk/news/rss.xml" }, { n: "Hacker News", u: "https://hnrss.org/frontpage" },
         { n: "GamingOnLinux", u: "https://www.gamingonlinux.com/article_rss.php" }, { n: "Phoronix", u: "https://www.phoronix.com/rss.php" },
         { n: "The Verge", u: "https://www.theverge.com/rss/index.xml" }]
-    property var data: ({ items: [] })
+    property var info: ({ items: [] })
     property bool busy: false
     implicitWidth: 400; implicitHeight: 360
 
@@ -22,9 +22,9 @@ WidgetBase {
         command: ["python3", w.helper, "feed", w.url]
         running: w.live && w.url !== ""
         onRunningChanged: w.busy = running
-        stdout: StdioCollector { onStreamFinished: { try { w.data = JSON.parse(text.trim().split("\n").pop()); } catch (e) { w.data = { items: [], error: "Couldn't read that feed" }; } } }
+        stdout: StdioCollector { onStreamFinished: { try { w.info = JSON.parse(text.trim().split("\n").pop()); } catch (e) { w.info = { items: [], error: "Couldn't read that feed" }; } } }
     }
-    onUrlChanged: { data = { items: [] }; if (url) get.running = true; }
+    onUrlChanged: { info = { items: [] }; if (url) get.running = true; }
     Timer { interval: 900000; running: w.live && w.url !== ""; repeat: true; onTriggered: if (!get.running) get.running = true }
     function ago(s) {
         const t = Date.parse(s);
@@ -40,16 +40,16 @@ WidgetBase {
         RowLayout {
             Layout.fillWidth: true
             Icon { name: "globe"; size: 18; color: Theme.accent }
-            Text { Layout.fillWidth: true; text: w.data.title || "News"; color: Theme.text; font.family: Theme.font; font.pixelSize: 16; font.weight: Font.DemiBold; elide: Text.ElideRight }
+            Text { Layout.fillWidth: true; text: w.info.title || "News"; color: Theme.text; font.family: Theme.font; font.pixelSize: 16; font.weight: Font.DemiBold; elide: Text.ElideRight }
             Text { visible: w.busy; text: "…"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 14 }
         }
-        Text { visible: !!w.data.error; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: w.data.error || ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+        Text { visible: !!w.info.error; Layout.fillWidth: true; wrapMode: Text.WordWrap; text: w.info.error || ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
         ListView {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
             spacing: 2
-            model: w.data.items || []
+            model: w.info.items || []
             delegate: Rectangle {
                 required property var modelData
                 width: ListView.view.width

@@ -35,7 +35,7 @@ Scope {
         const scrN = n || galleryOn || hereName();
         if (toBar) {
             if (!t.bar) return "";
-            const id = WidgetStore.add(type, "", Activities.current, "bar", null, {});
+            const id = WidgetStore.add(type, "", "*", "bar", null, {});   // the bar is the same on every activity
             SettingsNav.toast(t.name + " is in the bar");
             return id;
         }

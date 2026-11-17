@@ -99,6 +99,7 @@ jobs:
           PY
           mkdir -p "$HOME/Downloads/Mods"
           [ -s "$HOME/.local/share/nimbus/desktop.json" ] || echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1 || true     # "Pick your browser" answered (it would cover the pictures)
           # ---- the desktop
           labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
           for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
@@ -146,7 +147,7 @@ jobs:
           q activities switchTo "$work"; sleep 3
           fold=$(q widgets add folder)
           pho=$(q widgets add photos); q widgets set "$pho" source "\"folder:$HOME/Pictures\""; q widgets set "$pho" every '10'
-          apps=$(q widgets add apps); q widgets set "$apps" apps '["foot.desktop","org.kde.kcalc.desktop","footclient.desktop","foot-server.desktop"]'
+          apps=$(q widgets add apps); q widgets set "$apps" apps '["foot","org.kde.kcalc","footclient","foot-server"]'
           news=$(q widgets add news); q widgets set "$news" url '"https://example.org/feed.xml"'
           tim=$(q widgets add timer); q widgets set "$tim" minutes '25'
           qn=$(q widgets add quicknotes); q widgets set "$qn" items '[{"t":"Finish the widgets mockup","done":true},{"t":"Reply to the Hearth Link issue","done":false},{"t":"Test Activities on the Ally","done":false}]'
@@ -156,6 +157,7 @@ jobs:
           q activities switchTo default; shot 02b-back-to-main 5
           echo "::notice title=activities::$(q activities list); on Work: folder=$fold photos=$pho apps=$apps news=$news timer=$tim quicknotes=$qn"
           q widgets list > shots/widgets-list.json; cat shots/widgets-list.json
+          echo "::notice title=widgets::settings saved: $(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("; ".join("%s %s" % (v["type"], ",".join("%s=%s" % (k, len(x) if isinstance(x, list) else str(x)[:20]) for k, x in v.get("cfg", {}).items())) for k, v in d.items() if k.startswith("w:")))' "$HOME/.config/nimbus/widgets.json" 2>&1 | head -c 1500)"
           python3 -c 'import json,sys; json.load(open(sys.argv[1]))' shots/widgets-list.json || echo "::error title=widgets::ipc widgets list isn't JSON: $(head -c 300 shots/widgets-list.json)"
 
           # ---- each widget on its own (cut from the desktop pictures), and the bar

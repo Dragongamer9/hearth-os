@@ -5,7 +5,7 @@ import QtQuick.Layouts
 
 WidgetBase {
     id: w
-    readonly property var items: Array.isArray(c("items", null)) ? c("items", []).filter(i => i && typeof i.t === "string") : []
+    readonly property var items: (list("items") || []).filter(i => i && typeof i.t === "string")
     readonly property string title: c("title", "Quick notes")
     implicitWidth: 310; implicitHeight: 330
     function setItems(l) { set("items", l); }

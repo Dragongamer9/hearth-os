@@ -13,7 +13,7 @@ WidgetBase {
     readonly property var all: [
         { id: "cpu", name: "CPU", tint: "#66c0f4" }, { id: "gpu", name: "Graphics", tint: "#b38cff" },
         { id: "mem", name: "Memory", tint: "#6fd08c" }, { id: "disk", name: "Disk", tint: "#ffb454" }, { id: "net", name: "Network", tint: "#ff7aa8" }]
-    readonly property var show: Array.isArray(c("show", null)) ? c("show", []) : ["cpu", "gpu", "mem", "disk", "net"]
+    readonly property var show: list("show") || ["cpu", "gpu", "mem", "disk", "net"]
     readonly property var shown: all.filter(g => show.indexOf(g.id) >= 0 && (g.id !== "gpu" || hasGpu))
     property var hist: ({ cpu: [], gpu: [], mem: [], disk: [], net: [] })
     property var last: ({})

@@ -82,7 +82,7 @@ Singleton {
     function apply(r) {
         if (!r || !Array.isArray(r.pins)) return;
         deskPins = r.pins;
-        if (!Array.isArray(activityPins)) pins = r.pins;
+        if (!activityPins) pins = r.pins;
         desktopIcons = r.desktopIcons !== false;
         dnd = r.dnd === true;
         autoArrange = r.autoArrange === true;
@@ -103,18 +103,18 @@ Singleton {
     function isPinned(id) { return !!id && pins.indexOf(id) >= 0; }
     function pin(id) {
         if (!id || isPinned(id)) return;
-        if (Array.isArray(activityPins)) { ownPins(pins.concat([id])); return; }
+        if (activityPins) { ownPins(pins.concat([id])); return; }
         pins = pins.concat([id]);
         call(["pin", id], (r, err) => { if (err) SettingsNav.toast(err); else apply(r); });
     }
     function unpin(id) {
-        if (Array.isArray(activityPins)) { ownPins(pins.filter(p => p !== id)); return; }
+        if (activityPins) { ownPins(pins.filter(p => p !== id)); return; }
         pins = pins.filter(p => p !== id);
         call(["unpin", id], (r, err) => failedOr(r, err));
     }
     function togglePin(id) { isPinned(id) ? unpin(id) : pin(id); }
     function reorderPins(order) {
-        if (Array.isArray(activityPins)) { ownPins(order); return; }
+        if (activityPins) { ownPins(order); return; }
         pins = order;
         call(["pins-order"].concat(order), (r, err) => { if (err) SettingsNav.toast(err); else apply(r); });
     }
@@ -125,7 +125,7 @@ Singleton {
     property var deskPins: []              // desk.json's pins (the taskbar's own)
     property var activityPins: null        // the current activity's own list, or null
     property var setActivityPins: null     // Activities.qml: saves the current activity's own list
-    onActivityPinsChanged: pins = Array.isArray(activityPins) ? activityPins : deskPins
+    onActivityPinsChanged: pins = activityPins ? activityPins : deskPins
     function ownPins(list) { pins = list; if (setActivityPins) setActivityPins(list); }
     // ---- end Activities
 
