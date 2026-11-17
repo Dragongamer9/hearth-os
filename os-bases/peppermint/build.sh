@@ -1865,12 +1865,16 @@ chmod 755 /usr/libexec/nimbus/hearth-seat-input 2>/dev/null || true
 # one only hides that choice.
 optional network-manager-strongswan network-manager-l2tp network-manager-pptp network-manager-openconnect \
   network-manager-sstp network-manager-fortisslvpn fprintd libpam-fprintd cryfs
+# NetworkManager starts its own IPsec and L2TP daemons when a VPN connects: the system-wide ones the plugins bring stay
+# off, so nothing listens on the network at start.
+systemctl disable strongswan-starter.service strongswan.service ipsec.service xl2tpd.service 2>/dev/null || true
 # RED FLAG: a fingerprint is never the only way in. libpam-fprintd's own pam-auth-update profile would put the reader in
 # front of EVERY password (login, sudo, SDDM): take it out, so common-auth stays password-only, and use Hearth's
 # guarded setup instead (hearth-fingerprint-pam: the lock screen's own service next to the password, and one
 # never-blocking block in polkit-1; turned on per person in Settings). Checked again here and in fingerprint-pam.yml.
 if [ -e /usr/share/pam-configs/fprintd ] && command -v pam-auth-update >/dev/null; then
-  DEBIAN_FRONTEND=noninteractive pam-auth-update --package --remove fprintd || echo "::warning::pam-auth-update couldn't take fprintd's profile out"
+  # --disable, not --remove: it stays "seen" and off, so a later pam-auth-update (another package) never puts it back.
+  DEBIAN_FRONTEND=noninteractive pam-auth-update --package --disable fprintd || echo "::warning::pam-auth-update couldn't turn fprintd's profile off"
 fi
 if grep -qs pam_fprintd /etc/pam.d/common-auth; then
   echo "::error::common-auth asks for a fingerprint: that would put the reader in front of every password"; exit 1
@@ -2216,4 +2220,9 @@ command -v podman >/dev/null || { echo "podman is missing: bootc upgrade and boo
 # The last step: every file marked with the piece it belongs to (os-bases/peppermint/components.py), so the rechunk
 # step in base-peppermint.yml gives each Debian package and each Hearth app its own layers and a device downloads only
 # what changed. Never fails the build (unmarked files only make updates bigger).
+# RED FLAG (docs/FINGERPRINT.md), once more at the very end: common-auth (login, sudo, SDDM) never asks for a
+# fingerprint, whatever ran pam-auth-update after the fingerprint setup above.
+if grep -qs pam_fprintd /etc/pam.d/common-auth; then
+  echo "::error::common-auth asks for a fingerprint at the end of the build: that would put the reader in front of every password"; exit 1
+fi
 python3 /ctx/components.py / /usr/lib/sysimage/dpkg || echo "components: marking files failed; updates stay big"

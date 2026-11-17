@@ -22,7 +22,7 @@ PanelWindow {
         { icon: "restart", label: "Restart", cmd: ["systemctl", "reboot"] }
     ]).concat(can.firmware ? [{ icon: "cpu", label: "Restart into firmware setup", cmd: ["python3", actions, "firmware"] }] : []).concat([
         { icon: "power", label: "Shut down", cmd: ["systemctl", "poweroff"] },
-        { icon: "logout", label: "Log out", cmd: ["nimbus-mode", "logout"] },
+        { icon: "logout", label: "Log out", cmd: [], logout: true },
         { icon: "pad", label: "Game Mode", cmd: ["nimbus-mode", "game"] },
         { icon: "close", label: "Cancel", cmd: [] }
     ])
@@ -40,6 +40,9 @@ PanelWindow {
     }
     function pick(i) {
         shown = false;
+        // Log out from here always asks first (LeaveConfirm.qml): logging out ends every app within seconds, and a
+        // D-pad press one row too far mustn't lose work. Without the question (it didn't load), as Leave.qml does.
+        if (items[i] && items[i].logout) { if (Leave.canAsk) Leave.confirmRequested(); else Leave.now(); return; }
         const c = items[i] ? items[i].cmd : [];
         if (c.length) Quickshell.execDetached(c);
     }

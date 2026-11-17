@@ -11,7 +11,9 @@ Root only (through hearth-admin firewall-*):
   hearth-firewall admin-status              the same, ufw's rules too
   hearth-firewall on                        turn it on (and on at every start). Guarded: SSH stays reachable when
                                             this PC's SSH server runs, and Tailscale (tailscale0) stays trusted, so
-                                            turning it on never locks you out of a PC you reach from elsewhere
+                                            turning it on never locks you out of a PC you reach from elsewhere; Hearth
+                                            Link, and Remote desktop (VNC) and Sunshine when they're listening, stay
+                                            open to this home network only
   hearth-firewall off                       turn it off (and off at start)
   hearth-firewall allow                     stdin {"port": "8080" | "6000-6010", "proto": "tcp|udp|both",
                                             "from": "local|any", "label": "..."}: let a port in
@@ -237,6 +239,49 @@ def need_root():
         raise Fail('needs root (run through hearth-admin)')
 
 
+# What turning the firewall on keeps open for this home network only (never the internet): Hearth Link always (your
+# Hearth devices find each other with it), and whatever of these is listening right now (Remote desktop's VNC, Sunshine
+# game streaming). Nearby Share and Hearth Connect open their own ports while they run (hearth-link-firewall).
+KEEP_ALWAYS = [('47740-47741', 'udp', 'Hearth Link')]
+KEEP_IF_LISTENING = [
+    ('5900', ['tcp'], [('5900', 'tcp', 'Remote desktop (VNC)')]),
+    ('47989', ['tcp'], [('47984', 'tcp', 'Sunshine'), ('47989', 'tcp', 'Sunshine'), ('48010', 'tcp', 'Sunshine'),
+                        ('47998-48000', 'udp', 'Sunshine')]),
+]
+
+
+def listening(text):
+    """Ports something listens on, from `ss -Hlntu` (Local Address:Port is the 5th field)."""
+    out = set()
+    for line in text.splitlines():
+        f = line.split()
+        if len(f) >= 5:
+            port = f[4].rsplit(':', 1)[-1]
+            if port.isdigit():
+                out.add((port, 'udp' if f[0].startswith('udp') else 'tcp'))
+    return out
+
+
+def keep_list():
+    code, text = run(['ss', '-Hlntu'])
+    now = listening(text) if code == 0 else set()
+    keep = list(KEEP_ALWAYS)
+    for port, protos, rules in KEEP_IF_LISTENING:
+        if any((port, p) in now for p in protos):
+            keep += rules
+    return keep
+
+
+def add_local(port, proto, label, b):
+    if b == 'firewalld':
+        for fam, nets in (('ipv4', LOCAL_V4), ('ipv6', LOCAL_V6)):
+            for net in nets:
+                fwd(['--add-rich-rule=rule family="%s" source address="%s" port port="%s" protocol="%s" accept' % (fam, net, port, proto)])
+    else:
+        for net in LOCAL_V4 + LOCAL_V6:
+            ufw(['allow', 'proto', proto, 'from', net, 'to', 'any', 'port', port.replace('-', ':'), 'comment', label + ' (kept by Hearth)'])
+
+
 def turn_on():
     need_root()
     b = backend()
@@ -254,10 +299,14 @@ def turn_on():
             pass
         if ssh:
             fwd(['--add-service=ssh'])
+        for port, proto, label in keep_list():
+            add_local(port, proto, label, b)
     else:
         if ssh:
             ufw(['allow', 'proto', 'tcp', 'from', 'any', 'to', 'any', 'port', '22', 'comment', 'SSH (kept by Hearth)'])
         ufw(['allow', 'in', 'on', 'tailscale0', 'comment', 'Tailscale (kept by Hearth)'])
+        for port, proto, label in keep_list():
+            add_local(port, proto, label, b)
         ufw(['--force', 'enable'])
     return status(True)
 

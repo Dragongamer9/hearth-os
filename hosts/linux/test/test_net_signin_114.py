@@ -269,6 +269,8 @@ class Firewall(unittest.TestCase):
                 return (0, '') if 'ssh.service' in cmd else (3, '')
             if cmd[:2] == ['ufw', 'status']:
                 return 0, '[ 1] 22/tcp                     ALLOW IN    Anywhere\n'
+            if cmd[0] == 'ss':
+                return 0, 'tcp LISTEN 0 5 0.0.0.0:5900 0.0.0.0:*\n'
             return 0, ''
         with mock.patch.object(self.f, 'run', run), mock.patch.object(self.f, 'which', lambda n: '/usr/sbin/ufw' if n == 'ufw' else None), \
                 mock.patch.object(self.f.os, 'geteuid', lambda: 0), mock.patch.object(self.f, 'ufw_enabled', lambda: True):
@@ -281,6 +283,18 @@ class Firewall(unittest.TestCase):
             self.assertLess(i_ts, i_on)
             with self.assertRaises(self.f.Fail):
                 self.f.remove({'id': 'ufw:22/tcp@any'})
+            # Hearth Link always, VNC because it listens (ss), only from local networks, all before ufw is enabled.
+            link = [i for i, c in enumerate(flat) if 'port 47740:47741' in c]
+            vnc = [c for c in flat if c.startswith('ufw allow proto tcp from') and 'port 5900' in c]
+            self.assertTrue(link and all(i < i_on for i in link))
+            self.assertTrue(vnc and not any('from any' in c for c in vnc))
+
+    def test_keep_list_follows_what_listens(self):
+        self.assertEqual(self.f.listening('tcp LISTEN 0 5 0.0.0.0:5900 0.0.0.0:*\nudp UNCONN 0 0 [::]:47998 [::]:*\n'), {('5900', 'tcp'), ('47998', 'udp')})
+        with mock.patch.object(self.f, 'run', lambda cmd, input=None, timeout=60: (0, '')):
+            self.assertEqual(self.f.keep_list(), self.f.KEEP_ALWAYS)
+        with mock.patch.object(self.f, 'run', lambda cmd, input=None, timeout=60: (0, 'tcp LISTEN 0 5 *:47989 *:*\n')):
+            self.assertIn(('47998-48000', 'udp', 'Sunshine'), self.f.keep_list())
 
     def test_changes_need_root(self):
         with mock.patch.object(self.f.os, 'geteuid', lambda: 1000):
@@ -364,7 +378,10 @@ class Fingerprint(unittest.TestCase):
 
     def test_build_takes_fprintds_own_profile_out(self):
         b = (ROOT / 'os-bases' / 'peppermint' / 'build.sh').read_text()
-        self.assertIn('pam-auth-update --package --remove fprintd', b)
+        self.assertIn('pam-auth-update --package --disable fprintd', b)
+        self.assertNotIn('--remove fprintd', b)
+        self.assertGreaterEqual(b.count('grep -qs pam_fprintd /etc/pam.d/common-auth'), 2)   # after the setup and at the very end
+        self.assertIn('systemctl disable strongswan-starter.service', b)
         self.assertIn('grep -qs pam_fprintd /etc/pam.d/common-auth', b)
         self.assertIn('"$FP" uninstall', b)
 
@@ -373,6 +390,15 @@ class Fingerprint(unittest.TestCase):
         self.assertIn('config: "hearth-fingerprint"', lock)
         self.assertIn('PamContext {\n        id: pam\n', lock)         # the password's own conversation is still there
         self.assertNotRegex(lock, r'id: fpPam[\s\S]{0,400}respond\(root\.typed\)')   # the finger's never gets the password
+        # A vault that stayed unlocked (files open) is said after unlocking.
+        self.assertIn('o.problems', lock)
+        self.assertIn('"A vault stayed unlocked"', lock)
+        # KWin's locker: no "finger not recognised" for people who never turned it on (no finger prompt seen), and the
+        # fingerprint service's "no" takes 5 seconds, so a locker that asks again can't loop.
+        kl = (ROOT / 'hosts' / 'linux' / 'desktop' / 'kwin-lock' / 'contents' / 'lockscreen' / 'LockScreen.qml').read_text()
+        self.assertIn('if (root.fpSeen) root.fpInfo', kl)
+        fp = (PAMD / 'hearth-fingerprint').read_text()
+        self.assertLess(fp.index('pam_faildelay.so delay=5000000'), fp.index('pam_listfile.so'))
 
 
 class Vaults(Home):
@@ -406,6 +432,15 @@ class Vaults(Home):
         saved = json.load(open(os.path.join(self.home, '.config', 'nimbus', 'vaults.json')))
         self.assertEqual(saved['vaults']['private'], {'name': 'Private', 'backend': 'gocryptfs', 'idle': 5, 'lockOnLock': True})
         self.assertNotIn('right horse', json.dumps(saved))
+
+    def test_cryfs_vaults_dont_lock_by_themselves_unless_asked(self):
+        calls = []
+        def run(cmd, input=None, timeout=120, env=None):
+            calls.append(cmd); return 0, ''
+        with mock.patch.object(self.v, 'run', run), mock.patch.object(self.v, 'which', lambda n: '/usr/bin/' + n):
+            r = self.v.create({'name': 'Crypt', 'backend': 'cryfs', 'password': 'right horse'})
+        self.assertEqual(r['vaults'][0]['idle'], 0)
+        self.assertNotIn('--unmount-idle', calls[-1])
 
     def test_cryfs_is_non_interactive_with_its_idle_lock(self):
         cmd, env = self.v.unlock_cmd({'backend': 'cryfs', 'data': '/d', 'mount': '/m'}, 15)
@@ -558,6 +593,10 @@ class Pages(unittest.TestCase):
 
     def test_power_menu_choices_are_offered_only_where_they_work(self):
         t = (SHELL / 'PowerMenu.qml').read_text()
+        # Log out from the power menu always asks first (LeaveConfirm.qml through Leave.qml).
+        self.assertIn('label: "Log out", cmd: [], logout: true', t)
+        self.assertIn('if (Leave.canAsk) Leave.confirmRequested(); else Leave.now();', t)
+        self.assertNotIn('["nimbus-mode", "logout"]', t)
         self.assertIn('can.switchUser && can.otherAccounts > 0', t)
         self.assertIn('can.hibernate', t)
         self.assertIn('can.firmware', t)

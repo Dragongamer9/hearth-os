@@ -27,6 +27,7 @@ Item {
     property string message: ""
     property string pending: ""      // typed before PAM asked (it's handed over when it asks)
     property string fpInfo: ""       // the fingerprint reader's words, when it's in use (1.14)
+    property bool fpSeen: false      // the reader asked for a finger (only people who turned it on: kde-fingerprint's list)
     readonly property bool busy: typeof authenticator !== "undefined" && authenticator && authenticator.busy === true
     readonly property string user: typeof kscreenlocker_userName !== "undefined" ? kscreenlocker_userName : ""
 
@@ -68,14 +69,15 @@ Item {
         function onFailed(kind) {
             // A finger (kde-fingerprint, 1.14: only for people who turned it on in Hearth's Settings): the password
             // still works; KWin's locker tries the reader again by itself.
-            if (kind !== undefined && kind !== 0) { root.fpInfo = "That finger wasn't recognised. Try again, or type your password"; return; }
+            // Someone who never turned the finger on gets kde-fingerprint's quiet "no" (its list): nothing is shown then.
+            if (kind !== undefined && kind !== 0) { if (root.fpSeen) root.fpInfo = "That finger wasn't recognised. Try again, or type your password"; return; }
             root.message = "That password isn't right";
             root.pending = "";
             retry.restart();
         }
         function onErrorMessageChanged() { if (authenticator.errorMessage) root.message = authenticator.errorMessage; }
         // pam_fprintd's "Place your finger on the reader" (KWin's locker runs kde-fingerprint next to the password).
-        function onInfoMessageChanged() { const m = authenticator.infoMessage || ""; if (/finger|swipe|reader/i.test(m)) root.fpInfo = "Or touch the fingerprint reader"; }
+        function onInfoMessageChanged() { const m = authenticator.infoMessage || ""; if (/finger|swipe|reader/i.test(m)) { root.fpSeen = true; root.fpInfo = "Or touch the fingerprint reader"; } }
     }
     Timer { id: retry; interval: 400; onTriggered: root.begin() }
     // hearth-lockcheck's test run looks for this line: only a lock screen that really loaded may lock the screen.

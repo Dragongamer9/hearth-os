@@ -4,6 +4,9 @@
 # checks the password with its own service at the same time, so the password always works (docs/FINGERPRINT.md).
 # Only people who turned it on in Settings › Accounts › Sign-in options are asked for a finger (the list file, written
 # by hearth-admin fingerprint-places); everyone else gets an instant "no" here and nothing changes for them.
+# A "no" (not on the list, a wrong finger, no reader) comes after 5 seconds, never at once: a lock screen that asks
+# again by itself then can't spin in a tight loop.
+auth       optional     pam_faildelay.so delay=5000000
 auth       requisite    pam_listfile.so item=user sense=allow file=/etc/nimbus/fingerprint/lock onerr=fail
 auth       required     pam_fprintd.so max-tries=3 timeout=30
 account    include      common-account
