@@ -528,6 +528,14 @@ run_kwin() {
     if have timeout; then timeout 20 sh "$SHARE/desktop/theme/apply.sh" >>"$KWIN_LOG" 2>&1; else sh "$SHARE/desktop/theme/apply.sh" >>"$KWIN_LOG" 2>&1; fi \
       || log "kwin: theme/apply.sh didn't finish (code $?); KWin starts with the frames it has"
   fi
+  # Your own KDE settings that Hearth's fixed KWin keys override (kwin/xdg's [$i] keys: KWin's own locking, its input
+  # method, the Super key): told once which and why (hearth-your-desktop kwin-overrides; it only reads your files).
+  # Never in the way: at most 10 s, a failure is only logged.
+  if [ -z "$HEARTH_SEAT" ] && [ -f "$SHARE/desktop/shell/hearth-your-desktop" ] && have python3; then
+    if have timeout; then timeout 10 python3 "$SHARE/desktop/shell/hearth-your-desktop" kwin-overrides >>"$KWIN_LOG" 2>&1
+    else python3 "$SHARE/desktop/shell/hearth-your-desktop" kwin-overrides >>"$KWIN_LOG" 2>&1; fi \
+      || log "kwin: couldn't check which of your KDE settings are overridden (code $?); KWin starts anyway"
+  fi
   # The lock guard (red flag 2: never a lockout): without Hearth's lock screen, KWin runs without its screen locker
   # (--no-lockscreen) and Lock.qml says why it won't lock. Images never get here (their build fails when
   # hearth-lockcheck --as-kwin does). The person is told once, through Hearth's own notice (DesktopNotice.qml, not a
@@ -613,18 +621,54 @@ run_kwin() {
   return "$rc"
 }
 # KWin's own screen locker is how Mantel locks under KWin (feature/kwin-input), but only when Hearth's lock screen is
-# really there: its Plasma shell package where kscreenlocker_greet looks, and the greeter itself. Otherwise KWin starts
-# with --no-lockscreen, so it can never lock with KDE's (or a broken) lock screen: never a lockout. (kscreenlockerrc in
-# desktop/kwin/xdg turns KWin's own automatic locking off either way: Mantel's settings decide when to lock.)
+# really there and really loads: its Plasma shell package where kscreenlocker_greet looks, the greeter itself, and the
+# greeter's own test run (hearth-lockcheck --as-kwin, with PLASMA_DEFAULT_SHELL as KWin gets it) showing "hearth-lock-
+# screen: loaded". Otherwise KWin starts with --no-lockscreen, so it can never lock with KDE's (or a broken) lock
+# screen: never a lockout. The test run is only done once per image (or a changed lock screen or greeter): a pass is
+# kept in $DESK_STATE/kwin-lock-proven under a key of the image's version and both files' checksums; a failure is
+# never kept, so the next start tries again. At most HEARTH_LOCK_CHECK_SECS (12 s); a check that can't run fails.
+# (kscreenlockerrc in desktop/kwin/xdg turns KWin's own automatic locking off either way, fixed with [$i]: Mantel's
+# settings decide when to lock.)
+KWIN_LOCK_WHY=""
+kwin_lock_pkg() { printf '%s' "${HEARTH_LOCK_PKG:-/usr/share/plasma/shells/org.hearth.mantel-lock}"; }
+kwin_lock_greeter() {
+  if [ -n "${HEARTH_LOCK_GREETER:-}" ]; then [ -x "$HEARTH_LOCK_GREETER" ] && printf '%s' "$HEARTH_LOCK_GREETER"; return; fi
+  for g in /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet; do [ -x "$g" ] && { printf '%s' "$g"; return; }; done
+}
+kwin_lock_key() {
+  kl_pkg=$(kwin_lock_pkg); kl_g=$(kwin_lock_greeter)
+  printf 'v=%s qml=%s meta=%s greeter=%s:%s' "$(head -c 64 "$SHARE/version" 2>/dev/null | tr -d '\n ')" \
+    "$(cksum <"$kl_pkg/contents/lockscreen/LockScreen.qml" 2>/dev/null | tr ' ' :)" "$(cksum <"$kl_pkg/metadata.json" 2>/dev/null | tr ' ' :)" \
+    "$kl_g" "$(cksum <"$kl_g" 2>/dev/null | tr ' ' :)"
+}
 kwin_lock_ready() {
-  [ -f "${HEARTH_LOCK_PKG:-/usr/share/plasma/shells/org.hearth.mantel-lock}/contents/lockscreen/LockScreen.qml" ] || return 1
-  if [ -n "${HEARTH_LOCK_GREETER:-}" ]; then [ -x "$HEARTH_LOCK_GREETER" ]; return; fi
-  for g in /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet; do [ -x "$g" ] && return 0; done
+  KWIN_LOCK_WHY=""
+  [ -f "$(kwin_lock_pkg)/contents/lockscreen/LockScreen.qml" ] || { KWIN_LOCK_WHY=nopackage; return 1; }
+  [ -n "$(kwin_lock_greeter)" ] || { KWIN_LOCK_WHY=nolocker; return 1; }
+  lc="$SHARE/desktop/shell/hearth-lockcheck"
+  if [ ! -f "$lc" ] || ! have python3 || ! have timeout; then
+    KWIN_LOCK_WHY=notloaded; log "kwin: the lock screen's check (hearth-lockcheck) can't run here"; return 1
+  fi
+  key=$(kwin_lock_key)
+  proven="$DESK_STATE/kwin-lock-proven"
+  [ "$(cat "$proven" 2>/dev/null)" = "$key" ] && return 0
+  out=$(PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock HEARTH_LOCK_PROBE_TIME="${HEARTH_LOCK_PROBE_TIME:-8}" \
+    timeout "${HEARTH_LOCK_CHECK_SECS:-12}" python3 "$lc" --as-kwin 2>&1); rc=$?
+  if [ "$rc" = 0 ]; then
+    mkdir -p "$DESK_STATE" && printf '%s\n' "$key" >"$proven.tmp" && mv -f "$proven.tmp" "$proven"
+    log "kwin: Hearth's lock screen loads in KWin's greeter (checked once for this image)"
+    return 0
+  fi
+  rm -f "$proven" "$proven.tmp"
+  KWIN_LOCK_WHY=notloaded
+  log "kwin: Hearth's lock screen didn't load in KWin's greeter's test run (code $rc): $(printf '%s' "$out" | tr '\n' ' ' | head -c 400)"
   return 1
 }
-# Which part of Hearth's lock screen is missing (for the notice and the log): nopackage or nolocker.
+# Which part of Hearth's lock screen is missing or didn't load (for the notice and the log): nopackage, nolocker or
+# notloaded (kwin_lock_ready's own answer).
 kwin_lock_why() {
-  [ -f "${HEARTH_LOCK_PKG:-/usr/share/plasma/shells/org.hearth.mantel-lock}/contents/lockscreen/LockScreen.qml" ] || { echo nopackage; return; }
+  [ -n "$KWIN_LOCK_WHY" ] && { echo "$KWIN_LOCK_WHY"; return; }
+  [ -f "$(kwin_lock_pkg)/contents/lockscreen/LockScreen.qml" ] || { echo nopackage; return; }
   echo nolocker
 }
 # Leaving KWin: the activation environment (D-Bus and systemd's, which the autostart gave KWin's values) back to this
