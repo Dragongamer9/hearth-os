@@ -38,8 +38,8 @@ KWin doesn't implement ext-session-lock-v1 (wayland.app lists it as unsupported 
 notification and a toast: never a silent "locked". KWin's locker is fail-safe (if its screen crashes, the screen
 stays covered).
 
-What it shows is Hearth's: `hosts/linux/desktop/kwin-lock` (installed as the look-and-feel package
-`org.hearth.mantel-lock`, only a lock screen): the same clock, password field and own on-screen keyboard (touch,
+What it shows is Hearth's: `hosts/linux/desktop/kwin-lock` (installed as the Plasma shell package
+`org.hearth.mantel-lock` in /usr/share/plasma/shells, only a lock screen; KWin's locker needs `X-Plasma-APIVersion` 2): the same clock, password field and own on-screen keyboard (touch,
 D-pad and A) as Lock.qml, plain QtQuick, checking the password with PAM through KWin's locker. Hearth's KWin defaults
 (`hosts/linux/desktop/kwin/xdg/kscreenlockerrc`) pick it and turn off KWin's own automatic locking and lock on resume,
 so Mantel's settings (Lock when waking, idle) stay the only ones deciding.

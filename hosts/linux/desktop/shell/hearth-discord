@@ -27,6 +27,7 @@ Which Discord (the owner picks it once, in the bar's chooser or Settings › Dis
                                            the bar's thickness, ANCHOR the button's position along the bar or -1)
   hearth-discord geometry EDGE SCREEN BAR ANCHOR   JSON {x, y, w, h}: where `place` puts it
   hearth-discord remember                  keep the open window's size for next time (state, not a setting)
+  hearth-discord remember-size W H         the same with a size given (KWin: Discord.qml has it from the window bridge)
   hearth-discord invite                    JSON: the invite for what you're playing (link, PIN), or null
   hearth-discord join --stdin | --wait [URL] | --link hearth://join/...
                                            a friend's invite: find the game (Play / Install) or start Play together
@@ -490,7 +491,8 @@ def open_client(full=False, quick=None, wait=25):
     if not already:
         cmd, env = launch_command(client, saved_size())
         spawn(cmd, env)
-    if quick and not full:
+    # On KWin, Discord.qml places the window through the window bridge once it's up (xdotool can't move it there).
+    if quick and not full and os.environ.get('HEARTH_WM') != 'kwin':
         g = geometry(quick[0], parse_screen(quick[1]), int(quick[2]), float(quick[3]), saved_size())
         until = time.time() + (wait if not already else 1)
         while True:
@@ -771,6 +773,13 @@ def main(argv):
                 out({'placed': bool(client) and place_window(client, g), 'at': g})
             else:
                 out(g)
+        elif cmd == 'remember-size' and len(rest) == 2:
+            # KWin: Discord.qml knows the window's size from the window bridge (no xdotool there).
+            w, h = int(rest[0]), int(rest[1])
+            if not (100 <= w <= 10000 and 100 <= h <= 10000):
+                raise Fail('a size between 100 and 10000')
+            save_size(w, h)
+            out({'size': [w, h]})
         elif cmd == 'remember':
             client = pick_client(settings().get('client'), installed())
             out({'size': remember(client) if client else None})

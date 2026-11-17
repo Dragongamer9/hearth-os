@@ -53,6 +53,7 @@ Singleton {
         property bool dialog: false
         property string parentId: ""        // the window it's a dialog for
         property string zone: ""            // the snap zone it's in ("left-half", "top-right"...), "" when none
+        property var frame: ({})            // KWin's frame: {x, y, w, h}
         property bool syncing: false        // set while KWin's own values come in, so they aren't sent back
         readonly property var screens: {
             const s = Quickshell.screens.filter(x => x.name === output);
@@ -78,6 +79,8 @@ Singleton {
     // Send a window to desktop n (1-based) without following it.
     function moveToDesktop(w, n) { return send({ op: "desktop", id: widOf(w), n: n }); }
     function goDesktop(n) { return send({ op: "goDesktop", n: n }); }
+    // Put a window at a place and size of Mantel's choosing ({x, y, w, h}; Discord's quick window).
+    function place(w, g) { return !!g && send({ op: "place", id: widOf(w), x: Math.round(g.x), y: Math.round(g.y), w: Math.round(g.w), h: Math.round(g.h) }); }
     function setKeepAbove(w, on) { return send({ op: "keepAbove", id: widOf(w), on: !!on }); }
 
     // ------------------------------------------------------------------ the list from the bridge
@@ -105,6 +108,7 @@ Singleton {
             w.dialog = d.dialog === true;
             w.parentId = d.parent || "";
             w.zone = d.zone || "";
+            if (JSON.stringify(w.frame) !== JSON.stringify(d.frame || {})) w.frame = d.frame || {};
             w.syncing = false;
             seen[d.id] = true;
             list.push(w);

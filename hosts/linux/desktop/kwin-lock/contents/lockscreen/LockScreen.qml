@@ -29,10 +29,11 @@ Item {
     readonly property bool busy: typeof authenticator !== "undefined" && authenticator && authenticator.busy === true
     readonly property string user: typeof kscreenlocker_userName !== "undefined" ? kscreenlocker_userName : ""
 
-    // Greeter hooks KWin's locker may call (Breeze has them too); harmless if it doesn't.
+    // What KWin's locker writes on the root (Breeze has them too).
     signal clearPassword()
     onClearPassword: typed = ""
     property bool viewVisible: true
+    property bool locked: true           // written by KWin's locker (grace time); this screen looks the same either way
 
     function hasAuth() { return typeof authenticator !== "undefined" && authenticator !== null; }
     function begin() {

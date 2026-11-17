@@ -74,9 +74,9 @@ jobs:
           install -Dm755 /tmp/out/hearth-kwin-im /usr/libexec/hearth/hearth-kwin-im
           install -Dm755 /tmp/out/hearth-kwin-cast /usr/libexec/hearth/hearth-kwin-cast
           cp os/system_files/usr/share/applications/hearth-kwin-*.desktop /usr/share/applications/
-          mkdir -p /usr/share/nimbus /usr/share/plasma/look-and-feel
+          mkdir -p /usr/share/nimbus /usr/share/plasma/shells
           cp -a hosts/linux/desktop /usr/share/nimbus/desktop
-          cp -a hosts/linux/desktop/kwin-lock /usr/share/plasma/look-and-feel/org.hearth.mantel-lock
+          cp -a hosts/linux/desktop/kwin-lock /usr/share/plasma/shells/org.hearth.mantel-lock
           # The portal: Hearth's backend (from this checkout) and the KWin session's portals.conf (build.sh's).
           mkdir -p /usr/share/xdg-desktop-portal/portals /usr/share/dbus-1/services
           cp os/system_files/usr/share/xdg-desktop-portal/portals/hearth.portal /usr/share/xdg-desktop-portal/portals/
