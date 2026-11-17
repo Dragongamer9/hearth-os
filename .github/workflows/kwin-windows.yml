@@ -22,13 +22,16 @@ concurrency:
 jobs:
   kwin:
     runs-on: ubuntu-latest
-    container: registry.fedoraproject.org/fedora:44
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      # KWin composites only with a render device: the kernel's vgem module gives one (the host's /dev and modules).
+      options: --privileged -v /dev:/dev -v /lib/modules:/lib/modules:ro
     steps:
       - name: Install KWin, Quickshell and the checking tools
         run: |
           dnf -y install dnf5-plugins git python3 python3-gobject nodejs procps-ng dbus-daemon dbus-tools kwin \
             foot qt6-qtsvg qt6ct xorg-x11-server-Xwayland mesa-dri-drivers google-noto-sans-fonts breeze-icon-theme adwaita-icon-theme \
-            hicolor-icon-theme ImageMagick wl-clipboard libnotify python3-tkinter >/dev/null
+            hicolor-icon-theme ImageMagick wl-clipboard libnotify python3-tkinter kmod >/dev/null
           dnf -y install rsms-inter-fonts >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
@@ -65,6 +68,9 @@ jobs:
           export NIMBUS_SHARE="$PWD/hosts/linux" QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 QT_FORCE_STDERR_LOGGING=1
           # kwin_wayland carries a file capability (CAP_SYS_NICE) a container can't grant: a plain copy runs.
           cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
+          # A render device for KWin (without one it doesn't composite: no frames, so apps never redraw after a resize).
+          modprobe vgem 2>/dev/null || echo "::warning title=KWin::no vgem module"
+          echo "::notice title=render devices::$(ls -l /dev/dri 2>&1 | tr '\n' '|' | cut -c1-400)"
           # KWin on its own virtual screen (not nested in a labwc: there it never showed a frame, so apps never drew
           # again after a resize), with Hearth's KWin defaults (four desktops, Super on its own, Mantel's keys freed)
           # the way the session gives them. Pictures through KWin's screenshot API.
