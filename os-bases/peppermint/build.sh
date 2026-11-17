@@ -269,6 +269,9 @@ optional kglobalacceld xdg-desktop-portal-kde
 # KWin's Overview and Desktop grid (Mantel's Task view button, Super+W, View + Y) load Milou's search QML
 # (org.kde.milou): without it they don't open (Present windows still does).
 optional milou
+# The Desktop Cube (Settings › Virtual desktops, SetKwinDesktops.qml): trixie ships it in kwin-addons (kdeplasma-addons'
+# cube effect and extra Alt+Tab looks; no Plasma session). Optional: without it the page greys the switch and says why.
+optional kwin-addons
 if have_pkg libkf6screen-bin; then optional libkf6screen-bin; else optional kscreen; fi
 command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkf6screen-bin / kscreen): screens under KWin need it"
 # Hearth Capture (1.14, Capture.qml): Read text (tesseract, English) and QR codes (zbarimg) on a screenshot; optional,
