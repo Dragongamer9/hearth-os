@@ -12,7 +12,7 @@
 // Clipboard): "selection" also keeps what you highlight (middle-click pastes it), "sync" puts text you copy on the
 // selection and text you highlight on the clipboard (only while history is on).
 // Loaded by shell.qml through a Loader: a problem here only loses the clipboard popup.
-//   quickshell ipc -p <shell folder> call clipboard toggle|open|close|state|more N|qr N|edit N|back|choose ROW
+//   quickshell ipc -p <shell folder> call clipboard toggle|open|close|state|more N|qr N|edit N|back|choose ROW|editText T|editSave
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -275,6 +275,9 @@ Scope {
         function qr(i: int): void { if (cb.items[i]) cb.showQr(cb.items[i]); }
         function edit(i: int): void { if (cb.items[i]) cb.startEdit(cb.items[i]); }
         function back(): void { cb.back(); }
+        // Checks where no keyboard can be typed with (KWin's virtual screen in CI): the edit box's text, then Save.
+        function editText(t: string): void { if (cb.sheet === "edit" && cb.editBox) { cb.editBox.text = t; cb.editBox.cursorPosition = t.length; } }
+        function editSave(): void { if (cb.sheet === "edit" && cb.editBox) cb.saveEdit(cb.editBox.text); }
         function choose(row: int): void { if (cb.sheet === "more") { cb.sheetRow = row; cb.doAction(cb.actionsFor(cb.sheetItem)[row]); } }
     }
 
