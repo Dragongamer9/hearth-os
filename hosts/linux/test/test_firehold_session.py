@@ -122,6 +122,16 @@ class HearthCompositor(Base):
         st = self.helper('wm', 'firehold')
         self.assertEqual((st['fireholdFails'], st['fireholdPaused']), (0, False))
 
+    def test_a_crash_after_starting_opens_kwin_never_ends_the_sign_in(self):
+        # Up, past the early window, then a crash (no switch asked for): KWin for this sign-in, counted, as for KWin.
+        self.write_bin('firehold-comp', '#!/bin/sh\necho "args=$*" >> "$HOME/comp-ran"\n: > "$XDG_RUNTIME_DIR/hearth-shell-up"\nsleep 4\nexit 134\n')
+        with open(self.conf, 'w') as f:
+            f.write(PREVIEW)
+        r, log = self.session(PREVIEW)
+        self.assertIn('firehold crashed after', log)
+        self.assertIn('desktop mode: Mantel on KWin', log)
+        self.assertTrue(self.lines('kwin-ran'), log)
+
     def test_kwin_failing_too_still_opens_labwc(self):
         self.write_bin('firehold-comp', COMP_CRASHES)
         self.write_bin('kwin_wayland', '#!/bin/sh\necho "args=$*" >> "$HOME/kwin-ran"\nexit 1\n')
