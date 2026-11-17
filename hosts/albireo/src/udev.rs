@@ -209,6 +209,57 @@ impl Backend for UdevData {
             keyboard.led_update(led_state.into());
         }
     }
+
+    fn set_output_mode(&mut self, output: &Output, mode: WlMode) -> Result<(), String> {
+        let id = output.user_data().get::<UdevOutputId>().ok_or("not one of this card's screens")?;
+        let primary = self.primary_gpu;
+        let device = self.backends.get_mut(&id.device_id).ok_or("its graphics card is gone")?;
+        let surface = device.surfaces.get_mut(&id.crtc).ok_or("the screen isn't set up")?;
+        let drm_mode = surface
+            .drm_modes
+            .iter()
+            .find(|m| WlMode::from(**m) == mode)
+            .copied()
+            .ok_or("the screen doesn't list that mode")?;
+        let render_node = surface.render_node.unwrap_or(primary);
+        let mut renderer = self
+            .gpus
+            .single_renderer(&render_node)
+            .map_err(|e| format!("no renderer: {e}"))?;
+        surface
+            .drm_output
+            .use_mode::<_, OutputRenderElements<UdevRenderer<'_>, WindowRenderElement<UdevRenderer<'_>>>>(
+                drm_mode,
+                &mut renderer,
+                &DrmOutputRenderElements::default(),
+            )
+            .map_err(|e| format!("the card refused the mode: {e:?}"))
+    }
+
+    fn gamma_size(&self, output: &Output) -> Option<u32> {
+        let id = output.user_data().get::<UdevOutputId>()?;
+        let device = self.backends.get(&id.device_id)?;
+        let n = device.drm_output_manager.device().get_crtc(id.crtc).ok()?.gamma_length();
+        (n > 1).then_some(n)
+    }
+
+    fn set_gamma(&mut self, output: &Output, ramp: Option<&[u16]>) -> Result<(), String> {
+        let n = self.gamma_size(output).ok_or("this screen has no colour ramp")? as usize;
+        let id = output.user_data().get::<UdevOutputId>().ok_or("not one of this card's screens")?;
+        let device = self.backends.get(&id.device_id).ok_or("its graphics card is gone")?;
+        let ramp = match ramp {
+            Some(r) if r.len() == n * 3 => r.to_vec(),
+            Some(_) => return Err("the ramp isn't the screen's size".into()),
+            None => crate::gamma::identity_ramp(n),
+        };
+        let (r, rest) = ramp.split_at(n);
+        let (g, b) = rest.split_at(n);
+        device
+            .drm_output_manager
+            .device()
+            .set_gamma(id.crtc, r, g, b)
+            .map_err(|e| format!("the card refused the colour ramp: {e}"))
+    }
 }
 
 pub fn run_udev() {
@@ -638,6 +689,8 @@ struct SurfaceData {
     dmabuf_feedback: Option<SurfaceDmabufFeedback>,
     last_presentation_time: Option<Time<Monotonic>>,
     vblank_throttle_timer: Option<RegistrationToken>,
+    /// The connector's modes (for changing it: output_management.rs).
+    drm_modes: Vec<smithay::reexports::drm::control::Mode>,
 }
 
 impl Drop for SurfaceData {
@@ -904,10 +957,24 @@ impl HearthState<UdevData> {
             })
             .unwrap_or(false);
 
-        // The screen's make and model: libdisplay-info's (smithay-drm-extras' display-info) needs a version older
-        // than Debian's and Fedora's, so for now they're unknown (phase 2: read from the screen's EDID ourselves).
-        let make = String::from("Unknown");
-        let model = String::from("Unknown");
+        // The screen's make, model and serial number, from its EDID (edid.rs; libdisplay-info's versions don't
+        // match what smithay-drm-extras builds against).
+        let edid = drm_device
+            .get_properties(connector.handle())
+            .ok()
+            .and_then(|props| {
+                props.into_iter().find_map(|(handle, value)| {
+                    let info = drm_device.get_property(handle).ok()?;
+                    (info.name().to_str() == Ok("EDID")).then_some(value)
+                })
+            })
+            .filter(|blob| *blob != 0)
+            .and_then(|blob| drm_device.get_property_blob(blob).ok())
+            .and_then(|bytes| crate::edid::parse(&bytes));
+        let make = edid.as_ref().map(|e| e.make.clone()).unwrap_or_else(|| String::from("Unknown"));
+        let model = edid.as_ref().map(|e| e.model.clone()).unwrap_or_else(|| String::from("Unknown"));
+        let serial = edid.as_ref().map(|e| e.serial.clone()).unwrap_or_default();
+        info!(output = %output_name, %make, %model, %serial, "screen");
 
         if non_desktop {
             info!("Connector {} is non-desktop, setting up for leasing", output_name);
@@ -947,8 +1014,15 @@ impl HearthState<UdevData> {
                 .fold(0, |acc, o| acc + self.space.output_geometry(o).unwrap().size.w);
             let position = (x, 0).into();
 
+            // Every mode the screen lists (Settings › Display offers them through wlr-output-management).
+            for m in connector.modes() {
+                output.add_mode(WlMode::from(*m));
+            }
             output.set_preferred(wl_mode);
             output.change_current_state(Some(wl_mode), None, None, Some(position));
+            output
+                .user_data()
+                .insert_if_missing(|| crate::output_management::OutputSerial(serial.clone()));
             self.space.map_output(&output, position);
 
             output.user_data().insert_if_missing(|| UdevOutputId {
@@ -1032,6 +1106,7 @@ impl HearthState<UdevData> {
                 dmabuf_feedback,
                 last_presentation_time: None,
                 vblank_throttle_timer: None,
+                drm_modes: connector.modes().to_vec(),
             };
 
             device.surfaces.insert(crtc, surface);
@@ -1464,6 +1539,20 @@ impl HearthState<UdevData> {
             self.show_window_preview,
             lock_view.as_ref(),
         );
+        if let Ok((true, _)) = &result {
+            self.captures.damaged(&output);
+        }
+        // Pictures apps asked for (grim, recorders): this screen drawn once more, into memory.
+        if self.captures.wants(&output) {
+            crate::screencopy::run_captures(
+                &mut self.captures,
+                &mut renderer,
+                &output,
+                &self.space,
+                lock_view.as_ref(),
+                self.clock.now().into(),
+            );
+        }
         let reschedule = match result {
             Ok((has_rendered, states)) => {
                 let dmabuf_feedback = surface.dmabuf_feedback.clone();

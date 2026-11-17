@@ -9,13 +9,17 @@
 #[cfg(any(feature = "udev", feature = "xwayland"))]
 pub mod cursor;
 pub mod drawing;
+pub mod edid;
 pub mod focus;
 pub mod foreign_toplevel;
+pub mod gamma;
 pub mod input_handler;
 pub mod keybinds;
 pub mod lock;
 pub mod options;
+pub mod output_management;
 pub mod render;
+pub mod screencopy;
 pub mod shell;
 pub mod state;
 pub mod theme;
