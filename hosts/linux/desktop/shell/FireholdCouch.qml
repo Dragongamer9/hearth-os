@@ -16,7 +16,7 @@ PanelWindow {
     property string scrName: ""
     // The CONTINUE line's letter spacing, except with Qt's software renderer: there, spaced text over the big title
     // drew the rest of the page shifted (CI's virtual screen).
-    readonly property bool spaced: GraphicsInfo.api !== GraphicsInfo.Software        // this screen's name (set once by Firehold.qml: no binding through the window)
+    readonly property bool spaced: home.GraphicsInfo.api !== GraphicsInfo.Software        // this screen's name (set once by Firehold.qml: no binding through the window)
     readonly property var pal: F.C
     readonly property real k: Math.min(width / 1920, height / 1080) || 1
     readonly property bool primary: screen === Quickshell.screens[0]
