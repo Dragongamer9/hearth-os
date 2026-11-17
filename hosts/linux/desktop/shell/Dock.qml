@@ -322,6 +322,13 @@ PanelWindow {
                             icon: task.modelData.entry ? (task.modelData.entry.icon || "") : ""
                             appId: task.wins.length ? (task.wins[0].appId || "") : (task.modelData.id || "")
                         }
+                        // 1.14: the app's badge and progress (the Unity launcher API, or its copy's progress: NotifyHub.qml)
+                        DockBadge {
+                            anchors.fill: parent
+                            info: NotifyHub.badgeFor(task.modelData.id || (task.wins.length ? task.wins[0].appId : ""))
+                            iconSize: dock.iconSize
+                            lift: dock.shelf ? -dock.tile * 0.12 : 0
+                        }
                     }
                 }
 
@@ -410,6 +417,39 @@ PanelWindow {
         MouseArea { id: ca; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: ch.picked() }
     }
 
+    // A count in a bubble at the top right of an app's icon, a thin progress bar across its foot, and a glow when the
+    // app asks for attention (urgent). Nothing at all when the app has none.
+    component DockBadge: Item {
+        id: db
+        property var info: null
+        property real iconSize: 40
+        property real lift: 0
+        visible: info !== null
+        Rectangle {   // urgent: a ring round the icon
+            visible: !!db.info && db.info.urgent
+            anchors.centerIn: parent; anchors.verticalCenterOffset: db.lift
+            width: db.iconSize + 10; height: width; radius: Theme.r(width / 3)
+            color: "transparent"; border.width: 2; border.color: Theme.flame
+            SequentialAnimation on opacity { running: db.visible && !Settings.reduceMotion; loops: Animation.Infinite; NumberAnimation { from: 1; to: 0.35; duration: 700 } NumberAnimation { from: 0.35; to: 1; duration: 700 } }
+        }
+        Rectangle {   // the count
+            visible: !!db.info && db.info.count > 0
+            x: parent.width / 2 + db.iconSize / 2 - width * 0.6
+            y: parent.height / 2 + db.lift - db.iconSize / 2 - height * 0.4
+            width: Math.max(18, cnt.implicitWidth + 8); height: 18; radius: 9
+            color: Theme.danger
+            border.color: Theme.panel; border.width: 1.5
+            Text { id: cnt; anchors.centerIn: parent; text: !db.info ? "" : db.info.count > 99 ? "99+" : String(db.info.count); color: "#ffffff"; font.pixelSize: 10; font.bold: true; font.family: Theme.font }
+        }
+        Rectangle {   // the progress
+            visible: !!db.info && db.info.progress >= 0
+            anchors.horizontalCenter: parent.horizontalCenter
+            y: parent.height / 2 + db.lift + db.iconSize / 2 - 2
+            width: db.iconSize; height: 5; radius: 2.5
+            color: Qt.rgba(0, 0, 0, 0.55)
+            Rectangle { x: 1; y: 1; height: parent.height - 2; radius: 2; width: (parent.width - 2) * Math.max(0, Math.min(1, db.info ? db.info.progress : 0)); color: Theme.accent }
+        }
+    }
     component DockButton: Item {
         id: btn
         property string tip: ""

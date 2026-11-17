@@ -170,8 +170,8 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 
 ### Notifications and OSDs KWin shows
 
-- [ ] Caps Lock / Num Lock and keyboard layout OSD (S)
-- [ ] Microphone mute OSD and "app tried to use a muted microphone" (S)
+- [x] Caps Lock / Num Lock and keyboard layout OSD — SystemOsd.qml "Caps Lock on", hearth-notifyd (the keyboards' LEDs; KWin's org.kde.keyboard "layoutChanged"; labwc: Settings › Keyboard's list, switched from the bar's layout item); test_notify_widgets_114.py, notify-widgets.yml pictures "08-osd-caps", "09-osd-layout", "kwin-03-layout-osd" (KWin switching itself) (needs testing on a device)
+- [x] Microphone mute OSD and "app tried to use a muted microphone" — SystemOsd.qml "Microphone muted", "The microphone is muted" (NotifyHub.micApps: PipeWire's Stream/Input/Audio while the default mic is muted); notify-widgets.yml pictures "10-osd-mic", "11-osd-mic-wanted" (needs testing on a device)
 
 ---
 
@@ -188,21 +188,21 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 - [x] Quick settings (volume, Wi-Fi, Bluetooth, battery, brightness, power profile) — `QuickAccess.qml`
 - [x] Desktop clock and weather on the wallpaper — `DeskClock.qml`
 - [x] Show desktop — `Dock.qml`, `hearth-desk`
-- [ ] Edit mode: add, move, resize and remove widgets on the desktop and in the bar — partly: the desktop part is built (Widgets.qml, WidgetGallery.qml, WidgetArrange.qml, WidgetStore.qml: gallery, drag, resize, remove, Arrange with the controller; widgets-test.yml pictures; test_desktop_widgets.py), and five widgets can go "in the bar" (BarWidgets.qml). Left: moving and ordering the bar's own items; docs/ROADMAP.md's widgets line is still unticked (M)
-- [ ] More panels (several bars, on several screens, clone a panel) (L)
+- [x] Edit mode: add, move, resize and remove widgets on the desktop and in the bar — Widgets.qml, WidgetGallery.qml, WidgetArrange.qml, WidgetStore.qml, BarWidgets.qml; 1.14 round 2: the bar's own items moved, ordered and hidden (BarArrange.qml, BarLayout.qml, widget-tools.js "barLayout"; right-click the bar or Settings › Bar and dock › Arrange the bar); test_notify_widgets_114.py "test_bar_items_every_one_once_flame_kept_new_ones_in_place"; notify-widgets.yml pictures "19-bar-arranged", "20-arrange-items" (needs testing on a device)
+- [x] More panels (several bars, on several screens, clone a panel) — ExtraPanels.qml, BarArrange.qml "Clone the main bar", BarLayout.qml "p:<id>"; test_notify_widgets_114.py "test_panels"; notify-widgets.yml pictures "21-arrange-panels", "22-panels", "kwin-05-panel" (needs testing on a device)
 - [x] Sticky notes on the desktop — WidgetNotes.qml; widgets-test.yml (needs testing on a device)
 - [x] System monitor sensors on the desktop and in the bar — WidgetMonitor.qml ("hearth-tasks sample"), BarWidgets.qml; widgets-test.yml (needs testing on a device)
-- [ ] Analog/binary/fuzzy clocks, world clocks — partly: analog or digital with your cities (WidgetClock.qml "cities"). Left: binary and fuzzy styles, extra zones in the clock panel (S)
-- [ ] Alternative calendars and holidays in the calendar (M)
+- [x] Analog/binary/fuzzy clocks, world clocks — WidgetClock.qml ("binary", "fuzzy", cities), world clocks in the clock's panel (ClockPanel.qml "zoneTime", Settings › Date & time); test_notify_widgets_114.py "test_clocks"; notify-widgets.yml pictures "w-clock", "w-clock-2", "23-clock-panel-calendars" (needs testing on a device)
+- [x] Alternative calendars and holidays in the calendar — calendars.js (Islamic, Hebrew, Persian, Julian, Indian; ten countries' holidays and Islamic / Jewish / Persian days), WidgetCalendar.qml, ClockPanel.qml, SetDateTime.qml "The clock's panel"; test_notify_widgets_114.py "test_known_dates", "test_holidays"; notify-widgets.yml pictures "w-calendar", "23-clock-panel-calendars" (needs testing on a device)
 - [x] Weather report widget (forecast, °C/°F, place by name) — WidgetWeather.qml, hearth-widgets (Open-Meteo); widgets-test.yml (needs testing on a device)
 - [x] Folder view widget — WidgetFolder.qml; widgets-test.yml (needs testing on a device)
-- [ ] Picture frame, web page, timer, calculator, colour picker, dictionary, disk quota, keyboard indicator, comic strip, fifteen puzzle — partly: photo frame (WidgetPhotos.qml), timer and stopwatch (WidgetTimer.qml), plus news, app tiles, quick notes, battery, media. Left: web page, calculator, colour picker, keyboard indicator (dictionary, disk quota, comic, fifteen puzzle are in "Not for Hearth?") (M)
-- [ ] Window list widget, pager with window outlines, activity pager (M)
-- [ ] Printers queue in the tray (S)
-- [ ] Disks & devices in the tray (M)
-- [ ] Camera / microphone / screen-recording "in use" indicator — partly: a dot under the bar while recording or while someone is connected by VNC (CaptureIndicator.qml, Recorder.qml). Left: camera and microphone in use (PipeWire's streams) (S)
-- [ ] Background apps in the tray (S)
-- [ ] Quick light/dark tile in Quick settings (S)
+- [x] Picture frame, web page, timer, calculator, colour picker, keyboard indicator — WidgetPhotos.qml, WidgetTimer.qml, and 1.14 round 2: WidgetWeb.qml (drawn by a browser with no window in a profile of its own, hearth-widgets "webshot"), WidgetCalc.qml (widget-tools.js "calc", never eval), WidgetColour.qml (KWin's picker or slurp + grim), WidgetKeys.qml; test_notify_widgets_114.py; notify-widgets.yml pictures "w-web", "w-calc", "w-colour", "w-keys" (dictionary, disk quota, comic, fifteen puzzle are in "Not for Hearth?") (needs testing on a device)
+- [x] Window list widget, pager with window outlines — WidgetWindowlist.qml, WidgetPager.qml (outlines from KWin's frames; labwc doesn't say which desktop a window is on, so there it shows the one you're on); notify-widgets.yml pictures "w-windowlist", "w-pager" (activity pager: the activity switcher, ActivitySwitcher.qml) (needs testing on a device)
+- [x] Printers queue in the tray — Islands.qml "cPrinters" (hearth-notifyd parse_lpstat, Cancel per job); test_notify_widgets_114.py "test_tray_readers"; notify-widgets.yml picture "02b-tray" (needs testing on a device)
+- [x] Disks & devices in the tray — Islands.qml "cDisks" (hearth-notifyd parse_lsblk; Open, Safely remove, Eject through udisksctl); test_notify_widgets_114.py "test_tray_readers"; notify-widgets.yml picture "02b-tray" (needs testing on a device)
+- [x] Camera / microphone / screen-recording "in use" indicator — CaptureIndicator.qml (recording, VNC), and 1.14 round 2: Islands.qml "cPrivacy" (the camera: hearth-notifyd camera_users, /dev/video* open; the microphone: PipeWire's recording streams); notify-widgets.yml picture "02b-tray" (needs testing on a device)
+- [x] Background apps in the tray — Islands.qml "cBackground" (the portal's org.freedesktop.background.Monitor, else flatpak ps; Quit); notify-widgets.yml picture "02b-tray" (needs testing on a device)
+- [x] Quick light/dark tile in Quick settings — QuickAccess.qml "Tile { navId: theme" (Auto off says so); test_notify_widgets_114.py "test_light_dark_tile"; notify-widgets.yml picture "14-quick-access" (needs testing on a device)
 
 ### Search (KRunner-style) — the framework and plugins are on unmerged feature/search-store
 
@@ -224,14 +224,14 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 ### Notifications
 
 - [x] Popups, history, Do Not Disturb, mute an app, Clear all — `Notifications.qml`, `ClockPanel.qml`, `SetNotifications.qml`
-- [ ] History kept across restarts — Hearth has: this session only (DeskState.qml "the notification history for this session") (S)
+- [x] History kept across restarts — DeskState.qml (~/.local/state/nimbus/notifications.json, one key per notification, SettingsWriter; Settings › Notifications › Keep the list after a restart); test_notify_widgets_114.py "test_history_kept_atomically_and_buttons_kept"; notify-widgets.yml "restored after it" check, picture "24-history-after-restart" (needs testing on a device)
 - [x] Per-app notification settings (allowed, pop-ups, sound, lock screen, priority) — hearth-notify, NotifyRules.qml, SetNotifications.qml; test_system_settings_114.py "test_only_changes_are_kept_and_merged", "test_the_server_follows_the_rules" (badges on the dock: see below; the lock screen part on labwc's lock only, docs/SYSTEM-SETTINGS.md) (needs testing on a device)
-- [ ] Automatic Do Not Disturb in full-screen apps and while screen sharing, with a missed count (S)
-- [ ] Do Not Disturb on a schedule, and its shortcut (S)
-- [ ] Progress of jobs and file transfers (JobViewServer) (M)
-- [ ] Reply from a notification, actions kept in history — partly: the Reply box for any notification that takes an inline reply (NotifReply.qml; phone-link.yml pictures). Left: actions kept in the history (S)
-- [ ] Badges and progress on dock icons (Unity launcher API) (S)
-- [ ] Notification sounds and a sound theme for system events — partly: a per-app sound switch and one notification sound in the image (hearth-notify "sound", 88ffaf3). Left: a sound set for system events and a Sounds page (M)
+- [x] Automatic Do Not Disturb in full-screen apps and while screen sharing, with a missed count — NotifyHub.qml "autoReason", Notifications.qml "onQuietEnded"; test_notify_widgets_114.py "test_automatic_quiet_never_touches_your_switch"; notify-widgets.yml "a notification popped up in full screen" check, pictures "04-quiet-fullscreen", "05-quiet-ended" (needs testing on a device)
+- [x] Do Not Disturb on a schedule, and its shortcut — NotifyHub.qml "inSchedule", SetNotifications.qml "On a schedule", Super+Alt+N (labwc rc.xml "W-A-n", shortcuts.json "dnd"); test_notify_widgets_114.py "test_dnd_shortcut_on_both"; notify-widgets.yml picture "12-settings-notifications" (needs testing on a device)
+- [x] Progress of jobs and file transfers (JobViewServer) — hearth-notifyd (org.kde.JobViewServer V1 and V2, only when nobody else has it), Islands.qml "cJobs", ClockPanel.qml (Pause, Cancel), a notification when done; a notification's "value" hint as a bar; test_notify_widgets_114.py "test_jobs_v1_and_v3"; notify-widgets.yml pictures "03-clock-panel-jobs", "kwin-02-clock-panel-jobs" (needs testing on a device)
+- [x] Reply from a notification, actions kept in history — NotifReply.qml; DeskState.qml "invoke" (each notification stays alive while it's in the list; after a restart, Open <app>), ClockPanel.qml; test_notify_widgets_114.py; notify-widgets.yml picture "07-history-with-buttons" (needs testing on a device)
+- [x] Badges and progress on dock icons (Unity launcher API) — hearth-notifyd "com.canonical.Unity.LauncherEntry", Dock.qml "DockBadge" (a running job's progress too); notify-widgets.yml pictures "02c-dock-badge", "kwin-01-popup-job-badge" (needs testing on a device)
+- [x] Notification sounds and a sound theme for system events — Sounds.qml, SetSounds.qml (Settings › Sound › Sounds), desktop/sounds/hearth (Hearth's own, tools/make-hearth-sounds.py, GPL-3.0; the freedesktop set played if installed: desktop/sounds/LICENSES.md); test_notify_widgets_114.py "test_every_event_has_hearths_own_sound_and_the_licences_are_written_down"; notify-widgets.yml picture "13-settings-sounds" (needs testing on a device)
 
 ### Clipboard
 
