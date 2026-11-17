@@ -566,7 +566,7 @@ class LoginScreen(Home):
 
 class Pages(unittest.TestCase):
     NEW = ('SetVpn.qml', 'SetHotspot.qml', 'SetProxy.qml', 'SetNetDetails.qml', 'SetFirmware.qml', 'SetRegion.qml',
-           'SetFonts.qml', 'SetServices.qml', 'SetLoginScreen.qml')
+           'SetFonts.qml', 'SetServices.qml', 'SetLoginScreen.qml', 'SetThunderbolt.qml')
 
     def test_every_page_is_registered(self):
         reg = (SHELL / 'settings-pages.js').read_text()
@@ -588,6 +588,137 @@ class Pages(unittest.TestCase):
         for f in ('SetVpn.qml', 'SetHotspot.qml'):
             t = (SHELL / f).read_text()
             self.assertNotRegex(t, r'\[[^\]]*(vpass|pass)\.text[^\]]*\]', f)
+
+
+class Sound(Home):
+    def setUp(self):
+        super().setUp()
+        self.s = load(SHELL / 'hearth-sound', 'hearth_sound')
+        self.s.TEST = os.path.join(self.home, 'test.wav')
+
+    CARDS = [{'name': 'alsa_card.pci-0000_00_1f.3', 'active_profile': 'output:analog-stereo+input:analog-stereo',
+              'properties': {'device.description': 'Built-in Audio', 'device.bus': 'pci'},
+              'profiles': {'off': {'description': 'Off'},
+                           'output:hdmi-stereo': {'description': 'Digital Stereo (HDMI) Output', 'available': False, 'priority': 5900},
+                           'output:analog-stereo+input:analog-stereo': {'description': 'Analog Stereo Duplex', 'available': True, 'priority': 6565}}},
+             {'name': 'bluez_card.AA_BB', 'active_profile': 'a2dp-sink', 'properties': {'device.description': 'Headphones', 'device.bus': 'bluetooth'},
+              'profiles': {'a2dp-sink': {'description': 'High Fidelity Playback (A2DP Sink)'}, 'headset-head-unit': {'description': 'Headset Head Unit (HSP/HFP)'}}}]
+
+    def test_cards(self):
+        cs = self.s.parse_cards(self.CARDS)
+        self.assertEqual([c['kind'] for c in cs], ['internal', 'bluetooth'])
+        self.assertEqual([p['name'] for p in cs[0]['profiles']], ['output:analog-stereo+input:analog-stereo', 'output:hdmi-stereo'])
+        self.assertFalse(cs[0]['profiles'][1]['available'])
+
+    def test_profile_checked_and_set_with_a_list(self):
+        calls = []
+        def fake(cmd, timeout=20):
+            calls.append(cmd)
+            return (0, json.dumps(self.CARDS), '') if 'list' in cmd else (0, '', '')
+        with mock.patch.object(self.s, 'run', fake), mock.patch.object(self.s.shutil, 'which', return_value='/usr/bin/pactl'):
+            self.s.profile('bluez_card.AA_BB', 'headset-head-unit')
+            self.assertEqual(calls[-1], ['pactl', 'set-card-profile', 'bluez_card.AA_BB', 'headset-head-unit'])
+            for card, prof in (('bluez_card.AA_BB', 'off; reboot'), ('nope', 'a2dp-sink'), ('bluez_card.AA_BB', 'output:hdmi-stereo')):
+                with self.assertRaises(self.s.Fail):
+                    self.s.profile(card, prof)
+
+    def test_levels(self):
+        import wave, struct
+        for samples, want in (([0] * 4800, 'silent'), ([800, -800] * 2400, 'quiet'), ([12000, -12000] * 2400, 'good'), ([32767, -32768] * 2400, 'loud')):
+            with wave.open(self.s.TEST, 'wb') as w:
+                w.setnchannels(1); w.setsampwidth(2); w.setframerate(48000)
+                w.writeframes(struct.pack('<%dh' % len(samples), *samples))
+            self.assertEqual(self.s.levels(self.s.TEST)[2], want)
+        with self.assertRaises(self.s.Fail):
+            self.s.mic_test(30)
+
+
+class Thunderbolt(Home):
+    def setUp(self):
+        super().setUp()
+        self.t = load(SHELL / 'hearth-thunderbolt', 'hearth_thunderbolt')
+
+    def test_list(self):
+        ds = self.t.parse_list((ROOT / 'hosts' / 'linux' / 'test' / 'fixtures' / 'boltctl-list.txt').read_text())
+        self.assertEqual([(d['name'], d['authorized'], d['stored'], d['policy']) for d in ds],
+                         [('ThinkPad Thunderbolt 3 Dock', True, True, 'auto'), ('Envoy Express', False, False, '')])
+        self.assertEqual(self.t.parse_security('domain0 …\n   ├─ security:    user\n'), 'user')
+
+    def test_allow_and_forget(self):
+        calls = []
+        def fake(cmd, timeout=60):
+            calls.append(cmd)
+            return 0, '', ''
+        u = '11111111-2222-3333-4444-555555555555'
+        with mock.patch.object(self.t, 'run', fake), mock.patch.object(self.t.shutil, 'which', return_value='/usr/bin/boltctl'):
+            self.t.allow(u, 'once'); self.t.allow(u, 'always'); self.t.forget(u)
+            for bad in (('x', 'once'), (u, 'forever'), (u + ' --policy iommu', 'once')):
+                with self.assertRaises(self.t.Fail):
+                    self.t.allow(*bad)
+        self.assertIn(['boltctl', 'authorize', u], calls)
+        self.assertIn(['boltctl', 'enroll', '--policy', 'auto', u], calls)
+        self.assertIn(['boltctl', 'forget', u], calls)
+
+    def test_no_bolt(self):
+        with mock.patch.object(self.t.shutil, 'which', return_value=None):
+            self.assertEqual(self.t.status(), {'available': False, 'security': '', 'devices': []})
+
+
+class NotifyApps(Home):
+    def setUp(self):
+        super().setUp()
+        self.n = load(SHELL / 'hearth-notify', 'hearth_notify')
+        self.n.FILE = os.path.join(self.home, '.config', 'nimbus', 'notify-apps.json')
+
+    def test_only_changes_are_kept_and_merged(self):
+        self.assertEqual(self.n.get()['apps'], {})
+        self.assertFalse(os.path.exists(self.n.FILE))                  # reading writes nothing
+        self.n.set_('Discord', 'sound', 'on')
+        self.n.set_('Thunderbird', 'priority', 'high')
+        self.n.set_('Discord', 'lockScreen', 'on')
+        self.assertEqual(self.n.get()['apps'], {'Discord': {'sound': True, 'lockScreen': True}, 'Thunderbird': {'priority': 'high'}})
+        self.n.set_('Thunderbird', 'priority', 'normal')               # back to the default: out of the file
+        self.assertNotIn('Thunderbird', self.n.get()['apps'])
+        self.n.reset('Discord')
+        self.assertEqual(self.n.get()['apps'], {})
+        self.assertTrue(os.path.exists(self.n.FILE + '.bak'))
+        for bad in (('Discord', 'volume', 'on'), ('Discord', 'priority', 'urgent'), ('', 'sound', 'on'), ('a\nb', 'sound', 'on')):
+            with self.assertRaises(self.n.Fail):
+                self.n.set_(*bad)
+
+    def test_the_server_follows_the_rules(self):
+        q = (SHELL / 'Notifications.qml').read_text()
+        self.assertIn('const rule = NotifyRules.rule(n.appName);', q)
+        self.assertIn('if (!rule.allow) { n.dismiss(); return; }', q)
+        self.assertIn('rule.priority === "high"', q)
+        lock = (SHELL / 'Lock.qml').read_text()
+        self.assertIn('h.lock && h.time >= root.lockedAt', lock)
+        r = (SHELL / 'NotifyRules.qml').read_text()
+        self.assertIn('lockScreen: false', r)                          # off unless you turn it on
+
+
+class Restore(unittest.TestCase):
+    def test_off_by_default_and_only_at_sign_in(self):
+        st = (SHELL / 'Settings.qml').read_text()
+        self.assertIn('property bool restoreApps: false', st)
+        self.assertIn('onRestoreAppsChanged: save("restoreApps")', st)
+        r = (SHELL / 'SessionRestore.qml').read_text()
+        self.assertIn('if (Settings.restoreApps) startTimer.restart(); else restored = true;', r)
+        self.assertIn('hearth-apps-restored', r)
+        self.assertRegex(r, r'skip: /\^\(steam')
+        self.assertIn('Settings.restoreApps = v', (SHELL / 'SetStartup.qml').read_text())
+        self.assertIn('SessionRestore {}', (SHELL / 'shell.qml').read_text())
+
+
+class PowerAndPackages(unittest.TestCase):
+    def test_charge_limit_through_hwset(self):
+        p = (SHELL / 'SetPower.qml').read_text()
+        self.assertIn('hwJob.run(["set", "battery.limit", String(v)]', p)
+        self.assertIn('visible: !!page.bat && page.bat.canLimit', p)
+
+    def test_image_packages(self):
+        b = (ROOT / 'os-bases' / 'peppermint' / 'build.sh').read_text()
+        self.assertIn('optional bolt network-manager-openvpn sound-theme-freedesktop', b)
 
 
 if __name__ == '__main__':

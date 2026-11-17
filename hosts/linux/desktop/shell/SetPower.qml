@@ -1,4 +1,6 @@
-// Hearth Settings › Power: battery, performance profile, sleep and restart.
+// Hearth Settings › Power: battery, performance profile, sleep and restart. 1.14: the battery's charge limit and health
+// (hearth-hwset, the same setting as Task Manager › Battery: /etc/hearth/hardware.json, put back at every start), shown
+// only where the battery has a charge limit (charge_control_end_threshold).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -15,6 +17,11 @@ SetPage {
     property var profiles: []
     property var tdp: null             // {supported, watts, min, max, via}
     property string powerError: ""
+    property var hw: null              // hearth-hwset status (the battery's charge limit)
+    readonly property var bat: hw && hw.batteries && hw.batteries.length ? hw.batteries[0] : null
+    SetJob { id: hwStatus; helper: "/usr/libexec/nimbus/hearth-hwset" }
+    SetJob { id: hwJob; helper: "/usr/libexec/nimbus/hearth-hwset"; admin: true }
+    Component.onCompleted: { power(["status"]); hwStatus.run(["status"], r => page.hw = r, () => page.hw = null); }
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-power").toString().replace(/^file:\/\//, ""))
 
     // Power mode and power limit through hearth-power (the same as Hearth's Game Mode settings).
@@ -24,7 +31,6 @@ SetPage {
         if (pw.running) { pw.next = args; return; }
         pw.command = ["python3", helper].concat(args); pw.running = true;
     }
-    Component.onCompleted: power(["status"])
     Process {
         id: pw
         property var next: null
@@ -55,11 +61,19 @@ SetPage {
 
     SetCardGroup {
         title: "Battery & performance"
-        visible: page.battery || page.profiles.length > 1 || !!(page.tdp && page.tdp.supported) || page.powerError !== ""
+        visible: page.battery || (!!page.bat && page.bat.canLimit) || page.profiles.length > 1 || !!(page.tdp && page.tdp.supported) || page.powerError !== ""
         SetRow {
             visible: page.battery; interactive: false
             icon: page.dev && page.dev.state === UPowerDeviceState.Charging ? "batt-charging" : "batt"
             title: "Battery"; value: page.battText; chevron: false
+        }
+        SetChoice {
+            visible: !!page.bat && page.bat.canLimit
+            icon: "batt"; title: "Stop charging at"
+            sub: (page.bat && page.bat.health ? "Battery health " + page.bat.health + "%" + (page.bat.cycles ? " after " + page.bat.cycles + " charges" : "") + ". " : "") + "A limit keeps the battery healthy longer if it's plugged in a lot"
+            options: [{ value: 60, label: "60%" }, { value: 80, label: "80%" }, { value: 100, label: "100% (no limit)" }]
+            current: page.bat && page.bat.limit ? (page.bat.limit >= 95 ? 100 : page.bat.limit <= 70 ? 60 : 80) : 100
+            onChosen: v => hwJob.run(["set", "battery.limit", String(v)], () => hwStatus.run(["status"], r => page.hw = r), e => page.powerError = e)
         }
         SetChoice {
             visible: page.profiles.length > 1

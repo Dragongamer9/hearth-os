@@ -2392,8 +2392,37 @@ var ENTRIES = [
 "i": "bell"
 },
 {
+"t": "Notifications",
+"p": "notifications",
+"d": "Off: nothing from this app is shown or kept, urgent ones neither"
+},
+{
+"t": "Pop-ups",
+"p": "notifications",
+"d": "Off: they only go to the list"
+},
+{
+"t": "Play a sound",
+"p": "notifications"
+},
+{
+"t": "Show on the lock screen",
+"p": "notifications",
+"d": "Its name and the title, nothing more"
+},
+{
+"t": "Priority",
+"p": "notifications",
+"d": "High pops up even with Do not disturb on; Low goes straight to the list"
+},
+{
 "t": "Battery",
 "p": "power"
+},
+{
+"t": "Stop charging at",
+"p": "power",
+"i": "batt"
 },
 {
 "t": "Power mode",
@@ -2778,6 +2807,11 @@ var ENTRIES = [
 "i": "mic"
 },
 {
+"t": "Play it back",
+"p": "sound",
+"i": "play"
+},
+{
 "t": "When this PC turns on",
 "p": "startup",
 "d": "Start in one mode every time, or follow a schedule",
@@ -2788,6 +2822,12 @@ var ENTRIES = [
 "p": "startup",
 "d": "A new change an hour after the last one",
 "i": "plus"
+},
+{
+"t": "Reopen my apps from last time",
+"p": "startup",
+"d": "The apps open when you signed out or left Desktop Mode open again (not games or Steam)",
+"i": "restart"
 },
 {
 "t": "If a game is running",
@@ -2849,6 +2889,35 @@ var ENTRIES = [
 {
 "t": "Low means less than",
 "p": "storage"
+},
+{
+"t": "No Thunderbolt here",
+"p": "thunderbolt",
+"d": "This PC has no Thunderbolt or USB4 ports, or bolt isn't running",
+"i": "info"
+},
+{
+"t": "Security",
+"p": "thunderbolt",
+"i": "shield"
+},
+{
+"t": "Allow this time",
+"p": "thunderbolt",
+"d": "Until it's unplugged",
+"i": "check"
+},
+{
+"t": "Always allow it",
+"p": "thunderbolt",
+"d": "It connects by itself from now on",
+"i": "lock"
+},
+{
+"t": "Forget it",
+"p": "thunderbolt",
+"d": "It waits for you again next time",
+"i": "trash"
 },
 {
 "t": "Update anyway",

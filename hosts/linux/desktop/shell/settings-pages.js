@@ -64,6 +64,7 @@ var PAGES = [
     { id: "keyboard", file: "SetKeyboard.qml", cat: "bt", label: "Keyboard", icon: "kbd", desc: "Layouts, typing, the on-screen keyboard, shortcuts", words: "layout on-screen osk typing shortcuts", old: "Keyboard" },
     { id: "mouse", file: "SetMouse.qml", cat: "bt", label: "Mouse & touchpad", icon: "mouse", desc: "Pointer speed, scrolling, tapping", words: "touchpad pointer cursor speed", old: "Mouse & touchpad" },
     { id: "printers", file: "SetPrinters.qml", cat: "bt", label: "Printers", icon: "printer", desc: "Printers and scanners", words: "print scanner", old: "Printers" },
+    { id: "thunderbolt", file: "SetThunderbolt.qml", cat: "bt", label: "Thunderbolt", icon: "link", desc: "Docks, drives and screens on Thunderbolt or USB4: allow them, or forget them", words: "thunderbolt usb4 dock egpu bolt boltctl authorize allow device security" },
 
     // ---- Hearth Link (its own category; the page is the landing)
     { id: "link", file: "SetLink.qml", cat: "link", label: "Hearth Link", icon: "desktops", words: "phone devices sync pair storage backups saves", old: "Hearth Link", landing: true },

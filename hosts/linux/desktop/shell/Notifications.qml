@@ -21,9 +21,16 @@ Scope {
         // Every notification goes into the history (the clock's panel, ClockPanel.qml). With Do Not Disturb on
         // only urgent ones pop up.
         onNotification: n => {
-            DeskState.remember(n);
-            if ((DeskState.dnd || DeskState.isMuted(n.appName)) && n.urgency !== NotificationUrgency.Critical) return;
+            // Each app's settings (1.14, NotifyRules.qml): not allowed = not kept or shown at all (urgent ones too);
+            // low priority = only the list; high = pops up even with Do Not Disturb; a sound when it pops up.
+            const rule = NotifyRules.rule(n.appName);
+            if (!rule.allow) { n.dismiss(); return; }
+            DeskState.remember(n, rule.lockScreen);
+            const urgent = n.urgency === NotificationUrgency.Critical || rule.priority === "high";
+            if (rule.priority === "low" && n.urgency !== NotificationUrgency.Critical) return;
+            if ((DeskState.dnd || DeskState.isMuted(n.appName)) && !urgent) return;
             n.tracked = true;
+            if (rule.sound && !DeskState.dnd) NotifyRules.playSound();
         }
     }
 
