@@ -356,6 +356,10 @@ def restore_kde_keys(kk):
 EMPTY_TABLE = {'shortcuts': [], 'kwinOnly': [], 'kdeKeys': [], 'extraZones': [], 'gap': 6, 'rules': []}
 
 
+# What only KWin's own scripts may call (from_kwin); the rest (Command, List, Shortcut, HoverMax...) are Mantel's and checks'.
+KWIN_ONLY = ('Update', 'Next', 'NextPreview', 'ForceClose')
+
+
 class Bridge:
     def __init__(self, stdio):
         Gio, GLib = gi_modules()
@@ -382,6 +386,7 @@ class Bridge:
         self.hover_timer = 0
         self.hover_open = False
         self.last_next = 0.0
+        self.kwin_owner = None          # KWin's unique bus name (from_kwin)
         self.last_list = '{"windows": [], "desktops": [], "active": ""}'
         self.connected = None
         self.problem = ''
@@ -588,8 +593,30 @@ class Bridge:
         return False
 
     # -------- D-Bus
+    def from_kwin(self, sender):
+        """Is SENDER KWin itself (the owner of org.kde.KWin)? Only KWin's scripts send the window list (Update), wait for
+        Mantel's commands (Next, NextPreview) and ask to force close a window: another program on the session bus could
+        otherwise fake the list or take the commands. The owner is looked up again when it doesn't match (KWin
+        restarted)."""
+        if not sender:
+            return False
+        if sender == self.kwin_owner:
+            return True
+        try:
+            r = self.bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'GetNameOwner',
+                                   self.GLib.Variant('(s)', ('org.kde.KWin',)), self.GLib.VariantType.new('(s)'),
+                                   self.Gio.DBusCallFlags.NONE, 2000, None)
+            self.kwin_owner = r.unpack()[0]
+        except Exception:
+            self.kwin_owner = None
+        return sender == self.kwin_owner
+
     def on_call(self, conn, sender, path, iface, method, params, inv):
         GLib = self.GLib
+        if method in KWIN_ONLY and not self.from_kwin(sender):
+            log('refused %s from %s: only KWin may call it' % (method, sender))
+            inv.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'Only KWin may call ' + method)
+            return
         if method == 'Update':
             (text,) = params.unpack()
             self.update(text)
