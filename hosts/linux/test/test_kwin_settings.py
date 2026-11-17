@@ -321,13 +321,79 @@ class Helper(Env):
         self.assertNotIn('scrollSpeed', plain['mouse'])          # no default: KWin's own counts
 
     def test_rebind(self):
-        K.rebind('Wacom Intuos S Pen', '331', 'MouseButton,2')
-        self.assertIn('[ButtonRebinds][TabletTool][Wacom Intuos S Pen]\n331=MouseButton,2', self.read('kcminputrc'))
+        K.rebind('Wacom Intuos S Pen', '331', 'MouseButton,273')
+        self.assertIn('[ButtonRebinds][TabletTool][Wacom Intuos S Pen]\n331=MouseButton,273', self.read('kcminputrc'))
         K.rebind('Wacom Intuos S Pen', '331', '')
         self.assertNotIn('331=', self.read('kcminputrc'))
         for t, b, a in (('Pen]', '331', ''), ('Pen', 'x', ''), ('Pen', '331', 'Exec,rm -rf')):
             with self.assertRaises(K.Fail):
                 K.rebind(t, b, a)
+
+
+class MouseAndPen(Env):
+    """1.14 wave 3: middle-click paste, a mouse's extra buttons, the pen and mouse pointers together, and KWin's own
+    game-controller pointer left off."""
+    def test_mouse_rebind(self):
+        self.write('kcminputrc', '[Mouse]\ncursorTheme=breeze\n\n[ButtonRebinds][Mouse]\nBackButton=Key,Alt+Left\n')
+        K.mouse_rebind('ExtraButton1', 'Key,Ctrl+Shift+Tab')
+        K.mouse_rebind('ExtraButton7', 'MouseButton,274')
+        K.mouse_rebind('MiddleButton', 'Disabled')
+        vals, _, _ = kc.effective('kcminputrc')
+        g = vals['ButtonRebinds][Mouse']
+        self.assertEqual(g, {'ExtraButton1': 'Key,Ctrl+Shift+Tab', 'ExtraButton7': 'MouseButton,274', 'MiddleButton': 'Disabled'})
+        self.assertNotIn('BackButton', self.read('kcminputrc'))           # one line for one button
+        self.assertEqual(vals['Mouse']['cursorTheme'], 'breeze')          # everything else kept
+        K.mouse_rebind('ExtraButton7', ' ')
+        self.assertNotIn('ExtraButton7', self.read('kcminputrc'))
+        self.assertTrue(os.path.exists(self.path('kcminputrc') + '.bak'))
+
+    def test_mouse_rebind_refuses(self):
+        for b, a in (('LeftButton', 'Disabled'), ('RightButton', 'Key,Ctrl+C'), ('ExtraButton25', ''), ('ExtraButton0', ''),
+                     ('ExtraButton1]', ''), ('ExtraButton1', 'Exec,rm -rf'), ('ExtraButton1', 'Key,Ctrl+,'),
+                     ('ExtraButton1', 'Key,A\nB')):
+            with self.assertRaises(K.Fail, msg=(b, a)):
+                K.mouse_rebind(b, a)
+        self.assertFalse(os.path.exists(self.path('kcminputrc')))
+        self.write('kcminputrc', '[ButtonRebinds][Mouse\nbroken')
+        before = self.read('kcminputrc')
+        with self.assertRaises((K.Fail, kc.BadFile)):
+            K.mouse_rebind('ExtraButton2', 'MouseButton,276')
+        self.assertEqual(self.read('kcminputrc'), before)                   # a file that can't be read is left alone
+
+    def test_sync_pointers_and_middle_paste(self):
+        shutil = __import__('shutil')
+        shutil.copy(ROOT / 'hosts/linux/desktop/kwin/xdg/kwinrc', os.path.join(self.sys, 'kwinrc'))
+        out = K.set_file('kcminputrc', json.dumps({'Tablet': {'SyncWithMouse': True}}))
+        self.assertEqual(out['files']['kcminputrc']['Tablet']['SyncWithMouse'], 'true')
+        with self.assertRaises(K.Fail):
+            K.set_file('kcminputrc', json.dumps({'Libinput': {'PointerAcceleration': '1'}}))
+        out = K.set_file('kwinrc', json.dumps({'Wayland': {'EnablePrimarySelection': False}}))
+        self.assertEqual(self.read('kwinrc'), '[Wayland]\nEnablePrimarySelection=false\n')   # only the key changed
+        self.assertEqual(out['files']['kwinrc']['Wayland']['InputMethod'], '/usr/share/applications/hearth-kwin-im.desktop')
+        K.set_file('kwinrc', json.dumps({'Wayland': {'EnablePrimarySelection': None}}))
+        self.assertNotIn('EnablePrimarySelection', self.read('kwinrc'))
+
+    def test_game_controllers_left_off_for_newer_kwin(self):
+        rc = (ROOT / 'hosts/linux/desktop/kwin/xdg/kwinrc').read_text()
+        self.assertRegex(rc, r'(?m)^\[Plugins\]\ngamecontrollerEnabled=false$')    # not [$i]: your kwinrc wins
+        self.assertIn('KWin 6.3', rc)
+
+    def test_pages(self):
+        mouse = (SHELL / 'SetMouse.qml').read_text()
+        self.assertIn('kw.set("kwinrc", "Wayland", "EnablePrimarySelection", v)', mouse)
+        self.assertIn('SetLinkCard { target: "mouse-buttons"', mouse)
+        mb = (SHELL / 'SetMouseButtons.qml').read_text()
+        self.assertIn('acceptedButtons: Qt.AllButtons', mb)
+        self.assertIn('kw.job.run(["mouse-rebind", b]', mb)
+        self.assertNotIn('LeftButton', mb)
+        self.assertNotRegex(mb, r'Component\.onCompleted:[^\n]*job')           # opening it writes nothing
+        self.assertIn('"press"', mb)                                          # mouse-buttons:press opens the box
+        pages = (SHELL / 'settings-pages.js').read_text()
+        self.assertIn('{ id: "mouse-buttons", file: "SetMouseButtons.qml", cat: "bt", parent: "mouse"', pages)
+        tab = (SHELL / 'SetKwinTablet.qml').read_text()
+        self.assertIn('kw.set("kcminputrc", "Tablet", "SyncWithMouse", v)', tab)
+        self.assertNotRegex(tab, r'MouseButton,[248]"')                       # Linux codes (273...), not Qt's
+        self.assertIn('MouseButton,273', tab)
 
 
 class AccessOnKwin(Env):

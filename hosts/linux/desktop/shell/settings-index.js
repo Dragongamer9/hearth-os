@@ -2908,6 +2908,11 @@ var ENTRIES = [
 "p": "kwin-rules"
 },
 {
+"t": "One pointer for the pen and the mouse",
+"p": "kwin-tablet",
+"i": "mouse"
+},
+{
 "t": "Screen it draws on",
 "p": "kwin-tablet",
 "i": "display"
@@ -3192,6 +3197,11 @@ var ENTRIES = [
 },
 {
 "t": "Middle-click with both buttons",
+"p": "mouse",
+"i": "mouse"
+},
+{
+"t": "Paste with the middle button",
 "p": "mouse",
 "i": "mouse"
 },
