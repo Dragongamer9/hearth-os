@@ -212,7 +212,9 @@ PanelWindow {
     }
 
     // ------------------------------------------------------------------ the page
+    Connections { target: cw.fh; function onRedrawsChanged() { backdrop.requestPaint(); } }
     FhBackdrop {
+        id: backdrop
         anchors.fill: parent; k: cw.k
         c0: cw.page === "switcher" ? "#2c160a" : cw.tab === "home" ? "#4a2410" : "#3a1d0e"
         c1: cw.page === "switcher" ? "#160e0a" : cw.tab === "home" ? "#1d120c" : "#1a110c"
