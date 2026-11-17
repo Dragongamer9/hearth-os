@@ -35,26 +35,26 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 
 ## 2. Desk (2-desk.png)
 
-- [ ] Top bar: app tile at the left with the focused app's name (Hearth Files)
+- [x] Top bar: app tile at the left with the focused app's name (Hearth Files) — hosts/linux/desktop/shell/FireholdDesk.qml: "text: dk.frontName"
 - [ ] Top bar: the focused app's menus (File, Edit, View)
-- [ ] Top bar: date and clock in the middle (Mon Nov 16 · 10:22 PM)
-- [ ] Top bar: the posture pill "Desk" with its blue dot
-- [ ] Top bar: Wi-Fi · battery (Wi-Fi · 78%)
+- [x] Top bar: date and clock in the middle (Mon Nov 16 · 10:22 PM) — hosts/linux/desktop/shell/FireholdDesk.qml: "Qt.formatDate(clock.date, \"ddd MMM d\") + \" · \""
+- [x] Top bar: the posture pill "Desk" with its blue dot — hosts/linux/desktop/shell/FireholdDesk.qml: "text: \"Desk\""
+- [x] Top bar: Wi-Fi · battery (Wi-Fi · 78%) — hosts/linux/desktop/shell/FireholdDesk.qml: ".filter(Boolean).join(\" · \")"
 - [ ] A window with its title (Hearth Files — Pictures) and three round window buttons, the close one in the accent colour
 - [ ] Hearth Files' picture grid inside it (two rows of five)
-- [ ] The game in a window with the accent border (the same game resumed on the Couch)
+- [x] The game in a window with the accent border (the same game resumed on the Couch) — hosts/linux/desktop/shell/FireholdGameFrame.qml: "border.width: 2; border.color: F.C.accent"
 - [ ] The game window's title line: name · paused · 60 fps limit · VRR
-- [ ] The game window's hint chip "Full screen: F11 or ≡"
-- [ ] The game window keeps the game's picture ("The same game you resumed on the Couch, now in a window")
+- [x] The game window's hint chip "Full screen: F11 or ≡" — hosts/linux/desktop/shell/FireholdGameFrame.qml: "\"Full screen: F11 or ≡\""
+- [x] The game window keeps the game's picture ("The same game you resumed on the Couch, now in a window") — hosts/linux/desktop/shell/FireholdGameFrame.qml: "mask: Region { item: chip }"
 - [x] Notification card "Switched to Desk": "You moved the mouse. Everything stayed open. Press the Guide button to go back to the Couch." — hosts/linux/desktop/shell/Firehold.qml: "Everything stayed open. Press the Guide button to go back to the Couch."
-- [ ] Dock: Home (H, accent)
-- [ ] Dock: Hearth Files (F) with its running dot
-- [ ] Dock: Firefox (W) with its running dot
-- [ ] Dock: the game (▶) with its running dot
-- [ ] Dock: Discord (D) with its running dot
-- [ ] Dock: Steam (S) with its running dot
-- [ ] Dock: Library (L)
-- [ ] Dock: Settings (⚙)
+- [x] Dock: Home (H, accent) — hosts/linux/desktop/shell/FireholdDesk.qml: "glyph: \"H\"; tint: F.C.accent"
+- [x] Dock: Hearth Files (F) with its running dot — hosts/linux/desktop/shell/FireholdDesk.qml: "readonly property var running"
+- [x] Dock: Firefox (W) with its running dot — hosts/linux/desktop/shell/FireholdDesk.qml: "readonly property var running"
+- [x] Dock: the game (▶) with its running dot — hosts/linux/desktop/shell/FireholdDesk.qml: "glyph: modelData.game ? \"▶\""
+- [x] Dock: Discord (D) with its running dot — hosts/linux/desktop/shell/FireholdDesk.qml: "readonly property var running"
+- [x] Dock: Steam (S) with its running dot — hosts/linux/desktop/shell/FireholdDesk.qml: "readonly property var running"
+- [x] Dock: Library (L) — hosts/linux/desktop/shell/FireholdDesk.qml: "glyph: \"L\""
+- [x] Dock: Settings (⚙) — hosts/linux/desktop/shell/FireholdDesk.qml: "glyph: \"⚙\""
 
 ## 3. A game with the Guide (3-in-game.png)
 
@@ -82,7 +82,7 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 
 - [x] Title "Open now" — hosts/linux/desktop/shell/FireholdCouch.qml: "text: \"Open now\""
 - [x] "Games and windows are one list. Pick one to jump to it, in Couch or Desk." — hosts/linux/desktop/shell/FireholdCouch.qml: "Games and windows are one list. Pick one to jump to it, in Couch or Desk."
-- [ ] A grid of live pictures of every game and window (three a row)
+- [x] A grid of live pictures of every game and window (three a row) — hosts/linux/desktop/shell/FireholdCouch.qml: "source: cw.fh.pictureOf(sw.modelData.win); live: true"
 - [x] Each card's tag: GAME or WINDOW — hosts/linux/desktop/shell/FireholdCouch.qml: "sw.game ? \"GAME\" : \"WINDOW\""
 - [x] The selected card with the accent border and glow — hosts/linux/desktop/shell/FireholdCouch.qml: "Qt.rgba(1, 138 / 255, 61 / 255, 0.22)"
 - [x] Each card's name and what it's doing (Ember Trails · game · paused, Hearth Files · Pictures › Trips, Firefox · 3 tabs, Discord · 2 new messages, Pixel Rally · emulator · suspended, Steam · downloading) — hosts/linux/desktop/shell/firehold.js: "(src === \"emulator\" ? \"emulator\" : \"game\") + \" · \" + state"
@@ -119,3 +119,14 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 - [x] Row: Guide button · Press once: Quick Access. Twice: everything open · Quick Access — hosts/linux/desktop/shell/FireholdSettings.qml: "\"Press once: Quick Access. Twice: everything open\""
 - [x] Row: Games · Open full screen on the Couch, in a window on the Desk · Follow the posture — hosts/linux/desktop/shell/FireholdSettings.qml: "\"Open full screen on the Couch, in a window on the Desk\""
 - [x] Row: Big Picture · Steam's own TV mode isn't needed; Steam is an app like the others · Off — hosts/linux/desktop/shell/FireholdSettings.qml: "\"Steam's own TV mode isn't needed; Steam is an app like the others\""
+
+## Still open on feature/firehold-shell, and why
+
+- Hero line, chapter: no store says which chapter you're on; the line shows the store, time played, saves and "runs natively, no Game Mode".
+- Desk top bar, the focused app's menus: needs a global menu (apps' menus over D-Bus, an appmenu registrar), which Mantel doesn't have yet.
+- The Hearth Files window's frame (round buttons, accent close) and its picture grid: KWin's window frames (desktop/kwin) and Hearth Files itself, not Firehold's screens.
+- The game window's title line: name, running/paused and VRR are shown; "60 fps limit" waits for the frame limit (firehold-comp).
+- The game full screen drawn straight to the display, Frame limit, Resolution scaling: need firehold-comp.
+- Performance overlay: fps (when MangoHud logs it), frame time, GPU % and temperature are shown; watts aren't in hearth-stats yet.
+- Record "Last 30 s too": hearth-record has no replay buffer yet.
+- Friends "2 online": Discord gives Mantel no online count.

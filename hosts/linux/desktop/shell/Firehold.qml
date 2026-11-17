@@ -375,6 +375,13 @@ Scope {
             else if (what === "settings") fhs.settingsShown = true;
             else if (what === "home") fhs.home();
         }
+        // Checks: go to the window with this title, as A on its card does.
+        function go(title: string): bool {
+            const w = fhs.wins.find(t => t.title === title);
+            if (!w) return false;
+            fhs.goTo(w, false);
+            return true;
+        }
         function press(button: string): void { fhs.padButton(button, true); fhs.padButton(button, false); }
         function filter(key: string): void { fhs.libFilter = key; }
         function search(text: string): void { fhs.libQuery = text; }
