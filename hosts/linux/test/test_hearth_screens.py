@@ -129,6 +129,13 @@ class Reading(Base):
         self.assertEqual((hd['rotation'], hd['transform']), ('right', '270'))
         self.assertFalse(hd['hdr']['capable'] or hd['vrr']['capable'] or hd['icc']['capable'])
 
+    def test_newer_libkscreen_without_enabled_means_on(self):
+        ks = {'outputs': [{'id': 1, 'name': 'WL-0', 'connected': True, 'currentModeId': '1', 'scale': 1, 'rotation': 1, 'priority': 0,
+                           'modes': [{'id': '1', 'size': {'width': 1920, 'height': 1080}, 'refreshRate': 60.0}]}]}
+        o = hs.parse_kscreen(json.dumps(ks), '', {})[0]
+        self.assertTrue(o['enabled'])
+        self.assertTrue(o['modes'][0]['current'])
+
     def test_edid_names_the_screen(self):
         raw = bytearray(128)
         raw[8:10] = bytes([0x1E, 0x6D])           # GSM (LG)

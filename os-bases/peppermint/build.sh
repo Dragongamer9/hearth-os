@@ -1067,7 +1067,7 @@ ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
 # KWin's output management and DPMS) and KWin's D-Bus. KWin answers its screenshot interface only for a program whose
 # .desktop file lists it, found by the program's executable: hearth-screenshot runs through its own copy of Python
 # (a hard link, so every Python program isn't trusted), named by hearth-screenshot.desktop (os/system_files).
-optional libkscreen-bin
+optional libkscreen-bin libkf6config-bin   # kscreen-doctor; kwriteconfig6 (KWin's Night Light and tearing settings, told to KWin)
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-screens /usr/share/nimbus/desktop/shell/hearth-screen-power /usr/bin/hearth-screenshot
 py=$(readlink -f /usr/bin/python3)
 install -d /usr/libexec/nimbus
