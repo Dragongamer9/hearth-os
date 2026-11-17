@@ -2525,6 +2525,16 @@ var ENTRIES = [
 "d": "In Screen edges"
 },
 {
+"t": "Desktop cube",
+"p": "kwin-desktops",
+"i": "box"
+},
+{
+"t": "Open the cube now",
+"p": "kwin-desktops",
+"i": "box"
+},
+{
 "t": "How long to push before it happens",
 "p": "kwin-edges",
 "i": "clock"
@@ -2648,7 +2658,7 @@ var ENTRIES = [
 {
 "t": "Look",
 "p": "kwin-effects",
-"d": "What Alt+Tab shows while you hold it",
+"d": "What Alt+Tab shows while you hold it. Alt+` shows only the windows of the app you're on, in the same look",
 "i": "window"
 },
 {
@@ -2670,6 +2680,18 @@ var ENTRIES = [
 {
 "t": "Order",
 "p": "kwin-effects",
+"i": "grid"
+},
+{
+"t": "Second switcher's look",
+"p": "kwin-effects",
+"d": "A switcher of its own, set up apart from Alt+Tab",
+"i": "window"
+},
+{
+"t": "Which apps",
+"p": "kwin-effects",
+"d": "Only the app you're on: Super+Tab goes between that app's windows",
 "i": "grid"
 },
 {
@@ -2784,9 +2806,39 @@ var ENTRIES = [
 "i": "mouse"
 },
 {
+"t": "Hide the pointer when the mouse is still",
+"p": "kwin-effects",
+"i": "mouse"
+},
+{
 "t": "Show touches on a touchscreen",
 "p": "kwin-effects",
 "i": "pad"
+},
+{
+"t": "Minimize every window with Super+Shift+D",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Video wall",
+"p": "kwin-effects",
+"i": "display"
+},
+{
+"t": "Leave out of Alt+Tab what's left off the taskbar",
+"p": "kwin-effects",
+"i": "grid"
+},
+{
+"t": "Show FPS",
+"p": "kwin-effects",
+"i": "cpu"
+},
+{
+"t": "Show paint",
+"p": "kwin-effects",
+"i": "edit"
 },
 {
 "t": "Allow tearing in full-screen games",
