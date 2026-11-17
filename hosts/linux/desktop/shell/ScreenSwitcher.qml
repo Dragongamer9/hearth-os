@@ -34,7 +34,7 @@ Scope {
     ExtrasPal { id: pal }
     SetJob { id: job; helper: "hearth-screens" }
 
-    function label(o) { return o ? (o.model || o.description || o.name).split(" (")[0] : ""; }
+    function label(o) { return o ? (o.model || o.name) : ""; }
     function mainName() { return label(outs.find(o => o.priority === 1) || outs[0]); }
     function otherName() { const m = outs.find(o => o.priority === 1) || outs[0]; return label(outs.find(o => o !== m)); }
 
