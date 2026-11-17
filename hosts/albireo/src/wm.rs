@@ -504,6 +504,7 @@ impl<B: Backend + 'static> HearthState<B> {
         }
         self.minimized.retain(|m| m.window.alive());
         self.lock_tick();
+        self.output_management_tick();
         self.handle_toplevel_requests();
         let infos = self.toplevel_infos();
         let dh = self.display_handle.clone();
@@ -570,6 +571,10 @@ impl<B: Backend + 'static> HearthState<B> {
                     "name": o.name(),
                     "x": geo.loc.x, "y": geo.loc.y, "w": geo.size.w, "h": geo.size.h,
                     "scale": o.current_scale().fractional_scale(),
+                    "make": o.physical_properties().make,
+                    "model": o.physical_properties().model,
+                    "modes": o.modes().len(),
+                    "refresh": o.current_mode().map(|m| m.refresh).unwrap_or(0),
                     "workArea": [area.loc.x, area.loc.y, area.size.w, area.size.h],
                     "layers": layers,
                 })
@@ -599,12 +604,16 @@ impl<B: Backend + 'static> HearthState<B> {
             "windows": windows,
             "taskbars": self.foreign_toplevel_state.listeners(),
             "keyboardFocus": self.keyboard_focus_name(),
+            "captures": { "wlr": self.captures.taken_wlr, "ext": self.captures.taken_ext },
+            "gammaHolders": self.gamma_state.holders(),
             "lock": {
                 "locked": self.lock.locked,
                 "client": self.lock.locked && self.lock.client_alive() && !self.lock.client_gone,
                 "prompt": self.lock.prompt_active(),
                 "surfaces": self.lock.surfaces.iter().filter(|(_, s)| s.alive()).count(),
                 "message": self.lock.prompt.message,
+                "typed": self.lock.prompt.typed.chars().count(),
+                "busy": self.lock.prompt.busy,
             },
         });
         let text = v.to_string();

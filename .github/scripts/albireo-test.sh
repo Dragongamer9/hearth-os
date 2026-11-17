@@ -15,6 +15,8 @@
 #   albireo-7-locked  Mantel's lock screen (ext-session-lock), nothing else on the screen
 #   albireo-8-lock-prompt  the lock screen killed: still locked, the compositor's own prompt after a wrong password
 #   albireo-9-unlocked  the right password in that prompt: the desktop back
+#   albireo-10-grim   grim's own picture of the screen (screencopy), checked against the screen's
+#   albireo-11-display  Settings › Display, its screen list from wlr-randr (wlr-output-management)
 set -u +e +o pipefail
 mkdir -p shots
 SRC=$PWD
@@ -49,6 +51,13 @@ wait_for() {   # $1 seconds, $2 a Python expression on the status file (d)
   for i in $(seq 1 $(( $1 * 2 ))); do [ "$(status "$2")" = True ] && return 0; sleep 0.5; done; return 1
 }
 W() { WAYLAND_DISPLAY=wayland-hearth DISPLAY= "$@"; }
+# How alike two pictures are (0 = the same; the virtual screen's own picture against an app's through screencopy).
+alike() { python3 -c '
+import sys
+from PIL import Image, ImageChops, ImageStat
+a = Image.open(sys.argv[1]).convert("RGB"); b = Image.open(sys.argv[2]).convert("RGB")
+if a.size != b.size: print("size %sx%s vs %sx%s" % (a.size + b.size)); sys.exit()
+print("%.1f" % (sum(ImageStat.Stat(ImageChops.difference(a, b)).mean) / 3))' "$1" "$2" 2>&1; }
 
 # ---- 1: the compositor on its own (and the protocols it offers).
 "$BIN" --winit --size 1920x1080 --socket wayland-hearth >shots/compositor-alone.log 2>&1 &
@@ -66,7 +75,9 @@ if command -v wayland-info >/dev/null; then
   for g in xdg_wm_base zwlr_layer_shell_v1 zwlr_foreign_toplevel_manager_v1 zxdg_decoration_manager_v1 wl_data_device_manager \
            zwp_primary_selection_device_manager_v1 zwlr_data_control_manager_v1 zwp_virtual_keyboard_manager_v1 \
            zwp_input_method_manager_v2 zwp_text_input_manager_v3 zwp_pointer_constraints_v1 wp_viewporter \
-           wp_fractional_scale_manager_v1 wp_presentation xdg_activation_v1 ext_idle_notifier_v1 zwp_idle_inhibit_manager_v1; do
+           wp_fractional_scale_manager_v1 wp_presentation xdg_activation_v1 ext_idle_notifier_v1 zwp_idle_inhibit_manager_v1 \
+           ext_session_lock_manager_v1 zwlr_screencopy_manager_v1 ext_image_copy_capture_manager_v1 \
+           ext_output_image_capture_source_manager_v1 zwlr_output_manager_v1 zwlr_gamma_control_manager_v1; do
     grep -q "$g" shots/wayland-info.txt || fail "protocols" "$g isn't offered"
   done
   note "protocols" "$(grep -o "interface: '[a-z_0-9]*'" shots/wayland-info.txt | cut -d"'" -f2 | tr '\n' ' ' | cut -c1-900)"
@@ -181,6 +192,13 @@ fi
 sleep 4
 [ "$(focus)" = lock ] || fail "lock" "while locked the keyboard is the $(focus)'s, not the lock screen's"
 shot albireo-7-locked
+# A screen picture while it's locked shows the lock screen, never what's behind it.
+if command -v grim >/dev/null; then
+  W timeout 15 grim shots/grim-locked.png 2>shots/grim-locked.err
+  d=$(alike shots/grim-locked.png shots/albireo-7-locked.png)
+  note "screencopy" "grim while locked: $(head -c 200 shots/grim-locked.err | tr '\n' ' ') difference from the screen $d"
+  awk -v d="$d" 'BEGIN { exit !(d + 0 < 12 && d ~ /^[0-9.]+$/) }' || fail "screencopy" "grim's picture while locked isn't the lock screen (difference $d)"
+fi
 grep -q "the lock screen is told it's locked" "$HOME/.local/share/nimbus/albireo.log" 2>/dev/null || note "lock" "the compositor's log doesn't say it confirmed the lock"
 
 # ---- 8: the lock screen dies (Mantel killed): still locked, with the compositor's own prompt; a wrong password
@@ -193,12 +211,16 @@ else
   fail "lock" "after the lock screen died: $(status 'd["lock"]')"
 fi
 case "$(focus)" in window:*|layer:*) fail "lock" "the lock screen died and the keyboard went to $(focus)";; esac
+# The keys typed on the virtual screen go to the compositor's window (no window manager there gives it the focus).
+XWIN=$(xdotool search --name 'Albireo' 2>/dev/null | head -1)
+[ -n "$XWIN" ] && xdotool windowfocus --sync "$XWIN" 2>/dev/null
+xdotool mousemove 960 540
 sleep 2
 xdotool type --delay 80 "not-the-password"; xdotool key Return
 sleep 5
 [ "$(status 'd["lock"]["locked"]')" = True ] && note "lock" "a wrong password: still locked ($(status 'd["lock"]["message"]'))" \
   || fail "lock" "a wrong password unlocked it: $(status 'd["lock"]')"
-status 'd["lock"]["message"]' | grep -q "isn't right" || fail "lock" "the prompt didn't say the password was wrong: $(status 'd["lock"]')"
+status 'd["lock"]["message"]' | grep -q "isn't right" || fail "lock" "the prompt didn't say the password was wrong: $(status 'd["lock"]') (window $XWIN; log: $(grep -E 'lock:' "$HOME/.local/share/nimbus/albireo.log" | tail -3 | tr '\n' '|' | cut -c1-400))"
 shot albireo-8-lock-prompt
 for i in $(seq 1 40); do qs call lock lock && break; sleep 1; done
 if wait_for 15 'd["lock"]["locked"] and d["lock"]["client"] and not d["lock"]["prompt"]'; then
@@ -210,6 +232,7 @@ sleep 3
 pkill -KILL -x quickshell
 wait_for 10 'd["lock"]["prompt"]' || fail "lock" "the second time the lock screen died there was no prompt: $(status 'd["lock"]')"
 sleep 7   # the last wrong try's wait is long over; type the right one
+[ -n "$XWIN" ] && xdotool windowfocus --sync "$XWIN" 2>/dev/null
 xdotool type --delay 80 "$LOCKPW"; xdotool key Return
 if wait_for 15 'not d["lock"]["locked"]'; then
   note "lock" "the right password in the built-in prompt unlocked it; the keyboard is back with $(focus)"
@@ -219,6 +242,64 @@ fi
 for i in $(seq 1 30); do qs call settings page your-desktop && break; sleep 1; done
 sleep 4
 shot albireo-9-unlocked
+
+# ---- 10: screen pictures for apps: grim (ext-image-copy-capture or wlr-screencopy), a region, and wf-recorder
+# recording (wlr-screencopy with damage). Each picture has to match what the screen shows.
+if command -v grim >/dev/null; then
+  before=$(status '"%d %d" % (d["captures"]["wlr"], d["captures"]["ext"])')
+  shot shots-tmp-screen
+  W timeout 15 grim shots/albireo-10-grim.png 2>shots/grim.err || fail "screencopy" "grim failed: $(head -c 400 shots/grim.err | tr '\n' ' ')"
+  d=$(alike shots/albireo-10-grim.png shots/shots-tmp-screen.png)
+  note "screencopy" "grim's picture vs the screen: difference $d (0 is the same); captures before $before, now $(status '"%d %d" % (d["captures"]["wlr"], d["captures"]["ext"])')"
+  awk -v d="$d" 'BEGIN { exit !(d + 0 < 12 && d ~ /^[0-9.]+$/) }' || fail "screencopy" "grim's picture doesn't match the screen (difference $d)"
+  W timeout 15 grim -g "100,200 640x360" shots/grim-region.png 2>>shots/grim.err
+  python3 -c 'from PIL import Image; import sys; im = Image.open(sys.argv[1]); print(im.size); sys.exit(im.size != (640, 360))' shots/grim-region.png >>shots/grim.err 2>&1 \
+    && note "screencopy" "a region (grim -g) is 640x360" || fail "screencopy" "grim -g didn't give 640x360: $(tail -c 300 shots/grim.err | tr '\n' ' ')"
+  rm -f shots/shots-tmp-screen.png shots/grim-region.png
+else
+  fail "screencopy" "grim isn't installed"
+fi
+if command -v wf-recorder >/dev/null; then
+  w0=$(status 'd["captures"]["wlr"] + d["captures"]["ext"]')
+  ( W timeout -s INT 6 wf-recorder -y -c ffv1 -f shots/recording.mkv >shots/wf-recorder.log 2>&1 ) &
+  RPID=$!
+  sleep 1.5; W wtype "recorded" 2>/dev/null; sleep 1; xdotool mousemove 600 500; sleep 1; xdotool mousemove 900 300
+  wait "$RPID"
+  w1=$(status 'd["captures"]["wlr"] + d["captures"]["ext"]')
+  size=$(stat -c %s shots/recording.mkv 2>/dev/null || echo 0)
+  if [ "$size" -gt 10000 ] && [ "$((w1 - w0))" -ge 2 ]; then
+    note "screencopy" "wf-recorder recorded $size bytes, $((w1 - w0)) frames copied"
+  else
+    fail "screencopy" "wf-recorder: $size bytes, $((w1 - w0)) frames: $(tail -c 500 shots/wf-recorder.log | tr '\n' ' ')"
+  fi
+  rm -f shots/recording.mkv
+else
+  fail "screencopy" "wf-recorder isn't installed"
+fi
+
+# ---- 11: the screens for wlr-randr (wlr-output-management), as Settings › Display uses it: listed with their modes,
+# a scale change applies and goes back, a mode the nested window can't take is refused; then Settings › Display.
+if command -v wlr-randr >/dev/null; then
+  W timeout 10 wlr-randr --json > shots/wlr-randr.json 2>shots/wlr-randr.err
+  heads=$(python3 -c 'import json,sys; o=json.load(open(sys.argv[1])); print("%d screen(s): %s, %s %s, %d mode(s), scale %s" % (len(o), o[0]["name"], o[0]["make"], o[0]["model"], len(o[0]["modes"]), o[0]["scale"]))' shots/wlr-randr.json 2>&1)
+  case "$heads" in *"screen(s): winit"*) note "output management" "wlr-randr: $heads";; *) fail "output management" "wlr-randr --json: $heads $(head -c 300 shots/wlr-randr.err)";; esac
+  W timeout 10 wlr-randr --output winit --scale 1.25 2>>shots/wlr-randr.err
+  wait_for 10 'abs(d["outputs"][0]["scale"] - 1.25) < 0.01' && note "output management" "scale 1.25 applied (the work area is now $(status 'd["outputs"][0]["workArea"]'))" \
+    || fail "output management" "wlr-randr --scale 1.25 didn't apply: $(status 'd["outputs"][0]') $(tail -c 300 shots/wlr-randr.err)"
+  W timeout 10 wlr-randr --output winit --scale 1 2>>shots/wlr-randr.err
+  wait_for 10 'abs(d["outputs"][0]["scale"] - 1.0) < 0.01' || fail "output management" "the scale didn't go back to 1"
+  if W timeout 10 wlr-randr --output winit --mode 1280x720 2>>shots/wlr-randr.err; then
+    fail "output management" "nested, a different mode was accepted"
+  else
+    note "output management" "a mode the nested window can't take was refused, as it should be"
+  fi
+  [ "$(status 'd["outputs"][0]["w"]')" = 1920 ] || fail "output management" "the screen isn't 1920 wide any more: $(status 'd["outputs"][0]')"
+else
+  fail "output management" "wlr-randr isn't installed"
+fi
+qs call settings page display || fail "settings" "Mantel's ipc didn't open Settings › Display"
+sleep 6
+shot albireo-11-display
 
 # ---- The end: Desktop Mode ends as a switch does (nimbus-mode), the compositor ends cleanly.
 kill "$FPID" 2>/dev/null
@@ -238,7 +319,7 @@ grep -E "WARN|ERROR" shots/albireo.log 2>/dev/null | sort | uniq -c | sort -rn |
 grep -E 'desktop|albireo' "$LOG" | tail -8 | cut -c1-200 | while read -r l; do note "session" "$l"; done
 ls -la shots
 for s in albireo-1-empty albireo-2-mantel albireo-3-window albireo-4-minimized albireo-5-snapped albireo-6-your-desktop \
-         albireo-7-locked albireo-8-lock-prompt albireo-9-unlocked; do
+         albireo-7-locked albireo-8-lock-prompt albireo-9-unlocked albireo-10-grim albireo-11-display; do
   [ -s "shots/$s.png" ] || fail "screenshot" "$s is missing ($(tail -2 shots/shot-errors.txt 2>/dev/null | tr '\n' '|'))"
 done
 python3 - <<'PY'

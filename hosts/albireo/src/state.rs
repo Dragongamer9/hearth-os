@@ -196,6 +196,12 @@ pub struct HearthState<BackendData: Backend + 'static> {
     pub lone_modifier: Option<Keysym>,
     /// The session lock (lock.rs): Mantel's lock screen, and the built-in prompt if it goes away.
     pub lock: crate::lock::LockState,
+    /// Screen pictures apps asked for (screencopy.rs), drawn after their screen's next frame.
+    pub captures: crate::screencopy::CaptureState,
+    /// wlr-randr / Settings › Display (output_management.rs).
+    pub output_management_state: crate::output_management::OutputManagementState,
+    /// Night light and inverted colours (gamma.rs).
+    pub gamma_state: crate::gamma::GammaState,
 }
 
 #[derive(Debug)]
@@ -728,6 +734,9 @@ impl<BackendData: Backend + 'static> HearthState<BackendData> {
             .expect("Failed to initialize the keyboard");
         let foreign_toplevel_state = crate::foreign_toplevel::ForeignToplevelState::new::<BackendData>(&dh);
         let lock = crate::lock::LockState::new::<BackendData>(&dh);
+        let captures = crate::screencopy::CaptureState::new::<BackendData>(&dh);
+        let output_management_state = crate::output_management::OutputManagementState::new::<BackendData>(&dh);
+        let gamma_state = crate::gamma::GammaState::new::<BackendData>(&dh);
         let idle_notifier_state = IdleNotifierState::<Self>::new(&dh, handle.clone());
         IdleInhibitManagerState::new::<Self>(&dh);
         let stop = Arc::new(AtomicBool::new(false));
@@ -801,6 +810,9 @@ impl<BackendData: Backend + 'static> HearthState<BackendData> {
             keymap,
             lone_modifier: None,
             lock,
+            captures,
+            output_management_state,
+            gamma_state,
         }
     }
 
@@ -1222,8 +1234,22 @@ pub fn take_presentation_feedback(
 pub trait Backend {
     const HAS_RELATIVE_MOTION: bool = false;
     const HAS_GESTURES: bool = false;
+    /// In another desktop's window (winit): the window's size is the mode, no rotation, no colour ramp.
+    const NESTED: bool = false;
     fn seat_name(&self) -> String;
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);
     fn update_led_state(&mut self, led_state: LedState);
+    /// Switches a screen to one of its modes (output_management.rs).
+    fn set_output_mode(&mut self, _output: &Output, _mode: smithay::output::Mode) -> Result<(), String> {
+        Err("this backend can't change a screen's mode".into())
+    }
+    /// The screen's colour ramp size, when it has one (gamma.rs).
+    fn gamma_size(&self, _output: &Output) -> Option<u32> {
+        None
+    }
+    /// Sets a screen's colour ramp (reds, greens, blues), or the normal one with None.
+    fn set_gamma(&mut self, _output: &Output, _ramp: Option<&[u16]>) -> Result<(), String> {
+        Err("this backend has no colour ramp".into())
+    }
 }

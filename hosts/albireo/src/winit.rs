@@ -83,6 +83,7 @@ impl DmabufHandler for HearthState<WinitData> {
 delegate_dmabuf!(HearthState<WinitData>);
 
 impl Backend for WinitData {
+    const NESTED: bool = true;
     fn seat_name(&self) -> String {
         String::from("winit")
     }
@@ -377,6 +378,9 @@ pub fn run_winit() {
             match render_res {
                 Ok(render_output_result) => {
                     let has_rendered = render_output_result.damage.is_some();
+                    if has_rendered {
+                        state.captures.damaged(&output);
+                    }
                     if let Some(damage) = render_output_result.damage {
                         if let Err(err) = backend.submit(Some(damage)) {
                             warn!("Failed to submit buffer: {}", err);
@@ -449,6 +453,18 @@ pub fn run_winit() {
                     state.running.store(false, Ordering::SeqCst);
                 }
                 Err(err) => warn!("Rendering error: {}", err),
+            }
+
+            // Pictures apps asked for (grim, recorders): this screen drawn once more, into memory.
+            if state.captures.wants(&output) {
+                crate::screencopy::run_captures(
+                    &mut state.captures,
+                    state.backend_data.backend.renderer(),
+                    &output,
+                    &state.space,
+                    lock_view.as_ref(),
+                    state.clock.now().into(),
+                );
             }
         }
 
