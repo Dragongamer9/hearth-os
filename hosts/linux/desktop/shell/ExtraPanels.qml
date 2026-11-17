@@ -141,13 +141,16 @@ Scope {
     Component {
         id: cClock
         Item {
-            implicitWidth: ct.implicitWidth + 16; implicitHeight: 30
+            property var panel: null
+            readonly property bool vert: !!panel && panel.vertical
+            implicitWidth: ct.implicitWidth + (vert ? 4 : 16); implicitHeight: ct.implicitHeight + 6
             SystemClock { id: sc; precision: SystemClock.Minutes }
-            Column {
+            Column {   // across: 7:12 PM over Tue 17 Nov; down a side: the hours over the minutes
                 id: ct
                 anchors.centerIn: parent
-                Text { anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatTime(sc.date, Settings.clock24 ? "HH:mm" : "h:mm AP"); color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
-                Text { anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(sc.date, "ddd d MMM"); color: Theme.muted; font.family: Theme.font; font.pixelSize: 10 }
+                Text { anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatTime(sc.date, parent.parent.vert ? (Settings.clock24 ? "HH" : "h") : Settings.clock24 ? "HH:mm" : "h:mm AP"); color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+                Text { visible: parent.parent.vert; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatTime(sc.date, "mm"); color: Theme.text; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold }
+                Text { anchors.horizontalCenter: parent.horizontalCenter; text: parent.parent.vert ? Qt.formatDate(sc.date, "d MMM") : Qt.formatDate(sc.date, "ddd d MMM"); color: Theme.muted; font.family: Theme.font; font.pixelSize: parent.parent.vert ? 9 : 10 }
             }
             MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: root.ipc("calendar", "toggle") }
         }
@@ -178,12 +181,14 @@ Scope {
             readonly property var batt: UPower.displayDevice
             PwObjectTracker { objects: [Pipewire.defaultAudioSink] }
             implicitWidth: st.implicitWidth + 16
+            implicitHeight: Math.max(side, st.implicitHeight + 12)
             tip: (sink ? (sink.muted ? "Muted" : "Volume " + Math.round(sink.volume * 100) + "%") : "") + (batt && batt.isLaptopBattery ? "\nBattery " + Math.round(batt.percentage * 100) + "%" : "")
             onClicked: root.ipc("quick", "toggle")
             onScrolled: d => { if (sink) sink.volume = Math.max(0, Math.min(Buttons.maxVolume, sink.volume + (d > 0 ? 0.05 : -0.05))); }
-            Row {
+            Grid {
                 id: st
                 anchors.centerIn: parent
+                columns: sbtn.panel && sbtn.panel.vertical ? 1 : 3
                 spacing: 6
                 Icon { name: "wifi"; size: 16 }
                 Icon { name: !sbtn.sink || sbtn.sink.muted ? "vol-mute" : "vol"; size: 16 }
@@ -210,11 +215,13 @@ Scope {
     }
     Component {
         id: cGame
-        Rectangle {   // Game Mode, always one press away in a panel too
-            implicitWidth: gr.implicitWidth + 24; implicitHeight: 30
+        Rectangle {   // Game Mode, always one press away in a panel too (down a side: the controller only)
+            property var panel: null
+            readonly property bool vert: !!panel && panel.vertical
+            implicitWidth: vert ? 34 : gr.implicitWidth + 24; implicitHeight: vert ? 34 : 30
             radius: Theme.r(15)
             color: ga.containsMouse ? Qt.lighter(Theme.accent, 1.12) : Theme.accent
-            Row { id: gr; anchors.centerIn: parent; spacing: 6; Icon { name: "pad"; size: 16; color: Theme.accentInk } Text { text: "Game Mode"; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 12; font.bold: true } }
+            Row { id: gr; anchors.centerIn: parent; spacing: 6; Icon { name: "pad"; size: 16; color: Theme.accentInk } Text { visible: !gr.parent.vert; text: "Game Mode"; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 12; font.bold: true } }
             MouseArea { id: ga; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: Quickshell.execDetached(["nimbus-mode", "game"]) }
         }
     }
@@ -233,6 +240,7 @@ Scope {
         property string tip: ""
         property bool lit: false
         property int badge: 0
+        property var panel: null
         default property alias content: holder.data
         readonly property real side: 34
         signal clicked()
