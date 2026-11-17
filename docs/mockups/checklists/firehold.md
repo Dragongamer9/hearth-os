@@ -18,7 +18,9 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 - [x] Hero card: the last game played, in a wide rounded card with its colours as a gradient — hosts/linux/desktop/shell/FireholdCouch.qml: "readonly property var game: cw.fh.continueGame"
 - [x] Hero: "CONTINUE · 41 MIN AGO" line (accent, capitals, how long ago) — hosts/linux/desktop/shell/FireholdCouch.qml: "\"CONTINUE · \" + F.ago(hero.game.lastPlayed"
 - [x] Hero: the game's name, large (Ember Trails) — hosts/linux/desktop/shell/FireholdCouch.qml: "font.pixelSize: 64 * cw.k"
-- [ ] Hero: the line under it: chapter, "Saved on this PC and in the cloud", "runs natively, no Game Mode"
+- [ ] Hero line: the chapter
+- [x] Hero line: "Saved on this PC and in the cloud" (Steam Cloud's own folder for the game has its saves) — hosts/linux/desktop/shell/FireholdCouch.qml: "hero.game.cloudSaves ? \"Saved on this PC and in the cloud\""
+- [x] Hero line: "runs natively, no Game Mode" — hosts/linux/desktop/shell/FireholdCouch.qml: "\"runs natively, no Game Mode\"].filter(Boolean).join(\" · \")"
 - [x] Hero: Resume button (accent, selected) — hosts/linux/desktop/shell/FireholdCouch.qml: "? \"Resume\" : \"Play\""
 - [x] Hero: "Open in a window" button — hosts/linux/desktop/shell/FireholdCouch.qml: "text: \"Open in a window\""
 - [x] Hero: the game's art on the right (the dashed "Game art" area) — hosts/linux/desktop/shell/FireholdCouch.qml: "text: \"Game art\""
@@ -122,8 +124,8 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 
 ## Still open on feature/firehold-shell, and why
 
-- Hero line, chapter: no store says which chapter you're on; the line shows the store, time played, saves and "runs natively, no Game Mode".
+- Hero line, chapter: no store or game data Hearth reads says which chapter you're on; the line shows it when a game's entry has `chapter`, and otherwise starts with where it's saved.
 - Hearth Files' picture grid: that's Hearth Files itself (its Pictures view), not Firehold's screens.
-- The game full screen drawn straight to the display, Frame limit, Resolution scaling: need firehold-comp (feature/firehold-game). The Guide's rows already call `firehold-comp ctl frame-limit` / `scale` once `ctl scanout status` answers; until then they say "Not yet".
+- The game full screen drawn straight to the display, Frame limit, Resolution scaling: need Firehold's compositor (feature/firehold-game, not on this branch yet). The Guide's rows already read `hearth-firehold-game status` and change them with `hearth-firehold-game step frameLimit|scaling up|down` (shown as its frameLimitLabel / scalingLabel, "60", "Quality · 1440p"); until the helper and the compositor are there they say "Not yet".
 - Record "Last 30 s too": hearth-record has no replay buffer; firehold-comp's (feature/firehold-game) is coming.
 - Friends "2 online": needs Steam's friends data (Discord gives Mantel no online count).

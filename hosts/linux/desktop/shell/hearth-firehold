@@ -19,7 +19,7 @@ in one list, and starting one.
 Each game: {id, title, source, store (the badge: "Steam", "GOG", "Epic", "Emulator", "Windows app", "Your game"...),
 kind (its filter chip: steam, gog, epic, winapp, emu, yours, other), installed, update, savesBackedUp, cloudSaves (a
 Steam game whose saves Steam Cloud keeps: Steam's own userdata/<account>/<appid>/remote folder has files), devBuild,
-cover, wide, hero, icon, lastPlayed (ms), minutes, system}. Only reads; nothing is saved but the cache. Failures
+cover, wide, hero, icon, lastPlayed (ms), minutes, system, chapter (when Hearth's entry has one)}. Only reads; nothing is saved but the cache. Failures
 print "error: ..." and exit 1.
 """
 import json
@@ -144,7 +144,8 @@ def game_entry(g, saves=(), userdata=()):
             'cover': picture(g.get('cover')), 'wide': picture(g.get('wide')), 'hero': picture(g.get('hero')),
             'icon': picture(g.get('icon')), 'lastPlayed': ms(g.get('lastPlayed')),
             'minutes': g.get('minutes') if isinstance(g.get('minutes'), int) else 0,
-            'system': g.get('system') if isinstance(g.get('system'), str) else ''}
+            'system': g.get('system') if isinstance(g.get('system'), str) else '',
+            'chapter': g.get('chapter')[:80] if isinstance(g.get('chapter'), str) else ''}
 
 
 def winapp_entry(a):
