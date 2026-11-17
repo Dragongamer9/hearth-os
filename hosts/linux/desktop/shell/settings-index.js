@@ -660,6 +660,94 @@ var ENTRIES = [
 "i": "info"
 },
 {
+"t": "Secure Boot",
+"p": "firmware",
+"i": "lock"
+},
+{
+"t": "Security chip (TPM)",
+"p": "firmware",
+"i": "key"
+},
+{
+"t": "Firmware updates aren't on this system",
+"p": "firmware",
+"d": "fwupd is missing",
+"i": "info"
+},
+{
+"t": "Yes, update the system firmware",
+"p": "firmware",
+"i": "update"
+},
+{
+"t": "Cancel",
+"p": "firmware"
+},
+{
+"t": "Restart to finish",
+"p": "firmware",
+"d": "The new firmware goes in while the PC restarts",
+"i": "restart"
+},
+{
+"t": "Font",
+"p": "fonts",
+"d": "Menus, buttons and text in apps",
+"i": "doc"
+},
+{
+"t": "Font size",
+"p": "fonts",
+"i": "doc"
+},
+{
+"t": "Fixed-width font",
+"p": "fonts",
+"d": "Terminals and code",
+"i": "kbd"
+},
+{
+"t": "Fixed-width font size",
+"p": "fonts",
+"i": "kbd"
+},
+{
+"t": "Font smoothing and DPI",
+"p": "fonts",
+"d": "For sharp or soft text on your screen",
+"i": "gear"
+},
+{
+"t": "Smoothing",
+"p": "fonts"
+},
+{
+"t": "Hinting",
+"p": "fonts"
+},
+{
+"t": "Font DPI",
+"p": "fonts",
+"d": "Bigger text without changing the display's scale"
+},
+{
+"t": "Cursor",
+"p": "fonts",
+"i": "mouse"
+},
+{
+"t": "Cursor size",
+"p": "fonts",
+"i": "mouse"
+},
+{
+"t": "Icon theme",
+"p": "fonts",
+"d": "App icons in Qt/KDE and GTK apps (Hearth's own icons stay)",
+"i": "grid"
+},
+{
 "t": "Resolution",
 "p": "gameperf",
 "i": "window"
@@ -1911,6 +1999,17 @@ var ENTRIES = [
 "i": "sleep"
 },
 {
+"t": "Share my internet",
+"p": "hotspot",
+"i": "share"
+},
+{
+"t": "Band",
+"p": "hotspot",
+"d": "5 GHz is faster; 2.4 GHz reaches further and works with older devices",
+"i": "wifi"
+},
+{
 "t": "Looking for Windows, SteamOS and other systems…",
 "p": "install",
 "i": "update"
@@ -2183,6 +2282,17 @@ var ENTRIES = [
 "i": "open"
 },
 {
+"t": "Use Hearth's fireside",
+"p": "login-screen",
+"d": "The login screen's own look",
+"i": "undo"
+},
+{
+"t": "Sign in automatically",
+"p": "login-screen",
+"i": "lock"
+},
+{
 "t": "Pointer speed",
 "p": "mouse",
 "i": "mouse"
@@ -2225,6 +2335,50 @@ var ENTRIES = [
 "t": "Ignore the touchpad while typing",
 "p": "mouse",
 "i": "kbd"
+},
+{
+"t": "Connect automatically",
+"p": "net-details",
+"d": "When it's in reach",
+"i": "link"
+},
+{
+"t": "Metered connection",
+"p": "net-details",
+"d": "Updates and big downloads wait on a metered network (phone hotspots)",
+"i": "cloud"
+},
+{
+"t": "MAC address",
+"p": "net-details",
+"d": "What this PC tells the network it is. Random is more private",
+"i": "shield"
+},
+{
+"t": "Automatic DNS",
+"p": "net-details",
+"d": "The DNS servers the network hands out. Off: only yours below",
+"i": "globe"
+},
+{
+"t": "Use these DNS servers",
+"p": "net-details",
+"i": "check"
+},
+{
+"t": "IP address (IPv4)",
+"p": "net-details",
+"i": "gear"
+},
+{
+"t": "Use this address",
+"p": "net-details",
+"i": "check"
+},
+{
+"t": "IPv6",
+"p": "net-details",
+"i": "globe"
 },
 {
 "t": "Do not disturb",
@@ -2323,10 +2477,65 @@ var ENTRIES = [
 "i": "gear"
 },
 {
+"t": "Use a proxy",
+"p": "proxy",
+"i": "globe"
+},
+{
 "t": "Start in",
 "p": "quick",
 "d": "What this PC opens when it turns on or you sign in",
 "i": "power"
+},
+{
+"t": "Language",
+"p": "region",
+"d": "Menus, apps and the login screen. Apps that don't have it stay in English",
+"i": "globe"
+},
+{
+"t": "Region",
+"p": "region",
+"d": "How dates, numbers and money are written",
+"i": "globe"
+},
+{
+"t": "Change one of them",
+"p": "region",
+"d": "Numbers, dates, money, measurements or paper from another region",
+"i": "gear"
+},
+{
+"t": "Numbers",
+"p": "region"
+},
+{
+"t": "Dates and times",
+"p": "region"
+},
+{
+"t": "Money",
+"p": "region"
+},
+{
+"t": "Measurement units",
+"p": "region"
+},
+{
+"t": "Paper size",
+"p": "region"
+},
+{
+"t": "Date & time",
+"p": "region",
+"d": "Time zone, 24-hour clock, setting the time automatically",
+"i": "clock"
+},
+{
+"t": "Sign out now",
+"p": "region",
+"d": "Apps pick up the new language and formats when you sign in again",
+"i": "logout"
 },
 {
 "t": "Use this PC from anywhere",
@@ -2732,6 +2941,12 @@ var ENTRIES = [
 "i": "close"
 },
 {
+"t": "Account type",
+"p": "users",
+"d": "Administrators can install apps, change the system and other accounts. From their next sign-in",
+"i": "shield"
+},
+{
 "t": "Remove this account…",
 "p": "users",
 "i": "trash"
@@ -2746,9 +2961,37 @@ var ENTRIES = [
 "p": "users"
 },
 {
-"t": "Account type",
-"p": "users",
-"d": "Administrators can change system settings, install system updates and manage accounts"
+"t": "Disconnect",
+"p": "vpn",
+"i": "close"
+},
+{
+"t": "Details",
+"p": "vpn",
+"d": "DNS, auto-connect and addresses: in Connection details",
+"i": "gear"
+},
+{
+"t": "Remove this VPN…",
+"p": "vpn",
+"i": "trash"
+},
+{
+"t": "Connect with this account",
+"p": "vpn",
+"d": "Handed to NetworkManager only; Hearth doesn't keep it",
+"i": "lock"
+},
+{
+"t": "Add this file",
+"p": "vpn",
+"i": "file"
+},
+{
+"t": "OpenVPN isn't on this system",
+"p": "vpn",
+"d": "WireGuard works. OpenVPN needs NetworkManager's OpenVPN plugin in the image",
+"i": "info"
 },
 {
 "t": "Wi-Fi",

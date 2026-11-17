@@ -46,12 +46,17 @@ var PAGES = [
     { id: "startup", file: "SetStartup.qml", cat: "system", label: "Startup", icon: "power", desc: "Start in Game Mode, Desktop Mode or Server mode, and an optional schedule", words: "start in boot mode schedule server mode game mode desktop mode turn on" },
     { id: "boot", file: "SetBoot.qml", cat: "system", label: "Boot splash", icon: "sparkle", desc: "The boot splash Hearth OS shows while it starts", words: "boot splash startup plymouth", old: "Boot & startup", props: { part: "splash" } },
     { id: "datetime", file: "SetDateTime.qml", cat: "system", label: "Date & time", icon: "clock", desc: "Time zone, 24-hour clock", words: "clock time zone 24-hour", old: "Date & time" },
+    { id: "region", file: "SetRegion.qml", cat: "system", label: "Region & language", icon: "globe", desc: "Language, and how dates, numbers, money and measurements are written", words: "language locale formats region country numbers currency money date format measurement metric imperial paper a4 letter translation" },
     { id: "clipboard", file: "SetClipboard.qml", cat: "system", label: "Clipboard", icon: "clipboard", desc: "Clipboard history (Super+V)", words: "copy paste history", old: "Clipboard" },
     { id: "about", file: "SetAbout.qml", cat: "system", label: "About", icon: "info", desc: "Version, this PC's parts and name", words: "system version hardware name", old: "About", props: { part: "about" } },
 
     // ---- Network & internet (Wi-Fi is the landing, as in the mockup; Tailscale follows it under "Reach your devices from anywhere")
     { id: "wifi", file: "SetWifi.qml", cat: "net", label: "Wi-Fi", icon: "wifi", desc: "Connect to wireless networks", words: "wireless network internet hotspot", old: "Wi-Fi", status: "wifi", landing: true },
     { id: "hs-tailscale", file: "SetHomeTailscale.qml", cat: "net", label: "Tailscale", icon: "tailscale", desc: "Reach your devices from anywhere, privately", words: "vpn remote away taildrop exit node wake", old: "Home server › Tailscale", status: "tailscale" },
+    { id: "vpn", file: "SetVpn.qml", cat: "net", label: "VPN", icon: "shield", desc: "WireGuard and OpenVPN: add one from its file, connect", words: "vpn wireguard openvpn ovpn conf tunnel private network" },
+    { id: "hotspot", file: "SetHotspot.qml", cat: "net", label: "Mobile hotspot", icon: "share", desc: "Share this PC's internet with your other devices over Wi-Fi", words: "hotspot tethering share internet access point ap" },
+    { id: "proxy", file: "SetProxy.qml", cat: "net", label: "Proxy", icon: "globe", desc: "A proxy for apps and browsers, by hand or from a setup script", words: "proxy http https socks pac wpad automatic manual" },
+    { id: "net-details", file: "SetNetDetails.qml", cat: "net", label: "Connection details", icon: "gear", desc: "DNS, metered, random MAC address, IP address and auto-connect for each network", words: "dns metered mac address random privacy static ip manual ipv4 ipv6 gateway ethernet wired properties advanced" },
 
     // ---- Bluetooth & devices
     { id: "bt", file: "SetCategory.qml", cat: "bt", label: "Bluetooth & devices", icon: "bt", landing: true },
@@ -67,12 +72,14 @@ var PAGES = [
     // ---- Personalization
     { id: "appearance", file: "SetAppearance.qml", cat: "pers", label: "Personalization", icon: "palette", words: "look theme accent colour color wallpaper dark light mode sunset transparency clock", old: "Appearance", landing: true },
     { id: "bar-dock", file: "SetBarDock.qml", cat: "pers", label: "Bar and dock", icon: "window", desc: "Where the bar goes, the dock, auto-hide, the app menu and the right-click menu", words: "taskbar panel dock autohide islands bar layout edge app menu start tiles classic centred right-click context menu windows 11 compact", status: "bar" },
+    { id: "fonts", file: "SetFonts.qml", cat: "pers", label: "Fonts, cursor & icons", icon: "doc", desc: "The font and its size, font smoothing, the mouse cursor, the icon theme", words: "font fonts size monospace fixed width terminal antialiasing smoothing hinting dpi cursor pointer size icon theme icons qt gtk" },
 
     // ---- Apps
     { id: "apps-home", file: "SetCategory.qml", cat: "apps", label: "Apps", icon: "store", landing: true },
     { id: "apps", file: "SetApps.qml", cat: "apps", label: "Installed apps", icon: "store", desc: "Apps from Debian packages, Flathub and AppImages; uninstall", words: "install uninstall packages deb flatpak appimage", old: "Apps" },
     { id: "winapps", file: "SetWinApps.qml", cat: "apps", label: "Windows apps", icon: "window", desc: "Windows programs (.exe, .msi) with the Proton built into Hearth OS: open, Proton, remove", words: "windows exe msi proton wine dxvk vkd3d ge-proton program installer" },
     { id: "defaults", file: "SetDefaults.qml", cat: "apps", label: "Default apps", icon: "grid", desc: "Which app opens web links, pictures, music and more", words: "default apps browser terminal", old: "Default apps" },
+    { id: "services", file: "SetServices.qml", cat: "apps", label: "Background services", icon: "gear", desc: "Programs that run in the background for you, and whether they start when you sign in", words: "background services systemd daemons startup autostart user services" },
     { id: "browser", file: "SetBrowser.qml", cat: "apps", label: "Web browser", icon: "globe", desc: "Hearth's browser and its settings", words: "web firefox", old: "Web browser" },
     { id: "claude", file: "SetClaude.qml", cat: "apps", label: "Claude", icon: "chat", desc: "Claude on this PC", words: "ai assistant", old: "Claude" },
 
@@ -93,6 +100,7 @@ var PAGES = [
     { id: "accounts", file: "SetCategory.qml", cat: "accounts", label: "Accounts", icon: "user", landing: true },
     { id: "users", file: "SetUsers.qml", cat: "accounts", label: "Your account and other people", icon: "users", desc: "Your picture and name, other people on this PC", words: "accounts users people family", old: "Users" },
     { id: "signin", file: "SetSignin.qml", cat: "accounts", label: "Sign-in options", icon: "lock", desc: "Sign in automatically, password, lock after sleep", words: "password login autologin lock", old: "Sign-in" },
+    { id: "login-screen", file: "SetLoginScreen.qml", cat: "accounts", label: "Login screen", icon: "image", desc: "The picture behind the login screen", words: "login screen sddm greeter background picture wallpaper lock" },
 
     // ---- Home server (always its own category; Overview is the landing)
     { id: "hs-overview", file: "SetHomeServer.qml", cat: "hs", label: "Home server", icon: "server", words: "nas home server light mode overview", old: "Home server › Overview", landing: true, ownList: true },
@@ -116,6 +124,7 @@ var PAGES = [
     // ---- Privacy & security
     { id: "privacy", file: "SetCategory.qml", cat: "privacy", label: "Privacy & security", icon: "shield", landing: true },
     { id: "player-count", file: "SetAbout.qml", cat: "privacy", label: "Player count", icon: "users", desc: "Hearth OS's anonymous count of running devices", words: "privacy counter telemetry anonymous", old: "About › Privacy", props: { part: "privacy" }, status: "countMe" },
+    { id: "firmware", file: "SetFirmware.qml", cat: "privacy", label: "Firmware & device security", icon: "shield", desc: "Secure Boot, the TPM security chip, firmware updates for this PC's parts", words: "firmware fwupd lvfs bios uefi update secure boot tpm hsi security chip" },
 
     // ---- Accessibility (the page is the landing)
     { id: "accessibility", file: "SetAccessibility.qml", cat: "a11y", label: "Accessibility", icon: "access", words: "magnifier contrast text size screen reader colour filters reduce motion", old: "Accessibility", landing: true },

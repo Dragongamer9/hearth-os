@@ -63,3 +63,10 @@ test('a line break in an earlier argument does not hide --allow-internal (bug hu
   assert.strictEqual(decide(cl('usb-prepare /dev/sda --label x\r\ny --allow-internal --expect-size 1')), 'auth_admin');
   assert.strictEqual(decide(cl('usb-raw /dev/sdb --expect-size 1 --label a\nb')), 'yes');
 });
+
+test('firmware updates always ask; the firmware list does not', () => {
+  const cl = a => ({ program: ADMIN, command_line: ADMIN + ' ' + a });
+  assert.strictEqual(decide(cl('firmware-update 0123456789abcdef0123456789abcdef01234567')), 'auth_admin');
+  assert.strictEqual(decide(cl('firmware-refresh')), 'yes');
+  assert.strictEqual(decide(cl('hostname firmware-update')), 'yes');
+});

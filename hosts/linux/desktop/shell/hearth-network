@@ -1,0 +1,687 @@
+#!/usr/bin/python3
+"""hearth-network: Hearth Settings' VPN, Mobile hotspot, Proxy and connection details pages (Network & internet), as
+you (no root). Everything about a connection is NetworkManager's (nmcli, always an argument list, never a shell): Hearth
+keeps no copy of it. Secrets (a VPN's keys and passwords, the hotspot's password) stay in NetworkManager: they go to
+nmcli on its stdin (never on a command line, never in a Hearth file or log), and NetworkManager keeps them its own way.
+The proxy is Hearth's own setting (~/.config/nimbus/proxy.json, written through hearth_settings_io), handed on to GTK
+apps (gsettings), Qt/KDE apps (kioslaverc) and programs that read http_proxy (~/.config/environment.d).
+
+  hearth-network status              JSON: every saved connection {uuid, name, type, kind, device, active,
+                                     autoconnect}, VPNs, the Wi-Fi device, whether it can be a hotspot, the plugins
+  hearth-network vpn-import FILE     a WireGuard (.conf) or OpenVPN (.ovpn) file into NetworkManager; JSON {uuid, name}
+  hearth-network vpn-up UUID         connect; stdin (optional) {"user": "...", "password": "..."} for OpenVPN
+                                     accounts: handed to nmcli's passwd-file on its stdin, used for this connection
+  hearth-network vpn-down UUID | vpn-remove UUID
+  hearth-network details UUID        JSON: a connection's DNS, IP settings, metered, MAC address, auto-connect and
+                                     what it has now (address, gateway, DNS)
+  hearth-network details-set UUID    stdin {"dns": ["1.1.1.1"], "autoDns": true, "metered": "yes|no|unknown",
+                                     "mac": "permanent|preserve|random|stable|default", "autoconnect": true,
+                                     "ipv4": {"method": "auto|manual", "address": "192.168.1.5/24", "gateway": "..."},
+                                     "ipv6": "auto|disabled|ignore"}. Only the keys sent change; then reapplied
+  hearth-network hotspot             JSON: the hotspot {on, ssid, band, uuid, device, canHotspot, clients}
+  hearth-network hotspot-on          stdin {"ssid": "...", "password": "...", "band": "bg|a|"}: make or update
+                                     "Hearth Hotspot" and start it (the password set through nmcli's editor on stdin)
+  hearth-network hotspot-off
+  hearth-network hotspot-password    JSON {password}: the hotspot's password, read from NetworkManager when you ask
+  hearth-network proxy               JSON: the proxy settings
+  hearth-network proxy-set           stdin {"mode": "none|auto|manual", "url": "...", "http": "host:port",
+                                     "https": "host:port", "socks": "host:port", "ignore": "localhost, 127.0.0.1"}
+  hearth-network proxy-apply         hand the saved proxy on to apps again (each sign-in; writes nothing of Hearth's)
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import ipaddress
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
+try:
+    import hearth_settings_io as hsio
+except ImportError:
+    hsio = None
+
+HOME = os.path.expanduser('~')
+CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+PROXY_JSON = os.path.join(CONFIG, 'nimbus', 'proxy.json')
+PROXY_ENV = os.path.join(CONFIG, 'environment.d', '90-hearth-proxy.conf')
+KIOSLAVERC = os.path.join(CONFIG, 'kioslaverc')
+HOTSPOT_NAME = 'Hearth Hotspot'
+MARK = '# Written by Hearth Settings > Network & internet > Proxy; delete this line to keep your own.'
+VPN_PLUGINS = os.environ.get('HEARTH_NM_VPN_DIR', '/usr/lib/NetworkManager/VPN')
+UUID_RE = re.compile(r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
+HOSTPORT_RE = re.compile(r'^([A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?|\[[0-9A-Fa-f:.]{2,45}\]):([0-9]{1,5})$')
+PROXY_DEFAULT = {'mode': 'none', 'url': '', 'http': '', 'https': '', 'socks': '', 'ignore': 'localhost, 127.0.0.0/8, ::1'}
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, input=None, timeout=60):
+    try:
+        p = subprocess.run(cmd, input=input, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, '', str(e)
+    return p.returncode, p.stdout, p.stderr
+
+
+def nmcli(args, input=None, timeout=60):
+    code, out, err = run(['nmcli'] + args, input=input, timeout=timeout)
+    if code != 0:
+        msg = (err or out).strip().splitlines()
+        # nmcli's own words, without anything after a secret could be named (it never echoes stdin, but be sure).
+        raise Fail((msg[-1] if msg else 'NetworkManager said no')[:200])
+    return out
+
+
+def fields(line):
+    """nmcli -t splits fields with ':' and escapes ':' and '\\' inside them."""
+    out, cur, i = [], '', 0
+    while i < len(line):
+        c = line[i]
+        if c == '\\' and i + 1 < len(line):
+            cur += line[i + 1]; i += 2; continue
+        if c == ':':
+            out.append(cur); cur = ''
+        else:
+            cur += c
+        i += 1
+    out.append(cur)
+    return out
+
+
+def check_uuid(u):
+    if not UUID_RE.match(u or ''):
+        raise Fail('not a connection id')
+    return u
+
+
+KINDS = {'802-11-wireless': 'wifi', 'wifi': 'wifi', '802-3-ethernet': 'ethernet', 'ethernet': 'ethernet',
+         'wireguard': 'vpn', 'vpn': 'vpn', 'gsm': 'mobile', 'bluetooth': 'bluetooth', 'bridge': 'other',
+         'loopback': 'loopback', 'tun': 'other'}
+
+
+def parse_connections(text):
+    out = []
+    for line in text.splitlines():
+        f = fields(line)
+        if len(f) < 6 or not f[1]:
+            continue
+        name, uuid, typ, device, active, auto = f[:6]
+        kind = KINDS.get(typ, 'other')
+        if kind == 'loopback':
+            continue
+        out.append({'name': name, 'uuid': uuid, 'type': typ, 'kind': kind, 'device': device if device != '--' else '',
+                    'active': active == 'yes', 'autoconnect': auto == 'yes'})
+    return out
+
+
+def plugins():
+    have = {'wireguard': True, 'openvpn': False}
+    try:
+        for n in os.listdir(VPN_PLUGINS):
+            if 'openvpn' in n:
+                have['openvpn'] = True
+    except OSError:
+        pass
+    return have
+
+
+def wifi_device(text):
+    """The first Wi-Fi device from `nmcli -t -f DEVICE,TYPE,STATE device`."""
+    for line in text.splitlines():
+        f = fields(line)
+        if len(f) >= 2 and f[1] == 'wifi':
+            return f[0]
+    return ''
+
+
+def status():
+    conns = parse_connections(nmcli(['-t', '-f', 'NAME,UUID,TYPE,DEVICE,ACTIVE,AUTOCONNECT', 'connection', 'show']))
+    dev = wifi_device(nmcli(['-t', '-f', 'DEVICE,TYPE,STATE', 'device']))
+    vpns = [c for c in conns if c['kind'] == 'vpn']
+    for v in vpns:
+        v['vpnType'] = 'WireGuard' if v['type'] == 'wireguard' else vpn_service(v['uuid'])
+    return {'connections': conns, 'vpns': vpns, 'wifiDevice': dev, 'plugins': plugins()}
+
+
+def vpn_service(uuid):
+    try:
+        s = nmcli(['-g', 'vpn.service-type', 'connection', 'show', 'uuid', uuid]).strip()
+    except Fail:
+        return 'VPN'
+    return 'OpenVPN' if 'openvpn' in s else s.rsplit('.', 1)[-1] or 'VPN'
+
+
+def vpn_import(path):
+    path = os.path.abspath(path or '')
+    if not os.path.isfile(path):
+        raise Fail("that file isn't there")
+    if os.path.getsize(path) > 256 * 1024:
+        raise Fail("that's too big to be a VPN file")
+    ext = os.path.splitext(path)[1].lower()
+    kind = {'.conf': 'wireguard', '.ovpn': 'openvpn'}.get(ext)
+    if not kind:
+        raise Fail('pick a WireGuard (.conf) or OpenVPN (.ovpn) file')
+    if kind == 'openvpn' and not plugins()['openvpn']:
+        raise Fail("OpenVPN isn't on this system (NetworkManager's OpenVPN plugin is missing)")
+    if kind == 'wireguard':
+        # NetworkManager names the connection after the file: it must be a valid interface name (15 characters).
+        base = os.path.splitext(os.path.basename(path))[0]
+        if not re.match(r'^[A-Za-z0-9_=+.-]{1,15}$', base):
+            raise Fail('rename the file to a short name first (letters and numbers, up to 15), like home-vpn.conf')
+    out = nmcli(['connection', 'import', 'type', kind, 'file', path])
+    m = re.search(r'\(([0-9a-fA-F-]{36})\)', out)
+    if not m:
+        raise Fail('NetworkManager took the file but gave no connection back')
+    uuid = m.group(1)
+    # A VPN never starts by itself: you connect it here (or from the bar).
+    try:
+        nmcli(['connection', 'modify', 'uuid', uuid, 'connection.autoconnect', 'no'])
+    except Fail:
+        pass
+    name = ''
+    mm = re.search(r"'(.+)'", out)
+    if mm:
+        name = mm.group(1)
+    return {'uuid': uuid, 'name': name or os.path.basename(path), 'kind': kind}
+
+
+def secrets_text(req):
+    """What nmcli's passwd-file reads: one `setting.property:value` line each. Values can't have line breaks."""
+    lines = []
+    user = str(req.get('user') or '')
+    pw = str(req.get('password') or '')
+    for v in (user, pw):
+        if '\n' in v or '\r' in v or len(v) > 512:
+            raise Fail("that can't be a user name or password")
+    if pw:
+        lines.append('vpn.secrets.password:' + pw)
+    return '\n'.join(lines) + ('\n' if lines else ''), user
+
+
+def vpn_up(uuid, req=None):
+    check_uuid(uuid)
+    req = req or {}
+    text, user = secrets_text(req)
+    if user:
+        nmcli(['connection', 'modify', 'uuid', uuid, '+vpn.data', 'username=' + user])
+    if text:
+        # /dev/stdin: the secrets reach nmcli on its stdin and nowhere else.
+        nmcli(['--wait', '45', 'connection', 'up', 'uuid', uuid, 'passwd-file', '/dev/stdin'], input=text, timeout=60)
+    else:
+        nmcli(['--wait', '45', 'connection', 'up', 'uuid', uuid], timeout=60)
+    return {'ok': True}
+
+
+def vpn_down(uuid):
+    nmcli(['connection', 'down', 'uuid', check_uuid(uuid)])
+    return {'ok': True}
+
+
+def vpn_remove(uuid):
+    check_uuid(uuid)
+    typ = nmcli(['-g', 'connection.type', 'connection', 'show', 'uuid', uuid]).strip()
+    if typ not in ('vpn', 'wireguard'):
+        raise Fail('only VPNs are removed here')
+    nmcli(['connection', 'delete', 'uuid', uuid])
+    return {'ok': True}
+
+
+DETAIL_KEYS = ['connection.id', 'connection.type', 'connection.interface-name', 'connection.autoconnect',
+               'connection.metered', 'ipv4.method', 'ipv4.addresses', 'ipv4.gateway', 'ipv4.dns',
+               'ipv4.ignore-auto-dns', 'ipv6.method', 'ipv6.dns', '802-11-wireless.cloned-mac-address',
+               '802-3-ethernet.cloned-mac-address', 'GENERAL.DEVICES', 'IP4.ADDRESS', 'IP4.GATEWAY', 'IP4.DNS',
+               'IP6.ADDRESS', 'IP6.DNS']
+
+
+def parse_show(text):
+    """`nmcli -t connection show UUID`: key:value lines (lists as key[1], key[2]...)."""
+    out = {}
+    for line in text.splitlines():
+        i = line.find(':')
+        if i <= 0:
+            continue
+        k = re.sub(r'\[\d+\]$', '', line[:i])
+        v = line[i + 1:].replace('\\:', ':')
+        if k in out and v:
+            out[k] = out[k] + ',' + v if out[k] else v
+        else:
+            out[k] = v
+    return out
+
+
+def split_list(v):
+    return [x.strip() for x in re.split(r'[,\s|]+', v or '') if x.strip() and x.strip() != '--']
+
+
+def mac_choice(v):
+    v = (v or '').strip()
+    if v in ('', '--', 'default'):
+        return 'default'
+    return v if v in ('permanent', 'preserve', 'random', 'stable') else 'fixed'
+
+
+def details(uuid):
+    check_uuid(uuid)
+    s = parse_show(nmcli(['-t', 'connection', 'show', 'uuid', uuid]))
+    typ = s.get('connection.type', '')
+    mac_key = '802-11-wireless.cloned-mac-address' if typ == '802-11-wireless' else '802-3-ethernet.cloned-mac-address'
+    return {
+        'uuid': uuid, 'name': s.get('connection.id', ''), 'type': typ, 'kind': KINDS.get(typ, 'other'),
+        'autoconnect': s.get('connection.autoconnect') == 'yes',
+        'metered': (s.get('connection.metered') or 'unknown').split(' ')[0],
+        'ipv4': {'method': s.get('ipv4.method', 'auto'), 'address': (split_list(s.get('ipv4.addresses')) or [''])[0],
+                 'gateway': '' if s.get('ipv4.gateway') in (None, '--') else s.get('ipv4.gateway')},
+        'dns': split_list(s.get('ipv4.dns')) + split_list(s.get('ipv6.dns')),
+        'autoDns': s.get('ipv4.ignore-auto-dns', 'no') != 'yes',
+        'ipv6': s.get('ipv6.method', 'auto'),
+        'mac': mac_choice(s.get(mac_key)) if typ in ('802-11-wireless', '802-3-ethernet') else '',
+        'macFixed': s.get(mac_key, '') if mac_choice(s.get(mac_key)) == 'fixed' else '',
+        'now': {'device': s.get('GENERAL.DEVICES', ''), 'address': (split_list(s.get('IP4.ADDRESS')) or [''])[0],
+                'gateway': s.get('IP4.GATEWAY', ''), 'dns': split_list(s.get('IP4.DNS')) + split_list(s.get('IP6.DNS')),
+                'address6': (split_list(s.get('IP6.ADDRESS')) or [''])[0]},
+    }
+
+
+def ip_ok(v, version=None):
+    try:
+        a = ipaddress.ip_address(v)
+    except ValueError:
+        return False
+    return version is None or a.version == version
+
+
+def details_args(req, typ):
+    """The nmcli `connection modify` property/value pairs for a details-set request (checked)."""
+    args = []
+    if 'dns' in req:
+        dns = req['dns'] if isinstance(req['dns'], list) else split_list(str(req['dns']))
+        if len(dns) > 6 or not all(isinstance(d, str) and ip_ok(d) for d in dns):
+            raise Fail('DNS servers are addresses like 1.1.1.1 or 2606:4700:4700::1111')
+        args += ['ipv4.dns', ','.join(d for d in dns if ip_ok(d, 4)), 'ipv6.dns', ','.join(d for d in dns if ip_ok(d, 6))]
+    if 'autoDns' in req:
+        ign = 'no' if req['autoDns'] else 'yes'
+        args += ['ipv4.ignore-auto-dns', ign, 'ipv6.ignore-auto-dns', ign]
+    if 'metered' in req:
+        if req['metered'] not in ('yes', 'no', 'unknown'):
+            raise Fail('metered is yes, no or unknown')
+        args += ['connection.metered', req['metered']]
+    if 'autoconnect' in req:
+        args += ['connection.autoconnect', 'yes' if req['autoconnect'] else 'no']
+    if 'mac' in req:
+        key = {'802-11-wireless': '802-11-wireless.cloned-mac-address',
+               '802-3-ethernet': '802-3-ethernet.cloned-mac-address'}.get(typ)
+        if not key:
+            raise Fail('this connection has no MAC address setting')
+        v = req['mac']
+        if v not in ('default', 'permanent', 'preserve', 'random', 'stable'):
+            raise Fail('MAC address is default, permanent, preserve, random or stable')
+        args += [key, '' if v == 'default' else v]
+    if 'ipv4' in req:
+        v4 = req['ipv4'] or {}
+        method = v4.get('method')
+        if method == 'auto':
+            args += ['ipv4.method', 'auto', 'ipv4.addresses', '', 'ipv4.gateway', '']
+        elif method == 'manual':
+            addr, gw = str(v4.get('address') or ''), str(v4.get('gateway') or '')
+            try:
+                iface = ipaddress.ip_interface(addr if '/' in addr else addr + '/24')
+            except ValueError:
+                raise Fail('the address is like 192.168.1.20/24')
+            if iface.version != 4:
+                raise Fail('the address is like 192.168.1.20/24')
+            if gw and not ip_ok(gw, 4):
+                raise Fail('the gateway is an address like 192.168.1.1')
+            args += ['ipv4.method', 'manual', 'ipv4.addresses', str(iface), 'ipv4.gateway', gw]
+        else:
+            raise Fail('IPv4 is automatic or manual')
+    if 'ipv6' in req:
+        if req['ipv6'] not in ('auto', 'disabled', 'ignore'):
+            raise Fail('IPv6 is auto, disabled or ignore')
+        args += ['ipv6.method', req['ipv6']]
+    return args
+
+
+def details_set(uuid, req):
+    check_uuid(uuid)
+    typ = nmcli(['-g', 'connection.type', 'connection', 'show', 'uuid', uuid]).strip()
+    args = details_args(req, typ)
+    if not args:
+        return details(uuid)
+    nmcli(['connection', 'modify', 'uuid', uuid] + args)
+    # Put the change to work on a connection that's up (reapply keeps the link; a full reconnect only if needed).
+    dev = nmcli(['-g', 'GENERAL.DEVICES', 'connection', 'show', 'uuid', uuid]).strip()
+    if dev:
+        code, _, _ = run(['nmcli', 'device', 'reapply', dev])
+        if code != 0:
+            run(['nmcli', 'connection', 'up', 'uuid', uuid], timeout=60)
+    return details(uuid)
+
+
+# ------------------------------------------------------------------ hotspot
+def hotspot_conn():
+    for c in parse_connections(nmcli(['-t', '-f', 'NAME,UUID,TYPE,DEVICE,ACTIVE,AUTOCONNECT', 'connection', 'show'])):
+        if c['kind'] == 'wifi':
+            mode = nmcli(['-g', '802-11-wireless.mode', 'connection', 'show', 'uuid', c['uuid']]).strip()
+            if mode == 'ap' and (c['name'] == HOTSPOT_NAME or c['name'].startswith('Hotspot')):
+                return c
+    return None
+
+
+def can_hotspot(dev):
+    if not dev:
+        return False
+    try:
+        v = nmcli(['-g', 'WIFI-PROPERTIES.AP', 'device', 'show', dev]).strip()
+    except Fail:
+        return True
+    return v != 'no'
+
+
+def hotspot():
+    dev = wifi_device(nmcli(['-t', '-f', 'DEVICE,TYPE,STATE', 'device']))
+    c = hotspot_conn()
+    out = {'on': False, 'ssid': '', 'band': '', 'uuid': '', 'device': dev, 'canHotspot': can_hotspot(dev)}
+    if c:
+        s = parse_show(nmcli(['-t', 'connection', 'show', 'uuid', c['uuid']]))
+        out.update({'on': c['active'], 'uuid': c['uuid'], 'ssid': s.get('802-11-wireless.ssid', ''),
+                    'band': s.get('802-11-wireless.band', '') if s.get('802-11-wireless.band') != '--' else ''})
+    return out
+
+
+def hotspot_check(req):
+    ssid = str(req.get('ssid') or '').strip()
+    pw = str(req.get('password') or '')
+    band = req.get('band') or ''
+    if not ssid or len(ssid.encode()) > 32 or any(ord(ch) < 32 for ch in ssid):
+        raise Fail('the name is 1 to 32 letters')
+    if pw and (not 8 <= len(pw) <= 63 or not all(32 <= ord(ch) < 127 for ch in pw)):
+        raise Fail('the password is 8 to 63 letters, numbers or symbols')
+    if band not in ('', 'bg', 'a'):
+        raise Fail('the band is 2.4 GHz (bg) or 5 GHz (a)')
+    return ssid, pw, band
+
+
+def editor_script(pw):
+    """Commands for `nmcli connection edit`, read on its stdin: the password never goes on a command line."""
+    return 'set 802-11-wireless-security.psk %s\nsave persistent\nquit\n' % pw
+
+
+def hotspot_on(req):
+    ssid, pw, band = hotspot_check(req)
+    dev = wifi_device(nmcli(['-t', '-f', 'DEVICE,TYPE,STATE', 'device']))
+    if not dev:
+        raise Fail('this PC has no Wi-Fi')
+    c = hotspot_conn()
+    props = ['802-11-wireless.ssid', ssid, '802-11-wireless.mode', 'ap', '802-11-wireless.band', band,
+             'ipv4.method', 'shared', 'ipv6.method', 'ignore', 'connection.autoconnect', 'no',
+             'wifi-sec.key-mgmt', 'wpa-psk', 'wifi-sec.proto', 'rsn', 'wifi-sec.pairwise', 'ccmp', 'wifi-sec.group', 'ccmp']
+    if c:
+        uuid = c['uuid']
+        nmcli(['connection', 'modify', 'uuid', uuid, 'connection.interface-name', dev] + props)
+    else:
+        if not pw:
+            raise Fail('choose a password for the hotspot (8 letters or more)')
+        out = nmcli(['connection', 'add', 'type', 'wifi', 'ifname', dev, 'con-name', HOTSPOT_NAME] + props)
+        m = re.search(r'\(([0-9a-fA-F-]{36})\)', out)
+        if not m:
+            raise Fail('NetworkManager made no hotspot')
+        uuid = m.group(1)
+    if pw:
+        nmcli(['connection', 'edit', 'uuid', uuid], input=editor_script(pw))
+    nmcli(['--wait', '30', 'connection', 'up', 'uuid', uuid], timeout=45)
+    return hotspot()
+
+
+def hotspot_off():
+    c = hotspot_conn()
+    if c and c['active']:
+        nmcli(['connection', 'down', 'uuid', c['uuid']])
+    return hotspot()
+
+
+def hotspot_password():
+    c = hotspot_conn()
+    if not c:
+        raise Fail('there is no hotspot yet')
+    pw = nmcli(['-s', '-g', '802-11-wireless-security.psk', 'connection', 'show', 'uuid', c['uuid']]).strip()
+    return {'password': pw}
+
+
+# ------------------------------------------------------------------ proxy
+def proxy_load():
+    raw = {}
+    if hsio:
+        raw = hsio.load_json(PROXY_JSON, {})
+    else:
+        try:
+            raw = json.load(open(PROXY_JSON))
+        except (OSError, ValueError):
+            raw = {}
+    out = dict(PROXY_DEFAULT)
+    out.update({k: v for k, v in (raw or {}).items() if k in PROXY_DEFAULT and isinstance(v, str)})
+    return out
+
+
+def proxy_clean(req):
+    out = {}
+    if 'mode' in req:
+        if req['mode'] not in ('none', 'auto', 'manual'):
+            raise Fail('the proxy is off, automatic or manual')
+        out['mode'] = req['mode']
+    if 'url' in req:
+        u = str(req['url'] or '').strip()
+        if u and not re.match(r'^(https?|file)://[^\s"\'\\]{1,2000}$', u):
+            raise Fail('the setup address is like http://wpad.example/proxy.pac')
+        out['url'] = u
+    for k in ('http', 'https', 'socks'):
+        if k in req:
+            v = str(req[k] or '').strip()
+            v = re.sub(r'^[a-z0-9]+://', '', v).rstrip('/')
+            if v:
+                m = HOSTPORT_RE.match(v)
+                if not m or not 0 < int(m.group(3)) < 65536:
+                    raise Fail('a proxy is like proxy.example.com:3128')
+            out[k] = v
+    if 'ignore' in req:
+        v = str(req['ignore'] or '')
+        items = [x for x in re.split(r'[,\s]+', v) if x]
+        if len(items) > 64 or not all(re.match(r'^[A-Za-z0-9.*:/\[\]_-]{1,255}$', x) for x in items):
+            raise Fail('no-proxy addresses are names or addresses, split with commas')
+        out['ignore'] = ', '.join(items)
+    return out
+
+
+def split_hp(v):
+    m = HOSTPORT_RE.match(v or '')
+    return (m.group(1).strip('[]'), int(m.group(3))) if m else ('', 0)
+
+
+def proxy_env_text(p):
+    if p['mode'] != 'manual':
+        return None
+    lines = [MARK]
+    for k, env in (('http', 'http_proxy'), ('https', 'https_proxy')):
+        if p[k]:
+            lines += ['%s=http://%s' % (env, p[k]), '%s=http://%s' % (env.upper(), p[k])]
+    if p['socks']:
+        lines += ['all_proxy=socks5://%s' % p['socks'], 'ALL_PROXY=socks5://%s' % p['socks']]
+    if p['ignore']:
+        no = p['ignore'].replace(' ', '')
+        lines += ['no_proxy=' + no, 'NO_PROXY=' + no]
+    return '\n'.join(lines) + '\n'
+
+
+def ini_set(text, section, values):
+    """Set keys in one [section] of an INI file's text, keeping every other line."""
+    lines = text.splitlines()
+    out, i, found, done = [], 0, False, set()
+    in_sec = False
+    for line in lines:
+        s = line.strip()
+        if s.startswith('[') and s.endswith(']'):
+            if in_sec:
+                out += ['%s=%s' % (k, v) for k, v in values.items() if k not in done]
+                done.update(values)
+            in_sec = s[1:-1] == section
+            found = found or in_sec
+            out.append(line)
+            continue
+        if in_sec and '=' in line and line.split('=', 1)[0].strip() in values:
+            k = line.split('=', 1)[0].strip()
+            out.append('%s=%s' % (k, values[k])); done.add(k)
+            continue
+        out.append(line)
+    if in_sec:
+        out += ['%s=%s' % (k, v) for k, v in values.items() if k not in done]
+    elif not found:
+        if out and out[-1].strip():
+            out.append('')
+        out.append('[%s]' % section)
+        out += ['%s=%s' % (k, v) for k, v in values.items()]
+    return '\n'.join(out) + '\n'
+
+
+def kio_values(p):
+    kind = {'none': 0, 'manual': 1, 'auto': 2}[p['mode']]
+    def kv(v, scheme):
+        h, port = split_hp(v)
+        return '%s://%s %d' % (scheme, h, port) if h else ''
+    return {'ProxyType': str(kind), 'Proxy Config Script': p['url'] if p['mode'] == 'auto' else '',
+            'httpProxy': kv(p['http'], 'http'), 'httpsProxy': kv(p['https'], 'http'),
+            'socksProxy': kv(p['socks'], 'socks'), 'NoProxyFor': p['ignore'].replace(' ', '')}
+
+
+def gsettings_cmds(p):
+    base = 'org.gnome.system.proxy'
+    cmds = [[base, 'mode', p['mode']], [base, 'autoconfig-url', p['url'] if p['mode'] == 'auto' else '']]
+    for k, schema in (('http', base + '.http'), ('https', base + '.https'), ('socks', base + '.socks')):
+        h, port = split_hp(p[k])
+        cmds += [[schema, 'host', h], [schema, 'port', str(port)]]
+    hosts = [x for x in re.split(r'[,\s]+', p['ignore']) if x]
+    cmds.append([base, 'ignore-hosts', '[' + ', '.join("'%s'" % h for h in hosts) + ']'])
+    return cmds
+
+
+def write_text(path, text):
+    if hsio:
+        hsio.write_text(path, text)
+    else:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        tmp = path + '.tmp'
+        with open(tmp, 'w') as f:
+            f.write(text)
+        os.replace(tmp, path)
+
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def proxy_apply(p=None):
+    """Hand the saved proxy on to apps. Writes only files that are Hearth's (the mark) or kioslaverc's proxy keys."""
+    p = p or proxy_load()
+    if shutil.which('gsettings'):
+        for schema, key, val in gsettings_cmds(p):
+            run(['gsettings', 'set', schema, key, val], timeout=10)
+    cur = read(KIOSLAVERC)
+    new = ini_set(cur, 'Proxy Settings', kio_values(p))
+    if new != cur and (cur or p['mode'] != 'none'):
+        write_text(KIOSLAVERC, new)
+    env = proxy_env_text(p)
+    old = read(PROXY_ENV)
+    if env is None:
+        if old.startswith(MARK):
+            os.remove(PROXY_ENV)
+    elif not old or old.startswith(MARK):
+        if old != env:
+            write_text(PROXY_ENV, env)
+    return p
+
+
+def proxy_set(req):
+    changes = proxy_clean(req)
+    would = proxy_load(); would.update(changes)
+    if would['mode'] == 'auto' and not would['url']:
+        raise Fail('type the setup script address, or pick Manual')
+    if would['mode'] == 'manual' and not (would['http'] or would['https'] or would['socks']):
+        raise Fail('type at least one proxy, like proxy.example.com:3128')
+    if hsio:
+        hsio.merge_json(PROXY_JSON, changes, who='you')
+    else:
+        cur = proxy_load(); cur.update(changes)
+        write_text(PROXY_JSON, json.dumps(cur, indent=2) + '\n')
+    p = proxy_load()
+    proxy_apply(p)
+    return p
+
+
+def stdin_json():
+    raw = os.environ.get('HEARTH_INPUT')
+    if raw is None:
+        raw = '' if sys.stdin.isatty() else sys.stdin.read()
+    if not raw.strip():
+        return {}
+    try:
+        v = json.loads(raw)
+    except ValueError:
+        raise Fail('bad input')
+    if not isinstance(v, dict):
+        raise Fail('bad input')
+    return v
+
+
+def main(argv):
+    if not argv:
+        print(__doc__)
+        return 2
+    cmd, rest = argv[0], argv[1:]
+    try:
+        if cmd == 'status':
+            r = status()
+        elif cmd == 'vpn-import' and len(rest) == 1:
+            r = vpn_import(rest[0])
+        elif cmd == 'vpn-up' and len(rest) == 1:
+            r = vpn_up(rest[0], stdin_json())
+        elif cmd == 'vpn-down' and len(rest) == 1:
+            r = vpn_down(rest[0])
+        elif cmd == 'vpn-remove' and len(rest) == 1:
+            r = vpn_remove(rest[0])
+        elif cmd == 'details' and len(rest) == 1:
+            r = details(rest[0])
+        elif cmd == 'details-set' and len(rest) == 1:
+            r = details_set(rest[0], stdin_json())
+        elif cmd == 'hotspot':
+            r = hotspot()
+        elif cmd == 'hotspot-on':
+            r = hotspot_on(stdin_json())
+        elif cmd == 'hotspot-off':
+            r = hotspot_off()
+        elif cmd == 'hotspot-password':
+            r = hotspot_password()
+        elif cmd == 'proxy':
+            r = proxy_load()
+        elif cmd == 'proxy-set':
+            r = proxy_set(stdin_json())
+        elif cmd == 'proxy-apply':
+            r = proxy_apply()
+        else:
+            print('error: unknown command')
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
