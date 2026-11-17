@@ -419,7 +419,9 @@ desk_fails() {
   [ -z "$n" ] && [ "$1" = firehold ] && n=$(sed -n "s/^albireo //p" "$DESK_STATE/desktop-fails" 2>/dev/null | tail -n 1)
   echo "${n:-0}"
 }
-desk_fails_set() { mkdir -p "$DESK_STATE"; o="$1"; [ "$1" = firehold ] && o=albireo; { grep -v -e "^$1 " -e "^$o " "$DESK_STATE/desktop-fails" 2>/dev/null; [ "$2" -gt 0 ] && echo "$1 $2"; } >"$DESK_STATE/desktop-fails.tmp" && mv -f "$DESK_STATE/desktop-fails.tmp" "$DESK_STATE/desktop-fails"; }
+# (The "if" matters: with "[ ... ] && echo" a count set to 0 made the group fail, so the file was never written and a
+# reset never happened: one KWin failure long ago plus one today was "twice in a row".)
+desk_fails_set() { mkdir -p "$DESK_STATE"; o="$1"; [ "$1" = firehold ] && o=albireo; { grep -v -e "^$1 " -e "^$o " "$DESK_STATE/desktop-fails" 2>/dev/null; if [ "$2" -gt 0 ]; then echo "$1 $2"; fi; } >"$DESK_STATE/desktop-fails.tmp" && mv -f "$DESK_STATE/desktop-fails.tmp" "$DESK_STATE/desktop-fails"; }
 desk_fails_add() { desk_fails_set "$1" $(( $(desk_fails "$1") + 1 )); }
 desk_fails_reset() { [ "$(desk_fails "$1")" -gt 0 ] && desk_fails_set "$1" 0; return 0; }
 # One line per <what> (a new one replaces that one's line and keeps the others: "KDE was retired" and "KWin didn't
@@ -470,6 +472,7 @@ d = json.load(open(sys.argv[1]))
 f = d.get("firehold") if isinstance(d.get("firehold"), dict) else {}
 sys.exit(0 if f.get("unlocked") is True or d.get("firehold.unlocked") is True else 1)' "$f" 2>/dev/null
 }
+KWIN_GOOD_SECS="${HEARTH_KWIN_GOOD_SECS:-600}"   # a run this long before a crash starts the failure count over
 desktop_wm_choice() {
   w=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP_WM=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
   # albireo: Firehold's name before Nov 17, 2026 (a preview turned on then stays on); Settings' helper rewrites the
@@ -718,7 +721,19 @@ run_kwin() {
   # A switch you asked for (nimbus-mode wrote the next mode) is never a failure, however quick.
   if [ -s "$NEXT" ]; then [ "$up" = 1 ] && desk_fails_reset kwin; log "kwin ended (code $rc)"; return "$rc"; fi
   if [ "$up" = 0 ]; then log "kwin ended before Mantel came up (code $rc)"; return 200; fi
-  if [ $(( $(date +%s) - started )) -lt "$KWIN_EARLY_SECS" ]; then log "kwin ended right after starting (code $rc)"; return 200; fi
+  ran=$(( $(date +%s) - started ))
+  if [ "$ran" -lt "$KWIN_EARLY_SECS" ]; then log "kwin ended right after starting (code $rc)"; return 200; fi
+  # Ended by itself with no switch asked for. Code 0 is a clean end (the count starts over). Anything else (a crash, a
+  # signal: 128+n) is a failure like not starting (red flag 2): returning KWin's code would end the session, and with
+  # Start in: Desktop and the login screen's Relogin a KWin that keeps crashing 20-60 s in would loop for ever, with
+  # no way out on a handheld. So: 200, labwc for the rest of this sign-in, counted and told (run_classic). A KWin that
+  # ran HEARTH_KWIN_GOOD_SECS (10 minutes) or more before crashing starts the count over first: one crash after a long
+  # run is counted once, never as "twice in a row" with an old one.
+  if [ "$rc" -ne 0 ]; then
+    [ "$ran" -ge "$KWIN_GOOD_SECS" ] && desk_fails_reset kwin
+    log "kwin crashed after ${ran}s (code $rc); Mantel on labwc for the rest of this sign-in"
+    return 200
+  fi
   desk_fails_reset kwin
   log "kwin ended (code $rc)"
   return "$rc"
@@ -848,6 +863,14 @@ run_firehold() {
     FIREHOLD_WHY="firehold-comp ended right after starting (code $rc)${last:+: $last}"
     return 200
   fi
+  # Ended by itself with no switch asked for: a crash (code not 0) is a failure like not starting, as for KWin
+  # (red flag 2: returning its code would end the session, and a compositor that keeps crashing would loop the sign-in).
+  # 200: KWin for the rest of this sign-in, counted and told (run_classic).
+  if [ "$rc" -ne 0 ]; then
+    log "firehold crashed after $(( $(date +%s) - started ))s (code $rc); KWin for the rest of this sign-in"
+    FIREHOLD_WHY="firehold-comp stopped (code $rc)${last:+: $last}"
+    return 200
+  fi
   desk_fails_reset firehold
   log "firehold ended (code $rc)"
   return "$rc"
@@ -955,13 +978,15 @@ steam_close_now() {
   i=0; while [ $i -lt 6 ] && pgrep -u "$(id -u)" -x steam >/dev/null 2>&1; do sleep 0.25; i=$((i+1)); done
   pkill -KILL -u "$(id -u)" -x steam 2>/dev/null; pkill -KILL -u "$(id -u)" -f steamwebhelper 2>/dev/null
 }
+# True while ANY of the pids is still running (kill -0 with several pids fails as soon as one of them has ended).
+any_alive() { for p in "$@"; do kill -0 "$p" 2>/dev/null && return 0; done; return 1; }
 steam_close_behind() {
   pids="$(pgrep -u "$(id -u)" -x steam 2>/dev/null) $(pgrep -u "$(id -u)" -f steamwebhelper 2>/dev/null)"
   (
     timeout 4 steam -shutdown >/dev/null 2>&1
-    i=0; while [ $i -lt 10 ] && kill -0 $pids 2>/dev/null; do sleep 0.25; i=$((i+1)); done
+    i=0; while [ $i -lt 10 ] && any_alive $pids; do sleep 0.25; i=$((i+1)); done
     kill -TERM $pids 2>/dev/null
-    i=0; while [ $i -lt 6 ] && kill -0 $pids 2>/dev/null; do sleep 0.25; i=$((i+1)); done
+    i=0; while [ $i -lt 6 ] && any_alive $pids; do sleep 0.25; i=$((i+1)); done
     kill -KILL $pids 2>/dev/null
   ) >/dev/null 2>&1 &
 }
@@ -1054,9 +1079,12 @@ steam_back() {
   elif command -v live_session >/dev/null 2>&1 && live_session; then echo game; else echo desktop; fi
 }
 steam_back_name() { case "$(steam_back)" in game|hearth) echo "Hearth's Game Mode" ;; server) echo "Server mode" ;; *) echo "Desktop Mode" ;; esac; }
+# Why Steam Game Mode last failed (Mantel's "Try Steam Game Mode again"). The side session (Game Mode beside the
+# desktop, HEARTH_SIDE=1) has its own failure file (see its block at the end).
+SM_FAILED="$RUN/hearth-steam-mode-failed"
 steam_mode_failed() {
   log "steam game mode: $1; $(steam_back_name) instead"
-  echo "$1" >"$RUN/hearth-steam-mode-failed" 2>/dev/null
+  echo "$1" >"$SM_FAILED" 2>/dev/null
   [ -n "${STEAM_GAME_APPID:-}" ] && echo "Steam Game Mode didn't start: $1" >"$RUN/hearth-steam-game-failed" 2>/dev/null
   steam_back >"$NEXT"
 }
@@ -1180,7 +1208,7 @@ STEAM_SEATS_CONFIG="${HEARTH_SEATS_CONFIG:-/etc/hearth/seats.json}"
 steam_seats_on() { [ "${HEARTH_LEGACY_MULTIPLAYER:-0}" = 1 ] && [ -z "$HEARTH_SEAT" ] && [ -f "$STEAM_SEATS" ] && have python3 && grep -Eq '"enabled": *true' "$STEAM_SEATS_CONFIG" 2>/dev/null; }
 run_steam_mode() {
   log "steam game mode"
-  rm -f "$RUN/hearth-steam-mode-failed"
+  rm -f "$SM_FAILED"
   started=$(date +%s); next_now=""
   why="$(steam_cant_reason)"
   if [ -n "$why" ]; then steam_mode_failed "$why"; return 0; fi
@@ -1834,11 +1862,19 @@ resolve_mode() {
 # the desktop comes back. Nothing here runs at start-up: the unit has no [Install] and is only started from the desktop.
 if [ "${HEARTH_SIDE:-}" = 1 ]; then
   NEXT="$RUN/hearth-side-next"; rm -f "$NEXT"
+  # Its own failure file, so a failure here never shows on the desktop as "Steam Game Mode didn't start" nor keeps the
+  # desktop session from starting Steam Game Mode. It never counts toward the start-up pause either (SD_FAILS /
+  # SD_OFF: only steam_auto_before/after count, and only run_steam_mode runs here). The running mark stays shared:
+  # nimbus-mode and Hearth's core find Steam Game Mode by it (Switch to Desktop from this screen needs it).
+  SM_FAILED="$RUN/hearth-side-steam-mode-failed"
   log "side by side: Steam Game Mode beside the desktop starting"
   run_steam_mode
   log "side by side: Steam Game Mode beside the desktop ended"
   rm -f "$NEXT" "$RUN/hearth-side-game.up"
-  "${HEARTH_SIDE_HELPER:-/usr/libexec/nimbus/hearth-side-by-side}" desktop >/dev/null 2>&1
+  # The desktop again (or, when its session can't be shown, another of yours: the helper's fallback), so this screen
+  # is never left blank.
+  "${HEARTH_SIDE_HELPER:-/usr/libexec/nimbus/hearth-side-by-side}" desktop >/dev/null 2>&1 \
+    || log "side by side: couldn't show the desktop or another session of yours again"
   exit 0
 fi
 reset_controllers
