@@ -93,7 +93,6 @@ jobs:
           export XDG_CONFIG_DIRS="$PWD/hosts/linux/desktop/kwin/windows/xdg:/etc/xdg" KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1
           # Hearth's window frames written before KWin starts, as the session does (theme/apply.sh): KWin loads them then.
           HEARTH_WM=kwin python3 hosts/linux/desktop/theme/hearth-theme >/dev/null 2>shots/hearth-theme.err || echo "::warning title=frames::hearth-theme: $(head -c 300 shots/hearth-theme.err)"
-          ls "$HOME/.local/share/aurorae/themes/hearth" | tr '\n' ' ' | sed 's/^/::notice title=frames::written before KWin: /'; echo
           # The command at the end runs inside KWin's session: it leaves KWin's X server address (DISPLAY, XAUTHORITY).
           X11ENV="sh -c 'env | grep -E \"^(DISPLAY|XAUTHORITY)=\" > /tmp/kwin-x11.env'"
           modprobe vkms 2>/dev/null || echo "::warning title=keys::no vkms module"
@@ -141,18 +140,17 @@ jobs:
                   break
               data += c
           W, H, S = int(res['width']), int(res['height']), int(res['stride'])
-          Image.frombuffer('RGBA', (W, H), data, 'raw', 'BGRA', S, 1).convert('RGB').save(sys.argv[1])
+          # QImage's formats: ARGB32 (4, 5, 6: bytes B G R A here) or RGBA8888 (16-19: R G B A). Reading one as the other
+          # swapped red and blue (Steam blue came out orange).
+          raw = 'RGBA' if int(res.get('format', 6)) in (16, 17, 18, 19) else 'BGRA'
+          print('screenshot format %s -> %s' % (res.get('format'), raw))
+          Image.frombuffer('RGBA', (W, H), data, 'raw', raw, S, 1).convert('RGB').save(sys.argv[1])
           PY
           sed -i 's/^          //' /tmp/shot.py
           printf '%s\n' '#!/bin/bash' 'timeout 25 python3 /tmp/shot.py "shots/$1.png" 2>>shots/shot-errors.txt || echo "::warning title=picture::$1 not taken"' \
             'm=$(convert "shots/$1.png" -format "%[fx:mean]" info: 2>/dev/null); awk -v m="${m:-1}" "BEGIN{exit !(m < 0.01)}" && echo "::warning title=picture::$1 came out black"' \
             'pgrep -f /tmp/kwin_wayland >/dev/null || echo "::error title=KWin::KWin is not running any more (after the picture $1)"; exit 0' > /tmp/shot.sh
           export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland HEARTH_WM=kwin
-          # Diagnostic: a frame before Mantel starts, with the theme's title as it was written (no reload involved).
-          WAYLAND_DISPLAY=wayland-hearth foot --app-id=early --title=Early sleep 30 >/dev/null 2>&1 &
-          sleep 4; bash /tmp/shot.sh kwin-early; pkill -f 'title=Early'
-          python3 -c 'import sys; from PIL import Image; im = Image.open(sys.argv[1]).convert("RGB"); print("::notice title=early frame::size %s; column x=960: %s" % (im.size, " ".join("%d:#%02x%02x%02x" % ((y,) + im.getpixel((960, y))) for y in range(0, im.size[1], 12))))' shots/kwin-early.png 2>&1 | head -c 3000
-          grep -o 'id="decoration-top"><rect [^>]*' "$HOME/.local/share/aurorae/themes/hearth/decoration.svg" | sed 's/^/::notice title=early theme::/'
           quickshell -p "$NIMBUS_SHARE/desktop/shell" >shots/shell.log 2>&1 &
           sleep 12
           timeout 300 python3 tools/e2e-kwin-windows.py "$NIMBUS_SHARE/desktop/shell" shots 'bash /tmp/shot.sh "$1"' > shots/e2e.log 2>&1
@@ -209,7 +207,3 @@ jobs:
         run: f=shots/kwin-frame-csd.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-csd $i::$part"; done || true
       - name: Picture (frame-zoom)
         run: f=shots/kwin-frame-zoom.png; [ -f "$f" ] && convert "$f" -quality 60 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-zoom $i::$part"; done || true
-      - name: Picture (frame-probe)
-        run: f=shots/kwin-frame-probe.png; [ -f "$f" ] && convert "$f" -quality 60 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-probe $i::$part"; done || true
-      - name: Picture (early)
-        run: f=shots/kwin-early.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-early $i::$part"; done || true
