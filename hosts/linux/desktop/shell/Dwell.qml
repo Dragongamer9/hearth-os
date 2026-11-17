@@ -91,8 +91,8 @@ Scope {
             margins.top: Math.max(0, root.ry - modelData.y - size / 2)
             implicitWidth: size
             implicitHeight: size
-            exclusiveZone: 0
-            // Placed from the screen's corner, not below the bar: the ring sits right on the pointer.
+            // Placed from the screen's corner, not below the bar: the ring sits right on the pointer (no exclusive zone
+            // set here: setting one turns this back to Manual, measured from below the bar).
             exclusionMode: ExclusionMode.Ignore
             WlrLayershell.layer: WlrLayer.Overlay
             WlrLayershell.namespace: "hearth-dwell"

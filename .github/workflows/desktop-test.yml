@@ -408,6 +408,20 @@ jobs:
           ipc dwell demo 960 540 0.65 left; sleep 1; grim shots/kwin-pages/18-dwell-ring.png || true
           grim -g "800,450 320x180" shots/kwin-pages/19-dwell-ring-close.png || true
           ipc dwell demo 960 540 0.3 double; sleep 1; grim -g "800,450 320x180" shots/kwin-pages/20-dwell-ring-double.png || true
+          dnf -y install python3-pillow >/dev/null 2>&1 || true
+          # The ring has to sit on the pointer: its middle at 960,540 (the screen's), not pushed below the bar.
+          python3 - shots/kwin-pages/18-dwell-ring.png <<'PY' || { echo "::error title=Dwell click::the ring isn't on the pointer"; touch shots/FAILED; }
+          import sys
+          try:
+              from PIL import Image
+          except ImportError:
+              raise SystemExit(0)
+          im = Image.open(sys.argv[1]).convert('RGB')
+          ys = [y for y in range(380, 700) for x in range(940, 981) if (lambda p: p[2] > 200 and p[2] - p[0] > 80)(im.getpixel((x, y)))]
+          mid = (min(ys) + max(ys)) / 2 if ys else -1
+          print('::notice title=Dwell click::ring middle at y=%.0f (pointer at 540)' % mid)
+          sys.exit(0 if abs(mid - 540) <= 6 else 1)
+          PY
           ipc dwell hide
           rm -f "$AJ"; [ -e /tmp/accessibility.json.before ] && mv -f /tmp/accessibility.json.before "$AJ"
           ipc settings close; sleep 1
