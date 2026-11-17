@@ -10,6 +10,10 @@
 #   nimbus-mode current   print the mode you're in
 
 RUN="${XDG_RUNTIME_DIR:-/tmp}"
+# Desktop Mode (Mantel) on KWin (1.14) or labwc: HEARTH_DESKTOP_PID is the window manager's process id (set for both by
+# nimbus-session and the autostart; labwc's own LABWC_PID for anything older that only has that). labwc's own commands
+# (labwc --exit) only under labwc: they signal LABWC_PID, which is never set under KWin.
+desk_pid="${HEARTH_DESKTOP_PID:-$LABWC_PID}"
 # Steam Game Mode (nimbus-session's run_steam_mode) leaves the session's process id here while it runs.
 steam_pid=$(cat "$RUN/hearth-steam-mode.pid" 2>/dev/null)
 steam_up() { [ -n "$steam_pid" ] && kill -0 "$steam_pid" 2>/dev/null; }
@@ -17,20 +21,21 @@ case "$1" in
   current)
     server_pid=$(cat "$RUN/hearth-server-mode.pid" 2>/dev/null)
     if [ "$HEARTH_SERVER_MODE" = 1 ] || { [ -n "$server_pid" ] && kill -0 "$server_pid" 2>/dev/null && [ "$(cat "$RUN/nimbus-mode-now" 2>/dev/null)" = server ]; }; then echo server
-    elif [ -n "$LABWC_PID" ]; then echo desktop; elif steam_up; then echo steam; elif [ -n "$GAMESCOPE_WAYLAND_DISPLAY" ]; then echo game; else echo none; fi ;;
+    elif [ -n "$desk_pid" ]; then echo desktop; elif steam_up; then echo steam; elif [ -n "$GAMESCOPE_WAYLAND_DISPLAY" ]; then echo game; else echo none; fi ;;
   game|desktop|logout|steam|server|hearth)
     # (logout is written too: the session ends on anything that isn't a mode, and Steam Game Mode then knows it was
     # asked for and isn't started again.)
     # 1.14, Game Mode beside the desktop (off unless you turned it on): from Mantel, Steam Game Mode is shown on its
     # own screen instead and the desktop keeps running; if it doesn't come up, the usual switch below.
     side="${HEARTH_SIDE_HELPER:-/usr/libexec/nimbus/hearth-side-by-side}"
-    if [ -n "$LABWC_PID" ] && [ -x "$side" ] && { [ "$1" = steam ] || { [ "$1" = game ] && [ "$(python3 "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell/hearth-game-mode" choice 2>/dev/null || echo steam)" = steam ]; }; } \
+    if [ -n "$desk_pid" ] && [ -x "$side" ] && { [ "$1" = steam ] || { [ "$1" = game ] && [ "$(python3 "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell/hearth-game-mode" choice 2>/dev/null || echo steam)" = steam ]; }; } \
       && "$side" game >/dev/null 2>&1; then exit 0; fi
     echo "$1" >"$RUN/nimbus-next"
-    if [ -n "$LABWC_PID" ]; then
-      labwc --exit 2>/dev/null || kill -TERM "$LABWC_PID"
+    if [ -n "$desk_pid" ]; then
+      if [ "${HEARTH_WM:-labwc}" != kwin ] && [ -n "$LABWC_PID" ]; then labwc --exit 2>/dev/null || kill -TERM "$desk_pid"
+      else kill -TERM "$desk_pid"; fi
       # If an app keeps the desktop from closing, close it anyway so the switch can't hang.
-      pid="$LABWC_PID"; setsid sh -c "sleep 4; kill -0 $pid 2>/dev/null && kill -KILL $pid" >/dev/null 2>&1 </dev/null &
+      pid="$desk_pid"; setsid sh -c "sleep 4; kill -0 $pid 2>/dev/null && kill -KILL $pid" >/dev/null 2>&1 </dev/null &
     elif steam_up; then
       # Steam Game Mode: Steam closes properly first (its settings and cloud saves), then its gamescope ends, by
       # force after 8 seconds so the switch can't hang.
@@ -38,10 +43,10 @@ case "$1" in
       setsid sh -c "timeout 6 steam -shutdown >/dev/null 2>&1; sleep 2; pkill -TERM -u $me -x gamescope; pkill -TERM -u $me -f gamescope-wl; sleep 3; pkill -KILL -u $me -x gamescope" >/dev/null 2>&1 </dev/null &
     else
       # In Game Mode, Nimbus quits itself after writing the file; this is the fallback for scripts. Run from
-      # somewhere that didn't inherit LABWC_PID (an SSH login, a systemd user service, an app started over
-      # D-Bus) while Desktop Mode is up, it's this user's labwc that has to end, or the switch never happens.
+      # somewhere that didn't inherit HEARTH_DESKTOP_PID (an SSH login, a systemd user service, an app started over
+      # D-Bus) while Desktop Mode is up, it's this user's labwc or KWin that has to end, or the switch never happens.
       pkill -TERM -x gamescope 2>/dev/null || pkill -TERM -f gamescope-wl 2>/dev/null \
-        || pkill -TERM -u "$(id -u)" -x labwc 2>/dev/null
+        || pkill -TERM -u "$(id -u)" -x labwc 2>/dev/null || pkill -TERM -u "$(id -u)" -x kwin_wayland 2>/dev/null
     fi ;;
   *) echo "usage: nimbus-mode game|desktop|steam|hearth|server|logout|current" >&2; exit 2 ;;
 esac

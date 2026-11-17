@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Record the screen (start / stop)
+Comment=Hearth Recorder: starts recording the screen, and again stops and saves it. Super+Alt+R under KWin (desktop/kwin/xdg/kglobalshortcutsrc).
+Exec=sh -c 'quickshell ipc -p "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell" call record startStop'
+Icon=media-record
+NoDisplay=true
+X-KDE-GlobalAccel-CommandShortcut=true

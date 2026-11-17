@@ -1,0 +1,7 @@
+#!/bin/sh
+# Mantel on KWin (1.14, docs/DESKTOPS.md "Mantel on KWin"): KWin starts this once it's up (nimbus-session's run_kwin
+# passes it to kwin_wayland), and it runs Desktop Mode's one autostart, the same one labwc runs (desktop/labwc/autostart:
+# it looks at HEARTH_WM). Same process (exec), so $PPID there is still KWin.
+SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
+HEARTH_WM=kwin; export HEARTH_WM
+exec sh "$SHARE/desktop/labwc/autostart"

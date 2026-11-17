@@ -1,17 +1,46 @@
 #!/bin/sh
-# Run by labwc when Desktop Mode starts.
+# Run when Desktop Mode starts: by labwc, or (1.14) by KWin through desktop/kwin/autostart. HEARTH_WM says which
+# (nimbus-session sets it); HEARTH_DESKTOP_PID is the window manager's process id either way (labwc's LABWC_PID; under
+# KWin our parent, KWin itself), for everything started from here that asks "is Desktop Mode up?" (nimbus-mode).
 SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
+RUN="${XDG_RUNTIME_DIR:-/tmp}"
+if [ "${HEARTH_WM:-}" = kwin ]; then
+  [ -n "${HEARTH_DESKTOP_PID:-}" ] || HEARTH_DESKTOP_PID=$PPID
+  unset LABWC_PID
+else
+  HEARTH_WM=labwc
+  [ -n "${LABWC_PID:-}" ] && HEARTH_DESKTOP_PID=$LABWC_PID
+fi
+export HEARTH_WM HEARTH_DESKTOP_PID
 
 # Let portals (screen sharing, file pickers) and D-Bus-started apps see this session.
 # DISPLAY too (Xwayland's; Game Mode's gamescope display is gone by now), and the portals' failures from Game Mode
 # are forgotten, or systemd wouldn't start them again for a while ("start-limit-hit").
 # XDG_DATA_DIRS too (with Flatpak's folders, from nimbus-session), so apps D-Bus starts find Flatpak apps and icons.
-{ dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_DATA_DIRS NIMBUS_SHARE NIMBUS_APP
-  systemctl --user reset-failed xdg-desktop-portal.service xdg-desktop-portal-gtk.service; } >/dev/null 2>&1 &
+# XDG_CONFIG_DIRS and HEARTH_WM too (1.14): under KWin the portals read KWin's nimbus-portals.conf (screen sharing through
+# KDE's portal), under labwc the image's (wlroots'); when the window manager changed since the portal started, it starts
+# again (once, at the start of Desktop Mode).
+{ dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_DATA_DIRS XDG_CONFIG_DIRS NIMBUS_SHARE NIMBUS_APP HEARTH_WM
+  systemctl --user reset-failed xdg-desktop-portal.service xdg-desktop-portal-gtk.service xdg-desktop-portal-kde.service
+  if [ "$(cat "$RUN/hearth-portal-wm" 2>/dev/null)" != "$HEARTH_WM" ]; then
+    echo "$HEARTH_WM" >"$RUN/hearth-portal-wm"
+    systemctl --user try-restart xdg-desktop-portal.service
+  fi; } >/dev/null 2>&1 &
+
+# 1.14: Mantel on KWin: the bridge between Mantel and KWin (windows, workspaces, keys: desktop/shell/hearth-kwin-bridge,
+# when it's there), before the shell starts.
+if [ "$HEARTH_WM" = kwin ] && [ -f "$SHARE/desktop/shell/hearth-kwin-bridge" ] && command -v python3 >/dev/null 2>&1; then
+  python3 "$SHARE/desktop/shell/hearth-kwin-bridge" serve >>"$RUN/hearth-kwin-bridge.log" 2>&1 &
+fi
 
 # Resolution, refresh rate and scale chosen in Settings › Display. Until you choose, small sharp screens
 # (handhelds, high-DPI laptops) get a comfortable scale so text and buttons are big enough to touch.
-if [ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh" ]; then
+# Under KWin (1.14) the screens are hearth-screens' (the hook below: "restore", when it's there); wlr-randr is labwc's.
+if [ "$HEARTH_WM" = kwin ]; then
+  screens="$SHARE/desktop/shell/hearth-screens"
+  if [ -x "$screens" ]; then timeout 20 "$screens" restore >/dev/null 2>&1
+  elif [ -f "$screens" ]; then timeout 20 python3 "$screens" restore >/dev/null 2>&1; fi
+elif [ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh" ]; then
   "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh"
   # A screen turned off there, and the one left on is unplugged now: never no screen at all.
   if command -v wlr-randr >/dev/null 2>&1 && ! wlr-randr 2>/dev/null | grep -q "Enabled: yes"; then
@@ -43,7 +72,6 @@ fi
 # The Hearth taskbar, launcher, Quick Access, notifications and wallpaper (Quickshell).
 # Without it Desktop Mode is an empty black screen you can't leave on a handheld, so it's watched: if it
 # can't start (or keeps crashing), go to Game Mode (Steam Game Mode) instead.
-RUN="${XDG_RUNTIME_DIR:-/tmp}"
 SHELL_LOG="$RUN/nimbus-shell.log"
 give_up() {
   { echo "$1"; echo; tail -n 12 "$SHELL_LOG" 2>/dev/null; } >"$RUN/nimbus-desktop-failed"
@@ -69,8 +97,8 @@ else
     : >"$SHELL_LOG"
     fails=0
     while :; do
-      # Desktop Mode ended (labwc gone): stop watching, or the "keeps closing" fallback would fire in Game Mode.
-      if [ -n "$LABWC_PID" ] && ! kill -0 "$LABWC_PID" 2>/dev/null; then exit 0; fi
+      # Desktop Mode ended (labwc or KWin gone): stop watching, or the "keeps closing" fallback would fire in Game Mode.
+      if [ -n "$HEARTH_DESKTOP_PID" ] && ! kill -0 "$HEARTH_DESKTOP_PID" 2>/dev/null; then exit 0; fi
       started=$(date +%s)
       quickshell -p "$SHARE/desktop/shell" >>"$SHELL_LOG" 2>&1
       if [ $(($(date +%s) - started)) -lt 20 ]; then fails=$((fails + 1)); else fails=0; fi

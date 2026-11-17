@@ -1,0 +1,104 @@
+# Mantel on KWin (1.14, docs/DESKTOPS.md "Mantel on KWin"): nimbus-session starts Desktop Mode for real on KWin, on a
+# 1920x1080 virtual screen in Fedora (KWin, labwc and Quickshell as on Hearth), and its safe start falls back to labwc
+# when KWin ends right away (.github/scripts/kwin-test.sh). Before that, the session's own tests (test_kwin_session.py,
+# test_desktop_retired.py). The pictures are a download on the run, and each one is posted at full size as notices
+# by the shots job (a JPEG in base64 pieces, titles "SHOT <name> <n>", one job per picture: a job keeps 50 notices).
+name: KWin test
+
+on:
+  push:
+    branches: [main]
+    paths: ['hosts/linux/session/**', 'hosts/linux/desktop/kwin/**', 'hosts/linux/desktop/labwc/autostart', '.github/workflows/kwin-test.yml', '.github/scripts/kwin-test.sh']
+  workflow_dispatch:
+
+concurrency:
+  group: kwin-test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kwin:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install KWin, labwc, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git kwin labwc xorg-x11-server-Xwayland mesa-dri-drivers qt6-qtsvg procps-ng grim wlr-randr \
+            python3 python3-dbus python3-pillow qt6ct google-noto-sans-fonts adwaita-icon-theme breeze-icon-theme dbus-daemon dbus-tools \
+            libnotify wl-clipboard wtype >/dev/null
+          dnf -y install --skip-unavailable wayland-utils rsms-inter-fonts plasma-breeze >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          for b in kwin_wayland labwc quickshell grim; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
+          kwin_wayland --version || true
+
+      - uses: actions/checkout@v4
+
+      - name: The session's tests
+        run: |
+          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_session.py' -v 2>&1 | tail -30
+          python3 -m unittest discover -s hosts/linux/test -p 'test_desktop_retired.py' -v 2>&1 | tail -10
+          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_session.py' >/tmp/t.log 2>&1 \
+            && python3 -m unittest discover -s hosts/linux/test -p 'test_desktop_retired.py' >>/tmp/t.log 2>&1 \
+            || { echo "::error title=session tests::$(grep -E '^(FAIL|ERROR|AssertionError)' /tmp/t.log | head -8 | tr '\n' '|' | cut -c1-900)"; exit 1; }
+
+      - name: Mantel on KWin, and the fallback to labwc
+        timeout-minutes: 20
+        run: bash .github/scripts/kwin-test.sh
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: kwin-shots
+          path: shots
+          retention-days: 14
+
+  shots:
+    needs: kwin
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: [kwin-1-retired-card, kwin-2-desktop, kwin-3-your-desktop, kwin-4-fallback-card, kwin-5-twice-card, kwin-6-your-desktop-paused]
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: kwin-shots
+          path: shots
+      # 1920x1080 as a JPEG small enough for 50 notices of 3800 characters (lower quality first, smaller only if it must).
+      - name: Make the JPEG
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, io, os
+          from PIL import Image
+          p = 'shots/${{ matrix.shot }}.png'
+          if os.path.exists(p):
+              im = Image.open(p).convert('RGB')
+              best = None
+              for w in (im.width, 1600, 1280):
+                  for q in (70, 60, 50, 40, 32, 25, 20):
+                      b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q, optimize=True)
+                      best = b
+                      if len(base64.b64encode(b.getvalue())) <= 50 * 3800:
+                          break
+                  else:
+                      continue
+                  break
+              open('shot.jpg', 'wb').write(best.getvalue())
+              print('%s: %d bytes' % (p, len(best.getvalue())))
+          PY
+          [ -f shot.jpg ] && base64 -w0 shot.jpg | fold -w 3800 | nl -ba -w2 -s' ' > parts.txt || : > parts.txt
+          wc -l parts.txt
+      - name: Picture (1-10)
+        run: sed -n '1,10p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture (11-20)
+        run: sed -n '11,20p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture (21-30)
+        run: sed -n '21,30p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture (31-40)
+        run: sed -n '31,40p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture (41-50)
+        run: sed -n '41,50p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done

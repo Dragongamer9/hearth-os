@@ -31,8 +31,8 @@ class Retired(unittest.TestCase):
         self.state = os.path.join(self.home, '.local', 'state', 'hearth')
         # Mantel's compositor stand-ins: each notes that it started and ends (no next mode: the session ends).
         # (KWin is the default from 1.14; labwc its fallback. Either one means "Mantel opened".)
-        for wm in ('labwc', 'kwin_wayland'):
-            self.write_bin(wm, '#!/bin/sh\necho %s >> "$HOME/mantel-ran"\nexit 0\n' % wm)
+        self.write_bin('labwc', '#!/bin/sh\necho labwc >> "$HOME/mantel-ran"\nexit 0\n')
+        self.write_bin('kwin_wayland', '#!/bin/sh\necho kwin_wayland >> "$HOME/mantel-ran"\n: > "$XDG_RUNTIME_DIR/hearth-shell-up"\nsleep 2\nexit 0\n')
         # KDE's and GNOME's own programs, as if 1.13's download were still in the writable system: never started.
         for p in ('startplasma-wayland', 'plasmashell', 'gnome-session', 'gnome-shell'):
             self.write_bin(p, '#!/bin/sh\necho %s >> "$HOME/other-desktop-ran"\nsleep 5\n' % p)

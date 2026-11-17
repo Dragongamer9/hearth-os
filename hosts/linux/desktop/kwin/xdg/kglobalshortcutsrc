@@ -1,0 +1,16 @@
+# Hearth's KWin shortcut defaults for Mantel (1.14, docs/DESKTOPS.md "Mantel on KWin"). A system default under your
+# own ~/.config/kglobalshortcutsrc. KWin's window keys stay (Alt+Tab, Alt+F4, Meta+Up/Down/Left/Right...); the ones
+# that open KDE's own screens Mantel has its own of are off, so the same keys can be Mantel's.
+# Format: Action=current,default,description ("none": off).
+
+[kwin]
+Overview=none,Meta+W,Toggle Overview
+Grid View=none,Meta+G,Toggle Grid View
+Edit Tiles=none,Meta+T,Toggle Tiles Editor
+Show Desktop=none,Meta+D,Peek at Desktop
+Activate Window Demanding Attention=none,Meta+Ctrl+A,Activate Window Demanding Attention
+
+# Hearth Recorder: Super+Alt+R starts recording the screen and again stops and saves it (as under labwc's rc.xml),
+# through /usr/share/applications/hearth-record-toggle.desktop (feature/remote-record's hook).
+[services][hearth-record-toggle.desktop]
+_launch=Meta+Alt+R

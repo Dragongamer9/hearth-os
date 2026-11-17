@@ -4,8 +4,8 @@
 # Hearth OS is Debian + Mantel (Desktop Mode) + Steam Game Mode (docs/STEAM-GAME-MODE.md). One session, switched
 # without logging out (like SteamOS):
 #   Steam Game Mode  Valve's Steam gamepad UI in gamescope, with Decky Loader and the Hearth plugin (the default)
-#   Desktop Mode     Mantel: the labwc window manager with the Hearth taskbar, launcher and notifications
-#                    (Quickshell). Mantel is the only desktop (Hearth Plasma, GNOME and COSMIC are gone).
+#   Desktop Mode     Mantel: the Hearth taskbar, launcher and notifications (Quickshell) on KWin (1.14; labwc when
+#                    KWin can't start: run_classic). Mantel is the only desktop.
 #   Hearth Game Mode Hearth's own screens (ui/, hosts/hearth-rs) in gamescope, when you pick it (docs/HEARTH-GAME-MODE.md)
 # Every request for "game" (nimbus-mode game, Mantel's Game Mode buttons, Steam's own Game Mode switch,
 # NIMBUS_START_MODE, hearth.mode=game, Server mode's Guide countdown) opens the Game Mode you picked in Settings:
@@ -24,6 +24,8 @@
 #   HEARTH_GAME_MODE_CHOICE=hearth        Game Mode is Hearth Game Mode (Settings › Gaming › Game Mode; steam or no line:
 #                                         Steam Game Mode). Written only by hearth-game-mode when you pick one.
 #   NIMBUS_GAMESCOPE_ARGS="-W 1280 -H 800 --adaptive-sync"
+#   HEARTH_DESKTOP_WM=labwc               Mantel on labwc instead of KWin (Settings › System › Your desktop; no line:
+#                                         KWin). Written only by hearth-your-desktop when you pick one.
 #   HEARTH_LEGACY_GAME_MODE=1             the old developer switch: read as HEARTH_GAME_MODE_CHOICE=hearth when that
 #                                         line isn't there
 #   HEARTH_LEGACY_MULTIPLAYER=1           developer switch: multi-seat and Couch Co-op back (dropped for now)
@@ -154,7 +156,7 @@ fi
 rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode" "${XDG_STATE_HOME:-$HOME/.local/state}/nimbus/steam-game-mode-running" 2>/dev/null
 
 can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
-can_desktop() { have labwc; }   # Mantel is always the one that must be there (KDE/GNOME fall back to it)
+can_desktop() { have labwc || have kwin_wayland; }   # Mantel: on KWin (1.14), labwc the fallback (run_classic)
 
 # Apps that keep sign-ins in the system's password store (Xodus Nexus, browsers) need one running, and on a
 # console nobody can type a password to unlock it: give GNOME Keyring an unlocked default keyring the first
@@ -399,7 +401,7 @@ run_desktop() {
   run_classic
 }
 
-# ---- Desktop Mode's notices: why Mantel started the way it did. One line, "<what> <why> <when>", in
+# ---- Desktop Mode's notices: why Mantel started the way it did. Lines "<what> <why> <when>" in
 # ~/.local/state/hearth/desktop-notice; Mantel shows it once (DesktopNotice.qml) and Settings › System › Your desktop
 # while it's there (hearth-your-desktop). desk_fails counts starts that didn't work, per name.
 DESK_STATE="${XDG_STATE_HOME:-$HOME/.local/state}/hearth"
@@ -407,7 +409,9 @@ desk_fails() { n=$(sed -n "s/^$1 //p" "$DESK_STATE/desktop-fails" 2>/dev/null | 
 desk_fails_set() { mkdir -p "$DESK_STATE"; { grep -v "^$1 " "$DESK_STATE/desktop-fails" 2>/dev/null; [ "$2" -gt 0 ] && echo "$1 $2"; } >"$DESK_STATE/desktop-fails.tmp" && mv -f "$DESK_STATE/desktop-fails.tmp" "$DESK_STATE/desktop-fails"; }
 desk_fails_add() { desk_fails_set "$1" $(( $(desk_fails "$1") + 1 )); }
 desk_fails_reset() { [ "$(desk_fails "$1")" -gt 0 ] && desk_fails_set "$1" 0; return 0; }
-desk_notice() { mkdir -p "$DESK_STATE"; printf '%s %s %s\n' "$1" "$2" "$(date +%s)" >"$DESK_STATE/desktop-notice.tmp" && mv -f "$DESK_STATE/desktop-notice.tmp" "$DESK_STATE/desktop-notice"; }
+# One line per <what> (a new one replaces that one's line and keeps the others: "KDE was retired" and "KWin didn't
+# start" can both be waiting).
+desk_notice() { mkdir -p "$DESK_STATE"; { grep -v "^$1 " "$DESK_STATE/desktop-notice" 2>/dev/null; printf '%s %s %s\n' "$1" "$2" "$(date +%s)"; } >"$DESK_STATE/desktop-notice.tmp" && mv -f "$DESK_STATE/desktop-notice.tmp" "$DESK_STATE/desktop-notice"; }
 # A process of this user by that name that's really running (not a zombie left by one that ended).
 alive() {
   for p in $(pgrep -u "$(id -u)" -x "$1" 2>/dev/null); do
@@ -424,28 +428,139 @@ companion_stop() {
   return 0
 }
 
+# ---- 1.14: Mantel runs on KWin (the owner, Nov 16: "Mantel moves fully from labwc to KWin"; docs/DESKTOPS.md "Mantel
+# on KWin"). labwc stays in the image and is the safe start's fallback, for this sign-in, whenever KWin isn't there,
+# ends within HEARTH_KWIN_EARLY_SECS (15 s) or Mantel doesn't say it's up within HEARTH_KWIN_UP_SECS (45 s; Mantel
+# writes $XDG_RUNTIME_DIR/hearth-shell-up, shell.qml). Twice in a row → labwc until you turn KWin back on (Settings ›
+# System › Your desktop, or the notice's button: hearth-your-desktop wm kwin). Each time Mantel says why once
+# (desk_notice kwin missing|failed|twice, DesktopNotice.qml). session.conf's HEARTH_DESKTOP_WM=kwin|labwc picks (no
+# line: kwin); only hearth-your-desktop writes it. Safe graphics, a second player's seat (multi-seat) and Server mode
+# stay on labwc. What Mantel and everything it starts are told: HEARTH_WM=kwin|labwc, and HEARTH_DESKTOP_PID (the
+# window manager's process id; labwc also sets LABWC_PID, which is never set under KWin: labwc --reconfigure would
+# send its signal to KWin).
+KWIN_UP_SECS="${HEARTH_KWIN_UP_SECS:-45}"
+KWIN_EARLY_SECS="${HEARTH_KWIN_EARLY_SECS:-15}"
+desktop_wm_choice() {
+  w=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP_WM=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
+  case "$w" in labwc) echo labwc ;; *) echo kwin ;; esac
+}
+# The window manager for this start: kwin or labwc (with the reason in the log, and the notice when it's news).
+desktop_wm() {
+  if [ -n "$HEARTH_SEAT" ]; then echo labwc; return 0; fi
+  if [ "$(desktop_wm_choice)" = labwc ]; then log "desktop: labwc (picked in Settings › Your desktop)"; echo labwc; return 0; fi
+  if [ -f "${HEARTH_SAFE_FLAG:-/run/hearth/safe-graphics}" ]; then log "desktop: safe graphics this time, labwc instead of KWin"; echo labwc; return 0; fi
+  if [ -e "$RUN/hearth-kwin-failed" ]; then log "desktop: KWin didn't start earlier this sign-in, labwc instead"; echo labwc; return 0; fi
+  if [ "$(desk_fails kwin)" -ge 2 ]; then log "desktop: KWin didn't start twice in a row; labwc until it's turned back on in Settings"; echo labwc; return 0; fi
+  if ! have kwin_wayland; then
+    log "desktop: KWin (kwin_wayland) isn't installed; labwc instead"
+    [ -e "$RUN/hearth-kwin-missing-told" ] || { : >"$RUN/hearth-kwin-missing-told"; desk_notice kwin missing; }
+    echo labwc; return 0
+  fi
+  echo kwin
+}
+
 run_classic() {
   log "desktop mode: Hearth Classic"
+  # labwc reads rc.xml, autostart, environment and menu.xml from this folder; your own
+  # ~/.config/labwc/rc.xml and autostart are added on top by Nimbus's autostart if they exist.
+  # Your keyboard layouts and key repeat (Settings › Keyboard): Hearth's labwc files with yours on top, in $XDG_RUNTIME_DIR.
+  # Under KWin the same folder's environment (with your accessibility lines) and autostart are used.
+  CONF="$SHARE/desktop/labwc"
+  if [ -f "$SHARE/desktop/shell/hearth-system" ] && have python3; then
+    CONF="$(python3 "$SHARE/desktop/shell/hearth-system" labwc-config 2>/dev/null)" || CONF="$SHARE/desktop/labwc"
+    [ -f "$CONF/rc.xml" ] || CONF="$SHARE/desktop/labwc"
+  fi
+  if [ "$(desktop_wm)" = kwin ]; then
+    run_kwin; krc=$?
+    [ "$krc" -ne 200 ] && return "$krc"
+    # KWin didn't come up: Mantel on labwc for the rest of this sign-in, and why, once.
+    : >"$RUN/hearth-kwin-failed"; desk_fails_add kwin
+    if [ "$(desk_fails kwin)" -ge 2 ]; then
+      log "desktop: KWin didn't start twice in a row; labwc until it's turned back on in Settings"; desk_notice kwin twice
+    else
+      log "desktop: KWin didn't start; labwc for this sign-in"; desk_notice kwin failed
+    fi
+    settle_kwin
+    have labwc || return 1
+  fi
+  run_labwc
+}
+
+run_labwc() {
+  log "desktop mode: Mantel on labwc"
   # Nvidia: wlroots' hardware cursor doesn't show (or doesn't move) on Nvidia's driver, so the pointer draws in
   # software there. Same as every wlroots desktop needs on Nvidia.
   if [ -d /sys/module/nvidia_drm ]; then
     export WLR_NO_HARDWARE_CURSORS=1
     log "nvidia: software cursor"
   fi
-  # labwc reads rc.xml, autostart, environment and menu.xml from this folder; your own
-  # ~/.config/labwc/rc.xml and autostart are added on top by Nimbus's autostart if they exist.
-  # Your keyboard layouts and key repeat (Settings › Keyboard): Hearth's labwc files with yours on top, in $XDG_RUNTIME_DIR.
-  CONF="$SHARE/desktop/labwc"
-  if [ -f "$SHARE/desktop/shell/hearth-system" ] && have python3; then
-    CONF="$(python3 "$SHARE/desktop/shell/hearth-system" labwc-config 2>/dev/null)" || CONF="$SHARE/desktop/labwc"
-    [ -f "$CONF/rc.xml" ] || CONF="$SHARE/desktop/labwc"
-  fi
   # labwc's own messages (wlroots, the graphics driver) in ~/.local/share/nimbus/labwc.log, which the log report
   # includes; before, they went nowhere anyone could see. The previous one is kept as labwc.log.old.
   LABWC_LOG="$(dirname "$LOG")/labwc.log"
   [ -f "$LABWC_LOG" ] && [ "$(wc -c <"$LABWC_LOG")" -gt 1000000 ] && mv -f "$LABWC_LOG" "$LABWC_LOG.old"
   echo "--- $(date '+%F %T') Desktop Mode" >>"$LABWC_LOG"
-  labwc -C "$CONF" >>"$LABWC_LOG" 2>&1
+  # HEARTH_DESKTOP_PID: labwc's own process id ($$ of the sh that becomes labwc).
+  HEARTH_WM=labwc sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID HEARTH_WM; exec labwc -C "$1"' sh "$CONF" >>"$LABWC_LOG" 2>&1
+}
+
+# Mantel on KWin: KWin's environment is labwc's environment file (the same folder, with your accessibility lines),
+# with XDG_CURRENT_DESKTOP=Nimbus:KDE (Nimbus first: Hearth's default apps, its file chooser and app kinds go by it;
+# KDE: xdg-desktop-portal-kde for screen sharing) and Hearth's KWin defaults ($SHARE/desktop/kwin/xdg: kwinrc,
+# kglobalshortcutsrc, nimbus-portals.conf) first in XDG_CONFIG_DIRS: system defaults under yours, so your own
+# ~/.config/kwinrc is read on top and never written over by Hearth. KWin starts the same autostart as labwc.
+# 200 = didn't come up (or ended right after starting); anything else is KWin's own exit code.
+run_kwin() {
+  log "desktop mode: Mantel on KWin"
+  KWIN_LOG="$(dirname "$LOG")/kwin.log"
+  [ -f "$KWIN_LOG" ] && [ "$(wc -c <"$KWIN_LOG")" -gt 1000000 ] && mv -f "$KWIN_LOG" "$KWIN_LOG.old"
+  echo "--- $(date '+%F %T') Desktop Mode (KWin)" >>"$KWIN_LOG"
+  auto="$SHARE/desktop/kwin/autostart"; [ -f "$auto" ] || auto="$CONF/autostart"
+  rm -f "$RUN/hearth-shell-up"
+  (
+    unset LABWC_PID WLR_NO_HARDWARE_CURSORS
+    if [ -f "$CONF/environment" ]; then
+      while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in [A-Za-z_]*=*) ;; *) continue ;; esac
+        case "${line%%=*}" in *[!A-Za-z0-9_]*) continue ;; esac   # only NAME=value lines (export with a bad name would end this shell)
+        export "$line"
+      done <"$CONF/environment"
+    fi
+    xdg="$SHARE/desktop/kwin/xdg"
+    [ -d "$xdg" ] && case ":${XDG_CONFIG_DIRS:-/etc/xdg}:" in *":$xdg:"*) ;; *) XDG_CONFIG_DIRS="$xdg:${XDG_CONFIG_DIRS:-/etc/xdg}" ;; esac
+    export XDG_CONFIG_DIRS XDG_CURRENT_DESKTOP=Nimbus:KDE XDG_SESSION_TYPE=wayland HEARTH_WM=kwin
+    # $HEARTH_KWIN_ARGS: extra options for tests (--virtual --width 1920 --height 1080 in kwin-test.yml).
+    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec kwin_wayland --xwayland --no-lockscreen $HEARTH_KWIN_ARGS "$1"' sh "$auto"
+  ) >>"$KWIN_LOG" 2>&1 &
+  kpid=$!
+  echo "$kpid" >"$RUN/hearth-kwin.pid"
+  started=$(date +%s); up=0
+  while kill -0 "$kpid" 2>/dev/null; do
+    [ -e "$RUN/hearth-shell-up" ] && { up=1; break; }
+    [ $(( $(date +%s) - started )) -ge "$KWIN_UP_SECS" ] && break
+    sleep 1
+  done
+  if [ "$up" = 0 ] && kill -0 "$kpid" 2>/dev/null && [ ! -s "$NEXT" ]; then
+    log "kwin: Mantel didn't say it's up after ${KWIN_UP_SECS}s; ending KWin"
+    kill -TERM "$kpid" 2>/dev/null; sleep 3; kill -KILL "$kpid" 2>/dev/null
+  fi
+  [ "$up" = 1 ] && log "kwin: Mantel up after $(( $(date +%s) - started ))s"
+  wait "$kpid"; rc=$?
+  rm -f "$RUN/hearth-kwin.pid"
+  # A switch you asked for (nimbus-mode wrote the next mode) is never a failure, however quick.
+  if [ -s "$NEXT" ]; then [ "$up" = 1 ] && desk_fails_reset kwin; log "kwin ended (code $rc)"; return "$rc"; fi
+  if [ "$up" = 0 ]; then log "kwin ended before Mantel came up (code $rc)"; return 200; fi
+  if [ $(( $(date +%s) - started )) -lt "$KWIN_EARLY_SECS" ]; then log "kwin ended right after starting (code $rc)"; return 200; fi
+  desk_fails_reset kwin
+  log "kwin ended (code $rc)"
+  return "$rc"
+}
+# What a KWin that didn't come up leaves behind, before labwc starts.
+settle_kwin() {
+  pkill -TERM -u "$(id -u)" -x quickshell 2>/dev/null
+  for p in kwin_wayland kwin_wayland_wrapper; do pkill -KILL -u "$(id -u)" -x "$p" 2>/dev/null; done
+  rm -f "$RUN/hearth-kwin.pid" "$RUN/hearth-shell-up"
+  sleep 1
+  return 0
 }
 
 # Button remaps for the built-in controller (Settings › Controller), kept applied for the whole session in
@@ -553,6 +668,9 @@ settle() {
   fi
   pkill -KILL -u "$(id -u)" -x gamescope 2>/dev/null; pkill -KILL -u "$(id -u)" -x gamescope-wl 2>/dev/null
   pkill -KILL -u "$(id -u)" -x labwc 2>/dev/null
+  # 1.14: Mantel on KWin (run_kwin): KWin too, and its marks.
+  pkill -KILL -u "$(id -u)" -x kwin_wayland 2>/dev/null; pkill -KILL -u "$(id -u)" -x kwin_wayland_wrapper 2>/dev/null
+  rm -f "$RUN/hearth-kwin.pid" "$RUN/hearth-shell-up"
   # Desktop Mode's controller and button helpers, if any outlived their mode (Quickshell ended by a signal
   # leaves its children running: hearth-buttons then polled the keys in the next mode, one more each switch).
   companion_stop
@@ -1435,7 +1553,7 @@ while :; do
     mode=desktop
   fi
   if [ "$mode" = desktop ] && ! can_desktop; then
-    log "desktop mode unavailable (labwc missing)"
+    log "desktop mode unavailable (labwc and KWin missing)"
     if [ -z "$HEARTH_SEAT" ] && [ ! -s "$RUN/hearth-steam-mode-failed" ] && can_steam_mode; then mode=steam
     elif can_game && [ ! -s "$HGM_NOTE" ]; then log "last resort: Hearth's Game Mode"; mode=game
     else exit 1; fi

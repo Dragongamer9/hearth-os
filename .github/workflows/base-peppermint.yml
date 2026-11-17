@@ -758,6 +758,8 @@ jobs:
           check "gamescope is Valve's (Hearth's Game Mode atoms are in it)" "grep -aq GAMESCOPECTRL_BASELAYER_APPID \$(command -v gamescope) && grep -aq GAMESCOPECTRL_BASELAYER_WINDOW \$(command -v gamescope) && grep -aq GAMESCOPE_FPS_LIMIT \$(command -v gamescope) && grep -aq GAMESCOPECTRL_REQUEST_SCREENSHOT \$(command -v gamescope) && grep -aq mangoapp \$(command -v gamescope)"
           check "mangoapp is installed (performance overlay)" "command -v mangoapp"
           check "labwc is installed" "command -v labwc"
+          check "1.14: KWin is installed (Mantel's window manager; labwc is the fallback), with Hearth's defaults and autostart" "command -v kwin_wayland && test -x /usr/share/nimbus/desktop/kwin/autostart && test -f /usr/share/nimbus/desktop/kwin/xdg/kwinrc && test -f /usr/share/nimbus/desktop/kwin/xdg/xdg-desktop-portal/nimbus-portals.conf && grep -q 'kwin_wayland --xwayland --no-lockscreen' /usr/bin/nimbus-session"
+          warn "1.14: KWin's shortcuts service, KDE's portal (screen sharing) and kscreen-doctor are there" "command -v kscreen-doctor && ls /usr/share/xdg-desktop-portal/portals/kde.portal && ls /usr/bin/kglobalacceld /usr/lib/*/libexec/kglobalacceld /usr/libexec/kglobalacceld 2>/dev/null | grep -q ."
           check "quickshell is installed and finds its libraries" "command -v quickshell && ! ldd \$(command -v quickshell) | grep -q 'not found'"
           check "Steam is installed" "command -v steam && dpkg -l steam-installer | grep -q '^ii'"
           check "Steam's 32-bit graphics (Mesa i386)" "dpkg -l 'libgl1-mesa-dri:i386' | grep -q '^ii'"
