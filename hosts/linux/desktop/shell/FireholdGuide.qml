@@ -12,7 +12,7 @@ import "firehold.js" as F
 PanelWindow {
     id: gp
     property var fh
-    readonly property var C: F.C
+    readonly property var pal: F.C
     readonly property var game: fh.frontGame()
     readonly property var info: game ? (F.gameFor(game, fh.library) || { title: game.title || "Game", store: "Game" }) : { title: "", store: "" }
     readonly property var gameScreen: game && game.screens && game.screens.length ? game.screens[0] : Quickshell.screens[0]
@@ -116,12 +116,12 @@ PanelWindow {
     readonly property var overlays: ["off", "basic", "full"]
     // [title, sub, value, colour, works today]
     readonly property var rows: [
-        ["Frame limit", "Steadier, cooler, longer battery", "Not yet", C.muted, false],
-        ["Resolution scaling", "Hearth upscales the game itself", "Not yet", C.muted, false],
-        ["VRR / FreeSync", "Smooth when it dips below 60", !kwin || !vrr.capable ? "Not on this screen" : vrr.policy === "never" ? "Off" : "On", kwin && vrr.capable && vrr.policy !== "never" ? C.green : C.muted, kwin && vrr.capable],
-        ["Allow tearing", "Lowest delay for fast games", !tearCapable ? "Needs KWin" : tearOn ? "On" : "Off", tearCapable && tearOn ? C.green : C.muted, tearCapable],
-        ["Power", "Handhelds and laptops", powerMode ? (modeNames[powerMode] || powerMode) + (tdp.watts ? " · " + Math.round(tdp.watts) + " W" : "") : "Set by this PC", C.text, powerMode !== ""],
-        ["Performance overlay", "Top-left corner", fh.overlay === "off" ? "Off" : fh.overlay === "basic" ? "Basic" : "Full", fh.overlay === "off" ? C.muted : C.text, true]
+        ["Frame limit", "Steadier, cooler, longer battery", "Not yet", pal.muted, false],
+        ["Resolution scaling", "Hearth upscales the game itself", "Not yet", pal.muted, false],
+        ["VRR / FreeSync", "Smooth when it dips below 60", !kwin || !vrr.capable ? "Not on this screen" : vrr.policy === "never" ? "Off" : "On", kwin && vrr.capable && vrr.policy !== "never" ? pal.green : pal.muted, kwin && vrr.capable],
+        ["Allow tearing", "Lowest delay for fast games", !tearCapable ? "Needs KWin" : tearOn ? "On" : "Off", tearCapable && tearOn ? pal.green : pal.muted, tearCapable],
+        ["Power", "Handhelds and laptops", powerMode ? (modeNames[powerMode] || powerMode) + (tdp.watts ? " · " + Math.round(tdp.watts) + " W" : "") : "Set by this PC", pal.text, powerMode !== ""],
+        ["Performance overlay", "Top-left corner", fh.overlay === "off" ? "Off" : fh.overlay === "basic" ? "Basic" : "Full", fh.overlay === "off" ? pal.muted : pal.text, true]
     ]
     function step(i, d) {
         const r = rows[i];
@@ -145,7 +145,7 @@ PanelWindow {
     Rectangle {
         anchors.fill: parent
         color: Qt.rgba(23 / 255, 17 / 255, 14 / 255, 0.96)
-        Rectangle { anchors { left: parent.left; top: parent.top; bottom: parent.bottom } width: 1; color: gp.C.line }
+        Rectangle { anchors { left: parent.left; top: parent.top; bottom: parent.bottom } width: 1; color: gp.pal.line }
         TapHandler { }
     }
     Column {
@@ -162,7 +162,7 @@ PanelWindow {
                 anchors.verticalCenter: parent.verticalCenter
                 spacing: 4 * gp.k
                 T { text: gp.info.title; font.pixelSize: 22 * gp.k; font.weight: Font.ExtraBold; width: Math.min(implicitWidth, 420 * gp.k) }
-                T { text: "Playing " + F.duration(clock.date.getTime() - (gp.game ? gp.fh.since(gp.game) : clock.date.getTime())) + " · native, no Game Mode"; font.pixelSize: 15 * gp.k; color: gp.C.muted }
+                T { text: "Playing " + F.duration(clock.date.getTime() - (gp.game ? gp.fh.since(gp.game) : clock.date.getTime())) + " · native, no Game Mode"; font.pixelSize: 15 * gp.k; color: gp.pal.muted }
             }
         }
         Grid {
@@ -176,19 +176,19 @@ PanelWindow {
                     required property int index
                     readonly property bool ring: gp.zone === "tiles" && gp.idx === index
                     width: (gp.width - 64 * gp.k - 20 * gp.k) / 3; height: 78 * gp.k; radius: 14 * gp.k
-                    color: gp.C.card; border.width: ring ? 2 * gp.k : 1; border.color: ring ? gp.C.accent : gp.C.line
+                    color: gp.pal.card; border.width: ring ? 2 * gp.k : 1; border.color: ring ? gp.pal.accent : gp.pal.line
                     Column {
                         anchors.centerIn: parent
                         spacing: 6 * gp.k
                         T { anchors.horizontalCenter: parent.horizontalCenter; text: qt.modelData[0]; font.pixelSize: 15 * gp.k; font.weight: Font.DemiBold }
-                        T { anchors.horizontalCenter: parent.horizontalCenter; text: qt.modelData[1]; font.pixelSize: 12 * gp.k; font.weight: Font.Medium; color: gp.C.muted }
+                        T { anchors.horizontalCenter: parent.horizontalCenter; text: qt.modelData[1]; font.pixelSize: 12 * gp.k; font.weight: Font.Medium; color: gp.pal.muted }
                     }
                     TapHandler { onTapped: { gp.zone = "tiles"; gp.idx = qt.index; gp.tile(qt.index); } }
                 }
             }
         }
         Rectangle {
-            width: parent.width; height: rowCol.implicitHeight; radius: 16 * gp.k; color: gp.C.panel; clip: true
+            width: parent.width; height: rowCol.implicitHeight; radius: 16 * gp.k; color: gp.pal.panel; clip: true
             Column {
                 id: rowCol
                 width: parent.width
@@ -201,18 +201,18 @@ PanelWindow {
                         required property int index
                         readonly property bool ring: gp.zone === "rows" && gp.idx === index
                         width: parent.width; height: 67 * gp.k
-                        color: ring ? gp.C.card : "transparent"
-                        border.width: ring ? 2 * gp.k : 0; border.color: gp.C.accent; radius: ring ? 12 * gp.k : 0
-                        Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 1; color: gp.C.card }
+                        color: ring ? gp.pal.card : "transparent"
+                        border.width: ring ? 2 * gp.k : 0; border.color: gp.pal.accent; radius: ring ? 12 * gp.k : 0
+                        Rectangle { anchors { left: parent.left; right: parent.right; bottom: parent.bottom } height: 1; color: gp.pal.card }
                         Column {
                             x: 18 * gp.k; anchors.verticalCenter: parent.verticalCenter
                             spacing: 2 * gp.k
                             T { text: sr.modelData[0]; font.pixelSize: 16 * gp.k; font.weight: Font.DemiBold }
-                            T { text: sr.modelData[1]; font.pixelSize: 13 * gp.k; color: gp.C.muted }
+                            T { text: sr.modelData[1]; font.pixelSize: 13 * gp.k; color: gp.pal.muted }
                         }
                         Rectangle {
                             anchors { right: parent.right; rightMargin: 18 * gp.k; verticalCenter: parent.verticalCenter }
-                            width: vt.implicitWidth + 28 * gp.k; height: vt.implicitHeight + 16 * gp.k; radius: 10 * gp.k; color: gp.C.card2
+                            width: vt.implicitWidth + 28 * gp.k; height: vt.implicitHeight + 16 * gp.k; radius: 10 * gp.k; color: gp.pal.card2
                             T { id: vt; anchors.centerIn: parent; text: "‹ " + sr.modelData[2] + " ›"; font.pixelSize: 14 * gp.k; font.weight: Font.Bold; color: sr.modelData[3] }
                         }
                         TapHandler { onTapped: { gp.zone = "rows"; gp.idx = sr.index; gp.step(sr.index, 1); } }
@@ -232,10 +232,10 @@ PanelWindow {
                 required property int index
                 readonly property bool ring: gp.zone === "buttons" && gp.idx === index
                 width: parent.width; height: 54 * gp.k; radius: 14 * gp.k
-                color: modelData[1] ? "transparent" : gp.C.card2
+                color: modelData[1] ? "transparent" : gp.pal.card2
                 border.width: modelData[1] ? 2 * gp.k : (ring ? 2 * gp.k : 0)
-                border.color: modelData[1] ? (ring ? gp.C.flame : gp.C.red) : gp.C.accent
-                T { anchors.centerIn: parent; text: bt.modelData[0]; font.pixelSize: 16 * gp.k; font.weight: bt.modelData[1] ? Font.Bold : Font.DemiBold; color: bt.modelData[1] ? gp.C.redText : gp.C.text }
+                border.color: modelData[1] ? (ring ? gp.pal.flame : gp.pal.red) : gp.pal.accent
+                T { anchors.centerIn: parent; text: bt.modelData[0]; font.pixelSize: 16 * gp.k; font.weight: bt.modelData[1] ? Font.Bold : Font.DemiBold; color: bt.modelData[1] ? gp.pal.redText : gp.pal.text }
                 TapHandler { onTapped: gp.button(bt.index) }
             }
         }
