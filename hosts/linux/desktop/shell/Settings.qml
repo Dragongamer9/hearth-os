@@ -73,6 +73,10 @@ Singleton {
     property bool firmwareNotify: true   // a notice when firmware updates are there (Firmware & device security)
     property bool welcomeAfterUpdates: true   // the Welcome screen once after each new version
     property bool oomNotice: true        // a notice with tips when memory ran out
+    property bool btReceive: false       // receive files over Bluetooth, each asked about (Bluetooth › Receive files)
+    property string btReceiveFolder: ""  // where received files go ("" = ~/Downloads)
+    property bool btReceiveTrusted: false     // take files from trusted devices without asking
+    property bool inkNotify: true        // a notice when ink or toner runs low (Printers › Ink & toner)
     property bool loaded: false
     // Which defaults this file was made with (its "defaults" key, read only, never written by Hearth): 2 = made for a new
     // install (/etc/skel), whose Steam-style look gets the Sky accent by default (Theme.qml); files without it keep the
@@ -90,6 +94,7 @@ Singleton {
         .concat(["restoreApps"])
         .concat(["dockScrollVolume", "pttOn", "pttKey", "screenOffBattery", "sleepBattery", "wallScreens", "wallShow", "frameTint",
                  "signinSplash", "removable", "usbNotify", "firmwareNotify", "welcomeAfterUpdates", "oomNotice"])
+        .concat(["btReceive", "btReceiveFolder", "btReceiveTrusted", "inkNotify"])
     onNightLightChanged: save("nightLight")
     onNightTempChanged: save("nightTemp")
     onNightModeChanged: save("nightMode")
@@ -140,6 +145,10 @@ Singleton {
     onFirmwareNotifyChanged: save("firmwareNotify")
     onWelcomeAfterUpdatesChanged: save("welcomeAfterUpdates")
     onOomNoticeChanged: save("oomNotice")
+    onBtReceiveChanged: save("btReceive")
+    onBtReceiveFolderChanged: save("btReceiveFolder")
+    onBtReceiveTrustedChanged: save("btReceiveTrusted")
+    onInkNotifyChanged: save("inkNotify")
     // Settings must always be remembered and never change by themselves (docs/SETTINGS-PERSISTENCE.md): only the
     // key you changed is merged into the latest file (hearth-wallpaper and Hearth's Game Mode write it too), and
     // values read from the file are never written back. A file that can't be read is put back from its .bak; until

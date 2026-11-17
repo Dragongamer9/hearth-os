@@ -280,6 +280,8 @@ ShellRoot {
     Loader { source: "DeviceWatch.qml"; onLoaded: { item.dialog = deskDialog; item.settings = settings; item.openFiles = p => files.open(p); } }
     Loader { source: "Welcome.qml"; onLoaded: item.settings = settings }
     Loader { source: "SigninSplash.qml" }
+    Loader { source: "BtReceive.qml"; onLoaded: item.settings = settings }   // 1.14: receiving files over Bluetooth (off until you turn it on)
+    Loader { source: "InkWatch.qml"; onLoaded: item.settings = settings }    // 1.14: ink or toner running low
     // Device Manager, the Run box (Super+R) and the Super+X menu (WinTools.qml): loaded by file name, so a problem in
     // them only loses those three, never the shell.
     Loader {

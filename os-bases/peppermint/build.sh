@@ -571,6 +571,8 @@ fi
 optional sane-utils sane-airscan traceroute iputils-tracepath iw
 # 1.14: a dictionary for spell checking in KDE and GTK apps (Settings › Region & language › Spell check).
 optional hunspell-en-us
+# 1.14: Info Center's Temperatures & fans names the sensors with lm-sensors (it reads /sys/class/hwmon without it).
+optional lm-sensors
 if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
   install -Dm755 /ctx/nimbus-app/hearth-tools/hearth-tools /usr/bin/hearth-tools
   if ldd /usr/bin/hearth-tools | grep "not found"; then echo "warning: Hearth Tools is missing the libraries above"; fi

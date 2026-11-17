@@ -1,0 +1,145 @@
+#!/usr/bin/python3
+"""hearth-ink: ink and toner levels (1.14, KDE's ink-low notices, in Hearth's way), as you (no root), reading only. Asks
+CUPS for each printer's markers (IPP Get-Printer-Attributes: marker-names, -levels, -colors, -types, -low-levels) on
+its local socket (/run/cups/cups.sock, or localhost:631). Used by Settings › Printers › Ink & toner and InkWatch.qml.
+
+  hearth-ink levels      JSON: {printers: [{name, markers: [{name, level, color, type, low}]}]}
+                         (level -1 / -2: the printer doesn't say; -3: some left)
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import http.client
+import json
+import os
+import re
+import shutil
+import socket
+import struct
+import subprocess
+import sys
+
+SOCK = os.environ.get('HEARTH_CUPS_SOCKET', '/run/cups/cups.sock')
+WANT = ['printer-name', 'marker-names', 'marker-levels', 'marker-colors', 'marker-types', 'marker-low-levels']
+
+
+class Fail(Exception):
+    pass
+
+
+class UnixHTTP(http.client.HTTPConnection):
+    def __init__(self, path):
+        super().__init__('localhost', timeout=10)
+        self.path = path
+
+    def connect(self):
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(10)
+        s.connect(self.path)
+        self.sock = s
+
+
+def attr(tag, name, value):
+    v = value.encode() if isinstance(value, str) else value
+    return struct.pack('>BH', tag, len(name)) + name.encode() + struct.pack('>H', len(v)) + v
+
+
+def request(uri):
+    """An IPP/1.1 Get-Printer-Attributes request for the markers."""
+    b = struct.pack('>BBHI', 1, 1, 0x000B, 1) + b'\x01'
+    b += attr(0x47, 'attributes-charset', 'utf-8') + attr(0x48, 'attributes-natural-language', 'en') + attr(0x45, 'printer-uri', uri)
+    for i, w in enumerate(WANT):
+        b += attr(0x44, 'requested-attributes' if i == 0 else '', w)
+    return b + b'\x03'
+
+
+def parse(data):
+    """The answer's printer attributes: {name: [values]} (integers as int, text as str)."""
+    out, i, last = {}, 8, None
+    if len(data) < 9:
+        return out
+    while i < len(data):
+        tag = data[i]
+        i += 1
+        if tag == 0x03:
+            break
+        if tag < 0x10:
+            continue
+        nl = struct.unpack('>H', data[i:i + 2])[0]
+        name = data[i + 2:i + 2 + nl].decode(errors='replace')
+        i += 2 + nl
+        vl = struct.unpack('>H', data[i:i + 2])[0]
+        raw = data[i + 2:i + 2 + vl]
+        i += 2 + vl
+        if name:
+            last = name
+        if last is None:
+            continue
+        val = struct.unpack('>i', raw)[0] if tag in (0x21, 0x23) and vl == 4 else raw.decode(errors='replace')
+        out.setdefault(last, []).append(val)
+    return out
+
+
+def ask(uri):
+    body = request(uri)
+    conns = []
+    if os.path.exists(SOCK):
+        conns.append(lambda: UnixHTTP(SOCK))
+    conns.append(lambda: http.client.HTTPConnection('localhost', 631, timeout=10))
+    for make in conns:
+        try:
+            c = make()
+            c.request('POST', '/', body, {'Content-Type': 'application/ipp'})
+            r = c.getresponse()
+            data = r.read()
+            if r.status == 200:
+                return parse(data)
+        except OSError:
+            continue
+    return {}
+
+
+def markers(a):
+    names = a.get('marker-names', [])
+    lv, col, typ, low = (a.get(k, []) for k in ('marker-levels', 'marker-colors', 'marker-types', 'marker-low-levels'))
+    out = []
+    for i, n in enumerate(names):
+        m = re.match(r'^#([0-9A-Fa-f]{6})', col[i] if i < len(col) and isinstance(col[i], str) else '')
+        out.append({'name': n, 'level': lv[i] if i < len(lv) and isinstance(lv[i], int) else -1,
+                    'color': m.group(1).lower() if m else '',
+                    'type': typ[i] if i < len(typ) else '', 'low': low[i] if i < len(low) and isinstance(low[i], int) else 15})
+    return out
+
+
+def printers():
+    if not shutil.which('lpstat'):
+        return []
+    try:
+        p = subprocess.run(['lpstat', '-e'], capture_output=True, text=True, timeout=15, env=dict(os.environ, LC_ALL='C'))
+    except (OSError, subprocess.TimeoutExpired):
+        return []
+    return [l.strip() for l in p.stdout.splitlines() if re.match(r'^[A-Za-z0-9_.@-]{1,127}$', l.strip())]
+
+
+def levels():
+    out = []
+    for n in printers():
+        a = ask('ipp://localhost/printers/' + n)
+        out.append({'name': n, 'markers': markers(a)})
+    return {'printers': out}
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['levels']:
+            r = levels()
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
