@@ -47,7 +47,7 @@ FILES = ('kwinrc', 'kdeglobals', 'kaccessrc', 'kwinrulesrc', 'kcminputrc')
 # What the pages may change in each file (groups; a nested group by its first part).
 ALLOWED = {
     'kwinrc': {'Plugins', 'Windows', 'ElectricBorders', 'TouchEdges', 'EdgeBarrier', 'ScreenEdges', 'Compositing',
-               'TabBox', 'Desktops', 'Tiling', 'Xwayland', 'Wayland'} | {'Effect-' + e for e in (
+               'TabBox', 'TabBoxAlternative', 'Desktops', 'Tiling', 'Xwayland', 'Wayland'} | {'Effect-' + e for e in (
                    'blur', 'translucency', 'wobblywindows', 'diminactive', 'slide', 'shakecursor', 'mouseclick',
                    'trackmouse', 'zoom', 'magnifier', 'overview', 'windowview', 'glide',
                    'magiclamp', 'hidecursor', 'fallapart', 'sheet', 'mousemark', 'thumbnailaside')} | {
@@ -58,7 +58,7 @@ ALLOWED = {
     'kcminputrc': {'ButtonRebinds'},
 }
 # The effects KWin 6 has (src/plugins), with whether each is on when nobody chose: the pages use it when KWin can't be
-# asked. Tools (show paint, show FPS) aren't offered.
+# asked. Show FPS and show paint are under "For developers"; the Desktop Cube is kwin-addons' (Debian's kdeplasma-addons).
 EFFECTS = {
     'blur': True, 'backgroundcontrast': True, 'translucency': False, 'wobblywindows': False, 'magiclamp': False,
     'squash': True, 'fade': False, 'glide': False, 'scale': True, 'diminactive': False, 'dimscreen': False,
@@ -68,7 +68,12 @@ EFFECTS = {
     'thumbnailaside': False, 'snaphelper': False, 'slidingpopups': True, 'fadingpopups': True, 'maximize': True,
     'login': True, 'logout': True, 'kscreen': True, 'startupfeedback': True, 'frozenapp': True, 'dialogparent': True,
     'slideback': False, 'windowaperture': True, 'eyeonscreen': False, 'systembell': True, 'desktopchangeosd': False,
+    'showfps': False, 'showpaint': False, 'cube': False,
+    # KWin's own scripts (share/kwin/scripts), switched in the same [Plugins] group
+    'minimizeall': False, 'videowall': False, 'synchronizeskipswitcher': False,
 }
+# KWin's own scripts the pages switch (Scripting reloads them; listOfEffects doesn't list them).
+SCRIPTS = ('minimizeall', 'videowall', 'synchronizeskipswitcher', 'desktopchangeosd')
 INPUT_PROPS = {
     # name: D-Bus type
     'enabled': 'b', 'leftHanded': 'b', 'disableWhileTyping': 'b', 'pointerAcceleration': 'd',
@@ -89,7 +94,7 @@ INPUT_READ = list(INPUT_PROPS) + [
 ]
 SHORTCUTS = {'zoom-in': 'view_zoom_in', 'zoom-out': 'view_zoom_out', 'zoom-reset': 'view_actual_size',
              'invert': 'Invert', 'overview': 'Overview', 'grid': 'Grid View', 'windows': 'Expose',
-             'tiles': 'Edit Tiles', 'magnifier-in': 'MagnifierZoomIn'}
+             'tiles': 'Edit Tiles', 'magnifier-in': 'MagnifierZoomIn', 'cube': 'Cube'}
 
 
 class Fail(Exception):
@@ -237,6 +242,37 @@ def switchers():
     return [{'id': k, 'label': v, 'hearth': k.startswith('org.hearth')} for k, v in out.items()]
 
 
+def scripts():
+    """KWin's scripts installed here (kwin/scripts, kwin-wayland/scripts), or None when no scripts folder is found
+    (then the pages offer them all, as for effects KWin can't be asked about)."""
+    fx = fixture()
+    if fx is not None:
+        return fx.get('scripts')
+    found, seen = [], False
+    for d in data_dirs():
+        for sub in ('kwin-wayland/scripts', 'kwin/scripts'):
+            base = os.path.join(d, sub)
+            if not os.path.isdir(base):
+                continue
+            seen = True
+            for n in sorted(os.listdir(base)):
+                if os.path.isdir(os.path.join(base, n)) and n not in found:
+                    found.append(n)
+    return found if seen else None
+
+
+def scripting_start():
+    """KWin loads the scripts now switched on and unloads those switched off (what KDE's KWin scripts page does)."""
+    if not kwin_running():
+        return False
+    try:
+        call('org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting', 'start')
+        return True
+    except Fail as e:
+        hsio.log_event('kwin: scripts not reloaded: %s' % e)
+        return False
+
+
 def _package_name(p):
     try:
         with open(os.path.join(p, 'metadata.json')) as f:
@@ -265,6 +301,7 @@ def status():
         'effects': effects,
         'defaults': EFFECTS,
         'switchers': switchers(),
+        'scripts': scripts(),
     }
 
 
@@ -316,6 +353,8 @@ def set_file(name, raw):
     write_changes(name, changes)
     out = get_all_files()
     out['reloaded'] = reconfigure() if name in ('kwinrc', 'kwinrulesrc') else kwin_running()
+    if name == 'kwinrc' and any(k[:-len('Enabled')] in SCRIPTS for k in (changes.get('Plugins') or {}) if k.endswith('Enabled')):
+        scripting_start()
     return out
 
 
