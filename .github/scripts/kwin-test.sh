@@ -128,7 +128,7 @@ end_session
 # ---- B: KWin: the desktop and Settings › System › Your desktop.
 printf 'NIMBUS_START_MODE=desktop\n' > "$CONF"
 # Settings › Keyboard as someone saved it on labwc: two layouts, faster repeat, Num Lock on, a compose key.
-printf '%s' '{"layouts": [{"layout": "de", "variant": ""}, {"layout": "fr", "variant": ""}], "switch": "grp:alt_shift_toggle", "delay": 300, "rate": 40, "numlock": "on", "compose": "compose:ralt", "switchMode": "Window"}' > "$HOME/.config/nimbus/keyboard.json"
+printf '%s' '{"layouts": [{"layout": "de", "variant": ""}, {"layout": "fr", "variant": ""}], "switch": "grp:alt_shift_toggle", "delay": 300, "rate": 40, "numlock": "on", "compose": "compose:ralt", "switchMode": "Window"}' > "$HOME/.config/nimbus/keyboard.json.tmp" && mv -f "$HOME/.config/nimbus/keyboard.json.tmp" "$HOME/.config/nimbus/keyboard.json"
 start_session B
 wait_up 90 || fail "KWin" "Mantel didn't come up under KWin the second time"
 sleep 10
