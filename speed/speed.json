@@ -1,0 +1,126 @@
+{
+ "idle": {
+  "hearth-notifyd": {
+   "cpu": 0.27,
+   "mb": 35.2,
+   "n": 1
+  },
+  "quickshell shell": {
+   "cpu": 0.17,
+   "mb": 379.9,
+   "n": 3
+  },
+  "hearth-buttons": {
+   "cpu": 0.1,
+   "mb": 22.8,
+   "n": 1
+  },
+  "perf-measure.py": {
+   "cpu": 0.03,
+   "mb": 16.9,
+   "n": 1
+  },
+  "labwc": {
+   "cpu": 0.0,
+   "mb": 93.8,
+   "n": 1
+  },
+  "python3": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 192
+  },
+  "nimbus": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-disks": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-text": {
+   "cpu": 0.0,
+   "mb": 0.0,
+   "n": 1
+  },
+  "hearth-portal": {
+   "cpu": 0.0,
+   "mb": 77.2,
+   "n": 2
+  }
+ },
+ "Settings (cold)": {
+  "first": 0.46,
+  "ready": 0.72,
+  "mbBefore": 379.9,
+  "mbAfter": 403.0
+ },
+ "Settings \u203a Display (cold)": {
+  "first": 0.56,
+  "ready": 0.69,
+  "mbBefore": 384.5,
+  "mbAfter": 401.3
+ },
+ "Hearth Files (cold)": {
+  "first": 0.42,
+  "ready": 0.54,
+  "mbBefore": 389.3,
+  "mbAfter": 388.1
+ },
+ "Task Manager (cold)": {
+  "first": 0.24,
+  "ready": 0.5,
+  "mbBefore": 388.1,
+  "mbAfter": 414.5
+ },
+ "App menu (cold)": {
+  "first": 0.24,
+  "ready": null,
+  "mbBefore": 406.4,
+  "mbAfter": 412.8
+ },
+ "Quick Access (cold)": {
+  "first": 0.27,
+  "ready": 0.53,
+  "mbBefore": 387.8,
+  "mbAfter": 407.2
+ },
+ "Settings (warm)": {
+  "first": 0.46,
+  "ready": 0.72,
+  "mbBefore": 390.7,
+  "mbAfter": 406.0
+ },
+ "Settings \u203a Display (warm)": {
+  "first": 0.54,
+  "ready": 0.66,
+  "mbBefore": 394.0,
+  "mbAfter": 413.1
+ },
+ "Hearth Files (warm)": {
+  "first": 0.4,
+  "ready": 0.4,
+  "mbBefore": 393.4,
+  "mbAfter": 389.8
+ },
+ "Task Manager (warm)": {
+  "first": 0.23,
+  "ready": 0.49,
+  "mbBefore": 389.8,
+  "mbAfter": 410.5
+ },
+ "App menu (warm)": {
+  "first": 0.24,
+  "ready": null,
+  "mbBefore": 402.9,
+  "mbAfter": 410.3
+ },
+ "Quick Access (warm)": {
+  "first": 0.27,
+  "ready": 0.54,
+  "mbBefore": 385.1,
+  "mbAfter": 404.2
+ }
+}
