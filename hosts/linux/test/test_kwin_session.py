@@ -23,7 +23,7 @@ AUTOSTART = ROOT / 'hosts' / 'linux' / 'desktop' / 'labwc' / 'autostart'
 # KWin stand-ins. "works": notes how it was started, says Mantel is up (as shell.qml does) and runs a while.
 KWIN_WORKS = '''#!/bin/sh
 { echo "args=$*"; echo "pid=$$ desktop_pid=$HEARTH_DESKTOP_PID wm=$HEARTH_WM labwc_pid=${LABWC_PID-unset}";
-  echo "xcd=$XDG_CURRENT_DESKTOP"; echo "xdg=$XDG_CONFIG_DIRS"; echo "qpa=$QT_QPA_PLATFORM"; } >> "$HOME/kwin-ran"
+  echo "xcd=$XDG_CURRENT_DESKTOP"; echo "xdg=$XDG_CONFIG_DIRS"; echo "qpa=$QT_QPA_PLATFORM"; echo "shell=${PLASMA_DEFAULT_SHELL-unset}"; } >> "$HOME/kwin-ran"
 : > "$XDG_RUNTIME_DIR/hearth-shell-up"
 sleep 3
 exit 0
@@ -63,7 +63,8 @@ class Base(unittest.TestCase):
     def env(self, **kw):
         e = {'HOME': self.home, 'XDG_RUNTIME_DIR': self.run_dir, 'NIMBUS_SHARE': self.share,
              'PATH': self.bin + ':/usr/bin:/bin', 'NIMBUS_APP': '/nonexistent',
-             'HEARTH_KWIN_UP_SECS': '3', 'HEARTH_KWIN_EARLY_SECS': '2', 'HEARTH_SAFE_FLAG': os.path.join(self.tmp, 'safe')}
+             'HEARTH_KWIN_UP_SECS': '3', 'HEARTH_KWIN_EARLY_SECS': '2', 'HEARTH_SAFE_FLAG': os.path.join(self.tmp, 'safe'),
+             'HEARTH_LOCK_PKG': os.path.join(self.tmp, 'no-lock-package'), 'HEARTH_LOCK_GREETER': os.path.join(self.tmp, 'no-greeter')}
         e.update(kw)
         return e
 
@@ -100,8 +101,9 @@ class KWinStart(Base):
         self.assertIn('kwin: Mantel up after', log)
         self.assertEqual(self.lines('labwc-ran'), [], log)                    # no fallback
         ran = '\n'.join(self.lines('kwin-ran'))
-        self.assertIn('args=--xwayland %s/desktop/kwin/autostart' % self.share, ran)
-        self.assertNotIn('--no-lockscreen', ran)                             # KWin's locker is Mantel's lock
+        # Hearth's lock screen isn't here: KWin without its locker (never KDE's or a broken lock screen).
+        self.assertIn('args=--xwayland --no-lockscreen %s/desktop/kwin/autostart' % self.share, ran)
+        self.assertIn('shell=unset', ran)
         pid = [l for l in self.lines('kwin-ran') if l.startswith('pid=')][0].split()
         self.assertEqual(pid[0][4:], pid[1][len('desktop_pid='):], 'HEARTH_DESKTOP_PID is KWin itself')
         self.assertIn('wm=kwin', ran)
@@ -111,6 +113,51 @@ class KWinStart(Base):
         self.assertIn('qpa=wayland;xcb', ran)                               # labwc's environment file
         self.assertTrue(os.path.exists(os.path.join(self.home, '.local/share/nimbus/kwin.log')))
         self.assertEqual(self.notice(), [])
+        self.assertEqual(self.fails(), '')
+
+    def test_kwin_locker_only_with_hearths_lock_screen(self):
+        self.write_bin('kwin_wayland', KWIN_WORKS)
+        pkg = os.path.join(self.tmp, 'lockpkg')
+        os.makedirs(os.path.join(pkg, 'contents', 'lockscreen'))
+        open(os.path.join(pkg, 'contents', 'lockscreen', 'LockScreen.qml'), 'w').close()
+        self.write_bin('greeter', '#!/bin/sh\n')
+        r, log = self.session(HEARTH_LOCK_PKG=pkg, HEARTH_LOCK_GREETER=os.path.join(self.bin, 'greeter'))
+        ran = '\n'.join(self.lines('kwin-ran'))
+        self.assertIn('args=--xwayland %s/desktop/kwin/autostart' % self.share, ran)
+        self.assertIn('shell=org.hearth.mantel-lock', ran)
+        self.assertIn("KWin's screen locker on", log)
+        # The package without the greeter: no locker.
+        os.remove(os.path.join(self.home, 'kwin-ran'))
+        r, log = self.session(HEARTH_LOCK_PKG=pkg)
+        self.assertIn('--no-lockscreen', '\n'.join(self.lines('kwin-ran')))
+        rc = (ROOT / 'hosts/linux/desktop/kwin/xdg/kscreenlockerrc').read_text()
+        for k in ('Autolock=false', 'LockOnResume=false', 'Timeout=0'):
+            self.assertIn(k, rc)
+
+    def test_mantel_closing_under_kwin_opens_labwc(self):
+        # Mantel up, then the autostart's give_up: the reason left, KWin ended, no next mode.
+        self.write_bin('kwin_wayland', '#!/bin/sh\n: > "$XDG_RUNTIME_DIR/hearth-shell-up"\nsleep 3\n'
+                       'echo "Mantel didn\'t keep running under KWin: keeps closing" > "$XDG_RUNTIME_DIR/hearth-kwin-shell-failed"\nexit 0\n')
+        r, log = self.session(HEARTH_KWIN_EARLY_SECS='1')
+        self.assertIn("didn't keep running under KWin", log)
+        self.assertEqual(len(self.lines('labwc-ran')), 1, log)
+        self.assertEqual(self.notice(), ['kwin', 'failed'])
+        self.assertFalse(os.path.exists(os.path.join(self.run_dir, 'hearth-kwin-shell-failed')))
+
+    def test_give_up_under_kwin_ends_kwin_without_a_next_mode(self):
+        text = AUTOSTART.read_text()
+        g = text[text.index('give_up() {'):text.index('nimbus-mode game', text.index('give_up() {'))]
+        self.assertIn('hearth-kwin-shell-failed', g)
+        self.assertIn('kill -TERM "$HEARTH_DESKTOP_PID"', g)
+
+    def test_a_kwin_that_hangs_after_a_switch_is_ended(self):
+        self.write_bin('kwin_wayland', '#!/bin/sh\ntrap "" TERM\n: > "$XDG_RUNTIME_DIR/hearth-shell-up"\nsleep 3\n'
+                       'echo logout > "$XDG_RUNTIME_DIR/nimbus-next"\nwhile :; do sleep 1; done\n')
+        t = time.time()
+        r, log = self.session()
+        self.assertLess(time.time() - t, 40)
+        self.assertIn('still running 8s after the switch was asked for; ending it', log)
+        self.assertEqual(self.lines('labwc-ran'), [])
         self.assertEqual(self.fails(), '')
 
     def test_kwin_missing_opens_labwc_and_says_why(self):
@@ -123,6 +170,7 @@ class KWinStart(Base):
         self.assertEqual(self.notice(), ['kwin', 'missing'])
         n = self.helper('notice')
         self.assertEqual(n['title'], 'Mantel opened on labwc')
+        self.assertTrue(os.path.exists(os.path.join(self.state, 'kwin-missing-told')))   # told once, across sign-ins
 
     def test_kwin_dying_fast_opens_labwc_counts_and_twice_stays(self):
         self.write_bin('kwin_wayland', KWIN_CRASHES)
@@ -151,8 +199,10 @@ class KWinStart(Base):
         self.assertEqual(len(self.lines('labwc-ran')), 4, log)
         self.assertEqual(pathlib.Path(self.conf).read_text(), conf)          # the choice was never rewritten
         # ...until it's turned back on (Settings, or the notice's "Use KWin again").
+        open(os.path.join(self.run_dir, 'hearth-kwin-failed'), 'w').close()
         st = self.helper('wm', 'kwin')
         self.assertEqual((st['kwinFails'], st['kwinPaused']), (0, False))
+        self.assertFalse(os.path.exists(os.path.join(self.run_dir, 'hearth-kwin-failed')))   # this sign-in too
         self.assertEqual(self.notice(), [])
         self.write_bin('kwin_wayland', KWIN_WORKS)
         r, log = self.session(pathlib.Path(self.conf).read_text())

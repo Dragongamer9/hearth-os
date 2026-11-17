@@ -28,6 +28,15 @@ export HEARTH_WM HEARTH_DESKTOP_PID
   fi; } >/dev/null 2>&1 &
 
 # (1.14: under KWin Mantel starts its bridge to KWin itself, desktop/shell/hearth-kwin-bridge.)
+# Under KWin: accessibility (the screen reader, colour filters) and the pointer and keyboard settings applied the KWin
+# way, and kept applied as devices come and go (feature/kwin-pages), in the background.
+if [ "$HEARTH_WM" = kwin ] && command -v python3 >/dev/null 2>&1; then
+  [ -f "$SHARE/desktop/shell/hearth-access" ] && python3 "$SHARE/desktop/shell/hearth-access" apply kwin >/dev/null 2>&1 &
+  if [ -f "$SHARE/desktop/shell/hearth-kwin-settings" ]; then
+    ( python3 "$SHARE/desktop/shell/hearth-kwin-settings" pointer-apply >/dev/null 2>&1
+      exec python3 "$SHARE/desktop/shell/hearth-kwin-settings" input-watch >/dev/null 2>&1 ) &
+  fi
+fi
 
 # Resolution, refresh rate and scale chosen in Settings › Display. Until you choose, small sharp screens
 # (handhelds, high-DPI laptops) get a comfortable scale so text and buttons are big enough to touch.
@@ -71,6 +80,13 @@ fi
 SHELL_LOG="$RUN/nimbus-shell.log"
 give_up() {
   { echo "$1"; echo; tail -n 12 "$SHELL_LOG" 2>/dev/null; } >"$RUN/nimbus-desktop-failed"
+  # Under KWin (1.14): not Game Mode, but the safe start: KWin ends with the reason left for nimbus-session, which
+  # opens Mantel on labwc instead (run_kwin; no next mode is written, so it isn't taken for a switch you asked for).
+  if [ "$HEARTH_WM" = kwin ] && [ -n "$HEARTH_DESKTOP_PID" ]; then
+    echo "Mantel didn't keep running under KWin: $1" >"$RUN/hearth-kwin-shell-failed"
+    kill -TERM "$HEARTH_DESKTOP_PID" 2>/dev/null
+    return 0
+  fi
   # Game Mode couldn't start a moment ago (the session fell back to here): asking for it again would only come
   # straight back to Desktop Mode and fail again, restarting it about once a minute. Stay, and say why (the
   # desktop's right-click menu still switches modes and logs out).
