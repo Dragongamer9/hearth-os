@@ -36,12 +36,12 @@ Counts (done · partly · missing): Stage 1 19 · 6 · 3 (one line added by this
 
 - [x] Window list for the taskbar, dock, centre pill, Task Manager, Discord and Snap layouts — WinList.qml, hearth-kwin-bridge, kwin/windows/hearth-windows.js; Dock/TaskStrip/Bar/Islands/TaskManagerView/Discord/SnapLayouts/Pad: "WinList.toplevels"; test_kwin_windows.py "test_script_against_pretend_kwin", "test_no_direct_toplevel_manager"; kwin-windows.yml end to end (needs testing on a device)
 - [x] Window actions from the taskbar (minimize, maximize, close, move to desktop, keep above, on all desktops, fullscreen) — hearth-windows.js `run()`: "case \"keepAbove\"", "case \"allDesktops\"", "case \"fullscreen\"", "case \"desktop\""; Dock.qml: "if (WinList.kwin) { WinList.moveToDesktop(win, n); return; }"; test_kwin_windows.py "test_window_actions_are_known" (needs testing on a device)
-- [ ] Window previews on hover in the dock/taskbar. Left: KWin's window thumbnails through the bridge, or a ScreenCast stream per window (M)
+- [x] Window previews on hover in the dock/taskbar — kwin/windows/hearth-previews.qml (KWin declarative script, loaded by hearth-kwin-bridge): "WindowThumbnail"; Dock.qml / TaskStrip.qml: "WinList.preview(btn.previewWins"; kwin-windows.yml: "the previews card shows over the desktop", picture "kwin-preview-zoom" (needs testing on a device)
 - [x] Title bars in Hearth's look — theme/hearth_aurorae.py, kwin/windows/xdg/kwinrc: "theme=__aurorae__svg__hearth"; test_kwin_windows.py "test_aurorae_files", "test_labwcs_colours"; kwin-windows.yml pictures "kwin-frame-active/inactive/maximized/hearth-gold/csd" (needs testing on a device)
 - [x] Title bar right-click menu with Hearth's items — hearth-windows.js: "registerUserActionsMenu … \"Snap layouts…\"" plus each zone; KWin's own menu has Move to desktop, Keep above, Close; kwin-windows.yml picture "kwin-window-menu" (needs testing on a device)
-- [ ] Alt+Tab window switcher in Hearth's look — Hearth has: KWin's default switcher (no Hearth TabBox layout anywhere in kwin/). Left: a Hearth task-switcher QML layout for KWin's TabBox, picked in Hearth's kwinrc defaults (S)
+- [x] Alt+Tab window switcher in Hearth's look — os/system_files/usr/share/kwin/tabbox/org.hearth.switcher (and kwin-wayland/tabbox): "KWin.TabBoxSwitcher"; kwin/windows/xdg/kwinrc: "LayoutName=org.hearth.switcher"; kwin-windows.yml: "Alt+Tab switches to the other window", picture "kwin-alt-tab" (needs testing on a device)
 - [x] Snapping: drag to edges and corners, Super+arrows, halves and quarters — kwin/xdg/kwinrc: "ElectricBorderTiling=true"; shortcuts.json "snap-left … snap-down" (win: left/right/up/down); test_kwin_windows.py "test_zones_match_snap_layouts_and_labwc"; picture "kwin-halves" (needs testing on a device)
-- [ ] Snap layouts (Super+Z, Maximize right-click) — partly: Super+Z and the title bar menu's Snap place windows through WinList.snap (SnapLayouts.qml: "if (WinList.kwin) { WinList.snap(win, q.id); return; }", picture "kwin-snap-layouts"). Left: right-click (or rest the pointer) on Maximize opening Snap layouts under KWin (Aurorae's button does KWin's own thing) (S)
+- [x] Snap layouts (Super+Z, Maximize) — Super+Z and the title bar menu as before; resting the pointer on Maximize: hearth-windows.js "onCursor" / "HoverMax", hearth-kwin-bridge "HOVER_WAIT", SnapLayouts.qml "hoverOpen"; kwin-windows.yml: "resting on Maximize opens Snap layouts under the button", picture "kwin-snap-maximize-zoom". (Hover, not right-click: KWin doesn't tell scripts about clicks on its buttons) (needs testing on a device)
 - [x] Virtual desktops: the bar's switcher, Super+Ctrl+arrows/1–4, move window to desktop — kwin/windows/xdg/kwinrc "[Desktops] Number=4"; DeskSwitcher.qml: "if (WinList.kwin) return WinList.desktops…"; shortcuts.json "desktop-1…4", "window-to-desktop-1…4"; test_kwin_windows.py "test_same_keys_and_commands" (needs testing on a device)
 - [x] Show desktop (Super+D) and minimize all (Super+M) — shortcuts.json "show-desktop": "call taskbar showDesktop"; kdeKeys frees KDE's Super+D; test_kwin_windows.py "test_kde_keys_table" (needs testing on a device)
 
@@ -114,9 +114,9 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 
 ### Overview, switcher, desktops
 
-- [ ] Overview (Super+W): all windows and desktops, search, drag windows between desktops (M)
-- [ ] Window view / Present windows (S)
-- [ ] Desktop grid (S)
+- [x] Overview (Super+W): all windows and desktops, search, drag windows between desktops — KWin's own, in Hearth's KDE colour scheme, opened from Mantel: Dock.qml / TaskStrip.qml Task view button "WinList.effect(\"overview\")", shortcuts.json "overview" (Meta+W, KDE's freed), hearth-pad View + Y; Milou in the image (build.sh "optional milou"); kwin-windows.yml: "Super+W opens the Overview", picture "kwin-overview" (needs testing on a device)
+- [x] Window view / Present windows — KWin's, from the Task view button's menu and Ctrl+F10 (shortcuts.json "present-windows"); kwin-windows.yml picture "kwin-present-windows" (needs testing on a device)
+- [x] Desktop grid — KWin's, from the Task view button's menu and Ctrl+F8 (shortcuts.json "desktop-grid"); kwin-windows.yml picture "kwin-desktop-grid" (needs testing on a device)
 - [ ] Window switcher styles (Thumbnail grid, Large icons, … Cover switch, Flip switch) and their settings (M)
 - [ ] Second switcher (Alt+`, same app's windows) (S)
 - [ ] Virtual desktops: add, remove, rename, rows, wrap around, OSD — Hearth has: 4 fixed, named desktops (kwin/windows/xdg/kwinrc "[Desktops]") (M)
@@ -131,10 +131,10 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 - [ ] Snap zones: edges stick, gap sizes — partly: Snap layouts' gap (shortcuts.json "gap": 6). Left: the sliders (S)
 - [ ] Window rules page (per app, "Detect window", presets) — partly: one built-in rule (shortcuts.json "rules": Task Manager kept on top; hearth-windows.js `applyRules`). Left: the users' page and KWin's rule file (L)
 - [ ] Window menu "More actions" — partly: KWin's own window menu (keep above, all desktops, fullscreen) with Hearth's Snap. Left: shade, no border and special window settings in Hearth's look (S)
-- [ ] Kill a frozen window (Ctrl+Alt+Esc) and "not responding" in Hearth's look (S)
+- [x] Kill a frozen window (Ctrl+Alt+Esc) in Hearth's look — ForceClose.qml ("Click the window that isn't responding", "Force close"), title bar menu "Force close (not responding)…", hearth-kwin-bridge "queryWindowInfo" / "KILL_WAIT" / "killable"; kwin-windows.yml: "Force close ends a frozen window (asked, then made to)", pictures "kwin-force-close-pick", "kwin-force-close". Left: KWin's own automatic "not responding" notice stays KWin's (needs testing on a device)
 - [x] Session restore: reopen apps after restart — SessionRestore.qml, SetStartup.qml "Reopen my apps from last time" (off by default, WinList); test_system_settings_114.py "test_off_by_default_and_only_at_sign_in" (needs testing on a device)
 - [ ] Plasma's KWin scripts (Minimize all, Desktop change OSD, video wall, sync skip-switcher) — Hearth has: Minimize all (show-desktop-2) (S)
-- [ ] Exclude a window from screen sharing (title bar menu) (S)
+- [x] Exclude a window from screen sharing (title bar menu) — hearth-windows.js "Hide from screen sharing" (and KWin's excludeFromCapture where it has it); hearth_screencast.py "hidden_windows"; cast-picker.qml "hidden from sharing and not listed"; kwin-windows.yml: "the screen-sharing picker leaves the hidden window out", pictures "kwin-window-menu-extras", "kwin-cast-hidden" (needs testing on a device)
 - [ ] Picture-in-picture windows: check Hearth Player and browsers use it under KWin (S)
 
 ### Screen edges, gestures, input

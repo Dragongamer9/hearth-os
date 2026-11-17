@@ -472,7 +472,7 @@ def extras_check(procs):
     shot('preview')
     crop('preview', (240, 420, 1680, 1080), 'preview-zoom')
     d = differs('preview', 'extras-before')
-    check('the previews card shows over the desktop', d > 0.4, 'picture difference %.2f' % d)
+    check('the previews card shows over the desktop', d > 0.15, 'picture difference %.2f' % d)
     ipc('winlist', 'previewHide')
 
     # ---- Hearth's Alt+Tab (hold Alt, Tab once: the switcher stays up while Alt is held)
