@@ -11,7 +11,7 @@ WidgetBase {
     id: w
     readonly property string look: c("style", "digital")
     readonly property bool secs: c("seconds", false) === true
-    readonly property var cities: Array.isArray(c("cities", null)) ? c("cities", []) : []
+    readonly property var cities: list("cities") || []
     property var offsets: ({})             // tz → minutes
     property var allZones: []
     property double now: Date.now()
@@ -72,11 +72,15 @@ WidgetBase {
             Layout.minimumHeight: 60
             Text {
                 visible: w.look === "digital"
-                anchors.centerIn: parent
+                anchors.fill: parent
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
                 text: w.hereText
                 color: Theme.text
                 font.family: Theme.font
-                font.pixelSize: Math.max(20, Math.min(parent.height * 0.62, parent.width / (w.secs ? 5.2 : 3.6)))
+                font.pixelSize: 160
+                fontSizeMode: Text.Fit
+                minimumPixelSize: 14
                 font.weight: Font.Bold
             }
             Canvas {

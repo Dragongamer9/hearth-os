@@ -126,7 +126,8 @@ Singleton {
     function step(dir) { switchTo(A.step(list, current, dir)); }
 
     // ------------------------------------------------ making and changing activities (all from the switcher)
-    function put(id, changes) {
+    function put(id, changes, isNew) {
+        if (!isNew && !A.find(list, id)) return;         // an activity that isn't there (deleted, mistyped): nothing made
         const k = "act:" + id;
         const base = raw[k] && typeof raw[k] === "object" ? raw[k] : (A.find(list, id) ? { name: A.find(list, id).name, icon: A.find(list, id).icon, order: A.find(list, id).order } : {});
         const e = Object.assign({}, base, changes);
@@ -137,7 +138,7 @@ Singleton {
     }
     function create(nm, icon) {
         const id = A.newId(Date.now(), Math.random());
-        put(id, { name: nm || A.newName(list), icon: icon || "desktops", wallpaper: "", order: list.reduce((m, a) => Math.max(m, a.order), 0) + 1 });
+        put(id, { name: nm || A.newName(list), icon: icon || "desktops", wallpaper: "", order: list.reduce((m, a) => Math.max(m, a.order), 0) + 1 }, true);
         return id;
     }
     function rename(id, nm) { if (nm && nm.trim()) put(id, { name: nm.trim() }); }
@@ -169,7 +170,7 @@ Singleton {
     }
     function applyPins() {
         const a = A.find(list, current);
-        DeskState.activityPins = a && Array.isArray(a.pins) ? a.pins : null;
+        DeskState.activityPins = a && a.pins ? a.pins : null;
     }
     Component.onCompleted: DeskState.setActivityPins = l => act.put(act.current, { pins: l })
 

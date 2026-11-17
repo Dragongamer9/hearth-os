@@ -11,14 +11,14 @@ WidgetBase {
     readonly property string home: Quickshell.env("HOME") || "/"
     readonly property string folder: c("path", home + "/Downloads")
     readonly property string view: c("view", "icons")
-    property var data: ({ items: [] })
+    property var info: ({ items: [] })
     implicitWidth: 400; implicitHeight: 320
 
     Process {
         id: ls
         command: ["python3", w.helper, "folder", w.folder]
         running: w.live
-        stdout: StdioCollector { onStreamFinished: { try { w.data = JSON.parse(text.trim().split("\n").pop()); } catch (e) {} } }
+        stdout: StdioCollector { onStreamFinished: { try { w.info = JSON.parse(text.trim().split("\n").pop()); } catch (e) {} } }
     }
     onFolderChanged: ls.running = true
     Timer { interval: 10000; running: w.live; repeat: true; onTriggered: if (!ls.running) ls.running = true }
@@ -31,19 +31,19 @@ WidgetBase {
         RowLayout {
             Layout.fillWidth: true
             Icon { name: "folder"; size: 18; color: Theme.accent }
-            Text { Layout.fillWidth: true; text: w.data.name || w.folder.split("/").pop(); color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold; elide: Text.ElideMiddle }
-            Text { text: (w.data.items || []).length + ((w.data.more || 0) > 0 ? "+" : "") + " items"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
+            Text { Layout.fillWidth: true; text: w.info.name || w.folder.split("/").pop(); color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold; elide: Text.ElideMiddle }
+            Text { text: (w.info.items || []).length + ((w.info.more || 0) > 0 ? "+" : "") + " items"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12 }
             WBtn { icon: "open"; flat: true; size: 24; onClicked: w.open(w.folder) }
         }
-        Text { visible: !!w.data.error; text: w.data.error || ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
-        Text { visible: !w.data.error && (w.data.items || []).length === 0; text: "This folder is empty"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+        Text { visible: !!w.info.error; text: w.info.error || ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
+        Text { visible: !w.info.error && (w.info.items || []).length === 0; text: "This folder is empty"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
         GridView {
             visible: w.view === "icons"
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
             cellWidth: Math.floor(width / Math.max(1, Math.floor(width / 92))); cellHeight: 92
-            model: w.view === "icons" ? (w.data.items || []) : []
+            model: w.view === "icons" ? (w.info.items || []) : []
             delegate: Item {
                 required property var modelData
                 width: GridView.view.cellWidth; height: 92
@@ -69,7 +69,7 @@ WidgetBase {
             Layout.fillWidth: true
             Layout.fillHeight: true
             clip: true
-            model: w.view === "list" ? (w.data.items || []) : []
+            model: w.view === "list" ? (w.info.items || []) : []
             delegate: Rectangle {
                 required property var modelData
                 width: ListView.view.width; height: 30

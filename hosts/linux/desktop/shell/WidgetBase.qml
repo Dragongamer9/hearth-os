@@ -3,6 +3,7 @@
 // only through set(), which merges that one setting of that one widget into widgets.json (WidgetStore.qml).
 import QtQuick
 import Quickshell
+import "widget-layout.js" as L
 
 Item {
     id: base
@@ -16,6 +17,7 @@ Item {
     signal doneConfiguring()
     signal wantsSettings()
     function set(key, value) { if (wid) WidgetStore.setCfg(wid, key, value); }
+    function list(key) { return L.asList(cfg ? cfg[key] : null); }   // a list setting (null when there isn't one)
     function c(key, dflt) { return cfg && cfg[key] !== undefined && cfg[key] !== null ? cfg[key] : dflt; }
     readonly property string fixtures: Quickshell.env("HEARTH_WIDGETS_FIXTURES") || ""
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-widgets").toString().replace(/^file:\/\//, ""))

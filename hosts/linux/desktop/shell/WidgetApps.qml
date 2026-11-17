@@ -7,7 +7,7 @@ import Quickshell
 
 WidgetBase {
     id: w
-    readonly property var chosen: Array.isArray(c("apps", null)) ? c("apps", []) : null
+    readonly property var chosen: list("apps")
     readonly property var ids: chosen !== null ? chosen : (DeskState.pins || []).slice(0, 6)
     readonly property var entries: { void DesktopEntries.applications.values.length; return ids.map(id => DesktopEntries.byId(id)).filter(e => !!e); }
     readonly property var allApps: { const a = Array.from(DesktopEntries.applications.values).filter(e => !e.noDisplay); a.sort((x, y) => String(x.name).localeCompare(String(y.name))); return a; }

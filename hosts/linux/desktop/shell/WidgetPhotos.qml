@@ -10,7 +10,7 @@ WidgetBase {
     readonly property string source: c("source", "pictures")
     readonly property int every: c("every", 30)
     readonly property bool fill: c("fit", "fill") === "fill"
-    property var data: ({ items: [], albums: [] })
+    property var info: ({ items: [], albums: [] })
     property int at: 0
     property bool flip: false
     implicitWidth: 380; implicitHeight: 270
@@ -20,12 +20,12 @@ WidgetBase {
         id: ls
         command: ["python3", w.helper, "photos", w.source]
         running: w.live
-        stdout: StdioCollector { onStreamFinished: { try { w.data = JSON.parse(text.trim().split("\n").pop()); w.at = 0; w.show(); } catch (e) {} } }
+        stdout: StdioCollector { onStreamFinished: { try { w.info = JSON.parse(text.trim().split("\n").pop()); w.at = 0; w.show(); } catch (e) {} } }
     }
     onSourceChanged: ls.running = true
     Timer { interval: 600000; running: w.live; repeat: true; onTriggered: if (!ls.running) ls.running = true }
-    Timer { interval: Math.max(5, w.every) * 1000; running: w.live && (w.data.items || []).length > 1; repeat: true; onTriggered: { w.at = (w.at + 1) % w.data.items.length; w.show(); } }
-    readonly property string currentPath: (data.items || []).length ? data.items[at % data.items.length] : ""
+    Timer { interval: Math.max(5, w.every) * 1000; running: w.live && (w.info.items || []).length > 1; repeat: true; onTriggered: { w.at = (w.at + 1) % w.info.items.length; w.show(); } }
+    readonly property string currentPath: (info.items || []).length ? info.items[at % info.items.length] : ""
     function show() {
         const p = currentPath ? "file://" + currentPath : "";
         if (flip) a.source = p; else b.source = p;
@@ -41,12 +41,12 @@ WidgetBase {
                 opacity: !w.flip && status === Image.Ready ? 1 : 0; Behavior on opacity { NumberAnimation { duration: Settings.reduceMotion ? 0 : 900 } } }
         Image { id: b; anchors.fill: parent; fillMode: w.fill ? Image.PreserveAspectCrop : Image.PreserveAspectFit; asynchronous: true; sourceSize.width: 1200
                 opacity: w.flip && status === Image.Ready ? 1 : 0; Behavior on opacity { NumberAnimation { duration: Settings.reduceMotion ? 0 : 900 } } }
-        MouseArea { anchors.fill: parent; onDoubleClicked: w.open(w.currentPath); onClicked: if ((w.data.items || []).length > 1) { w.at = (w.at + 1) % w.data.items.length; w.show(); } }
+        MouseArea { anchors.fill: parent; onDoubleClicked: w.open(w.currentPath); onClicked: if ((w.info.items || []).length > 1) { w.at = (w.at + 1) % w.info.items.length; w.show(); } }
         ColumnLayout {
             anchors.centerIn: parent
-            visible: (w.data.items || []).length === 0 && !w.configuring
+            visible: (w.info.items || []).length === 0 && !w.configuring
             Icon { Layout.alignment: Qt.AlignHCenter; name: "image"; size: 40; color: "#bbbbbb" }
-            Text { Layout.alignment: Qt.AlignHCenter; text: "No pictures in " + (w.data.label || "Pictures") + " yet"; color: "#dddddd"; font.family: Theme.font; font.pixelSize: 14 }
+            Text { Layout.alignment: Qt.AlignHCenter; text: "No pictures in " + (w.info.label || "Pictures") + " yet"; color: "#dddddd"; font.family: Theme.font; font.pixelSize: 14 }
         }
         Rectangle {
             visible: w.configuring
@@ -62,7 +62,7 @@ WidgetBase {
                     WBtn { text: "Pictures"; on: w.source === "pictures"; onClicked: w.set("source", "pictures") }
                     WBtn { text: "Photos favourites"; on: w.source === "favorites"; onClicked: w.set("source", "favorites") }
                     Repeater {
-                        model: w.data.albums || []
+                        model: w.info.albums || []
                         delegate: WBtn { required property var modelData; text: modelData.name; on: w.source === "album:" + modelData.id; onClicked: w.set("source", "album:" + modelData.id) }
                     }
                 }
