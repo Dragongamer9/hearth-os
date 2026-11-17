@@ -97,7 +97,7 @@ SetPage {
         property string head
         property string unit
         property var points: []
-        property real top: 100
+        property real topValue: 100
         Layout.fillWidth: true
         implicitHeight: 220
         Text { x: 18; y: 14; text: g.head; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold }
@@ -118,7 +118,7 @@ SetPage {
                 const p = g.points;
                 if (!p.length) return;
                 const t0 = p[0][0], t1 = Math.max(t0 + 1, p[p.length - 1][0]);
-                const top = Math.max(g.top, ...p.map(q => q[1])) || 1;
+                const top = Math.max(g.topValue, ...p.map(q => q[1])) || 1;
                 const X = t => (t - t0) / (t1 - t0) * width, Y = v => height - Math.max(0, v) / top * height;
                 c.beginPath(); c.moveTo(X(p[0][0]), height);
                 for (const q of p) c.lineTo(X(q[0]), Y(q[1]));
@@ -134,8 +134,8 @@ SetPage {
         Text { x: 18; y: parent.height - 20; text: page.hours >= 168 ? "A week ago" : page.hours >= 24 ? "A day ago" : page.hours + " hours ago"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
         Text { x: parent.width - 18 - width; y: parent.height - 20; text: "Now"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 }
     }
-    Graph { visible: !!page.bat; head: "Charge"; unit: "%"; top: 100; points: page.charge }
-    Graph { visible: !!page.bat; head: "Power used"; unit: "W"; top: 10; points: page.rate }
+    Graph { visible: !!page.bat; head: "Charge"; unit: "%"; topValue: 100; points: page.charge }
+    Graph { visible: !!page.bat; head: "Power used"; unit: "W"; topValue: 10; points: page.rate }
 
     SetCardGroup {
         title: "Your devices' batteries"
