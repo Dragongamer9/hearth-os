@@ -116,9 +116,10 @@ jobs:
           W="$HOME/.config/nimbus/widgets.json"; A="$HOME/.config/nimbus/activities.json"
           [ ! -e "$W" ] || { echo "::error title=widgets::widgets.json was written before anything was added (settings must never change by themselves)"; touch shots/FAILED; }
 
+          # (A list is passed as ' [...]': Quickshell's ipc reads an argument starting with "[" as a list of its own.)
           # ---- Main: clock, calendar, weather, sticky note, system monitor, battery, media; and four in the bar
           clock=$(q widgets add clock); q widgets set "$clock" style '"analog"'; q widgets set "$clock" seconds 'true'
-          q widgets set "$clock" cities '["Asia/Tokyo","America/New_York","Europe/London"]'
+          q widgets set "$clock" cities ' ["Asia/Tokyo","America/New_York","Europe/London"]'
           cal=$(q widgets add calendar)
           wx=$(q widgets add weather); q widgets set "$wx" place '{"label":"Lisbon, Portugal","name":"Lisbon","lat":38.72,"lon":-9.13}'
           note=$(q widgets add notes); q widgets set "$note" text '"Pick up controller batteries\nCall Dad about Trains 2010\nBackup the Ally before 1.14"'
@@ -128,7 +129,7 @@ jobs:
           for t in clock weather monitor timer; do b=$(q widgets addBar $t); done
           bc=$(q widgets list | python3 -c 'import json,sys; print(next((w["id"] for w in json.load(sys.stdin) if w["place"]=="bar" and w["type"]=="clock"), ""))')
           echo "::notice title=widgets::added on Main: clock=$clock calendar=$cal weather=$wx notes=$note monitor=$mon battery=$bat media=$med bar clock=$bc; count $(q widgets count)"
-          q widgets set "$bc" cities '["Asia/Tokyo"]'
+          q widgets set "$bc" cities ' ["Asia/Tokyo"]'
           shot 01-desktop-main 10
 
           # ---- the gallery, Arrange (moved with the keys, then its menu), a widget's settings
@@ -147,10 +148,10 @@ jobs:
           q activities switchTo "$work"; sleep 3
           fold=$(q widgets add folder)
           pho=$(q widgets add photos); q widgets set "$pho" source "\"folder:$HOME/Pictures\""; q widgets set "$pho" every '10'
-          apps=$(q widgets add apps); q widgets set "$apps" apps '["foot","org.kde.kcalc","footclient","foot-server"]'
+          apps=$(q widgets add apps); q widgets set "$apps" apps ' ["foot","org.kde.kcalc","footclient","foot-server"]'
           news=$(q widgets add news); q widgets set "$news" url '"https://example.org/feed.xml"'
           tim=$(q widgets add timer); q widgets set "$tim" minutes '25'
-          qn=$(q widgets add quicknotes); q widgets set "$qn" items '[{"t":"Finish the widgets mockup","done":true},{"t":"Reply to the Hearth Link issue","done":false},{"t":"Test Activities on the Ally","done":false}]'
+          qn=$(q widgets add quicknotes); q widgets set "$qn" items ' [{"t":"Finish the widgets mockup","done":true},{"t":"Reply to the Hearth Link issue","done":false},{"t":"Test Activities on the Ally","done":false}]'
           shot 02-desktop-work 10
           q activities switcher; shot 08-activities 3
           wtype -k Menu; shot 09-activity-edit 2; wtype -k Escape; sleep 1; wtype -k Escape; sleep 1
