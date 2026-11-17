@@ -205,7 +205,7 @@ class KdeKeys:
     def set(self, aid, keys):
         V = self.GLib.Variant
         try:
-            self.call('setForeignShortcutKeys', V('(asa(ai))', (aid, [(list(k) + [0, 0, 0, 0])[:4] for k in keys])), None)
+            self.call('setForeignShortcutKeys', V('(asa(ai))', (aid, [((list(k) + [0, 0, 0, 0])[:4],) for k in keys])), None)
         except self.GLib.Error:
             self.call('setForeignShortcut', V('(asai)', (aid, [k[0] for k in keys])), None)
 
