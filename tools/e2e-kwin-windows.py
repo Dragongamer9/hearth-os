@@ -233,7 +233,9 @@ def title_matches(name, theme, label):
     try:
         from PIL import Image
         svg = open(os.path.join(theme, 'decoration.svg')).read()
-        want = _re.search(r'id="decoration-top"><rect [^>]*fill="(#[0-9a-f]{6})"', svg).group(1)
+        # decoration-center's colour (its first rect is only its size, see hearth_aurorae.frame_svg)
+        center = _re.search(r'<g id="decoration-center">(.*?)</g>', svg).group(1)
+        want = [f for f, o in _re.findall(r'<rect [^>]*?fill="(#[0-9a-f]{6})"( fill-opacity="0")?', center) if not o][0]
         w = tuple(int(want[i:i + 2], 16) for i in (1, 3, 5))
         im = Image.open(os.path.join(OUT, 'kwin-%s.png' % name)).convert('RGB')
         # The title bar is somewhere down the window's column (the bar's height differs between looks): look for it.
@@ -329,6 +331,9 @@ def frames_check(procs):
     shot('frame-full-3')
     many, size = crop('frame-full-3', (0, 30, 1920, 160), 'frame-maximized')
     check('the frame picture (maximized) is more than one colour', many, size)
+    fr = (win('Test A') or {}).get('frame') or {}
+    sw = size[0] if isinstance(size, tuple) else 1920
+    check('a maximized window has no gap (edge to edge, no shadow room)', fr.get('x', 99) <= 0 and fr.get('w', 0) >= sw, (fr, sw))
     ipc('winlist', 'act', 'Test A', 'restore')
     wait(lambda: (win('Test A') or {}).get('maximized') is False)
     ipc('winlist', 'act', 'Test A', 'activate')
@@ -342,6 +347,74 @@ def frames_check(procs):
     many, size = crop('frame-full-4', (0, 30, 1000, 230), 'frame-hearth-gold')
     check('the frame picture (Hearth look, gold) is more than one colour', many, size)
     desk({'look': 'steam', 'accent': ''})
+    shadow_check(theme)
+
+
+def luma(im, x, y, r=2):
+    """The mean brightness of a (2r+1)-square at (x, y)."""
+    px = [im.getpixel((min(max(i, 0), im.width - 1), min(max(j, 0), im.height - 1)))
+          for i in range(x - r, x + r + 1) for j in range(y - r, y + r + 1)]
+    return sum(0.299 * p[0] + 0.587 * p[1] + 0.114 * p[2] for p in px) / len(px)
+
+
+def shadow_check(theme):
+    """The frames' drop shadow (hearth_aurorae SHADOW, as labwc's): Test A on its own in the middle on a light and a
+    dark wallpaper; just outside the frame (left side and below) is darker than the wallpaper further out, and the
+    window behind (inactive) has a lighter shadow than the one in front."""
+    from PIL import Image
+    walls = {}
+    for name, colour in (('light', (216, 220, 224)), ('dark', (30, 42, 58))):
+        walls[name] = os.path.join('/tmp', 'hearth-wall-%s.png' % name)
+        Image.new('RGB', (1920, 1080), colour).save(walls[name])
+    ipc('winlist', 'act', 'Test B', 'minimize')
+    ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test A', 'zone': 'center'}))
+    wait(lambda: (win('Test A') or {}).get('zone') == 'center')
+    ipc('winlist', 'act', 'Test A', 'activate')
+    wait(lambda: listed().get('active') == (win('Test A') or {}).get('id'))
+    darkness = {}
+    for name in ('light', 'dark'):
+        desk({'wallpaper': walls[name]})
+        time.sleep(4)                    # the shell loads the picture
+        ipc('winlist', 'act', 'Test A', 'activate')
+        time.sleep(1.5)
+        fr = (win('Test A') or {}).get('frame') or {}
+        shot('frame-shadow-%s-full' % name)
+        try:
+            im = Image.open(os.path.join(OUT, 'kwin-frame-shadow-%s-full.png' % name)).convert('RGB')
+            x, y, w, h = fr['x'], fr['y'], fr['w'], fr['h']
+            crop('frame-shadow-%s-full' % name, (x - 90, y - 70, x + 560, y + 230), 'frame-shadow-%s' % name)
+            crop('frame-shadow-%s-full' % name, (x + w - 300, y + h - 160, x + w + 90, y + h + 90), 'frame-shadow-%s-corner' % name)
+            # Left of the frame at half height, and just below it a quarter across (clear of the dock), each 4 px out,
+            # against the wallpaper 80 px left of the frame at the same height (below the frame there's no room: the
+            # middle zone ends near the work area's bottom).
+            left_in, left_out = luma(im, x - 5, y + h // 2), luma(im, x - 80, y + h // 2)
+            below_in, below_out = luma(im, x + w // 4, y + h + 4), luma(im, x - 80, y + h + 4)
+            need = 12 if name == 'light' else 3
+            ok = left_out - left_in >= need and below_out - below_in >= need
+            darkness[name] = (left_out - left_in, below_out - below_in)
+            check('the frame has a shadow on a %s wallpaper (just outside darker than the wallpaper)' % name, ok,
+                  'left %.0f vs %.0f, below %.0f vs %.0f (frame %s)' % (left_in, left_out, below_in, below_out, fr))
+        except Exception as ex:
+            check('the frame has a shadow on a %s wallpaper (just outside darker than the wallpaper)' % name, False, '%s (frame %s)' % (ex, fr))
+    # Behind another window: the lighter shadow (labwc's 40 px at 25 %), on the light wallpaper.
+    desk({'wallpaper': walls['light']})
+    time.sleep(4)
+    ipc('winlist', 'act', 'Test B', 'activate')
+    ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test B', 'zone': 'bottom-right'}))
+    wait(lambda: listed().get('active') == (win('Test B') or {}).get('id'))
+    time.sleep(1.5)
+    fr = (win('Test A') or {}).get('frame') or {}
+    shot('frame-shadow-inactive-full')
+    try:
+        im = Image.open(os.path.join(OUT, 'kwin-frame-shadow-inactive-full.png')).convert('RGB')
+        x, y, h = fr['x'], fr['y'], fr['h']
+        crop('frame-shadow-inactive-full', (x - 90, y - 70, x + 560, y + 230), 'frame-shadow-inactive')
+        d = luma(im, x - 80, y + h // 2) - luma(im, x - 5, y + h // 2)
+        act = (darkness.get('light') or (0, 0))[0]
+        check('a window behind has a lighter shadow than the one in front', 3 <= d < act, 'behind %.0f, in front %.0f' % (d, act))
+    except Exception as ex:
+        check('a window behind has a lighter shadow than the one in front', False, '%s (frame %s)' % (ex, fr))
+    desk({'wallpaper': ''})
 
 
 def main():
