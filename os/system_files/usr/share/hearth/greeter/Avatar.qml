@@ -9,7 +9,7 @@ Item {
     property bool lit: false
     implicitWidth: 120; implicitHeight: 120
     readonly property string url: source !== "" ? "file://" + source : ""
-    Image { id: probe; visible: false; source: av.url; asynchronous: false }
+    Image { id: probe; visible: false; source: av.url; asynchronous: false; onStatusChanged: { cv.ready = status === Image.Ready; cv.requestPaint(); } }
     Rectangle {
         anchors.fill: parent
         radius: width / 2
@@ -33,15 +33,10 @@ Item {
             const iw = probe.implicitWidth, ih = probe.implicitHeight, s = Math.min(iw, ih);
             c.save();
             c.beginPath(); c.arc(width / 2, height / 2, width / 2, 0, 2 * Math.PI); c.closePath(); c.clip();
-            c.drawImage(av.url, (iw - s) / 2, (ih - s) / 2, s, s, 0, 0, width, height);
+            c.drawImage(probe, (iw - s) / 2, (ih - s) / 2, s, s, 0, 0, width, height);
             c.restore();
         }
-        onImageLoaded: { ready = isImageLoaded(av.url); requestPaint(); }
-        Connections {
-            target: av
-            function onUrlChanged() { cv.ready = false; if (av.url) cv.loadImage(av.url); cv.requestPaint(); }
-        }
-        Component.onCompleted: if (av.url) loadImage(av.url)
+        Component.onCompleted: { ready = probe.status === Image.Ready; requestPaint(); }
     }
     Rectangle {
         anchors.fill: parent; anchors.margins: -6

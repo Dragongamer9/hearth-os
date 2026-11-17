@@ -122,6 +122,7 @@ jobs:
             echo "::error title=Login screen::waited for $1; state: $s"; return 1
           }
           waitfor "d['users'] == 3 and len(d['sessions']) >= 3" || fail=1
+          waitfor "d['pictures'] == 1" || echo "::warning title=Login screen::alex's picture wasn't found ($(ls -la $F/icons))"
           q state
           shot 1-users
           # the controller: arrows (the D-pad through hearth-greeter-pad) move the ring
