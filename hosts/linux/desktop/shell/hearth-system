@@ -66,12 +66,16 @@ LABWC_ENV = os.path.join(CONFIG, 'labwc', 'environment')
 KEYBOARD_JSON = os.path.join(CONFIG, 'nimbus', 'keyboard.json')
 POINTER_JSON = os.path.join(CONFIG, 'nimbus', 'pointer.json')
 # Mouse and touchpad settings: name -> (kind, labwc <libinput><device> element). Speed is -1..1 (0 = normal).
+# A None element: only Mantel on KWin uses it (hearth-kwin-settings pointer-apply puts these on KWin's devices); labwc's
+# rc.xml stays as it was. Those have no default: KWin's own counts until the person picks one.
 POINTER_KEYS = {
     'mouse': {'speed': ('speed', 'pointerSpeed'), 'natural': ('bool', 'naturalScroll'),
-              'leftHanded': ('bool', 'leftHanded'), 'accel': (('adaptive', 'flat'), 'accelProfile')},
+              'leftHanded': ('bool', 'leftHanded'), 'accel': (('adaptive', 'flat'), 'accelProfile'),
+              'scrollSpeed': ('factor', None), 'middle': ('bool', None)},
     'touchpad': {'speed': ('speed', 'pointerSpeed'), 'natural': ('bool', 'naturalScroll'), 'tap': ('bool', 'tap'),
                  'dwt': ('bool', 'disableWhileTyping'), 'scroll': (('twofinger', 'edge'), 'scrollMethod'),
-                 'leftHanded': ('bool', 'leftHanded')},
+                 'leftHanded': ('bool', 'leftHanded'), 'accel': (('adaptive', 'flat'), None),
+                 'scrollSpeed': ('factor', None), 'tapDrag': ('bool', None), 'click': (('areas', 'fingers'), None)},
 }
 POINTER_DEFAULT = {'mouse': {'speed': 0.0, 'natural': False, 'leftHanded': False, 'accel': 'adaptive'},
                    'touchpad': {'speed': 0.0, 'natural': False, 'tap': True, 'dwt': True, 'scroll': 'twofinger',
@@ -367,6 +371,8 @@ def pointer_clean(raw):
             v = got.get(k)
             if kind == 'speed' and isinstance(v, (int, float)) and not isinstance(v, bool):
                 out[dev][k] = round(max(-1.0, min(1.0, float(v))), 2)
+            elif kind == 'factor' and isinstance(v, (int, float)) and not isinstance(v, bool):
+                out[dev][k] = round(max(0.1, min(5.0, float(v))), 2)
             elif kind == 'bool' and isinstance(v, bool):
                 out[dev][k] = v
             elif isinstance(kind, tuple) and v in kind:
@@ -402,6 +408,8 @@ def libinput_xml(settings):
     for dev in ('mouse', 'touchpad'):
         lines.append('    <device category="%s">' % LABWC_CATEGORY[dev])
         for k, (kind, tag) in POINTER_KEYS[dev].items():
+            if tag is None or k not in settings[dev]:
+                continue     # Mantel on KWin only (hearth-kwin-settings)
             v = settings[dev][k]
             text = ('%.2f' % v) if kind == 'speed' else ('yes' if v else 'no') if kind == 'bool' else v
             lines.append('      <%s>%s</%s>' % (tag, text, tag))
@@ -438,6 +446,10 @@ def pointer_set(raw):
     reloaded = False
     if os.environ.get('LABWC_PID') and shutil.which('labwc'):
         reloaded = run(['labwc', '--reconfigure'])[0] == 0
+    elif os.environ.get('HEARTH_WM') == 'kwin':
+        # Mantel on KWin: the same settings put on KWin's mouse and touchpad devices now.
+        code, out = run(['python3', os.path.join(HERE, 'hearth-kwin-settings'), 'pointer-apply'])
+        reloaded = live = code == 0 and '"kwin": true' in (out or '')
     return dict(settings, ok=True, reloaded=reloaded and live, hasTouchpad=has_touchpad())
 
 

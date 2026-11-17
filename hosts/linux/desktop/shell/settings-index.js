@@ -34,7 +34,6 @@ var ENTRIES = [
 {
 "t": "Zoom in now",
 "p": "accessibility",
-"d": "Super+= zooms in, Super+- zooms out (and off), Super+Esc turns it off or back on. The view follows the pointer",
 "i": "search"
 },
 {
@@ -47,11 +46,97 @@ var ENTRIES = [
 "i": "search"
 },
 {
+"t": "The zoomed view follows the pointer",
+"p": "accessibility",
+"i": "mouse"
+},
+{
+"t": "Follow the keyboard focus",
+"p": "accessibility",
+"i": "kbd"
+},
+{
+"t": "Follow the text cursor",
+"p": "accessibility",
+"i": "kbd"
+},
+{
+"t": "The pointer while zoomed",
+"p": "accessibility",
+"i": "mouse"
+},
+{
 "t": "Each Super+= or Super+- step",
 "p": "accessibility"
 },
 {
+"t": "How strong",
+"p": "accessibility",
+"i": "palette"
+},
+{
 "t": "Screen reader (Orca)",
+"p": "accessibility",
+"i": "vol"
+},
+{
+"t": "Sticky keys",
+"p": "accessibility",
+"i": "kbd"
+},
+{
+"t": "Press twice to lock",
+"p": "accessibility",
+"d": "A key pressed twice stays down until pressed again",
+"i": "lock"
+},
+{
+"t": "Turn off when two keys are held together",
+"p": "accessibility",
+"i": "kbd"
+},
+{
+"t": "Bounce keys",
+"p": "accessibility",
+"i": "kbd"
+},
+{
+"t": "Ignore it for",
+"p": "accessibility",
+"i": "clock"
+},
+{
+"t": "Slow keys",
+"p": "accessibility",
+"i": "kbd"
+},
+{
+"t": "Hold for",
+"p": "accessibility",
+"i": "clock"
+},
+{
+"t": "Mouse keys",
+"p": "accessibility",
+"i": "mouse"
+},
+{
+"t": "Pointer speed with the keys",
+"p": "accessibility",
+"i": "mouse"
+},
+{
+"t": "Flash the screen for the alert sound",
+"p": "accessibility",
+"i": "bell"
+},
+{
+"t": "Flash",
+"p": "accessibility",
+"i": "bell"
+},
+{
+"t": "Play the alert sound",
 "p": "accessibility",
 "i": "vol"
 },
@@ -2059,6 +2144,500 @@ var ENTRIES = [
 "d": "Word suggestions go back to the word list (Game Mode's keyboard forgets them too)"
 },
 {
+"t": "How many",
+"p": "kwin-desktops",
+"d": "Super+Ctrl+Left / Right switch between them; three or four fingers sideways on a touchpad",
+"i": "desktops"
+},
+{
+"t": "Rows",
+"p": "kwin-desktops",
+"d": "Desktops laid out in a grid: Super+Ctrl+Up / Down move between rows",
+"i": "grid"
+},
+{
+"t": "Go round",
+"p": "kwin-desktops",
+"d": "From the last desktop, the next one is the first",
+"i": "sync"
+},
+{
+"t": "Animation",
+"p": "kwin-desktops",
+"i": "motion"
+},
+{
+"t": "The wallpaper slides too",
+"p": "kwin-desktops",
+"i": "image"
+},
+{
+"t": "Gap between desktops while sliding",
+"p": "kwin-desktops",
+"i": "desktops"
+},
+{
+"t": "Show the desktop's name when switching",
+"p": "kwin-desktops",
+"i": "info"
+},
+{
+"t": "Switch by pushing against the screen's edge",
+"p": "kwin-desktops",
+"d": "In Screen edges"
+},
+{
+"t": "How long to push before it happens",
+"p": "kwin-edges",
+"i": "clock"
+},
+{
+"t": "Wait before it can happen again",
+"p": "kwin-edges",
+"i": "clock"
+},
+{
+"t": "Also over full-screen windows",
+"p": "kwin-edges",
+"d": "Off: a game or video in full screen never sets off a corner",
+"i": "display"
+},
+{
+"t": "Switch desktops at the left and right edges",
+"p": "kwin-edges",
+"i": "desktops"
+},
+{
+"t": "Sticky edges between screens",
+"p": "kwin-edges",
+"d": "How far you push the pointer before it crosses to the next screen; 0 is off",
+"i": "display"
+},
+{
+"t": "Corners between screens are sticky too",
+"p": "kwin-edges",
+"i": "display"
+},
+{
+"t": "Animation speed",
+"p": "kwin-effects",
+"d": "How fast windows open, close, move and switch. Reduce motion in Accessibility also stills Mantel's own",
+"i": "motion"
+},
+{
+"t": "When a window opens or closes",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "When a window is minimized",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "When the desktop is shown",
+"p": "kwin-effects",
+"d": "Windows move out of the way, or shrink to the middle of the screen",
+"i": "home"
+},
+{
+"t": "Switching between desktops",
+"p": "kwin-effects",
+"d": "Slide, fade or nothing: in Virtual desktops"
+},
+{
+"t": "Maximize and full screen animate",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Menus and pop-ups fade and slide",
+"p": "kwin-effects",
+"i": "menu"
+},
+{
+"t": "Dialogs slide out of their window",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Windows fall apart when closed",
+"p": "kwin-effects",
+"i": "trash"
+},
+{
+"t": "Fade in when you sign in, fade out when you sign out",
+"p": "kwin-effects",
+"i": "power"
+},
+{
+"t": "Bounce the pointer while an app starts",
+"p": "kwin-effects",
+"i": "rocket"
+},
+{
+"t": "Overview",
+"p": "kwin-effects",
+"i": "grid"
+},
+{
+"t": "Overview: leave out minimized windows",
+"p": "kwin-effects",
+"i": "grid"
+},
+{
+"t": "Overview: typing searches",
+"p": "kwin-effects",
+"d": "Off: typing only filters the windows shown",
+"i": "search"
+},
+{
+"t": "Desktop grid",
+"p": "kwin-effects",
+"d": "Every desktop side by side, to move windows between them: Super+G, or four fingers down. Part of the overview in KWin 6",
+"i": "desktops"
+},
+{
+"t": "Present windows",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Hot corners",
+"p": "kwin-effects",
+"d": "Which corner opens the overview, the grid or every window"
+},
+{
+"t": "Look",
+"p": "kwin-effects",
+"d": "What Alt+Tab shows while you hold it",
+"i": "window"
+},
+{
+"t": "Show the window you're on",
+"p": "kwin-effects",
+"d": "The others fade while Alt+Tab is held",
+"i": "eye"
+},
+{
+"t": "Which windows",
+"p": "kwin-effects",
+"i": "desktops"
+},
+{
+"t": "Minimized windows",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Order",
+"p": "kwin-effects",
+"i": "grid"
+},
+{
+"t": "Blur behind see-through windows",
+"p": "kwin-effects",
+"i": "sparkle"
+},
+{
+"t": "How much blur",
+"p": "kwin-effects",
+"i": "sparkle"
+},
+{
+"t": "Grain in the blur",
+"p": "kwin-effects",
+"d": "A little grain hides banding",
+"i": "sparkle"
+},
+{
+"t": "Keep text readable on glass",
+"p": "kwin-effects",
+"i": "sun"
+},
+{
+"t": "See-through windows",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Wobbly windows",
+"p": "kwin-effects",
+"i": "wave"
+},
+{
+"t": "How wobbly",
+"p": "kwin-effects",
+"i": "wave"
+},
+{
+"t": "Show where a window snaps",
+"p": "kwin-effects",
+"i": "grid"
+},
+{
+"t": "Window you click slides to the front",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "A picture of the window you're on, at the side",
+"p": "kwin-effects",
+"i": "image"
+},
+{
+"t": "Dim windows you're not using",
+"p": "kwin-effects",
+"i": "moon"
+},
+{
+"t": "How much",
+"p": "kwin-effects",
+"i": "moon"
+},
+{
+"t": "Dim the bar and dock too",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Dim the screen when asked for your password",
+"p": "kwin-effects",
+"i": "shield"
+},
+{
+"t": "Grey out apps that stopped answering",
+"p": "kwin-effects",
+"i": "warn"
+},
+{
+"t": "Darken a window while its dialog is open",
+"p": "kwin-effects",
+"i": "window"
+},
+{
+"t": "Shake the pointer to find it",
+"p": "kwin-effects",
+"i": "mouse"
+},
+{
+"t": "How big it grows",
+"p": "kwin-effects",
+"i": "mouse"
+},
+{
+"t": "Show mouse clicks",
+"p": "kwin-effects",
+"i": "mouse"
+},
+{
+"t": "Find the pointer with Super+Ctrl",
+"p": "kwin-effects",
+"i": "search"
+},
+{
+"t": "Draw on the screen",
+"p": "kwin-effects",
+"i": "edit"
+},
+{
+"t": "Hide the pointer while you type",
+"p": "kwin-effects",
+"i": "mouse"
+},
+{
+"t": "Show touches on a touchscreen",
+"p": "kwin-effects",
+"i": "pad"
+},
+{
+"t": "Allow tearing in full-screen games",
+"p": "kwin-games",
+"d": "Games that ask for it show each frame the moment it's ready: less lag, with a tear line now and then. Others stay smooth",
+"i": "pad"
+},
+{
+"t": "Tearing for one game",
+"p": "kwin-games",
+"d": "A window rule can turn tearing on or off for one app"
+},
+{
+"t": "Screen edges over full-screen games",
+"p": "kwin-games",
+"d": "Off: hot corners never go off while a game is full screen",
+"i": "display"
+},
+{
+"t": "Keys X11 apps can see while you're in another app",
+"p": "kwin-games",
+"d": "For push-to-talk and hotkeys in Discord, OBS and other X11 apps. Wayland apps never see them",
+"i": "kbd"
+},
+{
+"t": "Mouse buttons too",
+"p": "kwin-games",
+"d": "X11 apps also see mouse buttons pressed in other apps",
+"i": "mouse"
+},
+{
+"t": "Scaling X11 apps",
+"p": "kwin-games",
+"i": "display"
+},
+{
+"t": "Use this rule",
+"p": "kwin-rules"
+},
+{
+"t": "Pick the app's window",
+"p": "kwin-rules",
+"i": "search"
+},
+{
+"t": "App (window class)",
+"p": "kwin-rules"
+},
+{
+"t": "Window title",
+"p": "kwin-rules"
+},
+{
+"t": "On a desktop",
+"p": "kwin-rules"
+},
+{
+"t": "Which desktop",
+"p": "kwin-rules"
+},
+{
+"t": "On a screen",
+"p": "kwin-rules"
+},
+{
+"t": "Which screen",
+"p": "kwin-rules"
+},
+{
+"t": "Screen it draws on",
+"p": "kwin-tablet",
+"i": "display"
+},
+{
+"t": "Part of the screen",
+"p": "kwin-tablet",
+"i": "image"
+},
+{
+"t": "Part of the tablet used",
+"p": "kwin-tablet",
+"d": "A smaller part means less arm movement",
+"i": "edit"
+},
+{
+"t": "Left-handed (tablet turned round)",
+"p": "kwin-tablet",
+"i": "mouse"
+},
+{
+"t": "Pressure",
+"p": "kwin-tablet",
+"i": "edit"
+},
+{
+"t": "Lightest touch that counts",
+"p": "kwin-tablet",
+"i": "edit"
+},
+{
+"t": "Full pressure at",
+"p": "kwin-tablet",
+"i": "edit"
+},
+{
+"t": "Use this touchscreen",
+"p": "kwin-tablet",
+"i": "pad"
+},
+{
+"t": "Screen it's on",
+"p": "kwin-tablet",
+"d": "With more than one screen, touches go to this one",
+"i": "display"
+},
+{
+"t": "Turned",
+"p": "kwin-tablet",
+"d": "If touches land rotated from your finger",
+"i": "sync"
+},
+{
+"t": "Calibrate",
+"p": "kwin-tablet",
+"i": "search"
+},
+{
+"t": "Undo the calibration",
+"p": "kwin-tablet",
+"i": "undo"
+},
+{
+"t": "Screen",
+"p": "kwin-tiling",
+"i": "display"
+},
+{
+"t": "Start from",
+"p": "kwin-tiling",
+"i": "grid"
+},
+{
+"t": "Gap between tiles",
+"p": "kwin-tiling",
+"i": "grid"
+},
+{
+"t": "Drag a window to a side or corner to tile it",
+"p": "kwin-tiling",
+"d": "Half the screen at a side, a quarter in a corner",
+"i": "window"
+},
+{
+"t": "Drag a window to the top to maximize it",
+"p": "kwin-tiling",
+"i": "window"
+},
+{
+"t": "Size of the corners",
+"p": "kwin-tiling",
+"d": "How much of each edge counts as its corner",
+"i": "grid"
+},
+{
+"t": "Maximized windows have no title bar",
+"p": "kwin-tiling",
+"i": "window"
+},
+{
+"t": "Snap to the screen's edges",
+"p": "kwin-tiling",
+"i": "display"
+},
+{
+"t": "Snap to other windows",
+"p": "kwin-tiling",
+"i": "window"
+},
+{
+"t": "Snap to the middle of the screen",
+"p": "kwin-tiling",
+"i": "grid"
+},
+{
+"t": "Only snap when windows would overlap",
+"p": "kwin-tiling",
+"i": "window"
+},
+{
 "t": "Share this device's AI",
 "p": "link",
 "d": "Its AI (chat, voices, pictures, speech to text) for your other devices and the Command Center, through Tailscale",
@@ -2206,6 +2785,16 @@ var ENTRIES = [
 "i": "mouse"
 },
 {
+"t": "Scroll speed",
+"p": "mouse",
+"i": "mouse"
+},
+{
+"t": "Middle-click with both buttons",
+"p": "mouse",
+"i": "mouse"
+},
+{
 "t": "Touchpad speed",
 "p": "mouse",
 "i": "mouse"
@@ -2222,9 +2811,39 @@ var ENTRIES = [
 "i": "mouse"
 },
 {
+"t": "Touchpad scroll speed",
+"p": "mouse",
+"i": "mouse"
+},
+{
+"t": "Touchpad acceleration",
+"p": "mouse",
+"i": "mouse"
+},
+{
+"t": "Tap and drag",
+"p": "mouse",
+"i": "mouse"
+},
+{
+"t": "Pressing the touchpad down",
+"p": "mouse",
+"i": "mouse"
+},
+{
 "t": "Ignore the touchpad while typing",
 "p": "mouse",
 "i": "kbd"
+},
+{
+"t": "Four fingers up: overview · down: desktop grid",
+"p": "mouse",
+"i": "grid"
+},
+{
+"t": "Three or four fingers sideways: next or previous desktop",
+"p": "mouse",
+"i": "desktops"
 },
 {
 "t": "Do not disturb",

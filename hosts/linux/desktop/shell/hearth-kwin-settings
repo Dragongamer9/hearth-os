@@ -1,0 +1,977 @@
+#!/usr/bin/python3
+"""hearth-kwin-settings: Hearth Settings' pages for what KWin does when Mantel runs on KWin (docs/KWIN-SETTINGS.md).
+
+The settings live where KWin reads them, one home each: kwinrc (effects, desktops, tiling, edges, Xwayland, tearing),
+kdeglobals [KDE] (animation speed), kaccessrc (sticky, slow and bounce keys, the visual bell), kwinrulesrc (window
+rules), and KWin's own input settings (kcminputrc, written by KWin when Hearth sets a device's property over D-Bus).
+The mouse and touchpad settings stay in Hearth's pointer.json (shared with labwc) and are put on KWin's devices.
+Only the keys the person changes are written (hearth_kconfig), then KWin is asked to read its settings again
+(org.kde.KWin /KWin reconfigure) and KDE's "config changed" signal is sent, so nothing needs a restart.
+
+  hearth-kwin-settings status                 JSON: is Mantel on KWin (live), KWin's version, effects, switchers
+  hearth-kwin-settings get                    JSON: the settings as KWin sees them (system defaults + yours)
+  hearth-kwin-settings set FILE               stdin {group: {key: value or null}}: change these keys in FILE
+  hearth-kwin-settings desktops               JSON: virtual desktops (id, name), rows
+  hearth-kwin-settings desktops-set           stdin {"count": n, "names": {id: name}, "rows": n}
+  hearth-kwin-settings outputs                JSON: screens (name, KWin's id for its tile layouts, size)
+  hearth-kwin-settings tiles-set UUID NAME    stdin {"columns": [{"width": w, "rows": [h, ...]}], "padding": px}
+  hearth-kwin-settings rules                  JSON: window rules (kwinrulesrc)
+  hearth-kwin-settings rule-set               stdin {"id": id or "", "set": {key: value or null}}: makes or changes one
+  hearth-kwin-settings rule-delete ID
+  hearth-kwin-settings pick-window            JSON: the window the person clicks (KWin's queryWindowInfo)
+  hearth-kwin-settings input                  JSON: KWin's input devices and their settings
+  hearth-kwin-settings input-set SYSNAME      stdin {property: value}: a tablet's or touchscreen's setting
+  hearth-kwin-settings pointer-apply          puts pointer.json (Settings › Mouse & touchpad) on KWin's devices
+  hearth-kwin-settings input-watch            pointer-apply now and whenever a device is plugged in (session)
+  hearth-kwin-settings rebind TOOL BUTTON     stdin action ("" = as it is): a pen button (kcminputrc ButtonRebinds)
+  hearth-kwin-settings shortcut NAME          runs one of KWin's own shortcuts (zoom in, invert, overview...)
+
+Preview (tests only): HEARTH_KWIN_FIXTURE=<json file> plus $XDG_RUNTIME_DIR/hearth-kwin-preview makes the pages
+usable without KWin (devices, screens and effects from the file; nothing is sent to KWin).
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import uuid
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_kconfig as kc  # noqa: E402
+import hearth_settings_io as hsio  # noqa: E402
+
+FILES = ('kwinrc', 'kdeglobals', 'kaccessrc', 'kwinrulesrc', 'kcminputrc')
+# What the pages may change in each file (groups; a nested group by its first part).
+ALLOWED = {
+    'kwinrc': {'Plugins', 'Windows', 'ElectricBorders', 'TouchEdges', 'EdgeBarrier', 'ScreenEdges', 'Compositing',
+               'TabBox', 'Desktops', 'Tiling', 'Xwayland', 'Wayland'} | {'Effect-' + e for e in (
+                   'blur', 'translucency', 'wobblywindows', 'diminactive', 'slide', 'shakecursor', 'mouseclick',
+                   'trackmouse', 'zoom', 'magnifier', 'colorblindnesscorrection', 'overview', 'windowview', 'glide',
+                   'magiclamp', 'hidecursor', 'fallapart', 'sheet', 'mousemark', 'thumbnailaside')} | {
+                   'Script-desktopchangeosd'},
+    'kdeglobals': {'KDE', 'KScreen'},
+    'kaccessrc': {'Keyboard', 'Bell', 'Mouse'},
+    'kwinrulesrc': set(),           # rule-set / rule-delete only
+    'kcminputrc': {'ButtonRebinds'},
+}
+# The effects KWin 6 has (src/plugins), with whether each is on when nobody chose: the pages use it when KWin can't be
+# asked. Tools (show paint, show FPS) aren't offered.
+EFFECTS = {
+    'blur': True, 'backgroundcontrast': True, 'translucency': False, 'wobblywindows': False, 'magiclamp': False,
+    'squash': True, 'fade': False, 'glide': False, 'scale': True, 'diminactive': False, 'dimscreen': False,
+    'slide': True, 'fadedesktop': False, 'shakecursor': True, 'mouseclick': False, 'trackmouse': False,
+    'mousemark': False, 'overview': True, 'windowview': True, 'zoom': True, 'magnifier': False, 'invert': False,
+    'colorblindnesscorrection': False, 'hidecursor': False, 'fallapart': False, 'sheet': False, 'touchpoints': False,
+    'thumbnailaside': False, 'snaphelper': False, 'slidingpopups': True, 'fadingpopups': True, 'maximize': True,
+    'login': True, 'logout': True, 'kscreen': True, 'startupfeedback': True, 'frozenapp': True, 'dialogparent': True,
+    'slideback': False, 'windowaperture': True, 'eyeonscreen': False, 'systembell': True, 'desktopchangeosd': False,
+}
+INPUT_PROPS = {
+    # name: D-Bus type
+    'enabled': 'b', 'leftHanded': 'b', 'disableWhileTyping': 'b', 'pointerAcceleration': 'd',
+    'pointerAccelerationProfileFlat': 'b', 'pointerAccelerationProfileAdaptive': 'b', 'tapToClick': 'b',
+    'tapAndDrag': 'b', 'tapDragLock': 'b', 'lmrTapButtonMap': 'b', 'middleEmulation': 'b', 'naturalScroll': 'b',
+    'scrollTwoFinger': 'b', 'scrollEdge': 'b', 'scrollFactor': 'd', 'clickMethodAreas': 'b',
+    'clickMethodClickfinger': 'b', 'outputName': 's', 'calibrationMatrix': 's', 'orientationDBus': 'i',
+    'outputArea': 'rect', 'mapToWorkspace': 'b', 'pressureCurve': 's', 'inputArea': 'rect',
+    'pressureRangeMin': 'd', 'pressureRangeMax': 'd', 'disableEventsOnExternalMouse': 'b',
+}
+INPUT_READ = list(INPUT_PROPS) + [
+    'name', 'sysName', 'pointer', 'touchpad', 'touch', 'tabletTool', 'tabletPad', 'keyboard', 'supportsLeftHanded',
+    'supportsDisableWhileTyping', 'supportsPointerAcceleration', 'supportsPointerAccelerationProfileFlat',
+    'supportsNaturalScroll', 'tapFingerCount', 'supportsMiddleEmulation', 'supportsScrollTwoFinger',
+    'supportsScrollEdge', 'supportsClickMethodAreas', 'supportsClickMethodClickfinger', 'supportsCalibrationMatrix',
+    'defaultCalibrationMatrix', 'supportsOutputArea', 'defaultPressureCurve', 'supportsPressureRange',
+    'tabletPadButtonCount', 'supportsInputArea', 'supportsDisableEvents', 'deviceGroupId', 'vendor', 'product',
+]
+SHORTCUTS = {'zoom-in': 'view_zoom_in', 'zoom-out': 'view_zoom_out', 'zoom-reset': 'view_actual_size',
+             'invert': 'Invert', 'overview': 'Overview', 'grid': 'Grid View', 'windows': 'Expose',
+             'tiles': 'Edit Tiles', 'magnifier-in': 'MagnifierZoomIn'}
+
+
+class Fail(Exception):
+    pass
+
+
+# ------------------------------------------------------------------ where we are
+def runtime_dir():
+    return os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
+
+
+def fixture():
+    p = os.environ.get('HEARTH_KWIN_FIXTURE')
+    if not p or not os.path.exists(os.path.join(runtime_dir(), 'hearth-kwin-preview')):
+        return None
+    try:
+        with open(p) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+# ------------------------------------------------------------------ D-Bus (GLib's, python3-gi; gdbus as a fallback)
+_BUS = []
+
+
+def bus():
+    if _BUS:
+        return _BUS[0]
+    conn = None
+    try:
+        from gi.repository import Gio
+        conn = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    except Exception:
+        conn = None
+    _BUS.append(conn)
+    return conn
+
+
+def call(dest, path, iface, method, sig=None, args=(), reply=None, timeout=4000):
+    """A D-Bus method call; the reply unpacked to Python, or raises Fail."""
+    conn = bus()
+    if conn is None:
+        raise Fail('no session bus')
+    from gi.repository import GLib, Gio
+    try:
+        params = GLib.Variant(sig, tuple(args)) if sig else None
+        r = conn.call_sync(dest, path, iface, method, params,
+                           GLib.VariantType(reply) if reply else None, Gio.DBusCallFlags.NONE, timeout, None)
+    except Exception as e:
+        raise Fail(str(e).split(':')[-1].strip() or 'D-Bus call failed')
+    return r.unpack() if r is not None else None
+
+
+def get_prop(dest, path, iface, name):
+    return call(dest, path, 'org.freedesktop.DBus.Properties', 'Get', '(ss)', (iface, name))[0]
+
+
+def get_all(dest, path, iface):
+    return call(dest, path, 'org.freedesktop.DBus.Properties', 'GetAll', '(s)', (iface,))[0]
+
+
+def set_prop(dest, path, iface, name, sig, value):
+    from gi.repository import GLib
+    conn = bus()
+    if conn is None:
+        raise Fail('no session bus')
+    try:
+        conn.call_sync(dest, path, 'org.freedesktop.DBus.Properties', 'Set',
+                       GLib.Variant('(ssv)', (iface, name, GLib.Variant(sig, value))), None, 0, 4000, None)
+    except Exception as e:
+        raise Fail(str(e).split(':')[-1].strip() or 'D-Bus call failed')
+
+
+def kwin_running():
+    if fixture() is not None:
+        return False
+    try:
+        return bool(call('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'NameHasOwner',
+                         '(s)', ('org.kde.KWin',))[0])
+    except Fail:
+        return False
+
+
+def on_kwin():
+    """Mantel runs on KWin (the session exports HEARTH_WM=kwin), or the test preview."""
+    return os.environ.get('HEARTH_WM') == 'kwin' or fixture() is not None
+
+
+def notify_changed(name, changes):
+    """KDE's "this config changed" signal (what kwriteconfig6 --notify sends): KWin's watchers (sticky keys, the bell,
+    button rebinds, animation speed) take the new values at once."""
+    conn = bus()
+    if conn is None or not changes:
+        return
+    try:
+        from gi.repository import GLib
+        payload = {g.replace('][', '\x1d'): [k.encode() for k in kv] for g, kv in changes.items()}
+        conn.emit_signal(None, '/' + name, 'org.kde.kconfig.notify', 'ConfigChanged',
+                         GLib.Variant('(a{saay})', (payload,)))
+        conn.flush_sync(None)
+    except Exception as e:
+        hsio.log_event('kwin: config-changed signal not sent: %s' % e)
+
+
+def reconfigure():
+    if not kwin_running():
+        return False
+    try:
+        call('org.kde.KWin', '/KWin', 'org.kde.KWin', 'reconfigure')
+        return True
+    except Fail as e:
+        hsio.log_event('kwin: reconfigure failed: %s' % e)
+        return False
+
+
+def kwin_version():
+    if not shutil.which('kwin_wayland'):
+        return ''
+    try:
+        out = subprocess.run(['kwin_wayland', '--version'], capture_output=True, text=True, timeout=5).stdout
+    except (OSError, subprocess.SubprocessError):
+        return ''
+    m = re.search(r'(\d+\.\d+(\.\d+)?)', out or '')
+    return m.group(1) if m else ''
+
+
+# ------------------------------------------------------------------ status / get / set
+def data_dirs():
+    home = os.environ.get('XDG_DATA_HOME') or os.path.join(os.path.expanduser('~'), '.local', 'share')
+    return [home] + [d for d in (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':') if d]
+
+
+def switchers():
+    """Window switcher looks KWin can show (thumbnail_grid is built in; others are packages)."""
+    out = {'thumbnail_grid': 'Thumbnail grid'}
+    for d in data_dirs():
+        for sub in ('kwin-wayland/tabbox', 'kwin/tabbox', 'plasma/look-and-feel'):
+            for p in glob.glob(os.path.join(d, sub, '*')):
+                n = os.path.basename(p)
+                if sub.endswith('look-and-feel'):
+                    continue
+                if os.path.isdir(p) and n not in out:
+                    out[n] = _package_name(p) or n
+    return [{'id': k, 'label': v, 'hearth': k.startswith('org.hearth')} for k, v in out.items()]
+
+
+def _package_name(p):
+    try:
+        with open(os.path.join(p, 'metadata.json')) as f:
+            return (json.load(f).get('KPlugin') or {}).get('Name') or ''
+    except (OSError, ValueError):
+        return ''
+
+
+def status():
+    fx = fixture()
+    running = kwin_running()
+    effects = None
+    if fx is not None:
+        effects = fx.get('effects')
+    elif running:
+        try:
+            effects = list(get_prop('org.kde.KWin', '/Effects', 'org.kde.kwin.Effects', 'listOfEffects'))
+        except Fail:
+            effects = None
+    return {
+        'live': on_kwin(),
+        'preview': fx is not None,
+        'wm': os.environ.get('HEARTH_WM') or ('labwc' if os.environ.get('LABWC_PID') else ''),
+        'running': running,
+        'version': (fx or {}).get('version') or kwin_version(),
+        'effects': effects,
+        'defaults': EFFECTS,
+        'switchers': switchers(),
+    }
+
+
+def get_all_files():
+    files, mine, locked, bad = {}, {}, {}, {}
+    for n in FILES:
+        try:
+            files[n], mine[n], locked[n] = kc.effective(n)
+        except kc.BadFile as e:
+            bad[n] = str(e)
+            files[n], mine[n], locked[n] = {}, {}, {}
+    return {'files': files, 'mine': mine, 'locked': locked, 'bad': bad}
+
+
+NESTED = {'Tiling', 'ButtonRebinds'}     # groups whose subgroups the pages change ([Tiling][<screen>])
+
+
+def allowed(name, group):
+    if name not in ALLOWED:
+        return False
+    if '][' in group:
+        return group.split('][')[0] in NESTED and group.split('][')[0] in ALLOWED[name]
+    return group in ALLOWED[name]
+
+
+def set_file(name, raw):
+    try:
+        changes = json.loads(raw or 'null')
+    except ValueError:
+        raise Fail('expected JSON on stdin')
+    if name not in FILES or not isinstance(changes, dict):
+        raise Fail('expected FILE (%s) and {group: {key: value}}' % ', '.join(FILES))
+    for g in changes:
+        if not allowed(name, g):
+            raise Fail('[%s] in %s is not a setting Hearth changes' % (g, name))
+    _, _, locked = kc.effective(name)
+    for g, kv in changes.items():
+        for k in kv:
+            if k in locked.get(g, []):
+                raise Fail('%s is locked by the system (%s [%s])' % (k, name, g))
+    write_changes(name, changes)
+    out = get_all_files()
+    out['reloaded'] = reconfigure() if name in ('kwinrc', 'kwinrulesrc') else kwin_running()
+    return out
+
+
+def write_changes(name, changes, remove_groups=()):
+    try:
+        changed = kc.update(kc.user_path(name), changes, remove_groups)
+    except kc.BadFile as e:
+        hsio.notice('kwin-bad:%s' % name, "Your %s couldn't be read, so Hearth didn't change it (%s). Nothing was "
+                    'lost: the file is as it was.' % (name, e))
+        raise Fail("Your %s couldn't be read, so it wasn't changed: %s" % (name, e))
+    if changed:
+        notify_changed(name, changes)
+    return changed
+
+
+# ------------------------------------------------------------------ virtual desktops
+VDM = ('org.kde.KWin', '/VirtualDesktopManager', 'org.kde.KWin.VirtualDesktopManager')
+
+
+def desktops():
+    fx = fixture()
+    if kwin_running():
+        try:
+            ds = get_prop(*VDM, 'desktops')
+            rows = get_prop(*VDM, 'rows')
+            cur = get_prop(*VDM, 'current')
+            return {'desktops': [{'id': d[1], 'name': d[2]} for d in sorted(ds, key=lambda d: d[0])], 'rows': rows,
+                    'current': cur, 'live': True}
+        except Fail:
+            pass
+    vals, _, _ = kc.effective('kwinrc')
+    g = vals.get('Desktops', {})
+    try:
+        n = max(1, int(g.get('Number', (fx or {}).get('desktops', 1))))
+    except ValueError:
+        n = 1
+    out = []
+    for i in range(1, n + 1):
+        out.append({'id': g.get('Id_%d' % i, ''), 'name': g.get('Name_%d' % i, 'Desktop %d' % i)})
+    try:
+        rows = int(g.get('Rows', 2))
+    except ValueError:
+        rows = 2
+    return {'desktops': out, 'rows': rows, 'current': out[0]['id'] if out else '', 'live': False}
+
+
+def desktops_set(raw):
+    try:
+        req = json.loads(raw or 'null')
+    except ValueError:
+        raise Fail('expected JSON on stdin')
+    if not isinstance(req, dict):
+        raise Fail('expected {"count": n, "names": {...}, "rows": n}')
+    cur = desktops()
+    count = req.get('count')
+    if count is not None and (not isinstance(count, int) or not 1 <= count <= 20):
+        raise Fail('1 to 20 desktops')
+    rows = req.get('rows')
+    if rows is not None and (not isinstance(rows, int) or not 1 <= rows <= 4):
+        raise Fail('1 to 4 rows')
+    names = req.get('names') or {}
+    if not isinstance(names, dict) or any(not isinstance(v, str) or len(v) > 60 or '\n' in v for v in names.values()):
+        raise Fail('names: {id or position: name}')
+    if cur['live']:
+        ds = cur['desktops']
+        if count is not None:
+            while len(ds) < count:
+                call(*VDM, 'createDesktop', '(us)', (len(ds), 'Desktop %d' % (len(ds) + 1)))
+                ds = desktops()['desktops']
+            while len(ds) > count:
+                call(*VDM, 'removeDesktop', '(s)', (ds[-1]['id'],))
+                ds = desktops()['desktops']
+        for k, v in names.items():
+            d = next((d for d in ds if d['id'] == k), None) or (ds[int(k) - 1] if k.isdigit() and 0 < int(k) <= len(ds) else None)
+            if d:
+                call(*VDM, 'setDesktopName', '(ss)', (d['id'], v.strip() or d['name']))
+        if rows is not None:
+            set_prop(*VDM, 'rows', 'u', rows)
+        return desktops()
+    # KWin isn't running: its file, the way KWin writes it (it reads Number, Name_N, Id_N and Rows at start).
+    ch = {}
+    n = len(cur['desktops'])
+    if count is not None and count != n:
+        ch['Number'] = count
+        for i in range(n + 1, count + 1):
+            ch['Id_%d' % i] = str(uuid.uuid4())
+        for i in range(count + 1, n + 1):
+            ch['Id_%d' % i] = None
+            ch['Name_%d' % i] = None
+    for k, v in names.items():
+        pos = int(k) if k.isdigit() else next((i + 1 for i, d in enumerate(cur['desktops']) if d['id'] == k), 0)
+        if pos:
+            ch['Name_%d' % pos] = v.strip() or 'Desktop %d' % pos
+    if rows is not None:
+        ch['Rows'] = rows
+    if ch:
+        write_changes('kwinrc', {'Desktops': ch})
+    return desktops()
+
+
+# ------------------------------------------------------------------ screens and tile layouts
+_KWIN_NS = uuid.uuid5(uuid.NAMESPACE_URL, 'https://kwin.kde.org/o/')
+
+
+def output_uuid(name, eisa, model, serial):
+    """KWin's id for a screen (core/output.cpp generateOutputId): its tile layout is kept under [Tiling][<this>]."""
+    return str(uuid.uuid5(_KWIN_NS, ':'.join([name, eisa, model, serial])))
+
+
+def edid_ids(edid):
+    """(eisaId, model, serial) the way KWin reads them with libdisplay-info."""
+    if len(edid) < 128 or edid[:8] != b'\x00\xff\xff\xff\xff\xff\xff\x00':
+        return '', '', ''
+    v = (edid[8] << 8) | edid[9]
+    eisa = ''.join(chr(((v >> s) & 0x1f) + ord('A') - 1) for s in (10, 5, 0))
+    product = edid[10] | (edid[11] << 8)
+    serial_num = edid[12] | (edid[13] << 8) | (edid[14] << 16) | (edid[15] << 24)
+    name = serial = ''
+    for off in (54, 72, 90, 108):
+        d = edid[off:off + 18]
+        if d[0:3] == b'\x00\x00\x00':
+            text = d[5:18].split(b'\n')[0].decode('latin-1').rstrip()
+            if d[3] == 0xfc:
+                name = text
+            elif d[3] == 0xff:
+                serial = text
+    model = name or '0x%04X' % product
+    if not serial and serial_num:
+        serial = '0x%08X' % serial_num
+    return eisa, model, serial
+
+
+def outputs():
+    fx = fixture()
+    if fx is not None:
+        return {'outputs': fx.get('outputs', [])}
+    out = []
+    for p in sorted(glob.glob('/sys/class/drm/card*-*')):
+        try:
+            with open(os.path.join(p, 'status')) as f:
+                if f.read().strip() != 'connected':
+                    continue
+            with open(os.path.join(p, 'edid'), 'rb') as f:
+                edid = f.read()
+        except OSError:
+            continue
+        name = re.sub(r'^card\d+-', '', os.path.basename(p))
+        eisa, model, serial = edid_ids(edid)
+        out.append({'name': name, 'uuid': output_uuid(name, eisa, model, serial), 'model': model, 'maker': eisa})
+    # Layouts KWin already keeps for screens that aren't here now.
+    vals, _, _ = kc.effective('kwinrc')
+    known = {o['uuid'] for o in out}
+    for g in vals:
+        if g.startswith('Tiling][') and g[8:] not in known:
+            out.append({'name': '', 'uuid': g[8:], 'model': 'A screen that isn\'t connected', 'maker': '', 'away': True})
+    return {'outputs': out}
+
+
+def layout_to_kwin(layout):
+    """Hearth's editor's columns (widths, each split into rows) as KWin's tiles JSON."""
+    cols = layout.get('columns') if isinstance(layout, dict) else None
+    if not isinstance(cols, list) or not 1 <= len(cols) <= 8:
+        raise Fail('1 to 8 columns')
+    widths = [float(c.get('width') or 0) for c in cols]
+    if any(w <= 0.04 for w in widths):
+        raise Fail('every column needs some width')
+    total = sum(widths)
+    tiles = []
+    for c, w in zip(cols, widths):
+        t = {'width': round(w / total, 4)}
+        rows = c.get('rows') or []
+        if not isinstance(rows, list) or len(rows) > 6:
+            raise Fail('at most 6 rows in a column')
+        if len(rows) > 1:
+            hs = [float(h or 0) for h in rows]
+            if any(h <= 0.04 for h in hs):
+                raise Fail('every row needs some height')
+            th = sum(hs)
+            t['layoutDirection'] = 'vertical'
+            t['tiles'] = [{'height': round(h / th, 4)} for h in hs]
+        tiles.append(t)
+    return {'layoutDirection': 'horizontal', 'tiles': tiles}
+
+
+def kwin_to_layout(text):
+    try:
+        d = json.loads(text)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(d, dict) or d.get('layoutDirection') != 'horizontal' or not isinstance(d.get('tiles'), list):
+        return None
+    cols = []
+    for t in d['tiles']:
+        if not isinstance(t, dict):
+            return None
+        rows = []
+        if t.get('layoutDirection') == 'vertical' and isinstance(t.get('tiles'), list):
+            rows = [float(x.get('height') or 0) for x in t['tiles'] if isinstance(x, dict)]
+            if any(isinstance(x, dict) and x.get('tiles') for x in t['tiles']):
+                return None     # deeper than Hearth's editor draws: shown as "made in KWin's editor"
+        elif t.get('tiles'):
+            return None
+        cols.append({'width': float(t.get('width') or 0), 'rows': rows})
+    return {'columns': cols}
+
+
+TILE_SCRIPT = r'''
+// Hearth Settings › Tiling: puts this layout on screen %(name)s now (KWin also reads it from kwinrc when it starts).
+(function () {
+    var layout = %(layout)s;
+    var tm = workspace.tilingForScreen(%(name)s);
+    if (!tm) return;
+    var root = tm.rootTile;
+    var kids = root.tiles.slice();
+    for (var i = kids.length - 1; i >= 0; i--) kids[i].remove();
+    var x = 0, cols = [];
+    var first = root.split(1);           // two columns
+    cols.push(first[0]);
+    if (layout.tiles.length > 1) cols.push(first[1]); else first[1].remove();
+    while (cols.length < layout.tiles.length) cols.push(cols[cols.length - 1].split(1)[1]);
+    for (var c = 0; c < cols.length; c++) {
+        var w = layout.tiles[c].width;
+        cols[c].relativeGeometry = {x: x, y: 0, width: w, height: 1};
+        x += w;
+    }
+    for (var c = 0; c < cols.length; c++) {
+        var t = layout.tiles[c];
+        if (!t.tiles || t.tiles.length < 2) continue;
+        var rows = cols[c].split(2);
+        var list = [rows[0], rows[1]];
+        while (list.length < t.tiles.length) list.push(list[list.length - 1].split(2)[1]);
+        var y = 0, g = cols[c].relativeGeometry;
+        for (var r = 0; r < list.length; r++) {
+            list[r].relativeGeometry = {x: g.x, y: y, width: g.width, height: t.tiles[r].height};
+            y += t.tiles[r].height;
+        }
+    }
+    if (%(padding)s >= 0) root.padding = %(padding)s;
+})();
+'''
+
+
+def run_script(name, text):
+    """Runs a small KWin script once (org.kde.KWin /Scripting), then unloads it."""
+    d = os.path.join(runtime_dir(), 'hearth-kwin')
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, name + '.js')
+    hsio.write_text(path, text)
+    plugin = 'hearth-' + name
+    try:
+        try:
+            call('org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting', 'unloadScript', '(s)', (plugin,))
+        except Fail:
+            pass
+        sid = call('org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting', 'loadScript', '(ss)', (path, plugin))[0]
+        if sid < 0:
+            raise Fail('KWin didn\'t load the script')
+        call('org.kde.KWin', '/Scripting/Script%d' % sid, 'org.kde.kwin.Script', 'run')
+        return True
+    finally:
+        try:
+            call('org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting', 'unloadScript', '(s)', (plugin,))
+        except Fail:
+            pass
+
+
+def tiles_set(out_uuid, out_name, raw):
+    try:
+        req = json.loads(raw or 'null')
+    except ValueError:
+        raise Fail('expected JSON on stdin')
+    if not re.match(r'^[0-9a-f-]{36}$', out_uuid or ''):
+        raise Fail('a screen id')
+    ch = {}
+    group = {}
+    if isinstance(req, dict) and 'columns' in req:
+        kw = layout_to_kwin(req)
+        ch['Tiling][' + out_uuid] = {'tiles': json.dumps(kw, separators=(',', ':'))}
+    else:
+        kw = None
+    pad = req.get('padding') if isinstance(req, dict) else None
+    if pad is not None:
+        if not isinstance(pad, (int, float)) or not 0 <= pad <= 64:
+            raise Fail('padding 0 to 64')
+        group['padding'] = int(pad)
+        ch['Tiling'] = group
+    if not ch:
+        raise Fail('nothing to change')
+    write_changes('kwinrc', ch)
+    live = False
+    if kwin_running() and kw and out_name:
+        try:
+            run_script('tiles', TILE_SCRIPT % {'name': json.dumps(out_name), 'layout': json.dumps(kw),
+                                               'padding': int(pad) if pad is not None else -1})
+            live = True
+        except (Fail, OSError) as e:
+            hsio.log_event('kwin: tile layout not put on the screen now: %s' % e)
+    return {'ok': True, 'live': live}
+
+
+# ------------------------------------------------------------------ window rules
+RULE_KEYS = {
+    # key: kind
+    'Description': 's', 'Enabled': 'b', 'wmclass': 's', 'wmclassmatch': 'i', 'wmclasscomplete': 'b', 'title': 's',
+    'titlematch': 'i', 'types': 'i', 'position': 's', 'positionrule': 'i', 'size': 's', 'sizerule': 'i',
+    'desktops': 's', 'desktopsrule': 'i', 'screen': 'i', 'screenrule': 'i', 'above': 'b', 'aboverule': 'i',
+    'below': 'b', 'belowrule': 'i', 'noborder': 'b', 'noborderrule': 'i', 'minimize': 'b', 'minimizerule': 'i',
+    'maximizehoriz': 'b', 'maximizehorizrule': 'i', 'maximizevert': 'b', 'maximizevertrule': 'i',
+    'fullscreen': 'b', 'fullscreenrule': 'i', 'skiptaskbar': 'b', 'skiptaskbarrule': 'i', 'skipswitcher': 'b',
+    'skipswitcherrule': 'i', 'opacityactive': 'i', 'opacityactiverule': 'i', 'opacityinactive': 'i',
+    'opacityinactiverule': 'i', 'tearing': 'b', 'tearingrule': 'i', 'adaptivesync': 'b', 'adaptivesyncrule': 'i',
+    'acceptfocus': 'b', 'acceptfocusrule': 'i', 'placement': 'i', 'placementrule': 'i', 'layer': 's',
+    'layerrule': 'i', 'blockcompositing': 'b', 'blockcompositingrule': 'i', 'closeable': 'b', 'closeablerule': 'i',
+}
+RULE_ID = re.compile(r'^[0-9a-f-]{8,40}$')
+
+
+def rules():
+    vals, _, _ = kc.effective('kwinrulesrc')
+    general = vals.get('General', {})
+    ids = [x for x in (general.get('rules') or '').split(',') if x]
+    if not ids:
+        try:
+            ids = [str(i) for i in range(1, int(general.get('count') or 0) + 1)]
+        except ValueError:
+            ids = []
+    out = []
+    for rid in ids:
+        g = vals.get(rid)
+        if g is None:
+            continue
+        out.append({'id': rid, 'values': {k: v for k, v in g.items() if k in RULE_KEYS},
+                    'other': sorted(k for k in g if k not in RULE_KEYS)})
+    return {'rules': out}
+
+
+def _check_rule_value(k, v):
+    if v is None:
+        return None
+    kind = RULE_KEYS.get(k)
+    if kind is None:
+        raise Fail('%s is not a rule Hearth edits' % k)
+    if kind == 'b' and not isinstance(v, bool):
+        raise Fail('%s: on or off' % k)
+    if kind == 'i' and (not isinstance(v, int) or isinstance(v, bool) or not -1 <= v <= 1 << 20):
+        raise Fail('%s: a number' % k)
+    if kind == 's' and (not isinstance(v, str) or len(v) > 400 or '\n' in v):
+        raise Fail('%s: text on one line' % k)
+    if k in ('position', 'size') and v and not re.match(r'^-?\d{1,5},-?\d{1,5}$', v):
+        raise Fail('%s: two numbers, "x,y"' % k)
+    if k.endswith('rule') and not 0 <= v <= 6:
+        raise Fail('%s: 0 to 6' % k)
+    if k.endswith('match') and not 0 <= v <= 3:
+        raise Fail('%s: 0 to 3' % k)
+    return v
+
+
+def rule_set(raw):
+    try:
+        req = json.loads(raw or 'null')
+    except ValueError:
+        raise Fail('expected JSON on stdin')
+    if not isinstance(req, dict) or not isinstance(req.get('set'), dict):
+        raise Fail('expected {"id": "...", "set": {key: value}}')
+    rid = req.get('id') or ''
+    sets = {k: _check_rule_value(k, v) for k, v in req['set'].items()}
+    cur = rules()['rules']
+    ids = [r['id'] for r in cur]
+    ch = {}
+    if not rid:
+        rid = str(uuid.uuid4())
+        ids.append(rid)
+        sets.setdefault('Description', 'Window rule')
+        ch['General'] = {'count': len(ids), 'rules': ','.join(ids)}
+    elif not RULE_ID.match(rid) and not rid.isdigit():
+        raise Fail('a rule id')
+    elif rid not in ids:
+        raise Fail('that rule is gone (changed somewhere else?)')
+    ch[rid] = sets
+    write_changes('kwinrulesrc', ch)
+    reconfigure()
+    return dict(rules(), id=rid)
+
+
+def rule_delete(rid):
+    cur = rules()['rules']
+    ids = [r['id'] for r in cur]
+    if rid not in ids:
+        raise Fail('that rule is gone')
+    ids.remove(rid)
+    write_changes('kwinrulesrc', {'General': {'count': len(ids), 'rules': ','.join(ids)}}, remove_groups=(rid,))
+    reconfigure()
+    return rules()
+
+
+def pick_window():
+    if not kwin_running():
+        raise Fail('KWin isn\'t running')
+    try:
+        info = call('org.kde.KWin', '/KWin', 'org.kde.KWin', 'queryWindowInfo', timeout=60000)[0]
+    except Fail as e:
+        raise Fail('No window picked (%s)' % e)
+    return {'wmclass': info.get('resourceClass') or '', 'name': info.get('resourceName') or '',
+            'title': info.get('caption') or '', 'desktopFile': info.get('desktopFile') or ''}
+
+
+# ------------------------------------------------------------------ input devices
+DEV_PATH = '/org/kde/KWin/InputDevice'
+
+
+def input_devices():
+    fx = fixture()
+    if fx is not None:
+        return {'devices': fx.get('devices', []), 'live': False}
+    if not kwin_running():
+        return {'devices': [], 'live': False}
+    try:
+        names = get_prop('org.kde.KWin', DEV_PATH, 'org.kde.KWin.InputDeviceManager', 'devicesSysNames')
+    except Fail as e:
+        raise Fail('KWin didn\'t list its input devices (%s)' % e)
+    out = []
+    for n in names:
+        try:
+            props = get_all('org.kde.KWin', DEV_PATH + '/' + n, 'org.kde.KWin.InputDevice')
+        except Fail:
+            continue
+        d = {k: _plain(props[k]) for k in INPUT_READ if k in props}
+        out.append(d)
+    return {'devices': out, 'live': True}
+
+
+def _plain(v):
+    if isinstance(v, tuple):
+        return list(v)
+    return v
+
+
+def _variant_value(kind, v):
+    if kind == 'b':
+        if not isinstance(v, bool):
+            raise Fail('on or off')
+        return 'b', v
+    if kind == 'd':
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            raise Fail('a number')
+        return 'd', float(v)
+    if kind == 'i':
+        if not isinstance(v, int) or isinstance(v, bool):
+            raise Fail('a whole number')
+        return 'i', v
+    if kind == 's':
+        if not isinstance(v, str) or len(v) > 200 or '\n' in v:
+            raise Fail('text')
+        return 's', v
+    if kind == 'rect':
+        if not isinstance(v, list) or len(v) != 4 or not all(isinstance(x, (int, float)) for x in v):
+            raise Fail('[x, y, width, height]')
+        return '(dddd)', tuple(float(x) for x in v)
+    raise Fail('unknown')
+
+
+def input_set(sysname, raw):
+    if not re.match(r'^[A-Za-z0-9_.-]{1,64}$', sysname or ''):
+        raise Fail('a device')
+    try:
+        req = json.loads(raw or 'null')
+    except ValueError:
+        raise Fail('expected JSON on stdin')
+    if not isinstance(req, dict):
+        raise Fail('expected {property: value}')
+    for k in req:
+        if k not in INPUT_PROPS:
+            raise Fail('%s is not a setting Hearth changes' % k)
+    if fixture() is not None:
+        return {'ok': True, 'preview': True}
+    if not kwin_running():
+        raise Fail('KWin isn\'t running')
+    for k, v in req.items():
+        sig, val = _variant_value(INPUT_PROPS[k], v)
+        set_prop('org.kde.KWin', DEV_PATH + '/' + sysname, 'org.kde.KWin.InputDevice', k, sig, val)
+    return {'ok': True}
+
+
+def load_helper(name):
+    import importlib.machinery
+    import importlib.util
+    loader = importlib.machinery.SourceFileLoader(name.replace('-', '_'), os.path.join(HERE, name))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    mod = importlib.util.module_from_spec(spec)
+    loader.exec_module(mod)
+    return mod
+
+
+def pointer_json():
+    """Settings › Mouse & touchpad (pointer.json, the one home of these settings) with Hearth's defaults for what the
+    person hasn't chosen, as hearth-system reads it for labwc."""
+    try:
+        return load_helper('hearth-system').pointer_saved()
+    except Exception as e:
+        hsio.log_event('kwin: pointer.json not read through hearth-system (%s)' % e)
+        p = os.path.join(kc.config_home(), 'nimbus', 'pointer.json')
+        d = hsio.load_json(p, {}) if os.path.exists(p) else {}
+        return d if isinstance(d, dict) else {}
+
+
+def pointer_props(kind, s):
+    """pointer.json's settings for one kind ('mouse' / 'touchpad') as KWin InputDevice properties."""
+    out = {}
+    if isinstance(s.get('speed'), (int, float)) and not isinstance(s.get('speed'), bool):
+        out['pointerAcceleration'] = max(-1.0, min(1.0, float(s['speed'])))
+    if s.get('accel') in ('flat', 'adaptive'):
+        out['pointerAccelerationProfileFlat'] = s['accel'] == 'flat'
+        out['pointerAccelerationProfileAdaptive'] = s['accel'] == 'adaptive'
+    for src, dst in (('natural', 'naturalScroll'), ('leftHanded', 'leftHanded'), ('tap', 'tapToClick'),
+                     ('dwt', 'disableWhileTyping'), ('tapDrag', 'tapAndDrag'), ('middle', 'middleEmulation')):
+        if isinstance(s.get(src), bool):
+            out[dst] = s[src]
+    if s.get('scroll') in ('twofinger', 'edge'):
+        out['scrollTwoFinger'] = s['scroll'] == 'twofinger'
+        out['scrollEdge'] = s['scroll'] == 'edge'
+    if isinstance(s.get('scrollSpeed'), (int, float)) and not isinstance(s.get('scrollSpeed'), bool):
+        out['scrollFactor'] = max(0.1, min(5.0, float(s['scrollSpeed'])))
+    if s.get('click') in ('areas', 'fingers'):
+        out['clickMethodAreas'] = s['click'] == 'areas'
+        out['clickMethodClickfinger'] = s['click'] == 'fingers'
+    return out
+
+
+SUPPORT = {'pointerAcceleration': 'supportsPointerAcceleration', 'pointerAccelerationProfileFlat': 'supportsPointerAccelerationProfileFlat',
+           'pointerAccelerationProfileAdaptive': 'supportsPointerAccelerationProfileFlat', 'naturalScroll': 'supportsNaturalScroll',
+           'leftHanded': 'supportsLeftHanded', 'disableWhileTyping': 'supportsDisableWhileTyping',
+           'middleEmulation': 'supportsMiddleEmulation', 'scrollTwoFinger': 'supportsScrollTwoFinger',
+           'scrollEdge': 'supportsScrollEdge', 'clickMethodAreas': 'supportsClickMethodAreas',
+           'clickMethodClickfinger': 'supportsClickMethodClickfinger'}
+
+
+def pointer_plan(devices, settings):
+    """[(sysName, property, value)] to put pointer.json on these devices: only what differs from the device now, and
+    only what the device can do."""
+    plan = []
+    for d in devices:
+        if d.get('touchpad'):
+            kind = 'touchpad'
+        elif d.get('pointer') and not d.get('touch') and not d.get('tabletTool') and not d.get('tabletPad'):
+            kind = 'mouse'
+        else:
+            continue
+        want = pointer_props(kind, settings.get(kind) or {})
+        for k, v in want.items():
+            sup = SUPPORT.get(k)
+            if sup and not d.get(sup, False):
+                continue
+            if k in ('tapToClick', 'tapAndDrag') and not d.get('tapFingerCount'):
+                continue
+            if k not in d or d.get(k) == v or (isinstance(v, float) and isinstance(d.get(k), (int, float)) and abs(d[k] - v) < 1e-6):
+                continue
+            plan.append((d['sysName'], k, v))
+    return plan
+
+
+def pointer_apply():
+    if not kwin_running():
+        return {'ok': True, 'applied': 0, 'kwin': False}
+    plan = pointer_plan(input_devices()['devices'], pointer_json())
+    bad = []
+    for sysname, k, v in plan:
+        sig, val = _variant_value(INPUT_PROPS[k], v)
+        try:
+            set_prop('org.kde.KWin', DEV_PATH + '/' + sysname, 'org.kde.KWin.InputDevice', k, sig, val)
+        except Fail as e:
+            bad.append('%s %s: %s' % (sysname, k, e))
+    if bad:
+        hsio.log_event('kwin: mouse/touchpad settings not all taken: ' + '; '.join(bad))
+    return {'ok': not bad, 'applied': len(plan) - len(bad), 'kwin': True}
+
+
+def input_watch():
+    """For the session: puts the mouse and touchpad settings on every device now and on each one plugged in later."""
+    pointer_apply()
+    conn = bus()
+    if conn is None:
+        return
+    from gi.repository import GLib
+
+    def added(*_a):
+        GLib.timeout_add(300, lambda: (pointer_apply(), False)[1])
+    conn.signal_subscribe('org.kde.KWin', 'org.kde.KWin.InputDeviceManager', 'deviceAdded', DEV_PATH, None, 0, added)
+    GLib.MainLoop().run()
+
+
+def rebind(tool, button, raw):
+    if not tool or '\n' in tool or ']' in tool or '[' in tool or len(tool) > 120:
+        raise Fail('a pen')
+    if not re.match(r'^\d{1,4}$', button or ''):
+        raise Fail('a button number')
+    action = (raw or '').strip()
+    if action and not re.match(r'^(Disabled|MouseButton,\d{1,3}(,\d{1,10})?|Key,[A-Za-z0-9+_ .,-]{1,40}|TabletToolButton,\d{1,4})$', action):
+        raise Fail('an action: MouseButton,N, Key,Ctrl+Z, TabletToolButton,N or Disabled')
+    write_changes('kcminputrc', {'ButtonRebinds][TabletTool][' + tool: {button: action or None}})
+    return {'ok': True}
+
+
+def shortcut(name):
+    real = SHORTCUTS.get(name)
+    if not real:
+        raise Fail('one of: ' + ', '.join(SHORTCUTS))
+    if not kwin_running():
+        raise Fail('KWin isn\'t running')
+    call('org.kde.kglobalaccel', '/component/kwin', 'org.kde.kglobalaccel.Component', 'invokeShortcut', '(s)', (real,))
+    return {'ok': True}
+
+
+def main(argv):
+    c = argv[1] if len(argv) > 1 else ''
+    a = argv[2:]
+    if c == 'status' and not a:
+        out = status()
+    elif c == 'get' and not a:
+        out = get_all_files()
+    elif c == 'set' and len(a) == 1:
+        out = set_file(a[0], sys.stdin.read())
+    elif c == 'desktops' and not a:
+        out = desktops()
+    elif c == 'desktops-set' and not a:
+        out = desktops_set(sys.stdin.read())
+    elif c == 'outputs' and not a:
+        out = outputs()
+        vals, _, _ = kc.effective('kwinrc')
+        for o in out['outputs']:
+            o['layout'] = kwin_to_layout(vals.get('Tiling][' + o['uuid'], {}).get('tiles', ''))
+            o['custom'] = 'tiles' in vals.get('Tiling][' + o['uuid'], {})
+        out['padding'] = vals.get('Tiling', {}).get('padding', '4')
+    elif c == 'tiles-set' and len(a) == 2:
+        out = tiles_set(a[0], a[1], sys.stdin.read())
+    elif c == 'rules' and not a:
+        out = rules()
+    elif c == 'rule-set' and not a:
+        out = rule_set(sys.stdin.read())
+    elif c == 'rule-delete' and len(a) == 1:
+        out = rule_delete(a[0])
+    elif c == 'pick-window' and not a:
+        out = pick_window()
+    elif c == 'input' and not a:
+        out = input_devices()
+    elif c == 'input-set' and len(a) == 1:
+        out = input_set(a[0], sys.stdin.read())
+    elif c == 'pointer-apply' and not a:
+        out = pointer_apply()
+    elif c == 'input-watch' and not a:
+        input_watch()
+        return
+    elif c == 'rebind' and len(a) == 2:
+        out = rebind(a[0], a[1], sys.stdin.read())
+    elif c == 'shortcut' and len(a) == 1:
+        out = shortcut(a[0])
+    else:
+        print(__doc__.strip(), file=sys.stderr)
+        sys.exit(2)
+    print(json.dumps(out, ensure_ascii=False), flush=True)
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv)
+    except (Fail, kc.BadFile, ValueError, OSError) as e:
+        print('error: ' + str(e), flush=True)
+        sys.exit(1)
