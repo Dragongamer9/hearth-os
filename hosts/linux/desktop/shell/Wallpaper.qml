@@ -44,17 +44,23 @@ PanelWindow {
     onPrimaryChanged: if (primary) stillTimer.restart()
     Timer { id: stillTimer; interval: 5000; running: root.primary; onTriggered: root.saveStill() }
     function saveStill() {
-        if (!contentItem || width < 10 || height < 10) return;
+        if (width < 10 || height < 10) return;
         Quickshell.execDetached(["mkdir", "-p", stillPath.replace(/\/[^/]*$/, "")]);
         grabbing = true;
         Qt.callLater(() => {
-            const ok = contentItem.grabToImage(r => { r.saveToFile(root.stillPath); root.grabbing = false; }, Qt.size(width, height));
+            const ok = scene.grabToImage(r => { r.saveToFile(root.stillPath); root.grabbing = false; }, Qt.size(width, height));
             if (!ok) grabbing = false;
         });
     }
     Item { id: gpuProbe; readonly property bool gpu: GraphicsInfo.api !== GraphicsInfo.Software && GraphicsInfo.api !== GraphicsInfo.Unknown }
     readonly property bool slateMoving: moving && gpu
 
+    // Everything the wallpaper draws is in `scene` (the desktop clock isn't), so saveStill() can grab it: a window's own
+    // contentItem has no QML engine and grabToImage on it fails ("item has no QML engine"), so the still was never saved.
+    Item {
+    id: scene
+    anchors.fill: parent
+    Rectangle { anchors.fill: parent; color: Theme.bg }
     // ---------------------------------------------------------------- Lava: big soft blobs drifting slowly
     Item {
         id: lava
@@ -415,6 +421,7 @@ PanelWindow {
         }
         Rectangle { anchors.fill: parent; color: "transparent"; border.width: 2; border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.55) }
     }
+    }   // scene
     // The desktop clock and weather (Settings › Appearance; on by default in some looks), main screen only.
     Loader {
         anchors.fill: parent
