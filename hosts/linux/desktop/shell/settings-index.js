@@ -687,6 +687,12 @@ var ENTRIES = [
 "i": "sun"
 },
 {
+"t": "How bright",
+"p": "display",
+"d": "Darker or brighter than Auto-brightness picks for the room",
+"i": "sun"
+},
+{
 "t": "Night light",
 "p": "display",
 "d": "Warmer colours from sunset to sunrise, to help you sleep",

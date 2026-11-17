@@ -56,7 +56,7 @@ Night Light and tearing.
 | Sticky edge between screens, sticky corners | kwinrc `[EdgeBarrier] EdgeBarrier`, `CornerBarrier` (also on Screen edges) | no |
 | Virtual desktops: every screen / main screen only | screens.json `desktopsMainOnly`; `hearth-main-desktops.js` (a KWin script that keeps the other screens' windows on every desktop and puts back only those when turned off). "Each its own" needs a newer KWin | no |
 | Brightness of an external screen | DDC/CI through `ddcutil` (`hearth-screens ddc`, `ddc-set`), or KWin's own control where a newer KWin has it; nothing saved (the screen keeps it) | no |
-| Auto-brightness (a light sensor only) | screens.json `autoBrightness`; the shell runs `hearth-screens autobright` while it's on | no |
+| Auto-brightness, How bright (a light sensor only; off until you turn it on) | the sensor through iio-sensor-proxy (`net.hadess.SensorProxy`, `ClaimLight`, `LightLevel`; the kernel's IIO files where the proxy isn't running); screens.json `autoBrightness`, `autoBrightnessOffset` (-40 to +40 %); the shell runs `hearth-screens autobright` while it's on: the light smoothed (about ten seconds), the built-in screen moved in small steps through `brightnessctl` (the slider's and keys' path); a brightness set by hand pauses it until the light really changes (about twice or half as bright), shown on the page | no |
 | Night light: sunset to sunrise, fade | desktop.json `nightMode: "location"`, `nightPlace`, `nightLat`, `nightLon` (your town, looked up by name), `nightFade` (minutes); KWin's `Mode=Location` with the fixed place (never its network lookup), wlsunset's `-l/-L` and `-d` | no |
 
 Hidden because KWin 6.3 (Debian 13) has no way to set them: colour depth (bits per colour), reduce red tint, each
