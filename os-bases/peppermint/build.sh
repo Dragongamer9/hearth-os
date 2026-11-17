@@ -547,6 +547,8 @@ command -v 7z >/dev/null || command -v 7zz >/dev/null || command -v 7za >/dev/nu
 # notify-send's library its notifications. Their firewall helper and polkit rule come from os/system_files
 # (hearth-link-firewall, 49-hearth-link.rules): ports open only while the apps listen, and only to local addresses.
 optional playerctl wl-clipboard wtype libnotify-bin
+# Phone link (docs/PHONE-LINK.md): sshfs opens the phone's files (KDE Connect's SFTP); wireplumber's wpctl is the volume.
+optional sshfs
 for app in hearth-nearby hearth-connect; do
   if [ -x "/ctx/nimbus-app/$app" ]; then
     install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
@@ -688,8 +690,9 @@ Type=Application
 Categories=Network;Utility;
 Keywords=kde connect;kdeconnect;phone;android;iphone;notifications;clipboard;remote;touchpad;
 DESKTOP
-  # The background service that keeps the phone linked. Off until the person opens Hearth Connect (which turns it on
-  # for their account), so nothing listens on the network before they ask for it.
+  # The background service that keeps the phone linked. No [Install]: it starts at sign-in through
+  # `hearth-connect --autostart` (Mantel's autostart), and only once the person has turned Phone link on (Settings ›
+  # Phone, Quick Access, or the Hearth Connect window), so nothing listens on the network before they ask for it.
   cat > /usr/lib/systemd/user/hearth-connect.service <<UNIT
 [Unit]
 Description=Hearth Connect (your phone, linked; KDE Connect's protocol)
@@ -698,9 +701,6 @@ Description=Hearth Connect (your phone, linked; KDE Connect's protocol)
 ExecStart=/usr/bin/hearth-connect --daemon
 Restart=on-failure
 RestartSec=5
-
-[Install]
-WantedBy=default.target
 UNIT
 fi
 # ---- end of Nearby Share and Hearth Connect

@@ -58,6 +58,10 @@ var PAGES = [
     { id: "bluetooth", file: "SetBluetooth.qml", cat: "bt", label: "Bluetooth", icon: "bt", desc: "Headphones, controllers and other wireless devices", words: "headphones headset speaker pair devices", old: "Bluetooth", status: "bt" },
     { id: "keyboard", file: "SetKeyboard.qml", cat: "bt", label: "Keyboard", icon: "kbd", desc: "Layouts, typing, the on-screen keyboard, shortcuts", words: "layout on-screen osk typing shortcuts", old: "Keyboard" },
     { id: "mouse", file: "SetMouse.qml", cat: "bt", label: "Mouse & touchpad", icon: "mouse", desc: "Pointer speed, scrolling, tapping", words: "touchpad pointer cursor speed", old: "Mouse & touchpad" },
+    // ---- Phone link (Hearth Connect, KDE Connect's protocol: docs/PHONE-LINK.md)
+    { id: "phone", file: "SetPhone.qml", cat: "bt", label: "Phone", icon: "phone", desc: "Your phone linked with the KDE Connect app: notifications, messages, files, calls", words: "kde connect kdeconnect android iphone mobile sms text messages notifications reply clipboard share send files ring find my phone touchpad remote input presentation remote calls mute ringer run commands battery browse phone files sftp contacts photo" },
+    { id: "phone-messages", file: "SetPhoneMessages.qml", cat: "bt", parent: "phone", label: "Messages", icon: "chat", desc: "Your phone's text messages: read and send", words: "sms text messages conversations send a text", hidden: true },
+    // ---- end Phone link
     { id: "printers", file: "SetPrinters.qml", cat: "bt", label: "Printers", icon: "printer", desc: "Printers and scanners", words: "print scanner", old: "Printers" },
 
     // ---- Hearth Link (its own category; the page is the landing)
