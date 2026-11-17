@@ -375,8 +375,9 @@ def sensors():
                 rows.append(sensor('power', 'Power draw', float(f[3])))
             if rows:
                 chips.append({'title': f[0] + ' (NVIDIA)', 'chip': 'nvidia', 'sensors': rows})
-    secs = [{'title': c['title'], 'rows': [[s['label'], s['text']] for s in c['sensors']], 'gauges': [s for s in c['sensors'] if s['kind'] == 'temp']}
-            for c in chips]
+    # Temperatures are drawn as bars with their limits (gauges); fans, voltages and power as rows.
+    secs = [{'title': c['title'], 'rows': [[s['label'], s['text']] for s in c['sensors'] if s['kind'] != 'temp'],
+             'gauges': [s for s in c['sensors'] if s['kind'] == 'temp']} for c in chips]
     return {'sections': secs or [{'title': 'Sensors', 'rows': [['Sensors', 'None found: this PC (or a virtual machine) shows no temperatures or fans']]}], 'live': True}
 
 

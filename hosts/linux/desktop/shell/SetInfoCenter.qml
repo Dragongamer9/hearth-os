@@ -98,6 +98,7 @@ SetPage {
                             }
                         }
                         Text { Layout.preferredWidth: 70; horizontalAlignment: Text.AlignRight; text: Math.round(modelData.value) + " °C"; color: modelData.hot ? Theme.danger : Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
+                        Text { Layout.preferredWidth: 150; text: modelData.text.indexOf("(") >= 0 ? modelData.text.replace(/^.*\(/, "").replace(/\)$/, "") : ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight }
                     }
                 }
                 // Each CPU thread's speed now, as little bars.
