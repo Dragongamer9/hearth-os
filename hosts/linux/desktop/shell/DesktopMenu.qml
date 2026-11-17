@@ -1,7 +1,7 @@
 pragma Singleton
 
 // The desktop's right-click menu under KWin: labwc's own desktop menu (labwc/menu.xml, root-menu: Apps, Terminal,
-// Files, Return to Game Mode, Reconfigure, Log out) drawn by Mantel in Hearth's look. On labwc nothing changes
+// Files, Return to Game Mode, Reconfigure, Log out; Terminal and Files are Mantel's own entries) drawn by Mantel in Hearth's look. On labwc nothing changes
 // (labwc's menu only shows when the shell isn't running; Mantel's desktop menu is drawn by Desktop.qml either way).
 // Desktop.qml's backgroundMenu() adds these entries at the end of its own when WinList.kwin; the menu itself is the
 // shared PopMenu, so the mouse, the keyboard (Menu key, Shift+F10), touch (press and hold) and the controller
@@ -16,10 +16,11 @@ Singleton {
     id: dm
 
     // menu.xml's root-menu, in its order, with its commands. Reconfigure is KWin's (it reloads its settings).
+    // Its Terminal and Files are already in Mantel's menu ("Open a terminal here", "Open in Files"), so they aren't
+    // here twice.
+    readonly property var alreadyThere: ({ "Terminal": "Open a terminal here", "Files": "Open in Files" })
     readonly property var entries: [
         { id: "apps", label: "Apps", icon: "grid", group: "Hearth", command: "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher toggle'" },
-        { id: "terminal", label: "Terminal", icon: "kbd", group: "Hearth", command: "sh -c 'sh $NIMBUS_SHARE/desktop/open.sh terminal'" },
-        { id: "files", label: "Files", icon: "folder", group: "Hearth", command: "sh -c 'sh $NIMBUS_SHARE/desktop/open.sh files'" },
         { separator: true },
         { id: "game-mode", label: "Return to Game Mode", short: "Game Mode", icon: "pad", quick: true, group: "Hearth", command: "nimbus-mode game" },
         { id: "reconfigure", label: "Reconfigure", icon: "restart", group: "Hearth",

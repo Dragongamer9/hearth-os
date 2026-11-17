@@ -32,9 +32,16 @@ def log(text):
 
 
 def check(name, ok, detail=''):
+    """A failure is an ::error:: of its own; passes are one summary notice at the end (GitHub shows only 10 notices
+    a step). Every check is a line in OUT/results.txt."""
     results.append((name, bool(ok)))
     clean = str(detail).replace('%', '%25').replace('\n', ' ')[:600]
-    log('::%s title=KWin windows: %s::%s' % ('notice' if ok else 'error', name, ('passed. ' if ok else 'FAILED. ') + clean))
+    with open(os.path.join(OUT, 'results.txt'), 'a', encoding='utf-8') as f:
+        f.write('%s  %s  %s\n' % ('PASS' if ok else 'FAIL', name, clean[:300]))
+    if not ok:
+        log('::error title=KWin windows: %s::FAILED. %s' % (name, clean))
+    else:
+        log('passed: %s' % name)
 
 
 def shot(name):
@@ -94,6 +101,74 @@ def do(cmd):
     except GLib.Error as e:
         log('::warning title=KWin windows::the bridge did not take %s: %s' % (cmd.get('op'), e.message))
         return False
+
+
+BRIDGE_LOG = os.path.join(os.environ['XDG_RUNTIME_DIR'], 'hearth', 'kwin-bridge.log')
+
+
+def bridge_log():
+    try:
+        with open(BRIDGE_LOG, encoding='utf-8') as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def keys_now():
+    r = subprocess.run(['python3', BRIDGE, 'keys'], capture_output=True, text=True, timeout=30)
+    try:
+        return json.loads(r.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        return {'error': (r.stderr or r.stdout)[-300:]}
+
+
+def keys_check():
+    k = keys_now()
+    F9, MD = 0x10000000 | 0x01000038, 0x10000000 | 0x44
+    check('a key the person set is kept (Peek at Desktop on Super+F9)', k.get('kwin/Show Desktop') == [[F9]], k.get('kwin/Show Desktop', k))
+    check('KDE\'s Grid View no longer has Super+G', k.get('kwin/Grid View') == [], k.get('kwin/Grid View', k))
+    check('KDE\'s Quick Tile Left no longer has Super+Left', k.get('kwin/Window Quick Tile Left') == [], k.get('kwin/Window Quick Tile Left', k))
+    check('Hearth\'s Super+Left has its key', k.get('kwin/Hearth snap-left') == [[0x10000000 | 0x01000012]], k.get('kwin/Hearth snap-left', k))
+    check('Hearth\'s Super+D has its key', k.get('kwin/Hearth show-desktop') == [[MD]], k.get('kwin/Hearth show-desktop', k))
+    try:
+        import evdev
+        from evdev import ecodes as e
+        kbd = evdev.UInput({e.EV_KEY: [e.KEY_LEFTMETA, e.KEY_LEFT, e.KEY_G, e.KEY_ESC]}, name='Hearth test keyboard')
+    except Exception as ex:
+        check('a virtual keyboard for the key checks', False, ex)
+        return
+    time.sleep(2)
+
+    def press(*names, hold=0.08):
+        codes = [getattr(e, n) for n in names]
+        for c in codes:
+            kbd.write(e.EV_KEY, c, 1); kbd.syn(); time.sleep(0.03)
+        time.sleep(hold)
+        for c in reversed(codes):
+            kbd.write(e.EV_KEY, c, 0); kbd.syn(); time.sleep(0.03)
+        time.sleep(0.6)
+
+    ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test A', 'zone': 'center'}))
+    wait(lambda: (win('Test A') or {}).get('zone') == 'center')
+    ipc('winlist', 'act', 'Test A', 'activate')
+    wait(lambda: listed().get('active') == (win('Test A') or {}).get('id'))
+    press('KEY_LEFTMETA', 'KEY_LEFT')
+    check('pressing Super+Left snaps the window (Hearth\'s key, not KWin\'s Quick Tile)',
+          wait(lambda: (win('Test A') or {}).get('zone') == 'left-half', 6), win('Test A'))
+    try:
+        os.unlink('/tmp/nimbus-mode-asked')
+    except OSError:
+        pass
+    press('KEY_LEFTMETA', 'KEY_G')
+    asked = wait(lambda: open('/tmp/nimbus-mode-asked').read(), 6)
+    check('pressing Super+G asks for Game Mode (not KWin\'s Grid View)', asked and 'game' in asked, asked or bridge_log()[-300:])
+    press('KEY_ESC')
+    before = bridge_log().count('shortcut: launcher (Super on its own)')
+    press('KEY_LEFTMETA')
+    got = wait(lambda: bridge_log().count('shortcut: launcher (Super on its own)') > before, 6)
+    check('pressing Super on its own opens the app menu', got, bridge_log()[-300:])
+    ipc('launcher', 'close')
+    kbd.close()
 
 
 def main():
@@ -156,6 +231,9 @@ def main():
             check('maximize an X11 window', wait(lambda: (win('Test X') or {}).get('maximized') is True), win('Test X'))
             do({'op': 'probe', 'id': (win('Test X') or {}).get('id', '')})
             ipc('winlist', 'act', 'Test X', 'close')
+
+    # Real key presses (a uinput keyboard, read by KWin through libinput): KDE's own keys must not win over Mantel's.
+    keys_check()
 
     # Snap layouts' flyout from the shortcut (the bridge runs its command), then a zone picked the way the flyout does.
     try:
@@ -224,13 +302,15 @@ def main():
     except ValueError:
         items = []
     # Asked once the menu has opened: DesktopMenu is made the first time the desktop menu uses it.
-    want = ['Apps', 'Terminal', 'Files', 'Return to Game Mode', 'Reconfigure', 'Log out']
+    want = ['Apps', 'Return to Game Mode', 'Reconfigure', 'Log out']     # Terminal, Files: Mantel's own entries
     check('the desktop menu has menu.xml\'s entries', [i for i in items if i != '-'] == want, items)
     ipc('desktop', 'close')
 
     for p in procs:
         p.kill()
     failed = sum(1 for _, ok in results if not ok)
+    passed = [n for n, ok in results if ok]
+    log('::notice title=KWin windows: %d of %d checks passed::%s' % (len(passed), len(results), ' · '.join(passed)[:3500]))
     log('%d checks, %d failed' % (len(results), failed))
     return failed
 

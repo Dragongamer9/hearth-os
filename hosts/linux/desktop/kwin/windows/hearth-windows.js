@@ -17,7 +17,8 @@ var BUS = "org.hearth.Windows", OBJ = "/org/hearth/Windows", IFACE = "org.hearth
 var order = [];       // the windows in the order they opened (the taskbar's order, as labwc gives it)
 var hooked = {};      // id -> true once its signals are connected
 var maxMode = {};     // id -> KWin's maximize mode from maximizedAboutToChange (0 none, 1 vertical, 2 horizontal, 3 both)
-var ruled = {};       // id -> the rule that set keep-above, so it can be taken off again
+var ruled = {};
+var placeSeen = {};    // id -> the zone and screen last sent (frameGeometryChanged)       // id -> the rule that set keep-above, so it can be taken off again
 var lastSent = "";
 
 function idOf(w) { return String(w.internalId); }
@@ -271,11 +272,17 @@ function hook(w) {
     order.push(w);
     var sigs = ["captionChanged", "minimizedChanged", "maximizedChanged", "fullScreenChanged", "desktopsChanged",
                 "skipTaskbarChanged", "outputChanged", "keepAboveChanged", "desktopFileNameChanged", "windowClassChanged",
-                "activeChanged", "frameGeometryChanged", "onAllDesktopsChanged"];
+                "activeChanged", "onAllDesktopsChanged"];
     for (var i = 0; i < sigs.length; i++) {
         if (w[sigs[i]] && w[sigs[i]].connect) w[sigs[i]].connect(push);
     }
     if (w.maximizedAboutToChange) w.maximizedAboutToChange.connect(function (m) { maxMode[id] = m; });
+    // Moving or resizing changes the place many times a second: the list is only sent when that changes the snap
+    // zone or the screen (what Mantel shows), not for every step.
+    if (w.frameGeometryChanged) w.frameGeometryChanged.connect(function () {
+        var z = zoneOf(w) + "|" + (w.output ? w.output.name : "");
+        if (z !== placeSeen[id]) { placeSeen[id] = z; push(); }
+    });
     if (w.captionChanged) w.captionChanged.connect(function () { applyRules(w); });
     applyRules(w);
 }
@@ -283,7 +290,7 @@ function hook(w) {
 function unhook(w) {
     var id = idOf(w);
     for (var i = 0; i < order.length; i++) if (order[i] === w) { order.splice(i, 1); break; }
-    delete hooked[id]; delete maxMode[id]; delete ruled[id];
+    delete hooked[id]; delete maxMode[id]; delete ruled[id]; delete placeSeen[id];
     push();
 }
 
@@ -302,7 +309,7 @@ function registerShortcuts() {
 // Right-click on a title bar (or Alt+F3): KWin's window menu gets Hearth's Snap, with Snap layouts at the top.
 var MENU_ZONES = ["left-half", "right-half", "top-left", "top-right", "bottom-left", "bottom-right", "center"];
 registerUserActionsMenu(function (w) {
-    if (!listed(w)) return [];
+    if (!listed(w)) return;           // nothing for Mantel's own surfaces
     var items = [{ text: "Snap layouts…", title: "Snap layouts…", triggered: function () {
         workspace.activeWindow = w;
         callDBus(BUS, OBJ, IFACE, "Shortcut", "snap-layouts-open");

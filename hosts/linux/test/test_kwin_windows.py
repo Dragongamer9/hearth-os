@@ -93,19 +93,96 @@ class Shortcuts(unittest.TestCase):
             base = w.split(':')[0] + (':' if ':' in w else '')
             self.assertIn('"%s"' % base, src, s['id'] + ': the script has no ' + base)
 
-    def test_kwin_defaults_free_mantels_keys(self):
-        text = (KWIN / 'xdg' / 'kglobalshortcutsrc').read_text()
-        mine = {qt_parts(s['keys']) for s in self.table['shortcuts']}
-        for line in text.splitlines():
-            m = re.match(r'^([^#\[][^=]*)=none,([^,]+),', line)
-            if m and m.group(2) != 'none':
-                self.assertIn(qt_parts(m.group(2)), mine, '%s is freed but no Hearth shortcut uses %s' % (m.group(1), m.group(2)))
+    def test_kde_keys_table(self):
+        for e in self.table['kdeKeys']:
+            for k in e['keys']:
+                kb.qt_key(k)                          # every key has a Qt code
+            self.assertTrue(e['why'], e['action'])
+        self.assertEqual(kb.qt_key('Meta+Left'), 0x10000000 | 0x01000012)
+        self.assertEqual(kb.qt_key('Meta+Shift+Backtab'), 0x12000000 | 0x01000002)
+        self.assertEqual(kb.qt_key('Meta+0'), 0x10000030)
         self.assertIn('Meta=org.hearth.Windows,/org/hearth/Windows,org.hearth.Windows,Launcher', (KWIN / 'xdg' / 'kwinrc').read_text())
+        self.assertFalse((KWIN / 'xdg' / 'kglobalshortcutsrc').exists(), 'kglobalaccel never reads a default file')
 
     def test_extra_ids_and_launcher(self):
         self.assertTrue(kb.command_for('launcher', self.table).endswith("call launcher toggle'"))
         self.assertIn('call snap open', kb.command_for('snap-layouts-open', self.table))
         self.assertIsNone(kb.command_for('nope', self.table))
+
+
+ML, MD, MG, F9 = 0x11000012, 0x10000044, 0x10000047, 0x11000038
+
+
+class FakeKeys:
+    """kglobalaccel, pretend: {action id tuple[:2]: [current, default]}."""
+    def __init__(self, keys):
+        self.keys = keys
+        self.sets = []
+
+    action_id = staticmethod(kb.KdeKeys.action_id)
+
+    def get(self, aid, default=False):
+        return [list(k) for k in self.keys.get(tuple(aid[:2]), [[], []])[1 if default else 0]]
+
+    def set(self, aid, keys):
+        self.sets.append((aid[1], keys))
+        self.keys.setdefault(tuple(aid[:2]), [[], []])[0] = [list(k) for k in keys]
+
+
+class KdeKeysFix(unittest.TestCase):
+    """KDE's keys are freed once, only while on KDE's default; never a key the person set."""
+    TABLE = {'kdeKeys': [{'component': 'kwin', 'action': 'Window Quick Tile Left', 'keys': [], 'why': 'Super+Left'},
+                         {'component': 'kwin', 'action': 'Show Desktop', 'keys': [], 'why': 'Super+D'},
+                         {'component': 'kwin', 'action': 'Grid View', 'keys': [], 'why': 'Super+G'}]}
+    IDS = [('snap-left', 'Snap left'), ('game-mode', 'Game Mode'), ('show-desktop', 'Show the desktop')]
+
+    def setUp(self):
+        import os
+        self.tmp = tempfile.TemporaryDirectory()
+        self.old = os.environ.get('XDG_STATE_HOME')
+        os.environ['XDG_STATE_HOME'] = self.tmp.name
+
+    def tearDown(self):
+        import os
+        if self.old is None:
+            os.environ.pop('XDG_STATE_HOME', None)
+        else:
+            os.environ['XDG_STATE_HOME'] = self.old
+        self.tmp.cleanup()
+
+    def fake(self):
+        return FakeKeys({
+            ('kwin', 'Window Quick Tile Left'): [[[ML]], [[ML]]],      # on KDE's default
+            ('kwin', 'Show Desktop'): [[[F9]], [[MD]]],                 # the person moved it to Super+F9
+            ('kwin', 'Grid View'): [[[MG]], [[MG]]],
+            ('kwin', 'Hearth snap-left'): [[], [[ML]]],                 # lost its key to Quick Tile earlier
+            ('kwin', 'Hearth game-mode'): [[[MG]], [[MG]]],
+            ('kwin', 'Hearth show-desktop'): [[], [[MD]]],              # Super+D: not freed by Hearth, left alone
+        })
+
+    def test_frees_defaults_only_and_gives_hearth_its_keys(self):
+        k = self.fake()
+        kb.fix_kde_keys(k, self.TABLE, self.IDS, say=lambda t: None)
+        self.assertEqual(k.get(['kwin', 'Window Quick Tile Left']), [])
+        self.assertEqual(k.get(['kwin', 'Show Desktop']), [[F9]], 'the person\'s own key was changed')
+        self.assertEqual(k.get(['kwin', 'Grid View']), [])
+        self.assertEqual(k.get(['kwin', 'Hearth snap-left']), [[ML]])
+        self.assertEqual(k.get(['kwin', 'Hearth show-desktop']), [], 'Hearth took a key it never freed')
+
+    def test_once_only_and_restore(self):
+        k = self.fake()
+        kb.fix_kde_keys(k, self.TABLE, self.IDS, say=lambda t: None)
+        # The person gives Quick Tile Left a key again: the next start leaves it.
+        k.keys[('kwin', 'Window Quick Tile Left')][0] = [[ML]]
+        k.sets.clear()
+        kb.fix_kde_keys(k, self.TABLE, self.IDS, say=lambda t: None)
+        self.assertEqual(k.sets, [])
+        back = kb.restore_kde_keys(k)
+        self.assertIn('kwin/Grid View', back)
+        self.assertEqual(k.get(['kwin', 'Grid View']), [[MG]])
+        k.sets.clear()
+        kb.fix_kde_keys(k, self.TABLE, self.IDS, say=lambda t: None)
+        self.assertEqual(k.sets, [], 'restored keys were changed again')
 
 
 class Script(unittest.TestCase):
@@ -185,13 +262,19 @@ class Shell(unittest.TestCase):
         got = []
         for m in re.finditer(r'\{ (separator: true|id: "[a-z-]+", label: "([^"]+)".*?command: "((?:[^"\\]|\\.)*)")', src, re.S):
             got.append(('-', None) if m.group(1).startswith('separator') else (m.group(2), m.group(3)))
+        # Terminal and Files: Mantel's own "Open a terminal here" / "Open in Files" (with their own commands).
+        d = (SHELL / 'Desktop.qml').read_text()
+        dup = {'Terminal': ('Open a terminal here', 'open.sh'), 'Files': ('Open in Files', 'filesApp.open')}
+        for label, (theirs, how) in dup.items():
+            line = next(l for l in d.splitlines() if 'label: "%s"' % theirs in l)
+            self.assertIn(how, line, label)
+        want = [w for w in want if w[0] not in dup]
         self.assertEqual([g[0] for g in got], [w[0] for w in want])
         for (label, cmd), (_, mine) in zip(want, got):
             if cmd == 'Reconfigure':
                 self.assertIn('org.kde.KWin.reconfigure', mine)
             elif cmd:
                 self.assertEqual(mine, cmd, label)
-        d = (SHELL / 'Desktop.qml').read_text()
         body = d[d.index('function backgroundMenu('):]
         self.assertLess(body.index('DesktopMenu.items()'), body.index('menu.popup('))
 

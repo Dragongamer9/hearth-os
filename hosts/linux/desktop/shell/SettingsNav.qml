@@ -18,6 +18,11 @@ Singleton {
     property var apps: null           // Apps (AppStore.qml): archived, always null now (Bazaar is the app store)
     property var debs: null           // the Install Package window (DebInstaller.qml), for Settings › Apps
     property var debNav: null         // its page while it's open: Left / Esc (B) there close it
+    // Activities (feature/widgets: Widgets.qml sets these once Activities.qml has loaded, so a problem there never
+    // takes the taskbars down). activityShows(window): is it on the activity you're on (null: show everything);
+    // activityMoveItems(window): "Move to activity" menu items ([] when there's only one activity).
+    property var activityShows: null
+    property var activityMoveItems: null
     property bool debShown: false
     property var pad: null
     property var help: null
