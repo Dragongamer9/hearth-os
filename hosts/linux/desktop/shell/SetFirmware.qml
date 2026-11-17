@@ -146,6 +146,11 @@ SetPage {
             color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
         }
         SetRow {
+            visible: !!page.st && page.st.fwupd
+            icon: "clock"; chevron: true; title: "Update history"; sub: "Every firmware update put in, and whether it worked"
+            onActivated: SettingsNav.openPage("firmware-history")
+        }
+        SetRow {
             visible: page.restartNeeded
             icon: "restart"; chevron: false; title: "Restart to finish"; sub: "The new firmware goes in while the PC restarts"
             onActivated: Quickshell.execDetached(["systemctl", "reboot"])

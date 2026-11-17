@@ -44,6 +44,7 @@ SetPage {
             }
         }
         SetRow { icon: "sync"; chevron: false; title: "Look again"; onActivated: if (!job.busy) page.load() }
+        SetRow { icon: "file"; chevron: true; title: "Scan to PDF"; sub: "Several pages into one PDF"; onActivated: SettingsNav.openPage("scan-pdf") }
     }
     property string lastOk: ""
     SetPanel {

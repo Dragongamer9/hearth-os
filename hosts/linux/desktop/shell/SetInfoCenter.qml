@@ -1,5 +1,5 @@
 // Hearth Settings › About › Info Center (1.14, KDE Info Center's technical pages, in Hearth's look): one page per part
-// (props part: cpu, gpu, memory, pci, usb, graphics; Energy is Battery health & history), with the parts as tabs along
+// (props part: cpu, gpu, memory, pci, usb, graphics, sensors, modules, interrupts; Energy is Battery health & history), with the parts as tabs along
 // the top. Read by hearth-info; nothing is changed. Copy puts the page's text on the clipboard for a bug report.
 import QtQuick
 import QtQuick.Layouts
@@ -10,13 +10,17 @@ SetPage {
     title: "Info Center"
     property var info: null
     readonly property var tabs: [{ p: "cpu", id: "info-cpu", t: "Processor" }, { p: "gpu", id: "info-gpu", t: "Graphics card" }, { p: "memory", id: "info-memory", t: "Memory" },
-        { p: "graphics", id: "info-graphics", t: "Vulkan & OpenGL" }, { p: "pci", id: "info-pci", t: "PCI" }, { p: "usb", id: "info-usb", t: "USB" }, { p: "energy", id: "info-energy", t: "Energy" }]
+        { p: "graphics", id: "info-graphics", t: "Vulkan & OpenGL" }, { p: "pci", id: "info-pci", t: "PCI" }, { p: "usb", id: "info-usb", t: "USB" }, { p: "energy", id: "info-energy", t: "Energy" },
+        { p: "sensors", id: "info-sensors", t: "Temperatures & fans" }, { p: "modules", id: "info-modules", t: "Kernel modules" }, { p: "interrupts", id: "info-interrupts", t: "Interrupts" }]
     readonly property string which: part || "cpu"
     property string find: ""
     function load() { info = null; job.run([which], r => page.info = r, e => page.info = { sections: [{ title: "Couldn't read it", rows: [["Problem", e]] }] }); }
     Component.onCompleted: Qt.callLater(load)
     onWhichChanged: Qt.callLater(load)
     SetJob { id: job; helper: "hearth-info" }
+    // Temperatures and fans (and interrupts' counts) move: read again every 2 s while the page is open, without
+    // clearing it first.
+    Timer { interval: 2000; repeat: true; running: page.visible && (page.which === "sensors" || page.which === "interrupts"); onTriggered: if (!job.busy) job.run([page.which], r => page.info = r) }
     function asText() {
         if (!info) return "";
         if (info.items) return info.items.map(i => [i.id, i.kind, i.title, i.sub, i.value].filter(x => x).join(" · ")).join("\n");
@@ -74,6 +78,26 @@ SetPage {
                         }
                     }
                 }
+                // Temperatures as bars, warm colours near their limit (sensors).
+                Repeater {
+                    model: sec.modelData.gauges || []
+                    delegate: RowLayout {
+                        required property var modelData
+                        Layout.fillWidth: true
+                        spacing: 10
+                        Text { Layout.preferredWidth: 190; text: modelData.label; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; elide: Text.ElideRight }
+                        Rectangle {
+                            Layout.fillWidth: true; implicitHeight: 10; radius: 5; color: Theme.panel3
+                            Rectangle {
+                                height: parent.height; radius: 5
+                                width: parent.width * Math.max(0.02, Math.min(1, modelData.value / Math.max(1, modelData.top || 100)))
+                                color: modelData.hot ? Theme.danger : modelData.value / Math.max(1, modelData.top || 100) > 0.75 ? SetStyle.warn : Theme.accent
+                                Behavior on width { NumberAnimation { duration: 400 } }
+                            }
+                        }
+                        Text { Layout.preferredWidth: 70; horizontalAlignment: Text.AlignRight; text: Math.round(modelData.value) + " °C"; color: modelData.hot ? Theme.danger : Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
+                    }
+                }
                 // Each CPU thread's speed now, as little bars.
                 Row {
                     visible: !!sec.modelData.bars
@@ -91,16 +115,16 @@ SetPage {
         }
     }
     // Lists (pci, usb).
-    SetField { visible: !!page.info && !!page.info.items; placeholder: "Find a device"; onTextChanged: page.find = text.toLowerCase() }
+    SetField { visible: !!page.info && !!page.info.items; placeholder: page.which === "modules" ? "Find a module" : page.which === "interrupts" ? "Find an interrupt" : "Find a device"; onTextChanged: page.find = text.toLowerCase() }
     SetCardGroup {
         visible: !!page.info && !!page.info.items
-        title: page.info && page.info.items ? page.info.items.length + " devices" + (page.info.note ? " · " + page.info.note : "") : ""
+        title: page.info && page.info.items ? page.info.items.length + (page.which === "modules" ? " modules loaded" : page.which === "interrupts" ? " interrupts" : " devices") + (page.info.note ? " · " + page.info.note : "") : ""
         Repeater {
             model: page.info && page.info.items ? page.info.items.filter(i => page.find === "" || (i.title + " " + i.sub + " " + i.kind + " " + i.value).toLowerCase().indexOf(page.find) >= 0).slice(0, 80) : []
             delegate: SetRow {
                 required property var modelData
                 interactive: false; chevron: false
-                icon: page.which === "usb" ? "link" : /VGA|3D|Display/.test(modelData.kind) ? "display" : /Audio|audio/.test(modelData.kind) ? "vol" : /Network|Ethernet/.test(modelData.kind) ? "wired" : /USB/.test(modelData.kind) ? "link" : /SATA|NVM|storage|Non-Volatile/.test(modelData.kind) ? "drive" : "cpu"
+                icon: page.which === "usb" ? "link" : page.which === "modules" ? "box" : page.which === "interrupts" ? "bolt" : /VGA|3D|Display/.test(modelData.kind) ? "display" : /Audio|audio/.test(modelData.kind) ? "vol" : /Network|Ethernet/.test(modelData.kind) ? "wired" : /USB/.test(modelData.kind) ? "link" : /SATA|NVM|storage|Non-Volatile/.test(modelData.kind) ? "drive" : "cpu"
                 title: modelData.title || modelData.id
                 sub: [modelData.kind, modelData.sub, modelData.id].filter(x => x).join(" · ")
                 value: modelData.value
