@@ -203,6 +203,8 @@ pub struct HearthState<BackendData: Backend + 'static> {
     /// Night light and inverted colours (gamma.rs).
     pub gamma_state: crate::gamma::GammaState,
     pub ext_data_control_state: smithay::wayland::selection::ext_data_control::DataControlState,
+    /// The fullscreen game's frame limit, scaling, direct scanout and VRR (game.rs).
+    pub game: crate::game::GameState,
 }
 
 #[derive(Debug)]
@@ -831,6 +833,7 @@ impl<BackendData: Backend + 'static> HearthState<BackendData> {
             output_management_state,
             gamma_state,
             ext_data_control_state,
+            game: crate::game::GameState::new(),
         }
     }
 
@@ -995,8 +998,11 @@ impl<BackendData: Backend + 'static> HearthState<BackendData> {
 
         #[allow(clippy::mutable_key_type)]
         let mut clients: HashMap<ClientId, Client> = HashMap::new();
+        // A frame-limited game gets its frame callbacks and FIFO barrier from its own timer (game.rs), not here.
+        let paced = self.game.limited_window().cloned();
 
         self.space.elements().for_each(|window| {
+            let is_paced = paced.as_ref() == Some(window);
             window.with_surfaces(|surface, states| {
                 let primary_scanout_output = surface_primary_scanout_output(surface, states);
 
@@ -1006,10 +1012,11 @@ impl<BackendData: Backend + 'static> HearthState<BackendData> {
                     });
                 }
 
-                if primary_scanout_output
-                    .as_ref()
-                    .map(|o| o == output)
-                    .unwrap_or(true)
+                if !is_paced
+                    && primary_scanout_output
+                        .as_ref()
+                        .map(|o| o == output)
+                        .unwrap_or(true)
                 {
                     let fifo_barrier = states
                         .cached_state
@@ -1027,7 +1034,9 @@ impl<BackendData: Backend + 'static> HearthState<BackendData> {
             });
 
             if self.space.outputs_for_element(window).contains(output) {
-                window.send_frame(output, time, throttle, surface_primary_scanout_output);
+                if !is_paced {
+                    window.send_frame(output, time, throttle, surface_primary_scanout_output);
+                }
                 if let Some(dmabuf_feedback) = dmabuf_feedback.as_ref() {
                     window.send_dmabuf_feedback(output, surface_primary_scanout_output, |surface, _| {
                         select_dmabuf_feedback(
@@ -1254,6 +1263,8 @@ pub trait Backend {
     const HAS_GESTURES: bool = false;
     /// In another desktop's window (winit): the window's size is the mode, no rotation, no colour ramp.
     const NESTED: bool = false;
+    /// What the game status calls this backend ("screens", "nested", "headless").
+    const KIND: &'static str = "screens";
     fn seat_name(&self) -> String;
     fn reset_buffers(&mut self, output: &Output);
     fn early_import(&mut self, surface: &WlSurface);

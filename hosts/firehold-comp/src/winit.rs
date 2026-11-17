@@ -84,6 +84,7 @@ delegate_dmabuf!(HearthState<WinitData>);
 
 impl Backend for WinitData {
     const NESTED: bool = true;
+    const KIND: &'static str = "nested";
     fn seat_name(&self) -> String {
         String::from("winit")
     }

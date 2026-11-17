@@ -43,6 +43,7 @@ pub struct HeadlessData {
 }
 
 impl Backend for HeadlessData {
+    const KIND: &'static str = "headless";
     fn seat_name(&self) -> String {
         String::from("headless")
     }
