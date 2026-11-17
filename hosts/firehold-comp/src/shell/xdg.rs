@@ -265,17 +265,21 @@ impl<BackendData: Backend> XdgShellHandler for HearthState<BackendData> {
     }
 
     fn fullscreen_request(&mut self, surface: ToplevelSurface, mut wl_output: Option<wl_output::WlOutput>) {
-        if surface
-            .current_state()
-            .capabilities
-            .contains(xdg_toplevel::WmCapabilities::Fullscreen)
+        // Games often ask for full screen before their first configure, when no capabilities have been sent yet.
+        if !surface.is_initial_configure_sent()
+            || surface
+                .current_state()
+                .capabilities
+                .contains(xdg_toplevel::WmCapabilities::Fullscreen)
         {
             // NOTE: This is only one part of the solution. We can set the
             // location and configure size here, but the surface should be rendered fullscreen
             // independently from its buffer size
             let wl_surface = surface.wl_surface();
 
-            let output_geometry = fullscreen_output_geometry(wl_surface, wl_output.as_ref(), &mut self.space);
+            // A window that isn't on a screen yet (nothing drawn) goes full screen on the first one.
+            let output_geometry = fullscreen_output_geometry(wl_surface, wl_output.as_ref(), &mut self.space)
+                .or_else(|| self.space.outputs().next().and_then(|o| self.space.output_geometry(o)));
 
             if let Some(geometry) = output_geometry {
                 let output = wl_output

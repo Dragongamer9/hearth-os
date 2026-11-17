@@ -429,6 +429,14 @@ pub fn run_winit() {
                         state.lock_frame_drawn(&output);
                     }
                     // Send frame events so that client start drawing their next frame
+                    // Which screen each surface is shown on (frame callbacks at the screen's pace, not once a second).
+                    crate::state::update_primary_scanout_output(
+                        &state.space,
+                        &output,
+                        &state.dnd_icon,
+                        &state.cursor_status,
+                        &states,
+                    );
                     state.post_repaint(&output, frame_target, None, &states);
                 }
                 Err(SwapBuffersError::ContextLost(err)) => {
