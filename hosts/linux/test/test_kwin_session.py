@@ -641,14 +641,14 @@ class Autostart(Base):
         self.write_bin('hearth-screens-stub', '#!/bin/sh\necho "$*" > "$HOME/screens-ran"\n')
         os.symlink(os.path.join(self.bin, 'hearth-screens-stub'), os.path.join(shell, 'hearth-screens'))
         self.write_bin('wlr-randr', '#!/bin/sh\necho ran >> "$HOME/wlr-randr-ran"\n')
-        self.write_bin('quickshell', '#!/bin/sh\necho "wm=$HEARTH_WM pid=$HEARTH_DESKTOP_PID" >> "$HOME/quickshell-ran"\nsleep 120\n')   # longer than the wait below: never restarted
+        self.write_bin('quickshell', '#!/bin/sh\necho "wm=$HEARTH_WM pid=$HEARTH_DESKTOP_PID" >> "$HOME/quickshell-ran"\nsleep 400\n')   # longer than the wait below: never restarted
         for b in ('dbus-update-activation-environment', 'systemctl', 'notify-send', 'nimbus-mode', 'hearth-tools'):
             self.write_bin(b, '#!/bin/sh\nexit 0\n')
         p = subprocess.Popen(['sleep', '60'])
         self.addCleanup(lambda: (p.kill(), p.wait()))
         e = self.env(HEARTH_WM='kwin', HEARTH_DESKTOP_PID=str(p.pid))
         subprocess.run(['sh', str(AUTOSTART)], env=e, timeout=30)
-        for _ in range(300):
+        for _ in range(1500):      # up to 5 minutes: a busy release runner can be slow to start the stand-ins
             if os.path.exists(os.path.join(self.home, 'screens-ran')) and self.lines('quickshell-ran'):
                 break
             time.sleep(0.2)
