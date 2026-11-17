@@ -20,6 +20,7 @@ Rectangle {
     color: Theme.panel
     function add(t, kind) { lines = lines.concat([{ t: String(t), k: kind || "" }]).slice(-400); Qt.callLater(() => outView.positionViewAtEnd()); }
     function focusInput() { input.forceActiveFocus(); }
+    onVisibleChanged: if (visible) Qt.callLater(focusInput)
     function home() { return Quickshell.env("HOME") || "/"; }
     function resolve(p) {
         p = p.trim().replace(/^['"]|['"]$/g, "");

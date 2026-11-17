@@ -2072,8 +2072,10 @@ jobs:
           SH="$PWD/hosts/linux/desktop/shell"
           # The password store with two made-up sign-ins (no real secret: the values are the word "demo").
           if command -v gnome-keyring-daemon >/dev/null; then
-            printf '' | gnome-keyring-daemon --unlock --components=secrets > $o/gkr.log 2>&1 || true
-            eval "$(gnome-keyring-daemon --start --components=secrets 2>>$o/gkr.log)" || true
+            # A copy without the file capability it has (cap_ipc_lock): in a container it can't drop it and stops.
+            cp "$(command -v gnome-keyring-daemon)" /tmp/gkd && chmod 755 /tmp/gkd
+            printf '' | /tmp/gkd --unlock --components=secrets > $o/gkr.log 2>&1 || true
+            eval "$(/tmp/gkd --start --components=secrets 2>>$o/gkr.log)" || true
             sleep 2
             printf demo | secret-tool store --label='Chromium Safe Storage' application chromium xdg:schema chrome_libsecret_os_crypt_password_v2 || true
             printf demo | secret-tool store --label='smb://nas/photos' xdg:schema org.gnome.keyring.NetworkPassword user sam server nas protocol smb || true
