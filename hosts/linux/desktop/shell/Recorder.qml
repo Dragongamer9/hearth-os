@@ -102,8 +102,9 @@ Scope {
         onLoadFailed: rp.live = { state: "idle" }
     }
     Timer { interval: 1000; running: rp.shown && rp.recording; repeat: true; onTriggered: clock.text = rp.elapsed() }
-    // A file that isn't there yet can't be watched: read again every 2 seconds while the panel is open.
-    Timer { interval: 2000; running: rp.shown || rp.recording; repeat: true; triggeredOnStart: true; onTriggered: liveFile.reload() }
+    // A file that isn't there yet can't be watched: read again every 2 seconds (as the bar's capture dot does), so a
+    // recording started from anywhere (Super+Alt+R, Capture's Record) brings up the Recording pop-up.
+    Timer { interval: 2000; running: true; repeat: true; triggeredOnStart: true; onTriggered: liveFile.reload() }
     // The pop-up needs your choices (popup on or off): read once when a recording starts from somewhere else.
     onLiveChanged: if (recording && !st && !statusProc.running) load()
 

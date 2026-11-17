@@ -125,17 +125,14 @@ jobs:
           snap > /tmp/after.txt
           diff -q /tmp/before.txt /tmp/after.txt >/dev/null || bad "clipboard" "opening the popup changed a settings file: $(diff /tmp/before.txt /tmp/after.txt | tr '\n' ' ')"
           [ ! -e "$CLIPJ" ] || bad "clipboard" "clipboard.json was written by opening the popup"
-          note "clipboard" "$(q clipboard state)"
 
           # ---- More on the link (the browsers), Open in, QR code, Edit.
           q clipboard open; sleep 2
           q clipboard more 0; sleep 3; shot clip-more
-          note "clipboard more" "$(q clipboard state)"
           wtype -k Return; sleep 3
           grep -q 'https://hearthos.fun/download' /tmp/opened.txt 2>/dev/null && note "open in" "$(cat /tmp/opened.txt)" || bad "open in" "the browser wasn't asked to open the link: $(cat /tmp/opened.txt 2>&1)"
           q clipboard open; sleep 2
           q clipboard qr 0; sleep 3; shot clip-qr
-          note "clipboard qr" "$(q clipboard state)"
           qrp=$(q clipboard state | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("qr",""))' 2>/dev/null || true)
           [ -n "$qrp" ] && [ "$(zbarimg -q --raw "$qrp" 2>/dev/null)" = "https://hearthos.fun/download" ] && note "qr" "the QR code reads back as the link" || bad "qr" "the QR code didn't read back: $qrp"
           q clipboard back; sleep 1
@@ -148,7 +145,6 @@ jobs:
           # ---- Selection history and sync (your choices in clipboard.json, as Settings › Clipboard's switches save them).
           python3 hosts/linux/desktop/shell/hearth_settings_io.py merge "$CLIPJ" '{"selection": true, "sync": true}'
           sleep 6
-          note "selection watcher" "$(q clipboard state)"
           wl-copy --primary 'Highlighted in a text editor'; sleep 3
           python3 hosts/linux/desktop/shell/hearth-clipboard list > /tmp/list.json
           python3 -c 'import json,sys; it=[i for i in json.load(open("/tmp/list.json"))["items"] if i["text"]=="Highlighted in a text editor"]; sys.exit(0 if it and it[0]["sel"] else 1)' \
@@ -171,7 +167,6 @@ jobs:
           python3 hosts/linux/desktop/shell/hearth-record set format webm >/dev/null
           python3 hosts/linux/desktop/shell/hearth-record set quality medium >/dev/null
           q record open; sleep 3; shot rec-panel
-          note "recorder" "$(q record state)"
           q record close
           sleep 100000 & REC=$!
           mkdir -p "$XDG_RUNTIME_DIR/hearth-record"
@@ -179,7 +174,7 @@ jobs:
             "$REC" "$(($(date +%s) - 83))" "$HOME" > "$XDG_RUNTIME_DIR/hearth-record/state.json"
           sleep 4; shot rec-popup
           note "recorder popup" "$(q record state)"
-          q record state | grep -q '"popup":true' || bad "recorder" "the Recording pop-up isn't shown while recording"
+          q record state | python3 -c 'import json,sys; sys.exit(0 if json.loads(sys.stdin.read())["popup"] is True else 1)' || bad "recorder" "the Recording pop-up isn't shown while recording"
           kill "$REC" 2>/dev/null || true
           printf '{"state": "idle", "last": "%s/Videos/Recordings/Recording now.webm"}\n' "$HOME" > "$XDG_RUNTIME_DIR/hearth-record/state.json"
           sleep 3
@@ -191,17 +186,14 @@ jobs:
           foot --maximized --title scrolltest less -S /tmp/long.txt >/tmp/foot.log 2>&1 &
           sleep 4
           q capture take scroll; sleep 6
-          note "capture picker" "$(q capture state | cut -c1-400)"
           q capture pick 300,200,1200,560; sleep 1
           q capture pickTake; sleep 3
           for i in $(seq 1 14); do
             wtype -k Down -k Down -k Down -k Down -k Down -k Down; sleep 0.9
             [ "$i" = 7 ] && shot cap-scroll-pill
           done
-          note "capture scrolling" "$(q capture state | cut -c1-600)"
           q capture scrollStop; sleep 8
           st=$(q capture state)
-          note "capture scrolled" "$(echo "$st" | cut -c1-900)"
           h=$(echo "$st" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("editor",{}).get("height",0))' 2>/dev/null || echo 0)
           [ "${h:-0}" -gt 900 ] && note "scrolling capture" "joined into one picture $h pixels tall" || bad "scrolling capture" "the picture is only ${h} pixels tall: $(echo "$st" | cut -c1-600)"
           shot cap-scroll-result
@@ -211,7 +203,6 @@ jobs:
           # ---- Share in the editor: Copy, Save, Open with (picture apps), Send to the phone (Phone link on).
           q capture edit /tmp/share-test.png; sleep 3
           q capture share; sleep 5; shot cap-share
-          note "capture share" "$(q capture state | cut -c1-900)"
           q capture state | grep -q '"shareApps":2' || bad "share" "Open with doesn't list the two picture apps"
           q capture state | grep -q 'Pixel 8' || bad "share" "Send to the phone doesn't show the connected phone"
           q capture close; sleep 2
