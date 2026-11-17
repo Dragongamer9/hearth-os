@@ -59,7 +59,7 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 ## 3. A game with the Guide (3-in-game.png)
 
 - [ ] The game full screen, drawn straight to the display (no gamescope)
-- [ ] Performance overlay at the top left: fps · frame time · GPU % · temperature · watts
+- [x] Performance overlay at the top left: fps · frame time · GPU % · temperature · watts — hosts/linux/desktop/shell/FireholdPerf.qml: "p.push(Math.round(w) + \" W\")"
 - [x] Guide panel on the right, over the game — hosts/linux/desktop/shell/FireholdGuide.qml: "WlrLayershell.namespace: \"hearth-firehold-guide\""
 - [x] Guide: the game's art, name (Ember Trails) and "Playing 1 h 12 min · native, no Game Mode" — hosts/linux/desktop/shell/FireholdGuide.qml: "\" · native, no Game Mode\""
 - [x] Guide tile: Screenshot · Saved to Pictures (selected) — hosts/linux/desktop/shell/FireholdGuide.qml: "[\"Screenshot\", \"Saved to Pictures\"]"
@@ -126,7 +126,6 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 - Desk top bar, the focused app's menus: needs a global menu (apps' menus over D-Bus, an appmenu registrar), which Mantel doesn't have yet.
 - The Hearth Files window's frame (round buttons, accent close) and its picture grid: KWin's window frames (desktop/kwin) and Hearth Files itself, not Firehold's screens.
 - The game window's title line: name, running/paused and VRR are shown; "60 fps limit" waits for the frame limit (firehold-comp).
-- The game full screen drawn straight to the display, Frame limit, Resolution scaling: need firehold-comp.
-- Performance overlay: fps (when MangoHud logs it), frame time, GPU % and temperature are shown; watts aren't in hearth-stats yet.
-- Record "Last 30 s too": hearth-record has no replay buffer yet.
-- Friends "2 online": Discord gives Mantel no online count.
+- The game full screen drawn straight to the display, Frame limit, Resolution scaling: need firehold-comp (feature/firehold-game). The Guide's rows already call `firehold-comp ctl frame-limit` / `scale` once `ctl scanout status` answers; until then they say "Not yet".
+- Record "Last 30 s too": hearth-record has no replay buffer; firehold-comp's (feature/firehold-game) is coming.
+- Friends "2 online": needs Steam's friends data (Discord gives Mantel no online count).

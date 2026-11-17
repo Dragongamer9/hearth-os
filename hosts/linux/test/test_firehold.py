@@ -173,6 +173,33 @@ class PostureWatcher(unittest.TestCase):
         self.assertTrue(self.p.counts('mouse', e.EV_REL, 0, 3, e))
 
 
+class Watts(unittest.TestCase):
+    """The performance overlay's watts: only from a real source, never made up."""
+    def setUp(self):
+        self.s = load(SHELL / 'hearth-stats', 'hearth_stats')
+
+    def test_gpu_battery_and_cpu(self):
+        with tempfile.TemporaryDirectory() as t:
+            hw = os.path.join(t, 'hwmon'); os.makedirs(os.path.join(hw, 'hwmon0')); os.makedirs(os.path.join(hw, 'hwmon1'))
+            open(os.path.join(hw, 'hwmon0', 'name'), 'w').write('k10temp\n')
+            open(os.path.join(hw, 'hwmon1', 'name'), 'w').write('amdgpu\n')
+            self.assertIsNone(self.s.gpu_watts(hw) if not self.s.shutil.which('nvidia-smi') else None)
+            open(os.path.join(hw, 'hwmon1', 'power1_average'), 'w').write('18200000\n')
+            self.assertEqual(self.s.gpu_watts(hw), 18.2)
+            ps = os.path.join(t, 'ps'); os.makedirs(os.path.join(ps, 'BAT0'))
+            open(os.path.join(ps, 'BAT0', 'status'), 'w').write('Charging\n')
+            open(os.path.join(ps, 'BAT0', 'power_now'), 'w').write('14100000\n')
+            self.assertIsNone(self.s.battery_watts(ps))                  # plugged in: not the device's draw
+            open(os.path.join(ps, 'BAT0', 'status'), 'w').write('Discharging\n')
+            self.assertEqual(self.s.battery_watts(ps), 14.1)
+            pc = os.path.join(t, 'pc', 'intel-rapl:0'); os.makedirs(pc)
+            open(os.path.join(pc, 'energy_uj'), 'w').write('1000000\n')
+            self.assertIsNone(self.s.cpu_watts(os.path.join(t, 'pc'), now=100.0))   # the first reading: nothing yet
+            open(os.path.join(pc, 'energy_uj'), 'w').write('20000000\n')
+            self.assertEqual(self.s.cpu_watts(os.path.join(t, 'pc'), now=102.0), 9.5)
+            self.assertIsNone(self.s.cpu_watts(os.path.join(t, 'nothing'), now=103.0))
+
+
 class Guards(unittest.TestCase):
     def test_loaded_by_file_name_and_locked_shows_nothing(self):
         shell = (SHELL / 'shell.qml').read_text()

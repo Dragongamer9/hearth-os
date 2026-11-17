@@ -40,7 +40,10 @@ PanelWindow {
             if (s.cpu !== undefined) p.push("CPU " + Math.round(s.cpu) + "%");
             if (s.ram !== undefined) p.push(s.ram.toFixed(1) + " GB");
         }
-        if (s.gpuPower !== undefined) p.push(Math.round(s.gpuPower) + " W");
+        // Watts only from a real source (hearth-stats): the battery's draw on battery, else the GPU's and the CPU's.
+        const w = s.batteryWatts !== undefined ? s.batteryWatts
+                : s.gpuWatts !== undefined || s.cpuWatts !== undefined ? (s.gpuWatts || 0) + (s.cpuWatts || 0) : undefined;
+        if (w !== undefined) p.push(Math.round(w) + " W");
         return p.length ? p.join(" · ") : "Reading…";
     }
     Rectangle {
