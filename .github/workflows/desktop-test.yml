@@ -100,6 +100,9 @@ jobs:
           # 1.14, KDE System Settings' areas: VPN, hotspot, proxy, connection details, firmware, region, fonts, services,
           # login screen (fake nmcli / fwupdmgr / localectl / systemctl answers; secrets only on stdin).
           python3 -m unittest discover -s hosts/linux/test -p 'test_system_settings_114.py' -v
+          # 1.14, Window effects' and Virtual desktops' extras: second switcher, hide the pointer after a time, show FPS /
+          # paint, KWin's scripts, the Desktop Cube.
+          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_effects_extras.py' -v
 
       - name: Start Desktop Mode
         shell: bash
@@ -370,7 +373,8 @@ jobs:
           mkdir -p "$HOME/.config"
           printf '%s\n' '[Desktops]' 'Id_1=6a1f0c62-1b1d-4c8e-9d2f-000000000001' 'Name_1=Main' 'Id_2=6a1f0c62-1b1d-4c8e-9d2f-000000000002' 'Name_2=Games' \
             'Id_3=6a1f0c62-1b1d-4c8e-9d2f-000000000003' 'Name_3=Work' 'Number=3' 'Rows=1' '' '[Plugins]' 'wobblywindowsEnabled=true' 'diminactiveEnabled=true' \
-            '' '[Effect-overview]' 'BorderActivate=7' '' '[Effect-windowview]' 'BorderActivateAll=1' '' '[ElectricBorders]' 'BottomRight=ShowDesktop' '' \
+            'cubeEnabled=true' 'minimizeallEnabled=true' 'showfpsEnabled=true' 'hidecursorEnabled=true' '' '[Effect-hidecursor]' 'HideOnTyping=false' 'InactivityDuration=10' \
+            '' '[TabBoxAlternative]' 'ApplicationsMode=2' '' '[Effect-overview]' 'BorderActivate=7' '' '[Effect-windowview]' 'BorderActivateAll=1' '' '[ElectricBorders]' 'BottomRight=ShowDesktop' '' \
             '[Tiling][e3d3d5c4-af96-5514-988a-a5cf444294bf]' 'tiles={"layoutDirection":"horizontal","tiles":[{"width":0.3},{"width":0.4},{"width":0.3,"layoutDirection":"vertical","tiles":[{"height":0.5},{"height":0.5}]}]}' \
             > "$HOME/.config/kwinrc"
           printf '%s\n' '[General]' 'count=2' 'rules=1d0b1f5e-0000-4000-8000-000000000001,1d0b1f5e-0000-4000-8000-000000000002' '' \
@@ -389,6 +393,11 @@ jobs:
           kp kwin-games 11-games-and-x11-apps
           kp mouse 12-mouse-on-kwin; kdown 14 13-touchpad-on-kwin
           kp accessibility 14-accessibility-on-kwin; kdown 16 15-accessibility-typing-and-mouse
+          # The 1.14 extras: the second switcher (Super+Tab), the pointer, window helpers and For developers at the bottom,
+          # and the Desktop Cube.
+          kp kwin-effects 16-window-effects-second-switcher; kdown 25 16-window-effects-second-switcher
+          kp kwin-effects 17-window-effects-pointer-helpers-developers; kdown 54 17-window-effects-pointer-helpers-developers
+          kp kwin-desktops 18-virtual-desktops-cube; kdown 12 18-virtual-desktops-cube
           ipc settings close; sleep 1
           rm -f "$XDG_RUNTIME_DIR/hearth-kwin-preview"
           K2=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum || true)
@@ -1430,9 +1439,10 @@ jobs:
           pgrep -af "quickshell|/qs( |$)" > shots/quickshell-running.txt || echo "not running" > shots/quickshell-running.txt
           set +x
           # Report: problems in the shell log (not the expected "no uinput/evdev here") fail the test.
-          # Expected here and not on a real device: no D-Bus, PipeWire, NetworkManager, controllers or saved files.
+          # Expected here and not on a real device: no D-Bus, PipeWire, NetworkManager, controllers or saved files, and no
+          # logind session (polkitd answers, but Quickshell's password agent can't register without a session).
           bad=$(grep -iE "ERROR|WARN|TypeError|ReferenceError|Cannot assign|non-existent|is not a type|Failed to load" "$LOG" 2>/dev/null \
-            | grep -viE "uinput|evdev|DBus|pipewire|locale|Process failed to start|Read of .* failed|from dropped operation|Cannot open: file://|hearth-pad|upower|statusnotifier|sni\\.|bluez" | head -25 || true)
+            | grep -viE "uinput|evdev|DBus|pipewire|locale|Process failed to start|Read of .* failed|from dropped operation|Cannot open: file://|hearth-pad|upower|statusnotifier|sni\\.|bluez|polkit.*(No session for pid|/org/quickshell/PolkitAgent)" | head -25 || true)
           if [ -n "$bad" ] || grep -q "not running" shots/quickshell-running.txt; then
             msg=$( { cat shots/quickshell-running.txt; echo "$bad"; tail -15 "$LOG" 2>/dev/null; } | cut -c1-250 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g")
             echo "::error title=shell::$msg"
@@ -2849,7 +2859,7 @@ jobs:
           - "00-labwc-needs-kwin 00-labwc-mouse 01-window-effects 02-window-effects-switcher-blur 03-virtual-desktops"
           - "04-tiling 05-screen-edges 06-screen-edges-touch 07-window-rules 08-window-rule-open"
           - "09-tablet-and-touchscreen 10-touchscreen 11-games-and-x11-apps 12-mouse-on-kwin 13-touchpad-on-kwin"
-          - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse"
+          - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse 16-window-effects-second-switcher 17-window-effects-pointer-helpers-developers 18-virtual-desktops-cube"
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true
