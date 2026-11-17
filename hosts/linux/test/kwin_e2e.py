@@ -65,6 +65,13 @@ def grim(name):
         r = subprocess.run(['grim', p], env=env, capture_output=True, text=True)
         if r.returncode != 0:
             print('no picture %s: %s' % (name, r.stderr.strip()), flush=True)
+        # labwc shows nothing of KWin (its window never appeared there): KWin's own picture instead.
+        try:
+            from PIL import Image, ImageStat
+            if max(ImageStat.Stat(Image.open(p).convert('L')).mean) < 3 and hs.shot(('workspace',), p):
+                note('picture ' + name, 'labwc showed no KWin window; KWin\'s own screenshot used')
+        except Exception as e:
+            print('picture check %s: %r' % (name, e), flush=True)
     elif not hs.shot(('workspace',), p):
         print('no picture %s (KWin\'s screenshot)' % name, flush=True)
 
