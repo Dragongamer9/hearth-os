@@ -387,6 +387,8 @@ ShellRoot {
         function close(): void { settings.close(); }
         function toggle(): void { settings.toggle(); }
         // 1.14: which look Settings shows, as if the controller (pad) or the mouse (mouse) was used last (checks).
+        // One tap on Settings › About's version (SettingsNav.tapVersion: seven in a row unlock the hidden preview).
+        function tapversion(): void { SettingsNav.tapVersion(); }
         function look(kind: string): void { if (kind === "pad") SettingsNav.padUsed(); else { SettingsNav.padAt = 0; SettingsNav.input = "mouse"; } }
     }
     IpcHandler {

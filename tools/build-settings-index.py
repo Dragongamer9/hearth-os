@@ -83,7 +83,10 @@ def cards(path):
     out = []
     for m in re.finditer(CARDS, s):
         start = m.end() - 1
-        top = top_level(s[start + 1:block_end(s, start)])
+        block = s[start + 1:block_end(s, start)]
+        if '@noindex' in block:   # a card that mustn't be found by search (shown only once something unlocks it)
+            continue
+        top = top_level(block)
         kind = m.group(1)
         title = literal(top, 'title') or (OWN[kind][0] if kind in OWN else '')
         if not title or len(title) < 3:
