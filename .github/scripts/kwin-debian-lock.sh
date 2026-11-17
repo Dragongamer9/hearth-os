@@ -15,7 +15,7 @@ setup() {
   apt-get update -qq
   apt-get install -y -qq --no-install-recommends kwin-wayland labwc grim wlr-randr dbus dbus-bin python3 python3-evdev \
     python3-gi gir1.2-glib-2.0 libglib2.0-bin udev kmod libgl1-mesa-dri libegl-mesa0 xwayland passwd libpam-runtime \
-    fonts-noto-core binutils ca-certificates >/tmp/apt.log 2>&1 || { echo "::error title=Debian lock (setup)::$(tail -5 /tmp/apt.log | tr '\n' '|')"; exit 1; }
+    fonts-noto-core binutils ca-certificates libkf6config-bin >/tmp/apt.log 2>&1 || { echo "::error title=Debian lock (setup)::$(tail -5 /tmp/apt.log | tr '\n' '|')"; exit 1; }
   apt-get install -y -qq --no-install-recommends cmake ninja-build g++ extra-cmake-modules qt6-base-dev libkf6package-dev libkf6coreaddons-dev >/tmp/apt-dev.log 2>&1 \
     || { echo "::error title=Debian lock (build deps)::$(tail -3 /tmp/apt-dev.log | tr '\n' '|')"; exit 1; }
   cmake -S hosts/linux/desktop/kwin-helpers/shell-package -B /tmp/hearth-shell-package -G Ninja -DCMAKE_BUILD_TYPE=Release >/tmp/cmake.log 2>&1 \
@@ -88,7 +88,22 @@ user() {
   python3 /usr/share/nimbus/desktop/shell/hearth-type --serve >"$REPO/shots/debian-type.log" 2>&1 &
   sleep 3
   export HEARTH_WM=kwin PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock XDG_CURRENT_DESKTOP=Hearth:KDE LIBGL_ALWAYS_SOFTWARE=1
-  export XDG_CONFIG_DIRS="$REPO/hosts/linux/desktop/kwin/xdg:/etc/xdg"
+  export XDG_CONFIG_DIRS="$REPO/hosts/linux/desktop/kwin/xdg:$REPO/hosts/linux/desktop/kwin/windows/xdg:/etc/xdg"
+  # Your own files left from KDE Plasma (1.13) turning KWin's own locking on (and its input method, the Super key):
+  # Hearth's fixed keys ([$i] in kwin/xdg) must win, so KWin never locks by itself (review, Nov 17).
+  mkdir -p "$HOME/.config"
+  printf '[Daemon]\nAutolock=true\nLockOnResume=true\nTimeout=1\n' > "$HOME/.config/kscreenlockerrc"
+  printf '[Wayland]\nInputMethod[$e]=/usr/share/applications/com.github.maliit.keyboard.desktop\n\n[ModifierOnlyShortcuts]\nMeta=org.kde.plasmashell,/PlasmaShell,org.kde.PlasmaShell,activateLauncherMenu\n\n[NightColor]\nActive=true\n' > "$HOME/.config/kwinrc"
+  kr() { kreadconfig6 --file "$1" --group "$2" --key "$3" 2>/dev/null; }
+  mine=$(XDG_CONFIG_DIRS=/etc/xdg kr kscreenlockerrc Daemon Autolock)
+  [ "$mine" = true ] && ok "your own kscreenlockerrc is read (without Hearth's folder: Autolock=$mine)" || bad "the test's own kscreenlockerrc isn't read" "Autolock=$mine"
+  got="$(kr kscreenlockerrc Daemon Autolock) $(kr kscreenlockerrc Daemon LockOnResume) $(kr kscreenlockerrc Daemon Timeout)"
+  [ "$got" = "false false 0" ] && ok "Hearth's fixed kscreenlockerrc keys win over yours (KConfig on KWin 6.3: Autolock LockOnResume Timeout = $got)" \
+    || bad "your kscreenlockerrc overrides Hearth's (Autolock LockOnResume Timeout = $got)"
+  im=$(kr kwinrc Wayland InputMethod); meta=$(kr kwinrc ModifierOnlyShortcuts Meta); night=$(kr kwinrc NightColor Active)
+  [ "$im" = /usr/share/applications/hearth-kwin-im.desktop ] && [ "$meta" = org.hearth.Windows,/org/hearth/Windows,org.hearth.Windows,Launcher ] \
+    && ok "Hearth's input method and Super key win over yours" "InputMethod=$im Meta=$meta" || bad "your kwinrc overrides Hearth's input method or Super key" "InputMethod=$im Meta=$meta"
+  [ "$night" = true ] && ok "your own Night Light (a setting Hearth exposes) is still yours" || bad "a setting Hearth exposes was fixed" "NightColor Active=$night"
   mkdir -p "$XDG_RUNTIME_DIR/hearth" && chmod 700 "$XDG_RUNTIME_DIR/hearth"
   env -0 > "$XDG_RUNTIME_DIR/hearth/kwin.env" && chmod 600 "$XDG_RUNTIME_DIR/hearth/kwin.env"
   WAYLAND_DISPLAY=$OUTER kwin_wayland --wayland-display "$OUTER" --width 1920 --height 1080 --socket wayland-hearth >"$REPO/shots/debian-kwin.log" 2>&1 &
@@ -106,6 +121,11 @@ user() {
     || bad "hearth-lockcheck says it's not safe to lock" "$r"
   [ $rc = 0 ] || return 1
 
+  # Your Autolock=true with Timeout=1 (a minute): KWin would lock by itself after a minute idle. It must not.
+  echo "::notice title=Debian lock: idle::waiting 80 s with no input (your own kscreenlockerrc says Autolock=true, Timeout=1)"
+  sleep 80
+  active && bad "KWin locked by itself (your kscreenlockerrc's Autolock won over Hearth's)" "$(grep -iE 'lock|greet' "$REPO/shots/debian-kwin.log" | tail -5 | tr '\n' '|')" \
+    || ok "KWin didn't lock by itself after 80 s idle, though your own kscreenlockerrc says Autolock=true, Timeout=1"
   gdbus call --session --dest org.freedesktop.ScreenSaver --object-path /ScreenSaver --method org.freedesktop.ScreenSaver.Lock >/dev/null 2>&1
   for i in $(seq 1 20); do active && break; sleep 0.5; done
   active && ok "locked by KWin's locker" || { bad "KWin's locker didn't lock" "$(grep -iE 'lock|greet' "$REPO/shots/debian-kwin.log" | tail -5 | tr '\n' '|')"; return 1; }

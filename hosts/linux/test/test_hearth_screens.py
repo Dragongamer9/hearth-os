@@ -331,6 +331,21 @@ class KWinSettings(Base):
         self.assertEqual(hs.night_kwinrc({'nightLight': False, 'nightTemp': 99999, 'nightMode': 'always', 'nightFrom': 'x', 'nightTo': '7:05'}),
                          {'Active': 'false', 'Mode': 'Constant', 'NightTemperature': 6500, 'EveningBeginFixed': '1930', 'MorningBeginFixed': '0705', 'TransitionTime': 30})
 
+    def test_kwinrc_goes_through_settings_io_with_a_backup_then_kwin_is_told(self):
+        rc = os.path.join(self.d.name, 'kwinrc')
+        with open(rc, 'w') as f:
+            f.write('[Windows]\nFocusPolicy=FocusFollowsMouse\n')
+        run = FakeRun()
+        calls = []
+        with mock.patch.dict(os.environ, {'HEARTH_WM': 'kwin'}), mock.patch.object(hs, 'RUN', run), \
+                mock.patch.object(hs, 'have', return_value=True), \
+                mock.patch.object(hs, 'kwin_call', side_effect=lambda *a, **k: calls.append(a)):
+            hs.tearing(True)
+        self.assertEqual(open(rc).read(), '[Windows]\nFocusPolicy=FocusFollowsMouse\n\n[Compositing]\nAllowTearing=true\n')
+        self.assertEqual(open(rc + '.bak').read(), '[Windows]\nFocusPolicy=FocusFollowsMouse\n')
+        self.assertFalse([c for c in run.calls if c and c[0] == 'kwriteconfig6'], 'never kwriteconfig6 (no .bak)')
+        self.assertIn(('reconfigure',), calls)
+
     def test_night_only_writes_when_something_changed(self):
         with mock.patch.dict(os.environ, {'HEARTH_WM': 'kwin'}):
             self.assertTrue(hs.night({'nightLight': True})['changed'])
