@@ -745,7 +745,7 @@ class Restore(unittest.TestCase):
         r = (SHELL / 'SessionRestore.qml').read_text()
         self.assertIn('if (Settings.restoreApps) startTimer.restart(); else restored = true;', r)
         self.assertIn('hearth-apps-restored', r)
-        self.assertIn('typeof WinList !== "undefined"', r)
+        self.assertIn('readonly property var wins: WinList.toplevels.values', r)   # KWin's or labwc's (WinList.qml)
         self.assertRegex(r, r'skip: /\^\(steam')
         self.assertIn('Settings.restoreApps = v', (SHELL / 'SetStartup.qml').read_text())
         self.assertIn('SessionRestore {}', (SHELL / 'shell.qml').read_text())
