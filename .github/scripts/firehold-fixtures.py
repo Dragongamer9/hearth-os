@@ -19,8 +19,8 @@ for gid, title, src, inst, last, mins, extra in games:
          'lastPlayed': last, 'minutes': mins, 'update': False, 'cover': None, 'wide': None, 'hero': None, 'icon': None}
     g.update(extra)
     out.append(g)
-open(d + '/library.json', 'w').write(json.dumps(out))
-open(d + '/nimbus', 'w').write('#!/bin/sh\ncase "$*" in *--list-games*) cat %s/library.json; echo ;; *) exit 0 ;; esac\n' % d)
+open(d + '/fixture-games.json', 'w').write(json.dumps(out))
+open(d + '/nimbus', 'w').write('#!/bin/sh\ncase "$*" in *--list-games*) cat %s/fixture-games.json; echo ;; *) exit 0 ;; esac\n' % d)
 apps = {'apps': [{'id': 'old-office', 'name': 'Old Office', 'icon': '', 'last': {'at': int(time.time()) - 60 * 60 * 80}}]}
 open(d + '/hearth-winapps', 'w').write('#!/bin/sh\n[ "$1" = list ] && echo \'%s\'\n' % json.dumps(apps))
 saves = {'games': [{'name': 'Cloud Lanes', 'backedUp': True}, {'name': 'Ember Trails', 'backedUp': True}]}
