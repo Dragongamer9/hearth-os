@@ -40,7 +40,7 @@ Nextcloud and IMAP servers on localhost; a stand-in keyring; never a real accoun
 import base64
 import datetime as dt
 import hashlib
-import http.server
+import http.server as httpserver
 import imaplib
 import json
 import os
@@ -771,7 +771,7 @@ def loopback_code(state, host='127.0.0.1', timeout=OAUTH_TIMEOUT, on_ready=None)
     """A one-shot web server on this device for the browser's redirect: (code or None, error, redirect_uri)."""
     got = {}
 
-    class H(http.server.BaseHTTPRequestHandler):
+    class H(httpserver.BaseHTTPRequestHandler):
         def do_GET(self):        # noqa: N802
             q = urllib.parse.parse_qs(urllib.parse.urlsplit(self.path).query)
             if urllib.parse.urlsplit(self.path).path != '/callback':
@@ -798,7 +798,7 @@ def loopback_code(state, host='127.0.0.1', timeout=OAUTH_TIMEOUT, on_ready=None)
             pass
 
     bind = '127.0.0.1' if host in ('127.0.0.1', 'localhost') else host
-    srv = http.server.HTTPServer((bind, 0), H)
+    srv = httpserver.HTTPServer((bind, 0), H)
     srv.timeout = 1
     redirect = 'http://%s:%d/callback' % (host, srv.server_port)
     if on_ready:
