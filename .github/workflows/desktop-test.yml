@@ -55,6 +55,8 @@ jobs:
       - name: Looks and apps theme tests
         run: |
           python3 -m unittest discover -s hosts/linux/test -p 'test_*theme.py' -v
+          # Mantel on KWin's Settings pages' helper (hearth-kwin-settings: merge-on-write, rebinds, what it may change).
+          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_settings.py' -v
           # Screens on labwc and KWin (hearth-screens, docs/SCREENS.md): parse/build, saved settings never lost.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_screens.py' -v
           # Mantel 2026: the eight looks, settings that never change by themselves, Sunset off, Game Mode in every look.
@@ -372,8 +374,9 @@ jobs:
             '[1d0b1f5e-0000-4000-8000-000000000002]' 'Description=Picture in picture on top' 'title=Picture-in-Picture' 'titlematch=2' 'above=true' 'aboverule=2' 'opacityinactive=85' 'opacityinactiverule=2' \
             > "$HOME/.config/kwinrulesrc"
           printf '%s\n' '[Keyboard]' 'StickyKeys=true' > "$HOME/.config/kaccessrc"
+          printf '%s\n' '[ButtonRebinds][Mouse]' 'ExtraButton1=Key,Alt+Left' 'ExtraButton5=Key,Meta+W' > "$HOME/.config/kcminputrc"
           touch "$XDG_RUNTIME_DIR/hearth-kwin-preview"
-          K1=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum || true)
+          K1=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" "$HOME/.config/kcminputrc" 2>/dev/null | sha256sum || true)
           kp kwin-effects 01-window-effects; kdown 22 02-window-effects-switcher-blur
           kp kwin-desktops 03-virtual-desktops
           kp kwin-tiling 04-tiling
@@ -383,9 +386,13 @@ jobs:
           kp kwin-games 11-games-and-x11-apps
           kp mouse 12-mouse-on-kwin; kdown 14 13-touchpad-on-kwin
           kp accessibility 14-accessibility-on-kwin; kdown 16 15-accessibility-typing-and-mouse
+          # Mouse buttons (1.14 wave 3, SetMouseButtons.qml): two saved rebinds (kcminputrc above), then the "press the button" box
+          # (mouse-buttons:press); the middle-click paste switch is in 12, the pen-and-mouse pointer switch in 09.
+          kp mouse-buttons 16-mouse-buttons
+          kp mouse-buttons:press 17-mouse-buttons-press
           ipc settings close; sleep 1
           rm -f "$XDG_RUNTIME_DIR/hearth-kwin-preview"
-          K2=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum || true)
+          K2=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" "$HOME/.config/kcminputrc" 2>/dev/null | sha256sum || true)
           L2=$(find "$HOME/.config/labwc" "$XDG_RUNTIME_DIR/hearth-labwc" -type f 2>/dev/null | sort | xargs -r sha256sum | sha256sum || true)
           [ "$K1" = "$K2" ] || { echo "::error title=KWin pages::opening the KWin pages changed KWin's settings files"; touch shots/FAILED; }
           [ "$L0" = "$L2" ] || { echo "::error title=KWin pages::the KWin pages changed labwc's files"; touch shots/FAILED; }
@@ -2724,7 +2731,7 @@ jobs:
           - "00-labwc-needs-kwin 00-labwc-mouse 01-window-effects 02-window-effects-switcher-blur 03-virtual-desktops"
           - "04-tiling 05-screen-edges 06-screen-edges-touch 07-window-rules 08-window-rule-open"
           - "09-tablet-and-touchscreen 10-touchscreen 11-games-and-x11-apps 12-mouse-on-kwin 13-touchpad-on-kwin"
-          - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse"
+          - "14-accessibility-on-kwin 15-accessibility-typing-and-mouse 16-mouse-buttons 17-mouse-buttons-press"
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true
