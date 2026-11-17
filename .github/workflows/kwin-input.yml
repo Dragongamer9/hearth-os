@@ -48,7 +48,7 @@ jobs:
           echo "::notice title=Debian screen locker packages::$(apt-cache search screenlocker | tr '\n' '|') kwin-wayland needs: $(apt-cache depends kwin-wayland 2>/dev/null | grep -i lock | tr '\n' ' ')"
           # The same steps as the image (os-bases/peppermint/build.sh): desktop/kwin-lock/install.sh.
           apt-get install -y -qq --no-install-recommends binutils python3 >/dev/null 2>&1
-          apt-get install -y -qq --no-install-recommends cmake ninja-build g++ qt6-base-dev libkf6package-dev libkf6coreaddons-dev >/dev/null 2>&1
+          apt-get install -y -qq --no-install-recommends cmake ninja-build g++ extra-cmake-modules qt6-base-dev libkf6package-dev libkf6coreaddons-dev >/dev/null 2>&1
           cmake -S hosts/linux/desktop/kwin-helpers/shell-package -B /tmp/hsp -G Ninja >/tmp/cmake.log 2>&1 && cmake --build /tmp/hsp >>/tmp/cmake.log 2>&1 \
             || { echo "::error title=Debian Plasma/Shell type (as builder.sh builds it)::$(grep -iE 'error' /tmp/cmake.log | head -8 | tr '\n' '|' | cut -c1-1800)"; exit 1; }
           HEARTH_SHELL_PACKAGE_SO=/tmp/hsp/hearth_plasma_shell.so bash -x hosts/linux/desktop/kwin-lock/install.sh hosts/linux/desktop/kwin-lock > /tmp/install.log 2>&1; irc=$?
