@@ -1,0 +1,131 @@
+#!/usr/bin/python3
+"""hearth-session-start: starts a login session (a wayland-sessions .desktop file) for Hearth's own login screen.
+
+greetd runs it as you, after signing you in: from the greeter (Hearth's login screen) or, with automatic sign-in,
+as greetd's initial_session (hearth-login-screen writes that from SDDM's autologin, so both login screens sign the
+same account into the same session). It sets what SDDM sets for a session (XDG_SESSION_TYPE, XDG_SESSION_DESKTOP,
+XDG_CURRENT_DESKTOP from DesktopNames, DESKTOP_SESSION) and runs the file's Exec.
+
+  hearth-session-start [--relogin] SESSION.desktop
+
+--relogin is SDDM's Relogin=true (nimbus-autologin's): when the session ends, you're signed in again, as SDDM does.
+Three sessions in a row that end within 15 s stop that (then the login screen shows instead of starting it again
+and again). Never while the PC is shutting down. HEARTH_LOGIN_MODE (game or desktop, picked on the login screen) is
+passed on to nimbus-session for this sign-in only; nothing is saved.
+"""
+import os
+import shlex
+import signal
+import subprocess
+import sys
+import time
+
+DIRS = [d for d in os.environ.get('HEARTH_SESSION_DIRS', '/usr/share/wayland-sessions:/usr/local/share/wayland-sessions').split(':') if d]
+QUICK = 15
+QUICK_MAX = 3
+
+
+def log(msg):
+    print('hearth-session-start: ' + msg, file=sys.stderr, flush=True)
+
+
+def parse(path):
+    vals, section = {}, ''
+    with open(path, encoding='utf-8', errors='replace') as f:
+        for line in f:
+            s = line.strip()
+            if s.startswith('[') and s.endswith(']'):
+                section = s[1:-1]
+            elif section == 'Desktop Entry' and '=' in s and not s.startswith('#'):
+                k, v = s.split('=', 1)
+                vals.setdefault(k.strip(), v.strip())
+    return vals
+
+
+def find(name):
+    if '/' in name or not name.endswith('.desktop'):
+        return ''
+    for d in DIRS:
+        p = os.path.join(d, name)
+        if os.path.isfile(p):
+            return p
+    return ''
+
+
+def command(vals):
+    words = [w for w in shlex.split(vals.get('Exec', '')) if not (len(w) == 2 and w[0] == '%')]
+    return words
+
+
+def session_env(name, vals, env):
+    sid = name[:-len('.desktop')]
+    env = dict(env)
+    env['XDG_SESSION_TYPE'] = 'wayland'
+    env.setdefault('XDG_SESSION_DESKTOP', sid)
+    env.setdefault('DESKTOP_SESSION', sid)
+    names = vals.get('DesktopNames', '').strip(';').replace(';', ':')
+    if names:
+        env.setdefault('XDG_CURRENT_DESKTOP', names)
+    if env.get('HEARTH_LOGIN_MODE') not in ('game', 'desktop'):
+        env.pop('HEARTH_LOGIN_MODE', None)
+    return env
+
+
+def shutting_down():
+    try:
+        r = subprocess.run(['systemctl', 'is-system-running'], capture_output=True, text=True, timeout=10)
+        return r.stdout.strip() == 'stopping'
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def run_relogin(argv, env, sleep=time.sleep, clock=time.monotonic):
+    stop = {'sig': 0}
+    child = {'p': None}
+
+    def forward(sig, _frame):
+        stop['sig'] = sig
+        if child['p'] and child['p'].poll() is None:
+            child['p'].send_signal(sig)
+    for s in (signal.SIGTERM, signal.SIGHUP, signal.SIGINT):
+        signal.signal(s, forward)
+    quick, rc = 0, 0
+    while True:
+        t0 = clock()
+        child['p'] = subprocess.Popen(argv, env=env)
+        rc = child['p'].wait()
+        if stop['sig'] or shutting_down():
+            return rc
+        quick = quick + 1 if clock() - t0 < QUICK else 0
+        if quick >= QUICK_MAX:
+            log('the session ended within %d s %d times in a row: the login screen instead' % (QUICK, quick))
+            return rc
+        log('the session ended (code %s): signing in again (automatic sign-in)' % rc)
+        sleep(1)
+
+
+def main(argv):
+    relogin = '--relogin' in argv[1:]
+    rest = [a for a in argv[1:] if a != '--relogin']
+    if len(rest) != 1:
+        log('usage: hearth-session-start [--relogin] SESSION.desktop')
+        return 2
+    path = find(rest[0])
+    if not path:
+        log('no session called %s' % rest[0])
+        return 1
+    vals = parse(path)
+    cmd = command(vals)
+    if not cmd:
+        log('%s has no Exec' % path)
+        return 1
+    env = session_env(rest[0], vals, os.environ)
+    if env.get('HEARTH_LOGIN_MODE'):
+        log('%s, %s mode (picked on the login screen)' % (rest[0], env['HEARTH_LOGIN_MODE']))
+    if not relogin:
+        os.execvpe(cmd[0], cmd, env)
+    return run_relogin(cmd, env)
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

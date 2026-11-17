@@ -1,0 +1,12 @@
+# Tells you once, after you sign in, when Hearth's own login screen didn't work and SDDM was used (or it's paused
+# after two failed starts). Does nothing otherwise.
+[Unit]
+Description=Hearth: a note about the login screen
+ConditionPathExists=/var/lib/hearth/login-screen-state.json
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/nimbus/hearth-login-screen notice
+
+[Install]
+WantedBy=default.target

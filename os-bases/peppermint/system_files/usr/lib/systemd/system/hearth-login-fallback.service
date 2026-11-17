@@ -1,0 +1,8 @@
+# Hearth's own login screen didn't work at this start: SDDM shows instead (once per start; not while shutting down).
+# Two failed starts in a row pause it until it's turned on again in Settings, and the person is told after signing in.
+[Unit]
+Description=Hearth's login screen didn't work: SDDM instead
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-login-screen fallback greetd stopped or the greeter crashed

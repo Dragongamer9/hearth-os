@@ -47,8 +47,9 @@ SNIPPET = 'hearth-fallback.cfg'
 BEGIN = '### Hearth: automatic fallback (hearth-boot-guard) ###'
 END = '### end Hearth fallback ###'
 SAVE_FS = {'ext2', 'ext3', 'ext4', 'vfat', 'msdos', 'fat'}
+# cage: Hearth's own login screen (1.14, greetd; hearth-greeter), the only thing in Hearth that runs cage.
 UP_PROCS = ('gamescope', 'gamescope-wl', 'labwc', 'sddm-greeter', 'sddm-greeter-qt6', 'plasmashell',
-            'kwin_wayland', 'cinnamon', 'gnome-shell')
+            'kwin_wayland', 'cinnamon', 'gnome-shell', 'cage')
 UP_SECONDS = 45
 PAUSE_DAYS = 3
 

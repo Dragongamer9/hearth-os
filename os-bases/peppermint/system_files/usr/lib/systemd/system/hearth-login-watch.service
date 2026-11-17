@@ -1,0 +1,10 @@
+# Hearth's own login screen: SDDM instead if the greeter isn't on screen (or nobody was signed in automatically)
+# within 60 s, or greetd stops. Then it waits for a sign-in, which marks this start as working.
+[Unit]
+Description=Hearth's login screen: back to SDDM if it doesn't show
+After=hearth-greetd.service
+ConditionPathExists=/run/hearth/login-greetd
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/nimbus/hearth-login-screen watch
