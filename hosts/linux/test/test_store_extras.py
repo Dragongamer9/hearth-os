@@ -175,6 +175,24 @@ class Drivers(Base):
         self.assertIn('firmware-mediatek', by)
         self.assertEqual(out['missing'], 2)
         self.assertNotIn('amd64-microcode', by)
+        # The processor's microcode and Nvidia's driver come with Hearth OS's image: shown, never offered to install.
+        for p in ('nvidia-open', 'intel-microcode'):
+            self.assertTrue(by[p]['infoOnly'], p)
+            self.assertEqual(by[p]['available'], '', p)
+        self.assertEqual(by['intel-microcode']['note'], "Comes with Hearth OS's updates")
+        self.assertIn("Hearth OS's own image carries it", by['nvidia-open']['note'])
+
+    def test_only_the_firmware_it_offers_is_ever_installed(self):
+        x = load(SHELL / 'hearth_store_extras.py', 'hse_pkgs')
+        offered = {p for v in x.VENDORS.values() for _, p, _ in v if p != 'nvidia'} | {p for _, p in x.FIRMWARE_FILES}
+        for p in offered:
+            self.assertTrue(x.DRIVER_PKG.fullmatch(p), p)
+        for bad in ('nvidia-open', 'nvidia-driver', 'intel-microcode', 'amd64-microcode', 'firmware-anything',
+                    'firmware-realtek;rm', 'firmware-realtek\n', 'linux-image-amd64'):
+            self.assertIsNone(x.DRIVER_PKG.fullmatch(bad), bad)
+        admin = (ROOT / 'os/system_files/usr/libexec/nimbus/hearth-admin').read_text()
+        self.assertIn("DRIVER_PKG = re.compile(r'(%s)')" % x.DRIVER_PKG.pattern[1:-1], admin)   # the same list there
+        self.assertIn('DRIVER_PKG.fullmatch(argv[2])', admin)
 
     def test_install_takes_only_drivers_this_pc_needs_and_goes_through_hearth_admin(self):
         fake = self.t / 'pkexec'
@@ -183,6 +201,9 @@ class Drivers(Base):
         extra = {'HEARTH_DRIVERS_FIXTURE': str(FIXTURE), 'HEARTH_PKEXEC': str(fake)}
         code, out, _ = self.run_h('driver-install', 'bash', extra=extra)
         self.assertEqual(code, 1)
+        for p in ('nvidia-open', 'intel-microcode'):                                   # shown, never installed here
+            code, out, _ = self.run_h('driver-install', p, extra=extra)
+            self.assertEqual(code, 1, p)
         code, out, _ = self.run_h('driver-install', 'firmware-atheros', extra=extra)     # a driver, but not this PC's
         self.assertEqual(code, 1)
         self.assertIn("doesn't need", out)

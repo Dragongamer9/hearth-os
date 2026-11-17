@@ -60,7 +60,7 @@ test('a .deb on the system itself (Peppermint unlocked) always asks; the unlock 
 test('a driver from Debian (Settings › App store › Drivers) always asks for a password', () => {
   const cl = a => ({ program: ADMIN, command_line: ADMIN + ' ' + a });
   assert.strictEqual(decide(cl('driver-install firmware-realtek')), 'auth_admin');
-  assert.strictEqual(decide(cl('driver-install nvidia-open'), { isInGroup: () => false }), 'auth_admin');
+  assert.strictEqual(decide(cl('driver-install firmware-iwlwifi'), { isInGroup: () => false }), 'auth_admin');
   assert.strictEqual(decide(cl('hostname driver-install')), 'yes');
 });
 
