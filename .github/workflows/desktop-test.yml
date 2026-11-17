@@ -2598,12 +2598,26 @@ jobs:
           # ---- Mantel's Settings › Display in the real shell; its pictures through hearth-screenshot (KWin's
           # ScreenShot2 with its permission check on), or grim when KWin runs inside labwc.
           python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1   # no one-time "Pick your browser" over the pictures
+          # ---- Screen power saving (1.14, hearth-screen-psr): its tests, then a stand-in of the owner's laptop (Intel
+          # 0x46d0 with a built-in screen and the driver's PSR switch) so Settings › Display shows the row as he'll see it.
+          python3 -m unittest hosts/linux/test/test_hearth_screen_psr.py hosts/linux/test/test_hearth_memory.py > shots/kwin/psr-tests.log 2>&1 \
+            || fail "screen power saving / memory tests: $(grep -E '^(FAIL|ERROR|AssertionError)' shots/kwin/psr-tests.log | head -6 | tr '\n' '|' | cut -c1-600)"
+          export HEARTH_PSR_ROOT=/tmp/psr-pc HEARTH_PSR_BIN="$PWD/os/system_files/usr/libexec/nimbus/hearth-screen-psr"
+          python3 -c "import sys; sys.path.insert(0, 'hosts/linux/test'); import test_hearth_screen_psr as t; t.fake_pc('/tmp/psr-pc')"
+          export HEARTH_PSR_SYS=/tmp/psr-pc/sys HEARTH_PSR_DEBUGFS=/tmp/psr-pc/debug HEARTH_PSR_RUN=/tmp/psr-pc/run/screen-psr.json HEARTH_PSR_SETTINGS=/tmp/psr-pc/etc/screen-power.json
+          python3 "$HEARTH_PSR_BIN" apply > shots/kwin/psr-apply.json 2>&1
+          grep -q '"by": "auto"' shots/kwin/psr-apply.json && grep -qx 1 /tmp/psr-pc/debug/dri/0/i915_edp_psr_debug \
+            || fail "Screen power saving: Auto didn't turn it off on the stand-in laptop: $(head -c 400 shots/kwin/psr-apply.json)"
+          [ ! -e "$HEARTH_PSR_SETTINGS" ] || fail "Screen power saving: Auto wrote a settings file"
+          echo "::notice title=Screen power saving::$(python3 "$HEARTH_PSR_BIN" status | head -c 600)"
           quickshell -p hosts/linux/desktop/shell >shots/kwin/shell.log 2>&1 &
           sleep 25
           ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 3; }
           shot() { if [ -n "$OUTER" ]; then WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/kwin/$1.png"; else timeout 30 hearth-screenshot -o "$N" "shots/kwin/$1.png"; fi 2>>shots/kwin/shot-errors.txt; }
           scr() { ipc settings close; ipc settings page "display$1"; sleep 4; shot "$2"; }
           scr "" kwin-1-display-top; scr :night kwin-2-night-light; scr :hdr kwin-3-hdr-and-colour; scr :games kwin-4-games-and-smoothness; scr :layout kwin-5-scale-rotation-mirror
+          scr :power kwin-11-screen-power-saving
+          [ ! -e "$HEARTH_PSR_SETTINGS" ] || fail "Screen power saving: opening Settings › Display wrote a settings file"
           ipc settings close
           if grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess|shell)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" shots/kwin/shell.log >/dev/null; then
             fail "$(grep -E "(SetDisplay|SetPower|IdlePower|QuickAccess|shell)\.qml" shots/kwin/shell.log | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
@@ -2741,6 +2755,9 @@ jobs:
       - name: Picture (kwin-1-display-top)
         if: always()
         run: f=shots/kwin/kwin-1-display-top.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-1-display-top $i::$part"; done || true
+      - name: Picture (kwin-11-screen-power-saving)
+        if: always()
+        run: f=shots/kwin/kwin-11-screen-power-saving.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-11-screen-power-saving $i::$part"; done || true
       - name: Picture (kwin-2-night-light)
         if: always()
         run: f=shots/kwin/kwin-2-night-light.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -6 | while read -r i part; do echo "::notice title=SHOT kwin-2-night-light $i::$part"; done || true

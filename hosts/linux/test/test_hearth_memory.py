@@ -26,6 +26,10 @@ def load():
 hm = load()
 LAPTOP = int(7.5 * GIB)          # the owner's i3-N305 laptop
 DESKTOP = 32 * GIB
+STRONG = {'model': 'AMD Ryzen 7 7800X3D 8-Core Processor', 'threads': 16}
+N305 = {'model': 'Intel(R) Core(TM) i3-N305', 'threads': 8}
+# The recommendation depends on the processor (1.14): these tests pin it to a desktop one unless they say otherwise.
+hm.cpu_facts = lambda root=None: dict(STRONG)
 
 
 class Recommended(unittest.TestCase):
@@ -330,3 +334,91 @@ class OldDefaultsKept(unittest.TestCase):
         import pathlib
         qml = (pathlib.Path(__file__).resolve().parents[1] / 'desktop/shell/MemorySettings.qml').read_text()
         self.assertIn('["auto", "Auto"]', qml)
+
+
+class LaptopFreeze114(unittest.TestCase):
+    """1.14 (the owner's i3-N305 laptop froze, log G2W9-WQTH-FK): lz4 and memory-sized zram recommended on small
+    processors (a saved file keeps its zstd), the guard sees zram full with a drive swap file behind it, and a
+    browser's biggest tab is closed before the whole browser."""
+    MB = 1024 * 1024
+
+    def test_small_processors(self):
+        self.assertTrue(hm.weak_cpu(N305))
+        for m in ('Intel(R) N100', 'Intel(R) Celeron(R) N4020', 'Intel(R) Pentium(R) Silver N6000', 'AMD Athlon Silver 3050U'):
+            self.assertTrue(hm.weak_cpu({'model': m, 'threads': 4}), m)
+        self.assertTrue(hm.weak_cpu({'model': 'Some CPU', 'threads': 4}))
+        self.assertFalse(hm.weak_cpu(STRONG))
+        self.assertFalse(hm.weak_cpu({'model': 'Intel(R) Core(TM) i5-1235U', 'threads': 12}))
+        self.assertFalse(hm.weak_cpu({'model': 'AMD Ryzen 5 5600X 6-Core Processor', 'threads': 12}))
+
+    def test_lz4_recommended_on_the_laptop_but_a_saved_file_keeps_zstd(self):
+        self.assertEqual(hm.recommended(LAPTOP, N305)['zram'], {'on': True, 'gb': 8, 'algo': 'lz4'})
+        self.assertEqual(hm.recommended(LAPTOP, STRONG)['zram'], {'on': True, 'gb': 11, 'algo': 'zstd'})
+        with mock.patch.object(hm, 'cpu_facts', lambda root=None: dict(N305)):
+            self.assertEqual(hm.merged({}, LAPTOP)['zram']['algo'], 'lz4')                     # no file: the new one
+            self.assertEqual(hm.merged({'zram': {'on': True, 'gb': 8}}, LAPTOP)['zram'], {'on': True, 'gb': 8, 'algo': 'zstd'})
+            self.assertEqual(hm.merged({'swappiness': 150}, LAPTOP)['zram'], {'on': True, 'gb': 11, 'algo': 'zstd'})
+            self.assertEqual(hm.merged({'zram': {'algo': 'lz4'}}, LAPTOP)['zram']['algo'], 'lz4')   # yours stays
+
+    def test_cpu_facts_read_from_cpuinfo(self):
+        d = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, d)
+        with open(os.path.join(d, 'cpuinfo'), 'w') as f:
+            f.write(''.join('processor\t: %d\nmodel name\t: Intel(R) Core(TM) i3-N305\n\n' % i for i in range(8)))
+        self.assertEqual(LaptopFreeze114.real_cpu_facts(d), N305)
+
+    def test_zram_full_with_a_big_drive_swap_file_counts_as_full(self):
+        mi = {'MemTotal': 8 * GIB, 'MemAvailable': int(0.01 * 8 * GIB), 'SwapTotal': 45 * GIB, 'SwapFree': 38 * GIB}
+        sw = [{'path': '/var/swap/swapfile', 'size': 37 * GIB, 'used': 0, 'prio': 10},
+              {'path': '/dev/zram0', 'size': 8 * GIB, 'used': int(7.9 * GIB), 'prio': 100}]
+        self.assertFalse(hm.out_of_memory(mi, {'full': 30.0}, 'gentle'))                # before 1.14: never "full"
+        self.assertTrue(hm.out_of_memory(mi, {'full': 30.0}, 'gentle', sw))
+        self.assertFalse(hm.out_of_memory(mi, {'full': 5.0}, 'gentle', sw))             # not stalling: left alone
+        self.assertFalse(hm.out_of_memory(dict(mi, MemAvailable=2 * GIB), {'full': 30.0}, 'gentle', sw))
+        roomy = [dict(sw[0]), dict(sw[1], used=4 * GIB)]
+        self.assertFalse(hm.out_of_memory(mi, {'full': 30.0}, 'gentle', roomy))         # zram still has room
+        only_zram = [dict(sw[1], used=4 * GIB)]
+        self.assertFalse(hm.out_of_memory(dict(mi, SwapTotal=8 * GIB, SwapFree=4 * GIB), {'full': 30.0}, 'gentle', only_zram))
+
+    def procs(self):
+        mb = self.MB
+        return [
+            {'pid': 300, 'ppid': 1, 'uid': 1000, 'comm': 'firefox-bin', 'rss': 180 * mb, 'swap': 300 * mb, 'cgroup': '/a/app-firefox-9.scope'},
+            {'pid': 301, 'ppid': 300, 'uid': 1000, 'comm': 'Isolated Web Co', 'rss': 1415 * mb, 'swap': 0, 'cgroup': '/a/app-firefox-9.scope'},
+            {'pid': 302, 'ppid': 300, 'uid': 1000, 'comm': 'Isolated Web Co', 'rss': 57 * mb, 'swap': 0, 'cgroup': '/a/app-firefox-9.scope'},
+            {'pid': 303, 'ppid': 300, 'uid': 1000, 'comm': 'WebExtensions', 'rss': 66 * mb, 'swap': 0, 'cgroup': '/a/app-firefox-9.scope'},
+            {'pid': 500, 'ppid': 1, 'uid': 1000, 'comm': 'brave', 'rss': 200 * mb, 'swap': 0, 'cgroup': '/a/app-brave-2.scope'},
+            {'pid': 501, 'ppid': 500, 'uid': 1000, 'comm': 'brave', 'rss': 900 * mb, 'swap': 0, 'cgroup': '/a/app-brave-2.scope'},
+            {'pid': 502, 'ppid': 500, 'uid': 1000, 'comm': 'brave', 'rss': 700 * mb, 'swap': 0, 'cgroup': '/a/app-brave-2.scope'},
+        ]
+
+    def test_the_biggest_tab_goes_first(self):
+        ps = self.procs()
+        self.assertEqual(hm.pick_victim(ps, set())['key'], 'app-firefox-9.scope')     # still the biggest app
+        ff = hm.pick_victim([p for p in ps if p['comm'] != 'brave'], set())
+        self.assertEqual(ff['key'], 'app-firefox-9.scope')
+        tab = hm.biggest_tab(ff, ps)
+        self.assertEqual((tab['pid'], tab['browser']), (301, 'Firefox'))
+        cmd = {501: 'brave\0--type=renderer\0', 502: 'brave\0--type=renderer\0--extension-process\0', 500: 'brave\0'}
+        with mock.patch.object(hm, 'read', side_effect=lambda p, d='': cmd.get(int(p.split('/')[-2]), '') if p.endswith('cmdline') else d):
+            br = hm.pick_victim([p for p in ps if p['comm'] == 'brave'], set())
+            tab = hm.biggest_tab(br, ps)
+        self.assertEqual((tab['pid'], tab['browser']), (501, 'Brave'))     # a tab, never the extension process
+
+    def test_small_tabs_mean_the_whole_app_as_before(self):
+        ps = [p for p in self.procs() if p['comm'] != 'brave']
+        ps[1] = dict(ps[1], rss=200 * self.MB)
+        v = hm.pick_victim(ps, set())
+        self.assertIsNone(hm.biggest_tab(v, ps))
+        app = {'pid': 1, 'ppid': 0, 'uid': 1000, 'comm': 'blender', 'rss': 3000 * self.MB, 'swap': 0, 'cgroup': '/a/app-b.scope'}
+        v = hm.pick_victim([app], set())
+        self.assertIsNone(hm.biggest_tab(v, [app]))
+
+    def test_the_guard_closes_a_tab_and_says_so(self):
+        src = open(TOOL, encoding='utf-8').read()
+        self.assertIn('out_of_memory(mi, p, level, swaps())', src)
+        self.assertIn("tab = biggest_tab(v, procs) if v else None", src)
+        self.assertIn('press Reload on that tab', src)
+
+
+LaptopFreeze114.real_cpu_facts = staticmethod(load().cpu_facts)
