@@ -134,6 +134,13 @@ SetPage {
         current: page.switchKey
         onChosen: v => { page.switchKey = v; page.apply(); }
     }
+    // 1.14: Alt+Space is also the search bar's (SearchBar.qml); the layout switch wins, the bar keeps Alt+F2.
+    Text {
+        visible: page.layouts.length > 1 && page.switchKey === "grp:alt_space_toggle"
+        Layout.fillWidth: true; Layout.leftMargin: 4
+        text: "Alt+Space switches layouts now, so the search bar opens with Alt+F2."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+    }
 
     SetHeader { text: "Typing" }
     SetSlider {
