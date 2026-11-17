@@ -19,7 +19,7 @@ KSL=$(pick kscreenlocker libkscreenlocker6 libkscreenlocker5) || { echo "install
 PLS=$(pick libplasma6 libplasma5 || true)
 # The lock screen is plain QtQuick + QtQuick.Layouts (Quickshell needs them too).
 "${APT[@]}" "$KSL" ${PLS:+"$PLS"} qml6-module-qtquick qml6-module-qtquick-layouts
-GREETER=$(ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null | head -1)
+GREETER=$( (ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null || true) | head -1)
 [ -x "$GREETER" ] || { echo "install.sh: kscreenlocker_greet isn't installed ($KSL)"; exit 1; }
 
 if ! ls /usr/lib/*/qt6/plugins/kf6/packagestructure/ 2>/dev/null | grep -qi shell; then
@@ -27,7 +27,7 @@ if ! ls /usr/lib/*/qt6/plugins/kf6/packagestructure/ 2>/dev/null | grep -qi shel
   ( cd "$tmp" && apt-get download plasma-workspace >/dev/null )
   deb=$(ls "$tmp"/plasma-workspace_*.deb | head -1)
   dpkg-deb -x "$deb" "$tmp/x"
-  found=$(find "$tmp/x" -path '*kf6/packagestructure/*' -iname '*shell*.so' | head -1)
+  found=$(find "$tmp/x" -path '*kf6/packagestructure/*' -iname '*shell*.so' -print -quit)
   [ -n "$found" ] || { echo "install.sh: plasma-workspace has no shell package type"; exit 1; }
   missing=$(ldd "$found" | awk '/not found/{print $1}')
   [ -z "$missing" ] || { echo "install.sh: the shell package type needs libraries that aren't installed: $missing"; exit 1; }
