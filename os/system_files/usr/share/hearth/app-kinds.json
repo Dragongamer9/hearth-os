@@ -276,11 +276,11 @@
    "mimes": [],
    "apps": {
     "Nimbus": [
-     "hearth-screenshot.desktop"
+     "hearth-capture.desktop"
     ],
     "KDE": [
      "org.kde.spectacle.desktop",
-     "hearth-capture.desktop"
+     "hearth-capture-kde.desktop"
     ],
     "COSMIC": [
      "com.system76.CosmicScreenshot.desktop"

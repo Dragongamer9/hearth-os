@@ -1,5 +1,5 @@
 [Desktop Entry]
-# Hearth Capture: KDE Spectacle with Hearth's colors (hosts/hearth-kde, docs/KDE-APPS.md). GPL; KDE credited in its About.
+# Hearth Capture (KDE Plasma): KDE Spectacle with Hearth's colors (hosts/hearth-kde, docs/KDE-APPS.md). GPL; KDE credited in its About. Hearth Classic has Hearth's own Capture (hearth-capture.desktop, Mantel's Capture.qml).
 Name=Capture
 GenericName=Screenshot Tool
 Comment=Take screenshots of the screen, a window or an area, and mark them up

@@ -81,7 +81,14 @@ else
   ) &
 fi
 
-# Password prompts for apps that need admin rights: the first polkit agent found.
+# Password prompts for apps that need admin rights (RED FLAG: they must always work). 1.14: Mantel draws Hearth's own
+# (PolkitPrompt.qml); hearth-polkit-fallback starts the classic agent (the first one found of the list below, which it
+# keeps the same) when Mantel's isn't registered within a few seconds, and again at once whenever the shell stops.
+# Without the fallback script (an older shell folder), the classic agent starts right away as before.
+if [ -f "$SHARE/desktop/shell/hearth-polkit-fallback" ]; then
+  sh "$SHARE/desktop/shell/hearth-polkit-fallback" "$LABWC_PID" >/dev/null 2>&1 &
+else
+# (not indented: base-peppermint.yml's image check reads this list from a line starting with "for agent in")
 for agent in /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 \
              /usr/lib/policykit-1-gnome/polkit-gnome-authentication-agent-1 \
              /usr/libexec/polkit-gnome-authentication-agent-1 \
@@ -94,6 +101,7 @@ for agent in /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 \
              lxqt-policykit-agent; do
   if command -v "$agent" >/dev/null 2>&1; then "$agent" >/dev/null 2>&1 & break; fi
 done
+fi
 
 # Your own additions: ~/.config/nimbus/autostart (any executable script).
 [ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/autostart" ] && "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/autostart" &
