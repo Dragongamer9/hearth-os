@@ -346,6 +346,31 @@ class Fallback(Box):
         self.assertTrue(self.state()['tripped'])
         self.assertFalse(self.exists('/run/hearth/login-greetd'))
 
+    def test_greetd_ending_runs_the_fallback_without_waiting_on_itself(self):
+        # hearth-greetd.service's ExecStopPost (start-safety review, Nov 17): greetd ending any way means SDDM; from
+        # inside greetd's own stop it never waits on that stop, and while a fallback is already under way it leaves it
+        # to that one (counted once).
+        unit = (ROOT / 'os-bases/peppermint/system_files/usr/lib/systemd/system/hearth-greetd.service').read_text()
+        self.assertIn('ExecStopPost=/usr/libexec/nimbus/hearth-login-screen fallback "greetd ended"', unit)
+        with mock.patch.dict(os.environ, {'SERVICE_RESULT': 'success'}):
+            self.m.cmd_fallback('greetd ended')
+        calls = self.systemctl_calls()
+        self.assertIn('stop --no-block hearth-greetd.service', calls)
+        self.assertNotIn('stop hearth-greetd.service', calls)
+        self.assertIn('start --no-block sddm.service', calls)
+        self.assertEqual(self.state()['failures'], 1)
+        # A fallback under way (it's stopping greetd), then greetd's ExecStopPost: nothing more.
+        self.boot(2)
+        self.m.cmd_select()
+        self.write('/run/hearth/login-falling-back', 'x\n')
+        n = self.systemctl_calls().count('start --no-block sddm.service')
+        with mock.patch.dict(os.environ, {'SERVICE_RESULT': 'success'}):
+            self.m.cmd_fallback('greetd ended')
+        self.assertEqual(self.systemctl_calls().count('start --no-block sddm.service'), n)
+        b = (ROOT / 'os-bases/peppermint/build.sh').read_text()
+        self.assertIn('systemctl disable greetd.service', b)
+        self.assertIn("Debian's greetd.service is enabled", b)
+
     def test_sddm_starts_even_if_recording_it_fails(self):
         # a full drive or a damaged state file: SDDM must still start (review, Nov 17)
         with mock.patch.object(self.m, 'update_state', side_effect=OSError(28, 'No space left on device')):
