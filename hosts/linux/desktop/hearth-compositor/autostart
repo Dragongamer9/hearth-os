@@ -1,8 +1,0 @@
-#!/bin/sh
-# Mantel on Hearth's own compositor (2.0 preview, docs/COMPOSITOR.md): the compositor starts this once it's up
-# (nimbus-session's run_hearth_comp passes it after --), and it runs Desktop Mode's one autostart, the same one labwc
-# and KWin run (desktop/labwc/autostart: it looks at HEARTH_WM). Same process (exec), so $PPID there is still the
-# compositor.
-SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
-HEARTH_WM=hearth; export HEARTH_WM
-exec sh "$SHARE/desktop/labwc/autostart"

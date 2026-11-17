@@ -93,10 +93,7 @@ use smithay::{
         presentation::Refresh,
     },
 };
-use smithay_drm_extras::{
-    display_info,
-    drm_scanner::{DrmScanEvent, DrmScanner},
-};
+use smithay_drm_extras::drm_scanner::{DrmScanEvent, DrmScanner};
 use tracing::{debug, error, info, trace, warn};
 
 // we cannot simply pick the first supported format of the intersection of *all* formats, because:
@@ -233,7 +230,7 @@ pub fn run_udev() {
     /*
      * Initialize the compositor
      */
-    let primary_gpu = if let Ok(var) = std::env::var("HEARTH_COMPOSITOR_DRM_DEVICE") {
+    let primary_gpu = if let Ok(var) = std::env::var("ALBIREO_DRM_DEVICE") {
         DrmNode::from_path(var).expect("Invalid drm device path")
     } else {
         primary_gpu(session.seat())
@@ -824,7 +821,7 @@ impl HearthState<UdevData> {
 
         let framebuffer_exporter = GbmFramebufferExporter::new(gbm.clone(), render_node);
 
-        let color_formats = if std::env::var("HEARTH_COMPOSITOR_DISABLE_10BIT").is_ok() {
+        let color_formats = if std::env::var("ALBIREO_DISABLE_10BIT").is_ok() {
             SUPPORTED_FORMATS_8BIT_ONLY
         } else {
             SUPPORTED_FORMATS
@@ -907,17 +904,10 @@ impl HearthState<UdevData> {
             })
             .unwrap_or(false);
 
-        let display_info = display_info::for_connector(drm_device, connector.handle());
-
-        let make = display_info
-            .as_ref()
-            .and_then(|info| info.make())
-            .unwrap_or_else(|| "Unknown".into());
-
-        let model = display_info
-            .as_ref()
-            .and_then(|info| info.model())
-            .unwrap_or_else(|| "Unknown".into());
+        // The screen's make and model: libdisplay-info's (smithay-drm-extras' display-info) needs a version older
+        // than Debian's and Fedora's, so for now they're unknown (phase 2: read from the screen's EDID ourselves).
+        let make = String::from("Unknown");
+        let model = String::from("Unknown");
 
         if non_desktop {
             info!("Connector {} is non-desktop, setting up for leasing", output_name);
@@ -1014,7 +1004,7 @@ impl HearthState<UdevData> {
                 }
             };
 
-            let disable_direct_scanout = std::env::var("HEARTH_COMPOSITOR_DISABLE_DIRECT_SCANOUT").is_ok();
+            let disable_direct_scanout = std::env::var("ALBIREO_DISABLE_DIRECT_SCANOUT").is_ok();
 
             let dmabuf_feedback = drm_output.with_compositor(|compositor| {
                 compositor.set_debug_flags(self.backend_data.debug_flags);

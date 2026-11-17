@@ -1,12 +1,19 @@
-# Hearth's own compositor
+# Albireo: Hearth's own desktop
 
-The owner, Nov 16, 2026 (10:15 PM): **2.0 has a desktop that is 100% Hearth's own, window manager included.** Today
-Mantel (the bar, the dock, Quick Access, notifications: `hosts/linux/desktop/shell`) runs on KWin, with labwc as the
-fallback. For 2.0 Hearth writes its own Wayland compositor, in Rust, on the Smithay library, the way System76 wrote
-COSMIC's (cosmic-comp) and the niri project wrote niri. KWin and labwc stay installed as fallbacks until Hearth's
-compositor has proven itself on real devices.
+The owner, Nov 16, 2026 (10:15 PM): **2.0 has a desktop that is 100% Hearth's own, window manager included.** At
+10:52 PM he named it **Albireo**, after the double star you can see as one gold and one blue sun: Albireo has two
+postures, **Couch** (gold: the controller and the TV, big tiles, everything full screen) and **Desk** (blue: mouse and
+keyboard, windows, Mantel's bar and dock). One session switches between them, so there is **no separate Game Mode**
+any more, and games run natively on Albireo itself instead of inside gamescope. The owner's drafts of both postures:
+hearth-workspace `hearth/mockups/2.0-desktop` (Couch Home, Desk, a game with the Guide, Library, Settings › Couch and
+Desk).
 
-The code: `hosts/hearth-compositor`. It's a **preview**: nothing starts it unless you turn it on, and if it doesn't
+The compositor is the Albireo compositor (it has no separate name): Hearth's own Wayland compositor, in Rust, on the
+Smithay library, the way System76 wrote COSMIC's (cosmic-comp) and the niri project wrote niri. Today Mantel (the bar,
+the dock, Quick Access, notifications: `hosts/linux/desktop/shell`) runs on KWin, with labwc as the fallback; KWin and
+labwc stay installed as fallbacks until Albireo has proven itself on real devices.
+
+The code: `hosts/albireo`. It's a **preview**: nothing starts it unless you turn it on, and if it doesn't
 come up, Mantel opens on KWin (then labwc) exactly as today.
 
 ## What a compositor is, in one paragraph
@@ -15,7 +22,7 @@ On Wayland the compositor is the program that owns the screen, the keyboard, the
 hands it pictures of its windows; the compositor decides where they go, draws them on the screen with their frames,
 and sends each key press and click to the right app. KWin and labwc are compositors. Mantel isn't one: it's a set of
 special windows (the bar, the dock, the wallpaper) that asks the compositor for its place through "protocols", small
-agreed-on languages. Replacing KWin means Hearth's compositor has to speak every protocol Mantel and Hearth's tools
+agreed-on languages. Replacing KWin means Albireo has to speak every protocol Mantel and Hearth's tools
 use, as well as KWin and labwc do.
 
 ## Why Smithay
@@ -73,6 +80,10 @@ Everything Mantel and Hearth use today on labwc or KWin, and where each stands. 
 
 ## The stages
 
+Phase 1 is Desk only, on Mantel as it is today. Couch (Albireo's own full-screen tiles, the Guide over games, games
+started natively without gamescope) comes once Desk can stand in for KWin; then Steam Game Mode and Hearth Game Mode
+become fallbacks the same way KWin and labwc are.
+
 Sizes are rough: S is a session or two, M about a week of sessions, L several weeks.
 
 1. **MVP, phase 1 (this branch, M).** Runs on real screens (DRM/KMS + libinput through libseat) and in a window for
@@ -87,57 +98,58 @@ Sizes are rough: S is a session or two, M about a week of sessions, L several we
 3. **Parity with KWin (L).** Workspaces, window previews for Alt+Tab and the taskbar, screen sharing through the
    portal, tearing control and VRR for games, Nvidia proven, the KWin bridge's features done Hearth's way
    (`hearth-kwin-bridge` today), rules per app, the on-screen keyboard through input-method on every app.
-4. **Beyond (ongoing).** HDR and colour management, multi-seat (so Couch co-op leaves labwc), Hearth's own effects
+4. **Couch, and beyond (ongoing).** The Couch posture from the owner's mockups (no separate Game Mode; games run
+   natively with the Guide over them), HDR and colour management, multi-seat (so Couch co-op leaves labwc), Hearth's own effects
    (Mantel's frosted glass under windows, animations), Game Mode hand-offs without a black screen, and dropping KWin
    and labwc from the default ladder once the owner says it's proven.
 
 ## The safe start (why this can't leave a device unable to start)
 
-- **Off by default.** The session only tries it when `HEARTH_DESKTOP_WM=hearth` is in `~/.config/nimbus/session.conf`,
-  which only Settings › System › Your desktop › **Hearth compositor (preview)** writes, when you turn it on. Turning it
+- **Off by default.** The session only tries it when `HEARTH_DESKTOP_WM=albireo` is in `~/.config/nimbus/session.conf`,
+  which only Settings › System › Your desktop › **Albireo (preview)** writes, when you turn it on. Turning it
   off goes back to what you had picked before (`HEARTH_DESKTOP_WM_BEFORE`). When the compositor isn't on the device,
   the switch says so and stays off.
-- **One rung above KWin.** nimbus-session's ladder is Hearth's compositor → KWin → labwc. Hearth's compositor gets the
+- **One rung above KWin.** nimbus-session's ladder is Albireo → KWin → labwc. Albireo gets the
   same checks KWin gets: not installed, ends within 15 seconds, or Mantel doesn't say it's up within 45 seconds
   (`$XDG_RUNTIME_DIR/hearth-shell-up`) → Mantel opens on KWin for the rest of that sign-in (and on labwc if KWin
   fails too), and a card says why, once. Twice in a row → KWin until the preview is turned on again. A switch you
   asked for is never counted. Safe graphics, a second player's seat and Server mode never use it.
 - **What it's told and what it reads.** The same environment labwc gets (its folder's environment file, so Mantel
-  and the portals take their labwc ways, which the compositor's protocols are built to match), `HEARTH_WM=hearth`,
+  and the portals take their labwc ways, which the compositor's protocols are built to match), `HEARTH_WM=albireo`,
   `HEARTH_DESKTOP_PID` (its own process id), labwc's `rc.xml` for the shortcuts and key repeat, `theme.json` for the
-  colours. It writes only `$XDG_RUNTIME_DIR/hearth-compositor.json` (what's on the screens, for tests and Hearth) and
-  its log, `~/.local/share/nimbus/hearth-compositor.log`.
+  colours. It writes only `$XDG_RUNTIME_DIR/albireo.json` (what's on the screens, for tests and Hearth) and
+  its log, `~/.local/share/nimbus/albireo.log`.
 - **Ending.** nimbus-mode ends it like KWin (a signal to `HEARTH_DESKTOP_PID`, forced after 4 seconds); it ends cleanly
   on SIGTERM, SIGINT and SIGHUP.
 
-## How it's tested (`.github/workflows/hearth-compositor.yml`)
+## How it's tested (`.github/workflows/albireo.yml`)
 
 Building and testing happen only in GitHub Actions.
 
 - **Build:** `cargo build --release` and `cargo test` in Fedora (where Quickshell's package is); compiler errors come
   out as annotations with the file and line.
-- **Session:** `hosts/linux/test/test_hearth_compositor_session.py` runs nimbus-session for real with stand-ins: never
+- **Session:** `hosts/linux/test/test_albireo_session.py` runs nimbus-session for real with stand-ins: never
   by default, the preview runs it with Mantel's environment, missing / crashing / Mantel never up all open KWin (and
   labwc when KWin fails too), twice in a row pauses it, Settings keeps and restores the choice before.
-- **Nested:** `.github/scripts/hearth-compositor-test.sh` runs the compositor in a 1920x1080 window (its winit backend)
+- **Nested:** `.github/scripts/albireo-test.sh` runs the compositor in a 1920x1080 window (its winit backend)
   on a virtual X screen with software graphics. nimbus-session starts it with the preview on, so the real Desktop
   Mode comes up on it: the autostart, Mantel, a test window (foot). It checks the protocols offered, Mantel's bar and
   dock (layer shell) and their room on the screen, the window on the taskbar (foreign toplevel, also through
   `wlrctl`), minimizing and bringing it back, dragging it to the left edge (snapping, with `xdotool`), Settings ›
   Your desktop, a clean end on SIGTERM and through nimbus-mode, and no panics in the log.
-- **Pictures:** one after each step (`comp-1-empty` … `comp-6-your-desktop`), each checked not to be one flat colour
+- **Pictures:** one after each step (`albireo-1-empty` … `albireo-6-your-desktop`), each checked not to be one flat colour
   (the first must be exactly Mantel's background), posted as `SHOT` notices.
 - **Next:** a headless backend (rendering into memory, no window) so tests don't need a virtual X screen, Smithay's
   protocol test suite (WLCS), and runs on the owner's devices once it's in the image.
 
 ## Where things are
 
-- `hosts/hearth-compositor/src`: `main.rs` and `options.rs` (the command line), `winit.rs` (nested) and `udev.rs` (real
+- `hosts/albireo/src`: `main.rs` and `options.rs` (the command line), `winit.rs` (nested) and `udev.rs` (real
   screens), `state.rs` (the protocols), `shell/` (windows, layer surfaces, XWayland, Hearth's frames in `ssd.rs`),
   `wm.rs` (minimize, snap, focus, the status file), `foreign_toplevel.rs` (Mantel's taskbar), `keybinds.rs` (rc.xml),
   `theme.rs` (Mantel's colours), `input_handler.rs`, `render.rs`, `drawing.rs`.
-- Session: `hosts/linux/session/nimbus-session` (`run_hearth_comp`, `hearth_comp_ok`), `nimbus-mode`,
-  `hosts/linux/desktop/hearth-compositor/autostart` (runs Desktop Mode's one autostart).
+- Session: `hosts/linux/session/nimbus-session` (`run_albireo`, `albireo_ok`), `nimbus-mode`,
+  `hosts/linux/desktop/albireo/autostart` (runs Desktop Mode's one autostart).
 - Settings: `hosts/linux/desktop/shell/hearth-your-desktop` and `SetYourDesktop.qml`; the card: `DesktopNotice.qml`.
 - No version number is in the crate: the owner picks every one (Cargo reads a missing one as 0.0.0). When it goes into
   a release, its `Cargo.toml` joins the release's list of files to bump.

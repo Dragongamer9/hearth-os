@@ -26,7 +26,7 @@
 #   NIMBUS_GAMESCOPE_ARGS="-W 1280 -H 800 --adaptive-sync"
 #   HEARTH_DESKTOP_WM=labwc               Mantel on labwc instead of KWin (Settings › System › Your desktop; no line:
 #                                         KWin). Written only by hearth-your-desktop when you pick one.
-#   HEARTH_DESKTOP_WM=hearth              Mantel on Hearth's own compositor (2.0's, a preview: docs/COMPOSITOR.md),
+#   HEARTH_DESKTOP_WM=albireo              Mantel on Hearth's own compositor (2.0's, a preview: docs/ALBIREO.md),
 #                                         off unless you turn it on there; it falls back to KWin, then labwc.
 #   HEARTH_LEGACY_GAME_MODE=1             the old developer switch: read as HEARTH_GAME_MODE_CHOICE=hearth when that
 #                                         line isn't there
@@ -159,7 +159,7 @@ rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode" "${XDG_STATE_HOME:-$H
 
 can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
 can_desktop() {   # Mantel: on KWin (1.14), labwc the fallback (run_classic); or the 2.0 preview, when it's turned on
-  have labwc || have "${HEARTH_KWIN_BIN:-kwin_wayland}" || { [ "$(desktop_wm_choice)" = hearth ] && hearth_comp_bin >/dev/null; }
+  have labwc || have "${HEARTH_KWIN_BIN:-kwin_wayland}" || { [ "$(desktop_wm_choice)" = albireo ] && albireo_bin >/dev/null; }
 }
 
 # Apps that keep sign-ins in the system's password store (Xodus Nexus, browsers) need one running, and on a
@@ -447,32 +447,32 @@ KWIN_UP_SECS="${HEARTH_KWIN_UP_SECS:-45}"
 KWIN_EARLY_SECS="${HEARTH_KWIN_EARLY_SECS:-15}"
 desktop_wm_choice() {
   w=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP_WM=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
-  case "$w" in labwc) echo labwc ;; hearth) echo hearth ;; *) echo kwin ;; esac
+  case "$w" in labwc) echo labwc ;; albireo) echo albireo ;; *) echo kwin ;; esac
 }
 
-# ---- 2.0 preview: Hearth's own compositor (hosts/hearth-compositor, docs/COMPOSITOR.md). Only when it's turned on
-# (HEARTH_DESKTOP_WM=hearth, Settings › System › Your desktop › Hearth compositor (preview); off by default), and
-# with the same safe start as KWin, one step above it: it isn't there, ends within HEARTH_COMP_EARLY_SECS (15 s) or
-# Mantel doesn't say it's up within HEARTH_COMP_UP_SECS (45 s) → KWin for this sign-in (then labwc, as always), and
-# Mantel says why once (desk_notice hearth missing|failed|twice). Twice in a row → KWin until it's turned on again.
+# ---- 2.0 preview: Albireo, Hearth's own compositor (hosts/albireo, docs/ALBIREO.md). Only when it's turned on
+# (HEARTH_DESKTOP_WM=albireo, Settings › System › Your desktop › Albireo (preview); off by default), and
+# with the same safe start as KWin, one step above it: it isn't there, ends within ALBIREO_EARLY_SECS (15 s) or
+# Mantel doesn't say it's up within ALBIREO_UP_SECS (45 s) → KWin for this sign-in (then labwc, as always), and
+# Mantel says why once (desk_notice albireo missing|failed|twice). Twice in a row → KWin until it's turned on again.
 # Safe graphics, a second player's seat and Server mode never use it.
-HEARTH_COMP_BIN="${HEARTH_COMPOSITOR_BIN:-hearth-compositor}"
-HEARTH_COMP_UP_SECS="${HEARTH_COMP_UP_SECS:-45}"
-HEARTH_COMP_EARLY_SECS="${HEARTH_COMP_EARLY_SECS:-15}"
-hearth_comp_bin() {
-  if have "$HEARTH_COMP_BIN"; then command -v "$HEARTH_COMP_BIN"; return 0; fi
-  for b in /usr/libexec/hearth/hearth-compositor /usr/local/lib/nimbus/hearth-compositor; do
+ALBIREO_BIN_NAME="${ALBIREO_BIN:-albireo}"
+ALBIREO_UP_SECS="${ALBIREO_UP_SECS:-45}"
+ALBIREO_EARLY_SECS="${ALBIREO_EARLY_SECS:-15}"
+albireo_bin() {
+  if have "$ALBIREO_BIN_NAME"; then command -v "$ALBIREO_BIN_NAME"; return 0; fi
+  for b in /usr/libexec/hearth/albireo /usr/local/lib/nimbus/albireo; do
     [ -x "$b" ] && { echo "$b"; return 0; }
   done
   return 1
 }
-# Can Hearth's compositor be tried this time? (Says why not in the log, and the notice once when it's not there.)
-hearth_comp_ok() {
-  if [ -e "$RUN/hearth-comp-failed" ]; then log "desktop: Hearth's compositor didn't start earlier this sign-in, KWin instead"; return 1; fi
-  if [ "$(desk_fails hearth)" -ge 2 ]; then log "desktop: Hearth's compositor didn't start twice in a row; KWin until it's turned on again in Settings"; return 1; fi
-  if ! hearth_comp_bin >/dev/null; then
-    log "desktop: Hearth's compositor (hearth-compositor) isn't installed; KWin instead"
-    [ -e "$RUN/hearth-comp-missing-told" ] || { : >"$RUN/hearth-comp-missing-told"; desk_notice hearth missing; }
+# Can Albireo be tried this time? (Says why not in the log, and the notice once when it's not there.)
+albireo_ok() {
+  if [ -e "$RUN/albireo-failed" ]; then log "desktop: Albireo didn't start earlier this sign-in, KWin instead"; return 1; fi
+  if [ "$(desk_fails albireo)" -ge 2 ]; then log "desktop: Albireo didn't start twice in a row; KWin until it's turned on again in Settings"; return 1; fi
+  if ! albireo_bin >/dev/null; then
+    log "desktop: Albireo isn't installed; KWin instead"
+    [ -e "$RUN/albireo-missing-told" ] || { : >"$RUN/albireo-missing-told"; desk_notice albireo missing; }
     return 1
   fi
   return 0
@@ -483,7 +483,7 @@ desktop_wm() {
   choice=$(desktop_wm_choice)
   if [ "$choice" = labwc ]; then log "desktop: labwc (picked in Settings › Your desktop)"; echo labwc; return 0; fi
   if [ -f "${HEARTH_SAFE_FLAG:-/run/hearth/safe-graphics}" ]; then log "desktop: safe graphics this time, labwc instead of KWin"; echo labwc; return 0; fi
-  if [ "$choice" = hearth ] && hearth_comp_ok; then echo hearth; return 0; fi
+  if [ "$choice" = albireo ] && albireo_ok; then echo albireo; return 0; fi
   if [ -e "$RUN/hearth-kwin-failed" ]; then log "desktop: KWin didn't start earlier this sign-in, labwc instead"; echo labwc; return 0; fi
   if [ "$(desk_fails kwin)" -ge 2 ]; then log "desktop: KWin didn't start twice in a row; labwc until it's turned back on in Settings"; echo labwc; return 0; fi
   if ! have "$KWIN_BIN"; then
@@ -506,17 +506,17 @@ run_classic() {
     [ -f "$CONF/rc.xml" ] || CONF="$SHARE/desktop/labwc"
   fi
   wm=$(desktop_wm)
-  if [ "$wm" = hearth ]; then
-    run_hearth_comp; hrc=$?
+  if [ "$wm" = albireo ]; then
+    run_albireo; hrc=$?
     [ "$hrc" -ne 200 ] && return "$hrc"
-    # Hearth's compositor didn't come up: KWin for the rest of this sign-in (and labwc after it if KWin fails too).
-    : >"$RUN/hearth-comp-failed"; desk_fails_add hearth
-    if [ "$(desk_fails hearth)" -ge 2 ]; then
-      log "desktop: Hearth's compositor didn't start twice in a row; KWin until it's turned on again in Settings"; desk_notice hearth twice
+    # Albireo didn't come up: KWin for the rest of this sign-in (and labwc after it if KWin fails too).
+    : >"$RUN/albireo-failed"; desk_fails_add albireo
+    if [ "$(desk_fails albireo)" -ge 2 ]; then
+      log "desktop: Albireo didn't start twice in a row; KWin until it's turned on again in Settings"; desk_notice albireo twice
     else
-      log "desktop: Hearth's compositor didn't start; KWin for this sign-in"; desk_notice hearth failed
+      log "desktop: Albireo didn't start; KWin for this sign-in"; desk_notice albireo failed
     fi
-    settle_hearth_comp
+    settle_albireo
     wm=$(desktop_wm)
   fi
   if [ "$wm" = kwin ]; then
@@ -612,18 +612,18 @@ run_kwin() {
   log "kwin ended (code $rc)"
   return "$rc"
 }
-# Mantel on Hearth's own compositor (2.0 preview). The same environment as labwc's (its folder's environment file:
+# Mantel on Albireo, Hearth's own compositor (2.0 preview). The same environment as labwc's (its folder's environment file:
 # XDG_CURRENT_DESKTOP Nimbus:wlroots, so the portals and Mantel take labwc's ways, which the compositor's protocols
-# are made to match; your keyboard layouts), HEARTH_WM=hearth, and labwc's rc.xml for Mantel's shortcuts (read
-# only). Its messages in ~/.local/share/nimbus/hearth-compositor.log. 200 = didn't come up, as run_kwin.
-# $HEARTH_COMP_ARGS: extra options for tests (--winit --size 1920x1080 in hearth-compositor.yml).
-run_hearth_comp() {
-  log "desktop mode: Mantel on Hearth's compositor (preview)"
-  HCOMP_LOG="$(dirname "$LOG")/hearth-compositor.log"
-  [ -f "$HCOMP_LOG" ] && [ "$(wc -c <"$HCOMP_LOG")" -gt 1000000 ] && mv -f "$HCOMP_LOG" "$HCOMP_LOG.old"
-  echo "--- $(date '+%F %T') Desktop Mode (Hearth's compositor)" >>"$HCOMP_LOG"
-  bin=$(hearth_comp_bin)
-  auto="$SHARE/desktop/hearth-compositor/autostart"; [ -f "$auto" ] || auto="$CONF/autostart"
+# are made to match; your keyboard layouts), HEARTH_WM=albireo, and labwc's rc.xml for Mantel's shortcuts (read
+# only). Its messages in ~/.local/share/nimbus/albireo.log. 200 = didn't come up, as run_kwin.
+# $ALBIREO_ARGS: extra options for tests (--winit --size 1920x1080 in albireo.yml).
+run_albireo() {
+  log "desktop mode: Mantel on Albireo (preview)"
+  ALBIREO_LOGF="$(dirname "$LOG")/albireo.log"
+  [ -f "$ALBIREO_LOGF" ] && [ "$(wc -c <"$ALBIREO_LOGF")" -gt 1000000 ] && mv -f "$ALBIREO_LOGF" "$ALBIREO_LOGF.old"
+  echo "--- $(date '+%F %T') Desktop Mode (Albireo)" >>"$ALBIREO_LOGF"
+  bin=$(albireo_bin)
+  auto="$SHARE/desktop/albireo/autostart"; [ -f "$auto" ] || auto="$CONF/autostart"
   rm -f "$RUN/hearth-shell-up"
   (
     unset LABWC_PID
@@ -634,36 +634,36 @@ run_hearth_comp() {
         export "$line"
       done <"$CONF/environment"
     fi
-    export XDG_SESSION_TYPE=wayland HEARTH_WM=hearth
-    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" ${HEARTH_COMP_ARGS:---tty-udev} --labwc-rc "$2" -- sh "$3"' sh "$bin" "$CONF/rc.xml" "$auto"
-  ) >>"$HCOMP_LOG" 2>&1 &
+    export XDG_SESSION_TYPE=wayland HEARTH_WM=albireo
+    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" ${ALBIREO_ARGS:---tty-udev} --labwc-rc "$2" -- sh "$3"' sh "$bin" "$CONF/rc.xml" "$auto"
+  ) >>"$ALBIREO_LOGF" 2>&1 &
   hpid=$!
-  echo "$hpid" >"$RUN/hearth-comp.pid"
+  echo "$hpid" >"$RUN/albireo.pid"
   started=$(date +%s); up=0
   while kill -0 "$hpid" 2>/dev/null; do
     [ -e "$RUN/hearth-shell-up" ] && { up=1; break; }
-    [ $(( $(date +%s) - started )) -ge "$HEARTH_COMP_UP_SECS" ] && break
+    [ $(( $(date +%s) - started )) -ge "$ALBIREO_UP_SECS" ] && break
     sleep 1
   done
   if [ "$up" = 0 ] && kill -0 "$hpid" 2>/dev/null && [ ! -s "$NEXT" ]; then
-    log "hearth-compositor: Mantel didn't say it's up after ${HEARTH_COMP_UP_SECS}s; ending it"
+    log "albireo: Mantel didn't say it's up after ${ALBIREO_UP_SECS}s; ending it"
     kill -TERM "$hpid" 2>/dev/null; sleep 3; kill -KILL "$hpid" 2>/dev/null
   fi
-  [ "$up" = 1 ] && log "hearth-compositor: Mantel up after $(( $(date +%s) - started ))s"
+  [ "$up" = 1 ] && log "albireo: Mantel up after $(( $(date +%s) - started ))s"
   wait "$hpid"; rc=$?
-  rm -f "$RUN/hearth-comp.pid"
-  if [ -s "$NEXT" ]; then [ "$up" = 1 ] && desk_fails_reset hearth; log "hearth-compositor ended (code $rc)"; return "$rc"; fi
-  if [ "$up" = 0 ]; then log "hearth-compositor ended before Mantel came up (code $rc)"; return 200; fi
-  if [ $(( $(date +%s) - started )) -lt "$HEARTH_COMP_EARLY_SECS" ]; then log "hearth-compositor ended right after starting (code $rc)"; return 200; fi
-  desk_fails_reset hearth
-  log "hearth-compositor ended (code $rc)"
+  rm -f "$RUN/albireo.pid"
+  if [ -s "$NEXT" ]; then [ "$up" = 1 ] && desk_fails_reset albireo; log "albireo ended (code $rc)"; return "$rc"; fi
+  if [ "$up" = 0 ]; then log "albireo ended before Mantel came up (code $rc)"; return 200; fi
+  if [ $(( $(date +%s) - started )) -lt "$ALBIREO_EARLY_SECS" ]; then log "albireo ended right after starting (code $rc)"; return 200; fi
+  desk_fails_reset albireo
+  log "albireo ended (code $rc)"
   return "$rc"
 }
-# What a Hearth compositor that didn't come up leaves behind, before KWin starts.
-settle_hearth_comp() {
+# What an Albireo that didn't come up leaves behind, before KWin starts.
+settle_albireo() {
   pkill -TERM -u "$(id -u)" -x quickshell 2>/dev/null
-  pkill -KILL -u "$(id -u)" -x hearth-composit 2>/dev/null
-  rm -f "$RUN/hearth-comp.pid" "$RUN/hearth-shell-up" "$RUN/hearth-compositor.json"
+  pkill -KILL -u "$(id -u)" -x albireo 2>/dev/null
+  rm -f "$RUN/albireo.pid" "$RUN/hearth-shell-up" "$RUN/albireo.json"
   sleep 1
   return 0
 }
@@ -784,9 +784,9 @@ settle() {
   # 1.14: Mantel on KWin (run_kwin): KWin too, and its marks.
   pkill -KILL -u "$(id -u)" -x kwin_wayland 2>/dev/null; pkill -KILL -u "$(id -u)" -x kwin_wayland_wrapper 2>/dev/null
   rm -f "$RUN/hearth-kwin.pid" "$RUN/hearth-shell-up"
-  # 2.0 preview: Hearth's own compositor (run_hearth_comp; process names are cut to 15 characters).
-  pkill -KILL -u "$(id -u)" -x hearth-composit 2>/dev/null
-  rm -f "$RUN/hearth-comp.pid" "$RUN/hearth-compositor.json"
+  # 2.0 preview: Hearth's own compositor (run_albireo; process names are cut to 15 characters).
+  pkill -KILL -u "$(id -u)" -x albireo 2>/dev/null
+  rm -f "$RUN/albireo.pid" "$RUN/albireo.json"
   # Desktop Mode's controller and button helpers, if any outlived their mode (Quickshell ended by a signal
   # leaves its children running: hearth-buttons then polled the keys in the next mode, one more each switch).
   companion_stop
