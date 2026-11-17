@@ -358,7 +358,7 @@ PanelWindow {
                     font.pixelSize: 18 * cw.k; font.weight: Font.Bold; color: cw.pal.flame; font.letterSpacing: 1 * cw.k
                     text: !hero.game ? "WELCOME TO THE COUCH" : hero.win ? "CONTINUE · PLAYING " + F.duration(clock.date.getTime() - cw.fh.since(hero.win)).toUpperCase() : "CONTINUE · " + F.ago(hero.game.lastPlayed, clock.date.getTime())
                 }
-                T { width: parent.width; font.pixelSize: 64 * cw.k; font.weight: Font.ExtraBold; lineHeight: 1; text: hero.game ? hero.game.title : "Your games, all in one place" }
+                T { width: parent.width; font.pixelSize: 64 * cw.k; font.weight: Font.ExtraBold; renderType: Text.NativeRendering; text: hero.game ? hero.game.title : "Your games, all in one place" }
                 T {
                     width: parent.width; font.pixelSize: 20 * cw.k; color: cw.pal.sub
                     text: !hero.game ? "Play something from your Library, or open an app; everything you open stays open on the Desk too."
@@ -558,7 +558,7 @@ PanelWindow {
     // ================================================================== Apps (your apps, as big tiles)
     readonly property var appList: {
         const all = DesktopEntries.applications ? DesktopEntries.applications.values : [];
-        return all.filter(e => !e.noDisplay && !/(^|;)(Settings|System)(;|$)/.test((e.categories || []).join(";")) && e.name)
+        return all.filter(e => !e.noDisplay && e.name)
                   .slice().sort((a, b) => a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1);
     }
     component TileGrid: GridView {
@@ -593,6 +593,7 @@ PanelWindow {
         anchors.fill: parent
         visible: cw.page === "tabs" && cw.tab === "apps"
         TileGrid { id: appsGrid; owner: cw; model: cw.appList; run: e => cw.fh.launchApp(e) }
+        T { visible: cw.appList.length === 0; x: 72 * cw.k; y: 160 * cw.k; font.pixelSize: 20 * cw.k; color: cw.pal.muted; text: "No apps yet: Bazaar in the Store tab has thousands" }
         HintBar { Hint { key: "A"; label: "Open" } Hint { key: "Y"; label: "Search" } Hint { key: "LB RB"; label: "Tabs" } }
     }
     // ================================================================== Store (where games and apps come from)
