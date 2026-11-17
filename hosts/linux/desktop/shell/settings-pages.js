@@ -59,6 +59,7 @@ var PAGES = [
     { id: "spellcheck", file: "SetSpellcheck.qml", cat: "system", parent: "region", label: "Spell check", icon: "check", desc: "Dictionary, checking as you type, words to leave alone", words: "spell check spelling dictionary hunspell sonnet typo ignore words" },
     { id: "input-methods", file: "SetInputMethods.qml", cat: "system", parent: "region", label: "Chinese, Japanese & Korean typing", icon: "kbd", desc: "Input methods (fcitx5), off unless you turn them on", words: "fcitx fcitx5 input method ime cjk chinese japanese korean pinyin mozc hangul" },
     { id: "clipboard", file: "SetClipboard.qml", cat: "system", label: "Clipboard", icon: "clipboard", desc: "Clipboard history (Super+V)", words: "copy paste history", old: "Clipboard" },
+    { id: "search", file: "SetSearch.qml", cat: "system", label: "Search", icon: "search", desc: "The file index, searching inside documents, and what the app menus' search finds", words: "file index indexing baloo krunner find files contents documents calculator units currency web shortcuts emoji commands" },
     { id: "about", file: "SetAbout.qml", cat: "system", label: "About", icon: "info", desc: "Version, this PC's parts and name", words: "system version hardware name", old: "About", props: { part: "about" } },
     // Info Center (1.14, KDE Info Center's technical pages): one file, a page per part.
     { id: "info-cpu", file: "SetInfoCenter.qml", cat: "system", parent: "about", label: "Info Center", icon: "cpu", desc: "Processor, graphics, memory, Vulkan and OpenGL, PCI and USB devices", words: "info center system information cpu processor cores threads cache hardware specs", props: { part: "cpu" } },
@@ -87,6 +88,7 @@ var PAGES = [
     { id: "phone", file: "SetPhone.qml", cat: "bt", label: "Phone", icon: "phone", desc: "Your phone linked with the KDE Connect app: notifications, messages, files, calls", words: "kde connect kdeconnect android iphone mobile sms text messages notifications reply clipboard share send files ring find my phone touchpad remote input presentation remote calls mute ringer run commands battery browse phone files sftp contacts photo" },
     { id: "phone-messages", file: "SetPhoneMessages.qml", cat: "bt", parent: "phone", label: "Messages", icon: "chat", desc: "Your phone's text messages: read and send", words: "sms text messages conversations send a text", hidden: true },
     // ---- end Phone link
+    { id: "kwin-tablet", file: "SetKwinTablet.qml", cat: "bt", label: "Drawing tablet & touchscreen", icon: "edit", desc: "Pen tablet's screen and area, pressure, pen buttons; touchscreen screen and calibration", words: "kwin tablet wacom pen stylus pressure buttons touchscreen calibrate calibration map screen" },
     { id: "printers", file: "SetPrinters.qml", cat: "bt", label: "Printers", icon: "printer", desc: "Printers and scanners", words: "print scanner", old: "Printers" },
     { id: "print-queue", file: "SetPrintQueue.qml", cat: "bt", parent: "printers", label: "Print queue", icon: "list", desc: "What's waiting to print: hold, go on or cancel", words: "print queue jobs cancel printing waiting cups" },
     { id: "scanners", file: "SetScanners.qml", cat: "bt", parent: "printers", label: "Scanners", icon: "printer", desc: "The scanners found, and a test scan", words: "scanner scan sane airscan test" },
@@ -104,10 +106,16 @@ var PAGES = [
     { id: "wallpaper-more", file: "SetWallpaperMore.qml", cat: "pers", label: "Wallpaper per screen & slideshow", icon: "image", desc: "A picture for each screen, and a slideshow from a folder", words: "wallpaper per screen monitor slideshow folder shuffle change every" },
     { id: "my-looks", file: "SetMyLooks.qml", cat: "pers", label: "My looks", icon: "palette", desc: "Save how it all looks now, and put it back in one press", words: "save as my look global theme preset save look restore look" },
     { id: "look-more", file: "SetLookMore.qml", cat: "pers", label: "Window frames & sign-in splash", icon: "window", desc: "The accent in window frames, and a splash after you sign in", words: "frame colour intensity title bar tint accent window borders splash screen sign in login splash" },
+    // Mantel on KWin (1.14, docs/KWIN-SETTINGS.md): KWin's own settings, Hearth's pages (greyed under labwc)
+    { id: "kwin-effects", file: "SetKwinEffects.qml", cat: "pers", label: "Window effects", icon: "sparkle", desc: "Animation speed, overview, Alt+Tab, blur, wobbly windows, minimize and open effects, dimming", words: "kwin effects animation speed overview present windows desktop grid alt tab switcher blur translucency transparent wobbly magic lamp squash fade glide scale dim inactive shake cursor mouse click track" },
+    { id: "kwin-desktops", file: "SetKwinDesktops.qml", cat: "pers", label: "Virtual desktops", icon: "desktops", desc: "How many desktops, their names, rows, switching animation", words: "kwin virtual desktops workspaces rows names wrap slide switch" },
+    { id: "kwin-tiling", file: "SetKwinTiling.qml", cat: "pers", label: "Tiling", icon: "grid", desc: "Each screen's tile layout, dragging windows to edges, snapping", words: "kwin tiling tiles layout columns quick tile snap edges corners maximize" },
+    { id: "kwin-edges", file: "SetKwinEdges.qml", cat: "pers", label: "Screen edges", icon: "display", desc: "Hot corners, edges, touchscreen swipes, sticky edges between screens", words: "kwin hot corners screen edges electric borders touch swipe edge barrier" },
 
     // ---- Apps
     { id: "apps-home", file: "SetCategory.qml", cat: "apps", label: "Apps", icon: "store", landing: true },
     { id: "apps", file: "SetApps.qml", cat: "apps", label: "Installed apps", icon: "store", desc: "Apps from Debian packages, Flathub and AppImages; uninstall", words: "install uninstall packages deb flatpak appimage", old: "Apps" },
+    { id: "store", file: "SetStore.qml", cat: "apps", label: "App store", icon: "store", desc: "Find and install apps from Flathub, updates and sources", words: "discover flathub flatpak install get apps software center store updates sources remotes reviews ratings screenshots" },
     { id: "winapps", file: "SetWinApps.qml", cat: "apps", label: "Windows apps", icon: "window", desc: "Windows programs (.exe, .msi) with the Proton built into Hearth OS: open, Proton, remove", words: "windows exe msi proton wine dxvk vkd3d ge-proton program installer" },
     { id: "defaults", file: "SetDefaults.qml", cat: "apps", label: "Default apps", icon: "grid", desc: "Which app opens web links, pictures, music and more", words: "default apps browser terminal", old: "Default apps" },
     { id: "file-types", file: "SetFileTypes.qml", cat: "apps", label: "File types", icon: "doc", desc: "Every kind of file, the app it opens in, and its endings", words: "file associations mime types open with extension endings default app" },
@@ -115,6 +123,7 @@ var PAGES = [
     { id: "menu-editor", file: "SetMenuEditor.qml", cat: "apps", label: "App menu editor", icon: "edit", desc: "Change an app's name, icon or command, hide it, or add your own", words: "menu editor kmenuedit edit app desktop entry rename icon command hide add to menu" },
     { id: "app-permissions", file: "SetAppPermissions.qml", cat: "apps", label: "App permissions", icon: "shield", desc: "What apps from Flathub may reach: internet, files, devices", words: "flatpak permissions flatseal override sandbox network files home devices" },
     { id: "services", file: "SetServices.qml", cat: "apps", label: "Background services", icon: "gear", desc: "Programs that run in the background for you, and whether they start when you sign in", words: "background services systemd daemons startup autostart user services" },
+    { id: "kwin-rules", file: "SetKwinRules.qml", cat: "apps", label: "Window rules", icon: "window", desc: "Make an app's windows open where, how big and how you want", words: "kwin window rules position size desktop keep above no border opacity tearing app class" },
     { id: "browser", file: "SetBrowser.qml", cat: "apps", label: "Web browser", icon: "globe", desc: "Hearth's browser and its settings", words: "web firefox", old: "Web browser" },
     { id: "claude", file: "SetClaude.qml", cat: "apps", label: "Claude", icon: "chat", desc: "Claude on this PC", words: "ai assistant", old: "Claude" },
 
@@ -129,6 +138,7 @@ var PAGES = [
     { id: "discord", file: "SetDiscord.qml", cat: "gaming", label: "Discord", icon: "chat", desc: "Which Discord the bar opens, what you're playing on Discord, friends joining", words: "friends chat invite rich presence playing join dorion matrix", old: "Friends" },
     { id: "remote", file: "SetRemote.qml", cat: "gaming", label: "Remote play", icon: "play", desc: "Stream this PC's games to your phone or TV, play another PC here, or use this PC from anywhere", words: "moonlight sunshine stream anywhere remote desktop work tailscale", old: "Remote play" },
     { id: "controller", file: "SetController.qml", cat: "gaming", label: "Controller", icon: "pad", desc: "Controller mouse, button layout, what games see, remapping", words: "gamepad buttons pad", old: "Controller" },
+    { id: "kwin-games", file: "SetKwinGames.qml", cat: "gaming", label: "Full-screen games & X11 apps", icon: "pad", desc: "Tearing in full-screen games, keys X11 apps can see, scaling X11 apps", words: "kwin tearing vsync latency xwayland x11 push to talk eavesdrop scaling blurry" },
     { id: "handheld", file: "SetHandheld.qml", cat: "gaming", label: "Handheld", icon: "bolt", desc: "Power limit, fans, lights and back buttons (Handheld Daemon)", words: "hhd tdp rgb lights fans", old: "Handheld" },
 
     // ---- Accounts
@@ -162,6 +172,7 @@ var PAGES = [
     { id: "privacy", file: "SetCategory.qml", cat: "privacy", label: "Privacy & security", icon: "shield", landing: true },
     { id: "player-count", file: "SetAbout.qml", cat: "privacy", label: "Player count", icon: "users", desc: "Hearth OS's anonymous count of running devices", words: "privacy counter telemetry anonymous", old: "About › Privacy", props: { part: "privacy" }, status: "countMe" },
     { id: "firmware", file: "SetFirmware.qml", cat: "privacy", label: "Firmware & device security", icon: "shield", desc: "Secure Boot, the TPM security chip, firmware updates for this PC's parts", words: "firmware fwupd lvfs bios uefi update secure boot tpm hsi security chip" },
+    { id: "passwords", file: "SetPasswords.qml", cat: "privacy", label: "Passwords", icon: "key", desc: "Sign-ins apps keep in the password store, keyrings, lock", words: "keyring gnome keyring kwallet wallet secret service saved passwords sign-ins remove lock unlock" },
 
     // ---- Accessibility (the page is the landing)
     { id: "accessibility", file: "SetAccessibility.qml", cat: "a11y", label: "Accessibility", icon: "access", words: "magnifier contrast text size screen reader colour filters reduce motion", old: "Accessibility", landing: true },
