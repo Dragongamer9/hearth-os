@@ -92,6 +92,17 @@ SetPage {
         onActivated: Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "resmon", "open"])
     }
 
+    // Firehold (a hidden preview): its row only once it's unlocked (FireholdAboutRow.qml, by file name: a problem in it
+    // never costs this page).
+    Loader {
+        id: fireholdRow
+        active: page.inPart("about")
+        source: "FireholdAboutRow.qml"
+        visible: status === Loader.Ready && item !== null && item.unlocked
+        Layout.fillWidth: true
+        Layout.preferredHeight: visible ? item.implicitHeight : 0
+    }
+
     // ------------------------------------------------ Privacy: the player count (hearth-counter, sent by a systemd user
     // timer; the Hearth app sent it before). On unless turned off, as before.
     SetRow {
