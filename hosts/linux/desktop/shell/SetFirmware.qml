@@ -75,6 +75,14 @@ SetPage {
             visible: !!page.st && !page.st.fwupd
             interactive: false; chevron: false; icon: "info"; title: "Firmware updates aren't on this system"; sub: "fwupd is missing"
         }
+        // 1.14: a notification when there's a firmware update (FirmwareWatch.qml, once a day, each version once).
+        SetSwitch {
+            visible: !!page.st && page.st.fwupd
+            icon: "bell"; title: "Tell me about firmware updates"
+            sub: "A notification once a day at most when a part of this PC has new firmware"
+            checked: Settings.firmwareNotify
+            onToggled: v => Settings.firmwareNotify = v
+        }
         SetRow {
             visible: !!page.st && page.st.fwupd
             icon: "sync"; chevron: false

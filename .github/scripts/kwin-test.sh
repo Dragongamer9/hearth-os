@@ -253,7 +253,7 @@ kshort() {   # $1 action, $2 key as kglobalshortcutsrc writes it, $3 Qt key code
   infos=$(gdbus call --session --dest org.kde.kglobalaccel --object-path /component/kwin --method org.kde.kglobalaccel.Component.allShortcutInfos 2>&1 | tr -d '\n')
   line=$(awk -v a="$1" '/^\[/ { g = $0 } g == "[kwin]" && index($0, a "=") == 1' "$HOME/.config/kglobalshortcutsrc" 2>/dev/null | head -1)
   if echo "$infos" | grep -oE "'$1', '[^']*', [^']*" | head -1 | grep -q "$3" || echo "$line" | grep -q "^$1=$2,"; then
-    echo "::notice title=shortcuts (KWin)::$4: $2 is KWin's ($1; kglobalshortcutsrc: ${line:-not written yet})"
+    echo "$4: $2 is KWin's ($1; kglobalshortcutsrc: ${line:-not written yet}; D-Bus: $(echo "$infos" | grep -oE "'$1'[^)]{0,120}" | head -1))" >> shots/shortcuts.txt
   else
     fail "shortcuts (KWin)" "$4: KWin doesn't have $2 for $1: kglobalshortcutsrc '${line:-none}', D-Bus $(echo "$infos" | grep -oE "'$1'[^)]{0,160}" | head -1 | cut -c1-200)"
   fi
@@ -264,6 +264,7 @@ if gdbus call --session --dest org.kde.KWin --object-path /Effects --method org.
   kshort Cube Meta+C 268435523 "Desktop Cube"
 else
   echo "::warning title=shortcuts (KWin)::no Desktop Cube effect on this runner (kdeplasma-addons): Super+C not checked"
+  echo "Desktop Cube: no cube effect on this runner, Super+C not checked" >> shots/shortcuts.txt
 fi
 cp "$HOME/.local/share/nimbus/kwin.log" shots/kwin-B.log 2>/dev/null
 cp "$XDG_RUNTIME_DIR/nimbus-shell.log" shots/shell-B.log 2>/dev/null

@@ -37,6 +37,12 @@ var ENTRIES = [
 "i": "edit"
 },
 {
+"t": "Info Center",
+"p": "about",
+"d": "Processor, graphics card, memory, Vulkan and OpenGL, PCI and USB devices, energy",
+"i": "cpu"
+},
+{
 "t": "Count me in the player count",
 "p": "player-count",
 "d": "Hearth OS tells its counter it's running about every 10 minutes: a number made from this device, the edition and the version. No names, games or accounts.",
@@ -211,6 +217,22 @@ var ENTRIES = [
 "i": "trash"
 },
 {
+"t": "No apps from Flathub yet",
+"p": "app-permissions",
+"d": "Apps from Flathub show here, each with what it may reach",
+"i": "store"
+},
+{
+"t": "App",
+"p": "app-permissions"
+},
+{
+"t": "Reset to what the app asks for",
+"p": "app-permissions",
+"d": "Takes out every change you made for this app",
+"i": "undo"
+},
+{
 "t": "Look",
 "p": "appearance",
 "d": "The shape and style: corners, bar, frames and fonts",
@@ -325,6 +347,24 @@ var ENTRIES = [
 "i": "info"
 },
 {
+"t": "Nothing starts by itself yet",
+"p": "autostart",
+"d": "Add an app or a command below",
+"i": "info"
+},
+{
+"t": "Add this command",
+"p": "autostart",
+"d": "Runs once each time you sign in",
+"i": "plus"
+},
+{
+"t": "Background services",
+"p": "autostart",
+"d": "Programs that run in the background and Hearth's own parts",
+"i": "gear"
+},
+{
 "t": "Bar style",
 "p": "bar-dock",
 "i": "window"
@@ -347,9 +387,32 @@ var ENTRIES = [
 "i": "menu"
 },
 {
+"t": "This PC has no battery",
+"p": "battery",
+"d": "Batteries of your devices are below",
+"i": "info"
+},
+{
+"t": "Show the last",
+"p": "battery",
+"i": "clock"
+},
+{
+"t": "No other batteries",
+"p": "battery",
+"d": "Wireless mice, keyboards, controllers and headphones show their charge here",
+"i": "bt"
+},
+{
 "t": "Bluetooth",
 "p": "bluetooth",
 "i": "bt"
+},
+{
+"t": "Trust, block, batteries and sending files",
+"p": "bluetooth",
+"d": "Each paired device's settings",
+"i": "gear"
 },
 {
 "t": "Steam's own",
@@ -423,6 +486,24 @@ var ENTRIES = [
 "p": "browser",
 "d": "Hearth won't install it again by itself",
 "i": "close"
+},
+{
+"t": "Pair a device first",
+"p": "bluetooth-devices",
+"d": "Bluetooth › Add a device",
+"i": "bt"
+},
+{
+"t": "Trust",
+"p": "bluetooth-devices",
+"d": "Connects by itself when it's near, without asking",
+"i": "check"
+},
+{
+"t": "Block",
+"p": "bluetooth-devices",
+"d": "Never connects, even when it tries",
+"i": "shield"
 },
 {
 "t": "Claude Desktop",
@@ -971,6 +1052,21 @@ var ENTRIES = [
 "i": "info"
 },
 {
+"t": "Opens in",
+"p": "file-types"
+},
+{
+"t": "Use the system's choice",
+"p": "file-types",
+"i": "undo"
+},
+{
+"t": "Default apps",
+"p": "file-types",
+"d": "The browser, music, pictures and other big kinds in one place",
+"i": "grid"
+},
+{
 "t": "There's no firewall on this system",
 "p": "firewall",
 "d": "Hearth OS doesn't ship one: your router already keeps the internet out. With firewalld or ufw installed (Peppermint unlocked), it's set here",
@@ -1014,6 +1110,12 @@ var ENTRIES = [
 "i": "info"
 },
 {
+"t": "Tell me about firmware updates",
+"p": "firmware",
+"d": "A notification once a day at most when a part of this PC has new firmware",
+"i": "bell"
+},
+{
 "t": "Not installed from Hearth",
 "p": "firmware",
 "d": "System firmware changes how this PC starts. Back up first (Updates & recovery › Backup and help), then use your PC maker's update tool or its firmware setup",
@@ -1052,6 +1154,30 @@ var ENTRIES = [
 "i": "kbd"
 },
 {
+"t": "Small and window title fonts",
+"p": "fonts",
+"d": "Tooltips and captions, and the title bars of windows",
+"i": "doc"
+},
+{
+"t": "Small font",
+"p": "fonts",
+"d": "Tooltips, captions and the smallest text"
+},
+{
+"t": "Small font size",
+"p": "fonts"
+},
+{
+"t": "Window title font",
+"p": "fonts",
+"d": "The title bars of windows (Mantel on KWin, KDE and GNOME apps)"
+},
+{
+"t": "Window title size",
+"p": "fonts"
+},
+{
 "t": "Font smoothing and DPI",
 "p": "fonts",
 "d": "For sharp or soft text on your screen",
@@ -1059,6 +1185,10 @@ var ENTRIES = [
 },
 {
 "t": "Smoothing",
+"p": "fonts"
+},
+{
+"t": "Sub-pixel order",
 "p": "fonts"
 },
 {
@@ -2349,6 +2479,23 @@ var ENTRIES = [
 "i": "wifi"
 },
 {
+"t": "Reading…",
+"p": "info-cpu",
+"i": "info"
+},
+{
+"t": "Copy this page",
+"p": "info-cpu",
+"d": "As text, for a bug report or a forum post",
+"i": "copy"
+},
+{
+"t": "Type with fcitx5",
+"p": "input-methods",
+"d": "Switch languages with Ctrl+Space. Used from the next sign-in",
+"i": "kbd"
+},
+{
 "t": "Looking for Windows, SteamOS and other systems…",
 "p": "install",
 "i": "update"
@@ -3139,6 +3286,24 @@ var ENTRIES = [
 "d": "A window rule opens them where, how big and how you want"
 },
 {
+"t": "Apps use the language from Region & language",
+"p": "languages",
+"d": "Add languages below so an app without your first one uses the next, before falling back to English",
+"i": "globe"
+},
+{
+"t": "Language",
+"p": "languages",
+"d": "Added at the end of the list",
+"i": "plus"
+},
+{
+"t": "Sign out now",
+"p": "languages",
+"d": "Apps pick up the new order when you sign in again",
+"i": "logout"
+},
+{
 "t": "Share this device's AI",
 "p": "link",
 "d": "Its AI (chat, voices, pictures, speech to text) for your other devices and the Command Center, through Tailscale",
@@ -3272,6 +3437,50 @@ var ENTRIES = [
 "t": "Sign in automatically",
 "p": "login-screen",
 "i": "lock"
+},
+{
+"t": "Accent colour in the frames",
+"p": "look-more",
+"d": "0% keeps the look's own frames. More tints the title bars and edges with your accent",
+"i": "palette"
+},
+{
+"t": "Apps follow Hearth",
+"p": "look-more",
+"i": "palette"
+},
+{
+"t": "Show it now",
+"p": "look-more",
+"d": "A preview: clicks go straight through it",
+"i": "play"
+},
+{
+"t": "Save the name, description, icon and command",
+"p": "menu-editor",
+"i": "check"
+},
+{
+"t": "Menu category",
+"p": "menu-editor",
+"i": "grid"
+},
+{
+"t": "Run in a terminal",
+"p": "menu-editor",
+"d": "For programs that type in a terminal window",
+"i": "kbd"
+},
+{
+"t": "Show in the app menu",
+"p": "menu-editor",
+"d": "Off takes it off the menu and search; it stays installed",
+"i": "eye"
+},
+{
+"t": "Add to the menu",
+"p": "menu-editor",
+"i": "plus"
 },
 {
 "t": "Pointer speed",
@@ -3659,6 +3868,23 @@ var ENTRIES = [
 "i": "power"
 },
 {
+"t": "Plugged in, battery & lid",
+"p": "power",
+"d": "Different times and power mode on battery, and what closing the lid does",
+"i": "batt"
+},
+{
+"t": "Apps keeping it awake",
+"p": "power",
+"i": "sleep"
+},
+{
+"t": "Battery health & history",
+"p": "power",
+"d": "Charge cycles, how much it holds, graphs of charge and power, your devices' batteries",
+"i": "bolt"
+},
+{
 "t": "Turn the screen off after",
 "p": "power",
 "i": "display"
@@ -3693,6 +3919,26 @@ var ENTRIES = [
 "i": "sleep"
 },
 {
+"t": "Hibernate",
+"p": "power",
+"i": "moon"
+},
+{
+"t": "Hybrid sleep",
+"p": "power",
+"i": "sleep"
+},
+{
+"t": "Hibernate isn't available",
+"p": "power",
+"i": "moon"
+},
+{
+"t": "Hybrid sleep isn't available",
+"p": "power",
+"i": "sleep"
+},
+{
 "t": "Restart",
 "p": "power",
 "i": "restart"
@@ -3701,6 +3947,68 @@ var ENTRIES = [
 "t": "Shut down",
 "p": "power",
 "i": "power"
+},
+{
+"t": "The PC can sleep and the screen can turn off on time",
+"p": "power-awake",
+"d": "Videos, games and downloads that need it awake show up here while they do",
+"i": "check"
+},
+{
+"t": "Sleep now",
+"p": "power-awake",
+"d": "Puts the PC to sleep even while apps ask to keep it awake",
+"i": "sleep"
+},
+{
+"t": "Screen off after",
+"p": "power-profiles"
+},
+{
+"t": "Sleep after",
+"p": "power-profiles"
+},
+{
+"t": "Power mode",
+"p": "power-profiles"
+},
+{
+"t": "This PC has no battery",
+"p": "power-profiles",
+"d": "The times above are the ones it uses",
+"i": "info"
+},
+{
+"t": "On battery",
+"p": "power-profiles",
+"i": "batt"
+},
+{
+"t": "Plugged in",
+"p": "power-profiles",
+"i": "power"
+},
+{
+"t": "With another screen attached",
+"p": "power-profiles",
+"d": "Docked, or an external monitor plugged in",
+"i": "display"
+},
+{
+"t": "Nothing waiting",
+"p": "print-queue",
+"i": "printer"
+},
+{
+"t": "No printers",
+"p": "print-queue",
+"d": "Add one in Printers",
+"i": "printer"
+},
+{
+"t": "Cancel all mine",
+"p": "print-queue",
+"i": "close"
 },
 {
 "t": "The printing service isn't running",
@@ -3723,6 +4031,18 @@ var ENTRIES = [
 "p": "printers"
 },
 {
+"t": "Print queue",
+"p": "printers",
+"d": "What's waiting to print: hold, go on or cancel",
+"i": "list"
+},
+{
+"t": "Scanners",
+"p": "printers",
+"d": "The scanners found, and a test scan",
+"i": "printer"
+},
+{
 "t": "More printer settings",
 "p": "printers",
 "d": "Drivers, paper and other options (Print Settings)",
@@ -3732,6 +4052,17 @@ var ENTRIES = [
 "t": "Use a proxy",
 "p": "proxy",
 "i": "globe"
+},
+{
+"t": "Push to talk",
+"p": "push-to-talk",
+"i": "mic"
+},
+{
+"t": "Key to hold",
+"p": "push-to-talk",
+"d": "A key games and chats don't use. F13 and F14 are on many gaming keyboards and mice",
+"i": "kbd"
 },
 {
 "t": "Start in",
@@ -3798,6 +4129,24 @@ var ENTRIES = [
 {
 "t": "Paper size",
 "p": "region"
+},
+{
+"t": "Languages in order",
+"p": "region",
+"d": "More than one language: apps try them one after another",
+"i": "globe"
+},
+{
+"t": "Spell check",
+"p": "region",
+"d": "Dictionary, checking as you type, words to leave alone",
+"i": "check"
+},
+{
+"t": "Chinese, Japanese & Korean typing",
+"p": "region",
+"d": "Input methods (fcitx5), off unless you turn them on",
+"i": "kbd"
 },
 {
 "t": "Date & time",
@@ -3923,6 +4272,17 @@ var ENTRIES = [
 "p": "savedgames",
 "d": "Puts every backed-up save back where its game looks for it (after a reinstall, or on another PC). What it replaces is kept by Ludusavi.",
 "i": "restart"
+},
+{
+"t": "Nothing answered",
+"p": "scanners",
+"d": "Turn the scanner on and plug it in, or put it on the same network. Many printers with a scanner show up here",
+"i": "info"
+},
+{
+"t": "Look again",
+"p": "scanners",
+"i": "sync"
 },
 {
 "t": "Index my files",
@@ -4185,6 +4545,23 @@ var ENTRIES = [
 "i": "vol"
 },
 {
+"t": "Speakers & balance",
+"p": "sound",
+"d": "Left and right balance, and a test tone from each speaker",
+"i": "vol"
+},
+{
+"t": "Apps' sound",
+"p": "sound",
+"d": "Which speakers or headphones each app plays on, and scrolling on the dock",
+"i": "headphones"
+},
+{
+"t": "Push to talk",
+"p": "sound",
+"i": "mic"
+},
+{
 "t": "Input volume",
 "p": "sound",
 "i": "mic"
@@ -4192,6 +4569,63 @@ var ENTRIES = [
 {
 "t": "Play it back",
 "p": "sound",
+"i": "play"
+},
+{
+"t": "No app is playing sound right now",
+"p": "sound-apps",
+"d": "Start a video, a game or music and it shows up here",
+"i": "vol"
+},
+{
+"t": "Plays on",
+"p": "sound-apps"
+},
+{
+"t": "No app is recording right now",
+"p": "sound-apps",
+"d": "Join a call or start recording and it shows up here",
+"i": "mic"
+},
+{
+"t": "Scroll on an app to change its volume",
+"p": "sound-apps",
+"d": "With the mouse over an app's icon in the dock, scroll up for louder and down for quieter",
+"i": "vol"
+},
+{
+"t": "Volume mixer",
+"p": "sound-apps",
+"d": "The same apps in a small window, from the sound icon in the bar",
+"i": "vol"
+},
+{
+"t": "Speakers or headphones",
+"p": "sound-speakers",
+"d": "Which one these settings are for",
+"i": "vol"
+},
+{
+"t": "No speakers or headphones found",
+"p": "sound-speakers",
+"d": "Plug some in, or check Bluetooth",
+"i": "info"
+},
+{
+"t": "Left and right",
+"p": "sound-speakers",
+"d": "Moves the sound towards the left or the right speaker",
+"i": "vol"
+},
+{
+"t": "Centre the balance",
+"p": "sound-speakers",
+"i": "undo"
+},
+{
+"t": "Play each speaker in turn",
+"p": "sound-speakers",
+"d": "A short tone from every speaker, one after another",
 "i": "play"
 },
 {
@@ -4203,6 +4637,42 @@ var ENTRIES = [
 "t": "Where they come from",
 "p": "sounds",
 "i": "info"
+},
+{
+"t": "Dictionary",
+"p": "spellcheck",
+"d": "The language words are checked in",
+"i": "globe"
+},
+{
+"t": "Check as you type",
+"p": "spellcheck",
+"d": "Underlines words that look wrong in apps' text boxes",
+"i": "check"
+},
+{
+"t": "On in every new text box",
+"p": "spellcheck",
+"d": "Off: apps turn it on themselves where it helps",
+"i": "check"
+},
+{
+"t": "Guess the language",
+"p": "spellcheck",
+"d": "Checks a sentence in French with the French dictionary, if you have it",
+"i": "globe"
+},
+{
+"t": "Skip words in capitals",
+"p": "spellcheck",
+"d": "Like NASA or HTML",
+"i": "doc"
+},
+{
+"t": "Skip run-together words",
+"p": "spellcheck",
+"d": "Like setupfile",
+"i": "doc"
 },
 {
 "t": "When this PC turns on",
@@ -4366,6 +4836,17 @@ var ENTRIES = [
 "i": "trash"
 },
 {
+"t": "Shut down when it's done",
+"p": "updates",
+"d": "Downloads the update, then turns the PC off; it starts on the new version next time",
+"i": "power"
+},
+{
+"t": "Shut down and finish updating",
+"p": "updates",
+"i": "power"
+},
+{
 "t": "Update anyway",
 "p": "updates",
 "d": "Downloads anything new for Hearth and its apps, even small fixes",
@@ -4449,6 +4930,23 @@ var ENTRIES = [
 "p": "updates",
 "d": "Reinstalls what you added on this version, in the background",
 "i": "restart"
+},
+{
+"t": "Then",
+"p": "usb-devices",
+"i": "drive"
+},
+{
+"t": "Tell me about a USB device plugged in for the first time",
+"p": "usb-devices",
+"d": "Its name and what kind it is, once per device",
+"i": "bell"
+},
+{
+"t": "USBGuard is on",
+"p": "usb-devices",
+"d": "A device it blocks asks you first: Allow once or Allow always below",
+"i": "shield"
 },
 {
 "t": "Zoom",
@@ -4564,6 +5062,48 @@ var ENTRIES = [
 "p": "vpn",
 "d": "OpenConnect signs in on the server's own sign-in page each time",
 "i": "info"
+},
+{
+"t": "Slideshow",
+"p": "wallpaper-more",
+"i": "image"
+},
+{
+"t": "Change the picture every",
+"p": "wallpaper-more",
+"i": "clock"
+},
+{
+"t": "Shuffle",
+"p": "wallpaper-more",
+"d": "In a random order instead of by name",
+"i": "sync"
+},
+{
+"t": "Next picture now",
+"p": "wallpaper-more",
+"i": "forward"
+},
+{
+"t": "Picture of the day",
+"p": "wallpaper-more",
+"i": "image"
+},
+{
+"t": "From",
+"p": "wallpaper-more",
+"i": "globe"
+},
+{
+"t": "Look again now",
+"p": "wallpaper-more",
+"d": "Downloaded once a day and kept for a week, so it works offline too",
+"i": "sync"
+},
+{
+"t": "A wallpaper for light and one for dark",
+"p": "wallpaper-more",
+"i": "moon"
 },
 {
 "t": "Wi-Fi",

@@ -65,6 +65,10 @@ SetPage {
             SetDropdown { title: "Measurement units"; options: page.options; current: page.st ? (page.st.formats.LC_MEASUREMENT || page.st.lang) : ""; boxWidth: 300; onChosen: v => page.save({ LC_MEASUREMENT: v }, "Saved.") }
             SetDropdown { title: "Paper size"; options: page.options; current: page.st ? (page.st.formats.LC_PAPER || page.st.lang) : ""; boxWidth: 300; onChosen: v => page.save({ LC_PAPER: v }, "Saved.") }
         }
+        // 1.14: more of KDE's region and language settings, each on its own page.
+        SetRow { icon: "globe"; title: "Languages in order"; sub: "More than one language: apps try them one after another"; chevron: true; onActivated: SettingsNav.openPage("languages") }
+        SetRow { icon: "check"; title: "Spell check"; sub: "Dictionary, checking as you type, words to leave alone"; chevron: true; onActivated: SettingsNav.openPage("spellcheck") }
+        SetRow { icon: "kbd"; title: "Chinese, Japanese & Korean typing"; sub: "Input methods (fcitx5), off unless you turn them on"; chevron: true; onActivated: SettingsNav.openPage("input-methods") }
         SetRow {
             icon: "clock"; title: "Date & time"; sub: "Time zone, 24-hour clock, setting the time automatically"
             chevron: true
