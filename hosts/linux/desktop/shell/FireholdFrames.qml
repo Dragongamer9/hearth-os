@@ -24,7 +24,7 @@ PanelWindow {
     mask: Region { id: hits }
 
     // The windows on this screen with a frame, top first.
-    readonly property var wins: F.stackOrder(fh.wins.filter(w => !w.minimized && !w.fullscreen && w.frame && w.frame.w > 40 && !F.ownWindow(w)
+    readonly property var wins: F.stackOrder(fh.wins.filter(w => !w.minimized && !w.fullscreen && w.frame && w.frame.w > 40
                                                                   && (!w.screens || !w.screens.length || w.screens[0] === screen)),
                                              fh.recent, w => WinList.widOf(w))
     // VRR on this screen (hearth-screens info, read when this comes up).

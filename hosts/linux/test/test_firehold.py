@@ -52,6 +52,8 @@ var wins = [
   {appId: "firefox", title: "3 tabs — Firefox"},
   {appId: "retroarch", title: "Pixel Rally", minimized: true},
   {appId: "org.quickshell", title: "Hearth Settings"},
+  {appId: "org.quickshell", title: "Trips – Files"},
+  {appId: "org.quickshell", title: ""},
   {appId: "discord", title: "Discord"}];
 '''
 
@@ -64,7 +66,9 @@ class Rules(unittest.TestCase):
         self.assertEqual(r[1], ['game', 'Pixel Rally', 'emulator · paused'])
         self.assertIn(['window', 'Firefox', '3 tabs'], r)
         self.assertIn(['window', 'Discord', ''], r)
-        self.assertNotIn('Hearth Settings', [x[1] for x in r])     # the shell's own windows aren't listed
+        self.assertIn(['window', 'Hearth Settings', ''], r)          # Hearth's own windows are windows too
+        self.assertIn(['window', 'Hearth Files', 'Trips'], r)        # Hearth Files: its name, the folder under it
+        self.assertNotIn('', [x[1] for x in r])                      # an untitled shell surface isn't
 
     def test_status_labels(self):
         r = run_js(LIB + 'console.log(JSON.stringify(games.map(g => status(g, ["steam:1000"]))));')
@@ -138,6 +142,19 @@ class LibraryHelper(unittest.TestCase):
         self.assertTrue(by['manual:x']['installed'])                       # the older list has no "installed": installed
         self.assertEqual(by['winapp:office']['icon'], 'file:///x/o.png')
         self.assertEqual(d['counts'], {'all': 5, 'installed': 4, 'steam': 1, 'gog': 1, 'epic': 0, 'winapp': 1, 'emu': 1, 'yours': 1})
+
+    def test_steam_cloud_saves_from_steams_own_remote_folder(self):
+        with tempfile.TemporaryDirectory() as t:
+            os.makedirs(os.path.join(t, '7', '1000', 'remote'))
+            open(os.path.join(t, '7', '1000', 'remote', 'save.dat'), 'w').close()
+            os.makedirs(os.path.join(t, '7', '1001', 'remote'))              # an empty remote folder: nothing in the cloud
+            ud = [os.path.join(t, '7')]
+            self.assertTrue(self.h.cloud_saves('steam:1000', ud))
+            self.assertFalse(self.h.cloud_saves('steam:1001', ud))
+            self.assertFalse(self.h.cloud_saves('gog:1000', ud))
+            self.assertFalse(self.h.cloud_saves('steam:../1000', ud))
+            g = self.h.game_entry({'id': 'steam:1000', 'title': 'E', 'source': 'steam'}, (), ud)
+            self.assertTrue(g['cloudSaves'])
 
     def test_library_from_hearth_then_the_cache(self):
         with tempfile.TemporaryDirectory() as t:
@@ -239,6 +256,14 @@ class Guards(unittest.TestCase):
         f = code((SHELL / 'Firehold.qml').read_text())
         self.assertIn('active: fhs.unlocked && fhs.started && fhs.posture === "desk"', f)
         self.assertIn('readonly property bool picturesWanted: unlocked && WinList.kwin && couchUp && page === "switcher"', f)
+
+    def test_guide_frame_limit_and_scaling_go_through_the_firehold_game_helper(self):
+        g = code((SHELL / 'FireholdGuide.qml').read_text())
+        self.assertIn('hearth-firehold-game', g)
+        self.assertIn('gameRun(gameSet, ["step", "frameLimit", d > 0 ? "up" : "down"])', g)
+        self.assertIn('gameRun(gameSet, ["step", "scaling", d > 0 ? "up" : "down"])', g)
+        self.assertIn('gameRun(gameProbe, ["status"])', g)
+        self.assertNotIn('firehold-comp', g)                     # one way in: the helper, which saves per game itself
 
     def test_window_pictures_only_on_kwin_and_only_real_ids(self):
         h = load(SHELL / 'hearth-firehold', 'hearth_firehold2')

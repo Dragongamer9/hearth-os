@@ -56,6 +56,12 @@ function isGame(w, games) {
 // adds to it ("Pictures › Trips", "3 tabs").
 function windowName(w, entryName) {
     var title = String(w && w.title || "").trim();
+    // Hearth's own windows (part of the shell): Hearth Files is "<folder> – Files", the others are their title.
+    if (ownWindow(w)) {
+        var mf = /^(.*?)\s+–\s+Files$/.exec(title);
+        if (mf) return { name: "Hearth Files", sub: mf[1] };
+        return { name: title === "Files" ? "Hearth Files" : title || "Hearth", sub: "" };
+    }
     var name = String(entryName || "").trim();
     if (!name) {
         var parts = title.split(/\s+[—–-]\s+/);
@@ -75,7 +81,8 @@ function openItems(wins, games, entryName, playing) {
     var list = wins || [];
     for (var i = 0; i < list.length; i++) {
         var w = list[i];
-        if (ownWindow(w) || w.dialog === true) continue;
+        // (Hearth's own windows, Hearth Files and Settings, are windows like any other; a picker or a dialog isn't.)
+        if (w.dialog === true || (ownWindow(w) && !String(w.title || "").trim())) continue;
         var g = gameFor(w, games);
         if (g || isGame(w, games)) {
             var state = w.minimized ? "paused" : (w.activated ? "playing" : "running");
@@ -107,7 +114,7 @@ function status(g, playing) {
     if (g.installed && g.update) return "Update ready";
     if (g.installed && g.devBuild) return "Dev build";
     if (g.installed) return "Installed";
-    if (g.savesBackedUp) return "Cloud saves";
+    if (g.savesBackedUp || g.cloudSaves) return "Cloud saves";
     return "Not installed";
 }
 
@@ -274,5 +281,5 @@ function stackOrder(wins, recent, idOf) {
 }
 // A game window's title line: "Ember Trails · paused · 60 fps limit · VRR" (each part only when it's so).
 function gameLine(title, paused, limit, vrr) {
-    return [title, paused ? "paused" : "running", limit && limit !== "Off" ? limit + " fps limit" : "", vrr ? "VRR" : ""].filter(Boolean).join(" · ");
+    return [title, paused ? "paused" : "running", /^\d+$/.test(String(limit || "")) ? limit + " fps limit" : limit === "Screen" ? "limited to the screen" : "", vrr ? "VRR" : ""].filter(Boolean).join(" · ");
 }
