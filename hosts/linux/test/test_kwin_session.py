@@ -7,6 +7,7 @@ sys.dont_write_bytecode = True
 import json
 import os
 import pathlib
+import re
 import shutil
 import signal
 import subprocess
@@ -51,6 +52,10 @@ class Base(unittest.TestCase):
         # The share as the image has it: labwc's folder (its environment) and KWin's.
         shutil.copytree(ROOT / 'hosts/linux/desktop/labwc', os.path.join(self.share, 'desktop', 'labwc'))
         shutil.copytree(ROOT / 'hosts/linux/desktop/kwin', os.path.join(self.share, 'desktop', 'kwin'))
+        # The lock screen's check and the notice helper, as the image has them next to Mantel's shell.
+        os.makedirs(os.path.join(self.share, 'desktop', 'shell'))
+        for f in ('hearth-lockcheck', 'hearth-your-desktop', 'hearth_settings_io.py'):
+            shutil.copy(ROOT / 'hosts/linux/desktop/shell' / f, os.path.join(self.share, 'desktop', 'shell', f))
         self.write_bin('labwc', '#!/bin/sh\necho "labwc $* desktop_pid=$HEARTH_DESKTOP_PID pid=$$ wm=$HEARTH_WM" >> "$HOME/labwc-ran"\nexit 0\n')
 
     def tearDown(self):
@@ -90,6 +95,21 @@ class Base(unittest.TestCase):
     def fails(self):
         p = os.path.join(self.state, 'desktop-fails')
         return open(p).read() if os.path.exists(p) else ''
+
+    def lock_screen(self, says='hearth-lock-screen: loaded'):
+        """Hearth's lock screen package and a KWin greeter whose test run SAYS that (then stays up, as the real one
+        does), with Qt's Wayland plugins: env for session()."""
+        pkg = os.path.join(self.tmp, 'lockpkg')
+        os.makedirs(os.path.join(pkg, 'contents', 'lockscreen'), exist_ok=True)
+        open(os.path.join(pkg, 'contents', 'lockscreen', 'LockScreen.qml'), 'w').close()
+        with open(os.path.join(pkg, 'metadata.json'), 'w') as f:
+            json.dump({'X-Plasma-APIVersion': '2'}, f)
+        qt = os.path.join(self.tmp, 'qt6plugins')
+        for f in ('platforms/libqwayland-generic.so', 'wayland-shell-integration/liblayer-shell.so'):
+            os.makedirs(os.path.dirname(os.path.join(qt, f)), exist_ok=True)
+            open(os.path.join(qt, f), 'w').close()
+        self.write_bin('greeter', '#!/bin/sh\necho run >> "$HOME/greeter-runs"\necho "%s" >&2\nexec sleep 30\n' % says)
+        return {'HEARTH_LOCK_PKG': pkg, 'HEARTH_LOCK_GREETER': os.path.join(self.bin, 'greeter'), 'HEARTH_LOCK_QT_PLUGINS': qt}
 
     def helper(self, *args):
         r = subprocess.run([sys.executable, str(HELPER)] + list(args), env=self.env(), capture_output=True, text=True, timeout=30)
@@ -176,33 +196,132 @@ class KWinStart(Base):
         self.session()                                                # told once
         self.assertFalse(os.path.exists(p))
         # working again, then broken again: told again
-        pkg = os.path.join(self.tmp, 'lockpkg')
-        os.makedirs(os.path.join(pkg, 'contents', 'lockscreen'))
-        open(os.path.join(pkg, 'contents', 'lockscreen', 'LockScreen.qml'), 'w').close()
-        self.write_bin('greeter', '#!/bin/sh\n')
-        self.session(HEARTH_LOCK_PKG=pkg, HEARTH_LOCK_GREETER=os.path.join(self.bin, 'greeter'))
+        lk = self.lock_screen()
+        self.session(**lk)
         self.assertFalse(os.path.exists(p))
-        self.session(HEARTH_LOCK_PKG=pkg)                             # the package, no locker
+        self.session(HEARTH_LOCK_PKG=lk['HEARTH_LOCK_PKG'])           # the package, no locker
         self.assertEqual([l.split()[:2] for l in open(p).read().splitlines()], [['kwin-lock', 'nolocker']])
 
     def test_kwin_locker_only_with_hearths_lock_screen(self):
         self.write_bin('kwin_wayland', KWIN_WORKS)
-        pkg = os.path.join(self.tmp, 'lockpkg')
-        os.makedirs(os.path.join(pkg, 'contents', 'lockscreen'))
-        open(os.path.join(pkg, 'contents', 'lockscreen', 'LockScreen.qml'), 'w').close()
-        self.write_bin('greeter', '#!/bin/sh\n')
-        r, log = self.session(HEARTH_LOCK_PKG=pkg, HEARTH_LOCK_GREETER=os.path.join(self.bin, 'greeter'))
+        lk = self.lock_screen()
+        started = time.monotonic()
+        r, log = self.session(**lk)
         ran = '\n'.join(self.lines('kwin-ran'))
         self.assertIn('args=--xwayland %s/desktop/kwin/autostart' % self.share, ran)
         self.assertIn('shell=org.hearth.mantel-lock', ran)
         self.assertIn("KWin's screen locker on", log)
+        self.assertIn('loads in KWin\'s greeter', log)
+        self.assertLess(time.monotonic() - started, 25, 'the greeter\'s test run ends as soon as it says it loaded')
         # The package without the greeter: no locker.
         os.remove(os.path.join(self.home, 'kwin-ran'))
-        r, log = self.session(HEARTH_LOCK_PKG=pkg)
+        r, log = self.session(HEARTH_LOCK_PKG=lk['HEARTH_LOCK_PKG'])
         self.assertIn('--no-lockscreen', '\n'.join(self.lines('kwin-ran')))
         rc = (ROOT / 'hosts/linux/desktop/kwin/xdg/kscreenlockerrc').read_text()
-        for k in ('Autolock=false', 'LockOnResume=false', 'Timeout=0'):
+        for k in ('Autolock[$i]=false', 'LockOnResume[$i]=false', 'Timeout[$i]=0'):
             self.assertIn(k, rc)
+
+    def test_the_lock_screen_must_really_load_before_kwins_locker_is_on(self):
+        # Both files there isn't enough (review, Nov 17): the greeter's test run has to show Hearth's lock screen
+        # loading, or KWin starts with --no-lockscreen and the notice says so.
+        os.remove(os.path.join(self.state, 'kwin-lock-off-told'))
+        self.write_bin('kwin_wayland', KWIN_WORKS)
+        lk = self.lock_screen('kscreenlocker_greet: Failed to load lockscreen QML, falling back to built-in locker')
+        r, log = self.session(**lk)
+        self.assertIn('--no-lockscreen', '\n'.join(self.lines('kwin-ran')))
+        self.assertIn('shell=unset', '\n'.join(self.lines('kwin-ran')))
+        self.assertIn('didn\'t load in KWin\'s greeter', log)
+        self.assertIn(['kwin-lock', 'notloaded'], [l.split()[:2] for l in open(os.path.join(self.state, 'desktop-notice')).read().splitlines()], log)
+        self.assertIn('didn\'t show Hearth\'s lock screen loading', json.dumps(self.helper('status')))
+        self.assertFalse(os.path.exists(os.path.join(self.state, 'kwin-lock-proven')), 'a failure is never kept')
+        # A greeter that says nothing at all: still off.
+        os.remove(os.path.join(self.home, 'kwin-ran'))
+        self.session(**self.lock_screen('something else'))
+        self.assertIn('--no-lockscreen', '\n'.join(self.lines('kwin-ran')))
+
+    def test_the_lock_check_runs_once_per_image(self):
+        self.write_bin('kwin_wayland', KWIN_WORKS)
+        lk = self.lock_screen()
+        with open(os.path.join(self.share, 'version'), 'w') as f:
+            f.write('1.14\n')
+        r, log = self.session(**lk)
+        self.assertIn('checked once for this image', log)
+        self.assertEqual(len(self.lines('greeter-runs')), 1)
+        shutil.rmtree(os.path.join(self.run_dir, 'hearth'), ignore_errors=True)     # a new boot: /run is empty
+        r, log = self.session(**lk)
+        self.assertIn("KWin's screen locker on", log)
+        self.assertNotIn('checked once', log)
+        self.assertEqual(len(self.lines('greeter-runs')), 1, 'the same image: not checked again')
+        with open(os.path.join(self.share, 'version'), 'w') as f:
+            f.write('1.15\n')
+        shutil.rmtree(os.path.join(self.run_dir, 'hearth'), ignore_errors=True)
+        r, log = self.session(**lk)
+        self.assertIn('checked once for this image', log)
+        self.assertEqual(len(self.lines('greeter-runs')), 2, 'a new image: checked again')
+
+    def test_your_kde_settings_that_hearth_overrides_are_told_once(self):
+        # Hearth's fixed KWin keys ([$i]) win over a kscreenlockerrc / kwinrc left from KDE Plasma: the person is told
+        # once which, and their files are never changed (red flag 9).
+        self.write_bin('kwin_wayland', KWIN_WORKS)
+        cfg = os.path.join(self.home, '.config')
+        os.makedirs(cfg, exist_ok=True)
+        lockrc = '[Daemon]\nAutolock=true\nLockOnResume=true\nTimeout=5\n'
+        kwinrc = '[NightColor]\nActive=true\n\n[Compositing]\nAllowTearing=true\n'
+        for name, text in (('kscreenlockerrc', lockrc), ('kwinrc', kwinrc)):
+            with open(os.path.join(cfg, name), 'w') as f:
+                f.write(text)
+        r, log = self.session()
+        kl = open(os.path.join(self.home, '.local/share/nimbus/kwin.log')).read()
+        p = os.path.join(self.state, 'desktop-notice')
+        self.assertTrue(os.path.exists(p), log + kl)
+        n = open(p).read().split()
+        self.assertEqual(n[:2], ['kwin-mine', 'autolock+lockonresume'])
+        st = json.dumps(self.helper('status'))
+        self.assertIn('Lock the screen automatically', st)
+        self.assertIn('Settings \\u203a Sign-in', st)
+        self.assertNotIn('Night', st, 'Night Light and tearing are yours (Settings › Display), never fixed')
+        os.remove(os.path.join(self.state, 'desktop-notice'))
+        self.session()
+        self.assertFalse(os.path.exists(os.path.join(self.state, 'desktop-notice')), 'told once')
+        # Another one later: told about that.
+        with open(os.path.join(cfg, 'kwinrc'), 'a') as f:
+            f.write('\n[Wayland]\nInputMethod[$e]=/usr/share/applications/com.github.maliit.keyboard.desktop\n')
+        self.session()
+        n = open(os.path.join(self.state, 'desktop-notice')).read().split()
+        self.assertEqual(n[:2], ['kwin-mine', 'autolock+lockonresume+inputmethod'])
+        self.assertEqual(open(os.path.join(cfg, 'kscreenlockerrc')).read(), lockrc)
+        self.assertFalse(os.path.exists(os.path.join(cfg, 'kscreenlockerrc.bak')))
+        self.assertIn('[NightColor]\nActive=true', open(os.path.join(cfg, 'kwinrc')).read())
+
+    def test_hearths_fixed_keys_are_the_ones_it_tells_about(self):
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader('hyd', str(HELPER))
+        spec = importlib.util.spec_from_loader('hyd', loader)
+        hyd = importlib.util.module_from_spec(spec)
+        loader.exec_module(hyd)
+        fixed = {}
+        for d in ('kwin/xdg', 'kwin/windows/xdg'):
+            for name in ('kwinrc', 'kscreenlockerrc'):
+                p = ROOT / 'hosts/linux/desktop' / d / name
+                if not p.exists():
+                    continue
+                group = ''
+                for line in p.read_text().splitlines():
+                    s = line.strip()
+                    if s.startswith('['):
+                        group = s.strip('[]')
+                    elif '=' in s and not s.startswith('#'):
+                        k, v = s.split('=', 1)
+                        opts = ''.join(re.findall(r'\[\$([a-z]+)\]', k))
+                        if 'i' in opts:
+                            fixed[(name, group, re.sub(r'\[.*', '', k))] = v
+        listed = {(f, g, k): v for _i, f, g, k, v, _w, _h in hyd.LOCKED}
+        self.assertEqual(fixed, listed, 'every [$i] key is in LOCKED (and told about), and only those')
+        for keep in (('kwinrc', 'NightColor', 'Active'), ('kwinrc', 'Compositing', 'AllowTearing')):
+            self.assertNotIn(keep, fixed, 'a setting Hearth exposes is never fixed')
+        self.assertEqual(hyd.ini_values('[Daemon][$i]\nAutolock[$i]=true\n[A][B]\nx=1\n'),
+                         {('Daemon', 'Autolock'): 'true', ('A/B', 'x'): '1'})
 
     def test_mantel_closing_under_kwin_opens_labwc(self):
         # Mantel up, then the autostart's give_up: the reason left, KWin ended, no next mode.
@@ -416,7 +535,7 @@ class Autostart(Base):
     Mantel (it starts hearth-kwin-bridge itself: feature/kwin-windows)."""
     def test_under_kwin(self):
         shell = os.path.join(self.share, 'desktop', 'shell')
-        os.makedirs(shell)
+        os.makedirs(shell, exist_ok=True)
         open(os.path.join(shell, 'shell.qml'), 'w').close()
         with open(os.path.join(shell, 'hearth-kwin-bridge'), 'w') as f:
             f.write('import os, sys\nopen(os.path.join(os.environ["HOME"], "bridge-ran"), "w").write(" ".join(sys.argv[1:]))\n')
