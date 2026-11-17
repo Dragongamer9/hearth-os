@@ -266,6 +266,9 @@ optional aurorae
 [ -n "$(ls /usr/lib/*/qt6/plugins/org.kde.kdecoration2/*aurorae* /usr/lib/qt6/plugins/org.kde.kdecoration2/*aurorae* 2>/dev/null)" ] \
   || echo "::warning title=KWin::Aurorae isn't installed: KWin's window frames fall back to Breeze instead of Hearth's"
 optional kglobalacceld xdg-desktop-portal-kde
+# KWin's Overview and Desktop grid (Mantel's Task view button, Super+W, View + Y) load Milou's search QML
+# (org.kde.milou): without it they don't open (Present windows still does).
+optional milou
 if have_pkg libkf6screen-bin; then optional libkf6screen-bin; else optional kscreen; fi
 command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkf6screen-bin / kscreen): screens under KWin need it"
 # Hearth Capture (1.14, Capture.qml): Read text (tesseract, English) and QR codes (zbarimg) on a screenshot; optional,

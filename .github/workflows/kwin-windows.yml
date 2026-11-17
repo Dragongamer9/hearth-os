@@ -36,7 +36,7 @@ jobs:
           dnf -y install dnf5-plugins git python3 python3-gobject nodejs procps-ng dbus-daemon dbus-tools kwin \
             foot qt6-qtsvg qt6ct xorg-x11-server-Xwayland mesa-dri-drivers google-noto-sans-fonts breeze-icon-theme adwaita-icon-theme \
             hicolor-icon-theme ImageMagick wl-clipboard libnotify python3-tkinter kmod python3-dbus python3-pillow python3-evdev systemd-udev libinput gtk3 >/dev/null
-          dnf -y install --skip-unavailable aurorae libkscreen kscreen >/dev/null || true
+          dnf -y install --skip-unavailable aurorae libkscreen kscreen milou >/dev/null || true
           for b in kscreen-doctor; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed (pictures stay at vkms's size)"; done
           ls /usr/lib64/qt6/plugins/org.kde.kdecoration*/ 2>/dev/null | tr '\n' ' ' | sed 's/^/::notice title=decorations::/'; echo
           dnf -y install rsms-inter-fonts >/dev/null || true
