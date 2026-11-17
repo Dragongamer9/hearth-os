@@ -57,6 +57,13 @@ test('a .deb on the system itself (Peppermint unlocked) always asks; the unlock 
   assert.strictEqual(decide(cl('hostname deb-install')), 'yes');
 });
 
+test('a driver from Debian (Settings › App store › Drivers) always asks for a password', () => {
+  const cl = a => ({ program: ADMIN, command_line: ADMIN + ' ' + a });
+  assert.strictEqual(decide(cl('driver-install firmware-realtek')), 'auth_admin');
+  assert.strictEqual(decide(cl('driver-install nvidia-open'), { isInGroup: () => false }), 'auth_admin');
+  assert.strictEqual(decide(cl('hostname driver-install')), 'yes');
+});
+
 test('a line break in an earlier argument does not hide --allow-internal (bug hunt)', () => {
   const cl = a => ({ program: ADMIN, command_line: ADMIN + ' ' + a });
   assert.strictEqual(decide(cl('usb-raw /dev/nvme0n1 --expect-size 1 --label a\nb --allow-internal')), 'auth_admin');
