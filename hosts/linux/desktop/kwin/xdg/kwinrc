@@ -24,13 +24,8 @@ Right=None
 Bottom=None
 Left=None
 
-# Breeze window borders with Hearth's colours (theme/apply.sh writes kdeglobals), buttons on the right.
-[org.kde.kdecoration2]
-library=org.kde.breeze
-theme=Breeze
-ButtonsOnLeft=
-ButtonsOnRight=IAX
-BorderSize=Normal
+# Window frames: kwin/windows/xdg/kwinrc (Hearth's Aurorae theme). Not set here: this folder comes first in
+# XDG_CONFIG_DIRS, so a [org.kde.kdecoration2] here would win over it.
 
 # Hearth's on-screen keyboard as KWin's input method (feature/kwin-input: hearth-kwin-im.desktop).
 [Wayland]

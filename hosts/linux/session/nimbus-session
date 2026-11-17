@@ -522,6 +522,12 @@ run_kwin() {
   echo "--- $(date '+%F %T') Desktop Mode (KWin)" >>"$KWIN_LOG"
   auto="$SHARE/desktop/kwin/autostart"; [ -f "$auto" ] || auto="$CONF/autostart"
   rm -f "$RUN/hearth-shell-up" "$RUN/hearth-kwin-shell-failed" "$RUN/hearth-kwin-inverted"
+  # Your look first (theme/apply.sh: kdeglobals and Hearth's Aurorae frames for your accent), so KWin's first window
+  # already has Hearth's frames. Never in the way: at most 20 s, and a failure is only logged.
+  if [ -f "$SHARE/desktop/theme/apply.sh" ]; then
+    if have timeout; then timeout 20 sh "$SHARE/desktop/theme/apply.sh" >>"$KWIN_LOG" 2>&1; else sh "$SHARE/desktop/theme/apply.sh" >>"$KWIN_LOG" 2>&1; fi \
+      || log "kwin: theme/apply.sh didn't finish (code $?); KWin starts with the frames it has"
+  fi
   # The lock guard (red flag 2: never a lockout): without Hearth's lock screen, KWin runs without its screen locker
   # (--no-lockscreen) and Lock.qml says why it won't lock. Images never get here (their build fails when
   # hearth-lockcheck --as-kwin does). The person is told once, through Hearth's own notice (DesktopNotice.qml, not a
