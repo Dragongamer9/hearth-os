@@ -304,10 +304,25 @@ impl<BackendData: Backend> HearthState<BackendData> {
             let output = self.space.output_under(location).next().cloned();
             if let Some(output) = output.as_ref() {
                 let output_geo = self.space.output_geometry(output).unwrap();
-                if let Some(window) = output
-                    .user_data()
-                    .get::<FullscreenSurface>()
-                    .and_then(|f| f.get())
+                let fullscreen = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get());
+                // A click on Mantel's surface over a fullscreen game (the Guide) gives it the keyboard.
+                if fullscreen.is_some() {
+                    let local = location - output_geo.loc.to_f64();
+                    let hit = {
+                        let layers = layer_map_for_output(output);
+                        crate::game::layer_over_fullscreen(&layers, local).filter(|l| {
+                            l.can_receive_keyboard_focus()
+                                && layers.layer_geometry(l).is_some_and(|g| {
+                                    l.surface_under(local - g.loc.to_f64(), WindowSurfaceType::ALL).is_some()
+                                })
+                        })
+                    };
+                    if let Some(layer) = hit {
+                        keyboard.set_focus(self, Some(layer.into()), serial);
+                        return;
+                    }
+                }
+                if let Some(window) = fullscreen
                 {
                     if let Some((_, _)) =
                         window.surface_under(location - output_geo.loc.to_f64(), WindowSurfaceType::ALL)
@@ -387,11 +402,19 @@ impl<BackendData: Backend> HearthState<BackendData> {
         let layers = layer_map_for_output(output);
 
         let mut under = None;
-        if let Some((surface, loc)) = output
-            .user_data()
-            .get::<FullscreenSurface>()
-            .and_then(|f| f.get())
-            .and_then(|w| w.surface_under(pos - output_geo.loc.to_f64(), WindowSurfaceType::ALL))
+        let fullscreen = output.user_data().get::<FullscreenSurface>().and_then(|f| f.get());
+        // Mantel's surfaces over a fullscreen game (the Guide, the Couch) get the pointer first (game.rs).
+        let over_game = fullscreen.as_ref().and_then(|_| {
+            let layer = crate::game::layer_over_fullscreen(&layers, pos - output_geo.loc.to_f64())?;
+            let layer_loc = layers.layer_geometry(&layer)?.loc;
+            layer
+                .surface_under(pos - output_geo.loc.to_f64() - layer_loc.to_f64(), WindowSurfaceType::ALL)
+                .map(|(surface, loc)| (PointerFocusTarget::from(surface), loc + layer_loc + output_geo.loc))
+        });
+        if let Some(focus) = over_game {
+            under = Some(focus);
+        } else if let Some((surface, loc)) =
+            fullscreen.and_then(|w| w.surface_under(pos - output_geo.loc.to_f64(), WindowSurfaceType::ALL))
         {
             under = Some((surface, loc + output_geo.loc));
         } else if let Some(focus) = layers

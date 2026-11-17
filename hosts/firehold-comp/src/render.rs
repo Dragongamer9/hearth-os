@@ -201,9 +201,31 @@ where
         // An upscaled game (game.rs): sharpened as it's drawn, when the shader could be made.
         let sharpen = crate::game::sharpen_for(output).filter(|_| renderer.prepare_sharpen());
 
+        // Mantel's surfaces over the game (the Guide, notices, the Couch, Everything open; not the bar and dock),
+        // topmost first, as Smithay's space draws its upper layers (game.rs: drawn_over_fullscreen).
+        let over: Vec<WaylandSurfaceRenderElement<R>> = {
+            let map = smithay::desktop::layer_map_for_output(output);
+            let out_scale = output.current_scale().fractional_scale();
+            map.layers()
+                .rev()
+                .filter(|l| crate::game::drawn_over_fullscreen(l.layer(), l.cached_state().exclusive_zone))
+                .filter_map(|l| map.layer_geometry(l).map(|g| (g.loc, l)))
+                .flat_map(|(loc, l)| {
+                    AsRenderElements::<R>::render_elements::<WaylandSurfaceRenderElement<R>>(
+                        l,
+                        renderer,
+                        loc.to_physical_precise_round(out_scale),
+                        Scale::from(out_scale),
+                        1.0,
+                    )
+                })
+                .collect()
+        };
+
         let elements = custom_elements
             .into_iter()
             .map(OutputRenderElements::from)
+            .chain(over.into_iter().map(|e| OutputRenderElements::Custom(CustomRenderElements::Surface(e))))
             .chain(window_render_elements.into_iter().map(|e| match sharpen {
                 Some(strength) => OutputRenderElements::Game(SharpenElement { inner: e, strength }),
                 None => OutputRenderElements::Window(Wrap::from(e)),
