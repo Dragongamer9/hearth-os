@@ -8,6 +8,9 @@ reading only. Each part one JSON line of sections: [{title, rows: [[name, value]
   hearth-info pci        every PCI device with its driver (lspci -vmm -k)
   hearth-info usb        every USB device (lsusb, sysfs)
   hearth-info graphics   Vulkan (vulkaninfo --summary) and OpenGL (eglinfo / glxinfo -B), the window manager
+  hearth-info modules    the kernel's modules loaded now (/proc/modules): size, used by, parameters
+  hearth-info interrupts each interrupt and how often it came (/proc/interrupts)
+  hearth-info sensors    temperatures, fans, voltages and power (lm-sensors' sensors -j, else /sys/class/hwmon)
 Output: one JSON line; failures print "error: ..." and exit 1.
 """
 import glob
@@ -222,7 +225,164 @@ def graphics():
     return {'sections': secs}
 
 
-PARTS = {'cpu': cpu, 'gpu': gpu, 'memory': memory, 'pci': pci, 'usb': usb, 'graphics': graphics}
+# ------------------------------------------------------------------ kernel modules
+def parse_modules(text):
+    out = []
+    for line in text.splitlines():
+        f = line.split()
+        if len(f) >= 3 and f[1].isdigit():
+            users = [u for u in (f[3] if len(f) > 3 else '-').strip(',').split(',') if u and u != '-']
+            out.append({'name': f[0], 'size': int(f[1]), 'count': int(f[2]) if f[2].isdigit() else 0, 'users': users,
+                        'state': f[4] if len(f) > 4 else ''})
+    return out
+
+
+def modules():
+    items = []
+    for m in sorted(parse_modules(read(os.path.join(PROC, 'modules'))), key=lambda m: m['name']):
+        pdir = os.path.join(SYS, 'module', m['name'], 'parameters')
+        try:
+            params = len(os.listdir(pdir))
+        except OSError:
+            params = 0
+        sub = ('Used by ' + ', '.join(m['users'][:4]) + ('…' if len(m['users']) > 4 else '')) if m['users'] else (
+            'In use %d×' % m['count'] if m['count'] else 'Not in use')
+        items.append({'title': m['name'], 'sub': sub, 'kind': ('%d settings' % params) if params else '',
+                      'value': '%d KB' % max(1, round(m['size'] / 1024)), 'id': m['state'] if m['state'] != 'Live' else ''})
+    return {'items': items, 'note': '' if items else "the kernel's module list can't be read here"}
+
+
+# ------------------------------------------------------------------ interrupts
+def parse_interrupts(text):
+    lines = text.splitlines()
+    if not lines:
+        return []
+    ncpu = len(lines[0].split())
+    out = []
+    for line in lines[1:]:
+        irq, _, rest = line.partition(':')
+        f = rest.split()
+        counts = []
+        for x in f[:ncpu]:
+            if not x.isdigit():
+                break
+            counts.append(int(x))
+        tail = f[len(counts):]
+        if irq.strip().isdigit():
+            kind = ' '.join(tail[:2]) if len(tail) >= 2 else ' '.join(tail)
+            devs = ' '.join(tail[2:]) if len(tail) > 2 else ''
+        else:
+            kind, devs = '', ' '.join(tail)
+        out.append({'irq': irq.strip(), 'total': sum(counts), 'kind': kind, 'devices': devs, 'cpus': sum(1 for c in counts if c)})
+    return out
+
+
+def interrupts():
+    rows = parse_interrupts(read(os.path.join(PROC, 'interrupts')))
+    rows.sort(key=lambda r: -r['total'])
+    items = [{'title': r['devices'] or r['irq'], 'sub': ('Handled by %d threads' % r['cpus']) if r['cpus'] else 'Not yet',
+              'kind': r['kind'], 'value': '{:,}'.format(r['total']), 'id': 'IRQ ' + r['irq'] if r['irq'].isdigit() else r['irq']}
+             for r in rows]
+    return {'items': items, 'note': '' if items else "the kernel's interrupt list can't be read here"}
+
+
+# ------------------------------------------------------------------ sensors
+CHIPS = {'coretemp': 'Processor (Intel)', 'k10temp': 'Processor (AMD)', 'zenpower': 'Processor (AMD)', 'amdgpu': 'Graphics card (AMD)',
+         'nouveau': 'Graphics card (NVIDIA)', 'i915': 'Graphics (Intel)', 'xe': 'Graphics (Intel)', 'nvme': 'NVMe drive',
+         'drivetemp': 'Drive', 'acpitz': 'Motherboard (ACPI)', 'iwlwifi_1': 'Wi-Fi', 'thinkpad': 'ThinkPad', 'BAT0': 'Battery',
+         'asus': 'ASUS', 'dell_smm': 'Dell', 'nct6775': 'Motherboard', 'it87': 'Motherboard', 'spd5118': 'Memory'}
+
+
+def sensor(kind, label, value, high=None, crit=None):
+    unit = {'temp': '°C', 'fan': 'RPM', 'in': 'V', 'power': 'W'}[kind]
+    v = ('%.0f' if kind in ('temp', 'fan') else '%.2f') % value
+    extra = []
+    if high:
+        extra.append('high %.0f' % high)
+    if crit:
+        extra.append('critical %.0f' % crit)
+    top = crit or high or (100 if kind == 'temp' else 0)
+    return {'kind': kind, 'label': label, 'value': value, 'unit': unit, 'text': '%s %s' % (v, unit) + (' (' + ', '.join(extra) + ')' if extra else ''),
+            'top': top, 'hot': bool(kind == 'temp' and (high and value >= high or crit and value >= crit))}
+
+
+def parse_sensors_json(js):
+    chips = []
+    for chip, feats in (js or {}).items():
+        if not isinstance(feats, dict):
+            continue
+        adapter = feats.get('Adapter', '')
+        base = chip.split('-')[0]
+        rows = []
+        for label, vals in feats.items():
+            if not isinstance(vals, dict):
+                continue
+            for k, v in vals.items():
+                m = re.match(r'^(temp|fan|in|power)\d+_(input|average)$', k)
+                if m and isinstance(v, (int, float)):
+                    kind = m.group(1)
+                    pre = k.split('_')[0]
+                    rows.append(sensor(kind, label, float(v), vals.get(pre + '_max'), vals.get(pre + '_crit')))
+                    break
+        if rows:
+            chips.append({'title': CHIPS.get(base, base) + (' · ' + adapter if adapter and adapter not in ('ISA adapter', 'Virtual device') else ''), 'chip': chip, 'sensors': rows})
+    return chips
+
+
+def hwmon():
+    chips = []
+    for d in sorted(glob.glob(os.path.join(SYS, 'class', 'hwmon', 'hwmon*'))):
+        base = read(os.path.join(d, 'name')).strip() or os.path.basename(d)
+        rows = []
+        for f in sorted(glob.glob(os.path.join(d, '*_input')) + glob.glob(os.path.join(d, 'power*_average')),
+                        key=lambda p: (re.sub(r'\d+_.*$', '', os.path.basename(p)), int((re.search(r'(\d+)_', os.path.basename(p)) or [0, '0'])[1]))):
+            n = os.path.basename(f)
+            m = re.match(r'^(temp|fan|in|power)(\d+)_(input|average)$', n)
+            raw = read(f).strip()
+            if not m or not re.match(r'^-?\d+$', raw):
+                continue
+            kind, i = m.group(1), m.group(2)
+            div = {'temp': 1000.0, 'fan': 1.0, 'in': 1000.0, 'power': 1e6}[kind]
+            label = read(os.path.join(d, '%s%s_label' % (kind, i))).strip() or {'temp': 'Temperature', 'fan': 'Fan', 'in': 'Voltage', 'power': 'Power'}[kind] + ' ' + i
+
+            def lim(s):
+                t = read(os.path.join(d, '%s%s_%s' % (kind, i, s))).strip()
+                return int(t) / div if re.match(r'^-?\d+$', t) and int(t) > 0 else None
+            rows.append(sensor(kind, label, int(raw) / div, lim('max'), lim('crit')))
+        if rows:
+            chips.append({'title': CHIPS.get(base, base), 'chip': base, 'sensors': rows})
+    return chips
+
+
+def sensors():
+    chips = []
+    code, out = run(['sensors', '-j'], timeout=10)
+    if code == 0:
+        try:
+            chips = parse_sensors_json(json.loads(out))
+        except ValueError:
+            chips = []
+    if not chips:
+        chips = hwmon()
+    code, out = run(['nvidia-smi', '--query-gpu=name,temperature.gpu,fan.speed,power.draw', '--format=csv,noheader,nounits'])
+    if code == 0:
+        for line in out.splitlines():
+            f = [x.strip() for x in line.split(',')]
+            rows = []
+            if len(f) > 1 and re.match(r'^[\d.]+$', f[1]):
+                rows.append(sensor('temp', 'Graphics card', float(f[1]), 83, 93))
+            if len(f) > 3 and re.match(r'^[\d.]+$', f[3]):
+                rows.append(sensor('power', 'Power draw', float(f[3])))
+            if rows:
+                chips.append({'title': f[0] + ' (NVIDIA)', 'chip': 'nvidia', 'sensors': rows})
+    # Temperatures are drawn as bars with their limits (gauges); fans, voltages and power as rows.
+    secs = [{'title': c['title'], 'rows': [[s['label'], s['text']] for s in c['sensors'] if s['kind'] != 'temp'],
+             'gauges': [s for s in c['sensors'] if s['kind'] == 'temp']} for c in chips]
+    return {'sections': secs or [{'title': 'Sensors', 'rows': [['Sensors', 'None found: this PC (or a virtual machine) shows no temperatures or fans']]}], 'live': True}
+
+
+PARTS = {'cpu': cpu, 'gpu': gpu, 'memory': memory, 'pci': pci, 'usb': usb, 'graphics': graphics,
+         'modules': modules, 'interrupts': interrupts, 'sensors': sensors}
 
 
 def main(argv):

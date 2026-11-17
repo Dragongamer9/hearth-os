@@ -1,0 +1,269 @@
+#!/usr/bin/python3
+"""hearth-langpacks: Hearth Settings › Region & language › Translations & dictionaries (1.14, KDE's downloading of
+translations and language packs), as you (no root; Hearth OS's own files can't change, so nothing is installed into
+the system). For each language you chose (Languages in order, and the system's):
+  - the system's apps: how many already speak it (their translations under /usr/share/locale come with the image);
+  - Flatpak apps: their translations are downloaded when the language is in Flatpak's extra-languages for you
+    (flatpak config --user), then `flatpak update --user` fetches them;
+  - spell check: a Hunspell dictionary downloaded into ~/.local/share/hunspell (KDE's Sonnet looks there) and linked
+    for GTK apps (~/.config/enchant/hunspell). Only dictionaries Hearth downloaded are ever removed.
+
+  hearth-langpacks status          JSON: {languages: [{id, name, apps, flatpak, dict: "system"|"downloaded"|"missing"}],
+                                   flatpak, extra}
+  hearth-langpacks get             stdin {"languages": ["de_DE"]}: Flatpak translations and dictionaries ("progress:")
+  hearth-langpacks flatpak-off ID  that language out of Flatpak's extra-languages again
+  hearth-langpacks remove-dict ID  a dictionary Hearth downloaded
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+import urllib.request
+
+LOCALE = os.environ.get('HEARTH_LOCALE_DIR', '/usr/share/locale')
+DICT_URL = 'https://raw.githubusercontent.com/wooorm/dictionaries/main/dictionaries/%s/index.%s'
+LANG_RE = re.compile(r'^[a-z]{2,3}(_[A-Z]{2})?(@[a-z]+)?$')
+MAX = 40 * 1024 * 1024
+
+
+class Fail(Exception):
+    pass
+
+
+def home(*p):
+    return os.path.join(os.path.expanduser('~'), *p)
+
+
+def hunspell_dir():
+    return os.path.join(os.environ.get('XDG_DATA_HOME') or home('.local', 'share'), 'hunspell')
+
+
+def enchant_dir():
+    return os.path.join(os.environ.get('XDG_CONFIG_HOME') or home('.config'), 'enchant', 'hunspell')
+
+
+def mark_path():
+    return os.path.join(hunspell_dir(), '.hearth-downloaded.json')
+
+
+def region():
+    import importlib.machinery
+    import importlib.util
+    path = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-region')
+    loader = importlib.machinery.SourceFileLoader('hearth_region', path)
+    spec = importlib.util.spec_from_loader('hearth_region', loader)
+    m = importlib.util.module_from_spec(spec)
+    loader.exec_module(m)
+    return m
+
+
+def run(cmd, timeout=30):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, '', str(e)
+    return p.returncode, p.stdout, p.stderr
+
+
+def chosen():
+    r = region()
+    ls = list(r.languages().get('languages', []))
+    lang = (os.environ.get('LANG') or '').split('.')[0]
+    if LANG_RE.match(lang) and lang not in ls and lang not in ('C', 'POSIX'):
+        ls.append(lang)
+    return ls, r
+
+
+def apps_in(lang):
+    n = 0
+    for d in {lang, lang.split('_')[0]}:
+        try:
+            n += len([f for f in os.listdir(os.path.join(LOCALE, d, 'LC_MESSAGES')) if f.endswith('.mo')])
+        except OSError:
+            pass
+    return n
+
+
+def marks():
+    try:
+        with open(mark_path()) as f:
+            m = json.load(f)
+        return m if isinstance(m, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+def dict_state(lang, r):
+    have = {d['id'] for d in r.dictionaries()}
+    for i in (lang, lang.replace('_', '-'), lang.split('_')[0]):
+        if i in have:
+            return 'downloaded' if i in marks() else 'system'
+    return 'missing'
+
+
+def flatpak_extra():
+    if not shutil.which('flatpak'):
+        return None
+    code, out, err = run(['flatpak', 'config', '--user', '--get', 'extra-languages'])
+    v = out.strip()
+    return [] if code != 0 or v in ('', '*unset*') else [x for x in v.split(';') if x]
+
+
+def status():
+    ls, r = chosen()
+    extra = flatpak_extra()
+    names = {re.sub(r'\..*$', '', l['id']): l['name'] for l in r.status().get('locales', [])} if hasattr(r, 'status') else {}
+    sys_lang = (os.environ.get('LANG') or '').split('.')[0]
+    out = []
+    for l in ls:
+        code, _, land = l.partition('_')
+        name = names.get(l) or r.LANGS.get(code, code) + (' (' + r.LANDS.get(land, land) + ')' if land else '')
+        # English needs no translations: apps are written in it.
+        out.append({'id': l, 'name': name, 'apps': apps_in(l),
+                    'flatpak': extra is not None and (l in extra or code in extra or l == sys_lang or code == 'en'), 'dict': dict_state(l, r)})
+    return {'languages': out, 'flatpak': extra is not None, 'extra': extra or []}
+
+
+def set_extra(ls):
+    code, out, err = run(['flatpak', 'config', '--user', '--set', 'extra-languages', ';'.join(ls)] if ls else
+                         ['flatpak', 'config', '--user', '--unset', 'extra-languages'])
+    if code != 0:
+        raise Fail((err or out).strip()[:160] or "Flatpak said no")
+
+
+def fetch(url):
+    req = urllib.request.Request(url, headers={'User-Agent': 'Hearth-OS'})
+    with urllib.request.urlopen(req, timeout=60) as r:
+        data = r.read(MAX + 1)
+    if len(data) > MAX:
+        raise Fail('that dictionary is too big')
+    return data
+
+
+def write_atomic(path, data):
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix='.hearth-')
+    with os.fdopen(fd, 'wb') as f:
+        f.write(data)
+    os.replace(tmp, path)
+
+
+def get_dict(lang):
+    code, _, land = lang.partition('_')
+    tried = []
+    for c in ([code + '-' + land] if land else []) + [code]:
+        try:
+            aff = fetch(DICT_URL % (c, 'aff'))
+            dic = fetch(DICT_URL % (c, 'dic'))
+        except Fail:
+            raise
+        except Exception as e:
+            tried.append('%s (%s)' % (c, str(e)[:40]))
+            continue
+        first = dic.split(b'\n', 1)[0].strip()
+        if not first.isdigit() or b'\x00' in aff or b'\x00' in dic:
+            tried.append(c + ' (not a dictionary)')
+            continue
+        d = hunspell_dir()
+        os.makedirs(d, exist_ok=True)
+        write_atomic(os.path.join(d, lang + '.aff'), aff)
+        write_atomic(os.path.join(d, lang + '.dic'), dic)
+        m = marks()
+        if lang not in m:
+            write_atomic(mark_path(), json.dumps(m + [lang]).encode())
+        e = enchant_dir()
+        os.makedirs(e, exist_ok=True)
+        for ext in ('aff', 'dic'):
+            link = os.path.join(e, lang + '.' + ext)
+            if not os.path.lexists(link):
+                os.symlink(os.path.join(d, lang + '.' + ext), link)
+        return True
+    raise Fail('no dictionary to download for %s (%s)' % (lang, ', '.join(tried)[:160]))
+
+
+def get(req):
+    ls = req.get('languages') if isinstance(req, dict) else None
+    if not isinstance(ls, list) or not 0 < len(ls) <= 12 or not all(isinstance(x, str) and LANG_RE.match(x) for x in ls):
+        raise Fail('languages look like de_DE or fr')
+    _, r = chosen()
+    problems = []
+    extra = flatpak_extra()
+    if extra is not None:
+        want = list(dict.fromkeys(extra + [l.split('_')[0] for l in ls]))
+        if want != extra:
+            set_extra(want)
+        print('progress: 10 Downloading Flatpak apps\' translations', flush=True)
+        code, out, err = run(['flatpak', 'update', '--user', '--noninteractive', '-y'], timeout=3600)
+        if code != 0:
+            problems.append("Flatpak's download stopped: " + ((err or out).strip().splitlines() or ['no answer'])[-1][:120])
+    for i, l in enumerate(ls):
+        if dict_state(l, r) == 'missing':
+            print('progress: %d Spell check dictionary for %s' % (60 + 35 * i // len(ls), l), flush=True)
+            try:
+                get_dict(l)
+            except Fail as e:
+                problems.append(str(e))
+    print('progress: 100 Done', flush=True)
+    st = status()
+    st['problems'] = problems
+    return st
+
+
+def flatpak_off(lang):
+    if not LANG_RE.match(lang or ''):
+        raise Fail('not a language')
+    extra = flatpak_extra()
+    if extra is None:
+        raise Fail("Flatpak isn't on this system")
+    set_extra([x for x in extra if x not in (lang, lang.split('_')[0])])
+    return status()
+
+
+def remove_dict(lang):
+    if not LANG_RE.match(lang or '') or lang not in marks():
+        raise Fail('Hearth only removes dictionaries it downloaded')
+    for ext in ('aff', 'dic'):
+        for p in (os.path.join(enchant_dir(), lang + '.' + ext), os.path.join(hunspell_dir(), lang + '.' + ext)):
+            try:
+                os.remove(p)
+            except OSError:
+                pass
+    write_atomic(mark_path(), json.dumps([m for m in marks() if m != lang]).encode())
+    return status()
+
+
+def stdin_json():
+    raw = os.environ.get('HEARTH_INPUT')
+    if raw is None:
+        raw = '' if sys.stdin.isatty() else sys.stdin.read()
+    try:
+        return json.loads(raw or '{}')
+    except ValueError:
+        raise Fail('bad input')
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['status']:
+            r = status()
+        elif argv[:1] == ['get']:
+            r = get(stdin_json())
+        elif argv[:1] == ['flatpak-off'] and len(argv) == 2:
+            r = flatpak_off(argv[1])
+        elif argv[:1] == ['remove-dict'] and len(argv) == 2:
+            r = remove_dict(argv[1])
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

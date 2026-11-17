@@ -22,6 +22,21 @@ optional() {
     if have_pkg "$p"; then "${APT[@]}" "$p" || OPTIONAL_MISSING+=("$p(failed)"); else OPTIONAL_MISSING+=("$p"); fi
   done
 }
+# What a package would bring with it, said before it's installed (the image check's notices): the new packages, their
+# size, and a warning if that is a Plasma session or a login manager. Never stops the build.
+pkg_cost() {
+  local new kb s p
+  have_pkg "$1" || return 0
+  new=$(apt-get install -s "${APT[@]:3}" "$1" 2>/dev/null | awk '/^Inst /{print $2}' | tr '\n' ' ' || true)
+  kb=0
+  for p in $new; do s=$(apt-cache show "$p" 2>/dev/null | awk '/^Installed-Size:/{print $2; exit}' || true); kb=$((kb + ${s:-0})); done
+  echo "::notice title=$1::$(echo $new | wc -w) new package(s), $((kb / 1024)) MB installed: $(echo "$new" | cut -c1-3000)" || true
+  case " $new " in
+    *" plasma-workspace "*|*" plasma-desktop "*|*" plasma-session"*|*" sddm "*|*" kde-plasma-desktop "*|*" plasma-workspace-wayland "*)
+      echo "::warning title=$1::it brings a Plasma session or a login manager: $(echo "$new" | tr ' ' '\n' | grep -E '^(plasma|sddm|kde-plasma)' | tr '\n' ' ')";;
+  esac
+  return 0
+}
 
 # No services start during the build (there's no running system to start them in).
 printf '#!/bin/sh\nexit 101\n' > /usr/sbin/policy-rc.d
@@ -277,16 +292,7 @@ optional milou
 # The Desktop Cube (Settings › Virtual desktops, SetKwinDesktops.qml): trixie ships it in kwin-addons (kdeplasma-addons'
 # cube effect and extra Alt+Tab looks; no Plasma session). Optional: without it the page greys the switch and says why.
 # The image check says what it brings with it (packages, size) and warns if that is a Plasma session or a login manager.
-if have_pkg kwin-addons; then
-  ka_new=$(apt-get install -s "${APT[@]:3}" kwin-addons 2>/dev/null | awk '/^Inst /{print $2}' | tr '\n' ' ' || true)
-  ka_kb=0
-  for p in $ka_new; do s=$(apt-cache show "$p" 2>/dev/null | awk '/^Installed-Size:/{print $2; exit}'); ka_kb=$((ka_kb + ${s:-0})); done
-  echo "::notice title=kwin-addons::$(echo $ka_new | wc -w) new package(s), $((ka_kb / 1024)) MB installed: $(echo "$ka_new" | cut -c1-3000)" || true
-  case " $ka_new " in
-    *" plasma-workspace "*|*" plasma-desktop "*|*" plasma-session"*|*" sddm "*|*" kde-plasma-desktop "*|*" plasma-workspace-wayland "*)
-      echo "::warning title=kwin-addons::it brings a Plasma session or a login manager: $(echo "$ka_new" | tr ' ' '\n' | grep -E '^(plasma|sddm|kde-plasma)' | tr '\n' ' ')";;
-  esac
-fi
+pkg_cost kwin-addons
 optional kwin-addons
 # kscreen-doctor is in Debian's libkscreen-bin (Plasma 6's libkscreen; there's no libkf6screen-bin).
 if have_pkg libkscreen-bin; then optional libkscreen-bin; else optional kscreen; fi
@@ -594,6 +600,9 @@ fi
 optional sane-utils sane-airscan traceroute iputils-tracepath iw
 # 1.14: a dictionary for spell checking in KDE and GTK apps (Settings › Region & language › Spell check).
 optional hunspell-en-us
+# 1.14: Info Center's Temperatures & fans names the sensors with lm-sensors (it reads /sys/class/hwmon without it).
+pkg_cost lm-sensors
+optional lm-sensors
 if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
   install -Dm755 /ctx/nimbus-app/hearth-tools/hearth-tools /usr/bin/hearth-tools
   if ldd /usr/bin/hearth-tools | grep "not found"; then echo "warning: Hearth Tools is missing the libraries above"; fi

@@ -505,6 +505,39 @@ var ENTRIES = [
 "i": "shield"
 },
 {
+"t": "Receive files & this PC's name",
+"p": "bluetooth-devices",
+"d": "Files from phones, and the name others see",
+"i": "share"
+},
+{
+"t": "Put back the usual name",
+"p": "bluetooth-receive",
+"i": "undo"
+},
+{
+"t": "Receive files",
+"p": "bluetooth-receive",
+"d": "Phones and computers you've paired can send you files. You're asked about each one",
+"i": "share"
+},
+{
+"t": "Save them in",
+"p": "bluetooth-receive",
+"i": "folder"
+},
+{
+"t": "Back to Downloads",
+"p": "bluetooth-receive",
+"i": "undo"
+},
+{
+"t": "Take files from trusted devices without asking",
+"p": "bluetooth-receive",
+"d": "Devices you trust in Your Bluetooth devices. Others are still asked about",
+"i": "check"
+},
+{
 "t": "Claude Desktop",
 "p": "claude",
 "i": "info"
@@ -1096,6 +1129,12 @@ var ENTRIES = [
 {
 "t": "Cancel",
 "p": "firmware"
+},
+{
+"t": "Update history",
+"p": "firmware",
+"d": "Every firmware update put in, and whether it worked",
+"i": "clock"
 },
 {
 "t": "Restart to finish",
@@ -2462,6 +2501,27 @@ var ENTRIES = [
 "i": "copy"
 },
 {
+"t": "Tell me when ink or toner runs low",
+"p": "ink-levels",
+"d": "One notice per cartridge, again only after it's been filled",
+"i": "bell"
+},
+{
+"t": "Asking the printers…",
+"p": "ink-levels",
+"i": "printer"
+},
+{
+"t": "No printers",
+"p": "ink-levels",
+"i": "printer"
+},
+{
+"t": "Ask again",
+"p": "ink-levels",
+"i": "sync"
+},
+{
 "t": "Type with fcitx5",
 "p": "input-methods",
 "d": "Switch languages with Ctrl+Space. Used from the next sign-in",
@@ -3258,6 +3318,34 @@ var ENTRIES = [
 "d": "A window rule opens them where, how big and how you want"
 },
 {
+"t": "Choose your languages first",
+"p": "language-packs",
+"d": "Languages in order",
+"i": "globe"
+},
+{
+"t": "The system's apps",
+"p": "language-packs",
+"i": "window"
+},
+{
+"t": "Flatpak apps: translations downloaded",
+"p": "language-packs",
+"d": "Press to stop getting this language's translations for Flatpak apps",
+"i": "close"
+},
+{
+"t": "Remove the downloaded dictionary",
+"p": "language-packs",
+"i": "trash"
+},
+{
+"t": "Languages in order",
+"p": "language-packs",
+"d": "Add or reorder your languages",
+"i": "globe"
+},
+{
 "t": "Apps use the language from Region & language",
 "p": "languages",
 "d": "Add languages below so an app without your first one uses the next, before falling back to English",
@@ -3274,6 +3362,12 @@ var ENTRIES = [
 "p": "languages",
 "d": "Apps pick up the new order when you sign in again",
 "i": "logout"
+},
+{
+"t": "Translations & dictionaries",
+"p": "languages",
+"d": "Download what your languages need",
+"i": "update"
 },
 {
 "t": "Share this device's AI",
@@ -3960,6 +4054,18 @@ var ENTRIES = [
 "i": "printer"
 },
 {
+"t": "Scan to PDF",
+"p": "printers",
+"d": "Several pages into one PDF",
+"i": "file"
+},
+{
+"t": "Ink & toner",
+"p": "printers",
+"d": "How full each cartridge is",
+"i": "printer"
+},
+{
 "t": "More printer settings",
 "p": "printers",
 "d": "Drivers, paper and other options (Print Settings)",
@@ -4192,6 +4298,50 @@ var ENTRIES = [
 },
 {
 "t": "Nothing answered",
+"p": "scan-pdf",
+"d": "Turn the scanner on and plug it in, or put it on the same network",
+"i": "info"
+},
+{
+"t": "Scanner",
+"p": "scan-pdf",
+"i": "printer"
+},
+{
+"t": "Resolution",
+"p": "scan-pdf",
+"d": "150 for reading, 300 for printing again",
+"i": "image"
+},
+{
+"t": "Colour",
+"p": "scan-pdf",
+"i": "palette"
+},
+{
+"t": "From",
+"p": "scan-pdf",
+"i": "doc"
+},
+{
+"t": "Save as PDF",
+"p": "scan-pdf",
+"d": "One PDF of every page, in Documents",
+"i": "file"
+},
+{
+"t": "Open the PDF",
+"p": "scan-pdf",
+"i": "open"
+},
+{
+"t": "Start again",
+"p": "scan-pdf",
+"d": "Clears the pages here (a saved PDF stays)",
+"i": "close"
+},
+{
+"t": "Nothing answered",
 "p": "scanners",
 "d": "Turn the scanner on and plug it in, or put it on the same network. Many printers with a scanner show up here",
 "i": "info"
@@ -4200,6 +4350,12 @@ var ENTRIES = [
 "t": "Look again",
 "p": "scanners",
 "i": "sync"
+},
+{
+"t": "Scan to PDF",
+"p": "scanners",
+"d": "Several pages into one PDF",
+"i": "file"
 },
 {
 "t": "Index my files",

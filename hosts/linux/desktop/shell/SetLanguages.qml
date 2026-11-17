@@ -76,6 +76,7 @@ SetPage {
             icon: "logout"; chevron: false; title: "Sign out now"; sub: "Apps pick up the new order when you sign in again"
             onActivated: Quickshell.execDetached(["nimbus-mode", "logout"])
         }
+        SetRow { icon: "update"; chevron: true; title: "Translations & dictionaries"; sub: "Download what your languages need"; onActivated: SettingsNav.openPage("language-packs") }
     }
     Text {
         visible: page.message !== ""
