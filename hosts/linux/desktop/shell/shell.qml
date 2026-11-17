@@ -280,6 +280,9 @@ ShellRoot {
     Loader { source: "SpaceWatch.qml"; onLoaded: { item.dialog = deskDialog; item.openStorage = () => settings.open("storage"); } }   // 1.11: main drive almost full
     Loader { source: "StoreWatch.qml"; onLoaded: item.openStore = part => settings.open("store:" + part) }   // 1.14: app updates notice
     Loader { source: "BatteryWatch.qml" }   // 1.11: low battery warnings, then hibernate (where proven) or a clean shutdown
+    // 1.14: once the desktop has settled, tells you once if Screen power saving was turned off by itself on this laptop
+    // (hearth-screen-psr notice: Alder Lake-N / Twin Lake screens can freeze with it; Settings › Display turns it back on).
+    Timer { interval: 45000; running: true; onTriggered: Quickshell.execDetached(["sh", "-c", "[ -x /usr/libexec/nimbus/hearth-screen-psr ] && exec python3 /usr/libexec/nimbus/hearth-screen-psr notice >/dev/null 2>&1 || true"]) }
     // Device Manager, the Run box (Super+R) and the Super+X menu (WinTools.qml): loaded by file name, so a problem in
     // them only loses those three, never the shell.
     Loader {

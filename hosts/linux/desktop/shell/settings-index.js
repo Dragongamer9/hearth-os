@@ -900,6 +900,11 @@ var ENTRIES = [
 "i": "window"
 },
 {
+"t": "Screen power saving",
+"p": "display",
+"i": "display"
+},
+{
 "t": "Game Mode's resolution and frame limit",
 "p": "display",
 "d": "Gaming › Performance",
