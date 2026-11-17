@@ -2316,20 +2316,23 @@ jobs:
           echo "::notice title=KWin screens: kwinrc::$(tr '\n' '|' < shots/kwin/nightcolor.txt) kwriteconfig6: $(command -v kwriteconfig6 || echo none)"
           nl=$(gdbus call --session --dest org.kde.KWin --object-path /org/kde/KWin/NightLight --method org.freedesktop.DBus.Properties.GetAll org.kde.KWin.NightLight 2>&1 | cut -c1-500)
           echo "::notice title=KWin screens: Night Light::$nl"
-          # A screenshot through KWin's ScreenShot2 with its permission check on.
-          hearth-screenshot shots/kwin/screenshot-check.png > shots/kwin/screenshot-check.txt 2>&1
-          if python3 -c 'import sys; d=open(sys.argv[1],"rb").read(24); assert d[:8]==b"\x89PNG\r\n\x1a\n"; import struct; print(struct.unpack(">II", d[16:24]))' shots/kwin/screenshot-check.png > shots/kwin/screenshot-size.txt 2>&1; then
-            echo "::notice title=KWin screens: screenshot::hearth-screenshot took a picture through KWin's ScreenShot2 (permission check on): $(cat shots/kwin/screenshot-size.txt)"
-          else
-            fail "hearth-screenshot under KWin: $(tr '\n' '|' < shots/kwin/screenshot-check.txt | cut -c1-400)"
+          # ---- Mantel's Settings › Display in the real shell. The pictures come from grim on a headless labwc holding
+          # KWin as a 1920×1080 window (as plasma-test.yml): KWin on this CPU-only runner has no render device, and its
+          # screenshot interface brings it down (the screenshot check below, last).
+          if [ -z "$OUTER" ]; then
+            pkill -f /tmp/kwin_wayland; sleep 2; rm -f "$XDG_RUNTIME_DIR/wayland-hearth"*
+            WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1 WAYLAND_DISPLAY= labwc >shots/kwin/outer.log 2>&1 &
+            for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+            OUTER=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+            WAYLAND_DISPLAY=$OUTER wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
+            WAYLAND_DISPLAY=$OUTER /tmp/kwin_wayland --wayland-display "$OUTER" --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin/kwin2.log 2>&1 &
+            for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+            sleep 3
           fi
-          pgrep -f /tmp/kwin_wayland >/dev/null || fail "KWin isn't running after the screenshot: $(grep -v -i locale shots/kwin/kwin.log | tail -12 | tr '\n' '|' | cut -c1-900)"
-          echo "::notice title=KWin screens: KWin's log::$(grep -v -i locale shots/kwin/kwin.log | grep -i -E 'screenshot|error|warn|crash|abort|output|kscreen|nightlight|night' | tail -15 | tr '\n' '|' | cut -c1-1000)"
-          # ---- Mantel's Settings › Display in the real shell
           quickshell -p hosts/linux/desktop/shell >shots/kwin/shell.log 2>&1 &
           sleep 25
           ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 3; }
-          shot() { hearth-screenshot "shots/kwin/$1.png" 2>>shots/kwin/shot-errors.txt || { [ -n "$OUTER" ] && WAYLAND_DISPLAY=$OUTER grim "shots/kwin/$1.png"; }; }
+          shot() { WAYLAND_DISPLAY=$OUTER timeout 20 grim "shots/kwin/$1.png" 2>>shots/kwin/shot-errors.txt; }
           scr() { ipc settings close; ipc settings page "display$1"; sleep 4; shot "$2"; }
           scr "" kwin-1-display-top; scr :night kwin-2-night-light; scr :hdr kwin-3-hdr-and-colour; scr :games kwin-4-games-and-smoothness; scr :layout kwin-5-scale-rotation-mirror
           ipc settings close
@@ -2345,6 +2348,20 @@ jobs:
           dpms=$(timeout 10 kscreen-doctor --dpms show 2>&1 | tr '\n' ' ' | cut -c1-200)
           sh hosts/linux/desktop/shell/hearth-screen-power on; sleep 2
           echo "::notice title=KWin screens: screen off::exit $off; while off: $dpms; on again: $(timeout 10 kscreen-doctor --dpms show 2>&1 | tr '\n' ' ' | cut -c1-200)"
+          # A screenshot through KWin's ScreenShot2 with its permission check on (an unknown program gets NoAuthorized at
+          # once; KWin quitting means it was let in and then couldn't draw the picture on this runner).
+          # First a program KWin doesn't know (plain python3): it must be refused.
+          python3 $SH shot shots/kwin/untrusted.png > shots/kwin/untrusted.txt 2>&1
+          if grep -q "didn't let Hearth" shots/kwin/untrusted.txt; then echo "::notice title=KWin screens: untrusted::plain python3 was refused, as it should be: $(head -c 200 shots/kwin/untrusted.txt)"
+          else echo "::warning title=KWin screens: untrusted::plain python3 wasn't refused: $(head -c 300 shots/kwin/untrusted.txt | tr '\n' '|')"; fi
+          hearth-screenshot shots/kwin/screenshot-check.png > shots/kwin/screenshot-check.txt 2>&1
+          if python3 -c 'import sys; d=open(sys.argv[1],"rb").read(24); assert d[:8]==b"\x89PNG\r\n\x1a\n"; import struct; print(struct.unpack(">II", d[16:24]))' shots/kwin/screenshot-check.png > shots/kwin/screenshot-size.txt 2>&1; then
+            echo "::notice title=KWin screens: screenshot::hearth-screenshot took a picture through KWin's ScreenShot2 (permission check on): $(cat shots/kwin/screenshot-size.txt)"
+          elif grep -q -i 'NoAuthorized\|not authorized\|didn.t let Hearth' shots/kwin/screenshot-check.txt; then
+            fail "KWin refused hearth-screenshot (hearth-screenshot.desktop's trust didn't work): $(tr '\n' '|' < shots/kwin/screenshot-check.txt | cut -c1-400)"
+          else
+            echo "::warning title=KWin screens: screenshot::KWin let hearth-screenshot in, then couldn't take the picture on this runner: $(tr '\n' '|' < shots/kwin/screenshot-check.txt | cut -c1-300) KWin: $(grep -v -i locale shots/kwin/kwin2.log | tail -3 | tr '\n' '|' | cut -c1-300)"
+          fi
           # Tearing (kwinrc's Compositing AllowTearing, then KWin's reconfigure, as KDE's own settings do) last: this
           # nested KWin on software GL may quit when it reconfigures its compositor.
           python3 $SH set '{"tearing": false}' >/dev/null 2>&1; grep -q 'AllowTearing=false' "$HOME/.config/kwinrc" || fail "tearing off didn't reach kwinrc"
