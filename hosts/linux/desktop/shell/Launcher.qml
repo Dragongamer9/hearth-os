@@ -40,6 +40,7 @@ PanelWindow {
     // Right-click, press and hold, or the Menu key (X on the controller): Open / Pin to taskbar (shell.qml).
     signal menuRequested(var entry, real x, real y)
     property var popMenu: null                 // PopMenu (shell.qml): the live tiles' Resize menu, jump lists
+    property var dialog: null                  // DeskDialog (shell.qml): the search rows that ask first (kill, restart…)
     function toggle() { shown = !shown; }
     // The Tiles menu's search field in the bar (Islands.qml, as in the mockup): opens the menu with the search ready;
     // what you type shows there (menuQuery). barSearch: the bar on the main screen shows that field (shell.qml).
@@ -266,8 +267,12 @@ PanelWindow {
     function freshRates() { if (root.searchPrefs.currencyOnline !== false) Quickshell.execDetached(["python3", root.searchHelper, "rates", "--if-old"]); }
     function answersFor(raw) {
         const off = (root.searchPrefs && typeof root.searchPrefs.pluginsOff === "object" && root.searchPrefs.pluginsOff) || {};
-        return Runners.run(raw, { rates: root.rates, recent: root.recentFiles, windows: root.windowList || [], off: off });
+        sources.lookup(raw);
+        return Runners.run(raw, { rates: root.rates, recent: root.recentFiles, windows: root.windowList || [], src: sources.src, off: off });
     }
+    // 1.14: the data of the newer plugins (bookmarks, desktops, kill, world clock, spelling, media, store, contacts,
+    // calendar, notes) and their actions, some of which ask first.
+    SearchSources { id: sources; launcher: root; dialog: root.dialog }
     // The Hearth menu's own answers (the other styles get them through searchAll).
     readonly property var hearthAnswers: shown && !styled && tab === "apps" && search.text.trim() !== "" ? answersFor(search.text) : []
     function enterPressed() {
@@ -278,6 +283,7 @@ PanelWindow {
     function runAnswer(a) {
         if (!a || !a.action) return;
         const x = a.action;
+        if (sources.handle(a)) return;
         if (x.type === "copy") Quickshell.execDetached(["wl-copy", "--", String(x.value)]);
         else if (x.type === "url") Quickshell.execDetached(["xdg-open", x.value]);
         else if (x.type === "command") Quickshell.execDetached(["python3", root.searchHelper, "run", x.terminal ? "--terminal" : "--plain", x.value]);
@@ -635,8 +641,8 @@ PanelWindow {
                         anchors { fill: parent; leftMargin: 16; rightMargin: 16 }
                         spacing: 14
                         Rectangle {
-                            implicitWidth: 38; implicitHeight: 38; radius: Theme.r(10); color: Theme.panel3
-                            Icon { anchors.centerIn: parent; visible: !ans.modelData.glyph; name: ans.modelData.icon || "search"; size: 20 }
+                            implicitWidth: 38; implicitHeight: 38; radius: Theme.r(10); color: ans.modelData.swatch || Theme.panel3
+                            Icon { anchors.centerIn: parent; visible: !ans.modelData.glyph && !ans.modelData.swatch; name: ans.modelData.icon || "search"; size: 20 }
                             Text { anchors.centerIn: parent; visible: !!ans.modelData.glyph; text: ans.modelData.glyph || ""; font.pixelSize: 22 }
                         }
                         ColumnLayout {
@@ -645,7 +651,7 @@ PanelWindow {
                             Text { Layout.fillWidth: true; text: ans.modelData.title; color: Theme.text; font.pixelSize: 17; font.weight: Font.DemiBold; font.family: Theme.font; elide: Text.ElideRight }
                             Text { Layout.fillWidth: true; text: ans.modelData.group + " · " + (ans.modelData.sub || ""); color: Theme.muted; font.pixelSize: 12; font.family: Theme.font; elide: Text.ElideRight }
                         }
-                        Text { visible: ans.index === 0 && ans.modelData.top; text: "Enter"; color: Theme.accent; font.pixelSize: 12; font.family: Theme.font; font.weight: Font.DemiBold }
+                        Text { visible: ans.index === 0 && !!ans.modelData.top; text: "Enter"; color: Theme.accent; font.pixelSize: 12; font.family: Theme.font; font.weight: Font.DemiBold }
                     }
                     MouseArea { id: ansArea; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.runAnswer(ans.modelData) }
                 }

@@ -1,0 +1,388 @@
+#!/usr/bin/python3
+"""hearth-search-sources: what the 1.14 search plugins (search/*.js, SearchSources.qml) need from the PC, as JSON.
+
+Everything here only reads, except `kill`. Nothing is ever written to your settings or to a browser's files.
+  hearth-search-sources browser        bookmarks and history of Firefox and Chromium-based browsers (Chromium, Chrome,
+                                       Brave, Edge, Vivaldi; their Flatpaks too): {bookmarks, history}. Each
+                                       places.sqlite / History is COPIED to a private folder first and the copy read,
+                                       so a running browser's live file is never opened or locked.
+  hearth-search-sources procs [NAME]   your own running programs, by name: {query, list: [{name, pids, cmd}]}
+  hearth-search-sources kill PID...    asks those programs to close (SIGTERM). Only your own, and never one Hearth needs
+                                       (the shell, the window manager, Game Mode, the session): {killed, refused}
+  hearth-search-sources spell WORD     hunspell: {word, correct, suggestions} or {word, missing: true}
+  hearth-search-sources zones          {offsets: {zone: minutes from UTC now}, local, localOffset}: the world clock's
+                                       cities (search/worldclock.js), summer time counted
+  hearth-search-sources pim            Hearth Contacts, Calendar and Notes: {contacts, events, notes}
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import signal
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import time
+from datetime import date, datetime, timedelta, timezone
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+HOME = os.path.expanduser('~')
+# Programs Hearth needs: never killed from the search (search/kill.js keeps the same list).
+KEEP = {'quickshell', 'labwc', 'kwin_wayland', 'kwin_x11', 'gamescope', 'gamescope-wl', 'systemd', 'dbus-daemon', 'dbus-broker',
+        'pipewire', 'wireplumber', 'nimbus-session', 'hearth-session', 'Xwayland', 'greetd', 'sddm'}
+MAX_HISTORY = 1500
+
+
+def out(obj):
+    print(json.dumps(obj, ensure_ascii=False))
+
+
+def xdg(var, default):
+    v = os.environ.get(var)
+    return v if v and os.path.isabs(v) else os.path.join(HOME, default)
+
+
+# ------------------------------------------------------------------ browsers
+FIREFOXES = [('Firefox', '.mozilla/firefox'), ('Firefox', '.var/app/org.mozilla.firefox/.mozilla/firefox'),
+             ('LibreWolf', '.librewolf'), ('LibreWolf', '.var/app/io.gitlab.librewolf-community/.librewolf')]
+CHROMIUMS = [('Chromium', 'chromium'), ('Chrome', 'google-chrome'), ('Brave', 'BraveSoftware/Brave-Browser'), ('Edge', 'microsoft-edge'),
+             ('Vivaldi', 'vivaldi'), ('Chromium', '../.var/app/org.chromium.Chromium/config/chromium'),
+             ('Chrome', '../.var/app/com.google.Chrome/config/google-chrome'), ('Brave', '../.var/app/com.brave.Browser/config/BraveSoftware/Brave-Browser'),
+             ('Edge', '../.var/app/com.microsoft.Edge/config/microsoft-edge')]
+
+
+def read_copy(path, sql, tmp):
+    """Rows of `sql` from a copy of the sqlite file at path (with its -wal, so the newest pages are there). The live
+    file is only read by the copy, never opened as a database, so the browser keeps its lock and its speed."""
+    n = len(os.listdir(tmp))
+    dst = os.path.join(tmp, '%d.sqlite' % n)
+    shutil.copyfile(path, dst)
+    for ext in ('-wal', '-shm'):
+        if os.path.exists(path + ext):
+            try:
+                shutil.copyfile(path + ext, dst + ext)
+            except OSError:
+                pass
+    con = sqlite3.connect(dst, timeout=2)
+    try:
+        return con.execute(sql).fetchall()
+    finally:
+        con.close()
+
+
+def chromium_marks(node, name, acc):
+    if isinstance(node, dict):
+        if node.get('type') == 'url' and node.get('url'):
+            acc.append({'title': node.get('name') or '', 'url': node['url'], 'browser': name})
+        for c in node.get('children') or []:
+            chromium_marks(c, name, acc)
+        return acc
+    return acc
+
+
+def browser(home=None):
+    home = home or HOME
+    conf = os.environ.get('XDG_CONFIG_HOME') if home == HOME else None
+    conf = conf if conf and os.path.isabs(conf) else os.path.join(home, '.config')
+    marks, hist, errors = [], [], []
+    tmp = tempfile.mkdtemp(prefix='hearth-search-', dir=os.environ.get('XDG_RUNTIME_DIR') or None)
+    try:
+        for name, base in FIREFOXES:
+            for db in sorted(glob.glob(os.path.join(home, base, '*', 'places.sqlite'))):
+                try:
+                    for t, u in read_copy(db, "SELECT b.title, p.url FROM moz_bookmarks b JOIN moz_places p ON b.fk = p.id "
+                                              "WHERE b.type = 1 AND p.url NOT LIKE 'place:%' ORDER BY b.lastModified DESC LIMIT 2000", tmp):
+                        marks.append({'title': t or '', 'url': u, 'browser': name})
+                    for t, u, v in read_copy(db, "SELECT title, url, visit_count FROM moz_places WHERE visit_count > 0 AND hidden = 0 "
+                                                 "AND url NOT LIKE 'place:%%' ORDER BY frecency DESC LIMIT %d" % MAX_HISTORY, tmp):
+                        hist.append({'title': t or '', 'url': u, 'browser': name, 'visits': v or 0})
+                except (OSError, sqlite3.Error) as e:
+                    errors.append('%s: %s' % (name, e))
+        for name, base in CHROMIUMS:
+            root = os.path.normpath(os.path.join(conf, base))
+            for prof in sorted(glob.glob(os.path.join(root, '*', 'Preferences'))):
+                d = os.path.dirname(prof)
+                try:
+                    with open(os.path.join(d, 'Bookmarks'), encoding='utf-8') as f:
+                        for r in (json.load(f).get('roots') or {}).values():
+                            chromium_marks(r, name, marks)
+                except (OSError, ValueError):
+                    pass
+                h = os.path.join(d, 'History')
+                if os.path.exists(h):
+                    try:
+                        for t, u, v in read_copy(h, "SELECT title, url, visit_count FROM urls WHERE hidden = 0 "
+                                                    "ORDER BY visit_count DESC, last_visit_time DESC LIMIT %d" % MAX_HISTORY, tmp):
+                            hist.append({'title': t or '', 'url': u, 'browser': name, 'visits': v or 0})
+                    except (OSError, sqlite3.Error) as e:
+                        errors.append('%s: %s' % (name, e))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    hist.sort(key=lambda x: -x['visits'])
+    return {'bookmarks': marks, 'history': hist[:MAX_HISTORY * 2], 'errors': errors}
+
+
+# ------------------------------------------------------------------ programs
+def own_procs(root='/proc'):
+    uid, me = os.getuid(), os.getpid()
+    for p in os.listdir(root):
+        if not p.isdigit() or int(p) in (me, 1):
+            continue
+        try:
+            if os.stat(os.path.join(root, p)).st_uid != uid:
+                continue
+            with open(os.path.join(root, p, 'comm')) as f:
+                comm = f.read().strip()
+            with open(os.path.join(root, p, 'cmdline'), 'rb') as f:
+                cmd = f.read().split(b'\0')
+        except OSError:
+            continue
+        exe = os.path.basename(cmd[0].decode('utf-8', 'replace')) if cmd and cmd[0] else ''
+        yield int(p), comm, exe, b' '.join(cmd).decode('utf-8', 'replace').strip()
+
+
+def procs(name='', root='/proc'):
+    q, groups = (name or '').strip().lower(), {}
+    for pid, comm, exe, cmd in own_procs(root):
+        n = exe if exe and len(comm) == 15 and exe.startswith(comm) else comm   # comm is cut at 15 characters
+        if not n or n in KEEP or comm in KEEP:
+            continue
+        if q and q not in n.lower() and q not in comm.lower():
+            continue
+        g = groups.setdefault(n, {'name': n, 'pids': [], 'cmd': cmd[:120]})
+        g['pids'].append(pid)
+    lst = sorted(groups.values(), key=lambda g: (not g['name'].lower().startswith(q), g['name'].lower()))
+    return {'query': name or '', 'list': lst[:20]}
+
+
+def kill(pids, root='/proc', send=os.kill):
+    uid, killed, refused = os.getuid(), [], []
+    for s in pids:
+        if not str(s).isdigit() or int(s) <= 1:
+            refused.append(s)
+            continue
+        pid = int(s)
+        try:
+            if os.stat(os.path.join(root, str(pid))).st_uid != uid:
+                refused.append(pid)
+                continue
+            with open(os.path.join(root, str(pid), 'comm')) as f:
+                comm = f.read().strip()
+        except OSError:
+            refused.append(pid)
+            continue
+        if comm in KEEP or pid == os.getpid():
+            refused.append(pid)
+            continue
+        try:
+            send(pid, signal.SIGTERM)
+            killed.append(pid)
+        except OSError:
+            refused.append(pid)
+    return {'killed': killed, 'refused': refused}
+
+
+# ------------------------------------------------------------------ spelling
+def spell(word, run=subprocess.run):
+    w = (word or '').strip()
+    if not w or len(w) > 60 or not re.match(r"^[\w'’-]+$", w):
+        return {'word': w, 'correct': False, 'suggestions': []}
+    if not shutil.which('hunspell') and run is subprocess.run:
+        return {'word': w, 'missing': True}
+    lang = (os.environ.get('LANG') or 'en_US').split('.')[0] or 'en_US'
+    for d in ([lang, 'en_US'] if lang != 'en_US' else ['en_US']):
+        try:
+            r = run(['hunspell', '-a', '-d', d], input='^' + w + '\n', capture_output=True, text=True, timeout=8)
+        except (OSError, subprocess.SubprocessError):
+            return {'word': w, 'missing': True}
+        lines = [x for x in (r.stdout or '').splitlines()[1:] if x.strip()]
+        if r.returncode or not lines:
+            continue
+        x = lines[0]
+        if x[0] in '*+-':
+            return {'word': w, 'correct': True, 'suggestions': []}
+        if x[0] == '&' and ':' in x:
+            return {'word': w, 'correct': False, 'suggestions': [s.strip() for s in x.split(':', 1)[1].split(',') if s.strip()][:8]}
+        return {'word': w, 'correct': False, 'suggestions': []}
+    return {'word': w, 'missing': True}
+
+
+# ------------------------------------------------------------------ time zones
+def zones(js=None, now=None):
+    from zoneinfo import ZoneInfo
+    js = js or os.path.join(HERE, 'search', 'worldclock.js')
+    with open(js, encoding='utf-8') as f:
+        names = sorted(set(re.findall(r'"([A-Z][A-Za-z_]+/[A-Za-z_/]+|UTC)"', f.read())))
+    now = now or datetime.now(timezone.utc)
+    offs = {}
+    for z in names:
+        try:
+            offs[z] = int(now.astimezone(ZoneInfo(z)).utcoffset().total_seconds() // 60)
+        except Exception:
+            pass
+    local = os.environ.get('TZ') or ''
+    if not local:
+        real = os.path.realpath('/etc/localtime')
+        local = real.split('zoneinfo/', 1)[1] if 'zoneinfo/' in real else 'UTC'
+    return {'offsets': offs, 'local': local, 'localOffset': int(time.localtime().tm_gmtoff // 60)}
+
+
+# ------------------------------------------------------------------ contacts, calendar, notes
+def vcards(text):
+    text = re.sub(r'\r?\n[ \t]', '', text)
+    for block in re.findall(r'BEGIN:VCARD(.*?)END:VCARD', text, re.S | re.I):
+        c = {'name': '', 'emails': [], 'phones': [], 'org': ''}
+        for line in block.splitlines():
+            if ':' not in line:
+                continue
+            k, v = line.split(':', 1)
+            k = k.split(';')[0].split('.')[-1].upper()
+            v = v.replace('\\,', ',').replace('\\;', ';').replace('\\n', ' ').strip()
+            if k == 'FN':
+                c['name'] = v
+            elif k == 'N' and not c['name']:
+                p = v.split(';')
+                c['name'] = ' '.join(x for x in (p[1] if len(p) > 1 else '', p[0]) if x).strip()
+            elif k == 'EMAIL' and v:
+                c['emails'].append(v)
+            elif k == 'TEL' and v:
+                c['phones'].append(v.replace('tel:', ''))
+            elif k == 'ORG':
+                c['org'] = v.split(';')[0]
+        if c['name'] or c['emails'] or c['phones']:
+            yield c
+
+
+def contacts(home=None):
+    data = os.path.join(home, '.local', 'share') if home else xdg('XDG_DATA_HOME', '.local/share')
+    base = os.environ.get('HEARTH_CONTACTS_DIR') or os.path.join(data, 'hearth-contacts')
+    out_ = []
+    for f in sorted(glob.glob(os.path.join(base, 'books', '*', '*.vcf')))[:5000]:
+        try:
+            with open(f, encoding='utf-8', errors='replace') as fh:
+                out_.extend(vcards(fh.read(200000)))
+        except OSError:
+            pass
+    out_.sort(key=lambda c: c['name'].lower())
+    return out_
+
+
+def time_home():
+    return os.environ.get('HEARTH_TIME_HOME') or ''
+
+
+def calendar_file():
+    t = time_home()
+    return os.path.join(t, 'data', 'hearth-calendar', 'calendar.json') if t else os.path.join(xdg('XDG_DATA_HOME', '.local/share'), 'hearth-calendar', 'calendar.json')
+
+
+def to_ms(s, tz):
+    from zoneinfo import ZoneInfo
+    d = datetime.strptime(s[:19], '%Y-%m-%dT%H:%M:%S') if 'T' in s else datetime.strptime(s[:10], '%Y-%m-%d')
+    if tz == 'UTC':
+        d = d.replace(tzinfo=timezone.utc)
+    elif tz and tz != 'local':
+        try:
+            d = d.replace(tzinfo=ZoneInfo(tz))
+        except Exception:
+            pass
+    return int(d.timestamp() * 1000)
+
+
+def events(days=90, run=subprocess.run, today=None):
+    today = today or date.today()
+    end = today + timedelta(days=days)
+    exe = shutil.which('hearth-time')
+    if exe:
+        try:
+            r = run([exe, '--events', today.isoformat(), end.isoformat()], capture_output=True, text=True, timeout=10)
+            if r.returncode == 0:
+                return json.loads(r.stdout).get('events') or []
+        except (OSError, ValueError, subprocess.SubprocessError):
+            pass
+    # Without hearth-time (or if it fails): your own events from Hearth Calendar's file, the ones that don't repeat.
+    try:
+        with open(calendar_file(), encoding='utf-8') as f:
+            evs = json.load(f).get('events') or []
+    except (OSError, ValueError):
+        return []
+    lo, hi, got = to_ms(today.isoformat(), None), to_ms(end.isoformat(), None), []
+    for e in evs:
+        try:
+            if e.get('rrule') or not e.get('start'):
+                continue
+            s, t = to_ms(e['start'], e.get('tz')), to_ms(e.get('end') or e['start'], e.get('tz'))
+            if t >= lo and s < hi:
+                got.append({'title': e.get('title') or '', 'date': e['start'][:10], 'allDay': bool(e.get('all_day') or e.get('allDay')),
+                            'start': s, 'end': t, 'location': e.get('location') or ''})
+        except (ValueError, TypeError):
+            continue
+    got.sort(key=lambda e: e['start'])
+    return got[:500]
+
+
+def documents_dir():
+    t = time_home()
+    if t:
+        return os.path.join(t, 'Documents')
+    try:
+        r = subprocess.run(['xdg-user-dir', 'DOCUMENTS'], capture_output=True, text=True, timeout=3)
+        d = r.stdout.strip()
+        if r.returncode == 0 and d and d != HOME:
+            return d
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return os.path.join(HOME, 'Documents')
+
+
+def notes(folder=None):
+    folder = folder or os.path.join(documents_dir(), 'Notes')
+    files = [f for f in glob.glob(os.path.join(folder, '*.md')) + glob.glob(os.path.join(folder, '*.txt')) if not os.path.basename(f).startswith('.')]
+    files.sort(key=lambda f: -os.path.getmtime(f))
+    got = []
+    for f in files[:500]:
+        try:
+            with open(f, encoding='utf-8', errors='replace') as fh:
+                text = fh.read(4096)
+        except OSError:
+            continue
+        title = next((l.strip().lstrip('#').strip() for l in text.splitlines() if l.strip()), '') or os.path.basename(f)[:-3]
+        got.append({'title': title, 'path': f, 'text': text})
+    return got
+
+
+def pim():
+    return {'contacts': contacts(), 'events': events(), 'notes': notes()}
+
+
+def main(argv):
+    if not argv:
+        print(__doc__)
+        return 2
+    c, rest = argv[0], argv[1:]
+    try:
+        if c == 'browser':
+            out(browser())
+        elif c == 'procs':
+            out(procs(' '.join(rest)))
+        elif c == 'kill' and rest:
+            out(kill(rest))
+        elif c == 'spell' and rest:
+            out(spell(rest[0]))
+        elif c == 'zones':
+            out(zones())
+        elif c == 'pim':
+            out(pim())
+        else:
+            print('error: Unknown command')
+            return 2
+    except Exception as e:  # a helper for the search: an error is one line, never a crash the menu has to read
+        print('error: %s' % e)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

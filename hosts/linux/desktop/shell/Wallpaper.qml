@@ -34,7 +34,8 @@ PanelWindow {
     // 1.14 (the owner's laptop felt slow): also behind a maximized window, where the wallpaper can't be seen but was
     // still drawn every frame.
     readonly property bool covered: !!front && front.minimized !== true && (front.fullscreen === true || front.maximized === true)
-    readonly property bool moving: !Settings.reduceMotion && !covered && !onBattery && !DeskState.locked && !DeskState.screenOff
+    // 1.14: and after 3 minutes without input (DeskState.idle): a laptop left on all night drew it every frame.
+    readonly property bool moving: !Settings.reduceMotion && !covered && !onBattery && !DeskState.locked && !DeskState.screenOff && !DeskState.idle
     readonly property bool gpu: gpuProbe.gpu
     Item { id: gpuProbe; readonly property bool gpu: GraphicsInfo.api !== GraphicsInfo.Software && GraphicsInfo.api !== GraphicsInfo.Unknown }
     readonly property bool slateMoving: moving && gpu

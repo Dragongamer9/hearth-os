@@ -1,0 +1,294 @@
+#!/usr/bin/python3
+"""hearth-screen-psr: Screen power saving on Intel laptops' built-in screens (Settings › Display), 1.14.
+
+Panel Self Refresh (PSR) lets the built-in screen keep showing the last picture by itself while nothing moves, so the
+graphics chip can rest. On some Intel laptops (Alder Lake-N and Twin Lake: the i3-N305, N100, N200 and friends) it
+can stall the screen: the desktop lags, the compositor's page flips come back "busy" ("Atomic commit failed: Device
+or resource busy") and the display seems to freeze (the owner's Lenovo 82XB, logs G2W9-WQTH-FK and F2RL-BJY4-SV).
+
+This switches it at runtime through the graphics driver's own switch (debugfs: i915_edp_psr_debug), never through
+the kernel's start options or the boot menu, so it's reversible at any moment and a start is never touched.
+
+  hearth-screen-psr status        JSON: this PC's Intel built-in screens, your choice, what's in use and why. No root
+  hearth-screen-psr set auto|on|off   your choice (saved in /etc/hearth/screen-power.json, the only place it lives),
+                                  put in place at once. Root (Settings runs it through pkexec)
+  hearth-screen-psr apply         your choice put in place (hearth-screen-psr.service runs this at every start; it
+                                  waits up to 20 s for the graphics driver, never holds the start up, never fails it)
+  hearth-screen-psr notice        tells you once when Auto turned it off on this laptop (Mantel runs this as you)
+
+Auto (the default, with no file at all): off on the Intel chips where the stall is known (KNOWN_STALL), on
+everywhere else (the driver decides, as before). Off and On are yours. Settings never change by themselves
+(docs/SETTINGS-PERSISTENCE.md): the file is written only by `set`; a file that can't be read is left as it is and
+Auto is used.
+"""
+import glob
+import json
+import os
+import sys
+import time
+
+SETTINGS = os.environ.get('HEARTH_PSR_SETTINGS', '/etc/hearth/screen-power.json')
+RUN = os.environ.get('HEARTH_PSR_RUN', '/run/hearth/screen-psr.json')
+SYS = os.environ.get('HEARTH_PSR_SYS', '/sys')
+DEBUGFS = os.environ.get('HEARTH_PSR_DEBUGFS', '/sys/kernel/debug')
+CHOICES = ('auto', 'on', 'off')
+# Intel's PCI ids for the graphics of Alder Lake-N (N100, N200, N300, i3-N305) and Twin Lake (N150, N250, N355).
+KNOWN_STALL = {0x46d0, 0x46d1, 0x46d2, 0x46d3, 0x46d4}
+MODE_MASK, MODE_DEFAULT, MODE_DISABLE = 0x0f, 0x00, 0x01
+WAIT_FOR_DRIVER = 20
+
+
+def _sio():
+    for d in (os.environ.get('HEARTH_SETTINGS_IO_DIR'),
+              os.path.join(os.environ.get('NIMBUS_SHARE') or '/usr/share/nimbus', 'desktop', 'shell'),
+              os.path.join(os.path.dirname(os.path.realpath(__file__)), '..', '..', '..', '..', '..', 'hosts', 'linux', 'desktop', 'shell')):
+        if d and os.path.isfile(os.path.join(d, 'hearth_settings_io.py')):
+            if d not in sys.path:
+                sys.path.insert(0, d)
+            break
+    import hearth_settings_io
+    return hearth_settings_io
+
+
+def read(p, d=''):
+    try:
+        with open(p, encoding='utf-8', errors='replace') as f:
+            return f.read().strip()
+    except OSError:
+        return d
+
+
+def num(text):
+    try:
+        return int(text.split()[0], 0)
+    except (ValueError, IndexError):
+        return None
+
+
+# ------------------------------------------------------------------ this PC
+def intel_screens(sys_root=None):
+    """Intel graphics with a built-in screen (eDP): [{card, device, driver, connected, knownStall}]."""
+    out = []
+    for card in sorted(glob.glob(os.path.join(sys_root or SYS, 'class', 'drm', 'card[0-9]*'))):
+        name = os.path.basename(card)
+        if '-' in name:
+            continue
+        dev = os.path.join(card, 'device')
+        if num(read(os.path.join(dev, 'vendor'))) != 0x8086:
+            continue
+        driver = os.path.basename(os.path.realpath(os.path.join(dev, 'driver'))) if os.path.exists(os.path.join(dev, 'driver')) else ''
+        edp = [c for c in glob.glob(card + '-eDP-*')]
+        if not edp:
+            continue
+        pid = num(read(os.path.join(dev, 'device'))) or 0
+        out.append({'card': name, 'device': '0x%04x' % pid, 'driver': driver,
+                    'connected': any(read(os.path.join(c, 'status')) == 'connected' for c in edp),
+                    'knownStall': pid in KNOWN_STALL})
+    return out
+
+
+def switches(debugfs=None):
+    """The driver's PSR switches (one per graphics chip; dri/0 and dri/<pci address> can be the same folder)."""
+    seen, out = set(), []
+    for p in sorted(glob.glob(os.path.join(debugfs or DEBUGFS, 'dri', '*', 'i915_edp_psr_debug'))):
+        real = os.path.realpath(os.path.dirname(p))
+        if real in seen:
+            continue
+        seen.add(real)
+        out.append(p)
+    return out
+
+
+def choice(saved):
+    v = (saved or {}).get('psr', 'auto')
+    return v if v in CHOICES else 'auto'
+
+
+def decide(chosen, screens):
+    """(on, by): PSR wanted on or off, and who decided it ('you' or 'auto')."""
+    if chosen == 'off':
+        return False, 'you'
+    if chosen == 'on':
+        return True, 'you'
+    return (not any(s['knownStall'] for s in screens)), 'auto'
+
+
+def load_saved():
+    """(saved dict, problem): a file that can't be read is left alone and Auto is used."""
+    if not os.path.exists(SETTINGS):
+        return {}, ''
+    data = _sio().load_json(SETTINGS, None, repair=False)
+    if not isinstance(data, dict):
+        return {}, 'Your screen power setting could not be read; it was kept as it is and Auto is used'
+    return data, ''
+
+
+# ------------------------------------------------------------------ putting it in place
+def put(on, files):
+    """Each switch to the driver's own choice (on) or off. Returns (done, problem). Other debug bits are kept, and
+    "on" only lifts an off that's there (it never changes a value someone else set)."""
+    done, problem = 0, ''
+    for p in files:
+        cur = num(read(p))
+        if cur is None:
+            problem = "couldn't read the graphics driver's switch"
+            continue
+        mode = cur & MODE_MASK
+        if on:
+            want = (cur & ~MODE_MASK) | MODE_DEFAULT if mode == MODE_DISABLE else cur
+        else:
+            want = (cur & ~MODE_MASK) | MODE_DISABLE
+        if want == cur:
+            done += 1
+            continue
+        try:
+            with open(p, 'w') as f:
+                f.write('%d' % want)
+            done += 1
+        except OSError as e:
+            problem = "the graphics driver didn't take it (%s)" % (e.strerror or e)
+    return done, problem
+
+
+def apply(wait=WAIT_FOR_DRIVER):
+    saved, bad = load_saved()
+    chosen = choice(saved)
+    screens = intel_screens()
+    on, by = decide(chosen, screens)
+    state = {'at': int(time.time()), 'choice': chosen, 'on': on, 'by': by, 'screens': screens, 'applied': False,
+             'problem': bad}
+    if not screens:
+        state['why'] = 'no Intel built-in screen'
+        write_run(state)
+        return state
+    files = switches()
+    deadline = time.time() + max(0, wait)
+    while not files and time.time() < deadline:
+        time.sleep(1)
+        files = switches()
+    if not files:
+        state['problem'] = ("the graphics driver's switch isn't there (debugfs not mounted, or locked by Secure Boot's "
+                            "lockdown); the start option i915.enable_psr=0 would do it instead")
+        write_run(state)
+        return state
+    done, problem = put(on, files)
+    state['applied'] = done == len(files) and not problem
+    state['problem'] = problem or bad
+    state['status'] = psr_status()
+    write_run(state)
+    return state
+
+
+def psr_status(debugfs=None):
+    """The driver's own words about PSR on the built-in screen (a few lines; root can read them)."""
+    for p in sorted(glob.glob(os.path.join(debugfs or DEBUGFS, 'dri', '*', 'i915_edp_psr_status'))):
+        text = read(p)
+        if text:
+            return [l.strip() for l in text.splitlines() if l.strip()][:6]
+    return []
+
+
+def write_run(state):
+    try:
+        os.makedirs(os.path.dirname(RUN), exist_ok=True)
+        tmp = RUN + '.tmp'
+        with open(tmp, 'w') as f:
+            json.dump(state, f)
+        os.chmod(tmp, 0o644)
+        os.replace(tmp, RUN)
+    except OSError:
+        pass
+
+
+def read_run():
+    try:
+        with open(RUN) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+# ------------------------------------------------------------------ what Settings shows
+def line(st):
+    """One plain sentence for Settings."""
+    if not st.get('supported'):
+        return "This PC's screen doesn't use it."
+    run = st.get('inUse') or {}
+    if run.get('problem') and not run.get('applied'):
+        return "Couldn't change it here: %s." % run['problem']
+    if st['choice'] == 'auto':
+        if not st['wanted']:
+            return ("Off by itself: on this laptop's Intel graphics it can make the screen freeze or lag. Pick On to "
+                    "use it anyway.")
+        return 'On: the screen rests while nothing on it moves, which saves a little battery.'
+    if st['choice'] == 'off':
+        return 'Off: the screen redraws all the time. Uses a little more battery.'
+    return 'On: the screen rests while nothing on it moves, which saves a little battery.'
+
+
+def status():
+    saved, bad = load_saved()
+    chosen = choice(saved)
+    screens = intel_screens()
+    on, by = decide(chosen, screens)
+    run = read_run()
+    st = {'supported': bool(screens), 'screens': screens, 'choice': chosen,
+          'wanted': on, 'by': by, 'knownStall': any(s['knownStall'] for s in screens), 'inUse': run,
+          'problem': bad, 'settings': SETTINGS}
+    st['line'] = line(st)
+    return st
+
+
+def set_choice(value):
+    if value not in CHOICES:
+        raise SystemExit('error: pick auto, on or off')
+    sio = _sio()
+    os.makedirs(os.path.dirname(SETTINGS), exist_ok=True)
+    if os.path.exists(SETTINGS) and not isinstance(sio.load_json(SETTINGS, None, repair=False), dict):
+        raise SystemExit('error: your screen power setting file could not be read; it was kept as it is and nothing '
+                         'was saved over it')
+
+    def change(d):
+        d['psr'] = value
+    sio.update_json(SETTINGS, change)
+    apply(wait=0)
+    return status()
+
+
+NOTICE = ('Screen power saving is off on this laptop: on its Intel graphics it can make the screen freeze or lag. '
+          'You can turn it back on in Settings › Display › Screen power saving.')
+
+
+def notice():
+    """Run as you (Mantel does, once it's up): told once, the first time Auto turned it off here."""
+    run = read_run()
+    if run.get('by') == 'auto' and run.get('on') is False and run.get('applied'):
+        return _sio().notice('screen-psr-auto-off-1.14', NOTICE, title='Screen power saving')
+    return False
+
+
+def main(argv):
+    a = argv[1:]
+    if a == ['status']:
+        print(json.dumps(status()))
+    elif a == ['apply']:
+        print(json.dumps(apply()))
+    elif len(a) == 2 and a[0] == 'set':
+        print(json.dumps(set_choice(a[1])))
+    elif a == ['notice']:
+        print(json.dumps({'told': bool(notice())}))
+    else:
+        print(__doc__)
+        return 2
+    return 0
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main(sys.argv))
+    except SystemExit:
+        raise
+    except Exception as e:          # never a traceback at start; the service ignores failures anyway
+        print('error: %s' % e)
+        sys.exit(1)

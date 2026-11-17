@@ -605,6 +605,22 @@ class Commands(unittest.TestCase):
         self.assertEqual(kb.parse_do(['minimize', 'abc', 'on=true']), {'op': 'minimize', 'id': 'abc', 'on': True})
 
 
+    def test_window_rules_ask(self):
+        # More actions › "Special window settings…": the script's window as WinList.qml's windowRulesAsked gets it.
+        self.assertEqual(kb.window_rules_ask(json.dumps({'id': '{7}', 'wmclass': 'firefox', 'title': 'A\npage\t title'})),
+                         {'t': 'windowRules', 'id': '{7}', 'wmclass': 'firefox', 'title': 'A page title'})
+        self.assertEqual(kb.window_rules_ask('not json')['wmclass'], '')
+        self.assertEqual(len(kb.window_rules_ask(json.dumps({'title': 'x' * 900}))['title']), 200)
+        self.assertIn('<method name="WindowRules">', kb.XML)
+        wl = (SHELL / 'WinList.qml').read_text()
+        self.assertIn('m.t === "windowRules") wl.windowRulesAsked(m)', wl)
+        self.assertIn('function onWindowRulesAsked(info) { settings.openWindowRules(info); }', (SHELL / 'shell.qml').read_text())
+        rules = (SHELL / 'SetKwinRules.qml').read_text()
+        self.assertIn('SettingsNav.ruleFor', rules)
+        # Opening Window rules for a window writes nothing: a rule is made only from the banner's button.
+        self.assertIn('onActivated: page.makeFor()', rules)
+
+
 class Shell(unittest.TestCase):
     """Mantel reads its windows through WinList, so it works on labwc and KWin alike."""
 
