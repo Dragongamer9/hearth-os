@@ -1062,6 +1062,18 @@ chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/d
 # launcher (the .deb handler).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-debbox /usr/share/nimbus/desktop/shell/hearth-flatpak /usr/bin/hearth-install-package
 ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
+# Screens and screenshots on both of Mantel's compositors (1.14, docs/SCREENS.md): hearth-screens (Settings › Display,
+# restore at start) and hearth-screen-power (screen off when idle). Under KWin they use kscreen-doctor (libkscreen-bin:
+# KWin's output management and DPMS) and KWin's D-Bus. KWin answers its screenshot interface only for a program whose
+# .desktop file lists it, found by the program's executable: hearth-screenshot runs through its own copy of Python
+# (a hard link, so every Python program isn't trusted), named by hearth-screenshot.desktop (os/system_files).
+optional libkscreen-bin
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-screens /usr/share/nimbus/desktop/shell/hearth-screen-power /usr/bin/hearth-screenshot
+py=$(readlink -f /usr/bin/python3)
+install -d /usr/libexec/nimbus
+ln -f "$py" /usr/libexec/nimbus/hearth-shot-python 2>/dev/null || cp -p "$py" /usr/libexec/nimbus/hearth-shot-python
+/usr/libexec/nimbus/hearth-shot-python -c 'import gi; gi.require_version("Gio", "2.0"); from gi.repository import Gio; print("hearth-shot-python can reach D-Bus")' \
+  || echo "hearth-shot-python can't load GLib: screenshots under KWin will say so (grim under labwc is unaffected)"
 # Hearth OS's player count (desktop/shell/hearth-counter): the anonymous "I'm here" the Hearth app sent while it ran,
 # 20 seconds after signing in and every 10 minutes, in Steam Game Mode and Desktop Mode alike. Off in Settings › About ›
 # Privacy (countMe in desktop.json). docs/SETTINGS-MOVE.md.

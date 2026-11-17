@@ -38,6 +38,17 @@ done_shot() {
   ) >/dev/null 2>&1 &
 }
 
+# The screenshot itself, grim's way (grab [-g "X,Y WxH"] FILE|-): grim under labwc; under Mantel on KWin
+# (HEARTH_WM=kwin) KWin's ScreenShot2 through hearth-screenshot (the one program hearth-screenshot.desktop lets KWin
+# answer; docs/SCREENS.md), or hearth-screens itself where that isn't installed (a session that set
+# KWIN_SCREENSHOT_NO_PERMISSION_CHECKS).
+grab() {
+  if [ "${HEARTH_WM:-}" = kwin ]; then
+    if have hearth-screenshot; then hearth-screenshot "$@"; else python3 "$(dirname "$0")/shell/hearth-screens" shot "$@"; fi
+  else grim "$@"; fi
+}
+can_grab() { [ "${HEARTH_WM:-}" = kwin ] || have grim; }
+
 fail_shot() { rm -f "$SHOT"; [ -n "$1" ] && notify-send -a Screenshot "Screenshot" "$1" 2>/dev/null; exit 1; }
 
 case "$1" in
@@ -52,22 +63,22 @@ case "$1" in
                     'dbus-send --session --dest=org.freedesktop.FileManager1 --type=method_call /org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:"file://$FILE" string:""' \
                     'xdg-open "$DIR"' ;;
   screenshot)
-              if ! have grim; then first "spectacle -b -n"; exit 1; fi    # spectacle names its own files
+              if ! can_grab; then first "spectacle -b -n"; exit 1; fi    # spectacle names its own files
               new_shot
-              grim "$SHOT" || fail_shot "Couldn't take a screenshot"
+              grab "$SHOT" || fail_shot "Couldn't take a screenshot"
               done_shot ;;
   screenshot-region)
-              have grim || { first "spectacle -b -n -r"; exit 1; }
+              can_grab || { first "spectacle -b -n -r"; exit 1; }
               have slurp || { notify-send -a Screenshot "Screenshot" "Choosing an area needs slurp, which isn't installed. Print Screen takes the whole screen." 2>/dev/null; exit 1; }
               # Choose first, then make the file (Esc leaves nothing behind).
               geo=$(slurp -d -b '#00000066' -c '#ff8a3d' -s '#ff8a3d22' -w 2 2>/dev/null) || exit 0
               [ -n "$geo" ] || exit 0
               new_shot
-              grim -g "$geo" "$SHOT" || fail_shot "Couldn't take a screenshot"
+              grab -g "$geo" "$SHOT" || fail_shot "Couldn't take a screenshot"
               done_shot ;;
   screenshot-clipboard)
-              have grim && have wl-copy || exit 1
-              grim - | wl-copy --type image/png
+              can_grab && have wl-copy || exit 1
+              grab - | wl-copy --type image/png
               notify-send -a Screenshot -t 2500 "Screenshot copied" "Paste it into any app" 2>/dev/null ;;
   # ---- Hearth Recorder (hosts/hearth-recorder), from rc.xml's Super+Alt+R / Super+Alt+Shift+R / Super+Alt+G: it says
   # what happened with its own notifications (Recording, Recording saved with Open and Show in folder, Replay saved).

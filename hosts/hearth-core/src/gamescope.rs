@@ -488,7 +488,8 @@ pub fn screenshot() -> Result<Value, String> {
     let file = dir.join(format!("Screenshot {}.png", chrono::Local::now().format("%Y-%m-%d %H-%M-%S")));
     let f = file.to_string_lossy().to_string();
     if inside() && gamescope_shot(&file) { return Ok(json!({"file": f, "url": crate::library::art_url(&f)})); }
-    let tries: [(&str, Vec<&str>); 4] = [("grim", vec![&f]), ("spectacle", vec!["-b", "-n", "-f", "-o", &f]), ("gnome-screenshot", vec!["-f", &f]), ("gamescopectl", vec!["screenshot", &f])];
+    // hearth-screenshot first: grim under labwc, KWin's ScreenShot2 under Mantel on KWin (docs/SCREENS.md).
+    let tries: [(&str, Vec<&str>); 5] = [("hearth-screenshot", vec![&f]), ("grim", vec![&f]), ("spectacle", vec!["-b", "-n", "-f", "-o", &f]), ("gnome-screenshot", vec!["-f", &f]), ("gamescopectl", vec!["screenshot", &f])];
     for (cmd, args) in tries.iter() {
         if !crate::system::has(cmd) { continue; }
         if crate::system::run_timeout(cmd, args, Duration::from_secs(10)).is_err() { continue; }

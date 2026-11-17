@@ -180,7 +180,7 @@ ShellRoot {
     QuickAccess {
         id: quick
         mouseOn: pad.mouseOn
-        nightAvailable: night.available
+        nightAvailable: night.available || night.kwin
         onMouseToggled: enable => pad.setMouse(enable)
         onKeyboardRequested: pad.openKeyboard()
         onSettingsRequested: settings.open("")
@@ -294,19 +294,29 @@ ShellRoot {
         help: help
     }
 
-    // Night light: warm the screen from sunset to sunrise (wlsunset, if installed).
+    // Night light: warm the screen in the evening (Settings › Display: on/off, how warm, when; Settings is the one
+    // source of truth). Under labwc wlsunset does it (if installed); under KWin (HEARTH_WM=kwin) KWin's own Night
+    // Light, set from the same settings by hearth-screens night (docs/SCREENS.md).
     Scope {
         id: night
+        readonly property bool kwin: Quickshell.env("HEARTH_WM") === "kwin"
         property bool available: false
         Process {
             command: ["sh", "-c", "command -v wlsunset"]
-            running: true
+            running: !night.kwin
             onExited: code => night.available = code === 0
         }
         Process {
-            running: night.available && Settings.nightLight
-            command: ["wlsunset", "-t", "3700", "-T", "6500", "-S", "07:00", "-s", "19:30", "-d", "1800"]
+            running: !night.kwin && night.available && Settings.nightLight
+            command: Settings.nightMode === "always"
+                ? ["wlsunset", "-t", String(Settings.nightTemp), "-T", String(Settings.nightTemp + 1), "-S", "00:00", "-s", "00:01", "-d", "60"]
+                : ["wlsunset", "-t", String(Settings.nightTemp), "-T", "6500", "-S", Settings.nightTo, "-s", Settings.nightFrom, "-d", "1800"]
         }
+        // KWin: whenever one of them changes (and once Settings has loaded), KWin's Night Light is set to match.
+        readonly property string want: [Settings.loaded, Settings.nightLight, Settings.nightTemp, Settings.nightMode, Settings.nightFrom, Settings.nightTo].join("|")
+        onWantChanged: if (kwin && Settings.loaded) kwinNight.restart()
+        Timer { id: kwinNight; interval: 400; onTriggered: Quickshell.execDetached(["python3", Quickshell.shellDir + "/hearth-screens", "night",
+            JSON.stringify({ nightLight: Settings.nightLight, nightTemp: Settings.nightTemp, nightMode: Settings.nightMode, nightFrom: Settings.nightFrom, nightTo: Settings.nightTo })]) }
     }
 
     Component.onCompleted: { SettingsNav.pad = pad; SettingsNav.help = help; }
