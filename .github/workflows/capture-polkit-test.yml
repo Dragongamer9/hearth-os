@@ -101,6 +101,7 @@ jobs:
           ls -la "$HOME/Pictures/Screenshots" 2>&1 | tail -3 || true
           f=$(ls -t "$HOME/Pictures/Screenshots"/*.png 2>/dev/null | head -1 || true)
           if [ -n "$f" ]; then
+            cp "$f" shots/capture-saved.png
             if zbarimg -q --raw "$f" >/dev/null 2>&1; then echo "::error title=blur::the QR code can still be read through Blur in the saved picture"; else echo "::notice title=blur::the blurred QR code can't be read in the saved picture"; fi
           fi
           q capture edit /tmp/capture-test.png; sleep 3
@@ -138,7 +139,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        pair: ["capture-take capture-picker", "capture-editor capture-ocr", "capture-recent polkit-prompt", "polkit-keyboard"]
+        pair: ["capture-take capture-picker", "capture-editor capture-ocr", "capture-recent polkit-prompt", "polkit-keyboard capture-saved"]
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true
