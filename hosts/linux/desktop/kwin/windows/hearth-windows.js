@@ -443,6 +443,24 @@ registerUserActionsMenu(function (w) {
     } };
 });
 
+// "More actions" in Hearth's look: roll the window up into its title bar (shade), take its title bar and frame off (Alt+F3
+// or a right-click where the title bar was brings this menu back), and its own settings: Settings › Window rules opened
+// for this window (the bridge's WindowRules; WinList.qml's windowRulesAsked).
+registerUserActionsMenu(function (w) {
+    if (!listed(w)) return;
+    var items = [];
+    if (w.shadeable !== false) items.push({ text: "Shade (roll up into the title bar)", title: "Shade (roll up into the title bar)",
+        checkable: true, checked: w.shade === true, triggered: function () { w.shade = w.shade !== true; push(); } });
+    if (w.userCanSetNoBorder !== false) items.push({ text: "No title bar and frame (Alt+F3 brings this menu)",
+        title: "No title bar and frame (Alt+F3 brings this menu)", checkable: true, checked: w.noBorder === true,
+        triggered: function () { w.noBorder = w.noBorder !== true; push(); } });
+    items.push({ text: "Special window settings…", title: "Special window settings…", triggered: function () {
+        callDBus(BUS, OBJ, IFACE, "WindowRules", JSON.stringify({ id: idOf(w), wmclass: String(w.resourceClass || w.desktopFileName || ""),
+                                                                  title: String(w.caption || "") }));
+    } });
+    return { text: "More actions", title: "More actions", items: items };
+});
+
 // ------------------------------------------------------------------ start
 var start = workspace.stackingOrder;
 for (var s = 0; s < start.length; s++) hook(start[s]);
