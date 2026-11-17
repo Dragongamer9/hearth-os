@@ -11,14 +11,16 @@ on:
 jobs:
   tidy:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
+          # The whole history but no old file contents (a full clone of this repository takes more than 5 minutes).
           fetch-depth: 0
+          filter: blob:none
       - name: Tidy checks
         run: python3 tools/tidy-check.py
       - name: Every commit is the owner's (not yet on main)
         run: |
-          git fetch --no-tags origin main:refs/remotes/origin/main 2>/dev/null || true
+          git fetch --no-tags --filter=blob:none origin main:refs/remotes/origin/main 2>/dev/null || true
           python3 tools/attribution-check.py origin/main HEAD
