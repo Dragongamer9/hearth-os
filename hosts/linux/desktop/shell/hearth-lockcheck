@@ -88,10 +88,11 @@ def kwin_environ():
 
 
 def qt_wayland():
-    """Qt's Wayland platform plugin, which the greeter (a Wayland client of KWin) needs. The test run is off screen,
-    so it can't show this."""
-    pats = ['/usr/lib/*/qt6/plugins/platforms/libqwayland*.so', '/usr/lib64/qt6/plugins/platforms/libqwayland*.so']
-    return any(glob.glob(p) for p in pats)
+    """What the greeter needs to show itself on KWin, which its off-screen test run can't show: Qt's Wayland platform
+    plugin (qt6-wayland) and its layer-shell integration (layer-shell-qt)."""
+    need = ('platforms/libqwayland*.so', 'wayland-shell-integration/liblayer-shell.so')
+    return all(any(glob.glob(os.path.join(b, n)) for b in glob.glob('/usr/lib/*/qt6/plugins') + ['/usr/lib64/qt6/plugins'])
+               for n in need)
 
 
 def data_dirs(env=None):
@@ -180,7 +181,7 @@ def check(run_probe=True, kenv=None):
             return {'ok': False, 'why': 'KWin\'s session doesn\'t name Hearth\'s lock screen (PLASMA_DEFAULT_SHELL=%s in KWin, '
                     'not %s)' % (kenv.get('PLASMA_DEFAULT_SHELL', ''), PACKAGE), 'greeter': g, 'package': ''}
     if not qt_wayland():
-        return {'ok': False, 'why': 'Qt\'s Wayland support (qt6-wayland) isn\'t installed: KWin\'s greeter couldn\'t start',
+        return {'ok': False, 'why': 'Qt\'s Wayland support (qt6-wayland, layer-shell-qt) isn\'t all installed: KWin\'s greeter couldn\'t start',
                 'greeter': g, 'package': ''}
     pkg = package(kenv)
     if not pkg:
