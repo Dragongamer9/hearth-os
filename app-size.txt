@@ -1,0 +1,8 @@
+::notice title=App size Saves, 1280x800 window::bar text 14 px; before 19.5 px (1.39x the bar), after 14.0 px (1.00x); heading 26.4 -> 18.9 px; window 1280 px wide, devicePixelRatio 1; Game Mode keeps 19.5 px
+::notice title=App size Saves, maximized::bar text 14 px; before 25.3 px (1.81x the bar), after 14.0 px (1.00x); heading 34.1 -> 18.9 px; window 1920 px wide, devicePixelRatio 1; Game Mode keeps 25.3 px
+::notice title=App size Mods, 1280x800 window::bar text 14 px; before 16.0 px (1.15x the bar), after 14.0 px (1.00x); heading 24.1 -> 21.0 px; window 1280 px wide, devicePixelRatio 1; Game Mode keeps 16.0 px
+::notice title=App size Mods, maximized::bar text 14 px; before 19.6 px (1.40x the bar), after 14.0 px (1.00x); heading 34.2 -> 24.5 px; window 1920 px wide, devicePixelRatio 1; Game Mode keeps 19.6 px
+::notice title=App size Disks, 1280x800 window::bar text 14 px; before 15.4 px (1.10x the bar), after 14.0 px (1.00x); heading 0.0 -> 0.0 px; window 1280 px wide, devicePixelRatio 1; Game Mode keeps 15.4 px
+::notice title=App size Disks, maximized::bar text 14 px; before 18.6 px (1.33x the bar), after 14.0 px (1.00x); heading 0.0 -> 0.0 px; window 1920 px wide, devicePixelRatio 1; Game Mode keeps 18.6 px
+::notice title=App size Contacts, 1280x800 window::bar text 14 px; before 18.5 px (1.32x the bar), after 14.0 px (1.00x); heading 25.0 -> 18.9 px; window 1280 px wide, devicePixelRatio 1; Game Mode keeps 18.5 px
+::notice title=App size Contacts, maximized::bar text 14 px; before 24.0 px (1.71x the bar), after 14.0 px (1.00x); heading 32.4 -> 18.9 px; window 1920 px wide, devicePixelRatio 1; Game Mode keeps 24.0 px
