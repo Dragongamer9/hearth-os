@@ -372,8 +372,14 @@ GH set frameLimit 60 >/dev/null; GH set scaling quality >/dev/null
 for i in $(seq 1 30); do [ "$(gst 'g.get("frameLimit") == 60 and g.get("scaling") == "quality"')" = True ] && break; sleep 0.5; done
 fl=$(gst 'g.get("frameLimitLabel")'); sc=$(gst 'g.get("scalingLabel")')
 qs call firehold couch; sleep 3
+qs call firehold go "Firehold test game"; sleep 3
+shot shots-tmp-game
 qs call firehold open guide; sleep 6
 shot firehold-13-guide
+d=$(alike shots/firehold-13-guide.png shots/shots-tmp-game.png)
+awk -v d="$d" 'BEGIN { exit !(d ~ /^[0-9.]+$/ && d + 0 > 4) }' && note "guide" "on screen over the game (difference $d)" \
+  || fail "guide" "not on screen: the picture is the fullscreen game alone (difference $d): firehold-comp draws no layer surfaces over a fullscreen window"
+rm -f shots/shots-tmp-game.png
 gstate=$(WAYLAND_DISPLAY=wayland-hearth timeout 10 quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call firehold state 2>/dev/null)
 case "$fl|$sc" in
   "60|Quality · "[0-9]*p) note "guide" "the Guide's rows: Frame limit ‹ $fl ›, Resolution scaling ‹ $sc › (state: $(echo "$gstate" | head -c 300))";;

@@ -64,6 +64,9 @@ SH="$NIMBUS_SHARE/desktop/shell"
 W() { WAYLAND_DISPLAY=wayland-hearth "$@"; }
 q() { W timeout 10 quickshell ipc -p "$SH" call "$@" 2>/dev/null | grep -v WARN | tail -n1; }
 shot() { sleep "${2:-3}"; W timeout 20 grim "shots/$1.png" 2>"shots/$1.err" || fail "pictures" "grim failed for $1: $(head -c 300 "shots/$1.err")"; }
+alike() {   # the mean difference of two pictures, 0-255
+  python3 -c 'import sys; from PIL import Image, ImageChops, ImageStat; a, b = (Image.open(p).convert("L") for p in sys.argv[1:3]); print(round(ImageStat.Stat(ImageChops.difference(a, b.resize(a.size))).mean[0], 2))' "$1" "$2" 2>/dev/null || echo error
+}
 GH() { W python3 "$SH/hearth-firehold-game" "$@"; }
 gst() { GH status | python3 -c 'import json,sys; d=json.load(sys.stdin); g=d.get("game") or {}; print(eval(sys.argv[1], {"d": d, "g": g}))' "$1" 2>/dev/null; }
 fst() { q firehold state | python3 -c 'import json,sys; d=json.load(sys.stdin); print(eval(sys.argv[1], {"d": d}))' "$1" 2>/dev/null; }
@@ -109,16 +112,26 @@ GH set frameLimit 60 >/dev/null; GH set scaling quality >/dev/null
 for i in $(seq 1 30); do [ "$(gst 'g.get("frameLimit") == 60 and g.get("scaling") == "quality"')" = True ] && break; sleep 0.5; done
 fl=$(gst 'g.get("frameLimitLabel")'); sc=$(gst 'g.get("scalingLabel")')
 q firehold go "Ember Trails"; sleep 3
+shot shell-game-only 2
 q firehold open guide; shot firehold-c3-guide 6
 case "$fl|$sc" in
   "60|Quality · "[0-9]*p) note "guide" "the rows: Frame limit ‹ $fl ›, Resolution scaling ‹ $sc › (the game draws at $(gst 'g.get("renderSize")'))";;
   *) fail "guide" "the helper's labels aren't real values: frame limit '$fl', scaling '$sc': $(GH status | head -c 400)";;
 esac
 [ "$(fst 'd["guide"]')" = True ] || fail "guide" "the Guide isn't up: $(q firehold state | head -c 400)"
+# Shown, not only open in Mantel's state: the picture has to differ from the game on its own (a fullscreen game drawn
+# alone, without the overlay layer above it, would look the same).
+shown() {   # $1 picture, $2 what
+  d=$(alike "shots/$1.png" shots/shell-game-only.png)
+  awk -v d="$d" 'BEGIN { exit !(d ~ /^[0-9.]+$/ && d + 0 > 4) }' && note "$2" "on screen over the game (difference $d from the game alone)" \
+    || fail "$2" "not on screen: the picture is the fullscreen game alone (difference $d): firehold-comp draws no layer surfaces over a fullscreen window"
+}
+shown firehold-c3-guide "guide"
 q firehold press b; sleep 1
 
 # 4. Everything open
 q firehold open switcher; shot firehold-c4-everything-open 5
+shown firehold-c4-everything-open "everything open"
 [ "$(fst 'd["page"] == "switcher" and len(d["open"]) >= 4')" = True ] || fail "everything open" "not up with the game and the three apps: $(q firehold state | head -c 500)"
 note "everything open" "$(fst '", ".join("%s (%s)" % (o["name"], o["kind"]) for o in d["open"])')"
 q firehold press b; sleep 1
@@ -127,6 +140,8 @@ q firehold press b; sleep 1
 GH set frameLimit off >/dev/null; GH set scaling off >/dev/null
 kill "$GAMEPID" 2>/dev/null; sleep 2
 q firehold desk; shot firehold-c5-desk 6
+python3 -c 'import sys; from PIL import Image; im = Image.open(sys.argv[1]).convert("RGB"); sys.exit(0 if im.getpixel((1700, 900)) != (0, 0, 0) else 1)' shots/firehold-c5-desk.png \
+  || fail "desk" "the Desk picture is black where Mantel's wallpaper should be: the ended game is still drawn as fullscreen"
 [ "$(fst 'd["posture"]')" = desk ] || fail "desk" "not on the Desk: $(q firehold state | head -c 400)"
 
 # What falls back here: the parts that use KWin-only interfaces, as Mantel itself reports them on firehold-comp.
