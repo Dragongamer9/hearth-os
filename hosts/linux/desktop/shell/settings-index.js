@@ -2264,6 +2264,11 @@ var ENTRIES = [
 "d": "Word suggestions go back to the word list (Game Mode's keyboard forgets them too)"
 },
 {
+"t": "Bring back KDE's own shortcuts",
+"p": "keyboard",
+"i": "undo"
+},
+{
 "t": "Share this device's AI",
 "p": "link",
 "d": "Its AI (chat, voices, pictures, speech to text) for your other devices and the Command Center, through Tailscale",
