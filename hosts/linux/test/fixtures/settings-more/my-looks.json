@@ -1,0 +1,6 @@
+{
+  "look:cosy-evening": {"name": "Cosy evening", "saved": 1763340000000, "lookLabel": "Hearth", "accentShown": "#ff8a3d",
+    "desktop": {"look": "hearth", "mode": "dark", "accent": "", "wallpaper": "builtin:slate-dusk", "frameTint": 40}, "fonts": {}},
+  "look:office-day": {"name": "Office day", "saved": 1763300000000, "lookLabel": "Steam-style", "accentShown": "#66c0f4",
+    "desktop": {"look": "steam", "mode": "light", "accent": "#66c0f4", "wallpaper": "", "frameTint": 0}, "fonts": {"font": "Inter"}}
+}

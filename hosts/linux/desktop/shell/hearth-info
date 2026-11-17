@@ -1,0 +1,243 @@
+#!/usr/bin/python3
+"""hearth-info: Hearth Settings › About › Info Center (1.14, KDE Info Center's technical pages), as you (no root),
+reading only. Each part one JSON line of sections: [{title, rows: [[name, value]]}] or a list of items.
+
+  hearth-info cpu        the processor (lscpu, /proc/cpuinfo): model, cores, threads, speeds, caches, features
+  hearth-info gpu        graphics cards (lspci, sysfs, nvidia-smi when there): name, driver, memory
+  hearth-info memory     memory and swap (/proc/meminfo, /proc/swaps)
+  hearth-info pci        every PCI device with its driver (lspci -vmm -k)
+  hearth-info usb        every USB device (lsusb, sysfs)
+  hearth-info graphics   Vulkan (vulkaninfo --summary) and OpenGL (eglinfo / glxinfo -B), the window manager
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+PROC = os.environ.get('HEARTH_INFO_PROC', '/proc')
+SYS = os.environ.get('HEARTH_INFO_SYS', '/sys')
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=15):
+    if not shutil.which(cmd[0]):
+        return 127, ''
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, env=dict(os.environ, LC_ALL='C'))
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ''
+    return p.returncode, p.stdout
+
+
+def read(path):
+    try:
+        with open(path, errors='replace') as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def gib(b):
+    return '%.1f GB' % (b / 1e9) if b >= 1e9 else '%d MB' % round(b / 1e6)
+
+
+# ------------------------------------------------------------------ cpu
+def parse_lscpu(js):
+    out = {}
+    for f in (js or {}).get('lscpu', []):
+        out[f.get('field', '').rstrip(':')] = f.get('data', '')
+        for c in f.get('children', []) or []:
+            out[c.get('field', '').rstrip(':')] = c.get('data', '')
+    return out
+
+
+def cpu():
+    code, out = run(['lscpu', '--json'])
+    try:
+        l = parse_lscpu(json.loads(out)) if code == 0 else {}
+    except ValueError:
+        l = {}
+    mhz = [float(m) for m in re.findall(r'^cpu MHz\s*:\s*([\d.]+)', read(os.path.join(PROC, 'cpuinfo')), re.M)]
+    flags = (re.search(r'^flags\s*:\s*(.*)$', read(os.path.join(PROC, 'cpuinfo')), re.M) or [None, ''])[1].split()
+    nice = [f for f in ('avx', 'avx2', 'avx512f', 'sse4_2', 'aes', 'sha_ni', 'vmx', 'svm') if f in flags]
+    rows = [['Processor', l.get('Model name', '')], ['Maker', l.get('Vendor ID', '')], ['Architecture', l.get('Architecture', '')],
+            ['Cores', l.get('Core(s) per socket', '') + (' × ' + l['Socket(s)'] + ' sockets' if l.get('Socket(s)', '1') not in ('1', '') else '')],
+            ['Threads', l.get('CPU(s)', '')], ['Top speed', (l.get('CPU max MHz', '').split('.')[0] + ' MHz') if l.get('CPU max MHz') else ''],
+            ['Lowest speed', (l.get('CPU min MHz', '').split('.')[0] + ' MHz') if l.get('CPU min MHz') else ''],
+            ['Speed now', ('%d MHz on average' % (sum(mhz) / len(mhz))) if mhz else ''],
+            ['Virtualization', l.get('Virtualization', '')]]
+    caches = [[k.replace(' cache', ' cache'), v] for k, v in l.items() if re.match(r'^L\d\w? cache$', k)]
+    return {'sections': [{'title': 'Processor', 'rows': [r for r in rows if r[1]]},
+                         {'title': 'Caches', 'rows': caches},
+                         {'title': 'Features', 'rows': [['Instruction sets', ', '.join(x.upper().replace('_', '.') for x in nice) or '—'],
+                                                         ['All flags', str(len(flags))]]},
+                         {'title': 'Each thread now', 'bars': [round(m) for m in mhz[:64]],
+                          'top': float(l.get('CPU max MHz') or (max(mhz) if mhz else 1))}]}
+
+
+# ------------------------------------------------------------------ pci
+def parse_vmm(text):
+    out, cur = [], {}
+    for line in text.splitlines() + ['']:
+        if not line.strip():
+            if cur:
+                out.append(cur)
+            cur = {}
+            continue
+        k, _, v = line.partition(':')
+        cur[k.strip()] = v.strip()
+    return out
+
+
+def pci_items():
+    code, out = run(['lspci', '-vmm', '-k', '-nn'])
+    return parse_vmm(out) if code == 0 else []
+
+
+def clean_nn(v):
+    return re.sub(r'\s*\[[0-9a-f]{4}\]$', '', v or '')
+
+
+def pci():
+    items = []
+    for d in pci_items():
+        items.append({'title': clean_nn(d.get('Device')), 'sub': clean_nn(d.get('Vendor')), 'kind': clean_nn(d.get('Class')),
+                      'value': d.get('Driver', ''), 'id': d.get('Slot', '')})
+    return {'items': items, 'note': '' if items else "lspci isn't on this system"}
+
+
+# ------------------------------------------------------------------ gpu
+def gpu():
+    secs = []
+    for d in pci_items():
+        cls = d.get('Class', '')
+        if not re.search(r'VGA|3D|Display', cls):
+            continue
+        slot = d.get('Slot', '')
+        dev = os.path.join(SYS, 'bus', 'pci', 'devices', slot if slot.count(':') == 2 else '0000:' + slot)
+        vram = read(os.path.join(dev, 'mem_info_vram_total')).strip()
+        rows = [['Card', clean_nn(d.get('Device'))], ['Maker', clean_nn(d.get('Vendor'))], ['Driver', d.get('Driver', '')],
+                ['Graphics memory', gib(int(vram)) if vram.isdigit() else ''], ['PCI slot', slot]]
+        secs.append({'title': clean_nn(d.get('Device')) or 'Graphics', 'rows': [r for r in rows if r[1]]})
+    code, out = run(['nvidia-smi', '--query-gpu=name,memory.total,driver_version,temperature.gpu', '--format=csv,noheader'])
+    if code == 0:
+        for line in out.splitlines():
+            f = [x.strip() for x in line.split(',')]
+            if len(f) >= 3:
+                secs.append({'title': f[0] + ' (NVIDIA driver)', 'rows': [['Graphics memory', f[1]], ['Driver version', f[2]]] + ([['Temperature', f[3] + ' °C']] if len(f) > 3 else [])})
+    return {'sections': secs or [{'title': 'Graphics', 'rows': [['Cards', 'None found (lspci)']]}]}
+
+
+# ------------------------------------------------------------------ memory
+def memory():
+    mi = {}
+    for line in read(os.path.join(PROC, 'meminfo')).splitlines():
+        f = line.split()
+        if len(f) >= 2 and f[1].isdigit():
+            mi[f[0].rstrip(':')] = int(f[1]) * 1024
+    used = mi.get('MemTotal', 0) - mi.get('MemAvailable', 0)
+    rows = [['Total', gib(mi.get('MemTotal', 0))], ['In use', gib(used)], ['Available', gib(mi.get('MemAvailable', 0))],
+            ['Cached', gib(mi.get('Cached', 0) + mi.get('Buffers', 0))], ['Shared', gib(mi.get('Shmem', 0))],
+            ['Kernel', gib(mi.get('Slab', 0) + mi.get('KernelStack', 0) + mi.get('PageTables', 0))]]
+    swaps = []
+    for line in read(os.path.join(PROC, 'swaps')).splitlines()[1:]:
+        f = line.split()
+        if len(f) >= 4:
+            swaps.append([('Compressed memory (zram)' if 'zram' in f[0] else f[0]), '%s, %s used' % (gib(int(f[2]) * 1024), gib(int(f[3]) * 1024))])
+    return {'sections': [{'title': 'Memory', 'rows': rows, 'meter': [used, mi.get('MemTotal', 1)]},
+                         {'title': 'Swap', 'rows': swaps or [['Swap', 'None']]}]}
+
+
+# ------------------------------------------------------------------ usb
+def usb():
+    code, out = run(['lsusb'])
+    items = []
+    for line in out.splitlines() if code == 0 else []:
+        m = re.match(r'^Bus (\d+) Device (\d+): ID ([0-9a-f]{4}:[0-9a-f]{4}) ?(.*)$', line)
+        if m:
+            items.append({'title': m.group(4) or 'USB device', 'sub': 'Bus %s, device %s' % (m.group(1).lstrip('0') or '0', m.group(2).lstrip('0') or '0'),
+                          'kind': 'Hub' if 'hub' in m.group(4).lower() else '', 'value': m.group(3), 'id': m.group(3)})
+    if not items:
+        for d in sorted(glob.glob(os.path.join(SYS, 'bus', 'usb', 'devices', '*'))):
+            if ':' in os.path.basename(d) or not read(os.path.join(d, 'idVendor')).strip():
+                continue
+            vp = read(os.path.join(d, 'idVendor')).strip() + ':' + read(os.path.join(d, 'idProduct')).strip()
+            items.append({'title': read(os.path.join(d, 'product')).strip() or 'USB device', 'sub': read(os.path.join(d, 'manufacturer')).strip(),
+                          'kind': '', 'value': vp, 'id': os.path.basename(d)})
+    return {'items': items, 'note': '' if items else 'No USB devices found'}
+
+
+# ------------------------------------------------------------------ graphics APIs
+def parse_vulkan(text):
+    gpus, cur = [], None
+    for line in text.splitlines():
+        m = re.match(r'^GPU(\d+):', line.strip())
+        if m:
+            cur = {}
+            gpus.append(cur)
+            continue
+        if cur is not None and '=' in line:
+            k, _, v = line.partition('=')
+            cur[k.strip()] = v.strip()
+    return gpus
+
+
+def parse_gl(text):
+    out = {}
+    for line in text.splitlines():
+        for k in ('OpenGL renderer string', 'OpenGL core profile version string', 'OpenGL version string',
+                  'OpenGL ES profile version string', 'OpenGL vendor string'):
+            if line.strip().startswith(k + ':') and k not in out:
+                out[k] = line.split(':', 1)[1].strip()
+    return out
+
+
+def graphics():
+    secs = []
+    code, out = run(['vulkaninfo', '--summary'], timeout=20)
+    for g in parse_vulkan(out) if code == 0 else []:
+        secs.append({'title': 'Vulkan · ' + g.get('deviceName', 'GPU'), 'rows': [r for r in [
+            ['Vulkan version', g.get('apiVersion', '')], ['Driver', g.get('driverName', '')], ['Driver version', g.get('driverInfo', '') or g.get('driverVersion', '')],
+            ['Kind', g.get('deviceType', '').replace('PHYSICAL_DEVICE_TYPE_', '').replace('_', ' ').lower()]] if r[1]]})
+    if not secs:
+        secs.append({'title': 'Vulkan', 'rows': [['Vulkan', "vulkaninfo isn't on this system" if code == 127 else 'No Vulkan device answered']]})
+    code, out = run(['eglinfo', '-B'], timeout=20)
+    gl = parse_gl(out) if code == 0 else {}
+    if not gl:
+        code, out = run(['glxinfo', '-B'], timeout=20)
+        gl = parse_gl(out) if code == 0 else {}
+    secs.append({'title': 'OpenGL', 'rows': [[k.replace('OpenGL ', '').replace(' string', '').capitalize(), v] for k, v in gl.items()]
+                 or [['OpenGL', 'eglinfo and glxinfo (mesa-utils) aren\'t on this system']]})
+    wm = os.environ.get('HEARTH_WM') or 'labwc'
+    secs.append({'title': 'Desktop', 'rows': [['Window manager', 'KWin' if wm == 'kwin' else 'labwc'],
+                                              ['Display server', 'Wayland' if os.environ.get('WAYLAND_DISPLAY') else 'X11'],
+                                              ['Session', os.environ.get('XDG_CURRENT_DESKTOP', '')]]})
+    return {'sections': secs}
+
+
+PARTS = {'cpu': cpu, 'gpu': gpu, 'memory': memory, 'pci': pci, 'usb': usb, 'graphics': graphics}
+
+
+def main(argv):
+    try:
+        if len(argv) == 1 and argv[0] in PARTS:
+            r = PARTS[argv[0]]()
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

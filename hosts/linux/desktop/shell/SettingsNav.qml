@@ -72,6 +72,8 @@ Singleton {
     // Hearth 1.10's volume mixer (Mixer.qml) and snap layouts (SnapLayouts.qml, Super+Z): set while open, so the
     // controller types arrow keys / Enter / Esc there; the objects themselves for the bar and Settings › Sound.
     property var mixer: null
+    property string menuEdit: ""       // the app "Edit app…" opened the menu editor at (Launcher's right-click)
+    property string pttProblem: ""     // push to talk couldn't start (PushToTalk.qml), shown in Settings › Sound › Push to talk
     property bool mixerShown: false
     property var snap: null
     property bool snapShown: false

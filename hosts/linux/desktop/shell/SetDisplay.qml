@@ -6,6 +6,8 @@
 // screen, colour intensity and accuracy, HDR calibration, Extended Dynamic Range, overscan and RGB range, X11 apps'
 // scaling, external screens' brightness (DDC/CI), auto-brightness and how bright, the edge barrier and desktops on the main screen
 // only. A row the screen or KWin can't do is hidden (or says why, where KDE shows it greyed).
+// Screen power saving (1.14, hearth-screen-psr): Intel laptops' Panel Self Refresh, Auto / On / Off. Auto turns it off
+// on Alder Lake-N / Twin Lake, where it can make the screen freeze or lag (the owner's laptop); the row says so.
 // Everything goes through hearth-screens (docs/SCREENS.md: wlr-randr under labwc, kscreen-doctor / KWin's D-Bus under
 // KWin). A change is kept only if you confirm it within 15 seconds, so a mode the screen can't show fixes itself, and
 // the page says it went back. Kept settings go to ~/.config/nimbus/screens.json (and display.sh, which labwc's start
@@ -42,7 +44,12 @@ SetPage {
     }
     readonly property var rates: out && cur ? out.modes.filter(m => m.width === cur.width && m.height === cur.height).map(m => Math.round(m.refresh)).filter((v, i, a) => a.indexOf(v) === i).sort((a, b) => b - a) : []
 
-    function load() { screensJob.run(["info"], r => page.took(r), e => { page.out = null; page.problem = e; }); bright.running = true; gm.run(["get"], r => { page.gmode = r; }, () => {}); if (!page.ddc) ddcJob.run(["ddc"], r => { page.ddc = r; }, () => { page.ddc = { available: false, screens: [] }; }); }
+    // Screen power saving (PSR) on an Intel built-in screen: read on open (nothing written), changed through pkexec.
+    property var psr: null
+    readonly property string psrBin: Quickshell.env("HEARTH_PSR_BIN") || "/usr/libexec/nimbus/hearth-screen-psr"
+    SetJob { id: psrJob; helper: page.psrBin }
+    SetJob { id: psrSet; helper: page.psrBin; admin: true }
+    function load() { psrJob.run(["status"], r => { page.psr = r; }, () => { page.psr = null; }); screensJob.run(["info"], r => page.took(r), e => { page.out = null; page.problem = e; }); bright.running = true; gm.run(["get"], r => { page.gmode = r; }, () => {}); if (!page.ddc) ddcJob.run(["ddc"], r => { page.ddc = r; }, () => { page.ddc = { available: false, screens: [] }; }); }
     // External screens' brightness over DDC/CI (ddcutil; read once, it takes a moment).
     property var ddc: null
     SetJob { id: ddcJob; helper: "hearth-screens" }
@@ -61,7 +68,7 @@ SetPage {
     function goToAnchor() {
         // "display:calibrate": straight into Calibrate HDR (when the screen can).
         if (SettingsNav.pageAnchor === "calibrate") { SettingsNav.pageAnchor = ""; Qt.callLater(cal.start); return; }
-        const to = ({ night: nightSwitch, hdr: hdrHead, games: gamesHead, layout: layoutHead, bright: brightHead, signal: sigHead, several: severalHead })[SettingsNav.pageAnchor];
+        const to = ({ night: nightSwitch, hdr: hdrHead, games: gamesHead, layout: layoutHead, bright: brightHead, signal: sigHead, several: severalHead, power: psrHead })[SettingsNav.pageAnchor];
         if (!to) return;
         SettingsNav.pageAnchor = "";
         anchorGo.to = to;
@@ -795,6 +802,22 @@ SetPage {
     FileView { id: nvRead; path: page.nvFile; onLoaded: page.nvDrawing = (text().trim() || "auto"); onLoadFailed: page.nvDrawing = "auto" }
     Process { id: nvProbe; command: ["test", "-d", "/sys/module/nvidia"]; running: true; onExited: code => page.hasNvidia = code === 0 }
     property bool hasNvidia: false
+    SetHeader { id: psrHead; text: "Screen power saving"; visible: !!page.psr && page.psr.supported }
+    SetChoice {
+        visible: !!page.psr && page.psr.supported
+        icon: "display"; title: "Screen power saving"
+        sub: page.psr ? page.psr.line : ""
+        options: [{ value: "auto", label: "Auto" }, { value: "on", label: "On" }, { value: "off", label: "Off" }]
+        current: page.psr ? page.psr.choice : "auto"
+        onChosen: v => psrSet.run(["set", v], r => { page.psr = r; SettingsNav.toast(v === "off" ? "Screen power saving is off" : v === "on" ? "Screen power saving is on" : "Screen power saving: Auto"); },
+                                  e => { page.problem = e; })
+    }
+    Text {
+        visible: !!page.psr && page.psr.supported
+        Layout.fillWidth: true; wrapMode: Text.WordWrap
+        text: "Lets the built-in screen keep its picture by itself while nothing moves, so the graphics chip can rest. On some Intel laptops it makes the screen freeze or lag; Auto turns it off there."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 12
+    }
     SetHeader { text: "Related" }
     SetRow {
         icon: "pad"; chevron: true

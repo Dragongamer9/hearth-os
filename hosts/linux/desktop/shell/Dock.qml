@@ -109,6 +109,12 @@ PanelWindow {
         const w = it.windows[0];
         return w ? (w.title || w.appId) : "";
     }
+    // Scrolling on an app's icon (1.14): that app's volume in the mixer, when it's playing sound and the switch is on.
+    function wheelVolume(it, up) {
+        if (!Settings.dockScrollVolume || !SettingsNav.mixer) return;
+        const names = (it.windows || []).map(w => w.appId).concat([it.id, it.entry ? it.entry.name : "", appName(it)]);
+        SettingsNav.mixer.stepFor(names, up);
+    }
     function cycleApp(it) {
         const ws = it.windows;
         if (!ws.length) { if (it.entry) it.entry.execute(); return; }
@@ -311,6 +317,7 @@ PanelWindow {
                         onClicked: dock.focusApp(modelData, task)
                         onMiddleClicked: dock.newInstance(modelData)
                         onRightClicked: dock.taskMenu(task, modelData)
+                        onWheeled: up => dock.wheelVolume(modelData, up)
                         onDragStarted: { dock.dragFrom = index; dock.dragTo = index; }
                         onDragMoved: pos => dock.dragTo = dock.dropIndexAt(pos)
                         onDragEnded: dock.finishDrag()
@@ -430,7 +437,9 @@ PanelWindow {
             anchors.centerIn: parent; anchors.verticalCenterOffset: db.lift
             width: db.iconSize + 10; height: width; radius: Theme.r(width / 3)
             color: "transparent"; border.width: 2; border.color: Theme.flame
-            SequentialAnimation on opacity { running: db.visible && !Settings.reduceMotion; loops: Animation.Infinite; NumberAnimation { from: 1; to: 0.35; duration: 700 } NumberAnimation { from: 0.35; to: 1; duration: 700 } }
+            // Only while the app asks for attention: a count or a progress bar alone used to keep this pulse (and the
+            // whole dock) redrawing every frame, all the time (1.14, the owner's laptop: the shell at ~13% CPU).
+            SequentialAnimation on opacity { running: db.visible && !!db.info && db.info.urgent === true && !Settings.reduceMotion; loops: Animation.Infinite; NumberAnimation { from: 1; to: 0.35; duration: 700 } NumberAnimation { from: 0.35; to: 1; duration: 700 } }
         }
         Rectangle {   // the count
             visible: !!db.info && db.info.count > 0
@@ -473,6 +482,7 @@ PanelWindow {
         signal dragStarted()
         signal dragMoved(real pos)
         signal dragEnded()
+        signal wheeled(bool up)
         z: dragging ? 5 : 0
         transform: Translate { x: btn.dragOffset }
         // Previews: after a short rest (at once when moving over from another app's), above the dock.
@@ -544,6 +554,13 @@ PanelWindow {
             }
             onReleased: { if (btn.dragging) { btn.dragging = false; btn.dragOffset = 0; btn.dragEnded(); } }
             onCanceled: { if (btn.dragging) { btn.dragging = false; btn.dragOffset = 0; btn.dragEnded(); } }
+            // 1.14: scrolling on an app changes its volume (Settings › Sound › Apps' sound), one notch at a time.
+            property real wheelSum: 0
+            onWheel: wheel => {
+                wheelSum += wheel.angleDelta.y;
+                if (Math.abs(wheelSum) >= 120) { btn.wheeled(wheelSum > 0); wheelSum = 0; }
+                wheel.accepted = true;
+            }
             onClicked: mouse => {
                 if (dragged) { dragged = false; return; }
                 if (mouse.button === Qt.MiddleButton) btn.middleClicked();
