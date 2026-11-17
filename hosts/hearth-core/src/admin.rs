@@ -57,6 +57,19 @@ pub fn parse_helper(out: &str) -> Result<Value, String> {
 
 pub fn can_admin() -> bool { Path::new(HELPER).exists() }
 
+/// A pre-installed PC's first-time setup still to do (hearth-oem-account's marker): only a regular file of root's (not
+/// a link) in a folder only root can write to, so nothing else can make setup come back.
+pub const OEM_MARK: &str = "/var/lib/hearth/oem-setup.json";
+pub fn oem_pending() -> bool { oem_pending_at(Path::new(OEM_MARK), 0) }
+#[cfg(unix)]
+pub fn oem_pending_at(mark: &Path, owner: u32) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    let (Ok(m), Some(Ok(d))) = (std::fs::symlink_metadata(mark), mark.parent().map(std::fs::metadata)) else { return false };
+    m.file_type().is_file() && m.uid() == owner && d.uid() == owner && d.mode() & 0o022 == 0
+}
+#[cfg(not(unix))]
+pub fn oem_pending_at(_mark: &Path, _owner: u32) -> bool { false }
+
 /// Hearth OS on Peppermint's writable system: `hearth-unlock --status --json` (readable without root): unlocked or
 /// locked, this start writable, a safe start, your packages, the last reapply and a notice for Hearth.
 /// `{available: false}` where there's no hearth-unlock (Anatase is always immutable).
@@ -199,6 +212,29 @@ impl Updates {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    #[test]
+    fn oem_marker_only_counts_as_roots_regular_file_in_a_safe_folder() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        let d = std::env::temp_dir().join(format!("hearth-oem-test-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let me = std::fs::metadata(&d).unwrap().uid();
+        let mark = d.join("oem-setup.json");
+        assert!(!oem_pending_at(&mark, me), "no file: nothing pending");
+        std::fs::write(&mark, "{\"user\":\"hearth\"}").unwrap();
+        assert!(oem_pending_at(&mark, me));
+        assert!(!oem_pending_at(&mark, me.wrapping_add(1)), "someone else's file doesn't count");
+        std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o777)).unwrap();
+        assert!(!oem_pending_at(&mark, me), "a folder anyone can write to doesn't count");
+        std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o755)).unwrap();
+        std::fs::remove_file(&mark).unwrap();
+        std::fs::write(d.join("real.json"), "{}").unwrap();
+        std::os::unix::fs::symlink(d.join("real.json"), &mark).unwrap();
+        assert!(!oem_pending_at(&mark, me), "a link doesn't count");
+        let _ = std::fs::remove_dir_all(&d);
+    }
     #[test]
     fn unlock_actions_are_a_fixed_list() {
         for a in ["on", "off", "resume", "dismiss", "reapply"] { assert!(unlock_action_ok(a)); }
