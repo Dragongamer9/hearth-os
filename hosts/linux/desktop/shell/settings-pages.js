@@ -142,6 +142,7 @@ var PAGES = [
     // ---- Privacy & security
     { id: "privacy", file: "SetCategory.qml", cat: "privacy", label: "Privacy & security", icon: "shield", landing: true },
     { id: "player-count", file: "SetAbout.qml", cat: "privacy", label: "Player count", icon: "users", desc: "Hearth OS's anonymous count of running devices", words: "privacy counter telemetry anonymous", old: "About › Privacy", props: { part: "privacy" }, status: "countMe" },
+    { id: "recent-files", file: "SetRecentFiles.qml", cat: "privacy", label: "Recent files", icon: "clock", desc: "Remember the files you open, for how long, forget them, folders and apps left out", words: "recent files history recently used forget privacy activities jump list recommended" },
     { id: "firmware", file: "SetFirmware.qml", cat: "privacy", label: "Firmware & device security", icon: "shield", desc: "Secure Boot, the TPM security chip, firmware updates for this PC's parts", words: "firmware fwupd lvfs bios uefi update secure boot tpm hsi security chip" },
     { id: "passwords", file: "SetPasswords.qml", cat: "privacy", label: "Passwords", icon: "key", desc: "Sign-ins apps keep in the password store, keyrings, lock", words: "keyring gnome keyring kwallet wallet secret service saved passwords sign-ins remove lock unlock" },
 
