@@ -84,15 +84,19 @@ SetPage {
         SettingsNav.pageAnchor = "";
         if (st) goAnchor();
     }
-    function goAnchor() {
-        if (anchor === "" || !on) return;
-        Qt.callLater(() => {
-            const to = { notifications: notifHead, commands: cmdName, pair: ipField }[anchor];
-            anchor = "";
+    // After Settings has put the focus on the page's first card (it does once the page is in), not before.
+    function goAnchor() { if (anchor !== "" && on) anchorFocus.restart(); }
+    Timer {
+        id: anchorFocus; interval: 700
+        onTriggered: {
+            const to = { notifications: notifHead, commands: cmdName, pair: ipField }[page.anchor];
+            page.anchor = "";
             if (to && to.visible) { if (to.focusInput) to.focusInput(); else to.forceActiveFocus(); }
-        });
+        }
     }
-    Connections { target: SettingsNav; function onPageAnchorChanged() { page.takeAnchor(); } }
+    // A moment later: when Settings loads the page again, the new one takes the part in Component.onCompleted.
+    Timer { id: anchorLater; interval: 300; onTriggered: page.takeAnchor() }
+    Connections { target: SettingsNav; function onPageAnchorChanged() { anchorLater.restart(); } }
     Component.onCompleted: { takeAnchor(); refresh(); }
     onStChanged: goAnchor()
     Timer { interval: 2000; running: page.visible; repeat: true; onTriggered: if (!job.busy && !act.busy) page.refresh() }

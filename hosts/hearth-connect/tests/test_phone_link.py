@@ -30,7 +30,8 @@ GH = os.environ.get('GITHUB_ACTIONS') == 'true'
 def note(level, title, text=''):
     if GH:
         t = str(text)[:900].replace('%', '%25').replace('\r', '').replace('\n', '%0A')
-        print('::%s title=%s::%s' % (level, title.replace(':', ' -').replace(',', ';'), t or '-'), flush=True)
+        # On a line of its own (unittest's "test ... " has no newline yet).
+        print('\n::%s title=%s::%s' % (level, title.replace(':', ' -').replace(',', ';'), t or '-'), flush=True)
 
 
 def wait(fn, secs=15, every=0.2):

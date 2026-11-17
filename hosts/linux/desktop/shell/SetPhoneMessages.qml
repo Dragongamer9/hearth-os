@@ -36,7 +36,8 @@ SetPage {
     }
     // `hearth-settings phone-messages:<thread>` opens at that conversation.
     function takeAnchor() { if (/^\d+$/.test(SettingsNav.pageAnchor)) { open = parseInt(SettingsNav.pageAnchor); SettingsNav.pageAnchor = ""; messages = []; refresh(); } }
-    Connections { target: SettingsNav; function onPageAnchorChanged() { page.takeAnchor(); } }
+    Timer { id: anchorLater; interval: 300; onTriggered: page.takeAnchor() }
+    Connections { target: SettingsNav; function onPageAnchorChanged() { anchorLater.restart(); } }
     Component.onCompleted: {
         takeAnchor();
         refresh();
