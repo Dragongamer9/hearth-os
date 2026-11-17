@@ -391,7 +391,7 @@ class SysAdmin(Home):
 
     def test_hearth_admin_hands_these_on(self):
         src = (NIMBUS / 'hearth-admin').read_text()
-        self.assertIn("elif cmd in ('firmware-refresh', 'firmware-update', 'locale', 'user-type', 'login-background'):", src)
+        self.assertIn("elif cmd in ('firmware-refresh', 'firmware-update', 'locale', 'user-type', 'login-background', 'lid'):", src)
         self.assertIn("'hearth-sysset-admin'", src)
 
 
@@ -613,7 +613,9 @@ class Pages(unittest.TestCase):
     def test_pages_change_things_only_from_a_press(self):
         for f in self.NEW:
             t = (SHELL / f).read_text()
-            self.assertEqual(re.findall(r'\bSettings\.\w+\s*=(?!=)', t), [], f)
+            # (A Settings key set from a press is fine: 1.14's firmware notification switch, onToggled.)
+            pressed = '\n'.join(l for l in t.splitlines() if not re.search(r'\bon(Toggled|Chosen|Activated)\s*:', l))
+            self.assertEqual(re.findall(r'\bSettings\.\w+\s*=(?!=)', pressed), [], f)
             self.assertNotIn('Component.onCompleted: save', t, f)
             # Opening a page or its refresh timer only reads: the writing commands never run from there.
             writes = r'"(details-set|proxy-set|hotspot-on|hotspot-off|vpn-up|vpn-down|vpn-remove|vpn-import|set|locale|user-type|firmware-update|firmware-refresh)"'
