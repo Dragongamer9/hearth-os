@@ -426,6 +426,8 @@ jobs:
           quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call splash preview flame || true; sleep 0.9; grim shots/system-settings/ss-signin-splash.png || true; sleep 3
           ipc welcome preview 1.14; sleep 1; grim shots/system-settings/ss-welcome.png || true; ipc welcome close
           ipc oomwatch test; sleep 1; grim shots/system-settings/ss-oom-notice.png || true; wtype -k Escape; sleep 1
+          # The test notice is critical (it stays until dismissed): gone again, so later pictures don't show it.
+          ipc notify unpopAll
           ipc devicewatch drive /dev/sdz1 "Holiday photos"; sleep 1; grim shots/system-settings/ss-drive-plugged.png || true; wtype -k Escape; sleep 1
           # Put everything back.
           for f in upower busctl flatpak bluetoothctl lpstat lpq scanimage usbguard; do rm -f "/tmp/fakebin/$f"; done
