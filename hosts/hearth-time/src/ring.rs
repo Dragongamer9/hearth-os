@@ -49,6 +49,14 @@ pub fn mode(env: &[(String, String)]) -> &'static str {
 
 /// Switches the screen on (Desktop Mode turns it off when idle: Settings › Power).
 pub fn wake_screen(env: &[(String, String)]) {
+    // Mantel on KWin (HEARTH_WM=kwin): KWin's own DPMS, as hearth-screen-power does (wlopm can't there).
+    if mode(env) == "desktop" && get(env, "HEARTH_WM") == Some("kwin") && crate::alert::which("kscreen-doctor").is_some() {
+        let mut c = Command::new("kscreen-doctor");
+        c.args(["--dpms", "on"]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());
+        apply_env(&mut c, env, false);
+        let _ = c.status();
+        return;
+    }
     if mode(env) == "desktop" && crate::alert::which("wlopm").is_some() {
         let mut c = Command::new("wlopm");
         c.args(["--on", "*"]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null());

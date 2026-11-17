@@ -567,6 +567,60 @@ var ENTRIES = [
 "i": "sparkle"
 },
 {
+"t": "How warm",
+"p": "display",
+"d": "Night light's colour: further right is warmer",
+"i": "moon"
+},
+{
+"t": "When",
+"p": "display",
+"i": "clock"
+},
+{
+"t": "Starts at",
+"p": "display",
+"d": "Night light comes on",
+"i": "moon"
+},
+{
+"t": "Ends at",
+"p": "display",
+"d": "Back to normal colours",
+"i": "sun"
+},
+{
+"t": "HDR on the desktop",
+"p": "display",
+"i": "sparkle"
+},
+{
+"t": "Brightness of everything else",
+"p": "display",
+"d": "Apps, the desktop and videos that aren't HDR, while HDR is on",
+"i": "sun"
+},
+{
+"t": "Wide colour",
+"p": "display",
+"i": "palette"
+},
+{
+"t": "Colour profile",
+"p": "display",
+"i": "palette"
+},
+{
+"t": "Variable refresh rate (VRR / FreeSync)",
+"p": "display",
+"i": "bolt"
+},
+{
+"t": "Allow tearing in full-screen games",
+"p": "display",
+"i": "pad"
+},
+{
 "t": "Scale",
 "p": "display",
 "d": "Makes text, apps and the bar bigger or smaller",
@@ -592,6 +646,17 @@ var ENTRIES = [
 "t": "Use this screen",
 "p": "display",
 "i": "display"
+},
+{
+"t": "Rotation",
+"p": "display",
+"d": "Turn the picture for a screen that's on its side or upside down",
+"i": "restart"
+},
+{
+"t": "Show the same thing on both screens (mirror)",
+"p": "display",
+"i": "desktops"
 },
 {
 "t": "Other resolutions",

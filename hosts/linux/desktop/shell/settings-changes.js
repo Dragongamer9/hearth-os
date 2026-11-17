@@ -10,7 +10,8 @@ var NAMES = {
     countMe: "Count me in the player count", barStyle: "Bar style", dockMode: "Dock", deskClock: "Desktop clock",
     panelGlass: "Panel transparency", sunset: "Sunset mode", sunsetLight: "Light from", sunsetDark: "Dark from",
     barLayout: "Bar layout", barEdge: "Main bar's edge", dockFloat: "Floating dock", appMenu: "App menu",
-    shareStatus: "Share this device's status", menuStyle: "Right-click menu", subTheme: "Sub theme", wallMatch: "Match sub theme"
+    shareStatus: "Share this device's status", menuStyle: "Right-click menu", subTheme: "Sub theme", wallMatch: "Match sub theme",
+    nightTemp: "Night light warmth", nightMode: "Night light on", nightFrom: "Night light from", nightTo: "Night light until"
 };
 // Keys that change with another one and mean nothing on their own: never listed.
 var HIDDEN = { accentFrom: true, wallSwatches: true, menuTiles: true };
@@ -30,6 +31,8 @@ function value(key, v, accents) {
     if (typeof v === "boolean") return v ? "On" : "Off";
     if (key === "screenOffMinutes" || key === "sleepMinutes") return minutes(Number(v));
     if (key === "pointerSpeed") return Math.round(Number(v) * 100) + "%";
+    if (key === "nightTemp") return Number(v) + " K";
+    if (key === "nightMode") return v === "always" ? "All the time" : "Evenings";
     if (key === "accent") {
         const a = (accents || []).find(x => String(x.color).toLowerCase() === String(v).toLowerCase());
         return a ? a.name : String(v);
@@ -63,5 +66,6 @@ var DEFAULTS = {
     nightLight: false, wallpaper: "", reduceMotion: false, pointerSpeed: 1.0, lockOnWake: false, clock24: false,
     clipboardHistory: true, screenOffMinutes: 10, sleepMinutes: 0, mode: "dark", accent: "", countMe: true,
     barStyle: "", dockMode: "", deskClock: "", panelGlass: "", sunset: false, sunsetLight: "07:00", sunsetDark: "19:30",
-    barLayout: "", barEdge: "", dockFloat: "", appMenu: "", shareStatus: true, menuStyle: "", subTheme: "", wallMatch: true
+    barLayout: "", barEdge: "", dockFloat: "", appMenu: "", shareStatus: true, menuStyle: "", subTheme: "", wallMatch: true,
+    nightTemp: 3700, nightMode: "times", nightFrom: "19:30", nightTo: "07:00"
 };

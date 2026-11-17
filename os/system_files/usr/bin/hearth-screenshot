@@ -1,0 +1,19 @@
+#!/bin/sh
+# A screenshot, grim's way, on both of Mantel's compositors (docs/SCREENS.md):
+#   hearth-screenshot [-g "X,Y WxH"] [-o SCREEN] [-c] FILE|-      (PNG; - writes it to the output)
+# Under labwc it is grim. Under KWin (HEARTH_WM=kwin) it asks KWin's org.kde.KWin.ScreenShot2, which answers only a
+# program whose .desktop file lists that interface; KWin finds the .desktop file by the program's executable, so the
+# helper runs through its own copy of Python (/usr/libexec/nimbus/hearth-shot-python, named by
+# /usr/share/applications/hearth-screenshot.desktop), not every Python program.
+SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+[ -f "$SHELL_DIR/hearth-screens" ] || SHELL_DIR=/usr/share/nimbus/desktop/shell
+kwin=0
+if [ "${HEARTH_WM:-}" = kwin ]; then kwin=1
+elif [ -z "${HEARTH_WM:-}" ]; then case "${XDG_CURRENT_DESKTOP:-}" in *KDE*) kwin=1 ;; esac
+fi
+if [ "$kwin" = 1 ]; then
+  py=/usr/libexec/nimbus/hearth-shot-python
+  [ -x "$py" ] || py=python3
+  HEARTH_WM=kwin exec "$py" "$SHELL_DIR/hearth-screens" shot "$@"
+fi
+exec grim "$@"

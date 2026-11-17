@@ -3,6 +3,9 @@
 //   gamescope  (Game Mode)        modes from the kernel; applied as gamescope options when Game Mode restarts;
 //                                 scale is Nimbus's own interface zoom
 //   kde        (Plasma desktop)   kscreen-doctor; Plasma remembers the settings itself
+//   screens    (Mantel: labwc or KWin, 1.14) Desktop Mode's own hearth-screens (docs/SCREENS.md): it changes the
+//                                 screen and keeps it in ~/.config/nimbus/screens.json, the one source of truth (with
+//                                 display.sh in step); nothing here writes either file
 //   wlr        (labwc, Sway…)     wlr-randr; saved to ~/.config/nimbus/display.sh, which Desktop Mode runs at start
 //   xrandr     (X11 desktops)     xrandr; scale is Nimbus's interface zoom
 // Every backend answers get() with the same shape, so the UI doesn't care which one it is.
@@ -35,8 +38,26 @@ function group(modes) {
   return out;
 }
 
+/** Desktop Mode's screens helper: where the session keeps it ($NIMBUS_SHARE), or beside the app. */
+function screensHelper(env = process.env) {
+  const c = [env.NIMBUS_SHARE && path.join(env.NIMBUS_SHARE, 'desktop', 'shell', 'hearth-screens'),
+    process.resourcesPath && path.join(process.resourcesPath, 'desktop', 'shell', 'hearth-screens'),
+    path.join(__dirname, '..', 'desktop', 'shell', 'hearth-screens'), '/usr/share/nimbus/desktop/shell/hearth-screens'].filter(Boolean);
+  return c.find(f => { try { return fs.statSync(f).isFile(); } catch { return false; } }) || null;
+}
+
+/** hearth-screens with these arguments: its JSON answer (the last line that is JSON). */
+async function screens(args, env = process.env) {
+  const out = await run('python3', [screensHelper(env), ...args], { timeout: 30000 });
+  const line = out.split('\n').reverse().find(l => l.startsWith('{') || l.startsWith('['));
+  if (!line) throw new Error('hearth-screens said nothing');
+  return line;
+}
+
 function detect(env = process.env) {
   if (env.GAMESCOPE_WAYLAND_DISPLAY) return 'gamescope';
+  // Mantel (HEARTH_WM labwc or kwin, set by the session): hearth-screens, so screens.json stays the one source of truth.
+  if (/^(labwc|kwin)$/.test(env.HEARTH_WM || '') && env.WAYLAND_DISPLAY && screensHelper(env)) return 'screens';
   if (/KDE/i.test(env.XDG_CURRENT_DESKTOP || '') && has('kscreen-doctor')) return 'kde';
   if (env.WAYLAND_DISPLAY && has('wlr-randr') && !/GNOME/i.test(env.XDG_CURRENT_DESKTOP || '')) return 'wlr';
   if (env.DISPLAY && !env.WAYLAND_DISPLAY && has('xrandr')) return 'xrandr';
@@ -134,6 +155,7 @@ class DisplayModes {
     switch (this.backend) {
       case 'kde': return parseKscreen(await run('kscreen-doctor', ['-j']));
       case 'wlr': return parseWlr(await run('wlr-randr', ['--json']));
+      case 'screens': return parseWlr(await screens(['get'], this.env));   // wlr-randr's shape on labwc and KWin alike
       case 'xrandr': return parseXrandr(await run('xrandr', ['--query']));
       case 'gamescope': {
         const drm = drmModes();
@@ -190,6 +212,11 @@ class DisplayModes {
         await run('wlr-randr', ['--output', d.output, '--mode', `${m.w}x${m.h}@${m.exact}Hz`]);
         this.saveWlr(d.output, { mode: `${m.w}x${m.h}@${m.exact}Hz` });
         break;
+      case 'screens': {
+        const r = JSON.parse(await screens(['set', JSON.stringify({ outputs: { [d.output]: { mode: { w: m.w, h: m.h, r: m.exact } } } })], this.env));
+        if (r.problem) throw new Error(r.problem);
+        break;
+      }
       case 'xrandr': await run('xrandr', ['--output', d.output, '--mode', `${m.w}x${m.h}`, '--rate', String(m.rate)]); break;
       case 'gamescope':
         gamescopeArgs(`-W ${m.w} -H ${m.h} -r ${Math.round(m.rate)}`);
@@ -203,6 +230,7 @@ class DisplayModes {
     if (!SCALES.includes(pct)) throw new Error('Unknown scale');
     const d = await this.read();
     if (this.backend === 'kde') await run('kscreen-doctor', [`output.${d.output}.scale.${pct / 100}`]);
+    else if (this.backend === 'screens') await screens(['set', JSON.stringify({ outputs: { [d.output]: { scale: pct / 100 } } })], this.env);
     else if (this.backend === 'wlr') {
       await run('wlr-randr', ['--output', d.output, '--scale', String(pct / 100)]);
       this.saveWlr(d.output, { scale: String(pct / 100) });
@@ -227,4 +255,4 @@ class DisplayModes {
   }
 }
 
-module.exports = { DisplayModes, detect, group, parseKscreen, parseWlr, parseXrandr, gamescopeArgs, drmModes, SCALES };
+module.exports = { DisplayModes, detect, screensHelper, group, parseKscreen, parseWlr, parseXrandr, gamescopeArgs, drmModes, SCALES };
