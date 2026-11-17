@@ -16,7 +16,7 @@ WidgetBase {
     readonly property bool agenda: c("agenda", true) !== false
     readonly property date today: new Date()
     implicitWidth: 340; implicitHeight: 420
-    readonly property int room: Math.max(1, Math.floor((height - 330) / 38))   // agenda rows that fit
+    readonly property int room: Math.max(1, Math.floor((height - 14 - monthGrid.y - monthGrid.height - 46) / 38))   // agenda rows that fit
 
     Process {
         id: ev
@@ -50,6 +50,7 @@ WidgetBase {
             WBtn { icon: "forward"; flat: true; size: 26; onClicked: { w.picked = null; if (w.month === 11) { w.month = 0; w.year++; } else w.month++; } }
         }
         GridLayout {
+            id: monthGrid
             Layout.fillWidth: true
             columns: 7
             rowSpacing: 2; columnSpacing: 2
