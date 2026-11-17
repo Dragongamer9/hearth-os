@@ -227,6 +227,33 @@ def desk(changes):
     os.replace(path + '.tmp', path)
 
 
+def title_matches(name, theme, label):
+    """The title bar's colour in picture NAME (Test A in the top left quarter) is the theme's (decoration-top's fill)."""
+    import re as _re
+    try:
+        from PIL import Image
+        svg = open(os.path.join(theme, 'decoration.svg')).read()
+        want = _re.search(r'id="decoration-top"><rect [^>]*fill="(#[0-9a-f]{6})"', svg).group(1)
+        w = tuple(int(want[i:i + 2], 16) for i in (1, 3, 5))
+        im = Image.open(os.path.join(OUT, 'kwin-%s.png' % name)).convert('RGB')
+        got = im.getpixel((300, 58))
+        ok = max(abs(a - b) for a, b in zip(w, got)) <= 12
+        check('the title bar has the look\'s colour (%s)' % label, ok, 'theme %s, picture %s' % (want, '#%02x%02x%02x' % got))
+    except Exception as ex:
+        check('the title bar has the look\'s colour (%s)' % label, False, ex)
+
+
+def set_look(theme, look, accent):
+    """A look and accent as Settings › Appearance saves them; waits for the frames to be written again."""
+    path = os.path.join(theme, 'decoration.svg')
+    before = open(path).read() if os.path.isfile(path) else ''
+    desk({'look': look, 'accent': accent})
+    changed = wait(lambda: os.path.isfile(path) and open(path).read() != before, 20)
+    ipc('browserpick', 'close')          # a first-run prompt the shell may show when its settings reload
+    time.sleep(6)                        # the shell's own look change settles and KWin draws the new frames
+    return changed
+
+
 def frames_check(procs):
     """Hearth's window frames on KWin (theme/hearth_aurorae.py): written for the look, picked by Hearth's kwinrc,
     following a look change live; apps that draw their own title bar get no second frame."""
@@ -257,10 +284,12 @@ def frames_check(procs):
         ipc('winlist', 'act', t, 'activate')
     ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test A', 'zone': 'top-left'}))
     ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test B', 'zone': 'bottom-right'}))
+    set_look(theme, 'steam', '')
     ipc('winlist', 'act', 'Test A', 'activate')
     wait(lambda: (win('Test A') or {}).get('zone') == 'top-left' and listed().get('active') == (win('Test A') or {}).get('id'))
     time.sleep(1.5)
     shot('frame-full')
+    title_matches('frame-full', theme, 'Steam-style, the default')
     many, size = crop('frame-full', (0, 30, 1000, 230), 'frame-active')
     check('the frame picture (active) is more than one colour', many, size)
     ipc('winlist', 'act', 'Test B', 'activate')
@@ -279,12 +308,12 @@ def frames_check(procs):
     wait(lambda: (win('Test A') or {}).get('maximized') is False)
     ipc('winlist', 'act', 'Test A', 'activate')
     # Another look and accent (Hearth, gold): the frames follow without a restart.
-    before = open(os.path.join(theme, 'decoration.svg')).read() if ok else ''
-    desk({'look': 'hearth', 'accent': '#ffd166'})
-    changed = wait(lambda: open(os.path.join(theme, 'decoration.svg')).read() != before, 20)
+    changed = set_look(theme, 'hearth', '#ffd166')
     check('a look change writes new frames', changed, 'decoration.svg unchanged')
-    time.sleep(8)                       # the shell's own look change settles (it fades) and KWin draws the new frames
+    ipc('winlist', 'act', 'Test A', 'activate')
+    time.sleep(1.5)
     shot('frame-full-4')
+    title_matches('frame-full-4', theme, 'Hearth, gold')
     many, size = crop('frame-full-4', (0, 30, 1000, 230), 'frame-hearth-gold')
     check('the frame picture (Hearth look, gold) is more than one colour', many, size)
     desk({'look': 'steam', 'accent': ''})
