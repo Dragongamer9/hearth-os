@@ -138,7 +138,7 @@ q firehold press b; sleep 1
 
 # 5. The Desk (the game ended first: fullscreen it would cover the Desk)
 GH set frameLimit off >/dev/null; GH set scaling off >/dev/null
-kill "$GAMEPID" 2>/dev/null; sleep 2
+kill "$GAMEPID" 2>/dev/null; pkill -f firehold-game-client 2>/dev/null; sleep 2   # $! is the W wrapper
 q firehold desk; shot firehold-c5-desk 6
 python3 -c 'import sys; from PIL import Image; im = Image.open(sys.argv[1]).convert("RGB"); sys.exit(0 if im.getpixel((1700, 900)) != (0, 0, 0) else 1)' shots/firehold-c5-desk.png \
   || fail "desk" "the Desk picture is black where Mantel's wallpaper should be: the ended game is still drawn as fullscreen"

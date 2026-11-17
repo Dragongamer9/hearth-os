@@ -364,15 +364,15 @@ qs call settings close
 # chosen through the Guide's helper exactly as the Guide's arrows do, then the Guide opened.
 GH() { WAYLAND_DISPLAY=wayland-hearth python3 hosts/linux/desktop/shell/hearth-firehold-game "$@"; }
 gst() { GH status | python3 -c 'import json,sys; d=json.load(sys.stdin); g=d.get("game") or {}; print(eval(sys.argv[1], {"d": d, "g": g}))' "$1" 2>/dev/null; }
-W python3 .github/scripts/firehold-game-client.py "$XDG_RUNTIME_DIR/guide-game.json" --app-id firehold-test-game --seconds 120 >shots/guide-game.log 2>&1 &
+W python3 .github/scripts/firehold-game-client.py "$XDG_RUNTIME_DIR/guide-game.json" --app-id steam_app_1000 --title "Ember Trails" --seconds 120 >shots/guide-game.log 2>&1 &
 GAMEPID=$!
-for i in $(seq 1 40); do [ "$(gst 'g.get("appId") == "firehold-test-game"')" = True ] && break; sleep 0.5; done
-[ "$(gst 'g.get("appId") == "firehold-test-game"')" = True ] || fail "guide" "the stand-in game isn't Firehold's game: $(GH status | head -c 400) $(tail -c 300 shots/guide-game.log | tr '\n' '|')"
+for i in $(seq 1 40); do [ "$(gst 'g.get("appId") == "steam_app_1000"')" = True ] && break; sleep 0.5; done
+[ "$(gst 'g.get("appId") == "steam_app_1000"')" = True ] || fail "guide" "the stand-in game isn't Firehold's game: $(GH status | head -c 400) $(tail -c 300 shots/guide-game.log | tr '\n' '|')"
 GH set frameLimit 60 >/dev/null; GH set scaling quality >/dev/null
 for i in $(seq 1 30); do [ "$(gst 'g.get("frameLimit") == 60 and g.get("scaling") == "quality"')" = True ] && break; sleep 0.5; done
 fl=$(gst 'g.get("frameLimitLabel")'); sc=$(gst 'g.get("scalingLabel")')
 qs call firehold couch; sleep 3
-qs call firehold go "Firehold test game"; sleep 3
+qs call firehold go "Ember Trails"; sleep 3   # a Steam game (steam_app_1000): the Guide is for games
 shot shots-tmp-game
 qs call firehold open guide; sleep 6
 shot firehold-13-guide
@@ -385,10 +385,11 @@ case "$fl|$sc" in
   "60|Quality · "[0-9]*p) note "guide" "the Guide's rows: Frame limit ‹ $fl ›, Resolution scaling ‹ $sc › (state: $(echo "$gstate" | head -c 300))";;
   *) fail "guide" "the helper's labels aren't real values: frame limit '$fl', scaling '$sc': $(GH status | head -c 400)";;
 esac
-echo "$gstate" | grep -q '"guide":true' || note "guide" "the Guide isn't in Firehold's state: $(echo "$gstate" | head -c 400)"
+echo "$gstate" | grep -q '"guide":true' || fail "guide" "the Guide isn't open in Firehold's state: $(echo "$gstate" | head -c 400)"
+echo "$gstate" | grep -q '"page":"switcher"' && fail "guide" "Everything open is up instead of the Guide"
 qs call firehold close; qs call firehold desk
 GH set frameLimit off >/dev/null; GH set scaling off >/dev/null
-kill "$GAMEPID" 2>/dev/null; sleep 1
+kill "$GAMEPID" 2>/dev/null; pkill -f firehold-game-client 2>/dev/null; sleep 1   # $! is the W wrapper
 
 # ---- 12: the card when Firehold couldn't start twice in a row (what nimbus-session leaves: test_firehold_session.py
 # proves the fallback itself), shown by Mantel when it starts: why, and one button to turn it back on.
