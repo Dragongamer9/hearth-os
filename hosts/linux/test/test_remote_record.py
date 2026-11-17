@@ -36,9 +36,22 @@ def load(path, name):
     return m
 
 
+os.environ.setdefault('XDG_RUNTIME_DIR', tempfile.mkdtemp())   # a session's own folder, as on a desktop
 vnc = load(SHELL / 'hearth-vnc', 'hearth_vnc_t')
 rec = load(SHELL / 'hearth-record', 'hearth_record_t')
-import hearth_screencast as hs  # noqa: E402
+import hearth_portal_client as hs  # noqa: E402
+import shutil as _shutil  # noqa: E402
+import signal as _signal  # noqa: E402
+import subprocess as _subprocess  # noqa: E402
+
+# This PC's certificate for the conversations (connections from this PC get X509Plain only, like everyone outside
+# Tailscale): made once with openssl.
+CERTS = tempfile.mkdtemp()
+HAVE_OPENSSL = bool(_shutil.which('openssl'))
+if HAVE_OPENSSL:
+    _subprocess.run(['openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes',
+                     '-keyout', os.path.join(CERTS, 'key.pem'), '-out', os.path.join(CERTS, 'cert.pem'), '-days', '2',
+                     '-subj', '/CN=test'], capture_output=True, check=True)
 
 
 def run_cmd(mod, argv):
@@ -107,8 +120,9 @@ def recv_exact(s, n):
 class Viewer:
     """Just enough of a VNC viewer: VeNCrypt TLSPlain or X509Plain, then updates."""
 
-    def __init__(self, port, password, sub=vnc.VENC_TLSPLAIN):
+    def __init__(self, port, password, sub=vnc.VENC_X509PLAIN):
         s = socket.create_connection(('127.0.0.1', port), timeout=10)
+        self.raw = s
         assert recv_exact(s, 12) == b'RFB 003.008\n'
         s.sendall(b'RFB 003.008\n')
         n = recv_exact(s, 1)[0]
@@ -202,12 +216,25 @@ class Viewer:
             pass
 
 
+def connect(port, password, **kw):
+    """A viewer, tried again for a moment while the server is still finishing the previous connection (one sign-in at
+    a time per address)."""
+    for i in range(30):
+        try:
+            return Viewer(port, password, **kw)
+        except ConnectionError:
+            time.sleep(0.1)
+    return Viewer(port, password, **kw)
+
+
+@unittest.skipUnless(HAVE_OPENSSL, 'no openssl')
 class VncConversation(Patch):
     def setUp(self):
         self.d = tempfile.mkdtemp()
         self.patch(vnc, 'RUNTIME', os.path.join(self.d, 'run'))
         self.patch(vnc, 'CLIENTS', os.path.join(self.d, 'run', 'clients.json'))
-        self.patch(vnc, 'CERT', os.path.join(self.d, 'none.pem'))
+        self.patch(vnc, 'CERT', os.path.join(CERTS, 'cert.pem'))
+        self.patch(vnc, 'KEY', os.path.join(CERTS, 'key.pem'))
         self.patch(vnc, 'notify', lambda *a: None)
         self.patch(vnc, 'peer_name', lambda ip: '')
         self.cap = FakeCapture(150, 70)        # not a multiple of 64: edge tiles too
@@ -223,13 +250,12 @@ class VncConversation(Patch):
         self.srv.sock.close()
 
     def test_zrle_then_only_the_changes(self):
-        v = Viewer(self.port, 'correct horse')
+        v = connect(self.port, 'correct horse')
         self.addCleanup(v.close)
         self.assertEqual((v.w, v.h), (150, 70))
         self.assertIn('Hearth', v.name)
         self.assertEqual(v.pf, vnc.SERVER_PF)
-        self.assertIn(vnc.VENC_TLSPLAIN, v.subs)       # this PC (loopback) may use anonymous TLS
-        self.assertNotIn(vnc.VENC_X509PLAIN, v.subs)   # no certificate made in this test
+        self.assertEqual(v.subs, [vnc.VENC_X509PLAIN])   # anonymous TLS is for Tailscale only, not even this PC
         v.encodings([vnc.ENC_ZRLE, vnc.ENC_RAW, vnc.ENC_DESKTOPSIZE])
         v.request(0)
         v.update()
@@ -250,7 +276,7 @@ class VncConversation(Patch):
 
     def test_raw_and_a_solid_screen(self):
         self.cap.put(b'\x10\x20\x30\x00' * (150 * 70))
-        v = Viewer(self.port, 'correct horse')
+        v = connect(self.port, 'correct horse')
         self.addCleanup(v.close)
         v.encodings([vnc.ENC_RAW])
         v.request(0)
@@ -262,28 +288,80 @@ class VncConversation(Patch):
         self.patch(vnc, 'pause', lambda s: None)
         for _ in range(vnc.FAIL_LIMIT):
             with self.assertRaises(PermissionError) as e:
-                Viewer(self.port, 'wrong password')
+                connect(self.port, 'wrong password')
             self.assertIn('Wrong password', str(e.exception))
         with self.assertRaises(PermissionError) as e:
-            Viewer(self.port, 'correct horse')
+            connect(self.port, 'correct horse')
         self.assertIn('Too many wrong passwords', str(e.exception))
 
     def test_no_password_yet(self):
         self.srv._password = ''
         with self.assertRaises(PermissionError) as e:
-            Viewer(self.port, 'anything at all')
+            connect(self.port, 'anything at all')
         self.assertIn('no password yet', str(e.exception))
 
     def test_view_only_input_is_dropped(self):
         got = []
         self.srv.backend = type('B', (), {'key': lambda s, *a: got.append(a), 'pointer': lambda s, *a: got.append(a),
                                           'button': lambda s, *a: got.append(a), 'scroll': lambda s, *a: got.append(a)})()
-        v = Viewer(self.port, 'correct horse')
+        v = connect(self.port, 'correct horse')
         self.addCleanup(v.close)
         v.s.sendall(struct.pack('!BBxxI', 4, 1, 0x61) + struct.pack('!BBHH', 5, 1, 10, 10))
         v.request(0)
         v.update()
         self.assertEqual(got, [])
+
+
+    def test_one_sign_in_at_a_time_per_address(self):
+        first = socket.create_connection(('127.0.0.1', self.port), timeout=5)
+        self.assertEqual(recv_exact(first, 12), b'RFB 003.008\n')      # waiting to sign in
+        second = socket.create_connection(('127.0.0.1', self.port), timeout=5)
+        self.assertEqual(second.recv(12), b'')                          # closed without a word
+        second.close()
+        first.close()
+        v = connect(self.port, 'correct horse')                          # free again
+        v.close()
+
+    def test_parallel_guesses_count_and_many_failures_pause_everyone(self):
+        self.patch(vnc, 'pause', lambda s: None)
+        self.patch(vnc, 'GLOBAL_FAILS', 3)
+        told = []
+        self.patch(vnc, 'notify', lambda *a: told.append(a))
+        for _ in range(3):
+            with self.assertRaises(PermissionError):
+                connect(self.port, 'nope nope')
+        self.assertGreater(self.srv.paused_until, time.time())
+        self.assertTrue(any('paused' in t[0] for t in told))
+        with self.assertRaises(ConnectionError):
+            Viewer(self.port, 'correct horse')                           # even the right password waits now
+        with open(vnc.CLIENTS) as f:
+            self.assertTrue(json.load(f)['paused'])
+
+    def test_a_bad_version_string_ends_only_that_connection(self):
+        raw = socket.create_connection(('127.0.0.1', self.port), timeout=5)
+        recv_exact(raw, 12)
+        raw.sendall(b'RFB 003.0x8\n')
+        self.assertEqual(raw.recv(16), b'')
+        raw.close()
+        v = connect(self.port, 'correct horse')
+        v.close()
+
+    def test_a_full_server_closes_new_connections(self):
+        self.patch(vnc, 'MAX_PENDING', 0)
+        with self.assertRaises(ConnectionError):
+            Viewer(self.port, 'correct horse')
+
+    def test_reach_back_to_tailscale_disconnects_home_viewers(self):
+        v = connect(self.port, 'correct horse')
+        self.addCleanup(v.close)
+        for _ in range(50):
+            if self.srv.clients:
+                break
+            time.sleep(0.05)
+        c = list(self.srv.clients.values())[0]
+        c.via = 'home'
+        self.assertEqual(self.srv.apply_settings({'reach': 'tailscale', 'viewOnly': False}), 1)
+        self.assertTrue(c.closed)
 
 
 class X509(Patch):
@@ -295,7 +373,7 @@ class X509(Patch):
         self.patch(vnc, 'CERT_DIR', d)
         self.patch(vnc, 'CERT', os.path.join(d, 'cert.pem'))
         self.patch(vnc, 'KEY', os.path.join(d, 'key.pem'))
-        self.assertTrue(vnc.ensure_cert())
+        self.assertTrue(vnc.ensure_cert(), vnc.CERT_ERROR[0])
         self.assertEqual(os.stat(vnc.KEY).st_mode & 0o777, 0o600)
         fp = vnc.fingerprint()
         self.assertEqual(len(fp.split(':')), 32)
@@ -366,6 +444,38 @@ class Pieces(unittest.TestCase):
         self.assertEqual(hs.caps_size(line), (2560, 1440))
         self.assertIsNone(hs.caps_size('nothing here'))
 
+    def test_address_keys(self):
+        self.assertEqual(vnc.addr_key('192.168.1.5'), '192.168.1.5')
+        self.assertEqual(vnc.addr_key('::ffff:192.168.1.5'), '192.168.1.5')
+        # Every address in one /64 is one device: rotating addresses doesn't get more guesses.
+        self.assertEqual(vnc.addr_key('fd7a:115c:a1e0:ab12::1'), vnc.addr_key('fd7a:115c:a1e0:ab12:ffff::9'))
+        self.assertNotEqual(vnc.addr_key('fd7a:115c:a1e0:ab12::1'), vnc.addr_key('fd7a:115c:a1e0:ab13::1'))
+
+    def test_tailscale_needs_tailscales_own_address_here(self):
+        ts = {'100.71.12.40', 'fd7a:115c:a1e0::40'}
+        self.assertTrue(vnc.tailscale_ok('100.71.12.40', ts))
+        self.assertTrue(vnc.tailscale_ok('::ffff:100.71.12.40', ts))
+        self.assertFalse(vnc.tailscale_ok('100.80.0.2', ts))      # carrier-grade NAT, not Tailscale
+        self.assertFalse(vnc.tailscale_ok('192.168.1.20', ts))
+
+    def test_keyring_search_never_unlocks(self):
+        self.assertEqual(vnc.parse_search('[/org/freedesktop/secrets/collection/login/7]\nlabel = x\nsecret = pw here\n'), ('pw here', '', 'ok'))
+        self.assertEqual(vnc.parse_search('[/org/freedesktop/secrets/collection/login/7]\nlabel = x\n')[2], 'locked')
+        self.assertEqual(vnc.parse_search('')[2], 'none')
+
+    def test_no_runtime_folder_no_control_socket(self):
+        self.assertTrue(vnc.CONTROL.endswith('/hearth-vnc/control'))
+        old = os.environ.pop('XDG_RUNTIME_DIR')
+        try:
+            bare = load(SHELL / 'hearth-vnc', 'hearth_vnc_bare')
+        finally:
+            os.environ['XDG_RUNTIME_DIR'] = old
+        self.assertEqual((bare.CONTROL, bare.CLIENTS), ('', ''))      # never /tmp
+        self.assertIsNone(bare.control({'cmd': 'kick'}))
+        buf = io.StringIO()
+        with redirect_stdout(buf):
+            self.assertEqual(bare.main(['disconnect', 'all']), 0)
+
     def test_input_kinds(self):
         self.assertEqual(vnc.input_kind(True, 2)[0], 'none')
         self.assertEqual(vnc.input_kind(False, 2)[0], 'portal')
@@ -386,7 +496,7 @@ class Settings(Patch):
 
         def fake_run(cmd, timeout=10, inp=None):
             self.calls.append((list(cmd), inp))
-            if cmd[:2] == ['secret-tool', 'lookup']:
+            if cmd[:2] == ['secret-tool', 'search']:
                 return (1, '', '')
             return (0, '', '')
         self.patch(vnc, 'run', fake_run)
@@ -406,6 +516,8 @@ class Settings(Patch):
         self.assertEqual(rc, 0, line)
         self.assertEqual(json.loads(line)['choices']['sound'], 'desktop')
         self.assertEqual(self.files(), [])
+        # Never `secret-tool lookup` (it can ask at the PC to unlock the keyring).
+        self.assertFalse([c for c, _ in self.calls if c[:2] == ['secret-tool', 'lookup']])
 
     def test_a_change_writes_only_its_key(self):
         with open(vnc.SETTINGS, 'w') as f:
@@ -486,6 +598,62 @@ class Wiring(unittest.TestCase):
         self.assertIn('/hearth-vnc/clients.json', ind)
         self.assertTrue(rec.STATE.endswith('/hearth-record/state.json'))
         self.assertTrue(vnc.CLIENTS.endswith('/hearth-vnc/clients.json'))
+
+
+class RecorderProcesses(Patch):
+    """Stop never signals anything but a running `hearth-record run` of ours (pid 0 is the caller's process group),
+    and a run that dies leaves the state idle, never "starting" for ever."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.patch(rec, 'RUNTIME', self.d)
+        self.patch(rec, 'STATE', os.path.join(self.d, 'state.json'))
+        self.patch(rec, 'LOG', os.path.join(self.d, 'last.log'))
+
+    def put(self, st):
+        with open(rec.STATE, 'w') as f:
+            json.dump(st, f)
+
+    def test_only_our_run_counts(self):
+        for pid in (0, -1, 1, None, 'x', os.getpid()):
+            self.assertFalse(rec.ours(pid), pid)
+        other = _subprocess.Popen(['sleep', '30'])
+        self.addCleanup(other.kill)
+        self.assertFalse(rec.ours(other.pid))
+        fake = os.path.join(self.d, 'hearth-record')
+        with open(fake, 'w') as f:
+            f.write('import time\ntime.sleep(30)\n')
+        mine = _subprocess.Popen([sys.executable, fake, 'run'])
+        self.addCleanup(mine.kill)
+        time.sleep(0.3)
+        self.assertTrue(rec.ours(mine.pid))
+
+    def test_pid_zero_is_idle_and_stop_signals_nothing(self):
+        self.put({'state': 'starting', 'pid': 0, 'since': 0})
+        self.assertEqual(rec.read_state()['state'], 'idle')
+        kills = []
+        self.patch(rec.os, 'kill', lambda *a: kills.append(a))
+        self.put({'state': 'recording', 'pid': 0, 'since': 1, 'file': '/x.mp4'})
+        rc, line = run_cmd(rec, ['stop'])
+        self.assertEqual(rc, 0, line)
+        self.assertEqual(kills, [])
+        self.assertEqual(rec.read_state()['state'], 'idle')
+
+    def test_a_run_that_dies_early_leaves_idle(self):
+        fake = os.path.join(self.d, 'dies.py')
+        with open(fake, 'w') as f:
+            f.write('import sys\nsys.exit(3)\n')
+        self.patch(rec, 'SELF', fake)
+        self.patch(rec, 'load', lambda: dict(rec.DEFAULTS))
+        real_which = rec.shutil.which
+        self.patch(rec.shutil, 'which', lambda n: '/usr/bin/' + n if n == 'gst-launch-1.0' else real_which(n))
+        rc, line = run_cmd(rec, ['start'])
+        self.assertEqual(rc, 1, line)
+        st = rec.read_state()
+        self.assertEqual(st['state'], 'idle')
+        self.assertTrue(st.get('error'))
+        with open(rec.STATE) as f:
+            self.assertEqual(json.load(f)['state'], 'idle')     # on disk too, not just read as idle
 
 
 class RecorderPipeline(unittest.TestCase):

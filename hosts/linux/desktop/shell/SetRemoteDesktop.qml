@@ -137,10 +137,12 @@ SetPage {
     SetChoice {
         visible: page.on
         title: "Reachable"
-        sub: "Never from the internet. Tailscale only keeps it closed to your home network too"
+        sub: page.st && page.st.reach === "home"
+             ? "Never from the internet. Anyone on your home network or Wi-Fi can reach its sign-in (they still need the password)"
+             : "Never from the internet. Tailscale only keeps it closed to your home network too"
         options: [{ value: "tailscale", label: "Tailscale only" }, { value: "home", label: "Tailscale and home network" }]
         current: page.st ? page.st.reach : "tailscale"
-        onChosen: v => page.runIt(["set", "reach", v], v === "home" ? "Your home network can connect too." : "Only through Tailscale now.", "reach")
+        onChosen: v => page.runIt(["set", "reach", v], v === "home" ? "Your home network can connect too." : "Only through Tailscale now: anyone connected from the home network was disconnected.", "reach")
     }
     SetSwitch {
         visible: page.on
@@ -168,7 +170,7 @@ SetPage {
     Text {
         visible: page.on
         Layout.fillWidth: true
-        text: "Every connection is encrypted (TLS) and shows a notification and a dot on the bar while it lasts; pick it there to disconnect. Five wrong passwords lock that device out for five minutes. The first time, this PC asks you to allow sharing its screen; on KDE's desktop that answer is remembered."
+        text: "Every connection is encrypted (TLS) and shows a notification and a dot on the bar while it lasts; pick it there to disconnect. Five wrong passwords lock that device out for five minutes, and many from anywhere pause new connections for ten. The first time, this PC asks you to allow sharing its screen; on KDE's desktop that answer is remembered."
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap
     }
 }

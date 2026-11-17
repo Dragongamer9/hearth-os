@@ -3,7 +3,7 @@
 KRDC, RealVNC-compatible viewers that do VeNCrypt), on your other devices through Tailscale, or your home network too.
 Never the internet. Off by default; nothing about it is on in the image.
 
-The screen comes from the desktop's screen-sharing portal (hearth_screencast: KWin's, or labwc's wlr backend), the
+The screen comes from the desktop's screen-sharing portal (hearth_portal_client: KWin's, or labwc's wlr backend), the
 keyboard and mouse through the portal's RemoteDesktop on KWin; on labwc (whose portal has no RemoteDesktop) through a
 virtual keyboard and mouse (uinput, which Hearth lets the person at the PC use), else it's view-only and says so.
 The portal asks at the PC the first time; KWin remembers that answer (its restore token, kept in the state folder).
@@ -60,9 +60,10 @@ CERT_DIR = os.path.join(DATA_HOME, 'nimbus', 'vnc')
 CERT = os.path.join(CERT_DIR, 'cert.pem')
 KEY = os.path.join(CERT_DIR, 'key.pem')
 PORTAL_STATE = os.path.join(STATE_HOME, 'nimbus', 'vnc-portal.json')
-RUNTIME = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-vnc')
-CLIENTS = os.path.join(RUNTIME, 'clients.json')
-CONTROL = os.path.join(RUNTIME, 'control')
+# Only the session's own runtime folder (0700, this account's): never /tmp, where another account could put a socket.
+RUNTIME = os.path.join(os.environ['XDG_RUNTIME_DIR'], 'hearth-vnc') if os.environ.get('XDG_RUNTIME_DIR') else ''
+CLIENTS = os.path.join(RUNTIME, 'clients.json') if RUNTIME else ''
+CONTROL = os.path.join(RUNTIME, 'control') if RUNTIME else ''
 UNIT = 'hearth-vnc.service'
 PORT = int(os.environ.get('HEARTH_VNC_PORT') or 5900)
 DEFAULTS = {'on': False, 'reach': 'tailscale', 'viewOnly': False}
@@ -79,7 +80,11 @@ VENC_TLSPLAIN, VENC_X509PLAIN = 259, 262
 ENC_RAW, ENC_ZRLE, ENC_DESKTOPSIZE = 0, 16, -223
 TILE = 64
 MAX_FPS = 20
-FAIL_LIMIT, LOCKOUT = 5, 300
+FAIL_LIMIT, LOCKOUT = 5, 300           # wrong passwords from one address (an IPv6 /64), then locked out this long
+GLOBAL_FAILS, GLOBAL_WINDOW, PAUSE = 20, 600, 600   # wrong passwords from anyone in a window: new connections pause
+MAX_CLIENTS, MAX_PENDING = 6, 3        # connections in all, and ones that haven't signed in yet (one per address)
+HANDSHAKE_TIMEOUT = 10                 # seconds to finish signing in
+MAX_FAIL_RECORDS = 1024
 
 
 def out(obj):
@@ -94,7 +99,7 @@ def fail(msg):
 
 def run(cmd, timeout=10, inp=None):
     try:
-        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, input=inp)
+        p = subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=timeout, input=inp)
         return p.returncode, p.stdout, p.stderr
     except Exception as e:
         return 127, '', str(e)
@@ -122,17 +127,79 @@ def peer_allowed(ip, reach):
     return ''
 
 
+def addr_key(ip):
+    """What wrong passwords and the one-at-a-time rule count by: the address, or its /64 for IPv6 (one device can
+    take any address in its /64)."""
+    try:
+        a = ipaddress.ip_address(ip.split('%')[0])
+    except ValueError:
+        return ip
+    if getattr(a, 'ipv4_mapped', None):
+        a = a.ipv4_mapped
+    if a.version == 6:
+        return str(ipaddress.ip_network(str(a) + '/64', strict=False))
+    return str(a)
+
+
+def tailscale_ips():
+    if not shutil.which('tailscale'):
+        return set()
+    code, so, _e = run(['tailscale', 'ip'], 5)
+    return {l.strip() for l in so.splitlines() if l.strip()} if code == 0 else set()
+
+
+def tailscale_ok(local_ip, ts_ips):
+    """A 100.64/10 source is Tailscale only when it reached this PC on Tailscale's own address (that range is also
+    carrier-grade NAT)."""
+    try:
+        a = ipaddress.ip_address(local_ip.split('%')[0])
+    except ValueError:
+        return False
+    if getattr(a, 'ipv4_mapped', None):
+        a = a.ipv4_mapped
+    return str(a) in ts_ips
+
+
 # ---- the password (libsecret)
+_PW_CACHE = {'at': 0.0, 'value': (None, '', 'none')}
+PW_CACHE_SECONDS = 10
+
+
+def keyring_state(cache=True):
+    """(password or None, why, state): state is ok, none (no password), locked or missing (no secret-tool).
+    `secret-tool search` without --unlock: it never pops a keyring-unlock prompt (a connection attempt must never ask
+    anything at the PC). A locked keyring lists the item without its secret. Kept 10 seconds, so a flood of attempts
+    doesn't run secret-tool for each one."""
+    now = time.monotonic()
+    if cache and now - _PW_CACHE['at'] < PW_CACHE_SECONDS:
+        return _PW_CACHE['value']
+    if not shutil.which('secret-tool'):
+        v = (None, "the keyring tool (secret-tool) isn't installed", 'missing')
+    else:
+        code, so, se = run(['secret-tool', 'search'] + SECRET_ATTRS, 15)
+        v = parse_search(so + '\n' + se) if code == 0 else (None, '', 'none')
+    _PW_CACHE['at'], _PW_CACHE['value'] = now, v
+    return v
+
+
+def parse_search(text):
+    found = False
+    for line in text.splitlines():
+        if line.startswith('[/'):
+            found = True
+        elif line.startswith('secret = '):
+            pw = line[len('secret = '):]
+            if pw:
+                return pw, '', 'ok'
+    if found:
+        return None, 'the keyring is locked: sign out and in again on this PC', 'locked'
+    return None, '', 'none'
+
+
 def password_get():
     """(password or None, why)."""
-    if not shutil.which('secret-tool'):
-        return None, "the keyring tool (secret-tool) isn't installed"
-    code, so, se = run(['secret-tool', 'lookup'] + SECRET_ATTRS, 15)
-    if code == 0 and so:
-        return so.rstrip('\n'), ''
-    if 'locked' in (se or '').lower() or 'dismissed' in (se or '').lower():
-        return None, 'the keyring is locked'
-    return None, ''
+    pw, why, _state = keyring_state()
+    return pw, why
 
 
 def cmd_password():
@@ -140,6 +207,8 @@ def cmd_password():
     if not pw:
         pw = sys.stdin.read() if not sys.stdin.isatty() else ''
     pw = pw.rstrip('\n')
+    if '\n' in pw or '\r' in pw:
+        return fail('use one line')
     if len(pw) < MIN_PASSWORD:
         return fail('use at least %d characters' % MIN_PASSWORD)
     if len(pw) > 255:
@@ -149,6 +218,7 @@ def cmd_password():
     code, _o, se = run(['secret-tool', 'store', '--label=Hearth remote desktop (VNC)'] + SECRET_ATTRS, 20, inp=pw)
     if code != 0:
         return fail("couldn't keep it in your keyring" + (': ' + se.strip().splitlines()[-1] if se.strip() else ''))
+    _PW_CACHE['at'] = 0
     return out({'ok': True})
 
 
@@ -159,6 +229,9 @@ def cmd_forget():
 
 
 # ---- this PC's certificate
+CERT_ERROR = ['']
+
+
 def ensure_cert():
     if os.path.exists(CERT) and os.path.exists(KEY):
         return True
@@ -168,11 +241,12 @@ def ensure_cert():
     name = 'Hearth remote desktop ' + (socket.gethostname() or 'PC')
     old = os.umask(0o077)
     try:
-        code, _o, _e = run(['openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes',
+        code, _o, err = run(['openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes',
                             '-keyout', KEY + '.tmp', '-out', CERT + '.tmp', '-days', '3650', '-subj', '/CN=' + name[:60]], 60)
     finally:
         os.umask(old)
     if code != 0:
+        CERT_ERROR[0] = (err.strip().splitlines() or ['openssl failed'])[-1]
         return False
     os.replace(KEY + '.tmp', KEY)
     os.replace(CERT + '.tmp', CERT)
@@ -237,6 +311,8 @@ def addresses():
 
 
 def read_clients():
+    if not CLIENTS:
+        return {}
     try:
         with open(CLIENTS, encoding='utf-8') as f:
             c = json.load(f)
@@ -252,20 +328,14 @@ def read_clients():
 def cmd_status():
     s = load()
     try:
-        import hearth_screencast as hs
+        import hearth_portal_client as hs
         ok, why, rd = hs.available()
     except Exception as e:
         ok, why, rd = False, str(e), 0
     kind, kind_why = input_kind(bool(s['viewOnly']), rd)
-    has_pw = False
-    keyring = 'ok'
-    if not shutil.which('secret-tool'):
-        keyring = 'missing'
-    else:
-        pw, why_pw = password_get()
-        has_pw = bool(pw)
-        if why_pw == 'the keyring is locked':
-            keyring = 'locked'
+    _pw, _why, kstate = keyring_state(cache=False)
+    has_pw = kstate in ('ok', 'locked')
+    keyring = kstate if kstate in ('missing', 'locked') else 'ok'
     c = read_clients()
     running = bool(c) or service_active()
     tips = []
@@ -273,6 +343,10 @@ def cmd_status():
         tips.append('Set a password: nobody can connect without one')
     if s['on'] and not ok:
         tips.append("The screen can't be shared on this desktop: " + why)
+    if c.get('paused') and c.get('error'):
+        tips.append(c['error'])
+    if s['on'] and keyring == 'locked':
+        tips.append('Your keyring is locked, so nobody can sign in: sign out and in again on this PC')
     try:
         with open(PORTAL_STATE, encoding='utf-8') as f:
             approved = bool(json.load(f).get('token'))
@@ -322,6 +396,8 @@ def cmd_set(key, value):
 
 
 def control(msg, timeout=5):
+    if not CONTROL:
+        return None
     try:
         c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         c.settimeout(timeout)
@@ -505,14 +581,14 @@ class Capture:
         self.restart_wanted = False
 
     def start(self):
-        import hearth_screencast as hs
+        import hearth_portal_client as hs
         self.hs = hs
         fd = self.sess.fd()
         r, wfd = os.pipe()
         desc = ('pipewiresrc fd=%d path=%d do-timestamp=true ! videorate drop-only=true max-rate=%d ! videoconvert ! '
                 'video/x-raw,format=BGRx ! fdsink fd=%d sync=false' % (fd, self.sess.node(), MAX_FPS, wfd))
         self.proc = subprocess.Popen(['gst-launch-1.0', '-v', desc], pass_fds=(fd, wfd), stdin=subprocess.DEVNULL,
-                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="replace")
         os.close(fd)
         os.close(wfd)
         self.rfd = r
@@ -661,7 +737,13 @@ class Server:
         self.clients = {}
         self.lock = threading.RLock()
         self.next_id = 1
-        self.fails = {}                 # ip -> (count, until)
+        self.fails = {}                 # addr_key -> (count, until), under self.lock, at most MAX_FAIL_RECORDS
+        self.recent_fails = []          # times of wrong passwords from anyone (GLOBAL_WINDOW)
+        self.paused_until = 0.0
+        self.pending = set()            # addr_keys signing in now (one each)
+        self.cap_lock = threading.Lock()   # making or dropping the screen (can wait on the portal); never self.lock
+        self.ts_ips = set()
+        self.ts_at = 0.0
         self.sess = None
         self.capture = frames           # a test passes a fake capture
         self.backend = None
@@ -674,6 +756,37 @@ class Server:
         self.ctx_anon = None
         self.stopping = False
 
+    def tailscale_addresses(self):
+        if time.monotonic() - self.ts_at > 60:
+            self.ts_ips, self.ts_at = tailscale_ips(), time.monotonic()
+        return self.ts_ips
+
+    def via_for(self, sock, ip):
+        via = peer_allowed(ip, self.settings.get('reach', 'tailscale'))
+        if via == 'tailscale':
+            try:
+                local = sock.getsockname()[0]
+            except OSError:
+                return ''
+            if not tailscale_ok(local, self.tailscale_addresses()):
+                return ''
+        return via
+
+    def apply_settings(self, settings):
+        """New choices from Settings: view only now, and home-network viewers leave when it's Tailscale only."""
+        self.settings = settings
+        view_only = bool(settings.get('viewOnly'))
+        drop = []
+        with self.lock:
+            for cl in self.clients.values():
+                cl.view_only = view_only or self.input == 'none'
+                if settings.get('reach') != 'home' and cl.via == 'home':
+                    drop.append(cl)
+        for cl in drop:
+            cl.close()
+        self.publish()
+        return len(drop)
+
     # ---- TLS
     def tls(self):
         if self.ctx_x509 is None and os.path.exists(CERT):
@@ -683,7 +796,7 @@ class Server:
             self.ctx_x509 = c
         if self.ctx_anon is None:
             c = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
-            c.minimum_version = c.maximum_version = ssl.TLSVersion.TLSv1_2   # anonymous suites are TLS 1.2 only
+            c.minimum_version = c.maximum_version = ssl.TLSVersion.TLSv1_2   # anonymous suites are TLS 1.2 only (Tailscale only)
             c.set_ciphers('aNULL:!eNULL:!EXPORT:!DES:!RC4:!MD5:@SECLEVEL=0')
             self.ctx_anon = c
 
@@ -694,7 +807,9 @@ class Server:
 
     # ---- the screen, shared by every connection, open only while someone is connected
     def ensure_capture(self):
-        with self.lock:
+        # Its own lock: the portal may wait minutes for an answer at the PC, and kick, publish and new connections
+        # (self.lock) must not wait with it.
+        with self.cap_lock:
             if self.idle_timer:
                 self.idle_timer.cancel()
                 self.idle_timer = None
@@ -705,7 +820,7 @@ class Server:
             if self.capture:
                 self.capture.stop()
                 self.capture = None
-            import hearth_screencast as hs
+            import hearth_portal_client as hs
             if self.sess is None or self.sess.closed.is_set():
                 ok, why, rd = hs.available()
                 if not ok:
@@ -744,18 +859,21 @@ class Server:
         self.kick('all')
 
     def release_capture_later(self):
-        with self.lock:
-            if self.clients or self.idle_timer:
+        with self.cap_lock:
+            with self.lock:
+                busy = bool(self.clients)
+            if busy or self.idle_timer:
                 return
             self.idle_timer = threading.Timer(15, self.release_capture)
             self.idle_timer.daemon = True
             self.idle_timer.start()
 
     def release_capture(self):
-        with self.lock:
+        with self.cap_lock:
             self.idle_timer = None
-            if self.clients:
-                return
+            with self.lock:
+                if self.clients:
+                    return
             if self.capture and not getattr(self.capture, 'fake', False):
                 self.capture.stop()
                 self.capture = None
@@ -769,9 +887,13 @@ class Server:
 
     # ---- who's connected (the bar's dot and Settings watch this file)
     def publish(self):
-        data = {'pid': os.getpid(), 'port': PORT, 'input': self.input, 'inputWhy': self.input_why, 'error': self.error,
-                'clients': [{'id': c.id, 'ip': c.ip, 'name': c.name, 'via': c.via, 'since': c.since, 'viewOnly': c.view_only}
-                            for c in self.clients.values() if c.authed]}
+        with self.lock:
+            data = {'pid': os.getpid(), 'port': PORT, 'input': self.input, 'inputWhy': self.input_why, 'error': self.error,
+                    'paused': self.paused_until > time.time(),
+                    'clients': [{'id': c.id, 'ip': c.ip, 'name': c.name, 'via': c.via, 'since': c.since, 'viewOnly': c.view_only}
+                                for c in self.clients.values() if c.authed]}
+        if not CLIENTS:
+            return
         try:
             os.makedirs(RUNTIME, mode=0o700, exist_ok=True)
             tmp = CLIENTS + '.tmp'
@@ -789,30 +911,80 @@ class Server:
         return {'ok': True, 'disconnected': len(targets)}
 
     # ---- wrong passwords
-    def locked_out(self, ip):
-        n, until = self.fails.get(ip, (0, 0))
-        return n >= FAIL_LIMIT and time.time() < until
+    def locked_out(self, key):
+        with self.lock:
+            n, until = self.fails.get(key, (0, 0))
+            return n >= FAIL_LIMIT and time.time() < until
 
-    def failed(self, ip):
-        n, until = self.fails.get(ip, (0, 0))
-        if until and time.time() > until:
-            n = 0
-        n += 1
-        self.fails[ip] = (n, time.time() + LOCKOUT)
+    def failed(self, key):
+        now = time.time()
+        paused = False
+        with self.lock:
+            n, until = self.fails.get(key, (0, 0))
+            if until and now > until:
+                n = 0
+            n += 1
+            self.fails[key] = (n, now + LOCKOUT)
+            if len(self.fails) > MAX_FAIL_RECORDS:
+                for k, _v in sorted(self.fails.items(), key=lambda kv: kv[1][1])[:len(self.fails) - MAX_FAIL_RECORDS]:
+                    del self.fails[k]
+            self.recent_fails = [t for t in self.recent_fails if now - t < GLOBAL_WINDOW] + [now]
+            if len(self.recent_fails) >= GLOBAL_FAILS and self.paused_until <= now:
+                self.paused_until = now + PAUSE
+                self.recent_fails = []
+                self.error = 'Too many wrong passwords: new connections are paused for %d minutes' % (PAUSE // 60)
+                paused = True
+        if paused:
+            notify('Remote desktop paused', 'Many wrong passwords were tried, from more than one address. Nobody new can '
+                   'connect for %d minutes. If that wasn\'t you, turn Remote desktop off in Settings.' % (PAUSE // 60))
+            self.publish()
         return n
+
+    def succeeded(self, key):
+        with self.lock:
+            self.fails.pop(key, None)
+
+    def admit(self, key):
+        """A new connection's turn to sign in, or why not (it's then closed without a word)."""
+        now = time.time()
+        with self.lock:
+            if self.paused_until > now:
+                return 'paused'
+            if self.paused_until and self.error.startswith('Too many wrong passwords'):
+                self.paused_until, self.error = 0.0, ''
+            if key in self.pending:
+                return 'one at a time'
+            if len(self.pending) >= MAX_PENDING:
+                return 'busy'
+            if len(self.pending) + sum(1 for c in self.clients.values() if c.authed) >= MAX_CLIENTS:
+                return 'full'
+            self.pending.add(key)
+            return ''
+
+    def signed_in(self, key):
+        with self.lock:
+            self.pending.discard(key)
 
     # ---- serving
     def handle(self, sock, addr):
-        via = peer_allowed(addr[0], self.settings.get('reach', 'tailscale'))
-        if not via:
-            sock.close()                  # nothing is sent to an address that isn't allowed
+        via = self.via_for(sock, addr[0])
+        key = addr_key(addr[0])
+        if not via or self.admit(key):
+            try:
+                sock.close()              # nothing is sent to an address that isn't allowed, or when it's not its turn
+            except OSError:
+                pass
             return
         c = Client(self, sock, addr[0], via)
+        c.key = key
         try:
             c.serve()
-        except (ConnectionError, OSError, ssl.SSLError, struct.error):
+        except (ConnectionError, OSError, ssl.SSLError, struct.error, ValueError):
             pass
+        except Exception as e:            # never the server: one connection's problem ends only that connection
+            print('hearth-vnc: a connection ended: %r' % e, file=sys.stderr)
         finally:
+            self.signed_in(key)
             c.close()
             with self.lock:
                 if self.clients.pop(c.id, None) is not None:
@@ -833,7 +1005,7 @@ class Server:
             host = '0.0.0.0' if host == '::' else host
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         s.bind((host, port))
-        s.listen(8)
+        s.listen(16)
         self.sock = s
         return s
 
@@ -848,6 +1020,8 @@ class Server:
             threading.Thread(target=self.handle, args=(cs, addr), daemon=True, name='client').start()
 
     def control_server(self):
+        if not CONTROL:
+            return
         try:
             os.makedirs(RUNTIME, mode=0o700, exist_ok=True)
             try:
@@ -871,13 +1045,7 @@ class Server:
                 if msg.get('cmd') == 'kick':
                     r = self.kick(msg.get('id', 'all'))
                 elif msg.get('cmd') == 'reload':
-                    self.settings = load()
-                    view_only = bool(self.settings.get('viewOnly'))
-                    with self.lock:
-                        for cl in self.clients.values():
-                            cl.view_only = view_only or self.input == 'none'
-                    self.publish()
-                    r = {'ok': True}
+                    r = {'ok': True, 'disconnected': self.apply_settings(load())}
                 else:
                     r = {'ok': False}
                 c.sendall((json.dumps(r) + '\n').encode())
@@ -915,6 +1083,7 @@ class Client:
         self.sock = sock
         self.ip = ip
         self.via = via
+        self.key = ip
         self.name = ''
         self.id = 0
         self.since = int(time.time())
@@ -956,18 +1125,18 @@ class Client:
 
     def serve(self):
         s = self.sock
-        s.settimeout(30)
+        s.settimeout(HANDSHAKE_TIMEOUT)
         s.sendall(b'RFB 003.008\n')
         ver = recv_exact(s, 12)
-        if not ver.startswith(b'RFB 003.'):
+        if not ver.startswith(b'RFB 003.') or not ver[8:11].isdigit():
             raise ConnectionError('not VNC')
-        minor = int(ver[8:11] or b'0')
+        minor = int(ver[8:11])
         if minor < 7:
             # RFB 3.3 can't do VeNCrypt: a reason and goodbye
             msg = b'This PC needs a VNC app with VeNCrypt (TLS), like TigerVNC or Remmina'
             s.sendall(p32(0) + p32(len(msg)) + msg)
             raise ConnectionError('old viewer')
-        if self.srv.locked_out(self.ip):
+        if self.srv.locked_out(self.key):
             msg = b'Too many wrong passwords from this address: try again in a few minutes'
             s.sendall(p8(0) + p32(len(msg)) + msg)
             raise ConnectionError('locked out')
@@ -981,8 +1150,8 @@ class Client:
             raise ConnectionError('VeNCrypt version')
         s.sendall(b'\x00')
         subs = [VENC_X509PLAIN] if self.srv.ctx_x509 else []
-        if self.via in ('tailscale', 'local'):
-            subs.append(VENC_TLSPLAIN)       # anonymous TLS only inside Tailscale's own tunnel (or this PC)
+        if self.via == 'tailscale':
+            subs.append(VENC_TLSPLAIN)       # anonymous TLS only inside Tailscale's own tunnel (its WireGuard keys)
         if not subs:
             raise ConnectionError('no certificate')
         s.sendall(p8(len(subs)) + b''.join(p32(x) for x in subs))
@@ -1003,10 +1172,11 @@ class Client:
             self.refuse('Remote desktop has no password yet: set one in Settings on this PC' if not why else
                         'This PC can\'t check passwords right now (%s)' % why)
         if not hmac_eq(given, want.encode()):
-            n = self.srv.failed(self.ip)
+            n = self.srv.failed(self.key)
             pause(min(3, n))
             self.refuse('Wrong password')
-        self.srv.fails.pop(self.ip, None)
+        self.srv.succeeded(self.key)
+        self.srv.signed_in(self.key)
         s.sendall(p32(0))
         recv_exact(s, 1)                     # ClientInit's shared flag: everyone shares
         cap = self.srv.ensure_capture()
@@ -1171,6 +1341,8 @@ def cmd_serve():
     s = load()
     if not s.get('on'):
         return fail("remote desktop is off (Settings › Remote desktop)")
+    if not RUNTIME:
+        return fail('XDG_RUNTIME_DIR is not set (this runs in your desktop session)')
     ensure_cert()
     srv = Server()
     try:
