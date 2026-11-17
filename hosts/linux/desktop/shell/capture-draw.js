@@ -103,24 +103,28 @@ function blur(data, w, h, radius) {
     return data;
 }
 
-// Squares of B×B (the grid moved back by OFF) filled with the average colour of DATA (W×H, RGBA) under each, at
-// (OX, OY) on CTX, with ALPHA.
-function blocks(ctx, data, w, h, ox, oy, b, off, alpha) {
-    for (var by = -off; by < h; by += b) {
-        for (var bx = -off; bx < w; bx += b) {
-            var r = 0, g = 0, bl = 0, n = 0, y0 = Math.max(0, by), x0 = Math.max(0, bx), ey = Math.min(h, by + b), ex = Math.min(w, bx + b);
-            for (var y = y0; y < ey; y += 2) for (var x = x0; x < ex; x += 2) { var i = (y * w + x) * 4; r += data[i]; g += data[i + 1]; bl += data[i + 2]; n++; }
-            if (!n) continue;
-            ctx.fillStyle = "rgba(" + Math.round(r / n) + "," + Math.round(g / n) + "," + Math.round(bl / n) + "," + alpha + ")";
-            ctx.fillRect(ox + bx, oy + by, b, b);
+// Blur and Pixelate never read the canvas's pixels back (QML's canvas gives zeros there): they draw from small copies of
+// the picture that Qt decoded at a lower size (CaptureEditor.qml's pixSrc and blurSrc, PIX and BLUR of the picture's
+// width). Pixelate: each pixel of the small copy as one flat square; Blur: the small copy stretched back up, smoothly.
+var PIX = 1 / 14;
+var BLUR = 1 / 12;
+// The squares for an area of the picture (IX0..IX1, IY0..IY1 in its pixels) at scale S, picture pixel (OX, OY) at the
+// canvas's top left; KP: the small copy's size / the picture's. DRAW(tx, ty, dx, dy, dw, dh) draws small-copy pixel
+// (tx, ty) as that square. Returns how many.
+function pixelSquares(draw, ix0, iy0, ix1, iy1, kp, s, ox, oy) {
+    var n = 0, side = s / kp;
+    for (var ty = Math.floor(iy0 * kp); ty < Math.ceil(iy1 * kp); ty++)
+        for (var tx = Math.floor(ix0 * kp); tx < Math.ceil(ix1 * kp); tx++) {
+            draw(tx, ty, (tx / kp - ox) * s, (ty / kp - oy) * s, side + 0.6, side + 0.6);
+            n++;
         }
-    }
+    return n;
 }
 
 // Draws SHAPES on CTX (a Canvas 2D context) at scale S, with the picture's pixel (OX, OY) at the canvas's top left.
-// DRAWIMAGE(sx, sy, sw, sh, dx, dy, dw, dh) draws part of the picture (for blur and pixelate, which need its pixels);
-// CW, CH: the canvas's size, so a blurred area is cut to it.
-function paint(ctx, shapes, s, ox, oy, drawImage, cw, ch) {
+// SRC: {kp, kb, draw(kind, sx, sy, sw, sh, dx, dy, dw, dh)} draws part of the small copy KIND ("pix" or "blur", whose
+// sizes are KP and KB of the picture's) for Blur and Pixelate, or null while they aren't loaded; CW, CH: the canvas's size.
+function paint(ctx, shapes, s, ox, oy, src, cw, ch) {
     var X = function (v) { return (v - ox) * s; }, Y = function (v) { return (v - oy) * s; };
     for (var i = 0; i < shapes.length; i++) {
         var sh = shapes[i], lw = Math.max(1, (sh.w || 6) * s);
@@ -163,23 +167,20 @@ function paint(ctx, shapes, s, ox, oy, drawImage, cw, ch) {
             ctx.font = "700 " + Math.round(rad * 1.15) + "px sans-serif";
             ctx.textAlign = "center"; ctx.textBaseline = "middle";
             ctx.fillText(String(sh.n), X(sh.x1), Y(sh.y1) + rad * 0.05);
-        } else if ((sh.t === "blur" || sh.t === "pix") && drawImage) {
+        } else if ((sh.t === "blur" || sh.t === "pix") && src) {
             var q = normRect(X(sh.x1), Y(sh.y1), X(sh.x2), Y(sh.y2));
             var dx = Math.max(0, Math.floor(q.x)), dy = Math.max(0, Math.floor(q.y));
             var dw = Math.min(cw || 1e9, Math.ceil(q.x + q.w)) - dx, dh = Math.min(ch || 1e9, Math.ceil(q.y + q.h)) - dy;
             if (dw >= 2 && dh >= 2) {
-                // The picture's own pixels there, read back, then painted over as squares of their average colour (QML's
-                // canvas doesn't take changes to getImageData's pixels back, so nothing is written into them). Blur:
-                // smaller squares, three grids offset and blended, so it's soft and nothing readable is left.
-                drawImage(ox + dx / s, oy + dy / s, dw / s, dh / s, dx, dy, dw, dh);
-                var px = ctx.getImageData(dx, dy, dw, dh).data;
+                var ix0 = ox + dx / s, iy0 = oy + dy / s, ix1 = ox + (dx + dw) / s, iy1 = oy + (dy + dh) / s;
                 ctx.beginPath(); ctx.rect(dx, dy, dw, dh); ctx.clip();
-                if (sh.t === "pix") blocks(ctx, px, dw, dh, dx, dy, Math.max(4, Math.round(14 * s)), 0, 1);
+                if (sh.t === "pix")
+                    pixelSquares(function (tx, ty, x, y, w, h) { src.draw("pix", tx, ty, 1, 1, x, y, w, h); }, ix0, iy0, ix1, iy1, src.kp, s, ox, oy);
                 else {
-                    var bb = Math.max(3, Math.round(10 * s));
-                    blocks(ctx, px, dw, dh, dx, dy, bb, 0, 1);
-                    blocks(ctx, px, dw, dh, dx, dy, bb, Math.round(bb / 2), 0.5);
-                    blocks(ctx, px, dw, dh, dx, dy, bb, Math.round(bb / 4), 0.35);
+                    // A margin of the small copy around it, so the edges are as soft as the middle.
+                    var m = 2 / src.kb;
+                    src.draw("blur", (ix0 - m) * src.kb, (iy0 - m) * src.kb, (ix1 - ix0 + 2 * m) * src.kb, (iy1 - iy0 + 2 * m) * src.kb,
+                             dx - m * s, dy - m * s, dw + 2 * m * s, dh + 2 * m * s);
                 }
             }
         }
