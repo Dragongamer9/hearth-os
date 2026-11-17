@@ -7,6 +7,7 @@
 //! The background part (`hearth-time --service`, a systemd user service on Linux) rings alarms and timers with the
 //! apps closed, shows calendar reminders, refreshes subscribed calendars and keeps the weather summary fresh.
 
+pub mod accounts;
 pub mod alert;
 /// Safe settings files shared by Hearth's apps (atomic, .bak, damaged files put back, never defaults over them).
 #[path = "../../hearth-apptheme/appfile.rs"]

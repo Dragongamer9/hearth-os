@@ -7,7 +7,7 @@
 // Hearth's look (Settings › Appearance), shared by Hearth's apps.
 #[path = "../../hearth-apptheme/apptheme.rs"]
 mod apptheme;
-use hearth_time::{calendar, clock, notes, paths, ring, service, store, weather};
+use hearth_time::{accounts, calendar, clock, notes, paths, ring, service, store, weather};
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{WebviewUrl, WebviewWindowBuilder};
@@ -19,6 +19,7 @@ const USAGE: &str = "hearth-time: Hearth's Clock, Calendar, Notes and Weather
   hearth-time --service                     ring alarms and timers, show reminders (run by systemd: hearth-time.service)
   hearth-time --ring alarm:ID[,timer:ID]    the ringing window (the service opens it)
   hearth-time --events FROM TO              calendar events between two dates (YYYY-MM-DD) as JSON, for the taskbar
+  hearth-time --accounts-sync               send changes made to Online accounts' calendars, then get them again
   hearth-time --weather-summary             the weather in a few words as JSON (empty without a chosen place)
   hearth-time --version
 ";
@@ -121,8 +122,30 @@ fn ring_done(app: tauri::AppHandle, start: tauri::State<Start>, action: String) 
 #[tauri::command(async)]
 fn cal_get() -> Value {
     let v = calendar::load();
-    json!({"settings": v["settings"], "subs": v["subs"], "mtime": store::mtime(&paths::calendar_file())})
+    json!({"settings": v["settings"], "subs": v["subs"], "mtime": store::mtime(&paths::calendar_file()), "accounts": accounts::summary(&accounts::load())})
 }
+
+// Online accounts' calendars (accounts.rs): changes are kept on this computer first, then sent.
+
+/// Sends what's waiting and gets every account calendar again. Returns the accounts' summary.
+#[tauri::command(async)]
+fn acct_refresh() -> Result<Value, String> { accounts::refresh() }
+
+/// Saves an event in an account's calendar. SCOPE "this" with OCC: only that time of a repeating event.
+#[tauri::command(async)]
+fn acct_save(event: calendar::Event, scope: Option<String>, occ: Option<String>) -> Result<Value, String> {
+    accounts::save(&event, scope.as_deref().unwrap_or("all"), occ.as_deref())
+}
+
+#[tauri::command(async)]
+fn acct_delete(id: String, occ: Option<String>) -> Result<Value, String> { accounts::delete(&id, occ.as_deref()) }
+
+/// After a conflict: KEEP "theirs" or "mine".
+#[tauri::command(async)]
+fn acct_resolve(id: String, keep: String) -> Result<Value, String> { accounts::resolve(&id, &keep) }
+
+#[tauri::command(async)]
+fn acct_cal_set(id: String, hidden: bool) -> Result<(), String> { accounts::set_hidden(&id, hidden) }
 
 #[tauri::command(async)]
 fn cal_range(from: i64, to: i64) -> Value {
@@ -300,6 +323,12 @@ fn main() {
         }
     }
     if has("--weather-summary") { println!("{}", weather::summary_json()); return; }
+    if has("--accounts-sync") {
+        match accounts::refresh() {
+            Ok(v) => { println!("{v}"); return; }
+            Err(e) => { eprintln!("hearth-time: {e}"); println!("{}", accounts::summary(&accounts::load())); std::process::exit(1); }
+        }
+    }
 
     let ring_list: Vec<(String, String)> = value("--ring").map(|r| r.split(',').filter_map(|x| {
         let (k, id) = x.split_once(':')?;
@@ -340,6 +369,7 @@ fn main() {
             clock_get, clock_save, clock_next, ring_stop, ring_info, ring_done,
             cal_get, cal_range, cal_event, cal_put, cal_delete, cal_settings, cal_import_text, cal_ics_files, cal_import_file,
             cal_export, cal_subscribe, cal_unsubscribe, cal_sub_set, cal_refresh,
+            acct_refresh, acct_save, acct_delete, acct_resolve, acct_cal_set,
             notes_list, note_read, note_write, note_delete, note_pin, note_image_save, note_image,
             weather_get, weather_search, weather_set
         ])
