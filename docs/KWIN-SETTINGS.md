@@ -11,9 +11,10 @@ each setting has one home. Under labwc every page shows its controls greyed with
 | Tiling (`kwin-tiling`) | `SetKwinTiling.qml` | kwinrc `[Tiling][<screen id>] tiles`, `[Tiling] padding`, `[Windows]` quick tiling and snapping |
 | Screen edges (`kwin-edges`) | `SetKwinEdges.qml` | kwinrc `[ElectricBorders]`, `[TouchEdges]`, `[Effect-overview]` / `[Effect-windowview]` edge lists, `[EdgeBarrier]` |
 | Window rules (`kwin-rules`) | `SetKwinRules.qml` | kwinrulesrc (`[General] count, rules` and one group per rule) |
-| Drawing tablet & touchscreen (`kwin-tablet`) | `SetKwinTablet.qml`, `KwinCalibrate.qml` | KWin's InputDevice properties (D-Bus; KWin keeps them in kcminputrc); pen buttons in kcminputrc `[ButtonRebinds][TabletTool][<pen>]` |
+| Drawing tablet & touchscreen (`kwin-tablet`) | `SetKwinTablet.qml`, `KwinCalibrate.qml` | KWin's InputDevice properties (D-Bus; KWin keeps them in kcminputrc); pen buttons in kcminputrc `[ButtonRebinds][TabletTool][<pen>]` (`MouseButton,273` = right-click: Linux button codes); one pointer for the pen and the mouse in kcminputrc `[Tablet] SyncWithMouse` (KWin 6.7 and newer; greyed before) |
 | Full-screen games & X11 apps (`kwin-games`) | `SetKwinGames.qml` | kwinrc `[Compositing] AllowTearing`, `[Xwayland]`; kdeglobals `[KScreen] XwaylandClientsScale` |
-| Mouse & touchpad (`mouse`, extended) | `SetMouse.qml` | Hearth's `pointer.json` (shared with labwc; the KWin-only keys have no labwc part), put on KWin's devices by `hearth-kwin-settings pointer-apply` |
+| Mouse & touchpad (`mouse`, extended) | `SetMouse.qml` | Hearth's `pointer.json` (shared with labwc; the KWin-only keys have no labwc part), put on KWin's devices by `hearth-kwin-settings pointer-apply`; middle-click paste in kwinrc `[Wayland] EnablePrimarySelection` (KWin reads it when it starts) |
+| Mouse buttons (`mouse-buttons`, under Mouse & touchpad) | `SetMouseButtons.qml` | kcminputrc `[ButtonRebinds][Mouse]` (`ExtraButtonN` / `MiddleButton` = `MouseButton,<Linux code>`, `Key,<keys>` or `Disabled`), by `hearth-kwin-settings mouse-rebind`; left and right are never changed. A button is picked by pressing it in the box (`mouse-buttons:press`) |
 | Accessibility (`accessibility`, extended) | `SetAccessibility.qml` | `accessibility.json` as before (hearth-access maps the magnifier and colour filters to KWin's zoom / magnifier / invert / colorblindnesscorrection); KWin's extras in kwinrc `[Effect-zoom]` and kaccessrc `[Keyboard]`, `[Mouse]`, `[Bell]` |
 
 ## How they write
