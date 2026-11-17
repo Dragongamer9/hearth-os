@@ -39,6 +39,52 @@ def themerc_colors(text):
     return out
 
 
+# 1.14: Settings › Personalization › Window frame colour (KDE's "frame colour intensity"): the title bar and border
+# tinted with the accent, 0 (the look's own, as before) to 100 %. The active frame takes up to 55 % of the accent, the
+# inactive one half of that, so the window in front still stands out.
+TINT_KEYS = {'window.active.title.bg.color': 0.55, 'window.active.border.color': 0.7,
+             'window.inactive.title.bg.color': 0.27, 'window.inactive.border.color': 0.35}
+
+
+def mix(a, b, t):
+    a, b = a.lstrip('#'), b.lstrip('#')
+    ca = [int(a[i:i + 2], 16) for i in (0, 2, 4)]
+    cb = [int(b[i:i + 2], 16) for i in (0, 2, 4)]
+    return '#%02x%02x%02x' % tuple(round(x * (1 - t) + y * t) for x, y in zip(ca, cb))
+
+
+def tint_amount(pct):
+    try:
+        p = int(pct)
+    except (TypeError, ValueError):
+        return 0
+    return max(0, min(100, p))
+
+
+def tint_colors(colors, accent, pct):
+    """The themerc keys' colours with the accent mixed in (a copy); pct 0 gives them back unchanged."""
+    p = tint_amount(pct)
+    if not p or not re.match(r'^#[0-9a-fA-F]{6}$', accent or ''):
+        return dict(colors)
+    out = dict(colors)
+    for k, w in TINT_KEYS.items():
+        if re.match(r'^#[0-9a-fA-F]{6}$', out.get(k, '')):
+            out[k] = mix(out[k], accent, w * p / 100.0)
+    return out
+
+
+def tint_themerc(text, accent, pct):
+    """labwc's themerc-override text with the same tint (only those keys' lines change)."""
+    p = tint_amount(pct)
+    if not p or not re.match(r'^#[0-9a-fA-F]{6}$', accent or ''):
+        return text
+
+    def one(m):
+        return m.group(1) + mix(m.group(2), accent, TINT_KEYS[m.group(1).split(':')[0].strip()] * p / 100.0)
+    keys = '|'.join(re.escape(k) for k in TINT_KEYS)
+    return re.sub(r'(?m)^((?:%s):\s*)(#[0-9a-fA-F]{6})' % keys, one, text)
+
+
 def rgb_text(h):
     h = h.lstrip('#')
     return ','.join(str(int(h[i:i + 2], 16)) for i in (0, 2, 4))

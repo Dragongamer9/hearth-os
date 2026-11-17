@@ -58,6 +58,50 @@ SetPage {
             valueText: shown + " pt"
             onMoved: v => sizeTimer.restartWith("monoSize", Math.round((6 + v * 18) * 2) / 2)
         }
+        // 1.14: KDE's small and window title fonts.
+        SetExpander {
+            anchor: "small"
+            icon: "doc"; title: "Small and window title fonts"; sub: "Tooltips and captions, and the title bars of windows"
+            value: (page.e.smallFont || "Noto Sans") + " " + (page.e.smallSize || 8) + " · " + (page.e.titleFont || "Noto Sans") + " " + (page.e.titleSize || 10)
+            SetDropdown {
+                title: "Small font"; sub: "Tooltips, captions and the smallest text"
+                options: page.st ? page.opts(page.st.fonts, page.st.defaults.smallFont || "Noto Sans") : []
+                current: page.s.smallFont || ""
+                boxWidth: 300
+                onChosen: v => page.pick("smallFont", v)
+            }
+            SetSlider {
+                title: "Small font size"
+                readonly property real shown: sizeTimer.key === "smallSize" && (sizeTimer.running || job.busy) ? sizeTimer.val : (page.e.smallSize || 8)
+                value: (shown - 6) / 18; step: 1 / 36
+                valueText: shown + " pt"
+                onMoved: v => sizeTimer.restartWith("smallSize", Math.round((6 + v * 18) * 2) / 2)
+            }
+            SetDropdown {
+                title: "Window title font"; sub: "The title bars of windows (Mantel on KWin, KDE and GNOME apps)"
+                options: page.st ? page.opts(page.st.fonts, page.st.defaults.titleFont || "Noto Sans") : []
+                current: page.s.titleFont || ""
+                boxWidth: 300
+                onChosen: v => page.pick("titleFont", v)
+            }
+            SetSlider {
+                title: "Window title size"
+                readonly property real shown: sizeTimer.key === "titleSize" && (sizeTimer.running || job.busy) ? sizeTimer.val : (page.e.titleSize || 10)
+                value: (shown - 6) / 18; step: 1 / 36
+                valueText: shown + " pt"
+                onMoved: v => sizeTimer.restartWith("titleSize", Math.round((6 + v * 18) * 2) / 2)
+            }
+            // How the two look, written in them.
+            SetPanel {
+                implicitHeight: 74
+                Column {
+                    anchors { left: parent.left; leftMargin: 18; verticalCenter: parent.verticalCenter }
+                    spacing: 6
+                    Text { text: "Window title in " + (page.e.titleFont || "Noto Sans"); color: Theme.text; font.family: page.e.titleFont || "Noto Sans"; font.pointSize: page.e.titleSize || 10; font.bold: true }
+                    Text { text: "A small caption in " + (page.e.smallFont || "Noto Sans"); color: Theme.muted; font.family: page.e.smallFont || "Noto Sans"; font.pointSize: page.e.smallSize || 8 }
+                }
+            }
+        }
         SetExpander {
             icon: "gear"; title: "Font smoothing and DPI"; sub: "For sharp or soft text on your screen"
             SetChoice {
