@@ -38,26 +38,36 @@ KWin doesn't implement ext-session-lock-v1 (wayland.app lists it as unsupported 
 notification and a toast: never a silent "locked". KWin's locker is fail-safe (if its screen crashes, the screen
 stays covered).
 
-What it shows is Hearth's: `hosts/linux/desktop/kwin-lock` (installed as the Plasma shell package
-`org.hearth.mantel-lock` in /usr/share/plasma/shells, only a lock screen; KWin's locker needs `X-Plasma-APIVersion` 2 and picks the package named by `PLASMA_DEFAULT_SHELL`, which the KWin session sets; older lockers read it as the look-and-feel package of the same name, also installed). If it can't load at all, KWin's locker stays locked in its emergency screen (checked in CI): never open: the same clock, password field and own on-screen keyboard (touch,
-D-pad and A) as Lock.qml, plain QtQuick, checking the password with PAM through KWin's locker. Hearth's KWin defaults
-(`hosts/linux/desktop/kwin/xdg/kscreenlockerrc`) pick it and turn off KWin's own automatic locking and lock on resume,
-so Mantel's settings (Lock when waking, idle) stay the only ones deciding.
+What it shows is Hearth's: `hosts/linux/desktop/kwin-lock`, installed by `kwin-lock/install.sh` as the Plasma shell
+package `org.hearth.mantel-lock` (/usr/share/plasma/shells; only a lock screen). KWin's locker loads the shell package
+named by `PLASMA_DEFAULT_SHELL` in KWin's environment (the KWin session sets it) if its `X-Plasma-APIVersion` is 2 or
+more. It has the same clock, password field and own on-screen keyboard (touch, D-pad and A) as Lock.qml, in plain
+QtQuick, and checks the password with PAM through KWin's locker (PAM service `kde`). `kscreenlockerrc` (Hearth's
+KWin defaults) turns off KWin's own automatic locking and lock on resume, so Mantel's settings (Lock when waking,
+idle) are the only ones deciding.
+
+The controller on the lock screen: `Pad.qml` tells hearth-pad `locked {on}` while it's up (`DeskState.locked`, which
+on KWin follows KWin's locker). hearth-pad then holds the controller (a game behind the lock never sees a press) and
+sends only arrows for the D-pad, Enter for A, Esc for B and Backspace for X; no menu, keyboard, pointer or shortcuts.
 
 ### Never a lockout
 
 KWin's locker is fail-safe the strict way: if its lock screen can't load, it keeps everything covered by its own
 emergency screen, which on a handheld without a keyboard would be a lockout. So:
 
-- **The image build fails** without KWin's screen locker (`kscreenlocker`, its greeter `kscreenlocker_greet`) or
-  without Hearth's lock screen loading in it (`hearth-lockcheck` in `build.sh` runs the greeter's own test run;
-  on Debian the locker is `libkscreenlocker6`, and `libplasma6` gives it the Plasma/Shell package type it reads Hearth's
-  lock screen as; checks in `base-peppermint.yml` too).
-- **Lock.qml asks `hearth-lockcheck` before every lock on KWin**: the greeter is installed, Hearth's package is where
-  it looks (the Plasma shell package named by `PLASMA_DEFAULT_SHELL`, API version 2, its `LockScreen.qml`; or the
-  look-and-feel package for older lockers), and the greeter's own test run off screen doesn't report that it
-  couldn't load it (done once per change and at Mantel's start, cached in `$XDG_RUNTIME_DIR/hearth/lockcheck.json`).
-  If anything is missing it **doesn't lock**: a critical notification and a toast say why. Checked in CI.
+- **The image build fails** without the locker or without Hearth's lock screen loading in it. On Debian
+  `kwin-lock/install.sh` installs `libkscreenlocker6` (the greeter `kscreenlocker_greet`), `plasma-framework`
+  (libplasma's plugins: the Plasma/Shell package type the greeter reads the lock screen as; not the Plasma desktop),
+  the QtQuick modules, `/etc/pam.d/kde` when nothing brought one, and the lock screen. Then `hearth-lockcheck
+  --as-kwin` runs the greeter's own test run off screen and needs the lock screen's "hearth-lock-screen: loaded" line.
+  `base-peppermint.yml` checks the same.
+- **Lock.qml asks `hearth-lockcheck` before every lock on KWin**, which goes by the running KWin's own environment
+  (`/proc/<KWin>/environ`): KWin must have `PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock`, the greeter must be
+  installed, the package complete, and the greeter's test run with KWin's environment must show Hearth's lock screen
+  loading (a positive sign; an error, a fallback or silence all fail). The test run is cached per change and made at
+  Mantel's start. If anything fails it **doesn't lock**: a critical notification and a toast say why.
+- CI (`kwin-input.yml`) checks all of this, and on Debian trixie (`lock-debian`) locks for real, types a wrong
+  password with hearth-type (still locked) and the right one (unlocked: PAM).
 - Left: something else asking the system to lock (`loginctl lock-session`, an app's "lock now") goes to KWin's
   locker straight, without Hearth's check. The image build's checks make that safe as long as the image is whole.
 
@@ -79,6 +89,11 @@ bare `loginctl unlock-session` would unlock that console's own session, not the 
   the app stops or KWin ends it (window closed).
 - Screenshot: the whole desktop without questions, or the picker with "interactive"; saved in Pictures/Screenshots.
   PickColor isn't offered yet.
+- The backend answers only xdg-desktop-portal itself (the D-Bus sender must own `org.freedesktop.portal.Desktop`),
+  so apps can't skip the picker or the Allow? question by calling it straight, and the window list only from KWin.
+- `hearth-kwin-cast` works only when its parent is `hearth-portal` (a root-owned file nobody else can change). The
+  risk left, for the owner to know: KWin trusts the helper by its path, and any program running as you could still
+  start `hearth-portal cast shot …` itself, or read the screen in other ways a desktop can't stop (as on X11).
 - "Allow?" questions (xdg-desktop-portal's Access, e.g. before an app's first screenshot) are Hearth's too:
   `access-prompt.qml` (Allow / Don't allow, keyboard and D-pad, nothing allowed unless you pick Allow). On labwc
   they stay GTK's.
