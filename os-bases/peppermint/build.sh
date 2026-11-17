@@ -254,6 +254,8 @@ fi
 optional kglobalacceld xdg-desktop-portal-kde
 if have_pkg libkf6screen-bin; then optional libkf6screen-bin; else optional kscreen; fi
 command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkf6screen-bin / kscreen): screens under KWin need it"
+# Hearth Capture's text and QR reading (feature/capture-polkit).
+optional tesseract-ocr tesseract-ocr-eng zbar-tools
 # gdb's gcore: Task Manager › Details › Create dump file (1.12, mockup tm-2); optional, so a missing gdb never stops the build
 optional gdb
 # dmidecode: Task Manager › Memory's speed and slots (1.12, mockup task-manager-memory)
