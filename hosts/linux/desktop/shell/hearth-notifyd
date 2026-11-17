@@ -86,6 +86,9 @@ JOB_XML = """
 """
 JOB_NAME = 'org.kde.JobViewServer'
 JOB_PATH = '/JobViewServer'
+# Jobs at once: per app (its bus connection) and in all, so one program can't fill the shell with progress bars.
+MAX_JOBS_PER_SENDER = 20
+MAX_JOBS = 200
 KILLABLE, SUSPENDABLE = 1, 2
 OUT_LOCK = threading.Lock()
 
@@ -333,6 +336,10 @@ class Hub:
         GLib = self.GLib
         try:
             if path == JOB_PATH and method == 'requestView':
+                mine = sum(1 for j in self.jobs.values() if j.get('sender') == sender)
+                if not sender or mine >= MAX_JOBS_PER_SENDER or len(self.jobs) >= MAX_JOBS:
+                    inv.return_dbus_error('org.freedesktop.DBus.Error.LimitsExceeded', 'Too many jobs at once')
+                    return
                 args = params.unpack()
                 self.seq += 1
                 jid = self.seq
@@ -359,6 +366,10 @@ class Hub:
             job = self.jobs.get(jid)
             if not job:
                 inv.return_dbus_error('org.freedesktop.DBus.Error.UnknownObject', path)
+                return
+            # Only the app that asked for this job view may change or end it.
+            if sender != job.get('sender'):
+                inv.return_dbus_error('org.freedesktop.DBus.Error.AccessDenied', 'This job belongs to another app')
                 return
             args = params.unpack() if params is not None else ()
             if iface == 'org.kde.JobViewV3':
