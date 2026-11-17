@@ -19,7 +19,7 @@ on:
             'hosts/linux/desktop/shell/Keyboard.qml', 'hosts/linux/desktop/shell/hearth-portal',
             'hosts/linux/desktop/kwin-helpers/**', 'hosts/linux/desktop/kwin-lock/**', 'hosts/linux/desktop/kwin/**',
             'hosts/linux/test/test_kwin_input.py', 'hosts/linux/test/kwin_e2e.py', '.github/workflows/kwin-input.yml', '.github/scripts/kwin-debian-lock.sh', 'hosts/linux/desktop/shell/hearth-pad',
-            '.github/scripts/kwin-ci.sh']
+            '.github/scripts/kwin-ci.sh', 'hosts/linux/desktop/shell/hearth-lockcheck', 'hosts/linux/desktop/shell/hearth_screencast.py']
   workflow_dispatch:
 
 concurrency:
@@ -62,7 +62,7 @@ jobs:
           echo "::notice title=Debian package types::$(ls /usr/lib/*/qt6/plugins/kf6/packagestructure/ 2>&1 | tr '\n' ' ') owners: $(dpkg -S /usr/lib/*/qt6/plugins/kf6/packagestructure/* 2>/dev/null | cut -d: -f1 | sort -u | tr '\n' ' ')"
           out=$(cd /tmp && PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock QT_QPA_PLATFORM=offscreen timeout 8 "$g" --testing 2>&1 | grep -v 'no notify signal' | head -30 | tr '\n' '|')
           echo "::notice title=Debian greeter test run::$(printf '%s' "$out" | cut -c1-3000)"
-          dbg=$(cd /tmp && PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock QT_QPA_PLATFORM=offscreen QT_LOGGING_RULES='kf.package*=true;kf.coreaddons*=true' QT_DEBUG_PLUGINS=1 timeout 8 "$g" --testing 2>&1 | grep -iE 'packagestructure|plasma_shell|Plasma/Shell|metadata|cannot load|undefined' | head -25 | tr '\n' '|')
+          dbg=$(cd /tmp && PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock QT_QPA_PLATFORM=offscreen QT_LOGGING_RULES='kf.package*=true;kf.coreaddons*=true' QT_DEBUG_PLUGINS=1 timeout 8 "$g" --testing 2>&1 | grep -iE 'plasma_shell|Plasma/Shell|kf.package|kf.coreaddons|undefined|not a valid|Cannot' | grep -v 'libexec/kf6' | head -30 | tr '\n' '|')
           echo "::notice title=Debian greeter plugins::$(printf '%s' "$dbg" | cut -c1-3500)"
           echo "::notice title=Debian working type's metadata::$(strings /usr/lib/x86_64-linux-gnu/qt6/plugins/kf6/packagestructure/plasma_generic.so 2>/dev/null | grep -iE 'KPlugin|Plasma/|Id' | head -8 | tr '\n' '|') ours: $(strings /usr/lib/x86_64-linux-gnu/qt6/plugins/kf6/packagestructure/plasma_shell.so | grep -iE 'KPlugin|Plasma|Name' | head -8 | tr '\n' '|')"
           exit $rc
@@ -246,6 +246,8 @@ jobs:
         run: f=shots/debian-wrong-password.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT debian-wrong-password $i::$part"; done || true
       - name: Picture (debian-unlocked)
         run: f=shots/debian-unlocked.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT debian-unlocked $i::$part"; done || true
+      - name: Picture (remote-control-prompt)
+        run: f=shots/remote-control-prompt.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT remote-control-prompt $i::$part"; done || true
       - name: Picture (lock-greeter)
         run: f=shots/lock-greeter.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT lock-greeter $i::$part"; done || true
       - name: Picture (lock-wrong-password)
