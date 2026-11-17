@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import queue
+import select
 import socket
 import ssl
 import subprocess
@@ -114,7 +115,8 @@ class Phone:
         self.tls = None
         self.peer = None
         self.pc_cert = None
-        self.lock = threading.Lock()
+        self.outq = queue.Queue()
+        self.io_error = None                              # why the link stopped, if it did
 
     def identity(self, with_port=True):
         body = {'deviceId': self.id, 'deviceName': self.name, 'deviceType': 'phone', 'protocolVersion': 8,
@@ -157,23 +159,54 @@ class Phone:
         self.tls = self._ctx_client().wrap_socket(sock)
         self.pc_cert = self.tls.getpeercert(binary_form=True)
         self.tls.sendall(self.identity(with_port=False))
-        self.rfile = self.tls.makefile('rb')
-        self.peer = json.loads(self.rfile.readline())
+        line = b''
+        while not line.endswith(b'\n'):              # one byte at a time: nothing after it may be taken here
+            ch = self.tls.recv(1)
+            if not ch:
+                raise RuntimeError('Hearth closed the link before its identity')
+            line += ch
+        self.peer = json.loads(line)
         self.first_identity = first
-        threading.Thread(target=self._read, daemon=True).start()
+        threading.Thread(target=self._io, daemon=True).start()
         return self.peer
 
-    def _read(self):
+    def _io(self):
+        """The link's only reader and writer (an SSL socket used from two threads at once can break, as a real
+        app's single connection thread never does): packets to send from `outq`, packets read into `inbox`."""
+        tls, buf = self.tls, b''
+        tls.setblocking(False)
         try:
-            for line in self.rfile:
+            while True:
+                while True:
+                    try:
+                        data = self.outq.get_nowait()
+                    except queue.Empty:
+                        break
+                    while data:
+                        try:
+                            data = data[tls.send(data):]
+                        except (ssl.SSLWantWriteError, ssl.SSLWantReadError):
+                            select.select([tls], [tls], [], 0.05)
+                if not tls.pending():
+                    select.select([tls], [], [], 0.05)
                 try:
-                    p = json.loads(line)
-                except ValueError:
+                    chunk = tls.recv(65536)
+                except (ssl.SSLWantReadError, ssl.SSLWantWriteError):
                     continue
-                self.seen.append(p)
-                self.inbox.put(p)
-        except (OSError, ValueError):
-            pass
+                if not chunk:
+                    self.io_error = 'Hearth closed the link'
+                    break
+                buf += chunk
+                while b'\n' in buf:
+                    line, buf = buf.split(b'\n', 1)
+                    try:
+                        p = json.loads(line)
+                    except ValueError:
+                        continue
+                    self.seen.append(p)
+                    self.inbox.put(p)
+        except (OSError, ValueError) as e:
+            self.io_error = repr(e)
 
     def send(self, kind, body, payload=None):
         """A packet to Hearth; with `payload` (bytes) a file follows on its own TLS connection, the phone serving it."""
@@ -195,8 +228,7 @@ class Phone:
                 finally:
                     srv.close()
             threading.Thread(target=serve, daemon=True).start()
-        with self.lock:
-            self.tls.sendall(packet(kind, body, **extra))
+        self.outq.put(packet(kind, body, **extra))
 
     def wait(self, kind, pred=None, timeout=15):
         """The next packet of that kind (matching `pred`), from what came already or what comes next."""
