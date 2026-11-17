@@ -13,6 +13,13 @@ polkit.addRule(function (action, subject) {
         /^\S+\s+write-file(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
+    // Hearth Files' "Act as administrator" (files-*: new folders, renames, deletes, copies and permissions outside your
+    // home): always an administrator's password, kept for a few minutes like sudo so a folder's worth of changes asks once.
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+files-\S+(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.AUTH_ADMIN_KEEP;
+    }
     if (action.id == "org.freedesktop.policykit.exec" &&
         action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
         /^\S+\s+usb-\S+(\s[\s\S]*)?\s--allow-internal(\s|$)/.test(action.lookup("command_line") || "")) {

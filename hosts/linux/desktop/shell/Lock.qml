@@ -14,7 +14,14 @@ import Quickshell.Services.Pam
 Scope {
     id: root
     property bool locked: false
-    onLockedChanged: { if (locked && onKwin) lockedAt = new Date(); DeskState.locked = locked; }   // lockedAt: KWin's locker said so
+    onLockedChanged: {
+        if (locked && onKwin) lockedAt = new Date();   // lockedAt: KWin's locker said so
+        DeskState.locked = locked;
+        // logind's LockedHint (what Phone link and other apps read to know it's locked; KWin's locker sets its own).
+        // Only a hint: whatever happens to it, locking itself doesn't depend on it.
+        if (!onKwin) Quickshell.execDetached(["busctl", "call", "--system", "org.freedesktop.login1", "/org/freedesktop/login1/session/auto",
+                                              "org.freedesktop.login1.Session", "SetLockedHint", "b", locked ? "true" : "false"]);
+    }
     property string typed: ""
     property string message: ""
     property bool busy: false

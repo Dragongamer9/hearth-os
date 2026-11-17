@@ -68,6 +68,12 @@
   hearth-files desktop-launch PATH      start what a .desktop file runs (after Files asked)
   hearth-files open-choice PATH [CHOICE]     remember (or, without CHOICE, forget) what opening this file does
 
+1.14's extras (hearth_files_extras.py, next to this file): tags (user.xdg.tags) and finding by tag, git status badges,
+disc images (iso-mount / iso-unmount), phones and cameras (portable, portable-mount), apps' right-click actions
+(service-menus / service-run), sharing a folder on your network (sharing / share, Settings › Home server's Samba),
+recent files' privacy (recent-prefs, recent-prefs-set, recent-forget), chmod-tree, groups, chgrp.
+"Act as administrator" is /usr/libexec/nimbus/hearth-files-admin (through hearth-admin files-*, pkexec).
+
 Your devices (hearth_netshares.py): your paired Hearth devices' shared folders and other computers sharing (SMB) in
 the sidebar, found by themselves; opening one mounts it with gvfs.
   hearth-files net-open JSON [--user USER] [--remember]   mount one ({device, name, share, home, away, wake}; the
@@ -132,6 +138,12 @@ class Fail(Exception):
     pass
 
 
+# hearth_files_extras.py's commands (its run() does them).
+EXTRA_COMMANDS = ('tags', 'tag-set', 'tag-list', 'tag-find', 'git-status', 'iso-mount', 'iso-unmount', 'portable', 'portable-mount',
+                  'portable-unmount', 'service-menus', 'service-run', 'sharing', 'share', 'recent-prefs', 'recent-prefs-set',
+                  'recent-forget', 'chmod-tree', 'groups', 'chgrp')
+
+
 class Cancelled(Exception):
     pass
 
@@ -157,6 +169,9 @@ def media_bases():
 def gvfs_root():
     """Where gvfs shows mounted network folders (your devices' shared folders, opened from the sidebar)."""
     return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid(), 'gvfs')
+
+
+GVFS_PREFIX = gvfs_root() + '/'
 
 
 def write_roots():
@@ -480,13 +495,19 @@ def recent_files(limit=40):
     except OSError:
         return {'recent': []}
     items = []
-    for m in re.finditer(r'<bookmark\b([^>]*)>', text):
-        attrs = dict(re.findall(r'(\w+)="([^"]*)"', m.group(1)))
-        href = attrs.get('href', '')
-        if not href.startswith('file://'):
+    # Settings › Privacy › Recent files: off shows none; "keep for" and what's left out are honoured here too.
+    try:
+        import hearth_files_extras as hx
+        rprefs = hx.recent_prefs(hsio)
+    except ImportError:
+        hx, rprefs = None, None
+    found = hx.xbel_items(text) if hx else [
+        (m.group(0), a, urllib.parse.unquote(a.get('href', '')[7:], errors='surrogateescape') if a.get('href', '').startswith('file://') else '', [])
+        for m in re.finditer(r'<bookmark\b([^>]*)>', text) for a in [dict(re.findall(r'(\w+)="([^"]*)"', m.group(1)))]]
+    for whole, attrs, p, apps in found:
+        if not p or not os.path.isfile(p):
             continue
-        p = urllib.parse.unquote(href[7:], errors='surrogateescape')
-        if not os.path.isfile(p):
+        if rprefs is not None and not hx.recent_allowed(rprefs, p, apps, hx._when(attrs)):
             continue
         when = attrs.get('visited') or attrs.get('modified') or attrs.get('added') or ''
         items.append((when, p))
@@ -538,6 +559,16 @@ def entry(path, name):
         e['exec'] = True
     if isdir and not under(path, gvfs_root()) and os.path.isfile(os.path.join(path, '.briefcase.json')):
         e['briefcase'] = briefcase_look(path)
+    # Tags (Dolphin's and KDE's: the user.xdg.tags extended attribute), shown and grouped by in Files. Not on network
+    # folders (a round trip per file there).
+    if not path.startswith(GVFS_PREFIX):
+        try:
+            t = os.getxattr(path, 'user.xdg.tags', follow_symlinks=False).decode('utf-8', 'replace')
+            tags = [x.strip() for x in t.split(',') if x.strip()]
+            if tags:
+                e['tags'] = tags
+        except (OSError, AttributeError):
+            pass
     return e
 
 
@@ -4280,6 +4311,10 @@ def cmd(argv):
     rest = args[1:]
     if c == 'watch' and len(rest) == 1:
         watch(rest[0])
+        return
+    if c in EXTRA_COMMANDS:
+        import hearth_files_extras as hx
+        print(json.dumps(hx.run(sys.modules[__name__], c, rest)), flush=True)
         return
     remote = remote_cmd(c, rest)
     if remote is not None:
