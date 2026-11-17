@@ -364,7 +364,7 @@ class Draw(unittest.TestCase):
             var shapes = [{t: "arrow", c: "#ff0000", w: 6, x1: 0, y1: 0, x2: 100, y2: 0}, {t: "pix", x1: 14, y1: 14, x2: 70, y2: 42},
                           {t: "blur", x1: 0, y1: 0, x2: 24, y2: 24},
                           {t: "step", c: "#4aa8ff", x1: 5, y1: 5, n: 3}, {t: "text", x1: 1, y1: 1, text: "a\\nb", size: 20}];
-            paint(ctx, shapes, 0.5, 0, 0, {kp: 1 / 14, kb: 1 / 12, draw: function () { drew.push([].slice.call(arguments).map(function (v) { return typeof v === "number" ? Math.round(v * 100) / 100 : v; })); }}, 100, 100);
+            paint(ctx, shapes, 0.5, 0, 0, function () { drew.push([].slice.call(arguments).map(function (v) { return Math.round(v * 100) / 100; })); }, 100, 100);
             console.log(JSON.stringify({calls: calls, drew: drew, next: nextStep(shapes),
               keep: [worthKeeping({t: "box", x1: 1, y1: 1, x2: 2, y2: 2}), worthKeeping({t: "text", text: " "}), worthKeeping({t: "pen", pts: [1, 2]}), worthKeeping({t: "arrow", x1: 0, y1: 0, x2: 10, y2: 0})],
               name: defaultName(new Date(2026, 10, 16, 21, 4, 5)), head: arrowHead(0, 0, 10, 0, 5).map(Math.round)}));''')
@@ -372,16 +372,13 @@ class Draw(unittest.TestCase):
         self.assertNotIn('getImageData', r['calls'])            # never read back (QML's canvas gives zeros)
         self.assertIn('clip', r['calls'])
         self.assertEqual(r['calls'].count('fillText'), 3)       # two lines of text, the step's number
-        pix = [d for d in r['drew'] if d[0] == 'pix']
-        blur = [d for d in r['drew'] if d[0] == 'blur']
-        # Pixelate: small-copy pixels 1..4 × 1..2 (picture 14..70 × 14..42), each a flat 7 px square at half size.
-        self.assertEqual([(d[1], d[2]) for d in pix], [(x, y) for y in (1, 2) for x in (1, 2, 3, 4)])
-        self.assertTrue(all(d[3:5] == [1, 1] and d[7] == 7.6 for d in pix))
-        self.assertEqual(pix[0][5:7], [7, 7])
-        # Blur: the small copy of that area (with a margin) stretched over it.
-        self.assertEqual(len(blur), 1)
-        self.assertEqual(blur[0][1:5], [-2, -2, 6, 6])
-        self.assertEqual(blur[0][5:9], [-12, -12, 36, 36])
+        # Pixelate (picture 14..70 × 14..42, squares of 14): 4 × 2 squares, each the picture's pixel in its middle
+        # stretched over 7 px (half size); Blur (0..24, squares of 12): 2 × 2, then 3 × 3 half a square across.
+        pix, blur = r['drew'][:8], r['drew'][8:]
+        self.assertEqual([d[:2] for d in pix], [[x, y] for y in (21, 35) for x in (21, 35, 49, 63)])
+        self.assertEqual(pix[0][2:], [7, 7, 7.6, 7.6])
+        self.assertEqual(len(blur), 4 + 9)
+        self.assertEqual(blur[4][:4], [0, 0, -3, -3])
         self.assertEqual(r['next'], 4)
         self.assertEqual(r['keep'], [False, False, True, True])
         self.assertEqual(r['name'], 'Screenshot 2026-11-16 21-04-05.png')

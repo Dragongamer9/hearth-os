@@ -52,13 +52,9 @@ Item {
         ink.requestPaint();
     }
     Connections { target: ed.cap; function onShotSeqChanged() { ed.start(); } }
-    // The picture's pixels for the canvases come from probe (an Image item: drawImage takes one, loaded already).
-    readonly property bool ready: probe.status === Image.Ready && pixSrc.status === Image.Ready && blurSrc.status === Image.Ready
-    // Blur's and Pixelate's sources (capture-draw.js): small copies Qt decodes from the file.
-    function hideSrc(c) {
-        return { kp: pixSrc.sourceSize.width / Math.max(1, imgW), kb: blurSrc.sourceSize.width / Math.max(1, imgW),
-                 draw: (kind, sx, sy, sw, sh, dx, dy, dw, dh) => c.drawImage(kind === "pix" ? pixSrc : blurSrc, sx, sy, sw, sh, dx, dy, dw, dh) };
-    }
+    // The picture's own size comes from probe; the saving canvas loads the file itself (Canvas.loadImage: drawImage of
+    // an Image item only works once the canvas has loaded that file too).
+    readonly property bool ready: probe.status === Image.Ready
 
     function stateObj() {
         return { tool: tool, shapes: shapes.length, ready: ready, exportError: exportError, crop: crop, width: imgW, height: imgH, panel: panel, ocr: ocrState,
@@ -99,7 +95,7 @@ Item {
         exporting = { cb: cb, v: v };
         outC.width = v.w; outC.height = v.h;
         outC.canvasSize = Qt.size(v.w, v.h);
-        outC.requestPaint();
+        if (outC.isImageLoaded(url)) outC.requestPaint(); else outC.loadImage(url);
     }
     function finished(cb) {
         // The picture as it is now (a PNG from the canvas), written by the helper to a new file of its own (its
@@ -174,8 +170,8 @@ Item {
     }
 
     Image { id: probe; visible: false; source: ed.url; cache: false; asynchronous: false }
-    Image { id: pixSrc; visible: false; source: ed.imgW > 0 ? ed.url : ""; cache: false; asynchronous: false; sourceSize.width: Math.max(1, Math.round(ed.imgW * Draw.PIX)) }
-    Image { id: blurSrc; visible: false; source: ed.imgW > 0 ? ed.url : ""; cache: false; asynchronous: false; smooth: true; sourceSize.width: Math.max(1, Math.round(ed.imgW * Draw.BLUR)) }
+    readonly property int pixW: Math.max(1, Math.round(imgW * Draw.PIX))
+    readonly property int blurW: Math.max(1, Math.round(imgW * Draw.BLUR))
 
     Keys.onPressed: e => {
         const ctrl = e.modifiers & Qt.ControlModifier, shift = e.modifiers & Qt.ShiftModifier;
@@ -262,7 +258,7 @@ Item {
                     required property var modelData
                     readonly property bool hides: modelData.t === "blur" || modelData.t === "pix"
                     readonly property var r: hides ? Draw.normRect(modelData.x1, modelData.y1, modelData.x2, modelData.y2) : ({ x: 0, y: 0, w: 0, h: 0 })
-                    readonly property real k: (modelData.t === "pix" ? pixSrc.sourceSize.width : blurSrc.sourceSize.width) / Math.max(1, ed.imgW)
+                    readonly property real k: (modelData.t === "pix" ? ed.pixW : ed.blurW) / Math.max(1, ed.imgW)
                     visible: hides && r.w > 1 && r.h > 1 && ed.ready
                     x: (r.x - ed.view.x) * ed.sc; y: (r.y - ed.view.y) * ed.sc
                     width: r.w * ed.sc; height: r.h * ed.sc
@@ -270,7 +266,7 @@ Item {
                         anchors.fill: parent
                         visible: hid.visible
                         source: hid.visible ? ed.url : ""
-                        sourceSize.width: hid.modelData.t === "pix" ? pixSrc.sourceSize.width : blurSrc.sourceSize.width
+                        sourceSize.width: hid.modelData.t === "pix" ? ed.pixW : ed.blurW
                         sourceClipRect: Qt.rect(hid.r.x * hid.k, hid.r.y * hid.k, Math.max(1, hid.r.w * hid.k), Math.max(1, hid.r.h * hid.k))
                         smooth: hid.modelData.t === "blur"
                         mipmap: false
@@ -498,19 +494,24 @@ Item {
         Canvas {
             id: outC
             width: 1; height: 1
+            property bool drawn: false
+            onImageLoaded: if (ed.exporting) requestPaint()
             onPaint: {
                 const e = ed.exporting;
-                if (!e) return;
+                drawn = false;
+                if (!e || !isImageLoaded(ed.url)) return;
                 const c = getContext("2d");
                 c.reset();
-                const v = e.v;
-                c.drawImage(probe, v.x, v.y, v.w, v.h, 0, 0, v.w, v.h);
-                Draw.paint(c, ed.shapes, 1, v.x, v.y, ed.hideSrc(c), v.w, v.h);
+                const v = e.v, u = ed.url, W = ed.imgW - 1, H = ed.imgH - 1;
+                c.drawImage(u, v.x, v.y, v.w, v.h, 0, 0, v.w, v.h);
+                Draw.paint(c, ed.shapes, 1, v.x, v.y, (sx, sy, dx, dy, dw, dh) => c.drawImage(u, Math.min(W, sx), Math.min(H, sy), 1, 1, dx, dy, dw, dh), v.w, v.h);
+                drawn = true;
             }
             onPainted: {
                 const e = ed.exporting;
-                if (!e) return;
+                if (!e || !drawn) return;
                 ed.exporting = null;
+                drawn = false;
                 e.cb(toDataURL("image/png"));
             }
         }
