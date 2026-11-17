@@ -91,6 +91,9 @@ SetPage {
         }
         onExited: code => {
             if (code === 126 || code === 127) page.error = "Not allowed (Hearth's polkit rule is missing).";
+            // 1.14, "Shut down after updating": the update is in place (bootc finishes it while the PC turns off, and
+            // the version before stays startable), so the PC turns off after a minute you can cancel.
+            if (page.lastCmd === "update" && page.afterUpdate === "shutdown" && code === 0 && page.error === "") page.offIn = 60;
             page.phase = "idle"; page.progress = -1; page.line = "";
             // rollback prints bootc's own status: read Hearth's summary of it again.
             if (page.lastCmd === "rollback") Qt.callLater(() => page.start("update-status"));
@@ -195,6 +198,36 @@ SetPage {
         text: page.error; color: Theme.danger; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
 
+    // ---- 1.14: shut down after updating (KDE's "shut down after the updates are installed"). Only for this update:
+    // nothing is saved. A staged update is finished by any shutdown, so "Shut down and update" works once it's ready.
+    property string afterUpdate: ""       // "" | "shutdown"
+    property int offIn: -1                // seconds to the shutdown, or -1
+    Timer {
+        running: page.offIn > 0; interval: 1000; repeat: true
+        onTriggered: { page.offIn--; if (page.offIn === 0) { page.offIn = -1; Quickshell.execDetached(["systemctl", "poweroff"]); } }
+    }
+    SetSwitch {
+        visible: page.canAdmin && (page.phase === "updating" || (page.available && page.phase === "idle"))
+        icon: "power"; title: "Shut down when it's done"
+        sub: "Downloads the update, then turns the PC off; it starts on the new version next time"
+        checked: page.afterUpdate === "shutdown"
+        onToggled: v => page.afterUpdate = v ? "shutdown" : ""
+    }
+    SetRow {
+        visible: page.canAdmin && page.staged && page.phase === "idle" && page.offIn < 0
+        icon: "power"; chevron: false; title: "Shut down and finish updating"
+        sub: "Turns the PC off now; it starts on Hearth " + (page.status && page.status.staged ? page.ver(page.status.staged) : "") + " next time"
+        onActivated: Quickshell.execDetached(["systemctl", "poweroff"])
+    }
+    SetBanner {
+        visible: page.offIn > 0
+        Layout.fillWidth: true
+        kind: "info"; icon: "power"
+        title: "Updated. Shutting down in " + page.offIn + " s"
+        sub: "Save anything open. Cancel keeps the PC on; the update finishes whenever it next turns off or restarts"
+        action: "Cancel"
+        onActivated: { page.offIn = -1; page.afterUpdate = ""; }
+    }
     SetHeader { visible: (page.canAdmin && page.phase === "idle" && !page.available && !page.staged) || !!page.plugins; text: "Updates" }
     SetRow {
         visible: page.canAdmin && page.phase === "idle" && !page.available && !page.staged

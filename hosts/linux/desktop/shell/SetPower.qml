@@ -21,7 +21,19 @@ SetPage {
     readonly property var bat: hw && hw.batteries && hw.batteries.length ? hw.batteries[0] : null
     SetJob { id: hwStatus; helper: "/usr/libexec/nimbus/hearth-hwset" }
     SetJob { id: hwJob; helper: "/usr/libexec/nimbus/hearth-hwset"; admin: true }
-    Component.onCompleted: { power(["status"]); hwStatus.run(["status"], r => page.hw = r, () => page.hw = null); }
+    Component.onCompleted: { power(["status"]); hwStatus.run(["status"], r => page.hw = r, () => page.hw = null); moreJob.run(["status"], r => page.more = r, () => page.more = null); reveal(); }
+    // `settings page power:off` opens it at "Turn off or switch" (the Desktop Mode test's picture); only scrolls.
+    // The anchor stays until the timer: opening Settings can make the page twice in a row, and the second must see it.
+    function reveal() { if (SettingsNav.pageAnchor === "off") revealTimer.start(); }
+    Timer { id: revealTimer; interval: 1500; onTriggered: { if (SettingsNav.pageAnchor === "off") SettingsNav.pageAnchor = ""; page.contentY = Math.max(0, Math.min(offCard.mapToItem(page.contentItem, 0, 0).y - 16, page.contentHeight - page.height)); } }
+    // 1.14 (hearth-powerset): the lid, apps keeping it awake, whether it can hibernate, the battery's health.
+    property var more: null
+    property bool askHibernate: false
+    property string askWhat: "hibernate"     // what the first-time question is for: "hibernate" | "hybrid-sleep"
+    readonly property var hybrid: more ? more.hybrid : null
+    SetJob { id: moreJob; helper: "hearth-powerset" }
+    readonly property var hib: more ? more.hibernate : null
+    readonly property int awake: more ? more.inhibitors.filter(i => i.mode === "block").length : 0
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-power").toString().replace(/^file:\/\//, ""))
 
     // Power mode and power limit through hearth-power (the same as Hearth's Game Mode settings).
@@ -105,6 +117,16 @@ SetPage {
         onExited: code => page.canScreenOff = code === 0
     }
     SetCardGroup {
+        title: "More power settings"
+        SetRow { icon: "batt"; title: "Plugged in, battery & lid"; sub: "Different times and power mode on battery, and what closing the lid does"; chevron: true; onActivated: SettingsNav.openPage("power-profiles") }
+        SetRow {
+            icon: "sleep"; title: "Apps keeping it awake"; chevron: true
+            sub: page.awake ? page.awake + (page.awake === 1 ? " app is" : " apps are") + " keeping the screen on or the PC awake" : "Nothing is keeping it awake right now"
+            onActivated: SettingsNav.openPage("power-awake")
+        }
+        SetRow { icon: "bolt"; title: "Battery health & history"; sub: "Charge cycles, how much it holds, graphs of charge and power, your devices' batteries"; chevron: true; onActivated: SettingsNav.openPage("battery") }
+    }
+    SetCardGroup {
         title: "When you're away"
         SetChoice {
             icon: "display"; title: "Turn the screen off after"
@@ -145,9 +167,48 @@ SetPage {
         }
     }
     SetCardGroup {
+        id: offCard
         title: "Turn off or switch"
         SetRow { icon: "pad"; title: "Game Mode"; sub: "The Game Mode you picked in Gaming (Steam's or Hearth's) on the full screen"; onActivated: Quickshell.execDetached(["nimbus-mode", "game"]) }
         SetRow { icon: "sleep"; title: "Sleep"; onActivated: Buttons.sleep("Settings › Power › Sleep") }
+        // Hibernate (1.14): only where this PC can (hearth-powerset: the kernel offers it, Secure Boot allows it, a swap
+        // file on the drive big enough for what's in memory, logind agrees). Booting is never changed for it. The first
+        // time it hasn't come back on this PC yet, so it asks first.
+        SetRow {
+            visible: !!page.hib && page.hib.can
+            icon: "moon"; title: "Hibernate"; chevron: false
+            sub: page.hib && page.hib.proven ? "Saves everything to the drive and turns off; turn on to carry on where you were" : "Not tried on this PC yet: save your work first"
+            onActivated: { if (page.hib.proven) Quickshell.execDetached(["systemctl", "hibernate"]); else { page.askWhat = "hibernate"; page.askHibernate = true; } }
+        }
+        // Hybrid sleep (1.14, KDE's): sleeps, with everything also saved to the drive, so a flat battery or a power cut
+        // doesn't lose your work. Only where Hibernate is offered and logind says yes (hearth-powerset hybrid); the
+        // first time on this PC it asks, like Hibernate.
+        SetRow {
+            visible: !!page.hib && page.hib.can && !!page.hybrid && page.hybrid.can
+            icon: "sleep"; title: "Hybrid sleep"; chevron: false
+            sub: page.hib && page.hib.proven ? "Sleeps, and saves everything to the drive too in case the power goes" : "Not tried on this PC yet: save your work first"
+            onActivated: { if (page.hib.proven) Quickshell.execDetached(["systemctl", "hybrid-sleep"]); else { page.askWhat = "hybrid-sleep"; page.askHibernate = true; } }
+        }
+        SetBanner {
+            visible: page.askHibernate
+            Layout.fillWidth: true
+            kind: "warn"; title: page.askWhat === "hybrid-sleep" ? "Hybrid sleep for the first time?" : "Hibernate for the first time?"
+            sub: "Hearth hasn't seen this PC come back from hibernating yet. Save your work: if it doesn't come back, it starts fresh and anything not saved is lost. Once it has worked, Hearth remembers."
+        }
+        RowLayout {
+            visible: page.askHibernate
+            Layout.leftMargin: 4; spacing: 8
+            SetButton { text: page.askWhat === "hybrid-sleep" ? "Hybrid sleep now" : "Hibernate now"; primary: true; onActivated: { page.askHibernate = false; Quickshell.execDetached(["systemctl", page.askWhat === "hybrid-sleep" ? "hybrid-sleep" : "hibernate"]); } }
+            SetButton { text: "Cancel"; ghost: true; onActivated: page.askHibernate = false }
+        }
+        SetRow {
+            visible: !!page.hib && !page.hib.can
+            interactive: false; chevron: false; icon: "moon"; title: "Hibernate isn't available"; sub: page.hib ? page.hib.why : ""
+        }
+        SetRow {
+            visible: !!page.hib && page.hib.can && !!page.hybrid && !page.hybrid.can
+            interactive: false; chevron: false; icon: "sleep"; title: "Hybrid sleep isn't available"; sub: page.hybrid ? page.hybrid.why : ""
+        }
         SetRow { icon: "restart"; title: "Restart"; onActivated: Quickshell.execDetached(["systemctl", "reboot"]) }
         SetRow { icon: "power"; title: "Shut down"; danger: true; onActivated: Quickshell.execDetached(["systemctl", "poweroff"]) }
     }

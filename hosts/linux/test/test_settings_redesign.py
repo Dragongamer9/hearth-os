@@ -77,7 +77,7 @@ class Registry(unittest.TestCase):
         parts = {'SetBase.qml', 'SetRow.qml', 'SetSwitch.qml', 'SetChoice.qml', 'SetSlider.qml', 'SetField.qml', 'SetHeader.qml',
                  'SetPage.qml', 'SetJob.qml', 'SetBootCard.qml', 'SetBootFrames.qml', 'SetBootPreview.qml', 'SetBootVideo.qml',
                  'SetCard.qml', 'SetCardGroup.qml', 'SetExpander.qml', 'SetDropdown.qml', 'SetChip.qml', 'SetBanner.qml', 'SetLinkCard.qml', 'SetButton.qml', 'SetPinPad.qml',
-                 'SetStyle.qml', 'SetChanges.qml', 'SetChangeRow.qml'}
+                 'SetStyle.qml', 'SetChanges.qml', 'SetChangeRow.qml', 'SetPanel.qml'}
         files = {p['file'] for p in ps.values()}
         for f in SHELL.glob('Set*.qml'):
             if f.name not in parts and not f.name.startswith('Settings'):

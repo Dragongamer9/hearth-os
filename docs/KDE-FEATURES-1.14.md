@@ -293,11 +293,11 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] App store (Flathub, Debian packages) — Bazaar + `SetApps.qml`, `DebInstaller.qml`
 - [x] System updates with the previous version kept — `SetUpdates.qml`, bootc
 - [ ] Discover's extras — partly: reviews and ratings, the verified label and links (SetStore.qml, on feature/search-store, merged); update notifications with Update all, off-able — StoreWatch.qml, hearth_store_extras.py check / prefs-set: "as-1-update-notice", "as-2-store-updates"; permission changes shown and asked before updating (Update all leaves them out) — hearth_store_extras.py new_perms / update_apps, SetStore.qml "Update and allow": "as-3-new-permissions"; drivers (Nvidia, firmware-*, microcode: read-only list, install with a password through hearth-admin driver-install → hearth-unlock --install-package) — StoreDrivers.qml, hearth_store_extras.py drivers: "as-4-drivers"; test_store_extras.py, test_hearth_unlock.py "test_driver_install_only_takes_drivers", polkit-rules.test.js, activities-store.yml (needs testing on a device). Left: fonts (L)
-- [ ] App permissions page (Flatpak overrides) (M)
-- [ ] Firmware updates (fwupd) with a notification — partly: SetFirmware.qml, hearth-firmware, hearth-sysset-admin (parts install after a password; system firmware shown, never installed: red flag 2, docs/SYSTEM-SETTINGS.md); test_system_settings_114.py "test_one_rule_for_system_firmware". Left: a notification when an update is there, the history (S)
+- [x] App permissions page (Flatpak overrides) — SetAppPermissions.qml, hearth-flatpak-perms (flatpak override --user, Reset); test_settings_more_114.py "test_permissions_from_metadata_and_your_overrides"; picture ss-app-permissions (needs testing on a device)
+- [ ] Firmware updates (fwupd) with a notification — partly: SetFirmware.qml, hearth-firmware, hearth-sysset-admin (parts install after a password; system firmware shown, never installed: red flag 2, docs/SYSTEM-SETTINGS.md); test_system_settings_114.py "test_one_rule_for_system_firmware"; the notification (FirmwareWatch.qml, once a day, each version once; switch on SetFirmware.qml). Left: the history (S)
 - [x] Firmware security (Secure Boot, TPM, HSI level) — SetFirmware.qml, hearth-firmware; test_system_settings_114.py "test_security_level", "test_secure_boot_words" (needs testing on a device)
-- [ ] Shut down or restart after installing updates (S)
-- [ ] Backups of your files to a drive (feature/pc-backups exists, not merged here) (M)
+- [x] Shut down or restart after installing updates — SetUpdates.qml "Shut down when it's done" and "Shut down and finish updating" (a minute to cancel); picture ss-updates-shutdown (needs testing on a device)
+- [x] Backups of your files to a drive — reused: Home server › Backups & sync (SetHomeBackups.qml: to a drive, another Hearth device or the cloud), linked from Updates & recovery (settings-pages.js LINKS "updates"); feature/pc-backups (UrBackup for the house's PCs) is already in feature/kwin-1.14 (needs testing on a device)
 
 ### Network
 
@@ -329,10 +329,10 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 
 - [x] Date & time — `SetDateTime.qml`
 - [x] Keyboard layouts — `SetKeyboard.qml` (labwc; see Stage 1's audit line for KWin)
-- [ ] Language of the system, several in order — partly: language (SetRegion.qml, hearth-region, 50 languages in the image; test_system_settings_114.py "test_set_locale_runs_localectl_with_a_list"). Left: several languages in order (LANGUAGE), downloading translations (S)
+- [ ] Language of the system, several in order — partly: language (SetRegion.qml, hearth-region, 50 languages in the image; test_system_settings_114.py "test_set_locale_runs_localectl_with_a_list"); several in order (SetLanguages.qml, hearth-region "languages-set": LANGUAGE in environment.d and plasma-localerc; test_settings_more_114.py "test_languages_in_order"; picture ss-languages). Left: downloading translations (S)
 - [x] Formats: numbers, currency, dates, units, paper size — SetRegion.qml, hearth-region "FORMAT_KEYS = ('LC_NUMERIC', 'LC_TIME', 'LC_MONETARY', 'LC_MEASUREMENT', 'LC_PAPER')"; test_system_settings_114.py "test_localectl_parse" (needs testing on a device)
-- [ ] Spell check settings for apps (S)
-- [ ] Input methods for Chinese/Japanese/Korean (fcitx5) (M)
+- [x] Spell check settings for apps — SetSpellcheck.qml, hearth-region "spell-set" (Sonnet.conf [General], only its keys); test_settings_more_114.py "test_spell_keeps_other_lines"; picture ss-spellcheck (needs testing on a device)
+- [x] Input methods for Chinese/Japanese/Korean (fcitx5) — SetInputMethods.qml, hearth-region "im", "im-set", "im-install" (optional: from Flathub when asked; on makes it KWin's input method in your kwinrc only, off gives the on-screen keyboard back); test_settings_more_114.py "test_fcitx_on_and_off_only_touch_its_key"; picture ss-input-methods (needs testing on a device)
 
 ### Look
 
@@ -340,63 +340,63 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] Wallpaper: pictures, moving, your own — `Wallpaper.qml`, `SetAppearance.qml`
 - [x] Boot splash choice — `SetBoot.qml`, `SetBootFrames.qml`
 - [x] Fonts viewer, install and remove — `hosts/hearth-fonts`
-- [ ] Wallpaper per screen, slideshow, picture of the day, light/dark wallpaper — partly: a wallpaper per activity (Activities.qml, `Theme.activityWall`). Left: per screen, slideshow, picture of the day (M)
+- [x] Wallpaper per screen, slideshow, picture of the day, light/dark wallpaper — a wallpaper per activity (Activities.qml, `Theme.activityWall`); per screen and a slideshow (SetWallpaperMore.qml, WallShow.qml, Wallpaper.qml "WallShow.forScreen"; picture ss-wallpaper-more). picture of the day (hearth-potd: Bing, NASA APOD, Wikimedia Commons, off by default, kept a week; WallShow.qml "potdPath") and a light/dark pair (WallShow.qml "pairWall"); test_settings_bits_114.py "test_downloaded_once_a_day_and_kept", "test_wallshow_order_and_off_by_default"; picture ss-wallpaper-potd (needs testing on a device)
 - [ ] Save your own look as a theme (S)
-- [ ] System fonts — partly: UI font and size, fixed-width font, smoothing, hinting, font DPI (SetFonts.qml, hearth-lookset; test_system_settings_114.py "test_set_saves_merges_and_hands_on_only_to_hearths_files"). Left: small and title bar fonts, sub-pixel order (S)
+- [x] System fonts — UI font and size, fixed-width font, smoothing, hinting, font DPI (SetFonts.qml, hearth-lookset; test_system_settings_114.py "test_set_saves_merges_and_hands_on_only_to_hearths_files"); small and window title fonts (hearth-lookset smallFont/titleFont: kdeglobals smallestReadableFont and [WM] activeFont, GNOME's titlebar-font; test_settings_more_114.py "test_small_and_title_fonts"; picture ss-fonts-small). sub-pixel order (hearth-lookset "subpixel": fontconfig rgba, GNOME font-rgba-order, kdeglobals XftSubPixel; test_settings_bits_114.py "test_handed_on_only_with_subpixel_smoothing"; picture ss-fonts-subpixel) (needs testing on a device)
 - [x] Cursor theme and size — SetFonts.qml, hearth-lookset; test_system_settings_114.py "test_theme_lists" (needs testing on a device)
 - [x] Icon theme choice — SetFonts.qml, hearth-lookset; test_system_settings_114.py "test_theme_lists" (needs testing on a device)
-- [ ] App style: window frame colour intensity, "apps follow Hearth" (S)
-- [ ] Splash at sign-in (S)
+- [x] App style: window frame colour intensity, "apps follow Hearth" — frame colour intensity (SetLookMore.qml, desktop.json frameTint, hearth_aurorae.py "tint_colors" / "tint_themerc" for KWin and labwc; test_settings_more_114.py "test_frame_tint"; picture ss-look-more). "Apps follow Hearth" (SetLookMore.qml, desktop.json appsFollow, hearth-theme "apps_follow", theme/apply.sh; test_settings_bits_114.py "test_off_and_on_again"; picture ss-look-apps) (needs testing on a device)
+- [x] Splash at sign-in — SigninSplash.qml (flame, logo or plain; clicks go through it, gone after 2.5 s, once per sign-in), SetLookMore.qml; test_settings_more_114.py "test_watchers_are_loaded_by_file_name_and_cant_hold_the_desktop_up"; pictures ss-look-more, ss-signin-splash (needs testing on a device)
 - [ ] Keyboard RGB lights follow the accent (M)
 
 ### Sound
 
 - [x] Volume, mute, over-amplification, devices, per-app mixer — `SetSound.qml`, `Mixer.qml`
-- [ ] Device profiles, balance, speaker test — partly: sound card profiles (SetSound.qml, hearth-sound; test_system_settings_114.py "test_profile_checked_and_set_with_a_list"). Left: balance per channel, speaker test (S)
-- [ ] Microphone test and push-to-talk mute shortcut — partly: the microphone test (hearth-sound, test_system_settings_114.py "test_levels"). Left: push-to-talk (S)
-- [ ] Move one app's sound to another device, per-app input (S)
-- [ ] Scroll on an app's dock icon to change its volume (S)
-- [ ] Warning when "raise maximum volume" stays on (S)
+- [x] Device profiles, balance, speaker test — SetSoundSpeakers.qml, hearth-sound "balance", "speaker-test"; test_settings_more_114.py "test_balance_keeps_the_loudest_level_and_leaves_centre_alone", "test_speaker_tone_is_only_in_its_channel"; picture ss-sound-speakers (needs testing on a device)
+- [x] Microphone test and push-to-talk mute shortcut — SetPushToTalk.qml, PushToTalk.qml, hearth-ptt (KWin's global shortcuts, pressed/released; the microphone's mute put back when it stops); test_settings_more_114.py "test_keys_and_only_under_kwin"; picture ss-push-to-talk (needs testing on a device)
+- [x] Move one app's sound to another device, per-app input — each app's output (SetSoundApps.qml "Plays on", Mixer.qml "outOf" / "sendTo"; picture ss-sound-apps). per-app input (SetSoundApps.qml "Apps using a microphone", Mixer.qml "takeFrom", hearth-sound "route"; test_settings_bits_114.py "test_route_is_argument_lists"; picture ss-sound-apps-mic) (needs testing on a device)
+- [x] Scroll on an app's dock icon to change its volume — Dock.qml "wheelVolume", Mixer.qml "stepFor", Settings.dockScrollVolume (switch on SetSoundApps.qml); test_settings_more_114.py "test_settings_keys_saved_one_by_one" (needs testing on a device)
+- [x] Warning when "raise maximum volume" stays on — SetSound.qml: "Louder than 100% can hurt" asked before it turns on, and "The volume is over 100%" while it is (needs testing on a device)
 
 ### Power
 
 - [x] Power profiles, timers, power button, low battery — `SetPower.qml`, `IdlePower.qml`, `BatteryWatch.qml`
 - [ ] On AC / on battery / low battery settings, lid action, dim before off (M)
 - [x] Battery charge limit — SetPower.qml through hearth-hwset (/etc/hearth/hardware.json); test_system_settings_114.py "test_charge_limit_through_hwset" (needs testing on a device)
-- [ ] Apps blocking sleep, Hibernate and hybrid sleep (S)
-- [ ] Battery health, cycle count, energy graphs — partly: health shown with the charge limit (SetPower.qml). Left: cycle count and UPower's history graphs (M)
-- [ ] Batteries of Bluetooth devices, mice and controllers in Quick settings (S)
+- [x] Apps blocking sleep, Hibernate and hybrid sleep — SetPowerAwake.qml (logind's inhibitors, hearth-powerset "parse_inhibitors"), Hibernate in SetPower.qml only where hearth-powerset "hibernate_check" says it can (kernel, Secure Boot lockdown, swap on a drive big enough, logind), asked first until it has come back once, booting never changed; test_settings_more_114.py "test_hibernate_is_offered_only_when_everything_allows_it", "test_inhibitors_skip_system_ones"; pictures ss-power-awake, ss-power. Hybrid sleep only where Hibernate is offered and logind agrees, asked first until a hibernate has come back (SetPower.qml, hearth-powerset "hybrid_check"; test_settings_bits_114.py "test_only_where_hibernate_works"; picture ss-power-hybrid) (needs testing on a device)
+- [x] Battery health, cycle count, energy graphs — SetBattery.qml (health ring, cycles, charge and power graphs from UPower's GetHistory), hearth-powerset "history"; test_settings_more_114.py "test_battery_history_and_upower"; picture ss-battery (needs testing on a device)
+- [x] Batteries of Bluetooth devices, mice and controllers in Quick settings — QuickAccess.qml "devBatts", SetBattery.qml "Your devices' batteries", SetBtDevices.qml (needs testing on a device)
 
 ### Devices and hardware
 
 - [x] Bluetooth: on/off, pair, connect — `SetBluetooth.qml`
 - [x] Printers — `SetPrinters.qml`
 - [x] Game controllers: test and calibrate — `hosts/hearth-gaming`, `SetController.qml`
-- [ ] Bluetooth: send/receive files, battery, rename, trust/block (M)
-- [ ] Printers: queue window, ink notices, Windows shared printers (M)
-- [ ] Scanners: multi-page PDF and feeders, checked (S)
+- [ ] Bluetooth: send/receive files, battery, rename, trust/block — partly: sending files (OBEX through obexd), battery, trust and block (SetBtDevices.qml, hearth-bt); test_settings_more_114.py "test_bluetooth_info"; picture ss-bluetooth-devices. Left: receiving files, rename (S)
+- [ ] Printers: queue window, ink notices, Windows shared printers — partly: the print queue (SetPrintQueue.qml: hold, go on, cancel, cancel all mine, printed lately; hearth-printq); test_settings_more_114.py "test_print_queue_and_scanners"; picture ss-print-queue. Left: ink notices, Windows shared printers (S)
+- [ ] Scanners: multi-page PDF and feeders, checked — partly: scanners checked (SetScanners.qml: the scanners SANE finds and a test scan; hearth-printq "scanners", "scan-test"); picture ss-scanners. Left: multi-page PDF and feeders (Hearth Tools' scanner) (S)
 - [x] Thunderbolt devices: allow once or always, forget — SetThunderbolt.qml, hearth-thunderbolt; test_system_settings_114.py "test_allow_and_forget", "test_no_bolt" (needs testing on a device)
-- [ ] Removable storage: what happens on plug-in (S)
-- [ ] USB device permission prompts (M)
-- [x] Touchscreen calibration — SetKwinTablet.qml, KwinCalibrate.qml (needs testing on a device)
+- [x] Removable storage: what happens on plug-in — SetUsbDevices.qml (Ask / Open in Files / Nothing: Settings.removable), DeviceWatch.qml "drive" (udev, hearth-files mount); pictures ss-usb-devices, ss-drive-plugged (needs testing on a device)
+- [x] USB device permission prompts — DeviceWatch.qml "usb" (a notice for a new device; where USBGuard blocked it, Allow), SetUsbDevices.qml, hearth-usbdev (never blocks by itself); test_settings_more_114.py "test_usb_devices_from_sysfs"; picture ss-usb-devices (needs testing on a device)
+- [x] Touchscreen calibration — KwinCalibrate.qml, SetKwinTablet.qml (from feature/kwin-pages, merged): four targets, KWin's calibrationMatrix; under KWin only (needs testing on a device)
 
 ### Startup, session, defaults
 
 - [x] Default apps per kind — `SetDefaults.qml`
-- [ ] Autostart page (S)
+- [x] Autostart page — SetAutostart.qml, hearth-autostart (add an app or a command, remove yours, turn on/off; a system one never deleted); test_settings_more_114.py "test_a_command_survives_the_round_trip", "test_a_system_one_is_never_deleted"; picture ss-autostart (needs testing on a device)
 - [x] Background services page — SetServices.qml, hearth-services; test_system_settings_114.py "test_a_service_for_everyone_is_masked_for_you" (needs testing on a device)
-- [ ] File associations editor (M)
+- [x] File associations editor — SetFileTypes.qml, hearth-mime (every kind, its endings, the app it opens in, your own endings in mime/packages/hearth-user.xml); test_settings_more_114.py "test_types_set_and_reset", "test_own_endings_file"; picture ss-file-types (needs testing on a device)
 - [ ] Desktop session rows — partly: "Reopen my apps from last time" (SetStartup.qml). Left: confirm logout, default leave option (S)
-- [ ] Menu editor ("Edit app…") (M)
+- [x] Menu editor ("Edit app…") — SetMenuEditor.qml, hearth-menu (your copy of the entry, X-Hearth-Edited, Put back), "Edit app…" in the app menu's right-click (shell.qml); test_settings_more_114.py "test_save_makes_your_copy_and_reset_puts_it_back"; picture ss-menu-editor (needs testing on a device)
 
 ### Info and system
 
 - [x] About this PC — `SetAbout.qml`, `ResourceMonitor.qml`, `DeviceManagerView.qml`
 - [x] Task manager — `TaskManager.qml`, `hearth-tasks`
 - [x] Disk manager and SMART — `hosts/hearth-disks`, `SetHomeDrives.qml`
-- [ ] Info Center's technical pages (OpenGL/Vulkan/Wayland, modules, interrupts, PCI/USB, Samba, sensors) (M)
-- [ ] Out-of-memory notification with tips (S)
-- [ ] Welcome app once per new version (S)
+- [ ] Info Center's technical pages (OpenGL/Vulkan/Wayland, modules, interrupts, PCI/USB, Samba, sensors) — partly: processor, graphics card, memory, Vulkan and OpenGL, PCI with drivers, USB, energy (SetInfoCenter.qml, hearth-info); test_settings_more_114.py "test_info_center_parsers"; pictures ss-info-*. Left: kernel modules, interrupts, Samba, sensors (S)
+- [x] Out-of-memory notification with tips — OomWatch.qml (the kernel's oom_kill count, a notice with tips and Memory settings; memory pressure tip at most every 6 h; Hearth's guard tells its own); picture ss-oom-notice (needs testing on a device)
+- [x] Welcome app once per new version — Welcome.qml, welcome.json ("1.14"), seen kept in ~/.local/state/nimbus/welcome.json; picture ss-welcome (needs testing on a device)
 
 ### Hearth-specific extras
 

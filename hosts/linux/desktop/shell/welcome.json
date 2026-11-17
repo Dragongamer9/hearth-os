@@ -1,0 +1,24 @@
+{
+  "_comment": "The Welcome screen's pages (Welcome.qml), one per Hearth OS version (MAJOR.MINOR, as the version is shown). A version without its own page shows \"default\". Each item: an icon from icons/, a title, one line, and the Settings page it opens.",
+  "1.14": {
+    "title": "Mantel runs on KWin now",
+    "sub": "Desktop Mode has KDE's window manager under Hearth's own look, and Settings has much more of what KDE has.",
+    "items": [
+      {"icon": "window", "title": "KWin under Mantel", "body": "Smoother windows, HDR and variable refresh rate on screens that have them.", "page": "your-desktop"},
+      {"icon": "vol", "title": "More sound settings", "body": "Balance, a speaker test, apps on other speakers and push to talk.", "page": "sound"},
+      {"icon": "batt", "title": "Power your way", "body": "Other times on battery, what the lid does, battery health and history.", "page": "power"},
+      {"icon": "palette", "title": "Save your look", "body": "A wallpaper per screen, a slideshow, and My looks to keep how it all looks.", "page": "my-looks"},
+      {"icon": "globe", "title": "Languages", "body": "Several languages in order, spell check, Chinese, Japanese and Korean typing.", "page": "region"},
+      {"icon": "info", "title": "Info Center", "body": "Your processor, graphics, memory and every USB and PCI device in detail.", "page": "info-cpu"}
+    ]
+  },
+  "default": {
+    "title": "Welcome to Hearth OS",
+    "sub": "A few places to start.",
+    "items": [
+      {"icon": "palette", "title": "Make it yours", "body": "Looks, wallpaper, the bar and dock.", "page": "appearance"},
+      {"icon": "update", "title": "Updates", "body": "Hearth keeps the version before, so you can always go back.", "page": "updates"},
+      {"icon": "pad", "title": "Gaming", "body": "Steam Game Mode, controllers and remote play.", "page": "gaming"}
+    ]
+  }
+}

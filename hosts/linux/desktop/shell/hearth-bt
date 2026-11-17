@@ -1,0 +1,151 @@
+#!/usr/bin/python3
+"""hearth-bt: Hearth Settings › Bluetooth › Your devices (1.14, KDE's Bluetooth file sending and trust), as you (no
+root). Each paired device's battery, whether it's trusted (connects by itself, no asking) or blocked (never connects),
+and sending files to phones and computers over Bluetooth (OBEX Object Push through BlueZ's obexd, on your session
+bus). BlueZ keeps trust and blocks itself; Hearth keeps no file. Programs always run with argument lists.
+
+  hearth-bt devices              JSON: {devices: [{mac, name, icon, connected, trusted, blocked, battery, canSend}]}
+  hearth-bt trust|untrust|block|unblock MAC
+  hearth-bt send MAC FILE        "progress: N" lines while it goes, then JSON {ok, bytes}
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import time
+
+MAC_RE = re.compile(r'^([0-9A-F]{2}:){5}[0-9A-F]{2}$')
+OPP = '00001105-0000-1000-8000-00805f9b34fb'
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=15):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as e:
+        return 127, '', str(e)
+    return p.returncode, p.stdout, p.stderr
+
+
+def parse_list(text):
+    return [(m.group(1).upper(), m.group(2)) for m in re.finditer(r'^Device ([0-9A-Fa-f:]{17}) (.*)$', text, re.M)]
+
+
+def parse_info(text):
+    d = {'uuids': []}
+    for line in text.splitlines():
+        line = line.strip()
+        m = re.match(r'^UUID: .*\(([0-9a-f-]{36})\)$', line)
+        if m:
+            d['uuids'].append(m.group(1))
+            continue
+        if ':' in line:
+            k, _, v = line.partition(':')
+            d.setdefault(k.strip(), v.strip())
+    bat = re.match(r'^0x[0-9a-fA-F]+ \((\d+)\)$', d.get('Battery Percentage', ''))
+    return {'name': d.get('Alias') or d.get('Name') or '', 'icon': d.get('Icon', ''), 'connected': d.get('Connected') == 'yes',
+            'trusted': d.get('Trusted') == 'yes', 'blocked': d.get('Blocked') == 'yes', 'paired': d.get('Paired') == 'yes',
+            'battery': int(bat.group(1)) if bat else None,
+            'canSend': OPP in d['uuids'] or d.get('Icon', '') in ('phone', 'computer')}
+
+
+def need():
+    if not shutil.which('bluetoothctl'):
+        raise Fail("bluetoothctl isn't on this system")
+
+
+def devices():
+    need()
+    code, out, err = run(['bluetoothctl', '--timeout', '5', 'devices', 'Paired'])
+    res = []
+    for mac, name in parse_list(out):
+        c, info, _ = run(['bluetoothctl', '--timeout', '5', 'info', mac])
+        d = parse_info(info)
+        d['mac'] = mac
+        d['name'] = d['name'] or name
+        res.append(d)
+    res.sort(key=lambda d: (not d['connected'], d['name'].lower()))
+    return {'devices': res}
+
+
+def change(what, mac):
+    need()
+    mac = (mac or '').upper()
+    if not MAC_RE.match(mac) or what not in ('trust', 'untrust', 'block', 'unblock'):
+        raise Fail('not a Bluetooth device')
+    code, out, err = run(['bluetoothctl', '--timeout', '5', what, mac])
+    if code != 0 or 'not available' in out:
+        raise Fail((err or out).strip().splitlines()[-1][:160] if (err or out).strip() else "BlueZ said no")
+    return {'ok': True}
+
+
+def busctl(*args, timeout=20):
+    return run(['busctl', '--user', '--json=short'] + list(args), timeout=timeout)
+
+
+def send(mac, path):
+    mac = (mac or '').upper()
+    if not MAC_RE.match(mac):
+        raise Fail('not a Bluetooth device')
+    path = os.path.realpath(os.path.expanduser(path or ''))
+    if not os.path.isfile(path):
+        raise Fail("that file isn't there")
+    if not shutil.which('busctl'):
+        raise Fail("busctl isn't on this system")
+    code, out, err = busctl('call', 'org.bluez.obex', '/org/bluez/obex', 'org.bluez.obex.Client1', 'CreateSession',
+                            'sa{sv}', mac, '1', 'Target', 's', 'opp', timeout=40)
+    if code != 0:
+        raise Fail("couldn't reach it: is Bluetooth on there and is it nearby? (%s)" % (err.strip().splitlines() or ['obexd'])[-1][:120])
+    try:
+        session = json.loads(out)['data'][0]
+    except (ValueError, KeyError, IndexError):
+        raise Fail('BlueZ answered something unexpected')
+    try:
+        code, out, err = busctl('call', 'org.bluez.obex', session, 'org.bluez.obex.ObjectPush1', 'SendFile', 's', path, timeout=40)
+        if code != 0:
+            raise Fail('it said no to the file (%s)' % (err.strip().splitlines() or ['refused'])[-1][:120])
+        transfer = json.loads(out)['data'][0]
+        size = os.path.getsize(path) or 1
+        deadline = time.time() + 3600
+        while time.time() < deadline:
+            c, o, e = busctl('get-property', 'org.bluez.obex', transfer, 'org.bluez.obex.Transfer1', 'Status')
+            status = json.loads(o).get('data', '') if c == 0 else 'error'
+            c, o, e = busctl('get-property', 'org.bluez.obex', transfer, 'org.bluez.obex.Transfer1', 'Transferred')
+            done = json.loads(o).get('data', 0) if c == 0 else 0
+            print('progress: %d %s' % (min(99, int(100 * done / size)), os.path.basename(path)), flush=True)
+            if status == 'complete':
+                return {'ok': True, 'bytes': size}
+            if status == 'error':
+                raise Fail('the other device stopped it (or said no)')
+            time.sleep(0.7)
+        raise Fail('it took too long')
+    finally:
+        busctl('call', 'org.bluez.obex', '/org/bluez/obex', 'org.bluez.obex.Client1', 'RemoveSession', 'o', session)
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['devices']:
+            r = devices()
+        elif argv[:1] and argv[0] in ('trust', 'untrust', 'block', 'unblock') and len(argv) == 2:
+            r = change(argv[0], argv[1])
+        elif argv[:1] == ['send'] and len(argv) == 3:
+            r = send(argv[1], argv[2])
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e), flush=True)
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
