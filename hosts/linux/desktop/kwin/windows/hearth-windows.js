@@ -127,25 +127,24 @@ function zoneOf(w) {
     return "";
 }
 
-function near(g, r) { return Math.abs(g.x - r.x) < 2 && Math.abs(g.y - r.y) < 2 && Math.abs(g.width - r.width) < 2 && Math.abs(g.height - r.height) < 2; }
-
-// KWin takes a new place as a rect. Which way of writing one this KWin accepts isn't the same everywhere, so: a plain
-// object, then the rect KWin gave us with new numbers, then moving and resizing in two steps.
+// KWin takes a new place as a rect: a plain object, or (if this KWin won't take one) the rect it gave us with new
+// numbers. The window gets there once the app has drawn itself at the new size, so it isn't checked here.
 function setGeometry(w, r) {
-    var ways = [
-        function () { w.frameGeometry = { x: r.x, y: r.y, width: r.width, height: r.height }; },
-        function () { var g = w.frameGeometry; g.x = r.x; g.y = r.y; g.width = r.width; g.height = r.height; w.frameGeometry = g; },
-        function () { if (w.move) w.move({ x: r.x, y: r.y }); if (w.resize) w.resize({ width: r.width, height: r.height }); }
-    ];
-    var errors = [];
-    for (var i = 0; i < ways.length; i++) {
-        try { ways[i](); } catch (e) { errors.push(i + ": " + e); continue; }
-        if (near(w.frameGeometry, r)) { say("geometry: way " + i + " works", true); return true; }
+    try {
+        w.frameGeometry = { x: r.x, y: r.y, width: r.width, height: r.height };
+        return true;
+    } catch (e) {
+        say("geometry: a plain rect was refused (" + e + "); trying KWin's own", true);
     }
-    var g = w.frameGeometry;
-    say("geometry: no way worked (wanted " + JSON.stringify(r) + ", got " + JSON.stringify({ x: g.x, y: g.y, width: g.width, height: g.height }) +
-        (errors.length ? "; " + errors.join("; ") : "") + ")");
-    return false;
+    try {
+        var g = w.frameGeometry;
+        g.x = r.x; g.y = r.y; g.width = r.width; g.height = r.height;
+        w.frameGeometry = g;
+        return true;
+    } catch (e2) {
+        say("geometry: " + e2, true);
+        return false;
+    }
 }
 
 // Maximize or restore: KWin's setMaximize(vertically, horizontally), or its Maximize action on the window in front.

@@ -113,7 +113,6 @@ def main():
     check('app id comes through', a.get('appId') == 'hearth.test.a', a.get('appId'))
     sh = wait(lambda: sorted(w['title'] for w in state().get('windows', [])) == ['Test A', 'Test B'], 8)
     check('Mantel\'s WinList has them (what the taskbar shows)', sh, json.dumps(state().get('windows'))[:400])
-    shot('taskbar')
 
     # The taskbar's ways: Win's setters and functions.
     ipc('winlist', 'act', 'Test A', 'minimize')
@@ -134,8 +133,6 @@ def main():
     check('snap to the left half', wait(lambda: (win('Test A') or {}).get('zone') == 'left-half'), win('Test A'))
     ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test B', 'zone': 'right-half'}))
     check('snap to the right half', wait(lambda: (win('Test B') or {}).get('zone') == 'right-half'), win('Test B'))
-    time.sleep(1)
-    shot('halves')
     ipc('winlist', 'act', 'Test A', 'activate')
     wait(lambda: listed().get('active') == (win('Test A') or {}).get('id'))
     do({'op': 'key', 'key': 'up'})
@@ -152,8 +149,6 @@ def main():
         log('::warning title=KWin windows::Shortcut: %s' % e.message)
     fly = wait(lambda: json.loads(ipc('snap', 'state') or '{}').get('shown'), 8)
     check('Super+Z (Shortcut) opens snap layouts', fly, ipc('snap', 'state'))
-    time.sleep(1)
-    shot('snap-layouts')
     ipc('snap', 'close')
 
     # Desktops: the taskbar's "Move to desktop" and the desktop buttons.
@@ -173,16 +168,32 @@ def main():
     back = wait(lambda: state().get('connected') and win('Test A'), 25)
     check('the bridge is started again if it stops', back, json.dumps(state())[:300])
 
-    # KWin's window menu with Hearth's Snap.
+    # Closing (a third window, so the pictures below still have both).
+    procs.append(subprocess.Popen(['foot', '--app-id=hearth.test.c', '--title=Test C', 'sleep', '600'],
+                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+    wait(lambda: win('Test C'), 15)
+    ipc('winlist', 'act', 'Test C', 'close')
+    check('close from Mantel', wait(lambda: listed().get('windows') is not None and not win('Test C'), 10),
+          [w.get('title') for w in listed().get('windows', [])])
+
+    # The pictures, last (taking one goes through KWin and mustn't spoil the checks): the taskbar with the two windows
+    # side by side, Snap layouts' flyout, KWin's window menu with Hearth's Snap.
+    ipc('winlist', 'run', json.dumps({'op': 'desktop', 'title': 'Test B', 'n': 1}))
+    ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test A', 'zone': 'left-half'}))
+    ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test B', 'zone': 'right-half'}))
+    wait(lambda: (win('Test A') or {}).get('zone') == 'left-half' and (win('Test B') or {}).get('zone') == 'right-half')
+    time.sleep(1.5)
+    shot('halves')
+    ipc('snap', 'open')
+    time.sleep(1.5)
+    shot('snap-layouts')
+    ipc('snap', 'close')
     ipc('winlist', 'act', 'Test A', 'activate')
     time.sleep(0.5)
     do({'op': 'menu'})
     time.sleep(1.5)
     shot('window-menu')
 
-    ipc('winlist', 'act', 'Test B', 'close')
-    check('close from Mantel', wait(lambda: listed().get('windows') is not None and not win('Test B'), 10),
-          [w.get('title') for w in listed().get('windows', [])])
     for p in procs:
         p.kill()
     failed = sum(1 for _, ok in results if not ok)
