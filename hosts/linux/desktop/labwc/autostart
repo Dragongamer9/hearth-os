@@ -17,9 +17,9 @@ export HEARTH_WM HEARTH_DESKTOP_PID
 # DISPLAY too (Xwayland's; Game Mode's gamescope display is gone by now), and the portals' failures from Game Mode
 # are forgotten, or systemd wouldn't start them again for a while ("start-limit-hit").
 # XDG_DATA_DIRS too (with Flatpak's folders, from nimbus-session), so apps D-Bus starts find Flatpak apps and icons.
-# XDG_CONFIG_DIRS and HEARTH_WM too (1.14): under KWin the portals read KWin's nimbus-portals.conf (screen sharing through
-# KDE's portal), under labwc the image's (wlroots'); when the window manager changed since the portal started, it starts
-# again (once, at the start of Desktop Mode).
+# XDG_CONFIG_DIRS and HEARTH_WM too (1.14): under KWin (XDG_CURRENT_DESKTOP Hearth:Nimbus:KDE) the portals read
+# hearth-portals.conf, under labwc (Nimbus:wlroots) nimbus-portals.conf (wlroots'); when the window manager changed since
+# the portal started, it starts again (once, at the start of Desktop Mode).
 { dbus-update-activation-environment --systemd WAYLAND_DISPLAY DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE XDG_DATA_DIRS XDG_CONFIG_DIRS NIMBUS_SHARE NIMBUS_APP HEARTH_WM
   systemctl --user reset-failed xdg-desktop-portal.service xdg-desktop-portal-gtk.service xdg-desktop-portal-kde.service
   if [ "$(cat "$RUN/hearth-portal-wm" 2>/dev/null)" != "$HEARTH_WM" ]; then
@@ -144,6 +144,11 @@ fi
 
 # A store sign-in asked for in Game Mode (Library › Stores): Hearth opens here in a window and starts it.
 [ -f "$SHARE/desktop/shell/hearth-signin" ] && command -v python3 >/dev/null 2>&1 && python3 "$SHARE/desktop/shell/hearth-signin" desktop-start >/dev/null 2>&1 &
+
+# Hearth Connect (your phone, linked): started for this sign-in by nimbus-session; again here if it isn't running (it
+# only starts when you have the phone link on). Not for a second player's seat.
+[ -z "$HEARTH_SEAT" ] && command -v hearth-connect >/dev/null 2>&1 && ! pgrep -u "$(id -u)" -f 'hearth-connect' >/dev/null 2>&1 \
+  && { hearth-connect --autostart >/dev/null 2>&1 & }
 
 # Briefcase auto-sync (hearth-briefcase-sync.service): asked for without waiting; it skips itself when no Briefcase has
 # auto-sync on, and nothing here waits for it or fails with it. Not for a second player's seat.

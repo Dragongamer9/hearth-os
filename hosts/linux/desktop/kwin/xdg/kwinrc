@@ -32,10 +32,10 @@ ButtonsOnLeft=
 ButtonsOnRight=IAX
 BorderSize=Normal
 
-# Mantel has its own on-screen keyboard (hearth-pad, docs/OSK.md).
+# Hearth's on-screen keyboard as KWin's input method (feature/kwin-input: hearth-kwin-im.desktop).
 [Wayland]
-InputMethod=
-VirtualKeyboardEnabled=false
+InputMethod[$e]=/usr/share/applications/hearth-kwin-im.desktop
+VirtualKeyboardEnabled=true
 
 [NightColor]
 Active=false

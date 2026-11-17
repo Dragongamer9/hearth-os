@@ -8,11 +8,12 @@ Desktop Mode is **Mantel**, Hearth's own desktop (the bar, the dock, Quick Acces
 The owner, Nov 16, 2026: Mantel moves from labwc to **KWin**, KDE's window manager, and what KDE Plasma has that Mantel
 lacks gets written for Mantel. KWin draws, moves and snaps the windows; Mantel is still everything you see around them.
 
-- **Starting.** nimbus-session's `run_classic` starts `kwin_wayland --xwayland --no-lockscreen` with Desktop Mode's one
+- **Starting.** nimbus-session's `run_classic` starts `kwin_wayland --xwayland` (its screen locker is Mantel's lock) with Desktop Mode's one
   autostart (`desktop/kwin/autostart` runs `desktop/labwc/autostart`). KWin gets labwc's environment file (with your
-  accessibility lines), `XDG_CURRENT_DESKTOP=Nimbus:KDE` (Nimbus first, so Hearth's default apps, file chooser and app
-  kinds work as before; KDE so KDE's portal does screen sharing) and Hearth's KWin defaults first in
-  `XDG_CONFIG_DIRS` (`desktop/kwin/xdg`: `kwinrc`, `xdg-desktop-portal/nimbus-portals.conf`).
+  accessibility lines), `XDG_CURRENT_DESKTOP=Hearth:Nimbus:KDE` (Hearth first: its portals, `hearth-portals.conf`; Nimbus
+  next, so Hearth's default apps, file chooser and app kinds work as before), `PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock`
+  and Hearth's KWin defaults first in `XDG_CONFIG_DIRS` (`desktop/kwin/xdg`: `kwinrc` with Hearth's on-screen keyboard
+  as KWin's input method, and the input part's `kscreenlockerrc`).
   They're system defaults: your own `~/.config/kwinrc` is read on top and Hearth never writes it. KWin's messages go
   to `~/.local/share/nimbus/kwin.log` (in Send logs).
 - **The safe start.** labwc stays in the image. If KWin isn't installed, ends within 15 seconds, or Mantel doesn't say

@@ -100,12 +100,13 @@ class KWinStart(Base):
         self.assertIn('kwin: Mantel up after', log)
         self.assertEqual(self.lines('labwc-ran'), [], log)                    # no fallback
         ran = '\n'.join(self.lines('kwin-ran'))
-        self.assertIn('args=--xwayland --no-lockscreen %s/desktop/kwin/autostart' % self.share, ran)
+        self.assertIn('args=--xwayland %s/desktop/kwin/autostart' % self.share, ran)
+        self.assertNotIn('--no-lockscreen', ran)                             # KWin's locker is Mantel's lock
         pid = [l for l in self.lines('kwin-ran') if l.startswith('pid=')][0].split()
         self.assertEqual(pid[0][4:], pid[1][len('desktop_pid='):], 'HEARTH_DESKTOP_PID is KWin itself')
         self.assertIn('wm=kwin', ran)
         self.assertIn('labwc_pid=unset', ran)                               # never LABWC_PID under KWin
-        self.assertIn('xcd=Nimbus:KDE', ran)
+        self.assertIn('xcd=Hearth:Nimbus:KDE', ran)                          # Hearth first (its portals), then Nimbus
         self.assertIn('xdg=%s/desktop/kwin/xdg:' % self.share, ran)         # Hearth's defaults under yours
         self.assertIn('qpa=wayland;xcb', ran)                               # labwc's environment file
         self.assertTrue(os.path.exists(os.path.join(self.home, '.local/share/nimbus/kwin.log')))
@@ -207,8 +208,31 @@ class KWinStart(Base):
         self.session()
         self.assertEqual(open(mine).read(), '[Windows]\nFocusPolicy=FocusFollowsMouse\n')
         self.assertFalse(os.path.exists(mine + '.bak'))
-        for f in ('kwinrc', 'xdg-desktop-portal/nimbus-portals.conf'):
+        for f in ('kwinrc',):
             self.assertTrue((ROOT / 'hosts/linux/desktop/kwin/xdg' / f).is_file())
+
+
+class PhoneLink(Base):
+    """Hearth Connect's unit doesn't start by itself (feature/phone-link): the session starts it in every mode."""
+    def test_session_starts_it_once_whatever_the_mode(self):
+        self.write_bin('hearth-connect', '#!/bin/sh\necho "$*" >> "$HOME/connect-ran"\n')
+        self.write_bin('kwin_wayland', KWIN_WORKS)
+        for conf in ('NIMBUS_START_MODE=desktop\n', ''):      # Desktop Mode, and Game Mode (nothing to run it here: ends)
+            with self.subTest(conf=conf):
+                os.makedirs(self.home, exist_ok=True)
+                p = os.path.join(self.home, 'connect-ran')
+                if os.path.exists(p):
+                    os.remove(p)
+                self.session(conf)
+                for _ in range(25):
+                    if os.path.exists(p):
+                        break
+                    time.sleep(0.2)
+                self.assertEqual(self.lines('connect-ran')[:1], ['--autostart'])
+
+    def test_autostart_starts_it_when_it_isnt_running(self):
+        text = AUTOSTART.read_text()
+        self.assertIn('hearth-connect --autostart', text)
 
 
 class Choice(Base):
