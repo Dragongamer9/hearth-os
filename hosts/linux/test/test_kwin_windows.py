@@ -218,6 +218,66 @@ class Script(unittest.TestCase):
             self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
 
+class Frames(unittest.TestCase):
+    """Hearth's window frames on KWin (theme/hearth_aurorae.py), made like labwc's."""
+
+    @classmethod
+    def setUpClass(cls):
+        sys.path.insert(0, str(LINUX / 'desktop' / 'theme'))
+        import hearth_aurorae
+        cls.ha = hearth_aurorae
+        cls.cols = hearth_aurorae.themerc_colors((LINUX / 'desktop' / 'labwc' / 'themerc-override').read_text())
+
+    def test_labwcs_colours(self):
+        for k in ('window.active.title.bg.color', 'window.inactive.title.bg.color', 'window.active.label.text.color',
+                  'window.active.button.hover.bg.color', 'window.active.border.color'):
+            self.assertIn(k, self.cols)
+        files = self.ha.build(self.cols, 10)
+        self.assertIn(self.cols['window.active.title.bg.color'], files['decoration.svg'])
+        self.assertIn(self.cols['window.inactive.title.bg.color'], files['decoration.svg'])
+        self.assertIn('ActiveTextColor=', files['hearthrc'])
+
+    def test_aurorae_files(self):
+        files = self.ha.build(self.cols, 10)
+        self.assertEqual(set(files), {'metadata.desktop', 'hearthrc', 'decoration.svg', 'close.svg', 'minimize.svg',
+                                      'maximize.svg', 'restore.svg'})
+        dec = ET.fromstring(files['decoration.svg'])
+        ids = {e.get('id') for e in dec.iter() if e.get('id')}
+        for part in ('topleft', 'top', 'topright', 'left', 'center', 'right', 'bottomleft', 'bottom', 'bottomright'):
+            self.assertIn('decoration-' + part, ids)
+            self.assertIn('decoration-inactive-' + part, ids)
+        for b in ('close', 'minimize', 'maximize', 'restore'):
+            ids = {e.get('id') for e in ET.fromstring(files[b + '.svg']).iter() if e.get('id')}
+            self.assertEqual(ids, {'active-center', 'inactive-center', 'hover-center', 'pressed-center', 'deactivated-center'}, b)
+
+    def test_writes_only_its_own_folder(self):
+        with tempfile.TemporaryDirectory() as d:
+            other = pathlib.Path(d) / 'aurorae' / 'themes' / 'someone-elses'
+            other.mkdir(parents=True)
+            (other / 'decoration.svg').write_text('mine')
+            seen = []
+
+            def write(path, text):
+                seen.append(path)
+                pathlib.Path(path).parent.mkdir(parents=True, exist_ok=True)
+                pathlib.Path(path).write_text(text)
+                return True
+            self.assertTrue(self.ha.write_theme(d, self.cols, 6, write))
+            self.assertTrue(all(p.startswith(str(pathlib.Path(d) / 'aurorae' / 'themes' / 'hearth')) for p in seen))
+            self.assertEqual((other / 'decoration.svg').read_text(), 'mine')
+
+    def test_kwin_picks_it(self):
+        rc = (KWIN / 'xdg' / 'kwinrc').read_text()
+        self.assertIn('library=org.kde.kwin.aurorae', rc)
+        self.assertIn('theme=__aurorae__svg__hearth', rc)
+        # labwc's title bar order: icon on the left; iconify, max, close on the right.
+        root = ET.parse(LINUX / 'desktop' / 'labwc' / 'rc.xml').getroot()
+        self.assertEqual(root.find('theme').find('titlebar').find('layout').text, 'icon:iconify,max,close')
+        self.assertIn('ButtonsOnLeft=M\n', rc)
+        self.assertIn('ButtonsOnRight=IAX\n', rc)
+        self.assertIn('TitlebarDoubleClickCommand=Maximize', rc)
+
+
 class Commands(unittest.TestCase):
     def test_parse_do(self):
         self.assertEqual(kb.parse_do(['snap', '{1}', 'zone=left-half']), {'op': 'snap', 'id': '{1}', 'zone': 'left-half'})

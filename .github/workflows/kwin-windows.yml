@@ -10,7 +10,7 @@ name: Mantel on KWin (windows)
 on:
   push:
     branches: [bughunt, 'feature/kwin-*']
-    paths: ['hosts/linux/desktop/kwin/**', 'hosts/linux/desktop/shell/WinList.qml', 'hosts/linux/desktop/shell/DesktopMenu.qml', 'hosts/linux/desktop/shell/Desktop.qml', 'hosts/linux/desktop/shell/HintStrip.qml', 'hosts/linux/desktop/shell/hearth-kwin-bridge',
+    paths: ['hosts/linux/desktop/kwin/**', 'hosts/linux/desktop/shell/WinList.qml', 'hosts/linux/desktop/shell/DesktopMenu.qml', 'hosts/linux/desktop/shell/Desktop.qml', 'hosts/linux/desktop/shell/HintStrip.qml', 'hosts/linux/desktop/theme/**', 'hosts/linux/desktop/shell/Theme.qml', 'hosts/linux/desktop/shell/hearth-kwin-bridge',
             'hosts/linux/test/test_kwin_windows.py', 'hosts/linux/test/kwin-windows-mock.js', 'tools/e2e-kwin-windows.py',
             '.github/workflows/kwin-windows.yml']
   workflow_dispatch:
@@ -31,7 +31,10 @@ jobs:
         run: |
           dnf -y install dnf5-plugins git python3 python3-gobject nodejs procps-ng dbus-daemon dbus-tools kwin \
             foot qt6-qtsvg qt6ct xorg-x11-server-Xwayland mesa-dri-drivers google-noto-sans-fonts breeze-icon-theme adwaita-icon-theme \
-            hicolor-icon-theme ImageMagick wl-clipboard libnotify python3-tkinter kmod python3-dbus python3-pillow python3-evdev systemd-udev libinput >/dev/null
+            hicolor-icon-theme ImageMagick wl-clipboard libnotify python3-tkinter kmod python3-dbus python3-pillow python3-evdev systemd-udev libinput gtk3 >/dev/null
+          dnf -y install --skip-unavailable aurorae libkscreen kscreen >/dev/null || true
+          for b in kscreen-doctor; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed (pictures stay at vkms's size)"; done
+          ls /usr/lib64/qt6/plugins/org.kde.kdecoration*/ 2>/dev/null | tr '\n' ' ' | sed 's/^/::notice title=decorations::/'; echo
           dnf -y install rsms-inter-fonts >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
@@ -106,6 +109,13 @@ jobs:
             /tmp/kwin_wayland --virtual --xwayland --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth "$X11ENV" >shots/kwin.log 2>&1 &
             for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
           fi
+          # 1920x1080 for the pictures (vkms starts at 1024x768).
+          if [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && command -v kscreen-doctor >/dev/null; then
+            sleep 2
+            OUT1=$(WAYLAND_DISPLAY=wayland-hearth kscreen-doctor -j 2>/dev/null | python3 -c 'import json,sys; o=json.load(sys.stdin)["outputs"]; print(o[0]["name"])' 2>/dev/null)
+            [ -n "$OUT1" ] && WAYLAND_DISPLAY=wayland-hearth kscreen-doctor "output.$OUT1.mode.1920x1080@60" >/dev/null 2>&1 \
+              || echo "::warning title=pictures::couldn't set 1920x1080 (${OUT1:-no output})"
+          fi
           [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { echo "::error title=KWin::didn't start: $(tail -5 shots/kwin.log | tr '\n' '|' | cut -c1-600)"; exit 1; }
           sleep 3
           # KWin's X server for the X11 test window.
@@ -177,3 +187,15 @@ jobs:
         run: f=shots/kwin-window-menu.png; [ -f "$f" ] && convert "$f" -resize 700x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-window-menu $i::$part"; done || true
       - name: Picture (desktop-menu)
         run: f=shots/kwin-desktop-menu.png; [ -f "$f" ] && convert "$f" -resize 700x -quality 40 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-desktop-menu $i::$part"; done || true
+      - name: Picture (frame-active)
+        run: f=shots/kwin-frame-active.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-active $i::$part"; done || true
+      - name: Picture (frame-inactive)
+        run: f=shots/kwin-frame-inactive.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-inactive $i::$part"; done || true
+      - name: Picture (frame-maximized)
+        run: f=shots/kwin-frame-maximized.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-maximized $i::$part"; done || true
+      - name: Picture (frame-hearth-gold)
+        run: f=shots/kwin-frame-hearth-gold.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-hearth-gold $i::$part"; done || true
+      - name: Picture (frame-full)
+        run: f=shots/kwin-frame-full-4.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-full $i::$part"; done || true
+      - name: Picture (frame-csd)
+        run: f=shots/kwin-frame-csd.png; [ -f "$f" ] && convert "$f" -resize 900x -quality 45 jpg:- | base64 -w0 | fold -w 3800 | nl -ba -w2 -s' ' | head -12 | while read -r i part; do echo "::notice title=SHOT kwin-frame-csd $i::$part"; done || true

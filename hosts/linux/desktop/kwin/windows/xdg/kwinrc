@@ -11,3 +11,17 @@ Name_1=Desktop 1
 Name_2=Desktop 2
 Name_3=Desktop 3
 Name_4=Desktop 4
+
+# Window frames: Hearth's own Aurorae theme (theme/hearth_aurorae.py; hearth-theme writes it for your look and accent
+# to ~/.local/share/aurorae/themes/hearth). The window menu (the app's icon) on the left, minimize, maximize and close
+# on the right, as on labwc. A decoration you pick in your own kwinrc wins.
+[org.kde.kdecoration2]
+library=org.kde.kwin.aurorae
+theme=__aurorae__svg__hearth
+ButtonsOnLeft=M
+ButtonsOnRight=IAX
+ShowToolTips=true
+
+# A double-click on the title bar maximizes (and restores), as on labwc.
+[Windows]
+TitlebarDoubleClickCommand=Maximize
