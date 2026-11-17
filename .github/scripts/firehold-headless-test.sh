@@ -48,6 +48,24 @@ wait_for 30 'any(w["appId"] == "hearth-test-window" for w in d["windows"])' || f
 sleep 8
 W timeout 20 grim shots/firehold-h-mantel.png 2>shots/grim.err || fail "screencopy" "grim failed: $(head -c 400 shots/grim.err | tr '\n' ' ')"
 note "screencopy" "captures: $(status 'd["captures"]')"
+# Recording (wf-recorder, wlr-screencopy with damage), shared memory only: there's no dmabuf headless.
+if command -v wf-recorder >/dev/null; then
+  w0=$(status 'd["captures"]["wlr"] + d["captures"]["ext"]')
+  ( W timeout -s INT 6 wf-recorder -y -c ffv1 -f shots/recording.mkv >shots/wf-recorder.log 2>&1 ) &
+  RPID=$!
+  sleep 2; W foot --app-id=hearth-rec sh -c 'sleep 3' >/dev/null 2>&1 &
+  wait "$RPID"
+  w1=$(status 'd["captures"]["wlr"] + d["captures"]["ext"]')
+  size=$(stat -c %s shots/recording.mkv 2>/dev/null || echo 0)
+  if [ "$size" -gt 10000 ] && [ "$((w1 - w0))" -ge 2 ]; then
+    note "screencopy" "wf-recorder recorded $size bytes, $((w1 - w0)) frames copied"
+  else
+    fail "screencopy" "wf-recorder: $size bytes, $((w1 - w0)) frames: $(tail -c 500 shots/wf-recorder.log | tr '\n' ' ')"
+  fi
+  rm -f shots/recording.mkv
+else
+  fail "screencopy" "wf-recorder isn't installed"
+fi
 if command -v wlr-randr >/dev/null; then
   W timeout 10 wlr-randr --output HEADLESS-1 --scale 1.5 && wait_for 10 'abs(d["outputs"][0]["scale"] - 1.5) < 0.01' \
     && note "output management" "scale 1.5 applied headless" || fail "output management" "scale didn't apply: $(status 'd["outputs"][0]')"
