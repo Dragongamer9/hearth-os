@@ -423,6 +423,43 @@ class KWinStart(Base):
         self.assertEqual(n['title'], 'Mantel opened on labwc')
         self.assertTrue(os.path.exists(os.path.join(self.state, 'kwin-missing-told')))   # told once, across sign-ins
 
+    def test_kwin_crashing_after_a_while_opens_labwc_never_a_loop(self):
+        # Red flag 2 (start-safety review, Nov 17): KWin up, then a crash (139, SIGSEGV) after the early window with no
+        # switch asked for. Before, the session ended (KWin's code) and Start in: Desktop with Relogin looped for ever.
+        # Now: labwc for the rest of this sign-in, counted and told. (20 s on a device; EARLY is 2 s here, so 4 s.)
+        crash = '#!/bin/sh\necho "args=$*" >> "$HOME/kwin-ran"\n: > "$XDG_RUNTIME_DIR/hearth-shell-up"\nsleep 4\nexit 139\n'
+        self.write_bin('kwin_wayland', crash)
+        conf = 'NIMBUS_START_MODE=desktop\n'
+        r, log = self.session(conf, HEARTH_KWIN_UP_SECS='30')
+        self.assertIn('kwin: Mantel up after', log)
+        self.assertIn('kwin crashed after', log)
+        self.assertIn('(code 139)', log)
+        self.assertEqual(len(self.lines('labwc-ran')), 1, log)               # labwc took over
+        self.assertEqual(self.notice(), ['kwin', 'failed'])
+        self.assertEqual(self.fails(), 'kwin 1\n')
+        self.assertTrue(os.path.exists(os.path.join(self.run_dir, 'hearth-kwin-failed')))
+        # The next start in this sign-in (Relogin): straight to labwc, no loop through KWin.
+        r, log = self.session(conf, HEARTH_KWIN_UP_SECS='30')
+        self.assertIn("KWin didn't start earlier this sign-in", log)
+        self.assertEqual(len(self.lines('kwin-ran')), 1)
+
+    def test_kwin_crash_after_a_long_run_starts_the_count_over(self):
+        crash = '#!/bin/sh\n: > "$XDG_RUNTIME_DIR/hearth-shell-up"\nsleep 4\nexit 134\n'
+        self.write_bin('kwin_wayland', crash)
+        with open(os.path.join(self.state, 'desktop-fails'), 'w') as f:
+            f.write('kwin 1\n')                                              # an old failure
+        r, log = self.session(HEARTH_KWIN_UP_SECS='30', HEARTH_KWIN_GOOD_SECS='3')
+        self.assertIn('kwin crashed after', log)
+        self.assertEqual(self.fails(), 'kwin 1\n', log)
+        self.assertEqual(len(self.lines('labwc-ran')), 1, log)
+        # A clean end (code 0) after the early window: not a failure, and the count starts over.
+        os.remove(os.path.join(self.run_dir, 'hearth-kwin-failed'))
+        self.write_bin('kwin_wayland', KWIN_WORKS)
+        r, log = self.session()
+        self.assertIn('kwin ended (code 0)', log)
+        self.assertEqual(self.fails().strip(), '', 'a reset really removes the count')
+        self.assertEqual(len(self.lines('labwc-ran')), 1)
+
     def test_kwin_dying_fast_opens_labwc_counts_and_twice_stays(self):
         self.write_bin('kwin_wayland', KWIN_CRASHES)
         conf = 'NIMBUS_START_MODE=desktop\n'

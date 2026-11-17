@@ -52,6 +52,10 @@ wait_for() {   # $1 seconds, $2 a Python expression on the status file (d)
   for i in $(seq 1 $(( $1 * 2 ))); do [ "$(status "$2")" = True ] && return 0; sleep 0.5; done; return 1
 }
 W() { WAYLAND_DISPLAY=wayland-hearth DISPLAY= "$@"; }
+orient() {   # $1 a picture taken through screencopy: the right way up? (firehold-orientation.py)
+  o=$(python3 .github/scripts/firehold-orientation.py "$1" "$STATUS" "$HOME/.config/hearth/theme.json" 2>&1); rc=$?
+  case $rc in 0) note "screencopy" "upright: $o";; 2) note "screencopy" "orientation not checked: $o";; *) fail "screencopy" "upside down or wrong: $o";; esac
+}
 # How alike two pictures are (0 = the same; the virtual screen's own picture against an app's through screencopy).
 alike() { python3 -c '
 import sys
@@ -319,6 +323,7 @@ if command -v grim >/dev/null; then
   d=$(alike shots/firehold-10-grim.png shots/shots-tmp-screen.png)
   note "screencopy" "grim's picture vs the screen: difference $d (0 is the same); captures before $before, now $(status '"%d %d" % (d["captures"]["wlr"], d["captures"]["ext"])')"
   awk -v d="$d" 'BEGIN { exit !(d + 0 < 20 && d ~ /^[0-9.]+$/) }' || fail "screencopy" "grim's picture doesn't match the screen (difference $d)"
+  orient shots/firehold-10-grim.png
   W timeout 15 grim -g "100,200 640x360" shots/grim-region.png 2>>shots/grim.err
   python3 -c 'from PIL import Image; import sys; im = Image.open(sys.argv[1]); print(im.size); sys.exit(im.size != (640, 360))' shots/grim-region.png >>shots/grim.err 2>&1 \
     && note "screencopy" "a region (grim -g) is 640x360" || fail "screencopy" "grim -g didn't give 640x360: $(tail -c 300 shots/grim.err | tr '\n' ' ')"
