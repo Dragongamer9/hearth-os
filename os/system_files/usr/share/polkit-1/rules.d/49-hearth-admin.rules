@@ -13,12 +13,19 @@ polkit.addRule(function (action, subject) {
         /^\S+\s+write-file(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
-    // Hearth Files' "Act as administrator" (files-*: new folders, renames, deletes, copies and permissions outside your
-    // home): always an administrator's password, kept for a few minutes like sudo so a folder's worth of changes asks once.
+    // Hearth Files' "Act as administrator" has its own action (fun.hearthos.files-admin.policy: auth_admin_keep for
+    // that program only). Through hearth-admin, files-* is refused outright, so nothing keeps a password for pkexec.
     if (action.id == "org.freedesktop.policykit.exec" &&
         action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
         /^\S+\s+files-\S+(\s|$)/.test(action.lookup("command_line") || "")) {
-        return polkit.Result.AUTH_ADMIN_KEEP;
+        return polkit.Result.NO;
+    }
+    // Making an account an administrator (Settings › Users' account type) always asks for an administrator's password,
+    // like installing a .deb.
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+user-type(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.AUTH_ADMIN;
     }
     if (action.id == "org.freedesktop.policykit.exec" &&
         action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
