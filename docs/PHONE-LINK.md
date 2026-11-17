@@ -12,9 +12,11 @@ It's Hearth's own code, not KDE's apps: the service is **Hearth Connect** (`host
 ## Turning it on
 
 Settings › Phone › **Phone link** (or tap the Phone tile in Quick Access). Off until you turn it on, so nothing listens
-on the network before you ask. While it's on, the firewall lets phones on your own network in (ports 1714–1764, only
-from local addresses, through `hearth-link-firewall`) and closes again when it's off. Your choice is remembered
-("enabled" in `~/.config/hearth/connect/settings.json`) and never changes by itself.
+on the network before you ask. While it's on, it starts by itself every time you sign in, in Game Mode and Desktop
+Mode, and the firewall lets phones on your own network in (ports 1714–1764, only from local addresses, through
+`hearth-link-firewall`), closing again when it's off. Your choice is remembered ("enabled" in
+`~/.config/hearth/connect/settings.json`, which only you can read) and never changes by itself. Off stays off: the
+service won't run at all while it's off, however it's started.
 
 ## Pairing
 
@@ -36,29 +38,32 @@ networks often keep devices apart).
 | Clipboard | Copy on the phone, paste on the PC | And the other way round (Send clipboard too) |
 | Files, links, text | Share to "Hearth PC": saved in Downloads › Hearth Connect after you accept (or without asking, if you choose) | **Send files…** (Hearth Files' picker) |
 | Browse the phone's files | | **Browse its files**: the phone's storage opens in Hearth Files |
-| Take a photo | | **Take a photo**: the phone's camera opens, the picture comes to Downloads |
+| Take a photo | | **Take a photo**: the phone's camera opens, the picture comes to Downloads (only a photo you asked for in the last 5 minutes is kept without asking; any other waits for you like a file) |
 | Ring / ping | Find my PC: it rings | **Ring** (find my phone) and **Ping** |
-| Media | Control the PC's music and video players (and the volume) | Control what plays on the phone |
+| Media | Control the PC's music and video players, and its volume | Control what plays on the phone |
 | Touchpad and keyboard | The phone moves the pointer, clicks, scrolls and types | |
 | Presentation remote | Next and previous slide, and the phone as a pointer | |
 | Run commands | Start the commands you added (Lock the screen, Start Steam...) | Add or remove them in Settings › Phone › Run commands |
 | Battery and signal | The phone's battery and signal show in Settings › Phone and on the Quick Access tile | The PC's battery (laptops) shows on the phone |
 
 Each phone has its own switches (What *phone* can do): show its notifications, share the clipboard, touchpad /
-keyboard / presentation remote, pause media during calls, run commands, save its files without asking.
+keyboard / presentation remote, pause media during calls, run commands, control this PC's volume, save its files
+without asking. All are on for a newly paired phone except saving files without asking; phones paired before
+"control this PC's volume" existed have it on too.
+
+**Browsing the phone's files** works the way KDE Connect does it: the phone starts its file server with a one-time
+password and sends it over the paired, encrypted link, and Hearth opens it without checking the file server's own key
+(it's made new each time). So it relies on that link: only your paired phone can send it, and only to the phone's own
+address on your network.
 
 ## For other parts of Hearth
 
-- **Starting it at sign-in.** The service has no `[Install]`: Mantel's autostart starts it, and only when Phone link
-  is on. The line (Mantel's autostart, `hosts/linux/desktop/labwc/autostart` or its KWin counterpart):
-
-  ```sh
-  command -v hearth-connect >/dev/null 2>&1 && hearth-connect --autostart >/dev/null 2>&1 &
-  ```
-
-  Game Mode's session can add the same line so the phone stays linked there too. Turning it on in Settings or the
-  window also starts it right away, in either mode. PCs where it was turned on before (the old enabled unit) still count
-  as on.
+- **Starting it at sign-in.** `hearth-connect.service` is on for every account in the image (`default.target`, so
+  Game Mode and Desktop Mode, labwc or KWin alike) with `ExecCondition=hearth-connect --enabled-check`: while Phone link
+  is off the unit is skipped (not failed), and `--daemon` itself exits at once. Nothing else needs to start it; a
+  session that wants to can run `hearth-connect --autostart` (it does nothing while it's off). PCs where it was
+  turned on before (the person's own enabled unit) still count as on until the choice is saved; turning it off removes
+  that unit.
 - `hearth-connect --turn-on` / `--turn-off` / `--is-enabled`, and `hearth-connect --call <request> '<json>'` for
   everything else (Settings › Phone uses them through `hosts/linux/desktop/shell/hearth-phone`).
 - `hearth-settings phone:notifications`, `phone:commands`, `phone:pair` open the page at that part;

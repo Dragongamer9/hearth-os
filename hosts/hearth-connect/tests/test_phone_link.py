@@ -170,6 +170,9 @@ class PhoneLink(unittest.TestCase):
             c.notif = NotifServer(addr)
         except Exception as e:  # noqa: BLE001
             note('warning', 'no stand-in notification service', e)
+        # Phone link on (as Settings › Phone's switch leaves it): the service won't run while it's off.
+        with open(os.path.join(c.home, 'settings.json'), 'w') as f:
+            json.dump({'enabled': True}, f)
         c.svc = subprocess.Popen([BIN, '--daemon'], env=c.env, stdout=open(os.path.join(c.tmp, 'daemon.log'), 'w'), stderr=subprocess.STDOUT)
         assert wait(lambda: os.path.exists(c.env['HEARTH_CONNECT_SOCKET']), 15), 'the service did not start'
         c.events = []
@@ -464,6 +467,13 @@ class PhoneLink(unittest.TestCase):
         self.phone.send('kdeconnect.systemvolume.request', {'name': s['name'], 'volume': 70})
         self.assertEqual(self.got('kdeconnect.systemvolume', lambda b: b['sinkList'][0]['volume'] == 70)['body']['sinkList'][0]['volume'], 70)
         self.assertIn('set-volume @DEFAULT_AUDIO_SINK@ 0.70', open(os.path.join(self.fake, 'wpctl.log')).read())
+        # Its switch off: the phone can't change it (nor read it).
+        self.call('option', {'id': self.phone.id, 'key': 'volume', 'on': False})
+        self.assertIs(self.dev()['options']['volume'], False)
+        self.phone.send('kdeconnect.systemvolume.request', {'name': s['name'], 'volume': 10})
+        self.assertIsNone(self.phone.wait('kdeconnect.systemvolume', timeout=2.5), 'a phone with the volume switch off changed it')
+        self.assertNotIn('0.10', open(os.path.join(self.fake, 'wpctl.log')).read())
+        self.call('option', {'id': self.phone.id, 'key': 'volume', 'on': True})
 
     def test_19_browse_the_phones_files(self):
         self.need_pair()
@@ -486,12 +496,22 @@ class PhoneLink(unittest.TestCase):
 
     def test_20_take_a_photo(self):
         self.need_pair()
+        # A photo this PC didn't ask for waits for the person, like any file.
+        self.phone.send('kdeconnect.photo', {'filename': 'unasked.jpg'}, payload=os.urandom(4096))
+        f = wait(lambda: next((x for x in self.call('state')['files'] if x['name'] == 'unasked.jpg' and x['done']), None))
+        self.assertTrue(f)
+        self.assertIsNone(f['decided'])
+        self.assertFalse(os.path.exists(os.path.join(self.dest, 'unasked.jpg')))
+        self.call('file', {'token': f['token'], 'accept': False})
         self.call('photo', {'id': self.phone.id})
         self.got('kdeconnect.photo.request')
         data = os.urandom(50 * 1024)
         self.phone.send('kdeconnect.photo', {'filename': 'PXL_photo.jpg'}, payload=data)
         self.assertTrue(wait(lambda: os.path.exists(os.path.join(self.dest, 'PXL_photo.jpg'))), 'kept without asking (you asked for it)')
         self.assertEqual(open(os.path.join(self.dest, 'PXL_photo.jpg'), 'rb').read(), data)
+        # Asked once: the next one waits again.
+        self.phone.send('kdeconnect.photo', {'filename': 'second.jpg'}, payload=os.urandom(1024))
+        self.assertTrue(wait(lambda: next((x for x in self.call('state')['files'] if x['name'] == 'second.jpg' and x['decided'] is None), None)))
 
     def test_21_unpair_from_the_phone(self):
         self.need_pair()
@@ -505,12 +525,35 @@ class PhoneLink(unittest.TestCase):
         self.call('add_ip', {'ip': '192.168.1.23'})
         sp = os.path.join(self.home, 'settings.json')
         before = json.load(open(sp))
+        self.assertEqual(os.stat(sp).st_mode & 0o777, 0o600, 'settings.json is only yours')
+        self.assertEqual(subprocess.run([BIN, '--enabled-check'], env=self.env).returncode, 0)
+        # Someone who turned it on before (their own enabled unit): turning it off removes that too.
+        wants = os.path.join(self.env['XDG_CONFIG_HOME'], 'systemd', 'user', 'default.target.wants')
+        os.makedirs(wants, exist_ok=True)
+        legacy = os.path.join(wants, 'hearth-connect.service')
+        os.symlink('/dev/null', legacy)
         self.assertEqual(before['name'], 'Hearth Test PC')
         off = subprocess.run([BIN, '--turn-off'], env=self.env, capture_output=True, text=True, timeout=30)
         self.assertEqual(off.returncode, 0, off.stderr)
         self.assertTrue(wait(lambda: self.svc.poll() is not None, 15), 'the service stopped')
         after = json.load(open(sp))
         self.assertIs(after['enabled'], False)
+        self.assertFalse(os.path.lexists(legacy), 'the old enabled unit is gone, so off lasts')
+        self.assertEqual(os.stat(sp).st_mode & 0o777, 0o600)
+        self.assertEqual(subprocess.run([BIN, '--enabled-check'], env=self.env).returncode, 1)
+        # Off means the service won't run, however it's started (the unit, a script, by hand).
+        d = subprocess.run([BIN, '--daemon'], env=self.env, capture_output=True, text=True, timeout=10)
+        self.assertEqual(d.returncode, 0)
+        self.assertIn('off', d.stderr)
+        self.assertFalse(os.path.exists(self.env['HEARTH_CONNECT_SOCKET']))
+        # A choice never saved (an older PC): its own enabled unit still counts as on; without one, off.
+        os.remove(sp)
+        self.assertEqual(subprocess.run([BIN, '--enabled-check'], env=self.env).returncode, 1)
+        os.symlink('/dev/null', legacy)
+        self.assertEqual(subprocess.run([BIN, '--enabled-check'], env=self.env).returncode, 0)
+        os.remove(legacy)
+        json.dump(after, open(sp, 'w'))
+        os.chmod(sp, 0o600)
         self.assertEqual((after['name'], after['manual']), (before['name'], before['manual']), 'off kept every other setting')
         self.assertEqual(subprocess.run([BIN, '--autostart'], env=self.env, timeout=30).returncode, 0)
         time.sleep(1)
