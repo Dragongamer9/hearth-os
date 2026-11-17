@@ -71,8 +71,15 @@ case "$1" in
               notify-send -a Screenshot -t 2500 "Screenshot copied" "Paste it into any app" 2>/dev/null ;;
   # ---- Hearth Recorder (hosts/hearth-recorder), from rc.xml's Super+Alt+R / Super+Alt+Shift+R / Super+Alt+G: it says
   # what happened with its own notifications (Recording, Recording saved with Open and Show in folder, Replay saved).
+  # Without the app (or on a desktop wf-recorder can't record, like KWin), Super+Alt+R is the desktop's own Recorder
+  # panel's Start / Stop (Recorder.qml, hearth-record: the screen-sharing portal works on every desktop).
   record|record-area|replay-save)
-              if ! have hearth-recorder; then notify-send -a Recorder "Recorder" "Hearth Recorder isn't installed" 2>/dev/null; exit 1; fi
+              if ! have hearth-recorder; then
+                if [ "$1" = record ] && have quickshell && [ -f "$NIMBUS_SHARE/desktop/shell/Recorder.qml" ]; then
+                  exec quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call record startStop
+                fi
+                notify-send -a Recorder "Recorder" "Hearth Recorder isn't installed" 2>/dev/null; exit 1
+              fi
               case "$1" in
                 record)      exec hearth-recorder --toggle ;;
                 record-area) exec hearth-recorder --toggle --area ;;

@@ -2400,6 +2400,43 @@ var ENTRIES = [
 "i": "desktops"
 },
 {
+"t": "Remote desktop",
+"p": "remote-desktop",
+"i": "desktops"
+},
+{
+"t": "Tailscale isn't connected",
+"p": "remote-desktop",
+"d": "Your other devices reach this PC through Tailscale. Sign in here and on the other device",
+"i": "globe"
+},
+{
+"t": "This PC's certificate",
+"p": "remote-desktop",
+"i": "shield"
+},
+{
+"t": "Reachable",
+"p": "remote-desktop",
+"d": "Never from the internet. Tailscale only keeps it closed to your home network too"
+},
+{
+"t": "View only",
+"p": "remote-desktop",
+"i": "eye"
+},
+{
+"t": "Disconnect everyone",
+"p": "remote-desktop",
+"i": "close"
+},
+{
+"t": "Games and low-latency streaming",
+"p": "remote-desktop",
+"d": "For playing this PC's games on a TV, phone or another PC, Remote play (Moonlight) is faster",
+"i": "play"
+},
+{
 "t": "Restore all saves",
 "p": "savedgames",
 "d": "Puts every backed-up save back where its game looks for it (after a reinstall, or on another PC). What it replaces is kept by Ludusavi.",

@@ -95,6 +95,12 @@ for agent in /usr/lib/polkit-gnome/polkit-gnome-authentication-agent-1 \
   if command -v "$agent" >/dev/null 2>&1; then "$agent" >/dev/null 2>&1 & break; fi
 done
 
+# Settings › Remote desktop (hearth-vnc): its server again, only while its switch is on (it does nothing when off and never
+# fails); a few seconds after the taskbar, without waiting. Not for a second player's seat.
+if [ -z "$HEARTH_SEAT" ] && [ -f "$SHARE/desktop/shell/hearth-vnc" ] && command -v python3 >/dev/null 2>&1; then
+  (sleep 6; python3 "$SHARE/desktop/shell/hearth-vnc" session >/dev/null 2>&1) &
+fi
+
 # Your own additions: ~/.config/nimbus/autostart (any executable script).
 [ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/autostart" ] && "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/autostart" &
 
