@@ -115,10 +115,10 @@ PanelWindow {
                                         spacing: 4
                                         Icon { name: it.meta ? it.meta.icon : "dot"; size: 16; color: col.modelData.id === "hidden" ? Theme.muted : Theme.text }
                                         Text { Layout.fillWidth: true; text: it.meta ? it.meta.name : it.modelData; elide: Text.ElideRight; color: col.modelData.id === "hidden" ? Theme.muted : Theme.text; font.family: Theme.font; font.pixelSize: 13 }
-                                        Small { visible: col.modelData.id !== "hidden"; icon: "chevu"; tip: "Earlier"; enabled: it.index > 0; onPicked: BarLayout.move(it.modelData, -1) }
-                                        Small { visible: col.modelData.id !== "hidden"; icon: "chevd"; tip: "Later"; enabled: it.index < BarLayout.layout[col.modelData.id].length - 1; onPicked: BarLayout.move(it.modelData, 1) }
-                                        Small { visible: col.modelData.id !== "hidden"; icon: col.modelData.id === "start" ? "forward" : "back"; tip: col.modelData.id === "start" ? "To the end" : "To the start"; onPicked: BarLayout.move(it.modelData, 0, col.modelData.id === "start" ? "end" : "start") }
-                                        Small { visible: !(it.meta && it.meta.keep); icon: col.modelData.id === "hidden" ? "eye" : "close"; tip: col.modelData.id === "hidden" ? "Show it" : "Hide it"; onPicked: BarLayout.move(it.modelData, 0, col.modelData.id === "hidden" ? (it.meta ? it.meta.zone : "end") : "hidden") }
+                                        Small { visible: ih.hovered && col.modelData.id !== "hidden"; icon: "chevu"; tip: "Earlier"; enabled: it.index > 0; onPicked: BarLayout.move(it.modelData, -1) }
+                                        Small { visible: ih.hovered && col.modelData.id !== "hidden"; icon: "chevd"; tip: "Later"; enabled: it.index < BarLayout.layout[col.modelData.id].length - 1; onPicked: BarLayout.move(it.modelData, 1) }
+                                        Small { visible: ih.hovered && col.modelData.id !== "hidden"; icon: col.modelData.id === "start" ? "forward" : "back"; tip: col.modelData.id === "start" ? "To the end" : "To the start"; onPicked: BarLayout.move(it.modelData, 0, col.modelData.id === "start" ? "end" : "start") }
+                                        Small { visible: (ih.hovered || col.modelData.id === "hidden") && !(it.meta && it.meta.keep); icon: col.modelData.id === "hidden" ? "eye" : "close"; tip: col.modelData.id === "hidden" ? "Show it" : "Hide it"; onPicked: BarLayout.move(it.modelData, 0, col.modelData.id === "hidden" ? (it.meta ? it.meta.zone : "end") : "hidden") }
                                     }
                                 }
                             }

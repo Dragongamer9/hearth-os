@@ -66,7 +66,8 @@ Scope {
         function onJobFinished(j) {
             if (j.state === "cancelled") return;
             const ok = j.state === "done";
-            const key = DeskState.rememberOwn({ app: j.app || "Files", icon: j.icon || "", entry: j.entry || "",
+            const e = j.entry ? DesktopEntries.byId(j.entry) : null;
+            const key = DeskState.rememberOwn({ app: e ? e.name : (j.app || "Files"), icon: j.icon || (e ? e.icon : ""), entry: e ? j.entry : "",
                 summary: ok ? (j.title || "Done") + " finished" : (j.title || "A job") + " didn't finish",
                 body: ok ? (j.detail || j.dest || "") : (j.error || "It stopped with an error"), urgency: ok ? "normal" : "critical" });
             if (!NotifyHub.quiet || !ok) DeskState.popup(key);

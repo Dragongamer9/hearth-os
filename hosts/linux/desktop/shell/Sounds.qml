@@ -12,7 +12,7 @@ import Quickshell.Io
 Singleton {
     id: snd
     readonly property string path: (Quickshell.env("XDG_CONFIG_HOME") || (Quickshell.env("HOME") + "/.config")) + "/nimbus/sounds.json"
-    readonly property string ownDir: decodeURIComponent(Qt.resolvedUrl("../sounds/hearth/stereo").toString().replace(/^file:\/\//, ""))
+    readonly property string ownDir: Quickshell.shellDir + "/../sounds/hearth/stereo"
     readonly property string fdoDir: "/usr/share/sounds/freedesktop/stereo"
     property var raw: ({})
     // The events, in the page's order. on: the default (volume clicks and the charger off, as KDE has them).

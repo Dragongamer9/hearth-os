@@ -145,8 +145,6 @@ def job_apply_v2(job, method, args):
     elif method == 'setDescriptionField':
         n, name, value = int(args[0]), str(args[1]), str(args[2])
         job.setdefault('fields', {})[str(n)] = [name, value]
-        if n == 0 and not job.get('title'):
-            job['title'] = name
     elif method == 'clearDescriptionField':
         job.get('fields', {}).pop(str(int(args[0])), None)
     elif method == 'setDestUrl':
@@ -208,10 +206,14 @@ def job_view(job):
     if pct is None and main.get('total'):
         pct = int(100 * main.get('processed', 0) / max(1, main['total']))
     fields = job.get('fields', {})
-    title = job.get('title') or (fields.get('0') or ['', ''])[0] or job.get('app') or 'Working'
+    # V1 (Dolphin, KIO): the info message is the job's name ("Moving", "Copying"); V2 sends a title of its own
+    info = job.get('info', '')
+    title = job.get('title') or info or (fields.get('0') or ['', ''])[0] or job.get('app') or 'Working'
+    if title == info:
+        info = ''
     detail = ' → '.join(v for _, v in (fields.get('0', ['', '']), fields.get('1', ['', ''])) if v)
     return {'t': 'job', 'id': job['id'], 'app': job.get('app', ''), 'icon': job.get('icon', ''), 'entry': job.get('entry', ''),
-            'title': title, 'info': job.get('info', ''), 'detail': detail, 'percent': -1 if pct is None else pct,
+            'title': title, 'info': info, 'detail': detail, 'percent': -1 if pct is None else pct,
             'processed': main.get('processed', 0), 'total': main.get('total', 0), 'unit': unit,
             'files': am.get('files', {}), 'speed': job.get('speed', 0), 'suspended': bool(job.get('suspended')),
             'state': job.get('state', 'running'), 'error': job.get('error', ''), 'dest': job.get('dest', ''),
