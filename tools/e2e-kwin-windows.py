@@ -384,10 +384,11 @@ def shadow_check(theme):
             x, y, w, h = fr['x'], fr['y'], fr['w'], fr['h']
             crop('frame-shadow-%s-full' % name, (x - 90, y - 70, x + 560, y + 230), 'frame-shadow-%s' % name)
             crop('frame-shadow-%s-full' % name, (x + w - 300, y + h - 160, x + w + 90, y + h + 90), 'frame-shadow-%s-corner' % name)
-            # Left of the frame at half height, and below it a quarter across (clear of the dock): 4 px out against 80 px
-            # out (the wallpaper).
+            # Left of the frame at half height, and just below it a quarter across (clear of the dock), each 4 px out,
+            # against the wallpaper 80 px left of the frame at the same height (below the frame there's no room: the
+            # middle zone ends near the work area's bottom).
             left_in, left_out = luma(im, x - 5, y + h // 2), luma(im, x - 80, y + h // 2)
-            below_in, below_out = luma(im, x + w // 4, y + h + 4), luma(im, x + w // 4, y + h + 80)
+            below_in, below_out = luma(im, x + w // 4, y + h + 4), luma(im, x - 80, y + h + 4)
             need = 12 if name == 'light' else 3
             ok = left_out - left_in >= need and below_out - below_in >= need
             darkness[name] = (left_out - left_in, below_out - below_in)
