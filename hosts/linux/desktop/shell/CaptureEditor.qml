@@ -55,7 +55,7 @@ Item {
     // The picture's pixels for the canvases come from probe (an Image item: drawImage takes one, loaded already).
     readonly property bool ready: probe.status === Image.Ready && pixSrc.status === Image.Ready && blurSrc.status === Image.Ready
     // Blur's and Pixelate's sources (capture-draw.js): small copies Qt decodes from the file.
-    function src(c) {
+    function hideSrc(c) {
         return { kp: pixSrc.sourceSize.width / Math.max(1, imgW), kb: blurSrc.sourceSize.width / Math.max(1, imgW),
                  draw: (kind, sx, sy, sw, sh, dx, dy, dw, dh) => c.drawImage(kind === "pix" ? pixSrc : blurSrc, sx, sy, sw, sh, dx, dy, dw, dh) };
     }
@@ -265,7 +265,7 @@ Item {
                     c.clearRect(0, 0, width, height);
                     const list = ed.live ? ed.shapes.concat([ed.live]) : ed.shapes;
                     Draw.paint(c, list, ed.sc, ed.view.x, ed.view.y,
-                               ed.ready ? ed.src(c) : null,
+                               ed.ready ? ed.hideSrc(c) : null,
                                width, height);
                 }
             }
@@ -480,7 +480,7 @@ Item {
                 c.reset();
                 const v = e.v;
                 c.drawImage(probe, v.x, v.y, v.w, v.h, 0, 0, v.w, v.h);
-                Draw.paint(c, ed.shapes, 1, v.x, v.y, ed.src(c), v.w, v.h);
+                Draw.paint(c, ed.shapes, 1, v.x, v.y, ed.hideSrc(c), v.w, v.h);
             }
             onPainted: {
                 const e = ed.exporting;
