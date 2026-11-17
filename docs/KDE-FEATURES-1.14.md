@@ -11,11 +11,9 @@ written for Hearth from scratch.
 - `- [ ] part — partly: …`: some of it is built (what, and where); the line says what's left.
 - `- [ ] part`: not built on feature/kwin-1.14.
 - Sizes for what's left: **S** (a day or less), **M** (a few days), **L** (a week or two), **XL** (several weeks).
-- **Not merged yet** (so not counted here): `feature/kwin-pages` (Settings pages for KWin's own settings: effects,
-  virtual desktops, tiling, screen edges, window rules, drawing tablet and touchscreen, games and X11 apps, KWin's
-  parts of Mouse & touchpad and Accessibility, and `hearth-kwin-settings`) and `feature/search-store` (KRunner-style
-  search, a file index, Passwords like KDE Wallet, Hearth's own App store, Files' terminal panel and split view). Items
-  they would cover say so.
+- `feature/kwin-pages` (Settings pages for KWin's own settings) and `feature/search-store` (search, the file index,
+  Passwords, the App store, Files' terminal panel and split view) are merged into feature/kwin-1.14 now; their lines
+  are recounted from the integration branch.
 
 Counts (done · partly · missing): Stage 1 19 · 6 · 3 (one line added by this audit), Stage 2 3 · 16 · 56, Stage 3 58 · 24 · 80.
 
@@ -65,14 +63,13 @@ Counts (done · partly · missing): Stage 1 19 · 6 · 3 (one line added by this
 - [x] Screenshots (Print, Shift+Print, Super+Shift+S, Ctrl+Print) — os/system_files/usr/bin/hearth-screenshot ("under KWin it runs hearth-screens shot"), hearth-screens `grab`, shortcuts.json "screenshot", "screenshot-region", "screenshot-clipboard"; test_hearth_screens.py "test_screenshot_trust_for_kwin"; kwin-screens job picture with KWin's permission check on (needs testing on a device)
 - [ ] Screen sharing for browsers, Discord, OBS (the ScreenCast portal) — partly: hearth_screencast.py, cast-picker.qml (Screens and Windows), hearth-portals.conf; kwin-input.yml gets a PipeWire stream with real frames through xdg-desktop-portal. Left: the picker's "area" choice (a part of a screen); PickColor for the Screenshot portal (S)
 - [ ] The controller in Desktop Mode (pointer, View+D-pad snap, View+B close, LB/RB windows) — partly: hearth-pad types KWin's (same) keys through its own uinput keyboard and Pad.qml follows WinList ("readonly property var active: WinList.activeToplevel"); the lock screen part is tested (test_hearth_pad.py). Left: a KWin check that View+D-pad, View+B and LB/RB do the right thing on KWin (S)
-- [ ] Night light, colour filters and magnifier keep working on day one — partly: Night light goes to KWin's Night Light (hearth-screens; test_hearth_screens.py "test_night_light_follows_the_compositor"); the magnifier keys reach KWin's Zoom (hearth-access:481). Left: colour filters and invert under KWin: labwc/autostart:34 runs `hearth-access apply kwin`, which hearth-access:471 doesn't accept (only `game` / `desktop`), so nothing happens; KWin's filters are on unmerged feature/kwin-pages (S)
+- [ ] Night light, colour filters and magnifier keep working on day one — partly: Night light goes to KWin's Night Light (hearth-screens; test_hearth_screens.py "test_night_light_follows_the_compositor"); the magnifier keys reach KWin's Zoom (hearth-access:481). Left: colour filters and invert under KWin: labwc/autostart:34 runs `hearth-access apply kwin`, which hearth-access now accepts (feature/kwin-pages, merged: apply_filter_kwin). Left: the recount (S)
 
 ---
 
 ## Stage 2: what KWin itself can do, with Hearth Settings pages
 
-Most of this section is what unmerged **feature/kwin-pages** builds; on feature/kwin-1.14 only the Display parts
-(feature/kwin-screens) are in.
+Most of this section is what **feature/kwin-pages** builds (merged), with the Display parts from feature/kwin-screens.
 
 ### Display and colour
 
@@ -92,7 +89,7 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 - [ ] Screen edge barrier and corner barrier between screens (S)
 - [ ] Mirror / extend / only one screen quick switcher (Super+P) (M)
 
-### Desktop effects (all on unmerged feature/kwin-pages)
+### Desktop effects (feature/kwin-pages, merged)
 
 - [ ] Animation speed (one slider) and Reduced motion respected — partly: Reduce motion for Mantel only (SetAccessibility.qml) (S)
 - [ ] Window open/close: Fade, Glide, Scale, Fall Apart (S)
@@ -204,7 +201,7 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 - [x] Background apps in the tray — Islands.qml "cBackground" (the portal's org.freedesktop.background.Monitor, else flatpak ps; Quit); notify-widgets.yml picture "02b-tray" (needs testing on a device)
 - [x] Quick light/dark tile in Quick settings — QuickAccess.qml "Tile { navId: theme" (Auto off says so); test_notify_widgets_114.py "test_light_dark_tile"; notify-widgets.yml picture "14-quick-access" (needs testing on a device)
 
-### Search (KRunner-style) — the framework and plugins are on unmerged feature/search-store
+### Search (KRunner-style) — the framework and plugins are on feature/search-store (merged)
 
 - [x] Search apps, Settings pages and single settings, games — `Launcher.qml`, `menu-search.js`, `settings-index.js`
 - [x] Run box (Super+R) — `WinTools.qml`, `RunView.qml`, `run-map.js`
@@ -264,8 +261,8 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 ### Files (Dolphin's features)
 
 - [x] Views, tabs, places, Trash, previews, filter, search, hidden files, archives, batch rename, Open in Terminal, network shares, undo, details, properties — `FileManager.qml`, `hearth-files`, `FileProperties.qml`
-- [ ] Split view (F3) — on unmerged feature/search-store (M)
-- [ ] Terminal panel (F4) — on unmerged feature/search-store (M)
+- [ ] Split view (F3) — on feature/search-store (merged) (M)
+- [ ] Terminal panel (F4) — on feature/search-store (merged) (M)
 - [ ] Tags, ratings and comments (M) — partly: tags (user.xdg.tags, Tags › menu, a Tags list in the left menu, find by tag; hearth_files_extras.py, FilesExtras.qml; test_files_extras.py: "test_tags_set_list_find_and_in_listings"; files-extras.yml pictures). Left: ratings and comments (S)
 - [x] Group by — FileManager.qml (type, date, size, tag); files-extras.yml "files-x1-tags-grouped" (needs testing on a device)
 - [x] Git status badges — hearth_files_extras.py git_status, FilesMarks.qml; test_files_extras.py: "test_git_status_badges"; files-extras.yml "files-x4-git" (needs testing on a device)
@@ -276,12 +273,12 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 
 ### File search and indexing
 
-- [ ] File indexing (names and contents) with folders to skip and battery limits — on unmerged feature/search-store (XL)
+- [ ] File indexing (names and contents) with folders to skip and battery limits — on feature/search-store (merged) (XL)
 - [x] Recent files tracking and "forget recent files" — SetRecentFiles.qml, hearth_files_extras.py recent_*; test_files_extras.py: "test_recent_files_privacy"; files-extras.yml "files-x10-recent-privacy" (needs testing on a device)
 
 ### Passwords, wallet, vaults
 
-- [ ] Password store (Secret Service, unlocked at login, a manager page) — on unmerged feature/search-store ("Passwords like KDE Wallet") (XL)
+- [ ] Password store (Secret Service, unlocked at login, a manager page) — on feature/search-store (merged) ("Passwords like KDE Wallet") (XL)
 - [ ] SSH and GPG passphrases asked in Hearth's look (S)
 - [ ] Vaults: encrypted folders in the tray, auto-lock, offline-only — Hearth has: Briefcase (`hearth-briefcase`) (M)
 - [ ] Password prompts for admin actions (Polkit agent) in Hearth's look — partly: Mantel's own agent (PolkitPrompt.qml, polkit-actions.js, hearth-polkit-fallback with the classic agent as fallback); test_hearth_polkit_mantel.py, capture-polkit-test.yml pictures. Left: fingerprint (with fprintd below) (S)
@@ -294,7 +291,7 @@ Most of this section is what unmerged **feature/kwin-pages** builds; on feature/
 
 - [x] App store (Flathub, Debian packages) — Bazaar + `SetApps.qml`, `DebInstaller.qml`
 - [x] System updates with the previous version kept — `SetUpdates.qml`, bootc
-- [ ] Discover's extras (update notifications, reviews, permission changes, verified label, links, fonts, drivers) — Hearth's own App store is on unmerged feature/search-store (L)
+- [ ] Discover's extras (update notifications, reviews, permission changes, verified label, links, fonts, drivers) — Hearth's own App store is on feature/search-store (merged) (L)
 - [ ] App permissions page (Flatpak overrides) (M)
 - [ ] Firmware updates (fwupd) with a notification — partly: SetFirmware.qml, hearth-firmware, hearth-sysset-admin (parts install after a password; system firmware shown, never installed: red flag 2, docs/SYSTEM-SETTINGS.md); test_system_settings_114.py "test_one_rule_for_system_firmware". Left: a notification when an update is there, the history (S)
 - [x] Firmware security (Secure Boot, TPM, HSI level) — SetFirmware.qml, hearth-firmware; test_system_settings_114.py "test_security_level", "test_secure_boot_words" (needs testing on a device)
