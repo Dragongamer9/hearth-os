@@ -95,6 +95,7 @@ Item {
         if (!x) return false;
         const mine = ["desktop", "activity", "kill", "power", "media", "page", "exec"].indexOf(x.type) >= 0 || !!x.confirm;
         if (!mine) return false;
+        console.info("search: " + x.type + (x.confirm ? " (asks first)" : ""));
         const scr = launcher ? launcher.screen : null;
         if (launcher) launcher.shown = false;
         if (x.confirm) {

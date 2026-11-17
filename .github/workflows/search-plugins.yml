@@ -120,6 +120,7 @@ jobs:
           python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1 || true
           echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
           # ---- the desktop
+          T0=$(date +%s)
           labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
           for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
           export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
@@ -132,17 +133,20 @@ jobs:
           [ ! -e "$C/search.json" ] || FAIL "search.json was written before anything was changed (settings must never change by themselves)"
           # a program to kill (no window, so nothing takes the keyboard from the menu)
           cp "$(command -v sleep)" /tmp/hearth-demo-timer; /tmp/hearth-demo-timer 600 &
+          # The runner's disk is nearly full, so the "drive almost full" pop-up (SpaceWatch.qml) comes up 90 s after the
+          # start and takes the keyboard: wait for it and close it before the pictures.
+          while [ $(( $(date +%s) - T0 )) -lt 105 ]; do sleep 2; done; q desktop close; sleep 2
           # the menu opened once, so the plugins' data is read (bookmarks, contacts, calendar, notes, time zones)
           q launcher open; sleep 4; q launcher close; sleep 1
           shot() { q launcher query "$2"; sleep "${3:-3}"; grim "shots/post/$1.png" || echo "::warning title=pictures::no picture $1"; }
-          # the "asks first" dialog came up: the picture after Enter differs from the one before it in the middle of the screen
-          asked() { python3 -c 'import sys; from PIL import Image, ImageChops; a=Image.open(sys.argv[1]).convert("L").crop((660,380,1260,700)); b=Image.open(sys.argv[2]).convert("L").crop((660,380,1260,700)); d=ImageChops.difference(a,b).histogram(); n=sum(d[40:]); print(n); sys.exit(0 if n > 20000 else 1)' "shots/post/$1.png" "shots/post/$2.png" && say "$2: the dialog came up" || FAIL "$2: Enter didn't bring up the dialog that asks first"; }
+          # the "asks first" dialog came up: the menu (its search box and first rows) went away for it
+          asked() { python3 -c 'import sys; from PIL import Image, ImageChops; a=Image.open(sys.argv[1]).convert("L").crop((370,180,1550,320)); b=Image.open(sys.argv[2]).convert("L").crop((370,180,1550,320)); d=ImageChops.difference(a,b).histogram(); n=sum(d[40:]); print(n); sys.exit(0 if n > 2000 else 1)' "shots/post/$1.png" "shots/post/$2.png" && say "$2: the dialog came up" || FAIL "$2: Enter didn't bring up the dialog that asks first"; }
           chk() { got=$(q launcher answers "$1"); case "$got" in *"$2"*) say "“$1” → ${got:0:300}" ;; *) FAIL "“$1” didn't answer $2: ${got:0:400}" ;; esac; }
           shot 01-bookmarks "hearth"; chk "hearth" '"plugin":"browser"'; q launcher close
           shot 02-activities "work"; chk "work" '"type":"activity"'; q launcher close
           shot 03-kill "kill hearth-demo" 5; chk "kill hearth-demo" '"type":"kill"'
-          q launcher query "kill hearth-demo"; sleep 3
-          wtype -k Return; sleep 2; grim shots/post/04-kill-asks-first.png; asked 03-kill 04-kill-asks-first; wtype -k Escape; sleep 1
+          q launcher query "kill hearth-demo"; sleep 3; grim shots/post/03b-kill-before-enter.png
+          wtype -k Return; sleep 2; grim shots/post/04-kill-asks-first.png; asked 03b-kill-before-enter 04-kill-asks-first; say "after Enter on kill: $(grep -E 'search: ' "$LOG" | tail -3 | tr '\n' '|') answers: $(q launcher answers 'kill hearth-demo' | cut -c1-200)"; wtype -k Escape; sleep 1
           pgrep -f 'hearth-demo-timer' >/dev/null && say "Kill asked first and Cancel kept it running" || FAIL "it was killed without saying yes"
           q launcher close
           shot 05-world-clock "3pm london to tokyo"; chk "3pm london to tokyo" 'in Tokyo'; q launcher close
@@ -158,8 +162,10 @@ jobs:
           shot 15-notes "coffee"; chk "coffee" 'Shopping list'; q launcher close
           q settings page search; sleep 5; grim shots/post/16-settings-search.png; q settings close
           # the whole page at once, its plugins' switches too: a tall screen for this picture
-          wlr-randr --output HEADLESS-1 --custom-mode 1920x3200 || true; sleep 3
-          q settings page search; sleep 6; grim shots/post/17-settings-search-plugins.png; q settings close
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x2400 > shots/randr-tall.log 2>&1 || true; sleep 3
+          say "tall screen: $(wlr-randr 2>&1 | grep -E 'current' | head -2 | tr '\n' ' ') $(cat shots/randr-tall.log | tr '\n' ' ' | cut -c1-200)"
+          q settings page search; sleep 6; grim shots/post/17-settings-search-plugins.png 2> shots/grim-tall.log || say "grim (tall): $(cut -c1-200 shots/grim-tall.log)"
+          q settings close
           wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true; sleep 2
           [ ! -e "$C/search.json" ] || FAIL "search.json was written by opening the menu or Settings › Search"
           cp "$LOG" shots/shell.log 2>/dev/null
