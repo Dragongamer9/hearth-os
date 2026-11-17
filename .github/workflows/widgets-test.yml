@@ -8,6 +8,8 @@ name: Widgets and Activities test
 
 on:
   workflow_dispatch:
+  push:
+    branches: [feature/widgets]       # the branch it's made on (dispatch needs the file on main first)
   pull_request:
     paths: ['hosts/linux/desktop/shell/Widget*', 'hosts/linux/desktop/shell/Activit*', 'hosts/linux/desktop/shell/widget-layout.js',
             'hosts/linux/desktop/shell/activities.js', 'hosts/linux/desktop/shell/hearth-widgets', '.github/workflows/widgets-test.yml']
