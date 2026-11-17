@@ -505,9 +505,10 @@ run_labwc() {
 }
 
 # Mantel on KWin: KWin's environment is labwc's environment file (the same folder, with your accessibility lines),
-# with XDG_CURRENT_DESKTOP=Nimbus:KDE (Nimbus first: Hearth's default apps, its file chooser and app kinds go by it;
-# KDE: xdg-desktop-portal-kde for screen sharing) and Hearth's KWin defaults ($SHARE/desktop/kwin/xdg: kwinrc,
-# nimbus-portals.conf) first in XDG_CONFIG_DIRS: system defaults under yours, so your own
+# with XDG_CURRENT_DESKTOP=Hearth:Nimbus:KDE (Hearth first: its portals, hearth-portals.conf (feature/kwin-input);
+# Nimbus next: Hearth's default apps (nimbus-mimeapps.list), its file chooser's checks and app kinds go by it; KDE last),
+# PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock (KWin's screen locker shows Mantel's lock: feature/kwin-input) and
+# Hearth's KWin defaults ($SHARE/desktop/kwin/xdg: kwinrc, kscreenlockerrc) first in XDG_CONFIG_DIRS: system defaults under yours, so your own
 # ~/.config/kwinrc is read on top and never written over by Hearth. KWin starts the same autostart as labwc.
 # 200 = didn't come up (or ended right after starting); anything else is KWin's own exit code.
 run_kwin() {
@@ -534,9 +535,11 @@ run_kwin() {
       [ -d "$xdg" ] && case ":${XDG_CONFIG_DIRS:-/etc/xdg}:" in *":$xdg:"*) ;; *) kx="${kx:+$kx:}$xdg" ;; esac
     done
     [ -n "$kx" ] && XDG_CONFIG_DIRS="$kx:${XDG_CONFIG_DIRS:-/etc/xdg}"
-    export XDG_CONFIG_DIRS XDG_CURRENT_DESKTOP=Nimbus:KDE XDG_SESSION_TYPE=wayland HEARTH_WM=kwin
+    export XDG_CONFIG_DIRS XDG_CURRENT_DESKTOP=Hearth:Nimbus:KDE XDG_SESSION_TYPE=wayland HEARTH_WM=kwin \
+      PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock
+    # No --no-lockscreen: KWin's own locker is how Mantel locks under KWin (feature/kwin-input).
     # $HEARTH_KWIN_ARGS: extra options for tests (--virtual --width 1920 --height 1080 in kwin-test.yml).
-    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" --xwayland --no-lockscreen $HEARTH_KWIN_ARGS "$2"' sh "$KWIN_BIN" "$auto"
+    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" --xwayland $HEARTH_KWIN_ARGS "$2"' sh "$KWIN_BIN" "$auto"
   ) >>"$KWIN_LOG" 2>&1 &
   kpid=$!
   echo "$kpid" >"$RUN/hearth-kwin.pid"
@@ -594,6 +597,11 @@ fi
 if [ -f "$SHARE/desktop/shell/hearth-portal" ] && have python3; then
   python3 "$SHARE/desktop/shell/hearth-portal" filemanager1 --replace >>"$(dirname "$LOG")/portal.log" 2>&1 &
   BG_PIDS="$BG_PIDS $!"
+fi
+# Hearth Connect (your phone, linked): its unit doesn't start by itself any more, so the session starts it once per
+# sign-in, for every mode (Game Mode too); it only starts when you have the phone link on (feature/phone-link).
+if [ -z "$HEARTH_SEAT" ] && have hearth-connect; then
+  hearth-connect --autostart >/dev/null 2>&1 &
 fi
 if [ -n "$BG_PIDS" ]; then
   trap 'kill $BG_PIDS 2>/dev/null' EXIT
