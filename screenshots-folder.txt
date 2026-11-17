@@ -1,0 +1,4 @@
+total 332
+drwxr-xr-x 2 root root   4096 Nov 17 02:49 .
+drwxr-xr-x 3 root root   4096 Nov 17 02:49 ..
+-rw-r--r-- 1 root root 330111 Nov 17 02:49 Screenshot 2026-11-17 02-49-41.png
