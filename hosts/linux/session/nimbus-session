@@ -598,11 +598,6 @@ if [ -f "$SHARE/desktop/shell/hearth-portal" ] && have python3; then
   python3 "$SHARE/desktop/shell/hearth-portal" filemanager1 --replace >>"$(dirname "$LOG")/portal.log" 2>&1 &
   BG_PIDS="$BG_PIDS $!"
 fi
-# Hearth Connect (your phone, linked): its unit doesn't start by itself any more, so the session starts it once per
-# sign-in, for every mode (Game Mode too); it only starts when you have the phone link on (feature/phone-link).
-if [ -z "$HEARTH_SEAT" ] && have hearth-connect; then
-  hearth-connect --autostart >/dev/null 2>&1 &
-fi
 if [ -n "$BG_PIDS" ]; then
   trap 'kill $BG_PIDS 2>/dev/null' EXIT
   trap 'exit 143' INT TERM HUP   # a signal at logout ends the script through EXIT (so the helpers stop too)

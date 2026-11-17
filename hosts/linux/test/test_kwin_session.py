@@ -212,29 +212,6 @@ class KWinStart(Base):
             self.assertTrue((ROOT / 'hosts/linux/desktop/kwin/xdg' / f).is_file())
 
 
-class PhoneLink(Base):
-    """Hearth Connect's unit doesn't start by itself (feature/phone-link): the session starts it in every mode."""
-    def test_session_starts_it_once_whatever_the_mode(self):
-        self.write_bin('hearth-connect', '#!/bin/sh\necho "$*" >> "$HOME/connect-ran"\n')
-        self.write_bin('kwin_wayland', KWIN_WORKS)
-        for conf in ('NIMBUS_START_MODE=desktop\n', ''):      # Desktop Mode, and Game Mode (nothing to run it here: ends)
-            with self.subTest(conf=conf):
-                os.makedirs(self.home, exist_ok=True)
-                p = os.path.join(self.home, 'connect-ran')
-                if os.path.exists(p):
-                    os.remove(p)
-                self.session(conf)
-                for _ in range(25):
-                    if os.path.exists(p):
-                        break
-                    time.sleep(0.2)
-                self.assertEqual(self.lines('connect-ran')[:1], ['--autostart'])
-
-    def test_autostart_starts_it_when_it_isnt_running(self):
-        text = AUTOSTART.read_text()
-        self.assertIn('hearth-connect --autostart', text)
-
-
 class Choice(Base):
     def test_wm_writes_only_its_line_with_a_backup(self):
         with open(self.conf, 'w') as f:

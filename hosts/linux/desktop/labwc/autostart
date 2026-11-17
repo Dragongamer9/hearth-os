@@ -145,11 +145,6 @@ fi
 # A store sign-in asked for in Game Mode (Library › Stores): Hearth opens here in a window and starts it.
 [ -f "$SHARE/desktop/shell/hearth-signin" ] && command -v python3 >/dev/null 2>&1 && python3 "$SHARE/desktop/shell/hearth-signin" desktop-start >/dev/null 2>&1 &
 
-# Hearth Connect (your phone, linked): started for this sign-in by nimbus-session; again here if it isn't running (it
-# only starts when you have the phone link on). Not for a second player's seat.
-[ -z "$HEARTH_SEAT" ] && command -v hearth-connect >/dev/null 2>&1 && ! pgrep -u "$(id -u)" -f 'hearth-connect' >/dev/null 2>&1 \
-  && { hearth-connect --autostart >/dev/null 2>&1 & }
-
 # Briefcase auto-sync (hearth-briefcase-sync.service): asked for without waiting; it skips itself when no Briefcase has
 # auto-sync on, and nothing here waits for it or fails with it. Not for a second player's seat.
 [ -z "$HEARTH_SEAT" ] && command -v systemctl >/dev/null 2>&1 && systemctl --user start --no-block hearth-briefcase-sync.service >/dev/null 2>&1 &
