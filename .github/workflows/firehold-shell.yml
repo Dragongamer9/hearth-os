@@ -34,6 +34,7 @@ jobs:
           dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 python3-pillow qt6ct \
             google-noto-sans-fonts adwaita-icon-theme pciutils breeze-icon-theme >/dev/null
           dnf -y install dbus-daemon libnotify wl-clipboard wtype foot hicolor-icon-theme rsms-inter-fonts nodejs >/dev/null || true
+          dnf -y install mesa-dri-drivers mesa-libEGL mesa-libGL >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
           quickshell --version || true
@@ -56,7 +57,10 @@ jobs:
           mkdir -p "$XDG_RUNTIME_DIR" "$HOME" && chmod 700 "$XDG_RUNTIME_DIR"
           export LANG=C.UTF-8 LC_ALL=C.UTF-8
           export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
-          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          # Qt's own OpenGL renderer on Mesa's software GL (llvmpipe), as on a real screen: whole frames, and the effects
+          # (rounded art) drawn. Qt's software renderer left Home's lower part shifted in pictures (a partial-repaint
+          # problem of that renderer only).
+          export LIBGL_ALWAYS_SOFTWARE=1 NIMBUS_SHARE="$PWD/hosts/linux"
           chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
           if command -v dbus-daemon >/dev/null; then
             dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
