@@ -315,6 +315,17 @@ def typing():
 
 # ------------------------------------------------------------------ 3. KWin's screen sharing through hearth-kwin-cast
 def cast_helper():
+    # Two windows, so the picker's Windows tab has something to show.
+    for title, text in (('Notes – Hearth', 'Shopping: bread, milk, ember logs\\nCall Dad about Trains 2010'),
+                        ('Trains 2010 timetable', 'Express 08:15  Platform 2\\nLocal 08:40  Platform 1')):
+        PROCS.append(subprocess.Popen([sys.executable, '-c', textwrap.dedent('''
+            import gi, sys; gi.require_version("Gtk", "3.0")
+            from gi.repository import Gtk
+            w = Gtk.Window(title=sys.argv[1]); w.set_default_size(900, 600)
+            t = Gtk.TextView(); t.get_buffer().set_text(sys.argv[2].replace("\\\\n", "\\n"))
+            w.add(t); w.connect("destroy", Gtk.main_quit); w.show_all(); Gtk.main()
+            '''), title, text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+    time.sleep(4)
     # hearth-kwin-cast works only for hearth-portal: run straight, it refuses.
     direct = run(['/usr/libexec/hearth/hearth-kwin-cast', 'outputs'])
     check('hearth-kwin-cast refuses anyone but hearth-portal (KWin trusts it by its path)', direct.returncode == 3,
@@ -338,6 +349,17 @@ def cast_helper():
         node = st.get('node')
         check('KWin makes a PipeWire stream of a screen', node is not None, 'node %s %s' % (node, st.get('error', '')))
         if node is not None:
+            # Something changing on screen, so KWin has frames to send (it sends one when the picture changes).
+            ticker = subprocess.Popen([sys.executable, '-c', textwrap.dedent('''
+                import gi; gi.require_version("Gtk", "3.0")
+                from gi.repository import Gtk, GLib
+                import time
+                w = Gtk.Window(title="Clock"); w.set_default_size(500, 200); l = Gtk.Label(); w.add(l)
+                def tick():
+                    l.set_markup("<span size=\\"40000\\">%s</span>" % time.strftime("%H:%M:%S")); return True
+                tick(); GLib.timeout_add(200, tick); w.connect("destroy", Gtk.main_quit); w.show_all(); Gtk.main()
+                ''')], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(1)
             frame = os.path.join(SHOTS, 'cast-frame.png')
             for prop in ('target-object', 'path'):
                 r = run(['gst-launch-1.0', '-q', 'pipewiresrc', '%s=%d' % (prop, node), 'num-buffers=4', 'always-copy=true', '!',
@@ -347,6 +369,8 @@ def cast_helper():
             check('frames of the shared screen arrive over PipeWire', os.path.exists(frame) and os.path.getsize(frame) > 1000,
                   '%s bytes (%s)' % (os.path.getsize(frame) if os.path.exists(frame) else 0, (r.stderr or '')[-300:]))
         sp.terminate()
+        if node is not None:
+            ticker.terminate()
     ws = '/tmp/hearth-workspace.png'
     ok, err = kshot(ws)
     check('KWin gives hearth-kwin-cast screenshots (ScreenShot2, its .desktop file)', ok,
@@ -358,17 +382,6 @@ def cast_helper():
     check('Hearth\'s portal backend refuses calls that don\'t come from xdg-desktop-portal', r.returncode != 0 and 'AccessDenied' in (r.stderr or ''),
           (r.stderr or r.stdout or '').strip()[:200])
 
-    # Two windows, so the picker's Windows tab has something to show.
-    for title, text in (('Notes – Hearth', 'Shopping: bread, milk, ember logs\\nCall Dad about Trains 2010'),
-                        ('Trains 2010 timetable', 'Express 08:15  Platform 2\\nLocal 08:40  Platform 1')):
-        PROCS.append(subprocess.Popen([sys.executable, '-c', textwrap.dedent('''
-            import gi, sys; gi.require_version("Gtk", "3.0")
-            from gi.repository import Gtk
-            w = Gtk.Window(title=sys.argv[1]); w.set_default_size(900, 600)
-            t = Gtk.TextView(); t.get_buffer().set_text(sys.argv[2].replace("\\\\n", "\\n"))
-            w.add(t); w.connect("destroy", Gtk.main_quit); w.show_all(); Gtk.main()
-            '''), title, text], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
-    time.sleep(4)
 
 
 # ------------------------------------------------------------------ 4. the portals, as an app uses them
