@@ -1,0 +1,269 @@
+#!/usr/bin/python3
+"""hearth-powerset: the parts of KDE's Power settings Hearth Settings › Power added in 1.14, as you (no root): what the
+lid does on battery, plugged in and with a screen attached (logind's HandleLidSwitch*, read here; changed through
+hearth-admin lid, which writes only /etc/systemd/logind.conf.d/60-hearth-lid.conf), which apps are keeping the PC
+awake (logind's inhibitors), whether this PC can hibernate (and why not), and the battery's health, charge cycles and
+energy history (UPower). Reads only; nothing here writes a file.
+
+  hearth-powerset status                  JSON: {lid, inhibitors, hibernate, batteries}
+  hearth-powerset history PATH KIND HOURS JSON: {points: [[time, value, state]]}: UPower's history of a battery
+                                          (KIND charge | rate; HOURS 1..168)
+Output: one JSON line; failures print "error: ..." and exit 1.
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+SYS = os.environ.get('HEARTH_POWERSET_SYS', '/sys')
+PROC = os.environ.get('HEARTH_POWERSET_PROC', '/proc')
+ETC = os.environ.get('HEARTH_POWERSET_ETC', '/etc')
+PROVEN = '/var/lib/hearth/hibernate-proven'
+LID_KEYS = ('HandleLidSwitch', 'HandleLidSwitchExternalPower', 'HandleLidSwitchDocked')
+LID_ACTIONS = ('suspend', 'hibernate', 'lock', 'poweroff', 'ignore')
+PATH_RE = re.compile(r'^/org/freedesktop/UPower/devices/[A-Za-z0-9_]{1,80}$')
+
+
+class Fail(Exception):
+    pass
+
+
+def run(cmd, timeout=10):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return 127, ''
+    return p.returncode, p.stdout
+
+
+def read(path, default=''):
+    try:
+        with open(path) as f:
+            return f.read()
+    except OSError:
+        return default
+
+
+# ------------------------------------------------------------------ the lid
+def conf_values(text, keys):
+    out, sec = {}, ''
+    for line in text.splitlines():
+        line = line.strip()
+        if line.startswith('[') and line.endswith(']'):
+            sec = line[1:-1]
+        elif sec == 'Login' and '=' in line and not line.startswith(('#', ';')):
+            k, v = line.split('=', 1)
+            if k.strip() in keys:
+                out[k.strip()] = v.strip()
+    return out
+
+
+def lid(etc=None):
+    """What logind does with the lid: its files in the order it reads them (later wins)."""
+    etc = etc or ETC
+    files = [os.path.join(etc, 'systemd', 'logind.conf')]
+    drops = {}
+    for d in ('/usr/lib/systemd/logind.conf.d', '/usr/local/lib/systemd/logind.conf.d', os.path.join(etc, 'systemd', 'logind.conf.d')):
+        for f in glob.glob(os.path.join(d, '*.conf')):
+            drops[os.path.basename(f)] = f          # /etc's file of the same name wins
+    files += [drops[k] for k in sorted(drops)]
+    vals, by = {}, {}
+    for f in files:
+        for k, v in conf_values(read(f), LID_KEYS).items():
+            vals[k], by[k] = v, f
+    battery = vals.get('HandleLidSwitch', 'suspend')
+    return {'battery': battery, 'ac': vals.get('HandleLidSwitchExternalPower', battery),
+            'docked': vals.get('HandleLidSwitchDocked', 'ignore'),
+            'hearths': all(by.get(k, '').endswith('60-hearth-lid.conf') for k in vals) if vals else True,
+            'setBy': sorted(set(os.path.basename(v) for v in by.values() if not v.endswith('60-hearth-lid.conf')))}
+
+
+def has_lid(sysfs=None):
+    return bool(glob.glob(os.path.join(PROC, 'acpi', 'button', 'lid', '*'))) or \
+        any('lid' in read(os.path.join(p, 'name')).lower() for p in glob.glob(os.path.join(sysfs or SYS, 'class', 'input', 'input*')))
+
+
+# ------------------------------------------------------------------ apps keeping it awake
+def parse_inhibitors(js):
+    out = []
+    for row in ((js or {}).get('data') or [[]])[0]:
+        if not isinstance(row, list) or len(row) < 6:
+            continue
+        what, who, why, mode, uid, pid = row[:6]
+        kinds = [w for w in str(what).split(':') if w in ('sleep', 'idle', 'shutdown')]
+        if not kinds or who in ('ModemManager', 'NetworkManager', 'UPower', 'Unattended Upgrades Shutdown'):
+            continue
+        out.append({'what': kinds, 'who': who, 'why': why, 'mode': mode, 'pid': pid, 'uid': uid,
+                    'app': app_of(pid) or who})
+    return out
+
+
+def app_of(pid):
+    try:
+        with open(os.path.join(PROC, str(int(pid)), 'comm')) as f:
+            return f.read().strip()
+    except (OSError, ValueError):
+        return ''
+
+
+def inhibitors():
+    if not shutil.which('busctl'):
+        return []
+    code, out = run(['busctl', '--json=short', 'call', 'org.freedesktop.login1', '/org/freedesktop/login1',
+                     'org.freedesktop.login1.Manager', 'ListInhibitors'])
+    try:
+        return parse_inhibitors(json.loads(out)) if code == 0 else []
+    except ValueError:
+        return []
+
+
+# ------------------------------------------------------------------ hibernate
+def meminfo(proc=None):
+    out = {}
+    for line in read(os.path.join(proc or PROC, 'meminfo')).splitlines():
+        f = line.split()
+        if len(f) >= 2 and f[1].isdigit():
+            out[f[0].rstrip(':')] = int(f[1]) * 1024
+    return out
+
+
+def disk_swaps(proc=None):
+    """Swap on a drive (zram can't hold a hibernation): [(path, size, used)] in bytes."""
+    out = []
+    for line in read(os.path.join(proc or PROC, 'swaps')).splitlines()[1:]:
+        f = line.split()
+        if len(f) >= 4 and not f[0].startswith('/dev/zram') and f[2].isdigit() and f[3].isdigit():
+            out.append((f[0], int(f[2]) * 1024, int(f[3]) * 1024))
+    return out
+
+
+def hibernate_check(sysfs=None, proc=None, can=None):
+    """{can, why, proven, swap, needed}: Hibernate is offered only when all of these hold. Nothing here ever changes
+    booting (resume= and the like): a PC that can't is told why, and Settings › Memory can make room."""
+    sysfs, proc = sysfs or SYS, proc or PROC
+    mi = meminfo(proc)
+    used = max(0, mi.get('MemTotal', 0) - mi.get('MemAvailable', 0)) + sum(u for _, _, u in disk_swaps(proc))
+    swap = sum(s for _, s, _ in disk_swaps(proc))
+    r = {'can': False, 'why': '', 'proven': os.path.exists(PROVEN), 'swap': swap, 'needed': used, 'memory': mi.get('MemTotal', 0)}
+    if 'disk' not in read(os.path.join(sysfs, 'power', 'state')).split():
+        r['why'] = "This PC's firmware or kernel doesn't offer hibernation"
+    elif re.search(r'\[(integrity|confidentiality)\]', read(os.path.join(sysfs, 'kernel', 'security', 'lockdown'))):
+        r['why'] = 'Secure Boot locks hibernation away on this PC (the kernel is in lockdown)'
+    elif not swap:
+        r['why'] = 'Hibernating needs a swap file on the drive the size of your memory (Settings › Memory can make one)'
+    elif swap < used * 1.1:
+        r['why'] = 'The swap file on the drive is too small for what is in memory now'
+    else:
+        if can is None:
+            code, out = run(['busctl', 'call', 'org.freedesktop.login1', '/org/freedesktop/login1',
+                             'org.freedesktop.login1.Manager', 'CanHibernate']) if shutil.which('busctl') else (127, '')
+            can = out.split('"')[1] if code == 0 and '"' in out else ''
+        if can == 'yes':
+            r['can'] = True
+        else:
+            r['why'] = "The system says this PC can't hibernate right now (%s)" % (can or 'no answer')
+    return r
+
+
+# ------------------------------------------------------------------ batteries
+def parse_upower(text):
+    """upower -i's "key: value" lines (the battery part)."""
+    out = {}
+    for line in text.splitlines():
+        if ':' in line:
+            k, _, v = line.partition(':')
+            out[k.strip()] = v.strip()
+    return out
+
+
+def num(v):
+    m = re.match(r'^\s*([\d.]+)', v or '')
+    return float(m.group(1)) if m else None
+
+
+def batteries():
+    if not shutil.which('upower'):
+        return []
+    code, out = run(['upower', '-e'])
+    paths = [p.strip() for p in out.splitlines() if 'battery_' in p and PATH_RE.match(p.strip())] if code == 0 else []
+    res = []
+    for p in paths:
+        code, txt = run(['upower', '-i', p])
+        if code != 0:
+            continue
+        d = parse_upower(txt)
+        if d.get('power supply', 'yes') != 'yes' or d.get('present', 'yes') != 'yes':
+            continue
+        full, design = num(d.get('energy-full')), num(d.get('energy-full-design'))
+        cyc = d.get('charge-cycles')
+        name = p.rsplit('battery_', 1)[1]
+        if (not cyc or not cyc.isdigit()) and re.match(r'^[A-Za-z0-9]+$', name):
+            cyc = read(os.path.join(SYS, 'class', 'power_supply', name, 'cycle_count')).strip()
+        cycles = int(cyc) if cyc and cyc.isdigit() and int(cyc) > 0 else None
+        res.append({'path': p, 'name': name, 'vendor': d.get('vendor', ''), 'model': d.get('model', ''),
+                    'technology': d.get('technology', ''), 'state': d.get('state', ''),
+                    'percentage': num(d.get('percentage')), 'energyFull': full, 'energyDesign': design,
+                    'energyRate': num(d.get('energy-rate')), 'cycles': cycles,
+                    'health': round(100 * full / design) if full and design else None})
+    return res
+
+
+def history(path, kind, hours):
+    if not PATH_RE.match(path or ''):
+        raise Fail('not a battery')
+    if kind not in ('charge', 'rate'):
+        raise Fail('charge or rate')
+    try:
+        hours = int(hours)
+    except ValueError:
+        raise Fail('1 to 168 hours')
+    if not 1 <= hours <= 168:
+        raise Fail('1 to 168 hours')
+    if not shutil.which('busctl'):
+        raise Fail("busctl isn't on this system")
+    code, out = run(['busctl', '--json=short', 'call', 'org.freedesktop.UPower', path, 'org.freedesktop.UPower.Device',
+                     'GetHistory', 'suu', kind, str(hours * 3600), '240'])
+    if code != 0:
+        raise Fail("UPower has no history for this battery")
+    return {'points': parse_history(out)}
+
+
+def parse_history(text):
+    try:
+        js = json.loads(text)
+    except ValueError:
+        return []
+    pts = []
+    for row in ((js or {}).get('data') or [[]])[0]:
+        if isinstance(row, list) and len(row) >= 3 and row[0]:
+            pts.append([int(row[0]), round(float(row[1]), 2), int(row[2])])
+    pts.sort()
+    return pts
+
+
+def status():
+    return {'lid': dict(lid(), present=has_lid()), 'inhibitors': inhibitors(), 'hibernate': hibernate_check(),
+            'batteries': batteries()}
+
+
+def main(argv):
+    try:
+        if argv[:1] == ['status']:
+            r = status()
+        elif argv[:1] == ['history'] and len(argv) == 4:
+            r = history(argv[1], argv[2], argv[3])
+        else:
+            print(__doc__)
+            return 2
+    except Fail as e:
+        print('error: ' + str(e))
+        return 1
+    print(json.dumps(r))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

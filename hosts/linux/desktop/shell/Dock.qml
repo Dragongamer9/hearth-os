@@ -106,6 +106,12 @@ PanelWindow {
         const w = it.windows[0];
         return w ? (w.title || w.appId) : "";
     }
+    // Scrolling on an app's icon (1.14): that app's volume in the mixer, when it's playing sound and the switch is on.
+    function wheelVolume(it, up) {
+        if (!Settings.dockScrollVolume || !SettingsNav.mixer) return;
+        const names = (it.windows || []).map(w => w.appId).concat([it.id, it.entry ? it.entry.name : "", appName(it)]);
+        SettingsNav.mixer.stepFor(names, up);
+    }
     function cycleApp(it) {
         const ws = it.windows;
         if (!ws.length) { if (it.entry) it.entry.execute(); return; }
@@ -295,6 +301,7 @@ PanelWindow {
                         onClicked: dock.focusApp(modelData, task)
                         onMiddleClicked: dock.newInstance(modelData)
                         onRightClicked: dock.taskMenu(task, modelData)
+                        onWheeled: up => dock.wheelVolume(modelData, up)
                         onDragStarted: { dock.dragFrom = index; dock.dragTo = index; }
                         onDragMoved: pos => dock.dragTo = dock.dropIndexAt(pos)
                         onDragEnded: dock.finishDrag()
@@ -413,6 +420,7 @@ PanelWindow {
         signal dragStarted()
         signal dragMoved(real pos)
         signal dragEnded()
+        signal wheeled(bool up)
         z: dragging ? 5 : 0
         transform: Translate { x: btn.dragOffset }
         implicitWidth: dock.tile
@@ -469,6 +477,13 @@ PanelWindow {
             }
             onReleased: { if (btn.dragging) { btn.dragging = false; btn.dragOffset = 0; btn.dragEnded(); } }
             onCanceled: { if (btn.dragging) { btn.dragging = false; btn.dragOffset = 0; btn.dragEnded(); } }
+            // 1.14: scrolling on an app changes its volume (Settings › Sound › Apps' sound), one notch at a time.
+            property real wheelSum: 0
+            onWheel: wheel => {
+                wheelSum += wheel.angleDelta.y;
+                if (Math.abs(wheelSum) >= 120) { btn.wheeled(wheelSum > 0); wheelSum = 0; }
+                wheel.accepted = true;
+            }
             onClicked: mouse => {
                 if (dragged) { dragged = false; return; }
                 if (mouse.button === Qt.MiddleButton) btn.middleClicked();

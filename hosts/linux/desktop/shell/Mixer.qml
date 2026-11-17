@@ -147,8 +147,38 @@ Scope {
         if (mx.fix) setFix(key, a => { a.muted = m; });
         else for (const n of nodesOf(key)) if (n.audio) n.audio.muted = m;
     }
+    // Where an app plays (Settings › Sound › Apps' sound, 1.14): the output it was sent to in this session, else the
+    // output in use (an app follows the default output until it's sent somewhere).
+    property var sent: ({})
+    function outOf(key) {
+        if (mx.fix) { const a = fixApp(key); return a && a.out ? a.out : defaultOut; }
+        return sent[key] || defaultOut;
+    }
+    // Scrolling on an app's dock icon (Dock.qml, 1.14): the app playing sound whose name matches one of NAMES (its
+    // window's app id, its menu name) gets 5% louder or quieter, remembered like its slider. True when one matched.
+    function keyFor(names) {
+        const want = (names || []).map(n => String(n || "").toLowerCase().replace(/\.desktop$/, "").split(".").pop()).filter(n => n.length > 1);
+        for (const k of appKeys) {
+            const lk = k.toLowerCase();
+            if (want.some(n => lk === n || lk.indexOf(n) >= 0 || n.indexOf(lk) >= 0)) return k;
+        }
+        if (!mx.fix) for (const n of streams) {
+            const p = n.properties || {};
+            const bin = String(p["application.process.binary"] || "").toLowerCase(), id = String(p["application.id"] || "").toLowerCase();
+            if (want.some(w => (bin && (bin === w || bin.indexOf(w) >= 0)) || (id && id.indexOf(w) >= 0))) return keyOf(n);
+        }
+        return "";
+    }
+    function stepFor(names, up) {
+        const k = keyFor(names);
+        if (!k) return false;
+        setVol(k, volOf(k) + (up ? 0.05 : -0.05), true);
+        SettingsNav.toast(k + " · " + Math.round(volOf(k) * 100) + "%");
+        return true;
+    }
     // "Play on…": WirePlumber moves the app's sound when its target changes (pw-metadata, part of PipeWire).
     function sendTo(key, o) {
+        if (o && o.name) { const s = Object.assign({}, sent); s[key] = o.name; sent = s; }
         if (mx.fix) { setFix(key, a => { a.out = o.name; }); return; }
         const out = o ? o.node : null;
         if (!out) return;

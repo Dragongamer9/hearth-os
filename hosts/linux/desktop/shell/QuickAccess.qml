@@ -66,6 +66,8 @@ PanelWindow {
     // Battery and time left (UPower).
     readonly property var battDev: UPower.displayDevice
     readonly property bool hasBatt: battDev && battDev.isLaptopBattery
+    readonly property var devBatts: (UPower.devices ? UPower.devices.values : []).filter(d => d && !d.isLaptopBattery && d.isPresent !== false && d.percentage > 0
+        && d.type !== UPowerDeviceType.LinePower && d.type !== UPowerDeviceType.Ups && d.type !== UPowerDeviceType.Battery).slice(0, 6)
     function hm(sec) { const m = Math.round(sec / 60); return m >= 60 ? Math.floor(m / 60) + " h " + (m % 60) + " min" : m + " min"; }
     readonly property string battLine: {
         if (!hasBatt) return "";
@@ -246,6 +248,29 @@ PanelWindow {
                     RoundBtn { navId: "settings"; icon: "gear"; tip: "Settings" }
                     RoundBtn { navId: "lock"; icon: "lock"; tip: "Lock" }
                     RoundBtn { navId: "power"; icon: "power"; tip: "Power (sleep, restart, shut down)" }
+                }
+
+                // ---- 1.14: your devices' batteries (UPower: Bluetooth mice, keyboards, controllers, headphones), one chip each
+                Flow {
+                    Layout.fillWidth: true
+                    spacing: 6
+                    visible: root.devBatts.length > 0
+                    Repeater {
+                        model: root.devBatts
+                        delegate: Rectangle {
+                            required property var modelData
+                            implicitWidth: chipRow.implicitWidth + 18; implicitHeight: 28; radius: 14
+                            color: Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.07)
+                            Row {
+                                id: chipRow
+                                anchors.centerIn: parent
+                                spacing: 6
+                                Icon { anchors.verticalCenter: parent.verticalCenter; size: 14; color: modelData.percentage < 0.15 ? Theme.danger : Theme.muted
+                                    name: modelData.type === UPowerDeviceType.Mouse ? "mouse" : modelData.type === UPowerDeviceType.Keyboard ? "kbd" : modelData.type === UPowerDeviceType.GamingInput ? "pad" : modelData.type === UPowerDeviceType.Headset || modelData.type === UPowerDeviceType.Headphones ? "headphones" : "bt" }
+                                Text { anchors.verticalCenter: parent.verticalCenter; text: (modelData.model || "Device").slice(0, 22) + " · " + Math.round(modelData.percentage * 100) + "%"; color: Theme.text; font.family: Theme.font; font.pixelSize: 12 }
+                            }
+                        }
+                    }
                 }
 
                 // ---- Return to Game Mode: first and biggest
