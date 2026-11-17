@@ -140,7 +140,7 @@ jobs:
           qrp=$(q clipboard state | python3 -c 'import json,sys; print(json.loads(sys.stdin.read()).get("qr",""))' 2>/dev/null || true)
           [ -n "$qrp" ] && [ "$(zbarimg -q --raw "$qrp" 2>/dev/null)" = "https://hearthos.fun/download" ] && note "qr" "the QR code reads back as the link" || bad "qr" "the QR code didn't read back: $qrp"
           q clipboard back; sleep 1
-          q clipboard edit 1; sleep 3
+          q clipboard edit 1; sleep 4
           wtype -k End; wtype ' --yes'; sleep 1; shot clip-edit
           wtype -M ctrl -k Return -m ctrl; sleep 3
           python3 hosts/linux/desktop/shell/hearth-clipboard list | grep -q 'hearth-capture --yes' && note "edit" "the item was edited" || bad "edit" "the edit wasn't saved: $(python3 hosts/linux/desktop/shell/hearth-clipboard list | cut -c1-600)"

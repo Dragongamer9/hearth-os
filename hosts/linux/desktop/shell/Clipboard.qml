@@ -223,8 +223,16 @@ Scope {
     }
     function startEdit(it) {
         sheetItem = it; editText = it.text || ""; sheetMsg = ""; sheet = "edit";
-        Qt.callLater(() => { if (cb.editBox) cb.editBox.forceActiveFocus(); });
-        job(["get", it.id], r => { if (r.error) cb.sheetMsg = r.error; else { cb.editText = r.text; if (editBox) editBox.text = r.text; } });
+        Qt.callLater(() => { if (cb.editBox) { cb.editBox.forceActiveFocus(); cb.editBox.cursorPosition = cb.editBox.length; } });
+        // The whole text (the list only has the first 400 characters); the cursor stays at the end, or where you
+        // already put it if you started typing.
+        job(["get", it.id], r => {
+            if (r.error) { cb.sheetMsg = r.error; return; }
+            const b = cb.editBox;
+            if (b && b.text !== cb.editText) return;          // you changed it already: kept
+            cb.editText = r.text;
+            if (b) { b.text = r.text; b.cursorPosition = b.length; }
+        });
     }
     property var editBox: null
     function saveEdit(t) {
