@@ -323,6 +323,12 @@ jobs:
           ss() { ipc settings close; ipc settings page "$1"; sleep 5; grim "shots/system-settings/$2.png" || true; }
           ss vpn ss-vpn; ss hotspot ss-hotspot; ss proxy ss-proxy; ss net-details ss-net-details; ss firmware ss-firmware
           ss region ss-region; ss fonts ss-fonts; ss services ss-services; ss login-screen ss-login-screen
+          # Settings › Users on a pre-installed PC (hearth-oem-account's marker, naming this account for the picture):
+          # "Finish setting up: your name and password". The marker is taken away again.
+          OEM_M=/var/lib/hearth/oem-setup.json; OEM_MADE=""
+          if [ ! -e "$OEM_M" ]; then mkdir -p /var/lib/hearth && chmod 755 /var/lib/hearth && printf '{"user": "%s", "at": 1}\n' "$(id -un)" > "$OEM_M" && OEM_MADE=1; fi
+          ss users ss-users-oem
+          [ -n "$OEM_MADE" ] && rm -f "$OEM_M"
           # Thunderbolt (a dock allowed always, a drive waiting), Power with a battery that has a charge limit (a stand-in
           # /sys for hearth-hwset), Notifications with three apps (Discord with a sound and on the lock screen), and
           # Startup's Reopen my apps switch.
@@ -2766,7 +2772,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shot: [ss-vpn, ss-hotspot, ss-proxy, ss-net-details, ss-firmware, ss-region, ss-fonts, ss-services, ss-login-screen, ss-thunderbolt, ss-power, ss-notifications, ss-startup, ss-sound]
+        shot: [ss-vpn, ss-hotspot, ss-proxy, ss-net-details, ss-firmware, ss-region, ss-fonts, ss-services, ss-login-screen, ss-thunderbolt, ss-power, ss-notifications, ss-startup, ss-sound, ss-users-oem]
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

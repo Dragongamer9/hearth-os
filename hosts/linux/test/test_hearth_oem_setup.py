@@ -130,12 +130,23 @@ class StandInAccount(unittest.TestCase):
         self.refused('home folders')
 
     def test_a_high_uid_from_ldap_is_refused_but_nobody_is_not_a_person(self):
-        self.nss(FakePwd(people=[('nobody', 65534)]))
-        self.assertEqual(self.m.plan()[0], ['stamp', 'mark', 'useradd', 'nopass'])
-        self.nss(FakePwd(people=[('ldapuser', 2 ** 31 - 5)]))
-        self.assertEqual(self.m.plan()[0], ['stamp'])
-        self.nss(FakePwd(uid1000=True))
-        self.assertEqual(self.m.plan()[0], ['stamp'])
+        stamp = self.tmp + '/var/lib/hearth/oem-account.checked'
+        for fake, steps in ((FakePwd(people=[('nobody', 65534)]), ['mark', 'useradd', 'nopass']),
+                            (FakePwd(people=[('ldapuser', 2 ** 31 - 5)]), []), (FakePwd(uid1000=True), [])):
+            if os.path.exists(stamp):
+                os.remove(stamp)
+            self.nss(fake)
+            self.assertEqual(self.m.plan()[0], steps)
+
+    def test_the_stamp_is_down_before_any_lookup(self):
+        seen = []
+        def hang():
+            seen.append(os.path.exists(self.tmp + '/var/lib/hearth/oem-account.checked'))
+            raise TimeoutError('NSS hung')
+        self.m.pwd = type('P', (), {'getpwall': staticmethod(hang), 'getpwuid': staticmethod(hang)})
+        self.assertEqual(self.m.plan()[0], [])
+        self.assertEqual(seen[:1], [True], 'the stamp was written before NSS was asked')
+        self.assertEqual(self.m.plan()[1], 'already checked at an earlier start')
 
     def test_an_existing_home_folder_is_refused(self):
         os.makedirs(self.tmp + '/home/alex')
@@ -218,7 +229,8 @@ class StandInAccount(unittest.TestCase):
         self.assertRegex(u, r'Before=.*display-manager\.service')
         for x in ('nss-user-lookup.target', 'systemd-userdbd.service', 'systemd-homed.service'):
             self.assertRegex(u, r'(?m)^After=.*' + re.escape(x))
-        self.assertRegex(u, r'(?m)^RequiresMountsFor=.*/home')
+        self.assertRegex(u, r'(?m)^RequiresMountsFor=/var/lib$')
+        self.assertNotRegex(u, r'(?m)^RequiresMountsFor=.*/home')
         self.assertIn('TimeoutStartSec=30', u)
         self.assertEqual(self.m.STEP_TIMEOUT, 10)
         self.assertIn('ExecStart=-/usr/libexec/nimbus/hearth-oem-account', u)
@@ -246,7 +258,9 @@ class SessionOpensSetup(unittest.TestCase):
         return subprocess.run(['bash', '-c', script], env=env, capture_output=True, text=True).stdout.strip()
 
     def test_the_marker_opens_setup_even_after_skip_once_a_sign_in(self):
-        m = tempfile.mktemp()
+        d = tempfile.mkdtemp()
+        os.chmod(d, 0o755)
+        m = d + '/oem-setup.json'
         self.assertEqual(self.pending(m), 'no')
         with open(m, 'w') as f:
             f.write('{}')
@@ -254,10 +268,93 @@ class SessionOpensSetup(unittest.TestCase):
         self.assertEqual(self.pending(m, library='{"setupDone": 1763370000000}'), 'yes', 'Skip doesn\'t end it')
         self.assertEqual(self.pending(m, asked=True), 'no', 'asked already this sign-in: on to Steam Game Mode')
         self.assertEqual(self.pending(m, owner=os.getuid() + 1), 'no', "someone else's file")
+        os.chmod(d, 0o775)
+        self.assertEqual(self.pending(m), 'no', 'a folder its group can write to')
+        os.chmod(d, 0o757)
+        self.assertEqual(self.pending(m), 'no', 'a folder anyone can write to')
+        os.chmod(d, 0o755)
+        os.remove(m)
+        os.symlink(d + '/../elsewhere', m)
+        self.assertEqual(self.pending(m), 'no', 'a link')
         self.assertEqual(self.pending(tempfile.mktemp(), library='{"setupDone": 1}'), 'no')
 
     def test_the_session_notes_it_asked(self):
         self.assertIn(': > "$RUN/nimbus-oem-asked"', SESSION.read_text())
+
+
+class Notices(unittest.TestCase):
+    """While the marker is there: Mantel's Settings › Users (hearth-system users' oemSetup, SetUsers.qml) and a one-time
+    notification after signing in (hearth-oem-account notice, the user service hearth-oem-notice)."""
+
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.env = dict(os.environ)
+        os.environ['HEARTH_OEM_ROOT'] = self.tmp
+        os.environ['XDG_STATE_HOME'] = self.tmp + '/state'
+        os.makedirs(self.tmp + '/bin')
+        with open(self.tmp + '/bin/notify-send', 'w') as f:
+            f.write('#!/bin/sh\nprintf "%%s|" "$@" >> %s/sent; echo >> %s/sent\n' % (self.tmp, self.tmp))
+        os.chmod(self.tmp + '/bin/notify-send', 0o755)
+        os.environ['PATH'] = self.tmp + '/bin:' + os.environ['PATH']
+        self.m = load(NIMBUS / 'hearth-oem-account', 'hearth_oem_notice')
+        self.m.OWNER_UID = os.getuid()
+
+    def tearDown(self):
+        os.environ.clear()
+        os.environ.update(self.env)
+
+    def sent(self):
+        try:
+            with open(self.tmp + '/sent') as f:
+                return f.read().splitlines()
+        except FileNotFoundError:
+            return []
+
+    def test_told_once_while_the_marker_is_there(self):
+        self.assertEqual(self.m.notice(tries=1, wait=0), 0)
+        self.assertEqual(self.sent(), [], 'no marker: nothing')
+        self.m.write_root_file(self.tmp + '/var/lib/hearth/oem-setup.json', {'user': 'hearth', 'at': 5})
+        self.m.notice(tries=1, wait=0)
+        self.assertEqual(len(self.sent()), 1)
+        self.assertIn('Finish setting up: your name and password', self.sent()[0])
+        self.m.notice(tries=1, wait=0)
+        self.assertEqual(len(self.sent()), 1, 'only once')
+
+    def test_a_planted_marker_tells_nothing(self):
+        os.makedirs(self.tmp + '/var/lib/hearth')
+        os.chmod(self.tmp + '/var/lib/hearth', 0o777)
+        with open(self.tmp + '/var/lib/hearth/oem-setup.json', 'w') as f:
+            f.write('{"user": "hearth"}')
+        self.m.notice(tries=1, wait=0)
+        self.assertEqual(self.sent(), [])
+
+    def test_the_user_service_and_mantel_page(self):
+        u = (ROOT / 'os' / 'system_files' / 'usr' / 'lib' / 'systemd' / 'user' / 'hearth-oem-notice.service').read_text()
+        self.assertIn('ExecStart=/usr/libexec/nimbus/hearth-oem-account notice', u)
+        self.assertIn('ConditionPathExists=/var/lib/hearth/oem-setup.json', u)
+        self.assertIn('systemctl --global enable hearth-oem-notice.service', BUILD.read_text())
+        q = (ROOT / 'hosts' / 'linux' / 'desktop' / 'shell' / 'SetUsers.qml').read_text()
+        self.assertIn('Finish setting up: your name and password', q)
+        self.assertIn('page.runAdmin(["oem-finish"]', q)
+
+    def test_hearth_system_says_so_only_for_a_trusted_marker(self):
+        hs = load(ROOT / 'hosts' / 'linux' / 'desktop' / 'shell' / 'hearth-system', 'hearth_system_oem')
+        d = tempfile.mkdtemp()
+        os.chmod(d, 0o755)
+        hs.OEM_OWNER = os.getuid()
+        m = d + '/oem-setup.json'
+        self.assertFalse(hs.oem_pending(m))
+        with open(m, 'w') as f:
+            f.write('{}')
+        self.assertTrue(hs.oem_pending(m))
+        with open(m, 'w') as f:
+            f.write('{"user": "hearth"}')
+        self.assertEqual(hs.oem_user(m), 'hearth')
+        os.chmod(d, 0o777)
+        self.assertFalse(hs.oem_pending(m))
+        os.chmod(d, 0o755)
+        hs.OEM_OWNER = os.getuid() + 1
+        self.assertFalse(hs.oem_pending(m))
 
 
 class OemFinish(unittest.TestCase):
