@@ -21,6 +21,14 @@ script was unloaded) it's loaded again.
                                            (do probe ID: what this KWin offers, into the log)
   hearth-kwin-bridge render                print the KWin script as it's loaded (for checks)
   hearth-kwin-bridge keys [restore]        the shortcuts as KWin has them; restore: KDE's keys Hearth changed, back
+  hearth-kwin-bridge keys changed          JSON: KDE's keys Hearth changed and hasn't put back (reads only)
+  hearth-kwin-bridge keys restore --json   restore for Settings › Keyboard (one JSON line, or "error: ...")
+
+Also (docs/DESKTOPS.md "Mantel on KWin"): the live window previews for the dock and the taskbar (KWin's declarative
+script desktop/kwin/windows/hearth-previews.qml, loaded next to the window list script; Mantel's preview / previewHide
+go to it as the reply to its NextPreview()), Snap layouts when the pointer rests on a window's Maximize button (the
+script's HoverMax: this waits HOVER_WAIT so passing over doesn't open it), and force closing a frozen window (Mantel's
+pick: KWin's own click-a-window, queryWindowInfo; then kill: the window's process is asked to end, then made to).
 
 Lines it prints (serve --stdio): {"t": "windows", "windows": [...], "desktops": [...], "active": id} and
 {"t": "status", "connected": bool, "problem": "..."}. Exit 0 when the shell goes away (stdin closes) or another bridge
@@ -54,14 +62,61 @@ XML = """<node><interface name="org.hearth.Windows">
   <method name="Command"><arg type="s" name="json" direction="in"/><arg type="b" name="queued" direction="out"/></method>
   <method name="List"><arg type="s" name="json" direction="out"/></method>
   <method name="Log"><arg type="s" name="text" direction="in"/></method>
+  <method name="NextPreview"><arg type="s" name="commands" direction="out"/></method>
+  <method name="HoverMax"><arg type="s" name="json" direction="in"/></method>
+  <method name="ForceClose"><arg type="s" name="id" direction="in"/></method>
   <signal name="Changed"><arg type="s" name="json"/></signal>
 </interface></node>"""
 NEXT_WAIT = 20          # s: Next() answers with nothing after this (KWin's D-Bus calls give up at 25 s)
 SILENT_RELOAD = 35      # s: no Next() from the script for this long: load it again
+PREVIEW_SRC = os.path.join(KWIN_DIR, 'hearth-previews.qml')
+PREVIEW_PLUGIN = 'hearthpreviews'
+HOVER_WAIT = 0.55       # s the pointer rests on Maximize before Snap layouts opens
+KILL_WAIT = 3.0         # s a frozen window's process gets to end by itself before it's made to
+PREVIEW_OPS = ('preview', 'previewHide')
+BRIDGE_OPS = ('pick', 'kill', 'pickCancel')
 # Extra commands the script's own menu entries ask for (not keys of their own).
 EXTRA = {
     'snap-layouts-open': "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call snap open'",
 }
+
+
+def theme_cols():
+    """Mantel's colours for the previews (~/.config/hearth/theme.json, hearth-theme's tokens); {} when unreadable."""
+    path = os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config'), 'hearth', 'theme.json')
+    try:
+        with open(path, encoding='utf-8') as f:
+            t = json.load(f)
+        c = t.get('colors') or {}
+    except (OSError, ValueError, AttributeError):
+        return {}
+    out = {k: c[k] for k in ('panel', 'panel2', 'panel3', 'text', 'muted', 'line') if isinstance(c.get(k), str)}
+    if isinstance(c.get('accent'), str):
+        out['accent'] = c['accent']
+    if isinstance(t.get('radius'), int):
+        out['r'] = max(0, min(18, t['radius']))
+    m = re.match(r'\s*"([^"]+)"', str(t.get('font') or ''))
+    if m:
+        out['font'] = m.group(1)
+    return out
+
+
+# A frozen window's process: never one of Hearth's own (KWin, the shell, this bridge) or the system's.
+def killable(pid):
+    if not isinstance(pid, int) or pid <= 1 or pid in (os.getpid(), os.getppid()):
+        return False
+    try:
+        st = os.stat('/proc/%d' % pid)
+    except OSError:
+        return False
+    if st.st_uid != os.getuid():
+        return False
+    try:
+        with open('/proc/%d/comm' % pid, encoding='utf-8') as f:
+            comm = f.read().strip()
+    except OSError:
+        comm = ''
+    return comm not in ('kwin_wayland', 'kwin_wayland_wr', 'quickshell', 'qs', 'Xwayland', 'systemd', 'dbus-daemon')
 
 
 def runtime_dir():
@@ -255,26 +310,45 @@ def fix_kde_keys(kk, table, hearth_ids, say=log):
         done.update(changed)
         hs.merge_json(path, {'done': done})
         say('keys: ' + '; '.join(words))
-        hs.notice('kwin-keys', 'Hearth gave its own keys back to Mantel in KWin (Super+arrows, Super+D, Super+G, Print...): '
+        hs.notice('kwin-keys', 'Hearth gave its own keys back to Mantel in KWin (Super+arrows, Super+D, Super+G, Super+W, Ctrl+Alt+Esc, Print...): '
                   'the KDE shortcuts that had them were changed once. Your own key choices are kept. '
-                  'To put KDE\'s back: hearth-kwin-bridge keys restore', 'Desktop Mode keys')
+                  'To put KDE\'s back: Settings › Keyboard › Bring back KDE\'s own shortcuts', 'Desktop Mode keys')
     return words
 
 
+def changed_kde_keys():
+    """What Hearth changed and hasn't put back (the state file only: no D-Bus, writes nothing), for Settings."""
+    import hearth_settings_io as hs
+    path = keys_state_path()
+    done = (hs.load_json(path, {}, repair=False).get('done') or {}) if os.path.exists(path) else {}
+    out = [{'key': k, 'action': k.split('/', 1)[1], 'title': d.get('title', '')} for k, d in sorted(done.items())
+           if isinstance(d, dict) and not d.get('restored') and not k.startswith('kwin/Hearth ')]
+    return {'changed': out, 'count': len(out)}
+
+
 def restore_kde_keys(kk):
+    """KDE's keys back as Hearth found them (Settings › Keyboard › Bring back KDE's own shortcuts, or
+    hearth-kwin-bridge keys restore). Only what isn't put back yet; one that can't be is left to try again. Each one put
+    back is kept in 'done' as restored: Hearth never changes it again."""
     import hearth_settings_io as hs
     path = keys_state_path()
     done = dict(hs.load_json(path, {}).get('done') or {})
-    back = []
+    back, failed = [], []
     for key, d in list(done.items()):
+        if not isinstance(d, dict) or d.get('restored'):
+            continue
         comp, action = key.split('/', 1)
         try:
             kk.set(kk.action_id(comp, action, d.get('title', '')), d.get('was', []))
-            back.append(key)
         except Exception as e:
-            print('%s: %s' % (key, getattr(e, 'message', e)))
-        d['restored'] = int(time.time())          # kept in 'done': Hearth never changes it again
-    hs.merge_json(path, {'done': done})
+            failed.append('%s: %s' % (key, getattr(e, 'message', e)))
+            continue
+        back.append(key)
+        d['restored'] = int(time.time())
+    if back:
+        hs.merge_json(path, {'done': done})
+    for f in failed:
+        print(f, file=sys.stderr)
     return back
 
 
@@ -298,6 +372,15 @@ class Bridge:
         self.queue = []
         self.pending = None           # the script's waiting Next() call
         self.pending_timer = 0
+        self.pqueue = []                # for the previews script (preview, previewHide)
+        self.ppending = None            # its waiting NextPreview() call
+        self.ppending_timer = 0
+        self.previews_ready = None
+        self.last_pnext = 0.0
+        self.ploaded_at = 0.0
+        self.hover = None               # the Maximize button the pointer is on: {id, x, y, w, h, output}
+        self.hover_timer = 0
+        self.hover_open = False
         self.last_next = 0.0
         self.last_list = '{"windows": [], "desktops": [], "active": ""}'
         self.connected = None
@@ -354,9 +437,138 @@ class Bridge:
             return False
         if not isinstance(c, dict) or not c.get('op'):
             return False
+        if c['op'] in PREVIEW_OPS:
+            if c['op'] == 'preview':
+                c.setdefault('cols', theme_cols())
+            self.pqueue = [x for x in self.pqueue if x.get('op') not in PREVIEW_OPS] + [c]   # only the newest counts
+            self.pflush()
+            return True
+        if c['op'] in BRIDGE_OPS:
+            self.later(self.own_command, c)
+            return True
         self.queue.append(c)
         self.flush()
         return True
+
+    # -------- the previews script
+    def pflush(self):
+        if self.ppending is None or not self.pqueue:
+            return
+        inv, self.ppending = self.ppending, None
+        if self.ppending_timer:
+            self.GLib.source_remove(self.ppending_timer)
+            self.ppending_timer = 0
+        batch, self.pqueue = self.pqueue, []
+        if any(c.get('op') == 'preview' for c in batch):
+            log('previews: %d window(s) for the previews script' % len(batch[-1].get('ids') or []))
+        inv.return_value(self.GLib.Variant('(s)', (json.dumps(batch),)))
+
+    def panswer_empty(self):
+        self.ppending_timer = 0
+        if self.ppending is not None:
+            inv, self.ppending = self.ppending, None
+            inv.return_value(self.GLib.Variant('(s)', ('[]',)))
+        return False
+
+    def set_previews(self, ready):
+        if ready != self.previews_ready:
+            self.previews_ready = ready
+            self.say({'t': 'previews', 'ready': ready})
+            log('window previews ' + ('ready' if ready else 'not available'))
+
+    # -------- what the bridge does itself: force closing a frozen window
+    def own_command(self, c):
+        op = c['op']
+        if op == 'pick':
+            self.pick()
+        elif op == 'kill':
+            self.kill(c.get('id', ''), c.get('pid'))
+
+    def pick(self):
+        """KWin's own click-a-window (the pointer becomes a cross; Esc cancels): the window clicked, to the shell."""
+        def done(conn, res):
+            try:
+                info = conn.call_finish(res).unpack()[0]
+            except self.GLib.Error as e:
+                cancel = 'UserCancel' in (e.message or '') or 'cancel' in (e.message or '').lower()
+                self.say({'t': 'picked', 'cancel': cancel, 'error': '' if cancel else e.message})
+                return
+            info = {k: (v if isinstance(v, (str, int, float, bool)) else str(v)) for k, v in dict(info).items()}
+            wid = str(info.get('uuid') or '')
+            mine = next((w for w in json.loads(self.last_list).get('windows', []) if w.get('id') == wid), None)
+            self.say({'t': 'picked', 'id': wid, 'title': (mine or {}).get('title') or info.get('caption', ''),
+                      'appId': (mine or {}).get('appId') or info.get('desktopFile', '') or info.get('resourceClass', ''),
+                      'pid': (mine or {}).get('pid') or info.get('pid') or 0})
+        self.bus.call('org.kde.KWin', '/KWin', 'org.kde.KWin', 'queryWindowInfo', None, self.GLib.VariantType.new('(a{sv})'),
+                      self.Gio.DBusCallFlags.NONE, 120000, None, done)
+
+    def kill(self, wid, pid=None):
+        """The window's process: asked to end (SIGTERM), then made to (SIGKILL) if it's still there after KILL_WAIT."""
+        w = next((x for x in json.loads(self.last_list).get('windows', []) if x.get('id') == wid), None) if wid else None
+        if w:
+            pid = w.get('pid')
+        try:
+            pid = int(pid or 0)
+        except (TypeError, ValueError):
+            pid = 0
+        if not killable(pid):
+            self.say({'t': 'killed', 'id': wid, 'ok': False, 'why': 'Hearth can\'t close that one (it\'s part of the system)'})
+            log('force close: refused pid %s' % pid)
+            return
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError as e:
+            self.say({'t': 'killed', 'id': wid, 'ok': False, 'why': str(e)})
+            return
+        log('force close: asked %d (%s) to end' % (pid, (w or {}).get('title', wid)))
+
+        def harder():
+            try:
+                os.kill(pid, 0)
+            except OSError:
+                self.say({'t': 'killed', 'id': wid, 'ok': True, 'how': 'ended'})
+                return False
+            try:
+                os.kill(pid, signal.SIGKILL)
+                log('force close: %d made to end' % pid)
+                self.say({'t': 'killed', 'id': wid, 'ok': True, 'how': 'forced'})
+            except OSError as e:
+                self.say({'t': 'killed', 'id': wid, 'ok': False, 'why': str(e)})
+            return False
+        self.GLib.timeout_add(int(KILL_WAIT * 1000), harder)
+
+    # -------- the pointer resting on Maximize: Snap layouts under it
+    def hover_max(self, text):
+        try:
+            h = json.loads(text)
+        except ValueError:
+            return
+        if self.hover_timer:
+            self.GLib.source_remove(self.hover_timer)
+            self.hover_timer = 0
+        if not h.get('id'):
+            self.hover = None
+            if self.hover_open:
+                self.hover_open = False
+                self.snap_ipc('hoverEnd')
+            return
+        self.hover = h
+        self.hover_timer = self.GLib.timeout_add(int(HOVER_WAIT * 1000), self.hover_fire)
+
+    def hover_fire(self):
+        self.hover_timer = 0
+        h = self.hover
+        if h:
+            self.hover_open = True
+            self.snap_ipc('hoverOpen', h['id'], h.get('output', ''), int(h['x'] + h['w'] / 2), int(h['y'] + h['h']))
+        return False
+
+    def snap_ipc(self, *args):
+        try:
+            subprocess.Popen(['quickshell', 'ipc', '-p', HERE, 'call', 'snap'] + [str(a) for a in args],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError as e:
+            log('snap layouts: %s' % e)
 
     def flush(self):
         if self.pending is None or not self.queue:
@@ -409,6 +621,26 @@ class Bridge:
             (text,) = params.unpack()
             inv.return_value(None)
             self.note('KWin script: ' + text[:2000])
+        elif method == 'NextPreview':
+            self.last_pnext = time.monotonic()
+            self.set_previews(True)
+            if self.ppending is not None:
+                old, self.ppending = self.ppending, None
+                old.return_value(GLib.Variant('(s)', ('[]',)))
+            if self.ppending_timer:
+                GLib.source_remove(self.ppending_timer)
+            self.ppending = inv
+            self.ppending_timer = GLib.timeout_add_seconds(NEXT_WAIT, self.panswer_empty)
+            self.pflush()
+        elif method == 'HoverMax':
+            (text,) = params.unpack()
+            inv.return_value(None)
+            self.hover_max(text)
+        elif method == 'ForceClose':
+            (wid,) = params.unpack()
+            inv.return_value(None)
+            w = next((x for x in json.loads(self.last_list).get('windows', []) if x.get('id') == wid), None)
+            self.say({'t': 'forceClose', 'id': wid, 'title': (w or {}).get('title', ''), 'appId': (w or {}).get('appId', ''), 'pid': (w or {}).get('pid', 0)})
         else:
             inv.return_dbus_error('org.hearth.Windows.Error', 'no method ' + method)
 
@@ -505,17 +737,49 @@ class Bridge:
                 self.kwin('/%d' % sid, 'org.kde.kwin.Script', 'run')       # older KWin's path
             self.loaded_at = time.monotonic()
             self.later(log, 'KWin script loaded (%d)' % sid)
+            self._load_previews()
         except GLib.Error as e:
             self.later(self.status, False, 'KWin is not answering: %s' % e.message)
             return False
         self.keys()                     # Hearth's own shortcuts exist now: any that lost their key to KDE's
         return True
 
-    def unload_script(self):
+    def _load_previews(self):
+        """The live previews (hearth-previews.qml, a declarative script): a problem here costs only the previews."""
+        GLib = self.GLib
+        if not os.path.isfile(PREVIEW_SRC):
+            self.later(self.set_previews, False)
+            return False
         try:
-            self.kwin('/Scripting', 'org.kde.kwin.Scripting', 'unloadScript', self.GLib.Variant('(s)', (PLUGIN,)), '(b)')
-        except Exception:
-            pass
+            try:
+                if self.kwin('/Scripting', 'org.kde.kwin.Scripting', 'isScriptLoaded', GLib.Variant('(s)', (PREVIEW_PLUGIN,)), '(b)').unpack()[0]:
+                    self.kwin('/Scripting', 'org.kde.kwin.Scripting', 'unloadScript', GLib.Variant('(s)', (PREVIEW_PLUGIN,)), '(b)')
+            except GLib.Error:
+                pass
+            sid = self.kwin('/Scripting', 'org.kde.kwin.Scripting', 'loadDeclarativeScript',
+                            GLib.Variant('(ss)', (PREVIEW_SRC, PREVIEW_PLUGIN)), '(i)').unpack()[0]
+            if sid < 0:
+                self.later(log, 'KWin would not load the previews script')
+                self.later(self.set_previews, False)
+                return False
+            try:
+                self.kwin('/Scripting/Script%d' % sid, 'org.kde.kwin.Script', 'run')
+            except GLib.Error:
+                self.kwin('/%d' % sid, 'org.kde.kwin.Script', 'run')
+            self.ploaded_at = time.monotonic()
+            self.later(log, 'KWin previews script loaded (%d)' % sid)
+            return True
+        except GLib.Error as e:
+            self.later(log, 'previews script: %s' % e.message)
+            self.later(self.set_previews, False)
+            return False
+
+    def unload_script(self):
+        for plugin in (PLUGIN, PREVIEW_PLUGIN):
+            try:
+                self.kwin('/Scripting', 'org.kde.kwin.Scripting', 'unloadScript', self.GLib.Variant('(s)', (plugin,)), '(b)')
+            except Exception:
+                pass
 
     def watchdog(self):
         now = time.monotonic()
@@ -606,6 +870,18 @@ def main(argv):
         return Bridge('--stdio' in argv).serve()
     if argv[0] == 'keys':
         # keys: KDE's and Hearth's shortcuts as kglobalaccel has them now; keys restore: KDE's back as Hearth found them.
+        if argv[1:2] == ['changed']:
+            print(json.dumps(changed_kde_keys()))
+            return 0
+        if argv[1:3] == ['restore', '--json']:
+            try:
+                Gio, GLib = gi_modules()
+                back = restore_kde_keys(KdeKeys(Gio.bus_get_sync(Gio.BusType.SESSION, None), Gio, GLib))
+            except Exception as e:
+                print('error: KDE\'s shortcuts couldn\'t be put back (%s). They can be in Desktop Mode on KWin.' % getattr(e, 'message', e))
+                return 1
+            print(json.dumps(dict(changed_kde_keys(), back=back)))
+            return 0
         Gio, GLib = gi_modules()
         kk = KdeKeys(Gio.bus_get_sync(Gio.BusType.SESSION, None), Gio, GLib)
         if argv[1:2] == ['restore']:

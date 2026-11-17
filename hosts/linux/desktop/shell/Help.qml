@@ -42,6 +42,7 @@ PanelWindow {
         ["Guide", "Hearth menu"],
         ["View + D-pad", "Snap left / right, maximize, minimize"],
         ["View + B", "Close the window"],
+        ["View + Y", "Overview: every window and desktop (on KWin)"],
         ["View", "This list"]
     ]
 

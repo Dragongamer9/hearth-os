@@ -81,8 +81,13 @@ class Shortcuts(unittest.TestCase):
         for s in self.table.get('kwinOnly', []):
             self.assertNotIn(qt_parts(s['keys']), mine, s['id'] + ' takes a key Mantel already uses')
             self.assertNotIn(s['id'], ids)
-            self.assertTrue(s['run'].startswith("sh -c 'quickshell ipc"), s['id'])
-            self.assertEqual(kb.command_for(s['id'], self.table), s['run'])
+            self.assertTrue(('run' in s) != ('win' in s), s['id'] + ': a command or a window action, one of them')
+            if 'run' in s:
+                self.assertTrue(s['run'].startswith("sh -c 'quickshell ipc"), s['id'])
+                self.assertEqual(kb.command_for(s['id'], self.table), s['run'])
+            else:
+                base = s['win'].split(':')[0] + (':' if ':' in s['win'] else '')
+                self.assertIn('"%s"' % base, (KWIN / 'hearth-windows.js').read_text(), s['id'] + ': the script has no ' + base)
         self.assertIn('Hearth activities-next', kb.render().replace('"activities-next"', 'Hearth activities-next'))
 
     def test_window_actions_are_known(self):
@@ -102,8 +107,74 @@ class Shortcuts(unittest.TestCase):
         self.assertEqual(kb.qt_key('Meta+Left'), 0x10000000 | 0x01000012)
         self.assertEqual(kb.qt_key('Meta+Shift+Backtab'), 0x12000000 | 0x01000002)
         self.assertEqual(kb.qt_key('Meta+0'), 0x10000030)
-        self.assertIn('Meta=org.hearth.Windows,/org/hearth/Windows,org.hearth.Windows,Launcher', (KWIN / 'xdg' / 'kwinrc').read_text())
+        self.assertIn('Meta[$i]=org.hearth.Windows,/org/hearth/Windows,org.hearth.Windows,Launcher', (KWIN / 'xdg' / 'kwinrc').read_text())
         self.assertFalse((KWIN / 'xdg' / 'kglobalshortcutsrc').exists(), 'kglobalaccel never reads a default file')
+
+    def test_kwin_views_and_force_close(self):
+        """KWin's Overview, Present windows and Desktop grid, and force closing, each have a Hearth key that KDE's own
+        same key is freed for, and the script knows each view's name."""
+        only = {s['id']: s for s in self.table['kwinOnly']}
+        for sid, keys in (('overview', 'Meta+W'), ('present-windows', 'Ctrl+F10'), ('desktop-grid', 'Ctrl+F8'), ('kill-window', 'Ctrl+Alt+Esc')):
+            self.assertEqual(only[sid]['keys'], keys, sid)
+        freed = {e['action'] for e in self.table['kdeKeys'] if e['component'] == 'kwin' and e['keys'] == []}
+        self.assertTrue({'Overview', 'ExposeAll', 'Kill Window'} <= freed, freed)
+        src = (KWIN / 'hearth-windows.js').read_text()
+        for name in ('overview', 'windows', 'grid'):
+            self.assertIn('%s: "' % name, src, name)
+        self.assertIn('call forceclose start', only['kill-window']['run'])
+        self.assertTrue((SHELL / 'ForceClose.qml').is_file())
+
+    def test_hearth_switcher_package(self):
+        """Hearth's Alt+Tab: a KWin window switcher package, in both of KWin's folders, picked by Hearth's kwinrc."""
+        base = LINUX.parent.parent / 'os' / 'system_files' / 'usr' / 'share'
+        pkg = base / 'kwin' / 'tabbox' / 'org.hearth.switcher'
+        meta = json.loads((pkg / 'metadata.json').read_text())
+        self.assertEqual(meta['KPlugin']['Id'], 'org.hearth.switcher')
+        self.assertEqual(meta['KPackageStructure'], 'KWin/WindowSwitcher')
+        qml = (pkg / 'contents' / 'ui' / meta['X-Plasma-MainScript'].split('/', 1)[1]).read_text()
+        for part in ('KWin.TabBoxSwitcher', 'KWin.WindowThumbnail', 'model.activate', 'model.close', 'Kirigami.Theme.highlightColor'):
+            self.assertIn(part, qml)
+        self.assertEqual((base / 'kwin-wayland' / 'tabbox' / 'org.hearth.switcher').resolve(), pkg.resolve())
+        self.assertIn('[TabBox]\nLayoutName=org.hearth.switcher', (KWIN / 'xdg' / 'kwinrc').read_text())
+
+    def test_previews_script(self):
+        """The live previews: a declarative KWin script the bridge loads, asking the bridge for work (NextPreview)."""
+        qml = (KWIN / 'hearth-previews.qml').read_text()
+        for part in ('import org.kde.kwin', 'DBusCall', '"NextPreview"', 'WindowThumbnail', 'closeWindow()', 'Workspace.activeWindow = w'):
+            self.assertIn(part, qml)
+        self.assertEqual(kb.PREVIEW_SRC, str(KWIN / 'hearth-previews.qml'))
+        self.assertIn('NextPreview', kb.XML)
+        self.assertIn('HoverMax', kb.XML)
+
+    def test_killable(self):
+        import os
+        self.assertFalse(kb.killable(1))
+        self.assertFalse(kb.killable(os.getpid()))
+        self.assertFalse(kb.killable(0))
+        self.assertFalse(kb.killable('12'))
+        p = subprocess.Popen(['sleep', '30'])
+        try:
+            self.assertTrue(kb.killable(p.pid))
+        finally:
+            p.kill(); p.wait()
+
+    def test_theme_cols(self):
+        import os
+        with tempfile.TemporaryDirectory() as d:
+            os.makedirs(os.path.join(d, 'hearth'))
+            with open(os.path.join(d, 'hearth', 'theme.json'), 'w') as f:
+                json.dump({'radius': 14, 'font': '"Inter", system-ui, sans-serif',
+                           'colors': {'panel': '#111111', 'text': '#eeeeee', 'accent': '#ff7a3d', 'bogus': 3}}, f)
+            old = os.environ.get('XDG_CONFIG_HOME')
+            os.environ['XDG_CONFIG_HOME'] = d
+            try:
+                c = kb.theme_cols()
+            finally:
+                if old is None:
+                    del os.environ['XDG_CONFIG_HOME']
+                else:
+                    os.environ['XDG_CONFIG_HOME'] = old
+        self.assertEqual(c, {'panel': '#111111', 'text': '#eeeeee', 'accent': '#ff7a3d', 'r': 14, 'font': 'Inter'})
 
     def test_extra_ids_and_launcher(self):
         self.assertTrue(kb.command_for('launcher', self.table).endswith("call launcher toggle'"))
@@ -186,6 +257,36 @@ class KdeKeysFix(unittest.TestCase):
         self.assertEqual(k.sets, [], 'restored keys were changed again')
 
 
+    def test_settings_button_puts_kdes_keys_back(self):
+        # Settings › Keyboard › Bring back KDE's own shortcuts (review, Nov 17): what changed is read without D-Bus
+        # or writing; a key that can't be put back now is tried again next time, never marked as done.
+        self.assertEqual(kb.changed_kde_keys(), {'changed': [], 'count': 0})
+        k = self.fake()
+        kb.fix_kde_keys(k, self.TABLE, self.IDS, say=lambda t: None)
+        ch = kb.changed_kde_keys()
+        self.assertEqual(sorted(c['key'] for c in ch['changed']), ['kwin/Grid View', 'kwin/Window Quick Tile Left'])
+        real = k.set
+
+        def flaky(aid, keys):
+            if aid[1] == 'Grid View':
+                raise RuntimeError('kglobalaccel is not there')
+            real(aid, keys)
+        k.set = flaky
+        back = kb.restore_kde_keys(k)
+        self.assertIn('kwin/Window Quick Tile Left', back)
+        self.assertNotIn('kwin/Grid View', back)
+        self.assertEqual([c['key'] for c in kb.changed_kde_keys()['changed']], ['kwin/Grid View'])
+        k.set = real
+        k.sets.clear()
+        self.assertEqual(kb.restore_kde_keys(k), ['kwin/Grid View'], 'only what is still to put back')
+        self.assertEqual(k.get(['kwin', 'Grid View']), [[MG]])
+        self.assertEqual(kb.changed_kde_keys()['count'], 0)
+        page = (LINUX / 'desktop' / 'shell' / 'SetKeyboard.qml').read_text()
+        self.assertIn('"Bring back KDE\'s own shortcuts"', page)
+        self.assertIn('["keys", "restore", "--json"]', page)
+        self.assertIn("Settings › Keyboard › Bring back KDE", (LINUX / 'desktop' / 'shell' / 'hearth-kwin-bridge').read_text())
+
+
 class Script(unittest.TestCase):
     def test_render_fills_everything(self):
         src = kb.render()
@@ -208,6 +309,20 @@ class Script(unittest.TestCase):
                          [extra['center'][k] for k in ('x', 'y', 'w', 'h')])
         gap = int(root.find('core').find('gap').text)
         self.assertEqual(kb.load_table()['gap'], gap)
+
+    def test_picture_in_picture_rule(self):
+        """Picture-in-picture windows stay on top under KWin (Wayland apps can't ask for that): a default rule for
+        Firefox's and Chromium's (and their relatives'), matched by title and app (kwin-windows-mock.js runs it)."""
+        rules = kb.load_table()['rules']
+        pip = [r for r in rules if r.get('id') == 'picture-in-picture']
+        self.assertEqual(len(pip), 1)
+        r = pip[0]
+        self.assertTrue(r['keepAbove'])
+        self.assertEqual({t.lower() for t in r['titles']}, {'picture-in-picture', 'picture in picture'})
+        for app in ('firefox', 'firefox-esr', 'org.mozilla.firefox', 'chromium', 'google-chrome', 'brave-browser'):
+            self.assertIn(app, r['apps'])
+        self.assertIn('"titles": ["Picture-in-Picture", "Picture in picture"]', kb.render())
+        self.assertIn('Task Manager (always on top)', [x.get('title') for x in rules])
 
     @unittest.skipUnless(shutil.which('node'), 'node is needed to run the script against a pretend KWin')
     def test_script_against_pretend_kwin(self):
@@ -259,6 +374,46 @@ class Frames(unittest.TestCase):
             out[g.get('id')] = tuple(float(r.get(k)) for k in ('x', 'y', 'width', 'height'))
         return out
 
+    def _group_text(self, svg, gid):
+        m = re.search(r'<g id="%s">(.*?)</g>' % gid, svg)
+        return m.group(1) if m else ''
+
+    def test_rounded_bottom_corners_and_outline(self):
+        """1.14: all four corners rounded (the bottom ones as far as the window's own square corner fits inside the
+        frame), the sides and bottom SIDE px thick, and a light 1 px outline all round, like Plasma's."""
+        ha = self.ha
+        self.assertEqual(ha.SIDE, 4)
+        rc = ha.build(self.cols, 10)['hearthrc']
+        for k in ('BorderLeft', 'BorderRight', 'BorderBottom'):
+            self.assertIn('%s=%d\n' % (k, ha.SIDE), rc)
+        self.assertIn('BorderTop=0\n', rc)
+        # The bottom radius: the look's, but never so big that the window's square corner pokes out of the frame.
+        for radius in (0, 2, 4, 10, 13, 16, 40):
+            rb = ha.bottom_radius(radius)
+            self.assertLessEqual(rb, min(radius, 16))
+            if rb > ha.SIDE:
+                self.assertLessEqual((rb - ha.SIDE) * math.sqrt(2), rb, radius)
+        self.assertEqual(ha.bottom_radius(10), 10)
+        self.assertEqual(ha.bottom_radius(0), 0)                     # a square look stays square
+        # The outline: the border colour lifted towards the title text, more on the window in front; drawn round
+        # every part's outside edge (the top, both sides, the bottom and all four corners).
+        c = {'active.border': '#3b2e26', 'active.text': '#f4ece3', 'inactive.border': '#261d18', 'inactive.text': '#a69484'}
+        lum = lambda h: sum(int(h[i:i + 2], 16) for i in (1, 3, 5))
+        a, i = ha.outline_color(c, 'active'), ha.outline_color(c, 'inactive')
+        self.assertGreater(lum(a), lum(c['active.border']))
+        self.assertGreater(lum(i), lum(c['inactive.border']))
+        self.assertGreater(lum(a) - lum(c['active.border']), lum(i) - lum(c['inactive.border']))
+        files = ha.build(self.cols, 10)
+        svg = files['decoration.svg']
+        full = {'active.border': self.cols['window.active.border.color'], 'active.text': self.cols['window.active.label.text.color'],
+                'inactive.border': self.cols['window.inactive.border.color'], 'inactive.text': self.cols['window.inactive.label.text.color']}
+        for pre, st in (('decoration-', 'active'), ('decoration-inactive-', 'inactive')):
+            want = ha.outline_color(full, st)
+            for part in ('topleft', 'top', 'topright', 'left', 'right', 'bottomleft', 'bottom', 'bottomright'):
+                self.assertIn('fill="%s"' % want, self._group_text(svg, pre + part), (pre, part))
+        # A maximized window keeps no outline (flat, edge to edge).
+        self.assertNotIn(ha.outline_color(full, 'active'), self._group_text(svg, 'decoration-maximized-top'))
+
     def test_shadow_like_labwcs(self):
         """A soft drop shadow round the frame, as labwc's (60 px at 38 % in front, 40 px at 25 % behind, no offset),
         in Aurorae's padding; the rounded corners still fit."""
@@ -279,16 +434,21 @@ class Frames(unittest.TestCase):
             files = ha.build(self.cols, radius)
             parts = self._parts(files['decoration.svg'])
             for pre in ('decoration-', 'decoration-inactive-'):
-                self.assertEqual(parts[pre + 'topleft'][2:], (P + R, P + ha.TITLE_H), (pre, radius))
-                self.assertEqual(parts[pre + 'topright'][2:], (P + R, P + ha.TITLE_H))
+                self.assertEqual(parts[pre + 'topright'][2:], (max(R, ha.SIDE) + P, P + ha.TITLE_H))
                 self.assertEqual(parts[pre + 'top'][3], P + ha.TITLE_H)
-                self.assertEqual(parts[pre + 'left'][2], P + R)
-                self.assertEqual(parts[pre + 'right'][2], P + R)
-                self.assertEqual(parts[pre + 'bottom'][3], P + ha.BORDER)
-                self.assertEqual(parts[pre + 'bottomleft'][2:], (P + R, P + ha.BORDER))
-                self.assertEqual(parts[pre + 'bottomright'][2:], (P + R, P + ha.BORDER))
-            # The rounded corner is still there (an arc of the radius in the title colour).
+                K, RB = max(R, ha.SIDE), min(radius, ha.BOTTOM_R_MAX)
+                KB = max(RB, ha.SIDE)
+                self.assertEqual(parts[pre + 'topleft'][2:], (P + K, P + ha.TITLE_H), (pre, radius))
+                self.assertEqual(parts[pre + 'left'][2], P + K)
+                self.assertEqual(parts[pre + 'right'][2], P + K)
+                self.assertEqual(parts[pre + 'bottom'][3], P + KB)
+                self.assertEqual(parts[pre + 'bottomleft'][2:], (P + K, P + KB))
+                self.assertEqual(parts[pre + 'bottomright'][2:], (P + K, P + KB))
+            # The rounded corners are still there (an arc of the radius in the title colour), the bottom ones too.
             self.assertIn('A %d %d 0 0 1' % (R, R), files['decoration.svg'])
+            if RB:
+                self.assertIn('A %d %d 0 0 1' % (RB, RB), self._group_text(files['decoration.svg'], 'decoration-bottomleft'))
+                self.assertIn('A %d %d 0 0 1' % (RB, RB), self._group_text(files['decoration.svg'], 'decoration-inactive-bottomright'))
             # Nothing reaches past its part (no strokes, every rect inside its part's size): KSvg would shrink the part
             # and leave a light seam where it meets the next one.
             self.assertNotIn('stroke', files['decoration.svg'])

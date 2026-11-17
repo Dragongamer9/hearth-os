@@ -4,12 +4,19 @@
 // Hearth's screen-sharing picker on KWin (hearth_screencast.py starts it: quickshell -p <this file>): an app (a
 // browser, Discord, OBS) asked to share your screen, or to take an interactive screenshot. Shows your screens and
 // your windows, each with a picture of what it shows now; you pick one and press Share (or Take for a screenshot).
-// Mantel's look (Theme.qml). Keys and the controller: arrows / D-pad move, Tab switches Screens ↔ Windows,
+// Mantel's look (Theme.qml). Keys and the controller: arrows / D-pad move, Tab switches Screens → Windows → Area,
 // Enter / A shares, Esc / B cancels. Nothing is shared until you choose.
+// Area (1.14, sharing only, when KWin can stream a region): a part of a screen. Draw it on the screen's picture with
+// the mouse, or pick one of the ready-made parts (halves, quarters, the middle: 1–6, or [ and ] to go through them), move it with the
+// arrows / D-pad and resize it with Shift+arrows; Page Up / Down picks another screen.
 //   HEARTH_CAST_REQUEST  {kind: cast|shot, app, screens: [{name, label, w, h, thumb}], windows: [{id, title, app,
-//                        thumb, minimized}], desktop (a "Whole desktop" tile, screenshots)}
-//   HEARTH_CAST_RESULT   {kind: screen, name} | {kind: window, id} | {kind: desktop} | {cancel: true}
-// For checks: quickshell ipc -p <this file> call cast tab screens|windows | select <n> | share | cancel | state
+//                        thumb, minimized}], desktop (a "Whole desktop" tile, screenshots), hiddenCount (windows hidden
+//                        from sharing, not listed), screensShowHidden (KWin can't paint those out of a whole screen),
+//                        area (offer Area)}
+//   HEARTH_CAST_RESULT   {kind: screen, name} | {kind: window, id} | {kind: desktop} |
+//                        {kind: area, name, fx, fy, fw, fh} (parts of that screen, 0–1) | {cancel: true}
+// For checks: quickshell ipc -p <this file> call cast tab screens|windows|area | select <n> | preset <n> |
+//             area <fx> <fy> <fw> <fh> | share | cancel | state
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -32,6 +39,25 @@ ShellRoot {
     }
     readonly property bool hasScreens: (req.screens || []).length > 0 || !!req.desktop
     readonly property bool hasWindows: (req.windows || []).length > 0
+    readonly property bool hasArea: !!req.area && (req.screens || []).length > 0
+    // Area: which screen (an index into req.screens) and the part of it (0–1).
+    property int areaScreen: 0
+    property real fx: 0.25
+    property real fy: 0.25
+    property real fw: 0.5
+    property real fh: 0.5
+    readonly property var areaOut: (req.screens || [])[areaScreen] || null
+    readonly property var presets: [
+        { label: "Left half", r: [0, 0, 0.5, 1] }, { label: "Right half", r: [0.5, 0, 0.5, 1] },
+        { label: "Top half", r: [0, 0, 1, 0.5] }, { label: "Bottom half", r: [0, 0.5, 1, 0.5] },
+        { label: "Middle", r: [0.2, 0.2, 0.6, 0.6] }, { label: "Top-left quarter", r: [0, 0, 0.5, 0.5] }
+    ]
+    property int preset: 4
+    function setArea(x, y, w, h) {
+        w = Math.max(0.05, Math.min(1, w)); h = Math.max(0.05, Math.min(1, h));
+        fx = Math.max(0, Math.min(1 - w, x)); fy = Math.max(0, Math.min(1 - h, y)); fw = w; fh = h;
+    }
+    function usePreset(n) { const p = presets[(n + presets.length) % presets.length]; preset = (n + presets.length) % presets.length; setArea(p.r[0], p.r[1], p.r[2], p.r[3]); }
     readonly property string appName: {
         const a = (req.app || "").replace(/\.desktop$/, "");
         if (!a) return "An app";
@@ -58,6 +84,11 @@ ShellRoot {
         writer.running = true;
     }
     function share() {
+        if (tab === "area") {
+            if (!areaOut) return;
+            finish({ kind: "area", name: areaOut.name, fx: fx, fy: fy, fw: fw, fh: fh });
+            return;
+        }
         const it = items[sel];
         if (!it) return;
         if (it.kind === "screen") finish({ kind: "screen", name: it.name });
@@ -67,16 +98,25 @@ ShellRoot {
     function setTab(t) {
         if (t === "windows" && !hasWindows) return;
         if (t === "screens" && !hasScreens) return;
+        if (t === "area" && !hasArea) return;
         tab = t; sel = 0;
+        if (t === "area") usePreset(preset);
+    }
+    function nextTab(d) {
+        const tabs = ["screens", "windows", "area"].filter(t => t === "screens" ? hasScreens : t === "windows" ? hasWindows : hasArea);
+        const i = tabs.indexOf(tab);
+        setTab(tabs[(i + d + tabs.length) % tabs.length]);
     }
 
     IpcHandler {
         target: "cast"
         function tab(t: string): void { root.setTab(t); }
         function select(n: int): void { root.sel = Math.max(0, Math.min(root.items.length - 1, n)); }
+        function preset(n: int): void { root.usePreset(n); }
+        function area(x: real, y: real, w: real, h: real): void { root.setArea(x, y, w, h); }
         function share(): void { root.share(); }
         function cancel(): void { root.finish({ cancel: true }); }
-        function state(): string { return JSON.stringify({ tab: root.tab, sel: root.sel, items: root.items.map(i => i.label), kind: root.req.kind }); }
+        function state(): string { return JSON.stringify({ tab: root.tab, sel: root.sel, items: root.items.map(i => i.label), kind: root.req.kind, area: root.hasArea ? { screen: root.areaOut ? root.areaOut.name : "", fx: root.fx, fy: root.fy, fw: root.fw, fh: root.fh } : null }); }
     }
 
     PanelWindow {
@@ -104,9 +144,27 @@ ShellRoot {
 
             Keys.onPressed: e => {
                 const cols = grid.cols;
+                const step = 0.02;
+                if (root.tab === "area" && (e.key === Qt.Key_Left || e.key === Qt.Key_Right || e.key === Qt.Key_Up || e.key === Qt.Key_Down)) {
+                    const dx = e.key === Qt.Key_Left ? -step : e.key === Qt.Key_Right ? step : 0;
+                    const dy = e.key === Qt.Key_Up ? -step : e.key === Qt.Key_Down ? step : 0;
+                    if (e.modifiers & Qt.ShiftModifier) root.setArea(root.fx, root.fy, root.fw + dx, root.fh + dy);
+                    else root.setArea(root.fx + dx, root.fy + dy, root.fw, root.fh);
+                    e.accepted = true;
+                    return;
+                }
+                if (root.tab === "area" && e.key >= Qt.Key_1 && e.key <= Qt.Key_6) { root.usePreset(e.key - Qt.Key_1); e.accepted = true; return; }
+                if (root.tab === "area" && (e.key === Qt.Key_BracketLeft || e.key === Qt.Key_BracketRight)) { root.usePreset(root.preset + (e.key === Qt.Key_BracketRight ? 1 : -1)); e.accepted = true; return; }
+                if (root.tab === "area" && (e.key === Qt.Key_PageUp || e.key === Qt.Key_PageDown)) {
+                    const n = (root.req.screens || []).length;
+                    root.areaScreen = (root.areaScreen + (e.key === Qt.Key_PageDown ? 1 : n - 1)) % Math.max(1, n);
+                    e.accepted = true;
+                    return;
+                }
                 if (e.key === Qt.Key_Escape) root.finish({ cancel: true });
                 else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) root.share();
-                else if (e.key === Qt.Key_Tab || e.key === Qt.Key_Backtab) root.setTab(root.tab === "screens" ? "windows" : "screens");
+                else if (e.key === Qt.Key_Tab) root.nextTab(1);
+                else if (e.key === Qt.Key_Backtab) root.nextTab(-1);
                 else if (e.key === Qt.Key_Right) root.sel = Math.min(root.items.length - 1, root.sel + 1);
                 else if (e.key === Qt.Key_Left) root.sel = Math.max(0, root.sel - 1);
                 else if (e.key === Qt.Key_Down) root.sel = Math.min(root.items.length - 1, root.sel + cols);
@@ -147,7 +205,7 @@ ShellRoot {
                 Row {
                     spacing: 8
                     Repeater {
-                        model: [{ id: "screens", label: "Screens", on: root.hasScreens }, { id: "windows", label: "Windows", on: root.hasWindows }]
+                        model: [{ id: "screens", label: "Screens", on: root.hasScreens }, { id: "windows", label: "Windows", on: root.hasWindows }, { id: "area", label: "Area", on: root.hasArea }]
                         Rectangle {
                             required property var modelData
                             visible: modelData.on
@@ -157,7 +215,7 @@ ShellRoot {
                             Text {
                                 id: tabText
                                 anchors.centerIn: parent
-                                text: modelData.label + "  " + (modelData.id === "windows" ? (root.req.windows || []).length : (root.req.screens || []).length + (root.req.desktop ? 1 : 0))
+                                text: modelData.id === "area" ? modelData.label : modelData.label + "  " + (modelData.id === "windows" ? (root.req.windows || []).length : (root.req.screens || []).length + (root.req.desktop ? 1 : 0))
                                 color: root.tab === modelData.id ? Theme.accentInk : Theme.text
                                 font.family: Theme.font; font.pixelSize: 15; font.weight: Font.Medium
                             }
@@ -166,8 +224,96 @@ ShellRoot {
                     }
                 }
 
+                // Area: the screen's picture with the part you're sharing lit; drag on it to draw another part.
+                ColumnLayout {
+                    visible: root.tab === "area"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    spacing: 12
+                    Flow {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        Repeater {
+                            model: root.presets
+                            Rectangle {
+                                required property var modelData
+                                required property int index
+                                width: pl.implicitWidth + 28; height: 34; radius: 17
+                                color: root.preset === index ? Theme.accent : Theme.panel2
+                                border.color: root.preset === index ? Theme.accent : Theme.line
+                                Text { id: pl; anchors.centerIn: parent; text: (index + 1) + "  " + modelData.label; color: root.preset === parent.index ? Theme.accentInk : Theme.text; font.family: Theme.font; font.pixelSize: 13 }
+                                MouseArea { anchors.fill: parent; onClicked: root.usePreset(parent.index) }
+                            }
+                        }
+                        Repeater {
+                            model: (root.req.screens || []).length > 1 ? root.req.screens : []
+                            Rectangle {
+                                required property var modelData
+                                required property int index
+                                width: sl.implicitWidth + 28; height: 34; radius: 17
+                                color: root.areaScreen === index ? Theme.panel3 : "transparent"
+                                border.color: root.areaScreen === index ? Theme.accent : Theme.line
+                                Text { id: sl; anchors.centerIn: parent; text: "▭ " + parent.modelData.label; color: Theme.text; font.family: Theme.font; font.pixelSize: 13 }
+                                MouseArea { anchors.fill: parent; onClicked: root.areaScreen = parent.index }
+                            }
+                        }
+                    }
+                    Item {
+                        id: areaBox
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        readonly property real ar: root.areaOut && root.areaOut.w && root.areaOut.h ? root.areaOut.w / root.areaOut.h : 16 / 9
+                        Rectangle {
+                            id: areaPic
+                            anchors.centerIn: parent
+                            width: Math.min(parent.width, parent.height * areaBox.ar)
+                            height: width / areaBox.ar
+                            radius: Theme.radius - 4
+                            color: Theme.bg2
+                            clip: true
+                            Image {
+                                anchors.fill: parent
+                                source: root.areaOut && root.areaOut.thumb ? "file://" + root.areaOut.thumb : ""
+                                sourceSize.width: 1280
+                                fillMode: Image.Stretch
+                                asynchronous: true
+                            }
+                            // Dimmed outside the part being shared.
+                            Rectangle { x: 0; y: 0; width: parent.width; height: areaSel.y; color: Qt.rgba(0, 0, 0, 0.55) }
+                            Rectangle { x: 0; y: areaSel.y + areaSel.height; width: parent.width; height: parent.height - y; color: Qt.rgba(0, 0, 0, 0.55) }
+                            Rectangle { x: 0; y: areaSel.y; width: areaSel.x; height: areaSel.height; color: Qt.rgba(0, 0, 0, 0.55) }
+                            Rectangle { x: areaSel.x + areaSel.width; y: areaSel.y; width: parent.width - x; height: areaSel.height; color: Qt.rgba(0, 0, 0, 0.55) }
+                            Rectangle {
+                                id: areaSel
+                                x: root.fx * areaPic.width; y: root.fy * areaPic.height
+                                width: root.fw * areaPic.width; height: root.fh * areaPic.height
+                                color: "transparent"
+                                border.width: 3; border.color: Theme.accent
+                                Rectangle {
+                                    anchors { top: parent.top; left: parent.left; margins: 8 }
+                                    width: sz.implicitWidth + 16; height: 26; radius: 13; color: Theme.accent
+                                    Text { id: sz; anchors.centerIn: parent; text: root.areaOut ? Math.round(root.fw * root.areaOut.w) + " × " + Math.round(root.fh * root.areaOut.h) : ""; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
+                                }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.CrossCursor
+                                property real sx: 0
+                                property real sy: 0
+                                onPressed: m => { sx = m.x / width; sy = m.y / height; }
+                                onPositionChanged: m => {
+                                    if (!pressed) return;
+                                    const ex = Math.max(0, Math.min(1, m.x / width)), ey = Math.max(0, Math.min(1, m.y / height));
+                                    root.setArea(Math.min(sx, ex), Math.min(sy, ey), Math.abs(ex - sx), Math.abs(ey - sy));
+                                }
+                            }
+                        }
+                    }
+                }
+
                 GridView {
                     id: grid
+                    visible: root.tab !== "area"
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
@@ -261,12 +407,22 @@ ShellRoot {
                     }
                 }
 
+                // Windows hidden from screen sharing (their title bar menu) are never listed.
+                Text {
+                    Layout.fillWidth: true
+                    visible: (root.req.hiddenCount || 0) > 0
+                    text: root.req.hiddenCount + (root.req.hiddenCount === 1 ? " window is" : " windows are") + " hidden from sharing and not listed"
+                        + (root.req.screensShowHidden && root.tab !== "windows" ? ". KWin can't leave " + (root.req.hiddenCount === 1 ? "it" : "them") + " out of a whole screen: minimize " + (root.req.hiddenCount === 1 ? "it" : "them") + " first" : "")
+                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                    wrapMode: Text.WordWrap
+                }
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 12
                     Text {
                         Layout.fillWidth: true
-                        text: "Arrows or D-pad: choose  ·  Tab: screens / windows  ·  Enter or A: " + (root.isShot ? "take" : "share") + "  ·  Esc or B: cancel"
+                        text: root.tab === "area" ? "Drag on the picture, or 1–6: a ready-made part  ·  D-pad: move  ·  Shift+arrows: size  ·  A: share  ·  B: cancel"
+                            : "Arrows or D-pad: choose  ·  Tab: screens / windows" + (root.hasArea ? " / area" : "") + "  ·  Enter or A: " + (root.isShot ? "take" : "share") + "  ·  Esc or B: cancel"
                         color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
                         elide: Text.ElideRight
                     }

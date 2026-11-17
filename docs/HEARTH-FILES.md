@@ -176,11 +176,46 @@ The **"···"** menu (or A / X on a row):
   (Ctrl+Shift+N), new file (Ctrl+Alt+N), Open with, Properties (Alt+Enter), Open in Terminal (Shift+F4), Copy path
   (Ctrl+Alt+C), compress and extract, Preview (Space), Set as wallpaper, Install (.deb), Run (AppImage).
 - **Views**: Large icons (Ctrl+4), Medium icons (Ctrl+1), Small icons (Ctrl+5), Tiles (Ctrl+6), List (Ctrl+2) and
-  Details (Ctrl+3), sort by name, date, size or type and group by type or date; each folder remembers its own.
+  Details (Ctrl+3), sort by name, date, size or type and group by type, date, size or tag; each folder remembers its own.
 - Thumbnails for pictures and videos; hidden files (Ctrl+H) and file name extensions toggles.
 - The controller and touch work everywhere: the D-pad moves, Up from the files reaches the address and command bar,
   Up again the tabs, A opens or presses, B goes back, X opens the actions menu, Y types (the on-screen keyboard),
   press and hold for the menu on touch.
+
+## Dolphin's extras (1.14)
+
+Hearth's own versions of what KDE's Dolphin has (`hearth_files_extras.py` through hearth-files, `FilesExtras.qml`,
+`FilesMarks.qml`; tests: `hosts/linux/test/test_files_extras.py`; pictures: Actions › Files extras).
+
+- **Tags**: right-click › Tags › to add or take away a tag (New tag…, Remove all tags). They're kept on the file itself
+  in the `user.xdg.tags` extended attribute, the same as Dolphin and KDE's file index, so tags made there show here and
+  the other way round. Coloured dots on the icons, a Tags line in the details pane, your tags in the left menu (select
+  one to see everything that carries it), and Group by tag. Drives that can't keep them (FAT, exFAT, some network
+  folders) say so.
+- **Git status**: in a folder of a git repository, each item gets a badge (M changed, + added, ? not in git yet, ! in
+  conflict, ✓ up to date; a folder shows the worst inside it) and the status bar shows the branch and how many changes;
+  right-click the folder › Show git status to turn the badges off (remembered).
+- **Act as administrator**: right-click a system folder (outside your home) › Act as administrator. A red bar says it's
+  on; new folders, new files, renames, deleting (for good: system files have no Trash), copying and moving there, and
+  Properties' permissions and owner, go through `pkexec hearth-files-admin`, its own polkit action (fun.hearthos.files-admin), which always asks
+  for an administrator's password (remembered a few minutes for that program only). `hearth-files-admin` checks every path
+  again and never changes what starts the PC (/boot, /efi, the system image, /etc/fstab, the kernel's and boot menu's
+  settings, sudo, PAM and the account files) or a top-level folder itself. It's for this window only, off when it
+  closes, and never saved.
+- **Disc images**: right-click a .iso or .img › Open as a drive (udisks, read only); it shows under This PC like a USB
+  drive; right-click it › Close the drive.
+- **Phones and cameras**: a phone (MTP) or camera (PTP) plugged in shows under This PC (gvfs); select it to open it
+  (on a phone, unlock it and choose File transfer).
+- **Apps' right-click actions**: KDE service menus (`kio/servicemenus/*.desktop` and the older
+  `kservices5/ServiceMenus`) show in the menu for the files they're for; ones you added yourself count once they're
+  marked as programs, as KDE does.
+- **Properties**: Checksums has SHA-512 too and a box to paste the checksum a website lists (it says whether it
+  matches); Permissions can give a file to another of your groups and set the same permissions for everything inside a
+  folder; a **Sharing** tab shares a folder on your network through Settings › Home server's shared folders (Samba;
+  read only at first, "Others can change files", where Windows, a Mac or a phone finds it).
+- **Recent files' privacy**: Settings › Privacy & security › Recent files: remember them or not, keep them for a day to
+  a year, forget the last hour, today or all of them, and folders and apps left out (recent.json; the list itself is
+  the shared recently-used.xbel, written atomically with a .bak). Files' Home page and the launcher both follow it.
 
 ## Briefcase
 

@@ -17,6 +17,10 @@ Scope {
     onLockedChanged: {
         if (locked && onKwin) lockedAt = new Date();   // lockedAt: KWin's locker said so
         DeskState.locked = locked;
+        // logind's LockedHint (what Phone link and other apps read to know it's locked; KWin's locker sets its own).
+        // Only a hint: whatever happens to it, locking itself doesn't depend on it.
+        if (!onKwin) Quickshell.execDetached(["busctl", "call", "--system", "org.freedesktop.login1", "/org/freedesktop/login1/session/auto",
+                                              "org.freedesktop.login1.Session", "SetLockedHint", "b", locked ? "true" : "false"]);
         // 1.14: vaults set to lock with the screen are locked (hearth-vaults), and the fingerprint (if you turned it on)
         // is asked for next to the password. Leaving the lock screen stops the fingerprint.
         if (locked) { vaultLock.running = false; vaultLock.running = true; fpTries = 0; fpInfo = ""; if (!onKwin) { fpCheck.running = false; fpCheck.running = true; } }

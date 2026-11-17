@@ -275,6 +275,34 @@ class ScreenCast(unittest.TestCase):
         self.assertEqual(hs.cursor_mode(4), 4)
         self.assertEqual(hs.cursor_mode(0), hs.CURSOR_EMBEDDED)
 
+    def test_hidden_from_sharing(self):
+        """A window hidden from screen sharing (its title bar menu: the bridge's windows.json noShare) is never offered."""
+        outs = [{'name': 'DP-1', 'desc': 'Main', 'x': 0, 'y': 0, 'w': 1920, 'h': 1080}]
+        wins = [{'id': '{1}', 'title': 'Firefox', 'app': 'firefox'}, {'id': '{2}', 'title': 'Bank', 'app': 'firefox'}]
+        d = tempfile.mkdtemp()
+        os.makedirs(os.path.join(d, 'hearth'))
+        old = os.environ.get('XDG_RUNTIME_DIR')
+        os.environ['XDG_RUNTIME_DIR'] = d
+        try:
+            r = hs.build_request('cast', '', hs.MONITOR | hs.WINDOW, False, outs, wins, '/nonexistent', False)
+            self.assertEqual([w['title'] for w in r['windows']], ['Firefox', 'Bank'])
+            self.assertEqual(r['hiddenCount'], 0)
+            with open(os.path.join(d, 'hearth', 'windows.json'), 'w') as f:
+                json.dump({'windows': [{'id': '{2}', 'noShare': True}, {'id': '{1}'}], 'captureHide': False}, f)
+            r = hs.build_request('cast', '', hs.MONITOR | hs.WINDOW, False, outs, wins, '/nonexistent', False)
+            self.assertEqual([w['title'] for w in r['windows']], ['Firefox'])
+            self.assertEqual(r['hiddenCount'], 1)
+            self.assertTrue(r['screensShowHidden'])
+            with open(os.path.join(d, 'hearth', 'windows.json'), 'w') as f:
+                json.dump({'windows': [{'id': '{2}', 'noShare': True}], 'captureHide': True}, f)
+            self.assertFalse(hs.build_request('cast', '', hs.WINDOW, False, outs, wins, '/x', False)['screensShowHidden'])
+            self.assertIn('excludeFromCapture === true) continue', hs.WINDOW_SCRIPT)
+        finally:
+            if old is None:
+                os.environ.pop('XDG_RUNTIME_DIR', None)
+            else:
+                os.environ['XDG_RUNTIME_DIR'] = old
+
     def test_stream_helper(self):
         d = tempfile.mkdtemp()
         fake = os.path.join(d, 'cast')
@@ -294,6 +322,83 @@ class ScreenCast(unittest.TestCase):
             self.assertIn('DP-9', s.error)
         finally:
             del os.environ['HEARTH_KWIN_CAST']
+
+
+class ScreenCast114(unittest.TestCase):
+    """1.14: an area of a screen, PickColor, touch for remote control."""
+    OUTS = [{'name': 'DP-1', 'desc': 'Main', 'x': 0, 'y': 0, 'w': 3840, 'h': 2160, 'scale': 2},
+            {'name': 'HDMI-A-1', 'desc': 'TV', 'x': 3072, 'y': 0, 'w': 1920, 'h': 1080, 'scale': 1}]
+
+    def test_area_only_when_kwin_can_stream_a_region(self):
+        r = hs.build_request('cast', '', hs.MONITOR, False, self.OUTS, [], '/x', False, version=3)
+        self.assertTrue(r['area'])
+        self.assertFalse(hs.build_request('cast', '', hs.MONITOR, False, self.OUTS, [], '/x', False, version=2)['area'])
+        self.assertFalse(hs.build_request('cast', '', hs.WINDOW, False, self.OUTS, [], '/x', False, version=5)['area'])
+        self.assertFalse(hs.build_request('shot', '', hs.MONITOR, False, self.OUTS, [], '/x', False, version=5)['area'])
+
+    def test_area_in_desktop_pixels(self):
+        sizes = {'DP-1': (3072, 1728), 'HDMI-A-1': (1920, 1080)}        # DP-1 at 125 %
+        self.assertEqual(hs.area_target({'kind': 'area', 'name': 'DP-1', 'fx': 0, 'fy': 0, 'fw': 0.5, 'fh': 1}, self.OUTS, sizes),
+                         (0, 0, 1536, 1728))
+        self.assertEqual(hs.area_target({'kind': 'area', 'name': 'HDMI-A-1', 'fx': 0.5, 'fy': 0.5, 'fw': 0.5, 'fh': 0.5}, self.OUTS, sizes),
+                         (3072 + 960, 540, 960, 540))
+        # Never outside the screen, never empty; an unknown screen is nothing.
+        x, y, w, h = hs.area_target({'name': 'HDMI-A-1', 'fx': 0.9, 'fy': -1, 'fw': 5, 'fh': 0}, self.OUTS, sizes)
+        self.assertLessEqual(x + w, 3072 + 1920)
+        self.assertGreaterEqual(h, 16)
+        self.assertIsNone(hs.area_target({'name': 'DP-9', 'fx': 0, 'fy': 0, 'fw': 1, 'fh': 1}, self.OUTS, sizes))
+
+    def test_area_results(self):
+        class S:
+            node = 9
+        r = hs.stream_results([S()], {'kind': 'area', 'name': 'DP-1'}, self.OUTS, 2, (10, 20, 640, 360))
+        props = r['streams'][0][1]
+        self.assertEqual(props['source_type'], ('u', hs.MONITOR))
+        self.assertEqual(props['position'], ('(ii)', (10, 20)))
+        self.assertEqual(props['size'], ('(ii)', (640, 360)))
+        self.assertNotIn('restore_data', r)       # only a whole screen is remembered
+
+    def test_pick_color(self):
+        self.assertEqual(hs.parse_pick('color 1.000000 0.500000 0.000000\n'), (1.0, 0.5, 0.0))
+        self.assertEqual(hs.parse_pick('cancelled\n'), 'cancel')
+        self.assertIsNone(hs.parse_pick('failed no KWin\n'))
+        self.assertIn('org.kde.kwin.ColorPicker', read('os/system_files/usr/share/applications/hearth-kwin-cast.desktop'))
+        src = read('hosts/linux/desktop/kwin-helpers/hearth-kwin-cast.c')
+        self.assertIn('"/ColorPicker", "org.kde.kwin.ColorPicker", "pick"', src)
+        self.assertIn('self.pick_color(conn, handle, inv)', read('hosts/linux/desktop/shell/hearth_screencast.py'))
+
+    def test_touch_lines(self):
+        d = tempfile.mkdtemp()
+        fake, log = os.path.join(d, 'cast'), os.path.join(d, 'lines')
+        with open(fake, 'w') as f:
+            f.write('#!/bin/sh\necho ready\ncat > "%s"\n' % log)
+        os.chmod(fake, 0o755)
+        os.environ['HEARTH_KWIN_CAST'] = fake
+        try:
+            ri = hs.RemoteInput()
+            self.assertTrue(ri.ok)
+            ri.touch('d', 0, 100.5, 200)
+            ri.touch('m', 0, 110, 210)
+            ri.touch('d', 1, 5, 5)
+            ri.touch('u', 0)
+            self.assertFalse(ri.touch('d', 99, 0, 0))
+            ri.stop()                      # finger 1 is lifted
+            lines = open(log).read().split('\n')
+        finally:
+            del os.environ['HEARTH_KWIN_CAST']
+        self.assertEqual(lines[:4], ['td 0 100.500000 200.000000', 'tf', 'tm 0 110.000000 210.000000', 'tf'])
+        self.assertIn('tu 0', lines)
+        self.assertEqual(lines.count('tu 1'), 1)
+        src = read('hosts/linux/desktop/kwin-helpers/hearth-kwin-cast.c')
+        for call in ('org_kde_kwin_fake_input_touch_down', 'org_kde_kwin_fake_input_touch_up', 'org_kde_kwin_fake_input_touch_frame'):
+            self.assertIn(call, src)
+        self.assertIn('KEYBOARD | POINTER | TOUCHSCREEN', read('hosts/linux/desktop/shell/hearth_screencast.py'))
+
+    def test_picker_has_the_area(self):
+        q = read('hosts/linux/desktop/shell/cast-picker.qml')
+        for part in ('{ id: "area", label: "Area", on: root.hasArea }', 'kind: "area", name: areaOut.name', '"Left half"', '"Middle"',
+                     'function area(x: real, y: real, w: real, h: real)', 'Qt.CrossCursor'):
+            self.assertIn(part, q)
 
 
 class LockCheck(unittest.TestCase):
@@ -393,6 +498,39 @@ class LockCheck(unittest.TestCase):
         lc.qt_wayland = lambda: False
         self.assertIn('qt6-wayland', lc.check(kenv=self.kenv)['why'])
 
+    def test_the_test_run_ends_as_soon_as_it_loaded(self):
+        self.install()
+        with open(self.greeter, 'w') as f:
+            f.write('#!/bin/sh\necho "%s" >&2\nexec sleep 30\n' % lc.LOADED)
+        t = time.monotonic()
+        self.assertTrue(lc.check(kenv=self.kenv)['ok'])
+        self.assertLess(time.monotonic() - t, 5)
+        # A greeter that never says anything: given up on after PROBE_TIME, not ok.
+        with open(self.greeter, 'w') as f:
+            f.write('#!/bin/sh\nexec sleep 30\n')
+        os.unlink(os.path.join(self.d, 'run', 'hearth', 'lockcheck.json'))
+        old, lc.PROBE_TIME = lc.PROBE_TIME, 1
+        try:
+            t = time.monotonic()
+            self.assertFalse(lc.check(kenv=self.kenv)['ok'])
+            self.assertLess(time.monotonic() - t, 5)
+        finally:
+            lc.PROBE_TIME = old
+
+    def test_named_package_and_qt_plugins(self):
+        self.install()
+        os.environ['HEARTH_LOCK_PKG'] = os.path.join(self.d, 'elsewhere')
+        self.assertEqual(lc.package(self.kenv), '')
+        os.environ['HEARTH_LOCK_PKG'] = os.path.join(self.d, 'share', 'plasma', 'shells', lc.PACKAGE)
+        self.assertTrue(lc.package(self.kenv))
+        lc.qt_wayland = self.qtw
+        os.environ['HEARTH_LOCK_QT_PLUGINS'] = os.path.join(self.d, 'qt')
+        self.assertFalse(lc.qt_wayland())
+        for f in ('platforms/libqwayland-egl.so', 'wayland-shell-integration/liblayer-shell.so'):
+            os.makedirs(os.path.dirname(os.path.join(self.d, 'qt', f)), exist_ok=True)
+            open(os.path.join(self.d, 'qt', f), 'w').close()
+        self.assertTrue(lc.qt_wayland())
+
     def test_env_file_format(self):
         self.assertEqual(lc.parse_env(b'A=1\0PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock\0junk\0'),
                          {'A': '1', 'PLASMA_DEFAULT_SHELL': 'org.hearth.mantel-lock'})
@@ -467,7 +605,7 @@ class Wiring(unittest.TestCase):
         self.assertIn('GetActive', lock)
         self.assertIn('"critical"', lock)
         rc = read('hosts/linux/desktop/kwin/xdg/kscreenlockerrc')
-        for line in ('Autolock=false', 'LockOnResume=false'):
+        for line in ('Autolock[$i]=false', 'LockOnResume[$i]=false'):     # fixed: your own file can't turn them on
             self.assertIn(line, rc)
         meta = json.loads(read('hosts/linux/desktop/kwin-lock/metadata.json'))
         self.assertEqual(meta['KPlugin']['Id'], 'org.hearth.mantel-lock')

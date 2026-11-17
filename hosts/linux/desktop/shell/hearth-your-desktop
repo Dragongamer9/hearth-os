@@ -4,10 +4,18 @@
   hearth-your-desktop status      JSON: the last notice (why Desktop Mode started the way it did), Mantel's window
                                   manager (picked, running now, KWin's failed starts) and what's here
   hearth-your-desktop notice      JSON: the notice Mantel hasn't shown yet ({} when there's none), marked as shown
-  hearth-your-desktop wm kwin|labwc
+  hearth-your-desktop kwin-overrides
+                                  (nimbus-session, before KWin starts) which of your own KDE settings Hearth's fixed
+                                  KWin keys override (LOCKED below); the first time one is, a notice says which and
+                                  why. Reads your files, never writes them. JSON {overridden, told}
+  hearth-your-desktop wm kwin|labwc|firehold|firehold-once
+  hearth-your-desktop unlock | relock
                                   Mantel's window manager from the next start of Desktop Mode (session.conf's
                                   HEARTH_DESKTOP_WM, only that line, through hearth_settings_io). Picking KWin also
                                   turns it back on after it didn't start twice (nimbus-session's safe start).
+                                  firehold is Firehold, 2.0's own desktop compositor, a preview (docs/FIREHOLD.md): turning it on keeps
+                                  what was picked before in HEARTH_DESKTOP_WM_BEFORE, which turning it off goes back
+                                  to (Settings shows it as a switch, off unless you turn it on).
 
 The notices come from nimbus-session (desk_notice): ~/.local/state/hearth/desktop-notice, a line
 "<what> <why> <when>" each (one per what). Shown once, oldest first: a line then moves to desktop-notice.shown (Settings
@@ -30,6 +38,9 @@ import hearth_settings_io as sio  # noqa: E402
 E = os.environ.get
 CONFIG_HOME = E('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
 SESSION_CONF = os.path.join(CONFIG_HOME, 'nimbus', 'session.conf')
+# Firehold's own settings file: {"firehold": {"unlocked": true}} once it's unlocked on this device (the flag
+# firehold.unlocked, also read by the Firehold screens helper). Written only through hearth_settings_io.
+FIREHOLD_JSON = os.path.join(CONFIG_HOME, 'nimbus', 'firehold.json')
 RUN = E('XDG_RUNTIME_DIR') or '/run/user/%d' % os.getuid()
 STATE_HOME = E('XDG_STATE_HOME') or os.path.expanduser('~/.local/state')
 DESK_STATE = os.path.join(STATE_HOME, 'hearth')
@@ -38,7 +49,30 @@ SHOWN = NOTICE + '.shown'
 RETIRED_TOLD = os.path.join(DESK_STATE, 'desktop-retired-told')
 FAILS = os.path.join(DESK_STATE, 'desktop-fails')
 NAMES = {'kde': 'KDE Plasma', 'gnome': 'GNOME'}
-WMS = {'kwin': 'KWin', 'labwc': 'labwc'}
+MINE_TOLD = os.path.join(DESK_STATE, 'kwin-mine-told')
+# Hearth's KWin keys that are fixed ([$i], KConfig's "immutable", in desktop/kwin/xdg and desktop/kwin/windows/xdg):
+# your own ~/.config file can't change them under KWin, because Mantel can't work without them (red flag 2: KWin
+# locking by itself skips hearth-lockcheck, a lockout on a handheld if its lock screen can't load). Only these;
+# Night Light and tearing (Settings › Display, written to your kwinrc) are never fixed.
+#   (id, file, group, key, Hearth's value, what it is in KDE, what decides it in Hearth; '' = not told: no effect alone)
+LOCKED = [
+    ('autolock', 'kscreenlockerrc', 'Daemon', 'Autolock', 'false', 'Lock the screen automatically',
+     'Mantel locks when it\'s idle as Settings › Sign-in says'),
+    ('lockonresume', 'kscreenlockerrc', 'Daemon', 'LockOnResume', 'false', 'Lock after waking from sleep',
+     'Settings › Sign-in › Lock when waking decides it'),
+    ('locktimeout', 'kscreenlockerrc', 'Daemon', 'Timeout', '0', '', ''),
+    ('inputmethod', 'kwinrc', 'Wayland', 'InputMethod', '/usr/share/applications/hearth-kwin-im.desktop',
+     'The virtual keyboard you picked in KDE', 'Hearth\'s on-screen keyboard types for you (Settings › Keyboard)'),
+    ('superkey', 'kwinrc', 'ModifierOnlyShortcuts', 'Meta', 'org.hearth.Windows,/org/hearth/Windows,org.hearth.Windows,Launcher',
+     'What the Super key opens on its own', 'it opens Mantel\'s app menu (Settings › Desktop › App menu picks which)'),
+]
+WMS = {'kwin': 'KWin', 'labwc': 'labwc', 'firehold': 'Firehold'}
+# Try once (Settings › Your desktop › Firehold (preview)): the next Desktop Mode start only; the session removes it.
+FIREHOLD_ONCE = os.path.join(DESK_STATE, 'firehold-once')
+# Why Firehold didn't start last time (nimbus-session writes it with the notice).
+FIREHOLD_WHY = os.path.join(DESK_STATE, 'firehold-why')
+LEAVE_KEY = 'Ctrl+Alt+Backspace'
+FIREHOLD_PATHS = ('/usr/libexec/hearth/firehold-comp', '/usr/local/lib/nimbus/firehold-comp')
 
 
 class Fail(Exception):
@@ -53,6 +87,27 @@ def texts(what, why):
                 'You had %s picked for Desktop Mode. Hearth 1.14 retired KDE Plasma and GNOME as desktops: Desktop '
                 'Mode is Mantel, which now runs on KWin, KDE\'s own window manager. Your apps, files and settings are '
                 'all still here.' % name)
+    if what == 'firehold':
+        try:
+            with open(FIREHOLD_WHY, encoding='utf-8') as f:
+                detail = ' Details: ' + f.read().strip()[:300]
+        except OSError:
+            detail = ''
+        if detail == ' Details: ':
+            detail = ''
+        return {
+            'missing': ('Firehold isn\'t on this device yet', 'You turned on the Firehold preview, '
+                        'but it isn\'t installed here, so Hearth started the normal desktop (KWin). Your choice stays saved.'),
+            'failed': ('Firehold couldn\'t start', 'So Hearth started the normal desktop (KWin) for this sign-in. '
+                       'Firehold is a preview; next time Hearth tries it again.' + detail),
+            'twice': ('Firehold couldn\'t start twice in a row', 'So Hearth turned "Always" off for now and starts '
+                      'the normal desktop (KWin). Your choice is kept: turn it back on here, or in Settings › System › '
+                      'Your desktop.' + detail),
+            'intro': ('You\'re trying Firehold', 'Hearth 2.0\'s own desktop, a preview: some things don\'t work yet. '
+                      'If anything goes wrong, %s goes back to the normal desktop (KWin) at once.' % LEAVE_KEY),
+            'left': ('Back on the normal desktop', 'You left Firehold with %s, so Mantel is on KWin for this '
+                     'sign-in. Firehold starts again next time if it\'s set to Always.' % LEAVE_KEY),
+        }.get(why, ('', ''))
     if what == 'kwin':
         return {
             'missing': ('Mantel opened on labwc', 'KWin, the window manager Mantel runs on, isn\'t installed, so Mantel '
@@ -64,7 +119,8 @@ def texts(what, why):
         }.get(why, ('', ''))
     if what == 'kwin-lock':
         part = {'nopackage': "Hearth's lock screen for KWin (/usr/share/plasma/shells/org.hearth.mantel-lock) is missing",
-                'nolocker': "KWin's screen locker (kscreenlocker_greet) isn't installed"}.get(why)
+                'nolocker': "KWin's screen locker (kscreenlocker_greet) isn't installed",
+                'notloaded': "KWin's screen locker didn't show Hearth's lock screen loading when Hearth tested it"}.get(why)
         if not part:
             return ('', '')
         return ('The lock screen is off',
@@ -72,7 +128,75 @@ def texts(what, why):
                 "never be locked out, Desktop Mode doesn't lock the screen (Lock says so too) until it's fixed. "
                 "Restoring Hearth's system files or the next update puts it back. Details: session.log in "
                 "~/.local/share/nimbus, and Send logs." % part)
+    if what == 'kwin-mine':
+        ids = [i for i in why.split('+') if i]
+        rows = [x for x in LOCKED if x[0] in ids and x[5]]
+        if not rows or len(rows) != len(ids):
+            return ('', '')
+        return ('Some of your KDE settings aren\'t used here',
+                'Mantel on KWin needs these to work, so your own choices from KDE Plasma aren\'t used in Desktop Mode.\n'
+                + ''.join('\n• %s: %s.' % (x[5], x[6][0].upper() + x[6][1:]) for x in rows)
+                + '\n\nYour own files aren\'t changed: KDE would use them again.')
     return ('', '')
+
+
+def ini_values(text):
+    """{(group, key): value} of a KDE ini file (the last one wins, a key's [$e] / [$i] options dropped)."""
+    out, group = {}, ''
+    for raw in text.splitlines():
+        s = raw.strip()
+        if not s or s.startswith('#'):
+            continue
+        if s.startswith('['):
+            s = re.sub(r'\[\$[a-z]*\]$', '', s)              # a group's own [$i]
+            if s.startswith('[') and s.endswith(']'):
+                group = s[1:-1].replace('][', '/')
+            continue
+        if '=' in s:
+            k, v = s.split('=', 1)
+            out[(group, re.sub(r'\[[^\]]*\]', '', k).strip())] = v.strip()
+    return out
+
+
+def overridden(config_home=None):
+    """The ids in LOCKED whose key your own file sets to something other than Hearth's value."""
+    config_home = config_home or CONFIG_HOME
+    files, out = {}, []
+    for lid, fname, group, key, value, _what, _how in LOCKED:
+        if fname not in files:
+            try:
+                with open(os.path.join(config_home, fname), encoding='utf-8', errors='replace') as f:
+                    files[fname] = ini_values(f.read())
+            except OSError:
+                files[fname] = {}
+        mine = files[fname].get((group, key))
+        if mine is not None and mine.lower() != value.lower():
+            out.append(lid)
+    return out
+
+
+def cmd_kwin_overrides():
+    """Queue the one-time notice for overridden keys not told yet. They're marked as told only after the notice is
+    really in the notice file (read back under its lock); if queueing fails nothing is marked, so the next start
+    tells again (red flag 9: the person is always told)."""
+    ids = overridden()
+    told = [i for i in (sio.load_json(MINE_TOLD, {}, repair=False).get('told') or []) if isinstance(i, str)] \
+        if os.path.exists(MINE_TOLD) else []
+    tell = [i for i in ids if i not in told and any(x[0] == i and x[5] for x in LOCKED)]
+    if not tell:
+        return {'overridden': ids, 'told': False}
+    shown = [i for i in ids if any(x[0] == i and x[5] for x in LOCKED)]
+    n = parse('kwin-mine %s %d' % ('+'.join(shown), int(time.time())))
+    with sio.locked(NOTICE):
+        rest = [x for x in read_notices(NOTICE) if x['what'] != 'kwin-mine']
+        write_lines(NOTICE, rest + [n])
+        queued = any(x['what'] == 'kwin-mine' and x['kind'] == n['kind'] for x in read_notices(NOTICE))
+    if not queued:
+        sio.log_event('desktop: the notice about your KDE settings couldn\'t be queued; told at the next start')
+        return {'overridden': ids, 'told': False}
+    sio.write_json(MINE_TOLD, {'told': sorted(set(told) | set(tell))})
+    sio.log_event('desktop: your own KDE settings not used under KWin: %s' % ', '.join(shown))
+    return {'overridden': ids, 'told': True}
 
 
 def parse(line):
@@ -111,20 +235,25 @@ def conf_value(key):
             text = f.read()
     except OSError:
         return ''
-    found = re.findall(r'''^[ \t]*(?:export[ \t]+)?%s=["']?([a-z]*)''' % key, text, re.M)
+    found = re.findall(r'''^[ \t]*(?:export[ \t]+)?%s=["']?([a-z0-9]*)''' % key, text, re.M)
     return found[-1] if found else ''
 
 
-def kwin_fails():
+def kwin_fails(name='kwin'):
     try:
         with open(FAILS, encoding='utf-8') as f:
             for line in f:
                 p = line.split()
-                if len(p) == 2 and p[0] == 'kwin':
+                if len(p) == 2 and p[0] == name:
                     return int(p[1])
     except (OSError, ValueError):
         pass
     return 0
+
+
+def firehold_here():
+    return bool(shutil.which(E('FIREHOLD_BIN') or 'firehold-comp')
+                or any(os.access(p, os.X_OK) for p in FIREHOLD_PATHS))
 
 
 def wm_now():
@@ -138,58 +267,154 @@ def wm_now():
                 return ''
     except OSError:
         return ''
-    try:
-        with open(os.path.join(RUN, 'hearth-kwin.pid'), encoding='utf-8') as f:
-            os.kill(int(f.read().strip()), 0)
-        return 'kwin'
-    except (OSError, ValueError):
-        return 'labwc'
+    for name, pidfile in (('firehold', 'firehold.pid'), ('kwin', 'hearth-kwin.pid')):
+        try:
+            with open(os.path.join(RUN, pidfile), encoding='utf-8') as f:
+                os.kill(int(f.read().strip()), 0)
+            return name
+        except (OSError, ValueError):
+            pass
+    return 'labwc'
+
+
+def unlocked():
+    """Firehold stays hidden until it's unlocked: firehold.json's firehold.unlocked, written by `unlock`."""
+    d = sio.load_json(FIREHOLD_JSON, {})
+    f = d.get('firehold') if isinstance(d.get('firehold'), dict) else {}
+    return f.get('unlocked') is True or d.get('firehold.unlocked') is True
+
+
+def set_unlocked(on):
+    def change(d):
+        if not isinstance(d.get('firehold'), dict):
+            d['firehold'] = {}
+        d['firehold']['unlocked'] = bool(on)
+        d.pop('firehold.unlocked', None)
+    sio.update_json(FIREHOLD_JSON, change)
+
+
+def cmd_unlock(on):
+    """The 7th tap on the version in Settings › About (SettingsNav.qml), or "Hide Firehold again" (on=False: Firehold
+    off, the choice before back, Try once dropped, hidden again). Atomic, with .bak, merged (hearth_settings_io)."""
+    if on:
+        set_unlocked(True)
+        sio.log_event('desktop: Firehold (preview) unlocked')
+        return status()
+    drop_once()
+
+    def change(t):
+        cur = re.findall(r'''^[ \t]*(?:export[ \t]+)?HEARTH_DESKTOP_WM=["']?([a-z]*)''', t, re.M)
+        if cur and cur[-1] == 'firehold':
+            before = re.findall(r'''^[ \t]*(?:export[ \t]+)?HEARTH_DESKTOP_WM_BEFORE=["']?([a-z]*)''', t, re.M)
+            back = before[-1] if before and before[-1] in ('kwin', 'labwc') else 'kwin'
+            t = sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', back)
+        return t
+    sio.update_text(SESSION_CONF, change)
+    set_unlocked(False)
+    sio.log_event('desktop: Firehold (preview) hidden again')
+    return status()
 
 
 def status():
     pending, seen = read_notices(NOTICE), read_notices(SHOWN)
     n, shown = (pending[0], False) if pending else ((seen[-1], True) if seen else (None, False))
-    picked = 'labwc' if conf_value('HEARTH_DESKTOP_WM') == 'labwc' else 'kwin'
+    v = conf_value('HEARTH_DESKTOP_WM')
+    picked = v if v in ('labwc', 'firehold') else 'kwin'
+    before = conf_value('HEARTH_DESKTOP_WM_BEFORE')
     fails = kwin_fails()
+    hfails = kwin_fails('firehold')
+    shown_fh = unlocked()
+    if not shown_fh:
+        # Hidden: as if Firehold weren't there (its notices too).
+        pending = [x for x in pending if x['what'] != 'firehold']
+        seen = [x for x in seen if x['what'] != 'firehold']
+        n, shown = (pending[0], False) if pending else ((seen[-1], True) if seen else (None, False))
+        if v == 'firehold':
+            picked = conf_value('HEARTH_DESKTOP_WM_BEFORE') if conf_value('HEARTH_DESKTOP_WM_BEFORE') in ('kwin', 'labwc') else 'kwin'
+    once = shown_fh and os.path.exists(FIREHOLD_ONCE)
+    mode = 'always' if picked == 'firehold' else 'once' if once else 'off'
     return {'notice': n, 'noticeShown': shown, 'notices': pending + seen, 'wm': picked, 'wmNow': wm_now(), 'kwinFails': fails,
-            'kwinPaused': picked == 'kwin' and fails >= 2, 'kwinHere': bool(shutil.which('kwin_wayland')),
+            'fireholdMode': mode, 'fireholdOnce': once, 'leaveKey': LEAVE_KEY, 'fireholdUnlocked': shown_fh,
+            'kwinPaused': picked == 'kwin' and fails >= 2,
+            'fireholdPreview': picked == 'firehold', 'wmBefore': before if before in ('kwin', 'labwc') else 'kwin',
+            'fireholdHere': firehold_here(), 'fireholdFails': hfails, 'fireholdPaused': picked == 'firehold' and hfails >= 2,
+            'kwinHere': bool(shutil.which('kwin_wayland')),
             'labwcHere': bool(shutil.which('labwc')),
             'safeGraphics': os.path.exists(E('HEARTH_SAFE_FLAG') or '/run/hearth/safe-graphics')}
 
 
+def forget_fails(name):
+    """Turned (back) on: the safe start's count and its notices for it start over (nimbus-session's desk_fails)."""
+    try:
+        with open(FAILS, encoding='utf-8') as f:
+            rest = [l for l in f if not l.startswith(name + ' ')]
+        sio.write_text(FAILS, ''.join(rest)) if rest else os.remove(FAILS)
+    except OSError:
+        pass
+    with sio.locked(NOTICE):          # the session's desk_notice takes the same lock
+        for p in (NOTICE, SHOWN):
+            ns = read_notices(p)
+            if any(n['what'] == name for n in ns):
+                write_lines(p, [n for n in ns if n['what'] != name])
+
+
+def drop_once():
+    try:
+        os.remove(FIREHOLD_ONCE)
+    except OSError:
+        pass
+
+
 def cmd_wm(w):
-    if w not in WMS:
+    if w in ('firehold', 'firehold-once') and not unlocked():
         raise Fail('kwin or labwc')
-    sio.update_text(SESSION_CONF, lambda t: sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', w))
+    if w == 'firehold-once':
+        # Try once: the next Desktop Mode start only, then back to what's picked (the session removes the mark).
+        before = conf_value('HEARTH_DESKTOP_WM_BEFORE')
+        if conf_value('HEARTH_DESKTOP_WM') == 'firehold':
+            back = before if before in ('kwin', 'labwc') else 'kwin'
+            sio.update_text(SESSION_CONF, lambda t: sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', back))
+        sio.write_text(FIREHOLD_ONCE, 'once %d\n' % int(time.time()))
+        forget_fails('firehold')
+        sio.log_event('desktop: Firehold (preview) for the next start of Desktop Mode only')
+        return status()
+    if w not in WMS:
+        raise Fail('kwin, labwc, firehold or firehold-once')
+    drop_once()
+    if w == 'firehold':
+        # The preview on: what was picked before is kept, for turning it off again.
+        def change(t):
+            cur = re.findall(r'''^[ \t]*(?:export[ \t]+)?HEARTH_DESKTOP_WM=["']?([a-z]*)''', t, re.M)
+            cur = cur[-1] if cur else ''
+            if cur in ('kwin', 'labwc'):
+                t = sio.conf_set_text(t, 'HEARTH_DESKTOP_WM_BEFORE', cur)
+            return sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', 'firehold')
+        sio.update_text(SESSION_CONF, change)
+        forget_fails('firehold')
+    else:
+        sio.update_text(SESSION_CONF, lambda t: sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', w))
     if w == 'kwin':
-        # Turned back on: the safe start's count and its notice start over (nimbus-session's desk_fails kwin).
-        try:
-            with open(FAILS, encoding='utf-8') as f:
-                rest = [l for l in f if not l.startswith('kwin ')]
-            sio.write_text(FAILS, ''.join(rest)) if rest else os.remove(FAILS)
-        except OSError:
-            pass
+        forget_fails('kwin')
         # ...and this sign-in too: "didn't start earlier this sign-in" is forgotten (nimbus-session's hearth-kwin-failed).
         try:
             os.remove(os.path.join(RUN, 'hearth-kwin-failed'))
         except OSError:
             pass
-        for p in (NOTICE, SHOWN):
-            ns = read_notices(p)
-            if any(n['what'] == 'kwin' for n in ns):
-                write_lines(p, [n for n in ns if n['what'] != 'kwin'])
     sio.log_event('desktop: Mantel on %s from the next start of Desktop Mode' % WMS[w])
     return status()
 
 
 def cmd_notice():
-    pending = read_notices(NOTICE)
-    if not pending:
-        return {}
-    n = pending[0]
-    seen = [s for s in read_notices(SHOWN) if s['what'] != n['what']] + [n]
-    write_lines(SHOWN, seen)
-    write_lines(NOTICE, pending[1:])
+    with sio.locked(NOTICE):          # the session's desk_notice takes the same lock
+        pending = read_notices(NOTICE)
+        if not unlocked():
+            pending = [x for x in pending if x['what'] != 'firehold']
+        if not pending:
+            return {}
+        n = pending[0]
+        seen = [s for s in read_notices(SHOWN) if s['what'] != n['what']] + [n]
+        write_lines(SHOWN, seen)
+        write_lines(NOTICE, pending[1:])
     if n['kind'] == 'retired':
         try:
             sio.write_text(RETIRED_TOLD, 'told %d\n' % int(time.time()))
@@ -200,12 +425,63 @@ def cmd_notice():
     return n
 
 
+# The desktop's name before Nov 17, 2026 (now Firehold): a preview turned on under it stays on.
+OLD_NAME = 'albireo'
+
+
+def migrate_old_name():
+    """The person's choice made under the old name is Firehold's: HEARTH_DESKTOP_WM=albireo is written as firehold
+    (atomically, with its .bak, through hearth_settings_io), and the safe start's count and notices carry over.
+    Nothing is reset; when the new name already has a count, that one is kept."""
+    if conf_value('HEARTH_DESKTOP_WM') == OLD_NAME:
+        def change(t):
+            cur = re.findall(r'''^[ \t]*(?:export[ \t]+)?HEARTH_DESKTOP_WM=["']?([a-z]*)''', t, re.M)
+            if not (cur and cur[-1] == OLD_NAME):
+                return t
+            # Turned on by hand before Firehold was hidden: it stays on (and so shown) for this person.
+            return sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', 'firehold')
+        sio.update_text(SESSION_CONF, change)
+        set_unlocked(True)
+    try:
+        with open(FAILS, encoding='utf-8') as f:
+            lines = f.readlines()
+    except OSError:
+        lines = []
+    if any(l.startswith(OLD_NAME + ' ') for l in lines):
+        has_new = any(l.startswith('firehold ') for l in lines)
+        out = []
+        for l in lines:
+            if l.startswith(OLD_NAME + ' '):
+                if has_new:
+                    continue
+                l = 'firehold' + l[len(OLD_NAME):]
+            out.append(l)
+        sio.write_text(FAILS, ''.join(out))
+    for p in (NOTICE, SHOWN):
+        ns = read_notices(p)
+        if any(n['what'] == OLD_NAME for n in ns):
+            for n in ns:
+                if n['what'] == OLD_NAME:
+                    n['line'] = 'firehold' + n['line'][len(OLD_NAME):]
+            write_lines(p, ns)
+
+
 def main(argv):
     cmd = argv[1] if len(argv) > 1 else ''
+    try:
+        migrate_old_name()
+    except Exception as e:  # never in the way of reading or changing the choice
+        print('note: the old name could not be carried over: %s' % e, file=sys.stderr)
+    if cmd == 'wm' and len(argv) == 3 and argv[2] == OLD_NAME:
+        argv = argv[:2] + ['firehold']
     if cmd == 'status':
         out = status()
     elif cmd == 'notice':
         out = cmd_notice()
+    elif cmd == 'kwin-overrides':
+        out = cmd_kwin_overrides()
+    elif cmd in ('unlock', 'relock'):
+        out = cmd_unlock(cmd == 'unlock')
     elif cmd == 'wm' and len(argv) == 3:
         try:
             out = cmd_wm(argv[2])

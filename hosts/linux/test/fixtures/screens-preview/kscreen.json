@@ -1,0 +1,109 @@
+{
+ "features": 1,
+ "outputs": [
+  {
+   "id": 1,
+   "name": "DP-1",
+   "type": 14,
+   "pos": {
+    "x": 0,
+    "y": 0
+   },
+   "scale": 1,
+   "size": {
+    "width": 1920,
+    "height": 1080
+   },
+   "rotation": 1,
+   "currentModeId": "1",
+   "preferredModes": [
+    "1"
+   ],
+   "connected": true,
+   "enabled": true,
+   "priority": 1,
+   "clones": [],
+   "sizeMM": {
+    "width": 600,
+    "height": 340
+   },
+   "replicationSource": 0,
+   "modes": [
+    {
+     "id": "1",
+     "name": "1920x1080@144",
+     "size": {
+      "width": 1920,
+      "height": 1080
+     },
+     "refreshRate": 143.981
+    },
+    {
+     "id": "2",
+     "name": "1920x1080@60",
+     "size": {
+      "width": 1920,
+      "height": 1080
+     },
+     "refreshRate": 60.0
+    },
+    {
+     "id": "3",
+     "name": "1280x720@60",
+     "size": {
+      "width": 1280,
+      "height": 720
+     },
+     "refreshRate": 60.0
+    }
+   ],
+   "overscan": 0,
+   "rgbRange": 0,
+   "vrrPolicy": 2,
+   "hdr": true,
+   "sdr-brightness": 250,
+   "wcg": true
+  },
+  {
+   "id": 2,
+   "name": "HDMI-A-1",
+   "type": 11,
+   "pos": {
+    "x": 1920,
+    "y": 0
+   },
+   "scale": 1,
+   "size": {
+    "width": 1920,
+    "height": 1080
+   },
+   "rotation": 1,
+   "currentModeId": "5",
+   "preferredModes": [
+    "5"
+   ],
+   "connected": true,
+   "enabled": true,
+   "priority": 2,
+   "clones": [],
+   "sizeMM": {
+    "width": 1210,
+    "height": 680
+   },
+   "replicationSource": 0,
+   "modes": [
+    {
+     "id": "5",
+     "name": "1920x1080@60",
+     "size": {
+      "width": 1920,
+      "height": 1080
+     },
+     "refreshRate": 60.0
+    }
+   ],
+   "overscan": 3,
+   "rgbRange": 2
+  }
+ ]
+}

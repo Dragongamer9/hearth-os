@@ -52,6 +52,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 
 sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 try:
@@ -1071,11 +1072,59 @@ def write_text(path, text):
     if hsio:
         hsio.write_text(path, text)
     else:
-        os.makedirs(os.path.dirname(path), exist_ok=True)
-        tmp = path + '.tmp'
-        with open(tmp, 'w') as f:
-            f.write(text)
+        plain_write(path, text)
+
+
+def _plain_replace(path, data):
+    d = os.path.dirname(os.path.abspath(path))
+    os.makedirs(d, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix='.' + os.path.basename(path) + '.', suffix='.tmp', dir=d)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
         os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def plain_write(path, text):
+    """Only when hearth_settings_io can't be imported: still atomic (a temporary file, fsync, then moved in place) and
+    still keeps FILE.bak (the current file, when it has something in it, goes there first)."""
+    data = text.encode('utf-8', 'surrogateescape')
+    try:
+        with open(path, 'rb') as f:
+            cur = f.read()
+    except OSError:
+        cur = None
+    if cur == data:
+        return
+    if cur is not None and cur.strip():
+        _plain_replace(path + '.bak', cur)
+    _plain_replace(path, data)
+
+
+def plain_load_json(path):
+    """PATH's JSON object ({} when it isn't there). A file that doesn't read as one raises Fail: it's never saved over."""
+    try:
+        with open(path, encoding='utf-8') as f:
+            raw = f.read()
+    except FileNotFoundError:
+        return {}
+    except OSError as e:
+        raise Fail('%s can\'t be read (%s); not saved over' % (path, e))
+    try:
+        v = json.loads(raw)
+    except ValueError:
+        v = None
+    if not isinstance(v, dict):
+        raise Fail('%s is damaged; not saved over (its .bak may have your last good settings)' % path)
+    return v
 
 
 def read(path):
@@ -1117,7 +1166,8 @@ def proxy_set(req):
     if hsio:
         hsio.merge_json(PROXY_JSON, changes, who='you')
     else:
-        cur = proxy_load(); cur.update(changes)
+        cur = plain_load_json(PROXY_JSON)       # merged into what's on disk; a damaged file is never saved over
+        cur.update(changes)
         write_text(PROXY_JSON, json.dumps(cur, indent=2) + '\n')
     p = proxy_load()
     proxy_apply(p)

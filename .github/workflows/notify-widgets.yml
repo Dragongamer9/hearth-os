@@ -1,0 +1,397 @@
+# Mantel 1.14, round 2 (test_notify_widgets_114.py, docs/WIDGETS.md, docs/KDE-FEATURES-1.14.md): notifications and
+# widgets & panels, written for Hearth, on labwc and on KWin.
+#   labwc: unit tests, then Desktop Mode on a virtual 1920 × 1080 screen (labwc headless + Quickshell on Fedora, as
+#          widgets-test.yml): pop-ups with buttons and progress, KDE job progress (hearth-notifyd's pretend copy) in the
+#          tray and the clock's panel, dock badges (the Unity launcher API), the history after a restart with its
+#          buttons, automatic quiet in full screen and its "came in while…" note, a Hearth warning through Do not
+#          disturb, the tray's printers / disks / camera / background apps, the OSDs, the Sounds and Notifications
+#          pages, the light/dark tile, the new widgets (web page drawn by Firefox, calculator, colour picker, keyboard,
+#          pager, window list, binary and fuzzy clocks, other calendars and holidays), widgets in the bar, the bar's
+#          own items moved, two more panels, Arrange the bar.
+#   kwin:  the same shell with HEARTH_WM=kwin on KWin (a virtual screen): its job server, a badge, a pop-up, and the
+#          keyboard layout OSD from KWin's own org.kde.keyboard switching layouts.
+# Fails on shell errors in these files, a setting written by itself (before anything was changed, or across a
+# restart), or a check below. Pictures: the "shots" jobs' SHOT notices (tools/shot-notices.py) and the artifacts.
+name: Notifications and widgets (1.14)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [feature/kwin-notify-widgets, feature/kwin-1.14]
+    paths: ['hosts/linux/desktop/shell/**', 'hosts/linux/desktop/sounds/**', 'hosts/linux/test/test_notify_widgets_114.py', '.github/workflows/notify-widgets.yml']
+
+concurrency:
+  group: notify-widgets-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  labwc:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install labwc, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 python3-pillow qt6ct \
+            google-noto-sans-fonts adwaita-icon-theme pciutils breeze-icon-theme python3-gobject dbus-daemon dbus-tools libnotify nodejs >/dev/null
+          dnf -y install wl-clipboard wtype foot hicolor-icon-theme rsms-inter-fonts firefox >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          quickshell --version || true; firefox --version || echo "::warning title=setup::no firefox (the web page widget's picture is a stand-in)"
+
+      - uses: actions/checkout@v4
+
+      - name: Unit tests
+        run: |
+          python3 -m unittest discover -s hosts/linux/test -p 'test_notify_widgets_114.py' -v 2>&1 | tail -30
+          for t in test_notify_widgets_114 test_desktop_widgets test_system_settings_114 test_settings_persistence test_mantel_2026 test_mantel_bars_menus test_settings_redesign; do
+            python3 -m unittest discover -s hosts/linux/test -p "$t.py" >/tmp/$t.out 2>&1 || echo "::error title=$t::$(grep -E '^(FAIL|ERROR|AssertionError)' /tmp/$t.out | head -6 | tr '\n' '|' | cut -c1-900)"
+          done
+          ! grep -lE '^(FAIL|ERROR):' /tmp/test_*.out
+
+      - name: Desktop Mode, round 2
+        shell: bash
+        run: |
+          mkdir -p shots/post
+          exec > >(tee shots/step.log) 2>&1
+          set +e +o pipefail
+          set -x
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" "$HOME/.config/nimbus" && chmod 700 "$XDG_RUNTIME_DIR"
+          export LANG=C.UTF-8 LC_ALL=C.UTF-8 TZ=UTC
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          FAIL() { echo "::error title=round 2::$*"; touch shots/FAILED; }
+          # ---- stand-ins for the PC: drives, a print queue, the camera, background apps, the keyboard (hearth-notifyd)
+          FX=/tmp/notifyd-fixtures; mkdir -p $FX; export HEARTH_NOTIFYD_FIXTURES=$FX
+          echo '{"caps": false, "num": true}' > $FX/keys.json
+          echo '{"index": 0, "layouts": [{"short": "us", "name": "English (US)"}, {"short": "de", "name": "German"}], "canSwitch": true}' > $FX/layouts.json
+          echo '{"disks": [{"path": "/dev/sda1", "name": "USB STICK", "size": "29.8G", "mount": "/run/media/you/USB STICK", "fstype": "vfat", "drive": "/dev/sda"}]}' > $FX/disks.json
+          echo '{"jobs": [{"job": "Office-12", "printer": "Office", "user": "you", "size": "20480"}, {"job": "Office-13", "printer": "Office", "user": "you", "size": "4096"}]}' > $FX/printers.json
+          echo '{"apps": [{"name": "Hearth Call", "pid": 4242}]}' > $FX/camera.json
+          echo '{"apps": [{"app": "com.valvesoftware.Steam", "message": "Downloading 2 games", "instance": "1"}, {"app": "org.kde.kdeconnect.daemon", "message": "", "instance": "2"}]}' > $FX/background.json
+          WFX=/tmp/widget-fixtures; mkdir -p $WFX; export HEARTH_WIDGETS_FIXTURES=$WFX
+          echo '#66c0f4' > $WFX/colour.txt
+          # A web page for the web page widget (drawn by Firefox with no window)
+          cat > /tmp/page.html <<'HTML'
+          <!doctype html><html><head><meta charset="utf-8"><title>Hearth OS: what's new</title><style>
+          body{margin:0;font-family:sans-serif;background:#16110e;color:#f3e9e1}header{background:linear-gradient(90deg,#ff8a3d,#c8442a);padding:22px 28px}
+          h1{margin:0;font-size:30px}main{padding:18px 28px}li{margin:8px 0;font-size:17px}.card{background:#241b16;border-radius:14px;padding:14px 18px;margin-top:14px}
+          </style></head><body><header><h1>Hearth OS 1.14</h1><div>Mantel on KWin</div></header><main><ul><li>Notifications that remember</li>
+          <li>Quiet while you play full screen</li><li>Badges on the dock</li><li>Six new widgets</li></ul><div class="card">Updated every few minutes, right on your desktop.</div></main></body></html>
+          HTML
+          sed -i 's/^          //' /tmp/page.html
+          # Hearth's sounds have nowhere to play here: a pretend pw-play that writes down what it was asked
+          mkdir -p /tmp/fakebin
+          printf '#!/bin/sh\necho "$*" >> /tmp/played.txt\n' > /tmp/fakebin/pw-play && chmod +x /tmp/fakebin/pw-play
+          printf '#!/bin/sh\nexit 0\n' > /tmp/fakebin/hearth-time && chmod +x /tmp/fakebin/hearth-time
+          export PATH="/tmp/fakebin:$PATH"
+          python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1 || true
+          echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          python3 hosts/linux/desktop/shell/hearth-desk pin foot >/dev/null 2>&1 || echo "::warning title=dock::couldn't pin foot"
+          # ---- the desktop
+          labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+          SH="$NIMBUS_SHARE/desktop/shell"
+          q() { quickshell ipc -p "$SH" call "$@" 2>/dev/null | grep -v 'WARN' | tail -n1; }
+          shot() { sleep "${2:-2}"; grim "shots/post/$1.png" || echo "::warning title=pictures::no picture $1"; }
+          crop() { python3 -c 'import sys; from PIL import Image; im = Image.open(sys.argv[1]); b = [int(x) for x in sys.argv[3].split(",")]; im.crop(tuple(b)).save(sys.argv[2])' "shots/post/$1.png" "shots/post/$2.png" "$3"; }
+          state() { q notify state; }
+          for i in $(seq 1 60); do [ -n "$(state)" ] && break; sleep 2; done
+          [ -n "$(state)" ] || FAIL "Notifications.qml / NotifyHub.qml didn't load: $(grep -E 'Notif|Hub|Sounds|DeskState' "$LOG" | head -6 | cut -c1-220 | tr '\n' '|')"
+          sleep 6
+          echo "::notice title=state::$(state)"
+          C="$HOME/.config/nimbus"
+          for f in notify.json bar.json sounds.json widgets.json; do [ ! -e "$C/$f" ] || FAIL "$f was written before anything was changed (settings must never change by themselves)"; done
+          python3 -c 'import json,sys; s=json.loads(sys.argv[1]); sys.exit(0 if s["jobServer"] else 1)' "$(state)" || FAIL "hearth-notifyd doesn't serve org.kde.JobViewServer: $(state)"
+
+          # ---- 1. pop-ups: buttons, progress, an urgent one
+          notify-send -a "Hearth Photos" -i image-x-generic -A open=Open -A share="Share album" "Your holiday album is ready" "214 photos from Lisbon, sorted by day" &
+          notify-send -a "Hearth Browser" -i web-browser -h int:value:42 "Downloading hollow-pines.tar.zst" "1.2 GB of 2.9 GB · 3 min left" &
+          notify-send -a "Discord" -i chat -A reply=Reply -A mute="Mute channel" "Sam in #raids" "Ready for tonight? Bring the big mech" &
+          shot 01-popups 3
+          crop 01-popups 01b-popups-close "660,0,1260,700"
+          # ---- 2. a copy in progress (KDE's job progress) and a dock badge (Unity launcher API)
+          python3 "$SH/hearth-notifyd" test-job "Copying holiday photos" 90 &
+          python3 "$SH/hearth-notifyd" test-job-v1 "Moving clip.mp4" 90 &
+          sleep 3
+          python3 "$SH/hearth-notifyd" test-badge foot 7 0.45
+          sleep 3
+          s=$(state); echo "::notice title=jobs and badges::$s"
+          python3 -c 'import json,sys; s=json.loads(sys.argv[1]); sys.exit(0 if s["jobs"] >= 2 and "foot" in s["badges"] else 1)' "$s" || FAIL "jobs or the badge didn't arrive: $s"
+          q notify unpopAll
+          shot 02-bar-and-dock 2
+          crop 02-bar-and-dock 02b-tray "960,0,1920,90"
+          crop 02-bar-and-dock 02c-dock-badge "560,960,1360,1080"
+          q calendar open; shot 03-clock-panel-jobs 3; q calendar close
+          # ---- 3. automatic quiet in full screen, then "came in while…"
+          q notify fullscreen on; sleep 1
+          notify-send -a "Steam" "Friend online" "Alex is now playing Hollow Pines"
+          sleep 2
+          [ "$(q notify popupsShown)" = "0" ] || FAIL "a notification popped up in full screen"
+          shot 04-quiet-fullscreen 1
+          crop 04-quiet-fullscreen 04b-quiet-bell "960,0,1920,90"
+          q notify fullscreen off
+          shot 05-quiet-ended 2
+          # ---- 4. Hearth's own warning gets through Do not disturb
+          q notifications dnd on; sleep 1
+          notify-send -a "Hearth" -i drive-harddisk "Your main drive is almost full" "2.1 GB left. Storage settings can free some space"
+          sleep 2
+          [ "$(q notify popupsShown)" -ge 1 ] || FAIL "Hearth's own warning was held back by Do not disturb"
+          notify-send -a "Discord" "Should stay quiet" "while Do not disturb is on"
+          shot 06-hearth-warning-in-dnd 1
+          q notifications dnd off
+          q notify unpopAll
+          # ---- 5. the history keeps the buttons; after a restart it's still there
+          q calendar open; shot 07-history-with-buttons 3; q calendar close
+          echo "::notice title=history::$(q notify history | head -c 1500)"
+          # ---- 6. OSDs
+          q osd show caps on; shot 08-osd-caps 1
+          q osd show layout German; shot 09-osd-layout 1
+          sleep 2; q osd show mic on; shot 10-osd-mic 1
+          sleep 2; q osd show micwanted "Hearth Call"; shot 11-osd-mic-wanted 1
+          for n in 08-osd-caps 09-osd-layout 10-osd-mic 11-osd-mic-wanted; do crop $n ${n}-close "560,40,1360,220"; done
+          # ---- 7. Settings: Notifications, Sounds, Date & time's clock panel
+          q settings page notifications; shot 12-settings-notifications 4
+          q settings page sounds; shot 13-settings-sounds 3
+          q sounds play complete; sleep 1; [ "$(q sounds last)" = "complete" ] || FAIL "Sounds.qml didn't play"
+          grep -q "complete.wav" /tmp/played.txt 2>/dev/null || echo "::warning title=sounds::pw-play wasn't asked for complete.wav: $(cat /tmp/played.txt 2>/dev/null | head -3)"
+          q settings close
+          # ---- 8. the light/dark tile
+          q quick toggle; shot 14-quick-access 3; q quick toggle
+          # ---- 9. the new widgets on the desktop
+          web=$(q widgets add web); q widgets set "$web" url '"file:///tmp/page.html"'
+          calc=$(q widgets add calc); q widgets set "$calc" tape ' ["12*(3+4) = 84","2^10 = 1024"]'
+          col=$(q widgets add colour); q widgets set "$col" colours ' ["#ff8a3d","#6fd08c","#e0a23a","#66c0f4"]'
+          keys=$(q widgets add keys)
+          pager=$(q widgets add pager)
+          wl=$(q widgets add windowlist)
+          foot -T "Notes: shopping list" -W 70x16 sh -c 'echo "Bread, milk, tea"; sleep 100000' >/dev/null 2>&1 &
+          foot -T "Terminal" -W 70x16 sh -c 'sleep 100000' >/dev/null 2>&1 &
+          sleep 3
+          q widgets list > shots/widgets-list.json
+          shot 15-widgets-desktop 30
+          pkill -x foot; sleep 1
+          bin=$(q widgets add clock); q widgets set "$bin" style '"binary"'; q widgets set "$bin" seconds 'true'
+          fz=$(q widgets add clock); q widgets set "$fz" style '"fuzzy"'
+          cal=$(q widgets add calendar); q widgets set "$cal" altCalendar '"hebrew"'; q widgets set "$cal" holidays '"us"'
+          sleep 2; q widgets list > shots/widgets-list2.json
+          shot 16-widgets-clocks-calendar 6
+          python3 - shots/post shots/widgets-list.json shots/widgets-list2.json <<'PY'
+          import json, sys
+          from PIL import Image
+          d = sys.argv[1]
+          for pic, lst in (('15-widgets-desktop', sys.argv[2]), ('16-widgets-clocks-calendar', sys.argv[3])):
+              im = Image.open('%s/%s.png' % (d, pic))
+              seen = {}
+              for w in json.load(open(lst)):
+                  if w['place'] != 'desk':
+                      continue
+                  n = w['type'] + ('-%d' % seen[w['type']] if w['type'] in seen else '')
+                  seen[w['type']] = seen.get(w['type'], 1) + 1
+                  if pic.startswith('16') and w['type'] not in ('clock', 'calendar'):
+                      continue
+                  m = 12
+                  im.crop((max(0, w['x'] - m), max(0, w['y'] - m), min(im.width, w['x'] + w['w'] + m), min(im.height, w['y'] + w['h'] + m))).save('%s/w-%s.png' % (d, n))
+          PY
+          q widgets configure "$cal"; shot 17-calendar-settings 3; q widgets close
+          q widgets configure "$fz"; shot 18-clock-settings 3; q widgets close
+          # ---- 10. widgets in the bar, the bar's own items moved
+          for t in keys pager windowlist colour; do q widgets addBar $t >/dev/null; done
+          q panels move layout 0 start
+          q panels move volume -1 ""
+          q panels move discord 0 hidden
+          echo "::notice title=bar items::$(q panels layout)"
+          shot 19-bar-arranged 3
+          crop 19-bar-arranged 19b-bar-left "0,0,1100,90"
+          crop 19-bar-arranged 19c-bar-right "900,0,1920,90"
+          q panels arrange items; shot 20-arrange-items 3
+          # ---- 11. more panels
+          q panels add HEADLESS-1 left
+          q panels clone HEADLESS-1 right
+          sleep 2; n=$(q panels count); [ "$n" = "2" ] || FAIL "panels: $n, not 2: $(q panels list | head -c 400)"
+          q panels arrange panels; shot 21-arrange-panels 3; q panels done
+          shot 22-panels 4
+          # ---- 12. the clock's panel: world clocks, another calendar, holidays
+          q panels clock clockZones ' ["Asia/Tokyo","America/New_York"]'
+          q panels clock clockAlt '"islamic"'
+          q panels clock clockHolidays '"gb"'
+          q calendar open; shot 23-clock-panel-calendars 4; q calendar close
+
+          # ---- 13. a restart: the history is back, no setting changed by itself
+          sleep 3
+          before=$(cd "$C" && sha256sum notify.json bar.json sounds.json widgets.json 2>/dev/null | cut -c1-16 | tr '\n' ' ')
+          hist=$(q notify history | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')
+          pkill -f "quickshell -p $SH" || true
+          for i in $(seq 1 40); do sleep 2; [ -n "$(state)" ] && break; done
+          sleep 10
+          after=$(cd "$C" && sha256sum notify.json bar.json sounds.json widgets.json 2>/dev/null | cut -c1-16 | tr '\n' ' ')
+          [ "$before" = "$after" ] && echo "::notice title=settings::unchanged across a restart" || FAIL "a settings file changed by itself across a restart: $before / $after"
+          back=$(q notify history | python3 -c 'import json,sys; h=json.load(sys.stdin); print(sum(1 for x in h if x["restored"]))')
+          echo "::notice title=history::$hist before the restart, $back restored after it"
+          [ "${back:-0}" -ge 3 ] || FAIL "the notification history wasn't kept across the restart ($back of $hist)"
+          q calendar open; shot 24-history-after-restart 3; q calendar close
+          # what was written, for the record
+          for f in notify.json bar.json sounds.json; do echo "::notice title=$f::$(head -c 600 "$C/$f" 2>/dev/null | tr '\n' ' ')"; done
+          cp -a "$C" shots/config 2>/dev/null; cp "$HOME/.local/state/nimbus/notifications.json" shots/ 2>/dev/null
+          cp "$LOG" shots/shell.log 2>/dev/null; cp "$XDG_RUNTIME_DIR/hearth/notifyd.log" shots/ 2>/dev/null
+          P='(Notifications|NotifyHub|NotifyRules|DeskState|Sounds|SystemOsd|BarLayout|BarArrange|ExtraPanels|Islands|ClockPanel|Dock|QuickAccess|SetNotifications|SetSounds|SetDateTime|SetBarDock|Widget[A-Za-z]*|BarWidgets)\.qml'
+          if grep -E "$P.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Expected token|Syntax|Cannot read|failed to load|Type .* unavailable)" "$LOG" >/dev/null 2>&1; then
+            FAIL "$(grep -E "$P" "$LOG" | grep -E 'Error|Cannot|non-existent|not a type|not defined|Unable|Expected|Syntax|unavailable' | sort -u | head -8 | cut -c1-260 | tr '\n' '|')"
+          fi
+          grep -E "$P|notifyd:|panels:|sounds:|bar:|notify:" "$LOG" | sed 's/^.*file:\/\/[^ ]*shell\///' | sort -u | head -10 | while read -r l; do echo "::warning title=shell log::${l:0:400}"; done
+          ls -la shots/post
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: notify-widgets-labwc
+          path: shots
+          retention-days: 14
+
+      - name: Fail if something went wrong
+        if: always()
+        run: test ! -e shots/FAILED
+
+  kwin:
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      options: --privileged -v /dev:/dev -v /lib/modules:/lib/modules:ro
+    steps:
+      - name: Install KWin and Quickshell
+        run: |
+          dnf -y install dnf5-plugins git python3 python3-gobject python3-dbus python3-pillow procps-ng dbus-daemon dbus-tools kwin foot qt6-qtsvg qt6ct \
+            mesa-dri-drivers google-noto-sans-fonts breeze-icon-theme adwaita-icon-theme hicolor-icon-theme libnotify kmod glib2 >/dev/null
+          dnf -y install rsms-inter-fonts >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          kwin_wayland --version || true
+      - uses: actions/checkout@v4
+      - name: Mantel on KWin, round 2
+        timeout-minutes: 15
+        shell: bash
+        run: |
+          mkdir -p shots/post
+          exec > >(tee shots/step.log) 2>&1
+          set +e +o pipefail
+          set -x
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" "$HOME/.config" && chmod 700 "$XDG_RUNTIME_DIR"
+          echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          FAIL() { echo "::error title=KWin::$*"; touch shots/FAILED; }
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          export NIMBUS_SHARE="$PWD/hosts/linux" QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1 KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1
+          # Two keyboard layouts, so KWin's own org.kde.keyboard can switch between them
+          printf '[Layout]\nLayoutList=us,de\nUse=true\nDisplayNames=,\nVariantList=,\n' > "$HOME/.config/kxkbrc"
+          python3 hosts/linux/desktop/shell/hearth-desk pin foot >/dev/null 2>&1 || true
+          cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
+          modprobe vgem 2>/dev/null || echo "::warning title=KWin::no vgem module"
+          /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
+          for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+          [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { FAIL "KWin didn't start: $(tail -5 shots/kwin.log | tr '\n' '|' | cut -c1-500)"; exit 1; }
+          cat > /tmp/shot.py <<'PY'
+          import dbus, os, sys
+          from PIL import Image
+          i = dbus.Interface(dbus.SessionBus().get_object('org.kde.KWin', '/org/kde/KWin/ScreenShot2'), 'org.kde.KWin.ScreenShot2')
+          r, w = os.pipe()
+          res = i.CaptureWorkspace({'native-resolution': True}, dbus.types.UnixFd(w), timeout=15)
+          os.close(w)
+          data = b''
+          while True:
+              c = os.read(r, 1 << 20)
+              if not c:
+                  break
+              data += c
+          W, H, S = int(res['width']), int(res['height']), int(res['stride'])
+          raw = 'RGBA' if int(res.get('format', 6)) in (16, 17, 18, 19) else 'BGRA'
+          Image.frombuffer('RGBA', (W, H), data, 'raw', raw, S, 1).convert('RGB').save(sys.argv[1])
+          PY
+          sed -i 's/^          //' /tmp/shot.py
+          shot() { sleep "${2:-2}"; timeout 25 python3 /tmp/shot.py "shots/post/$1.png" 2>>shots/shot-errors.txt || echo "::warning title=picture::$1 not taken"; }
+          export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland HEARTH_WM=kwin
+          SH="$NIMBUS_SHARE/desktop/shell"
+          quickshell -p "$SH" >shots/shell.log 2>&1 &
+          q() { quickshell ipc -p "$SH" call "$@" 2>/dev/null | grep -v 'WARN' | tail -n1; }
+          for i in $(seq 1 60); do [ -n "$(q notify state)" ] && break; sleep 2; done
+          sleep 8
+          s=$(q notify state); echo "::notice title=state on KWin::$s"
+          [ -n "$s" ] || FAIL "Mantel's notifications didn't load on KWin: $(grep -E 'Notif|Hub|Sounds' shots/shell.log | head -5 | cut -c1-220 | tr '\n' '|')"
+          python3 -c 'import json,sys; s=json.loads(sys.argv[1]); sys.exit(0 if s["jobServer"] else 1)' "$s" || FAIL "no job server on KWin: $s"
+          python3 -c 'import json,sys; s=json.loads(sys.argv[1]); sys.exit(0 if s["layout"] else 1)' "$s" || echo "::warning title=layouts::KWin's layouts not read: $s"
+          echo "::notice title=notification server on KWin::$(gdbus call --session --dest org.freedesktop.DBus --object-path /org/freedesktop/DBus --method org.freedesktop.DBus.GetNameOwner org.freedesktop.Notifications 2>&1) / $(gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.GetServerInformation 2>&1 | head -c 200)"
+          grep -iE "notif|NotificationServer|Notifications.qml" shots/shell.log | head -8 | while IFS= read -r l; do echo "::warning title=shell log (KWin)::$(echo "$l" | cut -c1-300)"; done
+          # (notify-send can't reach the session bus in this container under KWin: "Could not connect: Permission denied";
+          # the same Notify call through gdbus does)
+          N() { gdbus call --session --dest org.freedesktop.Notifications --object-path /org/freedesktop/Notifications --method org.freedesktop.Notifications.Notify "$@"; }
+          N "Hearth Photos" 0 image-x-generic "Your holiday album is ready" "214 photos from Lisbon" '["open","Open","share","Share album"]' '{}' 0
+          N "Hearth Browser" 0 web-browser "Downloading hollow-pines.tar.zst" "1.2 GB of 2.9 GB" '[]' '{"value": <int32 42>}' 0
+          sleep 2; s=$(q notify state); echo "::notice title=notifications on KWin::$s"
+          python3 -c 'import json,sys; s=json.loads(sys.argv[1]); sys.exit(0 if s["history"] >= 2 and s["popups"] >= 2 else 1)' "$s" || FAIL "notifications didn't arrive on KWin: $s"
+          python3 "$SH/hearth-notifyd" test-job "Copying holiday photos" 60 &
+          sleep 3
+          python3 "$SH/hearth-notifyd" test-badge foot 3 0.6
+          shot kwin-01-popup-job-badge 3
+          q calendar open; shot kwin-02-clock-panel-jobs 3; q calendar close
+          # KWin itself switches the layout: the OSD comes from its layoutChanged signal
+          gdbus call --session --dest org.kde.keyboard --object-path /Layouts --method org.kde.KeyboardLayouts.setLayout 1 || echo "::warning title=layouts::setLayout failed"
+          shot kwin-03-layout-osd 1
+          s=$(q notify state); echo "::notice title=after switching::$s"
+          python3 -c 'import json,sys; s=json.loads(sys.argv[1]); sys.exit(0 if "German" in s["layout"] or "de" in s["layout"].lower() else 1)' "$s" || echo "::warning title=layouts::the layout didn't follow KWin: $s"
+          q osd show caps on; shot kwin-04-osd-caps 1
+          q panels add main left; sleep 2; shot kwin-05-panel 3
+          P='(Notifications|NotifyHub|NotifyRules|DeskState|Sounds|SystemOsd|BarLayout|BarArrange|ExtraPanels|Islands|ClockPanel|Dock)\.qml'
+          grep -E "$P.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Expected token|Syntax|Cannot read)" shots/shell.log >/dev/null && FAIL "$(grep -E "$P" shots/shell.log | sort -u | head -6 | cut -c1-260 | tr '\n' '|')"
+          cp "$XDG_RUNTIME_DIR/hearth/notifyd.log" shots/ 2>/dev/null
+          pkill -f quickshell; pkill -f /tmp/kwin_wayland
+          ls -la shots/post
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: notify-widgets-kwin
+          path: shots
+          retention-days: 14
+      - name: Fail if something went wrong
+        if: always()
+        run: test ! -e shots/FAILED
+
+  shots:
+    needs: [labwc, kwin]
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        part: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: tools/shot-notices.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: notify-widgets-labwc
+          path: a
+        continue-on-error: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: notify-widgets-kwin
+          path: b
+        continue-on-error: true
+      - run: |
+          mkdir -p shots/post; cp a/post/*.png b/post/*.png shots/post/ 2>/dev/null || true
+          pip install --quiet pillow >/dev/null 2>&1 || true
+      - name: Pictures 1
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 0
+      - name: Pictures 2
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 1
+      - name: Pictures 3
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 2
+      - name: Pictures 4
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 3
+      - name: Pictures 5
+        run: python3 tools/shot-notices.py emit shots/post ${{ matrix.part }} 4

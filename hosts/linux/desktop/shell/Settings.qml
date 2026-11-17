@@ -11,9 +11,14 @@ Singleton {
     property bool nightLight: false      // warm the screen from sunset to sunrise
     // Night light's details (Settings › Display, 1.14; wlsunset under labwc, KWin's Night Light under KWin)
     property int nightTemp: 3700         // how warm (K)
-    property string nightMode: "times"   // "times" (from nightFrom to nightTo) | "always"
+    property string nightMode: "times"   // "times" (from nightFrom to nightTo) | "location" (sunset to sunrise) | "always"
     property string nightFrom: "19:30"
     property string nightTo: "07:00"
+    // "location" mode: sunset to sunrise at nightPlace (picked by name in Settings › Display; "" = none picked yet)
+    property string nightPlace: ""
+    property real nightLat: 0
+    property real nightLon: 0
+    property int nightFade: 30           // minutes the colours take to change
     property string wallpaper: ""        // a picture file; "" = the look's own (Hearth: the animated fireside, Steam-style: Slate Tide); "builtin:<name>" = one of images/wallpapers; "anim:lava" / "anim:aurora" = the other moving ones
     property bool reduceMotion: false    // still wallpaper, fewer animations
     property real pointerSpeed: 1.0      // controller pointer speed, 0.4 – 2
@@ -73,6 +78,7 @@ Singleton {
         .concat(["menuStyle"])
         .concat(["subTheme", "wallMatch"])
         .concat(["nightTemp", "nightMode", "nightFrom", "nightTo"])
+        .concat(["nightPlace", "nightLat", "nightLon", "nightFade"])
         .concat(["restoreApps"])
         .concat(["netSpeed"])
     onNightLightChanged: save("nightLight")
@@ -80,6 +86,10 @@ Singleton {
     onNightModeChanged: save("nightMode")
     onNightFromChanged: save("nightFrom")
     onNightToChanged: save("nightTo")
+    onNightPlaceChanged: save("nightPlace")
+    onNightLatChanged: save("nightLat")
+    onNightLonChanged: save("nightLon")
+    onNightFadeChanged: save("nightFade")
     onWallpaperChanged: save("wallpaper")
     onReduceMotionChanged: save("reduceMotion")
     onPointerSpeedChanged: save("pointerSpeed")

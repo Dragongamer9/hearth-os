@@ -1,4 +1,4 @@
-// Clock widget: digital or analog, with your cities under it (each city's time and whether it's already tomorrow
+// Clock widget: digital, analog, binary or fuzzy (1.14: "quarter past three"), with your cities under it (each city's time and whether it's already tomorrow
 // there). Settings: the look, seconds, and the cities (type a city or a time zone; hearth-widgets zones gives the
 // offsets, looked at again every half hour so summer time is right). In the bar: the time and your first city.
 import QtQuick
@@ -6,6 +6,7 @@ import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
 import "widget-layout.js" as L
+import "widget-tools.js" as T
 
 WidgetBase {
     id: w
@@ -18,7 +19,8 @@ WidgetBase {
     implicitWidth: compact ? barRow.implicitWidth : 300
     implicitHeight: compact ? 24 : 220
 
-    Timer { interval: w.secs || w.look === "analog" ? 1000 : 10000; running: w.live; repeat: true; triggeredOnStart: true; onTriggered: w.now = Date.now() }
+    readonly property int fuzz: c("fuzzy", 1)
+    Timer { interval: w.secs || w.look === "analog" || w.look === "binary" ? 1000 : 10000; running: w.live; repeat: true; triggeredOnStart: true; onTriggered: w.now = Date.now() }
     // Started only from here (a `running:` binding would be broken by the first start); asked again while it runs:
     // once more when it's done.
     property bool zpAgain: false
@@ -87,6 +89,46 @@ WidgetBase {
                 minimumPixelSize: 14
                 font.weight: Font.Bold
             }
+            Text {   // fuzzy: the time in words
+                visible: w.look === "fuzzy"
+                anchors.fill: parent
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                text: T.fuzzy(w.here.getHours(), w.here.getMinutes(), w.fuzz)
+                color: Theme.text
+                font.family: Theme.font
+                font.pixelSize: 64
+                fontSizeMode: Text.Fit
+                minimumPixelSize: 12
+                wrapMode: Text.WordWrap
+                font.weight: Font.DemiBold
+            }
+            Row {   // binary: hours, minutes (and seconds) in binary-coded decimal, one lit dot per bit
+                id: bin
+                visible: w.look === "binary"
+                anchors.centerIn: parent
+                readonly property var cols: T.binaryColumns(w.here.getHours(), w.here.getMinutes(), w.here.getSeconds(), w.secs)
+                readonly property real dot: Math.max(8, Math.min((parent.height - 3 * 6) / 4, (parent.width - 60) / Math.max(1, cols.length) - 6))
+                spacing: 6
+                Repeater {
+                    model: bin.cols
+                    delegate: Column {
+                        required property var modelData
+                        required property int index
+                        spacing: 6
+                        rightPadding: index % 2 === 1 && index < bin.cols.length - 1 ? 12 : 0
+                        anchors.bottom: parent ? parent.bottom : undefined
+                        Repeater {
+                            model: parent.modelData
+                            delegate: Rectangle {
+                                required property var modelData
+                                width: bin.dot; height: bin.dot; radius: bin.dot / 2
+                                color: modelData ? Theme.accent : Qt.rgba(Theme.text.r, Theme.text.g, Theme.text.b, 0.12)
+                            }
+                        }
+                    }
+                }
+            }
             Canvas {
                 id: face
                 visible: w.look === "analog"
@@ -147,7 +189,15 @@ WidgetBase {
             spacing: 6
             WBtn { text: "Digital"; on: w.look === "digital"; onClicked: w.set("style", "digital") }
             WBtn { text: "Analog"; on: w.look === "analog"; onClicked: w.set("style", "analog") }
-            WBtn { text: "Seconds"; on: w.secs; onClicked: w.set("seconds", !w.secs) }
+            WBtn { text: "Binary"; on: w.look === "binary"; onClicked: w.set("style", "binary") }
+            WBtn { text: "Fuzzy"; on: w.look === "fuzzy"; onClicked: w.set("style", "fuzzy") }
+        }
+        RowLayout {
+            spacing: 6
+            WBtn { visible: w.look !== "fuzzy"; text: "Seconds"; on: w.secs; onClicked: w.set("seconds", !w.secs) }
+            WBtn { visible: w.look === "fuzzy"; text: "Five minutes"; on: w.fuzz === 1; onClicked: w.set("fuzzy", 1) }
+            WBtn { visible: w.look === "fuzzy"; text: "Quarters"; on: w.fuzz === 2; onClicked: w.set("fuzzy", 2) }
+            WBtn { visible: w.look === "fuzzy"; text: "Part of day"; on: w.fuzz === 3; onClicked: w.set("fuzzy", 3) }
         }
         Text { text: "Cities"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13 }
         Flow {
