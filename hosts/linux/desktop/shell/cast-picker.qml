@@ -7,7 +7,8 @@
 // Mantel's look (Theme.qml). Keys and the controller: arrows / D-pad move, Tab switches Screens ↔ Windows,
 // Enter / A shares, Esc / B cancels. Nothing is shared until you choose.
 //   HEARTH_CAST_REQUEST  {kind: cast|shot, app, screens: [{name, label, w, h, thumb}], windows: [{id, title, app,
-//                        thumb, minimized}], desktop (a "Whole desktop" tile, screenshots)}
+//                        thumb, minimized}], desktop (a "Whole desktop" tile, screenshots), hiddenCount (windows hidden
+//                        from sharing, not listed), screensShowHidden (KWin can't paint those out of a whole screen)}
 //   HEARTH_CAST_RESULT   {kind: screen, name} | {kind: window, id} | {kind: desktop} | {cancel: true}
 // For checks: quickshell ipc -p <this file> call cast tab screens|windows | select <n> | share | cancel | state
 import QtQuick
@@ -261,6 +262,15 @@ ShellRoot {
                     }
                 }
 
+                // Windows hidden from screen sharing (their title bar menu) are never listed.
+                Text {
+                    Layout.fillWidth: true
+                    visible: (root.req.hiddenCount || 0) > 0
+                    text: root.req.hiddenCount + (root.req.hiddenCount === 1 ? " window is" : " windows are") + " hidden from sharing and not listed"
+                        + (root.req.screensShowHidden && root.tab !== "windows" ? ". KWin can't leave " + (root.req.hiddenCount === 1 ? "it" : "them") + " out of a whole screen: minimize " + (root.req.hiddenCount === 1 ? "it" : "them") + " first" : "")
+                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 13
+                    wrapMode: Text.WordWrap
+                }
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 12

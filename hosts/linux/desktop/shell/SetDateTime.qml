@@ -1,10 +1,12 @@
 // Hearth Settings › Date & time: automatic time (timedatectl set-ntp), the time zone (search, or region then
 // city), setting the clock by hand, and a 12- or 24-hour clock (Settings.clock24, which the taskbar follows).
-// Changes that need root go through hearth-admin.
+// Changes that need root go through hearth-admin. 1.14: the clock's panel (in the bar): world clocks, another calendar's
+// dates and holidays under the month (BarLayout.qml's bar.json; saved only when you change one).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
+import "calendars.js" as Cal
 
 SetPage {
     id: page
@@ -161,6 +163,43 @@ SetPage {
             Layout.fillWidth: true
             text: "The time zone and automatic time are set here on Hearth, the OS."
             color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+        }
+    }
+
+    // ------------------------------------------------ the clock's panel (1.14)
+    readonly property string zq: zoneSearch.text.trim().toLowerCase()
+    readonly property var zoneMatches: zq.length < 2 ? [] : zones.filter(z => (z.city + " " + z.region + " " + z.zone).toLowerCase().includes(zq) && BarLayout.clockZones.indexOf(z.zone) < 0).slice(0, 6)
+    SetCardGroup {
+        title: "The clock's panel"
+        SetDropdown {
+            icon: "calendar"; title: "Another calendar"; sub: "Its date under each day of the month"
+            options: Cal.CALENDARS.map(c => ({ value: c.id, label: c.name }))
+            current: BarLayout.clockAlt
+            onChosen: v => BarLayout.setClock("clockAlt", v)
+        }
+        SetDropdown {
+            icon: "sparkle"; title: "Holidays"; sub: "Marked on the month, the next one under it"
+            options: Cal.HOLIDAY_SETS.map(c => ({ value: c.id, label: c.name }))
+            current: BarLayout.clockHolidays
+            onChosen: v => BarLayout.setClock("clockHolidays", v)
+        }
+        Repeater {
+            model: BarLayout.clockZones
+            delegate: SetRow {
+                required property string modelData
+                icon: "globe"; title: modelData.split("/").pop().replace(/_/g, " "); sub: modelData
+                value: "Remove"
+                onActivated: BarLayout.setClock("clockZones", BarLayout.clockZones.filter(z => z !== modelData))
+            }
+        }
+        SetField { id: zoneSearch; placeholder: "Add a world clock: type a city (Tokyo, New York…)" }
+        Repeater {
+            model: page.zoneMatches
+            delegate: SetRow {
+                required property var modelData
+                icon: "plus"; title: modelData.city; sub: modelData.region + " · UTC" + modelData.offset
+                onActivated: { BarLayout.setClock("clockZones", BarLayout.clockZones.concat([modelData.zone]).slice(0, 6)); zoneSearch.text = ""; }
+            }
         }
     }
 }

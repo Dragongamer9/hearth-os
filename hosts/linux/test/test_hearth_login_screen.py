@@ -411,6 +411,7 @@ class Watch(Box):
 
     def test_the_greeter_on_screen_then_a_sign_in_marks_it_working(self):
         self.m.TIMEOUT = 0.3
+        self.m.GOOD_SECS = 0.2
         self.write('/run/user/990/hearth-greeter-ready', '')
         seen = {'n': 0}
         real = self.m.signed_in_through_greetd
@@ -445,10 +446,54 @@ class Watch(Box):
         def later():
             n['i'] += 1
             return n['i'] > 5
+        self.m.GOOD_SECS = 0
         with mock.patch.object(self.m, 'update_state', side_effect=OSError('full')), \
                 mock.patch.object(self.m, 'signed_in_through_greetd', side_effect=later):
             self.assertEqual(self.m.cmd_watch(poll=0.01), 0)
         self.assertNotIn('start --no-block sddm.service', self.systemctl_calls())
+
+    def signed_in(self, pattern):
+        """signed_in_through_greetd answering PATTERN's 1s and 0s in turn, then 0."""
+        it = iter(pattern)
+        return mock.patch.object(self.m, 'signed_in_through_greetd', side_effect=lambda: bool(next(it, 0)))
+
+    def test_a_session_that_crashes_right_after_signing_in_is_never_good(self):
+        # Signed in, the session gone a moment later, twice: SDDM, counted, never marked as working (review, Nov 17).
+        self.m.TIMEOUT, self.m.GOOD_SECS = 5, 5
+        self.write('/run/user/990/hearth-greeter-ready', '')
+        with self.signed_in([0, 1, 1, 0, 0, 1, 1, 0]):
+            self.m.cmd_watch(poll=0.02)
+        st = self.state()
+        self.assertNotIn('lastGood', st)
+        self.assertEqual(st['failures'], 1)
+        self.assertIn('right after signing in', st['last']['why'])
+        self.assertIn('start --no-block sddm.service', self.systemctl_calls())
+        self.assertFalse(self.exists('/run/hearth/login-greetd'))
+        self.assertFalse(self.exists('/run/user/990/hearth-greeter-ready'), 'the greeter has to show again after a crash')
+
+    def test_one_early_end_then_a_session_that_stays_up_is_good(self):
+        self.m.TIMEOUT, self.m.GOOD_SECS = 5, 0.3
+        self.write('/run/user/990/hearth-greeter-ready', '')
+        with self.signed_in([1, 0] + [1] * 400):
+            self.assertEqual(self.m.cmd_watch(poll=0.02), 0)
+        st = self.state()
+        self.assertEqual(st['failures'], 0)
+        self.assertNotIn('pending', st)
+        self.assertIn('stayed up', st['lastGood']['why'])
+        self.assertNotIn('start --no-block sddm.service', self.systemctl_calls())
+
+    def test_a_session_too_short_to_count_is_a_failure_at_the_next_start(self):
+        self.m.TIMEOUT, self.m.GOOD_SECS = 0.4, 5
+        self.write('/run/user/990/hearth-greeter-ready', '')
+        with self.signed_in([1, 1, 0]), mock.patch.object(self.m, 'cmd_fallback', return_value=0) as fb:
+            self.m.cmd_watch(poll=0.02)         # the PC switched off before anything else happened
+        self.assertIn('didn\'t show', fb.call_args[0][0], 'the greeter has to come back after the session ended')
+        self.assertEqual(self.state()['pending']['early'], 1)
+        self.boot(2)
+        self.m.cmd_select()
+        st = self.state()
+        self.assertEqual(st['failures'], 1)
+        self.assertIn('right after signing in', st['last']['why'])
 
     def test_the_greeters_own_restart_counts_as_working(self):
         self.write('/run/user/990/hearth-greeter-ok', '')

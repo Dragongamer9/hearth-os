@@ -245,6 +245,8 @@ ShellRoot {
     Loader { source: "Clipboard.qml" }
     Loader { source: "Mixer.qml" }
     Loader { source: "SnapLayouts.qml" }
+    // Force close a frozen window (Ctrl+Alt+Esc, KWin only): loaded by file name like the rest here.
+    Loader { source: "ForceClose.qml" }
     // Recording the screen (Recorder.qml, hearth-record) and the capture dot that shows whenever the screen is being
     // recorded or someone is connected with Remote desktop (CaptureIndicator.qml, hearth-vnc). Loaded by file name: a
     // problem in either only loses it.
@@ -296,6 +298,11 @@ ShellRoot {
     FileManager { id: files }
     FilesIpc { get: () => files; peek: () => files }
     VolumeOsd { id: osd }
+    // 1.14: Caps Lock, Num Lock, the keyboard layout and the microphone (SystemOsd.qml), and Arrange the bar with the
+    // extra panels (BarArrange.qml, ExtraPanels.qml): loaded by file name, so a problem in one only loses it.
+    Loader { source: "SystemOsd.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the keyboard and microphone messages (SystemOsd.qml) couldn't load") }
+    Loader { source: "BarArrange.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Arrange the bar (BarArrange.qml) couldn't load") }
+    Loader { source: "ExtraPanels.qml"; onStatusChanged: if (status === Loader.Error) console.warn("Mantel: extra panels (ExtraPanels.qml) couldn't load") }
     // The media keys (MPRIS) and turning the screen off / sleeping when idle: loaded separately, so a Quickshell
     // without one of these services only loses that.
     Loader { source: "MediaKeys.qml" }

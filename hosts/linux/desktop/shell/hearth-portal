@@ -12,6 +12,7 @@
   hearth-portal show PATH [--props]     Hearth Files at PATH (a file: its folder with it picked; --props: its Properties)
   hearth-portal pick REQUEST.json       the picker for a request (as the portal builds it); prints what was picked
   hearth-portal cast outputs | shot FILE [TARGET] | stream KIND ARG SECONDS   KWin's screens, a screenshot, a stream
+                                    (checks only: refused unless HEARTH_CHECKS=1, as it skips the Allow prompt)
                                         (checks; hearth-kwin-cast works only for hearth-portal)
 
 How the window opens: in Desktop Mode, ShowFolders and friends use the desktop's own Hearth Files (quickshell ipc).
@@ -749,8 +750,12 @@ def main(argv):
             p = uri_path(rest[0]) or rest[0]
             return show(os.path.abspath(os.path.expanduser(p)), '--props' in rest[1:])
         if cmd == 'cast' and rest:
-            # Checks (kwin-input.yml) and Send logs: what hearth_screencast does, from hearth-portal (hearth-kwin-cast
-            # only works for it): outputs | shot FILE [screen NAME | window ID | workspace] | stream KIND ARG SECONDS
+            # Checks only (kwin-input.yml's kwin_e2e.py sets HEARTH_CHECKS=1): what hearth_screencast does, from
+            # hearth-portal (hearth-kwin-cast only works for it): outputs | shot FILE [screen NAME | window ID |
+            # workspace] | stream KIND ARG SECONDS. These skip the Allow prompt, so outside the checks they're refused:
+            # a program on this PC can't use them to take a screenshot or stream the screen silently.
+            if os.environ.get('HEARTH_CHECKS') != '1':
+                raise Fail('cast is only for Hearth\'s checks (HEARTH_CHECKS=1): apps ask through the screen-sharing portal')
             import hearth_screencast as hs
             if rest[0] == 'outputs':
                 outs, v = hs.list_outputs()

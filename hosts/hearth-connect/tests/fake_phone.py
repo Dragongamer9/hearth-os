@@ -30,6 +30,8 @@ INCOMING = [
     'kdeconnect.sms.request_conversations', 'kdeconnect.sms.request_conversation', 'kdeconnect.systemvolume', 'kdeconnect.sftp.request',
     'kdeconnect.contacts.request_all_uids_timestamps', 'kdeconnect.contacts.request_vcards_by_uid',
     'kdeconnect.connectivity_report.request', 'kdeconnect.photo.request',
+    # round 2: this PC's lock state and notifications, and this PC typing and pointing on the phone
+    'kdeconnect.lock', 'kdeconnect.notification', 'kdeconnect.mousepad.request',
 ]
 OUTGOING = [
     'kdeconnect.ping', 'kdeconnect.battery', 'kdeconnect.share.request', 'kdeconnect.notification', 'kdeconnect.clipboard',
@@ -37,6 +39,7 @@ OUTGOING = [
     'kdeconnect.runcommand.request', 'kdeconnect.telephony', 'kdeconnect.sms.messages', 'kdeconnect.presenter',
     'kdeconnect.systemvolume.request', 'kdeconnect.sftp', 'kdeconnect.contacts.response_uids_timestamps',
     'kdeconnect.contacts.response_vcards', 'kdeconnect.connectivity_report', 'kdeconnect.photo',
+    'kdeconnect.lock.request', 'kdeconnect.notification.request', 'kdeconnect.mousepad.echo', 'kdeconnect.mousepad.keyboardstate',
 ]
 
 
@@ -334,6 +337,18 @@ def scene():
         pass
     if os.environ.get('SCENE_CALL') == '1':
         ph.send('kdeconnect.telephony', {'event': 'ringing', 'phoneNumber': '+1 555 0199', 'contactName': ''})
+    if os.environ.get('SCENE_ROUND2') == '1':
+        # Round 2's parts: the phone's Remote keyboard in use, a text and a link it shared, this PC's notifications
+        # going to it, and staying awake while it's linked.
+        ph.send('kdeconnect.mousepad.keyboardstate', {'state': True})
+        ph.send('kdeconnect.share.request', {'text': 'Gate code 4417, second door on the left'})
+        ph.send('kdeconnect.share.request', {'url': 'https://hearthos.fun/docs'})
+        ph.send('kdeconnect.lock.request', {'requestLocked': True})
+        for k in ('sendNotifications', 'stayAwake', 'muteOnCall'):
+            try:
+                call('option', {'id': ph.id, 'key': k, 'on': True})
+            except RuntimeError:
+                pass
     print(json.dumps({'id': ph.id, 'paired': True}), flush=True)
     # Answers what Hearth asks for while the pictures are taken.
     while True:

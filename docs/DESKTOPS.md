@@ -30,6 +30,24 @@ lacks gets written for Mantel. KWin draws, moves and snaps the windows; Mantel i
   Mantel's keys), Mantel starts its bridge to KWin itself (`desktop/shell/hearth-kwin-bridge`), and the autostart runs
   `desktop/shell/hearth-screens restore` (screens) under KWin when it's there;
   wlr-randr and display.sh stay labwc's. Keyboard shortcuts (Super alone, Super+Alt+R...) are the windows part's.
+- **KDE's window extras, in Hearth's look (KWin only; labwc can't do them, so Mantel hides them there):**
+  - *Live previews*: rest the pointer on a running app in the dock or the bar's apps and KWin draws a card with a live
+    picture of each of its windows (`desktop/kwin/windows/hearth-previews.qml`, a declarative KWin script the bridge
+    loads; Mantel's colours from `~/.config/hearth/theme.json`). Click one to bring it up, middle-click or X to close.
+  - *Alt+Tab* (and the controller's LB / RB): Hearth's own switcher, `org.hearth.switcher` (os/system_files
+    `usr/share/kwin/tabbox`, and `kwin-wayland/tabbox` for newer KWin), picked in `kwin/windows/xdg/kwinrc` [TabBox];
+    the colours are Hearth's KDE scheme (kdeglobals), so they follow your look and accent.
+  - *Snap layouts from Maximize*: resting the pointer on a window's Maximize button opens Snap layouts right under it
+    (`hearth-windows.js` finds the button on Hearth's Aurorae frame, the bridge waits 0.55 s, SnapLayouts' hoverOpen).
+  - *Force close*: Ctrl+Alt+Esc (or "Force close (not responding)…" in the title bar menu): KWin's click-a-window, then
+    Hearth's "Force close?" (ForceClose.qml); the window's process is asked to end, then made to after 3 s.
+  - *Hide from screen sharing*: a title bar menu entry; Hearth's portal (hearth_screencast.py) never offers or shares
+    that window, and KWin paints it out of whole screens too where it can (excludeFromCapture; the picker says if not).
+  - *KWin's Overview, Present windows and Desktop grid*: the Task view button by the app menu (right-click for the
+    other two), Super+W / Ctrl+F10 / Ctrl+F8 (Hearth's keys, KDE's own freed for them), View + Y on the controller.
+    Their colours are Hearth's KDE scheme. Hot corners are Settings › Screen edges (SetKwinEdges.qml).
+  - The keys are listed in Settings › Keyboard › Keyboard shortcuts (`hearth-system shortcuts` reads shortcuts.json
+    under KWin). Checked in kwin-windows.yml (pictures `kwin-preview-zoom`, `kwin-alt-tab`, ...).
 - **Not yet under KWin** (their own branches): keyboard layouts and pointer settings applied live, screens, the
   magnifier and Mantel's own window list and workspaces through KWin.
 
