@@ -48,8 +48,9 @@ jobs:
           echo "::notice title=Debian screen locker packages::$(apt-cache search screenlocker | tr '\n' '|') kwin-wayland needs: $(apt-cache depends kwin-wayland 2>/dev/null | grep -i lock | tr '\n' ' ')"
           # The same lookup as os-bases/peppermint/build.sh.
           KSL=""; for p in kscreenlocker libkscreenlocker6 libkscreenlocker5; do apt-cache show "$p" >/dev/null 2>&1 && { KSL=$p; break; }; done
-          echo "::notice title=Debian kscreenlocker::picked '$KSL'"
-          apt-get install -y -qq --no-install-recommends $KSL binutils python3 > /tmp/apt.log 2>&1 || echo "::error title=Debian kscreenlocker::$(tail -3 /tmp/apt.log | tr '\n' '|')"
+          PLS=""; for p in libplasma6 libplasma5; do apt-cache show "$p" >/dev/null 2>&1 && { PLS=$p; break; }; done
+          echo "::notice title=Debian kscreenlocker::picked '$KSL' and '$PLS'"
+          apt-get install -y -qq --no-install-recommends $KSL $PLS binutils python3 > /tmp/apt.log 2>&1 || echo "::error title=Debian kscreenlocker::$(tail -3 /tmp/apt.log | tr '\n' '|')"
           g=$(ls /usr/lib/*/libexec/kscreenlocker_greet /usr/libexec/kscreenlocker_greet 2>/dev/null | head -1)
           echo "::notice title=Debian kscreenlocker::$(dpkg-query -W kscreenlocker 2>/dev/null) $g"
           [ -n "$g" ] && echo "::notice title=Debian greeter strings::$(strings "$g" | grep -iE 'shell|theme|lookandfeel|lockscreenmainscript|APIVersion|plasmashellrc|kdeglobals' | sort -u | head -40 | tr '\n' '|' | cut -c1-1800)"
