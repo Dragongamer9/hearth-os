@@ -8,7 +8,7 @@ name: Fingerprint sign-in (PAM)
 
 on:
   push:
-    branches: [main]
+    branches: [main, bughunt, 'feature/**']
     paths: ['os/system_files/usr/libexec/nimbus/hearth-fingerprint-pam', 'os-bases/peppermint/system_files/etc/pam.d/**', '.github/workflows/fingerprint-pam.yml']
   workflow_dispatch:
 
