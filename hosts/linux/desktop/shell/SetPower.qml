@@ -23,8 +23,9 @@ SetPage {
     SetJob { id: hwJob; helper: "/usr/libexec/nimbus/hearth-hwset"; admin: true }
     Component.onCompleted: { power(["status"]); hwStatus.run(["status"], r => page.hw = r, () => page.hw = null); moreJob.run(["status"], r => page.more = r, () => page.more = null); reveal(); }
     // `settings page power:off` opens it at "Turn off or switch" (the Desktop Mode test's picture); only scrolls.
-    function reveal() { if (SettingsNav.pageAnchor === "off") { SettingsNav.pageAnchor = ""; revealTimer.start(); } }
-    Timer { id: revealTimer; interval: 1500; onTriggered: page.contentY = Math.max(0, Math.min(offCard.mapToItem(page.contentItem, 0, 0).y - 16, page.contentHeight - page.height)) }
+    // The anchor stays until the timer: opening Settings can make the page twice in a row, and the second must see it.
+    function reveal() { if (SettingsNav.pageAnchor === "off") revealTimer.start(); }
+    Timer { id: revealTimer; interval: 1500; onTriggered: { if (SettingsNav.pageAnchor === "off") SettingsNav.pageAnchor = ""; page.contentY = Math.max(0, Math.min(offCard.mapToItem(page.contentItem, 0, 0).y - 16, page.contentHeight - page.height)); } }
     // 1.14 (hearth-powerset): the lid, apps keeping it awake, whether it can hibernate, the battery's health.
     property var more: null
     property bool askHibernate: false

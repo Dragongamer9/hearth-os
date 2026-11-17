@@ -11,8 +11,9 @@ SetPage {
     title: "Window frames & sign-in splash"
     property int tint: Settings.frameTint
     // `settings page look-more:apps` opens it at "Apps follow Hearth" (the Desktop Mode test's picture); only scrolls.
-    function reveal() { if (SettingsNav.pageAnchor === "apps") { SettingsNav.pageAnchor = ""; revealTimer.start(); } }
-    Timer { id: revealTimer; interval: 600; onTriggered: page.contentY = Math.max(0, Math.min(appsCard.mapToItem(page.contentItem, 0, 0).y - 16, page.contentHeight - page.height)) }
+    // The anchor stays until the timer: opening Settings can make the page twice in a row, and the second must see it.
+    function reveal() { if (SettingsNav.pageAnchor === "apps") revealTimer.start(); }
+    Timer { id: revealTimer; interval: 600; onTriggered: { if (SettingsNav.pageAnchor === "apps") SettingsNav.pageAnchor = ""; page.contentY = Math.max(0, Math.min(appsCard.mapToItem(page.contentItem, 0, 0).y - 16, page.contentHeight - page.height)); } }
     Component.onCompleted: reveal()
     function mix(a, b, t) { return Qt.rgba(a.r * (1 - t) + b.r * t, a.g * (1 - t) + b.g * t, a.b * (1 - t) + b.b * t, 1); }
 

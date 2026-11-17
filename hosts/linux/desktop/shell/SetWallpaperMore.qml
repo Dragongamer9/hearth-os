@@ -30,8 +30,9 @@ SetPage {
     function setPotd(k, v) { const o = Object.assign({ on: false, source: "bing" }, Settings.wallPotd || {}); o[k] = v; Settings.wallPotd = o; }
     function setPair(k, v) { const o = Object.assign({ on: false, light: "", dark: "" }, Settings.wallPair || {}); o[k] = v; Settings.wallPair = o; }
     // `settings page wallpaper-more:potd` opens it at the picture of the day (the Desktop Mode test's picture); only scrolls.
-    function reveal() { if (SettingsNav.pageAnchor === "potd") { SettingsNav.pageAnchor = ""; revealTimer.start(); } }
-    Timer { id: revealTimer; interval: 600; onTriggered: page.contentY = Math.max(0, Math.min(potdCard.mapToItem(page.contentItem, 0, 0).y - 16, page.contentHeight - page.height)) }
+    // The anchor stays until the timer: opening Settings can make the page twice in a row, and the second must see it.
+    function reveal() { if (SettingsNav.pageAnchor === "potd") revealTimer.start(); }
+    Timer { id: revealTimer; interval: 600; onTriggered: { if (SettingsNav.pageAnchor === "potd") SettingsNav.pageAnchor = ""; page.contentY = Math.max(0, Math.min(potdCard.mapToItem(page.contentItem, 0, 0).y - 16, page.contentHeight - page.height)); } }
     Component.onCompleted: reveal()
     function base(f) { return f ? f.replace(/^.*\//, "") : ""; }
     // The desktop's file picker (KDE's or GNOME's), as Personalization's "Choose a picture…".
