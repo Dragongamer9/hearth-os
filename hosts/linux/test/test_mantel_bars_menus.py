@@ -100,7 +100,7 @@ class SettingsOnlyWhenYouChangeThem(unittest.TestCase):
         self.assertIn('preventStealing: mousePress', mt)
         self.assertIn('mouse.source === Qt.MouseEventNotSynthesized', mt)
         # Y goes to the menu first (move a tile), else the keyboard opens as before.
-        self.assertIn('if (!(typeof launcher.padY === "function" && launcher.padY())) openKeyboard();', code(read('Pad.qml')))
+        self.assertIn('if (!(typeof launcher.padY === "function" && launcher.padY()) && !pad.deskY()) openKeyboard();', code(read('Pad.qml')))   # Y on the desktop: the search bar (w3-searchbar)
 
     def test_hints_say_what_the_buttons_do(self):
         # X opens Resize / Move / Take off: "Resize or move" only where the menu has Move; Y moves a tile with the
