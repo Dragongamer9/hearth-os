@@ -31,7 +31,8 @@ if ! ls /usr/lib/*/qt6/plugins/kf6/packagestructure/ 2>/dev/null | grep -qi shel
   found=$(find "$tmp/x" -path '*kf6/packagestructure/*' -iname '*shell*.so' -print -quit)
   [ -n "$found" ] || found=$(find "$tmp/x" -ipath '*packagestructure*' -iname '*shell*' -print -quit)
   [ -n "$found" ] || { echo "install.sh: plasma-workspace has no shell package type; it has: $(find "$tmp/x" -ipath '*structure*' -o -ipath '*kpackage*' | head -20 | tr '\n' ' ')"; \
-    echo "libplasma has: $(dpkg -L "${PLS:-libplasma6}" 2>/dev/null | grep -iE 'structure|kpackage' | head -20 | tr '\n' ' ')"; exit 1; }
+    echo "libplasma has: $( (dpkg -L "${PLS:-libplasma6}" 2>/dev/null || true) | grep -iE 'plugins|structure' | head -30 | tr '\n' ' ' || true)"; \
+    echo "plasma packages: $( (apt-cache search --names-only 'plasma' || true) | cut -d' ' -f1 | grep -iE 'lib|framework|data' | tr '\n' ' ' || true)"; exit 1; }
   missing=$(ldd "$found" | awk '/not found/{print $1}')
   [ -z "$missing" ] || { echo "install.sh: the shell package type needs libraries that aren't installed: $missing"; exit 1; }
   dest="/${found#"$tmp/x/"}"
