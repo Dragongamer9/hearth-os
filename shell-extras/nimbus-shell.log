@@ -1,0 +1,22 @@
+[32m  INFO[0m: Launching config: "/__w/hearth-os/hearth-os/hosts/linux/desktop/shell/shell.qml"
+[32m  INFO[0m: Shell ID: "46d0510b7d07c529e429b39faef616e5" Path ID "46d0510b7d07c529e429b39faef616e5"
+[33m  WARN[0m: Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+[33m  WARN[0m: Call to org.freedesktop.portal.Settings.ReadAll failed QDBusError("org.freedesktop.DBus.Error.UnknownMethod", "No such interface “org.freedesktop.portal.Settings” on object at path /org/freedesktop/portal/desktop")
+[32m  INFO[0m: Saving logs to "/tmp/xdg/quickshell/by-id/6yo5pzmot/log.qslog"
+[31m ERROR[97m quickshell.service.pipewire.loop[0m: Failed to connect pipewire context. Errno: 112
+[33m  WARN[97m quickshell.service.upower[0m: Could not connect to DBus. UPower service will not work.
+[32m  INFO[0m: Configuration Loaded
+[33m  WARN[97m scene[0m: QML FileView at @shell.qml[350:9]: Read of /tmp/home/.config/nimbus/screens.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[128:5]: Read of /etc/nimbus/installed.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Theme.qml[186:5]: Read of /tmp/home/.local/share/nimbus/library.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Buttons.qml[45:5]: Read of /tmp/home/.config/nimbus/buttons.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Launcher.qml[261:5]: Read of /tmp/home/.config/hearth/search.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Activities.qml[183:5]: Read of /tmp/home/.config/nimbus/activities.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @WidgetStore.qml[92:5]: Read of /tmp/home/.config/nimbus/widgets.json failed: File does not exist.
+[33m  WARN[97m scene[0m: QML FileView at @Mixer.qml[66:5]: Read of /tmp/home/.config/nimbus/app-volumes.json failed: File does not exist.
+[33m  WARN[97m quickshell.service.polkit.listener[0m: failed to create subject for listener: No session for pid 32334
+[33m  WARN[97m quickshell.service.polkit[0m: failed to register listener on path "/org/quickshell/PolkitAgent"
+[32m  INFO[97m qml[0m: Mantel's password prompt isn't registered (another agent has this session, or polkit isn't reachable); the classic agent asks
