@@ -13,7 +13,7 @@ name: Mantel on KWin (typing, lock, screen sharing)
 
 on:
   push:
-    branches: [feature/kwin-input]
+    branches: [feature/kwin-input, feature/kwin-1.14]
     paths: ['hosts/linux/desktop/shell/hearth-type', 'hosts/linux/desktop/shell/hearth_screencast.py',
             'hosts/linux/desktop/shell/cast-picker.qml', 'hosts/linux/desktop/shell/Lock.qml', 'hosts/linux/desktop/shell/access-prompt.qml', 'hosts/linux/desktop/shell/hearth-lockcheck',
             'hosts/linux/desktop/shell/Keyboard.qml', 'hosts/linux/desktop/shell/hearth-portal',
