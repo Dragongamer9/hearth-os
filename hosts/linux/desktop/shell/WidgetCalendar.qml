@@ -1,6 +1,6 @@
 // Calendar widget: the month (Monday first, today lit, a dot on days with events; ‹ › for other months) and the
-// agenda under it: what's coming up from Hearth Time's calendar (hearth-widgets events). Click a day to see its
-// events. Settings: show the agenda or not.
+// agenda under it: what's coming up from Hearth Time's calendar and the online accounts with Calendar on
+// (hearth-widgets events). Click a day to see its events. Settings: show the agenda or not.
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
