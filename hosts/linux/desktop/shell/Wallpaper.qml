@@ -44,16 +44,22 @@ PanelWindow {
     onPrimaryChanged: if (primary) stillTimer.restart()
     Timer { id: stillTimer; interval: 5000; running: root.primary; onTriggered: root.saveStill() }
     function saveStill() {
-        if (!contentItem || width < 10 || height < 10) return;
+        if (width < 10 || height < 10) return;
         Quickshell.execDetached(["mkdir", "-p", stillPath.replace(/\/[^/]*$/, "")]);
         grabbing = true;
         Qt.callLater(() => {
-            const ok = contentItem.grabToImage(r => { r.saveToFile(root.stillPath); root.grabbing = false; }, Qt.size(width, height));
+            const ok = scene.grabToImage(r => { r.saveToFile(root.stillPath); root.grabbing = false; }, Qt.size(width, height));
             if (!ok) grabbing = false;
         });
     }
     Item { id: gpuProbe; readonly property bool gpu: GraphicsInfo.api !== GraphicsInfo.Software && GraphicsInfo.api !== GraphicsInfo.Unknown }
     readonly property bool slateMoving: moving && gpu
+
+    // Everything drawn, in one item: a window's own contentItem can't be grabbed ("item has no QML engine"),
+    // so saveStill grabs this.
+    Item {
+        id: scene
+        anchors.fill: parent
 
     // ---------------------------------------------------------------- Lava: big soft blobs drifting slowly
     Item {
@@ -421,5 +427,6 @@ PanelWindow {
         active: root.primary && Theme.deskClock
         visible: !root.grabbing
         source: "DeskClock.qml"
+    }
     }
 }
