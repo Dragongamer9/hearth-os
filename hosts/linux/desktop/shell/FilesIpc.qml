@@ -50,6 +50,14 @@ Scope {
         }
         // The navigation pane's first item of a group (start, bookmarks, places, drives, devices…), lit as with the controller.
         function section(name: string): void { const i = ipc.get().places.findIndex(q => q.section === name); if (i >= 0) { ipc.get().zone = "places"; ipc.get().placeIndex = i; } }
+        // 1.14's extras, for the Desktop Mode test's pictures: the full right-click menu ("Show more options"), group by,
+        // the Tags menu, what carries a tag, Act as administrator (still a password for every change: pkexec).
+        function fullmenu(): void { ipc.get().viaPad = false; ipc.get().menuFull = true; ipc.get().openMenu(!ipc.get().current, -1, -1); }
+        function group(g: string): void { ipc.get().setGroup(g); }
+        function tagmenu(): void { ipc.get().fx.tagMenu(ipc.get().targets()); }
+        function tag(name: string): void { ipc.get().open(""); ipc.get().fx.openTag(name); }
+        function place(id: string): void { const i = ipc.get().places.findIndex(q => q.id === id); if (i >= 0) { ipc.get().zone = "places"; ipc.get().placeIndex = i; } }
+        function admin(on: string): void { ipc.get().fx.admin = on === "on"; ipc.get().reload(); }
         function where(): string { const f = ipc.peek(); return f && f.shown ? f.path + "|" + (f.current ? f.current.name : "") : ""; }
         // The Briefcase, for the Desktop Mode test's pictures: Update All's list, run it, Customize, close a dialog.
         function bcUpdate(): void { ipc.get().open(""); ipc.get().bc.run("bc-update-all", [], null); }

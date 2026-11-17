@@ -1,0 +1,13 @@
+{
+    "KPackageStructure": "KWin/WindowSwitcher",
+    "KPlugin": {
+        "Authors": [ { "Name": "Dragongamer9" } ],
+        "Description": "Hearth's Alt+Tab: live pictures of your windows in a row, in Mantel's look",
+        "Id": "org.hearth.switcher",
+        "License": "GPL-3.0-or-later",
+        "Name": "Hearth",
+        "Website": "https://hearthos.fun"
+    },
+    "X-Plasma-API": "declarativeappletscript",
+    "X-Plasma-MainScript": "ui/main.qml"
+}

@@ -34,9 +34,13 @@ networks often keep devices apart).
 | --- | --- | --- |
 | Notifications | Your phone's notifications pop up in Mantel, with the app's own buttons and a **Reply** box for messages. Dismissing one here dismisses it on the phone. | Settings › Phone lists them, with Reply, buttons and Dismiss |
 | Messages (SMS, Android) | | Settings › Phone › **Messages**: every conversation with names from your contacts, read one, reply, or start a new text |
-| Calls | "Ada is calling" pops up with **Mute ringer**; what's playing here pauses and plays again when the call ends (only what Hearth paused) | |
+| Calls | "Ada is calling" pops up with **Mute ringer**; what's playing here pauses and plays again when the call ends (only what Hearth paused); with **Mute this PC's sound during calls** the sound goes off too (on again after, only if Hearth muted it); **Only once I answer** waits for the answer instead of the ringing | |
+| Lock | The phone's **Lock** button locks this PC (KWin's locker, or the session's lock on labwc) and shows whether it's locked. A phone can never unlock it: that always takes your password here | |
+| This PC's notifications | | With **Send this PC's notifications** on (off until you turn it on), what apps here show in their pop-ups shows on the phone; dismiss it there and it goes here. Choose whether the text goes, only ones that stay, how urgent, and apps left out |
+| Keyboard and mouse for the phone | | **This PC's keyboard and mouse on the phone**: a touchpad on the page moves a pointer on the phone (tap, long press, scroll) and **Type on the phone** sends what you type to the field it has open (the phone's KDE Connect Remote Keyboard) |
+| Stay awake | | **Keep this PC awake while it's connected** (off until turned on): no screen-off or sleep while that phone is linked |
 | Clipboard | Copy on the phone, paste on the PC | And the other way round (Send clipboard too) |
-| Files, links, text | Share to "Hearth PC": saved in Downloads › Hearth Connect after you accept (or without asking, if you choose) | **Send files…** (Hearth Files' picker) |
+| Files, links, text | Share to "Hearth PC": files are saved in Downloads › Hearth Connect after you accept (or without asking, if you choose); text and links pop up with **Copy** (and **Open** for a web link: nothing opens by itself) and stay listed on the page | **Send files…** (Hearth Files' picker), and **Send text or a link** (a link goes as a link, so the phone offers to open it) |
 | Browse the phone's files | | **Browse its files**: the phone's storage opens in Hearth Files |
 | Take a photo | | **Take a photo**: the phone's camera opens, the picture comes to Downloads (only a photo you asked for in the last 5 minutes is kept without asking; any other waits for you like a file) |
 | Ring / ping | Find my PC: it rings | **Ring** (find my phone) and **Ping** |
@@ -47,9 +51,13 @@ networks often keep devices apart).
 | Battery and signal | The phone's battery and signal show in Settings › Phone and on the Quick Access tile | The PC's battery (laptops) shows on the phone |
 
 Each phone has its own switches (What *phone* can do): show its notifications, share the clipboard, touchpad /
-keyboard / presentation remote, pause media during calls, run commands, control this PC's volume, save its files
-without asking. All are on for a newly paired phone except saving files without asking; phones paired before
-"control this PC's volume" existed have it on too.
+keyboard / presentation remote, pause media during calls (and only once answered, and mute this PC's sound), run
+commands, control this PC's volume, lock this PC, keep this PC awake, save its files without asking; and "Send this
+PC's notifications" under Use this PC on the phone. Lock and the round-1 switches are on for a newly paired phone;
+saving files without asking, sending this PC's notifications, staying awake, muting and "only once I answer" are off
+until you turn them on (for phones paired before they existed too).
+
+Not yet (later): the phone as a second screen (KDE Connect's virtual monitor) and the link over Bluetooth.
 
 **Browsing the phone's files** works the way KDE Connect does it: the phone starts its file server with a one-time
 password and sends it over the paired, encrypted link, and Hearth opens it without checking the file server's own key
@@ -66,7 +74,14 @@ address on your network.
   that unit.
 - `hearth-connect --turn-on` / `--turn-off` / `--is-enabled`, and `hearth-connect --call <request> '<json>'` for
   everything else (Settings › Phone uses them through `hosts/linux/desktop/shell/hearth-phone`).
-- `hearth-settings phone:notifications`, `phone:commands`, `phone:pair` open the page at that part;
+- How round 2 works: `kdeconnect.lock` (plugins/lock.rs: ScreenSaver.Lock on KWin, `loginctl lock-session` on labwc,
+  whose lock screen sets logind's LockedHint in Lock.qml), this PC's notifications watched on the session bus with
+  org.freedesktop.DBus.Monitoring (plugins/sendnotify.rs; its choices are "notifyOut" in settings.json), the outgoing
+  `kdeconnect.mousepad.request` (plugins/remote.rs; Settings' touchpad writes straight to the service's socket so the
+  pointer keeps up), staying awake as a logind "block" inhibitor for idle and sleep (`systemd-inhibit` reading a pipe
+  from the service, so it lets go the moment the phone or the service goes).
+- `hearth-settings phone:notifications`, `phone:commands`, `phone:pair` (and `phone:shared`, `phone:remote`,
+  `phone:sendnotify`, `phone:options`) open the page at that part;
   `phone-messages:<conversation>` opens a conversation.
 - sshfs (in the image) opens the phone's files; wpctl the volume; playerctl the players; wl-clipboard / xclip the
   clipboard; uinput the touchpad and keyboard.
