@@ -85,6 +85,7 @@ textarea.inp { min-height:5em; resize:vertical; }
 .drow { display:flex; gap:.6em; justify-content:flex-end; margin-top:1em; flex-wrap:wrap; }
 .acct { display:grid; grid-template-columns:1fr auto; gap:.3em .8em; align-items:center; padding:.6em .8em; border-radius:min(12px, var(--corner, 12px)); background:var(--panel2); border:1px solid var(--line); margin:.4em 0; }
 .acct small { color:var(--muted); display:block; }
+.acct .tag { font-size:.72em; padding:.1em .5em; border-radius:999px; background:color-mix(in srgb, var(--accent, #6fb7ff) 22%, transparent); color:var(--text); vertical-align:middle; }
 .osk { display:grid; grid-template-columns:repeat(10, 1fr); gap:.3em; margin-top:.5em; }
 .osk button { padding:.45em 0; border-radius:min(9px, var(--corner, 9px)); background:var(--panel3); border:1px solid var(--line); }
 .osk .wide { grid-column:span 2; }

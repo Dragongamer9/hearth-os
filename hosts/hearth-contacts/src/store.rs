@@ -26,6 +26,15 @@ pub struct Account {
     pub book_name: String,
     pub last_sync: String,
     pub last_error: String,
+    /// The Online accounts account this address book comes from (Settings › Accounts › Online accounts): its
+    /// password or token is asked of `hearth-accounts` at each sync and never kept here (online.rs). Empty for
+    /// Contacts' own accounts (their passwords are in the keyring under "hearth-contacts", secrets.rs).
+    pub online: String,
+    /// That account was removed from Online accounts, or has Contacts switched off there: the copy stays here,
+    /// nothing is synced, until it's back.
+    pub paused: bool,
+    /// The Online accounts account this one was offered to be joined with, and the person said to keep them apart.
+    pub merge_declined: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -156,7 +165,8 @@ impl Store {
     pub fn books(&self) -> Vec<Book> {
         let mut out = vec![Book { id: LOCAL.into(), name: "On this computer".into(), kind: "local".into(), count: self.count(LOCAL) }];
         for a in self.accounts() {
-            out.push(Book { id: a.id.clone(), name: if a.book_name.is_empty() { a.name.clone() } else { format!("{} · {}", a.name, a.book_name) }, kind: "carddav".into(), count: self.count(&a.id) });
+            let kind = if a.online.is_empty() { "carddav" } else { "online" };
+            out.push(Book { id: a.id.clone(), name: if a.book_name.is_empty() { a.name.clone() } else { format!("{} · {}", a.name, a.book_name) }, kind: kind.into(), count: self.count(&a.id) });
         }
         out
     }

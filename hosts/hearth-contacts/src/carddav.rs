@@ -158,6 +158,13 @@ pub struct Client {
     auth: String,
 }
 
+/// How to sign in to the server: a user name and password (Contacts' own accounts, Nextcloud's app password), or an
+/// OAuth access token (a Google account from Online accounts). Only ever held in memory for one sync.
+pub enum Cred {
+    Password { user: String, pass: String },
+    Token { token: String },
+}
+
 pub struct Resp {
     pub status: u16,
     pub etag: String,
@@ -185,13 +192,22 @@ pub fn normalize_server(s: &str) -> Result<Url, String> {
 
 impl Client {
     pub fn new(user: &str, pass: &str) -> Client {
+        Client::with_auth(format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(format!("{user}:{pass}"))))
+    }
+
+    pub fn bearer(token: &str) -> Client { Client::with_auth(format!("Bearer {token}")) }
+
+    pub fn from_cred(c: &Cred) -> Client {
+        match c { Cred::Password { user, pass } => Client::new(user, pass), Cred::Token { token } => Client::bearer(token) }
+    }
+
+    fn with_auth(auth: String) -> Client {
         let agent = ureq::AgentBuilder::new()
             .redirects(0)
             .timeout_connect(Duration::from_secs(15))
             .timeout(Duration::from_secs(60))
             .user_agent(USER_AGENT)
             .build();
-        let auth = format!("Basic {}", base64::engine::general_purpose::STANDARD.encode(format!("{user}:{pass}")));
         Client { agent, auth }
     }
 
@@ -332,9 +348,14 @@ fn xml_escape(s: &str) -> String { s.replace('&', "&amp;").replace('<', "&lt;").
 /// Brings the local copy of the account's address book and the server's into step. Changes on only one side go to
 /// the other; when a card changed on both, the server's is kept and the local one is saved next to it as a copy.
 pub fn sync(store: &Store, a: &Account, pass: &str) -> Result<SyncReport, String> {
+    sync_with(store, a, &Cred::Password { user: a.username.clone(), pass: pass.to_string() })
+}
+
+/// The same with any way of signing in (an address book from Online accounts: online.rs).
+pub fn sync_with(store: &Store, a: &Account, cred: &Cred) -> Result<SyncReport, String> {
     let book = normalize_server(&a.book_url)?;
     let book = if book.path().ends_with('/') { book } else { Url::parse(&format!("{}/", book)).map_err(|e| e.to_string())? };
-    let c = Client::new(&a.username, pass);
+    let c = Client::from_cred(cred);
     let mut state = load_state(store, &a.id);
     let mut rep = SyncReport::default();
 

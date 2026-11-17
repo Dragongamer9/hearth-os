@@ -32,6 +32,14 @@ pub struct Event {
     /// Minutes before the start (all-day events: before 9:00 on the day).
     pub reminders: Vec<i64>,
     pub color: String,
+    /// A changed single time of a repeating event: the time it replaces, in Hearth's form (Online accounts'
+    /// calendars, accounts.rs; your own events never have one).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recurrence_id: Option<String>,
+    /// Online accounts' calendars: "pending" (changed here, not on the server yet) or "conflict" (changed on another
+    /// device too: the person chooses which to keep).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub sync: String,
 }
 
 impl Event {
@@ -60,6 +68,8 @@ pub struct Occurrence {
     pub read_only: bool,
     pub color: String,
     pub reminders: Vec<i64>,
+    /// "", "pending" or "conflict" (Online accounts' calendars).
+    pub sync: String,
 }
 
 /// Wall-clock time in a zone to ms.
@@ -116,11 +126,12 @@ pub fn occurrences(events: &[Event], from: i64, to: i64, read_only: &dyn Fn(&Eve
                 end: b,
                 date: if e.all_day { s.format("%Y-%m-%d").to_string() } else { local_date(a) },
                 last_date: last,
-                occ: if e.all_day { s.format("%Y-%m-%d").to_string() } else { s.format("%Y-%m-%dT%H:%M:%S").to_string() },
-                recurring: rule.is_some(),
+                occ: e.recurrence_id.clone().unwrap_or_else(|| if e.all_day { s.format("%Y-%m-%d").to_string() } else { s.format("%Y-%m-%dT%H:%M:%S").to_string() }),
+                recurring: rule.is_some() || e.recurrence_id.is_some(),
                 read_only: read_only(e),
                 color: colors(e),
                 reminders: e.reminders.clone(),
+                sync: e.sync.clone(),
             });
         }
     }
@@ -189,17 +200,23 @@ pub fn sub_events(sub: &Value) -> Vec<Event> {
     crate::ics::parse(&text, id).into_iter().map(|mut e| { e.color = color.clone(); e }).collect()
 }
 
-/// Every event: yours, then each subscribed calendar's.
-pub fn all_events(v: &Value) -> Vec<Event> {
+/// Every event: yours, then each subscribed calendar's, then Online accounts' (accounts.rs).
+pub fn all_events(v: &Value) -> Vec<Event> { all_events_with(v, &crate::accounts::load()) }
+
+fn all_events_with(v: &Value, acc: &Value) -> Vec<Event> {
     let mut ev = own_events(v);
     for s in v["subs"].as_array().into_iter().flatten() { if s["hidden"] != true { ev.extend(sub_events(s)); } }
+    ev.extend(crate::accounts::events(acc));
     ev
 }
 
-/// Showings in [from, to) of every event.
+/// Showings in [from, to) of every event. Yours and those of Online accounts' calendars you may change can be
+/// changed; subscribed and read-only ones can only be looked at.
 pub fn range(v: &Value, from: i64, to: i64) -> Vec<Occurrence> {
-    let ev = all_events(v);
-    occurrences(&ev, from, to, &|e| e.calendar != LOCAL, &|e| e.color.clone())
+    let acc = crate::accounts::load();
+    let ev = all_events_with(v, &acc);
+    let writable = crate::accounts::writable_ids(&acc);
+    occurrences(&ev, from, to, &|e| e.calendar != LOCAL && !writable.contains(&e.calendar), &|e| e.color.clone())
 }
 
 /// Adds or replaces one of your events (an empty id makes a new one). Returns it.
