@@ -90,6 +90,7 @@ class Phone:
         self.name = name
         self.id = uuid.uuid4().hex                       # 32 characters, as KDE Connect's own ids
         self.dir = folder or tempfile.mkdtemp(prefix='fake-phone-')
+        os.makedirs(self.dir, exist_ok=True)
         self.cert_pem = os.path.join(self.dir, 'cert.pem')
         self.key_pem = os.path.join(self.dir, 'key.pem')
         subprocess.run(['openssl', 'req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes',

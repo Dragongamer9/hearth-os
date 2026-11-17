@@ -416,14 +416,15 @@ impl Daemon {
             if ev == "pair-request" {
                 let who = data["from"].as_str().unwrap_or("A phone").to_string();
                 let key = data["key"].as_str().unwrap_or("").to_string();
-                self.notify_desktop(&format!("{who} wants to pair"), &format!("Open Hearth Connect to accept. Check the phone shows {key}."), "smartphone", true);
-            }
+                crate::plugins::pair_notice(self, id, &who, &key);
+            } else { crate::plugins::pair_notice_done(id); }
             self.emit(ev, data);
         }
         self.changed();
     }
 
     fn store_pair(self: &Arc<Self>, id: &str) {
+        crate::plugins::pair_notice_done(id);
         let info = lock(&self.devices).get(id).and_then(|d| d.link.as_ref().map(|l| (d.peer.clone(), l.cert.clone(), l.ip)));
         let Some((peer, cert, ip)) = info else { return };
         lock(&self.paired).insert(id.to_string(), PairedDev { id: id.into(), name: peer.name.clone(), kind: peer.kind.clone(), cert: crate::hex(&cert),
@@ -468,6 +469,7 @@ impl Daemon {
     }
 
     pub fn reject_pair(&self, id: &str) -> Result<Value, String> {
+        crate::plugins::pair_notice_done(id);
         if let Some(d) = lock(&self.devices).get_mut(id) { d.pair = Pair::None; }
         let _ = self.send_body(id, "kdeconnect.pair", json!({"pair": false}));
         self.changed();
@@ -704,6 +706,7 @@ impl Daemon {
             for id in expired {
                 let _ = self.send_body(&id, "kdeconnect.pair", json!({"pair": false}));
                 if let Some(d) = lock(&self.devices).get_mut(&id) { d.pair = Pair::None; }
+                crate::plugins::pair_notice_done(&id);
                 self.emit("pair-failed", json!({"device": id, "from": self.device_name(&id), "error": "Pairing timed out"}));
                 self.changed();
             }

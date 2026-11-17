@@ -29,7 +29,11 @@ fn callbacks() -> &'static Mutex<HashMap<u32, Callback>> {
     C.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+/// The service's runtime, so what a notification's button does can use it (the signals come on a plain thread).
+static RT: OnceLock<tokio::runtime::Handle> = OnceLock::new();
+
 fn fire(id: u32, ev: Event) {
+    let _rt = RT.get().map(|h| h.enter());
     let cb = {
         let mut g = crate::lock(callbacks());
         if matches!(ev, Event::Closed(_)) { g.remove(&id) } else { g.get(&id).cloned() }
@@ -37,14 +41,17 @@ fn fire(id: u32, ev: Event) {
     if let Some(cb) = cb { cb(ev); }
 }
 
+/// The connection (made the first time the session bus can be reached; tried again later if it couldn't).
 #[cfg(target_os = "linux")]
-fn conn() -> Option<&'static zbus::blocking::Connection> {
-    static CONN: OnceLock<Option<zbus::blocking::Connection>> = OnceLock::new();
-    CONN.get_or_init(|| {
+fn conn() -> Option<zbus::blocking::Connection> {
+    static CONN: Mutex<Option<zbus::blocking::Connection>> = Mutex::new(None);
+    let mut g = crate::lock(&CONN);
+    if g.is_none() {
         let c = zbus::blocking::Connection::session().ok()?;
         listen(c.clone());
-        Some(c)
-    }).as_ref()
+        *g = Some(c);
+    }
+    g.clone()
 }
 
 /// The notification service's signals: buttons pressed, replies typed, notifications closed.
@@ -77,6 +84,7 @@ pub fn notify(summary: &str, body: &str, icon: &str, replaces: u32, urgent: bool
     #[cfg(target_os = "linux")]
     {
         use zbus::zvariant::Value as V;
+        if let Ok(h) = tokio::runtime::Handle::try_current() { let _ = RT.set(h); }
         let c = conn()?;
         let mut hints: HashMap<&str, V> = HashMap::new();
         hints.insert("desktop-entry", V::from("hearth-connect"));
@@ -104,8 +112,10 @@ pub fn close(id: u32) {
 }
 
 /// Opens Settings › Phone at its notifications (Mantel's settings, or the Hearth Connect window where there's none).
-pub fn open_settings() {
-    let ok = crate::desktop::cmd("hearth-settings").arg("phone:notifications").spawn().map(|mut c| { std::thread::spawn(move || { let _ = c.wait(); }); }).is_ok();
+pub fn open_settings() { open_page("phone:notifications") }
+
+pub fn open_page(page: &str) {
+    let ok = crate::desktop::cmd("hearth-settings").arg(page).spawn().map(|mut c| { std::thread::spawn(move || { let _ = c.wait(); }); }).is_ok();
     if !ok { let _ = crate::desktop::cmd("hearth-connect").spawn(); }
 }
 

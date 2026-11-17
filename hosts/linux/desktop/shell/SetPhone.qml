@@ -76,13 +76,25 @@ SetPage {
 
     // `hearth-settings phone:notifications` / `phone:commands` / `phone:pair` open at that part (a notification's Reply
     // button, the phone's "add commands"): its first card takes focus once the state is in, and the page scrolls to it.
+    // (Settings keeps a page loaded, so a second "phone:commands" while it's open is heard too.)
     property string anchor: ""
-    Component.onCompleted: { if (["notifications", "commands", "pair"].includes(SettingsNav.pageAnchor)) { anchor = SettingsNav.pageAnchor; SettingsNav.pageAnchor = ""; } refresh(); }
-    onStChanged: if (anchor !== "" && on) Qt.callLater(() => {
-        const to = { notifications: notifHead, commands: cmdName, pair: ipField }[anchor];
-        anchor = "";
-        if (to && to.visible) { if (to.focusInput) to.focusInput(); else to.forceActiveFocus(); }
-    })
+    function takeAnchor() {
+        if (!["notifications", "commands", "pair"].includes(SettingsNav.pageAnchor)) return;
+        anchor = SettingsNav.pageAnchor;
+        SettingsNav.pageAnchor = "";
+        if (st) goAnchor();
+    }
+    function goAnchor() {
+        if (anchor === "" || !on) return;
+        Qt.callLater(() => {
+            const to = { notifications: notifHead, commands: cmdName, pair: ipField }[anchor];
+            anchor = "";
+            if (to && to.visible) { if (to.focusInput) to.focusInput(); else to.forceActiveFocus(); }
+        });
+    }
+    Connections { target: SettingsNav; function onPageAnchorChanged() { page.takeAnchor(); } }
+    Component.onCompleted: { takeAnchor(); refresh(); }
+    onStChanged: goAnchor()
     Timer { interval: 2000; running: page.visible; repeat: true; onTriggered: if (!job.busy && !act.busy) page.refresh() }
     SetJob { id: job; helper: "hearth-phone" }
     SetJob { id: act; helper: "hearth-phone" }
