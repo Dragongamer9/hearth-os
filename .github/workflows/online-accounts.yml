@@ -1,0 +1,126 @@
+# Online accounts (docs/ONLINE-ACCOUNTS.md): hearth_accounts.py against fake CalDAV/CardDAV/WebDAV, Nextcloud Login
+# Flow v2, OAuth (PKCE), Microsoft Graph and IMAP servers on localhost (never a real account, never a real secret),
+# then Settings › Accounts › Online accounts drawn for real (labwc headless + Quickshell at 1920×1080): empty, adding
+# Nextcloud, Google's "needs setting up", and an account with its switches. The pictures are posted as notices
+# ("SHOT <name> <n>", JPEG in base64 pieces of 3800) and kept as a download on the run.
+name: Online accounts
+
+on:
+  push:
+    branches-ignore: ['ci/**']
+    paths: ['hosts/linux/desktop/shell/hearth_accounts.py', 'hosts/linux/desktop/shell/SetAccounts.qml',
+            'hosts/linux/test/test_online_accounts.py', 'os/system_files/usr/share/hearth/online-accounts/**',
+            '.github/workflows/online-accounts.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: online-accounts-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Online accounts' tests (fake servers only)
+        run: |
+          set -o pipefail
+          python3 -m unittest discover -s hosts/linux/test -p 'test_online_accounts.py' -v 2>&1 | tee accounts.log
+      - name: Settings' registry and search index, Hearth Files' helper
+        run: |
+          python3 -m py_compile hosts/linux/desktop/shell/hearth_accounts.py
+          python3 -m unittest discover -s hosts/linux/test -p 'test_settings_redesign.py'
+          python3 tools/build-settings-index.py --check
+          python3 tools/tidy-check.py
+      - name: Say how it went
+        if: always()
+        run: |
+          [ -f accounts.log ] || exit 0
+          echo "::notice title=Online accounts tests::$(grep -E '^(Ran|OK|FAILED)' accounts.log | tr '\n' ' ')"
+          grep -E '^(FAIL|ERROR):' accounts.log | head -8 | while read -r l; do echo "::error title=Online accounts::$l"; done
+          grep -E -A12 '^(FAIL|ERROR):' accounts.log | grep -E 'Error|assert|File "' | head -20 | while read -r l; do echo "::error title=Online accounts detail::$l"; done || true
+
+  shots:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install labwc, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git labwc xorg-x11-server-Xwayland qt6-qtsvg procps-ng grim wlr-randr python3 qt6ct \
+            google-noto-sans-fonts adwaita-icon-theme breeze-icon-theme dbus-daemon wtype rsms-inter-fonts python3-pillow >/dev/null
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+      - uses: actions/checkout@v4
+      - name: Draw the page
+        shell: bash
+        run: |
+          mkdir -p shots
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" "$HOME/.config/nimbus" /tmp/fakebin && chmod 700 "$XDG_RUNTIME_DIR"
+          echo '{}' > "$HOME/.local/share/nimbus/desktop.json"
+          # A stand-in keyring (the page checks one is there); nothing is ever stored in it here.
+          printf '#!/bin/sh\nexit 1\n' > /tmp/fakebin/secret-tool && chmod +x /tmp/fakebin/secret-tool
+          export PATH="/tmp/fakebin:$PATH" HEARTH_SECRET_TOOL=/tmp/fakebin/secret-tool
+          export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          chmod +x hosts/linux/desktop/labwc/autostart hosts/linux/desktop/theme/apply.sh
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          labwc -C hosts/linux/desktop/labwc >shots/labwc.log 2>&1 &
+          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          sleep 15
+          ipc() { quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call "$@" || echo "ipc $* failed"; sleep 3; }
+          page() { ipc settings close; ipc settings page "$1"; sleep 3; }
+          # 1. No accounts yet (Google and Microsoft: "Needs setting up", as shipped with empty client ids).
+          page online-accounts; grim shots/1-empty.png || true
+          # 2. Adding Nextcloud: the form, the address typed.
+          page online-accounts:add-nextcloud; wtype cloud.example.com 2>/dev/null || true; sleep 1; grim shots/2-adding-nextcloud.png || true
+          # 3. Google before its client id is set: what the owner has to set up.
+          page online-accounts:add-google; grim shots/3-google-needs-setup.png || true
+          # 4. An account with its switches (the list only: no password anywhere, as on a real device).
+          printf '%s\n' '{"version": 1, "accounts": [{"id": "nextcloud-1a2b3c4d", "kind": "nextcloud", "name": "Nextcloud (alex)", "server": "https://cloud.example.com/", "user": "alex", "added": 1794000000, "files": "https://cloud.example.com/remote.php/dav/files/alex/", "dav": "https://cloud.example.com/remote.php/dav/", "calendars": [{"url": "https://cloud.example.com/remote.php/dav/calendars/alex/personal/", "name": "Personal", "color": "#0082C9"}], "addressbooks": [], "can": {"calendar": true, "contacts": true, "files": true, "mail": false}, "use": {"calendar": true, "contacts": false, "files": true, "mail": false}}]}' > "$HOME/.config/nimbus/online-accounts.json"
+          page online-accounts; grim shots/4-account-switches.png || true
+          ipc settings close
+          LOG="$XDG_RUNTIME_DIR/nimbus-shell.log"; cp "$LOG" shots/ 2>/dev/null || true
+          grep -iE 'SetAccounts|hearth_accounts' "$LOG" shots/labwc.log 2>/dev/null | head -8 | while read -r l; do echo "::warning title=Shell log::${l:0:300}"; done || true
+          ls -la shots
+      - name: Make the JPEGs
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import base64, io, os
+          from PIL import Image
+          for name in ('1-empty', '2-adding-nextcloud', '3-google-needs-setup', '4-account-switches'):
+              p = 'shots/%s.png' % name
+              if not os.path.exists(p):
+                  print('::warning title=SHOT::%s was not taken' % name); continue
+              im = Image.open(p).convert('RGB')
+              print('::notice title=Size %s::%dx%d' % (name, im.width, im.height))
+              for w, q in ((1280, 45), (1120, 40), (960, 38), (860, 32), (720, 28)):
+                  b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q, optimize=True)
+                  if len(base64.b64encode(b.getvalue())) <= 9 * 3800:
+                      break
+              open('shots/%s.jpg' % name, 'wb').write(b.getvalue())
+          PY
+      - name: Picture (accounts-empty)
+        if: always()
+        run: f=shots/1-empty.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT accounts-empty $i::$part"; done || true
+      - name: Picture (accounts-adding-nextcloud)
+        if: always()
+        run: f=shots/2-adding-nextcloud.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT accounts-adding-nextcloud $i::$part"; done || true
+      - name: Picture (accounts-google-setup)
+        if: always()
+        run: f=shots/3-google-needs-setup.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT accounts-google-setup $i::$part"; done || true
+      - name: Picture (accounts-switches)
+        if: always()
+        run: f=shots/4-account-switches.jpg; [ -f "$f" ] && base64 -w0 "$f" | fold -w 3800 | nl -ba -w2 -s' ' | head -9 | while read -r i part; do echo "::notice title=SHOT accounts-switches $i::$part"; done || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: online-accounts-screenshots
+          path: shots
+          retention-days: 14

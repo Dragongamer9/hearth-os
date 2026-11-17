@@ -86,6 +86,24 @@ var ENTRIES = [
 "i": "kbd"
 },
 {
+"t": "No online accounts yet",
+"p": "online-accounts",
+"d": "Sign in once below, and Hearth's calendar, contacts, files and mail use the account. Passwords stay in this device's keyring.",
+"i": "cloud"
+},
+{
+"t": "Open in Hearth Files",
+"p": "online-accounts",
+"d": "Mounted with gvfs (davs://), like a drive",
+"i": "open"
+},
+{
+"t": "Remove this account",
+"p": "online-accounts",
+"d": "Signs this device out: its password or token is taken out of the keyring",
+"i": "trash"
+},
+{
 "t": "Look",
 "p": "appearance",
 "d": "The shape and style: corners, bar, frames and fonts",
