@@ -15,7 +15,7 @@ Item {
     focus: true
     readonly property bool testMode: Quickshell.env("HEARTH_GREETER_TEST") === "1"
     readonly property bool preview: Quickshell.env("HEARTH_GREETER_PREVIEW") === "1" || !Greetd.available
-    readonly property string here: decodeURIComponent(Qt.resolvedUrl(".").toString().replace(/^file:\/\//, ""))
+    readonly property string infoTool: decodeURIComponent(Qt.resolvedUrl("greeter-info").toString().replace(/^file:\/\//, ""))
     readonly property string assets: Quickshell.env("HEARTH_GREETER_ASSETS") || "/usr/share/sddm/themes/hearth"
     readonly property string runDir: Quickshell.env("XDG_RUNTIME_DIR") || "/tmp"
     readonly property string statePath: Quickshell.env("HEARTH_GREETER_STATE") || "/var/lib/hearth-greeter/state.json"
@@ -53,8 +53,9 @@ Item {
     // ---------------------------------------------------------------- read: accounts, sessions, layouts, battery, Wi-Fi
     Process {
         id: info
-        command: ["python3", root.here + "greeter-info", "info"]
+        command: ["python3", root.infoTool, "info"]
         running: true
+        stderr: StdioCollector { onStreamFinished: if (text.trim()) console.warn("greeter-info: " + text.trim().slice(-400)) }
         stdout: StdioCollector {
             onStreamFinished: {
                 try {
@@ -63,20 +64,20 @@ Item {
                     root.sessions = d.sessions || [];
                     root.layouts = (d.layouts && d.layouts.length) ? d.layouts : ["us"];
                     root.screenReaderThere = !!d.screenReader;
-                } catch (e) { console.warn("greeter: couldn't read the accounts: " + e); }
+                } catch (e) { console.warn("greeter: couldn't read the accounts (" + root.infoTool + "): " + e + " " + text.slice(0, 200)); }
                 root.restore();
             }
         }
     }
     Process {
         id: statusProc
-        command: ["python3", root.here + "greeter-info", "status"]
+        command: ["python3", root.infoTool, "status"]
         stdout: StdioCollector { onStreamFinished: { try { root.status = JSON.parse(text); } catch (e) {} } }
     }
     Timer { interval: 30000; repeat: true; running: true; triggeredOnStart: true; onTriggered: statusProc.running = true }
     Process {
         id: capsProc
-        command: ["python3", root.here + "greeter-info", "caps"]
+        command: ["python3", root.infoTool, "caps"]
         stdout: StdioCollector { onStreamFinished: { try { root.caps = !!JSON.parse(text).caps; } catch (e) {} } }
     }
     Timer { id: capsLater; interval: 120; onTriggered: if (!root.testMode) capsProc.running = true }
