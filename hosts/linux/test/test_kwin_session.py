@@ -139,6 +139,21 @@ class KWinStart(Base):
         body = src[src.index('run_kwin() {'):src.index('\n}\n', src.index('run_kwin() {'))]
         self.assertLess(body.index('env -0 >"$d/kwin.env.tmp" && mv -f "$d/kwin.env.tmp" "$d/kwin.env"'), body.index('exec "$1" --xwayland'))
 
+    def test_look_applied_before_kwin_and_never_in_the_way(self):
+        # theme/apply.sh (Hearth's Aurorae frames) runs before KWin starts; failing, it's logged and KWin starts anyway.
+        theme = os.path.join(self.share, 'desktop', 'theme')
+        os.makedirs(theme)
+        with open(os.path.join(theme, 'apply.sh'), 'w') as f:
+            f.write('#!/bin/sh\n: > "$HOME/look-applied"\nexit 3\n')
+        self.write_bin('kwin_wayland', '#!/bin/sh\n[ -e "$HOME/look-applied" ] && echo yes > "$HOME/look-before-kwin"\n'
+                       + KWIN_WORKS.split('\n', 1)[1])
+        r, log = self.session()
+        self.assertEqual(self.lines('look-before-kwin'), ['yes'], log)
+        self.assertIn("theme/apply.sh didn't finish (code 3)", log)
+        self.assertIn('kwin: Mantel up after', log)
+        rc = (ROOT / 'hosts/linux/desktop/kwin/xdg/kwinrc').read_text()
+        self.assertNotRegex(rc, r'(?m)^\[org\.kde\.kdecoration2\]')   # kwin/windows/xdg/kwinrc's Aurorae frames, not overridden
+
     def test_kwin_env_that_cant_be_written_never_stops_kwin(self):
         self.write_bin('kwin_wayland', KWIN_WORKS)
         open(os.path.join(self.run_dir, 'hearth'), 'w').close()      # a file where the folder goes: the write fails

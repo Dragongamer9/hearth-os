@@ -256,6 +256,11 @@ if ! command -v kwin_wayland >/dev/null; then
   echo "::error title=KWin::kwin_wayland isn't installed (package kwin-wayland): Mantel runs on KWin from 1.14"
   exit 1
 fi
+# Hearth's own window frames under KWin are an Aurorae theme (theme/hearth_aurorae.py writes it): without Aurorae KWin
+# falls back to Breeze's frames (still works, just not Hearth's look).
+optional aurorae
+[ -n "$(ls /usr/lib/*/qt6/plugins/org.kde.kdecoration2/*aurorae* /usr/lib/qt6/plugins/org.kde.kdecoration2/*aurorae* 2>/dev/null)" ] \
+  || echo "::warning title=KWin::Aurorae isn't installed: KWin's window frames fall back to Breeze instead of Hearth's"
 optional kglobalacceld xdg-desktop-portal-kde
 if have_pkg libkf6screen-bin; then optional libkf6screen-bin; else optional kscreen; fi
 command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkf6screen-bin / kscreen): screens under KWin need it"
