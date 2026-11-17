@@ -123,6 +123,7 @@ def main():
     check('Mantel sees which window is in front', wait(lambda: state().get('active') == 'Test A'), state().get('active'))
     ipc('winlist', 'act', 'Test A', 'maximize')
     check('maximize from Mantel', wait(lambda: (win('Test A') or {}).get('maximized') is True), win('Test A'))
+    do({'op': 'probe', 'id': (win('Test A') or {}).get('id', '')})
     ipc('winlist', 'act', 'Test A', 'restore')
     check('restore size', wait(lambda: (win('Test A') or {}).get('maximized') is False), win('Test A'))
 
@@ -141,6 +142,20 @@ def main():
     check('Super+Down on a top quarter: the half again', wait(lambda: (win('Test A') or {}).get('zone') == 'left-half'), win('Test A'))
     ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test A', 'zone': 'left-third'}))
     check('a snap layouts zone (left third)', wait(lambda: (win('Test A') or {}).get('zone') == 'left-third'), win('Test A'))
+
+    # An X11 app (through KWin's Xwayland): KWin places it at once, without waiting for the app to draw.
+    if os.environ.get('DISPLAY'):
+        procs.append(subprocess.Popen(['python3', '-c', "import tkinter as tk; r = tk.Tk(className='hearthx'); r.title('Test X'); "
+                                       "r.geometry('500x400+300+300'); r.mainloop()"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL))
+        x = wait(lambda: win('Test X'), 15)
+        check('an X11 window is in the list', x, [w.get('title') for w in listed().get('windows', [])])
+        if x:
+            ipc('winlist', 'run', json.dumps({'op': 'snap', 'title': 'Test X', 'zone': 'right-half'}))
+            check('snap an X11 window to the right half', wait(lambda: (win('Test X') or {}).get('zone') == 'right-half'), win('Test X'))
+            ipc('winlist', 'act', 'Test X', 'maximize')
+            check('maximize an X11 window', wait(lambda: (win('Test X') or {}).get('maximized') is True), win('Test X'))
+            do({'op': 'probe', 'id': (win('Test X') or {}).get('id', '')})
+            ipc('winlist', 'act', 'Test X', 'close')
 
     # Snap layouts' flyout from the shortcut (the bridge runs its command), then a zone picked the way the flyout does.
     try:
