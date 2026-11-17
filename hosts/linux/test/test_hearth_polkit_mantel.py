@@ -140,8 +140,9 @@ class Fallback(unittest.TestCase):
         block = block[:block.index('\nfi\n') + 4]
         # The fallback watcher, with the compositor's PID; the classic loop only when the script isn't there.
         self.assertIn('if [ -f "$SHARE/desktop/shell/hearth-polkit-fallback" ]; then\n'
-                      '  sh "$SHARE/desktop/shell/hearth-polkit-fallback" "$LABWC_PID" >/dev/null 2>&1 &\nelse\n', block)
-        self.assertLess(block.index('hearth-polkit-fallback" "$LABWC_PID"'), block.index('for agent in'))
+                      '  sh "$SHARE/desktop/shell/hearth-polkit-fallback" "${HEARTH_DESKTOP_PID:-$LABWC_PID}" >/dev/null 2>&1 &\nelse\n', block)
+        # the window manager's PID: KWin's or labwc's (HEARTH_DESKTOP_PID, 1.14), else labwc's own
+        self.assertLess(block.index('hearth-polkit-fallback" "${HEARTH_DESKTOP_PID:-$LABWC_PID}"'), block.index('for agent in'))
         self.assertIn('\nfor agent in', block)             # base-peppermint.yml's image check reads it from a line start
         self.assertEqual(subprocess.run(['bash', '-n', str(ROOT / 'hosts/linux/desktop/labwc/autostart')]).returncode, 0)
         # Run the block as autostart would: the fallback starts (and with it a classic agent: no Mantel here).
