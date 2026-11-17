@@ -1405,6 +1405,38 @@ done
 command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
 # ---- end of Hearth Files as the file chooser
 
+# ---- Mantel on KWin: typing, the lock screen, screen sharing (docs/KWIN-INPUT.md)
+# hearth-kwin-im and hearth-kwin-cast come from the builder (/usr/libexec/hearth), their .desktop files (which KWin
+# reads to give them its input-method and screencast protocols) from os/system_files. hearth-type (the on-screen
+# keyboard's, clipboard paste's and the magnifier's typing on KWin) needs python3-evdev and /dev/uinput (installed
+# for hearth-pad). KWin's own screen locker locks Mantel on KWin (fail-safe), showing Hearth's lock screen: the
+# Plasma shell package org.hearth.mantel-lock (desktop/kwin-lock; only a lock screen, KWin's locker
+# reads lockscreen/LockScreen.qml from a Plasma/Shell package with X-Plasma-APIVersion 2; the KWin session sets
+# PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock so it picks this one). On labwc nothing changes:
+# wtype, Lock.qml's ext-session-lock and xdg-desktop-portal-wlr, as before.
+test -x /usr/libexec/hearth/hearth-kwin-im && test -x /usr/libexec/hearth/hearth-kwin-cast
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-type
+# KWin's screen locker, the package type it reads Hearth's lock screen as, and the lock screen itself (shell and
+# look-and-feel package): desktop/kwin-lock/install.sh, the same steps kwin-input.yml checks. Fails the build if any
+# is missing (a lock screen that can't show would be a lockout).
+bash /usr/share/nimbus/desktop/kwin-lock/install.sh /usr/share/nimbus/desktop/kwin-lock
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-lockcheck
+# The lock screen must be complete where the greeter looks (never a lock that can't show its screen: red flag 2).
+# With the greeter's own test run (off screen): it must load Hearth's lock screen, or the image isn't built.
+PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock XDG_RUNTIME_DIR=/tmp python3 /usr/share/nimbus/desktop/shell/hearth-lockcheck
+rm -rf /usr/share/nimbus/desktop/kwin-helpers
+# For Hearth's KWin session (XDG_CURRENT_DESKTOP=Hearth:KDE): Hearth Files, and Hearth's screen sharing and
+# screenshots (hearth-portal + hearth_screencast.py); the rest as on labwc.
+cat > /usr/share/xdg-desktop-portal/hearth-portals.conf <<PORTALS
+[preferred]
+default=gtk
+org.freedesktop.impl.portal.FileChooser=hearth
+org.freedesktop.impl.portal.ScreenCast=hearth
+org.freedesktop.impl.portal.Screenshot=hearth
+org.freedesktop.impl.portal.Access=hearth
+PORTALS
+# ---- end of Mantel on KWin: typing, the lock screen, screen sharing
+
 # ------------------------------------------------------------------ Hearth Contacts and Hearth Maps (hosts/hearth-contacts, hosts/hearth-maps)
 # Built with the app (base-peppermint.yml) and carried in os/nimbus-app; their icons (Icon=hearth-contacts, hearth-maps)
 # come with Hearth's icon set above.

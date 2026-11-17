@@ -1,0 +1,16 @@
+{
+    "KPackageStructure": "Plasma/Shell",
+    "KPlugin": {
+        "Authors": [
+            {
+                "Name": "Hearth OS"
+            }
+        ],
+        "Description": "Mantel's lock screen in KWin's screen locker (Hearth Desktop Mode on KWin): a Plasma shell package with only a lock screen",
+        "Id": "org.hearth.mantel-lock",
+        "License": "GPL-2.0-or-later",
+        "Name": "Hearth Mantel lock screen",
+        "Version": "1"
+    },
+    "X-Plasma-APIVersion": "2"
+}

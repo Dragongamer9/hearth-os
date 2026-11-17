@@ -477,11 +477,17 @@ def main(argv):
         screen_reader(on)
         out = {'screenReader': on}
     elif c == 'magnifier' and len(a) == 1 and a[0] in ('in', 'out', 'off'):
-        # The same keys labwc has for it (rc.xml), typed: labwc reads keys typed by wtype like real ones.
-        if not shutil.which('wtype'):
+        # The same keys labwc has for it (rc.xml), typed: labwc reads keys typed by wtype like real ones. On KWin
+        # its Zoom effect has the same Meta+= / Meta+- (Meta+0 back to normal), typed by hearth-type.
+        kwin = os.environ.get('HEARTH_WM') == 'kwin'
+        if kwin:
+            typer = [sys.executable, os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-type')]
+        elif shutil.which('wtype'):
+            typer = ['wtype']
+        else:
             raise Fail('wtype isn\'t installed')
-        key = {'in': 'equal', 'out': 'minus', 'off': 'Escape'}[a[0]]
-        if run(['wtype', '-M', 'logo', '-k', key, '-m', 'logo'])[0] != 0:
+        key = {'in': 'equal', 'out': 'minus', 'off': '0' if kwin else 'Escape'}[a[0]]
+        if run(typer + ['-M', 'logo', '-k', key, '-m', 'logo'])[0] != 0:
             raise Fail('couldn\'t reach the magnifier')
         out = {'ok': True}
     elif c == 'look' and len(a) == 1 and a[0] in FILTERS and a[0] != 'none':
