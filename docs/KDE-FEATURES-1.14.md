@@ -96,7 +96,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] Minimize: Magic Lamp, Squash — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
 - [x] Maximize, geometry-change, morphing and sliding popups — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
 - [x] Desktop switch: Slide, Fade, Cube — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
-- [ ] Desktop Cube (S)
+- [x] Desktop Cube — KWin's cube from trixie's kwin-addons (os-bases/peppermint/build.sh "optional kwin-addons"); SetKwinDesktops.qml "Desktop cube" switch ([Plugins] cubeEnabled; greyed with "the cube comes with the kwin-addons package, which isn't installed" when it's missing) and "Open the cube now" (hearth-kwin-settings shortcut cube, Super+C); test_kwin_effects_extras.py "Cube"; picture "kwin-18-virtual-desktops-cube" (needs testing on a device)
 - [x] Wobbly windows — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
 - [x] Blur and background contrast behind Hearth's panels — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
 - [x] Translucency (moving, inactive, menus) — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
@@ -106,8 +106,8 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] Peek at desktop / Show desktop animation, login and logout fades — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
 - [x] Mouse click animation, mouse mark, track mouse, touch points — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
 - [x] Shake cursor to find it — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
-- [ ] Hide the pointer while typing or after a time (S)
-- [ ] Snap helper / window aperture / thumbnail aside / show FPS / show paint (S)
+- [x] Hide the pointer while typing or after a time — SetKwinEffects.qml "Hide the pointer while you type" and "Hide the pointer when the mouse is still" (Never / 5 s / 10 s / 30 s / 1 min: [Effect-hidecursor] InactivityDuration; turning one on never turns the other on); test_kwin_effects_extras.py "HidePointer"; picture "kwin-17-window-effects-pointer-helpers-developers" (needs testing on a device)
+- [x] Snap helper / window aperture / thumbnail aside / show FPS / show paint — SetKwinEffects.qml "Show where a window snaps", "When the desktop is shown: Move aside", "A picture of the window you're on, at the side", and under "For developers": "Show FPS", "Show paint" (showfps / showpaint); test_kwin_effects_extras.py "Developers"; picture "kwin-17-window-effects-pointer-helpers-developers" (needs testing on a device)
 - [x] Startup feedback (busy pointer or bouncing icon) — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
 - [x] Visual bell — SetAccessibility.qml (kaccessrc Bell), hearth-kwin-settings (needs testing on a device)
 
@@ -117,7 +117,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [x] Window view / Present windows — KWin's, from the Task view button's menu and Ctrl+F10 (shortcuts.json "present-windows"); kwin-windows.yml picture "kwin-present-windows" (needs testing on a device)
 - [x] Desktop grid — KWin's, from the Task view button's menu and Ctrl+F8 (shortcuts.json "desktop-grid"); kwin-windows.yml picture "kwin-desktop-grid" (needs testing on a device)
 - [x] Window switcher styles (Thumbnail grid, Large icons, … Cover switch, Flip switch) and their settings — SetKwinEffects.qml, hearth-kwin-settings (needs testing on a device)
-- [ ] Second switcher (Alt+`, same app's windows) (S)
+- [x] Second switcher (Alt+`, same app's windows) — SetKwinEffects.qml "Second switcher (Super+Tab)": its own look, "Which apps: Every window / One per app / Only the app you're on", which windows, minimized ([TabBoxAlternative]); Alt+` (KWin's, this app's windows) noted under Alt+Tab's "Look"; test_kwin_effects_extras.py "SecondSwitcher"; picture "kwin-16-window-effects-second-switcher" (needs testing on a device)
 - [x] Virtual desktops: add, remove, rename, rows, wrap around, OSD — SetKwinDesktops.qml (needs testing on a device)
 - [ ] Different tile layouts per desktop — needs newer KWin: KWin's tiles are one layout per screen in 6.3 (Debian 13); a layout per virtual desktop came with Plasma 6.4 (KDE bug 466031). Snap layouts' zones (SnapLayouts.qml) are the same on every desktop until then (S)
 
@@ -132,7 +132,7 @@ Most of this section is what **feature/kwin-pages** builds (merged), with the Di
 - [ ] Window menu "More actions" — partly: KWin's own window menu (keep above, all desktops, fullscreen) with Hearth's Snap. Left: shade, no border and special window settings in Hearth's look (S)
 - [x] Kill a frozen window (Ctrl+Alt+Esc) in Hearth's look — ForceClose.qml ("Click the window that isn't responding", "Force close"), title bar menu "Force close (not responding)…", hearth-kwin-bridge "queryWindowInfo" / "KILL_WAIT" / "killable"; kwin-windows.yml: "Force close ends a frozen window (asked, then made to)", pictures "kwin-force-close-pick", "kwin-force-close". Left: KWin's own automatic "not responding" notice stays KWin's (needs testing on a device)
 - [x] Session restore: reopen apps after restart — SessionRestore.qml, SetStartup.qml "Reopen my apps from last time" (off by default, WinList); test_system_settings_114.py "test_off_by_default_and_only_at_sign_in" (needs testing on a device)
-- [ ] Plasma's KWin scripts (Minimize all, Desktop change OSD, video wall, sync skip-switcher) — Hearth has: Minimize all (show-desktop-2) (S)
+- [x] Plasma's KWin scripts (Minimize all, Desktop change OSD, video wall, sync skip-switcher) — SetKwinEffects.qml "Window helpers": "Minimize every window with Super+Shift+D", "Video wall", "Leave out of Alt+Tab what's left off the taskbar"; SetKwinDesktops.qml "Show the desktop's name when switching"; hearth-kwin-settings "scripts" (what's installed) and "scripting_start" (KWin loads or unloads them at once); test_kwin_effects_extras.py "Scripts"; picture "kwin-17-window-effects-pointer-helpers-developers" (needs testing on a device)
 - [x] Exclude a window from screen sharing (title bar menu) — hearth-windows.js "Hide from screen sharing" (and KWin's excludeFromCapture where it has it); hearth_screencast.py "hidden_windows"; cast-picker.qml "hidden from sharing and not listed"; kwin-windows.yml: "the screen-sharing picker leaves the hidden window out", pictures "kwin-window-menu-extras", "kwin-cast-hidden" (needs testing on a device)
 - [x] Picture-in-picture windows stay on top under KWin — shortcuts.json "rules": "picture-in-picture" (Firefox's "Picture-in-Picture", Chromium's "Picture in picture", by title and app: Firefox, Firefox ESR, LibreWolf, Chromium, Chrome, Brave, Edge, Vivaldi), hearth-windows.js `ruleMatches`; kwin-windows-mock.js "picture-in-picture windows stay on top", test_kwin_windows.py "test_picture_in_picture_rule"; kwin-windows.yml: "Firefox's picture-in-picture window stays on top", "the picture-in-picture window is still on top with another window in front", picture "kwin-pip-on-top". Hearth Player has no picture-in-picture (WebKitGTK has none) (needs testing on a device)
 
