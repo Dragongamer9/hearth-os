@@ -289,6 +289,15 @@ class Frames(unittest.TestCase):
                 self.assertEqual(parts[pre + 'bottomright'][2:], (P + R, P + ha.BORDER))
             # The rounded corner is still there (an arc of the radius in the title colour).
             self.assertIn('A %d %d 0 0 1' % (R, R), files['decoration.svg'])
+            # Nothing reaches past its part (no strokes, every rect inside its part's size): KSvg would shrink the part
+            # and leave a light seam where it meets the next one.
+            self.assertNotIn('stroke', files['decoration.svg'])
+            for g in ET.fromstring(files['decoration.svg']).iter('{http://www.w3.org/2000/svg}g'):
+                rects = g.findall('{http://www.w3.org/2000/svg}rect')
+                x, y, w, h = (float(rects[0].get(k)) for k in ('x', 'y', 'width', 'height'))
+                for rr in rects[1:]:
+                    rx, ry, rw, rh = (float(rr.get(k)) for k in ('x', 'y', 'width', 'height'))
+                    self.assertTrue(rx >= x and ry >= y and rx + rw <= x + w and ry + rh <= y + h, (g.get('id'), radius))
         files = ha.build(self.cols, 10)
         svg = files['decoration.svg']
         root = ET.fromstring(svg)

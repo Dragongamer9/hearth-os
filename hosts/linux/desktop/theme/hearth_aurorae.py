@@ -100,6 +100,21 @@ def frame_svg(c, radius):
     def box(x, y, w, h, fill):
         return '<rect x="%s" y="%s" width="%s" height="%s" fill="%s"/>' % (x, y, w, h, fill)
 
+    def corner(x, y, rr, h, line, fill, right):
+        """A rounded title bar corner RR wide and H tall at (X, Y): the border as the outer shape in LINE, the title
+        colour as the inner one, both filled (a stroke's bounds reach half its width past the part, and KSvg would
+        shrink the part to fit: a light seam where it meets the next one)."""
+        def shape(inset):
+            r2 = rr - inset
+            if right:
+                x0, x1 = x, x + rr - inset          # the arc on the right
+                arc = ('L %s %s A %s %s 0 0 1 %s %s' % (x1 - r2, y + inset, r2, r2, x1, y + rr)) if r2 > 0 else 'L %s %s' % (x1, y + inset)
+                return 'M %s %s L %s %s %s L %s %s Z' % (x0, y + h, x0, y + inset, arc, x1, y + h)
+            x0, x1 = x + inset, x + rr               # the arc on the left
+            arc = ('L %s %s A %s %s 0 0 1 %s %s' % (x0, y + rr, r2, r2, x0 + r2, y + inset)) if r2 > 0 else 'L %s %s' % (x0, y + inset)
+            return 'M %s %s %s L %s %s L %s %s Z' % (x0, y + h, arc, x1, y + inset, x1, y + h)
+        return ('<path d="%s" fill="%s"/><path d="%s" fill="%s"/>' % (shape(0), line, shape(BORDER), fill))
+
     def lin(gid, state, x1, y1, x2, y2):
         defs.append('<linearGradient id="%s" gradientUnits="userSpaceOnUse" x1="%s" y1="%s" x2="%s" y2="%s">%s</linearGradient>'
                     % (gid, x1, y1, x2, y2, _stops(state, P)))
@@ -121,10 +136,7 @@ def frame_svg(c, radius):
         cx, cy = x0 + P + R, y0 + P + R
         body = box(x0, y0, W, P + R, rad(g + 'tl', state, cx, cy, R))
         body += box(x0, y0 + P + R, P, TITLE_H - R, lin(g + 'tll', state, x0 + P, 0, x0, 0)) if TITLE_H > R else ''
-        body += ('<path d="M %d %d L %d %d A %d %d 0 0 1 %d %d L %d %d Z" fill="%s"/>' % (
-            x0 + P, y0 + TH, x0 + P, cy, R, R, cx, y0 + P, x0 + W, y0 + TH, bg))
-        body += ('<path d="M %.1f %d L %.1f %d A %.1f %.1f 0 0 1 %d %.1f" fill="none" stroke="%s" stroke-width="%d"/>' % (
-            x0 + P + 0.5, y0 + TH, x0 + P + 0.5, cy, R - 0.5, R - 0.5, cx, y0 + P + 0.5, line, BORDER))
+        body += corner(x0 + P, y0 + P, R, TH - P, line, bg, False)
         group(e + 'topleft', x0, y0, W, TH, body)
         # top: the shadow above, the border, the title colour
         x0 = W + 20
@@ -135,10 +147,7 @@ def frame_svg(c, radius):
         cx = x0                            # the arc's centre (the window's right edge is at x0 + R)
         body = box(x0, y0, W, P + R, rad(g + 'tr', state, cx, cy, R))
         body += box(x0 + R, y0 + P + R, P, TITLE_H - R, lin(g + 'trr', state, x0 + R, 0, x0 + R + P, 0)) if TITLE_H > R else ''
-        body += ('<path d="M %d %d L %d %d A %d %d 0 0 1 %d %d L %d %d Z" fill="%s"/>' % (
-            x0, y0 + TH, x0, y0 + P, R, R, x0 + R, cy, x0 + R, y0 + TH, bg))
-        body += ('<path d="M %d %.1f A %.1f %.1f 0 0 1 %.1f %d L %.1f %d" fill="none" stroke="%s" stroke-width="%d"/>' % (
-            x0, y0 + P + 0.5, R - 0.5, R - 0.5, x0 + R - 0.5, cy, x0 + R - 0.5, y0 + TH, line, BORDER))
+        body += corner(x0, y0 + P, R, TH - P, line, bg, True)
         group(e + 'topright', x0, y0, W, TH, body)
         # the sides, the middle (under the window), the bottom
         by = y0 + TH + 40
