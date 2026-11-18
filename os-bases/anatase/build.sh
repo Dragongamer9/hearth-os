@@ -1343,6 +1343,12 @@ else echo "Hearth Office wasn't built; this image goes without it"; fi
 # in every KDE app) from CI's build inside this base (os/nimbus-app/hearth-kde.tar), only when they built, passed their
 # tests and start here (otherwise the old Hearth Files stays the file manager). The old Terminal, Text Editor and
 # Calculator stay installed as "… (classic)". Never stops the image build.
+# KDE Frameworks to Fedora's current ones first: the base image's are older than the KDE apps Fedora ships today
+# (Fedora's own Kate 26.08 failed with "undefined symbol: KConfig::copyFrom", run 44296110901), and RPM only asks for
+# the library's major version, so nothing else catches that.
+kf_before=$(rpm -q --qf '%{VERSION}' kf6-kconfig 2>/dev/null || true)
+dnf5 -y upgrade --refresh 'kf6-*' || echo "::warning title=KDE Frameworks::couldn't upgrade kf6-*"
+echo "::notice title=KDE Frameworks::kf6-kconfig ${kf_before:-?} -> $(rpm -q --qf '%{VERSION}' kf6-kconfig 2>/dev/null || true)"
 bash /ctx/hearth-kde/install.sh /ctx/nimbus-app/hearth-kde.tar || echo "warning: Hearth's KDE apps didn't install"
 # Hearth Files' own Dolphin build has to match the KDE Frameworks this image really has. The owner's laptop (Nov 18):
 # "symbol lookup error: libdolphinprivate.so.6: undefined symbol: KConfig::copyFrom" (built against KF 6.32, the
