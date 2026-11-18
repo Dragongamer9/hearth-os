@@ -134,11 +134,8 @@ PanelWindow {
     // On Firehold's own compositor VRR and Allow tearing are the game's own choices there (game.rs, through
     // hearth-firehold-game, saved per game like the frame limit), not KWin's screen settings.
     readonly property bool fhRows: comp && WinList.firehold
-    readonly property string fhVrrSub: !fg ? "" : fg.vrrScreen === "yes" ? (fg.vrrActive ? "On now: smooth when it dips below 60" : "Smooth when it dips below 60")
-                                       : fg.vrrScreen === "needs-modeset" ? "This screen would flash to switch: it stays fixed"
-                                       : "Used on screens that have it (this one doesn't say it can)"
-    readonly property string fhTearSub: !fg ? "" : fg.tearing ? (fg.frameLimitActive ? "The frame limit comes first" : "The game doesn't wait for the screen" + (fg.tearingAsked ? " (it asked to)" : ""))
-                                         : "Lowest delay for fast games"
+    // Green only when it can really happen here: a screen that says it can't (or would flash to switch) keeps it plain.
+    readonly property bool fhVrrCan: !!fg && fg.vrrScreen !== "no" && fg.vrrScreen !== "needs-modeset"
     readonly property var modes: ["power-saver", "balanced", "performance"]
     readonly property var modeNames: ({ "power-saver": "Battery saver", balanced: "Balanced", performance: "Performance" })
     readonly property var overlays: ["off", "basic", "full"]
@@ -146,9 +143,9 @@ PanelWindow {
     readonly property var rows: [
         ["Frame limit", "Steadier, cooler, longer battery", comp ? fh.frameLimit : "Not yet", comp && fh.frameLimit !== "Off" ? pal.text : pal.muted, comp],
         ["Resolution scaling", "Firehold upscales the game itself", comp ? scaling : "Not yet", comp && scaling !== "Off" ? pal.text : pal.muted, comp],
-        fhRows ? ["VRR / FreeSync", fhVrrSub, fg.vrr ? "On" : "Off", fg.vrr && fg.vrrActive ? pal.green : fg.vrr ? pal.text : pal.muted, true]
+        fhRows ? ["VRR / FreeSync", "Smooth when it dips below 60", fg.vrr ? "On" : "Off", fg.vrr && fhVrrCan ? pal.green : fg.vrr ? pal.text : pal.muted, true]
                : ["VRR / FreeSync", "Smooth when it dips below 60", !kwin || !vrr.capable ? "Not on this screen" : vrr.policy === "never" ? "Off" : "On", kwin && vrr.capable && vrr.policy !== "never" ? pal.green : pal.muted, kwin && vrr.capable],
-        fhRows ? ["Allow tearing", fhTearSub, fg.tearing ? "On" : "Off", fg.tearing && fg.tearingActive ? pal.green : fg.tearing ? pal.text : pal.muted, true]
+        fhRows ? ["Allow tearing", "Lowest delay for fast games", fg.tearing ? "On" : "Off", fg.tearing && fg.tearingActive ? pal.green : fg.tearing ? pal.text : pal.muted, true]
                : ["Allow tearing", "Lowest delay for fast games", !tearCapable ? "Needs KWin" : tearOn ? "On" : "Off", tearCapable && tearOn ? pal.green : pal.muted, tearCapable],
         ["Power", "Handhelds and laptops", powerMode ? (modeNames[powerMode] || powerMode) + (tdp.watts ? " · " + Math.round(tdp.watts) + " W" : "") : "Set by this PC", pal.text, powerMode !== ""],
         ["Performance overlay", "Top-left corner", fh.overlay === "off" ? "Off" : fh.overlay === "basic" ? "Basic" : "Full", fh.overlay === "off" ? pal.muted : pal.text, true]

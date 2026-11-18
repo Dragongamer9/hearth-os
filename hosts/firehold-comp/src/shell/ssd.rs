@@ -753,6 +753,7 @@ fn draw_bar(k: &DrawKey, t: &theme::Theme) -> Vec<u8> {
                 cv.line(cx - r, cy + r, cx - r, cy - r, th, glyph);
             }
             Button::Minimize => cv.line(cx - r, cy, cx + r, cy, th, glyph),
+            Button::Fullscreen => {}
         }
     }
     // The title, in the middle of the space left of the buttons (as labwc's Hearth theme centres it).

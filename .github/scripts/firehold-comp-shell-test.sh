@@ -164,7 +164,7 @@ shown() {   # $1 picture, $2 what
 }
 shown firehold-c3-guide "guide"
 # The Guide's rows as Mantel shows them: VRR and Allow tearing are the game's own here, never "Needs KWin".
-rows=$(fst '"; ".join("%s ‹ %s › (%s)%s" % (r["name"], r["value"], r["sub"], "" if r["works"] else " [not working]") for r in d["guideRows"])')
+rows=$(fst '"; ".join("%s ‹ %s ›%s" % (r["name"], r["value"], "" if r["works"] else " [not working]") for r in d["guideRows"])')
 note "guide" "rows: $rows"
 [ "$(fst 'any(r["name"] == "VRR / FreeSync" and r["works"] and r["value"] in ("On", "Off") for r in d["guideRows"])')" = True ] \
   || fail "guide" "the VRR row isn't the game's own: $rows"
