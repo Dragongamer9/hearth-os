@@ -326,8 +326,20 @@ ShellRoot {
         onLoaded: item.wire({ pad: pad, quick: quick, settingsApp: settings, keyboard: keyboard })
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Firehold (Firehold.qml) couldn't load")
     }
-    FileManager { id: files }
-    FilesIpc { get: () => files; peek: () => files }
+    // Hearth Files (1.15, faster apps: about 8 MB less with nothing open, measured on KWin by apps-speed.yml): made the
+    // first time it's used, then kept (its window still goes three minutes after closing). The desktop, the taskbar,
+    // Run, the controller and the IPC reach it through `files` here (open, close, toggle, properties, shown).
+    LazyLoader { id: filesLoader; FileManager {} }
+    QtObject {
+        id: files
+        readonly property bool shown: !!filesLoader.item && filesLoader.item.shown
+        function fm() { if (!filesLoader.item) filesLoader.active = true; return filesLoader.item; }
+        function open(p) { fm().open(p); }
+        function close() { if (filesLoader.item) filesLoader.item.close(); }
+        function toggle() { fm().toggle(); }
+        function properties(paths) { fm().properties(paths); }
+    }
+    FilesIpc { get: () => files.fm(); peek: () => filesLoader.item }
     VolumeOsd { id: osd }
     // 1.14: Caps Lock, Num Lock, the keyboard layout and the microphone (SystemOsd.qml), and Arrange the bar with the
     // extra panels (BarArrange.qml, ExtraPanels.qml): loaded by file name, so a problem in one only loses it.

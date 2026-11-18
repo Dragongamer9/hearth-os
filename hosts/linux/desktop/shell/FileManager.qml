@@ -115,6 +115,7 @@ Scope {
     property string appsFilter: "all"          // all | hearth | flatpak | winapp | steam | recomp | games
     property var navOpen: ({ thispc: true, network: true })   // the navigation pane's tree (this session only)
     property var recent: []                    // hearth-files recent (the Home page's list)
+    property bool recentBusy: false            // a recent read is on its way
     property var undoStack: []                 // file changes that can be undone (Ctrl+Z), newest last
     property var redoStack: []
     // The view as drawn: the Home page is always a list (Quick access tiles above it).
@@ -256,12 +257,32 @@ Scope {
             if (tl && tl.path) navigate(tl.path, "");
             else if (target) navigate(target, "");
             else if (!listing) navigate(picking ? home : startPage, "");
+            // 1.15 (faster apps): opened again on the folder it shows: listed again quietly (as when the folder
+            // changes by itself), so the window comes up as it was, keeps where you were, and changes only if the
+            // folder did. Hearth's own pages (Home, This PC, Hearth (C:)) are read again as before.
+            else if (warmOpen && !onHome && !onSpecial && !listing.error) refreshQuiet();
             else reload();
         };
+        // The window was still made (opened again within three minutes): its prefs, places and templates read
+        // again in one helper call instead of three (hearth-files opened), after the window is up.
+        const warmOpen = !!ui && prefsLoaded && !picking;
         if (!prefsLoaded) loadPrefs(go);
-        else { go(); refreshCPrefs(); }
-        refreshPlaces();
-        loadTemplates();
+        else go();
+        if (warmOpen) Qt.callLater(refreshOpened);
+        else {
+            if (prefsLoaded) refreshCPrefs();
+            refreshPlaces();
+            loadTemplates();
+        }
+    }
+    // prefs (Hearth (C:)'s switches only), places and templates in one go (hearth-files opened: only reads).
+    function refreshOpened() {
+        call(["opened"], (r, err) => {
+            if (!r || err) { refreshCPrefs(); refreshPlaces(); loadTemplates(); return; }
+            if (r.prefs) applyCPrefs(r.prefs);
+            if (r.places) applyPlaces(r.places);
+            if (r.templates) templates = r.templates.templates;
+        });
     }
     function close() {
         if (picking && !pickDone) { pickDone = true; picked({ cancel: true }); }
@@ -496,17 +517,17 @@ Scope {
     // nothing is written) each time the window opens.
     readonly property var cKeys: ["cdrive", "linuxFolders", "addressBar", "copyPath"]
     function refreshCPrefs() {
-        call(["prefs"], (r, err) => {
-            if (!r) return;
-            const before = cKeys.map(k => JSON.stringify(prefs[k])).join();
-            if (cKeys.map(k => JSON.stringify(r[k])).join() === before) return;
-            const p = Object.assign({}, prefs);
-            for (const k of cKeys) { if (r[k] === undefined) delete p[k]; else p[k] = r[k]; }
-            prefs = p;
-            places = buildNav(rawPlaces);
-            if (cdriveOn && !Object.keys(cdata).length) loadCData(null);
-            if (!cdriveOn && onCView) navigate(thisPcPage, "");
-        });
+        call(["prefs"], (r, err) => { if (r) applyCPrefs(r); });
+    }
+    function applyCPrefs(r) {
+        const before = cKeys.map(k => JSON.stringify(prefs[k])).join();
+        if (cKeys.map(k => JSON.stringify(r[k])).join() === before) return;
+        const p = Object.assign({}, prefs);
+        for (const k of cKeys) { if (r[k] === undefined) delete p[k]; else p[k] = r[k]; }
+        prefs = p;
+        places = buildNav(rawPlaces);
+        if (cdriveOn && !Object.keys(cdata).length) loadCData(null);
+        if (!cdriveOn && onCView) navigate(thisPcPage, "");
     }
     function applyFolderView(p) {
         const f = (prefs.folders && p && prefs.folders[p]) || prefs;
@@ -631,7 +652,17 @@ Scope {
         listing = { path: homePage, name: "Home", parent: "", entries: [], writable: false, trash: false, free: null, total: null };
         path = homePage;
         cur = 0;
-        call(["recent"], (r, err) => { if (r && path === homePage) { recent = r.recent || []; cur = Math.min(cur, Math.max(0, entries.length - 1)); } });
+        // One read at a time (1.15: "files home" opened Files and then went Home, reading the list twice at once).
+        if (recentBusy) return;
+        recentBusy = true;
+        call(["recent"], (r, err) => {
+            recentBusy = false;
+            if (r && path === homePage) {
+                const list = r.recent || [];
+                if (JSON.stringify(list) !== JSON.stringify(recent)) recent = list;
+                cur = Math.min(cur, Math.max(0, entries.length - 1));
+            }
+        });
     }
     // This PC and Installed apps: Hearth's own pages (the address bar says "This PC" / "This PC › Installed apps").
     function loadPage(p, hist) {
@@ -862,32 +893,33 @@ Scope {
         else navigate(parentOf(p), base(p));
     }
     function refreshPlaces() {
-        call(["places"], (r, err) => {
-            if (!r) return;
-            const old = rawPlaces;
-            rawPlaces = r.places.map(q => q.kind === "home" && !picking ? Object.assign({}, q, { label: "Home folder" }) : q);
-            places = buildNav(rawPlaces);
-            placeIndex = Math.min(placeIndex, places.length - 1);
-            extras.refresh();
-            // A drive plugged in, taken out, mounted or unmounted while This PC is open: shown at once.
-            const sig = l => l.filter(q => q.section === "drives").map(q => q.id + (q.mounted === false ? "-" : "+")).join("|");
-            if (onThisPc && sig(old) !== sig(rawPlaces)) loadThisPc();
-            // A drive that was taken out while you were in it: back to Home.
-            for (const o of old) {
-                if (o.section !== "drives" || !o.path || rawPlaces.some(n => n.path === o.path)) continue;
-                if (path === o.path || path.startsWith(o.path + "/")) {
-                    say("“" + o.label + "” was removed");
-                    navigate(home, "");
-                }
+        call(["places"], (r, err) => { if (r) applyPlaces(r); });
+    }
+    function applyPlaces(r) {
+        const old = rawPlaces;
+        rawPlaces = r.places.map(q => q.kind === "home" && !picking ? Object.assign({}, q, { label: "Home folder" }) : q);
+        places = buildNav(rawPlaces);
+        placeIndex = Math.min(placeIndex, places.length - 1);
+        extras.refresh();
+        // A drive plugged in, taken out, mounted or unmounted while This PC is open: shown at once.
+        const sig = l => l.filter(q => q.section === "drives").map(q => q.id + (q.mounted === false ? "-" : "+")).join("|");
+        if (onThisPc && sig(old) !== sig(rawPlaces)) loadThisPc();
+        // A drive that was taken out while you were in it: back to Home.
+        for (const o of old) {
+            if (o.section !== "drives" || !o.path || rawPlaces.some(n => n.path === o.path)) continue;
+            if (path === o.path || path.startsWith(o.path + "/")) {
+                say("“" + o.label + "” was removed");
+                navigate(home, "");
             }
-        });
+        }
     }
     // 1.13: drives plugged in or taken out show at once (hearth-files watch --mounts); the slow look stays for shares.
     Timer { interval: 15000; repeat: true; running: app.shown; onTriggered: app.refreshPlaces() }
     Process {
         id: mountWatch
         command: ["python3", app.helper, "watch", "--mounts"]
-        running: app.shown
+        // 1.15: kept while the window is kept (three minutes after closing), so opening it again starts nothing.
+        running: app.shown || app.warm
         stdout: SplitParser { onRead: line => { if (String(line).trim() === "mounts") mountSettle.restart(); } }
     }
     Timer { id: mountSettle; interval: 600; onTriggered: { app.refreshPlaces(); if (app.onThisPc) app.loadThisPc(); } }

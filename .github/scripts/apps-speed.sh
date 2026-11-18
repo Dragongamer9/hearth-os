@@ -95,6 +95,18 @@ measure() {   # $1: before | after, $2: the tree
 
 measure before "${BEFORE:?the tree to compare against}"
 measure after "$SRC"
+# A QML error in the branch's shell that bughunt's doesn't have fails the run (paths and times taken out first).
+norm() { grep -iE "TypeError|ReferenceError|is not defined|Cannot assign|non-existent|is not a type|Failed to load|Cannot read" "$1" 2>/dev/null \
+  | sed -E "s#$2##g; s#^[^A-Za-z]*##; s#[0-9]{2}:[0-9]{2}:[0-9]{2}[.0-9]*##g" | sort -u; }
+norm "shots/shell-$(basename "$BEFORE").log" "$BEFORE" > shots/speed/errors-before.txt
+norm "shots/shell-$(basename "$SRC").log" "$SRC" > shots/speed/errors-after.txt
+NEW=$(comm -13 shots/speed/errors-before.txt shots/speed/errors-after.txt | head -8 | cut -c1-300)
+if [ -n "$NEW" ]; then
+  echo "::error title=apps speed: new shell errors::$(echo "$NEW" | tr '\n' '|')"
+  FAILED=1
+else
+  echo "::notice title=apps speed::no QML errors in the branch's shell that bughunt's doesn't have ($(wc -l < shots/speed/errors-after.txt) lines in both)"
+fi
 # (Its notices are posted by the next step: a step keeps 10.)
 python3 tools/perf-measure.py compare shots/speed/before.json shots/speed/after.json > shots/speed/compare.md
 grep '^::' shots/speed/compare.md > shots/speed/compare-notices.txt
@@ -114,4 +126,4 @@ for i in range(0, min(len(t), 9 * 3800), 3800):
 PY
 fi
 pkill -TERM -f /tmp/kwin_wayland
-exit 0
+exit "${FAILED:-0}"

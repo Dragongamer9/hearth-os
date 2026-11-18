@@ -37,6 +37,11 @@ Item {
     }
     Component.onDestruction: { if (SettingsNav.frame === frame) SettingsNav.frame = null; }
     Connections { target: frame.app; function onPageChanged() { frame.load(); } }
+    // 1.15 (faster apps): Settings' window stays made for three minutes after it's closed (SettingsApp.qml). Closed,
+    // the page is let go (nothing on it keeps running) and the search emptied; opened again, it starts as a new
+    // window would: the list has the focus and the page asked for is made.
+    function park() { loader.source = ""; frame.query = ""; search.text = ""; frame.showAll = false; frame.pendingFocus = ""; }
+    function unpark() { if (String(loader.source) !== "") return; nav.forceActiveFocus(); load(); }
 
     // ---------------------------------------------------------------- the page
     function propsFor(e) {
@@ -50,6 +55,7 @@ Item {
         return o;
     }
     function load() {
+        if (!frame.app.shown) return;          // kept while closed (1.15): the page is made when it opens again
         const e = frame.entry;
         loader.failed = false;
         loader.source = "";

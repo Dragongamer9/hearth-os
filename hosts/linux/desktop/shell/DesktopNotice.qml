@@ -13,7 +13,7 @@ import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
 
-PanelWindow {
+Scope {
     id: root
     property var settingsApp: null
     property bool shown: false
@@ -53,64 +53,70 @@ PanelWindow {
     // After SteamFallback's check (1.5 s), so two cards never ask at the same moment.
     Timer { interval: 4000; running: true; onTriggered: check.running = true }
 
-    visible: shown
-    color: "transparent"
-    anchors { top: true; bottom: true; left: true; right: true }
-    exclusiveZone: -1
-    WlrLayershell.layer: WlrLayer.Top
-    WlrLayershell.namespace: "hearth-desktop-notice"
-    WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
+    // 1.15 (faster apps): the window is made only while it shows (a hidden one still held a few MB all the time).
+    LazyLoader {
+        active: root.shown
+        PanelWindow {
+            visible: shown
+            color: "transparent"
+            anchors { top: true; bottom: true; left: true; right: true }
+            exclusiveZone: -1
+            WlrLayershell.layer: WlrLayer.Top
+            WlrLayershell.namespace: "hearth-desktop-notice"
+            WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
 
-    Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, 0.5) }
-    Rectangle {
-        anchors.centerIn: parent
-        width: Math.min(parent.width - 80, 620)
-        height: col.implicitHeight + 56
-        radius: 24
-        color: Theme.glass
-        border.color: Theme.line
-        focus: root.shown
-        Keys.onPressed: e => {
-            if (e.key === Qt.Key_Down || e.key === Qt.Key_Tab) root.sel = (root.sel + 1) % root.items.length;
-            else if (e.key === Qt.Key_Up || e.key === Qt.Key_Backtab) root.sel = (root.sel + root.items.length - 1) % root.items.length;
-            else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) root.pick(root.sel);
-            else if (e.key === Qt.Key_Escape) root.shown = false;
-            else return;
-            e.accepted = true;
-        }
-        ColumnLayout {
-            id: col
-            anchors { left: parent.left; right: parent.right; top: parent.top; margins: 28 }
-            spacing: 10
-            ColumnLayout {
-                spacing: 4
-                Layout.bottomMargin: 6
-                Text { text: root.notice.title || ""; color: Theme.text; font.family: Theme.font; font.pixelSize: 26; font.weight: Font.DemiBold }
-                Text { Layout.fillWidth: true; text: root.notice.sub || ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
-            }
-            Repeater {
-                model: root.items
-                delegate: Rectangle {
-                    id: it
-                    required property var modelData
-                    required property int index
-                    readonly property bool lit: root.sel === index
-                    Layout.fillWidth: true
-                    implicitHeight: 64
-                    radius: 14
-                    color: lit ? Theme.accent : area.containsMouse ? Theme.panel3 : Theme.panel2
-                    RowLayout {
-                        anchors { fill: parent; leftMargin: 18; rightMargin: 18 }
-                        spacing: 14
-                        Icon { name: it.modelData.icon; size: 22; color: it.lit ? Theme.accentInk : Theme.text }
-                        ColumnLayout {
+            Rectangle { anchors.fill: parent; color: Qt.rgba(0, 0, 0, 0.5) }
+            Rectangle {
+                anchors.centerIn: parent
+                width: Math.min(parent.width - 80, 620)
+                height: col.implicitHeight + 56
+                radius: 24
+                color: Theme.glass
+                border.color: Theme.line
+                focus: root.shown
+                Keys.onPressed: e => {
+                    if (e.key === Qt.Key_Down || e.key === Qt.Key_Tab) root.sel = (root.sel + 1) % root.items.length;
+                    else if (e.key === Qt.Key_Up || e.key === Qt.Key_Backtab) root.sel = (root.sel + root.items.length - 1) % root.items.length;
+                    else if (e.key === Qt.Key_Return || e.key === Qt.Key_Enter || e.key === Qt.Key_Space) root.pick(root.sel);
+                    else if (e.key === Qt.Key_Escape) root.shown = false;
+                    else return;
+                    e.accepted = true;
+                }
+                ColumnLayout {
+                    id: col
+                    anchors { left: parent.left; right: parent.right; top: parent.top; margins: 28 }
+                    spacing: 10
+                    ColumnLayout {
+                        spacing: 4
+                        Layout.bottomMargin: 6
+                        Text { text: root.notice.title || ""; color: Theme.text; font.family: Theme.font; font.pixelSize: 26; font.weight: Font.DemiBold }
+                        Text { Layout.fillWidth: true; text: root.notice.sub || ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
+                    }
+                    Repeater {
+                        model: root.items
+                        delegate: Rectangle {
+                            id: it
+                            required property var modelData
+                            required property int index
+                            readonly property bool lit: root.sel === index
                             Layout.fillWidth: true
-                            spacing: 2
-                            Text { text: it.modelData.label; color: it.lit ? Theme.accentInk : Theme.text; font.family: Theme.font; font.pixelSize: 16; font.weight: Font.DemiBold }
-                            Text { Layout.fillWidth: true; text: it.modelData.sub; color: it.lit ? Theme.accentInk : Theme.muted; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight }
+                            implicitHeight: 64
+                            radius: 14
+                            color: lit ? Theme.accent : area.containsMouse ? Theme.panel3 : Theme.panel2
+                            RowLayout {
+                                anchors { fill: parent; leftMargin: 18; rightMargin: 18 }
+                                spacing: 14
+                                Icon { name: it.modelData.icon; size: 22; color: it.lit ? Theme.accentInk : Theme.text }
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+                                    Text { text: it.modelData.label; color: it.lit ? Theme.accentInk : Theme.text; font.family: Theme.font; font.pixelSize: 16; font.weight: Font.DemiBold }
+                                    Text { Layout.fillWidth: true; text: it.modelData.sub; color: it.lit ? Theme.accentInk : Theme.muted; font.family: Theme.font; font.pixelSize: 12; elide: Text.ElideRight }
+                                }
+                            }
+                            MouseArea { id: area; anchors.fill: parent; hoverEnabled: true; onEntered: root.sel = it.index; onClicked: root.pick(it.index) }
                         }
                     }
-                    MouseArea { id: area; anchors.fill: parent; hoverEnabled: true; onEntered: root.sel = it.index; onClicked: root.pick(it.index) }
                 }
             }
         }

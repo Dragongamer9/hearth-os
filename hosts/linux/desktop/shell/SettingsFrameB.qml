@@ -35,8 +35,13 @@ Item {
     }
     Component.onDestruction: { SetStyle.big = false; if (SettingsNav.frame === frame) SettingsNav.frame = null; }
     Connections { target: frame.app; function onPageChanged() { frame.load(); } }
+    // 1.15 (faster apps): kept while Settings is closed (SettingsApp.qml): the page let go and the search closed,
+    // then made again as a new window would when it opens.
+    function park() { loader.source = ""; findInput.text = ""; finder.visible = false; frame.pendingFocus = ""; }
+    function unpark() { if (String(loader.source) !== "") return; load(); list.forceActiveFocus(); }
 
     function load() {
+        if (!frame.app.shown) return;          // kept while closed (1.15): the page is made when it opens again
         loader.failed = false;
         loader.source = "";
         const o = Object.assign({ framed: true }, entry.props || {});

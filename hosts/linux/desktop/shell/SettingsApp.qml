@@ -61,8 +61,22 @@ Scope {
     function close() { shown = false; SettingsNav.pageAnchor = ""; SettingsNav.ruleFor = null; }
     function toggle() { shown ? close() : open(""); }
 
+    // 1.15 (faster apps): the window stays made, hidden, for three minutes after it's closed, so opening Settings
+    // again is only showing it (as Hearth Files does). The page itself is let go when it closes (the frame's park())
+    // and made again when it opens, so nothing on it runs while it's closed and it still opens on Home or the page
+    // asked for. Without a frame that can do that (the plain fallback list), the window goes at once as before.
+    property bool warm: false
+    property var ui: null
+    onShownChanged: {
+        if (shown) { warmTimer.stop(); return; }
+        const f = ui ? ui.frame() : null;
+        if (f && typeof f.park === "function") { f.park(); warm = true; warmTimer.restart(); }
+        else warm = false;
+    }
+    Timer { id: warmTimer; interval: 180000; onTriggered: if (!app.shown) app.warm = false }
+
     LazyLoader {
-        active: app.shown
+        active: app.shown || app.warm
         FloatingWindow {
             id: win
             title: "Hearth Settings"
@@ -70,10 +84,16 @@ Scope {
             implicitWidth: Math.max(900, Math.min(1600, (scr ? scr.width : 1920) - 64))
             implicitHeight: Math.max(600, Math.min(990, (scr ? scr.height : 1080) - 90))
             color: Theme.bg
-            visible: true
-            onVisibleChanged: if (!visible) app.shown = false
+            visible: app.shown
+            onVisibleChanged: {
+                if (!visible) { if (app.shown) app.shown = false; return; }
+                const f = frameLoader.item;
+                if (f && typeof f.unpark === "function") f.unpark();
+            }
+            function frame() { return frameLoader.item; }
             // Opens on Home every time (a page asked for by name, or by a notification, opens that page instead).
-            Component.onCompleted: if (app.page === "") app.page = "home"
+            Component.onCompleted: { app.ui = win; if (app.page === "") app.page = "home"; }
+            Component.onDestruction: if (app.ui === win) app.ui = null
             Binding { target: app; property: "query"; value: frameLoader.item && typeof frameLoader.item.query === "string" ? frameLoader.item.query : "" }
 
             // The frame, loaded by file name: if it fails, the plain list instead (Settings always opens).

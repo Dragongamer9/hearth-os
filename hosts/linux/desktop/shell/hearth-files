@@ -3775,6 +3775,18 @@ def watch_poll_remote(path, alive):
         return hash(tuple(sorted((e.get('name'), e.get('size'), e.get('modified')) for e in r.get('entries', []))))
     watch_poll(path, interval=WATCH_POLL * 2, alive=alive, sig=sig)
 
+def opened():
+    """What Files reads again each time its window opens (1.15: one helper call instead of three): its prefs, the
+    places and the templates. Only reads. A part that fails is left out (Files then reads it on its own)."""
+    out = {}
+    for key, fn in (('prefs', prefs_get), ('places', places), ('templates', templates)):
+        try:
+            out[key] = fn()
+        except (Fail, OSError, ValueError, subprocess.TimeoutExpired):
+            pass
+    return out
+
+
 def remote_cmd(c, rest):
     """A command about hearth:// addresses, or None when it isn't one."""
     if not any(is_remote(a) for a in rest):
@@ -4302,7 +4314,7 @@ USAGE = ('usage: hearth-files list PATH [--hidden] | places | this-pc | letter-s
          'checksum ALGO PATH | chmod PATH MODE | set-default PATH APP_ID | conflicts SRC... DEST | new-file PATH | '
          'templates | from-template TEMPLATE FOLDER [NAME] | batch-rename PATTERN PATH... | '
          'compress FORMAT ARCHIVE SRC... | extract ARCHIVE DEST|--here | search PATH QUERY [--hidden] | bookmarks | '
-         'bookmark-add PATH [LABEL] | bookmark-remove PATH | prefs | prefs-set JSON | clip-set MODE PATH... | '
+         'bookmark-add PATH [LABEL] | bookmark-remove PATH | prefs | prefs-set JSON | opened | clip-set MODE PATH... | '
          'clip-get | peek PATH | thumbs PATH... | terminal PATH | open-plan PATH | run PATH [--terminal] | '
          'make-runnable PATH | open-text PATH [--readonly] | desktop-launch PATH | open-choice PATH [CHOICE] | appimage-info PATH | appimage-run PATH [--trust] | '
          'appimage-menu-add PATH [--trust] | appimage-menu-remove PATH')
@@ -4331,6 +4343,8 @@ def cmd(argv):
         out = list_dir('', False)
     elif c == 'places':
         out = places()
+    elif c == 'opened':
+        out = opened()
     elif c == 'this-pc':
         out = this_pc()
     elif c == 'letter-set' and len(rest) == 2:

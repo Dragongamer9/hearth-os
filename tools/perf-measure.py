@@ -81,23 +81,34 @@ _kwin = None
 
 
 def kwin_frame():
-    """A hash of KWin's screen (org.kde.KWin.ScreenShot2; KWin needs KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 in CI)."""
+    """A hash of KWin's screen (org.kde.KWin.ScreenShot2; KWin needs KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 in CI).
+    The pipe is read while KWin writes it (a full screen doesn't fit in a pipe: waiting for the reply first could
+    stall until the call timed out, so nothing seemed to change)."""
     global _kwin
     import dbus
+    import threading
     if _kwin is None:
         _kwin = dbus.Interface(dbus.SessionBus().get_object('org.kde.KWin', '/org/kde/KWin/ScreenShot2'), 'org.kde.KWin.ScreenShot2')
     r, w = os.pipe()
+    h = hashlib.sha1()
+
+    def drain():
+        with os.fdopen(r, 'rb') as f:
+            while True:
+                c = f.read(1 << 20)
+                if not c:
+                    break
+                h.update(c)
+    t = threading.Thread(target=drain, daemon=True)
+    t.start()
     try:
         _kwin.CaptureActiveScreen({'native-resolution': True}, dbus.types.UnixFd(w), timeout=5)
+    except Exception:
+        _kwin = None
+        raise
     finally:
         os.close(w)
-    h = hashlib.sha1()
-    with os.fdopen(r, 'rb') as f:
-        while True:
-            c = f.read(1 << 20)
-            if not c:
-                break
-            h.update(c)
+        t.join(5)
     return h.hexdigest()
 
 
@@ -180,7 +191,8 @@ def total(rows, prefix='quickshell'):
 
 
 def compare(pa, pb):
-    a, b = json.load(open(pa)), json.load(open(pb))
+    with open(pa) as fa, open(pb) as fb:
+        a, b = json.load(fa), json.load(fb)
     lines = ['| | Before | After |', '|---|---|---|']
     notes = []
     for key, what in (('idle', 'Shell memory, nothing open'), ('idle-after', 'Shell memory after opening everything once and closing it')):
