@@ -133,7 +133,7 @@ check "Hearth Settings opens the Hearth app's Settings without Mantel" "grep -q 
 check "Game Mode's file dialogs aren't Mantel's picker here (it needs Quickshell)" "! grep -q 'FileChooser=hearth' /usr/share/xdg-desktop-portal/nimbus-portals.conf"
 
 echo "--- Hearth's look, not Anatase's or Fedora's"
-check "the name is Hearth OS, the logo Hearth's (os-release)" "grep -qx 'PRETTY_NAME=\"Hearth OS\"' /usr/lib/os-release && grep -qx 'NAME=\"Hearth OS\"' /usr/lib/os-release && grep -qx 'LOGO=hearth' /usr/lib/os-release && grep -q 'based on Anatase' /usr/lib/os-release"
+check "the name is Hearth OS, the logo Hearth's (os-release)" "grep -qx 'PRETTY_NAME=\"Hearth OS\"' /usr/lib/os-release && grep -qx 'NAME=\"Hearth OS\"' /usr/lib/os-release && grep -qx 'LOGO=hearth' /usr/lib/os-release && grep -q 'Fedora edition' /usr/lib/os-release && ! grep -E '^(NAME|PRETTY_NAME|VARIANT)=' /usr/lib/os-release | grep -qi anatase"
 check "the boot splash is Hearth's, its presets are in the initramfs" "plymouth-set-default-theme | grep -qx hearth && grep -q hearth-aurora /usr/lib/dracut/dracut.conf.d/50-hearth-splash.conf"
 check "Plasma's menu button and the distributor logo are Hearth's" \
   "cmp -s /usr/share/icons/hicolor/scalable/apps/start-here-kde.svg /usr/share/icons/hicolor/scalable/apps/hearth.svg && cmp -s /usr/share/icons/hicolor/scalable/apps/distributor-logo.svg /usr/share/icons/hicolor/scalable/apps/hearth.svg"

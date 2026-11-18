@@ -532,8 +532,8 @@ jobs:
           bad=$(gh api "repos/${{ github.repository }}/actions/runs/$REUSE/jobs?per_page=50" --jq '.jobs[] | select((.name | startswith("Build the Hearth app") or startswith("Build Hearth Browser") or startswith("Build hearth-steam") or startswith("Build Hearth'"'"'s KDE apps")) and .conclusion != "success") | .name')
           [ -z "$bad" ] || { echo "::error title=reuse_run::in run $REUSE these app jobs didn't pass: $bad"; exit 1; }
           git fetch -q --depth=1 origin "$sha" || { echo "::error title=reuse_run::couldn't fetch run $REUSE's commit $sha"; exit 1; }
-          # (hosts/linux/test and hosts/linux/session aren't built by the app jobs: the image takes them from this checkout.)
-          changed=$(git diff --name-only "$sha" HEAD -- hosts ui .github/scripts/hearth-kde-build.sh .github/scripts/hearth-qml-build.sh tools/app-bundle.py ':(exclude)hosts/linux/test' ':(exclude)hosts/linux/session')
+          # (hosts/linux/test, hosts/linux/session and hosts/linux/desktop/firehold-plasma aren't built by the app jobs: the image takes them from this checkout.)
+          changed=$(git diff --name-only "$sha" HEAD -- hosts ui .github/scripts/hearth-kde-build.sh .github/scripts/hearth-qml-build.sh tools/app-bundle.py ':(exclude)hosts/linux/test' ':(exclude)hosts/linux/session' ':(exclude)hosts/linux/desktop/firehold-plasma')
           if [ -n "$changed" ]; then
             echo "::error title=reuse_run::refused: the app jobs' sources changed since run $REUSE ($sha): $(echo "$changed" | head -20 | tr '\n' ' ')"; exit 1
           fi

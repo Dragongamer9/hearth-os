@@ -1726,7 +1726,7 @@ cat > /etc/xdg/kcm-about-distrorc <<KCM
 [General]
 LogoPath=$(hearth_png 256)
 Website=https://hearthos.fun
-Variant=Anatase edition (test) · based on Anatase (Fedora ${FEDORA_N})
+Variant=Fedora edition (test) · Fedora ${FEDORA_N}
 KCM
 # Plasma's wallpaper and lock screen by default: Hearth's (Fireside, from the wallpapers installed above), in every
 # look-and-feel's defaults and the lock screen's system default. Your own choice in ~/.config always wins.
@@ -1823,7 +1823,7 @@ sed -i \
   -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Hearth OS"/' \
   -e '/^LOGO=/d' -e '/^VARIANT=/d' -e '/^VARIANT_ID=/d' -e '/^HOME_URL=/d' \
   /usr/lib/os-release
-printf 'LOGO=hearth\nVARIANT="Anatase edition (test), based on Anatase (Fedora %s)"\nVARIANT_ID=hearth-anatase\nHOME_URL="https://hearthos.fun"\n' "$FEDORA" >> /usr/lib/os-release
+printf 'LOGO=hearth\nVARIANT="Fedora edition (test), Fedora %s"\nVARIANT_ID=hearth-anatase\nHOME_URL="https://hearthos.fun"\n' "$FEDORA" >> /usr/lib/os-release
 grep -qx 'PRETTY_NAME="Hearth OS"' /usr/lib/os-release && grep -qx 'LOGO=hearth' /usr/lib/os-release
 
 dnf5 clean all
