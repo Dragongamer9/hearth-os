@@ -412,7 +412,11 @@ class RepositoryApps(unittest.TestCase):
             text = (ROOT / 'os-bases' / base / 'build.sh').read_text()
             for line in text.splitlines():
                 if 'mimeapps.list' in line and not line.lstrip().startswith('#'):
-                    self.assertTrue('hearth-system' in line or line.lstrip().startswith('echo'), (base, line))
+                    # Plasma's own staging tree ($PK) takes a copy of the image's KDE lists, and hearth-app-kinds'
+                    # result for Plasma is copied back: only whole-file copies between the two, at build time.
+                    copy = line.lstrip().startswith('for f in ') and (
+                        'cp "$f" "$PK/etc/xdg/"' in line or 'cp "$PK/etc/xdg/$f" "/etc/xdg/$f"' in line)
+                    self.assertTrue('hearth-system' in line or line.lstrip().startswith('echo') or copy, (base, line))
             self.assertIn('hearth-system defaults-system', text)
         self.assertNotIn('mimeapps.list"', (ROOT / 'hosts' / 'hearth-office' / 'linux' / 'install.sh').read_text())
 

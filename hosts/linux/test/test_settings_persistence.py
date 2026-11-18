@@ -162,6 +162,8 @@ ALLOWED = {
     'os/live/src/build.sh',
     # The manual's "fix the display mode" command, typed by the person themselves (GNU sed -i renames a new file in).
     'tools/build-docs.py',
+    # CI only: the pure-Rust apps' timing test sets looks in the runner's throwaway account (no one's settings).
+    '.github/scripts/hearth-apps-rust-test.sh',
 }
 
 
