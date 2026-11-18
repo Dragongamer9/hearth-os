@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Firehold (Plasma, test)
+Comment=Desktop Mode: KDE Plasma, or Firehold's Couch and Desk on Plasma (a test)
+Exec=hearth-firehold-plasma pick
+Icon=hearth
+Categories=Settings;System;
+OnlyShowIn=KDE;

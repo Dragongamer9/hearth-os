@@ -21,6 +21,10 @@ on:
         description: 'Owner-approved test tag to publish to from this branch once every check passes (test-<version> only, e.g. test-1.15). Empty: none'
         type: string
         default: ''
+      reuse_run:
+        description: 'Reuse the app jobs of an earlier run of this workflow (its run id): skips them; refused if anything under hosts/ or ui/ (or the app build scripts) changed since that run. Empty: build them'
+        type: string
+        default: ''
       smoothness:
         description: 'Measure Desktop Mode at rest beside Debian (about 20 minutes)'
         type: boolean
@@ -40,6 +44,7 @@ jobs:
   # (ubuntu-latest moves to newer Ubuntu releases, whose glibc trixie doesn't have).
   app:
     name: Build the Hearth app (Rust, on Debian trixie)
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.reuse_run == '' }}
     runs-on: ubuntu-latest
     container: docker.io/library/debian:trixie
     outputs:
@@ -348,6 +353,7 @@ jobs:
   # little of glibc, so it's built on the runner as in os.yml.
   browser:
     name: Build Hearth Browser (Electron)
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.reuse_run == '' }}
     runs-on: ubuntu-latest
     needs: [app]
     steps:
@@ -436,6 +442,7 @@ jobs:
   # build, the image is made without it and Hearth always uses the normal Steam client.
   hearth-steam:
     name: Build hearth-steam (lightweight Steam engine)
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.reuse_run == '' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -461,6 +468,7 @@ jobs:
   # and without the tar the image keeps the old Hearth Files (the KDE apps from the base's packages are still renamed).
   kde:
     name: Build Hearth's KDE apps (inside Anatase)
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.reuse_run == '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -507,22 +515,78 @@ jobs:
           path: /tmp/out/hearth-firehold.tar
           if-no-files-found: ignore
 
+  # ---- Hearth's pure-Rust apps (hosts/hearth-ui; docs/APPS-ANATASE.md): Task Manager, System Restore and Reliability
+  # history, built inside the Fedora edition's base itself, so they link what the image has. Not required: without
+  # them the image is made as before (Plasma's own System Monitor, and no System Restore or Reliability history).
+  hearth-ui:
+    name: Build Hearth's pure-Rust apps inside Anatase
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        continue-on-error: true
+        run: |
+          mkdir -p /tmp/out
+          base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+          docker pull -q "$base" || { echo "::warning title=Hearth's pure-Rust apps::couldn't pull $base"; exit 1; }
+          docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-ui-build.sh 2>&1 | tail -40
+          rc=${PIPESTATUS[0]}
+          [ "$rc" = 0 ] || { echo "::warning title=Hearth's pure-Rust apps::they didn't build, so this image goes without them"; exit 1; }
+      - uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: hearth-ui-anatase
+          path: /tmp/out/hearth-ui.tar
+          if-no-files-found: ignore
+
   image:
     name: Build the OS image (hearth-os on Anatase, test)
-    needs: [app, browser, hearth-steam, kde, firehold]
-    if: ${{ !cancelled() && needs.app.result == 'success' && needs.browser.result == 'success' && needs.hearth-steam.result == 'success' }}
+    needs: [app, browser, hearth-steam, kde, firehold, hearth-ui]
+    if: ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' && inputs.reuse_run != '') || (needs.app.result == 'success' && needs.browser.result == 'success' && needs.hearth-steam.result == 'success')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
     permissions:
       contents: read
       packages: write
+      actions: read     # reuse_run: the earlier run's artifacts
     env:
       # Only main, only by hand, only with publish ticked (red flag 5)...
       PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' }}
       # ...or an owner-approved test tag given by hand (checked against test-<version> in the step).
       TAG_IN: ${{ github.event_name == 'workflow_dispatch' && inputs.test_tag || '' }}
+      REUSE: ${{ github.event_name == 'workflow_dispatch' && inputs.reuse_run || '' }}
+      # The run whose app artifacts are used: this one, or the checked earlier one.
+      ART_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.reuse_run || github.run_id }}
     steps:
       - uses: actions/checkout@v4
+
+      # reuse_run: only a run of this same workflow in this repository, whose app jobs all passed, and only when
+      # nothing the app jobs build from changed since its commit (hosts/, ui/, their build scripts). Else: refused.
+      - name: The version, and the earlier run's app jobs (reuse_run)
+        id: ver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          v=$(grep -oP '(?<=<Version>)[^<]+' hosts/windows/Nimbus.Host/Nimbus.Host.csproj | head -1)
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          [ -n "$REUSE" ] || exit 0
+          echo "$REUSE" | grep -Eqx '[0-9]{6,20}' || { echo "::error title=reuse_run::'$REUSE' isn't a run id"; exit 1; }
+          info=$(gh api "repos/${{ github.repository }}/actions/runs/$REUSE" --jq '[.path, .repository.full_name, .head_sha] | @tsv') \
+            || { echo "::error title=reuse_run::run $REUSE isn't in ${{ github.repository }}"; exit 1; }
+          IFS=$'\t' read -r path repo sha <<<"$info"
+          [ "$repo" = "${{ github.repository }}" ] && [ "$path" = .github/workflows/base-anatase.yml ] \
+            || { echo "::error title=reuse_run::run $REUSE is $path in $repo, not this workflow"; exit 1; }
+          bad=$(gh api "repos/${{ github.repository }}/actions/runs/$REUSE/jobs?per_page=50" --jq '.jobs[] | select((.name | startswith("Build the Hearth app") or startswith("Build Hearth Browser") or startswith("Build hearth-steam") or startswith("Build Hearth'"'"'s KDE apps")) and .conclusion != "success") | .name')
+          [ -z "$bad" ] || { echo "::error title=reuse_run::in run $REUSE these app jobs didn't pass: $bad"; exit 1; }
+          git fetch -q --depth=1 origin "$sha" || { echo "::error title=reuse_run::couldn't fetch run $REUSE's commit $sha"; exit 1; }
+          # (hosts/linux/test, hosts/linux/session and hosts/linux/desktop/firehold-plasma aren't built by the app jobs: the image takes them from this checkout; firehold-comp, firehold-shell and hearth-ui are built afresh every run by their own jobs.)
+          changed=$(git diff --name-only "$sha" HEAD -- hosts ui .github/scripts/hearth-kde-build.sh .github/scripts/hearth-qml-build.sh tools/app-bundle.py ':(exclude)hosts/linux/test' ':(exclude)hosts/linux/session' ':(exclude)hosts/linux/desktop/firehold-plasma' ':(exclude)hosts/firehold-comp' ':(exclude)hosts/firehold-shell' ':(exclude)hosts/hearth-ui')
+          if [ -n "$changed" ]; then
+            echo "::error title=reuse_run::refused: the app jobs' sources changed since run $REUSE ($sha): $(echo "$changed" | head -20 | tr '\n' ' ')"; exit 1
+          fi
+          echo "::notice title=reuse_run::using run $REUSE's app artifacts (commit $sha; nothing under hosts/ or ui/ changed since)"
 
       - name: Make room (the image is several GB)
         uses: ublue-os/remove-unwanted-software@695eb75bc387dbcd9685a8e72d23439d8686cba6
@@ -530,21 +594,39 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: hearth-app-anatase
+          run-id: ${{ env.ART_RUN }}
+          github-token: ${{ github.token }}
       - uses: actions/download-artifact@v4
-        continue-on-error: true
+        continue-on-error: ${{ env.REUSE == '' }}
         with:
           name: hearth-steam-anatase
+          run-id: ${{ env.ART_RUN }}
+          github-token: ${{ github.token }}
       - uses: actions/download-artifact@v4
         with:
           name: hearth-browser-anatase
+          run-id: ${{ env.ART_RUN }}
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v4
+        continue-on-error: ${{ env.REUSE == '' }}
+        with:
+          name: hearth-kde-anatase
+          run-id: ${{ env.ART_RUN }}
+          github-token: ${{ github.token }}
       - uses: actions/download-artifact@v4
         continue-on-error: true
         with:
-          name: hearth-kde-anatase
+          name: hearth-ui-anatase
       - uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: hearth-firehold-anatase
+      - name: Every app artifact is here (reuse_run)
+        if: ${{ env.REUSE != '' }}
+        run: |
+          for f in hearth-app.tar hearth-browser.tar hearth-steam.tar hearth-kde.tar; do
+            [ -s "$f" ] || { echo "::error title=reuse_run::run $REUSE's $f is missing or expired: run without reuse_run"; exit 1; }
+          done
 
       - name: Python tests for what this image changes (Switch edition, the clean install, unlock)
         run: |
@@ -562,9 +644,10 @@ jobs:
           test -x os/nimbus-app/hearth
           if [ -f hearth-kde.tar ]; then cp hearth-kde.tar os/nimbus-app/hearth-kde.tar; fi
           if [ -f hearth-firehold.tar ]; then mkdir -p os/nimbus-app/firehold && tar -C os/nimbus-app/firehold -xf hearth-firehold.tar || rm -rf os/nimbus-app/firehold; fi
+          if [ -f hearth-ui.tar ]; then mkdir -p os/nimbus-app/hearth-ui && tar -C os/nimbus-app/hearth-ui -xf hearth-ui.tar || rm -rf os/nimbus-app/hearth-ui; fi
           mkdir -p os/system_files/usr/share/nimbus
           python3 tools/app-bundle.py abi > os/system_files/usr/share/nimbus/app-abi
-          python3 tools/hearth_version.py date "${{ needs.app.outputs.version }}" > os/system_files/usr/share/nimbus/version-date
+          python3 tools/hearth_version.py date "${{ steps.ver.outputs.version }}" > os/system_files/usr/share/nimbus/version-date
           for pl in sync music link; do
             if [ -f hearth-decky-$pl.tar ]; then mkdir -p os/nimbus-app/decky-hearth-$pl && tar -C os/nimbus-app/decky-hearth-$pl -xf hearth-decky-$pl.tar || rm -rf os/nimbus-app/decky-hearth-$pl; fi
           done
@@ -575,7 +658,7 @@ jobs:
           set -o pipefail
           exec > >(tee /tmp/step.log) 2>&1
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" -e "Copying config" -e "Writing manifest" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=image::$msg"' ERR
-          sudo podman build --pull=newer -f os-bases/anatase/Containerfile --build-arg NIMBUS_VERSION="${{ needs.app.outputs.version }}" -t hearth-os:anatase .
+          sudo podman build --pull=newer -f os-bases/anatase/Containerfile --build-arg NIMBUS_VERSION="${{ steps.ver.outputs.version }}" -t hearth-os:anatase .
           sflat=$(grep -o "warning: couldn't install Steam from RPM Fusion.*" /tmp/step.log | tail -1 || true)
           if [ -n "$sflat" ]; then echo "::warning title=Steam::$sflat"; fi
           for w in $(grep -o "warning: [a-zA-Z0-9_. -]*\(isn't in this build\|didn't install\|wasn't built\|couldn't install\)[^\"]*" /tmp/step.log | cut -c1-160 | sort -u | head -15 | tr ' ' '_'); do echo "::warning title=build::$(echo "$w" | tr '_' ' ')"; done
@@ -585,6 +668,22 @@ jobs:
         run: |
           set -o pipefail
           sudo podman run --rm -v "$PWD:/src:ro" hearth-os:anatase bash /src/.github/scripts/anatase-image-check.sh 2>&1 | tee /tmp/check.log
+
+      # Warn-only: screenshots of Hearth's looks as Plasma Global Themes (Hearth in full: desktop, app menu, Dolphin,
+      # System Settings; then one per look picked as Hearth's Settings picks it). Posted to the ci/anatase-looks branch
+      # by the looks job below (artifacts can't be opened from the owner's sessions).
+      - name: Screenshots of Hearth's looks in Plasma
+        continue-on-error: true
+        timeout-minutes: 30
+        run: bash .github/scripts/anatase-look-shots.sh localhost/hearth-os:anatase /tmp/anatase-looks
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        continue-on-error: true
+        with:
+          name: anatase-looks
+          path: /tmp/anatase-looks
+          if-no-files-found: ignore
+          retention-days: 14
 
       # REQUIRED: "Unlock the file system" for real (overlay mounts, dnf, starts, an update and a rollback played out).
       - name: Unlock the file system (hearth-unlock, dnf)
@@ -648,12 +747,49 @@ jobs:
           echo "$tag" | grep -Eqx 'test-[0-9]+(\.[0-9]+)*' || { echo "::error title=publish::refusing tag '$tag': only test-<version> tags (e.g. test-1.15)"; exit 1; }
           [ "$IMAGE" = ghcr.io/dragongamer9/hearth-os ] || { echo "::error title=publish::refusing image $IMAGE"; exit 1; }
           echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
-          dated="$tag-$(date -u +%Y%m%d)"
-          sudo podman push --digestfile /tmp/digest hearth-os:anatase "$IMAGE:$tag"
+          # Forget where layers were seen before (the switch test pulled Debian's image from ghcr): otherwise the
+          # push tries to borrow them from that other package and ghcr answers 403 (run 44270616388).
+          sudo rm -f /var/lib/containers/cache/blob-info-cache-v1.sqlite /var/lib/containers/cache/blob-info-cache-v1.boltdb
+          # Every layer compressed afresh, so no layer is ever "reused" from another package (still 403 with the cache gone, run 44278111249).
+          sudo podman push --force-compression --compression-format gzip --digestfile /tmp/digest hearth-os:anatase "$IMAGE:$tag"
           d=$(cat /tmp/digest)
-          sudo skopeo copy -q --authfile /run/containers/0/auth.json "docker://$IMAGE@$d" "docker://$IMAGE:$dated"
-          for t in "$tag" "$dated"; do
-            got=$(sudo skopeo inspect --authfile /run/containers/0/auth.json --format '{{.Digest}}' "docker://$IMAGE:$t")
-            [ "$got" = "$d" ] || { echo "::error title=publish::$IMAGE:$t is $got, not the image this run built ($d)"; exit 1; }
-          done
-          echo "::notice title=published::$IMAGE:$tag and :$dated = $d (built and checked by run ${{ github.run_id }}, commit ${{ github.sha }})"
+          echo "::notice title=published::$IMAGE:$tag = $d (built and checked by run ${{ github.run_id }}, commit ${{ github.sha }})"
+          # No dated copy and no skopeo: skopeo's own token request for this package gets 403 from ghcr (runs
+          # 44278111249, 44297685387), after the push above had already gone through. The read-back is a warning only.
+          raw=$(sudo skopeo inspect --raw --creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" "docker://$IMAGE:$tag" 2>/dev/null | sha256sum | cut -d' ' -f1 || true)
+          if [ -n "$raw" ] && [ "$raw" != "$(printf '' | sha256sum | cut -d' ' -f1)" ] && [ "sha256:$raw" != "$d" ]; then
+            echo "::warning title=publish::$IMAGE:$tag reads back as sha256:$raw, not the image this run built ($d): check by hand"
+          fi
+
+  # The screenshots on a branch of their own (ci/anatase-looks, replaced each run: one copy), so they can be opened
+  # without downloading artifacts. Only pictures and logs; nothing else is pushed.
+  looks:
+    name: Post the look screenshots (ci/anatase-looks)
+    needs: [image]
+    if: ${{ !cancelled() && needs.image.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: anatase-looks
+          path: looks
+      - name: Push to ci/anatase-looks
+        run: |
+          set -e
+          n=$(ls looks/*.png 2>/dev/null | wc -l)
+          [ "$n" -gt 0 ] || { echo "::warning title=looks::no screenshots to post"; exit 0; }
+          mkdir -p site && cd site
+          git init -q -b ci/anatase-looks
+          mkdir "run-${{ github.run_id }}"
+          cp ../looks/*.png "run-${{ github.run_id }}/"
+          for f in sync.log plasmashell.log kdeglobals.txt plasma-look.json; do [ -f "../looks/$f" ] && cp "../looks/$f" "run-${{ github.run_id }}/" || true; done
+          printf 'Screenshots of Hearth OS on Anatase (Plasma, virtual screen, software drawing) from run %s, commit %s.\n' \
+            "${{ github.run_id }}" "${{ github.sha }}" > README.md
+          git add -A
+          git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com commit -q -m "Look screenshots, run ${{ github.run_id }}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/anatase-looks
+          echo "::notice title=looks::$n screenshots on ci/anatase-looks/run-${{ github.run_id }}"

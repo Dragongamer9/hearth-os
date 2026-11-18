@@ -1,0 +1,48 @@
+# hearth-ui: what every pure-Rust Hearth app shares (docs/APPS-ANATASE.md, "Pure Rust apps"): Hearth's look read from
+# hosts/linux/desktop/theme/palettes.json and the person's chosen look (~/.local/share/nimbus/desktop.json, followed
+# while the app is open), the common widgets, and settings_file.rs (red flag 9). The apps are this workspace's
+# members (apps/*), so CI builds iced once for all of them.
+#
+# The toolkit is iced 0.14, the same as Firehold's Rust shell (hosts/firehold-shell, feature/firehold-rust), drawn
+# with tiny-skia only (and smol, the smallest executor, for its subscriptions): no GPU driver is loaded, which keeps every app small and quick to open, and it works the same
+# on every PC (and headless in CI). No version line: the owner picks every version number.
+[package]
+name = "hearth-ui"
+edition = "2021"
+description = "Hearth's look and widgets for its pure-Rust apps (iced)"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[workspace]
+members = ["apps/task-manager", "apps/system-restore", "apps/reliability"]
+resolver = "2"
+
+[workspace.dependencies]
+iced = { version = "0.14", default-features = false, features = ["tiny-skia", "wayland", "x11", "canvas", "crisp", "smol"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+futures = "0.3"
+libc = "0.2"
+
+[dependencies]
+iced = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }
+# settings_file.rs (shared with hearth-core, included by path) needs these two.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+sha1_smol = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = true
+panic = "abort"

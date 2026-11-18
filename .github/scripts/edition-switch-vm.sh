@@ -29,7 +29,13 @@ sudo apt-get install -y -qq qemu-system-x86 ovmf >/dev/null
 [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm
 
 # ---- 1. Debian, installed as the offline USB does
-sudo podman pull -q "$DEB" >/dev/null || { ann error "couldn't pull $DEB"; exit 1; }
+pull() {  # pull IMAGE: up to 5 tries (a registry's CDN can drop a download: EOF)
+  local i
+  for i in 1 2 3 4 5; do sudo podman pull -q "$1" >/dev/null && return 0; echo "pull $1 failed (try $i)"; sleep $((i * 15)); done
+  return 1
+}
+pull quay.io/fedora/fedora-bootc:43 || { ann error "couldn't pull quay.io/fedora/fedora-bootc:43 after 5 tries"; exit 1; }
+pull "$DEB" || { ann error "couldn't pull $DEB after 5 tries"; exit 1; }
 echo "::notice title=Switch edition (VM)::Debian: $DEB $(sudo podman run --rm "$DEB" cat /usr/share/nimbus/version 2>/dev/null)"
 sudo skopeo copy -q "containers-storage:$DEB" "oci:$W/oci:hearth" || { ann error "couldn't export $DEB"; exit 1; }
 echo "$DEB" > "$W/oci.ref"
@@ -77,6 +83,7 @@ esp_ok() {  # esp_ok STEP
 job() {  # job NAME SCRIPT-TEXT
   local dep; dep=$(default_dep)
   sudo mkdir -p "$M/r/ostree/deploy/default/var/lib/hearth-ci" "$dep/etc/systemd/system/multi-user.target.wants"
+  sudo test -s "$M/r/ostree/deploy/default/var/lib/hearth-ci/hearth-admin" || ann warning "job $1: hearth-admin isn't in /var/lib/hearth-ci"
   # Everything the job says goes to the serial console with "HCI| " in front (GRUB's own console text has none) and
   # to /var/lib/hearth-ci/NAME.log, which the host reads after the start (job_log).
   printf '%s\n' "#!/bin/bash" "exec > >(tee /var/lib/hearth-ci/$1.log | sed -u 's/^/HCI| /' > /dev/ttyS0) 2>&1" "$2" "echo HEARTH-CI-$1-END; sleep 2; systemctl poweroff" | sudo tee "$M/r/ostree/deploy/default/var/lib/hearth-ci/$1.sh" >/dev/null
@@ -118,10 +125,15 @@ jobsaid() { tr -d '\r' < "$OUT/$1-serial.log" | sed -n 's/^.*HCI| //p'; }
 # Step 1's job: say what started. Step 2's: switch with this branch's hearth-admin, from the local copy of the image.
 mount_disk
 look 1-installed
-sudo cp "$REPO/os/system_files/usr/libexec/nimbus/hearth-admin" "$M/r/ostree/deploy/default/var/lib/hearth-ci-admin"
-sudo mkdir -p "$M/r/ostree/deploy/default/var/lib/hearth-ci"
-sudo mv "$M/r/ostree/deploy/default/var/lib/hearth-ci-admin" "$M/r/ostree/deploy/default/var/lib/hearth-ci/hearth-admin"
-echo "export Anatase"; sudo skopeo copy -q "containers-storage:$ANA" "oci:$M/r/ostree/deploy/default/var/lib/hearth-ci/anatase:img" || fail "couldn't put the Anatase image on the disk"
+# (A fresh install's /var has no lib/ yet: tmpfiles makes it at the first start. So the folder first, then the copy,
+# and the build stops here if it isn't there: run 44255858138 copied nothing and the switch never ran.)
+CI=$M/r/ostree/deploy/default/var/lib/hearth-ci
+sudo mkdir -p "$CI"
+sudo install -m 755 "$REPO/os/system_files/usr/libexec/nimbus/hearth-admin" "$CI/hearth-admin"
+sudo python3 -m py_compile "$CI/hearth-admin" 2>/dev/null; sudo rm -rf "$CI/__pycache__"
+sudo test -s "$CI/hearth-admin" || { ann error "couldn't put this branch's hearth-admin on the VM's disk ($CI)"; umount_disk; exit 1; }
+echo "export Anatase"; sudo skopeo copy -q "containers-storage:$ANA" "oci:$CI/anatase:img" || fail "couldn't put the Anatase image on the disk"
+sudo test -f "$CI/anatase/index.json" || { ann error "the Anatase image isn't on the VM's disk"; umount_disk; exit 1; }
 DEB_DEP=$(job switch-to-anatase '
 echo "HEARTH-CI-edition $(python3 -c "import json; print(json.load(open(\"/usr/share/nimbus/image-info.json\"))[\"base\"])")"
 echo "HEARTH-CI-booted $(ostree admin status | sed -n "s/^\* \S* \([0-9a-f]*\.[0-9]*\).*/\1/p")"
@@ -162,6 +174,11 @@ echo "HEARTH-CI-edition $(python3 -c "import json; print(json.load(open(\"/usr/s
 echo "HEARTH-CI-home $(cat /var/home/tester/Documents/hearth-ci.txt 2>&1)"
 echo "HEARTH-CI-clean $(systemctl is-active hearth-clean-install.service) $(ls /var/lib/hearth/clean-install.done.json 2>&1)"
 grep -q "^_apt:" /etc/passwd && echo "HEARTH-CI-accounts debian" || echo "HEARTH-CI-accounts fedora"
+for i in $(seq 90); do systemctl is-active -q graphical.target && break; sleep 2; done
+echo "HEARTH-CI-graphical $(systemctl is-active graphical.target)"
+systemd-analyze 2>&1 | head -2 | sed "s/^/HEARTH-CI-time /"
+systemd-analyze critical-chain graphical.target --no-pager 2>&1 | sed "s/^/HEARTH-CI-chain /"
+systemd-analyze blame --no-pager 2>&1 | head -15 | sed "s/^/HEARTH-CI-blame /"
 ostree admin status | sed "s/^/HEARTH-CI-status /"
 PKEXEC_UID=$(id -u tester) python3 /var/lib/hearth-ci/hearth-admin move-to-new-os --edition peppermint
 echo "HEARTH-CI-move $?"
@@ -172,6 +189,21 @@ start 3-anatase
 jobsaid 3-anatase | grep -q 'HEARTH-CI-edition anatase' || fail "3: the restart after the switch didn't start Hearth OS on Anatase by itself: $(tr -d '\r' < "$OUT/3-anatase-serial.log" | grep -av '^\s*$' | tail -25)"
 jobsaid 3-anatase | grep -q 'HEARTH-CI-home kept' || fail "3: the home folder wasn't left as it was: $(said 3-anatase HEARTH-CI-home)"
 jobsaid 3-anatase | grep -q 'HEARTH-CI-accounts fedora' || ann warning "3: Debian's accounts are still in /etc/passwd on Anatase"
+# Start-up (the owner's laptop, Nov 18: 20 s in hearth-dns-client, 10 s in hearth-recovery before graphical.target): no
+# Hearth unit may hold the way to graphical.target. Allowed: hearth-recovery's own 1.5 s button window (it has to come
+# before the login screen) and the clean install, which runs once, at the first start after a switch.
+jobsaid 3-anatase | grep -q 'HEARTH-CI-graphical active' || fail "3: Anatase didn't reach graphical.target: $(jobsaid 3-anatase | grep 'HEARTH-CI-graphical\|HEARTH-CI-time')"
+slow=$(jobsaid 3-anatase | sed -n 's/^HEARTH-CI-chain //p' | grep -oE 'hearth-[a-z0-9@.-]+\.service[^+]*\+[0-9.]+(ms|s)' | python3 -c '
+import re, sys
+for l in sys.stdin:
+    m = re.match(r"(hearth-[a-z0-9@.-]+\.service).*\+([0-9.]+)(ms|s)", l.strip())
+    if not m: continue
+    unit, t = m.group(1), float(m.group(2)) / (1000 if m.group(3) == "ms" else 1)
+    limit = 2.0 if unit == "hearth-recovery.service" else (1e9 if unit == "hearth-clean-install.service" else 1.0)
+    if t >= limit: print("%s %.1fs" % (unit, t))
+')
+[ -z "$slow" ] || fail "3: Hearth units hold the start on the way to graphical.target: $(echo "$slow" | tr '\n' ' ')"
+ann notice "3: start-up: $(jobsaid 3-anatase | sed -n 's/^HEARTH-CI-time //p' | head -1) · critical chain: $(jobsaid 3-anatase | sed -n 's/^HEARTH-CI-chain //p' | tr '\n' '|' | cut -c1-1200) · blame: $(jobsaid 3-anatase | sed -n 's/^HEARTH-CI-blame //p' | head -8 | tr '\n' '|')"
 jobsaid 3-anatase | grep -q 'HEARTH-CI-move 0' || fail "4: the switch back to Debian failed: $(jobsaid 3-anatase | grep -v '^HEARTH-CI-status' | tail -25)"
 ann notice "3: $(said 3-anatase HEARTH-CI-clean) · $(jobsaid 3-anatase | grep 'HEARTH-CI-status' | tr '\n' ' ' | cut -c1-900)"
 

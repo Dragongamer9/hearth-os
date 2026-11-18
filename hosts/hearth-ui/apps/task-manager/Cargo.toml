@@ -1,0 +1,18 @@
+# Task Manager: what's running, performance, start-up apps, services (pure Rust, hearth-ui; docs/APPS-ANATASE.md). No version line: the owner picks every version number.
+[package]
+name = "hearth-task-manager"
+edition = "2021"
+description = "Task Manager: what's running, performance, start-up apps, services"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-task-manager"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }

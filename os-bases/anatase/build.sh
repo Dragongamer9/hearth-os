@@ -811,6 +811,16 @@ if [ "$dm_before" != "$dm_after" ]; then
   if [ -n "$dm_before" ]; then ln -sfn "$dm_before" /etc/systemd/system/display-manager.service; else rm -f /etc/systemd/system/display-manager.service; fi
 fi
 echo "::notice title=KDE Plasma::installed ($(rpm -q --qf '%{VERSION}' plasma-workspace)); it adds about $(( $(du -sxm /usr | cut -f1) - plasma_before )) MB"
+# ---- Firehold on Plasma (a test; docs/FIREHOLD.md "Firehold on Plasma"): Firehold's Couch as a Plasma shell package
+# (the way Plasma Bigscreen and Plasma Mobile are made) and its Desk as Plasma's own desktop in Firehold's layout, on
+# KDE's own KWin through its public interfaces only (no KWin patches, nothing from archive/kwin). Opt-in only
+# ("Firehold (Plasma, test)" in Plasma's menu; no line in session.conf is plain KDE Plasma); never fails the image.
+dnf5 -y install --skip-unavailable layer-shell-qt kpipewire python3-evdev >/dev/null 2>&1 || true
+bash /usr/share/nimbus/desktop/firehold-plasma/install.sh / || echo "::warning title=Firehold on Plasma::not installed"
+for f in /usr/share/plasma/shells/org.hearthos.firehold/metadata.json /usr/share/plasma/plasmoids/org.hearthos.firehold.couch/contents/ui/firehold.js \
+  /usr/share/plasma/shells/org.hearthos.firehold.desk/contents/layout.js /usr/bin/hearth-firehold-plasma; do
+  [ -e "$f" ] || echo "::warning title=Firehold on Plasma::$f is missing (Desktop Mode stays plain KDE Plasma)"
+done
 # Tools Hearth's apps and helpers use (screenshots, brightness, the clipboard, X11 helpers for Game Mode's pickers).
 dnf5 -y install --skip-unavailable --skip-broken grim slurp brightnessctl wlr-randr python3-evdev xprop xwininfo xdotool gnome-keyring cpio rsync || true
 
@@ -1372,7 +1382,35 @@ else echo "Hearth Office wasn't built; this image goes without it"; fi
 # in every KDE app) from CI's build inside this base (os/nimbus-app/hearth-kde.tar), only when they built, passed their
 # tests and start here (otherwise the old Hearth Files stays the file manager). The old Terminal, Text Editor and
 # Calculator stay installed as "… (classic)". Never stops the image build.
+# KDE Frameworks to Fedora's current ones first: the base image's are older than the KDE apps Fedora ships today
+# (Fedora's own Kate 26.08 failed with "undefined symbol: KConfig::copyFrom", run 44296110901), and RPM only asks for
+# the library's major version, so nothing else catches that.
+kf_before=$(rpm -q --qf '%{VERSION}' kf6-kconfig 2>/dev/null || true)
+dnf5 -y upgrade --refresh 'kf6-*' || echo "::warning title=KDE Frameworks::couldn't upgrade kf6-*"
+echo "::notice title=KDE Frameworks::kf6-kconfig ${kf_before:-?} -> $(rpm -q --qf '%{VERSION}' kf6-kconfig 2>/dev/null || true)"
 bash /ctx/hearth-kde/install.sh /ctx/nimbus-app/hearth-kde.tar || echo "warning: Hearth's KDE apps didn't install"
+# Hearth Files' own Dolphin build has to match the KDE Frameworks this image really has. The owner's laptop (Nov 18):
+# "symbol lookup error: libdolphinprivate.so.6: undefined symbol: KConfig::copyFrom" (built against KF 6.32, the
+# image's KConfig older): Files didn't open. install.sh only checks for missing libraries, so here every library of
+# the build is resolved too (ldd -r). Anything unresolved: the build and kio-hearth are left out, and Files is
+# Fedora's own Dolphin (hearth-files-kde falls back to it: Hearth's name and places, KDE's program).
+# (|| true: a library with nothing unresolved makes grep "fail", which stopped the whole build under set -e/pipefail.)
+unresolved() { { LD_LIBRARY_PATH="$2" ldd -r "$1" 2>&1 | grep -E 'undefined symbol|not found' | head -3; } || true; }
+if [ -d /usr/lib/hearth-files ]; then
+  bad=""
+  for f in /usr/lib/hearth-files/bin/dolphin $(find /usr/lib/hearth-files -name '*.so*' -type f 2>/dev/null); do
+    u=$(unresolved "$f" /usr/lib/hearth-files/lib); if [ -n "$u" ]; then bad="$bad ${f##*/}: $u;"; fi
+  done
+  if [ -n "$bad" ]; then
+    echo "::warning title=Hearth Files::its Dolphin build doesn't match this image's KDE Frameworks ($(echo "$bad" | cut -c1-600)): Fedora's own Dolphin is Files here"
+    rm -rf /usr/lib/hearth-files
+  fi
+fi
+for k in $(find /usr/lib /usr/lib64 -path '*/plugins/kf6/kio/hearth.so' 2>/dev/null); do
+  u=$(unresolved "$k" ""); if [ -n "$u" ]; then echo "::warning title=kio-hearth::left out, it doesn't match this image's KDE Frameworks: $u"; rm -f "$k"; fi
+done
+rpm -q dolphin >/dev/null 2>&1 || dnf5 -y install dolphin
+command -v dolphin >/dev/null || { echo "::error title=Files::no Dolphin in the image: Plasma's Files wouldn't open"; exit 1; }
 
 # ------------------------------------------------------------------ Hearth's default apps
 # Every Hearth app in the image is the default for the files and links it opens (its .desktop file's MimeType), in
@@ -1403,6 +1441,128 @@ python3 /usr/libexec/hearth-app-kinds apply --root / > /tmp/hearth-app-kinds.jso
 echo "::notice title=One app of each kind::$(python3 -c 'import json; d=json.load(open("/tmp/hearth-app-kinds.json")); print("; ".join("%s: %s" % (k, ", ".join("%s=%s" % (a, b) for a, b in sorted(v["apps"].items()) if b)) for k, v in d["desktops"].items() if v["present"]))' 2>/dev/null)" || true
 chmod 755 /usr/libexec/hearth-app-kinds
 # <<< app kinds
+
+# >>> Hearth's apps in Plasma (feature/hearth-apps-rust; docs/APPS-ANATASE.md)
+# Hearth's pure-Rust apps (hosts/hearth-ui, built inside this base by base-anatase.yml's "hearth-ui" job): Task
+# Manager, System Restore and Reliability history, the ones that ran only inside Mantel. They take those apps' own
+# menu entries and commands here (this edition has no Mantel), and are left out, with their entries as before, when
+# they weren't built or can't start.
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history; do
+  [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
+  install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/bin/$b"
+  if ldd "/usr/bin/$b" | grep -q 'not found'; then
+    echo "::warning title=Hearth's pure-Rust apps::$b can't start here (missing $(ldd /usr/bin/$b | grep 'not found' | awk '{print $1}' | tr '\n' ' ')), left out"
+    rm -f "/usr/bin/$b"
+  fi
+done
+dnf5 -y install --skip-unavailable rsms-inter-fonts >/dev/null 2>&1 || true
+if [ -x /usr/bin/hearth-task-manager ]; then
+  cat > /usr/share/applications/hearth-tasks.desktop <<DESKTOP
+[Desktop Entry]
+Name=Task Manager
+Comment=See what's running, close apps that stopped responding, and check performance
+Exec=/usr/bin/hearth-task-manager
+TryExec=/usr/bin/hearth-task-manager
+Icon=hearth-tasks
+Type=Application
+Categories=System;Monitor;
+Keywords=task;process;end;kill;cpu;memory;gpu;performance;startup;services;
+StartupWMClass=hearth-tasks
+Actions=performance;startup;
+
+[Desktop Action performance]
+Name=Performance
+Exec=/usr/bin/hearth-task-manager --page performance
+
+[Desktop Action startup]
+Name=Startup apps
+Exec=/usr/bin/hearth-task-manager --page startup
+DESKTOP
+fi
+# System Restore and Reliability history: their entries (OnlyShowIn=Nimbus) and commands open the Rust apps.
+for pair in restore:hearth-system-restore reliability:hearth-reliability-history; do
+  id=${pair%%:*}; b=${pair#*:}
+  [ -x "/usr/bin/$b" ] || continue
+  f=/usr/share/applications/hearth-$id.desktop
+  if [ -f "$f" ]; then
+    sed -i -e '/^OnlyShowIn=/d' -e "s|^Exec=/usr/bin/hearth-$id\b|Exec=/usr/bin/$b|" "$f"
+    grep -q '^StartupWMClass=' "$f" || sed -i "0,/^Exec=/s||StartupWMClass=hearth-$id\nExec=|" "$f"
+  fi
+  ln -sf "$b" "/usr/bin/hearth-$id"
+done
+echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history; do [ -x /usr/bin/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/bin/$b | cut -f1)"; done)"
+# The owner (Nov 18): every Hearth app that runs under Plasma is installed and shown in Plasma's menu, and Hearth's own
+# apps are the defaults there (menu and file types); KDE's apps stay installed but never take Hearth's place. So, for
+# Plasma (KDE) only, each kind's list becomes Hearth's own first (in Hearth Classic's order), then the Hearth KDE
+# builds, then KDE's as the fallback. Apps that run only inside Mantel (Quickshell, not in this image) are never put
+# first: they couldn't open. hearth-app-kinds then writes Plasma's menu copies and kde-mimeapps.list again; only when
+# its check passes is Plasma told to use the copies (the marker below, read by nimbus-session's run_plasma), so a
+# problem here leaves Plasma's menu as it was. Your own choices (~/.config/mimeapps.list, Default Applications) always
+# come first and are never written here.
+hearth_plasma_apps() {
+  python3 - <<'PY'
+import json
+p = '/usr/share/hearth/app-kinds.json'
+t = json.load(open(p))
+# Mantel-only entries can't start in this image: the ones still shown only in Mantel (OnlyShowIn=Nimbus alone), and
+# Files and Capture. A pure-Rust port, once in, takes the entry (above) and stops being one.
+import os, re
+mantel_only = set()
+for d in ('/usr/share/applications',):
+    for n in os.listdir(d):
+        if not n.endswith('.desktop'):
+            continue
+        try:
+            txt = open(os.path.join(d, n), encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue
+        only = re.search(r'^OnlyShowIn=(.*)$', txt, re.M)
+        if only and [x for x in only.group(1).split(';') if x] == ['Nimbus']:
+            mantel_only.add(n)
+mantel_only |= {'hearth-files.desktop', 'hearth-capture.desktop'} & set(os.listdir('/usr/share/applications'))
+changed = []
+for k, kind in t['kinds'].items():
+    apps = kind.get('apps') or {}
+    if 'KDE' not in apps:
+        continue
+    old = list(apps['KDE'])
+    first = [i for i in (apps.get('Nimbus') or []) if i.startswith('hearth-') and i not in mantel_only]
+    builds = [i for i in old if i.startswith('hearth-') and i not in mantel_only]
+    new = []
+    for i in first + builds + [i for i in old if not i.startswith('hearth-')] + [i for i in old if i in mantel_only]:
+        if i not in new:
+            new.append(i)
+    if new != old:
+        apps['KDE'] = new
+        changed.append('%s: %s' % (k, ', '.join(new)))
+tmp = p + '.tmp'
+with open(tmp, 'w') as f:
+    json.dump(t, f, indent=1, ensure_ascii=False)
+    f.write('\n')
+import os
+os.replace(tmp, p)
+print('::notice title=Plasma: Hearth first::' + ('; '.join(changed) or 'no change'))
+PY
+}
+rm -f /usr/share/hearth/app-kinds/plasma-ready
+if hearth_plasma_apps && python3 /usr/libexec/hearth-app-kinds apply --root / > /tmp/hearth-app-kinds-plasma.json \
+   && python3 /usr/libexec/hearth-app-kinds check --root / >/dev/null; then
+  : > /usr/share/hearth/app-kinds/plasma-ready
+  echo "::notice title=Plasma's apps::$(python3 -c 'import json; d=json.load(open("/tmp/hearth-app-kinds-plasma.json")); v=d["desktops"].get("KDE",{}); print(", ".join("%s=%s" % (a, b) for a, b in sorted(v.get("apps",{}).items()) if b))' 2>/dev/null)"
+else
+  echo "::warning title=Plasma's apps::hearth-app-kinds didn't pass for Plasma, so Plasma's menu shows both Hearth's and KDE's apps, as before: $(head -c 1500 /tmp/hearth-app-kinds-plasma.json 2>/dev/null | tr '\n' ' ')"
+fi
+# Every Hearth menu entry whose program isn't here or can't start (a missing library) is named, so nothing is missing
+# from Plasma's menu without a reason in the build's notices.
+for f in /usr/share/applications/hearth-*.desktop; do
+  prog=$(sed -n 's/^TryExec=//p' "$f" | head -1); [ -n "$prog" ] || prog=$(sed -n 's/^Exec=//p' "$f" | head -1 | awk '{print $1}')
+  case "$prog" in ''|env|sh|bash|python3) continue ;; esac
+  path=$(command -v "$prog" 2>/dev/null) || { echo "::warning title=Plasma menu::$(basename "$f"): its program $prog isn't in this image"; continue; }
+  if ldd "$path" 2>/dev/null | grep -q 'not found'; then
+    echo "::warning title=Plasma menu::$(basename "$f"): $prog can't start, missing $(ldd "$path" | grep 'not found' | awk '{print $1}' | tr '\n' ' ')"
+  fi
+done
+# <<< Hearth's apps in Plasma
 
 # ------------------------------------------------------------------ 1.15: Desktop Mode's way back to Game Mode
 # Plasma's menu and taskbar have "Back to Game Mode" (os/system_files' hearth-gamemode.desktop, KDE only, Super+G;
@@ -1679,9 +1839,127 @@ else
   echo "Nvidia's sleep helpers (nvidia-suspend/hibernate/resume.service) aren't in this image: the driver handles sleep and hibernation itself"
 fi
 
+# ------------------------------------------------------------------ Hearth's look, not Anatase's or Fedora's (1.15)
+# The owner (Nov 18): "also just look like anatase with their logos" — it must look like Hearth. Everywhere a person sees
+# a logo: the name (os-release, with "based on Anatase" only in About's details), the boot splash and its presets, the
+# distribution icons (Plasma's menu button, KInfoCenter's About, anything asking for the distributor's logo), Plasma's
+# wallpaper and lock screen and its start-up splash. Packages' licence and trademark files stay where they are; only
+# the pictures a person sees are Hearth's. Users' own choices are never touched: these are only the system's defaults
+# (/etc/xdg, the look-and-feel defaults) and, once per account, Plasma's settings that were never picked
+# (hearth-look-defaults.js).
+FEDORA_N=$FEDORA
+HEARTH_SVG=/usr/share/icons/hicolor/scalable/apps/hearth.svg
+test -f "$HEARTH_SVG"
+hearth_png() {  # hearth_png SIZE: the Hearth logo PNG closest to SIZE (the icon set's own sizes)
+  local best="" d
+  for d in 16 22 24 32 48 64 96 128 256; do
+    if [ -f "/usr/share/icons/hicolor/${d}x${d}/apps/hearth.png" ]; then best=$d; if [ "$d" -ge "${1:-256}" ]; then break; fi; fi
+  done
+  echo "/usr/share/icons/hicolor/${best}x${best}/apps/hearth.png"
+}
+swapped=0
+while IFS= read -r f; do
+  case "$f" in *.svg|*.svgz) cp -f "$HEARTH_SVG" "$f" ;;
+    *.png) sz=$(echo "$f" | grep -oE '/[0-9]+x[0-9]+/' | head -1 | tr -d / | cut -dx -f1 || true); cp -f "$(hearth_png "${sz:-256}")" "$f" ;;
+    *) continue ;; esac
+  swapped=$((swapped + 1))
+done < <(find /usr/share/icons /usr/share/pixmaps -type f \( -iname '*fedora*logo*' -o -iname '*anatase*' -o -iname 'start-here*' \
+           -o -iname 'distributor-logo*' -o -iname 'system-logo*' -o -iname 'fedora-logo*' \) 2>/dev/null)
+for n in start-here start-here-kde distributor-logo; do
+  install -Dm644 "$HEARTH_SVG" "/usr/share/icons/hicolor/scalable/apps/$n.svg"
+  install -Dm644 "$HEARTH_SVG" "/usr/share/icons/hicolor/scalable/places/$n.svg"
+done
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/null 2>&1 || true
+echo "::notice title=Hearth's look::$swapped distribution logo files now show Hearth's logo"
+# KInfoCenter's About this System: Hearth's logo, name and website; the base in its details.
+mkdir -p /etc/xdg
+cat > /etc/xdg/kcm-about-distrorc <<KCM
+[General]
+LogoPath=$(hearth_png 256)
+Website=https://hearthos.fun
+Variant=Fedora edition (test) · Fedora ${FEDORA_N}
+KCM
+# Plasma's wallpaper and lock screen by default: Hearth's (Fireside, from the wallpapers installed above), in every
+# look-and-feel's defaults and the lock screen's system default. Your own choice in ~/.config always wins.
+HW=/usr/share/wallpapers/Hearth-fireside
+test -f "$HW/metadata.json"
+for d in /usr/share/plasma/look-and-feel/*/contents/defaults; do
+  [ -f "$d" ] || continue
+  python3 - "$d" "$HW" <<'PY'
+import sys, configparser
+p, w = sys.argv[1], sys.argv[2]
+c = configparser.RawConfigParser(strict=False, interpolation=None); c.optionxform = str
+c.read(p)
+if not c.has_section('Wallpaper'):
+    c.add_section('Wallpaper')
+c.set('Wallpaper', 'Image', w.rsplit('/', 1)[1])
+with open(p, 'w') as f:
+    c.write(f, space_around_delimiters=False)
+PY
+done
+cat > /etc/xdg/kscreenlockerrc <<LOCK
+[Greeter][Wallpaper][org.kde.image][General]
+Image=file://$HW/contents/images/3840x2160.jpg
+PreviewImage=file://$HW/contents/images/3840x2160.jpg
+LOCK
+# Hearth's looks as Plasma Global Themes: every look in palettes.json (Hearth, Steam-style, Gaming, Zen, Glass,
+# Synthwave, Cabin, Console) becomes "Hearth OS · <name>" in System Settings › Global Theme, generated here from its
+# palette so it never drifts from Mantel's (hearth-plasma-looks build): dark and light colour schemes (plus one pair per
+# sub theme, System Settings › Colors), a Plasma style in its colours, Breeze window frames in its colours, Breeze icons
+# and cursor, its wallpaper and a start-up splash in its colours with Hearth's logo. The accent is Plasma's own setting.
+chmod 755 /usr/libexec/nimbus/hearth-plasma-looks
+python3 /usr/libexec/nimbus/hearth-plasma-looks build --logo "$HEARTH_SVG" > /tmp/hearth-plasma-looks.json
+n=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' /tmp/hearth-plasma-looks.json)
+test "$n" -ge 8
+for l in hearth steam gaming zen glass synthwave cabin console; do
+  test -f "/usr/share/plasma/look-and-feel/org.hearthos.$l/contents/defaults"
+  test -f "/usr/share/plasma/look-and-feel/org.hearthos.$l/contents/splash/Splash.qml"
+  test -f "/usr/share/color-schemes/HearthOS-$l-Dark.colors" && test -f "/usr/share/color-schemes/HearthOS-$l-Light.colors"
+  test -f "/usr/share/plasma/desktoptheme/hearth-$l/metadata.json"
+  w=$(sed -n 's/^Image=//p' "/usr/share/plasma/look-and-feel/org.hearthos.$l/contents/defaults")
+  test -f "/usr/share/wallpapers/$w/metadata.json"
+done
+echo "::notice title=Hearth's looks::$n Plasma Global Themes from palettes.json ($(ls /usr/share/color-schemes/HearthOS-*.colors | wc -l) colour schemes)"
+# Hearth is the default for everyone who hasn't chosen a look in KDE (KDE's system defaults; a choice of yours in
+# ~/.config always wins). The splash is the look's (Plasma's own splash shows after Hearth's boot splash).
+# (Merged into the distribution's /etc/xdg files: their other keys stay.)
+python3 - <<'PY2'
+import configparser, os
+def merge(p, changes):
+    c = configparser.RawConfigParser(strict=False, interpolation=None); c.optionxform = str
+    if os.path.exists(p):
+        c.read(p)
+    for g, kv in changes.items():
+        if not c.has_section(g):
+            c.add_section(g)
+        for k, v in kv.items():
+            c.set(g, k, v)
+    with open(p, 'w') as f:
+        c.write(f, space_around_delimiters=False)
+merge('/etc/xdg/kdeglobals', {'KDE': {'LookAndFeelPackage': 'org.hearthos.hearth', 'widgetStyle': 'Breeze'},
+                              'General': {'ColorScheme': 'HearthOS-hearth-Dark'}, 'Icons': {'Theme': 'breeze-dark'}})
+merge('/etc/xdg/plasmarc', {'Theme': {'name': 'hearth-hearth'}})
+PY2
+grep -qx 'LookAndFeelPackage=org.hearthos.hearth' /etc/xdg/kdeglobals
+printf '[KSplash]\nEngine=KSplashQML\nTheme=org.hearthos.hearth\n' > /etc/xdg/ksplashrc
+# In the session: the first time, Hearth's look (or, when you already chose one in KDE, a notification asking once);
+# afterwards the look picked in Hearth's Settings (desktop.json) and a Hearth OS Global Theme picked in System Settings
+# stay in step, one source of truth (docs/BASE-ANATASE.md).
+systemctl --global enable hearth-plasma-looks.path
+
 # ------------------------------------------------------------------ boot splash
 dnf5 -y install plymouth-plugin-script
 plymouth-set-default-theme hearth
+# Settings › Boot & startup's presets (hearth-boot-look), in the initramfs as on Debian: picking one only adds
+# plymouth.splash=<preset> to the boot menu's entries; a missing one shows the default (Plymouth falls back).
+chmod 755 /usr/libexec/nimbus/hearth-boot-look 2>/dev/null || true
+mkdir -p /usr/lib/dracut/dracut.conf.d
+{
+  echo "# Written by os-bases/anatase/build.sh: Hearth's boot splash presets in the initramfs (hearth-boot-look)."
+  printf 'install_items+=" %s "\n' "$(find /usr/share/plymouth/themes/hearth-steam /usr/share/plymouth/themes/hearth-minimal \
+    /usr/share/plymouth/themes/hearth-aurora /usr/share/plymouth/themes/hearth-starlight /usr/share/plymouth/themes/hearth-orbit \
+    -type f 2>/dev/null | sort | tr '\n' ' ')"
+} > /usr/lib/dracut/dracut.conf.d/50-hearth-splash.conf
 KVER=$(ls /usr/lib/modules | sort -V | tail -1)
 export DRACUT_NO_XATTR=1
 dracut --no-hostonly --kver "$KVER" --reproducible --zstd --add ostree --add plymouth \
@@ -1689,10 +1967,15 @@ dracut --no-hostonly --kver "$KVER" --reproducible --zstd --add ostree --add ply
 chmod 0600 "/usr/lib/modules/$KVER/initramfs.img"
 
 # ------------------------------------------------------------------ name
+# "Hearth OS" everywhere a name is shown (the login prompt, hostnamectl, KInfoCenter, fastfetch); ID stays Anatase's so
+# tools still know what's underneath, and "based on Anatase" is only in the variant (About's details).
 sed -i \
-  -e 's/^NAME=.*/NAME="Hearth"/' \
-  -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Hearth OS (based on Anatase)"/' \
+  -e 's/^NAME=.*/NAME="Hearth OS"/' \
+  -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Hearth OS"/' \
+  -e '/^LOGO=/d' -e '/^VARIANT=/d' -e '/^VARIANT_ID=/d' -e '/^HOME_URL=/d' \
   /usr/lib/os-release
+printf 'LOGO=hearth\nVARIANT="Fedora edition (test), Fedora %s"\nVARIANT_ID=hearth-anatase\nHOME_URL="https://hearthos.fun"\n' "$FEDORA" >> /usr/lib/os-release
+grep -qx 'PRETTY_NAME="Hearth OS"' /usr/lib/os-release && grep -qx 'LOGO=hearth' /usr/lib/os-release
 
 dnf5 clean all
 # Unlock the file system: the image's own packages (the start of the record of yours: hearth-unlock --record).

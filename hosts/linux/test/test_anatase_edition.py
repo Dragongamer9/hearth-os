@@ -111,11 +111,21 @@ class Plasma(unittest.TestCase):
     def test_plasma_shows_hearths_apps_and_never_saves_a_choice(self):
         body = self.SESSION.split('run_plasma() {', 1)[1].split('\n}\n', 1)[0]
         self.assertIn('/usr/share/hearth/app-kinds', body, "Hearth's one-app-of-each-kind copies are left out for Plasma")
+        self.assertIn('plasma-ready', body, "the copies are used in Plasma only when the build made them for it")
         self.assertIn('XDG_MENU_PREFIX', body)
         self.assertIn('XDG_CURRENT_DESKTOP=KDE', body)
         self.assertNotIn('session.conf', body, 'the saved Desktop Mode choice is never written here')
         self.assertIn('plasma-instead-told', body, 'told once')
         self.assertIn('echo steam >"$NEXT"', body, 'a Plasma that can\'t start never leaves no screen')
+
+    def test_plasma_puts_hearths_own_apps_first(self):
+        build = (ANATASE / 'build.sh').read_text()
+        block = build.split("# >>> Hearth's apps in Plasma", 1)[1].split("# <<< Hearth's apps in Plasma", 1)[0]
+        self.assertIn(': > /usr/share/hearth/app-kinds/plasma-ready', block)
+        self.assertIn('hearth-app-kinds check', block, 'the marker is written only when the check passed')
+        self.assertIn("== ['Nimbus']", block, 'Mantel-only apps are never put first')
+        self.assertIn('Exec=/usr/bin/hearth-task-manager', block, 'the pure-Rust Task Manager takes its entry')
+        self.assertLess(build.index('# <<< app kinds'), build.index("# >>> Hearth's apps in Plasma"))
 
     def test_back_to_game_mode(self):
         self.assertIn('org.kde.Shutdown.logout', self.MODE)
@@ -155,13 +165,23 @@ class Workflow(unittest.TestCase):
         step = wf.split('- name: Publish to the test tag')[1]
         self.assertIn("grep -Eqx 'test-[0-9]+(\\.[0-9]+)*'", step)
         self.assertIn('success()', step)
-        self.assertEqual(re.findall(r'podman push .*', step), ['podman push --digestfile /tmp/digest hearth-os:anatase "$IMAGE:$tag"'])
+        pushes = re.findall(r'podman push .*', step)
+        self.assertEqual(len(pushes), 1, pushes)     # one push, of this run's image, to the checked test tag
+        self.assertRegex(pushes[0], r'^podman push (--[\w-]+(?: [\w./-]+)? )*--digestfile /tmp/digest hearth-os:anatase "\$IMAGE:\$tag"$')
         for never in (':latest', 'hearth-peppermint', ':testing'):
             self.assertNotIn(never, step)
         self.assertIn('not the image this run built', step)
         dispatch = wf.split('workflow_dispatch:')[1].split('env:')[0]
         self.assertRegex(dispatch, r"publish:[\s\S]*?default: false")
         self.assertRegex(dispatch, r"test_tag:[\s\S]*?default: ''")
+        # reuse_run: only this workflow's runs, only when the app sources didn't change, every artifact there.
+        self.assertRegex(dispatch, r"reuse_run:[\s\S]*?default: ''")
+        self.assertIn('[ "$path" = .github/workflows/base-anatase.yml ]', wf)
+        self.assertIn('git diff --name-only "$sha" HEAD -- hosts ui', wf)
+        self.assertIn('is missing or expired', wf)
+        for job in ('app', 'browser', 'hearth-steam', 'kde'):
+            self.assertIn("  %s:\n    name:" % job, wf)
+        self.assertEqual(wf.count("if: ${{ github.event_name != 'workflow_dispatch' || inputs.reuse_run == '' }}"), 4)
         # The guard itself.
         for tag, ok in (('test-1.15', True), ('test-1', True), ('latest', False), ('testing', False), ('test-1.15;x', False), ('test-', False)):
             r = subprocess.run(['bash', '-c', "echo \"$1\" | grep -Eqx 'test-[0-9]+(\\.[0-9]+)*'", '_', tag])

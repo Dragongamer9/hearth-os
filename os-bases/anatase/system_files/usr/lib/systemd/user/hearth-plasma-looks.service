@@ -1,0 +1,9 @@
+[Unit]
+Description=Hearth's look in Plasma (hearth-plasma-looks sync)
+PartOf=graphical-session.target
+After=plasma-plasmashell.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/nimbus/hearth-plasma-looks sync
+TimeoutStartSec=20min

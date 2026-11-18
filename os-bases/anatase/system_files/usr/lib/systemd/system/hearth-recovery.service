@@ -1,0 +1,23 @@
+# Hearth OS on Anatase (test): the shared unit (os/system_files), without waiting for Handheld Daemon. HHD's start held
+# Hearth Recovery, and with it the login screen, for about 10 s on the owner's laptop (Nov 18). Recovery reads Volume Down
+# and F8 straight from the keys (HHD doesn't take them); only HHD's own virtual controller (Select + Start) isn't
+# looked for here. Its normal path is its 1.5 s button window.
+# Hearth Recovery on the device (see /usr/libexec/nimbus/hearth-recovery): before Hearth starts, opens a menu on the
+# text screen when Volume Down is held, when the last start failed, or when it was asked for. Otherwise it's gone
+# in a second and a half. The power button chooses in the menu instead of turning the device off.
+[Unit]
+Description=Hearth Recovery (hold Volume Down while starting)
+After=systemd-udev-trigger.service systemd-logind.service local-fs.target
+Before=nimbus-autologin.service display-manager.service
+ConditionPathExists=!/etc/hearth-live
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemd-inhibit --what=handle-power-key --who=Hearth --why=Recovery --mode=block /usr/libexec/nimbus/hearth-recovery
+# The menu continues by itself after two minutes without a press; this is only a last guard.
+TimeoutStartSec=15min
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
