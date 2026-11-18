@@ -1,0 +1,124 @@
+# Hearth's own apps, measured on KWin (1.15 "Hearth's own apps made faster", .github/scripts/apps-speed.sh): bughunt's
+# desktop shell and this branch's, one after the other on the same KWin virtual screen, so before and after compare
+# (the shell's memory with nothing open, and how long Files, Settings, Task Manager, the app menu and Quick Access take
+# to open, cold and warm). Report only: the numbers are notices and the run's summary. The unit tests for the changes
+# run first and fail the run.
+name: Apps speed
+
+on:
+  push:
+    branches: ['feature/apps-*']
+    paths: ['hosts/linux/desktop/shell/**', 'tools/perf-measure.py', 'tools/perf-breakdown.py', '.github/workflows/apps-speed.yml',
+            '.github/scripts/apps-speed.sh', 'hosts/linux/test/test_apps_faster.py']
+  workflow_dispatch:
+    inputs:
+      breakdown:
+        description: "Also measure where the shell's memory goes (about 25 minutes more)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: apps-speed-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  speed:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      options: --privileged -v /dev:/dev -v /lib/modules:/lib/modules:ro
+    steps:
+      - name: Install KWin, Quickshell and friends
+        run: |
+          dnf -y install dnf5-plugins git kwin mesa-dri-drivers qt6-qtsvg procps-ng python3 python3-dbus python3-gobject python3-pillow \
+            google-noto-sans-fonts adwaita-icon-theme breeze-icon-theme dbus-daemon dbus-tools libnotify kmod >/dev/null
+          dnf -y install --skip-unavailable rsms-inter-fonts plasma-breeze >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null
+          dnf -y install quickshell >/dev/null
+          for b in kwin_wayland quickshell; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
+
+      - uses: actions/checkout@v4
+
+      - name: Tests
+        run: |
+          python3 -m unittest discover -s hosts/linux/test -p 'test_apps_faster.py' -v 2>&1 | tail -30
+          python3 -m unittest discover -s hosts/linux/test -p 'test_apps_faster.py' >/tmp/t.log 2>&1 \
+            || { echo "::error title=apps faster tests::$(grep -E '^(FAIL|ERROR|AssertionError)' /tmp/t.log | head -8 | tr '\n' '|' | cut -c1-900)"; exit 1; }
+
+      - name: Before (bughunt's shell)
+        run: |
+          git config --global --add safe.directory "$PWD"
+          git fetch --depth=1 origin bughunt
+          echo "::notice title=apps speed::before = bughunt $(git rev-parse --short FETCH_HEAD), after = ${GITHUB_SHA::9}"
+          mkdir -p /tmp/before && git archive FETCH_HEAD hosts/linux | tar -x -C /tmp/before
+
+      - name: Measure on KWin
+        timeout-minutes: 60
+        env:
+          BEFORE: /tmp/before
+          BREAKDOWN: ${{ (github.event_name == 'workflow_dispatch' && inputs.breakdown) && '1' || (contains(github.event.head_commit.message, '[breakdown]') && '1' || '0') }}
+        run: bash .github/scripts/apps-speed.sh
+
+      - name: Before → after
+        if: always()
+        run: cat shots/speed/compare-notices.txt 2>/dev/null || echo "::warning title=apps speed::nothing measured"
+
+      - name: Where the memory goes
+        if: always()
+        run: cat shots/speed/breakdown-notices.txt 2>/dev/null || true
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: apps-speed
+          path: shots
+          retention-days: 14
+
+  shots:
+    needs: speed
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: [apps-before-files, apps-after-files, apps-before-settings, apps-after-settings]
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: apps-speed
+          path: shots
+      - name: Make the JPEG
+        run: |
+          pip install --quiet pillow >/dev/null 2>&1 || true
+          python3 - <<'PY'
+          import base64, io, os
+          from PIL import Image
+          p = 'shots/${{ matrix.shot }}.png'
+          if os.path.exists(p):
+              im = Image.open(p).convert('RGB')
+              best = None
+              for w in (im.width, 1600, 1280):
+                  for q in (70, 60, 50, 40, 32, 25, 20):
+                      b = io.BytesIO(); im.resize((w, round(im.height * w / im.width))).save(b, 'JPEG', quality=q, optimize=True)
+                      best = b
+                      if len(base64.b64encode(b.getvalue())) <= 50 * 3800:
+                          break
+                  else:
+                      continue
+                  break
+              open('shot.jpg', 'wb').write(best.getvalue())
+          PY
+          [ -f shot.jpg ] && base64 -w0 shot.jpg | fold -w 3800 | nl -ba -w2 -s' ' > parts.txt || : > parts.txt
+          wc -l parts.txt
+      - name: Picture (1-10)
+        run: sed -n '1,10p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture (11-20)
+        run: sed -n '11,20p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture (21-30)
+        run: sed -n '21,30p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture (31-40)
+        run: sed -n '31,40p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done
+      - name: Picture (41-50)
+        run: sed -n '41,50p' parts.txt | while read -r i part; do echo "::notice title=SHOT ${{ matrix.shot }} $i::$part"; done

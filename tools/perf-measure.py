@@ -8,9 +8,15 @@ notes). Run by desktop-test.yml in its virtual Desktop Mode (the same commands w
                                                     "first" = the screen first changes, "ready" = it stops changing
                                                     (0.6 s still), and the shell's memory before and after
   perf-measure.py report OUT.json                   a table of everything in OUT.json (markdown, for the release notes)
+  perf-measure.py compare BEFORE.json AFTER.json    the two side by side (1.15: the same run measures bughunt's shell
+                                                    and the branch's, so the numbers compare), with a notice per row
 
-Screen changes are read with grim at about 20 a second (a software-drawn virtual screen in CI is slower than a real
-device: compare runs with runs, never with a device). Each result is merged into OUT.json under its name.
+  perf-measure.py ipc NAME OUT.json -- CMD...       how long an IPC call that changes nothing takes (the part of every
+                                                    "on screen" time that is only `quickshell ipc` starting)
+
+Screen changes are read with grim at about 20 a second, or on KWin (HEARTH_PERF_KWIN=1, 1.15) through KWin's
+screenshot API (a software-drawn virtual screen in CI is slower than a real device: compare runs with runs, never with
+a device). Each result is merged into OUT.json under its name.
 """
 import hashlib
 import json
@@ -71,7 +77,36 @@ def idle(secs):
     return {k: {'cpu': round(v['cpu'], 2), 'mb': round(v['mb'], 1), 'n': v['n']} for k, v in sorted(rows.items(), key=lambda x: -x[1]['cpu'])}
 
 
+_kwin = None
+
+
+def kwin_frame():
+    """A hash of KWin's screen (org.kde.KWin.ScreenShot2; KWin needs KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 in CI)."""
+    global _kwin
+    import dbus
+    if _kwin is None:
+        _kwin = dbus.Interface(dbus.SessionBus().get_object('org.kde.KWin', '/org/kde/KWin/ScreenShot2'), 'org.kde.KWin.ScreenShot2')
+    r, w = os.pipe()
+    try:
+        _kwin.CaptureActiveScreen({'native-resolution': True}, dbus.types.UnixFd(w), timeout=5)
+    finally:
+        os.close(w)
+    h = hashlib.sha1()
+    with os.fdopen(r, 'rb') as f:
+        while True:
+            c = f.read(1 << 20)
+            if not c:
+                break
+            h.update(c)
+    return h.hexdigest()
+
+
 def frame():
+    if os.environ.get('HEARTH_PERF_KWIN') == '1':
+        try:
+            return kwin_frame()
+        except Exception:
+            return ''
     try:
         r = subprocess.run(['grim', '-t', 'ppm', '-s', '0.25', '-'], capture_output=True, timeout=5)
         return hashlib.sha1(r.stdout).hexdigest() if r.returncode == 0 else ''
@@ -104,6 +139,17 @@ def open_(cmd, timeout=20.0):
             'mbBefore': before, 'mbAfter': shell_mb()}
 
 
+def ipc_time(cmd, n=5):
+    ts = []
+    for _ in range(n):
+        t0 = time.monotonic()
+        subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ts.append(time.monotonic() - t0)
+        time.sleep(0.2)
+    ts.sort()
+    return {'ipc': round(ts[len(ts) // 2], 2)}
+
+
 def merge(path, name, value):
     try:
         d = json.load(open(path))
@@ -118,6 +164,8 @@ def report(path):
     d = json.load(open(path))
     lines = ['| Opening | On screen | Ready | Shell memory |', '|---|---|---|---|']
     for k, v in d.items():
+        if isinstance(v, dict) and 'ipc' in v:
+            lines.append('| %s (an IPC call alone) | %s s | | |' % (k, v['ipc']))
         if isinstance(v, dict) and 'first' in v:
             lines.append('| %s | %s s | %s s | %s → %s MB |' % (k, v['first'], v['ready'], v['mbBefore'], v['mbAfter']))
     if 'idle' in d:
@@ -127,13 +175,54 @@ def report(path):
     return '\n'.join(lines)
 
 
+def total(rows, prefix='quickshell'):
+    return round(sum(v['mb'] for k, v in rows.items() if k.startswith(prefix)), 1)
+
+
+def compare(pa, pb):
+    a, b = json.load(open(pa)), json.load(open(pb))
+    lines = ['| | Before | After |', '|---|---|---|']
+    notes = []
+    for key, what in (('idle', 'Shell memory, nothing open'), ('idle-after', 'Shell memory after opening everything once and closing it')):
+        if key in a or key in b:
+            x, y = total(a.get(key, {})), total(b.get(key, {}))
+            lines.append('| %s | %s MB | %s MB |' % (what, x, y))
+            notes.append('%s: %s MB → %s MB' % (what, x, y))
+            cx = round(sum(v['cpu'] for k, v in a.get(key, {}).items() if k.startswith('quickshell')), 2)
+            cy = round(sum(v['cpu'] for k, v in b.get(key, {}).items() if k.startswith('quickshell')), 2)
+            lines.append('| %s: shell CPU | %s %% | %s %% |' % (what, cx, cy))
+    for k in a:
+        if isinstance(a[k], dict) and 'ipc' in a[k] and isinstance(b.get(k), dict):
+            lines.append('| An IPC call alone (in every "on screen") | %s s | %s s |' % (a[k]['ipc'], b[k].get('ipc')))
+    for k in list(a) + [k for k in b if k not in a]:
+        x, y = a.get(k), b.get(k)
+        if not (isinstance(x, dict) and 'first' in x) and not (isinstance(y, dict) and 'first' in y):
+            continue
+        f = lambda v: '%s s on screen, %s s ready, %s → %s MB' % (v['first'], v['ready'], v['mbBefore'], v['mbAfter']) if v else '–'
+        lines.append('| %s | %s | %s |' % (k, f(x), f(y)))
+        notes.append('%s: before %s | after %s' % (k, f(x), f(y)))
+    return '\n'.join(lines), notes
+
+
 def main(a):
-    if len(a) == 3 and a[0] == 'idle':
-        merge(a[2], 'idle', idle(float(a[1])))
+    if len(a) in (3, 4) and a[0] == 'idle':
+        merge(a[2], a[3] if len(a) == 4 else 'idle', idle(float(a[1])))
     elif len(a) >= 5 and a[0] == 'open' and a[3] == '--':
         r = open_(a[4:])
         merge(a[2], a[1], r)
-        print('::notice title=speed::%s: on screen %s s, ready %s s, shell %s → %s MB' % (a[1], r['first'], r['ready'], r['mbBefore'], r['mbAfter']))
+        line = '%s: on screen %s s, ready %s s, shell %s → %s MB' % (a[1], r['first'], r['ready'], r['mbBefore'], r['mbAfter'])
+        # HEARTH_PERF_QUIET=1: a plain line (apps-speed.yml posts the comparison instead; a step keeps 10 notices).
+        print(line if os.environ.get('HEARTH_PERF_QUIET') == '1' else '::notice title=speed::' + line)
+    elif len(a) >= 5 and a[0] == 'ipc' and a[3] == '--':
+        r = ipc_time(a[4:])
+        merge(a[2], a[1], r)
+        print('%s: an IPC call alone takes %s s (part of every "on screen" time)' % (a[1], r['ipc']))
+    elif len(a) == 3 and a[0] == 'compare':
+        table, notes = compare(a[1], a[2])
+        print(table)
+        # Four rows a notice (a step keeps 10 notices).
+        for i in range(0, len(notes), 4):
+            print('::notice title=speed before → after (%d)::%s' % (i // 4 + 1, ' ;; '.join(notes[i:i + 4])))
     elif len(a) == 2 and a[0] == 'report':
         print(report(a[1]))
     else:
