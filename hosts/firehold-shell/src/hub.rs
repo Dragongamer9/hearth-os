@@ -1123,8 +1123,19 @@ impl Hub {
             }
             Ev::Comp(v) => self.comp_line(v),
             Ev::CompGone => {
-                log("firehold-comp's window IPC: gone");
+                // firehold-comp ended (the session is over, or it crashed): the shell goes with it, surfaces first.
+                log("firehold-comp's window IPC: gone; the shell ends with it");
                 self.comp = None;
+                for pid in self.children.values() {
+                    unsafe {
+                        libc::kill(*pid as i32, libc::SIGTERM);
+                    }
+                }
+                if let Some(p) = proto::socket_path() {
+                    let _ = std::fs::remove_file(p);
+                }
+                let _ = std::fs::remove_file(runtime().join("firehold-shell-hub.pid"));
+                std::process::exit(0);
             }
             Ev::ClientNew(id, s) => {
                 self.clients.insert(id, Client { stream: s, surface: String::new() });
