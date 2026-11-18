@@ -50,7 +50,10 @@ class SystemTools(unittest.TestCase):
         self.a.admin_run = self.run
         me = types.SimpleNamespace(pw_name='sam', pw_uid=1000, pw_dir='/var/home/sam')
         self.a.caller = lambda: me
-        self.a.time.sleep = lambda s: None
+        # time is the shared module: patch it for this test only, or every later test's sleep stops waiting
+        p = mock.patch.object(self.a.time, 'sleep', lambda s: None)
+        p.start()
+        self.addCleanup(p.stop)
         self.checked = []
 
     def chkpwd(self, good):
