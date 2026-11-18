@@ -429,7 +429,7 @@ SetPage {
     Text {
         visible: !!(page.unlock && page.unlock.available)
         Layout.fillWidth: true
-        text: page.unlockError !== "" ? page.unlockError : "If something you install stops Hearth from starting, the next start leaves your changes off by itself, and the previous version in the boot menu keeps its own packages. Want a system that can't be changed at all? That's Hearth OS on Anatase."
+        text: page.unlockError !== "" ? page.unlockError : "If something you install stops Hearth from starting, the next start leaves your changes off by itself, and the previous version in the boot menu keeps its own packages. Want a system that can't be changed at all? That's Hearth OS, Fedora edition."
         color: page.unlockError !== "" ? Theme.danger : Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
 }

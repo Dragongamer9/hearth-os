@@ -11,6 +11,7 @@ check "it's Fedora $(rpm -E %fedora) (45 or newer)" "[ \"\$(rpm -E %fedora)\" -g
 echo "::notice title=base::$(. /usr/lib/os-release; echo "$PRETTY_NAME, Fedora $(rpm -E %fedora)"); kernel $(ls /usr/lib/modules | sort -V | tail -1); $(rpm -q --qf '%{NAME} %{VERSION}' plasma-workspace kwin gamescope steam hhd 2>/dev/null | tr '\n' ';')"
 check "it says it's the Anatase edition, the test" "grep -q '\"base\": \"anatase\"' /usr/share/nimbus/image-info.json && grep -q '\"image-tag\": \"test-1.15\"' /usr/share/nimbus/image-info.json"
 check "bootc and podman are there (updates and Switch edition)" "command -v bootc && command -v podman"
+check "video can be decoded by the graphics chip (VA-API: Intel iHD and AMD)" "test -e /usr/lib64/dri/iHD_drv_video.so && test -e /usr/lib64/dri/radeonsi_drv_video.so && command -v vainfo"
 
 echo "--- updates, Switch edition, the boot chain (red flag 2)"
 check "hearth-admin is valid Python and knows the Anatase test tag" "python3 -m py_compile /usr/libexec/nimbus/hearth-admin && grep -q \"'test-1.15'\" /usr/libexec/nimbus/hearth-admin"

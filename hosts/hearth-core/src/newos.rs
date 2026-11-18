@@ -29,8 +29,8 @@ pub struct Edition { pub id: &'static str, pub label: &'static str, pub repo: &'
 pub const ANATASE_TEST_TAG: &str = "test-1.15";
 
 pub const EDITIONS: &[Edition] = &[
-    Edition { id: "anatase", label: "Hearth OS on Anatase (test)", repo: "dragongamer9/hearth-os", tag: ANATASE_TEST_TAG, beta: true, test: true,
-              about: "A test of Hearth OS on Fedora (Anatase), to try beside Debian. Steam Game Mode as on Debian; Desktop Mode is KDE Plasma with Hearth's apps. Your home folder stays as it is, and Debian stays in the boot menu so you can go back." },
+    Edition { id: "anatase", label: "Hearth OS, Fedora edition (test)", repo: "dragongamer9/hearth-os", tag: ANATASE_TEST_TAG, beta: true, test: true,
+              about: "A test of Hearth OS, Fedora edition, to try beside Debian. Steam Game Mode as on Debian; Desktop Mode is KDE Plasma with Hearth's apps. Your home folder stays as it is, and Debian stays in the boot menu so you can go back." },
     Edition { id: "ubuntu", label: "Ubuntu", repo: "dragongamer9/hearth-ubuntu", tag: "testing", beta: true, test: false,
               about: "Hearth OS built on Ubuntu. Still being tested: some things may not work yet." },
     Edition { id: "cachyos", label: "CachyOS", repo: "dragongamer9/hearth-cachyos", tag: "testing", beta: true, test: false,
@@ -415,7 +415,7 @@ mod tests {
         assert_eq!(choice(p, Some(true), true, None)["recommended"], true);
         let a = edition("anatase").unwrap();
         // 1.15: Anatase is back as a test, on its own tag only (never the old pre-archive :latest or :testing).
-        assert_eq!(a.label, "Hearth OS on Anatase (test)");
+        assert_eq!(a.label, "Hearth OS, Fedora edition (test)");
         assert!(a.beta && a.test);
         assert_eq!(image_of(a, false), "ghcr.io/dragongamer9/hearth-os:test-1.15");
         assert_eq!(image_of(a, true), "ghcr.io/dragongamer9/hearth-os:test-1.15");
@@ -424,7 +424,7 @@ mod tests {
         // Debian stays the recommended one; only test editions keep the whole home folder.
         assert_eq!((choice(p, Some(true), true, None)["recommended"].clone(), choice(p, Some(true), true, None)["test"].clone()), (json!(true), json!(false)));
         assert!(keeps_home(a, Some("peppermint")) && keeps_home(a, None));
-        assert!(keeps_home(p, Some("anatase")), "going back to Debian from the Anatase test keeps the home folder");
+        assert!(keeps_home(p, Some("anatase")), "going back to Debian from the Fedora edition test keeps the home folder");
         assert!(!keeps_home(p, None) && !keeps_home(p, Some("ubuntu")));
         assert_eq!(choice_from(p, Some(true), true, None, Some("anatase"))["keepsHome"], true);
         let c = edition("cachyos").unwrap();

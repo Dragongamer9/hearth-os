@@ -277,7 +277,7 @@ UNLOCK_ACTIONS = {'on': '--unlock', 'off': '--lock', 'resume': '--resume', 'dism
 def unlock(args):
     """Peppermint's writable system: everything is hearth-unlock's own (it checks its input too)."""
     if not os.access(UNLOCK, os.X_OK):
-        fail('this edition is always locked (Hearth OS on Anatase is the immutable one)')
+        fail('this edition is always locked (Hearth OS, Fedora edition is the immutable one)')
     os.execv(UNLOCK, [UNLOCK] + args)
 
 
