@@ -216,6 +216,8 @@ pub struct App {
     pub bt_read: bool,
     pub bt_scanning: bool,
     pub sound: data::Sound,
+    pub sound_read: bool,
+    pub display_read: bool,
     pub display: data::Display,
     pub power: data::Power,
     pub storage: Vec<data::Drive>,
@@ -258,6 +260,8 @@ impl App {
             bt_read: false,
             bt_scanning: false,
             sound: data::Sound::default(),
+            sound_read: false,
+            display_read: false,
             display: data::Display::default(),
             power: data::Power::default(),
             storage: Vec::new(),
@@ -372,8 +376,14 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                     a.bt = data::bt(&o.out);
                     a.bt_read = true;
                 }
-                Src::Sound => a.sound = data::sound(&o.out),
-                Src::Display => a.display = data::display(&o.out),
+                Src::Sound => {
+                    a.sound = data::sound(&o.out);
+                    a.sound_read = true;
+                }
+                Src::Display => {
+                    a.display = data::display(&o.out);
+                    a.display_read = true;
+                }
                 Src::Power => a.power = data::power(&o.out),
                 Src::Storage => a.storage = data::storage(&o.out),
                 Src::Time => {

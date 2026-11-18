@@ -443,7 +443,7 @@ fn display(a: &App) -> E<'_> {
     let d = &a.display;
     let mut c = Column::new().spacing(10.0);
     if !d.ok {
-        c = c.push(note(&p, "Reading your displays…".into(), false));
+        c = c.push(note(&p, if a.display_read { "Your displays couldn't be read (KDE's kscreen-doctor didn't answer).".into() } else { "Reading your displays…".into() }, a.display_read));
     }
     if let Some(main) = d.outputs.first() {
         let mut boxes = Row::new().spacing(14.0).align_y(iced::Center);
@@ -498,7 +498,7 @@ fn sound(a: &App) -> E<'_> {
     let s = &a.sound;
     let mut c = Column::new().spacing(10.0);
     if !s.ok {
-        c = c.push(note(&p, "Reading sound…".into(), false));
+        c = c.push(note(&p, if a.sound_read { "Sound couldn't be read (PipeWire's wpctl didn't answer).".into() } else { "Reading sound…".into() }, a.sound_read));
         return c.into();
     }
     c = c.push(head(&p, "Output"));
