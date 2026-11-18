@@ -811,6 +811,16 @@ if [ "$dm_before" != "$dm_after" ]; then
   if [ -n "$dm_before" ]; then ln -sfn "$dm_before" /etc/systemd/system/display-manager.service; else rm -f /etc/systemd/system/display-manager.service; fi
 fi
 echo "::notice title=KDE Plasma::installed ($(rpm -q --qf '%{VERSION}' plasma-workspace)); it adds about $(( $(du -sxm /usr | cut -f1) - plasma_before )) MB"
+# ---- Firehold on Plasma (a test; docs/FIREHOLD.md "Firehold on Plasma"): Firehold's Couch as a Plasma shell package
+# (the way Plasma Bigscreen and Plasma Mobile are made) and its Desk as Plasma's own desktop in Firehold's layout, on
+# KDE's own KWin through its public interfaces only (no KWin patches, nothing from archive/kwin). Opt-in only
+# ("Firehold (Plasma, test)" in Plasma's menu; no line in session.conf is plain KDE Plasma); never fails the image.
+dnf5 -y install --skip-unavailable layer-shell-qt kpipewire python3-evdev >/dev/null 2>&1 || true
+bash /usr/share/nimbus/desktop/firehold-plasma/install.sh / || echo "::warning title=Firehold on Plasma::not installed"
+for f in /usr/share/plasma/shells/org.hearthos.firehold/metadata.json /usr/share/plasma/plasmoids/org.hearthos.firehold.couch/contents/ui/firehold.js \
+  /usr/share/plasma/shells/org.hearthos.firehold.desk/contents/layout.js /usr/bin/hearth-firehold-plasma; do
+  [ -e "$f" ] || echo "::warning title=Firehold on Plasma::$f is missing (Desktop Mode stays plain KDE Plasma)"
+done
 # Tools Hearth's apps and helpers use (screenshots, brightness, the clipboard, X11 helpers for Game Mode's pickers).
 dnf5 -y install --skip-unavailable --skip-broken grim slurp brightnessctl wlr-randr python3-evdev xprop xwininfo xdotool gnome-keyring cpio rsync || true
 # Couch Co-op (Beta Experimental), Move games / Make Hearth bigger, Proton for games added by hand: not fatal,
