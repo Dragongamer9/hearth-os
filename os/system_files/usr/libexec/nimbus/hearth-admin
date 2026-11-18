@@ -2053,6 +2053,42 @@ def pin_booted(deps=None):
     return ok
 
 
+ESP = '/boot/efi'
+
+
+def esp_guard(esp=ESP):
+    """Every boot loader folder on the EFI partition with a GRUB (EFI/<name>/grubx64.efi) but no grub.cfg and
+    bootuuid.cfg beside it gets the ones another folder has (bootupd's static EFI config: it finds /boot by its UUID and
+    loads /boot/grub2/grub.cfg). The owner's laptop, Nov 17: EFI/anatase without them stopped at "grub>". Only adds
+    those two files; never removes or changes anything else, never the boot order. Returns the files added."""
+    efi = os.path.join(esp, 'EFI')
+    if not os.path.isdir(efi):
+        return []
+    names = sorted(os.listdir(efi))
+    src = next((os.path.join(efi, n) for n in ['debian', 'fedora', 'anatase'] + names
+                if os.path.isfile(os.path.join(efi, n, 'grub.cfg')) and os.path.isfile(os.path.join(efi, n, 'bootuuid.cfg'))), None)
+    if not src:
+        return []
+    added = []
+    for n in names:
+        d = os.path.join(efi, n)
+        if not os.path.isfile(os.path.join(d, 'grubx64.efi')):
+            continue
+        for f in ('grub.cfg', 'bootuuid.cfg'):
+            if os.path.exists(os.path.join(d, f)):
+                continue
+            try:
+                tmp = os.path.join(d, '.' + f + '.hearth-tmp')
+                shutil.copyfile(os.path.join(src, f), tmp)
+                os.replace(tmp, os.path.join(d, f))
+                added.append(os.path.join('EFI', n, f))
+            except OSError as e:
+                print('log: couldn\'t give %s its %s (%s)' % (d, f, e), flush=True)
+    for a in added:
+        print('log: The boot loader in %s finds the boot menu now' % os.path.dirname(a), flush=True)
+    return added
+
+
 def debian_deployment(deps):
     """The newest Debian deployment that isn't the running one (the version a test switch came from), or None."""
     for d in deps:
@@ -2209,6 +2245,10 @@ def move_to_new_os(edition='peppermint', testing=False):
         except OSError:
             pass
         if back_to_debian(read_deployments()):
+            try:
+                esp_guard()
+            except Exception as e:
+                print('log: couldn\'t check the EFI partition (%s)' % e, flush=True)
             done = 'Done. Restart to start Hearth OS on Debian again, as you left it.'
             progress(100, done)
             st = bootc_status(quiet=True) or {}
@@ -2245,6 +2285,11 @@ def move_to_new_os(edition='peppermint', testing=False):
             with_retries(lambda: bootc_upgrade_with_progress(0, 100, stage, ['bootc', 'switch', image]))
     except UpgradeFailed as e:
         fail("couldn't get the new Hearth OS: " + failure_text(e))
+    # Red flag 2: whichever boot loader the firmware starts next has to find the boot menu.
+    try:
+        esp_guard()
+    except Exception as e:  # never in the way of the switch
+        print('log: couldn\'t check the EFI partition (%s)' % e, flush=True)
     os.makedirs(os.path.dirname(CLEAN_INSTALL), mode=0o755, exist_ok=True)
     tmp = CLEAN_INSTALL + '.tmp'
     with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as f:

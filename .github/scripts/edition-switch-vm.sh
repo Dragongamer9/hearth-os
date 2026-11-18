@@ -77,7 +77,9 @@ esp_ok() {  # esp_ok STEP
 job() {  # job NAME SCRIPT-TEXT
   local dep; dep=$(default_dep)
   sudo mkdir -p "$M/r/ostree/deploy/default/var/lib/hearth-ci" "$dep/etc/systemd/system/multi-user.target.wants"
-  printf '%s\n' "#!/bin/sh" "exec > /dev/ttyS0 2>&1" "$2" "echo HEARTH-CI-$1-END; systemctl poweroff" | sudo tee "$M/r/ostree/deploy/default/var/lib/hearth-ci/$1.sh" >/dev/null
+  # Everything the job says goes to the serial console with "HCI| " in front (GRUB's own console text has none) and
+  # to /var/lib/hearth-ci/NAME.log, which the host reads after the start (job_log).
+  printf '%s\n' "#!/bin/bash" "exec > >(tee /var/lib/hearth-ci/$1.log | sed -u 's/^/HCI| /' > /dev/ttyS0) 2>&1" "$2" "echo HEARTH-CI-$1-END; sleep 2; systemctl poweroff" | sudo tee "$M/r/ostree/deploy/default/var/lib/hearth-ci/$1.sh" >/dev/null
   sudo chmod 755 "$M/r/ostree/deploy/default/var/lib/hearth-ci/$1.sh"
   sudo rm -f "$dep"/etc/systemd/system/hearth-ci-*.service "$dep"/etc/systemd/system/multi-user.target.wants/hearth-ci-*.service
   sudo tee "$dep/etc/systemd/system/hearth-ci-$1.service" >/dev/null <<UNIT
@@ -87,7 +89,7 @@ After=multi-user.target hearth-clean-install.service
 [Service]
 Type=oneshot
 ExecStartPre=/bin/sleep 20
-ExecStart=/bin/sh /var/lib/hearth-ci/$1.sh
+ExecStart=/bin/bash /var/lib/hearth-ci/$1.sh
 UNIT
   sudo ln -sf "/etc/systemd/system/hearth-ci-$1.service" "$dep/etc/systemd/system/multi-user.target.wants/hearth-ci-$1.service"
   echo "$dep"
@@ -106,7 +108,12 @@ start() {  # start NAME: one start through the firmware, nothing pressed, until 
   tr -d '\r' < "$OUT/$1-serial.log" | grep -a 'HEARTH-CI\|grub>\|error:' | tail -20 > "$OUT/$1-marks.txt"
   if tr -d '\r' < "$OUT/$1-serial.log" | grep -aq '^grub> *$\|grub rescue>'; then fail "$1: the PC stopped at GRUB's prompt (no menu)"; fi
 }
-said() { tr -d '\r' < "$OUT/$1-serial.log" | grep -a "^$2" | tail -1; }
+said() { tr -d '\r' < "$OUT/$1-serial.log" | sed -n 's/^.*HCI| //p' | grep -a "^$2" | tail -1; }
+# What a start's job said (from the disk, after the start), for the annotations.
+job_log() {  # job_log NAME
+  sudo cat "$M/r/ostree/deploy/default/var/lib/hearth-ci/$1.log" 2>/dev/null | grep -av '^progress: \|^stage: ' | tail -40 | tee "$OUT/$1-job.log"
+}
+jobsaid() { tr -d '\r' < "$OUT/$1-serial.log" | sed -n 's/^.*HCI| //p'; }
 
 # Step 1's job: say what started. Step 2's: switch with this branch's hearth-admin, from the local copy of the image.
 mount_disk
@@ -137,13 +144,14 @@ ostree admin status | sed "s/^/HEARTH-CI-status /"
 ')
 umount_disk
 start 1-debian
-grep -aq 'HEARTH-CI-edition peppermint' "$OUT/1-debian-serial.log" || fail "1: Debian didn't start (or the job didn't run): $(tail -c 1500 "$OUT/1-debian-serial.log" | tr -d '\r')"
-grep -aq 'HEARTH-CI-move 0' "$OUT/1-debian-serial.log" || fail "2: the switch to Anatase failed: $(tr -d '\r' < "$OUT/1-debian-serial.log" | grep -a 'error\|log:' | tail -8)"
-grep -aq 'HEARTH-CI-status.*(pinned)\|Pinned: yes' "$OUT/1-debian-serial.log" || ann warning "2: Debian wasn't shown as pinned: $(grep -a HEARTH-CI-status "$OUT/1-debian-serial.log" | tr -d '\r' | tr '\n' ' ' | cut -c1-600)"
+jobsaid 1-debian | grep -q 'HEARTH-CI-edition peppermint' || fail "1: Debian didn't start (or the job didn't run): $(tail -c 1500 "$OUT/1-debian-serial.log" | tr -d '\r')"
+jobsaid 1-debian | grep -q 'HEARTH-CI-move 0' || fail "2: the switch to Anatase failed: $(jobsaid 1-debian | grep -v '^HEARTH-CI-status' | tail -25)"
+jobsaid 1-debian | grep -q 'HEARTH-CI-status.*(pinned)\|Pinned: yes' || ann warning "2: Debian wasn't shown as pinned: $(grep -a HEARTH-CI-status "$OUT/1-debian-serial.log" | tr -d '\r' | tr '\n' ' ' | cut -c1-600)"
 DEB_ID=$(said 1-debian HEARTH-CI-booted | awk '{print $2}')
 
 # ---- 3. the restart into Anatase, nothing pressed
 mount_disk
+ann notice "1-2 job (Debian, the switch): $(job_log switch-to-anatase)"
 look 2-switched; esp_ok 2-switched
 sudo rm -rf "$M/r/ostree/deploy/default/var/lib/hearth-ci/anatase"   # room; not needed any more
 # The laptop's broken state, half of it: a loader folder with a GRUB but no grub.cfg (EFI/anatase). Anatase's
@@ -161,14 +169,15 @@ ostree admin status | sed "s/^/HEARTH-CI-status /"
 ' >/dev/null
 umount_disk
 start 3-anatase
-grep -aq 'HEARTH-CI-edition anatase' "$OUT/3-anatase-serial.log" || fail "3: the restart after the switch didn't start Hearth OS on Anatase by itself: $(tr -d '\r' < "$OUT/3-anatase-serial.log" | grep -av '^\s*$' | tail -25)"
-grep -aq 'HEARTH-CI-home kept' "$OUT/3-anatase-serial.log" || fail "3: the home folder wasn't left as it was: $(said 3-anatase HEARTH-CI-home)"
-grep -aq 'HEARTH-CI-accounts fedora' "$OUT/3-anatase-serial.log" || ann warning "3: Debian's accounts are still in /etc/passwd on Anatase"
-grep -aq 'HEARTH-CI-move 0' "$OUT/3-anatase-serial.log" || fail "4: the switch back to Debian failed: $(tr -d '\r' < "$OUT/3-anatase-serial.log" | grep -a 'error\|log:' | tail -8)"
-ann notice "3: $(said 3-anatase HEARTH-CI-clean) · $(tr -d '\r' < "$OUT/3-anatase-serial.log" | grep -a 'HEARTH-CI-status' | tr '\n' ' ' | cut -c1-900)"
+jobsaid 3-anatase | grep -q 'HEARTH-CI-edition anatase' || fail "3: the restart after the switch didn't start Hearth OS on Anatase by itself: $(tr -d '\r' < "$OUT/3-anatase-serial.log" | grep -av '^\s*$' | tail -25)"
+jobsaid 3-anatase | grep -q 'HEARTH-CI-home kept' || fail "3: the home folder wasn't left as it was: $(said 3-anatase HEARTH-CI-home)"
+jobsaid 3-anatase | grep -q 'HEARTH-CI-accounts fedora' || ann warning "3: Debian's accounts are still in /etc/passwd on Anatase"
+jobsaid 3-anatase | grep -q 'HEARTH-CI-move 0' || fail "4: the switch back to Debian failed: $(jobsaid 3-anatase | grep -v '^HEARTH-CI-status' | tail -25)"
+ann notice "3: $(said 3-anatase HEARTH-CI-clean) · $(jobsaid 3-anatase | grep 'HEARTH-CI-status' | tr '\n' ' ' | cut -c1-900)"
 
 # ---- 5. the restart back into Debian, nothing pressed
 mount_disk
+ann notice "3-4 job (Anatase, the switch back): $(job_log back-to-debian)"
 look 4-back; esp_ok 3-after-anatase
 job report '
 echo "HEARTH-CI-edition $(python3 -c "import json; print(json.load(open(\"/usr/share/nimbus/image-info.json\"))[\"base\"])")"
@@ -177,10 +186,10 @@ echo "HEARTH-CI-home $(cat /var/home/tester/Documents/hearth-ci.txt 2>&1)"
 ' >/dev/null
 umount_disk
 start 5-debian-again
-grep -aq 'HEARTH-CI-edition peppermint' "$OUT/5-debian-again-serial.log" || fail "5: the restart after switching back didn't start Hearth OS on Debian by itself: $(tr -d '\r' < "$OUT/5-debian-again-serial.log" | grep -av '^\s*$' | tail -25)"
+jobsaid 5-debian-again | grep -q 'HEARTH-CI-edition peppermint' || fail "5: the restart after switching back didn't start Hearth OS on Debian by itself: $(tr -d '\r' < "$OUT/5-debian-again-serial.log" | grep -av '^\s*$' | tail -25)"
 back_id=$(said 5-debian-again HEARTH-CI-booted | awk '{print $2}')
 [ -n "$DEB_ID" ] && [ "$back_id" = "$DEB_ID" ] && ann notice "5: the very Debian version came back ($DEB_ID)" || fail "5: a different Debian deployment started ($back_id, was $DEB_ID)"
-grep -aq 'HEARTH-CI-home kept' "$OUT/5-debian-again-serial.log" || fail "5: the home folder changed"
+jobsaid 5-debian-again | grep -q 'HEARTH-CI-home kept' || fail "5: the home folder changed"
 mount_disk; look 5-final; esp_ok 5-final; umount_disk
 [ "$FAILED" = 0 ] && ann notice "Debian → Anatase → Debian through the firmware with nothing pressed: every start came up by itself, the home folder kept, the same Debian back"
 exit "$FAILED"

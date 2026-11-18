@@ -573,3 +573,20 @@ class AnataseTest(unittest.TestCase):
             self.assertIsNone(ci.arrival_plan())
         finally:
             ci.ROOT = '/'
+
+
+class EspGuard(unittest.TestCase):
+    def test_gives_a_loader_its_config(self):
+        d = tempfile.mkdtemp()
+        write(os.path.join(d, 'EFI/debian/grub.cfg'), 'search --fs-uuid')
+        write(os.path.join(d, 'EFI/debian/bootuuid.cfg'), 'set BOOT_UUID=x')
+        write(os.path.join(d, 'EFI/debian/grubx64.efi'), 'g')
+        write(os.path.join(d, 'EFI/anatase/grubx64.efi'), 'g')
+        write(os.path.join(d, 'EFI/BOOT/BOOTX64.EFI'), 's')
+        from unittest import mock
+        with mock.patch('builtins.print'):
+            self.assertEqual(ha.esp_guard(d), ['EFI/anatase/grub.cfg', 'EFI/anatase/bootuuid.cfg'])
+            self.assertEqual(ha.esp_guard(d), [], 'only once')
+        self.assertEqual(slurp(os.path.join(d, 'EFI/anatase/grub.cfg')), 'search --fs-uuid')
+        self.assertFalse(os.path.exists(os.path.join(d, 'EFI/BOOT/grub.cfg')), 'a folder without a GRUB is left alone')
+        self.assertEqual(ha.esp_guard('/nonexistent'), [])
