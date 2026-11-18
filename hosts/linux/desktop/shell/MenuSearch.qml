@@ -15,7 +15,11 @@ Item {
     property bool chips: true
     property real k: 1                       // bigger for the Start screen
     property int current: 0
-    readonly property var result: menu ? menu.searchAll(query, filter) : ({ best: null, answers: [], apps: [], games: [], pages: [], files: [] })
+    // Only while it's on screen (the menu open and searching). 1.14 froze the owner's laptop and ROG Ally: a menu
+    // closed with words still in its search kept working the search out again and again in the background
+    // (SearchSources' refresh timer, read and started inside this binding, re-ran it: a binding loop, logged hundreds of
+    // times), quickshell at 70-90% of a core.
+    readonly property var result: menu && ms.visible && query.trim() !== "" ? menu.searchAll(query, filter) : ({ best: null, answers: [], apps: [], games: [], pages: [], files: [] })
     readonly property var rows: menu ? menu.flatResults(result) : []
     readonly property var row: rows[Math.min(current, rows.length - 1)] || null
     readonly property var filters: [["all", "All"], ["apps", "Apps"], ["games", "Games"], ["pages", "Settings"], ["files", "Files"]]

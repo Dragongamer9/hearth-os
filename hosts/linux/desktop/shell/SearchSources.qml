@@ -50,13 +50,15 @@ Item {
     readonly property var typed: ({ q: "" })
     function lookup(raw) {
         const q = String(raw || "");
-        if (!refreshSoon.running) refreshSoon.start();     // the search bar (Alt+Space) searches with the menu closed
+        // The search bar (Alt+Space) searches with the menu closed. Qt.callLater, not a Timer: this runs inside the menus'
+        // result bindings, and reading or starting a Timer there made a binding loop (MenuSearch.qml's "result", logged
+        // hundreds of times on the owner's laptop, Nov 17). Calls in one go are folded into one.
+        Qt.callLater(root.refresh);
         if (!/^\s*(kill|spell|define|meaning of|dict|install|store|get app)\s+\S/i.test(q)) return;
         if (q === typed.q) return;
         typed.q = q;
         lookupTimer.restart();
     }
-    Timer { id: refreshSoon; interval: 50; onTriggered: root.refresh() }
     Connections { target: root.launcher; function onShownChanged() { if (root.launcher.shown) root.refresh(); } }
     Timer {
         id: lookupTimer

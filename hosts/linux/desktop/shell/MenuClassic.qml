@@ -39,6 +39,7 @@ Item {
     ]
     readonly property var placeIdx: places.map((p, i) => p.sep ? -1 : i).filter(i => i >= 0)
     readonly property var jump: menu && jumpFor ? menu.jumpList(jumpFor) : []
+    function setQuery(t) { field.text = t; field.cursorPosition = t.length; }   // Launcher.searchFor (ipc launcher query)
     function opened() { zone = "left"; allOpen = false; cur = 0; rightCur = 0; jumpFor = null; field.text = ""; field.forceActiveFocus(); }
 
     MouseArea { anchors.fill: parent; onClicked: st.menu.close() }

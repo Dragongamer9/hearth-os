@@ -56,7 +56,11 @@ PanelWindow {
     // the focus ring. False: nothing took it (the on-screen keyboard opens as usual).
     function padY() { return shown && styled && typeof styleLoader.item.padY === "function" && styleLoader.item.padY() === true; }
     function openTab(t) { setTab(t); shown = true; }
-    function searchFor(t) { setTab("apps"); shown = true; if (styled) openMenuSearch(); else { search.text = t; search.cursorPosition = t.length; } }
+    function searchFor(t) {
+        setTab("apps"); shown = true;
+        if (styled) { openMenuSearch(); if (t && typeof styleLoader.item.setQuery === "function") styleLoader.item.setQuery(t); }
+        else { search.text = t; search.cursorPosition = t.length; }
+    }
     function setTab(t) {
         if (tab === t) return;
         tab = t;
