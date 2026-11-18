@@ -25,7 +25,7 @@ cp -avf /ctx/anatase_files/. /
 PF=/peppermint_files
 [ -d "$PF" ] || PF=/ctx/peppermint_files
 install -Dm755 "$PF/usr/libexec/nimbus/hearth-bls-grub" /usr/libexec/nimbus/hearth-bls-grub
-cp -a "$PF/usr/share/hearth/grub-theme" /usr/share/hearth/
+mkdir -p /usr/share/hearth && cp -a "$PF/usr/share/hearth/grub-theme" /usr/share/hearth/
 for u in hearth-bls-grub.service hearth-bls-grub-refresh.service hearth-bls-grub-refresh.path \
          hearth-unlock.service hearth-unlock-good.service hearth-unlock-units.service hearth-unlock-reapply.service hearth-unlock-ldcache.service; do
   install -Dm644 "$PF/usr/lib/systemd/system/$u" "/usr/lib/systemd/system/$u"
@@ -774,7 +774,8 @@ DESKTOP
 # "Hearth" (Game Mode), and Desktop Mode starts Plasma from inside Hearth's session (nimbus-session run_plasma).
 plasma_before=$(du -sxm /usr | cut -f1)
 dm_before=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
-dnf5 -y install plasma-workspace plasma-desktop kwin plasma-workspace-wayland
+dnf5 -y install plasma-workspace plasma-desktop kwin
+dnf5 -y install --skip-unavailable plasma-workspace-wayland || true
 dnf5 -y install --skip-unavailable --skip-broken plasma-nm plasma-pa plasma-systemmonitor powerdevil kscreen libkscreen kscreenlocker \
   bluedevil polkit-kde xdg-desktop-portal-kde plasma-breeze breeze-icon-theme breeze-cursor-theme kde-cli-tools \
   plasma-systemsettings kinfocenter kf6-kirigami kwin-effects kdecoration aurorae plasma-milou milou kmenuedit \
@@ -799,7 +800,7 @@ ls /usr/libexec/kscreenlocker_greet /usr/lib*/libexec/kscreenlocker_greet 2>/dev
 # KDE's own "Plasma" login entries start Plasma without Hearth's session: moved aside (Hearth's session starts it).
 mkdir -p /usr/share/hearth/desktop-sessions
 for f in /usr/share/wayland-sessions/plasma.desktop /usr/share/wayland-sessions/plasmawayland.desktop /usr/share/xsessions/plasma.desktop /usr/share/xsessions/plasmax11.desktop; do
-  [ -e "$f" ] && mv "$f" "/usr/share/hearth/desktop-sessions/$(basename "$(dirname "$f")")-$(basename "$f")"
+  if [ -e "$f" ]; then mv "$f" "/usr/share/hearth/desktop-sessions/$(basename "$(dirname "$f")")-$(basename "$f")"; fi
 done
 dm_after=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
 if [ "$dm_before" != "$dm_after" ]; then
@@ -1406,7 +1407,7 @@ dnf5 -y install --skip-unavailable --skip-broken samba smartmontools nftables re
 if curl -fsSL --retry 3 -o /etc/yum.repos.d/tailscale.repo https://pkgs.tailscale.com/stable/fedora/tailscale.repo \
    && dnf5 -y install tailscale; then echo "Tailscale installed"
 else echo "::warning::couldn't install Tailscale: Settings › Home server says so"; rm -f /etc/yum.repos.d/tailscale.repo; fi
-[ -f /etc/yum.repos.d/tailscale.repo ] && sed -i 's/^enabled=1/enabled=0/' /etc/yum.repos.d/tailscale.repo
+if [ -f /etc/yum.repos.d/tailscale.repo ]; then sed -i 's/^enabled=1/enabled=0/' /etc/yum.repos.d/tailscale.repo; fi
 if [ -d /etc/samba ]; then cat > /etc/samba/smb.conf <<'SMBCONF'
 # Hearth OS: Samba starts with nothing shared. Settings › Home server › Shared folders and Hearth Storage's Windows
 # sharing add their shares from their own files, included below by their helpers. Change shares there.
@@ -1529,7 +1530,7 @@ dnf5 -y install --skip-unavailable --skip-broken glibc-all-langpacks || true
 # there (bootloader-update.service's drop-in). On a PC installed with Anatase's own loader nothing of this runs.
 chmod 755 /usr/libexec/nimbus/hearth-bls-grub
 systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
-command -v grub2-mkfont >/dev/null && for sz in 18 22; do grub2-mkfont -n Hearth -s "$sz" -o "/usr/share/hearth/grub-theme/hearth-regular-$sz.pf2" "$(fc-match -f '%{file}' 'Inter:style=Regular' 2>/dev/null || fc-match -f '%{file}' sans)" || true; done
+if command -v grub2-mkfont >/dev/null; then for sz in 18 22; do grub2-mkfont -n Hearth -s "$sz" -o "/usr/share/hearth/grub-theme/hearth-regular-$sz.pf2" "$(fc-match -f '%{file}' 'Inter:style=Regular' 2>/dev/null || fc-match -f '%{file}' sans)" || true; done; fi
 
 # ------------------------------------------------------------------ Unlock the file system (1.15, hearth-unlock, dnf form)
 # Off unless turned on (Settings › Updates & Recovery, or sudo hearth-unlock): then this version's own writable layer
@@ -1638,7 +1639,7 @@ test -s /usr/share/hearth/rpm-baseline.list
 # Anything that left a repository on for the installed system (the image brings updates; dnf on an unlocked system
 # uses Fedora's own repositories and Anatase's).
 for r in /etc/yum.repos.d/rpmfusion-*.repo /etc/yum.repos.d/tailscale.repo /etc/yum.repos.d/_copr*.repo; do
-  [ -f "$r" ] && sed -i 's/^enabled=1/enabled=0/' "$r"
+  if [ -f "$r" ]; then sed -i 's/^enabled=1/enabled=0/' "$r"; fi
 done
 
 # bootc keeps images in podman's storage (imgstorage): without podman, updates and Switch edition fail
