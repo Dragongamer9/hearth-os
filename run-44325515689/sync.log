@@ -1,0 +1,56 @@
+---- first start
+hearth-plasma-looks: Global Theme org.hearthos.hearth: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-hearth-Dark: exit 0 The requested theme "HearthOS-hearth-Dark" is already set as the theme for the current Plasma session.
+hearth-plasma-looks: colours HearthOS-hearth-Dark again (after HearthOS-hearth-Light): exit 0 Successfully applied the color scheme HearthOS-hearth-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-hearth: exit 0
+hearth-plasma-looks: wallpaper Hearth-fireside: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795012603.294290 sender=:1.6 -> destination=:1.21 serial=396 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.hearth", "scheme": "HearthOS-hearth-Dark", "style": "hearth-hearth", "colours": true}
+hearth-plasma-looks: Global Theme org.hearthos.steam: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-steam-Dark: exit 0 Successfully applied the color scheme HearthOS-steam-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-steam: exit 0
+hearth-plasma-looks: wallpaper Hearth-ridge: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795012691.262940 sender=:1.6 -> destination=:1.82 serial=410 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.steam", "scheme": "HearthOS-steam-Dark", "style": "hearth-steam", "colours": true}
+hearth-plasma-looks: Global Theme org.hearthos.gaming: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-gaming-Dark: exit 0 Successfully applied the color scheme HearthOS-gaming-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-gaming: exit 0
+hearth-plasma-looks: wallpaper Hearth-forge: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795012698.083379 sender=:1.6 -> destination=:1.92 serial=418 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.gaming", "scheme": "HearthOS-gaming-Dark", "style": "hearth-gaming", "colours": true}
+hearth-plasma-looks: Global Theme org.hearthos.zen: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-zen-Dark: exit 0 Successfully applied the color scheme HearthOS-zen-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-zen: exit 0
+hearth-plasma-looks: wallpaper Hearth-peaks: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795012705.020330 sender=:1.6 -> destination=:1.101 serial=426 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.zen", "scheme": "HearthOS-zen-Dark", "style": "hearth-zen", "colours": true}
+hearth-plasma-looks: Global Theme org.hearthos.glass: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-glass-Dark: exit 0 Successfully applied the color scheme HearthOS-glass-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-glass: exit 0
+hearth-plasma-looks: wallpaper Hearth-bloom: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795012711.821463 sender=:1.6 -> destination=:1.111 serial=434 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.glass", "scheme": "HearthOS-glass-Dark", "style": "hearth-glass", "colours": true}
+hearth-plasma-looks: Global Theme org.hearthos.synthwave: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-synthwave-Dark: exit 0 Successfully applied the color scheme HearthOS-synthwave-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-synthwave: exit 0
+hearth-plasma-looks: wallpaper Hearth-fox: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795012718.688787 sender=:1.6 -> destination=:1.120 serial=442 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.synthwave", "scheme": "HearthOS-synthwave-Dark", "style": "hearth-synthwave", "colours": true}
+hearth-plasma-looks: Global Theme org.hearthos.cabin: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-cabin-Dark: exit 0 Successfully applied the color scheme HearthOS-cabin-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-cabin: exit 0
+hearth-plasma-looks: wallpaper Hearth-cabin: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795012725.468743 sender=:1.6 -> destination=:1.129 serial=450 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.cabin", "scheme": "HearthOS-cabin-Dark", "style": "hearth-cabin", "colours": true}
+hearth-plasma-looks: Global Theme org.hearthos.console: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-console-Dark: exit 0 Successfully applied the color scheme HearthOS-console-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-console: exit 0
+hearth-plasma-looks: wallpaper Hearth-embers: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795012732.192287 sender=:1.6 -> destination=:1.139 serial=458 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.console", "scheme": "HearthOS-console-Dark", "style": "hearth-console", "colours": true}
+hearth-plasma-looks: Global Theme org.hearthos.hearth: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-hearth-Dark: exit 0 Successfully applied the color scheme HearthOS-hearth-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-hearth: exit 0
+hearth-plasma-looks: wallpaper Hearth-fireside: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795012738.954281 sender=:1.6 -> destination=:1.147 serial=465 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.hearth", "scheme": "HearthOS-hearth-Dark", "style": "hearth-hearth", "colours": true}

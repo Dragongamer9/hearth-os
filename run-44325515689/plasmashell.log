@@ -1,0 +1,104 @@
+---- plasmashell -p org.kde.plasma.desktop (14:36:29)
+qt.dbus.integration: QDBusConnection: name 'org.freedesktop.portal.Desktop' had owner '' but we thought it was ':1.2'
+qt.qml.propertyCache.append: Member visible of the object PlasmaQuick::Dialog overrides a member of the base object. Consider renaming it or adding final or override specifier
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+kde.plasmashell: Activity added twice "99c4e506-cf75-492d-b844-584bcf5b0170"
+qt.qpa.services: Failed to register with host portal QDBusError("org.freedesktop.portal.Error.Failed", "Could not register app ID: Connection already associated with an application ID")
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+qt.svg.draw: The requested buffer size is too big, ignoring
+qt.svg.draw: The requested buffer size is too big, ignoring
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kf.i18n: Trying to convert empty KLocalizedString to QString.
+kde.plasmashell: Activity added twice "99c4e506-cf75-492d-b844-584bcf5b0170"
+error creating screencast "Failed to connect PipeWire context"
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+qt.qml.propertyCache.append: Member visible of the object PlasmaQuick::Dialog overrides a member of the base object. Consider renaming it or adding final or override specifier
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+kde.plasmashell: Activity added twice "99c4e506-cf75-492d-b844-584bcf5b0170"
+virtual QStringList Solid::Backends::UPower::UPowerManager::allDevices()  error:  QDBusError("org.freedesktop.DBus.Error.Disconnected", "Not connected to D-Bus server")
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+---- plasmashell -p org.hearthos.firehold (14:39:51)
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+kpipewire_logging: error: "Failed to connect to PipeWire" 0
+Couldn't start kglobalaccel from org.kde.kglobalaccel.service: QDBusError("org.freedesktop.DBus.Error.ServiceUnknown", "The name org.kde.kglobalaccel was not provided by any .service files")
+Failed to write to the pipe: Bad file descriptor.

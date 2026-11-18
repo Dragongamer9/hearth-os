@@ -1,0 +1,1 @@
+OK Hearth's look applied and recorded (sync exit 0): {"kde": {"lnf": "org.hearthos.hearth", "scheme": "HearthOS-hearth-Dark", "style": "hearth-hearth", "colours": true}, "state": {"applied": {"look": "hearth", "mode": "dark", "accent": "", "sub": ""}, "kde": "org.hearthos.hearth"}, "plasma": true}
