@@ -188,6 +188,8 @@ impl<BackendData: Backend> CompositorHandler for HearthState<BackendData> {
                 window.0.on_commit();
 
                 if &root == surface {
+                    // The overlay's fps (game.rs): a frame of the game in front, paced or not.
+                    self.game_frame(&window);
                     let buffer_offset = with_states(surface, |states| {
                         states
                             .cached_state
@@ -289,6 +291,33 @@ impl<BackendData: Backend> WlrLayerShellHandler for HearthState<BackendData> {
 }
 
 impl<BackendData: Backend> HearthState<BackendData> {
+    /// A new window's first frame with a real size: it's placed again with it (Settings, 1520 x 940, was placed as a
+    /// guessed 3/5 of the screen and hung off its edge). Never a window that's maximized, full screen or snapped.
+    pub fn place_when_sized(&mut self, surface: &WlSurface) {
+        use smithay::reexports::wayland_protocols::xdg::shell::server::xdg_toplevel::State;
+        let Some(window) = self.window_for_surface(surface) else { return };
+        let pending = window.user_data().get::<PlaceWhenSized>().is_some_and(|m| m.0.get());
+        if !pending {
+            return;
+        }
+        let size = window.geometry().size;
+        if size.w <= 0 || size.h <= 0 {
+            return;
+        }
+        if let Some(m) = window.user_data().get::<PlaceWhenSized>() {
+            m.0.set(false);
+        }
+        #[allow(irrefutable_let_patterns)]
+        if let Some(t) = window.0.toplevel() {
+            let st = t.current_state().states;
+            if [State::Maximized, State::Fullscreen, State::TiledLeft, State::TiledRight].iter().any(|s| st.contains(*s)) {
+                return;
+            }
+        }
+        let pointer = self.pointer.current_location();
+        place_new_window(&mut self.space, pointer, &window, false);
+    }
+
     pub fn window_for_surface(&self, surface: &WlSurface) -> Option<WindowElement> {
         self.space
             .elements()
@@ -403,6 +432,9 @@ fn ensure_initial_configure(surface: &WlSurface, space: &Space<WindowElement>, p
     };
 }
 
+/// A window placed before it had a size (place_new_window's guess): placed again on its first frame with one.
+pub struct PlaceWhenSized(pub std::cell::Cell<bool>);
+
 fn place_new_window(
     space: &mut Space<WindowElement>,
     pointer_location: Point<f64, Logical>,
@@ -437,11 +469,16 @@ fn place_new_window(
     let (w, h) = if size.w > 0 && size.h > 0 {
         (size.w.min(output_geometry.size.w), size.h.min(output_geometry.size.h))
     } else {
+        // Not drawn yet: a guess now, and placed again on its first frame (place_when_sized).
+        window.user_data().insert_if_missing(|| PlaceWhenSized(std::cell::Cell::new(true)));
         (output_geometry.size.w * 3 / 5, output_geometry.size.h * 3 / 5)
     };
-    let n = space.elements().count() as i32 % 8;
-    let x = output_geometry.loc.x + ((output_geometry.size.w - w) / 2).max(0) + n * 28 - 98;
-    let y = output_geometry.loc.y + ((output_geometry.size.h - h) / 2).max(0) + n * 28 - 98;
+    // A big window (most of the free space) goes in the middle; smaller ones step down and right.
+    let big = w * 4 > output_geometry.size.w * 3 || h * 4 > output_geometry.size.h * 3;
+    let n = if big { 0 } else { space.elements().count() as i32 % 8 };
+    let n_off = if big { 0 } else { 98 };
+    let x = output_geometry.loc.x + ((output_geometry.size.w - w) / 2).max(0) + n * 28 - n_off;
+    let y = output_geometry.loc.y + ((output_geometry.size.h - h) / 2).max(0) + n * 28 - n_off;
     let x = x.clamp(output_geometry.loc.x, (output_geometry.loc.x + output_geometry.size.w - w).max(output_geometry.loc.x));
     let y = y.clamp(output_geometry.loc.y, (output_geometry.loc.y + output_geometry.size.h - h).max(output_geometry.loc.y));
 

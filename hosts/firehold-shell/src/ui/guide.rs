@@ -50,6 +50,8 @@ impl Guide {
     fn press(&mut self, i: usize) {
         match i {
             0 => link::send(json!({"op": "guideTile", "what": "screenshot"})),
+            1 => link::send(json!({"op": "guideTile", "what": "record"})),
+            2 => link::send(json!({"op": "guideTile", "what": "friends"})),
             3 => link::send(json!({"op": "guideTile", "what": "keyboard"})),
             4 => link::send(json!({"op": "guideTile", "what": "volumeUp"})),
             5 => link::send(json!({"op": "guideTile", "what": "brightnessUp"})),
@@ -129,7 +131,7 @@ fn chip<'a>(value: String, colour: Color, on: bool, r: usize) -> Element<'a, Mes
     let arrow = |up: bool| mouse_area(t(if up { "›" } else { "‹" }, 16.0, colour)).on_press(Message::Step(r, up));
     container(row![arrow(false), tb(value, 15.0, colour), arrow(true)].spacing(6.0).align_y(iced::Center))
         .padding(Padding { top: 6.0, right: 12.0, bottom: 6.0, left: 12.0 })
-        .style(boxed(c(0x2a, 0x20, 0x1a), 8.0, on.then_some((ACCENT, 2.0))))
+        .style(boxed(shade(0.76), 8.0, on.then_some((c_accent(), 2.0))))
         .into()
 }
 
@@ -138,13 +140,13 @@ fn guide_view(s: &Guide) -> Element<'_, Message> {
     let name = if g.game.is_empty() { "Quick Access".to_string() } else { g.game.clone() };
     let sub = if g.game.is_empty() { "No game is running".to_string() } else { format!("{} · native, no Game Mode", g.playing) };
     let art = container(Space::new()).width(Length::Fixed(56.0)).height(Length::Fixed(56.0)).style(boxed(hero_bg(), 10.0, None));
-    let head = row![art, column![tb(name, 22.0, TEXT), t(sub, 15.0, MUTED)].spacing(4.0)].spacing(16.0).align_y(iced::Center);
+    let head = row![art, column![tb(name, 22.0, c_text()), t(sub, 15.0, c_muted())].spacing(4.0)].spacing(16.0).align_y(iced::Center);
 
     let pct = |v: Option<i64>| v.map(|x| format!("{x}%")).unwrap_or_else(|| "Not here".into());
     let tiles: [(&str, String); TILES] = [
         ("Screenshot", if g.screenshot.is_empty() { "Saved to Pictures".into() } else { "Saved to Pictures ✓".into() }),
-        ("Record", "Not yet".into()),
-        ("Friends", "Not yet".into()),
+        ("Record", if g.record.is_empty() { "Not here".into() } else { g.record.clone() }),
+        ("Friends", if g.friends { "In Steam".into() } else { "Not here".into() }),
         ("Keyboard", "On-screen".into()),
         ("Volume", pct(g.volume)),
         ("Brightness", pct(g.brightness)),
@@ -156,10 +158,10 @@ fn guide_view(s: &Guide) -> Element<'_, Message> {
             let i = r * 3 + cix;
             let on = s.sel == i;
             let (title, sub) = (&tiles[i].0, tiles[i].1.clone());
-            let cell = container(column![ts(*title, 16.0, TEXT), t(sub, 13.0, MUTED)].spacing(6.0).align_x(iced::Center))
+            let cell = container(column![ts(*title, 16.0, c_text()), t(sub, 13.0, c_muted())].spacing(6.0).align_x(iced::Center))
                 .center_x(Length::Fill)
                 .center_y(Length::Fixed(78.0))
-                .style(boxed(c(0x22, 0x1a, 0x16), 12.0, Some(if on { (ACCENT, 2.0) } else { (LINE, 1.0) })));
+                .style(boxed(shade(0.55), 12.0, Some(if on { (c_accent(), 2.0) } else { (c_line(), 1.0) })));
             line = line.push(mouse_area(cell).on_press(Message::Press(i)).on_enter(Message::Pick(i)));
         }
         grid = grid.push(line);
@@ -167,35 +169,35 @@ fn guide_view(s: &Guide) -> Element<'_, Message> {
 
     let none = |x: &str| if g.game.is_empty() { "No game".to_string() } else { x.to_string() };
     let rows: [(&str, &str, String, Color); ROWS] = [
-        ("Frame limit", "Steadier, cooler, longer battery", none(&g.frame_limit), TEXT),
-        ("Resolution scaling", if g.scaling_note.is_empty() { "Firehold upscales the game itself" } else { "Firehold upscales the game itself (not this one yet)" }, none(&g.scaling), TEXT),
-        ("VRR / FreeSync", "Smooth when it dips below 60", none(if g.vrr { "On" } else { "Off" }), if g.vrr && !g.game.is_empty() { GREEN } else { TEXT }),
-        ("Allow tearing", "Lowest delay for fast games", none(if g.tearing { "On" } else { "Off" }), TEXT),
-        ("Power", "Handhelds and laptops", g.power.clone(), TEXT),
-        ("Performance overlay", "Top-left corner", match s.st.cfg.overlay.as_str() { "basic" => "Basic".into(), "full" => "Full".into(), _ => "Off".into() }, TEXT),
+        ("Frame limit", "Steadier, cooler, longer battery", none(&g.frame_limit), c_text()),
+        ("Resolution scaling", if g.scaling_note.is_empty() { "Firehold upscales the game itself" } else { "Firehold upscales the game itself (not this one yet)" }, none(&g.scaling), c_text()),
+        ("VRR / FreeSync", "Smooth when it dips below 60", none(if g.vrr { "On" } else { "Off" }), if g.vrr && !g.game.is_empty() { c_good() } else { c_text() }),
+        ("Allow tearing", "Lowest delay for fast games", none(if g.tearing { "On" } else { "Off" }), c_text()),
+        ("Power", "Handhelds and laptops", g.power.clone(), c_text()),
+        ("Performance overlay", "Top-left corner", match s.st.cfg.overlay.as_str() { "basic" => "Basic".into(), "full" => "Full".into(), _ => "Off".into() }, c_text()),
     ];
     let mut list = column![];
     for (r, (title, sub, value, colour)) in rows.into_iter().enumerate() {
         let i = TILES + r;
         let on = s.sel == i;
-        let words = column![ts(title, 17.0, TEXT), t(sub, 14.0, MUTED)].spacing(3.0);
+        let words = column![ts(title, 17.0, c_text()), t(sub, 14.0, c_muted())].spacing(3.0);
         let line = container(row![words, Space::new().width(Length::Fill), chip(value, colour, on, r)].align_y(iced::Center))
             .padding(Padding { top: 0.0, right: 18.0, bottom: 0.0, left: 18.0 })
             .center_y(Length::Fixed(71.0))
             .width(Length::Fill);
         list = list.push(mouse_area(line).on_enter(Message::Pick(i)));
         if r + 1 < ROWS {
-            list = list.push(container(Space::new()).width(Length::Fill).height(Length::Fixed(1.0)).style(boxed(LINE, 0.0, None)));
+            list = list.push(container(Space::new()).width(Length::Fill).height(Length::Fixed(1.0)).style(boxed(c_line(), 0.0, None)));
         }
     }
-    let list = container(list).style(boxed(c(0x1f, 0x17, 0x14), 12.0, None));
+    let list = container(list).style(boxed(shade(0.46), 12.0, None));
 
     let mut buttons = column![].spacing(10.0);
     for (b, (label, danger)) in [("Put it in a window on the Desk", false), ("Home (the game keeps running)", false), ("Quit game", true)].into_iter().enumerate() {
         let i = TILES + ROWS + b;
         let on = s.sel == i;
-        let (bg, fg, edge) = if danger { (c(0x1a, 0x12, 0x10), RED, Some((RED, 2.0))) } else { (c(0x2a, 0x20, 0x1c), TEXT, None) };
-        let edge = if on { Some((ACCENT, 3.0)) } else { edge };
+        let (bg, fg, edge) = if danger { (shade(0.29), c_danger(), Some((c_danger(), 2.0))) } else { (shade(0.79), c_text(), None) };
+        let edge = if on { Some((c_accent(), 3.0)) } else { edge };
         let cell = container(ts(label, 17.0, fg)).center_x(Length::Fill).center_y(Length::Fixed(54.0)).style(boxed(bg, 10.0, edge));
         buttons = buttons.push(mouse_area(cell).on_press(Message::Press(i)).on_enter(Message::Pick(i)));
     }
@@ -205,15 +207,15 @@ fn guide_view(s: &Guide) -> Element<'_, Message> {
         .padding(Padding { top: 32.0, right: 32.0, bottom: 32.0, left: 32.0 })
         .width(Length::Fill)
         .height(Length::Fill)
-        .style(boxed(c(0x1c, 0x15, 0x12), 0.0, None))
+        .style(boxed(shade(0.38), 0.0, None))
         .into()
 }
 
 fn perf_view(s: &Guide) -> Element<'_, Message> {
     let line = if s.st.perf.line.is_empty() { "Firehold".to_string() } else { s.st.perf.line.clone() };
-    let chip = container(text(line).size(15.0).font(MONO).color(GREEN))
+    let chip = container(text(line).size(15.0).font(MONO).color(c_good()))
         .padding(Padding { top: 6.0, right: 14.0, bottom: 6.0, left: 14.0 })
-        .style(boxed(Color { a: 0.85, ..c(0x12, 0x0c, 0x09) }, 8.0, None));
+        .style(boxed(Color { a: 0.85, ..shade(0.04) }, 8.0, None));
     container(chip).width(Length::Fill).height(Length::Fill).into()
 }
 
@@ -256,7 +258,7 @@ pub fn run(perf: bool) -> i32 {
         }
     };
     let r = iced_layershell::application(move || Guide { perf, ..Guide::default() }, move || format!("hearth-firehold-{name}"), update, view)
-        .style(|_s: &Guide, _t: &iced::Theme| iced::theme::Style { background_color: Color::TRANSPARENT, text_color: TEXT })
+        .style(|_s: &Guide, _t: &iced::Theme| iced::theme::Style { background_color: Color::TRANSPARENT, text_color: c_text() })
         .subscription(subscription)
         .settings(Settings { layer_settings, default_font: INTER, ..Default::default() })
         .run();

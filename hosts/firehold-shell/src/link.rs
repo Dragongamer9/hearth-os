@@ -27,6 +27,8 @@ pub enum HubMsg {
     Nav(String),
     Cmd(String, String),
     Quit,
+    /// The look picked in Settings changed (style.rs read it again): the surface draws itself again.
+    Look,
     /// The hub went away: the surface ends (the session decides what comes next).
     Gone,
 }
@@ -47,6 +49,16 @@ fn parse(v: Value) -> Option<HubMsg> {
 /// The hub's messages, as a stream (iced's Subscription::run).
 pub fn stream() -> futures::channel::mpsc::UnboundedReceiver<HubMsg> {
     let (tx, rx) = futures::channel::mpsc::unbounded();
+    // The look (hearth-ui's watch: inotify on desktop.json and palettes.json, asleep until one is written).
+    let look_tx = tx.clone();
+    std::thread::spawn(move || {
+        let mut changes = hearth_ui::theme::watch();
+        while futures::executor::block_on(futures::StreamExt::next(&mut changes)).is_some() {
+            if crate::ui::style::reload() && look_tx.unbounded_send(HubMsg::Look).is_err() {
+                return;
+            }
+        }
+    });
     std::thread::spawn(move || {
         let surface = SURFACE.get().cloned().unwrap_or_default();
         let Some(path) = proto::socket_path() else {

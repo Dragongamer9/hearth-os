@@ -16,6 +16,11 @@ windows, the bar and the dock) and **Away** (the home server keeps running). The
   (`src/ipc.rs`) gives the shell the window list, actions, desktops, each window's picture and Firehold's own title
   bars. New for this build: `watch` with `"input": true` also says when a real mouse or keyboard was used (`{"t":
   "input", "kind": "mouse"|"keys"}`, at most once a second per kind), so Automatic can switch to the Desk.
+  Also new here (they help the QML Firehold too): the game in front's frames are counted whether or not they're
+  paced (`fps` in the game socket's status, for the overlay without a frame limit); a Wayland window that's full
+  screen has no title bar (a game the Couch put there showed Firehold's bar over its top, as X11 windows never did);
+  and a window placed before it had a size is placed again, in the middle when it's big, on its first frame
+  (Settings hung off the screen's edge).
 - **The shell**: `hosts/firehold-shell`, one Rust program in a few processes, no QML and no Quickshell:
   - `firehold-shell hub`: started by firehold-comp. It starts the surfaces, keeps one connection to firehold-comp,
     reads the controller (gilrs, read only: nothing is grabbed), decides the posture and tells each surface what to
@@ -43,6 +48,14 @@ Both are System76's world: libcosmic is COSMIC's toolkit built on System76's for
   wlr-layer-shell for Mantel.
 - **Look.** Firehold's look isn't COSMIC's, so libcosmic's widgets and theme would be overridden everywhere anyway.
 
+**One look with Hearth's pure-Rust apps.** The colours are `hosts/hearth-ui`'s (`src/theme.rs`, the crate Task
+Manager, System Restore and Reliability history use, on the same iced 0.14): the look picked in Settings
+(`~/.local/share/nimbus/desktop.json` and palettes.json, as Mantel and Plasma's looks have it), followed at once while
+Firehold is open (hearth-ui's inotify watch, asleep until one of the two files is written). With no look picked it's
+Hearth's own warm look, the one the mockups are drawn in (`set_default_look("hearth")`; the other apps keep
+Steam-style). Only a game's own colours and what's written over them (the hero, the tiles, GAME and WINDOW) stay
+fixed. `firehold-shell/src/ui/style.rs` is only the names for hearth-ui's palette.
+
 If COSMIC's own pieces are wanted later (its applets, its settings daemon), the shell can move to libcosmic: the
 surfaces are small and talk to the hub only through `link.rs`.
 
@@ -56,7 +69,11 @@ copyright notice in the file and be listed here.
 
 - **Never the default.** KDE Plasma stays Desktop Mode on Anatase. "Desktop Mode: Firehold (Rust, test)" in Plasma's
   menu (`hearth-desktop-choice firehold`) saves the pick, and Settings › System inside Firehold has the same choice
-  and "Back to Game Mode". The pick is `~/.config/nimbus/firehold-rust.json` (`{"desktop": "firehold"}`), written
+  and "Back to Game Mode".
+- **Beside Firehold on Plasma** (the other test, `hearth-firehold-plasma`, its choice in session.conf): the two never
+  fight. Picking either Firehold, or KDE Plasma, sets the other one to plain Plasma, each through its own helper and
+  only on your pick (hearth-desktop-choice, `hearth-firehold-plasma pick`, and Settings › System here, which offers
+  all three when Firehold on Plasma is in the image). The pick is `~/.config/nimbus/firehold-rust.json` (`{"desktop": "firehold"}`), written
   only by `firehold-shell choose` through `settings_file.rs` (atomic, .bak, merged, only when it changes); no file is
   Plasma. Nothing else writes it, and a failure never changes it.
 - **Falls back to Plasma.** nimbus-session's `run_firehold_rust` (called from `run_plasma`) starts
@@ -81,6 +98,10 @@ copyright notice in the file and be listed here.
   hub waits on sockets, the controller (the kernel's own wait in gilrs) and its children. The only timers: the clock
   (once a minute), the overlay's line (once a second, only while a game is in front and the overlay is on) and the
   windows' pictures (every 3 s, only while Everything open is on screen).
+- The look: one inotify watch per surface (hearth-ui's), asleep until desktop.json or palettes.json is written (a
+  folder that isn't there yet is looked for once a minute). The Guide's Record tile reads Hearth Recorder's state file
+  when the Guide opens or a tile is pressed, never on a timer. The overlay's fps comes from a counter firehold-comp
+  keeps on the game's frames, worked out only when the overlay asks (once a second, only while it's on).
 - No animations. On the Desk the Couch is only the wallpaper (the background layer, the gradient, no keys), and the
   bar and the dock aren't running in Couch.
 - CI checks it: firehold-rust.yml's "idle" runs Firehold and plain KDE Plasma for ten minutes each at rest on the same
@@ -105,9 +126,17 @@ Pictures/Screenshots · the volume and brightness keys. The keyboard's arrows, E
 4. If it doesn't start, KDE Plasma opens by itself with a note; the log is `~/.local/share/nimbus/firehold-rust.log`
    (Send logs takes it).
 
+## The Guide's tiles
+
+- **Record** is Hearth Recorder's (`hosts/hearth-recorder`, in the image): with its instant replay on, the tile says
+  "Last 30 s too" (its own seconds) and A saves them (`hearth-recorder --save-replay`); otherwise A starts a recording
+  and A again stops it (`--toggle`). Firehold never turns instant replay on by itself.
+- **Friends** opens Steam's own friends list (`steam://open/friends`). How many are online is Steam's account data,
+  which Hearth never reads, so the tile says "In Steam" rather than a count.
+
 ## Not done yet
 
-See the checklist's "Still open" list: the per-screen posture isn't applied (one posture for all screens), Record's
-replay buffer and Friends' online count have no data source here, the chapter line needs game data Hearth doesn't
-have, the game drawn straight to the display needs a real screen to prove (firehold-comp does it on udev), and Away
-is the home server's own (the shell doesn't show anything for it yet).
+See the checklist's "Still open" list: the per-screen posture isn't applied (one posture for all screens), Friends'
+online count is Steam's account data, the chapter line needs game data Hearth doesn't have, the desk bar's menus need
+a global-menu protocol firehold-comp doesn't speak yet, the game drawn straight to the display needs a real screen to
+prove (firehold-comp does it on udev), and Away is the home server's own (the shell doesn't show anything for it yet).

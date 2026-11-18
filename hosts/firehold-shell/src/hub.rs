@@ -123,6 +123,41 @@ fn steam_cloud(appid: &str) -> bool {
     false
 }
 
+/// Desktop Mode as it's saved: "firehold" (this one), "firehold-plasma" (the other Firehold test, Firehold on Plasma,
+/// when its helper is here and it's picked there), or "plasma". Read only.
+fn desktop_now() -> String {
+    let mine = config::desktop_choice();
+    if mine == "plasma" && sys::which("hearth-firehold-plasma") {
+        if let Ok(o) = Command::new("hearth-firehold-plasma").arg("choice").stdin(Stdio::null()).stderr(Stdio::null()).output() {
+            if String::from_utf8_lossy(&o.stdout).trim() == "firehold" {
+                return "firehold-plasma".into();
+            }
+        }
+    }
+    mine
+}
+
+/// Picking Desktop Mode here (Settings › System), as hearth-desktop-choice does in Plasma's menu: this Firehold's own
+/// choice (firehold-shell's file, settings_file.rs) and the other Firehold test's (its own helper) are set together,
+/// so what was picked is what opens. Only on the person's pick.
+fn choose_desktop(what: &str) -> Result<bool, String> {
+    let (mine, other) = match what {
+        "firehold" => ("firehold", "plasma"),
+        "plasma" => ("plasma", "plasma"),
+        "firehold-plasma" if sys::which("hearth-firehold-plasma") => ("plasma", "firehold"),
+        "firehold-plasma" => return Err("Firehold on Plasma isn't on this system".into()),
+        _ => return Err("choose firehold, firehold-plasma or plasma".into()),
+    };
+    let changed = config::choose(mine)?;
+    if sys::which("hearth-firehold-plasma") {
+        let ok = Command::new("hearth-firehold-plasma").args(["choose", other]).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().map(|s| s.success()).unwrap_or(false);
+        if !ok && other == "firehold" {
+            return Err("Firehold on Plasma's choice couldn't be saved".into());
+        }
+    }
+    Ok(changed)
+}
+
 fn load_library() -> (Vec<Game>, String) {
     let Some(app) = hearth_app() else { return (Vec::new(), "Hearth's app isn't installed, so there's no library here.".into()) };
     let raw = run_json(&[app.clone(), "--list-games".into(), "--all".into()], 25).or_else(|| run_json(&[app, "--list-games".into()], 25));
@@ -338,8 +373,12 @@ impl Hub {
         }
     }
 
+    /// The game on the screen: full screen and not minimized (firehold-comp draws only that window on its screen),
+    /// the focused one first. Focus alone isn't enough: with the Guide open the keyboard is the Guide's, and the game
+    /// is still in front (the overlay went away then, and the Guide's rows lost their game).
     fn front_game(&self) -> Option<&Win> {
-        self.st.wins.iter().find(|w| w.game && w.fullscreen && !w.minimized && (w.activated || w.id == self.st.active))
+        let on_screen = |w: &&Win| w.game && w.fullscreen && !w.minimized;
+        self.st.wins.iter().filter(on_screen).find(|w| w.activated || w.id == self.st.active).or_else(|| self.st.wins.iter().find(on_screen))
     }
 
     /// The surfaces that should be running now.
@@ -348,7 +387,8 @@ impl Hub {
         self.want("couch", true);
         self.want("bar", desk);
         self.want("dock", desk);
-        let perf = self.st.cfg.overlay != "off" && self.front_game().is_some();
+        // The overlay: over a game in front, not over the Couch's own pages (Everything open over the game).
+        let perf = self.st.cfg.overlay != "off" && self.front_game().is_some() && !self.st.couch_up;
         self.want("perf", perf);
         self.perf_ticker(perf);
         self.want("guide", self.st.guide.up);
@@ -426,6 +466,11 @@ impl Hub {
             Some("windows") => {
                 self.raw_wins = v.get("windows").and_then(|w| w.as_array()).cloned().unwrap_or_default();
                 self.st.active = v.get("active").and_then(|a| a.as_str()).unwrap_or("").to_string();
+                if !self.st.active.is_empty() {
+                    let a = self.st.active.clone();
+                    self.st.mru.retain(|id| *id != a);
+                    self.st.mru.insert(0, a);
+                }
                 self.rename_windows();
             }
             Some("input") => {
@@ -480,7 +525,9 @@ impl Hub {
             let couch = self.st.posture == "couch";
             // Only what comes to the front: a dialog or a tool window behind stays as it is.
             let front = w.activated || w.id == self.st.active;
-            let full = if w.game { self.st.cfg.games == "fullscreen" || (self.st.cfg.games == "follow" && couch) } else { couch && front };
+            // Firehold's own Settings stays a window in the middle, over the Couch's background (mockup 6).
+            let ours = w.app_id == "firehold-settings";
+            let full = if w.game { self.st.cfg.games == "fullscreen" || (self.st.cfg.games == "follow" && couch) } else { couch && front && !ours };
             if full && !w.fullscreen {
                 self.comp_send(json!({"op": "fullscreen", "id": w.id, "on": true}));
                 self.ours_fullscreen.insert(w.id.clone());
@@ -503,6 +550,7 @@ impl Hub {
             }
             keep
         });
+        self.st.mru.retain(|id| ids.contains(id));
         self.st.wins = wins;
         // What the Couch stepped down for closed (or was minimized): the Couch comes back.
         if let Some(id) = self.over.clone() {
@@ -590,6 +638,16 @@ impl Hub {
                 g.tearing = game_choice(&w.app_id, "tearing") == "on";
             }
         }
+        g.record = if !sys::which("hearth-recorder") {
+            "Not here".into()
+        } else {
+            match sys::recorder() {
+                (k, secs) if k == "replay" => format!("Last {secs} s too"),
+                (k, _) if k == "record" => "Recording · A stops".into(),
+                _ => "Start recording".into(),
+            }
+        };
+        g.friends = sys::which("steam");
         g.volume = sys::volume();
         g.brightness = sys::brightness();
         g.power = match (sys::power_profile(), sys::watts()) {
@@ -604,7 +662,10 @@ impl Hub {
     fn perf_line(&self) -> String {
         let mut p = Vec::new();
         if let Some(st) = game_ask("status") {
-            if let Some(f) = st.get("game").and_then(|g| g.get("pacedFps")).and_then(|f| f.as_f64()).filter(|f| *f > 0.0) {
+            // What firehold-comp paced (a frame limit), else every frame the game handed in (no limit).
+            let g = st.get("game");
+            let rate = |k: &str| g.and_then(|g| g.get(k)).and_then(|f| f.as_f64()).filter(|f| *f > 0.0);
+            if let Some(f) = rate("pacedFps").or_else(|| rate("fps")) {
                 p.push(format!("{} fps", f.round() as i64));
                 p.push(format!("{:.1} ms", 1000.0 / f));
             }
@@ -866,6 +927,11 @@ impl Hub {
                 self.send_surface("couch", &json!({"t": "cmd", "cmd": "page", "arg": "home"}));
                 self.reload_library(false);
             }
+            "settingsPage" => {
+                self.want("settings", true);
+                let arg = s("arg");
+                self.send_surface("settings", &json!({"t": "cmd", "cmd": "settingsPage", "arg": arg}));
+            }
             "tab" | "page" => {
                 let arg = s(if op == "tab" { "tab" } else { "page" });
                 if op == "page" && arg == "settings" {
@@ -973,10 +1039,11 @@ impl Hub {
                     }
                 }
             }
-            "choose" => match config::choose(&s("what")) {
+            "choose" => match choose_desktop(&s("what")) {
                 Ok(changed) => {
                     extra = json!({"changed": changed});
-                    self.st.desktop = config::desktop_choice();
+                    self.st.desktop = desktop_now();
+                    self.st.desktop_plasma = sys::which("hearth-firehold-plasma");
                 }
                 Err(e) => {
                     ok = false;
@@ -1013,6 +1080,29 @@ impl Hub {
                             let _ = tx.send(Ev::Client(0, json!({"op": "guideBack", "shot": fs})));
                         });
                     }
+                    "record" => {
+                        // Hearth Recorder: instant replay on saves the last stretch (the mockup's "Last 30 s too");
+                        // otherwise a recording starts, or stops when one is going. Nothing is turned on by itself.
+                        if sys::which("hearth-recorder") {
+                            let arg = if sys::recorder().0 == "replay" { "--save-replay" } else { "--toggle" };
+                            sys::detach("hearth-recorder", &[arg]);
+                            let tx = self.tx.clone();
+                            std::thread::spawn(move || {
+                                std::thread::sleep(Duration::from_millis(1500));
+                                let _ = tx.send(Ev::Client(0, json!({"op": "guideRefresh"})));
+                            });
+                        } else {
+                            ok = false;
+                        }
+                    }
+                    "friends" => {
+                        // Steam's own friends list, over the game (Steam opens it; no account data is read here).
+                        if sys::which("steam") {
+                            sys::detach("steam", &["steam://open/friends"]);
+                        } else {
+                            ok = false;
+                        }
+                    }
                     "keyboard" => {
                         for k in ["wvkbd-mobintl", "squeekboard"] {
                             if sys::which(k) {
@@ -1039,6 +1129,11 @@ impl Hub {
                         self.refresh_guide();
                     }
                     _ => ok = false,
+                }
+            }
+            "guideRefresh" => {
+                if self.st.guide.up {
+                    self.refresh_guide();
                 }
             }
             "guideBack" => {
@@ -1406,7 +1501,8 @@ pub fn run() -> i32 {
         battery: sys::battery(),
         initial: sys::initial(),
         cfg,
-        desktop: config::desktop_choice(),
+        desktop: desktop_now(),
+        desktop_plasma: sys::which("hearth-firehold-plasma"),
         ..State::default()
     };
     log(&format!("starting in {} ({})", st.posture, sock.display()));

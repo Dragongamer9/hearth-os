@@ -31,7 +31,7 @@ struct Desk {
 
 /// What the dock shows: (key, letter, tint, running).
 fn dock_items(st: &State) -> Vec<(String, String, Color, bool)> {
-    let mut v = vec![("home".to_string(), "H".to_string(), ACCENT, false)];
+    let mut v = vec![("home".to_string(), "H".to_string(), c_accent(), false)];
     let mut seen = std::collections::HashSet::new();
     for w in &st.wins {
         let key = if w.game { format!("game:{}", w.game_id) } else { w.app_id.clone() };
@@ -44,13 +44,13 @@ fn dock_items(st: &State) -> Vec<(String, String, Color, bool)> {
             match w.name.as_str() {
                 "Discord" => c(0x2c, 0x2a, 0x3e),
                 "Steam" => c(0x1f, 0x2a, 0x36),
-                _ => c(0x2e, 0x23, 0x1d),
+                _ => shade(0.88),
             }
         };
         v.push((format!("win:{}", w.id), model::dock_letter(&w.name, w.game), tint, true));
     }
-    v.push(("library".into(), "L".into(), c(0x2e, 0x23, 0x1d), false));
-    v.push(("settings".into(), "⚙".into(), c(0x2e, 0x23, 0x1d), false));
+    v.push(("library".into(), "L".into(), shade(0.88), false));
+    v.push(("settings".into(), "⚙".into(), shade(0.88), false));
     v
 }
 
@@ -98,36 +98,36 @@ fn update(s: &mut Desk, m: Message) -> Task<Message> {
 fn bar(s: &Desk) -> Element<'_, Message> {
     let st = &s.st;
     let front = st.wins.iter().find(|w| w.id == st.active).map(|w| w.name.clone()).unwrap_or_else(|| "Firehold".into());
-    let tile = mouse_area(container(Space::new()).width(Length::Fixed(32.0)).height(Length::Fixed(32.0)).style(boxed(ACCENT, 8.0, None))).on_press(Message::Click("home".into()));
-    let mut left = row![tile, tb(front, 15.0, TEXT)].spacing(16.0).align_y(iced::Center);
+    let tile = mouse_area(container(Space::new()).width(Length::Fixed(32.0)).height(Length::Fixed(32.0)).style(boxed(c_accent(), 8.0, None))).on_press(Message::Click("home".into()));
+    let mut left = row![tile, tb(front, 15.0, c_text())].spacing(16.0).align_y(iced::Center);
     for m in ["File", "Edit", "View"] {
-        left = left.push(t(m, 14.0, MUTED));
+        left = left.push(t(m, 14.0, c_muted()));
     }
     let dot = container(Space::new().width(Length::Fixed(8.0)).height(Length::Fixed(8.0))).style(boxed(BLUE, 4.0, None));
     let pill = mouse_area(
-        container(row![dot, ts("Desk", 14.0, TEXT)].spacing(8.0).align_y(iced::Center))
+        container(row![dot, ts("Desk", 14.0, c_text())].spacing(8.0).align_y(iced::Center))
             .padding(Padding { top: 5.0, right: 12.0, bottom: 5.0, left: 12.0 })
-            .style(boxed(c(0x24, 0x1b, 0x16), 14.0, Some((LINE, 1.0)))),
+            .style(boxed(shade(0.58), 14.0, Some((c_line(), 1.0)))),
     )
     .on_press(Message::Click("posture".into()));
     let status = [st.net.clone(), st.battery.clone()].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · ");
-    let right = row![pill, t(status, 14.0, MUTED)].spacing(14.0).align_y(iced::Center);
+    let right = row![pill, t(status, 14.0, c_muted())].spacing(14.0).align_y(iced::Center);
     let ends = row![left.width(Length::Shrink), Space::new().width(Length::Fill), right].align_y(iced::Center).padding(Padding { top: 0.0, right: 16.0, bottom: 0.0, left: 16.0 });
-    let clock = container(ts(format!("{} · {}", st.date, st.clock), 15.0, TEXT)).center(Length::Fill);
-    let line = container(Space::new()).width(Length::Fill).height(Length::Fixed(1.0)).style(boxed(LINE, 0.0, None));
-    column![container(stack![container(ends).center_y(Length::Fill), clock]).height(Length::Fixed(43.0)).style(boxed(PANEL, 0.0, None)), line].into()
+    let clock = container(ts(format!("{} · {}", st.date, st.clock), 15.0, c_text())).center(Length::Fill);
+    let line = container(Space::new()).width(Length::Fill).height(Length::Fixed(1.0)).style(boxed(c_line(), 0.0, None));
+    column![container(stack![container(ends).center_y(Length::Fill), clock]).height(Length::Fixed(43.0)).style(boxed(c_bg2(), 0.0, None)), line].into()
 }
 
 fn dock(s: &Desk) -> Element<'_, Message> {
     let mut r = row![].spacing(GAP);
     for (key, letter, tint, running) in dock_items(&s.st) {
         let home = key == "home";
-        let cell = container(text(letter).size(20.0).font(bold()).color(if home { DARK_INK } else { TEXT }))
+        let cell = container(text(letter).size(20.0).font(bold()).color(if home { c_ink() } else { c_text() }))
             .center_x(Length::Fixed(ITEM))
             .center_y(Length::Fixed(ITEM))
             .style(boxed(tint, 12.0, None));
         let dot: Element<Message> = if running {
-            container(Space::new().width(Length::Fixed(6.0)).height(Length::Fixed(6.0))).style(boxed(ACCENT, 3.0, None)).into()
+            container(Space::new().width(Length::Fixed(6.0)).height(Length::Fixed(6.0))).style(boxed(c_accent(), 3.0, None)).into()
         } else {
             Space::new().width(Length::Fixed(6.0)).height(Length::Fixed(6.0)).into()
         };
@@ -136,21 +136,21 @@ fn dock(s: &Desk) -> Element<'_, Message> {
     }
     let panel = container(r)
         .padding(Padding { top: PAD, right: PAD, bottom: 6.0, left: PAD })
-        .style(boxed(c(0x1a, 0x13, 0x10), 16.0, Some((LINE, 1.0))));
+        .style(boxed(shade(0.30), 16.0, Some((c_line(), 1.0))));
     container(panel).align_bottom(Length::Fill).center_x(Length::Fill).into()
 }
 
 fn notice(s: &Desk) -> Element<'_, Message> {
     let Some(n) = s.st.notice.as_ref() else { return Space::new().into() };
     let icon = container(Space::new()).width(Length::Fixed(40.0)).height(Length::Fixed(40.0)).style(boxed(BLUE, 8.0, None));
-    let words = column![tb(n.title.clone(), 16.0, TEXT), t(n.body.clone(), 14.0, c(0xc8, 0xba, 0xac))].spacing(4.0).width(Length::Fill);
+    let words = column![tb(n.title.clone(), 16.0, c_text()), t(n.body.clone(), 14.0, soft(0.43))].spacing(4.0).width(Length::Fill);
     let radius = border::Radius::new(12.0).top_right(0.0).bottom_right(0.0);
     let card = container(row![icon, words].spacing(14.0).align_y(iced::Center))
         .padding(Padding { top: 16.0, right: 20.0, bottom: 16.0, left: 18.0 })
         .width(Length::Fill)
         .style(move |_| container::Style {
-            background: Some(c(0x1d, 0x15, 0x12).into()),
-            border: iced::Border { color: LINE, width: 1.0, radius },
+            background: Some(shade(0.39).into()),
+            border: iced::Border { color: c_line(), width: 1.0, radius },
             ..container::Style::default()
         });
     mouse_area(card).on_press(Message::Click("notice".into())).into()
@@ -208,7 +208,7 @@ pub fn run(kind: &'static str) -> i32 {
         update,
         view,
     )
-    .style(|_s: &Desk, _t: &iced::Theme| iced::theme::Style { background_color: Color::TRANSPARENT, text_color: TEXT })
+    .style(|_s: &Desk, _t: &iced::Theme| iced::theme::Style { background_color: Color::TRANSPARENT, text_color: c_text() })
     .subscription(subscription)
     .settings(Settings { layer_settings, default_font: INTER, ..Default::default() })
     .run();

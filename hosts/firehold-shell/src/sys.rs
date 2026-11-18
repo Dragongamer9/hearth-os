@@ -20,6 +20,24 @@ fn dir(p: &Path) -> Vec<PathBuf> {
     v
 }
 
+/// What Hearth Recorder (hosts/hearth-recorder) is doing, from its own state file
+/// ($XDG_RUNTIME_DIR/hearth-recorder/state.json, written by the recording itself; read only here):
+/// (kind: "replay", "record", "sound" or "" when nothing is going, instant replay's seconds).
+pub fn recorder() -> (String, u32) {
+    let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") else { return (String::new(), 0) };
+    let Some(v) = std::fs::read(Path::new(&dir).join("hearth-recorder/state.json")).ok().and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok()) else {
+        return (String::new(), 0);
+    };
+    let pid = v.get("pid").and_then(|p| p.as_i64()).unwrap_or(0);
+    // A leftover from a recording that crashed isn't a recording.
+    if pid <= 0 || unsafe { libc::kill(pid as i32, 0) } != 0 {
+        return (String::new(), 0);
+    }
+    let kind = v.get("kind").and_then(|k| k.as_str()).unwrap_or("").to_string();
+    let secs = v.get("replaySecs").and_then(|s| s.as_u64()).unwrap_or(30) as u32;
+    (kind, secs)
+}
+
 /// "10:22 PM" and "Mon Nov 16".
 pub fn clock() -> (String, String) {
     let now = chrono::Local::now();

@@ -11,6 +11,9 @@
 #   firehold-r4-everything-open Everything open                      (mockup 4)
 #   firehold-r5-library         the Library                          (mockup 5)
 #   firehold-r6-settings        Settings › Couch and Desk            (mockup 6)
+# and more of each: r1b/r1c the Couch's Apps and Store, r3b the overlay over the game with no frame limit (fps from
+# every frame), r6b Settings › System (the Desktop Mode choice), r7/r7b Settings and Couch Home in another look
+# (Steam-style, picked in desktop.json: Firehold follows the look, through hearth-ui).
 # Then what must never happen (red flags 2 and 9): a shell that doesn't come up, or a compositor that can't start,
 # opens KDE Plasma instead; nothing picked means Plasma and no Firehold at all; the choice and the settings files are
 # never changed by anything but a pick.
@@ -52,6 +55,10 @@ python3 .github/scripts/firehold-fixtures.py "$B" && chmod +x "$B"/*
 # KDE Plasma's stand-in: says it started, then waits (the session is ended by the test).
 printf '#!/bin/sh\necho "started $(date +%%s)" >> "$XDG_RUNTIME_DIR/plasma-started"\nexec sleep 100001\n' > "$B/startplasma-wayland"; chmod +x "$B/startplasma-wayland"
 export PATH="$B:$PATH" NIMBUS_APP="$B/nimbus"
+# Hearth Recorder's and Steam's stand-ins: they say what they were asked (no recording, no Steam, no account).
+printf '#!/bin/sh\necho "$*" >> "$XDG_RUNTIME_DIR/calls-recorder"\n' > "$B/hearth-recorder"
+printf '#!/bin/sh\necho "$*" >> "$XDG_RUNTIME_DIR/calls-steam"\n' > "$B/steam"
+chmod +x "$B/hearth-recorder" "$B/steam"
 echo plasma > /tmp/desktop-mode-rust; export HEARTH_DESKTOP_MODE_FILE=/tmp/desktop-mode-rust
 # A battery and Wi-Fi, for the bar and the Couch's top row (FIREHOLD_SYS).
 S=/tmp/sys-rust; rm -rf "$S"; mkdir -p "$S/class/power_supply/BAT0" "$S/class/net/wlan0/wireless"
@@ -110,6 +117,8 @@ note "windows" "$(st '", ".join("%s (%s · %s)" % (w["id"], w["name"], w["sub"])
 C posture couch >/dev/null
 for i in $(seq 10); do [ "$(st 'd["couch_up"]')" = True ] && break; sleep 0.5; done
 shot firehold-r1-couch-home 3
+C tab apps >/dev/null; shot firehold-r1b-couch-apps 2
+C tab store >/dev/null; shot firehold-r1c-couch-store 2
 # 5. The Library (mockup 5)
 C tab library >/dev/null; shot firehold-r5-library 2
 C tab home >/dev/null
@@ -122,14 +131,35 @@ for i in $(seq 20); do [ "$(st 'any(w["game"] and w["fullscreen"] for w in d["wi
 [ "$(st 'd["couch_up"]')" = False ] || fail "game" "the Couch stayed over the game"
 C '{"op":"gameRow","key":"frameLimit","dir":"up"}' >/dev/null; C '{"op":"gameRow","key":"frameLimit","dir":"up"}' >/dev/null; C '{"op":"gameRow","key":"frameLimit","dir":"up"}' >/dev/null
 C '{"op":"gameRow","key":"scaling","dir":"up"}' >/dev/null
+# Hearth Recorder's instant replay is on (its own state file, as its recording process writes it): "Last 30 s too".
+sleep 100003 & RP=$!
+mkdir -p "$XDG_RUNTIME_DIR/hearth-recorder"
+printf '{"kind": "replay", "status": "recording", "pid": %d, "replaySecs": 30}' "$RP" > "$XDG_RUNTIME_DIR/hearth-recorder/state.json"
 C guide >/dev/null
 for i in $(seq 10); do [ "$(st '"guide" in d["hello"]')" = True ] && break; sleep 0.5; done
 note "guide" "up: $(st 'd["guide"]["up"]'), rows from firehold-comp: $(st 'd["guide"]["comp"]'), frame limit $(st 'd["guide"]["frame_limit"]'), scaling $(st 'd["guide"]["scaling"]'), VRR $(st 'd["guide"]["vrr"]'), playing $(st 'd["guide"]["playing"]'), overlay: $(st '"perf" in d["hello"]') ($(st 'd["perf"]["line"]'))"
 [ "$(st 'd["guide"]["comp"]')" = True ] || fail "guide" "the Guide's game rows didn't come from firehold-comp: $(st 'd["guide"]')"
 [ "$(st 'd["guide"]["frame_limit"]')" = 60 ] || fail "guide" "Frame limit isn't ‹ 60 › after three steps up (off, 30, 40, 60): $(st 'd["guide"]["frame_limit"]')"
 shot firehold-r3-guide 3
+[ "$(st 'd["guide"]["record"]')" = "Last 30 s too" ] || fail "guide" "Record isn't \"Last 30 s too\" with instant replay on: $(st 'd["guide"]["record"]')"
+[ "$(st 'd["guide"]["friends"]')" = True ] || fail "guide" "Friends doesn't see Steam's stand-in"
+C '{"op":"guideTile","what":"record"}' >/dev/null; C '{"op":"guideTile","what":"friends"}' >/dev/null; sleep 2
+grep -qx -- '--save-replay' "$XDG_RUNTIME_DIR/calls-recorder" 2>/dev/null && note "guide tiles" "Record saved the replay (hearth-recorder --save-replay); Friends: steam $(cat "$XDG_RUNTIME_DIR/calls-steam" 2>/dev/null)" \
+  || fail "guide tiles" "Record didn't ask Hearth Recorder to save the replay: $(cat "$XDG_RUNTIME_DIR/calls-recorder" 2>/dev/null)"
+grep -q 'steam://open/friends' "$XDG_RUNTIME_DIR/calls-steam" 2>/dev/null || fail "guide tiles" "Friends didn't open Steam's friends list"
 comp_layers() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("focus", d.get("keyboardFocus") or d.get("focus"), [(l["namespace"], l["layer"], l["w"], l["h"]) for o in d.get("outputs", []) for l in o.get("layers", [])])' "$XDG_RUNTIME_DIR/firehold.json" 2>&1 | cut -c1-700; }
 note "layers (guide)" "couch_up $(st 'd["couch_up"]'), $(comp_layers)"
+comp_layers | grep -q "hearth-firehold-perf" || fail "overlay" "the performance overlay isn't on the screen with the Guide open: $(comp_layers) · hub: $(st 'sorted(d["hello"])') · log: $(grep -i 'perf' "$FLOG" | tail -3 | tr '\n' '|')"
+# The overlay with no frame limit (60 → 90 → 120 → screen → off): fps from every frame the game hands in.
+C guideClose >/dev/null
+for i in 1 2 3 4; do C '{"op":"gameRow","key":"frameLimit","dir":"up"}' >/dev/null; done
+sleep 4
+note "overlay" "no frame limit: $(st 'd["perf"]["line"]') · firehold-comp: $(python3 -c 'import json,socket,sys; s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); s.sendall(b"status\n"); d=json.loads(s.makefile().readline()); g=d.get("game") or {}; print("fps", g.get("fps"), "paced", g.get("pacedFps"), "frames", g.get("frames"), "limit", g.get("frameLimit"))' "$XDG_RUNTIME_DIR/firehold-game-wayland-hearth.sock" 2>&1 | cut -c1-200)"
+case "$(st 'd["perf"]["line"]')" in *fps*) ;; *) fail "overlay" "no fps in the overlay without a frame limit: $(st 'd["perf"]["line"]')";; esac
+shot firehold-r3b-overlay 1
+# Back to ‹ 60 › (the mockup's) for the rest.
+for i in 1 2 3; do C '{"op":"gameRow","key":"frameLimit","dir":"up"}' >/dev/null; done
+C guide >/dev/null; sleep 1
 # 4. Twice: Everything open, with each window's real picture (mockup 4)
 C guide >/dev/null
 sleep 7
@@ -148,10 +178,23 @@ GID=$(st '[w["id"] for w in d["wins"] if w["game"]][0]'); FID=$(st '[w["id"] for
 C "{\"op\":\"activate\",\"id\":\"$FID\"}" >/dev/null; sleep 0.5; C "{\"op\":\"activate\",\"id\":\"$GID\"}" >/dev/null
 shot firehold-r2-desk 2
 [ "$(st 'd["notice"] is not None')" = True ] || note "posture" "the notice had already gone when the picture was taken"
-# 6. Settings › Couch and Desk (mockup 6): a window
+# 6. Settings › Couch and Desk (mockup 6): a window in the middle, over the Couch's background (the other windows put
+# away first, as the mockup has nothing else on the screen)
+for id in $(st '" ".join(w["id"] for w in d["wins"])'); do C "{\"op\":\"minimize\",\"id\":\"$id\"}" >/dev/null; done
+C posture couch >/dev/null; sleep 1
 C page settings >/dev/null
 for i in $(seq 15); do [ "$(st '"settings" in d["hello"]')" = True ] && break; sleep 1; done
+for i in $(seq 10); do [ "$(st 'any(w["app_id"] == "firehold-settings" for w in d["wins"])')" = True ] && break; sleep 0.5; done
+note "settings" "window: $(st '[(w["name"], w["fullscreen"]) for w in d["wins"] if w["app_id"] == "firehold-settings"]'), couch_up $(st 'd["couch_up"]'), posture $(st 'd["posture"]')"
+[ "$(st 'any(w["app_id"] == "firehold-settings" and w["fullscreen"] for w in d["wins"])')" = False ] || fail "settings" "Settings went full screen on the Couch (it stays a window)"
 shot firehold-r6-settings 4
+C settingsPage system >/dev/null; shot firehold-r6b-settings-system 2
+# Another look, picked in Settings (desktop.json, as Mantel's and Plasma's looks write it): Firehold follows at once.
+LOOK="$HOME/.local/share/nimbus/desktop.json"
+printf '{"look": "steam", "mode": "dark"}' > "$LOOK.tmp" && mv "$LOOK.tmp" "$LOOK"
+C settingsPage couch >/dev/null; shot firehold-r7-look-steam 3
+C home >/dev/null; shot firehold-r7b-look-steam-couch 3
+rm -f "$LOOK"; sleep 1
 
 # ---- the settings: only the test's own pick changed them (red flag 9)
 cmp -s "$CHOICE" shots/choice-before.json || fail "settings" "the Desktop Mode choice changed by itself: $(cat "$CHOICE")"

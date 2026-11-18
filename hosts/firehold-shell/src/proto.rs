@@ -39,6 +39,10 @@ pub struct Guide {
     pub brightness: Option<i64>,
     pub power: String,
     pub screenshot: String,
+    /// The Record tile's line (Hearth Recorder's: instant replay's "Last 30 s too", recording, or how to start).
+    pub record: String,
+    /// Steam is here: Friends opens Steam's friends list (how many are online is Steam's own data: not read).
+    pub friends: bool,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
@@ -56,14 +60,18 @@ pub struct State {
     pub couch_up: bool,
     pub wins: Vec<Win>,
     pub active: String,
+    /// The windows' ids, the one used last first (Everything open's order).
+    pub mru: Vec<String>,
     pub clock: String,
     pub date: String,
     pub net: String,
     pub battery: String,
     pub initial: String,
     pub cfg: Couch,
-    /// Desktop Mode on Anatase: firehold or plasma.
+    /// Desktop Mode on Anatase: firehold, firehold-plasma (the other Firehold test) or plasma.
     pub desktop: String,
+    /// Firehold on Plasma is on this system (Settings › System offers it too).
+    pub desktop_plasma: bool,
     pub guide: Guide,
     pub notice: Option<Notice>,
     pub now_ms: i64,

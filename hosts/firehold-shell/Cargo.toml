@@ -15,6 +15,9 @@ name = "firehold-shell"
 path = "src/main.rs"
 
 [dependencies]
+# Hearth's look, shared with Hearth's pure-Rust apps (hosts/hearth-ui, feature/hearth-apps-rust): the palette of the look
+# picked in Settings, followed while it's open. Same iced (0.14) as hearth-ui.
+hearth-ui = { path = "../hearth-ui" }
 # iced 0.14: wgpu where there's a GPU, tiny-skia (software, into shared memory) where there isn't (CI, safe graphics);
 # iced picks by itself, ICED_BACKEND=tiny-skia forces software.
 iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "wayland", "image", "canvas", "thread-pool", "crisp", "web-colors"] }

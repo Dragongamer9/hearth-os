@@ -39,18 +39,18 @@ pub fn key_nav(ev: &iced::keyboard::Event) -> Option<&'static str> {
 /// A button hint in the bar at the bottom (mockups 1 and 4): a round key in its colour, then what it does.
 pub fn hint<'a, M: 'a>(key: &'a str, label: &'a str, k: f32) -> Element<'a, M> {
     let (bg, fg) = match key {
-        "A" => (GREEN, DARK_INK),
-        "X" => (BLUE, DARK_INK),
-        "Y" => (FLAME, DARK_INK),
-        "B" => (RED, DARK_INK),
-        _ => (c(0x8a, 0x7a, 0x6e), DARK_INK),
+        "A" => (c_good(), c_ink()),
+        "X" => (BLUE, c_ink()),
+        "Y" => (c_flame(), c_ink()),
+        "B" => (c_danger(), c_ink()),
+        _ => (Pal::mix(c_bg(), c_muted(), 0.82), c_ink()),
     };
     let wide = key.chars().count() > 1;
     let keycap = container(text(key).size(15.0 * k).font(bold()).color(fg))
         .center_x(Length::Fixed(if wide { 54.0 } else { 32.0 } * k))
         .center_y(Length::Fixed(32.0 * k))
         .style(move |_| container::Style { background: Some(bg.into()), border: border::rounded(16.0 * k), ..container::Style::default() });
-    row![keycap, t(label, 18.0 * k, TEXT)].spacing(10.0 * k).align_y(iced::Center).into()
+    row![keycap, t(label, 18.0 * k, c_text())].spacing(10.0 * k).align_y(iced::Center).into()
 }
 
 /// The stand-in for a game's art (Hearth has no art for most): its colour, from model::tile_colour.

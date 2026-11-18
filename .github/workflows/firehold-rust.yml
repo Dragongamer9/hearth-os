@@ -11,7 +11,7 @@ name: Firehold (Rust)
 on:
   push:
     branches: ['feature/firehold-rust']
-    paths: ['hosts/firehold-shell/**', 'hosts/firehold-comp/**', 'hosts/linux/session/nimbus-session', 'hosts/linux/session/nimbus-mode',
+    paths: ['hosts/firehold-shell/**', 'hosts/firehold-comp/**', 'hosts/hearth-ui/**', 'hosts/linux/session/nimbus-session', 'hosts/linux/session/nimbus-mode',
             '.github/workflows/firehold-rust.yml', '.github/scripts/firehold-rust-*.sh', '.github/scripts/cargo-build-annotate.sh']
   workflow_dispatch:
     inputs:
@@ -49,8 +49,8 @@ jobs:
             ~/.cargo/git
             hosts/firehold-comp/target
             hosts/firehold-shell/target
-          key: firehold-rust-f45-${{ hashFiles('hosts/firehold-comp/Cargo.toml', 'hosts/firehold-shell/Cargo.toml') }}-${{ github.sha }}
-          restore-keys: firehold-rust-f45-${{ hashFiles('hosts/firehold-comp/Cargo.toml', 'hosts/firehold-shell/Cargo.toml') }}-
+          key: firehold-rust-f45-${{ hashFiles('hosts/firehold-comp/Cargo.toml', 'hosts/firehold-shell/Cargo.toml', 'hosts/hearth-ui/Cargo.toml') }}-${{ github.sha }}
+          restore-keys: firehold-rust-f45-${{ hashFiles('hosts/firehold-comp/Cargo.toml', 'hosts/firehold-shell/Cargo.toml', 'hosts/hearth-ui/Cargo.toml') }}-
       - name: Build firehold-shell
         id: shell
         continue-on-error: true
@@ -119,7 +119,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shot: ['firehold-r1-couch-home', 'firehold-r2-desk', 'firehold-r3-guide', 'firehold-r4-everything-open', 'firehold-r5-library', 'firehold-r6-settings']
+        shot: ['firehold-r1-couch-home', 'firehold-r1b-couch-apps', 'firehold-r1c-couch-store', 'firehold-r2-desk', 'firehold-r3-guide',
+               'firehold-r3b-overlay', 'firehold-r4-everything-open', 'firehold-r5-library', 'firehold-r6-settings', 'firehold-r6b-settings-system',
+               'firehold-r7-look-steam', 'firehold-r7b-look-steam-couch']
     steps:
       - uses: actions/checkout@v4
         with:

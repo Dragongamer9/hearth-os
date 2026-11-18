@@ -69,6 +69,13 @@ impl Couch {
     fn recent(&self) -> Vec<&Game> {
         model::recent(&self.lib, self.hero(), 7)
     }
+    /// Everything open (mockup 4): the one used last first (the hub's order of use), then the rest as they opened.
+    fn switch_list(&self) -> Vec<&Win> {
+        let mut v: Vec<&Win> = self.st.wins.iter().collect();
+        let rank = |w: &Win| self.st.mru.iter().position(|id| *id == w.id).unwrap_or(usize::MAX);
+        v.sort_by_key(|w| rank(*w));
+        v
+    }
     fn open_wins(&self) -> Vec<&Win> {
         self.st.wins.iter().filter(|w| !w.game).collect()
     }
@@ -185,7 +192,7 @@ impl Couch {
             "x" => self.x(),
             "y" => {
                 if self.switcher {
-                    if let Some(w) = self.st.wins.get(self.idx) {
+                    if let Some(w) = self.switch_list().get(self.idx) {
                         link::send(json!({"op": "fullscreen", "id": w.id}));
                     }
                 } else {
@@ -199,7 +206,7 @@ impl Couch {
 
     fn x(&mut self) {
         if self.switcher {
-            if let Some(w) = self.st.wins.get(self.idx) {
+            if let Some(w) = self.switch_list().get(self.idx) {
                 link::send(json!({"op": "close", "id": w.id}));
             }
             return;
@@ -257,8 +264,9 @@ impl Couch {
                 _ => {}
             },
             Zone::Switcher => {
-                if let Some(w) = self.st.wins.get(self.idx) {
-                    link::send(json!({"op": "activate", "id": w.id}));
+                let id = self.switch_list().get(self.idx).map(|w| w.id.clone());
+                if let Some(id) = id {
+                    link::send(json!({"op": "activate", "id": id}));
                     self.switcher = false;
                 }
             }
@@ -303,7 +311,8 @@ fn update(s: &mut Couch, m: Message) -> Task<Message> {
                 ("page", "switcher") => {
                     s.switcher = true;
                     s.zone = Zone::Switcher;
-                    s.idx = s.st.wins.iter().position(|w| w.id == s.st.active).unwrap_or(0);
+                    let i = s.switch_list().iter().position(|w| w.id == s.st.active).unwrap_or(0);
+                    s.idx = i;
                     s.fix();
                 }
                 ("page", "home") => s.go_tab(0),
@@ -319,6 +328,8 @@ fn update(s: &mut Couch, m: Message) -> Task<Message> {
                 }
                 _ => {}
             },
+            // The look changed (style.rs has read it again): drawn again with it, nothing else to do.
+            HubMsg::Look => {}
             HubMsg::Quit | HubMsg::Gone => return iced::exit(),
         },
         Message::Key(ev) => {
@@ -358,20 +369,20 @@ fn clickable<'a>(e: impl Into<Element<'a, Message>>, z: Zone, i: usize) -> Eleme
 }
 
 fn top_bar<'a>(s: &'a Couch, k: f32, search: bool) -> Element<'a, Message> {
-    let logo = container(canvas(Flame(DARK_INK)).width(Length::Fixed(26.0 * k)).height(Length::Fixed(26.0 * k)))
+    let logo = container(canvas(Flame(c_ink())).width(Length::Fixed(26.0 * k)).height(Length::Fixed(26.0 * k)))
         .center_x(Length::Fixed(44.0 * k))
         .center_y(Length::Fixed(44.0 * k))
-        .style(boxed(ACCENT, 10.0 * k, None));
+        .style(boxed(c_accent(), 10.0 * k, None));
     let mut tabs = row![].spacing(28.0 * k).align_y(iced::Center);
     for (i, (key, label)) in TABS.iter().enumerate() {
         let on = s.tab == *key && !s.switcher;
         let focus = sel(s, Zone::Tabs, i);
-        let lbl = text(*label).size(22.0 * k).font(if on { bold() } else { medium() }).color(if on || focus { TEXT } else { MUTED });
+        let lbl = text(*label).size(22.0 * k).font(if on { bold() } else { medium() }).color(if on || focus { c_text() } else { c_muted() });
         // The underline, as wide as the word (about 0.58 em a letter in Inter at this size).
         let under_w = label.chars().count() as f32 * 0.58 * 22.0 * k;
         let under = container(Space::new().width(Length::Fixed(under_w)).height(Length::Fixed(3.0 * k)))
             .width(Length::Fixed(under_w))
-            .style(boxed(if on { ACCENT } else if focus { MUTED } else { Color::TRANSPARENT }, 2.0, None));
+            .style(boxed(if on { c_accent() } else if focus { c_muted() } else { Color::TRANSPARENT }, 2.0, None));
         tabs = tabs.push(clickable(column![lbl, under].spacing(6.0 * k).width(Length::Shrink), Zone::Tabs, i));
     }
     let left = row![logo, tabs].spacing(28.0 * k).align_y(iced::Center);
@@ -385,46 +396,46 @@ fn top_bar<'a>(s: &'a Couch, k: f32, search: bool) -> Element<'a, Message> {
             .style(move |_t, _st| text_input::Style {
                 background: Background::Color(Color::TRANSPARENT),
                 border: Border::default(),
-                icon: MUTED,
-                placeholder: MUTED,
-                value: TEXT,
-                selection: Color { a: 0.4, ..ACCENT },
+                icon: c_muted(),
+                placeholder: c_muted(),
+                value: c_text(),
+                selection: Color { a: 0.4, ..c_accent() },
             });
-        container(row![t("⌕", 22.0 * k, MUTED), input].spacing(12.0 * k).align_y(iced::Center))
+        container(row![t("⌕", 22.0 * k, c_muted()), input].spacing(12.0 * k).align_y(iced::Center))
             .padding(Padding { top: 0.0, right: 8.0 * k, bottom: 0.0, left: 26.0 * k })
             .width(Length::Fixed(498.0 * k))
             .height(Length::Fixed(54.0 * k))
             .center_y(Length::Fixed(54.0 * k))
-            .style(boxed(c(0x1d, 0x15, 0x12), 27.0 * k, Some((LINE, 1.0))))
+            .style(boxed(shade(0.39), 27.0 * k, Some((c_line(), 1.0))))
             .into()
     } else {
         let pill_text = if s.st.cfg.posture == "couch" { "Couch".to_string() } else { "Couch · switches to Desk when you touch the mouse".to_string() };
-        let dot = container(Space::new().width(Length::Fixed(8.0 * k)).height(Length::Fixed(8.0 * k))).style(boxed(ACCENT, 4.0 * k, None));
-        let pill = container(row![dot, ts(pill_text, 15.0 * k, TEXT)].spacing(10.0 * k).align_y(iced::Center))
+        let dot = container(Space::new().width(Length::Fixed(8.0 * k)).height(Length::Fixed(8.0 * k))).style(boxed(c_accent(), 4.0 * k, None));
+        let pill = container(row![dot, ts(pill_text, 15.0 * k, c_text())].spacing(10.0 * k).align_y(iced::Center))
             .padding(Padding { top: 9.0 * k, right: 18.0 * k, bottom: 9.0 * k, left: 18.0 * k })
-            .style(boxed(c(0x24, 0x1b, 0x16), 20.0 * k, None));
-        let avatar = container(tb(s.st.initial.clone(), 20.0 * k, TEXT))
+            .style(boxed(shade(0.58), 20.0 * k, None));
+        let avatar = container(tb(s.st.initial.clone(), 20.0 * k, c_text()))
             .center_x(Length::Fixed(44.0 * k))
             .center_y(Length::Fixed(44.0 * k))
-            .style(boxed(c(0x2a, 0x20, 0x1a), 22.0 * k, None));
+            .style(boxed(shade(0.76), 22.0 * k, None));
         let mut r = row![pill].spacing(22.0 * k).align_y(iced::Center);
         if !s.st.net.is_empty() {
-            r = r.push(t(s.st.net.clone(), 20.0 * k, MUTED));
+            r = r.push(t(s.st.net.clone(), 20.0 * k, c_muted()));
         }
         if !s.st.battery.is_empty() {
-            r = r.push(t(s.st.battery.clone(), 20.0 * k, MUTED));
+            r = r.push(t(s.st.battery.clone(), 20.0 * k, c_muted()));
         }
-        r.push(tb(s.st.clock.clone(), 20.0 * k, TEXT)).push(avatar).into()
+        r.push(tb(s.st.clock.clone(), 20.0 * k, c_text())).push(avatar).into()
     };
     row![left, Space::new().width(Length::Fill), right].align_y(iced::Center).height(Length::Fixed(if search { 54.0 } else { 44.0 } * k)).into()
 }
 
 fn button_box<'a>(label: &'a str, primary: bool, focus: bool, k: f32) -> Element<'a, Message> {
-    let (bg, fg) = if primary { (ACCENT, DARK_INK) } else { (c(0x1e, 0x15, 0x12), TEXT) };
+    let (bg, fg) = if primary { (c_accent(), c_ink()) } else { (shade(0.39), c_text()) };
     container(text(label).size(21.0 * k).font(bold()).color(fg))
         .padding(Padding { top: 0.0, right: 30.0 * k, bottom: 0.0, left: 30.0 * k })
         .center_y(Length::Fixed(58.0 * k))
-        .style(boxed(bg, 12.0 * k, focus.then_some((c(0xff, 0xc0, 0x80), 3.0))))
+        .style(boxed(bg, 12.0 * k, focus.then_some((Pal::mix(c_accent(), Color::WHITE, 0.45), 3.0))))
         .into()
 }
 
@@ -441,9 +452,9 @@ fn home<'a>(s: &'a Couch, k: f32) -> Element<'a, Message> {
         ]
         .spacing(14.0 * k);
         let words = column![
-            ts(line1, 18.0 * k, FLAME),
+            ts(line1, 18.0 * k, c(0xff, 0xd1, 0x66)),
             Space::new().height(Length::Fixed(8.0 * k)),
-            tb(g.title.clone(), 64.0 * k, TEXT),
+            tb(g.title.clone(), 64.0 * k, ART_TEXT),
             Space::new().height(Length::Fixed(10.0 * k)),
             t(model::hero_line(g), 21.0 * k, c(0xe8, 0xdc, 0xd0)),
             Space::new().height(Length::Fixed(24.0 * k)),
@@ -451,11 +462,11 @@ fn home<'a>(s: &'a Couch, k: f32) -> Element<'a, Message> {
         ]
         .width(Length::FillPortion(11));
         let art = stack![
-            canvas(Dashed(Color { a: 0.45, ..c(0xf0, 0xd0, 0xb8) }, 16.0 * k)).width(Length::Fill).height(Length::Fill),
-            container(t("Game art", 18.0 * k, Color { a: 0.7, ..TEXT })).center(Length::Fill),
+            canvas(Dashed(Color { a: 0.45, ..soft(0.73) }, 16.0 * k)).width(Length::Fill).height(Length::Fill),
+            container(t("Game art", 18.0 * k, Color { a: 0.7, ..ART_TEXT })).center(Length::Fill),
         ];
         let art = container(art).width(Length::FillPortion(8)).height(Length::Fixed(344.0 * k));
-        let hero = container(row![words, art].spacing(40.0 * k).align_y(iced::Center))
+        let hero = container(row![words, art].spacing(40.0 * k).align_y(iced::Alignment::End))
             .padding(Padding { top: 48.0 * k, right: 60.0 * k, bottom: 48.0 * k, left: 48.0 * k })
             .width(Length::Fill)
             .height(Length::Fixed(440.0 * k))
@@ -464,7 +475,7 @@ fn home<'a>(s: &'a Couch, k: f32) -> Element<'a, Message> {
         col = col.push(hero);
     } else {
         col = col.push(
-            container(column![tb("Welcome to Firehold", 48.0 * k, TEXT), t(if s.st.library_note.is_empty() { "Your games show up here once Hearth has found them.".to_string() } else { s.st.library_note.clone() }, 21.0 * k, MUTED)].spacing(12.0 * k))
+            container(column![tb("Welcome to Firehold", 48.0 * k, ART_TEXT), t(if s.st.library_note.is_empty() { "Your games show up here once Hearth has found them.".to_string() } else { s.st.library_note.clone() }, 21.0 * k, ART_SOFT)].spacing(12.0 * k))
                 .padding(48.0 * k)
                 .width(Length::Fill)
                 .height(Length::Fixed(440.0 * k))
@@ -475,15 +486,15 @@ fn home<'a>(s: &'a Couch, k: f32) -> Element<'a, Message> {
     // Recent.
     let recent = s.recent();
     if !recent.is_empty() {
-        col = col.push(Space::new().height(Length::Fixed(46.0 * k))).push(ts("Recent", 22.0 * k, TEXT)).push(Space::new().height(Length::Fixed(14.0 * k)));
+        col = col.push(Space::new().height(Length::Fixed(46.0 * k))).push(ts("Recent", 22.0 * k, c_text())).push(Space::new().height(Length::Fixed(14.0 * k)));
         let mut r = row![].spacing(20.0 * k);
         for (i, g) in recent.iter().enumerate() {
             let on = sel(s, Zone::Recent, i);
-            let tile = container(column![Space::new().height(Length::Fill), t(g.store(), 13.0 * k, c(0xe0, 0xd6, 0xcc))].padding(Padding { top: 0.0, right: 0.0, bottom: 10.0 * k, left: 10.0 * k }))
+            let tile = container(column![Space::new().height(Length::Fill), t(g.store(), 13.0 * k, ART_SOFT)].padding(Padding { top: 0.0, right: 0.0, bottom: 10.0 * k, left: 10.0 * k }))
                 .width(Length::Fixed(228.0 * k))
                 .height(Length::Fixed(128.0 * k))
                 .style(if on { Box::new(ring(tile_bg(&g.id), 12.0 * k)) as Box<dyn Fn(&iced::Theme) -> container::Style> } else { Box::new(boxed(tile_bg(&g.id), 12.0 * k, None)) });
-            let item = column![tile, ts(g.title.clone(), 18.0 * k, TEXT)].spacing(14.0 * k).width(Length::Fixed(228.0 * k));
+            let item = column![tile, ts(g.title.clone(), 18.0 * k, c_text())].spacing(14.0 * k).width(Length::Fixed(228.0 * k));
             r = r.push(clickable(item, Zone::Recent, i));
         }
         col = col.push(r);
@@ -493,20 +504,20 @@ fn home<'a>(s: &'a Couch, k: f32) -> Element<'a, Message> {
     if !open.is_empty() {
         col = col
             .push(Space::new().height(Length::Fixed(40.0 * k)))
-            .push(row![ts("Open on this PC", 22.0 * k, TEXT), t(" · the same windows you see on the Desk", 18.0 * k, MUTED)].align_y(iced::Alignment::End))
+            .push(row![ts("Open on this PC", 22.0 * k, c_text()), t(" · the same windows you see on the Desk", 18.0 * k, c_muted())].align_y(iced::Alignment::End))
             .push(Space::new().height(Length::Fixed(14.0 * k)));
         let mut r = row![].spacing(16.0 * k);
         for (i, w) in open.iter().enumerate().take(6) {
             let on = sel(s, Zone::Open, i);
             let icon = container(Space::new()).width(Length::Fixed(40.0 * k)).height(Length::Fixed(40.0 * k)).style(boxed(tile_bg(&w.app_id), 8.0 * k, None));
-            let mut words = column![ts(w.name.clone(), 18.0 * k, TEXT)].spacing(2.0 * k);
+            let mut words = column![ts(w.name.clone(), 18.0 * k, c_text())].spacing(2.0 * k);
             if !w.sub.is_empty() {
-                words = words.push(t(w.sub.clone(), 14.0 * k, MUTED));
+                words = words.push(t(w.sub.clone(), 14.0 * k, c_muted()));
             }
             let card = container(row![icon, words].spacing(14.0 * k).align_y(iced::Center))
                 .padding(Padding { top: 0.0, right: 22.0 * k, bottom: 0.0, left: 22.0 * k })
                 .center_y(Length::Fixed(74.0 * k))
-                .style(if on { Box::new(ring(c(0x1d, 0x15, 0x12), 12.0 * k)) as Box<dyn Fn(&iced::Theme) -> container::Style> } else { Box::new(boxed(c(0x1d, 0x15, 0x12), 12.0 * k, Some((LINE, 1.0)))) });
+                .style(if on { Box::new(ring(shade(0.39), 12.0 * k)) as Box<dyn Fn(&iced::Theme) -> container::Style> } else { Box::new(boxed(shade(0.39), 12.0 * k, Some((c_line(), 1.0)))) });
             r = r.push(clickable(card, Zone::Open, i));
         }
         col = col.push(r);
@@ -519,18 +530,21 @@ fn library<'a>(s: &'a Couch, k: f32, avail: Size) -> Element<'a, Message> {
     for (i, (_, label, n)) in s.filters().into_iter().enumerate() {
         let on = i == s.filter;
         let focus = sel(s, Zone::Filters, i);
-        let (bg, fg, cnt) = if on { (ACCENT, DARK_INK, c(0x6a, 0x2c, 0x0c)) } else { (c(0x24, 0x1b, 0x16), TEXT, MUTED) };
+        let (bg, fg, cnt) = if on { (c_accent(), c_ink(), Pal::mix(c_ink(), c_accent(), 0.35)) } else { (shade(0.58), c_text(), c_muted()) };
         let chip = container(row![tb(label, 18.0 * k, fg), t(n.to_string(), 18.0 * k, cnt)].spacing(6.0 * k))
             .padding(Padding { top: 10.0 * k, right: 20.0 * k, bottom: 10.0 * k, left: 20.0 * k })
-            .style(boxed(bg, 22.0 * k, focus.then_some((TEXT, 2.0))));
+            .style(boxed(bg, 22.0 * k, focus.then_some((c_text(), 2.0))));
         chips = chips.push(clickable(chip, Zone::Filters, i));
     }
     let list = s.library_list();
     let cols = 6usize;
     let tile_w = ((avail.width - 5.0 * 24.0 * k) / 6.0).max(80.0);
     let tile_h = tile_w * 1.2;
-    let row_h = tile_h + 54.0 * k;
-    let rows_fit = (((avail.height - 330.0 * k) / row_h).floor() as usize).max(1);
+    // A row: the tile, 16 between, the name (about 22), then 24 to the next row. Above the grid: the page's padding, the
+    // top bar, the chips (214 at 1080p in mockup 5); below: the hints and the padding (about 62).
+    let row_h = tile_h + 16.0 * k + 22.0 * k;
+    let gap = 24.0 * k;
+    let rows_fit = (((avail.height - 276.0 * k + gap) / (row_h + gap)).floor() as usize).max(1);
     let sel_row = if s.zone == Zone::Grid { s.idx / cols } else { 0 };
     let first_row = sel_row.saturating_sub(rows_fit - 1);
     let mut grid = column![].spacing(24.0 * k);
@@ -543,16 +557,16 @@ fn library<'a>(s: &'a Couch, k: f32, avail: Size) -> Element<'a, Message> {
             any = true;
             let on = sel(s, Zone::Grid, i);
             let playing = s.st.wins.iter().any(|w| w.game && w.game_id == g.id);
-            let tag = container(text(g.store()).size(13.0 * k).font(semi()).color(TEXT))
+            let tag = container(text(g.store()).size(13.0 * k).font(semi()).color(ART_TEXT))
                 .padding(Padding { top: 4.0 * k, right: 9.0 * k, bottom: 4.0 * k, left: 9.0 * k })
-                .style(boxed(c(0x1c, 0x14, 0x10), 6.0 * k, None));
-            let inner = column![tag, Space::new().height(Length::Fill), t(g.state(playing), 14.0 * k, c(0xe0, 0xd6, 0xcc))].padding(14.0 * k);
+                .style(boxed(ART_TAG, 6.0 * k, None));
+            let inner = column![tag, Space::new().height(Length::Fill), t(g.state(playing), 14.0 * k, ART_SOFT)].padding(14.0 * k);
             let tile = container(inner).width(Length::Fixed(tile_w)).height(Length::Fixed(tile_h)).style(if on {
-                Box::new(boxed(tile_bg(&g.id), 14.0 * k, Some((ACCENT, 3.0)))) as Box<dyn Fn(&iced::Theme) -> container::Style>
+                Box::new(boxed(tile_bg(&g.id), 14.0 * k, Some((c_accent(), 3.0)))) as Box<dyn Fn(&iced::Theme) -> container::Style>
             } else {
                 Box::new(boxed(tile_bg(&g.id), 14.0 * k, None))
             });
-            line = line.push(clickable(column![tile, ts(g.title.clone(), 18.0 * k, TEXT)].spacing(16.0 * k).width(Length::Fixed(tile_w)), Zone::Grid, i));
+            line = line.push(clickable(column![tile, ts(g.title.clone(), 18.0 * k, c_text())].spacing(16.0 * k).width(Length::Fixed(tile_w)), Zone::Grid, i));
         }
         if !any {
             break;
@@ -562,7 +576,7 @@ fn library<'a>(s: &'a Couch, k: f32, avail: Size) -> Element<'a, Message> {
     let mut col = column![chips, Space::new().height(Length::Fixed(40.0 * k))];
     if list.is_empty() {
         let why = if !s.st.library_note.is_empty() { s.st.library_note.clone() } else if s.lib.is_empty() { "Hearth hasn't found any games yet.".to_string() } else { "Nothing here matches.".to_string() };
-        col = col.push(t(why, 21.0 * k, MUTED));
+        col = col.push(t(why, 21.0 * k, c_muted()));
     } else {
         col = col.push(grid);
     }
@@ -581,60 +595,63 @@ fn apps<'a>(s: &'a Couch, k: f32) -> Element<'a, Message> {
             let Some(a) = s.apps.get(i) else { break };
             let on = sel(s, Zone::Grid, i);
             let letter = model::dock_letter(&a.name, false);
-            let tile = container(tb(letter, 40.0 * k, TEXT)).center_x(Length::Fixed(196.0 * k)).center_y(Length::Fixed(140.0 * k)).style(boxed(
+            let tile = container(tb(letter, 40.0 * k, ART_TEXT)).center_x(Length::Fixed(196.0 * k)).center_y(Length::Fixed(140.0 * k)).style(boxed(
                 tile_bg(&a.id),
                 14.0 * k,
-                on.then_some((ACCENT, 3.0)),
+                on.then_some((c_accent(), 3.0)),
             ));
-            line = line.push(clickable(column![tile, ts(a.name.clone(), 17.0 * k, TEXT)].spacing(12.0 * k).width(Length::Fixed(196.0 * k)), Zone::Grid, i));
+            line = line.push(clickable(column![tile, ts(a.name.clone(), 17.0 * k, c_text())].spacing(12.0 * k).width(Length::Fixed(196.0 * k)), Zone::Grid, i));
         }
         grid = grid.push(line);
     }
-    column![ts(format!("{} apps", s.apps.len()), 22.0 * k, TEXT), grid].spacing(24.0 * k).into()
+    column![ts(format!("{} apps", s.apps.len()), 22.0 * k, c_text()), grid].spacing(24.0 * k).into()
 }
 
 fn store<'a>(s: &'a Couch, k: f32) -> Element<'a, Message> {
     let on = sel(s, Zone::Grid, 0);
-    let card = container(column![tb("Get apps and games", 30.0 * k, TEXT), t("Opens the app store (Bazaar, or KDE Discover) full screen.", 19.0 * k, MUTED)].spacing(10.0 * k))
+    let card = container(column![tb("Get apps and games", 30.0 * k, c_text()), t("Opens the app store (Bazaar, or KDE Discover) full screen.", 19.0 * k, c_muted())].spacing(10.0 * k))
         .padding(36.0 * k)
         .width(Length::Fixed(720.0 * k))
-        .style(boxed(c(0x1d, 0x15, 0x12), 18.0 * k, Some(if on { (ACCENT, 3.0) } else { (LINE, 1.0) })));
+        .style(boxed(shade(0.39), 18.0 * k, Some(if on { (c_accent(), 3.0) } else { (c_line(), 1.0) })));
     clickable(card, Zone::Grid, 0)
 }
 
 fn switcher<'a>(s: &'a Couch, k: f32, avail: Size) -> Element<'a, Message> {
-    let head = column![tb("Open now", 40.0 * k, TEXT), t("Games and windows are one list. Pick one to jump to it, in Couch or Desk.", 19.0 * k, MUTED)].spacing(8.0 * k);
+    let head = column![tb("Open now", 40.0 * k, c_text()), t("Games and windows are one list. Pick one to jump to it, in Couch or Desk.", 19.0 * k, c_muted())].spacing(8.0 * k);
     let card_w = ((avail.width - 2.0 * 40.0 * k) / 3.0).max(120.0);
     let card_h = card_w * 0.546;
     let mut grid = column![].spacing(34.0 * k);
     let cols = 3;
     let rows_fit = (((avail.height - 330.0 * k) / (card_h + 70.0 * k)).floor() as usize).max(1);
+    let list = s.switch_list();
     let first = (s.idx / cols).saturating_sub(rows_fit - 1);
     for r in first..first + rows_fit {
         let mut line = row![].spacing(40.0 * k);
         let mut any = false;
         for cix in 0..cols {
             let i = r * cols + cix;
-            let Some(w) = s.st.wins.get(i) else { break };
+            let Some(w) = list.get(i).copied() else { break };
             any = true;
             let on = sel(s, Zone::Switcher, i);
-            let colour = if w.game { tile_bg(&w.game_id) } else { c(0x2a, 0x25, 0x22) };
+            let colour = if w.game { tile_bg(&w.game_id) } else { shade(0.94) };
             let pic: Element<Message> = if !w.pic.is_empty() {
                 image(image::Handle::from_path(&w.pic)).width(Length::Fill).height(Length::Fill).content_fit(iced::ContentFit::Cover).into()
             } else {
                 Space::new().width(Length::Fill).height(Length::Fill).into()
             };
-            let tag = container(text(if w.game { "GAME" } else { "WINDOW" }).size(13.0 * k).font(bold()).color(if w.game { FLAME } else { c(0xd8, 0xcc, 0xc0) }))
+            let tag = container(text(if w.game { "GAME" } else { "WINDOW" }).size(13.0 * k).font(bold()).color(if w.game { c(0xff, 0xd1, 0x66) } else { c(0xd8, 0xcc, 0xc0) }))
                 .padding(Padding { top: 5.0 * k, right: 11.0 * k, bottom: 5.0 * k, left: 11.0 * k })
-                .style(boxed(c(0x1c, 0x14, 0x10), 8.0 * k, None));
+                .style(boxed(ART_TAG, 8.0 * k, None));
             let over = container(tag).align_right(Length::Fill).padding(14.0 * k);
             let bg: Background = if w.game { hero_bg() } else { colour.into() };
-            let card = container(stack![pic, over]).width(Length::Fixed(card_w)).height(Length::Fixed(card_h)).clip(true).style(if on {
-                Box::new(ring(bg, 16.0 * k)) as Box<dyn Fn(&iced::Theme) -> container::Style>
+            // The picture inside, the ring (selected) around it: 3 px between them so the picture never covers it.
+            let inner = container(stack![pic, over]).width(Length::Fill).height(Length::Fill).clip(true).style(boxed(bg, 13.0 * k, None));
+            let card = container(inner).width(Length::Fixed(card_w)).height(Length::Fixed(card_h)).padding(3.0).style(if on {
+                Box::new(ring(Color::TRANSPARENT, 16.0 * k)) as Box<dyn Fn(&iced::Theme) -> container::Style>
             } else {
-                Box::new(boxed(bg, 16.0 * k, None))
+                Box::new(boxed(Color::TRANSPARENT, 16.0 * k, None))
             });
-            let label = row![ts(w.name.clone(), 21.0 * k, TEXT), t(w.sub.clone(), 16.0 * k, MUTED)].spacing(10.0 * k).align_y(iced::Alignment::End);
+            let label = row![ts(w.name.clone(), 21.0 * k, c_text()), t(w.sub.clone(), 16.0 * k, c_muted())].spacing(10.0 * k).align_y(iced::Alignment::End);
             line = line.push(clickable(column![card, label].spacing(12.0 * k).width(Length::Fixed(card_w)), Zone::Switcher, i));
         }
         if !any {
@@ -642,7 +659,7 @@ fn switcher<'a>(s: &'a Couch, k: f32, avail: Size) -> Element<'a, Message> {
         }
         grid = grid.push(line);
     }
-    let body: Element<Message> = if s.st.wins.is_empty() { t("Nothing's open right now.", 21.0 * k, MUTED).into() } else { grid.into() };
+    let body: Element<Message> = if s.st.wins.is_empty() { t("Nothing's open right now.", 21.0 * k, c_muted()).into() } else { grid.into() };
     column![head, Space::new().height(Length::Fixed(60.0 * k)), body].into()
 }
 
@@ -652,7 +669,7 @@ fn hints<'a>(s: &'a Couch, k: f32) -> Element<'a, Message> {
         r = r.push(hint("A", "Go to it", k)).push(hint("X", "Close", k)).push(hint("Y", "Window ⇄ full screen", k)).push(hint("B", "Back", k));
     } else if s.tab == "library" {
         for l in ["A Play", "X Game options", "Y Search", "LT RT Filters"] {
-            r = r.push(t(l, 18.0 * k, TEXT));
+            r = r.push(t(l, 18.0 * k, c_text()));
         }
     } else {
         r = r.push(hint("A", if s.tab == "home" { "Play" } else { "Open" }, k)).push(hint("X", "Options", k)).push(hint("Y", "Search", k));
@@ -663,10 +680,10 @@ fn hints<'a>(s: &'a Couch, k: f32) -> Element<'a, Message> {
 
 fn view(s: &Couch) -> Element<'_, Message> {
     let up = s.st.couch_up && s.st.posture == "couch";
-    let glow = if s.switcher { c(0x2c, 0x16, 0x0a) } else if s.tab == "home" { c(0x2e, 0x17, 0x0b) } else { c(0x22, 0x12, 0x0a) };
+    let glow = if s.switcher { glow(0.08) } else if s.tab == "home" { glow(0.09) } else { glow(0.05) };
     if !up {
         // The Desk's wallpaper: the same warm background, nothing else drawn.
-        return container(Space::new()).width(Length::Fill).height(Length::Fill).style(boxed(page_bg(c(0x2e, 0x17, 0x0b)), 0.0, None)).into();
+        return container(Space::new()).width(Length::Fill).height(Length::Fill).style(boxed(page_bg(glow(0.09)), 0.0, None)).into();
     }
     responsive(move |size: Size| {
         let k = (size.width / 1920.0).min(size.height / 1080.0).max(0.4);
@@ -715,7 +732,7 @@ pub fn run() -> i32 {
         update,
         view,
     )
-    .style(|_s: &Couch, _t: &iced::Theme| iced::theme::Style { background_color: BG, text_color: TEXT })
+    .style(|_s: &Couch, _t: &iced::Theme| iced::theme::Style { background_color: c_bg(), text_color: c_text() })
     .subscription(subscription)
     .settings(Settings {
         layer_settings: LayerShellSettings {

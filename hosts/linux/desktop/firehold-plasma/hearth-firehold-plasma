@@ -960,6 +960,10 @@ def pick():
     if r.returncode != 0 or v not in ('plasma', 'firehold'):
         return 0
     choose(v)
+    if v == 'firehold' and have('firehold-shell'):
+        # The other Firehold test (Firehold (Rust, test), docs/FIREHOLD-RUST.md) goes back to Plasma, so the one you
+        # picked is the one that opens (only on your pick; firehold-shell saves it with settings_file.rs).
+        subprocess.run(['firehold-shell', 'choose', 'plasma'], capture_output=True, timeout=10)
     if v != cur:
         if v == 'firehold':
             msg = 'Firehold starts the next time you open Desktop Mode. Your apps stay open when you switch between Couch and Desk.'

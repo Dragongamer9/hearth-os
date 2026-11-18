@@ -7,6 +7,10 @@
 case "$1" in firehold|plasma) ;; *) echo "usage: hearth-desktop-choice firehold|plasma" >&2; exit 2 ;; esac
 command -v firehold-shell >/dev/null 2>&1 || { echo "Firehold (Rust, test) isn't in this image" >&2; exit 1; }
 firehold-shell choose "$1" >/dev/null || exit 1
+# Firehold on Plasma (hearth-firehold-plasma, the other Firehold test) is its own choice: picking either Firehold, or
+# KDE Plasma, sets the other one to plain Plasma, so what you picked is what opens (only on your pick, through its own
+# helper: hearth_settings_io).
+if command -v hearth-firehold-plasma >/dev/null 2>&1; then hearth-firehold-plasma choose plasma >/dev/null 2>&1 || true; fi
 if [ "$1" = firehold ]; then
   msg="Firehold (Rust, test) opens the next time you switch to Desktop Mode. It's a test: if it doesn't start, KDE Plasma opens instead.
 
