@@ -1555,8 +1555,49 @@ print('::notice title=Plasma: Hearth first::' + ('; '.join(changed) or 'no chang
 PY
 }
 rm -f /usr/share/hearth/app-kinds/plasma-ready
+# Every Hearth app shows in Plasma (the owner, Nov 18: "add all the apps"), except Mantel-only ones and a second Hearth
+# app of a kind whose first is already Hearth's (e.g. hearth-terminal-kde behind hearth-terminal). The copies had come
+# out NotShowIn=KDE / OnlyShowIn=COSMIC for Settings, Logs, Send logs, Game Mode, Disks, Clock, System Info and more
+# (run 44306030977), which hid them.
+hearth_plasma_always() {
+  python3 - <<'PY'
+import json, os, re
+d = '/usr/share/hearth/app-kinds/applications'
+t = json.load(open('/usr/share/hearth/app-kinds.json'))
+mantel_only = {'hearth-files.desktop', 'hearth-capture.desktop', 'hearth-tasks.desktop', 'hearth-resmon.desktop',
+               'hearth-restore.desktop', 'hearth-reliability.desktop'}
+behind = set()
+for k, kind in t['kinds'].items():
+    kde = (kind.get('apps') or {}).get('KDE') or []
+    hearth = [i for i in kde if i.startswith('hearth-')]
+    if hearth and kde and kde[0].startswith('hearth-'):
+        behind.update(hearth[1:])
+fixed = []
+for f in sorted(os.listdir(d)) if os.path.isdir(d) else []:
+    if not (f.startswith('hearth-') and f.endswith('.desktop')) or f in mantel_only or f in behind:
+        continue
+    p = os.path.join(d, f)
+    s = open(p).read(); o = s
+    def notshow(m):
+        v = [x for x in m.group(1).split(';') if x and x != 'KDE']
+        return ('NotShowIn=' + ';'.join(v) + ';') if v else ''
+    s = re.sub(r'(?m)^NotShowIn=(.*)$', notshow, s)
+    def onlyshow(m):
+        v = [x for x in m.group(1).split(';') if x]
+        if 'Nimbus' in v and len(v) == 1:
+            return m.group(0)
+        if 'KDE' not in v:
+            v.append('KDE')
+        return 'OnlyShowIn=' + ';'.join(v) + ';'
+    s = re.sub(r'(?m)^OnlyShowIn=(.*)$', onlyshow, s)
+    if s != o:
+        open(p, 'w').write(s); fixed.append(f)
+print('::notice title=Plasma menu::shown in Plasma again: ' + (', '.join(fixed) or 'nothing to change'))
+PY
+}
 if hearth_plasma_apps && python3 /usr/libexec/hearth-app-kinds apply --root / > /tmp/hearth-app-kinds-plasma.json \
    && python3 /usr/libexec/hearth-app-kinds check --root / >/dev/null; then
+  hearth_plasma_always || true
   : > /usr/share/hearth/app-kinds/plasma-ready
   echo "::notice title=Plasma's apps::$(python3 -c 'import json; d=json.load(open("/tmp/hearth-app-kinds-plasma.json")); v=d["desktops"].get("KDE",{}); print(", ".join("%s=%s" % (a, b) for a, b in sorted(v.get("apps",{}).items()) if b))' 2>/dev/null)"
 else
