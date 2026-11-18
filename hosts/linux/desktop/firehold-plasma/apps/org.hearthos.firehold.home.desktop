@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Home
+Comment=Firehold's Couch (everything stays open)
+Exec=hearth-firehold-plasma switch couch home
+Icon=hearth
+NoDisplay=true
+OnlyShowIn=KDE;

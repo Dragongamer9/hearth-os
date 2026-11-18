@@ -1,0 +1,12 @@
+{
+    "KPackageStructure": "Plasma/Shell",
+    "KPlugin": {
+        "Authors": [{ "Name": "Hearth OS" }],
+        "Description": "Firehold's Desk: KDE Plasma's own desktop in Firehold's layout, a bar on top and a dock (a test)",
+        "Id": "org.hearthos.firehold.desk",
+        "License": "GPL-2.0+",
+        "Name": "Firehold Desk",
+        "Version": "0.1"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

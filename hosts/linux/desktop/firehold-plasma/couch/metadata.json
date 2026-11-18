@@ -1,0 +1,15 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [{ "Name": "Hearth OS" }],
+        "Category": "Miscellaneous",
+        "Description": "Firehold's Couch: Home, Library, Apps, Store, Everything open, the Guide and Settings › Couch and Desk",
+        "Icon": "hearth",
+        "Id": "org.hearthos.firehold.couch",
+        "License": "GPL-2.0+",
+        "Name": "Firehold Couch",
+        "Version": "0.1"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-ContainmentType": "Desktop"
+}
