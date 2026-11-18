@@ -104,6 +104,10 @@ pub fn glow(t: f32) -> Color {
     let p = pal();
     Pal::mix(p.bg, p.accent, t)
 }
+/// A see-through light over the page (mockups 1 and 5: the pill, the chips, the search box let the glow through).
+pub fn veil(a: f32) -> Color {
+    Color { a, ..pal().text }
+}
 /// The X button's blue (the controller's own colours, not the look's).
 pub const BLUE: Color = c(0x5a, 0xb8, 0xf0);
 /// Text over a game's own colours or art (the hero, the tiles): light whatever the look.

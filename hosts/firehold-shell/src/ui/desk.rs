@@ -107,7 +107,7 @@ fn bar(s: &Desk) -> Element<'_, Message> {
     let pill = mouse_area(
         container(row![dot, ts("Desk", 14.0, c_text())].spacing(8.0).align_y(iced::Center))
             .padding(Padding { top: 5.0, right: 12.0, bottom: 5.0, left: 12.0 })
-            .style(boxed(shade(0.58), 14.0, Some((c_line(), 1.0)))),
+            .style(boxed(c_card(), 14.0, Some((c_line(), 1.0)))),
     )
     .on_press(Message::Click("posture".into()));
     let status = [st.net.clone(), st.battery.clone()].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · ");
@@ -115,7 +115,7 @@ fn bar(s: &Desk) -> Element<'_, Message> {
     let ends = row![left.width(Length::Shrink), Space::new().width(Length::Fill), right].align_y(iced::Center).padding(Padding { top: 0.0, right: 16.0, bottom: 0.0, left: 16.0 });
     let clock = container(ts(format!("{} · {}", st.date, st.clock), 15.0, c_text())).center(Length::Fill);
     let line = container(Space::new()).width(Length::Fill).height(Length::Fixed(1.0)).style(boxed(c_line(), 0.0, None));
-    column![container(stack![container(ends).center_y(Length::Fill), clock]).height(Length::Fixed(43.0)).style(boxed(c_bg2(), 0.0, None)), line].into()
+    column![container(stack![container(ends).center_y(Length::Fill), clock]).height(Length::Fixed(43.0)).style(boxed(c_panel(), 0.0, None)), line].into()
 }
 
 fn dock(s: &Desk) -> Element<'_, Message> {

@@ -406,14 +406,14 @@ fn top_bar<'a>(s: &'a Couch, k: f32, search: bool) -> Element<'a, Message> {
             .width(Length::Fixed(498.0 * k))
             .height(Length::Fixed(54.0 * k))
             .center_y(Length::Fixed(54.0 * k))
-            .style(boxed(shade(0.39), 27.0 * k, Some((c_line(), 1.0))))
+            .style(boxed(veil(0.07), 27.0 * k, Some((veil(0.06), 1.0))))
             .into()
     } else {
         let pill_text = if s.st.cfg.posture == "couch" { "Couch".to_string() } else { "Couch · switches to Desk when you touch the mouse".to_string() };
         let dot = container(Space::new().width(Length::Fixed(8.0 * k)).height(Length::Fixed(8.0 * k))).style(boxed(c_accent(), 4.0 * k, None));
         let pill = container(row![dot, ts(pill_text, 15.0 * k, c_text())].spacing(10.0 * k).align_y(iced::Center))
             .padding(Padding { top: 9.0 * k, right: 18.0 * k, bottom: 9.0 * k, left: 18.0 * k })
-            .style(boxed(shade(0.58), 20.0 * k, None));
+            .style(boxed(veil(0.08), 20.0 * k, None));
         let avatar = container(tb(s.st.initial.clone(), 20.0 * k, c_text()))
             .center_x(Length::Fixed(44.0 * k))
             .center_y(Length::Fixed(44.0 * k))
@@ -530,7 +530,7 @@ fn library<'a>(s: &'a Couch, k: f32, avail: Size) -> Element<'a, Message> {
     for (i, (_, label, n)) in s.filters().into_iter().enumerate() {
         let on = i == s.filter;
         let focus = sel(s, Zone::Filters, i);
-        let (bg, fg, cnt) = if on { (c_accent(), c_ink(), Pal::mix(c_ink(), c_accent(), 0.35)) } else { (shade(0.58), c_text(), c_muted()) };
+        let (bg, fg, cnt) = if on { (c_accent(), c_ink(), Pal::mix(c_ink(), c_accent(), 0.35)) } else { (veil(0.07), c_text(), c_muted()) };
         let chip = container(row![tb(label, 18.0 * k, fg), t(n.to_string(), 18.0 * k, cnt)].spacing(6.0 * k))
             .padding(Padding { top: 10.0 * k, right: 20.0 * k, bottom: 10.0 * k, left: 20.0 * k })
             .style(boxed(bg, 22.0 * k, focus.then_some((c_text(), 2.0))));
@@ -680,7 +680,7 @@ fn hints<'a>(s: &'a Couch, k: f32) -> Element<'a, Message> {
 
 fn view(s: &Couch) -> Element<'_, Message> {
     let up = s.st.couch_up && s.st.posture == "couch";
-    let glow = if s.switcher { glow(0.08) } else if s.tab == "home" { glow(0.09) } else { glow(0.05) };
+    let top_glow = if s.switcher { glow(0.08) } else if s.tab == "home" { glow(0.09) } else { glow(0.05) };
     if !up {
         // The Desk's wallpaper: the same warm background, nothing else drawn.
         return container(Space::new()).width(Length::Fill).height(Length::Fill).style(boxed(page_bg(glow(0.09)), 0.0, None)).into();
@@ -702,7 +702,7 @@ fn view(s: &Couch) -> Element<'_, Message> {
         };
         let page = column![container(body).height(Length::Fill), hints(s, k)]
             .padding(Padding { top: if s.switcher { 64.0 } else { 46.0 } * k, right: pad_x, bottom: 30.0 * k, left: pad_x });
-        container(page).width(Length::Fill).height(Length::Fill).style(boxed(page_bg(glow), 0.0, None)).into()
+        container(page).width(Length::Fill).height(Length::Fill).style(boxed(page_bg(top_glow), 0.0, None)).into()
     })
     .into()
 }
