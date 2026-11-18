@@ -726,11 +726,13 @@ run_kwin() {
       [ $(( now - started )) -ge "$KWIN_UP_MAX_SECS" ] && break
       cpu=$(mantel_cpu_ticks)
       [ -n "$busy_at" ] || { busy_at=$now; busy_ref=${cpu:-0}; }
-      if [ -n "$cpu" ] && [ $(( cpu - busy_ref )) -ge "$KWIN_BUSY_TICKS" ]; then busy_ref=$cpu; busy_at=$now; fi
-      [ $(( now - busy_at )) -ge "$KWIN_STALL_SECS" ] && break
-      if [ -z "$told_busy" ] && [ -n "$cpu" ]; then
-        told_busy=1; log "kwin: Mantel is still starting after ${KWIN_UP_SECS}s and busy loading; waiting while it keeps going (at most ${KWIN_UP_MAX_SECS}s)"
+      if [ -n "$cpu" ] && [ $(( cpu - busy_ref )) -ge "$KWIN_BUSY_TICKS" ]; then
+        busy_ref=$cpu; busy_at=$now
+        if [ -z "$told_busy" ]; then
+          told_busy=1; log "kwin: Mantel is still starting after ${KWIN_UP_SECS}s and busy loading; waiting while it keeps going (at most ${KWIN_UP_MAX_SECS}s)"
+        fi
       fi
+      [ $(( now - busy_at )) -ge "$KWIN_STALL_SECS" ] && break
     fi
     sleep 1
   done
