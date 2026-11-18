@@ -244,6 +244,12 @@
     T.go('player');
   };
   function loadPlayback() {
+    // Sent to the TV from a Hearth PC (Send to TV): a file played from the TV's own address, read from the PC.
+    if (PL.item && PL.item.direct) {
+      PL.pb = { url: PL.item.direct, subs: [], audio: [], direct: true };
+      var dv = document.getElementById('pv'); if (dv) { dv.src = PL.item.direct; dv.play().catch(function () {}); }
+      return Promise.resolve();
+    }
     var it = PL.item, startSec = PL.from === 0 ? 0 : (it.pct > 0 && it.pct < 97 ? it.mins * 60 * it.pct / 100 : 0);
     PL.startSec = startSec;
     return M.playback(it.id, Math.round(startSec * 10000000)).then(function (pb) {
@@ -289,7 +295,10 @@
   function fmt(s) { s = Math.max(0, Math.floor(s || 0)); var h = Math.floor(s / 3600), m = Math.floor(s % 3600 / 60), x = s % 60; return (h ? h + ':' + (m < 10 ? '0' : '') : '') + m + ':' + (x < 10 ? '0' : '') + x; }
   function stopPlayback() {
     var v = document.getElementById('pv'); clearInterval(PL.timer); clearTimeout(PL.hide);
-    if (v && PL.pb && PL.item) { M.report('stop', PL.item.id, PL.pb, PL.pos(), true, v.duration); T.toast('Stopped at ' + fmt(PL.pos()) + ' · saved to your PC'); try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {} }
+    if (v && PL.pb && PL.item) {
+      if (!PL.item.direct) { M.report('stop', PL.item.id, PL.pb, PL.pos(), true, v.duration); T.toast('Stopped at ' + fmt(PL.pos()) + ' · saved to your PC'); }
+      try { v.pause(); v.removeAttribute('src'); v.load(); } catch (e) {}
+    }
     T.playing = false; T.n('keepOn', false); T.n('frameRate', 0); T.idle();
   }
   function showChrome() {
@@ -304,7 +313,7 @@
       var it = PL.item || {}, ep = it.kind === 'episode';
       return '<div class="player"><video id="pv" playsinline crossorigin="anonymous"></video><style>video::cue{font-size:var(--cue,34px)}</style><div class="chrome">' +
         '<div class="topfade"></div><div class="botfade"></div>' +
-        '<div style="position:absolute;left:80px;top:56px;display:flex;flex-direction:column;gap:6px"><span style="font-size:32px;font-weight:700">' + E(ep ? it.seriesName : it.title) + '</span><span style="font-size:20px;color:#c3ccd4">' + E(ep ? 'Season ' + (it.parentIndex || 1) + ' · Episode ' + (it.index || 1) + ' · ' + it.title : [it.year, it.tags && it.tags.join(' ')].filter(Boolean).join(' · ')) + '</span></div>' +
+        '<div style="position:absolute;left:80px;top:56px;display:flex;flex-direction:column;gap:6px"><span style="font-size:32px;font-weight:700">' + E(ep ? it.seriesName : it.title) + '</span><span style="font-size:20px;color:#c3ccd4">' + E(it.direct ? 'Sent from ' + (it.from || 'your PC') + ' · through Hearth Link' : ep ? 'Season ' + (it.parentIndex || 1) + ' · Episode ' + (it.index || 1) + ' · ' + it.title : [it.year, it.tags && it.tags.join(' ')].filter(Boolean).join(' · ')) + '</span></div>' +
         '<div style="position:absolute;left:80px;right:80px;bottom:64px;display:flex;flex-direction:column;gap:22px">' +
         '<div style="display:flex;align-items:center;gap:22px;font-size:20px;font-variant-numeric:tabular-nums"><span data-pos>0:00</span><div style="flex:1;height:8px;border-radius:4px;background:rgba(220,229,237,.25);position:relative"><div data-prog style="width:0%;height:8px;border-radius:4px;background:var(--acc)"></div></div><span data-len style="color:#c3ccd4">' + fmt(it.mins * 60) + '</span></div>' +
         '<div style="display:flex;align-items:center;gap:16px">' +
@@ -325,7 +334,7 @@
       v.addEventListener('pause', function () { var b = document.querySelector('[data-pp]'); if (b) { b.innerHTML = T.ICON.play.replace('22', '30').replace('22', '30'); b.setAttribute('aria-label', 'Play'); } showChrome(); });
       v.addEventListener('play', function () { var b = document.querySelector('[data-pp]'); if (b) { b.innerHTML = T.ICON.pause; b.setAttribute('aria-label', 'Pause'); } showChrome(); });
       v.addEventListener('ended', function () { if (PL.list && PL.at < PL.list.length - 1) next(); else T.back(); });
-      v.addEventListener('error', function () { T.toast('This file didn\'t play on the TV. Try a lower quality in Settings › My Media.'); });
+      v.addEventListener('error', function () { T.toast(PL.item && PL.item.direct ? 'This file didn\'t play on the TV: its kind of video may not be one the TV plays' : 'This file didn\'t play on the TV. Try a lower quality in Settings › My Media.'); });
       showChrome();
       loadPlayback();
     },

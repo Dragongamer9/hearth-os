@@ -16,6 +16,7 @@
 //!   input.layouts                     this device's controller layouts (inputs.rs)
 //!   update.*                          update every device at once (fleet.rs)
 //!   ai.*                              local AI over Hearth Link (ai.rs)
+//!   tv.play, tv.read                  Send to TV (tv.rs)
 //! A connection from a device that isn't paired is closed at once (except pairing, while a code is showing).
 //!
 //! Pairing (pair.rs) logs every step to the journal ("hearth-link: pairing: ..."), never a code.
@@ -264,7 +265,7 @@ impl Node {
     async fn hello(self: &Arc<Self>, id: &str, c: &Connection) -> Result<(), String> {
         let relay = self.ep.addr().relay_urls().next().map(|u| u.to_string());
         let si = if crate::lock(&self.peers).is_mine(id) { signed_in_here(&self.home) } else { json!({}) };
-        let r = wire::request(c, &json!({"op": "hello", "name": self.name(), "signedIn": si, "relay": relay})).await;
+        let r = wire::request(c, &json!({"op": "hello", "name": self.name(), "signedIn": si, "relay": relay, "kind": self.kind})).await;
         match r {
             Ok(v) => { self.take_hello(id, &v); Ok(()) }
             Err(e) => { self.check_unpaired(id, &e); Err(e) }
@@ -280,6 +281,7 @@ impl Node {
             if !si.is_object() { si = json!({}); }
             if let Some(r) = v["relay"].as_str().filter(|r| crate::state::valid_relay_url(r)) { si["relay"] = json!(r); }
             p.signed_in = si;
+            if let Some(k) = v["kind"].as_str().filter(|k| crate::discovery::KINDS.contains(k)) { p.kind = k.to_string(); }
             p.last_seen = crate::now_ms();
         }
         let _ = ps.save();
@@ -448,6 +450,14 @@ impl Node {
             let _ = tokio::time::timeout(Duration::from_secs(30), s.stopped()).await;
             return;
         }
+        if op == "tv.read" {
+            if let Err(e) = self.tv_serve_read(&peer, &req, &mut s).await {
+                let _ = s.write_all(&wire::control_frame(wire::T_ERROR, &e)).await;
+            }
+            let _ = s.finish();
+            let _ = tokio::time::timeout(Duration::from_secs(30), s.stopped()).await;
+            return;
+        }
         if op == "storage.read" || op == "updates.read" {
             if let Err(e) = self.storage_serve_read(&peer, &req, &mut s).await {
                 let _ = s.write_all(&wire::control_frame(wire::T_ERROR, &e)).await;
@@ -508,7 +518,7 @@ impl Node {
                 self.take_hello(peer, req);
                 let relay = self.ep.addr().relay_urls().next().map(|u| u.to_string());
                 let si = if crate::lock(&self.peers).is_mine(peer) { signed_in_here(&self.home) } else { json!({}) };
-                Ok(json!({"name": self.name(), "signedIn": si, "relay": relay}))
+                Ok(json!({"name": self.name(), "signedIn": si, "relay": relay, "kind": self.kind}))
             }
             "games" => {
                 let home = self.home.clone();
@@ -565,6 +575,7 @@ impl Node {
             o if o.starts_with("input.") => self.clone().inputs_answer(peer, op, req).await,
             o if o.starts_with("update.") => self.clone().fleet_answer(peer, op, req).await,
             o if o.starts_with("ai.") => self.clone().ai_answer(peer, op, req).await,
+            o if o.starts_with("tv.") => self.clone().tv_answer(peer, op, req).await,
             o if o.starts_with("status.") => self.clone().status_answer(peer, op, req).await,
             o if o.starts_with("decky.") => self.clone().decky_answer(peer, op, req).await,
             o if o.starts_with("storage.") || o.starts_with("archive.") || o.starts_with("backup.") || o.starts_with("cache.") || o.starts_with("updates.") => self.clone().storage_answer(peer, op, req).await,
@@ -729,7 +740,8 @@ impl Node {
             let online = lan || now.saturating_sub(p.last_seen) < 60_000;
             let by = p.introduced_by.as_ref().and_then(|b| names.get(b).cloned());
             json!({"id": p.id, "name": p.name, "pairedAt": p.paired_at, "lastSeen": p.last_seen, "online": online, "lan": lan, "alwaysAccept": p.always_accept,
-                   "signedIn": p.signed_in, "sync": crate::lock(&self.sync_info).get(&p.id), "friend": p.friend, "introducedBy": by})
+                   "signedIn": p.signed_in, "sync": crate::lock(&self.sync_info).get(&p.id), "friend": p.friend, "introducedBy": by,
+                   "kind": if p.kind.is_empty() { found.get(&p.id).map(|f| f.kind.clone()).unwrap_or_default() } else { p.kind.clone() }})
         }).collect();
         let paired: Vec<String> = crate::lock(&self.peers).list.iter().map(|p| p.id.clone()).collect();
         // Devices showing a code first (the ones to pick), then by name. A device that stopped announcing a code is
@@ -1070,6 +1082,7 @@ impl Node {
             c if c.starts_with("input.") => self.inputs_command(c, a).await,
             c if c.starts_with("fleet.") => self.fleet_command(c, a).await,
             c if c.starts_with("ai.") => self.ai_command(c, a).await,
+            c if c.starts_with("tv.") => self.tv_command(c, a).await,
             c if c.starts_with("status.") => self.status_command(c, a).await,
             c if c.starts_with("decky.") => self.decky_command(c, a).await,
             _ => Err(format!("Unknown command: {cmd}")),

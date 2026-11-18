@@ -320,10 +320,32 @@
     else if (ev.type === 'resume') { T.loadSettings(); T.applyLook(); if (T.screens[T.cur] && T.screens[T.cur].resume) T.screens[T.cur].resume(); }
     else if (ev.type === 'toast') T.toast(ev.text);
     else if (ev.type === 'voice') { if (T.screens.search.voice) T.screens.search.voice(ev.text); }
-    else if (ev.type === 'theaterAdded') { T.toast('Saved in Theater: ' + (ev.item && ev.item.title || 'a link')); if (T.screens.theater.added) T.screens.theater.added(ev.item); }
+    else if (ev.type === 'theaterAdded') {
+      if (ev.play && ev.item) { if (T.cur === 'screensaver') T.back(); T.close(); T.sentBy = ev.by || 'your PC'; T.theaterPlay(ev.item); T.toast('Sent from ' + T.sentBy + ': ' + (ev.item.title || 'a link') + ' · saved in Theater'); }
+      else { T.toast('Saved in Theater: ' + (ev.item && ev.item.title || 'a link')); if (T.screens.theater.added) T.screens.theater.added(ev.item); }
+    }
+    else if (ev.type === 'sent') T.sent(ev.item || {});
     else if (ev.type === 'inputs') { if (T.layer && T.layer.id === 'inputs') T.showInputs(true); }
     else if (ev.type === 'cleanupFixed') T.toast('TV Cleanup: an update turned something back on, so it was switched off again (' + ev.groups.join(', ') + ')');
     else if (ev.type === 'updateProgress') { var u = document.querySelector('[data-update]'); if (u) u.textContent = 'Downloading… ' + ev.pct + '%'; }
+  };
+
+  // ---------- Send to TV (a Hearth PC over Hearth Link; links come as theaterAdded with play) ----------
+  T.sent = function (it) {
+    if (T.cur === 'screensaver') T.back();
+    T.close();
+    var from = it.from || 'your PC';
+    if (it.kind === 'file' && it.url) {
+      T.play({ direct: it.url, id: 'sent-' + (it.id || ''), kind: 'sent', title: it.title || (it.file && it.file.name) || 'Video', mins: 0, from: from });
+      T.toast('Playing from ' + from + ': ' + (it.title || 'a video'));
+    } else if (it.kind === 'media' && it.media) {
+      var M = T.Media;
+      if (!M || !M.ready) { T.toast(from + ' sent ' + (it.title || 'a show') + ': set up My Media on the TV first (Settings › My Media)'); return; }
+      M.get(it.media.id).then(function (x) {
+        if (x.kind === 'show') T.go('show', x.id); else T.play(x);
+        T.toast('Sent from ' + from + ': ' + (x.title || it.title));
+      }).catch(function () { T.toast(from + ' sent ' + (it.title || 'a show') + ', but it isn\'t in the TV\'s My Media'); });
+    }
   };
 
   // ---------- TV inputs (Home's Inputs button, the remote's Input button) ----------
