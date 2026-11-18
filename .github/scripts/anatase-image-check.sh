@@ -21,6 +21,10 @@ check "the automatic fallback and Recovery are enabled" "systemctl is-enabled he
 check "Hearth's boot menu writer is here for a PC that came from Debian, and only runs where that menu is" \
   "test -x /usr/libexec/nimbus/hearth-bls-grub && systemctl is-enabled hearth-bls-grub.service && grep -q 'ConditionPathExists=/boot/grub2/hearth-bls.cfg' /usr/lib/systemd/system/hearth-bls-grub.service.d/10-hearth-anatase.conf"
 check "bootupd never writes Fedora's loader over Debian's by itself" "grep -q 'ConditionPathExists=!/boot/grub2/hearth-bls.cfg' /usr/lib/systemd/system/bootloader-update.service.d/20-hearth-debian-loader.conf"
+check "bootupctl never updates the boot loader on a PC whose menu is Hearth's (Debian's loader stays)" \
+  "grep -q 'hearth-bls.cfg' /usr/bin/bootupctl && grep -q 'HEARTH_BOOTUPD_ALLOW' /usr/bin/bootupctl"
+check "hearth-esp-guard is on and gives a loader without grub.cfg the one that finds the menu" \
+  "systemctl is-enabled hearth-esp-guard.service && d=\$(mktemp -d) && mkdir -p \$d/EFI/debian \$d/EFI/anatase && echo cfg > \$d/EFI/debian/grub.cfg && echo uuid > \$d/EFI/debian/bootuuid.cfg && touch \$d/EFI/anatase/grubx64.efi && HEARTH_ESP=\$d sh /usr/libexec/nimbus/hearth-esp-guard && grep -qx cfg \$d/EFI/anatase/grub.cfg && grep -qx uuid \$d/EFI/anatase/bootuuid.cfg"
 check "the boot splash is Hearth's and the initramfs has ostree" "plymouth-set-default-theme | grep -qx hearth && lsinitrd /usr/lib/modules/\$(ls /usr/lib/modules | sort -V | tail -1)/initramfs.img | grep -q ostree"
 warn "/usr is composefs on Anatase (prepare-root.conf)" "grep -rqs 'enabled *= *\\(yes\\|true\\|verity\\)' /usr/lib/ostree/prepare-root.conf"
 

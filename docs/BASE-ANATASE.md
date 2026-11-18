@@ -54,6 +54,13 @@ Settings › Updates › Switch edition (`hearth-admin move-to-new-os --edition 
   that menu following its updates and a rollback (`hearth-bls-grub`, only where `/boot/grub2/hearth-bls.cfg` exists), and
   bootupd never writes Fedora's loader over Debian's there. Secure Boot: Debian's shim doesn't start Fedora's kernel, so
   Settings says to turn Secure Boot off first when it's on.
+- **The EFI partition** (the owner's laptop, Nov 17: after the move from Debian to the old Anatase build, Fedora's
+  bootupd updated the boot loader by itself, removing Debian's shim and GRUB and putting Anatase's in EFI/anatase
+  without grub.cfg and bootuuid.cfg, so the PC stopped at `grub>`). On a PC whose menu is Hearth's, `bootupctl` never
+  updates or adopts the boot loader (a wrapper; `HEARTH_BOOTUPD_ALLOW=1` overrides), so Debian's loader stays, and
+  `hearth-esp-guard` gives any loader folder that lacks them the grub.cfg and bootuuid.cfg that find /boot's menu (which
+  also repairs a PC that already got there). CI proves it in a virtual PC: Debian 1.13 → Anatase → Debian, every
+  restart through the firmware with nothing pressed (`.github/scripts/edition-switch-vm.sh`).
 - **Anatase → Debian**: the very Debian version you came from starts again, as you left it (`bootc rollback` when it's
   the previous one, else `ostree admin set-default` to it). Only when it's gone (or an update is waiting for a restart)
   is Debian fetched fresh, again keeping the home folder.
