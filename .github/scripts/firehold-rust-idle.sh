@@ -25,6 +25,8 @@ if [ "$KIND" = firehold ]; then
 else
   export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_TYPE=wayland KDE_FULL_SESSION=true
   [ -e /etc/xdg/menus/applications.menu ] || export XDG_MENU_PREFIX=$(basename "$(ls /etc/xdg/menus/*-applications.menu 2>/dev/null | head -1)" applications.menu)
+  # KWin's file capability (CAP_SYS_NICE) isn't allowed in a CI container ("Operation not permitted"): a plain copy.
+  mkdir -p /tmp/kwbin && cp "$(command -v kwin_wayland)" /tmp/kwbin/kwin_wayland && export PATH="/tmp/kwbin:$PATH"
   kwin_wayland --virtual --width 1920 --height 1080 --socket wayland-idle >/tmp/idle-comp.log 2>&1 &
   for i in $(seq 120); do [ -S "$XDG_RUNTIME_DIR/wayland-idle" ] && break; sleep 0.5; done
   WAYLAND_DISPLAY=wayland-idle plasmashell --no-respawn >/tmp/idle-shell.log 2>&1 &
