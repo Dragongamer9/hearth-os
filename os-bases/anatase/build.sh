@@ -1136,6 +1136,15 @@ if [ ${#RPMF[@]} -gt 0 ]; then
 fi
 dnf5 -y install --skip-unavailable --skip-broken gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugin-libav gstreamer1-plugin-openh264 gstreamer1-plugin-dav1d gstreamer1-plugins-base-tools || true
 command -v ffmpeg >/dev/null || dnf5 -y install ffmpeg-free || echo "warning: no ffmpeg in this image: Hearth Player can't edit or convert"
+# Video decoded by the graphics chip (VA-API), so browsers and players don't decode on the processor: the owner's
+# laptop (Intel UHD, Nov 18) played Firefox video on the CPU on Debian (its RDD process at 80%). Intel: RPM Fusion's
+# intel-media-driver (iHD, every codec), else Fedora's libva-intel-media-driver; AMD: mesa-va-drivers-freeworld
+# (H.264/H.265), else Fedora's mesa-va-drivers. Nvidia decodes through its own driver (nvidia-vaapi-driver).
+dnf5 -y install --allowerasing --skip-unavailable "${RPMF[@]}" intel-media-driver libva-utils || dnf5 -y install --skip-unavailable libva-intel-media-driver libva-utils || true
+rpm -q mesa-va-drivers-freeworld >/dev/null 2>&1 || dnf5 -y swap --allowerasing "${RPMF[@]}" mesa-va-drivers mesa-va-drivers-freeworld || true
+dnf5 -y install --skip-unavailable nvidia-vaapi-driver || true
+va=$(ls /usr/lib64/dri/iHD_drv_video.so /usr/lib64/dri/radeonsi_drv_video.so /usr/lib64/dri/nvidia_drv_video.so 2>/dev/null | xargs -r -n1 basename | tr '\n' ' ')
+echo "::notice title=Video by the graphics chip::VA-API drivers: ${va:-none}; $(rpm -q intel-media-driver libva-intel-media-driver mesa-va-drivers-freeworld mesa-va-drivers nvidia-vaapi-driver 2>/dev/null | grep -v 'not installed' | tr '\n' ' ')"
 # The RPM Fusion repositories stay off on the installed system (the image brings updates).
 for r in /etc/yum.repos.d/rpmfusion-*.repo; do
   if [ -f "$r" ]; then sed -i 's/^enabled=1/enabled=0/' "$r"; fi
