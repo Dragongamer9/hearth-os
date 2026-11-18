@@ -162,6 +162,14 @@ class Workflow(unittest.TestCase):
         dispatch = wf.split('workflow_dispatch:')[1].split('env:')[0]
         self.assertRegex(dispatch, r"publish:[\s\S]*?default: false")
         self.assertRegex(dispatch, r"test_tag:[\s\S]*?default: ''")
+        # reuse_run: only this workflow's runs, only when the app sources didn't change, every artifact there.
+        self.assertRegex(dispatch, r"reuse_run:[\s\S]*?default: ''")
+        self.assertIn('[ "$path" = .github/workflows/base-anatase.yml ]', wf)
+        self.assertIn('git diff --name-only "$sha" HEAD -- hosts ui', wf)
+        self.assertIn('is missing or expired', wf)
+        for job in ('app', 'browser', 'hearth-steam', 'kde'):
+            self.assertIn("  %s:\n    name:" % job, wf)
+        self.assertEqual(wf.count("if: ${{ github.event_name != 'workflow_dispatch' || inputs.reuse_run == '' }}"), 4)
         # The guard itself.
         for tag, ok in (('test-1.15', True), ('test-1', True), ('latest', False), ('testing', False), ('test-1.15;x', False), ('test-', False)):
             r = subprocess.run(['bash', '-c', "echo \"$1\" | grep -Eqx 'test-[0-9]+(\\.[0-9]+)*'", '_', tag])
