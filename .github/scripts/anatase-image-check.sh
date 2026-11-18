@@ -184,6 +184,22 @@ check "hearth-unlock (dnf form) is installed, valid and locked by default" \
 check "dnf can't touch the boot chain" "grep -q 'excludepkgs=kernel' /etc/dnf/libdnf5.conf.d/20-hearth-boot-chain.conf && cmp -s /etc/dnf/libdnf5.conf.d/20-hearth-boot-chain.conf /usr/share/hearth/unlock/dnf-boot-chain.conf"
 warn "dnf5 reads the boot-chain exclude" "dnf5 --dump-main-config 2>/dev/null | grep -i excludepkgs | grep -q kernel"
 
+echo "--- Firehold (Rust, test): only a choice, never the default (red flags 2 and 9)"
+check "Desktop Mode is KDE Plasma unless you pick Firehold" "test \"\$(cat /usr/share/nimbus/desktop-mode)\" = plasma"
+if [ -x /usr/bin/firehold-shell ]; then
+  check "firehold-comp and firehold-shell link every library they need" "test -x /usr/libexec/hearth/firehold-comp && ! ldd /usr/libexec/hearth/firehold-comp /usr/bin/firehold-shell | grep -q 'not found'"
+  check "nothing picked is KDE Plasma, and asking writes nothing" "d=\$(mktemp -d) && ! HOME=\$d XDG_CONFIG_HOME=\$d firehold-shell chosen && test ! -e \$d/nimbus/firehold-rust.json"
+  check "the pick is saved once and read back" "d=\$(mktemp -d) && HOME=\$d XDG_CONFIG_HOME=\$d firehold-shell choose firehold | grep -qx saved && HOME=\$d XDG_CONFIG_HOME=\$d firehold-shell choose firehold | grep -qx unchanged && HOME=\$d XDG_CONFIG_HOME=\$d firehold-shell chosen"
+  check "it's offered in Plasma's menu and has its keys" "test -x /usr/bin/hearth-desktop-choice && test -f /usr/share/applications/hearth-desktop-firehold.desktop && test -f /usr/share/hearth/firehold-rust/rc.xml"
+  check "nimbus-session falls back to KDE Plasma (run_firehold_rust)" "grep -q 'run_firehold_rust' /usr/bin/nimbus-session && grep -q 'KDE Plasma for this sign-in' /usr/bin/nimbus-session"
+  if command -v hearth-firehold-plasma >/dev/null 2>&1; then
+    # With Firehold on Plasma picked, picking Firehold (Rust) sets that one back to Plasma, so the pick is what opens.
+    check "the two Firehold tests' choices stay in step (only on your pick)" "d=\$(mktemp -d) && mkdir -p \$d/nimbus && echo HEARTH_PLASMA_DESKTOP=firehold > \$d/nimbus/session.conf && (unset DISPLAY WAYLAND_DISPLAY; HOME=\$d XDG_CONFIG_HOME=\$d timeout 30 hearth-desktop-choice firehold </dev/null; true) && HOME=\$d XDG_CONFIG_HOME=\$d firehold-shell chosen && test \"\$(HOME=\$d XDG_CONFIG_HOME=\$d hearth-firehold-plasma choice)\" = plasma"
+  fi
+else
+  echo "::warning title=check::Firehold (Rust, test) isn't in this image (it didn't build): Desktop Mode is KDE Plasma only"
+fi
+
 echo "--- services stay off until asked for"
 for u in smb.service tailscaled.service hearth-ai-share-firewall.timer hearth-remote-desktop-firewall.service lactd.service; do
   check "$u is off" "[ \"\$(systemctl is-enabled $u 2>/dev/null)\" != enabled ]"

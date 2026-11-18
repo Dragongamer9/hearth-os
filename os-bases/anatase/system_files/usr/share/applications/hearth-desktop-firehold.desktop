@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Desktop Mode: Firehold (Rust, test)
+GenericName=Try Firehold as Desktop Mode
+Comment=Firehold built all in Rust: Couch and Desk in one session. A test; KDE Plasma stays the default.
+Exec=hearth-desktop-choice firehold
+Icon=hearth
+Categories=System;Settings;
+Keywords=firehold;desktop;couch;desk;rust;

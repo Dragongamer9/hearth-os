@@ -125,6 +125,11 @@ pub fn run_headless() {
 
     info!(w, h, "headless: drawing into memory");
     let frame = Duration::from_micros(16_667);
+    // FIREHOLD_HEADLESS_IDLE=1 (the at-rest checks, firehold-rust-idle.sh): after a few frames with nothing new, wait for
+    // a client instead of drawing 60 times a second, as a real screen does (udev draws when something changed). Off by
+    // default: the game tests count frame callbacks at the headless screen's steady 60.
+    let idle_ok = std::env::var_os("FIREHOLD_HEADLESS_IDLE").is_some();
+    let mut quiet: u32 = 0;
     while state.running.load(Ordering::SeqCst) {
         let now = state.clock.now();
         let frame_target = now + frame;
@@ -168,6 +173,7 @@ pub fn run_headless() {
         };
         match rendered {
             Ok((damaged, states)) => {
+                quiet = if damaged { 0 } else { quiet.saturating_add(1) };
                 if damaged {
                     state.captures.damaged(&output);
                     let mut feedback = take_presentation_feedback(&output, &state.space, &states);
@@ -203,7 +209,8 @@ pub fn run_headless() {
             );
         }
 
-        let result = event_loop.dispatch(Some(frame), &mut state);
+        let wait = if idle_ok && quiet >= 3 && !state.captures.wants(&output) { Duration::from_secs(1) } else { frame };
+        let result = event_loop.dispatch(Some(wait), &mut state);
         if result.is_err() {
             state.running.store(false, Ordering::SeqCst);
         } else {

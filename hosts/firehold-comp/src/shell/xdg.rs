@@ -52,6 +52,7 @@ impl<BackendData: Backend> XdgShellHandler for HearthState<BackendData> {
 
         compositor::add_post_commit_hook(surface.wl_surface(), |state: &mut Self, _, surface| {
             handle_toplevel_commit(&mut state.space, surface);
+            state.place_when_sized(surface);
             state.focus_new_window(surface);
         });
     }
@@ -254,11 +255,14 @@ impl<BackendData: Backend> XdgShellHandler for HearthState<BackendData> {
                 .find(|element| element.wl_surface().as_deref() == Some(&surface));
             if let Some(window) = window {
                 use xdg_decoration::zv1::server::zxdg_toplevel_decoration_v1::Mode;
+                // No title bar while it's full screen (a game the Couch put there showed Firehold's bar over its
+                // top and was pushed down by it); it comes back with the window (as X11 windows do, x11.rs).
                 let is_ssd = configure
                     .state
                     .decoration_mode
                     .map(|mode| mode == Mode::ServerSide)
-                    .unwrap_or(false);
+                    .unwrap_or(false)
+                    && !configure.state.states.contains(xdg_toplevel::State::Fullscreen);
                 window.set_ssd(is_ssd);
             }
         }

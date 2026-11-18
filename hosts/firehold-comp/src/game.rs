@@ -397,6 +397,10 @@ pub struct GameState {
     /// Frames the game was let draw without waiting (Allow tearing).
     pub unpaced: u64,
     paced_window: (Instant, u64, f64),
+    /// Every frame the game in front handed in (its window's commits), paced or not: the overlay's fps without a
+    /// frame limit. Counted in shell/mod.rs's commit; the rate is worked out only when the status is asked for.
+    pub frames: u64,
+    frame_rate: std::cell::Cell<(Instant, u64, f64)>,
     last_enforce: Instant,
     dirty: bool,
     /// The Overlay surface given the keyboard over the game (game_overlays).
@@ -430,6 +434,8 @@ impl GameState {
             paced: 0,
             unpaced: 0,
             paced_window: (Instant::now(), 0, 0.0),
+            frames: 0,
+            frame_rate: std::cell::Cell::new((Instant::now(), 0, 0.0)),
             last_enforce: Instant::now(),
             dirty: false,
             control_tried: false,
@@ -511,6 +517,15 @@ fn is_x11(w: &WindowElement) -> bool {
 fn client_of(w: &WindowElement, dh: &smithay::reexports::wayland_server::DisplayHandle) -> Option<Client> {
     let s = w.wl_surface()?;
     dh.get_client(s.id()).ok()
+}
+
+impl<B: Backend> HearthState<B> {
+    /// Counted from shell/mod.rs's commit (whose impl has no 'static): a frame of the game in front.
+    pub fn game_frame(&mut self, window: &WindowElement) {
+        if self.game.active.as_ref().is_some_and(|a| &a.window == window) {
+            self.game.frames += 1;
+        }
+    }
 }
 
 impl<B: Backend + 'static> HearthState<B> {
@@ -874,6 +889,8 @@ impl<B: Backend + 'static> HearthState<B> {
         });
         self.game.paced = 0;
         self.game.paced_window = (Instant::now(), 0, 0.0);
+        self.game.frames = 0;
+        self.game.frame_rate.set((Instant::now(), 0, 0.0));
         if let Some(iv) = interval {
             self.game_start_limiter(iv);
         }
@@ -930,8 +947,24 @@ impl<B: Backend + 'static> HearthState<B> {
         true
     }
 
+    /// The game's frames a second since the status was last asked for (the overlay asks once a second); nothing is
+    /// timed while nobody asks.
+    fn game_fps(&self) -> f64 {
+        let (t, n0, last) = self.game.frame_rate.get();
+        let el = t.elapsed().as_secs_f64();
+        if el < 0.5 {
+            return last;
+        }
+        let n = self.game.frames.saturating_sub(n0);
+        // Asked again after a long while: that's an average over too long a time to call it the frame rate now.
+        let f = if el > 5.0 { 0.0 } else { n as f64 / el };
+        self.game.frame_rate.set((Instant::now(), self.game.frames, f));
+        f
+    }
+
     /// What the Guide shows (and the tests read): the game, its choices, and what actually happened.
     pub fn game_status(&self) -> Value {
+        let fps = self.game_fps();
         let game = self.game.active.as_ref().map(|a| {
             let g = output_state(&a.output);
             let scale = a.output.current_scale().fractional_scale();
@@ -948,6 +981,8 @@ impl<B: Backend + 'static> HearthState<B> {
                 "frameLimit": a.settings.frame_limit.to_value(),
                 "frameLimitActive": a.interval.is_some() && self.game.limiter.is_some(),
                 "pacedFps": (self.game.paced_window.2 * 10.0).round() / 10.0,
+                "fps": (fps * 10.0).round() / 10.0,
+                "frames": self.game.frames,
                 "scaling": a.settings.scaling.name(),
                 "renderSize": a.render_size.map(phys).unwrap_or(out_phys.clone()),
                 "configureSize": a.render_size.map(|s| json!([s.w, s.h])),

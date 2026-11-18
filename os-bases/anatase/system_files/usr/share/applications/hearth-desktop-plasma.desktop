@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=Desktop Mode: KDE Plasma
+GenericName=Use KDE Plasma as Desktop Mode
+Comment=Back to KDE Plasma (the default) for Desktop Mode
+Exec=hearth-desktop-choice plasma
+Icon=hearth
+Categories=System;Settings;
+Keywords=plasma;kde;desktop;firehold;

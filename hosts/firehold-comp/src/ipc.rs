@@ -3,7 +3,10 @@
 //! word is `{"op": word}`). Mantel's side is `hearth-firehold-bridge` (WinList.qml runs it under HEARTH_WM=firehold).
 //!
 //! In (`op`):
-//!   watch                              this connection gets `{"t": "windows", ...}` whenever anything in it changes
+//!   watch {input?}                     this connection gets `{"t": "windows", ...}` whenever anything in it changes;
+//!                                      with `"input": true` also `{"t": "input", "kind": "mouse"|"keys"}` when a real
+//!                                      mouse, touchpad or keyboard is used (at most once a second per kind: Firehold's
+//!                                      Rust shell switches to the Desk on it; firehold-shell, docs/FIREHOLD-RUST.md)
 //!   windows                            the list once
 //!   activate|close {id}                minimize|maximize|fullscreen {id, on}
 //!   snap {id, zone}                    left-half, right-half, maximize
@@ -55,6 +58,7 @@ struct Watcher {
     inbuf: Vec<u8>,
     dead: bool,
     watching: bool,
+    inputs: bool,
     sent: String,
 }
 
@@ -65,6 +69,37 @@ pub struct IpcState {
     pub socket_path: Option<PathBuf>,
     watchers: Vec<Watcher>,
     next: u64,
+    last_input: Option<(&'static str, std::time::Instant)>,
+    input_pending: Option<&'static str>,
+}
+
+impl IpcState {
+    /// A real device was used (input_handler.rs): noted for the watchers that asked, at most once a second per kind.
+    /// Only a field or two is touched here; it's sent in the next `ipc_tick`.
+    pub fn note_input(&mut self, kind: &'static str) {
+        if !self.watchers.iter().any(|w| w.inputs) {
+            return;
+        }
+        let now = std::time::Instant::now();
+        let due = match self.last_input {
+            Some((k, at)) => k != kind || now.duration_since(at) >= Duration::from_secs(1),
+            None => true,
+        };
+        if due {
+            self.last_input = Some((kind, now));
+            self.input_pending = Some(kind);
+        }
+    }
+}
+
+/// What kind of device an input event came from, for `note_input` (None: not one that says which posture).
+pub fn input_kind<B: smithay::backend::input::InputBackend>(event: &smithay::backend::input::InputEvent<B>) -> Option<&'static str> {
+    use smithay::backend::input::InputEvent;
+    match event {
+        InputEvent::Keyboard { .. } => Some("keys"),
+        InputEvent::PointerMotion { .. } | InputEvent::PointerMotionAbsolute { .. } | InputEvent::PointerButton { .. } | InputEvent::PointerAxis { .. } => Some("mouse"),
+        _ => None,
+    }
 }
 
 /// A command line: JSON, or a bare word.
@@ -157,7 +192,7 @@ impl<B: Backend + 'static> HearthState<B> {
             if res.is_err() {
                 continue;
             }
-            self.ipc.watchers.push(Watcher { id, stream, inbuf: Vec::new(), dead: false, watching: false, sent: String::new() });
+            self.ipc.watchers.push(Watcher { id, stream, inbuf: Vec::new(), dead: false, watching: false, inputs: false, sent: String::new() });
         }
     }
 
@@ -242,11 +277,13 @@ impl<B: Backend + 'static> HearthState<B> {
         let err = |e: &str| json!({ "t": "reply", "op": op, "ok": false, "error": e });
         match op.as_str() {
             "watch" => {
+                let inputs = v.get("input").and_then(|i| i.as_bool()).unwrap_or(false);
                 if let Some(w) = self.ipc.watchers.iter_mut().find(|w| w.id == from) {
                     w.watching = true;
+                    w.inputs = inputs;
                     w.sent.clear();
                 }
-                return ok(json!({ "version": 1, "features": ["windows", "desktops", "shot", "frames", "snap"] }));
+                return ok(json!({ "version": 1, "features": ["windows", "desktops", "shot", "frames", "snap", "input"] }));
             }
             "windows" => return self.ipc_list(),
             "status" => {
@@ -437,6 +474,13 @@ impl<B: Backend + 'static> HearthState<B> {
         for (to, reply) in std::mem::take(&mut self.captures.shots_done) {
             self.ipc_send(to, &reply);
         }
+        if let Some(kind) = self.ipc.input_pending.take() {
+            let to: Vec<u64> = self.ipc.watchers.iter().filter(|w| w.inputs && !w.dead).map(|w| w.id).collect();
+            let v = json!({ "t": "input", "kind": kind });
+            for id in to {
+                self.ipc_send(id, &v);
+            }
+        }
         if self.ipc.watchers.iter().any(|w| w.watching && !w.dead) {
             let text = self.ipc_list().to_string();
             let due: Vec<u64> = self.ipc.watchers.iter().filter(|w| w.watching && !w.dead && w.sent != text).map(|w| w.id).collect();
@@ -522,6 +566,21 @@ mod tests {
         assert_eq!(id_of(&json!({"id": "12"})), Some(12));
         assert_eq!(id_of(&json!({"id": 7})), Some(7));
         assert_eq!(id_of(&json!({"id": "{uuid}"})), None);
+    }
+
+    #[test]
+    fn input_kinds_are_told_once_a_second_and_only_when_asked() {
+        let mut s = IpcState::default();
+        s.note_input("mouse");
+        assert_eq!(s.input_pending, None, "nobody asked");
+        let (a, _b) = UnixStream::pair().unwrap();
+        s.watchers.push(Watcher { id: 1, stream: a, inbuf: Vec::new(), dead: false, watching: true, inputs: true, sent: String::new() });
+        s.note_input("mouse");
+        assert_eq!(s.input_pending.take(), Some("mouse"));
+        s.note_input("mouse");
+        assert_eq!(s.input_pending, None, "the same kind within a second");
+        s.note_input("keys");
+        assert_eq!(s.input_pending, Some("keys"), "another kind at once");
     }
 
     #[test]

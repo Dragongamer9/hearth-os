@@ -16,7 +16,8 @@ name: Firehold
 
 on:
   push:
-    branches: ['feature/hearth-compositor', 'feature/firehold', 'feature/firehold-*', feature/kwin-1.14]
+    # (feature/firehold-rust has its own workflow, firehold-rust.yml: the Rust shell, not Mantel.)
+    branches: ['feature/hearth-compositor', 'feature/firehold', 'feature/firehold-*', '!feature/firehold-rust', feature/kwin-1.14]
     paths: ['hosts/firehold-comp/**', 'hosts/linux/session/**', 'hosts/linux/desktop/firehold/**',
             'hosts/linux/desktop/labwc/autostart', 'hosts/linux/desktop/shell/hearth-your-desktop',
             'hosts/linux/desktop/shell/SetYourDesktop.qml', 'hosts/linux/desktop/shell/DesktopNotice.qml',

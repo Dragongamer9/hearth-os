@@ -154,13 +154,21 @@ fn local_minutes() -> i64 {
     }
 }
 
+static DEFAULT_LOOK: std::sync::OnceLock<&'static str> = std::sync::OnceLock::new();
+
+/// The look used when none is chosen (or the chosen one isn't in palettes.json): Steam-style, unless the program
+/// says otherwise before its first `load` (Firehold's shell: Hearth's own warm look, the one its mockups are drawn in).
+pub fn set_default_look(look: &'static str) {
+    let _ = DEFAULT_LOOK.set(look);
+}
+
 /// The look as it is now.
 pub fn load() -> Pal {
     let pal = palettes();
     let d = read_obj(&desktop_json()).unwrap_or_default();
     let mut look = s(&d, "look").to_string();
     if !pal.get(&look).map(Value::is_object).unwrap_or(false) || look.starts_with('_') || look == "accents" || look == "blackSet" {
-        look = "steam".into();
+        look = DEFAULT_LOOK.get().copied().filter(|l| pal.get(*l).map(Value::is_object).unwrap_or(false)).unwrap_or("steam").into();
     }
     // Sunset: light between sunsetLight and sunsetDark (never written; Settings.mode stays as it is).
     let mut mode = if s(&d, "mode") == "light" { "light" } else { "dark" };
