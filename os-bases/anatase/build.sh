@@ -776,6 +776,9 @@ plasma_before=$(du -sxm /usr | cut -f1)
 dm_before=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
 dnf5 -y install plasma-workspace plasma-desktop kwin
 dnf5 -y install --skip-unavailable plasma-workspace-wayland || true
+# xrdb: applying a Global Theme (plasma-apply-lookandfeel, System Settings) also gives X11 apps the colours and cursor
+# through it; without it, it says "/usr/sbin/xrdb: No such file or directory" each time.
+dnf5 -y install --skip-unavailable xrdb || true
 dnf5 -y install --skip-unavailable --skip-broken plasma-nm plasma-pa plasma-systemmonitor powerdevil kscreen libkscreen kscreenlocker \
   bluedevil polkit-kde xdg-desktop-portal-kde plasma-breeze breeze-icon-theme breeze-cursor-theme kde-cli-tools \
   plasma-systemsettings kinfocenter kf6-kirigami kwin-effects kdecoration aurorae plasma-milou milou kmenuedit \

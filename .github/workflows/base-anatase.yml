@@ -615,7 +615,7 @@ jobs:
       # by the looks job below (artifacts can't be opened from the owner's sessions).
       - name: Screenshots of Hearth's looks in Plasma
         continue-on-error: true
-        timeout-minutes: 30
+        timeout-minutes: 40
         run: bash .github/scripts/anatase-look-shots.sh localhost/hearth-os:anatase /tmp/anatase-looks
       - uses: actions/upload-artifact@v4
         if: ${{ always() }}
@@ -625,6 +625,12 @@ jobs:
           path: /tmp/anatase-looks
           if-no-files-found: ignore
           retention-days: 14
+      # REQUIRED: on a new account's first Plasma start, Hearth's Global Theme is applied and recorded (the step above
+      # writes the result; its pictures stay warn-only).
+      - name: Hearth's look on the first Plasma start
+        run: |
+          r=$(cat /tmp/anatase-looks/first-start.txt 2>/dev/null || echo "FAIL the screenshots step left no result")
+          case "$r" in OK*) echo "::notice title=first start::$r" ;; *) echo "::error title=first start::Hearth's look didn't apply on the first Plasma start: $r"; exit 1 ;; esac
 
       # REQUIRED: "Unlock the file system" for real (overlay mounts, dnf, starts, an update and a rollback played out).
       - name: Unlock the file system (hearth-unlock, dnf)
@@ -719,12 +725,13 @@ jobs:
         run: |
           set -e
           n=$(ls looks/*.png 2>/dev/null | wc -l)
-          [ "$n" -gt 0 ] || { echo "::warning title=looks::no screenshots to post"; exit 0; }
+          [ -d looks ] && [ -n "$(ls looks)" ] || { echo "::warning title=looks::nothing to post"; exit 0; }
           mkdir -p site && cd site
           git init -q -b ci/anatase-looks
           mkdir "run-${{ github.run_id }}"
-          cp ../looks/*.png "run-${{ github.run_id }}/"
-          for f in sync.log plasmashell.log kdeglobals.txt plasma-look.json; do [ -f "../looks/$f" ] && cp "../looks/$f" "run-${{ github.run_id }}/" || true; done
+          # Pictures and the small logs that explain them (never anything else).
+          find ../looks -maxdepth 1 -type f \( -name '*.png' -o -name '*.txt' -o -name '*.json' -o -name '*.log' \) -size -5M \
+            -exec cp {} "run-${{ github.run_id }}/" \;
           printf 'Screenshots of Hearth OS on Anatase (Plasma, virtual screen, software drawing) from run %s, commit %s.\n' \
             "${{ github.run_id }}" "${{ github.sha }}" > README.md
           git add -A

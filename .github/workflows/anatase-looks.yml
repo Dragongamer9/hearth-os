@@ -1,0 +1,58 @@
+# Hearth's looks in Plasma, quickly (no image build): the published test image (hearth-os:test-1.15) with this
+# branch's hearth-plasma-looks put in and the looks generated again, a new account's first Plasma start (REQUIRED:
+# Hearth's Global Theme applied and recorded) and the screenshots (.github/scripts/anatase-look-shots.sh), posted to
+# the branch ci/anatase-looks-<branch>. base-anatase.yml runs the same on the image it builds. Never publishes anything.
+name: Anatase looks (quick)
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['fix/anatase-looks']
+    paths: ['os-bases/anatase/system_files/usr/libexec/nimbus/hearth-plasma-looks', '.github/scripts/anatase-look-shot*',
+            '.github/workflows/anatase-looks.yml']
+
+permissions:
+  contents: write    # the screenshots branch
+  packages: read     # the test image
+
+concurrency:
+  group: anatase-looks-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  looks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: The published test image
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin >/dev/null
+          for i in 1 2 3; do sudo podman pull -q ghcr.io/dragongamer9/hearth-os:test-1.15 >/dev/null && break; sleep 20; done
+          echo "::notice title=image::$(sudo podman image inspect --format '{{.Digest}}' ghcr.io/dragongamer9/hearth-os:test-1.15)"
+      - name: Screenshots of Hearth's looks in Plasma
+        continue-on-error: true
+        timeout-minutes: 40
+        run: bash .github/scripts/anatase-look-shots.sh ghcr.io/dragongamer9/hearth-os:test-1.15 /tmp/anatase-looks "$PWD"
+      - name: Post them to ci/anatase-looks-${{ github.ref_name }}
+        if: ${{ always() }}
+        continue-on-error: true
+        run: |
+          set -e
+          B="ci/anatase-looks-$(echo '${{ github.ref_name }}' | tr '/' '-')"
+          [ -n "$(ls /tmp/anatase-looks 2>/dev/null)" ] || { echo "::warning title=looks::nothing to post"; exit 0; }
+          mkdir -p /tmp/post && cd /tmp/post
+          git init -q -b "$B"
+          mkdir "run-${{ github.run_id }}"
+          find /tmp/anatase-looks -maxdepth 1 -type f \( -name '*.png' -o -name '*.txt' -o -name '*.json' -o -name '*.log' \) -size -5M \
+            -exec cp {} "run-${{ github.run_id }}/" \;
+          printf 'Hearth OS on Anatase: Plasma looks from run %s, commit %s (test-1.15 image with this commit'"'"'s hearth-plasma-looks).\n' \
+            "${{ github.run_id }}" "${{ github.sha }}" > README.md
+          git add -A
+          git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com commit -q -m "Look screenshots, run ${{ github.run_id }}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" "HEAD:refs/heads/$B"
+          echo "::notice title=looks::$(ls run-${{ github.run_id }}/*.png 2>/dev/null | wc -l) screenshots on $B/run-${{ github.run_id }}"
+      - name: Hearth's look on the first Plasma start
+        run: |
+          r=$(cat /tmp/anatase-looks/first-start.txt 2>/dev/null || echo "FAIL the screenshots step left no result")
+          case "$r" in OK*) echo "::notice title=first start::$r" ;; *) echo "::error title=first start::Hearth's look didn't apply on the first Plasma start: $r"; exit 1 ;; esac

@@ -145,6 +145,29 @@ class Sync(unittest.TestCase):
         self.assertFalse(PL.hearth_wallpaper('file:///home/a/Pictures/me.jpg'))
 
 
+class Verify(unittest.TestCase):
+    W = {'look': 'zen', 'mode': 'light', 'accent': '', 'sub': ''}
+
+    def test_applied_only_when_kde_shows_it(self):
+        ok = {'lnf': 'org.hearthos.zen', 'scheme': 'HearthOS-zen-Light', 'style': 'hearth-zen-light'}
+        self.assertTrue(PL.verified(self.W, ok))
+        self.assertTrue(PL.verified(dict(self.W, sub='x'), dict(ok, scheme='HearthOS-zen-x-Light')))
+        for k, bad in (('lnf', None), ('lnf', 'org.hearthos.hearth'), ('scheme', 'BreezeDark'), ('style', 'hearth-zen')):
+            self.assertFalse(PL.verified(self.W, dict(ok, **{k: bad})), k)
+        self.assertFalse(PL.verified(self.W, {}))
+
+    def test_the_choice_is_recorded_by_name(self):
+        # plasma-apply-lookandfeel leaves out values equal to KDE's default (Hearth's look is the default), so the
+        # tool writes the Global Theme into the person's kdeglobals itself; and only a verified look is recorded.
+        src = TOOL.read_text()
+        self.assertIn("changes = {'KDE': {'LookAndFeelPackage': lnf}}", src)
+        self.assertIn('if ok:\n            st.update(applied=want', src)
+
+    def test_running_check_needs_no_tools(self):
+        self.assertIn(PL.plasma_running(), (True, False))
+        self.assertNotIn("'pgrep'", TOOL.read_text())
+
+
 class Wiring(unittest.TestCase):
     def test_build_runs_it(self):
         b = (REPO / 'os-bases/anatase/build.sh').read_text()
@@ -152,6 +175,18 @@ class Wiring(unittest.TestCase):
         self.assertIn("'LookAndFeelPackage': 'org.hearthos.hearth'", b)
         self.assertIn('systemctl --global enable hearth-plasma-looks.path', b)
         self.assertNotIn('Engine=none', b)
+        self.assertIn('install --skip-unavailable xrdb', b)
+
+    def test_first_start_is_required(self):
+        for wf in ('base-anatase.yml', 'anatase-looks.yml'):
+            w = (REPO / '.github/workflows' / wf).read_text()
+            step = w.split("- name: Hearth's look on the first Plasma start")[1].split('- name:')[0]
+            self.assertNotIn('continue-on-error', step, wf)
+            self.assertIn('first-start.txt', step, wf)
+            self.assertIn('exit 1', step, wf)
+        sh = (REPO / '.github/scripts/anatase-look-shots.sh').read_text()
+        self.assertIn('KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1', sh)
+        self.assertIn('cp "$(command -v kwin_wayland)" /tmp/kwin_wayland', sh)
 
     def test_units(self):
         sf = REPO / 'os-bases/anatase/system_files'
