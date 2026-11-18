@@ -5,7 +5,9 @@ var distro = /fedora|anatase|start-here|^$/i;
 var hearthWall = "file:///usr/share/wallpapers/Hearth-fireside/";
 var distroWall = /fedora|anatase|\/Next\/|\/[Ff][0-9][0-9]\/|backgrounds\/(default|f[0-9][0-9])|^$/i;
 panels().forEach(function (panel) {
-    panel.widgets(["org.kde.plasma.kickoff", "org.kde.plasma.kicker", "org.kde.plasma.kickerdash"]).forEach(function (w) {
+    // (widgets() takes one type or none: every widget, the menus picked out by their type.)
+    panel.widgets().forEach(function (w) {
+        if (["org.kde.plasma.kickoff", "org.kde.plasma.kicker", "org.kde.plasma.kickerdash"].indexOf(w.type) < 0) return;
         w.currentConfigGroup = ["General"];
         var icon = String(w.readConfig("icon", ""));
         if (distro.test(icon)) w.writeConfig("icon", "hearth");

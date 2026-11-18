@@ -166,6 +166,7 @@ for t in /usr/share/plasma/look-and-feel/org.hearthos.*; do
 done
 check "Hearth's look is KDE's default (a choice of yours wins); the splash is Hearth's" \
   "grep -qx 'LookAndFeelPackage=org.hearthos.hearth' /etc/xdg/kdeglobals && grep -qx 'name=hearth-hearth' /etc/xdg/plasmarc && grep -qx 'Theme=org.hearthos.hearth' /etc/xdg/ksplashrc && grep -qx 'Engine=KSplashQML' /etc/xdg/ksplashrc"
+warn "xrdb is there (plasma-apply-lookandfeel runs it when a Global Theme is applied)" "command -v xrdb"
 check "Hearth's Settings and System Settings stay in step (hearth-plasma-looks)" \
   "python3 -c 'import ast,sys; ast.parse(open(\"/usr/libexec/nimbus/hearth-plasma-looks\").read())' && test -x /usr/libexec/nimbus/hearth-plasma-looks && test -f /etc/xdg/autostart/hearth-plasma-looks.desktop && [ \"\$(systemctl --global is-enabled hearth-plasma-looks.path)\" = enabled ]"
 check "the old Hearth Plasma look and style are gone (one copy: the generated ones)" "test ! -e /usr/share/plasma/look-and-feel/org.hearth.desktop && test ! -e /usr/share/plasma/desktoptheme/hearth"

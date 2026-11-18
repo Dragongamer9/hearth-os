@@ -24,6 +24,9 @@ if ! ls /dev/dri/renderD* >/dev/null 2>&1; then
   sudo modprobe vgem 2>/dev/null || { sudo apt-get -qq install -y "linux-modules-extra-$(uname -r)" >/dev/null 2>&1; sudo modprobe vgem 2>/dev/null; }
   sudo udevadm settle 2>/dev/null
 fi
+# (The runner is thrown away after the job: its render node is opened to every account, so the container's own groups,
+# which don't match the runner's, don't matter.)
+sudo chmod 666 /dev/dri/renderD* 2>/dev/null
 echo "::notice title=looks render device::$(ls -l /dev/dri 2>&1 | tr '\n' ' ')"
 $P run -d --name "$NAME" --privileged --entrypoint sleep "$IMG" infinity >/dev/null \
   || { echo "FAIL couldn't start the image" > "$OUT/first-start.txt"; echo "::error title=looks::couldn't start the image"; exit 0; }
@@ -35,6 +38,8 @@ $P exec "$NAME" bash -c 'timeout 300 dnf5 -y -q install --skip-unavailable pytho
   || echo "::notice title=looks::the screenshot helpers didn't install; PyGObject is used"
 if [ -n "$REPO" ]; then
   $P cp "$REPO/os-bases/anatase/system_files/usr/libexec/nimbus/hearth-plasma-looks" "$NAME:/usr/libexec/nimbus/hearth-plasma-looks"
+  J=usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates/hearth-look-defaults.js
+  $P cp "$REPO/os-bases/anatase/system_files/$J" "$NAME:/$J"
   $P exec "$NAME" bash -c 'chmod 755 /usr/libexec/nimbus/hearth-plasma-looks &&
     python3 /usr/libexec/nimbus/hearth-plasma-looks build --logo /usr/share/icons/hicolor/scalable/apps/hearth.svg >/dev/null' \
     && echo "::notice title=looks::this branch's hearth-plasma-looks, looks generated again" \
@@ -121,7 +126,7 @@ os.replace(tmp, p)
 PY
   timeout 180 /usr/libexec/nimbus/hearth-plasma-looks sync >>"$S/sync.log" 2>&1
   st=$(status)
-  echo "$st" | grep -q "\"lnf\": \"org.hearthos.$1\"" && say "OK $1 applied" || say "WARN $1 not applied: $st"
+  echo "$st" | grep -q "\"lnf\": \"org.hearthos.$1\"" && echo "$st" | grep -q '"colours": true' && say "OK $1 applied" || say "WARN $1 not applied: $st"
   sleep 6
 }
 
@@ -133,7 +138,8 @@ timeout 240 /usr/libexec/nimbus/hearth-plasma-looks sync --wait >>"$S/sync.log" 
 st=$(status)
 echo "$st" > "$S/first-start-status.json"
 if echo "$st" | grep -q '"lnf": "org.hearthos.hearth"' && echo "$st" | grep -q '"scheme": "HearthOS-hearth-' \
-   && echo "$st" | grep -q '"style": "hearth-hearth"' && echo "$st" | grep -q '"applied": {"look": "hearth"' \
+   && echo "$st" | grep -q '"style": "hearth-hearth"' && echo "$st" | grep -q '"colours": true' \
+   && echo "$st" | grep -q '"applied": {"look": "hearth"' \
    && grep -q 'LookAndFeelPackage=org.hearthos.hearth' "$HOME/.config/kdeglobals" 2>/dev/null; then
   say "FIRSTOK Hearth's look applied and recorded (sync exit $rc): $st"
 else
@@ -141,6 +147,9 @@ else
 fi
 sleep 8
 keep_shell "after the first start"
+icon=$(dbus-send --session --print-reply --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript \
+  string:'var o=[]; panels().forEach(function(p){p.widgets().forEach(function(w){if(w.type.indexOf("kick")>=0){w.currentConfigGroup=["General"];o.push(w.type+"="+w.readConfig("icon",""))}})}); print(o.join(" "))' 2>&1 | grep -o 'org.kde.plasma.kick[^"]*' | tr '\n' ' ')
+echo "$icon" | grep -q '=hearth' && say "OK the menu button has Hearth's logo ($icon)" || say "WARN the menu button's icon isn't Hearth's: $icon"
 # ---- Hearth in full.
 shot hearth-desktop
 dbus-send --session --type=method_call --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.activateLauncherMenu; sleep 5
