@@ -1547,6 +1547,19 @@ if hearth_plasma_apps "$PK/usr/share/hearth/app-kinds.json" && python3 /usr/libe
   mkdir -p /usr/share/hearth/app-kinds-plasma
   cp -a "$PK/usr/share/hearth/app-kinds/applications" /usr/share/hearth/app-kinds-plasma/
   for f in kde-mimeapps.list kde-xdg-terminals.list; do if [ -f "$PK/etc/xdg/$f" ]; then cp "$PK/etc/xdg/$f" "/etc/xdg/$f"; fi; done
+  # One entry per app in Plasma's menu (the owner saw Calculator, Terminal and Text Editor twice): where Hearth's own
+  # app shows, its KDE build (hearth-X-kde, the fallback) is kept installed but out of the menu.
+  PA=/usr/share/hearth/app-kinds-plasma/applications; twins=""
+  for k in "$PA"/hearth-*-kde.desktop /usr/share/applications/hearth-*-kde.desktop; do
+    [ -f "$k" ] || continue; id=$(basename "$k"); main="hearth-${id#hearth-}"; main="${main%-kde.desktop}.desktop"
+    m="$PA/$main"; [ -f "$m" ] || m="/usr/share/applications/$main"; [ -f "$m" ] || continue
+    if grep -qE '^NoDisplay=true|^Hidden=true' "$m" || grep -qE '^NotShowIn=.*KDE' "$m" \
+       || { grep -q '^OnlyShowIn=' "$m" && ! grep -qE '^OnlyShowIn=.*KDE' "$m"; }; then continue; fi
+    [ -f "$PA/$id" ] || cp "$k" "$PA/$id"
+    grep -q '^NoDisplay=' "$PA/$id" && sed -i 's/^NoDisplay=.*/NoDisplay=true/' "$PA/$id" || sed -i '0,/^\[Desktop Entry\]/s//[Desktop Entry]\nNoDisplay=true/' "$PA/$id"
+    case " $twins " in *" $id "*) ;; *) twins="$twins $id" ;; esac
+  done
+  echo "::notice title=Plasma's apps::KDE builds kept out of the menu (Hearth's own app shows):${twins:- none}"
   echo "::notice title=Plasma's apps::$(python3 -c 'import json; d=json.load(open("/tmp/hearth-app-kinds-plasma.json")); v=d["desktops"].get("KDE",{}); print(", ".join("%s=%s" % (a, b) for a, b in sorted(v.get("apps",{}).items()) if b))' 2>/dev/null)"
 else
   echo "::warning title=Plasma's apps::hearth-app-kinds didn't pass for Plasma, so Plasma's menu shows both Hearth's and KDE's apps, as before: $(head -c 1500 /tmp/hearth-app-kinds-plasma.json 2>/dev/null | tr '\n' ' ')"
@@ -1873,14 +1886,23 @@ gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/null 2>&1 || true
 echo "::notice title=Hearth's look::$swapped distribution logo files now show Hearth's logo"
 # The base's own wallpapers carry its code name (Anatase, Anatase_Current ...): the owner wants no Anatase name
 # anywhere. Hearth's looks bring their own wallpapers; a folder something still points at (Default) is kept.
-keep=$(readlink -f /usr/share/wallpapers/Default 2>/dev/null || true)
+# A Default that is a link to one of them becomes a real folder first, so it keeps working without the name.
+if [ -L /usr/share/wallpapers/Default ]; then
+  cp -aL /usr/share/wallpapers/Default /usr/share/wallpapers/.Default.new && rm -f /usr/share/wallpapers/Default \
+    && mv /usr/share/wallpapers/.Default.new /usr/share/wallpapers/Default || true
+fi
 gone=0
 for d in /usr/share/wallpapers/[Aa]natase* /usr/share/backgrounds/[Aa]natase*; do
   [ -e "$d" ] || continue
-  case "$keep" in "$(readlink -f "$d")"|"$(readlink -f "$d")"/*) continue ;; esac
   rm -rf "$d" && gone=$((gone + 1))
 done
-echo "::notice title=Hearth's look::removed $gone wallpaper folders named after the base${keep:+ (kept Default: $keep)}"
+# Plasma's Global Themes from the base (shown as "Anatase", "Anatase Light"): Hearth's eight are the system's; the
+# default (org.hearthos.hearth, set below) is never one of these. Breeze stays.
+for d in /usr/share/plasma/look-and-feel/*; do
+  [ -d "$d" ] || continue; case "$(basename "$d")" in org.hearthos.*|org.kde.*) continue ;; esac
+  if grep -qis 'anatase' "$d/metadata.json" "$d/metadata.desktop"; then rm -rf "$d" && gone=$((gone + 1)); fi
+done
+echo "::notice title=Hearth's look::removed $gone wallpaper folders and Global Themes named after the base"
 # KInfoCenter's About this System: Hearth's logo, name and website; the base in its details.
 mkdir -p /etc/xdg
 cat > /etc/xdg/kcm-about-distrorc <<KCM
