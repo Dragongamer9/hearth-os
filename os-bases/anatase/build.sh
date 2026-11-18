@@ -837,16 +837,26 @@ if [ -x /ctx/nimbus-app/firehold/firehold-comp ] && [ -x /ctx/nimbus-app/firehol
   test -f /usr/share/hearth/firehold-rust/rc.xml
   # Inter (the mockups' font) and the libraries the two link (most are Plasma's already).
   dnf5 -y install --skip-unavailable --skip-broken rsms-inter-fonts libinput libseat mesa-libgbm mesa-libEGL mesa-vulkan-drivers libxkbcommon xorg-x11-server-Xwayland || true
+  # (grep finding nothing is the good case: under pipefail it must not end the build, as it did in run 44318074305.)
+  fh_bad=""
   for b in /usr/libexec/hearth/firehold-comp /usr/bin/firehold-shell; do
-    missing=$(ldd "$b" 2>/dev/null | grep 'not found' | tr '\n' ' ')
-    [ -z "$missing" ] || { echo "::error title=Firehold (Rust, test)::$b can't find $missing"; exit 1; }
+    missing=$( { ldd "$b" 2>/dev/null || true; } | { grep 'not found' || true; } | tr '\n' ' ')
+    [ -z "$missing" ] || fh_bad="$fh_bad $b can't find $missing;"
   done
   # Offered in Plasma's menu (Desktop Mode: Firehold / KDE Plasma), never picked for you.
   chmod 755 /usr/bin/hearth-desktop-choice
-  test "$(HOME=/tmp/firehold-check XDG_CONFIG_HOME=/tmp/firehold-check firehold-shell chosen)" = plasma
-  test ! -e /tmp/firehold-check/nimbus/firehold-rust.json
+  fh_chosen=$(HOME=/tmp/firehold-check XDG_CONFIG_HOME=/tmp/firehold-check firehold-shell chosen 2>/dev/null || true)
+  [ "$fh_chosen" = plasma ] || fh_bad="$fh_bad with nothing picked it says '$fh_chosen', not plasma;"
+  [ ! -e /tmp/firehold-check/nimbus/firehold-rust.json ] || fh_bad="$fh_bad asking wrote the choice file;"
   rm -rf /tmp/firehold-check
-  echo "::notice title=Firehold (Rust, test)::in the image ($(du -sh /usr/libexec/hearth/firehold-comp | cut -f1) compositor, $(du -sh /usr/bin/firehold-shell | cut -f1) shell); KDE Plasma stays the default"
+  if [ -z "$fh_bad" ]; then
+    echo "::notice title=Firehold (Rust, test)::in the image ($(du -sh /usr/libexec/hearth/firehold-comp | cut -f1) compositor, $(du -sh /usr/bin/firehold-shell | cut -f1) shell); KDE Plasma stays the default"
+  else
+    # Never stops the image (it's only a choice): left out, and the image check says so.
+    echo "warning: Firehold (Rust, test) left out:$fh_bad"
+    rm -f /usr/libexec/hearth/firehold-comp /usr/bin/firehold-shell /usr/share/applications/hearth-desktop-firehold.desktop /usr/share/applications/hearth-desktop-plasma.desktop /usr/bin/hearth-desktop-choice
+    rm -rf /usr/share/hearth/firehold-rust
+  fi
 else
   echo "warning: Firehold (Rust, test) wasn't built, so this image doesn't offer it (Desktop Mode is KDE Plasma)"
   rm -f /usr/share/applications/hearth-desktop-firehold.desktop /usr/share/applications/hearth-desktop-plasma.desktop /usr/bin/hearth-desktop-choice
