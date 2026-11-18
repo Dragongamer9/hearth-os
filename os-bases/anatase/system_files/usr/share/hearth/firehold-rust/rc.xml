@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<!-- Firehold (Rust, test): the keys firehold-comp reads (its keybinds.rs understands labwc's rc.xml), installed as
+     /usr/share/hearth/firehold-rust/rc.xml. Read only. docs/FIREHOLD-RUST.md lists them. -->
+<labwc_config>
+  <keyboard>
+    <repeatRate>30</repeatRate><repeatDelay>400</repeatDelay>
+    <keybind key="Super_L" onRelease="yes"><action name="Execute" command="firehold-shell ctl home" /></keybind>
+    <keybind key="W-g"><action name="Execute" command="firehold-shell ctl guide" /></keybind>
+    <keybind key="W-Tab"><action name="Execute" command="firehold-shell ctl page switcher" /></keybind>
+    <keybind key="W-i"><action name="Execute" command="firehold-shell ctl page settings" /></keybind>
+    <keybind key="W-d"><action name="Execute" command="firehold-shell ctl posture desk" /></keybind>
+    <keybind key="A-Tab"><action name="NextWindow" /></keybind>
+    <keybind key="A-S-Tab"><action name="PreviousWindow" /></keybind>
+    <keybind key="A-F4"><action name="Close" /></keybind>
+    <keybind key="F11"><action name="ToggleFullscreen" /></keybind>
+    <keybind key="W-Left"><action name="SnapToEdge" direction="left" /></keybind>
+    <keybind key="W-Right"><action name="SnapToEdge" direction="right" /></keybind>
+    <keybind key="W-Up"><action name="ToggleMaximize" /></keybind>
+    <keybind key="W-Down"><action name="Iconify" /></keybind>
+    <keybind key="W-e"><action name="Execute" command="sh -c 'gtk-launch org.kde.dolphin || dolphin'" /></keybind>
+    <keybind key="W-t"><action name="Execute" command="sh -c 'konsole || foot'" /></keybind>
+    <keybind key="Print"><action name="Execute" command="sh -c 'mkdir -p &quot;$HOME/Pictures/Screenshots&quot; &amp;&amp; grim &quot;$HOME/Pictures/Screenshots/Screenshot $(date +%Y-%m-%d\ %H-%M-%S).png&quot;'" /></keybind>
+    <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="wpctl set-volume -l 1.0 @DEFAULT_AUDIO_SINK@ 5%+" /></keybind>
+    <keybind key="XF86AudioLowerVolume"><action name="Execute" command="wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-" /></keybind>
+    <keybind key="XF86AudioMute"><action name="Execute" command="wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle" /></keybind>
+    <keybind key="XF86MonBrightnessUp"><action name="Execute" command="brightnessctl -q set 5%+" /></keybind>
+    <keybind key="XF86MonBrightnessDown"><action name="Execute" command="brightnessctl -q set 5%-" /></keybind>
+  </keyboard>
+  <desktops number="1"><names><name>Desk</name></names></desktops>
+</labwc_config>

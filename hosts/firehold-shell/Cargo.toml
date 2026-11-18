@@ -1,0 +1,36 @@
+# Firehold's shell, all in Rust (docs/FIREHOLD-RUST.md): Couch, the Desk's bar and dock, the Guide, Everything open and
+# Settings › Couch and Desk, drawn with iced on wlr-layer-shell (iced_layershell), the way COSMIC's panel and launcher
+# are iced programs. It talks to firehold-comp through the compositor's window IPC (hosts/firehold-comp/src/ipc.rs).
+# A prototype for the Anatase test ("Firehold (Rust, test)" in Desktop Mode); never the default.
+# No version line: the owner picks every version number (Cargo reads a missing one as 0.0.0).
+[package]
+name = "firehold-shell"
+edition = "2021"
+description = "Firehold's shell in Rust (prototype): Couch, Desk, the Guide, on firehold-comp"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "firehold-shell"
+path = "src/main.rs"
+
+[dependencies]
+# iced 0.14: wgpu where there's a GPU, tiny-skia (software, into shared memory) where there isn't (CI, safe graphics);
+# iced picks by itself, ICED_BACKEND=tiny-skia forces software.
+iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "wayland", "image", "canvas", "thread-pool", "crisp", "web-colors"] }
+iced_layershell = { version = "0.19", default-features = false }
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"
+# settings_file.rs (shared with hearth-core, included by path) needs these two.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+sha1_smol = "1"
+# The controller (Couch's "Controller → Couch" and the Guide button): read only, nothing is grabbed.
+gilrs = { version = "0.11", default-features = false }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+debug = 1

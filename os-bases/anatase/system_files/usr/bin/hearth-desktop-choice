@@ -1,0 +1,24 @@
+#!/bin/sh
+# Desktop Mode on the Anatase test (docs/FIREHOLD-RUST.md): "Firehold (Rust, test)" or KDE Plasma (the default).
+# Plasma's menu runs it (hearth-desktop-firehold.desktop, hearth-desktop-plasma.desktop). The pick is saved by
+# firehold-shell (settings_file.rs: atomic, .bak, merged, written only when it changes); then it asks whether to
+# switch now (nimbus-mode desktop: Desktop Mode starts again with the pick). Nothing else ever changes it.
+#   hearth-desktop-choice firehold|plasma
+case "$1" in firehold|plasma) ;; *) echo "usage: hearth-desktop-choice firehold|plasma" >&2; exit 2 ;; esac
+command -v firehold-shell >/dev/null 2>&1 || { echo "Firehold (Rust, test) isn't in this image" >&2; exit 1; }
+firehold-shell choose "$1" >/dev/null || exit 1
+if [ "$1" = firehold ]; then
+  msg="Firehold (Rust, test) opens the next time you switch to Desktop Mode. It's a test: if it doesn't start, KDE Plasma opens instead.
+
+Switch now? Open apps will close."
+else
+  msg="KDE Plasma opens the next time you switch to Desktop Mode.
+
+Switch now? Open apps will close."
+fi
+if command -v kdialog >/dev/null 2>&1; then
+  kdialog --title "Desktop Mode" --yesno "$msg" && exec nimbus-mode desktop
+elif command -v notify-send >/dev/null 2>&1; then
+  notify-send -a Hearth -i hearth "Desktop Mode" "Saved: it's used from the next switch to Desktop Mode."
+fi
+exit 0

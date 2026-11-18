@@ -813,6 +813,35 @@ fi
 echo "::notice title=KDE Plasma::installed ($(rpm -q --qf '%{VERSION}' plasma-workspace)); it adds about $(( $(du -sxm /usr | cut -f1) - plasma_before )) MB"
 # Tools Hearth's apps and helpers use (screenshots, brightness, the clipboard, X11 helpers for Game Mode's pickers).
 dnf5 -y install --skip-unavailable --skip-broken grim slurp brightnessctl wlr-randr python3-evdev xprop xwininfo xdotool gnome-keyring cpio rsync || true
+
+# ------------------------------------------------------------------ Firehold (Rust, test) (docs/FIREHOLD-RUST.md)
+# The owner (Nov 18): Firehold built all in Rust, the way COSMIC is, to try beside KDE Plasma. firehold-comp (Hearth's
+# compositor) and firehold-shell (Couch, Desk, the Guide, in iced), built inside this base by base-anatase.yml's
+# "firehold" job. Only a choice: KDE Plasma stays Desktop Mode unless you pick "Firehold (Rust, test)" in Plasma's
+# menu (hearth-desktop-choice; saved by firehold-shell with settings_file.rs), and nimbus-session falls back to Plasma
+# whenever it doesn't come up (run_firehold_rust). Not built: the image is made without it and nothing offers it.
+if [ -x /ctx/nimbus-app/firehold/firehold-comp ] && [ -x /ctx/nimbus-app/firehold/firehold-shell ]; then
+  install -Dm755 /ctx/nimbus-app/firehold/firehold-comp /usr/libexec/hearth/firehold-comp
+  install -Dm755 /ctx/nimbus-app/firehold/firehold-shell /usr/bin/firehold-shell
+  # Its keys (firehold-comp reads labwc's rc.xml format) came with this image's system files.
+  test -f /usr/share/hearth/firehold-rust/rc.xml
+  # Inter (the mockups' font) and the libraries the two link (most are Plasma's already).
+  dnf5 -y install --skip-unavailable --skip-broken rsms-inter-fonts libinput libseat mesa-libgbm mesa-libEGL mesa-vulkan-drivers libxkbcommon xorg-x11-server-Xwayland || true
+  for b in /usr/libexec/hearth/firehold-comp /usr/bin/firehold-shell; do
+    missing=$(ldd "$b" 2>/dev/null | grep 'not found' | tr '\n' ' ')
+    [ -z "$missing" ] || { echo "::error title=Firehold (Rust, test)::$b can't find $missing"; exit 1; }
+  done
+  # Offered in Plasma's menu (Desktop Mode: Firehold / KDE Plasma), never picked for you.
+  chmod 755 /usr/bin/hearth-desktop-choice
+  test "$(HOME=/tmp/firehold-check XDG_CONFIG_HOME=/tmp/firehold-check firehold-shell chosen)" = plasma
+  test ! -e /tmp/firehold-check/nimbus/firehold-rust.json
+  rm -rf /tmp/firehold-check
+  echo "::notice title=Firehold (Rust, test)::in the image ($(du -sh /usr/libexec/hearth/firehold-comp | cut -f1) compositor, $(du -sh /usr/bin/firehold-shell | cut -f1) shell); KDE Plasma stays the default"
+else
+  echo "warning: Firehold (Rust, test) wasn't built, so this image doesn't offer it (Desktop Mode is KDE Plasma)"
+  rm -f /usr/share/applications/hearth-desktop-firehold.desktop /usr/share/applications/hearth-desktop-plasma.desktop /usr/bin/hearth-desktop-choice
+  rm -rf /usr/share/hearth/firehold-rust
+fi
 # Couch Co-op (Beta Experimental), Move games / Make Hearth bigger, Proton for games added by hand: not fatal,
 # Hearth says what's missing.
 dnf5 -y install 7zip || dnf5 -y install p7zip p7zip-plugins || true

@@ -510,6 +510,9 @@ impl<BackendData: Backend> HearthState<BackendData> {
 impl<BackendData: Backend> HearthState<BackendData> {
     pub fn process_input_event_windowed<B: InputBackend>(&mut self, event: InputEvent<B>, output_name: &str) {
         self.idle_notifier_state.notify_activity(&self.seat);
+        if let Some(kind) = crate::ipc::input_kind(&event) {
+            self.ipc.note_input(kind);
+        }
         match event {
             InputEvent::Keyboard { event } => match self.keyboard_key_to_action::<B>(event) {
                 KeyAction::Hearth(actions) => {
@@ -647,6 +650,9 @@ impl<BackendData: Backend> HearthState<BackendData> {
 impl HearthState<UdevData> {
     pub fn process_input_event<B: InputBackend>(&mut self, dh: &DisplayHandle, event: InputEvent<B>) {
         self.idle_notifier_state.notify_activity(&self.seat);
+        if let Some(kind) = crate::ipc::input_kind(&event) {
+            self.ipc.note_input(kind);
+        }
         match event {
             InputEvent::Keyboard { event, .. } => match self.keyboard_key_to_action::<B>(event) {
                 KeyAction::Hearth(actions) => {
