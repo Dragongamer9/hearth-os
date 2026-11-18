@@ -15,6 +15,7 @@ KEY / VALUE:
   direct       on off        (Direct to the display)
   vrr          on off        (VRR / FreeSync while it's fullscreen)
   sharpen      on off        (sharpening after upscaling)
+  tearing      on off        (Allow tearing: the game doesn't wait for the screen; off unless chosen)
 
 Errors are one line, "error: ...", and exit 1. Without Firehold running, status prints {"ok": false, "running": false}.
 """
@@ -28,8 +29,8 @@ import hearth_settings_io as io  # noqa: E402
 
 FRAME_LIMITS = ['off', 30, 40, 60, 90, 120, 'screen']
 SCALINGS = ['off', 'quality', 'balanced', 'performance']
-SWITCHES = ('direct', 'vrr', 'sharpen')
-DEFAULTS = {'frameLimit': 'off', 'scaling': 'off', 'direct': True, 'vrr': True, 'sharpen': True}
+SWITCHES = ('direct', 'vrr', 'sharpen', 'tearing')
+DEFAULTS = {'frameLimit': 'off', 'scaling': 'off', 'direct': True, 'vrr': True, 'sharpen': True, 'tearing': False}
 
 
 def settings_path():
@@ -102,7 +103,7 @@ def norm(key, value):
         if v in ('off', 'false', '0', 'no'):
             return False
         raise ValueError('%s is on or off' % key)
-    raise ValueError('unknown setting %r (frameLimit, scaling, direct, vrr, sharpen)' % key)
+    raise ValueError('unknown setting %r (frameLimit, scaling, direct, vrr, sharpen, tearing)' % key)
 
 
 def game_id(app):

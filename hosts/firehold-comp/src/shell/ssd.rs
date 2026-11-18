@@ -41,6 +41,8 @@ pub enum Button {
     Minimize,
     Maximize,
     Close,
+    /// Firehold's game chip, "Full screen: F11 or ≡" (frames.rs).
+    Fullscreen,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,6 +54,15 @@ struct DrawKey {
     pressed: Option<Button>,
     title: String,
     serial: u64,
+    /// Firehold's look (frames.rs): its serial and this window's label, None for Hearth's plain frames.
+    firehold: Option<(u64, crate::frames::Label)>,
+}
+
+/// Where Firehold's bar takes clicks (set when it's drawn).
+#[derive(Debug, Clone, PartialEq)]
+struct FhHits {
+    game: bool,
+    chip: (f64, f64),
 }
 
 #[derive(Debug, Clone)]
@@ -63,6 +74,9 @@ pub struct HeaderBar {
     drawn: Option<DrawKey>,
     buffer: Option<MemoryRenderBuffer>,
     stale: bool,
+    fh: Option<FhHits>,
+    /// A game's accent border (one pixel, stretched), with its colour.
+    border: Option<(MemoryRenderBuffer, [u8; 4])>,
 }
 
 pub const HEADER_BAR_HEIGHT: i32 = 34;
@@ -113,6 +127,8 @@ impl HeaderBar {
             drawn: None,
             buffer: None,
             stale: false,
+            fh: None,
+            border: None,
         }
     }
 
@@ -132,6 +148,18 @@ impl HeaderBar {
 
     fn button_at(&self, x: f64) -> Option<Button> {
         let w = self.width as f64;
+        if let Some(h) = &self.fh {
+            if h.game {
+                return (x >= h.chip.0 && x < h.chip.1).then_some(Button::Fullscreen);
+            }
+            let c = crate::frames::dot_centres(w);
+            let half = (crate::frames::DOT + 10.0) / 2.0;
+            return [Button::Minimize, Button::Maximize, Button::Close]
+                .into_iter()
+                .zip(c)
+                .find(|(_, cx)| (x - cx).abs() < half)
+                .map(|(b, _)| b);
+        }
         let b = BUTTON_WIDTH as f64;
         if x >= w - b {
             Some(Button::Close)
@@ -185,6 +213,7 @@ impl HeaderBar {
             Some(Button::Close) => state.handle.insert_idle(move |data| data.close_window(&w)),
             Some(Button::Maximize) => state.handle.insert_idle(move |data| data.toggle_maximized(&w)),
             Some(Button::Minimize) => state.handle.insert_idle(move |data| data.minimize_window(&w)),
+            Some(Button::Fullscreen) => state.handle.insert_idle(move |data| data.set_fullscreen(&w, true, None)),
             None => return,
         };
     }
@@ -220,18 +249,22 @@ impl HeaderBar {
             Some(Button::Close) => state.handle.insert_idle(move |data| data.close_window(&w)),
             Some(Button::Maximize) => state.handle.insert_idle(move |data| data.toggle_maximized(&w)),
             Some(Button::Minimize) => state.handle.insert_idle(move |data| data.minimize_window(&w)),
+            Some(Button::Fullscreen) => state.handle.insert_idle(move |data| data.set_fullscreen(&w, true, None)),
             None => return,
         };
     }
 
     /// Draws the bar again when what it shows changed. `scale`: the screen's scale, rounded up.
-    pub fn redraw(&mut self, width: u32, scale: i32, active: bool, title: &str) {
+    pub fn redraw(&mut self, width: u32, scale: i32, active: bool, title: &str, id: u64) {
         self.width = width;
         if width == 0 {
             return;
         }
         let t = theme::current();
+        let firehold = crate::frames::with(|l| l.firehold.then_some(l.serial))
+            .map(|serial| (serial, crate::frames::label_for(id, title)));
         let key = DrawKey {
+            firehold,
             width: width as i32,
             scale: scale.max(1),
             active,
@@ -244,17 +277,83 @@ impl HeaderBar {
             return;
         }
         self.stale = false;
-        let pixels = draw_bar(&key, &t);
         let (w, h) = (key.width * key.scale, HEADER_BAR_HEIGHT * key.scale);
+        let (pixels, opaque) = match &key.firehold {
+            Some((_, label)) => {
+                let c = crate::frames::with(|l| l.colours.clone());
+                let (px, chip) = draw_firehold_bar(&key, label, &c);
+                self.fh = Some(FhHits { game: label.game, chip });
+                let a = c.accent;
+                let rgba = [to_u8(a[2]), to_u8(a[1]), to_u8(a[0]), 255];
+                if label.game && self.border.as_ref().map(|b| b.1) != Some(rgba) {
+                    self.border = Some((
+                        MemoryRenderBuffer::from_slice(&rgba, Fourcc::Argb8888, (1, 1), 1, Transform::Normal, None),
+                        rgba,
+                    ));
+                }
+                if !label.game {
+                    self.border = None;
+                }
+                // The rounded top corners show what's behind.
+                let r = FH_RADIUS * key.scale;
+                (px, Rectangle::new((0, r).into(), (w, (h - r).max(0)).into()))
+            }
+            None => {
+                self.fh = None;
+                self.border = None;
+                (draw_bar(&key, &t), Rectangle::from_size((w, h).into()))
+            }
+        };
         self.buffer = Some(MemoryRenderBuffer::from_slice(
             &pixels,
             Fourcc::Argb8888,
             (w, h),
             key.scale,
             Transform::Normal,
-            Some(vec![Rectangle::from_size((w, h).into())]),
+            Some(vec![opaque]),
         ));
         self.drawn = Some(key);
+    }
+
+    /// Firehold's game border, 2 px all round the window (its title bar included): `full` is the frame's size
+    /// (logical), `location` its top left (physical). Empty unless it's a game in Firehold's look.
+    pub fn border_elements<R, C>(
+        &self,
+        renderer: &mut R,
+        location: Point<i32, smithay::utils::Physical>,
+        full: (i32, i32),
+        scale: f64,
+        alpha: f32,
+    ) -> Vec<C>
+    where
+        R: Renderer + ImportMem,
+        R::TextureId: Send + Clone + 'static,
+        C: From<MemoryRenderBufferRenderElement<R>>,
+    {
+        let Some((buf, _)) = self.border.as_ref() else { return Vec::new() };
+        if !self.fh.as_ref().is_some_and(|h| h.game) {
+            return Vec::new();
+        }
+        let (w, h) = full;
+        let b = 2;
+        let sides = [(-b, -b, w + 2 * b, b), (-b, 0, b, h), (w, 0, b, h), (-b, h, w + 2 * b, b)];
+        sides
+            .into_iter()
+            .filter_map(|(x, y, sw, sh)| {
+                let at = location.to_f64() + Point::<f64, smithay::utils::Physical>::from((x as f64 * scale, y as f64 * scale));
+                MemoryRenderBufferRenderElement::from_buffer(
+                    renderer,
+                    at,
+                    buf,
+                    Some(alpha),
+                    None,
+                    Some((sw, sh).into()),
+                    Kind::Unspecified,
+                )
+                .ok()
+                .map(C::from)
+            })
+            .collect()
     }
 
     pub fn render_elements<R, C>(&self, renderer: &mut R, location: Point<i32, smithay::utils::Physical>, alpha: f32) -> Vec<C>
@@ -375,6 +474,11 @@ pub(crate) struct Canvas {
 }
 
 impl Canvas {
+    /// A canvas that's see-through until something is painted on it.
+    pub(crate) fn clear(w: i32, h: i32) -> Canvas {
+        Canvas { w, h, px: vec![0u8; (w.max(0) * h.max(0) * 4) as usize] }
+    }
+
     pub(crate) fn new(w: i32, h: i32, bg: theme::Rgba) -> Canvas {
         let mut px = vec![0u8; (w * h * 4) as usize];
         for p in px.chunks_exact_mut(4) {
@@ -391,13 +495,16 @@ impl Canvas {
         if x < 0 || y < 0 || x >= self.w || y >= self.h || a <= 0.0 {
             return;
         }
+        // Premultiplied "over" (what the renderer expects): the same as before on an opaque canvas, and right on
+        // Firehold's transparent corners.
         let a = (a * c[3]).clamp(0.0, 1.0);
         let i = ((y * self.w + x) * 4) as usize;
         for (k, ch) in [(0usize, 2usize), (1, 1), (2, 0)] {
             let dst = self.px[i + k] as f32 / 255.0;
-            self.px[i + k] = to_u8(dst + (c[ch] - dst) * a);
+            self.px[i + k] = to_u8(c[ch] * a + dst * (1.0 - a));
         }
-        self.px[i + 3] = 255;
+        let da = self.px[i + 3] as f32 / 255.0;
+        self.px[i + 3] = to_u8(a + da * (1.0 - a));
     }
 
     pub(crate) fn rect(&mut self, x: i32, y: i32, w: i32, h: i32, c: theme::Rgba) {
@@ -486,8 +593,8 @@ pub(crate) fn font() -> Option<&'static fontdue::Font> {
     .as_ref()
 }
 
-fn draw_text(cv: &mut Canvas, text: &str, size: f32, x: f32, max_w: f32, center_in: Option<f32>, c: theme::Rgba) {
-    let Some(f) = font() else { return };
+fn draw_text(cv: &mut Canvas, text: &str, size: f32, x: f32, max_w: f32, center_in: Option<f32>, c: theme::Rgba) -> f32 {
+    let Some(f) = font() else { return 0.0 };
     let glyphs: Vec<(fontdue::Metrics, Vec<u8>)> = text.chars().map(|ch| f.rasterize(ch, size)).collect();
     let ell = f.rasterize('…', size);
     let mut total: f32 = glyphs.iter().map(|(m, _)| m.advance_width).sum();
@@ -523,6 +630,79 @@ fn draw_text(cv: &mut Canvas, text: &str, size: f32, x: f32, max_w: f32, center_
     if n < glyphs.len() {
         draw(cv, &ell.0, &ell.1, pen);
     }
+    total
+}
+
+/// A line of text's width (logical pixels at `size`).
+fn text_width(text: &str, size: f32) -> f32 {
+    font().map(|f| text.chars().map(|ch| f.metrics(ch, size).advance_width).sum()).unwrap_or(text.chars().count() as f32 * size * 0.55)
+}
+
+/// Firehold's bar's corner radius (logical pixels).
+const FH_RADIUS: i32 = 12;
+
+/// The chip's left and right edges (logical pixels) on a bar this wide.
+const CHIP_WORDS: &str = "Full screen: F11 or ";
+/// The Guide button's mark "≡", 12 px text's width of it (drawn as three lines when the font has no such glyph).
+const MENU_MARK_W: f32 = 9.0;
+
+fn chip_span(width: f64) -> (f64, f64) {
+    let w = (text_width(CHIP_WORDS, 12.0) + MENU_MARK_W) as f64 + 20.0;
+    let right = width - 14.0;
+    (right - w, right)
+}
+
+/// Firehold's bar (frames.rs): its pixels and the game chip's span (logical).
+fn draw_firehold_bar(k: &DrawKey, label: &crate::frames::Label, c: &crate::frames::Colours) -> (Vec<u8>, (f64, f64)) {
+    let s = k.scale as f32;
+    let (w, h) = (k.width * k.scale, HEADER_BAR_HEIGHT * k.scale);
+    let mut cv = Canvas::clear(w, h);
+    let r = FH_RADIUS as f32 * s;
+    // Rounded at the top only: the lower half is square, where the window meets it.
+    cv.round_rect(0.0, 0.0, w as f32, h as f32, r, c.panel2);
+    cv.rect(0, h / 2, w, h - h / 2, c.panel2);
+    if !label.game {
+        cv.rect(0, h - k.scale, w, k.scale, c.line);
+    }
+    let ink = if k.active { c.text } else { c.muted };
+    let chip = chip_span(k.width as f64);
+    let right_room = if label.game { (k.width as f64 - chip.0) as f32 + 12.0 } else { 16.0 + 3.0 * 14.0 + 2.0 * 10.0 + 12.0 };
+    let room = (w as f32 - (16.0 + right_room) * s).max(0.0);
+    let x0 = 16.0 * s;
+    let name = if label.title.is_empty() { "Window".to_string() } else { label.title.clone() };
+    let used = draw_text(&mut cv, &name, 14.0 * s, x0, room, None, ink);
+    if label.game {
+        let line = if label.line.is_empty() { String::new() } else { format!(" · {}", label.line) };
+        if !line.is_empty() && room - used > 20.0 * s {
+            draw_text(&mut cv, &line, 14.0 * s, x0 + used, room - used, None, c.muted);
+        }
+        // The chip: "Full screen: F11 or ≡", flame on a card.
+        let (cx0, cx1) = ((chip.0 as f32) * s, (chip.1 as f32) * s);
+        let ch = 22.0 * s;
+        let cy = (h as f32 - ch) / 2.0;
+        cv.round_rect(cx0, cy, cx1 - cx0, ch, 10.0 * s, c.card);
+        // "Full screen: F11 or ≡": the words, then the Guide button's mark (three short lines: many fonts have no ≡).
+        let words = text_width(CHIP_WORDS, 12.0) * s;
+        let tx = cx0 + 10.0 * s;
+        draw_text(&mut cv, CHIP_WORDS, 12.0 * s, tx, words + 2.0 * s, None, c.flame);
+        let mx = tx + words;
+        let mid = h as f32 / 2.0;
+        for dy in [-3.0f32, 0.0, 3.0] {
+            cv.line(mx + 1.0 * s, mid + dy * s, mx + (MENU_MARK_W - 1.0) * s, mid + dy * s, 1.3 * s, c.flame);
+        }
+    } else {
+        let hover_on = |b: Button| k.hover == Some(b) || k.pressed == Some(b);
+        let centres = crate::frames::dot_centres(k.width as f64);
+        for (b, cx) in [Button::Minimize, Button::Maximize, Button::Close].into_iter().zip(centres) {
+            let mut fill = if b == Button::Close { c.accent } else { c.card2 };
+            if hover_on(b) {
+                fill = [fill[0] + (1.0 - fill[0]) * 0.25, fill[1] + (1.0 - fill[1]) * 0.25, fill[2] + (1.0 - fill[2]) * 0.25, 1.0];
+            }
+            let d = crate::frames::DOT as f32 * s;
+            cv.round_rect(cx as f32 * s - d / 2.0, h as f32 / 2.0 - d / 2.0, d, d, d / 2.0, fill);
+        }
+    }
+    (cv.px, chip)
 }
 
 /// One line of text centred on `center_x`, its baseline at `baseline` (the lock prompt's lines). Returns its width.
@@ -585,6 +765,7 @@ fn draw_bar(k: &DrawKey, t: &theme::Theme) -> Vec<u8> {
                 cv.line(cx - r, cy + r, cx - r, cy - r, th, glyph);
             }
             Button::Minimize => cv.line(cx - r, cy, cx + r, cy, th, glyph),
+            Button::Fullscreen => {}
         }
     }
     // The title, in the middle of the space left of the buttons (as labwc's Hearth theme centres it).
@@ -644,6 +825,7 @@ mod tests {
             pressed: None,
             title: "A rather long window title that has to be cut".into(),
             serial: 0,
+            firehold: None,
         };
         let px = draw_bar(&k, &theme::Theme::default());
         assert_eq!(px.len(), (300 * 2 * HEADER_BAR_HEIGHT * 2 * 4) as usize);
@@ -651,6 +833,34 @@ mod tests {
         // Not one colour: the accent line, the buttons.
         let first = &px[0..4];
         assert!(px.chunks_exact(4).any(|p| p != first));
+    }
+
+    #[test]
+    fn firehold_bars_have_round_corners_dots_and_a_game_chip() {
+        let label = crate::frames::Label { title: "Hearth Files — Pictures".into(), ..Default::default() };
+        let k = DrawKey { width: 400, scale: 1, active: true, hover: None, pressed: None, title: String::new(), serial: 0, firehold: Some((1, label.clone())) };
+        let c = crate::frames::Colours::default();
+        let (px, _) = draw_firehold_bar(&k, &label, &c);
+        let at = |x: i32, y: i32| { let i = ((y * 400 + x) * 4) as usize; [px[i], px[i + 1], px[i + 2], px[i + 3]] };
+        assert_eq!(at(0, 0)[3], 0, "the top-left corner is see-through");
+        assert_eq!(at(200, HEADER_BAR_HEIGHT / 2)[3], 255);
+        // The close dot is the accent colour (B, G, R, A).
+        let cx = crate::frames::dot_centres(400.0)[2] as i32;
+        let a = c.accent;
+        assert_eq!(at(cx, HEADER_BAR_HEIGHT / 2), [to_u8(a[2]), to_u8(a[1]), to_u8(a[0]), 255]);
+        // A game: the chip on the right, its clicks there.
+        let game = crate::frames::Label { title: "Ember Trails".into(), game: true, line: "running · VRR".into() };
+        let (_, chip) = draw_firehold_bar(&k, &game, &c);
+        assert!(chip.1 <= 400.0 && chip.0 < chip.1);
+        let mut b = HeaderBar::new();
+        b.width = 400;
+        b.fh = Some(FhHits { game: true, chip });
+        assert_eq!(b.button_at((chip.0 + chip.1) / 2.0), Some(Button::Fullscreen));
+        assert_eq!(b.button_at(20.0), None);
+        b.fh = Some(FhHits { game: false, chip });
+        assert_eq!(b.button_at(cx as f64), Some(Button::Close));
+        assert_eq!(b.button_at(crate::frames::dot_centres(400.0)[0]), Some(Button::Minimize));
+        assert_eq!(b.button_at(100.0), None);
     }
 
     #[test]

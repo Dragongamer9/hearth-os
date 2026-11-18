@@ -12,7 +12,7 @@ WidgetBase {
     readonly property var deskNow: { const i = WinList.desktops.findIndex(d => d.active); return i + 1; }
     readonly property var wins: (WinList.toplevels ? WinList.toplevels.values : []).filter(t =>
         !/quickshell/i.test(t.appId || "") && (t.title || t.appId) &&
-        (!hereOnly || !WinList.kwin || t.allDesktops || (t.desktops || []).indexOf(deskNow) >= 0))
+        (!hereOnly || !WinList.wmDesktops || t.allDesktops || (t.desktops || []).indexOf(deskNow) >= 0))
     function name(t) { const e = AppIcons.entryFor(t.appId); return e ? e.name : (t.appId || ""); }
     function pick(t) {
         if (t.activated && !t.minimized) { if (t.setMinimized) t.setMinimized(true); else t.minimized = true; }
@@ -88,7 +88,7 @@ WidgetBase {
             WBtn { text: "Every desktop"; on: !w.hereOnly; onClicked: w.set("hereOnly", false) }
             WBtn { text: "This desktop"; on: w.hereOnly; onClicked: w.set("hereOnly", true) }
         }
-        Text { Layout.fillWidth: true; visible: !WinList.kwin; text: "On labwc every window is listed (it doesn't tell which desktop a window is on)"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap }
+        Text { Layout.fillWidth: true; visible: !WinList.wmDesktops; text: "On labwc every window is listed (it doesn't tell which desktop a window is on)"; color: Theme.muted; font.family: Theme.font; font.pixelSize: 12; wrapMode: Text.WordWrap }
         Item { Layout.fillHeight: true }
         WBtn { text: "Done"; on: true; onClicked: w.doneConfiguring() }
     }

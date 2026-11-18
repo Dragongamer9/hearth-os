@@ -205,6 +205,11 @@ pub struct HearthState<BackendData: Backend + 'static> {
     pub ext_data_control_state: smithay::wayland::selection::ext_data_control::DataControlState,
     /// The fullscreen game's frame limit, scaling, direct scanout and VRR (game.rs).
     pub game: crate::game::GameState,
+    /// Virtual desktops (wm.rs), and the windows on the ones you aren't on.
+    pub workspaces: crate::wm::Workspaces,
+    pub elsewhere: Vec<crate::wm::Minimized>,
+    /// Mantel's window IPC (ipc.rs): the window list, desktops, window pictures, Firehold's frames.
+    pub ipc: crate::ipc::IpcState,
 }
 
 #[derive(Debug)]
@@ -742,6 +747,7 @@ impl<BackendData: Backend + 'static> HearthState<BackendData> {
             .unwrap_or_default();
         info!(rc = ?rc, binds = keymap.binds.len(), skipped = ?keymap.skipped, "Mantel's shortcuts read");
         let (rate, delay) = keymap.repeat.unwrap_or((25, 600));
+        let keymap_desktops = keymap.desktops.clone();
         seat.add_keyboard(XkbConfig::default(), delay, rate)
             .expect("Failed to initialize the keyboard");
         let foreign_toplevel_state = crate::foreign_toplevel::ForeignToplevelState::new::<BackendData>(&dh);
@@ -834,6 +840,9 @@ impl<BackendData: Backend + 'static> HearthState<BackendData> {
             gamma_state,
             ext_data_control_state,
             game: crate::game::GameState::new(),
+            workspaces: crate::wm::Workspaces::new(keymap_desktops),
+            elsewhere: Vec::new(),
+            ipc: crate::ipc::IpcState::default(),
         }
     }
 

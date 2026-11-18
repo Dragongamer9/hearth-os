@@ -13,8 +13,9 @@ in one list, and starting one.
   hearth-firehold pictures DIR ID...
                                a picture of each window (KWin's ids, as WinList has them) for Everything open, taken
                                by KWin (hearth-screens shot --window) into DIR/<id>.png; prints {id: file} (a window
-                               that can't be taken, a minimized one, is left out). Only under KWin: labwc has no way
-                               to take one window's picture, so there it prints {}.
+                               that can't be taken, a minimized one, is left out). Under KWin, and under Firehold's
+                               own compositor (its window IPC's shot, firehold-comp ipc.rs; numeric ids); labwc has no
+                               way to take one window's picture, so there it prints {}.
 
 Each game: {id, title, source, store (the badge: "Steam", "GOG", "Epic", "Emulator", "Windows app", "Your game"...),
 kind (its filter chip: steam, gog, epic, winapp, emu, yours, other), installed, update, savesBackedUp, cloudSaves (a
@@ -291,8 +292,56 @@ def page(i):
 WIN_ID = re.compile(r'^\{?[0-9A-Fa-f-]{36}\}?$')
 
 
+FH_ID = re.compile(r'^[0-9]{1,18}$')
+
+
+def firehold_pictures(d, ids):
+    """Each window's picture from Firehold's own compositor (its window IPC's "shot", firehold-comp ipc.rs): every
+    one asked for at once on one connection, the answers come after its next frame (5 seconds at most in all)."""
+    import socket
+    import time
+    want = [i for i in ids[:12] if FH_ID.match(i)]
+    if not want:
+        return {}
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    run = os.environ.get('XDG_RUNTIME_DIR', '/run/user/%d' % os.getuid())
+    sock = os.path.join(run, 'firehold-wm-%s.sock' % os.path.basename(os.environ.get('WAYLAND_DISPLAY', 'wayland-0')))
+    s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    s.settimeout(5)
+    out, buf, end = {}, b'', time.monotonic() + 5
+    try:
+        s.connect(sock)
+        for i in want:
+            s.sendall((json.dumps({'op': 'shot', 'id': i, 'path': os.path.join(d, i + '.png'), 'max': 640}) + '\n').encode())
+        left = len(want)
+        while left > 0 and time.monotonic() < end:
+            chunk = s.recv(65536)
+            if not chunk:
+                break
+            buf += chunk
+            while b'\n' in buf:
+                line, buf = buf.split(b'\n', 1)
+                try:
+                    m = json.loads(line)
+                except ValueError:
+                    continue
+                if m.get('t') == 'shot':
+                    left -= 1
+                    if m.get('ok') and m.get('path'):
+                        out[str(m['id'])] = m['path']
+                elif m.get('t') == 'reply' and m.get('op') == 'shot' and m.get('ok') is False:
+                    left -= 1          # refused at once (gone, locked): no picture will come for it
+    except (OSError, ValueError):
+        pass
+    finally:
+        s.close()
+    return out
+
+
 def pictures(d, ids):
-    """Each window's picture from KWin; at most 12, a few seconds each at most."""
+    """Each window's picture from KWin (or Firehold's own compositor); at most 12, a few seconds each at most."""
+    if os.environ.get('HEARTH_WM') == 'firehold':
+        return firehold_pictures(d, ids)
     if os.environ.get('HEARTH_WM') != 'kwin':
         return {}
     h = helper('hearth-screens')

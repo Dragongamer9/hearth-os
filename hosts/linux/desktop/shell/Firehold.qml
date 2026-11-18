@@ -216,13 +216,14 @@ Scope {
     function couchHome() { couchTab("home"); }
     function couchTab(t) { if (!unlocked) return; switchTo("couch", ""); home(); tab = t; }
 
-    // ------------------------------------------------------------------ Everything open's window pictures (KWin)
-    // KWin takes a picture of each window (hearth-firehold pictures → hearth-screens shot --window) every 3 seconds
-    // while Everything open is on screen; labwc can't, so there the cards stay their colour. Runtime files only.
+    // ------------------------------------------------------------------ Everything open's window pictures
+    // KWin (hearth-firehold pictures → hearth-screens shot --window) or Firehold's own compositor (hearth-firehold
+    // pictures → its window IPC's shot) takes a picture of each window every 3 seconds while Everything open is on
+    // screen; labwc can't, so there the cards stay their colour. Runtime files only.
     property var pictures: ({})
     property int pictureTick: 0
     readonly property string pictureDir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/hearth-firehold/pictures"
-    readonly property bool picturesWanted: unlocked && WinList.kwin && couchUp && page === "switcher"
+    readonly property bool picturesWanted: unlocked && WinList.pictures && couchUp && page === "switcher"
     Timer { interval: 3000; repeat: true; triggeredOnStart: true; running: fhs.picturesWanted; onTriggered: if (!picProc.running) { picProc.command = ["python3", fhs.libHelper, "pictures", fhs.pictureDir].concat(fhs.openList.map(o => WinList.widOf(o.win)).filter(i => i !== "")); picProc.running = true; } }
     Process {
         id: picProc
@@ -348,10 +349,15 @@ Scope {
         active: fhs.unlocked && fhs.started && fhs.posture === "desk"
         FireholdDesk { fh: fhs }
     }
-    // Every window's title bar in Firehold's look (KWin tells where the windows are).
+    // Every window's title bar in Firehold's look: drawn over KWin's (KWin tells where the windows are), or by
+    // Firehold's own compositor itself, named by Mantel (FireholdFramesComp.qml).
     LazyLoader {
         active: fhs.unlocked && fhs.started && fhs.posture === "desk" && WinList.kwin
         FireholdFrames { fh: fhs }
+    }
+    LazyLoader {
+        active: fhs.unlocked && fhs.started && fhs.posture === "desk" && WinList.firehold && WinList.fhReady
+        FireholdFramesComp { fh: fhs }
     }
     LazyLoader {
         active: fhs.unlocked && fhs.settingsShown
@@ -365,7 +371,9 @@ Scope {
             return JSON.stringify({ unlocked: fhs.unlocked, posture: fhs.posture, mode: fhs.mode, view: fhs.view, tab: fhs.tab, page: fhs.page,
                                     guide: fhs.guideShown, settings: fhs.settingsShown, couchUp: fhs.couchUp, games: fhs.library.length,
                                     counts: fhs.counts, playing: fhs.playing, open: fhs.openList.map(o => ({ kind: o.kind, name: o.name, sub: o.sub })),
-                                    notice: fhs.noticeShown ? fhs.noticeTitle : "", filter: fhs.libFilter, query: fhs.libQuery });
+                                    notice: fhs.noticeShown ? fhs.noticeTitle : "", filter: fhs.libFilter, query: fhs.libQuery,
+                                    pictures: Object.keys(fhs.pictures).length, picturesWanted: fhs.picturesWanted,
+                                    guideRows: fhs.guidePanel ? fhs.guidePanel.rows.map(r => ({ name: r[0], sub: r[1], value: r[2], works: r[4] })) : [] });
         }
         function couch(): void { if (fhs.unlocked) { fhs.switchTo("couch", "pad"); fhs.home(); } }
         function desk(): void { fhs.switchTo("desk", ""); }
