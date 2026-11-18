@@ -50,7 +50,7 @@ B=/tmp/bin-rust; mkdir -p "$B"
 ln -sf "$SRC/firehold-comp" "$B/firehold-comp"; ln -sf "$SRC/firehold-shell" "$B/firehold-shell"
 python3 .github/scripts/firehold-fixtures.py "$B" && chmod +x "$B"/*
 # KDE Plasma's stand-in: says it started, then waits (the session is ended by the test).
-printf '#!/bin/sh\necho "started $(date +%%s)" >> "$XDG_RUNTIME_DIR/plasma-started"\nexec sleep 100000\n' > "$B/startplasma-wayland"; chmod +x "$B/startplasma-wayland"
+printf '#!/bin/sh\necho "started $(date +%%s)" >> "$XDG_RUNTIME_DIR/plasma-started"\nexec sleep 100001\n' > "$B/startplasma-wayland"; chmod +x "$B/startplasma-wayland"
 export PATH="$B:$PATH" NIMBUS_APP="$B/nimbus"
 echo plasma > /tmp/desktop-mode-rust; export HEARTH_DESKTOP_MODE_FILE=/tmp/desktop-mode-rust
 # A battery and Wi-Fi, for the bar and the Couch's top row (FIREHOLD_SYS).
@@ -71,7 +71,8 @@ SP=$!
 for i in $(seq 30); do [ -s "$XDG_RUNTIME_DIR/plasma-started" ] && break; sleep 1; done
 if [ -s "$XDG_RUNTIME_DIR/plasma-started" ] && ! grep -q "Firehold (Rust" "$LOG"; then note "default" "nothing picked: KDE Plasma opened, Firehold wasn't tried"
 else fail "default" "with nothing picked: plasma started=$(cat "$XDG_RUNTIME_DIR/plasma-started" 2>/dev/null | wc -l), log: $(tail -4 "$LOG" | tr '\n' '|')"; fi
-kill "$SP" 2>/dev/null; pkill -f startplasma-wayland; sleep 1; rm -f "$XDG_RUNTIME_DIR/plasma-started" "$XDG_RUNTIME_DIR/nimbus-next"
+plasma_gone() { pkill -f 'sleep 100001'; rm -f "$XDG_RUNTIME_DIR/hearth-plasma.pid"; }
+kill "$SP" 2>/dev/null; plasma_gone; sleep 1; rm -f "$XDG_RUNTIME_DIR/plasma-started" "$XDG_RUNTIME_DIR/nimbus-next"
 
 # ---- picked: Firehold (Rust, test)
 [ "$(firehold-shell choose firehold)" = saved ] || fail "choice" "firehold-shell choose firehold didn't save"
@@ -125,19 +126,23 @@ C guide >/dev/null
 for i in $(seq 10); do [ "$(st '"guide" in d["hello"]')" = True ] && break; sleep 0.5; done
 note "guide" "up: $(st 'd["guide"]["up"]'), rows from firehold-comp: $(st 'd["guide"]["comp"]'), frame limit $(st 'd["guide"]["frame_limit"]'), scaling $(st 'd["guide"]["scaling"]'), VRR $(st 'd["guide"]["vrr"]'), playing $(st 'd["guide"]["playing"]'), overlay: $(st '"perf" in d["hello"]') ($(st 'd["perf"]["line"]'))"
 [ "$(st 'd["guide"]["comp"]')" = True ] || fail "guide" "the Guide's game rows didn't come from firehold-comp: $(st 'd["guide"]')"
-[ "$(st 'd["guide"]["frame_limit"]')" = 40 ] || fail "guide" "Frame limit isn't ‹ 40 › after three steps up: $(st 'd["guide"]["frame_limit"]')"
+[ "$(st 'd["guide"]["frame_limit"]')" = 60 ] || fail "guide" "Frame limit isn't ‹ 60 › after three steps up (off, 30, 40, 60): $(st 'd["guide"]["frame_limit"]')"
 shot firehold-r3-guide 3
+comp_layers() { python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print("focus", d.get("keyboardFocus") or d.get("focus"), [(l["namespace"], l["layer"], l["w"], l["h"]) for o in d.get("outputs", []) for l in o.get("layers", [])])' "$XDG_RUNTIME_DIR/firehold.json" 2>&1 | cut -c1-700; }
+note "layers (guide)" "couch_up $(st 'd["couch_up"]'), $(comp_layers)"
 # 4. Twice: Everything open, with each window's real picture (mockup 4)
 C guide >/dev/null
 sleep 7
 note "everything open" "pictures: $(st 'sum(1 for w in d["wins"] if w["pic"])') of $(st 'len(d["wins"])')"
 [ "$(st 'sum(1 for w in d["wins"] if w["pic"]) >= 3')" = True ] || fail "everything open" "the windows' pictures didn't come: $(st '[w["pic"] for w in d["wins"]]')"
+note "layers (everything open)" "couch_up $(st 'd["couch_up"]'), $(comp_layers)"
 shot firehold-r4-everything-open 1
 # 2. The mouse: the Desk, with "Switched to Desk", the game back in a window (mockup 2)
 C pad b >/dev/null; sleep 1
 C '{"op":"input","kind":"mouse"}' >/dev/null
 for i in $(seq 10); do [ "$(st 'd["posture"]')" = desk ] && break; sleep 0.5; done
 [ "$(st 'd["posture"]')" = desk ] || fail "posture" "the mouse didn't switch to the Desk"
+for i in $(seq 10); do [ "$(st 'not any(w["game"] and w["fullscreen"] for w in d["wins"])')" = True ] && break; sleep 0.5; done
 [ "$(st 'not any(w["game"] and w["fullscreen"] for w in d["wins"])')" = True ] || fail "posture" "the game stayed full screen on the Desk"
 GID=$(st '[w["id"] for w in d["wins"] if w["game"]][0]'); FID=$(st '[w["id"] for w in d["wins"] if w["name"] == "Hearth Files"][0]')
 C "{\"op\":\"activate\",\"id\":\"$FID\"}" >/dev/null; sleep 0.5; C "{\"op\":\"activate\",\"id\":\"$GID\"}" >/dev/null
@@ -167,7 +172,7 @@ HEARTH_DESKTOP_PID=$(cat "$XDG_RUNTIME_DIR/firehold.pid") sh hosts/linux/session
 for i in $(seq 15); do pgrep -x firehold-comp >/dev/null || break; sleep 1; done
 pgrep -x firehold-comp >/dev/null && fail "leave" "firehold-comp didn't end on nimbus-mode game" || note "leave" "nimbus-mode game ended Firehold: $(grep -o 'firehold (Rust) ended.*' "$LOG" | tail -1)"
 pgrep -x firehold-shell >/dev/null && fail "leave" "firehold-shell processes stayed: $(pgrep -a -x firehold-shell | tr '\n' ';')"
-kill "$SP" 2>/dev/null; pkill -f startplasma-wayland; pkill -x gamescope; sleep 1
+kill "$SP" 2>/dev/null; plasma_gone; pkill -x gamescope; sleep 1
 cp "$LOG" shots/session.log; cp "$FLOG" shots/firehold-rust.log 2>/dev/null
 rm -f "$XDG_RUNTIME_DIR/plasma-started" "$XDG_RUNTIME_DIR/nimbus-next"
 
@@ -185,7 +190,7 @@ for case in shell comp; do
   if [ -s "$XDG_RUNTIME_DIR/plasma-started" ]; then note "fallback ($case)" "KDE Plasma opened instead: $(grep -o 'Firehold (Rust, test) didn.t work.*' "$LOG" | tail -1 | cut -c1-200)"
   else fail "fallback ($case)" "KDE Plasma didn't open: $(tail -5 "$LOG" | tr '\n' '|' | cut -c1-500)"; fi
   cmp -s "$CHOICE" shots/choice-before.json || fail "fallback ($case)" "the failure changed the choice: $(cat "$CHOICE")"
-  kill "$SP" 2>/dev/null; pkill -f startplasma-wayland; pkill -x firehold-comp; sleep 1
+  kill "$SP" 2>/dev/null; plasma_gone; pkill -x firehold-comp; sleep 1
 done
 cp "$LOG" shots/session-fail.log
 report

@@ -16,6 +16,8 @@ rss() { local m=0 p; for p in "$@"; do m=$(( m + $(awk '/^VmRSS:/{print int($2 /
 t0=$(date +%s.%N)
 if [ "$KIND" = firehold ]; then
   export ICED_BACKEND=tiny-skia FIREHOLD_NO_PAD=1 NIMBUS_SHARE="$PWD/hosts/linux" FIREHOLD_LOG="warn"
+  # The headless screen draws 60 times a second unless told to wait for changes, as a real screen does (headless.rs).
+  [ "${FIREHOLD_IDLE_STEADY:-}" = 1 ] || export FIREHOLD_HEADLESS_IDLE=1
   B=/tmp/bin-idle; mkdir -p "$B"; python3 .github/scripts/firehold-fixtures.py "$B" && chmod +x "$B"/*
   export PATH="$PWD:$B:$PATH" NIMBUS_APP="$B/nimbus"
   ./firehold-comp --headless --size 1920x1080 --socket wayland-idle -- ./firehold-shell hub >/tmp/idle-comp.log 2>&1 &

@@ -239,6 +239,8 @@ struct Hub {
     seen_games: HashMap<String, Instant>,
     known_wins: HashSet<String>,
     ours_fullscreen: HashSet<String>,
+    /// What the Couch stepped down for (a game or app opened from it): when it closes or is minimized, the Couch is back.
+    over: Option<String>,
     frames_sent: String,
     notice_serial: u64,
     sent: HashMap<u64, String>,
@@ -484,8 +486,11 @@ impl Hub {
                 self.ours_fullscreen.insert(w.id.clone());
             }
             if couch && (front || w.game) {
+                // The Couch steps down for it, and it gets the keyboard (the Couch had it).
                 self.st.couch_up = false;
                 self.st.guide.up = false;
+                self.over = Some(w.id.clone());
+                self.comp_send(json!({"op": "activate", "id": w.id}));
             }
         }
         self.known_wins = ids.clone();
@@ -499,11 +504,13 @@ impl Hub {
             keep
         });
         self.st.wins = wins;
-        // Everything over the Couch closed (or went to the background): the Couch comes back.
-        if self.st.posture == "couch" && !self.st.couch_up {
-            let shown = self.st.wins.iter().any(|w| !w.minimized && (w.activated || w.id == self.st.active));
-            if !shown {
-                self.st.couch_up = true;
+        // What the Couch stepped down for closed (or was minimized): the Couch comes back.
+        if let Some(id) = self.over.clone() {
+            if !self.st.wins.iter().any(|w| w.id == id && !w.minimized) {
+                self.over = None;
+                if self.st.posture == "couch" && !self.st.couch_up {
+                    self.st.couch_up = true;
+                }
             }
         }
         if self.st.guide.up {
@@ -744,6 +751,7 @@ impl Hub {
         self.comp_send(json!({"op": "activate", "id": id}));
         if self.st.posture == "couch" {
             self.st.couch_up = false;
+            self.over = Some(id.to_string());
             let full = !w.game || self.st.cfg.games != "window";
             if full && !w.fullscreen {
                 self.comp_send(json!({"op": "fullscreen", "id": id, "on": true}));
@@ -1414,6 +1422,7 @@ pub fn run() -> i32 {
         seen_games: HashMap::new(),
         known_wins: HashSet::new(),
         ours_fullscreen: HashSet::new(),
+        over: None,
         frames_sent: String::new(),
         notice_serial: 0,
         sent: HashMap::new(),
