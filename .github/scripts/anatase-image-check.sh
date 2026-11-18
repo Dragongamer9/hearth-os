@@ -9,11 +9,11 @@ warn() { if bash -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::warni
 echo "--- the base"
 check "it's Fedora $(rpm -E %fedora) (45 or newer)" "[ \"\$(rpm -E %fedora)\" -ge 45 ]"
 echo "::notice title=base::$(. /usr/lib/os-release; echo "$PRETTY_NAME, Fedora $(rpm -E %fedora)"); kernel $(ls /usr/lib/modules | sort -V | tail -1); $(rpm -q --qf '%{NAME} %{VERSION}' plasma-workspace kwin gamescope steam hhd 2>/dev/null | tr '\n' ';')"
-check "it says it's the Anatase edition, the test" "grep -q '\"base\": \"anatase\"' /usr/share/nimbus/image-info.json && grep -q '\"image-tag\": \"anatase-test\"' /usr/share/nimbus/image-info.json"
+check "it says it's the Anatase edition, the test" "grep -q '\"base\": \"anatase\"' /usr/share/nimbus/image-info.json && grep -q '\"image-tag\": \"test-1.15\"' /usr/share/nimbus/image-info.json"
 check "bootc and podman are there (updates and Switch edition)" "command -v bootc && command -v podman"
 
 echo "--- updates, Switch edition, the boot chain (red flag 2)"
-check "hearth-admin is valid Python and knows the Anatase test tag" "python3 -m py_compile /usr/libexec/nimbus/hearth-admin && grep -q \"'anatase-test'\" /usr/libexec/nimbus/hearth-admin"
+check "hearth-admin is valid Python and knows the Anatase test tag" "python3 -m py_compile /usr/libexec/nimbus/hearth-admin && grep -q \"'test-1.15'\" /usr/libexec/nimbus/hearth-admin"
 check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
 check "the clean install's first start is installed, enabled and also runs without a plan (a switch by hand from Debian)" \
   "test -x /usr/libexec/nimbus/hearth-clean-install && test -L /etc/systemd/system/multi-user.target.wants/hearth-clean-install.service && grep -q 'ConditionPathExists=$' /usr/lib/systemd/system/hearth-clean-install.service.d/20-hearth-arrival.conf"

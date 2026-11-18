@@ -58,7 +58,7 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      system's first start keeps, for which account, when), then switches to the
                                      edition's image (fixed list, NEW_OS_EDITIONS): peppermint (Debian, the
                                      default) hearth-peppermint:testing; anatase (a test, 1.15)
-                                     ghcr.io/dragongamer9/hearth-os:anatase-test only (never :latest or :testing).
+                                     ghcr.io/dragongamer9/hearth-os:test-1.15 only (never :latest or :testing).
                                      To or from the Anatase test the home folder is left as it is, the Debian
                                      version is pinned so it stays in the boot menu, and going back to Debian
                                      starts that very version again when it's still there. Ubuntu and CachyOS are
@@ -1914,7 +1914,7 @@ NEW_OS_IMAGE = 'ghcr.io/dragongamer9/hearth-os'
 # Experimental editions only have :testing, so that's what they get with or without --testing.
 NEW_OS_EDITIONS = {
     # 1.15: Anatase is back as a test, on its own tag only (:latest and :testing hold the old pre-archive build).
-    'anatase': (NEW_OS_IMAGE, ('anatase-test',)),
+    'anatase': (NEW_OS_IMAGE, ('test-1.15',)),
     'ubuntu': ('ghcr.io/dragongamer9/hearth-ubuntu', ('testing',)),
     'cachyos': ('ghcr.io/dragongamer9/hearth-cachyos', ('testing',)),
     'peppermint': ('ghcr.io/dragongamer9/hearth-peppermint', ('testing',)),

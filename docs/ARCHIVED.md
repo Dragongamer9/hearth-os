@@ -25,7 +25,7 @@ that was moved lives in `archive/` under its old path, and its docs in `docs/arc
 | Part | Archived | Back | Docs |
 |---|---|---|---|
 | Hearth Game Mode (Hearth's own Game Mode) | 1.0: Steam Game Mode replaced it (its code stayed in place: `ui/`, `hosts/hearth-rs`, `hosts/hearth-core`) | 1.10: a choice in Settings › Gaming › Game Mode next to Steam Game Mode (the default); falls back to Steam Game Mode, then Mantel, when it can't start | [HEARTH-GAME-MODE](HEARTH-GAME-MODE.md) |
-| Hearth OS on Anatase (Fedora, image-based) | November 2026 (1.0) | 1.15, as a test beside Debian (the owner, Nov 17): `ghcr.io/dragongamer9/hearth-os:anatase-test` only, offered as "Hearth OS on Anatase (test)" in Switch edition; stock KDE Plasma as Desktop Mode, Unlock the file system; Debian stays the main edition. `os-bases/anatase`, `base-anatase.yml` (by hand, publishes only from main to the test tag) | [BASE-ANATASE](BASE-ANATASE.md) |
+| Hearth OS on Anatase (Fedora, image-based) | November 2026 (1.0) | 1.15, as a test beside Debian (the owner, Nov 17): `ghcr.io/dragongamer9/hearth-os:test-1.15` only, offered as "Hearth OS on Anatase (test)" in Switch edition; stock KDE Plasma as Desktop Mode, Unlock the file system; Debian stays the main edition. `os-bases/anatase`, `base-anatase.yml` (by hand, publishes only from main to the test tag) | [BASE-ANATASE](BASE-ANATASE.md) |
 
 ## Hearth's app store (Apps): archived 2026-10-24
 

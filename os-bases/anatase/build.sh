@@ -750,7 +750,7 @@ echo "${NIMBUS_VERSION:-0.0.0}" > /usr/share/nimbus/version
 # Which Hearth this is (the Bazzite build has /usr/share/ublue-os/image-info.json for the same; the other editions
 # write this same file).
 cat > /usr/share/nimbus/image-info.json <<INFO
-{"image-name": "hearth-os", "image-ref": "ghcr.io/dragongamer9/hearth-os", "image-tag": "anatase-test", "test": true, "desktop": "plasma", "base": "anatase", "base-detail": "Anatase (Fedora ${FEDORA})", "base-image": "${BASE_IMAGE:-i.anatase.org/anatase:stable}", "version": "${NIMBUS_VERSION:-0.0.0}"}
+{"image-name": "hearth-os", "image-ref": "ghcr.io/dragongamer9/hearth-os", "image-tag": "test-1.15", "test": true, "desktop": "plasma", "base": "anatase", "base-detail": "Anatase (Fedora ${FEDORA})", "base-image": "${BASE_IMAGE:-i.anatase.org/anatase:stable}", "version": "${NIMBUS_VERSION:-0.0.0}"}
 INFO
 
 # The Hearth app itself (the archived Game Mode in a window): hidden from menus as on Debian; Hearth Settings opens it at

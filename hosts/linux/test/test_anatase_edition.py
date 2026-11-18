@@ -145,18 +145,27 @@ class Plasma(unittest.TestCase):
 
 
 class Workflow(unittest.TestCase):
-    def test_publish_only_to_the_test_tag_from_main(self):
+    def test_publish_only_to_a_test_tag(self):
         wf = (REPO / '.github' / 'workflows' / 'base-anatase.yml').read_text()
         self.assertIn("PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' }}", wf)
-        self.assertIn('TEST_TAG: anatase-test', wf)
+        self.assertIn("TAG_IN: ${{ github.event_name == 'workflow_dispatch' && inputs.test_tag || '' }}", wf)
+        self.assertIn('TEST_TAG: test-1.15', wf)
         self.assertIn('IMAGE: ghcr.io/dragongamer9/hearth-os\n', wf)
         self.assertNotIn('push:\n', wf.split('jobs:')[0], 'no builds on push')
-        pushes = re.findall(r'podman push \S+ "\$IMAGE:\$(\w+)"', wf)
-        self.assertEqual(pushes, ['tag'])
-        self.assertNotIn('hearth-peppermint:testing"', wf.split('Publish to the test tag')[1])
-        self.assertNotIn(':latest', wf.split('Publish to the test tag')[1])
+        step = wf.split('- name: Publish to the test tag')[1]
+        self.assertIn("grep -Eqx 'test-[0-9]+(\\.[0-9]+)*'", step)
+        self.assertIn('success()', step)
+        self.assertEqual(re.findall(r'podman push .*', step), ['podman push --digestfile /tmp/digest hearth-os:anatase "$IMAGE:$tag"'])
+        for never in (':latest', 'hearth-peppermint', ':testing'):
+            self.assertNotIn(never, step)
+        self.assertIn('not the image this run built', step)
         dispatch = wf.split('workflow_dispatch:')[1].split('env:')[0]
         self.assertRegex(dispatch, r"publish:[\s\S]*?default: false")
+        self.assertRegex(dispatch, r"test_tag:[\s\S]*?default: ''")
+        # The guard itself.
+        for tag, ok in (('test-1.15', True), ('test-1', True), ('latest', False), ('testing', False), ('test-1.15;x', False), ('test-', False)):
+            r = subprocess.run(['bash', '-c', "echo \"$1\" | grep -Eqx 'test-[0-9]+(\\.[0-9]+)*'", '_', tag])
+            self.assertEqual(r.returncode == 0, ok, tag)
 
     def test_build_script(self):
         b = (ANATASE / 'build.sh').read_text()

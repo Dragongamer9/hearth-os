@@ -368,8 +368,8 @@ class Admin(unittest.TestCase):
 
     def test_editions(self):
         # 1.15: the Anatase test has its own tag only (never the old pre-archive :latest or :testing).
-        self.assertEqual(ha.new_os_image('anatase'), 'ghcr.io/dragongamer9/hearth-os:anatase-test')
-        self.assertEqual(ha.new_os_image('anatase', True), 'ghcr.io/dragongamer9/hearth-os:anatase-test')
+        self.assertEqual(ha.new_os_image('anatase'), 'ghcr.io/dragongamer9/hearth-os:test-1.15')
+        self.assertEqual(ha.new_os_image('anatase', True), 'ghcr.io/dragongamer9/hearth-os:test-1.15')
         self.assertNotIn('anatase', ha.ARCHIVED_EDITIONS)
         self.assertEqual(ha.move_args(['--edition', 'anatase']), ('anatase', False))
         for e in ('ubuntu', 'cachyos', 'peppermint'):
@@ -458,11 +458,11 @@ class AnataseTest(unittest.TestCase):
         self.assertFalse(ha.clean_install_plan(user, [], 'x', now=1, edition='peppermint')['keepHome'])
 
     def test_reads_deployments(self):
-        root = self.sysroot({'a' * 64 + '.0': 'ostree-unverified-registry:ghcr.io/dragongamer9/hearth-os:anatase-test',
+        root = self.sysroot({'a' * 64 + '.0': 'ostree-unverified-registry:ghcr.io/dragongamer9/hearth-os:test-1.15',
                              'b' * 64 + '.0': 'ostree-unverified-registry:ghcr.io/dragongamer9/hearth-peppermint:testing'})
         deps = ha.ostree_deployments(self.STATUS, root)
         self.assertEqual([(d['index'], d['booted'], d['pinned'], d['rollback']) for d in deps], [(0, True, False, False), (1, False, True, True)])
-        self.assertIn('hearth-os:anatase-test', deps[0]['origin'])
+        self.assertIn('hearth-os:test-1.15', deps[0]['origin'])
         self.assertEqual(ha.debian_deployment(deps)['index'], 1)
         self.assertIsNone(ha.debian_deployment(deps[:1]))
 
@@ -481,10 +481,10 @@ class AnataseTest(unittest.TestCase):
         from unittest import mock
         calls = []
         run = lambda cmd, **k: (calls.append(cmd), types.SimpleNamespace(returncode=0, stdout='', stderr=''))[1]
-        rb = [{'index': 0, 'booted': True, 'origin': 'x:ghcr.io/dragongamer9/hearth-os:anatase-test'},
+        rb = [{'index': 0, 'booted': True, 'origin': 'x:ghcr.io/dragongamer9/hearth-os:test-1.15'},
               {'index': 1, 'booted': False, 'rollback': True, 'origin': 'x:ghcr.io/dragongamer9/hearth-peppermint:testing'}]
-        older = [{'index': 0, 'booted': True, 'origin': 'x:ghcr.io/dragongamer9/hearth-os:anatase-test'},
-                 {'index': 1, 'booted': False, 'rollback': True, 'origin': 'x:ghcr.io/dragongamer9/hearth-os:anatase-test'},
+        older = [{'index': 0, 'booted': True, 'origin': 'x:ghcr.io/dragongamer9/hearth-os:test-1.15'},
+                 {'index': 1, 'booted': False, 'rollback': True, 'origin': 'x:ghcr.io/dragongamer9/hearth-os:test-1.15'},
                  {'index': 2, 'booted': False, 'pinned': True, 'origin': 'x:ghcr.io/dragongamer9/hearth-peppermint:testing'}]
         with mock.patch.object(ha.subprocess, 'run', run), mock.patch.object(ha, 'bootc_status', lambda quiet=False: {}), mock.patch('builtins.print'):
             self.assertTrue(ha.back_to_debian(rb))
@@ -524,7 +524,7 @@ class AnataseTest(unittest.TestCase):
                 mock.patch.object(ha, 'bootc_status', lambda quiet=False: {}), mock.patch('builtins.print'):
             ha.move_to_new_os('anatase', False)
         self.assertEqual(pinned, [1])
-        self.assertEqual(images, [['bootc', 'switch', 'ghcr.io/dragongamer9/hearth-os:anatase-test']])
+        self.assertEqual(images, [['bootc', 'switch', 'ghcr.io/dragongamer9/hearth-os:test-1.15']])
         p = jload(plan)
         self.assertEqual((p['edition'], p['fromEdition'], p['keepHome']), ('anatase', 'peppermint', True))
 

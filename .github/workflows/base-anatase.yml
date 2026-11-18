@@ -1,19 +1,26 @@
 # Builds Hearth OS on Anatase: 1.15's test edition beside Debian (the owner, Nov 17: "Bring Anatase back and up to speed
 # on 1.15 so i can test it"), from os-bases/anatase (Fedora bootc; docs/BASE-ANATASE.md). The same Hearth apps as the
 # Debian edition (the app jobs are base-peppermint.yml's), stock KDE Plasma as Desktop Mode.
-# Publishing (red flag 5): ONLY by hand, ONLY from main, ONLY with publish ticked, and ONLY to
-# ghcr.io/dragongamer9/hearth-os:anatase-test (and a dated anatase-test-<version>-<date> tag). Never :latest or
-# :testing (the old pre-archive build) and never hearth-peppermint, which Debian devices follow. From any other branch
-# it builds and checks only. Failures show up as annotations on the run.
+# Publishing (red flag 5): ONLY by hand, and ONLY to a test tag of ghcr.io/dragongamer9/hearth-os that only devices
+# the owner switches follow: test-1.15 (and a dated test-1.15-<date> copy). Two ways: "publish" from main, or
+# "test_tag" (test-<version> only, e.g. test-1.15) from any branch: the owner's approval of Nov 17, 11:15 PM ("when
+# the Anatase test build passes all its checks, it may publish that same image straight to a test-only tag"). Either
+# way the image is pushed by this same job only after every required check passed, and the pushed digest is checked.
+# Never :latest or :testing (the old pre-archive build), never hearth-peppermint (Debian devices follow it), never a
+# release or the website. Failures show up as annotations on the run.
 name: Hearth OS (Anatase base, test)
 
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish to ghcr.io/dragongamer9/hearth-os:anatase-test (main only; the owner says when). Off: build and check only'
+        description: 'Publish to ghcr.io/dragongamer9/hearth-os:test-1.15 (main only; the owner says when). Off: build and check only'
         type: boolean
         default: false
+      test_tag:
+        description: 'Owner-approved test tag to publish to from this branch once every check passes (test-<version> only, e.g. test-1.15). Empty: none'
+        type: string
+        default: ''
       smoothness:
         description: 'Measure Desktop Mode at rest beside Debian (about 20 minutes)'
         type: boolean
@@ -21,7 +28,7 @@ on:
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
-  TEST_TAG: anatase-test
+  TEST_TAG: test-1.15
 
 concurrency:
   group: hearth-anatase-${{ github.ref }}
@@ -486,8 +493,10 @@ jobs:
       contents: read
       packages: write
     env:
-      # Only main, only by hand, only with publish ticked (red flag 5).
+      # Only main, only by hand, only with publish ticked (red flag 5)...
       PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' }}
+      # ...or an owner-approved test tag given by hand (checked against test-<version> in the step).
+      TAG_IN: ${{ github.event_name == 'workflow_dispatch' && inputs.test_tag || '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -579,16 +588,22 @@ jobs:
             IDLE_SECS=600 bash .github/scripts/desktop-idle-compare.sh ghcr.io/dragongamer9/hearth-peppermint:testing mantel | tee -a /tmp/idle.txt
           { echo '### Desktop Mode at rest (virtual screen, software drawing)'; echo; echo '```'; grep '^RESULT' /tmp/idle.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-      # Only to the test tag, only from main, only by hand (red flag 5). Never :latest, :testing or hearth-peppermint.
-      - name: Publish to the test tag (hearth-os:anatase-test)
-        if: env.PUBLISH == 'true'
+      # Only to a test tag, only by hand (red flag 5), only after every required check above passed (a failed step stops
+      # the job before this). Never :latest, :testing or hearth-peppermint. The pushed digest is checked.
+      - name: Publish to the test tag
+        if: ${{ success() && (env.PUBLISH == 'true' || env.TAG_IN != '') }}
         run: |
           set -o pipefail
-          case "$IMAGE:$TEST_TAG" in ghcr.io/dragongamer9/hearth-os:anatase-test) ;; *) echo "::error title=publish::refusing: $IMAGE:$TEST_TAG isn't the test tag"; exit 1 ;; esac
-          v="${{ needs.app.outputs.version }}"
+          tag="${TAG_IN:-$TEST_TAG}"
+          echo "$tag" | grep -Eqx 'test-[0-9]+(\.[0-9]+)*' || { echo "::error title=publish::refusing tag '$tag': only test-<version> tags (e.g. test-1.15)"; exit 1; }
+          [ "$IMAGE" = ghcr.io/dragongamer9/hearth-os ] || { echo "::error title=publish::refusing image $IMAGE"; exit 1; }
           echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
-          for tag in "$TEST_TAG" "$TEST_TAG-$v-$(date -u +%Y%m%d)"; do
-            case "$tag" in latest|testing|stable|testing-*) echo "::error title=publish::refusing tag $tag"; exit 1 ;; esac
-            sudo podman push hearth-os:anatase "$IMAGE:$tag"
+          dated="$tag-$(date -u +%Y%m%d)"
+          sudo podman push --digestfile /tmp/digest hearth-os:anatase "$IMAGE:$tag"
+          d=$(cat /tmp/digest)
+          sudo skopeo copy -q --authfile /run/containers/0/auth.json "docker://$IMAGE@$d" "docker://$IMAGE:$dated"
+          for t in "$tag" "$dated"; do
+            got=$(sudo skopeo inspect --authfile /run/containers/0/auth.json --format '{{.Digest}}' "docker://$IMAGE:$t")
+            [ "$got" = "$d" ] || { echo "::error title=publish::$IMAGE:$t is $got, not the image this run built ($d)"; exit 1; }
           done
-          echo "::notice title=published::$IMAGE:$TEST_TAG (and $TEST_TAG-$v-$(date -u +%Y%m%d))"
+          echo "::notice title=published::$IMAGE:$tag and :$dated = $d (built and checked by run ${{ github.run_id }}, commit ${{ github.sha }})"

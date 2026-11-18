@@ -9,7 +9,7 @@ has that too.
 | | Hearth OS on Anatase (test) |
 |---|---|
 | Base | Anatase (`i.anatase.org/anatase:stable`, Fedora 45 or newer), bootc, composefs |
-| Image | `ghcr.io/dragongamer9/hearth-os:anatase-test` only (never `:latest` or `:testing`, which hold the old pre-archive build) |
+| Image | `ghcr.io/dragongamer9/hearth-os:test-1.15` only (never `:latest` or `:testing`, which hold the old pre-archive build) |
 | Game Mode | Steam Game Mode with Hearth Sync (Decky built in), Hearth Game Mode as on Debian |
 | Desktop Mode | stock KDE Plasma (plasmashell on KDE's own KWin) with Hearth's apps in Plasma's menu; "Back to Game Mode" in the menu and on the taskbar (Super+G) |
 | Not here | Mantel and labwc (archived on Anatase), Firehold (its shell needs Mantel; a later stage is Firehold as a Plasma shell), Hearth's own login screen (Anatase's stays) |
@@ -98,7 +98,7 @@ So Hearth OS on Anatase gets the same design as Debian's writable system, in Fed
 ## Trying it on a device
 
 Publishing needs the owner's go-ahead (red flag 5). Once he says so: merge to main, then Actions › **Hearth OS (Anatase
-base, test)** › Run workflow on `main` with **publish** ticked. It pushes only `ghcr.io/dragongamer9/hearth-os:anatase-test`
+base, test)** › Run workflow on `main` with **publish** ticked. It pushes only `ghcr.io/dragongamer9/hearth-os:test-1.15`
 (and a dated copy).
 
 On the device (ROG Ally or the laptop), from Hearth OS on Debian:
@@ -109,7 +109,7 @@ On the device (ROG Ally or the laptop), from Hearth OS on Debian:
      (usually 0): Debian stays in the boot menu however many Anatase updates come.
    - forget the kept container images (the composefs/SELinux fix): `for r in $(sudo ostree container image list
      --repo=/sysroot/ostree/repo); do sudo ostree container image remove --repo=/sysroot/ostree/repo "$r"; done`
-   - `sudo bootc switch ghcr.io/dragongamer9/hearth-os:anatase-test`
+   - `sudo bootc switch ghcr.io/dragongamer9/hearth-os:test-1.15`
    Your home folder isn't touched; at Anatase's first start /etc is set up for Fedora by itself.
 2. If Secure Boot is on, turn it off in the firmware first (Debian's shim won't start Fedora's kernel).
 3. Restart. The first start takes a little longer (/etc set up for Fedora, SELinux labels).

@@ -26,7 +26,7 @@ pub struct Edition { pub id: &'static str, pub label: &'static str, pub repo: &'
 
 /// The tag the Anatase test build is published to (base-anatase.yml's test publish, main only). Devices that switch
 /// to it follow this tag for their updates; nothing Debian devices follow is ever written by that workflow.
-pub const ANATASE_TEST_TAG: &str = "anatase-test";
+pub const ANATASE_TEST_TAG: &str = "test-1.15";
 
 pub const EDITIONS: &[Edition] = &[
     Edition { id: "anatase", label: "Hearth OS on Anatase (test)", repo: "dragongamer9/hearth-os", tag: ANATASE_TEST_TAG, beta: true, test: true,
@@ -417,8 +417,8 @@ mod tests {
         // 1.15: Anatase is back as a test, on its own tag only (never the old pre-archive :latest or :testing).
         assert_eq!(a.label, "Hearth OS on Anatase (test)");
         assert!(a.beta && a.test);
-        assert_eq!(image_of(a, false), "ghcr.io/dragongamer9/hearth-os:anatase-test");
-        assert_eq!(image_of(a, true), "ghcr.io/dragongamer9/hearth-os:anatase-test");
+        assert_eq!(image_of(a, false), "ghcr.io/dragongamer9/hearth-os:test-1.15");
+        assert_eq!(image_of(a, true), "ghcr.io/dragongamer9/hearth-os:test-1.15");
         assert_eq!(choice(a, Some(true), true, None)["recommended"], false);
         assert_eq!(choice(a, Some(true), true, None)["test"], true);
         // Debian stays the recommended one; only test editions keep the whole home folder.
