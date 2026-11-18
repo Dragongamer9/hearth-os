@@ -164,6 +164,8 @@ ALLOWED = {
     'tools/build-docs.py',
     # CI only: the pure-Rust apps' timing test sets looks in the runner's throwaway account (no one's settings).
     '.github/scripts/hearth-apps-rust-test.sh',
+    # CI only: the Fedora image check sets up its test cases in throwaway mktemp folders.
+    '.github/scripts/anatase-image-check.sh',
 }
 
 
