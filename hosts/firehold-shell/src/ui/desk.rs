@@ -55,6 +55,10 @@ fn dock_items(st: &State) -> Vec<(String, String, Color, bool)> {
 }
 
 const ITEM: f32 = 56.0;
+/// The dock's and the notice's surfaces are exactly their panels (mockup 2: 88 tall each): a software-drawn surface
+/// has no see-through parts, so space around a panel showed as a black band.
+const DOCK_H: u32 = 88;
+const NOTICE_H: u32 = 88;
 const GAP: f32 = 10.0;
 const PAD: f32 = 14.0;
 
@@ -73,7 +77,7 @@ fn update(s: &mut Desk, m: Message) -> Task<Message> {
                 let w = dock_width(dock_items(&s.st).len());
                 if w != s.width {
                     s.width = w;
-                    return Task::done(Message::SizeChange((w, 104)));
+                    return Task::done(Message::SizeChange((w, DOCK_H)));
                 }
             }
         }
@@ -134,10 +138,12 @@ fn dock(s: &Desk) -> Element<'_, Message> {
         let item = column![cell, container(dot).center_x(Length::Fixed(ITEM))].spacing(4.0);
         r = r.push(mouse_area(item).on_press(Message::Click(key)));
     }
-    let panel = container(r)
-        .padding(Padding { top: PAD, right: PAD, bottom: 6.0, left: PAD })
-        .style(boxed(shade(0.30), 16.0, Some((c_line(), 1.0))));
-    container(panel).align_bottom(Length::Fill).center_x(Length::Fill).into()
+    container(r)
+        .padding(Padding { top: PAD, right: PAD, bottom: 8.0, left: PAD })
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(boxed(shade(0.30), 16.0, Some((c_line(), 1.0))))
+        .into()
 }
 
 fn notice(s: &Desk) -> Element<'_, Message> {
@@ -146,8 +152,10 @@ fn notice(s: &Desk) -> Element<'_, Message> {
     let words = column![tb(n.title.clone(), 16.0, c_text()), t(n.body.clone(), 14.0, soft(0.43))].spacing(4.0).width(Length::Fill);
     let radius = border::Radius::new(12.0).top_right(0.0).bottom_right(0.0);
     let card = container(row![icon, words].spacing(14.0).align_y(iced::Center))
-        .padding(Padding { top: 16.0, right: 20.0, bottom: 16.0, left: 18.0 })
+        .padding(Padding { top: 0.0, right: 20.0, bottom: 0.0, left: 18.0 })
         .width(Length::Fill)
+        .height(Length::Fill)
+        .center_y(Length::Fill)
         .style(move |_| container::Style {
             background: Some(shade(0.39).into()),
             border: iced::Border { color: c_line(), width: 1.0, radius },
@@ -185,7 +193,7 @@ pub fn run(kind: &'static str) -> i32 {
             anchor: Anchor::Bottom,
             layer: Layer::Top,
             exclusive_zone: 0,
-            size: Some((dock_width(3), 104)),
+            size: Some((dock_width(3), DOCK_H)),
             margin: (0, 0, 22, 0),
             keyboard_interactivity: KeyboardInteractivity::None,
             start_mode: StartMode::Active,
@@ -195,7 +203,7 @@ pub fn run(kind: &'static str) -> i32 {
             anchor: Anchor::Top | Anchor::Right,
             layer: Layer::Overlay,
             exclusive_zone: 0,
-            size: Some((490, 100)),
+            size: Some((490, NOTICE_H)),
             margin: (64, 0, 0, 0),
             keyboard_interactivity: KeyboardInteractivity::None,
             start_mode: StartMode::Active,

@@ -31,7 +31,15 @@ struct Guide {
     st: State,
     sel: usize,
     perf: bool,
+    /// The overlay's surface width, made to fit its line.
+    perf_w: u32,
 }
+
+/// The overlay's line in its monospaced font (about 0.6 em a letter at 15 px) and its padding: the surface's width.
+fn perf_width(line: &str) -> u32 {
+    (line.chars().count().max(8) as f32 * 9.1 + 30.0).ceil() as u32
+}
+const PERF_H: u32 = 34;
 
 const TILES: usize = 6;
 const ROWS: usize = 6;
@@ -103,6 +111,14 @@ fn update(s: &mut Guide, m: Message) -> Task<Message> {
             s.st = *st;
             if !s.perf && !s.st.guide.up {
                 return iced::exit();
+            }
+            if s.perf {
+                // Only when the line's length changes (a digit more or less), never on a timer of its own.
+                let w = perf_width(&perf_text(s));
+                if w != s.perf_w {
+                    s.perf_w = w;
+                    return Task::done(Message::SizeChange((w, PERF_H)));
+                }
             }
         }
         Message::Hub(HubMsg::Nav(k)) => s.nav(&k),
@@ -211,12 +227,19 @@ fn guide_view(s: &Guide) -> Element<'_, Message> {
         .into()
 }
 
+fn perf_text(s: &Guide) -> String {
+    if s.st.perf.line.is_empty() { "Firehold".to_string() } else { s.st.perf.line.clone() }
+}
+
 fn perf_view(s: &Guide) -> Element<'_, Message> {
-    let line = if s.st.perf.line.is_empty() { "Firehold".to_string() } else { s.st.perf.line.clone() };
-    let chip = container(text(line).size(15.0).font(MONO).color(c_good()))
-        .padding(Padding { top: 6.0, right: 14.0, bottom: 6.0, left: 14.0 })
-        .style(boxed(Color { a: 0.85, ..shade(0.04) }, 8.0, None));
-    container(chip).width(Length::Fill).height(Length::Fill).into()
+    // The chip is the whole surface (perf_width): nothing around it to be drawn see-through.
+    container(text(perf_text(s)).size(15.0).font(MONO).color(c_good()))
+        .padding(Padding { top: 0.0, right: 14.0, bottom: 0.0, left: 14.0 })
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .center_y(Length::Fill)
+        .style(boxed(shade(0.04), 8.0, None))
+        .into()
 }
 
 fn view(s: &Guide) -> Element<'_, Message> {
@@ -240,7 +263,7 @@ pub fn run(perf: bool) -> i32 {
             anchor: Anchor::Top | Anchor::Left,
             layer: Layer::Overlay,
             exclusive_zone: 0,
-            size: Some((560, 36)),
+            size: Some((perf_width("Firehold"), PERF_H)),
             margin: (28, 0, 0, 32),
             keyboard_interactivity: KeyboardInteractivity::None,
             events_transparent: true,

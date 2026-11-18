@@ -524,9 +524,10 @@ impl Hub {
             }
             let couch = self.st.posture == "couch";
             // Only what comes to the front: a dialog or a tool window behind stays as it is.
-            let front = w.activated || w.id == self.st.active;
-            // Firehold's own Settings stays a window in the middle, over the Couch's background (mockup 6).
+            // Firehold's own Settings stays a window in the middle, over the Couch's background (mockup 6), and the
+            // Couch steps down for it even before it has the keyboard (the Couch had it, so it never would).
             let ours = w.app_id == "firehold-settings";
+            let front = w.activated || w.id == self.st.active || ours;
             let full = if w.game { self.st.cfg.games == "fullscreen" || (self.st.cfg.games == "follow" && couch) } else { couch && front && !ours };
             if full && !w.fullscreen {
                 self.comp_send(json!({"op": "fullscreen", "id": w.id, "on": true}));

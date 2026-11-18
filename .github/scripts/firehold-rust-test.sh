@@ -175,8 +175,15 @@ for i in $(seq 10); do [ "$(st 'd["posture"]')" = desk ] && break; sleep 0.5; do
 for i in $(seq 10); do [ "$(st 'not any(w["game"] and w["fullscreen"] for w in d["wins"])')" = True ] && break; sleep 0.5; done
 [ "$(st 'not any(w["game"] and w["fullscreen"] for w in d["wins"])')" = True ] || fail "posture" "the game stayed full screen on the Desk"
 GID=$(st '[w["id"] for w in d["wins"] if w["game"]][0]'); FID=$(st '[w["id"] for w in d["wins"] if w["name"] == "Hearth Files"][0]')
-C "{\"op\":\"activate\",\"id\":\"$FID\"}" >/dev/null; sleep 0.5; C "{\"op\":\"activate\",\"id\":\"$GID\"}" >/dev/null
-shot firehold-r2-desk 2
+# As the mockup sets the scene: Hearth Files on the left, the game on the right (firehold-comp's own snap, through its
+# window IPC), Hearth Files in front (the bar names it).
+W() { python3 -c 'import socket,sys; s=socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); s.sendall((sys.argv[2]+"\n").encode()); s.settimeout(3); print(s.makefile().readline().strip()[:200])' "$XDG_RUNTIME_DIR/firehold-wm-wayland-hearth.sock" "$1" 2>&1; }
+note "desk scene" "$(W "{\"op\":\"snap\",\"id\":$FID,\"zone\":\"left-half\"}") · $(W "{\"op\":\"snap\",\"id\":$GID,\"zone\":\"right-half\"}")"
+C "{\"op\":\"activate\",\"id\":\"$GID\"}" >/dev/null; sleep 0.5; C "{\"op\":\"activate\",\"id\":\"$FID\"}" >/dev/null
+# The scene took a few seconds: the Couch and the mouse once more, so "Switched to Desk" is fresh for the picture.
+C posture couch >/dev/null; sleep 1; C '{"op":"input","kind":"mouse"}' >/dev/null
+for i in $(seq 10); do [ "$(st 'd["posture"]')" = desk ] && break; sleep 0.3; done
+shot firehold-r2-desk 1.5
 [ "$(st 'd["notice"] is not None')" = True ] || note "posture" "the notice had already gone when the picture was taken"
 # 6. Settings › Couch and Desk (mockup 6): a window in the middle, over the Couch's background (the other windows put
 # away first, as the mockup has nothing else on the screen)
