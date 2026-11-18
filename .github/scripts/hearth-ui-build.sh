@@ -11,7 +11,13 @@ mkdir -p /tmp/w/hosts/linux/desktop/theme
 cp -a /src/hosts/hearth-ui /src/hosts/hearth-core /tmp/w/hosts/
 cp /src/hosts/linux/desktop/theme/palettes.json /tmp/w/hosts/linux/desktop/theme/
 cd /tmp/w/hosts/hearth-ui
-cargo build --release --workspace 2>&1 | grep -E '^(error|warning: unused)' -A6 | head -60 || true
+if ! cargo build --release --workspace > /tmp/w/build.log 2>&1; then
+  # The first errors as annotations (the build's log can't be read from here).
+  awk '/^error/{if (b) print b; b=$0; n=0; next} b && n < 14 {b=b "|" $0; n++} END{if (b) print b}' /tmp/w/build.log | head -12 | while read -r l; do
+    echo "::error title=Hearth's pure-Rust apps build::$(echo "$l" | cut -c1-3500)"
+  done
+  grep -q '^error' /tmp/w/build.log || echo "::error title=Hearth's pure-Rust apps build::$(tail -c 3000 /tmp/w/build.log | tr '\n' '|')"
+fi
 mkdir -p /tmp/w/out
 for b in hearth-task-manager hearth-system-restore hearth-reliability-history; do
   test -x "target/release/$b" || { echo "::error title=Hearth's pure-Rust apps build::$b didn't build"; exit 1; }

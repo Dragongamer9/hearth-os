@@ -10,7 +10,7 @@ on:
   push:
     branches: ['feature/hearth-apps-rust']
     paths: ['hosts/hearth-ui/**', 'hosts/hearth-core/src/settings_file.rs', 'hosts/linux/desktop/theme/palettes.json',
-            '.github/workflows/hearth-apps-rust.yml', '.github/scripts/hearth-apps-rust-*']
+            '.github/workflows/hearth-apps-rust.yml', '.github/scripts/hearth-apps-rust-*', '.github/scripts/hearth-ui-build.sh']
   workflow_dispatch:
 
 permissions:
@@ -72,6 +72,21 @@ jobs:
           name: hearth-apps-rust
           path: bin
           retention-days: 7
+
+  # The same build as base-anatase.yml's "hearth-ui" job, inside the Fedora edition's own base image (what the image
+  # links), so a problem there shows here first.
+  inside-base:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build inside the Fedora edition's base
+        run: |
+          mkdir -p /tmp/out
+          base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+          docker pull -q "$base"
+          docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-ui-build.sh 2>&1 | tail -60
+          test -s /tmp/out/hearth-ui.tar
 
   run:
     needs: build

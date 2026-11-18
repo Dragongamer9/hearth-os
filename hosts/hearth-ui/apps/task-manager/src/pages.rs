@@ -1162,7 +1162,7 @@ fn menu<'a>(a: &'a App, m: &'a crate::Menu) -> Element<'a, Msg> {
     }
     container(col)
         .padding(4.0)
-        .width(Length::Fixed(300.0))
+        .width(Length::Fixed(330.0))
         .style(move |_t: &iced::Theme| container::Style {
             background: Some(iced::Background::Color(p.panel)),
             border: iced::Border { color: p.line, width: 1.0, radius: p.r(8.0).into() },
