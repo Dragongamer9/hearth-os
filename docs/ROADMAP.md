@@ -26,7 +26,9 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 - [ ] PRoot for newer phones with 16 KB memory pages (not needed on the Tab A9)
 - [ ] Game saves backed up by Ludusavi (github.com/mtkennerly/ludusavi, MIT) on the home server: its list of where thousands of games keep their saves, Proton and Wine games included, under Hearth's save backups over Tailscale
 
-## 1.14 (released 2026-11-17)
+## 1.14 (pulled 2026-11-17)
+
+Taken down the same evening at the owner's word: Mantel used most of the processor and both of his devices nearly locked up. The update image went back to 1.13 and the 1.14 release was hidden; its fixes come in 1.15. Devices that updated get 1.13 again as their next update.
 
 ISOs: the offline installer USB stays on 1.11 and the Recovery USB on 1.12. Installing and starting changed (Desktop Mode on KWin, Hearth's own login screen as a test), so both are due from 1.16, the first release the 5–10 rule allows; the owner checks the Recovery USB next.
 

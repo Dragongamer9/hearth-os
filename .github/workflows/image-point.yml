@@ -1,0 +1,35 @@
+# Points ghcr.io/dragongamer9/hearth-peppermint:testing (what devices update to) at an image that was already
+# published, by its dated tag (testing-<version>-<yyyymmdd>, kept by every publish). Used to pull a bad update back
+# to the last good one without building anything. Run by hand only, on the owner's word.
+name: Point the update image at a version
+
+on:
+  workflow_dispatch:
+    inputs:
+      from:
+        description: 'The dated tag to point :testing at (e.g. testing-1.13.0-20261116)'
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  point:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Point :testing at the chosen image
+        env:
+          FROM: ${{ inputs.from }}
+        run: |
+          set -euo pipefail
+          IMAGE=ghcr.io/dragongamer9/hearth-peppermint
+          case "$FROM" in testing-[0-9]*-[0-9]*) ;; *) echo "::error title=image::'$FROM' isn't a dated testing tag"; exit 1 ;; esac
+          echo "${{ secrets.GITHUB_TOKEN }}" | skopeo login ghcr.io -u "${{ github.actor }}" --password-stdin
+          want=$(skopeo inspect --format '{{.Digest}}' "docker://$IMAGE:$FROM")
+          before=$(skopeo inspect --format '{{.Digest}}' "docker://$IMAGE:testing")
+          echo "::notice title=before::$IMAGE:testing was $before"
+          skopeo copy --all --preserve-digests "docker://$IMAGE:$FROM" "docker://$IMAGE:testing"
+          after=$(skopeo inspect --format '{{.Digest}}' "docker://$IMAGE:testing")
+          [ "$after" = "$want" ] || { echo "::error title=image:::testing is $after, not $want"; exit 1; }
+          echo "::notice title=image::$IMAGE:testing now points at $FROM ($want)"
