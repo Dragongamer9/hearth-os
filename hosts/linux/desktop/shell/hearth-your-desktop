@@ -4,15 +4,10 @@
   hearth-your-desktop status      JSON: the last notice (why Desktop Mode started the way it did), Mantel's window
                                   manager (picked, running now, KWin's failed starts) and what's here
   hearth-your-desktop notice      JSON: the notice Mantel hasn't shown yet ({} when there's none), marked as shown
-  hearth-your-desktop kwin-overrides
-                                  (nimbus-session, before KWin starts) which of your own KDE settings Hearth's fixed
-                                  KWin keys override (LOCKED below); the first time one is, a notice says which and
-                                  why. Reads your files, never writes them. JSON {overridden, told}
-  hearth-your-desktop wm kwin|labwc|firehold|firehold-once
+  hearth-your-desktop wm labwc|firehold|firehold-once   (kwin, archived in 1.15, means labwc)
   hearth-your-desktop unlock | relock
                                   Mantel's window manager from the next start of Desktop Mode (session.conf's
-                                  HEARTH_DESKTOP_WM, only that line, through hearth_settings_io). Picking KWin also
-                                  turns it back on after it didn't start twice (nimbus-session's safe start).
+                                  HEARTH_DESKTOP_WM, only that line, through hearth_settings_io).
                                   firehold is Firehold, 2.0's own desktop compositor, a preview (docs/FIREHOLD.md): turning it on keeps
                                   what was picked before in HEARTH_DESKTOP_WM_BEFORE, which turning it off goes back
                                   to (Settings shows it as a switch, off unless you turn it on).
@@ -49,23 +44,6 @@ SHOWN = NOTICE + '.shown'
 RETIRED_TOLD = os.path.join(DESK_STATE, 'desktop-retired-told')
 FAILS = os.path.join(DESK_STATE, 'desktop-fails')
 NAMES = {'kde': 'KDE Plasma', 'gnome': 'GNOME'}
-MINE_TOLD = os.path.join(DESK_STATE, 'kwin-mine-told')
-# Hearth's KWin keys that are fixed ([$i], KConfig's "immutable", in desktop/kwin/xdg and desktop/kwin/windows/xdg):
-# your own ~/.config file can't change them under KWin, because Mantel can't work without them (red flag 2: KWin
-# locking by itself skips hearth-lockcheck, a lockout on a handheld if its lock screen can't load). Only these;
-# Night Light and tearing (Settings › Display, written to your kwinrc) are never fixed.
-#   (id, file, group, key, Hearth's value, what it is in KDE, what decides it in Hearth; '' = not told: no effect alone)
-LOCKED = [
-    ('autolock', 'kscreenlockerrc', 'Daemon', 'Autolock', 'false', 'Lock the screen automatically',
-     'Mantel locks when it\'s idle as Settings › Sign-in says'),
-    ('lockonresume', 'kscreenlockerrc', 'Daemon', 'LockOnResume', 'false', 'Lock after waking from sleep',
-     'Settings › Sign-in › Lock when waking decides it'),
-    ('locktimeout', 'kscreenlockerrc', 'Daemon', 'Timeout', '0', '', ''),
-    ('inputmethod', 'kwinrc', 'Wayland', 'InputMethod', '/usr/share/applications/hearth-kwin-im.desktop',
-     'The virtual keyboard you picked in KDE', 'Hearth\'s on-screen keyboard types for you (Settings › Keyboard)'),
-    ('superkey', 'kwinrc', 'ModifierOnlyShortcuts', 'Meta', 'org.hearth.Windows,/org/hearth/Windows,org.hearth.Windows,Launcher',
-     'What the Super key opens on its own', 'it opens Mantel\'s app menu (Settings › Desktop › App menu picks which)'),
-]
 WMS = {'kwin': 'KWin', 'labwc': 'labwc', 'firehold': 'Firehold'}
 # Try once (Settings › Your desktop › Firehold (preview)): the next Desktop Mode start only; the session removes it.
 FIREHOLD_ONCE = os.path.join(DESK_STATE, 'firehold-once')
@@ -85,7 +63,7 @@ def texts(what, why):
         name = NAMES.get(what, 'KDE Plasma or GNOME')
         return ('KDE Plasma and GNOME were retired',
                 'You had %s picked for Desktop Mode. Hearth 1.14 retired KDE Plasma and GNOME as desktops: Desktop '
-                'Mode is Mantel, which now runs on KWin, KDE\'s own window manager. Your apps, files and settings are '
+                'Mode is Mantel (Hearth Classic). Your apps, files and settings are '
                 'all still here.' % name)
     if what == 'firehold':
         try:
@@ -97,106 +75,23 @@ def texts(what, why):
             detail = ''
         return {
             'missing': ('Firehold isn\'t on this device yet', 'You turned on the Firehold preview, '
-                        'but it isn\'t installed here, so Hearth started the normal desktop (KWin). Your choice stays saved.'),
-            'failed': ('Firehold couldn\'t start', 'So Hearth started the normal desktop (KWin) for this sign-in. '
+                        'but it isn\'t installed here, so Hearth started the normal desktop (labwc). Your choice stays saved.'),
+            'failed': ('Firehold couldn\'t start', 'So Hearth started the normal desktop (labwc) for this sign-in. '
                        'Firehold is a preview; next time Hearth tries it again.' + detail),
             'twice': ('Firehold couldn\'t start twice in a row', 'So Hearth turned "Always" off for now and starts '
-                      'the normal desktop (KWin). Your choice is kept: turn it back on here, or in Settings › System › '
+                      'the normal desktop (labwc). Your choice is kept: turn it back on here, or in Settings › System › '
                       'Your desktop.' + detail),
             'intro': ('You\'re trying Firehold', 'Hearth 2.0\'s own desktop, a preview: some things don\'t work yet. '
-                      'If anything goes wrong, %s goes back to the normal desktop (KWin) at once.' % LEAVE_KEY),
-            'left': ('Back on the normal desktop', 'You left Firehold with %s, so Mantel is on KWin for this '
+                      'If anything goes wrong, %s goes back to the normal desktop (labwc) at once.' % LEAVE_KEY),
+            'left': ('Back on the normal desktop', 'You left Firehold with %s, so Mantel is on labwc for this '
                      'sign-in. Firehold starts again next time if it\'s set to Always.' % LEAVE_KEY),
         }.get(why, ('', ''))
-    if what == 'kwin':
-        return {
-            'missing': ('Mantel opened on labwc', 'KWin, the window manager Mantel runs on, isn\'t installed, so Mantel '
-                        'opened on labwc, the one it used before 1.14. Everything works as before.'),
-            'failed': ('KWin didn\'t start', 'Mantel opened on labwc instead, the window manager it used before 1.14, '
-                       'for this sign-in. Next time Hearth tries KWin again.'),
-            'twice': ('KWin didn\'t start twice in a row', 'Mantel uses labwc, the window manager it used before 1.14, '
-                      'until you turn KWin back on. You can try it again here or in Settings › System › Your desktop.'),
-        }.get(why, ('', ''))
-    if what == 'kwin-lock':
-        part = {'nopackage': "Hearth's lock screen for KWin (/usr/share/plasma/shells/org.hearth.mantel-lock) is missing",
-                'nolocker': "KWin's screen locker (kscreenlocker_greet) isn't installed",
-                'notloaded': "KWin's screen locker didn't show Hearth's lock screen loading when Hearth tested it"}.get(why)
-        if not part:
-            return ('', '')
-        return ('The lock screen is off',
-                "The lock screen is off because Hearth's lock screen isn't installed correctly: %s. So that you can "
-                "never be locked out, Desktop Mode doesn't lock the screen (Lock says so too) until it's fixed. "
-                "Restoring Hearth's system files or the next update puts it back. Details: session.log in "
-                "~/.local/share/nimbus, and Send logs." % part)
-    if what == 'kwin-mine':
-        ids = [i for i in why.split('+') if i]
-        rows = [x for x in LOCKED if x[0] in ids and x[5]]
-        if not rows or len(rows) != len(ids):
-            return ('', '')
-        return ('Some of your KDE settings aren\'t used here',
-                'Mantel on KWin needs these to work, so your own choices from KDE Plasma aren\'t used in Desktop Mode.\n'
-                + ''.join('\n• %s: %s.' % (x[5], x[6][0].upper() + x[6][1:]) for x in rows)
-                + '\n\nYour own files aren\'t changed: KDE would use them again.')
+    if what == 'kwin' and why == 'archived':
+        return ('Desktop Mode is back on labwc', 'Hearth 1.14 moved Mantel to KWin; on some PCs it was slow to start and '
+                'the lock screen and window frames didn\'t all work, so KWin is archived. Mantel runs on labwc again, '
+                'as in 1.13 (Hearth Classic). Your apps, files and settings are all still here.')
+    # 1.14's other KWin notices (kwin missing / failed / twice, kwin-lock, kwin-mine) are no longer shown: KWin is archived.
     return ('', '')
-
-
-def ini_values(text):
-    """{(group, key): value} of a KDE ini file (the last one wins, a key's [$e] / [$i] options dropped)."""
-    out, group = {}, ''
-    for raw in text.splitlines():
-        s = raw.strip()
-        if not s or s.startswith('#'):
-            continue
-        if s.startswith('['):
-            s = re.sub(r'\[\$[a-z]*\]$', '', s)              # a group's own [$i]
-            if s.startswith('[') and s.endswith(']'):
-                group = s[1:-1].replace('][', '/')
-            continue
-        if '=' in s:
-            k, v = s.split('=', 1)
-            out[(group, re.sub(r'\[[^\]]*\]', '', k).strip())] = v.strip()
-    return out
-
-
-def overridden(config_home=None):
-    """The ids in LOCKED whose key your own file sets to something other than Hearth's value."""
-    config_home = config_home or CONFIG_HOME
-    files, out = {}, []
-    for lid, fname, group, key, value, _what, _how in LOCKED:
-        if fname not in files:
-            try:
-                with open(os.path.join(config_home, fname), encoding='utf-8', errors='replace') as f:
-                    files[fname] = ini_values(f.read())
-            except OSError:
-                files[fname] = {}
-        mine = files[fname].get((group, key))
-        if mine is not None and mine.lower() != value.lower():
-            out.append(lid)
-    return out
-
-
-def cmd_kwin_overrides():
-    """Queue the one-time notice for overridden keys not told yet. They're marked as told only after the notice is
-    really in the notice file (read back under its lock); if queueing fails nothing is marked, so the next start
-    tells again (red flag 9: the person is always told)."""
-    ids = overridden()
-    told = [i for i in (sio.load_json(MINE_TOLD, {}, repair=False).get('told') or []) if isinstance(i, str)] \
-        if os.path.exists(MINE_TOLD) else []
-    tell = [i for i in ids if i not in told and any(x[0] == i and x[5] for x in LOCKED)]
-    if not tell:
-        return {'overridden': ids, 'told': False}
-    shown = [i for i in ids if any(x[0] == i and x[5] for x in LOCKED)]
-    n = parse('kwin-mine %s %d' % ('+'.join(shown), int(time.time())))
-    with sio.locked(NOTICE):
-        rest = [x for x in read_notices(NOTICE) if x['what'] != 'kwin-mine']
-        write_lines(NOTICE, rest + [n])
-        queued = any(x['what'] == 'kwin-mine' and x['kind'] == n['kind'] for x in read_notices(NOTICE))
-    if not queued:
-        sio.log_event('desktop: the notice about your KDE settings couldn\'t be queued; told at the next start')
-        return {'overridden': ids, 'told': False}
-    sio.write_json(MINE_TOLD, {'told': sorted(set(told) | set(tell))})
-    sio.log_event('desktop: your own KDE settings not used under KWin: %s' % ', '.join(shown))
-    return {'overridden': ids, 'told': True}
 
 
 def parse(line):
@@ -306,7 +201,7 @@ def cmd_unlock(on):
         cur = re.findall(r'''^[ \t]*(?:export[ \t]+)?HEARTH_DESKTOP_WM=["']?([a-z]*)''', t, re.M)
         if cur and cur[-1] == 'firehold':
             before = re.findall(r'''^[ \t]*(?:export[ \t]+)?HEARTH_DESKTOP_WM_BEFORE=["']?([a-z]*)''', t, re.M)
-            back = before[-1] if before and before[-1] in ('kwin', 'labwc') else 'kwin'
+            back = 'labwc'
             t = sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', back)
         return t
     sio.update_text(SESSION_CONF, change)
@@ -319,7 +214,8 @@ def status():
     pending, seen = read_notices(NOTICE), read_notices(SHOWN)
     n, shown = (pending[0], False) if pending else ((seen[-1], True) if seen else (None, False))
     v = conf_value('HEARTH_DESKTOP_WM')
-    picked = v if v in ('labwc', 'firehold') else 'kwin'
+    # KWin is archived (1.15): a saved kwin (or 1.14's default, no line) opens Mantel on labwc; the line itself is kept.
+    picked = v if v in ('labwc', 'firehold') else 'labwc'
     before = conf_value('HEARTH_DESKTOP_WM_BEFORE')
     fails = kwin_fails()
     hfails = kwin_fails('firehold')
@@ -330,13 +226,13 @@ def status():
         seen = [x for x in seen if x['what'] != 'firehold']
         n, shown = (pending[0], False) if pending else ((seen[-1], True) if seen else (None, False))
         if v == 'firehold':
-            picked = conf_value('HEARTH_DESKTOP_WM_BEFORE') if conf_value('HEARTH_DESKTOP_WM_BEFORE') in ('kwin', 'labwc') else 'kwin'
+            picked = 'labwc'
     once = shown_fh and os.path.exists(FIREHOLD_ONCE)
     mode = 'always' if picked == 'firehold' else 'once' if once else 'off'
     return {'notice': n, 'noticeShown': shown, 'notices': pending + seen, 'wm': picked, 'wmNow': wm_now(), 'kwinFails': fails,
             'fireholdMode': mode, 'fireholdOnce': once, 'leaveKey': LEAVE_KEY, 'fireholdUnlocked': shown_fh,
-            'kwinPaused': picked == 'kwin' and fails >= 2,
-            'fireholdPreview': picked == 'firehold', 'wmBefore': before if before in ('kwin', 'labwc') else 'kwin',
+            'kwinPaused': False, 'kwinArchived': True, 'kwinSaved': v in ('', 'kwin'),
+            'fireholdPreview': picked == 'firehold', 'wmBefore': 'labwc',
             'fireholdHere': firehold_here(), 'fireholdFails': hfails, 'fireholdPaused': picked == 'firehold' and hfails >= 2,
             'kwinHere': bool(shutil.which('kwin_wayland')),
             'labwcHere': bool(shutil.which('labwc')),
@@ -367,19 +263,21 @@ def drop_once():
 
 def cmd_wm(w):
     if w in ('firehold', 'firehold-once') and not unlocked():
-        raise Fail('kwin or labwc')
+        raise Fail('labwc')
     if w == 'firehold-once':
         # Try once: the next Desktop Mode start only, then back to what's picked (the session removes the mark).
         before = conf_value('HEARTH_DESKTOP_WM_BEFORE')
         if conf_value('HEARTH_DESKTOP_WM') == 'firehold':
-            back = before if before in ('kwin', 'labwc') else 'kwin'
+            back = 'labwc'
             sio.update_text(SESSION_CONF, lambda t: sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', back))
         sio.write_text(FIREHOLD_ONCE, 'once %d\n' % int(time.time()))
         forget_fails('firehold')
         sio.log_event('desktop: Firehold (preview) for the next start of Desktop Mode only')
         return status()
+    if w == 'kwin':
+        w = 'labwc'                    # KWin is archived (1.15): the normal desktop is labwc
     if w not in WMS:
-        raise Fail('kwin, labwc, firehold or firehold-once')
+        raise Fail('labwc, firehold or firehold-once')
     drop_once()
     if w == 'firehold':
         # The preview on: what was picked before is kept, for turning it off again.
@@ -393,13 +291,6 @@ def cmd_wm(w):
         forget_fails('firehold')
     else:
         sio.update_text(SESSION_CONF, lambda t: sio.conf_set_text(t, 'HEARTH_DESKTOP_WM', w))
-    if w == 'kwin':
-        forget_fails('kwin')
-        # ...and this sign-in too: "didn't start earlier this sign-in" is forgotten (nimbus-session's hearth-kwin-failed).
-        try:
-            os.remove(os.path.join(RUN, 'hearth-kwin-failed'))
-        except OSError:
-            pass
     sio.log_event('desktop: Mantel on %s from the next start of Desktop Mode' % WMS[w])
     return status()
 
@@ -478,8 +369,6 @@ def main(argv):
         out = status()
     elif cmd == 'notice':
         out = cmd_notice()
-    elif cmd == 'kwin-overrides':
-        out = cmd_kwin_overrides()
     elif cmd in ('unlock', 'relock'):
         out = cmd_unlock(cmd == 'unlock')
     elif cmd == 'wm' and len(argv) == 3:

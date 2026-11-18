@@ -57,8 +57,6 @@ jobs:
       - name: Looks and apps theme tests
         run: |
           python3 -m unittest discover -s hosts/linux/test -p 'test_*theme.py' -v
-          # Mantel on KWin's Settings pages' helper (hearth-kwin-settings: merge-on-write, rebinds, what it may change).
-          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_settings.py' -v
           # Screens on labwc and KWin (hearth-screens, docs/SCREENS.md): parse/build, saved settings never lost.
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_screens.py' -v
           # Mantel 2026: the eight looks, settings that never change by themselves, Sunset off, Game Mode in every look.
@@ -107,14 +105,11 @@ jobs:
           # 1.14, network and sign-in (KDE's missing parts): VPNs by hand, 802.1X, mobile broadband, Wi-Fi QR codes,
           # Duplicate, the firewall, fingerprint sign-in's PAM side, Vaults, SSH/GPG passphrases, the power menu's choices.
           python3 -m unittest discover -s hosts/linux/test -p 'test_net_signin_114.py' -v
-          # 1.14, Window effects' and Virtual desktops' extras: second switcher, hide the pointer after a time, show FPS /
-          # paint, KWin's scripts, the Desktop Cube.
-          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_effects_extras.py' -v
           # 1.14, Accessibility's KWin parts: dwell click (hearth-dwell), one window inverted, toggle keys and the modifier
           # keys' sound; with hearth-access's own tests and the KWin pages' (which check its filters on KWin).
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_dwell.py' -v
           python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_access.py'
-          python3 -m unittest discover -s hosts/linux/test -p 'test_kwin_settings.py'
+          # (test_kwin_effects_extras.py and test_kwin_settings.py: archived with KWin in 1.15, archive/kwin.)
 
       - name: Start Desktop Mode
         shell: bash
@@ -551,104 +546,13 @@ jobs:
             echo "::notice title=Settings (rest of KDE's)::no QML errors from the new pages; $(ls shots/system-settings | tr '\n' ' ' | cut -c1-900)"
           fi
           # ---- end of more of KDE's System Settings
-          # ---- Mantel on KWin's Settings pages (1.14, docs/KWIN-SETTINGS.md): first as they are under labwc (greyed, with
-          # "Needs Mantel on KWin"), then in the preview with saved settings, at 1920×1080 (the kwin-pages-shots jobs post
-          # them as SHOT notices). Opening them writes nothing; labwc's own files are as they were.
-          mkdir -p shots/kwin-pages
-          kp() { ipc settings close; ipc settings page "$1"; sleep 3; grim "shots/kwin-pages/$2.png" || true; }
-          kdown() { wtype -k Right; sleep 1; for i in $(seq 1 "$1"); do wtype -k Down; done; sleep 1; grim "shots/kwin-pages/$2.png" || true; }
-          kp kwin-effects 00-labwc-needs-kwin
-          kp mouse 00-labwc-mouse
-          kp kwin-behaviour wb-0-labwc-window-behaviour
-          K0=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" 2>/dev/null | sha256sum || true)
-          L0=$(find "$HOME/.config/labwc" "$XDG_RUNTIME_DIR/hearth-labwc" -type f 2>/dev/null | sort | xargs -r sha256sum | sha256sum || true)
-          # Saved settings to show: three named desktops, a tile layout for the screen, two window rules, a few effects.
-          mkdir -p "$HOME/.config"
-          printf '%s\n' '[Desktops]' 'Id_1=6a1f0c62-1b1d-4c8e-9d2f-000000000001' 'Name_1=Main' 'Id_2=6a1f0c62-1b1d-4c8e-9d2f-000000000002' 'Name_2=Games' \
-            'Id_3=6a1f0c62-1b1d-4c8e-9d2f-000000000003' 'Name_3=Work' 'Number=3' 'Rows=1' '' '[Plugins]' 'wobblywindowsEnabled=true' 'diminactiveEnabled=true' \
-            'cubeEnabled=true' 'minimizeallEnabled=true' 'showfpsEnabled=true' 'hidecursorEnabled=true' '' '[Effect-hidecursor]' 'HideOnTyping=false' 'InactivityDuration=10' \
-            '' '[TabBoxAlternative]' 'ApplicationsMode=2' '' '[Effect-overview]' 'BorderActivate=7' '' '[Effect-windowview]' 'BorderActivateAll=1' '' '[ElectricBorders]' 'BottomRight=ShowDesktop' '' \
-            '[Tiling][e3d3d5c4-af96-5514-988a-a5cf444294bf]' 'tiles={"layoutDirection":"horizontal","tiles":[{"width":0.3},{"width":0.4},{"width":0.3,"layoutDirection":"vertical","tiles":[{"height":0.5},{"height":0.5}]}]}' \
-            > "$HOME/.config/kwinrc"
-          printf '%s\n' '[General]' 'count=2' 'rules=1d0b1f5e-0000-4000-8000-000000000001,1d0b1f5e-0000-4000-8000-000000000002' '' \
-            '[1d0b1f5e-0000-4000-8000-000000000001]' 'Description=Steam on the Games desktop' 'wmclass=steam' 'wmclassmatch=1' 'desktops=6a1f0c62-1b1d-4c8e-9d2f-000000000002' 'desktopsrule=3' 'noborder=true' 'noborderrule=2' '' \
-            '[1d0b1f5e-0000-4000-8000-000000000002]' 'Description=Picture in picture on top' 'title=Picture-in-Picture' 'titlematch=2' 'above=true' 'aboverule=2' 'opacityinactive=85' 'opacityinactiverule=2' \
-            > "$HOME/.config/kwinrulesrc"
-          printf '%s\n' '[Keyboard]' 'StickyKeys=true' > "$HOME/.config/kaccessrc"
-          printf '%s\n' '[ButtonRebinds][Mouse]' 'ExtraButton1=Key,Alt+Left' 'ExtraButton5=Key,Meta+W' > "$HOME/.config/kcminputrc"
-          # Window behaviour (SetKwinWindows.qml): focus follows the pointer with raise on hover, a middle click closes,
-          # Super + right button opens the window menu.
-          printf '%s\n' '' '[Windows]' 'FocusPolicy=FocusFollowsMouse' 'AutoRaise=true' 'AutoRaiseInterval=500' '' '[MouseBindings]' \
-            'CommandActiveTitlebar2=Close' 'CommandInactiveTitlebar2=Close' 'CommandAll3=Operations menu' >> "$HOME/.config/kwinrc"
-          touch "$XDG_RUNTIME_DIR/hearth-kwin-preview"
-          K1=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" "$HOME/.config/kcminputrc" 2>/dev/null | sha256sum || true)
-          kp kwin-effects 01-window-effects; kdown 22 02-window-effects-switcher-blur
-          kp kwin-desktops 03-virtual-desktops
-          kp kwin-tiling 04-tiling
-          kp kwin-edges 05-screen-edges; kdown 12 06-screen-edges-touch
-          kp kwin-rules 07-window-rules; wtype -k Right; sleep 1; wtype -k Return; sleep 2; grim shots/kwin-pages/08-window-rule-open.png || true
-          kp kwin-tablet 09-tablet-and-touchscreen; kdown 12 10-touchscreen
-          kp kwin-games 11-games-and-x11-apps
-          kp mouse 21-mouse-on-kwin; kdown 14 13-touchpad-on-kwin
-          kp accessibility 14-accessibility-on-kwin; kdown 16 15-accessibility-typing-and-mouse
-          # The 1.14 extras: the second switcher (Super+Tab), the pointer, window helpers and For developers at the bottom,
-          # and the Desktop Cube.
-          kp kwin-effects 16-window-effects-second-switcher; kdown 25 16-window-effects-second-switcher
-          kp kwin-effects 17-window-effects-pointer-helpers-developers; kdown 54 17-window-effects-pointer-helpers-developers
-          kp kwin-desktops 18-virtual-desktops-cube; kdown 12 18-virtual-desktops-cube
-          # Mouse buttons (1.14 wave 3, SetMouseButtons.qml): two saved rebinds (kcminputrc above), then the "press the button" box
-          # (mouse-buttons:press); the middle-click paste switch is in 21, the pen-and-mouse pointer switch in 09.
-          kp mouse-buttons 19-mouse-buttons
-          kp mouse-buttons:press 20-mouse-buttons-press
-          kp kwin-behaviour wb-1-window-behaviour; kdown 10 wb-2-window-behaviour-title-bar
-          # Further down with Down only: Right on a choice would pick the next option (and save it).
-          for i in $(seq 1 5); do wtype -k Down; done; sleep 1; grim shots/kwin-pages/wb-3-window-behaviour-super-drag.png || true
-          # A window menu's More actions › "Special window settings…" (here as its IPC): Window rules for that app,
-          # with a button to make one (nothing written: the K1/K2 check below).
-          ipc settings close; ipc settings windowRules foot "Terminal"; sleep 3; grim shots/kwin-pages/wb-4-window-rules-for-a-window.png || true
-          ipc settings state | grep -q '"page":"kwin-rules"' || { echo "::error title=KWin pages::Special window settings didn't open Window rules: $(ipc settings state | cut -c1-200)"; touch shots/FAILED; }
-          # Dwell click and one window inverted turned on (saved settings: under labwc nothing runs for them), the page
-          # down at Dwell click, then its ring as it fills (shown through its IPC, at the screen's middle and close up).
-          AJ="$HOME/.config/nimbus/accessibility.json"; [ -e "$AJ" ] && cp -f "$AJ" /tmp/accessibility.json.before
-          mkdir -p "$HOME/.config/nimbus"
-          python3 -c 'import json, sys; p = sys.argv[1]
-          try: d = json.load(open(p))
-          except Exception: d = {}
-          d.update(dwellClick=True, dwellDelay=1200, dwellClickType="double", invertWindow=True); json.dump(d, open(p, "w"))' "$AJ"
-          kpd() { ipc settings close; ipc settings page accessibility; sleep 3; kdown "$1" "$2"; }
-          kpd 14 ac-1-invert-one-window; kpd 20 ac-2-typing-sounds; kpd 27 ac-3-dwell-click
-          ipc settings close; sleep 1
-          ipc dwell demo 960 540 0.65 left; sleep 1; grim shots/kwin-pages/ac-4-dwell-ring.png || true
-          grim -g "800,450 320x180" shots/kwin-pages/ac-5-dwell-ring-close.png || true
-          ipc dwell demo 960 540 0.3 double; sleep 1; grim -g "800,450 320x180" shots/kwin-pages/ac-6-dwell-ring-double.png || true
-          dnf -y install python3-pillow >/dev/null 2>&1 || true
-          # The ring has to sit on the pointer: its middle at 960,540 (the screen's), not pushed below the bar.
-          python3 - shots/kwin-pages/ac-4-dwell-ring.png <<'PY' || { echo "::error title=Dwell click::the ring isn't on the pointer"; touch shots/FAILED; }
-          import sys
-          try:
-              from PIL import Image
-          except ImportError:
-              raise SystemExit(0)
-          im = Image.open(sys.argv[1]).convert('RGB')
-          ys = [y for y in range(380, 700) for x in range(940, 981) if (lambda p: p[2] > 200 and p[2] - p[0] > 80)(im.getpixel((x, y)))]
-          mid = (min(ys) + max(ys)) / 2 if ys else -1
-          print('::notice title=Dwell click::ring middle at y=%.0f (pointer at 540)' % mid)
-          sys.exit(0 if abs(mid - 540) <= 6 else 1)
-          PY
-          ipc dwell hide
-          rm -f "$AJ"; [ -e /tmp/accessibility.json.before ] && mv -f /tmp/accessibility.json.before "$AJ"
-          ipc settings close; sleep 1
-          rm -f "$XDG_RUNTIME_DIR/hearth-kwin-preview"
-          K2=$(cat "$HOME/.config/kwinrc" "$HOME/.config/kwinrulesrc" "$HOME/.config/kaccessrc" "$HOME/.config/kdeglobals" "$HOME/.config/kcminputrc" 2>/dev/null | sha256sum || true)
-          L2=$(find "$HOME/.config/labwc" "$XDG_RUNTIME_DIR/hearth-labwc" -type f 2>/dev/null | sort | xargs -r sha256sum | sha256sum || true)
-          [ "$K1" = "$K2" ] || { echo "::error title=KWin pages::opening the KWin pages changed KWin's settings files"; touch shots/FAILED; }
-          [ "$L0" = "$L2" ] || { echo "::error title=KWin pages::the KWin pages changed labwc's files"; touch shots/FAILED; }
-          [ "$K0" != "$K1" ] || echo "::notice title=KWin pages::labwc run left no KWin files (as it should)"
-          if grep -E "(Kwin[A-Za-z]*|SetKwin[A-Za-z]*|SetMouse|SetAccessibility|Dwell)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" >/dev/null 2>&1; then
-            echo "::error title=KWin pages::$(grep -E "(Kwin[A-Za-z]*|SetKwin[A-Za-z]*|SetMouse|SetAccessibility|Dwell)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
+          # ---- (1.14's Mantel-on-KWin Settings pages are archived with KWin in 1.15: archive/kwin, docs/archive/KWIN.md.)
+          # The shared pages that kept a KWin part (Mouse, Mouse buttons, Accessibility) still open without QML errors.
+          for pg in mouse mouse-buttons accessibility; do ipc settings close; ipc settings page "$pg"; sleep 3; done; ipc settings close
+          if grep -E "(Kwin[A-Za-z]*|SetMouse[A-Za-z]*|SetAccessibility|Dwell)\.qml.*(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign)" "$LOG" >/dev/null 2>&1; then
+            echo "::error title=Shared pages::$(grep -E "(Kwin[A-Za-z]*|SetMouse[A-Za-z]*|SetAccessibility|Dwell)\.qml" "$LOG" | sort -u | head -8 | cut -c1-230 | tr '\n' '|')"
             touch shots/FAILED
           fi
-          echo "::notice title=KWin pages::$(ls shots/kwin-pages | tr '\n' ' ')"
           # 1.14, the new Settings: the keyboard-and-mouse Home (A1) and Display (A2), then the controller look (B1, B2):
           # Quick, System › Display, the help panel, LB / RB, X Default asked first, and back to A with the mouse.
           mkdir -p shots/settings-new
@@ -2835,7 +2739,9 @@ jobs:
   # and keep, restore), KWin's Night Light settings, screen off and on (KWin's DPMS), and a screenshot through
   # hearth-screenshot with KWin's permission check on (hearth-kwin-cast and its .desktop file as the images install them). Then
   # Settings › Display in the real shell, its pictures as SHOT notices. Problems are ::error:: annotations.
+  # Archived with KWin (1.15): only when it's asked for by hand (Run workflow › Only the KWin screens job).
   kwin-screens:
+    if: ${{ inputs.kwin_only }}
     runs-on: ubuntu-latest
     container:
       image: registry.fedoraproject.org/fedora:44
@@ -3127,7 +3033,7 @@ jobs:
   # own, since kwin-screens' own notices are near the 50 a job keeps (a JPEG in base64 pieces of 3800, one step each).
   kwin-screens-shots:
     needs: kwin-screens
-    if: always()
+    if: always() && inputs.kwin_only
     runs-on: ubuntu-latest
     steps:
       - uses: actions/download-artifact@v4
@@ -3236,9 +3142,10 @@ jobs:
 
   # Mantel on KWin's Settings pages (docs/KWIN-SETTINGS.md): their pictures as notices (a JPEG in base64 pieces, title
   # "SHOT kwin-<which> <n>", at most 9 a picture), five pictures a job (a job keeps 50 notices). Taken at 1920×1080.
+  # (Archived with KWin in 1.15: its pages aren't taken any more.)
   kwin-pages-shots:
     needs: desktop
-    if: always() && !inputs.kwin_only
+    if: always() && inputs.kwin_only
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false

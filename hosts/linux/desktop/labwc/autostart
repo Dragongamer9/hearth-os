@@ -1,12 +1,12 @@
 #!/bin/sh
-# Run when Desktop Mode starts: by labwc, or (1.14) by KWin through desktop/kwin/autostart, or (2.0 preview) by
+# Run when Desktop Mode starts: by labwc, or (2.0 preview) by
 # Firehold, Hearth's own compositor, through desktop/firehold/autostart. HEARTH_WM says which
 # (nimbus-session sets it); HEARTH_DESKTOP_PID is the window manager's process id either way (labwc's LABWC_PID; under
-# KWin our parent, KWin itself), for everything started from here that asks "is Desktop Mode up?" (nimbus-mode).
+# Firehold our parent, Firehold itself), for everything started from here that asks "is Desktop Mode up?" (nimbus-mode).
 SHARE="${NIMBUS_SHARE:-/usr/local/share/nimbus}"
 RUN="${XDG_RUNTIME_DIR:-/tmp}"
-if [ "${HEARTH_WM:-}" = kwin ] || [ "${HEARTH_WM:-}" = firehold ]; then
-  # KWin, or (2.0 preview) Hearth's own compositor (desktop/firehold/autostart): our parent is it.
+if [ "${HEARTH_WM:-}" = firehold ]; then
+  # (2.0 preview) Hearth's own compositor (desktop/firehold/autostart): our parent is it. (1.14's KWin: archived.)
   [ -n "${HEARTH_DESKTOP_PID:-}" ] || HEARTH_DESKTOP_PID=$PPID
   unset LABWC_PID
 else
@@ -29,25 +29,10 @@ export HEARTH_WM HEARTH_DESKTOP_PID
     systemctl --user try-restart xdg-desktop-portal.service
   fi; } >/dev/null 2>&1 &
 
-# (1.14: under KWin Mantel starts its bridge to KWin itself, desktop/shell/hearth-kwin-bridge.)
-# Under KWin: accessibility (the screen reader, colour filters) and the pointer and keyboard settings applied the KWin
-# way, and kept applied as devices come and go (feature/kwin-pages), in the background.
-if [ "$HEARTH_WM" = kwin ] && command -v python3 >/dev/null 2>&1; then
-  [ -f "$SHARE/desktop/shell/hearth-access" ] && python3 "$SHARE/desktop/shell/hearth-access" apply kwin >/dev/null 2>&1 &
-  if [ -f "$SHARE/desktop/shell/hearth-kwin-settings" ]; then
-    ( python3 "$SHARE/desktop/shell/hearth-kwin-settings" pointer-apply >/dev/null 2>&1
-      exec python3 "$SHARE/desktop/shell/hearth-kwin-settings" input-watch >/dev/null 2>&1 ) &
-  fi
-fi
-
 # Resolution, refresh rate and scale chosen in Settings › Display. Until you choose, small sharp screens
 # (handhelds, high-DPI laptops) get a comfortable scale so text and buttons are big enough to touch.
-# Under KWin (1.14) the screens are hearth-screens' (the hook below: "restore", when it's there); wlr-randr is labwc's.
-if [ "$HEARTH_WM" = kwin ]; then
-  screens="$SHARE/desktop/shell/hearth-screens"
-  if [ -x "$screens" ]; then timeout 20 "$screens" restore >/dev/null 2>&1
-  elif [ -f "$screens" ]; then timeout 20 python3 "$screens" restore >/dev/null 2>&1; fi
-elif [ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh" ]; then
+# (1.14's KWin branch, hearth-screens restore, is archived with KWin: archive/kwin.)
+if [ -x "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh" ]; then
   "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/display.sh"
   # A screen turned off there, and the one left on is unplugged now: never no screen at all.
   if command -v wlr-randr >/dev/null 2>&1 && ! wlr-randr 2>/dev/null | grep -q "Enabled: yes"; then
@@ -68,11 +53,8 @@ for o in json.load(sys.stdin):
 ' 2>/dev/null
 fi
 
-# The Hearth look for apps (colors for Qt/KDE and GTK apps). Under KWin nimbus-session already did it right before
-# KWin started (HEARTH_THEME_APPLIED=1): not a second time, so Mantel starts sooner on a slow laptop.
-if [ "$HEARTH_WM" = kwin ] && [ "${HEARTH_THEME_APPLIED:-}" = 1 ]; then :
-else [ -x "$SHARE/desktop/theme/apply.sh" ] && "$SHARE/desktop/theme/apply.sh"; fi
-unset HEARTH_THEME_APPLIED
+# The Hearth look for apps (colors for Qt/KDE and GTK apps).
+[ -x "$SHARE/desktop/theme/apply.sh" ] && "$SHARE/desktop/theme/apply.sh"
 
 # ---- Accessibility (Settings › Accessibility): inverted colours, the screen reader and the apps' text size, as set
 # (the magnifier and the rest are in the labwc folder hearth-system made).
@@ -85,13 +67,6 @@ unset HEARTH_THEME_APPLIED
 SHELL_LOG="$RUN/nimbus-shell.log"
 give_up() {
   { echo "$1"; echo; tail -n 12 "$SHELL_LOG" 2>/dev/null; } >"$RUN/nimbus-desktop-failed"
-  # Under KWin (1.14): not Game Mode, but the safe start: KWin ends with the reason left for nimbus-session, which
-  # opens Mantel on labwc instead (run_kwin; no next mode is written, so it isn't taken for a switch you asked for).
-  if [ "$HEARTH_WM" = kwin ] && [ -n "$HEARTH_DESKTOP_PID" ]; then
-    echo "Mantel didn't keep running under KWin: $1" >"$RUN/hearth-kwin-shell-failed"
-    kill -TERM "$HEARTH_DESKTOP_PID" 2>/dev/null
-    return 0
-  fi
   # Game Mode couldn't start a moment ago (the session fell back to here): asking for it again would only come
   # straight back to Desktop Mode and fail again, restarting it about once a minute. Stay, and say why (the
   # desktop's right-click menu still switches modes and logs out).
@@ -110,8 +85,8 @@ if [ ! -f "$SHARE/desktop/shell/shell.qml" ]; then
 elif ! command -v quickshell >/dev/null 2>&1; then
   give_up "Desktop Mode needs Quickshell, which isn't installed."
 else
-  # The shell's messages from the start before are kept as nimbus-shell.log.old (Send logs includes it): when KWin's
-  # start failed and labwc opened instead, KWin's shell log is the one that says why.
+  # The shell's messages from the start before are kept as nimbus-shell.log.old (Send logs includes it): when Firehold's
+  # start failed and labwc opened instead, or the shell was restarted, the start before is the one that says why.
   [ -s "$SHELL_LOG" ] && mv -f "$SHELL_LOG" "$SHELL_LOG.old" 2>/dev/null
   (
     : >"$SHELL_LOG"

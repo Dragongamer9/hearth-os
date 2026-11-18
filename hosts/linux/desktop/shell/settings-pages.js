@@ -95,7 +95,6 @@ var PAGES = [
     { id: "phone", file: "SetPhone.qml", cat: "bt", label: "Phone", icon: "phone", desc: "Your phone linked with the KDE Connect app: notifications, messages, files, calls", words: "kde connect kdeconnect android iphone mobile sms text messages notifications reply clipboard share send files ring find my phone touchpad remote input presentation remote calls mute ringer run commands battery browse phone files sftp contacts photo" },
     { id: "phone-messages", file: "SetPhoneMessages.qml", cat: "bt", parent: "phone", label: "Messages", icon: "chat", desc: "Your phone's text messages: read and send", words: "sms text messages conversations send a text", hidden: true },
     // ---- end Phone link
-    { id: "kwin-tablet", file: "SetKwinTablet.qml", cat: "bt", label: "Drawing tablet & touchscreen", icon: "edit", desc: "Pen tablet's screen and area, pressure, pen buttons; touchscreen screen and calibration", words: "kwin tablet wacom pen stylus pressure buttons touchscreen calibrate calibration map screen" },
     { id: "printers", file: "SetPrinters.qml", cat: "bt", label: "Printers", icon: "printer", desc: "Printers and scanners", words: "print scanner", old: "Printers" },
     { id: "print-queue", file: "SetPrintQueue.qml", cat: "bt", parent: "printers", label: "Print queue", icon: "list", desc: "What's waiting to print: hold, go on or cancel", words: "print queue jobs cancel printing waiting cups" },
     { id: "scanners", file: "SetScanners.qml", cat: "bt", parent: "printers", label: "Scanners", icon: "printer", desc: "The scanners found, and a test scan", words: "scanner scan sane airscan test" },
@@ -116,11 +115,6 @@ var PAGES = [
     { id: "my-looks", file: "SetMyLooks.qml", cat: "pers", label: "My looks", icon: "palette", desc: "Save how it all looks now, and put it back in one press", words: "save as my look global theme preset save look restore look" },
     { id: "look-more", file: "SetLookMore.qml", cat: "pers", label: "Window frames & sign-in splash", icon: "window", desc: "The accent in window frames, whether apps follow Hearth's colours, and a splash after you sign in", words: "frame colour intensity title bar tint accent window borders splash screen sign in login splash apps follow hearth qt gtk kde colours colors non-qt applications" },
     // Mantel on KWin (1.14, docs/KWIN-SETTINGS.md): KWin's own settings, Hearth's pages (greyed under labwc)
-    { id: "kwin-effects", file: "SetKwinEffects.qml", cat: "pers", label: "Window effects", icon: "sparkle", desc: "Animation speed, overview, Alt+Tab, blur, wobbly windows, minimize and open effects, dimming", words: "kwin effects animation speed overview present windows desktop grid alt tab switcher blur translucency transparent wobbly magic lamp squash fade glide scale dim inactive shake cursor mouse click track" },
-    { id: "kwin-desktops", file: "SetKwinDesktops.qml", cat: "pers", label: "Virtual desktops", icon: "desktops", desc: "How many desktops, their names, rows, switching animation", words: "kwin virtual desktops workspaces rows names wrap slide switch" },
-    { id: "kwin-tiling", file: "SetKwinTiling.qml", cat: "pers", label: "Tiling", icon: "grid", desc: "Each screen's tile layout, dragging windows to edges, snapping", words: "kwin tiling tiles layout columns quick tile snap edges corners maximize" },
-    { id: "kwin-edges", file: "SetKwinEdges.qml", cat: "pers", label: "Screen edges", icon: "display", desc: "Hot corners, edges, touchscreen swipes, sticky edges between screens", words: "kwin hot corners screen edges electric borders touch swipe edge barrier" },
-    { id: "kwin-behaviour", file: "SetKwinWindows.qml", cat: "pers", label: "Window behaviour", icon: "window", desc: "Which window gets the keyboard, raise on hover, title bar clicks, Super+drag, where new windows open", words: "kwin window behaviour behavior focus policy follows mouse under mouse click to focus raise hover auto raise click raises focus stealing prevention title bar double click middle click wheel super alt drag move resize placement new windows centered smart" },
 
     // ---- Apps
     { id: "apps-home", file: "SetCategory.qml", cat: "apps", label: "Apps", icon: "store", landing: true },
@@ -133,7 +127,6 @@ var PAGES = [
     { id: "menu-editor", file: "SetMenuEditor.qml", cat: "apps", label: "App menu editor", icon: "edit", desc: "Change an app's name, icon or command, hide it, or add your own", words: "menu editor kmenuedit edit app desktop entry rename icon command hide add to menu" },
     { id: "app-permissions", file: "SetAppPermissions.qml", cat: "apps", label: "App permissions", icon: "shield", desc: "What apps from Flathub may reach: internet, files, devices", words: "flatpak permissions flatseal override sandbox network files home devices" },
     { id: "services", file: "SetServices.qml", cat: "apps", label: "Background services", icon: "gear", desc: "Programs that run in the background for you, and whether they start when you sign in", words: "background services systemd daemons startup autostart user services" },
-    { id: "kwin-rules", file: "SetKwinRules.qml", cat: "apps", label: "Window rules", icon: "window", desc: "Make an app's windows open where, how big and how you want", words: "kwin window rules position size desktop keep above no border opacity tearing app class" },
     { id: "browser", file: "SetBrowser.qml", cat: "apps", label: "Web browser", icon: "globe", desc: "Hearth's browser and its settings", words: "web firefox", old: "Web browser" },
     { id: "claude", file: "SetClaude.qml", cat: "apps", label: "Claude", icon: "chat", desc: "Claude on this PC", words: "ai assistant", old: "Claude" },
 
@@ -148,7 +141,6 @@ var PAGES = [
     { id: "discord", file: "SetDiscord.qml", cat: "gaming", label: "Discord", icon: "chat", desc: "Which Discord the bar opens, what you're playing on Discord, friends joining", words: "friends chat invite rich presence playing join dorion matrix", old: "Friends" },
     { id: "remote", file: "SetRemote.qml", cat: "gaming", label: "Remote play", icon: "play", desc: "Stream this PC's games to your phone or TV, play another PC here, or use this PC from anywhere", words: "moonlight sunshine stream anywhere remote desktop work tailscale", old: "Remote play" },
     { id: "controller", file: "SetController.qml", cat: "gaming", label: "Controller", icon: "pad", desc: "Controller mouse, button layout, what games see, remapping", words: "gamepad buttons pad", old: "Controller" },
-    { id: "kwin-games", file: "SetKwinGames.qml", cat: "gaming", label: "Full-screen games & X11 apps", icon: "pad", desc: "Tearing in full-screen games, keys X11 apps can see, scaling X11 apps", words: "kwin tearing vsync latency xwayland x11 push to talk eavesdrop scaling blurry" },
     { id: "handheld", file: "SetHandheld.qml", cat: "gaming", label: "Handheld", icon: "bolt", desc: "Power limit, fans, lights and back buttons (Handheld Daemon)", words: "hhd tdp rgb lights fans", old: "Handheld" },
 
     // ---- Accounts

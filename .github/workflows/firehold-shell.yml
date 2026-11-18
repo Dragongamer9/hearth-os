@@ -238,7 +238,7 @@ jobs:
           python3 hosts/linux/desktop/shell/hearth-browser asked >/dev/null 2>&1 || true
           # KWin's pictures of single windows (Everything open) go through hearth-kwin-cast, as on the image: built here,
           # and it answers hearth-screens only when that's root's and nobody else can change it.
-          bash hosts/linux/desktop/kwin-helpers/build.sh /tmp/kwin-helpers > shots/helpers-build.log 2>&1 \
+          bash archive/kwin/hosts/linux/desktop/kwin-helpers/build.sh /tmp/kwin-helpers > shots/helpers-build.log 2>&1 \
             || echo "::error title=firehold kwin::hearth-kwin-cast didn't build: $(grep -E 'error' shots/helpers-build.log | head -4 | tr '\n' '|' | cut -c1-500)"
           install -Dm755 /tmp/kwin-helpers/hearth-kwin-cast /usr/libexec/hearth/hearth-kwin-cast
           install -Dm644 os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/hearth-kwin-cast.desktop
@@ -246,7 +246,7 @@ jobs:
           cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
           modprobe vgem 2>/dev/null || echo "::warning title=KWin::no vgem module"
           for u in /usr/lib/systemd/systemd-udevd /lib/systemd/systemd-udevd; do [ -x "$u" ] && { "$u" --daemon; break; }; done
-          export XDG_CONFIG_DIRS="$PWD/hosts/linux/desktop/kwin/windows/xdg:/etc/xdg" KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1
+          export XDG_CONFIG_DIRS="$PWD/archive/kwin/hosts/linux/desktop/kwin/windows/xdg:/etc/xdg" KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1
           HEARTH_WM=kwin python3 hosts/linux/desktop/theme/hearth-theme >/dev/null 2>&1 || true
           modprobe vkms 2>/dev/null || echo "::warning title=KWin::no vkms module"
           udevadm trigger --action=add 2>/dev/null; udevadm settle -t 10 2>/dev/null

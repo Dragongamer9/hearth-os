@@ -1,8 +1,8 @@
 """2.0 preview: Mantel on Firehold, Hearth's own compositor (docs/FIREHOLD.md). Never by default: only with
 HEARTH_DESKTOP_WM=firehold (Settings › System › Your desktop › Firehold (preview)), and then with the same safe
-start as KWin one step above it: missing, ending right away or Mantel never up → KWin for that sign-in (then labwc),
-with a notice and a count; twice in a row → KWin until it's turned on again. Turning it off goes back to what was
-picked before. The session runs for real with stand-ins (test_kwin_session.py's)."""
+start one step above labwc: missing, ending right away or Mantel never up → labwc for that sign-in (KWin is archived, 1.15),
+with a notice and a count; twice in a row → labwc until it's turned on again. Turning it off goes back to what was
+picked before. The session runs for real with stand-ins (session_base.py)."""
 import sys
 sys.dont_write_bytecode = True
 import os
@@ -13,7 +13,7 @@ import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from test_kwin_session import Base, KWIN_WORKS  # noqa: E402
+from session_base import Base, KWIN_WORKS  # noqa: E402
 
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 
@@ -58,7 +58,7 @@ class HearthCompositor(Base):
     def test_never_by_default(self):
         self.write_bin('firehold-comp', COMP_WORKS)
         r, log = self.session()
-        self.assertIn('desktop mode: Mantel on KWin', log)
+        self.assertIn('desktop mode: Mantel on labwc', log)
         self.assertEqual(self.lines('comp-ran'), [], log)
         self.assertNotIn('Firehold', log)
         st = self.helper('status')
@@ -89,8 +89,8 @@ class HearthCompositor(Base):
 
     def test_missing_opens_kwin_and_says_why_once(self):
         r, log = self.session(PREVIEW, FIREHOLD_BIN='hearth-no-compositor-here')
-        self.assertIn("Firehold isn't installed; KWin instead", log)
-        self.assertIn('desktop mode: Mantel on KWin', log)
+        self.assertIn("Firehold isn't installed; labwc instead", log)
+        self.assertIn('desktop mode: Mantel on labwc', log)
         self.assertEqual(self.notice(), ['firehold', 'missing'])
         n = self.helper('notice')
         self.assertIn("isn't on this device yet", n['title'])
@@ -100,13 +100,13 @@ class HearthCompositor(Base):
         self.write_bin('firehold-comp', COMP_CRASHES)
         r, log = self.session(PREVIEW)
         self.assertIn('firehold ended before Mantel came up (code 101)', log)
-        self.assertIn("desktop: Firehold didn't start; KWin for this sign-in", log)
-        self.assertIn('kwin: Mantel up after', log)                      # KWin, the next rung
+        self.assertIn("desktop: Firehold didn't start; labwc for this sign-in", log)
+        self.assertEqual(len(self.lines('labwc-ran')), 1, log)            # labwc, the next rung
         self.assertEqual(self.notice(), ['firehold', 'failed'])
         self.assertEqual(self.fails(), 'firehold 1\n')
-        # The same sign-in: KWin straight away.
+        # The same sign-in: labwc straight away.
         r, log = self.session(PREVIEW)
-        self.assertIn("didn't start earlier this sign-in, KWin instead", log)
+        self.assertIn("didn't start earlier this sign-in, labwc instead", log)
         self.assertEqual(len(self.lines('comp-ran')), 1)
         # A new sign-in: tried again, fails again → twice → paused.
         os.remove(os.path.join(self.run_dir, 'firehold-failed'))
@@ -123,21 +123,21 @@ class HearthCompositor(Base):
         self.assertEqual((st['fireholdFails'], st['fireholdPaused']), (0, False))
 
     def test_a_crash_after_starting_opens_kwin_never_ends_the_sign_in(self):
-        # Up, past the early window, then a crash (no switch asked for): KWin for this sign-in, counted, as for KWin.
+        # Up, past the early window, then a crash (no switch asked for): labwc for this sign-in, counted.
         self.write_bin('firehold-comp', '#!/bin/sh\necho "args=$*" >> "$HOME/comp-ran"\n: > "$XDG_RUNTIME_DIR/hearth-shell-up"\nsleep 4\nexit 134\n')
         with open(self.conf, 'w') as f:
             f.write(PREVIEW)
         r, log = self.session(PREVIEW)
         self.assertIn('firehold crashed after', log)
-        self.assertIn('desktop mode: Mantel on KWin', log)
-        self.assertTrue(self.lines('kwin-ran'), log)
+        self.assertIn('desktop mode: Mantel on labwc', log)
+        self.assertEqual(self.lines('kwin-ran'), [], log)               # KWin is archived: never started
 
     def test_kwin_failing_too_still_opens_labwc(self):
         self.write_bin('firehold-comp', COMP_CRASHES)
         self.write_bin('kwin_wayland', '#!/bin/sh\necho "args=$*" >> "$HOME/kwin-ran"\nexit 1\n')
         r, log = self.session(PREVIEW)
         self.assertEqual(len(self.lines('comp-ran')), 1, log)
-        self.assertEqual(len(self.lines('kwin-ran')), 1, log)
+        self.assertEqual(len(self.lines('kwin-ran')), 0, log)            # archived: never tried
         self.assertEqual(len(self.lines('labwc-ran')), 1, log)           # the last rung: Desktop Mode still opens
 
     def test_mantel_never_up_ends_it_and_opens_kwin(self):
@@ -146,7 +146,7 @@ class HearthCompositor(Base):
         r, log = self.session(PREVIEW)
         self.assertLess(time.time() - t, 40)
         self.assertIn("firehold: Mantel didn't say it's up after 3s; ending it", log)
-        self.assertIn('kwin: Mantel up after', log)
+        self.assertEqual(len(self.lines('labwc-ran')), 1, log)
         self.assertEqual(subprocess.run(['pgrep', '-f', os.path.join(self.bin, 'firehold-comp')]).returncode, 1)
 
     def test_safe_graphics_and_labwc_pick_never_use_it(self):
@@ -187,11 +187,11 @@ class HearthCompositor(Base):
         # Locked: as if Firehold weren't there. The setting is ignored, the helper refuses it, nothing mentions it.
         self.write_bin('firehold-comp', COMP_WORKS)
         r, log = self.session(LOCKED)
-        self.assertIn('desktop mode: Mantel on KWin', log)
+        self.assertIn('desktop mode: Mantel on labwc', log)
         self.assertEqual(self.lines('comp-ran'), [], log)
         self.assertNotIn('Firehold', log)
         st = self.helper('status')
-        self.assertEqual((st['fireholdUnlocked'], st['wm'], st['fireholdPreview']), (False, 'kwin', False))
+        self.assertEqual((st['fireholdUnlocked'], st['wm'], st['fireholdPreview']), (False, 'labwc', False))
         r2 = subprocess.run([sys.executable, str(ROOT / 'hosts/linux/desktop/shell/hearth-your-desktop'), 'wm', 'firehold-once'],
                             env=self.env(), capture_output=True, text=True, timeout=30)
         self.assertNotEqual(r2.returncode, 0)
@@ -205,29 +205,29 @@ class HearthCompositor(Base):
         r, log = self.session(pathlib.Path(self.conf).read_text())
         self.assertIn("desktop mode: Mantel on Firehold (preview)", log)
         st = self.helper('relock')
-        self.assertEqual((st['fireholdUnlocked'], st['wm']), (False, 'kwin'))
-        self.assertIn('HEARTH_DESKTOP_WM=kwin', pathlib.Path(self.conf).read_text())
+        self.assertEqual((st['fireholdUnlocked'], st['wm']), (False, 'labwc'))
+        self.assertIn('HEARTH_DESKTOP_WM=labwc', pathlib.Path(self.conf).read_text())
 
     def test_try_once_is_the_next_start_only(self):
         self.write_bin('firehold-comp', COMP_WORKS)
         with open(self.conf, 'w') as f:
             f.write('NIMBUS_START_MODE=desktop\n')
         st = self.helper('wm', 'firehold-once')
-        self.assertEqual((st['fireholdMode'], st['wm']), ('once', 'kwin'))
+        self.assertEqual((st['fireholdMode'], st['wm']), ('once', 'labwc'))
         r, log = self.session(pathlib.Path(self.conf).read_text())
         self.assertIn('Firehold (preview), tried once', log)
         self.assertIn("desktop mode: Mantel on Firehold (preview)", log)
         self.assertEqual(self.helper('status')['fireholdMode'], 'off')
         r, log = self.session(pathlib.Path(self.conf).read_text())
-        self.assertIn('desktop mode: Mantel on KWin', log)                  # back by itself, as asked
+        self.assertIn('desktop mode: Mantel on labwc', log)                  # back by itself, as asked
         self.assertEqual(len([l for l in self.lines('comp-ran') if l.startswith('args=')]), 1)
 
     def test_leaving_with_the_key_is_kwin_and_not_a_failure(self):
         self.write_bin('firehold-comp', '#!/bin/sh\n: > "$XDG_RUNTIME_DIR/hearth-shell-up"; sleep 3\n'
                        ': > "$XDG_RUNTIME_DIR/firehold-leave"; exit 0\n')
         r, log = self.session(PREVIEW)
-        self.assertIn('firehold: left for KWin (Ctrl+Alt+Backspace)', log)
-        self.assertIn('kwin: Mantel up after', log)
+        self.assertIn('firehold: left for labwc (Ctrl+Alt+Backspace)', log)
+        self.assertEqual(len(self.lines('labwc-ran')), 1, log)
         self.assertEqual(self.fails(), '')
         self.assertEqual(self.notice(), ['firehold', 'left'])
 

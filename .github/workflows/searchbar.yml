@@ -35,7 +35,7 @@ jobs:
       - name: Unit tests
         run: |
           python3 -m unittest discover -s hosts/linux/test -p 'test_search_bar.py' -v 2>&1 | tail -30
-          for t in test_search_bar test_kwin_windows test_search_plugins test_hearth_search test_menu_search test_labwc_rc test_hearth_settings_basics test_settings_redesign test_settings_persistence test_win_tools; do
+          for t in test_search_bar test_search_plugins test_hearth_search test_menu_search test_labwc_rc test_hearth_settings_basics test_settings_redesign test_settings_persistence test_win_tools; do
             python3 -m unittest discover -s hosts/linux/test -p "$t.py" >/tmp/$t.out 2>&1 || echo "::error title=$t::$(grep -E '^(FAIL|ERROR|AssertionError)' /tmp/$t.out | head -6 | tr '\n' '|' | cut -c1-900)"
           done
           ! grep -lE '^(FAIL|ERROR):' /tmp/test_*.out

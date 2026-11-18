@@ -395,7 +395,7 @@ class Fingerprint(unittest.TestCase):
         self.assertIn('"A vault stayed unlocked"', lock)
         # KWin's locker: no "finger not recognised" for people who never turned it on (no finger prompt seen), and the
         # fingerprint service's "no" takes 5 seconds, so a locker that asks again can't loop.
-        kl = (ROOT / 'hosts' / 'linux' / 'desktop' / 'kwin-lock' / 'contents' / 'lockscreen' / 'LockScreen.qml').read_text()
+        kl = (ROOT / 'archive' / 'kwin' / 'hosts' / 'linux' / 'desktop' / 'kwin-lock' / 'contents' / 'lockscreen' / 'LockScreen.qml').read_text()   # archived with KWin (1.15)
         self.assertIn('if (root.fpSeen) root.fpInfo', kl)
         fp = (PAMD / 'hearth-fingerprint').read_text()
         self.assertLess(fp.index('pam_faildelay.so delay=5000000'), fp.index('pam_listfile.so'))

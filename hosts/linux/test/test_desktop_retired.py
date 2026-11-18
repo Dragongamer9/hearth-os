@@ -88,7 +88,7 @@ class Retired(unittest.TestCase):
         self.assertEqual(n['kind'], 'retired')
         self.assertIn('KDE Plasma and GNOME were retired', n['title'])
         self.assertIn('KDE Plasma picked', n['sub'])
-        self.assertIn('KWin', n['sub'])
+        self.assertIn('Mantel (Hearth Classic)', n['sub'])
         self.assertEqual(self.helper('notice'), {})
         # ...Settings › Your desktop still shows it, and the next sign-in doesn't bring the card back.
         st = self.helper('status')

@@ -29,7 +29,7 @@ PanelWindow {
             : notice.what === "firehold" && notice.kind === "intro"
             ? [{ icon: "check", label: "Got it", sub: "Ctrl+Alt+Backspace: back to the normal desktop", cmd: "" }]
             : [{ icon: "check", label: "Got it", sub: notice.what === "kwin" ? "Mantel works the same on labwc"
-                   : notice.what === "firehold" ? "Mantel works the same on KWin"
+                   : notice.what === "firehold" ? "Mantel works the same on labwc"
                    : notice.what === "kwin-lock" ? "The screen won't lock until it's fixed"
                    : notice.what === "kwin-mine" ? "Your own KDE files aren't changed" : "Mantel is your desktop", cmd: "" }])
         .concat([{ icon: "desktops", label: "Open Your desktop in Settings", sub: "Settings › System › Your desktop", cmd: "settings" }])

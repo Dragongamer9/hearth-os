@@ -766,8 +766,6 @@ class Screens114(Base):
                      'sw.back(true)', 'job.run(["keep", JSON.stringify(names)]'):
             self.assertIn(part, sw)
         self.assertIn('Loader { source: "ScreenSwitcher.qml" }', (SHELL / 'shell.qml').read_text())
-        keys = json.loads((SHELL.parent / 'kwin' / 'windows' / 'shortcuts.json').read_text())
-        self.assertTrue(any(s['keys'] == 'Meta+P' and s['labwc'] == 'W-p' and 'screens switcher' in s['run'] for s in keys['shortcuts']))
         self.assertIn('<keybind key="W-p">', (SHELL.parent / 'labwc' / 'rc.xml').read_text())
         cal = (SHELL / 'HdrCalibrate.qml').read_text()
         self.assertIn('page.countdown = 15', cal)         # Finish goes through Keep these settings?
@@ -867,9 +865,8 @@ class Wiring(unittest.TestCase):
         # KWin trusts the small C helper for screenshots, never a copy of Python (any script it ran could take them).
         apps = REPO / 'os' / 'system_files' / 'usr' / 'share' / 'applications'
         self.assertFalse((apps / 'hearth-screenshot.desktop').exists())
-        d = (apps / 'hearth-kwin-cast.desktop').read_text()
-        self.assertIn('Exec=/usr/libexec/hearth/hearth-kwin-cast', d)
-        self.assertIn('org.kde.KWin.ScreenShot2', d)
+        # (1.15: KWin is archived with its screenshot helper's .desktop file: archive/kwin.)
+        self.assertFalse((apps / 'hearth-kwin-cast.desktop').exists())
         w = (REPO / 'os' / 'system_files' / 'usr' / 'bin' / 'hearth-screenshot').read_text()
         self.assertNotIn('hearth-shot-python', w)
         self.assertIn('exec python3 "$SHELL_DIR/hearth-screens" shot "$@"', w)
@@ -877,10 +874,10 @@ class Wiring(unittest.TestCase):
         b = (REPO / 'os-bases' / 'peppermint' / 'build.sh').read_text()
         self.assertIn('rm -f /usr/libexec/nimbus/hearth-shot-python /usr/share/applications/hearth-screenshot.desktop', b)
         self.assertNotIn('cp -p "$py" /usr/libexec/nimbus/hearth-shot-python', b)
-        self.assertIn('optional libkscreen-bin', b)
+        self.assertNotIn('optional libkscreen-bin', b)          # KWin's only (archived in 1.15)
         s = (SHELL / 'hearth-screens').read_text()
         self.assertNotIn('hearth-shot-python', s)
-        c = (REPO / 'hosts' / 'linux' / 'desktop' / 'kwin-helpers' / 'hearth-kwin-cast.c').read_text()
+        c = (REPO / 'archive' / 'kwin' / 'hosts' / 'linux' / 'desktop' / 'kwin-helpers' / 'hearth-kwin-cast.c').read_text()   # archived with KWin (1.15)
         for x in ('"CaptureActiveWindow"', '"CaptureActiveScreen"', '"native-resolution", g_variant_new_boolean(full != 0)',
                   'strcmp(base + 1, "hearth-screens") == 0) who = 2', 'hearth-screens may only take screenshots'):
             self.assertIn(x, c)

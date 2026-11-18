@@ -70,31 +70,5 @@ class HearthAppsUnderKWin(unittest.TestCase):
         self.assertNotIn('firefox', self.hidden('KDE'))
 
 
-class SlowLockScreenTest(unittest.TestCase):
-    """The laptop (Nov 17): KWin's greeter said nothing in its 8 s on a cold first start. A run still going when its time
-    is up is told as slow and never kept, so the next check runs it again."""
-    def test_slow_isnt_kept_as_broken(self):
-        d = tempfile.mkdtemp(prefix='hearth-lock-')
-        pkg = os.path.join(d, 'pkg')
-        os.makedirs(os.path.join(pkg, 'contents', 'lockscreen'))
-        pathlib.Path(pkg, 'contents', 'lockscreen', 'LockScreen.qml').write_text('')
-        pathlib.Path(pkg, 'metadata.json').write_text('{"X-Plasma-APIVersion": "2"}')
-        qt = os.path.join(d, 'qt')
-        for f in ('platforms/libqwayland-generic.so', 'wayland-shell-integration/liblayer-shell.so'):
-            os.makedirs(os.path.dirname(os.path.join(qt, f)), exist_ok=True)
-            pathlib.Path(qt, f).write_text('')
-        g = os.path.join(d, 'greeter')
-        pathlib.Path(g).write_text('#!/bin/sh\nexec sleep 30\n')
-        os.chmod(g, 0o755)
-        run = os.path.join(d, 'run')
-        os.makedirs(run)
-        env = dict(os.environ, HEARTH_LOCK_PKG=pkg, HEARTH_LOCK_GREETER=g, HEARTH_LOCK_QT_PLUGINS=qt, XDG_RUNTIME_DIR=run,
-                   HEARTH_LOCK_PROBE_TIME='1', PLASMA_DEFAULT_SHELL='org.hearth.mantel-lock')
-        r = subprocess.run([sys.executable, str(SHELL / 'hearth-lockcheck'), '--as-kwin'], env=env, capture_output=True, text=True, timeout=60)
-        self.assertEqual(r.returncode, 1)
-        self.assertIn('still starting after 1s', r.stdout)
-        self.assertFalse(os.path.exists(os.path.join(run, 'hearth', 'lockcheck.json')))
-
-
 if __name__ == '__main__':
     unittest.main()

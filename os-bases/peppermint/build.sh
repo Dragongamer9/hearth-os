@@ -254,18 +254,9 @@ touch /etc/subuid /etc/subgid
 command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/libfuse.so.2
 
 # ------------------------------------------------------------------ KDE pieces Mantel and Hearth's KDE apps use
-# Mantel (Quickshell) is Hearth's only desktop, on KWin from 1.14 with labwc (above) as its fallback (nimbus-session's
-# run_classic; docs/DESKTOPS.md "Mantel on KWin"). Hearth Plasma, Hearth GNOME, Hearth COSMIC and 1.13's KDE Plasma /
+# Mantel (Quickshell) is Hearth's only desktop, on labwc (above; KWin, 1.14's, is archived in 1.15). Hearth Plasma, Hearth GNOME, Hearth COSMIC and 1.13's KDE Plasma /
 # GNOME downloads are gone: their sessions (plasma-workspace, plasma-desktop and Plasma's applets; gnome-shell, mutter,
 # gnome-session, gnome-control-center and GNOME's apps) aren't installed. What's here:
-#   kwin-wayland         KWin, Mantel's window manager (required: the build stops without kwin_wayland)
-#   kglobalacceld        KWin's keyboard shortcuts service (optional)
-#   xdg-desktop-portal-kde
-#                        KDE's portal (optional; not picked for ScreenCast or RemoteDesktop: hearth-portals.conf
-#                        names Hearth's own. In 1.14 Remote desktop (hearth-vnc) types and clicks under KWin through its
-#                        uinput fallback; a RemoteDesktop in Hearth's portal backend comes later)
-#   libkscreen-bin / kscreen
-#                        kscreen-doctor, screens under KWin (optional; hearth-screens uses it)
 #   polkit-kde-agent-1   Mantel's password prompts (labwc/autostart and nimbus-watchdog try it first)
 #   breeze               the Breeze Qt style and cursors Hearth's look uses (theme/apply.sh, labwc/environment)
 #   kde-cli-tools, plasma-integration, qml6-module-org-kde-kirigami
@@ -274,37 +265,10 @@ command -v distrobox && command -v newuidmap && ls /usr/lib/x86_64-linux-gnu/lib
 # plasma-workspace's gdb needed libdebuginfod from backports; kept in case anything else brings gdb in.
 if dpkg -l libelf1t64 2>/dev/null | grep -q '~bpo'; then "${APT[@]}" -t "$BPO" libdebuginfod1t64 libdebuginfod-common || true; fi
 optional polkit-kde-agent-1 breeze kde-cli-tools plasma-integration qml6-module-org-kde-kirigami
-"${APT[@]}" kwin-wayland || true
-if ! command -v kwin_wayland >/dev/null; then
-  echo "::error title=KWin::kwin_wayland isn't installed (package kwin-wayland): Mantel runs on KWin from 1.14"
-  exit 1
-fi
-# Hearth's own window frames under KWin are an Aurorae theme (theme/hearth_aurorae.py writes it): without Aurorae KWin
-# falls back to Breeze's frames (still works, just not Hearth's look).
-# Debian packages it as kwin-style-aurorae (the source is aurorae) from Plasma 6.4; trixie's KWin 6.3 still has it in
-# kwin-common, with the Overview's and Desktop grid's QML (org.kde.kwin.private.effects: kwin-test.yml's
-# debian-kwin-parts found it there). kwin-wayland only recommends kwin-common, so --no-install-recommends left it out:
-# on 1.14 KWin said "Could not locate decoration plugin org.kde.kwin.aurorae" and "Failed to load overview" (the
-# owner's laptop and ROG Ally, Nov 17). Optional: KWin runs without it, as it did.
-pkg_cost kwin-common
-optional kwin-common
-if have_pkg kwin-style-aurorae; then optional kwin-style-aurorae; else optional aurorae; fi
-[ -n "$(ls /usr/lib/*/qt6/plugins/org.kde.kdecoration3/*aurorae* /usr/lib/*/qt6/plugins/org.kde.kdecoration2/*aurorae* /usr/lib/qt6/plugins/org.kde.kdecoration*/*aurorae* 2>/dev/null)" ] \
-  || echo "::warning title=KWin::Aurorae isn't installed: KWin's window frames fall back to Breeze instead of Hearth's"
-optional kglobalacceld xdg-desktop-portal-kde
-[ -d "$(ls -d /usr/lib/*/qt6/qml/org/kde/kwin/private/effects 2>/dev/null | head -1)" ] \
-  || echo "::warning title=KWin::the Overview's QML (org.kde.kwin.private.effects, kwin-common) isn't installed: Task view and the Desktop grid won't open"
-# KWin's Overview and Desktop grid (Mantel's Task view button, Super+W, View + Y) load Milou's search QML
-# (org.kde.milou): without it they don't open (Present windows still does).
-optional milou
-# The Desktop Cube (Settings › Virtual desktops, SetKwinDesktops.qml): trixie ships it in kwin-addons (kdeplasma-addons'
-# cube effect and extra Alt+Tab looks; no Plasma session). Optional: without it the page greys the switch and says why.
-# The image check says what it brings with it (packages, size) and warns if that is a Plasma session or a login manager.
-pkg_cost kwin-addons
-optional kwin-addons
-# kscreen-doctor is in Debian's libkscreen-bin (Plasma 6's libkscreen; there's no libkf6screen-bin).
-if have_pkg libkscreen-bin; then optional libkscreen-bin; else optional kscreen; fi
-command -v kscreen-doctor >/dev/null || echo "::warning title=KWin::kscreen-doctor isn't installed (libkscreen-bin / kscreen): screens under KWin need it"
+# 1.15: KWin is archived (the owner, Nov 17; docs/archive/KWIN.md): Mantel runs on labwc again, so KWin and what only it
+# used are no longer installed: kwin-wayland (and kwin-common, Aurorae), kglobalacceld, xdg-desktop-portal-kde, milou,
+# kwin-addons, libkscreen-bin (kscreen-doctor) and libkf6config-bin (kwriteconfig6). Firehold (the 2.0 preview) is
+# Hearth's own compositor and needs none of them.
 # Hearth Capture (1.14, Capture.qml): Read text (tesseract, English) and QR codes (zbarimg) on a screenshot; optional,
 # Capture says so when they're missing
 optional tesseract-ocr tesseract-ocr-eng zbar-tools
@@ -1158,7 +1122,7 @@ mkdir -p /usr/share/hearth/greeter
 cp -a /usr/share/nimbus/desktop/shell/OskBoard.qml /usr/share/nimbus/desktop/shell/OskKey.qml /usr/share/hearth/greeter/
 rm -rf /usr/share/hearth/greeter/osk && mkdir -p /usr/share/hearth/greeter/osk
 cp -a /usr/share/nimbus/desktop/shell/osk/hearth-osk.js /usr/share/hearth/greeter/osk/
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/kwin/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-your-desktop /usr/share/nimbus/desktop/shell/hearth-companion /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/share/nimbus/desktop/shell/hearth_proton_run.py /usr/bin/hearth-proton-run /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons /usr/share/nimbus/desktop/shell/hearth-controller /usr/share/nimbus/desktop/shell/hearth-power /usr/share/nimbus/desktop/shell/hearth-browser /usr/share/nimbus/desktop/shell/hearth-tasks /usr/share/nimbus/desktop/shell/hearth-files /usr/share/nimbus/desktop/shell/hearth-your-desktop /usr/share/nimbus/desktop/shell/hearth-companion /usr/share/nimbus/desktop/shell/hearth-winapps /usr/bin/hearth-winapps /usr/share/nimbus/desktop/shell/hearth_proton_run.py /usr/bin/hearth-proton-run /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper
 # Server mode (docs/SERVER-MODE.md): its helper and its labwc's autostart (the session runs them only when the owner turned
 # Server mode on; nothing here is enabled or started).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-server-mode /usr/share/nimbus/desktop/shell/hearth-colibri /usr/share/nimbus/desktop/server/labwc/autostart
@@ -1172,7 +1136,7 @@ ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
 # .desktop file lists it, found by the program's executable: hearth-screens takes its screenshots through the small
 # helper hearth-kwin-cast (hearth-kwin-cast.desktop), which answers only hearth-portal and hearth-screens. (1.14
 # before this trusted a copy of Python, hearth-shot-python: any script it ran could take screenshots; it's gone.)
-optional libkscreen-bin libkf6config-bin   # kscreen-doctor; kwriteconfig6 (KWin's Night Light and tearing settings, told to KWin)
+# (1.15: KWin is archived, so kscreen-doctor and kwriteconfig6, which only KWin's side used, aren't installed.)
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-screens /usr/share/nimbus/desktop/shell/hearth-screen-power /usr/bin/hearth-screenshot
 rm -f /usr/libexec/nimbus/hearth-shot-python /usr/share/applications/hearth-screenshot.desktop
 # Online accounts (docs/ONLINE-ACCOUNTS.md): `hearth-accounts` for Hearth's apps (list, token, events, mount). Nothing
@@ -1501,38 +1465,11 @@ done
 command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
 # ---- end of Hearth Files as the file chooser
 
-# ---- Mantel on KWin: typing, the lock screen, screen sharing (docs/KWIN-INPUT.md)
-# hearth-kwin-im and hearth-kwin-cast come from the builder (/usr/libexec/hearth), their .desktop files (which KWin
-# reads to give them its input-method and screencast protocols) from os/system_files. hearth-type (the on-screen
-# keyboard's, clipboard paste's and the magnifier's typing on KWin) needs python3-evdev and /dev/uinput (installed
-# for hearth-pad). KWin's own screen locker locks Mantel on KWin (fail-safe), showing Hearth's lock screen: the
-# Plasma shell package org.hearth.mantel-lock (desktop/kwin-lock; only a lock screen, KWin's locker
-# reads lockscreen/LockScreen.qml from a Plasma/Shell package with X-Plasma-APIVersion 2; the KWin session sets
-# PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock so it picks this one). On labwc nothing changes:
-# wtype, Lock.qml's ext-session-lock and xdg-desktop-portal-wlr, as before.
-test -x /usr/libexec/hearth/hearth-kwin-im && test -x /usr/libexec/hearth/hearth-kwin-cast
+# hearth-type (typing for the on-screen keyboard, clipboard paste and the magnifier; on labwc it uses wtype). 1.14's
+# Mantel-on-KWin parts (its input method and screencast helpers, the lock screen for KWin's locker, hearth-portals.conf)
+# are archived with KWin in 1.15 (archive/kwin, docs/archive/KWIN.md).
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-type
-# KWin's screen locker, the package type it reads Hearth's lock screen as, and the lock screen itself (shell and
-# no look-and-feel copy): desktop/kwin-lock/install.sh, the same steps kwin-input.yml checks. Fails the build if any
-# is missing (a lock screen that can't show would be a lockout).
-bash /usr/share/nimbus/desktop/kwin-lock/install.sh /usr/share/nimbus/desktop/kwin-lock
-chmod 755 /usr/share/nimbus/desktop/shell/hearth-lockcheck
-# The lock screen must be complete where the greeter looks (never a lock that can't show its screen: red flag 2).
-# With the greeter's own test run (off screen): it must load Hearth's lock screen, or the image isn't built.
-PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock XDG_RUNTIME_DIR=/tmp python3 /usr/share/nimbus/desktop/shell/hearth-lockcheck --as-kwin
-rm -rf /usr/share/nimbus/desktop/kwin-helpers
-# For Hearth's KWin session (XDG_CURRENT_DESKTOP=Hearth:KDE): Hearth Files, and Hearth's screen sharing and
-# screenshots (hearth-portal + hearth_screencast.py); the rest as on labwc.
-cat > /usr/share/xdg-desktop-portal/hearth-portals.conf <<PORTALS
-[preferred]
-default=gtk
-org.freedesktop.impl.portal.FileChooser=hearth
-org.freedesktop.impl.portal.ScreenCast=hearth
-org.freedesktop.impl.portal.Screenshot=hearth
-org.freedesktop.impl.portal.Access=hearth
-org.freedesktop.impl.portal.RemoteDesktop=hearth
-PORTALS
-# ---- end of Mantel on KWin: typing, the lock screen, screen sharing
+rm -f /usr/share/xdg-desktop-portal/hearth-portals.conf
 
 # ------------------------------------------------------------------ Hearth Contacts and Hearth Maps (hosts/hearth-contacts, hosts/hearth-maps)
 # Built with the app (base-peppermint.yml) and carried in os/nimbus-app; their icons (Icon=hearth-contacts, hearth-maps)

@@ -1,6 +1,5 @@
-// Hearth Settings › System › Your desktop: Desktop Mode is Mantel (Hearth Classic), on KWin (1.14) or labwc, the window
-// manager it used before (docs/DESKTOPS.md "Mantel on KWin"; nimbus-session's safe start falls back to labwc and says
-// why; twice in a row it stays on labwc until "Use KWin again" here). 1.13's KDE Plasma and GNOME choices
+// Hearth Settings › System › Your desktop: Desktop Mode is Mantel (Hearth Classic) on labwc. 1.14 moved it to KWin; 1.15
+// archived KWin (the owner, Nov 17; docs/archive/KWIN.md): a saved KWin choice opens labwc, told once. 1.13's KDE Plasma and GNOME choices
 // were retired in 1.14 (the owner, Nov 16; archive/desktops-kde-gnome, docs/archive/DESKTOPS-KDE-GNOME.md): someone who
 // had one picked gets Mantel and a notice saying so (DesktopNotice.qml once, the banner here while it's the last one).
 // Everything through hearth-your-desktop. Opening the page only reads; nothing here changes by itself.
@@ -16,8 +15,7 @@ SetPage {
     function say(t, b) { msg = t; bad = !!b; }
     function refresh() { job.run(["status"], r => page.st = r, e => page.say(e, true)); }
     function run(args, done) { act.run(args, r => { page.st = r; if (done) page.say(done); }, e => { page.say(e, true); page.refresh(); }); }
-    readonly property string wmName: !st ? "KWin" : st.wm === "labwc" ? "labwc" : "KWin"
-    readonly property string nowName: !st || !st.wmNow ? "" : st.wmNow === "labwc" ? "labwc" : st.wmNow === "firehold" ? "Firehold" : "KWin"
+    readonly property string nowName: !st || !st.wmNow ? "" : st.wmNow === "firehold" ? "Firehold" : st.wmNow === "kwin" ? "KWin" : "labwc"
     Component.onCompleted: refresh()
     SetJob { id: job; helper: "hearth-your-desktop" }
     SetJob { id: act; helper: "hearth-your-desktop" }
@@ -30,8 +28,6 @@ SetPage {
     SetBanner {
         visible: !!page.st && !!page.st.notice && (page.st.notice.title || "") !== ""
         kind: page.st && page.st.notice && page.st.notice.kind === "retired" ? "info" : "warn"
-        action: page.st && page.st.kwinPaused ? "Use KWin again" : ""
-        onActivated: if (page.st && page.st.kwinPaused) page.run(["wm", "kwin"], "Mantel uses KWin again from the next time Desktop Mode starts ✓")
         icon: page.st && page.st.notice && page.st.notice.kind === "retired" ? "info" : "warn"
         title: page.st && page.st.notice ? page.st.notice.title : ""
         sub: page.st && page.st.notice ? page.st.notice.sub : ""
@@ -71,24 +67,22 @@ SetPage {
             }
         }
     }
-    SetDropdown {
+    SetRow {
         title: "Window manager"
-        sub: "What draws, moves and snaps Mantel's windows, from the next time Desktop Mode starts. KWin (KDE's) is the default from Hearth 1.14; labwc is the one Mantel used before."
-        options: [{ value: "kwin", label: "KWin" }, { value: "labwc", label: "labwc" }]
-        current: !page.st ? "kwin" : page.st.wm === "firehold" ? page.st.wmBefore : page.st.wm
-        boxWidth: 200
-        onChosen: v => page.run(["wm", v], "Mantel uses " + (v === "labwc" ? "labwc" : "KWin") + " from the next time Desktop Mode starts ✓")
+        sub: "labwc draws, moves and snaps Mantel's windows, as in Hearth 1.13. KWin, which 1.14 tried, is archived."
+        chip: "labwc"; chipKind: "ok"
+        interactive: false
     }
     // 2.0 preview: Hearth's own compositor (docs/FIREHOLD.md). Off unless you turn it on; if it doesn't start,
-    // Mantel opens on KWin (then labwc) and says why. Turning it off goes back to what was picked before.
+    // Mantel opens on labwc and says why. Turning it off goes back to labwc.
     SetDropdown {
         // Hidden until it's unlocked (SettingsNav.tapVersion); locked, nothing here mentions it. @noindex
         visible: !!page.st && page.st.fireholdUnlocked
         icon: "desktops"; title: "Firehold (preview)"
         sub: !page.st ? "" : !page.st.fireholdHere && page.st.fireholdMode === "off"
             ? "Firehold, Hearth 2.0's own desktop, still being built. It isn't on this device yet."
-            : page.st.fireholdPaused ? "It couldn't start twice in a row, so Always is off for now and the normal desktop (KWin) starts. Pick Always to turn it back on."
-            : "Hearth 2.0's own desktop, a preview: some things don't work yet. Try once is the next Desktop Mode start only; Always is every start. If it can't start, the normal desktop (KWin) starts and Hearth tells you why. " + (page.st.leaveKey || "Ctrl+Alt+Backspace") + " always goes back to the normal desktop."
+            : page.st.fireholdPaused ? "It couldn't start twice in a row, so Always is off for now and the normal desktop (labwc) starts. Pick Always to turn it back on."
+            : "Hearth 2.0's own desktop, a preview: some things don't work yet. Try once is the next Desktop Mode start only; Always is every start. If it can't start, the normal desktop (labwc) starts and Hearth tells you why. " + (page.st.leaveKey || "Ctrl+Alt+Backspace") + " always goes back to the normal desktop."
         options: [{ value: "off", label: "Off" }, { value: "once", label: "Try once" }, { value: "always", label: "Always" }]
         current: !page.st ? "off" : page.st.fireholdPaused ? "off" : page.st.fireholdMode
         boxWidth: 200
@@ -97,7 +91,7 @@ SetPage {
             if (v !== "off" && !page.st.fireholdHere) { page.say("Firehold isn't on this device yet", true); return; }
             if (v === "once") page.run(["wm", "firehold-once"], "Firehold (preview) for the next Desktop Mode start only, then the normal desktop again ✓");
             else if (v === "always") page.run(["wm", "firehold"], "Firehold (preview) every time Desktop Mode starts ✓");
-            else page.run(["wm", page.st.wm === "firehold" ? (page.st.wmBefore || "kwin") : page.st.wm], "Firehold is off: Mantel uses " + ((page.st.wm === "firehold" ? page.st.wmBefore : page.st.wm) === "labwc" ? "labwc" : "KWin") + " from the next time Desktop Mode starts ✓");
+            else page.run(["wm", "labwc"], "Firehold is off: Mantel uses labwc from the next time Desktop Mode starts ✓");
         }
     }
     SetRow {
@@ -110,16 +104,14 @@ SetPage {
     SetRow {
         title: "Running now"
         sub: !page.st ? "" : page.nowName === "" ? "Desktop Mode isn't open"
-            : page.st.kwinPaused ? "KWin didn't start twice in a row, so Mantel is on labwc until you use KWin again"
             : page.st.wm === "firehold" && page.st.wmNow !== "firehold" ? (page.st.safeGraphics ? "Safe graphics this time, so labwc" : !page.st.fireholdHere ? "Firehold isn't installed, so " + page.nowName : "Firehold didn't start this time, so " + page.nowName)
-            : page.st.wm === "kwin" && page.nowName === "labwc" ? (page.st.safeGraphics ? "Safe graphics this time, so labwc" : !page.st.kwinHere ? "KWin isn't installed, so labwc" : "KWin didn't start this time, so labwc")
             : "Mantel on " + page.nowName
-        chip: page.nowName; chipKind: page.st && ((page.st.wm === "kwin" && page.nowName === "labwc") || (page.st.wm === "firehold" && page.st.wmNow !== "firehold")) ? "warn" : "ok"
+        chip: page.nowName; chipKind: page.st && page.st.wm === "firehold" && page.st.wmNow !== "firehold" ? "warn" : "ok"
         interactive: false
     }
     SetRow {
         title: "Safe start"
-        sub: "If KWin doesn't start, Mantel opens on labwc for that sign-in and tells you why. Twice in a row, it stays on labwc until you pick KWin again. Your choice stays saved."
+        sub: "If the Firehold preview doesn't start, Mantel opens on labwc for that sign-in and tells you why. Twice in a row, it stays on labwc until you pick it again. Your choice stays saved."
         chip: "always on"; chipKind: "ok"
         interactive: false
     }

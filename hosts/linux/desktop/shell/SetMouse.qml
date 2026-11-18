@@ -191,6 +191,5 @@ SetPage {
             icon: "desktops"; title: "Three or four fingers sideways: next or previous desktop"
             sub: kw.live ? "Three fingers up or down move between rows of desktops" : "Needs Mantel on KWin"
         }
-        SetLinkCard { target: "kwin-tablet"; enabled: true }
     }
 }

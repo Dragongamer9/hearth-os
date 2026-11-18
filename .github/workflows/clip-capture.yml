@@ -256,7 +256,7 @@ jobs:
         run: |
           # As desktop-test.yml's KWin screens job and the image: hearth-screens takes KWin's pictures (CaptureArea too)
           # through hearth-kwin-cast, which answers only a root-owned hearth-screens.
-          bash hosts/linux/desktop/kwin-helpers/build.sh /tmp/kwin-helpers > /tmp/helpers-build.log 2>&1 \
+          bash archive/kwin/hosts/linux/desktop/kwin-helpers/build.sh /tmp/kwin-helpers > /tmp/helpers-build.log 2>&1 \
             || { echo "::error title=KWin helpers::$(grep -E 'error' /tmp/helpers-build.log | head -6 | tr '\n' '|' | cut -c1-600)"; exit 1; }
           install -Dm755 /tmp/kwin-helpers/hearth-kwin-cast /usr/libexec/hearth/hearth-kwin-cast
           install -Dm644 os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/hearth-kwin-cast.desktop

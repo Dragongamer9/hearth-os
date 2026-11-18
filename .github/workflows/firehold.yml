@@ -20,7 +20,7 @@ on:
     paths: ['hosts/firehold-comp/**', 'hosts/linux/session/**', 'hosts/linux/desktop/firehold/**',
             'hosts/linux/desktop/labwc/autostart', 'hosts/linux/desktop/shell/hearth-your-desktop',
             'hosts/linux/desktop/shell/SetYourDesktop.qml', 'hosts/linux/desktop/shell/DesktopNotice.qml',
-            'hosts/linux/test/test_firehold_session.py', 'hosts/linux/test/test_kwin_session.py',
+            'hosts/linux/test/test_firehold_session.py', 'hosts/linux/test/session_base.py',
             'hosts/linux/desktop/shell/hearth-firehold-game', 'hosts/linux/test/test_firehold_game.py',
             '.github/workflows/firehold.yml', '.github/scripts/firehold-test.sh', '.github/scripts/firehold-headless-test.sh',
             '.github/scripts/firehold-game-test.sh', '.github/scripts/firehold-game-client.py', '.github/scripts/firehold-shot.py',
@@ -125,7 +125,7 @@ jobs:
       - name: The session's tests
         run: |
           fail=0
-          for t in test_firehold_session.py test_kwin_session.py test_firehold_game.py; do
+          for t in test_firehold_session.py test_firehold_game.py; do
             if ! python3 -W ignore -m unittest discover -s hosts/linux/test -p "$t" -v > /tmp/t.log 2>&1; then
               fail=1
               grep -E '^(FAIL|ERROR):|Error|assert' /tmp/t.log | head -12 | while read -r l; do echo "::error title=$t::$l"; done
