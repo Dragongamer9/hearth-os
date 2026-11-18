@@ -133,10 +133,28 @@ end_session
 printf 'NIMBUS_START_MODE=desktop\n' > "$CONF"
 # Settings › Keyboard as someone saved it on labwc: two layouts, faster repeat, Num Lock on, a compose key.
 printf '%s' '{"layouts": [{"layout": "de", "variant": ""}, {"layout": "fr", "variant": ""}], "switch": "grp:alt_shift_toggle", "delay": 300, "rate": 40, "numlock": "on", "compose": "compose:ralt", "switchMode": "Window"}' > "$HOME/.config/nimbus/keyboard.json.tmp" && mv -f "$HOME/.config/nimbus/keyboard.json.tmp" "$HOME/.config/nimbus/keyboard.json"
+# Hearth's own apps as the image has them (the owner's ROG Xbox Ally, Nov 17: Hearth Settings, Logs and the rest
+# were missing from Mantel's menu under KWin): hearth-app-kinds' copies say NotShowIn=KDE;GNOME; (own_apps), and KWin's
+# XDG_CURRENT_DESKTOP is Hearth:Nimbus:KDE. They must still be listed.
+install -Dm755 os/system_files/usr/libexec/hearth-app-kinds /usr/libexec/hearth-app-kinds
+install -Dm644 os/system_files/usr/share/hearth/app-kinds.json /usr/share/hearth/app-kinds.json
+mkdir -p /usr/share/hearth/app-kinds/applications /usr/share/applications
+for a in "hearth-settings:Hearth Settings" "hearth-logs:Logs"; do
+  printf '[Desktop Entry]\nType=Application\nName=%s\nExec=/bin/true\nIcon=%s\n' "${a#*:}" "${a%%:*}" > "/usr/share/applications/${a%%:*}.desktop"
+  printf '[Desktop Entry]\nType=Application\nName=%s\nExec=/bin/true\nIcon=%s\nNotShowIn=KDE;GNOME;\nX-Hearth-App-Kinds=true\n' "${a#*:}" "${a%%:*}" > "/usr/share/hearth/app-kinds/applications/${a%%:*}.desktop"
+done
 start_session B
 wait_up 90 || fail "KWin" "Mantel didn't come up under KWin the second time"
 sleep 10
 shot kwin-2-desktop
+listed=$(WAYLAND_DISPLAY=wayland-hearth quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call launcher listed 2>/dev/null)
+for a in hearth-settings hearth-logs; do
+  printf '%s\n' "$listed" | grep -qx "$a" && echo "::notice title=Hearth's apps under KWin::$a is in Mantel's menu" \
+    || fail "Hearth's apps under KWin" "$a isn't in Mantel's menu under KWin (hidden: $(XDG_CURRENT_DESKTOP=Hearth:Nimbus:KDE python3 /usr/libexec/hearth-app-kinds hidden | tr '\n' ' ' | cut -c1-300); listed: $(printf '%s' "$listed" | grep -c .) apps)"
+done
+# 1.14's freeze: Mantel at rest under KWin, and after a search left in the closed menu (shell-idle-cpu.sh).
+dnf -y install gdb >/dev/null 2>&1 || true
+SH="$NIMBUS_SHARE/desktop/shell" bash .github/scripts/shell-idle-cpu.sh shots/idle kwin wayland-hearth
 grep -iE 'layer.?shell.*(not|fail|unsupported)|wlr_layer.*(not|fail)' "$XDG_RUNTIME_DIR/nimbus-shell.log" | head -3 | while read -r l; do fail "layer shell" "$(echo "$l" | cut -c1-300)"; done
 ipc wayland-hearth settings page your-desktop; sleep 3
 shot kwin-3-your-desktop

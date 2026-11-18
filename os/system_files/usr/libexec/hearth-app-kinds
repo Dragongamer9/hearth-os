@@ -589,7 +589,25 @@ def hardware(out_dir, root='/', table=None):
     return {'hidden': sorted(want), 'have': have}
 
 
+def mantel_names(names, root='/'):
+    """Mantel is Hearth Classic (Nimbus) whichever window manager it's on: on KWin (1.14) XDG_CURRENT_DESKTOP is
+    Hearth:Nimbus:KDE (KDE last, for KDE apps and portals), and by the desktop entry spec an app with NotShowIn=KDE is
+    hidden from any desktop with KDE among its names, which hid Hearth Settings, Logs and the rest of Hearth's own apps
+    from Mantel's menu under KWin (the owner's ROG Xbox Ally, Nov 17: own_apps writes NotShowIn=KDE;GNOME; for them).
+    So with Nimbus among the names, the names of the table's other desktops are left out: Mantel shows what it shows
+    on labwc."""
+    if 'Nimbus' not in names:
+        return list(names)
+    try:
+        table = load_table(under(root, TABLE))
+        others = {n for d, info in table['desktops'].items() if d != 'Nimbus' for n in info.get('names') or []}
+    except (OSError, ValueError, KeyError, Fail):
+        others = {'KDE', 'GNOME', 'COSMIC', 'Deepin', 'DDE'}
+    return [n for n in names if n not in others or n == 'Nimbus']
+
+
 def hidden(desktop_names, root='/'):
+    desktop_names = mantel_names(desktop_names, root)
     eff = effective(root, extra=[os.path.join(d, 'applications') for d in
                                  (os.environ.get('XDG_DATA_DIRS') or '').split(':') if d.startswith('/')])
     return sorted(i for i, f in eff.items() if not shown_in(f, desktop_names))
