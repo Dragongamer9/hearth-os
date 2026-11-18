@@ -27,6 +27,7 @@ C=$!
 for i in $(seq 120); do [ -S "$XDG_RUNTIME_DIR/idle-$KIND" ] && break; sleep 0.5; done
 export WAYLAND_DISPLAY=idle-$KIND QT_QPA_PLATFORM=wayland
 for k in /usr/libexec/kactivitymanagerd /usr/lib64/libexec/kactivitymanagerd /usr/bin/kactivitymanagerd; do [ -x "$k" ] && { "$k" >/dev/null 2>&1 & break; }; done
+for k in /usr/libexec/kglobalacceld /usr/lib64/libexec/kglobalacceld /usr/bin/kglobalacceld; do [ -x "$k" ] && { "$k" >/dev/null 2>&1 & break; }; done
 sleep 2
 H=""
 if [ "$KIND" = firehold ]; then
@@ -42,7 +43,7 @@ else
   S=$!
 fi
 sleep 60     # the start's own work done
-if ! kill -0 "$S" 2>/dev/null || ! kill -0 "$C" 2>/dev/null; then echo "RESULT $KIND gone gone gone 0 0 0"; exit 0; fi
+if ! kill -0 "$S" 2>/dev/null || ! kill -0 "$C" 2>/dev/null; then echo "RESULT $KIND gone gone gone 0 0 0"; echo "$KIND: shell $(kill -0 $S 2>/dev/null && echo up || echo gone), kwin $(kill -0 $C 2>/dev/null && echo up || echo gone)" >&2; tail -5 /tmp/idle-$KIND-kwin.log >&2; exit 0; fi
 s0=$(ticks $S); c0=$(ticks $C); m0=$(rss $S); h0=0; [ -n "$H" ] && h0=$(ticks $H)
 sleep "$SECS"
 s1=$(ticks $S); c1=$(ticks $C); m1=$(rss $S); h1=0; [ -n "$H" ] && h1=$(ticks $H)
@@ -60,7 +61,10 @@ read -r _ _ fs fc fh fm0 fm1 fcm <<<"$(grep '^RESULT' /tmp/idle-firehold.out | t
 num() { case "$1" in ''|*[!0-9]*) return 1;; esac; }
 p() { num "$1" && printf '%d.%02d%%' $(($1 / 100)) $(($1 % 100)) || echo "$1"; }
 if ! num "$ps" || ! num "$fs"; then
-  echo "::error title=at rest::no result (plain: '$ps', Firehold: '$fs'): $(tail -c 400 /tmp/idle-firehold.err /tmp/idle-firehold-shell.log 2>/dev/null | tr '\n' ' ')"
+  for k in plasma firehold; do
+    echo "::warning title=at rest, $k::$(grep -v udisks2 /tmp/idle-$k-shell.log 2>/dev/null | tail -25 | cut -c1-200 | tr '\n' '|' | cut -c1-3000) || helper: $(tail -c 600 /tmp/idle-$k-helper.log /tmp/home-$k/.local/state/nimbus/firehold-plasma.log 2>/dev/null | tr '\n' '|')"
+  done
+  echo "::error title=at rest::no result (plain: '$ps', Firehold: '$fs'): $(tail -c 400 /tmp/idle-firehold.err 2>/dev/null | tr '\n' ' ')"
   exit 1
 fi
 msg="over ${SECS} s at rest (virtual screen, software drawing): plasmashell $(p "$ps") plain vs $(p "$fs") Firehold of a core; KWin $(p "$pc") vs $(p "$fc"); Firehold's helper $(p "$fh"); plasmashell memory ${pm0} → ${pm1} MB plain vs ${fm0} → ${fm1} MB Firehold; KWin ${pcm} vs ${fcm} MB"

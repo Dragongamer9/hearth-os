@@ -240,17 +240,27 @@ ContainmentItem {
         }
     }
 
-    // Requests from hearth-firehold-plasma ask (the Guide button, Meta+Ctrl+G), through Plasma's scripting.
-    readonly property string request: Plasmoid.configuration.request || ""
-    onRequestChanged: {
-        if (!started || request === "") return;
-        const cmd = request.split("|")[0];
+    // Requests from hearth-firehold-plasma ask (the Guide button, Meta+Ctrl+G, the Desk's Home and Library): its
+    // listener sleeps until one comes, then the Couch starts it again. Plasma's scripting (the "request" key) too.
+    function handle(cmd) {
         if (cmd === "guide") guide(false);
         else if (cmd === "open") guide(true);
         else if (cmd === "home") home("home");
         else if (cmd === "settings") { home("home"); page = "settings"; }
         else if (cmd.indexOf("tab:") === 0) home(cmd.slice(4));
     }
+    property int listenFails: 0
+    function listen() {
+        run(["listen"], function (t) {
+            const l = t.trim();
+            if (l === "" || l.indexOf("error") === 0) { fh.listenFails += 1; if (fh.listenFails < 3) fh.listen(); return; }
+            fh.listenFails = 0;
+            fh.handle(l);
+            fh.listen();
+        });
+    }
+    readonly property string request: Plasmoid.configuration.request || ""
+    onRequestChanged: if (started && request !== "") handle(request.split("|")[0])
 
     // ------------------------------------------------------------------ the keys (the controller sends these too)
     focus: true
@@ -288,6 +298,7 @@ ContainmentItem {
         started = true;
         forceActiveFocus();
         run(["state", front ? "front" : "back"]);
+        listen();
         run(["ready", "org.hearthos.firehold"]);
     }
 

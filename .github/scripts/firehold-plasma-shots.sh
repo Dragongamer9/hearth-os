@@ -83,7 +83,10 @@ while True:
         break
     data += c
 W, H, S = int(res['width']), int(res['height']), int(res['stride'])
-Image.frombuffer('RGBA', (W, H), data, 'raw', 'BGRA', S, 1).convert('RGB').save(sys.argv[1])
+# QImage's formats: 4-6 are ARGB32 (B, G, R, A in memory), 16-18 RGBX/RGBA8888 (R, G, B, A).
+raw = 'RGBA' if int(res.get('format', 5)) in (16, 17, 18) else 'BGRA'
+Image.frombuffer('RGBA', (W, H), data, 'raw', raw, S, 1).convert('RGB').save(sys.argv[1])
+print('format', int(res.get('format', -1)), raw, file=sys.stderr)
 PY
 shot() { timeout 25 python3 /tmp/shot.py "$OUT/$1.png" 2>>"$OUT/shot-errors.txt" || echo "no screenshot $1" >>"$OUT/shot-errors.txt"; }
 # A one-off KWin script (only for these checks: putting the stand-in game in front, ending Show Desktop).
@@ -118,6 +121,8 @@ for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; slee
 [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { fail KWin "didn't start: $(tail -5 "$OUT/kwin.log" | tr '\n' '|' | cut -c1-600)"; exit 0; }
 export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland
 for k in /usr/libexec/kactivitymanagerd /usr/lib64/libexec/kactivitymanagerd /usr/bin/kactivitymanagerd; do [ -x "$k" ] && { "$k" >"$OUT/kamd.log" 2>&1 & break; }; done
+# KDE's global shortcuts service (the Plasma session starts it; the KWin script's shortcuts go through it).
+for k in /usr/libexec/kglobalacceld /usr/lib64/libexec/kglobalacceld /usr/bin/kglobalacceld; do [ -x "$k" ] && { "$k" >"$OUT/kglobalaccel.log" 2>&1 & break; }; done
 sleep 3
 
 # ---- the Couch, as nimbus-session starts it.
@@ -137,6 +142,7 @@ kate >/dev/null 2>&1 &
 [ -n "$QML" ] && { "$QML" /tmp/ember.qml >"$OUT/game.log" 2>&1 & }
 sleep 15
 PIDS=$(apps_pids)
+echo "::notice title=Plasma's desktops::$(timeout 10 qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript 'print(desktops().map(function(d){return d.type + " " + d.screen}).join(", "))' 2>&1 | tr '\n' ' ')" 
 echo "::notice title=Open::apps and game: $PIDS"
 hearth-firehold-plasma do home; sleep 4
 shot fp-1-couch-home
@@ -149,6 +155,7 @@ hearth-firehold-plasma ask open; sleep 1
 front "Ember Trails" true; sleep 3
 hearth-firehold-plasma ask guide; sleep 5
 shot fp-3-guide
+echo "::notice title=listener::$(ls -la "$RUN" | tr '\n' ' ' | cut -c1-900); $(pgrep -af 'hearth-firehold-plasma listen' | tr '\n' ' ')"
 grep -q guide "$RUN/front" 2>/dev/null && echo "::notice title=Guide::in front of the game" || echo "::warning title=Guide::the Couch says $(cat "$RUN/front" 2>/dev/null)"
 hearth-firehold-plasma ask guide; sleep 1
 hearth-firehold-plasma ask settings; sleep 4
@@ -162,7 +169,15 @@ same() {   # same WHAT: every app, the game and KWin still the same processes
 }
 since=$(date +%s)
 hearth-firehold-plasma switch desk --why mouse
-wait_ready org.hearthos.firehold.desk 90 && echo "::notice title=Desk::up in $(( $(date +%s) - since )) s" \
+if ! wait_ready org.hearthos.firehold.desk 40 && command -v gdb >/dev/null; then
+  # It didn't come up: again under gdb, so a crash leaves its backtrace (KDE_DEBUG: no crash handler).
+  echo "::warning title=Desk::not up in 40 s; again under gdb"
+  pkill plasmashell; sleep 2
+  KDE_DEBUG=1 timeout 120 gdb -batch -ex run -ex "thread apply all bt 25" --args plasmashell -p org.hearthos.firehold.desk >"$OUT/desk-gdb.txt" 2>&1 &
+  sleep 60
+  echo "::warning title=Desk under gdb::$(grep -E '^#|signal|Thread .* \(|qFatal|ASSERT|terminate' "$OUT/desk-gdb.txt" | head -40 | cut -c1-160 | tr '\n' '|' | cut -c1-3500)"
+fi
+wait_ready org.hearthos.firehold.desk 30 && echo "::notice title=Desk::up in $(( $(date +%s) - since )) s" \
   || fail Desk "org.hearthos.firehold.desk didn't say it's up: $(grep -iE 'error' "$OUT/plasmashell.log" | tail -8 | tr '\n' '|' | cut -c1-900)"
 sleep 3
 front "Ember Trails" false; sleep 2

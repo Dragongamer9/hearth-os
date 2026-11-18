@@ -439,7 +439,7 @@ run_plasma() {
         "This test edition has KDE Plasma instead of Mantel. Your Desktop Mode choice is kept for when you go back to Debian." ) >/dev/null 2>&1 &
   fi
   # Firehold on Plasma (a test: docs/FIREHOLD.md "Firehold on Plasma"), only when it's your Desktop Mode choice
-  # (session.conf's HEARTH_PLASMA_DESKTOP=firehold, from "Firehold (Plasma, test)" in Plasma's menu; no line: KDE
+  # (HEARTH_PLASMA_DESKTOP=firehold in your session settings, from "Firehold (Plasma, test)" in Plasma's menu; no line: KDE
   # Plasma) and its packages are in the image. plasmashell is told which shell package to start (PLASMA_DEFAULT_SHELL);
   # KWin is KDE's own, unchanged. KDE's user services keep that variable between Plasma starts, so it's cleared first
   # and plain Plasma never gets it. Anything missing or failing: plain KDE Plasma (hearth-firehold-plasma checks the

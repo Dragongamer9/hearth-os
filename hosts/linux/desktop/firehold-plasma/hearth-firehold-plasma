@@ -16,7 +16,8 @@ restarts only plasmashell with the other shell package: KWin, the session and ev
   ready PACKAGE               the shell came up (the Couch's containment, the Desk's posture pill)
   switch couch|desk [TAB] [--why pad|mouse|keys]
   plain                       plain Plasma for the rest of this session (the saved choice isn't touched)
-  ask CMD                     tell the Couch (guide, open, home, settings, tab:library...) through Plasma's scripting
+  ask CMD                     tell the Couch (guide, open, home, settings, tab:library...)
+  listen                      the Couch's ear: one request, then it ends (the Couch starts it again)
   state front|back|guide      what the Couch has in front (for the controller)
   get | set KEY JSON          Firehold's settings (~/.config/nimbus/firehold.json, shared with Mantel's Firehold)
   sys [all]                   one JSON line for the bars (Wi-Fi, battery, initial); all: the Guide's too (volume,
@@ -312,14 +313,73 @@ def unload_kwin_script():
     dbus_send('org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting.unloadScript', 'string:' + SCRIPT_NAME)
 
 
+def requests_path():
+    return os.path.join(run_dir(), 'requests')
+
+
 def ask(cmd):
-    """The Couch's containment reads its "request" key (Plasma's scripting writes it; the containment sees it at once,
-    the way plasma-apply-wallpaperimage changes the wallpaper)."""
+    """Tells the Couch: through its listener (hearth-firehold-plasma listen, which the Couch keeps running), else
+    through Plasma's scripting (the containment's "request" key)."""
     if not re.match(r'^[a-z]+(:[a-z0-9_.-]{1,40})?$', cmd):
         raise ValueError('bad request')
+    for _ in range(15):
+        try:
+            fd = os.open(requests_path(), os.O_WRONLY | os.O_NONBLOCK)
+        except OSError:
+            time.sleep(0.1)
+            continue
+        try:
+            os.write(fd, (cmd + '\n').encode())
+            return
+        finally:
+            os.close(fd)
     js = ('var v="%s|%d";desktops().forEach(function(d){if(d.type=="%s"){d.currentConfigGroup=["General"];'
           'd.writeConfig("request",v);}});' % (cmd, int(time.time() * 1000), CONTAINMENT))
     dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript', 'string:' + js, reply=False)
+
+
+def listen():
+    """The Couch's ear: waits (asleep in select, no polling) for one request on a FIFO in $XDG_RUNTIME_DIR, prints it
+    and ends; the Couch starts it again. Ends by itself when the plasmashell that started it is gone."""
+    p = requests_path()
+    try:
+        os.mkfifo(p, 0o600)
+    except FileExistsError:
+        pass
+    parent = os.getppid()
+    r = os.open(p, os.O_RDONLY | os.O_NONBLOCK)
+    w = os.open(p, os.O_WRONLY | os.O_NONBLOCK)   # our own writer: no end-of-file while nobody else writes
+    buf = b''
+    try:
+        while True:
+            ready, _, _ = select.select([r], [], [], 10)
+            if os.getppid() != parent:
+                return 0
+            if not ready:
+                continue
+            try:
+                buf += os.read(r, 4096)
+            except BlockingIOError:
+                continue
+            if b'\n' in buf:
+                line = buf.split(b'\n', 1)[0].decode(errors='replace').strip()
+                if re.match(r'^[a-z]+(:[a-z0-9_.-]{1,40})?$', line):
+                    print(line)
+                    sys.stdout.flush()
+                    return 0
+                buf = b''
+    finally:
+        os.close(r)
+        os.close(w)
+
+
+def kwin_run(js, name):
+    """A one-off KWin script (KWin's public script API), e.g. Show Desktop."""
+    f = os.path.join(run_dir(), name + '.js')
+    write_small(f, js)
+    dbus_send('org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting.unloadScript', 'string:' + name)
+    dbus_send('org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting.loadScript', 'string:' + f, 'string:' + name)
+    dbus_send('org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting.start')
 
 
 def current_posture():
@@ -740,7 +800,7 @@ def do(action, arg=''):
             pass
     elif action == 'home':
         # KWin's Show Desktop: every window steps aside and the Couch is in front; going to one ends it.
-        dbus_send('org.kde.KWin', '/KWin', 'org.kde.KWin.showDesktop', 'boolean:true', reply=False)
+        kwin_run('workspace.showingDesktop = true;', 'org.hearthos.firehold.home')
     elif action == 'bigpicture':
         detach(['sh', '-c', 'pgrep -x steam >/dev/null && exec xdg-open steam://open/bigpicture'])
     elif action == 'gamemode':
@@ -850,6 +910,8 @@ def main(argv):
             plain()
         elif what == 'ask' and a:
             ask(a[0])
+        elif what == 'listen':
+            return listen()
         elif what == 'state' and a and a[0] in ('front', 'back', 'guide'):
             write_small(os.path.join(run_dir(), 'front'), a[0])
         elif what == 'tab':
