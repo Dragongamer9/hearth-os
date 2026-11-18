@@ -23,7 +23,11 @@
         * you pick a look in Hearth's Settings -> its Global Theme is applied
         * you pick a "Hearth OS · <name>" Global Theme in System Settings -> Hearth's Settings shows that look
           (desktop.json "look", merged in; every other setting stays); any other Global Theme is left alone
-      What was last applied is in ~/.local/state/hearth/plasma-look.json.
+      What was last applied is in ~/.local/state/hearth/plasma-look.json, written only once KDE's settings show the
+      look (otherwise the next start tries again).
+
+  status
+      One JSON line: what KDE has now (Global Theme, colours, Plasma style), the state file, Plasma running.
 
 Python standard library only.
 """
@@ -377,28 +381,92 @@ def current_wallpaper(appletsrc):
     return m[-1].strip() if m else ''
 
 
+def effective(kc):
+    """What KDE programs see now (the system defaults in /etc/xdg under the person's own files)."""
+    if kc is None:
+        return {}
+    try:
+        g = kc.effective('kdeglobals')[0]
+        p = kc.effective('plasmarc')[0]
+    except Exception as e:
+        log('KDE\'s settings could not be read: %s' % e)
+        return {}
+    return {'lnf': g.get('KDE', {}).get('LookAndFeelPackage'), 'scheme': g.get('General', {}).get('ColorScheme'),
+            'style': p.get('Theme', {}).get('name')}
+
+
+def verified(want, eff):
+    return (eff.get('lnf') == lnf_id(want['look'])
+            and str(eff.get('scheme') or '').startswith('HearthOS-%s-' % want['look'])
+            and eff.get('style') == style_id(want['look'], want['mode']))
+
+
 def apply(pal, want, paths, kc):
+    """Hearth's look into Plasma. True when KDE's settings show it afterwards."""
     lk = dict(looks(pal)).get(want['look'], {})
-    code, out = run(['plasma-apply-lookandfeel', '-a', lnf_id(want['look'])])
-    log('Global Theme %s: %s' % (lnf_id(want['look']), out or code))
+    lnf = lnf_id(want['look'])
+    code, out = run(['plasma-apply-lookandfeel', '-a', lnf])
+    # (Its messages about xrdb, X11's resources, don't matter on Wayland.)
+    log('Global Theme %s: exit %s %s' % (lnf, code, out.replace('\n', ' | ')[:400]))
+    if kc is not None:
+        # plasma-apply-lookandfeel leaves out every value that equals KDE's default, and Hearth's look is the default
+        # (/etc/xdg): the choice goes into your kdeglobals by name, so it's recorded as yours. When plasma-apply-
+        # lookandfeel couldn't run, the Global Theme's other parts are put in the same way.
+        changes = {'KDE': {'LookAndFeelPackage': lnf}}
+        if code != 0:
+            changes['KDE']['widgetStyle'] = 'Breeze'
+            changes['Icons'] = {'Theme': 'breeze' if want['mode'] == 'light' else 'breeze-dark'}
+        try:
+            kc.update(paths['kdeglobals'], changes)
+            if code != 0:
+                kc.update(os.path.join(os.path.dirname(paths['kdeglobals']), 'kwinrc'),
+                          {'org.kde.kdecoration2': {'library': 'org.kde.breeze', 'theme': 'Breeze'}})
+                kc.update(os.path.join(os.path.dirname(paths['kdeglobals']), 'ksplashrc'),
+                          {'KSplash': {'Engine': 'KSplashQML', 'Theme': lnf}})
+                run(['plasma-apply-cursortheme', 'breeze_cursors'])
+                run(['dbus-send', '--session', '--type=method_call', '--dest=org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure'])
+        except Exception as e:  # a KDE file that can't be read is left as it is
+            log('could not record the Global Theme in kdeglobals: %s' % e)
     subs = [s['id'] for s in ht_mod.sub_list(pal, want['look'])] if ht_mod else []
     sub = want['sub'] if want['sub'] in subs[1:] else ''
     cmd = ['plasma-apply-colorscheme', scheme_file(want['look'], want['mode'], sub)]
     if want['accent']:
         cmd[1:1] = ['--accent-color', want['accent']]
     code, out = run(cmd)
-    log('colours: %s' % (out or code))
+    log('colours %s: exit %s %s' % (cmd[-1], code, out.replace('\n', ' | ')[:300]))
     if not want['accent'] and kc is not None:
         try:   # no accent of your own in Hearth: the look's (the colour scheme's) again
             kc.update(paths['kdeglobals'], {'General': {'AccentColor': None}})
         except Exception as e:  # a kdeglobals that can't be read is left as it is
             log('accent left as it is: %s' % e)
-    if want['mode'] == 'light':
-        run(['plasma-apply-desktoptheme', style_id(want['look'], 'light')])
+    code, out = run(['plasma-apply-desktoptheme', style_id(want['look'], want['mode'])])
+    log('Plasma style %s: exit %s' % (style_id(want['look'], want['mode']), code))
     if hearth_wallpaper(current_wallpaper(paths['appletsrc'])):
         w = '/usr/share/wallpapers/' + wallpaper_id(lk)
         if os.path.isdir(w):
-            run(['plasma-apply-wallpaperimage', w])
+            code, out = run(['plasma-apply-wallpaperimage', w])
+            log('wallpaper %s: exit %s' % (wallpaper_id(lk), code))
+    eff = effective(kc)
+    ok = verified(want, eff)
+    log('%s: KDE now has %s' % ('applied' if ok else 'NOT applied', json.dumps(eff)))
+    return ok
+
+
+def plasma_running():
+    """plasmashell of this account is running (from /proc: no extra tools needed)."""
+    uid = os.getuid()
+    for pid in os.listdir('/proc'):
+        if not pid.isdigit():
+            continue
+        try:
+            with open('/proc/%s/comm' % pid) as f:
+                if f.read().strip() != 'plasmashell':
+                    continue
+            if os.stat('/proc/' + pid).st_uid == uid:
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def ask(want, paths):
@@ -427,9 +495,8 @@ def sync(wait=False):
         import hearth_kconfig as kc
     except ImportError:
         kc = None
-    uid = str(os.getuid())
-    for _ in range(30 if wait else 1):
-        if run(['pgrep', '-u', uid, '-x', 'plasmashell'])[0] == 0:
+    for _ in range(60 if wait else 1):
+        if plasma_running():
             break
         time.sleep(1)
     else:
@@ -469,14 +536,19 @@ def sync(wait=False):
         if ask(want, paths):
             act = 'apply'
     if act == 'apply':
-        apply(pal, want, paths, kc)
+        ok = apply(pal, want, paths, kc)
         try:
             with open(paths['kdeglobals'], encoding='utf-8', errors='replace') as f:
                 kde = kde_of(f.read())
         except OSError:
             pass
-        st.update(applied=want, kde=kde['lnf'])
-        save_state(paths['state'], st, hsio)
+        if ok:
+            st.update(applied=want, kde=kde['lnf'])
+            save_state(paths['state'], st, hsio)
+        else:
+            # Not recorded as done: the next start (or the next change) tries again.
+            log("Hearth's look %s didn't take; it's tried again next time" % want['look'])
+            return 1
     elif act == 'save':
         look = look_of(kde['lnf'])
         if hsio:
@@ -509,6 +581,20 @@ def main(argv):
         return 0 if made else 1
     if len(argv) > 1 and argv[1] == 'sync':
         return sync('--wait' in argv)
+    if len(argv) > 1 and argv[1] == 'status':
+        sys.path.insert(0, SHELL_DIR)
+        try:
+            import hearth_kconfig as kc
+        except ImportError:
+            kc = None
+        p = home_paths()
+        try:
+            with open(p['state']) as f:
+                st = json.load(f)
+        except (OSError, ValueError):
+            st = None
+        print(json.dumps({'kde': effective(kc), 'state': st, 'plasma': plasma_running()}))
+        return 0
     sys.stderr.write(__doc__)
     return 2
 
