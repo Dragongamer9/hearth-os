@@ -562,6 +562,24 @@ jobs:
         timeout-minutes: 40
         run: bash .github/scripts/anatase-unlock-check.sh localhost/hearth-os:anatase
 
+      # REQUIRED (red flag 2; the owner's laptop dropped to "grub>" after a switch on Nov 17): Debian (the published one)
+      # installed in a virtual PC, switched to this image with this branch's hearth-admin, restarted through the
+      # firmware with nothing pressed (it must start Anatase by itself), switched back, restarted (the same Debian).
+      - name: Switch edition Debian ⇄ Anatase in a virtual PC (restarts through the firmware)
+        timeout-minutes: 120
+        run: |
+          # The Debian the owner's devices are on (1.13): its newest dated tag, else :testing.
+          t=$(skopeo list-tags docker://ghcr.io/dragongamer9/hearth-peppermint 2>/dev/null | python3 -c 'import json, sys; t = sorted(x for x in json.load(sys.stdin)["Tags"] if x.startswith("testing-1.13-")); print(t[-1] if t else "")' || true)
+          export DEBIAN_IMAGE=ghcr.io/dragongamer9/hearth-peppermint:${t:-testing}
+          bash .github/scripts/edition-switch-vm.sh localhost/hearth-os:anatase "$PWD/edition-switch"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: edition-switch-vm
+          path: edition-switch
+          if-no-files-found: ignore
+
       - name: Quick Access over games is Hearth's (Handheld Daemon's overlay app)
         timeout-minutes: 15
         run: |
