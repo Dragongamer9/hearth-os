@@ -19,6 +19,7 @@
 #   firehold-10-grim   grim's own picture of the screen (screencopy), checked against the screen's
 #   firehold-11-display  Settings › Display, its screen list from wlr-randr (wlr-output-management)
 #   firehold-13-guide  the Guide over a stand-in game: Frame limit ‹ 60 ›, Resolution scaling ‹ Quality · 720p ›
+#   firehold-14-window-picture  the test window's own picture through the window IPC (firehold-comp ctl shot)
 set -u +e +o pipefail
 mkdir -p shots
 SRC=$PWD
@@ -391,6 +392,28 @@ qs call firehold close; qs call firehold desk
 GH set frameLimit off >/dev/null; GH set scaling off >/dev/null
 kill "$GAMEPID" 2>/dev/null; pkill -f firehold-game-client 2>/dev/null; sleep 1   # $! is the W wrapper
 
+# ---- 14: the window IPC (firehold-comp ipc.rs) nested: one window's own picture (the per-window capture Everything
+# open and the dock use), and virtual desktops: the window steps aside on desktop 2 and comes back on desktop 1.
+CTL() { W timeout 10 "$BIN" ctl "$@"; }
+mkdir -p "$XDG_RUNTIME_DIR/pics"
+wid=$(CTL windows | python3 -c 'import json,sys; d=json.loads(sys.stdin.read().splitlines()[-1]); print(next(w["id"] for w in d["windows"] if w["appId"] == "hearth-test-window"))' 2>/dev/null)
+if [ -n "$wid" ]; then
+  CTL "{\"op\":\"shot\",\"id\":\"$wid\",\"path\":\"$XDG_RUNTIME_DIR/pics/test-window.png\",\"max\":1600}" > shots/ctl-shot.txt 2>&1
+  if python3 -c 'import sys; from PIL import Image; im = Image.open(sys.argv[1]).convert("RGB"); n = len(im.getcolors(1 << 24) or []); print("%dx%d, %d colours" % (im.size + (n,))); sys.exit(0 if n > 4 and im.width > 200 else 1)' "$XDG_RUNTIME_DIR/pics/test-window.png" > shots/ctl-shot-check.txt 2>&1; then
+    cp "$XDG_RUNTIME_DIR/pics/test-window.png" shots/firehold-14-window-picture.png
+    note "window picture" "the test window alone through the window IPC: $(cat shots/ctl-shot-check.txt) ($(tail -1 shots/ctl-shot.txt | cut -c1-200))"
+  else
+    fail "window picture" "no picture of the test window: $(tr '\n' '|' < shots/ctl-shot.txt | cut -c1-300) $(cat shots/ctl-shot-check.txt)"
+  fi
+  CTL '{"op":"goDesktop","n":2}' >/dev/null
+  wait_for 10 'd["desktops"][1]["active"] and all(w["w"] == 0 for w in d["windows"] if w["appId"] == "hearth-test-window")' \
+    && note "desktops" "on desktop 2: the test window stepped aside ($(status 'd["desktops"]'))" || fail "desktops" "desktop 2 didn't come: $(status 'd["desktops"]')"
+  CTL '{"op":"goDesktop","n":1}' >/dev/null
+  wait_for 10 'd["desktops"][0]["active"] and any(w["appId"] == "hearth-test-window" and w["w"] > 0 for w in d["windows"])' || fail "desktops" "back on desktop 1 the test window isn't there"
+else
+  fail "window ipc" "firehold-comp ctl windows doesn't list the test window: $(CTL windows 2>&1 | head -c 300)"
+fi
+
 # ---- 12: the card when Firehold couldn't start twice in a row (what nimbus-session leaves: test_firehold_session.py
 # proves the fallback itself), shown by Mantel when it starts: why, and one button to turn it back on.
 ST="$HOME/.local/state/hearth"
@@ -421,7 +444,7 @@ grep -E 'desktop|firehold' "$LOG" | tail -8 | cut -c1-200 | while read -r l; do 
 ls -la shots
 for s in firehold-1-empty firehold-2-mantel firehold-3-window firehold-4-minimized firehold-5-snapped firehold-5b-resized firehold-6-your-desktop \
          firehold-7-locked firehold-8-lock-prompt firehold-9-unlocked firehold-10-grim firehold-11-display \
-         firehold-6c-hidden firehold-6d-unlocked firehold-6e-switch firehold-12-notice firehold-13-guide; do
+         firehold-6c-hidden firehold-6d-unlocked firehold-6e-switch firehold-12-notice firehold-13-guide firehold-14-window-picture; do
   [ -s "shots/$s.png" ] || fail "screenshot" "$s is missing ($(tail -2 shots/shot-errors.txt 2>/dev/null | tr '\n' '|'))"
 done
 python3 - <<'PY'

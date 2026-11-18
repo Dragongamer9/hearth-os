@@ -4,6 +4,7 @@
 // (SettingsNav.fireholdDesk, Islands.qml / Dock.qml); they come back the moment this goes (Couch, locked, or a
 // problem in this file: Firehold.qml loads it by file name).
 import QtQuick
+import QtQuick.Window
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -218,7 +219,11 @@ Scope {
         spacing: 5 * kk
         Rectangle {
             width: 56 * db.kk; height: width; radius: 15 * db.kk; color: db.tint
-            Image { id: ic; anchors.centerIn: parent; width: 34 * db.kk; height: width; sourceSize.width: width; source: db.icon; visible: status === Image.Ready; asynchronous: true }
+            Image {
+                id: ic; anchors.centerIn: parent; width: 34 * db.kk; height: width; source: db.icon; visible: status === Image.Ready; asynchronous: true
+                // Drawn at the screen's own pixels (the Ally at 2.1: never a small icon stretched).
+                sourceSize.width: Math.ceil(width * Screen.devicePixelRatio); sourceSize.height: Math.ceil(height * Screen.devicePixelRatio); smooth: true; mipmap: true
+            }
             T { anchors.centerIn: parent; visible: !ic.visible; text: db.glyph; font.pixelSize: 18 * db.kk; font.weight: Font.Bold }
             TapHandler { onTapped: db.picked() }
             Accessible.role: Accessible.Button

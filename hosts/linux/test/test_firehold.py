@@ -10,6 +10,7 @@ import pathlib
 import re
 import shutil
 import subprocess
+import sys
 import tempfile
 import types
 import unittest
@@ -255,7 +256,7 @@ class Guards(unittest.TestCase):
         self.assertIn('Component.onDestruction: SettingsNav.fireholdDesk = false', d)
         f = code((SHELL / 'Firehold.qml').read_text())
         self.assertIn('active: fhs.unlocked && fhs.started && fhs.posture === "desk"', f)
-        self.assertIn('readonly property bool picturesWanted: unlocked && WinList.kwin && couchUp && page === "switcher"', f)
+        self.assertIn('readonly property bool picturesWanted: unlocked && WinList.pictures && couchUp && page === "switcher"', f)
 
     def test_guide_frame_limit_and_scaling_go_through_the_firehold_game_helper(self):
         g = code((SHELL / 'FireholdGuide.qml').read_text())
@@ -272,8 +273,51 @@ class Guards(unittest.TestCase):
         self.assertTrue(h.WIN_ID.match('{0b0f3c2e-1111-2222-3333-444455556666}'))
         self.assertFalse(h.WIN_ID.match('../../etc/passwd'))
 
+    def test_on_fireholds_own_compositor_pictures_desktops_frames_and_game_rows_are_its_own(self):
+        # Window pictures: through the compositor's window IPC, numeric ids only, into the runtime folder.
+        h = load(SHELL / 'hearth-firehold', 'hearth_firehold3')
+        self.assertTrue(h.FH_ID.match('42'))
+        self.assertFalse(h.FH_ID.match('../42'))
+        old = dict(os.environ)
+        try:
+            os.environ.update(HEARTH_WM='firehold', XDG_RUNTIME_DIR='/nonexistent-run', WAYLAND_DISPLAY='wayland-x')
+            self.assertEqual(h.pictures('/nonexistent-run/pics', ['../../x']), {})
+        finally:
+            os.environ.clear(); os.environ.update(old)
+        w = code((SHELL / 'WinList.qml').read_text())
+        for part in ('readonly property bool firehold: wm === "firehold"', 'readonly property bool bridged: kwin || fhReady',
+                     'readonly property var toplevels: bridged ? kList : ToplevelManager.toplevels', '"hearth-firehold-bridge"',
+                     'running: wl.firehold', 'function addDesktop(name)', 'function shot(w, path, max)'):
+            self.assertIn(part, w)
+        for name in ('DeskSwitcher.qml', 'WidgetPager.qml'):
+            src = code((SHELL / name).read_text())
+            self.assertIn('if (WinList.wmDesktops) { WinList.goDesktop(i + 1); return; }', src, name)
+        f = code((SHELL / 'Firehold.qml').read_text())
+        self.assertIn('active: fhs.unlocked && fhs.started && fhs.posture === "desk" && WinList.firehold && WinList.fhReady', f)
+        fc = code((SHELL / 'FireholdFramesComp.qml').read_text())
+        self.assertIn('op: "frames", style: "firehold"', fc)
+        self.assertIn('Component.onDestruction: WinList.send({ op: "frames", style: "hearth" })', fc)
+        self.assertNotIn('setText(', fc)
+        g = code((SHELL / 'FireholdGuide.qml').read_text())
+        self.assertIn('gameRun(gameSet, ["set", "vrr", fg.vrr ? "off" : "on"])', g)
+        self.assertIn('gameRun(gameSet, ["set", "tearing", fg.tearing ? "off" : "on"])', g)
+        self.assertIn('readonly property bool fhRows: comp && WinList.firehold', g)
+
+    def test_the_firehold_bridge_says_when_the_compositor_isnt_there(self):
+        import subprocess
+        env = dict(os.environ, XDG_RUNTIME_DIR=tempfile.mkdtemp(), WAYLAND_DISPLAY='wayland-none')
+        p = subprocess.run([sys.executable, str(SHELL / 'hearth-firehold-bridge'), 'serve', '--stdio'], input='',
+                           capture_output=True, text=True, env=env, timeout=10)
+        first = json.loads(p.stdout.splitlines()[0])
+        self.assertEqual(first['t'], 'status')
+        self.assertFalse(first['connected'])
+        self.assertIn("isn't there", first['problem'])
+        q = subprocess.run([sys.executable, str(SHELL / 'hearth-firehold-bridge'), 'list'], capture_output=True, text=True, env=env, timeout=10)
+        self.assertEqual(q.returncode, 1)
+        self.assertTrue(q.stdout.startswith('error: '))
+
     def test_settings_only_through_settings_writer_and_never_on_open(self):
-        for name in ('Firehold.qml', 'FireholdCouch.qml', 'FireholdGuide.qml', 'FireholdSettings.qml', 'FireholdAboutRow.qml', 'FireholdNotice.qml', 'FireholdPerf.qml', 'FireholdDesk.qml', 'FireholdFrames.qml'):
+        for name in ('Firehold.qml', 'FireholdCouch.qml', 'FireholdGuide.qml', 'FireholdSettings.qml', 'FireholdAboutRow.qml', 'FireholdNotice.qml', 'FireholdPerf.qml', 'FireholdDesk.qml', 'FireholdFrames.qml', 'FireholdFramesComp.qml'):
             src = code((SHELL / name).read_text())
             self.assertNotIn('setText(', src, name)
             self.assertNotRegex(src, r'firehold\.json.*(>|tee|cp )', name)

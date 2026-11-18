@@ -8,7 +8,9 @@ over the last two seconds (the frame limit's measure). Its picture: a dark backg
 200 x 200 buffer pixels at (100, 100), and a label with its render size (with Pillow, when it's there), so a screen
 picture shows the upscaling: on a 1920 x 1080 screen at Quality the square is 300 x 300 at (150, 150).
 
-  firehold-game-client.py STATS [--app-id ID] [--title TITLE] [--seconds N] [--windowed]
+  firehold-game-client.py STATS [--app-id ID] [--title TITLE] [--seconds N] [--windowed] [--ssd]
+
+--ssd asks for the compositor's own frame (xdg-decoration), like a game in a window on the Desk.
 """
 import json
 import mmap
@@ -180,6 +182,11 @@ toplevel = new_id('xdg_toplevel', on_toplevel)
 send(xdg_surface, 1, u32(toplevel))
 send(toplevel, 2, s_arg(TITLE))
 send(toplevel, 3, s_arg(APP_ID))
+if '--ssd' in args and 'zxdg_decoration_manager_v1' in globals_:
+    deco_mgr = bind(registry, 'zxdg_decoration_manager_v1', 1)
+    deco = new_id('zxdg_toplevel_decoration_v1')
+    send(deco_mgr, 1, u32(deco, toplevel))   # get_toplevel_decoration
+    send(deco, 1, u32(2))                    # set_mode(server_side)
 if FULLSCREEN:
     send(toplevel, 11, u32(0))   # set_fullscreen(no output: the compositor picks)
 send(surface, 6)   # commit (no buffer): asks for the first configure

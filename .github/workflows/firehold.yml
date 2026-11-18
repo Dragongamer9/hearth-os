@@ -25,7 +25,8 @@ on:
             '.github/workflows/firehold.yml', '.github/scripts/firehold-test.sh', '.github/scripts/firehold-headless-test.sh',
             '.github/scripts/firehold-game-test.sh', '.github/scripts/firehold-game-client.py', '.github/scripts/firehold-shot.py',
             '.github/scripts/firehold-comp-shell-test.sh', '.github/scripts/firehold-fixtures.py', 'hosts/linux/desktop/shell/Firehold*.qml',
-            'hosts/linux/desktop/shell/firehold.js']
+            'hosts/linux/desktop/shell/firehold.js', 'hosts/linux/desktop/shell/hearth-firehold-bridge', 'hosts/linux/desktop/shell/hearth-firehold',
+            'hosts/linux/desktop/shell/WinList.qml', 'hosts/linux/desktop/shell/FhArt.qml']
   workflow_dispatch:
 
 permissions:
@@ -167,7 +168,7 @@ jobs:
           # One step per picture later (GitHub keeps 10 notices a step, 50 a job): at most 8 pieces of 3800.
           for name in ('firehold-1-empty', 'firehold-2-mantel', 'firehold-3-window', 'firehold-4-minimized', 'firehold-5-snapped', 'firehold-5b-resized', 'firehold-6-your-desktop',
                        'firehold-7-locked', 'firehold-8-lock-prompt', 'firehold-9-unlocked', 'firehold-10-grim', 'firehold-11-display',
-                       'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice', 'firehold-13-guide'):
+                       'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice', 'firehold-13-guide', 'firehold-14-window-picture'):
               p = 'shots/%s.png' % name
               if not os.path.exists(p):
                   print('::warning title=pictures::no %s' % name); continue
@@ -292,7 +293,7 @@ jobs:
         run: |
           dnf -y install dnf5-plugins git xorg-x11-server-Xwayland mesa-dri-drivers mesa-libEGL libinput libseat \
             libxkbcommon labwc qt6-qtsvg procps-ng python3 python3-pillow foot dbus-daemon dbus-tools grim \
-            google-noto-sans-fonts dejavu-sans-fonts adwaita-icon-theme breeze-icon-theme hicolor-icon-theme fontconfig libnotify >/dev/null
+            google-noto-sans-fonts dejavu-sans-fonts adwaita-icon-theme breeze-icon-theme hicolor-icon-theme fontconfig libnotify wlr-randr >/dev/null
           dnf -y install --skip-unavailable rsms-inter-fonts wl-clipboard wtype >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
@@ -319,6 +320,15 @@ jobs:
       - name: Picture firehold-c5-desk
         if: always()
         run: python3 .github/scripts/firehold-shot.py firehold-c5-desk
+      - name: Picture firehold-c6-desktop-2
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-c6-desktop-2
+      - name: Picture firehold-c7-dock-2x
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-c7-dock-2x --native
+      - name: Picture firehold-c8-home-2x
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py firehold-c8-home-2x --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -335,7 +345,7 @@ jobs:
       matrix:
         name: ['firehold-1-empty', 'firehold-2-mantel', 'firehold-3-window', 'firehold-4-minimized', 'firehold-5-snapped', 'firehold-5b-resized', 'firehold-6-your-desktop',
                'firehold-7-locked', 'firehold-8-lock-prompt', 'firehold-9-unlocked', 'firehold-10-grim', 'firehold-11-display',
-               'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice', 'firehold-13-guide']
+               'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice', 'firehold-13-guide', 'firehold-14-window-picture']
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

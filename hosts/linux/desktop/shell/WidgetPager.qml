@@ -12,20 +12,20 @@ WidgetBase {
     id: w
     readonly property bool names: c("names", false) === true
     readonly property var sets: {
-        if (WinList.kwin) return WinList.desktops.map(d => ({ name: d.name || "", active: d.active === true, set: null }));
+        if (WinList.wmDesktops) return WinList.desktops.map(d => ({ name: d.name || "", active: d.active === true, set: null }));
         const all = Array.from(WindowManager.windowsets || []).filter(x => x && x.shouldDisplay !== false);
         all.sort((a, b) => String(a.name || "").localeCompare(String(b.name || ""), undefined, { numeric: true }));
         return all.map(x => ({ name: x.name || "", active: x.active, set: x }));
     }
     readonly property var shown: sets.length ? sets : [{ name: "Desktop 1", active: true, set: null }]
     function go(i) {
-        if (WinList.kwin) { WinList.goDesktop(i + 1); return; }
+        if (WinList.wmDesktops) { WinList.goDesktop(i + 1); return; }
         const s = sets[i];
         if (s && s.set && s.set.canActivate !== false) s.set.activate();
     }
     readonly property var wins: (WinList.toplevels ? WinList.toplevels.values : []).filter(t => !t.minimized && !/quickshell/i.test(t.appId || ""))
     function winsOn(i, active) {
-        if (WinList.kwin) return wins.filter(t => t.allDesktops || (t.desktops || []).indexOf(i + 1) >= 0);
+        if (WinList.wmDesktops) return wins.filter(t => t.allDesktops || (t.desktops || []).indexOf(i + 1) >= 0);
         return active ? wins : [];
     }
     readonly property real sw: Quickshell.screens.length ? Quickshell.screens[0].width : 1920

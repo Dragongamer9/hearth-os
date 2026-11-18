@@ -117,7 +117,7 @@ Item {
         else menu.popup(screen, Math.max(8, sx - menu.cardWidth - 22), sy, { title: title, above: false }, list);
     }
     function moveToDesktop(win, n) {
-        if (WinList.kwin) { WinList.moveToDesktop(win, n); return; }     // KWin: straight there, no keys typed
+        if (WinList.wmDesktops) { WinList.moveToDesktop(win, n); return; }     // KWin, Firehold: straight there, no keys typed
         win.activate();
         mover.command = ["sh", "-c", "sleep 0.25; exec wtype -M logo -M alt -k \"$0\" -m alt -m logo", String(n)];
         mover.running = true;

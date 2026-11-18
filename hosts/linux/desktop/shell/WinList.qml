@@ -8,6 +8,10 @@ pragma Singleton
 //         hearthwindows script (desktop/kwin/windows) and passes the list both ways. Each window is a Win below with
 //         the same names ToplevelManager's have (appId, title, activated, minimized, maximized, fullscreen, screens,
 //         activate(), close(), and minimized/maximized/fullscreen can be set), so code written for one works on both.
+//   Firehold (HEARTH_WM=firehold, the 2.0 preview): Firehold's own compositor speaks the taskbar protocol too, and
+//         its window IPC (firehold-comp ipc.rs) gives what KWin's script does: ids, frames, stacking, desktops and
+//         window pictures. This starts hearth-firehold-bridge for it; the list comes from there once it's talking
+//         (fhReady), and from ToplevelManager until then or if it stops.
 //
 // Use WinList.toplevels.values and WinList.activeToplevel where ToplevelManager's were used. Things labwc did through
 // its own keys (typed with wtype, which KWin doesn't take) are functions here: snap(), moveToDesktop(), goDesktop().
@@ -22,9 +26,21 @@ Singleton {
 
     readonly property string wm: Quickshell.env("HEARTH_WM") || "labwc"
     readonly property bool kwin: wm === "kwin"
+    readonly property bool firehold: wm === "firehold"
+    // Firehold's compositor is talking and its list has come (hearth-firehold-bridge).
+    property bool fhReady: false
+    // The window manager tells Mantel about its windows itself (KWin's script or Firehold's IPC): ids, frames, desktops.
+    readonly property bool bridged: kwin || fhReady
+    // Virtual desktops through WinList (desktops, goDesktop, moveToDesktop); labwc's come through ext-workspace.
+    readonly property bool wmDesktops: bridged
+    // Pictures of single windows (Everything open's cards, the dock's previews): KWin's or Firehold's.
+    readonly property bool pictures: bridged
+    // The window stacking order from the window manager (Firehold's IPC): ids, top first.
+    property var stack: []
+    signal shotTaken(var info)          // Firehold: a window's picture is ready ({id, ok, path, w, h})
 
-    readonly property var toplevels: kwin ? kList : ToplevelManager.toplevels
-    readonly property var activeToplevel: kwin ? kActive : ToplevelManager.activeToplevel
+    readonly property var toplevels: bridged ? kList : ToplevelManager.toplevels
+    readonly property var activeToplevel: bridged ? kActive : ToplevelManager.activeToplevel
     // KWin's virtual desktops, in order: [{ name, active }] (labwc's come through Quickshell's WindowManager instead).
     property var desktops: []
     property bool connected: false      // KWin's script and the bridge are talking
@@ -62,6 +78,8 @@ Singleton {
         property string zone: ""            // the snap zone it's in ("left-half", "top-right"...), "" when none
         property var frame: ({})            // KWin's frame: {x, y, w, h}
         property bool noShare: false        // hidden from screen sharing (the title bar menu)
+        property int stack: -1              // Firehold: 0 is the top window, -1 not shown (minimized, another desktop)
+        property bool ssd: true             // Firehold: the compositor draws its frame
         property bool syncing: false        // set while KWin's own values come in, so they aren't sent back
         readonly property var screens: {
             const s = Quickshell.screens.filter(x => x.name === output);
@@ -79,10 +97,15 @@ Singleton {
 
     // ------------------------------------------------------------------ what Mantel asks for
     function send(cmd) {
-        if (!kwin || !bridge.running) return false;
-        bridge.write(JSON.stringify(cmd) + "\n");
-        return true;
+        if (kwin && bridge.running) { bridge.write(JSON.stringify(cmd) + "\n"); return true; }
+        if (firehold && fbridge.running) { fbridge.write(JSON.stringify(cmd) + "\n"); return true; }
+        return false;
     }
+    // Firehold: a desktop more (its name, or "Desktop N"), one fewer (its windows go to the one before).
+    function addDesktop(name) { return firehold && send({ op: "addDesktop", name: name || "" }); }
+    function removeDesktop(n) { return firehold && send({ op: "removeDesktop", n: n }); }
+    // Firehold: a window's picture as a PNG at `path` (in $XDG_RUNTIME_DIR), at most `max` wide; shotTaken says when.
+    function shot(w, path, max) { return firehold && send({ op: "shot", id: widOf(w), path: path, max: max || 640 }); }
     function widOf(w) { return w && w.wid !== undefined ? w.wid : ""; }
     // Snap a window to a zone of the snap layouts (snap-layouts.js ids: "left-half", "top-right", "left-third"...).
     function snap(w, zone) { return send({ op: "snap", id: widOf(w), zone: zone }); }
@@ -136,6 +159,8 @@ Singleton {
             w.parentId = d.parent || "";
             w.zone = d.zone || "";
             w.noShare = d.noShare === true;
+            w.stack = typeof d.stack === "number" ? d.stack : -1;
+            w.ssd = d.ssd !== false;
             if (JSON.stringify(w.frame) !== JSON.stringify(d.frame || {})) w.frame = d.frame || {};
             w.syncing = false;
             seen[d.id] = true;
@@ -151,6 +176,7 @@ Singleton {
         captureHide = s.captureHide === true;
         const ds = JSON.stringify(s.desktops || []);
         if (ds !== lastDesks) { lastDesks = ds; desktops = s.desktops || []; }
+        if (JSON.stringify(stack) !== JSON.stringify(s.stack || [])) stack = s.stack || [];
     }
 
     readonly property string helper: decodeURIComponent(Qt.resolvedUrl("hearth-kwin-bridge").toString().replace(/^file:\/\//, ""))
@@ -184,6 +210,29 @@ Singleton {
     }
     Timer { id: again; interval: 3000; onTriggered: bridge.running = wl.kwin }
 
+    // Firehold's compositor (HEARTH_WM=firehold): the same lines, from its window IPC.
+    readonly property string fhHelper: decodeURIComponent(Qt.resolvedUrl("hearth-firehold-bridge").toString().replace(/^file:\/\//, ""))
+    Process {
+        id: fbridge
+        command: ["python3", wl.fhHelper, "serve", "--stdio"]
+        running: wl.firehold
+        stdinEnabled: true
+        stdout: SplitParser {
+            onRead: line => {
+                let m;
+                try { m = JSON.parse(line); } catch (e) { return; }
+                if (m.t === "windows") { wl.apply(m); wl.connected = true; wl.fhReady = true; }
+                else if (m.t === "status") {
+                    wl.problem = m.problem || "";
+                    if (!m.connected) { wl.fhReady = false; wl.connected = false; if (wl.problem) console.warn("window list (Firehold): " + wl.problem); }
+                } else if (m.t === "shot") wl.shotTaken(m);
+                else if (m.t === "reply" && m.ok === false && m.op !== "shot") console.warn("window list (Firehold): " + (m.op || "") + ": " + (m.error || ""));
+            }
+        }
+        onExited: code => { wl.fhReady = false; wl.connected = false; if (wl.firehold) fagain.start(); }
+    }
+    Timer { id: fagain; interval: 3000; onTriggered: fbridge.running = wl.firehold }
+
     IpcHandler {
         target: "winlist"
         function state(): string {
@@ -193,9 +242,10 @@ Singleton {
                 windows: (wl.toplevels ? wl.toplevels.values : []).map(t => ({
                     appId: t.appId || "", title: t.title || "", activated: t.activated === true, minimized: t.minimized === true,
                     maximized: t.maximized === true, fullscreen: t.fullscreen === true, zone: t.zone || "", desktops: t.desktops || [],
-                    noShare: t.noShare === true
+                    noShare: t.noShare === true, id: wl.widOf(t), stack: t.stack === undefined ? -1 : t.stack
                 })),
-                desktops: wl.desktops, previews: wl.previewsReady, captureHide: wl.captureHide
+                desktops: wl.desktops, previews: wl.previewsReady, captureHide: wl.captureHide,
+                bridged: wl.bridged, pictures: wl.pictures, stack: wl.stack
             });
         }
         // A command as WinList sends it, for checks: {"op":"snap","title":"…","zone":"left-half"} (title picks the window).

@@ -5,7 +5,7 @@
 //! windows). After every round of client requests `hearth_tick` runs.
 
 use std::{
-    cell::RefCell,
+    cell::{Cell, RefCell},
     process::{Command, Stdio},
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -25,14 +25,84 @@ use tracing::{info, warn};
 use crate::{
     focus::KeyboardFocusTarget,
     foreign_toplevel::{ToplevelInfo, ToplevelRequest},
-    keybinds::{Action, Edge},
-    shell::{ssd::HEADER_BAR_HEIGHT, WindowElement},
+    keybinds::{Action, DeskTarget, Edge},
+    shell::{ssd::HEADER_BAR_HEIGHT, FullscreenSurface, WindowElement},
     state::{Backend, HearthState},
 };
 
 /// Each window's number for the taskbar (in its user data).
 struct ToplevelId(u64);
 static NEXT_ID: AtomicU64 = AtomicU64::new(1);
+
+/// Which desktop (virtual desktop, workspace) a window is on: 1-based (in its user data).
+struct OnDesktop(Cell<usize>);
+
+pub fn desktop_of(w: &WindowElement) -> Option<usize> {
+    w.user_data().get::<OnDesktop>().map(|d| d.0.get())
+}
+
+fn set_desktop(w: &WindowElement, n: usize) {
+    w.user_data().insert_if_missing(|| OnDesktop(Cell::new(n)));
+    if let Some(d) = w.user_data().get::<OnDesktop>() {
+        d.0.set(n);
+    }
+}
+
+/// Firehold's virtual desktops: their names (from rc.xml's <desktops>, as labwc has them) and the one you're on.
+/// Windows on the others are kept aside (unmapped, like minimized ones) until you go there.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Workspaces {
+    pub names: Vec<String>,
+    /// 0-based.
+    pub active: usize,
+}
+
+impl Workspaces {
+    pub fn new(names: Vec<String>) -> Workspaces {
+        let names = if names.is_empty() { vec!["Desktop 1".to_string()] } else { names.into_iter().take(MAX_DESKTOPS).collect() };
+        Workspaces { names, active: 0 }
+    }
+    /// The desktop a "to" means from the one you're on (1-based), or None (no such one, or past the end without wrap).
+    pub fn target(&self, t: DeskTarget, wrap: bool) -> Option<usize> {
+        let n = self.names.len();
+        let cur = self.active + 1;
+        match t {
+            DeskTarget::Number(k) => (1..=n).contains(&k).then_some(k),
+            DeskTarget::Left => {
+                if cur > 1 {
+                    Some(cur - 1)
+                } else {
+                    wrap.then_some(n)
+                }
+            }
+            DeskTarget::Right => {
+                if cur < n {
+                    Some(cur + 1)
+                } else {
+                    wrap.then_some(1)
+                }
+            }
+        }
+    }
+    /// A new desktop's name: "Desktop N" with the next free number.
+    pub fn next_name(&self) -> String {
+        let mut k = self.names.len() + 1;
+        while self.names.iter().any(|x| x == &format!("Desktop {k}")) {
+            k += 1;
+        }
+        format!("Desktop {k}")
+    }
+    /// Where a window on desktop `on` goes when desktop `removed` goes (1-based both).
+    pub fn after_removal(on: usize, removed: usize) -> usize {
+        if on > removed || (on == removed && on > 1) {
+            on - 1
+        } else {
+            on
+        }
+    }
+}
+
+pub const MAX_DESKTOPS: usize = 20;
 
 /// Where a snapped or maximized window was before, to go back to.
 #[derive(Default)]
@@ -126,6 +196,11 @@ impl<B: Backend + 'static> HearthState<B> {
             .find(|w| window_id(w) == id)
             .cloned()
             .or_else(|| self.minimized.iter().find(|m| window_id(&m.window) == id).map(|m| m.window.clone()))
+            .or_else(|| self.elsewhere.iter().find(|m| window_id(&m.window) == id).map(|m| m.window.clone()))
+    }
+
+    pub fn window_by_id(&self, id: u64) -> Option<WindowElement> {
+        self.find_window(id)
     }
 
     /// Every window as Mantel's taskbar sees it, in the order they opened.
@@ -162,8 +237,205 @@ impl<B: Backend + 'static> HearthState<B> {
                 output: m.output.clone(),
             }
         }));
+        // Windows on the other desktops are still on the taskbar (as on labwc and KWin), neither minimized nor in front.
+        out.extend(self.elsewhere.iter().filter(|m| m.window.alive()).map(|m| {
+            let (title, app_id) = title_and_app_id(&m.window);
+            ToplevelInfo {
+                id: window_id(&m.window),
+                title,
+                app_id,
+                maximized: is_maximized(&m.window),
+                minimized: false,
+                activated: false,
+                fullscreen: is_fullscreen(&m.window),
+                output: m.output.clone(),
+            }
+        }));
         out.sort_by_key(|i| i.id);
         out
+    }
+
+    // ---------------------------------------------------------------------------------------- virtual desktops
+
+    /// Every window gets the desktop it opened on (the one you're on), once.
+    fn desktop_sweep(&mut self) {
+        let here = self.workspaces.active + 1;
+        for w in self.space.elements().filter(|w| is_taskbar_window(w)) {
+            if desktop_of(w).is_none() {
+                set_desktop(w, here);
+            }
+        }
+        for m in &self.minimized {
+            if desktop_of(&m.window).is_none() {
+                set_desktop(&m.window, here);
+            }
+        }
+        self.elsewhere.retain(|m| m.window.alive());
+    }
+
+    /// Takes a window off the screen until its desktop is shown again.
+    fn hide_on_other_desktop(&mut self, w: &WindowElement) {
+        let Some(location) = self.space.element_location(w) else { return };
+        let output = self.output_for(w);
+        for o in self.space.outputs().cloned().collect::<Vec<_>>() {
+            if let Some(fs) = o.user_data().get::<FullscreenSurface>() {
+                if fs.peek().as_ref() == Some(w) {
+                    fs.clear();
+                    self.backend_data.reset_buffers(&o);
+                }
+            }
+        }
+        self.space.unmap_elem(w);
+        w.set_activate(false);
+        self.elsewhere.push(Minimized { window: w.clone(), location, output });
+    }
+
+    fn show_from_other_desktop(&mut self, w: &WindowElement) {
+        let Some(pos) = self.elsewhere.iter().position(|m| &m.window == w) else { return };
+        let m = self.elsewhere.remove(pos);
+        m.window.0.on_commit();
+        self.space.map_element(m.window.clone(), m.location, false);
+        if is_fullscreen(&m.window) {
+            if let Some(o) = m.output.clone().or_else(|| self.space.outputs().next().cloned()) {
+                o.user_data().insert_if_missing(FullscreenSurface::default);
+                o.user_data().get::<FullscreenSurface>().unwrap().set(m.window.clone());
+                self.backend_data.reset_buffers(&o);
+            }
+        }
+    }
+
+    /// Goes to desktop `n` (1-based): its windows come back, the others step aside. False when there's no such one.
+    pub fn go_desktop(&mut self, n: usize) -> bool {
+        if n == 0 || n > self.workspaces.names.len() || self.lock.locked {
+            return false;
+        }
+        self.desktop_sweep();
+        if n == self.workspaces.active + 1 {
+            return true;
+        }
+        let leaving: Vec<WindowElement> = self
+            .space
+            .elements()
+            .filter(|w| is_taskbar_window(w) && desktop_of(w).is_some_and(|d| d != n))
+            .cloned()
+            .collect();
+        for w in &leaving {
+            self.hide_on_other_desktop(w);
+        }
+        let coming: Vec<WindowElement> = self
+            .elsewhere
+            .iter()
+            .filter(|m| desktop_of(&m.window) == Some(n))
+            .map(|m| m.window.clone())
+            .collect();
+        for w in &coming {
+            self.show_from_other_desktop(w);
+        }
+        self.workspaces.active = n - 1;
+        info!(desktop = n, name = %self.workspaces.names[n - 1], away = leaving.len(), back = coming.len(), "desktop switched");
+        self.focus_top_window();
+        true
+    }
+
+    /// Puts a window on desktop `n` (1-based) without going there (unless `follow`).
+    pub fn move_to_desktop(&mut self, w: &WindowElement, n: usize, follow: bool) -> bool {
+        if n == 0 || n > self.workspaces.names.len() {
+            return false;
+        }
+        self.desktop_sweep();
+        set_desktop(w, n);
+        let here = self.workspaces.active + 1;
+        let mapped = self.space.elements().any(|e| e == w);
+        if n != here && mapped {
+            let was_focused = self.focused_window().as_ref() == Some(w);
+            self.hide_on_other_desktop(w);
+            if was_focused {
+                self.focus_top_window();
+            }
+        } else if n == here {
+            self.show_from_other_desktop(w);
+        }
+        if follow {
+            self.go_desktop(n);
+            self.activate_window(w);
+        }
+        true
+    }
+
+    pub fn add_desktop(&mut self, name: Option<String>) -> usize {
+        if self.workspaces.names.len() >= MAX_DESKTOPS {
+            return self.workspaces.names.len();
+        }
+        let name = name.filter(|n| !n.trim().is_empty()).unwrap_or_else(|| self.workspaces.next_name());
+        self.workspaces.names.push(name.chars().take(60).collect());
+        info!(count = self.workspaces.names.len(), "desktop added");
+        self.workspaces.names.len()
+    }
+
+    /// Removes desktop `n` (1-based); its windows go to the one before it. Never the last one.
+    pub fn remove_desktop(&mut self, n: usize) -> bool {
+        let count = self.workspaces.names.len();
+        if count <= 1 || n == 0 || n > count {
+            return false;
+        }
+        self.desktop_sweep();
+        let all: Vec<WindowElement> = self
+            .space
+            .elements()
+            .filter(|w| is_taskbar_window(w))
+            .cloned()
+            .chain(self.minimized.iter().map(|m| m.window.clone()))
+            .chain(self.elsewhere.iter().map(|m| m.window.clone()))
+            .collect();
+        for w in &all {
+            if let Some(d) = desktop_of(w) {
+                set_desktop(w, Workspaces::after_removal(d, n));
+            }
+        }
+        self.workspaces.names.remove(n - 1);
+        let here = self.workspaces.active + 1;
+        let new_here = Workspaces::after_removal(here, n);
+        // Shown again from scratch: whatever is now on the desktop you're on comes back.
+        self.workspaces.active = usize::MAX - 1;
+        let target = new_here;
+        let leaving: Vec<WindowElement> = self.space.elements().filter(|w| is_taskbar_window(w)).cloned().collect();
+        for w in &leaving {
+            if desktop_of(w) != Some(target) {
+                self.hide_on_other_desktop(w);
+            }
+        }
+        let coming: Vec<WindowElement> =
+            self.elsewhere.iter().filter(|m| desktop_of(&m.window) == Some(target)).map(|m| m.window.clone()).collect();
+        for w in &coming {
+            self.show_from_other_desktop(w);
+        }
+        self.workspaces.active = target - 1;
+        info!(removed = n, count = self.workspaces.names.len(), "desktop removed");
+        self.focus_top_window();
+        true
+    }
+
+    pub fn rename_desktop(&mut self, n: usize, name: &str) -> bool {
+        let name: String = name.trim().chars().take(60).collect();
+        match self.workspaces.names.get_mut(n.wrapping_sub(1)) {
+            Some(slot) if !name.is_empty() => {
+                *slot = name;
+                true
+            }
+            _ => false,
+        }
+    }
+
+    /// The desktops for Mantel: [{name, active}].
+    pub fn desktops_json(&self) -> serde_json::Value {
+        serde_json::Value::Array(
+            self.workspaces
+                .names
+                .iter()
+                .enumerate()
+                .map(|(i, n)| serde_json::json!({ "name": n, "active": i == self.workspaces.active }))
+                .collect(),
+        )
     }
 
     /// A new window gets the keyboard once it shows something (its first picture).
@@ -179,6 +451,18 @@ impl<B: Backend + 'static> HearthState<B> {
 
     /// Raises a window and gives it the keyboard (bringing it back first when it's minimized).
     pub fn activate_window(&mut self, w: &WindowElement) {
+        // On another desktop: go there first (as KWin does when you click it on the taskbar).
+        if self.elsewhere.iter().any(|m| &m.window == w) {
+            if let Some(d) = desktop_of(w) {
+                self.go_desktop(d);
+            }
+            self.show_from_other_desktop(w);
+        }
+        if let Some(d) = desktop_of(w).filter(|d| *d != self.workspaces.active + 1) {
+            if self.minimized.iter().any(|m| &m.window == w) {
+                self.go_desktop(d);
+            }
+        }
         if let Some(pos) = self.minimized.iter().position(|m| &m.window == w) {
             let m = self.minimized.remove(pos);
             m.window.0.on_commit();
@@ -439,6 +723,16 @@ impl<B: Backend + 'static> HearthState<B> {
             }
             // The backend's (udev.rs: the session switches consoles).
             Action::VtSwitch(_) => {}
+            Action::GoToDesktop(t, wrap) => {
+                if let Some(n) = self.workspaces.target(*t, *wrap) {
+                    self.go_desktop(n);
+                }
+            }
+            Action::SendToDesktop(t, wrap, follow) => {
+                if let (Some(n), Some(w)) = (self.workspaces.target(*t, *wrap), self.focused_window()) {
+                    self.move_to_desktop(&w, n, *follow);
+                }
+            }
             Action::LeaveForKwin => {
                 if self.lock.locked {
                     // Never a way around the lock screen.
@@ -514,6 +808,7 @@ impl<B: Backend + 'static> HearthState<B> {
             self.running.store(false, Ordering::SeqCst);
         }
         self.minimized.retain(|m| m.window.alive());
+        self.desktop_sweep();
         self.lock_tick();
         self.output_management_tick();
         self.fullscreen_sweep();
@@ -522,6 +817,7 @@ impl<B: Backend + 'static> HearthState<B> {
         let infos = self.toplevel_infos();
         let dh = self.display_handle.clone();
         self.foreign_toplevel_state.refresh::<B>(&dh, infos);
+        self.ipc_tick();
         if self.autostart.is_some() && self.started_at.elapsed().as_secs() >= 6 {
             self.start_autostart("XWayland wasn't ready after 6 s");
         }
@@ -606,6 +902,7 @@ impl<B: Backend + 'static> HearthState<B> {
                     "id": i.id, "title": i.title, "appId": i.app_id, "activated": i.activated,
                     "minimized": i.minimized, "maximized": i.maximized, "fullscreen": i.fullscreen,
                     "x": g.loc.x, "y": g.loc.y, "w": g.size.w, "h": g.size.h, "frame": ssd,
+                    "desktop": self.find_window(i.id).and_then(|w| desktop_of(&w)),
                 })
             })
             .collect();
@@ -620,6 +917,8 @@ impl<B: Backend + 'static> HearthState<B> {
             "captures": { "wlr": self.captures.taken_wlr, "ext": self.captures.taken_ext },
             "gammaHolders": self.gamma_state.holders(),
             "game": self.game_status()["game"].clone(),
+            "desktops": self.desktops_json(),
+            "frames": crate::frames::with(|l| if l.firehold { "firehold" } else { "hearth" }),
             "lock": {
                 "locked": self.lock.locked,
                 "client": self.lock.locked && self.lock.client_alive() && !self.lock.client_gone,
@@ -656,6 +955,7 @@ impl<B: Backend + 'static> HearthState<B> {
     /// Ending: the status file goes (nothing of the person's is touched).
     pub fn cleanup(&mut self) {
         self.game_cleanup();
+        self.ipc_cleanup();
         if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
             let _ = std::fs::remove_file(std::path::Path::new(&dir).join("firehold.json"));
         }
@@ -671,5 +971,34 @@ pub fn spawn_shell(cmd: &str) {
             });
         }
         Err(e) => warn!(cmd, err = %e, "couldn't start a shortcut's command"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn desktops_from_left_to_right() {
+        let mut w = Workspaces::new(vec!["A".into(), "B".into(), "C".into()]);
+        assert_eq!(w.target(DeskTarget::Left, false), None);
+        assert_eq!(w.target(DeskTarget::Left, true), Some(3));
+        assert_eq!(w.target(DeskTarget::Right, false), Some(2));
+        assert_eq!(w.target(DeskTarget::Number(3), false), Some(3));
+        assert_eq!(w.target(DeskTarget::Number(4), false), None);
+        w.active = 2;
+        assert_eq!(w.target(DeskTarget::Right, false), None);
+        assert_eq!(w.target(DeskTarget::Right, true), Some(1));
+        assert_eq!(Workspaces::new(vec![]).names, vec!["Desktop 1".to_string()]);
+        assert_eq!(Workspaces::new(vec!["Desktop 1".into(), "Desktop 2".into()]).next_name(), "Desktop 3");
+        assert_eq!(Workspaces::new(vec!["Desktop 3".into(), "x".into()]).next_name(), "Desktop 4");
+    }
+
+    #[test]
+    fn removing_a_desktop_moves_its_windows_back_one() {
+        assert_eq!(Workspaces::after_removal(3, 2), 2);
+        assert_eq!(Workspaces::after_removal(2, 2), 1);
+        assert_eq!(Workspaces::after_removal(1, 1), 1);
+        assert_eq!(Workspaces::after_removal(1, 2), 1);
     }
 }

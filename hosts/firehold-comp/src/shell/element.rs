@@ -507,10 +507,16 @@ where
             let mut state = self.decoration_state();
             let width = window_geo.size.w;
             let active = state.active;
+            let id = crate::wm::window_id(self);
             state
                 .header_bar
-                .redraw(width.max(0) as u32, scale.x.ceil().max(1.0) as i32, active, &title);
+                .redraw(width.max(0) as u32, scale.x.ceil().max(1.0) as i32, active, &title, id);
             let mut vec: Vec<WindowRenderElement<R>> = state.header_bar.render_elements(renderer, location, alpha);
+            // Firehold's game border (frames.rs), under everything else of the window.
+            let full = (width, window_geo.size.h + HEADER_BAR_HEIGHT);
+            let mut border: Vec<WindowRenderElement<R>> =
+                state.header_bar.border_elements(renderer, location, full, scale.x, alpha);
+            vec.append(&mut border);
             drop(state);
 
             location.y += (scale.y * HEADER_BAR_HEIGHT as f64) as i32;

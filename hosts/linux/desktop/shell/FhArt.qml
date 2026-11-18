@@ -2,6 +2,7 @@
 // effect, no layer: a tile without art is only its colour), and the picture is drawn once it has loaded.
 import QtQuick
 import QtQuick.Effects
+import QtQuick.Window
 
 Item {
     id: a
@@ -25,7 +26,9 @@ Item {
                 asynchronous: !a.live
                 cache: !a.live
                 visible: false
-                sourceSize.width: Math.max(64, Math.round(a.width))
+                // Decoded at the screen's own pixels (2.1 on the Ally), filling the tile: never upscaled soft.
+                sourceSize: Qt.size(Math.max(64, Math.ceil(a.width * Screen.devicePixelRatio)), Math.max(64, Math.ceil(a.height * Screen.devicePixelRatio)))
+                smooth: true; mipmap: true
             }
             Rectangle { id: mask; anchors.fill: parent; radius: a.radius; visible: false; layer.enabled: true }
             MultiEffect {

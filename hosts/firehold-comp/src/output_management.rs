@@ -526,7 +526,11 @@ impl<B: Backend + 'static> Dispatch<ZwlrOutputConfigurationHeadV1, Arc<Mutex<Hea
                     resource.post_error(Error::InvalidScale, "not a scale");
                     return;
                 }
-                c.scale = Some(scale);
+                // wlr-randr sends the scale as a 1/256 fixed-point number (2.1 arrives as 2.09765625), while apps are
+                // told theirs in 1/120ths (fractional-scale-v1): kept as it came, apps would draw at 2.1 and be
+                // stretched to 2.0977, blurring everything a little (the Ally's icons). Snapped to the nearest 1/120th,
+                // both agree exactly.
+                c.scale = Some(snap_scale(scale));
             }
             Request::SetAdaptiveSync { .. } => {
                 // VRR comes with stage 3: asked-for "on" is ignored rather than refused (the mode still applies).
@@ -539,6 +543,15 @@ impl<B: Backend + 'static> Dispatch<ZwlrOutputConfigurationHeadV1, Arc<Mutex<Hea
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scales_snap_to_what_apps_are_told() {
+        assert_eq!(snap_scale(2.09765625), 2.1);
+        assert_eq!(snap_scale(1.25), 1.25);
+        assert_eq!(snap_scale(1.49609375), 1.5);
+        assert_eq!(snap_scale(2.0), 2.0);
+        assert!((snap_scale(1.33203125) - 160.0 / 120.0).abs() < 1e-9);
+    }
 
     fn m(w: i32, h: i32, r: i32) -> Mode {
         Mode { size: (w, h).into(), refresh: r }
@@ -560,4 +573,9 @@ mod tests {
             assert_eq!(transform_from(transform_to(t)), t);
         }
     }
+}
+
+/// The nearest scale apps can be told exactly (fractional-scale-v1 counts in 1/120ths).
+pub fn snap_scale(s: f64) -> f64 {
+    ((s * 120.0).round() / 120.0).max(1.0 / 120.0)
 }
