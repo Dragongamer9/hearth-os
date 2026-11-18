@@ -101,6 +101,29 @@ if command -v kbuildsycoca6 >/dev/null; then
   fi
 fi
 
+echo "--- every Hearth KDE app starts (the laptop's Files: symbol lookup error)"
+for b in hearth-files-kde konsole kate okular spectacle kcalc dolphin; do
+  p=$(command -v "$b") || { echo "::error title=check::$b isn't installed"; fail=1; continue; }
+  case "$(head -c 4 "$p" | od -An -c | tr -d ' ')" in
+    *ELF*) u=$(ldd -r "$p" 2>&1 | grep -E 'undefined symbol|not found' | head -3) ;;
+    *) u="" ;;
+  esac
+  out=$(QT_QPA_PLATFORM=offscreen HOME=/tmp/kapp XDG_RUNTIME_DIR=/tmp/kapp-run timeout 30 "$p" --version 2>&1 | head -5)
+  if [ -n "$u" ] || echo "$out" | grep -qE 'symbol lookup error|cannot open shared object|undefined symbol'; then
+    echo "::error title=check::$b doesn't start: $(echo "$u $out" | tr '\n' ' ' | cut -c1-500)"; fail=1
+  else echo "ok: $b starts ($(echo "$out" | head -1 | cut -c1-80))"; fi
+done
+for f in /usr/lib/hearth-files/bin/dolphin $(find /usr/lib/hearth-files /usr/lib/hearth-qml -name '*.so*' -type f 2>/dev/null) /usr/lib/hearth-qml/hearth-qml; do
+  [ -f "$f" ] || continue
+  u=$(LD_LIBRARY_PATH="$(dirname "$f"):$(dirname "$f")/../lib" ldd -r "$f" 2>&1 | grep -E 'undefined symbol|not found' | head -3)
+  [ -z "$u" ] || { echo "::error title=check::${f}: $(echo "$u" | tr '\n' ' ' | cut -c1-400)"; fail=1; }
+done
+for f in /usr/bin/hearth-*; do
+  [ -f "$f" ] && head -c 4 "$f" | grep -q ELF || continue
+  u=$(ldd -r "$f" 2>&1 | grep -E 'undefined symbol|not found' | head -2)
+  [ -z "$u" ] || echo "::warning title=check::${f##*/}: $(echo "$u" | tr '\n' ' ' | cut -c1-300)"
+done
+
 echo "--- Hearth's apps outside Mantel"
 for b in hearth-settings hearth-send-logs hearth-browser hearth-filemanager; do check "$b is installed" "test -x /usr/bin/$b"; done
 for b in hearth-disks hearth-text hearth-time hearth-photos hearth-documents hearth-player hearth-calculator hearth-tools hearth-recorder hearth-link hearth-connect hearth-gamestore; do
@@ -108,6 +131,37 @@ for b in hearth-disks hearth-text hearth-time hearth-photos hearth-documents hea
 done
 check "Hearth Settings opens the Hearth app's Settings without Mantel" "grep -q 'nimbus --windowed --settings' /usr/bin/hearth-settings"
 check "Game Mode's file dialogs aren't Mantel's picker here (it needs Quickshell)" "! grep -q 'FileChooser=hearth' /usr/share/xdg-desktop-portal/nimbus-portals.conf"
+
+echo "--- Hearth's look, not Anatase's or Fedora's"
+check "the name is Hearth OS, the logo Hearth's (os-release)" "grep -qx 'PRETTY_NAME=\"Hearth OS\"' /usr/lib/os-release && grep -qx 'NAME=\"Hearth OS\"' /usr/lib/os-release && grep -qx 'LOGO=hearth' /usr/lib/os-release && grep -q 'based on Anatase' /usr/lib/os-release"
+check "the boot splash is Hearth's, its presets are in the initramfs" "plymouth-set-default-theme | grep -qx hearth && grep -q hearth-aurora /usr/lib/dracut/dracut.conf.d/50-hearth-splash.conf"
+check "Plasma's menu button and the distributor logo are Hearth's" \
+  "cmp -s /usr/share/icons/hicolor/scalable/apps/start-here-kde.svg /usr/share/icons/hicolor/scalable/apps/hearth.svg && cmp -s /usr/share/icons/hicolor/scalable/apps/distributor-logo.svg /usr/share/icons/hicolor/scalable/apps/hearth.svg"
+check "KInfoCenter's About shows Hearth (logo, website; the base only in the details)" "grep -q 'apps/hearth.png' /etc/xdg/kcm-about-distrorc && grep -q hearthos.fun /etc/xdg/kcm-about-distrorc"
+check "Plasma's lock screen is Hearth's; other looks' default wallpaper is Hearth's" \
+  "grep -q 'Hearth-fireside' /etc/xdg/kscreenlockerrc && for d in /usr/share/plasma/look-and-feel/*/contents/defaults; do case \"\$d\" in */org.hearthos.*) continue;; esac; grep -q 'Image=Hearth-fireside' \"\$d\" || exit 1; done"
+
+echo "--- Hearth's looks as Plasma Global Themes (generated from palettes.json)"
+for l in $(python3 -c 'import json; d=json.load(open("/usr/share/nimbus/desktop/theme/palettes.json")); print(" ".join(k for k,v in d.items() if not k.startswith("_") and isinstance(v,dict) and isinstance(v.get("dark"),dict)))'); do
+  t=/usr/share/plasma/look-and-feel/org.hearthos.$l
+  check "Global Theme org.hearthos.$l: named Hearth OS, its colours, Plasma style, Breeze frames, wallpaper and splash" \
+    "grep -q '\"Name\": \"Hearth OS' $t/metadata.json && grep -qx 'ColorScheme=HearthOS-$l-Dark' $t/contents/defaults && grep -qx 'name=hearth-$l' $t/contents/defaults && grep -qx 'library=org.kde.breeze' $t/contents/defaults && test -f /usr/share/wallpapers/\$(sed -n 's/^Image=//p' $t/contents/defaults)/metadata.json && test -f $t/contents/splash/Splash.qml && test -s $t/contents/splash/images/hearth.svg && test -s $t/contents/previews/preview.png && test -f /usr/share/color-schemes/HearthOS-$l-Light.colors && test -f /usr/share/plasma/desktoptheme/hearth-$l-light/colors"
+done
+for t in /usr/share/plasma/look-and-feel/org.hearthos.*; do
+  check "${t##*/} is one of palettes.json's looks" "python3 -c 'import json,sys; d=json.load(open(\"/usr/share/nimbus/desktop/theme/palettes.json\")); sys.exit(0 if \"${t##*/org.hearthos.}\" in d else 1)'"
+done
+check "Hearth's look is KDE's default (a choice of yours wins); the splash is Hearth's" \
+  "grep -qx 'LookAndFeelPackage=org.hearthos.hearth' /etc/xdg/kdeglobals && grep -qx 'name=hearth-hearth' /etc/xdg/plasmarc && grep -qx 'Theme=org.hearthos.hearth' /etc/xdg/ksplashrc && grep -qx 'Engine=KSplashQML' /etc/xdg/ksplashrc"
+check "Hearth's Settings and System Settings stay in step (hearth-plasma-looks)" \
+  "python3 -c 'import ast,sys; ast.parse(open(\"/usr/libexec/nimbus/hearth-plasma-looks\").read())' && test -x /usr/libexec/nimbus/hearth-plasma-looks && test -f /etc/xdg/autostart/hearth-plasma-looks.desktop && [ \"\$(systemctl --global is-enabled hearth-plasma-looks.path)\" = enabled ]"
+check "the old Hearth Plasma look and style are gone (one copy: the generated ones)" "test ! -e /usr/share/plasma/look-and-feel/org.hearth.desktop && test ! -e /usr/share/plasma/desktoptheme/hearth"
+check "Plasma's never-picked menu icon and wallpaper become Hearth's once per account" "test -f /usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates/hearth-look-defaults.js"
+leftover=$(find /usr/share/icons /usr/share/pixmaps -type f \( -iname '*fedora*logo*' -o -iname '*anatase*' -o -iname 'distributor-logo*' \) -name '*.svg' 2>/dev/null | while read -r f; do cmp -s "$f" /usr/share/icons/hicolor/scalable/apps/hearth.svg || echo "$f"; done | head -5)
+[ -z "$leftover" ] || echo "::warning title=check::logo files that still aren't Hearth's: $leftover"
+
+echo "--- start-up stays quick (the laptop: 20 s and 10 s before graphical.target)"
+check "hearth-dns-client waits for the network inside the service, not before it" "! grep -q '^ExecStartPre=.*sleep' /usr/lib/systemd/system/hearth-dns-client.service && grep -q 'sleep 20; exec' /usr/lib/systemd/system/hearth-dns-client.service"
+check "Hearth Recovery doesn't wait for Handheld Daemon" "! grep -E '^(After|Requires)=' /usr/lib/systemd/system/hearth-recovery.service | grep -q hhd.service"
 
 echo "--- Unlock the file system"
 check "hearth-unlock (dnf form) is installed, valid and locked by default" \

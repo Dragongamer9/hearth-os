@@ -610,6 +610,22 @@ jobs:
           set -o pipefail
           sudo podman run --rm -v "$PWD:/src:ro" hearth-os:anatase bash /src/.github/scripts/anatase-image-check.sh 2>&1 | tee /tmp/check.log
 
+      # Warn-only: screenshots of Hearth's looks as Plasma Global Themes (Hearth in full: desktop, app menu, Dolphin,
+      # System Settings; then one per look picked as Hearth's Settings picks it). Posted to the ci/anatase-looks branch
+      # by the looks job below (artifacts can't be opened from the owner's sessions).
+      - name: Screenshots of Hearth's looks in Plasma
+        continue-on-error: true
+        timeout-minutes: 30
+        run: bash .github/scripts/anatase-look-shots.sh localhost/hearth-os:anatase /tmp/anatase-looks
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        continue-on-error: true
+        with:
+          name: anatase-looks
+          path: /tmp/anatase-looks
+          if-no-files-found: ignore
+          retention-days: 14
+
       # REQUIRED: "Unlock the file system" for real (overlay mounts, dnf, starts, an update and a rollback played out).
       - name: Unlock the file system (hearth-unlock, dnf)
         timeout-minutes: 40
@@ -682,3 +698,36 @@ jobs:
             [ "$got" = "$d" ] || { echo "::error title=publish::$IMAGE:$t is $got, not the image this run built ($d)"; exit 1; }
           done
           echo "::notice title=published::$IMAGE:$tag and :$dated = $d (built and checked by run ${{ github.run_id }}, commit ${{ github.sha }})"
+
+  # The screenshots on a branch of their own (ci/anatase-looks, replaced each run: one copy), so they can be opened
+  # without downloading artifacts. Only pictures and logs; nothing else is pushed.
+  looks:
+    name: Post the look screenshots (ci/anatase-looks)
+    needs: [image]
+    if: ${{ !cancelled() && needs.image.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: anatase-looks
+          path: looks
+      - name: Push to ci/anatase-looks
+        run: |
+          set -e
+          n=$(ls looks/*.png 2>/dev/null | wc -l)
+          [ "$n" -gt 0 ] || { echo "::warning title=looks::no screenshots to post"; exit 0; }
+          mkdir -p site && cd site
+          git init -q -b ci/anatase-looks
+          mkdir "run-${{ github.run_id }}"
+          cp ../looks/*.png "run-${{ github.run_id }}/"
+          for f in sync.log plasmashell.log kdeglobals.txt plasma-look.json; do [ -f "../looks/$f" ] && cp "../looks/$f" "run-${{ github.run_id }}/" || true; done
+          printf 'Screenshots of Hearth OS on Anatase (Plasma, virtual screen, software drawing) from run %s, commit %s.\n' \
+            "${{ github.run_id }}" "${{ github.sha }}" > README.md
+          git add -A
+          git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com commit -q -m "Look screenshots, run ${{ github.run_id }}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/anatase-looks
+          echo "::notice title=looks::$n screenshots on ci/anatase-looks/run-${{ github.run_id }}"

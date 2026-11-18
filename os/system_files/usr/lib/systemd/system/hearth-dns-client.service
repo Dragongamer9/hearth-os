@@ -6,8 +6,10 @@ Description=Hearth: use the home server's ad blocker and game download cache whi
 After=NetworkManager.service tailscaled.service
 
 [Service]
-ExecStartPre=/bin/sleep 20
-ExecStart=/usr/libexec/nimbus/hearth-dns-client run
+# The 20 s wait for the network is inside the service, never in front of it: an ExecStartPre= sleep held
+# multi-user.target and graphical.target for 20 s (the owner's laptop, Nov 18: systemd-analyze blamed it for 20 s).
+Type=simple
+ExecStart=/bin/sh -c 'sleep 20; exec /usr/libexec/nimbus/hearth-dns-client run'
 ExecStopPost=-/usr/libexec/nimbus/hearth-dns-client revert
 Restart=on-failure
 RestartSec=30

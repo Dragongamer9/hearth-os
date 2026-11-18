@@ -1344,6 +1344,27 @@ else echo "Hearth Office wasn't built; this image goes without it"; fi
 # tests and start here (otherwise the old Hearth Files stays the file manager). The old Terminal, Text Editor and
 # Calculator stay installed as "… (classic)". Never stops the image build.
 bash /ctx/hearth-kde/install.sh /ctx/nimbus-app/hearth-kde.tar || echo "warning: Hearth's KDE apps didn't install"
+# Hearth Files' own Dolphin build has to match the KDE Frameworks this image really has. The owner's laptop (Nov 18):
+# "symbol lookup error: libdolphinprivate.so.6: undefined symbol: KConfig::copyFrom" (built against KF 6.32, the
+# image's KConfig older): Files didn't open. install.sh only checks for missing libraries, so here every library of
+# the build is resolved too (ldd -r). Anything unresolved: the build and kio-hearth are left out, and Files is
+# Fedora's own Dolphin (hearth-files-kde falls back to it: Hearth's name and places, KDE's program).
+unresolved() { LD_LIBRARY_PATH="$2" ldd -r "$1" 2>&1 | grep -E 'undefined symbol|not found' | head -3; }
+if [ -d /usr/lib/hearth-files ]; then
+  bad=""
+  for f in /usr/lib/hearth-files/bin/dolphin $(find /usr/lib/hearth-files -name '*.so*' -type f 2>/dev/null); do
+    u=$(unresolved "$f" /usr/lib/hearth-files/lib); if [ -n "$u" ]; then bad="$bad ${f##*/}: $u;"; fi
+  done
+  if [ -n "$bad" ]; then
+    echo "::warning title=Hearth Files::its Dolphin build doesn't match this image's KDE Frameworks ($(echo "$bad" | cut -c1-600)): Fedora's own Dolphin is Files here"
+    rm -rf /usr/lib/hearth-files
+  fi
+fi
+for k in $(find /usr/lib /usr/lib64 -path '*/plugins/kf6/kio/hearth.so' 2>/dev/null); do
+  u=$(unresolved "$k" ""); if [ -n "$u" ]; then echo "::warning title=kio-hearth::left out, it doesn't match this image's KDE Frameworks: $u"; rm -f "$k"; fi
+done
+rpm -q dolphin >/dev/null 2>&1 || dnf5 -y install dolphin
+command -v dolphin >/dev/null || { echo "::error title=Files::no Dolphin in the image: Plasma's Files wouldn't open"; exit 1; }
 
 # ------------------------------------------------------------------ Hearth's default apps
 # Every Hearth app in the image is the default for the files and links it opens (its .desktop file's MimeType), in
@@ -1650,9 +1671,127 @@ else
   echo "Nvidia's sleep helpers (nvidia-suspend/hibernate/resume.service) aren't in this image: the driver handles sleep and hibernation itself"
 fi
 
+# ------------------------------------------------------------------ Hearth's look, not Anatase's or Fedora's (1.15)
+# The owner (Nov 18): "also just look like anatase with their logos" — it must look like Hearth. Everywhere a person sees
+# a logo: the name (os-release, with "based on Anatase" only in About's details), the boot splash and its presets, the
+# distribution icons (Plasma's menu button, KInfoCenter's About, anything asking for the distributor's logo), Plasma's
+# wallpaper and lock screen and its start-up splash. Packages' licence and trademark files stay where they are; only
+# the pictures a person sees are Hearth's. Users' own choices are never touched: these are only the system's defaults
+# (/etc/xdg, the look-and-feel defaults) and, once per account, Plasma's settings that were never picked
+# (hearth-look-defaults.js).
+FEDORA_N=$FEDORA
+HEARTH_SVG=/usr/share/icons/hicolor/scalable/apps/hearth.svg
+test -f "$HEARTH_SVG"
+hearth_png() {  # hearth_png SIZE: the Hearth logo PNG closest to SIZE (the icon set's own sizes)
+  local best="" d
+  for d in 16 22 24 32 48 64 96 128 256; do
+    if [ -f "/usr/share/icons/hicolor/${d}x${d}/apps/hearth.png" ]; then best=$d; if [ "$d" -ge "${1:-256}" ]; then break; fi; fi
+  done
+  echo "/usr/share/icons/hicolor/${best}x${best}/apps/hearth.png"
+}
+swapped=0
+while IFS= read -r f; do
+  case "$f" in *.svg|*.svgz) cp -f "$HEARTH_SVG" "$f" ;;
+    *.png) sz=$(echo "$f" | grep -oE '/[0-9]+x[0-9]+/' | head -1 | tr -d / | cut -dx -f1); cp -f "$(hearth_png "${sz:-256}")" "$f" ;;
+    *) continue ;; esac
+  swapped=$((swapped + 1))
+done < <(find /usr/share/icons /usr/share/pixmaps -type f \( -iname '*fedora*logo*' -o -iname '*anatase*' -o -iname 'start-here*' \
+           -o -iname 'distributor-logo*' -o -iname 'system-logo*' -o -iname 'fedora-logo*' \) 2>/dev/null)
+for n in start-here start-here-kde distributor-logo; do
+  install -Dm644 "$HEARTH_SVG" "/usr/share/icons/hicolor/scalable/apps/$n.svg"
+  install -Dm644 "$HEARTH_SVG" "/usr/share/icons/hicolor/scalable/places/$n.svg"
+done
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/null 2>&1 || true
+echo "::notice title=Hearth's look::$swapped distribution logo files now show Hearth's logo"
+# KInfoCenter's About this System: Hearth's logo, name and website; the base in its details.
+mkdir -p /etc/xdg
+cat > /etc/xdg/kcm-about-distrorc <<KCM
+[General]
+LogoPath=$(hearth_png 256)
+Website=https://hearthos.fun
+Variant=Anatase edition (test) · based on Anatase (Fedora ${FEDORA_N})
+KCM
+# Plasma's wallpaper and lock screen by default: Hearth's (Fireside, from the wallpapers installed above), in every
+# look-and-feel's defaults and the lock screen's system default. Your own choice in ~/.config always wins.
+HW=/usr/share/wallpapers/Hearth-fireside
+test -f "$HW/metadata.json"
+for d in /usr/share/plasma/look-and-feel/*/contents/defaults; do
+  [ -f "$d" ] || continue
+  python3 - "$d" "$HW" <<'PY'
+import sys, configparser
+p, w = sys.argv[1], sys.argv[2]
+c = configparser.RawConfigParser(strict=False, interpolation=None); c.optionxform = str
+c.read(p)
+if not c.has_section('Wallpaper'):
+    c.add_section('Wallpaper')
+c.set('Wallpaper', 'Image', w.rsplit('/', 1)[1])
+with open(p, 'w') as f:
+    c.write(f, space_around_delimiters=False)
+PY
+done
+cat > /etc/xdg/kscreenlockerrc <<LOCK
+[Greeter][Wallpaper][org.kde.image][General]
+Image=file://$HW/contents/images/3840x2160.jpg
+PreviewImage=file://$HW/contents/images/3840x2160.jpg
+LOCK
+# Hearth's looks as Plasma Global Themes: every look in palettes.json (Hearth, Steam-style, Gaming, Zen, Glass,
+# Synthwave, Cabin, Console) becomes "Hearth OS · <name>" in System Settings › Global Theme, generated here from its
+# palette so it never drifts from Mantel's (hearth-plasma-looks build): dark and light colour schemes (plus one pair per
+# sub theme, System Settings › Colors), a Plasma style in its colours, Breeze window frames in its colours, Breeze icons
+# and cursor, its wallpaper and a start-up splash in its colours with Hearth's logo. The accent is Plasma's own setting.
+chmod 755 /usr/libexec/nimbus/hearth-plasma-looks
+python3 /usr/libexec/nimbus/hearth-plasma-looks build --logo "$HEARTH_SVG" > /tmp/hearth-plasma-looks.json
+n=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' /tmp/hearth-plasma-looks.json)
+test "$n" -ge 8
+for l in hearth steam gaming zen glass synthwave cabin console; do
+  test -f "/usr/share/plasma/look-and-feel/org.hearthos.$l/contents/defaults"
+  test -f "/usr/share/plasma/look-and-feel/org.hearthos.$l/contents/splash/Splash.qml"
+  test -f "/usr/share/color-schemes/HearthOS-$l-Dark.colors" && test -f "/usr/share/color-schemes/HearthOS-$l-Light.colors"
+  test -f "/usr/share/plasma/desktoptheme/hearth-$l/metadata.json"
+  w=$(sed -n 's/^Image=//p' "/usr/share/plasma/look-and-feel/org.hearthos.$l/contents/defaults")
+  test -f "/usr/share/wallpapers/$w/metadata.json"
+done
+echo "::notice title=Hearth's looks::$n Plasma Global Themes from palettes.json ($(ls /usr/share/color-schemes/HearthOS-*.colors | wc -l) colour schemes)"
+# Hearth is the default for everyone who hasn't chosen a look in KDE (KDE's system defaults; a choice of yours in
+# ~/.config always wins). The splash is the look's (Plasma's own splash shows after Hearth's boot splash).
+# (Merged into the distribution's /etc/xdg files: their other keys stay.)
+python3 - <<'PY2'
+import configparser, os
+def merge(p, changes):
+    c = configparser.RawConfigParser(strict=False, interpolation=None); c.optionxform = str
+    if os.path.exists(p):
+        c.read(p)
+    for g, kv in changes.items():
+        if not c.has_section(g):
+            c.add_section(g)
+        for k, v in kv.items():
+            c.set(g, k, v)
+    with open(p, 'w') as f:
+        c.write(f, space_around_delimiters=False)
+merge('/etc/xdg/kdeglobals', {'KDE': {'LookAndFeelPackage': 'org.hearthos.hearth', 'widgetStyle': 'Breeze'},
+                              'General': {'ColorScheme': 'HearthOS-hearth-Dark'}, 'Icons': {'Theme': 'breeze-dark'}})
+merge('/etc/xdg/plasmarc', {'Theme': {'name': 'hearth-hearth'}})
+PY2
+grep -qx 'LookAndFeelPackage=org.hearthos.hearth' /etc/xdg/kdeglobals
+printf '[KSplash]\nEngine=KSplashQML\nTheme=org.hearthos.hearth\n' > /etc/xdg/ksplashrc
+# In the session: the first time, Hearth's look (or, when you already chose one in KDE, a notification asking once);
+# afterwards the look picked in Hearth's Settings (desktop.json) and a Hearth OS Global Theme picked in System Settings
+# stay in step, one source of truth (docs/BASE-ANATASE.md).
+systemctl --global enable hearth-plasma-looks.path
+
 # ------------------------------------------------------------------ boot splash
 dnf5 -y install plymouth-plugin-script
 plymouth-set-default-theme hearth
+# Settings › Boot & startup's presets (hearth-boot-look), in the initramfs as on Debian: picking one only adds
+# plymouth.splash=<preset> to the boot menu's entries; a missing one shows the default (Plymouth falls back).
+chmod 755 /usr/libexec/nimbus/hearth-boot-look 2>/dev/null || true
+mkdir -p /usr/lib/dracut/dracut.conf.d
+{
+  echo "# Written by os-bases/anatase/build.sh: Hearth's boot splash presets in the initramfs (hearth-boot-look)."
+  printf 'install_items+=" %s "\n' "$(find /usr/share/plymouth/themes/hearth-steam /usr/share/plymouth/themes/hearth-minimal \
+    /usr/share/plymouth/themes/hearth-aurora /usr/share/plymouth/themes/hearth-starlight /usr/share/plymouth/themes/hearth-orbit \
+    -type f 2>/dev/null | sort | tr '\n' ' ')"
+} > /usr/lib/dracut/dracut.conf.d/50-hearth-splash.conf
 KVER=$(ls /usr/lib/modules | sort -V | tail -1)
 export DRACUT_NO_XATTR=1
 dracut --no-hostonly --kver "$KVER" --reproducible --zstd --add ostree --add plymouth \
@@ -1660,10 +1799,15 @@ dracut --no-hostonly --kver "$KVER" --reproducible --zstd --add ostree --add ply
 chmod 0600 "/usr/lib/modules/$KVER/initramfs.img"
 
 # ------------------------------------------------------------------ name
+# "Hearth OS" everywhere a name is shown (the login prompt, hostnamectl, KInfoCenter, fastfetch); ID stays Anatase's so
+# tools still know what's underneath, and "based on Anatase" is only in the variant (About's details).
 sed -i \
-  -e 's/^NAME=.*/NAME="Hearth"/' \
-  -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Hearth OS (based on Anatase)"/' \
+  -e 's/^NAME=.*/NAME="Hearth OS"/' \
+  -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Hearth OS"/' \
+  -e '/^LOGO=/d' -e '/^VARIANT=/d' -e '/^VARIANT_ID=/d' -e '/^HOME_URL=/d' \
   /usr/lib/os-release
+printf 'LOGO=hearth\nVARIANT="Anatase edition (test), based on Anatase (Fedora %s)"\nVARIANT_ID=hearth-anatase\nHOME_URL="https://hearthos.fun"\n' "$FEDORA" >> /usr/lib/os-release
+grep -qx 'PRETTY_NAME="Hearth OS"' /usr/lib/os-release && grep -qx 'LOGO=hearth' /usr/lib/os-release
 
 dnf5 clean all
 # Unlock the file system: the image's own packages (the start of the record of yours: hearth-unlock --record).

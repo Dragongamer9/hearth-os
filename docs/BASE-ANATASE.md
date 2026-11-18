@@ -39,6 +39,22 @@ copies (made for Mantel, they hide Hearth's apps from "KDE") are left out, so He
   **Mantel's own parts that aren't here** (KDE's take their place): Task Manager (KDE's System Monitor), Quick Settings,
   notifications, the on-screen keyboard, the classic Hearth Files window and Hearth's own file chooser (Mantel's QML
   picker: GTK's and KDE's dialogs instead), Mantel's Capture, Restore and Reliability windows, the Resource Monitor.
+- **Hearth's looks are Plasma Global Themes.** Every look in `hosts/linux/desktop/theme/palettes.json` (Hearth,
+  Steam-style, Gaming, Zen, Glass, Synthwave, Cabin, Console) is "Hearth OS · <name>" in System Settings › Global Theme,
+  generated at build time from its palette (`hearth-plasma-looks build`, so it never drifts from Mantel's): dark and
+  light colour schemes (and one pair per sub theme, in System Settings › Colors), a Plasma style in its colours, Breeze
+  window frames in its colours (no Aurorae), Breeze icons and cursor, its wallpaper (looks with an animated Mantel
+  wallpaper get the closest Hearth still) and a start-up splash in its colours with Hearth's logo. The accent is Plasma's
+  own setting (System Settings › Colors), and Hearth's accent from Settings is put there.
+  - **Hearth is the default** (KDE's system defaults in `/etc/xdg`); a look you picked in KDE always wins. The first time,
+    with nothing chosen in KDE, Hearth's look is applied; with a look already chosen, a notification asks once ("Use
+    Hearth's look?") and yours stays unless you say yes.
+  - **One source of truth**: Hearth's look in `desktop.json`. Picking one in Hearth's Settings applies its Global Theme
+    (`hearth-plasma-looks.path` watches the file); picking a "Hearth OS · <name>" Global Theme in System Settings sets
+    that look in `desktop.json` (merged in, so every other setting stays). Any other Global Theme is left alone.
+    What was last applied is in `~/.local/state/hearth/plasma-look.json`.
+  - Branding: Plasma's menu button, the distributor logo, About this System, the login name (`os-release`: Hearth OS,
+    "based on Anatase" only in the details) and the boot splash with its presets are Hearth's.
 
 ## Switching editions (both ways, red flag 2)
 

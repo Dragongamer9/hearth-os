@@ -174,6 +174,11 @@ echo "HEARTH-CI-edition $(python3 -c "import json; print(json.load(open(\"/usr/s
 echo "HEARTH-CI-home $(cat /var/home/tester/Documents/hearth-ci.txt 2>&1)"
 echo "HEARTH-CI-clean $(systemctl is-active hearth-clean-install.service) $(ls /var/lib/hearth/clean-install.done.json 2>&1)"
 grep -q "^_apt:" /etc/passwd && echo "HEARTH-CI-accounts debian" || echo "HEARTH-CI-accounts fedora"
+for i in $(seq 90); do systemctl is-active -q graphical.target && break; sleep 2; done
+echo "HEARTH-CI-graphical $(systemctl is-active graphical.target)"
+systemd-analyze 2>&1 | head -2 | sed "s/^/HEARTH-CI-time /"
+systemd-analyze critical-chain graphical.target --no-pager 2>&1 | sed "s/^/HEARTH-CI-chain /"
+systemd-analyze blame --no-pager 2>&1 | head -15 | sed "s/^/HEARTH-CI-blame /"
 ostree admin status | sed "s/^/HEARTH-CI-status /"
 PKEXEC_UID=$(id -u tester) python3 /var/lib/hearth-ci/hearth-admin move-to-new-os --edition peppermint
 echo "HEARTH-CI-move $?"
@@ -184,6 +189,21 @@ start 3-anatase
 jobsaid 3-anatase | grep -q 'HEARTH-CI-edition anatase' || fail "3: the restart after the switch didn't start Hearth OS on Anatase by itself: $(tr -d '\r' < "$OUT/3-anatase-serial.log" | grep -av '^\s*$' | tail -25)"
 jobsaid 3-anatase | grep -q 'HEARTH-CI-home kept' || fail "3: the home folder wasn't left as it was: $(said 3-anatase HEARTH-CI-home)"
 jobsaid 3-anatase | grep -q 'HEARTH-CI-accounts fedora' || ann warning "3: Debian's accounts are still in /etc/passwd on Anatase"
+# Start-up (the owner's laptop, Nov 18: 20 s in hearth-dns-client, 10 s in hearth-recovery before graphical.target): no
+# Hearth unit may hold the way to graphical.target. Allowed: hearth-recovery's own 1.5 s button window (it has to come
+# before the login screen) and the clean install, which runs once, at the first start after a switch.
+jobsaid 3-anatase | grep -q 'HEARTH-CI-graphical active' || fail "3: Anatase didn't reach graphical.target: $(jobsaid 3-anatase | grep 'HEARTH-CI-graphical\|HEARTH-CI-time')"
+slow=$(jobsaid 3-anatase | sed -n 's/^HEARTH-CI-chain //p' | grep -oE 'hearth-[a-z0-9@.-]+\.service[^+]*\+[0-9.]+(ms|s)' | python3 -c '
+import re, sys
+for l in sys.stdin:
+    m = re.match(r"(hearth-[a-z0-9@.-]+\.service).*\+([0-9.]+)(ms|s)", l.strip())
+    if not m: continue
+    unit, t = m.group(1), float(m.group(2)) / (1000 if m.group(3) == "ms" else 1)
+    limit = 2.0 if unit == "hearth-recovery.service" else (1e9 if unit == "hearth-clean-install.service" else 1.0)
+    if t >= limit: print("%s %.1fs" % (unit, t))
+')
+[ -z "$slow" ] || fail "3: Hearth units hold the start on the way to graphical.target: $(echo "$slow" | tr '\n' ' ')"
+ann notice "3: start-up: $(jobsaid 3-anatase | sed -n 's/^HEARTH-CI-time //p' | head -1) · critical chain: $(jobsaid 3-anatase | sed -n 's/^HEARTH-CI-chain //p' | tr '\n' '|' | cut -c1-1200) · blame: $(jobsaid 3-anatase | sed -n 's/^HEARTH-CI-blame //p' | head -8 | tr '\n' '|')"
 jobsaid 3-anatase | grep -q 'HEARTH-CI-move 0' || fail "4: the switch back to Debian failed: $(jobsaid 3-anatase | grep -v '^HEARTH-CI-status' | tail -25)"
 ann notice "3: $(said 3-anatase HEARTH-CI-clean) · $(jobsaid 3-anatase | grep 'HEARTH-CI-status' | tr '\n' ' ' | cut -c1-900)"
 

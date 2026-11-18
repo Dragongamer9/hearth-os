@@ -155,7 +155,9 @@ class Workflow(unittest.TestCase):
         step = wf.split('- name: Publish to the test tag')[1]
         self.assertIn("grep -Eqx 'test-[0-9]+(\\.[0-9]+)*'", step)
         self.assertIn('success()', step)
-        self.assertEqual(re.findall(r'podman push .*', step), ['podman push --digestfile /tmp/digest hearth-os:anatase "$IMAGE:$tag"'])
+        pushes = re.findall(r'podman push .*', step)
+        self.assertEqual(len(pushes), 1, pushes)     # one push, of this run's image, to the checked test tag
+        self.assertRegex(pushes[0], r'^podman push (--[\w-]+(?: [\w./-]+)? )*--digestfile /tmp/digest hearth-os:anatase "\$IMAGE:\$tag"$')
         for never in (':latest', 'hearth-peppermint', ':testing'):
             self.assertNotIn(never, step)
         self.assertIn('not the image this run built', step)
