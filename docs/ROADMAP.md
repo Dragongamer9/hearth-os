@@ -14,6 +14,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Later
 
+- [ ] Hearth's settings inside KDE's System Settings on the Fedora edition (the owner, Nov 18: "Can we modify KDEs? And add our stuff to it?" / "Add it to the road map"): a Hearth section of System Settings pages (KCMs: QML screens, the logic in Rust through cxx-qt) for Gaming and Game Mode, Controllers, Hearth Link, Updates (test channel, Switch edition, unlock), Memory, Boot & startup, Logs and Hearth's looks, next to KDE's display, sound, Wi-Fi and Bluetooth pages; one Settings app for everything, each setting saved in one place (docs/SETTINGS-PERSISTENCE.md); Hearth Settings stays its own app until then
 - [ ] 2.0: Firehold, Hearth's own desktop: one desktop that is a console and a PC (Couch and Desk), on Hearth's own compositor written in Rust; checklist docs/mockups/checklists/firehold.md
 - [ ] Recovery checked on a Recovery USB against its approved mockup (docs/mockups/checklists/recovery.md): the owner boots the Debian Recovery USB after 1.13 is out (moved from 1.13, Nov 15)
 - [ ] Server mode › 3D printer control (OctoPrint or Mainsail/Klipper) for the Anycubic Chiron, with its camera and Hearth CAD's slicer (the owner's list, not now)
