@@ -642,8 +642,12 @@ fn text_width(text: &str, size: f32) -> f32 {
 const FH_RADIUS: i32 = 12;
 
 /// The chip's left and right edges (logical pixels) on a bar this wide.
+const CHIP_WORDS: &str = "Full screen: F11 or ";
+/// The Guide button's mark "≡", 12 px text's width of it (drawn as three lines when the font has no such glyph).
+const MENU_MARK_W: f32 = 9.0;
+
 fn chip_span(width: f64) -> (f64, f64) {
-    let w = text_width(crate::frames::CHIP_TEXT, 12.0) as f64 + 20.0;
+    let w = (text_width(CHIP_WORDS, 12.0) + MENU_MARK_W) as f64 + 20.0;
     let right = width - 14.0;
     (right - w, right)
 }
@@ -677,7 +681,15 @@ fn draw_firehold_bar(k: &DrawKey, label: &crate::frames::Label, c: &crate::frame
         let ch = 22.0 * s;
         let cy = (h as f32 - ch) / 2.0;
         cv.round_rect(cx0, cy, cx1 - cx0, ch, 10.0 * s, c.card);
-        draw_text(&mut cv, crate::frames::CHIP_TEXT, 12.0 * s, cx0, cx1 - cx0, Some(cx1 - cx0), c.flame);
+        // "Full screen: F11 or ≡": the words, then the Guide button's mark (three short lines: many fonts have no ≡).
+        let words = text_width(CHIP_WORDS, 12.0) * s;
+        let tx = cx0 + 10.0 * s;
+        draw_text(&mut cv, CHIP_WORDS, 12.0 * s, tx, words + 2.0 * s, None, c.flame);
+        let mx = tx + words;
+        let mid = h as f32 / 2.0;
+        for dy in [-3.0f32, 0.0, 3.0] {
+            cv.line(mx + 1.0 * s, mid + dy * s, mx + (MENU_MARK_W - 1.0) * s, mid + dy * s, 1.3 * s, c.flame);
+        }
     } else {
         let hover_on = |b: Button| k.hover == Some(b) || k.pressed == Some(b);
         let centres = crate::frames::dot_centres(k.width as f64);

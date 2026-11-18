@@ -213,7 +213,10 @@ import sys
 from PIL import Image
 im = Image.open(sys.argv[1]).convert('RGB')
 # The accent (#ff8a3d): the close buttons and the game's border; the panel colour (#17110e) of the bars.
-acc = sum(1 for p in im.getdata() if abs(p[0] - 255) < 18 and abs(p[1] - 138) < 24 and abs(p[2] - 61) < 30)
+# Between Firehold's top bar and its dock (whose Home tile is the accent too): only the windows' frames count.
+w, h = im.size
+acc = sum(1 for y in range(70, h - 160, 1) for x in range(0, w, 1)
+          if (lambda p: abs(p[0] - 255) < 18 and abs(p[1] - 138) < 24 and abs(p[2] - 61) < 30)(im.getpixel((x, y))))
 open('shots/frames-check.txt', 'w').write('accent pixels %d' % acc)
 print('accent pixels', acc)
 sys.exit(0 if acc > 400 else 1)
@@ -275,7 +278,7 @@ fi
 ws=$(q winlist state)
 echo "$ws" > shots/winlist-state.json
 grep -E "Mantel: (loaded|up)" "$SHLOG" 2>/dev/null | head -3 | while read -r l; do note "start" "$(echo "$l" | sed 's/^.*Mantel:/Mantel:/' | cut -c1-200)"; done
-note "not here yet" "KWin's own views (Overview, Present windows, Desktop grid), window rules, Force close's click-a-window, and hiding a window from screen sharing need KWin; the dock's hover previews are KWin's drawing (hearth-previews.qml); the lock screen is Mantel's own ext-session-lock one with firehold-comp's prompt (nested: firehold-7/8/9)"
+note "not here yet" "KWin's own views (Overview, Present windows, Desktop grid), window rules, Force close's click-a-window, and hiding a window from screen sharing need KWin; the dock's hover pictures (WinPreviewTip.qml) aren't photographed here (no pointer in a headless run); the lock screen is Mantel's own ext-session-lock one with firehold-comp's prompt (nested: firehold-7/8/9)"
 
 # ---- the end
 echo logout > "$XDG_RUNTIME_DIR/nimbus-next"

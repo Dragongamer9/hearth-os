@@ -106,6 +106,16 @@ Singleton {
     function removeDesktop(n) { return firehold && send({ op: "removeDesktop", n: n }); }
     // Firehold: a window's picture as a PNG at `path` (in $XDG_RUNTIME_DIR), at most `max` wide; shotTaken says when.
     function shot(w, path, max) { return firehold && send({ op: "shot", id: widOf(w), path: path, max: max || 640 }); }
+    // Firehold: pictures of these windows for the dock's and the taskbar's hover label (WinPreviewTip.qml), runtime files only.
+    property var pics: ({})
+    property int picTick: 0
+    readonly property string picDir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/hearth-firehold/previews"
+    function takePictures(wins) { for (const w of (wins || []).slice(0, 4)) { const id = widOf(w); if (id) shot(w, picDir + "/" + id + ".png", 480); } }
+    function pictureUrl(w) { const p = pics[widOf(w)]; return p ? "file://" + p + "?" + picTick : ""; }
+    onShotTaken: info => {
+        if (!info || !info.ok || !info.path || String(info.path).indexOf(picDir + "/") !== 0) return;
+        const p = Object.assign({}, pics); p[String(info.id)] = info.path; pics = p; picTick++;
+    }
     function widOf(w) { return w && w.wid !== undefined ? w.wid : ""; }
     // Snap a window to a zone of the snap layouts (snap-layouts.js ids: "left-half", "top-right", "left-third"...).
     function snap(w, zone) { return send({ op: "snap", id: widOf(w), zone: zone }); }

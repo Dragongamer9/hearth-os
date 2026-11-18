@@ -244,6 +244,13 @@ where
     }
     let (size, px) = draw_window(renderer, &shot.window, shot.max)?;
     let png = crate::png::encode_rgba(size.w as u32, size.h as u32, &px);
+    // Its folder (in $XDG_RUNTIME_DIR, ipc.rs checked) is made when it isn't there yet, for the person only.
+    if let Some(dir) = shot.path.parent() {
+        if !dir.exists() {
+            use std::os::unix::fs::DirBuilderExt;
+            let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir);
+        }
+    }
     let tmp = shot.path.with_extension("png.part");
     std::fs::write(&tmp, &png)
         .and_then(|_| std::fs::rename(&tmp, &shot.path))

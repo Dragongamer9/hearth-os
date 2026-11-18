@@ -347,16 +347,11 @@ Item {
             anchor.item: btn
             anchor.rect.x: strip.edge === "left" ? btn.width + 10 : strip.edge === "right" ? -implicitWidth - 10 : Math.round(btn.width / 2 - implicitWidth / 2)
             anchor.rect.y: strip.edge === "top" ? btn.height + 10 : strip.edge === "bottom" ? -implicitHeight - 10 : Math.round(btn.height / 2 - implicitHeight / 2)
-            implicitWidth: tipText.implicitWidth + 20
-            implicitHeight: tipText.implicitHeight + 12
+            implicitWidth: tipBox.implicitWidth
+            implicitHeight: tipBox.implicitHeight
             color: "transparent"
-            Rectangle {
-                anchors.fill: parent
-                radius: Theme.r(8)
-                color: Theme.panel2
-                border.color: Theme.line
-                Text { id: tipText; anchors.centerIn: parent; text: btn.tip; color: Theme.text; font.pixelSize: 12; font.family: Theme.font }
-            }
+            // Firehold's own compositor: the app's windows' pictures above the label (WinPreviewTip.qml).
+            WinPreviewTip { id: tipBox; anchors.fill: parent; text: btn.tip; shown: parent.visible; wins: WinList.firehold && WinList.pictures ? btn.previewWins : [] }
         }
     }
 }

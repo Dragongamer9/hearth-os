@@ -305,36 +305,36 @@ jobs:
       - name: The Firehold shell on firehold-comp, headless
         timeout-minutes: 15
         run: bash .github/scripts/firehold-comp-shell-test.sh
-      - name: Picture firehold-c1-couch-home
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py firehold-c1-couch-home
-      - name: Picture firehold-c2-library
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py firehold-c2-library
-      - name: Picture firehold-c3-guide
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py firehold-c3-guide
-      - name: Picture firehold-c4-everything-open
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py firehold-c4-everything-open
-      - name: Picture firehold-c5-desk
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py firehold-c5-desk
-      - name: Picture firehold-c6-desktop-2
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py firehold-c6-desktop-2
-      - name: Picture firehold-c7-dock-2x
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py firehold-c7-dock-2x --native
-      - name: Picture firehold-c8-home-2x
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py firehold-c8-home-2x --native
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: firehold-comp-shell-shots
           path: shots
           retention-days: 14
+
+  # The shell job's pictures, one job each (GitHub keeps only 50 notices a job, and each picture takes up to 9).
+  shell-pictures:
+    needs: shell
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: ['firehold-c1-couch-home', 'firehold-c2-library', 'firehold-c3-guide', 'firehold-c4-everything-open', 'firehold-c5-desk',
+               'firehold-c6-desktop-2', 'firehold-c7-dock-2x --native', 'firehold-c8-home-2x --native']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: firehold-comp-shell-shots
+          path: shots
+      - name: Picture ${{ matrix.shot }}
+        run: |
+          python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow >/dev/null 2>&1 || python3 -m pip install --quiet pillow >/dev/null
+          python3 .github/scripts/firehold-shot.py ${{ matrix.shot }}
 
   pictures:
     needs: nested
