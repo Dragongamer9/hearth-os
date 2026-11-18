@@ -52,12 +52,19 @@ export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE XDG_SESSION_TYPE=wayland 
 export QT_FORCE_STDERR_LOGGING=1 KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 LIBGL_ALWAYS_SOFTWARE=1
 [ -e /etc/xdg/menus/applications.menu ] || export XDG_MENU_PREFIX=$(basename "$(ls /etc/xdg/menus/*-applications.menu 2>/dev/null | head -1)" applications.menu)
 say() { echo "$*"; echo "$*" >> "$S/events.txt"; }
-# KWin without its file capabilities (a copy), so it keeps the screenshot switch from the environment.
+# KWin without its file capabilities (a copy), so it keeps the screenshot switch from the environment. The runner has
+# no render node (only a card), so KWin draws with QPainter from the start (KWIN_COMPOSE=Q): with OpenGL it starts, but
+# the first reconfigure after a look is applied finds "no render device" and KWin quits.
 cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
-/tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >"$S/kwin.log" 2>&1 &
-KWIN=$!
-for i in $(seq 60); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
-[ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { say "FIRSTFAIL KWin didn't start: $(tail -5 "$S/kwin.log" | tr '\n' '|' | cut -c1-500)"; exit 0; }
+start_kwin() {
+  echo "---- kwin ($(date +%T))" >> "$S/kwin.log"
+  rm -f "$XDG_RUNTIME_DIR/wayland-hearth" "$XDG_RUNTIME_DIR/wayland-hearth.lock"
+  KWIN_COMPOSE=Q /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >>"$S/kwin.log" 2>&1 &
+  KWIN=$!
+  for i in $(seq 60); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && return 0; sleep 1; done
+  return 1
+}
+start_kwin || { say "FIRSTFAIL KWin didn't start: $(tail -5 "$S/kwin.log" | tr '\n' '|' | cut -c1-500)"; exit 0; }
 export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland
 for k in /usr/libexec/kactivitymanagerd /usr/lib64/libexec/kactivitymanagerd /usr/bin/kactivitymanagerd; do [ -x "$k" ] && { "$k" >"$S/kamd.log" 2>&1 & break; }; done
 for k in /usr/libexec/kglobalacceld /usr/lib64/libexec/kglobalacceld /usr/bin/kglobalacceld; do [ -x "$k" ] && { "$k" >"$S/kglobalaccel.log" 2>&1 & break; }; done
@@ -71,7 +78,11 @@ start_shell() {
   for i in $(seq 120); do up && return 0; sleep 1; done
   return 1
 }
-keep_shell() {   # keep_shell WHEN: plasmashell ended? say so (with its last words) and start it again
+keep_shell() {   # keep_shell WHEN: KWin or plasmashell ended? say so (with its last words) and start it again
+  if ! kill -0 "$KWIN" 2>/dev/null; then
+    say "WARN KWin had ended ($1): $(grep -v '^$' "$S/kwin.log" | tail -5 | tr '\n' '|' | cut -c1-600)"
+    start_kwin && sleep 3
+  fi
   if ! kill -0 "$SHELL_PID" 2>/dev/null || ! up; then
     wait "$SHELL_PID" 2>/dev/null; code=$?
     say "WARN plasmashell had ended ($1, exit $code): $(grep -v '^$' "$S/plasmashell.log" | tail -6 | tr '\n' '|' | cut -c1-700)"
@@ -79,6 +90,7 @@ keep_shell() {   # keep_shell WHEN: plasmashell ended? say so (with its last wor
   fi
 }
 shot() {
+  keep_shell "before the picture $1"
   rm -f "$S/$1.png"
   timeout 40 python3 /tmp/shot.py "$S/$1.png" 2>>"$S/shot-errors.txt"
   if [ ! -s "$S/$1.png" ]; then   # KWin's interface didn't answer: Spectacle
