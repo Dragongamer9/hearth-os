@@ -646,6 +646,14 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Sample(s) => {
             a.take_sample(s);
+            // CI's pictures: --show menu opens the first app's right-click menu once the list is in.
+            if a.menu.is_none() && a.cpu_hist.len() == 2 && app::arg("--show").as_deref() == Some("menu") {
+                if let Some(g) = a.sample.as_ref().and_then(|s| s.groups.first().map(|g| g.id.clone())) {
+                    a.cursor = Point::new(520.0, 150.0);
+                    a.sel = Some(g.clone());
+                    a.proc_menu(&g);
+                }
+            }
             if let Some(sh) = &a.sheet {
                 if sh.kind == SheetKind::Ending && !a.ending.is_empty() {
                     let alive = a.sample.as_ref().map(|s| s.groups.iter().any(|g| g.pids.iter().any(|p| a.ending.contains(p))) || s.details.iter().any(|r| a.ending.contains(&r.pid))).unwrap_or(false);

@@ -113,7 +113,7 @@ jobs:
       matrix:
         shot: ['restore-1-points', 'restore-2-confirm', 'restore-3-changes', 'reliability-1-days', 'reliability-2-details', 'reliability-3-weeks',
                'tm-1-processes', 'tm-2-performance-cpu', 'tm-3-performance-memory', 'tm-4-details', 'tm-5-services', 'tm-6-startup', 'tm-7-users',
-               'tm-8-scheduled-tasks', 'tm-9-settings', 'look-hearth-light-restore', 'look-hearth-light-tm']
+               'tm-8-scheduled-tasks', 'tm-9-settings', 'tm-10-menu', 'look-hearth-light-restore', 'look-hearth-light-tm']
     steps:
       - uses: actions/checkout@v4
         with:

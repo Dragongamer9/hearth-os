@@ -414,7 +414,9 @@ fn view(a: &App) -> Element<'_, Msg> {
     let col_cell = |i: usize, inner: Element<'static, Msg>, h: f32| -> Element<'static, Msg> {
         let picked = i == a.sel;
         let bg = if picked { Pal::mix(p.panel, p.accent, 0.18) } else { Color::TRANSPARENT };
-        mouse_area(container(inner).center_x(Length::FillPortion(1)).center_y(Length::Fixed(h)).style(ui::boxed(bg, 0.0, None)))
+        // The picked column, ringed in the accent while the chart has the keyboard (as Mantel's).
+        let line = if picked && a.zone == Zone::Chart { Some((p.accent, 1.0)) } else { None };
+        mouse_area(container(inner).center_x(Length::FillPortion(1)).center_y(Length::Fixed(h)).style(ui::boxed(bg, 0.0, line)))
             .on_press(Msg::PickDay(i))
             .interaction(mouse::Interaction::Pointer)
             .into()
@@ -434,10 +436,7 @@ fn view(a: &App) -> Element<'_, Msg> {
         let txt: Element<'static, Msg> = if i == a.sel { ts(l, 11.0, p.text).wrapping(text::Wrapping::None).into() } else { t1(l, 11.0, p.muted).into() };
         days = days.push(col_cell(i, txt, 26.0));
     }
-    let chart_border = if a.zone == Zone::Chart { p.accent } else { Color::TRANSPARENT };
-    let chart = container(column![line_row, gap(1.0, 10.0), marks, hline(grid), days])
-        .padding(Padding { top: 12.0, right: 20.0, bottom: 12.0, left: 20.0 })
-        .style(ui::boxed(Color::TRANSPARENT, 0.0, Some((chart_border, if a.zone == Zone::Chart { 1.0 } else { 0.0 }))));
+    let chart = container(column![line_row, gap(1.0, 10.0), marks, hline(grid), days]).padding(Padding { top: 12.0, right: 20.0, bottom: 12.0, left: 20.0 });
 
     // ---- the day's events
     let evs = a.events();

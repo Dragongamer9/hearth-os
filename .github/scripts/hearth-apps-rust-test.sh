@@ -96,6 +96,7 @@ run restore-2-confirm hearth-restore 0 "$BIN/hearth-system-restore" --show confi
 run restore-3-changes hearth-restore 0 "$BIN/hearth-system-restore" --show changes
 run reliability-2-details hearth-reliability 0 "$BIN/hearth-reliability-history" --show details
 run reliability-3-weeks hearth-reliability 0 "$BIN/hearth-reliability-history" --weeks
+run tm-10-menu hearth-tasks 0 "$BIN/hearth-task-manager" --page processes --show menu
 run tm-2-performance-cpu hearth-tasks 0 "$BIN/hearth-task-manager" --page performance:cpu
 run tm-3-performance-memory hearth-tasks 0 "$BIN/hearth-task-manager" --page performance:memory
 run tm-4-details hearth-tasks 0 "$BIN/hearth-task-manager" --page details
