@@ -17,7 +17,7 @@ anything. Open parts are listed as open (red flag 11).
 - [x] Right-click: Run on these cores… — hosts/hearth-ui/apps/task-manager/src/main.rs: "MenuItem::new(\"Run on these cores…\", Act::Cores)"
 - [x] Right-click: Limit CPU / memory… — hosts/hearth-ui/apps/task-manager/src/main.rs: "MenuItem::new(\"Limit CPU / memory…\", Act::Limit)"
 - [x] Right-click: Never close when memory runs out — hosts/hearth-ui/apps/task-manager/src/main.rs: "MenuItem::new(\"Never close when memory runs out\", Act::Never)"
-- [x] Right-click: Keep this running (checkpoint) — hosts/hearth-ui/apps/task-manager/src/main.rs: "MenuItem::new(\"Keep this running (checkpoint)\", Act::Keep(true))"
+- [x] Right-click: Keep this running (checkpoint) — hosts/hearth-ui/apps/task-manager/src/main.rs: "MenuItem::new(\"Keep this running (checkpoint)\", Act::Keep(!g.keep_running))"
 - [x] Right-click: Resume for a paused program — hosts/hearth-ui/apps/task-manager/src/main.rs: "MenuItem::new(\"Resume\", Act::Resume)"
 - [x] Status "Paused to save memory ⏸" for a program the memory guard froze — hosts/hearth-ui/apps/task-manager/src/pages.rs: "if g.frozen { \"Paused to save memory ⏸\".into() }"
 - [x] NEW tags on the menu's new items — hosts/hearth-ui/apps/task-manager/src/pages.rs: "chip(\"NEW\""
