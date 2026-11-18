@@ -1455,8 +1455,36 @@ print('::notice title=Plasma: Hearth first::' + ('; '.join(changed) or 'no chang
 PY
 }
 rm -f /usr/share/hearth/app-kinds/plasma-ready
+# Hearth's own tools with no KDE counterpart to stand in for (Settings, Logs, Send logs, Back to Game Mode) always show
+# in Plasma: their copies came out NotShowIn=KDE / OnlyShowIn=COSMIC (run 44306030977), which hid them.
+hearth_plasma_always() {
+  python3 - <<'PY'
+import os, re
+d = '/usr/share/hearth/app-kinds/applications'
+fixed = []
+for n in ('hearth-settings.desktop', 'hearth-logs.desktop', 'hearth-send-logs.desktop', 'hearth-gamemode.desktop'):
+    f = os.path.join(d, n)
+    if not os.path.isfile(f):
+        continue
+    s = open(f).read(); o = s
+    def notshow(m):
+        v = [x for x in m.group(1).split(';') if x and x != 'KDE']
+        return ('NotShowIn=' + ';'.join(v) + ';') if v else ''
+    s = re.sub(r'(?m)^NotShowIn=(.*)$', notshow, s)
+    def onlyshow(m):
+        v = [x for x in m.group(1).split(';') if x]
+        if 'KDE' not in v:
+            v.append('KDE')
+        return 'OnlyShowIn=' + ';'.join(v) + ';'
+    s = re.sub(r'(?m)^OnlyShowIn=(.*)$', onlyshow, s)
+    s = re.sub(r'\n{3,}', '\n\n', s)
+    if s != o:
+        open(f, 'w').write(s); fixed.append(n)
+print('::notice title=Plasma menu::always shown in Plasma: ' + (', '.join(fixed) or 'nothing to change'))
+PY
+}
 if hearth_plasma_apps && python3 /usr/libexec/hearth-app-kinds apply --root / > /tmp/hearth-app-kinds-plasma.json \
-   && python3 /usr/libexec/hearth-app-kinds check --root / >/dev/null; then
+   && hearth_plasma_always && python3 /usr/libexec/hearth-app-kinds check --root / >/dev/null; then
   : > /usr/share/hearth/app-kinds/plasma-ready
   echo "::notice title=Plasma's apps::$(python3 -c 'import json; d=json.load(open("/tmp/hearth-app-kinds-plasma.json")); v=d["desktops"].get("KDE",{}); print(", ".join("%s=%s" % (a, b) for a, b in sorted(v.get("apps",{}).items()) if b))' 2>/dev/null)"
 else
