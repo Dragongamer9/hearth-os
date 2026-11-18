@@ -1,5 +1,5 @@
 # AppImage Maker (hosts/hearth-appimage): its Rust tests; the command-line build (no window) run inside a bare Fedora
-# container, where it converts a test .deb laid out like Electron apps (its libyaml fetched from Fedora), a tarball
+# container, where it converts a test .deb laid out like Electron apps (its libogg fetched from Fedora), a tarball
 # app, Ubuntu's GNU Hello .deb and Fedora's hello .rpm, and every AppImage it makes must run; the window on Linux,
 # converting two packages dropped on it from the command line; and the page in Chromium. Screenshots and the
 # AppImages it made are in the run's hearth-appimage artifact. Release builds come from base-anatase.yml.
@@ -31,7 +31,7 @@ jobs:
         run: |
           sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update -qq
           timeout 900 sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
-            libyaml-dev imagemagick xvfb x11-utils dbus-x11 xdotool >/dev/null
+            libogg-dev imagemagick xvfb x11-utils dbus-x11 xdotool >/dev/null
       - name: Rust tests (unpacking, paths, libraries, menu entries)
         run: |
           set -o pipefail
@@ -55,7 +55,7 @@ jobs:
         run: |
           set -o pipefail
           docker run --rm -v /tmp/cli:/cli:ro -v "$RUNNER_TEMP/pkgs":/pkgs -v "$PWD/tests":/tests:ro -v "$RUNNER_TEMP/made":/made fedora:latest \
-            bash -c 'dnf -y -q install python3 >/dev/null 2>&1; rpm -q libyaml >/dev/null 2>&1 && rpm -e --nodeps libyaml; bash /tests/e2e.sh /cli/hearth-appimage /pkgs /made' 2>&1 | tee e2e.log
+            bash -c 'dnf -y -q install python3 >/dev/null 2>&1; bash /tests/e2e.sh /cli/hearth-appimage /pkgs /made' 2>&1 | tee e2e.log
           rc=${PIPESTATUS[0]}
           sudo chown -R "$(id -u)" "$RUNNER_TEMP/made" || true
           exit $rc

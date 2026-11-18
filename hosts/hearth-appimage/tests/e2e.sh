@@ -1,7 +1,7 @@
 #!/bin/bash
 # Inside a bare Fedora container (no libyaml, no FUSE): AppImage Maker's command line converts the test packages and
 # Fedora's own hello .rpm, and every AppImage it makes is run and must print what it should. Also downloads the
-# AppImage runtime itself (no HEARTH_APPIMAGE_RUNTIME), and fetches libyaml from Fedora for the .deb.
+# AppImage runtime itself (no HEARTH_APPIMAGE_RUNTIME), and fetches libogg from Fedora for the .deb.
 #     e2e.sh BINARY PACKAGES_DIR OUT_DIR
 set -uo pipefail
 bin="$1"; pk="$2"; out="$3"
@@ -10,7 +10,7 @@ fail=0
 note() { echo "::notice title=$1::$2"; }
 bad() { echo "::error title=$1::$2"; fail=1; }
 
-rpm -q libyaml >/dev/null 2>&1 && bad "setup" "libyaml is installed in the container, so fetching from Fedora isn't tested"
+rpm -q libogg >/dev/null 2>&1 && bad "setup" "libogg is installed in the container, so fetching from Fedora isn't tested"
 (cd "$pk" && dnf -q download --arch x86_64 hello >/dev/null 2>&1) || bad "setup" "couldn't download Fedora's hello rpm"
 
 export APPIMAGE_EXTRACT_AND_RUN=1 NO_CLEANUP=
@@ -28,9 +28,9 @@ for f in "$pk"/*.deb "$pk"/*.rpm "$pk"/*.tar.gz; do
   case "$n" in hello*) args=();; *) args=(a b);; esac
   got=$(timeout 120 "$app" "${args[@]}" 2>&1 | tail -3 | tr '\n' ' ')
   case "$n" in
-    demo-app*) want="demo ok yaml=0.2.5 data=from-the-package args=2"
-               case "$fed" in *libyaml*) ;; *) bad "$n" "libyaml wasn't fetched from Fedora ($fed)";; esac ;;
-    demo-tool*) want="demo ok yaml=0.2.5 data=from-the-tarball args=2" ;;
+    demo-app*) want="demo ok ogg=yes data=from-the-package args=2"
+               case "$fed" in *libogg*) ;; *) bad "$n" "libogg wasn't fetched from Fedora ($fed)";; esac ;;
+    demo-tool*) want="demo ok ogg=yes data=from-the-tarball args=2" ;;
     hello*) want="Hello, world!" ;;
   esac
   case "$got" in
@@ -47,7 +47,7 @@ for f in "$pk"/*.deb "$pk"/*.rpm "$pk"/*.tar.gz; do
     grep -q '^Actions=' "$d"/squashfs-root/*.desktop && bad "$n" "Actions= kept without its groups"
     [ "$(readlink "$d/squashfs-root/usr/bin/demo-app")" = "../../opt/demo-app/demo" ] || bad "$n" "the /usr/bin link wasn't made relative: $(readlink "$d/squashfs-root/usr/bin/demo-app")"
     grep -q 'exec \$APPDIR/opt/demo-app/demo' "$d/squashfs-root/usr/bin/demo-app-launch" || bad "$n" "the launcher script still points at /opt: $(cat "$d/squashfs-root/usr/bin/demo-app-launch" | tr '\n' '|')"
-    [ -f "$d/squashfs-root/usr/lib/libyaml-0.so.2" ] || bad "$n" "libyaml isn't inside"
+    [ -f "$d/squashfs-root/usr/lib/libogg.so.0" ] || bad "$n" "libogg isn't inside"
     [ -f "$d/squashfs-root/demo-app.png" ] || bad "$n" "the package's icon isn't at the top"
     ;;
   esac

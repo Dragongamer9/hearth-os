@@ -52,7 +52,7 @@ atomic, .bak) and `made.json` (the AppImages made: written only by the Rust side
 ## Tested (appimage-maker.yml)
 
 Rust tests (paths, links, cpio, control files, script rewriting, ELF reading); the command-line build inside a bare
-`fedora:latest` container converting an Electron-style test .deb (libyaml fetched from Fedora, absolute link,
+`fedora:latest` container converting an Electron-style test .deb (libogg fetched from Fedora, absolute link,
 launcher script, menu entry, icon), a tarball app with its own lib/, Ubuntu's GNU Hello .deb and Fedora's hello
 .rpm, each AppImage run and its insides checked; a Fedora-made AppImage run on Ubuntu; the window converting two
 packages given to it; the page in Chromium with screenshots.

@@ -1,6 +1,6 @@
 #!/bin/bash
 # Makes the packages AppImage Maker's CI converts (on Ubuntu, into the folder given):
-#   demo-app_1.0_amd64.deb   an app laid out like Electron .debs: /opt/demo-app/demo (needs libyaml, which a bare
+#   demo-app_1.0_amd64.deb   an app laid out like Electron .debs: /opt/demo-app/demo (needs libogg, which a bare
 #                            Fedora doesn't have, so it's fetched from Fedora), a data file beside it, an absolute
 #                            link /usr/bin/demo-app -> /opt/demo-app/demo, a launcher script with /opt paths, a menu
 #                            entry and an icon.
@@ -15,18 +15,19 @@ cat > "$src/demo.c" <<'C'
 #include <string.h>
 #include <unistd.h>
 #include <libgen.h>
-#include <yaml.h>
+#include <ogg/ogg.h>
 int main(int argc, char **argv) {
   char exe[4096] = {0}, path[4200];
   if (readlink("/proc/self/exe", exe, sizeof exe - 1) < 0) return 3;
   snprintf(path, sizeof path, "%s/resources/data.txt", dirname(exe));
   FILE *f = fopen(path, "r"); char data[64] = "no-data";
   if (f) { if (!fgets(data, sizeof data, f)) strcpy(data, "empty"); fclose(f); data[strcspn(data, "\n")] = 0; }
-  printf("demo ok yaml=%s data=%s args=%d\n", yaml_get_version_string(), data, argc - 1);
+  ogg_sync_state oy; int ok = ogg_sync_init(&oy) == 0; ogg_sync_clear(&oy);
+  printf("demo ok ogg=%s data=%s args=%d\n", ok ? "yes" : "no", data, argc - 1);
   return 0;
 }
 C
-gcc -O2 -o "$src/demo" "$src/demo.c" -lyaml
+gcc -O2 -o "$src/demo" "$src/demo.c" -logg
 
 # The .deb
 d="$src/deb"
@@ -56,7 +57,7 @@ Package: demo-app
 Version: 1.0
 Architecture: amd64
 Maintainer: Hearth CI <ci@example.invalid>
-Depends: libc6, libyaml-0-2
+Depends: libc6, libogg0
 Description: AppImage Maker's test app
 D
 dpkg-deb --root-owner-group --build "$d" "$out/demo-app_1.0_amd64.deb" >/dev/null
@@ -64,8 +65,8 @@ dpkg-deb --root-owner-group --build "$d" "$out/demo-app_1.0_amd64.deb" >/dev/nul
 # The tarball
 t="$src/demo-tool-2.1"
 mkdir -p "$t/lib" "$t/resources"
-gcc -O2 -o "$t/demo-tool" "$src/demo.c" -lyaml -Wl,-rpath,'$ORIGIN/lib'
-cp -L "$(ldconfig -p | awk '/libyaml-0.so.2 .*x86-64/{print $NF; exit}')" "$t/lib/libyaml-0.so.2"
+gcc -O2 -o "$t/demo-tool" "$src/demo.c" -logg -Wl,-rpath,'$ORIGIN/lib'
+cp -L "$(ldconfig -p | awk '/libogg.so.0 .*x86-64/{print $NF; exit}')" "$t/lib/libogg.so.0"
 echo "from-the-tarball" > "$t/resources/data.txt"
 tar -C "$src" -czf "$out/demo-tool-2.1-linux-x64.tar.gz" demo-tool-2.1
 
