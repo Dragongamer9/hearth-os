@@ -179,6 +179,11 @@ G['hearth-calculator'] = (
     rect(148, 112, 216, 288, 44) + rect(180, 146, 152, 64, 16, INK)
     + rect(180, 238, 64, 60, 16, INK) + rect(268, 238, 64, 60, 16, INK)
     + rect(180, 318, 64, 52, 16, INK) + rect(268, 318, 64, 52, 16, E))
+G['hearth-appimage'] = (  # AppImage Maker: a package (box) with its side lit
+    fill('M256 116 L380 182 V330 L256 396 L132 330 V182 Z')
+    + fill('M132 182 L256 248 V396 L132 330 Z', E)
+    + stroke('M132 182 L256 248 L380 182 M256 248 V396', INK, 22)
+    + stroke('M194 149 L318 215', SHADE, 20))
 G['hearth-clock'] = (
     circle(256, 256, 144) + stroke('M256 256 V170 M256 256 L318 294', INK, 28) + circle(256, 256, 24, E))
 G['hearth-calendar'] = (
@@ -305,7 +310,8 @@ G['hearth-generic-app'] = (  # any app without an icon of its own
     + stroke('M132 214 H380', SHADE, 28) + circle(180, 188, 10, E) + rect(176, 254, 72, 72, 16, SHADE) + stroke('M284 266 H336 M284 314 H320', SHADE, 22))
 
 WINDOW_ICONS = {'hearth-terminal': 'hosts/hearth-terminal/icons/icon.png', 'hearth-disks': 'hosts/hearth-disks/icons/icon.png',
-                'hearth-text': 'hosts/hearth-text/icons/icon.png', 'hearth-theater': 'hosts/hearth-theater/icons/icon.png'}
+                'hearth-text': 'hosts/hearth-text/icons/icon.png', 'hearth-theater': 'hosts/hearth-theater/icons/icon.png',
+                'hearth-appimage': 'hosts/hearth-appimage/icons/icon.png'}
 
 ALIASES = {'hearth-task-manager': 'hearth-tasks', 'hearth-claude-get': 'hearth-get-claude', 'hearth-install': 'hearth-installer'}
 

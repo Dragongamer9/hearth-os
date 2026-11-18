@@ -1,0 +1,14 @@
+[Desktop Entry]
+Name=AppImage Maker
+GenericName=Package Converter
+Comment=Turn .deb, .rpm, .tar and .zip apps into AppImages that run here
+Exec=hearth-appimage %F
+TryExec=hearth-appimage
+Icon=hearth-appimage
+Type=Application
+Categories=Utility;System;PackageManager;
+Keywords=appimage;deb;rpm;tar;zip;convert;package;install;flatpak;
+MimeType=application/vnd.debian.binary-package;application/x-deb;application/x-rpm;application/x-redhat-package-manager;
+StartupNotify=true
+StartupWMClass=hearth-appimage
+X-Hearth-Controller=true

@@ -16,6 +16,7 @@ ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SRC = os.path.join(ROOT, 'ui', 'pad', 'hearth-gamepad.js')
 # The app's page folder → the file with its controller loop (relative to that folder).
 TARGETS = {
+    'hosts/hearth-appimage/ui': 'app.js',
     'hosts/hearth-calculator/ui': 'app.js',
     'hosts/hearth-camera/ui': 'nav.js',
     'hosts/hearth-connect/ui': 'index.html',

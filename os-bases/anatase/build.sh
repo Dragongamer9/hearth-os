@@ -1068,7 +1068,7 @@ command -v ffmpeg >/dev/null || dnf5 -y install ffmpeg-free || echo "warning: no
 for r in /etc/yum.repos.d/rpmfusion-*.repo; do
   if [ -f "$r" ]; then sed -i 's/^enabled=1/enabled=0/' "$r"; fi
 done
-for app in hearth-player hearth-calculator; do
+for app in hearth-player hearth-calculator hearth-appimage; do
   if [ -x "/ctx/nimbus-app/$app" ]; then
     install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
     # An app that can't start is worse than none (its menu entry hides itself without it: TryExec).
@@ -1077,6 +1077,12 @@ for app in hearth-player hearth-calculator; do
     echo "warning: $app wasn't built for this image"
   fi
 done
+# AppImage Maker's AppImage runtime (CI downloads it beside the app); without it the app fetches it on first use.
+# Its AppImages run through FUSE (fusermount3), else unpack themselves to run.
+if [ -f /ctx/nimbus-app/appimage-runtime-x86_64 ]; then
+  install -Dm644 /ctx/nimbus-app/appimage-runtime-x86_64 /usr/share/hearth-appimage/runtime-x86_64
+fi
+rpm -q fuse3 >/dev/null 2>&1 || dnf5 -y install --skip-unavailable fuse3 || true
 # Videos, music and playlists open in Hearth Player: every type in hearth-player.desktop (os/system_files) is made
 # its default with the other Hearth apps' (Hearth's default apps, below).
 update-desktop-database /usr/share/applications 2>/dev/null || true

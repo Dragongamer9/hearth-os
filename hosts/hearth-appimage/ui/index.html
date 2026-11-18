@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AppImage Maker</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="brand"><svg viewBox="0 0 24 24"><path d="M12 3l8 4v10l-8 4-8-4V7z"/><path d="M4 7l8 4 8-4M12 11v10"/></svg><span>AppImage Maker</span></div>
+    <nav class="tabs" id="tabs">
+      <button class="tab f on" data-tab="make">Make</button>
+      <button class="tab f" data-tab="mine">My AppImages <span class="count" id="mineCount"></span></button>
+    </nav>
+    <span class="spacer"></span>
+  </header>
+
+  <main id="make" class="page">
+    <section class="left">
+      <button class="drop f" id="drop" title="Pick apps (Ctrl+O)">
+        <svg viewBox="0 0 24 24"><path d="M12 15V4M7.5 8.5L12 4l4.5 4.5"/><path d="M4 14v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
+        <b>Drop apps here</b>
+        <span>.deb, .rpm, .tar.gz / .tar.xz / .tar.zst or .zip &mdash; or press to pick them</span>
+      </button>
+      <div class="jobs" id="jobs"></div>
+    </section>
+    <aside class="side">
+      <h3>Options</h3>
+      <div class="opt">
+        <div class="lbl">Save AppImages to</div>
+        <div class="row"><span class="path" id="outDir"></span><button class="btn f" id="outBtn">Change</button></div>
+      </div>
+      <button class="toggle f" id="tgFetch" role="switch"><span class="tx"><b>Fetch missing libraries</b><span>Libraries this computer doesn't have are downloaded from Fedora and put inside</span></span><span class="sw"></span></button>
+      <button class="toggle f" id="tgMenu" role="switch"><span class="tx"><b>Add to the app menu</b><span>Each AppImage shows up in the menu as soon as it's made</span></span><span class="sw"></span></button>
+      <div class="about">
+        <b>How it works</b>
+        <p>The app's files are unpacked (nothing in the package is run), its libraries are put inside, and it's packed into one AppImage that runs on its own.</p>
+        <p>Graphics drivers and the system's basics (glibc, sound, X11/Wayland) always come from this computer. Apps that need system services or drivers set up, or Python/Java apps, may only partly work.</p>
+      </div>
+    </aside>
+  </main>
+
+  <main id="mine" class="page" hidden>
+    <div class="mine" id="mineList"></div>
+  </main>
+
+  <footer id="hints"><span><b>A</b>Select</span><span><b>X</b>Pick apps</span><span><b>Y</b>Open</span><span><b>LB RB</b>Tabs</span></footer>
+</div>
+<div id="confirm" class="modal" hidden>
+  <div class="card"><p id="confirmText"></p><div class="row end"><button class="btn f" id="confirmNo">Keep it</button><button class="btn danger f" id="confirmYes">Delete</button></div></div>
+</div>
+<div id="toast" class="toast" hidden></div>
+<script src="hearth-gamepad.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

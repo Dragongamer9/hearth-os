@@ -1,0 +1,107 @@
+# AppImage Maker (hosts/hearth-appimage): its Rust tests; the command-line build (no window) run inside a bare Fedora
+# container, where it converts a test .deb laid out like Electron apps (its libyaml fetched from Fedora), a tarball
+# app, Ubuntu's GNU Hello .deb and Fedora's hello .rpm, and every AppImage it makes must run; the window on Linux,
+# converting two packages dropped on it from the command line; and the page in Chromium. Screenshots and the
+# AppImages it made are in the run's hearth-appimage artifact. Release builds come from base-anatase.yml.
+name: AppImage Maker
+
+on:
+  push:
+    branches: [main, bughunt, 'feature/appimage-maker']
+    paths: ['hosts/hearth-appimage/**', 'hosts/hearth-apptheme/**', '.github/workflows/appimage-maker.yml']
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: hosts/hearth-appimage
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-appimage
+      - name: Packages to build and test with
+        run: |
+          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 update -qq
+          timeout 900 sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libyaml-dev imagemagick xvfb x11-utils dbus-x11 xdotool >/dev/null
+      - name: Rust tests (unpacking, paths, libraries, menu entries)
+        run: |
+          set -o pipefail
+          cargo test --no-default-features 2>&1 | tee test.log || { echo "::error title=tests::$(grep -E '^(error|test .* FAILED|---- |thread)' -A6 test.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=Rust tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
+      - name: Build (command line, no window)
+        run: |
+          set -o pipefail
+          cargo build --release --no-default-features 2>&1 | tee build-cli.log || { echo "::error title=build (cli)::$(grep -E '^error' -A8 build-cli.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          mkdir -p /tmp/cli && cp target/release/hearth-appimage /tmp/cli/hearth-appimage
+          /tmp/cli/hearth-appimage --version
+      - name: Build (the app)
+        run: |
+          set -o pipefail
+          cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A8 build.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=Size::$(du -h target/release/hearth-appimage | cut -f1)"
+          ./target/release/hearth-appimage --version
+      - name: Test packages
+        run: bash tests/make-packages.sh "$RUNNER_TEMP/pkgs"
+      - name: Converted in a bare Fedora, and run
+        run: |
+          set -o pipefail
+          docker run --rm -v /tmp/cli:/cli:ro -v "$RUNNER_TEMP/pkgs":/pkgs -v "$PWD/tests":/tests:ro -v "$RUNNER_TEMP/made":/made fedora:latest \
+            bash -c 'dnf -y -q install python3 >/dev/null 2>&1; bash /tests/e2e.sh /cli/hearth-appimage /pkgs /made' 2>&1 | tee e2e.log
+          rc=${PIPESTATUS[0]}
+          sudo chown -R "$(id -u)" "$RUNNER_TEMP/made" || true
+          exit $rc
+      - name: Made in Fedora, run on Ubuntu
+        run: |
+          set +e
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          for a in "$RUNNER_TEMP"/made/hello*.AppImage; do
+            out=$("$a" 2>&1 | tail -1); echo "$a: $out"
+            case "$out" in *Hello*) echo "::notice title=Cross-distro::$(basename "$a") made in Fedora runs on Ubuntu: $out";;
+              *) echo "::error title=Cross-distro::$(basename "$a"): $out"; exit 1;; esac
+          done
+      - name: The app, with two packages given to it
+        run: |
+          set +e
+          mkdir -p shots
+          export DISPLAY=:99 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1 HEARTH_APPIMAGE_CONFIG="$RUNNER_TEMP/cfg"
+          Xvfb :99 -screen 0 1280x800x24 >/dev/null 2>&1 &
+          sleep 2
+          dbus-run-session -- ./target/release/hearth-appimage "$RUNNER_TEMP/pkgs/demo-app_1.0_amd64.deb" "$RUNNER_TEMP"/pkgs/hello_*.deb > run.log 2>&1 &
+          for i in $(seq 1 90); do
+            n=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' "$RUNNER_TEMP/cfg/made.json" 2>/dev/null || echo 0)
+            [ "$n" -ge 2 ] && break; sleep 2
+          done
+          sleep 2
+          import -window root shots/app-made.png || true
+          echo "::notice title=Window::$(xwininfo -root -tree | grep -i 'AppImage Maker' | head -2 | tr '\n' ' ')"
+          head -c 1500 "$RUNNER_TEMP/cfg/made.json"; echo
+          ls -l ~/Applications || true
+          pkill -f target/release/hearth-appimage || true
+          [ "${n:-0}" -ge 2 ] || { echo "::error title=app::the window didn't make both AppImages: $(tail -c 1500 run.log | tr '\n' '|')"; exit 1; }
+          for a in ~/Applications/*.AppImage; do echo "::notice title=Made in the window::$(basename "$a"): $(APPIMAGE_EXTRACT_AND_RUN=1 "$a" 2>&1 | tail -1)"; done
+      - name: The page in Chromium
+        run: |
+          set -o pipefail
+          { python3 -m pip install -q --user --break-system-packages playwright==1.56.0 && python3 -m playwright install --with-deps chromium; } > pw.log 2>&1 \
+            || { echo "::error title=Playwright::$(tail -c 2500 pw.log | tr '\n' '|')"; exit 1; }
+          python3 tests/ui_test.py shots/page 2>&1 | tee ui.log || { echo "::error title=page::$(tail -c 3000 ui.log | tr '\n' '|')"; exit 1; }
+          echo "::notice title=Page::$(grep -c '^ok' ui.log) checks passed"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-appimage
+          path: |
+            hosts/hearth-appimage/target/release/hearth-appimage
+            hosts/hearth-appimage/shots
+            hosts/hearth-appimage/e2e.log
+            ${{ runner.temp }}/made/*.json
+            ${{ runner.temp }}/made/*.log

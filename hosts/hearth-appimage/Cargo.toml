@@ -1,0 +1,46 @@
+[package]
+name = "hearth-appimage"
+version = "0.1.0"
+edition = "2021"
+description = "AppImage Maker: Hearth OS's tool that turns .deb, .rpm and .tar/.zip apps into AppImages"
+license = "GPL-3.0-or-later"
+
+[[bin]]
+name = "hearth-appimage"
+path = "src/main.rs"
+
+# `gui` (the default) is the app window. Without it (`--no-default-features`) the same program is only the command
+# line, with no GTK or WebKit: that is what CI runs inside a bare Fedora container to prove the AppImages it makes.
+[features]
+default = ["gui"]
+gui = ["dep:tauri", "dep:tauri-plugin-dialog", "dep:tauri-build"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [], optional = true }
+
+[dependencies]
+tauri = { version = "2", features = [], optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+dirs = "5"
+# Unpacking: tar in every compression .deb, .rpm and tarballs use; zip.
+tar = "0.4"
+flate2 = "1"
+liblzma = "0.4"
+zstd = "0.13"
+bzip2 = "0.6"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+# Reading programs' library needs without running them (ldd would run the package's own loader).
+goblin = { version = "0.10", default-features = false, features = ["std", "elf32", "elf64", "endian_fd"] }
+# The AppImage's squashfs, written in Rust (no mksquashfs needed).
+backhand = "0.25"
+walkdir = "2"
+# Fetching the AppImage runtime when the image doesn't carry it.
+ureq = "2"
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

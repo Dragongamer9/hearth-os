@@ -117,7 +117,8 @@ jobs:
           echo "::notice title=gpu-screen-recorder::built ${GSR_VERSION} inside Anatase for the image"
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ==== end of Hearth Recorder, Camera and Share
-      # ---- Hearth Player and Hearth Calculator (hosts/hearth-player, hosts/hearth-calculator): built the same way and
+      # ---- Hearth Player, Hearth Calculator and AppImage Maker (hosts/hearth-player, hosts/hearth-calculator,
+      # hosts/hearth-appimage): built the same way and
       # put beside the app in hearth-app.tar (build.sh installs them in /usr/bin). Not fatal: without them the image is still made.
       - name: Build Hearth Player and Hearth Calculator
         continue-on-error: true
@@ -126,11 +127,14 @@ jobs:
           export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
           mkdir -p /tmp/app
           ok=0
-          for app in hearth-player hearth-calculator; do
+          for app in hearth-player hearth-calculator hearth-appimage; do
             (cd "hosts/$app" && sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml && cargo build --release) \
               && cp "$CARGO_TARGET_DIR/release/$app" "/tmp/app/$app" \
               || { echo "::warning title=$app::it didn't build, so this image is made without it"; ok=1; }
           done
+          # AppImage Maker's AppImage runtime (AppImage/type2-runtime), so it works offline from the first start.
+          curl -fsSL --retry 3 -o /tmp/app/appimage-runtime-x86_64 https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64 \
+            || { echo "::warning title=AppImage runtime::not downloaded; AppImage Maker fetches it the first time it's used"; rm -f /tmp/app/appimage-runtime-x86_64; }
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
           exit $ok
       # ---- end of Hearth Player and Hearth Calculator

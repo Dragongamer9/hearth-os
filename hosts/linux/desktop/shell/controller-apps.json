@@ -18,6 +18,7 @@
     { "id": "hearth-contacts", "name": "Contacts" },
     { "id": "hearth-maps", "name": "Maps" },
     { "id": "hearth-calculator", "name": "Calculator" },
+    { "id": "hearth-appimage", "name": "AppImage Maker" },
     { "id": "hearth-disks", "name": "Disks" },
     { "id": "hearth-nearby", "name": "Nearby" },
     { "id": "hearth-connect", "name": "Connect" },
