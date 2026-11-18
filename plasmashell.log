@@ -1,0 +1,133 @@
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+kde.plasmashell: Activity added twice "74f85f03-cf4a-4937-9102-79b66cb03645"
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+qt.qml.propertyCache.append: Member visible of the object PlasmaQuick::Dialog overrides a member of the base object. Consider renaming it or adding final or override specifier
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+kde.plasmashell: Activity added twice "74f85f03-cf4a-4937-9102-79b66cb03645"
+virtual QStringList Solid::Backends::UPower::UPowerManager::allDevices()  error:  QDBusError("org.freedesktop.DBus.Error.Disconnected", "Not connected to D-Bus server")
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+qt.qml.propertyCache.append: Member visible of the object PlasmaQuick::Dialog overrides a member of the base object. Consider renaming it or adding final or override specifier
+virtual QStringList Solid::Backends::UPower::UPowerManager::allDevices()  error:  QDBusError("org.freedesktop.DBus.Error.Disconnected", "Not connected to D-Bus server")
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+QQmlComponent: Component is not ready
+kf.plasma.quick: error when loading applet "" QList("Error loading Applet: package format is invalid (does not contain any metadata).", "")
+file:///usr/share/plasma/shells/org.kde.plasma.desktop/contents/applet/AppletError.qml:128:17: Unable to assign [undefined] to QString
+qt.qml.propertyCache.append: Member visible of the object PlasmaQuick::Dialog overrides a member of the base object. Consider renaming it or adding final or override specifier
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+kde.plasmashell: Activity added twice "74f85f03-cf4a-4937-9102-79b66cb03645"
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.qml.propertyCache.append: Final member StackingOrder is overridden in class QQmlDMAbstractItemModelData. The override won't be used.
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+Couldn't start kglobalaccel from org.kde.kglobalaccel.service: QDBusError("org.freedesktop.DBus.Error.Disconnected", "Not connected to D-Bus server")
+dbus[1467]: arguments to dbus_pending_call_block() were incorrect, assertion "pending != NULL" failed in file ../dbus/dbus-pending-call.c line 768.
+This is normally a bug in some application using the D-Bus library.
+
+  D-Bus not built with -rdynamic so unable to print a backtrace
+KCrash: Attempting to start /usr/bin/plasmashell
+KCrash: Application 'plasmashell' crashing... crashRecursionCounter = 2
+Failed to create wl_display (No such file or directory)
+qt.qpa.plugin: Could not load the Qt platform plugin "wayland" in "" even though it was found.
+This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
+
+Available platform plugins are: wayland-brcm, wayland-egl, wayland, minimal, xcb, linuxfb, vnc, eglfs, minimalegl, vkkhrdisplay, offscreen.
+

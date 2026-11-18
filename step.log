@@ -1,0 +1,15 @@
+::notice title=Couch::up in 1 s
+::notice title=Open::apps and game: 1063 1064 1065 1066 
+{"ok": true}
+::notice title=listener::total 32 drwxr-xr-x 2 root root 4096 Nov 18 09:34 . drwx------ 6 root root 4096 Nov 18 09:33 .. -rw-r--r-- 1 root root   18 Nov 18 09:33 asked-org.hearthos.firehold -rw-r--r-- 1 root root    5 Nov 18 09:34 front -rw-r--r-- 1 root root  157 Nov 18 09:33 org.hearthos.firehold.home.js -rw-r--r-- 1 root root    5 Nov 18 09:33 posture -rw-r--r-- 1 root root   18 Nov 18 09:33 ready-org.hearthos.firehold prw------- 1 root root    0 Nov 18 09:33 requests -rw-r--r-- 1 root root   21 Nov 18 09:33 shell ; 1177 /usr/bin/python3 /usr/bin/hearth-firehold-plasma listen 
+::notice title=Guide::in front of the game
+::notice title=Desk::up in 1 s
+::notice title=Desk panels::method return time=1794994476.387789 sender=:1.36 -> destination=:1.46 serial=344 reply_serial=2    string "top fill org.hearthos.firehold.app,org.kde.plasma.appmenu,org.kde.plasma.panelspacer,org.kde.plasma.digitalclock,org.kde.plasma.panelspacer,org.hearthos.firehold.posture,org.kde.plasma.systemtray | bottom fit org.kde.plasma.icontasks" 
+::notice title=Couch → Desk::everything stayed open (1063 1064 1065 1066 ), KWin the same (907)
+plasmashell now: 1226 plasmashell --replace -p org.hearthos.firehold.desk
+{"ok": true}
+::notice title=Desk → Couch::everything stayed open (1063 1064 1065 1066 ), KWin the same (907)
+::notice title=Fallback::the Couch didn't start, so plain KDE Plasma did (1226 [plasmashell] <defunct> 1319 [plasmashell] <defunct> 1392 [plasmashell] <defunct> 1444 [plasmashell] <defunct> 1467 plasmashell --replace -p org.kde.plasma.desktop 1498 /usr/libexec/kf6/kioworker /usr/lib64/qt6/plugins/kf6/kio/tags.so tags  local:/tmp/xdg/plasmashellBWekHV.1.kioworker.socket 1500 /usr/libexec/kf6/kioworker /usr/lib64/qt6/plugins/kf6/kio/desktop.so desktop  local:/tmp/xdg/plasmashellTtmdha.2.kioworker.socket )
+::notice title=Fallback::everything stayed open (1063 1064 1065 1066 ), KWin the same (907)
+::notice title=session helper::2026-11-18 09:33:31 session: Firehold on Plasma (shell org.hearthos.firehold)|2026-11-18 09:33:31 KWin script loaded (0)|2026-11-18 09:33:32 org.hearthos.firehold is up|2026-11-18 09:34:23 plasmashell --replace -p org.hearthos.firehold.desk|2026-11-18 09:34:24 org.hearthos.firehold.desk is up|2026-11-18 09:34:36 plasmashell --replace -p org.hearthos.firehold|2026-11-18 09:34:37 org.hearthos.firehold is up|2026-11-18 09:34:44 plasmashell --replace -p org.hearthos.firehold.desk|2026-11-18 09:34:45 org.hearthos.firehold.desk is up|2026-11-18 09:34:47 plasmashell --replace -p org.hearthos.firehold|2026-11-18 09:35:12 org.hearthos.firehold didn't come up in 25 s: plain Plasma for this session|2026-11-18 09:35:12 plasmashell --replace -p org.kde.plasma.desktop|
+::warning title=screenshot messages::format 16 RGBA|format 16 RGBA|format 16 RGBA|format 16 RGBA|format 16 RGBA|format 16 RGBA|format 16 RGBA|format 16 RGBA|format 16 RGBA|
