@@ -496,7 +496,7 @@ def apply(pal, want, paths, kc):
         with open(js) as f:
             code, out = run(['dbus-send', '--session', '--print-reply', '--dest=org.kde.plasmashell', '/PlasmaShell',
                              'org.kde.PlasmaShell.evaluateScript', 'string:' + f.read()])
-        log('menu icon and wallpaper defaults: exit %s' % code)
+        log('menu icon and wallpaper defaults: exit %s %s' % (code, out.replace('\n', ' | ')[:300]))
     except OSError:
         pass
     unmark(paths['kdeglobals'], paths.get('_hsio'))

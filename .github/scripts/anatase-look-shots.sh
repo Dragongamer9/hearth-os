@@ -145,6 +145,9 @@ else
 fi
 sleep 8
 keep_shell "after the first start"
+icon=$(dbus-send --session --print-reply --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript \
+  string:'var o=[]; panels().forEach(function(p){p.widgets().forEach(function(w){if(w.type.indexOf("kick")>=0){w.currentConfigGroup=["General"];o.push(w.type+"="+w.readConfig("icon",""))}})}); print(o.join(" "))' 2>&1 | grep -o 'org.kde.plasma.kick[^"]*' | tr '\n' ' ')
+echo "$icon" | grep -q '=hearth' && say "OK the menu button has Hearth's logo ($icon)" || say "WARN the menu button's icon isn't Hearth's: $icon"
 # ---- Hearth in full.
 shot hearth-desktop
 dbus-send --session --type=method_call --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.activateLauncherMenu; sleep 5
