@@ -119,7 +119,7 @@ jobs:
 
   idle:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     container:
       image: registry.fedoraproject.org/fedora:44
       options: --privileged
@@ -133,7 +133,7 @@ jobs:
         run: |
           mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
           bash /usr/share/nimbus/desktop/firehold-plasma/install.sh /
-      - name: Ten minutes at rest, plain Plasma and Firehold's Couch side by side
-        timeout-minutes: 20
+      - name: Ten minutes at rest each, plain Plasma and Firehold's Couch
+        timeout-minutes: 30
         shell: bash
         run: bash .github/scripts/firehold-plasma-idle.sh 600

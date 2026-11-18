@@ -30,12 +30,13 @@ top.addWidget("org.kde.plasma.systemtray");
 var dock = new Panel;
 dock.location = "bottom";
 dock.height = Math.round(gridUnit * 3.6);
-dock.lengthMode = "fit";
-dock.alignment = "center";
-dock.floating = true;
 var tasks = dock.addWidget("org.kde.plasma.icontasks");
 tasks.currentConfigGroup = ["General"];
 tasks.writeConfig("launchers", ["applications:org.hearthos.firehold.home.desktop", "applications:hearth-files.desktop",
     "preferred://browser", "applications:steam.desktop", "applications:org.hearthos.firehold.library.desktop",
     "applications:systemsettings.desktop"].join(","));
 tasks.writeConfig("showOnlyCurrentDesktop", false);
+// Only as long as its icons, in the middle, floating (set once the dock has its widget).
+dock.lengthMode = "fit";
+dock.alignment = "center";
+dock.floating = true;

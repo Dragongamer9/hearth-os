@@ -9,7 +9,7 @@ Window {
     visible: false
     color: "transparent"
     flags: Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint
-    onCouchChanged: if (couch) { visibility = Window.FullScreen; requestActivate(); panel.forceActiveFocus(); }
+    Component.onCompleted: { visibility = Window.FullScreen; requestActivate(); panel.forceActiveFocus(); }
     MouseArea { anchors.fill: parent; onClicked: if (gw.couch) gw.couch.guideShown = false }
     Guide { id: panel; anchors.right: parent.right; width: 560 * (gw.couch ? gw.couch.k : 1); height: parent.height; couch: gw.couch }
 }

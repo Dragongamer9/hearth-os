@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
+import org.kde.kirigami as Kirigami
 import org.kde.plasma.plasma5support as P5Support
 import org.kde.taskmanager as TaskManager
 
@@ -42,7 +43,7 @@ PlasmoidItem {
             Text {
                 anchors.verticalCenter: parent.verticalCenter
                 text: root.appName || "Firehold"
-                color: "#f6ede6"; font.pixelSize: 15; font.weight: Font.Bold
+                color: Kirigami.Theme.textColor; font.pixelSize: 15; font.weight: Font.Bold
             }
         }
     }

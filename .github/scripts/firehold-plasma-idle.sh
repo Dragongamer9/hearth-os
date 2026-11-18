@@ -1,6 +1,6 @@
 #!/bin/bash
 # Firehold on Plasma at rest (the owner's red flag: his devices must never freeze or lag again). Plain KDE Plasma and
-# Firehold's Couch side by side on the same runner at the same time, each its own KWin on a virtual 1920x1080 screen
+# Firehold's Couch one after the other on the same runner, each its own KWin on a virtual 1920x1080 screen
 # with software drawing (CI has no GPU), nothing open, for SECS (600: ten minutes). Measured after the start's own
 # work: the processor time of plasmashell and KWin (and Firehold's session helper), and plasmashell's memory at the
 # start and the end.
@@ -53,9 +53,10 @@ echo "RESULT $KIND $(pc $s0 $s1) $(pc $c0 $c1) $(pc $h0 $h1) $m0 $m1 $(rss $C)"
 kill $S $C $H 2>/dev/null
 IN
 
-( dbus-run-session -- bash /tmp/idle-one.sh plasma "$SECS" > /tmp/idle-plasma.out 2>/tmp/idle-plasma.err ) &
-( dbus-run-session -- bash /tmp/idle-one.sh firehold "$SECS" > /tmp/idle-firehold.out 2>/tmp/idle-firehold.err ) &
-wait
+# One after the other (two KWins at once in one container didn't keep running).
+dbus-run-session -- bash /tmp/idle-one.sh plasma "$SECS" > /tmp/idle-plasma.out 2>/tmp/idle-plasma.err
+sleep 5
+dbus-run-session -- bash /tmp/idle-one.sh firehold "$SECS" > /tmp/idle-firehold.out 2>/tmp/idle-firehold.err
 read -r _ _ ps pc ph pm0 pm1 pcm <<<"$(grep '^RESULT' /tmp/idle-plasma.out | tail -1)"
 read -r _ _ fs fc fh fm0 fm1 fcm <<<"$(grep '^RESULT' /tmp/idle-firehold.out | tail -1)"
 num() { case "$1" in ''|*[!0-9]*) return 1;; esac; }

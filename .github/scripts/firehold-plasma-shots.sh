@@ -142,7 +142,7 @@ kate >/dev/null 2>&1 &
 [ -n "$QML" ] && { "$QML" /tmp/ember.qml >"$OUT/game.log" 2>&1 & }
 sleep 15
 PIDS=$(apps_pids)
-echo "::notice title=Plasma's desktops::$(timeout 10 qdbus6 org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript 'print(desktops().map(function(d){return d.type + " " + d.screen}).join(", "))' 2>&1 | tr '\n' ' ')" 
+
 echo "::notice title=Open::apps and game: $PIDS"
 hearth-firehold-plasma do home; sleep 4
 shot fp-1-couch-home
@@ -183,6 +183,7 @@ sleep 3
 front "Ember Trails" false; sleep 2
 front "Pictures" false; sleep 4
 shot fp-2-desk
+echo "::notice title=Desk panels::$(timeout 10 dbus-send --session --print-reply --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript string:'print(panels().map(function(p){return p.location + " " + p.lengthMode + " " + p.widgets().map(function(w){return w.type}).join(",")}).join(" | "))' 2>&1 | tr '\n' ' ' | cut -c1-900)"
 same "Couch → Desk"
 echo "plasmashell now: $(pgrep -a plasmashell)"
 

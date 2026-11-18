@@ -229,15 +229,13 @@ ContainmentItem {
         if (page === "switcher") { page = "tabs"; return; }
         openGuide();
     }
+    // The Guide's window is made with the Couch already set (initial properties), so nothing in it reads a null Couch.
     Loader {
         id: guideLoader
         active: fh.guideShown
-        source: "GuideLayer.qml"
-        onStatusChanged: if (status === Loader.Error && source.toString().indexOf("GuideLayer") >= 0) source = "GuideWindow.qml"
-        onLoaded: {
-            if (fh.Window.window) item.screen = fh.Window.window.screen;
-            item.couch = fh;
-        }
+        property bool fallback: false
+        onActiveChanged: if (active) setSource(fallback ? "GuideWindow.qml" : "GuideLayer.qml", { couch: fh })
+        onStatusChanged: if (status === Loader.Error && !fallback) { fallback = true; setSource("GuideWindow.qml", { couch: fh }); }
     }
 
     // Requests from hearth-firehold-plasma ask (the Guide button, Meta+Ctrl+G, the Desk's Home and Library): its

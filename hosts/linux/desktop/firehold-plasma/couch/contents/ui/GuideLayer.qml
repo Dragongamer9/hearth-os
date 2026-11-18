@@ -16,6 +16,6 @@ Window {
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorRight
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityExclusive
     LayerShell.Window.exclusionZone: -1
-    onCouchChanged: if (couch) { visible = true; requestActivate(); panel.forceActiveFocus(); }
+    Component.onCompleted: { visible = true; requestActivate(); panel.forceActiveFocus(); }
     Guide { id: panel; anchors.fill: parent; couch: gw.couch }
 }

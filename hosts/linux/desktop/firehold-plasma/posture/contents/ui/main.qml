@@ -5,6 +5,7 @@ import QtQuick
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
+import org.kde.kirigami as Kirigami
 import org.kde.plasma.plasma5support as P5Support
 
 PlasmoidItem {
@@ -66,7 +67,7 @@ PlasmoidItem {
                 anchors.verticalCenter: parent.verticalCenter
                 text: [root.net, root.batteryText].filter(Boolean).join(" · ")
                 visible: text !== ""
-                color: "#a3958b"; font.pixelSize: 14
+                color: Kirigami.Theme.disabledTextColor; font.pixelSize: 14
             }
         }
     }

@@ -799,8 +799,10 @@ def do(action, arg=''):
         except OSError:
             pass
     elif action == 'home':
-        # KWin's Show Desktop: every window steps aside and the Couch is in front; going to one ends it.
-        kwin_run('workspace.showingDesktop = true;', 'org.hearthos.firehold.home')
+        # Every window steps aside (minimized: a game shows as paused) and the Couch is in front; going to one from
+        # the Couch brings it back.
+        kwin_run('var l = workspace.windowList(); for (var i = 0; i < l.length; i++) { var w = l[i]; '
+                 'if (w.normalWindow && w.minimizable && !w.minimized) w.minimized = true; }', 'org.hearthos.firehold.home')
     elif action == 'bigpicture':
         detach(['sh', '-c', 'pgrep -x steam >/dev/null && exec xdg-open steam://open/bigpicture'])
     elif action == 'gamemode':
