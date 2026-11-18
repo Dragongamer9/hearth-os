@@ -241,7 +241,7 @@ jobs:
           bash archive/kwin/hosts/linux/desktop/kwin-helpers/build.sh /tmp/kwin-helpers > shots/helpers-build.log 2>&1 \
             || echo "::error title=firehold kwin::hearth-kwin-cast didn't build: $(grep -E 'error' shots/helpers-build.log | head -4 | tr '\n' '|' | cut -c1-500)"
           install -Dm755 /tmp/kwin-helpers/hearth-kwin-cast /usr/libexec/hearth/hearth-kwin-cast
-          install -Dm644 os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/hearth-kwin-cast.desktop
+          install -Dm644 archive/kwin/os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/hearth-kwin-cast.desktop
           chown -R root:root hosts/linux/desktop && chmod -R go-w hosts/linux/desktop
           cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
           modprobe vgem 2>/dev/null || echo "::warning title=KWin::no vgem module"

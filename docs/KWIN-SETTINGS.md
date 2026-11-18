@@ -1,5 +1,7 @@
 # Hearth Settings for Mantel on KWin (1.14)
 
+> **Archived with KWin in 1.15** (the owner, Nov 17): Mantel runs on labwc again. What this page describes is kept in `archive/kwin` (see [KWIN](archive/KWIN.md)); parts still shared with labwc stay in place.
+
 When Desktop Mode runs Mantel on KWin (the session exports `HEARTH_WM=kwin`), Hearth Settings has its own pages for what
 KWin can do. They are Hearth's pages (controller-friendly `Set*.qml` cards); KWin keeps the settings in its own files, so
 each setting has one home. Under labwc every page shows its controls greyed with "Needs Mantel on KWin" (`KwinGate.qml`).

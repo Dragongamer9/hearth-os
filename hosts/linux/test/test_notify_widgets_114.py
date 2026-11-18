@@ -273,13 +273,10 @@ class Notifications(unittest.TestCase):
                   "Hearth's own warnings always show"):
             self.assertIn(t, n)
 
-    def test_dnd_shortcut_on_both(self):
+    def test_dnd_shortcut_on_labwc(self):
         rc = (DESK / 'labwc' / 'rc.xml').read_text()
         self.assertIn('<keybind key="W-A-n"><action name="Execute" command="sh -c \'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call notifications dnd toggle\'" /></keybind>', rc)
-        sc = json.loads((DESK / 'kwin' / 'windows' / 'shortcuts.json').read_text())
-        dnd = [s for s in sc['shortcuts'] if s['id'] == 'dnd']
-        self.assertEqual(len(dnd), 1)
-        self.assertEqual((dnd[0]['keys'], dnd[0]['labwc']), ('Meta+Alt+N', 'W-A-n'))
+        # (KWin's shortcuts.json: archived with KWin in 1.15.)
 
     def test_badges_and_jobs_wired(self):
         d = read('Dock.qml')

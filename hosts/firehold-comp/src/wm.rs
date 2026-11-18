@@ -733,14 +733,14 @@ impl<B: Backend + 'static> HearthState<B> {
                     self.move_to_desktop(&w, n, *follow);
                 }
             }
-            Action::LeaveForKwin => {
+            Action::LeaveForLabwc => {
                 if self.lock.locked {
                     // Never a way around the lock screen.
                     return;
                 }
-                info!("Ctrl+Alt+Backspace: leaving Firehold for KWin");
+                info!("Ctrl+Alt+Backspace: leaving Firehold for labwc");
                 if let Some(dir) = std::env::var_os("XDG_RUNTIME_DIR") {
-                    let _ = std::fs::write(std::path::Path::new(&dir).join("firehold-leave"), b"kwin\n");
+                    let _ = std::fs::write(std::path::Path::new(&dir).join("firehold-leave"), b"labwc\n");
                 }
                 self.running.store(false, Ordering::SeqCst);
             }

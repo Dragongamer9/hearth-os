@@ -180,12 +180,7 @@ class Keys(unittest.TestCase):
         src = read('hearth-system')
         self.assertIn('rc = rc_with_search_key(rc, parse_env(env))', src)
 
-    def test_kwin_has_the_same_keys(self):
-        t = json.loads((DESK / 'kwin' / 'windows' / 'shortcuts.json').read_text())
-        s = {x['id']: x for x in t['shortcuts']}
-        self.assertEqual(s['searchbar']['keys'], 'Alt+Space')
-        self.assertEqual(s['searchbar-2']['keys'], 'Alt+F2')
-        self.assertIn({'labwc': 'A-F3', 'kwin': 'Window Operations Menu', 'keys': 'Alt+F3'}, t['kwinOwn'])
+    # (test_kwin_has_the_same_keys: KWin's shortcuts.json is archived with KWin in 1.15, archive/kwin.)
 
     def test_the_bar_ignores_alt_space_when_it_switches_layouts(self):
         src = read('SearchBar.qml')

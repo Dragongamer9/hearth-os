@@ -1,5 +1,7 @@
 # Mantel on KWin: typing, the lock screen and screen sharing (1.14)
 
+> **Archived with KWin in 1.15** (the owner, Nov 17): Mantel runs on labwc again. What this page describes is kept in `archive/kwin` (see [KWIN](archive/KWIN.md)); parts still shared with labwc stay in place.
+
 Three things Mantel does on labwc through wlroots-only Wayland protocols that KWin doesn't have. On KWin
 (`HEARTH_WM=kwin`, set by the KWin session) Hearth does them its own way; on labwc nothing changes.
 

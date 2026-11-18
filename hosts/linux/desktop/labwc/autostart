@@ -53,6 +53,11 @@ for o in json.load(sys.stdin):
 ' 2>/dev/null
 fi
 
+# A saved screen size Settings › Display never offered (1.14 on KWin saved KWin's own 210% on the ROG Xbox Ally with Keep):
+# kept as it is (red flag 9) and told once, with where to change it. In the background; it changes nothing.
+[ -f "$SHARE/desktop/shell/hearth-screens" ] && command -v python3 >/dev/null 2>&1 \
+  && (sleep 8; timeout 30 python3 "$SHARE/desktop/shell/hearth-screens" scale-told >/dev/null 2>&1) &
+
 # The Hearth look for apps (colors for Qt/KDE and GTK apps).
 [ -x "$SHARE/desktop/theme/apply.sh" ] && "$SHARE/desktop/theme/apply.sh"
 

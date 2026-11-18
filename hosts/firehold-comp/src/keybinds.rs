@@ -22,8 +22,9 @@ pub enum Action {
     Iconify,
     ToggleFullscreen,
     VtSwitch(i32),
-    /// Ctrl+Alt+Backspace: leave Firehold for KWin at once (always there; never while the screen is locked).
-    LeaveForKwin,
+    /// Ctrl+Alt+Backspace: leave Firehold for the normal desktop (Mantel on labwc; KWin is archived, 1.15) at once
+    /// (always there; never while the screen is locked).
+    LeaveForLabwc,
     /// labwc's GoToDesktop (to, wrap).
     GoToDesktop(DeskTarget, bool),
     /// labwc's SendToDesktop (to, wrap, follow).

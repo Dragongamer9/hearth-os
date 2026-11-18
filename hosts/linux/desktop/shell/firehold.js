@@ -250,7 +250,7 @@ var WINDOW_CARDS = ["#2a2420", "#22303a", "#2c2a3a", "#1e2a33"];
 // The mockups' font, Inter, when it's installed; else the shell's own.
 function font(fallback) { return Qt.fontFamilies().indexOf("Inter") >= 0 ? "Inter" : fallback; }
 
-// ---- Firehold's window title bars on the Desk (FireholdFrames.qml): what of a rectangle stays visible under others.
+// ---- Firehold's window title bars on the Desk (FireholdFramesComp.qml; 1.14's FireholdFrames.qml over KWin is archived): what of a rectangle stays visible under others.
 // Rectangles are {x, y, w, h}; the result is a list of rectangles that together are A without any of CUTS.
 function subtractRect(a, b) {
     var ax2 = a.x + a.w, ay2 = a.y + a.h, bx2 = b.x + b.w, by2 = b.y + b.h;

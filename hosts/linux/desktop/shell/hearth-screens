@@ -19,6 +19,7 @@ kde_output_management) and KWin's own D-Bus (Night Light's settings, tearing, sc
                                      is left out and you're told; never every screen off); KWin's Night Light and
                                      tearing from the saved settings; small sharp screens without a saved scale get one
   hearth-screens autoscale           only that last part
+  hearth-screens scale-told          tell once about a saved scale Settings never offered (KWin's own pick); changes nothing
   hearth-screens night [JSON]        KWin's Night Light from Settings (nightLight, nightTemp, nightMode, nightFrom,
                                      nightTo: as given, else desktop.json's); labwc's is wlsunset, started by the shell
   hearth-screens plan MODE           Super+P's choice as changes: MODE main | other | extend | mirror; prints
@@ -1471,8 +1472,7 @@ def restore():
             except Refused:
                 pass
             left_out.append(problem)
-    if wmname == 'kwin':
-        scale_told(live, sv)
+    scale_told(live, sv)
     if left_out:
         io.notice('screens:' + '|'.join(left_out)[:200], 'Hearth left out some of your screen settings this time: %s. '
                   'They are still saved; Settings › Display shows what the screen is using.' % '; '.join(left_out), 'Hearth screens')
@@ -1502,7 +1502,7 @@ def scale_told(live, sv):
             continue
         ours = auto_scale(o) or 1.0
         io.notice('screens:kwin-scale:%s:%g' % (o['name'], float(v)),
-                  'Your screen (%s) is at %d%%. KWin picked that size by itself the first time it started, and it was '
+                  'Your screen (%s) is at %d%%. In Hearth 1.14, KWin picked that size by itself the first time it started, and it was '
                   'saved when you pressed Keep in Settings › Display; it isn\'t one of the sizes you can pick there. '
                   'Mantel on Hearth Classic used %d%% on this screen. Hearth hasn\'t changed it: to make things smaller, '
                   'pick a size in Settings › Display › Scale.' % (o['name'], round(float(v) * 100), round(ours * 100)),
@@ -1803,6 +1803,12 @@ def main(argv):
             print(json.dumps(restore()))
         elif cmd == 'autoscale':
             print(json.dumps(autoscale()))
+        elif cmd == 'scale-told':
+            # Desktop Mode's start on labwc (autostart, in the background): a saved scale Settings never offered is
+            # told once; nothing is changed.
+            live = read()
+            scale_told(live, saved())
+            print(json.dumps({'ok': True}))
         elif cmd == 'night':
             print(json.dumps(night(json.loads(arg) if arg.strip() else None)))
         elif cmd == 'plan':

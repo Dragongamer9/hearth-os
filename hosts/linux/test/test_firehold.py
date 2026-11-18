@@ -317,7 +317,7 @@ class Guards(unittest.TestCase):
         self.assertTrue(q.stdout.startswith('error: '))
 
     def test_settings_only_through_settings_writer_and_never_on_open(self):
-        for name in ('Firehold.qml', 'FireholdCouch.qml', 'FireholdGuide.qml', 'FireholdSettings.qml', 'FireholdAboutRow.qml', 'FireholdNotice.qml', 'FireholdPerf.qml', 'FireholdDesk.qml', 'FireholdFrames.qml', 'FireholdFramesComp.qml'):
+        for name in ('Firehold.qml', 'FireholdCouch.qml', 'FireholdGuide.qml', 'FireholdSettings.qml', 'FireholdAboutRow.qml', 'FireholdNotice.qml', 'FireholdPerf.qml', 'FireholdDesk.qml', 'FireholdFramesComp.qml'):
             src = code((SHELL / name).read_text())
             self.assertNotIn('setText(', src, name)
             self.assertNotRegex(src, r'firehold\.json.*(>|tee|cp )', name)

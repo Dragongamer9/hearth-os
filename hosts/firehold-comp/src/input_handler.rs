@@ -1397,7 +1397,7 @@ fn hearth_shortcut(
     if crate::keybinds::leave_key(crate::keybinds::Mods::of(&modifiers), raw)
         || crate::keybinds::leave_key(crate::keybinds::Mods::of(&modifiers), modified)
     {
-        return Some(KeyAction::Hearth(vec![crate::keybinds::Action::LeaveForKwin]));
+        return Some(KeyAction::Hearth(vec![crate::keybinds::Action::LeaveForLabwc]));
     }
     keymap
         .find(crate::keybinds::Mods::of(&modifiers), raw, false)

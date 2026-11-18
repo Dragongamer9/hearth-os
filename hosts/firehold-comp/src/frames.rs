@@ -1,7 +1,7 @@
 //! Firehold's own title bars (the Desk, mockup docs/mockups/firehold/2-desk.png), drawn by the compositor itself:
 //! "App — place" on the left, three round buttons on the right (minimize, maximize, close in the accent colour), and a
 //! game in a window gets the accent border all round and its own line ("Ember Trails · running · 60 fps limit · VRR")
-//! with the chip "Full screen: F11 or ≡". Mantel (FireholdFrames.qml, through the window IPC, ipc.rs) turns the look on
+//! with the chip "Full screen: F11 or ≡". Mantel (FireholdFramesComp.qml, through the window IPC, ipc.rs) turns the look on
 //! while the Desk is up and names each window the way Firehold does (it knows the apps and the games); the
 //! compositor draws them, so they're always in the right order and drag, click and resize like any frame.
 //!

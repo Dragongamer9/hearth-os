@@ -2581,10 +2581,12 @@ jobs:
           ls -la $o
           pkill -x labwc || true; pkill -f quickshell || true
 
-      # 1.14's freeze (the owner's laptop and ROG Ally, Nov 17): Mantel at rest, and after a search left in the closed
-      # menu, must stay under 15% of a core without growing (.github/scripts/shell-idle-cpu.sh).
-      - name: Mantel at rest (processor and memory)
+      # 1.14's freeze (the owner's laptop and ROG Ally, Nov 17): Mantel at rest for ten minutes, and after a search left
+      # in the closed menu, must stay under 15% of a core (and within 5 points of 1.13's, measured first the same way),
+      # with labwc light and no memory growing (.github/scripts/shell-idle-cpu.sh).
+      - name: Mantel at rest (processor and memory, against 1.13)
         if: always()
+        timeout-minutes: 25
         shell: bash
         run: |
           o=shots/idle; mkdir -p $o
@@ -2593,19 +2595,36 @@ jobs:
           pkill -f 'labwc/autostart' || true; pkill -x labwc || true; pkill -f quickshell || true; sleep 2
           export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home PATH="/tmp/fakebin:$PATH"
           export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
-          export QT_QUICK_BACKEND=software NIMBUS_SHARE="$PWD/hosts/linux"
+          export QT_QUICK_BACKEND=software
           [ -S "$XDG_RUNTIME_DIR/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
           unset XDG_DATA_DIRS; eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' hosts/linux/session/nimbus-session)"
-          export SH="$PWD/hosts/linux/desktop/shell"
           D="$HOME/.local/share/nimbus/desktop.json"; mkdir -p "$(dirname "$D")"; [ -s "$D" ] || echo '{}' > "$D"
-          rm -f "$XDG_RUNTIME_DIR"/wayland-*
+          start_labwc() {   # $1: labwc's config folder
+            rm -f "$XDG_RUNTIME_DIR"/wayland-*
+            labwc -C "$1" > $o/labwc-$2.log 2>&1 &
+            for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
+            export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+            wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          }
+          # 1.13's Mantel first (its own shell folder, on a labwc with no autostart), two minutes at rest.
+          BASE=""
+          if git -c safe.directory='*' fetch -q --depth 1 origin tag v1.13.0 --no-tags 2>/dev/null \
+             && git -c safe.directory='*' worktree add -q --detach /tmp/v113 v1.13.0 2>/dev/null; then
+            mkdir -p /tmp/labwc-plain && printf '<?xml version="1.0"?>\n<labwc_config></labwc_config>\n' > /tmp/labwc-plain/rc.xml
+            start_labwc /tmp/labwc-plain v113
+            NIMBUS_SHARE=/tmp/v113/hosts/linux quickshell -p /tmp/v113/hosts/linux/desktop/shell > $o/v113-shell.log 2>&1 &
+            sleep 15
+            BASE=$(SH=/tmp/v113/hosts/linux/desktop/shell bash .github/scripts/shell-idle-cpu.sh $o/v113 "1.13" --baseline | tail -n1)
+            pkill -f quickshell || true; pkill -x labwc || true; sleep 3
+          else
+            echo "::warning title=Mantel at rest::couldn't get 1.13 (tag v1.13.0) to compare with"
+          fi
+          # This Mantel, started the way Desktop Mode starts it (labwc's autostart).
+          export NIMBUS_SHARE="$PWD/hosts/linux" SH="$PWD/hosts/linux/desktop/shell"
           CONF=$(python3 $SH/hearth-system labwc-config)
-          labwc -C "$CONF" > $o/labwc.log 2>&1 &
-          for i in $(seq 1 30); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 1; done
-          export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
-          wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 || true
+          start_labwc "$CONF" now
           sleep 15
-          bash .github/scripts/shell-idle-cpu.sh $o labwc
+          BASE_PCT="$BASE" bash .github/scripts/shell-idle-cpu.sh $o "this branch"
           cp "$XDG_RUNTIME_DIR/nimbus-shell.log" $o/nimbus-shell.log 2>/dev/null || true
           pkill -x labwc || true; pkill -f quickshell || true
 
@@ -2781,10 +2800,10 @@ jobs:
           # pictures through hearth-kwin-cast, which hearth-kwin-cast.desktop names and which answers only
           # hearth-portal and hearth-screens when they're root's and nobody else can change them (as in the image). No
           # KWIN_SCREENSHOT_NO_PERMISSION_CHECKS: KWin checks for real.
-          bash hosts/linux/desktop/kwin-helpers/build.sh /tmp/kwin-helpers > shots/kwin/helpers-build.log 2>&1 \
+          bash archive/kwin/hosts/linux/desktop/kwin-helpers/build.sh /tmp/kwin-helpers > shots/kwin/helpers-build.log 2>&1 \
             || fail "hearth-kwin-cast didn't build: $(grep -E 'error' shots/kwin/helpers-build.log | head -6 | tr '\n' '|' | cut -c1-600)"
           install -Dm755 /tmp/kwin-helpers/hearth-kwin-cast /usr/libexec/hearth/hearth-kwin-cast
-          install -Dm644 os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/hearth-kwin-cast.desktop
+          install -Dm644 archive/kwin/os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/hearth-kwin-cast.desktop
           chown -R root:root hosts/linux/desktop && chmod -R go-w hosts/linux/desktop
           install -d /usr/share/nimbus/desktop
           install -Dm755 os/system_files/usr/bin/hearth-screenshot /usr/bin/hearth-screenshot

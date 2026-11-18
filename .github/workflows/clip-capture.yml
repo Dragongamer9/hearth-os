@@ -259,7 +259,7 @@ jobs:
           bash archive/kwin/hosts/linux/desktop/kwin-helpers/build.sh /tmp/kwin-helpers > /tmp/helpers-build.log 2>&1 \
             || { echo "::error title=KWin helpers::$(grep -E 'error' /tmp/helpers-build.log | head -6 | tr '\n' '|' | cut -c1-600)"; exit 1; }
           install -Dm755 /tmp/kwin-helpers/hearth-kwin-cast /usr/libexec/hearth/hearth-kwin-cast
-          install -Dm644 os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/hearth-kwin-cast.desktop
+          install -Dm644 archive/kwin/os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/hearth-kwin-cast.desktop
           # /usr/bin/hearth-screenshot as in the image, behind a stand-in that writes down how it was asked (the proof
           # that the scrolling capture's pictures go through it).
           install -Dm755 os/system_files/usr/bin/hearth-screenshot /usr/libexec/hearth-screenshot.real

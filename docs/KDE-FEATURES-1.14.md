@@ -1,5 +1,7 @@
 # Every KDE Plasma feature in Mantel on KWin: where 1.14 stands
 
+> **Archived with KWin in 1.15** (the owner, Nov 17): Mantel runs on labwc again. What this page describes is kept in `archive/kwin` (see [KWIN](archive/KWIN.md)); parts still shared with labwc stay in place.
+
 The master checklist (feature/kde-feature-list's KWIN.md, made at 81a2a1e) checked item by item against
 **feature/kwin-1.14 at 00ced87** (Nov 16, 2026), recounted on feature/kwin-1.14 on Nov 17. The owner's rule: everything KDE Plasma 6 has that Mantel lacks is
 written for Hearth from scratch.

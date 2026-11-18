@@ -132,7 +132,7 @@ Scope {
     // view: "home" (Firehold's own screens are up on Couch screens) or "app" (a game or window you went to is in front).
     property int redraws: 0
     // The windows you went to, most recent first (KWin raises a window you activate): how Firehold's title bars know
-    // which window is above which (FireholdFrames.qml). Runtime only.
+    // which window is above which (FireholdFramesComp.qml). Runtime only.
     property var recent: []
     property string frameLimit: "Off"          // the Guide's frame limit (hearth-firehold-game), for a game window's title line
     property string deskMenu: ""               // the Desk bar's open menu (File, Edit, View), "" for none
@@ -349,12 +349,8 @@ Scope {
         active: fhs.unlocked && fhs.started && fhs.posture === "desk"
         FireholdDesk { fh: fhs }
     }
-    // Every window's title bar in Firehold's look: drawn over KWin's (KWin tells where the windows are), or by
-    // Firehold's own compositor itself, named by Mantel (FireholdFramesComp.qml).
-    LazyLoader {
-        active: fhs.unlocked && fhs.started && fhs.posture === "desk" && WinList.kwin
-        FireholdFrames { fh: fhs }
-    }
+    // Every window's title bar in Firehold's look, drawn by Firehold's own compositor itself, named by Mantel
+    // (FireholdFramesComp.qml). (1.14's FireholdFrames.qml, drawn over KWin's frames, is archived with KWin: archive/kwin.)
     LazyLoader {
         active: fhs.unlocked && fhs.started && fhs.posture === "desk" && WinList.firehold && WinList.fhReady
         FireholdFramesComp { fh: fhs }
