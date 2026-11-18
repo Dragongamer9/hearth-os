@@ -111,7 +111,7 @@ class Plasma(unittest.TestCase):
     def test_plasma_shows_hearths_apps_and_never_saves_a_choice(self):
         body = self.SESSION.split('run_plasma() {', 1)[1].split('\n}\n', 1)[0]
         self.assertIn('/usr/share/hearth/app-kinds', body, "Hearth's one-app-of-each-kind copies are left out for Plasma")
-        self.assertIn('plasma-ready', body, "the copies are used in Plasma only when the build made them for it")
+        self.assertIn('/usr/share/hearth/app-kinds-plasma', body, "Plasma's own copies, only when the build made them")
         self.assertIn('XDG_MENU_PREFIX', body)
         self.assertIn('XDG_CURRENT_DESKTOP=KDE', body)
         self.assertNotIn('session.conf', body, 'the saved Desktop Mode choice is never written here')
@@ -121,8 +121,10 @@ class Plasma(unittest.TestCase):
     def test_plasma_puts_hearths_own_apps_first(self):
         build = (ANATASE / 'build.sh').read_text()
         block = build.split("# >>> Hearth's apps in Plasma", 1)[1].split("# <<< Hearth's apps in Plasma", 1)[0]
-        self.assertIn(': > /usr/share/hearth/app-kinds/plasma-ready', block)
-        self.assertIn('hearth-app-kinds check', block, 'the marker is written only when the check passed')
+        self.assertIn('cp -a "$PK/usr/share/hearth/app-kinds/applications" /usr/share/hearth/app-kinds-plasma/', block)
+        self.assertIn('hearth-app-kinds check --root "$PK"', block, 'Plasma gets its copies only when their check passed')
+        self.assertIn('echo \'{"ownApps": false}\' > "$PK/etc/hearth/desktops.json"', block, 'own apps off in the staging tree only')
+        self.assertNotIn('> /etc/hearth/desktops.json', block, 'the real setting is never written')
         self.assertIn("== ['Nimbus']", block, 'Mantel-only apps are never put first')
         self.assertIn('Exec=/usr/bin/hearth-task-manager', block, 'the pure-Rust Task Manager takes its entry')
         self.assertLess(build.index('# <<< app kinds'), build.index("# >>> Hearth's apps in Plasma"))

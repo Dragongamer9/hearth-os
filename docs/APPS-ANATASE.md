@@ -13,8 +13,11 @@ How Plasma shows them (`os-bases/anatase/build.sh`, the block "Hearth's apps in 
 - Hearth's choice becomes Plasma's default for each file type (`/etc/xdg/kde-mimeapps.list`). A default you chose
   yourself (Plasma's Default Applications, Open With › Remember, or Hearth Settings › Default apps, all kept in
   `~/.config/mimeapps.list`) always comes first and is never written by the image (red flag 9).
-- Plasma uses Hearth's menu copies only when the build's check passed (`/usr/share/hearth/app-kinds/plasma-ready`,
-  read by `nimbus-session`'s `run_plasma`). Without it Plasma's menu is as before (Hearth's and KDE's apps both).
+- Plasma has its own menu copies (`/usr/share/hearth/app-kinds-plasma`), made at build time in a staging tree with
+  each kind's KDE list reordered and Hearth Classic's "own apps" rule (which hides Hearth's apps under KDE) off there
+  only; `nimbus-session`'s `run_plasma` puts them first for Plasma, and only when the build's check passed (without
+  them Plasma's menu is as before: Hearth's and KDE's apps both). Hearth Classic's copies, the shared table and
+  `/etc/hearth/desktops.json` are never changed.
 - The image check (`.github/scripts/anatase-image-check.sh`) lists every Hearth entry as shown or hidden in Plasma, with
   the reason, and warns for each app the owner named that isn't shown. The build names every Hearth entry whose program
   is missing or can't start (a missing library).

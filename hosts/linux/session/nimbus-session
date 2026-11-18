@@ -457,13 +457,12 @@ run_plasma() {
   started=$(date +%s)
   (
     if [ -n "$fh_shell" ]; then export PLASMA_DEFAULT_SHELL="$fh_shell" HEARTH_FIREHOLD_PLASMA=1; else unset PLASMA_DEFAULT_SHELL HEARTH_FIREHOLD_PLASMA; fi
-    # Plasma's menus: Hearth's one-app-of-each-kind copies are kept when the image says they're made for Plasma too
-    # (Hearth's own apps first, KDE's never in their place: the Fedora edition's build writes plasma-ready only when its
-    # check passed). Without that marker they're left out, so Hearth's apps and KDE's both show, as before.
-    if [ ! -e /usr/share/hearth/app-kinds/plasma-ready ]; then
-      dd=""; IFS=:; for d in $XDG_DATA_DIRS; do [ "$d" = /usr/share/hearth/app-kinds ] || dd="${dd:+$dd:}$d"; done; unset IFS
-      export XDG_DATA_DIRS="$dd"
-    fi
+    # Plasma's menus: Hearth Classic's one-app-of-each-kind copies (made for Mantel) are left out. Plasma has its own
+    # (/usr/share/hearth/app-kinds-plasma: Hearth's own apps first, KDE's never in their place), made by the Fedora
+    # edition's build only when they passed its check; without them Hearth's apps and KDE's both show, as before.
+    dd=""; IFS=:; for d in $XDG_DATA_DIRS; do [ "$d" = /usr/share/hearth/app-kinds ] || [ "$d" = /usr/share/hearth/app-kinds-plasma ] || dd="${dd:+$dd:}$d"; done; unset IFS
+    if [ -d /usr/share/hearth/app-kinds-plasma/applications ]; then dd="/usr/share/hearth/app-kinds-plasma:$dd"; fi
+    export XDG_DATA_DIRS="$dd"
     # Fedora names KDE's menu file with a prefix (the 1.14 "applications.menu not found"): Plasma is told which.
     if [ ! -e /etc/xdg/menus/applications.menu ]; then
       for m in /etc/xdg/menus/*-applications.menu; do [ -e "$m" ] && { export XDG_MENU_PREFIX="$(basename "$m" applications.menu)"; break; }; done

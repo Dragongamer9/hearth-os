@@ -1471,14 +1471,19 @@ echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hea
 # its check passes is Plasma told to use the copies (the marker below, read by nimbus-session's run_plasma), so a
 # problem here leaves Plasma's menu as it was. Your own choices (~/.config/mimeapps.list, Default Applications) always
 # come first and are never written here.
+# Plasma's own copies, made apart from Hearth Classic's: in a staging tree (/tmp/hearth-plasma-kinds) holding a copy
+# of the menu entries and of the table with each kind's KDE list reordered, and with Hearth Classic's "own apps" rule
+# (which hides Hearth's apps under KDE) off in that tree only. The real table, Hearth Classic's copies and
+# /etc/hearth/desktops.json are never changed. Only when its check passes do the copies go to
+# /usr/share/hearth/app-kinds-plasma (nimbus-session's run_plasma puts it first for Plasma) and its default apps to
+# /etc/xdg/kde-mimeapps.list; otherwise Plasma stays as before.
 hearth_plasma_apps() {
-  python3 - <<'PY'
-import json
-p = '/usr/share/hearth/app-kinds.json'
+  python3 - "$1" <<'PY'
+import json, os, re, sys
+p = sys.argv[1]
 t = json.load(open(p))
 # Mantel-only entries can't start in this image: the ones still shown only in Mantel (OnlyShowIn=Nimbus alone), and
 # Files and Capture. A pure-Rust port, once in, takes the entry (above) and stops being one.
-import os, re
 mantel_only = set()
 for d in ('/usr/share/applications',):
     for n in os.listdir(d):
@@ -1507,23 +1512,31 @@ for k, kind in t['kinds'].items():
     if new != old:
         apps['KDE'] = new
         changed.append('%s: %s' % (k, ', '.join(new)))
-tmp = p + '.tmp'
-with open(tmp, 'w') as f:
+with open(p, 'w') as f:
     json.dump(t, f, indent=1, ensure_ascii=False)
     f.write('\n')
-import os
-os.replace(tmp, p)
 print('::notice title=Plasma: Hearth first::' + ('; '.join(changed) or 'no change'))
 PY
 }
-rm -f /usr/share/hearth/app-kinds/plasma-ready
-if hearth_plasma_apps && python3 /usr/libexec/hearth-app-kinds apply --root / > /tmp/hearth-app-kinds-plasma.json \
-   && python3 /usr/libexec/hearth-app-kinds check --root / >/dev/null; then
-  : > /usr/share/hearth/app-kinds/plasma-ready
+PK=/tmp/hearth-plasma-kinds
+rm -rf "$PK" /usr/share/hearth/app-kinds-plasma
+mkdir -p "$PK/usr/share/hearth" "$PK/etc/hearth" "$PK/etc/xdg"
+cp -a /usr/share/applications "$PK/usr/share/"
+cp /usr/share/hearth/app-kinds.json "$PK/usr/share/hearth/app-kinds.json"
+echo '{"ownApps": false}' > "$PK/etc/hearth/desktops.json"
+for f in /etc/xdg/kde-mimeapps.list /etc/xdg/kde-xdg-terminals.list; do if [ -f "$f" ]; then cp "$f" "$PK/etc/xdg/"; fi; done
+# Programs (TryExec, the desktops' sessions) are looked for where they really are.
+for d in usr/bin usr/sbin usr/libexec usr/local usr/games bin sbin; do if [ -e "/$d" ]; then ln -sfn "/$d" "$PK/$d"; fi; done
+if hearth_plasma_apps "$PK/usr/share/hearth/app-kinds.json" && python3 /usr/libexec/hearth-app-kinds apply --root "$PK" > /tmp/hearth-app-kinds-plasma.json \
+   && python3 /usr/libexec/hearth-app-kinds check --root "$PK" >/dev/null; then
+  mkdir -p /usr/share/hearth/app-kinds-plasma
+  cp -a "$PK/usr/share/hearth/app-kinds/applications" /usr/share/hearth/app-kinds-plasma/
+  for f in kde-mimeapps.list kde-xdg-terminals.list; do if [ -f "$PK/etc/xdg/$f" ]; then cp "$PK/etc/xdg/$f" "/etc/xdg/$f"; fi; done
   echo "::notice title=Plasma's apps::$(python3 -c 'import json; d=json.load(open("/tmp/hearth-app-kinds-plasma.json")); v=d["desktops"].get("KDE",{}); print(", ".join("%s=%s" % (a, b) for a, b in sorted(v.get("apps",{}).items()) if b))' 2>/dev/null)"
 else
   echo "::warning title=Plasma's apps::hearth-app-kinds didn't pass for Plasma, so Plasma's menu shows both Hearth's and KDE's apps, as before: $(head -c 1500 /tmp/hearth-app-kinds-plasma.json 2>/dev/null | tr '\n' ' ')"
 fi
+rm -rf "$PK"
 # Every Hearth menu entry whose program isn't here or can't start (a missing library) is named, so nothing is missing
 # from Plasma's menu without a reason in the build's notices.
 for f in /usr/share/applications/hearth-*.desktop; do

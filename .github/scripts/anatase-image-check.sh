@@ -52,12 +52,12 @@ check "KDE's own Plasma login entry is aside (Plasma starts from Hearth's sessio
 check "Back to Game Mode is in Plasma's menu and pinned once per account" \
   "grep -qx 'Name=Back to Game Mode' /usr/share/applications/hearth-gamemode.desktop && grep -q 'Exec=nimbus-mode game' /usr/share/applications/hearth-gamemode.desktop && grep -q hearth-gamemode.desktop /usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates/hearth-game-mode-launcher.js"
 # Hearth's apps in Plasma's menu: every Hearth entry, as Plasma's session sees it (Hearth's one-app-of-each-kind copies
-# first when the image made them for Plasma: /usr/share/hearth/app-kinds/plasma-ready), by the desktop-entry rules
+# made for Plasma first: /usr/share/hearth/app-kinds-plasma, when the image has them), by the desktop-entry rules
 # (NoDisplay, Hidden, OnlyShowIn, NotShowIn, TryExec) with its program there. The four Plasma needs must show; every
 # other one is listed as shown or hidden (and why), and the apps the owner named (Nov 18) are a warning when hidden.
 python3 - <<'PY' || fail=1
 import configparser, glob, os, shutil, sys
-dirs = (['/usr/share/hearth/app-kinds/applications'] if os.path.exists('/usr/share/hearth/app-kinds/plasma-ready') else []) + \
+dirs = (['/usr/share/hearth/app-kinds-plasma/applications'] if os.path.isdir('/usr/share/hearth/app-kinds-plasma/applications') else []) + \
     ['/usr/local/share/applications', '/usr/share/applications']
 must = {'hearth-settings.desktop', 'hearth-logs.desktop', 'hearth-send-logs.desktop', 'hearth-gamemode.desktop'}
 named = ['hearth-calculator.desktop', 'hearth-camera.desktop', 'hearth-maps.desktop', 'hearth-write.desktop', 'hearth-sheets.desktop',
