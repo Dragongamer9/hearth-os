@@ -29,7 +29,13 @@ sudo apt-get install -y -qq qemu-system-x86 ovmf >/dev/null
 [ -e /dev/kvm ] && sudo chmod 666 /dev/kvm
 
 # ---- 1. Debian, installed as the offline USB does
-sudo podman pull -q "$DEB" >/dev/null || { ann error "couldn't pull $DEB"; exit 1; }
+pull() {  # pull IMAGE: up to 5 tries (a registry's CDN can drop a download: EOF)
+  local i
+  for i in 1 2 3 4 5; do sudo podman pull -q "$1" >/dev/null && return 0; echo "pull $1 failed (try $i)"; sleep $((i * 15)); done
+  return 1
+}
+pull quay.io/fedora/fedora-bootc:43 || { ann error "couldn't pull quay.io/fedora/fedora-bootc:43 after 5 tries"; exit 1; }
+pull "$DEB" || { ann error "couldn't pull $DEB after 5 tries"; exit 1; }
 echo "::notice title=Switch edition (VM)::Debian: $DEB $(sudo podman run --rm "$DEB" cat /usr/share/nimbus/version 2>/dev/null)"
 sudo skopeo copy -q "containers-storage:$DEB" "oci:$W/oci:hearth" || { ann error "couldn't export $DEB"; exit 1; }
 echo "$DEB" > "$W/oci.ref"
@@ -77,6 +83,7 @@ esp_ok() {  # esp_ok STEP
 job() {  # job NAME SCRIPT-TEXT
   local dep; dep=$(default_dep)
   sudo mkdir -p "$M/r/ostree/deploy/default/var/lib/hearth-ci" "$dep/etc/systemd/system/multi-user.target.wants"
+  sudo test -s "$M/r/ostree/deploy/default/var/lib/hearth-ci/hearth-admin" || ann warning "job $1: hearth-admin isn't in /var/lib/hearth-ci"
   # Everything the job says goes to the serial console with "HCI| " in front (GRUB's own console text has none) and
   # to /var/lib/hearth-ci/NAME.log, which the host reads after the start (job_log).
   printf '%s\n' "#!/bin/bash" "exec > >(tee /var/lib/hearth-ci/$1.log | sed -u 's/^/HCI| /' > /dev/ttyS0) 2>&1" "$2" "echo HEARTH-CI-$1-END; sleep 2; systemctl poweroff" | sudo tee "$M/r/ostree/deploy/default/var/lib/hearth-ci/$1.sh" >/dev/null
@@ -118,10 +125,15 @@ jobsaid() { tr -d '\r' < "$OUT/$1-serial.log" | sed -n 's/^.*HCI| //p'; }
 # Step 1's job: say what started. Step 2's: switch with this branch's hearth-admin, from the local copy of the image.
 mount_disk
 look 1-installed
-sudo cp "$REPO/os/system_files/usr/libexec/nimbus/hearth-admin" "$M/r/ostree/deploy/default/var/lib/hearth-ci-admin"
-sudo mkdir -p "$M/r/ostree/deploy/default/var/lib/hearth-ci"
-sudo mv "$M/r/ostree/deploy/default/var/lib/hearth-ci-admin" "$M/r/ostree/deploy/default/var/lib/hearth-ci/hearth-admin"
-echo "export Anatase"; sudo skopeo copy -q "containers-storage:$ANA" "oci:$M/r/ostree/deploy/default/var/lib/hearth-ci/anatase:img" || fail "couldn't put the Anatase image on the disk"
+# (A fresh install's /var has no lib/ yet: tmpfiles makes it at the first start. So the folder first, then the copy,
+# and the build stops here if it isn't there: run 44255858138 copied nothing and the switch never ran.)
+CI=$M/r/ostree/deploy/default/var/lib/hearth-ci
+sudo mkdir -p "$CI"
+sudo install -m 755 "$REPO/os/system_files/usr/libexec/nimbus/hearth-admin" "$CI/hearth-admin"
+sudo python3 -m py_compile "$CI/hearth-admin" 2>/dev/null; sudo rm -rf "$CI/__pycache__"
+sudo test -s "$CI/hearth-admin" || { ann error "couldn't put this branch's hearth-admin on the VM's disk ($CI)"; umount_disk; exit 1; }
+echo "export Anatase"; sudo skopeo copy -q "containers-storage:$ANA" "oci:$CI/anatase:img" || fail "couldn't put the Anatase image on the disk"
+sudo test -f "$CI/anatase/index.json" || { ann error "the Anatase image isn't on the VM's disk"; umount_disk; exit 1; }
 DEB_DEP=$(job switch-to-anatase '
 echo "HEARTH-CI-edition $(python3 -c "import json; print(json.load(open(\"/usr/share/nimbus/image-info.json\"))[\"base\"])")"
 echo "HEARTH-CI-booted $(ostree admin status | sed -n "s/^\* \S* \([0-9a-f]*\.[0-9]*\).*/\1/p")"
