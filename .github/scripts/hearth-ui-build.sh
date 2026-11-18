@@ -6,7 +6,9 @@ set -eu
 DNF=$(command -v dnf5 || command -v dnf)
 $DNF -y install gcc pkgconf-pkg-config rust cargo libxkbcommon-devel wayland-devel fontconfig-devel freetype-devel >/dev/null
 echo "::notice title=Hearth's pure-Rust apps build::$(rustc --version) · $(. /etc/os-release; echo "$PRETTY_NAME")"
-mkdir -p /tmp/w/hosts/linux/desktop/theme
+mkdir -p /tmp/w/hosts/linux/desktop/theme /tmp/w/cargo
+# A bootc base's /root is a link to /var/roothome, which isn't there in a plain container: cargo's home goes to /tmp.
+export HOME=/tmp/w CARGO_HOME=/tmp/w/cargo
 # hearth-ui includes hearth-core's settings_file.rs by path, and carries palettes.json as its built-in look.
 cp -a /src/hosts/hearth-ui /src/hosts/hearth-core /tmp/w/hosts/
 cp /src/hosts/linux/desktop/theme/palettes.json /tmp/w/hosts/linux/desktop/theme/
