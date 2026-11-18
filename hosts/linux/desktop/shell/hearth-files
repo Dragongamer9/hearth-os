@@ -141,7 +141,7 @@ class Fail(Exception):
 # hearth_files_extras.py's commands (its run() does them).
 EXTRA_COMMANDS = ('tags', 'tag-set', 'tag-list', 'tag-find', 'git-status', 'iso-mount', 'iso-unmount', 'portable', 'portable-mount',
                   'portable-unmount', 'service-menus', 'service-run', 'sharing', 'share', 'recent-prefs', 'recent-prefs-set',
-                  'recent-forget', 'activity-mark', 'activity-tidy', 'chmod-tree', 'groups', 'chgrp')
+                  'recent-forget', 'activity-mark', 'activity-tidy', 'chmod-tree', 'groups', 'chgrp', 'tv-list', 'tv-send')
 
 
 class Cancelled(Exception):

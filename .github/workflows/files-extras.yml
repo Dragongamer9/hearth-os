@@ -84,6 +84,11 @@ jobs:
           mkdir -p /tmp/fakebin
           printf '#!/bin/sh\nif [ "$1 $2" = "mount -li" ]; then cat <<EOF\nVolume(0): Pixel 8\n  activation_root=mtp://Google_Pixel_8_3A2B/\nVolume(1): Canon EOS R10\n  activation_root=gphoto2://Canon_Inc._Canon_Digital_Camera/\nEOF\nexit 0; fi\nexec /usr/bin/gio "$@"\n' > /tmp/fakebin/gio
           chmod +x /tmp/fakebin/gio
+          # Send to TV (docs/HEARTH-TV.md): one Hearth TV paired with this PC, as hearth-send-to-tv lists it (only that
+          # answer is pretend; the real one asks Hearth Link, proven by hearth-link.yml's e2e), and a video to send.
+          printf '#!/usr/bin/env python3\nimport json, sys\nprint(json.dumps({"tvs": [{"id": "tv1", "name": "Living room TV", "online": True}]} if "--list" in sys.argv else {"sent": True, "tv": "Living room TV"}))\n' > /tmp/fakebin/hearth-send-to-tv
+          chmod +x /tmp/fakebin/hearth-send-to-tv
+          mkdir -p "$HOME/Videos" && head -c 1048576 /dev/urandom > "$HOME/Videos/Holiday 2026.mp4" && echo x > "$HOME/Videos/Packing list.txt"
           export PATH=/tmp/fakebin:$PATH
           # Recent files (Settings › Privacy › Recent files lists the apps that opened them).
           export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
@@ -112,6 +117,11 @@ jobs:
           ipc files open "$R"; ipc filemanager view grid; ipc filemanager select README.md; sleep 2; grim shots/files-x4-git.png || true
           # 5: a disc image's menu (Open as a drive)
           ipc files open "$HOME/Downloads"; ipc filemanager select debian-13-netinst.iso; sleep 1; ipc filemanager fullmenu; grim shots/files-x5-iso-menu.png || true; ipc filemanager close
+          # 11: right-click a video › Send to TV (Living room TV); then sending it
+          ipc files open "$HOME/Videos"; ipc filemanager view details; ipc filemanager select "Holiday 2026.mp4"; sleep 3; ipc filemanager menu; grim shots/files-x11-send-to-tv.png || true; ipc filemanager close
+          python3 hosts/linux/desktop/shell/hearth-files tv-list > shots/tv-list.json 2>&1 || true
+          python3 hosts/linux/desktop/shell/hearth-files tv-send "$HOME/Videos/Holiday 2026.mp4" tv1 > shots/tv-send.json 2>&1 || true
+          echo "::notice title=Send to TV from Hearth Files::tv-list $(cut -c1-200 shots/tv-list.json) · tv-send $(cut -c1-200 shots/tv-send.json)"
           # 6: Act as administrator in a system folder
           ipc files open /etc; ipc filemanager admin on; sleep 2; grim shots/files-x6-admin.png || true; ipc filemanager admin off
           ipc files close
@@ -126,7 +136,7 @@ jobs:
           python3 hosts/linux/desktop/shell/hearth-files git-status "$R" > shots/git-status.json 2>&1 || true
           python3 hosts/linux/desktop/shell/hearth-files tag-list > shots/tag-list.json 2>&1 || true
           python3 hosts/linux/desktop/shell/hearth-files portable > shots/portable.json 2>&1 || true
-          grep -E "(FileManager|FileProperties|FilesExtras|FilesMarks|FilesIpc|SetRecentFiles)\.qml" "$LOG" > shots/shell-errors.txt 2>/dev/null || true
+          grep -E "(FileManager|FileProperties|FilesExtras|FilesMarks|FilesIpc|SetRecentFiles|Clipboard)\.qml" "$LOG" > shots/shell-errors.txt 2>/dev/null || true
           cp "$LOG" shots/shell.log 2>/dev/null || true
           if grep -qE "(TypeError|ReferenceError|Cannot assign|non-existent|is not a type|is not defined|Unable to assign|Cannot read|Expected token|Type .* unavailable)" shots/shell-errors.txt; then
             echo "::error title=Files extras pages::$(sort -u shots/shell-errors.txt | head -8 | cut -c1-240 | tr '\n' '|')"; touch shots/FAILED
@@ -175,3 +185,16 @@ jobs:
       - run: sh hosts/hearth-connect/tests/post-shot.sh files-x8-permissions shots/files-x8-permissions.png
       - run: sh hosts/hearth-connect/tests/post-shot.sh files-x9-sharing shots/files-x9-sharing.png
       - run: sh hosts/hearth-connect/tests/post-shot.sh files-x10-recent-privacy shots/files-x10-recent-privacy.png
+
+  post-3:
+    name: Picture 11 (Send to TV)
+    needs: shots
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with: { name: files-extras-shots, path: shots }
+        continue-on-error: true
+      - run: sudo apt-get install -y -qq imagemagick >/dev/null 2>&1 || true
+      - run: sh hosts/hearth-connect/tests/post-shot.sh files-x11-send-to-tv shots/files-x11-send-to-tv.png

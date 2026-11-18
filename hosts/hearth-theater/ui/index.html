@@ -257,6 +257,7 @@ function options(id) {
   const d = dialog(`<h2>${esc(s.name)}</h2><p class="muted" style="margin-top:-.4em">${esc(s.url)}</p><div class="menu-list">
     <button class="btn f" data-o="watch" data-autofocus>${icon('play')}Watch</button>
     <button class="btn f" data-o="fav">${ic('star')}${s.favorite ? 'Remove from favorites' : 'Add to favorites'}</button>
+    ${tvButtons()}
     <button class="btn f" data-o="catalog">${icon('refresh')}Refresh now (read its titles again)</button>
     <button class="btn f" data-o="rows">${icon('list')}Show or hide its rows</button>
     <button class="btn f" data-o="edit">${icon('edit')}Edit name, link or shelf</button>
@@ -266,6 +267,7 @@ function options(id) {
     const o = e.target.closest('[data-o]')?.dataset.o; if (!o) return;
     closeDialog();
     if (o === 'watch') watch(id);
+    else if (o.startsWith('tv')) sendTv(+o.slice(2), { url: s.url, title: s.name });
     else if (o === 'fav') toggleFav(id);
     else if (o === 'edit') editor(s);
     else if (o === 'catalog') readCatalog(id, true);
@@ -339,12 +341,13 @@ function titleOptions(k) {
   const s = site(c.site), fav = titleOf(c.site, c.item.url)?.favorite;
   const d = dialog(`<h2>${esc(c.item.title)}</h2><p class="muted" style="margin-top:-.4em">${esc(s ? s.name : '')}${c.item.desc ? ' · ' + esc(c.item.desc) : ''}</p><div class="menu-list">
     <button class="btn f" data-o="watch" data-autofocus>${icon('play')}Watch</button>
+    ${tvButtons()}
     <button class="btn f" data-o="fav">${ic('star')}${fav ? 'Remove from favorites' : 'Add to favorites'}</button>
     ${s ? `<button class="btn f" data-o="site">${ic('tv')}Open ${esc(s.name)}</button><button class="btn f" data-o="opts">${ic('dots')}${esc(s.name)}'s options</button>` : ''}</div>`);
   d.addEventListener('click', e => {
     const o = e.target.closest('[data-o]')?.dataset.o; if (!o) return;
     closeDialog();
-    if (o === 'watch') watchTitle(k); else if (o === 'fav') favTitle(k);
+    if (o === 'watch') watchTitle(k); else if (o.startsWith('tv')) sendTv(+o.slice(2), sendTitle(c)); else if (o === 'fav') favTitle(k);
     else if (o === 'site') watch(c.site); else if (o === 'opts') options(c.site);
   });
 }
@@ -518,6 +521,21 @@ async function jellyfinConnect(srv) {
 // Your sites, favorites, Continue, hidden rows and shelves follow you to every Hearth device: through your home server
 // over Tailscale (Hearth Link), the newest change winning per site and title, never a sign-in or a cookie. On unless
 // you turn it off (here, on any device).
+// Send to TV (docs/HEARTH-TV.md): a site or a title plays on a Hearth TV paired with this PC, through Hearth Link. A
+// title of a Jellyfin site goes as its id, so the TV opens it in its own My Media.
+let TVS = [];
+async function loadTvs() { try { TVS = ((await invoke('tv_list')).tvs || []).slice(0, 4); } catch { TVS = []; } }
+const tvButtons = () => TVS.map((t, i) => `<button class="btn f" data-o="tv${i}">${ic('tv')}Send to TV (${esc(t.name)})</button>`).join('');
+async function sendTv(i, what) {
+  const t = TVS[i]; if (!t) return;
+  toast(`Sending it to ${t.name}…`);
+  try { const r = await invoke('send_tv', Object.assign({ tv: t.id }, what)); toast(`Playing on ${r.tv || t.name}`); } catch (e) { toast(String(e)); }
+}
+function sendTitle(c) {
+  const s = site(c.site), id = s && s.kind === 'jellyfin' ? (/#\/details\?id=([0-9a-fA-F]{8,64})/.exec(c.item.url || '') || [])[1] : '';
+  return id ? { media: id, title: c.item.title } : { url: c.item.url, title: c.item.title };
+}
+
 let SYNC = null;
 let JF = {};   // connected Jellyfin sites here: id → who Theater is signed in as (a synced one connects once per device)
 const ago = t => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} h ago` : new Date(t).toLocaleDateString(); };
@@ -597,6 +615,7 @@ document.addEventListener('paste', e => {
   } catch { /* preview in a plain browser */ }
   render();
   loadSync();
+  loadTvs();
   // Re-draws wait while a dialog is open or you're typing a search, so focus isn't pulled away.
   const later = () => { if (!H.dialogOpen() && TAB !== 'Search') render(); };
   if (H.T?.event) {

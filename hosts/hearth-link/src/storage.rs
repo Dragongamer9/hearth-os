@@ -546,7 +546,7 @@ pub fn mime(name: &str) -> &'static str {
 pub fn is_media(name: &str) -> bool { let m = mime(name); m.starts_with("video/") || m.starts_with("audio/") }
 
 /// Reads `len` bytes from `off` as chunk frames (item 0, chunk = piece number), then done (or an error frame).
-fn read_range(path: PathBuf, off: u64, len: u64, tx: tokio::sync::mpsc::Sender<bytes::Bytes>) {
+pub(crate) fn read_range(path: PathBuf, off: u64, len: u64, tx: tokio::sync::mpsc::Sender<bytes::Bytes>) {
     use std::os::unix::fs::FileExt;
     let fail = |m: &str| { let _ = tx.blocking_send(bytes::Bytes::from(wire::control_frame(wire::T_ERROR, m))); };
     let f = match std::fs::File::open(&path) { Ok(f) => f, Err(_) => return fail("That file can't be read") };
@@ -1082,7 +1082,7 @@ impl Node {
     }
 
     /// The local web server for media links (127.0.0.1 only), started the first time one is made.
-    async fn storage_http(self: &Arc<Self>) -> Result<u16, String> {
+    pub(crate) async fn storage_http(self: &Arc<Self>) -> Result<u16, String> {
         let mut p = self.storage.http_port.lock().await;
         if let Some(port) = *p { return Ok(port); }
         let l = tokio::net::TcpListener::bind(("127.0.0.1", 0)).await.map_err(|e| e.to_string())?;
@@ -1151,6 +1151,8 @@ impl Node {
 
     /// Bytes of a shared file on a server (storage.read).
     pub async fn read_remote(self: &Arc<Self>, server: &str, share: &str, path: &str, off: u64, len: u64) -> Result<Vec<u8>, String> {
+        // A file a PC sent to this TV (tv.rs): read from that PC by its token.
+        if share == crate::tv::SHARE { return self.read_remote_req(server, &json!({"op": "tv.read", "token": path, "offset": off, "len": len}), len).await; }
         self.read_remote_req(server, &json!({"op": "storage.read", "share": share, "path": path, "offset": off, "len": len}), len).await
     }
 
