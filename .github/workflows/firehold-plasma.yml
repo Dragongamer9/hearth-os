@@ -8,11 +8,16 @@
 #      ci/firehold-plasma-shots-<branch>; QML errors from Firehold's files fail the run.
 #   3. at rest (.github/scripts/firehold-plasma-idle.sh): ten minutes of plain Plasma and Firehold's Couch side by side;
 #      fails on Firehold using much more processor time than plain Plasma or its memory growing.
-# Failures are ::error:: annotations (logs can't always be read). By hand only.
+# Failures are ::error:: annotations (logs can't always be read). On pushes to its own branch (a workflow can only be
+# started by hand once it's on the default branch), and by hand.
 name: Firehold on Plasma
 
 on:
   workflow_dispatch:
+  push:
+    branches: ['feature/firehold-plasma']
+    paths: ['hosts/linux/desktop/firehold-plasma/**', '.github/workflows/firehold-plasma.yml', '.github/scripts/firehold-plasma-*.sh',
+            'hosts/linux/test/test_firehold_plasma.py', 'docs/mockups/checklists/firehold-plasma.md']
 
 permissions:
   contents: write    # the screenshots branch
