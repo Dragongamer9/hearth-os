@@ -58,7 +58,9 @@ whatever app is on).
   device). Right-click a link in Hearth Browser › **Send to TV** (on a video, the video; elsewhere, the page); in
   Hearth Files right-click a video or a song › **Send to TV**; in Mantel's clipboard, a copied link's More ›
   **Send to TV**; in Hearth Theater, a site's or a title's options › **Send to TV** (a Jellyfin title goes as its id
-  and opens in the TV's own My Media). With more than one TV, each is listed. All of them use
+  and opens in the TV's own My Media). Under KDE Plasma (Anatase, no Mantel): Dolphin's right-click on a video or a
+  song › **Send to TV** (`/usr/share/kio/servicemenus/hearth-send-to-tv.desktop`); Hearth Browser and Hearth Theater
+  work the same there. With more than one TV, each is listed (Dolphin asks which with kdialog). All of them use
   `hearth-send-to-tv` (`os/system_files/usr/bin`), which asks Hearth Link (`tv.list`, `tv.send`;
   `hosts/hearth-link/src/tv.rs`).
 - A **link** is saved in the TV's Theater and played. A **video or music file** stays on the PC: it's shared with that

@@ -6,9 +6,10 @@ with this PC, through Hearth Link (hosts/hearth-link/src/tv.rs).
   hearth-send-to-tv [--tv ID] --media ID --type show|movie|episode [--title TITLE]
   hearth-send-to-tv --list                                  your TVs, as JSON: {"tvs": [{id, name, online}]}
 
-Used by Hearth Browser (right-click a link › Send to TV), Hearth Files, Hearth Theater and Capture's Share panel.
+Used by Hearth Browser (right-click a link › Send to TV), Hearth Files, Mantel's clipboard, Hearth Theater and, under
+KDE Plasma (Anatase), Dolphin's right-click › Send to TV (/usr/share/kio/servicemenus/hearth-send-to-tv.desktop).
 --json prints the answer instead of showing a notification. With more than one TV and no
---tv it says which TVs there are (the callers show them as a list to pick from). Nothing is saved.
+--tv it asks which (kdialog or zenity), or with --json says which TVs there are. Nothing is saved.
 """
 import json
 import os
@@ -71,6 +72,33 @@ def notify(title, body, error=False):
         pass
 
 
+def pick_tv():
+    """With more than one TV (Dolphin's Send to TV under Plasma, Open with): asks which, with kdialog or zenity."""
+    try:
+        tvs = call('tv.list', {}, 10).get('tvs', [])
+    except RuntimeError:
+        return None
+    if len(tvs) < 2:
+        return None
+    import shutil
+    try:
+        if shutil.which('kdialog'):
+            args = ['kdialog', '--title', 'Send to TV', '--menu', 'Play it on']
+            for t in tvs:
+                args += [t['id'], t['name']]
+            r = subprocess.run(args, capture_output=True, text=True)
+            return r.stdout.strip() or None if r.returncode == 0 else 'cancel'
+        if shutil.which('zenity'):
+            args = ['zenity', '--list', '--title=Send to TV', '--text=Play it on', '--column=id', '--column=TV', '--hide-column=1', '--print-column=1']
+            for t in tvs:
+                args += [t['id'], t['name']]
+            r = subprocess.run(args, capture_output=True, text=True)
+            return r.stdout.strip() or None if r.returncode == 0 else 'cancel'
+    except OSError:
+        return None
+    return None
+
+
 def main(argv):
     out_json = '--json' in argv
     quiet = '--quiet' in argv
@@ -108,6 +136,12 @@ def main(argv):
             send['peer'] = opts['tv']
         if opts.get('title'):
             send['title'] = opts['title']
+        if not send.get('peer') and not out_json:
+            send['peer'] = pick_tv() or ''
+            if not send['peer']:
+                del send['peer']
+        if send.get('peer') == 'cancel':
+            return 0
         r = call('tv.send', send)
         if out_json:
             print(json.dumps(r))

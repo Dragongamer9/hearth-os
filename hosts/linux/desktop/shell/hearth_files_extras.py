@@ -520,7 +520,8 @@ def service_menus(hf, paths):
             continue
         for name in names:
             f = os.path.join(d, name)
-            if not name.endswith('.desktop') or name in seen:
+            # Hearth's own Send to TV for Dolphin: Hearth Files has its own entry (one per TV).
+            if not name.endswith('.desktop') or name in seen or name == 'hearth-send-to-tv.desktop':
                 continue
             # Like KDE (5.85 and later): a service menu you added yourself only counts once it's marked as a program.
             if hf.under(os.path.realpath(f), user_dir) and not os.access(f, os.X_OK):

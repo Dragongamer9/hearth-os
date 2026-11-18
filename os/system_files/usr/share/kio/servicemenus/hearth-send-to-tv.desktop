@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Service
+MimeType=video/*;audio/*;
+Actions=sendToTv;
+X-KDE-Priority=TopLevel
+X-KDE-StartupNotify=false
+
+# Send to TV (docs/HEARTH-TV.md) in KDE Plasma's Dolphin: right-click a video or a song › Send to TV plays it on a
+# Hearth TV paired with this PC, through Hearth Link. Hearth Files has its own entry, so it skips this one.
+[Desktop Action sendToTv]
+Name=Send to TV
+Icon=video-display
+Exec=hearth-send-to-tv %f
