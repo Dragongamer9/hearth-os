@@ -281,11 +281,19 @@ if ! command -v kwin_wayland >/dev/null; then
 fi
 # Hearth's own window frames under KWin are an Aurorae theme (theme/hearth_aurorae.py writes it): without Aurorae KWin
 # falls back to Breeze's frames (still works, just not Hearth's look).
-# Debian packages it as kwin-style-aurorae (the source is aurorae).
+# Debian packages it as kwin-style-aurorae (the source is aurorae) from Plasma 6.4; trixie's KWin 6.3 still has it in
+# kwin-common, with the Overview's and Desktop grid's QML (org.kde.kwin.private.effects: kwin-test.yml's
+# debian-kwin-parts found it there). kwin-wayland only recommends kwin-common, so --no-install-recommends left it out:
+# on 1.14 KWin said "Could not locate decoration plugin org.kde.kwin.aurorae" and "Failed to load overview" (the
+# owner's laptop and ROG Ally, Nov 17). Optional: KWin runs without it, as it did.
+pkg_cost kwin-common
+optional kwin-common
 if have_pkg kwin-style-aurorae; then optional kwin-style-aurorae; else optional aurorae; fi
-[ -n "$(ls /usr/lib/*/qt6/plugins/org.kde.kdecoration2/*aurorae* /usr/lib/qt6/plugins/org.kde.kdecoration2/*aurorae* 2>/dev/null)" ] \
+[ -n "$(ls /usr/lib/*/qt6/plugins/org.kde.kdecoration3/*aurorae* /usr/lib/*/qt6/plugins/org.kde.kdecoration2/*aurorae* /usr/lib/qt6/plugins/org.kde.kdecoration*/*aurorae* 2>/dev/null)" ] \
   || echo "::warning title=KWin::Aurorae isn't installed: KWin's window frames fall back to Breeze instead of Hearth's"
 optional kglobalacceld xdg-desktop-portal-kde
+[ -d "$(ls -d /usr/lib/*/qt6/qml/org/kde/kwin/private/effects 2>/dev/null | head -1)" ] \
+  || echo "::warning title=KWin::the Overview's QML (org.kde.kwin.private.effects, kwin-common) isn't installed: Task view and the Desktop grid won't open"
 # KWin's Overview and Desktop grid (Mantel's Task view button, Super+W, View + Y) load Milou's search QML
 # (org.kde.milou): without it they don't open (Present windows still does).
 optional milou
