@@ -39,6 +39,12 @@ def main(pic, status, theme=None):
     # The title bar's plain left part (the title is in the middle, the buttons on the right), under the accent line.
     x0, x1 = w['x'] + 12, w['x'] + min(120, w['w'] // 4)
     y0, y1 = w['y'] + 8, w['y'] + 26
+    if d.get('frames') == 'firehold':
+        # Firehold's own title bars (frames.rs, while Mantel's Desk is up): firehold.js's panel2, the title on the
+        # left from 16 px, so the plain strip above it (past the rounded corner).
+        want = (0x17, 0x11, 0x0e)
+        x0, x1 = w['x'] + 20, w['x'] + min(140, w['w'] // 3)
+        y0, y1 = w['y'] + 2, w['y'] + 7
     box = lambda y0, y1: tuple(round(v * scale) for v in (x0 - out['x'], y0 - out['y'], x1 - out['x'], y1 - out['y']))
     up = ImageStat.Stat(im.crop(box(y0, y1))).mean
     H = out['h']

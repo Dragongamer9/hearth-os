@@ -71,14 +71,38 @@ Everything Mantel and Hearth use today on labwc or KWin, and where each stands. 
 | wlr-output-management | wlr-randr, Settings › Display (resolution, refresh, scale, rotation) | **phase 2** (v4): modes, position, rotation, scale; make, model and serial from the screen's EDID; nothing saved by the compositor (Settings saves display.sh); turning a screen off is refused for now |
 | gamma control, or Hearth's own night light and colour filters | Night light (wlsunset), hearth-gamma (inverted colours) | **phase 2**: wlr-gamma-control on real screens (the card's colour ramp; one app per screen, as on labwc; back to normal when it lets go); nested there's no ramp (apps are told "failed"). Hearth's own built-in filters: stage 3 |
 | screencast for the portal (PipeWire) | screen sharing in Discord, browsers, OBS | stage 3: the path is there (xdg-desktop-portal-wlr's screencast uses wlr-screencopy with damage, now offered); the portal's config for Firehold and dmabuf copies come with it |
-| tearing-control | games that want no vsync | **phase 2**: offered and the hint kept per surface; frames still wait for the screen until Smithay can flip asynchronously (0.7 can't): stage 3 |
+| tearing-control | games that want no vsync | **phase 3** (1.15): offered and the hint kept per surface; the Guide's **Allow tearing** (per game, off by default) lets the fullscreen game draw without waiting for the screen (its frame callbacks and FIFO barrier as soon as it hands in a frame; the newest frame is shown at each refresh). A real mid-scan flip waits for a Smithay that can flip asynchronously (0.7 can't) |
 | VRR (FreeSync / G-Sync) | games | **game rows**: on for a screen while a fullscreen game is on it (per game, on by default), only on screens that switch without a modeset; see "Games: the Guide's rows" |
 | Frame limit, resolution scaling, direct scanout | the Guide over a game (mockup 3) | **game rows**: see "Games: the Guide's rows" |
 | multi-GPU, Nvidia | gaming laptops, the owner's RTX 5070 PC | from Anvil (it renders on one GPU and copies to the others); needs proving on Nvidia: stage 3 |
 | HDR and colour management | HDR screens | stage 4 (Smithay's support is still young) |
 | multi-seat (hearth-seats: a second player's own screen, keyboard and pad) | Couch co-op | stage 4 (stays on labwc until then) |
-| workspaces / desktops | Super+Ctrl+Left/Right, Mantel's switcher | stage 3 |
-| window previews and Alt+Tab with pictures | Mantel's switcher | stage 3 (Alt/Super+Tab cycles windows in phase 1) |
+| workspaces / desktops | Super+Ctrl+Left/Right, Mantel's desktop buttons, the pager, the search's desktops plugin | **phase 3** (1.15): rc.xml's `<desktops>` (names and number), GoToDesktop / SendToDesktop keys, and through Mantel's window IPC: go, move a window, add, remove, rename. Windows on the other desktops step aside (like minimized ones) and stay on the taskbar; activating one goes to its desktop |
+| window previews and Alt+Tab with pictures | Everything open's cards, the dock | **phase 3** (1.15): a picture of one window (its frame included, nothing over it), as a PNG in `$XDG_RUNTIME_DIR`, through the window IPC's `shot` (Everything open takes them every 3 s while it's up; the dock's and the taskbar's hover label shows the app's windows' pictures, WinPreviewTip.qml) |
+| Mantel's window list with ids, frames, stacking and desktops | WinList (what KWin's hearthwindows script gives on KWin) | **phase 3** (1.15): the window IPC below |
+| Firehold's own title bars (mockup 2) | the Desk | **phase 3** (1.15): drawn by the compositor itself while Mantel's Desk is up (`frames.rs`, `shell/ssd.rs`), named by Mantel |
+
+## Mantel's window IPC (1.15)
+
+`$XDG_RUNTIME_DIR/firehold-wm-<wayland socket>.sock` (`ipc.rs`): one JSON object a line both ways. Mantel's side is
+`desktop/shell/hearth-firehold-bridge serve --stdio`, which WinList.qml runs under `HEARTH_WM=firehold` exactly as it
+runs hearth-kwin-bridge on KWin, so the taskbar, the dock, the pager, the desktop buttons, Everything open and the rest
+work the same on both. Until the bridge talks (or if it stops) WinList keeps the taskbar protocol (wlr-foreign-toplevel),
+as before. `firehold-comp ctl COMMAND` sends one command by hand (tests).
+
+- `watch`: the window list whenever it changes: `{"t": "windows", "windows": [{id, appId, title, activated, minimized,
+  maximized, fullscreen, desktops, output, pid, frame: {x, y, w, h}, ssd, stack}], "active", "desktops": [{name,
+  active}], "stack": [ids, top first], "frames"}`.
+- `activate`, `close`, `minimize`, `maximize`, `fullscreen`, `snap` (left-half, right-half, maximize), `desktop` (a
+  window to desktop n), `goDesktop`, `addDesktop`, `removeDesktop`, `renameDesktop`.
+- `shot {id, path, max}`: the window's picture, answered `{"t": "shot", ...}` after the next frame. Only into
+  `$XDG_RUNTIME_DIR`, only `.png`, never while the screen is locked.
+- `frames {style: "firehold", names, colours}`: Firehold's own title bars (FireholdFramesComp.qml sends it while the Desk
+  is up). They go back to Hearth's plain frames when Mantel says so or its connection ends; nothing is saved.
+
+Nothing of it can stop Firehold from starting: a socket that can't be made is logged and skipped. Screen scales are
+snapped to the 1/120ths apps are told in (wlr-randr's 2.1 arrives as 2.09765625; without it every app was stretched
+by a hair and looked soft).
 
 ## The lock screen (phase 2)
 

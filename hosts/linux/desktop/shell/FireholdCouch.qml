@@ -5,6 +5,7 @@
 // too, and moving the mouse is Desk (Automatic).
 import QtQuick
 import QtQuick.Shapes
+import QtQuick.Window
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -362,7 +363,7 @@ PanelWindow {
             Item {
                 id: art
                 x: parent.width - 60 * cw.k - width; y: 50 * cw.k; width: 640 * cw.k; height: 340 * cw.k
-                FhArt { id: heroArt; anchors.fill: parent; radius: 18 * cw.k; source: hero.game ? (hero.game.wide || hero.game.hero || hero.game.cover || "") : "" }
+                FhArt { id: heroArt; anchors.fill: parent; radius: 18 * cw.k; source: F.wideArt(hero.game, width * Screen.devicePixelRatio) }
                 Shape {
                     anchors.fill: parent; visible: !heroArt.ready
                     ShapePath {
@@ -429,7 +430,7 @@ PanelWindow {
                         Rectangle {
                             width: parent.width; height: 128 * cw.k; radius: 14 * cw.k; color: F.toneFor(rc.modelData.id)
                             border.width: rc.ring ? 3 * cw.k : 0; border.color: cw.pal.accent
-                            FhArt { anchors.fill: parent; anchors.margins: rc.ring ? 3 * cw.k : 0; radius: 12 * cw.k; source: rc.modelData.wide || rc.modelData.hero || "" }
+                            FhArt { anchors.fill: parent; anchors.margins: rc.ring ? 3 * cw.k : 0; radius: 12 * cw.k; source: F.wideArt(rc.modelData, width * Screen.devicePixelRatio) }
                             Rectangle {
                                 visible: !!(rc.modelData.wide || rc.modelData.hero)
                                 anchors { left: parent.left; bottom: parent.bottom; margins: 6 * cw.k }
@@ -470,7 +471,8 @@ PanelWindow {
                             x: 22 * cw.k; anchors.verticalCenter: parent.verticalCenter; width: 40 * cw.k; height: width; radius: 10 * cw.k
                             color: oc.modelData.kind === "game" ? "#5b2b1a" : F.WINDOW_CARDS[oc.index % F.WINDOW_CARDS.length]
                             Image {
-                                anchors.centerIn: parent; width: 26 * cw.k; height: width; sourceSize.width: width; asynchronous: true
+                                anchors.centerIn: parent; width: 26 * cw.k; height: width; asynchronous: true; smooth: true; mipmap: true
+                                sourceSize.width: Math.ceil(width * Screen.devicePixelRatio); sourceSize.height: Math.ceil(height * Screen.devicePixelRatio)
                                 source: AppIcons.find("", oc.modelData.win ? oc.modelData.win.appId : "")
                                 visible: status === Image.Ready
                             }
@@ -604,7 +606,8 @@ PanelWindow {
                 width: parent.width; height: 170 * tg.kk; radius: 16 * tg.kk; color: F.C.glass
                 border.width: at.ring ? 3 * tg.kk : 1; border.color: at.ring ? F.C.accent : F.C.line
                 Image {
-                    anchors.centerIn: parent; width: 88 * tg.kk; height: width; sourceSize.width: width; asynchronous: true
+                    anchors.centerIn: parent; width: 88 * tg.kk; height: width; asynchronous: true; smooth: true; mipmap: true
+                    sourceSize.width: Math.ceil(width * Screen.devicePixelRatio); sourceSize.height: Math.ceil(height * Screen.devicePixelRatio)
                     source: at.modelData.iconUrl || AppIcons.find(at.modelData.icon || "", at.modelData.id || "")
                 }
                 TapHandler { onTapped: { tg.currentIndex = at.index; tg.owner.zone = "grid"; tg.activate(at.index); } }

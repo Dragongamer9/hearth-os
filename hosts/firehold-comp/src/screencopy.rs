@@ -19,7 +19,7 @@ use smithay::{
         allocator::Fourcc,
         renderer::{
             damage::OutputDamageTracker, gles::GlesRenderbuffer, Bind, ExportMem, ImportAll, ImportMem,
-            Offscreen, Renderer, TextureMapping,
+            Offscreen, Renderer, Texture, TextureMapping,
         },
     },
     desktop::Space,
@@ -49,6 +49,7 @@ use smithay::{
     },
     utils::{Physical, Rectangle, Size, Transform},
 };
+use smithay::utils::IsAlive;
 use tracing::{debug, warn};
 
 use crate::{
@@ -88,6 +89,22 @@ pub struct CaptureState {
     /// Pictures taken since the start, through each protocol (the status file: tests check apps really got them).
     pub taken_wlr: u64,
     pub taken_ext: u64,
+    /// One window's picture asked for over Mantel's window IPC (ipc.rs: Everything open's cards, the dock's
+    /// previews), drawn after the next frame of any screen; done ones wait for ipc.rs to send them.
+    pub window_shots: Vec<WindowShot>,
+    pub shots_done: Vec<(u64, serde_json::Value)>,
+    pub taken_windows: u64,
+}
+
+/// A window's picture to take: written as a PNG to `path` (in $XDG_RUNTIME_DIR), at most `max` pixels wide.
+#[derive(Debug, Clone)]
+pub struct WindowShot {
+    pub window: WindowElement,
+    pub id: u64,
+    pub path: std::path::PathBuf,
+    pub max: i32,
+    /// The IPC connection that asked.
+    pub watcher: u64,
 }
 
 impl CaptureState {
@@ -108,7 +125,7 @@ impl CaptureState {
     }
 
     pub fn wants(&self, output: &Output) -> bool {
-        self.pending.iter().any(|p| &p.output == output)
+        !self.window_shots.is_empty() || self.pending.iter().any(|p| &p.output == output)
     }
 }
 
@@ -175,6 +192,75 @@ where
     Ok((size, out))
 }
 
+/// One window drawn alone into memory (its frame included, nothing over it), scaled down to at most `max` wide:
+/// rows top to bottom, R, G, B, A.
+fn draw_window<R>(renderer: &mut R, w: &WindowElement, max: i32) -> Result<(Size<i32, Physical>, Vec<u8>), String>
+where
+    R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<GlesRenderbuffer> + Bind<GlesRenderbuffer>,
+    R::TextureId: Clone + Send + Texture + 'static,
+{
+    use smithay::{backend::renderer::element::AsRenderElements, desktop::space::SpaceElement, utils::Scale};
+    let geo = SpaceElement::geometry(w);
+    if geo.size.w <= 0 || geo.size.h <= 0 {
+        return Err("the window shows nothing yet".into());
+    }
+    let scale = (max.max(16) as f64 / geo.size.w as f64).clamp(0.05, 1.0);
+    let size: Size<i32, Physical> = geo.size.to_f64().to_physical(scale).to_i32_round();
+    let size: Size<i32, Physical> = Size::from((size.w.max(1), size.h.max(1)));
+    let at: smithay::utils::Point<i32, Physical> = geo.loc.to_f64().to_physical(scale).to_i32_round();
+    let loc = smithay::utils::Point::<i32, Physical>::from((-at.x, -at.y));
+    let elements: Vec<crate::shell::WindowRenderElement<R>> =
+        AsRenderElements::<R>::render_elements(w, renderer, loc, Scale::from(scale), 1.0);
+    let buf_size = size.to_logical(1).to_buffer(1, Transform::Normal);
+    let mut rb: GlesRenderbuffer = renderer
+        .create_buffer(Fourcc::Abgr8888, buf_size)
+        .map_err(|e| format!("no buffer to draw in: {e:?}"))?;
+    let mut fb = renderer.bind(&mut rb).map_err(|e| format!("couldn't draw in it: {e:?}"))?;
+    let mut tracker = OutputDamageTracker::new(size, scale, Transform::Normal);
+    tracker
+        .render_output(renderer, &mut fb, 0, &elements, smithay::backend::renderer::Color32F::TRANSPARENT)
+        .map_err(|e| format!("drawing failed: {e:?}"))?;
+    let mapping = renderer
+        .copy_framebuffer(&fb, Rectangle::from_size(buf_size), Fourcc::Abgr8888)
+        .map_err(|e| format!("reading it back failed: {e:?}"))?;
+    // Rows come top first (see draw_screen).
+    let bytes = renderer
+        .map_texture(&mapping)
+        .map_err(|e| format!("reading it back failed: {e:?}"))?;
+    let n = (size.w * size.h * 4) as usize;
+    if bytes.len() < n {
+        return Err(format!("read back {} bytes, wanted {n}", bytes.len()));
+    }
+    Ok((size, bytes[..n].to_vec()))
+}
+
+fn take_window_shot<R>(renderer: &mut R, shot: &WindowShot) -> Result<(i32, i32), String>
+where
+    R: Renderer + ImportAll + ImportMem + ExportMem + Offscreen<GlesRenderbuffer> + Bind<GlesRenderbuffer>,
+    R::TextureId: Clone + Send + Texture + 'static,
+{
+    if !shot.window.alive() {
+        return Err("the window has gone".into());
+    }
+    let (size, px) = draw_window(renderer, &shot.window, shot.max)?;
+    let png = crate::png::encode_rgba(size.w as u32, size.h as u32, &px);
+    // Its folder (in $XDG_RUNTIME_DIR, ipc.rs checked) is made when it isn't there yet, for the person only.
+    if let Some(dir) = shot.path.parent() {
+        if !dir.exists() {
+            use std::os::unix::fs::DirBuilderExt;
+            let _ = std::fs::DirBuilder::new().recursive(true).mode(0o700).create(dir);
+        }
+    }
+    let tmp = shot.path.with_extension("png.part");
+    std::fs::write(&tmp, &png)
+        .and_then(|_| std::fs::rename(&tmp, &shot.path))
+        .map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            format!("couldn't write {}: {e}", shot.path.display())
+        })?;
+    Ok((size.w, size.h))
+}
+
 /// Copies part of a drawn screen (R, G, B, A rows) into an app's buffer as XRGB8888 (B, G, R, X in memory).
 fn fill_buffer(buffer: &WlBuffer, screen: (Size<i32, Physical>, &[u8]), region: Rectangle<i32, Physical>) -> Result<(), String> {
     let (size, px) = screen;
@@ -234,6 +320,22 @@ pub fn run_captures<R>(
     R::TextureId: Clone + Send + 'static,
 {
     if !captures.wants(output) {
+        return;
+    }
+    for shot in std::mem::take(&mut captures.window_shots) {
+        let reply = match take_window_shot(renderer, &shot) {
+            Ok((w, h)) => {
+                captures.taken_windows += 1;
+                serde_json::json!({ "t": "shot", "id": shot.id.to_string(), "path": shot.path.display().to_string(), "ok": true, "w": w, "h": h })
+            }
+            Err(e) => {
+                debug!(id = shot.id, "window picture: {e}");
+                serde_json::json!({ "t": "shot", "id": shot.id.to_string(), "ok": false, "error": e })
+            }
+        };
+        captures.shots_done.push((shot.watcher, reply));
+    }
+    if !captures.pending.iter().any(|p| &p.output == output) {
         return;
     }
     let seq = captures.seq(output);

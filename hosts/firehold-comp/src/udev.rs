@@ -549,10 +549,12 @@ pub fn run_udev() {
 
     #[cfg(feature = "egl")]
     {
-        info!(?primary_gpu, "Trying to initialize EGL Hardware Acceleration",);
+        // The old wl_drm interface (EGL_WL_bind_wayland_display). Newer Mesa (the Ally's 26.x) doesn't have it at all,
+        // and nothing needs it: apps and XWayland hand in their GPU buffers through linux-dmabuf (offered just below,
+        // with the GPU's formats and feedback), which is how they get hardware buffers here either way.
         match renderer.bind_wl_display(&display_handle) {
-            Ok(_) => info!("EGL hardware-acceleration enabled"),
-            Err(err) => info!(?err, "Failed to initialize EGL hardware-acceleration"),
+            Ok(_) => info!(?primary_gpu, "GPU buffers: linux-dmabuf, and the older wl_drm too"),
+            Err(_) => info!(?primary_gpu, "GPU buffers: linux-dmabuf (this Mesa has no older wl_drm, which nothing here needs)"),
         }
     }
 

@@ -172,7 +172,7 @@ PanelWindow {
     // labwc's SendToDesktop through its Super+Alt+number keys (rc.xml), typed with wtype after focusing the window;
     // on KWin (which takes no typed keys) WinList asks KWin's hearthwindows script.
     function moveToDesktop(win, n) {
-        if (WinList.kwin) { WinList.moveToDesktop(win, n); return; }     // KWin: straight there, no keys typed
+        if (WinList.wmDesktops) { WinList.moveToDesktop(win, n); return; }     // KWin, Firehold: straight there, no keys typed
         win.activate();
         mover.command = ["sh", "-c", "sleep 0.25; exec wtype -M logo -M alt -k \"$0\" -m alt -m logo", String(n)];
         mover.running = true;

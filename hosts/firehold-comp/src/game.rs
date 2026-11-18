@@ -178,11 +178,16 @@ pub struct GameSettings {
     pub direct: bool,
     /// VRR / FreeSync while it's fullscreen, on screens that have it.
     pub vrr: bool,
+    /// The Guide's "Allow tearing": the game doesn't wait for the screen. Its frame callbacks (and FIFO barrier) come
+    /// as soon as it has handed in a frame, so it draws as fast as it can and the newest frame is shown at each
+    /// refresh (the lowest delay Smithay 0.7 allows: it can't flip mid-scan yet, so there's no visible tear line).
+    /// A frame limit, when one is set, wins.
+    pub tearing: bool,
 }
 
 impl Default for GameSettings {
     fn default() -> Self {
-        GameSettings { frame_limit: FrameLimit::Off, scaling: Scaling::Off, sharpen: true, direct: true, vrr: true }
+        GameSettings { frame_limit: FrameLimit::Off, scaling: Scaling::Off, sharpen: true, direct: true, vrr: true, tearing: false }
     }
 }
 
@@ -206,7 +211,7 @@ impl GameSettings {
                 None => bad.push(format!("scaling {x}")),
             }
         }
-        for (key, slot) in [("sharpen", &mut s.sharpen), ("direct", &mut s.direct), ("vrr", &mut s.vrr)] {
+        for (key, slot) in [("sharpen", &mut s.sharpen), ("direct", &mut s.direct), ("vrr", &mut s.vrr), ("tearing", &mut s.tearing)] {
             if let Some(x) = o.get(key) {
                 match x.as_bool() {
                     Some(b) => *slot = b,
@@ -389,6 +394,8 @@ pub struct GameState {
     pub active: Option<Active>,
     limiter: Option<RegistrationToken>,
     pub paced: u64,
+    /// Frames the game was let draw without waiting (Allow tearing).
+    pub unpaced: u64,
     paced_window: (Instant, u64, f64),
     last_enforce: Instant,
     dirty: bool,
@@ -421,6 +428,7 @@ impl GameState {
             active: None,
             limiter: None,
             paced: 0,
+            unpaced: 0,
             paced_window: (Instant::now(), 0, 0.0),
             last_enforce: Instant::now(),
             dirty: false,
@@ -608,6 +616,45 @@ impl<B: Backend + 'static> HearthState<B> {
             self.game_enforce_size();
         }
         self.game_overlays();
+        self.game_unpaced_tick();
+    }
+
+    /// Whether the game runs without waiting for the screen right now (Allow tearing, no frame limit).
+    pub fn game_unpaced(&self) -> bool {
+        self.game.active.as_ref().is_some_and(|a| a.settings.tearing && a.interval.is_none() && a.window.alive())
+    }
+
+    /// Allow tearing: the game's frame callbacks and FIFO barrier as soon as it has handed in a frame (every round
+    /// of client requests), not at the screen's next refresh.
+    fn game_unpaced_tick(&mut self) {
+        if !self.game_unpaced() {
+            return;
+        }
+        let Some(a) = self.game.active.as_ref() else { return };
+        let (window, output) = (a.window.clone(), a.output.clone());
+        let time: Duration = self.clock.now().into();
+        #[allow(clippy::mutable_key_type)]
+        let mut clients: HashMap<ClientId, Client> = HashMap::new();
+        let mut fresh = false;
+        window.with_surfaces(|surface, states| {
+            if let Some(b) = states.cached_state.get::<FifoBarrierCachedState>().current().barrier.take() {
+                b.signal();
+                if let Some(c) = surface.client() {
+                    clients.insert(c.id(), c);
+                }
+            }
+            if !states.cached_state.get::<smithay::wayland::compositor::SurfaceAttributes>().current().frame_callbacks.is_empty() {
+                fresh = true;
+            }
+        });
+        if fresh {
+            window.send_frame(&output, time, Some(Duration::ZERO), |_, _| None);
+            self.game.unpaced += 1;
+        }
+        let dh = self.display_handle.clone();
+        for client in clients.into_values() {
+            self.client_compositor_state(&client).blocker_cleared(self, &dh);
+        }
     }
 
     /// Mantel's surfaces over the game (the Guide, the Couch): direct scanout waits while one is shown, and an
@@ -806,6 +853,7 @@ impl<B: Backend + 'static> HearthState<B> {
             render = ?render_size,
             direct = settings.direct,
             vrr = settings.vrr,
+            tearing = settings.tearing,
             "Firehold game: fullscreen game's choices applied"
         );
         if let Some(n) = &scaling_note {
@@ -912,6 +960,10 @@ impl<B: Backend + 'static> HearthState<B> {
                 "vrr": a.settings.vrr,
                 "vrrActive": g.vrr_active.get(),
                 "vrrScreen": if B::NESTED { "nested" } else { g.vrr_cap.get().name() },
+                "tearing": a.settings.tearing,
+                "tearingActive": a.settings.tearing && a.interval.is_none(),
+                "tearingAsked": a.window.wl_surface().is_some_and(|s| crate::tearing::wants_tearing(&s)),
+                "unpacedFrames": self.game.unpaced,
             })
         });
         json!({
@@ -1024,13 +1076,15 @@ mod tests {
     #[test]
     fn settings_file() {
         let (g, bad) = parse_games(
-            r#"{"games": {"ember": {"frameLimit": 40, "scaling": "balanced", "vrr": false, "direct": "x"}}}"#,
+            r#"{"games": {"ember": {"frameLimit": 40, "scaling": "balanced", "vrr": false, "direct": "x", "tearing": true}}}"#,
         )
         .unwrap();
         let e = g["ember"];
         assert_eq!(e.frame_limit, FrameLimit::Fps(40));
         assert_eq!(e.scaling, Scaling::Balanced);
         assert!(!e.vrr);
+        assert!(e.tearing);
+        assert!(!GameSettings::default().tearing, "tearing is off unless it's chosen");
         assert!(e.direct, "a value that isn't understood keeps the default");
         assert_eq!(bad.len(), 1);
         assert!(parse_games("{").is_err());

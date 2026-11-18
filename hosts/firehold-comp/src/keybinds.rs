@@ -24,6 +24,34 @@ pub enum Action {
     VtSwitch(i32),
     /// Ctrl+Alt+Backspace: leave Firehold for KWin at once (always there; never while the screen is locked).
     LeaveForKwin,
+    /// labwc's GoToDesktop (to, wrap).
+    GoToDesktop(DeskTarget, bool),
+    /// labwc's SendToDesktop (to, wrap, follow).
+    SendToDesktop(DeskTarget, bool, bool),
+}
+
+/// labwc's desktop "to": left, right or a number (1-based).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeskTarget {
+    Left,
+    Right,
+    Number(usize),
+}
+
+fn desk_target(a: &roxmltree::Node<'_, '_>) -> Option<DeskTarget> {
+    match a.attribute("to").unwrap_or("").trim() {
+        "left" => Some(DeskTarget::Left),
+        "right" => Some(DeskTarget::Right),
+        n => n.parse::<usize>().ok().filter(|n| *n >= 1).map(DeskTarget::Number),
+    }
+}
+
+fn yes(a: &roxmltree::Node<'_, '_>, name: &str, default: bool) -> bool {
+    match a.attribute(name) {
+        Some("yes") | Some("true") => true,
+        Some("no") | Some("false") => false,
+        _ => default,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -69,6 +97,8 @@ pub struct Keymap {
     /// Keys per second and milliseconds before repeating (None: Hearth's defaults).
     pub repeat: Option<(i32, i32)>,
     pub skipped: Vec<String>,
+    /// The virtual desktops' names (<desktops number="N"> with <names>, or <prefix> N).
+    pub desktops: Vec<String>,
 }
 
 fn keysym(name: &str) -> Option<Keysym> {
@@ -121,6 +151,8 @@ fn actions_of(node: roxmltree::Node<'_, '_>, skipped: &mut Vec<String>) -> Vec<A
             "unmaximize" => Some(Action::UnMaximize),
             "iconify" | "minimize" => Some(Action::Iconify),
             "togglefullscreen" => Some(Action::ToggleFullscreen),
+            "gotodesktop" => desk_target(&a).map(|t| Action::GoToDesktop(t, yes(&a, "wrap", true))),
+            "sendtodesktop" => desk_target(&a).map(|t| Action::SendToDesktop(t, yes(&a, "wrap", true), yes(&a, "follow", true))),
             // labwc's conditions: Hearth's compositor takes the plain case (the <else>), e.g. Super+Up maximizes.
             "if" => {
                 let inner = a
@@ -166,6 +198,25 @@ pub fn parse(xml: &str) -> Keymap {
         // A later bind for the same keys replaces an earlier one (as labwc does with the user's rc.xml on top).
         km.binds.retain(|b| !(b.mods == mods && b.key == key && b.on_release == on_release));
         km.binds.push(Bind { mods, key, on_release, actions });
+    }
+    if let Some(d) = doc.descendants().find(|n| n.has_tag_name("desktops")) {
+        let text = |tag: &str| d.children().find(|n| n.has_tag_name(tag)).and_then(|n| n.text()).map(|t| t.trim().to_string());
+        let number = d
+            .attribute("number")
+            .map(|t| t.trim().to_string())
+            .or_else(|| text("number"))
+            .and_then(|t| t.parse::<usize>().ok())
+            .unwrap_or(1)
+            .clamp(1, 20);
+        let names: Vec<String> = d
+            .children()
+            .find(|n| n.has_tag_name("names"))
+            .map(|ns| ns.children().filter(|n| n.has_tag_name("name")).filter_map(|n| n.text()).map(|t| t.trim().to_string()).collect())
+            .unwrap_or_default();
+        let prefix = text("prefix").filter(|p| !p.is_empty()).unwrap_or_else(|| "Desktop".into());
+        km.desktops = (0..number)
+            .map(|i| names.get(i).filter(|n| !n.is_empty()).cloned().unwrap_or_else(|| format!("{prefix} {}", i + 1)))
+            .collect();
     }
     if let Some(k) = doc.descendants().find(|n| n.has_tag_name("keyboard")) {
         let num = |tag: &str| {
@@ -242,12 +293,15 @@ mod tests {
     <keybind key="Super_L" onRelease="yes"><action name="Execute" command="sh -c 'launcher'" /></keybind>
     <keybind key="W-q"><action name="Close" /></keybind>
     <keybind key="W-S-1"><action name="SendToDesktop" to="1" /></keybind>
+    <keybind key="W-C-Left"><action name="GoToDesktop" to="left" wrap="no" /></keybind>
+    <keybind key="W-C-S-Right"><action name="SendToDesktop" to="right" wrap="no" follow="no" /></keybind>
     <keybind key="W-Left"><action name="SnapToEdge" direction="left" /></keybind>
     <keybind key="W-Up"><action name="If"><query maximized="both" /><then><action name="UnMaximize" /></then>
       <else><action name="Maximize" /></else></action></keybind>
     <keybind key="W-l"><action name="Execute" command="sh -c 'quickshell ipc -p &quot;$X&quot; call lock lock'" /></keybind>
     <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="up" /></keybind>
   </keyboard>
+  <desktops number="3"><prefix>Desk</prefix><names><name>Work</name><name>Play</name></names></desktops>
 </labwc_config>"#;
 
     #[test]
@@ -267,8 +321,18 @@ mod tests {
         assert!(km.find_lone(keysym("Super_L").unwrap()).is_some());
         assert!(km.lock_command().unwrap().contains("call lock lock"));
         assert!(km.find(Mods::default(), keysym("XF86AudioRaiseVolume").unwrap(), false).is_some());
-        // SendToDesktop isn't there yet: skipped, and said so.
-        assert!(km.skipped.iter().any(|s| s == "SendToDesktop"));
+        // Virtual desktops: the keys and the names.
+        let one = keysym("1").unwrap();
+        let ls = Mods { logo: true, shift: true, ..Mods::default() };
+        assert_eq!(km.find(ls, one, false).unwrap().actions, vec![Action::SendToDesktop(DeskTarget::Number(1), true, true)]);
+        let lc = Mods { logo: true, ctrl: true, ..Mods::default() };
+        assert_eq!(km.find(lc, keysym("Left").unwrap(), false).unwrap().actions, vec![Action::GoToDesktop(DeskTarget::Left, false)]);
+        let lcs = Mods { logo: true, ctrl: true, shift: true, ..Mods::default() };
+        assert_eq!(
+            km.find(lcs, keysym("Right").unwrap(), false).unwrap().actions,
+            vec![Action::SendToDesktop(DeskTarget::Right, false, false)]
+        );
+        assert_eq!(km.desktops, vec!["Work".to_string(), "Play".into(), "Desk 3".into()]);
     }
 
     #[test]
