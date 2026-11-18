@@ -318,6 +318,42 @@ class Restore(Base):
         changes, _ = hs.restore_plan(live, {'outputs': {}}, 'labwc')
         self.assertEqual(changes, {'eDP-1': {'scale': 1.25}})
 
+    # The ROG Xbox Ally (Nov 17, log T7CS-FRKM-59): a 7-inch 1920 x 1080 panel (150 x 90 mm) that KWin starts at 210%.
+    ALLY = {'outputs': [{'id': 1, 'name': 'eDP-1', 'type': 7, 'pos': {'x': 0, 'y': 0}, 'scale': 2.1, 'rotation': 1,
+                         'currentModeId': '1', 'preferredModes': ['1'], 'connected': True, 'enabled': True, 'priority': 1,
+                         'sizeMM': {'width': 150, 'height': 90},
+                         'modes': [{'id': '1', 'name': '1920x1080@120', 'size': {'width': 1920, 'height': 1080}, 'refreshRate': 119.999}]}]}
+
+    def test_kwin_starts_a_screen_you_never_scaled_at_labwcs_size(self):
+        live = hs.parse_kscreen(json.dumps(self.ALLY), '', {})
+        self.assertEqual(hs.auto_scale(live[0]), 1.5)
+        changes, _ = hs.restore_plan(live, {'outputs': {}}, 'kwin')
+        self.assertEqual(changes, {'eDP-1': {'scale': 1.5}})
+        # A saved screen without a scale (display.sh's line had none): the same.
+        changes, _ = hs.restore_plan(live, {'outputs': {'eDP-1': {'mode': {'w': 1920, 'h': 1080, 'r': 119.999}}}}, 'kwin')
+        self.assertEqual(changes, {'eDP-1': {'scale': 1.5}})
+        # Already there: nothing to do.
+        ally = json.loads(json.dumps(self.ALLY)); ally['outputs'][0]['scale'] = 1.5
+        changes, _ = hs.restore_plan(hs.parse_kscreen(json.dumps(ally), '', {}), {'outputs': {}}, 'kwin')
+        self.assertEqual(changes, {})
+
+    def test_a_saved_scale_is_never_changed_and_kwins_own_one_is_told_once(self):
+        live = hs.parse_kscreen(json.dumps(self.ALLY), '', {})
+        for v in (2.1, 1.75):
+            sv = {'outputs': {'eDP-1': {'scale': v}}}
+            changes, _ = hs.restore_plan(live, sv, 'kwin')
+            self.assertEqual(changes.get('eDP-1', {}).get('scale'), None if v == 2.1 else v)   # yours, never 1.5
+            hs.io.notice.reset_mock()
+            hs.scale_told(live, sv)
+            if v == 2.1:      # Settings never offers 210%: KWin's own pick, saved with Keep
+                hs.io.notice.assert_called_once()
+                self.assertIn('210%', hs.io.notice.call_args[0][1])
+                self.assertIn('150%', hs.io.notice.call_args[0][1])
+            else:
+                hs.io.notice.assert_not_called()
+        changes, _ = hs.restore_plan(live, {'outputs': {'eDP-1': {'scale': 1.75}}}, 'kwin')
+        self.assertEqual(changes, {'eDP-1': {'scale': 1.75}})
+
 
 class KWinSettings(Base):
     def test_ini_set_keeps_every_other_line(self):

@@ -1350,6 +1350,28 @@ def auto_scale(o):
     return s if s != 1.0 else None
 
 
+# The scales Settings › Display offers (SetDisplay.qml's Scale row; KWin gets the in-between ones too). A saved scale
+# that isn't one of them wasn't picked there: it's what the window manager chose by itself, saved with Keep.
+OFFERED_SCALES = (1, 1.1, 1.25, 1.4, 1.5, 1.75, 2, 2.25, 2.5, 3)
+
+
+def scale_offered(v):
+    try:
+        return any(abs(float(v) - x) < 0.006 for x in OFFERED_SCALES)
+    except (TypeError, ValueError):
+        return False
+
+
+def start_scale(o, wmname):
+    """The scale a screen starts at when you never saved one: labwc's (auto_scale, else 100%) on both window managers.
+    KWin picks its own on a new screen (210% on the ROG Xbox Ally's 7-inch 1920 × 1080, Nov 17), much bigger than
+    Mantel on labwc (150%): under KWin Hearth's choice is used, so Mantel looks the same on either."""
+    s = auto_scale(o) or 1.0
+    if wmname == 'kwin':
+        return s if abs((o.get('scale') or 1) - s) > 0.001 else None
+    return s if s != 1.0 and abs((o.get('scale') or 1) - 1) < 0.01 else None
+
+
 def restore_plan(live, sv, wmname):
     """What restore changes, and what it had to leave out (each with why)."""
     changes, left_out = {}, []
@@ -1357,11 +1379,15 @@ def restore_plan(live, sv, wmname):
     for o in live:
         e = outs.get(o['name'])
         if not e:
-            s = auto_scale(o)
-            if s and abs((o.get('scale') or 1) - 1) < 0.01:
+            s = start_scale(o, wmname) if o.get('enabled') else None
+            if s:
                 changes[o['name']] = {'scale': s}
             continue
         c = {}
+        if wmname == 'kwin' and not e.get('scale') and e.get('enabled', True) is not False and o.get('enabled'):
+            s = start_scale(o, wmname)          # a saved screen without a scale (display.sh's line had none)
+            if s:
+                c['scale'] = s
         if 'enabled' in e and bool(e['enabled']) != bool(o.get('enabled')):
             c['enabled'] = bool(e['enabled'])
         if e.get('enabled', True) is not False:
@@ -1445,6 +1471,8 @@ def restore():
             except Refused:
                 pass
             left_out.append(problem)
+    if wmname == 'kwin':
+        scale_told(live, sv)
     if left_out:
         io.notice('screens:' + '|'.join(left_out)[:200], 'Hearth left out some of your screen settings this time: %s. '
                   'They are still saved; Settings › Display shows what the screen is using.' % '; '.join(left_out), 'Hearth screens')
@@ -1462,6 +1490,23 @@ def restore():
             except Exception as e:  # noqa: BLE001 (never in the way of Desktop Mode's start)
                 io.log_event('Desktops only on the main screen at start: %s' % e)
     return {'wm': wmname, 'changed': changes, 'leftOut': left_out}
+
+
+def scale_told(live, sv):
+    """A saved scale Settings never offered (KWin's own pick, saved by Keep): kept as it is (red flag 9: Hearth never
+    changes what's saved by itself), and told once per screen and value what it is and where to change it."""
+    for o in live:
+        e = (sv.get('outputs') or {}).get(o['name']) or {}
+        v = e.get('scale')
+        if not v or scale_offered(v) or not o.get('enabled'):
+            continue
+        ours = auto_scale(o) or 1.0
+        io.notice('screens:kwin-scale:%s:%g' % (o['name'], float(v)),
+                  'Your screen (%s) is at %d%%. KWin picked that size by itself the first time it started, and it was '
+                  'saved when you pressed Keep in Settings › Display; it isn\'t one of the sizes you can pick there. '
+                  'Mantel on Hearth Classic used %d%% on this screen. Hearth hasn\'t changed it: to make things smaller, '
+                  'pick a size in Settings › Display › Scale.' % (o['name'], round(float(v) * 100), round(ours * 100)),
+                  'Hearth screens')
 
 
 def autoscale():
