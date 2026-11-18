@@ -7,6 +7,10 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Planned for 1.15
 
+- [x] The 1.14 freeze fixed (the owner's laptop and ROG Xbox Ally, Nov 17: quickshell at 70-90% of a core): a menu closed with words still in its search kept working the search out again and again; Mantel at rest is checked in CI (under 15% of a core, memory not growing) (needs testing on a device)
+- [x] Hearth Settings, Logs and Hearth's other apps back in Mantel's menu under KWin (needs testing on a device)
+- [x] Mantel on KWin starts a screen you never sized at labwc's size (KWin picked 210% on the Ally; labwc 150%); a saved size Settings never offered is kept and told once (needs testing on a device)
+- [x] A slow first start on KWin (the laptop): Mantel still loading is waited for while it's busy (at most 2 minutes, labwc if it's stuck); the lock screen's test gets 25 s and a slow one isn't kept as broken; Send logs has the shell log of the start before and the KWin bridge's log (needs testing on a device)
 - [ ] Hearth's own apps made faster (moved from 1.13): Hearth Files opens as slowly warm as cold (0.5 s), and the desktop shell holds about 270 MB with nothing open; fix those first, measured before and after (shots/speed)
 - [ ] Hearth TV 1.0, a Hearth home screen for the owner's TCL Google TV (checklist docs/mockups/checklists/hearth-tv.md, mockups approved Nov 15; docs/HEARTH-TV.md): apps, the PC's library, Theater, TV inputs, every Hearth OS look, TV Cleanup (ads and tracking switched off, never deleted); installed from his laptop. Still open: Send to TV from a PC and from a phone
 - [ ] Tidy-up (nothing users see changes; moved from 1.13, then to 1.15 by the owner on Nov 16): split the biggest files into smaller parts (Hearth Files' FileManager.qml, Game Mode's ui/index.html, hearth-home-server and its root helper, Task Manager's view); subfolders in the desktop shell's 262-file folder (apps, settings pages, helpers); the "nimbus" names inside the code moved toward "Hearth" where it's safe (never paths an installed PC relies on); merged branches deleted (listed for the owner first)

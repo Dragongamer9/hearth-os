@@ -336,13 +336,15 @@ pub fn report(version: &str) -> String {
         if !input.is_empty() { section("Controller input (newest last)", keep(&input, 400)); }
         section("Hearth log", keep(&lines, 1500));
     }
-    for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log"), (data.join("pad.log"), "Desktop controller helper (hearth-pad)"),
+    for (f, name) in [(data.join("session.log"), "Session log"), (run.join("nimbus-shell.log"), "Desktop shell log"),
+                      // 1.14: the shell's log from the start before (a KWin start that fell back to labwc says why there).
+                      (run.join("nimbus-shell.log.old"), "Desktop shell log (the start before)"), (data.join("pad.log"), "Desktop controller helper (hearth-pad)"),
                       (data.join("labwc.log"), "Desktop Mode compositor (labwc)"),
                       // 1.14: Mantel on KWin (nimbus-session's run_kwin), and the bridge between them.
                       (data.join("kwin.log"), "Desktop Mode compositor (KWin)"),
                       // 2.0 preview on 1.14: Firehold's compositor (nimbus-session's run_firehold).
                       (data.join("firehold.log"), "Desktop Mode compositor (Firehold preview, firehold-comp)"),
-                      (run.join("hearth-kwin-bridge.log"), "Mantel's KWin bridge (hearth-kwin-bridge)"),
+                      (run.join("hearth").join("kwin-bridge.log"), "Mantel's KWin bridge (hearth-kwin-bridge)"),
                       (data.join("briefcase.log"), "Hearth Files: Briefcase auto-sync"),
                       (std::env::var_os("XDG_STATE_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| crate::paths::home().join(".local/state")).join("nimbus/settings-events.log"),
                        "Settings restored or kept aside (docs/SETTINGS-PERSISTENCE.md)")] {

@@ -16,7 +16,8 @@ greeter (kscreenlocker_greet) is installed; Hearth's lock screen is a complete P
 KWin's environment, shows that it LOADED Hearth's lock screen (the screen says "hearth-lock-screen: loaded" when it
 starts): anything else (an error, a fallback, silence) fails. The test run is done once per change (cached in
 <runtime dir>/hearth/lockcheck.json); it ends as soon as the greeter says it loaded (or failed), at most
-HEARTH_LOCK_PROBE_TIME seconds (8). --no-probe: only the files. --as-kwin: this program's environment stands in for
+HEARTH_LOCK_PROBE_TIME seconds (8; nimbus-session gives it 25 before KWin starts). A run still going when its time is up
+isn't cached (slow isn't broken: the next check runs it again). --no-probe: only the files. --as-kwin: this program's environment stands in for
 KWin's (the image build, where no KWin runs, and nimbus-session before it starts KWin: it still runs the greeter's
 test). HEARTH_LOCK_GREETER, HEARTH_LOCK_PKG and HEARTH_LOCK_QT_PLUGINS name the greeter, the package and Qt's plugin
 folders instead of looking for them (checks).
@@ -136,10 +137,14 @@ def stamp(paths):
     return '|'.join(out)
 
 
+STATE = {'timed_out': False}     # the last test run was still going when its time was up (run_greeter)
+
+
 def run_greeter(g, env, limit=None):
     """The greeter's test run's output (stdout and stderr together). Ends it as soon as it says it loaded Hearth's lock
     screen or failed (a test greeter otherwise stays up until it's ended), or after LIMIT seconds."""
     limit = PROBE_TIME if limit is None else limit
+    STATE['timed_out'] = False
     p = subprocess.Popen([g, '--testing'], env=env, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                          stderr=subprocess.STDOUT, start_new_session=True)
     buf, end = b'', time.monotonic() + limit
@@ -147,6 +152,7 @@ def run_greeter(g, env, limit=None):
         while True:
             left = end - time.monotonic()
             if left <= 0:
+                STATE['timed_out'] = True                 # still going: it hadn't said anything either way
                 break
             r, _, _ = select.select([p.stdout], [], [], min(left, 0.5))
             if r:
@@ -207,7 +213,12 @@ def probe(g, pkg, kenv):
         ok, why = False, 'the screen locker can\'t load Hearth\'s lock screen (%s)' % bad[0]
     elif LOADED not in out:
         tail = ' | '.join(l for l in out.splitlines() if 'notify signal' not in l)[-300:]
-        ok, why = False, 'the screen locker\'s test run didn\'t show Hearth\'s lock screen loading (%s)' % (tail or 'no output')
+        if STATE['timed_out']:
+            # Slow, not broken (the owner's i3-N305 laptop on a cold first start, Nov 17): not kept, so the next check
+            # runs it again instead of reading this answer back.
+            return False, 'the screen locker\'s test run was still starting after %gs (%s); checked again next time' % (
+                PROBE_TIME, tail or 'no output yet')
+        ok, why = False, 'the screen locker\'s test run ended without showing Hearth\'s lock screen loading (%s)' % (tail or 'no output')
     else:
         ok, why = True, 'ok'
     try:

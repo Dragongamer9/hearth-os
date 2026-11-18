@@ -71,7 +71,7 @@ class Base(unittest.TestCase):
     def env(self, **kw):
         e = {'HOME': self.home, 'XDG_RUNTIME_DIR': self.run_dir, 'NIMBUS_SHARE': self.share,
              'PATH': self.bin + ':/usr/bin:/bin', 'NIMBUS_APP': '/nonexistent',
-             'HEARTH_KWIN_UP_SECS': '3', 'HEARTH_KWIN_EARLY_SECS': '2', 'HEARTH_SAFE_FLAG': os.path.join(self.tmp, 'safe'),
+             'HEARTH_KWIN_UP_SECS': '3', 'HEARTH_KWIN_EARLY_SECS': '2', 'HEARTH_KWIN_STALL_SECS': '2', 'HEARTH_SAFE_FLAG': os.path.join(self.tmp, 'safe'),
              'HEARTH_LOCK_PKG': os.path.join(self.tmp, 'no-lock-package'), 'HEARTH_LOCK_GREETER': os.path.join(self.tmp, 'no-greeter')}
         e.update(kw)
         return e
@@ -514,6 +514,34 @@ class KWinStart(Base):
         self.assertEqual(len(self.lines('labwc-ran')), 1, log)
         self.assertEqual(self.notice(), ['kwin', 'failed'])
         self.assertEqual(subprocess.run(['pgrep', '-f', os.path.join(self.bin, 'kwin_wayland')]).returncode, 1, 'KWin is gone')
+
+    def test_a_mantel_still_busy_starting_is_waited_for(self):
+        # The owner's i3-N305 laptop, Nov 17: Mantel was still loading at 45 s and KWin was ended. Busy (its processor
+        # time growing) past HEARTH_KWIN_UP_SECS: waited for, up to HEARTH_KWIN_UP_MAX_SECS.
+        self.write_bin('quickshell', '#!/bin/bash\nwhile (( SECONDS < 7 )); do :; done\n: > "$XDG_RUNTIME_DIR/hearth-shell-up"\nexec sleep 60\n')
+        self.write_bin('kwin_wayland', '#!/bin/sh\necho "args=$*" >> "$HOME/kwin-ran"\nquickshell &\nsleep 12\nexit 0\n')
+        r, log = self.session(HEARTH_KWIN_UP_MAX_SECS='40')
+        self.assertIn("kwin: Mantel is still starting after 3s and busy loading", log)
+        self.assertRegex(log, r'kwin: Mantel up after [6-9]s|kwin: Mantel up after 1[0-9]s')
+        self.assertEqual(self.lines('labwc-ran'), [], log)
+
+    def test_a_mantel_that_does_nothing_is_still_ended(self):
+        self.write_bin('quickshell', '#!/bin/sh\nexec sleep 60\n')      # there, but idle: stuck, not loading
+        self.write_bin('kwin_wayland', '#!/bin/sh\necho "args=$*" >> "$HOME/kwin-ran"\nquickshell &\nexec sleep 60\n')
+        t = time.time()
+        r, log = self.session(HEARTH_KWIN_UP_MAX_SECS='40')
+        self.assertLess(time.time() - t, 30)
+        self.assertIn("kwin: Mantel didn't say it's up after 3s; ending KWin", log)
+        self.assertEqual(len(self.lines('labwc-ran')), 1, log)
+
+    def test_a_mantel_busy_for_ever_is_ended_at_the_most(self):
+        self.write_bin('quickshell', '#!/bin/bash\nwhile :; do :; done\n')
+        self.write_bin('kwin_wayland', '#!/bin/sh\necho "args=$*" >> "$HOME/kwin-ran"\nquickshell &\nexec sleep 60\n')
+        t = time.time()
+        r, log = self.session(HEARTH_KWIN_UP_MAX_SECS='8')
+        self.assertLess(time.time() - t, 40)
+        self.assertRegex(log, r"kwin: Mantel didn't say it's up after [0-9]+s \(it stopped making progress, or 8s went by\); ending KWin")
+        self.assertEqual(len(self.lines('labwc-ran')), 1, log)
 
     def test_labwc_picked_is_honoured(self):
         self.write_bin('kwin_wayland', KWIN_WORKS)

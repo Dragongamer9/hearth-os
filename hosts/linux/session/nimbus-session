@@ -466,6 +466,23 @@ companion_stop() {
 KWIN_BIN="${HEARTH_KWIN_BIN:-kwin_wayland}"   # (tests: one that isn't there)
 KWIN_UP_SECS="${HEARTH_KWIN_UP_SECS:-45}"
 KWIN_EARLY_SECS="${HEARTH_KWIN_EARLY_SECS:-15}"
+KWIN_UP_MAX_SECS="${HEARTH_KWIN_UP_MAX_SECS:-120}"   # the longest wait for a Mantel that's still busy starting (run_kwin)
+KWIN_STALL_SECS="${HEARTH_KWIN_STALL_SECS:-15}"      # ...ended sooner when it does nothing for this long
+KWIN_BUSY_TICKS="${HEARTH_KWIN_BUSY_TICKS:-50}"      # "busy": at least this much processor time (1/100 s) in that time
+# Mantel's processor time so far (all of this user's quickshell processes, in clock ticks), or nothing when none runs.
+mantel_cpu_ticks() {
+  mt=0; mfound=""
+  for mp in $(pgrep -u "$(id -u)" -x quickshell 2>/dev/null); do
+    ms=$(cat "/proc/$mp/stat" 2>/dev/null) || continue
+    ms=${ms##*) }   # after "pid (name) ": state is the first field, utime the 12th, stime the 13th
+    # shellcheck disable=SC2086  # split into fields on purpose
+    set -- $ms
+    [ $# -ge 13 ] || continue
+    mt=$(( mt + ${12} + ${13} )); mfound=1
+  done
+  [ -n "$mfound" ] && echo "$mt"
+  return 0
+}
 firehold_unlocked() {   # ~/.config/nimbus/firehold.json's firehold.unlocked (only Settings' helper writes it)
   f="${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/firehold.json"
   [ -f "$f" ] && have python3 || return 1
@@ -632,9 +649,12 @@ run_kwin() {
   rm -f "$RUN/hearth-shell-up" "$RUN/hearth-kwin-shell-failed" "$RUN/hearth-kwin-inverted"
   # Your look first (theme/apply.sh: kdeglobals and Hearth's Aurorae frames for your accent), so KWin's first window
   # already has Hearth's frames. Never in the way: at most 20 s, and a failure is only logged.
+  # HEARTH_THEME_APPLIED=1 tells the autostart it's done (it ran it a second time before Mantel: seconds on a slow laptop).
+  theme_done=""
   if [ -f "$SHARE/desktop/theme/apply.sh" ]; then
-    if have timeout; then timeout 20 sh "$SHARE/desktop/theme/apply.sh" >>"$KWIN_LOG" 2>&1; else sh "$SHARE/desktop/theme/apply.sh" >>"$KWIN_LOG" 2>&1; fi \
-      || log "kwin: theme/apply.sh didn't finish (code $?); KWin starts with the frames it has"
+    if { if have timeout; then timeout 20 sh "$SHARE/desktop/theme/apply.sh" >>"$KWIN_LOG" 2>&1; else sh "$SHARE/desktop/theme/apply.sh" >>"$KWIN_LOG" 2>&1; fi; }; then
+      theme_done=1
+    else log "kwin: theme/apply.sh didn't finish (code $?); KWin starts with the frames it has"; fi
   fi
   # Your own KDE settings that Hearth's fixed KWin keys override (kwin/xdg's [$i] keys: KWin's own locking, its input
   # method, the Super key): told once which and why (hearth-your-desktop kwin-overrides; it only reads your files).
@@ -676,6 +696,7 @@ run_kwin() {
     done
     [ -n "$kx" ] && XDG_CONFIG_DIRS="$kx:${XDG_CONFIG_DIRS:-/etc/xdg}"
     export XDG_CONFIG_DIRS XDG_CURRENT_DESKTOP=Hearth:Nimbus:KDE XDG_SESSION_TYPE=wayland HEARTH_WM=kwin
+    if [ -n "$theme_done" ]; then export HEARTH_THEME_APPLIED=1; else unset HEARTH_THEME_APPLIED; fi
     [ -z "$lock" ] && export PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock
     # $lock: --no-lockscreen unless Hearth's lock screen is there (kwin_lock_ready).
     # $HEARTH_KWIN_ARGS: extra options for tests (--virtual --width 1920 --height 1080 in kwin-test.yml).
@@ -691,15 +712,34 @@ run_kwin() {
   ) >>"$KWIN_LOG" 2>&1 &
   kpid=$!
   echo "$kpid" >"$RUN/hearth-kwin.pid"
-  started=$(date +%s); up=0
+  # Waiting for Mantel (the owner's i3-N305 laptop, Nov 17: on the first start after an update Mantel's process only
+  # began 27 s after KWin, with a cold disk, and was still loading at 45 s, so KWin was ended though nothing was wrong):
+  # KWIN_UP_SECS (45 s) as before, then longer only while Mantel is alive and busy (its quickshell's processor time
+  # keeps growing: it's loading), at most KWIN_UP_MAX_SECS (120 s) in all. A Mantel that's gone, or idle for
+  # KWIN_STALL_SECS (15 s: stuck, not loading), is ended as before and labwc opens (red flag 2: the fallback stays).
+  started=$(date +%s); up=0; told_busy=""; busy_ref=""; busy_at=""
   while kill -0 "$kpid" 2>/dev/null; do
     [ -e "$RUN/hearth-shell-up" ] && { up=1; break; }
     [ -s "$NEXT" ] || [ -e "$RUN/hearth-kwin-shell-failed" ] && break
-    [ $(( $(date +%s) - started )) -ge "$KWIN_UP_SECS" ] && break
+    now=$(date +%s)
+    if [ $(( now - started )) -ge "$KWIN_UP_SECS" ]; then
+      [ $(( now - started )) -ge "$KWIN_UP_MAX_SECS" ] && break
+      cpu=$(mantel_cpu_ticks)
+      [ -n "$busy_at" ] || { busy_at=$now; busy_ref=${cpu:-0}; }
+      if [ -n "$cpu" ] && [ $(( cpu - busy_ref )) -ge "$KWIN_BUSY_TICKS" ]; then busy_ref=$cpu; busy_at=$now; fi
+      [ $(( now - busy_at )) -ge "$KWIN_STALL_SECS" ] && break
+      if [ -z "$told_busy" ] && [ -n "$cpu" ]; then
+        told_busy=1; log "kwin: Mantel is still starting after ${KWIN_UP_SECS}s and busy loading; waiting while it keeps going (at most ${KWIN_UP_MAX_SECS}s)"
+      fi
+    fi
     sleep 1
   done
   if [ "$up" = 0 ] && kill -0 "$kpid" 2>/dev/null && [ ! -s "$NEXT" ]; then
-    log "kwin: Mantel didn't say it's up after ${KWIN_UP_SECS}s; ending KWin"
+    if [ -n "$told_busy" ]; then
+      log "kwin: Mantel didn't say it's up after $(( $(date +%s) - started ))s (it stopped making progress, or ${KWIN_UP_MAX_SECS}s went by); ending KWin"
+    else
+      log "kwin: Mantel didn't say it's up after ${KWIN_UP_SECS}s; ending KWin"
+    fi
     kill -TERM "$kpid" 2>/dev/null; sleep 3; kill -KILL "$kpid" 2>/dev/null
   fi
   [ "$up" = 1 ] && log "kwin: Mantel up after $(( $(date +%s) - started ))s"
@@ -747,7 +787,7 @@ run_kwin() {
 # screen: loaded". Otherwise KWin starts with --no-lockscreen, so it can never lock with KDE's (or a broken) lock
 # screen: never a lockout. The test run is only done once per image (or a changed lock screen or greeter): a pass is
 # kept in $DESK_STATE/kwin-lock-proven under a key of the image's version and both files' checksums; a failure is
-# never kept, so the next start tries again. At most HEARTH_LOCK_CHECK_SECS (12 s); a check that can't run fails.
+# never kept, so the next start tries again. At most HEARTH_LOCK_CHECK_SECS (30 s); a check that can't run fails.
 # (kscreenlockerrc in desktop/kwin/xdg turns KWin's own automatic locking off either way, fixed with [$i]: Mantel's
 # settings decide when to lock.)
 KWIN_LOCK_WHY=""
@@ -773,8 +813,11 @@ kwin_lock_ready() {
   key=$(kwin_lock_key)
   proven="$DESK_STATE/kwin-lock-proven"
   [ "$(cat "$proven" 2>/dev/null)" = "$key" ] && return 0
-  out=$(PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock HEARTH_LOCK_PROBE_TIME="${HEARTH_LOCK_PROBE_TIME:-8}" \
-    timeout "${HEARTH_LOCK_CHECK_SECS:-12}" python3 "$lc" --as-kwin 2>&1); rc=$?
+  # Up to 25 s for the greeter's test run (it ends as soon as the lock screen says it loaded: usually a few seconds).
+  # The owner's i3-N305 laptop, Nov 17: on the first start after an update (a cold disk) the greeter hadn't said
+  # anything after 8 s, so KWin ran without its locker. Only the first start of an image pays this (a pass is kept).
+  out=$(PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock HEARTH_LOCK_PROBE_TIME="${HEARTH_LOCK_PROBE_TIME:-25}" \
+    timeout "${HEARTH_LOCK_CHECK_SECS:-30}" python3 "$lc" --as-kwin 2>&1); rc=$?
   if [ "$rc" = 0 ]; then
     mkdir -p "$DESK_STATE" && printf '%s\n' "$key" >"$proven.tmp" && mv -f "$proven.tmp" "$proven"
     log "kwin: Hearth's lock screen loads in KWin's greeter (checked once for this image)"
