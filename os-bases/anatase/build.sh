@@ -1349,7 +1349,8 @@ bash /ctx/hearth-kde/install.sh /ctx/nimbus-app/hearth-kde.tar || echo "warning:
 # image's KConfig older): Files didn't open. install.sh only checks for missing libraries, so here every library of
 # the build is resolved too (ldd -r). Anything unresolved: the build and kio-hearth are left out, and Files is
 # Fedora's own Dolphin (hearth-files-kde falls back to it: Hearth's name and places, KDE's program).
-unresolved() { LD_LIBRARY_PATH="$2" ldd -r "$1" 2>&1 | grep -E 'undefined symbol|not found' | head -3; }
+# (|| true: a library with nothing unresolved makes grep "fail", which stopped the whole build under set -e/pipefail.)
+unresolved() { { LD_LIBRARY_PATH="$2" ldd -r "$1" 2>&1 | grep -E 'undefined symbol|not found' | head -3; } || true; }
 if [ -d /usr/lib/hearth-files ]; then
   bad=""
   for f in /usr/lib/hearth-files/bin/dolphin $(find /usr/lib/hearth-files -name '*.so*' -type f 2>/dev/null); do
