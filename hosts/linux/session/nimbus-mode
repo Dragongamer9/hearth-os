@@ -14,6 +14,9 @@ RUN="${XDG_RUNTIME_DIR:-/tmp}"
 # nimbus-session and the autostart; labwc's own LABWC_PID for anything older that only has that). labwc's own commands
 # (labwc --exit) only under labwc: they signal LABWC_PID, which is never set under KWin.
 desk_pid="${HEARTH_DESKTOP_PID:-$LABWC_PID}"
+# 1.15, the Anatase test: Desktop Mode is KDE Plasma, started by nimbus-session (its process id in hearth-plasma.pid).
+plasma_pid=$(cat "$RUN/hearth-plasma.pid" 2>/dev/null)
+plasma_up() { [ -n "$plasma_pid" ] && kill -0 "$plasma_pid" 2>/dev/null; }
 # Steam Game Mode (nimbus-session's run_steam_mode) leaves the session's process id here while it runs.
 steam_pid=$(cat "$RUN/hearth-steam-mode.pid" 2>/dev/null)
 steam_up() { [ -n "$steam_pid" ] && kill -0 "$steam_pid" 2>/dev/null; }
@@ -21,7 +24,7 @@ case "$1" in
   current)
     server_pid=$(cat "$RUN/hearth-server-mode.pid" 2>/dev/null)
     if [ "$HEARTH_SERVER_MODE" = 1 ] || { [ -n "$server_pid" ] && kill -0 "$server_pid" 2>/dev/null && [ "$(cat "$RUN/nimbus-mode-now" 2>/dev/null)" = server ]; }; then echo server
-    elif [ -n "$desk_pid" ]; then echo desktop; elif steam_up; then echo steam; elif [ -n "$GAMESCOPE_WAYLAND_DISPLAY" ]; then echo game; else echo none; fi ;;
+    elif [ -n "$desk_pid" ] || plasma_up; then echo desktop; elif steam_up; then echo steam; elif [ -n "$GAMESCOPE_WAYLAND_DISPLAY" ]; then echo game; else echo none; fi ;;
   game|desktop|logout|steam|server|hearth)
     # (logout is written too: the session ends on anything that isn't a mode, and Steam Game Mode then knows it was
     # asked for and isn't started again.)
@@ -31,7 +34,14 @@ case "$1" in
     if [ -n "$desk_pid" ] && [ -x "$side" ] && { [ "$1" = steam ] || { [ "$1" = game ] && [ "$(python3 "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell/hearth-game-mode" choice 2>/dev/null || echo steam)" = steam ]; }; } \
       && "$side" game >/dev/null 2>&1; then exit 0; fi
     echo "$1" >"$RUN/nimbus-next"
-    if [ -n "$desk_pid" ]; then
+    if plasma_up; then
+      # KDE Plasma: logged out the way its own menu does (apps asked to close), then ended for it after 10 s so the
+      # switch can't hang.
+      gdbus call --session --dest org.kde.Shutdown --object-path /Shutdown --method org.kde.Shutdown.logout >/dev/null 2>&1 \
+        || qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logout >/dev/null 2>&1 || kill -TERM "$plasma_pid"
+      me=$(id -u); pid="$plasma_pid"
+      setsid sh -c "sleep 10; kill -0 $pid 2>/dev/null && { pkill -TERM -u $me -x kwin_wayland; kill -TERM $pid; sleep 4; kill -KILL $pid; }" >/dev/null 2>&1 </dev/null &
+    elif [ -n "$desk_pid" ]; then
       if [ "${HEARTH_WM:-labwc}" != kwin ] && [ -n "$LABWC_PID" ]; then labwc --exit 2>/dev/null || kill -TERM "$desk_pid"
       else kill -TERM "$desk_pid"; fi
       # If an app keeps the desktop from closing, close it anyway so the switch can't hang.

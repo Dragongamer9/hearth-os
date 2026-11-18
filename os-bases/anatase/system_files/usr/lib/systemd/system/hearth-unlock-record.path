@@ -1,0 +1,12 @@
+# Hearth OS on Anatase, "Unlock the file system": whenever rpm's database changes (dnf installed or removed
+# something), the record of your packages follows (hearth-unlock --record), so an update can put them back.
+[Unit]
+Description=Hearth: follow the packages you install with dnf
+After=hearth-unlock.service
+
+[Path]
+PathChanged=/usr/lib/sysimage/rpm/rpmdb.sqlite
+Unit=hearth-unlock-record.service
+
+[Install]
+WantedBy=multi-user.target

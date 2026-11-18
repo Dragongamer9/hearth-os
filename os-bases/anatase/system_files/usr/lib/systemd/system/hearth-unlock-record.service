@@ -1,0 +1,8 @@
+[Unit]
+Description=Hearth: the record of the packages you installed with dnf
+After=hearth-unlock.service
+
+[Service]
+Type=oneshot
+ExecStart=-/usr/bin/hearth-unlock --record
+Nice=10

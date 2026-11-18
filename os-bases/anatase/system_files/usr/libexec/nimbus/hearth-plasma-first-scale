@@ -1,0 +1,19 @@
+#!/bin/sh
+# Hearth OS on Anatase (test, 1.15): KDE's own display settings own the screen's scale. Only once per account, only
+# before KDE has saved any screen settings (no ~/.config/kwinoutputconfig.json yet), and only on the ROG Ally family
+# (7-inch 1920x1080: KWin picks 210% there by itself, labwc had 150%), the built-in screen is set to 150% through
+# KDE's own tool. Never again after that, and never over a scale you picked. Nothing from Mantel's saved settings is
+# read or copied.
+mark="${XDG_STATE_HOME:-$HOME/.local/state}/hearth/plasma-first-scale"
+[ -e "$mark" ] && exit 0
+mkdir -p "$(dirname "$mark")" && : > "$mark"
+[ -e "${XDG_CONFIG_HOME:-$HOME/.config}/kwinoutputconfig.json" ] && exit 0
+case "$(cat /sys/class/dmi/id/product_name 2>/dev/null)" in
+  *"ROG Ally"*|*RC71L*|*RC72L*|*RC73*) ;;
+  *) exit 0 ;;
+esac
+command -v kscreen-doctor >/dev/null 2>&1 || exit 0
+sleep 3
+out=$(kscreen-doctor -o 2>/dev/null | sed 's/\x1b\[[0-9;]*m//g' | awk '/^Output:/ && /eDP/ {print $3; exit}')
+[ -n "$out" ] && kscreen-doctor "output.$out.scale.1.5" >/dev/null 2>&1
+exit 0

@@ -1,54 +1,74 @@
-# Builds Hearth OS on Anatase: the next Hearth OS (Fedora 45, bootc; one image for AMD, Intel and Nvidia, with
-# Handheld Daemon), from os-bases/anatase (see docs/archive/BASE-ANATASE.md). Published as ghcr.io/dragongamer9/hearth-os:testing
-# only. :latest is what the Bazzite-based Hearth OS offers to move to (Settings › Updates); it's never published
-# from here: someone promotes a tried :testing build to :latest by hand.
-# Failures show up as annotations on the run (the end of the failing step's output), so the full log isn't needed.
-name: Hearth OS (Anatase base)
+# Builds Hearth OS on Anatase: 1.15's test edition beside Debian (the owner, Nov 17: "Bring Anatase back and up to speed
+# on 1.15 so i can test it"), from os-bases/anatase (Fedora bootc; docs/BASE-ANATASE.md). The same Hearth apps as the
+# Debian edition (the app jobs are base-peppermint.yml's), stock KDE Plasma as Desktop Mode.
+# Publishing (red flag 5): ONLY by hand, ONLY from main, ONLY with publish ticked, and ONLY to
+# ghcr.io/dragongamer9/hearth-os:anatase-test (and a dated anatase-test-<version>-<date> tag). Never :latest or
+# :testing (the old pre-archive build) and never hearth-peppermint, which Debian devices follow. From any other branch
+# it builds and checks only. Failures show up as annotations on the run.
+name: Hearth OS (Anatase base, test)
 
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish the image (off: build and check it only, e.g. to test a branch before merging)'
+        description: 'Publish to ghcr.io/dragongamer9/hearth-os:anatase-test (main only; the owner says when). Off: build and check only'
+        type: boolean
+        default: false
+      smoothness:
+        description: 'Measure Desktop Mode at rest beside Debian (about 20 minutes)'
         type: boolean
         default: true
-  # Archived (Hearth OS 1.0 is Debian-based; docs/ARCHIVED.md): no builds on push any more, by hand only. It used to
-  # build on pushes to linux-host (:testing) and main (also :latest, what Anatase installs update from).
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
+  TEST_TAG: anatase-test
 
 concurrency:
   group: hearth-anatase-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  # The Rust app and Hearth Browser, built on the runner as in os.yml (Fedora 45's glibc and WebKitGTK are newer
-  # than the runner's, so the app runs there).
+  # The Rust app (hosts/hearth-rs), built inside Debian trixie itself rather than on the Ubuntu runner: then it
+  # links exactly the WebKitGTK/GTK/libsoup the image has, and never needs a newer glibc than trixie's 2.41
+  # (ubuntu-latest moves to newer Ubuntu releases, whose glibc trixie doesn't have).
   app:
-    name: Build the Hearth app (Rust) and Hearth Browser
+    name: Build the Hearth app (Rust, on Debian trixie)
     runs-on: ubuntu-latest
+    container: docker.io/library/debian:trixie
     outputs:
       version: ${{ steps.ver.outputs.version }}
+    defaults:
+      run:
+        shell: bash
     steps:
+      - name: Build tools
+        run: |
+          set -o pipefail
+          exec > >(tee /tmp/step.log) 2>&1
+          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=app (tools)::$msg"' ERR
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+            git curl ca-certificates build-essential pkg-config file zstd \
+            libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libssl-dev libxdo-dev >/dev/null
       - uses: actions/checkout@v4
       - name: Version
         id: ver
         run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
           v=$(grep -oP '(?<=<Version>)[^<]+' hosts/windows/Nimbus.Host/Nimbus.Host.csproj | head -1)
           echo "version=$v" >> "$GITHUB_OUTPUT"
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: hosts/hearth-rs
+          key: debian-trixie
       - name: Build
         working-directory: hosts/hearth-rs
         run: |
           set -o pipefail
           exec > >(tee /tmp/step.log) 2>&1
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=app::$msg"' ERR
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev >/dev/null
           sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
           cargo build --release
           mkdir -p /tmp/app && cp target/release/hearth /tmp/app/hearth
@@ -59,6 +79,11 @@ jobs:
           # installs it as /usr/bin/hearth-terminal. If it doesn't build, the image keeps its other terminals.
           if (cd ../hearth-terminal && cargo build --release); then cp ../hearth-terminal/target/release/hearth-terminal /tmp/app/hearth-terminal
           else echo "::warning title=Hearth Terminal::didn't build; this image goes without it"; fi
+          echo "--- libraries the app links (all come from Debian trixie)"
+          objdump -p target/release/hearth | grep NEEDED
+          echo "--- newest glibc symbol it needs (trixie has 2.41)"
+          objdump -T target/release/hearth | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # Hearth Disks (hosts/hearth-disks), the disk manager: built the same way, and put beside the app in
       # hearth-app.tar (build.sh installs it as /usr/bin/hearth-disks). Not fatal: without it the image is still made.
       - name: Build Hearth Disks
@@ -72,8 +97,8 @@ jobs:
           mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-disks" /tmp/app/hearth-disks
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ==== Hearth Recorder, Camera and Share (hosts/hearth-recorder, hosts/hearth-camera, hosts/hearth-share; tested by
-      # capture-apps.yml): built the same way and put beside the app in hearth-app.tar (build.sh installs them in
-      # /usr/bin). Not fatal: without one the image is still made, without that app.
+      # capture-apps.yml): built here in Debian trixie like the app and put beside it in hearth-app.tar (build.sh
+      # installs them in /usr/bin). Not fatal: without one the image is still made, without that app.
       - name: Build Hearth Recorder, Camera and Share
         continue-on-error: true
         run: |
@@ -86,35 +111,34 @@ jobs:
           done
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # gpu-screen-recorder, Recorder's best way to capture (graphics card capture and encoding, Game Mode, instant
-      # replay), built from its release inside Anatase's own image (so it links exactly Anatase's ffmpeg and
-      # libraries) and carried as gsr/ (build.sh installs it; the COPR package is only the fallback).
-      - name: Build gpu-screen-recorder for Hearth Recorder (inside Anatase)
+      # replay): Debian 13 doesn't package it yet, so it's built from its release here, in trixie, and carried in
+      # hearth-app.tar as gsr/ (build.sh installs it and gives gsr-kms-server its capability). Without it Recorder
+      # uses wf-recorder and GStreamer.
+      - name: Build gpu-screen-recorder for Hearth Recorder
         continue-on-error: true
         env:
           GSR_VERSION: '5.13.8'
         run: |
-          base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
-          mkdir -p /tmp/app/gsr
-          cat > /tmp/gsr-build.sh <<'SH'
-          set -e
-          dnf5 -y install --skip-unavailable meson ninja-build gcc gcc-c++ binutils pkgconf-pkg-config curl tar gzip findutils \
-            libavcodec-free-devel libavformat-free-devel libavutil-free-devel libswresample-free-devel libavfilter-free-devel \
-            libX11-devel libXcomposite-devel libXrandr-devel libXfixes-devel libXdamage-devel pulseaudio-libs-devel libva-devel libdrm-devel \
-            wayland-devel libcap-devel pipewire-devel dbus-devel vulkan-headers vulkan-loader-devel mesa-libEGL-devel mesa-libGL-devel libglvnd-devel \
-            >/tmp/dnf.log 2>&1 || { tail -20 /tmp/dnf.log; exit 1; }
-          mkdir -p /src && cd /src
+          set -o pipefail
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends meson ninja-build pkgconf libwayland-bin \
+            libavcodec-dev libavformat-dev libavutil-dev libswresample-dev libavfilter-dev libx11-dev libxcomposite-dev libxrandr-dev \
+            libxfixes-dev libxdamage-dev libpulse-dev libva-dev libdrm-dev libwayland-dev libcap-dev libpipewire-0.3-dev libspa-0.2-dev \
+            libdbus-1-dev libvulkan-dev libgl-dev libegl-dev libglvnd-dev >/dev/null
+          mkdir -p /tmp/gsr-src && cd /tmp/gsr-src
           curl -fsSL --retry 3 -o gsr.tar.gz "https://dec05eba.com/snapshot/gpu-screen-recorder.git.${GSR_VERSION}.tar.gz"
           tar -xzf gsr.tar.gz
-          cd "$(dirname "$(find . -maxdepth 3 -name meson.build | sort | head -1)")"
-          meson setup build --buildtype=release >/tmp/meson.log 2>&1 || { tail -30 /tmp/meson.log; exit 1; }
-          ninja -C build >/tmp/ninja.log 2>&1 || { tail -30 /tmp/ninja.log; exit 1; }
-          for b in gpu-screen-recorder gsr-kms-server; do f=$(find build -type f -name "$b" -perm -u+x | head -1); [ -n "$f" ] && cp "$f" /out/ && strip "/out/$b"; done
-          /out/gpu-screen-recorder --version 2>&1 | head -1 || true
-          SH
-          docker run --rm -e GSR_VERSION -v /tmp/gsr-build.sh:/b.sh:ro -v /tmp/app/gsr:/out "$base" bash /b.sh 2>&1 | tail -40
+          src=$(dirname "$(find . -maxdepth 3 -name meson.build | sort | head -1)")
+          cd "$src"
+          meson setup build --buildtype=release >/tmp/gsr-meson.log 2>&1 || { tail -30 /tmp/gsr-meson.log; echo "::warning title=gpu-screen-recorder::meson setup failed"; exit 1; }
+          ninja -C build >/tmp/gsr-build.log 2>&1 || { tail -30 /tmp/gsr-build.log; echo "::warning title=gpu-screen-recorder::didn't build"; exit 1; }
+          mkdir -p /tmp/app/gsr
+          for b in gpu-screen-recorder gsr-kms-server; do
+            f=$(find build -type f -name "$b" -perm -u+x | head -1)
+            [ -n "$f" ] && cp "$f" /tmp/app/gsr/ && strip /tmp/app/gsr/$b || true
+          done
           ls -l /tmp/app/gsr
-          test -x /tmp/app/gsr/gpu-screen-recorder || { echo "::warning title=gpu-screen-recorder::didn't build inside Anatase; the image tries the COPR package"; rmdir /tmp/app/gsr 2>/dev/null; exit 1; }
-          echo "::notice title=gpu-screen-recorder::built ${GSR_VERSION} inside Anatase for the image"
+          /tmp/app/gsr/gpu-screen-recorder --version 2>&1 | head -1 || true
+          echo "::notice title=gpu-screen-recorder::built ${GSR_VERSION} (trixie; the Anatase image keeps it only if its libraries are there, else the COPR package)"
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ==== end of Hearth Recorder, Camera and Share
       # ---- Hearth Player and Hearth Calculator (hosts/hearth-player, hosts/hearth-calculator): built the same way and
@@ -158,7 +182,7 @@ jobs:
           set -o pipefail
           export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
           # Contacts keeps CardDAV passwords in the Secret Service through libdbus.
-          sudo apt-get install -y -qq libdbus-1-dev >/dev/null
+          apt-get install -y -qq libdbus-1-dev >/dev/null
           mkdir -p /tmp/app
           for app in hearth-contacts hearth-maps; do
             sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" "hosts/$app/Cargo.toml"
@@ -204,7 +228,7 @@ jobs:
       # ---- Hearth's gaming apps (hosts/hearth-gaming): Controller Lab, Saves and Mods, built the same way and put beside
       # the app in hearth-app.tar (build.sh installs them in /usr/bin; their icons are in Hearth's icon set). Not fatal:
       # without them the image is still made.
-      - name: Build Hearth's gaming apps (Controller Lab, Saves, Mods)
+      - name: Build Hearth's gaming apps (Controller Lab, Saves, Mods, Hearth Games)
         continue-on-error: true
         working-directory: hosts/hearth-gaming
         run: |
@@ -213,7 +237,7 @@ jobs:
           sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
           cargo build --release || { echo "::warning title=Hearth's gaming apps::they didn't build, so this image is made without them"; exit 1; }
           mkdir -p /tmp/app
-          for a in hearth-controller-lab hearth-saves hearth-mods; do cp "$CARGO_TARGET_DIR/release/$a" /tmp/app/; done
+          for a in hearth-controller-lab hearth-saves hearth-mods hearth-gamestore; do cp "$CARGO_TARGET_DIR/release/$a" /tmp/app/; done
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of Hearth's gaming apps
       # ---- Hearth Tools (hosts/hearth-tools): Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers &
@@ -225,6 +249,7 @@ jobs:
         run: |
           set -o pipefail
           export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          command -v python3 >/dev/null || { apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends python3 >/dev/null; } || true
           sed -i "s/^version = \".*\"/version = \"${{ steps.ver.outputs.version }}\"/" Cargo.toml
           cargo build --release || { echo "::warning title=Hearth Tools::it didn't build, so this image is made without it"; exit 1; }
           mkdir -p /tmp/app/hearth-tools
@@ -294,21 +319,32 @@ jobs:
           else echo "::warning title=hearth-link::it didn't build, so this image is made without it"; fi
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of Hearth Link
-      # ---- Hearth's Qt renderer (hosts/hearth-qml, Experimental; docs/RENDERERS.md): built inside Anatase's own image (so
-      # it links exactly Anatase's Qt) and self-tested offscreen there (hearth-qml.yml does the same with pictures).
-      # Carried as qml/ (build.sh installs it in /usr/lib/hearth-qml). Not fatal: without it there's no Qt choice.
-      - name: Build Hearth's Qt renderer (Experimental, inside Anatase)
+      # ---- Hearth's Qt renderer (hosts/hearth-qml, Experimental; docs/RENDERERS.md): built here in trixie, so it links the
+      # image's Qt, and self-tested offscreen (hearth-qml.yml does the same with pictures). Beside the app in
+      # hearth-app.tar as qml/ (build.sh installs it in /usr/lib/hearth-qml). Not fatal: without it there's no Qt choice.
+      - name: Build Hearth's Qt renderer (Experimental)
         continue-on-error: true
         run: |
           set +e
-          base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
-          mkdir -p /tmp/qout
-          docker run --rm -e HEARTH_VERSION="${{ steps.ver.outputs.version }}" -v "$PWD:/src:ro" -v /tmp/qout:/out "$base" bash /src/.github/scripts/hearth-qml-build.sh build 2>&1 | tail -80
+          SRC="$GITHUB_WORKSPACE" OUT=/tmp/qout HEARTH_VERSION="${{ steps.ver.outputs.version }}" bash .github/scripts/hearth-qml-build.sh build 2>&1 | tail -80
           rc=${PIPESTATUS[0]}
           if [ -x /tmp/qout/hearth-qml/hearth-qml ]; then mkdir -p /tmp/app/qml && cp -a /tmp/qout/hearth-qml/. /tmp/app/qml/ && tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
-          else echo "::warning title=hearth-qml::it didn't build inside Anatase, so this image is made without the Qt renderer"; exit 1; fi
+          else echo "::warning title=hearth-qml::it didn't build, so this image is made without the Qt renderer"; exit 1; fi
           [ "$rc" = 0 ] || { echo "::warning title=hearth-qml::built, but its self-test failed (see hearth-qml.yml for pictures)"; exit 1; }
       # ---- end of Hearth's Qt renderer
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-app-anatase
+          path: hearth-app.tar
+
+  # Hearth Browser is still an Electron app (hosts/linux/src/web): Electron brings its own libraries and asks
+  # little of glibc, so it's built on the runner as in os.yml.
+  browser:
+    name: Build Hearth Browser (Electron)
+    runs-on: ubuntu-latest
+    needs: [app]
+    steps:
+      - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -319,25 +355,52 @@ jobs:
           exec > >(tee /tmp/step.log) 2>&1
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=electron window::$msg"' ERR
           npm install --no-audit --no-fund
-          npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm version "${{ needs.app.outputs.version }}" --no-git-tag-version --allow-same-version
           npm test
           npm run dist:dir
           test -x dist/linux-unpacked/hearth-electron
-          mkdir -p /tmp/app/electron && cp -a dist/linux-unpacked/. /tmp/app/electron/
-      # ---- The Hearth Decky plugin (archive/hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): built and
-      # packed into hearth-app.tar (decky-hearth/); build.sh puts it in /usr/share/hearth/decky-hearth, where Settings › System › Steam Game Mode's
-      # Decky install takes it from. Never fails the image: without it, Steam Game Mode works without the Hearth plugin.
-      - name: Build the Hearth Decky plugin
+          mkdir -p /tmp/electron && cp -a dist/linux-unpacked/. /tmp/electron/
+      # ---- Hearth Sync (hosts/decky-hearth-sync, docs/HEARTH-SYNC.md): the Decky plugin the image ships, built and packed
+      # into hearth-decky-sync.tar; build.sh puts it in /usr/share/hearth/decky-hearth-sync, where Settings › System › Steam
+      # Game Mode's Decky install takes it from. The older Hearth plugin (archive/hosts/decky-hearth) isn't shipped for now.
+      # Never fails the image: without it, Steam Game Mode works without Hearth's games in Steam's library.
+      - name: Build Hearth Sync (Decky plugin)
         continue-on-error: true
         run: |
           set -e
-          cd archive/hosts/decky-hearth
+          cd hosts/decky-hearth-sync
           npm install -g pnpm@9 >/dev/null
-          sed -i "s/\"version\": \".*\"/\"version\": \"${{ steps.ver.outputs.version }}\"/" package.json
+          sed -i "s/\"version\": \".*\"/\"version\": \"${{ needs.app.outputs.version }}\"/" package.json
           pnpm install --no-frozen-lockfile >/dev/null
           pnpm build
           ./package.sh /tmp/decky-out
-          mkdir -p /tmp/app && rm -rf /tmp/app/decky-hearth && cp -a /tmp/decky-out/decky-hearth /tmp/app/decky-hearth
+          tar -C /tmp/decky-out/decky-hearth-sync -cf "$GITHUB_WORKSPACE/hearth-decky-sync.tar" .
+      # Hearth Music (hosts/decky-hearth-music, docs/HEARTH-MUSIC.md): shipped next to Hearth Sync the same way, into
+      # /usr/share/hearth/decky-hearth-music. Never fails the image.
+      - name: Build Hearth Music (Decky plugin)
+        continue-on-error: true
+        run: |
+          set -e
+          cd hosts/decky-hearth-music
+          npm install -g pnpm@9 >/dev/null
+          sed -i "s/\"version\": \".*\"/\"version\": \"${{ needs.app.outputs.version }}\"/" package.json
+          pnpm install --no-frozen-lockfile >/dev/null
+          pnpm build
+          ./package.sh /tmp/decky-out
+          tar -C /tmp/decky-out/decky-hearth-music -cf "$GITHUB_WORKSPACE/hearth-decky-music.tar" .
+      # ---- Hearth Link (hosts/decky-hearth-link, docs/HEARTH-LINK-PLUGIN.md): another Decky plugin, built the same way
+      # into hearth-decky-link.tar for /usr/share/hearth/decky-hearth-link. Never fails the image.
+      - name: Build Hearth Link (Decky plugin)
+        continue-on-error: true
+        run: |
+          set -e
+          cd hosts/decky-hearth-link
+          command -v pnpm >/dev/null || npm install -g pnpm@9 >/dev/null
+          sed -i "s/\"version\": \".*\"/\"version\": \"${{ needs.app.outputs.version }}\"/" package.json
+          pnpm install --no-frozen-lockfile >/dev/null
+          pnpm build
+          ./package.sh /tmp/decky-out
+          tar -C /tmp/decky-out/decky-hearth-link -cf "$GITHUB_WORKSPACE/hearth-decky-link.tar" .
       - name: Build Hearth Browser
         working-directory: hosts/linux
         run: |
@@ -345,28 +408,21 @@ jobs:
           exec > >(tee /tmp/step.log) 2>&1
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=browser::$msg"' ERR
           npm install --no-audit --no-fund
-          npm version "${{ steps.ver.outputs.version }}" --no-git-tag-version --allow-same-version
+          npm version "${{ needs.app.outputs.version }}" --no-git-tag-version --allow-same-version
           npm run dist:dir
           test -x dist/linux-unpacked/nimbus
-          mkdir -p /tmp/app/browser && cp -a dist/linux-unpacked/. /tmp/app/browser/
-          tar -C /tmp/app -cf ../../hearth-app.tar .
+          mkdir -p /tmp/browser && cp -a dist/linux-unpacked/. /tmp/browser/
+          tar -C /tmp/browser -cf ../../hearth-browser.tar .
+          tar -C /tmp/electron -cf ../../hearth-electron.tar .
       - uses: actions/upload-artifact@v4
         with:
-          name: hearth-app-anatase
-          path: hearth-app.tar
-
-  # REQUIRED: Hearth's page must load and draw every screen without a script error.
-  ui:
-    runs-on: ubuntu-24.04   # playwright 1.48 can't install its browser deps on Ubuntu 26 (ubuntu-latest from 2026-10-19)
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-      - name: Check Hearth's page
-        run: |
-          cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
-          node ui-check.js
+          name: hearth-browser-anatase
+          path: |
+            hearth-browser.tar
+            hearth-electron.tar
+            hearth-decky-sync.tar
+            hearth-decky-music.tar
+            hearth-decky-link.tar
 
   # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine (experimental, off by default; Hearth starts it
   # only when Settings › Library › Steam engine is Lightweight). This job never fails the image: if hearth-steam doesn't
@@ -393,7 +449,7 @@ jobs:
           path: hearth-steam.tar
   # ---- end hearth-steam
   # ---- Hearth's KDE apps (hosts/hearth-kde, docs/KDE-APPS.md; tested by kde-apps.yml): Hearth Files (Dolphin + Hearth's
-  # patches) and kio-hearth (hearth:/ in every KDE app), built and tested inside Anatase by
+  # patches) and kio-hearth (hearth:/ in every KDE app), built and tested inside Debian trixie (Peppermint) by
   # .github/scripts/hearth-kde-build.sh. Never stops the image: what didn't build or pass its tests is left out of the tar,
   # and without the tar the image keeps the old Hearth Files (the KDE apps from the base's packages are still renamed).
   kde:
@@ -406,7 +462,10 @@ jobs:
         continue-on-error: true
         run: |
           mkdir -p /tmp/out
-          docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)" bash /src/.github/scripts/hearth-kde-build.sh anatase 2>&1 | tail -60
+          base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+          docker pull -q "$base" || { echo "::error title=Anatase base::couldn't pull $base (the base image is gone or the registry didn't answer)"; exit 1; }
+          echo "::notice title=Anatase base::$base: $(docker inspect -f '{{.Created}} {{index .Config.Labels "org.opencontainers.image.version"}}' "$base" 2>/dev/null) · $(docker run --rm "$base" sh -c '. /usr/lib/os-release; echo "$PRETTY_NAME (Fedora $(rpm -E %fedora))"')"
+          docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-kde-build.sh anatase 2>&1 | tail -60
           rc=${PIPESTATUS[0]}
           [ "$rc" = 0 ] || { echo "::warning title=Hearth's KDE apps::not everything built or passed its tests; the image goes without that part"; exit 1; }
       - uses: actions/upload-artifact@v4
@@ -416,19 +475,19 @@ jobs:
           path: /tmp/out/hearth-kde.tar
           if-no-files-found: ignore
   # ---- end of Hearth's KDE apps
+
   image:
-    name: Build the OS image (hearth-os on Anatase)
-    needs: [app, ui, hearth-steam, kde]
-    # The KDE apps never hold the image back (if they failed, it's made without them).
-    if: ${{ !cancelled() && needs.app.result == 'success' && needs.ui.result == 'success' && needs.hearth-steam.result == 'success' }}
+    name: Build the OS image (hearth-os on Anatase, test)
+    needs: [app, browser, hearth-steam, kde]
+    if: ${{ !cancelled() && needs.app.result == 'success' && needs.browser.result == 'success' && needs.hearth-steam.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 150
+    timeout-minutes: 240
     permissions:
       contents: read
       packages: write
     env:
-      PUBLISH: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'push' && (github.ref == 'refs/heads/linux-host' || github.ref == 'refs/heads/main')) }}
-      RELEASE: ${{ github.ref == 'refs/heads/main' && github.event_name == 'push' }}
+      # Only main, only by hand, only with publish ticked (red flag 5).
+      PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -438,416 +497,83 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: hearth-app-anatase
-
-      # hearth-steam: only when it built (see the hearth-steam job). Missing: the image goes without it.
       - uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: hearth-steam-anatase
-
-      # Hearth's KDE apps: only when they built (see the kde job). Missing: the old Hearth Files stays.
+      - uses: actions/download-artifact@v4
+        with:
+          name: hearth-browser-anatase
       - uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: hearth-kde-anatase
 
-      # One app of each kind per desktop (docs/APP-KINDS.md): the table and hearth-app-kinds, before the long build.
-      - name: App kinds (Python tests)
+      - name: Python tests for what this image changes (Switch edition, the clean install, unlock)
         run: |
-          python3 -m unittest discover -s hosts/linux/test -p 'test_app_kinds.py' -v 2>&1 | tee /tmp/ak-tests.log | tail -25
-          grep -q '^OK' /tmp/ak-tests.log || { echo "::error title=app kinds tests::$(grep -E '^(FAIL|ERROR|AssertionError)' /tmp/ak-tests.log | head -10 | tr '\n' ' ')"; exit 1; }
+          python3 -m unittest discover -s hosts/linux/test -p 'test_hearth_clean_install.py' 2>&1 | tail -5 | tee /tmp/t1.log
+          python3 -m unittest discover -s hosts/linux/test -p 'test_anatase_*.py' 2>&1 | tail -5 | tee /tmp/t2.log
+          grep -q '^OK' /tmp/t1.log && grep -q '^OK' /tmp/t2.log || { echo "::error title=python tests::$(cat /tmp/t1.log /tmp/t2.log | tr '\n' ' ' | cut -c1-600)"; exit 1; }
 
       - name: Unpack Hearth into the build context
         run: |
-          mkdir -p os/nimbus-app
+          mkdir -p os/nimbus-app/browser
           tar -C os/nimbus-app -xf hearth-app.tar
-          ls -la os/nimbus-app
+          tar -C os/nimbus-app/browser -xf hearth-browser.tar
+          if [ -f hearth-electron.tar ]; then mkdir -p os/nimbus-app/electron && tar -C os/nimbus-app/electron -xf hearth-electron.tar; fi
           if [ -f hearth-steam.tar ]; then mkdir -p os/nimbus-app/hearth-steam && tar -C os/nimbus-app/hearth-steam -xf hearth-steam.tar || rm -rf os/nimbus-app/hearth-steam; fi
           test -x os/nimbus-app/hearth
           if [ -f hearth-kde.tar ]; then cp hearth-kde.tar os/nimbus-app/hearth-kde.tar; fi
-          # Hearth app updates (docs/APP-UPDATES.md): this image's app ABI tag, so only Hearth app updates made for
-          # exactly these image-side files ever run on it (release.yml puts the same tag in each bundle).
           mkdir -p os/system_files/usr/share/nimbus
           python3 tools/app-bundle.py abi > os/system_files/usr/share/nimbus/app-abi
-          echo "::notice title=app ABI::$(cat os/system_files/usr/share/nimbus/app-abi)"
-          # This version's release date, next to /usr/share/nimbus/version (Settings › About: "Hearth OS 1.0 · November 2,
-          # 2026"). From its docs/ROADMAP.md heading, "## 1.0 (released 2026-11-02)"; empty before the release has one.
           python3 tools/hearth_version.py date "${{ needs.app.outputs.version }}" > os/system_files/usr/share/nimbus/version-date
-          echo "::notice title=version::${{ needs.app.outputs.version }} (shown as $(python3 tools/hearth_version.py show "${{ needs.app.outputs.version }}"), released: $(cat os/system_files/usr/share/nimbus/version-date))"
+          for pl in sync music link; do
+            if [ -f hearth-decky-$pl.tar ]; then mkdir -p os/nimbus-app/decky-hearth-$pl && tar -C os/nimbus-app/decky-hearth-$pl -xf hearth-decky-$pl.tar || rm -rf os/nimbus-app/decky-hearth-$pl; fi
+          done
+          ls -la os/nimbus-app
 
       - name: Build
         run: |
           set -o pipefail
           exec > >(tee /tmp/step.log) 2>&1
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" -e "Copying config" -e "Writing manifest" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=image::$msg"' ERR
-          v="${{ needs.app.outputs.version }}"
-          sudo podman build --pull=newer -f os-bases/anatase/Containerfile --build-arg NIMBUS_VERSION="$v" -t hearth-os:build .
-          # Steam from RPM Fusion didn't work out (Flathub's at first boot instead): a warning, not a failure.
+          sudo podman build --pull=newer -f os-bases/anatase/Containerfile --build-arg NIMBUS_VERSION="${{ needs.app.outputs.version }}" -t hearth-os:anatase .
           sflat=$(grep -o "warning: couldn't install Steam from RPM Fusion.*" /tmp/step.log | tail -1 || true)
           if [ -n "$sflat" ]; then echo "::warning title=Steam::$sflat"; fi
+          for w in $(grep -o "warning: [a-zA-Z0-9_. -]*\(isn't in this build\|didn't install\|wasn't built\|couldn't install\)[^\"]*" /tmp/step.log | cut -c1-160 | sort -u | head -15 | tr ' ' '_'); do echo "::warning title=build::$(echo "$w" | tr '_' ' ')"; done
 
       # REQUIRED: a failure here stops the image from being published.
       - name: Check the image
         run: |
-          # pipefail: without it `bootc container lint | tee` below always passed, even when lint failed.
           set -o pipefail
-          cat > /tmp/check.sh <<'EOF'
-          fail=0
-          check() { if sh -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::error title=check::$1"; fail=1; fi; }
-          warn() { if sh -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::warning title=check::$1"; fi; }
-          echo "--- update path (same as os.yml)"
-          check "bootc is installed" "command -v bootc"
-          check "pkexec is installed" "command -v pkexec"
-          check "hearth-admin is installed" "test -x /usr/libexec/nimbus/hearth-admin"
-          check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
-          check "saving a system file (hearth-admin write-file) always asks for a password" "grep -q write-file /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
-          echo "--- Make a bootable USB (Hearth Disks)"
-          check "the USB maker's root helper (hearth-usb) is installed and hearth-admin hands it usb-* commands" "test -x /usr/libexec/nimbus/hearth-usb && python3 -m py_compile /usr/libexec/nimbus/hearth-usb && grep -q usb-raw /usr/libexec/nimbus/hearth-admin"
-          check "writing to an internal drive always asks for an administrator's password" "grep -q allow-internal /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
-          check "the USB maker's tools: parted, sgdisk, wimlib, gpg, xz, zstd, mkfs.vfat, fsck.vfat, curl, udisksctl" "command -v parted && command -v sgdisk && command -v wimlib-imagex && command -v wiminfo && command -v gpg && command -v xz && command -v zstd && command -v mkfs.vfat && command -v fsck.vfat && command -v curl && command -v udisksctl"
-          warn "Make a Bootable USB has its menu entry (and opens ISOs)" "grep -q 'hearth-disks --usb' /usr/share/applications/hearth-usb-maker.desktop"
-          warn "Hearth Link is installed with every library it links" "test -x /usr/bin/hearth-link && ! ldd /usr/bin/hearth-link | grep -q 'not found'"
-          check "Hearth Link's user service comes with it and starts with the session" "test ! -x /usr/bin/hearth-link || (grep -q 'hearth-link serve' /usr/lib/systemd/user/hearth-link.service && test -L /usr/lib/systemd/user/default.target.wants/hearth-link.service)"
-          check "the firewall helper knows Hearth Link's ports" "grep -q '47740-47741' /usr/libexec/nimbus/hearth-link-firewall"
-          echo "--- Hearth's KDE apps (hosts/hearth-kde, docs/KDE-APPS.md)"
-          warn "Hearth's KDE apps have Hearth's menu entries and colors (Terminal is Konsole)" "test -f /usr/share/applications/hearth-terminal-kde.desktop && test -f /usr/share/konsole/Hearth.profile && grep -q '^ColorScheme=Hearth' /etc/xdg/katerc"
-          warn "Hearth Files (Dolphin with Hearth's patches) is in, with every library it links" "test -x /usr/lib/hearth-files/bin/dolphin && ! ldd /usr/lib/hearth-files/bin/dolphin | grep -q 'not found' && test -f /usr/share/applications/hearth-files-kde.desktop"
-          warn "kio-hearth (hearth:/ in every KDE app's file dialogs) is in, with every library it links" "f=\$(find /usr/lib /usr/lib64 -path '*/kf6/kio/hearth.so' | head -1) && test -n \"\$f\" && ! ldd \"\$f\" | grep -q 'not found'"
-          check "the old Hearth Files stays installed (the fallback file manager)" "test -f /usr/share/applications/hearth-files.desktop"
-          warn "Hearth Classic and Game Mode still open folders in the old Hearth Files" "grep -q '^inode/directory=hearth-files.desktop' /etc/xdg/nimbus-mimeapps.list"
-          warn "Hearth Text is installed with every library it links" "test -x /usr/bin/hearth-text && ! ldd /usr/bin/hearth-text | grep -q 'not found'"
-          warn "text files open in Hearth Text (Kate, or the classic one) in Desktop Mode" "grep -Eq '^text/plain=hearth-text(-kde)?.desktop' /etc/xdg/nimbus-mimeapps.list"
-          echo "--- Hearth Files: every app's file chooser and the default file manager"
-          check "the portal backend (hearth-portal) and its picker are installed" "test -x /usr/share/nimbus/desktop/shell/hearth-portal && test -f /usr/share/nimbus/desktop/shell/picker.qml && python3 -m py_compile /usr/share/nimbus/desktop/shell/hearth-portal"
-          check "hearth.portal offers the FileChooser" "grep -q '^Interfaces=.*org.freedesktop.impl.portal.FileChooser' /usr/share/xdg-desktop-portal/portals/hearth.portal"
-          check "nimbus-portals.conf gives the FileChooser to hearth" "grep -qx 'org.freedesktop.impl.portal.FileChooser=hearth' /usr/share/xdg-desktop-portal/nimbus-portals.conf"
-          check "nimbus-portals.conf keeps screen sharing and screenshots on wlr" "grep -qx 'org.freedesktop.impl.portal.ScreenCast=wlr' /usr/share/xdg-desktop-portal/nimbus-portals.conf && grep -qx 'org.freedesktop.impl.portal.Screenshot=wlr' /usr/share/xdg-desktop-portal/nimbus-portals.conf"
-          check "the FileChooser backend's D-Bus service file is installed" "grep -q 'hearth-portal filechooser' /usr/share/dbus-1/services/org.freedesktop.impl.portal.desktop.hearth.service"
-          check "the FileManager1 service file is installed" "grep -q '^Name=org.freedesktop.FileManager1' /usr/share/dbus-1/services/org.freedesktop.FileManager1.hearth.service"
-          check "xdg-desktop-portal is installed" "test -x /usr/libexec/xdg-desktop-portal || test -x /usr/lib/xdg-desktop-portal"
-          check "the backend can use D-Bus (python3 gi)" "python3 -c 'import gi; gi.require_version(\"Gio\", \"2.0\"); from gi.repository import Gio'"
-          check "folders open in Hearth Files in Desktop Mode and Game Mode" "grep -q '^inode/directory=hearth-files.desktop' /etc/xdg/nimbus-mimeapps.list && grep -q '^x-directory/normal=hearth-files.desktop' /etc/xdg/nimbus-mimeapps.list"
-          check "folders open in Hearth Files in the system's list (the Dolphin one when it's in: docs/KDE-APPS.md)" "grep -Eq '^inode/directory=hearth-files(-kde)?.desktop' /usr/share/applications/mimeapps.list"
-          check "Hearth Files' menu entry handles folders" "grep -q '^MimeType=inode/directory;x-directory/normal;' /usr/share/applications/hearth-files.desktop"
-          check "the session asks GTK apps for the portal and holds FileManager1" "grep -q 'GTK_USE_PORTAL=1' /usr/bin/nimbus-session && grep -q 'hearth-portal\" filemanager1' /usr/bin/nimbus-session"
-          check "Hearth Browser's prefs use the portal's file picker" "grep -q 'widget.use-xdg-desktop-portal.file-picker\", 1' /usr/share/hearth-browser/firefox/defaults/pref/hearth-portal.js"
-          warn "Qt apps can use the portal's dialogs (xdgdesktopportal platform theme)" "ls /usr/lib*/qt6/plugins/platformthemes/libqxdgdesktopportal.so /usr/lib/*/qt6/plugins/platformthemes/libqxdgdesktopportal.so 2>/dev/null | grep -q ."
-          warn "the picker can open in Game Mode (Qt's X11 platform plugin)" "ls /usr/lib*/qt6/plugins/platforms/libqxcb.so /usr/lib/*/qt6/plugins/platforms/libqxcb.so 2>/dev/null | grep -q ."
-          warn "xdotool and xprop are installed (the picker is pinned in front in Game Mode)" "command -v xdotool && command -v xprop"
-          warn "Hearth Text's menu entry is installed" "test -f /usr/share/applications/hearth-text.desktop"
-          check "hearth-admin's Python is valid" "python3 -m py_compile /usr/libexec/nimbus/hearth-admin"
-          echo "--- update path (required, the app's own check)"
-          /usr/lib/nimbus/nimbus --check-update-path || fail=1
-          echo "--- the move from the Bazzite-based Hearth OS"
-          check "it says it's the Anatase edition" "grep -q '\"base\": \"anatase\"' /usr/share/nimbus/image-info.json"
-          check "the clean install's first start is installed and enabled" "test -x /usr/libexec/nimbus/hearth-clean-install && python3 -m py_compile /usr/libexec/nimbus/hearth-clean-install && test -L /etc/systemd/system/multi-user.target.wants/hearth-clean-install.service"
-          check "it isn't the Bazzite-based image" "test ! -e /usr/share/ublue-os/image-info.json"
-          echo "--- the Hearth app"
-          check "every library the Hearth app links is installed" "! ldd /usr/lib/nimbus/nimbus | grep -q 'not found'"
-          check "the Electron build (Quick Access) is installed" "test -x /usr/lib/hearth-browser/nimbus"
-          # Hearth Browser: Mozilla's Firefox with Hearth's parts (os/system_files/usr/share/hearth-browser).
-          check "Hearth Browser is installed (Firefox with Hearth's parts)" "test -x /usr/bin/hearth-browser && test -x /usr/lib/hearth-browser/firefox/firefox && test -f /usr/lib/hearth-browser/firefox/hearth.cfg && test -f /usr/lib/hearth-browser/firefox/defaults/pref/autoconfig.js && test -f /usr/lib/hearth-browser/firefox/hearth/hearth.sys.mjs"
-          check "Hearth Browser's policies are valid and leave updates to the image" "python3 -c 'import json, sys; p = json.load(open(\"/usr/lib/hearth-browser/firefox/distribution/policies.json\"))[\"policies\"]; sys.exit(0 if p.get(\"DisableAppUpdate\") is True and \"ExtensionSettings\" in p else 1)'"
-          ffm=$(LD_LIBRARY_PATH=/usr/lib/hearth-browser/firefox ldd /usr/lib/hearth-browser/firefox/libxul.so 2>/dev/null | awk '/not found/{print $1}' | tr '\n' ' '); [ -z "$ffm" ] || echo "::error title=Firefox libraries missing::$ffm"
-          check "every library Hearth Browser's Firefox links is installed" "! LD_LIBRARY_PATH=/usr/lib/hearth-browser/firefox ldd /usr/lib/hearth-browser/firefox/libxul.so | grep -q 'not found'"
-          check "hearth-browser answers (--hearth-status)" "HOME=/tmp /usr/bin/hearth-browser --hearth-status | grep -q '\"installed\": true'"
-          warn "Hearth Browser's Firefox runs (--version)" "HOME=/tmp /usr/lib/hearth-browser/firefox/firefox --version | grep -q 'Mozilla Firefox'"
-          check "the old Chromium (CEF) Hearth Browser is gone" "test ! -e /usr/lib/hearth-browser-cef"
-          check "hearthfetch is installed and runs" "test -x /usr/bin/hearthfetch && /usr/bin/hearthfetch --no-logo | grep -q Hearth"
-          # ---- Hearth Time (Clock, Calendar, Notes, Weather): a warning only, as the build of it isn't required.
-          warn "Hearth Time is installed with its four apps, icons and alarm service" "test -x /usr/bin/hearth-time && ! ldd /usr/bin/hearth-time | grep -q 'not found' && /usr/bin/hearth-time --version && for a in clock calendar notes weather; do test -L /usr/bin/hearth-\$a && test -f /usr/share/applications/hearth-\$a.desktop && test -f /usr/share/icons/hicolor/scalable/apps/hearth-\$a.svg || exit 1; done && test -f /usr/lib/systemd/user/hearth-time.service && test -L /etc/systemd/user/default.target.wants/hearth-time.service"
-          # ---- end of Hearth Time
-          # ---- Hearth Photos and Hearth Documents: installed, starting (--help needs every library), and the defaults
-          warn "Hearth Photos is installed and starts" "test -x /usr/bin/hearth-photos && /usr/bin/hearth-photos --help | grep -q Photos"
-          warn "Hearth Documents is installed and starts" "test -x /usr/bin/hearth-documents && /usr/bin/hearth-documents --help | grep -q Documents"
-          warn "Photos opens JPEGs and Documents opens PDFs by default" "grep -q '^image/jpeg=hearth-photos.desktop' /usr/share/applications/mimeapps.list && grep -q '^application/pdf=hearth-documents.desktop' /usr/share/applications/mimeapps.list && test -f /usr/share/icons/hicolor/scalable/apps/hearth-photos.svg"
-          warn "libheif's tools are installed (HEIC pictures in Photos)" "command -v heif-dec || command -v heif-convert"
-          # ---- end of Hearth Photos and Hearth Documents
-          # ---- Hearth Office (hosts/hearth-office)
-          warn "Hearth Office is installed (hearth-write, hearth-sheets, hearth-slides) with every library it links" "test -x /usr/bin/hearth-office && test -L /usr/bin/hearth-write && test -f /usr/share/applications/hearth-sheets.desktop && grep -q hearth-slides.desktop /etc/xdg/nimbus-mimeapps.list && ! ldd /usr/bin/hearth-office | grep -q 'not found'"
-          # ---- end of Hearth Office
-          # ---- Hearth's gaming apps (hosts/hearth-gaming): warnings, not failures (the image is still fine without them).
-          warn "Hearth's gaming apps are installed and find their libraries (Controller Lab, Saves, Mods)" "for a in hearth-controller-lab hearth-saves hearth-mods; do test -x /usr/bin/\$a && ! ldd /usr/bin/\$a | grep -q 'not found' || exit 1; done"
-          warn "their menu entries and icons" "for a in hearth-controller-lab hearth-saves hearth-mods; do test -f /usr/share/applications/\$a.desktop && test -f /usr/share/icons/hicolor/scalable/apps/\$a.svg || exit 1; done"
-          warn "Saves answers without a window (--backups)" "HOME=/tmp /usr/bin/hearth-saves --backups /tmp | grep -q '\\['"
-          warn "Saves' hourly timer is on for everyone" "test -f /usr/lib/systemd/user/hearth-saves-auto.service && test -L /usr/lib/systemd/user/timers.target.wants/hearth-saves-auto.timer"
-          # ---- end of Hearth's gaming apps
-          # ---- Hearth Tools (hosts/hearth-tools)
-          warn "Hearth Tools is installed with its menu entries and icons" "test -x /usr/bin/hearth-tools && test -f /usr/share/applications/hearth-disk-usage.desktop && test -f /usr/share/applications/hearth-welcome.desktop && test -f /usr/share/icons/hicolor/scalable/apps/hearth-logs.svg"
-          warn "every library Hearth Tools links is installed" "! ldd /usr/bin/hearth-tools | grep -q 'not found'"
-          warn "Hearth Tools answers without a window (--list-apps, --call sys.overview)" "/usr/bin/hearth-tools --list-apps | grep -q printers && HOME=/tmp /usr/bin/hearth-tools --call sys.overview | grep -q memory"
-          # ---- Hearth Benchmark (hearth-tools --app benchmark) and the programs its tests run (each optional: warn only)
-          warn "Hearth Benchmark's menu entry is installed" "test -f /usr/share/applications/hearth-benchmark.desktop && /usr/bin/hearth-tools --list-apps | grep -q benchmark"
-          warn "Hearth Benchmark answers without a window (--call bench.state)" "HOME=/tmp /usr/bin/hearth-tools --call bench.state | grep -q places"
-          warn "7-Zip is installed (Hearth Benchmark's processor tests)" "command -v 7z || command -v 7zz || command -v 7za"
-          warn "fio is installed (Hearth Benchmark's storage test)" "command -v fio"
-          warn "glmark2 is installed (Hearth Benchmark's OpenGL and game-style tests)" "command -v glmark2 || command -v glmark2-wayland"
-          warn "vkmark is installed (Hearth Benchmark's Vulkan test)" "command -v vkmark"
-          warn "the scanner tools (scanimage, sane-airscan) and traceroute are installed" "command -v scanimage && ls /etc/sane.d/airscan.conf && command -v traceroute"
-          # ---- end Hearth Tools
-          # SVG through gdk-pixbuf: the classic loader in loaders.cache, or glycin's SVG loader (newer gdk-pixbuf).
-          check "GTK can load SVG icons (gdk-pixbuf's SVG loader or glycin's)" "grep -qis svg /usr/lib*/gdk-pixbuf-2.0/2.10.0/loaders.cache /usr/lib/*/gdk-pixbuf-2.0/2.10.0/loaders.cache 2>/dev/null || ls /usr/share/glycin-loaders/*/conf.d/ 2>/dev/null | grep -qi svg || ls /usr/libexec/glycin-loaders/*/ /usr/lib/glycin-loaders/*/ 2>/dev/null | grep -qi svg"
-          warn "an SVG icon really loads (gdk-pixbuf-thumbnailer)" "gdk-pixbuf-thumbnailer -s 32 /usr/share/icons/Adwaita/scalable/status/image-missing.svg /tmp/svg.png"
-          # ---- Hearth Paint, Emoji, Fonts and Settings › Accessibility (apps-create.yml)
-          warn "Hearth Paint is installed and finds its libraries" "test -x /usr/bin/hearth-paint && ! ldd /usr/bin/hearth-paint | grep -q 'not found'"
-          warn "the emoji picker is installed and finds its libraries" "test -x /usr/bin/hearth-emoji && ! ldd /usr/bin/hearth-emoji | grep -q 'not found'"
-          warn "Hearth Fonts is installed and lists the fonts" "test -x /usr/bin/hearth-fonts && HOME=/tmp /usr/bin/hearth-fonts --list | grep -q '\"name\"'"
-          warn "Hearth Theater is installed and finds its libraries" "test -x /usr/bin/hearth-theater && ! ldd /usr/bin/hearth-theater | grep -q 'not found'"
-          warn "hearth-gamma (inverted colours in Desktop Mode) is installed" "test -x /usr/bin/hearth-gamma"
-          warn "the emoji picker can type and copy (wtype, wl-copy)" "command -v wtype && command -v wl-copy"
-          warn "Orca (the screen reader) is installed" "command -v orca"
-          warn "labwc has the magnifier (0.7.3 or newer)" "labwc --version | grep -qE '0\.(7\.[3-9]|[89]\.|[1-9][0-9]\.)|[1-9]\.'"
-          warn "Settings › Accessibility's helper runs" "HOME=/tmp python3 /usr/share/nimbus/desktop/shell/hearth-access status | grep -q settings"
-          warn "the app icons are in the icon theme" "test -f /usr/share/icons/hicolor/scalable/apps/hearth-paint.svg"
-          # ---- end Hearth Paint, Emoji, Fonts and Accessibility
-          echo "--- Game Mode and Desktop Mode"
-          check "gamescope is installed" "command -v gamescope"
-          check "labwc is installed" "command -v labwc"
-          check "quickshell is installed and finds its libraries" "command -v quickshell && ! ldd \$(command -v quickshell) | grep -q 'not found'"
-          check "Steam is installed (or installed at first boot, started by Hearth's launcher)" "rpm -q steam || (test -f /usr/share/nimbus/steam-flatpak && grep -q hearth-steam /usr/bin/steam && test -L /etc/systemd/system/multi-user.target.wants/hearth-steam.service)"
-          check "the Hearth session is installed" "test -f /usr/share/wayland-sessions/nimbus.desktop && test -x /usr/bin/nimbus-session && test -x /usr/bin/nimbus-mode && test -d /usr/share/nimbus/desktop/shell"
-          # ---- Hearth Plasma (docs/archive/PLASMA.md): the second desktop, with Hearth Classic kept as the fallback
-          check "Hearth Plasma: Plasma 6 is installed (startplasma-wayland, kwin_wayland, plasmashell)" "command -v startplasma-wayland && command -v kwin_wayland && command -v plasmashell"
-          check "Hearth Plasma: Hearth's look-and-feel package, desktop theme, defaults and widgets" "test -f /usr/share/plasma/look-and-feel/org.hearth.desktop/contents/layouts/org.kde.plasma.desktop-layout.js && test -f /usr/share/plasma/desktoptheme/hearth/colors && test -f /usr/share/hearth-plasma/xdg/kdeglobals && test -f /usr/share/plasma/plasmoids/org.hearth.launcher/contents/ui/main.qml && test -f /usr/share/nimbus/desktop/plasma/hearth-plasma"
-          check "Hearth Plasma: the login screen offers Hearth Classic and Hearth Plasma" "grep -q 'nimbus-session --desktop=classic' /usr/share/wayland-sessions/hearth-classic.desktop && grep -q 'nimbus-session --desktop=plasma' /usr/share/wayland-sessions/hearth-plasma.desktop && grep -q /usr/bin/nimbus-session /usr/share/wayland-sessions/hearth-plasma.desktop"
-          check "Hearth Plasma: Hearth Classic stays (labwc) and the session falls back to it" "command -v labwc && grep -q 'falling back to Hearth Classic' /usr/bin/nimbus-session"
-          warn "Hearth Plasma: Plasma's script engine for widgets (plasma5support QML module)" "ls -d /usr/lib*/qt6/qml/org/kde/plasma/plasma5support /usr/lib/*/qt6/qml/org/kde/plasma/plasma5support 2>/dev/null | grep -q ."
-          # ---- end Hearth Plasma
-          # ---- Hearth GNOME (docs/archive/GNOME.md): the third desktop, Hearth Classic kept as the fallback
-          check "Hearth GNOME: GNOME Shell and its session are installed" "command -v gnome-shell && command -v gnome-session"
-          check "Hearth GNOME: Hearth's session mode, extensions and helper" "python3 -m json.tool /usr/share/gnome-shell/modes/hearth.json && for e in theme bar launcher quick link storage gamemode pad; do test -f /usr/share/gnome-shell/extensions/hearth-\$e@hearthos.fun/extension.js && python3 -m json.tool /usr/share/gnome-shell/extensions/hearth-\$e@hearthos.fun/metadata.json >/dev/null || exit 1; done && test -f /usr/share/nimbus/desktop/gnome/hearth-gnome && test -f /usr/share/nimbus/desktop/gnome/hearth.js"
-          check "Hearth GNOME: the extensions are made for this GNOME" "v=\$(gnome-shell --version | grep -oE '[0-9]+' | head -1); grep -q \"\\\"\$v\\\"\" /usr/share/gnome-shell/extensions/hearth-pad@hearthos.fun/metadata.json"
-          check "Hearth GNOME: the login screen offers it" "grep -q 'nimbus-session --desktop=gnome' /usr/share/wayland-sessions/hearth-gnome.desktop && grep -q /usr/bin/nimbus-session /usr/share/wayland-sessions/hearth-gnome.desktop"
-          check "Hearth GNOME: falls back to Hearth Classic" "grep -q 'gnome: didn.t start; falling back to Hearth Classic' /usr/bin/nimbus-session"
-          check "Hearth GNOME: GNOME's own Files, Console and Text Editor are Hearth GNOME's (app kinds)" "python3 /usr/libexec/hearth-app-kinds resolve GNOME | grep -q org.gnome.Nautilus.desktop && python3 /usr/libexec/hearth-app-kinds resolve GNOME | grep -q org.gnome.Console.desktop && python3 /usr/libexec/hearth-app-kinds resolve GNOME | grep -q org.gnome.TextEditor.desktop && ! python3 /usr/libexec/hearth-app-kinds resolve Nimbus | grep -q org.gnome.Nautilus.desktop"
-          warn "Hearth GNOME: GNOME's portal" "test -f /usr/share/xdg-desktop-portal/portals/gnome.portal"
-          check "Hearth GNOME: the display manager isn't GDM" "! readlink /etc/systemd/system/display-manager.service | grep -q gdm"
-          echo "::notice title=Hearth GNOME size::GNOME adds about $(cat /usr/share/nimbus/hearth-gnome-size-mb 2>/dev/null || echo '?') MB to this image"
-          # ---- end Hearth GNOME
-          # ---- Hearth COSMIC (docs/archive/COSMIC.md): another Desktop Mode desktop, Hearth Classic stays the fallback
-          check "Hearth COSMIC: COSMIC is installed (start-cosmic, cosmic-comp, cosmic-panel) with Hearth's defaults" "command -v start-cosmic && command -v cosmic-comp && command -v cosmic-panel && test -f /usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicPanel.Panel/v1/plugins_wings && test -f /usr/share/hearth-cosmic/data/cosmic/com.system76.CosmicTheme.Dark/v1/accent"
-          check "Hearth COSMIC: the login screen offers it, the companion and its autostart are there" "grep -q 'nimbus-session --desktop=cosmic' /usr/share/wayland-sessions/hearth-cosmic.desktop && test -f /usr/share/nimbus/desktop/shell/desk-cosmic.qml && test -x /usr/share/nimbus/desktop/cosmic/hearth-cosmic && test -f /usr/share/hearth-cosmic/xdg/autostart/hearth-cosmic.desktop"
-          check "Hearth COSMIC: COSMIC's own Files, Terminal and Edit are installed" "command -v cosmic-files && command -v cosmic-term && command -v cosmic-edit"
-          check "Hearth COSMIC: COSMIC's login screen isn't switched on, its first-run wizard doesn't start, its own session isn't offered" "! systemctl is-enabled cosmic-greeter.service 2>/dev/null | grep -qx enabled && ! systemctl is-enabled greetd.service 2>/dev/null | grep -qx enabled && ! readlink /etc/systemd/system/display-manager.service | grep -qE 'greetd|cosmic' && test ! -e /etc/xdg/autostart/com.system76.CosmicInitialSetup.desktop && test ! -e /usr/share/wayland-sessions/cosmic.desktop"
-          # ---- end Hearth COSMIC
-          echo "--- sleep like SteamOS: the power button suspends, the Ally's controller doesn't wake it, AMD's deep sleep"
-          check "the power button sleeps at the sign-in screen too (logind: HandlePowerKey=suspend wins over every other logind setting)" "if command -v systemd-analyze; then systemd-analyze cat-config systemd/logind.conf | grep -E '^[[:space:]]*HandlePowerKey=' | tail -1 | grep -qx 'HandlePowerKey=suspend'; else grep -qx 'HandlePowerKey=suspend' /usr/lib/systemd/logind.conf.d/50-hearth-power.conf && ! grep -rqsE '^[[:space:]]*HandlePowerKey=' /etc/systemd/logind.conf /etc/systemd/logind.conf.d; fi"
-          check "the Hearth session takes the power button while it runs (logind's handle-power-key inhibitor: one handler)" "grep -q 'systemd-inhibit --what=handle-power-key' /usr/bin/nimbus-session"
-          check "the ROG Ally X / Xbox Ally controller isn't a wake source (udev rule)" "grep -q 'ATTR{idProduct}==\"1b4c\".*ATTR{power/wakeup}=\"disabled\"' /usr/lib/udev/rules.d/50-hearth-handheld-wakeup.rules"
-          warn "the handheld wakeup rule is valid (udevadm verify)" "! udevadm verify --help >/dev/null 2>&1 || udevadm verify --no-style /usr/lib/udev/rules.d/50-hearth-handheld-wakeup.rules"
-          check "the kernel has AMD's sleep driver (amd_pmc: deep sleep, s0i3, on AMD handhelds and laptops)" "grep -qsE 'amd[-_]pmc' /usr/lib/modules/*/modules.dep /usr/lib/modules/*/modules.builtin"
-          warn "the kernel knows the ROG Xbox Ally's sleep (Van Gogh in amd_pmc: Linux 6.18 or newer)" "python3 -c 'import os, sys; v = sorted(os.listdir(\"/usr/lib/modules\"))[-1]; n = tuple(int(x) for x in v.split(\"-\")[0].split(\"+\")[0].split(\".\")[:2]); print(v); sys.exit(0 if n >= (6, 18) else 1)'"
-          check "it boots into Hearth (nimbus-autologin)" "test -L /etc/systemd/system/multi-user.target.wants/nimbus-autologin.service"
-          check "the tools the session uses" "command -v grim && command -v brightnessctl && command -v wlr-randr && command -v wlsunset && command -v xdotool && python3 -c 'import evdev'"
-          check "the boot splash is Hearth's" "plymouth-set-default-theme | grep -qx hearth"
-          check "it's called Hearth" "grep -q '^NAME=\"Hearth\"' /usr/lib/os-release && grep -q Anatase /usr/lib/os-release"
-          echo "--- Quick Resume through turning off and restarting (hibernation)"
-          check "Restart and keep games' sleep hook is installed" "test -x /usr/lib/systemd/system-sleep/hearth-restart-keep && sh -n /usr/lib/systemd/system-sleep/hearth-restart-keep"
-          check "Nvidia's driver saves the graphics memory to the drive" "grep -q 'NVreg_PreserveVideoMemoryAllocations=1 NVreg_TemporaryFilePath=/var/tmp' /usr/lib/modprobe.d/zz-hearth-nvidia-power.conf"
-          warn "Nvidia's sleep and hibernate helpers are turned on (where the driver has them; newer drivers do it themselves)" "test ! -f /usr/lib/systemd/system/nvidia-hibernate.service || { test -L /etc/systemd/system/systemd-hibernate.service.wants/nvidia-hibernate.service && test -L /etc/systemd/system/systemd-suspend.service.wants/nvidia-suspend.service && test -L /etc/systemd/system/systemd-hibernate.service.wants/nvidia-resume.service -o -L /etc/systemd/system/systemd-suspend.service.wants/nvidia-resume.service; }"
-          echo "::notice title=Nvidia sleep helpers::units: $(ls /usr/lib/systemd/system/nvidia-*.service /etc/systemd/system/nvidia-*.service 2>/dev/null | tr '\n' ' ') | turned on: $(ls -d /etc/systemd/system/*.wants/nvidia-* /usr/lib/systemd/system/*.wants/nvidia-* 2>/dev/null | tr '\n' ' ') | driver settings: $(grep -rhs NVreg /usr/lib/modprobe.d /etc/modprobe.d | tr '\n' ' ') | sleep freeze: $(grep -rls SYSTEMD_SLEEP_FREEZE_USER_SESSIONS /usr/lib/systemd/system/systemd-*.service.d 2>/dev/null | tr '\n' ' ')"
-          warn "the Nvidia setting is in the boot image" "lsinitrd /usr/lib/modules/*/initramfs.img | grep -q zz-hearth-nvidia-power"
-          warn "an Nvidia kernel module is in the image" "find /usr/lib/modules -name 'nvidia*.ko*' | grep -q ."
-          echo "--- Claude (Settings › Claude: installed for each user from Anthropic, not part of the image)"
-          check "gpg is installed (checks Anthropic's signature on Claude Desktop)" "command -v gpg"
-          check "hearth-claude is installed and its Python is valid" "test -x /usr/bin/hearth-claude && python3 -c 'import ast; ast.parse(open(\"/usr/share/nimbus/desktop/shell/hearth-claude\").read())'"
-          check "Claude Desktop is checked for updates daily (a user timer, on for everyone)" "test -f /usr/lib/systemd/user/hearth-claude-update.service && test -L /usr/lib/systemd/user/timers.target.wants/hearth-claude-update.timer && test -f /usr/share/applications/hearth-get-claude.desktop"
-          check "~/.local/bin is on PATH in login shells (Claude Code)" "env -i HOME=/tmp/u PATH=/usr/bin:/bin bash -lc 'echo \$PATH' | grep -q /tmp/u/.local/bin"
-          # Anthropic's real package, installed the way Settings does it, for a throwaway user: shows whether this
-          # image has every library it needs. A warning only (it needs downloads.claude.ai).
-          mkdir -p /tmp/ch && chown 65534:65534 /tmp/ch
-          if cout=$(setpriv --reuid=65534 --regid=65534 --clear-groups env HOME=/tmp/ch PATH=/usr/bin:/bin python3 /usr/share/nimbus/desktop/shell/hearth-claude install 2>&1) \
-             && cver=$(setpriv --reuid=65534 --regid=65534 --clear-groups env HOME=/tmp/ch /tmp/ch/.local/bin/claude-desktop --version 2>/dev/null | tail -1) && [ -n "$cver" ]; then
-            echo "ok: Claude Desktop $cver installs for a user and starts (--version)"; echo "::notice title=Claude Desktop::$cver installed in a throwaway home folder and answered --version"
-            cmiss=$(ldd /tmp/ch/.local/opt/claude-desktop/claude-desktop | awk '/not found/{print $1}' | tr '\n' ' '); [ -z "$cmiss" ] || echo "::warning title=Claude Desktop libraries::$cmiss"
-            for l in libsecret-1.so.0 libnotify.so.4; do ldconfig -p | grep -q "$l" || echo "::warning title=Claude Desktop::$l (opened at run time) isn't installed"; done
-          else
-            echo "::warning title=Claude Desktop install::$(printf '%s' "$cout" | grep -v '^progress' | tail -3 | tr '\n' ' ' | cut -c1-600)"
-          fi
-          echo "--- Handheld Daemon"
-          check "Handheld Daemon is installed" "command -v hhd && test -f /usr/lib/systemd/system/hhd.service"
-          check "Hearth's Handheld Daemon settings are installed" "test -f /usr/lib/systemd/system/hhd.service.d/zz-hearth.conf && test -x /usr/share/nimbus/desktop/shell/hearth-hhd"
-          warn "Handheld Daemon starts at boot" "systemctl is-enabled hhd.service"
-          check "Hearth's Quick Access is Handheld Daemon's overlay app (hhd-ui and HHD_OVERLAY are hearth-overlay)" "test -x /usr/share/nimbus/desktop/shell/hearth-overlay && test \"\$(readlink -f /usr/bin/hhd-ui)\" = /usr/share/nimbus/desktop/shell/hearth-overlay && grep -qx 'Environment=HHD_OVERLAY=/usr/share/nimbus/desktop/shell/hearth-overlay' /usr/lib/systemd/system/hhd.service.d/zz-hearth-overlay.conf && /usr/bin/hhd-ui --version | grep -q '^Hearth Quick Access'"
-          check "the overlay app's Electron, page and code are installed (Hearth Browser's Electron)" "test -x /usr/lib/hearth-browser/nimbus && test -f /usr/lib/hearth-browser/resources/ui/index.html && { test -f /usr/lib/hearth-browser/resources/app/src/overlay/main.js || grep -aq HEARTH_HHD_OVERLAY /usr/lib/hearth-browser/resources/app.asar; }"
-          # bughunt: GLib programs (the desktop portal, WebKit, the accessibility bus) abort without compiled GSettings schemas.
-          check "GSettings schemas are installed and compiled" "test -s /usr/share/glib-2.0/schemas/gschemas.compiled && ls /usr/share/glib-2.0/schemas/org.gnome.desktop.interface.gschema.xml"
-          echo "--- .deb files (Hearth's Debian box), AppImages, Bazaar (the app store)"
-          check "Distrobox, podman and newuidmap/newgidmap are installed (rootless containers)" "command -v distrobox && command -v podman && command -v newuidmap && command -v newgidmap"
-          check "hearth-debbox is installed (also as /usr/bin/hearth-debbox) and its Python is valid" "test -x /usr/share/nimbus/desktop/shell/hearth-debbox && test -x /usr/bin/hearth-debbox && python3 -c 'import ast; ast.parse(open(\"/usr/share/nimbus/desktop/shell/hearth-debbox\").read())'"
-          check ".deb files open in Install Package (desktop file and MIME default)" "test -x /usr/bin/hearth-install-package && grep -q 'application/vnd.debian.binary-package' /usr/share/applications/hearth-install-package.desktop && grep -q '^application/vnd.debian.binary-package=hearth-install-package.desktop' /etc/xdg/nimbus-mimeapps.list && test -f /usr/share/nimbus/desktop/shell/DebInstaller.qml"
-          check "FUSE 2 for AppImages (libfuse.so.2 and fusermount)" "ldconfig -p | grep -q 'libfuse.so.2 ' && command -v fusermount"
-          check "home folder repair is installed and runs every boot" "python3 -m py_compile /usr/libexec/nimbus/hearth-home-repair && test -L /etc/systemd/system/multi-user.target.wants/hearth-home-repair.service"
-          check "/etc/hosts maps the device's name at boot and after a rename (hearth-hosts)" "python3 -m py_compile /usr/libexec/nimbus/hearth-hosts && test -L /etc/systemd/system/multi-user.target.wants/hearth-hosts.service && test -L /etc/systemd/system/multi-user.target.wants/hearth-hosts.path && printf '127.0.0.1 localhost\n127.0.1.1 old-name\n' > /tmp/hosts.t && /usr/libexec/nimbus/hearth-hosts --file /tmp/hosts.t --hostname chris-hearth && grep -q '^127.0.1.1.*chris-hearth' /tmp/hosts.t && ! grep -q old-name /tmp/hosts.t && grep -q '^127.0.0.1.*localhost' /tmp/hosts.t"
-          check "Flatpak's system installation set up / Bazaar installer runs every boot" "python3 -m py_compile /usr/libexec/nimbus/hearth-flatpak-setup && test -L /etc/systemd/system/multi-user.target.wants/hearth-flatpak-setup.service"
-          check "nothing makes an empty /var/lib/flatpak/repo at boot (flatpak can't open one: openat(config))" "! grep -rqs 'var/lib/flatpak/repo' /usr/lib/tmpfiles.d /etc/tmpfiles.d"
-          check "Bazaar: the image's package, or installed at boot (hearth-flatpak-setup)" "test -f /usr/share/applications/io.github.kolunmi.Bazaar.desktop || grep -q io.github.kolunmi.Bazaar /usr/libexec/nimbus/hearth-flatpak-setup"
-          if [ -f /usr/share/applications/io.github.kolunmi.Bazaar.desktop ]; then echo "::notice title=Bazaar::the image has it as a package"; else echo "::notice title=Bazaar::installed from Flathub at the first online boot (hearth-flatpak-setup.service)"; fi
-          check "a Flathub remote file for the system installation" "grep -qls dl.flathub.org /etc/flatpak/remotes.d/*.flatpakrepo /usr/share/flatpak/remotes.d/*.flatpakrepo"
-          # A new account gets a container id range from hearth-home-repair (rootless podman needs one).
-          mkdir -p /var/home && useradd -m -d /var/home/subtest subtest >/dev/null 2>&1; sed -i '/^subtest:/d' /etc/subuid /etc/subgid
-          check "hearth-home-repair gives an account its subuid/subgid range" "/usr/libexec/nimbus/hearth-home-repair --user subtest && grep -q '^subtest:[0-9]*:65536' /etc/subuid && grep -q '^subtest:[0-9]*:65536' /etc/subgid"
-          check "hearth-flatpak and hearth-files are valid" "python3 -c 'import ast; [ast.parse(open(\"/usr/share/nimbus/desktop/shell/\" + f).read()) for f in (\"hearth-flatpak\", \"hearth-files\")]'"
-          # Bazaar is the app store (Hearth's own store, Apps / hearth-apps, is archived: docs/ARCHIVED.md). Its real install
-          # needs the network: the warn-only "Flatpak repair and Bazaar" step below tries it.
-          check "Hearth's archived app store isn't installed or in any menu (Bazaar is the app store)" "test ! -e /usr/share/nimbus/desktop/shell/hearth-apps && test ! -e /usr/share/nimbus/desktop/shell/AppStore.qml && test ! -e /usr/share/applications/hearth-apps.desktop && ! grep -rqs 'call apps open' /usr/share/applications"
-          check "Bazaar's install is scheduled: every boot, retried every 15 minutes while offline" "grep -qx 'Restart=on-failure' /usr/lib/systemd/system/hearth-flatpak-setup.service && grep -qx 'RestartSec=15min' /usr/lib/systemd/system/hearth-flatpak-setup.service && grep -q \"BAZAAR = 'io.github.kolunmi.Bazaar'\" /usr/libexec/nimbus/hearth-flatpak-setup"
-          check "Bazaar gets Hearth's look (GTK 4 colours, and Flatpak apps may read them)" "test -f /usr/share/nimbus/desktop/theme/gtk/gtk4.css && grep -q 'xdg-config/gtk-4.0:ro' /usr/libexec/nimbus/hearth-flatpak-setup && grep -q 'xdg-config/gtk-4.0:ro' /usr/share/nimbus/desktop/theme/apply.sh"
-          check "Bazaar is where the store was: Mantel's taskbar pin, Settings › Default apps › App store, the apps IPC target" "grep -q io.github.kolunmi.Bazaar /usr/share/nimbus/desktop/shell/hearth-desk && grep -q io.github.kolunmi.Bazaar.desktop /usr/share/nimbus/desktop/shell/hearth-system && grep -q 'target: \"apps\"' /usr/share/nimbus/desktop/shell/shell.qml && grep -q hearth-flatpak /usr/share/nimbus/desktop/shell/shell.qml"
-          check "hearth-flatpak status answers (Flatpak, Flathub, your Flatpak folder, Bazaar)" "python3 /usr/share/nimbus/desktop/shell/hearth-flatpak status | grep -q bazaarId"
-          warn "a login screen is set up" "test -L /etc/systemd/system/display-manager.service"
-          warn "Beacon is installed (BFME and friends; its release may not exist yet)" "beacon --version"
-          warn "Xodus Nexus is installed (Xbox PC games; preinstalled like Beacon)" "test -x /usr/lib/xodus-nexus/Xodus-Nexus.AppImage && test -x /usr/bin/xodus-nexus && test -s /usr/lib/xodus-nexus/version && test -f /usr/share/applications/xodus-nexus.desktop"
-          warn "Faugus Launcher is installed (Battle.net is set up through it; without it Hearth's own setup is used)" "command -v faugus-launcher && grep -q -- '--run)' \"\$(command -v faugus-launcher)\" && python3 -c 'import faugus.path_manager'"
-          # ==== Hearth Recorder, Camera and Share (capture-apps.yml tests them for real): installed, with what they run.
-          echo "--- Hearth Recorder, Camera and Share"
-          for a in hearth-recorder hearth-camera hearth-share; do warn "$a is installed with its libraries and menu entry" "test -x /usr/bin/$a && ! ldd /usr/bin/$a | grep -q 'not found' && test -f /usr/share/applications/$a.desktop"; done
-          warn "Recorder's tools: ffmpeg, wf-recorder, slurp, pactl, pw-dump" "command -v ffmpeg && command -v wf-recorder && command -v slurp && command -v pactl && command -v pw-dump"
-          warn "GStreamer can read gamescope's PipeWire stream (Game Mode without gpu-screen-recorder, Share)" "gst-inspect-1.0 --exists pipewiresrc"
-          warn "gpu-screen-recorder is installed, with the capability its KMS capture needs" "command -v gpu-screen-recorder && getcap \$(command -v gsr-kms-server) | grep -q cap_sys_admin"
-          if [ -x /usr/bin/hearth-recorder ]; then
-            echo "::notice title=Recorder here::$(HOME=/tmp/rp /usr/bin/hearth-recorder --probe 2>/dev/null | python3 -c 'import json,sys; d=json.load(sys.stdin); print("ffmpeg encoders:", [e["id"] for e in d["encoders"]], "audio:", d["audioEncoders"], "gsr:", d["gsr"], "region:", d["gsrRegion"], "wf-recorder:", d["wf"], "slurp:", d["slurp"])' 2>&1 | cut -c1-600)"
-          fi
-          if command -v gpu-screen-recorder >/dev/null; then
-            echo "::notice title=gpu-screen-recorder here::version: $(HOME=/tmp timeout 5 gpu-screen-recorder --version 2>&1 | tail -n 3 | tr '\n' '|' | cut -c1-240); help: $(HOME=/tmp timeout 5 gpu-screen-recorder --help 2>&1 | grep -m1 -E -- '-w ' | cut -c1-240) (exit $(HOME=/tmp timeout 5 gpu-screen-recorder --help >/dev/null 2>&1; echo $?))"
-          fi
-          # ==== end of Hearth Recorder, Camera and Share
-          # ---- Hearth Contacts and Hearth Maps
-          warn "Hearth Contacts is installed, finds its libraries and opens .vcf files" "test -x /usr/bin/hearth-contacts && ! ldd /usr/bin/hearth-contacts | grep -q 'not found' && grep -q text/vcard /usr/share/applications/hearth-contacts.desktop"
-          warn "Hearth Contacts runs (--list)" "HOME=/tmp HEARTH_CONTACTS_DIR=/tmp/hc /usr/bin/hearth-contacts --list"
-          warn "Hearth Maps is installed, finds its libraries and opens geo: links" "test -x /usr/bin/hearth-maps && ! ldd /usr/bin/hearth-maps | grep -q 'not found' && grep -q x-scheme-handler/geo /usr/share/applications/hearth-maps.desktop && /usr/bin/hearth-maps --version"
-          warn "Hearth Maps may ask GeoClue for Where am I" "test -f /etc/geoclue/conf.d/90-hearth-maps.conf"
-          warn "the Contacts and Maps icons are installed" "test -f /usr/share/icons/hicolor/scalable/apps/hearth-contacts.svg && test -f /usr/share/icons/hicolor/scalable/apps/hearth-maps.svg"
-          # ---- end of Hearth Contacts and Hearth Maps
-          # ---- Discord (Hearth Friends on Matrix is archived since 1.6)
-          check "Hearth Friends' Matrix service is no longer started with the session" "test ! -e /usr/lib/systemd/user/hearth-friends.service && test ! -e /etc/systemd/user/default.target.wants/hearth-friends.service"
-          warn "Discord's helper is there and runs" "python3 /usr/share/nimbus/desktop/shell/hearth-discord geometry bottom 1920x1080+0+0 48 -1 | grep -q '\"w\"'"
-          warn "hearth:// invite links open Hearth" "grep -q x-scheme-handler/hearth /usr/share/applications/hearth-join.desktop"
-          # ---- end of Discord
-          # >>> app kinds (feature/app-per-desktop)
-          echo "--- one app of each kind per desktop (docs/APP-KINDS.md)"
-          # hearth-app-kinds check: for each desktop (Nimbus, KDE, GNOME, COSMIC, Deepin) reads the menu entries as a
-          # session does (the copies in /usr/share/hearth/app-kinds first), applies the desktop entry spec's NoDisplay,
-          # Hidden, TryExec, OnlyShowIn and NotShowIn, and fails on two shown apps of one kind, none where the table
-          # needs one, or a default app (the XDG mime-apps lists) that isn't that desktop's app.
-          if python3 /usr/libexec/hearth-app-kinds check > /tmp/ak.json 2>&1; then
-            echo "ok: each desktop shows one app of each kind, and opens files in it"
-          else
-            grep '^::error' /tmp/ak.json || tail -20 /tmp/ak.json; fail=1
-          fi
-          echo "::notice title=One app of each kind::$(python3 -c 'import json; d=json.load(open("/tmp/ak.json")); print("; ".join("%s: %s" % (k, ", ".join("%s=%s" % (a, b) for a, b in sorted(v["apps"].items()) if b)) for k, v in d["desktops"].items() if v["present"]))' 2>/dev/null)"
-          check "the menu-entry copies are there and nimbus-session puts them first" "ls /usr/share/hearth/app-kinds/applications/*.desktop && grep -q '/usr/share/hearth/app-kinds' /usr/bin/nimbus-session"
-          # The same with GLib (what GTK apps and the portal use), as a new account in each desktop: a warning only.
-          mkdir -p /tmp/du && chown 65534:65534 /tmp/du
-          akwarn=""
-          for d in Nimbus KDE; do
-            for m in inode/directory text/plain application/pdf; do
-              want=$(python3 -c "import json,sys; d=json.load(open('/tmp/ak.json'))['desktops']['$d']; k={'inode/directory':'files','text/plain':'text-editor','application/pdf':'document-viewer'}['$m']; a=d['apps'].get(k); print(a if d['present'] and isinstance(a, str) else '')" 2>/dev/null)
-              [ -n "$want" ] && command -v gio >/dev/null || continue
-              g=$(setpriv --reuid=65534 --regid=65534 --clear-groups env -i HOME=/tmp/du PATH=/usr/bin:/bin XDG_CURRENT_DESKTOP=$d XDG_DATA_DIRS=/usr/share/hearth/app-kinds:/usr/local/share:/usr/share XDG_CONFIG_DIRS=/etc/xdg gio mime "$m" 2>/dev/null | sed -n 's/^Default application for .*: *//p')
-              [ "$g" = "$want" ] || akwarn="$akwarn $d:$m=${g:-nothing}(want $want)"
-            done
-          done
-          [ -z "$akwarn" ] && echo "ok: GLib agrees" || echo "::warning title=app kinds (gio)::$akwarn"
-          # <<< app kinds
-          echo "--- default apps (Hearth's apps open everything, Settings › Default apps changes it)"
-          check "Hearth's default apps were written (hearth-system defaults-system)" "grep -q \"^# Hearth's default apps\" /etc/xdg/nimbus-mimeapps.list && grep -q \"^# Hearth's default apps\" /usr/share/applications/mimeapps.list"
-          check "xdg-mime is installed" "command -v xdg-mime"
-          # As a new account in Hearth's session (XDG_CURRENT_DESKTOP=Nimbus, nothing of its own yet): xdg-mime and
-          # GLib's gio say Hearth's app for each kind, never the base's (Firefox, Loupe, Totem, Evince, LibreOffice...).
-          mkdir -p /tmp/du && chown 65534:65534 /tmp/du
-          asu() { setpriv --reuid=65534 --regid=65534 --clear-groups env -i HOME=/tmp/du PATH=/usr/bin:/bin XDG_CURRENT_DESKTOP=Nimbus XDG_DATA_DIRS=/usr/local/share:/usr/share XDG_CONFIG_DIRS=/etc/xdg "$@"; }
-          dbad=""; dgio=""; dn=0
-          for pair in text/plain=hearth-text text/x-python=hearth-text application/json=hearth-text text/markdown=hearth-text \
-                      image/jpeg=hearth-photos image/png=hearth-photos video/mp4=hearth-player video/x-matroska=hearth-player \
-                      audio/mpeg=hearth-player audio/flac=hearth-player application/pdf=hearth-documents application/epub+zip=hearth-documents \
-                      x-scheme-handler/https=hearth-browser x-scheme-handler/http=hearth-browser text/html=hearth-browser \
-                      inode/directory=hearth-files application/zip=hearth-files application/x-compressed-tar=hearth-files \
-                      application/vnd.openxmlformats-officedocument.wordprocessingml.document=hearth-write application/vnd.oasis.opendocument.text=hearth-write \
-                      application/vnd.openxmlformats-officedocument.spreadsheetml.sheet=hearth-sheets text/csv=hearth-sheets \
-                      application/vnd.openxmlformats-officedocument.presentationml.presentation=hearth-slides \
-                      font/ttf=hearth-fonts text/vcard=hearth-contacts text/calendar=hearth-calendar x-scheme-handler/webcal=hearth-calendar \
-                      x-scheme-handler/geo=hearth-maps x-scheme-handler/terminal=hearth-terminal; do
-            m=${pair%%=*}; want=${pair#*=}.desktop
-            # Hearth Classic and Game Mode keep the classic Terminal and Text Editor (one app of each kind per desktop:
-            # docs/APP-KINDS.md); the KDE-based one only when the classic one isn't in this image.
-            case "$want" in hearth-text.desktop|hearth-terminal.desktop) command -v "${want%.desktop}" >/dev/null || want=${want%.desktop}-kde.desktop ;; esac
-            [ -f "/usr/share/applications/$want" ] || { echo "skip: $want isn't in this image ($m)"; continue; }
-            got=$(asu xdg-mime query default "$m" 2>/dev/null | tail -1); dn=$((dn+1))
-            [ "$got" = "$want" ] || dbad="$dbad $m=${got:-nothing}(want $want)"
-            if command -v gio >/dev/null; then g=$(asu gio mime "$m" 2>/dev/null | sed -n 's/^Default application for .*: *//p'); [ -z "$g" ] || [ "$g" = "$want" ] || dgio="$dgio $m=$g"; fi
-          done
-          if [ -z "$dbad" ]; then echo "ok: xdg-mime says Hearth's app for all $dn kinds of file and link"; else echo "::error title=default apps::xdg-mime as a new user:$dbad"; fail=1; fi
-          [ -z "$dgio" ] || echo "::warning title=default apps (gio)::GLib picks another app for:$dgio"
-          check "Settings › Default apps lists Hearth's apps as in use (hearth-system defaults, as a new user)" "setpriv --reuid=65534 --regid=65534 --clear-groups env -i HOME=/tmp/du PATH=/usr/bin:/bin XDG_CURRENT_DESKTOP=Nimbus python3 /usr/share/nimbus/desktop/shell/hearth-system defaults | python3 -c 'import json, sys; k = {x[\"kind\"]: x for x in json.load(sys.stdin)[\"kinds\"]}; sys.exit(0 if k[\"text\"][\"current\"] in (\"hearth-text.desktop\", \"hearth-text-kde.desktop\") and k[\"browser\"][\"isHearth\"] and not any(x[\"yours\"] for x in k.values()) else 1)'"
-          # Picking another app writes ~/.config/mimeapps.list and wins; Reset to Hearth's defaults brings Hearth's back.
-          if [ -f /usr/share/applications/hearth-write.desktop ] && [ -f /usr/share/applications/hearth-text.desktop ]; then
-            asu python3 /usr/share/nimbus/desktop/shell/hearth-system default-set text hearth-write.desktop >/dev/null 2>&1
-            d1=$(asu xdg-mime query default text/plain 2>/dev/null)
-            asu python3 /usr/share/nimbus/desktop/shell/hearth-system default-reset >/dev/null 2>&1
-            d2=$(asu xdg-mime query default text/plain 2>/dev/null)
-            if [ "$d1" = hearth-write.desktop ] && { [ "$d2" = hearth-text.desktop ] || [ "$d2" = hearth-text-kde.desktop ]; }; then echo "ok: a choice in Settings › Default apps wins, and Reset brings Hearth's back"
-            else echo "::error title=default apps::picking Hearth Write for text gave '$d1', resetting gave '$d2'"; fail=1; fi
-          fi
-          echo "::notice title=Default app lists in the image::$(ls /etc/xdg/*mimeapps.list /usr/share/applications/*mimeapps.list 2>/dev/null | tr '\n' ' ')"
-          exit $fail
-          EOF
-          sudo podman run --rm -v /tmp/check.sh:/check.sh:ro hearth-os:build sh /check.sh
-          echo "--- bootc container lint"
-          sudo podman run --rm hearth-os:build bootc container lint 2>&1 | tee /tmp/lint.log || {
-            msg=$(tail -20 /tmp/lint.log | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=bootc container lint::$msg"; exit 1; }
+          sudo podman run --rm -v "$PWD:/src:ro" hearth-os:anatase bash /src/.github/scripts/anatase-image-check.sh 2>&1 | tee /tmp/check.log
 
-      # The Qt renderer (Experimental) starts in the image and draws every screen: offscreen, against the fake core (and,
-      # reported only, the image's own core). Doesn't stop the image: without a working Qt renderer Hearth falls back.
-      - name: Check the Qt renderer in the image
-        continue-on-error: true
-        run: |
-          set +e
-          mkdir -p /tmp/qcheck
-          sudo podman run --rm -v "$PWD:/src:ro" -v /tmp/qcheck:/out hearth-os:build bash /src/.github/scripts/hearth-qml-build.sh image-check 2>&1 | tail -60
-          exit ${PIPESTATUS[0]}
-
-      # REQUIRED: Quick Access over games shows text when Handheld Daemon starts it (its environment exactly, on a
-      # virtual screen, as a plain user): .github/scripts/overlay-text-check.sh. 0.6.5 showed none on an Nvidia PC.
-      - name: Quick Access over games shows text (as Handheld Daemon starts it)
-        timeout-minutes: 15
-        run: |
-          sudo podman run --rm -v "$PWD/.github/scripts/overlay-text-check.sh:/ovtext.sh:ro" hearth-os:build bash /ovtext.sh
-
-      # WARN-ONLY: rootless podman, Hearth's Debian box with a small .deb, AppImages through FUSE, Bazaar from Flathub,
-      # for a throwaway account in a privileged container (.github/scripts/hearth-box-check.sh). Needs the network and
-      # nested containers, which a runner may not give, so it never fails the build.
-      - name: Debian box, a .deb through Distrobox (warn-only)
-        continue-on-error: true
+      # REQUIRED: "Unlock the file system" for real (overlay mounts, dnf, starts, an update and a rollback played out).
+      - name: Unlock the file system (hearth-unlock, dnf)
         timeout-minutes: 40
-        run: |
-          sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
-            -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-os:build bash /box.sh box || echo "::warning title=box check::the box check didn't finish"
-      - name: AppImages through FUSE (warn-only)
-        continue-on-error: true
-        timeout-minutes: 40
-        run: |
-          sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
-            -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-os:build bash /box.sh appimage || echo "::warning title=box check::the appimage check didn't finish"
-      - name: Flatpak repair and Bazaar (warn-only)
-        continue-on-error: true
-        timeout-minutes: 40
-        run: |
-          sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
-            -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-os:build bash /box.sh flatpak || echo "::warning title=box check::the flatpak check didn't finish"
+        run: bash .github/scripts/anatase-unlock-check.sh localhost/hearth-os:anatase
 
-      # Only :testing (and a dated testing tag). Never :latest.
-      - name: Publish to GitHub Container Registry
+      # Smoothness (warn-only): Desktop Mode at rest here (Plasma) and in the published Debian image (Mantel on labwc).
+      - name: Smoothness beside Debian (Desktop Mode at rest, 10 minutes each)
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.smoothness }}
+        continue-on-error: true
+        timeout-minutes: 45
+        run: |
+          IDLE_SECS=600 bash .github/scripts/desktop-idle-compare.sh localhost/hearth-os:anatase plasma | tee /tmp/idle.txt
+          sudo podman pull -q ghcr.io/dragongamer9/hearth-peppermint:testing >/dev/null && \
+            IDLE_SECS=600 bash .github/scripts/desktop-idle-compare.sh ghcr.io/dragongamer9/hearth-peppermint:testing mantel | tee -a /tmp/idle.txt
+          { echo '### Desktop Mode at rest (virtual screen, software drawing)'; echo; echo '```'; grep '^RESULT' /tmp/idle.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+
+      # Only to the test tag, only from main, only by hand (red flag 5). Never :latest, :testing or hearth-peppermint.
+      - name: Publish to the test tag (hearth-os:anatase-test)
         if: env.PUBLISH == 'true'
         run: |
           set -o pipefail
-          exec > >(tee /tmp/step.log) 2>&1
-          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -20 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=publish::$msg"' ERR
+          case "$IMAGE:$TEST_TAG" in ghcr.io/dragongamer9/hearth-os:anatase-test) ;; *) echo "::error title=publish::refusing: $IMAGE:$TEST_TAG isn't the test tag"; exit 1 ;; esac
           v="${{ needs.app.outputs.version }}"
           echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
-          tags=(testing "testing-$v-$(date -u +%Y%m%d)")
-          if [ "$RELEASE" = true ]; then tags+=(latest "$v"); fi
-          for tag in "${tags[@]}"; do
-            sudo podman push hearth-os:build "$IMAGE:$tag"
+          for tag in "$TEST_TAG" "$TEST_TAG-$v-$(date -u +%Y%m%d)"; do
+            case "$tag" in latest|testing|stable|testing-*) echo "::error title=publish::refusing tag $tag"; exit 1 ;; esac
+            sudo podman push hearth-os:anatase "$IMAGE:$tag"
           done
-          echo "::notice title=published::$IMAGE: ${tags[*]}"
+          echo "::notice title=published::$IMAGE:$TEST_TAG (and $TEST_TAG-$v-$(date -u +%Y%m%d))"

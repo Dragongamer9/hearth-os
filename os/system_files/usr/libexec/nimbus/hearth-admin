@@ -56,9 +56,12 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      a new Hearth OS as a clean install that keeps your games (Bazzite-based
                                      Hearth only): writes /var/lib/hearth/clean-install.json (what the new
                                      system's first start keeps, for which account, when), then switches to the
-                                     edition's image (fixed list, NEW_OS_EDITIONS): anatase (the default)
-                                     ghcr.io/dragongamer9/hearth-os:latest (:testing with --testing); peppermint
-                                     (Beta Experimental) hearth-peppermint:testing. Ubuntu and CachyOS are
+                                     edition's image (fixed list, NEW_OS_EDITIONS): peppermint (Debian, the
+                                     default) hearth-peppermint:testing; anatase (a test, 1.15)
+                                     ghcr.io/dragongamer9/hearth-os:anatase-test only (never :latest or :testing).
+                                     To or from the Anatase test the home folder is left as it is, the Debian
+                                     version is pinned so it stays in the boot menu, and going back to Debian
+                                     starts that very version again when it's still there. Ubuntu and CachyOS are
                                      archived: refused. Download progress like update; the new system
                                      starts at the next restart
   hearth-admin firewall-status|firewall-on|firewall-off|firewall-allow|firewall-remove|firewall-incoming deny|allow
@@ -1910,14 +1913,20 @@ NEW_OS_IMAGE = 'ghcr.io/dragongamer9/hearth-os'
 # The editions the old Hearth can move to: edition -> (image, tags it has). Never a free-form image. The Beta
 # Experimental editions only have :testing, so that's what they get with or without --testing.
 NEW_OS_EDITIONS = {
-    'anatase': (NEW_OS_IMAGE, ('latest', 'testing')),
+    # 1.15: Anatase is back as a test, on its own tag only (:latest and :testing hold the old pre-archive build).
+    'anatase': (NEW_OS_IMAGE, ('anatase-test',)),
     'ubuntu': ('ghcr.io/dragongamer9/hearth-ubuntu', ('testing',)),
     'cachyos': ('ghcr.io/dragongamer9/hearth-cachyos', ('testing',)),
     'peppermint': ('ghcr.io/dragongamer9/hearth-peppermint', ('testing',)),
 }
-# Archived editions (October 2026; Anatase November 2026): no longer built or offered. Still known (a system on one is recognised and can
-# switch away), but nothing switches to them.
-ARCHIVED_EDITIONS = ('ubuntu', 'cachyos', 'anatase')
+# Archived editions (October 2026): no longer built or offered. Still known (a system on one is recognised and can
+# switch away), but nothing switches to them. (Anatase, archived in November 2026, is back as a test in 1.15.)
+ARCHIVED_EDITIONS = ('ubuntu', 'cachyos')
+# Test editions (1.15: Anatase, tried beside Debian): switching to or from one keeps the whole home folder, and the
+# version you came from is pinned so it stays in the boot menu (ostree would otherwise drop it after two updates).
+TEST_EDITIONS = ('anatase',)
+DEBIAN_REPO = 'ghcr.io/dragongamer9/hearth-peppermint'
+
 # CachyOS' image is built for x86-64-v3: these processor features (the ones /proc/cpuinfo names) must be there.
 X86_64_V3_FLAGS = ('avx2', 'bmi2', 'fma', 'movbe')
 CLEAN_INSTALL = '/var/lib/hearth/clean-install.json'
@@ -1978,8 +1987,104 @@ def new_os_image(edition, testing=False):
     if edition not in NEW_OS_EDITIONS:
         return None
     repo, tags = NEW_OS_EDITIONS[edition]
+    if 'latest' not in tags and 'testing' not in tags:
+        return repo + ':' + tags[0]          # a test edition: its own tag, whatever --testing says
     tag = 'testing' if testing or 'latest' not in tags else 'latest'
     return repo + ':' + tag
+
+
+def keeps_home(edition, from_edition):
+    """A switch to or from a test edition leaves the home folder as it is (newos.rs keeps_home)."""
+    return edition in TEST_EDITIONS or from_edition in TEST_EDITIONS
+
+
+def ostree_deployments(text, sysroot='/sysroot'):
+    """`ostree admin status` → [{index, booted, pinned, rollback, origin}] in ostree's order (its index for pin and
+    set-default). A deployment line is "* stateroot <checksum>.<serial> (flags)"; the lines under it may say
+    "Pinned: yes". The image each one came from is read from its own .origin file (container-image-reference=...),
+    which ostree's status doesn't always print for container deployments."""
+    out = []
+    for line in text.splitlines():
+        m = re.match(r'^(\*|\s)\s+(\S+)\s+([0-9a-f]{64}\.\d+)(.*)$', line)
+        if m:
+            flags = m.group(4)
+            out.append({'index': len(out), 'booted': m.group(1) == '*', 'pinned': '(pinned)' in flags,
+                        'staged': '(staged)' in flags, 'rollback': '(rollback)' in flags,
+                        'stateroot': m.group(2), 'deploy': m.group(3), 'origin': ''})
+            continue
+        if out and re.match(r'^\s+Pinned:\s*yes', line):
+            out[-1]['pinned'] = True
+        o = re.match(r'^\s+(?:origin refspec|origin):\s*(\S+)', line)
+        if o and out and not out[-1]['origin'] and ':' in o.group(1):
+            out[-1]['origin'] = o.group(1)
+    for d in out:
+        try:
+            with open(os.path.join(sysroot, 'ostree', 'deploy', d['stateroot'], 'deploy', d['deploy'] + '.origin')) as f:
+                for line in f:
+                    if line.startswith(('container-image-reference=', 'refspec=')):
+                        d['origin'] = line.split('=', 1)[1].strip()
+        except OSError:
+            pass
+    return out
+
+
+def read_deployments():
+    try:
+        r = subprocess.run(['ostree', 'admin', 'status'], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return ostree_deployments(r.stdout) if r.returncode == 0 else []
+
+
+def pin_booted(deps=None):
+    """Keep the running version in the boot menu for good (ostree admin pin), before a test switch. Never fatal."""
+    deps = read_deployments() if deps is None else deps
+    b = next((d for d in deps if d['booted']), None)
+    if not b:
+        print('log: couldn\'t tell which version is running; not pinned', flush=True)
+        return False
+    if b['pinned']:
+        return True
+    try:
+        ok = subprocess.run(['ostree', 'admin', 'pin', str(b['index'])], capture_output=True, text=True, timeout=60).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        ok = False
+    print('log: ' + ('This version is kept in the boot menu (pinned)' if ok else 'Couldn\'t pin this version (it stays in the boot menu until two more updates)'), flush=True)
+    return ok
+
+
+def debian_deployment(deps):
+    """The newest Debian deployment that isn't the running one (the version a test switch came from), or None."""
+    for d in deps:
+        if not d['booted'] and not d.get('staged') and DEBIAN_REPO in d['origin']:
+            return d
+    return None
+
+
+def back_to_debian(deps):
+    """From the Anatase test back to the Debian version it came from, exactly as it was: bootc rollback when it's the
+    rollback, else ostree admin set-default to it. False when neither can (then a fresh switch is made)."""
+    d = debian_deployment(deps)
+    if not d:
+        return False
+    if any(x.get('staged') for x in deps):
+        print('log: an update is waiting for a restart; getting Debian fresh instead of going back directly', flush=True)
+        return False
+    try:
+        rb = (bootc_status(quiet=True) or {}).get('rollback') or {}
+        if d.get('rollback') or DEBIAN_REPO in (rb.get('image') or ''):
+            print('log: Going back to the Debian version you came from (bootc rollback)', flush=True)
+            r = subprocess.run(['bootc', 'rollback'], capture_output=True, text=True, timeout=300)
+        else:
+            print('log: Going back to the Debian version you came from (ostree admin set-default %d)' % d['index'], flush=True)
+            r = subprocess.run(['ostree', 'admin', 'set-default', str(d['index'])], capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.SubprocessError) as e:
+        print('log: couldn\'t go back directly (%s); getting Debian fresh instead' % e, flush=True)
+        return False
+    if r.returncode != 0:
+        print('log: couldn\'t go back directly (%s); getting Debian fresh instead' % ((r.stderr or r.stdout).strip()[-200:]), flush=True)
+        return False
+    return True
 
 
 def move_args(args):
@@ -2032,6 +2137,8 @@ def clean_install_plan(user, flatpaks, image, now=None, edition='anatase', from_
         'keep': CLEAN_INSTALL_KEEPS,
         'removeFlatpaks': flatpaks,
         'oldFilesDays': 30,
+        # A test switch (to or from Anatase, 1.15): the home folder is left exactly as it is.
+        'keepHome': keeps_home(edition, from_edition),
     }
 
 
@@ -2095,7 +2202,22 @@ def move_to_new_os(edition='peppermint', testing=False):
             ok = False
         if not ok:
             fail('Hearth OS on CachyOS needs a newer processor (x86-64-v3: AVX2, BMI2, FMA, MOVBE)')
+    # Back from the Anatase test to Debian: the very Debian version you came from, when it's still there.
+    if current in TEST_EDITIONS and edition == 'peppermint':
+        try:
+            os.remove(CLEAN_INSTALL)
+        except OSError:
+            pass
+        if back_to_debian(read_deployments()):
+            done = 'Done. Restart to start Hearth OS on Debian again, as you left it.'
+            progress(100, done)
+            st = bootc_status(quiet=True) or {}
+            st.update({'moved': True, 'restart': True, 'image': image, 'back': True})
+            print(json.dumps(st))
+            return
     print('log: Moving to ' + image, flush=True)
+    if edition in TEST_EDITIONS:
+        pin_booted()
     plan = clean_install_plan(user, bazzite_flatpaks() if current is None else [], image, edition=edition, from_edition=current)
     # A plan left from a switch that didn't finish goes now; this one is written only once the new system is
     # really there (/var is shared by both systems: written before, a switch stopped halfway left a plan that the
@@ -2104,7 +2226,10 @@ def move_to_new_os(edition='peppermint', testing=False):
         os.remove(CLEAN_INSTALL)
     except OSError:
         pass
-    print('log: The new Hearth OS will keep your games and saves; your other files are put aside for 30 days', flush=True)
+    if plan['keepHome']:
+        print('log: Your home folder stays exactly as it is', flush=True)
+    else:
+        print('log: The new Hearth OS will keep your games and saves; your other files are put aside for 30 days', flush=True)
     progress(0, 'Getting the new Hearth OS')
     ensure_podman()
     if current is not None:

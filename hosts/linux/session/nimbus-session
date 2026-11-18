@@ -165,7 +165,7 @@ rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode" "${XDG_STATE_HOME:-$H
 
 can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
 can_desktop() {   # Mantel: on KWin (1.14), labwc the fallback (run_classic); or the 2.0 preview, when it's turned on
-  have labwc || have "${HEARTH_KWIN_BIN:-kwin_wayland}" || { [ "$(desktop_wm_choice)" = firehold ] && firehold_bin >/dev/null; }
+  { plasma_image && have startplasma-wayland; } || have labwc || have "${HEARTH_KWIN_BIN:-kwin_wayland}" || { [ "$(desktop_wm_choice)" = firehold ] && firehold_bin >/dev/null; }
 }
 
 # Apps that keep sign-ins in the system's password store (Xodus Nexus, browsers) need one running, and on a
@@ -403,12 +403,60 @@ run_desktop() {
   fi
   # 1.13's KDE Plasma or GNOME still picked: they were retired in 1.14, so Mantel opens, and Mantel tells you once
   # (desktop/shell/DesktopNotice.qml through hearth-your-desktop notice; desktop-retired-told then keeps it quiet).
+  # 1.15, the Anatase test (the owner, Nov 17): Desktop Mode there is stock KDE Plasma with Hearth's apps; that image
+  # has no Mantel or labwc (run_plasma).
+  if plasma_image && [ -z "$HEARTH_SEAT" ]; then run_plasma; return $?; fi
   d=$(retired_desktop)
   if [ -n "$d" ] && [ -z "$HEARTH_SEAT" ] && [ ! -e "$DESK_STATE/desktop-retired-told" ]; then
     log "$d: KDE Plasma and GNOME were retired in 1.14; Mantel instead (the notice says so once)"
     desk_notice "$d" retired
   fi
   run_classic
+}
+
+# ---- 1.15: Desktop Mode on the Anatase test is stock KDE Plasma (plasmashell on KDE's own KWin), with Hearth's apps
+# as ordinary apps in Plasma's menu. Only where the image says so (/usr/share/nimbus/desktop-mode is "plasma"; the
+# Debian image has none, so nothing changes there). Your saved Desktop Mode choice (session.conf's
+# HEARTH_DESKTOP_WM: Mantel on labwc, KWin or Firehold) is never read or changed here, so it's still yours when you
+# go back to Debian; Plasma says once that it took its place. Back to Game Mode: "Back to Game Mode" in Plasma's menu
+# and on its taskbar (nimbus-mode game, which logs Plasma out). Plasma ending without asking for a mode within 20 s
+# of starting (it couldn't start): Steam Game Mode, never no screen.
+plasma_image() { [ "$(cat "${HEARTH_DESKTOP_MODE_FILE:-/usr/share/nimbus/desktop-mode}" 2>/dev/null)" = plasma ]; }
+run_plasma() {
+  log "desktop mode: KDE Plasma (the Anatase test)"
+  if ! have startplasma-wayland; then
+    log "desktop: KDE Plasma (startplasma-wayland) isn't installed; Steam Game Mode instead"
+    echo steam >"$NEXT"; return 1
+  fi
+  if [ -n "${HEARTH_DESKTOP_WM:-}" ] && [ ! -e "$DESK_STATE/plasma-instead-told" ] && have notify-send; then
+    mkdir -p "$DESK_STATE" && : >"$DESK_STATE/plasma-instead-told"
+    ( sleep 25; notify-send -a "Hearth" -i hearth "Desktop Mode is KDE Plasma here" \
+        "This test edition has KDE Plasma instead of Mantel. Your Desktop Mode choice is kept for when you go back to Debian." ) >/dev/null 2>&1 &
+  fi
+  started=$(date +%s)
+  (
+    # Plasma's own desktop names and menus: Hearth's one-app-of-each-kind copies (made for Mantel) are left out, so
+    # Hearth's apps and KDE's both show in Plasma's menu.
+    dd=""; IFS=:; for d in $XDG_DATA_DIRS; do [ "$d" = /usr/share/hearth/app-kinds ] || dd="${dd:+$dd:}$d"; done; unset IFS
+    export XDG_DATA_DIRS="$dd"
+    # Fedora names KDE's menu file with a prefix (the 1.14 "applications.menu not found"): Plasma is told which.
+    if [ ! -e /etc/xdg/menus/applications.menu ]; then
+      for m in /etc/xdg/menus/*-applications.menu; do [ -e "$m" ] && { export XDG_MENU_PREFIX="$(basename "$m" applications.menu)"; break; }; done
+    fi
+    export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE DESKTOP_SESSION=plasma KDE_FULL_SESSION=true HEARTH_WM=plasma
+    unset QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE HEARTH_DESKTOP_PID LABWC_PID
+    exec startplasma-wayland
+  ) >>"$LOG" 2>&1 &
+  pid=$!
+  echo "$pid" >"$RUN/hearth-plasma.pid"
+  wait "$pid"; code=$?
+  rm -f "$RUN/hearth-plasma.pid"
+  log "desktop mode: KDE Plasma ended (code $code)"
+  if [ ! -s "$NEXT" ] && [ $(( $(date +%s) - started )) -lt 20 ]; then
+    log "desktop: KDE Plasma ended within 20 s of starting; Steam Game Mode instead"
+    echo steam >"$NEXT"
+  fi
+  return 0
 }
 
 # ---- Desktop Mode's notices: why Mantel started the way it did. Lines "<what> <why> <when>" in
