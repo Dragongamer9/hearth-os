@@ -7,7 +7,7 @@ checklist docs/mockups/checklists/hearth-tv.md.
 
 - Code: `hosts/android-tv` (app id `dev.hearthos.tv`). A small Kotlin host (like Hearth for Android) with the page in
   `app/src/main/assets/tv/`; the page talks to the TV through `HearthTVNative` (Bridge.kt).
-- Version: `hosts/android-tv/VERSION` (the owner picks it; 1.0 first).
+- Version: `hosts/android-tv/VERSION` (the owner picks it; 1.0 first, 1.1 with Send to TV).
 - Built and tested by `.github/workflows/android-tv.yml`: Hearth Link for Android (arm64 and 32-bit arm), unit tests,
   the APK as the `hearth-tv-<version>` artifact, every screen photographed by `tools/tv-ui-check.js` onto the branch
   `ci/tv-shots-<branch>`. On main the APK goes on the newest release as `hearth-tv-<version>.apk`, where Hearth TV's
