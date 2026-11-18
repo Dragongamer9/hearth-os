@@ -1693,7 +1693,7 @@ hearth_png() {  # hearth_png SIZE: the Hearth logo PNG closest to SIZE (the icon
 swapped=0
 while IFS= read -r f; do
   case "$f" in *.svg|*.svgz) cp -f "$HEARTH_SVG" "$f" ;;
-    *.png) sz=$(echo "$f" | grep -oE '/[0-9]+x[0-9]+/' | head -1 | tr -d / | cut -dx -f1); cp -f "$(hearth_png "${sz:-256}")" "$f" ;;
+    *.png) sz=$(echo "$f" | grep -oE '/[0-9]+x[0-9]+/' | head -1 | tr -d / | cut -dx -f1 || true); cp -f "$(hearth_png "${sz:-256}")" "$f" ;;
     *) continue ;; esac
   swapped=$((swapped + 1))
 done < <(find /usr/share/icons /usr/share/pixmaps -type f \( -iname '*fedora*logo*' -o -iname '*anatase*' -o -iname 'start-here*' \
