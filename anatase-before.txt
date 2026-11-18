@@ -1,0 +1,12 @@
+--- EFI before the move
+/mnt/boot-look/m/t/boot/efi/EFI/BOOT/fbx64.efi
+/mnt/boot-look/m/t/boot/efi/EFI/BOOT/BOOTX64.EFI
+/mnt/boot-look/m/t/boot/efi/EFI/anatase/shimx64.efi
+/mnt/boot-look/m/t/boot/efi/EFI/anatase/shim.efi
+/mnt/boot-look/m/t/boot/efi/EFI/anatase/mmx64.efi
+/mnt/boot-look/m/t/boot/efi/EFI/anatase/BOOTX64.CSV
+/mnt/boot-look/m/t/boot/efi/EFI/anatase/grubx64.efi
+/mnt/boot-look/m/t/boot/efi/EFI/anatase/grub.cfg
+/mnt/boot-look/m/t/boot/efi/EFI/anatase/bootuuid.cfg
+--- bootupd-state.json
+{"installed":{"EFI":{"meta":{"timestamp":"2026-04-08T19:11:05Z","version":"grub2-efi-x64-1:2.12-43.fc43.x86_64,shim-x64-15.8-3.x86_64","versions":[{"name":"grub2","rpm_evr":"1:2.12-43.fc43"},{"name":"shim","rpm_evr":"15.8-3"}]},"filetree":{"children":{"BOOT/BOOTX64.EFI":{"source":"BOOT/BOOTX64.EFI","size":949424,"sha512":"sha512:cc23d8c3cb2dcf749075268b77eb796fb430182cbbc04171ded14d43e32b4a5cdeeb1a08666ee0e288bd37d63f657a9af5e7f2012dd70694d11212d705c60b42"},"BOOT/fbx64.efi":{"source":"BOOT/fbx64.efi","size":87816,"sha512":"sha512:d6107afdaebab6c6f3a9136334b54aeba089a8b40d53f38c74c791dca1274b9d6a02d744a634938516cedfa96a67cb0cff6a59c5537b36faf3c70e3bcee622af"},"anatase/BOOTX64.CSV":{"source":"anatase/BOOTX64.CSV","size":110,"sha512":"sha512:0c29b8ae73171ef683ba690069c1bae711e130a084a81169af33a83dfbae4e07d909c2482dbe89a96ab26e171f17c53f1de8cb13d558bc1535412ff8accf253f"},"anatase/grubx64.efi":{"source":"anatase/grubx64.efi","size":4046544,"sha512":"sha512:d2d9d4413494a930cc8cd99a50c534205b2fb391f4fe9e5db79d1f8dcbd65ad93bea250b58d48673de37481e0cecdd510f898f31a34022e2b330f2adc5c50477"},"anatase/mmx64.efi":{"source":"anatase/mmx64.efi","size":848080,"sha512":"sha512:d62e003cae3321b3b0aea35c27868176a867b06a1a1eb3266efe84f72f01db6ce71c36073afc192500385743b5eb3d1f35519729b51d0326cebb1e3a04b24281"},"anatase/shim.efi":{"source":"anatase/shim.efi","size":949424,"sha512":"sha512:cc23d8c3cb2dcf749075268b77eb796fb430182cbbc04171ded14d43e32b4a5cdeeb1a08666ee0e288bd37d63f657a9af5e7f2012dd70694d11212d705c60b42"},"anatase/shimx64.efi":{"source":"anatase/shimx64.efi","size":949424,"sha512":"sha512:cc23d8c3cb2dcf749075268b77eb796fb430182cbbc04171ded14d43e32b4a5cdeeb1a08666ee0e288bd37d63f657a9af5e7f2012dd70694d11212d705c60b42"}}},"adopted-from":null}},"pending":null,"static-configs":{"timestamp":"1970-01-01T00:00:00Z","version":"0.2.35","versions":null}}
