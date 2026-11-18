@@ -1421,7 +1421,8 @@ chmod 755 /usr/libexec/hearth-app-kinds
 for b in hearth-task-manager hearth-system-restore hearth-reliability-history; do
   [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
   install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/bin/$b"
-  if ldd "/usr/bin/$b" | grep -q 'not found'; then
+  # (grep -c, not -q: under pipefail an early grep -q could cut ldd off and hide the match)
+  if [ "$(ldd "/usr/bin/$b" 2>&1 | grep -c 'not found' || true)" != 0 ]; then
     echo "::warning title=Hearth's pure-Rust apps::$b can't start here (missing $(ldd /usr/bin/$b | grep 'not found' | awk '{print $1}' | tr '\n' ' ')), left out"
     rm -f "/usr/bin/$b"
   fi
@@ -1529,7 +1530,7 @@ for f in /usr/share/applications/hearth-*.desktop; do
   prog=$(sed -n 's/^TryExec=//p' "$f" | head -1); [ -n "$prog" ] || prog=$(sed -n 's/^Exec=//p' "$f" | head -1 | awk '{print $1}')
   case "$prog" in ''|env|sh|bash|python3) continue ;; esac
   path=$(command -v "$prog" 2>/dev/null) || { echo "::warning title=Plasma menu::$(basename "$f"): its program $prog isn't in this image"; continue; }
-  if ldd "$path" 2>/dev/null | grep -q 'not found'; then
+  if [ "$(ldd "$path" 2>/dev/null | grep -c 'not found' || true)" != 0 ]; then
     echo "::warning title=Plasma menu::$(basename "$f"): $prog can't start, missing $(ldd "$path" | grep 'not found' | awk '{print $1}' | tr '\n' ' ')"
   fi
 done
