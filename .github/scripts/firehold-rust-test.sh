@@ -171,7 +171,9 @@ kill "$GP" 2>/dev/null
 HEARTH_DESKTOP_PID=$(cat "$XDG_RUNTIME_DIR/firehold.pid") sh hosts/linux/session/nimbus-mode game
 for i in $(seq 15); do pgrep -x firehold-comp >/dev/null || break; sleep 1; done
 pgrep -x firehold-comp >/dev/null && fail "leave" "firehold-comp didn't end on nimbus-mode game" || note "leave" "nimbus-mode game ended Firehold: $(grep -o 'firehold (Rust) ended.*' "$LOG" | tail -1)"
-pgrep -x firehold-shell >/dev/null && fail "leave" "firehold-shell processes stayed: $(pgrep -a -x firehold-shell | tr '\n' ';')"
+# (Ones that ended but weren't collected yet, "defunct": the container has no init to collect them; they don't run.)
+live=$(for p in $(pgrep -x firehold-shell); do [ "$(sed -n 's/^State:[[:space:]]*\([A-Z]\).*/\1/p' /proc/$p/status 2>/dev/null)" = Z ] || echo "$p"; done | tr '\n' ' ')
+[ -n "${live// }" ] && fail "leave" "firehold-shell processes stayed: $live"
 kill "$SP" 2>/dev/null; plasma_gone; pkill -x gamescope; sleep 1
 cp "$LOG" shots/session.log; cp "$FLOG" shots/firehold-rust.log 2>/dev/null
 rm -f "$XDG_RUNTIME_DIR/plasma-started" "$XDG_RUNTIME_DIR/nimbus-next"
