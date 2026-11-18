@@ -670,6 +670,9 @@ jobs:
           [ "$IMAGE" = ghcr.io/dragongamer9/hearth-os ] || { echo "::error title=publish::refusing image $IMAGE"; exit 1; }
           echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
           dated="$tag-$(date -u +%Y%m%d)"
+          # Forget where layers were seen before (the switch test pulled Debian's image from ghcr): otherwise the
+          # push tries to borrow them from that other package and ghcr answers 403 (run 44270616388).
+          sudo rm -f /var/lib/containers/cache/blob-info-cache-v1.sqlite /var/lib/containers/cache/blob-info-cache-v1.boltdb
           sudo podman push --digestfile /tmp/digest hearth-os:anatase "$IMAGE:$tag"
           d=$(cat /tmp/digest)
           sudo skopeo copy -q --authfile /run/containers/0/auth.json "docker://$IMAGE@$d" "docker://$IMAGE:$dated"
