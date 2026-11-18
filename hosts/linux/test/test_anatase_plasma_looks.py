@@ -187,6 +187,7 @@ class Wiring(unittest.TestCase):
         sh = (REPO / '.github/scripts/anatase-look-shots.sh').read_text()
         self.assertIn('KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1', sh)
         self.assertIn('cp "$(command -v kwin_wayland)" /tmp/kwin_wayland', sh)
+        self.assertIn('modprobe vgem', sh)
 
     def test_units(self):
         sf = REPO / 'os-bases/anatase/system_files'

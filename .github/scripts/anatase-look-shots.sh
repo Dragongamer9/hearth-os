@@ -18,6 +18,13 @@ mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd)
 echo "FAIL the first start never ran" > "$OUT/first-start.txt"
 NAME=looks-$$
 P="sudo podman"
+# A render node for KWin: GitHub's runners have only a display card (/dev/dri/card1), and this KWin needs a render node
+# ("Found no render device!", then it quits). vgem gives one; Mesa draws on it in software.
+if ! ls /dev/dri/renderD* >/dev/null 2>&1; then
+  sudo modprobe vgem 2>/dev/null || { sudo apt-get -qq install -y "linux-modules-extra-$(uname -r)" >/dev/null 2>&1; sudo modprobe vgem 2>/dev/null; }
+  sudo udevadm settle 2>/dev/null
+fi
+echo "::notice title=looks render device::$(ls -l /dev/dri 2>&1 | tr '\n' ' ')"
 $P run -d --name "$NAME" --privileged --entrypoint sleep "$IMG" infinity >/dev/null \
   || { echo "FAIL couldn't start the image" > "$OUT/first-start.txt"; echo "::error title=looks::couldn't start the image"; exit 0; }
 trap '$P rm -f "$NAME" >/dev/null 2>&1' EXIT
@@ -52,14 +59,13 @@ export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE XDG_SESSION_TYPE=wayland 
 export QT_FORCE_STDERR_LOGGING=1 KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 LIBGL_ALWAYS_SOFTWARE=1
 [ -e /etc/xdg/menus/applications.menu ] || export XDG_MENU_PREFIX=$(basename "$(ls /etc/xdg/menus/*-applications.menu 2>/dev/null | head -1)" applications.menu)
 say() { echo "$*"; echo "$*" >> "$S/events.txt"; }
-# KWin without its file capabilities (a copy), so it keeps the screenshot switch from the environment. The runner has
-# no render node (only a card), so KWin draws with QPainter from the start (KWIN_COMPOSE=Q): with OpenGL it starts, but
-# the first reconfigure after a look is applied finds "no render device" and KWin quits.
+# KWin without its file capabilities (a copy), so it keeps the screenshot switch from the environment. It draws through
+# the render node the runner was given (vgem, Mesa's software drawing); this KWin has no QPainter mode any more.
 cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
 start_kwin() {
   echo "---- kwin ($(date +%T))" >> "$S/kwin.log"
   rm -f "$XDG_RUNTIME_DIR/wayland-hearth" "$XDG_RUNTIME_DIR/wayland-hearth.lock"
-  KWIN_COMPOSE=Q /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >>"$S/kwin.log" 2>&1 &
+  /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >>"$S/kwin.log" 2>&1 &
   KWIN=$!
   for i in $(seq 60); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && return 0; sleep 1; done
   return 1
