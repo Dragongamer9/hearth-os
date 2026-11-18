@@ -1,0 +1,64 @@
+// Firehold on Plasma (a test, docs/FIREHOLD.md "Firehold on Plasma"): KWin's side, through KWin's public script API only.
+// Loaded for a Firehold session by hearth-firehold-plasma session (org.kde.kwin.Scripting.loadScript), never from
+// kwinrc, so plain Plasma never runs it. What it does:
+//   * Couch posture: a game in front goes full screen (Games: Follow the posture); back on the Desk, games go back in
+//     their windows (as Mantel's Firehold does). Other windows are left alone.
+//   * Meta+Ctrl+G: the Guide (as the controller's Guide button), through Plasma's own scripting interface.
+// The posture comes from hearth-firehold-plasma through the shortcuts below (KDE's global shortcuts service).
+// Event driven only: no timers, nothing runs while nothing happens.
+
+var GAME_APPS = ["retroarch", "org.libretro.retroarch", "dolphin-emu", "org.dolphinemu.dolphin-emu", "pcsx2", "net.pcsx2.pcsx2",
+    "rpcs3", "net.rpcs3.rpcs3", "duckstation", "org.duckstation.duckstation", "ppsspp", "org.ppsspp.ppsspp", "ryujinx",
+    "org.ryujinx.ryujinx", "cemu", "info.cemu.cemu", "xemu", "app.xemu.xemu", "melonds", "net.kuribo64.melonds", "mgba",
+    "io.mgba.mgba", "snes9x", "mednafen", "flycast", "org.flycast.flycast", "azahar", "io.github.lime3ds.lime3ds", "citra",
+    "eden", "gamescope", "steam_proton", "hearth-game"];
+
+var couch = false;
+var games = "follow";       // follow | fullscreen | window (Settings › Couch and Desk › Games)
+var made = {};              // windows this script made full screen
+
+function isGame(w) {
+    if (!w || !w.normalWindow) return false;
+    var c = String(w.resourceClass || "").toLowerCase();
+    var n = String(w.resourceName || "").toLowerCase();
+    return /^steam_app_\d+$/.test(c) || GAME_APPS.indexOf(c) >= 0 || GAME_APPS.indexOf(n) >= 0;
+}
+
+function key(w) { return String(w.internalId); }
+
+function full(w) {
+    if (games === "window" || !isGame(w) || w.fullScreen || !w.fullScreenable) return;
+    w.fullScreen = true;
+    made[key(w)] = true;
+}
+
+function setCouch(on) {
+    couch = on;
+    var list = workspace.windowList();
+    for (var i = 0; i < list.length; i++) {
+        var w = list[i];
+        if (on) {
+            if (w === workspace.activeWindow) full(w);
+        } else if ((made[key(w)] || isGame(w)) && w.fullScreen && games === "follow") {
+            w.fullScreen = false;
+        }
+    }
+    if (!on) made = {};
+}
+
+// A game that opens on the Couch (or with Games: Always full screen) starts full screen. Going to a running game from
+// the Couch is the Couch's own doing (it asks for full screen itself), so "Open in a window" stays a window.
+workspace.windowAdded.connect(function (w) { if (couch || games === "fullscreen") full(w); });
+workspace.windowRemoved.connect(function (w) { if (w) delete made[key(w)]; });
+
+registerShortcut("Firehold Couch posture", "Firehold: Couch posture", "", function () { setCouch(true); });
+registerShortcut("Firehold Desk posture", "Firehold: Desk posture", "", function () { setCouch(false); });
+registerShortcut("Firehold games follow", "Firehold: games follow the posture", "", function () { games = "follow"; });
+registerShortcut("Firehold games fullscreen", "Firehold: games always full screen", "", function () { games = "fullscreen"; });
+registerShortcut("Firehold games window", "Firehold: games always in a window", "", function () { games = "window"; });
+
+var GUIDE = 'var v="guide|"+Date.now();desktops().forEach(function(d){if(d.type=="org.hearthos.firehold.couch"){' +
+    'd.currentConfigGroup=["General"];d.writeConfig("request",v);}});';
+registerShortcut("Firehold Guide", "Firehold: the Guide", "Meta+Ctrl+G", function () {
+    callDBus("org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell", "evaluateScript", GUIDE);
+});

@@ -422,6 +422,11 @@ run_desktop() {
 # and on its taskbar (nimbus-mode game, which logs Plasma out). Plasma ending without asking for a mode within 20 s
 # of starting (it couldn't start): Steam Game Mode, never no screen.
 plasma_image() { [ "$(cat "${HEARTH_DESKTOP_MODE_FILE:-/usr/share/nimbus/desktop-mode}" 2>/dev/null)" = plasma ]; }
+# The Desktop Mode choice on the Plasma image: "firehold" (Firehold on Plasma, a test) or "plasma" (no line). Read only.
+firehold_plasma_choice() {
+  c=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_PLASMA_DESKTOP=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
+  [ "$c" = firehold ] && echo firehold || echo plasma
+}
 run_plasma() {
   log "desktop mode: KDE Plasma (the Anatase test)"
   if ! have startplasma-wayland; then
@@ -433,8 +438,25 @@ run_plasma() {
     ( sleep 25; notify-send -a "Hearth" -i hearth "Desktop Mode is KDE Plasma here" \
         "This test edition has KDE Plasma instead of Mantel. Your Desktop Mode choice is kept for when you go back to Debian." ) >/dev/null 2>&1 &
   fi
+  # Firehold on Plasma (a test: docs/FIREHOLD.md "Firehold on Plasma"), only when it's your Desktop Mode choice
+  # (session.conf's HEARTH_PLASMA_DESKTOP=firehold, from "Firehold (Plasma, test)" in Plasma's menu; no line: KDE
+  # Plasma) and its packages are in the image. plasmashell is told which shell package to start (PLASMA_DEFAULT_SHELL);
+  # KWin is KDE's own, unchanged. KDE's user services keep that variable between Plasma starts, so it's cleared first
+  # and plain Plasma never gets it. Anything missing or failing: plain KDE Plasma (hearth-firehold-plasma checks the
+  # shell came up and says so); the choice itself is never changed here.
+  fh_shell=""
+  if have systemctl; then systemctl --user unset-environment PLASMA_DEFAULT_SHELL HEARTH_FIREHOLD_PLASMA >/dev/null 2>&1 || true; fi
+  if [ "$(firehold_plasma_choice)" = firehold ] && have hearth-firehold-plasma && [ -f /usr/share/plasma/shells/org.hearthos.firehold/metadata.json ]; then
+    fh_shell=$(timeout 10 hearth-firehold-plasma start-shell 2>/dev/null | tail -n 1)
+    case "$fh_shell" in
+      org.hearthos.firehold|org.hearthos.firehold.desk) timeout 10 hearth-firehold-plasma begin "$fh_shell" >/dev/null 2>&1 || true ;;
+      *) fh_shell="" ;;
+    esac
+    log "desktop mode: Firehold on Plasma (${fh_shell:-no shell to start: plain KDE Plasma})"
+  fi
   started=$(date +%s)
   (
+    if [ -n "$fh_shell" ]; then export PLASMA_DEFAULT_SHELL="$fh_shell" HEARTH_FIREHOLD_PLASMA=1; else unset PLASMA_DEFAULT_SHELL HEARTH_FIREHOLD_PLASMA; fi
     # Plasma's own desktop names and menus: Hearth's one-app-of-each-kind copies (made for Mantel) are left out, so
     # Hearth's apps and KDE's both show in Plasma's menu.
     dd=""; IFS=:; for d in $XDG_DATA_DIRS; do [ "$d" = /usr/share/hearth/app-kinds ] || dd="${dd:+$dd:}$d"; done; unset IFS

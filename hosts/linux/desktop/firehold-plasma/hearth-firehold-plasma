@@ -1,0 +1,909 @@
+#!/usr/bin/python3
+"""hearth-firehold-plasma: Firehold built the way KDE builds Plasma Bigscreen and Plasma Mobile (a test, docs/FIREHOLD.md
+"Firehold on Plasma"). Couch is a Plasma shell package (org.hearthos.firehold, its desktop the containment
+org.hearthos.firehold.couch); Desk is Plasma's own desktop shell in Firehold's layout (org.hearthos.firehold.desk, a copy
+of org.kde.plasma.desktop made when the image is built). Both run on KDE's own KWin 6, unpatched. Switching posture
+restarts only plasmashell with the other shell package: KWin, the session and every open app and game stay as they are.
+
+  choice                      the saved Desktop Mode choice: "firehold" or "plasma" (no line: plasma, never saved)
+  choose firehold|plasma      save it (session.conf's HEARTH_PLASMA_DESKTOP, only that line, hearth_settings_io)
+  pick                        ask with a small dialog (Plasma's menu: "Firehold (Plasma, test)"), then save it
+  start-shell                 the shell package the session starts with (nimbus-session run_plasma)
+  begin PACKAGE               nimbus-session, just before Plasma starts: this session's start
+  session                     the session's helper (XDG autostart, only when HEARTH_FIREHOLD_PLASMA=1): loads the
+                              KWin script, checks the shell came up (else plain Plasma for this session, and it says
+                              so), the controller in the Couch, Automatic posture
+  ready PACKAGE               the shell came up (the Couch's containment, the Desk's posture pill)
+  switch couch|desk [TAB] [--why pad|mouse|keys]
+  plain                       plain Plasma for the rest of this session (the saved choice isn't touched)
+  ask CMD                     tell the Couch (guide, open, home, settings, tab:library...) through Plasma's scripting
+  state front|back|guide      what the Couch has in front (for the controller)
+  get | set KEY JSON          Firehold's settings (~/.config/nimbus/firehold.json, shared with Mantel's Firehold)
+  sys [all]                   one JSON line for the bars (Wi-Fi, battery, initial); all: the Guide's too (volume,
+                              brightness, power, VRR, tearing, overlay)
+  do ACTION                   screenshot, volume-up/down, brightness-up/down, osk, vrr, tearing, power, overlay,
+                              record, friends, quit-game PID
+  apps | launch ID            the Apps tab
+  library | cached | play ID | page ID
+                              the games (desktop/shell/hearth-firehold, as Mantel's Firehold)
+
+Nothing here can stop Desktop Mode or Game Mode from starting: every step that fails is logged and skipped.
+"""
+import json
+import os
+import re
+import select
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+SHELL_DIR = os.path.join(os.path.dirname(HERE), 'shell')
+sys.path.insert(0, SHELL_DIR)
+
+COUCH = 'org.hearthos.firehold'
+DESK = 'org.hearthos.firehold.desk'
+PLAIN = 'org.kde.plasma.desktop'
+CONTAINMENT = 'org.hearthos.firehold.couch'
+SCRIPT_NAME = 'org.hearthos.firehold'
+READY_SECS = int(os.environ.get('FIREHOLD_PLASMA_READY_SECS', '45'))
+
+
+def home():
+    return os.environ.get('HOME') or os.path.expanduser('~')
+
+
+def run_dir():
+    d = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-firehold-plasma')
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def cfg_path():
+    return os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'nimbus', 'firehold.json')
+
+
+def session_conf():
+    return os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'nimbus', 'session.conf')
+
+
+def state_path():
+    return os.path.join(os.environ.get('XDG_STATE_HOME') or os.path.join(home(), '.local', 'state'), 'nimbus', 'firehold-posture')
+
+
+def log(msg):
+    try:
+        p = os.path.join(os.environ.get('XDG_STATE_HOME') or os.path.join(home(), '.local', 'state'), 'nimbus')
+        os.makedirs(p, exist_ok=True)
+        with open(os.path.join(p, 'firehold-plasma.log'), 'a') as f:
+            f.write('%s %s\n' % (time.strftime('%Y-%m-%d %H:%M:%S'), msg))
+    except OSError:
+        pass
+
+
+def have(b):
+    return shutil.which(b) is not None
+
+
+def quiet(cmd, timeout=10, inp=None):
+    """Runs a command; its output, or '' when it fails or isn't there."""
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, input=inp)
+        return r.stdout if r.returncode == 0 else ''
+    except (OSError, subprocess.TimeoutExpired):
+        return ''
+
+
+def detach(cmd):
+    try:
+        subprocess.Popen(cmd, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+        return True
+    except OSError:
+        return False
+
+
+def notify(title, text, icon='hearth'):
+    if have('notify-send'):
+        detach(['notify-send', '-a', 'Firehold', '-i', icon, title, text])
+
+
+def write_small(path, text):
+    """Runtime and state files (not settings): written whole, renamed into place."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = '%s.%d.tmp' % (path, os.getpid())
+    with open(tmp, 'w') as f:
+        f.write(text)
+    os.replace(tmp, path)
+
+
+def read_small(path):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return ''
+
+
+# ------------------------------------------------------------------ settings (the safe helpers only)
+
+def settings():
+    try:
+        import hearth_settings_io as io
+        d = io.load_json(cfg_path(), {})
+        return d if isinstance(d, dict) else {}
+    except Exception as e:  # a damaged file is put back from .bak by load_json; anything else: defaults, nothing written
+        log('settings unreadable: %s' % e)
+        return {}
+
+
+def set_setting(key, value):
+    if not re.match(r'^[A-Za-z][A-Za-z0-9.]{0,40}$', key):
+        raise ValueError('bad key')
+    import hearth_settings_io as io
+    cur = settings()
+    if key in cur and cur[key] == value:
+        return  # unchanged: nothing written
+    io.merge_json(cfg_path(), {key: value})
+    if key == 'games' and os.environ.get('HEARTH_FIREHOLD_PLASMA') == '1':
+        tell_games(value)
+
+
+def posture_mode(s=None):
+    s = settings() if s is None else s
+    return s.get('posture') if s.get('posture') in ('auto', 'couch', 'desk') else 'auto'
+
+
+def start_posture(s=None):
+    """The same rule as firehold.js's startPosture: Always Couch / Always Desk, else Start in, else where you were."""
+    s = settings() if s is None else s
+    mode = posture_mode(s)
+    if mode in ('couch', 'desk'):
+        return mode
+    start = s.get('startIn') if s.get('startIn') in ('couch', 'desk', 'last') else 'desk'
+    if start in ('couch', 'desk'):
+        return start
+    return 'couch' if read_small(state_path()) == 'couch' else 'desk'
+
+
+def choice():
+    v = ''
+    try:
+        with open(session_conf(), encoding='utf-8', errors='replace') as f:
+            for line in f:
+                m = re.match(r'^\s*(?:export\s+)?HEARTH_PLASMA_DESKTOP=["\']?([a-z]*)', line)
+                if m:
+                    v = m.group(1)
+    except OSError:
+        pass
+    return 'firehold' if v == 'firehold' else 'plasma'
+
+
+def choose(v):
+    if v not in ('firehold', 'plasma'):
+        raise ValueError('firehold or plasma')
+    if choice() == v:
+        return   # already that (no line is plasma): nothing written
+    import hearth_settings_io as io
+    io.update_text(session_conf(), lambda t: io.conf_set_text(t, 'HEARTH_PLASMA_DESKTOP', v))
+    log('Desktop Mode choice saved: %s' % v)
+
+
+def shell_exists(pkg):
+    for d in (os.path.join(home(), '.local/share/plasma/shells', pkg), '/usr/share/plasma/shells/' + pkg):
+        if os.path.isfile(os.path.join(d, 'metadata.json')):
+            return True
+    return False
+
+
+def desk_shell():
+    return DESK if shell_exists(DESK) else PLAIN
+
+
+def shell_for(posture):
+    if posture == 'couch' and shell_exists(COUCH):
+        return COUCH
+    return desk_shell()
+
+
+# ------------------------------------------------------------------ plasmashell and KWin (public interfaces only)
+
+def dbus_send(dest, path, method, *args, reply=True, timeout=10):
+    if not have('dbus-send'):
+        return ''
+    cmd = ['dbus-send', '--session', '--dest=' + dest]
+    if reply:
+        cmd += ['--print-reply', '--reply-timeout=%d' % (timeout * 1000)]
+    return quiet(cmd + [path, method] + list(args), timeout=timeout + 2)
+
+
+def unit_active():
+    return have('systemctl') and quiet(['systemctl', '--user', 'is-active', 'plasma-plasmashell.service'], 5).strip() == 'active'
+
+
+def restart_shell(pkg):
+    """plasmashell again with this shell package: nothing else restarts."""
+    write_small(os.path.join(run_dir(), 'shell'), pkg)
+    write_small(os.path.join(run_dir(), 'asked-' + pkg), str(time.time()))
+    if unit_active():
+        quiet(['systemctl', '--user', 'set-environment', 'PLASMA_DEFAULT_SHELL=' + pkg], 10)
+        if quiet(['systemctl', '--user', 'restart', '--no-block', 'plasma-plasmashell.service'], 15) == '' and not unit_active():
+            log('systemd restart of plasmashell refused; --replace instead')
+        else:
+            log('plasmashell restarted (systemd) with %s' % pkg)
+            return
+    out = os.environ.get('FIREHOLD_PLASMA_SHELL_LOG')   # the checks keep plasmashell's messages
+    if out:
+        try:
+            with open(out, 'a') as f:
+                subprocess.Popen(['plasmashell', '--replace', '-p', pkg], stdin=subprocess.DEVNULL, stdout=f, stderr=f, start_new_session=True)
+        except OSError:
+            detach(['plasmashell', '--replace', '-p', pkg])
+    else:
+        detach(['plasmashell', '--replace', '-p', pkg])
+    log('plasmashell --replace -p %s' % pkg)
+
+
+def ready_since(pkg, since):
+    try:
+        return os.path.getmtime(os.path.join(run_dir(), 'ready-' + pkg)) >= since - 0.5
+    except OSError:
+        return False
+
+
+def watch_ready(pkg, since, secs=READY_SECS):
+    """Waits for the shell to say it's up; if it doesn't, plain Plasma for this session (told, choice kept)."""
+    if pkg == PLAIN:
+        return True
+    end = time.time() + secs
+    while time.time() < end:
+        if ready_since(pkg, since):
+            log('%s is up' % pkg)
+            return True
+        time.sleep(1)
+    log('%s didn\'t come up in %d s: plain Plasma for this session' % (pkg, secs))
+    write_small(os.path.join(run_dir(), 'failed'), pkg)
+    notify('Firehold didn\'t start', 'Plain KDE Plasma is here instead, with everything still open. Your Desktop Mode choice '
+           'is kept: Firehold is tried again next time (or pick KDE Plasma in "Firehold (Plasma, test)" in the menu).')
+    restart_shell(PLAIN)
+    return False
+
+
+def tell_kwin(posture):
+    """The KWin script's posture shortcuts (registered by it; invoked through KDE's global shortcuts service)."""
+    name = 'Firehold Couch posture' if posture == 'couch' else 'Firehold Desk posture'
+    dbus_send('org.kde.kglobalaccel', '/component/kwin', 'org.kde.kglobalaccel.Component.invokeShortcut', 'string:' + name, reply=False)
+
+
+def tell_games(v):
+    v = v if v in ('follow', 'fullscreen', 'window') else 'follow'
+    dbus_send('org.kde.kglobalaccel', '/component/kwin', 'org.kde.kglobalaccel.Component.invokeShortcut',
+              'string:Firehold games ' + v, reply=False)
+
+
+def kwin_script_path():
+    for p in (os.path.join(HERE, 'kwin', 'contents', 'code', 'main.js'),
+              '/usr/share/kwin/scripts/%s/contents/code/main.js' % SCRIPT_NAME):
+        if os.path.isfile(p):
+            return p
+    return ''
+
+
+def load_kwin_script():
+    p = kwin_script_path()
+    if not p:
+        log('KWin script not found')
+        return False
+    out = dbus_send('org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting.isScriptLoaded', 'string:' + SCRIPT_NAME)
+    if 'true' in out:
+        return True
+    out = dbus_send('org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting.loadScript', 'string:' + p, 'string:' + SCRIPT_NAME)
+    m = re.search(r'int32 (-?\d+)', out)
+    if not m or int(m.group(1)) < 0:
+        log('KWin wouldn\'t load the script: %s' % out.strip()[:200])
+        return False
+    dbus_send('org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting.start', reply=False)
+    log('KWin script loaded (%s)' % m.group(1))
+    return True
+
+
+def unload_kwin_script():
+    dbus_send('org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting.unloadScript', 'string:' + SCRIPT_NAME)
+
+
+def ask(cmd):
+    """The Couch's containment reads its "request" key (Plasma's scripting writes it; the containment sees it at once,
+    the way plasma-apply-wallpaperimage changes the wallpaper)."""
+    if not re.match(r'^[a-z]+(:[a-z0-9_.-]{1,40})?$', cmd):
+        raise ValueError('bad request')
+    js = ('var v="%s|%d";desktops().forEach(function(d){if(d.type=="%s"){d.currentConfigGroup=["General"];'
+          'd.writeConfig("request",v);}});' % (cmd, int(time.time() * 1000), CONTAINMENT))
+    dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript', 'string:' + js, reply=False)
+
+
+def current_posture():
+    p = read_small(os.path.join(run_dir(), 'posture'))
+    return p if p in ('couch', 'desk') else 'desk'
+
+
+def switch(posture, tab='', why=''):
+    if posture not in ('couch', 'desk'):
+        raise ValueError('couch or desk')
+    if read_small(os.path.join(run_dir(), 'failed')):
+        log('switch %s skipped: Firehold failed this session (plain Plasma)' % posture)
+        return
+    was = current_posture()
+    write_small(os.path.join(run_dir(), 'posture'), posture)
+    try:
+        write_small(state_path(), posture)   # "Start in: where you left off" (state, not a setting)
+    except OSError:
+        pass
+    if tab:
+        write_small(os.path.join(run_dir(), 'tab'), tab)
+    tell_kwin(posture)
+    pkg = shell_for(posture)
+    running = read_small(os.path.join(run_dir(), 'shell'))
+    if running == pkg and was == posture:
+        if posture == 'couch' and tab:
+            ask('tab:' + tab)
+        return
+    since = time.time()
+    restart_shell(pkg)
+    # The check runs on its own, so the caller (the Couch, the Desk's pill) isn't kept waiting. The Desk's notice waits
+    # for the Desk (its tray is what shows notifications).
+    if os.fork() == 0:
+        os.setsid()
+        try:
+            if watch_ready(pkg, since) and posture == 'desk' and why in ('mouse', 'keys', 'pad', 'guide', 'pick'):
+                time.sleep(2)
+                notify('Switched to Desk', ('You moved the mouse.' if why == 'mouse' else 'You typed on the keyboard.' if why == 'keys'
+                                            else 'You picked the Desk.') + ' Everything stayed open. Press the Guide button to go back to the Couch.')
+        finally:
+            os._exit(0)
+
+
+# ------------------------------------------------------------------ the controller and Automatic posture
+
+def button_map(e):
+    """Event codes → button names, as hearth-pad's button_map (xpad's X is BTN_NORTH)."""
+    m = {e.BTN_SOUTH: 'a', e.BTN_EAST: 'b', e.BTN_NORTH: 'x', e.BTN_WEST: 'y', e.BTN_TL: 'lb', e.BTN_TR: 'rb',
+         e.BTN_TL2: 'lt', e.BTN_TR2: 'rt', e.BTN_SELECT: 'view', e.BTN_START: 'menu', e.BTN_MODE: 'guide'}
+    for code, name in (('BTN_DPAD_UP', 'up'), ('BTN_DPAD_DOWN', 'down'), ('BTN_DPAD_LEFT', 'left'),
+                       ('BTN_DPAD_RIGHT', 'right'), ('KEY_HOMEPAGE', 'guide')):
+        if hasattr(e, code):
+            m[getattr(e, code)] = name
+    return m
+
+
+KEYS = {'a': 'KEY_ENTER', 'b': 'KEY_ESC', 'x': 'KEY_X', 'y': 'KEY_Y', 'lb': 'KEY_PAGEUP', 'rb': 'KEY_PAGEDOWN',
+        'lt': 'KEY_COMMA', 'rt': 'KEY_DOT', 'menu': 'KEY_MENU', 'view': 'KEY_TAB',
+        'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT'}
+REPEAT_FIRST, REPEAT_NEXT, DOUBLE = 0.40, 0.12, 0.38
+
+
+def couch_front():
+    return read_small(os.path.join(run_dir(), 'front')) in ('front', 'guide') and current_posture() == 'couch'
+
+
+def guide_pressed(twice):
+    s = settings()
+    if current_posture() != 'couch':
+        if posture_mode(s) != 'desk':
+            switch('couch', 'home' if not twice else '', 'pad')
+            if twice:
+                time.sleep(0.1)
+        return
+    ask('open' if twice or s.get('guide') == 'open' else 'guide')
+
+
+class Pad:
+    def __init__(self, evdev):
+        self.evdev = evdev
+        e = evdev.ecodes
+        self.e = e
+        self.map = button_map(e)
+        self.devs = {}
+        self.ui = None
+        try:
+            self.ui = evdev.UInput({e.EV_KEY: [getattr(e, k) for k in set(KEYS.values())]}, name='Hearth Firehold keys')
+        except Exception as x:   # no /dev/uinput access: the Guide still works, the D-pad doesn't
+            log('controller keys: no uinput (%s)' % x)
+        self.held = None        # the direction held: name, next repeat time
+        self.guide_at = 0.0
+        self.axes = {}
+        self.scanned = 0.0
+
+    def scan(self):
+        self.scanned = time.time()
+        seen = set()
+        for path in self.evdev.list_devices():
+            seen.add(path)
+            if path in self.devs:
+                continue
+            try:
+                d = self.evdev.InputDevice(path)
+            except OSError:
+                continue
+            caps = d.capabilities()
+            keys = set(caps.get(self.e.EV_KEY, []))
+            if d.name.lower().startswith('hearth ') or not (keys & {self.e.BTN_SOUTH, self.e.BTN_MODE}):
+                d.close()
+                continue
+            self.devs[path] = d
+            log('controller: %s' % d.name)
+        for p in list(self.devs):
+            if p not in seen:
+                try:
+                    self.devs.pop(p).close()
+                except OSError:
+                    pass
+
+    def key(self, name, down):
+        if not self.ui or name not in KEYS:
+            return
+        self.ui.write(self.e.EV_KEY, getattr(self.e, KEYS[name]), 1 if down else 0)
+        self.ui.syn()
+
+    def tap(self, name):
+        self.key(name, True)
+        self.key(name, False)
+
+    def button(self, name, down):
+        if name == 'guide':
+            if down:
+                now = time.time()
+                if now - self.guide_at < DOUBLE:
+                    self.guide_at = 0.0
+                    guide_pressed(True)
+                else:
+                    self.guide_at = now
+            return
+        if not couch_front():
+            return
+        if name in ('up', 'down', 'left', 'right'):
+            self.held = (name, time.time() + REPEAT_FIRST) if down else None
+            if down:
+                self.tap(name)
+            return
+        self.key(name, down)
+
+    def axis(self, dev, code, value):
+        e = self.e
+        try:
+            info = dev.absinfo(code)
+        except OSError:
+            return
+        span = max(1, info.max - info.min)
+        v = (value - info.min) / span * 2 - 1     # -1 .. 1
+        if code in (e.ABS_HAT0X, e.ABS_HAT0Y):
+            v = value
+        name = None
+        if code in (e.ABS_X, e.ABS_HAT0X):
+            name = 'right' if v > 0.5 else 'left' if v < -0.5 else ''
+            k = 'x'
+        elif code in (e.ABS_Y, e.ABS_HAT0Y):
+            name = 'down' if v > 0.5 else 'up' if v < -0.5 else ''
+            k = 'y'
+        elif code in (e.ABS_Z, e.ABS_RZ):
+            t = (value - info.min) / span
+            n = 'lt' if code == e.ABS_Z else 'rt'
+            on = t > 0.6
+            if self.axes.get(n) != on:
+                self.axes[n] = on
+                if couch_front():
+                    self.key(n, on)
+            return
+        else:
+            return
+        key = (dev.path, k)
+        if self.axes.get(key) == name:
+            return
+        self.axes[key] = name
+        if name:
+            self.button(name, True)
+        elif self.held:
+            self.held = None
+
+    def timeout(self):
+        if self.guide_at and time.time() - self.guide_at >= DOUBLE:
+            self.guide_at = 0.0
+            guide_pressed(False)
+        if self.held and time.time() >= self.held[1]:
+            if couch_front():
+                self.tap(self.held[0])
+                self.held = (self.held[0], time.time() + REPEAT_NEXT)
+            else:
+                self.held = None
+        if time.time() - self.scanned > 10:
+            self.scan()
+
+    def wait(self):
+        """How long select may sleep: long when nothing is held (no busy loop at rest)."""
+        t = 10.0
+        if self.guide_at:
+            t = min(t, max(0.01, DOUBLE - (time.time() - self.guide_at)))
+        if self.held:
+            t = min(t, max(0.01, self.held[1] - time.time()))
+        return t
+
+    def read(self, dev):
+        e = self.e
+        try:
+            for ev in dev.read():
+                if ev.type == e.EV_KEY and ev.code in self.map and ev.value in (0, 1):
+                    self.button(self.map[ev.code], ev.value == 1)
+                elif ev.type == e.EV_ABS:
+                    self.axis(dev, ev.code, ev.value)
+        except OSError:
+            self.devs.pop(dev.path, None)
+
+
+def begin(pkg):
+    """nimbus-session, just before Plasma starts with Firehold: this session's start (an earlier session's markers
+    don't count)."""
+    for f in ('failed', 'front', 'tab'):
+        try:
+            os.unlink(os.path.join(run_dir(), f))
+        except OSError:
+            pass
+    write_small(os.path.join(run_dir(), 'posture'), 'couch' if pkg == COUCH else 'desk')
+    write_small(os.path.join(run_dir(), 'shell'), pkg)
+    write_small(os.path.join(run_dir(), 'asked-' + pkg), str(time.time()))
+
+
+def session():
+    if os.environ.get('HEARTH_FIREHOLD_PLASMA') != '1':
+        return 0
+    log('session: Firehold on Plasma (shell %s)' % os.environ.get('PLASMA_DEFAULT_SHELL', '?'))
+    pkg = os.environ.get('PLASMA_DEFAULT_SHELL', COUCH)
+    posture = 'couch' if pkg == COUCH else 'desk'
+    write_small(os.path.join(run_dir(), 'posture'), posture)
+    write_small(os.path.join(run_dir(), 'shell'), pkg)
+    try:
+        since = float(read_small(os.path.join(run_dir(), 'asked-' + pkg)) or 0)
+    except ValueError:
+        since = 0
+    since = since or time.time() - 30
+    try:
+        load_kwin_script()
+        tell_kwin(posture)
+        tell_games(settings().get('games'))
+    except Exception as x:
+        log('KWin script: %s' % x)
+    if os.fork() == 0:
+        os.setsid()
+        try:
+            watch_ready(pkg, since)
+        finally:
+            os._exit(0)
+    signal.signal(signal.SIGTERM, lambda *a: sys.exit(0))
+    try:
+        import evdev
+    except ImportError:
+        log('python3-evdev missing: no controller in the Couch, no Automatic posture')
+        evdev = None
+    pad = Pad(evdev) if evdev else None
+    if pad:
+        pad.scan()
+    watcher = None
+    ph = os.path.join(SHELL_DIR, 'hearth-posture')
+    if os.path.isfile(ph):
+        try:
+            watcher = subprocess.Popen([sys.executable, ph, 'watch'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
+        except OSError:
+            watcher = None
+    while True:
+        fds = list(pad.devs.values()) if pad else []
+        if watcher and watcher.stdout:
+            fds.append(watcher.stdout)
+        try:
+            r, _, _ = select.select(fds, [], [], pad.wait() if pad else 60)
+        except (OSError, ValueError):
+            if pad:
+                pad.scan()
+            time.sleep(1)
+            continue
+        for f in r:
+            if watcher and f is watcher.stdout:
+                line = f.readline()
+                if not line:
+                    watcher = None
+                    continue
+                try:
+                    kind = json.loads(line).get('t')
+                except ValueError:
+                    continue
+                if kind in ('mouse', 'keys') and current_posture() == 'couch' and posture_mode() == 'auto':
+                    switch('desk', '', kind)
+            elif pad:
+                pad.read(f)
+        if pad:
+            pad.timeout()
+
+
+# ------------------------------------------------------------------ what the bars and the Guide show, and do
+
+def sysinfo(full=True):
+    """The bars' line (Wi-Fi, battery, your initial) and, with full, the Guide's (volume, brightness, power, VRR, tearing)."""
+    out = {'net': '', 'battery': -1, 'volume': -1, 'brightness': -1, 'power': '', 'watts': -1, 'vrr': '', 'tearing': True,
+           'initial': '', 'user': ''}
+    nm = quiet(['nmcli', '-t', '-f', 'TYPE,STATE', 'device'], 5)
+    for line in nm.splitlines():
+        t, _, st = line.partition(':')
+        if st.startswith('connected') and t in ('wifi', 'ethernet'):
+            out['net'] = 'Wi-Fi' if t == 'wifi' else 'Wired'
+            break
+    for b in sorted(os.listdir('/sys/class/power_supply')) if os.path.isdir('/sys/class/power_supply') else []:
+        p = '/sys/class/power_supply/' + b
+        if read_small(p + '/type') == 'Battery' and read_small(p + '/capacity'):
+            out['battery'] = int(read_small(p + '/capacity') or -1)
+            pn = read_small(p + '/power_now')
+            if pn.isdigit():
+                out['watts'] = round(int(pn) / 1e6)
+            break
+    try:
+        import pwd
+        pw = pwd.getpwuid(os.getuid())
+        name = (pw.pw_gecos.split(',')[0] or pw.pw_name).strip()
+        out['user'] = name
+        out['initial'] = name[:1].upper()
+    except (KeyError, ImportError):
+        pass
+    if not full:
+        return out
+    v = quiet(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@'], 3)
+    m = re.search(r'Volume:\s*([\d.]+)', v)
+    if m:
+        out['volume'] = round(float(m.group(1)) * 100)
+    b = quiet(['brightnessctl', '-m'], 3)
+    m = re.search(r',(\d+)%,', b)
+    if m:
+        out['brightness'] = int(m.group(1))
+    out['power'] = quiet(['powerprofilesctl', 'get'], 3).strip()
+    j = quiet(['kscreen-doctor', '-j'], 5)
+    try:
+        outs = json.loads(j).get('outputs', []) if j else []
+        on = [o for o in outs if o.get('enabled')]
+        if on:
+            pol = on[0].get('vrrPolicy')
+            out['vrr'] = 'On' if pol in (1, 2, 'automatic', 'always') else 'Off'
+    except ValueError:
+        pass
+    try:
+        import hearth_kconfig as kc
+        t = kc.effective('kwinrc')[0].get('Compositing', {}).get('AllowTearing', 'true')
+        out['tearing'] = str(t).lower() != 'false'
+    except Exception:
+        pass
+    s = settings()
+    out['overlay'] = s.get('overlay') if s.get('overlay') in ('off', 'basic', 'full') else 'off'
+    return out
+
+
+def do(action, arg=''):
+    """The Guide's tiles and rows. Each is the person's own press: what it changes is what they asked for."""
+    if action == 'screenshot':
+        pics = quiet(['xdg-user-dir', 'PICTURES'], 3).strip() or os.path.join(home(), 'Pictures')
+        os.makedirs(pics, exist_ok=True)
+        f = os.path.join(pics, 'Screenshot_%s.png' % time.strftime('%Y%m%d_%H%M%S'))
+        # A moment first, so the Guide is out of the picture.
+        detach(['sh', '-c', 'sleep 0.6; exec spectacle -b -n -f -o "$1"', 'sh', f])
+        return {'ok': True, 'file': f}
+    if action in ('volume-up', 'volume-down'):
+        quiet(['wpctl', 'set-volume', '-l', '1.0', '@DEFAULT_AUDIO_SINK@', '5%+' if action == 'volume-up' else '5%-'], 3)
+    elif action in ('brightness-up', 'brightness-down'):
+        quiet(['brightnessctl', 'set', '+5%' if action == 'brightness-up' else '5%-'], 3)
+    elif action == 'osk':
+        # KWin's own on-screen keyboard switch (org.kde.kwin.VirtualKeyboard).
+        cur = dbus_send('org.kde.KWin', '/VirtualKeyboard', 'org.freedesktop.DBus.Properties.Get',
+                        'string:org.kde.kwin.VirtualKeyboard', 'string:enabled')
+        dbus_send('org.kde.KWin', '/VirtualKeyboard', 'org.freedesktop.DBus.Properties.Set', 'string:org.kde.kwin.VirtualKeyboard',
+                  'string:enabled', 'variant:boolean:%s' % ('false' if 'true' in cur else 'true'))
+        dbus_send('org.kde.KWin', '/VirtualKeyboard', 'org.freedesktop.DBus.Properties.Set', 'string:org.kde.kwin.VirtualKeyboard',
+                  'string:active', 'variant:boolean:%s' % ('false' if 'true' in cur else 'true'))
+    elif action == 'vrr':
+        # KDE's own display setting (the same as System Settings › Display › Adaptive sync), for the screens that are on.
+        j = quiet(['kscreen-doctor', '-j'], 5)
+        try:
+            outs = [o for o in json.loads(j).get('outputs', []) if o.get('enabled')] if j else []
+        except ValueError:
+            outs = []
+        on = sysinfo(True)['vrr'] == 'On'
+        for o in outs:
+            quiet(['kscreen-doctor', 'output.%s.vrrpolicy.%s' % (o.get('name'), 'never' if on else 'automatic')], 10)
+    elif action == 'tearing':
+        import hearth_kconfig as kc
+        on = sysinfo(True)['tearing']
+        kc.update(kc.user_path('kwinrc'), {'Compositing': {'AllowTearing': 'false' if on else 'true'}})
+        dbus_send('org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure', reply=False)
+    elif action == 'power':
+        order = ['power-saver', 'balanced', 'performance']
+        cur = quiet(['powerprofilesctl', 'get'], 3).strip()
+        nxt = order[(order.index(cur) + (1 if arg != 'down' else -1)) % 3] if cur in order else 'balanced'
+        quiet(['powerprofilesctl', 'set', nxt], 5)
+    elif action == 'overlay':
+        # KWin's own "Show FPS" effect over everything, and Firehold's setting so it's the same next time.
+        cur = settings().get('overlay') if settings().get('overlay') in ('off', 'basic', 'full') else 'off'
+        nxt = 'basic' if cur == 'off' else 'off'
+        set_setting('overlay', nxt)
+        overlay(nxt)
+        return {'ok': True, 'overlay': nxt}
+    elif action == 'record':
+        detach(['spectacle', '-b', '-n', '--record', 'screen'])
+    elif action == 'friends':
+        detach(['xdg-open', 'steam://open/friends'])
+    elif action == 'quit-game' and arg.isdigit():
+        try:
+            os.kill(int(arg), signal.SIGTERM)
+        except OSError:
+            pass
+    elif action == 'home':
+        # KWin's Show Desktop: every window steps aside and the Couch is in front; going to one ends it.
+        dbus_send('org.kde.KWin', '/KWin', 'org.kde.KWin.showDesktop', 'boolean:true', reply=False)
+    elif action == 'bigpicture':
+        detach(['sh', '-c', 'pgrep -x steam >/dev/null && exec xdg-open steam://open/bigpicture'])
+    elif action == 'gamemode':
+        detach(['nimbus-mode', 'game'])
+    elif action == 'plain':
+        plain()
+    elif action == 'systemsettings':
+        detach(['systemsettings'] + ([arg] if re.match(r'^kcm_[a-z0-9_]+$', arg or '') else []))
+    else:
+        raise ValueError('unknown action')
+    return {'ok': True}
+
+
+def overlay(v):
+    if v in ('basic', 'full'):
+        dbus_send('org.kde.KWin', '/Effects', 'org.kde.kwin.Effects.loadEffect', 'string:showfps')
+    else:
+        dbus_send('org.kde.KWin', '/Effects', 'org.kde.kwin.Effects.unloadEffect', 'string:showfps')
+
+
+def plain():
+    write_small(os.path.join(run_dir(), 'failed'), 'asked')
+    tell_kwin('desk')
+    restart_shell(PLAIN)
+
+
+def apps():
+    """The Apps tab: the menu's apps (shown ones only), A to Z."""
+    seen, out = set(), []
+    dirs = [os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local/share'), 'applications')]
+    dirs += [os.path.join(d, 'applications') for d in (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':')]
+    for d in dirs:
+        try:
+            names = sorted(os.listdir(d))
+        except OSError:
+            continue
+        for n in names:
+            if not n.endswith('.desktop') or n in seen:
+                continue
+            seen.add(n)
+            e = {}
+            group = ''
+            try:
+                with open(os.path.join(d, n), encoding='utf-8', errors='replace') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('['):
+                            group = line
+                            continue
+                        if group == '[Desktop Entry]' and '=' in line:
+                            k, _, v = line.partition('=')
+                            e.setdefault(k.strip(), v.strip())
+            except OSError:
+                continue
+            if e.get('Type') != 'Application' or e.get('NoDisplay') == 'true' or e.get('Hidden') == 'true' or not e.get('Name'):
+                continue
+            only = e.get('OnlyShowIn', '')
+            if only and 'KDE' not in only.split(';'):
+                continue
+            if 'KDE' in e.get('NotShowIn', '').split(';'):
+                continue
+            out.append({'id': n[:-8], 'name': e['Name'], 'icon': e.get('Icon', ''), 'comment': e.get('Comment', '')})
+    out.sort(key=lambda a: a['name'].lower())
+    return out
+
+
+def launch(app_id):
+    if not re.match(r'^[A-Za-z0-9_.+-]{1,120}$', app_id):
+        raise ValueError('bad app')
+    if have('kstart'):
+        return detach(['kstart', '--application', app_id])
+    if have('gtk-launch'):
+        return detach(['gtk-launch', app_id])
+    return False
+
+
+def games(argv):
+    h = os.path.join(SHELL_DIR, 'hearth-firehold')
+    r = subprocess.run([sys.executable, h] + argv, capture_output=True, text=True, timeout=90)
+    sys.stdout.write(r.stdout)
+    return r.returncode
+
+
+def main(argv):
+    what = argv[1] if len(argv) > 1 else ''
+    a = argv[2:]
+    try:
+        if what == 'choice':
+            print(choice())
+        elif what == 'choose' and a:
+            choose(a[0])
+        elif what == 'pick':
+            return pick()
+        elif what == 'start-shell':
+            print(shell_for(start_posture()))
+        elif what == 'session':
+            return session()
+        elif what == 'ready' and a and re.match(r'^[a-z.]+$', a[0]):
+            write_small(os.path.join(run_dir(), 'ready-' + a[0]), str(time.time()))
+        elif what == 'switch' and a:
+            why = a[a.index('--why') + 1] if '--why' in a[:-1] else ''
+            tab = next((x for x in a[1:] if x in ('home', 'library', 'apps', 'store', 'switcher', 'settings')), '')
+            switch(a[0], tab, why)
+        elif what == 'begin' and a and a[0] in (COUCH, DESK):
+            begin(a[0])
+        elif what == 'plain':
+            plain()
+        elif what == 'ask' and a:
+            ask(a[0])
+        elif what == 'state' and a and a[0] in ('front', 'back', 'guide'):
+            write_small(os.path.join(run_dir(), 'front'), a[0])
+        elif what == 'tab':
+            t = read_small(os.path.join(run_dir(), 'tab'))
+            try:
+                os.unlink(os.path.join(run_dir(), 'tab'))
+            except OSError:
+                pass
+            print(t or 'home')
+        elif what == 'get':
+            print(json.dumps(settings()))
+        elif what == 'set' and len(a) == 2:
+            set_setting(a[0], json.loads(a[1]))
+        elif what == 'sys':
+            print(json.dumps(sysinfo(bool(a and a[0] == 'all'))))
+        elif what == 'do' and a:
+            print(json.dumps(do(a[0], a[1] if len(a) > 1 else '')))
+        elif what == 'apps':
+            print(json.dumps(apps()))
+        elif what == 'launch' and a:
+            launch(a[0])
+        elif what in ('library', 'cached', 'play', 'page'):
+            return games([what] + a)
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+    except (OSError, ValueError, subprocess.TimeoutExpired) as e:
+        print('error: %s' % e)
+        return 1
+    return 0
+
+
+def pick():
+    """Plasma's menu entry "Firehold (Plasma, test)": the Desktop Mode choice, saved only when you press OK."""
+    cur = choice()
+    if not have('kdialog'):
+        print(cur)
+        return 0
+    r = subprocess.run(['kdialog', '--title', 'Firehold (Plasma, test)', '--radiolist',
+                        'Desktop Mode on this test edition:', 'plasma', 'KDE Plasma (the default)', 'on' if cur == 'plasma' else 'off',
+                        'firehold', 'Firehold (Plasma, test): Couch and Desk', 'on' if cur == 'firehold' else 'off'],
+                       capture_output=True, text=True)
+    v = r.stdout.strip()
+    if r.returncode != 0 or v not in ('plasma', 'firehold'):
+        return 0
+    choose(v)
+    if v != cur:
+        if v == 'firehold':
+            msg = 'Firehold starts the next time you open Desktop Mode. Your apps stay open when you switch between Couch and Desk.'
+        else:
+            msg = 'KDE Plasma starts the next time you open Desktop Mode.'
+        detach(['kdialog', '--title', 'Firehold (Plasma, test)', '--msgbox', msg])
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
