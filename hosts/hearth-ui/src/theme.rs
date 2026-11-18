@@ -4,7 +4,9 @@
 //! The colours come from palettes.json: the system's (/usr/share/nimbus/desktop/theme/palettes.json), else the copy
 //! built into the app. Reading only: an app never writes desktop.json.
 //!
-//! [`watch`] gives a stream that says when desktop.json or palettes.json changed (inotify, no polling), so an open
+//! On Plasma the colours are the Global Theme's (see [`apps_theme_json`]).
+//!
+//! [`watch`] gives a stream that says when desktop.json, palettes.json or theme.json changed (inotify, no polling), so an open
 //! app follows a new look at once and does nothing at all while nothing changes.
 
 use iced::Color;
@@ -92,6 +94,11 @@ fn read_obj(p: &PathBuf) -> Option<Map<String, Value>> {
     }
 }
 
+/// palettes.json as a map (the system's, else the copy built in): Settings › Personalization lists the looks from it.
+pub fn palette_map() -> Map<String, Value> {
+    palettes()
+}
+
 fn palettes() -> Map<String, Value> {
     read_obj(&palettes_json()).unwrap_or_else(|| match serde_json::from_str::<Value>(BUILT_IN) {
         Ok(Value::Object(m)) => m,
@@ -162,8 +169,62 @@ pub fn set_default_look(look: &'static str) {
     let _ = DEFAULT_LOOK.set(look);
 }
 
+/// ~/.config/hearth/theme.json: what Hearth's apps draw with. On Plasma, hearth-plasma-looks writes it from the Global
+/// Theme and colours picked in System Settings ("source": "plasma"), so every Hearth app follows KDE's choice, Hearth's
+/// looks and any other theme alike.
+pub fn apps_theme_json() -> PathBuf {
+    std::env::var_os("HEARTH_APPS_THEME").map(PathBuf::from).unwrap_or_else(|| {
+        std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home().join(".config")).join("hearth/theme.json")
+    })
+}
+
+fn on_plasma() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP").map(|d| d.split(':').any(|x| x.eq_ignore_ascii_case("KDE"))).unwrap_or(false)
+        || std::env::var_os("HEARTH_APPS_THEME").is_some()
+}
+
+/// The look Plasma shows (theme.json written by hearth-plasma-looks), or None.
+fn from_plasma() -> Option<Pal> {
+    if !on_plasma() {
+        return None;
+    }
+    let t = read_obj(&apps_theme_json())?;
+    if s(&t, "source") != "plasma" {
+        return None;
+    }
+    let c = t.get("colors")?.as_object()?;
+    let g = |k: &str| c.get(k).and_then(Value::as_str).and_then(hex);
+    let dark = s(&t, "mode") != "light";
+    let bg = g("bg")?;
+    let text = g("text")?;
+    let accent = g("ember").or_else(|| g("accent"))?;
+    let corner = t.get("corner").and_then(Value::as_f64).map(|v| v as f32).filter(|v| *v < 900.0).unwrap_or(0.0);
+    Some(Pal {
+        bg,
+        bg2: g("bg2").unwrap_or(bg),
+        panel: g("panel").unwrap_or(bg),
+        panel2: g("panel2").unwrap_or(bg),
+        panel3: g("panel3").unwrap_or(bg),
+        line: g("line").unwrap_or_else(|| Pal::mix(bg, text, 0.18)),
+        text,
+        muted: g("muted").unwrap_or_else(|| Pal::mix(text, bg, 0.4)),
+        danger: g("danger").unwrap_or_else(|| hex(if dark { "#ff7a6e" } else { "#c9363b" }).unwrap()),
+        accent,
+        ink: g("ink").unwrap_or(Color::WHITE),
+        flame: g("flame").unwrap_or(accent),
+        good: if dark { hex("#7fe0a4").unwrap() } else { hex("#1f8a4c").unwrap() },
+        warn: if dark { hex("#f2c14e").unwrap() } else { hex("#a86a00").unwrap() },
+        dark,
+        corner,
+        window_corner: t.get("radius").and_then(Value::as_f64).map(|v| v as f32).unwrap_or(10.0),
+    })
+}
+
 /// The look as it is now.
 pub fn load() -> Pal {
+    if let Some(p) = from_plasma() {
+        return p;
+    }
     let pal = palettes();
     let d = read_obj(&desktop_json()).unwrap_or_default();
     let mut look = s(&d, "look").to_string();
@@ -242,7 +303,7 @@ pub fn watch() -> futures::channel::mpsc::UnboundedReceiver<()> {
 }
 
 fn watch_loop(tx: futures::channel::mpsc::UnboundedSender<()>) {
-    let files = [desktop_json(), palettes_json()];
+    let files = [desktop_json(), palettes_json(), apps_theme_json()];
     loop {
         let fd = unsafe { libc::inotify_init1(libc::IN_CLOEXEC) };
         if fd < 0 {

@@ -92,6 +92,12 @@ look steam dark
 run restore-1-points hearth-restore 20 "$BIN/hearth-system-restore"
 run reliability-1-days hearth-reliability 20 "$BIN/hearth-reliability-history"
 run tm-1-processes hearth-tasks 20 "$BIN/hearth-task-manager" --page processes
+run settings-1-home hearth-settings 20 "$BIN/hearth-settings-app"
+run settings-2-display hearth-settings 0 "$BIN/hearth-settings-app" --page display
+run settings-3-wifi hearth-settings 0 "$BIN/hearth-settings-app" --page wifi
+run settings-4-appearance hearth-settings 0 "$BIN/hearth-settings-app" --page appearance
+run settings-5-updates hearth-settings 0 "$BIN/hearth-settings-app" --page updates
+run settings-6-system hearth-settings 0 "$BIN/hearth-settings-app" --page system
 run restore-2-confirm hearth-restore 0 "$BIN/hearth-system-restore" --show confirm
 run restore-3-changes hearth-restore 0 "$BIN/hearth-system-restore" --show changes
 run reliability-2-details hearth-reliability 0 "$BIN/hearth-reliability-history" --show details
@@ -105,6 +111,18 @@ run tm-6-startup hearth-tasks 0 "$BIN/hearth-task-manager" --page startup
 run tm-7-users hearth-tasks 0 "$BIN/hearth-task-manager" --page users
 run tm-8-scheduled-tasks hearth-tasks 0 "$BIN/hearth-task-manager" --page tasks
 run tm-9-settings hearth-tasks 0 "$BIN/hearth-task-manager" --page settings
+# A Global Theme that isn't Hearth's, picked in KDE (Breeze, light): hearth-plasma-looks writes theme.json from it and
+# the apps draw with it (theme.rs from_plasma).
+mkdir -p "$HOME/.config/hearth"
+cat > "$HOME/.config/hearth/theme.json" <<'JSON'
+{"look": "kde", "mode": "light", "source": "plasma", "scheme": "BreezeLight", "radius": 6, "corner": 6,
+ "colors": {"bg": "#eff0f1", "bg2": "#e3e5e7", "panel": "#ffffff", "panel2": "#fcfcfc", "panel3": "#e3e5e7", "line": "#c9cbcd",
+            "text": "#232629", "muted": "#707d8a", "danger": "#da4453", "ember": "#3daee9", "flame": "#f67400", "ink": "#ffffff"}}
+JSON
+export HEARTH_APPS_THEME="$HOME/.config/hearth/theme.json"
+run settings-7-kde-breeze hearth-settings 0 "$BIN/hearth-settings-app"
+unset HEARTH_APPS_THEME
+rm -f "$HOME/.config/hearth/theme.json"
 look hearth light
 run look-hearth-light-restore hearth-restore 0 "$BIN/hearth-system-restore"
 run look-hearth-light-tm hearth-tasks 0 "$BIN/hearth-task-manager" --page performance:cpu
