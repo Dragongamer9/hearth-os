@@ -91,19 +91,22 @@ class FilesOpen(unittest.TestCase):
         self.assertIn('if (recentBusy) return;', f)
         self.assertIn('running: app.shown || app.warm', f)
 
-    def test_opened_only_reads(self):
-        h = tempfile.mkdtemp()
-        env = dict(os.environ, HOME=h, XDG_CONFIG_HOME=os.path.join(h, '.config'), XDG_DATA_HOME=os.path.join(h, '.local', 'share'))
-        before = sorted(os.path.relpath(os.path.join(dp, n), h) for dp, ds, fs in os.walk(h) for n in ds + fs)
-        r = subprocess.run([sys.executable, os.path.join(SHELL, 'hearth-files'), 'opened'], capture_output=True, text=True, env=env, timeout=60)
-        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        d = json.loads(r.stdout)
+    def test_opened_writes_nothing_places_doesnt(self):
+        # `opened` is prefs + places + templates in one call: it may keep only what `places` alone already keeps
+        # (the drives' letters, state in ~/.config/hearth/drive-letters.json), never a setting.
+        def run(cmd):
+            h = tempfile.mkdtemp()
+            env = dict(os.environ, HOME=h, XDG_CONFIG_HOME=os.path.join(h, '.config'), XDG_DATA_HOME=os.path.join(h, '.local', 'share'))
+            r = subprocess.run([sys.executable, os.path.join(SHELL, 'hearth-files'), cmd], capture_output=True, text=True, env=env, timeout=60)
+            self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+            made = set(os.path.relpath(os.path.join(dp, n), h) for dp, ds, fs in os.walk(h) for n in fs)
+            return json.loads(r.stdout), made
+        d, made = run('opened')
+        _, by_places = run('places')
         self.assertIn('places', d['places'])
         self.assertIn('templates', d['templates'])
         self.assertIsInstance(d['prefs'], dict)
-        after = sorted(os.path.relpath(os.path.join(dp, n), h) for dp, ds, fs in os.walk(h) for n in ds + fs)
-        self.assertEqual(before, after, 'opening Files wrote files')
-
+        self.assertTrue(made <= by_places | {p + '.bak' for p in by_places}, made - by_places)
 
 
 class SettingsWarm(unittest.TestCase):
