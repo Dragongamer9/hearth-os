@@ -1868,6 +1868,16 @@ for n in start-here start-here-kde distributor-logo; do
 done
 gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/null 2>&1 || true
 echo "::notice title=Hearth's look::$swapped distribution logo files now show Hearth's logo"
+# The base's own wallpapers carry its code name (Anatase, Anatase_Current ...): the owner wants no Anatase name
+# anywhere. Hearth's looks bring their own wallpapers; a folder something still points at (Default) is kept.
+keep=$(readlink -f /usr/share/wallpapers/Default 2>/dev/null || true)
+gone=0
+for d in /usr/share/wallpapers/[Aa]natase* /usr/share/backgrounds/[Aa]natase*; do
+  [ -e "$d" ] || continue
+  case "$keep" in "$(readlink -f "$d")"|"$(readlink -f "$d")"/*) continue ;; esac
+  rm -rf "$d" && gone=$((gone + 1))
+done
+echo "::notice title=Hearth's look::removed $gone wallpaper folders named after the base${keep:+ (kept Default: $keep)}"
 # KInfoCenter's About this System: Hearth's logo, name and website; the base in its details.
 mkdir -p /etc/xdg
 cat > /etc/xdg/kcm-about-distrorc <<KCM
