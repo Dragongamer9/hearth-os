@@ -1,0 +1,128 @@
+#!/usr/bin/env python3
+"""Send to TV (docs/HEARTH-TV.md): plays a link, a video or music file, or a show of your library on a Hearth TV paired
+with this PC, through Hearth Link (hosts/hearth-link/src/tv.rs).
+
+  hearth-send-to-tv [--tv ID] [--title TITLE] LINK|FILE     send it; the TV plays it in Hearth TV
+  hearth-send-to-tv [--tv ID] --media ID --type show|movie|episode [--title TITLE]
+  hearth-send-to-tv --list                                  your TVs, as JSON: {"tvs": [{id, name, online}]}
+
+Used by Hearth Browser (right-click a link › Send to TV), Hearth Files, Hearth Theater and Capture's Share panel.
+--json prints the answer instead of showing a notification. With more than one TV and no
+--tv it says which TVs there are (the callers show them as a list to pick from). Nothing is saved.
+"""
+import json
+import os
+import socket
+import subprocess
+import sys
+import urllib.parse
+
+
+def socket_path():
+    p = os.environ.get('HEARTH_LINK_SOCKET')
+    if p:
+        return p
+    run = os.environ.get('XDG_RUNTIME_DIR') or '/tmp/hearth-link-%d' % os.getuid()
+    return os.path.join(run, 'hearth-link', 'link.sock')
+
+
+def call(cmd, args, timeout=45):
+    try:
+        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        s.connect(socket_path())
+    except OSError:
+        raise RuntimeError("Hearth Link isn't running (Settings › Hearth Link)")
+    with s:
+        s.sendall((json.dumps({'id': 1, 'cmd': cmd, 'args': args}) + '\n').encode())
+        buf = b''
+        while not buf.endswith(b'\n'):
+            part = s.recv(65536)
+            if not part:
+                break
+            buf += part
+    try:
+        r = json.loads(buf.decode('utf-8', 'replace'))
+    except ValueError:
+        raise RuntimeError('Hearth Link closed the connection')
+    if not r.get('ok'):
+        raise RuntimeError(r.get('error') or 'Hearth Link said no')
+    return r.get('data')
+
+
+def item_args(what):
+    """A link stays a link; a file:// address or a path is a file on this PC."""
+    if what.startswith('file://'):
+        what = urllib.parse.unquote(urllib.parse.urlparse(what).path)
+    if what.startswith(('http://', 'https://')):
+        return {'url': what}
+    if os.path.exists(what):
+        return {'path': os.path.abspath(what)}
+    if '.' in what and ' ' not in what and '/' not in what.split('.')[0]:
+        return {'url': 'https://' + what}
+    raise RuntimeError("That isn't a link or a file: %s" % what)
+
+
+def notify(title, body, error=False):
+    try:
+        subprocess.Popen(['notify-send', '-a', 'Hearth', '-i', 'video-display', '-u', 'normal' if not error else 'critical', title, body],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except OSError:
+        pass
+
+
+def main(argv):
+    out_json = '--json' in argv
+    quiet = '--quiet' in argv
+    args, opts, i = [], {}, 0
+    while i < len(argv):
+        a = argv[i]
+        if a in ('--tv', '--title', '--media', '--type'):
+            if i + 1 >= len(argv):
+                print('%s needs a value' % a, file=sys.stderr)
+                return 2
+            opts[a[2:]] = argv[i + 1]
+            i += 2
+            continue
+        if a in ('-h', '--help'):
+            print(__doc__.strip())
+            return 0
+        if not a.startswith('--'):
+            args.append(a)
+        elif a not in ('--json', '--quiet', '--list'):
+            print('Unknown option: %s' % a, file=sys.stderr)
+            return 2
+        i += 1
+    try:
+        if '--list' in argv:
+            print(json.dumps(call('tv.list', {}, 10)))
+            return 0
+        if opts.get('media'):
+            send = {'media': {'id': opts['media'], 'type': opts.get('type', 'movie')}}
+        elif args:
+            send = item_args(args[0])
+        else:
+            print(__doc__.strip(), file=sys.stderr)
+            return 2
+        if opts.get('tv'):
+            send['peer'] = opts['tv']
+        if opts.get('title'):
+            send['title'] = opts['title']
+        r = call('tv.send', send)
+        if out_json:
+            print(json.dumps(r))
+        elif not quiet:
+            notify('Playing on %s' % r.get('tv', 'your TV'), 'Sent from this PC through Hearth Link')
+        return 0
+    except RuntimeError as e:
+        if out_json:
+            print(json.dumps({'error': str(e)}))
+        else:
+            print(str(e), file=sys.stderr)
+            if not quiet:
+                notify("Couldn't send it to the TV", str(e), True)
+        return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

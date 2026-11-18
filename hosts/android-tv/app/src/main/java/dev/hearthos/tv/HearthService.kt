@@ -48,7 +48,12 @@ class HearthService : Service() {
             .setSmallIcon(android.R.drawable.star_on).build()
         if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE) else startForeground(1, n)
         Link.start(this)
-        LocalServer.onAdd = { url -> Theater.add(this, url, "phone") }
+        // Send to TV: what a Hearth PC sends over Hearth Link (SendToTv) and what a phone shares (LocalServer /send).
+        SendToTv.start(this)
+        LocalServer.onAdd = { url, play, by ->
+            Theater.add(this, url, "phone", play = play, by = by)
+            if (play) SendToTv.front(this)
+        }
         LocalServer.start()
         inputs = getSystemService(Context.TV_INPUT_SERVICE) as? TvInputManager
         try { inputs?.registerCallback(cb, Handler(Looper.getMainLooper())) } catch (e: Exception) { Logs.add("inputs: no watcher: $e") }

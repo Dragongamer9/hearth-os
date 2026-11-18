@@ -137,6 +137,8 @@ pub struct Peer {
     pub friend: bool,
     /// One of your devices that told this one about it (family.rs), instead of pairing with a code.
     pub introduced_by: Option<String>,
+    /// What it said it is in hello (handheld, laptop, desktop, tablet, tv): a TV gets Send to TV (tv.rs).
+    pub kind: String,
 }
 
 impl Peer {

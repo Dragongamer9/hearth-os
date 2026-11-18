@@ -90,7 +90,7 @@ pub fn merge(peers: &mut Peers, me: &str, from: &str, v: &Value, now: u64) -> Re
         if let Some(r) = d["relay"].as_str().filter(|r| crate::state::valid_relay_url(r)) { signed_in["relay"] = json!(r); }
         // last_seen 0: not reached yet. Until it is, "not paired" from it means it hasn't heard yet (node.rs).
         peers.list.push(Peer { id: id.to_string(), name, paired_at: now, last_seen: 0, addrs, always_accept: false, signed_in,
-                               friend: false, introduced_by: Some(from.to_string()) });
+                               friend: false, introduced_by: Some(from.to_string()), kind: String::new() });
         ch.added.push(id.to_string());
     }
     Ok(ch)

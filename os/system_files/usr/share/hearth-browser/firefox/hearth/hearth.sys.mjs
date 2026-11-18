@@ -9,6 +9,7 @@
  *    Shift+Tab) move between its keys, Enter types the one picked, Alt+Left deletes a letter and Esc closes it; a
  *    click or a tap types a key too, and it suggests words. Keys are typed with Firefox's own text input interface
  *    (nsITextInputProcessor), so they reach web pages like a real keyboard's.
+ *  - Send to TV: right-click a link › Send to TV plays it on your Hearth TV (Hearth Link; docs/HEARTH-TV.md).
  *  - In Game Mode (HEARTH_BROWSER_GAME=1): the window fills the screen, new windows open as tabs, the keyboard
  *    opens by itself when the address bar is picked, and the D-pad moves between a page's links, buttons and fields
  *    with Hearth's focus ring (A opens, B goes back: spatial-child.sys.mjs).
@@ -471,6 +472,78 @@ function fillScreen(win) {
   win.setTimeout(fit, 2000);
 }
 
+/* Send to TV (docs/HEARTH-TV.md): right-click a link › Send to TV plays it on a Hearth TV paired with this PC,
+ * through Hearth Link (/usr/bin/hearth-send-to-tv). On a video it sends the video's address, elsewhere on a page the
+ * page. With more than one TV it's a menu of them. Shown only when a TV is paired (and never on Windows, which has no
+ * hearth-send-to-tv). */
+const SEND_TO_TV = "/usr/bin/hearth-send-to-tv";
+const TVS = { at: 0, list: [] };
+function sendToolThere() {
+  try { const f = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile); f.initWithPath(SEND_TO_TV); return f.exists(); } catch (e) { return false; }
+}
+async function sendTool(args) {
+  const { Subprocess } = ChromeUtils.importESModule("resource://gre/modules/Subprocess.sys.mjs");
+  const p = await Subprocess.call({ command: SEND_TO_TV, arguments: args, stderr: "pipe" });
+  let out = "", part;
+  while ((part = await p.stdout.readString())) out += part;
+  await p.wait();
+  return out;
+}
+async function refreshTvs() {
+  if (!sendToolThere()) return;
+  try { TVS.list = (JSON.parse(await sendTool(["--list"])).tvs || []).filter(t => t && t.id && t.name); } catch (e) { TVS.list = []; }
+  TVS.at = Date.now();
+}
+function sendToTvMenu(win) {
+  const doc = win.document, ctx = doc.getElementById("contentAreaContextMenu");
+  if (!ctx || doc.getElementById("hearth-send-tv") || !sendToolThere()) return;
+  const one = doc.createXULElement("menuitem");
+  one.id = "hearth-send-tv";
+  one.setAttribute("label", "Send to TV");
+  const many = doc.createXULElement("menu");
+  many.id = "hearth-send-tv-menu";
+  many.setAttribute("label", "Send to TV");
+  const pop = doc.createXULElement("menupopup");
+  many.appendChild(pop);
+  // Right under "Copy Link" when there is one, else at the top.
+  const at = doc.getElementById("context-copylink");
+  if (at && at.nextSibling) { ctx.insertBefore(one, at.nextSibling); ctx.insertBefore(many, one.nextSibling); }
+  else { ctx.insertBefore(many, ctx.firstChild); ctx.insertBefore(one, ctx.firstChild); }
+  let what = null;
+  const send = tv => {
+    if (!what) return;
+    const args = ["--title", what.title || ""];
+    if (tv) args.push("--tv", tv);
+    args.push(what.url);
+    sendTool(args).catch(e => report("send to TV", e));
+  };
+  one.addEventListener("command", () => send(TVS.list.length === 1 ? TVS.list[0].id : ""));
+  ctx.addEventListener("popupshowing", e => {
+    if (e.target !== ctx) return;
+    const cm = win.gContextMenu;
+    what = null;
+    try {
+      const web = u => typeof u === "string" && /^https?:\/\//.test(u);
+      if (cm && cm.onLink && web(cm.linkURL)) what = { url: cm.linkURL, title: (cm.linkTextStr || "").trim() };
+      else if (cm && (cm.onVideo || cm.onAudio) && web(cm.mediaURL)) what = { url: cm.mediaURL, title: win.gBrowser.contentTitle || "" };
+      else if (cm && !cm.onTextInput && web(win.gBrowser.currentURI.spec)) what = { url: win.gBrowser.currentURI.spec, title: win.gBrowser.contentTitle || "" };
+    } catch (err) { report("send to TV menu", err); }
+    const n = TVS.list.length;
+    one.hidden = !what || n !== 1;
+    many.hidden = !what || n < 2;
+    if (n === 1) one.setAttribute("label", "Send to TV (" + TVS.list[0].name + ")");
+    while (pop.firstChild) pop.firstChild.remove();
+    for (const t of TVS.list) {
+      const mi = doc.createXULElement("menuitem");
+      mi.setAttribute("label", t.name + (t.online ? "" : " (not on right now)"));
+      mi.addEventListener("command", () => send(t.id));
+      pop.appendChild(mi);
+    }
+    // For the next right-click: TVs paired or unpaired meanwhile.
+    if (Date.now() - TVS.at > 15000) refreshTvs();
+  });
+}
+
 function setUpWindow(win) {
   try {
     if (win.document.documentURI !== BROWSER_DOC) return;
@@ -484,6 +557,7 @@ function setUpWindow(win) {
       // Picking the address bar with a controller: the keyboard comes up with it.
       try { win.gURLBar.inputField.addEventListener("focus", () => kb.open()); } catch (e) { report("address bar", e); }
     }
+    try { sendToTvMenu(win); refreshTvs(); } catch (e) { report("send to TV", e); }
     Services.prefs.setBoolPref("hearth.keyboard.ready", true);
   } catch (e) { report("window", e); }
 }

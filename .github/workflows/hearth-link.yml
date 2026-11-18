@@ -10,7 +10,7 @@ name: Hearth Link
 on:
   push:
     branches: [hearth-link]
-    paths: ['hosts/hearth-link/**', 'hosts/hearth-core/**', 'ui/**', 'hosts/linux/desktop/shell/SetLink.qml', 'hosts/linux/desktop/shell/hearth-link-settings', 'hosts/linux/test/**', 'os/system_files/usr/libexec/nimbus/hearth-link-firewall', '.github/workflows/hearth-link.yml']
+    paths: ['hosts/hearth-link/**', 'hosts/hearth-core/**', 'ui/**', 'hosts/linux/desktop/shell/SetLink.qml', 'hosts/linux/desktop/shell/hearth-link-settings', 'hosts/linux/test/**', 'os/system_files/usr/libexec/nimbus/hearth-link-firewall', 'os/system_files/usr/bin/hearth-send-to-tv', '.github/workflows/hearth-link.yml']
   workflow_dispatch:
 
 concurrency:

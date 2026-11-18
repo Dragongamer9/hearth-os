@@ -478,6 +478,33 @@ def open_in(iid, app_id):
     return {'ok': True, 'id': iid, 'app': app_id}
 
 
+def tvs():
+    """Hearth TVs paired with this PC (Send to TV, docs/HEARTH-TV.md): [] when there are none or Hearth Link is off."""
+    tool = shutil.which('hearth-send-to-tv') or '/usr/bin/hearth-send-to-tv'
+    try:
+        r = subprocess.run([sys.executable, tool, '--list'], capture_output=True, text=True, timeout=15)
+        return {'tvs': [t for t in json.loads(r.stdout or '{}').get('tvs', []) if t.get('id') and t.get('name')]}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {'tvs': []}
+
+
+def send_tv(iid, tv):
+    """A copied link plays on a Hearth TV (it's saved in the TV's Theater too)."""
+    _, text = item_text(iid)
+    url = link_of(text)
+    if not url:
+        raise Fail('that item isn\'t a web link')
+    tool = shutil.which('hearth-send-to-tv') or '/usr/bin/hearth-send-to-tv'
+    try:
+        r = subprocess.run([sys.executable, tool, '--json', '--tv', tv, url], capture_output=True, text=True, timeout=60)
+        v = json.loads((r.stdout or '').strip().splitlines()[-1])
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        raise Fail('couldn\'t send it to the TV (is Hearth Link on?)')
+    if v.get('error'):
+        raise Fail(v['error'])
+    return {'ok': True, 'id': iid, 'tv': v.get('tv', '')}
+
+
 QR_MAX = 2900
 
 
@@ -553,6 +580,10 @@ def main(argv):
         out = browsers()
     elif c == 'open' and len(a) == 2:
         out = open_in(a[0], a[1])
+    elif c == 'tvs' and not a:
+        out = tvs()
+    elif c == 'send-tv' and len(a) == 2:
+        out = send_tv(a[0], a[1])
     elif c == 'qr' and len(a) == 1:
         out = qr(a[0])
     elif c == 'get' and len(a) == 1:
@@ -570,7 +601,7 @@ def main(argv):
     elif c in ('clear', 'wipe') and not a:
         out = clear()
     else:
-        print('usage: hearth-clipboard status | list | store [--primary] [--keep] [--sync] | paste ID | copy ID | pin ID | unpin ID | delete ID | clear | browsers | open ID APP | qr ID | edit ID')
+        print('usage: hearth-clipboard status | list | store [--primary] [--keep] [--sync] | paste ID | copy ID | pin ID | unpin ID | delete ID | clear | browsers | open ID APP | tvs | send-tv ID TV | qr ID | edit ID')
         sys.exit(2)
     print(json.dumps(out), flush=True)
 

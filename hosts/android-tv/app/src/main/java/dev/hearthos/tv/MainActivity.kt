@@ -71,6 +71,7 @@ class MainActivity : Activity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (intent.getBooleanExtra("sent", false)) { SendToTv.flush(); return }
         if (!handleShare(intent) && (intent.hasCategory(Intent.CATEGORY_HOME) || intent.getBooleanExtra("home", false))) event(JSONObject().put("type", "home"))
     }
 
@@ -83,11 +84,19 @@ class MainActivity : Activity() {
         return true
     }
 
+    override fun onPause() {
+        front = false
+        super.onPause()
+    }
+
     override fun onResume() {
         Tailscale.onStart(this)
         super.onResume()
+        front = true
         TvApp.app.state.merge(JSONObject().put("onInput", JSONObject.NULL))
         event(JSONObject().put("type", "resume"))
+        // Something sent to the TV (Send to TV) while Hearth TV wasn't open.
+        SendToTv.flush()
     }
 
     // The remote's keys the page doesn't get by itself.
@@ -135,6 +144,8 @@ class MainActivity : Activity() {
     companion object {
         const val VOICE = 7
         @Volatile var current: WeakReference<MainActivity>? = null
+        /** Hearth TV is on the screen (not behind another app). */
+        @Volatile var front = false
         fun emit(o: JSONObject) { current?.get()?.event(o) }
     }
 }

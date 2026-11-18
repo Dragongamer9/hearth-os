@@ -246,6 +246,14 @@ fn open_viewer(url: &str, name: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Send to TV (docs/HEARTH-TV.md): hearth-send-to-tv's answer (JSON on its last line).
+fn send_to_tv(args: &[String]) -> Result<Value, String> {
+    let out = std::process::Command::new("hearth-send-to-tv").args(args).output().map_err(|_| "Send to TV isn't on this PC".to_string())?;
+    let text = String::from_utf8_lossy(&out.stdout).to_string();
+    let v: Value = serde_json::from_str(text.lines().last().unwrap_or("")).map_err(|_| "Hearth Link didn't answer".to_string())?;
+    match v.get("error").and_then(|e| e.as_str()) { Some(e) => Err(e.to_string()), None => Ok(v) }
+}
+
 fn call(cmd: &str, a: &Value) -> Result<Value, String> {
     let s = st();
     match cmd {
@@ -404,6 +412,25 @@ fn call(cmd: &str, a: &Value) -> Result<Value, String> {
         "sync_status" => Ok(remote::sync_status()),
         "sync_set" => remote::sync_set(a.get("on").and_then(|x| x.as_bool()).unwrap_or(true)),
         "sync_now" => remote::sync_now(),
+        // Send to TV: the Hearth TVs paired with this PC, and a site or a title played on one (a Jellyfin title by its id).
+        "tv_list" => Ok(send_to_tv(&["--list".to_string()]).unwrap_or_else(|_| json!({"tvs": []}))),
+        "send_tv" => {
+            let (tv, title, media) = (arg(a, "tv"), arg(a, "title"), arg(a, "media"));
+            let mut args = vec!["--json".to_string()];
+            if !tv.is_empty() { args.extend(["--tv".to_string(), tv]); }
+            if !title.is_empty() { args.extend(["--title".to_string(), title.chars().take(200).collect()]); }
+            if !media.is_empty() {
+                if !media.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') || media.len() > 64 { return Err("That isn't a title of your library".into()); }
+                args.extend(["--media".to_string(), media, "--type".to_string(), "movie".to_string()]);
+            } else {
+                let url = arg(a, "url");
+                let u = url::Url::parse(&url).map_err(|_| "That link can't be sent".to_string())?;
+                if !matches!(u.scheme(), "http" | "https") { return Err("That link can't be sent".into()); }
+                args.push(u.to_string());
+            }
+            log("send to TV");
+            send_to_tv(&args)
+        }
         "close" => { send(json!({"t": "do", "op": "close-viewer"})); Ok(Value::Null) }
         "quit" => { send(json!({"t": "do", "op": "quit"})); Ok(Value::Null) }
         _ => Err(format!("unknown call {cmd}")),

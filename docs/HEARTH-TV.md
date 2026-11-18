@@ -49,7 +49,31 @@ one and switches off again anything an update turned back on, and tells you.
 
 If the TV restarts, network debugging may go off; TV Cleanup then says so, and what's already switched off stays off.
 
-## Still to come
+## Send to TV
 
-- Send to TV from a Hearth PC (right-click a link) and from a phone (share a video), over Hearth Link: needs a Hearth
-  Link request for it and the PC and phone sides.
+Something you're looking at on a Hearth PC or your phone plays on the TV, in Hearth TV (it comes to the front from
+whatever app is on).
+
+- **From a Hearth PC**, through Hearth Link (the TV paired with the PC: on the TV, Settings › Hearth Link › Pair a
+  device). Right-click a link in Hearth Browser › **Send to TV** (on a video, the video; elsewhere, the page); in
+  Hearth Files right-click a video or a song › **Send to TV**; in Mantel's clipboard, a copied link's More ›
+  **Send to TV**; in Hearth Theater, a site's or a title's options › **Send to TV** (a Jellyfin title goes as its id
+  and opens in the TV's own My Media). With more than one TV, each is listed. All of them use
+  `hearth-send-to-tv` (`os/system_files/usr/bin`), which asks Hearth Link (`tv.list`, `tv.send`;
+  `hosts/hearth-link/src/tv.rs`).
+- A **link** is saved in the TV's Theater and played. A **video or music file** stays on the PC: it's shared with that
+  one TV for 12 hours under a random token, and the TV plays it from Hearth Link's own 127.0.0.1 address there (Hearth
+  Storage's media links), each piece read from the PC over Hearth Link, with seeking. A **show or movie** of your
+  library opens in My Media (the same Jellyfin or Plex on the PC).
+- Only your own devices: a friend's device can't send to your TV or read a file shared with it. Hearth Link on the TV
+  keeps what was sent until Hearth TV takes it (`tv.inbox`, every 2 seconds: `SendToTv.kt`); nothing plays behind
+  another app.
+- **From your phone**: Hearth for Android adds **Hearth TV** to the phone's Share menu (any app: a video's link, or a
+  video or song file). Add the TV once: on the TV, Theater › Add a link, scan the code with the phone's camera, and
+  on the page that opens tap "Add … to this phone's Share menu" (a `hearthtv://pair` link with the TV's address and
+  key; kept in Hearth for Android's `hearth-tv.json`, safely saved). A link goes to the TV's add-a-link server
+  (`/send`, with its key) and plays; a file plays from the phone while the "Playing on …" notification shows (Stop
+  ends it; only the TV gets an answer, at an address with a random token in it).
+- Tested by hearth-link.yml (`e2e.py family`: a PC sends a link, an 11 MB video with seeking and a show to a TV, and a
+  handheld, a text file and a friend's TV are refused), android-tv.yml (the TV's screens for it, in tv-ui-check.js),
+  android.yml (the phone's unit tests) and files-extras.yml (Hearth Files' menu).
