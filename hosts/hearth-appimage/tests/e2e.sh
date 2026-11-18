@@ -25,7 +25,8 @@ for f in "$pk"/*.deb "$pk"/*.rpm "$pk"/*.tar.gz; do
   fed=$(python3 -c 'import json,sys; print(", ".join(json.load(open(sys.argv[1]))["libs_from_fedora"]))' "$out/$n.json" 2>/dev/null)
   [ -x "$app" ] || { bad "$n" "no AppImage made ($app)"; continue; }
   note "$n" "made $(basename "$app") ($(du -h "$app" | cut -f1)); from Fedora: ${fed:-none}; warnings: ${warn:-none}"
-  got=$(timeout 120 "$app" a b 2>&1 | tail -3 | tr '\n' ' ')
+  case "$n" in hello*) args=();; *) args=(a b);; esac
+  got=$(timeout 120 "$app" "${args[@]}" 2>&1 | tail -3 | tr '\n' ' ')
   case "$n" in
     demo-app*) want="demo ok yaml=0.2.5 data=from-the-package args=2"
                case "$fed" in *libyaml*) ;; *) bad "$n" "libyaml wasn't fetched from Fedora ($fed)";; esac ;;

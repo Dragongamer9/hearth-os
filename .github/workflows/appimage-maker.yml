@@ -55,7 +55,7 @@ jobs:
         run: |
           set -o pipefail
           docker run --rm -v /tmp/cli:/cli:ro -v "$RUNNER_TEMP/pkgs":/pkgs -v "$PWD/tests":/tests:ro -v "$RUNNER_TEMP/made":/made fedora:latest \
-            bash -c 'dnf -y -q install python3 >/dev/null 2>&1; bash /tests/e2e.sh /cli/hearth-appimage /pkgs /made' 2>&1 | tee e2e.log
+            bash -c 'dnf -y -q install python3 >/dev/null 2>&1; rpm -q libyaml >/dev/null 2>&1 && rpm -e --nodeps libyaml; bash /tests/e2e.sh /cli/hearth-appimage /pkgs /made' 2>&1 | tee e2e.log
           rc=${PIPESTATUS[0]}
           sudo chown -R "$(id -u)" "$RUNNER_TEMP/made" || true
           exit $rc

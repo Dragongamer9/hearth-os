@@ -246,7 +246,8 @@ fn run(input: &Path, kind: Kind, opt: &Options, work: &Path, r: &mut Report, on:
     on(Event::Step("Packing".into()));
     let mut log = |s: String| on(Event::Log(s));
     let rt = pack::runtime(machine, &mut log)?;
-    let ver = if r.version.is_empty() { String::new() } else { format!("-{}", appdir::slug(&r.version)) };
+    let ver: String = r.version.chars().map(|c| if c.is_ascii_alphanumeric() || ".+~_".contains(c) { c } else { '-' }).collect();
+    let ver = if ver.is_empty() { ver } else { format!("-{ver}") };
     let file = format!("{}{}-{}.AppImage", display_name.replace(['/', ' '], "_"), ver, pack::arch_name(machine));
     let out = opt.out_dir.join(file);
     let sizes = appdir::sizes(&appdir);
