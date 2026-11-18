@@ -72,6 +72,35 @@ jobs:
           path: shots
           retention-days: 14
 
+  # Which Debian trixie packages have what KWin's log on Hearth says is missing (the owner's laptop and ROG Ally, Nov 17):
+  # the Aurorae window frames (org.kde.kwin.aurorae) and the Overview's QML (org.kde.kwin.private.effects); with their
+  # size, as build.sh's pkg_cost says it. Only reports (notices).
+  debian-kwin-parts:
+    runs-on: ubuntu-latest
+    container: docker.io/library/debian:trixie
+    steps:
+      - name: Where Aurorae and the Overview's QML are on trixie
+        shell: bash
+        run: |
+          set +e
+          apt-get update -qq >/dev/null
+          apt-get install -y -qq --no-install-recommends kwin-wayland apt-file >/dev/null 2>&1
+          echo "::notice title=KWin (trixie)::$(dpkg-query -W -f='${Version}' kwin-wayland 2>/dev/null) · kwin-wayland depends: $(apt-cache depends kwin-wayland 2>/dev/null | grep -E 'Depends|Recommends' | tr -s ' ' | tr '\n' ' ' | cut -c1-900)"
+          for pat in 'kdecoration*aurorae*' 'org/kde/kwin/private/effects'; do
+            echo "::notice title=installed with kwin-wayland ($pat)::$(find / -xdev -path "*$pat*" 2>/dev/null | head -5 | tr '\n' ' ') "
+          done
+          apt-file update >/dev/null 2>&1
+          for pat in 'org.kde.kdecoration2/.*aurorae' 'qml/org/kde/kwin/private/effects/'; do
+            echo "::notice title=apt-file ($pat)::$(apt-file search -x "$pat" 2>/dev/null | cut -d: -f1 | sort -u | tr '\n' ' ' | cut -c1-600)"
+          done
+          for p in $(apt-file search -x 'org.kde.kdecoration2/.*aurorae|qml/org/kde/kwin/private/effects/' 2>/dev/null | cut -d: -f1 | sort -u); do
+            new=$(apt-get install -s --no-install-recommends "$p" 2>/dev/null | awk '/^Inst /{print $2}' | tr '\n' ' ')
+            kb=0; for q in $new; do s=$(apt-cache show "$q" 2>/dev/null | awk '/^Installed-Size:/{print $2; exit}'); kb=$((kb + ${s:-0})); done
+            echo "::notice title=$p::$(echo $new | wc -w) new package(s), $((kb / 1024)) MB installed: $(echo "$new" | cut -c1-1500)"
+          done
+          apt-cache policy kwin-style-aurorae aurorae 2>/dev/null | tr '\n' ' ' | cut -c1-600 | sed 's/^/::notice title=aurorae packages::/'
+          exit 0
+
   shots:
     needs: kwin
     if: always()
