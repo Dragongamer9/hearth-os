@@ -97,24 +97,29 @@ So Hearth OS on Anatase gets the same design as Debian's writable system, in Fed
 
 ## Trying it on a device
 
-Publishing needs the owner's go-ahead (red flag 5). Once he says so: merge to main, then Actions › **Hearth OS (Anatase
-base, test)** › Run workflow on `main` with **publish** ticked. It pushes only `ghcr.io/dragongamer9/hearth-os:test-1.15`
-(and a dated copy).
+Publishing needs the owner's go-ahead (red flag 5). With it: Actions › **Hearth OS (Anatase base, test)** › Run workflow,
+with **test_tag** `test-1.15` (any branch; only `test-<version>` is accepted), or **publish** ticked on `main`. The image
+job builds, runs every required check, and only then pushes that same image to `ghcr.io/dragongamer9/hearth-os:test-1.15`
+and a dated `test-1.15-<date>` copy, and checks both tags have the digest it pushed. Nothing else is ever pushed.
 
 On the device (ROG Ally or the laptop), from Hearth OS on Debian:
 
-1. Settings › Updates › Switch edition › **Hearth OS on Anatase (test)** (needs a Debian with 1.15's Switch edition).
-   Debian devices stay on 1.13 for now, so until then, in a terminal (the same steps Switch edition does):
-   - `sudo ostree admin status`, then `sudo ostree admin pin N` with N the number of the line marked `*` counted from 0
-     (usually 0): Debian stays in the boot menu however many Anatase updates come.
-   - forget the kept container images (the composefs/SELinux fix): `for r in $(sudo ostree container image list
-     --repo=/sysroot/ostree/repo); do sudo ostree container image remove --repo=/sysroot/ostree/repo "$r"; done`
-   - `sudo bootc switch ghcr.io/dragongamer9/hearth-os:test-1.15`
-   Your home folder isn't touched; at Anatase's first start /etc is set up for Fedora by itself.
-2. If Secure Boot is on, turn it off in the firmware first (Debian's shim won't start Fedora's kernel).
-3. Restart. The first start takes a little longer (/etc set up for Fedora, SELinux labels).
-4. To go back: Settings › Updates › Switch edition › **Hearth OS on Debian** (the same Debian, as you left it), or pick
-   the Debian entry in the boot menu once, or `sudo bootc rollback` and restart.
+- **From a Debian with 1.15's Switch edition**: Settings › Updates › Switch edition › **Hearth OS on Anatase (test)**.
+- **From Debian 1.13** (its Switch edition refuses Anatase and doesn't know the test tag): the same move with 1.15's own
+  `hearth-admin`, taken from the repository at a fixed commit (it pins Debian, forgets the kept container images,
+  leaves the home folder as it is and switches to `:test-1.15`; nothing changes until the restart):
+
+  ```
+  curl -fsSL -o /tmp/hearth-admin https://raw.githubusercontent.com/Dragongamer9/hearth-os/<commit>/os/system_files/usr/libexec/nimbus/hearth-admin
+  sudo PKEXEC_UID=$(id -u) python3 /tmp/hearth-admin move-to-new-os --edition anatase
+  ```
+
+- If Secure Boot is on, turn it off in the firmware first (Debian's shim won't start Fedora's kernel). Then restart. The
+  first start takes a little longer (/etc set up for Fedora, SELinux labels).
+
+**Back to Debian**: Settings › Updates › Switch edition › **Hearth OS on Debian** (the same Debian, as you left it), or
+in a terminal on Anatase `sudo bootc rollback` (when Debian is the previous version) and restart, or pick the Debian
+entry in the boot menu once. Debian stays pinned in the boot menu the whole time.
 
 ## What was here before (kept for reference: the archived 1.0 Anatase)
 
