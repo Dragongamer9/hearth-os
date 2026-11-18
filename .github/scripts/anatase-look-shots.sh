@@ -24,7 +24,7 @@ trap '$P rm -f "$NAME" >/dev/null 2>&1' EXIT
 
 # Only for the pictures, in this throwaway container (never in the image): KWin's screenshot through dbus-python, the
 # sheet through qml. (python3-gobject, already in the image, is the fallback for the screenshots.)
-$P exec "$NAME" bash -c 'timeout 300 dnf5 -y -q install --skip-unavailable python3-dbus qt6-qtdeclarative >/dev/null 2>&1' \
+$P exec "$NAME" bash -c 'timeout 300 dnf5 -y -q install --skip-unavailable python3-dbus qt6-qtdeclarative qt6-qtdeclarative-devel mesa-dri-drivers >/dev/null 2>&1' \
   || echo "::notice title=looks::the screenshot helpers didn't install; PyGObject is used"
 if [ -n "$REPO" ]; then
   $P cp "$REPO/os-bases/anatase/system_files/usr/libexec/nimbus/hearth-plasma-looks" "$NAME:/usr/libexec/nimbus/hearth-plasma-looks"
@@ -34,6 +34,10 @@ if [ -n "$REPO" ]; then
     || echo "::error title=looks::this branch's hearth-plasma-looks couldn't generate the looks"
 fi
 $P exec "$NAME" bash -c 'id ci >/dev/null 2>&1 || useradd -m -u 1000 ci 2>/dev/null || useradd -m ci'
+# KWin draws through the runner's /dev/dri (Mesa's software drawing on it): the account gets the groups that own those
+# nodes, as a person on a real Plasma session has (without them: "Found no render device!", and KWin quits).
+$P exec "$NAME" bash -c 'for n in /dev/dri/*; do [ -e "$n" ] || continue; g=$(stat -c %g "$n"); getent group "$g" >/dev/null || groupadd -g "$g" "dri$g"; usermod -aG "$(getent group "$g" | cut -d: -f1)" ci; done; ls -l /dev/dri 2>&1 | tr "\n" " "; echo; id ci' \
+  | sed 's/^/::notice title=looks render device::/'
 $P cp "$HERE/anatase-look-shot.py" "$NAME:/tmp/shot.py"
 
 cat > /tmp/looks-in.sh <<'IN'
