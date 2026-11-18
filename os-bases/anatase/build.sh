@@ -795,8 +795,11 @@ ls /etc/xdg/menus/applications.menu /etc/xdg/menus/*-applications.menu 2>/dev/nu
   || { echo "::error title=KDE Plasma::no applications.menu in /etc/xdg/menus: Plasma's menu would be empty"; exit 1; }
 echo "Plasma's menu file: $(ls /etc/xdg/menus/*applications.menu | tr '\n' ' ')"
 # The lock screen's greeter must be there (a lock that can't show its screen would be a lockout).
-ls /usr/libexec/kscreenlocker_greet /usr/lib*/libexec/kscreenlocker_greet 2>/dev/null | grep -q . \
-  || { echo "::error title=KDE Plasma::kscreenlocker_greet is missing: the lock screen couldn't show"; exit 1; }
+rpm -q kscreenlocker >/dev/null 2>&1 || dnf5 -y install kscreenlocker
+greet=$(find /usr/libexec /usr/lib64 /usr/lib /usr/bin -name kscreenlocker_greet -type f 2>/dev/null | head -1)
+[ -n "$greet" ] || { echo "::error title=KDE Plasma::kscreenlocker_greet is missing ($(rpm -q kscreenlocker; rpm -ql kscreenlocker 2>/dev/null | grep -i greet | head -3 | tr '\n' ' ')): the lock screen couldn't show"; exit 1; }
+echo "::notice title=KDE Plasma lock screen::$greet ($(rpm -q kscreenlocker))"
+echo "::notice title=KDE Plasma packages::$(rpm -q plasma-nm plasma-pa powerdevil kscreen bluedevil polkit-kde xdg-desktop-portal-kde kwin plasma-workspace 2>&1 | tr '\n' ' ' | cut -c1-900)"
 # KDE's own "Plasma" login entries start Plasma without Hearth's session: moved aside (Hearth's session starts it).
 mkdir -p /usr/share/hearth/desktop-sessions
 for f in /usr/share/wayland-sessions/plasma.desktop /usr/share/wayland-sessions/plasmawayland.desktop /usr/share/xsessions/plasma.desktop /usr/share/xsessions/plasmax11.desktop; do

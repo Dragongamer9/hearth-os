@@ -43,7 +43,7 @@ check "Quick Access over games is Hearth's (HHD's overlay app)" "test -L /usr/bi
 echo "--- Desktop Mode: stock KDE Plasma with Hearth's apps"
 check "Desktop Mode is Plasma here" "[ \"\$(cat /usr/share/nimbus/desktop-mode)\" = plasma ] && grep -q 'run_plasma' /usr/bin/nimbus-session && grep -q hearth-plasma.pid /usr/bin/nimbus-mode"
 check "Plasma's pieces: startplasma-wayland, plasmashell, kwin_wayland, kscreen-doctor, the lock screen's greeter" \
-  "command -v startplasma-wayland && command -v plasmashell && command -v kwin_wayland && command -v kscreen-doctor && ls /usr/libexec/kscreenlocker_greet /usr/lib*/libexec/kscreenlocker_greet 2>/dev/null | grep -q ."
+  "command -v startplasma-wayland && command -v plasmashell && command -v kwin_wayland && command -v kscreen-doctor && find /usr/libexec /usr/lib64 /usr/lib -name kscreenlocker_greet -type f | grep -q ."
 check "Plasma's menu file is there" "ls /etc/xdg/menus/applications.menu /etc/xdg/menus/*-applications.menu 2>/dev/null | grep -q ."
 warn "KWin's Overview, Breeze frames and Aurorae are there" "ls /usr/share/kwin*/effects/overview /usr/share/kwin/effects/overview 2>/dev/null | grep -q . ; ls /usr/lib64/qt6/plugins/org.kde.kdecoration*/ 2>/dev/null | grep -qi breeze"
 check "no labwc, Quickshell or Mantel session here (Mantel is archived on Anatase)" \
