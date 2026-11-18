@@ -334,7 +334,7 @@ const PROC_COLS: [Col; 11] = [
 
 fn status_of(g: &Group) -> String {
     if g.suspended {
-        if g.kind == "game" { "Quick Resume ⏸".into() } else { "Suspended ⏸".into() }
+        if g.frozen { "Paused to save memory ⏸".into() } else if g.kind == "game" { "Quick Resume ⏸".into() } else { "Suspended ⏸".into() }
     } else if g.eco {
         "Efficiency mode".into()
     } else {

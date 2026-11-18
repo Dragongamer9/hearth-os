@@ -449,7 +449,7 @@ impl App {
         if g.suspended && !child {
             items.push(MenuItem::new("Resume", Act::Resume).on(ok));
         }
-        items.push(MenuItem::new("Keep this running (checkpoint)", Act::Keep(true)).on(ok && !proc_name.is_empty()).fresh());
+        items.push(MenuItem::new("Keep this running (checkpoint)", Act::Keep(!g.keep_running)).on(ok && !proc_name.is_empty()).checked(g.keep_running).fresh());
         items.push(MenuItem::new("Never close when memory runs out", Act::Never).on(ok && !proc_name.is_empty()).fresh());
         items.push(MenuItem::sep());
         items.push(MenuItem::new("Go to details", Act::Details).key(format!("PID {pid}")));
@@ -581,9 +581,14 @@ impl App {
             }
             Act::Resume => self.act("resume", vec!["resume-group".into(), pid]),
             Act::Suspend(on) => self.act("suspend", vec![if on { "suspend" } else { "resume" }.into(), pid]),
-            Act::Keep(_) => {
-                run::detached(&["pkexec", "/usr/libexec/nimbus/hearth-memory", "checkpoint", &t.unit, "on"]);
-                self.notice(&t.name, &format!("When memory runs out and {} is the one using it, Hearth pauses it instead of closing it: it's frozen and its memory is moved to the drive, so nothing is lost. Right-click it and choose Resume to carry on where you were. Press this again to take it off the list.", t.name));
+            Act::Keep(on) => {
+                // Saved by hearth-memory (as root, after the password prompt); pressing it again takes it off the list.
+                run::detached(&["pkexec", "/usr/libexec/nimbus/hearth-memory", "checkpoint", &t.unit, if on { "on" } else { "off" }]);
+                if on {
+                    self.notice(&t.name, &format!("When memory runs out and {} is the one using it, Hearth pauses it instead of closing it: it's frozen and its memory is moved to the drive, so nothing is lost. Right-click it and choose Resume to carry on where you were. Press this again to take it off the list.", t.name));
+                } else {
+                    self.notice(&t.name, &format!("{} is off your Keep running list: when memory runs out it can be closed again.", t.name));
+                }
                 Task::none()
             }
             Act::Never => {

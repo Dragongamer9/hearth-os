@@ -153,6 +153,10 @@ pub struct Group {
     pub gpu: f32,
     pub nice: i32,
     pub suspended: bool,
+    /// The memory guard froze it to save memory (/var/lib/hearth/memory/frozen.json).
+    pub frozen: bool,
+    /// On your Keep running list (/etc/hearth/memory.json guard.checkpoint).
+    pub keep_running: bool,
     pub eco: bool,
     pub children: Vec<Kid>,
 }
@@ -570,6 +574,7 @@ pub struct Sampler {
     batt: Option<Battery>,
     tick: u64,
     drm: apps::Drm,
+    keep: (Option<std::time::SystemTime>, HashSet<String>),
 }
 
 impl Sampler {
@@ -595,6 +600,7 @@ impl Sampler {
             batt: None,
             tick: 0,
             drm: apps::Drm::default(),
+            keep: (None, HashSet::new()),
         }
     }
 
@@ -789,6 +795,28 @@ impl Sampler {
         }
         let gpu_of = if self.tick % 2 == 0 || self.tick < 3 { self.drm.busy(procs, self.uid) } else { self.drm.last.clone() };
         let io_prev = std::mem::replace(&mut self.io, io_now);
+        // The memory guard's marks (hearth-tasks' memory_marks): your Keep running list, read again only when it
+        // changed, and the programs it froze.
+        let settings = std::env::var("HEARTH_MEMORY_SETTINGS").unwrap_or_else(|_| "/etc/hearth/memory.json".into());
+        let state = std::env::var("HEARTH_MEMORY_STATE").unwrap_or_else(|_| "/var/lib/hearth/memory".into());
+        let mtime = std::fs::metadata(&settings).and_then(|m| m.modified()).ok();
+        if mtime != self.keep.0 {
+            let list = std::fs::read(&settings)
+                .ok()
+                .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+                .and_then(|v| v.get("guard").and_then(|g| g.get("checkpoint")).and_then(|c| c.as_array()).cloned())
+                .unwrap_or_default();
+            self.keep = (mtime, list.iter().filter_map(|x| x.as_str()).map(|x| x.chars().take(15).collect()).collect());
+        }
+        let frozen: HashSet<i32> = std::fs::read(format!("{state}/frozen.json"))
+            .ok()
+            .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+            .and_then(|v| v.as_array().cloned())
+            .unwrap_or_default()
+            .iter()
+            .flat_map(|e| e.get("pids").and_then(|p| p.as_array()).cloned().unwrap_or_default())
+            .filter_map(|x| x.as_i64().map(|n| n as i32))
+            .collect();
         for g in groups.iter_mut() {
             let mut kids = Vec::new();
             for pid in &g.pids {
@@ -817,6 +845,8 @@ impl Sampler {
             g.nice = kids.iter().map(|k| k.nice).min().unwrap_or(0);
             g.suspended = !kids.is_empty() && kids.iter().all(|k| matches!(k.state, 'T' | 't'));
             g.eco = !kids.is_empty() && kids.iter().all(|k| k.nice >= 19);
+            g.frozen = g.suspended && kids.iter().any(|k| frozen.contains(&k.pid));
+            g.keep_running = g.pids.iter().any(|x| procs.get(x).map(|p| self.keep.1.contains(&p.comm.chars().take(15).collect::<String>())).unwrap_or(false));
             g.exe = procs.get(&g.pid).map(|p| p.path.clone()).unwrap_or_default();
             g.children = if kids.len() > 1 { kids } else { Vec::new() };
         }

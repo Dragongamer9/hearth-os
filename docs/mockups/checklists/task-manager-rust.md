@@ -19,7 +19,7 @@ anything. Open parts are listed as open (red flag 11).
 - [x] Right-click: Never close when memory runs out — hosts/hearth-ui/apps/task-manager/src/main.rs: "MenuItem::new(\"Never close when memory runs out\", Act::Never)"
 - [x] Right-click: Keep this running (checkpoint) — hosts/hearth-ui/apps/task-manager/src/main.rs: "MenuItem::new(\"Keep this running (checkpoint)\", Act::Keep(true))"
 - [x] Right-click: Resume for a paused program — hosts/hearth-ui/apps/task-manager/src/main.rs: "MenuItem::new(\"Resume\", Act::Resume)"
-- [ ] Status "Paused to save memory ⏸" for a program the memory guard froze (needs hearth-memory's list of frozen programs)
+- [x] Status "Paused to save memory ⏸" for a program the memory guard froze — hosts/hearth-ui/apps/task-manager/src/pages.rs: "if g.frozen { \"Paused to save memory ⏸\".into() }"
 - [x] NEW tags on the menu's new items — hosts/hearth-ui/apps/task-manager/src/pages.rs: "chip(\"NEW\""
 - [x] Right-click: Go to details shows the PID on the right — hosts/hearth-ui/apps/task-manager/src/main.rs: "MenuItem::new(\"Go to details\", Act::Details).key(format!(\"PID {pid}\"))"
 - [x] Apps & groups / All processes switch at the top — hosts/hearth-ui/apps/task-manager/src/pages.rs: "(\"groups\", \"Apps & groups\"), (\"all\", \"All processes\")"
