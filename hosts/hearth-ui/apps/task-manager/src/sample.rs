@@ -862,3 +862,31 @@ pub fn stream() -> futures::channel::mpsc::UnboundedReceiver<Arc<Sample>> {
     });
     rx
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn stat_and_cores() {
+        let st = "1234 (Web Content (x)) S 1000 1234 1234 0 -1 4194560 100 0 0 0 250 50 0 0 20 5 12 0 98765 1000 100";
+        let (pid, comm, state, ppid, jiffies, _flags, nice, threads, start, _) = parse_stat(st).unwrap();
+        assert_eq!((pid, comm.as_str(), state, ppid, jiffies, nice, threads, start), (1234, "Web Content (x)", 'S', 1000, 300, 5, 12, 98765));
+        assert_eq!(cores_label("0-15", 16), "All");
+        assert_eq!(cores_label("0-3,6", 16), "5");
+        assert_eq!(state_label('T'), "Suspended");
+        assert!(ai_job(&["ollama".into(), "serve".into()]));
+    }
+
+    #[test]
+    fn a_sample_reads_this_machine() {
+        let mut s = Sampler::new();
+        let _ = s.sample(W_PROCS | W_DETAILS);
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let x = s.sample(W_PROCS | W_DETAILS);
+        assert!(x.mem.total > 0);
+        assert!(!x.cpu.cores.is_empty());
+        assert!(x.details.iter().any(|r| r.pid == std::process::id() as i32));
+        assert!(x.has_procs);
+    }
+}

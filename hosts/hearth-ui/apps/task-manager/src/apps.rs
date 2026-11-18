@@ -515,3 +515,37 @@ impl Drm {
         out
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn p(pid: i32, ppid: i32, exe: &str, cmd: &[&str]) -> P {
+        P { pid, ppid, comm: exe.into(), exe: exe.into(), cmd: cmd.iter().map(|s| s.to_string()).collect(), uid: 1000, start: 1, ..P::default() }
+    }
+
+    #[test]
+    fn groups_follow_hearth_tasks_rules() {
+        let mut procs = HashMap::new();
+        for x in [
+            p(1, 0, "systemd", &["/usr/lib/systemd/systemd"]),
+            p(10, 1, "plasmashell", &["plasmashell"]),
+            p(20, 10, "firefox", &["/usr/lib/firefox/firefox"]),
+            p(21, 20, "firefox", &["/usr/lib/firefox/firefox", "-contentproc"]),
+            p(30, 1, "python3", &["python3", "/usr/bin/my-script"]),
+        ] {
+            procs.insert(x.pid, x);
+        }
+        let mut index = AppIndex::new();
+        index.insert("firefox".into(), Entry { id: "firefox".into(), name: "Firefox".into(), icon: "firefox".into(), hidden: false });
+        let mut none = |_: &str| -> Option<String> { None };
+        let g = build_groups(&procs, 1000, 9999, &index, &mut none);
+        let ff = g.iter().find(|x| x.name == "Firefox").expect("Firefox is an app");
+        assert_eq!(ff.pids, vec![20, 21]);
+        assert_eq!(ff.kind, "app");
+        let shell = g.iter().find(|x| x.pid == 10).unwrap();
+        assert!(shell.protected, "Plasma's shell keeps the desktop running");
+        assert_eq!(g.iter().find(|x| x.pid == 30).unwrap().name, "python3");
+        assert_eq!(script_name(&procs[&30]), "my-script");
+    }
+}

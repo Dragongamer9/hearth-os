@@ -52,9 +52,9 @@ why not.
 | Accessibility, USB maker, Get Claude | Rust + Tauri / shell | yes | yes | | convert to pure Rust later |
 | Hearth Files (KDE build, `hearth-files-kde`) | C++ (Dolphin, hosts/hearth-kde) | no | no | its build doesn't match the image's KDE libraries, so it's dropped and Fedora's Dolphin opens folders | the pure Rust Hearth Files replaces it |
 | Terminal, Text Editor, Reader, Capture, Calculator (KDE builds) | C++ (hosts/hearth-kde) | yes | only where Hearth's own isn't there | Hearth's own come first | kept as fallbacks; dropped once the pure Rust apps are in |
-| Task Manager | QML (Mantel only: TaskManagerView.qml + hearth-tasks) | no | no (Plasma's System Monitor is used) | needs Mantel (Quickshell) | **pure Rust port** (hosts/hearth-ui) |
-| System Restore | QML (Mantel only) | entry only | no | `OnlyShowIn=Nimbus`; needs Mantel | **pure Rust port** |
-| Reliability history | QML (Mantel only) | entry only | no | `OnlyShowIn=Nimbus`; needs Mantel | **pure Rust port** |
+| Task Manager | QML (Mantel only) → **pure Rust** (`hearth-task-manager`) | yes, when built | yes: Plasma's task manager (before System Monitor) | | ported; the device settings tabs are still open (checklist) |
+| System Restore | QML (Mantel only) → **pure Rust** (`hearth-system-restore`) | yes, when built | yes | | ported |
+| Reliability history | QML (Mantel only) → **pure Rust** (`hearth-reliability-history`) | yes, when built | yes | | ported |
 | Capture (screenshots) | QML (Mantel only) | entry only | no (Hearth's Spectacle build, else Spectacle) | `OnlyShowIn=Nimbus`; needs Mantel | **pure Rust port** |
 | Hearth Files (classic) | QML (Mantel only, FileManager.qml) | entry only | no (Dolphin) | `OnlyShowIn=Nimbus`; needs Mantel | **pure Rust port** |
 | Resource Monitor | QML (Mantel only) | entry only | no | `OnlyShowIn=Nimbus`; needs Mantel | pure Rust port (with Task Manager) |
@@ -64,4 +64,30 @@ why not.
 | Notifications | QML (Mantel only) | no | no (Plasma's own) | part of Mantel | **pure Rust port** |
 | Windows apps (`hearth-winapps`) | shell | yes | hidden (NoDisplay: opened from files) | | stays |
 
-What's ported, and how light and fast each one is, is in the sections below as each port lands.
+## Pure Rust apps (hosts/hearth-ui)
+
+No Tauri and no web view: each app is one small iced program (iced 0.14, the same toolkit and version as Firehold's
+Rust shell on feature/firehold-rust), drawn in software with tiny-skia, so no graphics driver is loaded and it looks
+the same on every PC. libcosmic wasn't used: it isn't on crates.io (a git dependency with its own iced fork), and
+Hearth's look isn't COSMIC's (docs/FIREHOLD-RUST.md has the same reasoning).
+
+- `hosts/hearth-ui` (the shared crate): the person's look (palettes.json: every look, dark and light, sub themes,
+  the accent; desktop.json is read, never written, and followed while open through inotify), text and buttons,
+  cards, chips, the window's own title bar and edges (as the mockups draw it), dialogs, line icons and graphs, and
+  settings_file.rs for anything an app saves (red flag 9: atomic, .bak, merged, only what you change).
+- `apps/task-manager` (`hearth-task-manager`): its own sampler, in Rust, from /proc and /sys, only while it's open
+  and only what the page on show needs (the process list only on Processes, Details only on Details); the same app
+  groups, protected parts and tags as Mantel's (hearth_tasks_procs.py's rules). Changing anything goes through
+  `hearth-tasks` (only your own processes, never a part of Hearth). Its choices are `~/.config/nimbus/taskmgr.json`,
+  the same keys as Mantel's. What of its mockups is in: docs/mockups/checklists/task-manager-rust.md.
+- `apps/system-restore` (`hearth-system-restore`) and `apps/reliability` (`hearth-reliability-history`): Mantel's
+  pages ported part for part; their numbers come from `hearth_restore.py` and `hearth_reliability.py`, which run once
+  when the window opens (and for each action), never in the background.
+- CI: `.github/workflows/hearth-apps-rust.yml` builds them in Fedora 45, starts each on a headless Wayland screen and
+  fails on a slow first frame, high memory or CPU at rest, and posts pictures of every page and dialog.
+- The Fedora edition builds them inside its own base (`base-anatase.yml`, job `hearth-ui`) and installs them in the
+  "Hearth's apps in Plasma" block of `os-bases/anatase/build.sh`, where they take Task Manager's, System Restore's and
+  Reliability history's menu entries and commands. Not built: the image is made as before.
+
+Still to port, in this order: Capture, Hearth Files (classic), Quick Settings, the on-screen keyboard, Hearth's file
+chooser (an xdg-desktop-portal FileChooser backend), notifications. The Tauri apps above become pure Rust after them.

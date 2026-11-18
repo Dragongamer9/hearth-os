@@ -24,6 +24,9 @@ ln -sf "$ROOT/.github/scripts/hearth-apps-rust-fixtures.py" /tmp/restore-fixture
 ln -sf "$ROOT/.github/scripts/hearth-apps-rust-fixtures.py" /tmp/reliability-fixture.py
 chown -R ci "$CIH"
 
+# Fedora's sway carries a file capability (cap_sys_nice) the container doesn't allow: a plain copy has none.
+cp /usr/bin/sway /tmp/sway-nocap && chmod 755 /tmp/sway-nocap
+
 cat > /tmp/sway.conf <<'EOF'
 output HEADLESS-1 resolution 1280x800 position 0 0 bg #202020 solid_color
 default_border none
@@ -38,7 +41,7 @@ ROOT="$1"; BIN="$ROOT/bin"
 export XDG_RUNTIME_DIR=/tmp/xdg-ci HOME=/home/ci WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1
 export HEARTH_SHELL_DIR="$ROOT/hosts/linux/desktop/shell" HEARTH_PALETTES="$ROOT/hosts/linux/desktop/theme/palettes.json"
 export HEARTH_RESTORE_HELPER=/tmp/restore-fixture.py HEARTH_RELIABILITY_HELPER=/tmp/reliability-fixture.py
-sway -c /tmp/sway.conf >/tmp/sway.log 2>&1 &
+/tmp/sway-nocap -c /tmp/sway.conf >/tmp/sway.log 2>&1 &
 for i in $(seq 1 100); do ls "$XDG_RUNTIME_DIR"/wayland-* >/dev/null 2>&1 && break; sleep 0.1; done
 export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-* | grep -v lock | head -1)")
 export SWAYSOCK=$(ls "$XDG_RUNTIME_DIR"/sway-ipc.* 2>/dev/null | head -1)
@@ -113,9 +116,11 @@ INNER
 chmod 755 /tmp/inner.sh
 : > "$ROOT/results.txt"; chmod 666 "$ROOT/results.txt"
 runuser -u ci -- /tmp/inner.sh "$ROOT"
+inner=$?
 
 # The limits.
-fail=0
+fail=$inner
+grep -q '^RESULT' "$ROOT/results.txt" || { echo "::error title=apps::nothing was measured"; fail=1; }
 while read -r kind name rest; do
   [ "$kind" = RESULT ] || continue
   eval "$(echo "$rest" | tr ' ' '\n' | sed 's/^/r_/')"
