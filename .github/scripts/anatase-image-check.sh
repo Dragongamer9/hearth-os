@@ -51,20 +51,29 @@ check "no labwc, Quickshell or Mantel session here (Mantel is archived on Anatas
 check "KDE's own Plasma login entry is aside (Plasma starts from Hearth's session)" "test ! -e /usr/share/wayland-sessions/plasma.desktop"
 check "Back to Game Mode is in Plasma's menu and pinned once per account" \
   "grep -qx 'Name=Back to Game Mode' /usr/share/applications/hearth-gamemode.desktop && grep -q 'Exec=nimbus-mode game' /usr/share/applications/hearth-gamemode.desktop && grep -q hearth-gamemode.desktop /usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates/hearth-game-mode-launcher.js"
-# Hearth's apps in Plasma's menu: every one shown under XDG_CURRENT_DESKTOP=KDE by the desktop-entry rules
-# (NoDisplay, Hidden, OnlyShowIn, NotShowIn, TryExec), with its program there. Plasma's session leaves Hearth's
-# one-app-of-each-kind copies (/usr/share/hearth/app-kinds) out of XDG_DATA_DIRS, so the packages' own files count.
+# Hearth's apps in Plasma's menu: every Hearth entry, as Plasma's session sees it (Hearth's one-app-of-each-kind copies
+# first when the image made them for Plasma: /usr/share/hearth/app-kinds/plasma-ready), by the desktop-entry rules
+# (NoDisplay, Hidden, OnlyShowIn, NotShowIn, TryExec) with its program there. The four Plasma needs must show; every
+# other one is listed as shown or hidden (and why), and the apps the owner named (Nov 18) are a warning when hidden.
 python3 - <<'PY' || fail=1
-import configparser, os, shutil, sys
-want = ['hearth-settings.desktop', 'hearth-logs.desktop', 'hearth-send-logs.desktop', 'hearth-gamemode.desktop',
-        'hearth-browser.desktop', 'hearth-text.desktop', 'hearth-disks.desktop', 'hearth-photos.desktop',
-        'hearth-player.desktop', 'hearth-system-info.desktop']
+import configparser, glob, os, shutil, sys
+dirs = (['/usr/share/hearth/app-kinds/applications'] if os.path.exists('/usr/share/hearth/app-kinds/plasma-ready') else []) + \
+    ['/usr/local/share/applications', '/usr/share/applications']
 must = {'hearth-settings.desktop', 'hearth-logs.desktop', 'hearth-send-logs.desktop', 'hearth-gamemode.desktop'}
-bad, shown = [], []
-for d in want:
-    p = '/usr/share/applications/' + d
-    if not os.path.exists(p):
-        (bad if d in must else []).append(d + ' (missing)'); continue
+named = ['hearth-calculator.desktop', 'hearth-camera.desktop', 'hearth-maps.desktop', 'hearth-write.desktop', 'hearth-sheets.desktop',
+         'hearth-slides.desktop', 'hearth-paint.desktop', 'hearth-contacts.desktop', 'hearth-clock.desktop', 'hearth-calendar.desktop',
+         'hearth-text.desktop', 'hearth-photos.desktop', 'hearth-player.desktop', 'hearth-terminal.desktop', 'hearth-documents.desktop',
+         'hearth-recorder.desktop', 'hearth-browser.desktop', 'hearth-disks.desktop', 'hearth-system-info.desktop']
+ids = {}
+for d in reversed(dirs):
+    for p in glob.glob(d + '/hearth-*.desktop'):
+        ids[os.path.basename(p)] = p
+bad, shown, hidden = [], [], []
+for d in sorted(set(ids) | must):
+    p = ids.get(d)
+    if not p:
+        if d in must: bad.append(d + ' (missing)')
+        continue
     c = configparser.RawConfigParser(strict=False, interpolation=None); c.optionxform = str
     c.read(p)
     e = c['Desktop Entry'] if c.has_section('Desktop Entry') else {}
@@ -77,11 +86,15 @@ for d in want:
         prog = (e.get('Exec') or '').split()[0] if e.get('Exec') else ''
         if prog and not shutil.which(prog): why = 'program missing: ' + prog
     if why:
-        (bad if d in must else []).append(d + ' (' + why + ')')
-        if d not in must: print('::warning title=Plasma menu::%s is hidden in Plasma: %s' % (d, why))
+        hidden.append('%s (%s)' % (d, why))
+        if d in must: bad.append(d + ' (' + why + ')')
     else:
         shown.append(d)
-print('::notice title=Plasma menu (desktop-entry rules)::shown under KDE: ' + ', '.join(shown))
+for d in named:
+    if d not in shown:
+        print('::warning title=Plasma menu::%s isn\'t in Plasma\'s menu: %s' % (d, next((h for h in hidden if h.startswith(d)), 'not in this image')))
+print('::notice title=Plasma menu (desktop-entry rules)::%d shown under KDE: %s' % (len(shown), ', '.join(shown)))
+print('::notice title=Plasma menu (hidden)::%s' % (', '.join(hidden) or 'none'))
 if bad:
     print('::error title=Plasma menu::Hearth apps that must be in Plasma\'s menu but aren\'t: ' + ', '.join(bad)); sys.exit(1)
 PY

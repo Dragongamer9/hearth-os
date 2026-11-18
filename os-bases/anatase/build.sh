@@ -1397,6 +1397,67 @@ echo "::notice title=One app of each kind::$(python3 -c 'import json; d=json.loa
 chmod 755 /usr/libexec/hearth-app-kinds
 # <<< app kinds
 
+# >>> Hearth's apps in Plasma (feature/hearth-apps-rust; docs/APPS-ANATASE.md)
+# The owner (Nov 18): every Hearth app that runs under Plasma is installed and shown in Plasma's menu, and Hearth's own
+# apps are the defaults there (menu and file types); KDE's apps stay installed but never take Hearth's place. So, for
+# Plasma (KDE) only, each kind's list becomes Hearth's own first (in Hearth Classic's order), then the Hearth KDE
+# builds, then KDE's as the fallback. Apps that run only inside Mantel (Quickshell, not in this image) are never put
+# first: they couldn't open. hearth-app-kinds then writes Plasma's menu copies and kde-mimeapps.list again; only when
+# its check passes is Plasma told to use the copies (the marker below, read by nimbus-session's run_plasma), so a
+# problem here leaves Plasma's menu as it was. Your own choices (~/.config/mimeapps.list, Default Applications) always
+# come first and are never written here.
+hearth_plasma_apps() {
+  python3 - <<'PY'
+import json
+p = '/usr/share/hearth/app-kinds.json'
+t = json.load(open(p))
+# Mantel-only (Quickshell) entries: they can't start in this image. A pure-Rust port takes its own id.
+mantel_only = {'hearth-files.desktop', 'hearth-capture.desktop', 'hearth-tasks.desktop', 'hearth-resmon.desktop',
+               'hearth-restore.desktop', 'hearth-reliability.desktop'}
+changed = []
+for k, kind in t['kinds'].items():
+    apps = kind.get('apps') or {}
+    if 'KDE' not in apps:
+        continue
+    old = list(apps['KDE'])
+    first = [i for i in (apps.get('Nimbus') or []) if i.startswith('hearth-') and i not in mantel_only]
+    builds = [i for i in old if i.startswith('hearth-') and i not in mantel_only]
+    new = []
+    for i in first + builds + [i for i in old if not i.startswith('hearth-')] + [i for i in old if i in mantel_only]:
+        if i not in new:
+            new.append(i)
+    if new != old:
+        apps['KDE'] = new
+        changed.append('%s: %s' % (k, ', '.join(new)))
+tmp = p + '.tmp'
+with open(tmp, 'w') as f:
+    json.dump(t, f, indent=1, ensure_ascii=False)
+    f.write('\n')
+import os
+os.replace(tmp, p)
+print('::notice title=Plasma: Hearth first::' + ('; '.join(changed) or 'no change'))
+PY
+}
+rm -f /usr/share/hearth/app-kinds/plasma-ready
+if hearth_plasma_apps && python3 /usr/libexec/hearth-app-kinds apply --root / > /tmp/hearth-app-kinds-plasma.json \
+   && python3 /usr/libexec/hearth-app-kinds check --root / >/dev/null; then
+  : > /usr/share/hearth/app-kinds/plasma-ready
+  echo "::notice title=Plasma's apps::$(python3 -c 'import json; d=json.load(open("/tmp/hearth-app-kinds-plasma.json")); v=d["desktops"].get("KDE",{}); print(", ".join("%s=%s" % (a, b) for a, b in sorted(v.get("apps",{}).items()) if b))' 2>/dev/null)"
+else
+  echo "::warning title=Plasma's apps::hearth-app-kinds didn't pass for Plasma, so Plasma's menu shows both Hearth's and KDE's apps, as before: $(head -c 1500 /tmp/hearth-app-kinds-plasma.json 2>/dev/null | tr '\n' ' ')"
+fi
+# Every Hearth menu entry whose program isn't here or can't start (a missing library) is named, so nothing is missing
+# from Plasma's menu without a reason in the build's notices.
+for f in /usr/share/applications/hearth-*.desktop; do
+  prog=$(sed -n 's/^TryExec=//p' "$f" | head -1); [ -n "$prog" ] || prog=$(sed -n 's/^Exec=//p' "$f" | head -1 | awk '{print $1}')
+  case "$prog" in ''|env|sh|bash|python3) continue ;; esac
+  path=$(command -v "$prog" 2>/dev/null) || { echo "::warning title=Plasma menu::$(basename "$f"): its program $prog isn't in this image"; continue; }
+  if ldd "$path" 2>/dev/null | grep -q 'not found'; then
+    echo "::warning title=Plasma menu::$(basename "$f"): $prog can't start, missing $(ldd "$path" | grep 'not found' | awk '{print $1}' | tr '\n' ' ')"
+  fi
+done
+# <<< Hearth's apps in Plasma
+
 # ------------------------------------------------------------------ 1.15: Desktop Mode's way back to Game Mode
 # Plasma's menu and taskbar have "Back to Game Mode" (os/system_files' hearth-gamemode.desktop, KDE only, Super+G;
 # pinned once per account by the Plasma update script hearth-game-mode-launcher.js): nimbus-mode game logs Plasma out
