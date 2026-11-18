@@ -24,6 +24,9 @@ if ! ls /dev/dri/renderD* >/dev/null 2>&1; then
   sudo modprobe vgem 2>/dev/null || { sudo apt-get -qq install -y "linux-modules-extra-$(uname -r)" >/dev/null 2>&1; sudo modprobe vgem 2>/dev/null; }
   sudo udevadm settle 2>/dev/null
 fi
+# (The runner is thrown away after the job: its render node is opened to every account, so the container's own groups,
+# which don't match the runner's, don't matter.)
+sudo chmod 666 /dev/dri/renderD* 2>/dev/null
 echo "::notice title=looks render device::$(ls -l /dev/dri 2>&1 | tr '\n' ' ')"
 $P run -d --name "$NAME" --privileged --entrypoint sleep "$IMG" infinity >/dev/null \
   || { echo "FAIL couldn't start the image" > "$OUT/first-start.txt"; echo "::error title=looks::couldn't start the image"; exit 0; }
