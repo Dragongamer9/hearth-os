@@ -38,6 +38,8 @@ $P exec "$NAME" bash -c 'timeout 300 dnf5 -y -q install --skip-unavailable pytho
   || echo "::notice title=looks::the screenshot helpers didn't install; PyGObject is used"
 if [ -n "$REPO" ]; then
   $P cp "$REPO/os-bases/anatase/system_files/usr/libexec/nimbus/hearth-plasma-looks" "$NAME:/usr/libexec/nimbus/hearth-plasma-looks"
+  J=usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates/hearth-look-defaults.js
+  $P cp "$REPO/os-bases/anatase/system_files/$J" "$NAME:/$J"
   $P exec "$NAME" bash -c 'chmod 755 /usr/libexec/nimbus/hearth-plasma-looks &&
     python3 /usr/libexec/nimbus/hearth-plasma-looks build --logo /usr/share/icons/hicolor/scalable/apps/hearth.svg >/dev/null' \
     && echo "::notice title=looks::this branch's hearth-plasma-looks, looks generated again" \

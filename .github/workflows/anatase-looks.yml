@@ -9,7 +9,7 @@ on:
   push:
     branches: ['fix/anatase-looks']
     paths: ['os-bases/anatase/system_files/usr/libexec/nimbus/hearth-plasma-looks', '.github/scripts/anatase-look-shot*',
-            '.github/workflows/anatase-looks.yml']
+            '.github/workflows/anatase-looks.yml', 'os-bases/anatase/system_files/usr/share/plasma/shells/**']
 
 permissions:
   contents: write    # the screenshots branch
