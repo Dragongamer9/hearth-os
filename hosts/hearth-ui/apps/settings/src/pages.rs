@@ -171,13 +171,13 @@ pub fn frame(a: &App) -> E<'_> {
     ]
     .spacing(2.0);
     let search = text_input("Search settings", &a.query).on_input(Msg::Query).size(14.0).padding(10.0).style(input_style(p));
-    let mut cats = Column::new().spacing(4.0);
+    let mut cats = Column::new().spacing(2.0);
     for (i, (id, label, _)) in CATS.iter().enumerate() {
         let on = i == a.cat && a.query.is_empty();
         let mark = container(Space::new()).width(Length::Fixed(3.0)).height(Length::Fixed(18.0)).style(ui::boxed(if on { p.accent } else { Color::TRANSPARENT }, 2.0, None));
         let line = row![mark, glyph(cat_glyph(id), if on { p.accent } else { p.muted }, 18.0, 1.8), t1(*label, 15.0, p.text)].spacing(14.0).align_y(iced::Center);
         cats = cats.push(
-            mouse_area(container(line).padding(Padding { top: 10.0, right: 12.0, bottom: 10.0, left: 4.0 }).width(Length::Fill).style(ui::boxed(if on { Pal::mix(rail_bg, p.text, 0.07) } else { Color::TRANSPARENT }, p.r(8.0), None)))
+            mouse_area(container(line).padding(Padding { top: 8.0, right: 12.0, bottom: 8.0, left: 4.0 }).width(Length::Fill).style(ui::boxed(if on { Pal::mix(rail_bg, p.text, 0.07) } else { Color::TRANSPARENT }, p.r(8.0), None)))
                 .on_press(Msg::Cat(i))
                 .interaction(mouse::Interaction::Pointer),
         );
@@ -315,7 +315,8 @@ fn home(a: &App) -> E<'_> {
     let p = a.p;
     let i = &a.info;
     let shot = container(Space::new()).width(Length::Fixed(220.0)).height(Length::Fixed(124.0)).style(ui::boxed(Pal::mix(p.bg2, p.accent, 0.18), p.r(8.0), Some((Color::BLACK, 6.0))));
-    let mut facts = vec![format!("Hearth OS {}", data::shown_version(&a.updates.booted)), "Desktop Mode".to_string()];
+    let v = data::shown_version(&a.updates.booted);
+    let mut facts = vec![if v.is_empty() { "Hearth OS".to_string() } else { format!("Hearth OS {v}") }, "Desktop Mode".to_string()];
     if !i.gpu.is_empty() {
         facts.push(i.gpu.clone());
     }
@@ -357,7 +358,7 @@ fn home(a: &App) -> E<'_> {
     };
     let tiles = column![
         row![tile(&p, G::Wifi, "Wi-Fi", wifi_s, "wifi"), tile(&p, G::Bt, "Bluetooth", bt_s, "bluetooth")].spacing(16.0),
-        row![tile(&p, G::Update, "Updates", up_s, "updates"), tile(&p, G::Link, "Hearth Link", "Not in this app yet".into(), "link")].spacing(16.0)
+        row![tile(&p, G::Update, "Updates", up_s, "updates"), tile(&p, G::Link, "Hearth Link", "Coming next".into(), "link")].spacing(16.0)
     ]
     .spacing(16.0)
     .width(Length::FillPortion(9));
