@@ -21,8 +21,8 @@ mkdir -p "$XDG_RUNTIME_DIR" "$HOME"; chmod 700 "$XDG_RUNTIME_DIR"
 HZ=$(getconf CLK_TCK)
 ticks() { awk '{print $14 + $15}' "/proc/$1/stat" 2>/dev/null || echo 0; }
 rss() { awk '/^VmRSS:/{print int($2 / 1024)}' "/proc/$1/status" 2>/dev/null || echo 0; }
-cp "$(command -v kwin_wayland)" /tmp/kwin-$KIND
-/tmp/kwin-$KIND --virtual --width 1920 --height 1080 --no-lockscreen --socket idle-$KIND >/tmp/idle-$KIND-kwin.log 2>&1 &
+cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
+/tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket idle-$KIND >/tmp/idle-$KIND-kwin.log 2>&1 &
 C=$!
 for i in $(seq 120); do [ -S "$XDG_RUNTIME_DIR/idle-$KIND" ] && break; sleep 0.5; done
 export WAYLAND_DISPLAY=idle-$KIND QT_QPA_PLATFORM=wayland
@@ -63,7 +63,7 @@ num() { case "$1" in ''|*[!0-9]*) return 1;; esac; }
 p() { num "$1" && printf '%d.%02d%%' $(($1 / 100)) $(($1 % 100)) || echo "$1"; }
 if ! num "$ps" || ! num "$fs"; then
   for k in plasma firehold; do
-    echo "::warning title=at rest, $k::$(grep -v udisks2 /tmp/idle-$k-shell.log 2>/dev/null | tail -25 | cut -c1-200 | tr '\n' '|' | cut -c1-3000) || helper: $(tail -c 600 /tmp/idle-$k-helper.log /tmp/home-$k/.local/state/nimbus/firehold-plasma.log 2>/dev/null | tr '\n' '|')"
+    echo "::warning title=at rest, $k::kwin: $(tail -12 /tmp/idle-$k-kwin.log 2>/dev/null | cut -c1-200 | tr '\n' '|') shell: $(grep -v udisks2 /tmp/idle-$k-shell.log 2>/dev/null | tail -25 | cut -c1-200 | tr '\n' '|' | cut -c1-3000) || helper: $(tail -c 600 /tmp/idle-$k-helper.log /tmp/home-$k/.local/state/nimbus/firehold-plasma.log 2>/dev/null | tr '\n' '|')"
   done
   echo "::error title=at rest::no result (plain: '$ps', Firehold: '$fs'): $(tail -c 400 /tmp/idle-firehold.err 2>/dev/null | tr '\n' ' ')"
   exit 1
