@@ -1,5 +1,5 @@
 #!/bin/bash
-# Inside a bare Fedora container (no libyaml, no FUSE): AppImage Maker's command line converts the test packages and
+# Inside a bare Fedora container (no libogg, no FUSE): AppImage Maker's command line converts the test packages and
 # Fedora's own hello .rpm, and every AppImage it makes is run and must print what it should. Also downloads the
 # AppImage runtime itself (no HEARTH_APPIMAGE_RUNTIME), and fetches libogg from Fedora for the .deb.
 #     e2e.sh BINARY PACKAGES_DIR OUT_DIR

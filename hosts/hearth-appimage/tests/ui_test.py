@@ -40,7 +40,8 @@ with sync_playwright() as p:
     check(pg.locator(".job:has(.state.done) [data-act=open]").count() == 2, "Open on each made one")
     check(pg.locator(".job .tag.menu").count() == 2, "added to the app menu (the default)")
     pg.click(".job:has(.state.done) [data-act=log] >> nth=0")
-    check(pg.locator(".job .log").count() == 1, "details show the log")
+    check(pg.locator(".job:has(.state.done) .log").count() == 1, "details show the log")
+    check(pg.locator(".job:has(.state.fail) .log").count() == 1, "a failure shows its log by itself")
     pg.screenshot(path=str(SHOTS / "2-made.png"))
 
     # Options are saved.
