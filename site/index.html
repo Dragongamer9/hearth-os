@@ -415,6 +415,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
   <div class="wrap">
     <a class="brand" href="#top"><img src="img/logo.svg" alt="" width="30" height="30"><span class="bt">Hearth OS</span></a>
     <nav aria-label="Sections">
+      <a href="#update-news">News</a>
       <a href="#games">Games</a>
       <a href="#apps">Apps</a>
       <a href="#safe">Updates</a>
@@ -442,7 +443,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
   <div class="wrap">
     <div class="copy">
       <h1 class="big">Your PC,<br><em>ready to play.</em></h1>
-      <p class="lede">Turn it on and you're in Steam Game Mode, with your Steam, GOG, Epic and Battle.net games in one place. And when you want a desktop, it feels like Windows, only friendlier. Free, and built on Debian.</p>
+      <p class="lede">Turn it on and you're in Steam Game Mode, with your Steam, GOG, Epic and Battle.net games in one place. And when you want a desktop, it feels like Windows, only friendlier. Free and open source.</p>
       <div class="ctas">
         <a class="btn go" href="#download"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Get Hearth OS</a>
         <a class="btn line" href="#soundtrack" id="heroPlay">Play the soundtrack</a>
@@ -453,23 +454,24 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
         <span class="livecount" id="live" role="status" aria-live="polite" hidden><i aria-hidden="true"></i><span id="liveText"></span></span>
       </div>
     </div>
-    <div class="shot">
-      <div class="tv"><img src="img/gm-home.webp" width="1600" height="1000" alt="Steam Game Mode on Hearth OS: recent games along the top, with games from other stores next to Steam's."></div>
-      <div class="tv small"><img src="img/gm-overlay.webp" width="1600" height="1000" loading="lazy" alt="Quick Access over a game, with volume, brightness and Wi-Fi."></div>
+</div>
+
+<section id="update-news" class="deep">
+  <div class="wrap">
+    <div class="head">
+      <span class="eyebrow">News</span>
+      <h2 class="h2x">An update on Hearth OS 1.15</h2>
+      <p class="lede">We're sorry: 1.15 is taking longer than planned, and 1.14 had to be pulled. Here's what happened and what we're doing about it.</p>
+    </div>
+    <div class="cards">
+      <div class="card"><h3>What went wrong with 1.14</h3><p>On some PCs and handhelds the desktop froze or stuttered, and its window manager (KWin) kept crashing. We took 1.14 down and moved everyone back to 1.13, which is stable. If you're on 1.13, you don't need to do anything.</p></div>
+      <div class="card"><h3>What we found</h3><p>A bug in the desktop's menu search that kept the processor busy; KWin put together on Debian without some of its own parts; videos in the browser played without the graphics chip's help on Intel PCs; and switching editions could leave a PC at the boot loader's prompt. These were problems in how Hearth was built, and they're being fixed.</p></div>
+      <div class="card"><h3>Moving to Fedora</h3><p>Hearth OS is moving to Fedora (the Anatase edition), with KDE Plasma 6.8 as the desktop: newer KDE, newer graphics drivers and better video playback, straight out of the box.</p></div>
+      <div class="card"><h3>Safer updates</h3><p>Every update now goes to a test channel and is tried on real devices before anyone else gets it. A new check stops any update that makes the desktop run hot while it sits idle, and a new test switches editions on a test PC and restarts it to make sure it starts by itself.</p></div>
+      <div class="card"><h3>When is 1.15 out?</h3><p>No date yet. It comes out once it has been tested on real devices. Thanks for your patience.</p></div>
     </div>
   </div>
-  <div class="wrap covers">
-    <p class="lab">Free games that look great on Hearth</p>
-    <ul>
-      <li><img src="img/games/wesnoth-cover.webp" width="600" height="900" loading="lazy" alt=""><span>Battle for Wesnoth</span></li>
-      <li><img src="img/games/stk-cover.webp" width="600" height="900" loading="lazy" alt=""><span>SuperTuxKart</span></li>
-      <li><img src="img/games/veloren-cover.webp" width="600" height="900" loading="lazy" alt=""><span>Veloren</span></li>
-      <li><img src="img/games/0ad-cover.webp" width="600" height="900" loading="lazy" alt=""><span>0 A.D.</span></li>
-      <li><img src="img/games/es-cover.webp" width="400" height="600" loading="lazy" alt=""><span>Endless Sky</span></li>
-      <li><img src="img/games/openttd-cover.webp" width="600" height="900" loading="lazy" alt=""><span>OpenTTD</span></li>
-    </ul>
-  </div>
-</div>
+</section>
 
 <section id="games" class="deep">
   <div class="wrap">
@@ -486,14 +488,6 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
       <div class="card"><span class="ic"><svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16v12H4zM8 18v2M16 18v2"/></svg></span><h3>Console classics, native</h3><p>Recomps: native PC ports of console games, installed and kept up to date in their own tab in Hearth Games.</p></div>
       <div class="card"><span class="ic"><svg class="ico" aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16v5H4zM4 14h16v5H4zM8 7.5h.01M8 16.5h.01"/></svg></span><h3>Game servers in a click</h3><p>Minecraft, Valheim, Terraria and Palworld servers from Settings, so friends can join while you play.</p></div>
     </div>
-    <div class="band">
-      <div>
-        <span class="new">New in 1.10</span>
-        <h3>Pick your Game Mode</h3>
-        <p>Steam Game Mode, or Hearth's own. In Hearth's, Steam games still open in Steam Game Mode, and if Hearth's ever can't start, you land in Steam's instead. Change it any time in Settings › Gaming.</p>
-      </div>
-      <img src="img/s110-gamemode.webp" width="1200" height="681" loading="lazy" alt="Settings › Gaming with Steam Game Mode and Hearth Game Mode side by side.">
-    </div>
   </div>
 </section>
 
@@ -508,22 +502,16 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
     </div>
     <div class="wins">
       <article class="win"><div class="tb"><i aria-hidden="true"></i><b>Files</b><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 10h10"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><rect x="10" y="5" width="10" height="10" rx="1"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 5l10 10M20 5L10 15"/></svg></div>
-        <div class="pic"><img src="img/s110-cdrive.webp" width="1190" height="795" loading="lazy" alt="Files showing the Hearth (C:) drive with Program Files, Users and Windows."></div>
         <div class="tx"><h3>Hearth (C:) <span class="new">In 1.10</span></h3><p>Program Files, Users and Windows, right where you'd look. Nothing on your PC is moved; it's just easier to find.</p></div></article>
       <article class="win"><div class="tb"><i aria-hidden="true"></i><b>Disk Management</b><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 10h10"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><rect x="10" y="5" width="10" height="10" rx="1"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 5l10 10M20 5L10 15"/></svg></div>
-        <div class="pic"><img src="img/s110-disks.webp" width="1200" height="750" loading="lazy" alt="Disk Management with drives, partitions and a right-click menu."></div>
         <div class="tx"><h3>Disk Management <span class="new">In 1.10</span></h3><p>Format, shrink, grow and give drives a letter. Hearth's own drive is locked, so you can't break it by accident.</p></div></article>
       <article class="win"><div class="tb"><i aria-hidden="true"></i><b>Task Manager</b><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 10h10"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><rect x="10" y="5" width="10" height="10" rx="1"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 5l10 10M20 5L10 15"/></svg></div>
-        <div class="pic"><img src="img/s18-task-manager.webp" width="1200" height="780" loading="lazy" alt="Task Manager with processes grouped under Apps and Background processes."></div>
         <div class="tx"><h3>Task Manager</h3><p>Processes, Performance, Startup apps and Services, the Windows 11 way. End a stuck game in two clicks.</p></div></article>
       <article class="win"><div class="tb"><i aria-hidden="true"></i><b>Restore</b><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 10h10"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><rect x="10" y="5" width="10" height="10" rx="1"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 5l10 10M20 5L10 15"/></svg></div>
-        <div class="pic"><img src="img/s110-restore.webp" width="980" height="685" loading="lazy" alt="Restore Hearth to an earlier point, with what will change and what stays."></div>
         <div class="tx"><h3>System Restore <span class="new">In 1.10</span></h3><p>Broke something? Pick a point from before, see what will change, and go back. Your files and games are never touched.</p></div></article>
       <article class="win"><div class="tb"><i aria-hidden="true"></i><b>Run</b><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 10h10"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><rect x="10" y="5" width="10" height="10" rx="1"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 5l10 10M20 5L10 15"/></svg></div>
-        <div class="pic"><img src="img/s110-run.webp" width="1120" height="770" loading="lazy" alt="The Run box with devmgmt.msc typed in, offering Device Manager."></div>
         <div class="tx"><h3>Run and Super+X <span class="new">In 1.10</span></h3><p>Super+R opens Run, and Windows commands like devmgmt.msc work. Super+X opens Windows' quick links, Resource Monitor included.</p></div></article>
       <article class="win"><div class="tb"><i aria-hidden="true"></i><b>Volume mixer</b><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 10h10"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><rect x="10" y="5" width="10" height="10" rx="1"/></svg><svg viewBox="0 0 30 20" aria-hidden="true"><path d="M10 5l10 10M20 5L10 15"/></svg></div>
-        <div class="pic"><img src="img/s110-mixer.webp" width="820" height="700" loading="lazy" alt="The volume mixer with a slider for each app and where its sound plays."></div>
         <div class="tx"><h3>Volume mixer <span class="new">In 1.10</span></h3><p>A slider for every app, and send Discord to your headset while the game plays on the TV.</p></div></article>
     </div>
     <ul class="chips">
@@ -544,7 +532,6 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
         <li><span class="n">4</span><span><b>Hearth Recovery.</b> Hold Volume Down while starting, or boot the <a href="#recovery">Recovery USB</a>: reinstall keeping your files, or copy them off.</span></li>
       </ol>
     </div>
-    <img src="img/s110-restore.webp" width="980" height="685" loading="lazy" alt="System Restore listing restore points, one made before updating.">
   </div>
 </section>
 
@@ -556,9 +543,9 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
       <p class="lede">Couch-first gaming, a desktop anyone coming from Windows can use on day one, and a PC that quietly runs your home in the background. Updates come out often, and every one can be undone.</p>
     </div>
     <div class="road">
-      <article><p class="when"><i aria-hidden="true"></i>Coming next</p><h3>A desktop with everything</h3><ul><li>Desktop Mode on KWin: Hearth's window frames, live previews, Overview and Snap layouts</li><li>A new Settings app, with a look for mouse and one for controllers</li><li>A new Photos app: a real photo library</li><li>Desktop widgets, Activities and more bars</li><li>Your phone linked: texts, calls, files and notifications</li><li>Remote desktop with a VNC app, and a screen recorder</li></ul></article>
-      <article class="next"><p class="when"><i aria-hidden="true"></i>Next</p><h3>Faster, and on your TV</h3><ul><li>Hearth's own apps made faster</li><li>Hearth TV: a Hearth home screen for your TV</li></ul></article>
-      <article><p class="when"><i aria-hidden="true"></i>After that</p><h3>More games, less fuss</h3><ul><li>Per-app network limits in Task Manager</li><li>When a game breaks, reset its Windows setup and keep every save</li></ul></article>
+      <article><p class="when"><i aria-hidden="true"></i>Coming next</p><h3>Hearth OS 1.15 on Fedora</h3><ul><li>Hearth OS on Fedora (Anatase), with KDE Plasma 6.8 as the desktop</li><li>Hearth's apps in KDE's menu, and Back to Game Mode one click away</li><li>Unlock the system files to install packages, with a safe way back</li><li>Tried on a test channel first</li></ul></article>
+      <article class="next"><p class="when"><i aria-hidden="true"></i>Next</p><h3>Faster, and on your TV</h3><ul><li>Hearth's own apps made faster</li><li>Hearth TV: a Hearth home screen for your TV, with Send to TV from your PC and phone</li></ul></article>
+      <article><p class="when"><i aria-hidden="true"></i>After that</p><h3>More games, less fuss</h3><ul><li>Per-app network limits</li><li>When a game breaks, reset its Windows setup and keep every save</li></ul></article>
     </div>
     <p class="small" style="margin-top:20px">Everything planned is in the <a href="docs/releases.html#next">release notes</a>. Every update so far: <a href="whats-new/">What's new</a>.</p>
   </div>
@@ -642,7 +629,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
         <details><summary>Can I go back to the last version?</summary><p>Yes. Updates keep the previous system in the boot menu; pick it, or use Settings › System › Updates. A version that fails to start twice in a row goes back by itself, and holding Volume Down while it starts opens Hearth Recovery. If nothing starts, the <a href="#recovery">Recovery USB</a> can start the previous version.</p></details>
       </div>
       <div>
-        <details><summary>I'm on Anatase. What now?</summary><p>Anatase keeps working on its last version, but gets no more updates. To keep getting updates, install Hearth OS on Debian; games on a separate drive stay.</p></details>
+        <details><summary>I'm on Anatase. What now?</summary><p>Hearth OS is moving to Anatase (Fedora). Keep using your current version for now: Anatase gets updates again once 1.15 has been tested and released.</p></details>
         <details><summary>Is it really free?</summary><p>Yes. Hearth OS is free and open source under the GPL-3.0. Games you buy come from the stores as usual.</p></details>
         <details><summary>Something broke. How do I report it?</summary><p>Send logs from Settings › System › Help &amp; logs or with <code>hearth-send-logs</code>, and <a href="docs/troubleshooting.html#ask">tell us what happened</a>.</p></details>
       </div>
