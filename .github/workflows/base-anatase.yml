@@ -553,6 +553,21 @@ jobs:
         timeout-minutes: 40
         run: bash .github/scripts/anatase-unlock-check.sh localhost/hearth-os:anatase
 
+      - name: Quick Access over games is Hearth's (Handheld Daemon's overlay app)
+        timeout-minutes: 15
+        run: |
+          sudo podman run --rm hearth-os:anatase bash -c 'test "$(readlink -f /usr/bin/hhd-ui)" = /usr/share/nimbus/desktop/shell/hearth-overlay && /usr/bin/hhd-ui --version | grep -q "^Hearth Quick Access"' \
+            || { echo "::error title=Quick Access::hhd-ui isn't Hearth's overlay app"; exit 1; }
+          sudo podman run --rm -v "$PWD/.github/scripts/overlay-text-check.sh:/ovtext.sh:ro" hearth-os:anatase bash /ovtext.sh
+
+      # Bazaar (the Flathub store) and Flatpak's repair, warn-only as on Debian.
+      - name: Flatpak repair and Bazaar (warn-only)
+        continue-on-error: true
+        timeout-minutes: 40
+        run: |
+          sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
+            -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-os:anatase bash /box.sh flatpak || echo "::warning title=box check::the flatpak check didn't finish"
+
       # Smoothness (warn-only): Desktop Mode at rest here (Plasma) and in the published Debian image (Mantel on labwc).
       - name: Smoothness beside Debian (Desktop Mode at rest, 10 minutes each)
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.smoothness }}

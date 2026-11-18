@@ -71,10 +71,10 @@ KEEP_ETC = [
     'adjtime', 'locale.conf', 'vconsole.conf', 'X11/xorg.conf.d/00-keyboard.conf', 'NetworkManager/system-connections',
     'ssh/ssh_host_*', 'resolv.conf', 'selinux', 'ostree', 'containers/auth.json', 'lvm', 'mdadm.conf', 'iscsi',
     '.updated', 'ld.so.cache', 'pki/entitlement',
-    # Hearth's own settings (red flag 9: memory and swap, the boot splash, the firewall, Server mode...): kept as they
-    # are, so a switch between editions never changes a setting by itself.
-    'hearth', 'nimbus',
 ]
+# Switching between editions (not the move from Bazzite): Hearth's own settings in /etc (red flag 9: memory and swap,
+# the boot splash, the firewall, Server mode...) are kept as they are, so a switch never changes a setting by itself.
+EDITION_KEEP = ['hearth', 'nimbus']
 # The account files: on the editions that aren't Fedora-based, merged (merge_accounts) instead of kept.
 ACCOUNT_FILES = ('passwd', 'group', 'shadow', 'gshadow')
 ACCOUNT_KEEP = {'passwd', 'passwd-', 'group', 'group-', 'shadow', 'shadow-', 'gshadow', 'gshadow-'}
@@ -310,6 +310,8 @@ def reset_etc(stamp, from_edition=None):
         log('etc: no /usr/etc (not an image-based system?), left alone')
         return
     keep, accounts = KEEP_ETC, None
+    if from_edition and from_edition != 'bazzite':
+        keep = KEEP_ETC + EDITION_KEEP
     if foreign_accounts(new_base(), from_edition):
         accounts = merge_accounts(etc, usr_etc)
         drop = FEDORA_ONLY_KEEP | (ACCOUNT_KEEP if accounts else set())
