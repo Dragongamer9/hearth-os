@@ -27,3 +27,4 @@ tools/*-shots/
 *.rej
 *.swp
 .DS_Store
+hosts/hearth-ui/target/

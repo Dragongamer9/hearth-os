@@ -1,0 +1,21 @@
+#!/bin/bash
+# Builds Hearth's pure-Rust apps (hosts/hearth-ui: Task Manager, System Restore, Reliability history) inside the
+# Fedora edition's base image (base-anatase.yml "hearth-ui"; docs/APPS-ANATASE.md), so they link exactly the libraries
+# the image has. The source is /src (read only); out: /out/hearth-ui.tar.
+set -eu
+DNF=$(command -v dnf5 || command -v dnf)
+$DNF -y install gcc pkgconf-pkg-config rust cargo libxkbcommon-devel wayland-devel fontconfig-devel freetype-devel >/dev/null
+echo "::notice title=Hearth's pure-Rust apps build::$(rustc --version) · $(. /etc/os-release; echo "$PRETTY_NAME")"
+mkdir -p /tmp/w/hosts/linux/desktop/theme
+# hearth-ui includes hearth-core's settings_file.rs by path, and carries palettes.json as its built-in look.
+cp -a /src/hosts/hearth-ui /src/hosts/hearth-core /tmp/w/hosts/
+cp /src/hosts/linux/desktop/theme/palettes.json /tmp/w/hosts/linux/desktop/theme/
+cd /tmp/w/hosts/hearth-ui
+cargo build --release --workspace 2>&1 | grep -E '^(error|warning: unused)' -A6 | head -60 || true
+mkdir -p /tmp/w/out
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history; do
+  test -x "target/release/$b" || { echo "::error title=Hearth's pure-Rust apps build::$b didn't build"; exit 1; }
+  cp "target/release/$b" /tmp/w/out/
+done
+tar -C /tmp/w/out -cf /out/hearth-ui.tar .
+ls -la /tmp/w/out

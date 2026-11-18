@@ -1398,6 +1398,54 @@ chmod 755 /usr/libexec/hearth-app-kinds
 # <<< app kinds
 
 # >>> Hearth's apps in Plasma (feature/hearth-apps-rust; docs/APPS-ANATASE.md)
+# Hearth's pure-Rust apps (hosts/hearth-ui, built inside this base by base-anatase.yml's "hearth-ui" job): Task
+# Manager, System Restore and Reliability history, the ones that ran only inside Mantel. They take those apps' own
+# menu entries and commands here (this edition has no Mantel), and are left out, with their entries as before, when
+# they weren't built or can't start.
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history; do
+  [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
+  install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/bin/$b"
+  if ldd "/usr/bin/$b" | grep -q 'not found'; then
+    echo "::warning title=Hearth's pure-Rust apps::$b can't start here (missing $(ldd /usr/bin/$b | grep 'not found' | awk '{print $1}' | tr '\n' ' ')), left out"
+    rm -f "/usr/bin/$b"
+  fi
+done
+dnf5 -y install --skip-unavailable rsms-inter-fonts >/dev/null 2>&1 || true
+if [ -x /usr/bin/hearth-task-manager ]; then
+  cat > /usr/share/applications/hearth-tasks.desktop <<DESKTOP
+[Desktop Entry]
+Name=Task Manager
+Comment=See what's running, close apps that stopped responding, and check performance
+Exec=/usr/bin/hearth-task-manager
+TryExec=/usr/bin/hearth-task-manager
+Icon=hearth-tasks
+Type=Application
+Categories=System;Monitor;
+Keywords=task;process;end;kill;cpu;memory;gpu;performance;startup;services;
+StartupWMClass=hearth-tasks
+Actions=performance;startup;
+
+[Desktop Action performance]
+Name=Performance
+Exec=/usr/bin/hearth-task-manager --page performance
+
+[Desktop Action startup]
+Name=Startup apps
+Exec=/usr/bin/hearth-task-manager --page startup
+DESKTOP
+fi
+# System Restore and Reliability history: their entries (OnlyShowIn=Nimbus) and commands open the Rust apps.
+for pair in restore:hearth-system-restore reliability:hearth-reliability-history; do
+  id=${pair%%:*}; b=${pair#*:}
+  [ -x "/usr/bin/$b" ] || continue
+  f=/usr/share/applications/hearth-$id.desktop
+  if [ -f "$f" ]; then
+    sed -i -e '/^OnlyShowIn=/d' -e "s|^Exec=/usr/bin/hearth-$id\b|Exec=/usr/bin/$b|" "$f"
+    grep -q '^StartupWMClass=' "$f" || sed -i "0,/^Exec=/s||StartupWMClass=hearth-$id\nExec=|" "$f"
+  fi
+  ln -sf "$b" "/usr/bin/hearth-$id"
+done
+echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history; do [ -x /usr/bin/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/bin/$b | cut -f1)"; done)"
 # The owner (Nov 18): every Hearth app that runs under Plasma is installed and shown in Plasma's menu, and Hearth's own
 # apps are the defaults there (menu and file types); KDE's apps stay installed but never take Hearth's place. So, for
 # Plasma (KDE) only, each kind's list becomes Hearth's own first (in Hearth Classic's order), then the Hearth KDE
@@ -1411,9 +1459,22 @@ hearth_plasma_apps() {
 import json
 p = '/usr/share/hearth/app-kinds.json'
 t = json.load(open(p))
-# Mantel-only (Quickshell) entries: they can't start in this image. A pure-Rust port takes its own id.
-mantel_only = {'hearth-files.desktop', 'hearth-capture.desktop', 'hearth-tasks.desktop', 'hearth-resmon.desktop',
-               'hearth-restore.desktop', 'hearth-reliability.desktop'}
+# Mantel-only entries can't start in this image: the ones still shown only in Mantel (OnlyShowIn=Nimbus alone), and
+# Files and Capture. A pure-Rust port, once in, takes the entry (above) and stops being one.
+import os, re
+mantel_only = set()
+for d in ('/usr/share/applications',):
+    for n in os.listdir(d):
+        if not n.endswith('.desktop'):
+            continue
+        try:
+            txt = open(os.path.join(d, n), encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue
+        only = re.search(r'^OnlyShowIn=(.*)$', txt, re.M)
+        if only and [x for x in only.group(1).split(';') if x] == ['Nimbus']:
+            mantel_only.add(n)
+mantel_only |= {'hearth-files.desktop', 'hearth-capture.desktop'} & set(os.listdir('/usr/share/applications'))
 changed = []
 for k, kind in t['kinds'].items():
     apps = kind.get('apps') or {}

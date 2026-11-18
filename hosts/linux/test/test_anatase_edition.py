@@ -123,7 +123,8 @@ class Plasma(unittest.TestCase):
         block = build.split("# >>> Hearth's apps in Plasma", 1)[1].split("# <<< Hearth's apps in Plasma", 1)[0]
         self.assertIn(': > /usr/share/hearth/app-kinds/plasma-ready', block)
         self.assertIn('hearth-app-kinds check', block, 'the marker is written only when the check passed')
-        self.assertIn("'hearth-tasks.desktop'", block, 'Mantel-only apps are never put first')
+        self.assertIn("== ['Nimbus']", block, 'Mantel-only apps are never put first')
+        self.assertIn('Exec=/usr/bin/hearth-task-manager', block, 'the pure-Rust Task Manager takes its entry')
         self.assertLess(build.index('# <<< app kinds'), build.index("# >>> Hearth's apps in Plasma"))
 
     def test_back_to_game_mode(self):
