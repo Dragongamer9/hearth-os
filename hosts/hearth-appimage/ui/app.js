@@ -22,8 +22,9 @@ const mb = n => n >= 1e9 ? (n / 1e9).toFixed(1) + ' GB' : Math.max(0.1, n / 1e6)
 let saveTimer;
 function save() { clearTimeout(saveTimer); saveTimer = setTimeout(() => invoke('store_set', { value: { ...st.settings } }).catch(() => {}), 200); }
 function drawSettings() {
-  $('#outDir').textContent = st.settings.outDir || st.defaultOut || '~/Applications';
-  $('#outDir').title = $('#outDir').textContent;
+  const out = st.settings.outDir || st.defaultOut || '~/Applications';
+  // The box trims long paths from the left (direction: rtl); <bdi> keeps the path itself the right way round.
+  $('#outDir').innerHTML = `<bdi>${esc(out)}</bdi>`; $('#outDir').title = out;
   $('#tgFetch').classList.toggle('on', !!st.settings.fetch); $('#tgFetch').setAttribute('aria-checked', String(!!st.settings.fetch));
   $('#tgMenu').classList.toggle('on', !!st.settings.menu); $('#tgMenu').setAttribute('aria-checked', String(!!st.settings.menu));
 }
