@@ -381,8 +381,16 @@ def current_wallpaper(appletsrc):
     return m[-1].strip() if m else ''
 
 
+def window_colour(text):
+    """[Colors:Window] BackgroundNormal in a KDE colour file or kdeglobals ('' when there is none)."""
+    m = re.search(r'(?ms)^\[Colors:Window\]\s*\n(.*?)(?=^\[|\Z)', text or '')
+    v = re.search(r'(?m)^BackgroundNormal=(.*)$', m.group(1)) if m else None
+    return v.group(1).strip() if v else ''
+
+
 def effective(kc):
-    """What KDE programs see now (the system defaults in /etc/xdg under the person's own files)."""
+    """What KDE programs see now (the system defaults in /etc/xdg under the person's own files), and whether the
+    colours apps draw with (kdeglobals' [Colors:*], which KDE only writes when a scheme is applied) are the scheme's."""
     if kc is None:
         return {}
     try:
@@ -391,14 +399,35 @@ def effective(kc):
     except Exception as e:
         log('KDE\'s settings could not be read: %s' % e)
         return {}
-    return {'lnf': g.get('KDE', {}).get('LookAndFeelPackage'), 'scheme': g.get('General', {}).get('ColorScheme'),
-            'style': p.get('Theme', {}).get('name')}
+    eff = {'lnf': g.get('KDE', {}).get('LookAndFeelPackage'), 'scheme': g.get('General', {}).get('ColorScheme'),
+           'style': p.get('Theme', {}).get('name')}
+    try:
+        with open(os.path.join('/usr/share/color-schemes', '%s.colors' % eff['scheme'])) as f:
+            want = window_colour(f.read())
+    except (OSError, TypeError):
+        want = None
+    eff['colours'] = bool(want) and g.get('Colors:Window', {}).get('BackgroundNormal') == want
+    return eff
 
 
 def verified(want, eff):
     return (eff.get('lnf') == lnf_id(want['look'])
             and str(eff.get('scheme') or '').startswith('HearthOS-%s-' % want['look'])
-            and eff.get('style') == style_id(want['look'], want['mode']))
+            and eff.get('style') == style_id(want['look'], want['mode'])
+            and eff.get('colours') is True)
+
+
+def unmark(path, hsio):
+    """kdeglobals with Hearth's mark on its first line (Mantel's hearth-theme wrote it before Plasma was here) loses the
+    mark once a Global Theme has written it: on Plasma the Global Theme owns the colours, and hearth-theme only writes
+    kdeglobals while the mark is there. Every other line stays."""
+    def change(text):
+        return text.split('\n', 1)[1] if text.startswith(KDE_MARK) and '\n' in text else text
+    try:
+        if hsio:
+            hsio.update_text(path, change)
+    except Exception as e:
+        log('kdeglobals left as it is: %s' % e)
 
 
 def apply(pal, want, paths, kc):
@@ -434,6 +463,19 @@ def apply(pal, want, paths, kc):
         cmd[1:1] = ['--accent-color', want['accent']]
     code, out = run(cmd)
     log('colours %s: exit %s %s' % (cmd[-1], code, out.replace('\n', ' | ')[:300]))
+    try:
+        with open(paths['kdeglobals'], encoding='utf-8', errors='replace') as f:
+            mine = window_colour(f.read())
+    except OSError:
+        mine = ''
+    if 'already set' in out or not mine:
+        # KDE only writes a scheme's colours into kdeglobals when the name changes; Hearth's scheme is the default name
+        # (/etc/xdg), so on a new account apps would draw with Breeze's light colours. The look's other mode first, then
+        # its own: KDE writes every colour.
+        other = scheme_file(want['look'], 'dark' if want['mode'] == 'light' else 'light', sub)
+        run(['plasma-apply-colorscheme', other])
+        code, out = run(cmd)
+        log('colours %s again (after %s): exit %s %s' % (cmd[-1], other, code, out.replace('\n', ' | ')[:300]))
     if not want['accent'] and kc is not None:
         try:   # no accent of your own in Hearth: the look's (the colour scheme's) again
             kc.update(paths['kdeglobals'], {'General': {'AccentColor': None}})
@@ -446,6 +488,18 @@ def apply(pal, want, paths, kc):
         if os.path.isdir(w):
             code, out = run(['plasma-apply-wallpaperimage', w])
             log('wallpaper %s: exit %s' % (wallpaper_id(lk), code))
+    # Plasma's menu button with Hearth's logo, where it still has Plasma's or the system's own icon. (The same script
+    # runs as a Plasma update script on accounts that had Plasma before; a new account's first Plasma marks every
+    # update script done without running it.) An icon you picked stays.
+    js = '/usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates/hearth-look-defaults.js'
+    try:
+        with open(js) as f:
+            code, out = run(['dbus-send', '--session', '--print-reply', '--dest=org.kde.plasmashell', '/PlasmaShell',
+                             'org.kde.PlasmaShell.evaluateScript', 'string:' + f.read()])
+        log('menu icon and wallpaper defaults: exit %s' % code)
+    except OSError:
+        pass
+    unmark(paths['kdeglobals'], paths.get('_hsio'))
     eff = effective(kc)
     ok = verified(want, eff)
     log('%s: KDE now has %s' % ('applied' if ok else 'NOT applied', json.dumps(eff)))
@@ -506,6 +560,7 @@ def sync(wait=False):
     with open(os.path.join(THEME_DIR, 'palettes.json')) as f:
         pal = json.load(f)
     paths = home_paths()
+    paths['_hsio'] = hsio
 
     def jload(p, default):
         if hsio:

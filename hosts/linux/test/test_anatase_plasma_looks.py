@@ -149,12 +149,34 @@ class Verify(unittest.TestCase):
     W = {'look': 'zen', 'mode': 'light', 'accent': '', 'sub': ''}
 
     def test_applied_only_when_kde_shows_it(self):
-        ok = {'lnf': 'org.hearthos.zen', 'scheme': 'HearthOS-zen-Light', 'style': 'hearth-zen-light'}
+        ok = {'lnf': 'org.hearthos.zen', 'scheme': 'HearthOS-zen-Light', 'style': 'hearth-zen-light', 'colours': True}
         self.assertTrue(PL.verified(self.W, ok))
         self.assertTrue(PL.verified(dict(self.W, sub='x'), dict(ok, scheme='HearthOS-zen-x-Light')))
-        for k, bad in (('lnf', None), ('lnf', 'org.hearthos.hearth'), ('scheme', 'BreezeDark'), ('style', 'hearth-zen')):
+        for k, bad in (('lnf', None), ('lnf', 'org.hearthos.hearth'), ('scheme', 'BreezeDark'), ('style', 'hearth-zen'),
+                       ('colours', False)):
             self.assertFalse(PL.verified(self.W, dict(ok, **{k: bad})), k)
         self.assertFalse(PL.verified(self.W, {}))
+
+    def test_window_colour(self):
+        self.assertEqual(PL.window_colour('[Colors:View]\nBackgroundNormal=1,2,3\n[Colors:Window]\nBackgroundNormal=4,5,6\n'), '4,5,6')
+        self.assertEqual(PL.window_colour('[General]\nColorScheme=X\n'), '')
+
+    def test_the_default_scheme_is_written_again(self):
+        # KDE says "already set" for Hearth's scheme (it's the default name) and writes no colours: apps were light.
+        src = TOOL.read_text()
+        self.assertIn("if 'already set' in out or not mine:", src)
+
+    def test_unmark(self):
+        import tempfile, os, sys
+        sys.path.insert(0, str(REPO / 'hosts/linux/desktop/shell'))
+        import hearth_settings_io as hsio
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'kdeglobals')
+            open(p, 'w').write('# Written by Hearth (Settings > Appearance); delete this line to keep your own settings.\n[General]\nA=1\n')
+            PL.unmark(p, hsio)
+            self.assertEqual(open(p).read(), '[General]\nA=1\n')
+            PL.unmark(p, hsio)
+            self.assertEqual(open(p).read(), '[General]\nA=1\n')
 
     def test_the_choice_is_recorded_by_name(self):
         # plasma-apply-lookandfeel leaves out values equal to KDE's default (Hearth's look is the default), so the
@@ -175,7 +197,7 @@ class Wiring(unittest.TestCase):
         self.assertIn("'LookAndFeelPackage': 'org.hearthos.hearth'", b)
         self.assertIn('systemctl --global enable hearth-plasma-looks.path', b)
         self.assertNotIn('Engine=none', b)
-        self.assertIn('install --skip-unavailable xrdb', b)
+        self.assertIn('dnf5 -y install xrdb', b)
 
     def test_first_start_is_required(self):
         for wf in ('base-anatase.yml', 'anatase-looks.yml'):

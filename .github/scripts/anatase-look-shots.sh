@@ -124,7 +124,7 @@ os.replace(tmp, p)
 PY
   timeout 180 /usr/libexec/nimbus/hearth-plasma-looks sync >>"$S/sync.log" 2>&1
   st=$(status)
-  echo "$st" | grep -q "\"lnf\": \"org.hearthos.$1\"" && say "OK $1 applied" || say "WARN $1 not applied: $st"
+  echo "$st" | grep -q "\"lnf\": \"org.hearthos.$1\"" && echo "$st" | grep -q '"colours": true' && say "OK $1 applied" || say "WARN $1 not applied: $st"
   sleep 6
 }
 
@@ -136,7 +136,8 @@ timeout 240 /usr/libexec/nimbus/hearth-plasma-looks sync --wait >>"$S/sync.log" 
 st=$(status)
 echo "$st" > "$S/first-start-status.json"
 if echo "$st" | grep -q '"lnf": "org.hearthos.hearth"' && echo "$st" | grep -q '"scheme": "HearthOS-hearth-' \
-   && echo "$st" | grep -q '"style": "hearth-hearth"' && echo "$st" | grep -q '"applied": {"look": "hearth"' \
+   && echo "$st" | grep -q '"style": "hearth-hearth"' && echo "$st" | grep -q '"colours": true' \
+   && echo "$st" | grep -q '"applied": {"look": "hearth"' \
    && grep -q 'LookAndFeelPackage=org.hearthos.hearth' "$HOME/.config/kdeglobals" 2>/dev/null; then
   say "FIRSTOK Hearth's look applied and recorded (sync exit $rc): $st"
 else
