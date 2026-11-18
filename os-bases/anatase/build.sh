@@ -1530,6 +1530,36 @@ dnf5 -y install --skip-unavailable --skip-broken glibc-all-langpacks || true
 # there (bootloader-update.service's drop-in). On a PC installed with Anatase's own loader nothing of this runs.
 chmod 755 /usr/libexec/nimbus/hearth-bls-grub
 systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
+# The owner's laptop (Nov 17): after the move from Debian, Fedora's bootupd updated the EFI partition by itself:
+# Debian's shim and GRUB were removed, Anatase's put in EFI/anatase WITHOUT grub.cfg and bootuuid.cfg (bootupd only
+# writes those at install), the fallback loader made an "Anatase" firmware entry, and the PC stopped at "grub>".
+# So on a PC whose boot menu is Hearth's: (1) bootupctl never updates or adopts the boot loader there (whoever asks:
+# bootloader-update.service, HHD, Anatase's own updaters; HEARTH_BOOTUPD_ALLOW=1 for a person who means it), so
+# Debian's loader stays and the previous version stays startable; (2) hearth-esp-guard gives every loader folder
+# that lacks them the grub.cfg and bootuuid.cfg that find /boot's menu (repairs a PC that already got there).
+if [ -e /usr/bin/bootupctl ]; then
+  real=$(readlink -f /usr/bin/bootupctl)
+  [ "$real" = /usr/bin/bootupctl ] && { mv /usr/bin/bootupctl /usr/libexec/nimbus/bootupctl.real; real=/usr/libexec/nimbus/bootupctl.real; }
+  rm -f /usr/bin/bootupctl
+  cat > /usr/bin/bootupctl <<WRAP
+#!/bin/bash
+# Hearth OS on Anatase: see os-bases/anatase/build.sh ("the boot menu on a PC that came from Debian"). On a PC whose
+# boot menu is Hearth's own (/boot/grub2/hearth-bls.cfg), the boot loader is never updated or adopted by bootupd.
+case " \$* " in
+  *" update "*|*" adopt-and-update "*)
+    if [ -e /boot/grub2/hearth-bls.cfg ] && [ "\${HEARTH_BOOTUPD_ALLOW:-}" != 1 ]; then
+      echo "bootupctl: left as it is on this PC: it starts through Hearth OS on Debian's boot loader and menu (red flag 2). HEARTH_BOOTUPD_ALLOW=1 to do it anyway." >&2
+      exit 0
+    fi ;;
+esac
+exec -a bootupctl $real "\$@"
+WRAP
+  chmod 755 /usr/bin/bootupctl
+  bootupctl --version >/dev/null 2>&1 || bootupctl --help >/dev/null 2>&1 || { echo "::error title=bootupctl::the wrapper doesn't start bootupd ($real)"; exit 1; }
+fi
+echo "::notice title=bootupd callers::units that run bootupctl: $(grep -rls bootupctl /usr/lib/systemd/system /usr/lib/systemd/user /etc/systemd 2>/dev/null | tr '\n' ' ')"
+chmod 755 /usr/libexec/nimbus/hearth-esp-guard
+systemctl enable hearth-esp-guard.service
 if command -v grub2-mkfont >/dev/null; then for sz in 18 22; do grub2-mkfont -n Hearth -s "$sz" -o "/usr/share/hearth/grub-theme/hearth-regular-$sz.pf2" "$(fc-match -f '%{file}' 'Inter:style=Regular' 2>/dev/null || fc-match -f '%{file}' sans)" || true; done; fi
 
 # ------------------------------------------------------------------ Unlock the file system (1.15, hearth-unlock, dnf form)

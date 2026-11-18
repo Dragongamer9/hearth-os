@@ -1,0 +1,22 @@
+# Hearth OS on Anatase (test): on a PC whose boot menu is Hearth's (it came from Hearth OS on Debian), every boot
+# loader on the EFI partition can find that menu (see /usr/libexec/nimbus/hearth-esp-guard). At every start and
+# before it shuts down; only adds missing files, never in the way of starting.
+[Unit]
+Description=Hearth: every boot loader on the EFI partition finds the boot menu
+ConditionPathExists=/boot/grub2/hearth-bls.cfg
+ConditionPathExists=/sys/firmware/efi
+After=local-fs.target boot-efi.mount
+RequiresMountsFor=/boot/efi
+DefaultDependencies=no
+Before=shutdown.target
+Conflicts=shutdown.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=-/usr/libexec/nimbus/hearth-esp-guard
+ExecStop=-/usr/libexec/nimbus/hearth-esp-guard
+TimeoutSec=60
+
+[Install]
+WantedBy=multi-user.target

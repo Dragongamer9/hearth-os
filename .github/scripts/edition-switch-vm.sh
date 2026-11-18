@@ -59,6 +59,19 @@ look() {  # look STEP: what the EFI partition and the boot menu are now
     echo "--- deployments"; sudo ls "$M/r/ostree/deploy/default/deploy"; } > "$OUT/$1-disk.txt" 2>&1
   ann notice "$1: EFI files: $(sudo find "$M/e/EFI" -type f -printf '%P ' | cut -c1-700) · entries: $(sudo grep -h '^title' "$M/b/loader/entries/"*.conf | tr '\n' ';' | cut -c1-400)"
 }
+# The EFI partition after a start: Debian's loader still there (the previous version stays startable), and every loader
+# folder with a GRUB has the grub.cfg and bootuuid.cfg that find /boot's menu (the laptop's "grub>": EFI/anatase without).
+esp_ok() {  # esp_ok STEP
+  local d
+  for f in EFI/debian/shimx64.efi EFI/debian/grubx64.efi EFI/debian/grub.cfg; do
+    sudo test -f "$M/e/$f" || fail "$1: $f is gone from the EFI partition (Debian's loader must stay)"
+  done
+  for d in $(sudo find "$M/e/EFI" -mindepth 1 -maxdepth 1 -type d); do
+    if sudo test -f "$d/grubx64.efi"; then
+      sudo test -f "$d/grub.cfg" && sudo test -f "$d/bootuuid.cfg" || fail "$1: ${d#$M/e/} has a GRUB but no grub.cfg/bootuuid.cfg (that GRUB would stop at grub>)"
+    fi
+  done
+}
 # A one-time job for the next start, in the default deployment's /etc, that runs a script kept in /var (so it runs
 # even if a first start's clean install sets /etc's extra files aside) and then powers the VM off.
 job() {  # job NAME SCRIPT-TEXT
@@ -131,8 +144,11 @@ DEB_ID=$(said 1-debian HEARTH-CI-booted | awk '{print $2}')
 
 # ---- 3. the restart into Anatase, nothing pressed
 mount_disk
-look 2-switched
+look 2-switched; esp_ok 2-switched
 sudo rm -rf "$M/r/ostree/deploy/default/var/lib/hearth-ci/anatase"   # room; not needed any more
+# The laptop's broken state, half of it: a loader folder with a GRUB but no grub.cfg (EFI/anatase). Anatase's
+# hearth-esp-guard must give it the config at this start (checked after it, esp_ok).
+sudo mkdir -p "$M/e/EFI/anatase" && sudo cp "$M/e/EFI/debian/grubx64.efi" "$M/e/EFI/anatase/grubx64.efi"
 job back-to-debian '
 echo "HEARTH-CI-edition $(python3 -c "import json; print(json.load(open(\"/usr/share/nimbus/image-info.json\"))[\"base\"])")"
 echo "HEARTH-CI-home $(cat /var/home/tester/Documents/hearth-ci.txt 2>&1)"
@@ -153,7 +169,7 @@ ann notice "3: $(said 3-anatase HEARTH-CI-clean) · $(tr -d '\r' < "$OUT/3-anata
 
 # ---- 5. the restart back into Debian, nothing pressed
 mount_disk
-look 4-back
+look 4-back; esp_ok 3-after-anatase
 job report '
 echo "HEARTH-CI-edition $(python3 -c "import json; print(json.load(open(\"/usr/share/nimbus/image-info.json\"))[\"base\"])")"
 echo "HEARTH-CI-booted $(ostree admin status | sed -n "s/^\* \S* \([0-9a-f]*\.[0-9]*\).*/\1/p")"
@@ -165,6 +181,6 @@ grep -aq 'HEARTH-CI-edition peppermint' "$OUT/5-debian-again-serial.log" || fail
 back_id=$(said 5-debian-again HEARTH-CI-booted | awk '{print $2}')
 [ -n "$DEB_ID" ] && [ "$back_id" = "$DEB_ID" ] && ann notice "5: the very Debian version came back ($DEB_ID)" || fail "5: a different Debian deployment started ($back_id, was $DEB_ID)"
 grep -aq 'HEARTH-CI-home kept' "$OUT/5-debian-again-serial.log" || fail "5: the home folder changed"
-mount_disk; look 5-final; umount_disk
+mount_disk; look 5-final; esp_ok 5-final; umount_disk
 [ "$FAILED" = 0 ] && ann notice "Debian → Anatase → Debian through the firmware with nothing pressed: every start came up by itself, the home folder kept, the same Debian back"
 exit "$FAILED"
