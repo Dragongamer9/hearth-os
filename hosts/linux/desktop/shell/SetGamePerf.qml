@@ -35,7 +35,7 @@ SetPage {
         options: [{ value: "auto", label: "The screen's own" }].concat(page.modes.slice(0, SetStyle.big ? 8 : 3).map(m => ({ value: m.w + "x" + m.h, label: m.w + " × " + m.h })))
             .concat(page.size !== "auto" && !page.modes.slice(0, SetStyle.big ? 8 : 3).some(m => m.w + "x" + m.h === page.size) ? [{ value: page.size, label: page.size.replace("x", " × ") }] : [])
         current: page.size
-        onChosen: v => { if (v === "auto") page.set({ w: 0, h: 0, r: 0 }, "The screen's own resolution"); else { const [w, h] = v.split("x").map(Number); page.set({ w: w, h: h }, w + " × " + h); } }
+        onChosen: v => { if (v === "auto") page.set({ w: 0, h: 0, r: 0 }, "The screen's own resolution"); else { const wh = v.split("x").map(Number); page.set({ w: wh[0], h: wh[1] }, wh[0] + " × " + wh[1]); } }
     }
     SetChoice {
         visible: page.rates.length > 1
