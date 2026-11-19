@@ -43,8 +43,8 @@ Fedora only (the owner, Nov 19: "Only Fedora, Archive Debian"; "Release what's o
 owner ran on his ROG Ally and laptop as test-1.15 ("everything seems to be working", "running smooth"). Hearth OS is
 Fedora-based from here (Anatase, Fedora 45, bootc; `ghcr.io/dragongamer9/hearth-os:test-1.15`, which Fedora devices
 follow); the Debian edition is archived and merged into it (docs/ARCHIVED.md). **Debian devices get nothing new**: no
-Debian image or app bundle is published, so they keep the version they have, still startable (his dad's PC stays on
-its pinned 1.13). One last Debian update, carrying only the switch to Fedora, is planned (1.16 list). ISOs: not rebuilt; the offline installer USB stays on 1.11 and the Recovery USB on 1.12, and both are
+Debian image or app bundle is published, so they keep the version they have, still startable: 1.13 (1.14 was pulled and :testing points at 1.13
+again; his dad's PC stays on its pinned 1.13). 1.14's fixes reach people in this release, on Fedora. One last Debian update, carrying only the switch to Fedora, is planned (1.16 list). ISOs: not rebuilt; the offline installer USB stays on 1.11 and the Recovery USB on 1.12, and both are
 still Debian ones. The Fedora USB installer and Recovery USB come with 1.16 (the owner's go-ahead needed to upload).
 
 - [x] Hearth OS on Fedora (Anatase) as the one edition (docs/BASE-ANATASE.md): Steam Game Mode with Hearth Sync, KDE Plasma as Desktop Mode with Hearth's apps in its menu and Back to Game Mode, Hearth's looks as Plasma Global Themes, Unlock the file system (off unless turned on), Switch edition both ways from a 1.15 system (Debian pinned in the boot menu, the home folder kept) (tested on the owner's ROG Ally and laptop)
@@ -60,7 +60,9 @@ still Debian ones. The Fedora USB installer and Recovery USB come with 1.16 (the
 - [x] Hearth TV 1.0, a Hearth home screen for the owner's TCL Google TV (checklist docs/mockups/checklists/hearth-tv.md complete, mockups approved Nov 15; docs/HEARTH-TV.md): apps, the PC's library, Theater, TV inputs, every Hearth OS look, TV Cleanup (ads and tracking switched off, never deleted); Send to TV from a Hearth PC and from a phone (needs testing on a device)
 - [x] The Debian edition archived, merged into Fedora: base-peppermint.yml by hand only (no publishing on pushes), no Debian app bundle in releases; os-bases/peppermint stays in place because the Fedora build uses its system files
 
-## 1.14 (released 2026-11-17)
+## 1.14 (pulled 2026-11-17)
+
+Taken down the same evening at the owner's word: Mantel used most of the processor and both of his devices nearly locked up. The update image went back to 1.13 and the 1.14 release was hidden; its fixes come in 1.15. Devices that updated get 1.13 again as their next update.
 
 ISOs: the offline installer USB stays on 1.11 and the Recovery USB on 1.12. Installing and starting changed (Desktop Mode on KWin, Hearth's own login screen as a test), so both are due from 1.16, the first release the 5–10 rule allows; the owner checks the Recovery USB next.
 
