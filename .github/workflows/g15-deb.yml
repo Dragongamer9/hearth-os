@@ -38,6 +38,7 @@ jobs:
             awk '/^error/{if (b) print b; b=$0; n=0; next} b && n < 14 {b=b "|" $0; n++} END{if (b) print b}' /tmp/build.log | head -20 | while read -r l; do
               echo "::error title=cargo build::$(echo "$l" | cut -c1-3800)"
             done
+            grep -q '^error' /tmp/build.log || echo "::error title=cargo build::$(tail -c 3500 /tmp/build.log | tr '\n' '|')"
             exit 1
           fi
           echo "::notice title=size::hearth-g15 $(du -h target/release/hearth-g15 | cut -f1) · $(rustc --version)"
