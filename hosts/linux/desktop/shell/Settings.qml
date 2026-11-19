@@ -62,6 +62,10 @@ Singleton {
     // itself: "" is the look's own colours (today's), so nobody's desktop changes until they pick one.
     property string subTheme: ""         // "" (the look's first: Firelight, Steam blue, Cyber…) | a sub theme's id
     property bool restoreApps: false     // reopen the apps that were open when you signed out (SessionRestore.qml; 1.14)
+    // Game Mode on this PC (Settings › System › Startup; the owner, Nov 19): true = Off: the PC starts in Desktop Mode
+    // and the Game Mode buttons are hidden (nimbus-session and nimbus-mode read the same key). Missing = On, never
+    // written by itself.
+    property bool gameModeOff: false
     // 1.14 (wave 3). Missing = the default, never written by itself.
     property bool kbdLights: false       // the keyboard's RGB lights follow the accent (KbdLights.qml, hearth-kbd-lights); Settings › Appearance
     property bool confirmLogout: false   // Log out asks first (LeaveConfirm.qml); Settings › Startup. Off: today's, logs out at once
@@ -106,6 +110,7 @@ Singleton {
         .concat(["nightTemp", "nightMode", "nightFrom", "nightTo"])
         .concat(["nightPlace", "nightLat", "nightLon", "nightFade"])
         .concat(["restoreApps"])
+        .concat(["gameModeOff"])
         .concat(["kbdLights", "confirmLogout", "leaveDefault"])
         .concat(["dockScrollVolume", "pttOn", "pttKey", "screenOffBattery", "sleepBattery", "wallScreens", "wallShow", "frameTint",
                  "signinSplash", "removable", "usbNotify", "firmwareNotify", "welcomeAfterUpdates", "oomNotice"])
@@ -152,6 +157,7 @@ Singleton {
     onSubThemeChanged: save("subTheme")
     onWallMatchChanged: save("wallMatch")
     onRestoreAppsChanged: save("restoreApps")
+    onGameModeOffChanged: save("gameModeOff")
     onKbdLightsChanged: save("kbdLights")
     onConfirmLogoutChanged: save("confirmLogout")
     onLeaveDefaultChanged: save("leaveDefault")

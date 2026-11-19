@@ -345,7 +345,7 @@ fn backup_page<'a>(a: &'a App) -> E<'a, Msg> {
         rs.add(r("folder", format!("Back up Hearth to {label}")).sub("Settings, profiles, favorites, collections, play time and your own games. Store sign-ins stay out.").on_maybe((st.busy == 0).then(|| a_.msg())).el(&p));
     }
     let found = arr(bk, "backups").len();
-    rs.add(r("restart", "Restore from a backup").sub(format!("{}On a new device, or after a reinstall. Opens in the Hearth app's window for now.", if found > 0 { format!("{found} found. ") } else { String::new() })).chev().on(Msg::Detached(sv(&["nimbus", "--windowed", "--page", "system"]))).el(&p));
+    rs.add(r("restart", "Restore from a backup").sub(format!("{}On a new device, or after a reinstall. Opens in Hearth Game Mode (Desktop Mode closes first).", if found > 0 { format!("{found} found. ") } else { String::new() })).chev().on(Msg::Detached(sv(&["nimbus-mode", "hearth-page", "system"]))).el(&p));
     let bv = st.get("backup");
     if b(bv, "error") || at(bv, "ok") == &Value::Bool(false) {
         rs.add(words(&p, if b(bv, "error") { s(bv, "error") } else { "The Hearth app couldn't read the backups".into() }));

@@ -1,7 +1,7 @@
 //! Gaming › Games & stores (Mantel's SetGames.qml): Hearth Games (GOG, Epic, Battle.net and Recomps), store sign-ins
 //! (Epic, GOG and Battle.net in Hearth Games, Xbox through hearth-signin), where your games come from (Library sources
 //! with the emulators, Downloads, Store, Import, a game from another Hearth) and Hearth's gaming apps. Apps that exist
-//! open themselves; the rest opens in the Hearth app's window at that page. Steam signs in in Steam itself: Hearth
+//! open themselves; the rest opens in Hearth Game Mode at that page (nimbus-mode hearth-page, never a window). Steam signs in in Steam itself: Hearth
 //! never signs in to Steam for you.
 
 use crate::cats::apps::kit::{self, *};
@@ -63,12 +63,12 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     v.push(r(G::Shield, "Xbox", "Sign in for Xbox Cloud Gaming and your Xbox PC games").on(M::SignIn("xbox", "Xbox")).view(&p));
     v.push(small(&p, "Steam signs in in Steam itself. Hearth never signs in to Steam for you."));
     v.push(head(&p, "Your games"));
-    v.push(r(G::Grid, "Library sources", "Steam, Epic, GOG and emulators: which ones Hearth lists, add a game by hand, look for games again").chev().on(M::Hearth("sources", "Opening Library sources in the Hearth app…")).view(&p));
+    v.push(r(G::Grid, "Library sources", "Steam, Epic, GOG and emulators: which ones Hearth lists, add a game by hand, look for games again").chev().on(M::Hearth("sources", "Opening Library sources in Hearth Game Mode…")).view(&p));
     v.push(r(G::Update, "Downloads", "Epic and GOG installs: pause, carry on, cancel (in Hearth Games)").chev().on(app(vec!["hearth-gamestore"], "Hearth Games")).view(&p));
-    v.push(r(G::Store, "Store", "Deals, new games and search for Steam, GOG, Epic and Xbox").chev().on(M::Hearth("shop", "Opening the Store in the Hearth app…")).view(&p));
+    v.push(r(G::Store, "Store", "Deals, new games and search for Steam, GOG, Epic and Xbox").chev().on(M::Hearth("shop", "Opening the Store in Hearth Game Mode…")).view(&p));
     v.push(r(G::Pad, "Recomps", "Native PC versions of classic console games: install, update and play them (in Hearth Games)").chev().on(app(vec!["hearth-gamestore", "--tab", "recomps"], "Recomps in Hearth Games")).view(&p));
-    v.push(r(G::Folder, "Import", "Games and files from other drives and systems").chev().on(M::Hearth("import", "Opening Import in the Hearth app…")).view(&p));
-    v.push(r(G::Grid, "Get a game from another Hearth", "Copy an installed game from one of your Hearth devices (Settings › Hearth Link pairs them)").chev().on(M::Hearth("library", "Opening your library in the Hearth app: Get from another Hearth…")).view(&p));
+    v.push(r(G::Folder, "Import", "Games and files from other drives and systems").chev().on(M::Hearth("import", "Opening Import in Hearth Game Mode…")).view(&p));
+    v.push(r(G::Grid, "Get a game from another Hearth", "Copy an installed game from one of your Hearth devices (Settings › Hearth Link pairs them)").chev().on(M::Hearth("library", "Opening your library in Hearth Game Mode: Get from another Hearth…")).view(&p));
     v.push(head(&p, "Apps for your games"));
     v.push(r(G::Grid, "Mods", "Install mods and Nexus or Wabbajack modlists, turn them on and off, choose their order").on(app(vec!["hearth-mods"], "Mods")).view(&p));
     v.push(r(G::Folder, "Saves", "Back up and restore your games' saves, and move them to another PC").on(app(vec!["hearth-saves"], "Saves")).view(&p));

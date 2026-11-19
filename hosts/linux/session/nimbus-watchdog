@@ -65,8 +65,10 @@ while :; do
   [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt 8000000 ] && mv -f "$LOG" "$LOG.old"
   start=0; [ -f "$LOG" ] && start=$(wc -c <"$LOG")
   now0=$(date +%s)
-  "$APP" --session --ozone-platform=x11 >>"$LOG" 2>&1 &
+  # A page to open at (nimbus-session run_game: Hearth Game Mode asked for at one of its pages): this first start only.
+  "$APP" --session --ozone-platform=x11 ${HEARTH_START_PAGE:+--page "$HEARTH_START_PAGE"} >>"$LOG" 2>&1 &
   pid=$!
+  HEARTH_START_PAGE=""
   chk=""
   if [ -z "$WEBKIT_DISABLE_DMABUF_RENDERER" ]; then
     (

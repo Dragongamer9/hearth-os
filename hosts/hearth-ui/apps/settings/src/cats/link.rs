@@ -492,7 +492,7 @@ fn link_page<'a>(a: &'a App) -> E<'a, Msg> {
         rs.add(r("store", format!("{}{}", s(tr, "title"), if s(tr, "from").is_empty() { String::new() } else { format!(" from {}", s(tr, "from")) })).sub(format!("{}{}", job_line(tr), if pausable { " · select to pause" } else if resumable { " · select to resume" } else { "" })).on_maybe(m).el(&p));
     }
     if !peers.is_empty() {
-        rs.add(r("store", "Get a game from another Hearth").sub("Pick the game in your library's Get from another Hearth. Opens in the Hearth app's window for now.").on(Msg::Detached(sv(&["nimbus", "--windowed", "--page", "library"]))).el(&p));
+        rs.add(r("store", "Get a game from another Hearth").sub("Pick the game in your library's Get from another Hearth. Opens in Hearth Game Mode (Desktop Mode closes first).").on(Msg::Detached(sv(&["nimbus-mode", "hearth-page", "library"]))).el(&p));
     }
     for hint in arr(v, "signInHints") {
         rs.add(words(&p, s(hint, "text")));
@@ -575,7 +575,7 @@ fn link_page<'a>(a: &'a App) -> E<'a, Msg> {
             rs.add(r("update", "Away from home").sub("Your devices can use it when they aren't home, over Hearth Link's encrypted connection. No port is opened.").switch(&p, away, Some(set("away", away))).el(&p));
             let smb = b(stc, "smb");
             rs.add(r("display", "Windows sharing (SMB)").sub("The shared folders for Windows PCs on this network (port 445, this network only). Its password, media and downloads: Hearth Storage's extras, below.").switch(&p, smb, Some(set("smb", smb))).el(&p));
-            rs.add(r("open", "Hearth Storage's extras").sub("The Windows sharing password, browsing the game archive, media and downloads. Opens in the Hearth app's window for now.").on(Msg::Detached(sv(&["nimbus", "--windowed", "--page", "storage"]))).el(&p));
+            rs.add(r("open", "Hearth Storage's extras").sub("The Windows sharing password, browsing the game archive, media and downloads. Opens in Hearth Game Mode (Desktop Mode closes first).").on(Msg::Detached(sv(&["nimbus-mode", "hearth-page", "storage"]))).el(&p));
         }
     }
     rs.add(message(&p, st));
