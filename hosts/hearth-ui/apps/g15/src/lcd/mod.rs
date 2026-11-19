@@ -5,6 +5,7 @@
 //! row is the third bit of the last row). 992 bytes, written to the G-key part's /dev/hidrawN.
 
 pub mod font;
+pub mod picture;
 pub mod screen;
 
 pub const W: i32 = 160;
@@ -114,6 +115,27 @@ impl Frame {
             }
         }
     }
+    /// A picture whose dots are bw x bh, stretched (nearest dot) to w x h: the editor while you drag a picture's corner,
+    /// before it's turned into dots again at its new size.
+    pub fn picture_scaled(&mut self, x: i32, y: i32, w: i32, h: i32, bits: &[u8], bw: i32, bh: i32) {
+        if bw <= 0 || bh <= 0 || w <= 0 || h <= 0 {
+            return;
+        }
+        if bw == w && bh == h {
+            return self.picture(x, y, w, h, bits);
+        }
+        let stride = ((bw + 7) / 8) as usize;
+        for yy in 0..h {
+            let sy = (yy * bh / h).min(bh - 1);
+            for xx in 0..w {
+                let sx = (xx * bw / w).min(bw - 1);
+                let i = sy as usize * stride + (sx / 8) as usize;
+                if i < bits.len() && bits[i] >> (7 - (sx % 8)) & 1 == 1 {
+                    self.dot(x + xx, y + yy, true);
+                }
+            }
+        }
+    }
     /// Turns every dot in a box the other way (white text on a dark bar).
     pub fn invert(&mut self, x: i32, y: i32, w: i32, h: i32) {
         for yy in y..y + h {
@@ -205,6 +227,13 @@ pub fn set_contrast(hidraw: &std::path::Path, level: u32) -> std::io::Result<()>
 /// `gray` is w x h brightness 0-255, scaled to out_w x out_h and dithered (Floyd-Steinberg); dark becomes a dot.
 /// Returns rows of out_w dots, the first in the highest bit (Frame::picture's format).
 pub fn dither(gray: &[u8], w: usize, h: usize, out_w: usize, out_h: usize) -> Vec<u8> {
+    dither_with(gray, w, h, out_w, out_h, 128, true)
+}
+
+/// [`dither`] with a choice: `threshold` (0-255: below it is a dot; higher makes the picture darker) and `shade`
+/// (Floyd-Steinberg, so greys become patterns of dots; false: every dot is just dark or light, sharp for logos and
+/// text).
+pub fn dither_with(gray: &[u8], w: usize, h: usize, out_w: usize, out_h: usize, threshold: u8, shade: bool) -> Vec<u8> {
     let (ow, oh) = (out_w.max(1), out_h.max(1));
     let mut v = vec![0f32; ow * oh];
     for y in 0..oh {
@@ -221,7 +250,10 @@ pub fn dither(gray: &[u8], w: usize, h: usize, out_w: usize, out_h: usize) -> Ve
                     }
                 }
             }
-            v[y * ow + x] = if n > 0.0 { sum / n } else { 255.0 };
+            let g = if n > 0.0 { sum / n } else { 255.0 };
+            // Shaded, the dots average out to the picture's greys whatever the threshold, so the threshold makes the
+            // whole picture lighter or darker instead.
+            v[y * ow + x] = if shade { (g - (threshold as f32 - 128.0)).clamp(0.0, 255.0) } else { g };
         }
     }
     let stride = (ow + 7) / 8;
@@ -229,9 +261,12 @@ pub fn dither(gray: &[u8], w: usize, h: usize, out_w: usize, out_h: usize) -> Ve
     for y in 0..oh {
         for x in 0..ow {
             let old = v[y * ow + x];
-            let dark = old < 128.0;
+            let dark = old < if shade { 128.0 } else { threshold as f32 };
             if dark {
                 out[y * stride + x / 8] |= 0x80 >> (x % 8);
+            }
+            if !shade {
+                continue;
             }
             let err = old - if dark { 0.0 } else { 255.0 };
             let mut add = |dx: isize, dy: usize, f: f32| {

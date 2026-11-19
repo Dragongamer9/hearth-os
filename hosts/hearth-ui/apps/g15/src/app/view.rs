@@ -3,7 +3,7 @@
 //! buttons at the bottom.
 
 use crate::pics::{self, AMBER, INK, ORANGE};
-use crate::{bounds, el_name, App, Dlg, Msg, Page};
+use crate::{bounds, el_name, value_name, App, Dlg, Msg, Page};
 use hearth_g15::actions;
 use hearth_g15::config;
 use hearth_g15::values::VALUES;
@@ -104,9 +104,49 @@ pub fn focusables(a: &App) -> Vec<Item> {
             for (k, _, _) in ADD {
                 v.push(it(format!("add-{k}"), Some(Msg::Add(*k))));
             }
-            for (i, _) in a.elements().iter().enumerate() {
+            let els = a.elements();
+            for (i, _) in els.iter().enumerate() {
                 v.push(it(format!("el{i}"), Some(Msg::PickEl(i))));
             }
+            // The picked element's settings: Left / Right change a choice, A opens a list.
+            if let Some(e) = a.el.and_then(|i| els.get(i)) {
+                let ty = s(e, "type");
+                let cycle = |id: &str, key: &'static str, opts: Vec<Value>, cur: Value| -> Item {
+                    let i = opts.iter().position(|o| *o == cur).unwrap_or(0);
+                    lr(id, None, i.checked_sub(1).map(|j| Msg::ElSet(key, opts[j].clone())), opts.get(i + 1).map(|o| Msg::ElSet(key, o.clone())))
+                };
+                let num = |k: &str, d: i64| json!(e.get(k).and_then(|x| x.as_i64()).unwrap_or(d));
+                if matches!(ty.as_str(), "value" | "bar" | "graph") {
+                    v.push(it("p-value", Some(Msg::Picked("value", "@open".into()))));
+                }
+                if ty == "graph" {
+                    v.push(cycle("p-span", "span", vec![json!(60), json!(300), json!(3600)], num("span", 300)));
+                }
+                if matches!(ty.as_str(), "bar" | "graph") {
+                    v.push(it("p-range", Some(Msg::Picked("range", "@open".into()))));
+                }
+                if ty == "graph" {
+                    v.push(cycle("p-style", "style", vec![json!("line"), json!("filled")], json!(if s(e, "style") == "filled" { "filled" } else { "line" })));
+                }
+                if ty == "clock" {
+                    let f = s(e, "format");
+                    let mut c = cycle("p-format", "format", CLOCK.iter().map(|(k, _)| json!(k)).collect(), json!(if f.is_empty() { "24h" } else { f.as_str() }));
+                    c.enter = Some(Msg::Picked("format", "@open".into()));
+                    v.push(c);
+                }
+                if matches!(ty.as_str(), "text" | "value" | "clock") {
+                    v.push(cycle("p-size", "size", (1..=4).map(|n| json!(n)).collect(), num("size", 1)));
+                }
+                if ty == "box" {
+                    v.push(cycle("p-fill", "fill", vec![json!(false), json!(true)], json!(e.get("fill").and_then(|x| x.as_bool()).unwrap_or(false))));
+                }
+                if ty == "picture" {
+                    v.push(cycle("p-shade", "shade", vec![json!(true), json!(false)], json!(e.get("shade").and_then(|x| x.as_bool()).unwrap_or(true))));
+                    v.push(cycle("p-dark", "threshold", DARK.iter().map(|(t, _)| json!(t)).collect(), num("threshold", 128)));
+                }
+            }
+            v.push(it("s-show", Some(Msg::Picked("show", "@open".into()))));
+            v.push(it("s-while", Some(Msg::Picked("while", "@open".into()))));
             v.push(it("undo", Some(Msg::Undo)));
             v.push(it("show", Some(Msg::Show)));
             v.push(it("done", Some(Msg::Done)));
@@ -129,7 +169,8 @@ pub fn x_action(a: &App) -> Msg {
 pub fn y_action(a: &App) -> Option<Msg> {
     match a.page {
         Page::GKeys => Some(Msg::Record),
-        Page::Editor => Some(Msg::Add("text")),
+        // Y: to the Add list.
+        Page::Editor => Some(Msg::Focus(ix(a, "add-text"))),
         _ => None,
     }
 }
@@ -138,7 +179,7 @@ fn on(a: &App, id: &str) -> bool {
     focusables(a).get(a.focus).map(|i| i.id == id).unwrap_or(false)
 }
 
-fn ix(a: &App, id: &str) -> usize {
+pub fn ix(a: &App, id: &str) -> usize {
     focusables(a).iter().position(|i| i.id == id).unwrap_or(0)
 }
 
@@ -704,38 +745,74 @@ fn lighting(a: &App) -> E<'_> {
 
 // ------------------------------------------------------------------ 6. Make your own screen (g15-6)
 pub const ADD: &[(&str, &str, &str)] = &[("text", "T", "Text"), ("value", "#", "A value"), ("bar", "▭", "Bar"), ("graph", "~", "Graph"), ("clock", "◷", "Clock"), ("picture", "▣", "Picture"), ("box", "◻", "Line or box")];
+/// A clock's choices, and a picture's darkness (how dark a dot has to be: lcd/picture.rs).
+pub const CLOCK: &[(&str, &str)] = &[("24h", "24:00"), ("12h", "12:00"), ("seconds", "Seconds"), ("date", "Date"), ("weekday", "Day")];
+pub const DARK: &[(u64, &str)] = &[(96, "Light"), (128, "Normal"), (160, "Dark")];
+
+/// The editor's own small pieces (g15-6's right panel is set smaller than the other pages' rows).
+fn eseg<'a>(p: &Pal, items: Vec<(String, bool, Msg)>) -> E<'a> {
+    let p = *p;
+    let mut r = Row::new().spacing(2.0);
+    for (l, on, m) in items {
+        let c = container(if on { tb(l, 11.5, Color::from_rgb8(0x1b, 0x10, 0x06)) } else { t(l, 11.5, p.muted) })
+            .padding(Padding { top: 4.0, right: 7.0, bottom: 4.0, left: 7.0 })
+            .style(ui::boxed(if on { ORANGE } else { Color::TRANSPARENT }, 6.0, None));
+        r = r.push(mouse_area(c).on_press(m).interaction(mouse::Interaction::Pointer));
+    }
+    container(r).padding(3.0).style(ui::boxed(Pal::mix(p.bg, Color::BLACK, 0.15), 8.0, None)).into()
+}
+
+/// The orange button (Done), as the mockup draws it.
+fn orange_btn<'a>(label: &'a str, focused: bool, msg: Msg) -> E<'a> {
+    let c = container(tb(label, 14.0, Color::from_rgb8(0x1b, 0x10, 0x06)))
+        .padding(Padding { top: 8.0, right: 18.0, bottom: 8.0, left: 18.0 })
+        .style(ui::boxed(ORANGE, 8.0, if focused { Some((Color::WHITE, 2.0)) } else { None }));
+    mouse_area(c).on_press(msg).interaction(mouse::Interaction::Pointer).into()
+}
 
 fn editor(a: &App) -> E<'_> {
     let p = a.p;
     let scr = a.cur_screen().unwrap_or(json!({}));
     let els = a.elements();
     let pick = a.el.and_then(|i| els.get(i));
+
+    // Add: press one and let go on the screen to put it there (or just click it).
     let mut add = Column::new().spacing(8.0).push(t("Add", 14.0, p.muted));
     for (k, icon, l) in ADD {
         let focused = on(a, &format!("add-{k}"));
-        let c = container(row![container(t(*icon, 13.0, p.muted)).width(Length::Fixed(26.0)), t(*l, 14.5, p.text)].align_y(iced::Center))
-            .padding(Padding { top: 10.0, right: 12.0, bottom: 10.0, left: 12.0 })
+        let picked = pick.map(|e| s(e, "type") == *k || (*k == "box" && s(e, "type") == "line")).unwrap_or(false);
+        let ic: E = match *k {
+            // Drawn: a wave, the red alarm clock and a framed picture, as the mockup has them.
+            "graph" | "clock" | "picture" => canvas(AddIcon(*k)).width(Length::Fixed(14.0)).height(Length::Fixed(14.0)).into(),
+            _ => t(*icon, 13.0, p.muted).into(),
+        };
+        let c = container(row![container(ic).width(Length::Fixed(24.0)), t(*l, 13.5, p.text)].align_y(iced::Center))
+            .padding(Padding { top: 10.0, right: 8.0, bottom: 10.0, left: 10.0 })
             .width(Length::Fill)
-            .style(ui::boxed(Pal::mix(p.panel, Color::WHITE, 0.04), 8.0, if focused || (pick.map(|e| s(e, "type") == *k).unwrap_or(false)) { Some((ORANGE, 2.0)) } else { None }));
-        add = add.push(mouse_area(c).on_press(Msg::Add(*k)).interaction(mouse::Interaction::Pointer));
+            .style(ui::boxed(Pal::mix(p.panel, Color::WHITE, 0.04), 8.0, if focused || picked { Some((ORANGE, 2.0)) } else { None }));
+        add = add.push(mouse_area(c).on_press(Msg::AddGrab(*k)).interaction(if a.adding == Some(*k) { mouse::Interaction::Grabbing } else { mouse::Interaction::Grab }));
     }
-    add = add.push(gap(1.0, 4.0)).push(t1("Drag onto the screen. Pictures are turned into the screen's dots for you.", 12.0, p.muted));
+    add = add.push(gap(1.0, 4.0)).push(t("Drag onto the screen. Pictures are turned into the screen's dots for you.", 12.0, p.muted));
     let add = card(&p, add).padding(14.0).width(Length::Fixed(sz(184.0)));
 
     let cv = editor_canvas(a);
-    let centre = column![container(cv).center_x(Length::Fill), container(t1("160 × 43 dots, exactly as the keyboard shows it · arrows nudge one dot · drag a corner to resize", 12.5, p.muted)).center_x(Length::Fill)].spacing(10.0);
-    let centre = card(&p, centre).padding(16.0).width(Length::Fill);
+    let centre = column![container(cv).center_x(Length::Fill), container(t1("160 × 43 dots, exactly as the keyboard shows it · arrows nudge one dot · drag a corner to resize", 12.0, p.muted)).center_x(Length::Fill)].spacing(10.0);
+    let centre = card(&p, centre).padding(Padding { top: 14.0, right: 12.0, bottom: 14.0, left: 12.0 }).width(Length::Fill);
     let mut chips = Row::new().spacing(8.0);
     for (i, e) in els.iter().enumerate() {
         chips = chips.push(chip_btn(&p, el_name(e), Some(i) == a.el, on(a, &format!("el{i}")), Msg::PickEl(i)));
     }
     let middle = column![centre, head(&p, "On this screen"), chips.wrap(), note(a)].spacing(10.0).width(Length::Fill);
 
-    // The picked element's settings, then the screen's.
-    let mut props = Column::new().spacing(12.0);
-    let prow = |l: &str, w: E<'static>| -> E<'static> { column![row![t(l.to_string(), 14.0, p.muted).width(Length::Fill), w].align_y(iced::Center), hline(p.line)].spacing(10.0).into() };
+    // The picked element's settings, then the screen's: a label on the left, its choice on the right, a line under.
+    let mut props = Column::new().spacing(10.0);
+    let prow = |id: &str, l: &str, w: E<'static>| -> E<'static> {
+        let r: E = row![t1(l.to_string(), 12.0, p.muted).width(Length::Fill), w].spacing(6.0).align_y(iced::Center).into();
+        let r = if on(a, id) { ui::ring(p, true, 6.0, r) } else { r };
+        column![r, hline(p.line)].spacing(8.0).into()
+    };
     let dd = |what: &'static str, label: String| -> E<'static> {
-        mouse_area(row![tb(label, 14.0, p.text), t(" ▾", 12.0, p.text)]).on_press(Msg::Picked(what, String::from("@open"))).interaction(mouse::Interaction::Pointer).into()
+        mouse_area(row![tb(label, 12.5, p.text), t(" ▾", 10.5, p.text)].align_y(iced::Center)).on_press(Msg::Picked(what, String::from("@open"))).interaction(mouse::Interaction::Pointer).into()
     };
     if let Some(e) = pick {
         let ty = s(e, "type");
@@ -748,68 +825,88 @@ fn editor(a: &App) -> E<'_> {
             "picture" => "Picture",
             "line" => "Line",
             "box" => "Box",
+            "tabs" => "Page names",
             _ => "Element",
-        }, 15.0, p.text));
-        let shows = VALUES.iter().find(|(k, _, _)| *k == s(e, "value")).map(|(_, l, _)| l.to_string()).unwrap_or_default();
+        }, 14.0, p.text));
         if matches!(ty.as_str(), "value" | "bar" | "graph") {
-            props = props.push(prow("Shows", dd("value", shows)));
+            props = props.push(prow("p-value", "Shows", dd("value", value_name(&s(e, "value")))));
         }
         if ty == "text" {
-            props = props.push(column![t("Text (put a value in { }: {cpu.temp}°)", 13.0, p.muted), text_input("Text", &s(e, "text")).on_input(Msg::ElText).padding(8.0).size(14.0)].spacing(6.0));
+            props = props.push(column![t("Text (a value goes in { }: {cpu.temp}°)", 12.5, p.muted), text_input("Text", &s(e, "text")).on_input(Msg::ElText).padding(7.0).size(13.0)].spacing(6.0));
         }
         if ty == "graph" {
             let span = e.get("span").and_then(|x| x.as_i64()).unwrap_or(300);
-            props = props.push(prow("Time across", seg(&p, [("1 min", 60), ("5 min", 300), ("1 hr", 3600)].iter().map(|(l, v)| (l.to_string(), span == *v, Msg::ElSet("span", json!(v)))).collect())));
+            props = props.push(prow("p-span", "Time across", eseg(&p, [("1 min", 60), ("5 min", 300), ("1 hr", 3600)].iter().map(|(l, v)| (l.to_string(), span == *v, Msg::ElSet("span", json!(v)))).collect())));
         }
         if matches!(ty.as_str(), "bar" | "graph") {
             let unit = hearth_g15::lcd::screen::unit_of(&s(e, "value")).trim().to_string();
             let r = format!("{}{u} – {}{u}", e.get("min").and_then(|x| x.as_i64()).unwrap_or(0), e.get("max").and_then(|x| x.as_i64()).unwrap_or(100), u = unit);
-            props = props.push(prow("Range", dd("range", r)));
+            props = props.push(prow("p-range", "Range", dd("range", r)));
         }
         if ty == "graph" {
             let filled = s(e, "style") == "filled";
-            props = props.push(prow("Style", seg(&p, vec![("Line".into(), !filled, Msg::ElSet("style", json!("line"))), ("Filled".into(), filled, Msg::ElSet("style", json!("filled")))])));
+            props = props.push(prow("p-style", "Style", eseg(&p, vec![("Line".into(), !filled, Msg::ElSet("style", json!("line"))), ("Filled".into(), filled, Msg::ElSet("style", json!("filled")))])));
         }
         if ty == "clock" {
             let f = s(e, "format");
-            props = props.push(prow("Shows", seg(&p, [("24h", "24:00"), ("12h", "12:00"), ("seconds", "Seconds"), ("date", "Date"), ("weekday", "Day")].iter().map(|(k, l)| (l.to_string(), f == *k || (f.is_empty() && *k == "24h"), Msg::ElSet("format", json!(k)))).collect())));
+            let l = CLOCK.iter().find(|(k, _)| *k == f.as_str()).map(|(_, l)| *l).unwrap_or("24:00");
+            props = props.push(prow("p-format", "Shows", dd("format", l.to_string())));
         }
         if matches!(ty.as_str(), "text" | "value" | "clock") {
             let z = e.get("size").and_then(|x| x.as_i64()).unwrap_or(1);
-            props = props.push(prow("Size", seg(&p, (1..=4).map(|n| (format!("{n}×"), z == n, Msg::ElSet("size", json!(n)))).collect())));
+            props = props.push(prow("p-size", "Size", eseg(&p, (1..=4).map(|n| (format!("{n}×"), z == n, Msg::ElSet("size", json!(n)))).collect())));
         }
-        if ty == "box" {
+        if ty == "box" || ty == "line" {
             let fill = e.get("fill").and_then(|x| x.as_bool()).unwrap_or(false);
-            props = props.push(prow("Style", seg(&p, vec![("Outline".into(), !fill, Msg::ElSet("fill", json!(false))), ("Filled".into(), fill, Msg::ElSet("fill", json!(true))), ("Line".into(), false, Msg::ElSet("type", json!("line")))])));
+            let line = ty == "line";
+            props = props.push(prow("p-fill", "Style", eseg(&p, vec![("Line".into(), line, Msg::ElSet("type", json!("line"))), ("Box".into(), !line && !fill, Msg::ElSet("fill", json!(false))), ("Filled".into(), !line && fill, Msg::ElSet("fill", json!(true)))])));
         }
-        if ty == "line" {
-            props = props.push(prow("Style", seg(&p, vec![("Line".into(), true, Msg::ElSet("type", json!("line"))), ("Box".into(), false, Msg::ElSet("type", json!("box")))])));
+        if ty == "picture" {
+            let shade = e.get("shade").and_then(|x| x.as_bool()).unwrap_or(true);
+            let th = e.get("threshold").and_then(|x| x.as_u64()).unwrap_or(128);
+            props = props.push(prow("p-shade", "Dots", eseg(&p, vec![("Shaded".into(), shade, Msg::ElSet("shade", json!(true))), ("Sharp".into(), !shade, Msg::ElSet("shade", json!(false)))])));
+            props = props.push(prow("p-dark", "Darkness", eseg(&p, DARK.iter().map(|(v, l)| (l.to_string(), th == *v, Msg::ElSet("threshold", json!(v)))).collect())));
         }
         let (x, y, w, h) = bounds(e);
-        props = props.push(prow("Place", tb(format!("x {x} · y {y} · {w} × {h}"), 14.0, p.text).into()));
-        props = props.push(row![Space::new().width(Length::Fill), btn(&p, "Delete", Kind::Normal, false, Some(Msg::Delete))]);
+        props = props.push(prow("p-place", "Place", tb(format!("x {x} · y {y} · {w} × {h}"), 12.5, p.text).into()));
     } else {
-        props = props.push(t1("Pick something on the screen, or add something from the left.", 13.0, p.muted));
+        props = props.push(t("Pick something on the screen, or add something from the left.", 13.0, p.muted));
     }
     let show = if s(&scr, "show") == "hidden" { "Not in the page list" } else { "In the page list" };
     let whilerun = s(&scr, "whileRunning");
-    props = props.push(gap(1.0, 10.0)).push(tb("This screen", 15.0, p.text));
-    props = props.push(prow("Name", text_input("Name", &s(&scr, "name")).on_input(Msg::ScreenName).padding(6.0).size(14.0).width(Length::Fixed(170.0)).into()));
-    props = props.push(prow("Show it", dd("show", show.into())));
-    props = props.push(column![row![t("Also show it", 14.0, p.muted).width(Length::Fill), tb(if whilerun.is_empty() { "Never".to_string() } else { format!("While {whilerun} runs") }, 14.0, p.text)], text_input("A game's name (Trains 2010…)", &whilerun).on_input(Msg::WhileText).padding(6.0).size(13.0), hline(p.line)].spacing(6.0));
-    props = props.push(t1("Values you can show: CPU and graphics card use and heat, memory, the drive, network speed, fan speeds, frames per second, the time, the weather, the song playing, the battery of a controller.", 12.5, p.muted));
-    let props = card(&p, props).padding(18.0).width(Length::Fixed(sz(380.0)));
+    props = props.push(gap(1.0, 8.0)).push(tb("This screen", 14.0, p.text));
+    // The name reads as plain text, typed into where it stands.
+    let name_style = move |_t: &Theme, st: text_input::Status| text_input::Style {
+        background: iced::Background::Color(if matches!(st, text_input::Status::Focused { .. }) { Pal::mix(p.panel, p.bg, 0.5) } else { Color::TRANSPARENT }),
+        border: iced::Border { color: if matches!(st, text_input::Status::Focused { .. }) { p.line } else { Color::TRANSPARENT }, width: 1.0, radius: 6.0.into() },
+        icon: p.muted,
+        placeholder: p.muted,
+        value: p.text,
+        selection: Pal::a(ORANGE, 0.35),
+    };
+    let name = text_input("Name", &s(&scr, "name")).on_input(Msg::ScreenName).padding(Padding { top: 2.0, right: 0.0, bottom: 2.0, left: 4.0 }).size(12.5).font(ui::weight(iced::font::Weight::Bold)).align_x(iced::alignment::Horizontal::Right).style(name_style).width(Length::Fixed(150.0));
+    props = props.push(prow("s-name", "Name", name.into()));
+    props = props.push(prow("s-show", "Show it", dd("show", show.into())));
+    let also: E = if a.while_typing {
+        text_input("A game's name", &whilerun).on_input(Msg::WhileText).on_submit(Msg::WhileDone).padding(5.0).size(13.0).width(Length::Fixed(150.0)).into()
+    } else {
+        dd("while", if whilerun.is_empty() { "Never".to_string() } else { format!("While {whilerun} runs") })
+    };
+    props = props.push(prow("s-while", "Also show it", also));
+    props = props.push(t("Values you can show: CPU and graphics card use and heat, memory, the drive, network speed, fan speeds, frames per second, the time, the weather, the song playing, the battery of a controller.", 12.0, p.muted));
+    // A little wider than 0.64 of the mockup's, so "Also show it  While Trains 2010 runs" fits on one line.
+    let props = card(&p, props).padding(Padding { top: 16.0, right: 12.0, bottom: 16.0, left: 12.0 }).width(Length::Fixed(sz(380.0) + 12.0));
 
     let top = row![
         big_title(&p, vec![("Keyboard screen".into(), false), (s(&scr, "name"), true)]),
         Space::new().width(Length::Fill),
-        btn(&p, "Undo", Kind::Normal, on(a, "undo"), (!a.undo.is_empty()).then_some(Msg::Undo)),
+        btn(&p, "Undo", Kind::Normal, on(a, "undo"), Some(Msg::Undo)),
         btn(&p, "Show on the keyboard", Kind::Normal, on(a, "show"), Some(Msg::Show)),
-        btn(&p, "Done", Kind::Primary, on(a, "done"), Some(Msg::Done)),
+        orange_btn("Done", on(a, "done"), Msg::Done),
     ]
     .spacing(8.0)
     .align_y(iced::Center);
-    column![top, gap(1.0, 12.0), row![add, middle, props].spacing(16.0)].spacing(6.0).into()
+    column![top, gap(1.0, 12.0), row![add, middle, props].spacing(14.0)].spacing(6.0).into()
 }
 
 fn editor_canvas(a: &App) -> E<'_> {
@@ -820,11 +917,65 @@ fn editor_canvas(a: &App) -> E<'_> {
     });
     let frame = a.editor_frame.clone().unwrap_or_default();
     let cv = canvas(pics::Screen { frame, pick: pk, glow: true }).width(Length::Fixed(EDITOR_SIZE.width)).height(Length::Fixed(EDITOR_SIZE.height));
-    let layer = canvas(Pointer).width(Length::Fixed(EDITOR_SIZE.width)).height(Length::Fixed(EDITOR_SIZE.height));
+    let layer = canvas(Pointer { adding: a.adding.is_some() }).width(Length::Fixed(EDITOR_SIZE.width)).height(Length::Fixed(EDITOR_SIZE.height));
     stack![cv, layer].into()
 }
 
-struct Pointer;
+/// Add's drawn icons.
+struct AddIcon(&'static str);
+impl canvas::Program<Msg> for AddIcon {
+    type State = ();
+    fn draw(&self, _s: &(), renderer: &iced::Renderer, _t: &Theme, b: iced::Rectangle, _c: mouse::Cursor) -> Vec<canvas::Geometry> {
+        use canvas::{Path, Stroke};
+        let mut f = canvas::Frame::new(renderer, b.size());
+        let (w, h) = (b.width, b.height);
+        let grey = Color::from_rgb8(0xa8, 0xab, 0xb4);
+        let st = |c: Color| Stroke::default().with_color(c).with_width(1.4);
+        match self.0 {
+            "graph" => {
+                let p = Path::new(|p| {
+                    p.move_to(iced::Point::new(0.5, h * 0.55));
+                    for i in 1..=12 {
+                        let x = w * i as f32 / 12.0;
+                        p.line_to(iced::Point::new(x, h * 0.55 - (x / w * std::f32::consts::TAU * 1.5).sin() * h * 0.2));
+                    }
+                });
+                f.stroke(&p, st(grey));
+            }
+            "clock" => {
+                let red = Color::from_rgb8(0xe5, 0x48, 0x3c);
+                f.fill(&Path::circle(iced::Point::new(w / 2.0, h * 0.56), w * 0.4), red);
+                f.fill(&Path::circle(iced::Point::new(w / 2.0, h * 0.56), w * 0.28), Color::WHITE);
+                f.fill(&Path::circle(iced::Point::new(w * 0.18, h * 0.16), w * 0.13), red);
+                f.fill(&Path::circle(iced::Point::new(w * 0.82, h * 0.16), w * 0.13), red);
+                f.stroke(&Path::new(|p| {
+                    p.move_to(iced::Point::new(w / 2.0, h * 0.36));
+                    p.line_to(iced::Point::new(w / 2.0, h * 0.56));
+                    p.line_to(iced::Point::new(w * 0.64, h * 0.64));
+                }), Stroke::default().with_color(Color::from_rgb8(0x20, 0x20, 0x20)).with_width(1.2));
+            }
+            _ => {
+                f.stroke(&Path::rectangle(iced::Point::new(1.0, 2.0), iced::Size::new(w - 2.0, h - 4.0)), st(grey));
+                f.fill(&Path::new(|p| {
+                    p.move_to(iced::Point::new(2.5, h - 3.0));
+                    p.line_to(iced::Point::new(w * 0.4, h * 0.45));
+                    p.line_to(iced::Point::new(w * 0.62, h * 0.7));
+                    p.line_to(iced::Point::new(w * 0.75, h * 0.55));
+                    p.line_to(iced::Point::new(w - 2.5, h - 3.0));
+                    p.close();
+                }), grey);
+                f.fill(&Path::circle(iced::Point::new(w * 0.72, h * 0.32), 1.6), grey);
+            }
+        }
+        vec![f.into_geometry()]
+    }
+}
+
+/// The pointer on the editor's screen: press to pick up (or on the picked one's corner to resize), drag, let go; and
+/// letting go of one of Add's buttons (dragged here, or let go anywhere else: added at its usual place).
+struct Pointer {
+    adding: bool,
+}
 impl canvas::Program<Msg> for Pointer {
     type State = bool;
     fn update(&self, pressed: &mut bool, event: &iced::Event, bounds: iced::Rectangle, cursor: mouse::Cursor) -> Option<canvas::Action<Msg>> {
@@ -843,6 +994,10 @@ impl canvas::Program<Msg> for Pointer {
                 *pressed = false;
                 Some(canvas::Action::publish(Msg::Release).and_capture())
             }
+            iced::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) if self.adding => Some(canvas::Action::publish(match pos {
+                Some(p) => Msg::AddDrop(p),
+                None => Msg::AddEnd,
+            })),
             _ => None,
         }
     }
@@ -850,7 +1005,7 @@ impl canvas::Program<Msg> for Pointer {
         vec![canvas::Frame::new(renderer, b.size()).into_geometry()]
     }
     fn mouse_interaction(&self, pressed: &bool, bounds: iced::Rectangle, cursor: mouse::Cursor) -> mouse::Interaction {
-        if *pressed {
+        if *pressed || (self.adding && cursor.is_over(bounds)) {
             mouse::Interaction::Grabbing
         } else if cursor.is_over(bounds) {
             mouse::Interaction::Pointer
@@ -879,6 +1034,8 @@ fn dialog<'a>(a: &'a App, d: &'a Dlg) -> E<'a> {
             "value" => "What it shows",
             "range" => "Range",
             "show" => "Show it",
+            "while" => "Also show it",
+            "format" => "The clock shows",
             "idle" => "Turn the light off after",
             _ => "Pick one",
         }, v.iter().map(|(k, l)| (l.clone(), String::new(), Msg::Picked(*w, k.clone()))).collect()),
@@ -902,7 +1059,20 @@ fn dialog<'a>(a: &'a App, d: &'a Dlg) -> E<'a> {
 /// The choices a ▾ opens (what a value shows, a range, where a screen shows, the light's idle time).
 pub fn choices(a: &App, what: &str) -> Vec<(String, String)> {
     match what {
-        "value" => VALUES.iter().map(|(k, l, _)| (k.to_string(), l.to_string())).collect(),
+        "value" => VALUES.iter().map(|(k, _, _)| (k.to_string(), value_name(k))).collect(),
+        "format" => CLOCK.iter().map(|(k, l)| (k.to_string(), l.to_string())).collect(),
+        // "Also show it": never, or while one of the games named for the key sets runs, or another one typed in.
+        "while" => {
+            let mut v = vec![(String::new(), "Never".to_string())];
+            let cur = a.cur_screen().map(|x| s(&x, "whileRunning")).unwrap_or_default();
+            for g in a.games().into_iter().chain(std::iter::once(cur)) {
+                if !g.trim().is_empty() && !v.iter().any(|(k, _)| *k == g) {
+                    v.push((g.clone(), format!("While {g} runs")));
+                }
+            }
+            v.push(("@other".into(), "Another game…".into()));
+            v
+        }
         "range" => {
             let id = a.el.and_then(|i| a.elements().get(i).cloned()).map(|e| s(&e, "value")).unwrap_or_default();
             let u = hearth_g15::lcd::screen::unit_of(&id).trim().to_string();

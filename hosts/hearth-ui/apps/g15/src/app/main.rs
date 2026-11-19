@@ -9,7 +9,8 @@
 //!
 //! Mouse, keyboard and the controller (as keys: hearth-pad sends A Enter, B Esc, LB / RB Ctrl+Page Up / Down, X the
 //! Menu key): Up / Down move between rows, Left / Right change a choice, Enter picks, Esc goes back.
-//!   hearth-g15-app [--page overview|g-keys|screen|lighting|editor[:ID]] [--key N] [--set N]
+//!   hearth-g15-app [--page overview|g-keys|screen|lighting|editor[:ID]] [--key N] [--set N] [--element N]
+//!                  [--add-picture FILE [--at X]] (the editor, for CI's pictures)
 
 mod pics;
 mod view;
@@ -113,6 +114,12 @@ pub enum Msg {
     Done,
     Delete,
     PictureFile(run::Output),
+    /// Pressed on one of Add's buttons: let go on the screen to put it there, anywhere else to add it at its usual place.
+    AddGrab(&'static str),
+    AddDrop(iced::Point),
+    AddEnd,
+    /// "Also show it": done typing a game's name.
+    WhileDone,
     Saved(Result<(), String>),
 }
 
@@ -145,6 +152,14 @@ pub struct App {
     pub grab: Option<(i32, i32, bool)>,
     pub undo: Vec<Value>,
     pub editor_frame: Option<Lcd>,
+    /// The picked element is picked up (A, or clicked): the arrows move it one dot; A or B puts it down.
+    pub holding: bool,
+    /// Add's button being dragged, where it was let go on the screen (in dots), and the screens before a drag.
+    pub adding: Option<&'static str>,
+    pub drop_at: Option<(i32, i32)>,
+    pub grab_before: Option<Value>,
+    /// "Also show it": typing a game's name.
+    pub while_typing: bool,
 }
 
 /// One change to g15.json: the value at a path (None removes it). Applied to the app's copy at once, and to the file
@@ -212,6 +227,11 @@ impl App {
             grab: None,
             undo: Vec::new(),
             editor_frame: None,
+            holding: false,
+            adding: None,
+            drop_at: None,
+            grab_before: None,
+            while_typing: false,
         };
         let first = app::arg("--page").unwrap_or_default();
         let (pg, part) = first.split_once(':').map(|(a, b)| (a.to_string(), b.to_string())).unwrap_or((first.clone(), String::new()));
@@ -237,6 +257,19 @@ impl App {
             let _ = update(&mut a, Msg::Go(pg));
         }
         a.refresh_pictures();
+        if let Some(i) = a.el.filter(|_| a.page == Page::Editor) {
+            a.focus = view::ix(&a, &format!("el{i}"));
+        }
+        // CI's pictures: --add-picture FILE adds a picture to the open screen as Add › Picture does (on a copy).
+        if let Some(path) = app::arg("--add-picture").filter(|_| a.page == Page::Editor) {
+            match lcd::picture::element(&path, app::arg("--at").and_then(|x| x.parse().ok()).unwrap_or(0), 0) {
+                Ok(e) => {
+                    let t = a.put_new(e);
+                    return (a, t);
+                }
+                Err(e) => a.note = format!("Couldn't use that picture: {e}"),
+            }
+        }
         // CI's pictures: --show hearth|apps|rename|games opens that dialog.
         match app::arg("--show").as_deref() {
             Some("hearth") => a.dlg = Some(Dlg::Hearth),
@@ -400,8 +433,48 @@ impl App {
         let Some(i) = self.el else { return Task::none() };
         let mut els = self.elements();
         let Some(e) = els.get_mut(i) else { return Task::none() };
+        let gi = |e: &Value, k: &str, d: i64| e.get(k).and_then(|x| x.as_i64()).unwrap_or(d);
+        let was = s(e, "type");
+        if k == "type" && was == "box" && v == json!("line") {
+            // A box becomes a line along its top; a line becomes the box around it.
+            let (x, y, w) = (gi(e, "x", 0), gi(e, "y", 0), gi(e, "w", 20));
+            e["x2"] = json!(x + w - 1);
+            e["y2"] = json!(y);
+        } else if k == "type" && was == "line" && v == json!("box") {
+            let (x, y, w, h) = bounds(e);
+            e["x"] = json!(x);
+            e["y"] = json!(y);
+            e["w"] = json!(w.max(2));
+            e["h"] = json!(h.max(2));
+        }
         e[k] = v;
+        if s(e, "type") == "picture" && matches!(k, "shade" | "threshold" | "w" | "h") {
+            lcd::picture::redo(e);
+        }
         self.put_elements(els, true)
+    }
+
+    /// Adds an element (Add's buttons): at the dot it was dropped on, or its usual place; picked up, so the arrows move it.
+    fn add(&mut self, kind: &'static str) -> Task<Msg> {
+        if kind == "picture" {
+            let cmd = vec!["sh".into(), "-c".into(), "if command -v kdialog >/dev/null; then kdialog --title 'Pick a picture' --getopenfilename \"$HOME\" 'image/png image/jpeg'; elif command -v zenity >/dev/null; then zenity --file-selection --title='Pick a picture' --file-filter='*.png *.jpg *.jpeg'; else exit 3; fi".into()];
+            return Task::perform(run::spawn(cmd), Msg::PictureFile);
+        }
+        let mut e = new_element(kind);
+        if let Some((x, y)) = self.drop_at.take() {
+            move_to(&mut e, x, y);
+        }
+        self.put_new(e)
+    }
+    fn put_new(&mut self, e: Value) -> Task<Msg> {
+        let mut els = self.elements();
+        els.push(e);
+        let i = els.len() - 1;
+        self.el = Some(i);
+        self.holding = true;
+        let t = self.put_elements(els, true);
+        self.focus = view::ix(self, &format!("el{i}"));
+        t
     }
 
     pub fn items(&self) -> usize {
@@ -553,7 +626,7 @@ pub fn bounds(e: &Value) -> (i32, i32, i32, i32) {
             let t = s(e, "text");
             (x, y, if w > 0 { w } else { lcd::font::width(&t.replace(|c| c == '{' || c == '}', ""), z).clamp(6, 160).min(lcd::font::width(&t, z).max(6)) }, 7 * z)
         }
-        "value" => (x, y, lcd::font::width("66°", z), 7 * z),
+        "value" => (x, y, lcd::font::width(&format!("{}66°", s(e, "label")), z), 7 * z),
         "clock" => (x, y, lcd::font::width(if s(e, "format") == "seconds" { "00:00:00" } else { "00:00" }, z), 7 * z),
         "line" => {
             let (x2, y2) = (n("x2", x as i64), n("y2", y as i64));
@@ -564,8 +637,13 @@ pub fn bounds(e: &Value) -> (i32, i32, i32, i32) {
     }
 }
 
+/// A value's name as the editor says it (the mockup's "GPU temperature", "CPU use").
+pub fn value_name(id: &str) -> String {
+    hearth_g15::values::VALUES.iter().find(|(k, _, _)| *k == id).map(|(_, l, _)| l.replace("Graphics card", "GPU")).unwrap_or_default()
+}
+
 pub fn el_name(e: &Value) -> String {
-    let what = hearth_g15::values::VALUES.iter().find(|(k, _, _)| *k == s(e, "value")).map(|(_, l, _)| l.to_string()).unwrap_or_default();
+    let what = value_name(&s(e, "value"));
     match s(e, "type").as_str() {
         "text" => format!("Text \"{}\"", s(e, "text").chars().take(18).collect::<String>()),
         "value" => format!("Value · {what}{}", if e.get("size").and_then(|x| x.as_i64()).unwrap_or(1) >= 3 { ", big" } else { "" }),
@@ -590,6 +668,68 @@ fn new_element(kind: &str) -> Value {
         "line" => json!({"type": "line", "x": 0, "y": 33, "x2": 159, "y2": 33}),
         "box" => json!({"type": "box", "x": 2, "y": 2, "w": 40, "h": 12, "fill": false}),
         _ => json!({"type": "text", "x": 2, "y": 2, "text": "?"}),
+    }
+}
+
+fn gi(e: &Value, k: &str) -> i32 {
+    e.get(k).and_then(|x| x.as_i64()).unwrap_or(0) as i32
+}
+
+/// What the pointer at dot (dx, dy) is on: the picked element's corner (to resize it), the picked element, or else
+/// the top-most element under it.
+pub fn hit(els: &[Value], picked: Option<usize>, dx: i32, dy: i32) -> Option<(usize, bool)> {
+    let inside = |e: &Value| {
+        let (x, y, w, h) = bounds(e);
+        dx >= x - 1 && dx <= x + w && dy >= y - 1 && dy <= y + h
+    };
+    if let Some(e) = picked.and_then(|i| els.get(i)) {
+        let (x, y, w, h) = bounds(e);
+        if s(e, "type") != "tabs" && (dx - (x + w)).abs() <= 2 && (dy - (y + h)).abs() <= 2 {
+            return picked.map(|i| (i, true));
+        }
+        if inside(e) {
+            return picked.map(|i| (i, false));
+        }
+    }
+    els.iter().enumerate().rev().find(|(_, e)| inside(e)).map(|(i, _)| (i, false))
+}
+
+/// Moves an element so its top-left is at (x, y) (a line keeps its length).
+pub fn move_to(e: &mut Value, x: i32, y: i32) {
+    if s(e, "type") == "tabs" {
+        return;
+    }
+    let (nx, ny) = (x.clamp(-20, 159), y.clamp(-6, 42));
+    let (ox, oy) = (gi(e, "x"), gi(e, "y"));
+    if s(e, "type") == "line" {
+        let (x2, y2) = (e.get("x2").and_then(|v| v.as_i64()).unwrap_or(ox as i64), e.get("y2").and_then(|v| v.as_i64()).unwrap_or(oy as i64));
+        e["x2"] = json!(x2 + (nx - ox) as i64);
+        e["y2"] = json!(y2 + (ny - oy) as i64);
+    }
+    e["x"] = json!(nx);
+    e["y"] = json!(ny);
+}
+
+/// Drags an element's bottom-right corner to dot (cx, cy): boxes, bars, graphs and pictures change size; text, values
+/// and clocks change their letters' size (7 dots a step); a line's end follows.
+pub fn resize_to(e: &mut Value, cx: i32, cy: i32) {
+    let (x, y, _, _) = bounds(e);
+    match s(e, "type").as_str() {
+        "tabs" => {}
+        "line" => {
+            e["x2"] = json!(cx.clamp(0, 159));
+            e["y2"] = json!(cy.clamp(0, 42));
+        }
+        "text" | "value" | "clock" => {
+            e["size"] = json!(((cy - y) as f32 / 7.0).round().clamp(1.0, 6.0) as i64);
+            if s(e, "type") == "text" && e.get("w").and_then(|v| v.as_i64()).unwrap_or(0) > 0 {
+                e["w"] = json!((cx - x).clamp(4, 160));
+            }
+        }
+        _ => {
+            e["w"] = json!((cx - x).clamp(2, (160 - x.max(0)).max(2)));
+            e["h"] = json!((cy - y).clamp(2, (43 - y.max(0)).max(2)));
+        }
     }
 }
 
@@ -841,6 +981,11 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 return a.screen_field("show", json!(v));
             }
             if what == "while" {
+                if v == "@other" {
+                    a.while_typing = true;
+                    return Task::none();
+                }
+                a.while_typing = false;
                 return a.screen_field("whileRunning", json!(v));
             }
             if what == "idle" {
@@ -906,7 +1051,9 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             a.page = Page::Editor;
             a.el = if a.elements().is_empty() { None } else { Some(0) };
             a.undo.clear();
-            a.focus = 0;
+            a.holding = false;
+            a.while_typing = false;
+            a.focus = if a.el.is_some() { view::ix(a, "el0") } else { 0 };
             a.refresh_pictures();
         }
         Msg::NewScreen => {
@@ -923,6 +1070,9 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             on.push(id);
             let t2 = a.set1(&["pages"], Some(json!(on)));
             a.el = Some(0);
+            a.holding = false;
+            a.while_typing = false;
+            a.focus = view::ix(a, "el0");
             a.refresh_pictures();
             return Task::batch([t, t2]);
         }
@@ -932,17 +1082,26 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             a.note = if a.plugged() { "On the keyboard's screen for 30 seconds.".into() } else { "Plug the keyboard in to see it there.".into() };
         }
         Msg::Add(kind) => {
-            if kind == "picture" {
-                let cmd = vec!["sh".into(), "-c".into(), "if command -v kdialog >/dev/null; then kdialog --title 'Pick a picture' --getopenfilename \"$HOME\" 'image/png image/jpeg'; elif command -v zenity >/dev/null; then zenity --file-selection --title='Pick a picture' --file-filter='*.png *.jpg *.jpeg'; else exit 3; fi".into()];
-                return Task::perform(run::spawn(cmd), Msg::PictureFile);
+            a.adding = None;
+            a.drop_at = None;
+            return a.add(kind);
+        }
+        Msg::AddGrab(kind) => a.adding = Some(kind),
+        Msg::AddDrop(pt) => {
+            let Some(kind) = a.adding.take() else { return Task::none() };
+            let (ox, oy, sc) = pics::screen_map(view::EDITOR_SIZE, true);
+            a.drop_at = Some((((pt.x - ox) / sc).floor() as i32, ((pt.y - oy) / sc).floor() as i32));
+            return a.add(kind);
+        }
+        Msg::AddEnd => {
+            if let Some(kind) = a.adding.take() {
+                a.drop_at = None;
+                return a.add(kind);
             }
-            let mut els = a.elements();
-            els.push(new_element(kind));
-            a.el = Some(els.len() - 1);
-            return a.put_elements(els, true);
         }
         Msg::PictureFile(o) => {
             let path = o.out.trim().to_string();
+            let (x, y) = a.drop_at.take().unwrap_or((0, 0));
             if o.code == 3 {
                 a.note = "No file picker is installed.".into();
                 return Task::none();
@@ -950,42 +1109,39 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             if path.is_empty() {
                 return Task::none();
             }
-            match picture_element(&path) {
-                Ok(e) => {
-                    let mut els = a.elements();
-                    els.push(e);
-                    a.el = Some(els.len() - 1);
-                    return a.put_elements(els, true);
-                }
+            match lcd::picture::element(&path, x, y) {
+                Ok(e) => return a.put_new(e),
                 Err(e) => a.note = format!("Couldn't use that picture: {e}"),
             }
         }
-        Msg::PickEl(i) => a.el = Some(i),
+        Msg::PickEl(i) => {
+            // A: pick it up; A again: put it down.
+            if a.el == Some(i) && a.holding {
+                a.holding = false;
+            } else {
+                a.el = Some(i);
+                a.holding = true;
+            }
+            a.focus = view::ix(a, &format!("el{i}"));
+        }
         Msg::Press(pt) => {
             let (ox, oy, sc) = pics::screen_map(view::EDITOR_SIZE, true);
             let (dx, dy) = (((pt.x - ox) / sc).floor() as i32, ((pt.y - oy) / sc).floor() as i32);
             let els = a.elements();
-            // The picked element's corner resizes it; otherwise the top-most element under the pointer is picked.
-            if let Some(i) = a.el {
-                if let Some(e) = els.get(i) {
-                    let (x, y, w, h) = bounds(e);
-                    if (dx - (x + w)).abs() <= 2 && (dy - (y + h)).abs() <= 2 && e.get("w").is_some() {
-                        a.grab = Some((dx - w, dy - h, true));
-                        return Task::none();
-                    }
+            a.adding = None;
+            match hit(&els, a.el, dx, dy) {
+                Some((i, corner)) => {
+                    let e = &els[i];
+                    a.grab = Some(if corner { (0, 0, true) } else { (dx - gi(e, "x"), dy - gi(e, "y"), false) });
+                    a.el = Some(i);
+                    a.holding = true;
+                    a.grab_before = Some(Value::Array(a.own()));
+                    a.focus = view::ix(a, &format!("el{i}"));
                 }
-            }
-            let hit = els.iter().enumerate().rev().find(|(_, e)| {
-                let (x, y, w, h) = bounds(e);
-                dx >= x - 1 && dx <= x + w && dy >= y - 1 && dy <= y + h
-            });
-            if let Some((i, e)) = hit {
-                let (x, y, _, _) = bounds(e);
-                a.el = Some(i);
-                a.grab = Some((dx - x, dy - y, false));
-                a.undo.push(Value::Array(a.own()));
-            } else {
-                a.grab = None;
+                None => {
+                    a.grab = None;
+                    a.holding = false;
+                }
             }
         }
         Msg::Move(pt) => {
@@ -996,18 +1152,9 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             let mut els = a.elements();
             let Some(e) = els.get_mut(i) else { return Task::none() };
             if resize {
-                e["w"] = json!((dx - gx).clamp(2, 160));
-                e["h"] = json!((dy - gy).clamp(2, 43));
+                resize_to(e, dx, dy);
             } else {
-                let (nx, ny) = ((dx - gx).clamp(-20, 159), (dy - gy).clamp(-6, 42));
-                let (ox2, oy2) = (e.get("x").and_then(|v| v.as_i64()).unwrap_or(0), e.get("y").and_then(|v| v.as_i64()).unwrap_or(0));
-                if s(e, "type") == "line" {
-                    let (x2, y2) = (e.get("x2").and_then(|v| v.as_i64()).unwrap_or(ox2), e.get("y2").and_then(|v| v.as_i64()).unwrap_or(oy2));
-                    e["x2"] = json!(x2 + nx as i64 - ox2);
-                    e["y2"] = json!(y2 + ny as i64 - oy2);
-                }
-                e["x"] = json!(nx);
-                e["y"] = json!(ny);
+                move_to(e, dx - gx, dy - gy);
             }
             // While dragging: the picture follows; it's saved when you let go.
             if let Some(mut scr) = a.cur_screen() {
@@ -1024,7 +1171,21 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         }
         Msg::Release => {
             if a.grab.take().is_some() {
-                let all = a.own();
+                let mut all = a.own();
+                // A picture let go at a new size: its dots made again from the picture.
+                if let Some(e) = a.el.and_then(|i| all.iter_mut().find(|x| s(x, "id") == a.screen).and_then(|x| x.get_mut("elements")).and_then(|v| v.as_array_mut()).and_then(|v| v.get_mut(i))) {
+                    if s(e, "type") == "picture" {
+                        lcd::picture::redo(e);
+                    }
+                }
+                let before = a.grab_before.take();
+                // Only clicked (nothing moved): nothing to save.
+                if before.as_ref() == Some(&Value::Array(all.clone())) {
+                    return Task::none();
+                }
+                if let Some(b) = before {
+                    a.undo.push(b);
+                }
                 let t = a.set1(&["screens"], Some(Value::Array(all)));
                 a.refresh_pictures();
                 return t;
@@ -1054,6 +1215,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::ScreenName(t) => return a.screen_field("name", json!(t.chars().take(30).collect::<String>())),
         Msg::ScreenField(k, v) => return a.screen_field(k, v),
         Msg::WhileText(t) => return a.screen_field("whileRunning", json!(t.chars().take(60).collect::<String>())),
+        Msg::WhileDone => a.while_typing = false,
         Msg::Undo => {
             if let Some(prev) = a.undo.pop() {
                 let t = a.set1(&["screens"], Some(prev));
@@ -1062,6 +1224,8 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             }
         }
         Msg::Done => {
+            a.holding = false;
+            a.while_typing = false;
             a.page = Page::Screen;
             a.focus = 0;
             a.refresh_pictures();
@@ -1073,7 +1237,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 els.remove(i);
             }
             a.el = if els.is_empty() { None } else { Some(i.min(els.len() - 1)) };
-            return a.put_elements(els, true);
+            a.holding = false;
+            let t = a.put_elements(els, true);
+            a.focus = a.focus.min(view::focusables(a).len().saturating_sub(1));
+            return t;
         }
     }
     Task::none()
@@ -1112,20 +1279,6 @@ impl App {
     }
 }
 
-/// A picture for your own screen: scaled to fit the screen's height (or 40 dots wide), dithered into dots.
-fn picture_element(path: &str) -> Result<Value, String> {
-    let img = image::open(path).map_err(|e| e.to_string())?;
-    let g = img.to_luma8();
-    let (w, h) = (g.width() as usize, g.height() as usize);
-    if w == 0 || h == 0 {
-        return Err("it's empty".into());
-    }
-    let oh = 43usize.min(h);
-    let ow = ((w * oh) / h).clamp(1, 160);
-    let bits = lcd::dither(g.as_raw(), w, h, ow, oh);
-    Ok(json!({"type": "picture", "x": 0, "y": 0, "w": ow, "h": oh, "bits": lcd::base64(&bits)}))
-}
-
 fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
     let KEvent::KeyPressed { key, modifiers, .. } = ev else { return Task::none() };
     // Keys: the next combination pressed is what the G-key sends.
@@ -1158,6 +1311,11 @@ fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
         Key::Named(Named::Escape) => {
             if a.dlg.is_some() {
                 a.dlg = None;
+            } else if a.page == Page::Editor && a.while_typing {
+                a.while_typing = false;
+            } else if a.page == Page::Editor && a.holding {
+                // B puts it down first; B again goes back.
+                a.holding = false;
             } else if a.page == Page::Editor {
                 return update(a, Msg::Done);
             } else if a.recording {
@@ -1196,14 +1354,23 @@ fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
         }
         return Task::none();
     }
-    if a.page == Page::Editor && a.el.is_some() && !modifiers.control() {
+    // Picked up: the arrows move it one dot (Shift: five), A puts it down. Otherwise they move between the rows.
+    if a.page == Page::Editor && a.el.is_some() && !modifiers.control() && matches!(key.as_ref(), Key::Named(Named::Delete)) {
+        return update(a, Msg::Delete);
+    }
+    if a.page == Page::Editor && a.holding && a.el.is_some() && !modifiers.control() {
         let d = if modifiers.shift() { 5 } else { 1 };
+        let on_it = view::focusables(a).get(a.focus).map(|it| it.id == format!("el{}", a.el.unwrap_or(0))).unwrap_or(false);
         match key.as_ref() {
+            // A on the picked-up element (its chip) puts it down; A elsewhere does what that row does.
+            Key::Named(Named::Enter) if on_it => {
+                a.holding = false;
+                return Task::none();
+            }
             Key::Named(Named::ArrowLeft) => return update(a, Msg::Nudge(-d, 0)),
             Key::Named(Named::ArrowRight) => return update(a, Msg::Nudge(d, 0)),
             Key::Named(Named::ArrowUp) => return update(a, Msg::Nudge(0, -d)),
             Key::Named(Named::ArrowDown) => return update(a, Msg::Nudge(0, d)),
-            Key::Named(Named::Delete) => return update(a, Msg::Delete),
             _ => {}
         }
     }
@@ -1274,4 +1441,55 @@ fn main() -> iced::Result {
         .window(app::window("hearth-g15-app", (1280.0, 800.0), (1000.0, 640.0)))
         .default_font(app::INTER)
         .run()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn dads() -> Vec<Value> {
+        vec![
+            json!({"type": "value", "x": 1, "y": 10, "size": 3, "value": "gpu.temp"}),
+            json!({"type": "text", "x": 1, "y": 1, "text": "GPU"}),
+            json!({"type": "graph", "x": 86, "y": 2, "w": 74, "h": 30, "value": "gpu.temp"}),
+            json!({"type": "clock", "x": 1, "y": 34, "size": 1}),
+            json!({"type": "bar", "x": 92, "y": 35, "w": 66, "h": 6, "value": "cpu.use"}),
+        ]
+    }
+    #[test]
+    fn picks_what_the_pointer_is_on() {
+        let els = dads();
+        assert_eq!(hit(&els, None, 100, 15), Some((2, false)), "the graph");
+        assert_eq!(hit(&els, None, 5, 20), Some((0, false)), "the big value");
+        assert_eq!(hit(&els, None, 2, 3), Some((1, false)), "the text over the value");
+        assert_eq!(hit(&els, None, 70, 20), None, "nothing there");
+        // The picked graph's bottom-right corner (86+74, 2+30) resizes it, a dot or two off too.
+        assert_eq!(hit(&els, Some(2), 160, 32), Some((2, true)));
+        assert_eq!(hit(&els, Some(2), 158, 31), Some((2, true)));
+        assert_eq!(hit(&els, Some(2), 120, 10), Some((2, false)));
+        // The picked one wins where two overlap.
+        assert_eq!(hit(&els, Some(0), 2, 11), Some((0, false)));
+    }
+    #[test]
+    fn moves_and_resizes() {
+        let mut g = dads()[2].clone();
+        resize_to(&mut g, 150, 40);
+        assert_eq!((g["w"].as_i64(), g["h"].as_i64()), (Some(64), Some(38)));
+        resize_to(&mut g, 400, 400);
+        assert_eq!((g["w"].as_i64(), g["h"].as_i64()), (Some(74), Some(41)), "kept on the screen");
+        resize_to(&mut g, 0, 0);
+        assert_eq!((g["w"].as_i64(), g["h"].as_i64()), (Some(2), Some(2)));
+        let mut v = dads()[0].clone();
+        resize_to(&mut v, 30, 10 + 14);
+        assert_eq!(v["size"].as_i64(), Some(2), "letters two steps tall");
+        let mut l = json!({"type": "line", "x": 0, "y": 33, "x2": 159, "y2": 33});
+        move_to(&mut l, 10, 20);
+        assert_eq!((l["x"].as_i64(), l["y"].as_i64(), l["x2"].as_i64(), l["y2"].as_i64()), (Some(10), Some(20), Some(169), Some(20)));
+        resize_to(&mut l, 50, 25);
+        assert_eq!((l["x2"].as_i64(), l["y2"].as_i64()), (Some(50), Some(25)));
+        let mut t = json!({"type": "tabs"});
+        move_to(&mut t, 5, 5);
+        assert!(t.get("x").is_none(), "the page names stay over the keys");
+        assert_eq!(el_name(&dads()[2]), "Graph · GPU temperature");
+        assert_eq!(el_name(&dads()[0]), "Value · GPU temperature, big");
+    }
 }
