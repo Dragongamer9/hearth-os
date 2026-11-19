@@ -894,7 +894,7 @@ fn left(a: &App) -> E<'_> {
                 .map(|x| {
                     let pid = f(x, "pid") as i64;
                     let path = if s(x, "win").is_empty() { s(x, "path") } else { s(x, "win") };
-                    vec![cell(mid_path(path, 62)), cell(a.busy_names.get(&pid).cloned().unwrap_or_default()), cell(pid.to_string()), cell(rate_mb(f(x, "read"))), cell(rate_mb(f(x, "write")))]
+                    vec![cell(mid_path(path, 54)), cell(a.busy_names.get(&pid).cloned().unwrap_or_default()), cell(pid.to_string()), cell(rate_mb(f(x, "read"))), cell(rate_mb(f(x, "write")))]
                 })
                 .collect();
             let ft = sorted(a, tbl("disk:files", vec![c("File", 6.0, false), c("Program", 1.8, false), c("PID", 0.9, true), c("Read", 1.2, true), c("Write", 1.2, true)], frows, "Nothing is reading or writing files right now."));
