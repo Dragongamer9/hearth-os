@@ -286,7 +286,7 @@ class Session(unittest.TestCase):
     ROOT = pathlib.Path(__file__).resolve().parents[1]
 
     def test_session_writes_the_mode(self):
-        text = (self.ROOT / 'session' / 'nimbus-session').read_text()
+        text = (self.ROOT / 'session' / 'nimbus-session').read_text(encoding='utf-8')
         self.assertIn('echo "$mode" >"$RUN/nimbus-mode-now"', text)
         self.assertIn('rm -f "$RUN/nimbus-mode-now"; exit 0', text)
         self.assertIn('nimbus-mode-now', SCRIPT.read_text())
