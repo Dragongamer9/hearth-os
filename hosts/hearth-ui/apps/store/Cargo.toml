@@ -1,0 +1,32 @@
+# The Hearth Store (pure Rust, hearth-ui; docs/HEARTH-STORE.md, the approved mockups docs/mockups/hearth-store): the
+# owner's own apps that aren't part of Hearth OS (Hearth AI Command Center, Hearth AI), installed as AppImages in your
+# home folder, updated, checked and repaired, and uninstalled; the apps built into Hearth listed as "Built in". It ships
+# only inside Hearth OS (the Fedora edition's image) and updates with it: no version line (the owner picks every
+# version number) and no download of its own.
+[package]
+name = "hearth-store"
+edition = "2021"
+description = "Hearth Store: the owner's own apps for Hearth OS, installed, updated, repaired and uninstalled"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-store-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true, features = ["image"] }
+serde_json = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }
+# Every download is checked against its release's SHA-256 list before it's used.
+sha2 = "0.10"
+# A list of apps from hearthos.fun is used only when it's signed by the key built into Hearth OS (Ed25519).
+ed25519-dalek = "2"
+
+[dev-dependencies]
+tempfile = "3"

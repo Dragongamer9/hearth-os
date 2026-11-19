@@ -80,6 +80,8 @@ pub enum M {
     SrcUrl(String),
     AddSource,
     RemoveSource(String),
+    // (feature/hearth-store) "Hearth's own apps": opens the Hearth Store (hearth-store-app, Fedora image only).
+    HearthStore,
 }
 
 /// What to read again after a job.
@@ -145,6 +147,7 @@ pub fn back(st: &mut St) -> bool {
 
 pub fn update(sh: &mut Shared, st: &mut St, m: M) -> Task<M> {
     match m {
+        M::HearthStore => kit::open(&["hearth-store-app"]),
         M::Go(id) => sh.go(id),
         M::Show(v) => {
             show(st, v);
@@ -411,6 +414,10 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
 }
 
 fn discover<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut Vec<E<'a, M>>) {
+    // (feature/hearth-store) Hearth's own apps are in the Hearth Store (docs/HEARTH-STORE.md); Flathub's stay here.
+    if std::path::Path::new("/usr/bin/hearth-store-app").exists() {
+        v.push(group(p, "Hearth's own apps", vec![r(G::Store, "Hearth Store", "Dragongamer9's apps for Hearth: Hearth AI, AI Command Center and more").chev().on(M::HearthStore).view(p)]));
+    }
     if st.home.is_null() {
         return;
     }

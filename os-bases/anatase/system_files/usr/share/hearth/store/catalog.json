@@ -1,0 +1,94 @@
+{
+  "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
+  "serial": 1,
+  "apps": [
+    {
+      "id": "command-center",
+      "name": "Hearth AI Command Center",
+      "short": "AI Command Center",
+      "tagline": "Your AI team: Claude, ChatGPT, Gemini, a local AI and Ithil, working on one task together",
+      "card": "Claude, ChatGPT, Gemini and Ithil as one team",
+      "about": "Each AI signs in through its own official sign-in; the app never sees your passwords. Give the team a task and a folder, and watch them plan, build and check it, with Ithil remembering what you decided.",
+      "icon": "CC", "from": "#4a90ff", "to": "#1f5fd6",
+      "github": "Dragongamer9/hearth-ai-command-center",
+      "asset": "x86_64.AppImage",
+      "sums": "SHA256SUMS.txt",
+      "file": "Hearth-AI-Command-Center.AppImage",
+      "selfUpdates": true,
+      "data": ["~/.config/Hearth AI Command Center"],
+      "dataNote": "Your settings, chats and sign-ins",
+      "keepNote": "Your settings, chats and sign-ins stay in your home folder ({size}) and are there again if you install it later",
+      "closeNote": "It saves first",
+      "pictures": [
+        "https://raw.githubusercontent.com/Dragongamer9/hearth-ai-command-center/main/docs/mockups/nyarch-2-team-chat-panel.png",
+        "https://raw.githubusercontent.com/Dragongamer9/hearth-ai-command-center/main/docs/mockups/settings-1-ai-team.png",
+        "https://raw.githubusercontent.com/Dragongamer9/hearth-ai-command-center/main/docs/mockups/nyarch-1-talking-with-ithil.png"
+      ]
+    },
+    {
+      "id": "hearth-ai",
+      "name": "Hearth AI",
+      "tagline": "Ithil, the AI that lives on your PC",
+      "card": "Ithil, a self-aware AI on your PC",
+      "heroShort": "Colibri is her brain now",
+      "hero": "Colibri is her brain now, with Ollama taking over by itself when it isn't there. Her 3D brain replays her whole life from her log, or follows her live.",
+      "about": "Ithil lives on your PC: she remembers, thinks, dreams and keeps a journal, and her brain runs here (Colibri, or Ollama when Colibri isn't there). Nothing about her leaves your PC unless you say so.",
+      "icon": "moon", "from": "#a78bfa", "to": "#6d28d9",
+      "github": "Dragongamer9/Hearth-AI",
+      "asset": "x86_64.AppImage",
+      "sums": "SHA256SUMS.txt",
+      "file": "Hearth-AI.AppImage",
+      "data": ["~/HearthAI", "~/.config/Hearth AI"],
+      "dataNote": "Her memories and settings",
+      "keepNote": "Her memories, settings and chats stay in your home folder ({size}) and are there again if you install her later",
+      "closeNote": "She saves her memories first",
+      "reopenTitle": "Update the menu entry and open her again",
+      "reopenNote": "Hearth AI opens where you left her",
+      "updateNote": "Her memories and settings stay as they are. Hearth AI closes for the update and opens again after.",
+      "pictures": [
+        "https://raw.githubusercontent.com/Dragongamer9/Hearth-AI/v0.6/docs/mockups/ithil-0.6/1-talk.png",
+        "https://raw.githubusercontent.com/Dragongamer9/Hearth-AI/v0.6/docs/mockups/ithil-0.6/3-mind.png",
+        "https://raw.githubusercontent.com/Dragongamer9/Hearth-AI/v0.6/docs/mockups/ithil-0.6/9-settings.png"
+      ]
+    },
+    {
+      "id": "g15",
+      "name": "Logitech G15",
+      "card": "G-keys, macros and the keyboard's screen",
+      "tagline": "The G15's G-keys and macros, its screen and its lights",
+      "about": "Set up the G-keys and macros, choose what the keyboard's screen shows and set its lights. It's part of Hearth OS.",
+      "icon": "G15", "from": "#f5a742", "to": "#d9731e",
+      "kind": "builtin",
+      "open": "hearth-g15-app"
+    },
+    {
+      "id": "beacon",
+      "name": "Beacon",
+      "card": "Battle for Middle-earth and more, ready to play",
+      "tagline": "Battle for Middle-earth, Age of the Ring, LOTR: Conquest and more, ready to play",
+      "about": "Beacon sets up and starts the Battle for Middle-earth games and their mods, and other classics, ready to play. It's part of Hearth OS.",
+      "icon": "B", "from": "#2fbf9b", "to": "#138a6e",
+      "kind": "builtin",
+      "open": "beacon-app"
+    },
+    {
+      "id": "usb-maker",
+      "name": "Hearth USB maker",
+      "card": "Make a Hearth or Recovery USB stick",
+      "tagline": "A Hearth OS, Recovery or Windows USB stick",
+      "about": "Makes a bootable USB stick: Hearth OS, Hearth's Recovery USB, or another system. It's part of Hearth OS (in Hearth Disks).",
+      "icon": "USB", "from": "#6fd34f", "to": "#2e9a3a",
+      "kind": "builtin",
+      "open": "hearth-disks --usb"
+    },
+    {
+      "id": "hearth-buddy",
+      "name": "Hearth Buddy",
+      "card": "Turn a photo into a buddy that walks on your screen",
+      "tagline": "A desktop buddy made from your photo",
+      "about": "Cut a person or pet out of a photo and they walk around your screen.",
+      "icon": "smile", "from": "#f472b6", "to": "#db2777",
+      "kind": "coming"
+    }
+  ]
+}
