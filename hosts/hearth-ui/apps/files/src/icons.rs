@@ -168,13 +168,31 @@ impl P<'_> {
     }
 }
 
+/// An icon's drawing kept between frames (scrolling a long folder redraws every frame); drawn again only when the
+/// icon, its colour or its size changes.
+#[derive(Default)]
+pub struct DrawCache {
+    cache: canvas::Cache,
+    key: std::cell::Cell<Option<(Ic, Color, Size)>>,
+}
+
 impl<M> canvas::Program<M> for Draw {
-    type State = ();
-    fn draw(&self, _s: &(), renderer: &Renderer, _t: &Theme, bounds: Rectangle, _c: mouse::Cursor) -> Vec<Geometry> {
-        let mut f = Frame::new(renderer, bounds.size());
+    type State = DrawCache;
+    fn draw(&self, st: &DrawCache, renderer: &Renderer, _t: &Theme, bounds: Rectangle, _c: mouse::Cursor) -> Vec<Geometry> {
+        let key = Some((self.ic, self.c, bounds.size()));
+        if st.key.get() != key {
+            st.cache.clear();
+            st.key.set(key);
+        }
+        vec![st.cache.draw(renderer, bounds.size(), |f| self.paint(f, bounds))]
+    }
+}
+
+impl Draw {
+    fn paint(&self, f: &mut Frame, bounds: Rectangle) {
         let k = bounds.width.min(bounds.height) / 24.0;
         let c = self.c;
-        let mut p = P { f: &mut f, k };
+        let mut p = P { f, k };
         let lw = 1.7;
         match self.ic {
             Ic::Folder => {
@@ -487,7 +505,6 @@ impl<M> canvas::Program<M> for Draw {
                 p.line(&[(12.0, 5.0), (12.0, 19.0)], lw, c);
             }
         }
-        vec![f.into_geometry()]
     }
 }
 

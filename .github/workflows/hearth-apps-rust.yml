@@ -100,6 +100,7 @@ jobs:
       - name: A screen in memory (sway), grim, fonts, Python
         run: |
           dnf -y install --skip-unavailable git sway grim procps-ng python3 python3-pillow util-linux shadow-utils libxkbcommon libwayland-client libwayland-cursor \
+            mesa-vulkan-drivers vulkan-loader mesa-dri-drivers mesa-libEGL mesa-libgbm libglvnd-egl \
             fontconfig rsms-inter-fonts google-noto-sans-fonts google-noto-sans-symbols-fonts dejavu-sans-fonts dejavu-sans-mono-fonts systemd >/dev/null
           for b in sway grim swaymsg runuser; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed"; done
           fc-list | grep -qi inter && echo "::notice title=fonts::Inter is here" || echo "::warning title=fonts::no Inter (the mockups' font)"

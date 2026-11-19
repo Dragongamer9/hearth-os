@@ -79,6 +79,9 @@ pub fn view(a: &App) -> El<'_> {
     let p = a.p;
     let picking = a.picking();
     let mut col = Column::new();
+    if let Some(fm) = hearth_ui::ui::frame_meter() {
+        col = col.push(fm); // CI's frame counter only (HEARTH_UI_FRAMES)
+    }
     if picking {
         col = col.push(pick_head(a));
     } else {

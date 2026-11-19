@@ -719,6 +719,10 @@ fn main() {
     // The overlays are see-through (the dimmed screen behind the Hearth menu, the hints over your window): buffers
     // with alpha (hearth-ui's softbuffer, vendor/README.md). Set before the first surface; nothing else here reads it.
     std::env::set_var("HEARTH_SOFTBUFFER_ALPHA", "1");
+    // And so they stay on tiny-skia, whatever the other apps draw with (app::renderer: the graphics card where it
+    // starts): that alpha is the vendored softbuffer's, and these overlays are small and seldom redrawn.
+    std::env::set_var("ICED_BACKEND", "tiny-skia");
+    app::renderer("hearth-pad");
     let r = daemon(new, || "hearth-pad".to_string(), update, view)
         .subscription(subscription)
         .theme(|a: &App, _id: window::Id| app::iced_theme(&a.p))

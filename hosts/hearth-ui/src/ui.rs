@@ -203,6 +203,9 @@ pub fn title_bar<'a, M: Clone + 'a>(p: &Pal, mark: G, title: &'a str, middle: Op
         r = r.push(wbtn(G::Maximize, m.maximize.clone(), false));
     }
     r = r.push(wbtn(G::Close, m.close.clone(), true));
+    if let Some(fm) = frame_meter() {
+        r = r.push(fm);
+    }
     container(r).width(Length::Fill).height(Length::Fixed(40.0)).style(boxed(bg, 0.0, None)).into()
 }
 
@@ -389,10 +392,29 @@ fn lines(g: G) -> (Vec<Vec<(f32, f32)>>, Vec<(f32, f32, f32)>) {
     }
 }
 
+/// A glyph's drawing, kept between frames (scrolling a long page redraws every frame: without this each icon's paths
+/// were built, and on the graphics card tessellated, again every frame). Drawn again only when the glyph, its colour,
+/// its line width or its size changes.
+#[derive(Default)]
+pub(crate) struct GlyphCache {
+    cache: canvas::Cache,
+    key: std::cell::Cell<Option<(G, Color, f32, iced::Size)>>,
+}
+
 impl<M> canvas::Program<M> for Glyph {
-    type State = ();
-    fn draw(&self, _s: &(), renderer: &Renderer, _t: &Theme, bounds: Rectangle, _c: mouse::Cursor) -> Vec<Geometry> {
-        let mut f = Frame::new(renderer, bounds.size());
+    type State = GlyphCache;
+    fn draw(&self, st: &GlyphCache, renderer: &Renderer, _t: &Theme, bounds: Rectangle, _c: mouse::Cursor) -> Vec<Geometry> {
+        let key = Some((self.g, self.c, self.w, bounds.size()));
+        if st.key.get() != key {
+            st.cache.clear();
+            st.key.set(key);
+        }
+        vec![st.cache.draw(renderer, bounds.size(), |f| self.paint(f, bounds))]
+    }
+}
+
+impl Glyph {
+    fn paint(&self, f: &mut Frame, bounds: Rectangle) {
         let k = bounds.width.min(bounds.height) / 24.0;
         let (ls, cs) = lines(self.g);
         let stroke = || Stroke::default().with_color(self.c).with_width(self.w * k.max(0.5)).with_line_cap(LineCap::Round).with_line_join(LineJoin::Round);
@@ -416,8 +438,23 @@ impl<M> canvas::Program<M> for Glyph {
                 f.stroke(&path, stroke());
             }
         }
-        vec![f.into_geometry()]
     }
+}
+
+struct Meter;
+
+impl<M> canvas::Program<M> for Meter {
+    type State = ();
+    fn draw(&self, _s: &(), _r: &Renderer, _t: &Theme, _b: Rectangle, _c: mouse::Cursor) -> Vec<Geometry> {
+        crate::app::frame_tick();
+        vec![]
+    }
+}
+
+/// CI's frame counter (app::bench, HEARTH_UI_FRAMES): a 1 px canvas that counts the frames drawn. Nothing without it.
+pub fn frame_meter<'a, M: 'a>() -> Option<Element<'a, M>> {
+    crate::app::bench()?;
+    Some(cv(Meter).width(Length::Fixed(1.0)).height(Length::Fixed(1.0)).into())
 }
 
 /// A line icon at `size` px.

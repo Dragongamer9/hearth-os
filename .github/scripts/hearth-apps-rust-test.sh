@@ -87,6 +87,41 @@ run() {
   sleep 0.3
 }
 
+# bench NAME APP_ID RENDERER KIND BINARY ARGS...: scrolling a long page for 3 s (wl-scroll.py: KIND touchpad = smooth
+# pixel steps 60 a second, wheel = notches), with the app drawing with RENDERER (cpu: tiny-skia, gpu: wgpu, here on
+# Mesa's software Vulkan / GL since CI has no graphics card). The frames come from hearth-ui's frame counter
+# (HEARTH_UI_FRAMES); CPU from /proc. One BENCH line each; a picture after the scroll shows where it got to.
+bench() {
+  name=$1; appid=$2; rend=$3; kind=$4; shift 4
+  fr="/tmp/frames-$name"; rm -f "$fr"
+  t0=$(now_ms)
+  HEARTH_UI_FRAMES="$fr" HEARTH_RENDERER="$rend" "$@" >"/tmp/$name.log" 2>&1 &
+  pid=$!
+  ff=-1
+  for i in $(seq 1 1200); do
+    if mapped "$appid"; then ff=$(( $(now_ms) - t0 )); break; fi
+    kill -0 $pid 2>/dev/null || break
+    sleep 0.005
+  done
+  sleep 2.5
+  if ! kill -0 $pid 2>/dev/null; then
+    echo "::error title=$name::it ended by itself: $(tail -c 1500 /tmp/$name.log | tr '\n' '|')"; return
+  fi
+  rss0=$(awk '/^VmRSS/ {printf "%.1f", $2/1024}' /proc/$pid/status)
+  f0=$(cat "$fr" 2>/dev/null || echo 0); a=$(ticks $pid); s0=$(now_ms)
+  steps=$(python3 "$ROOT/.github/scripts/wl-scroll.py" 3 "$kind" 2>&1 | tail -1)
+  s1=$(now_ms); sleep 0.3
+  f1=$(cat "$fr" 2>/dev/null || echo 0); b=$(ticks $pid)
+  rss=$(awk '/^VmRSS/ {printf "%.1f", $2/1024}' /proc/$pid/status)
+  grim "$ROOT/shots/$name.png" 2>/dev/null || true
+  how=$(grep -m1 -o 'renderer: .*' "/tmp/$name.log" || grep -m1 -o 'drawing with the CPU.*' "/tmp/$name.log" || echo '?')
+  hz=$(getconf CLK_TCK)
+  echo "BENCH $name renderer=$rend kind=$kind firstframe=$ff frames=$((f1 - f0)) ms=$((s1 - s0)) ticks=$((b - a)) hz=$hz rss_before=$rss0 rss=$rss $steps" | tee -a "$ROOT/results.txt"
+  echo "::notice title=$name renderer::$how"
+  kill $pid 2>/dev/null; wait $pid 2>/dev/null
+  sleep 0.3
+}
+
 look steam dark
 # Measured runs (the first of each app), then the pictures of their other pages and dialogs.
 run restore-1-points hearth-restore 20 "$BIN/hearth-system-restore"
@@ -123,6 +158,19 @@ export HEARTH_APPS_THEME="$HOME/.config/hearth/theme.json"
 run settings-7-kde-breeze hearth-settings 0 "$BIN/hearth-settings-app"
 unset HEARTH_APPS_THEME
 rm -f "$HOME/.config/hearth/theme.json"
+# Scrolling (the owner, Nov 19: "on all the rust apps the scrolling down is laggy and slow"): Settings' long Display
+# page and a folder of 3000 files in Files, on the CPU (tiny-skia, what CI and a PC without a graphics card use) and
+# through wgpu (here Mesa's software drivers: a PC draws it on its graphics card). And the graphics card's start and
+# memory (gpu-*: measured like the others, reported, no limits: CI's software Vulkan isn't a PC's).
+mkdir -p "$HOME/bench-3000"
+python3 -c 'import os,sys; [open(os.path.join(sys.argv[1], "file-%04d.txt" % i), "w").close() for i in range(3000)]' "$HOME/bench-3000"
+bench scroll-cpu-settings-display hearth-settings cpu touchpad "$BIN/hearth-settings-app" --page display
+bench scroll-cpu-settings-display-wheel hearth-settings cpu wheel "$BIN/hearth-settings-app" --page display
+bench scroll-cpu-files-3000 hearth-files cpu touchpad "$BIN/hearth-files-app" "$HOME/bench-3000" --view details
+bench scroll-gpu-settings-display hearth-settings gpu touchpad "$BIN/hearth-settings-app" --page display
+bench scroll-gpu-files-3000 hearth-files gpu touchpad "$BIN/hearth-files-app" "$HOME/bench-3000" --view details
+HEARTH_RENDERER=gpu run gpu-settings-1-home hearth-settings 20 "$BIN/hearth-settings-app"
+HEARTH_RENDERER=gpu run gpu-files-1-details hearth-files 20 "$BIN/hearth-files-app" "$HOME/bench-3000" --view details
 # Each app's own pictures (one file per app or Settings category, so they're worked on apart): .d/NAME.sh uses run().
 for f in "$ROOT"/.github/scripts/hearth-apps-rust-shots.d/*.sh; do [ -f "$f" ] && . "$f"; done
 look steam dark
@@ -148,6 +196,11 @@ while read -r kind name rest; do
   eval "$(echo "$rest" | tr ' ' '\n' | sed 's/^/r_/')"
   lim_cpu=0.3; [ "${name#tm-}" != "$name" ] && lim_cpu=3
   echo "::notice title=$name::first frame ${r_firstframe} ms · at rest ${r_cpu}% of a core · memory ${r_rss} MB resident (${r_pss} MB proportional) · ${r_threads} threads"
+  if [ "${name#gpu-}" != "$name" ]; then
+    # Through wgpu on CI's software drivers: only CPU at rest has a limit (it must stay ~0 whatever draws).
+    python3 -c 'import sys; c=float(sys.argv[2]); print("::error title=%s::%.2f%% of a core at rest with wgpu" % (sys.argv[1], c)) if c > 0.3 else None; sys.exit(1 if c > 0.3 else 0)' "$name" "$r_cpu" || fail=1
+    continue
+  fi
   python3 - "$name" "$r_firstframe" "$r_cpu" "$r_rss" "$lim_cpu" <<'PY' || fail=1
 import sys
 name, ff, cpu, rss, lim = sys.argv[1], int(sys.argv[2]), float(sys.argv[3]), float(sys.argv[4]), float(sys.argv[5])
@@ -167,6 +220,21 @@ elif rss > 60:
 sys.exit(bad)
 PY
 done < "$ROOT/results.txt"
+# The scroll measurements: frames a second while scrolling, and the CPU each frame took.
+grep '^BENCH' "$ROOT/results.txt" | while read -r _ name rest; do
+  python3 - "$name" $rest <<'PY'
+import sys
+name, kv = sys.argv[1], dict(a.split('=', 1) for a in sys.argv[2:] if '=' in a)
+fr, ms, ticks, hz = int(kv.get('frames', 0)), max(1, int(kv.get('ms', 1))), int(kv.get('ticks', 0)), int(kv.get('hz', 100))
+fps = fr * 1000.0 / ms
+cpu_ms = ticks * 1000.0 / hz
+per = cpu_ms / fr if fr else 0.0
+print('::notice title=%s::%s, %s scrolling for %.1f s: %d frames = %.1f frames a second, %.1f ms of CPU a frame (%.0f%% of a core), first frame %s ms, memory %s -> %s MB, %s'
+      % (name, kv.get('renderer'), kv.get('kind'), ms / 1000.0, fr, fps, per, 100.0 * cpu_ms / ms, kv.get('firstframe'), kv.get('rss_before'), kv.get('rss'), kv.get('steps', 'steps=?')))
+if fr == 0:
+    print('::warning title=%s::no frames were counted while scrolling (the frame counter or the scroll didn\'t work)' % name)
+PY
+done
 grep '^SHOT' "$ROOT/results.txt" | while read -r _ name ff; do
   case "$ff" in *=-1) echo "::error title=$name::its window never came up";; esac
 done

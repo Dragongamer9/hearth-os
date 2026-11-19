@@ -884,6 +884,8 @@ fn main() -> iced::Result {
     if app::flag("--indicator") {
         return indicator::run();
     }
+    // How it draws (the graphics card where it starts), before iced starts: its windows open later (boot).
+    app::renderer("hearth-capture");
     iced::daemon(boot, update, view)
         .title(|_a: &App, _id: window::Id| "Capture".to_string())
         .subscription(subscription)
