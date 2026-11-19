@@ -34,17 +34,19 @@
 <div class="wrap layout">
   <aside class="side" aria-label="Sections"><div class="grp"><h4>Docs</h4><a href="index.html">Overview</a><a href="install.html" class="cur" aria-current="page">Installing</a><div class="sub"><a href="#download">Downloads</a><a href="#usb">Making the USB stick</a><a href="#boot">Starting from the USB</a><a href="#installing">Installing</a><a href="#first">The first start</a><a href="#from-other" data-ed="anatase">Coming from Bazzite or Fedora Atomic</a></div><a href="updates.html">Updates and editions</a><a href="using.html">Using Hearth</a><a href="steam.html">Steam Game Mode</a><a href="troubleshooting.html">Troubleshooting</a><a href="requests.html">Requests</a><a href="releases.html">Release notes</a></div></aside>
   <main id="main">
-    <div class="crumb"><span>Docs · for Hearth OS 1.14</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="peppermint">Debian</option><option value="anatase">Anatase (Fedora, archived)</option></select></label><span class="edshow" hidden></span></div>
+    <div class="crumb"><span>Docs · for Hearth OS 1.15</span><label class="picker"><span>Edition</span><select aria-label="Show the docs for this edition"><option value="all">All editions</option><option value="anatase">Fedora</option><option value="peppermint">Debian (merged into Fedora)</option></select></label><span class="edshow" hidden></span></div>
     <h1>Installing</h1>
     <p class="lead">Download Hearth OS, write it to a USB stick, and install it on its own drive or next to Windows.</p>
 
 <section><h2 id="download">Downloads</h2>
 <p>The <b>offline USB</b> carries the whole system and installs without internet. Keep a <b>Recovery USB</b> too,
 for a device that won't start.</p>
+<div class="note"><p><b>A new USB installer comes with 1.16.</b> Hearth OS is Fedora-based from 1.15, but the USB files here
+are still the Debian ones: they install the Debian edition, which has been merged into Fedora and gets no new features.
+The Fedora USB installer and Recovery USB come with 1.16.</p></div>
 <div class="tbl"><table>
 <tr><th>Download</th><th>Size</th><th>Internet while installing</th></tr>
-<tr class="ed" data-ed="anatase"><td><a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-live.iso">Anatase, offline USB</a> (archived)</td><td>about 9 GB</td><td>Not needed. Try it before installing.</td></tr>
-<tr class="ed" data-ed="peppermint"><td><a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso">Debian, offline USB</a> (recommended)</td><td>about 4.3 GB</td><td>Not needed</td></tr>
+<tr><td><a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso">Offline USB</a> (still the Debian one: <b>a new USB installer comes with 1.16</b>, made from Fedora)</td><td>about 4.3 GB</td><td>Not needed</td></tr>
 <tr><td><a href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso">Hearth Recovery USB</a> (<a href="troubleshooting.html#recovery-usb">repairs a Hearth device that won't start</a>)</td><td>about 5 GB</td><td>Only to update or send logs</td></tr>
 </table></div>
 <p>To check a download wasn't damaged, compare its checksum (a <code>.sha256</code> file sits next to each ISO, for example
@@ -64,7 +66,7 @@ for a device that won't start.</p>
 <li><b>Plug in the stick and turn the device on</b> while pressing its boot-menu key: often <b>F12</b>, <b>F11</b> or <b>F8</b> on PCs.
 On a <b>ROG Ally</b>: hold <b>Volume Down</b> while pressing power.</li>
 <li><b>Pick the USB stick</b> in the list. If it isn't there, Secure Boot or "Fast Boot" may be hiding it: turn those off in the firmware settings (often <b>Del</b> or <b>F2</b> at power-on).</li>
-<li><b>Try it out.</b> The offline Anatase USB starts Hearth straight away with a welcome card. Nothing on the drive changes until you choose to install.</li>
+<li><b>Start the installer.</b> Nothing on the drive changes until you choose to install.</li>
 </ol>
 
 </section><section><h2 id="installing">Installing</h2>
@@ -80,8 +82,7 @@ If an install fails on your hardware, <a href="troubleshooting.html#logs">send t
 </section><section><h2 id="first">The first start</h2>
 <ul>
 <li>Hearth starts in Steam Game Mode: sign in to Steam on its own screen. Epic, GOG and Xbox sign in from Desktop Mode's <b>Settings › Games &amp; stores</b>.</li>
-<li class="ed" data-ed="anatase">Steam installs itself (from Flathub) the first time the device is online, so after an offline install it appears a few minutes after you connect.</li>
-<li class="ed" data-ed="ubuntu cachyos peppermint">Steam is already installed (from the edition's own packages).</li>
+<li>Steam is already installed.</li>
 <li>An installed system starts at the version the ISO was made with, and <a href="updates.html">updates itself</a> to the newest one once it's online.</li>
 </ul>
 

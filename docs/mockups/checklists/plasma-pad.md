@@ -1,7 +1,7 @@
 # The controller in KDE Plasma (the Fedora edition): hearth-pad-host
 
 Mockups: plasma-pad/1-menu.jpg, plasma-pad/2-keyboard.jpg, plasma-pad/3-controls.jpg
-Release: next
+Release: 1.16
 
 The owner (Nov 18, 2026, on his ROG Ally): the controller should work in the Fedora edition's Desktop Mode like it does
 on Debian. There's no drawn mockup for these: what's approved is Mantel's own (hosts/linux/desktop/shell Pad.qml,

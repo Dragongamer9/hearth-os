@@ -2,18 +2,20 @@
 # image with the Hearth session, from os-bases/peppermint (see docs/BASE-PEPPERMINT.md). Published as
 # ghcr.io/dragongamer9/hearth-peppermint:testing (never :latest: this isn't the main Hearth).
 # Failures show up as annotations on the run (the end of the failing step's output), so the full log isn't needed.
+# ARCHIVED (Nov 19, 2026, the owner: "Only Fedora, Archive Debian"; docs/ARCHIVED.md): Hearth OS is Fedora-based from
+# 1.15 and the Debian edition was merged into it. This no longer runs on pushes (it used to publish :testing and a dated
+# testing-<version>-<date> copy on every push to main and linux-host): by hand only, and publish is off by default, so
+# Debian devices (on :testing or a pinned testing-1.13.0-… tag) get nothing new and keep the version they have.
 name: Hearth OS (Peppermint base)
 
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish the image (off: build and check it only, e.g. to test a branch before merging)'
+        description: 'Publish the image to hearth-peppermint:testing (ARCHIVED: Debian devices follow it; only on the owner''s word). Off: build and check only'
         type: boolean
-        default: true
-  push:
-    branches: [linux-host, main]
-    paths: ['.github/scripts/**', 'os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-apptheme/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-theater/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**', 'hosts/hearth-steam/**', 'hosts/hearth-kde/**', 'hosts/firehold-comp/**', '.github/scripts/hearth-kde-build.sh', 'tools/app-bundle.py', 'os/app-abi']
+        default: false
+  # Archived Nov 19, 2026: no push trigger (it was push to linux-host and main, on the image's paths).
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-peppermint
@@ -479,7 +481,7 @@ jobs:
       packages: write
       actions: read     # the last build's update-manifest artifact (Update size)
     env:
-      PUBLISH: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'push' && (github.ref == 'refs/heads/linux-host' || github.ref == 'refs/heads/main')) }}
+      PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
     steps:
       - uses: actions/checkout@v4
 

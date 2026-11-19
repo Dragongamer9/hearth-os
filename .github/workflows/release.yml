@@ -398,8 +398,8 @@ jobs:
         include:
           - edition: anatase
             container: ''
-          - edition: peppermint
-            container: docker.io/library/debian:trixie
+          # peppermint (Debian) dropped Nov 19, 2026: the Debian edition is archived (merged into Fedora); its devices
+          # get nothing new from a release, not even an app bundle.
     defaults:
       run:
         shell: bash
@@ -475,7 +475,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        edition: [anatase, peppermint]
+        edition: [anatase]   # Debian (peppermint) archived Nov 19, 2026
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

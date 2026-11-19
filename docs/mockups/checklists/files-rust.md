@@ -1,7 +1,7 @@
 # Hearth Files and the Open / Save window in pure Rust (the approved Files and Hearth (C:) mockups, ported from Mantel)
 
 Mockups: next-update/files-1-A-windows11-nav.png, next-update/files-3-A-home-page.png, next-update/files-4-A-narrow.png, next-update/files-5-this-pc.png, next-update/files-6-pictures-details-pane.png, next-update/files-7-right-click.png, next-update/files-8-view-menu.png, next-update/cdrive-1-save-window.png, next-update/cdrive-3-properties.png
-Release: next
+Release: 1.16
 
 The pure-Rust Hearth Files (hosts/hearth-ui/apps/files: hearth-files-app, and hearth-file-chooser for every app's Open /
 Save window) for Hearth OS, Fedora edition, where Mantel's QML Files can't run. Same backend (desktop/shell/hearth-files),

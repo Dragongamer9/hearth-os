@@ -1,7 +1,7 @@
 # Hearth TV 1.0, the Google TV home for shows (approved Nov 15, 2026)
 
 Mockups: hearth-tv/setup.jpg, hearth-tv/main.jpg, hearth-tv/home-inputs.jpg, hearth-tv/home-profiles.jpg, hearth-tv/apps.jpg, hearth-tv/media.jpg, hearth-tv/show.jpg, hearth-tv/show-subtitles.jpg, hearth-tv/show-player.jpg, hearth-tv/theater.jpg, hearth-tv/search.jpg, hearth-tv/cleanup.jpg, hearth-tv/settings-home-screen.jpg, hearth-tv/settings-tv-inputs.jpg, hearth-tv/settings-profiles.jpg, hearth-tv/settings-my-media.jpg, hearth-tv/settings-hearth-link.jpg, hearth-tv/settings-screensaver.jpg, hearth-tv/settings-picture-and-sound.jpg, hearth-tv/settings-remote-and-controllers.jpg, hearth-tv/settings-about.jpg, hearth-tv/screensaver.jpg
-Release: next
+Release: 1.15
 
 Hearth TV has its own version (hosts/android-tv/VERSION, 1.0, picked by the owner); "next" until it's on his TV.
 
