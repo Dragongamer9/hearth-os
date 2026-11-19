@@ -338,7 +338,9 @@ impl App {
         }
         self.toast = text.to_string();
         let g = self.next(Wait::Toast);
-        Task::batch([self.open(Kind::Toast), wait(1800, Wait::Toast, g)])
+        // 1.8 s as Help.qml has it (CI's picture keeps it up).
+        let ms = if app::arg("--show").as_deref() == Some("toast") { 60_000 } else { 1800 };
+        Task::batch([self.open(Kind::Toast), wait(ms, Wait::Toast, g)])
     }
     /// The hints show while the controller was used lately, not over the menu or the controls card.
     fn sync_hints(&mut self) -> Task<Msg> {

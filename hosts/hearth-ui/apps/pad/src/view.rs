@@ -17,8 +17,10 @@ fn at<'a>(x: f32, y: f32, e: Element<'a, Msg>) -> Element<'a, Msg> {
 fn sized<'a>(w: f32, h: f32, e: Element<'a, Msg>) -> Element<'a, Msg> {
     container(e).center_x(Length::Fixed(w)).center_y(Length::Fixed(h)).into()
 }
+/// Mantel's Theme.glass: the panel, all but opaque (0.97); drawn opaque here, as the overlays' alpha adds up
+/// over the dimmed screen and let the window behind read through.
 fn glass(p: &Pal) -> Color {
-    Pal::a(p.panel, 0.95)
+    p.panel
 }
 fn wt(w: font::Weight) -> iced::Font {
     ui::weight(w)
