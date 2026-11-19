@@ -1588,6 +1588,18 @@ steam_auto_after() {
 SERVER_HELPER="${HEARTH_SERVER_HELPER:-$SHARE/desktop/shell/hearth-server-mode}"
 SERVER_QML="${HEARTH_SERVER_QML:-$SHARE/desktop/shell/server-mode.qml}"
 SERVER_LABWC="${HEARTH_SERVER_LABWC:-$SHARE/desktop/server/labwc}"
+# The Fedora edition (1.16): no labwc or Quickshell there, so the dashboard is hearth-server-app (pure Rust, the same
+# helper and files) full screen in cage, a kiosk compositor, run through desktop/server/cage/run (the watcher, like
+# labwc's autostart). Debian's labwc path is used whenever labwc and Quickshell are there, exactly as before.
+SERVER_APP="${HEARTH_SERVER_APP:-hearth-server-app}"
+SERVER_CAGE="${HEARTH_SERVER_CAGE:-cage}"
+SERVER_CAGE_RUN="${HEARTH_SERVER_CAGE_RUN:-$SHARE/desktop/server/cage/run}"
+# labwc (Debian), cage (Fedora) or nothing.
+server_display() {
+  if have labwc && have quickshell; then echo labwc
+  elif have "$SERVER_CAGE" && { have "$SERVER_APP" || [ -x "$SERVER_APP" ]; }; then echo cage
+  fi
+}
 SERVER_UP_SECS="${SERVER_UP_SECS:-60}"
 SERVER_GOOD_SECS="${SERVER_GOOD_SECS:-120}"
 SERVER_WINDOW="${SERVER_WINDOW:-600}"
@@ -1598,16 +1610,23 @@ server_helper() { [ -f "$SERVER_HELPER" ] && have python3 && timeout 15 python3 
 server_enabled() { [ -z "$HEARTH_SEAT" ] && [ "$(server_helper session-check)" = on ]; }
 server_cant_reason() {
   if [ -n "$HEARTH_SEAT" ]; then echo "Server mode is only for the first player"
-  elif ! have labwc || ! have quickshell; then echo "labwc or Quickshell isn't installed"
-  elif [ ! -f "$SERVER_QML" ] || [ ! -f "$SERVER_LABWC/rc.xml" ] || [ ! -f "$SERVER_LABWC/autostart" ]; then echo "Server mode's files are missing"
+  elif [ -z "$(server_display)" ]; then echo "labwc or Quickshell isn't installed (nor cage with Hearth's Server mode app)"
+  elif [ "$(server_display)" = labwc ] && { [ ! -f "$SERVER_QML" ] || [ ! -f "$SERVER_LABWC/rc.xml" ] || [ ! -f "$SERVER_LABWC/autostart" ]; }; then echo "Server mode's files are missing"
+  elif [ "$(server_display)" = cage ] && [ ! -f "$SERVER_CAGE_RUN" ]; then echo "Server mode's files are missing"
   elif ! server_enabled; then echo "Server mode is off (Settings › Home server › Server mode)"
   fi
 }
-# Server mode can't run or failed: Game Mode, always (never no screen, never back to Server mode by itself).
+# Server mode can't run or failed: Game Mode, always (never no screen, never back to Server mode by itself); while
+# Game Mode is off on this PC (game modes off block), Desktop Mode instead (whose own fallbacks still reach Game Mode).
 server_failed() {
-  log "server mode: $1; Game Mode instead"
   echo "$1" >"$RUN/hearth-server-mode-failed" 2>/dev/null
-  echo game >"$NEXT"
+  if command -v game_modes_off >/dev/null 2>&1 && game_modes_off; then
+    log "server mode: $1; Desktop Mode instead (Game Mode is off on this PC)"
+    echo desktop >"$NEXT"
+  else
+    log "server mode: $1; Game Mode instead"
+    echo game >"$NEXT"
+  fi
 }
 server_recent_fails() {
   now=$(date +%s)
@@ -1663,7 +1682,16 @@ run_server() {
   [ -f "$SERVER_LOG" ] && [ "$(wc -c <"$SERVER_LOG")" -gt 1000000 ] && mv -f "$SERVER_LOG" "$SERVER_LOG.old"
   echo "--- $(date '+%F %T') Server mode" >>"$SERVER_LOG"
   [ -d /sys/module/nvidia_drm ] && export WLR_NO_HARDWARE_CURSORS=1
-  HEARTH_SERVER_MODE=1 HEARTH_SERVER_QML="$SERVER_QML" HEARTH_SERVER_LOG="$SERVER_LOG" labwc -C "$SERVER_LABWC" >>"$SERVER_LOG" 2>&1 &
+  sdisp="$(server_display)"
+  if [ "$sdisp" = cage ]; then
+    # Fedora: cage with the watcher as its one client (-s: switching to another console still works). On Nvidia, cage
+    # (wlroots) draws through the driver's GBM / EGL like labwc does; the cursor is drawn in software (above).
+    log "server mode: the dashboard in cage (hearth-server-app)"
+    HEARTH_SERVER_MODE=1 HEARTH_SERVER_APP="$SERVER_APP" HEARTH_SERVER_HELPER="$SERVER_HELPER" HEARTH_SERVER_LOG="$SERVER_LOG" \
+      "$SERVER_CAGE" -s -- sh "$SERVER_CAGE_RUN" >>"$SERVER_LOG" 2>&1 &
+  else
+    HEARTH_SERVER_MODE=1 HEARTH_SERVER_QML="$SERVER_QML" HEARTH_SERVER_LOG="$SERVER_LOG" labwc -C "$SERVER_LABWC" >>"$SERVER_LOG" 2>&1 &
+  fi
   lpid=$!
   # The dashboard must say it's up (server-mode.qml writes $RUN/hearth-server-dash-up) within SERVER_UP_SECS, or labwc is
   # closed and Game Mode starts: a black screen never stays.
@@ -1682,6 +1710,8 @@ run_server() {
   kill "$wpid" 2>/dev/null
   [ -n "$ipid" ] && kill "$ipid" 2>/dev/null
   rm -f "$RUN/hearth-server-mode.pid" "$RUN/hearth-server-dash-up"
+  # (cage: its watcher and the dashboard never outlive it.)
+  [ "$sdisp" = cage ] && { pkill -TERM -u "$(id -u)" -f "$SERVER_CAGE_RUN" 2>/dev/null; pkill -TERM -u "$(id -u)" -f "hearth-server-app" 2>/dev/null; }
   # Power limits back to how they were, the screen on (never waited on for long, never fatal).
   server_helper leaving >/dev/null
   ran=$(( $(date +%s) - started ))

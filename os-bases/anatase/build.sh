@@ -1464,7 +1464,7 @@ chmod 755 /usr/libexec/hearth-app-kinds
 # Manager, System Restore and Reliability history, the ones that ran only inside Mantel. They take those apps' own
 # menu entries and commands here (this edition has no Mantel), and are left out, with their entries as before, when
 # they weren't built or can't start.
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-server-app; do
   [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
   install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/bin/$b"
   # (grep -c, not -q: under pipefail an early grep -q could cut ldd off and hide the match)
@@ -1473,6 +1473,11 @@ for b in hearth-task-manager hearth-system-restore hearth-reliability-history he
     rm -f "/usr/bin/$b"
   fi
 done
+# Server mode on this edition (docs/SERVER-MODE.md, "On the Fedora edition"): no labwc or Quickshell here, so its
+# dashboard is hearth-server-app, full screen in cage (a kiosk compositor: one app on the screen, nothing else; it ends
+# when the dashboard's watcher ends). wlopm turns the screen off after idle. Missing: Server mode falls back as before.
+dnf5 -y install --skip-unavailable cage wlopm || true
+echo "::notice title=Server mode (cage)::$(for b in cage wlopm hearth-server-app; do command -v $b >/dev/null 2>&1 && printf '%s ' "$b" || printf 'no-%s ' "$b"; done)$(rpm -q cage 2>/dev/null | head -1)"
 dnf5 -y install --skip-unavailable rsms-inter-fonts >/dev/null 2>&1 || true
 if [ -x /usr/bin/hearth-task-manager ]; then
   cat > /usr/share/applications/hearth-tasks.desktop <<DESKTOP
@@ -1508,7 +1513,7 @@ for pair in restore:hearth-system-restore reliability:hearth-reliability-history
   fi
   ln -sf "$b" "/usr/bin/hearth-$id"
 done
-echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app; do [ -x /usr/bin/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/bin/$b | cut -f1)"; done)"
+echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-server-app; do [ -x /usr/bin/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/bin/$b | cut -f1)"; done)"
 # The owner (Nov 18): every Hearth app that runs under Plasma is installed and shown in Plasma's menu, and Hearth's own
 # apps are the defaults there (menu and file types); KDE's apps stay installed but never take Hearth's place. So, for
 # Plasma (KDE) only, each kind's list becomes Hearth's own first (in Hearth Classic's order), then the Hearth KDE

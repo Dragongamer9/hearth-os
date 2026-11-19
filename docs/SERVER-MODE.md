@@ -279,15 +279,20 @@ the Light mode and firewall parts in `hearth-home-server` (`colibriOn`, `colibri
 (`USER_APPS`); the tile in `hearth-server-mode`; Send logs in `hosts/hearth-core/src/logs.rs`. Tests:
 `hosts/linux/test/test_hearth_colibri.py` (a stand-in `coli` and OpenAI server); screenshots: `.github/workflows/colibri.yml`.
 
-## On the Fedora edition (planned for 1.16; work in progress on feature/server-mode-fedora)
+## On the Fedora edition (1.16)
 
-The Fedora edition has no labwc and no Quickshell, so Server mode falls back to Game Mode at every start there. The fix
-in progress: Mantel's dashboard ported to a pure-Rust app (`hosts/hearth-ui/apps/server`, `hearth-server-app`, same
-helper and files as server-mode.qml), run full screen in `cage` (a kiosk compositor). Status (Nov 19): the app's source
-is written (draw.rs, main.rs, view.rs) but not yet added to the hearth-ui workspace or built in CI. Still to do: add it
-to the workspace and the four binary lists (hearth-apps-rust.yml twice, hearth-ui-build.sh, anatase build.sh), `cage`
-and `wlopm` in os-bases/anatase/build.sh, `desktop/server/cage/run` (the watcher, like labwc's autostart), the Fedora
-path in nimbus-session's server mode block (server_cant_reason accepts cage + hearth-server-app; a failed Server mode
-goes to Desktop Mode while Game Mode is off), tests in test_hearth_server_mode.py, CI pictures (normal, Guide countdown,
-menu, a service down, the dim screen), and the ROADMAP line. The home server's own services are system / user units
-and keep running whatever the screen shows.
+The Fedora edition has no labwc and no Quickshell (before 1.16 Server mode fell back to Game Mode at every start there).
+Its dashboard is **hearth-server-app** (`hosts/hearth-ui/apps/server`, pure Rust): server-mode.qml and ServerDash.qml
+ported, with the same helper (`hearth-server-mode dash`, `go`, `service`, `power`, `idle-power`, `cancel`, `ithil-*`),
+the same files and marks (`hearth-server-dash-up`, `hearth-server-dash-alive`, `hearth-server/countdown.json`), the
+controller through hearth-pad and Settings through hearth-settings (it opens above the dashboard). It runs full screen
+in **cage**, a kiosk compositor (one app on the screen, it ends when that app's watcher ends): chosen over a KWin kiosk
+setup because it is exactly labwc's role here (the session waits for the dashboard, ends the compositor to switch, and
+cage ends by itself when the watcher gives up), small, and draws through Nvidia's GBM / EGL like labwc (software cursor
+on Nvidia, `WLR_NO_HARDWARE_CURSORS=1`). `desktop/server/cage/run` watches the dashboard as labwc's autostart does
+(three quick closes: it gives up; no alive mark for 45 s: restarted; after two quick closes it draws with the processor).
+nimbus-session (`server_display`) uses labwc whenever labwc and Quickshell are there, else cage when cage and
+hearth-server-app are; every fallback is the same, and while Game Mode is off on this PC a failed Server mode opens
+Desktop Mode instead. The home server's services are system and user units and keep running whatever the screen shows.
+Not yet ported: the AI team's, Ithil's, the cache's, the ad blocker's and the rules' own pages (their tiles open the
+plain details page with Settings for the rest), and the cores' motion (they stand still; one that works shows its rings).

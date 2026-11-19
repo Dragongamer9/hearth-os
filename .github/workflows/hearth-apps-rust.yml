@@ -55,7 +55,7 @@ jobs:
             exit 1
           fi
           ls -la target/release/ | grep hearth-
-          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app; do
+          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-server-app; do
             echo "::notice title=size::$b $(du -h target/release/$b | cut -f1)"
           done
       - name: Tests
@@ -66,7 +66,7 @@ jobs:
       - name: Gather
         run: |
           mkdir -p bin
-          cp hosts/hearth-ui/target/release/hearth-task-manager hosts/hearth-ui/target/release/hearth-system-restore hosts/hearth-ui/target/release/hearth-reliability-history hosts/hearth-ui/target/release/hearth-settings-app hosts/hearth-ui/target/release/hearth-files-app hosts/hearth-ui/target/release/hearth-file-chooser hosts/hearth-ui/target/release/hearth-capture-app hosts/hearth-ui/target/release/hearth-pad-host hosts/hearth-ui/target/release/hearth-g15 hosts/hearth-ui/target/release/hearth-g15-app bin/
+          cp hosts/hearth-ui/target/release/hearth-task-manager hosts/hearth-ui/target/release/hearth-system-restore hosts/hearth-ui/target/release/hearth-reliability-history hosts/hearth-ui/target/release/hearth-settings-app hosts/hearth-ui/target/release/hearth-files-app hosts/hearth-ui/target/release/hearth-file-chooser hosts/hearth-ui/target/release/hearth-capture-app hosts/hearth-ui/target/release/hearth-pad-host hosts/hearth-ui/target/release/hearth-g15 hosts/hearth-ui/target/release/hearth-g15-app hosts/hearth-ui/target/release/hearth-server-app bin/
       - uses: actions/upload-artifact@v4
         with:
           name: hearth-apps-rust
@@ -99,10 +99,10 @@ jobs:
     steps:
       - name: A screen in memory (sway), grim, fonts, Python
         run: |
-          dnf -y install --skip-unavailable git sway grim procps-ng python3 python3-pillow util-linux shadow-utils libxkbcommon libwayland-client libwayland-cursor \
+          dnf -y install --skip-unavailable git sway cage wlopm grim procps-ng python3 python3-pillow util-linux shadow-utils libxkbcommon libwayland-client libwayland-cursor \
             mesa-vulkan-drivers vulkan-loader mesa-dri-drivers mesa-libEGL mesa-libgbm libglvnd-egl \
             fontconfig rsms-inter-fonts google-noto-sans-fonts google-noto-sans-symbols-fonts dejavu-sans-fonts dejavu-sans-mono-fonts systemd >/dev/null
-          for b in sway grim swaymsg runuser; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed"; done
+          for b in sway cage wlopm grim swaymsg runuser; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed"; done
           fc-list | grep -qi inter && echo "::notice title=fonts::Inter is here" || echo "::warning title=fonts::no Inter (the mockups' font)"
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
