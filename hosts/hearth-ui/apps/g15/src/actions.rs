@@ -83,6 +83,38 @@ impl Filters for Action {
     }
 }
 
+/// A macro's options (the G-keys page: "Wait between keys", "Repeat", "While held"):
+/// "wait": "recorded" (default) | "none" | a number of ms; "repeat": how many times (default 1);
+/// "whileHeld": "once" (default) | "repeat" (again and again while the G-key is held).
+#[derive(Debug, Clone, PartialEq)]
+pub struct MacroOpts {
+    pub wait: Option<u32>,
+    pub repeat: u32,
+    pub while_held: bool,
+}
+
+pub fn macro_opts(v: &Value) -> MacroOpts {
+    let wait = match v.get("wait") {
+        Some(Value::String(s)) if s == "none" => Some(0),
+        Some(Value::Number(n)) => n.as_u64().map(|n| n.min(MAX_PAUSE_MS as u64) as u32),
+        _ => None,
+    };
+    MacroOpts {
+        wait,
+        repeat: v.get("repeat").and_then(|r| r.as_u64()).unwrap_or(1).clamp(1, 100) as u32,
+        while_held: v.get("whileHeld").and_then(|w| w.as_str()) == Some("repeat"),
+    }
+}
+
+/// The steps with the chosen waits (the first key never waits).
+pub fn with_waits(steps: &[Step], wait: Option<u32>) -> Vec<Step> {
+    steps
+        .iter()
+        .enumerate()
+        .map(|(i, s)| Step { code: s.code, down: s.down, ms: if i == 0 { 0 } else { wait.unwrap_or(s.ms) } })
+        .collect()
+}
+
 /// Steps as saved in g15.json.
 pub fn steps_json(steps: &[Step]) -> Value {
     Value::Array(steps.iter().map(|s| json!({"key": keys::name_of(s.code), "down": s.down, "ms": s.ms})).collect())
@@ -482,6 +514,17 @@ mod tests {
         assert_eq!(r.mr(10), RecOut::Cancelled);
         r.mr(20);
         assert_eq!(r.g(3), Some(RecOut::Cancelled));
+    }
+
+    #[test]
+    fn macro_options() {
+        let o = macro_opts(&json!({"wait": "none", "repeat": 3, "whileHeld": "repeat"}));
+        assert_eq!(o, MacroOpts { wait: Some(0), repeat: 3, while_held: true });
+        assert_eq!(macro_opts(&json!({})), MacroOpts { wait: None, repeat: 1, while_held: false });
+        let st = vec![Step { code: 30, down: true, ms: 50 }, Step { code: 30, down: false, ms: 70 }];
+        assert_eq!(with_waits(&st, Some(10))[1].ms, 10);
+        assert_eq!(with_waits(&st, None)[0].ms, 0);
+        assert_eq!(with_waits(&st, None)[1].ms, 70);
     }
 
     #[test]

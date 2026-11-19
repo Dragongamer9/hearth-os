@@ -168,7 +168,7 @@ pub fn wanted(elements: &[Value]) -> Vec<String> {
 pub fn live(elements: &[Value]) -> bool {
     elements.iter().any(|e| {
         let t = s(e, "type");
-        t == "graph" || t == "bar" || t == "value" || (t == "clock" && s(e, "format") == "seconds") || (t == "text" && s(e, "text").contains('{') && !s(e, "text").contains("{song.") && !s(e, "text").contains("{alert.") && !s(e, "text").contains("{set.") && !s(e, "text").contains(".name}"))
+        t == "graph" || t == "bar" || t == "value" || (t == "clock" && s(e, "format") == "seconds") || (t == "text" && s(e, "text").contains('{') && !s(e, "text").contains("{song.") && !s(e, "text").contains("{alert.") && !s(e, "text").contains("{set.") && !s(e, "text").contains(".name}") && !s(e, "text").contains("{weather."))
     })
 }
 

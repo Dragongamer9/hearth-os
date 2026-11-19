@@ -183,6 +183,24 @@ pub fn unpack(buf: &[u8]) -> Option<Frame> {
     Some(f)
 }
 
+/// The screen's contrast (0 low, 1 medium, 2 high): the G15's feature report 2 {2, 32, 129, 18 | 22 | 26}, as
+/// libg15's setLCDContrast sends it, through the hidraw node (HIDIOCSFEATURE). hid-lg-g15 doesn't offer it.
+pub fn set_contrast(hidraw: &std::path::Path, level: u32) -> std::io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+    let f = std::fs::OpenOptions::new().write(true).open(hidraw)?;
+    if f.metadata().map(|m| m.is_file()).unwrap_or(false) {
+        return Ok(()); // the pretend keyboard
+    }
+    let mut buf = [2u8, 32, 129, [18u8, 22, 26][level.min(2) as usize]];
+    const HIDIOCSFEATURE_4: u64 = 0xC004_4806;
+    let r = unsafe { libc::ioctl(f.as_raw_fd(), HIDIOCSFEATURE_4 as _, buf.as_mut_ptr()) };
+    if r < 0 {
+        Err(std::io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
+}
+
 // ------------------------------------------------------------------ PNG (the CI pictures; standard library only)
 fn crc32(data: &[u8]) -> u32 {
     let mut c: u32 = 0xffff_ffff;

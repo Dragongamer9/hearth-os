@@ -1298,6 +1298,19 @@ if [ -x /usr/bin/hearth-text ]; then
   command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
 fi
 # ---- end of Hearth Text
+# ---- Logitech G15 (hearth-g15, docs/G15.md): the keyboard's user service and command line, built by CI next to the
+# Hearth app (base-peppermint.yml) and carried in os/nimbus-app. Its udev rule (70-hearth-g15.rules), user unit
+# (hearth-g15.service: nothing waits for it, skipped without a G15) and sign-in entry come from os/system_files.
+if [ -x /ctx/nimbus-app/hearth-g15 ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-g15 /usr/bin/hearth-g15
+  if ldd /usr/bin/hearth-g15 | grep 'not found'; then
+    echo "::warning title=hearth-g15::it needs libraries this image doesn't have, so it's left out"
+    rm -f /usr/bin/hearth-g15
+  fi
+else
+  echo "::warning title=hearth-g15::the Hearth app's build didn't carry hearth-g15 (os/nimbus-app), so this image has no G15 support"
+fi
+# ---- end of hearth-g15
 cat > /usr/share/applications/hearth-tasks.desktop <<DESKTOP
 [Desktop Entry]
 Name=Task Manager

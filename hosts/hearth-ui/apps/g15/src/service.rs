@@ -18,6 +18,7 @@ use serde_json::{json, Value};
 use std::io::{BufRead, Write};
 use std::os::unix::io::{AsRawFd, RawFd};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -200,6 +201,12 @@ pub struct Service {
     player_next: Instant,
     lockmon: Option<Follow>,
     preview: Option<(Vec<Value>, Instant)>,
+    /// The G-keys held now (bit g-1), for macros that repeat while held.
+    held: Arc<AtomicU32>,
+    next_auto_page: Instant,
+    idle: bool,
+    next_idle: Instant,
+    contrast: Option<u32>,
 }
 
 fn screens_of(cfg: &Value) -> Vec<Value> {
@@ -244,6 +251,11 @@ impl Service {
             player_next: Instant::now(),
             lockmon: None,
             preview: None,
+            held: Arc::new(AtomicU32::new(0)),
+            next_auto_page: Instant::now() + Duration::from_secs(10),
+            idle: false,
+            next_idle: Instant::now() + Duration::from_secs(60),
+            contrast: None,
         }
     }
 
@@ -292,7 +304,7 @@ impl Service {
             }
         }
         if let (Some(d), Some(u)) = (self.dev.leds.lcd.clone(), self.lcd_user) {
-            let want = if off { 0 } else { u };
+            let want = if off || self.idle { 0 } else { u };
             if self.lcd_now != Some(want) {
                 if let Err(e) = leds::set(&d, want) {
                     crate::log(&format!("screen light: {e}"));
@@ -300,6 +312,32 @@ impl Service {
                 self.lcd_now = Some(want);
                 self.last = None;
             }
+        }
+    }
+
+    /// The screen's contrast, when you've chosen one (never sent otherwise).
+    fn apply_contrast(&mut self) {
+        let Some(c) = config::light(&self.cfg, "lcdContrast") else { return };
+        if self.contrast == Some(c) {
+            return;
+        }
+        if let Some(h) = &self.dev.hidraw {
+            if let Err(e) = lcd::set_contrast(h, c) {
+                crate::log(&format!("contrast: {e}"));
+            }
+        }
+        self.contrast = Some(c);
+    }
+
+    /// "Turn the light off after N minutes idle" (lcdIdleOff, minutes; 0 or missing: never): idle is the PC's own
+    /// idle (logind's IdleHint, which KDE and Hearth's desktop set) or every screen of the PC asleep.
+    fn check_idle(&mut self) {
+        let mins = self.cfg.get("lcdIdleOff").and_then(|v| v.as_u64()).unwrap_or(0);
+        let was = self.idle;
+        self.idle = mins > 0 && self.root.fixture.is_none() && idle_for(&self.root, &self.session) >= mins * 60;
+        if self.idle != was {
+            self.apply_lights();
+            self.last = None;
         }
     }
 
@@ -340,6 +378,7 @@ impl Service {
             self.lcd_user = Some(v);
         }
         self.apply_lights();
+        self.apply_contrast();
         self.m_leds();
         let n = self.pages().len().max(1);
         self.page %= n;
@@ -350,10 +389,18 @@ impl Service {
 
     // ---------------------------------------------------------------- keys
     fn on_key(&mut self, ev: Ev) {
+        let Some(k) = crate::keys::gkey(ev.code) else { return };
+        if let GKey::G(g) = k {
+            let bit = 1u32 << (g as u32 - 1);
+            if ev.value == 0 {
+                self.held.fetch_and(!bit, Ordering::SeqCst);
+            } else if ev.value == 1 {
+                self.held.fetch_or(bit, Ordering::SeqCst);
+            }
+        }
         if ev.value != 1 {
             return;
         }
-        let Some(k) = crate::keys::gkey(ev.code) else { return };
         match k {
             GKey::M(n) => {
                 let had = self.rec.cancel();
@@ -372,6 +419,7 @@ impl Service {
                 self.m_leds();
                 self.popup = Some((Popup::Set(n), Instant::now() + Duration::from_secs(2)));
             }
+            GKey::Mr if !config::flag(&self.cfg, "mrRecord", true) => {}
             GKey::Mr => match self.rec.mr(now_ms()) {
                 RecOut::Show => self.start_recording_fds(),
                 _ => {
@@ -401,8 +449,10 @@ impl Service {
                         _ => self.popup = Some((Popup::Text("Nothing typed".into()), Instant::now() + Duration::from_secs(2))),
                     }
                     self.m_leds();
-                } else if let Some(a) = config::key_action(&self.cfg, self.active_set(), g).and_then(actions::parse) {
-                    self.do_action(a);
+                } else if let Some(v) = config::key_action(&self.cfg, self.active_set(), g).cloned() {
+                    if let Some(a) = actions::parse(&v) {
+                        self.do_action(a, actions::macro_opts(&v), g);
+                    }
                 }
             }
             GKey::Lcd(n) => self.lcd_key(n),
@@ -434,7 +484,7 @@ impl Service {
         }
     }
 
-    fn do_action(&mut self, a: Action) {
+    fn do_action(&mut self, a: Action, opts: actions::MacroOpts, g: u8) {
         if a == Action::Hearth("next-page".into()) {
             self.lcd_key(1);
             return;
@@ -447,6 +497,12 @@ impl Service {
             return;
         }
         let out = self.out.clone();
+        let held = self.held.clone();
+        let bit = 1u32 << (g.max(1) as u32 - 1);
+        let a = match a {
+            Action::Macro(steps) => Action::Macro(actions::with_waits(&steps, opts.wait)),
+            other => other,
+        };
         // Typing on its own thread, one at a time (a long macro doesn't hold up the keyboard or the screen).
         let _ = std::thread::Builder::new().name("hearth-g15-type".into()).spawn(move || {
             let mut g = match out.lock() {
@@ -454,7 +510,20 @@ impl Service {
                 Err(p) => p.into_inner(),
             };
             match g.as_mut() {
-                Some(o) => actions::play(&a, o.as_mut(), &mut |ms| actions::sleep_ms(ms)),
+                Some(o) => {
+                    // "Repeat": that many times; "While held: repeat": again until the G-key is let go (at most 10 min).
+                    let started = Instant::now();
+                    let mut n = 0;
+                    loop {
+                        actions::play(&a, o.as_mut(), &mut |ms| actions::sleep_ms(ms));
+                        n += 1;
+                        let again = if opts.while_held { held.load(Ordering::SeqCst) & bit != 0 } else { n < opts.repeat };
+                        if !again || started.elapsed() > Duration::from_secs(600) {
+                            break;
+                        }
+                        actions::sleep_ms(30);
+                    }
+                }
                 None => crate::log("can't type: no access to /dev/uinput"),
             }
         });
@@ -518,7 +587,7 @@ impl Service {
 
     /// The games that pick a key set or a screen by themselves: checked every 5 s, only when there are any.
     fn check_games(&mut self) {
-        let rules: Vec<(String, Option<u8>)> = self.cfg.get("gameSets").and_then(|g| g.as_array()).map(|a| a.iter().filter_map(|r| Some((r.get("game")?.as_str()?.to_lowercase(), r.get("set").and_then(|s| s.as_u64()).map(|s| s.clamp(1, 3) as u8)))).collect()).unwrap_or_default();
+        let rules: Vec<(String, Option<u8>)> = if !config::flag(&self.cfg, "switchSets", true) { Vec::new() } else { self.cfg.get("gameSets").and_then(|g| g.as_array()).map(|a| a.iter().filter_map(|r| Some((r.get("game")?.as_str()?.to_lowercase(), r.get("set").and_then(|s| s.as_u64()).map(|s| s.clamp(1, 3) as u8)))).collect()).unwrap_or_default() };
         let screens: Vec<(String, String)> = screens_of(&self.cfg).iter().filter_map(|s| Some((s.get("whileRunning")?.as_str()?.to_lowercase(), s.get("id")?.as_str()?.to_string()))).filter(|(g, _)| !g.is_empty()).collect();
         if rules.is_empty() && screens.is_empty() {
             self.game_set = None;
@@ -747,6 +816,7 @@ impl Service {
         self.kbd_user = config::light(&self.cfg, "kbdLight").or(self.kbd_now);
         self.lcd_user = config::light(&self.cfg, "lcdLight").or(self.lcd_now);
         self.apply_lights();
+        self.apply_contrast();
         self.m_leds();
         // The light button: brightness_hw_changed is read once, then poll()ed.
         let hw: Vec<(RawFd, &'static str)> = [(self.dev.leds.kbd.clone(), "kbd"), (self.dev.leds.lcd.clone(), "lcd")]
@@ -767,6 +837,10 @@ impl Service {
         }
         self.fixture_song();
         self.check_alerts(true);
+        if self.root.fixture.is_none() {
+            let uid = unsafe { libc::getuid() }.to_string();
+            self.session = crate::run_out(&["loginctl", "show-user", &uid, "-p", "Display", "--value"], 5).unwrap_or_default().trim().to_string();
+        }
         self.lock_monitor();
         let cfg_name = config::path().file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         loop {
@@ -774,6 +848,18 @@ impl Service {
             if Instant::now() >= self.next_games {
                 self.check_games();
                 self.next_games = Instant::now() + Duration::from_secs(5);
+            }
+            if config::flag(&self.cfg, "autoPage", false) && Instant::now() >= self.next_auto_page {
+                let secs = self.cfg.get("autoPageSecs").and_then(|v| v.as_u64()).unwrap_or(10).clamp(3, 600);
+                self.next_auto_page = Instant::now() + Duration::from_secs(secs);
+                if self.popup.is_none() && !self.rec.recording() && self.game_screen.is_none() && self.preview.is_none() {
+                    self.page = (self.page + 1) % self.pages().len().max(1);
+                    self.next_draw = Instant::now();
+                }
+            }
+            if Instant::now() >= self.next_idle {
+                self.next_idle = Instant::now() + Duration::from_secs(60);
+                self.check_idle();
             }
             if self.screen_on() && Instant::now() >= self.next_draw {
                 self.draw();
@@ -808,6 +894,12 @@ impl Service {
             }
             if self.night() || config::flag(&self.cfg, "nightDim", false) {
                 wake = wake.min(now + Duration::from_secs(60));
+            }
+            if config::flag(&self.cfg, "autoPage", false) {
+                wake = wake.min(self.next_auto_page);
+            }
+            if self.cfg.get("lcdIdleOff").and_then(|v| v.as_u64()).unwrap_or(0) > 0 {
+                wake = wake.min(self.next_idle);
             }
             let ms = wake.saturating_duration_since(now).as_millis().min(3_600_000) as i32;
             let rev = input::poll(&fds, ms.max(10));
@@ -898,6 +990,45 @@ impl Service {
             self.last = None;
             self.next_draw = Instant::now();
         }
+    }
+}
+
+/// Seconds the PC has been idle: logind's IdleSinceHint when the session says it's idle, else how long every screen
+/// has been asleep (DPMS off in /sys/class/drm), else 0. Run once a minute, only when the setting is on.
+fn idle_for(root: &Root, session: &str) -> u64 {
+    if !session.is_empty() {
+        if let Some(o) = crate::run_out(&["loginctl", "show-session", session, "-p", "IdleHint", "-p", "IdleSinceHintMonotonic"], 5) {
+            let idle = o.lines().any(|l| l.trim() == "IdleHint=yes");
+            let since = o.lines().find_map(|l| l.strip_prefix("IdleSinceHintMonotonic=")).and_then(|v| v.trim().parse::<u64>().ok()).unwrap_or(0);
+            if idle && since > 0 {
+                let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+                unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
+                let now_us = ts.tv_sec as u64 * 1_000_000 + ts.tv_nsec as u64 / 1000;
+                return now_us.saturating_sub(since) / 1_000_000;
+            }
+        }
+    }
+    static SINCE: Mutex<Option<Instant>> = Mutex::new(None);
+    let mut any = false;
+    let mut all_off = true;
+    if let Ok(rd) = std::fs::read_dir(root.sys.join("class/drm")) {
+        for e in rd.filter_map(|e| e.ok()) {
+            let n = e.file_name().to_string_lossy().to_string();
+            if !n.contains('-') || read(&e.path().join("status")).as_deref() != Some("connected") {
+                continue;
+            }
+            any = true;
+            if read(&e.path().join("dpms")).as_deref() != Some("Off") {
+                all_off = false;
+            }
+        }
+    }
+    let mut g = SINCE.lock().unwrap_or_else(|p| p.into_inner());
+    if any && all_off {
+        g.get_or_insert_with(Instant::now).elapsed().as_secs()
+    } else {
+        *g = None;
+        0
     }
 }
 
