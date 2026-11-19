@@ -1386,7 +1386,7 @@ def users():
     for u in out:
         u['me'] = u['name'] == me
         pic = ''
-        for p in ([os.path.join(HOME, '.face')] if u['me'] else []) + ['/var/lib/AccountsService/icons/' + u['name']]:
+        for p in ([os.path.join(HOME, '.face'), os.path.join(HOME, '.face.icon')] if u['me'] else []) + ['/var/lib/AccountsService/icons/' + u['name']]:
             if os.path.isfile(p) and os.access(p, os.R_OK):
                 pic = p
                 break

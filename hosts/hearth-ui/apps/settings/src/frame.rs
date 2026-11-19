@@ -142,7 +142,11 @@ fn frame_a(a: &App) -> Element<'_, Msg> {
     let p = a.sh.p;
     let rail_bg = Pal::mix(p.bg, p.panel, 0.55);
     let initial = a.sh.info.real.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "·".into());
-    let avatar = container(tb(initial, 22.0, p.ink)).center_x(Length::Fixed(56.0)).center_y(Length::Fixed(56.0)).style(ui::boxed(p.accent, 28.0, None));
+    // Your account picture, round (pics.rs, read once off the window's thread); your initial until then or without one.
+    let avatar: Element<'_, Msg> = match crate::pics::get(&a.sh.face, crate::pics::ROUND) {
+        Some(h) => container(crate::pics::round(h, 56.0)).width(Length::Fixed(56.0)).height(Length::Fixed(56.0)).into(),
+        None => container(tb(initial, 22.0, p.ink)).center_x(Length::Fixed(56.0)).center_y(Length::Fixed(56.0)).style(ui::boxed(p.accent, 28.0, None)).into(),
+    };
     let who = column![
         tb(if a.sh.info.real.is_empty() { "You".to_string() } else { a.sh.info.real.clone() }, 16.0, p.text),
         t(format!("{} · {}", if a.sh.info.admin { "Administrator" } else { "Standard account" }, a.sh.info.host), 13.0, p.muted),

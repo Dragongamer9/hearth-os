@@ -15,7 +15,7 @@ Manager (hosts/hearth-ui/apps/settings). It follows the Global Theme picked in K
 - [x] follows the Global Theme picked in KDE's System Settings, Hearth's looks or any other — hosts/hearth-ui/src/theme.rs: "fn from_plasma() -> Option<Pal>"
 
 ## Switching between the looks (settings-new.md: A with the keyboard and mouse, B with a controller)
-- [x] B while a controller was used last, A while the keyboard or mouse was, switching live (needs testing on a device: CI has no controller, both looks are pictured with --layout) — hosts/hearth-ui/apps/settings/src/main.rs: "if !a.sh.big && a.fixed.is_none() {"
+- [x] B while a controller was used last, A while the keyboard or mouse was, switching live (needs testing on a device: CI has no controller, both looks are pictured with --layout) — hosts/hearth-ui/apps/settings/src/main.rs: "if !a.sh.big && a.fixed.is_none() && look::auto() {"
 - [x] the page and the setting you were on stay picked across the switch — hosts/hearth-ui/apps/settings/src/main.rs: "The page and the focused row stay."
 - [x] the controller read from /dev/input as well as its keys (hearth-pad, Steam Input), each press done once, its click held back (needs testing on a device) — hosts/hearth-ui/apps/settings/src/nav.rs: "if click && now_ms() < HOLD_CLICKS.load(Ordering::Relaxed) {"
 
@@ -72,7 +72,7 @@ down a"` (presses as if from the controller), pictured by .github/scripts/hearth
 - [x] Sound: volume, mute, speakers and microphone to use — hosts/hearth-ui/apps/settings/src/cats/system_sound.rs: "\"Recording from here\""
 - [x] Power & battery: battery, power mode — hosts/hearth-ui/apps/settings/src/cats/system_power.rs: "\"Battery saver lasts longer; Performance is faster and warmer\""
 - [x] Storage, Startup, Date & time (time zone, set by itself), About (with Rename) — hosts/hearth-ui/apps/settings/src/cats/system_lang.rs: "\"Find a time zone\""
-- [x] Your desktop: KDE Plasma, Firehold (Rust, test), Firehold (Plasma, test), Switch now — hosts/hearth-ui/apps/settings/src/cats/system_more.rs: "\"Firehold (Plasma, test)\""
+- [x] Your desktop: KDE Plasma, Firehold (Plasma, test), Switch now (Firehold (Rust, test) archived Nov 19) — hosts/hearth-ui/apps/settings/src/cats/system_more.rs: "\"Firehold (Plasma, test)\""
 - [x] Personalization: the 8 looks, dark / light, the accent (KDE's Global Theme follows) — hosts/hearth-ui/apps/settings/src/cats/pers/looks.rs: "Msg::Look(l) => return save(sh, json!({\"look\": l, \"subTheme\": \"\"}))"
 - [x] Updates & recovery: the status card (look for updates, download, restart), progress line by line while updating, Update anyway, Shut down when it's done (and its countdown with Cancel), Shut down and finish updating — hosts/hearth-ui/apps/settings/src/cats/updates.rs: "Updated. Shutting down in"
 - [x] Updates & recovery: a restore point before updating and before the writable system is switched, Go back (asks first) and Stay on, System Restore, Reliability history, the previous version kept — hosts/hearth-ui/apps/settings/src/cats/updates.rs: "Yes, go back at the next restart"

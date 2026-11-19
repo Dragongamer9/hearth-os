@@ -22,6 +22,21 @@ pub struct Shared {
     pub part: String,
     /// The controller look (layout B) is showing.
     pub big: bool,
+    /// Your account picture's file (my_face), "" without one: drawn round in the corner (frame.rs).
+    pub face: String,
+}
+
+/// Your account picture, where Accounts › Your account finds it (hearth-system users, the same order): ~/.face,
+/// ~/.face.icon (KDE's), then AccountsService's /var/lib/AccountsService/icons/<you> (what Plasma's and the login
+/// screen's picture is). "" when there's none readable.
+pub fn my_face() -> String {
+    let home = hearth_ui::paths::home();
+    let user = std::env::var("USER").ok().filter(|u| !u.is_empty()).unwrap_or_else(|| home.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default());
+    let mut c = vec![home.join(".face"), home.join(".face.icon")];
+    if !user.is_empty() {
+        c.push(std::path::PathBuf::from(std::env::var("HEARTH_ACCOUNTS_ICONS").unwrap_or_else(|_| "/var/lib/AccountsService/icons".into())).join(&user));
+    }
+    c.into_iter().find(|p| std::fs::File::open(p).map(|f| f.metadata().map(|m| m.is_file() && m.len() > 0).unwrap_or(false)).unwrap_or(false)).map(|p| p.to_string_lossy().into_owned()).unwrap_or_default()
 }
 
 pub fn io_helper() -> String {
@@ -34,6 +49,7 @@ impl Shared {
             p: hearth_ui::theme::load(),
             info: data::Info::default(),
             desktop: read_desktop(),
+            face: my_face(),
             history: Vec::new(),
             error: String::new(),
             note: String::new(),

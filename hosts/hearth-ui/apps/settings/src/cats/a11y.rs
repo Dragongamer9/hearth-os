@@ -43,6 +43,8 @@ pub enum Msg {
     K(KMsg),
     ReduceMotion(bool),
     Emoji,
+    /// Settings' own look: "auto", "always", "never" (look.rs).
+    Look(&'static str),
 }
 
 pub fn open(sh: &mut Shared, st: &mut State, _page: &'static str) -> Task<Msg> {
@@ -145,6 +147,21 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             return Task::perform(run::spawn(cmd), Msg::Did);
         }
         Msg::Emoji => run::detached(&["hearth-emoji"]),
+        Msg::Look(v) => match crate::look::save(v) {
+            Ok(()) => {
+                crate::look::set_current(v);
+                crate::nav::set_fixed(!crate::look::auto());
+                if let Some(b) = crate::look::fixed(v) {
+                    sh.big = b;
+                    crate::nav::set_pad_look(b);
+                    crate::nav::set_shown(b);
+                }
+            }
+            Err(e) => {
+                st.msg = e;
+                st.bad = true;
+            }
+        },
     }
     Task::none()
 }
@@ -295,6 +312,8 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
     let rm = a.sh.d_bool("reduceMotion", false);
     c = c.push(irow(&p, Ic::Motion, "Reduce motion", "Still wallpapers and fewer animations (animated ones also hold still on battery and behind fullscreen games)", switch(&p, rm, Some(Msg::ReduceMotion(!rm)))));
     c = c.push(head(&p, "More"));
+    let lk = crate::look::current();
+    c = c.push(irow(&p, Ic::G(G::Pad), "Controller look in Settings", "Big rows and ‹ › choices for the controller. Automatic: while you use a controller, and back when you use the mouse or keyboard", seg(&p, [("Automatic", "auto"), ("Always", "always"), ("Never", "never")].iter().map(|(l, v)| (l.to_string(), lk == *v, Some(Msg::Look(*v)))).collect())));
     c = c.push(iact(&p, Ic::Kbd, "Emoji and symbols", "Super+. opens the picker, in any app", false, Some(Msg::Emoji)));
     if !st.msg.is_empty() {
         c = c.push(said(&p, &st.msg, st.bad));

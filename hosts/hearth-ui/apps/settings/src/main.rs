@@ -21,6 +21,7 @@
 mod cats;
 mod data;
 mod frame;
+mod look;
 mod nav;
 mod pad;
 mod pages_list;
@@ -112,6 +113,8 @@ macro_rules! define {
             Focus(bool),
             /// The mouse was used while the controller look shows.
             Pointer,
+            /// Your account picture was read (or read again): drawn in the corner.
+            Face,
             Tab(usize),
             X,
             Find(bool),
@@ -236,8 +239,11 @@ impl App {
             "a" | "mouse" => Some(false),
             _ => None,
         };
-        nav::set_fixed(a.fixed.is_some());
-        let b = a.fixed.unwrap_or(false);
+        // Accessibility › Controller look (look.rs): Always / Never hold the look; Automatic follows what you use.
+        let pref = look::read();
+        look::set_current(pref);
+        nav::set_fixed(a.fixed.is_some() || !look::auto());
+        let b = a.fixed.or(look::fixed(pref)).unwrap_or(false);
         set_layout(&mut a, b);
         let t = open_page(&mut a, first);
         if let Some(f) = app::arg("--focus") {
@@ -250,6 +256,9 @@ impl App {
             nav::set_in_page(true);
         }
         let mut tasks = vec![info(), history(), t];
+        if let Some(f) = pics::load(vec![(a.sh.face.clone(), pics::ROUND)]) {
+            tasks.push(Task::perform(f, |_| Msg::Face));
+        }
         // `--press "right down a"`: the controller's presses, for the pictures and tests (as if read from it).
         if let Some(p) = app::arg("--press") {
             let presses: Vec<pad::Button> = p.split_whitespace().filter_map(pad::named).collect();
@@ -272,6 +281,10 @@ impl App {
 
 /// Shows the controller look (B) or the keyboard-and-mouse look (A). The page and the focused row stay.
 fn set_layout(a: &mut App, b: bool) {
+    if a.sh.big != b || !nav::look_said() {
+        // One line when the look changes (CI checks the controller's own pointer doesn't flip it).
+        eprintln!("hearth-settings: look: {}", if b { "controller" } else { "keyboard and mouse" });
+    }
     a.sh.big = b;
     nav::set_pad_look(b);
     if b {
@@ -320,8 +333,9 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             a.win_focused = on;
             Task::none()
         }
+        Msg::Face => Task::none(),
         Msg::Pointer => {
-            if a.sh.big && a.fixed.is_none() {
+            if a.sh.big && a.fixed.is_none() && look::auto() && nav::look_age() > 4000 && crate::pad::desk_in_use() {
                 set_layout(a, false);
             }
             Task::none()
@@ -606,7 +620,8 @@ fn pad_press(a: &mut App, b: pad::Button) -> Task<Msg> {
         return Task::none(); // another window has the controller
     }
     nav::pad_used();
-    if !a.sh.big && a.fixed.is_none() {
+    pad::ctrl_used();
+    if !a.sh.big && a.fixed.is_none() && look::auto() {
         set_layout(a, true);
     }
     let act = match b {
@@ -648,7 +663,9 @@ fn key_press(a: &mut App, key: Key, mods: Modifiers) -> Task<Msg> {
         _ => None,
     };
     // The keyboard used (not a key the controller typed): back to the keyboard-and-mouse look.
-    if a.sh.big && a.fixed.is_none() && !nav::pad_recent(1500) {
+    // Only a real keyboard (not keys the controller typed: hearth-pad, the on-screen keyboard), and not right after
+    // the look changed (pad.rs desk_in_use, nav::look_age).
+    if a.sh.big && a.fixed.is_none() && look::auto() && !nav::pad_recent(1500) && nav::look_age() > 4000 && crate::pad::desk_in_use() {
         set_layout(a, false);
     }
     let Some(act) = act else { return Task::none() };

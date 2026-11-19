@@ -206,7 +206,8 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
         // ---------------------------------------------------------- Users
         Msg::Users(o) => match kit::answer(&o) {
             Ok(v) if v.is_object() => {
-                let want: Vec<(String, crate::pics::Cut)> = kit::arr(&v, "users").iter().map(|x| (kit::s_of(x, "picture"), crate::pics::ROUND)).collect();
+                let mut want: Vec<(String, crate::pics::Cut)> = kit::arr(&v, "users").iter().map(|x| (kit::s_of(x, "picture"), crate::pics::ROUND)).collect();
+                want.push((sh.face.clone(), crate::pics::ROUND));
                 st.users = Some(v);
                 return pics_task(want);
             }
@@ -237,6 +238,9 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
                     for x in st.users.as_ref().map(|u| kit::arr(u, "users")).unwrap_or_default() {
                         crate::pics::forget(&kit::s_of(&x, "picture"));
                     }
+                    // And the corner's (frame.rs): its file may be new or gone; read again with the list below.
+                    crate::pics::forget(&sh.face);
+                    sh.face = crate::shared::my_face();
                     let removed = kit::s_of(&r, "picture").is_empty();
                     say(st, if removed { "Picture removed." } else if kit::b_of(&r, "loginScreen") { "Picture changed." } else { "Picture changed (the login screen keeps its own until Hearth's admin helper is there)." }, false);
                 }

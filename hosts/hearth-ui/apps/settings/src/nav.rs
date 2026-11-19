@@ -410,11 +410,27 @@ pub fn pad_recent(ms: u64) -> bool {
     let at = PAD_AT.load(Ordering::Relaxed);
     at > 0 && now_ms().saturating_sub(at) < ms
 }
+/// When the look last changed (ms on this clock): it changes back by itself at most once every few seconds.
+static LOOK_AT: AtomicU64 = AtomicU64::new(0);
+/// The first look was said (set_layout's line, once at start).
+pub fn look_said() -> bool {
+    static SAID: AtomicBool = AtomicBool::new(false);
+    SAID.swap(true, Ordering::Relaxed)
+}
+pub fn look_age() -> u64 {
+    now_ms().saturating_sub(LOOK_AT.load(Ordering::Relaxed))
+}
 pub fn set_pad_look(on: bool) {
+    if PAD_LOOK.load(Ordering::Relaxed) != on {
+        LOOK_AT.store(now_ms(), Ordering::Relaxed);
+    }
     PAD_LOOK.store(on, Ordering::Relaxed);
     if on {
         POINTER_SAID.store(false, Ordering::Relaxed);
     }
+}
+pub fn pad_look() -> bool {
+    PAD_LOOK.load(Ordering::Relaxed)
 }
 pub fn set_fixed(on: bool) {
     FIXED.store(on, Ordering::Relaxed);
@@ -467,7 +483,9 @@ impl<'a, M: Clone + 'a> Widget<M, iced::Theme, iced::Renderer> for Gate<'a, M> {
             return;
         }
         let pointer = click || matches!(event, Event::Mouse(mouse::Event::CursorMoved { .. } | mouse::Event::WheelScrolled { .. }));
-        if pointer && PAD_LOOK.load(Ordering::Relaxed) && !FIXED.load(Ordering::Relaxed) && !pad_recent(1500) && !POINTER_SAID.swap(true, Ordering::Relaxed) {
+        // Back to the keyboard-and-mouse look only for a real mouse / touchpad (pad.rs desk_in_use): the controller's
+        // own pointer and A click arrive as pointer events too, and must not flip the look (the owner, Nov 19).
+        if pointer && PAD_LOOK.load(Ordering::Relaxed) && !FIXED.load(Ordering::Relaxed) && !pad_recent(1500) && look_age() > 4000 && crate::pad::desk_in_use() && !POINTER_SAID.swap(true, Ordering::Relaxed) {
             shell.publish(self.on_pointer.clone());
         }
         self.content.as_widget_mut().update(&mut tree.children[0], event, layout, cursor, renderer, clipboard, shell, viewport)

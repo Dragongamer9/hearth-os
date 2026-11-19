@@ -7,6 +7,7 @@ headless sway has no input devices. Plain Wayland wire protocol, no libraries.
 
 touchpad: continuous scrolling (axis source finger) of PX_PER_STEP px per step (default 8 px, 60 steps a second);
 wheel: one notch (discrete) per step (default 12 steps a second). Down for the first half, up for the second.
+move: the pointer moves around the middle of the screen (no buttons), 60 steps a second.
 Prints one line: steps sent."""
 import os
 import socket
@@ -64,7 +65,7 @@ def main():
     secs = float(sys.argv[1]) if len(sys.argv) > 1 else 3.0
     kind = sys.argv[2] if len(sys.argv) > 2 else 'touchpad'
     px = float(sys.argv[3]) if len(sys.argv) > 3 else 8.0
-    rate = float(sys.argv[4]) if len(sys.argv) > 4 else (60.0 if kind == 'touchpad' else 12.0)
+    rate = float(sys.argv[4]) if len(sys.argv) > 4 else (12.0 if kind == 'wheel' else 60.0)
     w = Wl()
     reg = w.new()
     w.send(1, 1, struct.pack('<I', reg))             # wl_display.get_registry
@@ -104,7 +105,11 @@ def main():
         if el >= secs:
             break
         sign = 1.0 if el < secs / 2 else -1.0
-        if kind == 'wheel':
+        if kind == 'move':
+            import math
+            a = el * 2.0
+            w.send(vp, 1, struct.pack('<IIIII', ms(), int(500 + 200 * math.cos(a)), int(500 + 150 * math.sin(a)), 1000, 1000))
+        elif kind == 'wheel':
             w.send(vp, 5, struct.pack('<I', 0))                                      # axis_source wheel
             w.send(vp, 7, struct.pack('<IIIi', ms(), 0, fixed(15.0 * sign), int(sign)))  # axis_discrete
         else:
