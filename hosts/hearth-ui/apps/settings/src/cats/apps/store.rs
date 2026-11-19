@@ -6,6 +6,7 @@
 //! `hearth-settings store:updates`, `store:sources`, `store:drivers`, `store:app-org_kde_krita` open at that part.
 
 use super::kit::{self, *};
+use super::kit::button;
 use crate::shared::Shared;
 use crate::widgets::*;
 use hearth_ui::ui::{t, tb, G};

@@ -6,6 +6,7 @@
 //! it's read again every 6 s, as Mantel's is. Without HHD: says so, nothing else.
 
 use crate::cats::apps::kit::*;
+use crate::cats::apps::kit::button;
 use crate::shared::Shared;
 use crate::widgets::*;
 use hearth_ui::ui::{self, t, tm, ts, G};

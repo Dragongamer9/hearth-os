@@ -6,6 +6,7 @@
 //! page is live whenever KWin is. `kwin-rules:<window class>` opens that app's rule (or offers to make one).
 
 use super::kit::*;
+use super::kit::button;
 use crate::shared::Shared;
 use crate::widgets::*;
 use hearth_ui::ui::G;

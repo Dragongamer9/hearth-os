@@ -5,6 +5,7 @@
 //! sign-in (as Mantel's does), and it's on again at the next sign-in.
 
 use crate::cats::apps::kit::{self, *};
+use crate::cats::apps::kit::button;
 use crate::shared::Shared;
 use crate::widgets::*;
 use hearth_ui::ui::G;

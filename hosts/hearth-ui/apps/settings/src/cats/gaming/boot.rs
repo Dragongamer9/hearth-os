@@ -5,6 +5,7 @@
 //! override folder as Steam Game Mode starts).
 
 use crate::cats::apps::kit::{self, *};
+use crate::cats::apps::kit::button;
 use crate::shared::Shared;
 use crate::widgets::*;
 use hearth_ui::ui::{self, glyph, t, tb, tm, G};

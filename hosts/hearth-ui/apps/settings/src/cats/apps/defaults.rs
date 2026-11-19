@@ -4,6 +4,7 @@
 //! which KDE Plasma's own Default Applications and Open With read too.
 
 use super::kit::*;
+use super::kit::button;
 use crate::shared::Shared;
 use crate::widgets::*;
 use hearth_ui::ui::G;

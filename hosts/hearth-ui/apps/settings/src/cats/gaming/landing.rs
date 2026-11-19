@@ -6,6 +6,7 @@
 //! Opening it only reads.
 
 use crate::cats::apps::kit::{self, *};
+use crate::cats::apps::kit::button;
 use crate::shared::Shared;
 use crate::widgets::*;
 use hearth_ui::ui::{self, t, tb, tm, G};

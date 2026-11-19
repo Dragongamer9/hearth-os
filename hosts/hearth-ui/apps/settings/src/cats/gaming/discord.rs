@@ -5,6 +5,7 @@
 //! which merges one key of ~/.config/nimbus/discord.json). Hearth never reads messages or signs in for you.
 
 use crate::cats::apps::kit::{self, *};
+use crate::cats::apps::kit::button;
 use crate::shared::Shared;
 use crate::widgets::*;
 use hearth_ui::ui::G;

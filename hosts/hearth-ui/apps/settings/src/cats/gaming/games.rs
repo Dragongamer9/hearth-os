@@ -5,6 +5,7 @@
 //! never signs in to Steam for you.
 
 use crate::cats::apps::kit::{self, *};
+use crate::cats::apps::kit::button;
 use crate::shared::Shared;
 use crate::widgets::*;
 use hearth_ui::ui::G;
