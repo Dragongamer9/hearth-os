@@ -5,6 +5,10 @@ Sync** putting your games from other stores into Steam's library, and **Mantel**
 **Ember** is Hearth on Windows 11. Versions are MAJOR.MINOR with a date (docs/UPDATES.md), and the owner picks every
 number. Work lands on `bughunt` and goes out on `main` when it's tested. What's archived: docs/ARCHIVED.md.
 
+## Planned for 1.16
+
+- [ ] Hearth Store (the owner, Nov 19: "Make a Hearth Store App … for apps I make and that are NOT installed on the system by default"; mockups approved the same night; Fedora edition only, built into the image; checklist docs/mockups/checklists/hearth-store.md, mockups docs/mockups/hearth-store/store-1…9, docs/HEARTH-STORE.md): install, update, check and repair, and uninstall the owner's own apps as AppImages in your home folder (Hearth AI Command Center, which updates itself; Hearth AI once its releases are published), Logitech G15, Beacon and the USB maker shown as Built in, Hearth Buddy as Coming, Hearth OS CAD and Trains 2010 only on his own devices; its list of apps built into Hearth OS, refreshed from hearthos.fun only when signed with his key (still to make: HEARTH_STORE_SIGNING_KEY); built on feature/hearth-store (needs testing on a device)
+
 ## Planned for 1.15
 
 - [ ] Hearth OS on Anatase back as a test beside Debian (the owner, Nov 17; docs/BASE-ANATASE.md): the same Hearth as Debian's 1.15 on Fedora (Anatase), Steam Game Mode with Hearth Sync, stock KDE Plasma as Desktop Mode with Hearth's apps in its menu and Back to Game Mode, Unlock the file system (dnf, off unless turned on), Switch edition both ways ("Hearth OS on Anatase (test)", Debian pinned in the boot menu, the home folder kept, back to the very Debian version), only on `hearth-os:test-1.15`; Debian stays the main edition (needs testing on a device: the ROG Ally and the laptop)

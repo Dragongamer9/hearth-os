@@ -74,7 +74,8 @@ fn pad_rows(a: &App) -> (Option<(Entry, State)>, Vec<Entry>, Vec<Entry>) {
     top.extend(a.cat.apps.iter().filter(|e| e.kind == Kind::BuiltIn).cloned());
     top.truncate(3);
     let mut more: Vec<Entry> = a.cat.apps.iter().filter(|e| e.id != hid && !top.iter().any(|x| x.id == e.id) && matches!(a.state(e), State::Coming)).cloned().collect();
-    more.extend(a.cat.apps.iter().filter(|e| e.id != hid && !top.iter().any(|x| x.id == e.id) && !more.iter().any(|x| x.id == e.id)).cloned());
+    let rest: Vec<Entry> = a.cat.apps.iter().filter(|e| e.id != hid && !top.iter().any(|x| x.id == e.id) && !more.iter().any(|x| x.id == e.id)).cloned().collect();
+    more.extend(rest);
     (hero, top, more)
 }
 
