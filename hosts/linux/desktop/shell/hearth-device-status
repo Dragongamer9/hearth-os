@@ -9,7 +9,8 @@ never writes a setting.
   hearth-device-status devices   your other devices for the page: `hearth-link call status.devices`, with the last
                                  numbers of a device that's offline now ($XDG_CACHE_HOME/hearth/devices-status.json)
                                  and what Hearth Storage knows (its shared folders, whether it can be woken)
-  hearth-device-status wake ID   wake a paired device (Hearth Storage's Wake-on-LAN, when that device taught it how)
+  hearth-device-status wake ID   wake a paired device (Wake-on-LAN, when that device taught it how: Hearth Storage, or
+                                 a family member's device saying its network cards)
 
 Sharing: "Let my other devices see this device's status" (Settings › Hearth Link; `shareStatus` in Mantel's
 desktop.json). A missing key means on (a default only, never written): it only reaches devices paired with this
@@ -544,6 +545,9 @@ def merge(answer, cache, storage=None):
         if d['id'] in storage:
             d['shares'] = storage[d['id']]['shares']
             d['wake'] = storage[d['id']]['wake']
+        # A family member's device says its network cards itself (Hearth Link family.rs): it can be woken too.
+        if d.get('canWake'):
+            d['wake'] = True
         out.append(d)
     return out, cache
 
@@ -584,7 +588,8 @@ def main(argv):
         dev = argv[1] if len(argv) > 1 else ''
         if not re.fullmatch(r'[0-9a-f]{16,128}', dev):
             raise Fail('not a device')
-        return ask_link('storage.wake', {'server': dev})
+        # Hearth Storage's Wake-on-LAN for your devices, or what a family member's device said (peer.wake).
+        return ask_link('peer.wake', {'id': dev})
     raise Fail('unknown command ' + cmd)
 
 

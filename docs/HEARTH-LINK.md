@@ -7,18 +7,28 @@ data in sync between them and copies games from one to another. This page is abo
 Settings › Hearth Link is the same in Game Mode (`ui/index.html`, `pageLink`) and Desktop Mode (Mantel's
 `SetLink.qml` through `hearth-link-settings`). Everything works with a controller.
 
-## My device or a friend's device
+## My device, a family member's device or a friend's device
 
-Pairing asks first: **My device** (the default) or **A friend's device**. In Game Mode it's a choice before the code
-shows (or before you pick the other device); in Mantel it's the **Pairing a friend's device** switch above the list
-(off: My device; it's only for that screen, never saved). A device is yours only when **both** sides picked My device;
-otherwise both keep it as a friend's device.
+Pairing asks first: **My device** (the default), **A family member's device** or **A friend's device**. In Game Mode
+it's a choice before the code shows (or before you pick the other device); in Mantel it's **The next device you pair
+is** above the list (it's only for that screen, never saved). Each choice says in one line what it shares:
+
+- **My device:** yours, paired with all your devices at once, with your settings, library, saves and status.
+- **A family member's device:** pick this on your own device (your dad's PC). You see it in Your devices and can help
+  on it (wake it, remote desktop); none of your settings, saves or library go onto it.
+- **A friend's device:** paired with this device only, just for copying games. Nothing else is shared.
+
+What it ends up as, from both sides' picks (`pair.rs relation`): a **friend's** if either side picked A friend's
+device; **yours** only when both picked My device; otherwise a **family member's**. The side that picked A family
+member's device helps on the other (on the family member's PC you can pick My device: it only means it trusts yours;
+your things still never go onto it). If both picked it, each helps on the other.
 
 - **Your devices are paired once for all of them.** Pair a new device with any one of yours and it's paired with every
   other one of yours too, with no code on each: your devices tell each other who else is yours (below).
+- **A family member's device** is shared among your devices the same way: it shows on every device of yours.
 - **A friend's device** is paired with that one device only, for copying games. Your other devices never hear of it.
 
-See "Your devices and friends' devices" below for what each can do.
+See "Your devices, family members' devices and friends' devices" below for what each can do.
 
 ## On the same network: pick it, type 6 digits
 
@@ -89,23 +99,32 @@ short code works (for example a lookup service that can't be reached).
   opened, a device showing a code on the network, the short code published or withdrawn, found, connected, wrong
   code (tries left), stopped after too many, paired. Codes are never logged.
 
-## Your devices and friends' devices
+## Your devices, family members' devices and friends' devices
 
-`hosts/hearth-link/src/family.rs`. Each paired device in `peers.json` has `friend` (false for every device paired
-before this: they were all yours) and `introducedBy` (the device of yours that told this one about it).
+`hosts/hearth-link/src/family.rs`. Each paired device in `peers.json` has `relation` (`mine`, `family` or `friend`),
+`friend` (still written: true for a family member's device too, so a Hearth from before family devices reads one as a
+friend's, the safe side; a file from before `relation` is read from `friend` as before: false, yours, for every device
+paired before friends existed), `introducedBy` (the device of yours that told this one about it), and for a family
+member's device `familySide` (`member`: it's the family member's device, this one helps on it; `helper`: it's a device
+of someone who helps on this one; `both`), `shares` (this device's switches for it), `theirShares` (what it said it
+lets this one have, shown only) and `macs` (its network cards, to wake it). peers.json is written atomically, merged
+in memory and never over a file that failed to read (state.rs); opening a page writes nothing.
 
-**Your devices share their lists** (`family.sync`, protocol 1). Right after pairing with one of yours, and every 5
+**Your devices share their lists** (`family.sync`, protocol 2). Right after pairing with one of yours, and every 5
 minutes after that (not while a game runs), each device sends each of your devices the others it knows
-(`{devices: [{id, name, pairedAt, addrs, relay}], removed: [{id, at}]}`) and gets theirs back. A device it doesn't
-know yet is added as yours (`introducedBy` set, "paired through B" on both screens) and reached directly from then on.
-When a round changes something it runs again at once, so the news reaches every device quickly; a device that was
-off catches up the next time it reaches any of yours. Until a device added this way has been reached once, its
-"not paired" answer (it hasn't heard of this one yet) doesn't unpair it.
+(`{devices: [{id, name, pairedAt, addrs, relay}], family: [{id, name, pairedAt, addrs, relay, macs}], removed: [{id,
+at}]}`) and gets theirs back. A device it doesn't know yet is added (as yours from `devices`, as a family member's
+device from `family`; `introducedBy` set, "paired through B" on both screens) and reached directly from then on.
+Family members' devices are in their own list so a Hearth from before them (which reads `devices` only) never takes
+one for yours. When a round changes something it runs again at once, so the news reaches every device quickly; a
+device that was off catches up the next time it reaches any of yours. Until a device added this way has been reached
+once, its "not paired" answer (it hasn't heard of this one yet) doesn't unpair it. One of yours made a family member's
+device on another of yours is one on this device too (only ever down, never back to yours).
 
-**Removing one of your devices removes it everywhere.** Unpairing it (or Remove this device) on any of your devices is
-remembered (`removed-devices.json` next to `peers.json`, atomic writes, the newest 200), passed on by `family.sync`,
-and each of your devices drops it and tells it it's unpaired. An older list never adds it back: a removal wins over a
-`pairedAt` before it. Pairing with it again (a newer `pairedAt`) clears the removal.
+**Removing one of your devices (or a family member's device) removes it everywhere.** Unpairing it (or Remove this
+device) on any of your devices is remembered (`removed-devices.json` next to `peers.json`, atomic writes, the newest
+200), passed on by `family.sync`, and each of your devices drops it and tells it it's unpaired. An older list never
+adds it back: a removal wins over a `pairedAt` before it. Pairing with it again (a newer `pairedAt`) clears the removal.
 
 **A friend's device** stays paired with the one device it paired with.
 
@@ -117,45 +136,100 @@ and each of your devices drops it and tells it it's unpaired. An older list neve
   It isn't told which stores you're signed in to, and its sign-ins aren't used for hints.
 - **How:** a request from a friend's device that isn't one of `FRIEND_OPS` (`hello`, `ping`, `unpair`, `games`,
   `manifest`, `hashes`, `chunks`, `offer`) is answered "That's only for your own devices" before anything runs
-  (`node.rs` on_stream); archived games, shared folders and backups are refused to it even through a copy
-  (`local_game`); and this device never sends it anything personal (sync, status, updates, saves, storage and the
-  rest only go to your own devices).
-- **Changing it:** a device's menu › **Make it a friend's device** (Game Mode, or `hearth-link-settings make-friend ID`)
-  stops sharing with it on this device at once. Making a friend's device yours needs both devices to agree: unpair it
-  and pair again, picking My device on both.
+  (`node.rs` on_stream, `family::allowed`); archived games, shared folders and backups are refused to it even through
+  a copy (`local_game`); and this device never sends it anything personal (`family::may_ask`, checked in `request`
+  before anything goes out).
+
+**A family member's device** (the owner's dad's PC, Nov 18, 2026): you can see it and help on it, and nothing of yours
+goes onto it unless its own switches say so.
+
+- **It can, on top of a friend's:** show in **Your devices** on every device of yours, with its status (`status.get`:
+  its switch "Let it see this device's status" per device of yours, on by default on the family member's device; yours
+  toward it is off until you turn it on for that device); be woken (**Wake it**: it says its network cards in `hello`
+  to the people who help on it); **Remote desktop** to it (`family.remote`: whether Settings › Remote play › Use this PC
+  from anywhere is on there and its name for Moonlight through Tailscale, docs/REMOTE-DESKTOP.md; nothing else: no
+  logins, no paired devices; and `family.remote.pin`: Moonlight's 4 numbers typed on your device go to its Sunshine,
+  so you don't have to be at it). Hearth Link has no messages or file sending between devices of its own beyond these
+  (files go through Hearth Storage's shared folders, below).
+- **Its own switches** (on the family member's device, per device of yours, in that device's menu; all off by default,
+  changed only there, never from your side: `peer.set` refuses them on yours, and your side only shows what they
+  chose, `theirShares`):
+  - **Share my game library**: favorites, hidden games, collections and play time sync both ways with that device
+    (`sync`, with only the library's fields: `sync.rs library_only`); never settings, profiles, appearance or layouts.
+  - **Back up my saves**: `saves.*` with your Hearth Storage (and saves follow it there).
+  - **Use Hearth Storage (shared folders, the game archive, backups)**: `storage.*`, `archive.*`, `cache.*`, `updates.*`.
+  - **Back up this PC**: `backup.*` (its saves and screenshots to your Hearth Storage).
+  While a switch is off, its requests are refused exactly as a friend's are; when it's on, only that kind is let
+  through (`family::switch_of`), checked on both sides before anything runs (on the family member's device from its
+  own switch, on yours from what it said; `local_game` checks the same for a copy of a backup or a shared folder).
+  Turning one off stops it at once (the next request is refused; `family.shares` tells your devices right away).
+  Away from home, your Hearth Storage answers it only with Away from home on, as for your own devices.
+- **It can't, ever:** get your settings, hand off games, use your controllers, start updates on your devices, use your
+  AI, reach Decky, run benchmarks, or see your sign-ins. Its own list is never listened to (`family.sync` from it is
+  refused). It's told only the names of your devices that talk to it (`family.intro`: `{devices: [{id, name, relay}],
+  removed}`), and it takes that only from the device of yours it paired with with a code (never from one it heard of,
+  a friend's or anyone else), so your other devices can reach it.
+- **How:** `FAMILY_OPS` (`family.intro`, `family.shares`, `family.relation`, `family.remote`, `family.remote.pin`,
+  `status.get`) on top of `FRIEND_OPS`, plus each switch's kind; anything else is refused before anything runs.
+
+- **Changing it:** a device's menu › **Make it a family member's device**, **Make it a friend's device** or **Make it
+  one of my devices** (Game Mode, Mantel's Settings › Hearth Link, or `hearth-link-settings make-family|make-friend|
+  make-mine ID`). Going down (yours › a family member's › a friend's) stops sharing with it on this device at once and
+  tells it (`family.relation`, which a device only ever takes as a step down). Going up to My device needs both devices
+  to agree: unpair it and pair again, picking My device on both. Removing works as before.
 
 **Safety.** A device is only ever added on the word of one of your own devices: an already paired device you picked
-My device for, over Hearth Link's end-to-end encrypted connection, which only paired devices can open. A friend's
-device is never listened to (its `family.sync` is refused) and never told about your devices. Nobody can add a device
-by showing up and asking. A device on a Hearth OS from before this answers `family.sync` with "Unknown request":
-nothing is shared with it and it stays paired as before.
+My device for, over Hearth Link's end-to-end encrypted connection, which only paired devices can open. A friend's or a
+family member's device is never listened to (its `family.sync` is refused) and never told about your devices, except
+the names a family member's device gets from the device of yours it paired with. Nobody can add a device by showing up
+and asking. A device on a Hearth OS from before this answers `family.sync` with "Unknown request": nothing is shared
+with it and it stays paired as before; one from before family devices reads a family member's device as a friend's.
 
-Logs: `hearth-link: family: B told this device about C (…): paired`, `… said … was removed: removed here too`.
+Logs: `hearth-link: family: B told this device about C (…): paired`, `… said … was removed: removed here too`,
+`… told this device about …: it can help on this one too`, `… made … a family member's device: here too`.
 Tests: `cargo test` (family.rs: a new device learns your others and never friends, a friend is never listened to,
-removed everywhere and not added back, an older removal loses to pairing again, what a friend's device may ask; pair.rs:
-yours only when both say so; state.rs: devices from before are yours, friends and removals are kept),
-`hosts/linux/test/test_hearth_link_settings.py` (the helper and both screens), and `hearth-link.yml`'s three-device
-e2e (`e2e.py family`: A–B and B–C paired, A and C paired through B with no code; C removed on A, B drops it; C again as a
-friend's device of A's, B never hears of it, games can be seen, sync refused).
+removed everywhere and not added back, an older removal loses to pairing again, what a friend's device may ask; a
+family device sees nothing personal, each of its switches opens only its kind and closes again, it's shared among your
+devices and never listened to, it hears names only from the device it paired with, old peers.json files read as before
+and an older Hearth reads a family device as a friend's, only the library goes to it, remote desktop says only how to
+reach it; pair.rs: yours only when both say so, family from both picks; state.rs: devices from before are yours,
+friends and removals are kept), `hosts/linux/test/test_hearth_link_settings.py` (the helper and both screens), and
+`hearth-link.yml`'s three-device e2e (`e2e.py family`: A–B and B–C paired, A and C paired through B with no code; C
+removed on A, B drops it; C again as a friend's device of A's, B never hears of it, games can be seen, sync refused;
+then C as a family member's device of A's: B has it through A and C knows B only from A, C's status on A and B and
+A's on C only once A turns it on, remote desktop and its PIN from A and B and never from C, Use Hearth Storage and
+Share my game library each refused until C turns it on (A can't), then only that kind, the library without settings,
+off again at once; removed on A, gone everywhere).
 
 ## Calls (the service's socket, `hearth-link call`)
 
-- `pair.open {internet?: bool, seconds?: n, mine?: bool}`: shows the 6-digit code; `internet` adds a short code
-  (published first, so an error means the lookup services couldn't be reached); `mine: false` is A friend's device
-  (missing: My device, or what was picked when pairing opened). Answers the `pairing` status.
+- `pair.open {internet?: bool, seconds?: n, as?: "mine"|"family"|"friend", mine?: bool}`: shows the 6-digit code;
+  `internet` adds a short code (published first, so an error means the lookup services couldn't be reached); `as` is
+  what this side picked (`mine: false` alone is A friend's device, as before; missing: My device, or what was picked
+  when pairing opened). Answers the `pairing` status.
 - `pair.close`: stops pairing (and withdraws the short code).
-- `pair.join {id, code, mine?}`: a device picked on the network (or its long link) and its 6-digit code. Answers
-  `{id, name, friend}`.
-- `pair.join {code, mine?}`: a short code alone.
-- `peer.set {id, alwaysAccept?, friend?: true}`: `friend: true` makes one of your devices a friend's device.
+- `pair.join {id, code, as?, mine?}`: a device picked on the network (or its long link) and its 6-digit code. Answers
+  `{id, name, friend, relation, familySide}`.
+- `pair.join {code, as?, mine?}`: a short code alone.
+- `peer.set {id, alwaysAccept?, friend?: true, relation?: "family"|"friend"|"mine", shares?: {status?, library?,
+  saves?, storage?, backup?}}`: `friend: true` or `relation: "friend"` makes it a friend's device, `relation: "family"`
+  a family member's device, `relation: "mine"` answers how to (pairing again); `shares` sets a family device's
+  switches on this device (`status` on either side; the other four only on the family member's own device).
+- `peer.wake {id}`: Wake-on-LAN (a family member's device's own network cards, or Hearth Storage's for yours).
+- `peer.remote {id}`: that device's remote desktop: `{on, running, tailscale, host, name, ip, streaming}`.
+- `peer.remote.pin {id, pin, name?}`: Moonlight's 4 numbers to that device's Sunshine.
 - `pair.check {code}`: checks a typed short code without the network.
-- `status`: `pairing {code, until, triesLeft, netCode, netUntil}`, `pairEvent {state, name, triesLeft, friend}` (this
+- `status`: `pairing {code, until, triesLeft, netCode, netUntil}`, `pairEvent {state, name, triesLeft, friend, relation, familySide}` (this
   device's side), `joining {state, name}` (while `pair.join` runs), `nearby [{id, name, kind, edition, pairing}]`,
-  `me {kind, edition, ticket}`, `shortCodes`, and each of `peers` has `friend` and `introducedBy` (a name).
+  `me {kind, edition, ticket}`, `shortCodes`, and each of `peers` has `friend` (a friend's device), `relation`,
+  `familySide`, `shares` (what this device lets it have: `{status, library, saves, storage, backup}`), `theirShares`,
+  `canWake` and `introducedBy` (a name). `status.devices` lists your devices and family members' devices (each with
+  `relation` and `canWake`).
 
 Devices from 0.6.5 still pair with newer ones with the 6-digit code (they show no kind or edition, and can't use
 short codes). A device from before My device / A friend's device doesn't say which it is: it pairs as one of yours,
-unless this side picked A friend's device.
+unless this side picked A friend's or a family member's device. One from before family devices only says mine or not
+(`mine`): picking A family member's device here sends `mine: false`, so it keeps this one as a friend's device.
 
 ## Tests
 

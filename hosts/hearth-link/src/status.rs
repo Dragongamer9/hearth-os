@@ -67,7 +67,8 @@ impl Node {
     pub async fn status_answer(self: Arc<Self>, peer: &str, op: &str, _req: &Value) -> Result<Value, String> {
         match op {
             "status.get" => {
-                let paired = crate::lock(&self.peers).is_mine(peer);
+                // Your devices; a family device while this device lets it see its status (family.rs).
+                let paired = crate::lock(&self.peers).get(peer).map(|p| p.status_shared()).unwrap_or(false);
                 let st = if paired { tokio::task::spawn_blocking(|| run_helper("status")).await.map_err(|e| e.to_string())? } else { Err(String::new()) };
                 answer_for(paired, st)
             }
@@ -78,14 +79,19 @@ impl Node {
     pub async fn status_command(self: &Arc<Self>, cmd: &str, _a: &Value) -> Result<Value, String> {
         match cmd {
             "status.devices" => {
-                let peers: Vec<(String, String, u64)> = crate::lock(&self.peers).mine().map(|p| (p.id.clone(), p.name.clone(), p.last_seen)).collect();
+                // Your devices and family members' devices (theirs answer per their own switch).
+                let peers: Vec<(String, String, u64, &'static str, bool)> = crate::lock(&self.peers).list.iter().filter(|p| p.mine() || p.family())
+                    .map(|p| (p.id.clone(), p.name.clone(), p.last_seen, p.rel().as_str(), !p.macs.is_empty())).collect();
                 let mut set = tokio::task::JoinSet::new();
-                for (id, name, seen) in peers {
+                for (id, name, seen, rel, wake) in peers {
                     let n = self.clone();
                     set.spawn(async move {
                         let r = tokio::time::timeout(ASK_WAIT, n.request(&id, &json!({"op": "status.get"}))).await;
                         let answer = match r { Ok(a) => Some(a), Err(_) => None };
-                        row(&id, &name, seen, answer)
+                        let mut v = row(&id, &name, seen, answer);
+                        v["relation"] = json!(rel);
+                        v["canWake"] = json!(wake);
+                        v
                     });
                 }
                 let mut devices = Vec::new();
