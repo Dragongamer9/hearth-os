@@ -174,7 +174,22 @@ impl Sampler {
         // A pretend PC (the fixture): its readings as they are.
         if let Some(f) = root.fixture_file("stats.json") {
             if let Ok(Value::Object(m)) = std::fs::read_to_string(&f).map(|t| serde_json::from_str(&t).unwrap_or(Value::Null)) {
+                let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
                 for (k, v) in m {
+                    // Pretend history for the graphs: the values over the last few minutes, oldest first.
+                    if k == "history" {
+                        for (hk, hv) in v.as_object().cloned().unwrap_or_default() {
+                            let vals: Vec<f64> = hv.as_array().map(|a| a.iter().filter_map(|x| x.as_f64()).collect()).unwrap_or_default();
+                            let h = self.history.entry(hk).or_default();
+                            if h.is_empty() {
+                                let n = vals.len() as u64;
+                                for (i, x) in vals.iter().enumerate() {
+                                    h.push_back((now.saturating_sub((n - 1 - i as u64) * 18 + 1), *x));
+                                }
+                            }
+                        }
+                        continue;
+                    }
                     if let Some(n) = v.as_f64() {
                         r.nums.insert(k, n);
                     } else if let Some(s) = v.as_str() {

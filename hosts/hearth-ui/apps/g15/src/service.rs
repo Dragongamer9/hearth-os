@@ -207,6 +207,8 @@ pub struct Service {
     idle: bool,
     next_idle: Instant,
     contrast: Option<u32>,
+    /// The G-key a recording started from the app goes to (MR, or the app's Stop, keeps it there).
+    rec_target: Option<u8>,
 }
 
 fn screens_of(cfg: &Value) -> Vec<Value> {
@@ -256,6 +258,7 @@ impl Service {
             idle: false,
             next_idle: Instant::now() + Duration::from_secs(60),
             contrast: None,
+            rec_target: None,
         }
     }
 
@@ -420,8 +423,15 @@ impl Service {
                 self.popup = Some((Popup::Set(n), Instant::now() + Duration::from_secs(2)));
             }
             GKey::Mr if !config::flag(&self.cfg, "mrRecord", true) => {}
+            GKey::Mr if self.rec.recording() && self.rec_target.is_some() => {
+                let g = self.rec_target.take().unwrap_or(1);
+                self.keep_recording(g);
+            }
             GKey::Mr => match self.rec.mr(now_ms()) {
-                RecOut::Show => self.start_recording_fds(),
+                RecOut::Show => {
+                    self.rec_target = None;
+                    self.start_recording_fds()
+                }
                 _ => {
                     self.stop_recording_fds();
                     self.popup = Some((Popup::Text("Not kept".into()), Instant::now() + Duration::from_secs(2)));
@@ -431,24 +441,9 @@ impl Service {
                 if g > self.dev.model.gkeys {
                     return;
                 }
-                if let Some(r) = self.rec.g(g) {
-                    self.stop_recording_fds();
-                    match r {
-                        RecOut::Save(g, steps) => {
-                            let set = self.active_set();
-                            let action = json!({"kind": "macro", "name": format!("Recorded {}", hearth_ui::time::clock(hearth_ui::time::now())), "steps": actions::steps_json(&steps)});
-                            match config::update(|m| config::set_key(m, set, g, Some(action))) {
-                                Ok(()) => self.popup = Some((Popup::Kept(g), Instant::now() + Duration::from_secs(2))),
-                                Err(e) => {
-                                    crate::log(&format!("couldn't keep the macro: {e}"));
-                                    self.popup = Some((Popup::Text("Couldn't keep it".into()), Instant::now() + Duration::from_secs(3)));
-                                }
-                            }
-                            self.cfg = config::load();
-                        }
-                        _ => self.popup = Some((Popup::Text("Nothing typed".into()), Instant::now() + Duration::from_secs(2))),
-                    }
-                    self.m_leds();
+                if self.rec.recording() {
+                    self.rec_target = None;
+                    self.keep_recording(g);
                 } else if let Some(v) = config::key_action(&self.cfg, self.active_set(), g).cloned() {
                     if let Some(a) = actions::parse(&v) {
                         self.do_action(a, actions::macro_opts(&v), g);
@@ -459,6 +454,29 @@ impl Service {
         }
         self.last = None;
         self.next_draw = Instant::now();
+    }
+
+    /// The macro being recorded kept on G-key `g` (of the set in use).
+    fn keep_recording(&mut self, g: u8) {
+        let Some(r) = self.rec.g(g) else { return };
+        self.stop_recording_fds();
+        match r {
+                RecOut::Save(g, steps) => {
+                    let set = self.active_set();
+                    let action = json!({"kind": "macro", "name": format!("Recorded {}", hearth_ui::time::clock(hearth_ui::time::now())), "steps": actions::steps_json(&steps)});
+                    match config::update(|m| config::set_key(m, set, g, Some(action))) {
+                        Ok(()) => self.popup = Some((Popup::Kept(g), Instant::now() + Duration::from_secs(2))),
+                        Err(e) => {
+                            crate::log(&format!("couldn't keep the macro: {e}"));
+                            self.popup = Some((Popup::Text("Couldn't keep it".into()), Instant::now() + Duration::from_secs(3)));
+                        }
+                    }
+                    self.cfg = config::load();
+                }
+                _ => self.popup = Some((Popup::Text("Nothing typed".into()), Instant::now() + Duration::from_secs(2))),
+            }
+
+        self.m_leds();
     }
 
     fn lcd_key(&mut self, n: u8) {
@@ -940,6 +958,9 @@ impl Service {
                 if names.iter().any(|n| n == "notifications.json") {
                     self.check_alerts(false);
                 }
+                if names.iter().any(|n| n == "g15-record.json") {
+                    self.record_request(&root::runtime_dir().join("g15-record.json"));
+                }
                 if names.iter().any(|n| n == "g15-show.json") {
                     self.preview_from(&root::runtime_dir().join("g15-show.json"));
                 }
@@ -979,6 +1000,29 @@ impl Service {
             // The night window starting or ending.
             self.apply_lights();
         }
+    }
+
+    /// The app's "Record" and "Stop" ($XDG_RUNTIME_DIR/hearth/g15-record.json): {"g": 9} starts recording for G9,
+    /// {"stop": true} keeps it there, {"cancel": true} throws it away.
+    fn record_request(&mut self, p: &Path) {
+        let Ok(v) = serde_json::from_str::<Value>(&std::fs::read_to_string(p).unwrap_or_default()) else { return };
+        if let Some(g) = v.get("g").and_then(|g| g.as_u64()).filter(|&g| g >= 1 && g <= self.dev.model.gkeys as u64) {
+            if !self.rec.recording() {
+                self.rec.mr(now_ms());
+                self.start_recording_fds();
+            }
+            self.rec_target = Some(g as u8);
+        } else if v.get("stop").and_then(|x| x.as_bool()) == Some(true) {
+            if let Some(g) = self.rec_target.take() {
+                self.keep_recording(g);
+            }
+        } else if v.get("cancel").and_then(|x| x.as_bool()) == Some(true) && self.rec.recording() {
+            self.rec_target = None;
+            self.rec.cancel();
+            self.stop_recording_fds();
+        }
+        self.last = None;
+        self.next_draw = Instant::now();
     }
 
     /// The app's "Show on the keyboard": a screen shown for 30 s ($XDG_RUNTIME_DIR/hearth/g15-show.json).
@@ -1146,7 +1190,8 @@ pub fn make_fixture(dir: &Path) -> std::io::Result<()> {
     std::fs::write(dir.join("stats.json"), serde_json::to_string_pretty(&json!({
         "cpu.use": 23, "cpu.temp": 48, "gpu.use": 61, "gpu.temp": 66, "mem.use": 34, "mem.used": 11, "mem.total": 32,
         "disk.use": 41, "disk.free": 588, "net.down": 312, "net.up": 24, "fan": 1120, "pad.battery": 80,
-        "weather.temp": 41, "weather.unit": "°F", "weather.sky": "☁", "cpu.name": "R7 5700", "gpu.name": "RX 6750 XT"
+        "weather.temp": 41, "weather.unit": "°F", "weather.sky": "☁", "cpu.name": "R7 5700", "gpu.name": "RX 6750 XT",
+        "history": {"gpu.temp": [52, 54, 55, 58, 61, 63, 62, 64, 66, 65, 66, 67, 66, 66, 65, 66]}
     }))?)?;
     std::fs::write(dir.join("media.json"), r#"{"status": "Playing", "title": "Hearthfire", "artist": "Hearth OS trailer", "position": 84, "length": 200}"#)?;
     std::fs::write(dir.join("notifications.json"), r#"{"n:7": {"app": "Hearth", "summary": "Update ready:", "body": "Restart to finish", "time": 0}}"#)?;
@@ -1154,8 +1199,69 @@ pub fn make_fixture(dir: &Path) -> std::io::Result<()> {
 }
 
 /// Renders a page of the pretend (or real) keyboard: the CI pictures and `hearth-g15 frame`.
+fn no_device() -> Device {
+    Device { model: device::model_of(0xc222).unwrap(), hid: None, hidraw: None, keys: None, leds: Default::default() }
+}
+
+/// The app's pictures of the screen: pages and your own screens drawn as the keyboard would show them, with the
+/// same readings (kept between pictures, so the use numbers and graphs fill in). Works without a keyboard.
+pub struct Previewer {
+    s: Service,
+}
+
+impl Previewer {
+    pub fn new(root: Root) -> Previewer {
+        let dev = device::find(&root).unwrap_or_else(no_device);
+        let mut s = Service::new(root, dev);
+        s.fixture_song();
+        s.check_alerts(true);
+        Previewer { s }
+    }
+    /// The app's copy of g15.json (what it just changed, before the file has it).
+    pub fn reload_with(&mut self, cfg: Value) {
+        self.s.cfg = cfg;
+    }
+    /// g15.json changed (the app saved something).
+    pub fn reload(&mut self) {
+        self.s.cfg = config::load();
+        self.s.check_alerts(true);
+    }
+    /// A built-in page, a message ("rec", "set", "alert") or your own screen, by its id.
+    pub fn page(&mut self, id: &str) -> Frame {
+        let own = screens_of(&self.s.cfg);
+        let els = match id {
+            "rec" | "set" | "alert" => screen::built_in(id).unwrap_or_default(),
+            _ => screen::elements_of(id, &own),
+        };
+        let tab = self.s.pages().iter().position(|p| p == id).unwrap_or(0);
+        self.draw(&els, tab)
+    }
+    pub fn elements(&mut self, els: &[Value]) -> Frame {
+        self.draw(els, 0)
+    }
+    fn draw(&mut self, els: &[Value], tab: usize) -> Frame {
+        let r = self.s.reading(els);
+        let own = screens_of(&self.s.cfg);
+        let tabs: Vec<String> = self.s.pages().iter().map(|p| screen::tab_name(p, &own)).collect();
+        let c = screen::Ctx { r: &r, history: &self.s.sampler.history, now: hearth_ui::time::now(), tabs, tab };
+        let mut f = Frame::new();
+        screen::draw(&mut f, els, &c);
+        f
+    }
+}
+
+/// What the keyboard's screen shows right now (the service's last frame), if it's running.
+pub fn frame_now() -> Option<Frame> {
+    let p = root::runtime_dir().join("g15-frame.bin");
+    let age = std::fs::metadata(&p).ok()?.modified().ok()?.elapsed().ok()?;
+    if age > Duration::from_secs(120) {
+        return None;
+    }
+    lcd::unpack(&std::fs::read(p).ok()?)
+}
+
 pub fn frame_of(root: Root, page: &str) -> Option<Frame> {
-    let dev = device::find(&root)?;
+    let dev = device::find(&root).unwrap_or_else(no_device);
     let mut s = Service::new(root, dev);
     s.fixture_song();
     s.check_alerts(true);

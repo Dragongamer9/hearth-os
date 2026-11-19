@@ -37,14 +37,14 @@ jobs:
         run: |
           set -o pipefail
           cd hosts/hearth-ui
-          if ! cargo build --release -p hearth-g15 --bin hearth-g15 2>&1 | tee /tmp/build.log; then
+          if ! cargo build --release -p hearth-g15 2>&1 | tee /tmp/build.log; then
             awk '/^error/{if (b) print b; b=$0; n=0; next} b && n < 14 {b=b "|" $0; n++} END{if (b) print b}' /tmp/build.log | head -20 | while read -r l; do
               echo "::error title=cargo build::$(echo "$l" | cut -c1-3800)"
             done
             grep -q '^error' /tmp/build.log || echo "::error title=cargo build::$(tail -c 3500 /tmp/build.log | tr '\n' '|')"
             exit 1
           fi
-          echo "::notice title=size::hearth-g15 $(du -h target/release/hearth-g15 | cut -f1) · $(rustc --version)"
+          echo "::notice title=size::hearth-g15 $(du -h target/release/hearth-g15 | cut -f1) · hearth-g15-app $(du -h target/release/hearth-g15-app | cut -f1) · $(rustc --version)"
       - name: Tests
         run: |
           set -o pipefail
@@ -96,7 +96,7 @@ jobs:
           F=/tmp/g15fx
           export HEARTH_G15_FIXTURE="$F" HEARTH_G15_CONFIG=/tmp/g15pic/g15.json HOME=/tmp/g15home
           mkdir -p shots /tmp/g15pic
-          for p in clock system music alerts alert rec set; do "$B" frame "$p" "shots/g15-lcd-$p.png" --scale 4 || echo "::error title=frame::$p"; done
+          for p in clock system music alerts alert rec set; do "$B" frame "$p" "shots/g15-lcd-$p.png" --scale 2 || echo "::error title=frame::$p"; done
           python3 - <<'PY'
           import os
           from PIL import Image, ImageDraw
@@ -122,6 +122,8 @@ jobs:
           R=/tmp/deb/hearth-g15
           rm -rf /tmp/deb; mkdir -p "$R/DEBIAN" "$R/usr/bin" "$R/usr/lib/udev/rules.d" "$R/usr/lib/systemd/user" "$R/etc/xdg/autostart" "$R/usr/share/doc/hearth-g15"
           install -m755 hosts/hearth-ui/target/release/hearth-g15 "$R/usr/bin/hearth-g15"
+          install -m755 hosts/hearth-ui/target/release/hearth-g15-app "$R/usr/bin/hearth-g15-app"
+          install -Dm644 os/system_files/usr/share/applications/hearth-g15-app.desktop "$R/usr/share/applications/hearth-g15-app.desktop"
           install -m644 os/system_files/usr/lib/udev/rules.d/70-hearth-g15.rules "$R/usr/lib/udev/rules.d/"
           install -m644 os/system_files/usr/lib/systemd/user/hearth-g15.service "$R/usr/lib/systemd/user/"
           install -m644 os/system_files/etc/xdg/autostart/hearth-g15.desktop "$R/etc/xdg/autostart/"
@@ -131,7 +133,7 @@ jobs:
           Version: $ver
           Architecture: amd64
           Maintainer: Dragongamer9 <Dragongamer9@users.noreply.github.com>
-          Depends: libc6 (>= 2.36)
+          Depends: libc6 (>= 2.36), libxkbcommon0, libwayland-client0, libfontconfig1, libfreetype6
           Recommends: playerctl
           Section: utils
           Priority: optional

@@ -215,7 +215,7 @@ jobs:
           apt-get install -y -qq libxkbcommon-dev libwayland-dev libfontconfig-dev libfreetype-dev >/dev/null
           export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
           (cd hosts/hearth-ui && cargo build --release -p hearth-g15) || { echo "::warning title=hearth-g15::it didn't build, so this image is made without G15 support"; exit 1; }
-          mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-g15" /tmp/app/hearth-g15
+          mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-g15" "$CARGO_TARGET_DIR/release/hearth-g15-app" /tmp/app/
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of hearth-g15
       # ---- Hearth Photos and Hearth Documents (hosts/hearth-photos, hosts/hearth-documents): the picture viewer and

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Logitech G15
+Comment=The G15's G-keys and macros, its screen and its lights
+Exec=hearth-g15-app
+TryExec=hearth-g15-app
+Icon=input-keyboard
+Categories=Settings;HardwareSettings;
+Keywords=g15;logitech;keyboard;macro;g-keys;lcd;backlight;
+StartupWMClass=hearth-g15-app

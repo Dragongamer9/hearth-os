@@ -1,0 +1,321 @@
+{
+ "set": 1,
+ "names": {
+  "m1": "Everyday",
+  "m2": "Trainz"
+ },
+ "keys": {
+  "m1": {
+   "g1": {
+    "kind": "keys",
+    "keys": "Ctrl+C",
+    "label": "Copy"
+   },
+   "g2": {
+    "kind": "keys",
+    "keys": "Ctrl+V",
+    "label": "Paste"
+   },
+   "g3": {
+    "kind": "keys",
+    "keys": "Ctrl+Z",
+    "label": "Undo"
+   },
+   "g4": {
+    "kind": "hearth",
+    "action": "files",
+    "label": "Open Hearth Files"
+   },
+   "g5": {
+    "kind": "hearth",
+    "action": "screenshot-area",
+    "label": "Screenshot of an area"
+   },
+   "g6": {
+    "kind": "app",
+    "desktop": "firefox.desktop",
+    "label": "Open Firefox"
+   },
+   "g7": {
+    "kind": "hearth",
+    "action": "volume-down",
+    "label": "Volume down"
+   },
+   "g9": {
+    "kind": "macro",
+    "name": "Sign off",
+    "steps": [
+     {
+      "key": "Ctrl",
+      "down": true,
+      "ms": 0
+     },
+     {
+      "key": "End",
+      "down": true,
+      "ms": 0
+     },
+     {
+      "key": "End",
+      "down": false,
+      "ms": 0
+     },
+     {
+      "key": "Ctrl",
+      "down": false,
+      "ms": 0
+     },
+     {
+      "key": "Enter",
+      "down": true,
+      "ms": 100
+     },
+     {
+      "key": "Enter",
+      "down": false,
+      "ms": 0
+     },
+     {
+      "key": "Shift",
+      "down": true,
+      "ms": 100
+     },
+     {
+      "key": "T",
+      "down": true,
+      "ms": 0
+     },
+     {
+      "key": "T",
+      "down": false,
+      "ms": 0
+     },
+     {
+      "key": "Shift",
+      "down": false,
+      "ms": 0
+     },
+     {
+      "key": "H",
+      "down": true,
+      "ms": 60
+     },
+     {
+      "key": "H",
+      "down": false,
+      "ms": 40
+     },
+     {
+      "key": "A",
+      "down": true,
+      "ms": 60
+     },
+     {
+      "key": "A",
+      "down": false,
+      "ms": 40
+     },
+     {
+      "key": "N",
+      "down": true,
+      "ms": 60
+     },
+     {
+      "key": "N",
+      "down": false,
+      "ms": 40
+     },
+     {
+      "key": "K",
+      "down": true,
+      "ms": 60
+     },
+     {
+      "key": "K",
+      "down": false,
+      "ms": 40
+     },
+     {
+      "key": "S",
+      "down": true,
+      "ms": 60
+     },
+     {
+      "key": "S",
+      "down": false,
+      "ms": 40
+     },
+     {
+      "key": ",",
+      "down": true,
+      "ms": 60
+     },
+     {
+      "key": ",",
+      "down": false,
+      "ms": 40
+     },
+     {
+      "key": "Space",
+      "down": true,
+      "ms": 60
+     },
+     {
+      "key": "Space",
+      "down": false,
+      "ms": 0
+     },
+     {
+      "key": "Enter",
+      "down": true,
+      "ms": 80
+     },
+     {
+      "key": "Enter",
+      "down": false,
+      "ms": 0
+     }
+    ]
+   },
+   "g10": {
+    "kind": "hearth",
+    "action": "volume-up",
+    "label": "Volume up"
+   },
+   "g13": {
+    "kind": "hearth",
+    "action": "mute",
+    "label": "Mute"
+   },
+   "g14": {
+    "kind": "text",
+    "text": "dad@example.com",
+    "label": "Type: my email"
+   }
+  },
+  "m2": {
+   "g1": {
+    "kind": "keys",
+    "keys": "F1",
+    "label": "Camera"
+   },
+   "g2": {
+    "kind": "keys",
+    "keys": "F2",
+    "label": "Camera 2"
+   },
+   "g3": {
+    "kind": "keys",
+    "keys": "H",
+    "label": "Horn"
+   },
+   "g4": {
+    "kind": "keys",
+    "keys": "Ctrl+C",
+    "label": "Couple"
+   },
+   "g5": {
+    "kind": "keys",
+    "keys": "PageUp",
+    "label": "Faster"
+   },
+   "g6": {
+    "kind": "keys",
+    "keys": "PageDown",
+    "label": "Slower"
+   },
+   "g7": {
+    "kind": "keys",
+    "keys": "B",
+    "label": "Brake"
+   },
+   "g8": {
+    "kind": "keys",
+    "keys": "L",
+    "label": "Lights"
+   }
+  }
+ },
+ "gameSets": [
+  {
+   "game": "Trains 2010",
+   "set": 2
+  }
+ ],
+ "kbdLight": 2,
+ "lcdLight": 2,
+ "lcdContrast": 1,
+ "lcdIdleOff": 10,
+ "mLights": true,
+ "mrRecord": true,
+ "switchSets": true,
+ "gameScreens": true,
+ "autoPage": false,
+ "lightsOffWhenLocked": true,
+ "nightDim": false,
+ "pages": [
+  "clock",
+  "system",
+  "music",
+  "alerts",
+  "dads-screen"
+ ],
+ "screens": [
+  {
+   "id": "dads-screen",
+   "name": "Dad's screen",
+   "show": "list",
+   "whileRunning": "Trains 2010",
+   "elements": [
+    {
+     "type": "text",
+     "x": 1,
+     "y": 1,
+     "text": "GPU"
+    },
+    {
+     "type": "value",
+     "x": 1,
+     "y": 10,
+     "size": 3,
+     "value": "gpu.temp"
+    },
+    {
+     "type": "graph",
+     "x": 86,
+     "y": 2,
+     "w": 74,
+     "h": 30,
+     "value": "gpu.temp",
+     "span": 300,
+     "min": 30,
+     "max": 90,
+     "style": "line"
+    },
+    {
+     "type": "clock",
+     "x": 1,
+     "y": 34,
+     "size": 1,
+     "format": "24h"
+    },
+    {
+     "type": "text",
+     "x": 44,
+     "y": 34,
+     "text": "CPU {cpu.use}%"
+    },
+    {
+     "type": "bar",
+     "x": 92,
+     "y": 35,
+     "w": 66,
+     "h": 6,
+     "value": "cpu.use",
+     "min": 0,
+     "max": 100
+    }
+   ]
+  }
+ ]
+}

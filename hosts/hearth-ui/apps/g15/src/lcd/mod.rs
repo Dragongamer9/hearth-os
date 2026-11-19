@@ -201,6 +201,68 @@ pub fn set_contrast(hidraw: &std::path::Path, level: u32) -> std::io::Result<()>
     }
 }
 
+/// A picture turned into the screen's dots (the editor's "Pictures are turned into the screen's dots for you"):
+/// `gray` is w x h brightness 0-255, scaled to out_w x out_h and dithered (Floyd-Steinberg); dark becomes a dot.
+/// Returns rows of out_w dots, the first in the highest bit (Frame::picture's format).
+pub fn dither(gray: &[u8], w: usize, h: usize, out_w: usize, out_h: usize) -> Vec<u8> {
+    let (ow, oh) = (out_w.max(1), out_h.max(1));
+    let mut v = vec![0f32; ow * oh];
+    for y in 0..oh {
+        for x in 0..ow {
+            // The average of the source dots under this one.
+            let (x0, x1) = (x * w / ow, ((x + 1) * w / ow).max(x * w / ow + 1).min(w.max(1)));
+            let (y0, y1) = (y * h / oh, ((y + 1) * h / oh).max(y * h / oh + 1).min(h.max(1)));
+            let (mut sum, mut n) = (0f32, 0f32);
+            for yy in y0..y1 {
+                for xx in x0..x1 {
+                    if let Some(g) = gray.get(yy * w + xx) {
+                        sum += *g as f32;
+                        n += 1.0;
+                    }
+                }
+            }
+            v[y * ow + x] = if n > 0.0 { sum / n } else { 255.0 };
+        }
+    }
+    let stride = (ow + 7) / 8;
+    let mut out = vec![0u8; stride * oh];
+    for y in 0..oh {
+        for x in 0..ow {
+            let old = v[y * ow + x];
+            let dark = old < 128.0;
+            if dark {
+                out[y * stride + x / 8] |= 0x80 >> (x % 8);
+            }
+            let err = old - if dark { 0.0 } else { 255.0 };
+            let mut add = |dx: isize, dy: usize, f: f32| {
+                let nx = x as isize + dx;
+                if nx >= 0 && (nx as usize) < ow && y + dy < oh {
+                    v[(y + dy) * ow + nx as usize] += err * f;
+                }
+            };
+            add(1, 0, 7.0 / 16.0);
+            add(-1, 1, 3.0 / 16.0);
+            add(0, 1, 5.0 / 16.0);
+            add(1, 1, 1.0 / 16.0);
+        }
+    }
+    out
+}
+
+/// Bytes as base64 (the "bits" of a picture element in g15.json).
+pub fn base64(b: &[u8]) -> String {
+    const A: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut s = String::new();
+    for c in b.chunks(3) {
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        s.push(A[(n >> 18) as usize & 63] as char);
+        s.push(A[(n >> 12) as usize & 63] as char);
+        s.push(if c.len() > 1 { A[(n >> 6) as usize & 63] as char } else { '=' });
+        s.push(if c.len() > 2 { A[n as usize & 63] as char } else { '=' });
+    }
+    s
+}
+
 // ------------------------------------------------------------------ PNG (the CI pictures; standard library only)
 fn crc32(data: &[u8]) -> u32 {
     let mut c: u32 = 0xffff_ffff;
@@ -299,5 +361,12 @@ mod tests {
         let p = frame_png(&f, 2);
         assert_eq!(&p[1..4], b"PNG");
         assert_eq!(crc32(b"IEND"), 0xae42_6082);
+        // Black on the left half, white on the right: dots only on the left.
+        let gray: Vec<u8> = (0..16 * 8).map(|i| if i % 16 < 8 { 0 } else { 255 }).collect();
+        let bits = dither(&gray, 16, 8, 16, 8);
+        assert_eq!(bits[0], 0xff);
+        assert_eq!(bits[1], 0x00);
+        assert_eq!(base64(&[0xff]), "/w==");
+        assert_eq!(base64(b"Man"), "TWFu");
     }
 }
