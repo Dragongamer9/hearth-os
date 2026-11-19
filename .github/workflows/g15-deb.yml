@@ -6,6 +6,9 @@
 name: Logitech G15 test .deb
 
 on:
+  push:
+    branches: ['feature/logitech-g15']
+    paths: ['hosts/hearth-ui/apps/g15/**', 'os/system_files/usr/lib/udev/rules.d/70-hearth-g15.rules', 'os/system_files/usr/lib/systemd/user/hearth-g15.service', '.github/workflows/g15-deb.yml']
   workflow_dispatch:
 
 permissions:
