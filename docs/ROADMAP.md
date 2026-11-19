@@ -5,6 +5,10 @@ Sync** putting your games from other stores into Steam's library, and **Mantel**
 **Ember** is Hearth on Windows 11. Versions are MAJOR.MINOR with a date (docs/UPDATES.md), and the owner picks every
 number. Work lands on `bughunt` and goes out on `main` when it's tested. What's archived: docs/ARCHIVED.md.
 
+## Planned for 1.16
+
+- [ ] Firehold on Plasma, fleshed out (the owner, Nov 19: "they all look good add them to the 1.16 update"; Firehold Rust archived the same night, "focus on the Plasma Firehold"), checklist docs/mockups/checklists/firehold-plasma.md, mockups docs/mockups/firehold-plasma/01–12: Couch home with the game you were playing, its chapter (where the game or Beacon says it), rows from every store, downloads, controller batteries and what's on the TV; "From your Hearth" (your own devices, never Steam account data); game options with Who's playing; Couch / Desk / Away for each screen, switching by itself (controller: the TV to Couch; mouse: its own screen to Desk; Away after 20 min) and its Settings page; Away; Quick Settings on the Desk and with the controller; notification cards with actions and the history (Do not disturb 11 PM–7 AM and in full-screen games, family messages let through, kept 7 days); the Desk bar with the app's own menus or standard ones (Move to screen). The owner's defaults from the mockups as drawn
+
 ## Planned for 1.15
 
 - [ ] Hearth OS on Anatase back as a test beside Debian (the owner, Nov 17; docs/BASE-ANATASE.md): the same Hearth as Debian's 1.15 on Fedora (Anatase), Steam Game Mode with Hearth Sync, stock KDE Plasma as Desktop Mode with Hearth's apps in its menu and Back to Game Mode, Unlock the file system (dnf, off unless turned on), Switch edition both ways ("Hearth OS on Anatase (test)", Debian pinned in the boot menu, the home folder kept, back to the very Debian version), only on `hearth-os:test-1.15`; Debian stays the main edition (needs testing on a device: the ROG Ally and the laptop)
