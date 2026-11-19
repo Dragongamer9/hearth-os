@@ -19,7 +19,7 @@ prototype: no roadmap item is ticked for it. CI pictures: firehold-rust.yml's `f
 - [x] Hero card: the last game played, in a wide rounded card with its colours as a gradient — hosts/firehold-shell/src/ui/couch.rs: ".style(boxed(hero_bg(), 24.0 * k, None))"
 - [x] Hero: "CONTINUE · 41 MIN AGO" line (accent, capitals, how long ago) — hosts/firehold-shell/src/ui/couch.rs: "format!(\"CONTINUE · {}\", ago.to_uppercase())"
 - [x] Hero: the game's name, large (Ember Trails) — hosts/firehold-shell/src/ui/couch.rs: "tb(g.title.clone(), 64.0 * k, ART_TEXT)"
-- [ ] Hero line: the chapter (shown when a game's entry has one; no store data Hearth reads says which chapter you're on)
+- [x] Hero line: the chapter (Chapter 4), as the game says it in Hearth's progress file (~/.local/share/hearth/progress/<game>.json; no store says it, so a game that doesn't write it shows no chapter) — hosts/firehold-shell/src/model.rs: "pub fn progress_chapter("
 - [x] Hero line: "Saved on this PC and in the cloud" (Steam Cloud's own folder for the game, or Hearth Saves) — hosts/firehold-shell/src/model.rs: "Saved on this PC and in the cloud"
 - [x] Hero line: "runs natively, no Game Mode" — hosts/firehold-shell/src/model.rs: "runs natively, no Game Mode"
 - [x] Hero: Resume button (accent, selected) — hosts/firehold-shell/src/ui/couch.rs: "{ \"Resume\" } else { \"Play\" }"
@@ -40,7 +40,7 @@ prototype: no roadmap item is ticked for it. CI pictures: firehold-rust.yml's `f
 
 - [x] Top bar: app tile at the left with the focused app's name (Hearth Files) — hosts/firehold-shell/src/ui/desk.rs: "tb(front, 15.0, c_text())"
 - [x] Top bar: the focused app's menus shown (File, Edit, View) — hosts/firehold-shell/src/ui/desk.rs: "for m in [\"File\", \"Edit\", \"View\"]"
-- [ ] Top bar: those menus open the app's own menus (they're labels: firehold-comp speaks no global-menu protocol yet)
+- [x] Top bar: File, Edit and View open under their titles with the app in front's commands (New window, Save, Undo, Copy, Paste, Full screen…), each sent to it as its own shortcut or done to its window by firehold-comp (CI: Edit pictured, firehold-r2b; View › Maximize checked on a window) — hosts/firehold-shell/src/model.rs: "(\"k:ctrl,c\", \"Copy\", \"Ctrl+C\", false)"
 - [x] Top bar: date and clock in the middle (Mon Nov 16 · 10:22 PM) — hosts/firehold-shell/src/ui/desk.rs: "format!(\"{} · {}\", st.date, st.clock)"
 - [x] Top bar: the posture pill "Desk" with its blue dot — hosts/firehold-shell/src/ui/desk.rs: "ts(\"Desk\", 14.0, c_text())"
 - [x] Top bar: Wi-Fi · battery (Wi-Fi · 78%) — hosts/firehold-shell/src/ui/desk.rs: "filter(|x| !x.is_empty()).collect::<Vec<_>>().join(\" · \")"
@@ -119,17 +119,26 @@ prototype: no roadmap item is ticked for it. CI pictures: firehold-rust.yml's `f
 - [x] Posture card: Always Couch · A console: tiles, full screen, Guide button — hosts/firehold-shell/src/ui/settings.rs: "posture_card(\"couch\", \"Always Couch\", \"A console: tiles, full screen, Guide button\""
 - [x] Posture card: Always Desk · A PC: windows, bar and dock — hosts/firehold-shell/src/ui/settings.rs: "posture_card(\"desk\", \"Always Desk\", \"A PC: windows, bar and dock\""
 - [x] Row: Per screen · The TV stays Couch while the monitor is Desk · TV: Couch · Monitor: Desk (shown from what's saved) — hosts/firehold-shell/src/ui/settings.rs: "setting_row(\"Per screen\", \"The TV stays Couch while the monitor is Desk\""
-- [ ] Per screen, applied: each screen in its own posture (the Rust shell has one posture for every screen so far, and no picker for it)
+- [x] Per screen, applied: each screen in its own posture (a Couch, bar and dock a screen; CI: TV Couch firehold-r8b, monitor Desk firehold-r8a, two made-up screens) — hosts/firehold-shell/src/hub.rs: "fn recompute_postures(&mut self)"
+- [x] Per screen, picked: a row a screen in Settings (Same as the others → Couch → Desk; firehold-r6c) — hosts/firehold-shell/src/ui/settings.rs: "Its own posture, or the same as the others"
 - [x] Row: Start in · What you see when the PC turns on · Couch — hosts/firehold-shell/src/ui/settings.rs: "setting_row(\"Start in\", \"What you see when the PC turns on\""
 - [x] Row: Guide button · Press once: Quick Access. Twice: everything open · Quick Access — hosts/firehold-shell/src/ui/settings.rs: "setting_row(\"Guide button\", \"Press once: Quick Access. Twice: everything open\""
 - [x] Row: Games · Open full screen on the Couch, in a window on the Desk · Follow the posture — hosts/firehold-shell/src/ui/settings.rs: "setting_row(\"Games\", \"Open full screen on the Couch, in a window on the Desk\""
 - [x] Row: Big Picture · Steam's own TV mode isn't needed; Steam is an app like the others · Off — hosts/firehold-shell/src/ui/settings.rs: "setting_row(\"Big Picture\", \"Steam's own TV mode isn't needed; Steam is an app like the others\""
 
+## Firehold's own parts (no mockups of their own: ported from Mantel, in Firehold's look)
+
+- [x] Quick Settings from the Desk bar's Wi-Fi and battery: you and the battery, Settings / Lock / Power, Return to Game Mode, Wi-Fi, Bluetooth, Do not disturb, Keyboard, Away, Couch, volume, brightness, the power profile, the notifications (firehold-r2d) — hosts/firehold-shell/src/ui/quick.rs: "Return to Game Mode"
+- [x] Notifications: Firehold is the desktop's notification service; cards at the top right with the app's buttons and ×, kept in Quick Settings (CI: notify-send, firehold-r2c) — hosts/firehold-shell/src/notify.rs: "#[zbus::interface(name = \"org.freedesktop.Notifications\")]"
+- [x] The on-screen keyboard, docked at the bottom, typing into the window that has the keyboard (CI: "Hello Firehold" typed into a window, firehold-r2e) — hosts/firehold-shell/src/ui/osk.rs: "English (QWERTY)"
+- [x] Typing for the keyboard and the menus: firehold-comp's `key` — hosts/firehold-comp/src/ipc.rs: "pub fn key_steps("
+- [x] The posture pill's menu: Couch, Desk, Away — hosts/firehold-shell/src/model.rs: "Away · the home server keeps running"
+- [x] Away: every screen shows the time and what the home server does for your other devices, nothing is closed, any button, the mouse or a key comes back (firehold-r9) — hosts/firehold-shell/src/ui/away.rs: "Press any button, move the mouse or press a key to come back"
+
 ## Still open, and why
 
-- The chapter: no store or game data Hearth reads says which chapter you're on (shown when a game's entry has one).
-- The desk bar's menus: firehold-comp has no global-menu protocol yet, so File, Edit and View are labels.
 - Straight to the display: firehold-comp's direct scanout and VRR work only on a real screen (udev), not in CI.
-- Friends "2 online": how many friends are online is Steam's account data; Hearth never reads Steam accounts (the tile opens Steam's own friends list instead).
-- Per screen: one posture for every screen; the row shows what Firehold.json says.
-- Away (the home server keeps running) isn't in these mockups and has no screen here yet.
+- Friends "2 online": how many friends are online is Steam's account data; Hearth never reads Steam accounts (the tile opens Steam's own friends list instead). Needs the owner's decision.
+- An app's own global menu (KDE's appmenu protocol and D-Bus menus) isn't read: the bar's File, Edit and View hold the standard commands for every app instead.
+- The chapter: only games that write Hearth's progress file show one (no store says it).
+- Night light in Quick Settings: not yet (firehold-comp's colour ramp works only on real screens).

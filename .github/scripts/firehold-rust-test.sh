@@ -200,8 +200,9 @@ shot firehold-r2b-desk-menu 1.5
 C menu >/dev/null; sleep 0.5
 # 2c. A notification from an app (notify-send: libnotify, to Firehold's own org.freedesktop.Notifications)
 if command -v notify-send >/dev/null; then
-  notify-send -a Discord "Night Harbor" "Sam is playing now. Join them from Discord." -A join=Join || true
-  sleep 1
+  # (With a button, notify-send waits for it to be pressed: in the background, for at most 40 s.)
+  timeout 40 notify-send -a Discord "Night Harbor" "Sam is playing now. Join them from Discord." -A join=Join >/dev/null 2>&1 &
+  for i in $(seq 10); do [ "$(st 'len(d["notes"]) >= 1')" = True ] && break; sleep 0.5; done
   note "notifications" "on screen: $(st '[(n["app"], n["title"]) for n in d["notes"]]')"
   [ "$(st 'len(d["notes"]) >= 1')" = True ] || fail "notifications" "notify-send's notification didn't reach Firehold: $(grep -i notif "$FLOG" | tail -3 | tr '\n' '|')"
 else
