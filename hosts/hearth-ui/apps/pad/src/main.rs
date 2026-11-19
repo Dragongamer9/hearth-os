@@ -659,6 +659,7 @@ fn view(a: &App, id: window::Id) -> Element<'_, Msg> {
 
 fn window_events(e: Event, _s: iced::event::Status, id: window::Id) -> Option<Msg> {
     match e {
+        Event::Window(window::Event::Opened { size, .. }) => Some(Msg::Resized(id, size)),
         Event::Window(window::Event::Resized(s)) => Some(Msg::Resized(id, s)),
         Event::Window(window::Event::Closed) => Some(Msg::Closed(id)),
         _ => None,
@@ -713,6 +714,9 @@ fn main() {
         std::process::exit(4);
     }
     iced_layershell::disable_clipboard();
+    // The overlays are see-through (the dimmed screen behind the Hearth menu, the hints over your window): buffers
+    // with alpha (hearth-ui's softbuffer, vendor/README.md). Set before the first surface; nothing else here reads it.
+    std::env::set_var("HEARTH_SOFTBUFFER_ALPHA", "1");
     let r = daemon(new, || "hearth-pad".to_string(), update, view)
         .subscription(subscription)
         .theme(|a: &App, _id: window::Id| app::iced_theme(&a.p))

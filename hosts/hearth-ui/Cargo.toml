@@ -46,3 +46,8 @@ lto = "thin"
 codegen-units = 4
 strip = true
 panic = "abort"
+
+# softbuffer (tiny-skia's way to the screen) with one change: HEARTH_SOFTBUFFER_ALPHA=1 gives Wayland buffers with
+# alpha, which hearth-pad-host's see-through overlays need (vendor/README.md). Without that variable it's upstream's.
+[patch.crates-io]
+softbuffer = { path = "vendor/softbuffer" }
