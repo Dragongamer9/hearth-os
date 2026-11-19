@@ -29,3 +29,6 @@ wayland-client = "0.31"
 # it is, in QuickJS, so the Fedora edition types exactly like Mantel, Game Mode and the apps (same layouts, words,
 # accents, Ember Wheel, osk.json and osk-words.json).
 rquickjs = "0.14"
+# iced_layershell's devtools match winit-core's key codes exhaustively; winit-core 0.31.0-beta.4 made that enum
+# non-exhaustive, which doesn't build: held at the beta it was made for (Cargo picks the newest otherwise).
+winit-core = "=0.31.0-beta.2"
