@@ -293,7 +293,7 @@ fn profiles(a: &App) -> El<'_> {
     let has_bat = !va(pset, "batteries").is_empty();
     let on_bat = va(pset, "batteries").first().map(|b| vs(b, "state") == "discharging").unwrap_or(false);
     let hw = st.j("hw");
-    let saved = |k: &str| -> String { let v = vs(at(hw, "saved"), k); if v.is_empty() { "off".into() } else { v } };
+    let saved = |k: &str| -> String { let v = kg(at(hw, "saved"), k); if v.is_empty() { "off".into() } else { v } };
     let mode_set = |key: &'static str, v: &'static str| -> Msg {
         let mut ex = Ex::new(adm("hearth-hwset", vec!["set".into(), key.into(), v.into()])).re("hw").fail("Couldn't save the power mode");
         if plasma() {

@@ -145,5 +145,30 @@ HEARTH_SYSTEM_SHOW=flag:askoveramp run settings-sys-sound-overamp hearth-setting
 HEARTH_SYSTEM_SHOW=text:askhib=hibernate run settings-sys-power-hibernate hearth-settings 0 "$BIN/hearth-settings-app" --page power
 HEARTH_SYSTEM_SHOW=open:lang run settings-sys-region-chooser hearth-settings 0 "$BIN/hearth-settings-app" --page region
 HEARTH_SYSTEM_SHOW=open:app:Discord run settings-sys-notifications-app hearth-settings 0 "$BIN/hearth-settings-app" --page notifications
+# The long pages' lower parts: the screen made three times as tall (the window fills it), pictured in two more
+# pieces of 1280x800 (NAME-2, NAME-3), then the screen put back.
+tall() { # tall NAME PAGE
+  name=$1
+  "$BIN/hearth-settings-app" --page "$2" >"/tmp/$name.log" 2>&1 &
+  pid=$!
+  for i in $(seq 1 600); do mapped hearth-settings && break; kill -0 $pid 2>/dev/null || break; sleep 0.005; done
+  sleep 2.5
+  grim -g "0,800 1280x800" "$ROOT/shots/$name-2.png" 2>/dev/null
+  grim -g "0,1600 1280x800" "$ROOT/shots/$name-3.png" 2>/dev/null
+  kill -0 $pid 2>/dev/null || echo "::error title=$name::it ended by itself: $(tail -c 1500 /tmp/$name.log | tr '\n' '|')"
+  kill $pid 2>/dev/null; wait $pid 2>/dev/null
+  sleep 0.3
+}
+if swaymsg output HEADLESS-1 resolution 1280x2400 >/dev/null 2>&1; then
+  sleep 0.5
+  for page in display sound notifications power power-profiles battery memory storage drives startup remote-desktop datetime region search sounds about; do
+    tall "settings-sys-$page" "$page"
+  done
+  HEARTH_SYSTEM_SHOW=open:app:Discord tall settings-sys-notifications-app notifications
+  swaymsg output HEADLESS-1 resolution 1280x800 >/dev/null 2>&1
+  sleep 0.5
+else
+  echo "::warning title=settings-system::the screen couldn't be made taller for the long pages' pictures"
+fi
 unset HEARTH_SYSTEM_FIXTURE XDG_CURRENT_DESKTOP
 rm -f "$HOME/.config/nimbus/bar.json"
