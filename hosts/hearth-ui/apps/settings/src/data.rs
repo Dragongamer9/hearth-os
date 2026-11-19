@@ -102,6 +102,11 @@ pub fn short_cpu(s: &str) -> String {
     s.replace("(R)", "").replace("(TM)", "").replace(" CPU", "").replace("  ", " ").split(" @ ").next().unwrap_or("").trim().to_string()
 }
 
+/// A PC name as you type it: letters, numbers and dashes, at most 63.
+pub fn host_chars(t: &str) -> String {
+    t.chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').take(63).collect()
+}
+
 // ------------------------------------------------------------------ Wi-Fi
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Net {

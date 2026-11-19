@@ -1,0 +1,14 @@
+#!/bin/sh
+# The controller as a mouse and keyboard in KDE Plasma (the Fedora edition), as Mantel gives it on Debian: right
+# stick the pointer, A / RT click, X / LT right-click, left stick scroll, B Esc, D-pad arrows (hearth-pad
+# --standalone: Plasma draws no Hearth menus, so Guide and Y do nothing here yet). Started by Plasma's autostart
+# (hearth-pad-plasma.desktop); nimbus-session stops it with Desktop Mode. Never twice, never in Firehold on Plasma
+# (it has its own) and never outside KDE.
+case ":${XDG_CURRENT_DESKTOP:-}:" in *:KDE:*) ;; *) exit 0 ;; esac
+[ "${HEARTH_FIREHOLD_PLASMA:-}" = 1 ] && exit 0
+pad=/usr/share/nimbus/desktop/shell/hearth-pad
+[ -f "$pad" ] || exit 0
+pgrep -u "$(id -u)" -f 'desktop/shell/hearth-pad' >/dev/null 2>&1 && exit 0
+log="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/pad.log"
+mkdir -p "$(dirname "$log")"
+exec python3 "$pad" --standalone </dev/null >/dev/null 2>>"$log"

@@ -52,6 +52,42 @@ mkdir -p "$(dirname "$LOG")"
 [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt 2000000 ] && mv -f "$LOG" "$LOG.old"
 log() { echo "$(date '+%F %T') $*" >>"$LOG"; }
 
+# The session's message bus (D-Bus): Plasma and Steam both quit at once without one ("Could not start D-Bus"). The
+# login normally gives the session one; on the Fedora edition's first start after switching from Debian it once didn't
+# (the owner's ROG Ally, Nov 18: Plasma and Steam took turns failing every 3 s on a black screen). So: find it, else
+# start the account's own (systemd --user), else run the whole session inside a private one (dbus-run-session).
+# Never fatal: without any, the session goes on as before.
+session_bus_ok() {
+  timeout 4 busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetId >/dev/null 2>&1
+}
+ensure_session_bus() {
+  # Only on the Fedora edition (KDE Plasma's image), never for an extra multi-seat player, and before anything else
+  # here changes the environment (a run inside dbus-run-session starts this script again from the top).
+  [ "${HEARTH_NO_BUS_CHECK:-}" = 1 ] && return 0
+  [ -z "${HEARTH_SEAT:-}" ] || return 0
+  [ "$(cat "${HEARTH_DESKTOP_MODE_FILE:-/usr/share/nimbus/desktop-mode}" 2>/dev/null)" = plasma ] || return 0
+  command -v busctl >/dev/null 2>&1 || return 0
+  rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || { [ -S "$rt/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$rt/bus"; }
+  session_bus_ok && return 0
+  log "session bus: not answering (${DBUS_SESSION_BUS_ADDRESS:-none}); starting the account's own"
+  command -v systemctl >/dev/null 2>&1 && timeout 10 systemctl --user start dbus.socket dbus-broker.service dbus.service >/dev/null 2>&1
+  i=0
+  while [ "$i" -lt 20 ]; do
+    [ -S "$rt/bus" ] && { export DBUS_SESSION_BUS_ADDRESS="unix:path=$rt/bus"; session_bus_ok && { log "session bus: up ($DBUS_SESSION_BUS_ADDRESS)"; return 0; }; }
+    sleep 0.5; i=$((i + 1))
+  done
+  if [ -z "${HEARTH_BUS_WRAPPED:-}" ] && command -v dbus-run-session >/dev/null 2>&1; then
+    log "session bus: none came up; the session runs inside its own (dbus-run-session)"
+    export HEARTH_BUS_WRAPPED=1
+    unset DBUS_SESSION_BUS_ADDRESS
+    exec dbus-run-session -- "$0" "$@"
+  fi
+  log "session bus: none (Plasma and Steam may not start)"
+  return 0
+}
+ensure_session_bus "$@"
+
 # ---- The desktop for Desktop Mode is Mantel. 1.13's KDE Plasma and GNOME choices were retired in 1.14 (the owner,
 # Nov 16: "archive the KDE and GNOME choices, since we're migrating to KWin"; code in archive/desktops-kde-gnome,
 # docs/archive/DESKTOPS-KDE-GNOME.md). The login screen's old entries passed --desktop=kde|gnome: Mantel, and the
@@ -2046,6 +2082,10 @@ if [ "${HEARTH_SIDE:-}" = 1 ]; then
     || log "side by side: couldn't show the desktop or another session of yours again"
   exit 0
 fi
+
+# Modes that end within seconds one after another (a broken piece every mode needs) must never flip forever on a
+# black screen: after 6 quick ends in a row the session waits 15 s between tries and says so.
+QUICK_ENDS=0
 reset_controllers
 mode="${NIMBUS_START_MODE:-game}"
 case "$mode" in desktop|server) ;; *) mode=game ;; esac
@@ -2092,6 +2132,7 @@ while :; do
   steam_only_env
   SWITCH_WATCH=""; switch_watch "$mode"
   sd=""; [ "$mode" = steam ] && ! live_session && { steam_auto_before; sd=1; }
+  mode_started=$(date +%s)
   # Hearth Game Mode you picked (game_mode_choice): run_hearth_mode, with its fallback (Steam Game Mode, then Mantel).
   if [ "$mode" = game ] && [ -z "$HEARTH_SEAT" ] && ! live_session; then run_hearth_mode; code=$?
   elif [ "$mode" = game ] || [ "$mode" = setup ]; then
@@ -2103,6 +2144,11 @@ while :; do
   else steam_notice_other; run_desktop; code=$?; fi
   [ -n "$sd" ] && steam_auto_after
   [ -n "$SWITCH_WATCH" ] && kill "$SWITCH_WATCH" 2>/dev/null
+  if [ $(( $(date +%s) - mode_started )) -lt 10 ]; then QUICK_ENDS=$((QUICK_ENDS + 1)); else QUICK_ENDS=0; fi
+  if [ "$QUICK_ENDS" -ge 6 ]; then
+    log "modes keep ending at once ($QUICK_ENDS in a row): waiting 15 s before the next try (Send logs has why)"
+    sleep 15
+  fi
   STEAM_GAME_APPID=""   # a one-game Steam Game Mode is over, whatever comes next
 
   next="$(cat "$NEXT" 2>/dev/null)"; rm -f "$NEXT"
