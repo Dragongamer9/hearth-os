@@ -19,6 +19,11 @@ echo "Anatase on Fedora $FEDORA"
 # Hearth's (os/system_files, shared with the Bazzite build), then this image's Anatase-specific ones on top.
 cp -avf /ctx/system_files/. /
 cp -avf /ctx/anatase_files/. /
+# KWin's own helpers for Mantel (hearth-kwin-im, hearth-kwin-cast: built only for the Debian edition) aren't in this
+# image: Plasma uses KDE's own input method and screen casting here. Their entries named programs that aren't here
+# (the build's "isn't in this image" warning), so they go, on this edition only.
+for k in im cast; do [ -x "/usr/libexec/hearth/hearth-kwin-$k" ] || rm -f "/usr/share/applications/hearth-kwin-$k.desktop"; done
+chmod 755 /usr/libexec/hearth/hearth-winapps-open /usr/libexec/hearth/hearth-join 2>/dev/null || true
 # From the Debian edition, as they are (os-bases/peppermint/system_files): Hearth's boot menu writer and its units (only
 # active on a PC whose boot menu is Hearth's, i.e. one that came here from Debian: their 10-hearth-anatase.conf drop-ins),
 # GRUB's Hearth theme, the writable system's units and their "run from the image's /usr" drop-ins, the /etc guard.
@@ -1373,12 +1378,18 @@ update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # helper, which finds the game or starts Play together. libsecret stays (other apps use the keyring; it was here before).
 dnf5 -y install --skip-unavailable --skip-broken libsecret || true
 if [ -f /usr/share/nimbus/desktop/shell/hearth-discord ]; then chmod 755 /usr/share/nimbus/desktop/shell/hearth-discord; fi
+# The Fedora edition (the owner, Nov 19): it shows in Plasma's menu as Join a friend's game, which asks for the invite
+# link (KDE's dialog) when it's opened from the menu (/usr/libexec/hearth/hearth-join, os-bases/anatase/system_files).
 cat > /usr/share/applications/hearth-join.desktop <<'DESKTOP'
 [Desktop Entry]
 Type=Application
-Name=Hearth (game invites)
-NoDisplay=true
-Exec=python3 /usr/share/nimbus/desktop/shell/hearth-discord join --link %u
+Name=Join a friend's game
+Comment=Open the invite link a friend sent you from Discord: their game, or Play together
+Exec=/usr/libexec/hearth/hearth-join %u
+TryExec=/usr/libexec/hearth/hearth-join
+Icon=hearth-connect
+Categories=Game;Network;
+Keywords=join;invite;discord;friend;play together;link;
 MimeType=x-scheme-handler/hearth;
 DESKTOP
 update-desktop-database -q /usr/share/applications 2>/dev/null || true

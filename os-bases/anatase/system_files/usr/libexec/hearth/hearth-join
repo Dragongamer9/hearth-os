@@ -1,0 +1,18 @@
+#!/bin/sh
+# Join a friend's game on the Fedora edition (os-bases/anatase/build.sh "Fedora's menu: Windows apps, Join"): the
+# hearth:// invite links a friend sends from Discord (hearthos.fun/join#…, docs/DISCORD.md) open here, and so does the
+# menu entry, which asks for the link first (KDE's own dialog, kdialog). The work is hearth-discord's, as on Debian:
+# the game's page, Steam, or Play together with your friend's PIN.
+T="Join a friend's game"
+link="${1:-}"
+if [ -z "$link" ]; then
+  link=$(kdialog --title "$T" --inputbox "Paste the invite link your friend sent you (it starts with hearthos.fun/join or hearth://join):" "" 2>/dev/null) || exit 0
+  link=$(printf '%s' "$link" | tr -d ' \n')
+  case "$link" in hearthos.fun/join*) link="https://$link" ;; http://hearthos.fun/join*) link="https://${link#http://}" ;; esac
+fi
+[ -n "$link" ] || exit 0
+out=$(timeout 180 python3 "${HEARTH_SHELL_DIR:-/usr/share/nimbus/desktop/shell}/hearth-discord" join --link "$link" 2>&1 | tail -n1)
+case "$out" in
+  error:*) kdialog --title "$T" --sorry "$(printf '%s' "${out#error: }" | sed 's/^./\U&/')." 2>/dev/null; exit 1 ;;
+esac
+exit 0

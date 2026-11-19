@@ -1,0 +1,14 @@
+[Desktop Entry]
+# The Fedora edition's (os-bases/anatase/system_files, over os/system_files' hidden handler): Windows apps shows in
+# Plasma's menu. From the menu it lists your Windows apps (Settings › Apps › Windows apps); with a .exe or .msi it opens
+# it with the Proton built into Hearth OS (hearth-winapps, docs/WINDOWS-APPS.md).
+Type=Application
+Name=Windows apps
+GenericName=Windows Program Runner
+Comment=Open Windows programs (.exe, .msi) with the Proton built into Hearth OS, and see the ones you have
+Exec=/usr/libexec/hearth/hearth-winapps-open %f
+TryExec=/usr/libexec/hearth/hearth-winapps-open
+Icon=hearth-apps
+MimeType=application/x-ms-dos-executable;application/x-msdownload;application/x-msi;application/x-ms-installer;application/vnd.microsoft.portable-executable;application/x-dosexec;
+Categories=System;Emulator;
+Keywords=windows;exe;msi;proton;wine;
