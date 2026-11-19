@@ -144,8 +144,10 @@ impl<M> canvas::Program<M> for Screen {
             f.fill(&Path::rectangle(Point::new(ox + (*px + *pw) as f32 * s - 4.0, oy + (*py + *ph) as f32 * s - 4.0), Size::new(8.0, 8.0)), Color::WHITE);
             let tw = name.chars().count() as f32 * 7.4 + 14.0;
             let ty = (oy + *py as f32 * s - 26.0).max(0.0);
-            rr(&mut f, ox + *px as f32 * s, ty, tw, 20.0, 4.0, Some(Color::from_rgb8(0xff, 0x6a, 0x1a)), None);
-            f.fill_text(Text { content: name.clone(), position: Point::new(ox + *px as f32 * s + 7.0, ty + 3.0), color: Color::from_rgb8(0x1b, 0x10, 0x06), size: Pixels(13.0), font: hearth_ui::ui::weight(iced::font::Weight::Semibold), ..Text::default() });
+            // At the element's left edge, kept inside the picture.
+            let tx = (ox + *px as f32 * s).min(b.width - tw).max(0.0);
+            rr(&mut f, tx, ty, tw, 20.0, 4.0, Some(Color::from_rgb8(0xff, 0x6a, 0x1a)), None);
+            f.fill_text(Text { content: name.clone(), position: Point::new(tx + 7.0, ty + 3.0), color: Color::from_rgb8(0x1b, 0x10, 0x06), size: Pixels(13.0), font: hearth_ui::ui::weight(iced::font::Weight::Semibold), ..Text::default() });
         }
         vec![f.into_geometry()]
     }

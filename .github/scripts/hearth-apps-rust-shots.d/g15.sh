@@ -19,3 +19,39 @@ for p in clock system music alerts alert rec set dads-screen; do
 done
 unset HEARTH_G15_FIXTURE HEARTH_G15_CONFIG
 run settings-g15 hearth-settings 0 "$BIN/hearth-settings-app" --page g15
+# The editor (g15-6) with other elements picked, and a picture added the way Add › Picture does it (a made-up
+# photo: a shaded ball and a grey ramp, so the dithering shows), on a copy of the sample so g15.json above stays.
+G15ED=/tmp/g15-editor
+rm -rf "$G15ED"; mkdir -p "$G15ED"
+python3 - "$ROOT/.github/scripts/hearth-g15-sample.json" "$G15ED" <<'PY'
+import json, math, struct, sys, zlib
+d = json.load(open(sys.argv[1]))
+d["screens"].append({"id": "photo", "name": "Photo", "show": "hidden", "elements": [{"type": "text", "x": 96, "y": 4, "size": 1, "text": "Hello Dad"}, {"type": "clock", "x": 96, "y": 16, "size": 2, "format": "24h"}]})
+json.dump(d, open(sys.argv[2] + "/g15.json", "w"), indent=1)
+W, H = 180, 86
+rows = b""
+for y in range(H):
+    row = bytearray([0])
+    for x in range(W):
+        dx, dy = x - 50, y - 43
+        r = math.hypot(dx, dy)
+        if r < 40:
+            light = max(0.0, (-(dx + 15) * 0.6 - (dy + 15) * 0.6) / 40 + 0.5)
+            v = int(40 + 200 * min(1.0, light))
+        elif x > 100:
+            v = int(255 * (y / (H - 1)))
+        else:
+            v = 255
+        row.append(max(0, min(255, v)))
+    rows += bytes(row)
+def chunk(k, b):
+    return struct.pack(">I", len(b)) + k + b + struct.pack(">I", zlib.crc32(k + b) & 0xffffffff)
+png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", W, H, 8, 0, 0, 0, 0)) + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b"")
+open(sys.argv[2] + "/photo.png", "wb").write(png)
+PY
+export HEARTH_G15_FIXTURE="$G15FX" HEARTH_G15_CONFIG="$G15ED/g15.json"
+run g15-6b-editor-value hearth-g15-app 0 "$BIN/hearth-g15-app" --page editor:dads-screen --element 0
+run g15-6c-editor-clock hearth-g15-app 0 "$BIN/hearth-g15-app" --page editor:dads-screen --element 3
+run g15-6d-editor-picture hearth-g15-app 0 "$BIN/hearth-g15-app" --page editor:photo --add-picture "$G15ED/photo.png"
+grep -q '"bits"' "$G15ED/g15.json" || echo "::error title=g15 editor::adding a picture didn't save its dots"
+unset HEARTH_G15_FIXTURE HEARTH_G15_CONFIG

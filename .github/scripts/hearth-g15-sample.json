@@ -268,17 +268,17 @@
    "whileRunning": "Trains 2010",
    "elements": [
     {
-     "type": "text",
-     "x": 1,
-     "y": 1,
-     "text": "GPU"
-    },
-    {
      "type": "value",
      "x": 1,
      "y": 10,
      "size": 3,
      "value": "gpu.temp"
+    },
+    {
+     "type": "text",
+     "x": 1,
+     "y": 1,
+     "text": "GPU"
     },
     {
      "type": "graph",
@@ -300,10 +300,11 @@
      "format": "24h"
     },
     {
-     "type": "text",
+     "type": "value",
      "x": 44,
      "y": 34,
-     "text": "CPU {cpu.use}%"
+     "value": "cpu.use",
+     "label": "CPU "
     },
     {
      "type": "bar",

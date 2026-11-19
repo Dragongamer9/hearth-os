@@ -4,12 +4,13 @@
 //!
 //!   {"id": "dads-screen", "name": "Dad's screen", "show": "list" | "hidden", "whileRunning": "Trainz", "elements": [
 //!     {"type": "text", "x": 1, "y": 1, "size": 1, "text": "GPU {gpu.temp}°", "w": 0, "invert": false},
-//!     {"type": "value", "x": 1, "y": 10, "size": 3, "value": "gpu.temp"},
+//!     {"type": "value", "x": 1, "y": 10, "size": 3, "value": "gpu.temp", "label": ""},   label: shown before it ("CPU ")
 //!     {"type": "bar", "x": 92, "y": 35, "w": 66, "h": 6, "value": "cpu.use", "min": 0, "max": 100},
 //!     {"type": "graph", "x": 86, "y": 2, "w": 74, "h": 30, "value": "gpu.temp", "span": 300, "min": 30, "max": 90,
 //!      "style": "line" | "filled"},
 //!     {"type": "clock", "x": 1, "y": 34, "size": 1, "format": "24h" | "12h" | "date" | "weekday" | "seconds"},
-//!     {"type": "picture", "x": 0, "y": 0, "w": 40, "h": 43, "bits": "<base64: rows of w dots, high bit first>"},
+//!     {"type": "picture", "x": 0, "y": 0, "w": 40, "h": 43, "bits": "<base64: rows of bw dots, high bit first>",
+//!      "bw": 40, "bh": 43, "src": "<the picture file>", "shade": true, "threshold": 128},          see lcd/picture.rs
 //!     {"type": "line", "x": 0, "y": 34, "x2": 159, "y2": 34}, {"type": "box", "x": 0, "y": 0, "w": 160, "h": 11, "fill": true},
 //!     {"type": "tabs"}                                                    the page names over the keys under the screen
 //!   ]}
@@ -132,6 +133,11 @@ fn b64(s: &str) -> Vec<u8> {
     out
 }
 
+/// A picture element's dots (its "bits", decoded).
+pub fn bits_of(e: &Value) -> Vec<u8> {
+    b64(s(e, "bits"))
+}
+
 /// The values a screen uses (so only those are read).
 pub fn wanted(elements: &[Value]) -> Vec<String> {
     let mut w: Vec<String> = Vec::new();
@@ -181,7 +187,7 @@ pub fn draw(fr: &mut Frame, elements: &[Value], c: &Ctx) {
             "text" | "value" => {
                 let t = if s(e, "type") == "value" {
                     let id = s(e, "value");
-                    format!("{}{}", show(c.r, id), if show(c.r, id) == "—" { "" } else { unit_of(id) })
+                    format!("{}{}{}", s(e, "label"), show(c.r, id), if show(c.r, id) == "—" { "" } else { unit_of(id) })
                 } else {
                     fill_in(s(e, "text"), c.r)
                 };
@@ -240,8 +246,10 @@ pub fn draw(fr: &mut Frame, elements: &[Value], c: &Ctx) {
                 }
             }
             "picture" => {
+                // The dots were made at bw x bh (lcd/picture.rs); stretched while the editor resizes it.
                 let bits = b64(s(e, "bits"));
-                fr.picture(x, y, n(e, "w", 0), n(e, "h", 0), &bits);
+                let (w, h) = (n(e, "w", 0), n(e, "h", 0));
+                fr.picture_scaled(x, y, w, h, &bits, n(e, "bw", w as i64), n(e, "bh", h as i64));
             }
             "line" => fr.line(x, y, n(e, "x2", x as i64), n(e, "y2", y as i64), on),
             "box" => {
