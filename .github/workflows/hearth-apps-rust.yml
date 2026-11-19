@@ -113,7 +113,10 @@ jobs:
         timeout-minutes: 40
         run: |
           chmod +x bin/*
-          bash .github/scripts/hearth-apps-rust-test.sh
+          HEARTH_REPORT_LATER=1 bash .github/scripts/hearth-apps-rust-test.sh
+      - name: The measurements (first frame, memory, CPU at rest, scrolling) and their limits
+        if: always()
+        run: bash .github/scripts/hearth-apps-rust-test.sh --report
       - name: The pictures taken (each posted by its own job)
         id: list
         if: always()

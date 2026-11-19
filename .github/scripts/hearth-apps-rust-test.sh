@@ -11,6 +11,9 @@
 set -u
 ROOT="$PWD"
 BIN="$ROOT/bin"
+# --report: only the limits and the measurements from results.txt (a workflow step of its own, so GitHub's ten
+# notices a step are left for them).
+REPORT_ONLY=0; [ "${1:-}" = --report ] && REPORT_ONLY=1
 mkdir -p "$ROOT/shots"
 chmod 777 "$ROOT/shots"
 id ci >/dev/null 2>&1 || useradd -m ci
@@ -116,8 +119,7 @@ bench() {
   grim "$ROOT/shots/$name.png" 2>/dev/null || true
   how=$(grep -m1 -o 'renderer: .*' "/tmp/$name.log" || grep -m1 -o 'drawing with the CPU.*' "/tmp/$name.log" || echo '?')
   hz=$(getconf CLK_TCK)
-  echo "BENCH $name renderer=$rend kind=$kind firstframe=$ff frames=$((f1 - f0)) ms=$((s1 - s0)) ticks=$((b - a)) hz=$hz rss_before=$rss0 rss=$rss $steps" | tee -a "$ROOT/results.txt"
-  echo "::notice title=$name renderer::$how"
+  echo "BENCH $name renderer=$rend kind=$kind firstframe=$ff frames=$((f1 - f0)) ms=$((s1 - s0)) ticks=$((b - a)) hz=$hz rss_before=$rss0 rss=$rss $steps how=$(echo "$how" | tr ' =' '_:' | cut -c1-120)" | tee -a "$ROOT/results.txt"
   kill $pid 2>/dev/null; wait $pid 2>/dev/null
   sleep 0.3
 }
@@ -158,16 +160,16 @@ export HEARTH_APPS_THEME="$HOME/.config/hearth/theme.json"
 run settings-7-kde-breeze hearth-settings 0 "$BIN/hearth-settings-app"
 unset HEARTH_APPS_THEME
 rm -f "$HOME/.config/hearth/theme.json"
-# Scrolling (the owner, Nov 19: "on all the rust apps the scrolling down is laggy and slow"): Settings' long Display
-# page and a folder of 3000 files in Files, on the CPU (tiny-skia, what CI and a PC without a graphics card use) and
+# Scrolling (the owner, Nov 19: "on all the rust apps the scrolling down is laggy and slow"): Settings' long Accessibility
+# page (Display needs a screen CI hasn't got) and a folder of 3000 files in Files, on the CPU (tiny-skia, what CI and a PC without a graphics card use) and
 # through wgpu (here Mesa's software drivers: a PC draws it on its graphics card). And the graphics card's start and
 # memory (gpu-*: measured like the others, reported, no limits: CI's software Vulkan isn't a PC's).
 mkdir -p "$HOME/bench-3000"
 python3 -c 'import os,sys; [open(os.path.join(sys.argv[1], "file-%04d.txt" % i), "w").close() for i in range(3000)]' "$HOME/bench-3000"
-bench scroll-cpu-settings-display hearth-settings cpu touchpad "$BIN/hearth-settings-app" --page display
-bench scroll-cpu-settings-display-wheel hearth-settings cpu wheel "$BIN/hearth-settings-app" --page display
+bench scroll-cpu-settings-long hearth-settings cpu touchpad "$BIN/hearth-settings-app" --page accessibility
+bench scroll-cpu-settings-long-wheel hearth-settings cpu wheel "$BIN/hearth-settings-app" --page accessibility
 bench scroll-cpu-files-3000 hearth-files cpu touchpad "$BIN/hearth-files-app" "$HOME/bench-3000" --view details
-bench scroll-gpu-settings-display hearth-settings gpu touchpad "$BIN/hearth-settings-app" --page display
+bench scroll-gpu-settings-long hearth-settings gpu touchpad "$BIN/hearth-settings-app" --page accessibility
 bench scroll-gpu-files-3000 hearth-files gpu touchpad "$BIN/hearth-files-app" "$HOME/bench-3000" --view details
 HEARTH_RENDERER=gpu run gpu-settings-1-home hearth-settings 20 "$BIN/hearth-settings-app"
 HEARTH_RENDERER=gpu run gpu-files-1-details hearth-files 20 "$BIN/hearth-files-app" "$HOME/bench-3000" --view details
@@ -184,9 +186,14 @@ kill %1 2>/dev/null
 exit 0
 INNER
 chmod 755 /tmp/inner.sh
-: > "$ROOT/results.txt"; chmod 666 "$ROOT/results.txt"
-runuser -u ci -- /tmp/inner.sh "$ROOT"
-inner=$?
+inner=0
+if [ "$REPORT_ONLY" = 0 ]; then
+  : > "$ROOT/results.txt"; chmod 666 "$ROOT/results.txt"
+  runuser -u ci -- /tmp/inner.sh "$ROOT"
+  inner=$?
+  # The measurements are reported by the next step (--report).
+  [ -n "${HEARTH_REPORT_LATER:-}" ] && { ls -la "$ROOT/shots" | tail -3; exit $inner; }
+fi
 
 # The limits.
 fail=$inner
@@ -195,7 +202,7 @@ while read -r kind name rest; do
   [ "$kind" = RESULT ] || continue
   eval "$(echo "$rest" | tr ' ' '\n' | sed 's/^/r_/')"
   lim_cpu=0.3; [ "${name#tm-}" != "$name" ] && lim_cpu=3
-  echo "::notice title=$name::first frame ${r_firstframe} ms · at rest ${r_cpu}% of a core · memory ${r_rss} MB resident (${r_pss} MB proportional) · ${r_threads} threads"
+  echo "$name: first frame ${r_firstframe} ms, at rest ${r_cpu}% of a core, ${r_rss} MB resident (${r_pss} MB proportional), ${r_threads} threads" >> /tmp/at-rest.txt
   if [ "${name#gpu-}" != "$name" ]; then
     # Through wgpu on CI's software drivers: only CPU at rest has a limit (it must stay ~0 whatever draws).
     python3 -c 'import sys; c=float(sys.argv[2]); print("::error title=%s::%.2f%% of a core at rest with wgpu" % (sys.argv[1], c)) if c > 0.3 else None; sys.exit(1 if c > 0.3 else 0)' "$name" "$r_cpu" || fail=1
@@ -229,11 +236,16 @@ fr, ms, ticks, hz = int(kv.get('frames', 0)), max(1, int(kv.get('ms', 1))), int(
 fps = fr * 1000.0 / ms
 cpu_ms = ticks * 1000.0 / hz
 per = cpu_ms / fr if fr else 0.0
-print('::notice title=%s::%s, %s scrolling for %.1f s: %d frames = %.1f frames a second, %.1f ms of CPU a frame (%.0f%% of a core), first frame %s ms, memory %s -> %s MB, %s'
-      % (name, kv.get('renderer'), kv.get('kind'), ms / 1000.0, fr, fps, per, 100.0 * cpu_ms / ms, kv.get('firstframe'), kv.get('rss_before'), kv.get('rss'), kv.get('steps', 'steps=?')))
+with open('/tmp/scrolling.txt', 'a') as f:
+    f.write('%s (%s, %s): %d frames in %.1f s = %.1f fps, %.1f ms CPU a frame (%.0f%% of a core), first frame %s ms, %s -> %s MB, %s, %s\n'
+            % (name, kv.get('renderer'), kv.get('kind'), fr, ms / 1000.0, fps, per, 100.0 * cpu_ms / ms, kv.get('firstframe'), kv.get('rss_before'), kv.get('rss'), kv.get('steps', 'steps=?'), kv.get('how', '').replace('_', ' ')))
 if fr == 0:
     print('::warning title=%s::no frames were counted while scrolling (the frame counter or the scroll didn\'t work)' % name)
 PY
+done
+# One notice each, the lines joined (GitHub keeps ten notices a step).
+for f in at-rest scrolling; do
+  [ -s /tmp/$f.txt ] && echo "::notice title=$f::$(sed ':a;N;$!ba;s/\n/%0A/g' /tmp/$f.txt)"
 done
 grep '^SHOT' "$ROOT/results.txt" | while read -r _ name ff; do
   case "$ff" in *=-1) echo "::error title=$name::its window never came up";; esac
