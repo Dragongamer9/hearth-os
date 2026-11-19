@@ -5,7 +5,8 @@
 
 use super::*;
 use iced::widget::{column, row};
-use hearth_ui::ui::{self, btn, tb, ts, Kind};
+use hearth_ui::ui::{self, tb, ts, Kind};
+use crate::widgets::btn;
 use iced::widget::{container, mouse_area, Row};
 
 pub const ABOUT: &str = ". /etc/os-release 2>/dev/null; echo \"os=${PRETTY_NAME:-Linux}\"; echo \"ver=${IMAGE_VERSION:-$VERSION_ID}\"; \

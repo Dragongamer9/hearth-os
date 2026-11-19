@@ -81,6 +81,7 @@ down a"` (presses as if from the controller), pictured by .github/scripts/hearth
 - [x] Backup and help: Logs, Send logs to the developer (with its code), Back up Hearth to a drive, Restore from a backup — hosts/hearth-ui/apps/settings/src/cats/updates.rs: "Send logs to the developer"
 - [x] Hearth Link: this device and Rename, Share this device's AI, the kind of device you pair (My device, A family member's device, A friend's device), Pair a device with its codes, nearby devices, a code from somewhere else, the long link — hosts/hearth-ui/apps/settings/src/cats/link.rs: "A family member's device"
 - [x] Hearth Link: your devices with each one's menu (what it is, unpair), copies (pause, resume), sync, accept games, share status, relay, Hearth Storage (role, servers & devices with remove, shared folders, backups & saves, advanced) — hosts/hearth-ui/apps/settings/src/cats/link.rs: "Hearth Storage · This device"
+- [x] Hearth Link: a device's choices as hearth-link has them (make it a family member's / a friend's / one of my devices; a family device's switches: its status, and on the family member's side library, saves, Hearth Storage and backups; what they share with you; remote desktop with Moonlight's PIN; wake it) — hosts/hearth-ui/apps/settings/src/cats/link.rs: "vec![\"share\".into(), id.into(), key.into()"
 - [x] Your devices: every device's card, this PC as the home server, share status and Show other devices in Files; one device with the last hour's graphs, its server, now, and what to do with it — hosts/hearth-ui/apps/settings/src/cats/link.rs: "Do something with it"
 - [x] Home server: the landing (what needs a look, four numbers, its pages in four groups, Light mode, hidden items), Set up your home server (its five steps, the sign-in QR code) — hosts/hearth-ui/apps/settings/src/cats/hs/overview.rs: "1 thing needs a look"
 - [x] Home server: Server mode (power when idle, what pauses when you play, the web page and its PIN pad and permissions), AI engine (Colibri: install, engine, models in every group, models folder, download, the plan) — hosts/hearth-ui/apps/settings/src/cats/hs/overview.rs: "Graphics card limit when idle"
@@ -227,18 +228,18 @@ edition. Pictures: settings-pa-* (CI, .github/scripts/hearth-apps-rust-shots.d/s
 - [x] Window effects: every switch, choice and slider of SetKwinEffects.qml (hearth-kwin-settings, live on Plasma) — hosts/hearth-ui/apps/settings/src/cats/pers/kwin.rs: "Show paint"
 - [x] Virtual desktops, Tiling (the layout drawn, presets, columns, rows, gap, quick tiling, snapping), Screen edges (the screen drawn, each corner and edge, touch edges), Window behaviour — hosts/hearth-ui/apps/settings/src/cats/pers/kwin.rs: "Where new windows open"
 - [x] Accounts: the category page, your account, picture, password, other people (type, remove keeping or deleting files), add an account, finish setting up — hosts/hearth-ui/apps/settings/src/cats/accounts.rs: "Remove, but keep their files"
-- [ ] Accounts: cropping your picture in the circle (needs iced's image feature in hearth-ui: not in this branch)
+- [x] Accounts: your picture cut to fit and shown in its circle (as Mantel shows it), in the list of accounts and the pictures to pick from — hosts/hearth-ui/apps/settings/src/pics.rs: "pub fn round<'a, M: 'a>(h: Handle, size: f32, bg: Color)"
 - [x] Sign-in options: sign in automatically, Hearth's login screen (test), lock after sleep (KDE's lock on resume too), password, fingerprint (add, forget, where it's used), Moved — hosts/hearth-ui/apps/settings/src/cats/accounts.rs: "Unlock the lock screen with a finger"
 - [x] Online accounts: your accounts with what each is used for, Open in Files, remove; Nextcloud, Google, Microsoft (browser sign-in, Cancel), CalDAV/CardDAV, WebDAV, IMAP — hosts/hearth-ui/apps/settings/src/cats/accounts.rs: "Sign in in the browser"
 - [x] Login screen: the picture (Hearth's, your own, Choose a picture…, Hearth's fireside), Sign in automatically — hosts/hearth-ui/apps/settings/src/cats/accounts.rs: "Use Hearth's fireside"
 - [x] Privacy & security: the category page, Player count, Firewall (on/off, incoming, Tailscale, rules, let a port in) — hosts/hearth-ui/apps/settings/src/cats/privacy.rs: "Let a port in"
 - [x] Vaults, Recent files (with activities and left out), Firmware & device security, its history, Passwords — hosts/hearth-ui/apps/settings/src/cats/privacy.rs: "Hearth never shows or copies a saved password here."
 - [x] Accessibility: magnifier, colour filters, invert one window, screen reader, sticky/bounce/slow/toggle/mouse keys, the bell, dwell click, text size, high contrast, large pointer, reduce motion, emoji — hosts/hearth-ui/apps/settings/src/cats/a11y.rs: "Click by resting the pointer"
-- [ ] Pictures of wallpapers, avatars and the login screen's background drawn as the pictures themselves (these pages draw them as colour; needs iced's image feature)
+- [x] Pictures of wallpapers, avatars and the login screen's background drawn as the pictures themselves (read once off the window's thread and shrunk; colour until then) — hosts/hearth-ui/apps/settings/src/cats/pers/looks.rs: "let face: E = match crate::pics::get(&plasma_wall(sh, f))"
 
 What these four categories still need outside their own files (feature/settings-pers-acc):
-* Pictures drawn as pictures (wallpapers, avatars, the login screen's background) and cropping your picture: iced's
-  "image" feature in hearth-ui (a shared Cargo change, for the lead to decide).
+* Pictures drawn as pictures (wallpapers, avatars, the login screen's background) and your picture in its circle: done
+  in the 1.15 merge (feature/1.15-rust-apps, pics.rs) now that the settings app has iced's image feature.
 * On KDE Plasma nothing yet changes light and dark at the Sunset times, and hearth-plasma-looks doesn't use
   frameTint, appsFollow or menuStyle: those three are saved (Mantel shares them) and their rows say what they reach.
   A light and a dark wallpaper are put on when the mode is changed here.

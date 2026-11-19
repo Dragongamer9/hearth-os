@@ -11,7 +11,8 @@ use crate::shared::Shared;
 use crate::widgets::*;
 use crate::App;
 use hearth_ui::run;
-use hearth_ui::ui::{self, btn, t, t1, ts, G};
+use hearth_ui::ui::{self, t, t1, ts, G};
+use crate::widgets::btn;
 use hearth_ui::Pal;
 use iced::widget::{column, container, mouse_area, row, Column, Row, Space};
 use iced::{mouse, Color, Element, Length, Padding, Task};
@@ -166,6 +167,30 @@ pub fn plasma_wall(sh: &Shared, chosen: &str) -> String {
     }
     res(&lw)
 }
+/// The wallpapers listed to pick from (SetAppearance's list): on Plasma the look's own, else Mantel's moving ones and
+/// scenes; then Hearth's stills and your own pictures.
+fn wall_list(st: &State, plasma: bool) -> Vec<String> {
+    let mut list: Vec<String> = vec![];
+    if !plasma {
+        list.extend(MOVING.iter().map(|s| s.to_string()));
+        list.extend(SCENES.iter().map(|s| s.to_string()));
+    } else {
+        list.push(String::new());
+    }
+    list.extend(BUILTINS.iter().map(|s| s.to_string()));
+    list.extend(st.pictures.iter().cloned());
+    list
+}
+
+/// Reads the listed wallpapers' pictures (once, off the window's thread), then draws the list again with them.
+fn wall_pics(sh: &Shared, st: &State) -> Task<Msg> {
+    let paths: Vec<String> = wall_list(st, kit::on_plasma()).iter().map(|f| plasma_wall(sh, f)).collect();
+    match crate::pics::load(paths) {
+        Some(f) => Task::perform(f, |_| Msg::Pics),
+        None => Task::none(),
+    }
+}
+
 fn apply_wall_cmd(path: &str) -> Vec<String> {
     vec!["timeout".into(), "20".into(), "plasma-apply-wallpaperimage".into(), path.into()]
 }
@@ -291,8 +316,17 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
                 }
             }
             st.pictures = v;
+            if st.wall_open {
+                return wall_pics(sh, st);
+            }
         }
-        Msg::WallOpen => st.wall_open = !st.wall_open,
+        Msg::WallOpen => {
+            st.wall_open = !st.wall_open;
+            if st.wall_open {
+                return wall_pics(sh, st);
+            }
+        }
+        Msg::Pics => {}
         Msg::AccentMore => st.accent_more = !st.accent_more,
         Msg::Accent(c) => return choose_accent(sh, st, c),
         Msg::Hex(s) => st.hex = s,
@@ -531,15 +565,7 @@ pub fn appearance(a: &App) -> E<'_> {
     c = c.push(irow(&p, Ic::Image, "Match sub theme", msub, switch(&p, match_shown(sh), Some(Msg::Match(!match_shown(sh))))));
     c = c.push(ilink(&p, Ic::Image, "Wallpaper", format!("{} · pictures in Pictures › Wallpapers show up here too", name_of(sh, &sh.d_str("wallpaper"))), if st.wall_open { "Close" } else { "" }, Msg::WallOpen));
     if st.wall_open {
-        let mut list: Vec<String> = vec![];
-        if !plasma {
-            list.extend(MOVING.iter().map(|s| s.to_string()));
-            list.extend(SCENES.iter().map(|s| s.to_string()));
-        } else {
-            list.push(String::new());
-        }
-        list.extend(BUILTINS.iter().map(|s| s.to_string()));
-        list.extend(st.pictures.iter().cloned());
+        let list = wall_list(st, plasma);
         let chosen = sh.d_str("wallpaper");
         let mut g = Column::new().spacing(10.0);
         let mut r = Row::new().spacing(10.0);
@@ -548,7 +574,12 @@ pub fn appearance(a: &App) -> E<'_> {
             let bgc = kit::name_colour(&p, if f.is_empty() { &cur_look } else { f });
             let anim = MOVING.contains(&f.as_str()) && !f.is_empty();
             let lbl = format!("{}{}", name_of(sh, f), if anim { "  ·  animated" } else { "" });
-            let tile = mouse_area(column![kit::swatch(bgc, p.accent, Color::WHITE, sz(190.0), sz(96.0), if lit { Some(p.accent) } else { None }), row![t1(ui::fit(&lbl, 26), sz(12.0), p.text), Space::new().width(Length::Fill), if lit { E::from(ui::glyph(G::Check, p.accent, 14.0, 2.4)) } else { Space::new().width(Length::Fixed(0.0)).into() }].align_y(iced::Center)].spacing(6.0).width(Length::Fixed(sz(190.0))))
+            // The wallpaper itself once it's been read (pics.rs), else drawn as its colour.
+            let face: E = match crate::pics::get(&plasma_wall(sh, f)) {
+                Some(h) => container(crate::pics::tile(h, sz(190.0) - 5.0, sz(96.0) - 5.0, 6.0)).padding(2.5).style(ui::boxed(iced::Color::TRANSPARENT, 8.0, Some(if lit { (p.accent, 2.5) } else { (Pal::a(Color::WHITE, 0.12), 1.0) }))).into(),
+                None => kit::swatch(bgc, p.accent, Color::WHITE, sz(190.0), sz(96.0), if lit { Some(p.accent) } else { None }),
+            };
+            let tile = mouse_area(column![face, row![t1(ui::fit(&lbl, 26), sz(12.0), p.text), Space::new().width(Length::Fill), if lit { E::from(ui::glyph(G::Check, p.accent, 14.0, 2.4)) } else { Space::new().width(Length::Fixed(0.0)).into() }].align_y(iced::Center)].spacing(6.0).width(Length::Fixed(sz(190.0))))
                 .on_press(Msg::Wall(f.clone()))
                 .interaction(mouse::Interaction::Pointer);
             r = r.push(tile);

@@ -4,8 +4,10 @@
 //!
 //! Pairing has three kinds of device: My device (paired with all your devices, with your settings and library), A
 //! family member's device (status and Remote desktop, no settings, library or saves) and A friend's device (paired
-//! with this one only, for copying games). The words sent to hearth-link-settings for each are in `pair_args` and
-//! `kind_args` only, so they follow hearth-link (feature/link-family) in one place.
+//! with this one only, for copying games). The words sent to hearth-link-settings for each are hearth-link's own
+//! (feature/link-family, hearth-link-settings and SetLink.qml): pairing's last word "family" or "friend"
+//! (`pair_args`), make-family / make-friend / make-mine ID (`kind_args`), and a family device's switches
+//! `share ID status|library|saves|storage|backup on|off` (`share_args`).
 
 use crate::cats::hs::kit::{self, *};
 use crate::shared::Shared;
@@ -24,8 +26,8 @@ pub type Msg = kit::Msg;
 
 /// The kinds of paired device, their words, and what each shares.
 pub const KINDS: [(&str, &str, &str); 3] = [
-    ("mine", "My device", "Paired with all your devices at once, with your settings, library and saves"),
-    ("family", "A family member's device", "Its status and Remote desktop in Your devices; no settings, library or saves"),
+    ("mine", "My device", "Yours: paired with all your devices at once, with your settings, library, saves and status"),
+    ("family", "A family member's device", "Pick this on your own device. You see it in Your devices and can help on it (wake it, remote desktop). None of your settings, saves or library go onto it"),
     ("friend", "A friend's device", "Paired with this one only, just for copying games. Nothing else is shared"),
 ];
 
@@ -40,21 +42,40 @@ pub fn pair_args(base: Vec<String>, kind: &str) -> Vec<String> {
     v
 }
 
-/// Making a paired device another kind.
+/// Making a paired device another kind (hearth-link-settings make-friend / make-family / make-mine; My device
+/// again only by pairing again on both, which hearth-link says).
 pub fn kind_args(id: &str, kind: &str) -> Vec<String> {
-    match kind {
-        "friend" => vec!["make-friend".into(), id.into()],
-        other => vec!["set-kind".into(), id.into(), other.into()],
-    }
+    let cmd = match kind {
+        "friend" => "make-friend",
+        "family" => "make-family",
+        _ => "make-mine",
+    };
+    vec![cmd.into(), id.into()]
 }
 
-/// A peer's kind: `kind` when hearth-link says it, else from `friend`.
+/// A family member's device's switches on this device (hearth-link-settings share ID KEY on|off).
+pub fn share_args(id: &str, key: &str, on: bool) -> Vec<String> {
+    vec!["share".into(), id.into(), key.into(), if on { "on" } else { "off" }.into()]
+}
+
+/// A peer's kind: hearth-link's `relation` (mine / family), a friend from `friend`.
 pub fn kind_of(peer: &Value) -> String {
-    let k = s(peer, "kind");
-    if !k.is_empty() {
-        return k;
+    if s(peer, "relation") == "family" {
+        return "family".into();
     }
     if b(peer, "friend") { "friend".into() } else { "mine".into() }
+}
+
+/// What a family member chose to share with you (SetLink.qml theirLine).
+fn their_line(pe: &Value) -> String {
+    let t = at(pe, "theirShares");
+    let on: Vec<&str> = [("status", "its status"), ("library", "its game library"), ("saves", "its saves"), ("storage", "your Hearth Storage"), ("backup", "backing the PC up")]
+        .iter().filter(|(k, _)| b(t, k)).map(|(_, w)| *w).collect();
+    if on.is_empty() {
+        "They don't share anything else with you yet. Only they can turn that on, on their device".into()
+    } else {
+        format!("They share: {}. Only they can change this, on their device", on.join(", "))
+    }
 }
 fn kind_word(k: &str) -> &'static str {
     KINDS.iter().find(|x| x.0 == k).map(|x| x.1).unwrap_or("My device")
@@ -175,6 +196,15 @@ fn submit(st: &mut St, key: &str, text: String) -> Result<Vec<Act>, String> {
                 st.t.insert(key.into(), String::new());
             }
             Ok(Vec::new())
+        }
+        "pin" => {
+            // Moonlight's PIN for the open device's remote desktop, on stdin (hearth-link-settings remote-pin ID).
+            let c: String = text.chars().filter(|x| x.is_ascii_digit()).collect();
+            if c.len() != 4 {
+                return Err("Moonlight's PIN is 4 numbers".into());
+            }
+            st.t.insert(key.into(), String::new());
+            Ok(vec![act_v(H::Link, vec!["remote-pin".into(), st.ls("peer")]).input(c).ok("Sent: Moonlight is paired with it")])
         }
         "share" => {
             let t_ = text.trim().to_string();
@@ -375,15 +405,75 @@ fn link_page<'a>(a: &'a App) -> E<'a, Msg> {
         let id = s(pe, "id");
         let name = s(pe, "name");
         let kind = kind_of(pe);
+        let side = s(pe, "familySide");
         let state = if b(pe, "online") { "Online" } else if n(pe, "lastSeen") > 0.0 { "Not on right now" } else { "Not reached yet" };
-        let sub = format!("{} · {state}{} · select for its menu", kind_word(&kind), if s(pe, "introducedBy").is_empty() { String::new() } else { format!(" · paired through {}", s(pe, "introducedBy")) });
-        rs.add(r("display", name.clone()).sub(sub).value(if b(pe, "online") { "Online" } else { "" }).chev().on(pick(st, "peer", &id)).el(&p));
+        let whose = if kind == "family" && side == "helper" { "Family · helps on this device".to_string() } else { kind_word(&kind).to_string() };
+        let sub = format!("{whose} · {state}{} · select for its choices", if s(pe, "introducedBy").is_empty() { String::new() } else { format!(" · paired through {}", s(pe, "introducedBy")) });
+        let ic = match kind.as_str() { "family" => "users", "friend" => "user", _ => "display" };
+        rs.add(r(ic, name.clone()).sub(sub).value(if b(pe, "online") { "Online" } else { "" }).chev().on(pick(st, "peer", &id)).el(&p));
         if open_peer == id {
-            // Its menu: what kind of device it is, and unpairing.
-            let items = KINDS.iter().map(|(k, l, _)| (l.to_string(), *k == kind, (*k != kind).then(|| act_v(H::Link, kind_args(&id, k)).ok(format!("{name} is {} now", l.to_lowercase())).msg()))).collect();
-            let ksub = KINDS.iter().find(|x| x.0 == kind).map(|x| x.2).unwrap_or("");
-            rs.add(container(choice(&p, "", "What it is", ksub, items)).padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 28.0 }).into());
-            rs.add(r("close", format!("Unpair {name}")).inset(true).sub(if kind == "mine" { "Your other devices remove it too" } else { "Only this device unpairs it" }).on(act_v(H::Link, vec!["unpair".into(), id.clone()]).ok(format!("Unpaired {name}")).set("peer", Value::Null).msg()).el(&p));
+            // Its choices (SetLink.qml): whose it is, a family device's switches, help on it, unpair.
+            let fam = kind == "family";
+            if !fam {
+                rs.add(r("users", "Make it a family member's device").inset(true).sub("It stays on your devices and you can help on it, but it stops getting your settings, library, saves and status right away").on(act_v(H::Link, kind_args(&id, "family")).ok(format!("{name} is a family member's device now")).msg()).el(&p));
+            }
+            if kind != "friend" {
+                rs.add(r("user", "Make it a friend's device").inset(true).sub("This device stops sharing anything with it but game copies, right away").on(act_v(H::Link, kind_args(&id, "friend")).ok(format!("{name} is a friend's device now")).msg()).el(&p));
+            }
+            if kind != "mine" {
+                rs.add(r("display", "Make it one of my devices").inset(true).sub("Both devices have to agree: unpair it, then pair again and pick My device on both").on(act_v(H::Link, kind_args(&id, "mine")).ok("{note|Unpair it, then pair again and pick My device on both}").msg()).el(&p));
+            }
+            let shares = at(pe, "shares");
+            let sw = |key: &str| -> (bool, Msg) {
+                let on = b(shares, key);
+                (on, act_v(H::Link, share_args(&id, key, !on)).ok(if on { "Off" } else { "On" }).msg())
+            };
+            if fam {
+                // What this device lets that family device see (its status), on either side.
+                let (on, m) = sw("status");
+                rs.add(r("eye", "Let it see this device's status").inset(true).sub(format!("Battery, use, temperatures, drives and what's playing, for {name} only")).switch(&p, on, Some(m)).el(&p));
+            }
+            if fam && side != "member" {
+                // On the family member's own device: what it shares with the person who helps on it (all off to
+                // start with; only changed here).
+                for (key, ic, title, line) in [
+                    ("library", "store", "Share my game library", format!("Favorites, hidden games, collections and play time, both ways with {name}. Never settings")),
+                    ("saves", "update", "Back up my saves", "Game saves kept on their Hearth Storage, and saves follow you there".to_string()),
+                    ("storage", "store", "Use Hearth Storage (shared folders, the game archive, backups)", "Their shared folders, their game archive and their download caches, from this device".to_string()),
+                    ("backup", "update", "Back up this PC", "This PC's saves and screenshots backed up to their Hearth Storage".to_string()),
+                ] {
+                    let (on, m) = sw(key);
+                    rs.add(r(ic, title).inset(true).sub(line).switch(&p, on, Some(m)).el(&p));
+                }
+            }
+            if fam && side != "helper" {
+                rs.add(r("info", "What they share with you").inset(true).sub(their_line(pe)).el(&p));
+            }
+            if kind == "mine" || (fam && side != "helper") {
+                // Its remote desktop: how to reach it in Moonlight (it says, over Hearth Link), then Moonlight's PIN.
+                let rem = st.get("remote");
+                let here = st.ls("remoteFor") == id && rem.is_object();
+                let sub = if !here {
+                    "Its screen here with Moonlight, through Tailscale. Select to see how to reach it".to_string()
+                } else if b(rem, "on") {
+                    format!("In Moonlight, add {}{}. Select to open Moonlight", s(rem, "host"), if b(rem, "tailscale") { "" } else { " (it isn't signed in to Tailscale right now)" })
+                } else {
+                    "Use this PC from anywhere is off on it: it has to be turned on there (Settings › Remote play)".to_string()
+                };
+                let m = if here && b(rem, "on") {
+                    Msg::Detached(sv(&["sh", "-c", "command -v moonlight >/dev/null && exec moonlight || exec flatpak run com.moonlight_stream.Moonlight"]))
+                } else {
+                    act_v(H::Link, vec!["remote".into(), id.clone()]).store("remote").set("remoteFor", json!(id.clone())).no_reload().msg()
+                };
+                rs.add(r("play", "Remote desktop").inset(true).sub(sub).on(m).el(&p));
+                if here && b(rem, "on") {
+                    rs.add(tfield(&p, st, "pin", format!("Moonlight's 4-number PIN for {name}, then Enter"), false));
+                }
+            }
+            if !b(pe, "online") && b(pe, "canWake") {
+                rs.add(r("power", "Wake it").inset(true).sub("Wake-on-LAN (it has to be set to wake from the network)").on(act_v(H::Link, vec!["wake".into(), id.clone()]).ok(format!("Waking {name}…")).msg()).el(&p));
+            }
+            rs.add(r("trash", "Unpair it").inset(true).sub(if kind == "friend" { "Nothing is copied between them anymore, until you pair again" } else { "Nothing is shared with it anymore, until you pair again. Your other devices remove it too" }).on(act_v(H::Link, vec!["unpair".into(), id.clone()]).ok(format!("Unpaired {name}")).set("peer", Value::Null).msg()).el(&p));
         }
     }
     if !peers.is_empty() {
@@ -787,7 +877,13 @@ mod tests {
         assert!(short_check("K7M-4QX-92H0").contains("never have 0"));
         assert_eq!(short_fmt("k7m4qx92hc"), "K7M-4QX-92HC");
         assert_eq!(kind_of(&json!({"friend": true})), "friend");
-        assert_eq!(kind_of(&json!({"kind": "family", "friend": false})), "family");
+        assert_eq!(kind_of(&json!({"relation": "family", "friend": false})), "family");
+        assert_eq!(kind_of(&json!({"relation": "mine"})), "mine");
+        assert_eq!(kind_args("ab12", "family"), vec!["make-family", "ab12"]);
+        assert_eq!(kind_args("ab12", "friend"), vec!["make-friend", "ab12"]);
+        assert_eq!(kind_args("ab12", "mine"), vec!["make-mine", "ab12"]);
+        assert_eq!(share_args("ab12", "library", true), vec!["share", "ab12", "library", "on"]);
+        assert!(their_line(&json!({"theirShares": {"saves": true}})).contains("its saves"));
         assert_eq!(kind_of(&json!({})), "mine");
         assert_eq!(pair_args(vec!["pair-open".into()], "family"), vec!["pair-open", "family"]);
         assert_eq!(summary_of(&json!({"peers": [{}, {}, {}]})), "3 devices");

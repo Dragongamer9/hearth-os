@@ -157,7 +157,7 @@ fn updates_page<'a>(a: &'a App) -> E<'a, Msg> {
     let ic = if staged || available || phase != "idle" { G::Update } else if can { G::Check } else { G::Info };
     let mut hero = Row::new().spacing(18.0).align_y(iced::Center).push(container(glyph(ic, p.accent, 28.0, 2.2)).center_x(Length::Fixed(56.0)).center_y(Length::Fixed(56.0)).style(ui::boxed(Pal::mix(p.panel, p.accent, 0.18), p.r(12.0), None))).push(column![ts(title, sz(19.0), p.text), t(sub, sz(13.0), p.muted)].spacing(3.0).width(Length::Fill));
     if let Some((label, m)) = action.clone() {
-        hero = hero.push(ui::btn(&p, label.to_string(), ui::Kind::Primary, false, Some(m)));
+        hero = hero.push(crate::widgets::btn(&p, label.to_string(), ui::Kind::Primary, false, Some(m)));
     }
     let hero_c = container(hero).padding(20.0).width(Length::Fill).style(ui::boxed(p.panel, p.r(12.0), None));
     rs.add(match action {

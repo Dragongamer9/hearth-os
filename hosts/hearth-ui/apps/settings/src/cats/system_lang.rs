@@ -12,7 +12,8 @@
 
 use super::*;
 use iced::widget::{column, row};
-use hearth_ui::ui::{btn, ts, Kind};
+use hearth_ui::ui::{ts, Kind};
+use crate::widgets::btn;
 use iced::widget::Row;
 use serde_json::json;
 

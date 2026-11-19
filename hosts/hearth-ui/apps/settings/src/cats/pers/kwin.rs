@@ -11,7 +11,8 @@
 use super::kit::{self, dropdown, iact, irow_if, pick_dialog, slide, small, Ic};
 use crate::widgets::*;
 use hearth_ui::run;
-use hearth_ui::ui::{self, btn, t, t1, G};
+use hearth_ui::ui::{self, t, t1, G};
+use crate::widgets::btn;
 use hearth_ui::Pal;
 use iced::widget::{column, container, row, Column, Row, Space};
 use iced::{Element, Length, Padding, Task};

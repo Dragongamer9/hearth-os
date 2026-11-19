@@ -10,7 +10,8 @@
 
 use crate::widgets::*;
 use hearth_ui::run::{self, Output};
-use hearth_ui::ui::{self, btn, glyph, t, t1, tm, Kind, G};
+use hearth_ui::ui::{self, glyph, t, t1, tm, Kind, G};
+use crate::widgets::btn;
 use hearth_ui::Pal;
 use iced::widget::{column, container, mouse_area, row, Column, Row, Space};
 use iced::{mouse, Color, Length, Padding};
@@ -274,7 +275,7 @@ pub fn chipk<'a, M: 'a>(p: &Pal, label: impl Into<String>, kind: &str) -> E<'a, 
 
 /// Mantel's SetRow: its icon, name (red for one that removes something), the line under it, what's on the right, and
 /// pressing it sends `msg`. A row without a message is only shown.
-pub fn xrow<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, right: Option<E<'a, M>>, danger: bool, msg: Option<M>) -> E<'a, M> {
+pub fn xrow<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, right: Option<E<'a, M>>, danger: bool, msg: Option<M>) -> E<'a, M> {
     let sub: String = sub.into();
     let mut w = Column::new().spacing(3.0).push(tm(title.into(), sz(15.0), if danger { p.danger } else { p.text }));
     if !sub.is_empty() {
@@ -292,34 +293,34 @@ pub fn xrow<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: imp
 }
 
 /// A row you press (no chevron).
-pub fn press<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, msg: Option<M>) -> E<'a, M> {
+pub fn press<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, msg: Option<M>) -> E<'a, M> {
     xrow(p, g, title, sub, None, false, msg)
 }
 /// A row that removes something (red).
-pub fn danger_row<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, msg: Option<M>) -> E<'a, M> {
+pub fn danger_row<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, msg: Option<M>) -> E<'a, M> {
     xrow(p, g, title, sub, None, true, msg)
 }
 /// A row that opens another page or part (›).
-pub fn go_row<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, msg: M) -> E<'a, M> {
+pub fn go_row<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, msg: M) -> E<'a, M> {
     xrow(p, g, title, sub, Some(glyph(G::Chevron, p.muted, 14.0, 2.0)), false, Some(msg))
 }
 /// A row with a value on the right (Default, 85 %, Shown below).
-pub fn val_row<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, value: impl Into<String>, msg: Option<M>) -> E<'a, M> {
+pub fn val_row<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, value: impl Into<String>, msg: Option<M>) -> E<'a, M> {
     let v: String = value.into();
     let right: Option<E<'a, M>> = if v.is_empty() { None } else { Some(t1(v, sz(13.0), p.muted).into()) };
     xrow(p, g, title, sub, right, false, msg)
 }
 /// A row with a chip on the right (Connected, Blocked, Waiting).
-pub fn chip_row<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, chip: &str, kind: &str, msg: Option<M>) -> E<'a, M> {
+pub fn chip_row<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, chip: &str, kind: &str, msg: Option<M>) -> E<'a, M> {
     let right: Option<E<'a, M>> = if chip.is_empty() { None } else { Some(chipk(p, chip.to_string(), kind)) };
     xrow(p, g, title, sub, right, false, msg)
 }
 /// A row only shown (Mantel's interactive: false).
-pub fn info_row<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>) -> E<'a, M> {
+pub fn info_row<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>) -> E<'a, M> {
     xrow(p, g, title, sub, None, false, None)
 }
 /// A switch row; `enabled: false` shows it greyed (Needs Mantel on KWin, Needs KWin 6.7).
-pub fn switch_row<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, on: bool, enabled: bool, msg: M) -> E<'a, M> {
+pub fn switch_row<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, on: bool, enabled: bool, msg: M) -> E<'a, M> {
     if enabled {
         srow(p, g, title, sub, switch(p, on, Some(msg)))
     } else {
@@ -328,11 +329,11 @@ pub fn switch_row<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, su
     }
 }
 /// Choices side by side (Mantel's SetChoice).
-pub fn choice<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, items: Vec<(String, bool, Option<M>)>) -> E<'a, M> {
+pub fn choice<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, items: Vec<(String, bool, Option<M>)>) -> E<'a, M> {
     srow(p, g, title, sub, seg(p, items))
 }
 /// The same, greyed and not changeable.
-pub fn choice_dim<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, items: Vec<(String, bool)>) -> E<'a, M> {
+pub fn choice_dim<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, items: Vec<(String, bool)>) -> E<'a, M> {
     let q = dim(p);
     srow(&q, g, title, sub, seg(&q, items.into_iter().map(|(l, on)| (l, on, None)).collect()))
 }
@@ -345,7 +346,7 @@ pub fn dim(p: &Pal) -> Pal {
     q
 }
 /// Mantel's SetDropdown: the row with what's picked on a button; pressed, the choices open under it.
-pub fn dropdown<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, current: impl Into<String>, open: bool, toggle: M, opts: Vec<(String, bool, M)>) -> E<'a, M> {
+pub fn dropdown<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, current: impl Into<String>, open: bool, toggle: M, opts: Vec<(String, bool, M)>) -> E<'a, M> {
     let pp = *p;
     let cur = container(row![t1(current.into(), sz(13.0), p.text), glyph(G::Down, if open { p.accent } else { p.muted }, 12.0, 2.0)].spacing(10.0).align_y(iced::Center))
         .padding(Padding { top: sz(6.0), right: 12.0, bottom: sz(6.0), left: 14.0 })
@@ -369,7 +370,7 @@ pub fn dropdown<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub:
     c.into()
 }
 /// Mantel's SetExpander: a row that folds its own settings open under it.
-pub fn expander<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, value: &str, chip: Option<(&str, &str)>, open: bool, toggle: M, body: Option<E<'a, M>>) -> E<'a, M> {
+pub fn expander<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, value: &str, chip: Option<(&str, &str)>, open: bool, toggle: M, body: Option<E<'a, M>>) -> E<'a, M> {
     let mut right = Row::new().spacing(10.0).align_y(iced::Center);
     if let Some((c, k)) = chip {
         if !c.is_empty() {
@@ -393,7 +394,7 @@ pub fn indent<'a, M: 'a>(inner: impl Into<E<'a, M>>) -> E<'a, M> {
     container(inner).padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 52.0 }).width(Length::Fill).into()
 }
 /// Mantel's SetBanner: a tinted card with an icon, a title, the line under it and its button.
-pub fn banner<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, bad: bool, action: Option<(String, M)>) -> E<'a, M> {
+pub fn banner<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, bad: bool, action: Option<(String, M)>) -> E<'a, M> {
     let tint = if bad { p.danger } else { p.accent };
     let mut r = Row::new().spacing(16.0).align_y(iced::Center).push(glyph(g, tint, sz(22.0), 1.8)).push(column![tm(title.into(), sz(15.0), p.text), t(sub.into(), sz(13.0), p.muted)].spacing(3.0).width(Length::Fill));
     if let Some((l, m)) = action {
@@ -402,7 +403,7 @@ pub fn banner<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: i
     container(r).padding(Padding { top: sz(14.0), right: 20.0, bottom: sz(14.0), left: 20.0 }).width(Length::Fill).style(ui::boxed(Pal::mix(p.panel, tint, 0.12), p.r(10.0), Some((Pal::a(tint, 0.45), 1.0)))).into()
 }
 /// A text field, secret or not, Enter sending `submit`.
-pub fn input<'a, M: Clone + 'a>(p: &Pal, placeholder: &str, value: &str, secret: bool, on: impl Fn(String) -> M + 'a, submit: Option<M>) -> E<'a, M> {
+pub fn input<'a, M: Clone + Send + 'static>(p: &Pal, placeholder: &str, value: &str, secret: bool, on: impl Fn(String) -> M + 'a, submit: Option<M>) -> E<'a, M> {
     let mut f = field(p, placeholder, value, on);
     if secret {
         f = f.secure(true);
@@ -413,7 +414,7 @@ pub fn input<'a, M: Clone + 'a>(p: &Pal, placeholder: &str, value: &str, secret:
     f.into()
 }
 /// Buttons in a line (Mantel's Flow of SetButtons).
-pub fn buttons<'a, M: Clone + 'a>(p: &Pal, items: Vec<(String, Kind, Option<M>)>) -> E<'a, M> {
+pub fn buttons<'a, M: Clone + Send + 'static>(p: &Pal, items: Vec<(String, Kind, Option<M>)>) -> E<'a, M> {
     let mut r = Row::new().spacing(8.0).align_y(iced::Center);
     for (l, k, m) in items {
         r = r.push(btn(p, l, k, false, m));

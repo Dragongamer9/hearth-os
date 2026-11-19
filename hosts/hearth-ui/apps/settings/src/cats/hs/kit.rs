@@ -1169,7 +1169,7 @@ pub fn r<'a, M>(icon: &str, title: impl Into<String>) -> R<'a, M> {
     R { icon: if icon.is_empty() { None } else { Some(icon_named(icon)) }, title: title.into(), sub: String::new(), value: String::new(), chip: None, badge: String::new(), chev: false, danger: false, inset: false, on: None, control: None }
 }
 
-impl<'a, M: Clone + 'a> R<'a, M> {
+impl<'a, M: Clone + Send + 'static> R<'a, M> {
     pub fn sub(mut self, s: impl Into<String>) -> Self {
         self.sub = s.into();
         self
@@ -1261,7 +1261,7 @@ impl<'a, M: Clone + 'a> R<'a, M> {
 }
 
 /// Choices side by side that wrap when they don't fit (SetChoice's buttons).
-pub fn choices<'a, M: Clone + 'a>(p: &Pal, items: Vec<(String, bool, Option<M>)>) -> E<'a, M> {
+pub fn choices<'a, M: Clone + Send + 'static>(p: &Pal, items: Vec<(String, bool, Option<M>)>) -> E<'a, M> {
     let total: usize = items.iter().map(|x| x.0.chars().count() + 4).sum();
     if total <= 44 {
         return seg(p, items);
@@ -1282,7 +1282,7 @@ pub fn choices<'a, M: Clone + 'a>(p: &Pal, items: Vec<(String, bool, Option<M>)>
 }
 
 /// SetChoice: a row with its title and line, and the choices (on the right, or under it when they're long).
-pub fn choice<'a, M: Clone + 'a>(p: &Pal, ic: &str, title: impl Into<String>, sub: impl Into<String>, opts: Vec<(String, bool, Option<M>)>) -> E<'a, M> {
+pub fn choice<'a, M: Clone + Send + 'static>(p: &Pal, ic: &str, title: impl Into<String>, sub: impl Into<String>, opts: Vec<(String, bool, Option<M>)>) -> E<'a, M> {
     let p = *p;
     let title: String = title.into();
     let sub: String = sub.into();
@@ -1301,7 +1301,7 @@ pub fn choice<'a, M: Clone + 'a>(p: &Pal, ic: &str, title: impl Into<String>, su
 }
 
 /// The options of a SetChoice from (value, label, disabled), `cur` picked, `f` what picking one sends.
-pub fn opts<M: Clone>(list: &[(&str, &str, bool)], cur: &str, f: impl Fn(&str) -> M) -> Vec<(String, bool, Option<M>)> {
+pub fn opts<M: Clone + Send + 'static>(list: &[(&str, &str, bool)], cur: &str, f: impl Fn(&str) -> M) -> Vec<(String, bool, Option<M>)> {
     list.iter().map(|(v, l, dis)| (l.to_string(), *v == cur, if *dis { None } else { Some(f(v)) })).collect()
 }
 
@@ -1324,7 +1324,7 @@ pub fn message<'a, M: 'a>(p: &Pal, st: &St) -> E<'a, M> {
 }
 
 /// SetBanner: something needs a look, and the button that goes there.
-pub fn banner<'a, M: Clone + 'a>(p: &Pal, kind: &str, ic: &str, title: impl Into<String>, sub: impl Into<String>, action: &str, m: Option<M>) -> E<'a, M> {
+pub fn banner<'a, M: Clone + Send + 'static>(p: &Pal, kind: &str, ic: &str, title: impl Into<String>, sub: impl Into<String>, action: &str, m: Option<M>) -> E<'a, M> {
     let p = *p;
     let tone = match kind {
         "bad" => p.danger,
@@ -1333,7 +1333,7 @@ pub fn banner<'a, M: Clone + 'a>(p: &Pal, kind: &str, ic: &str, title: impl Into
     };
     let mut r = row![ibox(&p, icon_named(ic), Some(tone)), column![ts(title.into(), sz(15.0), p.text), t(sub.into(), sz(13.0), p.muted)].spacing(3.0).width(Length::Fill)].spacing(16.0).align_y(iced::Center);
     if !action.is_empty() {
-        r = r.push(ui::btn(&p, action.to_string(), ui::Kind::Primary, false, m.clone()));
+        r = r.push(crate::widgets::btn(&p, action.to_string(), ui::Kind::Primary, false, m.clone()));
     }
     let c = container(r).padding(Padding { top: sz(14.0), right: 20.0, bottom: sz(14.0), left: 20.0 }).width(Length::Fill).style(ui::boxed(Pal::mix(p.panel, tone, 0.12), p.r(10.0), Some((Pal::a(tone, 0.5), 1.0))));
     match m {

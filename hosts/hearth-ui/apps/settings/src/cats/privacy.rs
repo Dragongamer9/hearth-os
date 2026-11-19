@@ -782,7 +782,7 @@ fn passwords<'a>(a: &'a App, mut c: kit::Col<'a, Msg>) -> kit::Col<'a, Msg> {
         let prot = k.get("protected").and_then(Value::as_bool);
         let label = { let l = kit::s_of(k, "label"); if l.is_empty() { "Keyring".to_string() } else { l } };
         let sub = format!("{} · {cnt} {}{}", if locked { "Locked" } else { "Unlocked" }, if cnt == 1 { "item" } else { "items" }, match prot { Some(false) => " · no password: kept unencrypted on this drive", Some(true) => " · protected with a password", None => "" });
-        let right = iced::widget::row![if prot == Some(false) { chip(&p, "No password", Kind::Warn) } else { E::from(iced::widget::Space::new()) }, hearth_ui::ui::btn(&p, if locked { "Unlock" } else { "Lock" }, hearth_ui::ui::Kind::Normal, false, Some(Msg::Secret(vec![if locked { "unlock".into() } else { "lock".into() }, id.clone()], if locked { "Unlocked.".into() } else { "Locked.".into() })))].spacing(10.0).align_y(iced::Center);
+        let right = iced::widget::row![if prot == Some(false) { chip(&p, "No password", Kind::Warn) } else { E::from(iced::widget::Space::new()) }, crate::widgets::btn(&p, if locked { "Unlock" } else { "Lock" }, hearth_ui::ui::Kind::Normal, false, Some(Msg::Secret(vec![if locked { "unlock".into() } else { "lock".into() }, id.clone()], if locked { "Unlocked.".into() } else { "Locked.".into() })))].spacing(10.0).align_y(iced::Center);
         c = c.push(irow(&p, if locked { Ic::Lock } else { Ic::Key }, format!("{label}{}", if kit::b_of(k, "default") { " (default)" } else { "" }), sub, right.into()));
     }
     let unprot: Vec<&Value> = keyrings.iter().filter(|k| k.get("protected").and_then(Value::as_bool) == Some(false)).collect();

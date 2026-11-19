@@ -13,7 +13,8 @@ use crate::shared::{io_helper, Shared};
 use crate::widgets::*;
 use crate::App;
 use hearth_ui::run;
-use hearth_ui::ui::{self, btn, hline, t, ts, Kind, G};
+use hearth_ui::ui::{self, hline, t, ts, Kind, G};
+use crate::widgets::btn;
 use hearth_ui::Pal;
 use iced::widget::{column, container, mouse_area, row, Column, Row, Space};
 use iced::{mouse, Color, Element, Length, Padding, Subscription, Task};
@@ -271,7 +272,7 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
     Task::none()
 }
 
-pub fn rename_box<'a, M: Clone + 'a>(p: &Pal, n: &str, on: impl Fn(String) -> M + 'a, save: M, cancel: M) -> Element<'a, M> {
+pub fn rename_box<'a, M: Clone + Send + 'static>(p: &Pal, n: &str, on: impl Fn(String) -> M + 'a, save: M, cancel: M) -> Element<'a, M> {
     column![
         hearth_ui::ui::ts("Rename this PC", sz(18.0), p.text),
         t("Letters, numbers and dashes. Your other devices see this name.", sz(13.0), p.muted),

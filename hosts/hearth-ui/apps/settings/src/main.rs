@@ -24,6 +24,7 @@ mod frame;
 mod nav;
 mod pad;
 mod pages_list;
+mod pics;
 mod quick;
 mod registry;
 mod shared;

@@ -50,6 +50,18 @@ pub fn page_glyph(id: &str) -> G {
         "about" | "info-cpu" => G::Info,
         "notifications" => G::Moon,
         "quick" => G::Grid,
+        // Bluetooth & devices: each page its own mark (not the category's Bluetooth one for all of them).
+        "bluetooth" | "bluetooth-devices" => G::Bt,
+        "bluetooth-receive" => G::Down,
+        "keyboard" => G::Keyboard,
+        "mouse" | "mouse-buttons" => G::Mouse,
+        "phone" => G::Link,
+        "phone-messages" | "print-queue" => G::List,
+        "kwin-tablet" | "ink-levels" => G::Palette,
+        "printers" => G::Grid,
+        "scanners" => G::Camera,
+        "scan-pdf" => G::Folder,
+        "thunderbolt" => G::Rocket,
         _ => p.map(|p| cat_glyph(p.cat)).unwrap_or(G::Gear),
     }
 }
@@ -180,15 +192,27 @@ fn crumbs(a: &App) -> Element<'_, Msg> {
         return tb(registry::page(a.page).map(|x| x.label).unwrap_or(cat.1), 34.0, p.text).into();
     }
     chain.retain(|x| x.id != cat.2);
+    // The whole path: the category, then the pages down to this one. A long one (Bluetooth & devices › Bluetooth ›
+    // Your Bluetooth devices) would run past the title's room and wrap, so only its last two parts show, after "…"
+    // (which goes to the category, as its name would).
+    let mut parts: Vec<(&'static str, Msg)> = vec![(cat.1, Msg::Cat(a.cat))];
+    parts.extend(chain.into_iter().map(|x| (x.label, Msg::Go(x.id))));
+    let cut = parts.len() > 2;
+    let shown: Vec<(&'static str, Msg)> = if cut { parts.split_off(parts.len() - 2) } else { parts };
+    let chev = || container(glyph(G::Chevron, p.text, 22.0, 2.4)).padding(Padding { top: 6.0, right: 0.0, bottom: 0.0, left: 0.0 });
     let mut r = Row::new().spacing(12.0).align_y(iced::Center);
-    r = r.push(mouse_area(tb(cat.1, 34.0, p.muted)).on_press(Msg::Cat(a.cat)).interaction(mouse::Interaction::Pointer));
-    let n = chain.len();
-    for (i, x) in chain.into_iter().enumerate() {
-        r = r.push(container(glyph(G::Chevron, p.text, 22.0, 2.4)).padding(Padding { top: 6.0, right: 0.0, bottom: 0.0, left: 0.0 }));
+    if cut {
+        r = r.push(mouse_area(tb("…", 34.0, p.muted)).on_press(Msg::Cat(a.cat)).interaction(mouse::Interaction::Pointer)).push(chev());
+    }
+    let n = shown.len();
+    for (i, (label, go)) in shown.into_iter().enumerate() {
+        if i > 0 {
+            r = r.push(chev());
+        }
         if i + 1 == n {
-            r = r.push(tb(x.label, 34.0, p.text));
+            r = r.push(tb(label, 34.0, p.text).wrapping(iced::widget::text::Wrapping::None));
         } else {
-            r = r.push(mouse_area(tb(x.label, 34.0, p.muted)).on_press(Msg::Go(x.id)).interaction(mouse::Interaction::Pointer));
+            r = r.push(mouse_area(tb(label, 34.0, p.muted).wrapping(iced::widget::text::Wrapping::None)).on_press(go).interaction(mouse::Interaction::Pointer));
         }
     }
     r.into()

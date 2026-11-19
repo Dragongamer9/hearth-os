@@ -8,7 +8,8 @@
 
 use super::*;
 use iced::widget::{column, row};
-use hearth_ui::ui::{self, btn, glyph, ts, Kind};
+use hearth_ui::ui::{self, glyph, ts, Kind};
+use crate::widgets::btn;
 use iced::widget::{container, mouse_area, Row, Space};
 use serde_json::json;
 

@@ -102,6 +102,8 @@ pub enum Msg {
     UseHearthLook,
     Kde(&'static str),
     Pictures(run::Output),
+    /// Wallpapers' pictures read (pics.rs): drawn again with them.
+    Pics,
     Open(&'static str),
     Close,
     K(KMsg),

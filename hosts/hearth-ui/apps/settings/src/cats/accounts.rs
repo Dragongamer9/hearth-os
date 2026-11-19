@@ -11,7 +11,8 @@ use crate::shared::Shared;
 use crate::widgets::*;
 use crate::App;
 use hearth_ui::run;
-use hearth_ui::ui::{self, btn, t, tb, ts, G};
+use hearth_ui::ui::{self, t, tb, ts, G};
+use crate::widgets::btn;
 use hearth_ui::Pal;
 use iced::widget::{column, container, row, Column, Space};
 use iced::{Element, Length, Subscription, Task};
@@ -127,6 +128,8 @@ pub enum Msg {
     LscDid(String, run::Output),
     LscChoose,
     LscPicked(run::Output),
+    /// Pictures read (pics.rs): drawn again with them.
+    Pics,
 }
 
 const SYS: &str = "hearth-system";
@@ -202,17 +205,25 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
         Msg::Close => st.pick = None,
         // ---------------------------------------------------------- Users
         Msg::Users(o) => match kit::answer(&o) {
-            Ok(v) if v.is_object() => st.users = Some(v),
+            Ok(v) if v.is_object() => {
+                let want: Vec<String> = kit::arr(&v, "users").iter().map(|x| kit::s_of(x, "picture")).collect();
+                st.users = Some(v);
+                return pics_task(want);
+            }
             Ok(_) => {}
             Err(e) => say(st, e, true),
         },
+        Msg::Pics => {}
         Msg::TogglePictures => {
             st.picking = !st.picking;
             if st.picking {
                 return job(SYS, &["pictures"], String::new(), Msg::Pictures);
             }
         }
-        Msg::Pictures(o) => st.pictures = kit::answer(&o).map(|v| kit::strs(&v, "pictures")).unwrap_or_default(),
+        Msg::Pictures(o) => {
+            st.pictures = kit::answer(&o).map(|v| kit::strs(&v, "pictures")).unwrap_or_default();
+            return pics_task(st.pictures.clone());
+        }
         Msg::PicSet(p) => {
             st.busy = "picture";
             return job(SYS, &["picture-set", &p], String::new(), Msg::PicDid);
@@ -222,6 +233,10 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             match kit::answer(&o) {
                 Ok(r) => {
                     st.picking = false;
+                    // The account picture's file stays where it is with a new picture in it: read it again.
+                    for x in st.users.as_ref().map(|u| kit::arr(u, "users")).unwrap_or_default() {
+                        crate::pics::forget(&kit::s_of(&x, "picture"));
+                    }
                     let removed = kit::s_of(&r, "picture").is_empty();
                     say(st, if removed { "Picture removed." } else if kit::b_of(&r, "loginScreen") { "Picture changed." } else { "Picture changed (the login screen keeps its own until Hearth's admin helper is there)." }, false);
                 }
@@ -544,7 +559,12 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
         }
         // ---------------------------------------------------------- Login screen
         Msg::Lsc(o) => match kit::answer(&o) {
-            Ok(v) if v.is_object() => st.lsc = Some(v),
+            Ok(v) if v.is_object() => {
+                let mut want = kit::strs(&v, "pictures");
+                want.push(kit::s_of(&v, "background"));
+                st.lsc = Some(v);
+                return pics_task(want);
+            }
             Ok(_) => {}
             Err(e) => say(st, e, true),
         },
@@ -646,7 +666,19 @@ fn landing(a: &App) -> E<'_> {
     c.into()
 }
 
-fn avatar<'a>(p: &Pal, name: &str, s: f32) -> E<'a> {
+/// Reads these pictures off the window's thread (pics.rs), then draws the page again.
+fn pics_task(paths: Vec<String>) -> Task<Msg> {
+    match crate::pics::load(paths) {
+        Some(f) => Task::perform(f, |_| Msg::Pics),
+        None => Task::none(),
+    }
+}
+
+/// Your picture in its circle (as Mantel shows it), on `bg`; your initial until it's read or when there's none.
+fn avatar<'a>(p: &Pal, name: &str, pic: &str, s: f32, bg: iced::Color) -> E<'a> {
+    if let Some(h) = crate::pics::get(pic) {
+        return crate::pics::round(h, s, bg);
+    }
     let letter = name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "·".into());
     container(tb(letter, s * 0.4, p.text)).center_x(Length::Fixed(s)).center_y(Length::Fixed(s)).style(ui::boxed(p.panel3, s / 2.0, None)).into()
 }
@@ -665,12 +697,16 @@ fn users(a: &App) -> E<'_> {
     let oem = kit::b_of(u, "oemSetup");
     if let Some(m) = &me {
         let full = { let f = kit::s_of(m, "fullname"); if f.is_empty() { kit::s_of(m, "name") } else { f } };
-        c = c.push(container(row![avatar(&p, &full, 56.0), column![ts(full.clone(), sz(17.0), p.text), t(format!("{} · {}", kit::s_of(m, "name"), if kit::b_of(m, "admin") { "Administrator" } else { "Standard account" }), sz(12.0), p.muted)].spacing(3.0)].spacing(14.0).align_y(iced::Center)).padding(16.0).width(Length::Fill).style(ui::boxed(p.panel, p.r(10.0), None)));
+        c = c.push(container(row![avatar(&p, &full, &kit::s_of(m, "picture"), 56.0, p.panel), column![ts(full.clone(), sz(17.0), p.text), t(format!("{} · {}", kit::s_of(m, "name"), if kit::b_of(m, "admin") { "Administrator" } else { "Standard account" }), sz(12.0), p.muted)].spacing(3.0)].spacing(14.0).align_y(iced::Center)).padding(16.0).width(Length::Fill).style(ui::boxed(p.panel, p.r(10.0), None)));
         c = c.push(ilink(&p, Ic::Camera, if st.picking { "Choose a picture below" } else { "Change my picture" }, "Shown here and on the login screen", "", Msg::TogglePictures));
         if st.picking {
             let mut g = Column::new().spacing(6.0);
             for f in &st.pictures {
-                g = g.push(pick_row(&p, kit::base(f), Msg::PicSet(f.clone())));
+                let pr = pick_row(&p, kit::base(f), Msg::PicSet(f.clone()));
+                g = g.push(match crate::pics::get(f) {
+                    Some(h) => row![crate::pics::round(h, 40.0, p.bg), pr].spacing(10.0).align_y(iced::Center).into(),
+                    None => pr,
+                });
             }
             if st.pictures.is_empty() {
                 g = g.push(small(&p, "Put a PNG or JPEG picture in your Pictures folder to use it here."));
@@ -706,7 +742,7 @@ fn users(a: &App) -> E<'_> {
         let player = kit::b_of(x, "player");
         let removable = can_manage && !me_ && !player;
         let kind = if player { "Multi-seat player" } else if kit::b_of(x, "admin") { "Administrator" } else { "Standard account" };
-        let row_ = container(row![avatar(&p, &full, 38.0), column![ts(format!("{full}{}", if me_ { "  (you)" } else { "" }), sz(15.0), p.text), t(format!("{name} · {kind}"), sz(12.0), p.muted)].spacing(3.0).width(Length::Fill), if removable { E::from(ui::glyph(G::Chevron, p.muted, 14.0, 2.0)) } else { Space::new().into() }].spacing(14.0).align_y(iced::Center)).padding(14.0).width(Length::Fill).style(ui::boxed(p.panel, p.r(10.0), None));
+        let row_ = container(row![avatar(&p, &full, &kit::s_of(x, "picture"), 38.0, p.panel), column![ts(format!("{full}{}", if me_ { "  (you)" } else { "" }), sz(15.0), p.text), t(format!("{name} · {kind}"), sz(12.0), p.muted)].spacing(3.0).width(Length::Fill), if removable { E::from(ui::glyph(G::Chevron, p.muted, 14.0, 2.0)) } else { Space::new().into() }].spacing(14.0).align_y(iced::Center)).padding(14.0).width(Length::Fill).style(ui::boxed(p.panel, p.r(10.0), None));
         c = c.push(if removable { E::from(iced::widget::mouse_area(row_).on_press(Msg::Pick(name.clone())).interaction(iced::mouse::Interaction::Pointer)) } else { row_.into() });
         if st.picked == name && st.confirm.is_empty() {
             let adm = kit::b_of(x, "admin");
@@ -938,12 +974,25 @@ fn login_screen(a: &App) -> E<'_> {
     // The preview: the login screen as it shows: your picture's colour darkened, or Hearth's fireside.
     let clock = hearth_ui::time::clock(hearth_ui::time::now()).replace(" AM", "").replace(" PM", "");
     let base = if bgp.is_empty() { hearth_ui::theme::hex("#17110e").unwrap() } else { Pal::mix(kit::name_colour(&p, &bgp), iced::Color::BLACK, 0.45) };
-    c = c.push(container(column![tb(clock, 44.0, hearth_ui::theme::hex("#f4ece3").unwrap()), t(if bgp.is_empty() { "Hearth's fireside".to_string() } else { kit::base(&bgp) }, sz(14.0), hearth_ui::theme::hex("#a69484").unwrap())].spacing(4.0).align_x(iced::Center)).center_x(Length::Fill).center_y(Length::Fixed(sz(260.0))).style(ui::boxed(base, 12.0, None)));
+    let words = container(column![tb(clock, 44.0, hearth_ui::theme::hex("#f4ece3").unwrap()), t(if bgp.is_empty() { "Hearth's fireside".to_string() } else { kit::base(&bgp) }, sz(14.0), hearth_ui::theme::hex("#a69484").unwrap())].spacing(4.0).align_x(iced::Center)).center_x(Length::Fill).center_y(Length::Fixed(sz(260.0)));
+    // Your picture itself behind the clock when it's been read (darkened as the login screen does), else its colour.
+    c = c.push(match crate::pics::get(&bgp) {
+        Some(h) => E::from(iced::widget::stack![
+            iced::widget::image(h).width(Length::Fill).height(Length::Fixed(sz(260.0))).content_fit(iced::ContentFit::Cover).border_radius(12.0),
+            container(Space::new()).width(Length::Fill).height(Length::Fixed(sz(260.0))).style(ui::boxed(Pal::a(iced::Color::BLACK, 0.45), 12.0, None)),
+            words,
+        ]),
+        None => words.style(ui::boxed(base, 12.0, None)).into(),
+    });
     let pics = st.lsc.as_ref().map(|s| kit::strs(s, "pictures")).unwrap_or_default();
     if !pics.is_empty() {
         let mut g = Column::new().spacing(6.0);
         for f in pics {
-            g = g.push(pick_row(&p, kit::base(&f), Msg::LscUse(f.clone())));
+            let pr = pick_row(&p, kit::base(&f), Msg::LscUse(f.clone()));
+            g = g.push(match crate::pics::get(&f) {
+                Some(h) => row![crate::pics::tile(h, 64.0, 40.0, 6.0), pr].spacing(10.0).align_y(iced::Center).into(),
+                None => pr,
+            });
         }
         c = c.push(g);
     }

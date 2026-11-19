@@ -12,7 +12,8 @@
 
 use super::*;
 use iced::widget::{column, row};
-use hearth_ui::ui::{self, btn, glyph, ts, Kind};
+use hearth_ui::ui::{self, glyph, ts, Kind};
+use crate::widgets::btn;
 use iced::widget::canvas::{self, Frame, Geometry, LineCap, Path, Stroke};
 use iced::widget::container;
 use iced::{mouse, Color, Point, Rectangle, Renderer, Theme};

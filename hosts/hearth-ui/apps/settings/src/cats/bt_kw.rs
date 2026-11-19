@@ -99,7 +99,7 @@ pub fn set(file: &str, changes: Value) -> impl Future<Output = Res> + Send + 'st
 }
 
 /// Mantel's KwinGate: what's said above KWin's controls (not running here, a preview, a file that couldn't be read).
-pub fn gate<'a, M: Clone + 'a>(p: &Pal, kw: &Kw, what: &str, go: M) -> Column<'a, M> {
+pub fn gate<'a, M: Clone + Send + 'static>(p: &Pal, kw: &Kw, what: &str, go: M) -> Column<'a, M> {
     let mut c = Column::new().spacing(8.0);
     if !kw.ready() {
         return c.push(words(p, "Asking KWin…"));

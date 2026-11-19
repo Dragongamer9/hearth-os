@@ -9,7 +9,7 @@
 # The rail is folded for these, as in the mockups (their own config folder, so nothing of the person's is touched).
 FIX=/tmp/tm-fix
 mkdir -p "$FIX" /tmp/tm-cfg/nimbus
-echo '{"railFolded": true}' > /tmp/tm-cfg/nimbus/taskmgr.json
+python3 "$HEARTH_SHELL_DIR/hearth_settings_io.py" merge /tmp/tm-cfg/nimbus/taskmgr.json '{"railFolded": true}'
 G=1073741824
 # two test icons (a PNG and an SVG) for the Name column
 python3 - "$FIX/icon-a.png" <<'PY'

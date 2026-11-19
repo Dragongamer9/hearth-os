@@ -406,13 +406,13 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
         if picked {
             let mut b = Row::new().spacing(8.0);
             if i > 0 {
-                b = b.push(hearth_ui::ui::btn(&p, "Move up", hearth_ui::ui::Kind::Normal, false, Some(M::Move(i, true))));
+                b = b.push(crate::widgets::btn(&p, "Move up", hearth_ui::ui::Kind::Normal, false, Some(M::Move(i, true))));
             }
             if i + 1 < s.layouts.len() {
-                b = b.push(hearth_ui::ui::btn(&p, "Move down", hearth_ui::ui::Kind::Normal, false, Some(M::Move(i, false))));
+                b = b.push(crate::widgets::btn(&p, "Move down", hearth_ui::ui::Kind::Normal, false, Some(M::Move(i, false))));
             }
             if s.layouts.len() > 1 {
-                b = b.push(hearth_ui::ui::btn(&p, "Remove", hearth_ui::ui::Kind::Danger, false, Some(M::Remove(i))));
+                b = b.push(crate::widgets::btn(&p, "Remove", hearth_ui::ui::Kind::Danger, false, Some(M::Remove(i))));
             }
             c = c.push(indent(b));
         }

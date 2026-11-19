@@ -17,6 +17,9 @@ hearth-ui = { path = "../.." }
 # link as a big QR code to photograph with a phone (Network & internet).
 # "advanced": the window's outer widget (nav.rs Gate) and finding the focused row on the screen to scroll it into view.
 iced = { workspace = true, features = ["image", "qr_code", "advanced"] }
+# The wallpapers', account pictures' and login screen's pictures (pics.rs): decoded here off the window's thread and
+# shrunk, as Hearth Files does.
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
 serde_json = { workspace = true }
 futures = { workspace = true }
 libc = { workspace = true }

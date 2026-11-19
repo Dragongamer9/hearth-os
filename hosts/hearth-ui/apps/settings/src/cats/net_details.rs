@@ -9,7 +9,8 @@
 use super::kit::{self, *};
 use crate::shared::Shared;
 use crate::widgets::*;
-use hearth_ui::ui::{btn, t, tb, Kind, G};
+use hearth_ui::ui::{t, tb, Kind, G};
+use crate::widgets::btn;
 use iced::widget::canvas::{self, Frame, Geometry};
 use iced::widget::{column, container, row, Column};
 use iced::{mouse, Color, Length, Point, Rectangle, Renderer, Size, Subscription, Task, Theme};

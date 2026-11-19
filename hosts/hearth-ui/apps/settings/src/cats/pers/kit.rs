@@ -429,7 +429,7 @@ pub fn irow_if<'a, M: 'a>(p: &Pal, on: bool, i: Ic, title: impl Into<String>, su
     if on { irow(p, i, title, sub, control) } else { irow_off(p, i, title, sub, control) }
 }
 /// A row that opens something: its value (if any) and › on the right.
-pub fn ilink<'a, M: Clone + 'a>(p: &Pal, i: Ic, title: impl Into<String>, sub: impl Into<String>, value: impl Into<String>, msg: M) -> E<'a, M> {
+pub fn ilink<'a, M: Clone + Send + 'static>(p: &Pal, i: Ic, title: impl Into<String>, sub: impl Into<String>, value: impl Into<String>, msg: M) -> E<'a, M> {
     let value: String = value.into();
     let mut right = Row::new().spacing(12.0).align_y(iced::Center);
     if !value.is_empty() {
@@ -439,7 +439,7 @@ pub fn ilink<'a, M: Clone + 'a>(p: &Pal, i: Ic, title: impl Into<String>, sub: i
     mouse_area(irow(p, i, title, sub, right.into())).on_press(msg).interaction(mouse::Interaction::Pointer).into()
 }
 /// A row that does something when pressed (no ›), red when it deletes or removes.
-pub fn iact<'a, M: Clone + 'a>(p: &Pal, i: Ic, title: impl Into<String>, sub: impl Into<String>, danger: bool, msg: Option<M>) -> E<'a, M> {
+pub fn iact<'a, M: Clone + Send + 'static>(p: &Pal, i: Ic, title: impl Into<String>, sub: impl Into<String>, danger: bool, msg: Option<M>) -> E<'a, M> {
     let c = if msg.is_none() { p.muted } else if danger { p.danger } else { p.text };
     let pi = Pal { text: c, ..*p };
     let r = boxed_row(p, row![ibox(&pi, i), words(p, title.into(), sub.into(), c).width(Length::Fill)].spacing(16.0).align_y(iced::Center), msg.is_none());
@@ -482,11 +482,11 @@ pub fn chip<'a, M: 'a>(p: &Pal, label: impl Into<String>, k: Kind) -> E<'a, M> {
 }
 
 /// A box across the page (KWin isn't here, no keyring…), with what to do about it.
-pub fn banner<'a, M: Clone + 'a>(p: &Pal, i: Ic, title: impl Into<String>, sub: impl Into<String>, bad: bool, action: Option<(&'a str, M)>) -> E<'a, M> {
+pub fn banner<'a, M: Clone + Send + 'static>(p: &Pal, i: Ic, title: impl Into<String>, sub: impl Into<String>, bad: bool, action: Option<(&'a str, M)>) -> E<'a, M> {
     let c = if bad { p.danger } else { p.accent };
     let mut r = row![icon(i, c, sz(20.0), 1.8), column![ts(title.into(), sz(15.0), p.text), t(sub.into(), sz(13.0), p.muted)].spacing(3.0).width(Length::Fill)].spacing(14.0).align_y(iced::Center);
     if let Some((l, m)) = action {
-        r = r.push(ui::btn(p, l, ui::Kind::Normal, false, Some(m)));
+        r = r.push(crate::widgets::btn(p, l, ui::Kind::Normal, false, Some(m)));
     }
     container(r).padding(16.0).width(Length::Fill).style(ui::boxed(Pal::mix(p.panel, c, 0.08), p.r(10.0), Some((Pal::a(c, 0.5), 1.0)))).into()
 }
@@ -501,7 +501,7 @@ pub fn small<'a, M: 'a>(p: &Pal, s: impl Into<String>) -> E<'a, M> {
 }
 
 /// A drop-down's button: what's chosen, and ▾. Pressing it opens the list (`pick_dialog`).
-pub fn dropdown<'a, M: Clone + 'a>(p: &Pal, label: impl Into<String>, msg: Option<M>) -> E<'a, M> {
+pub fn dropdown<'a, M: Clone + Send + 'static>(p: &Pal, label: impl Into<String>, msg: Option<M>) -> E<'a, M> {
     let on = msg.is_some();
     let c = container(row![t1(label.into(), sz(13.0), if on { p.text } else { p.muted }), glyph(G::Down, p.muted, 12.0, 2.0)].spacing(10.0).align_y(iced::Center))
         .padding(Padding { top: sz(7.0), right: 12.0, bottom: sz(7.0), left: 14.0 })
@@ -513,7 +513,7 @@ pub fn dropdown<'a, M: Clone + 'a>(p: &Pal, label: impl Into<String>, msg: Optio
 }
 
 /// A drop-down's list, over the page: each choice (with its line), the chosen one marked. Esc or outside closes it.
-pub fn pick_dialog<'a, M: Clone + 'a>(p: &Pal, title: &str, items: Vec<(String, String, bool, M)>, close: M) -> E<'a, M> {
+pub fn pick_dialog<'a, M: Clone + Send + 'static>(p: &Pal, title: &str, items: Vec<(String, String, bool, M)>, close: M) -> E<'a, M> {
     let n = items.len();
     let mut c = Column::new().spacing(4.0);
     for (label, sub, on, m) in items {
@@ -529,7 +529,7 @@ pub fn pick_dialog<'a, M: Clone + 'a>(p: &Pal, title: &str, items: Vec<(String, 
         );
     }
     let body = column![
-        row![ts(title.to_string(), sz(17.0), p.text), Space::new().width(Length::Fill), ui::btn(p, "Close", ui::Kind::Normal, false, Some(close))].align_y(iced::Center),
+        row![ts(title.to_string(), sz(17.0), p.text), Space::new().width(Length::Fill), crate::widgets::btn(p, "Close", ui::Kind::Normal, false, Some(close))].align_y(iced::Center),
         scrollable(c).height(Length::Fixed((n as f32 * sz(58.0)).min(460.0))),
     ]
     .spacing(12.0);
@@ -537,12 +537,12 @@ pub fn pick_dialog<'a, M: Clone + 'a>(p: &Pal, title: &str, items: Vec<(String, 
 }
 
 /// A slider with its value written next to it; it changes the setting as it moves (the page saves it a moment later).
-pub fn slide<'a, M: Clone + 'a>(p: &Pal, v: f32, range: std::ops::RangeInclusive<f32>, step: f32, value: impl Into<String>, on: impl Fn(f32) -> M + 'a) -> E<'a, M> {
+pub fn slide<'a, M: Clone + Send + 'static>(p: &Pal, v: f32, range: std::ops::RangeInclusive<f32>, step: f32, value: impl Into<String>, on: impl Fn(f32) -> M + 'a) -> E<'a, M> {
     row![iced::widget::slider(range, v, on).step(step).width(Length::Fixed(sz(240.0))), container(t1(value.into(), sz(13.0), p.muted)).width(Length::Fixed(sz(70.0)))].spacing(12.0).align_y(iced::Center).into()
 }
 
 /// A text field for a password: what's typed shows as dots.
-pub fn secret<'a, M: Clone + 'a>(p: &Pal, placeholder: &str, value: &str, on: impl Fn(String) -> M + 'a) -> text_input::TextInput<'a, M> {
+pub fn secret<'a, M: Clone + Send + 'static>(p: &Pal, placeholder: &str, value: &str, on: impl Fn(String) -> M + 'a) -> text_input::TextInput<'a, M> {
     field(p, placeholder, value, on).secure(true)
 }
 
@@ -600,7 +600,7 @@ pub fn hue_of(hex: &str) -> f32 {
 }
 
 /// Choices side by side (widgets::seg) from (label, value) pairs.
-pub fn choice<'a, M: Clone + 'a, V: PartialEq + Clone>(p: &Pal, opts: &[(&str, V)], cur: &V, on: impl Fn(V) -> M) -> E<'a, M> {
+pub fn choice<'a, M: Clone + Send + 'static, V: PartialEq + Clone>(p: &Pal, opts: &[(&str, V)], cur: &V, on: impl Fn(V) -> M) -> E<'a, M> {
     seg(p, opts.iter().map(|(l, v)| (l.to_string(), v == cur, Some(on(v.clone())))).collect())
 }
 

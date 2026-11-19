@@ -373,7 +373,7 @@ pub struct R<M> {
 pub fn r<M>(g: G, title: impl Into<String>, sub: impl Into<String>) -> R<M> {
     R { g, title: title.into(), sub: sub.into(), chip: None, value: String::new(), chev: false, danger: false, msg: None, indent: false }
 }
-impl<M: Clone> R<M> {
+impl<M: Clone + Send + 'static> R<M> {
     pub fn on(mut self, m: M) -> Self {
         self.msg = Some(m);
         self
@@ -450,15 +450,15 @@ pub fn line_row<'a, M: 'a>(p: &Pal, g: G, title: String, color: Color, sub: Stri
 }
 
 /// SetSwitch: a row with a switch (None: shown, can't be changed).
-pub fn sw<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, on: bool, msg: Option<M>) -> E<'a, M> {
+pub fn sw<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, on: bool, msg: Option<M>) -> E<'a, M> {
     srow(p, g, title, sub, switch(p, on, msg))
 }
 /// SetChoice: a row with the choices side by side.
-pub fn choice<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, items: Vec<(String, bool, Option<M>)>) -> E<'a, M> {
+pub fn choice<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, items: Vec<(String, bool, Option<M>)>) -> E<'a, M> {
     srow(p, g, title, sub, seg(p, items))
 }
 /// SetChoice with its choices under the name, for long lists (they'd crowd the row).
-pub fn choice_wide<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, items: Vec<(String, bool, Option<M>)>) -> E<'a, M> {
+pub fn choice_wide<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, items: Vec<(String, bool, Option<M>)>) -> E<'a, M> {
     let mut w = Column::new().spacing(3.0).push(tm(title.into(), sz(15.0), p.text));
     let sub: String = sub.into();
     if !sub.is_empty() {
@@ -471,7 +471,7 @@ pub fn choice_wide<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, s
         .into()
 }
 /// SetExpander's top row: › closed, ⌄ open.
-pub fn expander<'a, M: Clone + 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, chip: Option<(String, Chip)>, value: String, open: bool, msg: M) -> E<'a, M> {
+pub fn expander<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, chip: Option<(String, Chip)>, value: String, open: bool, msg: M) -> E<'a, M> {
     let mut right = Row::new().spacing(10.0).align_y(iced::Center);
     if let Some((l, k)) = chip {
         right = right.push(chip_of(p, l, k));
@@ -495,14 +495,14 @@ pub fn group<'a, M: 'a>(p: &Pal, title: impl Into<String>, items: Vec<E<'a, M>>)
     c.into()
 }
 /// A small button in a row (Save, Remove, Install…).
-pub fn button<'a, M: Clone + 'a>(p: &Pal, label: impl Into<String>, primary: bool, msg: Option<M>) -> E<'a, M> {
-    ui::btn(p, label.into(), if primary { ui::Kind::Primary } else { ui::Kind::Normal }, false, msg)
+pub fn button<'a, M: Clone + Send + 'static>(p: &Pal, label: impl Into<String>, primary: bool, msg: Option<M>) -> E<'a, M> {
+    crate::widgets::btn(p, label.into(), if primary { ui::Kind::Primary } else { ui::Kind::Normal }, false, msg)
 }
 pub fn buttons<'a, M: 'a>(items: Vec<E<'a, M>>) -> E<'a, M> {
     Row::with_children(items).spacing(10.0).align_y(iced::Center).into()
 }
 /// A labelled text field (SetField with its name over it).
-pub fn labelled<'a, M: Clone + 'a>(p: &Pal, label: &str, ph: &str, value: &str, on: impl Fn(String) -> M + 'a, submit: Option<M>) -> E<'a, M> {
+pub fn labelled<'a, M: Clone + Send + 'static>(p: &Pal, label: &str, ph: &str, value: &str, on: impl Fn(String) -> M + 'a, submit: Option<M>) -> E<'a, M> {
     let f = field(p, ph, value, on);
     let f = match submit {
         Some(m) => f.on_submit(m),
@@ -510,7 +510,7 @@ pub fn labelled<'a, M: Clone + 'a>(p: &Pal, label: &str, ph: &str, value: &str, 
     };
     column![container(t(label.to_string(), sz(12.0), p.muted)).padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 4.0 }), f].spacing(3.0).into()
 }
-pub fn field_on<'a, M: Clone + 'a>(p: &Pal, ph: &str, value: &str, on: impl Fn(String) -> M + 'a, submit: M) -> E<'a, M> {
+pub fn field_on<'a, M: Clone + Send + 'static>(p: &Pal, ph: &str, value: &str, on: impl Fn(String) -> M + 'a, submit: M) -> E<'a, M> {
     field(p, ph, value, on).on_submit(submit).into()
 }
 pub fn gap<'a, M: 'a>(h: f32) -> E<'a, M> {

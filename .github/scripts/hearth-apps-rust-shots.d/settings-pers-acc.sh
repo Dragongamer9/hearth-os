@@ -26,7 +26,11 @@ d = json.load(open(sys.argv[1]))
 d["desktops"] = 4
 json.dump(d, open(sys.argv[2], "w"))
 PY
-for f in mountains night forest-path; do : > "$HOME/Pictures/Wallpapers/$f.jpg"; done
+# Real pictures (Hearth's own stills from the repo), so the wallpaper tiles, your account picture and the login
+# screen's background are drawn as the pictures themselves (pics.rs).
+W="$HEARTH_SHELL_DIR/images/wallpapers"
+cp "$W/slate-horizon.jpg" "$HOME/Pictures/Wallpapers/mountains.jpg"; cp "$W/slate-nebula.jpg" "$HOME/Pictures/Wallpapers/night.jpg"
+cp "$W/slate-ridges.jpg" "$HOME/Pictures/Wallpapers/forest-path.jpg"; cp "$W/slate-facets.jpg" "$HOME/.face"
 cat > "$HOME/.config/nimbus/my-looks.json" <<'JSON'
 {"look:cosy-evening": {"name": "Cosy evening", "saved": 1763400000000, "desktop": {"look": "hearth", "mode": "dark", "frameTint": 30}, "fonts": {}, "accentShown": "#ff8a3d", "lookLabel": "Hearth"},
  "look:bright-desk": {"name": "Bright desk", "saved": 1763300000000, "desktop": {"look": "steam", "mode": "light"}, "fonts": {}, "accentShown": "#1a9fff", "lookLabel": "Steam-style"}}
@@ -40,10 +44,15 @@ JSON
 # What some helpers would answer on a real PC (HEARTH_JOB_FIXTURES: <helper>-<args>.json), for fuller pictures.
 J="$FX/jobs"; mkdir -p "$J"
 cat > "$J/hearth-system-users.json" <<'JSON'
-{"users": [{"name": "chris", "fullname": "Chris", "me": true, "admin": true, "player": false, "picture": "", "home": "/home/chris"},
+{"users": [{"name": "chris", "fullname": "Chris", "me": true, "admin": true, "player": false, "picture": "@FACE@", "home": "/home/chris"},
            {"name": "dad", "fullname": "Dad", "me": false, "admin": false, "player": false, "picture": "", "home": "/home/dad"},
            {"name": "player2", "fullname": "Player 2", "me": false, "admin": false, "player": true, "picture": "", "home": "/home/player2"}],
  "me": "chris", "admin": true, "canAdmin": true, "oemSetup": false}
+JSON
+sed -i "s|@FACE@|$HOME/.face|" "$J/hearth-system-users.json"
+cat > "$J/hearth-loginscreen-status.json" <<JSON
+{"background": "$HOME/Pictures/Wallpapers/night.jpg", "autologin": false,
+ "pictures": ["$HOME/Pictures/Wallpapers/mountains.jpg", "$HOME/Pictures/Wallpapers/night.jpg", "$HOME/Pictures/Wallpapers/forest-path.jpg"]}
 JSON
 cat > "$J/hearth-fingerprint-status.json" <<'JSON'
 {"fprintd": true, "reader": true, "device": "Goodix MOC Fingerprint Sensor", "fingers": ["right-index-finger"], "places": {"lock": true, "polkit": false}, "pam": {"lock": true, "polkit": true}}
