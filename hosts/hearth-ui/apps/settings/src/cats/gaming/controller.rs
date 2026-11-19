@@ -42,7 +42,8 @@ pub enum M {
     KbdDone(Res),
 }
 
-const PAD: &str = "desktop/shell/hearth-pad";
+/// The pattern for hearth-pad's process (the [d] keeps pgrep from finding the timeout running it).
+const PAD: &str = "[d]esktop/shell/hearth-pad";
 
 fn ctl(args: Vec<String>) -> Vec<String> {
     pyv("hearth-controller", args, 60)

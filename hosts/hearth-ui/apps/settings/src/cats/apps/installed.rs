@@ -188,6 +188,7 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     }
     // The Fedora edition: apps come from Flathub, so they're listed here with Remove (hearth-flatpak).
     match &st.flatpaks {
+        _ if !gb(f, "flatpak") => {}
         None => {}
         Some(l) if l.is_empty() => fl.push(words(&p, "No apps from Flathub yet.", false)),
         Some(l) => {

@@ -56,8 +56,13 @@ fn app<'a>(st: &'a St, id: &str) -> Option<&'a Value> {
     ga(&st.st, "apps").iter().find(|a| gs(a, "id") == id)
 }
 
-pub fn open(_sh: &mut Shared, st: &mut St) -> Task<M> {
+pub fn open(sh: &mut Shared, st: &mut St) -> Task<M> {
     st.say.clear();
+    // `winapps:<app id>` opens that app's settings.
+    let part = std::mem::take(&mut sh.part);
+    if !part.is_empty() {
+        st.open = part;
+    }
     st.confirm_remove.clear();
     st.pending = None;
     reload()

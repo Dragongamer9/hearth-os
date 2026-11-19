@@ -86,10 +86,10 @@ cat > "$FX/hearth-saves-status.json" <<'JSON'
  {"name": "Elden Ring", "bytes": 31457280, "files": 4, "backedUp": true}, {"name": "Hades II", "bytes": 2097152, "files": 12, "backedUp": false},
  {"name": "Stardew Valley", "bytes": 524288, "files": 6, "backedUp": true, "here": false}]}
 JSON
-cat > "$FX/hearth-remote-desktop-status.json" <<'JSON'
+cat > "$FX/hearth-remote-desktop-status.json" <<JSON
 {"installed": true, "on": true, "running": true, "reach": "tailscale", "keepAwake": true, "tailscale": {"running": true},
  "address": {"name": "hearth-pc", "ip": "100.64.12.7"}, "clients": [{"name": "Work laptop", "uuid": "1"}],
- "stream": {"on": true, "who": "Work laptop", "width": 1920, "height": 1080, "fps": 60, "mbps": 20, "path": "direct", "since": 1763400000, "peerIp": "100.64.12.9"}, "awake": true}
+ "stream": {"on": true, "who": "Work laptop", "width": 1920, "height": 1080, "fps": 60, "mbps": 20, "path": "direct", "since": $(( $(date +%s) - 2700 )), "peerIp": "100.64.12.9"}, "awake": true}
 JSON
 cat > "$FX/nimbus---settings-call-remote.status.json" <<'JSON'
 {"ok": true, "value": {"installed": true, "on": true, "clients": [], "needsLogin": false, "addresses": ["192.168.1.20"], "moonlight": false}}
@@ -98,14 +98,27 @@ cat > "$FX/nimbus---settings-call-steamMode.status.json" <<'JSON'
 {"ok": true, "value": {"available": true, "steam": true, "gamescope": true, "decky": {"installed": true, "via": "hearth", "plugin": true, "shipped": true}, "lastFailure": ""}}
 JSON
 chmod -R a+rX "$FX"
-sag gaming-21-handheld-ally 20 handheld HEARTH_SETTINGS_FIXTURES="$FX"
+sag gaming-21-handheld-ally 0 handheld HEARTH_SETTINGS_FIXTURES="$FX"
 sag gaming-22-performance-ally 0 gameperf HEARTH_SETTINGS_FIXTURES="$FX"
 sag gaming-23-controller-ally 0 controller HEARTH_SETTINGS_FIXTURES="$FX"
 sag gaming-24-saved-games-device 0 savedgames HEARTH_SETTINGS_FIXTURES="$FX"
-sag gaming-25-remote-on 20 remote HEARTH_SETTINGS_FIXTURES="$FX"
+sag gaming-25-remote-on 0 remote HEARTH_SETTINGS_FIXTURES="$FX"
 sag gaming-26-steam-decky 0 steam HEARTH_SETTINGS_FIXTURES="$FX"
 sag gaming-27-gaming-device 0 gaming HEARTH_SETTINGS_FIXTURES="$FX"
 sag apps-21-winapps-device 0 winapps HEARTH_SETTINGS_FIXTURES="$FX"
+sag apps-22-winapps-app 0 winapps:old-game HEARTH_SETTINGS_FIXTURES="$FX"
+cat > "$FX/hearth-kwin-settings-status.json" <<'JSON'
+{"live": true, "running": true, "version": "6.5.3", "effects": [], "defaults": {}}
+JSON
+cat > "$FX/hearth-kwin-settings-rules.json" <<'JSON'
+{"rules": [{"id": "a1b2", "values": {"Description": "Steam windows", "wmclass": "steam", "wmclassmatch": "1", "above": "true", "aboverule": "2",
+  "size": "1280,800", "sizerule": "3", "tearing": "true", "tearingrule": "2", "opacityinactive": "85", "opacityinactiverule": "2"}, "other": []},
+ {"id": "c3d4", "values": {"Description": "Firefox on desktop 2", "wmclass": "firefox", "wmclassmatch": "1", "desktops": "d2", "desktopsrule": "3"}, "other": ["placementrule"]}]}
+JSON
+cat > "$FX/hearth-kwin-settings-desktops.json" <<'JSON'
+{"desktops": [{"id": "d1", "name": "Desktop 1"}, {"id": "d2", "name": "Desktop 2"}]}
+JSON
+sag apps-23-window-rules-open 0 kwin-rules:steam HEARTH_SETTINGS_FIXTURES="$FX"
 # Opening these pages wrote nothing of Hearth's own settings (red flag 9).
 grep -q '"look": "steam"' "$HOME/.local/share/nimbus/desktop.json" || echo "::error title=settings-apps-gaming::desktop.json changed: $(cat "$HOME/.local/share/nimbus/desktop.json")"
 [ "$(sag_sum)" = "$SAG_BEFORE" ] || echo "::error title=settings-apps-gaming::opening a page changed session.conf, store.json or mimeapps.list"
