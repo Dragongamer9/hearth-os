@@ -9,7 +9,7 @@ use crate::glyph::glyph;
 use crate::{App, Msg};
 use hearth_ui::Pal;
 use iced::keyboard::{key::Named, Key, Modifiers};
-use iced::widget::canvas::{self, Frame, Geometry, Image, Path, Stroke};
+use iced::widget::canvas::{self, Frame, Geometry, Path, Stroke};
 use iced::widget::image::FilterMethod;
 use iced::widget::{container, pin, row, stack, Space};
 use iced::{mouse, Color, Element, Length, Padding, Pixels, Point, Rectangle, Renderer, Size, Task, Theme};
@@ -58,10 +58,7 @@ impl<'a> canvas::Program<Msg> for Picker<'a> {
         let p = a.p;
         let mut f = Frame::new(renderer, b.size());
         let (w, h) = (b.width, b.height);
-        f.fill_rectangle(Point::ORIGIN, b.size(), Color::BLACK);
-        if let Some(still) = a.still.as_ref() {
-            f.draw_image(Rectangle { x: 0.0, y: 0.0, width: w, height: h }, Image::new(still.handle.clone()).filter_method(FilterMethod::Linear));
-        }
+        // The still picture is the image under this canvas (a canvas draws its images over its shapes).
         // Dimmed outside the box (all of it when there's no box).
         let dim = Color::from_rgba8(5, 7, 10, 0x8c as f32 / 255.0);
         match a.sel {
@@ -116,7 +113,11 @@ pub fn view(a: &App) -> Element<'_, Msg> {
     .padding(Padding { top: 0.0, right: 18.0, bottom: 0.0, left: 18.0 })
     .center_y(Length::Fixed(46.0))
     .style(hearth_ui::ui::boxed(Pal::a(p.panel, 0.95), 23.0, Some((p.line, 1.0))));
-    let mut layers = stack![cv, container(top).center_x(Length::Fill).padding(Padding { top: 28.0, right: 0.0, bottom: 0.0, left: 0.0 })].width(Length::Fill).height(Length::Fill);
+    let base: Element<'_, Msg> = match a.still.as_ref() {
+        Some(still) => iced::widget::image(still.handle.clone()).content_fit(iced::ContentFit::Fill).filter_method(FilterMethod::Linear).width(Length::Fill).height(Length::Fill).into(),
+        None => container(Space::new()).width(Length::Fill).height(Length::Fill).style(hearth_ui::ui::boxed(Color::BLACK, 0.0, None)).into(),
+    };
+    let mut layers = stack![base, cv, container(top).center_x(Length::Fill).padding(Padding { top: 28.0, right: 0.0, bottom: 0.0, left: 0.0 })].width(Length::Fill).height(Length::Fill);
     // Take and Cancel by the box (not while dragging it).
     if let Some(s) = a.sel {
         if a.pick_drag.is_none() && s.w >= 4.0 {
@@ -128,7 +129,6 @@ pub fn view(a: &App) -> Element<'_, Msg> {
             layers = layers.push(pin(btns).x(x).y(y));
         }
     }
-    let _ = Space::new();
     layers.into()
 }
 

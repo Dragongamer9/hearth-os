@@ -89,7 +89,9 @@ impl Ind {
 fn boot() -> (Ind, Task<M>) {
     let mut i = Ind { p: hearth_ui::theme::load(), rec: Value::Null, vnc: Value::Null, start: Instant::now(), seen: false, idle_since: None, blink: true, rows: 1 };
     i.read_files();
-    (i, Task::perform(kwin::place_async(APP_ID, 300.0, 34.0, kwin::Place::TopRight(56.0, 12.0)), |_| M::Noop))
+    i.rows = (usize::from(i.recording()) + usize::from(!i.viewers().is_empty())).max(1);
+    let h = height(i.rows);
+    (i, Task::perform(kwin::place_async(APP_ID, 300.0, h, kwin::Place::TopRight(56.0, 12.0)), |_| M::Noop))
 }
 
 fn shell(name: &str) -> String {
@@ -117,7 +119,7 @@ fn update(i: &mut Ind, m: M) -> Task<M> {
             }
             if n.max(1) != i.rows {
                 i.rows = n.max(1);
-                let h = 34.0 * i.rows as f32 + 6.0 * (i.rows as f32 - 1.0);
+                let h = height(i.rows);
                 return window::latest().and_then(move |id| window::resize(id, Size::new(300.0, h)));
             }
         }
@@ -184,8 +186,16 @@ fn subscription(_i: &Ind) -> Subscription<M> {
     Subscription::batch([iced::time::every(Duration::from_millis(700)).map(|_| M::Tick), Subscription::run(hearth_ui::theme::watch).map(|_| M::Theme)])
 }
 
+fn height(rows: usize) -> f32 {
+    34.0 * rows as f32 + 6.0 * (rows as f32 - 1.0)
+}
+
 pub fn run() -> iced::Result {
-    let mut s = app::window(APP_ID, (300.0, 34.0), (200.0, 34.0));
+    // Its size is set before it opens (a fixed-size window can't be resized afterwards everywhere).
+    let mut probe = Ind { p: hearth_ui::theme::load(), rec: Value::Null, vnc: Value::Null, start: Instant::now(), seen: false, idle_since: None, blink: true, rows: 1 };
+    probe.read_files();
+    let rows = (usize::from(probe.recording()) + usize::from(!probe.viewers().is_empty())).max(1);
+    let mut s = app::window(APP_ID, (300.0, height(rows)), (200.0, 34.0));
     s.resizable = false;
     s.level = window::Level::AlwaysOnTop;
     iced::application(boot, update, view)

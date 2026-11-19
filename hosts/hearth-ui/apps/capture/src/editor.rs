@@ -14,7 +14,7 @@ use crate::picture::Pic;
 use crate::Msg;
 use hearth_ui::ui::{self, boxed, gap};
 use hearth_ui::Pal;
-use iced::widget::canvas::{self, Frame, Geometry, Image, LineCap, LineJoin, Path, Stroke};
+use iced::widget::canvas::{self, Frame, Geometry, LineCap, LineJoin, Path, Stroke};
 use iced::widget::image::FilterMethod;
 use iced::widget::{column, container, pin, responsive, row, scrollable, stack, text_editor, text_input, Column, Space};
 use iced::{mouse, Background, Border, Color, Element, Font, Length, Padding, Pixels, Point, Rectangle, Renderer, Size, Task, Theme};
@@ -707,23 +707,26 @@ impl<'a> canvas::Program<Msg> for Stage<'a> {
     fn draw(&self, _st: &StageState, renderer: &Renderer, _t: &Theme, b: Rectangle, _c: mouse::Cursor) -> Vec<Geometry> {
         let mut f = Frame::new(renderer, b.size());
         let (sc, v) = (self.sc, self.view);
-        let img = Rectangle { x: -v.x * sc, y: -v.y * sc, width: self.pic.w as f32 * sc, height: self.pic.h as f32 * sc };
-        let all = Rectangle { x: 0.0, y: 0.0, width: b.width, height: b.height };
-        f.with_clip(all, |f| f.draw_image(img, Image::new(self.pic.handle.clone()).filter_method(FilterMethod::Linear)));
+        // The picture itself is the image under this canvas (a canvas draws its images over its shapes).
         let mut list: Vec<&Shape> = self.ed.shapes.iter().collect();
         if let Some(l) = self.ed.live.as_ref() {
             list.push(l);
         }
-        // Blur and Pixelate: the small copies of the picture stretched over each area (rough squares for Pixelate,
-        // smooth for Blur), as Mantel's view does.
+        // Blur and Pixelate: squares coloured from the picture's small copies over each area (Pixelate one grid of
+        // 1/14-size squares; Blur bigger squares in three grids a third of a square apart, the later ones
+        // see-through), as Mantel's saving canvas draws them, so the view shows what's saved.
         for sh in list.iter().filter(|s| s.hides()) {
             let r = draw::norm_rect(sh.x1, sh.y1, sh.x2, sh.y2);
             if r.w <= 1.0 || r.h <= 1.0 {
                 continue;
             }
-            let clip = Rectangle { x: (r.x - v.x) * sc, y: (r.y - v.y) * sc, width: r.w * sc, height: r.h * sc };
-            let (h, fm) = if sh.t == T::Pix { (&self.pic.pix, FilterMethod::Nearest) } else { (&self.pic.blur, FilterMethod::Linear) };
-            f.with_clip(clip, |f| f.draw_image(img, Image::new(h.clone()).filter_method(fm)));
+            if sh.t == T::Pix {
+                squares(&mut f, &self.pic.pix, draw::PIX, r, v, sc, 0.0, 1.0);
+            } else {
+                squares(&mut f, &self.pic.blur, draw::BLUR, r, v, sc, 0.0, 1.0);
+                squares(&mut f, &self.pic.blur, draw::BLUR, r, v, sc, 1.0 / 3.0, 0.5);
+                squares(&mut f, &self.pic.blur, draw::BLUR, r, v, sc, 2.0 / 3.0, 0.34);
+            }
         }
         for sh in list.iter().filter(|s| !s.hides() && s.t != T::Crop) {
             paint_shape(&mut f, sh, sc, v.x, v.y);
@@ -758,6 +761,39 @@ impl<'a> canvas::Program<Msg> for Stage<'a> {
         } else {
             mouse::Interaction::default()
         }
+    }
+}
+
+/// capture-draw.js's pixelSquares for the view: the squares of picture area R (its pixels) on a grid of 1/K picture
+/// pixels moved by SHIFT squares, each the colour of the small copy's pixel there, clipped to R.
+fn squares(f: &mut Frame, small: &iced::widget::image::Handle, k: f32, r: R, v: R, sc: f32, shift: f32, alpha: f32) {
+    let iced::widget::image::Handle::Rgba { width, height, pixels, .. } = small else { return };
+    let (sw, sh) = (*width as i64, *height as i64);
+    if sw == 0 || sh == 0 {
+        return;
+    }
+    let side = 1.0 / k;
+    let (x0, y0, x1, y1) = (r.x, r.y, r.x + r.w, r.y + r.h);
+    let mut ty = (y0 * k - shift).floor() as i64;
+    while (ty as f32) < y1 * k - shift {
+        let mut tx = (x0 * k - shift).floor() as i64;
+        while (tx as f32) < x1 * k - shift {
+            let gx = (tx as f32 + shift) * side;
+            let gy = (ty as f32 + shift) * side;
+            let (cx0, cy0) = (gx.max(x0), gy.max(y0));
+            let (cx1, cy1) = ((gx + side).min(x1), (gy + side).min(y1));
+            if cx1 > cx0 && cy1 > cy0 {
+                let px = ((gx + side / 2.0) * k).floor().clamp(0.0, (sw - 1) as f32) as i64;
+                let py = ((gy + side / 2.0) * k).floor().clamp(0.0, (sh - 1) as f32) as i64;
+                let i = ((py * sw + px) * 4) as usize;
+                if i + 3 < pixels.len() {
+                    let c = Color::from_rgba8(pixels[i], pixels[i + 1], pixels[i + 2], alpha * pixels[i + 3] as f32 / 255.0);
+                    f.fill_rectangle(Point::new((cx0 - v.x) * sc, (cy0 - v.y) * sc), Size::new((cx1 - cx0) * sc + 0.6, (cy1 - cy0) * sc + 0.6), c);
+                }
+            }
+            tx += 1;
+        }
+        ty += 1;
     }
 }
 
@@ -864,6 +900,9 @@ pub fn stage<'a>(ed: &'a Ed, p: &Pal) -> Element<'a, Msg> {
             let (pw, ph) = ((v.w * sc).max(1.0), (v.h * sc).max(1.0));
             let (ox, oy) = (((size.width - pw) / 2.0).max(0.0), ((size.height - ph) / 2.0).max(0.0));
             let cv = canvas::Canvas::new(Stage { ed, pic, view: v, sc, accent: p.accent }).width(Length::Fixed(pw)).height(Length::Fixed(ph));
+            let crop = Rectangle { x: v.x as u32, y: v.y as u32, width: v.w.max(1.0) as u32, height: v.h.max(1.0) as u32 };
+            let base = iced::widget::image(pic.handle.clone()).crop(crop).content_fit(iced::ContentFit::Fill).filter_method(FilterMethod::Linear).width(Length::Fixed(pw)).height(Length::Fixed(ph));
+            let cv = stack![base, cv];
             let paper = container(container(cv).padding(1.0).style(boxed(Color::TRANSPARENT, 0.0, Some((p.line, 1.0))))).center_x(Length::Fill).center_y(Length::Fill);
             let mut layers = stack![paper].width(Length::Fill).height(Length::Fill);
             // Typing a text: right where you clicked.
