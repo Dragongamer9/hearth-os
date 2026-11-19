@@ -1367,7 +1367,8 @@ pub fn make_fixture(dir: &Path) -> std::io::Result<()> {
     }))?)?;
     std::fs::write(dir.join("media.json"), r#"{"status": "Playing", "title": "Hearthfire", "artist": "Hearth OS trailer", "position": 84, "length": 200}"#)?;
     // Night light as Settings › Display has it on the mockups' PC (for "Dim the keys with Night light").
-    std::fs::write(dir.join("desktop.json"), r#"{"nightLight": true, "nightMode": "times", "nightFrom": "21:00", "nightTo": "07:00"}"#)?;
+    // (A pretend file in the fixture folder, written the safe way all the same.)
+    hearth_ui::settings_file::write_json(&dir.join("desktop.json"), &json!({"nightLight": true, "nightMode": "times", "nightFrom": "21:00", "nightTo": "07:00"}))?;
     std::fs::write(dir.join("notifications.json"), r#"{"n:7": {"app": "Hearth", "summary": "Update ready:", "body": "Restart to finish", "time": 0}}"#)?;
     Ok(())
 }
