@@ -33,6 +33,7 @@ LOCAL_V4 = ['10.0.0.0/8', '172.16.0.0/12', '192.168.0.0/16', '169.254.0.0/16']
 LOCAL_V6 = ['fe80::/10', 'fc00::/7']
 UFW_CONF = os.environ.get('HEARTH_UFW_CONF', '/etc/ufw/ufw.conf')
 UFW_DEFAULT = os.environ.get('HEARTH_UFW_DEFAULT', '/etc/default/ufw')
+UFW_KEEP_MARK = os.environ.get('HEARTH_UFW_KEEP_MARK', '/var/lib/hearth/firewall-ufw')
 PORT_RE = re.compile(r'^([0-9]{1,5})(-([0-9]{1,5}))?$')
 LABEL_RE = re.compile(r'^[A-Za-z0-9 ._()-]{0,40}$')
 HEARTH_LABELS = {'hearth-nearby': 'Nearby Share (while it runs)', 'hearth-connect': 'Hearth Connect (while it runs)',
@@ -289,6 +290,12 @@ def turn_on():
         raise Fail("there's no firewall on this system (firewalld or ufw)")
     ssh = ssh_running()
     if b == 'firewalld':
+        # The Fedora edition's one-firewall mark (hearth-firewall-choice): a PC that kept ufw from before 1.15 and now
+        # turns the firewall on with firewalld (ufw being off) moves to firewalld, so its unit isn't skipped.
+        try:
+            os.unlink(UFW_KEEP_MARK)
+        except OSError:
+            pass
         code, out = run(['systemctl', 'enable', '--now', 'firewalld.service'], timeout=90)
         if code != 0:
             raise Fail("firewalld didn't start (%s)" % last(out))

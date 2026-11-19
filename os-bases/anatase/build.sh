@@ -486,6 +486,24 @@ chmod 755 /usr/libexec/nimbus/hearth-link-firewall 2>/dev/null || true
 # Hearth Storage's root helper (Windows sharing, waking from the network; 49-hearth-storage.rules).
 chmod 755 /usr/libexec/nimbus/hearth-storage-helper 2>/dev/null || true
 rpm -q firewalld >/dev/null 2>&1 && echo "firewalld is in this image: Nearby Share and Hearth Connect open their ports with it" || echo "no firewalld in this image: nothing to open"
+# ONE firewall (the owner's laptop had firewalld.service and ufw.service both turned on, ufw the one running):
+# firewalld, Fedora's own and what hearth-firewall / hearth-link-firewall prefer. New installs get firewalld only;
+# a device that already ran ufw keeps it as it was (hearth-firewall-choice.service decides once, at the first start of
+# this version; anatase_files). ufw.service is NOT turned off here: removing its link from the image's /etc would
+# take it away from those devices too at the update (bootc's /etc merge), so it's skipped by a drop-in instead.
+rpm -q firewalld >/dev/null 2>&1 || dnf5 -y install firewalld || echo "warning: firewalld isn't available"
+if rpm -q firewalld >/dev/null 2>&1; then
+  systemctl enable firewalld.service
+  chmod 755 /usr/libexec/hearth-firewall-choice
+  for f in /usr/lib/systemd/system/hearth-firewall-choice.service /usr/lib/systemd/system/firewalld.service.d/hearth-one-firewall.conf \
+           /usr/lib/systemd/system/ufw.service.d/hearth-one-firewall.conf; do
+    [ -f "$f" ] || { echo "::error::$f is missing (one firewall)"; exit 1; }
+  done
+  echo "::notice title=Firewall::firewalld ($(rpm -q firewalld)); ufw $(rpm -q ufw >/dev/null 2>&1 && echo "installed, kept only where it already ran" || echo "not installed")"
+else
+  # No firewalld: leave ufw (if any) as the base has it, and don't let the drop-ins switch it off.
+  rm -f /usr/lib/systemd/system/ufw.service.d/hearth-one-firewall.conf /usr/lib/systemd/system/firewalld.service.d/hearth-one-firewall.conf
+fi
 install -d /usr/share/applications /usr/lib/systemd/user
 if [ -x /usr/bin/hearth-nearby ]; then
   cat > /usr/share/applications/hearth-nearby.desktop <<DESKTOP
