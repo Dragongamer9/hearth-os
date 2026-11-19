@@ -11,6 +11,7 @@
 //! night`. Game Mode's HDR is hearth-gamemode-display's; screen power saving hearth-screen-psr's (Intel laptops).
 
 use super::*;
+use iced::widget::{column, row};
 use hearth_ui::ui::{self, btn, tb, ts, Kind};
 use iced::widget::{container, mouse_area, Row};
 use serde_json::json;

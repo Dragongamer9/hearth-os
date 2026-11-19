@@ -11,6 +11,7 @@
 //! those are what Plasma's menu and Alt+Space use. Elsewhere it's Hearth's own index (hearth-search).
 
 use super::*;
+use iced::widget::{column, row};
 use hearth_ui::ui::{btn, ts, Kind};
 use iced::widget::Row;
 use serde_json::json;

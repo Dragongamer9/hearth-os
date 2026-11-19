@@ -11,6 +11,7 @@
 //! PowerDevil's, the one that acts.
 
 use super::*;
+use iced::widget::{column, row};
 use hearth_ui::ui::{self, btn, glyph, ts, Kind};
 use iced::widget::canvas::{self, Frame, Geometry, LineCap, Path, Stroke};
 use iced::widget::{container, Row};

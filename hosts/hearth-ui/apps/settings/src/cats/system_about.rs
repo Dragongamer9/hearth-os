@@ -4,6 +4,7 @@
 //! parts as tabs along the top and Copy this page. Install Hearth only matters on the live USB.
 
 use super::*;
+use iced::widget::{column, row};
 use hearth_ui::ui::{self, btn, tb, ts, Kind};
 use iced::widget::{container, mouse_area, Row};
 

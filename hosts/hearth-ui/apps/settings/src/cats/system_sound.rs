@@ -7,6 +7,7 @@
 //! (kdeglobals [Sounds]) set to the same set on Plasma.
 
 use super::*;
+use iced::widget::{column, row};
 use hearth_ui::ui::{self, btn, glyph, ts, Kind};
 use iced::widget::{container, mouse_area, Row, Space};
 use serde_json::json;

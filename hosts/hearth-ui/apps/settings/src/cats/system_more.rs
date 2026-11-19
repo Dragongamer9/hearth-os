@@ -9,6 +9,7 @@
 //! takes them at once); Hearth's notify.json keeps its copy for Mantel.
 
 use super::*;
+use iced::widget::{column, row};
 use hearth_ui::ui::{self, btn, ts, Kind};
 use iced::widget::{container, Row};
 use serde_json::json;
