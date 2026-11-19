@@ -278,3 +278,16 @@ builds are Apache-2.0.
 the Light mode and firewall parts in `hearth-home-server` (`colibriOn`, `colibriPause`) and `hearth-home-server-helper`
 (`USER_APPS`); the tile in `hearth-server-mode`; Send logs in `hosts/hearth-core/src/logs.rs`. Tests:
 `hosts/linux/test/test_hearth_colibri.py` (a stand-in `coli` and OpenAI server); screenshots: `.github/workflows/colibri.yml`.
+
+## On the Fedora edition (planned for 1.16; work in progress on feature/server-mode-fedora)
+
+The Fedora edition has no labwc and no Quickshell, so Server mode falls back to Game Mode at every start there. The fix
+in progress: Mantel's dashboard ported to a pure-Rust app (`hosts/hearth-ui/apps/server`, `hearth-server-app`, same
+helper and files as server-mode.qml), run full screen in `cage` (a kiosk compositor). Status (Nov 19): the app's source
+is written (draw.rs, main.rs, view.rs) but not yet added to the hearth-ui workspace or built in CI. Still to do: add it
+to the workspace and the four binary lists (hearth-apps-rust.yml twice, hearth-ui-build.sh, anatase build.sh), `cage`
+and `wlopm` in os-bases/anatase/build.sh, `desktop/server/cage/run` (the watcher, like labwc's autostart), the Fedora
+path in nimbus-session's server mode block (server_cant_reason accepts cage + hearth-server-app; a failed Server mode
+goes to Desktop Mode while Game Mode is off), tests in test_hearth_server_mode.py, CI pictures (normal, Guide countdown,
+menu, a service down, the dim screen), and the ROADMAP line. The home server's own services are system / user units
+and keep running whatever the screen shows.
