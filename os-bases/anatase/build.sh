@@ -1679,38 +1679,10 @@ SH
   fi
   # Plasma's default for folders (kde-mimeapps.list, read before every other list in Plasma): Hearth Files, then
   # Dolphin. Your own choice (~/.config/mimeapps.list, Default Applications) still comes first and is never written.
-  python3 - /etc/xdg/kde-mimeapps.list <<'PY' || echo "::warning title=Hearth Files (Rust)::couldn't make it Plasma's default for folders"
-import sys
-p = sys.argv[1]
-try:
-    lines = open(p, encoding='utf-8').read().splitlines()
-except OSError:
-    lines = []
-want = {'inode/directory': 'hearth-files.desktop;org.kde.dolphin.desktop;', 'x-directory/normal': 'hearth-files.desktop;org.kde.dolphin.desktop;'}
-out, sec, done = [], '', set()
-for l in lines + ['[end]']:
-    s = l.strip()
-    if s.startswith('['):
-        if sec in ('[Default Applications]',):
-            for k, v in want.items():
-                if k not in done:
-                    out.append('%s=%s' % (k, v))
-                    done.add(k)
-        sec = s
-        if s == '[end]':
-            break
-        out.append(l)
-        continue
-    k = s.split('=', 1)[0]
-    if sec == '[Default Applications]' and k in want:
-        out.append('%s=%s' % (k, want[k]))
-        done.add(k)
-        continue
-    out.append(l)
-if not any(x.strip() == '[Default Applications]' for x in out):
-    out += ['', '[Default Applications]'] + ['%s=%s' % kv for kv in want.items()]
-open(p, 'w', encoding='utf-8').write('\n'.join(out).strip('\n') + '\n')
-PY
+  for m in inode/directory x-directory/normal; do
+    python3 /usr/share/nimbus/desktop/shell/hearth-system default-system-set /etc/xdg/kde-mimeapps.list "$m" 'hearth-files.desktop;org.kde.dolphin.desktop' >/dev/null \
+      || echo "::warning title=Hearth Files (Rust)::couldn't make it Plasma's default for folders ($m)"
+  done
   # Apps' Open / Save window on Plasma: xdg-desktop-portal's FileChooser is Hearth's (hearth-portal, which opens
   # hearth-file-chooser where there's no Quickshell), KDE's when Hearth's portal isn't there. The rest stays KDE's.
   # (Flatpak apps, Firefox, Chromium and Electron apps use the portal; KDE's own apps do too, below.)

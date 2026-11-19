@@ -206,7 +206,7 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
         // ---------------------------------------------------------- Users
         Msg::Users(o) => match kit::answer(&o) {
             Ok(v) if v.is_object() => {
-                let want: Vec<String> = kit::arr(&v, "users").iter().map(|x| kit::s_of(x, "picture")).collect();
+                let want: Vec<(String, crate::pics::Cut)> = kit::arr(&v, "users").iter().map(|x| (kit::s_of(x, "picture"), crate::pics::ROUND)).collect();
                 st.users = Some(v);
                 return pics_task(want);
             }
@@ -222,7 +222,7 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
         }
         Msg::Pictures(o) => {
             st.pictures = kit::answer(&o).map(|v| kit::strs(&v, "pictures")).unwrap_or_default();
-            return pics_task(st.pictures.clone());
+            return pics_task(st.pictures.iter().map(|f| (f.clone(), crate::pics::ROUND)).collect());
         }
         Msg::PicSet(p) => {
             st.busy = "picture";
@@ -560,8 +560,8 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
         // ---------------------------------------------------------- Login screen
         Msg::Lsc(o) => match kit::answer(&o) {
             Ok(v) if v.is_object() => {
-                let mut want = kit::strs(&v, "pictures");
-                want.push(kit::s_of(&v, "background"));
+                let mut want: Vec<(String, crate::pics::Cut)> = kit::strs(&v, "pictures").into_iter().map(|f| (f, crate::pics::ROW)).collect();
+                want.push((kit::s_of(&v, "background"), crate::pics::SCREEN));
                 st.lsc = Some(v);
                 return pics_task(want);
             }
@@ -667,7 +667,7 @@ fn landing(a: &App) -> E<'_> {
 }
 
 /// Reads these pictures off the window's thread (pics.rs), then draws the page again.
-fn pics_task(paths: Vec<String>) -> Task<Msg> {
+fn pics_task(paths: Vec<(String, crate::pics::Cut)>) -> Task<Msg> {
     match crate::pics::load(paths) {
         Some(f) => Task::perform(f, |_| Msg::Pics),
         None => Task::none(),
@@ -675,9 +675,9 @@ fn pics_task(paths: Vec<String>) -> Task<Msg> {
 }
 
 /// Your picture in its circle (as Mantel shows it), on `bg`; your initial until it's read or when there's none.
-fn avatar<'a>(p: &Pal, name: &str, pic: &str, s: f32, bg: iced::Color) -> E<'a> {
-    if let Some(h) = crate::pics::get(pic) {
-        return crate::pics::round(h, s, bg);
+fn avatar<'a>(p: &Pal, name: &str, pic: &str, s: f32) -> E<'a> {
+    if let Some(h) = crate::pics::get(pic, crate::pics::ROUND) {
+        return crate::pics::round(h, s);
     }
     let letter = name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "·".into());
     container(tb(letter, s * 0.4, p.text)).center_x(Length::Fixed(s)).center_y(Length::Fixed(s)).style(ui::boxed(p.panel3, s / 2.0, None)).into()
@@ -697,14 +697,14 @@ fn users(a: &App) -> E<'_> {
     let oem = kit::b_of(u, "oemSetup");
     if let Some(m) = &me {
         let full = { let f = kit::s_of(m, "fullname"); if f.is_empty() { kit::s_of(m, "name") } else { f } };
-        c = c.push(container(row![avatar(&p, &full, &kit::s_of(m, "picture"), 56.0, p.panel), column![ts(full.clone(), sz(17.0), p.text), t(format!("{} · {}", kit::s_of(m, "name"), if kit::b_of(m, "admin") { "Administrator" } else { "Standard account" }), sz(12.0), p.muted)].spacing(3.0)].spacing(14.0).align_y(iced::Center)).padding(16.0).width(Length::Fill).style(ui::boxed(p.panel, p.r(10.0), None)));
+        c = c.push(container(row![avatar(&p, &full, &kit::s_of(m, "picture"), 56.0), column![ts(full.clone(), sz(17.0), p.text), t(format!("{} · {}", kit::s_of(m, "name"), if kit::b_of(m, "admin") { "Administrator" } else { "Standard account" }), sz(12.0), p.muted)].spacing(3.0)].spacing(14.0).align_y(iced::Center)).padding(16.0).width(Length::Fill).style(ui::boxed(p.panel, p.r(10.0), None)));
         c = c.push(ilink(&p, Ic::Camera, if st.picking { "Choose a picture below" } else { "Change my picture" }, "Shown here and on the login screen", "", Msg::TogglePictures));
         if st.picking {
             let mut g = Column::new().spacing(6.0);
             for f in &st.pictures {
                 let pr = pick_row(&p, kit::base(f), Msg::PicSet(f.clone()));
-                g = g.push(match crate::pics::get(f) {
-                    Some(h) => row![crate::pics::round(h, 40.0, p.bg), pr].spacing(10.0).align_y(iced::Center).into(),
+                g = g.push(match crate::pics::get(f, crate::pics::ROUND) {
+                    Some(h) => row![crate::pics::round(h, 40.0), pr].spacing(10.0).align_y(iced::Center).into(),
                     None => pr,
                 });
             }
@@ -742,7 +742,7 @@ fn users(a: &App) -> E<'_> {
         let player = kit::b_of(x, "player");
         let removable = can_manage && !me_ && !player;
         let kind = if player { "Multi-seat player" } else if kit::b_of(x, "admin") { "Administrator" } else { "Standard account" };
-        let row_ = container(row![avatar(&p, &full, &kit::s_of(x, "picture"), 38.0, p.panel), column![ts(format!("{full}{}", if me_ { "  (you)" } else { "" }), sz(15.0), p.text), t(format!("{name} · {kind}"), sz(12.0), p.muted)].spacing(3.0).width(Length::Fill), if removable { E::from(ui::glyph(G::Chevron, p.muted, 14.0, 2.0)) } else { Space::new().into() }].spacing(14.0).align_y(iced::Center)).padding(14.0).width(Length::Fill).style(ui::boxed(p.panel, p.r(10.0), None));
+        let row_ = container(row![avatar(&p, &full, &kit::s_of(x, "picture"), 38.0), column![ts(format!("{full}{}", if me_ { "  (you)" } else { "" }), sz(15.0), p.text), t(format!("{name} · {kind}"), sz(12.0), p.muted)].spacing(3.0).width(Length::Fill), if removable { E::from(ui::glyph(G::Chevron, p.muted, 14.0, 2.0)) } else { Space::new().into() }].spacing(14.0).align_y(iced::Center)).padding(14.0).width(Length::Fill).style(ui::boxed(p.panel, p.r(10.0), None));
         c = c.push(if removable { E::from(iced::widget::mouse_area(row_).on_press(Msg::Pick(name.clone())).interaction(iced::mouse::Interaction::Pointer)) } else { row_.into() });
         if st.picked == name && st.confirm.is_empty() {
             let adm = kit::b_of(x, "admin");
@@ -976,12 +976,17 @@ fn login_screen(a: &App) -> E<'_> {
     let base = if bgp.is_empty() { hearth_ui::theme::hex("#17110e").unwrap() } else { Pal::mix(kit::name_colour(&p, &bgp), iced::Color::BLACK, 0.45) };
     let words = container(column![tb(clock, 44.0, hearth_ui::theme::hex("#f4ece3").unwrap()), t(if bgp.is_empty() { "Hearth's fireside".to_string() } else { kit::base(&bgp) }, sz(14.0), hearth_ui::theme::hex("#a69484").unwrap())].spacing(4.0).align_x(iced::Center)).center_x(Length::Fill).center_y(Length::Fixed(sz(260.0)));
     // Your picture itself behind the clock when it's been read (darkened as the login screen does), else its colour.
-    c = c.push(match crate::pics::get(&bgp) {
-        Some(h) => E::from(iced::widget::stack![
-            iced::widget::image(h).width(Length::Fill).height(Length::Fixed(sz(260.0))).content_fit(iced::ContentFit::Cover).border_radius(12.0),
-            container(Space::new()).width(Length::Fill).height(Length::Fixed(sz(260.0))).style(ui::boxed(Pal::a(iced::Color::BLACK, 0.45), 12.0, None)),
-            words,
-        ]),
+    // A screen's shape (16:9), as the login screen is, in the middle of the dark box.
+    c = c.push(match crate::pics::get(&bgp, crate::pics::SCREEN) {
+        Some(h) => {
+            let (w, ht) = (sz(260.0) * 16.0 / 9.0, sz(260.0));
+            let shot = iced::widget::stack![
+                crate::pics::tile(h, w, ht),
+                container(Space::new()).width(Length::Fixed(w)).height(Length::Fixed(ht)).style(ui::boxed(Pal::a(iced::Color::BLACK, 0.45), 0.0, None)),
+                words.width(Length::Fixed(w)),
+            ];
+            container(shot).center_x(Length::Fill).style(ui::boxed(base, 12.0, None)).into()
+        }
         None => words.style(ui::boxed(base, 12.0, None)).into(),
     });
     let pics = st.lsc.as_ref().map(|s| kit::strs(s, "pictures")).unwrap_or_default();
@@ -989,8 +994,8 @@ fn login_screen(a: &App) -> E<'_> {
         let mut g = Column::new().spacing(6.0);
         for f in pics {
             let pr = pick_row(&p, kit::base(&f), Msg::LscUse(f.clone()));
-            g = g.push(match crate::pics::get(&f) {
-                Some(h) => row![crate::pics::tile(h, 64.0, 40.0, 6.0), pr].spacing(10.0).align_y(iced::Center).into(),
+            g = g.push(match crate::pics::get(&f, crate::pics::ROW) {
+                Some(h) => row![crate::pics::tile(h, 64.0, 40.0), pr].spacing(10.0).align_y(iced::Center).into(),
                 None => pr,
             });
         }

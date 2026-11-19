@@ -1,20 +1,43 @@
 //! Pictures drawn as the pictures themselves (Personalization's wallpapers, your account picture, the login screen's
-//! background): decoded once on a thread of their own, shrunk, and kept in memory for as long as Settings is open.
-//! Nothing is written anywhere and nothing runs at rest: a page asks for the pictures it shows, once, and redraws when
-//! they're ready. A picture that can't be read stays drawn as colour, as before.
+//! background): decoded once on a thread of their own, cut to the shape they're shown in (the middle of the picture,
+//! as a wallpaper is), shrunk, and kept in memory for as long as Settings is open. Nothing is written anywhere and
+//! nothing runs at rest: a page asks for the pictures it shows, once, and is drawn again when they're ready. A picture
+//! that can't be read stays drawn as colour, as before.
+//!
+//! The cutting is done here, in the pixels, not by the window (iced's software renderer draws a picture that's cut to
+//! fit past its own edges), and a round picture is made round here too, so it's round on whatever it sits on.
 
-use iced::widget::canvas::{self, fill, Fill, Frame, Geometry, Path, Style};
+use iced::widget::image;
 use iced::widget::image::Handle;
-use iced::widget::{canvas as canvas_w, image, stack};
-use iced::{mouse, Color, ContentFit, Element, Length, Point, Rectangle, Renderer, Size, Theme};
+use iced::{ContentFit, Element, Length};
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{Mutex, OnceLock};
 
 /// Pictures this big aren't decoded (it would take too long and too much memory), as in Hearth Files.
 const MAX_BYTES: u64 = 60 * 1024 * 1024;
-/// The long side the pictures are shrunk to: enough for the biggest tile (the login screen's preview).
-pub const SIDE: u32 = 640;
+
+/// The shape a picture is shown in: its width and height on screen (it's made twice that, for sharp edges), and
+/// whether it's a circle.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Cut {
+    pub w: u32,
+    pub h: u32,
+    pub round: bool,
+}
+
+/// Your account picture (drawn at any size up to this, in its circle).
+pub const ROUND: Cut = Cut { w: 64, h: 64, round: true };
+/// A wallpaper's tile in Personalization.
+pub const WALL: Cut = Cut { w: 190, h: 96, round: false };
+/// A small picture beside its name in a list.
+pub const ROW: Cut = Cut { w: 64, h: 40, round: false };
+/// The login screen's preview: a screen, 16:9.
+pub const SCREEN: Cut = Cut { w: 462, h: 260, round: false };
+
+fn key(path: &str, c: Cut) -> String {
+    format!("{path}|{}x{}{}", c.w, c.h, if c.round { "o" } else { "" })
+}
 
 fn cache() -> &'static Mutex<HashMap<String, Option<Handle>>> {
     static C: OnceLock<Mutex<HashMap<String, Option<Handle>>>> = OnceLock::new();
@@ -53,22 +76,26 @@ pub fn file_of(path: &str) -> String {
     String::new()
 }
 
-/// The picture, when it's been read (None while it's being read, or when it can't be).
-pub fn get(path: &str) -> Option<Handle> {
+/// The picture in this shape, when it's been read (None while it's being read, or when it can't be).
+pub fn get(path: &str, c: Cut) -> Option<Handle> {
     if path.is_empty() {
         return None;
     }
-    cache().lock().ok()?.get(path).cloned().flatten()
+    cache().lock().ok()?.get(&key(path, c)).cloned().flatten()
 }
 
 /// Read this picture again the next time it's asked for (its file has a new picture in it).
 pub fn forget(path: &str) {
+    if path.is_empty() {
+        return;
+    }
     if let Ok(mut c) = cache().lock() {
-        c.remove(path);
+        let pre = format!("{path}|");
+        c.retain(|k, _| !k.starts_with(&pre));
     }
 }
 
-fn decode(path: &str) -> Option<Handle> {
+fn decode(path: &str, c: Cut) -> Option<Handle> {
     let f = file_of(path);
     if f.is_empty() {
         return None;
@@ -82,24 +109,46 @@ fn decode(path: &str) -> Option<Handle> {
         }
     }
     let img = ::image::ImageReader::open(&f).ok()?.with_guessed_format().ok()?.decode().ok()?;
-    let th = img.thumbnail(SIDE, SIDE).to_rgba8();
-    let (w, h) = (th.width(), th.height());
-    Some(Handle::from_rgba(w, h, th.into_raw()))
+    let (iw, ih) = (img.width().max(1), img.height().max(1));
+    // The middle of the picture in the shape's proportions.
+    let want = c.w.max(1) as f64 / c.h.max(1) as f64;
+    let (cw, ch) = if iw as f64 / ih as f64 > want {
+        (((ih as f64) * want).round().max(1.0) as u32, ih)
+    } else {
+        (iw, ((iw as f64) / want).round().max(1.0) as u32)
+    };
+    let (cw, ch) = (cw.min(iw), ch.min(ih));
+    let cut = img.crop_imm((iw - cw) / 2, (ih - ch) / 2, cw, ch);
+    let (tw, th) = ((c.w * 2).min(cw).max(1), (c.h * 2).min(ch).max(1));
+    let mut px = cut.resize_exact(tw, th, ::image::imageops::FilterType::Triangle).to_rgba8();
+    if c.round {
+        // Everything outside the circle see-through, its edge softened over a pixel.
+        let (w, h) = (px.width() as f32, px.height() as f32);
+        let (cx, cy, r) = (w / 2.0, h / 2.0, w.min(h) / 2.0);
+        for (x, y, p) in px.enumerate_pixels_mut() {
+            let d = ((x as f32 + 0.5 - cx).powi(2) + (y as f32 + 0.5 - cy).powi(2)).sqrt();
+            let a = (r - d + 0.5).clamp(0.0, 1.0);
+            p.0[3] = (p.0[3] as f32 * a).round() as u8;
+        }
+    }
+    let (w, h) = (px.width(), px.height());
+    Some(Handle::from_rgba(w, h, px.into_raw()))
 }
 
-/// Reads the pictures not read yet, off the window's thread; None when there's nothing to read. The page turns the
-/// answer into a message of its own (so it's drawn again with them).
-pub fn load(paths: Vec<String>) -> Option<impl Future<Output = ()> + Send + 'static> {
-    let mut todo: Vec<String> = Vec::new();
+/// Reads the pictures not read yet in these shapes, off the window's thread; None when there's nothing to read.
+/// The page turns the answer into a message of its own (so it's drawn again with them).
+pub fn load(items: Vec<(String, Cut)>) -> Option<impl Future<Output = ()> + Send + 'static> {
+    let mut todo: Vec<(String, Cut)> = Vec::new();
     {
         let mut c = cache().lock().ok()?;
-        for p in paths {
-            if p.is_empty() || c.contains_key(&p) || todo.contains(&p) {
+        for (p, cut) in items {
+            let k = key(&p, cut);
+            if p.is_empty() || c.contains_key(&k) {
                 continue;
             }
             // Marked at once, so it's asked for only once.
-            c.insert(p.clone(), None);
-            todo.push(p);
+            c.insert(k, None);
+            todo.push((p, cut));
         }
     }
     if todo.is_empty() {
@@ -107,10 +156,10 @@ pub fn load(paths: Vec<String>) -> Option<impl Future<Output = ()> + Send + 'sta
     }
     let (tx, rx) = futures::channel::oneshot::channel::<()>();
     let _ = std::thread::Builder::new().name("hearth-settings-pictures".into()).spawn(move || {
-        for p in todo {
-            let h = decode(&p);
+        for (p, cut) in todo {
+            let h = decode(&p, cut);
             if let Ok(mut c) = cache().lock() {
-                c.insert(p, h);
+                c.insert(key(&p, cut), h);
             }
         }
         let _ = tx.send(());
@@ -120,38 +169,12 @@ pub fn load(paths: Vec<String>) -> Option<impl Future<Output = ()> + Send + 'sta
     })
 }
 
-/// The picture filling a w × h tile (cut to fit, never stretched), its corners rounded by `r`.
-pub fn tile<'a, M: 'a>(h: Handle, w: f32, ht: f32, r: f32) -> Element<'a, M> {
-    image(h).width(Length::Fixed(w)).height(Length::Fixed(ht)).content_fit(ContentFit::Cover).border_radius(r).into()
+/// The picture (already in its shape) drawn w × h.
+pub fn tile<'a, M: 'a>(h: Handle, w: f32, ht: f32) -> Element<'a, M> {
+    image(h).width(Length::Fixed(w)).height(Length::Fixed(ht)).content_fit(ContentFit::Fill).into()
 }
 
-/// The picture in a circle (your account picture, as Mantel shows it): cut to fit the square, then everything
-/// outside the circle covered with `bg`, the colour it sits on (so it's round on every renderer).
-pub fn round<'a, M: 'a>(h: Handle, size: f32, bg: Color) -> Element<'a, M> {
-    stack![
-        image(h).width(Length::Fixed(size)).height(Length::Fixed(size)).content_fit(ContentFit::Cover),
-        canvas_w(Mask { bg }).width(Length::Fixed(size)).height(Length::Fixed(size)),
-    ]
-    .width(Length::Fixed(size))
-    .height(Length::Fixed(size))
-    .into()
-}
-
-struct Mask {
-    bg: Color,
-}
-
-impl<M> canvas::Program<M> for Mask {
-    type State = ();
-    fn draw(&self, _s: &(), renderer: &Renderer, _t: &Theme, b: Rectangle, _c: mouse::Cursor) -> Vec<Geometry> {
-        let mut f = Frame::new(renderer, b.size());
-        let r = b.width.min(b.height) / 2.0;
-        // The square with the circle cut out of it (even-odd: the circle is a hole).
-        let path = Path::new(|pb| {
-            pb.rectangle(Point::ORIGIN, Size::new(b.width, b.height));
-            pb.circle(Point::new(b.width / 2.0, b.height / 2.0), r);
-        });
-        f.fill(&path, Fill { style: Style::Solid(self.bg), rule: fill::Rule::EvenOdd });
-        vec![f.into_geometry()]
-    }
+/// Your picture in its circle (as Mantel shows it), `size` across.
+pub fn round<'a, M: 'a>(h: Handle, size: f32) -> Element<'a, M> {
+    tile(h, size, size)
 }

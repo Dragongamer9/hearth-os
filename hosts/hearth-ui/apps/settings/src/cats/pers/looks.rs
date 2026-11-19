@@ -184,7 +184,7 @@ fn wall_list(st: &State, plasma: bool) -> Vec<String> {
 
 /// Reads the listed wallpapers' pictures (once, off the window's thread), then draws the list again with them.
 fn wall_pics(sh: &Shared, st: &State) -> Task<Msg> {
-    let paths: Vec<String> = wall_list(st, kit::on_plasma()).iter().map(|f| plasma_wall(sh, f)).collect();
+    let paths: Vec<(String, crate::pics::Cut)> = wall_list(st, kit::on_plasma()).iter().map(|f| (plasma_wall(sh, f), crate::pics::WALL)).collect();
     match crate::pics::load(paths) {
         Some(f) => Task::perform(f, |_| Msg::Pics),
         None => Task::none(),
@@ -575,8 +575,8 @@ pub fn appearance(a: &App) -> E<'_> {
             let anim = MOVING.contains(&f.as_str()) && !f.is_empty();
             let lbl = format!("{}{}", name_of(sh, f), if anim { "  ·  animated" } else { "" });
             // The wallpaper itself once it's been read (pics.rs), else drawn as its colour.
-            let face: E = match crate::pics::get(&plasma_wall(sh, f)) {
-                Some(h) => container(crate::pics::tile(h, sz(190.0) - 5.0, sz(96.0) - 5.0, 6.0)).padding(2.5).style(ui::boxed(iced::Color::TRANSPARENT, 8.0, Some(if lit { (p.accent, 2.5) } else { (Pal::a(Color::WHITE, 0.12), 1.0) }))).into(),
+            let face: E = match crate::pics::get(&plasma_wall(sh, f), crate::pics::WALL) {
+                Some(h) => container(crate::pics::tile(h, sz(190.0) - 5.0, sz(96.0) - 5.0)).padding(2.5).style(ui::boxed(iced::Color::TRANSPARENT, 8.0, Some(if lit { (p.accent, 2.5) } else { (Pal::a(Color::WHITE, 0.12), 1.0) }))).into(),
                 None => kit::swatch(bgc, p.accent, Color::WHITE, sz(190.0), sz(96.0), if lit { Some(p.accent) } else { None }),
             };
             let tile = mouse_area(column![face, row![t1(ui::fit(&lbl, 26), sz(12.0), p.text), Space::new().width(Length::Fill), if lit { E::from(ui::glyph(G::Check, p.accent, 14.0, 2.4)) } else { Space::new().width(Length::Fixed(0.0)).into() }].align_y(iced::Center)].spacing(6.0).width(Length::Fixed(sz(190.0))))
