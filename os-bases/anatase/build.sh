@@ -1620,6 +1620,150 @@ for f in /usr/share/applications/hearth-*.desktop; do
 done
 # <<< Hearth's apps in Plasma
 
+# >>> Capture (Rust) (feature/capture-rust; hosts/hearth-ui/apps/capture, docs/mockups/checklists/capture-rust.md)
+# Hearth's own Capture on KDE Plasma: Mantel's Capture (screenshots of an area, a window, a screen or all of them,
+# scrolling captures, the markup editor, Recent, Record) as the pure-Rust hearth-capture-app, installed above. Only
+# when it was built and starts here; otherwise nothing below happens and Capture stays KDE's Spectacle with Hearth's
+# name (hearth-capture-kde.desktop), with Spectacle's own Print Screen.
+#  - Its menu entry, hearth-capture.desktop (Mantel's, OnlyShowIn=Nimbus, can't open here), is the app's. KWin gives
+#    org.kde.KWin.ScreenShot2 only to a program whose .desktop file asks for it, found by its path (Exec): this one
+#    asks, as Spectacle's does, so Capture's pictures come from KWin itself, the way Plasma means it.
+#  - hearth-screens (Capture's helper, Print Screen, hearth-screenshot) asks KWin through Debian's small trusted
+#    hearth-kwin-cast, which this edition doesn't build: here it uses `hearth-capture-app shot` (HEARTH_KWIN_CAST,
+#    the same command and answer; it too answers only Hearth's root-owned hearth-screens).
+#  - Print Screen saves the whole screen right away and Super+Shift+S picks an area, as in Mantel (KDE's global
+#    shortcuts, /usr/share/kglobalaccel): Spectacle's copy there gives up Print; its other keys stay.
+#  - Record: hearth-record (KDE's screen-sharing portal, PipeWire, GStreamer's encoder) when GStreamer can read
+#    PipeWire here; else the helper starts Hearth Recorder.
+cap_ok=0
+if [ -x /usr/bin/hearth-capture-app ] && timeout 10 /usr/bin/hearth-capture-app --version >/dev/null 2>&1 \
+   && [ -f /usr/share/nimbus/desktop/shell/hearth-capture-helper ] && [ -f /usr/share/nimbus/desktop/shell/hearth-screens ]; then
+  cap_ok=1
+fi
+if [ "$cap_ok" = 1 ]; then
+  cat > /usr/share/applications/hearth-capture.desktop <<'DESKTOP'
+[Desktop Entry]
+# Hearth Capture on KDE Plasma (hosts/hearth-ui/apps/capture, pure Rust): Mantel's Capture, in place of Spectacle.
+# X-KDE-DBUS-Restricted-Interfaces: KWin lets this program (Exec) take screenshots (org.kde.KWin.ScreenShot2).
+Name=Capture
+GenericName=Screenshot Tool
+Comment=Take screenshots of the screen, a window or an area, and mark them up
+Exec=/usr/bin/hearth-capture-app
+TryExec=/usr/bin/hearth-capture-app
+Icon=hearth-capture
+Type=Application
+Categories=Utility;Graphics;
+Keywords=screenshot;capture;snip;snipping tool;print screen;screen;window;area;markup;ocr;qr;record;
+StartupWMClass=hearth-capture
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
+Actions=area;window;recent;
+
+[Desktop Action area]
+Name=Capture an area
+Exec=/usr/bin/hearth-capture-app area
+
+[Desktop Action window]
+Name=Capture the window in front
+Exec=/usr/bin/hearth-capture-app window
+
+[Desktop Action recent]
+Name=Recent screenshots
+Exec=/usr/bin/hearth-capture-app --page recent
+DESKTOP
+  # Plasma's own menu copies (Hearth's apps in Plasma, above): Capture there too, and Spectacle's two entries kept
+  # installed but out of the menu (one Capture in the menu).
+  PA=/usr/share/hearth/app-kinds-plasma/applications
+  if [ -d "$PA" ]; then
+    cp /usr/share/applications/hearth-capture.desktop "$PA/hearth-capture.desktop"
+    for k in org.kde.spectacle.desktop hearth-capture-kde.desktop; do
+      src="$PA/$k"; [ -f "$src" ] || src="/usr/share/applications/$k"; [ -f "$src" ] || continue
+      [ "$src" = "$PA/$k" ] || cp "$src" "$PA/$k"
+      if grep -q '^NoDisplay=' "$PA/$k"; then sed -i 's/^NoDisplay=.*/NoDisplay=true/' "$PA/$k"
+      else sed -i '0,/^\[Desktop Entry\]/s//[Desktop Entry]\nNoDisplay=true/' "$PA/$k"; fi
+    done
+  fi
+  # hearth-capture (Mantel's opens Capture through Quickshell, not here): the app's own window and modes, and --print
+  # for Print Screen (open.sh's "screenshot": saved in Pictures › Screenshots, copied, a notification).
+  cat > /usr/bin/hearth-capture <<'SH'
+#!/bin/sh
+# Opens Hearth Capture on KDE Plasma (hearth-capture-app, pure Rust; os-bases/anatase/build.sh "Capture (Rust)").
+#   hearth-capture            the window (take, recent, edit)
+#   hearth-capture MODE       straight to taking one: area | window | screen | all | scroll
+#   hearth-capture --recent   the recent screenshots
+#   hearth-capture --print    the whole screen saved right away (Print Screen)
+case "$1" in
+  "")        exec /usr/bin/hearth-capture-app ;;
+  --recent)  exec /usr/bin/hearth-capture-app --page recent ;;
+  area|window|screen|all|scroll) exec /usr/bin/hearth-capture-app "$1" ;;
+  --print)
+    [ -x /usr/libexec/hearth/hearth-kwin-cast ] || export HEARTH_KWIN_CAST=/usr/bin/hearth-capture-app
+    HEARTH_WM=kwin exec sh "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/open.sh" screenshot ;;
+  *) echo "usage: hearth-capture [area|window|screen|all|scroll|--recent|--print]" >&2; exit 2 ;;
+esac
+SH
+  chmod 755 /usr/bin/hearth-capture
+  # hearth-screenshot (grim's way, docs/SCREENS.md): under KWin through Capture where hearth-kwin-cast isn't here.
+  cat > /usr/bin/hearth-screenshot <<'SH'
+#!/bin/sh
+# A screenshot, grim's way, on both of Hearth's compositors (docs/SCREENS.md):
+#   hearth-screenshot [-g "X,Y WxH"] [-o SCREEN] [-c] FILE|-      (PNG; - writes it to the output)
+# Under KWin hearth-screens asks KWin's org.kde.KWin.ScreenShot2 through the program KWin trusts for it: Debian's
+# hearth-kwin-cast, or on the Fedora edition Hearth Capture (hearth-capture-app shot, trusted by its menu entry).
+SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+[ -f "$SHELL_DIR/hearth-screens" ] || SHELL_DIR=/usr/share/nimbus/desktop/shell
+kwin=0
+if [ "${HEARTH_WM:-}" = kwin ]; then kwin=1
+elif [ -z "${HEARTH_WM:-}" ]; then case "${XDG_CURRENT_DESKTOP:-}" in *KDE*) kwin=1 ;; esac
+fi
+if [ "$kwin" = 1 ]; then
+  [ -x /usr/libexec/hearth/hearth-kwin-cast ] || [ -n "${HEARTH_KWIN_CAST:-}" ] || export HEARTH_KWIN_CAST=/usr/bin/hearth-capture-app
+  HEARTH_WM=kwin exec python3 "$SHELL_DIR/hearth-screens" shot "$@"
+fi
+exec grim "$@"
+SH
+  chmod 755 /usr/bin/hearth-screenshot
+  # Print Screen and Super+Shift+S (KDE's global shortcuts): Capture's; Spectacle's copy gives up Print.
+  mkdir -p /usr/share/kglobalaccel
+  cat > /usr/share/kglobalaccel/hearth-capture.desktop <<'DESKTOP'
+[Desktop Entry]
+# Hearth Capture's keys on KDE Plasma (os-bases/anatase/build.sh "Capture (Rust)"), as in Mantel.
+Type=Application
+Name=Capture
+Icon=hearth-capture
+Exec=/usr/bin/hearth-capture-app
+NoDisplay=true
+Actions=print;area;
+
+[Desktop Action print]
+Name=Save a screenshot of the whole screen
+Exec=/usr/bin/hearth-capture --print
+X-KDE-Shortcuts=Print
+
+[Desktop Action area]
+Name=Capture an area
+Exec=/usr/bin/hearth-capture-app area
+X-KDE-Shortcuts=Meta+Shift+S
+DESKTOP
+  sk=/usr/share/kglobalaccel/org.kde.spectacle.desktop
+  if [ -e "$sk" ]; then
+    real=$(readlink -f "$sk"); [ -f "$real" ] && { cp --remove-destination "$real" "$sk.new" && mv -f "$sk.new" "$sk"; }
+    sed -i -e 's/^X-KDE-Shortcuts=Print$/X-KDE-Shortcuts=/' -e 's/^X-KDE-Shortcuts=Print,/X-KDE-Shortcuts=/' "$sk"
+  fi
+  # Record: hearth-record when GStreamer can read PipeWire (the portal's stream) here.
+  rec=/usr/share/nimbus/desktop/shell/hearth-record
+  if [ -f "$rec" ] && command -v gst-inspect-1.0 >/dev/null 2>&1 && timeout 30 gst-inspect-1.0 pipewiresrc >/dev/null 2>&1; then
+    chmod 755 "$rec"; ln -sf "$rec" /usr/bin/hearth-record; rec_by="hearth-record (PipeWire + GStreamer)"
+  else
+    rec_by="Hearth Recorder (no GStreamer PipeWire source here)"
+  fi
+  grep -qx 'Exec=/usr/bin/hearth-capture-app' /usr/share/applications/hearth-capture.desktop
+  grep -qx 'X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2' /usr/share/applications/hearth-capture.desktop
+  echo "::notice title=Capture (Rust)::Capture is Hearth's own on Plasma ($(du -h /usr/bin/hearth-capture-app | cut -f1)); KWin's screenshots through its entry; Print and Super+Shift+S; Record: $rec_by; Spectacle stays installed as the fallback"
+else
+  echo "::warning title=Capture (Rust)::hearth-capture-app wasn't built or can't start here, so Capture on Plasma is KDE's Spectacle (hearth-capture-kde)"
+fi
+# <<< Capture (Rust)
+
 # ------------------------------------------------------------------ 1.15: Desktop Mode's way back to Game Mode
 # Plasma's menu and taskbar have "Back to Game Mode" (os/system_files' hearth-gamemode.desktop, KDE only, Super+G;
 # pinned once per account by the Plasma update script hearth-game-mode-launcher.js): nimbus-mode game logs Plasma out

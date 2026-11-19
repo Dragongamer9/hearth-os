@@ -1,5 +1,11 @@
-# Capture (screenshots and screen recording, with its editor) as a standalone pure-Rust app (hearth-ui). No version
-# line: the owner picks every version number.
+# Capture (screenshots and screen recording, with its editor) as a standalone pure-Rust app (hearth-ui): Mantel's
+# Capture.qml, CaptureEditor.qml, CaptureBtn.qml, CaptureGlyph.qml, CaptureIndicator.qml and capture-draw.js, ported.
+# No version line: the owner picks every version number.
+#
+# Beyond the workspace's own: iced's images (without its codecs: pictures are read and written here with tiny-skia's
+# PNG), tiny-skia (the same 0.11 iced draws with) to draw the markup on the full-size picture when it's saved,
+# fontdue for that picture's text, jpeg-encoder and image-webp for Save as .jpg / .webp, and zbus to ask KWin for the
+# picture on KDE Plasma (org.kde.KWin.ScreenShot2, the `shot` command; kwin.rs).
 [package]
 name = "hearth-capture-app"
 edition = "2021"
@@ -13,7 +19,12 @@ path = "src/main.rs"
 
 [dependencies]
 hearth-ui = { path = "../.." }
-iced = { workspace = true }
+iced = { workspace = true, features = ["image-without-codecs"] }
 serde_json = { workspace = true }
 futures = { workspace = true }
 libc = { workspace = true }
+tiny-skia = "0.11"
+fontdue = "0.9"
+jpeg-encoder = "0.7"
+image-webp = "0.2"
+zbus = "5"
