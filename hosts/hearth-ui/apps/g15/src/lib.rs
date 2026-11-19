@@ -12,6 +12,8 @@
 //! * [`config`]: g15.json (only through settings_file.rs: red flag 9);
 //! * [`lcd`]: the 160x43 screen: frames, the 5x7 font, the screens made of elements, the report sent to the keyboard;
 //! * [`values`]: what screens can show (CPU, graphics card, memory, drive, network, fans, the song…);
+//! * [`running`]: which games run (window lists, Steam, Hearth's Game Mode: told, not polled);
+//! * [`lights_auto`]: Night light's schedule and logind's sleep / lock / idle signals for the lights;
 //! * [`service`]: the user service that ties it together.
 
 pub mod actions;
@@ -21,7 +23,9 @@ pub mod input;
 pub mod keys;
 pub mod lcd;
 pub mod leds;
+pub mod lights_auto;
 pub mod root;
+pub mod running;
 pub mod service;
 pub mod values;
 

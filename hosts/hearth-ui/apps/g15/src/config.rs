@@ -8,7 +8,7 @@
 //!   "keys": {"m1": {"g1": ACTION, …}, "m2": {…}, "m3": {…}},
 //!   "names": {"m1": "Everyday", "m2": "Trainz"}, a set's name (the screen shows it when you switch)
 //!   "kbdLight": 0|1|2, "lcdLight": 0|1|2,       off, low, high (missing: as the keyboard is)
-//!   "lightsOffWhenLocked": bool, "nightDim": bool, "nightFrom": "21:00", "nightTo": "07:00", "mLights": bool,
+//!   "lightsOffWhenLocked": bool, "nightDim": bool (follows Night light's own schedule: lights_auto.rs), "mLights": bool,
 //!   "pages": ["clock", "system", "music", "alerts", "<own screen id>"…],   the screen's pages, in order
 //!   "screens": [SCREEN…],                       your own screens (lcd/screen.rs)
 //!   "alerts": bool,                              Hearth's messages pop up on the screen for 5 s

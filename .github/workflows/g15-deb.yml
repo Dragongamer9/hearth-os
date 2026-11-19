@@ -81,6 +81,26 @@ jobs:
           m2=$(cat "$F/sys/class/leds/g15::macro_preset2/brightness"); m1=$(cat "$F/sys/class/leds/g15::macro_preset1/brightness")
           [ "$m2" = 1 ] && [ "$m1" = 0 ] && echo "::notice title=M2::its light is on, M1's off" || echo "::error title=M2::lights M1=$m1 M2=$m2"
           grep -q '"set": *2' /tmp/g15cfg/g15.json && echo "::notice title=g15.json::$(tr -d '\n' < /tmp/g15cfg/g15.json | cut -c1-300)" || echo "::error title=g15.json::not remembered: $(cat /tmp/g15cfg/g15.json 2>&1 | head -c 300)"
+          # A game picks its key set by itself (running.rs, through KWin's window list) and gives it back when it closes;
+          # g15.json isn't written for it.
+          sleep 300 & gpid=$!
+          python3 - /tmp/g15cfg/g15.json <<'PY'
+          import json, sys
+          p = sys.argv[1]; v = json.load(open(p)); v['set'] = 1; v['gameSets'] = [{'game': 'Trains 2010', 'set': 3}]
+          open(p + '.tmp', 'w').write(json.dumps(v)); __import__('os').replace(p + '.tmp', p)
+          PY
+          mkdir -p /tmp/g15run/hearth; sleep 1; cp /tmp/g15cfg/g15.json /tmp/g15-cfg-before.json
+          printf '{"windows": [{"appId": "trs2010.exe", "title": "Trainz Simulator 2010", "pid": %s}]}' "$gpid" > /tmp/g15run/hearth/.w; mv /tmp/g15run/hearth/.w /tmp/g15run/hearth/windows.json
+          sleep 1
+          m3=$(cat "$F/sys/class/leds/g15::macro_preset3/brightness"); m1=$(cat "$F/sys/class/leds/g15::macro_preset1/brightness")
+          [ "$m3" = 1 ] && [ "$m1" = 0 ] && echo "::notice title=game::Trains 2010 opened: M3 lit" || echo "::error title=game::Trains 2010 opened but the lights are M1=$m1 M3=$m3"
+          kill $gpid; wait $gpid 2>/dev/null
+          printf '{"windows": []}' > /tmp/g15run/hearth/.w; mv /tmp/g15run/hearth/.w /tmp/g15run/hearth/windows.json
+          sleep 1
+          m3=$(cat "$F/sys/class/leds/g15::macro_preset3/brightness"); m1=$(cat "$F/sys/class/leds/g15::macro_preset1/brightness")
+          [ "$m3" = 0 ] && [ "$m1" = 1 ] && echo "::notice title=game::it closed: M1 back" || echo "::error title=game::closed but the lights are M1=$m1 M3=$m3"
+          cmp -s /tmp/g15cfg/g15.json /tmp/g15-cfg-before.json && echo "::notice title=game::g15.json untouched" || echo "::error title=game::g15.json was written for a game"
+          # Empty window list: the last resort (a look every 30 s) is what's left, still at rest.
           # At rest (the clock page: a frame a minute): CPU over 20 s.
           sleep 3
           hz=$(getconf CLK_TCK); a=$(awk '{print $14 + $15}' /proc/$pid/stat); sleep 20; b=$(awk '{print $14 + $15}' /proc/$pid/stat)

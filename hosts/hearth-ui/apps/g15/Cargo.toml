@@ -28,6 +28,10 @@ iced = { workspace = true }
 futures = { workspace = true }
 # Pictures for your own screens (PNG and JPEG, turned into the screen's dots).
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# "Switch key sets for each game" on labwc: the window list Mantel's taskbar reads (wlr-foreign-toplevel), told when a
+# window opens or closes instead of looking (src/running.rs). The same Wayland crates iced already builds.
+wayland-client = "0.31"
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
 
 [dev-dependencies]
 tempfile = "3"
