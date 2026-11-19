@@ -275,7 +275,7 @@ fn command_bar(a: &App) -> El<'_> {
 fn nav_pane(a: &App) -> El<'_> {
     let p = a.p;
     let wide = a.nav_w >= 200.0;
-    let mut col = Column::new().spacing(1.0).padding(pad(10.0, 6.0, 10.0, 6.0));
+    let mut col = Column::new().spacing(1.0).padding(pad(10.0, 4.0, 10.0, 4.0));
     let mut last_section = String::new();
     for (i, q) in a.places.iter().enumerate() {
         if i > 0 && q.section != last_section {
@@ -286,12 +286,12 @@ fn nav_pane(a: &App) -> El<'_> {
         let lit = a.zone == Zone::Places && a.place_index == i;
         let depth = q.depth as f32;
         let arrow: El = if !q.tree.is_empty() && !q.empty {
-            mouse_area(container(ico::<Msg>(if q.open { Ic::ChevDown } else { Ic::ChevRight }, p.muted, 8.0)).center_x(Length::Fixed(14.0)).center_y(Length::Fixed(26.0)))
+            mouse_area(container(ico::<Msg>(if q.open { Ic::ChevDown } else { Ic::ChevRight }, p.muted, 8.0)).center_x(Length::Fixed(12.0)).center_y(Length::Fixed(26.0)))
                 .on_press(Msg::Fold(q.tree.clone()))
                 .interaction(mouse::Interaction::Pointer)
                 .into()
         } else {
-            gap(14.0, 26.0)
+            gap(12.0, 26.0)
         };
         let ic = match q.id.as_str() {
             "gallery" => Ic::Gallery,
@@ -303,12 +303,12 @@ fn nav_pane(a: &App) -> El<'_> {
         let mut r = Row::new()
             .spacing(0.0)
             .align_y(iced::Center)
-            .push(gap(2.0 + depth * 12.0, 1.0))
+            .push(gap(depth * 9.0, 1.0))
             .push(arrow)
             .push(gap(4.0, 1.0))
             .push(ico(ic, p.text, 16.0))
-            .push(gap(10.0, 1.0))
-            .push(t1(q.label.clone(), 14.0, if lit { p.ink } else { p.text }).font(if here { ui::weight(iced::font::Weight::Medium) } else { hearth_ui::app::INTER }));
+            .push(gap(8.0, 1.0))
+            .push(t1(q.label.clone(), 13.5, if lit { p.ink } else { p.text }).font(if here { ui::weight(iced::font::Weight::Medium) } else { hearth_ui::app::INTER }));
         r = r.push(Space::new().width(Length::Fill));
         if wide && !q.sub.is_empty() && (q.id == "homeserver" || q.id == "linux") {
             r = r.push(t1(q.sub.clone(), 12.5, p.muted));
@@ -439,7 +439,7 @@ fn details_header<'a>(a: &'a App, cols: &[(&'static str, &'static str, f32)]) ->
 fn row_box<'a>(a: &'a App, inner: El<'a>, sel: bool, lit: bool, h: f32) -> El<'a> {
     let p = a.p;
     let bg = if sel { p.sel() } else { row_bg(&p) };
-    let ring = lit && a.zone == Zone::Main;
+    let ring = lit && a.zone == Zone::Main && a.touched;
     let accent = p.accent;
     let rr = p.r(4.0);
     container(inner)
@@ -499,9 +499,9 @@ fn details_list(a: &App) -> El<'_> {
                     let sel = a.marked.contains(&e.path) || (a.marked.is_empty() && *i == a.cur && a.zone == Zone::Main && a.has_focus_sel());
                     let r = row![
                         container(row![entry_icon(a, e, 16.0), name_cell(a, e, 14.0)].spacing(9.0).align_y(iced::Center)).width(Length::Fill),
-                        container(t1(model::fmt_date(e.mtime, false), 13.5, p.muted)).width(Length::Fixed(160.0)),
-                        container(t1(model::kind_name(e), 13.5, p.muted)).width(Length::Fixed(150.0)),
-                        container(t1(if e.dir { String::new() } else { model::fmt_size(e.size) }, 13.5, p.muted)).width(Length::Fixed(96.0)),
+                        container(t1(model::fmt_date(e.mtime, false), 13.5, p.muted)).width(Length::Fixed(160.0)).clip(true),
+                        container(t1(model::kind_name(e), 13.5, p.muted)).width(Length::Fixed(150.0)).padding(pad(0.0, 8.0, 0.0, 0.0)).clip(true),
+                        container(t1(if e.dir { String::new() } else { model::fmt_size(e.size) }, 13.5, p.muted)).width(Length::Fixed(96.0)).clip(true),
                     ]
                     .align_y(iced::Center)
                     .padding(pad(0.0, 2.0, 0.0, 12.0));
@@ -1389,7 +1389,7 @@ fn props_dialog<'a>(a: &'a App, pr: &'a Props) -> El<'a> {
         btn(&p, "Apply", Kind::Normal, false, if pr.mode != pr.mode0 { Some(Msg::PropsApply(false)) } else { None }),
         btn(&p, "OK", Kind::Primary, false, Some(Msg::PropsApply(true))),
     ]));
-    container(column![head, hline::<Msg>(p.line), body]).width(Length::Fixed(640.0)).style(ui::boxed(p.panel, p.r(12.0), Some((p.line, 1.0)))).into()
+    container(column![head, hline::<Msg>(p.line), body]).width(Length::Fixed(700.0)).style(ui::boxed(p.panel, p.r(12.0), Some((p.line, 1.0)))).into()
 }
 
 fn copy_btn<'a>(p: &Pal, path: String, msg: Msg) -> El<'a> {

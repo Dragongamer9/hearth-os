@@ -702,6 +702,9 @@ impl App {
         self.prefs.get("copyPath").and_then(Value::as_str) == Some("linux")
     }
     pub fn c_page(&self) -> &'static str {
+        if !drive::is_c_path(&self.path) {
+            return "";
+        }
         drive::c_page(&self.path, &self.ctx())
     }
     pub fn on_cview(&self) -> bool {
@@ -723,6 +726,10 @@ impl App {
         self.entries.get(self.cur)
     }
     pub fn shown_view(&self) -> View {
+        // The Open / Save window is a Details list (mockup cdrive-1).
+        if self.picking() {
+            return View::Details;
+        }
         if self.on_home() || self.on_cview() || self.on_apps() { View::Details } else { self.view }
     }
 
@@ -869,15 +876,17 @@ impl App {
         if p == APPS_PAGE {
             return vec![Crumb { label: "This PC".into(), path: THIS_PC.into() }, Crumb { label: "Installed apps".into(), path: APPS_PAGE.into() }];
         }
-        if !self.in_trash() {
+        let (rp, rl) = self.root_of(p);
+        let mapped = [".config", ".local/share", ".cache"].iter().any(|d| model::under(p, &format!("{}/{d}", self.home)));
+        let home_way = rp == self.home && !self.picking_linux_paths() && !mapped;
+        if !self.in_trash() && !home_way {
             if let Some(c) = drive::crumbs_for(p, &self.crumb_ctx(), THIS_PC) {
                 // Your home folder itself, the Windows way: This PC › Hearth (C:) › Users › you.
                 return c;
             }
         }
-        let (rp, rl) = self.root_of(p);
-        // The home folder the Windows way (mockup files-1): This PC › Hearth (C:) › Users › chris › …
-        if rp == self.home && !self.picking_linux_paths() {
+        // The home folder the Windows way (mockups files-1, -6, cdrive-1): This PC › Hearth (C:) › Users › chris › …
+        if home_way {
             let mut out = vec![Crumb { label: "This PC".into(), path: THIS_PC.into() }, Crumb { label: self.system_label(), path: if self.cdrive_on() { drive::C_ROOT.into() } else { "/".into() } }];
             out.push(Crumb { label: "Users".into(), path: drive::users_dir(&self.ctx()) });
             out.push(Crumb { label: base(&self.home), path: self.home.clone() });
@@ -1403,8 +1412,8 @@ impl App {
         }
         let devs: Vec<&Value> = sorted.iter().filter(|q| sv(q, "section") == "network" || sv(q, "section") == "devices").collect();
         // Home server (mockup files-1): the home server's and your devices' shared folders, folded.
-        let hs_open = *self.nav_open.get("homeserver").unwrap_or(&false);
-        out.push(NavItem { id: "homeserver".into(), label: "Home server".into(), kind: "netroot".into(), section: "start".into(), tree: "homeserver".into(), open: hs_open, sub: "Hearth".into(), empty: devs.is_empty(), ..Default::default() });
+        let hs_open = *self.nav_open.get("homeserver").unwrap_or(&false) && !self.picking();
+        if !self.picking() { out.push(NavItem { id: "homeserver".into(), label: "Home server".into(), kind: "netroot".into(), section: "start".into(), tree: "homeserver".into(), open: hs_open, sub: "Hearth".into(), empty: devs.is_empty(), ..Default::default() }); }
         if hs_open {
             for q in devs.iter().copied() {
                 out.push(item(q, "start", if q.get("child") == Some(&Value::Bool(true)) { 2 } else { 1 }));
@@ -1449,14 +1458,16 @@ impl App {
                 }
                 if sys {
                     it.path = drive::C_ROOT.into();
-                    it.tree = "cdrive".into();
+                    it.tree = if self.picking() { String::new() } else { "cdrive".into() };
                     it.open = c_open;
+                } else if self.picking() {
+                    it.tree.clear();
                 } else {
                     it.tree = format!("drive:{}", it.id);
                     it.open = false;
                 }
                 out.push(it);
-                if sys && c_open {
+                if sys && c_open && !self.picking() {
                     out.push(NavItem { id: "c-users".into(), label: "Users".into(), path: drive::users_dir(&ctx), kind: "folder".into(), section: "pc".into(), depth: 2, tree: "c-users".into(), ..Default::default() });
                     out.push(NavItem { id: "c-pf".into(), label: "Program Files".into(), path: format!("{}/Program Files", drive::C_ROOT), kind: "folder".into(), section: "pc".into(), depth: 2, tree: "c-pf".into(), ..Default::default() });
                     out.push(NavItem { id: "c-apps".into(), label: "Windows apps".into(), path: APPS_PAGE.into(), kind: "folder".into(), section: "pc".into(), depth: 2, tree: "c-apps".into(), ..Default::default() });
@@ -2584,6 +2595,10 @@ fn update_inner(app: &mut App, m: Msg) -> Task<Msg> {
             for t in list {
                 app.thumb_pending.remove(&t.path);
                 app.thumbs.insert(t.path.clone(), (t.mtime, t.handle, t.w, t.h, t.taken));
+            }
+            // The first look happened before the window knew how many fit in a row: the rest on screen now.
+            if app.thumb_pending.is_empty() {
+                return app.want_thumbs();
             }
         }
         Msg::Versions(p, menu, out) => {
