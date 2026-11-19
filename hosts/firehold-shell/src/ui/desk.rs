@@ -73,8 +73,8 @@ const NOTE_BTN_H: u32 = 40;
 const NOTE_GAP: u32 = 10;
 
 fn notice_height(st: &State) -> u32 {
-    let mut h = 0;
-    let mut n = 0;
+    let mut h: u32 = 0;
+    let mut n: u32 = 0;
     if st.notice.is_some() {
         h += NOTICE_H;
         n += 1;
@@ -83,7 +83,7 @@ fn notice_height(st: &State) -> u32 {
         h += NOTE_H + if note.actions.iter().any(|(k, _)| k != "default") { NOTE_BTN_H } else { 0 };
         n += 1;
     }
-    h + NOTE_GAP * n.saturating_sub(1) as u32
+    h + NOTE_GAP * n.saturating_sub(1)
 }
 
 /// About how wide Inter draws a word (for where a menu opens under its title): 0.6 em a letter bold, 0.55 regular.
