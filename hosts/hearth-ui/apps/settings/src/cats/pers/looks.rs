@@ -94,7 +94,7 @@ pub fn subs(look: &str, mode: &str) -> Vec<Sub> {
     let Some(list) = l.get("subThemes").and_then(Value::as_array) else { return vec![] };
     let mut out: Vec<Sub> = vec![];
     let base = l.get(if mode == "light" { "light" } else { "dark" }).or_else(|| l.get("dark")).cloned().unwrap_or(json!({}));
-    let mut add = |s: &Value, black: bool, wall: String| {
+    let add = |out: &mut Vec<Sub>, s: &Value, black: bool, wall: String| {
         let id = kit::s_of(s, "id");
         if id.is_empty() || out.iter().any(|x| x.id == id) {
             return;
@@ -106,7 +106,7 @@ pub fn subs(look: &str, mode: &str) -> Vec<Sub> {
         out.push(Sub { id, label, desc: kit::s_of(s, "desc"), black, wallpaper: wall, colours });
     };
     for s in list {
-        add(s, false, kit::s_of(s, "wallpaper"));
+        add(&mut out, s, false, kit::s_of(s, "wallpaper"));
     }
     if out.is_empty() {
         return out;
@@ -115,7 +115,7 @@ pub fn subs(look: &str, mode: &str) -> Vec<Sub> {
         for b in set {
             let id = kit::s_of(b, "id");
             if let Some(w) = bw.get(&id) {
-                add(b, true, w.as_str().unwrap_or("").to_string());
+                add(&mut out, b, true, w.as_str().unwrap_or("").to_string());
             }
         }
     }
@@ -610,7 +610,7 @@ pub fn appearance(a: &App) -> E<'_> {
         inner = inner.push(irow(&p, Ic::Image, "From wallpaper", fw_sub, fw.into()));
         let hue = st.hue.unwrap_or_else(|| if hearth_ui::theme::hex(&cur_accent).is_some() { kit::hue_of(&cur_accent) } else { 0.58 });
         let hv = if let Some(h) = st.hue { kit::hex_of(kit::hsv(h.min(0.999) * 360.0, 0.85, 1.0)) } else if hearth_ui::theme::hex(&cur_accent).is_some() { cur_accent.clone() } else { "Pick a hue".into() };
-        inner = inner.push(irow(&p, Ic::G(G::Palette), "Custom accent", "", row![iced::widget::slider(0.0..=1.0, hue, Msg::Hue).step(1.0 / 36.0).on_release(Msg::HueSet).width(Length::Fixed(sz(240.0))), container(t1(hv, sz(13.0), p.muted)).width(Length::Fixed(sz(80.0)))].spacing(12.0).align_y(iced::Center).into()));
+        inner = inner.push(irow(&p, Ic::G(G::Palette), "Custom accent", "", row![iced::widget::slider(0.0..=1.0, hue, Msg::Hue).step(1.0f32 / 36.0).on_release(Msg::HueSet).width(Length::Fixed(sz(240.0))), container(t1(hv, sz(13.0), p.muted)).width(Length::Fixed(sz(80.0)))].spacing(12.0).align_y(iced::Center).into()));
         inner = inner.push(field(&p, "Or type a colour, like #1a9fff, then Enter", &st.hex, Msg::Hex).on_submit(Msg::HexGo));
         c = c.push(kit::indent(inner));
     }

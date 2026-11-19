@@ -11,7 +11,7 @@ use hearth_ui::ui::{self, glyph, t, t1, tm, ts, G};
 use hearth_ui::Pal;
 use iced::widget::canvas::{self, Frame, Geometry, LineCap, LineJoin, Path, Stroke};
 use iced::widget::{column, container, mouse_area, row, scrollable, text_input, Column, Row, Space};
-use iced::{mouse, Color, Element, Length, Padding, Point, Rectangle, Renderer, Theme};
+use iced::{mouse, Color, Length, Padding, Point, Rectangle, Renderer, Theme};
 use serde_json::Value;
 use std::future::Future;
 use std::io::{BufRead, BufReader, Write};

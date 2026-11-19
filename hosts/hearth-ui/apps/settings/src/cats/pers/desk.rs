@@ -14,7 +14,7 @@ use crate::widgets::*;
 use crate::App;
 use hearth_ui::ui::{self, btn, t, t1, ts, G};
 use hearth_ui::Pal;
-use iced::widget::{column, container, Column, Row};
+use iced::widget::{column, container, Row};
 use iced::{Element, Length, Task};
 use serde_json::{json, Value};
 

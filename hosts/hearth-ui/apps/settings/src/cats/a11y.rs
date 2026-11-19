@@ -12,7 +12,6 @@ use crate::widgets::*;
 use crate::App;
 use hearth_ui::run;
 use hearth_ui::ui::{t1, G};
-use iced::widget::Column;
 use iced::{Element, Subscription, Task};
 use serde_json::{json, Map, Value};
 
