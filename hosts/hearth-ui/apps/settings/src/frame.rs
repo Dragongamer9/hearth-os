@@ -388,7 +388,9 @@ fn frame_b(a: &App) -> Element<'_, Msg> {
     // A warm glow in the top right, as in the mockups.
     let glow = iced::gradient::Linear::new(iced::Radians(std::f32::consts::FRAC_PI_2)).add_stop(0.0, Color::TRANSPARENT).add_stop(1.0, Pal::a(p.accent, 0.09));
     let glow = row![Space::new().width(Length::FillPortion(1)), container(Space::new()).width(Length::FillPortion(1)).height(Length::Fixed(170.0)).style(move |_: &iced::Theme| container::Style { background: Some(Background::Gradient(glow.into())), ..container::Style::default() })];
-    let base: Element<Msg> = container(stack![glow, content]).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
+    // (A stack is as big as its first layer: the glow's layer fills the window.)
+    let glow = container(column![glow, Space::new().height(Length::Fill)]).width(Length::Fill).height(Length::Fill);
+    let base: Element<Msg> = container(stack![glow, content].width(Length::Fill).height(Length::Fill)).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
     ui::edges(with_dialogs(a, base), Msg::Resize)
 }
 
