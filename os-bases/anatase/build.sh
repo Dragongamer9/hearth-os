@@ -826,6 +826,10 @@ for f in /usr/share/plasma/shells/org.hearthos.firehold/metadata.json /usr/share
 done
 # Tools Hearth's apps and helpers use (screenshots, brightness, the clipboard, X11 helpers for Game Mode's pickers).
 dnf5 -y install --skip-unavailable --skip-broken grim slurp brightnessctl wlr-randr python3-evdev xprop xwininfo xdotool gnome-keyring cpio rsync || true
+# The session's own message bus when the login gave none (nimbus-session ensure_session_bus: dbus-run-session), and
+# the controller-mouse helper's evdev (hearth-pad-plasma, Plasma's autostart).
+dnf5 -y install --skip-unavailable dbus-tools dbus-daemon python3-evdev || true
+echo "::notice title=Session bus::$(command -v dbus-run-session || echo 'no dbus-run-session'); controller mouse: $(python3 -c 'import evdev; print("evdev ok")' 2>&1 | tail -1)"
 
 # ------------------------------------------------------------------ Firehold (Rust, test) (docs/FIREHOLD-RUST.md)
 # The owner (Nov 18): Firehold built all in Rust, the way COSMIC is, to try beside KDE Plasma. firehold-comp (Hearth's

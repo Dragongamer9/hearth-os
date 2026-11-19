@@ -458,9 +458,10 @@ def apply(pal, want, paths, kc):
             log('could not record the Global Theme in kdeglobals: %s' % e)
     subs = [s['id'] for s in ht_mod.sub_list(pal, want['look'])] if ht_mod else []
     sub = want['sub'] if want['sub'] in subs[1:] else ''
+    # The scheme by itself first: given an accent too, plasma-apply-colorscheme only puts the accent on and leaves
+    # the scheme as it was (the owner's ROG Ally, Nov 18: Mint accent, Debian's "Hearth" scheme stayed). The accent
+    # after it, on its own.
     cmd = ['plasma-apply-colorscheme', scheme_file(want['look'], want['mode'], sub)]
-    if want['accent']:
-        cmd[1:1] = ['--accent-color', want['accent']]
     code, out = run(cmd)
     log('colours %s: exit %s %s' % (cmd[-1], code, out.replace('\n', ' | ')[:300]))
     try:
@@ -476,6 +477,9 @@ def apply(pal, want, paths, kc):
         run(['plasma-apply-colorscheme', other])
         code, out = run(cmd)
         log('colours %s again (after %s): exit %s %s' % (cmd[-1], other, code, out.replace('\n', ' | ')[:300]))
+    if want['accent']:
+        code, out = run(['plasma-apply-colorscheme', '--accent-color', want['accent']])
+        log('accent %s: exit %s %s' % (want['accent'], code, out.replace('\n', ' | ')[:200]))
     if not want['accent'] and kc is not None:
         try:   # no accent of your own in Hearth: the look's (the colour scheme's) again
             kc.update(paths['kdeglobals'], {'General': {'AccentColor': None}})
@@ -587,6 +591,10 @@ def sync(wait=False):
     try:
         return sync_act(act, st, want, kde, pal, paths, kc, hsio)
     finally:
+        try:
+            retired_applets(paths, hsio)
+        except Exception as e:
+            log('old panel widgets not checked: %s' % e)
         # Whatever happened, Hearth's own apps draw with what Plasma shows now (any Global Theme, yours or Hearth's).
         try:
             write_apps_theme(pal, kc, hsio)
@@ -691,6 +699,39 @@ def apps_tokens(pal, g):
     c['accentInk'] = c['ink']
     return {'look': 'kde', 'mode': mode, 'accent': ember, 'label': scheme or 'KDE', 'source': 'plasma', 'scheme': scheme,
             'font': getattr(ht_mod, 'APP_FONT_STACK', 'system-ui, sans-serif'), 'radius': 6, 'corner': 6, 'colors': c}
+
+
+RETIRED_APPLETS = ('org.hearth.quicksettings', 'org.hearth.gamemode')
+
+
+def retired_applets(paths, hsio):
+    """Hearth Plasma's own panel widgets (Debian before 1.13: Quick Settings, the Game Mode button) aren't in this
+    edition: a panel that still has them shows errors and its app menu broke (the owner's ROG Ally, Nov 18). Once, and
+    only while they're there: a copy of the panel's file is kept, just those widgets are taken out, and it's said."""
+    f = paths['appletsrc']
+    try:
+        with open(f, encoding='utf-8', errors='replace') as fh:
+            text = fh.read()
+    except OSError:
+        return
+    found = [a for a in RETIRED_APPLETS if re.search(r'(?m)^plugin=%s\s*$' % re.escape(a), text)]
+    if not found:
+        return
+    bak = f + '.before-fedora-edition'
+    if not os.path.exists(bak):
+        try:
+            shutil.copy2(f, bak)
+        except OSError as e:
+            log('old panel widgets left as they are (no copy could be kept: %s)' % e)
+            return
+    js = 'var gone = %s; panels().forEach(function (p) { p.widgets().forEach(function (w) { if (gone.indexOf(w.type) >= 0) w.remove(); }); });' % json.dumps(found)
+    code, out = run(['dbus-send', '--session', '--print-reply', '--dest=org.kde.plasmashell', '/PlasmaShell',
+                     'org.kde.PlasmaShell.evaluateScript', 'string:' + js])
+    log('old Hearth Plasma widgets %s taken out of the panel: exit %s (the panel as it was: %s)' % (', '.join(found), code, bak))
+    if code == 0 and shutil.which('notify-send'):
+        run(['notify-send', '-a', 'Hearth', '-i', 'hearth', 'Your panel was tidied',
+             "Two widgets from the old Hearth Plasma (Quick Settings and the Game Mode button) aren't in this edition, "
+             "so they were taken out of your panel. The panel as it was is kept in %s." % bak.replace(os.path.expanduser('~'), '~')])
 
 
 def write_apps_theme(pal, kc, hsio):
