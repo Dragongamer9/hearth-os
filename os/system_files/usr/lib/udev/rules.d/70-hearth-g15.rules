@@ -1,0 +1,22 @@
+# Hearth's Logitech G15 support (hearth-g15, docs/G15.md). Linux's own driver (hid-lg-g15) handles the keyboard; these
+# rules only let the person signed in at the PC use it, with no service running as root, and start hearth-g15 for
+# them. Every rule matches the G15's own parts only: without the keyboard nothing here does anything.
+#
+# The first G15 is three USB devices: 046d:c223 (a hub inside it), 046d:c221 (the ordinary keys) and 046d:c222 (the
+# G-keys, the keys under the screen and the screen). The G15 v2 (c227 / c226), G11 (c225) and G510 (c22d / c22e) the same way.
+
+# The G-keys, M-keys, MR and the keys under the screen (hid-lg-g15's input device): readable by the person at the PC
+# (uaccess), and the user service started for them when it appears (nothing waits for it: no Game Mode or desktop
+# start depends on it).
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{name}=="Logitech Gaming Keyboard Gaming Keys", TAG+="uaccess", TAG+="systemd", ENV{SYSTEMD_USER_WANTS}+="hearth-g15.service"
+
+# The screen: drawn through the G-key part's hidraw node (output report 3).
+SUBSYSTEM=="hidraw", KERNEL=="hidraw*", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c222|c227|c22d|c22e", TAG+="uaccess"
+
+# The G15's ordinary keys: read only while you record a macro with MR (hearth-g15 opens them when you press MR and
+# closes them when you keep or drop the macro). Only the G15's own keys, never another keyboard.
+SUBSYSTEM=="input", KERNEL=="event*", ATTRS{idVendor}=="046d", ATTRS{idProduct}=="c221|c226", TAG+="uaccess"
+
+# The lights (key light, screen light, M1-M3, MR): the video group may change them, as with the other keyboard and
+# screen lights (70-hearth-backlight.rules; hearth-groups puts every account in video).
+ACTION!="remove", SUBSYSTEM=="leds", KERNEL=="g15::*", RUN+="/bin/chgrp video /sys/class/leds/%k/brightness", RUN+="/bin/chmod g+w /sys/class/leds/%k/brightness"

@@ -1,0 +1,25 @@
+# Hearth's Logitech G15 support (pure Rust, hearth-ui; docs/G15.md): the keyboard's G-keys and macros, its 160x43
+# screen and its lights. `hearth-g15` is the small user service (started by udev when the keyboard is plugged in:
+# os/system_files/usr/lib/udev/rules.d/70-hearth-g15.rules) and its command line; the app (hearth-g15-app) comes
+# with the approved mockups. No version line: the owner picks every version number.
+[package]
+name = "hearth-g15"
+edition = "2021"
+description = "Logitech G15: G-keys, macros, the keyboard's screen and lights"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-g15"
+path = "src/bin/hearth-g15.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+serde_json = { workspace = true }
+libc = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

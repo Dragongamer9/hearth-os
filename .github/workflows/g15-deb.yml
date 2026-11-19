@@ -1,0 +1,174 @@
+# Logitech G15 support as a test .deb (docs/G15.md), for a Hearth OS 1.13 Debian PC before it comes with the image:
+# built in Debian 13 (trixie, amd64: the same glibc as Hearth on Debian), tested, a pretend keyboard run for real
+# (the service started against HEARTH_G15_FIXTURE: an M-key changes the set and its light, the screen gets frames,
+# CPU at rest measured), pictures of the keyboard's screen pages as SHOT notices, and the .deb with its SHA256 as an
+# artifact. No version number is picked: the package is named after the commit (0~test.<sha>).
+name: Logitech G15 test .deb
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deb:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: docker.io/library/debian:trixie
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Build tools
+        run: |
+          apt-get update -qq
+          DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends git curl ca-certificates build-essential pkg-config \
+            libxkbcommon-dev libwayland-dev libfontconfig-dev libfreetype-dev python3 python3-pil procps >/dev/null
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Build hearth-g15
+        run: |
+          set -o pipefail
+          cd hosts/hearth-ui
+          if ! cargo build --release -p hearth-g15 2>&1 | tee /tmp/build.log; then
+            awk '/^error/{if (b) print b; b=$0; n=0; next} b && n < 14 {b=b "|" $0; n++} END{if (b) print b}' /tmp/build.log | head -20 | while read -r l; do
+              echo "::error title=cargo build::$(echo "$l" | cut -c1-3800)"
+            done
+            exit 1
+          fi
+          echo "::notice title=size::hearth-g15 $(du -h target/release/hearth-g15 | cut -f1) · $(rustc --version)"
+      - name: Tests
+        run: |
+          set -o pipefail
+          cd hosts/hearth-ui
+          if ! cargo test --release -p hearth-g15 -- --test-threads=1 2>&1 | tee /tmp/test.log; then
+            grep -E "panicked|FAILED|^error|^test .* FAILED" -A3 /tmp/test.log | head -40 | while read -r l; do echo "::error title=cargo test::$(echo "$l" | cut -c1-1500)"; done
+            awk '/^error/{if (b) print b; b=$0; n=0; next} b && n < 14 {b=b "|" $0; n++} END{if (b) print b}' /tmp/test.log | head -20 | while read -r l; do echo "::error title=cargo test build::$(echo "$l" | cut -c1-3800)"; done
+            exit 1
+          fi
+          echo "::notice title=cargo test::$(grep -E '^test result' /tmp/test.log | tr '\n' ' ' | cut -c1-500)"
+      - name: A pretend G15, run for real
+        run: |
+          set -u
+          B="$PWD/hosts/hearth-ui/target/release/hearth-g15"
+          F=/tmp/g15fx; rm -rf "$F"; "$B" make-fixture "$F"
+          export HEARTH_G15_FIXTURE="$F" HEARTH_G15_CONFIG=/tmp/g15cfg/g15.json XDG_RUNTIME_DIR=/tmp/g15run HOME=/tmp/g15home
+          mkdir -p /tmp/g15cfg /tmp/g15run /tmp/g15home
+          "$B" present || echo "::error title=present::the pretend keyboard wasn't found"
+          echo "::notice title=status::$("$B" status)"
+          "$B" service > /tmp/svc.log 2>&1 &
+          pid=$!
+          sleep 3
+          size=$(stat -c %s "$F/dev/hidraw3"); first=$(od -An -tx1 -N1 "$F/dev/hidraw3" | tr -d ' ')
+          [ "$size" = 992 ] && [ "$first" = 03 ] && echo "::notice title=screen::a 992-byte frame, report 3" || echo "::error title=screen::the screen got $size bytes (first $first)"
+          # M2 pressed and let go (KEY_MACRO_PRESET2 = 0x2b4): the set changes, its light, and g15.json remembers it.
+          python3 - "$F/dev/input/event5" <<'PY'
+          import struct, sys, time
+          with open(sys.argv[1], 'wb', buffering=0) as f:
+              for v in (1, 0):
+                  f.write(struct.pack('llHHi', 0, 0, 1, 0x2b4, v) + struct.pack('llHHi', 0, 0, 0, 0, 0))
+                  time.sleep(0.05)
+          PY
+          sleep 1
+          m2=$(cat "$F/sys/class/leds/g15::macro_preset2/brightness"); m1=$(cat "$F/sys/class/leds/g15::macro_preset1/brightness")
+          [ "$m2" = 1 ] && [ "$m1" = 0 ] && echo "::notice title=M2::its light is on, M1's off" || echo "::error title=M2::lights M1=$m1 M2=$m2"
+          grep -q '"set": *2' /tmp/g15cfg/g15.json && echo "::notice title=g15.json::$(tr -d '\n' < /tmp/g15cfg/g15.json | cut -c1-300)" || echo "::error title=g15.json::not remembered: $(cat /tmp/g15cfg/g15.json 2>&1 | head -c 300)"
+          # At rest (the clock page: a frame a minute): CPU over 20 s.
+          sleep 3
+          hz=$(getconf CLK_TCK); a=$(awk '{print $14 + $15}' /proc/$pid/stat); sleep 20; b=$(awk '{print $14 + $15}' /proc/$pid/stat)
+          cpu=$(python3 -c "print('%.2f' % (100.0 * ($b - $a) / $hz / 20))"); rss=$(awk '/^VmRSS/ {printf "%.1f", $2/1024}' /proc/$pid/status)
+          echo "::notice title=at rest::${cpu}% of a core · ${rss} MB resident"
+          python3 -c "import sys; sys.exit(0 if $cpu <= 0.3 else 1)" || echo "::error title=at rest::${cpu}% of a core (limit 0.3%)"
+          kill -0 $pid 2>/dev/null || echo "::error title=service::it ended: $(tail -c 1500 /tmp/svc.log | tr '\n' '|')"
+          kill $pid 2>/dev/null; wait $pid 2>/dev/null
+          echo "::notice title=service log::$(tail -c 1500 /tmp/svc.log | tr '\n' '|')"
+      - name: Pictures of the keyboard's screen
+        run: |
+          B="$PWD/hosts/hearth-ui/target/release/hearth-g15"
+          F=/tmp/g15fx
+          export HEARTH_G15_FIXTURE="$F" HEARTH_G15_CONFIG=/tmp/g15pic/g15.json HOME=/tmp/g15home
+          mkdir -p shots /tmp/g15pic
+          for p in clock system music alerts alert rec set; do "$B" frame "$p" "shots/g15-lcd-$p.png" --scale 4 || echo "::error title=frame::$p"; done
+          python3 - <<'PY'
+          import os
+          from PIL import Image, ImageDraw
+          names = ['clock', 'system', 'music', 'alerts', 'alert', 'rec', 'set']
+          ims = [Image.open('shots/g15-lcd-%s.png' % n).convert('RGB') for n in names if os.path.exists('shots/g15-lcd-%s.png' % n)]
+          if ims:
+              w = max(i.width for i in ims); h = sum(i.height + 24 for i in ims)
+              sheet = Image.new('RGB', (w + 24, h + 12), (24, 26, 31)); d = ImageDraw.Draw(sheet); y = 12
+              for n, im in zip(names, ims):
+                  d.text((12, y), n, fill=(220, 220, 220)); sheet.paste(im, (12, y + 12)); y += im.height + 24
+              sheet.save('shots/g15-lcd-pages.png')
+          PY
+          ls -la shots
+      - name: Picture (SHOT notices)
+        run: |
+          [ -f shots/g15-lcd-pages.png ] && python3 .github/scripts/firehold-shot.py g15-lcd-pages || echo "::warning title=pictures::no sheet"
+      - name: The .deb
+        run: |
+          set -eu
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          sha=$(git rev-parse --short=9 HEAD)
+          ver="0~test.$sha"
+          R=/tmp/deb/hearth-g15
+          rm -rf /tmp/deb; mkdir -p "$R/DEBIAN" "$R/usr/bin" "$R/usr/lib/udev/rules.d" "$R/usr/lib/systemd/user" "$R/etc/xdg/autostart" "$R/usr/share/doc/hearth-g15"
+          install -m755 hosts/hearth-ui/target/release/hearth-g15 "$R/usr/bin/hearth-g15"
+          install -m644 os/system_files/usr/lib/udev/rules.d/70-hearth-g15.rules "$R/usr/lib/udev/rules.d/"
+          install -m644 os/system_files/usr/lib/systemd/user/hearth-g15.service "$R/usr/lib/systemd/user/"
+          install -m644 os/system_files/etc/xdg/autostart/hearth-g15.desktop "$R/etc/xdg/autostart/"
+          install -m644 docs/G15.md "$R/usr/share/doc/hearth-g15/README.md"
+          cat > "$R/DEBIAN/control" <<EOF
+          Package: hearth-g15
+          Version: $ver
+          Architecture: amd64
+          Maintainer: Dragongamer9 <Dragongamer9@users.noreply.github.com>
+          Depends: libc6 (>= 2.36)
+          Recommends: playerctl
+          Section: utils
+          Priority: optional
+          Homepage: https://hearthos.fun
+          Description: Logitech G15 support for Hearth OS (test build)
+           The G15's G-keys and macros (M1-M3 sets, MR to record), its 160x43 screen
+           (clock, PC use and heat, the song playing, Hearth's messages) and its lights.
+           A test build of commit $sha, for Hearth OS 1.13 on Debian.
+          EOF
+          sed -i 's/^          //' "$R/DEBIAN/control"
+          cat > "$R/DEBIAN/postinst" <<'EOF'
+          #!/bin/sh
+          # The keyboard's rules for the devices already plugged in, and the user service known at once. Nothing here
+          # can fail the install, and nothing touches starting the PC.
+          set +e
+          if command -v udevadm >/dev/null 2>&1; then
+            udevadm control --reload >/dev/null 2>&1
+            udevadm trigger --action=change --subsystem-match=input --subsystem-match=hidraw --subsystem-match=leds >/dev/null 2>&1
+          fi
+          exit 0
+          EOF
+          cp "$R/DEBIAN/postinst" "$R/DEBIAN/postrm"
+          sed -i 's/^          //' "$R/DEBIAN/postinst" "$R/DEBIAN/postrm"
+          chmod 755 "$R/DEBIAN/postinst" "$R/DEBIAN/postrm"
+          echo /etc/xdg/autostart/hearth-g15.desktop > "$R/DEBIAN/conffiles"
+          mkdir -p out
+          out="out/hearth-g15_${ver}_amd64.deb"
+          dpkg-deb --root-owner-group --build "$R" "$out"
+          dpkg-deb --info "$out" | head -20
+          dpkg-deb --contents "$out"
+          (cd out && sha256sum "$(basename "$out")" > "$(basename "$out").sha256")
+          echo "::notice title=deb::$(basename "$out") · sha256 $(cut -d' ' -f1 "$out.sha256")"
+          echo "DEB_NAME=hearth-g15_${ver}_amd64" >> "$GITHUB_ENV"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.DEB_NAME }}
+          path: |
+            out/*.deb
+            out/*.sha256
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g15-lcd-pictures
+          path: shots
+          retention-days: 14
+          if-no-files-found: ignore

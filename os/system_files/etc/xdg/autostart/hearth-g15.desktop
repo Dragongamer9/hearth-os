@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Logitech G15
+Comment=The G15's G-keys, its screen and its lights (only when one is plugged in)
+Icon=input-keyboard
+Exec=sh -c 'systemctl --user --no-block start hearth-g15.service >/dev/null 2>&1 || true'
+NoDisplay=true
+X-KDE-autostart-phase=2
