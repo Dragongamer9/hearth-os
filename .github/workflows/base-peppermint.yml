@@ -8,12 +8,15 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish the image (off: build and check it only, e.g. to test a branch before merging)'
+        description: 'Publish to hearth-peppermint:testing (what Debian devices follow): main only, on the owner''s word. Off: build and check only'
         type: boolean
-        default: true
-  push:
-    branches: [linux-host, main]
-    paths: ['.github/scripts/**', 'os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-apptheme/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-theater/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**', 'hosts/hearth-steam/**', 'hosts/hearth-kde/**', '.github/scripts/hearth-kde-build.sh', 'tools/app-bundle.py', 'os/app-abi']
+        default: false
+      test_tag:
+        description: 'Publish ONLY to this owner-approved test tag of hearth-peppermint (test-<name>, e.g. test-switch) once every check passes. Never testing, latest or a testing-<version>-<date> tag'
+        type: string
+        default: ''
+  # 1.14.1 (the last Debian update, Nov 19, 2026; the Debian edition is archived and merged into Fedora): no push
+  # trigger. By hand only: to a test tag from this branch, or to :testing from main only on the owner's word.
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-peppermint
@@ -479,7 +482,8 @@ jobs:
       packages: write
       actions: read     # the last build's update-manifest artifact (Update size)
     env:
-      PUBLISH: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'push' && (github.ref == 'refs/heads/linux-host' || github.ref == 'refs/heads/main')) }}
+      PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' }}
+      TAG_IN: ${{ github.event_name == 'workflow_dispatch' && inputs.test_tag || '' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -1062,14 +1066,22 @@ jobs:
             -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-peppermint:latest bash /box.sh flatpak || echo "::warning title=box check::the flatpak check didn't finish"
 
       - name: Publish to GitHub Container Registry
-        if: env.PUBLISH == 'true'
+        if: ${{ success() && (env.PUBLISH == 'true' || env.TAG_IN != '') }}
         run: |
           set -o pipefail
           exec > >(tee /tmp/step.log) 2>&1
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -20 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=publish::$msg"' ERR
           v="${{ needs.app.outputs.version }}"
           echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
-          for tag in testing "testing-$v-$(date -u +%Y%m%d)"; do
+          tags="testing testing-$v-$(date -u +%Y%m%d)"
+          if [ -n "${TAG_IN:-}" ]; then
+            # A test tag only: never what Debian devices follow (:testing, :latest) or a dated testing-<v>-<date> tag
+            # (the owner's dad's PC is pinned on testing-1.13.0-20261116).
+            echo "$TAG_IN" | grep -Eqx 'test-[a-z0-9][a-z0-9.-]{0,40}' || { echo "::error title=publish::refusing tag '$TAG_IN': only test-<name> tags (e.g. test-switch)"; exit 1; }
+            [ "$IMAGE" = ghcr.io/dragongamer9/hearth-peppermint ] || { echo "::error title=publish::refusing image $IMAGE"; exit 1; }
+            tags="$TAG_IN"
+          fi
+          for tag in $tags; do
             # 1.13: the rechunked image exactly as made (its layers' digests are what devices already have).
             if [ "${CHUNKED:-}" = 1 ] && [ -f /mnt/hearth-chunked/img/index.json ]; then
               # 1.13's first publish failed here: skopeo's blob cache tried to reuse a layer from another repository
@@ -1083,4 +1095,4 @@ jobs:
               sudo podman push hearth-peppermint:latest "$IMAGE:$tag"
             fi
           done
-          echo "::notice title=published::$IMAGE:testing"
+          echo "::notice title=published::$IMAGE: $tags (commit ${{ github.sha }})"
