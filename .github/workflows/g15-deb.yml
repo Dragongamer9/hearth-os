@@ -37,7 +37,7 @@ jobs:
         run: |
           set -o pipefail
           cd hosts/hearth-ui
-          if ! cargo build --release -p hearth-g15 2>&1 | tee /tmp/build.log; then
+          if ! cargo build --release -p hearth-g15 --bin hearth-g15 2>&1 | tee /tmp/build.log; then
             awk '/^error/{if (b) print b; b=$0; n=0; next} b && n < 14 {b=b "|" $0; n++} END{if (b) print b}' /tmp/build.log | head -20 | while read -r l; do
               echo "::error title=cargo build::$(echo "$l" | cut -c1-3800)"
             done
@@ -88,7 +88,7 @@ jobs:
           echo "::notice title=at rest::${cpu}% of a core · ${rss} MB resident"
           python3 -c "import sys; sys.exit(0 if $cpu <= 0.3 else 1)" || echo "::error title=at rest::${cpu}% of a core (limit 0.3%)"
           kill -0 $pid 2>/dev/null || echo "::error title=service::it ended: $(tail -c 1500 /tmp/svc.log | tr '\n' '|')"
-          kill $pid 2>/dev/null; wait $pid 2>/dev/null
+          kill $pid 2>/dev/null; wait $pid 2>/dev/null || true
           echo "::notice title=service log::$(tail -c 1500 /tmp/svc.log | tr '\n' '|')"
       - name: Pictures of the keyboard's screen
         run: |
