@@ -9,35 +9,38 @@
 // minute; window pictures stream only while Everything open is on screen.
 import QtQuick
 import QtQuick.Window
+import QtQuick.Shapes
 import org.kde.plasma.plasmoid
 import org.kde.plasma.plasma5support as P5Support
 import org.kde.taskmanager as TaskManager
 import "firehold.js" as F
+import "fhp.js" as H
 
 ContainmentItem {
     id: fh
 
     readonly property real k: Math.max(0.5, Math.min(width / 1920, height / 1080))
     readonly property string fontName: F.font("Noto Sans")
+    // The approved mockups' colours (firehold-plasma 01-12; fhp.js P has the rest).
     readonly property QtObject pal: QtObject {
-        readonly property color bg: "#120c09"
-        readonly property color bg2: "#2a160c"
-        readonly property color text: "#f6ede6"
-        readonly property color dim: "#a3958b"
-        readonly property color faint: "#6f625a"
-        readonly property color card: "#1d1512"
-        readonly property color card2: "#2c221d"
-        readonly property color line: "#3a2d26"
-        readonly property color accent: "#ff8a3d"
-        readonly property color gold: "#f6c56b"
-        readonly property color green: "#8fe0a8"
-        readonly property color red: "#f29a9a"
-        readonly property color blue: "#79c0f2"
-        readonly property color yellow: "#f5d36a"
+        readonly property color bg: "#0f0b0a"
+        readonly property color bg2: "#1d120d"
+        readonly property color text: "#f2ede8"
+        readonly property color dim: "#a39d96"
+        readonly property color faint: "#6f6a66"
+        readonly property color card: "#1e1a18"
+        readonly property color card2: "#2b2522"
+        readonly property color line: "#2e2a28"
+        readonly property color accent: "#ff7a2f"
+        readonly property color gold: "#ffb36b"
+        readonly property color green: "#5fd38d"
+        readonly property color red: "#ff6b6b"
+        readonly property color blue: "#5bb8ff"
+        readonly property color yellow: "#ffd35c"
     }
 
     // ------------------------------------------------------------------ what's on screen (runtime only)
-    property string tab: "home"            // home | library | apps | store
+    property string tab: "home"            // home | library | apps | media | store
     property string page: "tabs"           // tabs | switcher (Everything open) | settings
     property bool guideShown: false
     property bool started: false
@@ -45,8 +48,9 @@ ContainmentItem {
     onFrontChanged: {
         if (!started) return;
         run(["state", front ? "front" : (guideShown ? "guide" : "back")]);
-        if (front) { forceActiveFocus(); refreshSys(false); }
+        if (front) { forceActiveFocus(); refreshSys(false); cardsNow(); }
     }
+    onPageChanged: if (started && page === "tabs") askCards()
     onGuideShownChanged: if (started) { run(["state", guideShown ? "guide" : (front ? "front" : "back")]); if (guideShown) refreshSys(true); }
 
     // ------------------------------------------------------------------ settings (firehold.json, shared with Mantel's Firehold)
@@ -120,6 +124,55 @@ ContainmentItem {
         libraryLoaded = true;
     }
     property var apps: []
+
+    // ------------------------------------------------------------------ the Couch home's cards (hearth-firehold-plasma home)
+    // Asked for only while the Couch is in front: every 5 s while something downloads, else once a minute (the helper
+    // sleeps between looks; no Timer here: the owner's rule on lag). Nothing is asked while a game or the Desk is in front.
+    property var cards: ({})
+    property bool cardsAsking: false
+    property real cardsFullAt: 0
+    function takeCards(t, full) {
+        const o = lastJson(t);
+        if (!o || typeof o !== "object") return;
+        cards = full ? o : Object.assign({}, cards, o);
+        if (full) cardsFullAt = Date.now();
+    }
+    function askCards() {
+        if (cardsAsking || !front || page !== "tabs") return;
+        cardsAsking = true;
+        const busy = (cards.downloads || []).some(function (d) { return d.state === "running"; });
+        const full = !busy || Date.now() - cardsFullAt > 55000;
+        run(["home-after", busy ? "5" : "60"].concat(full ? [] : ["fast"]), function (t) {
+            fh.cardsAsking = false;
+            fh.takeCards(t, full);
+            fh.askCards();
+        });
+    }
+    function cardsNow() {
+        run(["home"], function (t) { fh.takeCards(t, true); fh.askCards(); });
+    }
+    // Firehold's own choices for the home (firehold.json, written only when you change one).
+    readonly property var pins: Array.isArray(cfg.pins) ? cfg.pins : []
+    readonly property var profiles: {
+        const l = (cards.profiles || []).filter(function (p) { return p && p.id; });
+        return l.length ? l : [{ id: "main", name: sys.user || "You" }];
+    }
+    property var optionsGame: null
+    function openOptions(g) { if (g) optionsGame = g; }
+    property string toastSeen: ""
+    property var player: null      // what's playing (MediaCard, Plasma's MPRIS model)
+
+    // ------------------------------------------------------------------ this screen and the others
+    readonly property real screenDiagMm: Screen.pixelDensity > 0 ? Math.sqrt(Screen.width * Screen.width + Screen.height * Screen.height) * Screen.devicePixelRatio / Screen.pixelDensity : 0
+    readonly property bool screenIsTv: (sys.tvScreens || []).indexOf(Screen.name) >= 0 || H.isTv(Screen.name, Screen.model, screenDiagMm)
+    readonly property string screenWord: /^(edp|lvds|dsi)/i.test(Screen.name) ? "screen" : "monitor"
+    readonly property var screenList: Qt.application.screens.map(function (s) {
+        const d = s.pixelDensity > 0 ? Math.sqrt(s.width * s.width + s.height * s.height) * s.devicePixelRatio / s.pixelDensity : 0;
+        const tv = (fh.sys.tvScreens || []).indexOf(s.name) >= 0 || H.isTv(s.name, s.model, d);
+        const here = s.name === Screen.name;
+        return { name: s.name, label: tv ? "TV" : (/^(edp|lvds|dsi)/i.test(s.name) ? "This screen" : "Monitor"),
+                 modeName: here ? "Couch" : "Desk", here: here };
+    })
 
     // ------------------------------------------------------------------ windows (Plasma's task model)
     TaskManager.TasksModel {
@@ -246,6 +299,13 @@ ContainmentItem {
         else if (cmd === "home") home("home");
         else if (cmd === "settings") { home("home"); page = "settings"; }
         else if (cmd.indexOf("tab:") === 0) home(cmd.slice(4));
+        else if (cmd === "cards") cardsNow();
+        // A controller button by name (the same keys hearth-firehold-plasma's controller sends; the checks use it).
+        else if (cmd.indexOf("key:") === 0) {
+            const m = { up: Qt.Key_Up, down: Qt.Key_Down, left: Qt.Key_Left, right: Qt.Key_Right, a: Qt.Key_Return, b: Qt.Key_Escape,
+                        x: Qt.Key_X, y: Qt.Key_Y, lb: Qt.Key_PageUp, rb: Qt.Key_PageDown, lt: Qt.Key_Comma, rt: Qt.Key_Period };
+            if (m[cmd.slice(4)] !== undefined) key(m[cmd.slice(4)]);
+        }
     }
     property int listenFails: 0
     function listen() {
@@ -265,10 +325,11 @@ ContainmentItem {
     Keys.onPressed: function (e) {
         if (fh.key(e.key)) e.accepted = true;
     }
-    readonly property var tabs: ["home", "library", "apps", "store"]
+    readonly property var tabs: ["home", "library", "apps", "media", "store"]
     function key(k) {
         if (k === Qt.Key_F1) { guide(false); return true; }
         if (k === Qt.Key_Menu || k === Qt.Key_F2) { page = page === "settings" ? "tabs" : "settings"; return true; }
+        if (optionsGame) return optionsPage.key(k);
         if (page === "switcher") return switcherPage.key(k);
         if (page === "settings") return settingsPage.key(k);
         if (k === Qt.Key_PageUp || k === Qt.Key_PageDown) {
@@ -297,24 +358,40 @@ ContainmentItem {
         forceActiveFocus();
         run(["state", front ? "front" : "back"]);
         listen();
+        cardsNow();
         run(["ready", "org.hearthos.firehold"]);
     }
 
     // ------------------------------------------------------------------ drawing
+    // The mockups' warm background: a glow at the top right over a dark brown fall.
     Rectangle {
         anchors.fill: parent
         gradient: Gradient {
-            orientation: Gradient.Horizontal
-            GradientStop { position: 0.0; color: fh.pal.bg }
-            GradientStop { position: 0.55; color: fh.page === "switcher" ? "#1e0f08" : fh.tab === "home" && fh.page === "tabs" ? "#2a1409" : "#1c0f08" }
-            GradientStop { position: 1.0; color: fh.pal.bg }
+            GradientStop { position: 0.0; color: "#1d120d" }
+            GradientStop { position: 1.0; color: "#0f0b0a" }
         }
     }
-    Rectangle {
+    Item {
         anchors.fill: parent
-        gradient: Gradient {
-            GradientStop { position: 0.0; color: "transparent" }
-            GradientStop { position: 1.0; color: "#c00b0806" }
+        clip: true
+        Shape {
+            x: fh.width * 0.75 - 1200 * fh.k; y: fh.height * 0.10 - 700 * fh.k
+            width: 2400 * fh.k; height: 1400 * fh.k
+            ShapePath {
+                strokeWidth: -1
+                fillGradient: RadialGradient {
+                    centerX: 1200 * fh.k; centerY: 700 * fh.k; centerRadius: 1200 * fh.k
+                    focalX: centerX; focalY: centerY
+                    GradientStop { position: 0.0; color: "#3a1a0b" }
+                    GradientStop { position: 0.7; color: "#003a1a0b" }
+                }
+                startX: 0; startY: 0
+                PathLine { x: 2400 * fh.k; y: 0 }
+                PathLine { x: 2400 * fh.k; y: 1400 * fh.k }
+                PathLine { x: 0; y: 1400 * fh.k }
+                PathLine { x: 0; y: 0 }
+            }
+            transform: Scale { origin.x: 1200 * fh.k; origin.y: 700 * fh.k; yScale: 700 / 1200 }
         }
     }
 
@@ -322,13 +399,15 @@ ContainmentItem {
         id: topBar
         couch: fh
         visible: fh.page === "tabs"
-        x: 72 * fh.k; y: 44 * fh.k
+        x: 72 * fh.k; y: 36 * fh.k
         width: parent.width - 144 * fh.k
         height: 48 * fh.k
     }
     Home { id: homePage; couch: fh; anchors.fill: parent; visible: fh.page === "tabs" && fh.tab === "home" }
     Library { id: libraryPage; couch: fh; anchors.fill: parent; visible: fh.page === "tabs" && fh.tab === "library" }
-    AppsPage { id: appsPage; couch: fh; anchors.fill: parent; visible: fh.page === "tabs" && (fh.tab === "apps" || fh.tab === "store") }
+    AppsPage { id: appsPage; couch: fh; anchors.fill: parent; visible: fh.page === "tabs" && (fh.tab === "apps" || fh.tab === "media" || fh.tab === "store") }
     Switcher { id: switcherPage; couch: fh; anchors.fill: parent; visible: fh.page === "switcher" }
     CouchSettings { id: settingsPage; couch: fh; anchors.fill: parent; visible: fh.page === "settings" }
+    // Game options (mockup 03): over whatever tab it was opened from.
+    GameOptions { id: optionsPage; couch: fh; anchors.fill: parent; visible: fh.page === "tabs" && fh.optionsGame !== null }
 }

@@ -22,37 +22,18 @@ export HEARTH_FIREHOLD_PLASMA=1 FIREHOLD_PLASMA_SHELL_LOG="$OUT/plasmashell.log"
 [ -e /etc/xdg/menus/applications.menu ] || export XDG_MENU_PREFIX=$(basename "$(ls /etc/xdg/menus/*-applications.menu 2>/dev/null | head -1)" applications.menu)
 RUN="$XDG_RUNTIME_DIR/hearth-firehold-plasma"
 
-# ---- the games Firehold shows: the mockups' sample games, as hearth-firehold's cache (no Hearth app here).
-python3 - "$HOME/.cache/hearth/firehold-library.json" <<'PY'
-import json, os, sys, time
-now = int(time.time() * 1000)
-m = 60000
-g = lambda i, t, store, kind, **k: dict({'id': i, 'title': t, 'store': store, 'kind': kind, 'installed': True, 'lastPlayed': 0}, **k)
-games = [
-    g('steam:1', 'Ember Trails', 'Steam', 'steam', lastPlayed=now - 41 * m, cloudSaves=True, chapter='Chapter 4'),
-    g('steam:2', 'Skyforge', 'Steam', 'steam', lastPlayed=now - 3 * 60 * m),
-    g('gog:1', 'Night Harbor', 'GOG', 'gog', lastPlayed=now - 5 * 60 * m),
-    g('emu:1', 'Pixel Rally', 'Emulator', 'emu', lastPlayed=now - 8 * 60 * m),
-    g('epic:1', 'Hollow Deep', 'Epic', 'epic', lastPlayed=now - 26 * 60 * m, update=True),
-    g('steam:3', 'Tiny Farm', 'Steam', 'steam', lastPlayed=now - 50 * 60 * m),
-    g('winapp:1', 'Old Office', 'Windows app', 'winapp', lastPlayed=now - 80 * 60 * m),
-    g('manual:1', 'Quad Mech', 'Your game', 'yours', lastPlayed=now - 90 * 60 * m, devBuild=True),
-    g('gog:2', 'Star Courier', 'GOG', 'gog', installed=False),
-    g('epic:2', 'Deep Root', 'Epic', 'epic', installed=False),
-    g('steam:4', 'Cloud Lanes', 'Steam', 'steam', installed=False, cloudSaves=True),
-    g('steam:5', 'Frost Keep', 'Steam', 'steam', installed=False),
-]
-counts = {'all': 412, 'installed': 96, 'steam': 288, 'gog': 41, 'epic': 57, 'winapp': 9, 'emu': 14, 'yours': 3}
-os.makedirs(os.path.dirname(sys.argv[1]), exist_ok=True)
-json.dump({'games': games, 'counts': counts}, open(sys.argv[1], 'w'))
-PY
+# ---- the mockups' sample games, devices and people (firehold-plasma-fixtures.py; no Hearth app or Steam here).
+FX=/tmp/fhp-fixtures
+python3 "$(dirname "$0")/firehold-plasma-fixtures.py" "$HOME" "$FX" || fail fixtures "the stand-ins couldn't be written"
+export HEARTH_FIREHOLD_HOME_FIXTURE="$FX/home.json" HEARTH_FIREHOLD_SYS_FIXTURE="$FX/sys.json" HEARTH_FIREHOLD_TV_SCREENS=Virtual-1
+key() { for k in "$@"; do hearth-firehold-plasma ask "key:$k"; sleep 1; done; }
 
-# ---- a stand-in game window: "Ember Trails" (the library matches it by its title).
+# ---- a stand-in game window: "Rise of the Witch-king" (the library matches it by its title).
 cat > /tmp/ember.qml <<'QML'
 import QtQuick
 import QtQuick.Window
 Window {
-    title: "Ember Trails"
+    title: "Rise of the Witch-king"
     width: 1280; height: 720; visible: true
     Rectangle {
         anchors.fill: parent
@@ -134,6 +115,20 @@ wait_ready org.hearthos.firehold 90 && echo "::notice title=Couch::up in $(( $(d
   || fail Couch "org.hearthos.firehold didn't say it's up: $(grep -iE 'firehold|error' "$OUT/plasmashell.log" | head -8 | tr '\n' '|' | cut -c1-900)"
 sleep 4
 shot fp-0-couch-first
+# ---- the Couch home (mockups firehold-plasma 01-03), before anything else is open.
+command -v python3 >/dev/null && python3 -c 'import gi, dbus' 2>/dev/null && { python3 "$FX/mpris.py" >"$OUT/mpris.log" 2>&1 & }
+sleep 3
+hearth-firehold-plasma ask cards; sleep 4
+echo "::notice title=Screen::$(QT_QPA_PLATFORM=wayland timeout 5 kscreen-doctor -o 2>/dev/null | head -3 | tr '\n' ' ')"
+shot fp-01-couch-home
+key down down down down right; sleep 1
+python3 "$(dirname "$0")/firehold-plasma-fixtures.py" --low "$FX"; hearth-firehold-plasma ask cards; sleep 4
+shot fp-02-couch-home-rows
+key b
+hearth-firehold-plasma ask tab:library; sleep 3
+key right x; sleep 2
+shot fp-03-couch-game-options
+key b; hearth-firehold-plasma ask tab:home; sleep 2
 
 # ---- open apps and the game, then the Couch in front again (KWin's Show Desktop, as Home does).
 dolphin "$HOME/Pictures" >"$OUT/dolphin.log" 2>&1 &
@@ -152,7 +147,7 @@ hearth-firehold-plasma ask open; sleep 6
 shot fp-4-everything-open
 hearth-firehold-plasma ask open; sleep 1
 # The game full screen in front, then the Guide over it.
-front "Ember Trails" true; sleep 3
+front "Rise of the Witch-king" true; sleep 3
 hearth-firehold-plasma ask guide; sleep 5
 shot fp-3-guide
 echo "::notice title=listener::$(ls -la "$RUN" | tr '\n' ' ' | cut -c1-900); $(pgrep -af 'hearth-firehold-plasma listen' | tr '\n' ' ')"
@@ -180,7 +175,7 @@ fi
 wait_ready org.hearthos.firehold.desk 30 && echo "::notice title=Desk::up in $(( $(date +%s) - since )) s" \
   || fail Desk "org.hearthos.firehold.desk didn't say it's up: $(grep -iE 'error' "$OUT/plasmashell.log" | tail -8 | tr '\n' '|' | cut -c1-900)"
 sleep 3
-front "Ember Trails" false; sleep 2
+front "Rise of the Witch-king" false; sleep 2
 front "Pictures" false; sleep 4
 shot fp-2-desk
 echo "::notice title=Desk panels::$(timeout 10 dbus-send --session --print-reply --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript string:'print(panels().map(function(p){return p.location + " " + p.lengthMode + " " + p.widgets().map(function(w){return w.type}).join(",")}).join(" | "))' 2>&1 | tr '\n' ' ' | cut -c1-900)"

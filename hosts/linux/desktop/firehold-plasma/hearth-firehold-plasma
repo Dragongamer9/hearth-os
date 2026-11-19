@@ -24,6 +24,10 @@ restarts only plasmashell with the other shell package: KWin, the session and ev
                               brightness, power, VRR, tearing, overlay)
   do ACTION                   screenshot, volume-up/down, brightness-up/down, osk, vrr, tearing, power, overlay,
                               record, friends, quit-game PID
+  home [fast] | home-after SECS [fast]
+                              the Couch home's cards (downloads from Steam's and Heroic's own files, Hearth OS's
+                              update, controller and headset batteries, Hearth Link's devices, where games are up to);
+                              fast: only what changes quickly. home-after: the same after SECS (the Couch's next look)
   apps | launch ID            the Apps tab
   library | cached | play ID | page ID
                               the games (desktop/shell/hearth-firehold, as Mantel's Firehold)
@@ -731,8 +735,17 @@ def sysinfo(full=True):
         name = (pw.pw_gecos.split(',')[0] or pw.pw_name).strip()
         out['user'] = name
         out['initial'] = name[:1].upper()
+        for f in (os.path.join(home(), '.face.icon'), os.path.join(home(), '.face'), '/var/lib/AccountsService/icons/' + pw.pw_name):
+            if os.path.isfile(f) and os.access(f, os.R_OK):
+                out['face'] = f
+                break
     except (KeyError, ImportError):
         pass
+    # Screens that are TVs when Qt can't tell (a TV that says nothing about itself): HEARTH_FIREHOLD_TV_SCREENS=HDMI-A-1,...
+    out['tvScreens'] = [x for x in os.environ.get('HEARTH_FIREHOLD_TV_SCREENS', '').split(',') if re.match(r'^[A-Za-z0-9_.-]{1,40}$', x)]
+    fx = os.environ.get('HEARTH_FIREHOLD_SYS_FIXTURE')   # pictures in CI only
+    if fx:
+        out.update(read_json(fx, {}) or {})
     if not full:
         return out
     v = quiet(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@'], 3)
@@ -832,6 +845,23 @@ def do(action, arg=''):
         detach(['nimbus-mode', 'game'])
     elif action == 'plain':
         plain()
+    elif action == 'wake' and re.fullmatch(r'[0-9a-f]{16,128}', arg or ''):
+        detach([sys.executable, os.path.join(SHELL_DIR, 'hearth-device-status'), 'wake', arg])
+    elif action == 'help' and re.fullmatch(r'[0-9a-f]{16,128}', arg or ''):
+        # Help on a family member's device: its remote desktop (Hearth Link), then Moonlight to see it.
+        r = read_json_line(quiet([sys.executable, os.path.join(SHELL_DIR, 'hearth-link-settings'), 'remote', arg], 15)) or {}
+        if r.get('on'):
+            detach(['sh', '-c', 'command -v moonlight >/dev/null && exec moonlight || exec flatpak run com.moonlight_stream.Moonlight'])
+            return {'ok': True, 'host': r.get('host') or ''}
+        return {'ok': False, 'error': "Its remote desktop is off: turn on Remote desktop on that device"}
+    elif action == 'uninstall' and re.match(r'^[a-z]+:[A-Za-z0-9_.:-]{1,80}$', arg or ''):
+        # Steam asks first itself; everything else opens Hearth's game page, where Uninstall asks first.
+        if arg.startswith('steam:') and arg[6:].isdigit():
+            detach(['steam', 'steam://uninstall/' + arg[6:]])
+        else:
+            return games(['page', arg]) == 0 and {'ok': True} or {'ok': False}
+    elif action == 'media-app' and re.match(r'^[A-Za-z0-9_.+-]{1,120}$', arg or ''):
+        launch(arg)
     elif action == 'systemsettings':
         detach(['systemsettings'] + ([arg] if re.match(r'^kcm_[a-z0-9_]+$', arg or '') else []))
     else:
@@ -887,7 +917,9 @@ def apps():
                 continue
             if 'KDE' in e.get('NotShowIn', '').split(';'):
                 continue
-            out.append({'id': n[:-8], 'name': e['Name'], 'icon': e.get('Icon', ''), 'comment': e.get('Comment', '')})
+            out.append({'id': n[:-8], 'name': e['Name'], 'icon': e.get('Icon', ''), 'comment': e.get('Comment', ''),
+                        'categories': [c for c in e.get('Categories', '').split(';') if c][:12],
+                        'web': 'firefox' in e.get('Exec', '').lower() and n[:-8].lower() not in ('firefox', 'org.mozilla.firefox')})
     out.sort(key=lambda a: a['name'].lower())
     return out
 
@@ -900,6 +932,356 @@ def launch(app_id):
     if have('gtk-launch'):
         return detach(['gtk-launch', app_id])
     return False
+
+
+# ------------------------------------------------------------------ the Couch home's cards (mockups firehold-plasma 01, 02)
+# Everything here only reads: Steam's own files on this PC (never the Steam account), Heroic's download list, Beacon's
+# files, the batteries the kernel and UPower see, Hearth Link's devices. `home` prints one JSON line; the Couch asks
+# again only while it's on screen (every few seconds while something downloads, else once a minute).
+
+BEACON_SERIES = {'rotwk': 'The Battle for Middle-earth II', 'bfme2': 'The Lord of the Rings', 'bfme1': 'The Lord of the Rings',
+                 'aotr': 'The Battle for Middle-earth II mod', 'conquest': 'The Lord of the Rings', 'uaw': '', 'swgb': 'Star Wars'}
+
+
+def data_home():
+    return os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share')
+
+
+def read_json(path, default=None):
+    try:
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def vdf_values(text):
+    """Steam's text files (appmanifest, libraryfolders): every "key" "value" pair, flat (enough for what's read here)."""
+    return re.findall(r'"([^"\n]+)"\s+"([^"\n]*)"', text or '')
+
+
+def steam_roots():
+    out = []
+    for d in (os.path.join(home(), '.local/share/Steam'), os.path.join(home(), '.steam/steam'),
+              os.path.join(home(), '.var/app/com.valvesoftware.Steam/.local/share/Steam')):
+        r = os.path.realpath(d)
+        if os.path.isdir(os.path.join(r, 'steamapps')) and r not in out:
+            out.append(r)
+    return out
+
+
+def steam_libraries():
+    libs = []
+    for root in steam_roots():
+        libs.append(os.path.join(root, 'steamapps'))
+        try:
+            with open(os.path.join(root, 'steamapps', 'libraryfolders.vdf'), encoding='utf-8', errors='replace') as f:
+                for k, v in vdf_values(f.read()):
+                    if k == 'path':
+                        libs.append(os.path.join(v.replace('\\\\', '/'), 'steamapps'))
+        except OSError:
+            pass
+    seen, out = set(), []
+    for l in libs:
+        r = os.path.realpath(l)
+        if r not in seen and os.path.isdir(r):
+            seen.add(r)
+            out.append(r)
+    return out
+
+
+# Steam's AppState flags (appmanifest StateFlags).
+ST_INSTALLED, ST_UPDATE_REQUIRED, ST_RUNNING, ST_PAUSED, ST_STARTED, ST_DOWNLOADING = 4, 2, 256, 512, 1024, 1048576
+
+
+def size_text(b):
+    if b >= 1e9:
+        return '%.1f GB' % (b / 1e9)
+    return '%d MB' % max(1, round(b / 1e6))
+
+
+def left_text(secs):
+    if secs is None:
+        return ''
+    m = max(1, round(secs / 60))
+    return '%d min' % m if m < 60 else '%d h %d min' % (m // 60, m % 60)
+
+
+def steam_downloads(now=None):
+    """Steam's downloads, from its own files on this PC: each appmanifest's state and byte counts. The time left comes
+    from the bytes done since the last look ($XDG_RUNTIME_DIR, not a setting)."""
+    now = now or time.time()
+    rates_path = os.path.join(run_dir(), 'download-rates.json')
+    before = read_json(rates_path, {}) or {}
+    after, out = {}, []
+    for lib in steam_libraries():
+        try:
+            names = os.listdir(lib)
+        except OSError:
+            continue
+        for n in names:
+            m = re.match(r'^appmanifest_(\d+)\.acf$', n)
+            if not m:
+                continue
+            try:
+                with open(os.path.join(lib, n), encoding='utf-8', errors='replace') as f:
+                    vals = dict(vdf_values(f.read()))
+            except OSError:
+                continue
+            try:
+                flags = int(vals.get('StateFlags', '0'))
+                total = int(vals.get('BytesToDownload', '0'))
+                done = int(vals.get('BytesDownloaded', '0'))
+            except ValueError:
+                continue
+            if total <= 0 or done >= total or not flags & (ST_UPDATE_REQUIRED | ST_RUNNING | ST_STARTED | ST_DOWNLOADING | ST_PAUSED):
+                continue
+            appid = m.group(1)
+            running = bool(flags & (ST_RUNNING | ST_DOWNLOADING | ST_STARTED)) and not flags & ST_PAUSED
+            left = None
+            prev = before.get(appid)
+            if running and isinstance(prev, list) and len(prev) == 2 and now > prev[0] and done > prev[1]:
+                left = (total - done) / ((done - prev[1]) / (now - prev[0]))
+            after[appid] = [now, done] if running else prev
+            out.append({'id': 'steam:' + appid, 'title': vals.get('name') or appid, 'store': 'Steam',
+                        'what': 'update' if flags & ST_INSTALLED else 'install', 'done': done, 'total': total,
+                        'percent': int(done * 100 / total), 'state': 'running' if running else ('paused' if flags & ST_PAUSED else 'waiting'),
+                        'line': 'Steam · %s of %s%s' % (size_text(done).replace(' GB', '') if total >= 1e9 and done >= 1e9 else size_text(done),
+                                                        size_text(total), (' · ' + left_text(left)) if left is not None else '')})
+    try:
+        write_small(rates_path, json.dumps({k: v for k, v in after.items() if v}))
+    except OSError:
+        pass
+    return out
+
+
+def heroic_downloads():
+    """Heroic's download list (its own store file): what's downloading and what's waiting, with Heroic's progress
+    when it has written one."""
+    out = []
+    d = read_json(os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'heroic', 'store',
+                               'download-manager.json'), {}) or {}
+    for item in d.get('queue') or [] if isinstance(d, dict) else []:
+        if not isinstance(item, dict):
+            continue
+        p = item.get('params') if isinstance(item.get('params'), dict) else {}
+        info = p.get('gameInfo') if isinstance(p.get('gameInfo'), dict) else {}
+        title = info.get('title') or p.get('appName')
+        if not isinstance(title, str) or not title:
+            continue
+        prog = item.get('progress') if isinstance(item.get('progress'), dict) else {}
+        pct = prog.get('percent') if isinstance(prog.get('percent'), (int, float)) else None
+        running = item.get('status') == 'running' or item.get('type') == 'current'
+        line = 'Heroic'
+        if isinstance(prog.get('bytes'), str):
+            line += ' · ' + prog['bytes']
+        if isinstance(prog.get('eta'), str) and prog['eta']:
+            line += ' · ' + prog['eta']
+        out.append({'id': '%s:%s' % (p.get('runner') or 'heroic', p.get('appName') or title), 'title': title, 'store': 'Heroic',
+                    'what': 'update' if p.get('isUpdate') else 'install', 'percent': int(pct) if pct is not None else -1,
+                    'state': 'running' if running else 'waiting', 'line': line})
+    return out
+
+
+def os_update_ready():
+    """A Hearth OS update that's downloaded and goes in at the next start (ostree's staged deployment)."""
+    return os.path.exists('/run/ostree/staged-deployment')
+
+
+def battery_level(p):
+    c = read_small(p + '/capacity')
+    if c.isdigit():
+        return int(c)
+    return {'Full': 100, 'High': 80, 'Normal': 55, 'Low': 20, 'Critical': 5}.get(read_small(p + '/capacity_level'), -1)
+
+
+def device_batteries():
+    """Controllers, headsets, mice: the kernel's device batteries (scope Device), then UPower's (Bluetooth headsets)."""
+    pads, other = [], []
+    base = os.environ.get('HEARTH_POWER_SUPPLY', '/sys/class/power_supply')
+    try:
+        names = sorted(os.listdir(base))
+    except OSError:
+        names = []
+    seen = set()
+    for n in names:
+        p = os.path.join(base, n)
+        if read_small(p + '/scope') != 'Device' or read_small(p + '/type') not in ('Battery', ''):
+            continue
+        lvl = battery_level(p)
+        if lvl < 0:
+            continue
+        model = read_small(p + '/model_name') or n
+        low = n.lower() + ' ' + model.lower()
+        kind = ('mouse' if re.search(r'hidpp|mouse|mx ', low) else 'keyboard' if 'keyboard' in low
+                else 'headset' if re.search(r'headset|headphone|buds', low) else 'pad')
+        seen.add(model.lower())
+        (pads if kind == 'pad' else other).append({'name': model, 'kind': kind, 'percent': lvl,
+                                                   'charging': read_small(p + '/status') == 'Charging'})
+    dump = quiet(['upower', '--dump'], 4) if have('upower') else ''
+    for block in dump.split('\n\n'):
+        kind = re.search(r'^\s*(headset|headphones|gaming-input|mouse|keyboard)\s*$', block, re.M)
+        pct = re.search(r'percentage:\s*(\d+)', block)
+        model = re.search(r'model:\s*(.+)', block)
+        if not kind or not pct:
+            continue
+        name = model.group(1).strip() if model else kind.group(1)
+        if name.lower() in seen:
+            continue
+        seen.add(name.lower())
+        k = {'headphones': 'headset', 'gaming-input': 'pad'}.get(kind.group(1), kind.group(1))
+        (pads if k == 'pad' else other).append({'name': name, 'kind': k, 'percent': int(pct.group(1)), 'charging': False})
+    for i, d in enumerate(pads):
+        d['player'] = i + 1
+    for d in pads + other:
+        d['low'] = d['percent'] <= 20 and not d['charging']
+    return pads + other
+
+
+def hearth_devices():
+    """Your other Hearth devices (Hearth Link), as hearth-device-status and hearth-link-settings tell them, and what
+    Hearth Storage does with saves (backed up there, following you between devices)."""
+    out = []
+    ds = os.path.join(SHELL_DIR, 'hearth-device-status')
+    st = read_json_line(quiet([sys.executable, ds, 'devices'], 12)) if os.path.isfile(ds) else None
+    link = os.path.join(SHELL_DIR, 'hearth-link-settings')
+    ls = read_json_line(quiet([sys.executable, link, 'status'], 8)) if os.path.isfile(link) and not os.environ.get('HEARTH_DEVICES_SAMPLE') else None
+    rel = {}
+    for p in (ls or {}).get('paired') or [] if isinstance(ls, dict) else []:
+        if isinstance(p, dict) and isinstance(p.get('id'), str):
+            rel[p['id']] = p
+    for d in (st or {}).get('devices') or [] if isinstance(st, dict) else []:
+        if not isinstance(d, dict) or d.get('friend'):
+            continue   # a friend's device is for copying games only
+        s = d.get('status') if isinstance(d.get('status'), dict) else {}
+        r = rel.get(d.get('id'), {})
+        out.append({'id': d.get('id') or '', 'name': d.get('name') or s.get('name') or 'Device', 'online': d.get('online') is True,
+                    'kind': s.get('kind') or '', 'mode': s.get('mode') or '', 'lastSeen': d.get('lastSeen') or 0,
+                    'playing': (s.get('playing') or {}).get('title') if isinstance(s.get('playing'), dict) else '',
+                    'battery': (s.get('battery') or {}).get('percent') if isinstance(s.get('battery'), dict) else None,
+                    'uptime': s.get('uptime') or 0, 'wake': d.get('wake') is True,
+                    'family': (r.get('relation') or d.get('relation')) == 'family',
+                    'savesAt': d.get('savesAt') or s.get('savesAt') or 0, 'backupAt': d.get('backupAt') or s.get('backupAt') or 0})
+    storage = (ls or {}).get('storage') if isinstance(ls, dict) and isinstance(ls.get('storage'), dict) else {}
+    return out, storage
+
+
+def profiles_list():
+    """Hearth's profiles (its data folder's profiles.json): who can be playing a game."""
+    d = read_json(os.path.join(data_home(), 'nimbus', 'profiles.json'), {}) or {}
+    out = []
+    for p in d.get('list') or [] if isinstance(d, dict) else []:
+        if isinstance(p, dict) and isinstance(p.get('id'), str) and re.match(r'^[A-Za-z0-9_-]{1,40}$', p['id']):
+            out.append({'id': p['id'], 'name': p.get('name') if isinstance(p.get('name'), str) else ''})
+    active = d.get('active') if isinstance(d, dict) else None
+    out.sort(key=lambda p: 0 if p['id'] == active else 1)
+    return out
+
+
+def read_json_line(t):
+    for line in reversed((t or '').strip().splitlines()):
+        try:
+            return json.loads(line)
+        except ValueError:
+            continue
+    return None
+
+
+def progress():
+    """Where each game is up to, when the game or Beacon says it: Hearth's progress files
+    (~/.local/share/hearth/progress/<id>.json: {"campaign", "chapter", "of", "name", "percent", "series", "details"}),
+    Beacon's (~/.local/share/beacon/progress.json, keyed by Beacon's game, the same fields), Beacon's play time and the
+    mod you picked last. Nothing for a game that doesn't say."""
+    out = {}
+    pdir = os.path.join(data_home(), 'hearth', 'progress')
+    try:
+        names = os.listdir(pdir)
+    except OSError:
+        names = []
+    for n in names:
+        if n.endswith('.json'):
+            v = read_json(os.path.join(pdir, n))
+            if isinstance(v, dict):
+                out[n[:-5].replace('_', ':', 1)] = v
+    bdir = os.path.join(data_home(), 'beacon')
+    bp = read_json(os.path.join(bdir, 'progress.json'), {}) or {}
+    pt = read_json(os.path.join(bdir, 'playtime.json'), {}) or {}
+    cfg = read_json(os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'beacon', 'config.json'), {}) or {}
+    mods = cfg.get('selected_mod') if isinstance(cfg, dict) and isinstance(cfg.get('selected_mod'), dict) else {}
+    for slug in set(list(bp) + list(pt) + list(mods)) if isinstance(bp, dict) and isinstance(pt, dict) else []:
+        if not re.match(r'^[a-z0-9:_-]{1,40}$', slug):
+            continue
+        e = dict(out.get('beacon:' + slug, {}))
+        if isinstance(bp.get(slug), dict):
+            for k, v in bp[slug].items():
+                e.setdefault(k, v)
+        if isinstance(pt.get(slug), dict) and isinstance(pt[slug].get('seconds'), int):
+            e.setdefault('hours', round(pt[slug]['seconds'] / 3600))
+        if isinstance(mods.get(slug), str) and mods[slug]:
+            e.setdefault('mod', mods[slug])
+        e.setdefault('series', BEACON_SERIES.get(slug, ''))
+        e.setdefault('launcher', 'Beacon')
+        out['beacon:' + slug] = e
+    clean = {}
+    for gid, e in out.items():
+        c = {}
+        for k in ('campaign', 'name', 'series', 'details', 'mod', 'launcher', 'build', 'who', 'layout', 'saves', 'runner',
+                  'version', 'size', 'note'):
+            if isinstance(e.get(k), str) and e[k].strip():
+                c[k] = e[k].strip()[:90]
+        for k in ('chapter', 'of', 'percent', 'hours'):
+            if isinstance(e.get(k), (int, float)) and e[k] >= 0:
+                c[k] = e[k]
+        if c:
+            clean[gid] = c
+    return clean
+
+
+def added_times():
+    """When each Steam game came onto this PC (its manifest's first write): the Recently added row."""
+    out = {}
+    for lib in steam_libraries():
+        try:
+            for n in os.listdir(lib):
+                m = re.match(r'^appmanifest_(\d+)\.acf$', n)
+                if m:
+                    st = os.stat(os.path.join(lib, n))
+                    out['steam:' + m.group(1)] = int(min(st.st_mtime, st.st_ctime) * 1000)
+        except OSError:
+            continue
+    return out
+
+
+def home_cards(fast=False):
+    fx = os.environ.get('HEARTH_FIREHOLD_HOME_FIXTURE')   # pictures in CI only
+    if fx:
+        d = read_json(fx, {}) or {}
+        d.setdefault('at', int(time.time() * 1000))
+        return d
+    dl = steam_downloads() + heroic_downloads()
+    out = {'at': int(time.time() * 1000), 'downloads': dl, 'osUpdate': os_update_ready(), 'controllers': device_batteries()}
+    if not fast:
+        devs, storage = hearth_devices()
+        out['devices'] = devs
+        out['savesToStorage'] = storage.get('backupSaves') is True
+        own = [d for d in devs if not d['family'] and d['kind'] in ('handheld', 'laptop', 'desktop')]
+        out['alsoOn'] = own[0]['name'] if storage.get('savesFollow') is True and own else ''
+        out['progress'] = progress()
+        out['added'] = added_times()
+        out['profiles'] = profiles_list()
+    return out
+
+
+def home_after(secs, fast):
+    """The Couch's next look at its cards: asleep for SECS (it asks only while it's on screen), then one line."""
+    end = time.time() + max(0, min(secs, 300))
+    parent = os.getppid()
+    while time.time() < end:
+        time.sleep(min(5, end - time.time()))
+        if os.getppid() != parent:
+            return 0
+    print(json.dumps(home_cards(fast)))
+    return 0
 
 
 def games(argv):
@@ -954,6 +1336,10 @@ def main(argv):
             print(json.dumps(sysinfo(bool(a and a[0] == 'all'))))
         elif what == 'do' and a:
             print(json.dumps(do(a[0], a[1] if len(a) > 1 else '')))
+        elif what == 'home':
+            print(json.dumps(home_cards(bool(a and a[0] == 'fast'))))
+        elif what == 'home-after' and a and a[0].isdigit():
+            return home_after(int(a[0]), len(a) > 1 and a[1] == 'fast')
         elif what == 'apps':
             print(json.dumps(apps()))
         elif what == 'launch' and a:

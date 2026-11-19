@@ -34,6 +34,7 @@ env:
   PLASMA_EXTRA: >-
     python3-evdev libnotify qt6-qtdeclarative kf6-kirigami layer-shell-qt kpipewire pipewire wireplumber kactivitymanagerd
     plasma-integration gdb kglobalacceld spectacle kscreenlocker plasma-nm plasma-pa qt6-qttools dolphin konsole kate kde-cli-tools kscreen
+    python3-gobject rsms-inter-fonts
 
 jobs:
   screens:
