@@ -213,8 +213,8 @@ impl App {
         let w = width.max(320.0);
         // Only the full-screen overlays say how tall the screen is: until one has, a 16:9 screen this wide.
         let h = if (self.scr.width - w).abs() < 1.0 { self.scr.height } else { w * 9.0 / 16.0 };
-        let share = if size == "l" { 0.5 } else { 0.44 };
-        let least = if size == "s" { 250.0 } else { 290.0 };
+        let share: f32 = if size == "l" { 0.5 } else { 0.44 };
+        let least: f32 = if size == "s" { 250.0 } else { 290.0 };
         let wide = w * if size == "s" { 0.2 } else if size == "l" { 0.29 } else { 0.24 };
         (h * share).min(least.max(wide)).round().max(160.0) as u32
     }
