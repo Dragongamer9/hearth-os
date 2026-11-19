@@ -121,6 +121,11 @@ pub fn answer(o: &run::Output) -> Result<Value, String> {
     if let Some(e) = all.lines().find_map(|l| l.strip_prefix("error: ")) {
         return Err(e.trim().to_string());
     }
+    if let Ok(v) = serde_json::from_str::<Value>(o.out.trim()) {
+        if v.is_object() {
+            return Ok(v);
+        }
+    }
     if let Some(v) = o.out.lines().rev().find_map(|l| if l.trim_start().starts_with('{') { serde_json::from_str::<Value>(l.trim()).ok() } else { None }) {
         return Ok(v);
     }
