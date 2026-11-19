@@ -1,0 +1,23 @@
+# Hearth Files (and Hearth's file chooser) as standalone pure-Rust apps (hearth-ui). No version line: the owner picks
+# every version number.
+[package]
+name = "hearth-files-app"
+edition = "2021"
+description = "Hearth Files: the file manager, and Hearth's file chooser"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-files-app"
+path = "src/main.rs"
+
+[[bin]]
+name = "hearth-file-chooser"
+path = "src/chooser.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }

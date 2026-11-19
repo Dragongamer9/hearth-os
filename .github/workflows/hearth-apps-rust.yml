@@ -55,7 +55,7 @@ jobs:
             exit 1
           fi
           ls -la target/release/ | grep hearth-
-          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app; do
+          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app; do
             echo "::notice title=size::$b $(du -h target/release/$b | cut -f1)"
           done
       - name: Tests
@@ -66,7 +66,7 @@ jobs:
       - name: Gather
         run: |
           mkdir -p bin
-          cp hosts/hearth-ui/target/release/hearth-task-manager hosts/hearth-ui/target/release/hearth-system-restore hosts/hearth-ui/target/release/hearth-reliability-history hosts/hearth-ui/target/release/hearth-settings-app bin/
+          cp hosts/hearth-ui/target/release/hearth-task-manager hosts/hearth-ui/target/release/hearth-system-restore hosts/hearth-ui/target/release/hearth-reliability-history hosts/hearth-ui/target/release/hearth-settings-app hosts/hearth-ui/target/release/hearth-files-app hosts/hearth-ui/target/release/hearth-file-chooser hosts/hearth-ui/target/release/hearth-capture-app bin/
       - uses: actions/upload-artifact@v4
         with:
           name: hearth-apps-rust
@@ -93,6 +93,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     container: registry.fedoraproject.org/fedora:45
+    outputs:
+      shots: ${{ steps.list.outputs.shots }}
     steps:
       - name: A screen in memory (sway), grim, fonts, Python
         run: |
@@ -110,6 +112,11 @@ jobs:
         run: |
           chmod +x bin/*
           bash .github/scripts/hearth-apps-rust-test.sh
+      - name: The pictures taken (each posted by its own job)
+        id: list
+        if: always()
+        run: |
+          echo "shots=$(ls shots/*.png 2>/dev/null | xargs -r -n1 basename | sed 's/\.png$//' | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()][:250]))')" >> "$GITHUB_OUTPUT"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -121,15 +128,12 @@ jobs:
 
   pictures:
     needs: run
-    if: always() && needs.run.result != 'skipped'
+    if: always() && needs.run.result != 'skipped' && needs.run.outputs.shots != '[]' && needs.run.outputs.shots != ''
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        shot: ['restore-1-points', 'restore-2-confirm', 'restore-3-changes', 'reliability-1-days', 'reliability-2-details', 'reliability-3-weeks',
-               'tm-1-processes', 'tm-2-performance-cpu', 'tm-3-performance-memory', 'tm-4-details', 'tm-5-services', 'tm-6-startup', 'tm-7-users',
-               'tm-8-scheduled-tasks', 'tm-9-settings', 'tm-10-menu', 'look-hearth-light-restore', 'look-hearth-light-tm',
-               'settings-1-home', 'settings-2-display', 'settings-3-wifi', 'settings-4-appearance', 'settings-5-updates', 'settings-6-system', 'settings-7-kde-breeze']
+        shot: ${{ fromJSON(needs.run.outputs.shots || '[]') }}
     steps:
       - uses: actions/checkout@v4
         with:

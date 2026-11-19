@@ -123,6 +123,9 @@ export HEARTH_APPS_THEME="$HOME/.config/hearth/theme.json"
 run settings-7-kde-breeze hearth-settings 0 "$BIN/hearth-settings-app"
 unset HEARTH_APPS_THEME
 rm -f "$HOME/.config/hearth/theme.json"
+# Each app's own pictures (one file per app or Settings category, so they're worked on apart): .d/NAME.sh uses run().
+for f in "$ROOT"/.github/scripts/hearth-apps-rust-shots.d/*.sh; do [ -f "$f" ] && . "$f"; done
+look steam dark
 look hearth light
 run look-hearth-light-restore hearth-restore 0 "$BIN/hearth-system-restore"
 run look-hearth-light-tm hearth-tasks 0 "$BIN/hearth-task-manager" --page performance:cpu

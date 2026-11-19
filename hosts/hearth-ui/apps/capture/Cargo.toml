@@ -1,0 +1,19 @@
+# Capture (screenshots and screen recording, with its editor) as a standalone pure-Rust app (hearth-ui). No version
+# line: the owner picks every version number.
+[package]
+name = "hearth-capture-app"
+edition = "2021"
+description = "Capture: screenshots and screen recording"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-capture-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }
