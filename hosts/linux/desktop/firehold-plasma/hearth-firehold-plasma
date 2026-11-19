@@ -181,12 +181,35 @@ def choice():
     return 'firehold' if v == 'firehold' else 'plasma'
 
 
+def rust_pick_path():
+    """The archived "Firehold (Rust, test)"'s pick (docs/ARCHIVED.md): {"desktop": "firehold"} while it was chosen."""
+    return os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'nimbus', 'firehold-rust.json')
+
+
+def rust_picked():
+    try:
+        with open(rust_pick_path(), encoding='utf-8') as f:
+            return json.load(f).get('desktop') == 'firehold'
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def effective_choice():
+    """What Desktop Mode opens: your pick, or Firehold on Plasma for a device that had picked the archived Firehold
+    (Rust) and hasn't picked again (nimbus-session's firehold_rust_saved, the same rule)."""
+    return 'firehold' if choice() == 'firehold' or rust_picked() else 'plasma'
+
+
 def choose(v):
     if v not in ('firehold', 'plasma'):
         raise ValueError('firehold or plasma')
+    import hearth_settings_io as io
+    if rust_picked():
+        # Your pick now replaces the archived Firehold (Rust)'s (only on a pick, its one key, merged: red flag 9).
+        io.merge_json(rust_pick_path(), {'desktop': 'plasma'})
+        log('the old Firehold (Rust, test) pick replaced by your pick: %s' % v)
     if choice() == v:
         return   # already that (no line is plasma): nothing written
-    import hearth_settings_io as io
     io.update_text(session_conf(), lambda t: io.conf_set_text(t, 'HEARTH_PLASMA_DESKTOP', v))
     log('Desktop Mode choice saved: %s' % v)
 
@@ -891,7 +914,7 @@ def main(argv):
     a = argv[2:]
     try:
         if what == 'choice':
-            print(choice())
+            print(effective_choice())
         elif what == 'choose' and a:
             choose(a[0])
         elif what == 'pick':
@@ -948,7 +971,7 @@ def main(argv):
 
 def pick():
     """Plasma's menu entry "Firehold (Plasma, test)": the Desktop Mode choice, saved only when you press OK."""
-    cur = choice()
+    cur = effective_choice()
     if not have('kdialog'):
         print(cur)
         return 0
@@ -960,10 +983,6 @@ def pick():
     if r.returncode != 0 or v not in ('plasma', 'firehold'):
         return 0
     choose(v)
-    if v == 'firehold' and have('firehold-shell'):
-        # The other Firehold test (Firehold (Rust, test), docs/FIREHOLD-RUST.md) goes back to Plasma, so the one you
-        # picked is the one that opens (only on your pick; firehold-shell saves it with settings_file.rs).
-        subprocess.run(['firehold-shell', 'choose', 'plasma'], capture_output=True, timeout=10)
     if v != cur:
         if v == 'firehold':
             msg = 'Firehold starts the next time you open Desktop Mode. Your apps stay open when you switch between Couch and Desk.'

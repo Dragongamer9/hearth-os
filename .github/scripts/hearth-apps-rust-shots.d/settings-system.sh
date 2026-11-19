@@ -80,7 +80,7 @@ put('df', 'Filesystem 1B-blocks Used Mounted on\n/dev/nvme0n1p3 1000000000000 41
 put('prefs', {'cdrive': True, 'linuxFolders': False, 'addressBar': 'windows', 'copyPath': 'windows', 'terminalWindows': True})
 put('thispc', {'user': 'chris', 'taken': {}, 'drives': [{'key': 'uuid-games', 'letter': 'D', 'name': 'Games', 'mounted': True, 'total': 2e12, 'free': 3.8e11, 'kind': 'drive'},
                                                        {'key': 'uuid-usb', 'letter': 'E', 'name': 'USB stick', 'mounted': False, 'sub': 'Not plugged in', 'kind': 'drive'}], 'network': []})
-put('deskchoice', '#@rust\nplasma\n#@fp\nplasma\n#@has\n/usr/bin/firehold-shell\n/usr/bin/hearth-firehold-plasma\n')
+put('deskchoice', '#@fp\nplasma\n#@has\n/usr/bin/hearth-firehold-plasma\n')
 put('server', {'settings': {'on': False, 'schedule': {'on': False, 'weekday': [], 'weekend': []}}, 'startIn': 'game'})
 put('k-session', 'login=restorePreviousLogout\nconfirm=true\n')
 put('boot', {'splash': {'presets': [{'id': 'hearth', 'label': 'Hearth', 'about': 'The flame on black, with a thin line while it starts', 'pair': 'hearth'},

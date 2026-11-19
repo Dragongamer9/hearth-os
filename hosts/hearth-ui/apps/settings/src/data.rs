@@ -503,37 +503,28 @@ pub fn time(out: &str) -> Time {
 // ------------------------------------------------------------------ Desktop Mode
 #[derive(Debug, Clone, Default)]
 pub struct Desk {
-    pub rust: bool,
     pub plasma_fh: bool,
     pub chosen: String,
 }
 
-pub const DESK: &str = "echo '#@rust'; command -v firehold-shell >/dev/null && firehold-shell chosen 2>/dev/null; echo '#@fp'; command -v hearth-firehold-plasma >/dev/null && hearth-firehold-plasma choice 2>/dev/null; echo '#@has'; command -v firehold-shell; command -v hearth-firehold-plasma";
+// (Firehold (Rust, test) was archived on Nov 19: hearth-firehold-plasma's `choice` already answers "firehold" for a
+// device that had picked it, since that's what opens there now, and its next pick replaces that old pick.)
+pub const DESK: &str = "echo '#@fp'; command -v hearth-firehold-plasma >/dev/null && hearth-firehold-plasma choice 2>/dev/null; echo '#@has'; command -v hearth-firehold-plasma";
 
 pub fn desk(out: &str) -> Desk {
     let m = sections(out);
     let has = sec(&m, "has");
-    let rust = has.contains("firehold-shell");
     let plasma_fh = has.contains("hearth-firehold-plasma");
-    let chosen = if rust && sec(&m, "rust").trim() == "firehold" {
-        "firehold-rust"
-    } else if plasma_fh && sec(&m, "fp").trim() == "firehold" {
-        "firehold-plasma"
-    } else {
-        "plasma"
-    };
-    Desk { rust, plasma_fh, chosen: chosen.into() }
+    let chosen = if plasma_fh && sec(&m, "fp").trim() == "firehold" { "firehold-plasma" } else { "plasma" };
+    Desk { plasma_fh, chosen: chosen.into() }
 }
 
-/// Saving a Desktop Mode choice: each Firehold's own helper saves its own line (settings_file.rs / hearth_settings_io),
-/// and the other one is set back to Plasma, so what was picked is what opens.
+/// Saving a Desktop Mode choice: Firehold on Plasma's own helper saves its own line (hearth_settings_io).
 pub fn desk_cmd(d: &Desk, pick: &str) -> Vec<String> {
-    let rust = |w: &str| if d.rust { format!("firehold-shell choose {w} >/dev/null") } else { "true".into() };
     let fp = |w: &str| if d.plasma_fh { format!("hearth-firehold-plasma choose {w} >/dev/null") } else { "true".into() };
     let s = match pick {
-        "firehold-rust" => format!("{} && {}", fp("plasma"), rust("firehold")),
-        "firehold-plasma" => format!("{} && {}", rust("plasma"), fp("firehold")),
-        _ => format!("{} && {}", rust("plasma"), fp("plasma")),
+        "firehold-plasma" => fp("firehold"),
+        _ => fp("plasma"),
     };
     sh(&s)
 }
@@ -705,11 +696,11 @@ mod tests {
 
     #[test]
     fn desktop_choice() {
-        let d = desk("#@rust\nplasma\n#@fp\nfirehold\n#@has\n/usr/bin/firehold-shell\n/usr/bin/hearth-firehold-plasma\n");
+        let d = desk("#@fp\nfirehold\n#@has\n/usr/bin/hearth-firehold-plasma\n");
         assert_eq!(d.chosen, "firehold-plasma");
-        let c = desk_cmd(&d, "firehold-rust").join(" ");
-        assert!(c.contains("hearth-firehold-plasma choose plasma") && c.contains("firehold-shell choose firehold"));
-        let none = desk("#@rust\n#@fp\n#@has\n");
+        let c = desk_cmd(&d, "plasma").join(" ");
+        assert!(c.contains("hearth-firehold-plasma choose plasma") && !c.contains("firehold-shell"));
+        let none = desk("#@fp\n#@has\n");
         assert_eq!(none.chosen, "plasma");
         assert_eq!(q("it's"), "'it'\\''s'");
     }

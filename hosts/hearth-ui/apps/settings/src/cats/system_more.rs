@@ -542,16 +542,13 @@ fn drives(a: &App) -> El<'_> {
 
 // ------------------------------------------------------------------ Your desktop (Fedora edition)
 
-/// Your desktop on the Fedora edition: Desktop Mode is KDE Plasma, with Firehold's two tests when they're in the
-/// image (Mantel isn't in this image, so its window manager choice isn't offered: hearth-your-desktop is Mantel's).
+/// Your desktop on the Fedora edition: Desktop Mode is KDE Plasma, with Firehold on Plasma (a test) when it's in the
+/// image (Firehold (Rust, test) was archived on Nov 19) (Mantel isn't in this image, so its window manager choice isn't offered: hearth-your-desktop is Mantel's).
 fn your_desktop(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
     let d = &st.desk;
     let mut opts: Vec<(&'static str, &'static str, &'static str)> = vec![("plasma", "KDE Plasma", "The desktop, with Hearth's look (the default)")];
-    if d.rust {
-        opts.push(("firehold-rust", "Firehold (Rust, test)", "Hearth's own Couch and Desk, all in Rust. If it doesn't start, KDE Plasma opens"));
-    }
     if d.plasma_fh {
         opts.push(("firehold-plasma", "Firehold (Plasma, test)", "Firehold's Couch and Desk on KDE Plasma"));
     }

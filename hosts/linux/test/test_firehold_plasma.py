@@ -144,7 +144,8 @@ class Session(unittest.TestCase):
         run = s[s.index('run_plasma() {'):s.index('\n}\n', s.index('run_plasma() {'))]
         self.assertIn('unset-environment PLASMA_DEFAULT_SHELL HEARTH_FIREHOLD_PLASMA', run)
         self.assertIn('unset PLASMA_DEFAULT_SHELL HEARTH_FIREHOLD_PLASMA', run)
-        self.assertIn('[ "$(firehold_plasma_choice)" = firehold ]', run)
+        self.assertIn('fh_pick=$(firehold_plasma_choice)', run)
+        self.assertIn('[ "$fh_pick" = firehold ]', run)
         self.assertNotIn('choose', run, 'the session never changes the choice')
 
     def test_the_choice_is_read_only_from_its_line(self):
@@ -159,6 +160,78 @@ class Session(unittest.TestCase):
                 out = subprocess.run(['sh', '-c', fn + '\nfirehold_plasma_choice'], env={'SESSION_CONF': conf, 'PATH': os.environ['PATH']},
                                      capture_output=True, text=True).stdout.strip()
                 self.assertEqual(out, want, text)
+
+
+class RustRetired(unittest.TestCase):
+    """Firehold (Rust, test) was archived (Nov 19): a device that had picked it opens Firehold on Plasma, is told once,
+    and its saved pick is never rewritten by the session; the next pick replaces it."""
+
+    def run_plasma_choice(self, conf_text, rust_text):
+        s = SESSION.read_text()
+        fn = re.search(r'^firehold_plasma_choice\(\) \{.*?^\}', s, re.S | re.M).group(0)
+        fr = re.search(r'^firehold_rust_saved\(\) \{.*?^\}', s, re.S | re.M).group(0)
+        run = s[s.index('  fh_pick=$(firehold_plasma_choice)'):s.index('  if [ "$fh_pick" = firehold ] && have hearth-firehold-plasma')]
+        with tempfile.TemporaryDirectory() as d:
+            cfg = os.path.join(d, '.config')
+            os.makedirs(os.path.join(cfg, 'nimbus'))
+            conf = os.path.join(cfg, 'nimbus', 'session.conf')
+            pathlib.Path(conf).write_text(conf_text)
+            rust = os.path.join(cfg, 'nimbus', 'firehold-rust.json')
+            if rust_text is not None:
+                pathlib.Path(rust).write_text(rust_text)
+            bin_ = os.path.join(d, 'bin')
+            os.makedirs(bin_)
+            pathlib.Path(bin_, 'notify-send').write_text('#!/bin/sh\necho "$@" >> "%s/notices"\n' % d)
+            os.chmod(os.path.join(bin_, 'notify-send'), 0o755)
+            script = '\n'.join([fn, fr, 'log() { echo "$*" >> "%s/log"; }' % d, 'have() { command -v "$1" >/dev/null 2>&1; }',
+                                 'DESK_STATE="%s/state"' % d, run, 'wait', 'echo "PICK=$fh_pick"'])
+            env = {'SESSION_CONF': conf, 'HOME': d, 'XDG_CONFIG_HOME': cfg, 'PATH': bin_ + ':' + os.environ['PATH']}
+            out = subprocess.run(['sh', '-c', script.replace('sleep 25; ', '')], env=env, capture_output=True, text=True, timeout=20).stdout
+            again = subprocess.run(['sh', '-c', script.replace('sleep 25; ', '')], env=env, capture_output=True, text=True, timeout=20).stdout
+            notices = pathlib.Path(d, 'notices').read_text() if os.path.exists(os.path.join(d, 'notices')) else ''
+            after = pathlib.Path(rust).read_text() if rust_text is not None else None
+        return out.strip().splitlines()[-1], again.strip().splitlines()[-1], notices, after
+
+    def test_a_rust_pick_opens_firehold_on_plasma_and_is_told_once(self):
+        first, second, notices, after = self.run_plasma_choice('', '{"desktop": "firehold"}\n')
+        self.assertEqual(first, 'PICK=firehold')
+        self.assertEqual(second, 'PICK=firehold')
+        self.assertEqual(notices.count('Firehold (Rust) was retired for now'), 1, notices)
+        self.assertIn('Settings › Your desktop', notices)
+        self.assertEqual(after, '{"desktop": "firehold"}\n', 'the session never rewrites the pick')
+
+    def test_no_rust_pick_is_as_before(self):
+        self.assertEqual(self.run_plasma_choice('', None)[0], 'PICK=plasma')
+        self.assertEqual(self.run_plasma_choice('', '{"desktop": "plasma"}')[0], 'PICK=plasma')
+        self.assertEqual(self.run_plasma_choice('HEARTH_PLASMA_DESKTOP=firehold\n', None)[0], 'PICK=firehold')
+
+    def test_the_next_pick_replaces_the_rust_pick(self):
+        with tempfile.TemporaryDirectory() as t:
+            env = dict(os.environ)
+            try:
+                os.environ.update({'HOME': t, 'XDG_CONFIG_HOME': os.path.join(t, '.config'), 'XDG_STATE_HOME': os.path.join(t, '.state'),
+                                   'XDG_RUNTIME_DIR': os.path.join(t, 'run')})
+                os.makedirs(os.environ['XDG_RUNTIME_DIR'])
+                h = load()
+                pathlib.Path(h.rust_pick_path()).parent.mkdir(parents=True)
+                pathlib.Path(h.rust_pick_path()).write_text('{"desktop": "firehold", "mine": 1}')
+                self.assertEqual(h.effective_choice(), 'firehold')
+                h.choose('plasma')
+                self.assertEqual(h.effective_choice(), 'plasma')
+                d = json.loads(pathlib.Path(h.rust_pick_path()).read_text())
+                self.assertEqual(d, {'desktop': 'plasma', 'mine': 1}, 'merged: only its key changed')
+            finally:
+                os.environ.clear()
+                os.environ.update(env)
+
+    def test_nothing_left_of_firehold_rust_in_the_image(self):
+        build = (ROOT / 'os-bases/anatase/build.sh').read_text()
+        self.assertIn('rm -f /usr/bin/firehold-shell', build)
+        self.assertNotIn('install -Dm755 /ctx/nimbus-app/firehold/firehold-shell', build)
+        self.assertFalse((ROOT / 'hosts/firehold-shell').exists())
+        self.assertTrue((ROOT / 'archive/hosts/firehold-shell/Cargo.toml').exists())
+        self.assertNotIn('firehold-rust-build.sh', (ROOT / '.github/workflows/base-anatase.yml').read_text())
+        self.assertIn('Firehold (Rust, test)', (ROOT / 'docs/ARCHIVED.md').read_text())
 
 
 class Performance(unittest.TestCase):

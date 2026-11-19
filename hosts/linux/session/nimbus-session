@@ -464,16 +464,6 @@ firehold_plasma_choice() {
   [ "$c" = firehold ] && echo firehold || echo plasma
 }
 run_plasma() {
-  # "Firehold (Rust, test)", only when you picked it (run_firehold_rust): KDE Plasma whenever it doesn't come up.
-  if firehold_rust_chosen; then
-    run_firehold_rust; frc=$?
-    [ "$frc" = 200 ] || return "$frc"
-    log "desktop mode: Firehold (Rust, test) didn't work (${FIREHOLD_RUST_WHY:-?}); KDE Plasma for this sign-in"
-    if have notify-send && [ "$FIREHOLD_RUST_WHY" != "you switched to KDE Plasma" ]; then
-      ( sleep 25; notify-send -a "Hearth" -i hearth "Firehold (Rust, test) didn't start" \
-          "KDE Plasma opened instead, this time. Your choice is kept: Desktop Mode tries Firehold again next time. (${FIREHOLD_RUST_WHY:-})" ) >/dev/null 2>&1 &
-    fi
-  fi
   log "desktop mode: KDE Plasma (the Anatase test)"
   if ! have startplasma-wayland; then
     log "desktop: KDE Plasma (startplasma-wayland) isn't installed; Steam Game Mode instead"
@@ -492,7 +482,20 @@ run_plasma() {
   # shell came up and says so); the choice itself is never changed here.
   fh_shell=""
   if have systemctl; then systemctl --user unset-environment PLASMA_DEFAULT_SHELL HEARTH_FIREHOLD_PLASMA >/dev/null 2>&1 || true; fi
-  if [ "$(firehold_plasma_choice)" = firehold ] && have hearth-firehold-plasma && [ -f /usr/share/plasma/shells/org.hearthos.firehold/metadata.json ]; then
+  fh_pick=$(firehold_plasma_choice)
+  if [ "$fh_pick" != firehold ] && firehold_rust_saved; then
+    # "Firehold (Rust, test)" was archived (Nov 19): a device that had picked it gets Firehold on Plasma instead.
+    # Its saved pick is read, never rewritten here; picking again (Settings › Your desktop, or Plasma's menu) replaces
+    # it. Said once.
+    fh_pick=firehold
+    log "desktop mode: your pick was Firehold (Rust, test), which was retired for now: Firehold on Plasma instead"
+    if [ ! -e "$DESK_STATE/firehold-rust-retired-told" ] && have notify-send; then
+      mkdir -p "$DESK_STATE" && : >"$DESK_STATE/firehold-rust-retired-told"
+      ( sleep 25; notify-send -a "Hearth" -i hearth "Firehold (Rust) was retired for now" \
+          "You're on Firehold on Plasma instead. Change it in Settings › Your desktop." ) >/dev/null 2>&1 &
+    fi
+  fi
+  if [ "$fh_pick" = firehold ] && have hearth-firehold-plasma && [ -f /usr/share/plasma/shells/org.hearthos.firehold/metadata.json ]; then
     fh_shell=$(timeout 10 hearth-firehold-plasma start-shell 2>/dev/null | tail -n 1)
     case "$fh_shell" in
       org.hearthos.firehold|org.hearthos.firehold.desk) timeout 10 hearth-firehold-plasma begin "$fh_shell" >/dev/null 2>&1 || true ;;
@@ -529,85 +532,12 @@ run_plasma() {
   return 0
 }
 
-# ---- 1.15 test, the owner (Nov 18): "Firehold (Rust, test)" in Desktop Mode on Anatase (docs/FIREHOLD-RUST.md):
-# firehold-comp with Firehold's all-Rust shell (firehold-shell hub), never the default. Only when you picked it
-# (`firehold-shell chosen`: ~/.config/nimbus/firehold-rust.json, which only your pick writes) and both programs are
-# here. Safe to fail (red flag 2): the shell must say it's up within FIREHOLD_UP_SECS (45 s), firehold-comp must not
-# end within FIREHOLD_EARLY_SECS, and if either ends by itself with no mode asked for, KDE Plasma opens instead for this
-# sign-in (return 200; run_plasma says why once). Your choice is never changed by a failure. nimbus-mode ends it the
-# way it ends Mantel (HEARTH_DESKTOP_PID is firehold-comp's), so Back to Game Mode works from inside it.
-FIREHOLD_SHELL_NAME="${FIREHOLD_SHELL_BIN:-firehold-shell}"
-firehold_rust_chosen() {
-  [ -z "$HEARTH_SEAT" ] || return 1
-  firehold_bin >/dev/null 2>&1 || return 1
-  have "$FIREHOLD_SHELL_NAME" || return 1
-  "$FIREHOLD_SHELL_NAME" chosen >/dev/null 2>&1
-}
-run_firehold_rust() {
-  log "desktop mode: Firehold (Rust, test)"
-  FIREHOLD_RUST_WHY=""
-  FLOG="$(dirname "$LOG")/firehold-rust.log"
-  [ -f "$FLOG" ] && [ "$(wc -c <"$FLOG")" -gt 1000000 ] && mv -f "$FLOG" "$FLOG.old"
-  echo "--- $(date '+%F %T') Desktop Mode (Firehold, Rust test)" >>"$FLOG"
-  rm -f "$RUN/firehold-shell-up" "$RUN/firehold-leave" "$RUN/firehold-shell-hub.pid"
-  bin=$(firehold_bin); shellbin=$(command -v "$FIREHOLD_SHELL_NAME")
-  rc_xml="${FIREHOLD_RUST_RC:-/usr/share/hearth/firehold-rust/rc.xml}"
-  (
-    export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Firehold XDG_SESSION_DESKTOP=firehold DESKTOP_SESSION=firehold HEARTH_WM=firehold-rust
-    unset LABWC_PID QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE
-    if [ -f "$rc_xml" ]; then
-      exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" ${FIREHOLD_ARGS:---tty-udev} --labwc-rc "$3" -- "$2" hub' sh "$bin" "$shellbin" "$rc_xml"
-    fi
-    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" ${FIREHOLD_ARGS:---tty-udev} -- "$2" hub' sh "$bin" "$shellbin"
-  ) >>"$FLOG" 2>&1 &
-  hpid=$!
-  echo "$hpid" >"$RUN/firehold.pid"
-  started=$(date +%s); up=0
-  while kill -0 "$hpid" 2>/dev/null; do
-    [ -e "$RUN/firehold-shell-up" ] && { up=1; break; }
-    [ $(( $(date +%s) - started )) -ge "$FIREHOLD_UP_SECS" ] && break
-    sleep 1
-  done
-  if [ "$up" = 0 ] && kill -0 "$hpid" 2>/dev/null; then
-    log "firehold (Rust): the shell didn't say it's up after ${FIREHOLD_UP_SECS}s; ending it"
-    FIREHOLD_RUST_WHY="the shell wasn't up after ${FIREHOLD_UP_SECS} seconds"
-    kill -TERM "$hpid" 2>/dev/null; sleep 3; kill -KILL "$hpid" 2>/dev/null
-  fi
-  if [ "$up" = 1 ]; then
-    log "firehold (Rust): up after $(( $(date +%s) - started ))s"
-    # The shell's hub gone while firehold-comp stays (a crash): the compositor is ended too, so the session goes on.
-    # One look every 5 s, from this script (not the desktop's own processes).
-    hub=$(cat "$RUN/firehold-shell-hub.pid" 2>/dev/null)
-    while kill -0 "$hpid" 2>/dev/null; do
-      sleep 5
-      if [ -n "$hub" ] && ! kill -0 "$hub" 2>/dev/null; then
-        kill -0 "$hpid" 2>/dev/null || break
-        log "firehold (Rust): the shell's hub ended; ending firehold-comp"
-        [ -s "$NEXT" ] || FIREHOLD_RUST_WHY="the shell stopped"
-        kill -TERM "$hpid" 2>/dev/null; sleep 3; kill -KILL "$hpid" 2>/dev/null
-        break
-      fi
-    done
-  fi
-  wait "$hpid"; rc=$?
-  rm -f "$RUN/firehold.pid" "$RUN/firehold-shell-up" "$RUN/firehold-shell-hub.pid"
-  pkill -TERM -u "$(id -u)" -x firehold-shell 2>/dev/null
-  if [ -s "$NEXT" ]; then log "firehold (Rust) ended (code $rc)"; return 0; fi
-  if [ -e "$RUN/firehold-leave" ]; then
-    rm -f "$RUN/firehold-leave"
-    log "firehold (Rust): left for KDE Plasma (asked)"
-    FIREHOLD_RUST_WHY="you switched to KDE Plasma"
-    return 200
-  fi
-  last=$(grep -E "ERROR|panicked" "$FLOG" 2>/dev/null | tail -n 1 | cut -c1-200)
-  if [ "$up" = 0 ]; then
-    [ -n "$FIREHOLD_RUST_WHY" ] || FIREHOLD_RUST_WHY="firehold-comp ended before the shell came up (code $rc)${last:+: $last}"
-    log "firehold (Rust) ended before the shell came up (code $rc)"
-    return 200
-  fi
-  [ -n "$FIREHOLD_RUST_WHY" ] || FIREHOLD_RUST_WHY="firehold-comp stopped (code $rc)${last:+: $last}"
-  log "firehold (Rust) ended by itself after $(( $(date +%s) - started ))s (code $rc); KDE Plasma next"
-  return 200
+# ---- "Firehold (Rust, test)" (1.15's test on Anatase, the owner's Nov 18) was archived on Nov 19 (docs/ARCHIVED.md,
+# archive/hosts/firehold-shell): its pick (~/.config/nimbus/firehold-rust.json {"desktop": "firehold"}, written only by
+# the person's pick) is read here so that device opens Firehold on Plasma instead of a desktop that's gone (run_plasma).
+# Read only; hearth-firehold-plasma's next pick sets it back to plasma.
+firehold_rust_saved() {
+  grep -qs '"desktop"[[:space:]]*:[[:space:]]*"firehold"' "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/firehold-rust.json"
 }
 
 # ---- Desktop Mode's notices: why Mantel started the way it did. Lines "<what> <why> <when>" in

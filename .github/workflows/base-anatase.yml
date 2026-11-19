@@ -491,29 +491,7 @@ jobs:
           if-no-files-found: ignore
   # ---- end of Hearth's KDE apps
 
-  # ---- Firehold (Rust, test) (docs/FIREHOLD-RUST.md): firehold-comp and firehold-shell built inside the Anatase base
-  # itself, so they link what the image has. Not required: without it the image is made without the choice.
-  firehold:
-    name: Build Firehold (Rust, test) inside Anatase
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v4
-      - name: Build
-        continue-on-error: true
-        run: |
-          mkdir -p /tmp/out
-          base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
-          docker pull -q "$base" || { echo "::warning title=Firehold (Rust, test)::couldn't pull $base"; exit 1; }
-          docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/firehold-rust-build.sh 2>&1 | tail -40
-          rc=${PIPESTATUS[0]}
-          [ "$rc" = 0 ] || { echo "::warning title=Firehold (Rust, test)::it didn't build, so this image goes without it (Desktop Mode stays KDE Plasma)"; exit 1; }
-      - uses: actions/upload-artifact@v4
-        continue-on-error: true
-        with:
-          name: hearth-firehold-anatase
-          path: /tmp/out/hearth-firehold.tar
-          if-no-files-found: ignore
+  # (Firehold (Rust, test) was built here until Nov 19: archived, archive/.github/workflows/firehold-rust.yml.)
 
   # ---- Hearth's pure-Rust apps (hosts/hearth-ui; docs/APPS-ANATASE.md): Task Manager, System Restore and Reliability
   # history, built inside the Fedora edition's base itself, so they link what the image has. Not required: without
@@ -542,7 +520,7 @@ jobs:
 
   image:
     name: Build the OS image (hearth-os on Anatase, test)
-    needs: [app, browser, hearth-steam, kde, firehold, hearth-ui]
+    needs: [app, browser, hearth-steam, kde, hearth-ui]
     if: ${{ !cancelled() && ((github.event_name == 'workflow_dispatch' && inputs.reuse_run != '') || (needs.app.result == 'success' && needs.browser.result == 'success' && needs.hearth-steam.result == 'success')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
@@ -617,10 +595,6 @@ jobs:
         continue-on-error: true
         with:
           name: hearth-ui-anatase
-      - uses: actions/download-artifact@v4
-        continue-on-error: true
-        with:
-          name: hearth-firehold-anatase
       - name: Every app artifact is here (reuse_run)
         if: ${{ env.REUSE != '' }}
         run: |
@@ -643,7 +617,6 @@ jobs:
           if [ -f hearth-steam.tar ]; then mkdir -p os/nimbus-app/hearth-steam && tar -C os/nimbus-app/hearth-steam -xf hearth-steam.tar || rm -rf os/nimbus-app/hearth-steam; fi
           test -x os/nimbus-app/hearth
           if [ -f hearth-kde.tar ]; then cp hearth-kde.tar os/nimbus-app/hearth-kde.tar; fi
-          if [ -f hearth-firehold.tar ]; then mkdir -p os/nimbus-app/firehold && tar -C os/nimbus-app/firehold -xf hearth-firehold.tar || rm -rf os/nimbus-app/firehold; fi
           if [ -f hearth-ui.tar ]; then mkdir -p os/nimbus-app/hearth-ui && tar -C os/nimbus-app/hearth-ui -xf hearth-ui.tar || rm -rf os/nimbus-app/hearth-ui; fi
           mkdir -p os/system_files/usr/share/nimbus
           python3 tools/app-bundle.py abi > os/system_files/usr/share/nimbus/app-abi
@@ -738,9 +711,6 @@ jobs:
           IDLE_SECS=600 bash .github/scripts/desktop-idle-compare.sh localhost/hearth-os:anatase plasma | tee /tmp/idle.txt
           sudo podman pull -q ghcr.io/dragongamer9/hearth-peppermint:testing >/dev/null && \
             IDLE_SECS=600 bash .github/scripts/desktop-idle-compare.sh ghcr.io/dragongamer9/hearth-peppermint:testing mantel | tee -a /tmp/idle.txt
-          if sudo podman run --rm --entrypoint test localhost/hearth-os:anatase -x /usr/bin/firehold-shell; then
-            IDLE_SECS=600 bash .github/scripts/desktop-idle-compare.sh localhost/hearth-os:anatase firehold | tee -a /tmp/idle.txt
-          fi
           { echo '### Desktop Mode at rest (virtual screen, software drawing)'; echo; echo '```'; grep '^RESULT' /tmp/idle.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
       # Only to a test tag, only by hand (red flag 5), only after every required check above passed (a failed step stops
