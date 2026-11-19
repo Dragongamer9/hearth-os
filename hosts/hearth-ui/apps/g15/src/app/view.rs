@@ -681,24 +681,20 @@ fn screen_page(a: &App) -> E<'_> {
 // ------------------------------------------------------------------ 4. Lighting (g15-4)
 fn lighting(a: &App) -> E<'_> {
     let p = a.p;
-    let pic = canvas(pics::Keyboard { p, set: config::set_in_use(&a.cfg), recording: a.recording, lit: true, time: clock_now() }).width(Length::Fill).height(Length::Fixed(sz(400.0)));
-    let from = config::text(&a.cfg, "nightFrom", "21:00").to_string();
-    let to = config::text(&a.cfg, "nightTo", "07:00").to_string();
-    let ampm = |hm: &str| -> String {
-        let m = config::minutes(hm).unwrap_or(0);
-        let (h, mm) = (m / 60, m % 60);
-        format!("{}:{:02} {}", if h % 12 == 0 { 12 } else { h % 12 }, mm, if h < 12 { "AM" } else { "PM" })
-    };
+    let pic = canvas(pics::Keyboard { p, set: config::set_in_use(&a.cfg), recording: a.recording, lit: true, time: clock_now() }).width(Length::Fill).height(Length::Fixed(sz(330.0)));
+    // Night light's own schedule (Settings › Display), as the service follows it: read once while the app is open.
+    static NIGHT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
+    let night = NIGHT.get_or_init(|| hearth_g15::lights_auto::describe(&hearth_g15::lights_auto::for_root(&a.root))).clone();
     column![
         big_title(&p, vec![("Lighting".into(), true)]),
         gap(1.0, 14.0),
-        card(&p, container(pic).padding(Padding { top: 14.0, right: 120.0, bottom: 14.0, left: 120.0 })).width(Length::Fill),
+        card(&p, container(pic).padding(Padding { top: 8.0, right: 120.0, bottom: 8.0, left: 120.0 })).width(Length::Fill),
         head(&p, "Keys"),
         srow(&p, "☀", "Key light", "The orange light under the keys · the light button on the keyboard changes it too", three(&p, "kbdLight", level(a, "kbdLight", 2)), on(a, "kbd"), None),
         srow(&p, "▭", "Screen light", "Also on the Keyboard screen page", three(&p, "lcdLight", level(a, "lcdLight", 2)), on(a, "lcd"), None),
         head(&p, "When"),
         srow(&p, "☾", "Turn the lights off when the PC sleeps or locks", "They come back the way you had them", switch(&p, flag(a, "lightsOffWhenLocked", false), Msg::Flag("lightsOffWhenLocked", !flag(a, "lightsOffWhenLocked", false))), on(a, "locked"), None),
-        srow(&p, "◖", "Dim the keys with Night light", format!("Key light goes to Low from {} to {}", ampm(&from), ampm(&to)), switch(&p, flag(a, "nightDim", false), Msg::Flag("nightDim", !flag(a, "nightDim", false))), on(a, "night"), None),
+        srow(&p, "◖", "Dim the keys with Night light", night, switch(&p, flag(a, "nightDim", false), Msg::Flag("nightDim", !flag(a, "nightDim", false))), on(a, "night"), None),
         srow(&p, "⊞", "Light up the key set's M-key", "M1, M2 or M3 shows which set is in use · MR lights while recording", switch(&p, flag(a, "mLights", true), Msg::Flag("mLights", !flag(a, "mLights", true))), on(a, "mlights"), None),
         note(a),
     ]

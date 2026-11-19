@@ -12,7 +12,9 @@ use crate::input::{self, Ev, Output, ReadResult};
 use crate::keys::GKey;
 use crate::lcd::{self, screen, Frame};
 use crate::leds;
+use crate::lights_auto::{self, Login1};
 use crate::root::{self, read, Root};
+use crate::running::{self, Running};
 use crate::values::{Reading, Sampler};
 use serde_json::{json, Value};
 use std::io::{BufRead, Write};
@@ -192,10 +194,18 @@ pub struct Service {
     kbd_now: Option<u32>,
     lcd_now: Option<u32>,
     locked: bool,
+    /// logind said the PC is going to sleep (PrepareForSleep), until it wakes.
+    asleep: bool,
+    /// Night light is on now (desktop.json's schedule, lights_auto.rs), and when it next changes: one timer.
+    night_on: bool,
+    next_night: Option<Instant>,
+    /// logind's IdleHint for our session: since when (CLOCK_MONOTONIC µs) the PC has been idle; None: it isn't.
+    idle_since: Option<u64>,
+    /// Which games run, while there's a game rule (running.rs: told by the window lists, Steam and Game Mode).
+    running: Option<Running>,
     session: String,
     rec_fds: Vec<RawFd>,
     next_draw: Instant,
-    next_games: Instant,
     player: Option<Follow>,
     player_tries: u32,
     player_next: Instant,
@@ -246,10 +256,14 @@ impl Service {
             kbd_now: None,
             lcd_now: None,
             locked: false,
+            asleep: false,
+            night_on: false,
+            next_night: None,
+            idle_since: None,
+            running: None,
             session: String::new(),
             rec_fds: Vec::new(),
             next_draw: Instant::now(),
-            next_games: Instant::now(),
             player: None,
             player_tries: 0,
             player_next: Instant::now(),
@@ -287,19 +301,55 @@ impl Service {
     }
 
     fn night(&self) -> bool {
-        if !config::flag(&self.cfg, "nightDim", false) {
-            return false;
-        }
-        let t = hearth_ui::time::local(hearth_ui::time::now());
-        let now = (t.hour * 60 + t.min) as u32;
-        let from = config::minutes(config::text(&self.cfg, "nightFrom", "21:00")).unwrap_or(21 * 60);
-        let to = config::minutes(config::text(&self.cfg, "nightTo", "07:00")).unwrap_or(7 * 60);
-        config::in_window(now, from, to)
+        self.night_on
     }
 
-    /// Puts the lights where they should be now: yours, off while locked, the keys low at night. Never saved.
+    /// "Dim the keys with Night light": follows Hearth's Night light (Settings › Display, desktop.json; KWin's on
+    /// Plasma) and sets one timer to its next change. Asked again at that timer, when desktop.json changes and when
+    /// the PC wakes up (the timer doesn't count time asleep). Without logind's signals (no gdbus) the timer is at
+    /// most an hour, so a clock change or a sleep can't leave it wrong for long.
+    fn update_night(&mut self) {
+        if !config::flag(&self.cfg, "nightDim", false) {
+            self.night_on = false;
+            self.next_night = None;
+            return;
+        }
+        let n = lights_auto::for_root(&self.root);
+        let (on, secs) = lights_auto::state_at(&n, hearth_ui::time::now());
+        let cap = if self.lockmon.is_some() { 24 * 3600 } else { 3600 };
+        self.night_on = on;
+        self.next_night = secs.map(|s| Instant::now() + Duration::from_secs(s.min(cap)));
+    }
+
+    /// The levels you set, kept for this sign-in in the runtime folder (not a setting): when the service starts again
+    /// while the keys are dimmed or off, it still knows what to put back.
+    fn remember_levels(&self) {
+        if self.root.fixture.is_some() {
+            return;
+        }
+        let v = json!({"kbd": self.kbd_user, "lcd": self.lcd_user});
+        let p = root::runtime_dir().join("g15-lights.json");
+        if std::fs::read_to_string(&p).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()) == Some(v.clone()) {
+            return;
+        }
+        let _ = std::fs::create_dir_all(root::runtime_dir());
+        let tmp = root::runtime_dir().join(".g15-lights.tmp");
+        if std::fs::write(&tmp, v.to_string()).is_ok() {
+            let _ = std::fs::rename(&tmp, &p);
+        }
+    }
+
+    fn levels_before(&self) -> (Option<u32>, Option<u32>) {
+        if self.root.fixture.is_some() {
+            return (None, None);
+        }
+        let v: Value = std::fs::read_to_string(root::runtime_dir().join("g15-lights.json")).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default();
+        (config::light(&v, "kbd"), config::light(&v, "lcd"))
+    }
+
+    /// Puts the lights where they should be now: yours, off while locked or asleep, the keys low at night. Never saved.
     fn apply_lights(&mut self) {
-        let off = self.locked && config::flag(&self.cfg, "lightsOffWhenLocked", false);
+        let off = (self.locked || self.asleep) && config::flag(&self.cfg, "lightsOffWhenLocked", false);
         if let (Some(d), Some(u)) = (self.dev.leds.kbd.clone(), self.kbd_user) {
             let want = if off { 0 } else if self.night() { u.min(1) } else { u };
             if self.kbd_now != Some(want) {
@@ -336,11 +386,25 @@ impl Service {
     }
 
     /// "Turn the light off after N minutes idle" (lcdIdleOff, minutes; 0 or missing: never): idle is the PC's own
-    /// idle (logind's IdleHint, which KDE and Hearth's desktop set) or every screen of the PC asleep.
+    /// idle (logind's IdleHint, which KDE and Hearth's desktop set: it comes as a signal, and one timer is set to the
+    /// moment it reaches N minutes) or, when logind doesn't say, every screen of the PC asleep (a look at
+    /// /sys/class/drm once a minute, no program run, only while this setting is on).
     fn check_idle(&mut self) {
         let mins = self.cfg.get("lcdIdleOff").and_then(|v| v.as_u64()).unwrap_or(0);
         let was = self.idle;
-        self.idle = mins > 0 && self.root.fixture.is_none() && idle_for(&self.root, &self.session) >= mins * 60;
+        let now = Instant::now();
+        let far = now + Duration::from_secs(24 * 3600);
+        if mins == 0 || self.root.fixture.is_some() {
+            self.idle = false;
+            self.next_idle = far;
+        } else if let Some(since) = self.idle_since {
+            let secs = mono_us().saturating_sub(since) / 1_000_000;
+            self.idle = secs >= mins * 60;
+            self.next_idle = if self.idle { far } else { now + Duration::from_secs(mins * 60 - secs) };
+        } else {
+            self.idle = drm_idle_for(&self.root) >= mins * 60;
+            self.next_idle = now + Duration::from_secs(60);
+        }
         if self.idle != was {
             self.apply_lights();
             self.last = None;
@@ -367,6 +431,7 @@ impl Service {
             });
             self.cfg = config::load();
         }
+        self.remember_levels();
     }
 
     fn reload(&mut self) {
@@ -383,6 +448,9 @@ impl Service {
         if let Some(v) = config::light(&self.cfg, "lcdLight") {
             self.lcd_user = Some(v);
         }
+        self.remember_levels();
+        self.update_night();
+        self.check_idle();
         self.apply_lights();
         self.apply_contrast();
         self.m_leds();
@@ -392,6 +460,7 @@ impl Service {
         self.last = None;
         self.next_draw = Instant::now();
         self.lock_monitor();
+        self.check_games();
     }
 
     // ---------------------------------------------------------------- keys
@@ -607,19 +676,25 @@ impl Service {
         }
     }
 
-    /// The games that pick a key set or a screen by themselves: checked every 5 s, only when there are any.
+    /// The games that pick a key set or a screen by themselves. Only while there are such rules, running.rs follows
+    /// what runs (the desktop's window list, Steam, Hearth's Game Mode: told when it changes, nothing looked at on a
+    /// timer unless no window list can be had). Called when those change and when g15.json does. The set a game picks
+    /// is live only (game_set): g15.json is never written for it, and the saved set is back when the game closes.
     fn check_games(&mut self) {
-        let rules: Vec<(String, Option<u8>)> = if !config::flag(&self.cfg, "switchSets", true) { Vec::new() } else { self.cfg.get("gameSets").and_then(|g| g.as_array()).map(|a| a.iter().filter_map(|r| Some((r.get("game")?.as_str()?.to_lowercase(), r.get("set").and_then(|s| s.as_u64()).map(|s| s.clamp(1, 3) as u8)))).collect()).unwrap_or_default() };
-        let screens: Vec<(String, String)> = screens_of(&self.cfg).iter().filter_map(|s| Some((s.get("whileRunning")?.as_str()?.to_lowercase(), s.get("id")?.as_str()?.to_string()))).filter(|(g, _)| !g.is_empty()).collect();
-        if rules.is_empty() && screens.is_empty() {
-            self.game_set = None;
-            self.game_screen = None;
-            return;
-        }
-        let running = running_names(&self.root.proc_);
-        let hit = |g: &str| running.iter().any(|r| r.contains(g));
-        let gs = rules.iter().find(|(g, _)| !g.is_empty() && hit(g)).and_then(|(_, s)| *s);
-        let sc = screens.iter().find(|(g, _)| hit(g)).map(|(_, id)| id.clone());
+        let rules: Vec<(String, Option<u8>)> = if !config::flag(&self.cfg, "switchSets", true) { Vec::new() } else { self.cfg.get("gameSets").and_then(|g| g.as_array()).map(|a| a.iter().filter_map(|r| Some((r.get("game")?.as_str()?.to_string(), r.get("set").and_then(|s| s.as_u64()).map(|s| s.clamp(1, 3) as u8)))).collect()).unwrap_or_default() };
+        let screens: Vec<(String, String)> = screens_of(&self.cfg).iter().filter_map(|s| Some((s.get("whileRunning")?.as_str()?.to_string(), s.get("id")?.as_str()?.to_string()))).filter(|(g, _)| !g.trim().is_empty()).collect();
+        let (gs, sc) = if rules.iter().all(|(g, _)| g.trim().is_empty()) && screens.is_empty() {
+            self.running = None;
+            (None, None)
+        } else {
+            if self.running.is_none() {
+                let r = Running::start(running::Paths::real(&self.root.proc_, self.root.fixture.is_none()));
+                crate::log(&format!("following games through {}", r.sources()));
+                self.running = Some(r);
+            }
+            let names = self.running.as_ref().map(|r| r.names()).unwrap_or_default();
+            (rules.iter().find(|(g, _)| running::any_match(g, &names)).and_then(|(_, s)| *s), screens.iter().find(|(g, _)| running::any_match(g, &names)).map(|(_, id)| id.clone()))
+        };
         if gs != self.game_set {
             self.game_set = gs;
             self.m_leds();
@@ -627,43 +702,85 @@ impl Service {
                 self.popup = Some((Popup::Set(n), Instant::now() + Duration::from_secs(2)));
             }
             self.last = None;
+            self.next_draw = Instant::now();
         }
         if sc != self.game_screen {
             self.game_screen = sc;
             self.last = None;
+            self.next_draw = Instant::now();
         }
     }
 
+    /// logind's signals, from one `gdbus monitor` (it sleeps until logind says something): going to sleep and waking
+    /// up, our session locked / unlocked and idle. On a real keyboard it always runs: waking up puts the lights, the
+    /// M-key light, the contrast and the screen back even with "lights off" unset (the keyboard may have lost them).
     fn lock_monitor(&mut self) {
-        let want = config::flag(&self.cfg, "lightsOffWhenLocked", false) && self.root.fixture.is_none();
-        if !want {
-            self.lockmon = None;
-            if self.locked {
-                self.locked = false;
-                self.apply_lights();
-            }
-            return;
-        }
-        if self.lockmon.is_some() || !crate::which("gdbus") {
+        if self.root.fixture.is_some() || self.lockmon.is_some() || !crate::which("gdbus") {
             return;
         }
         if self.session.is_empty() {
-            let uid = unsafe { libc::getuid() }.to_string();
-            self.session = crate::run_out(&["loginctl", "show-user", &uid, "-p", "Display", "--value"], 5).unwrap_or_default().trim().to_string();
+            self.find_session();
         }
         self.lockmon = Follow::start(&["gdbus", "monitor", "--system", "--dest", "org.freedesktop.login1"]);
         self.check_locked();
     }
 
+    fn find_session(&mut self) {
+        let uid = unsafe { libc::getuid() }.to_string();
+        self.session = crate::run_out(&["loginctl", "show-user", &uid, "-p", "Display", "--value"], 5).unwrap_or_default().trim().to_string();
+    }
+
+    /// Asked once (at the start, and when a session comes): locked and idle now. Later changes come as signals.
     fn check_locked(&mut self) {
         if self.session.is_empty() {
             return;
         }
-        let l = crate::run_out(&["loginctl", "show-session", &self.session.clone(), "-p", "LockedHint", "--value"], 5).map(|s| s.trim() == "yes").unwrap_or(false);
-        if l != self.locked {
-            self.locked = l;
-            self.apply_lights();
-            self.last = None;
+        let o = crate::run_out(&["loginctl", "show-session", &self.session.clone(), "-p", "LockedHint", "-p", "IdleHint", "-p", "IdleSinceHintMonotonic"], 5).unwrap_or_default();
+        let get = |k: &str| o.lines().find_map(|l| l.trim().strip_prefix(k)).map(|v| v.trim().to_string());
+        let l = get("LockedHint=").as_deref() == Some("yes");
+        self.idle_since = if get("IdleHint=").as_deref() == Some("yes") { get("IdleSinceHintMonotonic=").and_then(|v| v.parse().ok()).filter(|&v: &u64| v > 0).or_else(|| Some(mono_us())) } else { None };
+        self.on_login1(Login1::Locked(l));
+        self.check_idle();
+    }
+
+    /// One of logind's signals (lights_auto::parse_login1). Only the live lights change; nothing is saved.
+    fn on_login1(&mut self, ev: Login1) {
+        match ev {
+            Login1::Sleep(true) => {
+                self.asleep = true;
+                self.apply_lights();
+            }
+            Login1::Sleep(false) => {
+                // Awake: everything put back as you have it, written again (the keyboard may have lost it).
+                self.asleep = false;
+                self.kbd_now = None;
+                self.lcd_now = None;
+                self.contrast = None;
+                self.update_night();
+                self.apply_lights();
+                self.apply_contrast();
+                self.m_leds();
+                self.last = None;
+                self.next_draw = Instant::now();
+            }
+            Login1::Locked(l) => {
+                if l != self.locked {
+                    self.locked = l;
+                    self.apply_lights();
+                    self.last = None;
+                    self.next_draw = Instant::now();
+                }
+            }
+            Login1::Idle(i, since) => {
+                self.idle_since = if i { since.filter(|&v| v > 0).or_else(|| Some(mono_us())) } else { None };
+                self.check_idle();
+            }
+            Login1::Sessions => {
+                if self.session.is_empty() {
+                    self.find_session();
+                    self.check_locked();
+                }
+            }
         }
     }
 
@@ -787,7 +904,7 @@ impl Service {
     }
 
     fn screen_on(&self) -> bool {
-        self.dev.hidraw.is_some() && self.lcd_now != Some(0) && !(self.locked && config::flag(&self.cfg, "lightsOffWhenLocked", false))
+        self.dev.hidraw.is_some() && self.lcd_now != Some(0) && !((self.locked || self.asleep) && config::flag(&self.cfg, "lightsOffWhenLocked", false))
     }
 
     fn draw(&mut self) {
@@ -863,8 +980,12 @@ impl Service {
         // The lights as the keyboard has them, then yours (only what you saved).
         self.kbd_now = self.dev.leds.kbd.as_ref().and_then(|d| leds::level(d));
         self.lcd_now = self.dev.leds.lcd.as_ref().and_then(|d| leds::level(d));
-        self.kbd_user = config::light(&self.cfg, "kbdLight").or(self.kbd_now);
-        self.lcd_user = config::light(&self.cfg, "lcdLight").or(self.lcd_now);
+        // Nothing saved: the levels you had earlier in this sign-in (if the service started again while the keys were
+        // dimmed or off), else the keyboard's own.
+        let (kb, lb) = self.levels_before();
+        self.kbd_user = config::light(&self.cfg, "kbdLight").or(kb).or(self.kbd_now);
+        self.lcd_user = config::light(&self.cfg, "lcdLight").or(lb).or(self.lcd_now);
+        self.remember_levels();
         self.apply_lights();
         self.apply_contrast();
         self.m_leds();
@@ -884,6 +1005,10 @@ impl Service {
             i.watch(&config::path().parent().map(Path::to_path_buf).unwrap_or_else(root::config_dir));
             i.watch(self.alerts_file().parent().unwrap_or(Path::new("/")));
             i.watch(&root::runtime_dir());
+            if self.root.fixture.is_none() {
+                // Night light's settings (desktop.json), for "Dim the keys with Night light".
+                i.watch(&lights_auto::data_dir());
+            }
         }
         self.fixture_song();
         self.check_alerts(true);
@@ -893,12 +1018,16 @@ impl Service {
         }
         self.lock_monitor();
         self.daemon_switch();
+        self.update_night();
+        self.check_idle();
+        self.apply_lights();
+        self.check_games();
         let cfg_name = config::path().file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         loop {
             self.player_start();
-            if Instant::now() >= self.next_games {
-                self.check_games();
-                self.next_games = Instant::now() + Duration::from_secs(5);
+            if self.next_night.is_some_and(|t| Instant::now() >= t) {
+                self.update_night();
+                self.apply_lights();
             }
             if config::flag(&self.cfg, "autoPage", false) && Instant::now() >= self.next_auto_page {
                 let secs = self.cfg.get("autoPageSecs").and_then(|v| v.as_u64()).unwrap_or(10).clamp(3, 600);
@@ -940,16 +1069,29 @@ impl Service {
             for fd in &self.rec_fds {
                 fds.push((*fd, libc::POLLIN));
             }
+            let run_at = fds.len();
+            let run_fds = self.running.as_ref().map(|r| r.fds()).unwrap_or_default();
+            for fd in &run_fds {
+                fds.push((*fd, libc::POLLIN));
+            }
             let now = Instant::now();
-            let mut wake = self.next_games.max(now + Duration::from_secs(5));
+            // Nothing wakes this on a timer by itself: only what's due below (the screen, Night light's next change,
+            // the idle light-off, the next page, a look at the programs when no window list can be had).
+            let mut wake = now + Duration::from_secs(3600);
+            if let Some(t) = self.next_night {
+                wake = wake.min(t);
+            }
+            if let Some(t) = self.running.as_ref().and_then(|r| r.next_scan()) {
+                wake = wake.min(t);
+            }
+            if let Some((_, until)) = &self.preview {
+                wake = wake.min(*until);
+            }
             if self.screen_on() {
                 wake = wake.min(self.next_draw);
             }
             if self.player.is_none() && self.player_tries <= 20 && self.root.fixture.is_none() && crate::which("playerctl") {
                 wake = wake.min(self.player_next);
-            }
-            if self.night() || config::flag(&self.cfg, "nightDim", false) {
-                wake = wake.min(now + Duration::from_secs(60));
             }
             if config::flag(&self.cfg, "autoPage", false) {
                 wake = wake.min(self.next_auto_page);
@@ -1002,6 +1144,15 @@ impl Service {
                 if names.iter().any(|n| n == "g15-show.json") {
                     self.preview_from(&root::runtime_dir().join("g15-show.json"));
                 }
+                if names.iter().any(|n| n == "desktop.json") && config::flag(&self.cfg, "nightDim", false) {
+                    self.update_night();
+                }
+            }
+            if self.running.is_some() {
+                let rr: Vec<i16> = (0..run_fds.len()).map(|i| rev.get(run_at + i).copied().unwrap_or(0)).collect();
+                if self.running.as_mut().map(|r| r.handle(&rr)).unwrap_or(false) {
+                    self.check_games();
+                }
             }
             if self.player.is_some() && rev[player_at] & (libc::POLLIN | libc::POLLHUP) != 0 {
                 match self.player.as_mut().unwrap().read() {
@@ -1018,11 +1169,17 @@ impl Service {
             if self.lockmon.is_some() && rev[lock_at] & (libc::POLLIN | libc::POLLHUP) != 0 {
                 match self.lockmon.as_mut().unwrap().read() {
                     Some(lines) => {
-                        if lines.iter().any(|l| l.contains("LockedHint") || l.contains("PrepareForSleep") || l.contains("Lock") ) {
-                            self.check_locked();
+                        let me = lights_auto::session_path(&self.session);
+                        for l in &lines {
+                            for ev in lights_auto::parse_login1(l, &me) {
+                                self.on_login1(ev);
+                            }
                         }
                     }
-                    None => self.lockmon = None,
+                    None => {
+                        crate::log("logind's signals ended (gdbus monitor)");
+                        self.lockmon = None;
+                    }
                 }
             }
             if (0..daemon_fds.len()).any(|i| rev.get(daemon_at + i).map(|r| *r != 0).unwrap_or(false)) {
@@ -1043,7 +1200,6 @@ impl Service {
                     }
                 }
             }
-            // The night window starting or ending.
             self.apply_lights();
         }
     }
@@ -1083,21 +1239,16 @@ impl Service {
     }
 }
 
-/// Seconds the PC has been idle: logind's IdleSinceHint when the session says it's idle, else how long every screen
-/// has been asleep (DPMS off in /sys/class/drm), else 0. Run once a minute, only when the setting is on.
-fn idle_for(root: &Root, session: &str) -> u64 {
-    if !session.is_empty() {
-        if let Some(o) = crate::run_out(&["loginctl", "show-session", session, "-p", "IdleHint", "-p", "IdleSinceHintMonotonic"], 5) {
-            let idle = o.lines().any(|l| l.trim() == "IdleHint=yes");
-            let since = o.lines().find_map(|l| l.strip_prefix("IdleSinceHintMonotonic=")).and_then(|v| v.trim().parse::<u64>().ok()).unwrap_or(0);
-            if idle && since > 0 {
-                let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
-                unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
-                let now_us = ts.tv_sec as u64 * 1_000_000 + ts.tv_nsec as u64 / 1000;
-                return now_us.saturating_sub(since) / 1_000_000;
-            }
-        }
-    }
+/// CLOCK_MONOTONIC in µs (logind's IdleSinceHintMonotonic is on this clock).
+fn mono_us() -> u64 {
+    let mut ts = libc::timespec { tv_sec: 0, tv_nsec: 0 };
+    unsafe { libc::clock_gettime(libc::CLOCK_MONOTONIC, &mut ts) };
+    ts.tv_sec as u64 * 1_000_000 + ts.tv_nsec as u64 / 1000
+}
+
+/// Seconds every screen of the PC has been asleep (DPMS off in /sys/class/drm), else 0: for "turn the light off
+/// after N minutes idle" when logind doesn't say the PC is idle. Read once a minute, only while that setting is on.
+fn drm_idle_for(root: &Root) -> u64 {
     static SINCE: Mutex<Option<Instant>> = Mutex::new(None);
     let mut any = false;
     let mut all_off = true;
@@ -1120,31 +1271,6 @@ fn idle_for(root: &Root, session: &str) -> u64 {
         *g = None;
         0
     }
-}
-
-/// Every running program's name and the file names on its command line (lowercase), for "while a game runs".
-fn running_names(proc_: &Path) -> Vec<String> {
-    let mut out = Vec::new();
-    let Ok(rd) = std::fs::read_dir(proc_) else { return out };
-    for e in rd.filter_map(|e| e.ok()) {
-        let name = e.file_name().to_string_lossy().to_string();
-        if !name.bytes().all(|b| b.is_ascii_digit()) {
-            continue;
-        }
-        if let Some(c) = read(&e.path().join("comm")) {
-            out.push(c.to_lowercase());
-        }
-        if let Ok(cl) = std::fs::read(e.path().join("cmdline")) {
-            for a in cl.split(|&b| b == 0).take(3) {
-                let a = String::from_utf8_lossy(a).to_lowercase();
-                let base = a.rsplit(['/', '\\']).next().unwrap_or("").to_string();
-                if !base.is_empty() {
-                    out.push(base);
-                }
-            }
-        }
-    }
-    out
 }
 
 // ------------------------------------------------------------------ the command line's status and the fixture
@@ -1240,6 +1366,8 @@ pub fn make_fixture(dir: &Path) -> std::io::Result<()> {
         "history": {"gpu.temp": [52, 54, 55, 58, 61, 63, 62, 64, 66, 65, 66, 67, 66, 66, 65, 66]}
     }))?)?;
     std::fs::write(dir.join("media.json"), r#"{"status": "Playing", "title": "Hearthfire", "artist": "Hearth OS trailer", "position": 84, "length": 200}"#)?;
+    // Night light as Settings › Display has it on the mockups' PC (for "Dim the keys with Night light").
+    std::fs::write(dir.join("desktop.json"), r#"{"nightLight": true, "nightMode": "times", "nightFrom": "21:00", "nightTo": "07:00"}"#)?;
     std::fs::write(dir.join("notifications.json"), r#"{"n:7": {"app": "Hearth", "summary": "Update ready:", "body": "Restart to finish", "time": 0}}"#)?;
     Ok(())
 }
@@ -1363,6 +1491,84 @@ mod tests {
         std::fs::write(&p, r#"{"n:3": {"app": "x", "summary": "old"}, "n:12": {"app": "Hearth", "summary": "Update ready:", "body": "Restart\nto finish"}, "other": 1}"#).unwrap();
         let (k, a) = newest_alert(&p).unwrap();
         assert_eq!((k, a.app.as_str(), a.body.as_str()), (12, "HEARTH", "Restart to finish"));
+    }
+
+    #[test]
+    fn lights_go_off_and_come_back_as_you_had_them_without_saving() {
+        let d = tempfile::tempdir().unwrap();
+        make_fixture(d.path()).unwrap();
+        std::fs::write(d.path().join("desktop.json"), r#"{"nightLight": false}"#).unwrap();
+        let root = Root::at(d.path());
+        let dev = device::find(&root).expect("the pretend keyboard");
+        let (kbd, lcd) = (dev.leds.kbd.clone().unwrap(), dev.leds.lcd.clone().unwrap());
+        let mut s = Service::new(root, dev);
+        s.cfg = json!({"kbdLight": 2, "lcdLight": 2, "lightsOffWhenLocked": true, "nightDim": true});
+        s.kbd_user = Some(2);
+        s.lcd_user = Some(2);
+        s.apply_lights();
+        assert_eq!((leds::level(&kbd), leds::level(&lcd)), (Some(2), Some(2)));
+        // Night light on: the keys go to Low, the screen stays as it is.
+        s.night_on = true;
+        s.apply_lights();
+        assert_eq!((leds::level(&kbd), leds::level(&lcd)), (Some(1), Some(2)));
+        // Locked: both off; unlocked: back (still Low at night), and High once Night light ends.
+        s.on_login1(Login1::Locked(true));
+        assert_eq!((leds::level(&kbd), leds::level(&lcd)), (Some(0), Some(0)));
+        assert!(!s.screen_on(), "nothing is drawn while locked with the lights off");
+        s.on_login1(Login1::Locked(false));
+        assert_eq!((leds::level(&kbd), leds::level(&lcd)), (Some(1), Some(2)));
+        s.night_on = false;
+        s.apply_lights();
+        assert_eq!(leds::level(&kbd), Some(2));
+        // Asleep: off; awake: written again even if the keyboard lost them meanwhile.
+        s.on_login1(Login1::Sleep(true));
+        assert_eq!((leds::level(&kbd), leds::level(&lcd)), (Some(0), Some(0)));
+        leds::set(&kbd, 1).unwrap();
+        s.on_login1(Login1::Sleep(false));
+        assert_eq!((leds::level(&kbd), leds::level(&lcd)), (Some(2), Some(2)));
+        // Without "lights off when locked", locking changes nothing.
+        s.cfg = json!({"kbdLight": 2, "lcdLight": 2});
+        s.on_login1(Login1::Locked(true));
+        assert_eq!(leds::level(&kbd), Some(2));
+        // None of it was saved (red flag 9): no g15.json was made next to the pretend keyboard.
+        assert!(!d.path().join("g15.json").exists() && !d.path().join("g15.json.bak").exists());
+    }
+
+    #[test]
+    fn a_game_picks_its_set_live_and_gives_it_back() {
+        let d = tempfile::tempdir().unwrap();
+        make_fixture(d.path()).unwrap();
+        let root = Root::at(d.path());
+        let dev = device::find(&root).unwrap();
+        let m2 = dev.leds.m[1].clone().unwrap();
+        let mut s = Service::new(root, dev);
+        s.cfg = json!({"set": 1, "gameSets": [{"game": "Trains 2010", "set": 2}], "mLights": true});
+        s.set = 1;
+        let run = d.path().join("run");
+        std::fs::create_dir_all(run.join("hearth")).unwrap();
+        let proc_ = d.path().join("fakeproc");
+        std::fs::create_dir_all(proc_.join("77")).unwrap();
+        std::fs::write(proc_.join("77/comm"), "TRS2010.exe\n").unwrap();
+        std::fs::write(proc_.join("77/cmdline"), "TRS2010.exe").unwrap();
+        std::fs::write(run.join("hearth/windows.json"), r#"{"windows": [{"appId": "trs2010.exe", "title": "Trainz Simulator 2010", "pid": 77}]}"#).unwrap();
+        s.running = Some(Running::start(running::Paths { run: run.clone(), home: d.path().join("home"), proc_: proc_.clone(), link: d.path().join("link"), wayland: false }));
+        s.check_games();
+        assert_eq!(s.active_set(), 2);
+        assert_eq!(leds::level(&m2), Some(1));
+        // It closes: the window list says so, and M1 is back.
+        std::fs::write(run.join("hearth/.t"), r#"{"windows": [{"appId": "firefox", "title": "News", "pid": 0}]}"#).unwrap();
+        std::fs::rename(run.join("hearth/.t"), run.join("hearth/windows.json")).unwrap();
+        let fds = s.running.as_ref().unwrap().fds();
+        let rev = input::poll(&fds.iter().map(|&f| (f, libc::POLLIN)).collect::<Vec<_>>(), 1000);
+        assert!(s.running.as_mut().unwrap().handle(&rev));
+        s.check_games();
+        assert_eq!(s.active_set(), 1);
+        assert_eq!(leds::level(&m2), Some(0));
+        assert!(!d.path().join("g15.json").exists(), "the game's set is never saved");
+        // No rules: nothing is followed.
+        s.cfg = json!({"set": 1});
+        s.check_games();
+        assert!(s.running.is_none());
     }
 
     #[test]

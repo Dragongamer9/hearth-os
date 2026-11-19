@@ -11,7 +11,7 @@
 //!   "lcdContrast": 0|1|2, "lcdInvert": bool,     the screen's contrast; light dots on dark (every frame inverted)
 //!   "lcdIdleOff": minutes, "autoPage": bool, "autoPageSecs": n, "gameScreens": bool, "mrRecord": bool,
 //!   "switchSets": bool
-//!   "lightsOffWhenLocked": bool, "nightDim": bool, "nightFrom": "21:00", "nightTo": "07:00", "mLights": bool,
+//!   "lightsOffWhenLocked": bool, "nightDim": bool (follows Night light's own schedule: lights_auto.rs), "mLights": bool,
 //!   "pages": ["clock", "system", "music", "alerts", "<own screen id>"…],   the screen's pages, in order
 //!   "screens": [SCREEN…],                       your own screens (lcd/screen.rs)
 //!   "alerts": bool,                              Hearth's messages pop up on the screen for 5 s
