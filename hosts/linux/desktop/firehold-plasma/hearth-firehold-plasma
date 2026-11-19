@@ -35,6 +35,9 @@ restarts only plasmashell with the other shell package: KWin, the session and ev
                               the Couch home's cards (downloads from Steam's and Heroic's own files, Hearth OS's
                               update, controller and headset batteries, Hearth Link's devices, where games are up to);
                               fast: only what changes quickly. home-after: the same after SECS (the Couch's next look)
+  qs | qs-do WHAT [ARG]       Quick Settings: what it shows; a press (wifi, bt, dnd, night, screenshot, osk, volume N,
+                              output SINK, brightness ID:N, power PROFILE, lock, sleep, restart, shutdown, gamemode,
+                              settings [PAGE])
   apps | launch ID            the Apps tab
   library | cached | play ID | page ID
                               the games (desktop/shell/hearth-firehold, as Mantel's Firehold)
@@ -1638,6 +1641,244 @@ def home_after(secs, fast):
     return 0
 
 
+# ------------------------------------------------------------------ Quick Settings (mockups firehold-plasma 07, 08)
+# What the tiles, sliders and rows show: NetworkManager, BlueZ, KWin's on-screen keyboard and Night Light, PipeWire,
+# KDE's screen brightness (PowerDevil, external monitors too), power-profiles-daemon, the device batteries. Read when
+# Quick Settings opens (and after a press), never in a loop. Each press is the person's own change.
+
+POWER_STEPS = {'rog ally': {'power-saver': 'Silent · 10 W', 'balanced': 'Balanced · 18 W', 'performance': 'Turbo · 25 W'},
+               'steam deck': {'power-saver': 'Quiet · 8 W', 'balanced': 'Balanced · 12 W', 'performance': 'Fast · 15 W'},
+               'legion go': {'power-saver': 'Quiet · 8 W', 'balanced': 'Balanced · 15 W', 'performance': 'Performance · 20 W'}}
+
+
+def product():
+    return (read_small('/sys/class/dmi/id/product_name') or '').strip()
+
+
+def device_word():
+    """"ROG Ally", "Nvidia PC", "Laptop": what this device is, in its own words."""
+    p = product()
+    low = p.lower()
+    for k in POWER_STEPS:
+        if k.replace(' ', '') in low.replace(' ', ''):
+            return {'rog ally': 'ROG Ally', 'steam deck': 'Steam Deck', 'legion go': 'Legion Go'}[k], k
+    chassis = read_small('/sys/class/dmi/id/chassis_type')
+    if chassis in ('8', '9', '10', '14', '31', '32'):
+        return 'Laptop', ''
+    vend = ''
+    try:
+        import glob
+        for d in glob.glob('/sys/class/drm/card[0-9]/device/vendor'):
+            v = read_small(d)
+            vend = {'0x10de': 'Nvidia', '0x1002': 'AMD', '0x8086': 'Intel'}.get(v, vend)
+            if vend == 'Nvidia':
+                break
+    except OSError:
+        pass
+    return ((vend + ' PC') if vend else 'This PC'), ''
+
+
+def uptime_words():
+    try:
+        secs = float(read_small('/proc/uptime').split()[0])
+    except (ValueError, IndexError):
+        return ''
+    d, h, m = int(secs // 86400), int(secs % 86400 // 3600), int(secs % 3600 // 60)
+    return 'up %d day%s' % (d, '' if d == 1 else 's') if d else 'up %d h' % h if h else 'up %d min' % m
+
+
+def ac_online():
+    import glob
+    for f in glob.glob('/sys/class/power_supply/*/online'):
+        if read_small(os.path.join(os.path.dirname(f), 'type')) == 'Mains':
+            return read_small(f) == '1'
+    return True
+
+
+def wifi_state():
+    on = quiet(['nmcli', 'radio', 'wifi'], 4).strip() == 'enabled' if have('nmcli') else False
+    ssid, sig = '', -1
+    for line in quiet(['nmcli', '-t', '-f', 'ACTIVE,SSID,SIGNAL', 'dev', 'wifi'], 6).splitlines() if on else []:
+        parts = line.rsplit(':', 1)
+        if line.startswith('yes:') and len(parts) == 2:
+            ssid, sig = parts[0][4:].replace('\\:', ':'), int(parts[1]) if parts[1].isdigit() else -1
+            break
+    return {'on': on, 'ssid': ssid, 'strength': 'strong' if sig >= 70 else 'good' if sig >= 45 else 'weak' if sig >= 0 else ''}
+
+
+def bt_state():
+    if not have('bluetoothctl'):
+        return {'on': False, 'connected': 0, 'names': []}
+    show = quiet(['bluetoothctl', 'show'], 4)
+    on = 'Powered: yes' in show
+    names = []
+    for line in quiet(['bluetoothctl', 'devices', 'Connected'], 4).splitlines() if on else []:
+        p = line.split(' ', 2)
+        if len(p) == 3 and p[0] == 'Device':
+            names.append(p[2])
+    return {'on': on, 'connected': len(names), 'names': names[:4]}
+
+
+def osk_on():
+    out = dbus_send('org.kde.KWin', '/VirtualKeyboard', 'org.freedesktop.DBus.Properties.Get', 'string:org.kde.kwin.VirtualKeyboard', 'string:enabled', timeout=3)
+    return 'true' in out
+
+
+def night_light():
+    """KWin's Night Light (org.kde.KWin.NightLight): on now, and until when."""
+    def prop(n):
+        return dbus_send('org.kde.KWin', '/org/kde/KWin/NightLight', 'org.freedesktop.DBus.Properties.Get', 'string:org.kde.KWin.NightLight', 'string:' + n, timeout=3)
+    running = 'true' in prop('running')
+    until = ''
+    m = re.search(r'uint64 (\d+)', prop('scheduledTransitionDateTime'))
+    if m and int(m.group(1)) > 0:
+        until = time.strftime('%I %p', time.localtime(int(m.group(1)))).lstrip('0')
+    return {'on': running, 'until': until}
+
+
+def sinks():
+    """The outputs (PipeWire through pactl's JSON): name, what to call it, which is the default, the volume."""
+    out = []
+    j = quiet(['pactl', '-f', 'json', 'list', 'sinks'], 4) if have('pactl') else ''
+    default = quiet(['pactl', 'get-default-sink'], 3).strip() if have('pactl') else ''
+    try:
+        lst = json.loads(j) if j else []
+    except ValueError:
+        lst = []
+    for x in lst:
+        if not isinstance(x, dict):
+            continue
+        desc = x.get('description') or x.get('name') or ''
+        props = x.get('properties') or {}
+        form = str(props.get('device.form_factor') or '')
+        low = (desc + ' ' + form + ' ' + str(x.get('name'))).lower()
+        word = ('Headset' if re.search(r'headset|headphone|buds|arctis', low) else 'TV (HDMI)' if 'hdmi' in low
+                else 'Speakers' if re.search(r'speaker|analog|built-in', low) else desc[:20])
+        vol = -1
+        try:
+            v = next(iter((x.get('volume') or {}).values()))
+            vol = int(str(v.get('value_percent', '-1')).rstrip('%'))
+        except (StopIteration, AttributeError, ValueError):
+            pass
+        out.append({'name': x.get('name'), 'word': word, 'desc': desc, 'default': x.get('name') == default, 'volume': vol, 'muted': x.get('mute') is True})
+    return out
+
+
+def brightness_list():
+    """KDE's screen brightness (org.kde.ScreenBrightness: built-in screens and DDC monitors), else brightnessctl."""
+    out = []
+    names = re.findall(r'string "([^"]+)"', dbus_send('org.kde.ScreenBrightness', '/org/kde/ScreenBrightness', 'org.freedesktop.DBus.Properties.Get',
+                                                      'string:org.kde.ScreenBrightness', 'string:DisplaysDBusNames', timeout=3))
+    for n in names:
+        def p(k):
+            return dbus_send('org.kde.ScreenBrightness', '/org/kde/ScreenBrightness/' + n, 'org.freedesktop.DBus.Properties.Get',
+                             'string:org.kde.ScreenBrightness.Display', 'string:' + k, timeout=3)
+        lab = re.search(r'string "([^"]*)"', p('Label'))
+        cur = re.search(r'int32 (\d+)', p('Brightness'))
+        mx = re.search(r'int32 (\d+)', p('MaxBrightness'))
+        if cur and mx and int(mx.group(1)) > 0:
+            out.append({'id': n, 'label': lab.group(1) if lab else n, 'percent': round(int(cur.group(1)) * 100 / int(mx.group(1))), 'max': int(mx.group(1))})
+    if not out:
+        b = quiet(['brightnessctl', '-m'], 3) if have('brightnessctl') else ''
+        m = re.search(r',(\d+)%,', b)
+        if m:
+            out.append({'id': '', 'label': 'This screen', 'percent': int(m.group(1)), 'max': 100})
+    return out
+
+
+def quick_settings():
+    fx = os.environ.get('HEARTH_FIREHOLD_QS_FIXTURE')   # pictures in CI only
+    if fx:
+        return read_json(fx, {}) or {}
+    word, key = device_word()
+    batt = sysinfo(False).get('battery', -1)
+    prof = quiet(['powerprofilesctl', 'get'], 3).strip() if have('powerprofilesctl') else ''
+    desk = read_json(os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'nimbus', 'desktop.json'), {}) or {}
+    s = settings()
+    return {'device': word, 'line': ' · '.join(x for x in [word, 'plugged in' if ac_online() else ('battery %d%%' % batt if batt >= 0 else ''), uptime_words()] if x),
+            'battery': batt, 'wifi': wifi_state(), 'bt': bt_state(), 'osk': osk_on(), 'night': night_light(),
+            'dnd': dnd_state(s), 'sinks': sinks(), 'brightness': brightness_list(), 'power': prof,
+            'powerNames': POWER_STEPS.get(key, {'power-saver': 'Power saver', 'balanced': 'Balanced', 'performance': 'Performance'}),
+            'devices': device_batteries(), 'gameModeOff': desk.get('gameModeOff') is True, 'modes': screen_modes()}
+
+
+def dnd_state(s=None):
+    """Do not disturb: Firehold's schedule (firehold.json "dnd": {"from": "23:00", "to": "07:00", "games": true}) and
+    whether it's on now (on by hand, in the schedule's hours, or a game full screen)."""
+    s = settings() if s is None else s
+    d = s.get('dnd') if isinstance(s.get('dnd'), dict) else {}
+    frm, to = d.get('from', '23:00'), d.get('to', '07:00')
+    now = time.strftime('%H:%M')
+    in_hours = (frm <= now < to) if frm < to else (now >= frm or now < to)
+    by_hand = read_small(os.path.join(run_dir(), 'dnd')) == 'on'
+    sched = d.get('schedule', True) is not False
+    def ampm(hm):
+        try:
+            h, m = map(int, hm.split(':'))
+        except ValueError:
+            return hm
+        return '%d%s %s' % (h % 12 or 12, (':%02d' % m) if m else '', 'AM' if h < 12 else 'PM')
+    return {'on': by_hand or (sched and in_hours), 'byHand': by_hand, 'schedule': sched, 'from': ampm(frm), 'to': ampm(to),
+            'games': d.get('games', True) is not False, 'family': d.get('family', True) is not False}
+
+
+def qs_do(what, arg=''):
+    """A Quick Settings press."""
+    if what == 'wifi':
+        quiet(['nmcli', 'radio', 'wifi', 'off' if wifi_state()['on'] else 'on'], 6)
+    elif what == 'bt':
+        quiet(['bluetoothctl', 'power', 'off' if bt_state()['on'] else 'on'], 6)
+    elif what == 'dnd':
+        # Do not disturb by hand (live state until you turn it off or restart; the schedule is a setting).
+        p = os.path.join(run_dir(), 'dnd')
+        write_small(p, 'off' if read_small(p) == 'on' else 'on')
+        tell_dnd()
+    elif what == 'night':
+        # KDE's own Night Light switch (kwinrc [NightColor] Active, through KConfig; KWin reads it again). A KWin
+        # inhibit wouldn't outlast this short helper, so the tile is the setting itself, changed only by your press.
+        import hearth_kconfig as kc
+        on = night_light()['on']
+        kc.update(kc.user_path('kwinrc'), {'NightColor': {'Active': 'false' if on else 'true'}})
+        dbus_send('org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure', reply=False)
+    elif what == 'screenshot':
+        return do('screenshot')
+    elif what == 'osk':
+        return do('osk')
+    elif what == 'volume' and re.match(r'^\d{1,3}$', arg):
+        quiet(['wpctl', 'set-volume', '@DEFAULT_AUDIO_SINK@', '%d%%' % min(100, int(arg))], 3)
+    elif what == 'output' and re.match(r'^[A-Za-z0-9_.:-]{1,160}$', arg):
+        quiet(['pactl', 'set-default-sink', arg], 4)
+    elif what == 'brightness' and re.match(r'^[A-Za-z0-9_]{0,60}:\d{1,3}$', arg):
+        d, v = arg.split(':')
+        if d:
+            b = [x for x in brightness_list() if x['id'] == d]
+            if b:
+                dbus_send('org.kde.ScreenBrightness', '/org/kde/ScreenBrightness/' + d, 'org.kde.ScreenBrightness.Display.SetBrightness',
+                          'int32:%d' % round(int(v) * b[0]['max'] / 100), 'uint32:0', reply=False)
+        else:
+            quiet(['brightnessctl', 'set', '%d%%' % int(v)], 3)
+    elif what == 'power' and arg in ('power-saver', 'balanced', 'performance'):
+        quiet(['powerprofilesctl', 'set', arg], 5)
+    elif what == 'lock':
+        detach(['loginctl', 'lock-session'])
+    elif what in ('sleep', 'restart', 'shutdown'):
+        detach(['systemctl', {'sleep': 'suspend', 'restart': 'reboot', 'shutdown': 'poweroff'}[what]])
+    elif what == 'logout':
+        dbus_send('org.kde.Shutdown', '/Shutdown', 'org.kde.Shutdown.logout', reply=False)
+    elif what == 'gamemode':
+        return do('gamemode')
+    elif what == 'settings':
+        detach(['hearth-settings-app'] + (['--page', arg] if re.match(r'^[a-z0-9-]{1,40}$', arg or '') else []))
+    else:
+        raise ValueError('unknown')
+    return {'ok': True}
+
+
+def tell_dnd():
+    """KDE's own Do not disturb follows (the notifications applet's inhibition, through its D-Bus service)."""
+    ping_modes('dnd')
+
+
 def games(argv):
     h = os.path.join(SHELL_DIR, 'hearth-firehold')
     r = subprocess.run([sys.executable, h] + argv, capture_output=True, text=True, timeout=90)
@@ -1665,10 +1906,14 @@ def main(argv):
             why = a[a.index('--why') + 1] if '--why' in a[:-1] else ''
             tab = next((x for x in a[1:] if x in ('home', 'library', 'apps', 'store', 'switcher', 'settings')), '')
             switch(a[0], tab, why)
-        elif what == 'ping' and a and a[0] in ('modes', 'popup', 'popup-off', 'identify', 'identify-off'):
+        elif what == 'ping' and a and a[0] in ('modes', 'popup', 'popup-off', 'identify', 'identify-off', 'qs', 'qs-off', 'notes', 'notes-off'):
             # The Desk's mode pill and the Couch: read the modes again, open or close Modes (on SCREEN), Identify.
             scr = a[1] if len(a) > 1 and re.match(r'^[A-Za-z0-9_.-]{1,40}$', a[1]) else ''
             ping_modes(a[0], scr)
+        elif what == 'qs':
+            print(json.dumps(quick_settings()))
+        elif what == 'qs-do' and a:
+            print(json.dumps(qs_do(a[0], a[1] if len(a) > 1 else '')))
         elif what == 'modes':
             print(json.dumps(modes_info()))
         elif what == 'mode' and len(a) >= 2:
