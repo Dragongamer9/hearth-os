@@ -4,7 +4,7 @@
 
 use crate::looks::Look;
 use crate::osk::{Key, Vm, MOD_KEYS};
-use crate::{App, Msg, ITEMS};
+use crate::{gm_hidden, App, Msg, ITEMS};
 use hearth_ui::ui::{self, glyph, t, tb, ts};
 use hearth_ui::Pal;
 use iced::widget::canvas::{self, Frame, Geometry, Path, Stroke};
@@ -49,6 +49,10 @@ impl canvas::Program<Msg> for Ring {
             f.fill(&Path::circle(Point::new(cx, cy), r), Pal::a(p.accent, 0.016));
         }
         for i in 0..ITEMS.len() {
+            // Game Mode off on this PC: its slot stays empty.
+            if gm_hidden(ITEMS[i].action) {
+                continue;
+            }
             let ang = i as f32 / ITEMS.len() as f32 * std::f32::consts::TAU;
             let r = s * 0.36;
             let lit = self.sel == i as i32;
@@ -121,6 +125,9 @@ pub fn radial(a: &App, size: Size) -> Element<'_, Msg> {
     .center_y(Length::Fill);
     let mut layers: Vec<Element<'_, Msg>> = vec![dim.into(), ring.into(), centre.into()];
     for (i, it) in ITEMS.iter().enumerate() {
+        if gm_hidden(it.action) {
+            continue;
+        }
         let ang = i as f32 / ITEMS.len() as f32 * std::f32::consts::TAU;
         let d = s * 0.17;
         let (x, y) = (cx + ang.sin() * s * 0.36 - d / 2.0, cy - ang.cos() * s * 0.36 - d / 2.0);
@@ -133,6 +140,9 @@ pub fn radial(a: &App, size: Size) -> Element<'_, Msg> {
 }
 
 pub fn item_label(a: &App, i: usize) -> String {
+    if gm_hidden(ITEMS[i].action) {
+        return "Game Mode is off".into();
+    }
     if ITEMS[i].action == "mouse" {
         return if a.mouse_on { "Controller mouse: on".into() } else { "Controller mouse: off".into() };
     }

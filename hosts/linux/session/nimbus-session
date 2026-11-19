@@ -308,6 +308,13 @@ run_game() {
     NIMBUS_GAMESCOPE_ARGS=$(printf ' %s\n' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")
   fi
   panel_script
+  # Hearth Game Mode at one of its pages (nimbus-mode hearth-page: Settings' links to what has no app of its own yet),
+  # for this start only; the watchdog gives it to Hearth's first start (a restart after a crash opens as usual).
+  HEARTH_START_PAGE=""
+  if [ -z "$HEARTH_SEAT" ] && [ -s "$RUN/hearth-start-page" ]; then HEARTH_START_PAGE="$(head -c 32 "$RUN/hearth-start-page" | tr -cd 'a-z')"; fi
+  rm -f "$RUN/hearth-start-page"
+  [ -n "$HEARTH_START_PAGE" ] && log "hearth game mode: opening at $HEARTH_START_PAGE"
+  export HEARTH_START_PAGE
   [ -n "$HEARTH_SEAT" ] && [ -n "$ENV_GAMESCOPE_ARGS" ] && NIMBUS_GAMESCOPE_ARGS="$NIMBUS_GAMESCOPE_ARGS $ENV_GAMESCOPE_ARGS"
   # shellcheck disable=SC2086
   # Performance overlay (Quick Access › Performance): mangoapp draws it and reloads this file when Hearth writes it.
@@ -511,6 +518,9 @@ run_plasma() {
     # edition's build only when they passed its check; without them Hearth's apps and KDE's both show, as before.
     dd=""; IFS=:; for d in $XDG_DATA_DIRS; do [ "$d" = /usr/share/hearth/app-kinds ] || [ "$d" = /usr/share/hearth/app-kinds-plasma ] || dd="${dd:+$dd:}$d"; done; unset IFS
     if [ -d /usr/share/hearth/app-kinds-plasma/applications ]; then dd="/usr/share/hearth/app-kinds-plasma:$dd"; fi
+    # Game Mode on this PC off: Back to Game Mode hidden (its Hidden copy first; nimbus-mode gamemodes apply keeps it
+    # in step with Settings while Plasma runs).
+    gm_hide_prepare; dd="$GM_HIDE_DIR:$dd"
     export XDG_DATA_DIRS="$dd"
     # Fedora names KDE's menu file with a prefix (the 1.14 "applications.menu not found"): Plasma is told which.
     if [ ! -e /etc/xdg/menus/applications.menu ]; then
@@ -1979,6 +1989,50 @@ setup_pending() {
   [ "${HEARTH_LEGACY_SETUP:-0}" = 1 ] || return 1
   ! grep -Eq '"setupDone"[[:space:]]*:[[:space:]]*[1-9t]' "${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/library.json" 2>/dev/null
 }
+# ---- Game Mode on this PC (Settings › System › Startup, the owner, Nov 19: "need to add a option that turns off the
+# game modes"). desktop.json's gameModeOff, written only by Settings (hearth_settings_io.py merge --history); missing:
+# On, so nothing changes for anyone who doesn't turn it off. Off: the PC always starts in Desktop Mode (whatever Start
+# in says: that choice is kept for when it's on again), nimbus-mode's game / steam / hearth do nothing but say so, and
+# Plasma's Back to Game Mode entries are hidden (nimbus-mode gamemodes apply). Never off for the live USB or an extra
+# multi-seat player. First-time setup still runs as now. Game Mode stays available for recovery: every fallback of
+# this session (Desktop Mode that can't start: run_plasma's Steam Game Mode, "desktop mode unavailable", Mantel's
+# own give_up with HEARTH_GM_RECOVERY=1) still goes to Steam Game Mode or Hearth's own, so there's always a screen.
+# (test_game_modes_off.py runs these lines, between the >>> and <<< marks.)
+# >>> game modes off
+game_modes_off() {
+  [ -e "${HEARTH_LIVE_FLAG:-/etc/hearth-live}" ] || [ "${USER:-}" = liveuser ] || [ -n "${HEARTH_SEAT:-}" ] && return 1
+  grep -Eq '"gameModeOff"[[:space:]]*:[[:space:]]*true' "${HEARTH_DESKTOP_JSON:-${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/desktop.json}" 2>/dev/null
+}
+# Where the session starts: Desktop Mode instead of Game Mode while it's off (first-time setup that's pending still
+# runs: "game" stays and resolve_mode makes it setup). Server mode isn't a Game Mode and stays as you set it.
+gm_start_mode() {
+  if [ "$1" = game ] && game_modes_off && ! { command -v setup_pending >/dev/null 2>&1 && setup_pending; }; then
+    log "start: Game Mode is off on this PC (Settings › System › Startup); Desktop Mode"
+    echo desktop
+  else
+    echo "$1"
+  fi
+}
+# Where first-time setup goes when it's over: Steam Game Mode (as before), or Desktop Mode while Game Mode is off.
+gm_after_setup() {
+  case "$1" in
+    ''|game|steam|hearth) if game_modes_off; then echo desktop; else echo "${1:-steam}"; fi ;;
+    *) echo "$1" ;;
+  esac
+}
+# The folder Plasma's hidden Back to Game Mode lives in (nimbus-mode gamemodes apply fills or empties it); made at
+# every Plasma start so a change in Settings shows at once. Never fails.
+GM_HIDE_DIR="$RUN/hearth-gm-hidden"
+gm_hide_prepare() {
+  mkdir -p "$GM_HIDE_DIR/applications" 2>/dev/null || return 0
+  if game_modes_off; then
+    printf '[Desktop Entry]\nType=Application\nName=Back to Game Mode\nExec=nimbus-mode game\nHidden=true\nNoDisplay=true\n' >"$GM_HIDE_DIR/applications/hearth-gamemode.desktop" 2>/dev/null
+  else
+    rm -f "$GM_HIDE_DIR/applications/hearth-gamemode.desktop"
+  fi
+  return 0
+}
+# <<< game modes off
 # What a request for a mode means: "game" is the Game Mode you picked (game_mode_choice: Steam Game Mode unless you
 # picked Hearth Game Mode; first-time setup while it's pending; Hearth Game Mode on the live USB, its installer).
 # "hearth" is Hearth Game Mode asked for by you (Switch now, Try again): its pause ends first.
@@ -2027,6 +2081,9 @@ if [ -z "$HEARTH_SEAT" ] && [ -f "$SERVER_HELPER" ] && { [ "$mode" = server ] ||
   case "$sm" in game|desktop|server) [ "$sm" != "$mode" ] && log "start: $sm (Server mode's choices)"; mode="$sm" ;; esac
 fi
 [ "$mode" = server ] && mode="$(server_start_mode)"
+# Game Mode on this PC off: Desktop Mode (first-time setup still runs; Server mode stays).
+[ -z "$HEARTH_SEAT" ] && mode="$(gm_start_mode "$mode")"
+rm -f "$RUN/hearth-start-page"
 # Hearth Recovery on the device › Desktop Mode this time (until the next restart).
 [ -f /run/hearth/start-desktop ] && [ -z "$HEARTH_SEAT" ] && mode=desktop
 # Extra multi-seat players have Hearth's Game Mode only (multi-seat is dropped for now; kept for HEARTH_LEGACY_MULTIPLAYER).
@@ -2084,6 +2141,10 @@ while :; do
   next="$(cat "$NEXT" 2>/dev/null)"; rm -f "$NEXT"
   # First-time setup that ended without asking for anything (Hearth closed or gave up): Steam Game Mode, never no screen.
   [ "$mode" = setup ] && [ -z "$next" ] && { log "first-time setup ended (code $code); Steam Game Mode next"; next=steam; }
+  # ...or Desktop Mode, when Game Mode is off on this PC.
+  if [ "$mode" = setup ] && [ -z "$HEARTH_SEAT" ] && [ "$(gm_after_setup "$next")" != "$next" ]; then
+    log "first-time setup over; Game Mode is off on this PC, so Desktop Mode next"; next=desktop
+  fi
   [ -n "$HEARTH_SEAT" ] && [ "$next" = desktop ] && next=game   # extra multi-seat players have Game Mode only
   [ -n "$HEARTH_SEAT" ] && [ "$next" = steam ] && next=game     # ...and never Steam Game Mode
   [ -n "$HEARTH_SEAT" ] && [ "$next" = server ] && next=game    # ...and never Server mode

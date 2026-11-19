@@ -35,6 +35,7 @@ Singleton {
         const out = [{ separator: true }];
         for (const e of entries) {
             if (e.separator) { out.push({ separator: true }); continue; }
+            if (e.id === "game-mode" && Settings.gameModeOff) continue;   // Game Mode off on this PC (Settings › System › Startup)
             const it = { label: e.label, icon: e.icon, group: e.group, run: () => dm.run(e.command) };
             if (e.short) it.short = e.short;
             if (e.quick) it.quick = true;

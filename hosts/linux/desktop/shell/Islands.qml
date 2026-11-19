@@ -829,9 +829,10 @@ PanelWindow {
         Frame { anchors.fill: parent; flat: !isl.floating; lit: parent.lit; rad: parent.rad }
     }
 
-    // Back to Game Mode: dressed per look, never hidden.
+    // Back to Game Mode: dressed per look, hidden only while Game Mode is off on this PC (Settings › System › Startup).
     component GameModeButton: Item {
         id: gmb
+        visible: !Settings.gameModeOff
         objectName: "gameModeButton"
         implicitWidth: isl.vertical ? isl.islandH - 6 : gmRow.implicitWidth + (isl.shelf ? 56 : 36)
         Layout.alignment: Qt.AlignCenter

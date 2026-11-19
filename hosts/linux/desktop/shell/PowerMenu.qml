@@ -22,8 +22,8 @@ PanelWindow {
         { icon: "restart", label: "Restart", cmd: ["systemctl", "reboot"] }
     ]).concat(can.firmware ? [{ icon: "cpu", label: "Restart into firmware setup", cmd: ["python3", actions, "firmware"] }] : []).concat([
         { icon: "power", label: "Shut down", cmd: ["systemctl", "poweroff"] },
-        { icon: "logout", label: "Log out", cmd: [], logout: true },
-        { icon: "pad", label: "Game Mode", cmd: ["nimbus-mode", "game"] },
+        { icon: "logout", label: "Log out", cmd: [], logout: true }
+    ]).concat(Settings.gameModeOff ? [] : [{ icon: "pad", label: "Game Mode", cmd: ["nimbus-mode", "game"] }]).concat([
         { icon: "close", label: "Cancel", cmd: [] }
     ])
     Process {

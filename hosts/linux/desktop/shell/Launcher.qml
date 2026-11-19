@@ -842,7 +842,7 @@ PanelWindow {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
-                ActionButton { label: "Game Mode"; icon: "pad"; primary: true; command: ["nimbus-mode", "game"] }
+                ActionButton { visible: !Settings.gameModeOff; label: "Game Mode"; icon: "pad"; primary: true; command: ["nimbus-mode", "game"] }
                 ActionButton { label: "Settings"; icon: "gear"; command: [] }
                 ActionButton { label: "Sleep"; icon: "sleep"; command: ["python3", Buttons.helper, "sleep", "Desktop Mode: menu"] }
                 ActionButton { label: "Restart"; icon: "restart"; command: ["systemctl", "reboot"] }
