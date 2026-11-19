@@ -114,6 +114,8 @@ macro_rules! define {
             X,
             Find(bool),
             Confirm(bool),
+            /// `--press`: controller presses, one after another, once the page has had a moment to read.
+            Press(Vec<pad::Button>),
             Drag,
             Maximize,
             Minimize,
@@ -211,7 +213,7 @@ fn page_arg() -> Option<String> {
     }
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
-        if ["--layout", "--focus", "--find"].contains(&a.as_str()) {
+        if ["--layout", "--focus", "--find", "--press"].contains(&a.as_str()) {
             it.next();
             continue;
         }
@@ -245,7 +247,13 @@ impl App {
             a.finding = a.sh.big;
             nav::set_in_page(true);
         }
-        (a, Task::batch([info(), history(), t]))
+        let mut tasks = vec![info(), history(), t];
+        // `--press "right down a"`: the controller's presses, for the pictures and tests (as if read from it).
+        if let Some(p) = app::arg("--press") {
+            let presses: Vec<pad::Button> = p.split_whitespace().filter_map(pad::named).collect();
+            tasks.push(Task::perform(run::after(2000), move |_| Msg::Press(presses.clone())));
+        }
+        (a, Task::batch(tasks))
     }
 
     fn open(&mut self, id: &'static str) -> Task<Msg> {
@@ -333,6 +341,16 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             } else {
                 Task::none()
             }
+        }
+        Msg::Press(mut v) => {
+            if v.is_empty() {
+                return Task::none();
+            }
+            // One press at a time, the page drawn again between them (as a person presses).
+            let b = v.remove(0);
+            a.last_key = None;
+            let t = pad_press(a, b);
+            Task::batch([t, Task::perform(run::after(500), move |_| Msg::Press(v.clone()))])
         }
         Msg::Drag => win::drag(),
         Msg::Maximize => win::toggle_maximize(),
@@ -666,7 +684,7 @@ fn view(a: &App) -> Element<'_, Msg> {
 fn main() -> iced::Result {
     if app::handle_cli(
         "hearth-settings-app",
-        "Hearth Settings: every page of Hearth's Settings in its own app.\n  [PAGE[:part]] | --page PAGE   open at a page (home, quick, wifi, bluetooth, display, sound, power, appearance, updates, about...)\n  --layout a|b   keep the keyboard-and-mouse look (a) or the controller look (b); otherwise it follows what you use\n  --focus TITLE  put the focus on the row with this name\n  --find WORDS   search",
+        "Hearth Settings: every page of Hearth's Settings in its own app.\n  [PAGE[:part]] | --page PAGE   open at a page (home, quick, wifi, bluetooth, display, sound, power, appearance, updates, about...)\n  --layout a|b   keep the keyboard-and-mouse look (a) or the controller look (b); otherwise it follows what you use\n  --focus TITLE  put the focus on the row with this name\n  --find WORDS   search\n  --press \"right down a\"  controller presses after a moment (up down left right a b x y lb rb menu)",
     ) {
         return Ok(());
     }

@@ -378,7 +378,11 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
     let mut used = 0u16;
     for (span, e) in tiles {
         if used + span > 4 {
-            grid = grid.push(line.push(Space::new().width(Length::FillPortion(4 - used))));
+            // (A full line gets no spacer: a FillPortion(0) one takes the line's whole width.)
+            if used < 4 {
+                line = line.push(Space::new().width(Length::FillPortion(4 - used)));
+            }
+            grid = grid.push(line);
             line = Row::new().spacing(if b { 16.0 } else { 14.0 });
             used = 0;
         }

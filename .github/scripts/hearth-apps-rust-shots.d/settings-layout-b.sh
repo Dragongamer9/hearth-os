@@ -17,7 +17,7 @@ case "$*" in *-m*) echo "intel_backlight,backlight,5600,70%,8000" ;; esac
 EOF
 cat > "$FK/kreadconfig6" <<'EOF'
 #!/bin/sh
-echo false
+echo "${HS_NIGHT:-false}"
 EOF
 cat > "$FK/nmcli" <<'EOF'
 #!/bin/sh
@@ -69,6 +69,9 @@ if sys.argv[1:2] == ["status"]:
     print(json.dumps({"settings": {"lightMode": True}}))
 EOF
 chmod 755 "$FK"/*
+# A change in the history (Night light, turned on by you 8 days ago), for the help panel's "Changed by you".
+mkdir -p /tmp/hs-state/nimbus
+printf '{"changes": [{"id": 1, "file": "desktop.json", "key": "nightLight", "from": false, "to": true, "who": "you", "at": %s}], "next": 2}\n' "$(( $(date +%s) - 8 * 86400 ))" > /tmp/hs-state/nimbus/settings-history.json
 SET="env PATH=$FK:$PATH HEARTH_HOME_SERVER=$FK/home-server.py $BIN/hearth-settings-app"
 
 # B1: Quick, the focused tile lifted (measured at rest: the controller is read by a thread that sleeps in the kernel).
@@ -84,3 +87,12 @@ run settings-b6-search hearth-settings 0 $SET --layout b --page display --find n
 # A with the keyboard's focus on a row (settings-A2's outlined Resolution), and Home with its tiles.
 run settings-a2-display-focus hearth-settings 0 $SET --layout a --page display --focus Resolution
 run settings-a1-home-tiles hearth-settings 0 $SET --layout a --page home
+# The controller really moving and changing things (--press: presses as if read from the controller, one at a time).
+# Quick: right, right (Wi-Fi, Bluetooth), down (Brightness), right, right (70 % to 80 %).
+run settings-b7-quick-moved hearth-settings 0 $SET --layout b --page quick --press "right right down right right"
+# The help panel with the change history: Night light, changed by you.
+run settings-b8-history hearth-settings 0 env XDG_STATE_HOME=/tmp/hs-state $SET --layout b --page display --focus "Night light"
+# X Default on a setting that isn't at its default (Night light on): asked first.
+run settings-b9-default hearth-settings 0 env HS_NIGHT=true $SET --layout b --page display --focus "Night light" --press x
+# The keyboard-and-mouse look moved with the arrows / D-pad: into the page, down twice (Scale outlined).
+run settings-a3-display-moved hearth-settings 0 $SET --layout a --page display --press "right down down"

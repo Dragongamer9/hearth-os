@@ -64,6 +64,25 @@ pub fn button(code: u16, sony: bool) -> Option<Button> {
     })
 }
 
+/// A button by its name (`--press`, hearth-pad's names).
+pub fn named(s: &str) -> Option<Button> {
+    Some(match s.to_lowercase().as_str() {
+        "a" => Button::A,
+        "b" => Button::B,
+        "x" => Button::X,
+        "y" => Button::Y,
+        "lb" => Button::Lb,
+        "rb" => Button::Rb,
+        "up" => Button::Up,
+        "down" => Button::Down,
+        "left" => Button::Left,
+        "right" => Button::Right,
+        "menu" => Button::Menu,
+        "view" => Button::View,
+        _ => return None,
+    })
+}
+
 /// The left stick past 60 % (and back under 30 % before it counts again), as Firehold's shell reads it.
 pub fn stick(was: i8, v: f32) -> (i8, bool) {
     let now: i8 = if v > 0.6 { 1 } else if v < -0.6 { -1 } else { 0 };
@@ -286,6 +305,8 @@ mod tests {
         assert_eq!(button(0x136, false), Some(Button::Lb));
         assert_eq!(button(0x2c0, false), Some(Button::Left));
         assert_eq!(button(0x13c, false), None); // Guide stays the desktop's
+        assert_eq!(named("RB"), Some(Button::Rb));
+        assert_eq!(named("guide"), None);
         assert_eq!(ior(0x06, 128), 0x8080_4506);
         assert_eq!(ior(0x02, 8), 0x8008_4502);
     }
