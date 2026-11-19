@@ -16,6 +16,7 @@
 //!   input.layouts                     this device's controller layouts (inputs.rs)
 //!   update.*                          update every device at once (fleet.rs)
 //!   ai.*                              local AI over Hearth Link (ai.rs)
+//!   tv.play, tv.read                  Send to TV (tv.rs)
 //! A connection from a device that isn't paired is closed at once (except pairing, while a code is showing).
 //!
 //! Pairing (pair.rs) logs every step to the journal ("hearth-link: pairing: ..."), never a code.
@@ -233,6 +234,12 @@ impl Node {
     /// One request to a paired device; a connection that turns out to be dead (the other device restarted) is
     /// made again once.
     pub async fn request(self: &Arc<Self>, id: &str, req: &Value) -> Result<Value, String> {
+        // Nothing goes to a friend's or a family member's device that it isn't let have (family.rs may_ask).
+        {
+            let op = req["op"].as_str().unwrap_or("");
+            let ps = crate::lock(&self.peers);
+            if let Some(p) = ps.get(id) { if !crate::family::may_ask(p, op) { return Err(crate::family::refusal(Some(p), op)); } }
+        }
         let c = self.connect(id).await?;
         match wire::request(&c, req).await {
             Err(e) if e.starts_with("connection:") && !e.contains("not paired") => {
@@ -264,7 +271,7 @@ impl Node {
     async fn hello(self: &Arc<Self>, id: &str, c: &Connection) -> Result<(), String> {
         let relay = self.ep.addr().relay_urls().next().map(|u| u.to_string());
         let si = if crate::lock(&self.peers).is_mine(id) { signed_in_here(&self.home) } else { json!({}) };
-        let r = wire::request(c, &json!({"op": "hello", "name": self.name(), "signedIn": si, "relay": relay})).await;
+        let r = wire::request(c, &json!({"op": "hello", "name": self.name(), "signedIn": si, "relay": relay, "kind": self.kind, "family": self.family_hello(id)})).await;
         match r {
             Ok(v) => { self.take_hello(id, &v); Ok(()) }
             Err(e) => { self.check_unpaired(id, &e); Err(e) }
@@ -280,14 +287,38 @@ impl Node {
             if !si.is_object() { si = json!({}); }
             if let Some(r) = v["relay"].as_str().filter(|r| crate::state::valid_relay_url(r)) { si["relay"] = json!(r); }
             p.signed_in = si;
+            if let Some(k) = v["kind"].as_str().filter(|k| crate::discovery::KINDS.contains(k)) { p.kind = k.to_string(); }
+            // A family device: what it lets this one have, and (a family member's device to the people who help on
+            // it) its network cards, to wake it.
+            if p.family() {
+                if v["family"]["shares"].is_object() { p.their_shares = crate::family::take_shares(&v["family"]["shares"]); }
+                if p.i_help() {
+                    if let Some(m) = v["family"]["macs"].as_array() {
+                        p.macs = m.iter().filter_map(|m| m.as_str().filter(|m| crate::storage::valid_mac(m)).map(str::to_string)).take(4).collect();
+                    }
+                }
+            }
             p.last_seen = crate::now_ms();
         }
         let _ = ps.save();
     }
 
-    fn add_peer(&self, id: &str, name: &str, relay: Option<String>, friend: bool) {
+    /// What this device says about itself to a family device in hello: its switches toward it, and its network cards
+    /// when it's the family member's device (so the people who help on it can wake it).
+    fn family_hello(&self, id: &str) -> Value {
+        let ps = crate::lock(&self.peers);
+        match ps.get(id) {
+            Some(p) if p.family() => {
+                let macs: Vec<String> = if p.helps_me() { crate::storage::nics().into_iter().map(|n| n.1).take(4).collect() } else { Vec::new() };
+                json!({"shares": crate::family::shares_for(p), "macs": macs})
+            }
+            _ => Value::Null,
+        }
+    }
+
+    fn add_peer(&self, id: &str, name: &str, relay: Option<String>, rel: crate::state::Rel, side: &str) {
         let mut ps = crate::lock(&self.peers);
-        ps.add_paired(id, name, friend);
+        ps.add_paired_as(id, name, rel, side);
         if let (Some(r), Some(p)) = (relay, ps.get_mut(id)) { if !p.signed_in.is_object() { p.signed_in = json!({}); } p.signed_in["relay"] = json!(r); }
         let _ = ps.save();
     }
@@ -386,21 +417,22 @@ impl Node {
             me.set_event(json!({"state": "checking", "name": j.name, "kind": j.kind}));
         };
         let r = tokio::time::timeout(Duration::from_secs(30), crate::pair::host(&conn, &self.key_bytes(), &self.name(), relay, &pairing, left_if_wrong, seen)).await;
-        self.after_pair_attempt(remote, short, pairing.mine, r);
+        self.after_pair_attempt(remote, short, pairing.choice, r);
         // The next attempt is taken only now, with the tries counted.
         self.pair_busy.store(false, Ordering::SeqCst);
     }
 
-    fn after_pair_attempt(self: &Arc<Self>, remote: String, short: String, mine_here: bool, r: Result<Result<crate::pair::Joiner, (crate::pair::HostFail, crate::pair::Joiner)>, tokio::time::error::Elapsed>) {
+    fn after_pair_attempt(self: &Arc<Self>, remote: String, short: String, here: crate::state::Rel, r: Result<Result<crate::pair::Joiner, (crate::pair::HostFail, crate::pair::Joiner)>, tokio::time::error::Elapsed>) {
         let left_if_wrong = crate::lock(&self.pairing).as_ref().map(|p| crate::pair::MAX_TRIES.saturating_sub(p.tries + 1)).unwrap_or(0);
         use crate::pair::HostFail;
         match r {
             Ok(Ok(j)) => {
-                let friend = crate::pair::is_friend(mine_here, j.mine);
-                self.add_peer(&remote, &j.name, j.relay.clone(), friend);
+                let (rel, side) = crate::pair::relation(here, j.choice);
+                let friend = rel == crate::state::Rel::Friend;
+                self.add_peer(&remote, &j.name, j.relay.clone(), rel, side);
                 self.end_pairing();
-                self.set_event(json!({"state": "paired", "name": j.name, "id": remote, "friend": friend}));
-                eprintln!("hearth-link: pairing: paired with {} ({remote}){}", j.name, if friend { " as a friend's device" } else { "" });
+                self.set_event(json!({"state": "paired", "name": j.name, "id": remote, "friend": friend, "relation": rel.as_str(), "familySide": side}));
+                eprintln!("hearth-link: pairing: paired with {} ({remote}){}", j.name, rel_words(rel, side));
                 self.family_after_pairing(&remote);
                 let n = self.clone();
                 tokio::spawn(async move { tokio::time::sleep(Duration::from_secs(1)).await; let _ = n.sync_with(&remote).await; });
@@ -433,15 +465,29 @@ impl Node {
     async fn on_stream(self: Arc<Self>, peer: String, mut s: iroh::endpoint::SendStream, mut r: iroh::endpoint::RecvStream) {
         let req = match wire::read_msg(&mut r).await { Ok(v) => v, Err(_) => return };
         let op = req["op"].as_str().unwrap_or("").to_string();
-        // A friend's device only gets what makes sense between two people (family.rs).
-        if !crate::family::friend_may(&op) && !crate::lock(&self.peers).is_mine(&peer) {
-            let _ = wire::write_msg(&mut s, &json!({"error": "That's only for your own devices"})).await;
+        // A friend's device only gets what makes sense between two people, a family member's device what its switches
+        // let through (family.rs), checked before anything runs.
+        let refused: Option<String> = {
+            let ps = crate::lock(&self.peers);
+            let r = match ps.get(&peer) { Some(p) if crate::family::allowed(p, &op) => None, p => Some(crate::family::refusal(p, &op)) };
+            r
+        };
+        if let Some(why) = refused {
+            let _ = wire::write_msg(&mut s, &json!({"error": why})).await;
             let _ = s.finish();
             return;
         }
         if op == "chunks" {
             if let Err(e) = self.serve_chunks(&peer, &req, &mut s).await {
                 eprintln!("hearth-link: sending chunks: {e}");
+                let _ = s.write_all(&wire::control_frame(wire::T_ERROR, &e)).await;
+            }
+            let _ = s.finish();
+            let _ = tokio::time::timeout(Duration::from_secs(30), s.stopped()).await;
+            return;
+        }
+        if op == "tv.read" {
+            if let Err(e) = self.tv_serve_read(&peer, &req, &mut s).await {
                 let _ = s.write_all(&wire::control_frame(wire::T_ERROR, &e)).await;
             }
             let _ = s.finish();
@@ -466,8 +512,10 @@ impl Node {
     /// archived games, shared folders and backups (storage.rs) are checked for `peer` every time instead.
     pub(crate) async fn local_game(self: &Arc<Self>, peer: &str, id: &str) -> Result<Arc<crate::games::LocalGame>, String> {
         if crate::storage::is_special(id) {
-            // Archived games, shared folders and backups are only for your own devices.
-            if !crate::lock(&self.peers).is_mine(peer) { return Err("That's only for your own devices".into()); }
+            // Archived games, shared folders and backups are only for your own devices, and a family member's device
+            // while its switch for that is on.
+            let what = crate::family::switch_of_item(id);
+            if !crate::lock(&self.peers).get(peer).map(|p| p.lets(what)).unwrap_or(false) { return Err("That's only for your own devices".into()); }
             let (n, p, i) = (self.clone(), peer.to_string(), id.to_string());
             return tokio::task::spawn_blocking(move || n.storage_find(&p, &i)).await.map_err(|e| e.to_string())?.map(Arc::new);
         }
@@ -508,7 +556,7 @@ impl Node {
                 self.take_hello(peer, req);
                 let relay = self.ep.addr().relay_urls().next().map(|u| u.to_string());
                 let si = if crate::lock(&self.peers).is_mine(peer) { signed_in_here(&self.home) } else { json!({}) };
-                Ok(json!({"name": self.name(), "signedIn": si, "relay": relay}))
+                Ok(json!({"name": self.name(), "signedIn": si, "relay": relay, "kind": self.kind, "family": self.family_hello(peer)}))
             }
             "games" => {
                 let home = self.home.clone();
@@ -558,6 +606,7 @@ impl Node {
             "unpair" => { crate::lock(&self.peers).remove(peer); self.conns.lock().await.remove(peer); Ok(json!({"ok": true})) }
             "ping" => Ok(json!({"ok": true})),
             "family.sync" => self.clone().family_answer(peer, req).await,
+            o if o.starts_with("family.") => self.clone().family_request(peer, op, req).await,
             o if o.starts_with("saves.") => self.clone().saves_answer(peer, op, req).await,
             o if o.starts_with("device.") || o.starts_with("devices.") => self.clone().health_answer(peer, op, req).await,
             o if o.starts_with("bench.") => self.clone().bench_answer(peer, op, req).await,
@@ -565,6 +614,7 @@ impl Node {
             o if o.starts_with("input.") => self.clone().inputs_answer(peer, op, req).await,
             o if o.starts_with("update.") => self.clone().fleet_answer(peer, op, req).await,
             o if o.starts_with("ai.") => self.clone().ai_answer(peer, op, req).await,
+            o if o.starts_with("tv.") => self.clone().tv_answer(peer, op, req).await,
             o if o.starts_with("status.") => self.clone().status_answer(peer, op, req).await,
             o if o.starts_with("decky.") => self.clone().decky_answer(peer, op, req).await,
             o if o.starts_with("storage.") || o.starts_with("archive.") || o.starts_with("backup.") || o.starts_with("cache.") || o.starts_with("updates.") => self.clone().storage_answer(peer, op, req).await,
@@ -575,6 +625,11 @@ impl Node {
     // ------------------------------------------------------------------ sync
 
     fn sync_answer(&self, peer: &str, req: &Value) -> Result<Value, String> {
+        // A family member's device: only the library (favorites, hidden, collections, play time), never settings.
+        let family = crate::lock(&self.peers).get(peer).map(|p| p.family()).unwrap_or(false);
+        let mut req = req.clone();
+        if family { crate::sync::library_only(&mut req); }
+        let req = &req;
         let mut s = crate::lock(&self.sync);
         s.scan(&self.me, &self.src);
         let (c, g) = s.merge(&self.me, req);
@@ -586,6 +641,7 @@ impl Node {
         if let (Some(mine), Some(theirs)) = (out["fields"].as_object_mut(), req["fields"].as_object()) {
             mine.retain(|k, f| theirs.get(k).map(|t| t["t"] != f["t"] || t["d"] != f["d"]).unwrap_or(true));
         }
+        if family { crate::sync::library_only(&mut out); }
         s.save(&self.dir)?;
         crate::lock(&self.sync_info).insert(peer.to_string(), json!({"at": crate::now_ms(), "got": c.len(), "playGrew": g.len()}));
         Ok(out)
@@ -593,7 +649,13 @@ impl Node {
 
     pub async fn sync_with(self: &Arc<Self>, peer: &str) -> Result<Value, String> {
         if !crate::lock(&self.cfg).sync { return Err("Sync is off".into()); }
-        if !crate::lock(&self.peers).is_mine(peer) { return Err("Settings and the library only sync between your own devices".into()); }
+        let family = match crate::lock(&self.peers).get(peer) {
+            Some(p) if p.mine() => false,
+            // A family member's device: the library only, while its switch is on.
+            Some(p) if p.family() && p.lets("library") => true,
+            Some(p) if p.family() => return Err("The library syncs with a family member's device only when they turn on Share my game library on it".into()),
+            _ => return Err("Settings and the library only sync between your own devices".into()),
+        };
         let n = self.clone(); let p = peer.to_string();
         let mut req = tokio::task::spawn_blocking(move || {
             let mut s = crate::lock(&n.sync);
@@ -603,8 +665,11 @@ impl Node {
             out
         }).await.map_err(|e| e.to_string())?;
         req["op"] = json!("sync");
+        if family { crate::sync::library_only(&mut req); }
         let resp = match self.request(peer, &req).await { Ok(v) => v, Err(e) => { self.check_unpaired(peer, &e); return Err(e.trim_start_matches("connection: ").to_string()); } };
         let n = self.clone(); let p = peer.to_string();
+        let mut resp = resp;
+        if family { crate::sync::library_only(&mut resp); }
         tokio::task::spawn_blocking(move || {
             let mut s = crate::lock(&n.sync);
             let (c, g) = s.merge(&n.me, &resp);
@@ -626,7 +691,7 @@ impl Node {
             let changed = { let n = self.clone(); tokio::task::spawn_blocking(move || { let mut s = crate::lock(&n.sync); let c = s.scan(&n.me, &n.src); let _ = s.save(&n.dir); c }).await.unwrap_or(false) };
             if !changed && last_full.map(|t| t.elapsed() < Duration::from_secs(300)).unwrap_or(false) { continue; }
             last_full = Some(Instant::now());
-            let ids: Vec<String> = crate::lock(&self.peers).mine().map(|p| p.id.clone()).collect();
+            let ids: Vec<String> = crate::lock(&self.peers).letting("library").map(|p| p.id.clone()).collect();
             for id in ids { if let Err(e) = self.sync_with(&id).await { eprintln!("hearth-link: sync with {id}: {e}"); } }
         }
     }
@@ -729,7 +794,10 @@ impl Node {
             let online = lan || now.saturating_sub(p.last_seen) < 60_000;
             let by = p.introduced_by.as_ref().and_then(|b| names.get(b).cloned());
             json!({"id": p.id, "name": p.name, "pairedAt": p.paired_at, "lastSeen": p.last_seen, "online": online, "lan": lan, "alwaysAccept": p.always_accept,
-                   "signedIn": p.signed_in, "sync": crate::lock(&self.sync_info).get(&p.id), "friend": p.friend, "introducedBy": by})
+                   "signedIn": p.signed_in, "sync": crate::lock(&self.sync_info).get(&p.id), "friend": p.rel() == crate::state::Rel::Friend, "introducedBy": by,
+                   "relation": p.rel().as_str(), "familySide": p.family_side, "shares": crate::family::shares_for(p), "theirShares": p.their_shares,
+                   "canWake": !p.macs.is_empty(),
+                   "kind": if p.kind.is_empty() { found.get(&p.id).map(|f| f.kind.clone()).unwrap_or_default() } else { p.kind.clone() }})
         }).collect();
         let paired: Vec<String> = crate::lock(&self.peers).list.iter().map(|p| p.id.clone()).collect();
         // Devices showing a code first (the ones to pick), then by name. A device that stopped announcing a code is
@@ -887,22 +955,23 @@ impl Node {
         self.set_joining("checking", &name);
         eprintln!("hearth-link: pairing: connected, checking the code");
         let mine = self.ep.addr().relay_urls().next().map(|u| u.to_string());
-        let mine_here = a["mine"] != false;
-        let r = tokio::time::timeout(Duration::from_secs(30), crate::pair::join(&conn, &self.key_bytes(), &self.name(), mine, &code, with, mine_here)).await
+        let here = choice_arg(a).unwrap_or(crate::state::Rel::Mine);
+        let r = tokio::time::timeout(Duration::from_secs(30), crate::pair::join(&conn, &self.key_bytes(), &self.name(), mine, &code, with, here)).await
             .map_err(|_| format!("{name} didn't answer"))?;
         conn.close(VarInt::from_u32(0), b"done");
         // The other device's own words (wrong code, not open, busy, expired) pass through; a connection that just
         // ended (Hearth Link as in 0.6.5 closes it when pairing isn't open there) is said plainly.
-        let (host_name, their_relay, mine_there) = r.map_err(|e| {
+        let (host_name, their_relay, there) = r.map_err(|e| {
             if e.starts_with("reading") || e.contains("connection lost") || e.contains("closed") { format!("{name} ended the pairing: pairing may not be open on it (or the code expired). Select Pair a device on it and try again") }
             else { e }
         })?;
-        let friend = crate::pair::is_friend(mine_here, mine_there);
-        self.add_peer(&id, &host_name, their_relay.or(relay.filter(|r| crate::state::valid_relay_url(r))), friend);
+        let (rel, side) = crate::pair::relation(here, there);
+        let friend = rel == crate::state::Rel::Friend;
+        self.add_peer(&id, &host_name, their_relay.or(relay.filter(|r| crate::state::valid_relay_url(r))), rel, side);
         let n = self.clone(); let id2 = id.clone();
         tokio::spawn(async move { let _ = n.sync_with(&id2).await; });
         self.family_after_pairing(&id);
-        Ok(json!({"id": id, "name": host_name, "friend": friend}))
+        Ok(json!({"id": id, "name": host_name, "friend": friend, "relation": rel.as_str(), "familySide": side}))
     }
 
     pub async fn command(self: &Arc<Self>, cmd: &str, a: &Value) -> Result<Value, String> {
@@ -918,7 +987,7 @@ impl Node {
                     if !keep { *p = Some(crate::pair::Pairing::new(secs.unwrap_or(crate::pair::CODE_LIFETIME_MS).min(crate::pair::CODE_LIFETIME_MS))); }
                     // My device (the default) or A friend's device: what the other device is told when it pairs.
                     // Asking for a short code as well keeps what was picked.
-                    if let (Some(x), Some(m)) = (p.as_mut(), a["mine"].as_bool()) { x.mine = m; }
+                    if let Some(x) = p.as_mut() { if let Some(c) = choice_arg(a) { x.choice = c; } }
                     !keep
                 };
                 if fresh {
@@ -963,14 +1032,33 @@ impl Node {
                 let mut ps = crate::lock(&self.peers);
                 let p = ps.get_mut(&id).ok_or("Not a paired device")?;
                 if let Some(b) = a["alwaysAccept"].as_bool() { p.always_accept = b; }
-                // Making one of yours a friend's device stops sharing with it at once. The other way needs both
-                // devices to agree: pairing again, picking My device on both.
-                match a["friend"].as_bool() {
-                    Some(true) => { p.friend = true; p.introduced_by = None; p.signed_in = json!({}); }
-                    Some(false) if p.friend => return Err("To make it one of your devices, pair with it again and pick My device on both".into()),
-                    _ => {}
+                // Whose it is: {relation: mine|family|friend} ({friend: true} as before). Making one of yours a
+                // family member's or a friend's device stops sharing with it at once (and it's told, so it stops
+                // too). Going up to My device needs both devices to agree: pairing again, picking My device on both.
+                use crate::state::Rel;
+                let want = a["relation"].as_str().and_then(Rel::parse).or(match a["friend"].as_bool() { Some(true) => Some(Rel::Friend), Some(false) => Some(Rel::Mine), None => None });
+                let mut told = None;
+                if let Some(w) = want {
+                    let cur = p.rel();
+                    match (cur, w) {
+                        (c, w) if c == w => {}
+                        (_, Rel::Mine) => return Err("To make it one of your devices, pair with it again and pick My device on both".into()),
+                        // Stamped now, so your other devices take it from this one's list (family.rs merge).
+                        (Rel::Mine, Rel::Family) | (Rel::Friend, Rel::Family) => { p.set_rel(Rel::Family, "member"); p.introduced_by = None; p.paired_at = crate::now_ms(); told = Some(Rel::Family); }
+                        (_, Rel::Friend) => { p.set_rel(Rel::Friend, ""); p.introduced_by = None; told = Some(Rel::Friend); }
+                        _ => {}
+                    }
                 }
+                // A family device's switches on this device (family.rs set_shares: the four only on the family
+                // member's own device).
+                let shares_changed = if a["shares"].is_object() { crate::family::set_shares(p, &a["shares"])? } else { false };
                 ps.save()?;
+                drop(ps);
+                if let Some(r) = told {
+                    self.family_tell_relation(&id, r);
+                    if r == Rel::Family { let n = self.clone(); tokio::spawn(async move { n.family_round(None).await; }); }
+                }
+                if shares_changed { self.family_tell_shares(&id); }
                 Ok(Value::Null)
             }
             "settings.set" => {
@@ -1064,12 +1152,14 @@ impl Node {
                 Ok(Value::Object(out))
             }
             "ticket" => Ok(json!({"ticket": self.ticket()})),
+            "peer.wake" | "peer.remote" | "peer.remote.pin" => self.family_command(cmd, a).await,
             c if c.starts_with("storage.") => self.storage_command(c, a).await,
             c if c.starts_with("bench.") => self.bench_command(c, a).await,
             c if c.starts_with("handoff.") => self.handoff_command(c, a).await,
             c if c.starts_with("input.") => self.inputs_command(c, a).await,
             c if c.starts_with("fleet.") => self.fleet_command(c, a).await,
             c if c.starts_with("ai.") => self.ai_command(c, a).await,
+            c if c.starts_with("tv.") => self.tv_command(c, a).await,
             c if c.starts_with("status.") => self.status_command(c, a).await,
             c if c.starts_with("decky.") => self.decky_command(c, a).await,
             _ => Err(format!("Unknown command: {cmd}")),
@@ -1084,5 +1174,22 @@ impl Node {
         // Paused by the service stopping, not by the person: they carry on next time.
         for j in &jobs { if j.state() == "paused" && !j.cancel.load(Ordering::SeqCst) { *crate::lock(&j.state) = "copying".into(); let _ = j.save(); } }
         self.ep.close().await;
+    }
+}
+
+/// "My device", "A family member's device" or "A friend's device" from a UI call: {as: mine|family|friend}, or
+/// {mine: bool} as before.
+fn choice_arg(a: &Value) -> Option<crate::state::Rel> {
+    a["as"].as_str().and_then(crate::state::Rel::parse).or(match a["mine"].as_bool() { Some(true) => Some(crate::state::Rel::Mine), Some(false) => Some(crate::state::Rel::Friend), None => None })
+}
+
+/// For the journal.
+fn rel_words(r: crate::state::Rel, side: &str) -> &'static str {
+    match (r, side) {
+        (crate::state::Rel::Friend, _) => " as a friend's device",
+        (crate::state::Rel::Family, "member") => " as a family member's device (this one helps on it)",
+        (crate::state::Rel::Family, "helper") => " as a family member's device (it helps on this one)",
+        (crate::state::Rel::Family, _) => " as a family member's device (each helps on the other)",
+        _ => "",
     }
 }

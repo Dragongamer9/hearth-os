@@ -267,3 +267,43 @@ Building and testing happen only in GitHub Actions.
 - Settings: `hosts/linux/desktop/shell/hearth-your-desktop` and `SetYourDesktop.qml`; the card: `DesktopNotice.qml`.
 - No version number is in the crate: the owner picks every one (Cargo reads a missing one as 0.0.0). When it goes into
   a release, its `Cargo.toml` joins the release's list of files to bump.
+
+## Firehold on Plasma (a test, Nov 18, 2026)
+
+The owner (Nov 18): Hearth moves to Fedora (Anatase) once he has tested it, and Firehold is built two ways so he can
+try both. This is the first way: **Firehold as a KDE Plasma interface on KDE's own KWin 6.8**, the way KDE builds Plasma
+Bigscreen and Plasma Mobile. Nothing of KWin is patched and nothing comes back from `archive/kwin`; only public,
+supported pieces: plasmashell shell packages, Plasma's QML (its task model, Kirigami, Plasma's data sources, KDE's
+LayerShellQt), Plasma's scripting interface, and one KWin script through KWin's script API.
+
+Code: `hosts/linux/desktop/firehold-plasma` (installed into the Anatase image by `install.sh` from `build.sh`).
+Checklist: `docs/mockups/checklists/firehold-plasma-test.md`. CI: `.github/workflows/firehold-plasma.yml` (pictures on the
+branch `ci/firehold-plasma-shots-<branch>`, and ten minutes at rest next to plain Plasma).
+
+- **Couch** is the shell package `org.hearthos.firehold`; its desktop is the containment `org.hearthos.firehold.couch`
+  (Home, Library, Apps, Store, Everything open, Settings › Couch and Desk, and the Guide in a layer over the game).
+  Games come from `desktop/shell/hearth-firehold` and the rules from `desktop/shell/firehold.js`, the same as Mantel's
+  Firehold; windows from Plasma's own task model.
+- **Desk** is Plasma's own desktop: the shell package `org.hearthos.firehold.desk` is Plasma's `org.kde.plasma.desktop`
+  copied when the image is built, with Firehold's first layout (a top bar with the app's name, its menus, the date and
+  clock, the posture pill and Wi-Fi · battery, and a dock). It keeps its own layout file, so plain Plasma's panels are
+  never touched.
+- **Switching** restarts only plasmashell with the other shell package (KDE's own user service when it runs, else
+  `plasmashell --replace`): KWin, the session and every app and game stay open. The Guide button (or Meta+Ctrl+G) on the
+  Desk goes to the Couch; on the Couch it opens the Guide, twice Everything open. With Automatic, the mouse or keyboard
+  goes to the Desk. The KWin script (loaded for the session over D-Bus, never from kwinrc) puts a game full screen on
+  the Couch and back in its window on the Desk.
+- **The controller**: `hearth-firehold-plasma session` reads controllers (never grabs them) and, only while the Couch
+  or the Guide is in front, sends the D-pad, A, B, X, Y, LB/RB and LT/RT as keys through its own "Hearth Firehold keys"
+  device. The Guide button always works.
+- **Opt-in and safe to fail**: "Firehold (Plasma, test)" in Plasma's menu (and Settings › System in the Couch) picks it;
+  it's saved as `HEARTH_PLASMA_DESKTOP=firehold` in `~/.config/nimbus/session.conf` (that line only, through
+  `hearth_settings_io`; no line is plain KDE Plasma) and nothing changes it by itself. If the Couch or the Desk doesn't
+  say it's up within 45 s, plain KDE Plasma starts in its place for that session, with everything still open, and a
+  notification says so; the choice stays. nimbus-session clears Plasma's shell variable before every Plasma start, so
+  plain Plasma never gets Firehold's shell, and Game Mode's own fallbacks are unchanged.
+- **Settings** are Firehold's `~/.config/nimbus/firehold.json`, shared with Mantel's Firehold, written a key at a time
+  and only when changed. Opening a page writes nothing.
+- **Performance**: no QML Timer and no animation anywhere (a test checks); the clock is Plasma's time source once a
+  minute; window pictures stream only while Everything open is on screen; the helper sleeps in `select` (it wakes every
+  10 s to look for new controllers).

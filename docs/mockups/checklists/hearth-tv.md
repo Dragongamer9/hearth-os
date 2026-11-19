@@ -20,8 +20,10 @@ Hearth TV has its own version (hosts/android-tv/VERSION, 1.0, picked by the owne
 - [x] Player: night mode and dialogue boost — hosts/android-tv/app/src/main/assets/tv/library.js: "Night mode"
 - [x] Theater: saved links, Videos / Live streams / Playlists / Watched — hosts/android-tv/app/src/main/assets/tv/theater.js: "Live streams"
 - [x] Theater: Add a link with a QR code for your phone, or type it — hosts/android-tv/app/src/main/assets/tv/theater.js: "Type a link instead"
-- [ ] Theater: On any Hearth PC, right-click a link › Send to TV (needs a Hearth Link "send to TV" request and the PC side)
-- [ ] Theater: On your phone, share any video to Hearth TV (needs Hearth for Android to send it over Hearth Link)
+- [x] Theater: On any Hearth PC, right-click a link › Send to TV, through Hearth Link (Hearth Browser; also Hearth Files, Mantel's clipboard and Hearth Theater), and the TV plays it — os/system_files/usr/share/hearth-browser/firefox/hearth/hearth.sys.mjs: "Send to TV"
+- [x] Theater: Send to TV over Hearth Link: a link, a video or music file (played from the PC, with seeking) or a show of your library — hosts/hearth-link/src/tv.rs: "\"tv.send\" =>"
+- [x] Theater: On your phone, share any video to Hearth TV (Hearth for Android's Share › Hearth TV: a link or a video file from any app) — hosts/android/app/src/main/AndroidManifest.xml: "android:label=\"Hearth TV\""
+- [x] Theater: what's sent plays on the TV (a link saved in Theater and played, a file in Hearth TV's player, a show in My Media) — hosts/android-tv/app/src/main/java/dev/hearthos/tv/SendToTv.kt: "tv.inbox"
 - [x] Search: on-screen keyboard, your PC, Theater and apps at once, search in another app — hosts/android-tv/app/src/main/assets/tv/search.js: "Search for"
 - [x] Search: voice search — hosts/android-tv/app/src/main/java/dev/hearthos/tv/Bridge.kt: "fun voice("
 - [x] TV Cleanup: Your TV is clean, every group, Check again now — hosts/android-tv/app/src/main/assets/tv/settings.js: "Your TV is clean"

@@ -59,7 +59,8 @@ of labwc's, all typed through this helper's uinput keyboard (KWin has no wtype):
 A KWin script (/usr/share/kwin/scripts/hearthpad) says which window is in front over D-Bus (org.hearth.Pad, served
 here with GLib's D-Bus when python3-gi is there): Plasma's popups (the launcher, the tray, Quick Access), the taskbar,
 KRunner, Dolphin, System Settings and the lock screen get the keys (A Enter, B Esc, X the Menu key; RT / LT still
-click), a fullscreen window pauses the controller as in Classic. A text field that KWin reports right after you used
+click), a fullscreen window pauses the controller as in Classic, and a controller app in front owns the controller as in
+Classic (owner {app}). The Fedora edition's host is hearth-pad-host (hosts/hearth-ui/apps/pad), which draws the same. A text field that KWin reports right after you used
 the controller (KRunner, KDE apps) opens the on-screen keyboard. Without python3-gi it still works, A just clicks.
 
 --gnome: Hearth GNOME (GNOME Shell's hearth-pad@hearthos.fun extension starts it and draws what it asks for;
@@ -972,6 +973,9 @@ class Pad:
         self.win = (cls, caption, fullscreen, kind)
         self.key_overlay = False
         self.plasma_sync_keys()
+        # A controller app in front (Steam, a game, Hearth's own: controller-apps.json, .desktop files, claims) reads
+        # the controller itself: as in Hearth Classic, the helper stands aside (KWin's class is the Wayland app id).
+        self.set_front(cls, caption)
         fs = fullscreen and kind not in ('desktop', 'dock') and cls.lower() not in PLASMA_SHELL
         if fs != self.fs_pause:
             self.fs_pause = fs
@@ -1863,13 +1867,14 @@ def main():
         real_move(dx, dy)
     out.move = counted_move
     cosmic = '--cosmic' in sys.argv[1:]
-    # Hearth Classic (Mantel): controller apps own the controller while they're in front (docs/CONTROLLER-FOCUS.md).
+    # Hearth Classic (Mantel), and Plasma (KWin's hearthpad script says what's in front): controller apps own the
+    # controller while they're in front (docs/CONTROLLER-FOCUS.md).
     classic = not (game or plasma or gnome or osk_only or cosmic)
-    owners = Owners() if classic else None
+    owners = Owners() if (classic or plasma) else None
     pad = CosmicPad(out) if cosmic else Pad(out, game=game, osk_only=osk_only, plasma=plasma, gnome=gnome, owners=owners)
     standalone = '--standalone' in sys.argv[1:]
     olink = None
-    if classic and not standalone:
+    if (classic or plasma) and not standalone:
         try:
             olink = OwnerLink(owner_socket_path())
         except OSError as err:

@@ -17,6 +17,7 @@
 //! the middle can't produce the right confirmation, so nobody but the two devices ends up paired.
 
 use crate::wire::{read_msg, write_msg};
+use crate::state::Rel;
 use serde_json::{json, Value};
 use spake2::{Ed25519Group, Identity, Password, Spake2};
 
@@ -27,11 +28,12 @@ pub const MAX_TRIES: u32 = 5;
 /// Pairing open on this device: the 6-digit code, and the short code for somewhere else once asked for.
 #[derive(Debug, Clone)]
 pub struct Pairing { pub code: String, pub until: u64, pub tries: u32, pub net: Option<(String, u64)>,
-                     /// "My device" (true) or "A friend's device" (false), picked when pairing opened (family.rs).
-                     pub mine: bool }
+                     /// "My device", "A family member's device" or "A friend's device", picked when pairing opened
+                     /// (family.rs).
+                     pub choice: Rel }
 
 impl Pairing {
-    pub fn new(lifetime_ms: u64) -> Self { Pairing { code: new_code(), until: crate::now_ms() + lifetime_ms, tries: 0, net: None, mine: true } }
+    pub fn new(lifetime_ms: u64) -> Self { Pairing { code: new_code(), until: crate::now_ms() + lifetime_ms, tries: 0, net: None, choice: Rel::Mine } }
     /// Still taking attempts: a code showing and tries left.
     pub fn open(&self) -> bool { self.tries < MAX_TRIES && (self.until > crate::now_ms() || self.net_code().is_some()) }
     pub fn lan_code(&self) -> Option<&str> { (self.until > crate::now_ms()).then_some(self.code.as_str()) }
@@ -93,13 +95,13 @@ pub fn wrong_code_text(left: u32, host: &str) -> String {
 }
 
 /// The joining side (B), on a connection to the host. `with`: "lan" (the 6-digit code) or "net" (the short code).
-/// `mine`: this side picked "My device". Returns the host's name, relay (where it can be reached from elsewhere)
-/// and whether it picked My device too (a device from before this doesn't say: yes, as before).
-pub async fn join(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &str, my_relay: Option<String>, code: &str, with: &str, mine: bool) -> Result<(String, Option<String>, bool), String> {
+/// `choice`: what this side picked. Returns the host's name, relay (where it can be reached from elsewhere) and what
+/// it picked (a device from before family devices only says mine or not; one from before that doesn't say: mine).
+pub async fn join(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &str, my_relay: Option<String>, code: &str, with: &str, choice: Rel) -> Result<(String, Option<String>, Rel), String> {
     let host_key = *conn.remote_id().as_bytes();
     let (mut s, mut r) = conn.open_bi().await.map_err(|e| e.to_string())?;
     let (state, msg) = start(code, &host_key, me);
-    write_msg(&mut s, &json!({"v": 2, "name": my_name, "kind": crate::discovery::device_kind(), "relay": my_relay, "with": with, "mine": mine, "msg": crate::hex(&msg)})).await?;
+    write_msg(&mut s, &json!({"v": 2, "name": my_name, "kind": crate::discovery::device_kind(), "relay": my_relay, "with": with, "mine": choice == Rel::Mine, "as": choice.as_str(), "msg": crate::hex(&msg)})).await?;
     let a = read_msg(&mut r).await?;
     if let Some(e) = a["error"].as_str() { return Err(e.to_string()); }
     let their = a["msg"].as_str().and_then(crate::unhex).ok_or("The other device didn't answer the pairing")?;
@@ -113,14 +115,14 @@ pub async fn join(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &st
     if !tag_eq(&theirs, &confirm_tag(&key, b"host", &host_key, me)) { return Err("Wrong code".into()); }
     let _ = s.finish();
     // Only now, with both keys proven, is what it said about itself taken.
-    Ok((host_name, relay_of(&a), a["mine"] != false))
+    Ok((host_name, relay_of(&a), choice_of(&a)))
 }
 
 /// Who's pairing, as the joiner said in its first message.
 #[derive(Debug, Clone, Default)]
 pub struct Joiner { pub name: String, pub kind: String, pub relay: Option<String>,
-                    /// It picked "My device" (a device from before this doesn't say: yes, as before).
-                    pub mine: bool }
+                    /// What it picked (choice_of).
+                    pub choice: Rel }
 
 /// Why a pairing attempt on the host didn't pair.
 #[derive(Debug, PartialEq)]
@@ -137,7 +139,7 @@ pub async fn host(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &st
         name: b["name"].as_str().unwrap_or("Hearth").chars().filter(|c| !c.is_control()).take(40).collect(),
         kind: b["kind"].as_str().filter(|k| crate::discovery::KINDS.contains(k)).unwrap_or("").to_string(),
         relay: relay_of(&b),
-        mine: b["mine"] != false,
+        choice: choice_of(&b),
     };
     seen(&who);
     let fail = |f: HostFail| (f, who.clone());
@@ -153,7 +155,7 @@ pub async fn host(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &st
         }
     };
     let (state, msg) = start(&code, me, &joiner);
-    write_msg(&mut s, &json!({"v": 2, "name": my_name, "relay": my_relay, "mine": pairing.mine, "msg": crate::hex(&msg)})).await.map_err(|_| fail(HostFail::Other))?;
+    write_msg(&mut s, &json!({"v": 2, "name": my_name, "relay": my_relay, "mine": pairing.choice == Rel::Mine, "as": pairing.choice.as_str(), "msg": crate::hex(&msg)})).await.map_err(|_| fail(HostFail::Other))?;
     let key = match state.finish(&their) { Ok(k) => k, Err(_) => return Err(fail(HostFail::Wrong)) };
     let c = read_msg(&mut r).await.map_err(|_| fail(HostFail::Other))?;
     let theirs = c["confirm"].as_str().and_then(crate::unhex).unwrap_or_default();
@@ -172,7 +174,25 @@ pub async fn host(conn: &iroh::endpoint::Connection, me: &[u8; 32], my_name: &st
     Ok(who)
 }
 
-/// A paired device is a friend's unless both sides picked My device.
+/// What the other side picked: "as" (mine, family, friend); from a device from before family devices only "mine"
+/// (false: a friend's); from one from before friends, nothing: mine, as before.
+pub fn choice_of(v: &Value) -> Rel {
+    match v["as"].as_str().and_then(Rel::parse) { Some(r) => r, None => if v["mine"] == false { Rel::Friend } else { Rel::Mine } }
+}
+
+/// What a paired device is, from both sides' picks, and for a family member's device which way the help goes:
+/// a friend's if either side said so; yours only when both said My device; otherwise a family member's device.
+/// The side that picked "A family member's device" helps on the other ("member": that one is the family member's);
+/// when both picked it, each helps on the other ("both").
+pub fn relation(here: Rel, there: Rel) -> (Rel, &'static str) {
+    match (here, there) {
+        (Rel::Friend, _) | (_, Rel::Friend) => (Rel::Friend, ""),
+        (Rel::Mine, Rel::Mine) => (Rel::Mine, ""),
+        (Rel::Family, Rel::Family) => (Rel::Family, "both"),
+        (Rel::Family, Rel::Mine) => (Rel::Family, "member"),
+        (Rel::Mine, Rel::Family) => (Rel::Family, "helper"),
+    }
+}
 pub fn is_friend(mine_here: bool, mine_there: bool) -> bool { !(mine_here && mine_there) }
 
 /// What the joiner sends the host first; used by tests of the message exchange without a network.
@@ -242,7 +262,21 @@ mod tests {
         assert!(is_friend(true, false));
         assert!(is_friend(false, true));
         assert!(is_friend(false, false));
-        assert!(Pairing::new(1000).mine, "My device is the default");
+        assert_eq!(Pairing::new(1000).choice, Rel::Mine, "My device is the default");
+    }
+    #[test]
+    fn family_from_both_picks() {
+        use Rel::*;
+        assert_eq!(relation(Mine, Mine), (Mine, ""));
+        assert_eq!(relation(Family, Mine), (Family, "member"));
+        assert_eq!(relation(Mine, Family), (Family, "helper"));
+        assert_eq!(relation(Family, Family), (Family, "both"));
+        for r in [Mine, Family, Friend] { assert_eq!(relation(Friend, r).0, Friend); assert_eq!(relation(r, Friend).0, Friend); }
+        // Older devices: only "mine" (a friend's when false), or nothing at all (mine).
+        assert_eq!(choice_of(&json!({})), Mine);
+        assert_eq!(choice_of(&json!({"mine": false})), Friend);
+        assert_eq!(choice_of(&json!({"mine": false, "as": "family"})), Family);
+        assert_eq!(choice_of(&json!({"mine": true, "as": "nonsense"})), Mine);
     }
     #[test]
     fn codes() {

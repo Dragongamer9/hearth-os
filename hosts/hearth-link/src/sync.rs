@@ -296,6 +296,17 @@ pub fn merge_inbox(cur: &mut Value, patch: &Value) {
     }
 }
 
+/// A library field (favorites, hidden games, collections): what a family member's device may share (family.rs).
+pub fn library_key(k: &str) -> bool {
+    let parts: Vec<&str> = k.splitn(4, '/').collect();
+    parts.len() == 4 && parts[0] == "p" && matches!(parts[2], "fav" | "hidden" | "col")
+}
+
+/// Keeps only the library in a sync message (with play time): never settings, profiles, layouts or anything else.
+pub fn library_only(msg: &mut Value) {
+    if let Some(f) = msg.get_mut("fields").and_then(Value::as_object_mut) { f.retain(|k, _| library_key(k)); }
+}
+
 impl SyncState {
     pub fn load(link: &Path) -> SyncState { std::fs::read(link.join("sync.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default() }
     pub fn save(&self, link: &Path) -> Result<(), String> { crate::write_atomic(&link.join("sync.json"), serde_json::to_string(self).unwrap().as_bytes()) }

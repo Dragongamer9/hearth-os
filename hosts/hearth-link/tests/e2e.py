@@ -10,6 +10,8 @@ home folder, driven over their sockets the way Hearth's UI does (`hearth-link ca
                     changed chunks, every file's hash compared, Hearth data synced both ways, quiet while playing,
                     unpairing, Hearth Storage (shared folder, media link, game archive there and back, backups),
                     Continue on this device, updating every device at once, local AI over Hearth Link
+  e2e.py family     pair once for all your devices, friends' devices, Send to TV (a PC to a Hearth TV), and a family
+                    member's device (shared among your devices, nothing personal until its own switches say so)
   e2e.py internet   both devices behind their own NAT, a local iroh relay in between: pairing with a short code
                     (found through a pkarr relay on the "internet" too, nothing else typed), a copy
                     through the relay with direct UDP blocked (speed posted, the copy says it's relayed), then with
@@ -1096,6 +1098,225 @@ def peer_of(dev, other):
     return next((p for p in dev.status()['peers'] if p['id'] == other.id), None)
 
 
+SEND_TO_TV = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'os', 'system_files', 'usr', 'bin', 'hearth-send-to-tv')
+
+
+def send_to_tv(a, b, c):
+    """Send to TV (tv.rs): A (a PC) sends a link and a video file to C (a Hearth TV) with hearth-send-to-tv, the way
+    Hearth Browser, Hearth Files and Theater do; C's Hearth TV takes them (tv.inbox) and plays the file from its own
+    127.0.0.1 address, read from A over Hearth Link, with seeking (ranges)."""
+    def cli(*args):
+        r = subprocess.run([sys.executable, SEND_TO_TV, '--json'] + list(args), env=a.env, capture_output=True, text=True, timeout=90)
+        try:
+            return json.loads(r.stdout.strip().splitlines()[-1])
+        except Exception:
+            fail('hearth-send-to-tv %s: %r %r' % (args, r.stdout, r.stderr))
+    wait_for('A to know C is a TV', lambda: any(t['id'] == c.id for t in a.call('tv.list')['tvs']), 30)
+    tvs = a.call('tv.list')['tvs']
+    if [t['id'] for t in tvs] != [c.id]:
+        fail('A\'s TVs: %s (B is a handheld, not a TV)' % tvs)
+    lst = json.loads(subprocess.run([sys.executable, SEND_TO_TV, '--list'], env=a.env, capture_output=True, text=True, timeout=30).stdout)
+    if [t['name'] for t in lst['tvs']] != ['C']:
+        fail('hearth-send-to-tv --list: %s' % lst)
+    # A link (right-click a link › Send to TV).
+    r = cli('--title', 'Big Buck Bunny', 'https://www.youtube.com/watch?v=aqz-KE-bpKQ')
+    if r.get('sent') is not True or r.get('tv') != 'C':
+        fail('sending a link: %s' % r)
+    got = c.call('tv.inbox')['items']
+    if len(got) != 1 or got[0]['kind'] != 'link' or got[0]['url'] != 'https://www.youtube.com/watch?v=aqz-KE-bpKQ' or got[0]['from'] != 'A' or got[0]['title'] != 'Big Buck Bunny':
+        fail('the link on the TV: %s' % got)
+    if c.call('tv.inbox')['items']:
+        fail('the TV got the link twice')
+    # A video file (Hearth Files › Send to TV): it stays on A and plays from C's own address.
+    vids = os.path.join(a.home, 'Videos')
+    os.makedirs(vids, exist_ok=True)
+    film = os.path.join(vids, 'Holiday 2026.mp4')
+    data = os.urandom(int(11.5 * MB))
+    with open(film, 'wb') as f:
+        f.write(data)
+    r = cli(film)
+    if r.get('sent') is not True:
+        fail('sending a file: %s' % r)
+    got = c.call('tv.inbox')['items']
+    if len(got) != 1 or got[0]['kind'] != 'file' or got[0]['file']['size'] != len(data) or not got[0]['url'].startswith('http://127.0.0.1:'):
+        fail('the file on the TV: %s' % got)
+    url = got[0]['url']
+    out = os.path.join(ROOT, 'tv-got.bin')
+    t0 = time.time()
+    sh("ip netns exec %s curl -sS -f -o '%s' '%s'" % (c.ns, out, url))
+    took = time.time() - t0
+    if open(out, 'rb').read() != data:
+        fail('the file played on the TV differs from the one on the PC')
+    sh("ip netns exec %s curl -sS -f -r 5000000-7000123 -o '%s' '%s'" % (c.ns, out, url))
+    if open(out, 'rb').read() != data[5000000:7000124]:
+        fail('a seek (range) on the TV got the wrong bytes')
+    head = sh("ip netns exec %s curl -sS -I -r 100-199 '%s'" % (c.ns, url))
+    if '206' not in head.split('\n')[0] or 'video/mp4' not in head or 'bytes 100-199/%d' % len(data) not in head:
+        fail('the player\'s headers: %s' % head)
+    # Only from the TV itself: a made-up address is refused.
+    bad = sh("ip netns exec %s curl -s -o /dev/null -w '%%{http_code}' 'http://127.0.0.1:%s/%s/x.mp4'" % (c.ns, url.split(':')[2].split('/')[0], '0' * 32), check=False)
+    if bad.strip() != '404':
+        fail('a made-up address on the TV answered %s' % bad)
+    # What doesn't go: a handheld isn't a TV, a text file isn't a video, a file that isn't there.
+    r = a.call('tv.send', {'peer': b.id, 'url': 'https://vimeo.com/1084537'}, ok=False)
+    if "isn't a Hearth TV" not in json.dumps(r):
+        fail('Send to TV to a handheld: %s' % r)
+    notes = os.path.join(a.home, 'notes.txt')
+    open(notes, 'w').write('x')
+    if 'Only videos and music' not in json.dumps(cli(notes)):
+        fail('a text file was sent to the TV')
+    if "isn't a link or a file" not in json.dumps(cli('/nowhere/film.mp4')):
+        fail('a missing file was sent to the TV')
+    # A show of the library (Theater's Jellyfin): its id goes, and the TV opens it in its own My Media.
+    r = cli('--media', '4f1d2c3b4a5968778695a4b3c2d1e0f0', '--type', 'show', '--title', 'Severance')
+    got = c.call('tv.inbox')['items']
+    if r.get('sent') is not True or len(got) != 1 or got[0]['media'] != {'id': '4f1d2c3b4a5968778695a4b3c2d1e0f0', 'type': 'show'}:
+        fail('sending a show: %s / %s' % (r, got))
+    notice('Send to TV', 'A (a PC) sent a link, an %.1f MB video and a show to C (a Hearth TV) with hearth-send-to-tv; the TV took each once; '
+           'the video played from the TV\'s own address in %.1f s, the same bytes, with seeking (206, ranges) and nothing for made-up addresses; '
+           'a handheld, a text file and a missing file were refused' % (len(data) / 1e6, took))
+
+
+FAKE_STATUS = """import json, sys
+print(json.dumps({'protocol': 1, 'shared': True, 'mode': 'desktop', 'cpu': {'use': 7}}))
+"""
+FAKE_REMOTE = """import json, os, sys
+a = sys.argv[1:]
+if a == ['status']:
+    print(json.dumps({'installed': True, 'on': True, 'running': True, 'address': {'name': 'dads-pc', 'dns': 'dads-pc.tail.ts.net', 'ip': '100.64.0.7'},
+                      'tailscale': {'running': True}, 'clients': [{'name': 'secret'}], 'stream': {'connected': False}}))
+elif a and a[0] == 'pin':
+    open(os.path.join(os.environ['HOME'], 'pin-got.json'), 'w').write(json.dumps(a))
+    print(json.dumps({'ok': True}))
+else:
+    print('error: unknown')
+    sys.exit(1)
+"""
+
+
+def family_member(a, b, c):
+    """A family member's device (family.rs): C (Dad's PC) paired with A as A family member's device. B (A's other
+    device) has it too without a code, and C hears B's name only from A. It shows in Your devices with its status (C's
+    on by default, A's toward C off until A turns it on), A and B can use its remote desktop and send Moonlight's PIN;
+    nothing personal goes either way until C's own switches say so: Use Hearth Storage and Share my game library each
+    on and off (only that kind, only from C's side, the library never with settings). Removing it on A removes it
+    everywhere."""
+    a.call('unpair', {'id': c.id})
+    wait_for('C to forget A', lambda: not peer_of(c, a), 30)
+    code = a.call('pair.open', {'as': 'family'})['code']
+    wait_for('C to list A as ready to pair', lambda: any(n['id'] == a.id and n['pairing'] for n in c.status()['nearby']), 20)
+    r = c.call('pair.join', {'id': a.id, 'code': code, 'as': 'mine'}, timeout=90)
+    if r.get('relation') != 'family' or r.get('familySide') != 'helper' or r.get('friend') is not False:
+        fail('pairing C with A picking A family member\'s device: %s' % r)
+    pa, pc = peer_of(a, c), peer_of(c, a)
+    if (pa or {}).get('relation') != 'family' or pa.get('familySide') != 'member' or (pc or {}).get('familySide') != 'helper':
+        fail('the family marks: %s / %s' % (pa, pc))
+    if pc['shares'] != {'status': True, 'library': False, 'saves': False, 'storage': False, 'backup': False} or pa['shares']['status'] is not False:
+        fail('the switches to start with: on C %s, on A %s' % (pc['shares'], pa['shares']))
+    # Shared among your devices: B from A, and C hears B's name from A.
+    wait_for('B to have C as a family member\'s device', lambda: (peer_of(b, c) or {}).get('relation') == 'family', 60)
+    wait_for('C to know B (from A)', lambda: (peer_of(c, b) or {}).get('familySide') == 'helper', 60)
+    pb, pcb = peer_of(b, c), peer_of(c, b)
+    if pb.get('familySide') != 'member' or pb.get('introducedBy') != 'A' or pcb.get('introducedBy') != 'A':
+        fail('C on B / B on C: %s / %s' % (pb, pcb))
+    notice('family: shared', "C paired with A as a family member's device: B has it too (through A, no code) and C knows B only from A")
+    # Your devices: C's status on A and B; A's not on C until A turns it on for C.
+    def row(dev, other):
+        return next((d for d in dev.call('status.devices')['devices'] if d['id'] == other.id), None)
+    wait_for('C\'s status on B', lambda: (row(b, c) or {}).get('shared') is True, 40)
+    if (row(a, c) or {}).get('shared') is not True or (row(a, c) or {}).get('relation') != 'family':
+        fail('C on A\'s Your devices: %s' % row(a, c))
+    ra = row(c, a) or {}
+    if ra.get('shared') is not False or "doesn't share" not in (ra.get('error') or ''):
+        fail('A\'s status on C before A turned it on: %s' % ra)
+    a.call('peer.set', {'id': c.id, 'shares': {'status': True}})
+    if (row(c, a) or {}).get('shared') is not True:
+        fail('A\'s status on C after A turned it on for C: %s' % row(c, a))
+    if (row(c, b) or {}).get('shared') is True:
+        fail('B shares its status with C without B turning it on: %s' % row(c, b))
+    notice('family: status', "C's status shows on A and B; A's showed on C only once A turned it on for C; B's still doesn't")
+    # Remote desktop and its PIN, from A and B; never the other way.
+    rd = a.call('peer.remote', {'id': c.id})
+    if rd.get('host') != 'dads-pc' or rd.get('on') is not True or 'clients' in rd:
+        fail('C\'s remote desktop on A: %s' % rd)
+    if b.call('peer.remote', {'id': c.id}).get('host') != 'dads-pc':
+        fail('C\'s remote desktop on B')
+    a.call('peer.remote.pin', {'id': c.id, 'pin': '4821', 'name': 'Chris desktop'})
+    got = read_json(os.path.join(c.home, 'pin-got.json'))
+    if got != ['pin', '4821', 'Chris desktop']:
+        fail('Moonlight\'s PIN on C: %s' % got)
+    r = c.call('peer.remote', {'id': a.id}, ok=False)
+    if 'error' not in r:
+        fail('C used A\'s remote desktop: %s' % r)
+    r = a.call('peer.wake', {'id': c.id}, ok=False)
+    if 'only for your own' in json.dumps(r):
+        fail('waking C: %s' % r)
+    notice('family: help', 'A and B see how to reach C\'s desktop in Moonlight and sent it Moonlight\'s PIN; C can\'t do that to A')
+    # Nothing personal until C says so.
+    r = a.call('sync.now', {'peer': c.id}, ok=False)
+    if 'Share my game library' not in json.dumps(r):
+        fail('sync with C before its library switch: %s' % r)
+    a.call('storage.set', {'server': True})
+    vids = os.path.join(a.home, 'FamilyShare')
+    os.makedirs(vids, exist_ok=True)
+    write_random(os.path.join(vids, 'photo.jpg'), 4096)
+    share = a.call('storage.share.add', {'path': vids})['share']['id']
+    r = c.call('storage.ls', {'server': a.id, 'share': share, 'path': ''}, ok=False)
+    if 'Use Hearth Storage' not in json.dumps(r):
+        fail('C using A\'s Hearth Storage before its switch: %s' % r)
+    r = a.call('peer.set', {'id': c.id, 'shares': {'storage': True}}, ok=False)
+    if 'Only the family member' not in json.dumps(r):
+        fail('A turning on C\'s switch: %s' % r)
+    c.call('peer.set', {'id': a.id, 'shares': {'storage': True}})
+    wait_for('A to hear C turned on Use Hearth Storage', lambda: (peer_of(a, c) or {}).get('theirShares', {}).get('storage') is True, 20)
+    top = [e['name'] for e in c.call('storage.ls', {'server': a.id, 'share': share, 'path': ''})['entries']]
+    if top != ['photo.jpg']:
+        fail('C listing A\'s shared folder with its switch on: %s' % top)
+    r = a.call('sync.now', {'peer': c.id}, ok=False)
+    if 'Share my game library' not in json.dumps(r):
+        fail('Use Hearth Storage let the library through: %s' % r)
+    c.call('peer.set', {'id': a.id, 'shares': {'storage': False}})
+    r = c.call('storage.ls', {'server': a.id, 'share': share, 'path': ''}, ok=False)
+    if 'Use Hearth Storage' not in json.dumps(r):
+        fail('C still using A\'s Hearth Storage after turning it off: %s' % r)
+    notice('family: storage', "C couldn't use A's Hearth Storage until C turned on Use Hearth Storage (A can't turn it on); then only that; off again stopped it at once")
+    # The library, never settings, both ways, only while C's switch is on.
+    write_json(os.path.join(c.data, 'library.json'), {'favorites': ['steam:77'], 'profile': {'name': 'Dad'}})
+    write_json(os.path.join(c.link, 'ui.json'), {'local': {'nimbus.look': {'layout': 'dad-layout'}}})
+    write_json(os.path.join(a.data, 'library.json'), {'favorites': ['gog:5'], 'profile': {'name': 'Chris'}})
+    write_json(os.path.join(a.link, 'ui.json'), {'local': {'nimbus.look': {'layout': 'chris-layout'}}})
+    c.call('peer.set', {'id': a.id, 'shares': {'library': True}})
+    wait_for('A to hear C turned on Share my game library', lambda: (peer_of(a, c) or {}).get('theirShares', {}).get('library') is True, 20)
+    r = a.call('sync.now', {'peer': c.id})
+    if 'error' in (r.get(c.id) or {}):
+        fail('library sync with C: %s' % r)
+    ia, ic = read_json(os.path.join(a.link, 'inbox.json')) or {}, read_json(os.path.join(c.link, 'inbox.json')) or {}
+    sa, sc = ia.get('profiles', {}).get('main', {}).get('set', {}), ic.get('profiles', {}).get('main', {}).get('set', {})
+    bad = []
+    if sa.get('fav/steam:77') is not True: bad.append("C's favorite on A")
+    if sc.get('fav/gog:5') is not True: bad.append("A's favorite on C")
+    if 'profile' in sa or 'profile' in sc: bad.append('a profile went across')
+    if ((read_json(os.path.join(c.link, 'ui.json')) or {}).get('local', {}).get('nimbus.look', {}).get('layout')) != 'dad-layout': bad.append("A's appearance reached C")
+    if ((read_json(os.path.join(a.link, 'ui.json')) or {}).get('local', {}).get('nimbus.look', {}).get('layout')) != 'chris-layout': bad.append("C's appearance reached A")
+    if bad:
+        fail('library with C: %s; inbox on A %s, on C %s' % (bad, ia, ic))
+    c.call('peer.set', {'id': a.id, 'shares': {'library': False}})
+    r = a.call('sync.now', {'peer': c.id}, ok=False)
+    if 'Share my game library' not in json.dumps(r):
+        fail('sync after C turned its library off: %s' % r)
+    notice('family: library', "with C's Share my game library on, favorites went both ways and no profile or appearance did; off again, nothing syncs")
+    # Never: making it yours from one side.
+    r = a.call('peer.set', {'id': c.id, 'relation': 'mine'}, ok=False)
+    if 'both' not in json.dumps(r):
+        fail('making C yours from A alone: %s' % r)
+    # Removing it on A removes it everywhere.
+    a.call('unpair', {'id': c.id})
+    wait_for('C to forget A', lambda: not peer_of(c, a), 30)
+    wait_for('B to drop C (removed on A)', lambda: not peer_of(b, c), 60)
+    wait_for('C to forget B too', lambda: not peer_of(c, b), 30)
+    notice('family: removing', 'removed C on A: B dropped it by itself and told C, which forgot both')
+
+
 def family():
     """Pair once for all your devices: A-B, then B-C, and A and C are paired with no code. Removing C on A removes
     it from B too. A friend's device pairs with one device only and nobody else hears of it."""
@@ -1103,8 +1324,15 @@ def family():
     os.makedirs(ROOT)
     family_network()
     pk, pk_url = pkarr_relay('hfA', '10.78.0.1')
-    env = {'HEARTH_LINK_RELAY': 'off', 'HEARTH_LINK_NO_DNS': '1', 'HEARTH_LINK_PKARR': pk_url, 'HEARTH_LINK_NO_FIREWALL': '1'}
-    a, b, c = Dev('A', 'hfA', dict(env, HEARTH_LINK_KIND='desktop')), Dev('B', 'hfB', dict(env, HEARTH_LINK_KIND='handheld')), Dev('C', 'hfC', dict(env, HEARTH_LINK_KIND='laptop'))
+    fakes = {}
+    for name, text in (('status', FAKE_STATUS), ('remote', FAKE_REMOTE)):
+        fakes[name] = os.path.join(ROOT, 'fake-%s.py' % name)
+        with open(fakes[name], 'w') as f:
+            f.write(text)
+    env = {'HEARTH_LINK_RELAY': 'off', 'HEARTH_LINK_NO_DNS': '1', 'HEARTH_LINK_PKARR': pk_url, 'HEARTH_LINK_NO_FIREWALL': '1',
+           'HEARTH_DEVICE_STATUS': fakes['status'], 'HEARTH_REMOTE_DESKTOP': fakes['remote']}
+    # C is a Hearth TV (Hearth TV runs Hearth Link with kind tv): Send to TV is tried on it (send_to_tv()).
+    a, b, c = Dev('A', 'hfA', dict(env, HEARTH_LINK_KIND='desktop')), Dev('B', 'hfB', dict(env, HEARTH_LINK_KIND='handheld')), Dev('C', 'hfC', dict(env, HEARTH_LINK_KIND='tv', HEARTH_LINK_EDITION='Hearth TV'))
     for d in (a, b, c):
         d.start()
     wait_for('the three to hear each other', lambda: all(any(n['id'] == o.id for n in d.status()['nearby']) for d in (a, b, c) for o in (a, b, c) if o is not d), 40)
@@ -1122,6 +1350,7 @@ def family():
     if 'games' not in g:
         fail('A asking C (paired through B): %s' % g)
     notice('your devices', 'paired A-B and B-C with codes; A and C were paired with each other through B in %.1f s, no code, and talk directly' % (time.time() - t0))
+    send_to_tv(a, b, c)
     # Removing C on A removes it from B too (and C hears from A).
     a.call('unpair', {'id': c.id})
     wait_for('C to forget A', lambda: not peer_of(c, a), 30)
@@ -1147,6 +1376,11 @@ def family():
     if 'own devices' not in json.dumps(r):
         fail('sync with a friend\'s device: %s' % r)
     notice('friends', "C paired with A as a friend's device: B never heard of it, games can be seen for copies, settings and the library don't sync")
+    r = a.call('tv.send', {'peer': c.id, 'url': 'https://vimeo.com/1084537'}, ok=False)
+    if 'your paired devices' not in json.dumps(r):
+        fail("Send to TV to a friend's TV: %s" % r)
+    notice('Send to TV: friends', "a friend's TV can't be sent to")
+    family_member(a, b, c)
     for d in (a, b, c):
         d.kill(signal.SIGTERM)
     pk.terminate()

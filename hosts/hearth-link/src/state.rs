@@ -137,10 +137,89 @@ pub struct Peer {
     pub friend: bool,
     /// One of your devices that told this one about it (family.rs), instead of pairing with a code.
     pub introduced_by: Option<String>,
+    /// What it said it is in hello (handheld, laptop, desktop, tablet, tv): a TV gets Send to TV (tv.rs).
+    pub kind: String,
+    /// Whose it is (family.rs): "mine", "family" or "friend". Missing in peers.json from before family devices:
+    /// read from `friend` as before. `friend` is still written (true for a family member's device too), so an older
+    /// Hearth reads a family device as a friend's: the safe side.
+    pub relation: String,
+    /// For a family member's device: "member" (it's a family member's device, this one helps on it), "helper" (it's
+    /// a device of someone who helps on this one) or "both" (each picked the other as family).
+    pub family_side: String,
+    /// What this device lets that family device have (switches on this device only; family.rs).
+    pub shares: Shares,
+    /// What that family device said it lets this one have (shown only: what counts is checked on its side).
+    pub their_shares: Shares,
+    /// A family member's device's network cards, so your devices can wake it (it says them in hello).
+    pub macs: Vec<String>,
+}
+
+/// Whose a paired device is.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Rel { #[default] Mine, Family, Friend }
+
+impl Rel {
+    pub fn as_str(self) -> &'static str { match self { Rel::Mine => "mine", Rel::Family => "family", Rel::Friend => "friend" } }
+    pub fn parse(s: &str) -> Option<Rel> { match s { "mine" => Some(Rel::Mine), "family" => Some(Rel::Family), "friend" => Some(Rel::Friend), _ => None } }
+}
+
+/// A family member's device's switches, per device of the person who helps on it (family.rs). All off by default,
+/// except its status (`None`: shared with the people who help on it, not the other way round).
+#[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq)]
+#[serde(default, rename_all = "camelCase")]
+pub struct Shares {
+    pub status: Option<bool>,
+    /// Share my game library (favorites, hidden games, collections, play time; never settings).
+    pub library: bool,
+    /// Back up my saves (and saves follow it) on that person's Hearth Storage.
+    pub saves: bool,
+    /// Use Hearth Storage (shared folders, the game archive, the download and update caches).
+    pub storage: bool,
+    /// Back up this PC (saves and screenshots) to that person's Hearth Storage.
+    pub backup: bool,
+}
+
+impl Shares {
+    pub fn get(&self, what: &str) -> bool {
+        match what { "library" => self.library, "saves" => self.saves, "storage" => self.storage, "backup" => self.backup, "status" => self.status == Some(true), _ => false }
+    }
 }
 
 impl Peer {
-    pub fn mine(&self) -> bool { !self.friend }
+    pub fn rel(&self) -> Rel {
+        match (self.relation.as_str(), self.friend) {
+            // `friend` set with "mine" (an older Hearth made it a friend's device): a friend's, the safe side.
+            ("mine", false) => Rel::Mine,
+            ("family", _) => Rel::Family,
+            ("", false) => Rel::Mine,
+            _ => Rel::Friend,
+        }
+    }
+    pub fn mine(&self) -> bool { self.rel() == Rel::Mine }
+    pub fn family(&self) -> bool { self.rel() == Rel::Family }
+    /// Sets whose it is (and `friend` for older Hearth: true unless it's yours).
+    pub fn set_rel(&mut self, r: Rel, side: &str) {
+        self.relation = r.as_str().to_string();
+        self.friend = r != Rel::Mine;
+        self.family_side = if r == Rel::Family { side.to_string() } else { String::new() };
+        if r != Rel::Mine { if let Some(relay) = self.signed_in.get("relay").cloned() { self.signed_in = json!({"relay": relay}); } else { self.signed_in = json!({}); } }
+        if r != Rel::Family { self.shares = Shares::default(); self.their_shares = Shares::default(); self.macs.clear(); }
+    }
+    /// A family member's device this one helps on (it shows in Your devices; wake it, remote desktop).
+    pub fn i_help(&self) -> bool { self.family() && matches!(self.family_side.as_str(), "member" | "both" | "") }
+    /// A device of someone who helps on this one (this is the family member's device to it).
+    pub fn helps_me(&self) -> bool { self.family() && matches!(self.family_side.as_str(), "helper" | "both") }
+    /// This device lets it see its status: your own devices (Settings' own switch decides), a family device per its
+    /// switch (on by default only toward the people who help on this one).
+    pub fn status_shared(&self) -> bool {
+        match self.rel() { Rel::Mine => true, Rel::Friend => false, Rel::Family => self.shares.status.unwrap_or(self.family_side == "helper") }
+    }
+    /// A kind of sharing (library, saves, storage, backup) is on between this device and that family device: the
+    /// family member's own switch decides (on this device when it's the family member's, as it said otherwise).
+    pub fn lets(&self, what: &str) -> bool {
+        if !self.family() { return self.mine(); }
+        (self.helps_me() && self.shares.get(what)) || (self.i_help() && self.their_shares.get(what))
+    }
 }
 
 /// A device of yours that was removed (on this device or another of yours), so the others drop it too and nobody
@@ -167,16 +246,29 @@ impl Peers {
     /// Your own devices (not friends'): the only ones anything personal goes to or comes from.
     pub fn mine(&self) -> impl Iterator<Item = &Peer> { self.list.iter().filter(|p| p.mine()) }
     pub fn is_mine(&self, id: &str) -> bool { self.get(id).map(Peer::mine).unwrap_or(false) }
+    /// That device may be asked `op` by this one (family.rs may_ask): checked before any request goes out.
+    pub fn may_ask(&self, id: &str, op: &str) -> bool { self.get(id).map(|p| crate::family::may_ask(p, op)).unwrap_or(false) }
+    /// Your devices and the family devices this one shares `what` with (library, saves, storage, backup).
+    pub fn letting<'a>(&'a self, what: &'a str) -> impl Iterator<Item = &'a Peer> + 'a { self.list.iter().filter(move |p| p.lets(what)) }
     /// Paired with a code (pairing), as one of your devices or a friend's. Pairing again clears a removal.
     pub fn add_paired(&mut self, id: &str, name: &str, friend: bool) {
+        self.add_paired_as(id, name, if friend { Rel::Friend } else { Rel::Mine }, "");
+    }
+    /// Paired with a code as `r` (family: `side`, as pair.rs worked it out). Pairing again starts its switches over.
+    pub fn add_paired_as(&mut self, id: &str, name: &str, r: Rel, side: &str) {
         self.add(id, name);
-        if let Some(p) = self.get_mut(id) { p.friend = friend; p.introduced_by = None; p.paired_at = crate::now_ms(); }
+        if let Some(p) = self.get_mut(id) {
+            p.set_rel(r, side);
+            if r == Rel::Family { p.shares = Shares::default(); p.their_shares = Shares::default(); }
+            p.introduced_by = None; p.paired_at = crate::now_ms();
+        }
         self.removed.retain(|r| r.id != id);
         let _ = self.save();
     }
     /// Removing one of your devices is remembered, so your other devices drop it too (family.rs).
     pub fn remove_and_remember(&mut self, id: &str) -> bool {
-        let mine = self.is_mine(id);
+        // Yours, or a family member's device your devices share: the others drop it too.
+        let mine = self.get(id).map(|p| p.mine() || p.i_help()).unwrap_or(false);
         let changed = self.remove(id);
         if changed && mine { crate::family::remember_removed(&mut self.removed, id, crate::now_ms()); let _ = self.save(); }
         changed

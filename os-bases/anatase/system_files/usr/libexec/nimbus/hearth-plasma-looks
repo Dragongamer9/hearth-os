@@ -1,0 +1,814 @@
+#!/usr/bin/python3
+"""hearth-plasma-looks: Hearth's looks as Plasma Global Themes (Anatase edition, stock KDE Plasma).
+
+  build [--root DIR] [--theme-dir DIR] [--logo SVG]
+      Run once by os-bases/anatase/build.sh. For every look in palettes.json (Hearth, Steam-style, Gaming, Zen, Glass,
+      Synthwave, Cabin, Console) it writes, from that look's palette, so they never drift from Mantel's:
+        * a Global Theme   /usr/share/plasma/look-and-feel/org.hearthos.<look>   "Hearth OS · <label>"
+          (its colours, Plasma style, Breeze window frames in its colours, Breeze icons and cursor, wallpaper, and a
+          start-up splash in its colours with Hearth's logo; previews drawn from the palette)
+        * colour schemes   /usr/share/color-schemes/HearthOS-<look>-Dark.colors and -Light.colors, plus one pair per
+          sub theme (palettes.json "subThemes" and the "blackSet" a look has wallpapers for): System Settings › Colors
+        * a Plasma style   /usr/share/plasma/desktoptheme/hearth-<look> (dark) and hearth-<look>-light
+      Every colour comes from hearth-theme's Mapper (the same mapping Mantel uses for KDE apps): Hearth.colors is the
+      reference, each colour moved to the chosen look's token. The accent is Plasma's own setting (System Settings ›
+      Colors › Accent colour); Hearth's accent from Settings is put there.
+
+  sync [--wait]
+      Run in the person's Plasma session (autostart, and hearth-plasma-looks.path when desktop.json or kdeglobals
+      changes). One source of truth: Hearth's look in ~/.local/share/nimbus/desktop.json ("look", "mode", "accent",
+      "subTheme"). Nothing is changed by itself:
+        * the first time: nothing chosen in KDE yet -> Hearth's look (Hearth unless you picked another) is applied;
+          a look already chosen in KDE -> asked once with a notification ("Use Hearth's look?"), yours is kept
+        * you pick a look in Hearth's Settings -> its Global Theme is applied
+        * you pick a "Hearth OS · <name>" Global Theme in System Settings -> Hearth's Settings shows that look
+          (desktop.json "look", merged in; every other setting stays); any other Global Theme is left alone
+      What was last applied is in ~/.local/state/hearth/plasma-look.json, written only once KDE's settings show the
+      look (otherwise the next start tries again).
+
+  status
+      One JSON line: what KDE has now (Global Theme, colours, Plasma style), the state file, Plasma running.
+
+Python standard library only.
+"""
+import json
+import os
+import re
+import shutil
+import struct
+import subprocess
+import sys
+import time
+import zlib
+from importlib.machinery import SourceFileLoader
+from importlib.util import module_from_spec, spec_from_loader
+
+THEME_DIR = '/usr/share/nimbus/desktop/theme'
+SHELL_DIR = '/usr/share/nimbus/desktop/shell'
+LOGO = '/usr/share/icons/hicolor/scalable/apps/hearth.svg'
+PREFIX = 'org.hearthos.'
+BRAND = 'Hearth OS'
+DOT = '·'
+# Plasma shows still pictures: a look whose Mantel wallpaper is animated ("anim:...") gets the Hearth still closest to
+# it; a look with none (Hearth) gets Fireside. A picture in /usr/share/backgrounds/hearth/hearth-<id>.jpg is Plasma's
+# wallpaper package Hearth-<id> (build.sh installs both).
+ANIM_STILL = {'tide': 'ridge', 'neon': 'forge', 'zen': 'peaks', 'glass': 'bloom', 'synth': 'fox'}
+DEFAULT_WALL = 'fireside'
+PLASMARC = """[Settings]
+FallbackTheme=default
+
+[ContrastEffect]
+enabled=true
+contrast=0.3
+intensity=1.6
+saturation=1.4
+
+[AdaptiveTransparency]
+enabled=false
+"""
+
+
+# ---------------------------------------------------------------- the palettes
+def load_theme(theme_dir):
+    """hearth-theme (Mantel's colour mapper) as a module."""
+    path = os.path.join(theme_dir, 'hearth-theme')
+    loader = SourceFileLoader('hearth_theme_mod', path)
+    mod = module_from_spec(spec_from_loader(loader.name, loader))
+    loader.exec_module(mod)
+    return mod
+
+
+def looks(pal):
+    """The looks in palettes.json, in their order: [(id, look)]."""
+    out = [(k, v) for k, v in pal.items()
+           if not k.startswith('_') and isinstance(v, dict) and isinstance(v.get('dark'), dict)]
+    return sorted(out, key=lambda kv: (kv[1].get('order', 99), kv[0]))
+
+
+def lnf_id(look):
+    return PREFIX + look
+
+
+def look_of(lnf):
+    """The palettes.json look a Global Theme is, or None (not one of Hearth's)."""
+    if isinstance(lnf, str) and lnf.startswith(PREFIX):
+        return lnf[len(PREFIX):] or None
+    return None
+
+
+def scheme_file(look, mode, sub=''):
+    return 'HearthOS-%s%s-%s' % (look, ('-' + sub) if sub else '', 'Light' if mode == 'light' else 'Dark')
+
+
+def style_id(look, mode='dark'):
+    return 'hearth-%s%s' % (look, '-light' if mode == 'light' else '')
+
+
+def wallpaper_id(lk):
+    w = lk.get('wallpaper') if isinstance(lk.get('wallpaper'), str) else ''
+    if w.startswith('anim:'):
+        wid = ANIM_STILL.get(w[5:], DEFAULT_WALL)
+    else:
+        m = re.search(r'hearth-([a-z0-9-]+)\.(?:jpe?g|png)$', w)
+        wid = m.group(1) if m else DEFAULT_WALL
+    return 'Hearth-' + wid
+
+
+def label(lk, look):
+    return lk.get('label') if isinstance(lk.get('label'), str) and lk.get('label') else look.capitalize()
+
+
+def hexrgb(h):
+    h = h.lstrip('#')
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+
+# ---------------------------------------------------------------- build
+def png(path, w, h, bg, rects):
+    """A PNG of size W x H: BG, then each (x, y, w, h, colour) on top. No libraries."""
+    rows = [bytearray(bytes(bg) * w) for _ in range(h)]
+    for x, y, rw, rh, c in rects:
+        x0, x1 = max(0, int(x)), min(w, int(x + rw))
+        if x1 <= x0:
+            continue
+        span = bytes(c) * (x1 - x0)
+        for yy in range(max(0, int(y)), min(h, int(y + rh))):
+            rows[yy][x0 * 3:x1 * 3] = span
+    raw = b''.join(b'\x00' + bytes(r) for r in rows)
+
+    def chunk(t, d):
+        return struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+    data = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 2, 0, 0, 0)) \
+        + chunk(b'IDAT', zlib.compress(raw, 9)) + chunk(b'IEND', b'')
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'wb') as f:
+        f.write(data)
+
+
+def preview(path, w, h, t):
+    """A small picture of the look: its desktop, a panel with the accent, a window with its title bar."""
+    c = {k: hexrgb(v) for k, v in t.items()}
+    s = w / 400.0
+    R = lambda x, y, rw, rh, k: (x * s, y * s, rw * s, rh * s, c[k])  # noqa: E731
+    rects = [
+        R(60, 40, 280, 140, 'line'), R(61, 41, 278, 138, 'panel'), R(61, 41, 278, 18, 'bg2'),
+        R(318, 46, 8, 8, 'ember'), R(76, 74, 150, 10, 'text'), R(76, 94, 220, 6, 'muted'),
+        R(76, 108, 190, 6, 'muted'), R(76, 140, 70, 22, 'ember'), R(156, 140, 70, 22, 'panel3'),
+        R(0, 203, 400, 22, 'panel2'), R(6, 207, 14, 14, 'ember'), R(28, 210, 40, 8, 'muted'), R(330, 210, 60, 8, 'text'),
+    ]
+    png(path, w, h, c['bg'], rects)
+
+
+SPLASH = """// Hearth OS start-up splash for the "%(name)s" look (written by hearth-plasma-looks from palettes.json).
+import QtQuick
+
+Rectangle {
+    id: root
+    color: "%(bg)s"
+    property int stage
+
+    Image {
+        id: logo
+        anchors.centerIn: parent
+        anchors.verticalCenterOffset: -24
+        source: "images/hearth.svg"
+        sourceSize.width: 144
+        sourceSize.height: 144
+        opacity: root.stage >= 1 ? 1 : 0
+        Behavior on opacity { NumberAnimation { duration: 400; easing.type: Easing.OutCubic } }
+    }
+    Text {
+        anchors.top: logo.bottom
+        anchors.topMargin: 20
+        anchors.horizontalCenter: parent.horizontalCenter
+        text: "Hearth OS"
+        color: "%(text)s"
+        font.pixelSize: 22
+    }
+    Rectangle {
+        anchors.bottom: parent.bottom
+        anchors.bottomMargin: parent.height * 0.18
+        anchors.horizontalCenter: parent.horizontalCenter
+        width: 220; height: 4; radius: 2
+        color: "%(panel2)s"
+        Rectangle {
+            width: parent.width * Math.min(1, root.stage / 6)
+            height: parent.height; radius: 2
+            color: "%(ember)s"
+            Behavior on width { NumberAnimation { duration: 300 } }
+        }
+    }
+}
+"""
+
+
+def write(path, text):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w') as f:
+        f.write(text)
+
+
+def scheme_text(ht, ref_text, pal, look, mode, name, fname):
+    m = ht.Mapper(pal, look, mode, None)
+    s = m.text(ref_text, 'kde')
+    s = re.sub(r'(?m)^# .*\n', '', s, count=1)
+    s = '# %s (written by hearth-plasma-looks from palettes.json; Hearth.colors mapped to this look).\n' % name + s
+    s = re.sub(r'(?m)^Name=.*$', 'Name=' + name, s)
+    s = re.sub(r'(?m)^ColorScheme=.*$', 'ColorScheme=' + fname, s)
+    return s, {k: ht.hexc(v) for k, v in m.tgt.items()}
+
+
+def build(root='/', theme_dir=THEME_DIR, logo=LOGO):
+    ht = load_theme(theme_dir)
+    with open(os.path.join(theme_dir, 'palettes.json')) as f:
+        pal = json.load(f)
+    with open(os.path.join(theme_dir, 'Hearth.colors')) as f:
+        ref = f.read()
+    share = os.path.join(root, 'usr/share')
+    made = []
+    for look, lk in looks(pal):
+        name = '%s %s %s' % (BRAND, DOT, label(lk, look))
+        toks = {}
+        # Colour schemes: the look's own, dark and light...
+        for mode in ('dark', 'light'):
+            fname = scheme_file(look, mode)
+            text, toks[mode] = scheme_text(ht, ref, pal, look, mode, '%s (%s)' % (name, mode.capitalize()), fname)
+            write(os.path.join(share, 'color-schemes', fname + '.colors'), text)
+            # ...and its Plasma style, in the same colours.
+            sid = style_id(look, mode)
+            write(os.path.join(share, 'plasma/desktoptheme', sid, 'colors'), text)
+            write(os.path.join(share, 'plasma/desktoptheme', sid, 'plasmarc'), PLASMARC)
+            write(os.path.join(share, 'plasma/desktoptheme', sid, 'metadata.json'), json.dumps({
+                'KPlugin': {'Authors': [{'Name': 'Dragongamer9'}], 'Id': sid, 'License': 'GPL-3.0-or-later',
+                            'Name': name + (' (Light)' if mode == 'light' else ''), 'Website': 'https://hearthos.fun',
+                            'Description': "Breeze's shapes in the %s look's colours" % label(lk, look)},
+                'X-Plasma-API-Minimum-Version': '6.0'}, indent=2) + '\n')
+        # ...and one pair per sub theme (the first sub theme is the look's own colours: already there).
+        subs = []
+        for s in ht.sub_list(pal, look):
+            if s['own']:
+                continue
+            spal, sid = ht.with_sub(pal, look, s['id'])
+            for mode in ('dark', 'light'):
+                fname = scheme_file(look, mode, sid)
+                text, _ = scheme_text(ht, ref, spal, look, mode, '%s %s %s (%s)' % (name, '–', s['label'], mode.capitalize()), fname)
+                write(os.path.join(share, 'color-schemes', fname + '.colors'), text)
+            subs.append(sid)
+        # The Global Theme.
+        d = os.path.join(share, 'plasma/look-and-feel', lnf_id(look))
+        if os.path.isdir(d):
+            shutil.rmtree(d)
+        write(os.path.join(d, 'metadata.json'), json.dumps({
+            'KPackageStructure': 'Plasma/LookAndFeel',
+            'KPlugin': {'Authors': [{'Name': 'Dragongamer9'}], 'Category': '',
+                        'Description': (lk.get('desc') if isinstance(lk.get('desc'), str) else '') or 'Hearth OS look',
+                        'Id': lnf_id(look), 'License': 'GPL-3.0-or-later', 'Name': name, 'Website': 'https://hearthos.fun'},
+            'X-Hearth-Palette': look,
+            'X-Plasma-APIVersion': '2'}, indent=2) + '\n')
+        write(os.path.join(d, 'contents/defaults'), '\n'.join([
+            '# %s (written by hearth-plasma-looks from palettes.json "%s").' % (name, look),
+            '[kdeglobals][General]', 'ColorScheme=' + scheme_file(look, 'dark'), '',
+            '[kdeglobals][Icons]', 'Theme=breeze-dark', '',
+            '[kdeglobals][KDE]', 'widgetStyle=Breeze', '',
+            '[kcminputrc][Mouse]', 'cursorTheme=breeze_cursors', '',
+            '[kwinrc][org.kde.kdecoration2]', 'library=org.kde.breeze', 'theme=Breeze', '',
+            '[plasmarc][Theme]', 'name=' + style_id(look), '',
+            '[ksplashrc][KSplash]', 'Engine=KSplashQML', 'Theme=' + lnf_id(look), '',
+            '[Wallpaper]', 'Image=' + wallpaper_id(lk), '']))
+        t = toks['dark']
+        write(os.path.join(d, 'contents/splash/Splash.qml'), SPLASH % dict(name=label(lk, look), **t))
+        os.makedirs(os.path.join(d, 'contents/splash/images'), exist_ok=True)
+        if os.path.isfile(logo):
+            shutil.copyfile(logo, os.path.join(d, 'contents/splash/images/hearth.svg'))
+        preview(os.path.join(d, 'contents/previews/preview.png'), 400, 225, t)
+        preview(os.path.join(d, 'contents/previews/fullscreenpreview.png'), 1280, 720, t)
+        preview(os.path.join(d, 'contents/previews/splash.png'), 400, 225, t)
+        made.append({'look': look, 'theme': lnf_id(look), 'name': name, 'wallpaper': wallpaper_id(lk),
+                     'schemes': [scheme_file(look, 'dark'), scheme_file(look, 'light')], 'subThemes': subs})
+    return made
+
+
+# ---------------------------------------------------------------- sync (the person's session)
+def home_paths():
+    home = os.path.expanduser('~')
+    conf = os.environ.get('XDG_CONFIG_HOME') or os.path.join(home, '.config')
+    data = os.environ.get('XDG_DATA_HOME') or os.path.join(home, '.local', 'share')
+    state = os.environ.get('XDG_STATE_HOME') or os.path.join(home, '.local', 'state')
+    return {'desktop': os.path.join(data, 'nimbus', 'desktop.json'), 'kdeglobals': os.path.join(conf, 'kdeglobals'),
+            'state': os.path.join(state, 'hearth', 'plasma-look.json'),
+            'appletsrc': os.path.join(conf, 'plasma-org.kde.plasma.desktop-appletsrc')}
+
+
+def want_of(pal, d):
+    """Hearth's look from desktop.json: {'look', 'mode', 'accent', 'sub'}. A look that isn't there = Hearth."""
+    d = d if isinstance(d, dict) else {}
+    ids = [k for k, _ in looks(pal)]
+    look = d.get('look') if d.get('look') in ids else 'hearth'
+    mode = 'light' if d.get('mode') == 'light' else 'dark'
+    a = d.get('accent')
+    accent = a.lower() if isinstance(a, str) and re.fullmatch(r'#[0-9a-fA-F]{6}', a) else ''
+    sub = d.get('subTheme') if isinstance(d.get('subTheme'), str) else ''
+    return {'look': look, 'mode': mode, 'accent': accent, 'sub': sub}
+
+
+KDE_MARK = '# Written by Hearth'
+
+
+def kde_of(text):
+    """What's chosen in the person's kdeglobals: {'lnf': Global Theme or None, 'chose': a look picked in KDE}."""
+    lnf = scheme = None
+    group = ''
+    for line in (text or '').splitlines():
+        m = re.match(r'^\s*\[(.*)\]\s*$', line)
+        if m:
+            group = m.group(1)
+            continue
+        m = re.match(r'^\s*([A-Za-z]+)\s*=\s*(.*?)\s*$', line)
+        if not m:
+            continue
+        if group == 'KDE' and m.group(1) == 'LookAndFeelPackage':
+            lnf = m.group(2) or None
+        elif group == 'General' and m.group(1) == 'ColorScheme':
+            scheme = m.group(2) or None
+    marked = (text or '').startswith(KDE_MARK)
+    chose = bool(lnf and not look_of(lnf)) or bool(
+        scheme and not marked and not scheme.startswith('HearthOS-') and scheme not in ('Hearth', 'HearthLive'))
+    return {'lnf': lnf, 'chose': chose}
+
+
+def decide(st, want, kde):
+    """What to do: 'apply' (Hearth's look into Plasma), 'ask' (once), 'save' (a Hearth Global Theme picked in KDE ->
+    desktop.json), or None."""
+    if not isinstance(st, dict) or not isinstance(st.get('applied'), dict):
+        return 'ask' if kde['chose'] else 'apply'
+    if want != st['applied']:
+        return 'apply'
+    if kde['lnf'] != st.get('kde'):
+        lk = look_of(kde['lnf'])
+        if lk and lk != want['look']:
+            return 'save'
+    return None
+
+
+def run(cmd, timeout=60):
+    try:
+        r = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=timeout)
+        return r.returncode, r.stdout.strip()
+    except (OSError, subprocess.SubprocessError) as e:
+        return 1, str(e)
+
+
+def log(msg):
+    print('hearth-plasma-looks: ' + msg, flush=True)
+
+
+def hearth_wallpaper(path):
+    """True for nothing chosen, a distribution default or one of Hearth's wallpapers (they follow the look)."""
+    if not path:
+        return True
+    p = path.replace('file://', '')
+    return ('/usr/share/wallpapers/Hearth-' in p or '/usr/share/backgrounds/hearth/' in p
+            or re.search(r'/usr/share/(wallpapers|backgrounds)/(Next|default|f\d+|fedora|anatase)', p, re.I) is not None)
+
+
+def current_wallpaper(appletsrc):
+    try:
+        with open(appletsrc, encoding='utf-8', errors='replace') as f:
+            text = f.read()
+    except OSError:
+        return ''
+    m = re.findall(r'(?m)^Image=(.*)$', text)
+    return m[-1].strip() if m else ''
+
+
+def window_colour(text):
+    """[Colors:Window] BackgroundNormal in a KDE colour file or kdeglobals ('' when there is none)."""
+    m = re.search(r'(?ms)^\[Colors:Window\]\s*\n(.*?)(?=^\[|\Z)', text or '')
+    v = re.search(r'(?m)^BackgroundNormal=(.*)$', m.group(1)) if m else None
+    return v.group(1).strip() if v else ''
+
+
+def effective(kc):
+    """What KDE programs see now (the system defaults in /etc/xdg under the person's own files), and whether the
+    colours apps draw with (kdeglobals' [Colors:*], which KDE only writes when a scheme is applied) are the scheme's."""
+    if kc is None:
+        return {}
+    try:
+        g = kc.effective('kdeglobals')[0]
+        p = kc.effective('plasmarc')[0]
+    except Exception as e:
+        log('KDE\'s settings could not be read: %s' % e)
+        return {}
+    eff = {'lnf': g.get('KDE', {}).get('LookAndFeelPackage'), 'scheme': g.get('General', {}).get('ColorScheme'),
+           'style': p.get('Theme', {}).get('name')}
+    try:
+        with open(os.path.join('/usr/share/color-schemes', '%s.colors' % eff['scheme'])) as f:
+            want = window_colour(f.read())
+    except (OSError, TypeError):
+        want = None
+    eff['colours'] = bool(want) and g.get('Colors:Window', {}).get('BackgroundNormal') == want
+    return eff
+
+
+def verified(want, eff):
+    return (eff.get('lnf') == lnf_id(want['look'])
+            and str(eff.get('scheme') or '').startswith('HearthOS-%s-' % want['look'])
+            and eff.get('style') == style_id(want['look'], want['mode'])
+            and eff.get('colours') is True)
+
+
+def unmark(path, hsio):
+    """kdeglobals with Hearth's mark on its first line (Mantel's hearth-theme wrote it before Plasma was here) loses the
+    mark once a Global Theme has written it: on Plasma the Global Theme owns the colours, and hearth-theme only writes
+    kdeglobals while the mark is there. Every other line stays."""
+    def change(text):
+        return text.split('\n', 1)[1] if text.startswith(KDE_MARK) and '\n' in text else text
+    try:
+        if hsio:
+            hsio.update_text(path, change)
+    except Exception as e:
+        log('kdeglobals left as it is: %s' % e)
+
+
+def apply(pal, want, paths, kc):
+    """Hearth's look into Plasma. True when KDE's settings show it afterwards."""
+    lk = dict(looks(pal)).get(want['look'], {})
+    lnf = lnf_id(want['look'])
+    code, out = run(['plasma-apply-lookandfeel', '-a', lnf])
+    # (Its messages about xrdb, X11's resources, don't matter on Wayland.)
+    log('Global Theme %s: exit %s %s' % (lnf, code, out.replace('\n', ' | ')[:400]))
+    if kc is not None:
+        # plasma-apply-lookandfeel leaves out every value that equals KDE's default, and Hearth's look is the default
+        # (/etc/xdg): the choice goes into your kdeglobals by name, so it's recorded as yours. When plasma-apply-
+        # lookandfeel couldn't run, the Global Theme's other parts are put in the same way.
+        changes = {'KDE': {'LookAndFeelPackage': lnf}}
+        if code != 0:
+            changes['KDE']['widgetStyle'] = 'Breeze'
+            changes['Icons'] = {'Theme': 'breeze' if want['mode'] == 'light' else 'breeze-dark'}
+        try:
+            kc.update(paths['kdeglobals'], changes)
+            if code != 0:
+                kc.update(os.path.join(os.path.dirname(paths['kdeglobals']), 'kwinrc'),
+                          {'org.kde.kdecoration2': {'library': 'org.kde.breeze', 'theme': 'Breeze'}})
+                kc.update(os.path.join(os.path.dirname(paths['kdeglobals']), 'ksplashrc'),
+                          {'KSplash': {'Engine': 'KSplashQML', 'Theme': lnf}})
+                run(['plasma-apply-cursortheme', 'breeze_cursors'])
+                run(['dbus-send', '--session', '--type=method_call', '--dest=org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure'])
+        except Exception as e:  # a KDE file that can't be read is left as it is
+            log('could not record the Global Theme in kdeglobals: %s' % e)
+    subs = [s['id'] for s in ht_mod.sub_list(pal, want['look'])] if ht_mod else []
+    sub = want['sub'] if want['sub'] in subs[1:] else ''
+    # The scheme by itself first: given an accent too, plasma-apply-colorscheme only puts the accent on and leaves
+    # the scheme as it was (the owner's ROG Ally, Nov 18: Mint accent, Debian's "Hearth" scheme stayed). The accent
+    # after it, on its own.
+    cmd = ['plasma-apply-colorscheme', scheme_file(want['look'], want['mode'], sub)]
+    code, out = run(cmd)
+    log('colours %s: exit %s %s' % (cmd[-1], code, out.replace('\n', ' | ')[:300]))
+    try:
+        with open(paths['kdeglobals'], encoding='utf-8', errors='replace') as f:
+            mine = window_colour(f.read())
+    except OSError:
+        mine = ''
+    if 'already set' in out or not mine:
+        # KDE only writes a scheme's colours into kdeglobals when the name changes; Hearth's scheme is the default name
+        # (/etc/xdg), so on a new account apps would draw with Breeze's light colours. The look's other mode first, then
+        # its own: KDE writes every colour.
+        other = scheme_file(want['look'], 'dark' if want['mode'] == 'light' else 'light', sub)
+        run(['plasma-apply-colorscheme', other])
+        code, out = run(cmd)
+        log('colours %s again (after %s): exit %s %s' % (cmd[-1], other, code, out.replace('\n', ' | ')[:300]))
+    if want['accent']:
+        code, out = run(['plasma-apply-colorscheme', '--accent-color', want['accent']])
+        log('accent %s: exit %s %s' % (want['accent'], code, out.replace('\n', ' | ')[:200]))
+    if not want['accent'] and kc is not None:
+        try:   # no accent of your own in Hearth: the look's (the colour scheme's) again
+            kc.update(paths['kdeglobals'], {'General': {'AccentColor': None}})
+        except Exception as e:  # a kdeglobals that can't be read is left as it is
+            log('accent left as it is: %s' % e)
+    code, out = run(['plasma-apply-desktoptheme', style_id(want['look'], want['mode'])])
+    log('Plasma style %s: exit %s' % (style_id(want['look'], want['mode']), code))
+    if hearth_wallpaper(current_wallpaper(paths['appletsrc'])):
+        w = '/usr/share/wallpapers/' + wallpaper_id(lk)
+        if os.path.isdir(w):
+            code, out = run(['plasma-apply-wallpaperimage', w])
+            log('wallpaper %s: exit %s' % (wallpaper_id(lk), code))
+    # Plasma's menu button with Hearth's logo, where it still has Plasma's or the system's own icon. (The same script
+    # runs as a Plasma update script on accounts that had Plasma before; a new account's first Plasma marks every
+    # update script done without running it.) An icon you picked stays.
+    js = '/usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates/hearth-look-defaults.js'
+    try:
+        with open(js) as f:
+            code, out = run(['dbus-send', '--session', '--print-reply', '--dest=org.kde.plasmashell', '/PlasmaShell',
+                             'org.kde.PlasmaShell.evaluateScript', 'string:' + f.read()])
+        log('menu icon and wallpaper defaults: exit %s %s' % (code, out.replace('\n', ' | ')[:300]))
+    except OSError:
+        pass
+    unmark(paths['kdeglobals'], paths.get('_hsio'))
+    eff = effective(kc)
+    ok = verified(want, eff)
+    log('%s: KDE now has %s' % ('applied' if ok else 'NOT applied', json.dumps(eff)))
+    return ok
+
+
+def plasma_running():
+    """plasmashell of this account is running (from /proc: no extra tools needed)."""
+    uid = os.getuid()
+    for pid in os.listdir('/proc'):
+        if not pid.isdigit():
+            continue
+        try:
+            with open('/proc/%s/comm' % pid) as f:
+                if f.read().strip() != 'plasmashell':
+                    continue
+            if os.stat('/proc/' + pid).st_uid == uid:
+                return True
+        except OSError:
+            continue
+    return False
+
+
+def ask(want, paths):
+    """Once: a look is already chosen in KDE. Yours stays unless you say yes."""
+    if not shutil.which('notify-send'):
+        return False
+    code, out = run(['notify-send', '-a', BRAND, '-i', 'hearth', '-w',
+                     '--action=yes=Use Hearth\'s look', '--action=no=Keep mine',
+                     "Use Hearth's look?",
+                     "You have your own look in KDE. Hearth's looks are in System Settings › Global Theme "
+                     "(\"Hearth OS · ...\") whenever you want them."], timeout=900)
+    return code == 0 and out.splitlines()[-1:] == ['yes']
+
+
+ht_mod = None
+
+
+def sync(wait=False):
+    global ht_mod
+    sys.path.insert(0, SHELL_DIR)
+    try:
+        import hearth_settings_io as hsio
+    except ImportError:
+        hsio = None
+    try:
+        import hearth_kconfig as kc
+    except ImportError:
+        kc = None
+    for _ in range(60 if wait else 1):
+        if plasma_running():
+            break
+        time.sleep(1)
+    else:
+        log('Plasma is not running; nothing to do')
+        return 0
+    ht_mod = load_theme(THEME_DIR)
+    with open(os.path.join(THEME_DIR, 'palettes.json')) as f:
+        pal = json.load(f)
+    paths = home_paths()
+    paths['_hsio'] = hsio
+
+    def jload(p, default):
+        if hsio:
+            return hsio.load_json(p, default)
+        try:
+            with open(p) as f:
+                return json.load(f)
+        except (OSError, ValueError):
+            return default
+    # One run at a time (the autostart and the path unit can start together while a look is being applied).
+    import fcntl
+    os.makedirs(os.path.dirname(paths['state']), exist_ok=True)
+    lock = open(paths['state'] + '.lock', 'w')
+    fcntl.flock(lock, fcntl.LOCK_EX)
+    d = jload(paths['desktop'], {})
+    want = want_of(pal, d)
+    try:
+        with open(paths['kdeglobals'], encoding='utf-8', errors='replace') as f:
+            kde = kde_of(f.read())
+    except OSError:
+        kde = kde_of('')
+    st = jload(paths['state'], None)
+    act = decide(st, want, kde)
+    try:
+        return sync_act(act, st, want, kde, pal, paths, kc, hsio)
+    finally:
+        try:
+            retired_applets(paths, hsio)
+        except Exception as e:
+            log('old panel widgets not checked: %s' % e)
+        # Whatever happened, Hearth's own apps draw with what Plasma shows now (any Global Theme, yours or Hearth's).
+        try:
+            write_apps_theme(pal, kc, hsio)
+        except Exception as e:
+            log('apps\' colours not written: %s' % e)
+
+
+def sync_act(act, st, want, kde, pal, paths, kc, hsio):
+    st = dict(st) if isinstance(st, dict) else {}
+    if act == 'ask':
+        st.update(applied=want, kde=kde['lnf'], asked=time.strftime('%Y-%m-%dT%H:%M:%S'))
+        save_state(paths['state'], st, hsio)        # told once, never again
+        if ask(want, paths):
+            act = 'apply'
+    if act == 'apply':
+        ok = apply(pal, want, paths, kc)
+        try:
+            with open(paths['kdeglobals'], encoding='utf-8', errors='replace') as f:
+                kde = kde_of(f.read())
+        except OSError:
+            pass
+        if ok:
+            st.update(applied=want, kde=kde['lnf'])
+            save_state(paths['state'], st, hsio)
+        else:
+            # Not recorded as done: the next start (or the next change) tries again.
+            log("Hearth's look %s didn't take; it's tried again next time" % want['look'])
+            return 1
+    elif act == 'save':
+        look = look_of(kde['lnf'])
+        if hsio:
+            hsio.merge_json(paths['desktop'], {'look': look}, who='you')
+        st.update(applied=dict(want, look=look), kde=kde['lnf'])
+        save_state(paths['state'], st, hsio)
+        log('look %s picked in System Settings: Hearth\'s Settings shows it too' % look)
+    return 0
+
+
+def kde_rgb(v):
+    """A KDE colour ("r,g,b" or "r,g,b,a" or "#rrggbb") as #rrggbb, or None."""
+    v = (v or '').strip()
+    if re.fullmatch(r'#[0-9a-fA-F]{6}', v):
+        return v.lower()
+    p = [x.strip() for x in v.split(',')]
+    if len(p) in (3, 4) and all(x.isdigit() for x in p[:3]):
+        return '#%02x%02x%02x' % tuple(min(255, int(x)) for x in p[:3])
+    return None
+
+
+def scheme_look(scheme, pal):
+    """A Hearth colour scheme's (look, sub, mode), or None: HearthOS-<look>[-<sub>]-Dark|Light."""
+    m = re.fullmatch(r'HearthOS-(.+)-(Dark|Light)', scheme or '')
+    if not m:
+        return None
+    ids = [k for k, _ in looks(pal)]
+    rest, mode = m.group(1), m.group(2).lower()
+    for lk in sorted(ids, key=len, reverse=True):
+        if rest == lk or rest.startswith(lk + '-'):
+            return lk, rest[len(lk) + 1:], mode
+    return None
+
+
+def lum(h):
+    r, g, b = (int(h[i:i + 2], 16) / 255 for i in (1, 3, 5))
+    return 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+
+def apps_tokens(pal, g):
+    """What Hearth's own apps draw with on Plasma, from what KDE shows now (g: the effective kdeglobals groups): a
+    Hearth colour scheme -> that look from palettes.json (the same colours as Mantel's apps), any other Global Theme or
+    scheme (Breeze, a downloaded one) -> its own colours. KDE's accent (Colors › Accent) wins either way."""
+    scheme = g.get('General', {}).get('ColorScheme') or ''
+    accent = kde_rgb(g.get('General', {}).get('AccentColor')) or ''
+    hl = scheme_look(scheme, pal)
+    if hl and ht_mod is not None:
+        look, sub, mode = hl
+        p2 = pal
+        if sub and hasattr(ht_mod, 'with_sub'):
+            p2, _ = ht_mod.with_sub(pal, look, sub)
+        t = ht_mod.app_tokens(p2, look, mode, accent)
+        t.update(source='plasma', scheme=scheme)
+        return t
+    col = lambda grp, key: kde_rgb(g.get('Colors:' + grp, {}).get(key))
+    bg = col('Window', 'BackgroundNormal')
+    text = col('Window', 'ForegroundNormal')
+    if not bg or not text:
+        return None
+    mix = ht_mod.mix if ht_mod is not None else (lambda a, b, t: a)
+    view = col('View', 'BackgroundNormal') or bg
+    button = col('Button', 'BackgroundNormal') or view
+    ember = accent or col('Selection', 'BackgroundNormal') or col('View', 'DecorationFocus') or '#3daee9'
+    c = {'bg': bg, 'bg2': col('Window', 'BackgroundAlternate') or mix(bg, text, 0.04), 'panel': view, 'panel2': button,
+         'panel3': col('Button', 'BackgroundAlternate') or mix(button, text, 0.10), 'line': mix(bg, text, 0.18),
+         'text': text, 'muted': col('Window', 'ForegroundInactive') or mix(text, bg, 0.4),
+         'danger': col('View', 'ForegroundNegative') or '#da4453', 'ember': ember,
+         'flame': col('View', 'ForegroundNeutral') or ember, 'ink': col('Selection', 'ForegroundNormal') or '#ffffff'}
+    mode = 'dark' if lum(bg) < 0.5 else 'light'
+    c['faint'] = mix(c['bg'], c['muted'], 0.64)
+    c['accent'] = c['focus'] = ember
+    c['glow'] = mix(c['bg'], ember, 0.10 if mode == 'dark' else 0.08)
+    c['chrome'] = c['bg2']
+    c['accentInk'] = c['ink']
+    return {'look': 'kde', 'mode': mode, 'accent': ember, 'label': scheme or 'KDE', 'source': 'plasma', 'scheme': scheme,
+            'font': getattr(ht_mod, 'APP_FONT_STACK', 'system-ui, sans-serif'), 'radius': 6, 'corner': 6, 'colors': c}
+
+
+RETIRED_APPLETS = ('org.hearth.quicksettings', 'org.hearth.gamemode')
+
+
+def retired_applets(paths, hsio):
+    """Hearth Plasma's own panel widgets (Debian before 1.13: Quick Settings, the Game Mode button) aren't in this
+    edition: a panel that still has them shows errors and its app menu broke (the owner's ROG Ally, Nov 18). Once, and
+    only while they're there: a copy of the panel's file is kept, just those widgets are taken out, and it's said."""
+    f = paths['appletsrc']
+    try:
+        with open(f, encoding='utf-8', errors='replace') as fh:
+            text = fh.read()
+    except OSError:
+        return
+    found = [a for a in RETIRED_APPLETS if re.search(r'(?m)^plugin=%s\s*$' % re.escape(a), text)]
+    if not found:
+        return
+    bak = f + '.before-fedora-edition'
+    if not os.path.exists(bak):
+        try:
+            shutil.copy2(f, bak)
+        except OSError as e:
+            log('old panel widgets left as they are (no copy could be kept: %s)' % e)
+            return
+    js = 'var gone = %s; panels().forEach(function (p) { p.widgets().forEach(function (w) { if (gone.indexOf(w.type) >= 0) w.remove(); }); });' % json.dumps(found)
+    code, out = run(['dbus-send', '--session', '--print-reply', '--dest=org.kde.plasmashell', '/PlasmaShell',
+                     'org.kde.PlasmaShell.evaluateScript', 'string:' + js])
+    log('old Hearth Plasma widgets %s taken out of the panel: exit %s (the panel as it was: %s)' % (', '.join(found), code, bak))
+    if code == 0 and shutil.which('notify-send'):
+        run(['notify-send', '-a', 'Hearth', '-i', 'hearth', 'Your panel was tidied',
+             "Two widgets from the old Hearth Plasma (Quick Settings and the Game Mode button) aren't in this edition, "
+             "so they were taken out of your panel. The panel as it was is kept in %s." % bak.replace(os.path.expanduser('~'), '~')])
+
+
+def write_apps_theme(pal, kc, hsio):
+    """~/.config/hearth/theme.json and theme.css (hosts/hearth-apptheme, hearth-ui's theme.rs, Hearth Browser): every
+    Hearth app follows the Global Theme and colours picked in Plasma. Only written when it changed (atomic)."""
+    if kc is None:
+        return
+    try:
+        g = kc.effective('kdeglobals')[0]
+    except Exception as e:
+        log('apps\' colours: KDE\'s settings could not be read: %s' % e)
+        return
+    t = apps_tokens(pal, g)
+    if not t:
+        return
+    conf = os.environ.get('XDG_CONFIG_HOME') or os.path.join(os.path.expanduser('~'), '.config')
+    d = os.path.join(conf, 'hearth')
+    css = ht_mod.app_css(t) if ht_mod is not None else ''
+    for name, text in (('theme.json', json.dumps(t, indent=1) + '\n'), ('theme.css', css)):
+        if not text:
+            continue
+        p = os.path.join(d, name)
+        try:
+            with open(p, encoding='utf-8') as f:
+                if f.read() == text:
+                    continue
+        except OSError:
+            pass
+        os.makedirs(d, exist_ok=True)
+        tmp = p + '.tmp'
+        with open(tmp, 'w', encoding='utf-8') as f:
+            f.write(text)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, p)
+    log('Hearth\'s apps follow %s (%s)' % (t.get('scheme') or t['look'], t['mode']))
+
+
+def save_state(path, st, hsio):
+    if hsio:
+        hsio.write_json(path, st)
+        return
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(st, f, indent=2)
+    os.replace(tmp, path)
+
+
+def main(argv):
+    if len(argv) > 1 and argv[1] == 'build':
+        a = argv[2:]
+
+        def opt(n, default):
+            return a[a.index(n) + 1] if n in a and a.index(n) + 1 < len(a) else default
+        made = build(opt('--root', '/'), opt('--theme-dir', THEME_DIR), opt('--logo', LOGO))
+        print(json.dumps(made, indent=1))
+        return 0 if made else 1
+    if len(argv) > 1 and argv[1] == 'sync':
+        return sync('--wait' in argv)
+    if len(argv) > 1 and argv[1] == 'status':
+        sys.path.insert(0, SHELL_DIR)
+        try:
+            import hearth_kconfig as kc
+        except ImportError:
+            kc = None
+        p = home_paths()
+        try:
+            with open(p['state']) as f:
+                st = json.load(f)
+        except (OSError, ValueError):
+            st = None
+        print(json.dumps({'kde': effective(kc), 'state': st, 'plasma': plasma_running()}))
+        return 0
+    sys.stderr.write(__doc__)
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

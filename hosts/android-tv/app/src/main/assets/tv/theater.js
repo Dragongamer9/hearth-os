@@ -13,7 +13,7 @@
     if (!x) return;
     var list = links(); list.forEach(function (y) { if (y.id === x.id) { y.opened = Date.now(); if (!y.pct) y.pct = 1; } }); save(list);
     if (x.yt || x.list) { TH.playing = x; T.go('theaterPlayer', x); }
-    else T.n('openViewer', x.url, x.title || '');
+    else { T.sentBy = ''; T.n('openViewer', x.url, x.title || ''); }
   };
   T.screen('theater', {
     first: 't0',
@@ -95,14 +95,14 @@
     first: 'tpp',
     enter: function () { T.playing = true; T.n('keepOn', true); },
     leave: function () {
-      T.playing = false; T.n('keepOn', false);
+      T.playing = false; T.n('keepOn', false); T.sentBy = '';
       var x = TH.playing; if (!x) return;
       var list = links(); list.forEach(function (y) { if (y.id === x.id && TH.pos && TH.dur) y.pct = Math.min(100, TH.pos / TH.dur * 100); }); save(list);
     },
     render: function (x) {
       var src = 'https://www.youtube-nocookie.com/embed/' + (x.yt ? encodeURIComponent(x.yt) : 'videoseries') + '?autoplay=1&controls=1&rel=0&modestbranding=1&enablejsapi=1&playsinline=1' + (x.list ? '&list=' + encodeURIComponent(x.list) : '') + (x.pct > 0 && x.pct < 97 && x.durSec ? '&start=' + Math.floor(x.durSec * x.pct / 100) : '');
       return '<div class="player"><iframe id="yt" src="' + E(src) + '" allow="autoplay; encrypted-media; fullscreen" allowfullscreen style="position:absolute;inset:0;width:100%;height:100%;border:0"></iframe>' +
-        '<div class="chrome" style="pointer-events:none"><div class="topfade"></div><div style="position:absolute;left:80px;top:56px;display:flex;flex-direction:column;gap:6px"><span style="font-size:32px;font-weight:700">' + E(x.title) + '</span><span style="font-size:20px;color:#c3ccd4">' + E(x.site) + ' · full screen, no page around it</span></div></div>' +
+        '<div class="chrome" style="pointer-events:none"><div class="topfade"></div><div style="position:absolute;left:80px;top:56px;display:flex;flex-direction:column;gap:6px"><span style="font-size:32px;font-weight:700">' + E(x.title) + '</span><span style="font-size:20px;color:#c3ccd4">' + E((T.sentBy ? 'Sent from ' + T.sentBy + ' · ' : '') + x.site) + ' · full screen, no page around it</span></div></div>' +
         '<button data-f data-key="tpp" data-act="pp" style="position:absolute;left:-9999px">Play/pause</button></div>';
     },
     after: function () {

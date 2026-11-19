@@ -42,6 +42,7 @@
 //!   rules; never restarted for you)
 //! - inputs.rs: controller layouts from your other devices (Hearth Input; pull only, checked here)
 //! - decky.rs: a Decky plugin's files for another of your devices (installed there only through Decky's own prompt)
+//! - tv.rs: Send to TV: a link, a video or a show from a Hearth PC to a Hearth TV, which plays it
 //! - ai.rs: local AI over Hearth Link (a device's own model server, shared with the paired devices; off by default)
 //! - node.rs: the service: connections, the requests from other devices and from the UI
 //! - ipc.rs: the UI's (and `hearth-link call`'s) way in: a Unix socket only this user can open
@@ -65,6 +66,7 @@ pub mod shortcode;
 pub mod state;
 pub mod status;
 pub mod storage;
+pub mod tv;
 pub mod bench;
 pub mod cache;
 pub mod sync;

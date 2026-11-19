@@ -118,6 +118,14 @@ const B = (n) => `/assets/tv/theme/backgrounds/${n}.jpg`;
   await ev("hearthTV.go('show','show1')"); await shot('5-show', 1500);
   await ev("hearthTV.subtitlesPanel()"); await shot('5-show-subtitles');
   await ev("hearthTV.close(); hearthTV.go('theater')"); await shot('6-theater');
+  // Send to TV (docs/HEARTH-TV.md): what a Hearth PC sends over Hearth Link, as SendToTv.kt hands it to the page.
+  // A link (right-click a link › Send to TV): saved in Theater and played. A video file from Hearth Files: Hearth TV's
+  // player, from the TV's own Hearth Link address (a pretend one here that never answers). A show: its page in My Media.
+  await page.route('http://tv-link.test/**', () => {});
+  await ev("hearthTV.onEvent(JSON.stringify({type:'theaterAdded', play:true, by:'Nvidia-PC', item:hearthTV.json('theater')[0]}))"); await shot('6-theater-sent-link', 1500);
+  await ev("hearthTV.back(); hearthTV.onEvent(JSON.stringify({type:'sent', item:{kind:'file', url:'http://tv-link.test/0123/Holiday_2026.mp4', title:'Holiday 2026.mp4', from:'Nvidia-PC', file:{name:'Holiday 2026.mp4', size:1}}}))"); await shot('6-theater-sent-video', 1200);
+  await ev("hearthTV.back(); hearthTV.onEvent(JSON.stringify({type:'sent', item:{kind:'media', title:'The Cisco Kid', media:{id:'show1', type:'show'}, from:'Nvidia-PC'}}))"); await shot('6-theater-sent-show', 1800);
+  await ev("hearthTV.go('theater')");
   await ev("hearthTV.go('search'); hearthTV.screens.search.act('k','s'); hearthTV.screens.search.act('k','i')"); await shot('7-search', 1500);
   for (const p of ['Home screen', 'TV Cleanup', 'TV inputs', 'Profiles', 'My Media', 'Hearth Link', 'Screensaver', 'Picture and sound', 'Remote and controllers', 'About']) {
     await ev(`hearthTV.go('settings', ${JSON.stringify(p)}); hearthTV.screens.settings.act('page', ${JSON.stringify(p)})`);

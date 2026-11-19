@@ -8,7 +8,6 @@ that was moved lives in `archive/` under its old path, and its docs in `docs/arc
 
 | Part | Archived | Code | Docs |
 |---|---|---|---|
-| Hearth OS on Anatase (Fedora, image-based) | November 2026 (1.0); installs keep their last version | `os-bases/anatase` (stays: it shares checks and scripts with the Debian build); workflow `base-anatase.yml` | [BASE-ANATASE](archive/BASE-ANATASE.md) |
 | Hearth OS on Ubuntu and on CachyOS | 2026-10-22 | `archive/os-bases/ubuntu`, `archive/os-bases/cachyos`; `base-ubuntu.yml` / `base-cachyos.yml` (by hand, type "archived") | [BASE-UBUNTU](archive/BASE-UBUNTU.md), [BASE-CACHYOS](archive/BASE-CACHYOS.md) |
 | Hearth OS on Bazzite | 0.1.3 was its last update | `os/build_files`, `os/Containerfile` (stay: `os/` also holds the shared system files, the installer and Recovery) | |
 | Multi-seat and Couch Co-op | 1.0 (hidden) | stays in place (`hosts/hearth-core`, `os/system_files/usr/libexec/nimbus/hearth-seats`, `hearth-coop`) | [MULTI-SEAT](archive/MULTI-SEAT.md), [COUCH-COOP](archive/COUCH-COOP.md) |
@@ -26,6 +25,7 @@ that was moved lives in `archive/` under its old path, and its docs in `docs/arc
 | Part | Archived | Back | Docs |
 |---|---|---|---|
 | Hearth Game Mode (Hearth's own Game Mode) | 1.0: Steam Game Mode replaced it (its code stayed in place: `ui/`, `hosts/hearth-rs`, `hosts/hearth-core`) | 1.10: a choice in Settings › Gaming › Game Mode next to Steam Game Mode (the default); falls back to Steam Game Mode, then Mantel, when it can't start | [HEARTH-GAME-MODE](HEARTH-GAME-MODE.md) |
+| Hearth OS on Anatase (Fedora, image-based) | November 2026 (1.0) | 1.15, as a test beside Debian (the owner, Nov 17): `ghcr.io/dragongamer9/hearth-os:test-1.15` only, offered as "Hearth OS on Anatase (test)" in Switch edition; stock KDE Plasma as Desktop Mode, Unlock the file system; Debian stays the main edition. `os-bases/anatase`, `base-anatase.yml` (by hand, publishes only from main to the test tag) | [BASE-ANATASE](BASE-ANATASE.md) |
 
 ## Hearth's app store (Apps): archived 2026-10-24
 

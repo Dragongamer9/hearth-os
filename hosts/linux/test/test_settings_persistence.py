@@ -124,7 +124,7 @@ class ConfFiles(unittest.TestCase):
         self.assertIn('--hdr-enabled', out)
 
     def test_session_strip_mode_args_is_safe_and_remembers_your_choice(self):
-        src = (REPO / 'hosts' / 'linux' / 'session' / 'nimbus-session').read_text()
+        src = (REPO / 'hosts' / 'linux' / 'session' / 'nimbus-session').read_text(encoding='utf-8')
         regex = re.search(r"^MODE_ARGS_RE='[^']*'$", src, re.M).group(0)
         fn = re.search(r'^strip_mode_args\(\) \{\n.*?^\}\n', src, re.M | re.S).group(0)
         fn += re.search(r'^note_reverted\(\) \{\n.*?^\}\n', src, re.M | re.S).group(0)
@@ -162,6 +162,10 @@ ALLOWED = {
     'os/live/src/build.sh',
     # The manual's "fix the display mode" command, typed by the person themselves (GNU sed -i renames a new file in).
     'tools/build-docs.py',
+    # CI only: the pure-Rust apps' timing test sets looks in the runner's throwaway account (no one's settings).
+    '.github/scripts/hearth-apps-rust-test.sh',
+    # CI only: the Fedora image check sets up its test cases in throwaway mktemp folders.
+    '.github/scripts/anatase-image-check.sh',
 }
 
 

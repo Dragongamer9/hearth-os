@@ -48,11 +48,25 @@ SetPage {
         sub: "Starts it now. Whether it starts with the PC is the switch below."
         onActivated: act.run(["ts-start"], () => { page.say("Tailscale is on"); page.refresh(); }, e => page.say(e, true))
     }
+    // Sign in works whatever state Tailscale is in: ts-signin starts tailscaled (and has it start with the PC) when it
+    // isn't running, makes you its operator, then asks for the link. What went wrong shows right under it (it used to
+    // show only at the bottom of the page, so Sign in looked like it did nothing).
     SetRow {
-        visible: page.ts.installed === true && page.ts.running !== false && !page.connected
-        icon: "lock"; title: page.login ? "Waiting for you to sign in…" : "Sign in to Tailscale"
+        visible: page.ts.installed === true && !page.connected
+        icon: "lock"
+        title: act.what === "signin" ? (page.ts.running === false ? "Starting Tailscale, then asking for a sign-in link…" : "Asking Tailscale for a sign-in link…")
+             : page.login ? "Waiting for you to sign in…" : "Sign in to Tailscale"
         sub: page.login ? "Scan the code with your phone, or open the link on any device. Then this page updates by itself." : "With Google, Microsoft, GitHub or Apple. Free for personal use."
-        onActivated: act.run(["ts-login"], r => { page.login = r; if (!r.authUrl && r.state !== "Running") page.say("Tailscale didn't give a sign-in link yet: try again", true); page.refresh(); }, e => page.say(e, true))
+        onActivated: if (act.what !== "signin") { page.say(""); act.run(["ts-signin"], r => {
+            page.login = r;
+            if (!r.authUrl && r.state !== "Running") page.say("Tailscale didn't give a sign-in link yet: try again", true);
+            else if (r.atBoot) page.say("Tailscale is on, and starts with this PC from now on (the switch below turns that off)");
+            page.refresh(); }, e => page.say(e, true), "", "signin"); }
+    }
+    Text {
+        visible: page.msg !== "" && !page.connected
+        Layout.fillWidth: true; Layout.leftMargin: 4
+        text: page.msg; color: page.bad ? Theme.danger : Theme.flame; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
     RowLayout {
         visible: !!page.login && !!page.login.authUrl && !page.connected
@@ -60,7 +74,7 @@ SetPage {
         spacing: 18
         Rectangle {
             visible: !!page.login && page.login.qr !== ""
-            Layout.preferredWidth: 220; Layout.preferredHeight: 220
+            Layout.preferredWidth: 300; Layout.preferredHeight: 300
             radius: Theme.r(12); color: "white"
             Image {
                 anchors.fill: parent
@@ -161,7 +175,7 @@ SetPage {
         color: Theme.danger; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }
     Text {
-        visible: page.msg !== ""
+        visible: page.msg !== "" && page.connected
         Layout.fillWidth: true
         text: page.msg; color: page.bad ? Theme.danger : Theme.flame; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
     }

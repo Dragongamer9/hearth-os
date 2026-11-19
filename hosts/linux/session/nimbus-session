@@ -52,6 +52,42 @@ mkdir -p "$(dirname "$LOG")"
 [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt 2000000 ] && mv -f "$LOG" "$LOG.old"
 log() { echo "$(date '+%F %T') $*" >>"$LOG"; }
 
+# The session's message bus (D-Bus): Plasma and Steam both quit at once without one ("Could not start D-Bus"). The
+# login normally gives the session one; on the Fedora edition's first start after switching from Debian it once didn't
+# (the owner's ROG Ally, Nov 18: Plasma and Steam took turns failing every 3 s on a black screen). So: find it, else
+# start the account's own (systemd --user), else run the whole session inside a private one (dbus-run-session).
+# Never fatal: without any, the session goes on as before.
+session_bus_ok() {
+  timeout 4 busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetId >/dev/null 2>&1
+}
+ensure_session_bus() {
+  # Only on the Fedora edition (KDE Plasma's image), never for an extra multi-seat player, and before anything else
+  # here changes the environment (a run inside dbus-run-session starts this script again from the top).
+  [ "${HEARTH_NO_BUS_CHECK:-}" = 1 ] && return 0
+  [ -z "${HEARTH_SEAT:-}" ] || return 0
+  [ "$(cat "${HEARTH_DESKTOP_MODE_FILE:-/usr/share/nimbus/desktop-mode}" 2>/dev/null)" = plasma ] || return 0
+  command -v busctl >/dev/null 2>&1 || return 0
+  rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || { [ -S "$rt/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$rt/bus"; }
+  session_bus_ok && return 0
+  log "session bus: not answering (${DBUS_SESSION_BUS_ADDRESS:-none}); starting the account's own"
+  command -v systemctl >/dev/null 2>&1 && timeout 10 systemctl --user start dbus.socket dbus-broker.service dbus.service >/dev/null 2>&1
+  i=0
+  while [ "$i" -lt 20 ]; do
+    [ -S "$rt/bus" ] && { export DBUS_SESSION_BUS_ADDRESS="unix:path=$rt/bus"; session_bus_ok && { log "session bus: up ($DBUS_SESSION_BUS_ADDRESS)"; return 0; }; }
+    sleep 0.5; i=$((i + 1))
+  done
+  if [ -z "${HEARTH_BUS_WRAPPED:-}" ] && command -v dbus-run-session >/dev/null 2>&1; then
+    log "session bus: none came up; the session runs inside its own (dbus-run-session)"
+    export HEARTH_BUS_WRAPPED=1
+    unset DBUS_SESSION_BUS_ADDRESS
+    exec dbus-run-session -- "$0" "$@"
+  fi
+  log "session bus: none (Plasma and Steam may not start)"
+  return 0
+}
+ensure_session_bus "$@"
+
 # ---- The desktop for Desktop Mode is Mantel. 1.13's KDE Plasma and GNOME choices were retired in 1.14 (the owner,
 # Nov 16: "archive the KDE and GNOME choices, since we're migrating to KWin"; code in archive/desktops-kde-gnome,
 # docs/archive/DESKTOPS-KDE-GNOME.md). The login screen's old entries passed --desktop=kde|gnome: Mantel, and the
@@ -165,7 +201,7 @@ rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode" "${XDG_STATE_HOME:-$H
 
 can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
 can_desktop() {   # Mantel: on KWin (1.14), labwc the fallback (run_classic); or the 2.0 preview, when it's turned on
-  have labwc || have "${HEARTH_KWIN_BIN:-kwin_wayland}" || { [ "$(desktop_wm_choice)" = firehold ] && firehold_bin >/dev/null; }
+  { plasma_image && have startplasma-wayland; } || have labwc || have "${HEARTH_KWIN_BIN:-kwin_wayland}" || { [ "$(desktop_wm_choice)" = firehold ] && firehold_bin >/dev/null; }
 }
 
 # Apps that keep sign-ins in the system's password store (Xodus Nexus, browsers) need one running, and on a
@@ -403,12 +439,175 @@ run_desktop() {
   fi
   # 1.13's KDE Plasma or GNOME still picked: they were retired in 1.14, so Mantel opens, and Mantel tells you once
   # (desktop/shell/DesktopNotice.qml through hearth-your-desktop notice; desktop-retired-told then keeps it quiet).
+  # 1.15, the Anatase test (the owner, Nov 17): Desktop Mode there is stock KDE Plasma with Hearth's apps; that image
+  # has no Mantel or labwc (run_plasma).
+  if plasma_image && [ -z "$HEARTH_SEAT" ]; then run_plasma; return $?; fi
   d=$(retired_desktop)
   if [ -n "$d" ] && [ -z "$HEARTH_SEAT" ] && [ ! -e "$DESK_STATE/desktop-retired-told" ]; then
     log "$d: KDE Plasma and GNOME were retired in 1.14; Mantel instead (the notice says so once)"
     desk_notice "$d" retired
   fi
   run_classic
+}
+
+# ---- 1.15: Desktop Mode on the Anatase test is stock KDE Plasma (plasmashell on KDE's own KWin), with Hearth's apps
+# as ordinary apps in Plasma's menu. Only where the image says so (/usr/share/nimbus/desktop-mode is "plasma"; the
+# Debian image has none, so nothing changes there). Your saved Desktop Mode choice (session.conf's
+# HEARTH_DESKTOP_WM: Mantel on labwc, KWin or Firehold) is never read or changed here, so it's still yours when you
+# go back to Debian; Plasma says once that it took its place. Back to Game Mode: "Back to Game Mode" in Plasma's menu
+# and on its taskbar (nimbus-mode game, which logs Plasma out). Plasma ending without asking for a mode within 20 s
+# of starting (it couldn't start): Steam Game Mode, never no screen.
+plasma_image() { [ "$(cat "${HEARTH_DESKTOP_MODE_FILE:-/usr/share/nimbus/desktop-mode}" 2>/dev/null)" = plasma ]; }
+# The Desktop Mode choice on the Plasma image: "firehold" (Firehold on Plasma, a test) or "plasma" (no line). Read only.
+firehold_plasma_choice() {
+  c=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_PLASMA_DESKTOP=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
+  [ "$c" = firehold ] && echo firehold || echo plasma
+}
+run_plasma() {
+  # "Firehold (Rust, test)", only when you picked it (run_firehold_rust): KDE Plasma whenever it doesn't come up.
+  if firehold_rust_chosen; then
+    run_firehold_rust; frc=$?
+    [ "$frc" = 200 ] || return "$frc"
+    log "desktop mode: Firehold (Rust, test) didn't work (${FIREHOLD_RUST_WHY:-?}); KDE Plasma for this sign-in"
+    if have notify-send && [ "$FIREHOLD_RUST_WHY" != "you switched to KDE Plasma" ]; then
+      ( sleep 25; notify-send -a "Hearth" -i hearth "Firehold (Rust, test) didn't start" \
+          "KDE Plasma opened instead, this time. Your choice is kept: Desktop Mode tries Firehold again next time. (${FIREHOLD_RUST_WHY:-})" ) >/dev/null 2>&1 &
+    fi
+  fi
+  log "desktop mode: KDE Plasma (the Anatase test)"
+  if ! have startplasma-wayland; then
+    log "desktop: KDE Plasma (startplasma-wayland) isn't installed; Steam Game Mode instead"
+    echo steam >"$NEXT"; return 1
+  fi
+  if [ -n "${HEARTH_DESKTOP_WM:-}" ] && [ ! -e "$DESK_STATE/plasma-instead-told" ] && have notify-send; then
+    mkdir -p "$DESK_STATE" && : >"$DESK_STATE/plasma-instead-told"
+    ( sleep 25; notify-send -a "Hearth" -i hearth "Desktop Mode is KDE Plasma here" \
+        "This test edition has KDE Plasma instead of Mantel. Your Desktop Mode choice is kept for when you go back to Debian." ) >/dev/null 2>&1 &
+  fi
+  # Firehold on Plasma (a test: docs/FIREHOLD.md "Firehold on Plasma"), only when it's your Desktop Mode choice
+  # (HEARTH_PLASMA_DESKTOP=firehold in your session settings, from "Firehold (Plasma, test)" in Plasma's menu; no line: KDE
+  # Plasma) and its packages are in the image. plasmashell is told which shell package to start (PLASMA_DEFAULT_SHELL);
+  # KWin is KDE's own, unchanged. KDE's user services keep that variable between Plasma starts, so it's cleared first
+  # and plain Plasma never gets it. Anything missing or failing: plain KDE Plasma (hearth-firehold-plasma checks the
+  # shell came up and says so); the choice itself is never changed here.
+  fh_shell=""
+  if have systemctl; then systemctl --user unset-environment PLASMA_DEFAULT_SHELL HEARTH_FIREHOLD_PLASMA >/dev/null 2>&1 || true; fi
+  if [ "$(firehold_plasma_choice)" = firehold ] && have hearth-firehold-plasma && [ -f /usr/share/plasma/shells/org.hearthos.firehold/metadata.json ]; then
+    fh_shell=$(timeout 10 hearth-firehold-plasma start-shell 2>/dev/null | tail -n 1)
+    case "$fh_shell" in
+      org.hearthos.firehold|org.hearthos.firehold.desk) timeout 10 hearth-firehold-plasma begin "$fh_shell" >/dev/null 2>&1 || true ;;
+      *) fh_shell="" ;;
+    esac
+    log "desktop mode: Firehold on Plasma (${fh_shell:-no shell to start: plain KDE Plasma})"
+  fi
+  started=$(date +%s)
+  (
+    if [ -n "$fh_shell" ]; then export PLASMA_DEFAULT_SHELL="$fh_shell" HEARTH_FIREHOLD_PLASMA=1; else unset PLASMA_DEFAULT_SHELL HEARTH_FIREHOLD_PLASMA; fi
+    # Plasma's menus: Hearth Classic's one-app-of-each-kind copies (made for Mantel) are left out. Plasma has its own
+    # (/usr/share/hearth/app-kinds-plasma: Hearth's own apps first, KDE's never in their place), made by the Fedora
+    # edition's build only when they passed its check; without them Hearth's apps and KDE's both show, as before.
+    dd=""; IFS=:; for d in $XDG_DATA_DIRS; do [ "$d" = /usr/share/hearth/app-kinds ] || [ "$d" = /usr/share/hearth/app-kinds-plasma ] || dd="${dd:+$dd:}$d"; done; unset IFS
+    if [ -d /usr/share/hearth/app-kinds-plasma/applications ]; then dd="/usr/share/hearth/app-kinds-plasma:$dd"; fi
+    export XDG_DATA_DIRS="$dd"
+    # Fedora names KDE's menu file with a prefix (the 1.14 "applications.menu not found"): Plasma is told which.
+    if [ ! -e /etc/xdg/menus/applications.menu ]; then
+      for m in /etc/xdg/menus/*-applications.menu; do [ -e "$m" ] && { export XDG_MENU_PREFIX="$(basename "$m" applications.menu)"; break; }; done
+    fi
+    export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE DESKTOP_SESSION=plasma KDE_FULL_SESSION=true HEARTH_WM=plasma
+    unset QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE HEARTH_DESKTOP_PID LABWC_PID
+    exec startplasma-wayland
+  ) >>"$LOG" 2>&1 &
+  pid=$!
+  echo "$pid" >"$RUN/hearth-plasma.pid"
+  wait "$pid"; code=$?
+  rm -f "$RUN/hearth-plasma.pid"
+  log "desktop mode: KDE Plasma ended (code $code)"
+  if [ ! -s "$NEXT" ] && [ $(( $(date +%s) - started )) -lt 20 ]; then
+    log "desktop: KDE Plasma ended within 20 s of starting; Steam Game Mode instead"
+    echo steam >"$NEXT"
+  fi
+  return 0
+}
+
+# ---- 1.15 test, the owner (Nov 18): "Firehold (Rust, test)" in Desktop Mode on Anatase (docs/FIREHOLD-RUST.md):
+# firehold-comp with Firehold's all-Rust shell (firehold-shell hub), never the default. Only when you picked it
+# (`firehold-shell chosen`: ~/.config/nimbus/firehold-rust.json, which only your pick writes) and both programs are
+# here. Safe to fail (red flag 2): the shell must say it's up within FIREHOLD_UP_SECS (45 s), firehold-comp must not
+# end within FIREHOLD_EARLY_SECS, and if either ends by itself with no mode asked for, KDE Plasma opens instead for this
+# sign-in (return 200; run_plasma says why once). Your choice is never changed by a failure. nimbus-mode ends it the
+# way it ends Mantel (HEARTH_DESKTOP_PID is firehold-comp's), so Back to Game Mode works from inside it.
+FIREHOLD_SHELL_NAME="${FIREHOLD_SHELL_BIN:-firehold-shell}"
+firehold_rust_chosen() {
+  [ -z "$HEARTH_SEAT" ] || return 1
+  firehold_bin >/dev/null 2>&1 || return 1
+  have "$FIREHOLD_SHELL_NAME" || return 1
+  "$FIREHOLD_SHELL_NAME" chosen >/dev/null 2>&1
+}
+run_firehold_rust() {
+  log "desktop mode: Firehold (Rust, test)"
+  FIREHOLD_RUST_WHY=""
+  FLOG="$(dirname "$LOG")/firehold-rust.log"
+  [ -f "$FLOG" ] && [ "$(wc -c <"$FLOG")" -gt 1000000 ] && mv -f "$FLOG" "$FLOG.old"
+  echo "--- $(date '+%F %T') Desktop Mode (Firehold, Rust test)" >>"$FLOG"
+  rm -f "$RUN/firehold-shell-up" "$RUN/firehold-leave" "$RUN/firehold-shell-hub.pid"
+  bin=$(firehold_bin); shellbin=$(command -v "$FIREHOLD_SHELL_NAME")
+  rc_xml="${FIREHOLD_RUST_RC:-/usr/share/hearth/firehold-rust/rc.xml}"
+  (
+    export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=Firehold XDG_SESSION_DESKTOP=firehold DESKTOP_SESSION=firehold HEARTH_WM=firehold-rust
+    unset LABWC_PID QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE
+    if [ -f "$rc_xml" ]; then
+      exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" ${FIREHOLD_ARGS:---tty-udev} --labwc-rc "$3" -- "$2" hub' sh "$bin" "$shellbin" "$rc_xml"
+    fi
+    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec "$1" ${FIREHOLD_ARGS:---tty-udev} -- "$2" hub' sh "$bin" "$shellbin"
+  ) >>"$FLOG" 2>&1 &
+  hpid=$!
+  echo "$hpid" >"$RUN/firehold.pid"
+  started=$(date +%s); up=0
+  while kill -0 "$hpid" 2>/dev/null; do
+    [ -e "$RUN/firehold-shell-up" ] && { up=1; break; }
+    [ $(( $(date +%s) - started )) -ge "$FIREHOLD_UP_SECS" ] && break
+    sleep 1
+  done
+  if [ "$up" = 0 ] && kill -0 "$hpid" 2>/dev/null; then
+    log "firehold (Rust): the shell didn't say it's up after ${FIREHOLD_UP_SECS}s; ending it"
+    FIREHOLD_RUST_WHY="the shell wasn't up after ${FIREHOLD_UP_SECS} seconds"
+    kill -TERM "$hpid" 2>/dev/null; sleep 3; kill -KILL "$hpid" 2>/dev/null
+  fi
+  if [ "$up" = 1 ]; then
+    log "firehold (Rust): up after $(( $(date +%s) - started ))s"
+    # The shell's hub gone while firehold-comp stays (a crash): the compositor is ended too, so the session goes on.
+    # One look every 5 s, from this script (not the desktop's own processes).
+    hub=$(cat "$RUN/firehold-shell-hub.pid" 2>/dev/null)
+    while kill -0 "$hpid" 2>/dev/null; do
+      sleep 5
+      if [ -n "$hub" ] && ! kill -0 "$hub" 2>/dev/null; then
+        kill -0 "$hpid" 2>/dev/null || break
+        log "firehold (Rust): the shell's hub ended; ending firehold-comp"
+        [ -s "$NEXT" ] || FIREHOLD_RUST_WHY="the shell stopped"
+        kill -TERM "$hpid" 2>/dev/null; sleep 3; kill -KILL "$hpid" 2>/dev/null
+        break
+      fi
+    done
+  fi
+  wait "$hpid"; rc=$?
+  rm -f "$RUN/firehold.pid" "$RUN/firehold-shell-up" "$RUN/firehold-shell-hub.pid"
+  pkill -TERM -u "$(id -u)" -x firehold-shell 2>/dev/null
+  if [ -s "$NEXT" ]; then log "firehold (Rust) ended (code $rc)"; return 0; fi
+  if [ -e "$RUN/firehold-leave" ]; then
+    rm -f "$RUN/firehold-leave"
+    log "firehold (Rust): left for KDE Plasma (asked)"
+    FIREHOLD_RUST_WHY="you switched to KDE Plasma"
+    return 200
+  fi
+  last=$(grep -E "ERROR|panicked" "$FLOG" 2>/dev/null | tail -n 1 | cut -c1-200)
+  if [ "$up" = 0 ]; then
+    [ -n "$FIREHOLD_RUST_WHY" ] || FIREHOLD_RUST_WHY="firehold-comp ended before the shell came up (code $rc)${last:+: $last}"
+    log "firehold (Rust) ended before the shell came up (code $rc)"
+    return 200
+  fi
+  [ -n "$FIREHOLD_RUST_WHY" ] || FIREHOLD_RUST_WHY="firehold-comp stopped (code $rc)${last:+: $last}"
+  log "firehold (Rust) ended by itself after $(( $(date +%s) - started ))s (code $rc); KDE Plasma next"
+  return 200
 }
 
 # ---- Desktop Mode's notices: why Mantel started the way it did. Lines "<what> <why> <when>" in
@@ -1883,6 +2082,10 @@ if [ "${HEARTH_SIDE:-}" = 1 ]; then
     || log "side by side: couldn't show the desktop or another session of yours again"
   exit 0
 fi
+
+# Modes that end within seconds one after another (a broken piece every mode needs) must never flip forever on a
+# black screen: after 6 quick ends in a row the session waits 15 s between tries and says so.
+QUICK_ENDS=0
 reset_controllers
 mode="${NIMBUS_START_MODE:-game}"
 case "$mode" in desktop|server) ;; *) mode=game ;; esac
@@ -1929,6 +2132,7 @@ while :; do
   steam_only_env
   SWITCH_WATCH=""; switch_watch "$mode"
   sd=""; [ "$mode" = steam ] && ! live_session && { steam_auto_before; sd=1; }
+  mode_started=$(date +%s)
   # Hearth Game Mode you picked (game_mode_choice): run_hearth_mode, with its fallback (Steam Game Mode, then Mantel).
   if [ "$mode" = game ] && [ -z "$HEARTH_SEAT" ] && ! live_session; then run_hearth_mode; code=$?
   elif [ "$mode" = game ] || [ "$mode" = setup ]; then
@@ -1940,6 +2144,11 @@ while :; do
   else steam_notice_other; run_desktop; code=$?; fi
   [ -n "$sd" ] && steam_auto_after
   [ -n "$SWITCH_WATCH" ] && kill "$SWITCH_WATCH" 2>/dev/null
+  if [ $(( $(date +%s) - mode_started )) -lt 10 ]; then QUICK_ENDS=$((QUICK_ENDS + 1)); else QUICK_ENDS=0; fi
+  if [ "$QUICK_ENDS" -ge 6 ]; then
+    log "modes keep ending at once ($QUICK_ENDS in a row): waiting 15 s before the next try (Send logs has why)"
+    sleep 15
+  fi
   STEAM_GAME_APPID=""   # a one-game Steam Game Mode is over, whatever comes next
 
   next="$(cat "$NEXT" 2>/dev/null)"; rm -f "$NEXT"

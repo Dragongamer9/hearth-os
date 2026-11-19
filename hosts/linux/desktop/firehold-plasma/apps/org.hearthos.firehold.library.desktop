@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Library
+Comment=Every game you have, on the Couch
+Exec=hearth-firehold-plasma switch couch library
+Icon=applications-games
+NoDisplay=true
+OnlyShowIn=KDE;

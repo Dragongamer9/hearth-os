@@ -1,0 +1,233 @@
+# Firehold (Rust, test): Firehold's shell all in Rust (hosts/firehold-shell, iced on wlr-layer-shell) on Firehold's own
+# compositor (hosts/firehold-comp), for the Anatase test (docs/FIREHOLD-RUST.md). Built and tested only here, in
+# Fedora 45 as Anatase is.
+#   build     both crates: cargo build and test (errors as annotations)
+#   screens   nimbus-session as on Anatase with "Firehold (Rust, test)" picked: the six mockups' screens through
+#             screencopy, the settings untouched, and what falls back to KDE Plasma (.github/scripts/firehold-rust-test.sh)
+#   pictures  each screen as SHOT notices (one job each: GitHub keeps 50 notices a job)
+#   idle      ten minutes at rest, Firehold and plain KDE Plasma side by side; compare fails on high CPU or memory growth
+name: Firehold (Rust)
+
+on:
+  push:
+    branches: ['feature/firehold-rust']
+    paths: ['hosts/firehold-shell/**', 'hosts/firehold-comp/**', 'hosts/hearth-ui/**', 'hosts/linux/session/nimbus-session', 'hosts/linux/session/nimbus-mode',
+            '.github/workflows/firehold-rust.yml', '.github/scripts/firehold-rust-*.sh', '.github/scripts/cargo-build-annotate.sh']
+  workflow_dispatch:
+    inputs:
+      idle_secs:
+        description: 'Seconds at rest for the idle check (600: ten minutes)'
+        default: '600'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: firehold-rust-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    container: registry.fedoraproject.org/fedora:45
+    steps:
+      - name: Rust and the libraries Smithay, iced and gilrs use
+        run: |
+          dnf -y install git tar zstd gcc gcc-c++ pkgconf-pkg-config rust cargo systemd-devel libseat-devel libinput-devel \
+            mesa-libgbm-devel libdrm-devel libxkbcommon-devel wayland-devel mesa-libEGL-devel pixman-devel fontconfig-devel \
+            freetype-devel python3 >/dev/null
+          echo "::notice title=toolchain::$(rustc --version) · $(cargo --version) · $(. /etc/os-release; echo $PRETTY_NAME)"
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            hosts/firehold-comp/target
+            hosts/firehold-shell/target
+          key: firehold-rust-f45-${{ hashFiles('hosts/firehold-comp/Cargo.toml', 'hosts/firehold-shell/Cargo.toml', 'hosts/hearth-ui/Cargo.toml') }}-${{ github.sha }}
+          restore-keys: firehold-rust-f45-${{ hashFiles('hosts/firehold-comp/Cargo.toml', 'hosts/firehold-shell/Cargo.toml', 'hosts/hearth-ui/Cargo.toml') }}-
+      - name: Build firehold-shell
+        id: shell
+        continue-on-error: true
+        run: bash .github/scripts/cargo-build-annotate.sh hosts/firehold-shell
+      - name: Build firehold-comp
+        id: comp
+        continue-on-error: true
+        run: bash .github/scripts/cargo-build-annotate.sh hosts/firehold-comp
+      - name: More errors
+        if: steps.shell.outcome == 'failure' || steps.comp.outcome == 'failure'
+        run: |
+          for f in errors-firehold-shell.txt errors-firehold-comp.txt; do [ -f "$f" ] && sed -n '11,20p' "$f"; done
+          exit 1
+      - name: Tests
+        run: |
+          fail=0
+          for c in firehold-shell firehold-comp; do
+            (cd hosts/$c && cargo test --release -- --test-threads=1) > test-$c.log 2>&1 || fail=1
+            grep -E "^test .* FAILED|panicked at|^error" test-$c.log | head -8 | while read -r l; do echo "::error title=cargo test $c::$l"; done
+            echo "::notice title=cargo test $c::$(grep -E '^test result' test-$c.log | tr '\n' ' ' | cut -c1-400)"
+          done
+          exit $fail
+      - name: Gather
+        run: |
+          mkdir -p out
+          cp hosts/firehold-shell/target/release/firehold-shell hosts/firehold-comp/target/release/firehold-comp out/
+          ls -la out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: firehold-rust
+          path: out
+          retention-days: 7
+
+  screens:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: registry.fedoraproject.org/fedora:45
+    steps:
+      - name: A screen in memory, grim, foot, fonts
+        run: |
+          dnf -y install --skip-unavailable git libwayland-server libwayland-client libwayland-cursor libwayland-egl mesa-dri-drivers mesa-libEGL mesa-libgbm mesa-vulkan-drivers libinput libseat libxkbcommon \
+            xorg-x11-server-Xwayland procps-ng python3 python3-pillow grim foot dbus-daemon dbus-tools fontconfig \
+            rsms-inter-fonts google-noto-sans-fonts google-noto-sans-symbols-fonts dejavu-sans-fonts dejavu-sans-mono-fonts libnotify >/dev/null
+          for b in grim foot dbus-daemon; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed"; done
+          fc-list | grep -qi inter && echo "::notice title=fonts::Inter is here" || echo "::warning title=fonts::no Inter (the mockups' font)"
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: firehold-rust
+          path: .
+      - name: Firehold (Rust, test) through nimbus-session
+        timeout-minutes: 20
+        run: bash .github/scripts/firehold-rust-test.sh
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: firehold-rust-shots
+          path: shots
+          retention-days: 14
+
+  pictures:
+    needs: screens
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: ['firehold-r1-couch-home', 'firehold-r1b-couch-apps', 'firehold-r1c-couch-store', 'firehold-r2-desk', 'firehold-r3-guide',
+               'firehold-r3b-overlay', 'firehold-r4-everything-open', 'firehold-r5-library', 'firehold-r6-settings', 'firehold-r6b-settings-system',
+               'firehold-r7-look-steam', 'firehold-r7b-look-steam-couch', 'firehold-r2b-desk-menu', 'firehold-r2c-notification',
+               'firehold-r2d-quick-settings', 'firehold-r2e-keyboard', 'firehold-r9-away', 'firehold-r8a-monitor-desk', 'firehold-r8b-tv-couch',
+               'firehold-r6c-settings-per-screen']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: firehold-rust-shots
+          path: shots
+      - name: Picture ${{ matrix.shot }}
+        run: |
+          python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow >/dev/null 2>&1 || python3 -m pip install --quiet pillow >/dev/null
+          python3 .github/scripts/firehold-shot.py ${{ matrix.shot }}
+
+  idle:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container: registry.fedoraproject.org/fedora:45
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [firehold, plasma]
+    steps:
+      - name: What each needs
+        run: |
+          if [ "${{ matrix.kind }}" = plasma ]; then
+            dnf -y install --skip-unavailable kwin plasma-workspace plasma-desktop mesa-dri-drivers mesa-libEGL dbus-daemon dbus-tools \
+              procps-ng python3 google-noto-sans-fonts >/dev/null
+          else
+            dnf -y install --skip-unavailable libwayland-server libwayland-client libwayland-cursor libwayland-egl mesa-dri-drivers mesa-libEGL mesa-libgbm libinput libseat libxkbcommon xorg-x11-server-Xwayland \
+              procps-ng python3 dbus-daemon dbus-tools rsms-inter-fonts google-noto-sans-fonts >/dev/null
+          fi
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        if: matrix.kind == 'firehold'
+        with:
+          name: firehold-rust
+          path: .
+      - name: Ten minutes at rest (${{ matrix.kind }})
+        timeout-minutes: 25
+        run: |
+          chmod +x firehold-comp firehold-shell 2>/dev/null || true
+          secs="${{ github.event.inputs.idle_secs }}"; [ -n "$secs" ] || secs=600
+          dbus-run-session -- bash .github/scripts/firehold-rust-idle.sh ${{ matrix.kind }} "$secs" | tee idle-${{ matrix.kind }}.txt
+          grep -q '^RESULT' idle-${{ matrix.kind }}.txt || echo "RESULT ${{ matrix.kind }} none gone gone 0 0 0 0 0" > idle-${{ matrix.kind }}.txt
+          echo "$secs" > idle-secs.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: idle-${{ matrix.kind }}
+          path: |
+            idle-${{ matrix.kind }}.txt
+            idle-secs.txt
+
+  idle-compare:
+    needs: idle
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: idle-*
+          merge-multiple: true
+      - name: Firehold beside plain KDE Plasma, at rest
+        run: |
+          python3 - <<'PY'
+          import sys
+          def res(kind):
+              for l in open('idle-%s.txt' % kind):
+                  if l.startswith('RESULT'):
+                      f = l.split()
+                      keys = ['kind', 'up', 'shell', 'comp', 'sm0', 'sm1', 'cm0', 'cm1', 'restarts']
+                      d = dict(zip(keys, f[1:]))
+                      return d
+              return None
+          fh, pl = res('firehold'), res('plasma')
+          secs = open('idle-secs.txt').read().strip()
+          pct = lambda v: '%.2f%%' % (int(v) / 100) if str(v).isdigit() else str(v)
+          fail = []
+          if not fh or not fh['shell'].isdigit():
+              print('::error title=at rest::Firehold didn\'t run: %s' % fh); sys.exit(1)
+          line = 'Firehold (Rust) at rest over %s s: shell %s of a core, firehold-comp %s · shell memory %s → %s MB, compositor %s → %s MB · up in %s s' % (
+              secs, pct(fh['shell']), pct(fh['comp']), fh['sm0'], fh['sm1'], fh['cm0'], fh['cm1'], fh['up'])
+          if pl and pl['shell'].isdigit():
+              line += '  |  plain KDE Plasma: plasmashell %s, kwin_wayland %s · plasmashell %s → %s MB, KWin %s → %s MB · up in %s s' % (
+                  pct(pl['shell']), pct(pl['comp']), pl['sm0'], pl['sm1'], pl['cm0'], pl['cm1'], pl['up'])
+              base_s, base_c = int(pl['shell']), int(pl['comp'])
+          else:
+              line += '  |  plain KDE Plasma didn\'t run here (%s); compared with the limits alone' % pl
+              base_s = base_c = 0
+          print('::notice title=at rest::' + line)
+          # The limits: never more than Plasma's own at rest (or 1% of a core, whichever is more), and no growth.
+          s, c = int(fh['shell']), int(fh['comp'])
+          if s > max(base_s, 100):
+              fail.append('the shell used %s of a core at rest (Plasma: %s)' % (pct(s), pct(base_s)))
+          if c > max(base_c, 100):
+              fail.append('firehold-comp used %s of a core at rest (KWin: %s)' % (pct(c), pct(base_c)))
+          for what, a, b in (('the shell', fh['sm0'], fh['sm1']), ('firehold-comp', fh['cm0'], fh['cm1'])):
+              a, b = int(a), int(b)
+              if b - a > max(16, a // 10):
+                  fail.append('%s grew from %d to %d MB at rest' % (what, a, b))
+          if fh['restarts'] != '0':
+              fail.append('a shell process ended and started again while at rest')
+          for f in fail:
+              print('::error title=at rest::' + f)
+          sys.exit(1 if fail else 0)
+          PY

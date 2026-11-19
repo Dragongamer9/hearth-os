@@ -26,6 +26,10 @@ change as you (no root). The parts that need root go through /usr/libexec/nimbus
   hearth-system defaults-tidy        Hearth apps that aren't installed any more come out of your lists (each sign-in)
   hearth-system defaults-system [ROOT]
                                      write Hearth's defaults into the image's lists (os-bases/*/build.sh, as root)
+  hearth-system default-system-set LIST MIME 'APP;APP;...'
+                                     one type's apps, in order, in one of the image's system lists (LIST: a
+                                     /etc/xdg or /usr/share/applications *mimeapps.list; build.sh, as root): that
+                                     type's line replaced, everything else kept. Never anyone's own list.
   hearth-system terminal-open        open your terminal (Desktop Mode's Super+Enter, through open.sh)
   hearth-system users                JSON: the accounts on this device, which one is you, who's an administrator
   hearth-system pictures             JSON: pictures you could use for your account
@@ -1137,6 +1141,20 @@ def defaults_system(root='/', hf=None):
             'byApp': {d: len(v) for d, v in sorted(per_app.items())}, 'files': [nimbus_list, generic_list]}
 
 
+def default_system_set(path, mime, ids):
+    """One type's apps in one of the image's system lists (os-bases/*/build.sh): that line replaced, the rest kept."""
+    path = os.path.normpath(path or '')
+    if not (path.startswith('/etc/xdg/') or path.startswith('/usr/share/applications/')) or not path.endswith('mimeapps.list'):
+        raise Fail("only the image's system lists (/etc/xdg or /usr/share/applications *mimeapps.list)")
+    if not re.fullmatch(r'[A-Za-z0-9.+-]+/[A-Za-z0-9.+-]+', mime or ''):
+        raise Fail('bad type')
+    apps = [x.strip() for x in (ids or '').split(';') if x.strip()]
+    if not apps or any(not re.fullmatch(r'[A-Za-z0-9._-]+\.desktop', x) for x in apps):
+        raise Fail('bad app list')
+    write_atomic(path, mimeapps_merge(read(path), {mime: ';'.join(apps)}))
+    return {'ok': True, 'file': path, 'mime': mime, 'apps': apps}
+
+
 # ---- Settings › Default apps
 def entry_name(did, fields):
     return fields.get('Name') or did[:-8]
@@ -1577,6 +1595,8 @@ def main(argv):
         out = defaults_tidy()
     elif c == 'defaults-system' and len(a) <= 1:
         out = defaults_system(a[0] if a else '/')
+    elif c == 'default-system-set' and len(a) == 3:
+        out = default_system_set(a[0], a[1], a[2])
     elif c == 'terminal-open' and not a:
         out = terminal_open()
     elif c == 'users' and not a:

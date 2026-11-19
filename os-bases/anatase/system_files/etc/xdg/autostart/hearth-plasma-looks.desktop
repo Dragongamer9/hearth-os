@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth's look for Plasma
+Comment=Hearth's look as Plasma's Global Theme the first time (yours is asked about, never replaced), and kept in step with Hearth's Settings
+Exec=/usr/libexec/nimbus/hearth-plasma-looks sync --wait
+OnlyShowIn=KDE;
+NoDisplay=true
+X-KDE-autostart-phase=2

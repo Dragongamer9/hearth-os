@@ -34,6 +34,12 @@ Every step is safe to run again: if the PC loses power halfway, the next start c
            deletes it by itself after 30 days. Steam libraries outside your home folder aren't touched.
   4. done  The plan is renamed to clean-install.done.json, so this never runs again.
 
+  1.15, the Anatase test (switched to from Debian, or back): the plan says keepHome, and step 3 is skipped: the home
+  folder stays exactly as it is. A PC switched to Anatase by hand from a Debian without this Hearth (sudo bootc switch,
+  no plan written) is recognised by Debian's accounts still in /etc/passwd (_apt, which Fedora never has): the same
+  steps 1 and 2 run for the account found there, the home folder untouched (an "arrival"). Debian's own version keeps
+  its own /etc (every version has its own), so going back to it finds it as it was.
+
   hearth-clean-install [--dry-run] [--root DIR]   (--root: a fake system for tests)
 """
 import datetime
@@ -66,6 +72,9 @@ KEEP_ETC = [
     'ssh/ssh_host_*', 'resolv.conf', 'selinux', 'ostree', 'containers/auth.json', 'lvm', 'mdadm.conf', 'iscsi',
     '.updated', 'ld.so.cache', 'pki/entitlement',
 ]
+# Switching between editions (not the move from Bazzite): Hearth's own settings in /etc (red flag 9: memory and swap,
+# the boot splash, the firewall, Server mode...) are kept as they are, so a switch never changes a setting by itself.
+EDITION_KEEP = ['hearth', 'nimbus']
 # The account files: on the editions that aren't Fedora-based, merged (merge_accounts) instead of kept.
 ACCOUNT_FILES = ('passwd', 'group', 'shadow', 'gshadow')
 ACCOUNT_KEEP = {'passwd', 'passwd-', 'group', 'group-', 'shadow', 'shadow-', 'gshadow', 'gshadow-'}
@@ -301,6 +310,8 @@ def reset_etc(stamp, from_edition=None):
         log('etc: no /usr/etc (not an image-based system?), left alone')
         return
     keep, accounts = KEEP_ETC, None
+    if from_edition and from_edition != 'bazzite':
+        keep = KEEP_ETC + EDITION_KEEP
     if foreign_accounts(new_base(), from_edition):
         accounts = merge_accounts(etc, usr_etc)
         drop = FEDORA_ONLY_KEEP | (ACCOUNT_KEEP if accounts else set())
@@ -605,6 +616,27 @@ def repair_home(user):
 STEPS = [('etc', lambda plan, st: reset_etc(st['stamp'], plan.get('fromEdition'))), ('var', lambda plan, st: clean_var(plan)), ('home', clean_home)]
 
 
+DEBIAN_ONLY_ACCOUNT = '_apt'
+ARRIVED = 'var/lib/hearth/clean-install.arrived.json'
+
+
+def arrival_plan():
+    """Anatase started for the first time after a hand-made switch from Debian (no plan): Debian's accounts are still
+    in /etc/passwd. A plan for steps 1 and 2 only (keepHome), for the first ordinary account; None otherwise."""
+    if new_base() != 'anatase':
+        return None
+    lines = read_lines(p('etc', 'passwd'))
+    if not any(l.startswith(DEBIAN_ONLY_ACCOUNT + ':') for l in lines):
+        return None
+    for l in lines:
+        f = l.split(':')
+        if len(f) >= 7 and f[2].isdigit() and 1000 <= int(f[2]) < 60000 and f[0] != 'nobody':
+            return {'version': 1, 'user': f[0], 'uid': int(f[2]), 'home': f[5], 'created': int(time.time()),
+                    'image': '', 'edition': 'anatase', 'from': 'Hearth OS on Debian', 'fromEdition': 'peppermint',
+                    'keep': [], 'removeFlatpaks': [], 'oldFilesDays': 30, 'keepHome': True, 'arrival': True}
+    return None
+
+
 def main(argv):
     global ROOT, DRY
     args = argv[1:]
@@ -612,9 +644,15 @@ def main(argv):
     if '--root' in args:
         ROOT = args[args.index('--root') + 1]
     plan = read_json(p(PLAN))
+    arrival = False
     if not isinstance(plan, dict):
-        log('no clean-install plan (%s): nothing to do' % p(PLAN))
-        return 0
+        plan = arrival_plan() if os.path.exists(p(OWN_INFO)) else None
+        if not isinstance(plan, dict):
+            log('no clean-install plan (%s): nothing to do' % p(PLAN))
+            return 0
+        arrival = True
+        log('switched here from Debian without a plan (Debian\'s accounts are in /etc/passwd): /etc and /var are set up '
+            'for this system, the home folder of %s is left as it is' % plan['user'])
     if not os.path.exists(p(OWN_INFO)):
         # The old (Bazzite-based) system, started again from the boot menu: its files stay as they are.
         log('not one of the new Hearth OS editions (no /%s): not touching anything' % OWN_INFO)
@@ -628,19 +666,33 @@ def main(argv):
         log('the clean-install plan names no account; not touching anything')
         return 1
     state = read_json(p(STATE), None) or {}
+    # A state left by an earlier switch (another plan) doesn't count for this one: switching Debian → Anatase →
+    # Debian → Anatase must run the steps each time.
+    if state.get('stamp') and state.get('plan') not in (None, plan.get('created')):
+        state = {}
     if not state.get('stamp'):
-        state = {'stamp': datetime.date.today().isoformat(), 'started': int(time.time()), 'done': []}
+        state = {'stamp': datetime.date.today().isoformat(), 'started': int(time.time()), 'done': [], 'plan': plan.get('created')}
         write_json(p(STATE), state)
     log('clean install for %s (from %s), started %s; done so far: %s' % (plan['user'], plan.get('from') or 'the old system', state['stamp'], ', '.join(state['done']) or 'nothing'))
     for name, fn in STEPS:
         if name in state['done']:
             continue
-        fn(plan, state)
+        if name == 'home' and plan.get('keepHome'):
+            log('home: a switch to or from the Anatase test: your home folder is left exactly as it is')
+        else:
+            fn(plan, state)
         if not DRY:
             state['done'].append(name)
             write_json(p(STATE), state)
     if not DRY:
-        os.replace(p(PLAN), p(DONE))
+        if arrival:
+            write_json(p(ARRIVED), plan)
+        else:
+            os.replace(p(PLAN), p(DONE))
+        try:
+            os.replace(p(STATE), p(STATE) + '.last')
+        except OSError:
+            pass
     log('clean install finished')
     return 0
 

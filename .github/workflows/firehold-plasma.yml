@@ -1,0 +1,139 @@
+# Firehold on Plasma (a test, docs/FIREHOLD.md "Firehold on Plasma"): Firehold's Couch as a Plasma shell package and its
+# Desk as Plasma's own desktop in Firehold's layout, on KDE's own KWin, on Fedora 44 (what Anatase is built on).
+#   1. check: every Firehold QML file parses (qmlformat), Plasma's own tools find the packages (kpackagetool6), the KWin
+#      script and layout scripts are valid JavaScript, the helper's tests run.
+#   2. the screens on kwin_wayland --virtual (.github/scripts/firehold-plasma-shots.sh): Couch Home, Library, Everything
+#      open, a game with the Guide, Settings › Couch and Desk, the Desk; switching Couch ⇄ Desk keeps every app and
+#      game open and KWin running; a Couch that can't start falls back to plain Plasma. Pictures on the branch
+#      ci/firehold-plasma-shots-<branch>; QML errors from Firehold's files fail the run.
+#   3. at rest (.github/scripts/firehold-plasma-idle.sh): ten minutes of plain Plasma and Firehold's Couch side by side;
+#      fails on Firehold using much more processor time than plain Plasma or its memory growing.
+# Failures are ::error:: annotations (logs can't always be read). On pushes to its own branch (a workflow can only be
+# started by hand once it's on the default branch), and by hand.
+name: Firehold on Plasma
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feature/firehold-plasma']
+    paths: ['hosts/linux/desktop/firehold-plasma/**', '.github/workflows/firehold-plasma.yml', '.github/scripts/firehold-plasma-*.sh',
+            'hosts/linux/test/test_firehold_plasma.py', 'docs/mockups/checklists/firehold-plasma-test.md']
+
+permissions:
+  contents: write    # the screenshots branch
+
+concurrency:
+  group: firehold-plasma-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLASMA_PKGS: >-
+    git python3 python3-dbus python3-pillow nodejs procps-ng dbus-daemon dbus-tools
+    plasma-workspace kwin plasma-desktop plasma-breeze breeze-icon-theme google-noto-sans-fonts
+    qt6-qtdeclarative-devel kf6-kpackage xorg-x11-server-Xwayland mesa-dri-drivers
+  PLASMA_EXTRA: >-
+    python3-evdev libnotify qt6-qtdeclarative kf6-kirigami layer-shell-qt kpipewire pipewire wireplumber kactivitymanagerd
+    plasma-integration gdb kglobalacceld spectacle kscreenlocker plasma-nm plasma-pa qt6-qttools dolphin konsole kate kde-cli-tools kscreen
+
+jobs:
+  screens:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      options: --privileged
+    steps:
+      - name: Install Plasma (what the Anatase image has) and the checking tools
+        run: |
+          dnf -y install $PLASMA_PKGS >/dev/null
+          dnf -y install --skip-unavailable $PLASMA_EXTRA >/dev/null || true
+          for b in kwin_wayland plasmashell kpackagetool6; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
+          echo "::notice title=Plasma::$(rpm -q plasma-workspace kwin layer-shell-qt kpipewire | tr '\n' ' ')"
+
+      - uses: actions/checkout@v4
+
+      - name: Put Firehold on Plasma where the image puts it
+        run: |
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          mkdir -p /usr/share/wallpapers/Hearth-fireside/contents/images
+          cp os/branding/wallpapers/hearth-fireside.jpg /usr/share/wallpapers/Hearth-fireside/contents/images/3840x2160.jpg
+          printf '{ "KPlugin": { "Id": "Hearth-fireside", "Name": "Hearth Fireside" } }\n' > /usr/share/wallpapers/Hearth-fireside/metadata.json
+          for d in branding/icons/png/*x*; do mkdir -p "/usr/share/icons/hicolor/$(basename "$d")/apps" && cp "$d"/*.png "/usr/share/icons/hicolor/$(basename "$d")/apps/"; done
+          bash /usr/share/nimbus/desktop/firehold-plasma/install.sh /
+          ls -la /usr/share/plasma/shells/ /usr/bin/hearth-firehold-plasma
+
+      - name: Check (QML, packages, scripts, the helper's tests)
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set +e +o pipefail
+          fail=0
+          QMLFORMAT=$(command -v qmlformat || ls /usr/lib64/qt6/bin/qmlformat 2>/dev/null | head -1)
+          for f in $(find hosts/linux/desktop/firehold-plasma -name '*.qml'); do
+            if [ -n "$QMLFORMAT" ]; then
+              "$QMLFORMAT" "$f" >/dev/null 2>/tmp/fmt.err || { echo "::error file=$f,title=QML doesn't parse::$(tr '\n' ' ' </tmp/fmt.err | cut -c1-600)"; fail=1; }
+            fi
+          done
+          [ -n "$QMLFORMAT" ] || echo "::warning title=qmlformat::not installed, QML parse check skipped"
+          for f in $(find hosts/linux/desktop/firehold-plasma -name metadata.json); do
+            python3 -m json.tool "$f" >/dev/null || { echo "::error file=$f,title=metadata.json::not valid JSON"; fail=1; }
+          done
+          for f in hosts/linux/desktop/firehold-plasma/kwin/contents/code/main.js hosts/linux/desktop/firehold-plasma/shell/contents/layout.js hosts/linux/desktop/firehold-plasma/desk/layout.js; do
+            node --check "$f" 2>/tmp/js.err || { echo "::error file=$f,title=JavaScript::$(tr '\n' ' ' </tmp/js.err | cut -c1-500)"; fail=1; }
+          done
+          for t in "Plasma/Shell org.hearthos.firehold" "Plasma/Shell org.hearthos.firehold.desk" "Plasma/Applet org.hearthos.firehold.couch" \
+                   "Plasma/Applet org.hearthos.firehold.posture" "Plasma/Applet org.hearthos.firehold.app"; do
+            set -- $t
+            kpackagetool6 --type "$1" --show "$2" >/tmp/kp.out 2>&1 || { echo "::error title=package $2::kpackagetool6 doesn't find it: $(tr '\n' ' ' </tmp/kp.out | cut -c1-400)"; fail=1; }
+          done
+          python3 -m py_compile hosts/linux/desktop/firehold-plasma/hearth-firehold-plasma || fail=1
+          bash -n hosts/linux/desktop/firehold-plasma/install.sh hosts/linux/session/nimbus-session || fail=1
+          timeout 300 python3 -m unittest hosts/linux/test/test_firehold_plasma.py hosts/linux/test/test_mockups.py >/tmp/py.out 2>&1 \
+            || { echo "::error title=tests::$(grep -E '^(FAIL|ERROR|AssertionError|[A-Za-z]*Error)' /tmp/py.out | head -8 | tr '\n' '|' | cut -c1-900)"; fail=1; }
+          tail -3 /tmp/py.out
+          ls /usr/lib64/qt6/qml/org/kde/layershell >/dev/null 2>&1 && echo "::notice title=LayerShellQt QML::$(ls /usr/lib64/qt6/qml/org/kde/layershell | tr '\n' ' ')" || echo "::warning title=LayerShellQt QML::not installed (the Guide uses its fallback window)"
+          exit $fail
+
+      - name: Draw Firehold on Plasma (Couch, Guide, Desk, switching, fallback)
+        if: always()
+        timeout-minutes: 20
+        shell: bash
+        run: bash .github/scripts/firehold-plasma-shots.sh shots
+
+      - name: Publish screenshots to a branch
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          ls shots/*.png >/dev/null 2>&1 || exit 0
+          git config --global --add safe.directory "$PWD"
+          to="ci/firehold-plasma-shots-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+          mkdir -p pub && cp shots/*.png shots/*.log shots/*.txt pub/ 2>/dev/null
+          printf '# Firehold on Plasma, %s\n\n' "${GITHUB_SHA::7}" > pub/README.md
+          for f in pub/*.png; do printf '## %s\n\n![%s](%s)\n\n' "$(basename "$f" .png)" "$(basename "$f")" "$(basename "$f")" >> pub/README.md; done
+          cd pub && git init -q -b "$to" && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Firehold on Plasma screenshots ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
+          echo "::notice title=Screenshots::branch $to"
+          cd .. && [ ! -e shots/FAILED ]
+
+  idle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      options: --privileged
+    steps:
+      - name: Install Plasma
+        run: |
+          dnf -y install $PLASMA_PKGS >/dev/null
+          dnf -y install --skip-unavailable $PLASMA_EXTRA >/dev/null || true
+      - uses: actions/checkout@v4
+      - name: Put Firehold on Plasma where the image puts it
+        run: |
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          bash /usr/share/nimbus/desktop/firehold-plasma/install.sh /
+      - name: Ten minutes at rest each, plain Plasma and Firehold's Couch
+        timeout-minutes: 30
+        shell: bash
+        run: bash .github/scripts/firehold-plasma-idle.sh 600

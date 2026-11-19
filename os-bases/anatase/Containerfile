@@ -1,7 +1,7 @@
-# Hearth OS on Anatase: the next Hearth OS. Anatase (Fedora 45, bootc; one image for AMD, Intel and Nvidia, with
-# Handheld Daemon, Valve's gamescope and its own SteamOS Manager) with the Hearth session (Game Mode + Desktop Mode)
-# as what it boots into. Replaces the Bazzite build (os/Containerfile) once it's been tried on devices; until then
-# it's published as ghcr.io/dragongamer9/hearth-os:testing. See docs/archive/BASE-ANATASE.md.
+# Hearth OS on Anatase (1.15: back as a test beside Debian). Anatase (Fedora, bootc; one image for AMD, Intel and
+# Nvidia, with Handheld Daemon and Valve's gamescope) with the Hearth session: Steam Game Mode with Hearth Sync, and
+# stock KDE Plasma as Desktop Mode with Hearth's apps. Published only to ghcr.io/dragongamer9/hearth-os:test-1.15,
+# by hand from main (base-anatase.yml). See docs/BASE-ANATASE.md.
 # Built by .github/workflows/base-anatase.yml from the repository root:
 #   podman build -f os-bases/anatase/Containerfile -t hearth-os .
 # os/nimbus-app must hold the Hearth app build (hearth, browser/, and browser-cef/ if built); CI puts it there.
@@ -20,6 +20,9 @@ COPY hosts/linux/session /session
 COPY hosts/linux/desktop /desktop
 COPY branding/icons /icons
 COPY hosts/hearth-kde /hearth-kde
+# Pieces of the Debian edition this image uses as they are: its boot menu writer (for a PC that came from Debian and
+# starts through Debian's GRUB), the writable system's units and drop-ins, the /etc guard (build.sh picks them).
+COPY os-bases/peppermint/system_files /peppermint_files
 
 FROM ${BASE_IMAGE}
 

@@ -520,7 +520,8 @@ def service_menus(hf, paths):
             continue
         for name in names:
             f = os.path.join(d, name)
-            if not name.endswith('.desktop') or name in seen:
+            # Hearth's own Send to TV for Dolphin: Hearth Files has its own entry (one per TV).
+            if not name.endswith('.desktop') or name in seen or name == 'hearth-send-to-tv.desktop':
                 continue
             # Like KDE (5.85 and later): a service menu you added yourself only counts once it's marked as a program.
             if hf.under(os.path.realpath(f), user_dir) and not os.access(f, os.X_OK):
@@ -1035,10 +1036,39 @@ def chgrp(hf, path, group):
     return {'ok': True, 'group': group}
 
 
+# ---------------------------------------------------------------------- Send to TV
+# Right-click a video or a song › Send to TV: it plays on a Hearth TV paired with this PC (docs/HEARTH-TV.md), through
+# Hearth Link (hearth-send-to-tv). The file stays here; the TV plays it from this PC.
+def send_tool():
+    return shutil.which('hearth-send-to-tv') or '/usr/bin/hearth-send-to-tv'
+
+
+def tv_list(hf):
+    try:
+        r = subprocess.run([sys.executable, send_tool(), '--list'], capture_output=True, text=True, timeout=15)
+        return {'tvs': [t for t in json.loads(r.stdout or '{}').get('tvs', []) if t.get('id') and t.get('name')]}
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return {'tvs': []}
+
+
+def tv_send(hf, path, tv=''):
+    if not os.path.isfile(path):
+        raise hf.Fail('Only a file can be sent to the TV')
+    args = [sys.executable, send_tool(), '--json'] + (['--tv', tv] if tv else []) + [path]
+    try:
+        r = subprocess.run(args, capture_output=True, text=True, timeout=60)
+        v = json.loads((r.stdout or '').strip().splitlines()[-1])
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        raise hf.Fail("Couldn't send it to the TV (is Hearth Link on?)")
+    if v.get('error'):
+        raise hf.Fail(v['error'])
+    return v
+
+
 # ---------------------------------------------------------------------- the commands
 COMMANDS = ('tags', 'tag-set', 'tag-list', 'tag-find', 'git-status', 'iso-mount', 'iso-unmount', 'portable', 'portable-mount',
             'portable-unmount', 'service-menus', 'service-run', 'sharing', 'share', 'recent-prefs', 'recent-prefs-set',
-            'recent-forget', 'activity-mark', 'activity-tidy', 'chmod-tree', 'groups', 'chgrp')
+            'recent-forget', 'activity-mark', 'activity-tidy', 'chmod-tree', 'groups', 'chgrp', 'tv-list', 'tv-send')
 
 
 def run(hf, c, rest):
@@ -1089,4 +1119,8 @@ def run(hf, c, rest):
         return groups(hf)
     if c == 'chgrp' and len(rest) == 2:
         return chgrp(hf, rest[0], rest[1])
+    if c == 'tv-list' and not rest:
+        return tv_list(hf)
+    if c == 'tv-send' and rest and len(rest) <= 2:
+        return tv_send(hf, rest[0], rest[1] if len(rest) == 2 else '')
     raise hf.Fail('usage: hearth-files ' + c + ' … (see hearth_files_extras.py)')

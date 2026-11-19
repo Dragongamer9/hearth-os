@@ -4,7 +4,8 @@
 //   Act as administrator (changes outside your home folder through pkexec hearth-files-admin, its own polkit action: polkit asks for an
 //     administrator's password; never the parts that start the PC; this window only, never saved, a red bar while on),
 //   disc images (Open as a drive / Close the drive), phones (MTP) and cameras (PTP) under This PC,
-//   apps' right-click actions (KDE service menus), Share on your network… (Properties › Sharing).
+//   apps' right-click actions (KDE service menus), Share on your network… (Properties › Sharing),
+//   Send to TV (a video or a song plays on your Hearth TV, through Hearth Link).
 // The work is hearth-files' (hearth_files_extras.py); this only asks it and shows what it said.
 import QtQuick
 import Quickshell
@@ -132,7 +133,22 @@ Scope {
             x.app.call(["service-menus"].concat(t.slice(0, 50)), (r, err) => { x.svc = { key: k, items: r && r.actions ? r.actions : [] }; });
         }
     }
-    function selectionChanged() { svcLater.restart(); }
+    function selectionChanged() { svcLater.restart(); refreshTvs(); }
+
+    // ------------------------------------------------ Send to TV (a video or a song plays on your Hearth TV; docs/HEARTH-TV.md)
+    property var tvs: []                  // [{id, name, online}]: Hearth TVs paired with this PC (Hearth Link)
+    property double tvsAt: 0
+    function refreshTvs() {
+        if (!app || Date.now() - tvsAt < 30000) return;
+        tvsAt = Date.now();
+        app.call(["tv-list"], (r, err) => { x.tvs = r && r.tvs ? r.tvs : []; });
+    }
+    function isMedia(e) { return !!e && !e.dir && !e.remote && e.path.indexOf("/") === 0 && /\.(mp4|m4v|mkv|webm|mov|avi|ts|mp3|flac|ogg|oga|opus|m4a|wav|aac)$/i.test(e.name); }
+    function sendToTv(e, tv) {
+        const name = (tvs.find(t => t.id === tv) || tvs[0] || { name: "the TV" }).name;
+        app.say("Sending “" + e.name + "” to " + name + "…");
+        app.call(["tv-send", e.path].concat(tv ? [tv] : []), (r, err) => err ? app.say(err, true) : app.say("Playing “" + e.name + "” on " + (r && r.tv || name)));
+    }
 
     // ------------------------------------------------ the folder shown, the left menu
     function folderLoaded(r) {
@@ -157,6 +173,10 @@ Scope {
         if (n === 1 && e && e.dir && e.path.indexOf("/run/media/") === 0 && /\/loop|iso/i.test(e.path)) out.push({ id: "x-isoclose", label: "Close the drive", icon: "close" });
         if (n && app.writable && !e.remote) out.push({ id: "x-tags", label: "Tags  ›", icon: "pin" });
         if (n === 1 && e && e.dir && !e.remote && e.path.indexOf("/") === 0) out.push({ id: "x-share", label: "Share on your network…", icon: "share" });
+        if (n === 1 && isMedia(e)) {
+            if (tvs.length === 1) out.push({ id: "x-tv:" + tvs[0].id, label: "Send to TV (" + tvs[0].name + ")", icon: "display" });
+            else for (let i = 0; i < Math.min(6, tvs.length); i++) out.push({ id: "x-tv:" + tvs[i].id, label: "Send to " + tvs[i].name, icon: "display", group: "Send to TV" });
+        }
         if (svc.key === svcKey(t)) for (let i = 0; i < Math.min(8, svc.items.length); i++) {
             const a = svc.items[i];
             out.push({ id: "x-svc:" + i, label: (a.submenu ? a.submenu + ": " : "") + a.label, icon: "bolt", group: "Actions" });
@@ -181,6 +201,7 @@ Scope {
         }
         if (id === "x-newtag") return app.askText("New tag", "", "Tag", 0, text => { const n = text.trim(); if (n) x.setTags(t, [n], []); });
         if (id === "x-share") { if (e) app.propsAt([e.path], "sharing"); return; }
+        if (id.startsWith("x-tv:")) { if (e) sendToTv(e, id.slice(5)); return; }
         if (id === "x-gitbadges") {
             const on = !gitOn;
             app.prefs = Object.assign({}, app.prefs, { gitBadges: on });

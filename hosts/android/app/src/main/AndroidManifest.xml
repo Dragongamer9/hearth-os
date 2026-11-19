@@ -103,6 +103,46 @@
             </intent-filter>
         </activity>
 
+        <!-- Share › Hearth TV (docs/HEARTH-TV.md, Send to TV): any video, or a video's link, from any app plays on your
+             Hearth TV. Also the TV's own hearthtv://pair link (Theater › Add a link on the TV), which adds that TV. -->
+        <activity
+            android:name=".ShareToTv"
+            android:exported="true"
+            android:label="Hearth TV"
+            android:icon="@mipmap/ic_launcher"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="video/*" />
+                <data android:mimeType="audio/*" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="hearthtv" android:host="pair" />
+            </intent-filter>
+        </activity>
+
+        <!-- A video shared to Hearth TV from this phone plays from here while this runs (Stop in its notification). -->
+        <service
+            android:name=".TvShareService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Plays a video the user shared to their TV from this phone, while the TV plays it" />
+        </service>
+
         <!-- Hearth Linux: runs while Linux programs (PRoot) or the Termux:X11 display server run, so Android doesn't
              freeze or close them when Hearth isn't in front. LinuxEnv starts and stops it. -->
         <service

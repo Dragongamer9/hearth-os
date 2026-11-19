@@ -101,18 +101,49 @@ class Wiring(unittest.TestCase):
                 hls.request(bad, '123456')
         # Both screens ask, and mark a friend's device and one paired through another of yours.
         ui = (ROOT / 'ui' / 'index.html').read_text()
-        for needle in ["function lkWhose(", "{label:'My device'", "{label:'A friend\\'s device'", "'link.pair.open', {mine}", "mine: LK.joinMine!==false",
-                       "p.friend?'Friend\\'s device · '", "paired through ${esc(p.introducedBy)}", "lkCall('link.peer.set',{id:p.id, friend:true}"]:
+        for needle in ["function lkWhose(", "{label:'My device'", "{label:'A friend\\'s device'", "'link.pair.open', {mine: as==='mine', as}", "mine: as==='mine', as}",
+                       "p.friend ? 'Friend\\'s device · '", "paired through ${esc(p.introducedBy)}", "lkCall('link.peer.set',{id:p.id, relation:'friend'}"]:
             self.assertIn(needle, ui)
         qml = (SHELL / 'SetLink.qml').read_text()
-        for needle in ['property bool friendMode: false', 'title: "Pairing a friend\'s device"', 'page.f(["pair-open"])', 'act.run(page.f(args)', 'modelData.friend ? "Friend\'s device · "', 'paired through " + modelData.introducedBy']:
+        for needle in ['property string pairAs: "mine"', 'title: "The next device you pair is"', 'page.f(["pair-open"])', 'act.run(page.f(args)', 'p.friend ? "Friend\'s device · "', 'paired through " + modelData.introducedBy']:
             self.assertIn(needle, qml)
         # The service: what a friend's device may ask, and that your devices share their lists.
         fam = (ROOT / 'hosts' / 'hearth-link' / 'src' / 'family.rs').read_text()
         self.assertIn('pub const FRIEND_OPS: &[&str] = &["hello", "ping", "unpair", "games", "manifest", "hashes", "chunks", "offer"];', fam)
         node = (ROOT / 'hosts' / 'hearth-link' / 'src' / 'node.rs').read_text()
-        self.assertIn('if !crate::family::friend_may(&op) && !crate::lock(&self.peers).is_mine(&peer)', node)
+        self.assertIn('Some(p) if crate::family::allowed(p, &op) => None', node)
         self.assertIn('"family.sync" => self.clone().family_answer(peer, req).await', node)
+
+    def test_family_members_devices(self):
+        # A family member's device (family.rs): pairing's last word "family", whose it is from its menu, a family
+        # device's switches, waking it, its remote desktop and Moonlight's PIN (on stdin, never the command line).
+        self.assertEqual(hls.request(['pair-open', 'family']), ('pair.open', {'mine': False, 'as': 'family'}))
+        self.assertEqual(hls.request(['join-code', 'family'], '234-567-89A9'), ('pair.join', {'code': '234-567-89A9', 'mine': False, 'as': 'family'}))
+        self.assertEqual(hls.request(['make-family', ID]), ('peer.set', {'id': ID, 'relation': 'family'}))
+        self.assertEqual(hls.request(['make-mine', ID]), ('peer.set', {'id': ID, 'relation': 'mine'}))
+        for k in ('status', 'library', 'saves', 'storage', 'backup'):
+            self.assertEqual(hls.request(['share', ID, k, 'on']), ('peer.set', {'id': ID, 'shares': {k: True}}))
+            self.assertEqual(hls.request(['share', ID, k, 'off']), ('peer.set', {'id': ID, 'shares': {k: False}}))
+        self.assertEqual(hls.request(['wake', ID]), ('peer.wake', {'id': ID}))
+        self.assertEqual(hls.request(['remote', ID]), ('peer.remote', {'id': ID}))
+        self.assertEqual(hls.request(['remote-pin', ID, 'Chris'], ' 4821\n'), ('peer.remote.pin', {'id': ID, 'pin': '4821', 'name': 'Chris'}))
+        for bad, stdin in ((['share', ID, 'settings', 'on'], ''), (['share', ID, 'library', 'maybe'], ''), (['remote-pin', ID], '12345'), (['wake', '; reboot'], ''), (['make-family', 'x'], '')):
+            with self.assertRaises(hls.Fail):
+                hls.request(bad, stdin)
+        ui = (ROOT / 'ui' / 'index.html').read_text()
+        for needle in ["{label:'A family member\\'s device'", "onOff('library','Share my game library')", "onOff('saves','Back up my saves')",
+                       "onOff('storage','Use Hearth Storage (shared folders, the game archive, backups)')", "onOff('backup','Back up this PC')",
+                       "call('link.peer.remote',{id:p.id}", "'link.peer.remote.pin'", "'link.peer.wake'", "relation:'family'"]:
+            self.assertIn(needle, ui)
+        qml = (SHELL / 'SetLink.qml').read_text()
+        for needle in ['{ value: "family", label: "A family member\'s device" }', 'title: "Share my game library"', 'title: "Back up my saves"',
+                       'title: "Use Hearth Storage (shared folders, the game archive, backups)"', 'title: "Back up this PC"', '["make-family", page.sel]',
+                       'title: "Let it see this device\'s status"', '["remote-pin", page.sel]']:
+            self.assertIn(needle, qml)
+        bridge = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'link.rs').read_text()
+        self.assertIn('"peer.remote" | "peer.remote.pin" => call(cmd, a, 45),', bridge)
+        fam = (ROOT / 'hosts' / 'hearth-link' / 'src' / 'family.rs').read_text()
+        self.assertIn('pub const SWITCHES: &[&str] = &["library", "saves", "storage", "backup"];', fam)
 
     def test_easy_pairing_in_both_modes(self):
         # Game Mode: the devices on this network to pick, the number pad for the 6-digit code, short codes typed

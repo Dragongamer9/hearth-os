@@ -1,6 +1,7 @@
 //! Moving to a new Hearth OS from the Bazzite-based one, as a clean install that keeps your games (Settings ›
-//! Updates): Hearth OS on Debian (edition id "peppermint", recommended); Anatase, Ubuntu and CachyOS are
-//! archived. Afterwards, on the new system, the files that were put aside (~/.old-hearth-<date>: Settings ›
+//! Updates): Hearth OS on Debian (edition id "peppermint", recommended); Hearth OS on Anatase as a test (1.15, the
+//! owner's side-by-side test: its own test tag, never :latest, and your home folder is left as it is both ways);
+//! Ubuntu and CachyOS are archived. Afterwards, on the new system, the files that were put aside (~/.old-hearth-<date>: Settings ›
 //! System, "Delete now" / "Restore a folder"; deleted after 30 days).
 //! The move itself is hearth-admin move-to-new-os --edition NAME (root, through pkexec; the edition picks the image
 //! from a fixed list there too); the first start of the new system (hearth-clean-install, in every edition's image)
@@ -19,28 +20,39 @@ pub const MANIFEST: &str = ".hearth-old-files.json";
 
 /// One Hearth OS the old one can move to. `tag` is what's offered (:testing for the Beta Experimental editions,
 /// which have nothing else); hearth-admin has the same list (NEW_OS_EDITIONS).
-pub struct Edition { pub id: &'static str, pub label: &'static str, pub repo: &'static str, pub tag: &'static str, pub beta: bool, pub about: &'static str }
+/// `test`: a test edition (Anatase, 1.15): only ever its own tag (never :latest or :testing, which hold the old
+/// pre-archive build), never recommended, and switching to or from it keeps the whole home folder.
+pub struct Edition { pub id: &'static str, pub label: &'static str, pub repo: &'static str, pub tag: &'static str, pub beta: bool, pub test: bool, pub about: &'static str }
+
+/// The tag the Anatase test build is published to (base-anatase.yml's test publish, main only). Devices that switch
+/// to it follow this tag for their updates; nothing Debian devices follow is ever written by that workflow.
+pub const ANATASE_TEST_TAG: &str = "test-1.15";
 
 pub const EDITIONS: &[Edition] = &[
-    Edition { id: "anatase", label: "Hearth OS on Anatase", repo: "dragongamer9/hearth-os", tag: "latest", beta: false,
-              about: "The next Hearth OS. Locked and immutable: the system can't be changed and updates in one piece. A smaller system that starts and updates faster, the same for every PC and handheld. Automatic fallback and Recovery included." },
-    Edition { id: "ubuntu", label: "Ubuntu", repo: "dragongamer9/hearth-ubuntu", tag: "testing", beta: true,
+    Edition { id: "anatase", label: "Hearth OS, Fedora edition (test)", repo: "dragongamer9/hearth-os", tag: ANATASE_TEST_TAG, beta: true, test: true,
+              about: "A test of Hearth OS, Fedora edition, to try beside Debian. Steam Game Mode as on Debian; Desktop Mode is KDE Plasma with Hearth's apps. Your home folder stays as it is, and Debian stays in the boot menu so you can go back." },
+    Edition { id: "ubuntu", label: "Ubuntu", repo: "dragongamer9/hearth-ubuntu", tag: "testing", beta: true, test: false,
               about: "Hearth OS built on Ubuntu. Still being tested: some things may not work yet." },
-    Edition { id: "cachyos", label: "CachyOS", repo: "dragongamer9/hearth-cachyos", tag: "testing", beta: true,
+    Edition { id: "cachyos", label: "CachyOS", repo: "dragongamer9/hearth-cachyos", tag: "testing", beta: true, test: false,
               about: "Hearth OS built on CachyOS, tuned for newer processors. Still being tested: some things may not work yet." },
-    Edition { id: "peppermint", label: "Debian", repo: "dragongamer9/hearth-peppermint", tag: "testing", beta: false,
+    Edition { id: "peppermint", label: "Debian", repo: "dragongamer9/hearth-peppermint", tag: "testing", beta: false, test: false,
               about: "Hearth OS on Debian 13. A normal writable system: apt and .deb files install anywhere, and you can lock it in Settings. Automatic fallback and Recovery included." },
 ];
 
 pub fn edition(id: &str) -> Option<&'static Edition> { EDITIONS.iter().find(|e| e.id == id) }
 
-/// Archived editions (October 2026; Anatase November 2026): still known, so a system on one is recognised and can switch away, but never
-/// offered and never switched to. hearth-admin has the same list (ARCHIVED_EDITIONS).
-pub const ARCHIVED: &[&str] = &["ubuntu", "cachyos", "anatase"];
+/// Archived editions (October 2026): still known, so a system on one is recognised and can switch away, but never
+/// offered and never switched to. hearth-admin has the same list (ARCHIVED_EDITIONS). Anatase (archived in November
+/// 2026) is back as a test edition in 1.15.
+pub const ARCHIVED: &[&str] = &["ubuntu", "cachyos"];
 pub fn archived(id: &str) -> bool { ARCHIVED.contains(&id) }
 
-/// The tag used: :testing when asked for (or the only one there is), else the edition's own.
-pub fn tag_for(e: &Edition, testing: bool) -> &'static str { if testing { "testing" } else { e.tag } }
+/// The tag used: :testing when asked for (or the only one there is), else the edition's own. A test edition only
+/// ever has its own tag.
+pub fn tag_for(e: &Edition, testing: bool) -> &'static str { if testing && !e.test { "testing" } else { e.tag } }
+
+/// Whether a switch between these two keeps the whole home folder (a test edition on either side).
+pub fn keeps_home(to: &Edition, from: Option<&str>) -> bool { to.test || from.and_then(edition).map(|f| f.test).unwrap_or(false) }
 
 pub fn image_of(e: &Edition, testing: bool) -> String { format!("ghcr.io/{}:{}", e.repo, tag_for(e, testing)) }
 
@@ -140,7 +152,8 @@ pub fn choice_from(e: &Edition, published: Option<bool>, v3: bool, secure_boot: 
             "Secure Boot is on, and after the move this edition probably won't start with it on. Turn Secure Boot off in your PC's firmware settings (UEFI) before you restart, or choose another one."
         })
     } else { None };
-    json!({"id": e.id, "label": e.label, "about": e.about, "image": image_of(e, false), "beta": e.beta, "recommended": !e.beta,
+    json!({"id": e.id, "label": e.label, "about": e.about, "image": image_of(e, false), "beta": e.beta, "recommended": !e.beta && !e.test,
+           "test": e.test, "keepsHome": keeps_home(e, from),
            "published": published, "allowed": reason.is_none(), "reason": reason, "warning": warning,
            "cpuNote": if e.id == "cachyos" && !v3 { json!("This PC's processor doesn't have the features CachyOS is built for (x86-64-v3: AVX2, BMI2, FMA and MOVBE).") } else { Value::Null }})
 }
@@ -172,6 +185,8 @@ pub fn status() -> Value {
     s["editions"] = Value::Array(offered.iter().zip(pubs).filter(|(e, _)| Some(e.id) != cur).map(|(e, p)| choice_from(e, p, v3, sb, cur)).collect());
     // On an archived edition: say so, so the page can ask to switch.
     if cur.map(archived).unwrap_or(false) { s["archived"] = json!(true); }
+    // On a test edition (Anatase, 1.15): say so, and that going back keeps everything.
+    if cur.and_then(edition).map(|e| e.test).unwrap_or(false) { s["test"] = json!(true); }
     s
 }
 
@@ -393,14 +408,25 @@ mod tests {
     #[test]
     fn choices() {
         assert_eq!(EDITIONS.len(), 4);
-        assert!(archived("ubuntu") && archived("cachyos") && archived("anatase") && !archived("peppermint"));
+        assert!(archived("ubuntu") && archived("cachyos") && !archived("anatase") && !archived("peppermint"));
         let p = edition("peppermint").unwrap();
         assert_eq!((p.label, p.beta), ("Debian", false));
         assert!(!p.about.contains("Peppermint"));
         assert_eq!(choice(p, Some(true), true, None)["recommended"], true);
         let a = edition("anatase").unwrap();
-        assert_eq!(image_of(a, false), "ghcr.io/dragongamer9/hearth-os:latest");
-        assert_eq!(image_of(a, true), "ghcr.io/dragongamer9/hearth-os:testing");
+        // 1.15: Anatase is back as a test, on its own tag only (never the old pre-archive :latest or :testing).
+        assert_eq!(a.label, "Hearth OS, Fedora edition (test)");
+        assert!(a.beta && a.test);
+        assert_eq!(image_of(a, false), "ghcr.io/dragongamer9/hearth-os:test-1.15");
+        assert_eq!(image_of(a, true), "ghcr.io/dragongamer9/hearth-os:test-1.15");
+        assert_eq!(choice(a, Some(true), true, None)["recommended"], false);
+        assert_eq!(choice(a, Some(true), true, None)["test"], true);
+        // Debian stays the recommended one; only test editions keep the whole home folder.
+        assert_eq!((choice(p, Some(true), true, None)["recommended"].clone(), choice(p, Some(true), true, None)["test"].clone()), (json!(true), json!(false)));
+        assert!(keeps_home(a, Some("peppermint")) && keeps_home(a, None));
+        assert!(keeps_home(p, Some("anatase")), "going back to Debian from the Fedora edition test keeps the home folder");
+        assert!(!keeps_home(p, None) && !keeps_home(p, Some("ubuntu")));
+        assert_eq!(choice_from(p, Some(true), true, None, Some("anatase"))["keepsHome"], true);
         let c = edition("cachyos").unwrap();
         assert_eq!(image_of(c, false), "ghcr.io/dragongamer9/hearth-cachyos:testing");
         assert_eq!(image_of(edition("ubuntu").unwrap(), false), "ghcr.io/dragongamer9/hearth-ubuntu:testing");
@@ -410,7 +436,9 @@ mod tests {
         assert_eq!(admin_args(a, true), vec!["move-to-new-os", "--edition", "anatase", "--testing"]);
         // Published or not, the processor, Secure Boot.
         let v = choice(a, Some(true), false, Some(true));
-        assert_eq!((v["allowed"].clone(), v["recommended"].clone(), v["warning"].clone()), (json!(true), json!(true), Value::Null));
+        assert_eq!((v["allowed"].clone(), v["recommended"].clone(), v["warning"].clone()), (json!(true), json!(false), Value::Null));
+        // From Debian (its own boot loader) with Secure Boot on: Anatase's Fedora kernel won't start; said first.
+        assert!(choice_from(a, Some(true), true, Some(true), Some("peppermint"))["warning"].as_str().unwrap().contains("Secure Boot"));
         assert_eq!(choice(a, Some(false), true, None)["reason"], "Not ready yet");
         assert_eq!(choice(a, None, true, None)["allowed"], false);
         assert_eq!(choice(c, Some(true), false, None)["reason"], "Needs a newer processor");

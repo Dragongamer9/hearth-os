@@ -367,8 +367,11 @@ class Admin(unittest.TestCase):
         self.assertEqual(ha.drop_cached_images('/nonexistent/repo'), 0)
 
     def test_editions(self):
-        self.assertEqual(ha.new_os_image('anatase'), 'ghcr.io/dragongamer9/hearth-os:latest')
-        self.assertEqual(ha.new_os_image('anatase', True), 'ghcr.io/dragongamer9/hearth-os:testing')
+        # 1.15: the Anatase test has its own tag only (never the old pre-archive :latest or :testing).
+        self.assertEqual(ha.new_os_image('anatase'), 'ghcr.io/dragongamer9/hearth-os:test-1.15')
+        self.assertEqual(ha.new_os_image('anatase', True), 'ghcr.io/dragongamer9/hearth-os:test-1.15')
+        self.assertNotIn('anatase', ha.ARCHIVED_EDITIONS)
+        self.assertEqual(ha.move_args(['--edition', 'anatase']), ('anatase', False))
         for e in ('ubuntu', 'cachyos', 'peppermint'):
             self.assertEqual(ha.new_os_image(e), 'ghcr.io/dragongamer9/hearth-%s:testing' % e)
             self.assertEqual(ha.new_os_image(e, True), 'ghcr.io/dragongamer9/hearth-%s:testing' % e)
@@ -427,3 +430,163 @@ class Admin(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class AnataseTest(unittest.TestCase):
+    """1.15: Anatase is back as a test beside Debian. Switching keeps the home folder both ways, Debian is pinned in
+    the boot menu, and going back starts that very Debian version again."""
+    STATUS = (
+        '* default ' + 'a' * 64 + '.0\n'
+        '    Version: 1.15 (2026-11-18)\n'
+        '    origin: <unknown origin type>\n'
+        '  default ' + 'b' * 64 + '.0 (rollback)\n'
+        '    Version: 1.14\n'
+        '    Pinned: yes\n')
+
+    def sysroot(self, origins):
+        d = tempfile.mkdtemp()
+        for dep, ref in origins.items():
+            write(os.path.join(d, 'ostree/deploy/default/deploy', dep + '.origin'), '[origin]\ncontainer-image-reference=' + ref + '\n')
+        return d
+
+    def test_keeps_home_both_ways(self):
+        self.assertTrue(ha.keeps_home('anatase', 'peppermint'))
+        self.assertTrue(ha.keeps_home('peppermint', 'anatase'))
+        self.assertFalse(ha.keeps_home('peppermint', None))
+        user = types.SimpleNamespace(pw_name='sam', pw_uid=1000, pw_dir='/home/sam')
+        self.assertTrue(ha.clean_install_plan(user, [], 'x', now=1, edition='anatase', from_edition='peppermint')['keepHome'])
+        self.assertFalse(ha.clean_install_plan(user, [], 'x', now=1, edition='peppermint')['keepHome'])
+
+    def test_reads_deployments(self):
+        root = self.sysroot({'a' * 64 + '.0': 'ostree-unverified-registry:ghcr.io/dragongamer9/hearth-os:test-1.15',
+                             'b' * 64 + '.0': 'ostree-unverified-registry:ghcr.io/dragongamer9/hearth-peppermint:testing'})
+        deps = ha.ostree_deployments(self.STATUS, root)
+        self.assertEqual([(d['index'], d['booted'], d['pinned'], d['rollback']) for d in deps], [(0, True, False, False), (1, False, True, True)])
+        self.assertIn('hearth-os:test-1.15', deps[0]['origin'])
+        self.assertEqual(ha.debian_deployment(deps)['index'], 1)
+        self.assertIsNone(ha.debian_deployment(deps[:1]))
+
+    def test_pins_the_running_version(self):
+        from unittest import mock
+        calls = []
+        run = lambda cmd, **k: (calls.append(cmd), types.SimpleNamespace(returncode=0, stdout='', stderr=''))[1]
+        deps = [{'index': 0, 'booted': False, 'pinned': False}, {'index': 1, 'booted': True, 'pinned': False}]
+        with mock.patch.object(ha.subprocess, 'run', run), mock.patch('builtins.print'):
+            self.assertTrue(ha.pin_booted(deps))
+            self.assertTrue(ha.pin_booted([{'index': 0, 'booted': True, 'pinned': True}]))
+            self.assertFalse(ha.pin_booted([]))
+        self.assertEqual(calls, [['ostree', 'admin', 'pin', '1']])
+
+    def test_back_to_debian(self):
+        from unittest import mock
+        calls = []
+        run = lambda cmd, **k: (calls.append(cmd), types.SimpleNamespace(returncode=0, stdout='', stderr=''))[1]
+        rb = [{'index': 0, 'booted': True, 'origin': 'x:ghcr.io/dragongamer9/hearth-os:test-1.15'},
+              {'index': 1, 'booted': False, 'rollback': True, 'origin': 'x:ghcr.io/dragongamer9/hearth-peppermint:testing'}]
+        older = [{'index': 0, 'booted': True, 'origin': 'x:ghcr.io/dragongamer9/hearth-os:test-1.15'},
+                 {'index': 1, 'booted': False, 'rollback': True, 'origin': 'x:ghcr.io/dragongamer9/hearth-os:test-1.15'},
+                 {'index': 2, 'booted': False, 'pinned': True, 'origin': 'x:ghcr.io/dragongamer9/hearth-peppermint:testing'}]
+        with mock.patch.object(ha.subprocess, 'run', run), mock.patch.object(ha, 'bootc_status', lambda quiet=False: {}), mock.patch('builtins.print'):
+            self.assertTrue(ha.back_to_debian(rb))
+            self.assertTrue(ha.back_to_debian(older))
+            self.assertFalse(ha.back_to_debian(rb[:1]), 'no Debian left: a fresh switch instead')
+            self.assertFalse(ha.back_to_debian(rb + [{'index': 2, 'staged': True, 'origin': 'y'}]), 'an update waiting: not directly')
+        self.assertEqual(calls, [['bootc', 'rollback'], ['ostree', 'admin', 'set-default', '2']])
+
+    def test_switch_back_uses_the_old_debian(self):
+        from unittest import mock
+        tmp = tempfile.mkdtemp()
+        plan = os.path.join(tmp, 'clean-install.json')
+        user = types.SimpleNamespace(pw_name='sam', pw_uid=1000, pw_dir='/home/sam', pw_gid=1000)
+        switched = []
+        with mock.patch.object(ha, 'caller', lambda: user), mock.patch.object(ha, 'CLEAN_INSTALL', plan), \
+                mock.patch.object(ha.os.path, 'exists', lambda x: True if x == '/run/ostree-booted' else os.path.lexists(x)), \
+                mock.patch.object(ha, 'own_edition', lambda: 'anatase'), mock.patch.object(ha, 'read_deployments', lambda: []), \
+                mock.patch.object(ha, 'back_to_debian', lambda deps: True), \
+                mock.patch.object(ha, 'bootc_upgrade_with_progress', lambda *a, **k: switched.append(a)), \
+                mock.patch.object(ha, 'bootc_status', lambda quiet=False: {}), mock.patch('builtins.print'):
+            ha.move_to_new_os('peppermint', False)
+        self.assertEqual(switched, [], 'the old Debian starts again: nothing is downloaded')
+        self.assertFalse(os.path.exists(plan), 'and no clean install runs')
+
+    def test_switch_to_anatase_pins_and_keeps_home(self):
+        from unittest import mock
+        tmp = tempfile.mkdtemp()
+        plan = os.path.join(tmp, 'clean-install.json')
+        user = types.SimpleNamespace(pw_name='sam', pw_uid=1000, pw_dir='/home/sam', pw_gid=1000)
+        pinned, images = [], []
+        with mock.patch.object(ha, 'caller', lambda: user), mock.patch.object(ha, 'CLEAN_INSTALL', plan), \
+                mock.patch.object(ha.os.path, 'exists', lambda x: True if x == '/run/ostree-booted' else os.path.lexists(x)), \
+                mock.patch.object(ha, 'own_edition', lambda: 'peppermint'), mock.patch.object(ha, 'ensure_podman', lambda: None), \
+                mock.patch.object(ha, 'drop_cached_images', lambda: 0), mock.patch.object(ha, 'pin_booted', lambda: pinned.append(1)), \
+                mock.patch.object(ha, 'layered', lambda: False), \
+                mock.patch.object(ha, 'bootc_upgrade_with_progress', lambda lo, hi, st, cmd: images.append(cmd)), \
+                mock.patch.object(ha, 'bootc_status', lambda quiet=False: {}), mock.patch('builtins.print'):
+            ha.move_to_new_os('anatase', False)
+        self.assertEqual(pinned, [1])
+        self.assertEqual(images, [['bootc', 'switch', 'ghcr.io/dragongamer9/hearth-os:test-1.15']])
+        p = jload(plan)
+        self.assertEqual((p['edition'], p['fromEdition'], p['keepHome']), ('anatase', 'peppermint', True))
+
+    def test_clean_install_keeps_home(self):
+        root = tempfile.mkdtemp()
+        write(os.path.join(root, 'usr/share/nimbus/image-info.json'), json.dumps({'base': 'anatase'}))
+        write(os.path.join(root, 'var/home/sam/Documents/taxes.pdf'), 'x')
+        write(os.path.join(root, 'var/lib/hearth/clean-install.json'), json.dumps(
+            {'version': 1, 'user': 'sam', 'uid': os.getuid(), 'home': '/var/home/sam', 'edition': 'anatase',
+             'fromEdition': 'peppermint', 'keepHome': True, 'created': 5}))
+        # A state from an earlier switch (another plan) doesn't skip this one's steps.
+        write(os.path.join(root, ci.STATE), json.dumps({'stamp': '2026-11-01', 'done': ['etc', 'var', 'home'], 'plan': 4}))
+        ci.ROOT = root
+        try:
+            self.assertEqual(ci.main(['x']), 0)
+        finally:
+            ci.ROOT = '/'
+        self.assertTrue(os.path.isfile(os.path.join(root, 'var/home/sam/Documents/taxes.pdf')))
+        self.assertEqual([n for n in os.listdir(os.path.join(root, 'var/home/sam')) if n.startswith('.old-hearth-')], [])
+        self.assertTrue(os.path.exists(os.path.join(root, ci.DONE)))
+        self.assertFalse(os.path.exists(os.path.join(root, ci.STATE)))
+
+    def test_arrival_from_debian_without_a_plan(self):
+        root = tempfile.mkdtemp()
+        write(os.path.join(root, 'usr/share/nimbus/image-info.json'), json.dumps({'base': 'anatase'}))
+        write(os.path.join(root, 'etc/passwd'), 'root:x:0:0::/root:/bin/bash\n_apt:x:42:65534::/nonexistent:/usr/sbin/nologin\nsam:x:1000:1000:Sam:/home/sam:/bin/bash\n')
+        p = None
+        ci.ROOT = root
+        try:
+            p = ci.arrival_plan()
+        finally:
+            ci.ROOT = '/'
+        self.assertEqual((p['user'], p['home'], p['fromEdition'], p['keepHome']), ('sam', '/home/sam', 'peppermint', True))
+        # Fedora's own accounts (no _apt): nothing to do.
+        write(os.path.join(root, 'etc/passwd'), 'root:x:0:0::/root:/bin/bash\nsam:x:1000:1000:Sam:/home/sam:/bin/bash\n')
+        ci.ROOT = root
+        try:
+            self.assertIsNone(ci.arrival_plan())
+        finally:
+            ci.ROOT = '/'
+        # Only on Anatase.
+        write(os.path.join(root, 'usr/share/nimbus/image-info.json'), json.dumps({'base': 'peppermint'}))
+        write(os.path.join(root, 'etc/passwd'), '_apt:x:42:65534::/nonexistent:/usr/sbin/nologin\nsam:x:1000:1000::/home/sam:/bin/bash\n')
+        ci.ROOT = root
+        try:
+            self.assertIsNone(ci.arrival_plan())
+        finally:
+            ci.ROOT = '/'
+
+
+class EspGuard(unittest.TestCase):
+    def test_gives_a_loader_its_config(self):
+        d = tempfile.mkdtemp()
+        write(os.path.join(d, 'EFI/debian/grub.cfg'), 'search --fs-uuid')
+        write(os.path.join(d, 'EFI/debian/bootuuid.cfg'), 'set BOOT_UUID=x')
+        write(os.path.join(d, 'EFI/debian/grubx64.efi'), 'g')
+        write(os.path.join(d, 'EFI/anatase/grubx64.efi'), 'g')
+        write(os.path.join(d, 'EFI/BOOT/BOOTX64.EFI'), 's')
+        from unittest import mock
+        with mock.patch('builtins.print'):
+            self.assertEqual(ha.esp_guard(d), ['EFI/anatase/grub.cfg', 'EFI/anatase/bootuuid.cfg'])
+            self.assertEqual(ha.esp_guard(d), [], 'only once')
+        self.assertEqual(slurp(os.path.join(d, 'EFI/anatase/grub.cfg')), 'search --fs-uuid')
+        self.assertFalse(os.path.exists(os.path.join(d, 'EFI/BOOT/grub.cfg')), 'a folder without a GRUB is left alone')
+        self.assertEqual(ha.esp_guard('/nonexistent'), [])
