@@ -175,7 +175,8 @@ fn main() {
     if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() { std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1"); }
     // `hearth-disks --usb` opens straight on Make a bootable USB (its own menu entry).
     // `hearth-disks --usb FILE` (Open with… on an ISO in Files) opens it there, ready to check and write.
-    let usb_first = args.iter().any(|a| a == "--usb");
+    // The USB maker on its own (its AppImage, built with HEARTH_DISKS_USB_APP=1) always opens on Make a bootable USB.
+    let usb_first = args.iter().any(|a| a == "--usb") || option_env!("HEARTH_DISKS_USB_APP").is_some();
     let usb_file = args.iter().position(|a| a == "--usb").and_then(|i| args.get(i + 1)).filter(|f| !f.starts_with('-'))
         .map(|f| f.strip_prefix("file://").unwrap_or(f).to_string()).filter(|f| std::path::Path::new(f).is_file());
     let init = if usb_first { format!("window.__DISKS_USB_FIRST = true; window.__DISKS_USB_FILE = {};", serde_json::to_string(&usb_file).unwrap_or_else(|_| "null".into())) } else { String::new() };

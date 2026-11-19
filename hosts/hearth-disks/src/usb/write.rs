@@ -29,9 +29,44 @@ pub fn admin() -> Command {
             return c;
         }
     }
+    // Not Hearth OS (the AppImage on any Linux PC): Hearth's root helper (hearth-usb, built into this program) is
+    // put in a private folder of the runtime directory and run through pkexec, which asks for an administrator's
+    // password every time. hearth-usb checks the drive itself, the same as on Hearth.
+    if !Path::new(ADMIN).exists() {
+        if let Some(shim) = portable_helper() {
+            let mut c = Command::new("pkexec");
+            c.arg(python3()).arg(shim);
+            return c;
+        }
+    }
     let mut c = Command::new("pkexec");
     c.arg(ADMIN);
     c
+}
+
+const HEARTH_USB: &str = include_str!("../../../../os/system_files/usr/libexec/nimbus/hearth-usb");
+/// hearth-admin's usb-* commands, as hearth-admin runs them: `usb-raw ARGS` -> `hearth-usb raw ARGS`.
+const SHIM: &str = "import os, sys\nhere = os.path.dirname(os.path.abspath(__file__))\ncmd = sys.argv[1] if len(sys.argv) > 1 else ''\nif cmd not in ('usb-check', 'usb-raw', 'usb-prepare', 'usb-ventoy', 'usb-finish'):\n    print('error: not a USB command'); sys.exit(2)\nos.execv(sys.executable, [sys.executable, os.path.join(here, 'hearth-usb'), cmd[4:]] + sys.argv[2:])\n";
+
+fn python3() -> String {
+    for p in ["/usr/bin/python3", "/bin/python3", "/usr/local/bin/python3"] {
+        if Path::new(p).exists() { return p.to_string(); }
+    }
+    "/usr/bin/python3".into()
+}
+
+/// The helper and its shim in $XDG_RUNTIME_DIR/hearth-usb-<pid> (only you can write there; root can read it, which it
+/// can't do inside the AppImage's own mount). Written fresh each run.
+fn portable_helper() -> Option<PathBuf> {
+    use std::os::unix::fs::PermissionsExt;
+    let base = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(std::env::temp_dir);
+    let dir = base.join(format!("hearth-usb-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).ok()?;
+    std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o700)).ok()?;
+    std::fs::write(dir.join("hearth-usb"), HEARTH_USB).ok()?;
+    let shim = dir.join("hearth-usb-admin");
+    std::fs::write(&shim, SHIM).ok()?;
+    Some(shim)
 }
 
 /// The helper's arguments for a drive: the device, its size and serial as Disks showed them, and --allow-internal

@@ -1,0 +1,83 @@
+# Make a Bootable USB (Hearth Disks' USB maker) as an AppImage for any Linux PC (the owner, Nov 18: one file
+# someone can download and run). Built on Ubuntu 22.04 so it runs on older systems too; on a PC that isn't Hearth OS
+# its root helper (hearth-usb) is built in and pkexec asks for the administrator's password. Started by hand; with
+# "upload" it goes to the download site (Cloudflare R2) as hearth-usb-maker.AppImage (a new file: no other
+# download is replaced).
+name: USB maker AppImage
+
+on:
+  # A push to this branch builds it and uploads it (the owner asked for the download link, Nov 18).
+  push:
+    branches: ['feature/usb-appimage']
+    paths: ['hosts/hearth-disks/**', 'os/system_files/usr/libexec/nimbus/hearth-usb', '.github/workflows/usb-maker-appimage.yml', 'tools/r2-upload.sh']
+  workflow_dispatch:
+    inputs:
+      upload:
+        description: 'Upload to the download site as hearth-usb-maker.AppImage'
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  appimage:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      HAVE_R2: ${{ secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-disks
+      - name: WebKit, GTK and the AppImage tools
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+            libayatana-appindicator3-dev patchelf file libfuse2 xvfb >/dev/null
+      - name: Tauri's command line
+        run: cargo install tauri-cli --version '^2' --locked 2>&1 | tail -3
+      - name: Build the AppImage
+        working-directory: hosts/hearth-disks
+        env:
+          HEARTH_DISKS_USB_APP: '1'
+          NO_STRIP: 'true'
+        run: |
+          set -o pipefail
+          cat > /tmp/usb-app.json <<'JSON'
+          {"productName": "Hearth USB Maker", "mainBinaryName": "hearth-disks",
+           "bundle": {"active": true, "targets": ["appimage"], "category": "Utility",
+                      "shortDescription": "Make a bootable USB drive", "icon": ["icons/icon.png"]}}
+          JSON
+          cargo tauri build --bundles appimage --config /tmp/usb-app.json 2>&1 | tee build.log | tail -25 \
+            || { echo "::error title=AppImage build::$(grep -E '^error|Error' -A6 build.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          f=$(ls target/release/bundle/appimage/*.AppImage | head -1)
+          test -n "$f"
+          mkdir -p "$GITHUB_WORKSPACE/out"
+          cp "$f" "$GITHUB_WORKSPACE/out/hearth-usb-maker.AppImage"
+          chmod +x "$GITHUB_WORKSPACE/out/hearth-usb-maker.AppImage"
+          echo "::notice title=AppImage::$(basename "$f") · $(du -h "$f" | cut -f1)"
+      - name: It starts (on a virtual screen) and lists the drives
+        run: |
+          A=$GITHUB_WORKSPACE/out/hearth-usb-maker.AppImage
+          $A --list > /tmp/list.json 2>/tmp/list.err; echo "::notice title=--list::exit $? · $(head -c 300 /tmp/list.json | tr '\n' ' ')"
+          Xvfb :9 -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 2
+          DISPLAY=:9 timeout 20 $A >/tmp/run.log 2>&1 & pid=$!
+          sleep 12
+          if kill -0 $pid 2>/dev/null; then echo "::notice title=AppImage::the window stayed open for 12 s"; kill $pid; else
+            echo "::error title=AppImage::it ended by itself: $(tail -c 1500 /tmp/run.log | tr '\n' '|')"; exit 1; fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-usb-maker
+          path: out/hearth-usb-maker.AppImage
+          retention-days: 14
+      - name: Upload to the download site (Cloudflare R2)
+        if: env.HAVE_R2 == 'true' && (inputs.upload || github.event_name == 'push')
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_CONTENT_TYPE: application/vnd.appimage
+        run: tools/r2-upload.sh out/hearth-usb-maker.AppImage hearth-usb-maker.AppImage "$(grep -m1 '^version' hosts/hearth-disks/Cargo.toml | cut -d'"' -f2)"

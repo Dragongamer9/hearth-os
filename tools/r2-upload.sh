@@ -18,7 +18,7 @@ command -v aws >/dev/null || { pip install --quiet awscli || pip install --quiet
 # The checksum file names the file the way people download it.
 sed "s#  .*#  $name#" "$file.sha256" > /tmp/r2-sum
 aws configure set default.s3.multipart_chunksize 64MB
-s3 cp "$file" "s3://$BUCKET/$name" --content-type application/x-iso9660-image --no-progress
+s3 cp "$file" "s3://$BUCKET/$name" --content-type "${R2_CONTENT_TYPE:-application/x-iso9660-image}" --no-progress
 s3 cp /tmp/r2-sum "s3://$BUCKET/$name.sha256" --content-type text/plain --no-progress
 
 # latest.json: which version each download is (the website can show it).
