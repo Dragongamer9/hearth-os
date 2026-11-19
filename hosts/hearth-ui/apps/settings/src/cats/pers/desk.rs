@@ -106,7 +106,22 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
                 st.panel_err = "KDE's panel didn't answer".into();
             }
         }
-        Msg::Panel(i) => st.panel = i,
+        Msg::Panel(i) => {
+            st.panel = i;
+            st.panel_remove = false;
+        }
+        // Removing a panel asks once more first.
+        Msg::RemovePanel => {
+            if !st.panel_remove {
+                st.panel_remove = true;
+                return Task::none();
+            }
+            st.panel_remove = false;
+            if let Some(pn) = cur_panel(st) {
+                st.panel = 0;
+                return js_then(panel_js(pid(&pn), "p.remove();"));
+            }
+        }
         Msg::Js(body) => {
             if let Some(pn) = cur_panel(st) {
                 return js_then(panel_js(pid(&pn), &body));
@@ -366,7 +381,7 @@ pub fn bar_dock(a: &App) -> E<'_> {
             c = c.push(ilink(&p, Ic::G(G::Grid), "Arrange the bar", format!("Move the panel's items, take off the ones you don't use, add widgets ({} now)", if ps.len() == 1 { "1 panel".to_string() } else { format!("{} panels", ps.len()) }), "", Msg::EditMode));
             let mut r = Row::new().spacing(10.0).push(btn(&p, "Add a panel", ui::Kind::Normal, false, Some(Msg::Js(String::from("var np=new Panel(\"org.kde.panel\");np.location=\"top\";np.height=36;np.addWidget(\"org.kde.plasma.digitalclock\");")))));
             if ps.len() > 1 {
-                r = r.push(btn(&p, "Remove this panel", ui::Kind::Danger, false, Some(Msg::Js(String::from("p.remove();")))));
+                r = r.push(btn(&p, if st.panel_remove { "Yes, remove this panel" } else { "Remove this panel" }, ui::Kind::Danger, false, Some(Msg::RemovePanel)));
             }
             c = c.push(kit::indent(r));
             // The app launcher on this panel: KDE's three, swapped in its place.

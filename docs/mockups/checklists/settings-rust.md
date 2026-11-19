@@ -72,3 +72,12 @@ edition. Pictures: settings-pa-* (CI, .github/scripts/hearth-apps-rust-shots.d/s
 - [x] Vaults, Recent files (with activities and left out), Firmware & device security, its history, Passwords — hosts/hearth-ui/apps/settings/src/cats/privacy.rs: "Hearth never shows or copies a saved password here."
 - [x] Accessibility: magnifier, colour filters, invert one window, screen reader, sticky/bounce/slow/toggle/mouse keys, the bell, dwell click, text size, high contrast, large pointer, reduce motion, emoji — hosts/hearth-ui/apps/settings/src/cats/a11y.rs: "Click by resting the pointer"
 - [ ] Pictures of wallpapers, avatars and the login screen's background drawn as the pictures themselves (these pages draw them as colour; needs iced's image feature)
+
+What these four categories still need outside their own files (feature/settings-pers-acc):
+* Pictures drawn as pictures (wallpapers, avatars, the login screen's background) and cropping your picture: iced's
+  "image" feature in hearth-ui (a shared Cargo change, for the lead to decide).
+* On KDE Plasma nothing yet changes light and dark at the Sunset times, and hearth-plasma-looks doesn't use
+  frameTint, appsFollow or menuStyle: those three are saved (Mantel shares them) and their rows say what they reach.
+  A light and a dark wallpaper are put on when the mode is changed here.
+* Not carried over on purpose: Vaults' 10-second re-read (no timers while a page is open; it's read after each
+  change), Slideshow's "Next picture now" (Plasma's scripting has no call for it: the page points to KDE's own).

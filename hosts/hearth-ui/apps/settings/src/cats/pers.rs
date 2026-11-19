@@ -56,6 +56,7 @@ pub struct State {
     pub panels: Option<Value>,
     pub panel_err: String,
     pub panel: usize,
+    pub panel_remove: bool,
     // Fonts, cursor & icons
     pub fonts: Option<Value>,
     pub sizes: Option<(&'static str, f64)>,
@@ -112,6 +113,7 @@ pub enum Msg {
     JsSet(String, Value),
     JsDone(run::Output),
     EditMode,
+    RemovePanel,
     DeskClock(String),
     Glass(String),
     // Fonts
