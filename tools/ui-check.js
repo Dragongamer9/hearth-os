@@ -2070,7 +2070,7 @@ const path = require('path');
         const keys = [...document.querySelectorAll('#view [data-k]')].map(e => e.dataset.k);
         out.dupKeys = keys.filter((k, i) => keys.indexOf(k) !== i);
         act(document.querySelector('#view [data-k="lk-n0"]')); await wait(200);
-        // First: My device or a friend's device (family.rs).
+        // First: My device, a family member's device or a friend's device (family.rs).
         out.whose = sheet && sheet.items ? sheet.items.map(i => i.label).join('|') : null; sheetPick(0); await wait(200);
         out.prompt1 = prompt && prompt.title; out.mode = prompt && prompt.mode;
         prompt.text = '482914'; promptSubmit(); await wait(400);
@@ -2087,8 +2087,8 @@ const path = require('path');
         // Short codes: the page's check is the service's.
         out.fmt = lkShortFmt('k7m4q'); out.ok = lkShortCheck('234-567-89a9'); out.typo = lkShortCheck('234-567-89AA'); out.amb = lkShortCheck('234-567-89A0'); out.short = lkShortCheck('234-567');
         act(document.querySelector('#view [data-k="lk-entercode"]')); await wait(200);
-        sheetPick(1); await wait(200);
-        out.friendJoin = LK.joinMine === false;
+        sheetPick(2); await wait(200);
+        out.friendJoin = LK.joinAs === 'friend';
         for (const ch of '23456789a9') promptKey(ch);
         out.typed = prompt && prompt.text; out.typedTitle = prompt && prompt.title;
         promptKey('bksp'); promptKey('b');
@@ -2097,7 +2097,7 @@ const path = require('path');
         return out;
       });
       const want = { code: true, wrongHere: true, kind: true, notReady: true, netBtn: true, mode: 'number', done: true, net: true, fmt: 'K7M-4Q', ok: '', typed: '234-567-89A9', typedTitle: 'Looks right: press Pair',
-                     whose: "My device|A friend's device", mines: 'true,true', friendJoin: true };
+                     whose: "My device|A family member's device|A friend's device", mines: 'true,true', friendJoin: true };
       for (const k of Object.keys(want)) if (r[k] !== want[k]) lerr(`${k}: ${JSON.stringify(r[k])}, wanted ${JSON.stringify(want[k])}`);
       if (r.dupKeys.length) lerr('two rows with the same key: ' + r.dupKeys.join(', '));
       if (!/The 6-digit code Nvidia-PC shows/.test(r.prompt1 || '')) lerr('picking a device asked: ' + r.prompt1);
