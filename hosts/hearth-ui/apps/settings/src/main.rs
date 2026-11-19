@@ -233,7 +233,8 @@ impl App {
             _ => None,
         };
         nav::set_fixed(a.fixed.is_some());
-        set_layout(&mut a, a.fixed.unwrap_or(false));
+        let b = a.fixed.unwrap_or(false);
+        set_layout(&mut a, b);
         let t = open_page(&mut a, first);
         if let Some(f) = app::arg("--focus") {
             nav::want(&f);

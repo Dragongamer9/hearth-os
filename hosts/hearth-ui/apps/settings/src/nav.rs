@@ -214,11 +214,13 @@ pub fn set_layer(from: usize) {
 pub fn end() {
     flush();
     let mut n = nav();
+    // (A page's rows can come a moment later, once what they show was read: the wish waits for them, until the
+    // focus is moved by hand.)
     if !n.want.is_empty() {
-        let want = std::mem::take(&mut n.want);
-        if let Some(i) = n.items.iter().position(|x| x.title == want) {
+        if let Some(i) = n.items.iter().position(|x| x.title == n.want) {
             n.focus = i;
             n.in_page = true;
+            n.want.clear();
         }
     }
     let (lo, len) = (n.layer, n.items.len());
@@ -241,6 +243,9 @@ pub fn in_page() -> bool {
 pub fn set_in_page(on: bool) {
     let mut n = nav();
     n.in_page = on;
+    if !on {
+        n.want.clear();
+    }
 }
 pub fn focus() -> usize {
     nav().focus
@@ -262,6 +267,7 @@ pub fn step(d: i32) -> bool {
     if len <= lo {
         return false;
     }
+    n.want.clear();
     let to = (n.focus as i64 + d as i64).clamp(lo as i64, len as i64 - 1) as usize;
     let moved = to != n.focus;
     n.focus = to;

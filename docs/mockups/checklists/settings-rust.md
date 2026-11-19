@@ -1,6 +1,6 @@
-# Hearth Settings as its own pure-Rust app (layout A of the approved new Settings, for the Fedora edition)
+# Hearth Settings as its own pure-Rust app (the approved new Settings' layouts A and B, for the Fedora edition)
 
-Mockups: next-update/settings-A1-home-mouse.png, next-update/settings-A2-display-mouse.png
+Mockups: next-update/settings-A1-home-mouse.png, next-update/settings-A2-display-mouse.png, next-update/settings-B1-quick-controller.png, next-update/settings-B2-display-controller.png
 Release: next
 
 The owner (Nov 18, 2026): Settings is its own app, not tied to the Game Mode app, in pure Rust like the new Task
@@ -8,13 +8,38 @@ Manager (hosts/hearth-ui/apps/settings). It follows the Global Theme picked in K
 
 ## The frame
 - [x] left list: you (picture, name, Administrator · PC name) — hosts/hearth-ui/apps/settings/src/frame.rs: "\"Administrator\" } else { \"Standard account\" }"
-- [x] Search settings, finding pages by name and words — hosts/hearth-ui/apps/settings/src/frame.rs: "field(&p, \"Search settings\", &a.query, Msg::Query)"
+- [x] Search settings, finding pages by name and words — hosts/hearth-ui/apps/settings/src/frame.rs: "text_input(\"Search settings\", &a.query).id(nav::SEARCH)"
 - [x] the 13 categories with the picked one marked — hosts/hearth-ui/apps/settings/src/registry.rs: "assert_eq!(CATEGORIES.len(), 13);"
 - [x] the page's path as its title (System › Display) — hosts/hearth-ui/apps/settings/src/frame.rs: "fn crumbs(a: &App)"
 - [x] button hints: A Select, B Back, Y Search, LB/RB categories, Close — hosts/hearth-ui/apps/settings/src/frame.rs: "\"Previous / next category\""
 - [x] follows the Global Theme picked in KDE's System Settings, Hearth's looks or any other — hosts/hearth-ui/src/theme.rs: "fn from_plasma() -> Option<Pal>"
-- [ ] layout B (the controller look) and switching to it when a controller is used
-- [ ] the controller moving between rows (A, B, LB/RB work as keys only: Esc, Page Up / Page Down)
+
+## Switching between the looks (settings-new.md: A with the keyboard and mouse, B with a controller)
+- [ ] B while a controller was used last, A while the keyboard or mouse was, switching live
+- [ ] the page and the setting you were on stay picked across the switch
+- [ ] the controller read from /dev/input as well as its keys (hearth-pad, Steam Input), each press done once, its click held back
+
+## Moving with the controller or the arrow keys (both looks)
+- [ ] the focus moves between every row and control (D-pad / left stick / arrows), the page scrolling to keep it in view
+- [ ] A (Enter) selects: a switch turns on or off, a link opens, a button presses, a text field takes the typing
+- [ ] left and right change sliders and choices; left with nothing to change goes to the list on the left
+- [ ] B (Esc) back: a dialog or search closes, a subpage to its page (its row focused again), the page to the list
+- [ ] Y (Ctrl+F) search, LB / RB (Page Up / Down) previous / next category or tab, ☰ (Ctrl+W) close
+- [ ] the focused row lifted with the accent outline
+
+## B: Quick (settings-B1)
+- [ ] header "Settings" with the LB/RB tabs: Quick, System, Network, Devices, Gaming, Look, Accounts, Server
+- [ ] big tiles: Light mode while you play (wide), Wi-Fi, Bluetooth, Brightness and Volume (with sliders), Start in (wide, Game Mode / Desktop Mode), Updates, Power, Night light, Do not disturb
+- [ ] the focused tile lifted with the accent outline
+- [ ] X Pin to Quick (pick which settings are on Quick, kept in settings-quick.json as Mantel's)
+- [ ] button hints: A Select, B Back, Y Search, X Pin to Quick, LB/RB Previous / next category, Close
+
+## B: a page (settings-B2, System › Display)
+- [ ] the category's pages listed on the left (the tab's pages)
+- [ ] big rows: sliders with their value, ‹ value › choices changed with left and right, switches, › for more
+- [ ] the help panel for the focused setting: what it does, how to change it with the controller, and when it was last changed and by whom
+- [ ] X Default (puts that one setting back, asking first)
+- [ ] Y search in the controller look (a search box over the page)
 
 ## Home (settings-A1)
 - [x] the PC card: picture, name, Hearth OS version · mode · graphics card · processor, Rename and About this PC — hosts/hearth-ui/apps/settings/src/cats/home.rs: "pill(&p, \"About this PC\""
