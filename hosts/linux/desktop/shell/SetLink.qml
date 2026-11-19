@@ -18,10 +18,33 @@ SetPage {
     property string joining: ""
     property string joiningName: ""
     property bool pairingBusy: false
-    // Pairing a friend's device (family.rs): paired with this device only, for copying games. Off: one of yours,
-    // paired with all your devices. Only for this screen, never saved.
-    property bool friendMode: false
-    function f(args) { return page.friendMode ? args.concat(["friend"]) : args; }
+    // Whose the next device you pair is (family.rs): "mine" (paired with all your devices, everything shared),
+    // "family" (a family member's device: shown on all your devices, you can see it and help on it, nothing of
+    // yours goes onto it) or "friend" (this device only, for copying games). Only for this screen, never saved.
+    property string pairAs: "mine"
+    function f(args) { return page.pairAs === "mine" ? args : args.concat([page.pairAs]); }
+    readonly property var pairAsLines: ({
+        mine: "Yours: paired with all your devices at once, with your settings, library, saves and status",
+        family: "Pick this on your own device. You see it in Your devices and can help on it (wake it, remote desktop). None of your settings, saves or library go onto it",
+        friend: "Paired with this device only, just for copying games. Nothing else is shared" })
+    // A device of the list whose choices are open (its menu), and what its remote desktop said.
+    property string sel: ""
+    readonly property var selDev: page.st && page.sel ? (page.st.peers || []).find(p => p.id === page.sel) || null : null
+    property var remote: null
+    function whose(p) {
+        if (p.relation === "family") return p.familySide === "helper" ? "Family · helps on this device · " : "Family member's device · ";
+        return p.friend ? "Friend's device · " : "";
+    }
+    function theirLine(p) {
+        const t = p.theirShares || {}, on = [];
+        if (t.status) on.push("its status");
+        if (t.library) on.push("its game library");
+        if (t.saves) on.push("its saves");
+        if (t.storage) on.push("your Hearth Storage");
+        if (t.backup) on.push("backing the PC up");
+        return on.length ? "They share: " + on.join(", ") + ". Only they can change this, on their device" : "They don't share anything else with you yet. Only they can turn that on, on their device";
+    }
+    function share(key, v) { page.run(["share", page.sel, key, v ? "on" : "off"]); }
     // Hearth Storage's settings (in Hearth Link's status), for its section at the end.
     readonly property var stc: page.st && page.st.storage ? (page.st.storage.config || {}) : null
     readonly property var kinds: ({ handheld: "Handheld", laptop: "Laptop", desktop: "Desktop", tablet: "Tablet", tv: "TV" })
@@ -56,7 +79,7 @@ SetPage {
     function join(args, input, okText) {
         page.pairingBusy = true;
         page.say("");
-        act.run(page.f(args), r => { page.pairingBusy = false; page.joining = ""; page.say("Paired ✓ with " + ((r && r.name) || page.joiningName) + (r && r.friend ? ": a friend's device, for copying games only" : ": it's paired with your other devices too")); page.refresh(); },
+        act.run(page.f(args), r => { page.pairingBusy = false; page.joining = ""; page.say("Paired ✓ with " + ((r && r.name) || page.joiningName) + (r && r.friend ? ": a friend's device, for copying games only" : r && r.relation === "family" ? (r.familySide === "helper" ? ": it can help on this device. What it gets of this one is up to you, on its row below" : ": a family member's device. It shows on your other devices too; none of your things go onto it") : ": it's paired with your other devices too")); page.refresh(); },
                 e => { page.pairingBusy = false; const wrong = /^Wrong code/.test(e) && !/last try/.test(e); if (!wrong) page.joining = ""; page.say(e, true); if (wrong) code.focusInput(); page.refresh(); }, input || "");
     }
     function refresh() { job.run(["status"], r => page.st = r, e => { page.st = { error: e }; }); }
@@ -105,13 +128,13 @@ SetPage {
            : "Shows a code to type on your other Hearth device"
         onActivated: page.run(page.f(["pair-open"]))
     }
-    SetSwitch {
+    SetChoice {
         visible: !!page.st && !!page.st.me
-        icon: "users"; title: "Pairing a friend's device"
-        sub: page.friendMode ? "On: the next device you pair is paired with this one only, just for copying games. Nothing else is shared"
-                             : "Off: the next device you pair is yours: paired with all your devices at once, with your settings and library"
-        checked: page.friendMode
-        onToggled: v => page.friendMode = v
+        icon: "users"; title: "The next device you pair is"
+        sub: page.pairAsLines[page.pairAs]
+        options: [{ value: "mine", label: "My device" }, { value: "family", label: "A family member's device" }, { value: "friend", label: "A friend's device" }]
+        current: page.pairAs
+        onChosen: v => page.pairAs = v
     }
     SetRow {
         visible: !!page.st && !!page.st.pairing && !!page.st.pairing.code
@@ -193,12 +216,104 @@ SetPage {
         model: page.st ? (page.st.peers || []) : []
         delegate: SetRow {
             required property var modelData
-            icon: "display"; title: modelData.name
-            sub: (modelData.friend ? "Friend's device · " : "") + (modelData.online ? "Online" : modelData.lastSeen ? "Not on right now" : "Not reached yet")
-                 + (modelData.introducedBy ? " · paired through " + modelData.introducedBy : "") + " · select to unpair" + (modelData.friend ? "" : " (your other devices remove it too)")
+            icon: modelData.relation === "family" ? "users" : modelData.friend ? "user" : "display"; title: modelData.name
+            sub: page.whose(modelData) + (modelData.online ? "Online" : modelData.lastSeen ? "Not on right now" : "Not reached yet")
+                 + (modelData.introducedBy ? " · paired through " + modelData.introducedBy : "") + " · select for its choices"
             value: modelData.online ? "Online" : ""
-            onActivated: page.run(["unpair", modelData.id], "Unpaired " + modelData.name)
+            chevron: true
+            onActivated: { page.sel = page.sel === modelData.id ? "" : modelData.id; page.remote = null; }
         }
+    }
+    // ---- one device's choices (its menu): whose it is, a family device's switches, help on it, unpair.
+    SetHeader { text: page.selDev ? page.selDev.name : ""; visible: !!page.selDev }
+    SetRow {
+        visible: !!page.selDev && page.selDev.relation !== "family"
+        icon: "users"; title: "Make it a family member's device"
+        sub: "It stays on your devices and you can help on it, but it stops getting your settings, library, saves and status right away"
+        onActivated: page.run(["make-family", page.sel], page.selDev.name + " is a family member's device now")
+    }
+    SetRow {
+        visible: !!page.selDev && !page.selDev.friend
+        icon: "user"; title: "Make it a friend's device"
+        sub: "This device stops sharing anything with it but game copies, right away"
+        onActivated: page.run(["make-friend", page.sel], page.selDev.name + " is a friend's device now")
+    }
+    SetRow {
+        visible: !!page.selDev && page.selDev.relation !== "mine"
+        icon: "display"; title: "Make it one of my devices"
+        sub: "Both devices have to agree: unpair it, then pair again and pick My device on both"
+        onActivated: page.run(["make-mine", page.sel])
+    }
+    // What this device lets that family device see (its status), on either side.
+    SetSwitch {
+        visible: !!page.selDev && page.selDev.relation === "family"
+        icon: "eye"; title: "Let it see this device's status"
+        sub: "Battery, use, temperatures, drives and what's playing, for " + (page.selDev ? page.selDev.name : "") + " only"
+        checked: !!page.selDev && !!page.selDev.shares && page.selDev.shares.status
+        onToggled: v => page.share("status", v)
+    }
+    // On the family member's own device: what it shares with the person who helps on it. All off to start with;
+    // only changed here.
+    SetSwitch {
+        visible: !!page.selDev && page.selDev.relation === "family" && page.selDev.familySide !== "member"
+        icon: "store"; title: "Share my game library"
+        sub: "Favorites, hidden games, collections and play time, both ways with " + (page.selDev ? page.selDev.name : "") + ". Never settings"
+        checked: !!page.selDev && !!page.selDev.shares && page.selDev.shares.library
+        onToggled: v => page.share("library", v)
+    }
+    SetSwitch {
+        visible: !!page.selDev && page.selDev.relation === "family" && page.selDev.familySide !== "member"
+        icon: "update"; title: "Back up my saves"
+        sub: "Game saves kept on their Hearth Storage, and saves follow you there"
+        checked: !!page.selDev && !!page.selDev.shares && page.selDev.shares.saves
+        onToggled: v => page.share("saves", v)
+    }
+    SetSwitch {
+        visible: !!page.selDev && page.selDev.relation === "family" && page.selDev.familySide !== "member"
+        icon: "store"; title: "Use Hearth Storage (shared folders, the game archive, backups)"
+        sub: "Their shared folders, their game archive and their download caches, from this device"
+        checked: !!page.selDev && !!page.selDev.shares && page.selDev.shares.storage
+        onToggled: v => page.share("storage", v)
+    }
+    SetSwitch {
+        visible: !!page.selDev && page.selDev.relation === "family" && page.selDev.familySide !== "member"
+        icon: "update"; title: "Back up this PC"
+        sub: "This PC's saves and screenshots backed up to their Hearth Storage"
+        checked: !!page.selDev && !!page.selDev.shares && page.selDev.shares.backup
+        onToggled: v => page.share("backup", v)
+    }
+    // On your side: what the family member chose (only shown), and helping on it.
+    SetRow {
+        visible: !!page.selDev && page.selDev.relation === "family" && page.selDev.familySide !== "helper"
+        icon: "info"; chevron: false; interactive: false
+        title: "What they share with you"; sub: page.selDev ? page.theirLine(page.selDev) : ""
+    }
+    SetRow {
+        visible: !!page.selDev && (page.selDev.relation === "mine" || (page.selDev.relation === "family" && page.selDev.familySide !== "helper"))
+        icon: "play"; title: "Remote desktop"
+        sub: page.remote ? (page.remote.on ? "In Moonlight, add " + page.remote.host + (page.remote.tailscale ? "" : " (it isn't signed in to Tailscale right now)") + ". Select to open Moonlight"
+                                           : "Use this PC from anywhere is off on it: it has to be turned on there (Settings › Remote play)")
+                         : "Its screen here with Moonlight, through Tailscale. Select to see how to reach it"
+        onActivated: {
+            if (page.remote && page.remote.on) { Quickshell.execDetached(["sh", "-c", "command -v moonlight >/dev/null && exec moonlight || exec flatpak run com.moonlight_stream.Moonlight"]); return; }
+            act.run(["remote", page.sel], r => page.remote = r, e => page.say(e, true));
+        }
+    }
+    SetField {
+        visible: !!page.selDev && !!page.remote && page.remote.on
+        placeholder: "Moonlight's 4-number PIN for " + (page.selDev ? page.selDev.name : "it") + ", then Enter"
+        onSubmitted: t => { const c = t.replace(/\D/g, ""); if (c.length !== 4) { page.say("Moonlight's PIN is 4 numbers", true); return; } act.run(["remote-pin", page.sel], () => page.say("Sent: Moonlight is paired with it"), e => page.say(e, true), c); text = ""; }
+    }
+    SetRow {
+        visible: !!page.selDev && !page.selDev.online && !!page.selDev.canWake
+        icon: "power"; title: "Wake it"; sub: "Wake-on-LAN (it has to be set to wake from the network)"
+        onActivated: page.run(["wake", page.sel], "Waking " + page.selDev.name + "…")
+    }
+    SetRow {
+        visible: !!page.selDev
+        icon: "trash"; title: "Unpair it"
+        sub: page.selDev && page.selDev.friend ? "Nothing is copied between them anymore, until you pair again" : "Nothing is shared with it anymore, until you pair again. Your other devices remove it too"
+        onActivated: { page.run(["unpair", page.sel], "Unpaired " + page.selDev.name); page.sel = ""; }
     }
     SetRow {
         visible: !!page.st && (page.st.peers || []).length > 0

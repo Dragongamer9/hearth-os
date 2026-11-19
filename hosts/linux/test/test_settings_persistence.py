@@ -124,7 +124,7 @@ class ConfFiles(unittest.TestCase):
         self.assertIn('--hdr-enabled', out)
 
     def test_session_strip_mode_args_is_safe_and_remembers_your_choice(self):
-        src = (REPO / 'hosts' / 'linux' / 'session' / 'nimbus-session').read_text()
+        src = (REPO / 'hosts' / 'linux' / 'session' / 'nimbus-session').read_text(encoding='utf-8')
         regex = re.search(r"^MODE_ARGS_RE='[^']*'$", src, re.M).group(0)
         fn = re.search(r'^strip_mode_args\(\) \{\n.*?^\}\n', src, re.M | re.S).group(0)
         fn += re.search(r'^note_reverted\(\) \{\n.*?^\}\n', src, re.M | re.S).group(0)

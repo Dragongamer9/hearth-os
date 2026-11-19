@@ -189,6 +189,9 @@ pub fn bridge_call(br: &mut crate::bridge::Bridge, method: &str, a: &Value) -> R
         "pair.join" | "pair.open" => { let (c, a) = (cmd.to_string(), a.clone()); br.later(move || call(&c, &a, 90)) }
         // Asking another device can take a while (it lists its games).
         "games" | "local.games" | "send" | "sync.now" | "unpair" => call(cmd, a, 60),
+        // A family member's device (family.rs): wake it, its remote desktop, Moonlight's PIN for it.
+        "peer.wake" => call(cmd, a, 15),
+        "peer.remote" | "peer.remote.pin" => call(cmd, a, 45),
         "pair.close" | "pair.check" | "peer.set" | "settings.set" | "places" | "get" | "offer.accept" | "offer.decline"
         | "transfer.pause" | "transfer.resume" | "transfer.cancel" | "transfer.clear" | "ticket" => call(cmd, a, 15),
         // Hearth Storage: anything that asks the server may first have to wake it (up to about a minute and a half),

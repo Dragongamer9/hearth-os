@@ -68,7 +68,7 @@ class Options(unittest.TestCase):
                     gmd.set_({'hdr': True})
 
     def test_the_session_takes_a_frame_limit_out_with_the_mode_when_gamescope_cant_start(self):
-        src = (SHELL.parents[1] / 'session' / 'nimbus-session').read_text()
+        src = (SHELL.parents[1] / 'session' / 'nimbus-session').read_text(encoding='utf-8')
         regex = re.search(r"^MODE_ARGS_RE='([^']*)'$", src, re.M).group(1)
         out = subprocess.run(['sed', '-E', 's/%s/\\1/g' % regex], input=' --hdr-enabled -W 2560 -H 1440 -r 120 --framerate-limit 60\n',
                              capture_output=True, text=True).stdout

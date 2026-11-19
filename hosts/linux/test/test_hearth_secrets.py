@@ -147,7 +147,7 @@ class Image(unittest.TestCase):
         b = (ROOT / 'os-bases' / 'peppermint' / 'build.sh').read_text()
         self.assertIn('gnome-keyring libpam-gnome-keyring', b)
         self.assertIn('HEARTH-PAM-KEYRING', b)
-        sess = (ROOT / 'hosts' / 'linux' / 'session' / 'nimbus-session').read_text()
+        sess = (ROOT / 'hosts' / 'linux' / 'session' / 'nimbus-session').read_text(encoding='utf-8')
         self.assertIn('gnome-keyring-daemon --start --components=secrets', sess)
 
 

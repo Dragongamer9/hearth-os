@@ -8,9 +8,18 @@ through `hearth-link call` (its socket, only this user's).
   hearth-link-settings join ID                the 6-digit code comes on stdin (HEARTH_INPUT), never on the command line
   hearth-link-settings join-code              a short code (K7M-4QX-92HC) on stdin: the device is looked up from it
                                               (pair-open, pair-open-internet, join and join-code take a last word
-                                              "friend": a friend's device, paired with this one only, for copying
-                                              games; without it, one of your devices)
-  hearth-link-settings make-friend ID         one of your devices becomes a friend's device (stops sharing at once)
+                                              "family": a family member's device (you can see it and help on it;
+                                              nothing of yours goes onto it), or "friend": a friend's device, paired
+                                              with this one only, for copying games; without it, one of your devices)
+  hearth-link-settings make-friend ID         it becomes a friend's device (stops sharing at once)
+  hearth-link-settings make-family ID         it becomes a family member's device (stops sharing yours at once)
+  hearth-link-settings make-mine ID           only by pairing again with My device on both (says so)
+  hearth-link-settings share ID KEY on|off    a family member's device's switches on this device (KEY: status,
+                                              library, saves, storage, backup; all but status only on the family
+                                              member's own device)
+  hearth-link-settings wake ID                wake that device (a family member's device, or Hearth Storage)
+  hearth-link-settings remote ID              that device's remote desktop: on or not, its name for Moonlight
+  hearth-link-settings remote-pin ID [NAME]   Moonlight's 4 numbers (on stdin) sent to that device's remote desktop
   hearth-link-settings unpair ID
   hearth-link-settings set KEY VALUE          KEY: name, sync, alwaysAccept, relay, relayUrl
   hearth-link-settings sync
@@ -36,6 +45,7 @@ ID_RE = re.compile(r'^[0-9a-f]{16,64}(@\S{1,300})?$')
 KEYS = {'name': str, 'sync': bool, 'alwaysAccept': bool, 'relay': str, 'relayUrl': str}
 STORAGE_KEYS = ('server', 'away', 'smb', 'archive', 'backups', 'media', 'backupSaves', 'backupShots', 'savesFollow')
 SHARE_RE = re.compile(r'^[0-9a-f]{4,32}$')
+SWITCHES = ('status', 'library', 'saves', 'storage', 'backup')
 # Short codes (hosts/hearth-link shortcode.rs): no 0/O, 1/I/L; the weighted sum of the 10 (weights 1..10) is 0 mod 31.
 ABC = '23456789ABCDEFGHJKMNPQRSTUVWXYZ'
 
@@ -61,16 +71,38 @@ def request(argv, stdin=''):
     if not argv:
         raise Fail('usage: hearth-link-settings status|pair-open|pair-open-internet|pair-close|join ID|join-code|unpair ID|set KEY VALUE|sync|pause|resume|cancel ID')
     cmd, rest = argv[0], argv[1:]
-    # A friend's device (family.rs): only pairing takes it, as its last word.
-    friend = cmd in ('pair-open', 'pair-open-internet', 'join', 'join-code') and rest[-1:] == ['friend']
-    if friend:
-        rest = rest[:-1]
-        c, a = request([cmd] + rest, stdin)
+    # A friend's or a family member's device (family.rs): only pairing takes it, as its last word.
+    pairing = cmd in ('pair-open', 'pair-open-internet', 'join', 'join-code')
+    if pairing and rest[-1:] == ['friend']:
+        c, a = request([cmd] + rest[:-1], stdin)
         return c, dict(a, mine=False)
-    if cmd == 'make-friend' and len(rest) == 1:
-        if not ID_RE.match(rest[0].strip()):
+    if pairing and rest[-1:] == ['family']:
+        c, a = request([cmd] + rest[:-1], stdin)
+        return c, dict(a, mine=False, **{'as': 'family'})
+
+    def device(x):
+        x = x.strip()
+        if not re.fullmatch(r'[0-9a-f]{16,64}', x):
             raise Fail("That isn't a Hearth device")
-        return 'peer.set', {'id': rest[0].strip(), 'friend': True}
+        return x
+    if cmd == 'make-friend' and len(rest) == 1:
+        return 'peer.set', {'id': device(rest[0]), 'friend': True}
+    if cmd in ('make-family', 'make-mine') and len(rest) == 1:
+        return 'peer.set', {'id': device(rest[0]), 'relation': 'family' if cmd == 'make-family' else 'mine'}
+    if cmd == 'share' and len(rest) == 3 and rest[1] in SWITCHES:
+        if rest[2] not in ('on', 'off'):
+            raise Fail('on or off')
+        return 'peer.set', {'id': device(rest[0]), 'shares': {rest[1]: rest[2] == 'on'}}
+    if cmd in ('wake', 'remote') and len(rest) == 1:
+        return 'peer.' + cmd, {'id': device(rest[0])}
+    if cmd == 'remote-pin' and len(rest) in (1, 2):
+        pin = re.sub(r'\s', '', stdin or '')
+        if not re.fullmatch(r'\d{4}', pin):
+            raise Fail("Moonlight's PIN is 4 numbers")
+        a = {'id': device(rest[0]), 'pin': pin}
+        if len(rest) == 2:
+            a['name'] = rest[1][:40]
+        return 'peer.remote.pin', a
     simple = {'status': 'status', 'pair-open': 'pair.open', 'pair-close': 'pair.close', 'sync': 'sync.now'}
     if cmd in simple and not rest:
         return simple[cmd], {}

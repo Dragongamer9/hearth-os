@@ -98,7 +98,7 @@ class Unlock(unittest.TestCase):
 
 
 class Plasma(unittest.TestCase):
-    SESSION = (REPO / 'hosts' / 'linux' / 'session' / 'nimbus-session').read_text()
+    SESSION = (REPO / 'hosts' / 'linux' / 'session' / 'nimbus-session').read_text(encoding='utf-8')
     MODE = (REPO / 'hosts' / 'linux' / 'session' / 'nimbus-mode').read_text()
 
     def test_session_starts_plasma_only_where_the_image_says(self):

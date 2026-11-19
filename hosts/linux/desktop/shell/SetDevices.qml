@@ -21,6 +21,10 @@ SetPage {
     readonly property var kindIcons: ({ handheld: "pad", laptop: "display", desktop: "cpu" })
 
     SetJob { id: job; helper: "hearth-device-status" }
+    // A family member's device (Hearth Link family.rs): its remote desktop and Moonlight's PIN through Hearth Link.
+    SetJob { id: linkJob; helper: "hearth-link-settings" }
+    property var remote: null
+    readonly property bool curFamily: !!page.cur && page.cur.relation === "family"
     // Hearth Files' "Show other devices in Files" (files.json showDevices: on unless you turn it off; only read here
     // until you flip it, then only that key is merged in).
     SetJob { id: filesJob; helper: "hearth-files" }
@@ -49,6 +53,7 @@ SetPage {
 
     Timer { interval: 15000; repeat: true; running: page.visible; onTriggered: page.load() }
     onVisibleChanged: if (!visible) detail = ""
+    onDetailChanged: remote = null
 
     // ---- words
     function ago(ms) {
@@ -63,9 +68,11 @@ SetPage {
     }
     function gb(v) { return v >= 100 ? Math.round(v) + " GB" : (Math.round(v * 10) / 10) + " GB"; }
     function headline(d) {
-        if (!d.online) return "Offline or asleep · seen " + ago(d.lastSeen);
-        if (d.old) return "Online · update it to Hearth OS 1.6 to see more";
-        if (!d.shared) return "Online · doesn't share its status";
+        const fam = d.relation === "family" ? "Family member's device · " : "";
+        if (!d.online) return fam + "Offline or asleep · seen " + ago(d.lastSeen);
+        if (d.old) return fam + "Online · update it to Hearth OS 1.6 to see more";
+        if (!d.shared) return fam + "Online · doesn't share its status with this device";
+        if (fam) return fam + ["Online", modes[(d.status || {}).mode] || ""].filter(x => x).join(" · ");
         const s = d.status || {};
         return ["Online", modes[s.mode] || "", s.playing ? "Playing " + s.playing.title : ""].filter(x => x).join(" · ");
     }
@@ -244,9 +251,27 @@ SetPage {
                 onActivated: job.run(["wake", page.cur.id], () => SettingsNav.toast("Waking " + page.cur.name + "…"), e => SettingsNav.toast(e))
             }
             SetRow {
-                visible: !!page.cur && page.cur.online
+                visible: !!page.cur && page.cur.online && !page.curFamily
                 icon: "play"; title: "Remote desktop"; sub: "Use it from here, or play its games (Remote play)"; chevron: true
                 onActivated: SettingsNav.openPage("remote")
+            }
+            // A family member's device: how to reach its desktop in Moonlight (it says, over Hearth Link), and
+            // Moonlight's PIN typed here instead of on their PC.
+            SetRow {
+                visible: page.curFamily && page.cur.online
+                icon: "play"; title: "Remote desktop"
+                sub: page.remote ? (page.remote.on ? "In Moonlight, add " + page.remote.host + (page.remote.tailscale ? "" : " (it isn't signed in to Tailscale right now)") + ". Select to open Moonlight"
+                                                   : "Use this PC from anywhere is off on it: it has to be turned on there (Settings › Remote play)")
+                                 : "Help on it from here with Moonlight, through Tailscale. Select to see how to reach it"
+                onActivated: {
+                    if (page.remote && page.remote.on) { Quickshell.execDetached(["sh", "-c", "command -v moonlight >/dev/null && exec moonlight || exec flatpak run com.moonlight_stream.Moonlight"]); return; }
+                    linkJob.run(["remote", page.cur.id], r => page.remote = r, e => SettingsNav.toast(e));
+                }
+            }
+            SetField {
+                visible: page.curFamily && !!page.remote && page.remote.on
+                placeholder: "Moonlight's 4-number PIN for " + (page.cur ? page.cur.name : "it") + ", then Enter"
+                onSubmitted: t => { const c = t.replace(/\D/g, ""); if (c.length !== 4) { SettingsNav.toast("Moonlight's PIN is 4 numbers"); return; } linkJob.run(["remote-pin", page.cur.id], () => SettingsNav.toast("Sent: Moonlight is paired with " + page.cur.name), e => SettingsNav.toast(e), c); text = ""; }
             }
             SetRow {
                 icon: "desktops"; title: "Hearth Link"; sub: "Pairing, sync, copies and Hearth Storage"; chevron: true
@@ -280,6 +305,7 @@ SetPage {
                     spacing: 8
                     Text { text: dc.dev.name || "Device"; color: Theme.text; font.family: Theme.font; font.pixelSize: 15; font.weight: Font.DemiBold; elide: Text.ElideRight }
                     SetChip { text: dc.dev.online ? "Online" : "Offline"; kind: dc.dev.online ? "ok" : "warn" }
+                    SetChip { visible: dc.dev.relation === "family"; text: "Family"; kind: "off" }
                 }
                 Text { Layout.fillWidth: true; text: page.headline(dc.dev); color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; elide: Text.ElideRight }
                 Text { visible: text !== ""; Layout.fillWidth: true; text: page.summary(dc.s); color: Theme.text; font.family: Theme.font; font.pixelSize: 13; elide: Text.ElideRight }
