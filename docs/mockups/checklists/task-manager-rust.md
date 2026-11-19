@@ -27,7 +27,7 @@ anything. Open parts are listed as open (red flag 11).
 - [x] Tags on rows: AI, bridge, Game · Proton, Hearth — hosts/hearth-ui/apps/task-manager/src/apps.rs: "\"Game · Proton\""
 - [x] Status: Quick Resume ⏸ for a suspended game — hosts/hearth-ui/apps/task-manager/src/pages.rs: "\"Quick Resume ⏸\""
 - [x] Search box: "Type a name, publisher or PID to search" (finds a PID) — hosts/hearth-ui/apps/task-manager/src/pages.rs: "Type a name, publisher or PID to search"
-- [ ] App icons in the Name column
+- [x] App icons in the Name column (PNG and SVG from the icon themes; not drawn in tm-1 itself, asked for here) — hosts/hearth-ui/apps/task-manager/src/pages.rs: "lr = lr.push(app_icon(icon));"
 
 ## tm-2 Details
 - [x] Parent, Swapped, Threads, Priority columns — hosts/hearth-ui/apps/task-manager/src/pages.rs: "col(\"swap\", \"Swapped\", 90.0, true)"
@@ -62,7 +62,7 @@ anything. Open parts are listed as open (red flag 11).
 ## tm-5 Network › Apps & settings
 - [x] The Network page's tab called "Apps & settings": Ping with jitter, Used today, IP · Tailscale IP, DNS — hosts/hearth-ui/apps/task-manager/src/devset.rs: "x(\"Ping (to the internet)\")"
 - [x] Network name · Wi-Fi standard · link speed · signal on the right — hosts/hearth-ui/apps/task-manager/src/devset.rs: "\"▂▄▆█\""
-- [x] Which programs use the network: Program, PID, Down, Up, Today, Talking to, Allow — hosts/hearth-ui/apps/task-manager/src/devset.rs: "(\"Talking to\", 260.0, false), (\"Allow\", 200.0, false)"
+- [x] Which programs use the network: Program, PID, Down, Up, Today, Talking to, Allow — hosts/hearth-ui/apps/task-manager/src/devset.rs: "(\"Talking to\", -3.0, false), (\"Allow\", 180.0, false)"
 - [x] Connection: Metered connection, DNS, Wi-Fi power saving — hosts/hearth-ui/apps/task-manager/src/devset.rs: "\"Wi-Fi power saving\", \"off = lower ping in games\""
 - [x] Tools: Speed test, Fix my connection, Share this connection (hotspot) — hosts/hearth-ui/apps/task-manager/src/devset.rs: "\"Share this connection (hotspot)\""
 - [x] A Tailscale entry in the left list (N devices) — hosts/hearth-ui/apps/task-manager/src/pages.rs: "format!(\"{} device{}\", a.ts_peers"
@@ -96,3 +96,11 @@ anything. Open parts are listed as open (red flag 11).
 - [x] Overview: Biggest users (In use, Shared, Compressed, On drive) — hosts/hearth-ui/apps/task-manager/src/memset.rs: "rcell(\"On drive\".into(), 100.0, p.muted)"
 - [x] Overview: memory speed and slots on the right — hosts/hearth-ui/apps/task-manager/src/memset.rs: " MT/s"
 - [x] Swap & settings tab: Compressed memory (zram), Keep memory free (Target with Custom, Starts freeing below, Swappiness), Drive swap file (Size, Hibernation), When memory runs out (Never close with + Add), Save — hosts/hearth-ui/apps/task-manager/src/memset.rs: "\"Starts freeing below\", \"then frees up to the target\""
+
+## Notes (Nov 18, 2026)
+- Every part above is built and pictured in CI (hearth-apps-rust.yml, .github/scripts/hearth-apps-rust-shots.d/task-manager.sh:
+  tm-11 … tm-21). CI has no smartctl, NetworkManager, LACT, battery or graphics card, so those pictures read test
+  answers (HEARTH_TM_FIXTURES, never set on a PC); tm-20 reads the real helpers and shows the plain "–" states.
+- The settings tabs use Mantel's helpers and files (hearth-hwset, hearth-power, hearth-netinfo, hearth-gputune,
+  hearth-tasks, hearth-memory, nmcli), so Debian and Fedora share them. Not yet tried on a device.
+- Memory › Swap & settings: the drive swap file's Size is a list with ▾ as in the mockup (Mantel shows the sizes side by side).
