@@ -62,6 +62,37 @@ Desktop Mode's own watchdog (labwc autostart) doesn't send you back to Game Mode
   **Desktop Mode this time** opens Desktop Mode, **Safe graphics this time** opens Hearth Classic with a "safe graphics"
   notice (Steam Game Mode doesn't run with safe graphics), and going back to the previous version is ostree's, as before.
 
+## Game Mode on this PC (On / Off)
+
+The owner (Nov 19, testing test-1.15 on the ROG Ally): "hearth game mode cant be an app that Opens, needs to just be
+game mode. Also need to add a option that turns off the game modes".
+
+- **Game Mode is a mode, never a window.** Every Game Mode button (Plasma's Back to Game Mode, Super+G, the Guide
+  menu, Mantel's buttons, Settings) runs `nimbus-mode game`: Desktop Mode logs out and the session starts Game Mode
+  (Steam Game Mode unless you picked Hearth Game Mode). Settings' links to Hearth's own pages that have no app of their
+  own yet (Library sources, Store, Import, Move games and add up sizes, Restore from a backup, Hearth Storage's extras,
+  Get a game from another Hearth) run `nimbus-mode hearth-page PAGE`: Hearth Game Mode on the full screen at that page
+  (the page goes to Hearth's first start through `$XDG_RUNTIME_DIR/hearth-start-page` and the watchdog), never
+  `nimbus --windowed`. Hearth's own screens still run where they always did: their own gamescope session, first-time
+  setup, the live USB's installer and the fallback.
+- **Settings › System › Startup › Game Mode on this PC** (Rust Settings and Mantel; Home's Start in follows it): On
+  unless you turn it off. Stored as `gameModeOff` in `~/.local/share/nimbus/desktop.json` through
+  `hearth_settings_io.py merge --history` (atomic, `.bak`, the change history); missing means On, and nothing turns it
+  off or on by itself. Off:
+  - the PC always starts in Desktop Mode (nimbus-session `gm_start_mode`; Start in is kept for when it's on again;
+    Server mode, which isn't a Game Mode, stays as you set it);
+  - `nimbus-mode game|steam|hearth|hearth-page` do nothing but say "Game Mode is off on this PC" (exit 3);
+  - Plasma's Back to Game Mode (menu entry, Super+G, the pinned taskbar launcher) is hidden: a `Hidden=true` copy of
+    `hearth-gamemode.desktop` in `$XDG_RUNTIME_DIR/hearth-gm-hidden`, first in Plasma's `XDG_DATA_DIRS`, made at every
+    Plasma start and changed at once by `nimbus-mode gamemodes apply` (Settings runs it); the pinned launcher is taken
+    off and put back first when it's on again, only if Hearth took it off;
+  - Mantel's Game Mode buttons (bar, islands, panels, the app menu, the desktop's menu, the power menu, Super+X) and
+    the Guide menu's Game Mode slot (hearth-pad-host) are hidden.
+  Turned back On, everything returns. **Game Mode stays available for recovery**: Desktop Mode that can't start still
+  falls back to Steam Game Mode or Hearth's own (run_plasma, "desktop mode unavailable", Mantel's give_up with
+  `HEARTH_GM_RECOVERY=1`), so there's always a working screen. First-time setup runs as before, then goes to Desktop
+  Mode. Never off on the live USB or for an extra multi-seat player. Tests: `hosts/linux/test/test_game_modes_off.py`.
+
 ## What you get
 
 - **Steam's own Game Mode**: Steam's home, library, store, Quick Access menu, overlay and keyboard, full screen in

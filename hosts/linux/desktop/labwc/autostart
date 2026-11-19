@@ -100,7 +100,8 @@ give_up() {
       || kdialog --title Hearth --error "$msg" 2>/dev/null ) >/dev/null 2>&1 &
     return 0
   fi
-  nimbus-mode game
+  # (Game Mode on this PC off: still allowed, Game Mode stays available for recovery.)
+  HEARTH_GM_RECOVERY=1 nimbus-mode game
 }
 if [ ! -f "$SHARE/desktop/shell/shell.qml" ]; then
   give_up "The Desktop Mode files are missing ($SHARE/desktop/shell)."

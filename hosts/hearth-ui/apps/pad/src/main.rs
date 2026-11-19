@@ -55,6 +55,16 @@ pub const ITEMS: [Item; 8] = [
 
 const HINTS_FOR: Duration = Duration::from_secs(12);
 
+/// Game Mode on this PC is off (Settings › System › Startup: desktop.json's gameModeOff): the Hearth menu's Game Mode
+/// slot is left empty and does nothing but say so. Read when the menu opens (never polled).
+pub static GM_OFF: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+fn game_modes_off() -> bool {
+    hearth_ui::settings_file::read_json(&hearth_ui::theme::desktop_json()).get("gameModeOff").and_then(Value::as_bool).unwrap_or(false)
+}
+pub fn gm_hidden(action: &str) -> bool {
+    action == "game" && GM_OFF.load(std::sync::atomic::Ordering::Relaxed)
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Kind {
     Radial,
@@ -244,6 +254,7 @@ impl App {
             }
             "radial" => {
                 if m.get("open").and_then(Value::as_bool).unwrap_or(false) {
+                    GM_OFF.store(game_modes_off(), std::sync::atomic::Ordering::Relaxed);
                     self.radial = true;
                     self.sel = m.get("sel").and_then(Value::as_i64).unwrap_or(-1) as i32;
                     tasks.push(self.open(Kind::Radial));
@@ -296,6 +307,7 @@ impl App {
                 }
             }
             "close" => pad_send(json!({ "cmd": "plasma", "do": "close" })),
+            "game" if gm_hidden("game") => return self.show_toast("Game Mode is off on this PC (Settings › System › Startup)"),
             "game" => bg(vec!["nimbus-mode".into(), "game".into()]),
             "screenshot" => {
                 let share = std::env::var("NIMBUS_SHARE").unwrap_or_else(|_| "/usr/share/nimbus".into());

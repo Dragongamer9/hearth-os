@@ -537,8 +537,9 @@ PanelWindow {
                 }
             }
 
-            // Back to Game Mode
+            // Back to Game Mode (hidden while Game Mode is off on this PC: Settings › System › Startup)
             Rectangle {
+                visible: !Settings.gameModeOff
                 Layout.alignment: Qt.AlignHCenter | Qt.AlignVCenter
                 implicitWidth: bar.portrait ? 44 : gm.implicitWidth + 28
                 implicitHeight: bar.portrait ? 44 : 36

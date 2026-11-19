@@ -45,6 +45,23 @@ SetPage {
         onChosen: v => act.run(["set", "scheduleOn", v === "schedule" ? "on" : "off"], () => { page.say(v === "schedule" ? "Following the schedule ✓" : "Starting in " + page.modeNames[page.st.startIn] + " every time"); page.refresh(); }, e => page.say(e, true))
     }
 
+    // Game Mode on this PC (the owner, Nov 19: "need to add a option that turns off the game modes"): Settings.gameModeOff
+    // (desktop.json, merged with its history). Off: this PC always starts in Desktop Mode and the Game Mode buttons
+    // are hidden; nimbus-session's fallbacks can still open Game Mode when Desktop Mode can't start.
+    SetHeader { text: "Game Mode on this PC" }
+    SetSwitch {
+        icon: "pad"; title: "Game Mode on this PC"
+        sub: Settings.gameModeOff ? "Off: this PC always starts in Desktop Mode. Back to Game Mode, Super+G and the Guide menu's Game Mode are hidden"
+                                  : "On: Start in, Back to Game Mode, Super+G and the Guide menu's Game Mode can open Game Mode"
+        checked: !Settings.gameModeOff
+        onToggled: v => Settings.gameModeOff = !v
+    }
+    Text {
+        Layout.fillWidth: true
+        text: "Game Mode stays available for recovery: if Desktop Mode can't start, Hearth still opens Game Mode so you always get a working screen. First-time setup runs as usual."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap
+    }
+
     SetHeader { text: page.scheduled ? "Modes in the schedule" : "Start in" }
     RowLayout {
         Layout.fillWidth: true
