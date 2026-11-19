@@ -25,9 +25,10 @@ Card {
                     required property var modelData
                     couch: c.couch
                     fontSize: 14
+                    padX: 14
                     text: H.deviceLabel(modelData)
                     textColor: modelData.low ? H.P.warn : H.P.tx
-                    Glyph { name: modelData.kind === "headset" ? "headset" : "pad"; size: 16 * c.k; color: modelData.low ? H.P.warn : "#d8d1ca" }
+                    Glyph { name: modelData.kind === "headset" ? "headset" : "pad"; size: 15 * c.k; color: modelData.low ? H.P.warn : "#d8d1ca" }
                 }
             }
         }

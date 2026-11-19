@@ -101,13 +101,14 @@ function addedSub(g, p, t, now) {
     return g.store + " · " + (w === "today" ? "installed today" : "added " + w);
 }
 // A tile's corner badge (mockups 01/02): NEW, DEV, UPDATE READY, UPDATING 68%, CLOUD SAVES, the download size.
-function badge(g, dl, added, now) {
+// fresh: the Recently added row (NEW and DEV come first there; the other rows don't show them).
+function badge(g, dl, added, now, fresh) {
     var d = dl ? dl[g.id] : null;
+    var t = added ? added[g.id] : 0;
+    if (fresh && g.devBuild && t && now - t < 14 * DAY) return { text: "DEV", color: "#b9a8ff" };
+    if (fresh && t && now - t < 7 * DAY) return { text: "NEW", color: "#ffb36b" };
     if (d && d.state === "running") return { text: "UPDATING " + d.percent + "%", color: "#ffb36b" };
     if (g.update) return { text: "UPDATE READY", color: "#ffb36b" };
-    var t = added ? added[g.id] : 0;
-    if (g.devBuild && t && now - t < 14 * DAY) return { text: "DEV", color: "#b9a8ff" };
-    if (t && now - t < 7 * DAY) return { text: "NEW", color: "#ffb36b" };
     if (!g.installed && g.size) return { text: g.size, color: "#cccccc" };
     if (g.cloudSaves) return { text: "CLOUD SAVES", color: "#9fd8ff" };
     return null;
@@ -199,4 +200,19 @@ function clock(us) {
 function isTv(name, model, diagMm) {
     if (/tv/i.test(String(model || ""))) return true;
     return /hdmi/i.test(String(name || "")) && diagMm > 900;
+}
+
+// A launcher's row (Beacon): what you did last first (played, or came onto this PC), its "Other games" at the end.
+function launcherRow(games, added) {
+    var a = added || {};
+    var act = function (g) { return Math.max(g.lastPlayed || 0, a[g.id] || 0); };
+    var other = function (g) { return /other games/i.test(g.tag || "") ? 1 : 0; };
+    return (games || []).map(function (g, i) { return [g, i]; }).sort(function (x, y) {
+        return other(x[0]) - other(y[0]) || act(y[0]) - act(x[0]) || x[1] - y[1];
+    }).map(function (x) { return x[0]; });
+}
+// A device's letter: its name without the maker's prefix (ROG Ally: A).
+function deviceLetter(name) {
+    var n = String(name || "?").replace(/^(the|rog|asus|lenovo|steam|my)\s+/i, "");
+    return n.charAt(0).toUpperCase();
 }

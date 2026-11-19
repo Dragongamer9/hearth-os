@@ -26,7 +26,7 @@ Item {
     readonly property var contRow: H.continueRow(couch.library, couch.pins, game ? game.id : "", 5)
     readonly property var addRow: H.addedRow(couch.library, added, now, 5)
     readonly property var media: H.mediaApps(couch.apps)
-    readonly property var beacon: couch.library.filter(function (g) { return g.source === "beacon"; })
+    readonly property var beacon: H.launcherRow(couch.library.filter(function (g) { return g.source === "beacon"; }), added)
     readonly property var steamAll: couch.library.filter(function (g) { return g.source === "steam" && g.installed; })
     readonly property var steam: steamAll.slice().sort(function (a, b) { return (b.lastPlayed || 0) - (a.lastPlayed || 0); }).slice(0, 7)
     readonly property var devices: (cards.devices || []).slice(0, 3)
@@ -283,7 +283,7 @@ Item {
                         required property int index
                         couch: home.couch
                         game: modelData
-                        badge: H.badge(modelData, home.dlMap, home.added, home.now)
+                        badge: H.badge(modelData, home.dlMap, home.added, home.now, true)
                         sub: H.addedSub(modelData, home.prog[modelData.id], home.added[modelData.id] || modelData.added, home.now)
                         focused: home.sel(2, index)
                         onActivated: { home.row = 2; home.col = index; home.activate(2, index); }
@@ -314,7 +314,7 @@ Item {
         Column {
             id: page2
             x: 72 * home.k
-            y: Math.max(left.y + left.height, right.y + right.height) + 72 * home.k
+            y: Math.max(left.y + left.height, right.y + right.height, 920 * home.k) + 72 * home.k
             width: flick.width - 144 * home.k
             spacing: 0
             RowHead { couch: home.couch; width: parent.width; title: "Watch and listen"; note: "opens full screen on the " + (home.couch.screenIsTv ? "TV" : home.couch.screenWord) + " · B comes back here"; visible: home.media.length > 0 }
@@ -425,7 +425,7 @@ Item {
                                 x: 18 * home.k; anchors.verticalCenter: parent.verticalCenter
                                 width: 40 * home.k; height: width; radius: 11 * home.k
                                 color: ["#2a3a2a", "#3a2a22", "#2a2a36"][index % 3]
-                                T { couchRef: home.couch; anchors.centerIn: parent; text: (modelData.name || "?").replace(/^the /i, "").charAt(0).toUpperCase(); color: index === 0 ? "#cceeee" : H.P.tx; font.pixelSize: 16 * home.k; font.weight: Font.ExtraBold }
+                                T { couchRef: home.couch; anchors.centerIn: parent; text: H.deviceLetter(modelData.name); color: index === 0 ? "#cceeee" : H.P.tx; font.pixelSize: 16 * home.k; font.weight: Font.ExtraBold }
                             }
                             Column {
                                 anchors.left: dico.right; anchors.leftMargin: 14 * home.k

@@ -25,7 +25,7 @@ RUN="$XDG_RUNTIME_DIR/hearth-firehold-plasma"
 # ---- the mockups' sample games, devices and people (firehold-plasma-fixtures.py; no Hearth app or Steam here).
 FX=/tmp/fhp-fixtures
 python3 "$(dirname "$0")/firehold-plasma-fixtures.py" "$HOME" "$FX" || fail fixtures "the stand-ins couldn't be written"
-export HEARTH_FIREHOLD_HOME_FIXTURE="$FX/home.json" HEARTH_FIREHOLD_SYS_FIXTURE="$FX/sys.json" HEARTH_FIREHOLD_TV_SCREENS=Virtual-1
+export HEARTH_FIREHOLD_HOME_FIXTURE="$FX/home.json" HEARTH_FIREHOLD_SYS_FIXTURE="$FX/sys.json" HEARTH_FIREHOLD_TV_SCREENS=Virtual-0,Virtual-1
 key() { for k in "$@"; do hearth-firehold-plasma ask "key:$k"; sleep 1; done; }
 
 # ---- a stand-in game window: "Rise of the Witch-king" (the library matches it by its title).
@@ -126,7 +126,7 @@ python3 "$(dirname "$0")/firehold-plasma-fixtures.py" --low "$FX"; hearth-fireho
 shot fp-02-couch-home-rows
 key b
 hearth-firehold-plasma ask tab:library; sleep 3
-key right x; sleep 2
+key right x down; sleep 2
 shot fp-03-couch-game-options
 key b; hearth-firehold-plasma ask tab:home; sleep 2
 

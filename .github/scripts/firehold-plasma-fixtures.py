@@ -120,7 +120,7 @@ def art(path, c1, c2, motif, seed):
 def library(home, now):
     played = {'beacon:rotwk': now - 41 * M, 'winapp:trainz': now - 1 * H - 2 * M, 'steam:553850': now - 26 * H, 'steam:9420': now - 3 * D - H,
               'manual:quad': now - 4 * D - H, 'gog:witcher3': now - 9 * D, 'steam:1086940': now - 12 * D, 'steam:548430': now - 13 * D,
-              'steam:1145350': now - 14 * D, 'beacon:bfme2': now - 2 * D - H, 'beacon:bfme1': now - 40 * D, 'winapp:office': now - 50 * D}
+              'steam:1145350': now - 14 * D, 'beacon:bfme2': now - 10 * D, 'beacon:bfme1': now - 40 * D, 'winapp:office': now - 50 * D}
     out = []
     adir = os.path.join(home, '.cache', 'hearth', 'art')
     os.makedirs(adir, exist_ok=True)
