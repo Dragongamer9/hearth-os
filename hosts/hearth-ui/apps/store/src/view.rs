@@ -354,7 +354,7 @@ fn sidebar(a: &App) -> E<'_, Msg> {
         nav = nav.push(row![bar, click(item, Some(Msg::Go(pg)))].align_y(iced::Center).spacing(0.0));
     }
     let foot = column![
-        row![tb("This PC: ", f(14.0), Pal::mix(tn.text, tn.muted, 0.2)), t(this_pc(a), f(14.0), tn.muted)].align_y(iced::Center),
+        t(format!("This PC: {}", this_pc(a)), f(14.0), Pal::mix(tn.text, tn.muted, 0.35)),
         t("Apps made for Hearth by Dragongamer9.", f(14.0), tn.muted)
     ]
     .spacing(3.0);
@@ -428,7 +428,7 @@ fn tile<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let c = container(row![app_icon(e, z(56.0)), txt.width(Length::Fill)].spacing(z(16.0)).align_y(iced::Top))
         .padding(look::pad(z(18.0), z(20.0), z(18.0), z(20.0)))
         .width(Length::Fill)
-        .height(Length::Fixed(if a.offline() { z(122.0) } else { z(140.0) }))
+        .height(Length::Fixed(if a.offline() { z(150.0) } else { z(168.0) }))
         .style(look::bx(tn.card, 10.0, None));
     ring(lit(a, &id), 10.0, click(c, Some(Msg::OpenApp(e.id.clone()))))
 }
@@ -623,6 +623,7 @@ fn back_link<'a>(a: &'a App) -> E<'a, Msg> {
     let to = match &a.page {
         Page::Repair(id) => a.entry(id).map(|e| e.name.clone()).unwrap_or_default(),
         Page::Work => "Updates".to_string(),
+        Page::App(id) => a.trail.last().map(|p| page_name(p, a)).unwrap_or_else(|| if a.inst.contains_key(id) { "Your apps".into() } else { "Home".into() }),
         _ => a.trail.last().map(|p| page_name(p, a)).unwrap_or_else(|| "Home".into()),
     };
     container(click(t(format!("‹ {to}"), f(16.0), tn.muted), Some(Msg::Back))).padding(look::pad(0.0, 0.0, z(16.0), 0.0)).into()
@@ -697,7 +698,7 @@ fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     if !shots.is_empty() {
         let mut r = Row::new().spacing(z(16.0));
         for (i, h) in shots.into_iter().enumerate() {
-            let im = image(h.clone()).width(Length::Fill).height(Length::Fill).content_fit(iced::ContentFit::Cover);
+            let im = image(h.clone()).width(Length::Fill).height(Length::Fill).content_fit(iced::ContentFit::Contain);
             let w = if i == 0 { 125 } else { 100 };
             r = r.push(container(im).width(Length::FillPortion(w)).height(Length::Fixed(z(300.0))).clip(true).style(look::bx(Color::from_rgb8(0x0f, 0x11, 0x15), 9.0, Some((tn.line, 1.0)))));
         }
@@ -1246,8 +1247,8 @@ fn pad_home(a: &App) -> E<'_, Msg> {
         };
         let from = look::hex(&e.from, ORANGE);
         let id = format!("top-{}", e.id);
-        let inner = column![app_icon(e, z(96.0)), gap(1.0, z(30.0)), tb(e.short.clone(), f(28.0), tn.text), t(line, f(19.0), tn.muted)].spacing(z(6.0));
-        let tile = container(inner).padding(z(30.0)).width(Length::FillPortion(1)).height(Length::Fixed(z(380.0))).style(look::grad(180.0, Pal::mix(tn.card, from, 0.18), Pal::mix(tn.page, tn.card, 0.5), 12.0, None));
+        let inner = column![app_icon(e, z(96.0)), gap(1.0, z(30.0)), tb(e.short.clone(), f(25.0), tn.text).wrapping(iced::widget::text::Wrapping::None), t(line, f(19.0), tn.muted)].spacing(z(6.0));
+        let tile = container(inner).padding(z(26.0)).width(Length::FillPortion(1)).height(Length::Fixed(z(380.0))).style(look::grad(180.0, Pal::mix(tn.card, from, 0.18), Pal::mix(tn.page, tn.card, 0.5), 12.0, None));
         first = first.push(container(ring(lit(a, &id), 12.0, click(tile, Some(Msg::OpenApp(e.id.clone()))))).width(Length::FillPortion(1)));
     }
     c = c.push(first);

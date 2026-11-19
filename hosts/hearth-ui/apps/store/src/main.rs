@@ -484,6 +484,7 @@ impl App {
         let to = match &self.page {
             Page::Work => self.job.as_ref().map(|j| if j.kind == JobKind::Update { Page::Updates } else { Page::App(j.id.clone()) }).unwrap_or(Page::Home),
             Page::Repair(id) => Page::App(id.clone()),
+            Page::App(id) => self.trail.pop().unwrap_or(if self.inst.contains_key(id) { Page::Yours } else { Page::Home }),
             _ => self.trail.pop().unwrap_or(Page::Home),
         };
         let keep = self.trail.clone();
