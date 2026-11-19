@@ -13,10 +13,39 @@ use crate::proto::{self, State};
 use crate::sys::App;
 
 static SURFACE: OnceLock<String> = OnceLock::new();
+static OUTPUT: OnceLock<String> = OnceLock::new();
 static WRITER: Mutex<Option<UnixStream>> = Mutex::new(None);
 
 pub fn set_surface(name: &str) {
     let _ = SURFACE.set(name.to_string());
+}
+
+/// The screen this surface is on (`firehold-shell couch --output HDMI-A-1`, one surface a screen when there are two
+/// or more): its name is `couch@HDMI-A-1` to the hub. None given: the screen firehold-comp picks.
+pub fn set_output(out: &str) {
+    let _ = OUTPUT.set(out.to_string());
+}
+pub fn output() -> String {
+    OUTPUT.get().cloned().unwrap_or_default()
+}
+/// The surface's name as the hub knows it.
+pub fn surface_name() -> String {
+    let s = SURFACE.get().cloned().unwrap_or_default();
+    let o = output();
+    if o.is_empty() {
+        s
+    } else {
+        format!("{s}@{o}")
+    }
+}
+/// Where a layer surface goes: its own screen, or the one firehold-comp picks.
+pub fn start_mode() -> iced_layershell::settings::StartMode {
+    let o = output();
+    if o.is_empty() {
+        iced_layershell::settings::StartMode::Active
+    } else {
+        iced_layershell::settings::StartMode::TargetScreen(o)
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -60,7 +89,7 @@ pub fn stream() -> futures::channel::mpsc::UnboundedReceiver<HubMsg> {
         }
     });
     std::thread::spawn(move || {
-        let surface = SURFACE.get().cloned().unwrap_or_default();
+        let surface = surface_name();
         let Some(path) = proto::socket_path() else {
             let _ = tx.unbounded_send(HubMsg::Gone);
             return;

@@ -16,11 +16,15 @@
 //!                                      wide; answered with `{"t": "shot", "id", "ok", "path", "w", "h"}` after the
 //!                                      next frame
 //!   frames {style, colours, names}     Firehold's own title bars (frames.rs) while this connection lasts
+//!   key {keys: ["ctrl", "c"]} | {text} keys pressed (in order, let go in reverse) or text typed into the window that
+//!                                      has the keyboard, as if typed on it (US layout; Firehold's on-screen keyboard
+//!                                      and the Desk bar's File / Edit / View menus, firehold-shell)
 //! Out: `{"t": "reply", "op", "ok", "error"?}` for each command, the list, and the pictures.
 //!
 //! The list: `{"t": "windows", "windows": [{id, appId, title, activated, minimized, maximized, fullscreen, keepAbove,
 //! desktops, allDesktops, output, pid, frame: {x, y, w, h}, ssd, stack}], "active": id, "desktops": [{name, active}],
-//! "stack": [ids, top first], "frames": "firehold"|"hearth"}` (ids are strings, as KWin's are).
+//! "stack": [ids, top first], "frames": "firehold"|"hearth", "outputs": [{name, model, x, y, w, h, mm: [w, h]}]}`
+//! (ids are strings, as KWin's are).
 //!
 //! Nothing here can stop Firehold from starting: a socket that can't be made is logged and skipped, and nothing is
 //! done while the screen is locked (but reading the list).
@@ -137,6 +141,102 @@ pub fn shot_path_ok(path: &str, runtime: &Path) -> Option<PathBuf> {
         return None;
     }
     p.starts_with(runtime).then(|| p.to_path_buf())
+}
+
+/// A key's Linux code (evdev) by its name: letters, digits, the named keys and the modifiers.
+pub fn key_code(name: &str) -> Option<u32> {
+    let n = name.to_ascii_lowercase();
+    if n.chars().count() == 1 {
+        return char_key(n.chars().next()?).map(|(c, _)| c);
+    }
+    Some(match n.as_str() {
+        "ctrl" | "control" => 29,
+        "shift" => 42,
+        "alt" => 56,
+        "super" | "meta" => 125,
+        "enter" | "return" => 28,
+        "backspace" | "bksp" => 14,
+        "tab" => 15,
+        "esc" | "escape" => 1,
+        "space" => 57,
+        "left" => 105,
+        "right" => 106,
+        "up" => 103,
+        "down" => 108,
+        "home" => 102,
+        "end" => 107,
+        "delete" | "del" => 111,
+        "pageup" => 104,
+        "pagedown" => 109,
+        "f11" => 87,
+        "f5" => 63,
+        "plus" | "equal" => 13,
+        "minus" => 12,
+        _ => return None,
+    })
+}
+
+/// A character on a US keyboard: its key and whether Shift is held for it. Anything else isn't typed.
+pub fn char_key(ch: char) -> Option<(u32, bool)> {
+    const ROW1: &str = "qwertyuiop";
+    const ROW2: &str = "asdfghjkl";
+    const ROW3: &str = "zxcvbnm";
+    let lower = ch.to_ascii_lowercase();
+    let shift = ch.is_ascii_uppercase();
+    if let Some(i) = ROW1.find(lower) {
+        return Some((16 + i as u32, shift));
+    }
+    if let Some(i) = ROW2.find(lower) {
+        return Some((30 + i as u32, shift));
+    }
+    if let Some(i) = ROW3.find(lower) {
+        return Some((44 + i as u32, shift));
+    }
+    let plain = "1234567890-=[];'`\\,./";
+    let shifted = "!@#$%^&*()_+{}:\"~|<>?";
+    let codes = [2u32, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 26, 27, 39, 40, 41, 43, 51, 52, 53];
+    if let Some(i) = plain.chars().position(|c| c == ch) {
+        return Some((codes[i], false));
+    }
+    if let Some(i) = shifted.chars().position(|c| c == ch) {
+        return Some((codes[i], true));
+    }
+    match ch {
+        ' ' => Some((57, false)),
+        '\n' => Some((28, false)),
+        '\t' => Some((15, false)),
+        _ => None,
+    }
+}
+
+/// What `key` presses and lets go, in order: (code, pressed). Keys: each pressed in turn, let go in reverse (a
+/// shortcut); text: each character pressed and let go (with Shift around it where it needs one). At most 400 steps.
+pub fn key_steps(keys: &[String], text: &str) -> Result<Vec<(u32, bool)>, String> {
+    let mut v = Vec::new();
+    if !keys.is_empty() {
+        let mut codes = Vec::new();
+        for k in keys.iter().take(6) {
+            codes.push(key_code(k).ok_or_else(|| format!("no key called {k}"))?);
+        }
+        v.extend(codes.iter().map(|c| (*c, true)));
+        v.extend(codes.iter().rev().map(|c| (*c, false)));
+    }
+    for ch in text.chars().take(200) {
+        let Some((code, shift)) = char_key(ch) else { continue };
+        if shift {
+            v.push((42, true));
+        }
+        v.push((code, true));
+        v.push((code, false));
+        if shift {
+            v.push((42, false));
+        }
+    }
+    if v.is_empty() {
+        return Err("nothing to type".into());
+    }
+    v.truncate(400);
+    Ok(v)
 }
 
 fn on(v: &Value) -> bool {
@@ -391,6 +491,13 @@ impl<B: Backend + 'static> HearthState<B> {
                     Err("no such desktop, or no name")
                 }
             }
+            "key" => {
+                let keys: Vec<String> = v.get("keys").and_then(|k| k.as_array()).map(|a| a.iter().filter_map(|k| k.as_str().map(String::from)).collect()).unwrap_or_default();
+                let text = v.get("text").and_then(|t| t.as_str()).unwrap_or("");
+                let steps = key_steps(&keys, text).map_err(|_| "no keys or text to type")?;
+                self.ipc_type(&steps);
+                Ok(json!({ "steps": steps.len() }))
+            }
             "shot" => {
                 let w = need(&window)?;
                 let runtime = std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).ok_or("no runtime folder")?;
@@ -461,7 +568,24 @@ impl<B: Backend + 'static> HearthState<B> {
             "desktops": self.desktops_json(),
             "stack": stack.into_iter().filter(|(_, id)| infos.iter().any(|i| i.id == *id)).map(|(_, id)| id.to_string()).collect::<Vec<_>>(),
             "frames": crate::frames::with(|l| if l.firehold { "firehold" } else { "hearth" }),
+            "outputs": self.space.outputs().map(|o| {
+                let g = self.space.output_geometry(o).unwrap_or_default();
+                let p = o.physical_properties();
+                json!({ "name": o.name(), "model": p.model, "x": g.loc.x, "y": g.loc.y, "w": g.size.w, "h": g.size.h, "mm": [p.size.w, p.size.h] })
+            }).collect::<Vec<_>>(),
         })
+    }
+
+    /// Typed into whatever has the keyboard, as a real keyboard would (`key`): the compositor's own shortcuts are
+    /// skipped (it's typing, not a command to Firehold).
+    fn ipc_type(&mut self, steps: &[(u32, bool)]) {
+        use smithay::{backend::input::KeyState, input::keyboard::{FilterResult, Keycode}, utils::SERIAL_COUNTER};
+        let Some(keyboard) = self.seat.get_keyboard() else { return };
+        for (code, down) in steps {
+            let time = Duration::from(self.clock.now()).as_millis() as u32;
+            let state = if *down { KeyState::Pressed } else { KeyState::Released };
+            keyboard.input::<(), _>(self, Keycode::new(code + 8), state, SERIAL_COUNTER.next_serial(), time, |_, _, _| FilterResult::Forward);
+        }
     }
 
     /// After every round (wm.rs's hearth_tick): starts the socket once, sends the list where it changed, and the
@@ -554,6 +678,20 @@ pub fn ctl(args: &[String]) -> i32 {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn keys_and_text_to_type() {
+        assert_eq!(key_steps(&["ctrl".into(), "c".into()], "").unwrap(), vec![(29, true), (46, true), (46, false), (29, false)]);
+        assert_eq!(key_steps(&[], "Hi!").unwrap(), vec![(42, true), (35, true), (35, false), (42, false), (23, true), (23, false), (42, true), (2, true), (2, false), (42, false)]);
+        assert_eq!(char_key('/'), Some((53, false)));
+        assert_eq!(char_key('?'), Some((53, true)));
+        assert_eq!(char_key('"'), Some((40, true)));
+        assert_eq!(char_key('\\'), Some((43, false)));
+        assert_eq!(char_key('é'), None);
+        assert!(key_steps(&["nope".into()], "").is_err());
+        assert!(key_steps(&[], "é").is_err());
+        assert_eq!(key_code("f11"), Some(87));
+    }
+
     use super::*;
 
     #[test]

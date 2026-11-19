@@ -121,7 +121,9 @@ jobs:
       matrix:
         shot: ['firehold-r1-couch-home', 'firehold-r1b-couch-apps', 'firehold-r1c-couch-store', 'firehold-r2-desk', 'firehold-r3-guide',
                'firehold-r3b-overlay', 'firehold-r4-everything-open', 'firehold-r5-library', 'firehold-r6-settings', 'firehold-r6b-settings-system',
-               'firehold-r7-look-steam', 'firehold-r7b-look-steam-couch']
+               'firehold-r7-look-steam', 'firehold-r7b-look-steam-couch', 'firehold-r2b-desk-menu', 'firehold-r2c-notification',
+               'firehold-r2d-quick-settings', 'firehold-r2e-keyboard', 'firehold-r9-away', 'firehold-r8a-monitor-desk', 'firehold-r8b-tv-couch',
+               'firehold-r6c-settings-per-screen']
     steps:
       - uses: actions/checkout@v4
         with:

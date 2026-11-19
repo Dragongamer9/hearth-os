@@ -245,6 +245,8 @@ pub struct Win {
     /// The latest picture of it (a PNG in the runtime folder), when Everything open asked for one.
     pub pic: String,
     pub pid: i64,
+    /// The screen it's on (firehold-comp's output name).
+    pub output: String,
 }
 
 /// Friendly names for app ids Firehold knows (and the dock's letter: Firefox is W, for the web).
@@ -320,6 +322,7 @@ pub fn name_window(w: &Value, library: &[Game]) -> Win {
         fullscreen: b("fullscreen"),
         activated: b("activated"),
         pid: w.get("pid").and_then(|p| p.as_i64()).unwrap_or(0),
+        output: s("output"),
         ..Win::default()
     };
     if let Some(g) = game_for(&app_id, &title, library) {
@@ -370,6 +373,165 @@ pub fn hero_line(g: &Game) -> String {
     parts.push(if g.cloud_saves { "Saved on this PC and in the cloud".to_string() } else { "Saved on this PC".to_string() });
     parts.push("runs natively, no Game Mode".to_string());
     parts.join(" · ")
+}
+
+/// A name as a file name: lower case letters and digits, dashes between ("Ember Trails" → ember-trails).
+pub fn slug(s: &str) -> String {
+    let mut out = String::new();
+    for ch in s.chars() {
+        if ch.is_alphanumeric() {
+            out.extend(ch.to_lowercase());
+        } else if !out.ends_with('-') && !out.is_empty() {
+            out.push('-');
+        }
+    }
+    out.trim_end_matches('-').chars().take(80).collect()
+}
+
+/// The chapter you're on, for the hero (mockup 1: "Chapter 4"): no store says it, so a game says it itself, in
+/// Hearth's progress file `<data>/hearth/progress/<game>.json` ({"chapter": "Chapter 4"}), named by Hearth's id or the
+/// game's title as a file name (steam-1000.json, ember-trails.json). Hearth's own games (Godot) write it; read only.
+pub fn progress_chapter(dir: &std::path::Path, id: &str, title: &str) -> String {
+    for name in [slug(id), slug(title)] {
+        if name.is_empty() {
+            continue;
+        }
+        let Ok(b) = std::fs::read(dir.join(format!("{name}.json"))) else { continue };
+        if b.len() > 65536 {
+            continue;
+        }
+        if let Some(c) = serde_json::from_slice::<Value>(&b).ok().and_then(|v| v.get("chapter").and_then(|c| c.as_str()).map(String::from)) {
+            let c: String = c.chars().filter(|c| !c.is_control()).take(60).collect();
+            if !c.trim().is_empty() {
+                return c.trim().to_string();
+            }
+        }
+    }
+    String::new()
+}
+
+/// Bytes as people say them: "1.2 TB", "640 GB".
+pub fn size_text(b: f64) -> String {
+    let gb = b / 1e9;
+    if gb >= 1000.0 {
+        format!("{:.1} TB", gb / 1000.0)
+    } else if gb >= 10.0 {
+        format!("{} GB", gb.round() as i64)
+    } else {
+        format!("{gb:.1} GB")
+    }
+}
+
+/// What the Away screen says about the home server (`hearth-home-server quick`, the same summary Game Mode's Quick
+/// Access shows): (host, [(what, how it's doing, lit)], what's paused for a game, whether it's let run, a note).
+pub fn away_lines(q: &Value, now_ms: i64) -> (String, Vec<(String, String, bool)>, Vec<String>, bool, String) {
+    if q.get("available").and_then(|a| a.as_bool()) != Some(true) {
+        return (String::new(), Vec::new(), Vec::new(), false, "Hearth's home server isn't on this PC, so there's nothing running for your other devices.".into());
+    }
+    let host = q.get("host").and_then(|h| h.as_str()).unwrap_or("").to_string();
+    let n = |v: Option<&Value>| v.and_then(|x| x.as_i64()).unwrap_or(0);
+    let mut lines = Vec::new();
+    let shares = n(q.get("shares"));
+    let used = q.get("usage").and_then(|u| u.get("used")).and_then(|x| x.as_f64()).unwrap_or(0.0);
+    let total = q.get("usage").and_then(|u| u.get("total")).and_then(|x| x.as_f64()).unwrap_or(0.0);
+    lines.push((
+        "Shared folders".to_string(),
+        if shares == 0 {
+            "Nothing shared yet".to_string()
+        } else {
+            let mut t = format!("{shares} shared with your home");
+            if total > 0.0 {
+                t.push_str(&format!(" · {} of {} used", size_text(used), size_text(total)));
+            }
+            t
+        },
+        shares > 0,
+    ));
+    let b = q.get("backups");
+    let count = n(b.and_then(|b| b.get("count")));
+    let names = |k: &str| -> Vec<String> { b.and_then(|b| b.get(k)).and_then(|x| x.as_array()).map(|a| a.iter().filter_map(|s| s.as_str().map(String::from)).collect()).unwrap_or_default() };
+    let backups = if count == 0 {
+        ("None set up".to_string(), false)
+    } else if b.and_then(|b| b.get("running")).and_then(|r| r.as_bool()) == Some(true) {
+        ("Backing up now".to_string(), true)
+    } else if let Some(f) = names("failed").first() {
+        (format!("{f} didn't finish last time"), false)
+    } else if let Some(w) = names("waiting").first() {
+        (format!("{w} is waiting for its drive"), true)
+    } else {
+        let last = n(b.and_then(|b| b.get("lastOk")));
+        (if last > 0 { format!("Last one {}", ago(last, now_ms)) } else { "Not run yet".to_string() }, true)
+    };
+    lines.push(("Backups".to_string(), backups.0, backups.1));
+    for (key, label) in [("ai", "AI chat"), ("pictures", "AI pictures"), ("voices", "AI voices"), ("studio", "Voice Studio")] {
+        let a = q.get(key);
+        if a.and_then(|a| a.get("on")).and_then(|o| o.as_bool()) != Some(true) {
+            continue;
+        }
+        let state = a.and_then(|a| a.get("state")).and_then(|s| s.as_str()).unwrap_or("ready");
+        let how = match state {
+            "ready" | "running" => "Ready for your other devices",
+            "paused" => "Paused while you play",
+            "unloaded" => "Unloaded while you play",
+            "off" | "stopped" => "Off",
+            _ => "On",
+        };
+        lines.push((label.to_string(), how.to_string(), matches!(state, "ready" | "running")));
+    }
+    let r = q.get("remote");
+    if r.and_then(|r| r.get("on")).and_then(|o| o.as_bool()) == Some(true) {
+        let who = r.and_then(|r| r.get("who")).and_then(|w| w.as_str()).unwrap_or("");
+        let streaming = r.and_then(|r| r.get("streaming")).and_then(|s| s.as_bool()) == Some(true);
+        let how = if streaming { if who.is_empty() { "Someone is connected now".to_string() } else { format!("{who} is connected now") } } else { "Ready when you connect from away".to_string() };
+        lines.push(("Use this PC from anywhere".to_string(), how, true));
+    }
+    if let Some(alerts) = q.get("alerts").and_then(|a| a.as_array()) {
+        for a in alerts.iter().filter_map(|a| a.as_str()).take(2) {
+            lines.push(("Needs a look".to_string(), a.chars().take(90).collect(), false));
+        }
+    }
+    let paused: Vec<String> = q.get("paused").and_then(|p| p.as_array()).map(|a| a.iter().filter_map(|s| s.as_str().map(String::from)).collect()).unwrap_or_default();
+    let resumed = q.get("resumed").and_then(|r| r.as_bool()) == Some(true);
+    (host, lines, paused, resumed, String::new())
+}
+
+/// The Desk bar's menus (mockup 2: File, Edit, View) for the app in front: the standard commands every app has, each
+/// sent to it as its own shortcut (Ctrl+C...) or done to its window by firehold-comp. (id, label, shortcut, line above).
+/// An id is `k:` and the keys, or `w:` and what's done to the window.
+pub fn app_menu(name: &str) -> Vec<(&'static str, &'static str, &'static str, bool)> {
+    match name {
+        "File" => vec![
+            ("k:ctrl,n", "New window", "Ctrl+N", false),
+            ("k:ctrl,t", "New tab", "Ctrl+T", false),
+            ("k:ctrl,o", "Open…", "Ctrl+O", false),
+            ("k:ctrl,s", "Save", "Ctrl+S", true),
+            ("k:ctrl,shift,s", "Save as…", "Ctrl+Shift+S", false),
+            ("k:ctrl,p", "Print…", "Ctrl+P", false),
+            ("w:close", "Close window", "Alt+F4", true),
+        ],
+        "Edit" => vec![
+            ("k:ctrl,z", "Undo", "Ctrl+Z", false),
+            ("k:ctrl,shift,z", "Redo", "Ctrl+Shift+Z", false),
+            ("k:ctrl,x", "Cut", "Ctrl+X", true),
+            ("k:ctrl,c", "Copy", "Ctrl+C", false),
+            ("k:ctrl,v", "Paste", "Ctrl+V", false),
+            ("k:ctrl,a", "Select all", "Ctrl+A", false),
+            ("k:ctrl,f", "Find…", "Ctrl+F", true),
+        ],
+        "View" => vec![
+            ("w:fullscreen", "Full screen", "F11", false),
+            ("w:maximize", "Maximize", "Super+↑", false),
+            ("w:minimize", "Minimize", "Super+↓", false),
+            ("w:snap-left", "Left half", "Super+←", true),
+            ("w:snap-right", "Right half", "Super+→", false),
+            ("k:ctrl,plus", "Zoom in", "Ctrl+=", true),
+            ("k:ctrl,minus", "Zoom out", "Ctrl+-", false),
+            ("k:ctrl,0", "Actual size", "Ctrl+0", false),
+            ("k:f5", "Reload", "F5", true),
+        ],
+        "posture" => vec![("p:couch", "Couch", "Guide button", false), ("p:desk", "Desk", "Super+D", false), ("p:away", "Away · the home server keeps running", "", true)],
+        _ => Vec::new(),
+    }
 }
 
 /// A tile's colour (the stand-in for art Hearth doesn't have): the mockups' eight, picked by the id.
@@ -448,6 +610,33 @@ mod tests {
         assert_eq!(ago(1_000_000_000_000 - 41 * 60000, 1_000_000_000_000), "41 min ago");
         assert_eq!(playing_for(72 * 60), "Playing 1 h 12 min");
         assert!(filter_ok(&l[3], "yours") && !filter_ok(&l[3], "steam"));
+    }
+
+    #[test]
+    fn chapter_away_and_menus() {
+        let d = tempfile::tempdir().unwrap();
+        assert_eq!(slug("Ember Trails"), "ember-trails");
+        assert_eq!(slug("steam:1000"), "steam-1000");
+        assert_eq!(progress_chapter(d.path(), "steam:1000", "Ember Trails"), "");
+        std::fs::write(d.path().join("ember-trails.json"), r#"{"chapter": "Chapter 4"}"#).unwrap();
+        assert_eq!(progress_chapter(d.path(), "steam:1000", "Ember Trails"), "Chapter 4");
+        std::fs::write(d.path().join("steam-1000.json"), "{bad").unwrap();
+        assert_eq!(progress_chapter(d.path(), "steam:1000", "Ember Trails"), "Chapter 4", "a damaged file is skipped");
+        let g = Game { chapter: "Chapter 4".into(), cloud_saves: true, ..Game::default() };
+        assert_eq!(hero_line(&g), "Chapter 4 · Saved on this PC and in the cloud · runs natively, no Game Mode");
+        let (_, lines, _, _, note) = away_lines(&serde_json::json!({}), 0);
+        assert!(lines.is_empty() && !note.is_empty());
+        let q = serde_json::json!({"available": true, "host": "den", "shares": 2, "usage": {"used": 640e9, "total": 2e12},
+            "backups": {"count": 1, "lastOk": 1_000_000_000_000i64 - 3 * 3600_000, "waiting": [], "failed": [], "running": false},
+            "ai": {"on": true, "state": "ready"}, "pictures": {"on": false}, "remote": {"on": true, "streaming": false}, "paused": [], "resumed": false});
+        let (host, lines, _, _, _) = away_lines(&q, 1_000_000_000_000);
+        assert_eq!(host, "den");
+        assert_eq!(lines[0].1, "2 shared with your home · 640 GB of 2.0 TB used");
+        assert_eq!(lines[1].1, "Last one 3 h ago");
+        assert_eq!(lines[2].0, "AI chat");
+        assert_eq!(lines.len(), 4);
+        assert_eq!(app_menu("Edit")[3].0, "k:ctrl,c");
+        assert!(app_menu("nope").is_empty());
     }
 
     #[test]

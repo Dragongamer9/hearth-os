@@ -134,9 +134,48 @@ Pictures/Screenshots · the volume and brightness keys. The keyboard's arrows, E
 - **Friends** opens Steam's own friends list (`steam://open/friends`). How many are online is Steam's account data,
   which Hearth never reads, so the tile says "In Steam" rather than a count.
 
+## Firehold's own parts (it's its own desktop)
+
+Plasma's and Mantel's panels aren't there inside Firehold, so it has its own (no mockups of their own: ported from
+Mantel, drawn in Firehold's look):
+
+- **Quick Settings** (`firehold-shell quick`, Mantel's QuickAccess.qml): the Desk bar's Wi-Fi and battery open it. You
+  and the battery, Settings / Lock (when swaylock is there) / Power (Sleep, Restart, Shut down); Return to Game Mode;
+  Wi-Fi, Bluetooth, Do not disturb (Mantel's own switch, `hearth-desk set dnd`, so it's the same in every desktop), the
+  on-screen keyboard, Away and the Couch; volume and brightness; the power profile; the notifications that came, with
+  Clear all. It reads what it shows when it opens (nmcli, bluetoothctl, wpctl, powerprofilesctl, each with a time
+  limit), never on a timer. Night light isn't there yet (Mantel's is wlsunset on labwc; firehold-comp's colour ramp
+  works only on real screens).
+- **Notifications** (`notify.rs`): Firehold is `org.freedesktop.Notifications` while it's open (only when no other
+  program has the name). Cards at the top right for 6 seconds (or as long as the app asks; urgent ones stay), with the
+  app's buttons and ×; the last 30 in Quick Settings. Do not disturb keeps them off the screen (urgent ones still show).
+- **The on-screen keyboard** (`firehold-shell osk`, Hearth's keyboard from docs/OSK.md: the number row, QWERTY, ⇧,
+  &123, space, the caret keys, ⌨ to hide): docked at the bottom, windows make room. It never takes the keyboard; what
+  it types goes to the window that has it through firehold-comp's new `key` command (as if typed on a US keyboard; a
+  letter with an accent isn't typed yet). The Guide's Keyboard tile and Quick Settings open it. Controller: D-pad, A
+  types, X ⌫, Y space, LB / RB the caret, LT shift, RT symbols, ☰ Enter, B hides it.
+- **The Desk bar's menus** (`firehold-shell menu`): File, Edit and View open under their titles with the commands every
+  app has (New window, Open, Save, Print, Close; Undo, Redo, Cut, Copy, Paste, Select all, Find; Full screen, Maximize,
+  Minimize, the halves, Zoom, Reload), each sent to the app in front as its own shortcut or done to its window by
+  firehold-comp. The posture pill opens Couch / Desk / Away. An app's *own* menu (KDE's global menu over D-Bus) isn't
+  read: firehold-comp doesn't speak KDE's appmenu protocol yet.
+- **Away** (`firehold-shell away`, the third posture): from the pill's menu or Quick Settings. Every screen shows the
+  time and what this PC does for your other devices (`hearth-home-server quick`, once a minute while it's up: shared
+  folders, backups, the AI services, Use this PC from anywhere, anything that needs a look), with "Let them run now"
+  for jobs paused for a game (the home server's own `resume on`, only when you press it). Nothing is closed; any
+  button, the mouse or a key brings back what you were in (the first 3 seconds' mouse and keys don't count).
+- **Per screen** (mockup 6's row): with two screens or more, the Couch, the bar and the dock are one a screen
+  (`couch@HDMI-A-1`), each in its screen's posture from `perScreen` in firehold.json. Settings › Couch and Desk › Per
+  screen opens a row a screen (Same as the others → Couch → Desk). A screen with its own posture keeps it when the
+  mouse or the controller switches the others; games and windows go full screen or back by the posture of the screen
+  they're on. CI runs it on two made-up screens (firehold-comp's new `--outputs HEADLESS-1,HDMI-A-1`).
+- **The hero's chapter** (mockup 1's "Chapter 4"): no store says which chapter you're on, so the game says it itself in
+  Hearth's progress file, `~/.local/share/hearth/progress/<game>.json` = `{"chapter": "Chapter 4"}`, named by Hearth's
+  id or the game's title as a file name (`steam-1000.json`, `ember-trails.json`). Hearth's own games (Godot: Quad Mech,
+  Gravesleep) can write it; read only, shown when it's there.
+
 ## Not done yet
 
-See the checklist's "Still open" list: the per-screen posture isn't applied (one posture for all screens), Friends'
-online count is Steam's account data, the chapter line needs game data Hearth doesn't have, the desk bar's menus need
-a global-menu protocol firehold-comp doesn't speak yet, the game drawn straight to the display needs a real screen to
-prove (firehold-comp does it on udev), and Away is the home server's own (the shell doesn't show anything for it yet).
+See the checklist's "Still open" list: Friends' online count is Steam's account data (Hearth never reads Steam
+accounts), the game drawn straight to the display needs a real screen to prove (firehold-comp does it on udev), and
+an app's own global menu (KDE's appmenu protocol) isn't read; the bar's menus have the standard commands instead.

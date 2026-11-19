@@ -20,11 +20,15 @@ pub enum Message {
     Choose(&'static str),
     Leave(&'static str),
     Key(iced::keyboard::Event),
+    /// Per screen: open or close its screens' rows, and one screen's posture (its own, or the same as the others).
+    PerOpen,
+    Screen(String),
 }
 
 struct Win {
     st: State,
     page: usize,
+    per_open: bool,
 }
 
 const PAGES: [&str; 9] = ["System", "Couch and Desk", "Display", "Gaming", "Controllers", "Network", "Sound", "Accounts", "Updates"];
@@ -57,7 +61,9 @@ fn update(s: &mut Win, m: Message) -> Task<Message> {
         Message::Hub(HubMsg::State(st)) => s.st = *st,
         // The hub (Super+I, tests): open a page by name.
         Message::Hub(HubMsg::Cmd(cmd, arg)) if cmd == "settingsPage" => {
-            if let Some(i) = PAGES.iter().position(|p| p.eq_ignore_ascii_case(&arg) || (arg == "couch" && *p == "Couch and Desk")) {
+            // "couch-screens": Couch and Desk with Per screen's rows open.
+            s.per_open = arg == "couch-screens";
+            if let Some(i) = PAGES.iter().position(|p| p.eq_ignore_ascii_case(&arg) || ((arg == "couch" || arg == "couch-screens") && *p == "Couch and Desk")) {
                 s.page = i;
             }
         }
@@ -76,6 +82,23 @@ fn update(s: &mut Win, m: Message) -> Task<Message> {
             link::send(json!({"op": "set", "key": k, "value": v}));
         }
         Message::Choose(w) => link::send(json!({"op": "choose", "what": w})),
+        Message::PerOpen => s.per_open = !s.per_open,
+        Message::Screen(name) => {
+            // Same as the others → Couch → Desk → same again (Mantel's FireholdSettings.qml).
+            let mut per = cfg.per_screen.clone();
+            match per.get(&name).and_then(|v| v.as_str()) {
+                Some("couch") => {
+                    per.insert(name, json!("desk"));
+                }
+                Some("desk") => {
+                    per.remove(&name);
+                }
+                _ => {
+                    per.insert(name, json!("couch"));
+                }
+            }
+            link::send(json!({"op": "set", "key": "perScreen", "value": per}));
+        }
         Message::Leave(to) => link::send(json!({"op": "leave", "to": to})),
         Message::Key(ev) => {
             use iced::keyboard::{key::Named, Event, Key};
@@ -113,6 +136,15 @@ fn setting_row<'a>(title: &'a str, sub: &'a str, value: Element<'a, Message>, la
     }
 }
 
+/// A row whose title is made here (a screen's name).
+fn setting_row_owned<'a>(title: String, sub: &'a str, value: Element<'a, Message>) -> Element<'a, Message> {
+    let line = container(row![column![ts(title, 17.0, c_text()), t(sub, 14.0, c_muted())].spacing(4.0), Space::new().width(Length::Fill), value].align_y(iced::Center))
+        .padding(Padding { top: 0.0, right: 22.0, bottom: 0.0, left: 22.0 })
+        .center_y(Length::Fixed(64.0))
+        .width(Length::Fill);
+    column![line, container(Space::new()).width(Length::Fill).height(Length::Fixed(1.0)).style(boxed(c_line(), 0.0, None))].into()
+}
+
 fn posture_card<'a>(key: &'static str, title: &'a str, sub: &'a str, on: bool) -> Element<'a, Message> {
     let picture: Element<Message> = match key {
         "auto" => row![
@@ -140,22 +172,28 @@ fn couch_desk(s: &Win) -> Element<'_, Message> {
         posture_card("desk", "Always Desk", "A PC: windows, bar and dock", cfg.posture == "desk"),
     ]
     .spacing(20.0);
-    let per = if cfg.per_screen.is_empty() {
-        "Every screen the same".to_string()
-    } else {
-        cfg.per_screen
-            .iter()
-            .map(|(k, v)| format!("{k}: {}", if v.as_str() == Some("couch") { "Couch" } else { "Desk" }))
-            .collect::<Vec<_>>()
-            .join(" · ")
-    };
-    let rows = column![
-        setting_row("Per screen", "The TV stays Couch while the monitor is Desk", value_chip(per, Message::Page(1)), false),
+    let per = crate::proto::per_screen_text(&cfg.per_screen, &s.st.screens);
+    let mut rows = column![setting_row("Per screen", "The TV stays Couch while the monitor is Desk", value_chip(per, Message::PerOpen), false)];
+    if s.per_open {
+        if s.st.screens.len() < 2 {
+            rows = rows.push(setting_row("    One screen", "With a second screen plugged in, each can have its own posture", Space::new().into(), false));
+        }
+        for sc in &s.st.screens {
+            let v = match cfg.per_screen.get(&sc.name).and_then(|v| v.as_str()) {
+                Some("couch") => "Couch",
+                Some("desk") => "Desk",
+                _ => "Same as the others",
+            };
+            let title = format!("    {} ({})", sc.label, sc.name);
+            rows = rows.push(setting_row_owned(title, "Its own posture, or the same as the others", value_chip(v.to_string(), Message::Screen(sc.name.clone()))));
+        }
+    }
+    let rows = rows.extend([
         setting_row("Start in", "What you see when the PC turns on", value_chip(start_label(&cfg.start_in).into(), Message::Cycle("startIn")), false),
         setting_row("Guide button", "Press once: Quick Access. Twice: everything open", value_chip(guide_label(&cfg.guide).into(), Message::Cycle("guide")), false),
         setting_row("Games", "Open full screen on the Couch, in a window on the Desk", value_chip(games_label(&cfg.games).into(), Message::Cycle("games")), false),
         setting_row("Big Picture", "Steam's own TV mode isn't needed; Steam is an app like the others", value_chip(if cfg.big_picture { "On".into() } else { "Off".into() }, Message::Cycle("bigPicture")), true),
-    ];
+    ]);
     column![
         tb("Couch and Desk", 36.0, c_text()),
         Space::new().height(Length::Fixed(24.0)),
@@ -254,7 +292,7 @@ pub fn run() -> i32 {
         transparent: true,
         ..Default::default()
     };
-    let r = iced::application(|| Win { st: State::default(), page: 1 }, update, view)
+    let r = iced::application(|| Win { st: State::default(), page: 1, per_open: false }, update, view)
         .title("Settings")
         .window(window)
         .default_font(INTER)

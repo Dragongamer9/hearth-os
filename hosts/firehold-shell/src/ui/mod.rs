@@ -3,9 +3,13 @@
 //! until the hub sends something or the person touches it: no timers of their own, no animation.
 
 pub mod art;
+pub mod away;
 pub mod couch;
 pub mod desk;
 pub mod guide;
+pub mod menu;
+pub mod osk;
+pub mod quick;
 pub mod settings;
 pub mod style;
 

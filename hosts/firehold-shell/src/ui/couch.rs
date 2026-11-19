@@ -6,7 +6,7 @@
 use iced::widget::{canvas, column, container, image, mouse_area, responsive, row, stack, text, text_input, Space};
 use iced::{Background, Border, Color, Element, Length, Padding, Size, Subscription, Task};
 use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
-use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
+use iced_layershell::settings::{LayerShellSettings, Settings};
 use iced_layershell::to_layer_message;
 use serde_json::json;
 
@@ -273,9 +273,13 @@ impl Couch {
         }
     }
 
+    /// This Couch is up: its screen is on the Couch (its own posture with Per screen) and nothing's over it.
+    fn up(&self) -> bool {
+        self.st.couch_up && self.st.posture_of(&link::output()) == "couch"
+    }
     /// The layer and keyboard the hub's state asks for, as layer-shell changes (only when they change).
     fn place(&mut self) -> Task<Message> {
-        let up = self.st.couch_up && self.st.posture == "couch";
+        let up = self.up();
         if self.layer == Some(up) {
             return Task::none();
         }
@@ -284,7 +288,7 @@ impl Couch {
         Task::batch([Task::done(Message::LayerChange(layer)), Task::done(Message::KeyboardInteractivityChange(kb))])
     }
     fn tell_page(&mut self) {
-        let p = if self.st.couch_up && self.st.posture == "couch" { self.page_name() } else { "hidden".into() };
+        let p = if self.up() { self.page_name() } else { "hidden".into() };
         if p != self.told_page {
             self.told_page = p.clone();
             link::send(json!({"op": "couchPage", "page": p}));
@@ -306,7 +310,9 @@ fn update(s: &mut Couch, m: Message) -> Task<Message> {
                 s.fix();
             }
             HubMsg::Apps(a) => s.apps = a,
-            HubMsg::Nav(k) => s.nav(&k),
+            // Only the Couch that's up moves (with two screens, the Desk's one is only the wallpaper).
+            HubMsg::Nav(k) if s.up() => s.nav(&k),
+            HubMsg::Nav(_) => {}
             HubMsg::Cmd(cmd, arg) => match (cmd.as_str(), arg.as_str()) {
                 ("page", "switcher") => {
                     s.switcher = true;
@@ -333,7 +339,7 @@ fn update(s: &mut Couch, m: Message) -> Task<Message> {
             HubMsg::Quit | HubMsg::Gone => return iced::exit(),
         },
         Message::Key(ev) => {
-            if s.st.couch_up {
+            if s.up() {
                 if let Some(k) = key_nav(&ev) {
                     s.nav(k);
                 }
@@ -679,7 +685,7 @@ fn hints<'a>(s: &'a Couch, k: f32) -> Element<'a, Message> {
 }
 
 fn view(s: &Couch) -> Element<'_, Message> {
-    let up = s.st.couch_up && s.st.posture == "couch";
+    let up = s.up();
     let top_glow = if s.switcher { glow(0.08) } else if s.tab == "home" { glow(0.09) } else { glow(0.05) };
     if !up {
         // The Desk's wallpaper: the same warm background, nothing else drawn.
@@ -741,7 +747,7 @@ pub fn run() -> i32 {
             exclusive_zone: -1,
             size: Some((0, 0)),
             keyboard_interactivity: KeyboardInteractivity::None,
-            start_mode: StartMode::Active,
+            start_mode: link::start_mode(),
             ..Default::default()
         },
         default_font: INTER,

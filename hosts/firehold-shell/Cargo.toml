@@ -32,6 +32,8 @@ sha1_smol = "1"
 # The controller (Couch's "Controller → Couch" and the Guide button): read only, nothing is grabbed.
 # (Its default feature only matters on Windows; gilrs-core refuses to build without one.)
 gilrs = "0.11"
+# Firehold's notifications (org.freedesktop.Notifications, notify.rs), the same zbus as Hearth's other Rust programs.
+zbus = "4"
 # iced_layershell's devtools were written for winit-core 0.31.0-beta.2; beta.4 broke them (a new key code): held there.
 winit-core = "=0.31.0-beta.2"
 

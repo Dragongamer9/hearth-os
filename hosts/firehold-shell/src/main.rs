@@ -1,8 +1,8 @@
 //! firehold-shell: Firehold's shell, all in Rust (docs/FIREHOLD-RUST.md; a prototype for the Anatase test).
 //!
 //!   firehold-shell hub                 the session's shell: starts the surfaces, talks to firehold-comp (hub.rs)
-//!   firehold-shell couch|bar|dock|guide|notice|perf|settings
-//!                                      one surface each (the hub starts them)
+//!   firehold-shell couch|bar|dock|guide|notice|perf|settings|quick|osk|away|menu [--output NAME]
+//!                                      one surface each (the hub starts them; --output: on that screen)
 //!   firehold-shell ctl LINE            one command to the running hub (tests): `ctl state`, `ctl tab library`,
 //!                                      `ctl posture desk`, `ctl page switcher`, `ctl guide`, `ctl pad a`
 //!   firehold-shell chosen              exit 0 when Desktop Mode is "Firehold (Rust, test)" (nimbus-session asks)
@@ -13,6 +13,7 @@ mod config;
 mod hub;
 mod link;
 mod model;
+mod notify;
 mod proto;
 mod sys;
 mod ui;
@@ -43,10 +44,19 @@ mod admin {
     }
 }
 
-const USAGE: &str = "usage: firehold-shell hub | couch | bar | dock | guide | notice | perf | settings | ctl LINE | chosen | choose firehold|plasma";
+const USAGE: &str = "usage: firehold-shell hub | couch | bar | dock | guide | notice | perf | settings | quick | osk | away | menu [--output NAME] | ctl LINE | chosen | choose firehold|plasma";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // A surface on one screen: `couch --output HDMI-A-1` (the hub's `couch@HDMI-A-1`).
+    if args.get(1).map(String::as_str) == Some("--output") {
+        let out = args.get(2).cloned().unwrap_or_default();
+        if out.is_empty() || out.len() > 32 || !out.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') {
+            eprintln!("firehold-shell: bad screen name {out:?}");
+            std::process::exit(2);
+        }
+        link::set_output(&out);
+    }
     let code = match args.first().map(String::as_str) {
         Some("hub") => hub::run(),
         Some("couch") => ui::couch::run(),
@@ -56,6 +66,10 @@ fn main() {
         Some("guide") => ui::guide::run(false),
         Some("perf") => ui::guide::run(true),
         Some("settings") => ui::settings::run(),
+        Some("quick") => ui::quick::run(),
+        Some("osk") => ui::osk::run(),
+        Some("away") => ui::away::run(),
+        Some("menu") => ui::menu::run(),
         Some("ctl") => hub::ctl(&args[1..]),
         Some("chosen") => {
             let c = config::desktop_choice();
