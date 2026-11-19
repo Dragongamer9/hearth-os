@@ -82,7 +82,6 @@ impl Kw {
     /// Reads KWin's status (and, when it's live, its settings). `page` asks for that page's own reads too.
     pub fn open(&mut self, page: &str) -> Task<KMsg> {
         self.msg.clear();
-        self.pick = None;
         let mut t = vec![];
         if self.st.is_none() && !self.asking {
             self.asking = true;
@@ -532,7 +531,8 @@ fn dd<'a>(p: &Pal, kw: &Kw, i: Ic, title: impl Into<String>, sub: impl Into<Stri
     irow_if(p, ok, i, title, sub, dropdown(p, label, if ok { Some(KMsg::Open(id.to_string())) } else { None }))
 }
 fn link<'a>(p: &Pal, title: &str, sub: &str, to: &'static str) -> E<'a> {
-    kit::ilink(p, Ic::G(G::Chevron), title, sub, "", KMsg::Go(to))
+    let i = match to { "kwin-desktops" => Ic::Desktops, "kwin-edges" => Ic::G(G::Display), _ => Ic::Window };
+    kit::ilink(p, i, title, sub, "", KMsg::Go(to))
 }
 
 // ------------------------------------------------------------------ Window effects

@@ -47,6 +47,13 @@ pub fn job(helper: &str, args: &[&str]) -> Vec<String> {
     job_t(helper, args, 60)
 }
 pub fn job_t(helper: &str, args: &[&str], secs: u32) -> Vec<String> {
+    // CI's pictures: what a helper would answer, from $HEARTH_JOB_FIXTURES/<helper>-<args joined by _>.json.
+    if let Some(d) = std::env::var_os("HEARTH_JOB_FIXTURES") {
+        let f = std::path::Path::new(&d).join(format!("{}-{}.json", base(helper), args.join("_")));
+        if f.is_file() {
+            return vec!["cat".into(), f.to_string_lossy().to_string()];
+        }
+    }
     let path = if helper.starts_with('/') { helper.to_string() } else { run::shell_helper(helper) };
     let mut v = vec!["timeout".into(), "-k".into(), "5".into(), secs.to_string(), "python3".into(), path];
     v.extend(args.iter().map(|s| s.to_string()));

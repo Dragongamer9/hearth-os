@@ -442,7 +442,7 @@ pub fn wallpaper_more(a: &App) -> E<'_> {
         let mine = own.get(&s.name).and_then(Value::as_str).unwrap_or("").to_string();
         let shows = if !mine.is_empty() { kit::base(&mine) } else if kit::b_of(&potd, "on") { "Picture of the day".into() } else if kit::b_of(&show, "on") { "Slideshow".into() } else { "Same as the others".into() };
         let ratio = if s.w > 0 { (s.h as f32 / s.w as f32).clamp(0.4, 0.8) } else { 0.5625 };
-        let tw = sz(272.0);
+        let tw = sz(310.0);
         let pic_name = if !mine.is_empty() { mine.clone() } else { s.image.clone() };
         let thumb = kit::swatch(kit::name_colour(&p, &pic_name), p.accent, iced::Color::WHITE, tw, tw * ratio, None);
         let mut btns = Row::new().spacing(8.0).push(btn(&p, "Choose a picture…", ui::Kind::Normal, false, Some(Msg::Choose(For::Screen(i)))));

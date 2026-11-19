@@ -646,7 +646,7 @@ pub fn dialog<'a>(a: &'a App, id: &str) -> Option<E<'a>> {
             let items = l.iter().enumerate().map(|(i, s)| {
                 let v = if i == 0 { String::new() } else { s.id.clone() };
                 let on = v == cur;
-                (format!("{}{}", s.label, if s.black && (i == 0 || !l[i - 1].black) { "  · Black" } else { "" }), s.desc.clone(), on, Msg::Sub(v))
+                (s.label.clone(), if s.black { format!("The black set · {}", s.desc) } else { s.desc.clone() }, on, Msg::Sub(v))
             }).collect();
             Some(kit::pick_dialog(&p, &format!("{}'s sub themes", look_label(sh)), items, Msg::Close))
         }

@@ -158,14 +158,18 @@ pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
     let part = std::mem::take(&mut sh.part);
     st.skip = kit::skip_of(&part);
     st.pick = if page == "signin" && kit::part_word(&part) == "finger" { Some("finger") } else { None };
+    let word = kit::part_word(&part);
     st.msg.clear();
     st.picking = false;
-    st.picked.clear();
     st.confirm.clear();
     // Typed passwords don't stay when you leave a page.
     st.f.clear();
     match page {
-        "users" => job(SYS, &["users"], String::new(), Msg::Users),
+        "users" => {
+            // users:<name>: that account's options open (CI's pictures).
+            st.picked = word;
+            job(SYS, &["users"], String::new(), Msg::Users)
+        }
         "signin" => {
             let script = format!("[ -x {a} ] && echo admin=1; [ -e /etc/nimbus/no-autologin ] && echo autologin=0; echo host=$(cat /etc/hostname 2>/dev/null || hostname)", a = kit::lx("hearth-admin"));
             Task::batch([
