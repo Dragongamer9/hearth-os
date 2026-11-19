@@ -73,3 +73,10 @@ show (KWin's screenshots, Print Screen, the pills' places) are built but left op
 - [ ] Screenshots from KWin's org.kde.KWin.ScreenShot2, allowed through Capture's menu entry, for Capture, Print Screen and hearth-screenshot (kwin.rs `shot`; built, needs a test on a device)
 - [ ] Print Screen saves the whole screen right away, Super+Shift+S picks an area (KDE's global shortcuts; built, needs a test on a device)
 - [ ] Record through hearth-record (KDE's screen-sharing portal, PipeWire, GStreamer's encoder), else Hearth Recorder (built, needs a test on a device)
+
+## Status (Nov 18)
+Built and pictured in hearth-apps-rust.yml (capture-1 … capture-20, each opened next to the pictures above): every
+page, panel, the picker, the pills and the dot; a real screenshot and a real area picker through the helper (grim
+under CI's sway); Save and copy checked at full size with its markup and on the recent list; Take at rest 0 % CPU,
+22 MB. Open: the four device-only parts above (KWin, the keys, the pills' places, recording) and the one-picker-per-screen
+part Wayland doesn't allow. Mockups: Mantel's built pages stand in for mockups until the owner approves them as such.

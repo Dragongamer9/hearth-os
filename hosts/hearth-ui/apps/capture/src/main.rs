@@ -766,6 +766,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             match r {
                 Ok(pic) => {
                     a.ed.pic = Some(pic);
+                    a.ed.sync_view();
                     let after = std::mem::take(&mut a.ed.after_load);
                     let mut t = Vec::new();
                     for m in after {

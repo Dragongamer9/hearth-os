@@ -85,6 +85,9 @@ pub struct Ed {
     pub text_in: String,
     /// The first ones CI asks for (--sample, --save, --show) once the picture is in.
     pub after_load: Vec<EMsg>,
+    /// The crop shown (the view of a cropped picture is a copy of that part: iced's own image crop doesn't stay in
+    /// its place).
+    pub view_img: Option<(R, iced::widget::image::Handle)>,
 }
 
 #[derive(Debug, Clone)]
@@ -176,6 +179,37 @@ impl Ed {
             text_y: 0.0,
             text_in: String::new(),
             after_load: Vec::new(),
+            view_img: None,
+        }
+    }
+
+    /// Keeps the view's picture in step with the crop (a copy of the cropped part, made only when it changes).
+    pub fn sync_view(&mut self) {
+        let Some(pic) = self.pic.as_ref() else {
+            self.view_img = None;
+            return;
+        };
+        let v = self.view_rect();
+        if v == self.full() {
+            self.view_img = None;
+            return;
+        }
+        if self.view_img.as_ref().map(|x| x.0) == Some(v) {
+            return;
+        }
+        let c = draw::clamp_rect(v, pic.w as f32, pic.h as f32);
+        let (x0, y0, w, h) = (c.x as usize, c.y as usize, c.w as usize, c.h as usize);
+        let src = pic.rgba();
+        let pw = pic.w as usize;
+        let mut out = Vec::with_capacity(w * h * 4);
+        for y in y0..y0 + h {
+            let i = (y * pw + x0) * 4;
+            if i + w * 4 <= src.len() {
+                out.extend_from_slice(&src[i..i + w * 4]);
+            }
+        }
+        if out.len() == w * h * 4 {
+            self.view_img = Some((v, iced::widget::image::Handle::from_rgba(w as u32, h as u32, out)));
         }
     }
 
@@ -313,6 +347,12 @@ fn kind_name(k: Kind) -> &'static str {
 
 /// The editor's own messages. `tools` is the helper's `tools` (tesseract, zbarimg, the folder).
 pub fn update(ed: &mut Ed, m: EMsg, tools: &Value, fx: &mut Vec<Fx>) -> Task<Msg> {
+    let t = update_inner(ed, m, tools, fx);
+    ed.sync_view();
+    t
+}
+
+fn update_inner(ed: &mut Ed, m: EMsg, tools: &Value, fx: &mut Vec<Fx>) -> Task<Msg> {
     match m {
         EMsg::Tool(t) => {
             ed.commit_text();
@@ -900,8 +940,11 @@ pub fn stage<'a>(ed: &'a Ed, p: &Pal) -> Element<'a, Msg> {
             let (pw, ph) = ((v.w * sc).max(1.0), (v.h * sc).max(1.0));
             let (ox, oy) = (((size.width - pw) / 2.0).max(0.0), ((size.height - ph) / 2.0).max(0.0));
             let cv = canvas::Canvas::new(Stage { ed, pic, view: v, sc, accent: p.accent }).width(Length::Fixed(pw)).height(Length::Fixed(ph));
-            let crop = Rectangle { x: v.x as u32, y: v.y as u32, width: v.w.max(1.0) as u32, height: v.h.max(1.0) as u32 };
-            let base = iced::widget::image(pic.handle.clone()).crop(crop).content_fit(iced::ContentFit::Fill).filter_method(FilterMethod::Linear).width(Length::Fixed(pw)).height(Length::Fixed(ph));
+            let shown = match ed.view_img.as_ref() {
+                Some((r, h)) if *r == v => h.clone(),
+                _ => pic.handle.clone(),
+            };
+            let base = iced::widget::image(shown).content_fit(iced::ContentFit::Fill).filter_method(FilterMethod::Linear).width(Length::Fixed(pw)).height(Length::Fixed(ph));
             let cv = stack![base, cv];
             let paper = container(container(cv).padding(1.0).style(boxed(Color::TRANSPARENT, 0.0, Some((p.line, 1.0))))).center_x(Length::Fill).center_y(Length::Fill);
             let mut layers = stack![paper].width(Length::Fill).height(Length::Fill);
