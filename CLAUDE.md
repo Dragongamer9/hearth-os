@@ -1,6 +1,6 @@
 # Working on Hearth OS
 
-Hearth OS is a Fedora-based, SteamOS-style OS (from 1.15): Steam Game Mode (Valve's Steam in gamescope, with the
+Hearth OS is a Fedora-based, SteamOS-style OS (from 1.16): Steam Game Mode (Valve's Steam in gamescope, with the
 Hearth Sync Decky plugin in `hosts/decky-hearth-sync`) and Desktop Mode (stock KDE Plasma on KWin with Hearth's apps,
 `hosts/hearth-ui`, and Firehold on Plasma coming in 1.16). Hearth's own Game Mode (gamescope + the web UI in `ui/`) is
 archived but its code stays: it runs first-time setup and the fallback. Edition: **Fedora** (internally Anatase; Fedora

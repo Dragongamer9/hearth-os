@@ -1,7 +1,7 @@
 # Hearth OS on Debian (the "peppermint" edition)
 
-**Status: archived, merged into the Fedora edition (Nov 19, 2026, 1.15; the owner: "Only Fedora, Archive Debian").**
-Hearth OS is Fedora-based from 1.15 (docs/BASE-ANATASE.md). Nothing new is published for Debian: `base-peppermint.yml`
+**Status: archived, merged into the Fedora edition (decided Nov 19, 2026, going out with 1.16; the owner: "Only Fedora, Archive Debian").**
+Hearth OS is Fedora-based from 1.16 (docs/BASE-ANATASE.md). Nothing new is published for Debian: `base-peppermint.yml`
 runs by hand only, with publish off by default. Debian devices keep the version they have and it keeps starting; the
 folder `os-bases/peppermint` stays where it is because the Fedora build copies its `system_files` and tests read its
 `build.sh` (docs/ARCHIVED.md). What follows is how the edition was, kept for reference.

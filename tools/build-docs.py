@@ -28,10 +28,10 @@ PAGES = [
 ]
 
 
-# Hearth OS is Fedora-based from 1.15 (edition id 'anatase', shown as "Fedora"; the owner, Nov 19, 2026). The Debian
+# Hearth OS is Fedora-based from 1.16 (edition id 'anatase', shown as "Fedora"; the owner, Nov 19, 2026). The Debian
 # edition (id 'peppermint') was merged into it: its devices keep running what they have. Ubuntu and CachyOS are archived
 # since October 2026. (id, name, base; base '' when the name already says it)
-EDITIONS = [('anatase', 'Fedora', ''), ('peppermint', 'Debian', 'merged into Fedora')]
+EDITIONS = [('anatase', 'Fedora', ''), ('peppermint', 'Debian', 'archived')]
 # Sections (by heading id) that only apply to some editions; everything else is for all of them.
 SECTION_EDS = {
     'podman': 'ubuntu cachyos peppermint',
@@ -148,11 +148,11 @@ def page(slug, title, lead, body):
 
 
 EDITION_NOTES = (
-    only('anatase', '''<p><b>Fedora</b>: Hearth OS on Fedora (Anatase, Fedora 45), made into an image (bootc). It's the Hearth OS edition from 1.15: every update comes here.</p>
+    only('anatase', '''<p><b>Fedora</b>: Hearth OS on Fedora (Anatase, Fedora 45), made into an image (bootc). It's the Hearth OS edition from 1.16: every update comes here.</p>
 <ul>APPS<li>Desktop Mode is KDE Plasma with Hearth's apps in its menu (Settings, Hearth Files, Capture, Task Manager and more) and Hearth's looks as Plasma themes; <b>Back to Game Mode</b> is first on the taskbar.</li>
 <li>The system is locked as the image made it. To add packages that stay across restarts: <b>Settings › Updates &amp; Recovery › Unlock the file system</b> (off unless you turn it on). Apps also come as AppImages or rpm packages.</li>
 <li>Steam: built in.</li></ul>''')
-    + only('peppermint', '''<p><b>Debian</b>: Hearth OS on Debian 13 "trixie" (bootc). <span class="ver">Merged into Fedora</span> From 1.15 Hearth OS is Fedora-based. A Debian PC keeps working on the version it has and still starts as before, but gets no new features; moving it to Fedora from <b>Settings › Updates › Switch edition</b> comes with one last Debian update.</p>
+    + only('peppermint', '''<p><b>Debian</b>: Hearth OS on Debian 13 "trixie" (bootc). <span class="ver">Archived</span> From 1.16 Hearth OS is Fedora-based, and the Debian edition is archived (merged into Fedora). A Debian PC keeps working on the version it has and still starts as before, but gets no more updates; the Fedora USB that comes with 1.16 moves it to Fedora.</p>
 <ul>APPS<li>It's a normal writable system: <code>sudo apt install</code> and .deb files (double-click one in Files) install anywhere and are kept across restarts.</li>
 <li>Desktop Mode is Mantel, Hearth's own desktop. Steam: built in, from Debian's packages.</li></ul>''')
 ).replace('APPS', '<li>Apps: Flatpak, from Flathub, in the <b>Bazaar</b> app store (Desktop Mode).</li>')
@@ -180,13 +180,13 @@ An update can't half-install, and the version you had before stays on the drive 
 <p>Hearth looks and works the same on every edition. What changes is the Linux underneath it.</p>
 <div class="tbl"><table>
 <tr><th>Edition</th><th>Built on</th><th>Status</th><th>Good for</th></tr>
-<tr><td><b>Fedora</b></td><td>Fedora 45 (Anatase)</td><td>Hearth OS</td><td>Everyone. The edition that gets updates, from 1.15. Locked as the image made it, with Unlock the file system in Settings; apps as Flatpaks, AppImages or rpm packages.</td></tr>
-<tr><td><b>Debian</b></td><td>Debian 13</td><td>Merged into Fedora</td><td>PCs already on it keep working on their version and still start; no new features. A normal writable system: apt and .deb files install anywhere.</td></tr>
+<tr><td><b>Fedora</b></td><td>Fedora 45 (Anatase)</td><td>Hearth OS</td><td>Everyone. The edition that gets updates, from 1.16. Locked as the image made it, with Unlock the file system in Settings; apps as Flatpaks, AppImages or rpm packages.</td></tr>
+<tr><td><b>Debian</b></td><td>Debian 13</td><td>Archived</td><td>Merged into Fedora. PCs already on it keep working on their version and still start; no more updates. A normal writable system: apt and .deb files install anywhere.</td></tr>
 </table></div>
 <p>Both have the automatic fallback (an update that doesn't start goes back by itself) and Hearth Recovery. You can <a href="updates.html#switch">switch edition</a> later without a USB stick. Your games and saves come along.</p>
-<div class="note"><p><b>Hearth OS is Fedora-based from 1.15: the Debian edition has been merged into it.</b> On Debian? Your PC
-keeps working; moving it to Fedora from Settings comes with one last Debian update (<a href="updates.html#switch">Switching edition</a>).
-Ubuntu and CachyOS are archived.</p></div>
+<div class="note"><p><b>Hearth OS is Fedora-based from 1.16: the Debian edition is archived (merged into Fedora).</b> On Debian? Your PC
+keeps working on its version; the Fedora USB that comes with 1.16 moves it to Fedora (<a href="updates.html#switch">Switching edition</a>).
+Ubuntu and CachyOS are archived too.</p></div>
 
 {h2('yours', 'About your edition')}
 <p class="ed" data-ed="all">Pick your edition above to see what's particular about it.</p>
@@ -205,8 +205,8 @@ INSTALL = f'''
 {h2('download', 'Downloads')}
 <p>The <b>offline USB</b> carries the whole system and installs without internet. Keep a <b>Recovery USB</b> too,
 for a device that won't start.</p>
-<div class="note"><p><b>A new USB installer comes with 1.16.</b> Hearth OS is Fedora-based from 1.15, but the USB files here
-are still the Debian ones: they install the Debian edition, which has been merged into Fedora and gets no new features.
+<div class="note"><p><b>A new USB installer comes with 1.16.</b> Hearth OS is Fedora-based from 1.16, but the USB files here
+are still the Debian ones: they install the Debian edition, which is archived and gets no more updates.
 The Fedora USB installer and Recovery USB come with 1.16.</p></div>
 <div class="tbl"><table>
 <tr><th>Download</th><th>Size</th><th>Internet while installing</th></tr>
@@ -284,10 +284,9 @@ can be moved with the D-pad or volume buttons.</p>
 <p>Then restart. The next update moves you forward again.</p>
 
 {h2('switch', 'Switching edition')}
-<p>Hearth OS is Fedora-based from 1.15; the Debian edition has been merged into it. Moving a Debian PC to Fedora without a USB
-stick, with <b>Settings › Updates › Switch edition</b>, comes with <b>one last Debian update</b>: the Debian version you're on
-stays in the boot menu, so you can go back to it. Until then a Debian PC keeps working on the version it has.
-On Fedora, the same button can take you back to Debian.</p>
+<p>Hearth OS is Fedora-based from 1.16; the Debian edition is archived (merged into Fedora). A Debian PC keeps working on the
+version it has. To move it to Fedora, install from the Fedora USB that comes with 1.16 (games on a separate drive stay).
+On Fedora, <b>Settings › Updates › Switch edition</b> can still take you to the archived Debian edition.</p>
 <div class="note warn"><p>Don't switch a Debian PC to Fedora by hand (with <code>bootc switch</code>): the switch in Settings first
 clears what would make Fedora start to a black screen, and warns when Secure Boot has to be turned off.</p></div>
 <ul>

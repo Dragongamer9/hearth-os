@@ -31,7 +31,7 @@
 Hearth OS starts straight into **Steam Game Mode**, the same full-screen gamepad interface SteamOS uses. Your games
 from other stores show up in Steam's library too, and the desktop (KDE Plasma with Hearth's own apps) is one press
 away. It's built on Fedora, updates as one piece, and always keeps the version before so a bad update can't strand you.
-From 1.15 Hearth OS is Fedora-based: the Debian edition has been merged into it (Debian devices keep running the
+From 1.16 Hearth OS is Fedora-based: the Debian edition has been merged into it (Debian devices keep running the
 version they have).
 
 ## What you get
@@ -111,8 +111,8 @@ More: [docs/EMBER.md](docs/EMBER.md).
 ## Where things are
 
 ```
-os-bases/anatase/        The Fedora image (bootc): Containerfile and build.sh (Hearth OS from 1.15)
-os-bases/peppermint/     The Debian image (archived Nov 2026, merged into Fedora; its system_files are still used)
+os-bases/anatase/        The Fedora image (bootc): Containerfile and build.sh (Hearth OS from 1.16)
+os-bases/peppermint/     The Debian image (archived Nov 19, 2026, merged into Fedora; its system_files are still used)
 os/                      Shared system files (os/system_files), the installer USB (os/live), Recovery (os/recovery)
 hosts/linux/             The Linux session and Mantel (desktop/shell: Quickshell QML; desktop/labwc; desktop/theme)
 hosts/linux/test/        The Linux tests (Python), run on every push
@@ -136,7 +136,7 @@ are so existing installs keep updating.
 
 ## Archived
 
-Kept in the repository, but not built or shipped: the Debian edition (merged into Fedora in 1.15), the Ubuntu, CachyOS and Bazzite editions, Hearth Plasma / GNOME /
+Kept in the repository, but not built or shipped: the Debian edition (archived Nov 19, 2026: merged into Fedora, which goes out with 1.16), the Ubuntu, CachyOS and Bazzite editions, Hearth Plasma / GNOME /
 COSMIC / Deepin, multi-seat and Couch Co-op, the old Hearth Decky plugin, the small online installer and Hearth's app
 store. (Hearth for Android is back: [docs/ANDROID.md](docs/ANDROID.md).) What each was and where its code lives: [docs/ARCHIVED.md](docs/ARCHIVED.md).
 

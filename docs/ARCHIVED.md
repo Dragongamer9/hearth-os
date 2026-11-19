@@ -1,6 +1,6 @@
 # Archived parts of Hearth OS
 
-Parts that aren't in Hearth OS (1.0 on; from 1.15 Hearth OS is Fedora-based) but are kept in the repository so they can come back later. Archived code isn't
+Parts that aren't in Hearth OS (1.0 on; from 1.16 Hearth OS is Fedora-based) but are kept in the repository so they can come back later. Archived code isn't
 built, shipped or tested automatically; its workflows run by hand only (some ask you to type "archived" first). Code
 that was moved lives in `archive/` under its old path, and its docs in `docs/archive/`.
 
@@ -9,7 +9,7 @@ that was moved lives in `archive/` under its old path, and its docs in `docs/arc
 | Part | Archived | Code | Docs |
 |---|---|---|---|
 | Hearth OS on Ubuntu and on CachyOS | 2026-10-22 | `archive/os-bases/ubuntu`, `archive/os-bases/cachyos`; `base-ubuntu.yml` / `base-cachyos.yml` (by hand, type "archived") | [BASE-UBUNTU](archive/BASE-UBUNTU.md), [BASE-CACHYOS](archive/BASE-CACHYOS.md) |
-| Hearth OS on Debian (Peppermint), merged into the Fedora edition | 2026-11-19, 1.15 (the owner: "Only Fedora, Archive Debian") | stays in place: `os-bases/peppermint` (the Fedora build copies `os-bases/peppermint/system_files`, and many tests and CI scripts read its `build.sh`, so moving it would break the Fedora edition); `base-peppermint.yml` by hand only (no push trigger, publish off by default); `release.yml` makes no Debian app bundle. Debian devices get nothing new and keep running the version they have, still startable (the owner's dad's PC stays pinned on `hearth-peppermint:testing-1.13.0-20261116`). The USB downloads are still the Debian ones until the Fedora ISOs come (planned with 1.16) | [BASE-PEPPERMINT](BASE-PEPPERMINT.md) |
+| Hearth OS on Debian (Peppermint): **archived**, merged into the Fedora edition | 2026-11-19, on the owner's word ("Only Fedora, Archive Debian", "mark Debian as Archived"); goes out with 1.16 | stays in place: `os-bases/peppermint` (the Fedora build copies `os-bases/peppermint/system_files`, and many tests and CI scripts read its `build.sh`, so moving it would break the Fedora edition); `base-peppermint.yml` by hand only (no push trigger, publish off by default); `release.yml` makes no Debian app bundle. Debian devices get nothing new and keep running the version they have, still startable (the owner's dad's PC stays pinned on `hearth-peppermint:testing-1.13.0-20261116`). The USB downloads are still the Debian ones until the Fedora ISOs come (planned with 1.16) | [BASE-PEPPERMINT](BASE-PEPPERMINT.md) |
 | Hearth OS on Bazzite | 0.1.3 was its last update | `os/build_files`, `os/Containerfile` (stay: `os/` also holds the shared system files, the installer and Recovery) | |
 | Multi-seat and Couch Co-op | 1.0 (hidden) | stays in place (`hosts/hearth-core`, `os/system_files/usr/libexec/nimbus/hearth-seats`, `hearth-coop`) | [MULTI-SEAT](archive/MULTI-SEAT.md), [COUCH-COOP](archive/COUCH-COOP.md) |
 | Hearth Plasma, Hearth GNOME, Hearth COSMIC, Hearth Deepin | 1.0: Mantel is the only desktop | stays in place for now (`hosts/linux/desktop/{plasma,gnome,cosmic}`, their parts in `os/system_files`): the image build, tests and Hearth's core still refer to them | [PLASMA](archive/PLASMA.md), [GNOME](archive/GNOME.md), [COSMIC](archive/COSMIC.md), [DEEPIN](archive/DEEPIN.md) |
@@ -26,7 +26,7 @@ that was moved lives in `archive/` under its old path, and its docs in `docs/arc
 | Part | Archived | Back | Docs |
 |---|---|---|---|
 | Hearth Game Mode (Hearth's own Game Mode) | 1.0: Steam Game Mode replaced it (its code stayed in place: `ui/`, `hosts/hearth-rs`, `hosts/hearth-core`) | 1.10: a choice in Settings › Gaming › Game Mode next to Steam Game Mode (the default); falls back to Steam Game Mode, then Mantel, when it can't start | [HEARTH-GAME-MODE](HEARTH-GAME-MODE.md) |
-| Hearth OS on Anatase (Fedora, image-based) | November 2026 (1.0) | 1.15, as the only edition (the owner, Nov 19: "Only Fedora, Archive Debian"; it came back as a test on Nov 17): shown as **Fedora**, image `ghcr.io/dragongamer9/hearth-os:test-1.15` (what the owner's ROG Ally and laptop follow), stock KDE Plasma as Desktop Mode, Unlock the file system. `os-bases/anatase`, `base-anatase.yml` (by hand, publishes only from main or to an owner-approved test tag) | [BASE-ANATASE](BASE-ANATASE.md) |
+| Hearth OS on Anatase (Fedora, image-based) | November 2026 (1.0) | 1.16, as the only edition (decided with 1.15's work; 1.15 itself wasn't released; the owner, Nov 19: "Only Fedora, Archive Debian"; it came back as a test on Nov 17): shown as **Fedora**, image `ghcr.io/dragongamer9/hearth-os:test-1.15` (what the owner's ROG Ally and laptop follow), stock KDE Plasma as Desktop Mode, Unlock the file system. `os-bases/anatase`, `base-anatase.yml` (by hand, publishes only from main or to an owner-approved test tag) | [BASE-ANATASE](BASE-ANATASE.md) |
 
 ## Hearth's app store (Apps): archived 2026-10-24
 
