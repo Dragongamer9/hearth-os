@@ -4,6 +4,7 @@
 //!   hearth-g15 present              exit 0 when a G15 is plugged in (the unit's ExecCondition), 1 when not
 //!   hearth-g15 status               one JSON line: the keyboard, what it can do here, its lights
 //!   hearth-g15 light kbd|lcd 0|1|2  set the key light or the screen's light, and remember it (g15.json)
+//!   hearth-g15 invert on|off        light dots on dark on the keyboard's screen (Keyboard screen › Dots), remembered
 //!   hearth-g15 frame PAGE OUT.png [--scale N] [--report OUT.bin]
 //!                                   a picture of a screen page (clock, system, music, alerts, rec, set, alert or your
 //!                                   own screen's id), as the keyboard would show it
@@ -71,6 +72,21 @@ fn main() {
                 }
             }
         }
+        ["invert", v @ ("on" | "off")] => {
+            let on = *v == "on";
+            match config::update(|m| {
+                m.insert("lcdInvert".into(), json!(on));
+            }) {
+                Ok(()) => {
+                    println!("{}", json!({"ok": true, "invert": on}));
+                    0
+                }
+                Err(e) => {
+                    println!("error: couldn't remember it ({e})");
+                    1
+                }
+            }
+        }
         ["frame", page, out, rest @ ..] => {
             let mut scale = 5u32;
             let mut report: Option<&str> = None;
@@ -113,7 +129,7 @@ fn main() {
             }
         },
         _ => {
-            eprintln!("usage: hearth-g15 service | present | status | light kbd|lcd 0|1|2 | frame PAGE OUT.png [--scale N] [--report OUT.bin] | make-fixture DIR");
+            eprintln!("usage: hearth-g15 service | present | status | light kbd|lcd 0|1|2 | invert on|off | frame PAGE OUT.png [--scale N] [--report OUT.bin] | make-fixture DIR");
             2
         }
     };

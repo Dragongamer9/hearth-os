@@ -19,3 +19,25 @@ for p in clock system music alerts alert rec set dads-screen inverted; do
 done
 unset HEARTH_G15_FIXTURE HEARTH_G15_CONFIG
 run settings-g15 hearth-settings 0 "$BIN/hearth-settings-app" --page g15
+# Keyboard screen › Dots: Light on dark (inverted), the mockups g15-7 and g15-8.
+G15FX=/tmp/g15-fixture
+export HEARTH_G15_FIXTURE="$G15FX" HEARTH_G15_CONFIG="$G15FX/g15.json"
+python3 - "$G15FX/g15.json" <<'PY'
+import json, sys
+p = sys.argv[1]; c = json.load(open(p)); c["lcdInvert"] = True; open(p, "w").write(json.dumps(c, indent=1))
+PY
+run g15-9-keyboard-screen-inverted hearth-g15-app 0 "$BIN/hearth-g15-app" --page screen
+mkdir -p /tmp/g15inv
+for p in clock system music alert rec set dads-screen; do "$BIN/hearth-g15" frame "$p" "/tmp/g15inv/$p.png" --scale 3 || echo "::error title=g15 frame::inverted $p"; done
+python3 - "$ROOT/shots/g15-lcd-inverted-pages.png" <<'PY'
+import sys
+from PIL import Image
+names = ["clock", "system", "music", "alert", "rec", "set", "dads-screen"]
+ims = [Image.open("/tmp/g15inv/%s.png" % n).convert("RGB") for n in names]
+w, h = ims[0].width, ims[0].height
+sheet = Image.new("RGB", (w * 2 + 30, (h + 10) * 4 + 10), (24, 26, 31))
+for i, im in enumerate(ims):
+    sheet.paste(im, (10 + (i % 2) * (w + 10), 10 + (i // 2) * (h + 10)))
+sheet.save(sys.argv[1])
+PY
+unset HEARTH_G15_FIXTURE HEARTH_G15_CONFIG

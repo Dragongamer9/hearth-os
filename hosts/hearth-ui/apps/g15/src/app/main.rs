@@ -349,7 +349,7 @@ impl App {
             Some(f) => Some(f),
             None => Some(self.prev.page(&first)),
         };
-        if matches!(self.page, Page::Screen | Page::Overview | Page::Lighting) {
+        if self.page == Page::Screen {
             let mut ids = self.all_pages();
             for o in self.own() {
                 let id = s(&o, "id");
@@ -601,13 +601,20 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Tick => {
-            a.status = service::status(&a.root);
+            // Light at rest: the pictures are drawn again only when something changed (the live page has its own
+            // once-a-second tick).
+            let status = service::status(&a.root);
             let cfg = config::load();
+            let mut changed = status != a.status;
+            a.status = status;
             if cfg != a.cfg && !cfg.as_object().map(|o| o.is_empty()).unwrap_or(true) {
                 a.cfg = cfg;
                 a.prev.reload_with(a.cfg.clone());
+                changed = true;
             }
-            a.refresh_pictures();
+            if changed {
+                a.refresh_pictures();
+            }
         }
         Msg::Live => a.refresh_pictures(),
         Msg::Saved(r) => {
@@ -1247,7 +1254,7 @@ fn subscription(a: &App) -> Subscription<Msg> {
         Subscription::run(hearth_ui::theme::watch).map(|_| Msg::Theme),
         iced::keyboard::listen().map(Msg::Key),
         // Plugged in or not, and changes made with the keyboard's own keys (M1–M3, MR, the light button).
-        iced::time::every(std::time::Duration::from_secs(5)).map(|_| Msg::Tick),
+        iced::time::every(std::time::Duration::from_secs(10)).map(|_| Msg::Tick),
     ];
     // What's on the keyboard's screen now: once a second, only while a page showing it is open.
     if matches!(a.page, Page::Screen | Page::Editor) || a.recording {

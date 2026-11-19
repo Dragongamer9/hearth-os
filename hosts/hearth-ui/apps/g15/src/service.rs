@@ -209,6 +209,8 @@ pub struct Service {
     contrast: Option<u32>,
     /// The G-key a recording started from the app goes to (MR, or the app's Stop, keeps it there).
     rec_target: Option<u8>,
+    /// Programs drawing their own screen (g15daemon's socket), while "gameScreens" is on.
+    daemon: Option<crate::g15daemon::Server>,
 }
 
 fn screens_of(cfg: &Value) -> Vec<Value> {
@@ -259,6 +261,7 @@ impl Service {
             next_idle: Instant::now() + Duration::from_secs(60),
             contrast: None,
             rec_target: None,
+            daemon: None,
         }
     }
 
@@ -383,6 +386,7 @@ impl Service {
         self.apply_lights();
         self.apply_contrast();
         self.m_leds();
+        self.daemon_switch();
         let n = self.pages().len().max(1);
         self.page %= n;
         self.last = None;
@@ -747,7 +751,27 @@ impl Service {
         (e, l, self.page)
     }
 
+    /// "Show the game's own screen when it has one": the g15daemon socket on or off with the switch.
+    fn daemon_switch(&mut self) {
+        let want = config::flag(&self.cfg, "gameScreens", true);
+        if want && self.daemon.is_none() {
+            self.daemon = crate::g15daemon::Server::start();
+        } else if !want {
+            self.daemon = None;
+        }
+    }
+
     pub fn render(&mut self) -> (Frame, bool) {
+        // A program's own screen, while it draws one (messages and recording still come first).
+        if !self.rec.recording() && self.popup.is_none() {
+            if let Some(f) = self.daemon.as_ref().and_then(|d| d.showing()) {
+                let mut f = f.clone();
+                if config::flag(&self.cfg, "lcdInvert", false) {
+                    f.invert(0, 0, lcd::W, lcd::H);
+                }
+                return (f, true);
+            }
+        }
         let (els, live, tab) = self.current();
         let r = self.reading(&els);
         let own = screens_of(&self.cfg);
@@ -868,6 +892,7 @@ impl Service {
             self.session = crate::run_out(&["loginctl", "show-user", &uid, "-p", "Display", "--value"], 5).unwrap_or_default().trim().to_string();
         }
         self.lock_monitor();
+        self.daemon_switch();
         let cfg_name = config::path().file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
         loop {
             self.player_start();
@@ -905,6 +930,11 @@ impl Service {
             let lock_at = fds.len();
             if let Some(l) = &self.lockmon {
                 fds.push((l.fd(), libc::POLLIN));
+            }
+            let daemon_at = fds.len();
+            let daemon_fds = self.daemon.as_ref().map(|d| d.fds()).unwrap_or_default();
+            for fd in &daemon_fds {
+                fds.push((*fd, libc::POLLIN));
             }
             let rec_at = fds.len();
             for fd in &self.rec_fds {
@@ -993,6 +1023,14 @@ impl Service {
                         }
                     }
                     None => self.lockmon = None,
+                }
+            }
+            if (0..daemon_fds.len()).any(|i| rev.get(daemon_at + i).map(|r| *r != 0).unwrap_or(false)) {
+                if let Some(d) = self.daemon.as_mut() {
+                    if d.poll() {
+                        self.last = None;
+                        self.next_draw = Instant::now();
+                    }
                 }
             }
             let fds_now = self.rec_fds.clone();
