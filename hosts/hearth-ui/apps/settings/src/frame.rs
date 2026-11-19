@@ -197,8 +197,16 @@ fn crumbs(a: &App) -> Element<'_, Msg> {
     // (which goes to the category, as its name would).
     let mut parts: Vec<(&'static str, Msg)> = vec![(cat.1, Msg::Cat(a.cat))];
     parts.extend(chain.into_iter().map(|x| (x.label, Msg::Go(x.id))));
-    let cut = parts.len() > 2;
-    let shown: Vec<(&'static str, Msg)> = if cut { parts.split_off(parts.len() - 2) } else { parts };
+    // Two parts can still be too long ("Firmware & device security › Firmware update history"): then only the page's
+    // own name, after "…" (about 46 letters fit at the title's size beside the list, "… › " counted).
+    const ROOM: usize = 46;
+    let len = |v: &[(&str, Msg)], cut: bool| v.iter().map(|x| x.0.chars().count() + 3).sum::<usize>() + if cut { 4 } else { 0 };
+    let mut cut = parts.len() > 2;
+    let mut shown: Vec<(&'static str, Msg)> = if cut { parts.split_off(parts.len() - 2) } else { parts };
+    if shown.len() > 1 && len(&shown, cut) > ROOM {
+        shown = shown.split_off(shown.len() - 1);
+        cut = true;
+    }
     let chev = || container(glyph(G::Chevron, p.text, 22.0, 2.4)).padding(Padding { top: 6.0, right: 0.0, bottom: 0.0, left: 0.0 });
     let mut r = Row::new().spacing(12.0).align_y(iced::Center);
     if cut {
