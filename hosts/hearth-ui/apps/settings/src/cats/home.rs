@@ -158,7 +158,7 @@ pub fn open(_sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
             }
             Task::batch([Src::Wifi, Src::Bt, Src::Display, Src::Updates, Src::Hs, Src::Dnd, Src::Bright, Src::Sound, Src::Power].map(read))
         }
-        _ => Task::batch([Src::Wifi, Src::Bt, Src::Storage, Src::Display, Src::Updates, Src::Hs, Src::Link, Src::Dnd].map(read)),
+        _ => Task::batch([Src::Wifi, Src::Bt, Src::Storage, Src::Display, Src::Updates, Src::Hs, Src::Link, Src::Dnd, Src::History].map(read)),
     }
 }
 
@@ -191,7 +191,7 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
         },
         Msg::Did(what, o) => {
             sh.result(what, &o);
-            return Task::batch([read(Src::Display), read(Src::Hs), read(Src::Dnd)]);
+            return Task::batch([read(Src::Display), read(Src::Hs), read(Src::Dnd), read(Src::History)]);
         }
         Msg::Night(on) => {
             st.night = on;
@@ -357,18 +357,28 @@ fn home_view<'a>(a: &'a App) -> Element<'a, Msg> {
     ])));
     let rec = titled_card(&p, "Recommended settings", Some(("See more", Msg::Go("quick"))), rec);
     let storage = titled_card(&p, "Storage", Some(("Manage", Msg::Go("storage"))), drive_rows(&p, &st.storage));
+    // The last three changes, in settings-changes.js's words (this page's own read of the history; the frame's
+    // until it has come).
+    let mut lines: Vec<(String, String, i64)> = shown_changes(&st.history).iter().take(3).map(|ch| {
+        let key = kit::s(ch, "key");
+        let who = if kit::s(ch, "who").is_empty() { "you".to_string() } else { kit::s(ch, "who") };
+        (format!("{} → {}", name_of(&key), value_words(&key, kit::at(ch, "to"))), format!("{who} · {}", ago_words(kit::n(ch, "at") as i64)), kit::n(ch, "id") as i64)
+    }).collect();
+    if st.history.is_null() {
+        lines = sh.history.iter().take(3).map(|c| (format!("{} → {}", data::setting_name(&c.key), c.to), format!("{} · {}", c.who, ago_words(c.at)), c.id)).collect();
+    }
     let mut changed = Column::new().spacing(10.0);
-    if sh.history.is_empty() {
+    if lines.is_empty() {
         changed = changed.push(t("Nothing changed yet. What you change in Settings shows here, with Undo.", sz(13.0), p.muted));
     }
-    for (n, c) in sh.history.iter().take(3).enumerate() {
+    for (n, (what, who, id)) in lines.into_iter().enumerate() {
         if n > 0 {
             changed = changed.push(hline(p.line));
         }
         changed = changed.push(
             row![
-                column![t(format!("{} → {}", data::setting_name(&c.key), c.to), sz(15.0), p.text), t(format!("{} · {}", c.who, ago_words(c.at)), sz(13.0), p.muted)].spacing(2.0).width(Length::Fill),
-                btn(&p, "Undo", Kind::Normal, false, Some(Msg::Undo(c.id)))
+                column![t(what, sz(15.0), p.text), t(who, sz(13.0), p.muted)].spacing(2.0).width(Length::Fill),
+                btn(&p, "Undo", Kind::Normal, false, Some(Msg::Undo(id)))
             ]
             .align_y(iced::Center),
         );
@@ -429,14 +439,46 @@ fn value_words(key: &str, v: &Value) -> String {
     }
 }
 
+/// settings-changes.js NAMES, with the keys data.rs doesn't name yet.
+fn name_of(key: &str) -> String {
+    match key {
+        "lightMode" => "Light mode while you play",
+        "countMe" => "Count me in the player count",
+        "deskClock" => "Desktop clock",
+        "panelGlass" => "Panel transparency",
+        "sunsetLight" => "Light from",
+        "sunsetDark" => "Dark from",
+        "barLayout" => "Bar layout",
+        "barEdge" => "Main bar's edge",
+        "dockFloat" => "Floating dock",
+        "shareStatus" => "Share this device's status",
+        "menuStyle" => "Right-click menu",
+        "wallMatch" => "Match sub theme",
+        "nightTemp" => "Night light warmth",
+        "nightMode" => "Night light on",
+        "nightFrom" => "Night light from",
+        "nightTo" => "Night light until",
+        "nightPlace" => "Night light's place",
+        "nightFade" => "Night light's fade",
+        "tiles" => "Quick's tiles",
+        other => return data::setting_name(other),
+    }
+    .to_string()
+}
+
+/// The changes worth showing (settings-changes.js HIDDEN: keys that change with another one).
+fn shown_changes(h: &Value) -> Vec<&Value> {
+    let hidden = ["accentFrom", "wallSwatches", "menuTiles", "nightLat", "nightLon"];
+    kit::arr(h, "").iter().filter(|c| c.is_object() && !hidden.contains(&kit::s(c, "key").as_str())).collect()
+}
+
 fn changes_view<'a>(a: &'a App) -> Element<'a, Msg> {
     let p = a.sh.p;
-    let hidden = ["accentFrom", "wallSwatches", "menuTiles", "nightLat", "nightLon"];
-    let items: Vec<&Value> = kit::arr(&a.home.history, "").iter().filter(|c| c.is_object() && !hidden.contains(&kit::s(c, "key").as_str())).collect();
+    let items = shown_changes(&a.home.history);
     let mut c = Column::new().spacing(6.0).push(kit::words(&p, if items.is_empty() { "Nothing changed yet. What you change in Settings shows here, with Undo." } else { "What was changed in Settings, newest first. Undo puts the old value back." }));
     for ch in items {
         let key = kit::s(ch, "key");
-        let title = format!("{} → {}", data::setting_name(&key), value_words(&key, kit::at(ch, "to")));
+        let title = format!("{} → {}", name_of(&key), value_words(&key, kit::at(ch, "to")));
         let who = if kit::s(ch, "who").is_empty() { "you".to_string() } else { kit::s(ch, "who") };
         let sub = format!("{who} · {}  (was {})", ago_words(kit::n(ch, "at") as i64), value_words(&key, kit::at(ch, "from")));
         c = c.push(kit::r("", title).sub(sub).control(btn(&p, "Undo", Kind::Normal, false, Some(Msg::Undo(kit::n(ch, "id") as i64)))).el(&p));
@@ -466,19 +508,29 @@ fn onoff_chip<'a>(p: &Pal, on: bool) -> Element<'a, Msg> {
 fn qtile<'a>(p: &Pal, ic: kit::I, title: &str, sub: String, corner: Option<Element<'a, Msg>>, bottom: Option<Element<'a, Msg>>, wide: bool, on: Option<Msg>) -> Element<'a, Msg> {
     let p = *p;
     let mut head = Row::new().align_y(iced::alignment::Vertical::Top).push(kit::icon(ic, p.accent, 44.0));
+    let mut col = Column::new();
     if wide {
-        head = head.push(container(column![ts(title.to_string(), 21.0, p.text), t(sub.clone(), 15.0, p.muted)].spacing(4.0)).padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 18.0 }));
-    }
-    head = head.push(Space::new().width(Length::Fill));
-    if let Some(c) = corner {
-        head = head.push(c);
-    }
-    let mut col = Column::new().push(head).push(Space::new().height(Length::Fill));
-    if !wide {
-        col = col.push(column![ts(title.to_string(), 21.0, p.text), t(sub, 15.0, p.muted)].spacing(4.0));
-    }
-    if let Some(b) = bottom {
-        col = col.push(container(b).padding(Padding { top: 10.0, right: 0.0, bottom: 0.0, left: 0.0 }));
+        // settings-B1's wide tile: the name beside the icon, On / Off under it on the left, the switch on the right.
+        head = head.push(container(column![ts(title.to_string(), 21.0, p.text), t(sub.clone(), 15.0, p.muted)].spacing(4.0)).padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 18.0 }).width(Length::Fill));
+        col = col.push(head).push(Space::new().height(Length::Fill));
+        let mut foot = Row::new().align_y(iced::Center);
+        if let Some(b) = bottom {
+            foot = foot.push(b);
+        }
+        foot = foot.push(Space::new().width(Length::Fill));
+        if let Some(c) = corner {
+            foot = foot.push(c);
+        }
+        col = col.push(foot);
+    } else {
+        head = head.push(Space::new().width(Length::Fill));
+        if let Some(c) = corner {
+            head = head.push(c);
+        }
+        col = col.push(head).push(Space::new().height(Length::Fill)).push(column![ts(title.to_string(), 21.0, p.text), t(sub, 15.0, p.muted)].spacing(4.0));
+        if let Some(b) = bottom {
+            col = col.push(container(b).padding(Padding { top: 10.0, right: 0.0, bottom: 0.0, left: 0.0 }));
+        }
     }
     let c = container(col).padding(24.0).width(Length::FillPortion(if wide { 2 } else { 1 })).height(Length::Fixed(176.0)).style(ui::boxed(p.panel, p.r(14.0), None));
     match on {
