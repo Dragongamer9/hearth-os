@@ -1429,8 +1429,14 @@ impl App {
             }
             out.push(t);
         }
+        // Your folders, then what you pinned: each real folder once (the owner, Nov 19: the favourite folders showed
+        // twice; a GTK bookmark of Documents is the same folder as Documents). Nothing is removed from any file.
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
         for q in &sorted {
             if sv(q, "section") == "places" && sv(q, "id") != "home" && q.get("child") != Some(&Value::Bool(true)) {
+                if !seen.insert(place_key(&sv(q, "path"))) {
+                    continue;
+                }
                 let mut it = item(q, "folders", 0);
                 it.pinned = true;
                 out.push(it);
@@ -1439,6 +1445,10 @@ impl App {
         for q in &sorted {
             let s = sv(q, "section");
             if s == "bookmarks" || s == "briefcases" || s == "games" {
+                let k = place_key(&sv(q, "path"));
+                if !k.is_empty() && !seen.insert(k) {
+                    continue;
+                }
                 let mut it = item(q, "folders", 0);
                 it.pinned = true;
                 out.push(it);
@@ -2909,4 +2919,61 @@ pub fn run(mode: Mode) -> iced::Result {
         .window(happ::window(id, size, min))
         .default_font(happ::INTER)
         .run()
+}
+
+/// One key per real folder (the left menu's favourites shown once): a file:// URI, a trailing slash or a link to the
+/// same folder don't make two. Empty for an item without a path (it's never merged with another).
+pub fn place_key(p: &str) -> String {
+    let mut p = p.trim().to_string();
+    if p.is_empty() {
+        return p;
+    }
+    if let Some(rest) = p.strip_prefix("file://") {
+        p = percent_decode(rest);
+    }
+    while p.len() > 1 && p.ends_with('/') {
+        p.pop();
+    }
+    std::fs::canonicalize(&p).map(|c| c.to_string_lossy().into_owned()).unwrap_or(p)
+}
+
+fn percent_decode(s: &str) -> String {
+    let b = s.as_bytes();
+    let mut out = Vec::with_capacity(b.len());
+    let mut i = 0;
+    while i < b.len() {
+        if b[i] == b'%' && i + 2 < b.len() {
+            let hex = |c: u8| (c as char).to_digit(16);
+            if let (Some(h), Some(l)) = (hex(b[i + 1]), hex(b[i + 2])) {
+                out.push((h * 16 + l) as u8);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(b[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+#[cfg(test)]
+mod place_key_tests {
+    use super::place_key;
+
+    #[test]
+    fn same_folder_one_key() {
+        let d = std::env::temp_dir().join(format!("hearth-files-place-key-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let docs = d.join("My Docs");
+        std::fs::create_dir(&docs).unwrap();
+        let link = d.join("link");
+        std::os::unix::fs::symlink(&docs, &link).unwrap();
+        let k = place_key(docs.to_str().unwrap());
+        assert_eq!(place_key(&format!("{}/", docs.display())), k);
+        assert_eq!(place_key(&format!("file://{}", docs.display()).replace(' ', "%20")), k);
+        assert_eq!(place_key(link.to_str().unwrap()), k);
+        assert_eq!(place_key(""), "");
+        let _ = std::fs::remove_dir_all(&d);
+    }
 }

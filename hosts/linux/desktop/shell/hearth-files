@@ -824,7 +824,16 @@ def places():
             label = 'Steam games (' + (os.path.basename(lib.rstrip('/')) or lib) + ')'
         out.append({'id': 'steam:' + lib, 'label': label, 'path': os.path.join(lib, 'steamapps', 'common'),
                     'kind': 'games', 'section': 'games'})
-    out += bookmark_places()
+    # Bookmarks that are the same folder as one above (Fedora's xdg-user-dirs-gtk puts Documents, Music, Pictures…
+    # in the GTK bookmarks too; two lines for the same folder, file:// or a link to it) are shown once: the bookmarks
+    # file itself is left as it is (the owner, Nov 19: "it keeps having double of the favorited folders").
+    seen = {place_key(q['path']) for q in out if q.get('path')}
+    for b in bookmark_places():
+        k = place_key(b['path'])
+        if k in seen:
+            continue
+        seen.add(k)
+        out.append(b)
     out += account_places()
     out += briefcase_places()
     out += storage_places()
@@ -2544,6 +2553,18 @@ def bookmark_remove(path):
     p = os.path.abspath(os.path.expanduser(path))
     write_bookmarks([b for b in read_bookmarks() if b[0] != p])
     return {'ok': True}
+
+
+def place_key(p):
+    """One key per real folder: file:// URIs, trailing slashes and symlinks don't make two."""
+    p = str(p or '')
+    if p.startswith('file://'):
+        p = urllib.parse.unquote(urllib.parse.urlparse(p).path, errors='surrogateescape')
+    p = p.rstrip('/') or '/'
+    try:
+        return os.path.realpath(p)
+    except (OSError, ValueError):
+        return p
 
 
 def bookmark_places():
