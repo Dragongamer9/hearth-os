@@ -66,10 +66,14 @@ while True:
 W, H, S = int(res['width']), int(res['height']), int(res['stride'])
 # QImage's formats: 4-6 are ARGB32 (B, G, R, A in memory), 16-18 RGBX/RGBA8888 (R, G, B, A).
 raw = 'RGBA' if int(res.get('format', 5)) in (16, 17, 18) else 'BGRA'
-Image.frombuffer('RGBA', (W, H), data, 'raw', raw, S, 1).convert('RGB').save(sys.argv[1])
+im = Image.frombuffer('RGBA', (W, H), data, 'raw', raw, S, 1).convert('RGB')
+if len(sys.argv) > 2:   # one screen of several: X0 WIDTH (KWin's workspace is the screens side by side)
+    x0, w = int(sys.argv[2]), int(sys.argv[3])
+    im = im.crop((x0, 0, x0 + w, H))
+im.save(sys.argv[1])
 print('format', int(res.get('format', -1)), raw, file=sys.stderr)
 PY
-shot() { timeout 25 python3 /tmp/shot.py "$OUT/$1.png" 2>>"$OUT/shot-errors.txt" || echo "no screenshot $1" >>"$OUT/shot-errors.txt"; }
+shot() { timeout 25 python3 /tmp/shot.py "$OUT/$1.png" "${@:2}" 2>>"$OUT/shot-errors.txt" || echo "no screenshot $1" >>"$OUT/shot-errors.txt"; }
 # A one-off KWin script (only for these checks: putting the stand-in game in front, ending Show Desktop).
 kn=0
 kwin_js() {
@@ -220,6 +224,36 @@ echo "::notice title=session helper::$(tail -c 800 "$HOME/.local/state/nimbus/fi
 ls "$OUT"/*.png >/dev/null 2>&1 || fail screenshots "none were taken: $(head -c 600 "$OUT/shot-errors.txt" 2>/dev/null | tr '\n' '|')"
 [ -s "$OUT/shot-errors.txt" ] && echo "::warning title=screenshot messages::$(head -c 800 "$OUT/shot-errors.txt" | tr '\n' '|')"
 cp "$HOME/.local/state/nimbus/firehold-plasma.log" "$OUT/firehold-plasma.txt" 2>/dev/null
+
+# ---- two screens (mockups firehold-plasma 04 and 06): the TV in Couch, the monitor in Desk, on a KWin with two
+# outputs. The Desk shell with the Couch as a layer over the TV, the Modes popup from the monitor's mode pill, Away.
+pkill -f "hearth-firehold-plasma session"; pkill plasmashell; pkill dolphin; pkill konsole; pkill kate; pkill -f ember.qml; pkill -f mpris.py
+sleep 2; pkill -f /tmp/kwin_wayland; sleep 3
+/tmp/kwin_wayland --virtual --output-count 2 --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >"$OUT/kwin2.log" 2>&1 &
+KWIN=$!
+for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+sleep 3
+export HEARTH_FIREHOLD_SCREENS="Virtual-0::LG 27GP850:2560 × 1440 · 165 Hz · DisplayPort 1,Virtual-1:tv:TCL 55″ TV:3840 × 2160 · 60 Hz · HDMI 2" HEARTH_FIREHOLD_TV_SCREENS=Virtual-1
+hearth-firehold-plasma begin org.hearthos.firehold.desk
+now=$(($(date +%s) * 1000))
+printf '{"screens": {"Virtual-1": {"mode": "couch", "why": "pad", "at": %s}, "Virtual-0": {"mode": "desk", "why": "mouse", "at": %s}}}' "$now" "$now" > "$RUN/modes.json"
+since=$(date +%s)
+PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk plasmashell -p org.hearthos.firehold.desk >>"$OUT/plasmashell2.log" 2>&1 &
+PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk hearth-firehold-plasma session >"$OUT/session2.log" 2>&1 &
+wait_ready org.hearthos.firehold.desk 90 && echo "::notice title=Two screens::the Desk shell is up" || fail "Two screens" "the Desk didn't come up"
+python3 "$FX/mpris.py" >"$OUT/mpris2.log" 2>&1 &
+dolphin "$HOME/Pictures" >/dev/null 2>&1 &
+sleep 12
+echo "::notice title=Two screens::$(hearth-firehold-plasma modes | cut -c1-600)"
+shot fp-10-two-screens
+shot fp-11-couch-layer-on-tv 1920 1920
+hearth-firehold-plasma ping popup Virtual-0; sleep 4
+shot fp-04-modes-per-screen 0 1920
+hearth-firehold-plasma ping popup-off Virtual-0; sleep 1
+hearth-firehold-plasma mode Virtual-1 away --why pick; sleep 6
+shot fp-06-away 1920 1920
+grep -E "org\.hearthos|firehold" "$OUT/plasmashell2.log" | grep -iE "error|TypeError|ReferenceError|is not a type|is not installed|Cannot assign|not defined|failed|Unable to assign" | sort -u | head -12 > "$OUT/qml2-errors.txt"
+[ -s "$OUT/qml2-errors.txt" ] && fail "Firehold QML (two screens)" "$(cut -c1-300 "$OUT/qml2-errors.txt" | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')"
 
 pkill -f "hearth-firehold-plasma session"; pkill plasmashell; pkill dolphin; pkill konsole; pkill kate; pkill -f ember.qml
 pkill -f /tmp/kwin_wayland; pkill -f kactivitymanagerd; pkill pipewire; pkill wireplumber; pkill dbus-daemon

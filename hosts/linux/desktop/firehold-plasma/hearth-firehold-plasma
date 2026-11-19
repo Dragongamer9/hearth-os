@@ -15,6 +15,13 @@ restarts only plasmashell with the other shell package: KWin, the session and ev
                               so), the controller in the Couch, Automatic posture
   ready PACKAGE               the shell came up (the Couch's containment, the Desk's posture pill)
   switch couch|desk [TAB] [--why pad|mouse|keys]
+                              every screen to that mode
+  modes                       each screen's mode now (live state, $XDG_RUNTIME_DIR), the automatic switching's settings
+  mode SCREENS couch|desk|away [--why pad|mouse|keys|pick|idle]
+                              SCREENS: names, "all", "tv" or "others" (comma separated); the shell follows: every
+                              screen Couch is the Couch shell, any Desk screen the Desk shell with the Couch and Away
+                              screens as full-screen layers
+  back pad|mouse|keys|pick    back from Away (the controller: the TVs to the Couch; the mouse: the others to the Desk)
   plain                       plain Plasma for the rest of this session (the saved choice isn't touched)
   ask CMD                     tell the Couch (guide, open, home, settings, tab:library...)
   listen                      the Couch's ear: one request, then it ends (the Couch starts it again)
@@ -157,7 +164,7 @@ def set_setting(key, value):
 
 def posture_mode(s=None):
     s = settings() if s is None else s
-    return s.get('posture') if s.get('posture') in ('auto', 'couch', 'desk') else 'auto'
+    return s.get('posture') if s.get('posture') in ('auto', 'couch', 'desk', 'manual') else 'auto'
 
 
 def start_posture(s=None):
@@ -305,6 +312,7 @@ def tell_kwin(posture):
 
 
 def tell_games(v):
+    v = 'window' if v == 'stay' else v      # Stay as they are: KWin leaves games as they are (as "window" does)
     v = v if v in ('follow', 'fullscreen', 'window') else 'follow'
     dbus_send('org.kde.kglobalaccel', '/component/kwin', 'org.kde.kglobalaccel.Component.invokeShortcut',
               'string:Firehold games ' + v, reply=False)
@@ -414,12 +422,25 @@ def current_posture():
     return p if p in ('couch', 'desk') else 'desk'
 
 
-def switch(posture, tab='', why=''):
+def switch(posture, tab='', why='', keep_modes=False):
     if posture not in ('couch', 'desk'):
         raise ValueError('couch or desk')
     if read_small(os.path.join(run_dir(), 'failed')):
         log('switch %s skipped: Firehold failed this session (plain Plasma)' % posture)
         return
+    if not keep_modes:
+        # Every screen to this mode (the Couch's Guide button, the Desk's pill): the live modes follow.
+        try:
+            now = int(time.time() * 1000)
+            ss = screen_modes()
+            for x in ss:
+                x.update({'mode': posture, 'why': why, 'at': now})
+            if ss:
+                write_modes(ss, {})
+                tell_kwin_screens(ss)
+            away_power(False)
+        except (OSError, ValueError) as e:
+            log('modes: %s' % e)
     was = current_posture()
     write_small(os.path.join(run_dir(), 'posture'), posture)
     try:
@@ -434,6 +455,7 @@ def switch(posture, tab='', why=''):
     if running == pkg and was == posture:
         if posture == 'couch' and tab:
             ask('tab:' + tab)
+        ping_modes()
         return
     since = time.time()
     restart_shell(pkg)
@@ -448,6 +470,246 @@ def switch(posture, tab='', why=''):
                                             else 'You picked the Desk.') + ' Everything stayed open. Press the Guide button to go back to the Couch.')
         finally:
             os._exit(0)
+
+
+# ------------------------------------------------------------------ Couch, Desk and Away for each screen (mockups 04-06)
+# Live state, never a setting (the owner: "Switching modes is never a settings change"): $XDG_RUNTIME_DIR's
+# modes.json, {"screens": {NAME: {"mode": "couch"|"desk"|"away", "why": TEXT, "at": ms}}, "before": {...}}. Every screen
+# Couch: the Couch shell (org.hearthos.firehold) draws each screen; any screen Desk: the Desk shell, and a Couch or
+# Away screen gets its Couch or Away as a full-screen layer over it (the posture applet on that screen's bar opens it).
+# Away on a Couch shell screen is the Couch's own Away page. Only what you choose here, in Settings or the automatic
+# switching you turned on changes a screen's mode; Firehold's settings (firehold.json) are never written by switching.
+
+MODES = ('couch', 'desk', 'away')
+WHY = {'pad': 'when the controller woke it', 'mouse': 'since you moved the mouse', 'keys': 'since you typed',
+       'pick': 'you picked it', 'start': 'when the PC started', 'idle': 'nobody was here', 'guide': 'the Guide button'}
+
+
+def modes_path():
+    return os.path.join(run_dir(), 'modes.json')
+
+
+def read_modes():
+    d = read_json(modes_path(), {}) or {}
+    return d if isinstance(d, dict) else {}
+
+
+def kscreen_outputs():
+    """The screens that are on, KDE's own list (kscreen-doctor): name, connector type, size in mm."""
+    fx = os.environ.get('HEARTH_FIREHOLD_SCREENS')   # checks: "NAME[:tv],NAME"
+    if fx:
+        return [{'name': x.split(':')[0], 'tv': ':tv' in x, 'label': x.split(':')[2] if x.count(':') >= 2 else '',
+                 'spec': x.split(':')[3] if x.count(':') >= 3 else ''} for x in fx.split(',') if x]
+    j = quiet(['kscreen-doctor', '-j'], 5) if have('kscreen-doctor') else ''
+    try:
+        outs = json.loads(j).get('outputs', []) if j else []
+    except ValueError:
+        outs = []
+    tvs = set(x for x in os.environ.get('HEARTH_FIREHOLD_TV_SCREENS', '').split(',') if x)
+    out = []
+    for o in outs:
+        if not o.get('enabled') or not isinstance(o.get('name'), str):
+            continue
+        mm = o.get('sizeMM') or o.get('sizeMm') or o.get('physicalSize') or {}
+        diag = ((mm.get('width') or 0) ** 2 + (mm.get('height') or 0) ** 2) ** 0.5 if isinstance(mm, dict) else 0
+        label = edid_name(o['name'])
+        spec = []
+        cur = o.get('currentModeId')
+        for md in o.get('modes') or []:
+            if isinstance(md, dict) and str(md.get('id')) == str(cur):
+                sz_ = md.get('size') or {}
+                if sz_.get('width'):
+                    spec.append('%d × %d' % (sz_['width'], sz_['height']))
+                if md.get('refreshRate'):
+                    spec.append('%d Hz' % round(md['refreshRate']))
+        spec.append(connector_name(o['name']))
+        tv = o['name'] in tvs or 'TV' in label.upper().split() or (o['name'].upper().startswith('HDMI') and diag > 900)
+        out.append({'name': o['name'], 'tv': tv, 'label': label, 'spec': ' · '.join(spec)})
+    return out
+
+
+def connector_name(n):
+    m = re.match(r'^(HDMI|DP|eDP|DVI|VGA)[-A-Z]*-?(\d+)$', n or '')
+    if not m:
+        return n
+    return {'HDMI': 'HDMI', 'DP': 'DisplayPort', 'eDP': 'Built-in', 'DVI': 'DVI', 'VGA': 'VGA'}[m.group(1)] + ('' if m.group(1) == 'eDP' else ' ' + m.group(2))
+
+
+def edid_name(conn):
+    """A screen's own name from its EDID (the monitor name it gives itself: "LG ULTRAGEAR", "TCL TV")."""
+    import glob
+    for f in glob.glob('/sys/class/drm/card*-%s/edid' % conn):
+        try:
+            with open(f, 'rb') as fh:
+                e = fh.read(128)
+        except OSError:
+            continue
+        if len(e) < 128:
+            continue
+        for off in (54, 72, 90, 108):
+            if e[off:off + 3] == b'\x00\x00\x00' and e[off + 3] == 0xFC:
+                return e[off + 5:off + 18].split(b'\n')[0].decode('ascii', 'replace').strip()
+    return ''
+
+
+def screen_modes():
+    """Each screen that's on and its mode now (a screen not seen before takes the posture this session has)."""
+    d = read_modes()
+    have_ = d.get('screens') if isinstance(d.get('screens'), dict) else {}
+    cur = current_posture()
+    out = []
+    for o in kscreen_outputs() or [{'name': n, 'tv': False} for n in have_]:
+        e = have_.get(o['name']) if isinstance(have_.get(o['name']), dict) else {}
+        out.append({'name': o['name'], 'tv': o['tv'], 'label': o.get('label') or ('TV' if o['tv'] else 'Monitor'), 'spec': o.get('spec') or '',
+                    'mode': e.get('mode') if e.get('mode') in MODES else cur,
+                    'why': e.get('why') or '', 'at': e.get('at') or 0})
+    return out
+
+
+def write_modes(screens, before=None):
+    d = read_modes()
+    d['screens'] = {s['name']: {'mode': s['mode'], 'why': s.get('why', ''), 'at': s.get('at', 0)} for s in screens}
+    if before is not None:
+        d['before'] = before
+    write_small(modes_path(), json.dumps(d))
+
+
+def identify():
+    """Identify (Settings › Couch, Desk and Away): each screen's number on it for a few seconds."""
+    ping_modes('identify')
+    if os.fork() == 0:
+        os.setsid()
+        try:
+            time.sleep(4)
+            ping_modes('identify-off')
+        finally:
+            os._exit(0)
+
+
+def ping_modes(what='modes', screen=''):
+    """The Couch and the Desk's posture applets read the modes again (Plasma's scripting: their "modes" key; the time
+    is all it carries)."""
+    js = ('var v="' + what + '|%d|' + screen + '";desktops().forEach(function(d){if(d.type=="%s"){d.currentConfigGroup=["General"];d.writeConfig("request",v);}});'
+          'panels().forEach(function(p){p.widgets().forEach(function(w){if(w.type=="org.hearthos.firehold.posture"){'
+          'w.currentConfigGroup=["General"];w.writeConfig("modes",v);}});});' % (int(time.time() * 1000), CONTAINMENT))
+    dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript', 'string:' + js, reply=False)
+
+
+def tell_kwin_screens(screens):
+    """KWin's side, a screen at a time (the KWin script's own shortcuts, "Firehold Couch on NAME" / "Firehold Desk on NAME")."""
+    for s in screens:
+        name = ('Firehold Couch on ' if s['mode'] == 'couch' else 'Firehold Desk on ') + s['name']
+        dbus_send('org.kde.kglobalaccel', '/component/kwin', 'org.kde.kglobalaccel.Component.invokeShortcut', 'string:' + name, reply=False)
+
+
+def away_power(on):
+    """Away: the power saver profile while every screen is Away (the profile you had comes back with you)."""
+    saved = os.path.join(run_dir(), 'away-profile')
+    if not have('powerprofilesctl'):
+        return
+    if on and not os.path.exists(saved):
+        cur = quiet(['powerprofilesctl', 'get'], 3).strip()
+        if cur:
+            write_small(saved, cur)
+            quiet(['powerprofilesctl', 'set', 'power-saver'], 5)
+    elif not on and os.path.exists(saved):
+        prev = read_small(saved)
+        try:
+            os.unlink(saved)
+        except OSError:
+            pass
+        if prev in ('power-saver', 'balanced', 'performance'):
+            quiet(['powerprofilesctl', 'set', prev], 5)
+
+
+def set_modes(targets, mode, why=''):
+    """TARGETS: screen names, "all", "tv" (the TVs) or "others" (every screen but the TVs)."""
+    if mode not in MODES:
+        raise ValueError('couch, desk or away')
+    screens = screen_modes()
+    if not screens:
+        return switch(mode if mode != 'away' else 'couch', '', why)
+    d = read_modes()
+    before = None
+    if mode == 'away' and not any(s['mode'] == 'away' for s in screens):
+        before = {s['name']: s['mode'] for s in screens}
+    now = int(time.time() * 1000)
+    for s in screens:
+        hit = ('all' in targets or s['name'] in targets or ('tv' in targets and s['tv']) or ('others' in targets and not s['tv']))
+        if hit and s['mode'] != mode:
+            s.update({'mode': mode, 'why': why, 'at': now})
+    write_modes(screens, before if before is not None else d.get('before'))
+    apply_modes(screens, why)
+    if mode == 'away' and all(x['mode'] == 'away' for x in screens):
+        detach([sys.executable, os.path.realpath(__file__), 'away-later', str(now)])
+    return None
+
+
+def away_later(since):
+    """While Away (Settings › Couch, Desk and Away › While Away): the screens off after their time, then the lock
+    (your PIN), only if it's still the same Away. Asleep until then."""
+    s = settings()
+    off = s.get('awayScreenOff') if isinstance(s.get('awayScreenOff'), int) else 10
+    lock = s.get('awayLock') if isinstance(s.get('awayLock'), int) else 10
+    steps = sorted([(off, 'off'), (lock, 'lock')])
+    start = since / 1000.0
+    for mins, what in steps:
+        if mins <= 0:
+            continue
+        wait = start + mins * 60 - time.time()
+        if wait > 0:
+            time.sleep(wait)
+        ss = screen_modes()
+        if not ss or not all(x['mode'] == 'away' for x in ss) or min(x['at'] for x in ss) > since:
+            return 0
+        if what == 'off' and have('kscreen-doctor'):
+            quiet(['kscreen-doctor', '--dpms', 'off'], 10)
+        elif what == 'lock' and have('loginctl'):
+            quiet(['loginctl', 'lock-session'], 10)
+    return 0
+
+
+def come_back(why):
+    """Back from Away: the modes the screens had before (the controller brings the TVs to the Couch)."""
+    d = read_modes()
+    before = d.get('before') if isinstance(d.get('before'), dict) else {}
+    screens = screen_modes()
+    now = int(time.time() * 1000)
+    for s in screens:
+        if s['mode'] == 'away':
+            m = before.get(s['name']) if before.get(s['name']) in ('couch', 'desk') else 'desk'
+            if why == 'pad' and s['tv']:
+                m = 'couch'
+            elif why in ('mouse', 'keys') and not s['tv']:
+                m = 'desk'
+            s.update({'mode': m, 'why': why, 'at': now})
+    write_modes(screens, {})
+    apply_modes(screens, why)
+
+
+def apply_modes(screens, why=''):
+    modes = [s['mode'] for s in screens]
+    away_power(bool(modes) and all(m == 'away' for m in modes))
+    live = [m for m in modes if m != 'away']
+    if live:
+        want = 'couch' if all(m == 'couch' for m in live) else 'desk'
+    else:
+        want = current_posture()
+    tell_kwin_screens(screens)
+    pkg = shell_for(want)
+    if read_small(os.path.join(run_dir(), 'shell')) != pkg or current_posture() != want:
+        switch(want, '', why, keep_modes=True)
+    else:
+        ping_modes()
+
+
+def modes_info():
+    s = settings()
+    return {'screens': screen_modes(), 'auto': s.get('autoPad', True) is not False or s.get('autoMouse', True) is not False,
+            'autoPad': s.get('autoPad', True) is not False, 'autoPadScope': s.get('autoPadScope') if s.get('autoPadScope') in ('tv', 'every') else 'tv',
+            'autoMouse': s.get('autoMouse', True) is not False,
+            'awayAfter': s.get('awayAfter') if isinstance(s.get('awayAfter'), int) and s.get('awayAfter') >= 0 else 20,
+            'why': WHY}
 
 
 # ------------------------------------------------------------------ the controller and Automatic posture
@@ -473,10 +735,28 @@ def couch_front():
     return read_small(os.path.join(run_dir(), 'front')) in ('front', 'guide') and current_posture() == 'couch'
 
 
+def any_away():
+    return any(x['mode'] == 'away' for x in screen_modes())
+
+
 def guide_pressed(twice):
     s = settings()
+    if any_away():
+        come_back('pad')
+        return
+    screens = screen_modes()
+    tvs = [x for x in screens if x['tv']]
+    if (len(screens) > 1 and tvs and s.get('autoPadScope') != 'every' and posture_mode(s) == 'auto'
+            and any(x['mode'] != 'couch' for x in tvs)):
+        # Automatic, the TV only (Settings › Couch, Desk and Away): the controller brings the TV to the Couch.
+        set_modes(['tv'], 'couch', 'pad')
+        return
+    if current_posture() != 'couch' and any(x['mode'] == 'couch' for x in screens):
+        # Some screens Couch, some Desk: the Couch there (a layer over the Desk) comes in front.
+        ask('open' if twice or s.get('guide') == 'open' else 'home')
+        return
     if current_posture() != 'couch':
-        if posture_mode(s) != 'desk':
+        if posture_mode(s) not in ('desk', 'manual'):
             switch('couch', 'home' if not twice else '', 'pad')
             if twice:
                 time.sleep(0.1)
@@ -626,6 +906,41 @@ class Pad:
             self.devs.pop(dev.path, None)
 
 
+def away_after():
+    v = settings().get('awayAfter')
+    return v if isinstance(v, int) and v >= 0 else 20
+
+
+def idle_wait(last_input):
+    m = away_after()
+    if not m:
+        return 600
+    return max(5, last_input[0] + m * 60 - time.time())
+
+
+def something_playing():
+    """A video or music playing (MPRIS) keeps the PC from going Away by itself."""
+    out = dbus_send('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus.ListNames', timeout=3)
+    for name in re.findall(r'"(org\.mpris\.MediaPlayer2\.[^"]+)"', out):
+        st = dbus_send(name, '/org/mpris/MediaPlayer2', 'org.freedesktop.DBus.Properties.Get',
+                       'string:org.mpris.MediaPlayer2.Player', 'string:PlaybackStatus', timeout=3)
+        if '"Playing"' in st:
+            return True
+    return False
+
+
+def idle_check(last_input):
+    """Away after N minutes with nobody at either screen and nothing playing (Settings › Couch, Desk and Away)."""
+    m = away_after()
+    if not m or time.time() - last_input[0] < m * 60:
+        return
+    last_input[0] = time.time()           # looked: the next look is N minutes from now
+    if posture_mode() != 'auto' or any_away() or something_playing():
+        return
+    log('nobody here for %d min: Away' % m)
+    set_modes(['all'], 'away', 'idle')
+
+
 def begin(pkg):
     """nimbus-session, just before Plasma starts with Firehold: this session's start (an earlier session's markers
     don't count)."""
@@ -680,12 +995,13 @@ def session():
             watcher = subprocess.Popen([sys.executable, ph, 'watch'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
         except OSError:
             watcher = None
+    last_input = [time.time()]
     while True:
         fds = list(pad.devs.values()) if pad else []
         if watcher and watcher.stdout:
             fds.append(watcher.stdout)
         try:
-            r, _, _ = select.select(fds, [], [], pad.wait() if pad else 60)
+            r, _, _ = select.select(fds, [], [], min(pad.wait() if pad else 60, idle_wait(last_input)))
         except (OSError, ValueError):
             if pad:
                 pad.scan()
@@ -701,12 +1017,24 @@ def session():
                     kind = json.loads(line).get('t')
                 except ValueError:
                     continue
-                if kind in ('mouse', 'keys') and current_posture() == 'couch' and posture_mode() == 'auto':
-                    switch('desk', '', kind)
+                last_input[0] = time.time()
+                if kind not in ('mouse', 'keys'):
+                    continue
+                st = settings()
+                if any_away():
+                    come_back(kind)
+                elif current_posture() == 'couch' and posture_mode(st) == 'auto' and st.get('autoMouse', True) is not False:
+                    if len(screen_modes()) > 1:
+                        # Only the screen the mouse is on (the Couch on it sees the pointer) or the one you type on.
+                        ask('input:' + kind)
+                    else:
+                        switch('desk', '', kind)
             elif pad:
                 pad.read(f)
+                last_input[0] = time.time()
         if pad:
             pad.timeout()
+        idle_check(last_input)
 
 
 # ------------------------------------------------------------------ what the bars and the Guide show, and do
@@ -862,6 +1190,11 @@ def do(action, arg=''):
             return games(['page', arg]) == 0 and {'ok': True} or {'ok': False}
     elif action == 'media-app' and re.match(r'^[A-Za-z0-9_.+-]{1,120}$', arg or ''):
         launch(arg)
+    elif action == 'identify':
+        identify()
+    elif action == 'settings-page' and re.match(r'^[a-z0-9-]{1,40}$', arg or ''):
+        # Hearth's Settings (the pure-Rust app on the Fedora edition) on that page.
+        detach(['hearth-settings-app', '--page', arg] if have('hearth-settings-app') else ['systemsettings'])
     elif action == 'systemsettings':
         detach(['systemsettings'] + ([arg] if re.match(r'^kcm_[a-z0-9_]+$', arg or '') else []))
     else:
@@ -1269,7 +1602,28 @@ def home_cards(fast=False):
         out['progress'] = progress()
         out['added'] = added_times()
         out['profiles'] = profiles_list()
+        out['server'] = server_card()
     return out
+
+
+def server_card():
+    """Away's Home server card: Server mode's services on this PC (hearth-device-status status), when it serves."""
+    ds = os.path.join(SHELL_DIR, 'hearth-device-status')
+    st = read_json_line(quiet([sys.executable, ds, 'status'], 8)) if os.path.isfile(ds) else None
+    srv = st.get('server') if isinstance(st, dict) and isinstance(st.get('server'), dict) else None
+    if not srv:
+        return None
+    lines, title = [], ''
+    for sv in srv.get('services') or []:
+        if not isinstance(sv, dict):
+            continue
+        if sv.get('title') == 'Media' and sv.get('state') == 'running':
+            title = 'Media server on'
+            lines.append('Nobody watching' if str(sv.get('big')) == '0' else '%s watching' % sv.get('big'))
+        elif sv.get('title') == 'Backups':
+            lines.append('Backups: %s' % (sv.get('chip') or sv.get('state') or ''))
+    st_ = srv.get('status') if isinstance(srv.get('status'), dict) else {}
+    return {'title': title or st_.get('title') or 'Home server on', 'lines': lines[:2]}
 
 
 def home_after(secs, fast):
@@ -1311,6 +1665,22 @@ def main(argv):
             why = a[a.index('--why') + 1] if '--why' in a[:-1] else ''
             tab = next((x for x in a[1:] if x in ('home', 'library', 'apps', 'store', 'switcher', 'settings')), '')
             switch(a[0], tab, why)
+        elif what == 'ping' and a and a[0] in ('modes', 'popup', 'popup-off', 'identify', 'identify-off'):
+            # The Desk's mode pill and the Couch: read the modes again, open or close Modes (on SCREEN), Identify.
+            scr = a[1] if len(a) > 1 and re.match(r'^[A-Za-z0-9_.-]{1,40}$', a[1]) else ''
+            ping_modes(a[0], scr)
+        elif what == 'modes':
+            print(json.dumps(modes_info()))
+        elif what == 'mode' and len(a) >= 2:
+            why = a[a.index('--why') + 1] if '--why' in a[:-1] else 'pick'
+            if why not in WHY:
+                raise ValueError('bad reason')
+            targets = [x for x in a[0].split(',') if re.match(r'^[A-Za-z0-9_.-]{1,40}$', x)]
+            set_modes(targets, a[1], why)
+        elif what == 'away-later' and a and a[0].isdigit():
+            return away_later(int(a[0]))
+        elif what == 'back' and a and a[0] in ('pad', 'mouse', 'keys', 'pick'):
+            come_back(a[0])
         elif what == 'begin' and a and a[0] in (COUCH, DESK):
             begin(a[0])
         elif what == 'plain':

@@ -1,8 +1,13 @@
-// Firehold's Desk (mockup 2): the posture pill "Desk" with its blue dot, then Wi-Fi · battery. Press the pill (or the
-// controller's Guide button) to go back to the Couch; everything stays open. It also tells hearth-firehold-plasma the
-// Desk came up. Battery and network from Plasma's own sources, as they change (no timer).
+// Firehold's Desk bar: the mode pill (mockup firehold-plasma 04: "● Desk · TV: Couch", this screen's mode and the TV's)
+// and Wi-Fi · battery. Press the pill: Modes (ModesPopup.qml), each screen's Couch, Desk or Away. On a screen whose
+// mode is Couch or Away while another is Desk, this applet (on that screen's bar) shows the Couch or Away over the
+// Desk as a full-screen layer (CouchLayer.qml, the Couch's own files copied in by install.sh). It also tells
+// hearth-firehold-plasma the Desk came up. Battery from Plasma's own source; the modes when the helper says they
+// changed (its "modes" key, through Plasma's scripting): no timer.
 import QtQuick
+import QtQml
 import QtQuick.Layouts
+import QtQuick.Window
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.kirigami as Kirigami
@@ -17,14 +22,19 @@ PlasmoidItem {
         id: sh
         engine: "executable"
         property var cbs: ({})
+        property int n: 0
         onNewData: function (source, data) {
             const cb = sh.cbs[source];
             delete sh.cbs[source];
             sh.disconnectSource(source);
             if (cb) cb(String(data["stdout"] || ""));
         }
-        function run(cmd, cb) { sh.cbs[cmd] = cb || null; sh.connectSource(cmd); }
+        function run(cmd, cb) { sh.n += 1; cmd += " #" + sh.n; sh.cbs[cmd] = cb || null; sh.connectSource(cmd); }
     }
+    function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
+    function helper(args, cb) { sh.run("hearth-firehold-plasma " + args.map(q).join(" "), cb); }
+    function lastJson(t) { try { return JSON.parse(String(t || "").trim().split("\n").pop()); } catch (e) { return null; } }
+
     P5Support.DataSource {
         id: power
         engine: "powermanagement"
@@ -33,11 +43,64 @@ PlasmoidItem {
     readonly property var battery: power.data["Battery"] || ({})
     readonly property string batteryText: battery["Has Battery"] ? Math.round(battery["Percent"] || 0) + "%" : ""
     property string net: ""
+    property var cfg: ({})
+
+    // ---------------------------------------------------------------- the modes (live state, never a setting)
+    property var modes: ({ screens: [] })
+    function readModes() { helper(["modes"], function (t) { const o = root.lastJson(t); if (o && Array.isArray(o.screens)) root.modes = o; }); }
+    readonly property string myScreen: Screen.name
+    readonly property var me: {
+        for (const s of modes.screens) if (s.name === myScreen) return s;
+        return { name: myScreen, mode: "desk", tv: false, why: "" };
+    }
+    readonly property var tv: {
+        for (const s of modes.screens) if (s.tv && s.name !== myScreen) return s;
+        return null;
+    }
+    function modeName(m) { return m === "couch" ? "Couch" : m === "away" ? "Away" : "Desk"; }
+    readonly property string modesPing: Plasmoid.configuration.modes || ""
+    onModesPingChanged: {
+        const parts = modesPing.split("|");
+        const w = parts[0];
+        if (w === "identify" || w === "identify-off") identifyOn = w === "identify";
+        else if (w === "popup" || w === "popup-off") { if (!parts[2] || parts[2] === myScreen) popupOpen = w === "popup"; }
+        else readModes();
+    }
+    property bool identifyOn: false
+    Loader { active: root.identifyOn; source: "IdentifyLayer.qml"; onLoaded: item.bar = root }
+    readonly property string modeKey: Plasmoid.configuration.key || ""
+    onModeKeyChanged: {
+        const p = modeKey.split("|");
+        if (p.length === 3 && p[1] === myScreen && ["couch", "desk", "away"].indexOf(p[0]) >= 0) setMode(myScreen, p[0]);
+    }
+    function setMode(target, m) { helper(["mode", target, m, "--why", "pick"], function () { root.readModes(); }); }
+    function setSetting(key, value) {
+        const c = Object.assign({}, cfg); c[key] = value; cfg = c;
+        helper(["set", key, JSON.stringify(value)]);
+    }
+
+    property bool popupOpen: false
+    property Item pillItem: null
+    Loader {
+        active: root.popupOpen
+        source: "ModesPopup.qml"
+        onLoaded: item.bar = root
+    }
+    // Each Couch or Away screen's page over the Desk (the bar is on one screen; it opens them on every screen).
+    Instantiator {
+        model: root.modes.screens.filter(function (s) { return s.mode === "couch" || s.mode === "away"; }).map(function (s) { return s.name; })
+        delegate: Loader {
+            required property var modelData
+            source: "CouchLayer.qml"
+            onLoaded: { item.bar = root; item.screenName = modelData; item.show(); }
+        }
+    }
+
     Component.onCompleted: {
-        sh.run("hearth-firehold-plasma ready org.hearthos.firehold.desk");
-        sh.run("hearth-firehold-plasma sys", function (t) {
-            try { root.net = JSON.parse(t.trim().split("\n").pop()).net || ""; } catch (e) {}
-        });
+        helper(["ready", "org.hearthos.firehold.desk"]);
+        helper(["sys"], function (t) { const o = root.lastJson(t); if (o) root.net = o.net || ""; });
+        helper(["get"], function (t) { const o = root.lastJson(t); if (o && typeof o === "object") root.cfg = o; });
+        readModes();
     }
 
     fullRepresentation: Item {
@@ -47,21 +110,23 @@ PlasmoidItem {
         Row {
             id: row
             anchors.centerIn: parent
-            spacing: 14
+            spacing: 12
             Rectangle {
+                id: pill
+                Component.onCompleted: root.pillItem = pill
                 anchors.verticalCenter: parent.verticalCenter
-                height: 26; radius: 13
-                width: pillRow.implicitWidth + 24
-                color: "#2a201b"
-                border.width: 1; border.color: "#3a2d26"
+                height: 30; radius: 15
+                width: pillRow.implicitWidth + 26
+                color: root.popupOpen ? "#38ff7a2f" : "#12ffffff"
                 Row {
                     id: pillRow
                     anchors.centerIn: parent
-                    spacing: 7
-                    Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 8; height: 8; radius: 4; color: "#5fb4f5" }
-                    Text { text: "Desk"; color: "#f6ede6"; font.pixelSize: 14; font.weight: Font.Bold }
+                    spacing: 8
+                    Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 9; height: 9; radius: 4.5; color: root.me.mode === "couch" ? "#ff7a2f" : "#5bb8ff" }
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: root.modeName(root.me.mode); color: "#f2ede8"; font.pixelSize: 14; font.weight: Font.DemiBold }
+                    Text { anchors.verticalCenter: parent.verticalCenter; visible: !!root.tv; text: root.tv ? "· TV: " + root.modeName(root.tv.mode) : ""; color: "#6f6a66"; font.pixelSize: 14; font.weight: Font.Medium }
                 }
-                MouseArea { anchors.fill: parent; onClicked: sh.run("hearth-firehold-plasma switch couch home") }
+                MouseArea { anchors.fill: parent; onClicked: root.popupOpen = !root.popupOpen }
             }
             Text {
                 anchors.verticalCenter: parent.verticalCenter

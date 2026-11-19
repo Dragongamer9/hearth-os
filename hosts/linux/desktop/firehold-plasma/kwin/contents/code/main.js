@@ -14,6 +14,7 @@ var GAME_APPS = ["retroarch", "org.libretro.retroarch", "dolphin-emu", "org.dolp
     "eden", "gamescope", "steam_proton", "hearth-game"];
 
 var couch = false;
+var couchOn = {};           // screens in Couch mode (each screen has its own mode: hearth-firehold-plasma mode)
 var games = "follow";       // follow | fullscreen | window (Settings › Couch and Desk › Games)
 var made = {};              // windows this script made full screen
 
@@ -48,7 +49,38 @@ function setCouch(on) {
 
 // A game that opens on the Couch (or with Games: Always full screen) starts full screen. Going to a running game from
 // the Couch is the Couch's own doing (it asks for full screen itself), so "Open in a window" stays a window.
-workspace.windowAdded.connect(function (w) { if (couch || games === "fullscreen") full(w); });
+function onCouchScreen(w) { return !!(w && w.output && couchOn[w.output.name]); }
+workspace.windowAdded.connect(function (w) { if (couch || onCouchScreen(w) || games === "fullscreen") full(w); });
+
+// Each screen's own mode: a game on a Couch screen goes full screen, back on a Desk screen it goes back in its window.
+function setScreen(name, on) {
+    couchOn[name] = on;
+    var list = workspace.windowList();
+    for (var i = 0; i < list.length; i++) {
+        var w = list[i];
+        if (!w.output || w.output.name !== name) continue;
+        if (on) {
+            if (w === workspace.activeWindow) full(w);
+        } else if ((made[key(w)] || isGame(w)) && w.fullScreen && games === "follow") {
+            w.fullScreen = false;
+            delete made[key(w)];
+        }
+    }
+}
+var registered = {};
+function screenShortcuts() {
+    var s = workspace.screens;
+    for (var i = 0; i < s.length; i++) {
+        (function (name) {
+            if (registered[name]) return;
+            registered[name] = true;
+            registerShortcut("Firehold Couch on " + name, "Firehold: Couch on " + name, "", function () { setScreen(name, true); });
+            registerShortcut("Firehold Desk on " + name, "Firehold: Desk on " + name, "", function () { setScreen(name, false); });
+        })(s[i].name);
+    }
+}
+screenShortcuts();
+workspace.screensChanged.connect(screenShortcuts);
 workspace.windowRemoved.connect(function (w) { if (w) delete made[key(w)]; });
 
 registerShortcut("Firehold Couch posture", "Firehold: Couch posture", "", function () { setCouch(true); });
@@ -62,3 +94,16 @@ var GUIDE = 'var v="guide|"+Date.now();desktops().forEach(function(d){if(d.type=
 registerShortcut("Firehold Guide", "Firehold: the Guide", "Meta+Ctrl+G", function () {
     callDBus("org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell", "evaluateScript", GUIDE);
 });
+
+// Super+Shift+C / D / A: the screen you're on to Couch, Desk or Away (mockup firehold-plasma 04's keys). KWin knows the
+// screen; the Desk's mode pill on that screen (or the Couch there) asks hearth-firehold-plasma.
+function modeKey(m) {
+    var name = workspace.activeScreen ? workspace.activeScreen.name : "";
+    var js = 'var v="' + m + '|' + name + '|"+Date.now();' +
+        'panels().forEach(function(p){p.widgets().forEach(function(w){if(w.type=="org.hearthos.firehold.posture"){w.currentConfigGroup=["General"];w.writeConfig("key",v);}});});' +
+        'desktops().forEach(function(d){if(d.type=="org.hearthos.firehold.couch"){d.currentConfigGroup=["General"];d.writeConfig("request","mode:' + m + '|"+Date.now());}});';
+    callDBus("org.kde.plasmashell", "/PlasmaShell", "org.kde.PlasmaShell", "evaluateScript", js);
+}
+registerShortcut("Firehold this screen Couch", "Firehold: this screen to Couch", "Meta+Shift+C", function () { modeKey("couch"); });
+registerShortcut("Firehold this screen Desk", "Firehold: this screen to Desk", "Meta+Shift+D", function () { modeKey("desk"); });
+registerShortcut("Firehold this screen Away", "Firehold: this screen to Away", "Meta+Shift+A", function () { modeKey("away"); });
