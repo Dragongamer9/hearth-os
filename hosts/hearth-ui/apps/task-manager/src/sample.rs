@@ -69,6 +69,11 @@ pub struct Mem {
     pub drive_swap_used: u64,
     /// /proc/pressure/memory "some" avg10.
     pub pressure: f32,
+    /// ... and avg60 (Memory pressure: "Last 10 s · last minute").
+    pub pressure60: f32,
+    /// zram as swap (/proc/swaps): its size and what's swapped into it (Swap: "Zram (in memory, fast)").
+    pub zram_swap_total: u64,
+    pub zram_swap_used: u64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -113,6 +118,8 @@ pub struct Battery {
     pub full_wh: f32,
     pub design_wh: f32,
     pub cycles: u32,
+    /// Hours left (discharging) or to full (charging), from energy and power.
+    pub hours: f32,
 }
 
 /// One program in an app's group (or one row in All processes).
@@ -129,6 +136,11 @@ pub struct Kid {
     pub gpu: f32,
     pub state: char,
     pub nice: i32,
+    /// Shared memory and mapped files (RssShmem + RssFile: Memory › Biggest users' Shared).
+    pub shared: u64,
+    /// Video memory its DRM files hold, and what it uses the card for (3D, video decode, encode).
+    pub vram: u64,
+    pub engines: [f32; 3],
 }
 
 /// An app and everything it started (Processes › Apps & groups).
@@ -159,6 +171,10 @@ pub struct Group {
     pub keep_running: bool,
     pub eco: bool,
     pub children: Vec<Kid>,
+    pub shared: u64,
+    pub vram: u64,
+    /// 3D, Video decode, Video encode (Programs on the graphics card › Uses).
+    pub uses: Vec<String>,
 }
 
 /// One row of Details (every process with its number).
@@ -215,6 +231,7 @@ pub struct P {
     pub start: u64,
     pub kthread: bool,
     pub cpus: String,
+    pub shared: u64,
 }
 
 impl P {
@@ -242,8 +259,8 @@ pub fn parse_stat(text: &str) -> Option<(i32, String, char, i32, u64, u64, i32, 
     Some((pid, comm, state, ppid, jiffies, flags, nice, threads, start, 0))
 }
 
-fn status_fields(text: &str) -> (u32, u64, u64, String, bool) {
-    let (mut uid, mut rss, mut swap, mut cpus, mut kt) = (u32::MAX, 0u64, 0u64, String::new(), false);
+fn status_fields(text: &str) -> (u32, u64, u64, String, bool, u64) {
+    let (mut uid, mut rss, mut swap, mut cpus, mut kt, mut shared) = (u32::MAX, 0u64, 0u64, String::new(), false, 0u64);
     for l in text.lines() {
         let mut it = l.splitn(2, ':');
         let (k, v) = (it.next().unwrap_or(""), it.next().unwrap_or("").trim());
@@ -251,12 +268,13 @@ fn status_fields(text: &str) -> (u32, u64, u64, String, bool) {
             "Uid" => uid = v.split_whitespace().next().and_then(|x| x.parse().ok()).unwrap_or(u32::MAX),
             "VmRSS" => rss = kb(v),
             "VmSwap" => swap = kb(v),
+            "RssShmem" | "RssFile" => shared += kb(v),
             "Cpus_allowed_list" => cpus = v.to_string(),
             "Kthread" => kt = v == "1",
             _ => {}
         }
     }
-    (uid, rss, swap, cpus, kt)
+    (uid, rss, swap, cpus, kt, shared)
 }
 
 fn kb(v: &str) -> u64 {
@@ -278,7 +296,7 @@ pub fn scan(detail: bool) -> HashMap<i32, P> {
         if st.is_empty() {
             continue;
         }
-        let (uid, mem, swap, cpus, kt) = status_fields(&st);
+        let (uid, mem, swap, cpus, kt, shared) = status_fields(&st);
         let kthread = kt || flags & 0x0020_0000 != 0 || pid == 2 || ppid == 2;
         let (exe, path) = if kthread {
             (String::new(), String::new())
@@ -299,7 +317,7 @@ pub fn scan(detail: bool) -> HashMap<i32, P> {
                 .unwrap_or_default()
         };
         let _ = detail;
-        out.insert(pid, P { pid, ppid, comm, exe, path, cmd, uid, state, nice, threads, mem, swap, jiffies, start, kthread, cpus });
+        out.insert(pid, P { pid, ppid, comm, exe, path, cmd, uid, state, nice, threads, mem, swap, jiffies, start, kthread, cpus, shared });
     }
     out
 }
@@ -483,7 +501,9 @@ fn battery() -> Option<Battery> {
         let full = r("energy_full").map(|x| x / 1e6).or_else(|| Some(r("charge_full")? * r("voltage_min_design")? / 1e12)).unwrap_or(0.0) as f32;
         let design = r("energy_full_design").map(|x| x / 1e6).or_else(|| Some(r("charge_full_design")? * r("voltage_min_design")? / 1e12)).unwrap_or(0.0) as f32;
         let cycles = r("cycle_count").unwrap_or(0.0) as u32;
-        return Some(Battery { percent, status, watts, full_wh: full, design_wh: design, cycles });
+        let now_wh = r("energy_now").map(|x| x / 1e6).or_else(|| Some(r("charge_now")? * r("voltage_min_design")? / 1e12)).unwrap_or(0.0) as f32;
+        let hours = if watts > 0.1 { if status == "Charging" { (full - now_wh).max(0.0) / watts } else if status == "Discharging" { now_wh / watts } else { 0.0 } } else { 0.0 };
+        return Some(Battery { percent, status, watts, full_wh: full, design_wh: design, cycles, hours });
     }
     None
 }
@@ -504,16 +524,73 @@ fn zram() -> (u64, u64) {
     (data, used)
 }
 
-fn drive_swap() -> (u64, u64) {
-    let (mut t, mut u) = (0, 0);
+/// /proc/swaps: (drive total, drive used, zram total, zram used), bytes.
+fn swaps() -> (u64, u64, u64, u64) {
+    let (mut t, mut u, mut zt, mut zu) = (0, 0, 0, 0);
     for l in read("/proc/swaps").lines().skip(1) {
         let f: Vec<&str> = l.split_whitespace().collect();
-        if f.len() >= 4 && !f[0].contains("zram") {
-            t += f[2].parse::<u64>().unwrap_or(0) * 1024;
-            u += f[3].parse::<u64>().unwrap_or(0) * 1024;
+        if f.len() >= 4 {
+            let size = f[2].parse::<u64>().unwrap_or(0) * 1024;
+            let used = f[3].parse::<u64>().unwrap_or(0) * 1024;
+            if f[0].contains("zram") {
+                zt += size;
+                zu += used;
+            } else {
+                t += size;
+                u += used;
+            }
         }
     }
-    (t, u)
+    (t, u, zt, zu)
+}
+
+/// CI's pictures only (HEARTH_TM_FIXTURES=<folder>, never set on a PC): devices.json adds a graphics card, a battery,
+/// a Wi-Fi and a Tailscale link and some programs, so the pages for them can be pictured on a headless runner.
+fn fixture_devices(s: &mut Sample) {
+    let Some(dir) = std::env::var_os("HEARTH_TM_FIXTURES") else { return };
+    let Ok(b) = std::fs::read(std::path::Path::new(&dir).join("devices.json")) else { return };
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(&b) else { return };
+    let f = |x: &serde_json::Value, k: &str| x.get(k).and_then(|y| y.as_f64()).unwrap_or(0.0);
+    let st = |x: &serde_json::Value, k: &str| x.get(k).and_then(|y| y.as_str()).unwrap_or("").to_string();
+    if s.gpus.is_empty() {
+        for (i, g) in v.get("gpus").and_then(|x| x.as_array()).cloned().unwrap_or_default().iter().enumerate() {
+            s.gpus.push(Gpu { index: i, name: st(g, "name"), vendor: st(g, "vendor"), busy: Some(f(g, "busy") as f32), vram_used: f(g, "vramUsed") as u64, vram_total: f(g, "vramTotal") as u64, temp: Some(f(g, "temp") as f32) });
+        }
+    }
+    if s.battery.is_none() {
+        if let Some(b) = v.get("battery") {
+            s.battery = Some(Battery { percent: f(b, "percent") as u32, status: st(b, "status"), watts: f(b, "watts") as f32, full_wh: f(b, "fullWh") as f32, design_wh: f(b, "designWh") as f32, cycles: f(b, "cycles") as u32, hours: f(b, "hours") as f32 });
+        }
+    }
+    for n in v.get("nets").and_then(|x| x.as_array()).cloned().unwrap_or_default() {
+        if !s.nets.iter().any(|x| x.name == st(&n, "name")) {
+            s.nets.push(Net { name: st(&n, "name"), kind: st(&n, "kind"), up: true, speed: f(&n, "speed") as u64, recv: f(&n, "recv") as u64, send: f(&n, "send") as u64, ..Net::default() });
+        }
+    }
+    if s.has_procs {
+        for g in v.get("groups").and_then(|x| x.as_array()).cloned().unwrap_or_default() {
+            let pid = f(&g, "pid") as i32;
+            let uses = g.get("uses").and_then(|x| x.as_array()).map(|a| a.iter().filter_map(|y| y.as_str().map(String::from)).collect()).unwrap_or_default();
+            s.groups.push(Group {
+                id: format!("fixture:{pid}"),
+                pid,
+                pids: vec![pid],
+                name: st(&g, "name"),
+                kind: { let k = st(&g, "kind"); if k.is_empty() { "app".into() } else { k } },
+                tag: st(&g, "tag"),
+                exe: st(&g, "exe"),
+                cpu: f(&g, "cpu") as f32,
+                mem: f(&g, "mem") as u64,
+                swap: f(&g, "swap") as u64,
+                shared: f(&g, "shared") as u64,
+                gpu: f(&g, "gpu") as f32,
+                vram: f(&g, "vram") as u64,
+                uses,
+                ..Group::default()
+            });
+        }
+        s.groups.sort_by(|a, b| b.mem.cmp(&a.mem));
+    }
 }
 
 fn proc_io(pid: i32) -> u64 {
@@ -641,7 +718,9 @@ impl Sampler {
         let mi = meminfo();
         let g = |k: &str| mi.get(k).copied().unwrap_or(0);
         let (zd, zu) = zram();
-        let (dst, dsu) = drive_swap();
+        let (dst, dsu, zst, zsu) = swaps();
+        let psi = read("/proc/pressure/memory");
+        let psi_of = |key: &str| -> f32 { psi.lines().next().and_then(|l| l.split_whitespace().find(|w| w.starts_with(key))).and_then(|w| w[key.len()..].parse().ok()).unwrap_or(0.0) };
         let used = g("MemTotal").saturating_sub(g("MemAvailable"));
         s.mem = Mem {
             total: g("MemTotal"),
@@ -657,7 +736,10 @@ impl Sampler {
             zram_used: zu,
             drive_swap_total: dst,
             drive_swap_used: dsu,
-            pressure: read("/proc/pressure/memory").lines().next().and_then(|l| l.split_whitespace().find(|w| w.starts_with("avg10="))).and_then(|w| w[6..].parse().ok()).unwrap_or(0.0),
+            pressure: psi_of("avg10="),
+            pressure60: psi_of("avg60="),
+            zram_swap_total: zst,
+            zram_swap_used: zsu,
         };
         s.uptime = read("/proc/uptime").split_whitespace().next().and_then(|x| x.parse::<f64>().ok()).unwrap_or(0.0) as u64;
 
@@ -767,6 +849,7 @@ impl Sampler {
         }
         s.cpu = cpu;
         self.t = Some(now);
+        fixture_devices(&mut s);
         s
     }
 
@@ -836,9 +919,15 @@ impl Sampler {
                     gpu: gpu_of.get(pid).copied().unwrap_or(0.0),
                     state: p.state,
                     nice: p.nice,
+                    shared: p.shared,
+                    vram: self.drm.extra.get(pid).map(|x| x.0).unwrap_or(0),
+                    engines: self.drm.extra.get(pid).map(|x| x.1).unwrap_or([0.0; 3]),
                 });
             }
             g.cpu = kids.iter().map(|k| k.cpu).sum();
+            g.shared = kids.iter().map(|k| k.shared).sum();
+            g.vram = kids.iter().map(|k| k.vram).sum();
+            g.uses = [(0, "3D"), (1, "Video decode"), (2, "Video encode")].iter().filter(|(i, _)| kids.iter().any(|k| k.engines[*i] >= 0.5)).map(|(_, l)| l.to_string()).collect();
             g.swap = kids.iter().map(|k| k.swap).sum();
             g.disk = kids.iter().map(|k| k.disk).sum();
             g.gpu = kids.iter().map(|k| k.gpu).sum::<f32>().min(100.0);

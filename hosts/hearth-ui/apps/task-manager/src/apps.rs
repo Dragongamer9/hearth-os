@@ -455,8 +455,48 @@ pub fn build_groups(procs: &HashMap<i32, P>, uid: u32, me: i32, index: &AppIndex
 #[derive(Default)]
 pub struct Drm {
     fds: HashMap<(i32, u64), (std::time::Instant, Vec<String>)>,
-    prev: HashMap<i32, (std::time::Instant, u64)>,
+    prev: HashMap<i32, (std::time::Instant, u64, [u64; 3])>,
     pub last: HashMap<i32, f32>,
+    /// Each program's video memory (bytes) and its share of 3D, video decode and video encode (percent), as
+    /// hearth-tasks' drm_engines (Performance › GPU › Tuning: Programs on the graphics card).
+    pub extra: HashMap<i32, (u64, [f32; 3])>,
+}
+
+/// A DRM engine's name: 0 = 3D, 1 = video decode, 2 = video encode (hearth-tasks' engine_kind), else none.
+pub fn engine_kind(name: &str) -> Option<usize> {
+    let n = name.to_lowercase();
+    let n = n.as_str();
+    if ["render", "gfx", "rcs", "fragment", "vertex-tiler", "3d"].contains(&n) {
+        Some(0)
+    } else if ["video", "dec", "vcs", "jpeg", "vcn", "uvd"].contains(&n) || n.starts_with("dec") || n.starts_with("vcn_dec") || n.starts_with("jpeg") {
+        Some(1)
+    } else if ["enc", "video-enhance", "vecs", "vce"].contains(&n) || n.starts_with("enc") || n.starts_with("vcn_enc") {
+        Some(2)
+    } else {
+        None
+    }
+}
+
+/// drm-memory-vram / drm-total-vram / drm-total-local: bytes (KiB, MiB or GiB).
+pub fn fdinfo_vram(text: &str) -> u64 {
+    for l in text.lines() {
+        let Some(rest) = l.strip_prefix("drm-total-").or_else(|| l.strip_prefix("drm-memory-")) else { continue };
+        let Some((kind, v)) = rest.split_once(':') else { continue };
+        let k = kind.trim_end_matches(|c: char| c.is_ascii_digit());
+        if k != "vram" && k != "local" {
+            continue;
+        }
+        let mut it = v.split_whitespace();
+        let n: u64 = it.next().and_then(|x| x.parse().ok()).unwrap_or(0);
+        let mul = match it.next() {
+            Some("KiB") => 1024,
+            Some("MiB") => 1048576,
+            Some("GiB") => 1073741824,
+            _ => 1,
+        };
+        return n * mul;
+    }
+    0
 }
 
 impl Drm {
@@ -487,30 +527,43 @@ impl Drm {
             }
             let mut clients = HashSet::new();
             let mut ns = 0u64;
+            let mut kinds = [0u64; 3];
+            let mut vram = 0u64;
             for fd in fds {
                 let t = std::fs::read_to_string(format!("/proc/{}/fdinfo/{fd}", p.pid)).unwrap_or_default();
                 let client = t.lines().find_map(|l| l.strip_prefix("drm-client-id:")).map(|s| s.trim().to_string()).unwrap_or_default();
                 if !client.is_empty() && !clients.insert(client) {
                     continue;
                 }
+                vram += fdinfo_vram(&t);
                 for l in t.lines() {
                     if let Some(rest) = l.strip_prefix("drm-engine-") {
-                        if let Some((_, v)) = rest.split_once(':') {
-                            ns += v.trim().trim_end_matches(" ns").trim().parse::<u64>().unwrap_or(0);
+                        if let Some((name, v)) = rest.split_once(':') {
+                            let x = v.trim().trim_end_matches(" ns").trim().parse::<u64>().unwrap_or(0);
+                            ns += x;
+                            if let Some(k) = engine_kind(name.trim()) {
+                                kinds[k] += x;
+                            }
                         }
                     }
                 }
             }
-            if let Some((t0, n0)) = self.prev.get(&p.pid) {
+            let mut share = [0.0f32; 3];
+            if let Some((t0, n0, k0)) = self.prev.get(&p.pid) {
                 let dt = now.duration_since(*t0).as_nanos() as f64;
                 if dt > 0.0 {
                     out.insert(p.pid, ((ns.saturating_sub(*n0)) as f64 / dt * 100.0).clamp(0.0, 100.0) as f32);
+                    for i in 0..3 {
+                        share[i] = ((kinds[i].saturating_sub(k0[i])) as f64 / dt * 100.0).clamp(0.0, 100.0) as f32;
+                    }
                 }
             }
-            self.prev.insert(p.pid, (now, ns));
+            self.prev.insert(p.pid, (now, ns, kinds));
+            self.extra.insert(p.pid, (vram, share));
         }
         self.fds.retain(|k, _| seen.contains(k));
         self.prev.retain(|pid, _| procs.contains_key(pid));
+        self.extra.retain(|pid, _| procs.contains_key(pid));
         self.last = out.clone();
         out
     }

@@ -11,8 +11,11 @@
 //! change (red flag 9); opening it writes nothing.
 
 mod apps;
+mod devset;
+mod memset;
 mod pages;
 mod sample;
+mod widgets;
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::atomic::Ordering;
@@ -102,6 +105,26 @@ impl Page {
     }
 }
 
+impl App {
+    /// What the sampler reads for the page on show: Performance's settings tabs and Memory's Overview also need the
+    /// programs (Biggest users, Programs on the graphics card, Per-app limits' PIDs).
+    pub fn want(&self) -> u8 {
+        let w = self.page.want();
+        if self.page == Page::Performance && (self.tab == "settings" || devset::kind_of(&self.perf_dev) == "memory") {
+            w | W_PROCS
+        } else {
+            w
+        }
+    }
+    /// Reads what Performance's tab on show needs, now (it opened, or the device or tab changed).
+    pub fn dev_fetch(&mut self) -> Task<Msg> {
+        if self.page != Page::Performance {
+            return Task::none();
+        }
+        devset::fetch(self, true)
+    }
+}
+
 /// What a row in the right-click menu does.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Act {
@@ -125,6 +148,12 @@ pub enum Act {
     Service(&'static str),
     StartupSet(bool),
     TimerSet(bool),
+    /// A choice from a ▾ list on Performance's settings tabs: (what, the value).
+    Choose(String, String),
+    /// + New task: when it runs (daily@HH:MM, hourly, every6h, signin, idle, battery, or "time" to type one).
+    TaskWhen(String),
+    /// Details › Columns…: show or hide a column.
+    Col(&'static str),
 }
 
 #[derive(Debug, Clone)]
@@ -232,6 +261,27 @@ pub enum Msg {
     ListAct(&'static str, String, String),
     Pref(&'static str, Value),
     ClearHistory,
+    /// Performance: Overview or the device's "… & settings" tab.
+    PerfTab(&'static str),
+    /// A reading for the settings tabs came back (hearth-hwset status, hearth-netinfo apps…).
+    DevOut(String, run::Output),
+    DevActed(String, run::Output),
+    MemActed(String, run::Output),
+    DevTick,
+    DevSlow,
+    /// A switch or a choice on a settings tab: (what, the value).
+    Pick(String, String),
+    /// A ▾ was pressed: (what, its choices as (value, label), the current one).
+    DropOpen(String, Vec<(String, String)>, String),
+    Slide(String, f32),
+    SlideDone(String),
+    FanPress(usize),
+    FanMove(Point),
+    FanRelease,
+    NeverInput(String),
+    NeverAdd,
+    NewTask,
+    DetailCols,
     Key(KEvent),
     Drag,
     Maximize,
@@ -264,6 +314,25 @@ pub struct App {
     pub prefs: Map<String, Value>,
     pub ending: Vec<i32>,
     pub note: String,
+    /// Performance: "overview" or "settings" (the device's "… & settings" tab), and what those tabs read.
+    pub tab: &'static str,
+    pub dev: HashMap<String, Value>,
+    pub dev_busy: HashSet<String>,
+    pub dev_note: (String, bool),
+    pub slides: HashMap<String, f32>,
+    pub fan_pts: Option<Vec<(f32, f32)>>,
+    pub fan_drag: Option<usize>,
+    pub prog_hist: VecDeque<f32>,
+    pub ts_peers: i32,
+    /// Memory › Swap & settings: what you changed and haven't saved yet (MemorySettings.qml's draft).
+    pub mem_draft: Map<String, Value>,
+    pub mem_busy: bool,
+    pub mem_note: (String, bool),
+    pub mem_pending: Option<Vec<String>>,
+    pub swap_custom: bool,
+    pub never_typing: Option<String>,
+    /// + New task, while it's being made: its name and what it runs.
+    pub new_task: (String, String),
 }
 
 pub fn prefs_path() -> std::path::PathBuf {
@@ -322,10 +391,30 @@ impl App {
             prefs,
             ending: Vec::new(),
             note: String::new(),
+            tab: if app::arg("--tab").as_deref() == Some("settings") { "settings" } else { "overview" },
+            dev: HashMap::new(),
+            dev_busy: HashSet::new(),
+            dev_note: (String::new(), false),
+            slides: HashMap::new(),
+            fan_pts: None,
+            fan_drag: None,
+            prog_hist: VecDeque::new(),
+            ts_peers: -1,
+            mem_draft: Map::new(),
+            mem_busy: false,
+            mem_note: (String::new(), false),
+            mem_pending: None,
+            swap_custom: false,
+            never_typing: None,
+            new_task: (String::new(), String::new()),
         };
+        let mut a = a;
+        if app::arg("--show").as_deref() == Some("new-task") {
+            a.sheet = Some(Sheet { kind: SheetKind::Ask("task-name"), title: "New task".into(), text: "A name for it (for example: Back up game saves).".into(), input: "Back up game saves".into(), target: Target::default() });
+        }
         sample::INTERVAL_MS.store(a.interval(), Ordering::Relaxed);
-        sample::WANT.store(a.page.want(), Ordering::Relaxed);
-        let t = a.load_list();
+        sample::WANT.store(a.want(), Ordering::Relaxed);
+        let t = Task::batch([a.load_list(), a.dev_fetch()]);
         (a, t)
     }
 
@@ -389,6 +478,7 @@ impl App {
         }
         let total = s.mem.total.max(1) as f32;
         push(&mut self.mem_hist, 100.0 * s.mem.used as f32 / total);
+        push(&mut self.prog_hist, 100.0 * s.mem.used.saturating_sub(s.mem.zram_used) as f32 / total);
         push(&mut self.zram_hist, 100.0 * s.mem.zram_used as f32 / total);
         push(&mut self.pressure_hist, s.mem.pressure);
         for d in &s.disks {
@@ -409,10 +499,10 @@ impl App {
         self.page = p;
         self.menu = None;
         self.sel = None;
-        sample::WANT.store(p.want(), Ordering::Relaxed);
+        sample::WANT.store(self.want(), Ordering::Relaxed);
         sample::wake();
         self.set_pref("lastPage", Value::String(p.id().into()));
-        self.load_list()
+        Task::batch([self.load_list(), self.dev_fetch()])
     }
 
     // ---------------------------------------------------------------- the right-click menus
@@ -623,6 +713,26 @@ impl App {
             Act::Service(what) => self.act("service", vec!["service".into(), t.unit.clone(), what.into()]),
             Act::StartupSet(on) => self.act("startup-set", vec!["startup-set".into(), t.list_id.clone(), if on { "on" } else { "off" }.into()]),
             Act::TimerSet(on) => self.act("timer", vec!["timer".into(), t.unit.clone(), if on { "on" } else { "off" }.into()]),
+            Act::Choose(key, v) => pick_any(self, &key, &v),
+            Act::TaskWhen(w) => {
+                let name = self.new_task.0.clone();
+                if w == "time" {
+                    self.sheet = Some(Sheet { kind: SheetKind::Ask("task-time"), title: format!("New task · {name}"), text: "Every day at what time? (24-hour, like 03:30)".into(), input: "03:00".into(), target: Target::default() });
+                    return Task::none();
+                }
+                let cmd = self.new_task.1.clone();
+                self.act("task-new", vec!["task-new".into(), name, w, cmd])
+            }
+            Act::Col(k) => {
+                let mut hidden = pages::details_hidden(self);
+                if let Some(i) = hidden.iter().position(|x| x == k) {
+                    hidden.remove(i);
+                } else {
+                    hidden.push(k.to_string());
+                }
+                self.set_pref("detailsHidden", Value::Array(hidden.into_iter().map(Value::String).collect()));
+                Task::none()
+            }
         }
     }
 
@@ -646,6 +756,15 @@ impl App {
     }
 }
 
+/// A switch, choice or slider on Performance's settings tabs (Memory's go to its draft).
+pub fn pick_any(a: &mut App, key: &str, v: &str) -> Task<Msg> {
+    if key.starts_with("mem.") {
+        memset::pick(a, key, v)
+    } else {
+        devset::pick(a, key, v)
+    }
+}
+
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
         Msg::Theme => a.p = hearth_ui::theme::load(),
@@ -658,6 +777,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                     a.sel = Some(g.clone());
                     a.proc_menu(&g);
                 }
+            }
+            if a.menu.is_none() && a.cpu_hist.len() == 2 && app::arg("--show").as_deref() == Some("columns") {
+                a.cursor = Point::new(760.0, 110.0);
+                return update(a, Msg::DetailCols);
             }
             if let Some(sh) = &a.sheet {
                 if sh.kind == SheetKind::Ending && !a.ending.is_empty() {
@@ -684,14 +807,88 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             } else if what != "end" {
                 sample::wake();
             }
-            if matches!(what.as_str(), "service" | "startup-set" | "timer") {
+            if matches!(what.as_str(), "service" | "startup-set" | "timer" | "task-new") {
                 return a.load_list();
             }
         }
         Msg::Page(p) => return a.set_page(p),
         Msg::PerfDevice(d) => {
+            if a.perf_dev != d {
+                a.dev_note = (String::new(), false);
+                a.slides.clear();
+                a.fan_pts = None;
+                a.fan_drag = None;
+            }
             a.perf_dev = d.clone();
             a.set_pref("perfDevice", Value::String(d));
+            sample::WANT.store(a.want(), Ordering::Relaxed);
+            sample::wake();
+            return a.dev_fetch();
+        }
+        Msg::PerfTab(t) => {
+            a.tab = t;
+            a.dev_note = (String::new(), false);
+            sample::WANT.store(a.want(), Ordering::Relaxed);
+            sample::wake();
+            return a.dev_fetch();
+        }
+        Msg::DevOut(k, o) => {
+            if k == "gpu" && a.fan_drag.is_none() && !a.dev_busy.contains("act") {
+                a.fan_pts = None;
+            }
+            devset::on_out(a, k, o);
+        }
+        Msg::DevActed(ok, o) => return devset::acted(a, ok, o),
+        Msg::MemActed(stage, o) => return memset::acted(a, stage, o),
+        Msg::DevTick => {
+            if a.page == Page::Performance && a.tab == "settings" {
+                return devset::fetch(a, false);
+            }
+        }
+        Msg::DevSlow => {
+            if a.page == Page::Performance {
+                return devset::fetch(a, true);
+            }
+        }
+        Msg::Pick(k, v) => return pick_any(a, &k, &v),
+        Msg::DropOpen(key, opts, cur) => {
+            let title = if key == "palAdd" { "Which program?".to_string() } else { String::new() };
+            let items = opts.into_iter().map(|(v, l)| MenuItem::new(&l, Act::Choose(key.clone(), v.clone())).checked(v == cur)).collect();
+            a.menu = Some(Menu { title, items, at: a.cursor, target: Target::default(), sel: 0 });
+        }
+        Msg::Slide(k, v) => {
+            if k.starts_with("mem.") {
+                memset::slide(a, &k, v);
+            } else {
+                a.slides.insert(k, v);
+            }
+        }
+        Msg::SlideDone(k) => {
+            if let Some(v) = a.slides.get(&k).copied() {
+                return pick_any(a, &k, &format!("{}", v.round() as i64));
+            }
+        }
+        Msg::FanPress(i) => {
+            a.fan_pts = Some(devset::fan_points(a));
+            a.fan_drag = Some(i);
+        }
+        Msg::FanMove(pt) => devset::fan_move(a, pt.y),
+        Msg::FanRelease => {
+            if a.fan_drag.take().is_some() {
+                let c = devset::curve_text(&devset::fan_points(a));
+                return pick_any(a, "gpu.curve", &c);
+            }
+        }
+        Msg::NeverInput(s) => a.never_typing = Some(s),
+        Msg::NeverAdd => memset::never_add(a),
+        Msg::NewTask => {
+            a.new_task = (String::new(), String::new());
+            a.sheet = Some(Sheet { kind: SheetKind::Ask("task-name"), title: "New task".into(), text: "A name for it (for example: Back up game saves).".into(), input: String::new(), target: Target::default() });
+        }
+        Msg::DetailCols => {
+            let hidden = pages::details_hidden(a);
+            let items = pages::DETAIL_COLS.iter().skip(1).map(|c| MenuItem::new(c.title, Act::Col(c.key)).checked(!hidden.iter().any(|h| h == c.key))).collect();
+            a.menu = Some(Menu { title: "Columns".into(), items, at: a.cursor, target: Target::default(), sel: 0 });
         }
         Msg::Query(q) => a.query = q,
         Msg::ProcView(v) => a.set_pref("procView", Value::String(v.into())),
@@ -766,6 +963,43 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                         let cpu = it.next().unwrap_or("0").to_string();
                         let mem = it.next().unwrap_or("0").to_string();
                         return a.act("limit", vec!["limit".into(), pid, cpu, mem]);
+                    }
+                    SheetKind::Ask("task-name") => {
+                        let name = sh.input.trim().to_string();
+                        if !name.is_empty() {
+                            a.new_task.0 = name.clone();
+                            a.sheet = Some(Sheet { kind: SheetKind::Ask("task-cmd"), title: format!("New task · {name}"), text: "What to run: a program or a script, as you'd type it in a terminal.".into(), input: String::new(), target: Target::default() });
+                        }
+                    }
+                    SheetKind::Ask("task-cmd") => {
+                        let cmd = sh.input.trim().to_string();
+                        if !cmd.is_empty() {
+                            a.new_task.1 = cmd;
+                            let name = a.new_task.0.clone();
+                            let when = [
+                                ("daily@03:00", "Every day at 3:00"),
+                                ("daily@12:00", "Every day at 12:00"),
+                                ("daily@21:00", "Every day at 21:00"),
+                                ("hourly", "Every hour"),
+                                ("every6h", "Every 6 hours"),
+                                ("signin", "At sign-in"),
+                                ("idle", "When the PC is idle"),
+                                ("battery", "When it goes on battery"),
+                                ("time", "Every day at…"),
+                            ];
+                            let items = when.iter().map(|(id, l)| MenuItem::new(l, Act::TaskWhen(id.to_string()))).collect();
+                            a.menu = Some(Menu { title: format!("When should {name} run?"), items, at: Point::new(a.cursor.x.max(300.0), a.cursor.y.clamp(80.0, 300.0)), target: Target::default(), sel: 0 });
+                        }
+                    }
+                    SheetKind::Ask("task-time") => {
+                        let t = sh.input.trim().to_string();
+                        let ok = t.split_once(':').map(|(h, m)| h.len() <= 2 && !h.is_empty() && m.len() == 2 && h.parse::<u32>().map(|x| x < 24).unwrap_or(false) && m.parse::<u32>().map(|x| x < 60).unwrap_or(false)).unwrap_or(false);
+                        if ok {
+                            let (h, m) = t.split_once(':').unwrap_or(("03", "00"));
+                            let when = format!("daily@{:0>2}:{m}", h);
+                            let (name, cmd) = a.new_task.clone();
+                            return a.act("task-new", vec!["task-new".into(), name, when, cmd]);
+                        }
                     }
                     SheetKind::Run => {
                         let words: Vec<String> = sh.input.split_whitespace().map(String::from).collect();
@@ -958,13 +1192,21 @@ fn subscription(a: &App) -> Subscription<Msg> {
     if a.page.list().is_some() && a.interval() > 0 {
         subs.push(iced::time::every(std::time::Duration::from_secs(5)).map(|_| Msg::Tick));
     }
+    // Performance's settings tabs read their helpers every 3 s while open (the slow ones and Memory's every 20 s),
+    // as Mantel's DeviceSettings.qml; nothing while another page is on show.
+    if a.page == Page::Performance && a.interval() > 0 {
+        if a.tab == "settings" {
+            subs.push(iced::time::every(std::time::Duration::from_secs(3)).map(|_| Msg::DevTick));
+        }
+        subs.push(iced::time::every(std::time::Duration::from_secs(20)).map(|_| Msg::DevSlow));
+    }
     Subscription::batch(subs)
 }
 
 fn main() -> iced::Result {
     if app::handle_cli(
         "hearth-task-manager",
-        "Task Manager: what's running, performance, start-up apps, users, services and scheduled tasks.\n  --page processes|performance[:cpu|memory|disk:NAME|net:NAME|gpu:N|battery]|history|startup|users|details|services|tasks|settings\n  --search TEXT",
+        "Task Manager: what's running, performance, start-up apps, users, services and scheduled tasks.\n  --page processes|performance[:cpu|memory|disk:NAME|net:NAME|gpu:N|battery]|history|startup|users|details|services|tasks|settings\n  --tab settings   (Performance: the device's \"… & settings\" tab)\n  --search TEXT\n  --show menu|columns|new-task",
     ) {
         return Ok(());
     }
