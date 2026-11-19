@@ -13,7 +13,8 @@ path = "src/main.rs"
 
 [dependencies]
 hearth-ui = { path = "../.." }
-iced = { workspace = true }
+# "advanced": the window's outer widget (nav.rs Gate) and finding the focused row on the screen to scroll it into view.
+iced = { workspace = true, features = ["advanced"] }
 serde_json = { workspace = true }
 futures = { workspace = true }
 libc = { workspace = true }
