@@ -1,42 +1,107 @@
-//! (Not built yet: its pages show on their category as "Coming next".) See cats/mod.rs for the shape.
+//! Gaming: every page of Mantel's Gaming category, for the Fedora edition (Steam Game Mode with Decky built in, Hearth
+//! Game Mode as the choice it is on Debian, Handheld Daemon on handhelds, KDE Plasma's KWin). Each page is its own file
+//! in cats/gaming/ and uses Mantel's own helpers and Hearth's core, so Debian's Mantel and these pages share every
+//! setting. Hearth never signs in to Steam or uses Steam accounts. See cats/mod.rs for the shape.
 
 use crate::shared::Shared;
 use crate::App;
 use iced::{Element, Subscription, Task};
 
-pub const PAGES: &[&str] = &[];
+mod boot;
+mod controller;
+mod discord;
+mod games;
+mod handheld;
+mod kwingames;
+mod landing;
+mod perf;
+mod remote;
+mod saves;
+mod steam;
 
-#[derive(Default)]
-pub struct State {}
+macro_rules! pages {
+    ($(($id:literal, $f:ident, $v:ident, $m:ident)),* $(,)?) => {
+        pub const PAGES: &[&str] = &[$($id),*];
 
-#[derive(Debug, Clone)]
-pub enum Msg {
-    Go(&'static str),
+        #[derive(Default)]
+        pub struct State {
+            $(pub $f: $m::St,)*
+        }
+
+        #[derive(Debug, Clone)]
+        pub enum Msg {
+            $($v($m::M),)*
+        }
+
+        pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
+            match page {
+                $($id => $m::open(sh, &mut st.$f).map(Msg::$v),)*
+                _ => Task::none(),
+            }
+        }
+
+        pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
+            match m {
+                $(Msg::$v(x) => $m::update(sh, &mut st.$f, x).map(Msg::$v),)*
+            }
+        }
+
+        pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
+            let st = &a.gaming;
+            match page {
+                $($id => Some($m::view(&a.sh, &st.$f).map(Msg::$v)),)*
+                _ => None,
+            }
+        }
+    };
 }
 
-pub fn open(_sh: &mut Shared, _st: &mut State, _page: &'static str) -> Task<Msg> {
-    Task::none()
+pages! {
+    ("gaming", landing, Landing, landing),
+    ("savedgames", saves, Saves, saves),
+    ("gameperf", perf, Perf, perf),
+    ("steam", steam, Steam, steam),
+    ("startup-animation", boot, Boot, boot),
+    ("games", games, Games, games),
+    ("discord", discord, Discord, discord),
+    ("remote", remote, Remote, remote),
+    ("controller", controller, Controller, controller),
+    ("kwin-games", kwingames, KwinGames, kwingames),
+    ("handheld", handheld, Handheld, handheld),
 }
 
-pub fn update(sh: &mut Shared, _st: &mut State, m: Msg) -> Task<Msg> {
-    match m {
-        Msg::Go(id) => sh.go(id),
+/// The page of this category on screen (set while its dialog is asked for, which the frame does every time it draws),
+/// so the two pages that read again on their own (Remote play while someone can connect, Handheld while HHD runs)
+/// stop as soon as you leave them.
+static SHOWN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(usize::MAX);
+
+fn shown() -> &'static str {
+    PAGES.get(SHOWN.load(std::sync::atomic::Ordering::Relaxed)).copied().unwrap_or("")
+}
+
+pub fn subscription(st: &State) -> Subscription<Msg> {
+    match shown() {
+        "remote" if remote::rd_on(&st.remote) => iced::time::every(std::time::Duration::from_secs(5)).map(|_| Msg::Remote(remote::M::Tick)),
+        "handheld" if handheld::live(&st.handheld) => iced::time::every(std::time::Duration::from_secs(6)).map(|_| Msg::Handheld(handheld::M::Tick)),
+        _ => Subscription::none(),
     }
-    Task::none()
 }
 
-pub fn view<'a>(_a: &'a App, _page: &'static str) -> Option<Element<'a, Msg>> {
+pub fn dialog<'a>(a: &'a App) -> Option<(Element<'a, Msg>, Option<Msg>)> {
+    SHOWN.store(PAGES.iter().position(|p| *p == a.page).unwrap_or(usize::MAX), std::sync::atomic::Ordering::Relaxed);
+    if a.page == "startup-animation" {
+        return boot::dialog(&a.sh, &a.gaming.boot).map(|(d, o)| (d.map(Msg::Boot), o.map(Msg::Boot)));
+    }
     None
 }
 
-pub fn subscription(_st: &State) -> Subscription<Msg> {
-    Subscription::none()
-}
-
-pub fn dialog<'a>(_a: &'a App) -> Option<(Element<'a, Msg>, Option<Msg>)> {
-    None
-}
-
-pub fn back(_st: &mut State) -> bool {
-    false
+/// B / Esc closes what's open inside a page first: the animation's preview, a button being remapped, a long list of
+/// Handheld Daemon's choices.
+pub fn back(st: &mut State) -> bool {
+    match shown() {
+        "startup-animation" => boot::back(&mut st.boot),
+        "controller" => controller::back(&mut st.controller),
+        "handheld" => handheld::back(&mut st.handheld),
+        _ => false,
+    }
 }
