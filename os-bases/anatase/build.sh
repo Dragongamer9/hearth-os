@@ -1620,6 +1620,118 @@ for f in /usr/share/applications/hearth-*.desktop; do
 done
 # <<< Hearth's apps in Plasma
 
+# >>> Hearth Files (Rust) (feature/files-rust; hosts/hearth-ui/apps/files, docs/mockups/checklists/files-rust.md)
+# Hearth Files and Hearth's Open / Save window as pure-Rust apps (installed just above with Hearth's other Rust apps),
+# so KDE Plasma gets Hearth's own Files instead of Dolphin: Mantel's Files needs Quickshell, which this edition doesn't
+# have. Only when both were built, have every library and start (--version, no screen needed): then they get the menu
+# entry, the hearth-files and hearth-filemanager commands, Plasma's default for folders and (through hearth-portal)
+# apps' Open / Save window. Otherwise nothing here changes anything: Dolphin stays Files and KDE's own dialog stays
+# the Open / Save window. Dolphin stays installed either way, and hearth-filemanager opens it whenever Hearth Files
+# can't start. The check's marker (/usr/share/hearth/files-rust.ok) is what hearth-portal looks for.
+rm -f /usr/share/hearth/files-rust.ok
+fr_bad=""
+for b in hearth-files-app hearth-file-chooser; do
+  if [ ! -x "/usr/bin/$b" ]; then fr_bad="$fr_bad $b isn't in the image;"; continue; fi
+  timeout 10 "/usr/bin/$b" --version >/dev/null 2>&1 || fr_bad="$fr_bad $b doesn't start;"
+done
+[ -f /usr/share/nimbus/desktop/shell/hearth-files ] || fr_bad="$fr_bad its backend (desktop/shell/hearth-files) is missing;"
+if [ -z "$fr_bad" ]; then
+  mkdir -p /usr/share/hearth
+  echo "Hearth Files (Rust) checked when the image was built" > /usr/share/hearth/files-rust.ok
+  cat > /usr/bin/hearth-files <<'SH'
+#!/bin/sh
+# Hearth Files (the pure-Rust one, Hearth OS Fedora edition): a folder, a file (its folder, with it picked) or Home.
+exec /usr/bin/hearth-files-app "$@"
+SH
+  chmod 755 /usr/bin/hearth-files
+  # hearth-filemanager (os/system_files' one asks Mantel, which isn't here, then Dolphin): Hearth Files first; Dolphin
+  # when Hearth Files can't start (it ends with an error before its window is up).
+  cat > /usr/bin/hearth-filemanager <<'SH'
+#!/bin/sh
+# Opens Hearth Files at a folder, or at a file's folder with it picked; Home with nothing (Fedora edition: the
+# pure-Rust Hearth Files, os-bases/anatase/build.sh "Hearth Files (Rust)"). Dolphin when it can't start.
+target="${1:-$HOME}"
+case "$target" in /*|*://*) ;; *) target="$PWD/$target" ;; esac
+if [ -x /usr/bin/hearth-files-app ] && [ -e /usr/share/hearth/files-rust.ok ]; then
+  /usr/bin/hearth-files-app "$target" && exit 0
+fi
+for fm in dolphin nautilus thunar pcmanfm-qt nemo; do command -v "$fm" >/dev/null 2>&1 && exec "$fm" "$@"; done
+exit 1
+SH
+  chmod 755 /usr/bin/hearth-filemanager
+  # Its menu entry: shown in Plasma too (it was Mantel-only), with the window's own app id for the taskbar icon.
+  f=/usr/share/applications/hearth-files.desktop
+  if [ -f "$f" ]; then
+    sed -i -e '/^OnlyShowIn=/d' -e '/^NotShowIn=/d' -e '/^NoDisplay=/d' "$f"
+    grep -q '^StartupWMClass=' "$f" || sed -i '0,/^Exec=/s||StartupWMClass=hearth-files\nExec=|' "$f"
+    grep -q '^Actions=' "$f" || printf 'Actions=thispc;\n\n[Desktop Action thispc]\nName=This PC\nExec=/usr/bin/hearth-files-app --page thispc\n' >> "$f"
+  fi
+  # Plasma's menu copies (hearth-app-kinds, above): Hearth Files shows, Dolphin and Hearth's Dolphin build stay
+  # installed but out of the menu (one Files, as the owner wants).
+  PA=/usr/share/hearth/app-kinds-plasma/applications
+  if [ -d "$PA" ] && [ -f "$f" ]; then
+    cp "$f" "$PA/hearth-files.desktop"
+    for k in org.kde.dolphin.desktop hearth-files-kde.desktop; do
+      src="$PA/$k"; [ -f "$src" ] || src="/usr/share/applications/$k"; [ -f "$src" ] || continue
+      [ "$src" = "$PA/$k" ] || cp "$src" "$PA/$k"
+      if grep -q '^NoDisplay=' "$PA/$k"; then sed -i 's/^NoDisplay=.*/NoDisplay=true/' "$PA/$k"; else sed -i '0,/^\[Desktop Entry\]/s//[Desktop Entry]\nNoDisplay=true/' "$PA/$k"; fi
+    done
+  fi
+  # Plasma's default for folders (kde-mimeapps.list, read before every other list in Plasma): Hearth Files, then
+  # Dolphin. Your own choice (~/.config/mimeapps.list, Default Applications) still comes first and is never written.
+  python3 - /etc/xdg/kde-mimeapps.list <<'PY' || echo "::warning title=Hearth Files (Rust)::couldn't make it Plasma's default for folders"
+import sys
+p = sys.argv[1]
+try:
+    lines = open(p, encoding='utf-8').read().splitlines()
+except OSError:
+    lines = []
+want = {'inode/directory': 'hearth-files.desktop;org.kde.dolphin.desktop;', 'x-directory/normal': 'hearth-files.desktop;org.kde.dolphin.desktop;'}
+out, sec, done = [], '', set()
+for l in lines + ['[end]']:
+    s = l.strip()
+    if s.startswith('['):
+        if sec in ('[Default Applications]',):
+            for k, v in want.items():
+                if k not in done:
+                    out.append('%s=%s' % (k, v))
+                    done.add(k)
+        sec = s
+        if s == '[end]':
+            break
+        out.append(l)
+        continue
+    k = s.split('=', 1)[0]
+    if sec == '[Default Applications]' and k in want:
+        out.append('%s=%s' % (k, want[k]))
+        done.add(k)
+        continue
+    out.append(l)
+if not any(x.strip() == '[Default Applications]' for x in out):
+    out += ['', '[Default Applications]'] + ['%s=%s' % kv for kv in want.items()]
+open(p, 'w', encoding='utf-8').write('\n'.join(out).strip('\n') + '\n')
+PY
+  # Apps' Open / Save window on Plasma: xdg-desktop-portal's FileChooser is Hearth's (hearth-portal, which opens
+  # hearth-file-chooser where there's no Quickshell), KDE's when Hearth's portal isn't there. The rest stays KDE's.
+  # (Flatpak apps, Firefox, Chromium and Electron apps use the portal; KDE's own apps do too, below.)
+  if [ -f /usr/share/xdg-desktop-portal/portals/hearth.portal ] && python3 -c 'import gi' 2>/dev/null; then
+    mkdir -p /etc/xdg/xdg-desktop-portal
+    printf '[preferred]\ndefault=kde\norg.freedesktop.impl.portal.FileChooser=hearth;kde\n' > /etc/xdg/xdg-desktop-portal/kde-portals.conf
+    # The owner (Nov 18): "our apps will be the default ones": KDE's own apps (Kate, Okular, Gwenview...) ask the
+    # portal for their Open / Save window too, so they get Hearth's (KDE's plasma-integration reads this; with
+    # Hearth's portal missing or failing, the portal answers with KDE's own dialog, as before).
+    mkdir -p /usr/lib/environment.d
+    printf '# Hearth Files (Rust): KDE apps use the portal for Open / Save, which is Hearth'"'"'s file chooser\nPLASMA_INTEGRATION_USE_PORTAL=1\n' > /usr/lib/environment.d/60-hearth-file-chooser.conf
+  else
+    echo "::warning title=Hearth Files (Rust)::Hearth's portal isn't in this image, so apps keep KDE's Open / Save window"
+  fi
+  command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
+  echo "::notice title=Hearth Files (Rust)::Hearth Files is Plasma's file manager and Open / Save window (Dolphin and KDE's dialog stay as the fallback)"
+else
+  echo "::warning title=Hearth Files (Rust)::left out:$fr_bad Dolphin stays Files and KDE's dialog the Open / Save window"
+fi
+# <<< Hearth Files (Rust)
+
 # ------------------------------------------------------------------ 1.15: Desktop Mode's way back to Game Mode
 # Plasma's menu and taskbar have "Back to Game Mode" (os/system_files' hearth-gamemode.desktop, KDE only, Super+G;
 # pinned once per account by the Plasma update script hearth-game-mode-launcher.js): nimbus-mode game logs Plasma out

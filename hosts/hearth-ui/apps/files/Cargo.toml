@@ -1,11 +1,17 @@
-# Hearth Files (and Hearth's file chooser) as standalone pure-Rust apps (hearth-ui). No version line: the owner picks
-# every version number.
+# Hearth Files (and Hearth's file chooser) as standalone pure-Rust apps (hearth-ui): Mantel's FileManager.qml ported,
+# with the same backend (desktop/shell/hearth-files) and the same settings file (~/.config/nimbus/files.json), so the
+# Fedora edition (KDE Plasma, no Quickshell) gets Hearth's own Files and Open / Save window. No version line: the owner
+# picks every version number.
 [package]
 name = "hearth-files-app"
 edition = "2021"
 description = "Hearth Files: the file manager, and Hearth's file chooser"
 license = "GPL-3.0-or-later"
 publish = false
+
+[lib]
+name = "hearth_files"
+path = "src/lib.rs"
 
 [[bin]]
 name = "hearth-files-app"
@@ -17,7 +23,10 @@ path = "src/chooser.rs"
 
 [dependencies]
 hearth-ui = { path = "../.." }
-iced = { workspace = true }
+# Pictures' thumbnails and the details pane's preview: decoded here, off the window's thread, and handed to iced as
+# pixels (so iced itself carries no picture formats).
+iced = { workspace = true, features = ["image-without-codecs"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp", "gif", "bmp"] }
 serde_json = { workspace = true }
 futures = { workspace = true }
 libc = { workspace = true }

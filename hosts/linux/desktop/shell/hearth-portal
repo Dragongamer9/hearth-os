@@ -494,17 +494,47 @@ def log_file():
         return subprocess.DEVNULL
 
 
-def run_window(extra, env, game, holder=None):
-    """picker.qml in its own Quickshell, until its window closes. Returns its exit code."""
+# The pure-Rust Hearth Files (hosts/hearth-ui/apps/files: hearth-files-app and hearth-file-chooser), for the Fedora
+# edition, where KDE Plasma runs and Quickshell isn't there. Used only when the image's build checked it (it was built,
+# its libraries are all there and it starts: os-bases/anatase/build.sh writes the marker); otherwise everything stays as
+# before (picker.qml, or the desktop's own dialog).
+RUST_FILES_OK = '/usr/share/hearth/files-rust.ok'
+
+
+def rust_files(name):
+    """The installed, checked Rust program `name` (hearth-file-chooser, hearth-files-app), or None."""
+    if not os.path.exists(os.environ.get('HEARTH_FILES_RUST_OK') or RUST_FILES_OK):
+        return None
+    return shutil.which(name)
+
+
+def window_argv(extra):
+    """What shows the window: picker.qml in its own Quickshell, else the pure-Rust Hearth Files (the same request
+    and answer files: HEARTH_PICK_REQUEST / HEARTH_PICK_RESULT; HEARTH_FILES_OPEN, HEARTH_FILES_PROPS)."""
     qs = quickshell()
-    if not qs:
-        raise Fail('Quickshell is missing')
+    if qs:
+        return [qs, '-p', PICKER_QML]
+    if extra.get('HEARTH_PICK_REQUEST'):
+        ch = rust_files('hearth-file-chooser')
+        if ch:
+            return [ch]
+    else:
+        fm = rust_files('hearth-files-app')
+        if fm:
+            return [fm, extra.get('HEARTH_FILES_OPEN') or os.path.expanduser('~')] + (['--props'] if extra.get('HEARTH_FILES_PROPS') == '1' else [])
+    raise Fail('Quickshell is missing')
+
+
+def run_window(extra, env, game, holder=None):
+    """picker.qml in its own Quickshell (or the Rust Hearth Files where there's no Quickshell), until its window
+    closes. Returns its exit code."""
+    argv = window_argv(extra)
     e = dict(env)
     e.update(extra)
     if game:
         e['HEARTH_PICKER_PAD'] = '1'
     out = log_file()
-    proc = subprocess.Popen([qs, '-p', PICKER_QML], env=e, stdin=subprocess.DEVNULL, stdout=out, stderr=out,
+    proc = subprocess.Popen(argv, env=e, stdin=subprocess.DEVNULL, stdout=out, stderr=out,
                             start_new_session=True)
     if holder is not None:
         holder['proc'] = proc
@@ -552,9 +582,10 @@ def run_picker(req, env=None, game=None, holder=None):
 
 def other_file_managers(path):
     """Outside Hearth's session (Plasma on Anatase, Xfce on Peppermint) "Show in folder" stays with that desktop's
-    file manager."""
+    file manager; on the Fedora edition that's Hearth's own Rust Files when the image checked it (Dolphin after it)."""
     isdir = os.path.isdir(path)
-    return [['dolphin', path] if isdir else ['dolphin', '--select', path],
+    rust = rust_files('hearth-files-app')
+    return ([[rust, path]] if rust else []) + [['dolphin', path] if isdir else ['dolphin', '--select', path],
             ['nautilus', path] if isdir else ['nautilus', '--select', path],
             ['thunar', path], ['pcmanfm-qt', path], ['nemo', path]]
 
