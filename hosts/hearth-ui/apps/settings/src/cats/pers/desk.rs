@@ -23,6 +23,14 @@ type E<'a> = Element<'a, Msg>;
 
 const PANELS_JS: &str = r#"var o={panels:[]};var ps=panels();for(var i=0;i<ps.length;i++){var p=ps[i];var ws=p.widgets();var t=[];for(var j=0;j<ws.length;j++)t.push(ws[j].type);o.panels.push({id:p.id,location:p.location,height:p.height,hiding:p.hiding,floating:p.floating,lengthMode:p.lengthMode,alignment:p.alignment,opacity:p.opacity,screen:p.screen,widgets:t});}print(JSON.stringify(o));"#;
 const WALLS_JS: &str = r#"var o={desktops:[],plugins:[]};try{o.plugins=Object.keys(knownWallpaperPlugins());}catch(e){}var ds=desktops();for(var i=0;i<ds.length;i++){var d=ds[i];if(d.screen<0)continue;var g=screenGeometry(d.screen);var w={screen:d.screen,plugin:d.wallpaperPlugin,x:g.x,y:g.y,width:g.width,height:g.height};d.currentConfigGroup=["Wallpaper","org.kde.image","General"];w.image=String(d.readConfig("Image",""));d.currentConfigGroup=["Wallpaper","org.kde.slideshow","General"];w.slidePaths=String(d.readConfig("SlidePaths",""));d.currentConfigGroup=["Wallpaper","org.kde.potd","General"];w.provider=String(d.readConfig("Provider",""));o.desktops.push(w);}print(JSON.stringify(o));"#;
+/// Swapping the app launcher on panel `p` (KDE's scripting) for `__NEW__`, in the old one's place: the owner on the
+/// Ally (Nov 19) "Switching app menus put the app menu on the right side": addWidget puts it at the end, and the old
+/// code only moved it when the panel's AppletOrder was written down already. Now: the order (AppletOrder, or the
+/// panel's widgets as they are), the old launcher's place in it (the start when there's none), the new one written
+/// there and the old one removed, then the panel reads its order again. hosts/linux/test/test_plasma_panel_js.py runs
+/// it against a stand-in panel.
+pub const SWAP_LAUNCHER_JS: &str = r#"var L=["org.kde.plasma.kickoff","org.kde.plasma.kicker","org.kde.plasma.kickerdash"];var ws=p.widgets();var old=null;for(var i=0;i<ws.length;i++)if(L.indexOf(ws[i].type)>=0){old=ws[i];break;}p.currentConfigGroup=["General"];var ord=String(p.readConfig("AppletOrder",""));var ids=[];var parts=ord.split(";");for(var i=0;i<parts.length;i++)if(parts[i]!=="")ids.push(parts[i]);if(!ids.length)for(var i=0;i<ws.length;i++)ids.push(String(ws[i].id));var at=old?ids.indexOf(String(old.id)):0;if(at<0)at=0;var n=p.addWidget(__NEW__);if(n){var k=ids.indexOf(String(n.id));if(k>=0)ids.splice(k,1);if(old){var o=ids.indexOf(String(old.id));if(o>=0)ids.splice(o,1);old.remove();}if(at>ids.length)at=ids.length;ids.splice(at,0,String(n.id));p.currentConfigGroup=["General"];p.writeConfig("AppletOrder",ids.join(";"));p.reloadConfig();}"#;
+
 const LAUNCHERS: &[(&str, &str, &str)] = &[
     ("org.kde.plasma.kickoff", "Application Launcher", "KDE's menu with favourites, search and categories"),
     ("org.kde.plasma.kicker", "Application Menu", "A classic list that opens from the corner"),
@@ -86,12 +94,33 @@ pub fn desk_clock(sh: &mut Shared, v: String) -> Task<Msg> {
     }
     Task::batch(t)
 }
+/// Panel transparency on Plasma 6 (the owner, Nov 19: "Panel transparency doesn't work"): the scripting's
+/// `opacity` where this Plasma has it (live), and always the panel's own line in plasmashellrc
+/// ([PlasmaViews][Panel N] panelOpacity: 0 adaptive, 1 opaque, 2 translucent), which is what Plasma reads at its next
+/// start, so it survives signing out (hearth-plasma-looks never writes it). Where the scripting has no `opacity`,
+/// plasmashell is started again so the line takes effect now. KDE's own Plasma style decides how see-through
+/// "translucent" looks (and needs KWin's blur for frosted).
+pub fn opacity_cmd(o: &str) -> Vec<String> {
+    if std::env::var_os("HEARTH_PLASMA_FIXTURE").is_some() {
+        return vec!["true".into()];
+    }
+    let n = match o { "opaque" => 1, "translucent" => 2, _ => 0 };
+    let js = format!("var ps=panels();var live=0;var ids=[];for(var i=0;i<ps.length;i++){{ids.push(ps[i].id);if(typeof ps[i].opacity!==\"undefined\"){{ps[i].opacity={};live=1;}}}}print((live?\"live\":\"file\")+\" \"+ids.join(\" \"));", kit::js_str(o));
+    let script = format!(
+        "out=$(timeout 10 dbus-send --session --print-reply --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript \"string:$1\" 2>/dev/null | sed -n 's/^ *string \"\\(.*\\)\"$/\\1/p'); \
+         set -- $out; how=${{1:-file}}; [ $# -gt 0 ] && shift; \
+         for id in \"$@\"; do kwriteconfig6 --file plasmashellrc --group PlasmaViews --group \"Panel $id\" --key panelOpacity {n}; done; \
+         [ \"$how\" = live ] || {{ systemctl --user restart plasma-plasmashell.service 2>/dev/null || {{ kquitapp6 plasmashell; (kstart plasmashell >/dev/null 2>&1 &); }}; }}; echo \"$how\""
+    );
+    vec!["sh".into(), "-c".into(), script, "sh".into(), js]
+}
+
 /// Panel transparency: Hearth's key, and on Plasma the panel's own (adaptive, opaque, translucent).
 pub fn glass(sh: &mut Shared, st: &mut State, v: String) -> Task<Msg> {
     let mut t = vec![save(sh, json!({"panelGlass": v}))];
     if kit::on_plasma() {
         let o = match v.as_str() { "solid" => "opaque", "frosted" | "clear" => "translucent", _ => "adaptive" };
-        t.push(kde(kit::plasma_do(&format!("var ps=panels();for(var i=0;i<ps.length;i++)ps[i].opacity={};", kit::js_str(o)))));
+        t.push(kde(opacity_cmd(o)));
         st.panels = None;
         t.push(read_panels());
     }
@@ -390,7 +419,7 @@ pub fn bar_dock(a: &App) -> E<'_> {
             let cur = LAUNCHERS.iter().find(|l| has_widget(&pn, l.0)).map(|l| l.0).unwrap_or("");
             for (id, label, sub) in LAUNCHERS {
                 let on = cur == *id;
-                let swap = format!("var L=[\"org.kde.plasma.kickoff\",\"org.kde.plasma.kicker\",\"org.kde.plasma.kickerdash\"];var ws=p.widgets();var old=null;for(var i=0;i<ws.length;i++)if(L.indexOf(ws[i].type)>=0)old=ws[i];p.currentConfigGroup=[\"General\"];var ord=String(p.readConfig(\"AppletOrder\",\"\"));var n=p.addWidget({});if(old&&n){{var ids=ord.split(\";\");var at=ids.indexOf(String(old.id));old.remove();if(at>=0){{ids[at]=String(n.id);p.currentConfigGroup=[\"General\"];p.writeConfig(\"AppletOrder\",ids.join(\";\"));p.reloadConfig();}}}}", kit::js_str(id));
+                let swap = SWAP_LAUNCHER_JS.replace("__NEW__", &kit::js_str(id));
                 c = c.push(irow(&p, Ic::Menu, *label, *sub, if on { t1("In use", sz(13.0), p.accent).into() } else { btn(&p, "Use", ui::Kind::Normal, false, Some(Msg::Js(swap))) }));
             }
             if cur.is_empty() {
