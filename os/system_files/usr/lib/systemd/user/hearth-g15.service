@@ -1,0 +1,23 @@
+# Hearth's Logitech G15 support (docs/G15.md): the G-keys and their macros, the keyboard's screen, its lights.
+# Started by udev when the keyboard's G-keys appear (70-hearth-g15.rules, SYSTEMD_USER_WANTS) and at sign-in when it's
+# already plugged in (/etc/xdg/autostart/hearth-g15.desktop). Nothing wants it at start-up and nothing waits for it, so
+# it can never stop Game Mode or the desktop from starting; without a G15 it's skipped (ExecCondition), and it ends by
+# itself when the keyboard is unplugged. Light at rest: it sleeps until a key, a file or the screen's next second.
+[Unit]
+Description=Logitech G15 (G-keys, macros, the keyboard's screen and lights)
+ConditionPathExists=/usr/bin/hearth-g15
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+ExecCondition=/usr/bin/hearth-g15 present
+ExecStart=/usr/bin/hearth-g15 service
+Restart=on-failure
+RestartSec=5
+# 3: the keyboard can't be read (its udev rule is missing): restarting won't help.
+RestartPreventExitStatus=3
+Nice=5
+CPUWeight=20
+MemoryHigh=48M
+MemoryMax=96M
+TimeoutStopSec=5

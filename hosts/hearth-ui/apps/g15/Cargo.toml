@@ -1,0 +1,37 @@
+# Hearth's Logitech G15 support (pure Rust, hearth-ui; docs/G15.md): the keyboard's G-keys and macros, its 160x43
+# screen and its lights. `hearth-g15` is the small user service (started by udev when the keyboard is plugged in:
+# os/system_files/usr/lib/udev/rules.d/70-hearth-g15.rules) and its command line; hearth-g15-app is the app (the approved
+# mockups docs/mockups/g15). No version line: the owner picks every version number.
+[package]
+name = "hearth-g15"
+edition = "2021"
+description = "Logitech G15: G-keys, macros, the keyboard's screen and lights"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-g15"
+path = "src/cli.rs"
+
+[[bin]]
+name = "hearth-g15-app"
+path = "src/app/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+serde_json = { workspace = true }
+libc = { workspace = true }
+iced = { workspace = true }
+futures = { workspace = true }
+# Pictures for your own screens (PNG and JPEG, turned into the screen's dots).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# "Switch key sets for each game" on labwc: the window list Mantel's taskbar reads (wlr-foreign-toplevel), told when a
+# window opens or closes instead of looking (src/running.rs). The same Wayland crates iced already builds.
+wayland-client = "0.31"
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+
+[dev-dependencies]
+tempfile = "3"

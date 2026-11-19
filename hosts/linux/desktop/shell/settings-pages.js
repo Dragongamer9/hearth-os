@@ -101,6 +101,8 @@ var PAGES = [
     { id: "scanners", file: "SetScanners.qml", cat: "bt", parent: "printers", label: "Scanners", icon: "printer", desc: "The scanners found, and a test scan", words: "scanner scan sane airscan test" },
     { id: "scan-pdf", file: "SetScanPdf.qml", cat: "bt", parent: "printers", label: "Scan to PDF", icon: "file", desc: "Scan several pages into one PDF", words: "scan scanner pdf multi page pages document feeder adf flatbed" },
     { id: "ink-levels", file: "SetInkLevels.qml", cat: "bt", parent: "printers", label: "Ink & toner", icon: "printer", desc: "How full each cartridge is, and a notice when one runs low", words: "ink toner level low cartridge marker notice printer" },
+    // Logitech G15 (docs/G15.md): one row here; everything else is in its own app (hearth-g15-app).
+    { id: "g15", file: "SetG15.qml", cat: "bt", label: "Logitech G15", icon: "kbd", desc: "G-keys and macros, the keyboard's screen, its lights", words: "logitech g15 g-keys gkeys macro macros mr record lcd keyboard screen backlight gaming keyboard" },
     { id: "usb-devices", file: "SetUsbDevices.qml", cat: "bt", label: "USB devices & drives", icon: "drive", desc: "What happens when a drive is plugged in, new USB devices, USBGuard", words: "usb removable drive memory card sd plug in automount autoplay usbguard new device allow block" },
     { id: "thunderbolt", file: "SetThunderbolt.qml", cat: "bt", label: "Thunderbolt", icon: "link", desc: "Docks, drives and screens on Thunderbolt or USB4: allow them, or forget them", words: "thunderbolt usb4 dock egpu bolt boltctl authorize allow device security" },
 

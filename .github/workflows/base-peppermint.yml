@@ -204,6 +204,20 @@ jobs:
           mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-text" /tmp/app/hearth-text
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of Hearth Text
+      # ---- Logitech G15 (hosts/hearth-ui/apps/g15, docs/G15.md): hearth-g15, the keyboard's user service and command
+      # line, built the same way and put beside the app in hearth-app.tar (build.sh installs it as /usr/bin/hearth-g15;
+      # its udev rule, user unit and autostart entry come from os/system_files). Not fatal: without it the image is
+      # made as before (the unit's ConditionPathExists skips it).
+      - name: Build hearth-g15 (Logitech G15)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          apt-get install -y -qq libxkbcommon-dev libwayland-dev libfontconfig-dev libfreetype-dev >/dev/null
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          (cd hosts/hearth-ui && cargo build --release -p hearth-g15) || { echo "::warning title=hearth-g15::it didn't build, so this image is made without G15 support"; exit 1; }
+          mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-g15" "$CARGO_TARGET_DIR/release/hearth-g15-app" /tmp/app/
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of hearth-g15
       # ---- Hearth Photos and Hearth Documents (hosts/hearth-photos, hosts/hearth-documents): the picture viewer and
       # the PDF / e-book / comic reader, built the same way and put beside the app in hearth-app.tar (build.sh installs
       # them, with their menu entries and file types; their icons come with the Hearth icon set). Not fatal.
