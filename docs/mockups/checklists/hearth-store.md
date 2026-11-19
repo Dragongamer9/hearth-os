@@ -7,6 +7,12 @@ The app is hosts/hearth-ui/apps/store (hearth-store-app; docs/HEARTH-STORE.md). 
 image (os-bases/anatase/build.sh, its files in os-bases/anatase/system_files). Pictures: hearth-apps-rust.yml
 (.github/scripts/hearth-apps-rust-shots.d/store.sh, store-1…13).
 
+Status (paused Nov 19 for usage): all 9 pages, the ⋯ menu, the dialog, the controller look and the workings are
+written; the first CI run (44526169844) built everything but one borrow error (fixed); run 44526860375 was building
+when work paused. Next: read that run's annotations, fix until green, decode store-1…13 and open each next to its
+mockup; untick anything that doesn't match. Then merge feature/1.15-rust-apps's newer commits in.
+The ticks below are proofs in the code only: not yet checked against the pictures.
+
 Wording changed from the mockups by the owner's decisions (Nov 19):
 - "Not offering anything Debian": the "On older Debian PCs · System package (.deb)" line (store-2) and the "Older Debian
   PCs · System packages (.deb)" line (store-9) are left out; the Store is Fedora only.
