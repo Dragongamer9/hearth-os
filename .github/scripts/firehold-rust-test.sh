@@ -13,7 +13,10 @@
 #   firehold-r6-settings        Settings › Couch and Desk            (mockup 6)
 # and more of each: r1b/r1c the Couch's Apps and Store, r3b the overlay over the game with no frame limit (fps from
 # every frame), r6b Settings › System (the Desktop Mode choice), r7/r7b Settings and Couch Home in another look
-# (Steam-style, picked in desktop.json: Firehold follows the look, through hearth-ui).
+# (Steam-style, picked in desktop.json: Firehold follows the look, through hearth-ui). Firehold's own parts: r2b the
+# Desk bar's Edit menu, r2c a notification (notify-send, to Firehold's own notification service), r2d Quick Settings,
+# r2e the on-screen keyboard (and what it types reaching a window), r9 Away. Then a second session with two screens
+# (a monitor and a TV, Per screen: TV Couch, monitor Desk): r8a the monitor, r8b the TV, r6c Settings' Per screen rows.
 # Then what must never happen (red flags 2 and 9): a shell that doesn't come up, or a compositor that can't start,
 # opens KDE Plasma instead; nothing picked means Plasma and no Firehold at all; the choice and the settings files are
 # never changed by anything but a pick.
@@ -65,6 +68,8 @@ S=/tmp/sys-rust; rm -rf "$S"; mkdir -p "$S/class/power_supply/BAT0" "$S/class/ne
 echo Battery > "$S/class/power_supply/BAT0/type"; echo 78 > "$S/class/power_supply/BAT0/capacity"; echo 18000000 > "$S/class/power_supply/BAT0/power_now"
 echo up > "$S/class/net/wlan0/operstate"; export FIREHOLD_SYS="$S"
 mkdir -p "$HOME/.config/nimbus" "$HOME/.local/share/nimbus" "$HOME/.local/state/hearth"
+# The chapter the game says it's on (Hearth's progress file, model::progress_chapter: written by the game itself).
+mkdir -p "$HOME/.local/share/hearth/progress" && printf '{"chapter": "Chapter 4"}' > "$HOME/.local/share/hearth/progress/ember-trails.json"
 CONF="$HOME/.config/nimbus/session.conf"   # the test's own files: Desktop Mode at the start
 printf 'NIMBUS_START_MODE=desktop\n' > "$CONF"
 CHOICE="$HOME/.config/nimbus/firehold-rust.json"; FH="$HOME/.config/nimbus/firehold.json"
@@ -185,6 +190,70 @@ C posture couch >/dev/null; sleep 1; C '{"op":"input","kind":"mouse"}' >/dev/nul
 for i in $(seq 10); do [ "$(st 'd["posture"]')" = desk ] && break; sleep 0.3; done
 shot firehold-r2-desk 1.5
 [ "$(st 'd["notice"] is not None')" = True ] || note "posture" "the notice had already gone when the picture was taken"
+# 2b. The Desk bar's Edit menu, under its title (the app in front's standard commands)
+sleep 6
+C menu Edit >/dev/null
+for i in $(seq 10); do [ "$(st '"menu" in d["hello"]')" = True ] && break; sleep 0.5; done
+note "menu" "open: $(st 'd["menu"]["open"]') at x=$(st 'd["menu"]["x"]'): $(st '", ".join(i["label"] for i in d["menu"]["items"])')"
+[ "$(st 'd["menu"]["open"]')" = Edit ] || fail "menu" "the Edit menu didn't open: $(st 'd["menu"]')"
+shot firehold-r2b-desk-menu 1.5
+C menu >/dev/null; sleep 0.5
+# 2c. A notification from an app (notify-send: libnotify, to Firehold's own org.freedesktop.Notifications)
+if command -v notify-send >/dev/null; then
+  notify-send -a Discord "Night Harbor" "Sam is playing now. Join them from Discord." -A join=Join || true
+  sleep 1
+  note "notifications" "on screen: $(st '[(n["app"], n["title"]) for n in d["notes"]]')"
+  [ "$(st 'len(d["notes"]) >= 1')" = True ] || fail "notifications" "notify-send's notification didn't reach Firehold: $(grep -i notif "$FLOG" | tail -3 | tr '\n' '|')"
+else
+  C '{"op":"notify","app":"Discord","title":"Night Harbor","body":"Sam is playing now. Join them from Discord."}' >/dev/null
+  note "notifications" "notify-send isn't here: the hub's own test notification"
+fi
+shot firehold-r2c-notification 1.5
+# 2d. Quick Settings (from the bar's Wi-Fi and battery)
+C '{"op":"quick","arg":"on"}' >/dev/null
+for i in $(seq 12); do [ "$(st '"quick" in d["hello"]')" = True ] && break; sleep 0.5; done
+note "quick settings" "$(st '{k: d["quick"][k] for k in ("up", "wifi", "bt", "volume", "brightness", "profile", "dnd")}'), notifications kept: $(st 'len(d["history"])')"
+[ "$(st 'd["quick"]["up"]')" = True ] || fail "quick settings" "Quick Settings didn't open"
+shot firehold-r2d-quick-settings 3
+C '{"op":"quick","arg":"off"}' >/dev/null; sleep 0.5
+# 2e. The on-screen keyboard: up at the bottom, and what it types reaches the window that has the keyboard
+foot --app-id=typetest -T "Typing test" -W 60x8 sh -c 'cat > "$XDG_RUNTIME_DIR/typed.txt"' >/dev/null 2>&1 &
+for i in $(seq 20); do [ "$(st 'any(w["app_id"] == "typetest" for w in d["wins"])')" = True ] && break; sleep 0.5; done
+TID=$(st '[w["id"] for w in d["wins"] if w["app_id"] == "typetest"][0]')
+C "{\"op\":\"activate\",\"id\":\"$TID\"}" >/dev/null; sleep 1
+C '{"op":"osk","arg":"on"}' >/dev/null
+for i in $(seq 12); do [ "$(st '"osk" in d["hello"]')" = True ] && break; sleep 0.5; done
+C '{"op":"oskType","text":"Hello Firehold"}' >/dev/null; C '{"op":"oskType","keys":["enter"]}' >/dev/null
+sleep 1.5
+grep -q "Hello Firehold" "$XDG_RUNTIME_DIR/typed.txt" 2>/dev/null && note "keyboard" "the on-screen keyboard typed \"Hello Firehold\" into a window" \
+  || fail "keyboard" "what the on-screen keyboard typed didn't reach the window: $(cat "$XDG_RUNTIME_DIR/typed.txt" 2>/dev/null | head -c 100)"
+shot firehold-r2e-keyboard 1.5
+C '{"op":"osk","arg":"off"}' >/dev/null
+# The menus' commands reach the app in front: View › Maximize on the typing window
+C "{\"op\":\"activate\",\"id\":\"$TID\"}" >/dev/null; sleep 0.5
+C menu View >/dev/null; sleep 0.5; C menuPick w:maximize >/dev/null; sleep 1
+python3 - "$XDG_RUNTIME_DIR/firehold-wm-wayland-hearth.sock" "$TID" <<'PY' && note "menus" "View › Maximize maximized the window in front" || fail "menus" "View › Maximize didn't reach the window in front"
+import json, socket, sys
+s = socket.socket(socket.AF_UNIX); s.connect(sys.argv[1]); s.sendall(b'{"op":"windows"}\n'); s.settimeout(3)
+f = s.makefile()
+for _ in range(5):
+    d = json.loads(f.readline())
+    if d.get("t") == "windows":
+        w = [w for w in d["windows"] if w["id"] == sys.argv[2]]
+        sys.exit(0 if w and w[0]["maximized"] else 1)
+sys.exit(1)
+PY
+C "{\"op\":\"close\",\"id\":\"$TID\"}" >/dev/null
+# 9. Away: the home server keeps running (hearth-home-server quick), everything stays open; the mouse brings it back
+C posture away >/dev/null
+for i in $(seq 12); do [ "$(st '"away" in d["hello"]')" = True ] && break; sleep 0.5; done
+sleep 3
+note "away" "posture $(st 'd["posture"]'): $(st 'd["away"]["lines"]') $(st 'd["away"]["note"]')"
+[ "$(st 'd["posture"]')" = away ] || fail "away" "Away didn't come up"
+shot firehold-r9-away 1
+C '{"op":"input","kind":"mouse"}' >/dev/null
+for i in $(seq 10); do [ "$(st 'd["posture"]')" = desk ] && break; sleep 0.5; done
+[ "$(st 'd["posture"]')" = desk ] && note "away" "the mouse brought back the Desk" || fail "away" "the mouse didn't end Away: $(st 'd["posture"]')"
 # 6. Settings › Couch and Desk (mockup 6): a window in the middle, over the Couch's background (the other windows put
 # away first, as the mockup has nothing else on the screen)
 for id in $(st '" ".join(w["id"] for w in d["wins"])'); do C "{\"op\":\"minimize\",\"id\":\"$id\"}" >/dev/null; done
@@ -245,6 +314,35 @@ for case in shell comp; do
   kill "$SP" 2>/dev/null; plasma_gone; pkill -x firehold-comp; sleep 1
 done
 cp "$LOG" shots/session-fail.log
+
+# ---- two screens (a monitor and a TV): Per screen, TV Couch and monitor Desk (mockup 6's "TV: Couch · Monitor: Desk")
+printf '{"perScreen": {"HDMI-A-1": "couch", "HEADLESS-1": "desk"}}' > "$FH"
+cp "$FH" shots/per-screen-before.json
+rm -f "$XDG_RUNTIME_DIR/plasma-started"; : > "$LOG"
+FIREHOLD_ARGS="--headless --size 1920x1080 --outputs HEADLESS-1,HDMI-A-1 --socket wayland-two" sh hosts/linux/session/nimbus-session >shots/session-two.log 2>&1 &
+SP=$!
+for i in $(seq 90); do [ -e "$XDG_RUNTIME_DIR/firehold-shell-up" ] && break; sleep 1; done
+export WAYLAND_DISPLAY=wayland-two
+for i in $(seq 20); do [ "$(st 'len(d["screens"]) == 2 and "couch@HDMI-A-1" in d["hello"] and "bar@HEADLESS-1" in d["hello"]')" = True ] && break; sleep 1; done
+note "per screen" "screens $(st '[(s["name"], s["label"]) for s in d["screens"]]'), postures $(st 'd["postures"]'), per screen $(st 'd["per_screen"]'), surfaces $(st 'sorted(d["hello"])')"
+[ "$(st 'd["postures"] == {"HDMI-A-1": "couch", "HEADLESS-1": "desk"}')" = True ] || fail "per screen" "the screens aren't each in their own posture: $(st 'd["postures"]')"
+[ "$(st '"couch@HDMI-A-1" in d["hello"] and "bar@HEADLESS-1" in d["hello"] and "dock@HEADLESS-1" in d["hello"] and "bar@HDMI-A-1" not in d["hello"]')" = True ] \
+  || fail "per screen" "the TV should have the Couch and the monitor the bar and the dock: $(st 'sorted(d["hello"])')"
+win org.hearth.files "Pictures › Trips — Hearth Files"; sleep 1
+win firefox "3 tabs — Firefox"; sleep 3
+C home >/dev/null; sleep 1
+timeout 20 grim -o HEADLESS-1 shots/firehold-r8a-monitor-desk.png 2>shots/r8a.err || fail "pictures" "grim -o HEADLESS-1: $(head -c 200 shots/r8a.err)"
+timeout 20 grim -o HDMI-A-1 shots/firehold-r8b-tv-couch.png 2>shots/r8b.err || fail "pictures" "grim -o HDMI-A-1: $(head -c 200 shots/r8b.err)"
+C settingsPage couch-screens >/dev/null; C page settings >/dev/null
+for i in $(seq 15); do [ "$(st 'any(w["app_id"] == "firehold-settings" for w in d["wins"])')" = True ] && break; sleep 1; done
+C settingsPage couch-screens >/dev/null; sleep 3
+SO=$(st '[w["output"] for w in d["wins"] if w["app_id"] == "firehold-settings"][0]')
+timeout 20 grim -o "${SO:-HEADLESS-1}" shots/firehold-r6c-settings-per-screen.png 2>shots/r6c.err || fail "pictures" "grim -o $SO: $(head -c 200 shots/r6c.err)"
+cmp -s "$FH" shots/per-screen-before.json || fail "per screen" "firehold.json changed by itself: $(cat "$FH")"
+HEARTH_DESKTOP_PID=$(cat "$XDG_RUNTIME_DIR/firehold.pid") sh hosts/linux/session/nimbus-mode game
+for i in $(seq 15); do pgrep -x firehold-comp >/dev/null || break; sleep 1; done
+kill "$SP" 2>/dev/null; plasma_gone; pkill -x firehold-comp; sleep 1
+cp "$LOG" shots/session-two-full.log; cp "$FLOG" shots/firehold-rust-two.log 2>/dev/null
 report
 [ -e shots/FAILED ] && exit 1
 exit 0

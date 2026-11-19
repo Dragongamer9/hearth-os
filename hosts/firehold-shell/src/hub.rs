@@ -22,12 +22,21 @@ use serde_json::{json, Map, Value};
 
 use crate::config::{self, Couch};
 use crate::model::{self, Game, Win};
-use crate::proto::{self, Guide, Notice, State};
+use crate::proto::{self, Away, Guide, Menu, MenuItem, Note, Notice, Quick, Screen, State};
 use crate::settings_file;
 use crate::sys;
 
-enum Ev {
+pub(crate) enum Ev {
     CompUp(UnixStream),
+    /// A notification came (notify.rs), with how long the app wants it shown (ms; -1: Firehold's own 6 s).
+    Note(Note, i32),
+    NoteClose(u32),
+    NoteEnd(u32, u64),
+    /// The session bus, with Firehold's notification service on it.
+    Bus(zbus::blocking::Connection),
+    /// Quick Settings' and Away's readings (read off the hub's thread: they run small programs).
+    QuickInfo(Quick),
+    AwayInfo(Option<Value>),
     Comp(Value),
     CompGone,
     ClientNew(u64, UnixStream),
@@ -171,6 +180,11 @@ fn load_library() -> (Vec<Game>, String) {
         .unwrap_or_default();
     let cloud = |id: &str, title: &str| saved.contains(&title.to_lowercase()) || id.strip_prefix("steam:").is_some_and(steam_cloud);
     let mut games = raw.as_ref().map(|r| model::parse_library(r, &cloud)).unwrap_or_default();
+    // The chapter, where the game says it itself (model::progress_chapter).
+    let progress = progress_dir();
+    for g in games.iter_mut().filter(|g| g.chapter.is_empty()) {
+        g.chapter = model::progress_chapter(&progress, &g.id, &g.title);
+    }
     if let Some(mut h) = helper("hearth-winapps") {
         h.push("list".into());
         if let Some(v) = run_json(&h, 10) {
@@ -179,6 +193,94 @@ fn load_library() -> (Vec<Game>, String) {
     }
     let note = if raw.is_none() { "Hearth's library didn't answer; it's tried again when you come back to Home.".to_string() } else { String::new() };
     (games, note)
+}
+
+/// Where games say which chapter you're on: $XDG_DATA_HOME/hearth/progress (~/.local/share/hearth/progress).
+fn progress_dir() -> PathBuf {
+    std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| config::home().join(".local/share")).join("hearth/progress")
+}
+
+/// A program's output (its first `secs`, then it's killed), or None.
+fn run_text(cmd: &str, args: &[&str], secs: u64) -> Option<String> {
+    let mut child = Command::new(cmd).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
+    let mut out = child.stdout.take()?;
+    let pid = child.id();
+    let done = Arc::new(AtomicBool::new(false));
+    let d2 = done.clone();
+    std::thread::spawn(move || {
+        let until = Instant::now() + Duration::from_secs(secs);
+        while Instant::now() < until {
+            std::thread::sleep(Duration::from_millis(200));
+            if d2.load(Ordering::Relaxed) {
+                return;
+            }
+        }
+        unsafe {
+            libc::kill(pid as i32, libc::SIGKILL);
+        }
+    });
+    let mut s = String::new();
+    let _ = out.read_to_string(&mut s);
+    let ok = child.wait().map(|st| st.success()).unwrap_or(false);
+    done.store(true, Ordering::Relaxed);
+    ok.then_some(s)
+}
+
+/// Quick Settings' readings (Mantel's QuickAccess.qml reads the same: nmcli, bluetoothctl, wpctl, the backlight,
+/// power-profiles-daemon, Mantel's Do not disturb through hearth-desk). A few small programs, each with a time limit,
+/// only when Quick Settings opens or one of its switches is used.
+fn read_quick(prev: &Quick) -> Quick {
+    let mut q = Quick { up: prev.up, output: prev.output.clone(), power_open: prev.power_open, ..Quick::default() };
+    q.user = std::env::var("USER").ok().filter(|u| !u.is_empty()).unwrap_or_else(|| "You".into());
+    let (_, date) = sys::clock();
+    let batt = sys::battery();
+    q.line = if batt.is_empty() { date } else { format!("{batt} · {date}") };
+    if sys::which("nmcli") {
+        q.wifi = run_text("nmcli", &["radio", "wifi"], 3).map(|t| t.trim() == "enabled");
+    }
+    if sys::which("bluetoothctl") {
+        if let Some(t) = run_text("bluetoothctl", &["--timeout", "2", "show"], 4) {
+            if t.contains("Controller") {
+                let on = t.contains("Powered: yes");
+                q.bt = Some(on);
+                if on {
+                    let names: Vec<String> = run_text("bluetoothctl", &["--timeout", "2", "devices", "Connected"], 4)
+                        .unwrap_or_default()
+                        .lines()
+                        .filter_map(|l| l.strip_prefix("Device ").and_then(|r| r.split_once(' ')).map(|(_, n)| n.trim().to_string()))
+                        .take(2)
+                        .collect();
+                    q.bt_line = if names.is_empty() { "On".into() } else { names.join(", ") };
+                } else {
+                    q.bt_line = "Off".into();
+                }
+            }
+        }
+    }
+    if sys::which("wpctl") {
+        if let Some(t) = run_text("wpctl", &["get-volume", "@DEFAULT_AUDIO_SINK@"], 3) {
+            q.volume = t.split_whitespace().nth(1).and_then(|v| v.parse::<f64>().ok()).map(|v| (v * 100.0).round() as i64);
+            q.muted = t.contains("MUTED");
+        }
+    }
+    q.brightness = sys::brightness();
+    if sys::which("powerprofilesctl") {
+        q.profile = run_text("powerprofilesctl", &["get"], 3).map(|t| t.trim().to_string()).filter(|p| ["power-saver", "balanced", "performance"].contains(&p.as_str())).unwrap_or_default();
+    }
+    q.dnd = read_dnd();
+    q.can_lock = sys::which("swaylock");
+    q
+}
+
+/// Do not disturb: Mantel's own switch (hearth-desk's state), so it's the same in every desktop.
+fn read_dnd() -> bool {
+    helper("hearth-desk")
+        .and_then(|mut h| {
+            h.push("state".into());
+            run_json(&h, 5)
+        })
+        .and_then(|v| v.get("dnd").and_then(|d| d.as_bool()))
+        .unwrap_or(false)
 }
 
 // ------------------------------------------------------------------------------------- the game rows (mockup 3)
@@ -280,6 +382,13 @@ struct Hub {
     notice_serial: u64,
     sent: HashMap<u64, String>,
     started: Instant,
+    /// The session bus (Firehold's notification service), once it's up.
+    bus: Option<zbus::blocking::Connection>,
+    note_serials: HashMap<u32, u64>,
+    /// Each Couch's page (one a screen): Everything open wants the windows' pictures while one shows it.
+    couch_pages: HashMap<u64, String>,
+    /// When Away began: the mouse and keys of the next few seconds (the click that picked it) don't end it.
+    away_at: Option<Instant>,
 }
 
 impl Hub {
@@ -292,8 +401,10 @@ impl Hub {
             self.clients.remove(&id);
         }
     }
+    /// To a surface by its kind: `couch` is every Couch (one a screen: `couch@HDMI-A-1`).
     fn send_surface(&mut self, surface: &str, v: &Value) {
-        let ids: Vec<u64> = self.clients.iter().filter(|(_, c)| c.surface == surface).map(|(i, _)| *i).collect();
+        let at = format!("{surface}@");
+        let ids: Vec<u64> = self.clients.iter().filter(|(_, c)| c.surface == surface || c.surface.starts_with(&at)).map(|(i, _)| *i).collect();
         for i in ids {
             self.send_to(i, v);
         }
@@ -342,7 +453,12 @@ impl Hub {
             return;
         }
         r.push(now);
-        match Command::new(&self.exe).arg(name).stdin(Stdio::null()).spawn() {
+        let mut cmd = Command::new(&self.exe);
+        match name.split_once('@') {
+            Some((kind, out)) => cmd.args([kind, "--output", out]),
+            None => cmd.arg(name),
+        };
+        match cmd.stdin(Stdio::null()).spawn() {
             Ok(mut child) => {
                 let pid = child.id();
                 self.children.insert(name.to_string(), pid);
@@ -381,18 +497,84 @@ impl Hub {
         self.st.wins.iter().filter(on_screen).find(|w| w.activated || w.id == self.st.active).or_else(|| self.st.wins.iter().find(on_screen))
     }
 
-    /// The surfaces that should be running now.
+    /// The surfaces that should be running now. With two screens or more, the Couch, the bar and the dock are one a
+    /// screen (`couch@HDMI-A-1`), each in that screen's posture (Settings › Couch and Desk › Per screen); Away covers
+    /// every screen.
     fn surfaces(&mut self) {
-        let desk = self.st.posture == "desk";
-        self.want("couch", true);
-        self.want("bar", desk);
-        self.want("dock", desk);
+        let away = self.st.posture == "away";
+        let screens: Vec<String> = if self.st.screens.len() >= 2 { self.st.screens.iter().map(|s| s.name.clone()).collect() } else { Vec::new() };
+        let mut on: HashSet<String> = HashSet::new();
+        let at = |k: &str, s: &str| if s.is_empty() { k.to_string() } else { format!("{k}@{s}") };
+        let list: Vec<String> = if screens.is_empty() { vec![String::new()] } else { screens };
+        for s in &list {
+            on.insert(at("couch", s));
+            let desk = if s.is_empty() { self.st.posture == "desk" } else { self.st.posture_of(s) == "desk" };
+            if desk && !away {
+                on.insert(at("bar", s));
+                on.insert(at("dock", s));
+            }
+            if away {
+                on.insert(at("away", s));
+            }
+        }
+        let running: Vec<String> = self.children.keys().chain(self.wanted.iter()).cloned().collect();
+        for c in running {
+            let kind = c.split('@').next().unwrap_or("");
+            if ["couch", "bar", "dock", "away"].contains(&kind) && !on.contains(&c) {
+                self.want(&c, false);
+            }
+        }
+        for c in on {
+            self.want(&c, true);
+        }
         // The overlay: over a game in front, not over the Couch's own pages (Everything open over the game).
-        let perf = self.st.cfg.overlay != "off" && self.front_game().is_some() && !self.st.couch_up;
+        let perf = !away && self.st.cfg.overlay != "off" && self.front_game().is_some() && !self.st.couch_up;
         self.want("perf", perf);
         self.perf_ticker(perf);
-        self.want("guide", self.st.guide.up);
-        self.want("notice", self.st.notice.is_some());
+        self.want("guide", self.st.guide.up && !away);
+        self.want("notice", !away && (self.st.notice.is_some() || !self.st.notes.is_empty()));
+        self.want("osk", self.st.osk && !away);
+        // Quick Settings and a menu open on the screen whose bar they came from.
+        let many = self.st.screens.len() >= 2;
+        let named = |k: &str, out: &str| if many && !out.is_empty() { format!("{k}@{out}") } else { k.to_string() };
+        let quick = (named("quick", &self.st.quick.output), self.st.quick.up && !away);
+        let menu = (named("menu", &self.st.menu.output), !self.st.menu.open.is_empty() && !away);
+        for (kind, (name, up)) in [("quick", quick), ("menu", menu)] {
+            let running: Vec<String> = self.children.keys().chain(self.wanted.iter()).cloned().collect();
+            for c in running {
+                if c.split('@').next() == Some(kind) && (c != name || !up) {
+                    self.want(&c, false);
+                }
+            }
+            if up {
+                self.want(&name, true);
+            }
+        }
+    }
+
+    /// Each screen's posture: its own (Per screen, with two screens or more), or the shared one.
+    fn recompute_postures(&mut self) {
+        let shared = if self.st.posture == "away" { self.st.away.back_to.clone() } else { self.st.posture.clone() };
+        let own = |n: &str| self.st.cfg.per_screen.get(n).and_then(|v| v.as_str()).filter(|p| *p == "couch" || *p == "desk").map(String::from);
+        let many = self.st.screens.len() >= 2;
+        let mut map = std::collections::BTreeMap::new();
+        let mut any_own = false;
+        for s in &self.st.screens {
+            let p = if many { own(&s.name) } else { None };
+            any_own |= p.is_some();
+            map.insert(s.name.clone(), p.unwrap_or_else(|| shared.clone()));
+        }
+        self.st.postures = map;
+        self.st.per_screen = many && any_own;
+    }
+
+    /// The posture of the screen a window is on.
+    fn win_posture(&self, w: &Win) -> String {
+        if self.st.per_screen {
+            self.st.posture_of(&w.output)
+        } else {
+            self.st.posture.clone()
+        }
     }
 
     fn perf_ticker(&mut self, on: bool) {
@@ -429,6 +611,11 @@ impl Hub {
         if to != "couch" && to != "desk" {
             return;
         }
+        if self.st.posture == "away" {
+            // A pick (or the controller, the mouse) ends Away: to what was asked.
+            self.st.away = Away::default();
+            self.st.posture = String::new();
+        }
         if self.st.posture == to {
             if to == "couch" && !self.st.couch_up && self.front_game().is_none() {
                 self.st.couch_up = true;
@@ -438,14 +625,24 @@ impl Hub {
         log(&format!("posture: {to} ({why})"));
         self.st.posture = to.to_string();
         config::save_last_posture(to);
+        self.recompute_postures();
+        self.st.menu = Menu::default();
         if to == "desk" {
-            self.st.couch_up = false;
-            self.st.guide.up = false;
-            // Windows the Couch made full screen go back to windows (and games too, when they follow the posture).
-            let ids: Vec<String> = self.ours_fullscreen.drain().collect();
+            let couch_left = self.st.any_couch();
+            if !couch_left {
+                self.st.couch_up = false;
+                self.st.guide.up = false;
+            }
+            // Windows the Couch made full screen go back to windows (and games too, when they follow the posture), on
+            // the screens that are the Desk now.
+            let ids: Vec<String> = self.ours_fullscreen.iter().cloned().collect();
             for id in ids {
-                let game = self.st.wins.iter().any(|w| w.id == id && w.game);
-                if !game || self.st.cfg.games == "follow" {
+                let Some(w) = self.st.wins.iter().find(|w| w.id == id).cloned() else { continue };
+                if self.win_posture(&w) != "desk" {
+                    continue;
+                }
+                self.ours_fullscreen.remove(&id);
+                if !w.game || self.st.cfg.games == "follow" {
                     self.comp_send(json!({"op": "fullscreen", "id": id, "on": false}));
                 }
             }
@@ -461,11 +658,284 @@ impl Hub {
         self.broadcast();
     }
 
+    /// Away: the home server keeps running for your other devices, the screens show what it's doing, and nothing you
+    /// had open is closed. Any button, the mouse or a key brings back what you were in.
+    fn go_away(&mut self) {
+        if self.st.posture == "away" {
+            return;
+        }
+        log("posture: away");
+        let back = if self.st.posture == "couch" { "couch" } else { "desk" };
+        self.st.away = Away { on: true, since: sys::clock().0, back_to: back.into(), note: "Looking at the home server…".into(), ..Away::default() };
+        self.st.posture = "away".into();
+        self.away_at = Some(Instant::now());
+        self.st.guide.up = false;
+        self.st.quick.up = false;
+        self.st.osk = false;
+        self.st.menu = Menu::default();
+        self.st.notice = None;
+        self.recompute_postures();
+        self.load_away();
+        self.surfaces();
+        self.broadcast();
+    }
+    fn load_away(&mut self) {
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let v = helper("hearth-home-server").and_then(|mut h| {
+                h.push("quick".into());
+                run_json(&h, 15)
+            });
+            let _ = tx.send(Ev::AwayInfo(v));
+        });
+    }
+    fn come_back(&mut self, why: &str) {
+        if self.st.posture != "away" {
+            return;
+        }
+        let to = if self.st.away.back_to == "couch" { "couch" } else { "desk" }.to_string();
+        log(&format!("back from away to {to} ({why})"));
+        self.st.away = Away::default();
+        self.st.posture = to.clone();
+        self.recompute_postures();
+        if to == "couch" {
+            self.st.couch_up = self.front_game().is_none();
+        }
+        self.surfaces();
+        self.broadcast();
+    }
+
+    // ---- notifications (notify.rs)
+    fn note_show(&mut self, n: Note, timeout: i32) {
+        self.st.history.retain(|h| h.id != n.id);
+        self.st.history.insert(0, n.clone());
+        self.st.history.truncate(30);
+        // Do not disturb: straight to Quick Settings (an urgent one still shows, as in Mantel).
+        if (self.st.dnd && !n.urgent) || self.st.posture == "away" {
+            self.broadcast();
+            return;
+        }
+        self.st.notes.retain(|h| h.id != n.id);
+        self.st.notes.insert(0, n.clone());
+        self.st.notes.truncate(3);
+        self.notice_serial += 1;
+        let serial = self.notice_serial;
+        self.note_serials.insert(n.id, serial);
+        let ms = if timeout < 0 { if n.urgent { 0 } else { 6000 } } else { timeout.min(60_000) };
+        if ms > 0 {
+            let tx = self.tx.clone();
+            let id = n.id;
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(ms as u64));
+                let _ = tx.send(Ev::NoteEnd(id, serial));
+            });
+        }
+        self.surfaces();
+        self.broadcast();
+    }
+    /// A card's button, a click on it ("default"), or its × (dismissed).
+    fn note_act(&mut self, id: u32, key: &str) {
+        if let Some(bus) = self.bus.as_ref() {
+            if key != "dismiss" {
+                crate::notify::action(bus, id, key);
+            }
+            crate::notify::closed(bus, id, 2);
+        }
+        self.st.notes.retain(|n| n.id != id);
+        self.st.history.retain(|n| n.id != id);
+        self.surfaces();
+        self.broadcast();
+    }
+
+    // ---- Quick Settings
+    fn refresh_quick(&mut self) {
+        let prev = self.st.quick.clone();
+        let tx = self.tx.clone();
+        std::thread::spawn(move || {
+            let _ = tx.send(Ev::QuickInfo(read_quick(&prev)));
+        });
+    }
+    fn quick_do(&mut self, what: &str, arg: &str) -> bool {
+        let reread = |h: &mut Hub, ms: u64| {
+            let tx = h.tx.clone();
+            let prev = h.st.quick.clone();
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(ms));
+                let _ = tx.send(Ev::QuickInfo(read_quick(&prev)));
+            });
+        };
+        match what {
+            "game" => sys::detach("nimbus-mode", &["game"]),
+            "settings" => {
+                self.st.quick.up = false;
+                self.want("settings", true);
+            }
+            "lock" if sys::which("swaylock") => {
+                self.st.quick.up = false;
+                sys::detach("swaylock", &["-f"]);
+            }
+            "power" => self.st.quick.power_open = !self.st.quick.power_open,
+            "sleep" | "restart" | "shutdown" => {
+                let verb = match what {
+                    "sleep" => "suspend",
+                    "restart" => "reboot",
+                    _ => "poweroff",
+                };
+                self.st.quick.up = false;
+                sys::detach("systemctl", &[verb]);
+            }
+            "wifi" => {
+                let on = self.st.quick.wifi != Some(true);
+                sys::run_quiet("nmcli", &["radio", "wifi", if on { "on" } else { "off" }]);
+                self.st.quick.wifi = Some(on);
+                reread(self, 900);
+            }
+            "bt" => match self.st.quick.bt {
+                Some(on) => {
+                    sys::run_quiet("bluetoothctl", &["power", if on { "off" } else { "on" }]);
+                    self.st.quick.bt = Some(!on);
+                    reread(self, 1500);
+                }
+                None => return false,
+            },
+            "dnd" => {
+                // Mantel's own switch, written by its own helper (hearth_settings_io: atomic, a backup, merged).
+                let on = !self.st.dnd;
+                if let Some(mut h) = helper("hearth-desk") {
+                    h.extend(["set".to_string(), "dnd".to_string(), (if on { "on" } else { "off" }).to_string()]);
+                    if run_json(&h, 8).and_then(|v| v.get("ok").and_then(|o| o.as_bool())) != Some(false) {
+                        self.st.dnd = on;
+                        self.st.quick.dnd = on;
+                    }
+                } else {
+                    return false;
+                }
+            }
+            "keyboard" => {
+                self.st.quick.up = false;
+                self.st.osk = !self.st.osk;
+            }
+            "away" => self.go_away(),
+            "couch" => {
+                self.st.quick.up = false;
+                self.set_posture("couch", "Quick Settings");
+                self.st.couch_up = true;
+            }
+            "volUp" | "volDown" => {
+                let cur = self.st.quick.volume.unwrap_or(50);
+                let n = (cur + if what == "volUp" { 5 } else { -5 }).clamp(0, 100);
+                sys::set_volume(n);
+                self.st.quick.volume = Some(n);
+                self.st.quick.muted = false;
+                sys::run_quiet("wpctl", &["set-mute", "@DEFAULT_AUDIO_SINK@", "0"]);
+            }
+            "mute" => {
+                sys::run_quiet("wpctl", &["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]);
+                self.st.quick.muted = !self.st.quick.muted;
+            }
+            "brightUp" | "brightDown" => {
+                let cur = self.st.quick.brightness.unwrap_or(50);
+                let n = (cur + if what == "brightUp" { 5 } else { -5 }).clamp(5, 100);
+                sys::set_brightness(n);
+                self.st.quick.brightness = Some(n);
+            }
+            "profile" if ["power-saver", "balanced", "performance"].contains(&arg) => {
+                sys::run_quiet("powerprofilesctl", &["set", arg]);
+                self.st.quick.profile = arg.to_string();
+            }
+            "clearNotes" => {
+                let ids: Vec<u32> = self.st.history.iter().map(|n| n.id).collect();
+                if let Some(bus) = self.bus.as_ref() {
+                    for id in ids {
+                        crate::notify::closed(bus, id, 2);
+                    }
+                }
+                self.st.history.clear();
+                self.st.notes.clear();
+            }
+            _ => return false,
+        }
+        true
+    }
+
+    // ---- the Desk bar's menus
+    fn open_menu(&mut self, name: &str, x: i32, output: &str) {
+        if self.st.menu.open == name && self.st.menu.output == output {
+            self.st.menu = Menu::default();
+            return;
+        }
+        let items: Vec<MenuItem> = model::app_menu(name)
+            .into_iter()
+            .map(|(id, label, keys, sep)| MenuItem { id: id.into(), label: label.into(), keys: keys.into(), sep, on: id.strip_prefix("p:").is_some_and(|p| p == self.st.posture) })
+            .collect();
+        if items.is_empty() {
+            self.st.menu = Menu::default();
+            return;
+        }
+        self.st.quick.up = false;
+        self.st.menu = Menu { open: name.into(), output: output.into(), x: x.clamp(-1, 8000), items };
+    }
+    fn menu_pick(&mut self, id: &str) {
+        self.st.menu = Menu::default();
+        if let Some(p) = id.strip_prefix("p:") {
+            match p {
+                "away" => self.go_away(),
+                "couch" => {
+                    self.set_posture("couch", "the bar's menu");
+                    self.st.couch_up = true;
+                    self.send_surface("couch", &json!({"t": "cmd", "cmd": "page", "arg": "home"}));
+                }
+                _ => self.set_posture("desk", "the bar's menu"),
+            }
+            return;
+        }
+        let Some(w) = self.st.wins.iter().find(|w| w.id == self.st.active).cloned() else { return };
+        if let Some(keys) = id.strip_prefix("k:") {
+            let keys: Vec<&str> = keys.split(',').collect();
+            self.comp_send(json!({"op": "activate", "id": w.id}));
+            self.comp_send(json!({"op": "key", "keys": keys}));
+        } else if let Some(what) = id.strip_prefix("w:") {
+            match what {
+                "close" => self.comp_send(json!({"op": "close", "id": w.id})),
+                "fullscreen" => self.comp_send(json!({"op": "fullscreen", "id": w.id, "on": !w.fullscreen})),
+                "maximize" => self.comp_send(json!({"op": "snap", "id": w.id, "zone": "maximize"})),
+                "minimize" => self.comp_send(json!({"op": "minimize", "id": w.id, "on": true})),
+                "snap-left" => self.comp_send(json!({"op": "snap", "id": w.id, "zone": "left-half"})),
+                "snap-right" => self.comp_send(json!({"op": "snap", "id": w.id, "zone": "right-half"})),
+                _ => {}
+            }
+        }
+    }
+
     fn comp_line(&mut self, v: Value) {
         match v.get("t").and_then(|t| t.as_str()) {
             Some("windows") => {
                 self.raw_wins = v.get("windows").and_then(|w| w.as_array()).cloned().unwrap_or_default();
+                let before = self.st.active.clone();
                 self.st.active = v.get("active").and_then(|a| a.as_str()).unwrap_or("").to_string();
+                // A menu is for the app that was in front: another one in front closes it.
+                if before != self.st.active && !self.st.menu.open.is_empty() && self.st.menu.open != "posture" {
+                    self.st.menu = Menu::default();
+                }
+                // The screens (firehold-comp's outputs), left to right.
+                if let Some(outs) = v.get("outputs").and_then(|o| o.as_array()) {
+                    let mut screens: Vec<Screen> = outs
+                        .iter()
+                        .filter_map(|o| {
+                            let name = o.get("name")?.as_str()?.to_string();
+                            let i = |k: &str| o.get(k).and_then(|x| x.as_i64()).unwrap_or(0) as i32;
+                            let mm = o.get("mm").and_then(|m| m.get(0)).and_then(|m| m.as_i64()).unwrap_or(0) as i32;
+                            let model = o.get("model").and_then(|m| m.as_str()).unwrap_or("");
+                            Some(Screen { label: proto::screen_label(&name, model, mm), name, x: i("x"), y: i("y"), w: i("w"), h: i("h") })
+                        })
+                        .collect();
+                    screens.sort_by_key(|s| (s.x, s.y));
+                    if screens != self.st.screens {
+                        log(&format!("screens: {}", screens.iter().map(|s| format!("{} ({})", s.name, s.label)).collect::<Vec<_>>().join(", ")));
+                        self.st.screens = screens;
+                        self.recompute_postures();
+                    }
+                }
                 if !self.st.active.is_empty() {
                     let a = self.st.active.clone();
                     self.st.mru.retain(|id| *id != a);
@@ -475,6 +945,12 @@ impl Hub {
             }
             Some("input") => {
                 let kind = v.get("kind").and_then(|k| k.as_str()).unwrap_or("");
+                if self.st.posture == "away" {
+                    if self.away_at.is_some_and(|t| t.elapsed() > Duration::from_secs(3)) {
+                        self.come_back(kind);
+                    }
+                    return;
+                }
                 // Automatic only, and never while a game is in front (a game played with the keyboard stays full screen).
                 if self.st.cfg.posture == "auto" && self.st.posture == "couch" && (self.front_game().is_none() || self.st.couch_up) && !self.st.guide.up {
                     match kind {
@@ -522,7 +998,7 @@ impl Hub {
             if first {
                 continue;
             }
-            let couch = self.st.posture == "couch";
+            let couch = self.win_posture(w) == "couch";
             // Only what comes to the front: a dialog or a tool window behind stays as it is.
             // Firehold's own Settings stays a window in the middle, over the Couch's background (mockup 6), and the
             // Couch steps down for it even before it has the keyboard (the Couch had it, so it never would).
@@ -557,7 +1033,7 @@ impl Hub {
         if let Some(id) = self.over.clone() {
             if !self.st.wins.iter().any(|w| w.id == id && !w.minimized) {
                 self.over = None;
-                if self.st.posture == "couch" && !self.st.couch_up {
+                if self.st.any_couch() && !self.st.couch_up {
                     self.st.couch_up = true;
                 }
             }
@@ -692,7 +1168,7 @@ impl Hub {
         if self.st.guide.up {
             // Twice: everything open (over the game too; the game keeps running under it).
             self.st.guide.up = false;
-            if self.st.posture != "couch" {
+            if !self.st.any_couch() {
                 self.set_posture("couch", "Guide button");
             }
             self.st.couch_up = true;
@@ -700,7 +1176,7 @@ impl Hub {
         } else if self.front_game().is_some() {
             self.st.guide.up = true;
             self.refresh_guide();
-        } else if self.st.posture == "desk" {
+        } else if !self.st.any_couch() {
             self.set_posture("couch", "Guide button");
             self.st.couch_up = true;
             self.send_surface("couch", &json!({"t": "cmd", "cmd": "page", "arg": "home"}));
@@ -716,6 +1192,30 @@ impl Hub {
     }
 
     fn pad(&mut self, key: &'static str) {
+        if self.st.posture == "away" {
+            return self.come_back("controller");
+        }
+        // The on-screen keyboard has the controller while it's up (B hides it).
+        if self.st.osk {
+            if key == "guide" {
+                self.st.osk = false;
+                self.surfaces();
+                self.broadcast();
+                return;
+            }
+            self.send_surface("osk", &json!({"t": "nav", "key": key}));
+            return;
+        }
+        if self.st.quick.up {
+            if key == "b" || key == "guide" {
+                self.st.quick.up = false;
+                self.surfaces();
+                self.broadcast();
+            } else {
+                self.send_surface("quick", &json!({"t": "nav", "key": key}));
+            }
+            return;
+        }
         if key == "guide" {
             return self.guide_button();
         }
@@ -726,7 +1226,7 @@ impl Hub {
         if self.front_game().is_some() && !self.st.couch_up {
             return; // the game has the controller
         }
-        if self.st.posture == "desk" {
+        if !self.st.any_couch() {
             if self.st.cfg.posture == "auto" {
                 self.set_posture("couch", "controller");
             }
@@ -811,7 +1311,7 @@ impl Hub {
     fn activate(&mut self, id: &str) {
         let Some(w) = self.st.wins.iter().find(|w| w.id == id).cloned() else { return };
         self.comp_send(json!({"op": "activate", "id": id}));
-        if self.st.posture == "couch" {
+        if self.win_posture(&w) == "couch" {
             self.st.couch_up = false;
             self.over = Some(id.to_string());
             let full = !w.game || self.st.cfg.games != "window";
@@ -882,11 +1382,12 @@ impl Hub {
                 }
                 self.hello.insert(surface.clone());
                 self.sent.remove(&from);
-                if ["couch", "dock", "guide", "settings"].contains(&surface.as_str()) {
+                if ["couch", "dock", "guide", "settings"].contains(&surface.split('@').next().unwrap_or("")) {
                     self.send_library(Some(from));
                 }
                 self.broadcast();
-                if !self.up_written && self.hello.contains("couch") && (self.st.posture == "couch" || (self.hello.contains("bar") && self.hello.contains("dock"))) {
+                let has = |h: &HashSet<String>, k: &str| h.iter().any(|x| x == k || x.starts_with(&format!("{k}@")));
+                if !self.up_written && has(&self.hello, "couch") && (self.st.posture == "couch" || (has(&self.hello, "bar") && has(&self.hello, "dock"))) {
                     self.up_written = true;
                     let _ = std::fs::write(runtime().join("firehold-shell-up"), format!("{}\n", self.started.elapsed().as_secs()));
                     log(&format!("up after {} s", self.started.elapsed().as_secs()));
@@ -913,7 +1414,13 @@ impl Hub {
             }
             "posture" => {
                 let to = s("to");
-                self.set_posture(&to, "asked");
+                if to == "away" {
+                    self.go_away();
+                } else if to == "back" {
+                    self.come_back("asked");
+                } else {
+                    self.set_posture(&to, "asked");
+                }
                 if to == "couch" {
                     self.st.couch_up = true;
                     self.send_surface("couch", &json!({"t": "cmd", "cmd": "page", "arg": "home"}));
@@ -921,7 +1428,7 @@ impl Hub {
             }
             "home" => {
                 self.st.guide.up = false;
-                if self.st.posture != "couch" {
+                if !self.st.any_couch() {
                     self.set_posture("couch", "Home");
                 }
                 self.st.couch_up = true;
@@ -938,7 +1445,7 @@ impl Hub {
                 if op == "page" && arg == "settings" {
                     self.want("settings", true);
                 } else {
-                    if self.st.posture != "couch" {
+                    if !self.st.any_couch() {
                         self.set_posture("couch", "asked");
                     }
                     self.st.couch_up = true;
@@ -947,8 +1454,10 @@ impl Hub {
                 }
             }
             "couchPage" => {
-                // The Couch says which page it shows: Everything open wants the windows' pictures.
-                self.pictures(s("page") == "switcher" && self.st.couch_up);
+                // A Couch says which page it shows: Everything open wants the windows' pictures (while one shows it).
+                self.couch_pages.insert(from, s("page"));
+                let any = self.couch_pages.values().any(|p| p == "switcher");
+                self.pictures(any && self.st.couch_up);
                 if s("page") == "home" {
                     self.reload_library(false);
                 }
@@ -1029,6 +1538,15 @@ impl Hub {
                     Ok(changed) => {
                         extra = json!({"changed": changed});
                         self.st.cfg = Couch::read();
+                        self.recompute_postures();
+                        if key == "perScreen" {
+                            // A screen now in another posture: what the Couch made full screen there goes back too.
+                            let p = self.st.posture.clone();
+                            if p == "desk" || p == "couch" {
+                                self.st.posture = String::new();
+                                self.set_posture(&p, "Settings › Couch and Desk › Per screen");
+                            }
+                        }
                         if key == "posture" && self.st.cfg.posture != "auto" {
                             let p = self.st.cfg.posture.clone();
                             self.set_posture(&p, "Settings › Couch and Desk");
@@ -1105,12 +1623,9 @@ impl Hub {
                         }
                     }
                     "keyboard" => {
-                        for k in ["wvkbd-mobintl", "squeekboard"] {
-                            if sys::which(k) {
-                                sys::detach(k, &[]);
-                                break;
-                            }
-                        }
+                        // Firehold's own on-screen keyboard, over the game (the Guide steps aside for it).
+                        self.st.guide.up = false;
+                        self.st.osk = true;
                     }
                     "volumeUp" | "volumeDown" => {
                         let cur = sys::volume().unwrap_or(50);
@@ -1149,6 +1664,87 @@ impl Hub {
                 let _ = config::set("overlay", json!(n));
                 self.st.cfg = Couch::read();
             }
+            // ---- Quick Settings, notifications, the on-screen keyboard, the bar's menus, Away
+            "quick" => {
+                let up = match s("arg").as_str() {
+                    "on" => true,
+                    "off" => false,
+                    _ => !self.st.quick.up,
+                };
+                self.st.quick.up = up;
+                self.st.quick.power_open = false;
+                self.st.quick.output = s("output");
+                self.st.menu = Menu::default();
+                if up {
+                    self.refresh_quick();
+                }
+            }
+            "quickDo" => {
+                let what = s("what");
+                ok = self.quick_do(&what, &s("arg"));
+            }
+            "noteAct" => {
+                let id = v.get("id").and_then(|i| i.as_u64()).unwrap_or(0) as u32;
+                let key = s("key");
+                self.note_act(id, if key.is_empty() { "default" } else { &key });
+            }
+            "notify" => {
+                // Tests and Hearth's own: a notification without the bus ({"title", "body", "app"}).
+                let n = Note { id: 100_000 + self.notice_serial as u32, app: s("app"), title: s("title"), body: s("body"), at: sys::clock().0, ..Note::default() };
+                self.note_show(n, -1);
+            }
+            "osk" => {
+                self.st.osk = match s("arg").as_str() {
+                    "on" => true,
+                    "off" => false,
+                    _ => !self.st.osk,
+                };
+                if self.st.osk {
+                    self.st.quick.up = false;
+                }
+            }
+            "oskType" => {
+                // What the on-screen keyboard typed goes to the window that has the keyboard (firehold-comp's `key`).
+                let text = s("text");
+                let keys: Vec<String> = v.get("keys").and_then(|k| k.as_array()).map(|a| a.iter().filter_map(|k| k.as_str().map(String::from)).take(4).collect()).unwrap_or_default();
+                if !text.is_empty() {
+                    self.comp_send(json!({"op": "key", "text": text.chars().take(64).collect::<String>()}));
+                } else if !keys.is_empty() {
+                    self.comp_send(json!({"op": "key", "keys": keys}));
+                } else {
+                    ok = false;
+                }
+                if from != 0 {
+                    self.reply(from, ok, extra);
+                }
+                return;
+            }
+            "menu" => {
+                let name = s("name");
+                // No place given (`ctl menu Edit`): under its title in the bar, as the bar places it.
+                let front = self.st.wins.iter().find(|w| w.id == self.st.active).map(|w| w.name.clone()).unwrap_or_else(|| "Firehold".into());
+                let at = crate::ui::desk::menu_xs(&front).into_iter().find(|(m, _)| *m == name).map(|(_, x)| x).unwrap_or(-1);
+                let x = v.get("x").and_then(|x| x.as_i64()).map(|x| x as i32).unwrap_or(at);
+                if name.is_empty() {
+                    self.st.menu = Menu::default();
+                } else {
+                    self.open_menu(&name, x, &s("output"));
+                }
+            }
+            "menuPick" => {
+                let id = s("id");
+                self.menu_pick(&id);
+            }
+            "awayResume" => {
+                // Let jobs paused for your game run now (the home server's own Light mode switch, up to 4 hours).
+                if let Some(mut h) = helper("hearth-home-server") {
+                    h.extend(["resume".to_string(), "on".to_string()]);
+                    let _ = run_json(&h, 15);
+                    self.load_away();
+                } else {
+                    ok = false;
+                }
+            }
             "gameToDesk" => {
                 if let Some(id) = self.front_game().map(|w| w.id.clone()) {
                     self.st.guide.up = false;
@@ -1159,7 +1755,7 @@ impl Hub {
             }
             "gameHome" => {
                 self.st.guide.up = false;
-                if self.st.posture != "couch" {
+                if !self.st.any_couch() {
                     self.set_posture("couch", "Home");
                 }
                 self.st.couch_up = true;
@@ -1170,7 +1766,7 @@ impl Hub {
                     self.comp_send(json!({"op": "close", "id": id}));
                 }
                 self.st.guide.up = false;
-                self.st.couch_up = self.st.posture == "couch";
+                self.st.couch_up = self.st.any_couch();
             }
             "leave" => {
                 // Back to Game Mode (nimbus-mode, which ends this session the way it ends Plasma), or to KDE Plasma
@@ -1240,6 +1836,53 @@ impl Hub {
             Ev::ClientGone(id) => {
                 self.clients.remove(&id);
                 self.sent.remove(&id);
+                if self.couch_pages.remove(&id).is_some() {
+                    let any = self.couch_pages.values().any(|p| p == "switcher");
+                    self.pictures(any && self.st.couch_up);
+                }
+            }
+            Ev::Note(n, timeout) => self.note_show(n, timeout),
+            Ev::NoteClose(id) => {
+                if let Some(bus) = self.bus.as_ref() {
+                    crate::notify::closed(bus, id, 3);
+                }
+                self.st.notes.retain(|n| n.id != id);
+                self.st.history.retain(|n| n.id != id);
+                self.surfaces();
+                self.broadcast();
+            }
+            Ev::NoteEnd(id, serial) => {
+                if self.note_serials.get(&id) == Some(&serial) {
+                    self.note_serials.remove(&id);
+                    // Off the screen, still in Quick Settings.
+                    self.st.notes.retain(|n| n.id != id);
+                    self.surfaces();
+                    self.broadcast();
+                }
+            }
+            Ev::Bus(c) => {
+                log("notifications: Firehold shows them (org.freedesktop.Notifications)");
+                self.bus = Some(c);
+            }
+            Ev::QuickInfo(q) => {
+                let up = self.st.quick.up;
+                let output = self.st.quick.output.clone();
+                let power_open = self.st.quick.power_open;
+                self.st.dnd = q.dnd;
+                self.st.quick = Quick { up, output, power_open, ..q };
+                self.broadcast();
+            }
+            Ev::AwayInfo(v) => {
+                if self.st.posture == "away" {
+                    let (host, lines, paused, resumed, note) = model::away_lines(&v.unwrap_or(Value::Null), now_ms());
+                    let a = &mut self.st.away;
+                    a.host = host;
+                    a.lines = lines;
+                    a.paused = paused;
+                    a.resumed = resumed;
+                    a.note = note;
+                    self.broadcast();
+                }
             }
             Ev::Pad(k) => self.pad(k),
             Ev::Tick => {
@@ -1250,6 +1893,10 @@ impl Hub {
                 self.st.battery = sys::battery();
                 if self.st.guide.up {
                     self.refresh_guide();
+                }
+                // Away: what the home server's doing, once a minute with the clock (only while Away is up).
+                if self.st.posture == "away" {
+                    self.load_away();
                 }
                 self.broadcast();
             }
@@ -1450,6 +2097,9 @@ fn listen_thread(tx: Sender<Ev>, l: UnixListener) {
                             "play" | "openWindowed" => "id",
                             "leave" => "to",
                             "choose" => "what",
+                            "quickDo" => "what",
+                            "menu" => "name",
+                            "menuPick" => "id",
                             _ => "arg",
                         };
                         o[k] = json!(a);
@@ -1535,6 +2185,10 @@ pub fn run() -> i32 {
         notice_serial: 0,
         sent: HashMap::new(),
         started: Instant::now(),
+        bus: None,
+        note_serials: HashMap::new(),
+        couch_pages: HashMap::new(),
+        away_at: None,
     };
     {
         let t = tx.clone();
@@ -1553,6 +2207,8 @@ pub fn run() -> i32 {
         libc::signal(libc::SIGPIPE, libc::SIG_IGN);
     }
     hub.reload_library(true);
+    crate::notify::start(tx.clone());
+    hub.refresh_quick();
     hub.surfaces();
     drop(tx);
     while let Ok(ev) = rx.recv() {
