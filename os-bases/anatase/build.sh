@@ -1713,10 +1713,15 @@ open(p, 'w', encoding='utf-8').write('\n'.join(out).strip('\n') + '\n')
 PY
   # Apps' Open / Save window on Plasma: xdg-desktop-portal's FileChooser is Hearth's (hearth-portal, which opens
   # hearth-file-chooser where there's no Quickshell), KDE's when Hearth's portal isn't there. The rest stays KDE's.
-  # (Flatpak apps, Firefox, Chromium and Electron apps use the portal; KDE's own Qt apps keep KDE's dialog.)
+  # (Flatpak apps, Firefox, Chromium and Electron apps use the portal; KDE's own apps do too, below.)
   if [ -f /usr/share/xdg-desktop-portal/portals/hearth.portal ] && python3 -c 'import gi' 2>/dev/null; then
     mkdir -p /etc/xdg/xdg-desktop-portal
     printf '[preferred]\ndefault=kde\norg.freedesktop.impl.portal.FileChooser=hearth;kde\n' > /etc/xdg/xdg-desktop-portal/kde-portals.conf
+    # The owner (Nov 18): "our apps will be the default ones": KDE's own apps (Kate, Okular, Gwenview...) ask the
+    # portal for their Open / Save window too, so they get Hearth's (KDE's plasma-integration reads this; with
+    # Hearth's portal missing or failing, the portal answers with KDE's own dialog, as before).
+    mkdir -p /usr/lib/environment.d
+    printf '# Hearth Files (Rust): KDE apps use the portal for Open / Save, which is Hearth'"'"'s file chooser\nPLASMA_INTEGRATION_USE_PORTAL=1\n' > /usr/lib/environment.d/60-hearth-file-chooser.conf
   else
     echo "::warning title=Hearth Files (Rust)::Hearth's portal isn't in this image, so apps keep KDE's Open / Save window"
   fi
