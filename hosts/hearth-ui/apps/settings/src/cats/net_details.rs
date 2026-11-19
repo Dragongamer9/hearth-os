@@ -66,6 +66,8 @@ pub struct S {
     pub phase2: String,
     pub eap_ask: bool,
     pub mac_open: bool,
+    /// Opened at a part (net-details:qr, :add-…): that part comes first on the page, as Mantel scrolls to it.
+    pub top: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -135,6 +137,7 @@ pub fn open(_sh: &mut Shared, s: &mut S, part: &str) -> Task<M> {
     s.edit_eap = false;
     s.adding.clear();
     s.want.clear();
+    s.top = matches!(part, "qr" | "add-wired" | "add-mobile" | "add-enterprise");
     match part {
         "add-wired" | "add-mobile" | "add-enterprise" => {
             s.adding = part[4..].to_string();
@@ -435,13 +438,38 @@ impl<Msg> canvas::Program<Msg> for Qr {
     }
 }
 
+/// The QR code card: the code (white, to photograph), the network, its password (hidden until you ask).
+fn qr_card<'a>(p: &hearth_ui::Pal, s: &'a S, q: &Value) -> E<'a, M> {
+    let p = *p;
+                let rows: Vec<Vec<bool>> = kit::strs(q, "rows").iter().map(|r| r.chars().map(|ch| ch == '1').collect()).collect();
+                let pw = kit::st(q, "password");
+                let sec = kit::st(q, "security");
+                let code = container(canvas::Canvas::new(Qr { rows }).width(Length::Fixed(224.0)).height(Length::Fixed(224.0))).padding(18.0).style(hearth_ui::ui::boxed(Color::WHITE, 16.0, None));
+                let mut info = Column::new().spacing(8.0).push(tb(kit::st(q, "ssid"), sz(22.0), p.text)).push(t(if sec == "nopass" { "Open network: no password".to_string() } else { format!("{sec} · scan with the phone's camera") }, sz(13.0), p.muted));
+                if !pw.is_empty() {
+                    info = info.push(t(if s.show_pw { format!("Password: {pw}") } else { format!("Password: {}", "•".repeat(10)) }, sz(15.0), p.text));
+                }
+                let mut b = iced::widget::Row::new().spacing(10.0);
+                if !pw.is_empty() {
+                    b = b.push(btn(&p, if s.show_pw { "Hide the password" } else { "Show the password" }, Kind::Normal, false, Some(M::ShowPw)));
+                }
+                b = b.push(btn(&p, "Hide the code", Kind::Normal, false, Some(M::HideQr)));
+                card(&p, row![code, info.push(b).width(Length::Fill)].spacing(22.0).align_y(iced::Center))
+}
+
 pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     let p = sh.p;
-    let mut c = Column::new().spacing(10.0).push(head(&p, "Saved networks"));
+    let mut saved = Column::new().spacing(10.0).push(head(&p, "Saved networks"));
     for cn in s.conns() {
         let k = kit::st(cn, "kind");
         let u = kit::st(cn, "uuid");
-        c = c.push(val_row(&p, kind_glyph(&k), kit::st(cn, "name"), format!("{}{}", kind_word(&k), if kit::bo(cn, "active") { " · Connected" } else { "" }), if s.uuid == u { "Showing" } else { "" }, Some(M::Pick(u.clone()))));
+        saved = saved.push(val_row(&p, kind_glyph(&k), kit::st(cn, "name"), format!("{}{}", kind_word(&k), if kit::bo(cn, "active") { " · Connected" } else { "" }), if s.uuid == u { "Showing" } else { "" }, Some(M::Pick(u.clone()))));
+    }
+    let mut c = Column::new().spacing(10.0);
+    if s.top {
+        if let Some(q) = &s.qr {
+            c = c.push(head(&p, format!("Share {}", s.dname()))).push(qr_card(&p, s, q));
+        }
     }
     // ---- Add a network: a wired profile of your own, mobile broadband, an enterprise Wi-Fi network.
     c = c.push(head(&p, "Add a network"));
@@ -510,6 +538,7 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
         }
     }
 
+    let mut c = if s.top && !s.adding.is_empty() { column![c, saved].spacing(10.0) } else { column![saved, c].spacing(10.0) };
     let Some(d) = &s.d else {
         return c.push(said(&p, &s.say)).into();
     };
@@ -528,27 +557,18 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
 
     // ---- share this Wi-Fi network: a QR code a phone's camera joins from, made only when you press.
     if kind == "wifi" && kit::st(d, "security") != "enterprise" {
-        c = c.push(head(&p, format!("Share {name}")));
+        if !(s.top && s.qr.is_some()) {
+            c = c.push(head(&p, format!("Share {name}")));
+        }
         match &s.qr {
             None => {
                 let has_qr = s.st.as_ref().map(|v| kit::bo(v, "qr")).unwrap_or(true);
                 c = c.push(press(&p, G::Grid, if s.what == "qr" { "Making the code…" } else { "Show a QR code" }, if !has_qr { "Needs qrencode, which isn't on this system" } else { "Point a phone's camera at it to join this network. It shows the password" }, Some(M::Qr)));
             }
             Some(q) => {
-                let rows: Vec<Vec<bool>> = kit::strs(q, "rows").iter().map(|r| r.chars().map(|ch| ch == '1').collect()).collect();
-                let pw = kit::st(q, "password");
-                let sec = kit::st(q, "security");
-                let code = container(canvas::Canvas::new(Qr { rows }).width(Length::Fixed(224.0)).height(Length::Fixed(224.0))).padding(18.0).style(hearth_ui::ui::boxed(Color::WHITE, 16.0, None));
-                let mut info = Column::new().spacing(8.0).push(tb(kit::st(q, "ssid"), sz(22.0), p.text)).push(t(if sec == "nopass" { "Open network: no password".to_string() } else { format!("{sec} · scan with the phone's camera") }, sz(13.0), p.muted));
-                if !pw.is_empty() {
-                    info = info.push(t(if s.show_pw { format!("Password: {pw}") } else { format!("Password: {}", "•".repeat(10)) }, sz(15.0), p.text));
+                if !s.top {
+                    c = c.push(qr_card(&p, s, q));
                 }
-                let mut b = iced::widget::Row::new().spacing(10.0);
-                if !pw.is_empty() {
-                    b = b.push(btn(&p, if s.show_pw { "Hide the password" } else { "Show the password" }, Kind::Normal, false, Some(M::ShowPw)));
-                }
-                b = b.push(btn(&p, "Hide the code", Kind::Normal, false, Some(M::HideQr)));
-                c = c.push(card(&p, row![code, info.push(b).width(Length::Fill)].spacing(22.0).align_y(iced::Center)));
             }
         }
     }

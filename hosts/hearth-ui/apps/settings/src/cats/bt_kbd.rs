@@ -36,6 +36,7 @@ pub struct S {
     pub say: Say,
     pub osk: Map<String, Value>,
     pub osk_open: bool,
+    pub osk_top: bool,
     pub kde_keys: u64,
     pub kde_busy: bool,
     pub kde_say: Say,
@@ -161,6 +162,7 @@ pub fn open(_sh: &mut Shared, s: &mut S, part: &str) -> Task<M> {
     s.picked = None;
     s.query.clear();
     s.osk_open = part == "osk";
+    s.osk_top = part == "osk";
     s.osk = match hearth_ui::settings_file::read_json(&osk_path()) {
         Value::Object(m) => m,
         _ => Map::new(),
@@ -458,7 +460,7 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     c = c.push(said(&p, &s.say));
 
     // ---- the on-screen keyboard
-    c = c.push(head(&p, "On-screen keyboard"));
+    let mut o = Column::new().spacing(10.0).push(head(&p, "On-screen keyboard"));
     let fast = s.osk_str("fast");
     let fast_name = match fast.as_str() {
         "wheel" => "Ember Wheel",
@@ -515,21 +517,28 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     } else {
         None
     };
-    c = c.push(expander(&p, G::Grid, "On-screen keyboard", "For the controller and touch. Opens with Y, the keyboard button on the taskbar, or a swipe in from the left edge", fast_name, None, s.osk_open, M::OskOpen, body));
+    o = o.push(expander(&p, G::Grid, "On-screen keyboard", "For the controller and touch. Opens with Y, the keyboard button on the taskbar, or a swipe in from the left edge", fast_name, None, s.osk_open, M::OskOpen, body));
 
     // ---- keyboard shortcuts
+    let mut k = Column::new().spacing(10.0);
     if !s.shortcuts.is_empty() || s.kde_keys > 0 {
-        c = c.push(head(&p, "Keyboard shortcuts"));
+        k = k.push(head(&p, "Keyboard shortcuts"));
     }
-    for k in &s.shortcuts {
-        c = c.push(info_row(&p, G::Grid, kit::st(k, "keys"), kit::st(k, "action")));
+    for sc in &s.shortcuts {
+        k = k.push(info_row(&p, G::Grid, kit::st(sc, "keys"), kit::st(sc, "action")));
     }
     // KDE's own shortcuts that hearth-kwin-bridge changed once so Mantel's keys work on KWin: put back with one
     // button (red flag 9: anything Hearth changes by itself is reversible from Settings).
     if s.kde_keys > 0 {
-        c = c.push(press(&p, G::Restore, "Bring back KDE's own shortcuts", format!("{}Hearth moved {} of KDE's shortcuts (Super+arrows, Super+D, Super+G, Print…) so Mantel's own work on KWin. This gives them back to KDE; Mantel's shortcuts on those keys then stop working.", if s.kde_busy { "Putting them back… " } else { "" }, s.kde_keys), Some(M::KdeRestore)));
+        k = k.push(press(&p, G::Restore, "Bring back KDE's own shortcuts", format!("{}Hearth moved {} of KDE's shortcuts (Super+arrows, Super+D, Super+G, Print…) so Mantel's own work on KWin. This gives them back to KDE; Mantel's shortcuts on those keys then stop working.", if s.kde_busy { "Putting them back… " } else { "" }, s.kde_keys), Some(M::KdeRestore)));
     }
-    c.push(said(&p, &s.kde_say)).into()
+    k = k.push(said(&p, &s.kde_say));
+    // `hearth-settings keyboard:osk` (Personalization's "On-screen keyboard style", the pictures): that part first.
+    if s.osk_top {
+        column![o, c, k].spacing(10.0).into()
+    } else {
+        column![c, o, k].spacing(10.0).into()
+    }
 }
 
 pub fn subscription(_s: &S) -> Subscription<M> {

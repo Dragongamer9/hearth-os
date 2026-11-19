@@ -129,6 +129,13 @@ if name == 'hearth-network':
         out({'mode': 'manual', 'url': '', 'http': 'proxy.home.lan:3128', 'https': 'proxy.home.lan:3128', 'socks': '', 'ignore': 'localhost, 127.0.0.1, .home.lan'})
 
 if name == 'hearth-home-server':
+    signed_out = os.environ.get('NBFX_TS') == 'out'
+    if a0 == 'ts-signin':
+        out({'authUrl': 'https://login.tailscale.com/a/7c1e0f9b2ad4e8', 'qr': '', 'state': 'NeedsLogin', 'started': True, 'atBoot': True})
+    if a0 == 'status' and signed_out:
+        out({'host': 'chris-hearth', 'wired': [], 'applied': {'ok': True},
+             'settings': {'tsOnly': False, 'tsBoot': True, 'exitNode': False, 'taildropReceive': True, 'wakeFromAway': False},
+             'tailscale': {'installed': True, 'running': True, 'state': 'NeedsLogin', 'authUrl': 'https://login.tailscale.com/a/7c1e0f9b2ad4e8'}})
     if a0 == 'status':
         out({'host': 'chris-hearth', 'wired': [{'iface': 'enp3s0', 'mac': '3c:a9:f4:12:8b:08'}], 'applied': {'ok': True},
              'settings': {'tsOnly': True, 'tsBoot': True, 'exitNode': False, 'taildropReceive': True, 'wakeFromAway': False},
@@ -270,12 +277,13 @@ done
 chmod -R a+rwX "$NBFX"
 
 nb() { # nb NAME PAGE: a picture of PAGE on the pretend PC
-  run "settings-nb-$1" hearth-settings 0 env PATH="$NBFX/bin:$PATH" HEARTH_SHELL_DIR="$NBFX/shell" NBFX_RUN="$NBFX/run" "$BIN/hearth-settings-app" --page "$2"
+  run "settings-nb-$1" hearth-settings 0 env PATH="$NBFX/bin:$PATH" HEARTH_SHELL_DIR="$NBFX/shell" NBFX_RUN="$NBFX/run" NBFX_TS="${NBFX_TS:-}" "$BIN/hearth-settings-app" --page "$2"
 }
 nb 10-wifi wifi
 nb 11-wifi-properties wifi:props
 nb 12-wifi-hidden wifi:hidden
 nb 13-tailscale hs-tailscale
+NBFX_TS=out nb 13b-tailscale-sign-in hs-tailscale:signin
 nb 14-vpn vpn
 nb 15-vpn-by-hand vpn:add-l2tp
 nb 16-hotspot hotspot

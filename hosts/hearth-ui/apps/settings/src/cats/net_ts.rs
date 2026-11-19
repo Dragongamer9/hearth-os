@@ -8,7 +8,7 @@ use super::kit::{self, *};
 use crate::shared::Shared;
 use crate::widgets::*;
 use hearth_ui::ui::{t, G};
-use iced::widget::{column, container, image, Column};
+use iced::widget::{column, container, image, qr_code, Column};
 use iced::{Length, Subscription, Task};
 use serde_json::Value;
 
@@ -17,6 +17,8 @@ pub struct S {
     pub st: Option<Value>,
     pub login: Option<Value>,
     pub qr: Option<image::Handle>,
+    /// The sign-in link as a QR code, drawn here (big, to photograph with a phone), whether or not qrencode is there.
+    pub qr_data: Option<qr_code::Data>,
     pub pings: Value,
     pub say: Say,
     pub busy: bool,
@@ -57,9 +59,14 @@ impl S {
     }
 }
 
-pub fn open(_sh: &mut Shared, s: &mut S, _part: &str) -> Task<M> {
+pub fn open(_sh: &mut Shared, s: &mut S, part: &str) -> Task<M> {
     s.say.clear();
     s.live.start("hs-tailscale");
+    // `hearth-settings hs-tailscale:signin` (a link, the pictures): Sign in pressed at once.
+    if part == "signin" {
+        s.busy = true;
+        return Task::batch([status(), Task::perform(kit::job_for(H, kit::a(&["ts-signin"]), String::new(), 90), M::Login)]);
+    }
     status()
 }
 
@@ -74,6 +81,7 @@ pub fn update(_sh: &mut Shared, s: &mut S, m: M) -> Task<M> {
             if s.connected() {
                 s.login = None;
                 s.qr = None;
+                s.qr_data = None;
                 if !was {
                     return ping();
                 }
@@ -98,8 +106,13 @@ pub fn update(_sh: &mut Shared, s: &mut S, m: M) -> Task<M> {
                     if kit::st(&v, "authUrl").is_empty() && kit::st(&v, "state") != "Running" {
                         s.say.bad("Tailscale didn't give a sign-in link yet: try again");
                     }
+                    let url = kit::st(&v, "authUrl");
+                    s.qr_data = if url.is_empty() { None } else { qr_code::Data::new(url.as_bytes()).ok() };
                     let qr = kit::st(&v, "qr");
-                    s.qr = if qr.is_empty() { None } else { std::fs::read(&qr).ok().map(image::Handle::from_bytes) };
+                    s.qr = if qr.is_empty() || s.qr_data.is_some() { None } else { std::fs::read(&qr).ok().map(image::Handle::from_bytes) };
+                    if kit::bo(&v, "atBoot") {
+                        s.say.ok("Tailscale is on, and starts with this PC from now on (the switch below turns that off)");
+                    }
                     s.login = Some(v);
                 }
                 Res::Err(e) => s.say.bad(e),
@@ -118,7 +131,10 @@ pub fn update(_sh: &mut Shared, s: &mut S, m: M) -> Task<M> {
         M::SignIn => {
             s.busy = true;
             s.say.clear();
-            return Task::perform(kit::job(H, kit::a(&["ts-login"]), String::new()), M::Login);
+            // One press, whatever state Tailscale is in: hearth-home-server ts-signin starts tailscaled when it isn't
+            // running (and has it start with the PC), makes you its operator, then asks for the link; each step that
+            // fails says so, right under this row.
+            return Task::perform(kit::job_for(H, kit::a(&["ts-signin"]), String::new(), 90), M::Login);
         }
         M::SignOut => return Task::perform(kit::job(H, kit::a(&["ts-logout"]), String::new()), |r| M::Done("Signed out".into(), r)),
         M::Set(k, on, ok) => {
@@ -176,21 +192,34 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
     if installed == Some(true) && running == Some(false) {
         c = c.push(press(&p, G::Power, "Turn on Tailscale", "Starts it now. Whether it starts with the PC is the switch below.", Some(M::Start)));
     }
-    if installed == Some(true) && running != Some(false) && !connected {
+    if installed == Some(true) && !connected {
         let waiting = s.login.is_some();
+        let title = if s.busy && running == Some(false) {
+            "Starting Tailscale, then asking for a sign-in link…"
+        } else if s.busy {
+            "Asking Tailscale for a sign-in link…"
+        } else if waiting {
+            "Waiting for you to sign in…"
+        } else {
+            "Sign in to Tailscale"
+        };
         c = c.push(press(
             &p,
             G::Shield,
-            if waiting { "Waiting for you to sign in…" } else { "Sign in to Tailscale" },
+            title,
             if waiting { "Scan the code with your phone, or open the link on any device. Then this page updates by itself." } else { "With Google, Microsoft, GitHub or Apple. Free for personal use." },
             if s.busy { None } else { Some(M::SignIn) },
         ));
+        // What went wrong (or what was done) shows here, not only at the bottom of the page.
+        c = c.push(said(&p, &s.say));
     }
     if let Some(l) = &s.login {
         let url = kit::st(l, "authUrl");
         if !url.is_empty() && !connected {
             let mut r = iced::widget::Row::new().spacing(18.0).align_y(iced::Center);
-            if let Some(h) = &s.qr {
+            if let Some(d) = &s.qr_data {
+                r = r.push(container(qr_code(d).cell_size(6.0).style(|_t: &iced::Theme| qr_code::Style { cell: iced::Color::BLACK, background: iced::Color::WHITE })).padding(16.0).style(hearth_ui::ui::boxed(iced::Color::WHITE, p.r(12.0), None)));
+            } else if let Some(h) = &s.qr {
                 r = r.push(container(image(h.clone()).width(Length::Fixed(200.0)).height(Length::Fixed(200.0))).padding(10.0).style(hearth_ui::ui::boxed(iced::Color::WHITE, p.r(12.0), None)));
             }
             let host = s.st.as_ref().map(|v| kit::st(v, "host")).filter(|h| !h.is_empty()).unwrap_or_else(|| "this PC".into());
@@ -256,7 +285,9 @@ pub fn view<'a>(sh: &'a Shared, s: &'a S) -> E<'a, M> {
             c = c.push(note(&p, format!("Saved, but the system couldn't be changed to match: {}", kit::st(v, "applied.error")), true));
         }
     }
-    c = c.push(said(&p, &s.say));
+    if connected || installed != Some(true) {
+        c = c.push(said(&p, &s.say));
+    }
     c.into()
 }
 

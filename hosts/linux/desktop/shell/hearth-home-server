@@ -30,6 +30,10 @@ everything again.
   hearth-home-server snapshots ID               a share's snapshots (newest first)
   hearth-home-server restore ID SNAPSHOT        copy the share as it was into a new folder in Home (never over it)
   hearth-home-server ts-status | ts-start | ts-login | ts-logout | ts-ping
+  hearth-home-server ts-signin               Sign in as one press: starts tailscaled when it isn't running (and has it
+                                              start with the PC, tsBoot, which the page says and its switch undoes),
+                                              makes you its operator, then the sign-in link and its QR code. Every
+                                              step that fails says which one (never a button that does nothing)
   hearth-home-server ts-send PEER [FILE]        Taildrop: send a file (picked in Hearth Files when not given)
   hearth-home-server seen KIND                  note that KIND (commandCenter, camera, ups) was seen just now
   ---- stage 2
@@ -741,6 +745,43 @@ def ts_login():
         if subprocess.run(['qrencode', '-o', qr, '-s', '8', '-m', '2', url], capture_output=True).returncode != 0:
             qr = ''
     return {'authUrl': url, 'qr': qr, 'state': st.get('state', '')}
+
+
+def ts_signin():
+    """Sign in from Settings, whatever state Tailscale is in (the owner's laptop had tailscaled not enabled; on his
+    dad's PC Sign in seemed to do nothing): each step's failure is said plainly."""
+    st = ts_status()
+    if not st.get('installed'):
+        raise Fail("Tailscale isn't installed on this PC: it comes with the Hearth OS update that brings Home server")
+    started = boot = False
+    if not st.get('running'):
+        try:
+            root(['tailscale', 'start'])
+        except Fail as e:
+            raise Fail("Tailscale's service (tailscaled) isn't running and couldn't be started: %s" % e)
+        started = True
+        # You asked to use Tailscale: it starts with the PC from now on too (the switch on the page turns that off).
+        if not value('tsBoot'):
+            try:
+                if set_key('tsBoot', 'on'):
+                    side_effect('tsBoot', True)
+                boot = True
+            except Fail:
+                pass
+    try:
+        r = ts_login()
+    except Fail as e:
+        if started or "right to control it" not in str(e):
+            raise
+        # Your account isn't Tailscale's operator yet: starting it through Hearth makes it so; then once more.
+        try:
+            root(['tailscale', 'start'])
+        except Fail as e2:
+            raise Fail("Tailscale didn't let your account sign in, and that couldn't be fixed: %s" % e2)
+        r = ts_login()
+    r['started'] = started
+    r['atBoot'] = boot
+    return r
 
 
 def ping_one(ip):
@@ -3686,6 +3727,8 @@ def main(argv):
             res = root(['tailscale', 'start'])
         elif a == ['ts-login']:
             res = ts_login()
+        elif a == ['ts-signin']:
+            res = ts_signin()
         elif a == ['ts-logout']:
             code, out, err = ts(['logout'], 20)
             res = {'signedOut': code == 0}

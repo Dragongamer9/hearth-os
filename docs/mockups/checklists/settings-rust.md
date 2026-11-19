@@ -48,6 +48,7 @@ Manager (hosts/hearth-ui/apps/settings). It follows the Global Theme picked in K
 - [x] Wi-Fi: the switch, networks nearby with signal and lock, connect (password on nmcli's stdin), Show all networks — hosts/hearth-ui/apps/settings/src/cats/net.rs: "Show all networks ("
 - [x] Wi-Fi: Add a hidden network, Look again, the other network pages listed under it — hosts/hearth-ui/apps/settings/src/cats/net.rs: "Add a hidden network"
 - [x] Tailscale: sign in (QR code and link), this PC's name, sign out, your devices with ping and Taildrop — hosts/hearth-ui/apps/settings/src/cats/net_ts.rs: "Waiting for you to sign in…"
+- [x] Tailscale: Sign in works from any state: starts and enables tailscaled when it is off, makes you its operator, shows the link and a big QR code, and says which step failed — hosts/hearth-ui/apps/settings/src/cats/net_ts.rs: "ts-signin"
 - [x] Tailscale: only through Tailscale, start at boot, exit node, receive files, wake from away — hosts/hearth-ui/apps/settings/src/cats/net_ts.rs: "Wake this PC from away"
 - [x] VPN: your VPNs, connect (account asked when needed), disconnect, details, remove (asked once more) — hosts/hearth-ui/apps/settings/src/cats/net_vpn.rs: "Connect with this account"
 - [x] VPN: add from a file (picker or its place), set up IPsec, L2TP, PPTP, OpenConnect, SSTP, Fortinet by hand — hosts/hearth-ui/apps/settings/src/cats/net_vpn.rs: "Set up a VPN by hand"
