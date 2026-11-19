@@ -474,7 +474,7 @@ jobs:
           ss wallpaper-more:potd ss-wallpaper-potd; ss look-more:apps ss-look-apps; ss fonts:smoothing ss-fonts-subpixel; ss power:off ss-power-hybrid
           rm -rf "$PC" "$XDG_RUNTIME_DIR/hearth-powerset-preview.json"; rm -f "$FCI"; [ -e "$SM/fci.json" ] && mv -f "$SM/fci.json" "$FCI"
           ss languages ss-languages; ss spellcheck ss-spellcheck; ss input-methods ss-input-methods
-          ss bluetooth-devices ss-bluetooth-devices; ss print-queue ss-print-queue; ss scanners ss-scanners; ss usb-devices ss-usb-devices
+          ss bluetooth-devices ss-bluetooth-devices; ss g15 ss-g15; ss print-queue ss-print-queue; ss scanners ss-scanners; ss usb-devices ss-usb-devices
           ss info-cpu ss-info-cpu; ss info-gpu ss-info-gpu; ss info-memory ss-info-memory; ss info-graphics ss-info-graphics
           ss info-pci ss-info-pci; ss info-usb ss-info-usb
           # Updates with one ready to download: "Shut down when it's done" (a stand-in hearth-admin through a stand-in pkexec).
@@ -3161,7 +3161,7 @@ jobs:
         shot: [ss-vpn, ss-hotspot, ss-proxy, ss-net-details, ss-firmware, ss-region, ss-fonts, ss-services, ss-login-screen, ss-thunderbolt, ss-power, ss-notifications, ss-startup, ss-sound, ss-users-oem,
                ss-sound-speakers, ss-sound-apps, ss-push-to-talk, ss-power-profiles, ss-power-awake, ss-battery, ss-autostart, ss-file-types,
                ss-menu-editor, ss-app-permissions, ss-wallpaper-more, ss-my-looks, ss-look-more, ss-fonts-small, ss-languages, ss-spellcheck,
-               ss-input-methods, ss-bluetooth-devices, ss-print-queue, ss-scanners, ss-usb-devices, ss-info-cpu, ss-info-gpu, ss-info-memory,
+               ss-input-methods, ss-bluetooth-devices, ss-g15, ss-print-queue, ss-scanners, ss-usb-devices, ss-info-cpu, ss-info-gpu, ss-info-memory,
                ss-info-graphics, ss-info-pci, ss-info-usb, ss-updates-shutdown, ss-signin-splash, ss-welcome, ss-oom-notice, ss-drive-plugged,
                ss-wallpaper-potd, ss-look-apps, ss-fonts-subpixel, ss-power-hybrid, ss-sound-apps-mic,
                ss-bluetooth-receive, ss-bt-receive-ask, ss-info-sensors, ss-info-modules, ss-info-interrupts, ss-scan-pdf, ss-ink-levels,

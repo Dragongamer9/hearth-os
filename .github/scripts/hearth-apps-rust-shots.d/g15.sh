@@ -18,3 +18,4 @@ for p in clock system music alerts alert rec set dads-screen; do
   "$BIN/hearth-g15" frame "$p" "$ROOT/shots/g15-lcd-$p.png" --scale 4 || echo "::error title=g15 frame::$p"
 done
 unset HEARTH_G15_FIXTURE HEARTH_G15_CONFIG
+run settings-g15 hearth-settings 0 "$BIN/hearth-settings-app" --page g15

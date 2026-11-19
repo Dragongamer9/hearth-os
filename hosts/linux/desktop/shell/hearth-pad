@@ -127,8 +127,8 @@ ARROWS = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_
 # Hearth Settings' own shortcuts (SettingsFrame.qml): Y search, LB / RB previous / next category, ☰ close.
 SETTINGS_KEYS = {'y': ('KEY_LEFTCTRL', 'KEY_F'), 'x': ('KEY_LEFTCTRL', 'KEY_D'), 'lb': ('KEY_LEFTCTRL', 'KEY_PAGEUP'), 'rb': ('KEY_LEFTCTRL', 'KEY_PAGEDOWN'),
                  'menu': ('KEY_LEFTCTRL', 'KEY_W')}
-# Hearth windows whose tabs LB / RB switch with Ctrl+Page Up / Down (their own shortcuts).
-TAB_WINDOWS = ('Resource Monitor',)
+# Hearth windows whose tabs (or pages: the Logitech G15 app) LB / RB switch with Ctrl+Page Up / Down (their own shortcuts).
+TAB_WINDOWS = ('Resource Monitor', 'Logitech G15')
 SNAP = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT'}  # with Super
 
 KEYS_USED = sorted({k for k, _ in CHARS.values()} | set(ARROWS.values()) |

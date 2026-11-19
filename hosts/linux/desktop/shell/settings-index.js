@@ -1297,6 +1297,11 @@ var ENTRIES = [
 "i": "grid"
 },
 {
+"t": "Logitech G15",
+"p": "g15",
+"i": "kbd"
+},
+{
 "t": "Resolution",
 "p": "gameperf",
 "i": "window"
