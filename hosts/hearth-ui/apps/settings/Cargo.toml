@@ -13,7 +13,9 @@ path = "src/main.rs"
 
 [dependencies]
 hearth-ui = { path = "../.." }
-iced = { workspace = true }
+# image: the scanners' test picture, the pages of Scan to PDF and Tailscale's sign-in QR code (Bluetooth & devices,
+# Network & internet).
+iced = { workspace = true, features = ["image"] }
 serde_json = { workspace = true }
 futures = { workspace = true }
 libc = { workspace = true }
