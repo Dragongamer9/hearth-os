@@ -209,6 +209,33 @@ class Mode(unittest.TestCase):
             f = os.path.join(d, 'a.txt')
             self.assertEqual(hp.other_file_managers(f)[0], ['dolphin', '--select', f])
 
+    def test_rust_files_only_when_checked(self):
+        # The Fedora edition (no Quickshell): the Rust chooser and Files, but only with the build's marker.
+        with tempfile.TemporaryDirectory() as d:
+            for n in ('hearth-file-chooser', 'hearth-files-app'):
+                p = os.path.join(d, n)
+                with open(p, 'w') as f:
+                    f.write('#!/bin/sh\n')
+                os.chmod(p, 0o755)
+            mark = os.path.join(d, 'files-rust.ok')
+            old = {k: os.environ.get(k) for k in ('PATH', 'HEARTH_FILES_RUST_OK')}
+            os.environ['PATH'] = d
+            os.environ['HEARTH_FILES_RUST_OK'] = mark
+            try:
+                with self.assertRaises(hp.Fail):
+                    hp.window_argv({'HEARTH_PICK_REQUEST': '/r.json'})
+                self.assertEqual(hp.other_file_managers(d)[0][0], 'dolphin')
+                open(mark, 'w').close()
+                self.assertEqual(hp.window_argv({'HEARTH_PICK_REQUEST': '/r.json'}), [os.path.join(d, 'hearth-file-chooser')])
+                self.assertEqual(hp.window_argv({'HEARTH_FILES_OPEN': '/x', 'HEARTH_FILES_PROPS': '1'}), [os.path.join(d, 'hearth-files-app'), '/x', '--props'])
+                self.assertEqual(hp.other_file_managers(d)[0], [os.path.join(d, 'hearth-files-app'), d])
+            finally:
+                for k, v in old.items():
+                    if v is None:
+                        os.environ.pop(k, None)
+                    else:
+                        os.environ[k] = v
+
     def test_ids(self):
         self.assertEqual(hp.parse_ids('123\n456\n'), [123, 456])
         self.assertEqual(hp.parse_ids('Defaulting to search window name\n'), [])
