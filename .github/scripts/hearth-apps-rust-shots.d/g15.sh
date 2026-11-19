@@ -14,7 +14,7 @@ run g15-7-hearth-actions hearth-g15-app 0 "$BIN/hearth-g15-app" --page g-keys --
 run g15-8-games hearth-g15-app 0 "$BIN/hearth-g15-app" --page overview --show games
 # Opening the app wrote nothing (red flag 9).
 cmp -s "$G15FX/g15.json" /tmp/g15-before.json || echo "::error title=g15::opening the app changed g15.json"
-for p in clock system music alerts alert rec set dads-screen; do
+for p in clock system music alerts alert rec set dads-screen inverted; do
   "$BIN/hearth-g15" frame "$p" "$ROOT/shots/g15-lcd-$p.png" --scale 4 || echo "::error title=g15 frame::$p"
 done
 unset HEARTH_G15_FIXTURE HEARTH_G15_CONFIG

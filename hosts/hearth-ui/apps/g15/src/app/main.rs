@@ -232,6 +232,10 @@ impl App {
             }
         }
         a.load_key();
+        let pg = a.page;
+        if pg != Page::Editor {
+            let _ = update(&mut a, Msg::Go(pg));
+        }
         a.refresh_pictures();
         // CI's pictures: --show hearth|apps|rename|games opens that dialog.
         match app::arg("--show").as_deref() {
@@ -618,7 +622,15 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Resize(d) => return win::resize(d),
         Msg::Go(p) => {
             a.page = p;
-            a.focus = 0;
+            // The controller starts on the page's main thing (the mockups: the key set in use, the picked G-key,
+            // the first page).
+            let start = match p {
+                Page::Overview => format!("set{}", config::set_in_use(&a.cfg)),
+                Page::GKeys => format!("g{}", a.g),
+                Page::Screen => "page-clock".into(),
+                _ => "kbd".into(),
+            };
+            a.focus = view::focusables(a).iter().position(|i| i.id == start).unwrap_or(0);
             a.dlg = None;
             a.note.clear();
             a.refresh_pictures();

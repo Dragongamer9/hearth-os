@@ -690,7 +690,11 @@ impl Service {
         if let Some((_, until)) = &self.popup {
             t.insert("alert.left".into(), until.saturating_duration_since(Instant::now()).as_secs_f32().ceil().to_string());
         }
-        let set = self.active_set();
+        // The key set message shows the set just picked.
+        let set = match &self.popup {
+            Some((Popup::Set(n), _)) => *n,
+            _ => self.active_set(),
+        };
         t.insert("set.n".into(), set.to_string());
         let name = self.cfg.get("names").and_then(|n| n.get(format!("m{set}"))).and_then(|v| v.as_str()).unwrap_or("").to_string();
         t.insert("set.name".into(), if name.is_empty() { format!("Key set {set}") } else { name });
@@ -751,6 +755,10 @@ impl Service {
         let c = screen::Ctx { r: &r, history: &self.sampler.history, now: hearth_ui::time::now(), tabs, tab };
         let mut f = Frame::new();
         screen::draw(&mut f, &els, &c);
+        // Keyboard screen › Dots: light dots on dark (every frame turned the other way, right before it's sent).
+        if config::flag(&self.cfg, "lcdInvert", false) {
+            f.invert(0, 0, lcd::W, lcd::H);
+        }
         (f, live)
     }
 
@@ -1246,6 +1254,9 @@ impl Previewer {
         let c = screen::Ctx { r: &r, history: &self.s.sampler.history, now: hearth_ui::time::now(), tabs, tab };
         let mut f = Frame::new();
         screen::draw(&mut f, els, &c);
+        if config::flag(&self.s.cfg, "lcdInvert", false) {
+            f.invert(0, 0, lcd::W, lcd::H);
+        }
         f
     }
 }
@@ -1276,6 +1287,15 @@ pub fn frame_of(root: Root, page: &str) -> Option<Frame> {
         }
         "set" => s.popup = Some((Popup::Set(2), Instant::now() + Duration::from_secs(5))),
         "alert" => s.popup = Some((Popup::Alert, Instant::now() + Duration::from_secs(5))),
+        // The clock with Keyboard screen › Dots on "Light on dark (inverted)" (the mockup's eighth example).
+        "inverted" => {
+            if let Some(o) = s.cfg.as_object_mut() {
+                o.insert("lcdInvert".into(), json!(true));
+            } else {
+                s.cfg = json!({"lcdInvert": true});
+            }
+            s.page = s.pages().iter().position(|x| x == "clock").unwrap_or(0);
+        }
         p => {
             let pages = s.pages();
             if let Some(i) = pages.iter().position(|x| x == p) {
@@ -1316,6 +1336,10 @@ mod tests {
             let f = frame_of(Root::at(d.path()), p).unwrap_or_else(|| panic!("{p}"));
             assert!(f.lit() > 40, "{p} is nearly empty");
         }
+        // Inverted: every dot the other way round.
+        let a = frame_of(Root::at(d.path()), "clock").unwrap();
+        let b = frame_of(Root::at(d.path()), "inverted").unwrap();
+        assert_eq!(a.lit() + b.lit(), (lcd::W * lcd::H) as usize);
         assert!(!d.path().join("g15.json").exists(), "picturing the pages wrote nothing");
     }
 }

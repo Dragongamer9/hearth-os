@@ -79,6 +79,8 @@ pub fn focusables(a: &App) -> Vec<Item> {
             v.push(three("bright", "lcdLight", 2));
             let c = level(a, "lcdContrast", 1);
             v.push(lr("contrast", None, Some(Msg::Level("lcdContrast", c.saturating_sub(1))), Some(Msg::Level("lcdContrast", (c + 1).min(2)))));
+            let inv = flag(a, "lcdInvert", false);
+            v.push(lr("dots", Some(Msg::Flag("lcdInvert", !inv)), Some(Msg::Flag("lcdInvert", false)), Some(Msg::Flag("lcdInvert", true))));
             v.push(it("idle", Some(pick_idle())));
             for p in hearth_g15::lcd::screen::BUILT_IN {
                 v.push(lr(format!("page-{p}"), Some(Msg::TogglePage(p.to_string())), Some(Msg::MovePage(p.to_string(), -1)), Some(Msg::MovePage(p.to_string(), 1))));
@@ -154,6 +156,19 @@ fn card_on<'a>(p: &Pal, inner: impl Into<E<'a>>, picked: bool, focused: bool) ->
     let pp = *p;
     let line = if picked || focused { Some((ORANGE, if picked { 2.0 } else { 2.0 })) } else { None };
     container(inner).style(ui::boxed(pp.panel, pp.r(12.0), line)).into()
+}
+
+/// The mockups' orange button (Record again, Done, Keep), whatever the look's accent.
+pub fn obtn<'a>(p: &Pal, label: impl Into<String>, focused: bool, msg: Msg) -> E<'a> {
+    let c = container(tb(label.into(), 13.5, Color::from_rgb8(0x1b, 0x10, 0x06)))
+        .padding(Padding { top: 8.0, right: 18.0, bottom: 8.0, left: 18.0 })
+        .style(ui::boxed(Color::from_rgb8(0xff, 0x6a, 0x1a), p.r(6.0).max(4.0), if focused { Some((Color::WHITE, 2.0)) } else { None }));
+    mouse_area(c).on_press(msg).interaction(mouse::Interaction::Pointer).into()
+}
+
+/// The controller's ring, in the mockups' orange.
+pub fn oring<'a>(inner: E<'a>) -> E<'a> {
+    container(inner).padding(3.0).style(ui::boxed(Color::TRANSPARENT, 9.0, Some((ORANGE, 2.0)))).into()
 }
 
 fn switch<'a>(p: &Pal, on: bool, msg: Msg) -> E<'a> {
@@ -452,12 +467,12 @@ fn gkeys(a: &App) -> E<'_> {
         .align_y(iced::Center);
     let kind = a.kind();
     let kseg = seg(&p, KINDS.iter().map(|(k, l)| (l.to_string(), kind == *k, Msg::Kind(*k))).collect());
-    let kseg: E = if on(a, "kind") { ui::ring(p, true, 8.0, kseg) } else { kseg };
+    let kseg: E = if on(a, "kind") { oring(kseg) } else { kseg };
     let act = a.action(set, g);
     let what: E = match kind.as_str() {
         "text" => {
             let field = text_input("What it types", &a.text).on_input(Msg::Text).on_submit(Msg::TextSave).padding(8.0).size(14.0);
-            row![container(t("⌨", 16.0, p.muted)).width(Length::Fixed(30.0)), field, btn(&p, "Keep", Kind::Primary, false, Some(Msg::TextSave))].spacing(10.0).align_y(iced::Center).into()
+            row![container(t("⌨", 16.0, p.muted)).width(Length::Fixed(30.0)), field, obtn(&p, "Keep", false, Msg::TextSave)].spacing(10.0).align_y(iced::Center).into()
         }
         "none" => row![t1("This key does nothing in this set.", 13.0, p.muted)].into(),
         _ => {
@@ -485,11 +500,16 @@ fn gkeys(a: &App) -> E<'_> {
         Some((mg, v)) => {
             let steps = v.get("steps").and_then(|x| x.as_array()).cloned().unwrap_or_default();
             let mut chips = Row::new().spacing(6.0).align_y(iced::Center);
-            for (i, (label, wait)) in macro_chips(&steps).into_iter().enumerate() {
-                if i >= 11 {
-                    chips = chips.push(t("…", 13.0, p.muted));
-                    break;
+            let all = macro_chips(&steps);
+            let n = all.len();
+            for (i, (label, wait)) in all.into_iter().enumerate() {
+                if n > 12 && i >= 10 && i + 1 < n {
+                    if i == 10 {
+                        chips = chips.push(t("…", 13.0, p.muted));
+                    }
+                    continue;
                 }
+                let wait = if n > 12 && i + 1 == n { None } else { wait };
                 if let Some(w) = wait {
                     chips = chips.push(t(w, 11.5, p.muted));
                 }
@@ -507,12 +527,12 @@ fn gkeys(a: &App) -> E<'_> {
                 mouse_area(row![t(format!("{l}: "), 13.0, p.muted), tb(v, 13.0, p.text), t(" ▾", 11.0, p.text)]).on_press(Msg::MacroOpt(k)).interaction(mouse::Interaction::Pointer).into()
             };
             let name = s(&v, "name");
-            let rec: E = if a.recording { btn(&p, "■ Stop", Kind::Primary, on(a, "record"), Some(Msg::StopRecord)) } else { btn(&p, "● Record again", Kind::Primary, on(a, "record"), Some(Msg::Record)) };
+            let rec: E = if a.recording { obtn(&p, "■ Stop", on(a, "record"), Msg::StopRecord) } else { obtn(&p, "● Record again", on(a, "record"), Msg::Record) };
             let opts: E = row![opt("wait", "Wait between keys", wait), opt("repeat", "Repeat", rep), opt("held", "While held", held.to_string())].spacing(24.0).into();
-            let opts = if on(a, "opts") { ui::ring(p, true, 6.0, opts) } else { opts };
+            let opts = if on(a, "opts") { oring(opts) } else { opts };
             card(&p, column![row![tb(format!("G{mg} · Macro: \"{}\"", if name.is_empty() { "recorded".into() } else { name }), 16.0, p.text).width(Length::Fill), rec].align_y(iced::Center), chips, opts].spacing(12.0)).padding(18.0).width(Length::Fill).into()
         }
-        None => card(&p, row![column![tb("Macros", 16.0, p.text), t1("Press MR on the keyboard, type, then press the G-key to keep it on. Or pick Macro above.", 12.5, p.muted)].spacing(4.0).width(Length::Fill), btn(&p, if a.recording { "■ Stop" } else { "● Record" }, Kind::Primary, false, Some(if a.recording { Msg::StopRecord } else { Msg::Record }))].align_y(iced::Center)).padding(18.0).width(Length::Fill).into(),
+        None => card(&p, row![column![tb("Macros", 16.0, p.text), t1("Press MR on the keyboard, type, then press the G-key to keep it on. Or pick Macro above.", 12.5, p.muted)].spacing(4.0).width(Length::Fill), obtn(&p, if a.recording { "■ Stop" } else { "● Record" }, false, if a.recording { Msg::StopRecord } else { Msg::Record })].align_y(iced::Center)).padding(18.0).width(Length::Fill).into(),
     };
     // All 18 keys.
     let mut all = Column::new().spacing(8.0);
@@ -591,13 +611,14 @@ fn screen_page(a: &App) -> E<'_> {
     let idle_txt = if idle == 0 { "Never".to_string() } else { format!("{idle} minutes idle") };
     let ctl = |l: &str, w: E<'static>, id: &str| -> E<'static> {
         let r: E = row![t(l.to_string(), 14.5, p.text).width(Length::Fill), w].align_y(iced::Center).into();
-        column![if on(a, id) { ui::ring(p, true, 6.0, r) } else { r }, hline(p.line)].spacing(10.0).into()
+        column![if on(a, id) { oring(r) } else { r }, hline(p.line)].spacing(10.0).into()
     };
     let idle_pick: E = mouse_area(row![tb(idle_txt, 14.0, p.text), t(" ▾", 12.0, p.text)]).on_press(Msg::Picked("idle", "@open".into())).interaction(mouse::Interaction::Pointer).into();
     let c = level(a, "lcdContrast", 1);
     let controls = column![
         ctl("Brightness", three(&p, "lcdLight", level(a, "lcdLight", 2)), "bright"),
         ctl("Contrast", seg(&p, ["Low", "Medium", "High"].iter().enumerate().map(|(i, l)| (l.to_string(), c == i as u32, Msg::Level("lcdContrast", i as u32))).collect()), "contrast"),
+        ctl("Dots", seg(&p, vec![("Dark on light".into(), !flag(a, "lcdInvert", false), Msg::Flag("lcdInvert", false)), ("Light on dark (inverted)".into(), flag(a, "lcdInvert", false), Msg::Flag("lcdInvert", true))]), "dots"),
         ctl("Turn the light off after", idle_pick, "idle"),
     ]
     .spacing(14.0)
@@ -617,7 +638,7 @@ fn screen_page(a: &App) -> E<'_> {
         };
         let focused = on(a, &format!("page-{id}"));
         let over = a.over.as_deref() == Some(id.as_str()) && a.dragging.is_some();
-        let inner = column![lcd(a.shot(&id), sz(330.0), sz(102.0), false), row![tb(page_title(a, &id), 14.5, p.text).width(Length::Fill), switch(&p, enabled, Msg::TogglePage(id.clone()))].align_y(iced::Center), t1(sub, 12.5, p.muted)].spacing(10.0);
+        let inner = column![lcd(a.shot(&id), sz(330.0), sz(102.0), false), row![tb(page_title(a, &id), 14.5, p.text).width(Length::Fill), switch(&p, enabled, Msg::TogglePage(id.clone()))].align_y(iced::Center), t(sub, 12.5, p.muted)].spacing(10.0);
         let c = card_on(&p, container(inner).padding(14.0).width(Length::Fill), focused || over, false);
         cards = cards.push(
             mouse_area(container(c).width(Length::FillPortion(1)))
@@ -867,16 +888,16 @@ fn dialog<'a>(a: &'a App, d: &'a Dlg) -> E<'a> {
         }, v.iter().map(|(k, l)| (l.clone(), String::new(), Msg::Picked(*w, k.clone()))).collect()),
         Dlg::Rename(x) => ui::dialog_box(&p, 460.0, column![
             tb(format!("Name M{}", a.set), 17.0, p.text),
-            t1("The screen shows it when you switch to this set.", 13.0, p.muted),
+            t("The screen shows it when you switch to this set.", 13.0, p.muted),
             text_input("Everyday, Trainz…", x).on_input(Msg::RenameText).on_submit(Msg::RenameSave).padding(8.0).size(14.0),
-            row![Space::new().width(Length::Fill), btn(&p, "Cancel", Kind::Normal, false, Some(Msg::CloseDlg)), btn(&p, "Keep", Kind::Primary, false, Some(Msg::RenameSave))].spacing(8.0)
+            row![Space::new().width(Length::Fill), btn(&p, "Cancel", Kind::Normal, false, Some(Msg::CloseDlg)), obtn(&p, "Keep", false, Msg::RenameSave)].spacing(8.0)
         ].spacing(12.0)),
         Dlg::Games(v) => {
-            let mut c = Column::new().spacing(10.0).push(tb("A key set for each game", 17.0, p.text)).push(t1("While a game runs, its key set is used; the one you picked comes back when it closes. Type part of the game's name (as its program is called).", 13.0, p.muted));
+            let mut c = Column::new().spacing(10.0).push(tb("A key set for each game", 17.0, p.text)).push(t("While a game runs, its key set is used; the one you picked comes back when it closes. Type part of the game's name (as its program is called).", 13.0, p.muted));
             for (i, g) in v.iter().enumerate() {
                 c = c.push(row![container(t(format!("M{} · {}", i + 1, a.set_name(i as u8 + 1)), 14.0, p.text)).width(Length::Fixed(150.0)), text_input("No game", g).on_input(move |x| Msg::GameText(i, x)).padding(7.0).size(14.0)].spacing(10.0).align_y(iced::Center));
             }
-            c = c.push(row![Space::new().width(Length::Fill), btn(&p, "Cancel", Kind::Normal, false, Some(Msg::CloseDlg)), btn(&p, "Keep", Kind::Primary, false, Some(Msg::GamesSave))].spacing(8.0));
+            c = c.push(row![Space::new().width(Length::Fill), btn(&p, "Cancel", Kind::Normal, false, Some(Msg::CloseDlg)), obtn(&p, "Keep", false, Msg::GamesSave)].spacing(8.0));
             ui::dialog_box(&p, 560.0, c)
         }
     }

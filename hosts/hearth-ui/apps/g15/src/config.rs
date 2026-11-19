@@ -8,6 +8,9 @@
 //!   "keys": {"m1": {"g1": ACTION, …}, "m2": {…}, "m3": {…}},
 //!   "names": {"m1": "Everyday", "m2": "Trainz"}, a set's name (the screen shows it when you switch)
 //!   "kbdLight": 0|1|2, "lcdLight": 0|1|2,       off, low, high (missing: as the keyboard is)
+//!   "lcdContrast": 0|1|2, "lcdInvert": bool,     the screen's contrast; light dots on dark (every frame inverted)
+//!   "lcdIdleOff": minutes, "autoPage": bool, "autoPageSecs": n, "gameScreens": bool, "mrRecord": bool,
+//!   "switchSets": bool
 //!   "lightsOffWhenLocked": bool, "nightDim": bool, "nightFrom": "21:00", "nightTo": "07:00", "mLights": bool,
 //!   "pages": ["clock", "system", "music", "alerts", "<own screen id>"…],   the screen's pages, in order
 //!   "screens": [SCREEN…],                       your own screens (lcd/screen.rs)
