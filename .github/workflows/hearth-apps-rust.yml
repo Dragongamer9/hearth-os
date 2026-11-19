@@ -55,7 +55,7 @@ jobs:
             exit 1
           fi
           ls -la target/release/ | grep hearth-
-          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app; do
+          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host; do
             echo "::notice title=size::$b $(du -h target/release/$b | cut -f1)"
           done
       - name: Tests
@@ -66,7 +66,7 @@ jobs:
       - name: Gather
         run: |
           mkdir -p bin
-          cp hosts/hearth-ui/target/release/hearth-task-manager hosts/hearth-ui/target/release/hearth-system-restore hosts/hearth-ui/target/release/hearth-reliability-history hosts/hearth-ui/target/release/hearth-settings-app hosts/hearth-ui/target/release/hearth-files-app hosts/hearth-ui/target/release/hearth-file-chooser hosts/hearth-ui/target/release/hearth-capture-app bin/
+          cp hosts/hearth-ui/target/release/hearth-task-manager hosts/hearth-ui/target/release/hearth-system-restore hosts/hearth-ui/target/release/hearth-reliability-history hosts/hearth-ui/target/release/hearth-settings-app hosts/hearth-ui/target/release/hearth-files-app hosts/hearth-ui/target/release/hearth-file-chooser hosts/hearth-ui/target/release/hearth-capture-app hosts/hearth-ui/target/release/hearth-pad-host bin/
       - uses: actions/upload-artifact@v4
         with:
           name: hearth-apps-rust

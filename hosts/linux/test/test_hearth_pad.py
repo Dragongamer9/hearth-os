@@ -616,6 +616,32 @@ class PlasmaTest(unittest.TestCase):
                 if isinstance(act, tuple):
                     self.assertTrue(set(act) <= set(hp.KEYS_USED), act)
 
+    def test_controller_apps_own_the_controller_on_plasma(self):
+        # The Fedora edition's Plasma (hearth-pad-host): KWin's window in front decides who has the controller, as
+        # Pad.qml's focus does in Hearth Classic, so a controller app isn't driven twice.
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            lst = os.path.join(d, 'controller-apps.json')
+            with open(lst, 'w') as f:
+                json.dump({'apps': ['steam']}, f)
+            out = Out()
+            pad = hp.Pad(out, plasma=True, owners=hp.Owners(lst, dirs=[]))
+            pad.command({'cmd': 'window', 'cls': 'steam', 'caption': 'Steam', 'fullscreen': False, 'kind': 'normal'})
+            self.assertEqual(pad.owner, 'steam')
+            self.assertIn({'t': 'owner', 'app': 'steam', 'mouse': False}, out.sent)
+            out.log.clear()
+            press(pad, 'a', 0.0); press(pad, 'down', 0.1)
+            self.assertEqual(out.log, [])                # the app reads the controller itself
+            press(pad, 'guide', 0.2)
+            self.assertEqual(out.sent[-1], {'t': 'radial', 'open': True, 'sel': -1})   # the Hearth menu still opens
+            self.assertTrue(pad.wants_grab)
+            press(pad, 'b', 0.3)
+            pad.command({'cmd': 'window', 'cls': 'firefox', 'caption': 'x', 'fullscreen': False, 'kind': 'normal'})
+            self.assertEqual(pad.owner, '')
+            press(pad, 'a', 1.0)
+            self.assertEqual([n for n, dn in out.log if dn], ['BTN_LEFT'])
+
     def test_plasma_commands_ignored_elsewhere(self):
         out = Out()
         pad = hp.Pad(out)                                # Hearth Classic
