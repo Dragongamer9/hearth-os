@@ -134,6 +134,47 @@ pub struct Entry {
 }
 pub type AppIndex = HashMap<String, Entry>;
 
+/// An icon's file from its name (a .desktop file's Icon=): a path as it is, else the icon themes (hicolor, Breeze,
+/// Adwaita: the bigger PNGs first, then SVG) and pixmaps, in your folders, the system's and Flatpak's. Looked for
+/// once per name (the sampler keeps what it found).
+pub fn icon_file(name: &str) -> String {
+    if name.starts_with('/') {
+        return if std::path::Path::new(name).is_file() { name.to_string() } else { String::new() };
+    }
+    let mut roots: Vec<String> = Vec::new();
+    let home = std::env::var("HOME").unwrap_or_default();
+    if !home.is_empty() {
+        roots.push(format!("{home}/.icons"));
+    }
+    for d in data_dirs() {
+        roots.push(format!("{d}/icons"));
+    }
+    for r in &roots {
+        for theme in ["hicolor", "breeze", "Adwaita"] {
+            for size in ["48x48", "64x64", "32x32", "128x128", "256x256", "24x24"] {
+                let p = format!("{r}/{theme}/{size}/apps/{name}.png");
+                if std::path::Path::new(&p).is_file() {
+                    return p;
+                }
+            }
+            for p in [format!("{r}/{theme}/scalable/apps/{name}.svg"), format!("{r}/{theme}/apps/48/{name}.svg"), format!("{r}/{theme}/apps/32/{name}.svg")] {
+                if std::path::Path::new(&p).is_file() {
+                    return p;
+                }
+            }
+        }
+    }
+    for d in data_dirs() {
+        for ext in ["png", "svg"] {
+            let p = format!("{d}/pixmaps/{name}.{ext}");
+            if std::path::Path::new(&p).is_file() {
+                return p;
+            }
+        }
+    }
+    String::new()
+}
+
 fn data_dirs() -> Vec<String> {
     let home = std::env::var("HOME").unwrap_or_default();
     let user = std::env::var("XDG_DATA_HOME").unwrap_or_else(|_| format!("{home}/.local/share"));

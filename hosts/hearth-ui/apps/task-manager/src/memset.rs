@@ -82,7 +82,7 @@ pub fn headline(a: &App, s: &Sample) -> String {
 }
 
 fn kv<'a>(p: &Pal, k: impl Into<String>, v: impl Into<String>, c: Option<Color>) -> E<'a> {
-    row![container(t1(k.into(), 13.0, p.muted)).width(Length::Fill), t1(v.into(), 13.0, c.unwrap_or(p.text))].align_y(iced::Center).into()
+    row![container(t1(k.into(), 13.0, p.muted)).width(Length::Fill).clip(true), t1(v.into(), 13.0, c.unwrap_or(p.text)).wrapping(text::Wrapping::None)].align_y(iced::Center).into()
 }
 fn meter<'a>(p: &Pal, frac: f32, c: Color) -> E<'a> {
     ui::bar(vec![(frac.clamp(0.0, 1.0).max(if frac > 0.0 { 0.01 } else { 0.0 }), c)], p.panel3, 6.0, 3.0)

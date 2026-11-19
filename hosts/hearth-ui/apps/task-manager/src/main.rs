@@ -782,6 +782,8 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 a.cursor = Point::new(760.0, 110.0);
                 return update(a, Msg::DetailCols);
             }
+            // Tailscale's devices for its entry in Performance's list, once, as soon as a sample shows it
+            let ts = if a.page == Page::Performance { devset::fetch_ts(a) } else { Task::none() };
             if let Some(sh) = &a.sheet {
                 if sh.kind == SheetKind::Ending && !a.ending.is_empty() {
                     let alive = a.sample.as_ref().map(|s| s.groups.iter().any(|g| g.pids.iter().any(|p| a.ending.contains(p))) || s.details.iter().any(|r| a.ending.contains(&r.pid))).unwrap_or(false);
@@ -791,6 +793,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                     }
                 }
             }
+            return ts;
         }
         Msg::Tick => return a.load_list(),
         Msg::List(l, o) => {

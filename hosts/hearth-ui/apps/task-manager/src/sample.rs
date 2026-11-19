@@ -175,6 +175,8 @@ pub struct Group {
     pub vram: u64,
     /// 3D, Video decode, Video encode (Programs on the graphics card › Uses).
     pub uses: Vec<String>,
+    /// Its icon's file (PNG or SVG from the icon themes), found once per icon name; empty when there's none.
+    pub icon_path: String,
 }
 
 /// One row of Details (every process with its number).
@@ -586,6 +588,7 @@ fn fixture_devices(s: &mut Sample) {
                 gpu: f(&g, "gpu") as f32,
                 vram: f(&g, "vram") as u64,
                 uses,
+                icon_path: st(&g, "iconPath"),
                 ..Group::default()
             });
         }
@@ -652,6 +655,7 @@ pub struct Sampler {
     tick: u64,
     drm: apps::Drm,
     keep: (Option<std::time::SystemTime>, HashSet<String>),
+    icons: HashMap<String, String>,
 }
 
 impl Sampler {
@@ -678,6 +682,7 @@ impl Sampler {
             tick: 0,
             drm: apps::Drm::default(),
             keep: (None, HashSet::new()),
+            icons: HashMap::new(),
         }
     }
 
@@ -938,6 +943,12 @@ impl Sampler {
             g.keep_running = g.pids.iter().any(|x| procs.get(x).map(|p| self.keep.1.contains(&p.comm.chars().take(15).collect::<String>())).unwrap_or(false));
             g.exe = procs.get(&g.pid).map(|p| p.path.clone()).unwrap_or_default();
             g.children = if kids.len() > 1 { kids } else { Vec::new() };
+        }
+        for g in groups.iter_mut() {
+            if !g.icon.is_empty() {
+                let icons = &mut self.icons;
+                g.icon_path = icons.entry(g.icon.clone()).or_insert_with(|| apps::icon_file(&g.icon)).clone();
+            }
         }
         groups.sort_by(|a, b| b.mem.cmp(&a.mem).then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase())));
         groups

@@ -111,8 +111,8 @@ pub fn dropdown<'a>(p: &Pal, key: &str, opts: Vec<(String, String)>, cur: &str) 
 pub fn slide<'a>(key: &str, from: f32, to: f32, step: f32, v: f32, shown: String, p: &Pal) -> E<'a> {
     let k1 = key.to_string();
     let k2 = key.to_string();
-    let s = iced::widget::slider(from..=to, v.clamp(from, to), move |x| Msg::Slide(k1.clone(), x)).step(step).on_release(Msg::SlideDone(k2)).width(Length::Fixed(240.0));
-    row![s, container(tm(shown, 14.0, p.text).wrapping(text::Wrapping::None)).align_right(Length::Fixed(70.0))].spacing(12.0).align_y(iced::Center).into()
+    let s = iced::widget::slider(from..=to, v.clamp(from, to), move |x| Msg::Slide(k1.clone(), x)).step(step).on_release(Msg::SlideDone(k2)).width(Length::Fixed(170.0));
+    row![s, container(tm(shown, 14.0, p.text).wrapping(text::Wrapping::None)).align_right(Length::Fixed(58.0))].spacing(12.0).align_y(iced::Center).into()
 }
 
 /// The numbers on top of a page (Health · Written so far · …): a label, a big value, a small word after it.
@@ -141,7 +141,8 @@ pub enum Cell {
 /// right-aligned), the head in the muted colour, a faint line between rows.
 pub fn table<'a>(p: &Pal, cols: &[(&str, f32, bool)], rows: Vec<Vec<Cell>>) -> E<'a> {
     let p = *p;
-    let w = |x: f32| if x <= 0.0 { Length::Fill } else { Length::Fixed(x) };
+    // 0 fills, a negative width is a share of what's left (-2: twice a 0's), else pixels
+    let w = |x: f32| if x == 0.0 { Length::Fill } else if x < 0.0 { Length::FillPortion((-x) as u16) } else { Length::Fixed(x) };
     let mut head = Row::new().spacing(12.0).padding(Padding { top: 0.0, right: 8.0, bottom: 0.0, left: 8.0 });
     for (title, width, right) in cols {
         let c = t1(title.to_string(), 13.0, p.muted);

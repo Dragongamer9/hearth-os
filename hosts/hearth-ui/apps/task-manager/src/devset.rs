@@ -55,7 +55,8 @@ pub fn size(b: f64) -> String {
         x /= 1000.0;
         i += 1;
     }
-    if i == 0 || x >= 100.0 { format!("{} {}", x.round(), u[i]) } else { format!("{:.1} {}", x, u[i]) }
+    // 61 GB, 3.1 GB (the mockups: no ".0")
+    if i == 0 || x >= 100.0 || (x - x.round()).abs() < 0.05 { format!("{} {}", x.round(), u[i]) } else { format!("{:.1} {}", x, u[i]) }
 }
 pub fn rate(b: f64) -> String {
     if b <= 0.0 {
@@ -156,8 +157,8 @@ pub fn fetch(a: &mut App, slow: bool) -> Task<Msg> {
         }
     }
     // Tailscale's other devices, for its entry in the list (mockup tm-5), every 20 s while Performance is open.
-    if (slow || !a.dev.contains_key("ts")) && a.sample.as_ref().map(|s| s.nets.iter().any(|n| n.kind == "Tailscale")).unwrap_or(false) {
-        want.push(("ts", vec!["sh".into(), "-c".into(), "tailscale status --json 2>/dev/null || true".into()], 10));
+    if slow && has_tailscale(a) {
+        want.push(("ts", ts_cmd(), 10));
     }
     let mut tasks = Vec::new();
     for (k, cmd, secs) in want {
@@ -166,6 +167,20 @@ pub fn fetch(a: &mut App, slow: bool) -> Task<Msg> {
         }
     }
     Task::batch(tasks)
+}
+
+fn has_tailscale(a: &App) -> bool {
+    a.sample.as_ref().map(|s| s.nets.iter().any(|n| n.kind == "Tailscale")).unwrap_or(false)
+}
+fn ts_cmd() -> Vec<String> {
+    vec!["sh".into(), "-c".into(), "tailscale status --json 2>/dev/null || true".into()]
+}
+/// The first reading of Tailscale's devices (then every 20 s with the slow ones).
+pub fn fetch_ts(a: &mut App) -> Task<Msg> {
+    if a.dev.contains_key("ts") || !has_tailscale(a) || !a.dev_busy.insert("ts".into()) {
+        return Task::none();
+    }
+    read_task("ts", ts_cmd(), 10)
 }
 
 pub fn on_out(a: &mut App, key: String, o: run::Output) {
@@ -241,7 +256,8 @@ fn host() -> String {
 /// A choice, a switch or a slider was changed (DeviceSettings.qml's onChose / onFlipped / onMoved).
 pub fn pick(a: &mut App, key: &str, v: &str) -> Task<Msg> {
     let hw = a.dev.get("hw").cloned().unwrap_or(Value::Null);
-    let saved = |k: &str| s_of(at(&hw, &format!("saved.{k}")));
+    // hardware.json's keys have dots in them ("power.plugged"): looked up whole
+    let saved = |k: &str| hw.get("saved").and_then(|x| x.get(k)).map(s_of).unwrap_or_default();
     if let Some(name) = key.strip_prefix("app.cpu:") {
         return act(a, vec!["pkexec".into(), HWSET.into(), "app-rule".into(), "cpu".into(), name.into(), v.into()], "Saved ✓");
     }
@@ -660,7 +676,7 @@ pub fn view<'a>(a: &'a App, s: &Sample) -> E<'a> {
 }
 
 fn saved(a: &App, k: &str) -> String {
-    a.dev.get("hw").map(|hw| s_of(at(hw, &format!("saved.{k}")))).unwrap_or_default()
+    a.dev.get("hw").and_then(|hw| hw.get("saved")).and_then(|x| x.get(k)).map(s_of).unwrap_or_default()
 }
 fn saved_or(a: &App, k: &str, d: &str) -> String {
     let v = saved(a, k);
@@ -749,7 +765,7 @@ fn cpu<'a>(a: &'a App, s: &Sample) -> Vec<E<'a>> {
     };
 
     // Per-app limits (mockup tm-3): kept, put back whenever it runs (hearth-app-rules.service)
-    let rules = at(hw, "saved.apps.cpu").as_object().cloned().unwrap_or_default();
+    let rules = hw.get("saved").and_then(|x| x.get("apps.cpu")).and_then(Value::as_object).cloned().unwrap_or_default();
     let pal_opts = opts(&[("low", "Low priority"), ("25", "Max 25%"), ("50", "Max 50%"), ("75", "Max 75%"), ("remove", "No limit")]);
     let mut names: Vec<&String> = rules.keys().collect();
     names.sort();
@@ -903,7 +919,7 @@ fn net<'a>(a: &'a App, _s: &Sample) -> Vec<E<'a>> {
             ]
         })
         .collect();
-    let mut body = vec![w::table(&p, &[("Program", 0.0, false), ("PID", 80.0, true), ("Down", 90.0, true), ("Up", 90.0, true), ("Today", 90.0, true), ("Talking to", 260.0, false), ("Allow", 200.0, false)], rows)];
+    let mut body = vec![w::table(&p, &[("Program", -2.0, false), ("PID", 70.0, true), ("Down", 76.0, true), ("Up", 70.0, true), ("Today", 70.0, true), ("Talking to", -3.0, false), ("Allow", 180.0, false)], rows)];
     if !a.dev.contains_key("netapps") {
         body.push(t("Looking…", 12.0, p.muted).into());
     }

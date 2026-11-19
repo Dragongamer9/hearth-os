@@ -11,13 +11,22 @@ FIX=/tmp/tm-fix
 mkdir -p "$FIX" /tmp/tm-cfg/nimbus
 echo '{"railFolded": true}' > /tmp/tm-cfg/nimbus/taskmgr.json
 G=1073741824
+# two test icons (a PNG and an SVG) for the Name column
+python3 - "$FIX/icon-a.png" <<'PY'
+import struct, sys, zlib
+w = h = 48
+rows = b''.join(b'\0' + b''.join(bytes((255, 120, 40, 255)) if (x - 24) ** 2 + (y - 24) ** 2 < 400 else bytes((0, 0, 0, 0)) for x in range(w)) for y in range(h))
+chunk = lambda t, d: struct.pack('>I', len(d)) + t + d + struct.pack('>I', zlib.crc32(t + d) & 0xffffffff)
+open(sys.argv[1], 'wb').write(b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(rows)) + chunk(b'IEND', b''))
+PY
+echo '<svg xmlns="http://www.w3.org/2000/svg" width="48" height="48"><rect x="4" y="4" width="40" height="40" rx="10" fill="#3d7bf0"/></svg>' > "$FIX/icon-b.svg"
 cat > "$FIX/devices.json" <<JSON
 {"gpus": [{"name": "NVIDIA GeForce RTX 3060", "vendor": "NVIDIA", "busy": 62, "vramUsed": $((58 * G / 10)), "vramTotal": $((12 * G)), "temp": 66}],
  "battery": {"percent": 82, "status": "Discharging", "watts": 7.9, "fullWh": 43, "designWh": 47, "cycles": 212, "hours": 4.17},
  "nets": [{"name": "wlan0", "kind": "Wi-Fi", "speed": 866, "recv": 112500, "send": 5000}, {"name": "tailscale0", "kind": "Tailscale"}],
  "groups": [
-  {"name": "Hearth AI Command Center", "pid": 320684, "kind": "app", "cpu": 8.4, "mem": 1288490188, "shared": 188743680, "swap": 325058560},
-  {"name": "Firefox", "pid": 383590, "kind": "app", "cpu": 7.2, "mem": 859832320, "shared": 220200960, "swap": 494927872, "gpu": 2, "vram": 440401920, "uses": ["Video decode"]},
+  {"name": "Hearth AI Command Center", "pid": 320684, "kind": "app", "iconPath": "$FIX/icon-a.png", "cpu": 8.4, "mem": 1288490188, "shared": 188743680, "swap": 325058560},
+  {"name": "Firefox", "pid": 383590, "kind": "app", "iconPath": "$FIX/icon-b.svg", "cpu": 7.2, "mem": 859832320, "shared": 220200960, "swap": 494927872, "gpu": 2, "vram": 440401920, "uses": ["Video decode"]},
   {"name": "Universe at War", "pid": 51240, "kind": "game", "tag": "Game · Proton", "mem": 671088640, "gpu": 58, "vram": 5261334937, "uses": ["3D"]},
   {"name": "Desktop (Mantel shell)", "pid": 1806, "kind": "system", "mem": 450887680, "shared": 62914560, "swap": 41943040, "gpu": 2, "vram": 325058560, "uses": ["3D"]},
   {"name": "Steam", "pid": 4410, "kind": "app", "mem": 325058560, "shared": 94371840, "swap": 125829120}]}
@@ -74,6 +83,7 @@ run tm-14-gpu-tuning hearth-tasks 0 "$BIN/hearth-task-manager" --page performanc
 run tm-15-battery-health-settings hearth-tasks 0 "$BIN/hearth-task-manager" --page performance:battery --tab settings
 run tm-16-memory-overview hearth-tasks 0 "$BIN/hearth-task-manager" --page performance:memory
 run tm-17-memory-swap-settings hearth-tasks 0 "$BIN/hearth-task-manager" --page performance:memory --tab settings
+run tm-21-processes-icons hearth-tasks 0 "$BIN/hearth-task-manager" --page processes
 unset HEARTH_TM_FIXTURES
 run tm-18-details-columns hearth-tasks 0 "$BIN/hearth-task-manager" --page details --show columns
 run tm-19-new-task hearth-tasks 0 "$BIN/hearth-task-manager" --page tasks --show new-task

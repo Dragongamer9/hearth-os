@@ -12,7 +12,10 @@ path = "src/main.rs"
 
 [dependencies]
 hearth-ui = { path = "../.." }
-iced = { workspace = true }
+# The apps' icons in the Name column (mockup tm-1's checklist): iced's image widget without its many codecs, and
+# the image crate's PNG reader only; SVG icons through iced's svg widget.
+iced = { workspace = true, features = ["image-without-codecs", "svg"] }
+image = { version = "0.25", default-features = false, features = ["png"] }
 serde_json = { workspace = true }
 futures = { workspace = true }
 libc = { workspace = true }

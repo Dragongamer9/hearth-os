@@ -262,7 +262,7 @@ fn heads<'a>(a: &'a App, table: &'static str, cols: &[Col], totals: Option<&Samp
 }
 
 /// One row: its cells (the first can carry a chevron, an icon mark and a tag), selected and heat-shaded.
-fn row_view<'a>(a: &'a App, key: String, cols: &[Col], cells: Vec<Cell>, lead: Option<(Option<bool>, usize, String)>, h: f32) -> Element<'a, Msg> {
+fn row_view<'a>(a: &'a App, key: String, cols: &[Col], cells: Vec<Cell>, lead: Option<(Option<bool>, usize, String, String)>, h: f32) -> Element<'a, Msg> {
     let p = a.p;
     let selected = a.sel.as_deref() == Some(key.as_str());
     let mut r = Row::new().align_y(iced::Center).padding(Padding { top: 0.0, right: 20.0, bottom: 0.0, left: 22.0 });
@@ -270,7 +270,7 @@ fn row_view<'a>(a: &'a App, key: String, cols: &[Col], cells: Vec<Cell>, lead: O
         let fg = if v.muted { p.muted } else { p.text };
         let mut content: Element<'a, Msg> = if c.right { container(t1(v.text, 13.0, fg)).align_right(Length::Fill).into() } else { t1(v.text, 13.0, fg).into() };
         if i == 0 {
-            if let Some((exp, depth, tag)) = &lead {
+            if let Some((exp, depth, tag, icon)) = &lead {
                 let mut lr = Row::new().spacing(6.0).align_y(iced::Center).push(gap(*depth as f32 * 22.0, 1.0));
                 match exp {
                     Some(open) => {
@@ -278,6 +278,10 @@ fn row_view<'a>(a: &'a App, key: String, cols: &[Col], cells: Vec<Cell>, lead: O
                         lr = lr.push(mouse_area(glyph(if *open { G::Down } else { G::Chevron }, p.muted, 14.0, 2.2)).on_press(Msg::Toggle(gid)).interaction(mouse::Interaction::Pointer));
                     }
                     None => lr = lr.push(gap(14.0, 1.0)),
+                }
+                // the app's icon (its .desktop file's, from the icon themes)
+                if !icon.is_empty() {
+                    lr = lr.push(app_icon(icon));
                 }
                 lr = lr.push(content);
                 if !tag.is_empty() {
@@ -299,6 +303,16 @@ fn row_view<'a>(a: &'a App, key: String, cols: &[Col], cells: Vec<Cell>, lead: O
         .on_right_press(Msg::RowMenu(key.clone()))
         .on_double_click(Msg::Toggle(key))
         .into()
+}
+
+/// An app's icon, 18 px: PNG through iced's image widget, SVG through its svg widget.
+fn app_icon<'a>(path: &str) -> Element<'a, Msg> {
+    let sz = Length::Fixed(18.0);
+    if path.ends_with(".svg") {
+        iced::widget::svg(iced::widget::svg::Handle::from_path(path)).width(sz).height(sz).into()
+    } else {
+        iced::widget::image(iced::widget::image::Handle::from_path(path)).width(sz).height(sz).into()
+    }
 }
 
 fn section<'a>(p: &Pal, label: String) -> Element<'a, Msg> {
@@ -370,7 +384,7 @@ fn group_num(g: &Group, k: &str) -> f64 {
 pub struct ProcRow {
     pub key: String,
     pub cells: Vec<Cell>,
-    pub lead: (Option<bool>, usize, String),
+    pub lead: (Option<bool>, usize, String, String),
     pub section: Option<String>,
 }
 
@@ -434,7 +448,7 @@ pub fn proc_rows(a: &App) -> Vec<ProcRow> {
             out.push(ProcRow {
                 key: format!("a/{}", c.pid),
                 cells: cells_for(c.pid, status, c.cpu, c.mem, c.swap, c.disk, c.gpu, power_of(c.cpu, c.gpu, susp), c.name.clone()),
-                lead: (None, 0, tag.into()),
+                lead: (None, 0, tag.into(), String::new()),
                 section: None,
             });
         }
@@ -460,7 +474,7 @@ pub fn proc_rows(a: &App) -> Vec<ProcRow> {
             out.push(ProcRow {
                 key: g.id.clone(),
                 cells: cells_for(g.pid, status_of(g), g.cpu, g.mem, g.swap, g.disk, g.gpu, power_of(g.cpu, g.gpu, g.suspended), name),
-                lead: (if g.children.len() > 1 { Some(open) } else { None }, 0, tag),
+                lead: (if g.children.len() > 1 { Some(open) } else { None }, 0, tag, g.icon_path.clone()),
                 section: if first { Some(format!("{label} ({})", gs.len())) } else { None },
             });
             first = false;
@@ -475,7 +489,7 @@ pub fn proc_rows(a: &App) -> Vec<ProcRow> {
                     out.push(ProcRow {
                         key: format!("{}/{}", g.id, c.pid),
                         cells: cells_for(c.pid, st, c.cpu, c.mem, c.swap, c.disk, c.gpu, "", format!("{}  ·  {}", c.name, c.pid)),
-                        lead: (None, 1, tag.into()),
+                        lead: (None, 1, tag.into(), String::new()),
                         section: None,
                     });
                 }
