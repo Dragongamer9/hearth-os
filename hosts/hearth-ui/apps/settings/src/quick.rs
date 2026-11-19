@@ -223,6 +223,7 @@ fn tile_slider<'a>(p: &Pal, v: f32, on: impl Fn(f32) -> Msg + 'a, release: Msg) 
         .step(0.01)
         .on_release(release)
         .width(Length::Fill)
+        .height(18.0)
         .style(move |_: &Theme, _| slider::Style {
             rail: slider::Rail { backgrounds: (Background::Color(p.accent), Background::Color(Pal::mix(p.panel2, p.text, 0.12))), width: 6.0, border: Border { color: Color::TRANSPARENT, width: 0.0, radius: 3.0.into() } },
             handle: slider::Handle { shape: slider::HandleShape::Circle { radius: 9.0 }, background: Background::Color(p.text), border_width: 0.0, border_color: Color::TRANSPARENT },
@@ -235,9 +236,9 @@ fn tile_slider<'a>(p: &Pal, v: f32, on: impl Fn(f32) -> Msg + 'a, release: Msg) 
 fn big_tile<'a>(p: &Pal, title: &str, sub: &str, kind: Kind, a: Option<Msg>, inner: Element<'a, Msg>, h: f32) -> Element<'a, Msg> {
     nav::control(kind, a.iter().cloned().map(|m| Box::new(m) as nav::Act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
     let r = nav::item(title, sub, true);
-    let c = container(inner).id(r.key).padding(Padding { top: 18.0, right: 20.0, bottom: 18.0, left: 20.0 }).width(Length::Fill).height(Length::Fixed(h)).style(row_style(*p, p.panel, p.r(14.0), r.lit));
+    let c = container(inner).id(r.key).padding(Padding { top: 16.0, right: 20.0, bottom: 16.0, left: 20.0 }).width(Length::Fill).height(Length::Fixed(h)).style(row_style(*p, p.panel, p.r(14.0), r.lit));
     let lift = if r.lit { Padding { top: 0.0, right: 0.0, bottom: 3.0, left: 0.0 } } else { Padding { top: 3.0, right: 0.0, bottom: 0.0, left: 0.0 } };
-    let c: Element<'a, Msg> = container(c).padding(lift).into();
+    let c: Element<'a, Msg> = container(ring(p, r.lit, p.r(14.0), c)).padding(lift).into();
     match a {
         Some(m) => mouse_area(c).on_press(m).interaction(mouse::Interaction::Pointer).into(),
         None => c,
@@ -260,7 +261,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
     let p = a.sh.p;
     let st = &a.quick;
     let b = big();
-    let h = if b { 124.0 } else { 108.0 };
+    let h = if b { 134.0 } else { 120.0 };
     let pinned = |id: &str| st.pinned.as_ref().map(|v| v.iter().any(|x| x == id)).unwrap_or(true);
     if st.picking {
         let mut c = Column::new().spacing(10.0).push(ts("Pin to Quick: pick what's on this tab (A pins or unpins, X when you're done)", sz(17.0), p.text));
@@ -270,8 +271,8 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
         }
         return Some(c.into());
     }
-    let icon = |g: G| glyph(g, p.accent, if b { 30.0 } else { 26.0 }, 2.2);
-    let words = |title: &str, sub: String| -> Element<'a, Msg> { column![tb(title.to_string(), if b { 18.0 } else { 16.0 }, p.text), t1(sub, if b { 14.0 } else { 13.0 }, p.muted)].spacing(3.0).into() };
+    let icon = |g: G| glyph(g, p.accent, if b { 26.0 } else { 24.0 }, 2.2);
+    let words = |title: &str, sub: String| -> Element<'a, Msg> { column![tb(title.to_string(), if b { 17.0 } else { 16.0 }, p.text), t1(sub, 13.0, p.muted)].spacing(2.0).into() };
     let mut tiles: Vec<(u16, Element<'a, Msg>)> = Vec::new();
     for (id, name, span) in TILES {
         if !pinned(id) {
@@ -313,7 +314,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
                 let f = v as f32 / 100.0;
                 let (l, r) = slider_acts(f, bright_msg, Msg::BrightSet);
                 nav::control(Kind::Slider, Vec::new(), l, r, String::new(), format!("{v}%"));
-                let inner = column![icon(G::Display), Space::new().height(Length::Fill), words(name, format!("{v}%")), tile_slider(&p, f, bright_msg, Msg::BrightSet)].spacing(6.0);
+                let inner = column![icon(G::Display), Space::new().height(Length::Fill), words(name, format!("{v}%")), tile_slider(&p, f, bright_msg, Msg::BrightSet)].spacing(4.0);
                 big_tile(&p, name, &format!("{v}%"), Kind::Slider, Some(Msg::Go("display")), inner.into(), h)
             }),
             "volume" => st.sound.as_ref().map(|s| {
@@ -321,7 +322,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
                 let sub = format!("{desc} · {}%", (s.vol * 100.0).round());
                 let (l, r) = slider_acts(s.vol, Msg::Vol, Msg::VolSet);
                 nav::control(Kind::Slider, Vec::new(), l, r, String::new(), format!("{}%", (s.vol * 100.0).round()));
-                let inner = column![icon(G::Sound), Space::new().height(Length::Fill), words(name, sub.clone()), tile_slider(&p, s.vol, Msg::Vol, Msg::VolSet)].spacing(6.0);
+                let inner = column![icon(G::Sound), Space::new().height(Length::Fill), words(name, sub.clone()), tile_slider(&p, s.vol, Msg::Vol, Msg::VolSet)].spacing(4.0);
                 big_tile(&p, name, &sub, Kind::Slider, Some(Msg::Go("sound")), inner.into(), h)
             }),
             "startin" => {

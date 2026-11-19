@@ -251,7 +251,7 @@ impl App {
         // `--press "right down a"`: the controller's presses, for the pictures and tests (as if read from it).
         if let Some(p) = app::arg("--press") {
             let presses: Vec<pad::Button> = p.split_whitespace().filter_map(pad::named).collect();
-            tasks.push(Task::perform(run::after(2000), move |_| Msg::Press(presses.clone())));
+            tasks.push(Task::perform(run::after(900), move |_| Msg::Press(presses.clone())));
         }
         (a, Task::batch(tasks))
     }
@@ -350,7 +350,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             let b = v.remove(0);
             a.last_key = None;
             let t = pad_press(a, b);
-            Task::batch([t, Task::perform(run::after(500), move |_| Msg::Press(v.clone()))])
+            Task::batch([t, Task::perform(run::after(250), move |_| Msg::Press(v.clone()))])
         }
         Msg::Drag => win::drag(),
         Msg::Maximize => win::toggle_maximize(),

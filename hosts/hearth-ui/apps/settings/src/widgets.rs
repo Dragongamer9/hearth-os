@@ -13,7 +13,7 @@ use hearth_ui::ui::{self, glyph, t, t1, tb, tm, ts, Kind as BtnKind, G};
 use hearth_ui::Pal;
 use iced::widget::text::IntoFragment;
 use iced::widget::{column, container, mouse_area, row, slider, text_input, Column, Row, Space};
-use iced::{mouse, Background, Border, Color, Element, Length, Padding, Shadow, Theme, Vector};
+use iced::{mouse, Background, Border, Color, Element, Length, Padding, Shadow, Theme};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
@@ -57,9 +57,27 @@ pub fn row_style(p: Pal, bg: Color, r: f32, lit: bool) -> impl Fn(&Theme) -> con
             width: if lit { if b { 3.0 } else { 2.0 } } else if b && bg.a > 0.0 { 1.0 } else { 0.0 },
             radius: r.into(),
         },
-        shadow: if lit { Shadow { color: Pal::a(p.accent, if b { 0.35 } else { 0.22 }), offset: Vector::new(0.0, if b { 3.0 } else { 0.0 }), blur_radius: if b { 16.0 } else { 8.0 } } } else { Shadow::default() },
+        // No shadow: a blur reaches outside the widget, and when only part of the window is drawn again it leaves
+        // marks there. The controller look's second ring is `ring` instead.
+        shadow: Shadow::default(),
         snap: true,
     }
+}
+
+/// The controller look's focus ring around a row (Mantel's SetBase: a soft accent ring just outside the outline),
+/// drawn in a 3 px margin the row always has, so nothing moves when the focus does. The other look: the row alone.
+pub fn ring<'a, M: 'a>(p: &Pal, lit: bool, r: f32, el: impl Into<E<'a, M>>) -> E<'a, M> {
+    if !big() {
+        return el.into();
+    }
+    let p = *p;
+    container(el)
+        .padding(3.0)
+        .style(move |_: &Theme| container::Style {
+            border: Border { color: if lit { Pal::a(p.accent, 0.3) } else { Color::TRANSPARENT }, width: 3.0, radius: (r + 3.0).into() },
+            ..container::Style::default()
+        })
+        .into()
 }
 
 /// A control's own box: outlined when it's the focused place and no row took it (a button alone in a card). Asked
@@ -71,7 +89,6 @@ fn own<'a, M: 'a>(p: Pal, slot: usize, r: f32, el: impl Into<E<'a, M>>) -> E<'a,
             let lit = nav::slot_lit(slot);
             container::Style {
                 border: Border { color: if lit { p.accent } else { Color::TRANSPARENT }, width: if lit { 2.0 } else { 0.0 }, radius: r.into() },
-                shadow: if lit { Shadow { color: Pal::a(p.accent, 0.3), offset: Vector::ZERO, blur_radius: 10.0 } } else { Shadow::default() },
                 ..container::Style::default()
             }
         })
@@ -179,12 +196,12 @@ pub fn srow<'a, M: 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<S
         words = words.push(t(sub, if b { 14.0 } else { 13.0 }, p.muted));
     }
     let line: E<'a, M> = if b { row![words.width(Length::Fill), control].spacing(18.0).align_y(iced::Center).into() } else { row![icon_box(p, g), words.width(Length::Fill), control].spacing(16.0).align_y(iced::Center).into() };
-    container(line)
+    let row = container(line)
         .id(r.key)
         .padding(if b { Padding { top: 16.0, right: 24.0, bottom: 16.0, left: 24.0 } } else { Padding { top: 14.0, right: 20.0, bottom: 14.0, left: 20.0 } })
         .width(Length::Fill)
-        .style(row_style(*p, p.panel, p.r(if b { 14.0 } else { 10.0 }), r.lit))
-        .into()
+        .style(row_style(*p, p.panel, p.r(if b { 14.0 } else { 10.0 }), r.lit));
+    ring(p, r.lit, p.r(14.0), row)
 }
 
 /// A row that opens something (another page, an app): › on the right (in the accent in the controller look).
@@ -296,13 +313,16 @@ pub fn note<'a, M: 'a>(p: &Pal, s: impl Into<String>, bad: bool) -> E<'a, M> {
 pub fn tile<'a, M: Clone + Send + 'static>(p: &Pal, g: G, title: &'a str, sub: String, msg: M) -> E<'a, M> {
     nav::control(Kind::Open, vec![act(msg.clone())], Vec::new(), Vec::new(), String::new(), String::new());
     let r = nav::item(title, &sub, true);
-    mouse_area(
+    mouse_area(ring(
+        p,
+        r.lit,
+        p.r(12.0),
         container(row![icon_box(p, g), column![tm(title, sz(15.0), p.text), t1(sub, sz(13.0), p.muted)].spacing(2.0)].spacing(14.0).align_y(iced::Center))
             .id(r.key)
             .padding(16.0)
             .width(Length::Fill)
             .style(row_style(*p, p.panel, p.r(12.0), r.lit)),
-    )
+    ))
     .on_press(msg)
     .interaction(mouse::Interaction::Pointer)
     .into()
@@ -319,7 +339,7 @@ pub fn inner_row<'a, M: 'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl I
     let r = nav::item(&title, &sub, false);
     let words = column![tm(title, sz(15.0), p.text), t(sub, sz(13.0), p.muted)].spacing(2.0).width(Length::Fill);
     let line: E<'a, M> = if big() { row![words, control].spacing(16.0).align_y(iced::Center).into() } else { row![icon_box(p, g), words, control].spacing(16.0).align_y(iced::Center).into() };
-    container(line).id(r.key).padding(Padding { top: 6.0, right: 8.0, bottom: 6.0, left: 8.0 }).width(Length::Fill).style(row_style(*p, Color::TRANSPARENT, p.r(10.0), r.lit)).into()
+    ring(p, r.lit, p.r(10.0), container(line).id(r.key).padding(Padding { top: 6.0, right: 8.0, bottom: 6.0, left: 8.0 }).width(Length::Fill).style(row_style(*p, Color::TRANSPARENT, p.r(10.0), r.lit)))
 }
 
 /// A big heading inside a page (the PC's name).
@@ -381,7 +401,7 @@ pub fn pick_row<'a, M: Clone + Send + 'static>(p: &Pal, label: impl Into<String>
     let label: String = label.into();
     nav::control(Kind::Press, vec![act(msg.clone())], Vec::new(), Vec::new(), String::new(), String::new());
     let r = nav::item(&label, "", false);
-    mouse_area(container(t(label, sz(14.0), p.text)).id(r.key).padding(Padding { top: 8.0, right: 14.0, bottom: 8.0, left: 14.0 }).width(Length::Fill).style(row_style(*p, p.panel, p.r(8.0), r.lit)))
+    mouse_area(ring(p, r.lit, p.r(8.0), container(t(label, sz(14.0), p.text)).id(r.key).padding(Padding { top: 8.0, right: 14.0, bottom: 8.0, left: 14.0 }).width(Length::Fill).style(row_style(*p, p.panel, p.r(8.0), r.lit))))
         .on_press(msg)
         .interaction(mouse::Interaction::Pointer)
         .into()
