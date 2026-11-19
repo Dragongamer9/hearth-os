@@ -14,7 +14,7 @@ path = "src/lib.rs"
 
 [[bin]]
 name = "hearth-g15"
-path = "src/bin/hearth-g15.rs"
+path = "src/cli.rs"
 
 [dependencies]
 hearth-ui = { path = "../.." }
