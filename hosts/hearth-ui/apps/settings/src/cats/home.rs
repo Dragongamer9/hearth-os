@@ -360,7 +360,7 @@ fn home_view<'a>(a: &'a App) -> Element<'a, Msg> {
         column![ui::tm("Do not disturb", sz(15.0), p.text), t("Hold notifications until you turn it off", sz(13.0), p.muted)].spacing(2.0).width(Length::Fill),
         switch(&p, st.dnd, Some(Msg::Dnd(!st.dnd)))
     ].spacing(16.0).align_y(iced::Center));
-    rec = rec.push(hline(p.line)).push(inner_row(&p, G::Power, "Start in", if crate::cats::system::game_modes_off(sh) { "Game Mode is off on this PC: it starts in Desktop Mode" } else { "What this PC opens when it turns on" }, seg(&p, start_in_items(sh, st))));
+    rec = rec.push(hline(p.line)).push(inner_row(&p, G::Power, "Start in", "What this PC opens when it turns on", seg(&p, start_in_items(sh, st))));
     let rec = titled_card(&p, "Recommended settings", Some(("See more", Msg::Go("quick"))), rec);
     let storage = titled_card(&p, "Storage", Some(("Manage", Msg::Go("storage"))), drive_rows(&p, &st.storage));
     // The last three changes, in settings-changes.js's words (this page's own read of the history; the frame's

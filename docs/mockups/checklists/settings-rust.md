@@ -52,7 +52,7 @@ down a"` (presses as if from the controller), pictured by .github/scripts/hearth
 ## Home (settings-A1)
 - [x] the PC card: picture, name, Hearth OS version · mode · graphics card · processor, Rename and About this PC — hosts/hearth-ui/apps/settings/src/cats/home.rs: "pill(&p, \"About this PC\""
 - [x] four quick tiles: Wi-Fi, Bluetooth, Updates, Hearth Link with their state — hosts/hearth-ui/apps/settings/src/cats/home.rs: "tile(&p, G::Link, \"Hearth Link\""
-- [x] Recommended settings: Night light (switch), Start in (Game Mode / Desktop Mode; with Game Mode off on this PC, Desktop Mode and "Game Mode: off", Nov 19) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "\"What this PC opens when it turns on\" }, seg(&p, start_in_items(sh, st))"
+- [x] Recommended settings: Night light (switch), Start in (Game Mode / Desktop Mode; with Game Mode off on this PC, Desktop Mode and "Game Mode: off", Nov 19) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "\"What this PC opens when it turns on\", seg(&p, start_in_items(sh, st))"
 - [x] Recommended settings: Light mode while you play, Do not disturb — hosts/hearth-ui/apps/settings/src/cats/home.rs: "Hold notifications until you turn it off"
 - [x] Storage: each drive with its bar and used of total, Manage — hosts/hearth-ui/apps/settings/src/cats/home.rs: "Some((\"Manage\", Msg::Go(\"storage\")))"
 - [x] Changed lately: the last changes (what → to, who, when), each with Undo — hosts/hearth-ui/apps/settings/src/cats/home.rs: "btn(&p, \"Undo\""
