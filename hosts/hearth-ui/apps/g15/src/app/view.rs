@@ -877,7 +877,8 @@ fn editor(a: &App) -> E<'_> {
     };
     props = props.push(prow("s-while", "Also show it", also));
     props = props.push(t("Values you can show: CPU and graphics card use and heat, memory, the drive, network speed, fan speeds, frames per second, the time, the weather, the song playing, the battery of a controller.", 12.0, p.muted));
-    let props = card(&p, props).padding(Padding { top: 16.0, right: 14.0, bottom: 16.0, left: 14.0 }).width(Length::Fixed(sz(380.0)));
+    // A little wider than 0.64 of the mockup's, so "Also show it  While Trains 2010 runs" fits on one line.
+    let props = card(&p, props).padding(Padding { top: 16.0, right: 12.0, bottom: 16.0, left: 12.0 }).width(Length::Fixed(sz(380.0) + 12.0));
 
     let top = row![
         big_title(&p, vec![("Keyboard screen".into(), false), (s(&scr, "name"), true)]),
