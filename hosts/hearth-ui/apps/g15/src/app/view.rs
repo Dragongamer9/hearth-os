@@ -210,7 +210,7 @@ fn srow<'a>(p: &Pal, icon: &'a str, title: impl Into<String>, sub: impl Into<Str
         txt = txt.push(t1(sub, 12.0, p.muted));
     }
     let r = row![ib, txt.width(Length::Fill), right].spacing(14.0).align_y(iced::Center);
-    let c = container(r).padding(Padding { top: 12.0, right: 16.0, bottom: 12.0, left: 14.0 }).width(Length::Fill).style(ui::boxed(p.panel, p.r(10.0), if focused { Some((ORANGE, 2.0)) } else { None }));
+    let c = container(r).padding(Padding { top: 10.0, right: 16.0, bottom: 10.0, left: 14.0 }).width(Length::Fill).style(ui::boxed(p.panel, p.r(10.0), if focused { Some((ORANGE, 2.0)) } else { None }));
     match msg {
         Some(m) => mouse_area(c).on_press(m).interaction(mouse::Interaction::Pointer).into(),
         None => c.into(),
@@ -256,7 +256,7 @@ pub fn view(a: &App) -> E<'_> {
         Page::Lighting => lighting(a),
         Page::Editor => editor(a),
     };
-    let page = container(scrollable(container(body).padding(Padding { top: 22.0, right: 30.0, bottom: 20.0, left: 32.0 })).height(Length::Fill)).width(Length::Fill).height(Length::Fill).style(ui::boxed(bg, 0.0, None));
+    let page = container(scrollable(container(body).padding(Padding { top: 16.0, right: 30.0, bottom: 16.0, left: 32.0 })).height(Length::Fill)).width(Length::Fill).height(Length::Fill).style(ui::boxed(bg, 0.0, None));
     let main = row![sidebar(a), page].height(Length::Fill);
     let all = column![title_bar(a), hline(p.line), main, hline(p.line), bottom_bar(a)];
     let base: E = container(all).width(Length::Fill).height(Length::Fill).style(ui::boxed(bg, 0.0, None)).into();
@@ -681,13 +681,13 @@ fn screen_page(a: &App) -> E<'_> {
 // ------------------------------------------------------------------ 4. Lighting (g15-4)
 fn lighting(a: &App) -> E<'_> {
     let p = a.p;
-    let pic = canvas(pics::Keyboard { p, set: config::set_in_use(&a.cfg), recording: a.recording, lit: true, time: clock_now() }).width(Length::Fill).height(Length::Fixed(sz(330.0)));
+    let pic = canvas(pics::Keyboard { p, set: config::set_in_use(&a.cfg), recording: a.recording, lit: true, time: clock_now() }).width(Length::Fill).height(Length::Fixed(sz(300.0)));
     // Night light's own schedule (Settings › Display), as the service follows it: read once while the app is open.
     static NIGHT: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     let night = NIGHT.get_or_init(|| hearth_g15::lights_auto::describe(&hearth_g15::lights_auto::for_root(&a.root))).clone();
     column![
         big_title(&p, vec![("Lighting".into(), true)]),
-        gap(1.0, 14.0),
+        gap(1.0, 6.0),
         card(&p, container(pic).padding(Padding { top: 8.0, right: 120.0, bottom: 8.0, left: 120.0 })).width(Length::Fill),
         head(&p, "Keys"),
         srow(&p, "☀", "Key light", "The orange light under the keys · the light button on the keyboard changes it too", three(&p, "kbdLight", level(a, "kbdLight", 2)), on(a, "kbd"), None),
