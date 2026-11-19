@@ -407,7 +407,7 @@ class NoSettingsWritten(unittest.TestCase):
         desk = (ROOT / 'os/system_files/usr/share/applications/hearth-resmon.desktop').read_text()
         self.assertIn('Exec=/usr/bin/hearth-resmon', desk)
         self.assertTrue((ROOT / 'branding/icons/apps/hearth-resmon.svg').exists())
-        self.assertIn("TAB_WINDOWS = ('Resource Monitor',)", (SHELL / 'hearth-pad').read_text(), 'LB / RB switch its tabs')
+        self.assertRegex((SHELL / 'hearth-pad').read_text(), r"TAB_WINDOWS = \('Resource Monitor',", 'LB / RB switch its tabs')
         self.assertIn('active.title === "Resource Monitor"', (SHELL / 'Pad.qml').read_text())
 
 
