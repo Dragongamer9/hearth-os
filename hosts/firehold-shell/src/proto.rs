@@ -225,12 +225,13 @@ pub fn screen_label(name: &str, model: &str, width_mm: i32) -> String {
 
 /// "TV: Couch · Monitor: Desk" (mockup 6), or "Every screen the same".
 pub fn per_screen_text(per: &serde_json::Map<String, serde_json::Value>, screens: &[Screen]) -> String {
+    // The Couch's screens first (mockup 6: "TV: Couch · Monitor: Desk").
     let mut parts = Vec::new();
-    for s in screens {
-        match per.get(&s.name).and_then(|v| v.as_str()) {
-            Some("couch") => parts.push(format!("{}: Couch", s.label)),
-            Some("desk") => parts.push(format!("{}: Desk", s.label)),
-            _ => {}
+    for want in ["couch", "desk"] {
+        for s in screens {
+            if per.get(&s.name).and_then(|v| v.as_str()) == Some(want) {
+                parts.push(format!("{}: {}", s.label, if want == "couch" { "Couch" } else { "Desk" }));
+            }
         }
     }
     // Screens that aren't plugged in now keep their posture: named as they're saved.
@@ -261,8 +262,8 @@ mod tests {
         assert_eq!(screen_label("eDP-1", "", 300), "Built-in");
         assert_eq!(screen_label("HEADLESS-1", "Headless", 0), "Monitor");
         let screens = vec![
-            Screen { name: "HDMI-A-1".into(), label: "TV".into(), ..Screen::default() },
             Screen { name: "HEADLESS-1".into(), label: "Monitor".into(), ..Screen::default() },
+            Screen { name: "HDMI-A-1".into(), label: "TV".into(), ..Screen::default() },
         ];
         let per = json!({"HDMI-A-1": "couch", "HEADLESS-1": "desk"});
         assert_eq!(per_screen_text(per.as_object().unwrap(), &screens), "TV: Couch · Monitor: Desk");

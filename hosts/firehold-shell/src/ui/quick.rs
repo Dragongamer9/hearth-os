@@ -300,7 +300,7 @@ fn view(s: &Q) -> Element<'_, Message> {
         }
         col = col.push(list);
     }
-    container(col).padding(24.0).width(Length::Fill).height(Length::Fill).style(boxed(shade(0.38), 22.0, Some((c_line(), 1.0)))).into()
+    container(col).padding(24.0).width(Length::Fill).height(Length::Fill).style(boxed(shade(0.38), 12.0, Some((c_line(), 1.0)))).into()
 }
 
 fn update_do(s: &mut Q, m: Message) -> Task<Message> {
