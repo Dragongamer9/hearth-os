@@ -15,7 +15,8 @@ path = "src/main.rs"
 hearth-ui = { path = "../.." }
 # image: the scanners' test picture and the pages of Scan to PDF (Bluetooth & devices); qr_code: Tailscale's sign-in
 # link as a big QR code to photograph with a phone (Network & internet).
-iced = { workspace = true, features = ["image", "qr_code"] }
+# "advanced": the window's outer widget (nav.rs Gate) and finding the focused row on the screen to scroll it into view.
+iced = { workspace = true, features = ["image", "qr_code", "advanced"] }
 serde_json = { workspace = true }
 futures = { workspace = true }
 libc = { workspace = true }
