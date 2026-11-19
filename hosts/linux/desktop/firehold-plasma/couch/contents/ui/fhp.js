@@ -208,7 +208,7 @@ function launcherRow(games, added) {
     var act = function (g) { return Math.max(g.lastPlayed || 0, a[g.id] || 0); };
     var other = function (g) { return /other games/i.test(g.tag || "") ? 1 : 0; };
     return (games || []).map(function (g, i) { return [g, i]; }).sort(function (x, y) {
-        return other(x[0]) - other(y[0]) || act(y[0]) - act(x[0]) || x[1] - y[1];
+        return act(y[0]) - act(x[0]) || x[1] - y[1];
     }).map(function (x) { return x[0]; });
 }
 // A device's letter: its name without the maker's prefix (ROG Ally: A).

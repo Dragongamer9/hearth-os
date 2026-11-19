@@ -1193,6 +1193,16 @@ def do(action, arg=''):
             return games(['page', arg]) == 0 and {'ok': True} or {'ok': False}
     elif action == 'media-app' and re.match(r'^[A-Za-z0-9_.+-]{1,120}$', arg or ''):
         launch(arg)
+    elif action == 'open-applet' and re.match(r'^[a-z0-9.]{3,80}$', arg or ''):
+        # Another Plasma applet's popup (the shared Quick Settings and notifications, org.hearthos.quicksettings /
+        # org.hearthos.notifications): Plasma's own "activate widget" shortcut for it. Not there: says so.
+        out = dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript',
+                        'string:var r=[];panels().forEach(function(p){p.widgets().forEach(function(w){if(w.type=="%s")r.push(w.id);});});print(r.join(","));' % arg)
+        ids = re.findall(r'\d+', (re.search(r'string "([^"]*)"', out) or re.search('()', '')).group(1) or '')
+        if not ids:
+            return {'ok': False, 'missing': True}
+        dbus_send('org.kde.kglobalaccel', '/component/plasmashell', 'org.kde.kglobalaccel.Component.invokeShortcut',
+                  'string:activate widget ' + ids[0], reply=False)
     elif action == 'identify':
         identify()
     elif action == 'settings-page' and re.match(r'^[a-z0-9-]{1,40}$', arg or ''):
@@ -1910,6 +1920,17 @@ def main(argv):
             # The Desk's mode pill and the Couch: read the modes again, open or close Modes (on SCREEN), Identify.
             scr = a[1] if len(a) > 1 and re.match(r'^[A-Za-z0-9_.-]{1,40}$', a[1]) else ''
             ping_modes(a[0], scr)
+        elif what == 'tip':
+            # The Desk bar's first-run tip: shown once (state in ~/.local/state, not a setting).
+            f = os.path.join(os.path.dirname(state_path()), 'firehold-bar-tip')
+            if os.environ.get('HEARTH_FIREHOLD_TIP') == 'always' or not os.path.exists(f):
+                print('show')
+                try:
+                    write_small(f, str(int(time.time())))
+                except OSError:
+                    pass
+            else:
+                print('seen')
         elif what == 'qs':
             print(json.dumps(quick_settings()))
         elif what == 'qs-do' and a:

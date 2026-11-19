@@ -40,7 +40,9 @@ Item {
         hash: "M5 9h14M5 15h14M10 4L8 20M16 4l-2 16",
         chevron: "M9 5l7 7-7 7",
         check: "M5 12.5l4.5 4.5L19 7",
-        refresh: "M19 12a7 7 0 1 1-2-4.9M19 4v4h-4"
+        refresh: "M19 12a7 7 0 1 1-2-4.9M19 4v4h-4",
+        menu: "M5 7h14M5 12h14M5 17h14",
+        clock: "M12 4a8 8 0 1 1 0 16 8 8 0 0 1 0-16zM12 8v4l3 2"
     })
     Shape {
         anchors.centerIn: parent

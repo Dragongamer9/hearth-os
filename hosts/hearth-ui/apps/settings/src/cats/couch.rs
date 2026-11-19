@@ -173,7 +173,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
     if list.is_empty() {
         col = col.push(card(&p, t("Reading your screens…", sz(15.0), p.muted)));
     } else {
-        col = col.push(card(&p, strip));
+        col = col.push(card(&p, strip.wrap()));
     }
     // ---- this screen's own choices
     if let Some(s) = list.get(sel) {

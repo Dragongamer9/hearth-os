@@ -80,6 +80,7 @@ PlasmoidItem {
     }
 
     property bool popupOpen: false
+    property int notifCount: 0      // the shared notifications applet's count, once it's there
     property Item pillItem: null
     Loader {
         active: root.popupOpen
@@ -96,8 +97,36 @@ PlasmoidItem {
         }
     }
 
+    // ---------------------------------------------------------------- the bar's right side (mockup 11): downloads,
+    // Hearth Link, the controllers, Quick Settings and notifications. The cards come from hearth-firehold-plasma home
+    // (it sleeps between looks: every 5 s while something downloads, else once a minute).
+    property var cards: ({})
+    readonly property var dls: (cards.downloads || [])
+    readonly property var running: dls.filter(function (d) { return d.state === "running"; })
+    readonly property var pads: (cards.controllers || []).filter(function (c) { return c.kind === "pad"; })
+    function askCards(first) {
+        const busy = running.length > 0;
+        helper(first ? ["home", "fast"] : ["home-after", busy ? "5" : "60", "fast"], function (t) {
+            const o = root.lastJson(t);
+            if (o) root.cards = o;
+            root.askCards(false);
+        });
+    }
+    // Quick Settings and notifications are the shared Hearth applets when they're there, else Hearth's own Settings.
+    function openShared(id, fallbackPage) {
+        helper(["do", "open-applet", id], function (t) {
+            const o = root.lastJson(t);
+            if (o && o.missing) helper(["do", "settings-page", fallbackPage]);
+        });
+    }
+    // The first time the Desk comes up: what each part of the bar is (the tip, once; state, not a setting).
+    property bool tipShown: false
+    Loader { active: root.tipShown; source: "BarTip.qml"; onLoaded: item.bar = root }
+
     Component.onCompleted: {
         helper(["ready", "org.hearthos.firehold.desk"]);
+        askCards(true);
+        helper(["tip"], function (t) { if (t.trim() === "show") root.tipShown = true; });
         helper(["sys"], function (t) { const o = root.lastJson(t); if (o) root.net = o.net || ""; });
         helper(["get"], function (t) { const o = root.lastJson(t); if (o && typeof o === "object") root.cfg = o; });
         readModes();
@@ -128,11 +157,24 @@ PlasmoidItem {
                 }
                 MouseArea { anchors.fill: parent; onClicked: root.popupOpen = !root.popupOpen }
             }
-            Text {
+            Row {
                 anchors.verticalCenter: parent.verticalCenter
-                text: [root.net, root.batteryText].filter(Boolean).join(" · ")
-                visible: text !== ""
-                color: Kirigami.Theme.disabledTextColor; font.pixelSize: 14
+                spacing: 6
+                readonly property var ui: QtObject { property real k: 1; property string fontName: Qt.fontFamilies().indexOf("Inter") >= 0 ? "Inter" : "Noto Sans" }
+                Tray {
+                    visible: root.dls.length > 0
+                    text: String(root.running.length || root.dls.length)
+                    ring: root.running.length ? root.running[0].percent : -1
+                    onClicked: root.helper(["do", "settings-page", "storage"])
+                }
+                Tray { glyph: "link"; onClicked: root.helper(["do", "settings-page", "link"]) }
+                Tray { visible: root.pads.length > 0; glyph: "pad"; text: root.pads.length ? root.pads[0].percent + "%" : "" }
+                Tray {
+                    glyph: "speaker"
+                    text: root.net || (root.batteryText !== "" ? root.batteryText : "")
+                    onClicked: root.openShared("org.hearthos.quicksettings", "quick")
+                }
+                Tray { glyph: "bell"; text: root.notifCount > 0 ? String(root.notifCount) : ""; onClicked: root.openShared("org.hearthos.notifications", "notifications") }
             }
         }
     }

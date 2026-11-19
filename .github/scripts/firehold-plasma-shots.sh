@@ -233,12 +233,17 @@ sleep 2; pkill -f /tmp/kwin_wayland; sleep 3
 KWIN=$!
 for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
 sleep 3
+# Plasma's activities and global shortcuts went with the first KWin (they're its clients): again on this one.
+pkill -f kactivitymanagerd; pkill -f kglobalacceld; sleep 1
+for k in /usr/libexec/kactivitymanagerd /usr/lib64/libexec/kactivitymanagerd /usr/bin/kactivitymanagerd; do [ -x "$k" ] && { "$k" >"$OUT/kamd2.log" 2>&1 & break; }; done
+for k in /usr/libexec/kglobalacceld /usr/lib64/libexec/kglobalacceld /usr/bin/kglobalacceld; do [ -x "$k" ] && { "$k" >"$OUT/kglobalaccel2.log" 2>&1 & break; }; done
+sleep 3
 export HEARTH_FIREHOLD_SCREENS="Virtual-0::LG 27GP850:2560 × 1440 · 165 Hz · DisplayPort 1,Virtual-1:tv:TCL 55″ TV:3840 × 2160 · 60 Hz · HDMI 2" HEARTH_FIREHOLD_TV_SCREENS=Virtual-1
 hearth-firehold-plasma begin org.hearthos.firehold.desk
 now=$(($(date +%s) * 1000))
 printf '{"screens": {"Virtual-1": {"mode": "couch", "why": "pad", "at": %s}, "Virtual-0": {"mode": "desk", "why": "mouse", "at": %s}}}' "$now" "$now" > "$RUN/modes.json"
 since=$(date +%s)
-PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk plasmashell -p org.hearthos.firehold.desk >>"$OUT/plasmashell2.log" 2>&1 &
+HEARTH_FIREHOLD_TIP=always PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk plasmashell -p org.hearthos.firehold.desk >>"$OUT/plasmashell2.log" 2>&1 &
 PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk hearth-firehold-plasma session >"$OUT/session2.log" 2>&1 &
 wait_ready org.hearthos.firehold.desk 90 && echo "::notice title=Two screens::the Desk shell is up" || fail "Two screens" "the Desk didn't come up"
 python3 "$FX/mpris.py" >"$OUT/mpris2.log" 2>&1 &
@@ -246,7 +251,13 @@ dolphin "$HOME/Pictures" >/dev/null 2>&1 &
 sleep 12
 echo "::notice title=Two screens::$(hearth-firehold-plasma modes | cut -c1-600)"
 shot fp-10-two-screens
-shot fp-11-couch-layer-on-tv 1920 1920
+shot fp-11-desk-bar-tip 0 1920
+shot fp-12-couch-layer-on-tv 1920 1920
+# Game options with two screens: Play on the TV · Couch / the monitor · Desk.
+hearth-firehold-plasma ask tab:library; sleep 3
+key right x down; sleep 3
+shot fp-03-two-screens-game-options 1920 1920
+key b; hearth-firehold-plasma ask tab:home; sleep 2
 hearth-firehold-plasma ping popup Virtual-0; sleep 4
 shot fp-04-modes-per-screen 0 1920
 hearth-firehold-plasma ping popup-off Virtual-0; sleep 1
