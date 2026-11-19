@@ -12,7 +12,7 @@ built and pictured in CI (hearth-apps-rust.yml, .github/scripts/hearth-apps-rust
 - [x] Tabs on top, like Windows 11 (files-6): pictured files-4-pictures-pane — hosts/hearth-ui/apps/files/src/view.rs: "fn tab_strip(a: &App)"
 - [x] Back, forward, up, refresh; the address with its steps (This PC › Hearth (C:) › Users › chris); Search chris — hosts/hearth-ui/apps/files/src/view.rs: "nb(Ic::Refresh, true, Msg::Refresh)"
 - [x] Command bar: New ▾, cut, copy, paste, rename, share, delete, Sort ▾, View ▾, Details, ··· — hosts/hearth-ui/apps/files/src/view.rs: "lb(Ic::Plus, \"New\", true, w, \"new\")"
-- [x] Left menu: Home, Gallery, Home server, your folders, This PC with Hearth (C:) open (Users, Program Files, Windows apps), the other drives, Network, Linux at the bottom — hosts/hearth-ui/apps/files/src/app.rs: "label: \"Home server\".into()"
+- [x] Left menu: Home, your folders, This PC with Hearth (C:) open (Users, Program Files, Windows apps), the other drives, Network, Linux at the bottom. The mockup's Gallery and Home server entries: the owner took them off on Nov 19 ("there must be only one" of Home server and Network, keep Network; Gallery off the side menu, Pictures stays a folder): the home server's shared folders are listed first inside Network — hosts/hearth-ui/apps/files/src/app.rs: "label: \"Network\".into()"
 - [x] Narrow left menu (158 px, the approved option A) without the pins and notes — hosts/hearth-ui/apps/files/src/view.rs: "let wide = a.nav_w >= 200.0;"
 - [ ] The wider left menu (dragged past 200 px) with the pins and the "Hearth" / "hidden" notes (built; not pictured: there's no drag in CI)
 - [x] Details: Name, Date modified, Type, Size — hosts/hearth-ui/apps/files/src/view.rs: "(\"date\", \"Date modified\", 160.0)"
@@ -45,7 +45,7 @@ built and pictured in CI (hearth-apps-rust.yml, .github/scripts/hearth-apps-rust
 
 ## cdrive-1 (every app's Save window)
 - [x] "Save As – Firefox" with the C:\ address on the same row — hosts/hearth-ui/apps/files/src/view.rs: "fn pick_head(a: &App)"
-- [x] Left menu: Home, Gallery, your folders, This PC with the drives, Network; no Linux folders — hosts/hearth-ui/apps/files/src/app.rs: "if sys && c_open && !self.picking()"
+- [x] Left menu: Home, your folders, This PC with the drives, Network; no Linux folders (Gallery taken off by the owner, Nov 19) — hosts/hearth-ui/apps/files/src/app.rs: "if sys && c_open && !self.picking()"
 - [x] Name, Date modified, Type, Size with Windows' type names (Disc image, PDF document, Python file) — hosts/hearth-ui/apps/files/src/model.rs: "\"iso\" => \"Disc image\""
 - [x] File name box, Cancel, Save — hosts/hearth-ui/apps/files/src/view.rs: "r = r.push(t1(\"File name\", 15.0, p.text));"
 - [ ] hearth-portal opens it where there's no Quickshell, and Plasma's kde-portals.conf sends apps' Open / Save here, KDE's dialog the fallback (built and unit-tested: test_hearth_portal.py; needs the Fedora image on a device to prove)

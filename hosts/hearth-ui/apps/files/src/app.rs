@@ -713,8 +713,20 @@ impl App {
     pub fn on_special(&self) -> bool {
         self.on_this_pc() || self.on_apps() || self.on_cview()
     }
+    /// Where Files opens (View › Open Files to, files.json "startPage", shared with Mantel's FileManager.qml): your
+    /// pick; without one, This PC while the C: view is on (like Windows' File Explorer: the owner, Nov 19), Home
+    /// otherwise. A folder given on the command line (or by xdg-open) still opens that folder; the Open / Save window
+    /// opens where the app asked.
     pub fn start_page(&self) -> String {
-        if self.prefs.get("startPage").and_then(Value::as_str) == Some("thispc") && !self.picking() { THIS_PC.into() } else { HOME_PAGE.into() }
+        if self.picking() {
+            return HOME_PAGE.into();
+        }
+        match self.prefs.get("startPage").and_then(Value::as_str) {
+            Some("thispc") => THIS_PC.into(),
+            Some("home") => HOME_PAGE.into(),
+            _ if self.cdrive_on() => THIS_PC.into(),
+            _ => HOME_PAGE.into(),
+        }
     }
     pub fn in_trash(&self) -> bool {
         self.listing.as_ref().map(|l| l.trash).unwrap_or(false)
@@ -1310,7 +1322,7 @@ impl App {
             "addressBar" => json!(if self.addr_linux() { "linux" } else { "windows" }),
             "copyPath" => json!(if self.copy_linux() { "linux" } else { "windows" }),
             "navPane" => json!(self.nav_shown()),
-            "startPage" => json!(self.prefs.get("startPage").and_then(Value::as_str).unwrap_or("home")),
+            "startPage" => json!(self.prefs.get("startPage").and_then(Value::as_str).unwrap_or(if self.cdrive_on() { "thispc" } else { "home" })),
             _ => Value::Null,
         };
         if now == v {
@@ -1387,7 +1399,8 @@ impl App {
         v.into_iter().map(|x| x.1).collect()
     }
 
-    /// The left menu the Windows 11 way (the owner's approved option A, files-4-A-narrow): Home, Gallery, Home server,
+    /// The left menu the Windows 11 way (the owner's approved option A, files-4-A-narrow): Home (no Gallery or Home server:
+    /// the owner, Nov 19),
     /// Trash; your folders and pinned ones; This PC (Hearth (C:) open with Users, Program Files and Windows apps, then
     /// the other drives); Network; the Linux folders folded under "Linux" (only with Show the Linux folders).
     pub fn build_nav(&self) -> Vec<NavItem> {
@@ -1407,18 +1420,10 @@ impl App {
             }
         };
         out.push(NavItem { id: "start".into(), label: "Home".into(), path: HOME_PAGE.into(), kind: "start".into(), section: "start".into(), ..Default::default() });
-        if let Some(pics) = sorted.iter().find(|q| sv(q, "id") == "pictures") {
-            out.push(NavItem { id: "gallery".into(), label: "Gallery".into(), path: sv(pics, "path"), kind: "pictures".into(), section: "start".into(), ..Default::default() });
-        }
+        // (Gallery and a separate Home server entry were taken off by the owner on Nov 19: "there must be only one" (Home
+        // server and Network): the home server's shared folders are first inside Network; Pictures stays a folder, and
+        // the Photos app is the gallery.)
         let devs: Vec<&Value> = sorted.iter().filter(|q| sv(q, "section") == "network" || sv(q, "section") == "devices").collect();
-        // Home server (mockup files-1): the home server's and your devices' shared folders, folded.
-        let hs_open = *self.nav_open.get("homeserver").unwrap_or(&false) && !self.picking();
-        if !self.picking() { out.push(NavItem { id: "homeserver".into(), label: "Home server".into(), kind: "netroot".into(), section: "start".into(), tree: "homeserver".into(), open: hs_open, sub: "Hearth".into(), empty: devs.is_empty(), ..Default::default() }); }
-        if hs_open {
-            for q in devs.iter().copied() {
-                out.push(item(q, "start", if q.get("child") == Some(&Value::Bool(true)) { 2 } else { 1 }));
-            }
-        }
         if !self.picking() {
             let mut t = sorted.iter().find(|q| sv(q, "kind") == "trash").map(|q| item(q, "start", 0)).unwrap_or_default();
             t.id = "trash".into();
@@ -1485,7 +1490,7 @@ impl App {
             }
         }
         let net_open = *self.nav_open.get("network").unwrap_or(&false);
-        out.push(NavItem { id: "netroot".into(), label: "Network".into(), kind: "network".into(), section: "pc".into(), tree: "network".into(), open: net_open, empty: false, ..Default::default() });
+        out.push(NavItem { id: "netroot".into(), label: "Network".into(), kind: "network".into(), section: "pc".into(), tree: "network".into(), open: net_open, empty: devs.is_empty(), ..Default::default() });
         if net_open {
             for q in devs.iter().copied() {
                 out.push(item(q, "pc", if q.get("child") == Some(&Value::Bool(true)) { 2 } else { 1 }));
@@ -1915,7 +1920,7 @@ impl App {
         let Some(p) = self.places.get(i).cloned() else { return Task::none() };
         self.place_index = i;
         if !p.tree.is_empty() && p.path.is_empty() {
-            if p.empty && p.tree == "homeserver" {
+            if p.empty && (p.tree == "homeserver" || p.tree == "network") {
                 return self.say("No home server or shared folders yet: Settings › Home server sets one up", false);
             }
             if p.tree == "linux" && !self.c_linux() {

@@ -73,6 +73,9 @@ rm -f "$H/.config/nimbus/files.json"
 # The file manager: measured at rest on the first (CPU, memory, first frame), then each view and dialog.
 run files-1-details hearth-files 20 "$BIN/hearth-files-app" "$H" --view details
 [ -e "$H/.config/nimbus/files.json" ] && echo "::error title=files::opening Hearth Files wrote files.json: $(head -c 300 "$H/.config/nimbus/files.json")"
+# Opened with nothing asked (the menu's Files) while the C: view is on (the default): This PC, like File Explorer
+# (the owner, Nov 19); no Gallery and no separate Home server in the left menu (Network has them).
+run files-0-first-window hearth-files 0 "$BIN/hearth-files-app"
 run files-2-home hearth-files 0 "$BIN/hearth-files-app" --page home
 run files-3-thispc hearth-files 0 "$BIN/hearth-files-app" --page thispc
 run files-4-pictures-pane hearth-files 0 "$BIN/hearth-files-app" "$H/Pictures" --view large --show tabs,pane,select
