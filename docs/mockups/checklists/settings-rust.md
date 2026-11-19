@@ -47,6 +47,10 @@ Manager (hosts/hearth-ui/apps/settings). It follows the Global Theme picked in K
 
 ## System: every page of Mantel's System category (ported from its Set*.qml, same helpers; KDE Plasma's own settings too)
 Pictured in CI: settings-sys-<page> (.github/scripts/hearth-apps-rust-shots.d/settings-system.sh, from examples).
+Not tried on a device yet: everything here is CI-proven only (from example answers). For the owner to decide: push to
+talk does nothing on KDE Plasma (it's Mantel's), so its switch is off there; Boot splash uses the same hearth-admin
+boot-splash as Debian, untried on the Fedora edition; the screen-off / sleep / lid / power button choices also write
+PowerDevil's powerdevilrc on Plasma (PowerDevil is what acts there).
 - [x] Display: auto-brightness, external screens' brightness, Night light's warmth / when / place / fade, Game Mode's HDR, HDR and colour on the desktop, picture signal, VRR and tearing, rotation, X11 apps, several screens, screen power saving, Nvidia drawing — hosts/hearth-ui/apps/settings/src/cats/system_display.rs: "\"Sticky edge between screens\""
 - [x] Sound: over-amplification (asks first; Plasma's 150% too), apps playing sound, sound cards' profiles, the microphone test — hosts/hearth-ui/apps/settings/src/cats/system_sound.rs: "\"Louder than 100% can hurt\""
 - [x] Speakers & balance: output, balance, each speaker around you with a test tone, all in turn — hosts/hearth-ui/apps/settings/src/cats/system_sound.rs: "\"Play each speaker in turn\""
