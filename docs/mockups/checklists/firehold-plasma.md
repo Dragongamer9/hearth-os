@@ -119,3 +119,15 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 - [ ] Window › Move to screen (each screen with its mode)
 - [ ] Help: search every command (Alt+Space)
 - [ ] The "controller in your hand" hint
+
+## Build status (branch feature/firehold-plasma-1.16; not ticked until each part is pictured and compared)
+
+- Done, pictured (run 44524216417, fp-01/02/03): Couch home rows, cards, hero, Game options (sections 1-3). Fixes after
+  those pictures are pushed but not pictured yet.
+- Built, waiting for pictures (runs 44527587999 Plasma, 44527592179 Rust apps): Couch, Desk and Away per screen
+  (live state in $XDG_RUNTIME_DIR/hearth-firehold-plasma/modes.json, the Couch as a layer over the Desk, Modes popup
+  from the mode pill, Super+Shift+C/D/A, Identify), Away, Settings › System › Couch, Desk and Away (cats/couch.rs).
+- Backend only: Quick Settings (`hearth-firehold-plasma qs` / `qs-do`); its UI and the notification cards/history are
+  the shared plasmoids from feature/plasma-hearth-menu (style "firehold").
+- Next: open the stage 2 pictures and fix; Play on with two screens; hook the bar to the shared Quick Settings and
+  notifications; the Desk bar (sections 11-12: bar parts, first-run tip, standard menus, Move to screen).
