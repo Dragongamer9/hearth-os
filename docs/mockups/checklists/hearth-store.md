@@ -7,11 +7,11 @@ The app is hosts/hearth-ui/apps/store (hearth-store-app; docs/HEARTH-STORE.md). 
 image (os-bases/anatase/build.sh, its files in os-bases/anatase/system_files). Pictures: hearth-apps-rust.yml
 (.github/scripts/hearth-apps-rust-shots.d/store.sh, store-1…13).
 
-Status (paused Nov 19 for usage): all 9 pages, the ⋯ menu, the dialog, the controller look and the workings are
-written; the first CI run (44526169844) built everything but one borrow error (fixed); run 44526860375 was building
-when work paused. Next: read that run's annotations, fix until green, decode store-1…13 and open each next to its
-mockup; untick anything that doesn't match. Then merge feature/1.15-rust-apps's newer commits in.
-The ticks below are proofs in the code only: not yet checked against the pictures.
+Status (Nov 19): built green in CI (hearth-apps-rust 44526860375, then 44535986019 with the picture fixes: store-1-home
+at rest 0.00 % of a core, 26.5 MB). Every page pictured (store-1…13) and opened next to its mockup. Open: the app
+page's "‹ Your apps" (the pictures open the page straight from Home with --page, so they show "‹ Home"; going there
+from Your apps says "‹ Your apps", but no picture proves it yet). Next: a picture opened from Your apps; merge
+feature/1.15-rust-apps's newer commits.
 
 Wording changed from the mockups by the owner's decisions (Nov 19):
 - "Not offering anything Debian": the "On older Debian PCs · System package (.deb)" line (store-2) and the "Older Debian
@@ -51,7 +51,7 @@ Wording changed from the mockups by the owner's decisions (Nov 19):
 - [x] Bar: A Select, B Back, Y Search, X Update all; LB RB Previous / next page — hosts/hearth-ui/apps/store/src/view.rs: "hint(&p, \"Y\", \"Search\"), hint(&p, \"X\", \"Update all\")"
 
 ## 2. An app's page (store-2)
-- [x] "‹ Your apps" back — hosts/hearth-ui/apps/store/src/view.rs: "t(format!(\"‹ {to}\")"
+- [ ] "‹ Your apps" back (built, but the CI picture opens from Home and says "‹ Home")
 - [x] The big icon, "Hearth AI Command Center", "Dragongamer9 · Your AI team: …" — hosts/hearth-ui/apps/store/src/view.rs: "format!(\"{} · {}\", e.author, e.tagline)"
 - [x] Chips: "Installed · 3.13.0" (green), "Updates itself", "Stable" — hosts/hearth-ui/apps/store/src/view.rs: "chip(&p, format!(\"Installed · {}\", i.version), Chip::Ok)"
 - [x] Open (orange, big) and ⋯ — hosts/hearth-ui/apps/store/src/view.rs: "btn(&p, \"⋯\", B::Normal, true"
