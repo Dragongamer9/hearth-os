@@ -40,7 +40,7 @@ Manager (hosts/hearth-ui/apps/settings). It follows the Global Theme picked in K
 - [x] Power & battery: battery, power mode — hosts/hearth-ui/apps/settings/src/cats/system_power.rs: "\"Battery saver lasts longer; Performance is faster and warmer\""
 - [x] Storage, Startup, Date & time (time zone, set by itself), About (with Rename) — hosts/hearth-ui/apps/settings/src/cats/system_lang.rs: "\"Find a time zone\""
 - [x] Your desktop: KDE Plasma, Firehold (Rust, test), Firehold (Plasma, test), Switch now — hosts/hearth-ui/apps/settings/src/cats/system_more.rs: "\"Firehold (Plasma, test)\""
-- [x] Personalization: the 8 looks, dark / light, the accent (KDE's Global Theme follows) — hosts/hearth-ui/apps/settings/src/cats/pers.rs: "\"Accent colour\", \"Buttons, switches and what's picked\""
+- [x] Personalization: the 8 looks, dark / light, the accent (KDE's Global Theme follows) — hosts/hearth-ui/apps/settings/src/cats/pers/looks.rs: "Msg::Look(l) => return save(sh, json!({\"look\": l, \"subTheme\": \"\"}))"
 - [x] Updates & recovery: the status card (look for updates, download, restart), progress line by line while updating, Update anyway, Shut down when it's done (and its countdown with Cancel), Shut down and finish updating — hosts/hearth-ui/apps/settings/src/cats/updates.rs: "Updated. Shutting down in"
 - [x] Updates & recovery: a restore point before updating and before the writable system is switched, Go back (asks first) and Stay on, System Restore, Reliability history, the previous version kept — hosts/hearth-ui/apps/settings/src/cats/updates.rs: "Yes, go back at the next restart"
 - [x] Updates & recovery: Decky plugins (each plugin, New from Hearth, Also install new Hearth plugins, Check now, Update, Update plugins automatically, Use the built-in plugins, the last error) — hosts/hearth-ui/apps/settings/src/cats/updates.rs: "Also install new Hearth plugins"
@@ -174,3 +174,40 @@ PowerDevil's powerdevilrc on Plasma (PowerDevil is what acts there).
 - [x] Thunderbolt: security, devices, allow once or always, forget — hosts/hearth-ui/apps/settings/src/cats/bt_usb.rs: "Always allow it"
 
 The pictures of these pages: the hearth-apps-rust workflow's settings-nb-* (the pages on a pretend PC, .github/scripts/hearth-apps-rust-shots.d/settings-net-bt.sh, and what they say with nothing to ask). Only the top of a long page is in its picture.
+
+## Personalization, Accounts, Privacy & security, Accessibility (branch feature/settings-pers-acc)
+Every page of these four categories, ported from Mantel's Set*.qml with the same helpers, for KDE Plasma on the Fedora
+edition. Pictures: settings-pa-* (CI, .github/scripts/hearth-apps-rust-shots.d/settings-pers-acc.sh).
+
+- [x] Personalization: KDE's Global Theme shown (Hearth's look or one picked in KDE), Use Hearth's look, Global Themes in KDE — hosts/hearth-ui/apps/settings/src/cats/pers/looks.rs: "KDE's Global Theme: {shown}"
+- [x] Personalization: sub themes (palettes.json "subThemes" and the black set), Match sub theme — hosts/hearth-ui/apps/settings/src/cats/pers/looks.rs: "pub fn subs(look: &str, mode: &str) -> Vec<Sub>"
+- [x] Personalization: Dark / Light / Auto (Sunset) with its two times — hosts/hearth-ui/apps/settings/src/cats/pers/looks.rs: "(\"sunsetLight\", \"Light from\", \"07:00\")"
+- [x] Personalization: the wallpaper (the look's own, Hearth's, Pictures › Wallpapers, Choose a picture…), put on in Plasma — hosts/hearth-ui/apps/settings/src/cats/pers/looks.rs: "plasma-apply-wallpaperimage"
+- [x] Personalization: accent presets, the look's own, From wallpaper (KDE's on Plasma), a hue, a typed colour — hosts/hearth-ui/apps/settings/src/cats/pers/looks.rs: "Or type a colour, like #1a9fff, then Enter"
+- [x] Personalization: keyboard lights follow the accent, desktop clock and weather (KDE's widgets), panel transparency, on-screen keyboard style — hosts/hearth-ui/apps/settings/src/cats/pers/looks.rs: "Keyboard lights follow the accent"
+- [x] Bar and dock on Plasma (KDE's panel): placement, auto-hide, bar style, width, alignment, thickness, network speed, Arrange the bar, add / remove a panel, the app launcher, right-click menu — hosts/hearth-ui/apps/settings/src/cats/pers/desk.rs: "Network speed in the bar"
+- [x] Bar and dock off Plasma (Mantel's keys): layout, edge, floating dock, auto-hide, bar style, app menu — hosts/hearth-ui/apps/settings/src/cats/pers/desk.rs: "Top bar + floating dock"
+- [x] Fonts, cursor & icons: fonts and sizes, small and title fonts with their preview, smoothing, sub-pixel order, hinting, DPI, cursor, cursor size, icon theme (and KDE's own on Plasma) — hosts/hearth-ui/apps/settings/src/cats/pers/fonts.rs: "Font smoothing and DPI"
+- [x] Wallpaper per screen, slideshow, picture of the day (Bing, NASA, Wikimedia), light and dark, on Plasma's desktops — hosts/hearth-ui/apps/settings/src/cats/pers/desk.rs: "org.kde.potd"
+- [x] My looks: save how it looks now, use, delete — hosts/hearth-ui/apps/settings/src/cats/pers/looks.rs: "Save as my look"
+- [x] Window frames & sign-in splash: frame accent preview and slider, apps follow Hearth, the four splashes, Show it now (KDE's splash on Plasma) — hosts/hearth-ui/apps/settings/src/cats/pers/looks.rs: "ksplashqml"
+- [x] Window effects: every switch, choice and slider of SetKwinEffects.qml (hearth-kwin-settings, live on Plasma) — hosts/hearth-ui/apps/settings/src/cats/pers/kwin.rs: "Show paint"
+- [x] Virtual desktops, Tiling (the layout drawn, presets, columns, rows, gap, quick tiling, snapping), Screen edges (the screen drawn, each corner and edge, touch edges), Window behaviour — hosts/hearth-ui/apps/settings/src/cats/pers/kwin.rs: "Where new windows open"
+- [x] Accounts: the category page, your account, picture, password, other people (type, remove keeping or deleting files), add an account, finish setting up — hosts/hearth-ui/apps/settings/src/cats/accounts.rs: "Remove, but keep their files"
+- [ ] Accounts: cropping your picture in the circle (needs iced's image feature in hearth-ui: not in this branch)
+- [x] Sign-in options: sign in automatically, Hearth's login screen (test), lock after sleep (KDE's lock on resume too), password, fingerprint (add, forget, where it's used), Moved — hosts/hearth-ui/apps/settings/src/cats/accounts.rs: "Unlock the lock screen with a finger"
+- [x] Online accounts: your accounts with what each is used for, Open in Files, remove; Nextcloud, Google, Microsoft (browser sign-in, Cancel), CalDAV/CardDAV, WebDAV, IMAP — hosts/hearth-ui/apps/settings/src/cats/accounts.rs: "Sign in in the browser"
+- [x] Login screen: the picture (Hearth's, your own, Choose a picture…, Hearth's fireside), Sign in automatically — hosts/hearth-ui/apps/settings/src/cats/accounts.rs: "Use Hearth's fireside"
+- [x] Privacy & security: the category page, Player count, Firewall (on/off, incoming, Tailscale, rules, let a port in) — hosts/hearth-ui/apps/settings/src/cats/privacy.rs: "Let a port in"
+- [x] Vaults, Recent files (with activities and left out), Firmware & device security, its history, Passwords — hosts/hearth-ui/apps/settings/src/cats/privacy.rs: "Hearth never shows or copies a saved password here."
+- [x] Accessibility: magnifier, colour filters, invert one window, screen reader, sticky/bounce/slow/toggle/mouse keys, the bell, dwell click, text size, high contrast, large pointer, reduce motion, emoji — hosts/hearth-ui/apps/settings/src/cats/a11y.rs: "Click by resting the pointer"
+- [ ] Pictures of wallpapers, avatars and the login screen's background drawn as the pictures themselves (these pages draw them as colour; needs iced's image feature)
+
+What these four categories still need outside their own files (feature/settings-pers-acc):
+* Pictures drawn as pictures (wallpapers, avatars, the login screen's background) and cropping your picture: iced's
+  "image" feature in hearth-ui (a shared Cargo change, for the lead to decide).
+* On KDE Plasma nothing yet changes light and dark at the Sunset times, and hearth-plasma-looks doesn't use
+  frameTint, appsFollow or menuStyle: those three are saved (Mantel shares them) and their rows say what they reach.
+  A light and a dark wallpaper are put on when the mode is changed here.
+* Not carried over on purpose: Vaults' 10-second re-read (no timers while a page is open; it's read after each
+  change), Slideshow's "Next picture now" (Plasma's scripting has no call for it: the page points to KDE's own).
