@@ -1464,7 +1464,7 @@ chmod 755 /usr/libexec/hearth-app-kinds
 # Manager, System Restore and Reliability history, the ones that ran only inside Mantel. They take those apps' own
 # menu entries and commands here (this edition has no Mantel), and are left out, with their entries as before, when
 # they weren't built or can't start.
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-resmon-app; do
   [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
   install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/bin/$b"
   # (grep -c, not -q: under pipefail an early grep -q could cut ldd off and hide the match)
@@ -1508,7 +1508,66 @@ for pair in restore:hearth-system-restore reliability:hearth-reliability-history
   fi
   ln -sf "$b" "/usr/bin/hearth-$id"
 done
-echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app; do [ -x /usr/bin/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/bin/$b | cut -f1)"; done)"
+# >>> Resource Monitor (Rust) (feature/resmon-rust; hosts/hearth-ui/apps/resmon, docs/mockups/checklists/resource-monitor.md)
+# Mantel's Resource Monitor runs only inside Mantel (Quickshell), which this edition doesn't have, so its menu entry
+# (hearth-resmon.desktop, OnlyShowIn=Nimbus) was hidden under Plasma. Here it's the pure-Rust hearth-resmon-app, with
+# the same helper (desktop/shell/hearth-resmon) and the same files. Its entry shows under KDE and opens it; the
+# hearth-resmon command opens it too (a tab name opens that tab; the helper's own words still go to the helper).
+# Debian's entry and command stay Mantel's (os/system_files, untouched).
+if [ -x /usr/bin/hearth-resmon-app ]; then
+  cat > /usr/share/applications/hearth-resmon.desktop <<DESKTOP
+[Desktop Entry]
+Name=Resource Monitor
+Comment=See inside this PC: its board, every part and port, and what each program uses, live
+Exec=/usr/bin/hearth-resmon-app
+TryExec=/usr/bin/hearth-resmon-app
+Icon=hearth-resmon
+Type=Application
+Categories=System;Monitor;
+Keywords=resource;monitor;resmon;hardware;motherboard;memory;ram;cpu;gpu;disk;network;ports;slots;sensors;temperature;
+StartupWMClass=hearth-resmon
+Actions=overview;processor;memory;disk;network;graphics;
+
+[Desktop Action overview]
+Name=Overview
+Exec=/usr/bin/hearth-resmon-app --page overview
+
+[Desktop Action processor]
+Name=Processor
+Exec=/usr/bin/hearth-resmon-app --page cpu
+
+[Desktop Action memory]
+Name=Memory
+Exec=/usr/bin/hearth-resmon-app --page memory
+
+[Desktop Action disk]
+Name=Disk
+Exec=/usr/bin/hearth-resmon-app --page disk
+
+[Desktop Action network]
+Name=Network
+Exec=/usr/bin/hearth-resmon-app --page network
+
+[Desktop Action graphics]
+Name=Graphics
+Exec=/usr/bin/hearth-resmon-app --page gpu
+DESKTOP
+  cat > /usr/bin/hearth-resmon <<'SH'
+#!/bin/sh
+# Opens Resource Monitor on the Fedora edition (hearth-resmon-app, pure Rust; os-bases/anatase/build.sh "Resource
+# Monitor (Rust)"). `hearth-resmon TAB` opens a tab (pc overview cpu memory disk network gpu); anything else goes to
+# the helper (hearth-resmon pc, sample…), as on Debian.
+case "${1:-}" in
+  "") exec /usr/bin/hearth-resmon-app ;;
+  open) exec /usr/bin/hearth-resmon-app ${2:+--page "$2"} ;;
+  pc|overview|cpu|memory|disk|network|gpu) exec /usr/bin/hearth-resmon-app --page "$1" ;;
+  *) exec python3 /usr/share/nimbus/desktop/shell/hearth-resmon "$@" ;;
+esac
+SH
+  chmod 755 /usr/bin/hearth-resmon
+fi
+# <<< Resource Monitor (Rust)
+echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-resmon-app; do [ -x /usr/bin/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/bin/$b | cut -f1)"; done)"
 # The owner (Nov 18): every Hearth app that runs under Plasma is installed and shown in Plasma's menu, and Hearth's own
 # apps are the defaults there (menu and file types); KDE's apps stay installed but never take Hearth's place. So, for
 # Plasma (KDE) only, each kind's list becomes Hearth's own first (in Hearth Classic's order), then the Hearth KDE

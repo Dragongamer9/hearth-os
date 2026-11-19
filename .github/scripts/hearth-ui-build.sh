@@ -21,7 +21,7 @@ if ! cargo build --release --workspace > /tmp/w/build.log 2>&1; then
   grep -q '^error' /tmp/w/build.log || echo "::error title=Hearth's pure-Rust apps build::$(tail -c 3000 /tmp/w/build.log | tr '\n' '|')"
 fi
 mkdir -p /tmp/w/out
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-resmon-app; do
   test -x "target/release/$b" || { echo "::error title=Hearth's pure-Rust apps build::$b didn't build"; exit 1; }
   cp "target/release/$b" /tmp/w/out/
 done
