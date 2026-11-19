@@ -262,7 +262,7 @@ fn heads<'a>(a: &'a App, table: &'static str, cols: &[Col], totals: Option<&Samp
 }
 
 /// One row: its cells (the first can carry a chevron, an icon mark and a tag), selected and heat-shaded.
-fn row_view<'a>(a: &'a App, key: String, cols: &[Col], cells: Vec<Cell>, lead: Option<(Option<bool>, usize, String)>, h: f32) -> Element<'a, Msg> {
+fn row_view<'a>(a: &'a App, key: String, cols: &[Col], cells: Vec<Cell>, lead: Option<(Option<bool>, usize, String, String)>, h: f32) -> Element<'a, Msg> {
     let p = a.p;
     let selected = a.sel.as_deref() == Some(key.as_str());
     let mut r = Row::new().align_y(iced::Center).padding(Padding { top: 0.0, right: 20.0, bottom: 0.0, left: 22.0 });
@@ -270,7 +270,7 @@ fn row_view<'a>(a: &'a App, key: String, cols: &[Col], cells: Vec<Cell>, lead: O
         let fg = if v.muted { p.muted } else { p.text };
         let mut content: Element<'a, Msg> = if c.right { container(t1(v.text, 13.0, fg)).align_right(Length::Fill).into() } else { t1(v.text, 13.0, fg).into() };
         if i == 0 {
-            if let Some((exp, depth, tag)) = &lead {
+            if let Some((exp, depth, tag, icon)) = &lead {
                 let mut lr = Row::new().spacing(6.0).align_y(iced::Center).push(gap(*depth as f32 * 22.0, 1.0));
                 match exp {
                     Some(open) => {
@@ -278,6 +278,10 @@ fn row_view<'a>(a: &'a App, key: String, cols: &[Col], cells: Vec<Cell>, lead: O
                         lr = lr.push(mouse_area(glyph(if *open { G::Down } else { G::Chevron }, p.muted, 14.0, 2.2)).on_press(Msg::Toggle(gid)).interaction(mouse::Interaction::Pointer));
                     }
                     None => lr = lr.push(gap(14.0, 1.0)),
+                }
+                // the app's icon (its .desktop file's, from the icon themes)
+                if !icon.is_empty() {
+                    lr = lr.push(app_icon(icon));
                 }
                 lr = lr.push(content);
                 if !tag.is_empty() {
@@ -299,6 +303,16 @@ fn row_view<'a>(a: &'a App, key: String, cols: &[Col], cells: Vec<Cell>, lead: O
         .on_right_press(Msg::RowMenu(key.clone()))
         .on_double_click(Msg::Toggle(key))
         .into()
+}
+
+/// An app's icon, 18 px: PNG through iced's image widget, SVG through its svg widget.
+fn app_icon<'a>(path: &str) -> Element<'a, Msg> {
+    let sz = Length::Fixed(18.0);
+    if path.ends_with(".svg") {
+        iced::widget::svg(iced::widget::svg::Handle::from_path(path)).width(sz).height(sz).into()
+    } else {
+        iced::widget::image(iced::widget::image::Handle::from_path(path)).width(sz).height(sz).into()
+    }
 }
 
 fn section<'a>(p: &Pal, label: String) -> Element<'a, Msg> {
@@ -370,7 +384,7 @@ fn group_num(g: &Group, k: &str) -> f64 {
 pub struct ProcRow {
     pub key: String,
     pub cells: Vec<Cell>,
-    pub lead: (Option<bool>, usize, String),
+    pub lead: (Option<bool>, usize, String, String),
     pub section: Option<String>,
 }
 
@@ -434,7 +448,7 @@ pub fn proc_rows(a: &App) -> Vec<ProcRow> {
             out.push(ProcRow {
                 key: format!("a/{}", c.pid),
                 cells: cells_for(c.pid, status, c.cpu, c.mem, c.swap, c.disk, c.gpu, power_of(c.cpu, c.gpu, susp), c.name.clone()),
-                lead: (None, 0, tag.into()),
+                lead: (None, 0, tag.into(), String::new()),
                 section: None,
             });
         }
@@ -460,7 +474,7 @@ pub fn proc_rows(a: &App) -> Vec<ProcRow> {
             out.push(ProcRow {
                 key: g.id.clone(),
                 cells: cells_for(g.pid, status_of(g), g.cpu, g.mem, g.swap, g.disk, g.gpu, power_of(g.cpu, g.gpu, g.suspended), name),
-                lead: (if g.children.len() > 1 { Some(open) } else { None }, 0, tag),
+                lead: (if g.children.len() > 1 { Some(open) } else { None }, 0, tag, g.icon_path.clone()),
                 section: if first { Some(format!("{label} ({})", gs.len())) } else { None },
             });
             first = false;
@@ -475,7 +489,7 @@ pub fn proc_rows(a: &App) -> Vec<ProcRow> {
                     out.push(ProcRow {
                         key: format!("{}/{}", g.id, c.pid),
                         cells: cells_for(c.pid, st, c.cpu, c.mem, c.swap, c.disk, c.gpu, "", format!("{}  ·  {}", c.name, c.pid)),
-                        lead: (None, 1, tag.into()),
+                        lead: (None, 1, tag.into(), String::new()),
                         section: None,
                     });
                 }
@@ -528,7 +542,7 @@ fn processes(a: &App) -> Element<'_, Msg> {
 }
 
 // ------------------------------------------------------------------ Details (mockup tm-2)
-const DETAIL_COLS: [Col; 13] = [
+pub const DETAIL_COLS: [Col; 13] = [
     col("name", "Name", 200.0, false),
     col("pid", "PID", 72.0, true),
     col("ppid", "Parent", 72.0, true),
@@ -543,6 +557,15 @@ const DETAIL_COLS: [Col; 13] = [
     col("cores", "Cores", 64.0, true),
     col("cmd", "Command line", 0.0, false),
 ];
+
+/// The columns you hid with Columns… (remembered); before that, only Command line could be hidden.
+pub fn details_hidden(a: &App) -> Vec<String> {
+    match a.prefs.get("detailsHidden").and_then(Value::as_array) {
+        Some(l) => l.iter().filter_map(Value::as_str).map(String::from).collect(),
+        None if a.pref_b("hide_details") => vec!["cmd".into()],
+        None => vec![],
+    }
+}
 
 fn prio(n: i32) -> &'static str {
     match n {
@@ -593,11 +616,13 @@ fn details(a: &App) -> Element<'_, Msg> {
     let p = a.p;
     let sel_mine = a.sel.as_ref().and_then(|k| k.parse::<i32>().ok()).and_then(|pid| a.sample.as_ref()?.details.iter().find(|r| r.pid == pid).map(|r| r.mine)).unwrap_or(false);
     let buttons = vec![
-        btn(&p, "Columns…", Kind::Normal, false, Some(Msg::Pref("hide_details", Value::Bool(!a.pref_b("hide_details"))))),
+        btn(&p, "Columns…", Kind::Normal, false, Some(Msg::DetailCols)),
         btn(&p, "End task", Kind::Normal, false, if sel_mine { Some(Msg::TopEnd) } else { None }),
     ];
-    // "Columns…": the long Command line column on or off (remembered).
-    let cols: Vec<Col> = if a.pref_b("hide_details") { DETAIL_COLS[..12].to_vec() } else { DETAIL_COLS.to_vec() };
+    // "Columns…": any column but Name on or off (remembered).
+    let hidden = details_hidden(a);
+    let show: Vec<bool> = DETAIL_COLS.iter().map(|c| c.key == "name" || !hidden.iter().any(|h| h == c.key)).collect();
+    let cols: Vec<Col> = DETAIL_COLS.iter().zip(show.iter()).filter(|(_, s)| **s).map(|(c, _)| *c).collect();
     let mut list = Column::new();
     for r in details_rows(a) {
         let cells = vec![
@@ -615,7 +640,7 @@ fn details(a: &App) -> Element<'_, Msg> {
             mcell(r.cores.clone()),
             mcell(ui::fit(&r.cmd, 160)),
         ];
-        let cells = cells.into_iter().take(cols.len()).collect();
+        let cells = cells.into_iter().zip(show.iter()).filter(|(_, s)| **s).map(|(c, _)| c).collect();
         list = list.push(row_view(a, r.pid.to_string(), &cols, cells, None, 30.0));
     }
     column![
@@ -764,6 +789,7 @@ fn list_page(a: &App) -> Element<'_, Msg> {
             (
                 "What runs by itself at set times, like Windows' Task Scheduler".into(),
                 vec![
+                    btn(&p, "+ New task", Kind::Primary, false, Some(Msg::NewTask)),
                     btn(&p, "Turn on", Kind::Normal, false, if can && !on { Some(Msg::ListAct("timers", sid.clone(), "on".into())) } else { None }),
                     btn(&p, "Turn off", Kind::Normal, false, if can && on { Some(Msg::ListAct("timers", sid.clone(), "off".into())) } else { None }),
                 ],
@@ -826,7 +852,13 @@ fn devices(a: &App, s: &Sample) -> Vec<Dev> {
     for n in s.nets.iter().filter(|n| n.up) {
         let h = a.net_hist.get(&n.name).map(|x| x.0.iter().zip(x.1.iter()).map(|(r, s)| r + s).collect()).unwrap_or_default();
         let peak = a.net_hist.get(&n.name).map(|x| x.0.iter().chain(x.1.iter()).fold(1.0f32, |m, v| m.max(*v) * 1.0)).unwrap_or(1.0);
-        d.push(Dev { key: format!("net:{}", n.name), title: n.kind.clone(), sub: format!("{}\nS: {} R: {}", n.name, kbps(n.send), kbps(n.recv)), hist: h, color: p.warn, max: peak.max(1.0) * 1.2 });
+        // Tailscale: its other devices (mockup tm-5: "Tailscale · 3 devices")
+        let sub = if n.kind == "Tailscale" {
+            if a.ts_peers >= 0 { format!("{} device{}", a.ts_peers, if a.ts_peers == 1 { "" } else { "s" }) } else { "Connected".into() }
+        } else {
+            format!("S: {} R: {}", kbps(n.send), kbps(n.recv))
+        };
+        d.push(Dev { key: format!("net:{}", n.name), title: n.kind.clone(), sub, hist: h, color: p.warn, max: peak.max(1.0) * 1.2 });
     }
     for g in &s.gpus {
         d.push(Dev {
@@ -839,7 +871,8 @@ fn devices(a: &App, s: &Sample) -> Vec<Dev> {
         });
     }
     if let Some(b) = &s.battery {
-        d.push(Dev { key: "battery".into(), title: "Battery".into(), sub: format!("{}% · {}", b.percent, b.status), hist: vec![], color: p.good, max: 100.0 });
+        let left = if b.hours > 0.0 { format!("{} h {} min", b.hours.floor(), ((b.hours % 1.0) * 60.0).round()) } else { b.status.clone() };
+        d.push(Dev { key: "battery".into(), title: "Battery".into(), sub: format!("{}% · {left}", b.percent), hist: vec![], color: p.good, max: 100.0 });
     }
     d
 }
@@ -892,14 +925,63 @@ fn performance(a: &App) -> Element<'_, Msg> {
         );
     }
     let dev = &devs[cur];
-    let detail: Element<Msg> = if dev.key == "cpu" {
+    let kind = crate::devset::kind_of(&dev.key).to_string();
+    // Overview | <device> & settings (Mantel: Memory's Swap & settings, CPU's Power & settings, …)
+    let settings_label = match kind.as_str() {
+        "memory" => "Swap & settings",
+        "cpu" => "Power & settings",
+        "disk" => "Health & settings",
+        "net" => "Apps & settings",
+        "gpu" => "Tuning",
+        "battery" => "Health & settings",
+        _ => "",
+    };
+    let on_settings = a.tab == "settings" && !settings_label.is_empty();
+    let tab = |id: &'static str, label: &'static str, fresh: bool| -> Element<'static, Msg> {
+        let on = (a.tab == "settings") == (id == "settings");
+        let mut r = Row::new().spacing(8.0).align_y(iced::Center).push(t1(label, 15.0, if on { p.text } else { p.muted }));
+        if fresh {
+            r = r.push(crate::widgets::new_tag(&p));
+        }
+        mouse_area(container(r).padding(Padding { top: 7.0, right: 18.0, bottom: 7.0, left: 18.0 }).style(ui::boxed(if on { p.panel2 } else { Color::TRANSPARENT }, p.r(8.0), if on { Some((p.line, 1.0)) } else { None })))
+            .on_press(Msg::PerfTab(id))
+            .interaction(mouse::Interaction::Pointer)
+            .into()
+    };
+    let right: Element<Msg> = if on_settings && kind == "memory" {
+        crate::memset::pills(a)
+    } else {
+        let line = if on_settings {
+            crate::devset::headline(a, &s)
+        } else {
+            match kind.as_str() {
+                "cpu" => format!("{} · {} cores", s.cpu.name, s.cpu.cores_physical),
+                "memory" => crate::memset::headline(a, &s),
+                "disk" => {
+                    let k = s.disks.iter().find(|d| Some(d.name.as_str()) == dev.key.strip_prefix("disk:")).cloned().unwrap_or_default();
+                    format!("{} · {}", if k.model.is_empty() { k.name.clone() } else { k.model.clone() }, gb(k.size))
+                }
+                "net" => dev.key.strip_prefix("net:").unwrap_or("").to_string(),
+                "gpu" => s.gpus.iter().find(|g| Some(g.index.to_string().as_str()) == dev.key.strip_prefix("gpu:")).map(|g| g.name.clone()).unwrap_or_default(),
+                _ => String::new(),
+            }
+        };
+        t1(line, 15.0, p.text).into()
+    };
+    let mut head = Row::new().spacing(10.0).align_y(iced::Center).push(container(ts(dev.title.clone(), 28.0, p.text).wrapping(text::Wrapping::None)).padding(Padding { top: 0.0, right: 30.0, bottom: 0.0, left: 0.0 }));
+    if !settings_label.is_empty() {
+        head = head.push(tab("overview", "Overview", false)).push(tab("settings", settings_label, true));
+    }
+    let head = head.push(Space::new().width(Length::Fill)).push(right);
+    let detail: Element<Msg> = if on_settings {
+        if kind == "memory" { crate::memset::settings(a) } else { crate::devset::view(a, &s) }
+    } else if kind == "cpu" {
         cpu_detail(a, &s)
-    } else if dev.key == "memory" {
-        memory_detail(a, &s)
+    } else if kind == "memory" {
+        crate::memset::overview(a, &s)
     } else if let Some(name) = dev.key.strip_prefix("disk:") {
         let k = s.disks.iter().find(|d| d.name == name).cloned().unwrap_or_default();
         column![
-            row![ts(dev.title.clone(), 24.0, p.text), Space::new().width(Length::Fill), t1(format!("{} · {}", if k.model.is_empty() { k.name.clone() } else { k.model.clone() }, gb(k.size)), 14.0, p.muted)].align_y(iced::Center),
             big_graph(&p, dev.hist.clone(), vec![], 100.0, dev.color, 220.0, "Active time", "100%".into()),
             row![stat(&p, "Active time", format!("{:.0}%", k.active)), stat(&p, "Average response time", format!("{:.1} ms", k.response)), stat(&p, "Read speed", rate(k.read)), stat(&p, "Write speed", rate(k.write))].spacing(12.0),
             row![stat(&p, "Capacity", gb(k.size)), stat(&p, "Type", if k.ssd { "SSD".into() } else { "HDD".into() })].spacing(12.0),
@@ -910,7 +992,6 @@ fn performance(a: &App) -> Element<'_, Msg> {
         let n = s.nets.iter().find(|x| x.name == name).cloned().unwrap_or_default();
         let (rh, sh) = a.net_hist.get(name).map(|x| (x.0.iter().copied().collect::<Vec<f32>>(), x.1.iter().copied().collect::<Vec<f32>>())).unwrap_or_default();
         column![
-            row![ts(n.kind.clone(), 24.0, p.text), Space::new().width(Length::Fill), t1(n.name.clone(), 14.0, p.muted)].align_y(iced::Center),
             big_graph(&p, rh, sh, dev.max, dev.color, 220.0, "Throughput", format!("{:.1} Mbps", dev.max)),
             row![stat(&p, "Send", kbps(n.send)), stat(&p, "Receive", kbps(n.recv)), stat(&p, "Link speed", if n.speed > 0 { format!("{} Mbps", n.speed) } else { "–".into() })].spacing(12.0),
         ]
@@ -919,7 +1000,6 @@ fn performance(a: &App) -> Element<'_, Msg> {
     } else if let Some(idx) = dev.key.strip_prefix("gpu:") {
         let g = s.gpus.iter().find(|g| g.index.to_string() == idx).cloned().unwrap_or_default();
         column![
-            row![ts(dev.title.clone(), 24.0, p.text), Space::new().width(Length::Fill), t1(g.name.clone(), 14.0, p.muted)].align_y(iced::Center),
             big_graph(&p, dev.hist.clone(), vec![], 100.0, dev.color, 220.0, "Busy", "100%".into()),
             row![
                 stat(&p, "Busy", g.busy.map(|b| format!("{b:.0}%")).unwrap_or_else(|| "–".into())),
@@ -933,7 +1013,6 @@ fn performance(a: &App) -> Element<'_, Msg> {
     } else {
         let b = s.battery.clone().unwrap_or_default();
         column![
-            row![ts("Battery", 24.0, p.text)].align_y(iced::Center),
             row![
                 stat(&p, "Charge", format!("{}% ({})", b.percent, b.status.to_lowercase())),
                 stat(&p, "Using now", if b.watts > 0.0 { format!("{:.1} W", b.watts) } else { "–".into() }),
@@ -945,28 +1024,20 @@ fn performance(a: &App) -> Element<'_, Msg> {
         .spacing(14.0)
         .into()
     };
-    let right = scrollable(container(detail).padding(Padding { top: 12.0, right: 22.0, bottom: 22.0, left: 22.0 })).height(Length::Fill);
+    let right = scrollable(container(column![head, detail].spacing(14.0)).padding(Padding { top: 12.0, right: 22.0, bottom: 22.0, left: 22.0 })).height(Length::Fill);
     column![
-        head(a, "Performance", String::new(), None, vec![]),
+        head_bar(a),
         row![container(scrollable(tiles)).width(Length::Fixed(240.0)).height(Length::Fill), ui::vline(p.line), right].height(Length::Fill)
     ]
     .into()
 }
 
+fn head_bar(a: &App) -> Element<'_, Msg> {
+    head(a, "Performance", String::new(), None, vec![])
+}
+
 fn cpu_detail<'a>(a: &'a App, s: &Sample) -> Element<'a, Msg> {
     let p = a.p;
-    // The cores strip on top (each core's use; core 0 with its speed), as mockup tm-3.
-    let mut strip = Row::new().spacing(3.0);
-    for (i, c) in s.cpu.cores.iter().enumerate() {
-        let label = if i == 0 { format!("0 · {:.1} GHz", s.cpu.mhz.unwrap_or(0) as f32 / 1000.0) } else { i.to_string() };
-        let h = 40.0;
-        let fill = (c / 100.0 * h).clamp(1.0, h);
-        let bar = container(column![Space::new().height(Length::Fixed(h - fill)), container(Space::new()).width(Length::Fill).height(Length::Fixed(fill)).style(ui::boxed(p.accent, 2.0, None))])
-            .width(Length::Fill)
-            .height(Length::Fixed(h))
-            .style(ui::boxed(p.panel2, 3.0, None));
-        strip = strip.push(column![bar, t1(label, 10.0, p.muted)].spacing(2.0).width(Length::FillPortion(if i == 0 { 3 } else { 1 })));
-    }
     let mut grid = Row::new().spacing(6.0);
     let n = a.core_hist.len().min(16);
     for h in a.core_hist.iter().take(n) {
@@ -977,13 +1048,7 @@ fn cpu_detail<'a>(a: &'a App, s: &Sample) -> Element<'a, Msg> {
         ));
     }
     column![
-        row![
-            ts("CPU", 24.0, p.text),
-            Space::new().width(Length::Fill),
-            t1(format!("{} · {} cores", s.cpu.name, s.cpu.cores_physical), 14.0, p.muted)
-        ]
-        .align_y(iced::Center),
-        strip,
+        crate::devset::cores_strip(a, s),
         big_graph(&p, a.cpu_hist.iter().copied().collect(), vec![], 100.0, p.accent, 200.0, "% Utilisation", "100%".into()),
         grid,
         row![
@@ -1000,85 +1065,6 @@ fn cpu_detail<'a>(a: &'a App, s: &Sample) -> Element<'a, Msg> {
             stat(&p, "Logical processors", s.cpu.logical.to_string()),
         ]
         .spacing(12.0),
-    ]
-    .spacing(14.0)
-    .into()
-}
-
-fn memory_detail<'a>(a: &'a App, s: &Sample) -> Element<'a, Msg> {
-    let p = a.p;
-    let m = &s.mem;
-    let total = m.total.max(1) as f32;
-    let purple = Color::from_rgb8(0x9b, 0x7b, 0xff);
-    let ratio = if m.zram_used > 0 { m.zram_data as f32 / m.zram_used as f32 } else { 0.0 };
-    // Memory composition: In use, Compressed, Cached, Free (mockup task-manager-memory).
-    let comp = ui::bar(
-        vec![
-            ((m.used.saturating_sub(m.zram_used)) as f32 / total, purple),
-            (m.zram_used as f32 / total, Pal::mix(purple, p.bg, 0.45)),
-            (m.cached as f32 / total, Pal::mix(purple, p.bg, 0.7)),
-        ],
-        p.panel2,
-        26.0,
-        4.0,
-    );
-    let key = |c: Color, l: &str| -> Element<'a, Msg> { row![container(Space::new()).width(Length::Fixed(10.0)).height(Length::Fixed(10.0)).style(ui::boxed(c, 2.0, None)), t1(l.to_string(), 11.0, p.muted)].spacing(6.0).align_y(iced::Center).into() };
-    let swap_card = ui::card(
-        &p,
-        column![
-            ts("Swap", 14.0, p.text),
-            t1(format!("Compressed in memory (zram): {} holding {}", gb(m.zram_used), gb(m.zram_data)), 12.0, p.muted),
-            ui::bar(vec![(if m.swap_total > 0 { m.zram_data as f32 / m.swap_total.max(1) as f32 } else { 0.0 }, purple)], p.panel2, 8.0, 4.0),
-            t1(format!("Drive swap file (slow): {} of {}", gb(m.drive_swap_used), gb(m.drive_swap_total)), 12.0, p.muted),
-            ui::bar(vec![(if m.drive_swap_total > 0 { m.drive_swap_used as f32 / m.drive_swap_total as f32 } else { 0.0 }, p.warn)], p.panel2, 8.0, 4.0),
-        ]
-        .spacing(6.0),
-    )
-    .padding(14.0)
-    .width(Length::FillPortion(1));
-    let pressure_card = ui::card(
-        &p,
-        column![
-            ts("Memory pressure", 14.0, p.text),
-            t1("How often programs waited for memory. High = stutter.".to_string(), 12.0, p.muted),
-            row![stat(&p, "Now", format!("{:.1}%", m.pressure))],
-            ui::graph(
-                Graph { values: a.pressure_hist.iter().copied().collect(), dashed: vec![], max: 10.0f32.max(a.pressure_hist.iter().copied().fold(0.0, f32::max)), min: 0.0, color: p.warn, grid: Color::TRANSPARENT, fill: true, width: 1.0, centred: false, gridlines: vec![] },
-                Length::Fill,
-                Length::Fixed(36.0)
-            ),
-        ]
-        .spacing(6.0),
-    )
-    .padding(14.0)
-    .width(Length::FillPortion(1));
-    column![
-        row![ts("Memory", 24.0, p.text), Space::new().width(Length::Fill), t1(format!("{} in all", gb(m.total)), 14.0, p.muted)].align_y(iced::Center),
-        big_graph(
-            &p,
-            a.mem_hist.iter().copied().collect(),
-            a.zram_hist.iter().copied().collect(),
-            100.0,
-            purple,
-            180.0,
-            "Memory in use (programs) · 60 seconds",
-            gb(m.total)
-        ),
-        column![t1("Memory composition".to_string(), 12.0, p.muted), comp, row![key(purple, "In use"), key(Pal::mix(purple, p.bg, 0.45), "Compressed"), key(Pal::mix(purple, p.bg, 0.7), "Cached"), key(p.panel2, "Free")].spacing(14.0)].spacing(6.0),
-        row![
-            stat(&p, "In use", gb(m.used)),
-            stat(&p, "Available", gb(m.available)),
-            stat(&p, "Cached", gb(m.cached)),
-            stat(&p, "Free", gb(m.free)),
-        ]
-        .spacing(12.0),
-        row![
-            stat(&p, "Compressed", if m.zram_used > 0 { format!("{} · {:.1}×", gb(m.zram_data), ratio) } else { "–".into() }),
-            stat(&p, "Committed", format!("{}/{}", gb(m.committed), gb(m.commit_limit))),
-            stat(&p, "Swap in use", gb(m.swap_used)),
-        ]
-        .spacing(12.0),
-        row![swap_card, pressure_card].spacing(12.0),
     ]
     .spacing(14.0)
     .into()
@@ -1140,7 +1126,10 @@ fn settings(a: &App) -> Element<'_, Msg> {
 // ------------------------------------------------------------------ the menu and the sheets
 fn menu<'a>(a: &'a App, m: &'a crate::Menu) -> Element<'a, Msg> {
     let p = a.p;
-    let mut col = Column::new().spacing(0.0).push(container(t1(ui::fit(&m.title, 40), 12.0, p.muted)).padding(Padding { top: 6.0, right: 12.0, bottom: 6.0, left: 12.0 }));
+    let mut col = Column::new().spacing(0.0);
+    if !m.title.is_empty() {
+        col = col.push(container(t1(ui::fit(&m.title, 40), 12.0, p.muted)).padding(Padding { top: 6.0, right: 12.0, bottom: 6.0, left: 12.0 }));
+    }
     for (i, it) in m.items.iter().enumerate() {
         if it.act.is_none() {
             col = col.push(container(hline(p.line)).padding(Padding { top: 4.0, right: 6.0, bottom: 4.0, left: 6.0 }));
