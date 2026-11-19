@@ -47,7 +47,13 @@ PlasmoidItem {
 
     // ---------------------------------------------------------------- the modes (live state, never a setting)
     property var modes: ({ screens: [] })
-    function readModes() { helper(["modes"], function (t) { const o = root.lastJson(t); if (o && Array.isArray(o.screens)) root.modes = o; }); }
+    function readModes() {
+        helper(["modes"], function (t) {
+            const o = root.lastJson(t);
+            if (o && Array.isArray(o.screens)) root.modes = o;
+            console.warn("firehold: modes on the Desk bar (" + root.myScreen + "): " + JSON.stringify(root.modes.screens.map(function (s) { return s.name + "=" + s.mode; })));
+        });
+    }
     readonly property string myScreen: Screen.name
     readonly property var me: {
         for (const s of modes.screens) if (s.name === myScreen) return s;

@@ -592,9 +592,10 @@ def identify():
 def ping_modes(what='modes', screen=''):
     """The Couch and the Desk's posture applets read the modes again (Plasma's scripting: their "modes" key; the time
     is all it carries)."""
-    js = ('var v="' + what + '|%d|' + screen + '";desktops().forEach(function(d){if(d.type=="%s"){d.currentConfigGroup=["General"];d.writeConfig("request",v);}});'
-          'panels().forEach(function(p){p.widgets().forEach(function(w){if(w.type=="org.hearthos.firehold.posture"){'
-          'w.currentConfigGroup=["General"];w.writeConfig("modes",v);}});});' % (int(time.time() * 1000), CONTAINMENT))
+    v = '%s|%d|%s' % (what, int(time.time() * 1000), screen)
+    js = ('var v="%s";desktops().forEach(function(d){if(d.type=="%s"){d.currentConfigGroup=["General"];d.writeConfig("request",v);}});'
+          'panels().forEach(function(p){p.widgets().forEach(function(w){if(w.type=="org.hearthos.firehold.posture"||w.type=="org.hearthos.firehold.app"){'
+          'w.currentConfigGroup=["General"];w.writeConfig("modes",v);}});});' % (v, CONTAINMENT))
     dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript', 'string:' + js, reply=False)
 
 
@@ -1203,6 +1204,8 @@ def do(action, arg=''):
             return {'ok': False, 'missing': True}
         dbus_send('org.kde.kglobalaccel', '/component/plasmashell', 'org.kde.kglobalaccel.Component.invokeShortcut',
                   'string:activate widget ' + ids[0], reply=False)
+    elif action == 'window':
+        return window_action(*(arg.split(':', 1) if ':' in arg else (arg, '')))
     elif action == 'identify':
         identify()
     elif action == 'settings-page' and re.match(r'^[a-z0-9-]{1,40}$', arg or ''):
@@ -1212,6 +1215,55 @@ def do(action, arg=''):
         detach(['systemsettings'] + ([arg] if re.match(r'^kcm_[a-z0-9_]+$', arg or '') else []))
     else:
         raise ValueError('unknown action')
+    return {'ok': True}
+
+
+WINDOW_JS = {
+    'fullscreen': 'w.fullScreen = !w.fullScreen;',
+    'above': 'w.keepAbove = !w.keepAbove;',
+    'maximize': 'w.setMaximize(!(w.maximizeMode == 3), !(w.maximizeMode == 3));',
+    'minimize': 'w.minimized = true;',
+    'close': 'w.closeWindow();',
+    'snap-left': 'workspace.slotWindowQuickTileLeft();',
+    'snap-right': 'workspace.slotWindowQuickTileRight();',
+}
+
+
+def window_action(what, arg=''):
+    """The Desk bar's Window menu (mockup firehold-plasma 12), on the window in front, through KWin's script API."""
+    if what in WINDOW_JS:
+        kwin_run('var w = workspace.activeWindow; if (w) { %s }' % WINDOW_JS[what], 'org.hearthos.firehold.window')
+    elif what == 'move' and re.match(r'^[A-Za-z0-9_.-]{1,40}$', arg):
+        # Move to screen: KWin sends it there; on a Couch screen the KWin script makes a game full screen.
+        kwin_run('var w = workspace.activeWindow; var o = workspace.screens.filter(function (s) { return s.name == "%s"; })[0];'
+                 ' if (w && o) workspace.sendClientToScreen(w, o);' % arg, 'org.hearthos.firehold.window')
+    elif what == 'kill' and arg.isdigit():
+        try:
+            os.kill(int(arg), signal.SIGKILL)
+        except OSError:
+            pass
+    elif what == 'screenshot':
+        detach(['spectacle', '-b', '-n', '-a'])
+    elif what == 'record':
+        detach(['spectacle', '-b', '-n', '--record', 'window'])
+    elif what == 'folder' and arg.isdigit():
+        try:
+            exe = os.path.realpath('/proc/%s/exe' % arg)
+            # A Windows app's folder is its .exe's (Wine's command line), else the program's own.
+            cmd = open('/proc/%s/cmdline' % arg, 'rb').read().split(b'\0')
+            win = [c.decode(errors='replace') for c in cmd if c.lower().endswith(b'.exe')]
+            folder = os.path.dirname(win[0].replace('\\', '/')) if win and win[0].startswith('/') else os.path.dirname(exe)
+            detach(['xdg-open', folder])
+        except OSError:
+            return {'ok': False}
+    elif what == 'logs':
+        detach(['hearth-send-logs', ('Sent from the Desk bar: ' + arg)[:200]])
+    elif what == 'search':
+        detach(['krunner'])
+    elif what == 'shortcuts':
+        detach(['systemsettings', 'kcm_keys'])
+    else:
+        raise ValueError('unknown window action')
     return {'ok': True}
 
 
@@ -1916,7 +1968,7 @@ def main(argv):
             why = a[a.index('--why') + 1] if '--why' in a[:-1] else ''
             tab = next((x for x in a[1:] if x in ('home', 'library', 'apps', 'store', 'switcher', 'settings')), '')
             switch(a[0], tab, why)
-        elif what == 'ping' and a and a[0] in ('modes', 'popup', 'popup-off', 'identify', 'identify-off', 'qs', 'qs-off', 'notes', 'notes-off'):
+        elif what == 'ping' and a and a[0] in ('modes', 'popup', 'popup-off', 'identify', 'identify-off', 'qs', 'qs-off', 'notes', 'notes-off', 'menu-app', 'menu-window', 'menu-help', 'menu-off'):
             # The Desk's mode pill and the Couch: read the modes again, open or close Modes (on SCREEN), Identify.
             scr = a[1] if len(a) > 1 and re.match(r'^[A-Za-z0-9_.-]{1,40}$', a[1]) else ''
             ping_modes(a[0], scr)

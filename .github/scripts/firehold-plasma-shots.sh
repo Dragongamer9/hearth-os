@@ -258,12 +258,21 @@ hearth-firehold-plasma ask tab:library; sleep 3
 key right x down; sleep 3
 shot fp-03-two-screens-game-options 1920 1920
 key b; hearth-firehold-plasma ask tab:home; sleep 2
+# An app with no menus of its own in front on the monitor: Hearth's standard menus, Window open (mockup 12).
+sed 's/Rise of the Witch-king/Trains 2010/' /tmp/ember.qml > /tmp/trains.qml
+[ -n "$QML" ] && { "$QML" /tmp/trains.qml >/dev/null 2>&1 & }
+sleep 6; front "Trains 2010" false; sleep 2
+hearth-firehold-plasma ping menu-window; sleep 3
+shot fp-13-desk-standard-menus 0 1920
+hearth-firehold-plasma ping menu-off; sleep 1
+front "Pictures" false; sleep 2
 hearth-firehold-plasma ping popup Virtual-0; sleep 4
 shot fp-04-modes-per-screen 0 1920
 hearth-firehold-plasma ping popup-off Virtual-0; sleep 1
 hearth-firehold-plasma mode Virtual-1 away --why pick; sleep 6
 shot fp-06-away 1920 1920
 grep -E "org\.hearthos|firehold" "$OUT/plasmashell2.log" | grep -iE "error|TypeError|ReferenceError|is not a type|is not installed|Cannot assign|not defined|failed|Unable to assign" | sort -u | head -12 > "$OUT/qml2-errors.txt"
+echo "::notice title=plasmashell about Firehold (two screens)::$(grep -E "firehold|org\.hearthos" "$OUT/plasmashell2.log" | sort -u | head -12 | cut -c1-250 | sed -e ':a;N;$!ba;s/\n/%0A/g')"
 [ -s "$OUT/qml2-errors.txt" ] && fail "Firehold QML (two screens)" "$(cut -c1-300 "$OUT/qml2-errors.txt" | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')"
 
 pkill -f "hearth-firehold-plasma session"; pkill plasmashell; pkill dolphin; pkill konsole; pkill kate; pkill -f ember.qml

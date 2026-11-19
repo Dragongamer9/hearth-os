@@ -24,7 +24,10 @@ Window {
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityOnDemand
     LayerShell.Window.exclusionZone: -1
-    function show() { visible = true; requestActivate(); couch.forceActiveFocus(); }
+    function show() {
+        visible = true; requestActivate(); couch.forceActiveFocus();
+        console.warn("firehold: the Couch over the Desk on", screenName, "(window on", screen ? screen.name : "no screen", ")");
+    }
     Couch {
         id: couch
         anchors.fill: parent
