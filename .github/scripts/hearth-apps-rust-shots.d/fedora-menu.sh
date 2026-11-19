@@ -24,8 +24,10 @@ dialog_shot() {
   sleep 1.5
   grim "$ROOT/shots/$name.png" 2>/dev/null || true
   echo "SHOT $name firstframe=$ff" >> "$ROOT/results.txt"
+  echo "$name: dialog up after ${ff} ms" >> "$ROOT/shots/resmon-results.txt"
   [ "$ff" -ge 0 ] || echo "::error title=$name::its dialog never came up: $(tail -c 800 /tmp/$name.log | tr '\n' '|')"
-  pkill -f kdialog 2>/dev/null; kill $pid 2>/dev/null; wait $pid 2>/dev/null
+  pkill kdialog 2>/dev/null; pkill -f kdialog 2>/dev/null; kill $pid 2>/dev/null; wait $pid 2>/dev/null
+  sleep 0.3; pkill -9 kdialog 2>/dev/null
   sleep 0.3
 }
 if command -v kdialog >/dev/null; then

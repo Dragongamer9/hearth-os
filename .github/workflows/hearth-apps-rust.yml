@@ -114,6 +114,14 @@ jobs:
         run: |
           chmod +x bin/*
           bash .github/scripts/hearth-apps-rust-test.sh
+      # A step's notices stop at ten, and the apps' own fill the step above: Resource Monitor's measurements and the
+      # Fedora menu's dialogs get their own (written by .github/scripts/hearth-apps-rust-shots.d/resmon.sh, fedora-menu.sh).
+      - name: Resource Monitor at rest, and the Fedora menu's dialogs
+        if: always()
+        run: |
+          [ -f shots/resmon-results.txt ] || { echo "::warning title=resmon::no measurements (resmon.sh didn't run)"; exit 0; }
+          head -n 8 shots/resmon-results.txt | while read -r l; do echo "::notice title=resmon::$l"; done
+          rm -f shots/resmon-results.txt
       - name: The pictures taken (each posted by its own job)
         id: list
         if: always()

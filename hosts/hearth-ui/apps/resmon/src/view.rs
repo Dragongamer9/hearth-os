@@ -63,7 +63,7 @@ pub fn size(b: f64) -> String {
         format!("{:.0} GB", g)
     } else if g >= 10.0 {
         format!("{} GB", trim0(format!("{g:.1}")))
-    } else if g >= 0.95 {
+    } else if g >= 1.0 {
         format!("{g:.1} GB")
     } else if b >= 1048576.0 {
         format!("{:.0} MB", b / 1048576.0)
@@ -75,10 +75,15 @@ pub fn size(b: f64) -> String {
         "0".into()
     }
 }
+/// Memory's facts: 0.5 GB from a tenth of a GB up (the mockup's Kept for hardware).
+pub fn size_gb(b: f64) -> String {
+    let g = b / 1073741824.0;
+    if (0.095..1.0).contains(&g) { format!("{g:.1} GB") } else { size(b) }
+}
 /// In the tables: 1.21 GB.
 pub fn size2(b: f64) -> String {
     let g = b / 1073741824.0;
-    if (0.95..10.0).contains(&g) { format!("{g:.2} GB") } else { size(b) }
+    if (1.0..10.0).contains(&g) { format!("{g:.2} GB") } else { size(b) }
 }
 /// 2.4 MB/s, 60 KB/s, 0.
 pub fn rate(b: f64) -> String {
@@ -98,7 +103,7 @@ pub fn rate_mb(b: f64) -> String {
     if m < 0.05 { "0".into() } else { format!("{} MB/s", trim0(format!("{m:.1}"))) }
 }
 pub fn pct(n: f64) -> String {
-    if n >= 10.0 || n == 0.0 { format!("{:.0}%", n) } else { format!("{n:.1}%") }
+    if n >= 10.0 || n == 0.0 { format!("{:.0}%", n) } else { format!("{}%", trim0(format!("{n:.1}"))) }
 }
 pub fn pct_opt(n: Option<f64>) -> String {
     n.map(pct).unwrap_or_else(|| "–".into())
@@ -314,6 +319,10 @@ pub fn prog_rows(a: &App, t: Tab, ov: bool) -> (Vec<Col>, Vec<TRow>) {
         }
         Tab::Disk => {
             by(&mut gs, |g| f(g, "read") + f(g, "write") + f(g, "disk") / 1e9);
+            // the programs using the disk (mockup resmon-4); Overview's section shows the top ones whatever they do
+            if !ov {
+                gs.retain(|g| f(g, "read") + f(g, "write") + f(g, "disk") > 0.0);
+            }
             let mut rows: Vec<TRow> = gs
                 .iter()
                 .map(|g| {
@@ -354,6 +363,10 @@ pub fn prog_rows(a: &App, t: Tab, ov: bool) -> (Vec<Col>, Vec<TRow>) {
             };
             let mut v: Vec<(&Value, (f64, f64))> = gs.iter().map(|g| (*g, nr(g))).collect();
             v.sort_by(|x, y| ((y.1 .0 + y.1 .1), f(y.0, "conns")).partial_cmp(&((x.1 .0 + x.1 .1), f(x.0, "conns"))).unwrap_or(std::cmp::Ordering::Equal));
+            // the programs using the network (mockup resmon-5): traffic or an open connection
+            if !ov {
+                v.retain(|(g, r)| r.0 + r.1 > 0.0 || f(g, "conns") > 0.0);
+            }
             let rows = v
                 .iter()
                 .map(|(g, r)| {
@@ -839,8 +852,8 @@ fn left(a: &App) -> E<'_> {
             let parts = vec![
                 ("Kept".to_string(), f(&mb, "reserved"), col(0x6c6a7c), p.text),
                 (format!("In use {}", size(programs)), programs, col(PURPLE), col(0x15131f)),
-                (format!("Compr. {}", g1(zmem)), zmem, col(TEAL), col(0x0f1a1d)),
-                (format!("Cached {}", g1(cached)), cached, col(0xcfc9d8), col(0x1a1822)),
+                (format!("Compr. {:.1}", zmem / 1073741824.0), zmem, col(TEAL), col(0x0f1a1d)),
+                (format!("Cached {:.1}", cached / 1073741824.0), cached, col(0xcfc9d8), col(0x1a1822)),
                 (format!("Free {}", size(f(&mb, "free"))), f(&mb, "free"), Pal::mix(p.panel, p.line, 0.6), Pal::mix(p.text, p.muted, 0.3)),
             ];
             let drive: Vec<&Value> = arr(&d, "swaps").iter().filter(|x| !s(x, "path").starts_with("/dev/zram")).collect();
@@ -853,17 +866,17 @@ fn left(a: &App) -> E<'_> {
                 _ => "off".into(),
             };
             let fx = vec![
-                ("Kept for hardware".to_string(), size(f(&mb, "reserved"))),
-                ("In use".into(), size(programs)),
-                ("Compressed (zram real size)".into(), if zr.is_some() { size(zmem) } else { "off".into() }),
-                ("Cached".into(), size(cached)),
-                ("Free".into(), size(f(&mb, "free"))),
-                ("Available".into(), size(f(&mem, "available"))),
+                ("Kept for hardware".to_string(), size_gb(f(&mb, "reserved"))),
+                ("In use".into(), size_gb(programs)),
+                ("Compressed (zram real size)".into(), if zr.is_some() { size_gb(zmem) } else { "off".into() }),
+                ("Cached".into(), size_gb(cached)),
+                ("Free".into(), size_gb(f(&mb, "free"))),
+                ("Available".into(), size_gb(f(&mem, "available"))),
                 ("Zram holds".into(), zr_holds),
-                ("Drive swap".into(), if drive.is_empty() { "none".into() } else { format!("{} of {}", g1(drive.iter().map(|x| f(x, "used")).sum()), size(drive.iter().map(|x| f(x, "size")).sum())) }),
+                ("Drive swap".into(), if drive.is_empty() { "none".into() } else { format!("{} of {}", g1(drive.iter().map(|x| f(x, "used")).sum()), size_gb(drive.iter().map(|x| f(x, "size")).sum())) }),
                 ("Committed".into(), {
                     let lim = f(&mem, "commitLimit");
-                    if lim > 0.0 { format!("{} of {}", g1(f(&mb, "committed")), size(lim)) } else { size(f(&mb, "committed")) }
+                    if lim > 0.0 { format!("{} of {}", g1(f(&mb, "committed")), size_gb(lim)) } else { size_gb(f(&mb, "committed")) }
                 }),
             ];
             let body = column![mem_bar(&p, parts, total), facts(&p, fx)];
@@ -1165,7 +1178,8 @@ fn graph_card<'a>(a: &'a App, g: GSpec) -> E<'a> {
     let p = a.p;
     let vals: Vec<f32> = a.hist.get(&g.key).map(|q| q.iter().copied().collect()).unwrap_or_default();
     let sp = Spark { values: vals, top: g.top, color: col(g.color), grid: Pal::a(p.line, 0.22), gen: a.samples };
-    let head = row![ts(g.title, 14.0, p.text).wrapping(text::Wrapping::None), ui::fill(), t1(g.value, 14.0, Pal::mix(p.text, p.muted, 0.35))].align_y(iced::Center);
+    let vs = if a.tab == Tab::Cpu && !g.span { 13.0 } else { 14.0 };
+    let head = row![ts(g.title, 14.0, p.text).wrapping(text::Wrapping::None), ui::fill(), t1(g.value, vs, Pal::mix(p.text, p.muted, 0.35))].spacing(8.0).align_y(iced::Center);
     container(column![head, canvas::Canvas::new(sp).width(Length::Fill).height(Length::Fill)].spacing(8.0))
         .padding(Padding { top: 10.0, right: 12.0, bottom: 10.0, left: 12.0 })
         .width(Length::Fill)

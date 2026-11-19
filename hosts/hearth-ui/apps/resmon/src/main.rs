@@ -555,7 +555,9 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 let was_hidden = a.hidden;
                 a.take(d);
                 let mut t = vec![];
-                if was_hidden {
+                // the tab's own readings again once the first samples are in (they pick from its programs and
+                // adapters), and when the window is seen again
+                if was_hidden || a.samples == 2 {
                     t.push(a.tab_reads());
                 }
                 // CI's pictures: --show menu / --show end open the first program's menu or the End task question.

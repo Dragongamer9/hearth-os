@@ -818,7 +818,7 @@ pub fn page(a: &App) -> E<'_> {
         None => container(t(if a.pc_err.is_empty() { "Reading what this PC has inside…" } else { a.pc_err.as_str() }, 14.0, p.muted)).center_x(Length::Fill).center_y(Length::Fill).style(ui::boxed(hex("#15181c"), 10.0, Some((hex("#2a2f36"), 2.0)))).into(),
     };
     let left = column![
-        row![ts(ui::fit(&name, 60), 15.0, p.text).wrapping(text::Wrapping::None), gap(10.0, 1.0), t1(ui::fit(&sub, 90), 13.0, p.muted).width(Length::Fill), legend].align_y(iced::Center),
+        row![ts(ui::fit(&name, 44), 15.0, p.text).wrapping(text::Wrapping::None), gap(10.0, 1.0), container(t1(sub, 13.0, p.muted)).width(Length::Fill).clip(true), legend].spacing(6.0).align_y(iced::Center),
         stage,
     ]
     .spacing(8.0)

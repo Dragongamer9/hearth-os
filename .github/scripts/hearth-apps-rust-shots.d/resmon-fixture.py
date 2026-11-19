@@ -51,6 +51,9 @@ def sample(i, last):
     for g in groups:
         if not last:
             g['cpu'] = round(wave(i, g['cpu'], g['cpu'] * 0.3), 1)
+            for k in ('g3d', 'gdec'):
+                if g.get(k):
+                    g[k] = round(wave(i, g[k], g[k] * 0.4, 1.3), 1)
     return {
         't': time.time(),
         'cpu': {'name': 'Intel Core i3-N305', 'logical': 8, 'coreCount': 8, 'base': 2800, 'total': round(w(21, 5), 1), 'mhz': 2800, 'temp': round(w(61, 2, 1), 1),

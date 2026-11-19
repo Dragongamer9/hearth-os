@@ -53,6 +53,7 @@ resmon_rest() {
   ka=$(ticks "${kid:-0}"); sleep 4; kb=$(ticks "${kid:-0}")
   back=$((kb - ka))
   grim "$ROOT/shots/resmon-16-real-shown-again.png" 2>/dev/null || true
+  echo "first frame ${ff} ms · open and untouched: app ${open_app}%, sampler ${open_hlp}% of a core · minimized: app ${hid_app}%, sampler ${hid_hlp}% · shown again: sampler ${back} ticks in 4 s · ${rss} MB" >> "$ROOT/shots/resmon-results.txt"
   echo "::notice title=resmon-rest::first frame ${ff} ms · open and untouched: app ${open_app}% of a core, its sampler ${open_hlp}% · minimized: app ${hid_app}%, sampler ${hid_hlp}% · shown again: the sampler ran ${back} ticks in 4 s · memory ${rss} MB"
   python3 - "$ff" "$open_app" "$open_hlp" "$hid_app" "$hid_hlp" "$back" "$rss" <<'PY'
 import sys
