@@ -1,205 +1,736 @@
-//! System: Display (settings-A2-display-mouse.png), Sound, Power & battery, Storage, Your desktop, Startup,
-//! Date & time, About. Read with KDE's and the system's own tools (kscreen-doctor, wpctl/pactl, powerprofilesctl,
-//! timedatectl, df); Hearth's own settings through hearth_settings_io.py.
+//! System: every page of Mantel's System category (settings-pages.js, cat "system"), ported from its QML page
+//! (hosts/linux/desktop/shell/Set*.qml) with the same helpers and files, so Debian's Mantel and the Fedora edition's
+//! Rust Settings share their settings. The Display page is the approved mockup's (settings-A2-display-mouse.png).
+//!
+//! Where the Fedora edition differs (KDE Plasma on KWin, no Mantel running), each page also sets KDE's own setting,
+//! the one Plasma really uses, with KDE's own tool (kwriteconfig6, which writes through KConfig: atomic, KDE's lock),
+//! and says so in a comment: Do not disturb and quiet in full screen (plasmanotifyrc), the screen-off and sleep times,
+//! the power button and the lid (PowerDevil's powerdevilrc), over-amplification (plasmaparc), the sound theme
+//! (kdeglobals [Sounds]), Klipper (klipperrc), the file index (Baloo), KRunner's plugins (krunnerrc), the clock
+//! (Plasma's digital clock) and the session (ksmserverrc). Hearth's own copy of each is kept too (desktop.json and
+//! the other nimbus files, through hearth_settings_io: atomic, .bak, merged, the change history).
+//!
+//! The pages live in sibling files (system_*.rs): this file has the machinery they share: reading (one program per
+//! read, off the window's thread, each with a time limit), running a change and reading again, and the few pieces
+//! of UI the pages share (a chooser list, the Plasma check). Opening a page only reads; nothing is written until a
+//! control is used (red flag 9).
+//!
+//! CI's pictures (.github/scripts/hearth-apps-rust-shots.d/settings-system.sh) set HEARTH_SYSTEM_FIXTURE to a folder
+//! of answers (one file per read, named like the read): every read then comes from there, and nothing is run.
+
+#[path = "system_about.rs"]
+mod about;
+#[path = "system_display.rs"]
+mod display;
+#[path = "system_lang.rs"]
+mod lang;
+#[path = "system_more.rs"]
+mod more;
+#[path = "system_power.rs"]
+mod power;
+#[path = "system_sound.rs"]
+mod sound;
 
 use crate::data;
 use crate::shared::Shared;
 use crate::widgets::*;
 use crate::App;
 use hearth_ui::run;
-use hearth_ui::ui::{self, btn, t, t1, tb, ts, Kind, G};
+use hearth_ui::ui::{t, t1, G};
 use hearth_ui::Pal;
-use iced::widget::{column, container, row, Column, Row};
+use iced::widget::{column, row, Column};
 use iced::{Element, Length, Subscription, Task};
+use serde_json::Value;
+use std::collections::HashMap;
 
-pub const PAGES: &[&str] = &["display", "sound", "power", "storage", "your-desktop", "startup", "datetime", "about"];
+pub const PAGES: &[&str] = &[
+    "install", "display", "sound", "sound-speakers", "sound-apps", "push-to-talk", "notifications", "sounds", "power", "power-profiles", "power-awake",
+    "battery", "memory", "storage", "drives", "your-desktop", "startup", "boot", "remote-desktop", "datetime", "region", "languages", "spellcheck",
+    "language-packs", "input-methods", "clipboard", "search", "about", "info-cpu", "info-gpu", "info-memory", "info-graphics", "info-pci", "info-usb",
+    "info-sensors", "info-modules", "info-interrupts", "info-energy",
+];
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-pub enum Src {
-    Display,
-    Sound,
-    Power,
-    Storage,
-    Time,
-    Zones,
-    Desk,
-    Updates,
+// ------------------------------------------------------------------ a change: programs run one after another
+
+/// A change: its programs (run in turn, stopping at the first that fails), text for the first one's stdin (and
+/// HEARTH_INPUT, as Mantel's SetJob gives it), what to say when it worked, which reads to do again, and where to keep
+/// its answer (`store`: a read's key, for helpers that answer with the new state).
+#[derive(Debug, Clone, Default)]
+pub struct Ex {
+    pub cmds: Vec<Vec<String>>,
+    pub input: String,
+    pub ok: String,
+    pub fail: String,
+    pub re: Vec<&'static str>,
+    pub store: Option<&'static str>,
+    pub secs: u64,
 }
 
-/// A display change waiting to be kept: the command that puts the old one back, and seconds left.
+impl Ex {
+    pub fn new(cmd: Vec<String>) -> Ex {
+        Ex { cmds: vec![cmd], secs: 120, ..Ex::default() }
+    }
+    pub fn none() -> Ex {
+        Ex { secs: 120, ..Ex::default() }
+    }
+    pub fn and(mut self, cmd: Vec<String>) -> Ex {
+        self.cmds.push(cmd);
+        self
+    }
+    pub fn and_all(mut self, cmds: Vec<Vec<String>>) -> Ex {
+        self.cmds.extend(cmds);
+        self
+    }
+    pub fn ok(mut self, s: impl Into<String>) -> Ex {
+        self.ok = s.into();
+        self
+    }
+    pub fn fail(mut self, s: impl Into<String>) -> Ex {
+        self.fail = s.into();
+        self
+    }
+    pub fn re(mut self, k: &'static str) -> Ex {
+        self.re.push(k);
+        self
+    }
+    pub fn store(mut self, k: &'static str) -> Ex {
+        self.store = Some(k);
+        self
+    }
+    pub fn input(mut self, s: impl Into<String>) -> Ex {
+        self.input = s.into();
+        self
+    }
+    pub fn secs(mut self, s: u64) -> Ex {
+        self.secs = s;
+        self
+    }
+}
+
+/// A display change waiting to be kept (the mockup's "X Keep these settings"): what to go back to, the screens it's
+/// for, and the seconds left.
 pub struct Keep {
-    pub undo: Vec<String>,
+    pub prev: Value,
+    pub names: Vec<String>,
     pub left: u32,
 }
 
 #[derive(Default)]
 pub struct State {
-    pub display: data::Display,
-    pub display_read: bool,
-    pub sound: data::Sound,
-    pub sound_read: bool,
-    pub power: data::Power,
-    pub storage: Vec<data::Drive>,
-    pub time: data::Time,
-    pub zone_query: String,
-    pub desk: data::Desk,
+    pub page: &'static str,
+    /// What each read answered (its JSON; Null when it failed).
+    pub v: HashMap<&'static str, Value>,
+    /// Each read's text, and whether it worked.
+    pub raw: HashMap<&'static str, String>,
+    pub read_ok: HashMap<&'static str, bool>,
+    /// Hearth's own small settings files, read when a page opens (buttons.json, sounds.json, notify.json…).
+    pub files: HashMap<&'static str, Value>,
+    pub text: HashMap<&'static str, String>,
+    pub flag: HashMap<&'static str, bool>,
+    pub num: HashMap<&'static str, f32>,
+    /// Sliders of things that come and go (each app's volume, each screen's brightness), by name.
+    pub numof: HashMap<String, f32>,
+    /// The chooser list that's open ("" none).
+    pub open: String,
+    /// A change running now (its words).
+    pub busy: String,
+    pub keep: Option<Keep>,
+    /// Display: the screen these settings are for ("" the first that's on).
+    pub picked: String,
+    pub rename: Option<String>,
     pub desk_saved: bool,
+    pub desk: data::Desk,
     pub start: String,
     pub updates: data::Updates,
-    pub keep: Option<Keep>,
-    pub rename: Option<String>,
+    /// A slider that waits a moment before it's saved (its key, and the ticks left).
+    pub settle: Option<(&'static str, u32)>,
+}
+
+impl State {
+    pub fn j(&self, k: &str) -> &Value {
+        self.v.get(k).unwrap_or(&NULL)
+    }
+    pub fn has(&self, k: &str) -> bool {
+        self.v.get(k).map(|v| !v.is_null()).unwrap_or(false)
+    }
+    pub fn read(&self, k: &str) -> bool {
+        self.read_ok.contains_key(k)
+    }
+    pub fn raw(&self, k: &str) -> &str {
+        self.raw.get(k).map(|s| s.as_str()).unwrap_or("")
+    }
+    pub fn file(&self, k: &str) -> &Value {
+        self.files.get(k).unwrap_or(&NULL)
+    }
+    pub fn txt(&self, k: &str) -> &str {
+        self.text.get(k).map(|s| s.as_str()).unwrap_or("")
+    }
+    pub fn on(&self, k: &str) -> bool {
+        self.flag.get(k).copied().unwrap_or(false)
+    }
 }
 
 #[derive(Debug, Clone)]
 pub enum Msg {
-    Got(Src, run::Output),
-    Did(Src, &'static str, run::Output),
-    Vol(f32),
-    VolSet,
-    Mute,
-    Mic(f32),
-    MicSet,
-    MicMute,
-    Out(String),
-    In(String),
-    Bright(u32),
-    BrightSet,
-    Night(bool),
-    Res(String, u32, u32),
-    Rate(String, String),
-    Scale(String, f32),
+    Got(&'static str, run::Output),
+    Exec(Ex),
+    Done(Ex, run::Output),
+    /// Save these keys in desktop.json (hearth_settings_io merge, with the change history), then run the change.
+    Desk(Value, Ex),
+    /// Merge these keys into ~/.config/nimbus/<file> (buttons.json, sounds.json…), then run the change.
+    Json(&'static str, Value, Ex),
+    Text(&'static str, String),
+    Flag(&'static str, bool),
+    Num(&'static str, f32),
+    /// A slider of one of several (an app, a screen): its name and value (the last one moved is remembered).
+    NumOf(String, f32),
+    /// A slider let go: saved a moment later (the page's own save for that key).
+    NumDone(&'static str),
+    Open(String),
+    Go(&'static str),
+    App(Vec<String>),
+    Reread(&'static str),
+    /// Change a page's own unsaved copy (Memory's changes before Save, what's picked to clean up): the read's key,
+    /// a path in it ("zram.gb"; "" with Null forgets it all) and the value.
+    Draft(&'static str, String, Value),
+    /// Several messages, one after another.
+    Seq(Vec<Msg>),
+    // Display
+    Pick(String),
+    Try(Value),
+    SetNow(Value, String),
     Keep,
     Revert,
     Tick,
-    Profile(String),
-    Ntp(bool),
-    ZoneQuery(String),
-    Zone(String),
-    Desk(&'static str),
-    SwitchNow,
-    StartIn(&'static str),
+    Settle,
+    Live,
+    // About
     Rename,
     RenameText(String),
     RenameSave,
     RenameCancel,
-    OpenApp(&'static str),
-    Go(&'static str),
+    Desktop(&'static str),
+    SwitchNow,
+    StartIn(&'static str),
 }
 
-pub fn read(s: Src) -> Task<Msg> {
-    let cmd = match s {
-        Src::Display => data::sh(data::DISPLAY),
-        Src::Sound => data::sh(data::SOUND),
-        Src::Power => data::sh(data::POWER),
-        Src::Storage => data::sh(data::STORAGE),
-        Src::Time => data::sh(data::TIME),
-        Src::Zones => data::sh("timedatectl list-timezones 2>/dev/null"),
-        Src::Desk => data::sh(data::DESK),
-        Src::Updates => vec!["pkexec".into(), data::ADMIN.into(), "update-status".into()],
-    };
-    Task::perform(run::spawn(cmd), move |o| Msg::Got(s, o))
+// ------------------------------------------------------------------ reading JSON answers
+
+pub static NULL: Value = Value::Null;
+
+/// The value at "a.b.0.c" (Null when it isn't there).
+pub fn at<'v>(v: &'v Value, path: &str) -> &'v Value {
+    let mut cur = v;
+    for k in path.split('.').filter(|k| !k.is_empty()) {
+        cur = match cur {
+            Value::Object(m) => m.get(k).unwrap_or(&NULL),
+            Value::Array(a) => k.parse::<usize>().ok().and_then(|i| a.get(i)).unwrap_or(&NULL),
+            _ => &NULL,
+        };
+    }
+    cur
+}
+pub fn vs(v: &Value, path: &str) -> String {
+    match at(v, path) {
+        Value::String(s) => s.clone(),
+        Value::Number(n) => n.to_string(),
+        Value::Bool(b) => b.to_string(),
+        _ => String::new(),
+    }
+}
+pub fn vb(v: &Value, path: &str) -> bool {
+    match at(v, path) {
+        Value::Bool(b) => *b,
+        Value::Number(n) => n.as_f64().unwrap_or(0.0) != 0.0,
+        Value::String(s) => s == "true" || s == "on" || s == "yes",
+        _ => false,
+    }
+}
+pub fn vf(v: &Value, path: &str, d: f64) -> f64 {
+    match at(v, path) {
+        Value::Number(n) => n.as_f64().unwrap_or(d),
+        Value::String(s) => s.trim().parse().unwrap_or(d),
+        _ => d,
+    }
+}
+pub fn va<'v>(v: &'v Value, path: &str) -> &'v [Value] {
+    at(v, path).as_array().map(|a| a.as_slice()).unwrap_or(&[])
+}
+pub fn present(v: &Value, path: &str) -> bool {
+    !at(v, path).is_null()
 }
 
-pub fn open(_sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
-    st.desk_saved = false;
-    st.rename = None;
-    st.start = data::start_mode();
-    let srcs: &[Src] = match page {
-        "display" => &[Src::Display],
-        "sound" => &[Src::Sound],
-        "power" => &[Src::Power],
-        "storage" => &[Src::Storage],
-        "datetime" => &[Src::Time, Src::Zones],
-        "your-desktop" => &[Src::Desk],
-        "about" => &[Src::Updates],
-        _ => &[],
-    };
-    Task::batch(srcs.iter().map(|s| read(*s)))
+// ------------------------------------------------------------------ the programs
+
+/// Is this KDE Plasma (the Fedora edition's desktop)? Its own settings are then the ones that act.
+pub fn plasma() -> bool {
+    std::env::var("XDG_CURRENT_DESKTOP").map(|d| d.to_uppercase().contains("KDE")).unwrap_or(false)
 }
 
-fn act(cmd: Vec<String>, then: Src, what: &'static str) -> Task<Msg> {
-    Task::perform(run::spawn(cmd), move |o| Msg::Did(then, what, o))
-}
-
-fn s(v: &[&str]) -> Vec<String> {
+pub fn sv(v: &[&str]) -> Vec<String> {
     v.iter().map(|x| x.to_string()).collect()
 }
+/// One of Mantel's helpers next to its shell (hearth-screens, hearth-sound…), as you.
+pub fn py(helper: &str, args: &[&str]) -> Vec<String> {
+    let mut c = vec!["python3".to_string(), run::shell_helper(helper)];
+    c.extend(args.iter().map(|a| a.to_string()));
+    c
+}
+pub fn py_s(helper: &str, args: Vec<String>) -> Vec<String> {
+    let mut c = vec!["python3".to_string(), run::shell_helper(helper)];
+    c.extend(args);
+    c
+}
+pub const LIBEXEC: &str = "/usr/libexec/nimbus/";
+/// One of Hearth's helpers in /usr/libexec/nimbus, as you (Mantel's SetJob runs these with python3 too).
+pub fn lx(name: &str, args: &[&str]) -> Vec<String> {
+    let mut c = vec!["python3".to_string(), format!("{LIBEXEC}{name}")];
+    c.extend(args.iter().map(|a| a.to_string()));
+    c
+}
+/// The same helper with the system's permission (pkexec; Hearth's polkit rule lets the person at the PC do it).
+pub fn adm(name: &str, args: Vec<String>) -> Vec<String> {
+    let mut c = vec!["pkexec".to_string(), format!("{LIBEXEC}{name}")];
+    c.extend(args);
+    c
+}
+pub fn shc(script: &str) -> Vec<String> {
+    vec!["sh".into(), "-c".into(), script.into()]
+}
+/// A KDE setting, written by KDE's own tool (KConfig: atomic, its lock), with KDE's "config changed" signal so the
+/// running Plasma takes it at once. `groups` nest ([AC][Display]).
+pub fn kw(file: &str, groups: &[&str], key: &str, value: &str) -> Vec<String> {
+    let mut c = sv(&["kwriteconfig6", "--notify", "--file", file]);
+    for g in groups {
+        c.push("--group".into());
+        c.push(g.to_string());
+    }
+    c.extend(sv(&["--key", key, value]));
+    c
+}
+pub fn kdel(file: &str, groups: &[&str], key: &str) -> Vec<String> {
+    let mut c = sv(&["kwriteconfig6", "--notify", "--file", file]);
+    for g in groups {
+        c.push("--group".into());
+        c.push(g.to_string());
+    }
+    c.extend(sv(&["--key", key, "--delete"]));
+    c
+}
+/// A line of a read: NAME=value from kreadconfig6 (for reads that gather KDE's settings).
+pub fn kr(name: &str, file: &str, groups: &[&str], key: &str) -> String {
+    let g: String = groups.iter().map(|g| format!(" --group {}", data::q(g))).collect();
+    format!("printf '%s=%s\\n' {} \"$(kreadconfig6 --file {}{g} --key {} 2>/dev/null)\"; ", data::q(name), data::q(file), data::q(key))
+}
+pub fn dbus(dest: &str, path: &str, method: &str, args: &[&str]) -> Vec<String> {
+    let mut c = sv(&["dbus-send", "--session", "--type=method_call", "--print-reply", &format!("--dest={dest}"), path, method]);
+    c.extend(args.iter().map(|a| a.to_string()));
+    c
+}
+pub fn nimbus_file(name: &str) -> std::path::PathBuf {
+    let cfg = std::env::var_os("XDG_CONFIG_HOME").map(std::path::PathBuf::from).unwrap_or_else(|| hearth_ui::paths::home().join(".config"));
+    cfg.join("nimbus").join(name)
+}
 
-/// A resolution, refresh rate or scale change: put on now, and back by itself in 15 s unless it's kept (the
-/// mockup's "X Keep these settings").
-fn display_change(st: &mut State, out: &str, set: String, undo: String) -> Task<Msg> {
-    st.keep = Some(Keep { undo: vec!["kscreen-doctor".into(), format!("output.{out}.{undo}")], left: 15 });
-    act(vec!["kscreen-doctor".into(), format!("output.{out}.{set}")], Src::Display, "That display setting didn't take")
+/// What each read runs (its key names it in State.v and in the fixture folder).
+fn reader(key: &'static str) -> Vec<String> {
+    match key {
+        // Display (hearth-screens: kscreen-doctor and KWin's D-Bus on Plasma, the same as Mantel on KWin)
+        "screens" => py("hearth-screens", &["info"]),
+        "ddc" => py("hearth-screens", &["ddc"]),
+        "gm" => py("hearth-gamemode-display", &["get"]),
+        "psr" => lx("hearth-screen-psr", &["status"]),
+        "bright" => shc("brightnessctl -m -c backlight 2>/dev/null | head -1"),
+        "nvidia" => shc("test -d /sys/module/nvidia && { cat \"${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/nvidia-drawing\" 2>/dev/null || echo auto; }"),
+        // Sound
+        "snd" => data::sh(data::SOUND),
+        "cards" => py("hearth-sound", &["cards"]),
+        "outputs" => py("hearth-sound", &["outputs"]),
+        "streams" => shc("echo '#@play'; pactl -f json list sink-inputs 2>/dev/null; echo; echo '#@rec'; pactl -f json list source-outputs 2>/dev/null; echo; echo '#@sinks'; pactl -f json list sinks 2>/dev/null; echo; echo '#@sources'; pactl -f json list sources 2>/dev/null; echo"),
+        "k-sound" => shc(&format!("{}{}{}", kr("overamp", "plasmaparc", &["General"], "RaiseMaximumVolume"), kr("theme", "kdeglobals", &["Sounds"], "Theme"), kr("enable", "kdeglobals", &["Sounds"], "Enable"))),
+        "fdo" => shc("test -d /usr/share/sounds/freedesktop/stereo && echo yes"),
+        // Notifications
+        "notify" => py("hearth-notify", &["get"]),
+        "desk" => py("hearth-desk", &["state"]),
+        "k-notify" => shc(&format!(
+            "{}{}{}{}{}printf 'now=%s\\n' \"$(date +%Y,%m,%d,%H,%M,%S)\"; f=\"${{XDG_CONFIG_HOME:-$HOME/.config}}/plasmanotifyrc\"; grep -o '^\\[Applications\\]\\[[^]]*\\]' \"$f\" 2>/dev/null | sed 's/^\\[Applications\\]\\[//; s/\\]$//' | sort -u | while read -r g; do for k in ShowPopups ShowInHistory ShowPopupsInDndMode; do printf 'app.%s.%s=%s\\n' \"$g\" \"$k\" \"$(kreadconfig6 --file plasmanotifyrc --group Applications --group \"$g\" --key $k 2>/dev/null)\"; done; done",
+            kr("until", "plasmanotifyrc", &["DoNotDisturb"], "Until"),
+            kr("fullscreen", "plasmanotifyrc", &["DoNotDisturb"], "WhenFullscreen"),
+            kr("sharing", "plasmanotifyrc", &["DoNotDisturb"], "WhenScreenSharing"),
+            kr("mirrored", "plasmanotifyrc", &["DoNotDisturb"], "WhenScreensMirrored"),
+            kr("sounds", "plasmanotifyrc", &["DoNotDisturb"], "NotificationSoundsMuted")
+        )),
+        // Power
+        "power" => py("hearth-power", &["status"]),
+        "hw" => lx("hearth-hwset", &["status"]),
+        "pset" => py("hearth-powerset", &["status"]),
+        "canoff" => shc(&format!("sh {} check >/dev/null 2>&1 && echo yes || echo no", data::q(&run::shell_helper("hearth-screen-power")))),
+        "k-power" => shc(&power::kde_read()),
+        "upower" => shc("upower --dump 2>/dev/null"),
+        "hist-charge" | "hist-rate" => Vec::new(),
+        // Memory, storage, drives
+        "memory" => lx("hearth-memory", &["status"]),
+        "disk" => sv(&["nimbus", "--settings-call", "diskspace.status", "{}"]),
+        "df" => data::sh(data::STORAGE),
+        "prefs" => py("hearth-files", &["prefs"]),
+        "thispc" => py("hearth-files", &["this-pc"]),
+        // Your desktop, Startup, Boot splash, Remote desktop
+        "deskchoice" => data::sh(data::DESK),
+        "server" => py("hearth-server-mode", &["status"]),
+        "k-session" => shc(&format!("{}{}", kr("login", "ksmserverrc", &["General"], "loginMode"), kr("confirm", "ksmserverrc", &["General"], "confirmLogout"))),
+        "boot" => lx("hearth-boot-look", &["status"]),
+        "vnc" => py("hearth-vnc", &["status"]),
+        // Date & time, Region & language
+        "time" => py("hearth-system", &["time"]),
+        "zones" => py("hearth-system", &["timezones"]),
+        "k-clock" => shc("grep -h -A40 'plugin=org.kde.plasma.digitalclock' \"${XDG_CONFIG_HOME:-$HOME/.config}/plasma-org.kde.plasma.desktop-appletsrc\" 2>/dev/null | grep -m1 '^use24hFormat=' | sed 's/^use24hFormat=/clock=/'"),
+        "region" => py("hearth-region", &["status"]),
+        "languages" => py("hearth-region", &["languages"]),
+        "spell" => py("hearth-region", &["spell"]),
+        "langpacks" => py("hearth-langpacks", &["status"]),
+        "im" => py("hearth-region", &["im"]),
+        // Clipboard, Search
+        "clip" => py("hearth-clipboard", &["status"]),
+        "k-clip" => shc(&format!(
+            "{}{}{}{}",
+            kr("max", "klipperrc", &["General"], "MaxClipItems"),
+            kr("keep", "klipperrc", &["General"], "KeepClipboardContents"),
+            kr("ignoresel", "klipperrc", &["General"], "IgnoreSelection"),
+            kr("sync", "klipperrc", &["General"], "SyncClipboards")
+        )),
+        "baloo" => shc("balooctl6 status 2>/dev/null || balooctl status 2>/dev/null"),
+        "k-search" => shc(&lang::kde_search_read()),
+        "hsearch" => py("hearth-search", &["status"]),
+        // About, Info Center
+        "about" => shc(about::ABOUT),
+        "updates" => vec!["pkexec".into(), data::ADMIN.into(), "update-status".into()],
+        "info-cpu" => py("hearth-info", &["cpu"]),
+        "info-gpu" => py("hearth-info", &["gpu"]),
+        "info-memory" => py("hearth-info", &["memory"]),
+        "info-graphics" => py("hearth-info", &["graphics"]),
+        "info-pci" => py("hearth-info", &["pci"]),
+        "info-usb" => py("hearth-info", &["usb"]),
+        "info-sensors" => py("hearth-info", &["sensors"]),
+        "info-modules" => py("hearth-info", &["modules"]),
+        "info-interrupts" => py("hearth-info", &["interrupts"]),
+        "live" => shc("test -e /run/hearth-live || grep -qw 'rd.live.image\\|boot=live' /proc/cmdline && echo live"),
+        _ => Vec::new(),
+    }
+}
+
+/// The reads a page does as it opens (only reads).
+fn reads_of(page: &str) -> &'static [&'static str] {
+    match page {
+        "display" => &["screens", "gm", "psr", "bright", "nvidia", "ddc"],
+        "sound" => &["snd", "cards", "streams", "k-sound"],
+        "sound-speakers" => &["outputs"],
+        "sound-apps" => &["streams"],
+        "sounds" => &["k-sound", "fdo"],
+        "notifications" => &["notify", "desk", "k-notify"],
+        "power" => &["power", "hw", "pset", "canoff", "k-power"],
+        "power-profiles" => &["pset", "hw", "k-power", "power"],
+        "power-awake" => &["pset"],
+        "battery" | "info-energy" => &["pset", "upower"],
+        "memory" => &["memory"],
+        "storage" => &["disk", "df"],
+        "drives" => &["prefs", "thispc"],
+        "your-desktop" => &["deskchoice"],
+        "startup" => &["server", "k-session"],
+        "boot" => &["boot"],
+        "remote-desktop" => &["vnc"],
+        "datetime" => &["time", "zones", "k-clock"],
+        "region" => &["region"],
+        "languages" => &["languages", "region"],
+        "spellcheck" => &["spell"],
+        "language-packs" => &["langpacks"],
+        "input-methods" => &["im"],
+        "clipboard" => &["clip", "k-clip"],
+        "search" => &["baloo", "k-search", "hsearch"],
+        "about" => &["about", "updates"],
+        "info-cpu" => &["info-cpu"],
+        "info-gpu" => &["info-gpu"],
+        "info-memory" => &["info-memory"],
+        "info-graphics" => &["info-graphics"],
+        "info-pci" => &["info-pci"],
+        "info-usb" => &["info-usb"],
+        "info-sensors" => &["info-sensors"],
+        "info-modules" => &["info-modules"],
+        "info-interrupts" => &["info-interrupts"],
+        "install" => &["live"],
+        _ => &[],
+    }
+}
+
+/// Runs the programs of a change in turn, each with its own time limit, on its own thread: text for the first one on
+/// its stdin and in HEARTH_INPUT (never on a command line). Stops at the first that fails.
+pub fn job(cmds: Vec<Vec<String>>, input: String, secs: u64) -> impl std::future::Future<Output = run::Output> + Send + 'static {
+    let (tx, rx) = futures::channel::oneshot::channel();
+    let _ = std::thread::Builder::new().name("settings-system".into()).spawn(move || {
+        let mut all = run::Output { ok: true, code: 0, out: String::new(), err: String::new() };
+        for (i, cmd) in cmds.iter().enumerate() {
+            let o = one(cmd, if i == 0 { &input } else { "" }, secs.max(1));
+            all.out.push_str(&o.out);
+            all.err.push_str(&o.err);
+            all.code = o.code;
+            if !o.ok {
+                all.ok = false;
+                break;
+            }
+        }
+        let _ = tx.send(all);
+    });
+    async move { rx.await.unwrap_or(run::Output { ok: false, code: -1, out: String::new(), err: "it stopped".into() }) }
+}
+
+fn one(cmd: &[String], input: &str, secs: u64) -> run::Output {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let fail = |e: String| run::Output { ok: false, code: -1, out: String::new(), err: e };
+    let Some((prog, args)) = cmd.split_first() else { return fail("nothing to run".into()) };
+    let child = Command::new(prog)
+        .args(args)
+        .env("HEARTH_INPUT", input)
+        .stdin(if input.is_empty() { Stdio::null() } else { Stdio::piped() })
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+    let mut child = match child {
+        Ok(c) => c,
+        Err(e) => return fail(format!("{prog} isn't on this system ({e})")),
+    };
+    if let Some(mut si) = child.stdin.take() {
+        let _ = si.write_all(input.as_bytes());
+    }
+    let pid = child.id() as i32;
+    let (tx, rx) = std::sync::mpsc::channel();
+    let _ = std::thread::Builder::new().name("settings-system-wait".into()).spawn(move || {
+        let _ = tx.send(child.wait_with_output());
+    });
+    match rx.recv_timeout(std::time::Duration::from_secs(secs)) {
+        Ok(Ok(o)) => run::Output {
+            ok: o.status.success(),
+            code: o.status.code().unwrap_or(-1),
+            out: String::from_utf8_lossy(&o.stdout).to_string(),
+            err: String::from_utf8_lossy(&o.stderr).to_string(),
+        },
+        Ok(Err(e)) => fail(e.to_string()),
+        Err(_) => {
+            unsafe {
+                libc::kill(pid, libc::SIGTERM);
+            }
+            fail(format!("{} took too long, so it was stopped", prog.rsplit('/').next().unwrap_or(prog)))
+        }
+    }
+}
+
+fn fixture(key: &str) -> Option<String> {
+    let dir = std::env::var_os("HEARTH_SYSTEM_FIXTURE")?;
+    std::fs::read_to_string(std::path::Path::new(&dir).join(key)).ok()
+}
+
+pub fn read(key: &'static str) -> Task<Msg> {
+    if let Some(text) = fixture(key) {
+        return Task::done(Msg::Got(key, run::Output { ok: true, code: 0, out: text, err: String::new() }));
+    }
+    let cmd = reader(key);
+    if cmd.is_empty() {
+        return Task::none();
+    }
+    let secs = if key == "ddc" { 40 } else { 25 };
+    Task::perform(job(vec![cmd], String::new(), secs), move |o| Msg::Got(key, o))
+}
+
+/// A read whose program depends on the page (a battery's history): kept like any read, from the fixture in CI.
+pub fn read_cmd(key: &'static str, cmd: Vec<String>) -> Task<Msg> {
+    if let Some(text) = fixture(key) {
+        return Task::done(Msg::Got(key, run::Output { ok: true, code: 0, out: text, err: String::new() }));
+    }
+    Task::perform(job(vec![cmd], String::new(), 25), move |o| Msg::Got(key, o))
+}
+
+pub fn exec(ex: Ex) -> Task<Msg> {
+    if ex.cmds.is_empty() {
+        return Task::done(Msg::Done(ex, run::Output { ok: true, code: 0, out: String::new(), err: String::new() }));
+    }
+    let (cmds, input, secs) = (ex.cmds.clone(), ex.input.clone(), ex.secs.max(5));
+    Task::perform(job(cmds, input, secs), move |o| Msg::Done(ex.clone(), o))
+}
+
+/// Hearth's small settings files a page shows (read here, written only through hearth_settings_io).
+fn files_of(page: &str) -> &'static [&'static str] {
+    match page {
+        "sound" | "power" => &["buttons.json"],
+        "sounds" => &["sounds.json"],
+        "notifications" => &["notify.json"],
+        "datetime" => &["bar.json"],
+        "clipboard" => &["clipboard.json"],
+        _ => &[],
+    }
+}
+
+/// "NAME=value" lines (the KDE reads) as a JSON object of strings.
+fn kv(text: &str) -> Value {
+    let mut m = serde_json::Map::new();
+    for l in text.lines() {
+        if let Some((k, v)) = l.split_once('=') {
+            m.insert(k.trim().to_string(), Value::String(v.trim().to_string()));
+        }
+    }
+    Value::Object(m)
+}
+
+pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
+    st.page = page;
+    st.open.clear();
+    st.desk_saved = false;
+    st.rename = None;
+    st.settle = None;
+    st.start = data::start_mode();
+    sh.desktop = crate::shared::read_desktop();
+    for f in files_of(page) {
+        st.files.insert(f, hearth_ui::settings_file::read_json(&nimbus_file(f)));
+    }
+    if page == "battery" || page == "info-energy" {
+        st.num.entry("hours").or_insert(24.0);
+    }
+    Task::batch(reads_of(page).iter().map(|k| read(k)))
+}
+
+/// After a read: the pages that read more once they know something (a battery's history once its path is known).
+fn after_read(st: &mut State, key: &'static str) -> Task<Msg> {
+    match key {
+        "pset" if st.page == "battery" || st.page == "info-energy" => power::history(st),
+        _ => Task::none(),
+    }
 }
 
 pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
     match m {
-        Msg::Got(src, o) => match src {
-            Src::Display => {
-                st.display = data::display(&o.out);
-                st.display_read = true;
+        Msg::Got(key, o) => {
+            let val = if key.starts_with("k-") { kv(&o.out) } else if o.ok { o.json().unwrap_or(Value::Null) } else { Value::Null };
+            match key {
+                "deskchoice" => st.desk = data::desk(&o.out),
+                "updates" => {
+                    if let Some(v) = o.json().filter(|_| o.ok) {
+                        st.updates = data::updates(&v);
+                    }
+                }
+                _ => {}
             }
-            Src::Sound => {
-                st.sound = data::sound(&o.out);
-                st.sound_read = true;
+            st.read_ok.insert(key, o.ok);
+            st.raw.insert(key, if o.ok { o.out.clone() } else { o.why() });
+            st.v.insert(key, val);
+            if key == "screens" {
+                display::took(st);
             }
-            Src::Power => st.power = data::power(&o.out),
-            Src::Storage => st.storage = data::storage(&o.out),
-            Src::Time => {
-                let zones = std::mem::take(&mut st.time.zones);
-                st.time = data::time(&o.out);
-                st.time.zones = zones;
+            return after_read(st, key);
+        }
+        Msg::Exec(ex) => {
+            if !ex.input.is_empty() {
+                // A password typed for a change goes to the helper's stdin only; the field is emptied.
+                st.text.remove("vncpw");
+                st.flag.remove("pwopen");
             }
-            Src::Zones => st.time.zones = o.out.lines().map(String::from).collect(),
-            Src::Desk => st.desk = data::desk(&o.out),
-            Src::Updates => {
-                if let Some(v) = o.json().filter(|_| o.ok) {
-                    st.updates = data::updates(&v);
+            sh.error.clear();
+            sh.note.clear();
+            st.busy = "Working on it…".into();
+            return exec(ex);
+        }
+        Msg::Done(ex, o) => {
+            st.busy.clear();
+            if !o.ok {
+                let why = o.why();
+                let what = if ex.fail.is_empty() { "That didn't work" } else { ex.fail.as_str() };
+                sh.error = if why.is_empty() { what.to_string() } else { format!("{what}: {why}") };
+            } else if !ex.ok.is_empty() {
+                sh.note = ex.ok.clone();
+            }
+            if let Some(k) = ex.store {
+                if let Some(v) = o.json() {
+                    st.v.insert(k, v);
+                    if k == "screens" {
+                        display::took(st);
+                    }
                 }
             }
-        },
-        Msg::Did(src, what, o) => {
-            sh.result(what, &o);
-            return read(src);
+            return Task::batch(ex.re.iter().map(|k| read(k)));
         }
-        Msg::Vol(v) => st.sound.vol = v,
-        Msg::VolSet => return act(vec!["wpctl".into(), "set-volume".into(), "@DEFAULT_AUDIO_SINK@".into(), format!("{:.2}", st.sound.vol)], Src::Sound, "Couldn't change the volume"),
-        Msg::Mute => return act(data::sh("wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle"), Src::Sound, "Couldn't mute"),
-        Msg::Mic(v) => st.sound.mic = v,
-        Msg::MicSet => return act(vec!["wpctl".into(), "set-volume".into(), "@DEFAULT_AUDIO_SOURCE@".into(), format!("{:.2}", st.sound.mic)], Src::Sound, "Couldn't change the microphone's volume"),
-        Msg::MicMute => return act(data::sh("wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle"), Src::Sound, "Couldn't mute the microphone"),
-        Msg::Out(n) => return act(vec!["pactl".into(), "set-default-sink".into(), n], Src::Sound, "Couldn't switch the speakers"),
-        Msg::In(n) => return act(vec!["pactl".into(), "set-default-source".into(), n], Src::Sound, "Couldn't switch the microphone"),
-        Msg::Bright(v) => st.display.bright = Some(v),
-        Msg::BrightSet => {
-            if let Some(b) = st.display.bright {
-                return act(vec!["brightnessctl".into(), "-q".into(), "-c".into(), "backlight".into(), "set".into(), format!("{}%", b.max(1))], Src::Display, "Couldn't change the brightness");
+        Msg::Desk(v, ex) => {
+            let mut ex = ex;
+            ex.cmds.insert(0, sh.desktop_cmd(v));
+            return update(sh, st, Msg::Exec(ex));
+        }
+        Msg::Json(file, v, ex) => {
+            let mut ex = ex;
+            ex.cmds.insert(0, sh.json_cmd(&nimbus_file(file), v.clone()));
+            // The page shows the change at once (the file is merged the same way).
+            let cur = st.files.entry(file).or_insert(Value::Object(Default::default()));
+            if let (Value::Object(c), Value::Object(n)) = (cur, &v) {
+                for (k, x) in n {
+                    c.insert(k.clone(), x.clone());
+                }
+            }
+            return update(sh, st, Msg::Exec(ex));
+        }
+        Msg::Text(k, s) => {
+            st.text.insert(k, s);
+        }
+        Msg::Flag(k, b) => {
+            st.flag.insert(k, b);
+        }
+        Msg::Num(k, v) => {
+            st.num.insert(k, v);
+            if k == "hours" {
+                return power::history(st);
             }
         }
-        Msg::Night(on) => return act(data::night_cmd(on), Src::Display, "Couldn't change Night light"),
-        Msg::Res(out, w, h) => {
-            if let Some(o) = st.display.outputs.iter().find(|o| o.name == out).cloned() {
-                if let Some(id) = o.mode_for(w, h) {
-                    return display_change(st, &o.name, format!("mode.{id}"), format!("mode.{}", o.current));
+        Msg::NumOf(k, v) => {
+            st.numof.insert(k.clone(), v);
+            st.text.insert("numof", k);
+        }
+        Msg::NumDone(k) => return slider_done(sh, st, k),
+        Msg::Open(k) => st.open = if st.open == k { String::new() } else { k },
+        Msg::Go(id) => sh.go(id),
+        Msg::App(cmd) => {
+            let c: Vec<&str> = cmd.iter().map(|s| s.as_str()).collect();
+            run::detached(&c);
+        }
+        Msg::Reread(k) => return read(k),
+        Msg::Draft(target, path, v) => {
+            if path.is_empty() {
+                st.v.remove(target);
+            } else {
+                let d = st.v.entry(target).or_insert_with(|| Value::Object(Default::default()));
+                if !d.is_object() {
+                    *d = Value::Object(Default::default());
+                }
+                let parts: Vec<&str> = path.splitn(2, '.').collect();
+                if parts.len() == 2 {
+                    if !d[parts[0]].is_object() {
+                        d[parts[0]] = Value::Object(Default::default());
+                    }
+                    d[parts[0]][parts[1]] = v;
+                } else {
+                    d[parts[0]] = v;
                 }
             }
         }
-        Msg::Rate(out, id) => {
-            if let Some(o) = st.display.outputs.iter().find(|o| o.name == out).cloned() {
-                return display_change(st, &o.name, format!("mode.{id}"), format!("mode.{}", o.current));
+        Msg::Seq(list) => {
+            let mut t = Vec::new();
+            for m in list {
+                t.push(update(sh, st, m));
             }
+            return Task::batch(t);
         }
-        Msg::Scale(out, sc) => {
-            if let Some(o) = st.display.outputs.iter().find(|o| o.name == out).cloned() {
-                return display_change(st, &o.name, format!("scale.{sc}"), format!("scale.{}", o.scale));
-            }
+        Msg::Pick(n) => {
+            // A change waiting for Keep stays waiting (it still goes back by itself unless it's kept).
+            st.picked = n;
+            display::took(st);
         }
-        Msg::Keep => st.keep = None,
-        Msg::Revert => {
-            if let Some(k) = st.keep.take() {
-                return act(k.undo, Src::Display, "Couldn't put the display back");
-            }
-        }
+        Msg::Try(changes) => return display::try_change(sh, st, changes),
+        Msg::SetNow(changes, label) => return display::set_now(st, changes, label),
+        Msg::Keep => return display::keep(st),
+        Msg::Revert => return display::revert(sh, st, false),
         Msg::Tick => {
             let done = match st.keep.as_mut() {
                 Some(k) => {
@@ -209,233 +740,116 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
                 None => false,
             };
             if done {
-                return update(sh, st, Msg::Revert);
+                return display::revert(sh, st, true);
             }
         }
-        Msg::Profile(pr) => return act(vec!["powerprofilesctl".into(), "set".into(), pr], Src::Power, "Couldn't change the power mode"),
-        Msg::Ntp(on) => return act(s(&["timedatectl", "set-ntp", if on { "true" } else { "false" }]), Src::Time, "Couldn't change that"),
-        Msg::ZoneQuery(q) => st.zone_query = q,
-        Msg::Zone(z) => {
-            st.zone_query.clear();
-            return act(vec!["timedatectl".into(), "set-timezone".into(), z], Src::Time, "Couldn't change the time zone");
+        Msg::Settle => {
+            if let Some((k, n)) = st.settle {
+                if n <= 1 {
+                    st.settle = None;
+                    return slider_save(sh, st, k);
+                }
+                st.settle = Some((k, n - 1));
+            }
         }
-        Msg::Desk(pick) => {
-            st.desk_saved = true;
-            st.desk.chosen = pick.to_string();
-            return act(data::desk_cmd(&st.desk, pick), Src::Desk, "Couldn't save the desktop");
-        }
-        Msg::SwitchNow => run::detached(&["nimbus-mode", "desktop"]),
-        Msg::StartIn(mode) => {
-            st.start = mode.to_string();
-            let cmd = sh.conf_cmd(&data::session_conf(), "NIMBUS_START_MODE", mode);
-            return act(cmd, Src::Desk, "Couldn't save Start in");
-        }
+        Msg::Live => return Task::batch(live_reads(st.page).iter().map(|k| read(k))),
         Msg::Rename => st.rename = Some(sh.info.host.clone()),
         Msg::RenameText(t) => st.rename = Some(data::host_chars(&t)),
         Msg::RenameSave => {
             if let Some(n) = st.rename.take().filter(|n| !n.is_empty()) {
                 sh.info.host = n.clone();
-                return act(vec!["pkexec".into(), data::ADMIN.into(), "hostname".into(), n], Src::Updates, "Couldn't rename this PC");
+                return exec(Ex::new(vec!["pkexec".into(), data::ADMIN.into(), "hostname".into(), n]).fail("Couldn't rename this PC").ok("Renamed").re("about"));
             }
         }
         Msg::RenameCancel => st.rename = None,
-        Msg::OpenApp(bin) => run::detached(&[bin]),
-        Msg::Go(id) => sh.go(id),
+        Msg::Desktop(pick) => {
+            st.desk_saved = true;
+            st.desk.chosen = pick.to_string();
+            return exec(Ex::new(data::desk_cmd(&st.desk, pick)).fail("Couldn't save the desktop").re("deskchoice"));
+        }
+        Msg::SwitchNow => run::detached(&["nimbus-mode", "desktop"]),
+        Msg::StartIn(mode) => {
+            st.start = mode.to_string();
+            let cmd = sh.conf_cmd(&data::session_conf(), "NIMBUS_START_MODE", mode);
+            return exec(Ex::new(cmd).fail("Couldn't save Start in").re("server"));
+        }
     }
     Task::none()
 }
 
+/// A slider was let go: what it saves waits a moment (Mantel's pages wait too), so a quick second move is one save.
+fn slider_done(sh: &mut Shared, st: &mut State, k: &'static str) -> Task<Msg> {
+    match k {
+        // Saved at once: one program each.
+        "vol" | "mic" | "bright" | "balance" => slider_save(sh, st, k),
+        _ => {
+            st.settle = Some((k, 1));
+            Task::none()
+        }
+    }
+}
+
+fn slider_save(sh: &mut Shared, st: &mut State, k: &'static str) -> Task<Msg> {
+    match k {
+        "vol" | "mic" | "balance" | "appvol" | "recvol" => sound::slider_save(sh, st, k),
+        "bright" | "autooff" | "sdr" | "gamut" | "overscan" | "barrier" | "nighttemp" | "ext" => display::slider_save(sh, st, k),
+        "tdp" => power::slider_save(sh, st, k),
+        _ => Task::none(),
+    }
+}
+
+/// Pages that change by themselves while they're open (Mantel's refresh their reads too): what they read again.
+fn live_reads(page: &str) -> &'static [&'static str] {
+    match page {
+        "power-awake" => &["pset"],
+        "datetime" => &["time"],
+        "info-sensors" => &["info-sensors"],
+        "info-interrupts" => &["info-interrupts"],
+        "remote-desktop" => &["vnc"],
+        "memory" => &["memory"],
+        _ => &[],
+    }
+}
+fn live_every(st: &State) -> u64 {
+    match st.page {
+        "power-awake" => 6,
+        "datetime" => 20,
+        "info-sensors" | "info-interrupts" => 3,
+        "remote-desktop" if vb(st.j("vnc"), "on") => 5,
+        "memory" if st.busy.is_empty() => 5,
+        _ => 0,
+    }
+}
+
 pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
+    if !PAGES.contains(&page) {
+        return None;
+    }
     Some(match page {
-        "display" => display(a),
-        "sound" => sound(a),
-        "power" => power(a),
-        "storage" => storage(a),
-        "your-desktop" => your_desktop(a),
+        "display" => display::view(a),
+        "sound" | "sound-speakers" | "sound-apps" | "push-to-talk" | "sounds" => sound::view(a, page),
+        "info-energy" => column![about::tabs(&a.sh.p, page), power::view(a, page)].spacing(10.0).into(),
+        "power" | "power-profiles" | "power-awake" | "battery" => power::view(a, page),
+        "notifications" | "memory" | "storage" | "drives" | "your-desktop" | "boot" | "remote-desktop" => more::view(a, page),
         "startup" => startup(a),
-        "datetime" => datetime(a),
-        "about" => about(a),
-        _ => return None,
+        "datetime" | "region" | "languages" | "spellcheck" | "language-packs" | "input-methods" | "clipboard" | "search" => lang::view(a, page),
+        _ => about::view(a, page),
     })
 }
 
-fn display(a: &App) -> Element<'_, Msg> {
-    let p = a.sh.p;
-    let st = &a.system;
-    let d = &st.display;
-    let mut c = Column::new().spacing(10.0);
-    if !d.ok {
-        c = c.push(note(&p, if st.display_read { "Your displays couldn't be read (KDE's kscreen-doctor didn't answer)." } else { "Reading your displays…" }, st.display_read));
-    }
-    let Some(main) = d.outputs.first() else { return c.into() };
-    let mut boxes = Row::new().spacing(14.0).align_y(iced::Center);
-    for n in 0..d.outputs.len() {
-        let big = n == 0;
-        boxes = boxes.push(
-            container(tb(format!("{}", n + 1), if big { 34.0 } else { 26.0 }, p.text))
-                .center_x(Length::Fixed(if big { 240.0 } else { 156.0 }))
-                .center_y(Length::Fixed(if big { 136.0 } else { 88.0 }))
-                .style(ui::boxed(if big { Pal::mix(p.panel2, p.accent, 0.08) } else { p.panel2 }, p.r(8.0), Some((if big { p.accent } else { p.line }, 2.0)))),
-        );
-    }
-    let cur = main.cur();
-    let facts = cur.map(|m| format!("{} × {} · {} Hz · scale {}%", m.w, m.h, m.hz.round(), (main.scale * 100.0).round())).unwrap_or_default();
-    let gpu = if a.sh.info.gpu.is_empty() { String::new() } else { format!(" · connected to the {}", a.sh.info.gpu) };
-    c = c.push(card(&p, row![boxes, column![ts(format!("{} · main display", main.name), sz(18.0), p.text), t(format!("{facts}{gpu}"), sz(13.0), p.muted)].spacing(6.0)].spacing(26.0).align_y(iced::Center)));
-    if let Some(k) = &st.keep {
-        c = c.push(card(&p, row![
-            column![ts("Keep these display settings?", sz(15.0), p.text), t(format!("The old ones come back by themselves in {} s.", k.left), sz(13.0), p.muted)].spacing(2.0).width(Length::Fill),
-            btn(&p, "Keep these settings", Kind::Primary, false, Some(Msg::Keep)),
-            btn(&p, "Put back", Kind::Normal, false, Some(Msg::Revert))
-        ].spacing(10.0).align_y(iced::Center)));
-    }
-    c = c.push(head(&p, "Brightness & colour"));
-    if let Some(b) = d.bright {
-        c = c.push(srow(&p, G::Display, "Brightness", format!("{b}%"), slider_u32(b, 1..=100, Msg::Bright, Msg::BrightSet)));
-    }
-    c = c.push(srow(&p, G::Moon, "Night light", "Warmer colours from sunset to sunrise", switch(&p, d.night, Some(Msg::Night(!d.night)))));
-    c = c.push(head(&p, "Scale & layout"));
-    let name = main.name.clone();
-    let scales = [1.0f32, 1.25, 1.5, 1.75, 2.0];
-    c = c.push(srow(&p, G::Grid, "Scale", "Text, apps and the bar", seg(&p, scales.iter().map(|sc| (format!("{}%", (sc * 100.0).round()), (main.scale - sc).abs() < 0.01, Some(Msg::Scale(name.clone(), *sc)))).collect())));
-    let rec = main.preferred.first().and_then(|id| main.modes.iter().find(|m| &m.id == id)).map(|m| format!("Recommended: {} × {}", m.w, m.h)).unwrap_or_default();
-    let shown: Vec<(u32, u32)> = main.sizes().into_iter().take(3).collect();
-    c = c.push(srow(&p, G::Display, "Resolution", rec, seg(&p, shown.iter().map(|(w, h)| (format!("{w} × {h}"), cur.map(|m| m.w == *w && m.h == *h).unwrap_or(false), Some(Msg::Res(name.clone(), *w, *h)))).collect())));
-    c = c.push(srow(&p, G::Update, "Refresh rate", "How many pictures a second the display shows", seg(&p, main.rates().into_iter().take(4).map(|(hz, id)| (format!("{hz} Hz"), cur.map(|m| m.id == id).unwrap_or(false), Some(Msg::Rate(name.clone(), id)))).collect())));
-    c.into()
-}
-
-fn sound(a: &App) -> Element<'_, Msg> {
-    let p = a.sh.p;
-    let st = &a.system;
-    let s = &st.sound;
-    let mut c = Column::new().spacing(10.0);
-    if !s.ok {
-        return note(&p, if st.sound_read { "Sound couldn't be read (PipeWire's wpctl didn't answer)." } else { "Reading sound…" }, st.sound_read);
-    }
-    c = c.push(head(&p, "Output"));
-    c = c.push(srow(&p, G::Sound, "Volume", if s.muted { "Muted".to_string() } else { format!("{}%", (s.vol * 100.0).round()) }, row![
-        slider_f32(s.vol.min(1.0), 0.0..=1.0, 0.01, Msg::Vol, Msg::VolSet),
-        btn(&p, if s.muted { "Unmute" } else { "Mute" }, Kind::Normal, false, Some(Msg::Mute))
-    ].spacing(14.0).align_y(iced::Center).into()));
-    for o in &s.outs {
-        let on = o.name == s.out;
-        c = c.push(srow(&p, G::Sound, o.desc.clone(), if on { "Playing here" } else { "" }, if on { t1("In use", sz(13.0), p.accent).into() } else { btn(&p, "Use", Kind::Normal, false, Some(Msg::Out(o.name.clone()))) }));
-    }
-    c = c.push(head(&p, "Input"));
-    c = c.push(srow(&p, G::Sound, "Microphone", if s.mic_muted { "Muted".to_string() } else { format!("{}%", (s.mic * 100.0).round()) }, row![
-        slider_f32(s.mic.min(1.0), 0.0..=1.0, 0.01, Msg::Mic, Msg::MicSet),
-        btn(&p, if s.mic_muted { "Unmute" } else { "Mute" }, Kind::Normal, false, Some(Msg::MicMute))
-    ].spacing(14.0).align_y(iced::Center).into()));
-    for o in &s.ins {
-        let on = o.name == s.inp;
-        c = c.push(srow(&p, G::Sound, o.desc.clone(), if on { "Recording from here" } else { "" }, if on { t1("In use", sz(13.0), p.accent).into() } else { btn(&p, "Use", Kind::Normal, false, Some(Msg::In(o.name.clone()))) }));
-    }
-    c.into()
-}
-
-fn power(a: &App) -> Element<'_, Msg> {
-    let p = a.sh.p;
-    let w = &a.system.power;
-    let mut c = Column::new().spacing(10.0);
-    if let Some(b) = w.battery {
-        c = c.push(srow(&p, G::Power, "Battery", format!("{b}% · {}", if w.charging.is_empty() { "Unknown" } else { w.charging.as_str() }), bar_of(&p, b as f64, 100.0)));
-    }
-    if w.profiles.is_empty() {
-        c = c.push(srow(&p, G::Power, "Power mode", "This PC doesn't offer power modes", t1("", 13.0, p.muted).into()));
-    } else {
-        c = c.push(srow(&p, G::Power, "Power mode", "Power saver for a longer battery, Performance for games", seg(&p, w.profiles.iter().map(|pr| (data::profile_name(pr).to_string(), *pr == w.profile, Some(Msg::Profile(pr.clone())))).collect())));
-    }
-    c.into()
-}
-
-fn storage(a: &App) -> Element<'_, Msg> {
-    let p = a.sh.p;
-    column![card(&p, drive_rows(&p, &a.system.storage)), link_row(&p, G::Drive, "Disk Usage", "What's using the space, folder by folder", Msg::OpenApp("hearth-disk-usage"))].spacing(10.0).into()
-}
-
-fn startup(a: &App) -> Element<'_, Msg> {
-    let p = a.sh.p;
-    let st = &a.system;
-    column![srow(&p, G::Power, "Start in", "What this PC opens when it turns on", seg(&p, vec![
-        ("Game Mode".into(), st.start == "game", Some(Msg::StartIn("game"))),
-        ("Desktop Mode".into(), st.start == "desktop", Some(Msg::StartIn("desktop"))),
-    ]))]
-    .into()
-}
-
-fn datetime(a: &App) -> Element<'_, Msg> {
-    let p = a.sh.p;
-    let st = &a.system;
-    let tm_ = &st.time;
-    let mut c = Column::new().spacing(10.0);
-    c = c.push(srow(&p, G::Clock, "Set the time by itself", "From the internet (NTP)", switch(&p, tm_.ntp, Some(Msg::Ntp(!tm_.ntp)))));
-    c = c.push(srow(&p, G::Clock, "Time zone", if tm_.zone.is_empty() { "…".to_string() } else { tm_.zone.clone() }, field(&p, "Find a time zone", &st.zone_query, Msg::ZoneQuery).width(Length::Fixed(280.0)).into()));
-    if st.zone_query.chars().count() >= 2 {
-        let q = st.zone_query.to_lowercase().replace(' ', "_");
-        for z in tm_.zones.iter().filter(|z| z.to_lowercase().contains(&q)).take(12) {
-            c = c.push(pick_row(&p, z.replace('_', " "), Msg::Zone(z.clone())));
-        }
-    }
-    c.into()
-}
-
-fn your_desktop(a: &App) -> Element<'_, Msg> {
-    let p = a.sh.p;
-    let st = &a.system;
-    let d = &st.desk;
-    let mut opts: Vec<(&'static str, &'static str, &'static str)> = vec![("plasma", "KDE Plasma", "The desktop, with Hearth's look (the default)")];
-    if d.rust {
-        opts.push(("firehold-rust", "Firehold (Rust, test)", "Hearth's own Couch and Desk, all in Rust. If it doesn't start, KDE Plasma opens"));
-    }
-    if d.plasma_fh {
-        opts.push(("firehold-plasma", "Firehold (Plasma, test)", "Firehold's Couch and Desk on KDE Plasma"));
-    }
-    let mut c = Column::new().spacing(10.0).push(t("What Desktop Mode opens. Nothing changes until you switch to Desktop Mode again.", sz(14.0), p.muted));
-    for (id, name, sub) in opts {
-        let on = d.chosen == id;
-        c = c.push(srow(&p, G::Grid, name, sub, if on { t1("Picked", sz(13.0), p.accent).into() } else { btn(&p, "Use", Kind::Normal, false, Some(Msg::Desk(id))) }));
-    }
-    if st.desk_saved {
-        c = c.push(card(&p, row![
-            column![ts("Saved", sz(15.0), p.text), t("It opens the next time you switch to Desktop Mode. Switching now closes open apps.", sz(13.0), p.muted)].spacing(2.0).width(Length::Fill),
-            btn(&p, "Switch now", Kind::Primary, false, Some(Msg::SwitchNow))
-        ].spacing(10.0).align_y(iced::Center)));
-    }
-    c.into()
-}
-
-fn about(a: &App) -> Element<'_, Msg> {
-    let p = a.sh.p;
-    let st = &a.system;
-    let i = &a.sh.info;
-    let mut c = Column::new().spacing(10.0);
-    c = c.push(match &st.rename {
-        Some(n) => card(&p, crate::cats::home::rename_box(&p, n, Msg::RenameText, Msg::RenameSave, Msg::RenameCancel)),
-        None => srow(&p, G::Info, if i.host.is_empty() { "This PC".to_string() } else { i.host.clone() }, "This PC's name on your network", btn(&p, "Rename", Kind::Normal, false, Some(Msg::Rename))),
-    });
-    let mem = if i.mem_kb > 0 { ui::bytes(i.mem_kb as f64 * 1024.0) } else { String::new() };
-    let fedora = st.updates.booted_image.contains("hearth-os:") || i.os.contains("Fedora") || i.os.to_lowercase().contains("anatase");
-    c = c.push(card(&p, column![
-        fact(&p, "Hearth OS", format!("{}{}", data::shown_version(&st.updates.booted), if fedora { " · Fedora edition" } else { "" })),
-        fact(&p, "Built on", i.os.clone()),
-        fact(&p, "Image", st.updates.booted_image.clone()),
-        fact(&p, "Kernel", i.kernel.clone()),
-        fact(&p, "Processor", data::short_cpu(&i.cpu)),
-        fact(&p, "Graphics", i.gpu.clone()),
-        fact(&p, "Memory", mem),
-        fact(&p, "Desktop", i.desktop.clone()),
-    ].spacing(10.0)));
-    c = c.push(link_row(&p, G::Info, "System Info", "Everything about this PC's parts, to copy or send", Msg::OpenApp("hearth-system-info")));
-    c.into()
-}
-
 pub fn subscription(st: &State) -> Subscription<Msg> {
+    let mut s = Vec::new();
     if st.keep.is_some() {
-        iced::time::every(std::time::Duration::from_secs(1)).map(|_| Msg::Tick)
-    } else {
-        Subscription::none()
+        s.push(iced::time::every(std::time::Duration::from_secs(1)).map(|_| Msg::Tick));
     }
+    if st.settle.is_some() {
+        s.push(iced::time::every(std::time::Duration::from_millis(600)).map(|_| Msg::Settle));
+    }
+    let n = live_every(st);
+    if n > 0 && PAGES.contains(&st.page) {
+        s.push(iced::time::every(std::time::Duration::from_secs(n)).map(|_| Msg::Live));
+    }
+    Subscription::batch(s)
 }
 
 pub fn dialog<'a>(_a: &'a App) -> Option<(Element<'a, Msg>, Option<Msg>)> {
@@ -443,5 +857,233 @@ pub fn dialog<'a>(_a: &'a App) -> Option<(Element<'a, Msg>, Option<Msg>)> {
 }
 
 pub fn back(st: &mut State) -> bool {
+    if !st.open.is_empty() {
+        st.open.clear();
+        return true;
+    }
     st.rename.take().is_some()
+}
+
+// ------------------------------------------------------------------ pieces the pages share
+
+pub type El<'a> = Element<'a, Msg>;
+
+/// Choices side by side (Mantel's SetChoice), each with what picking it sends.
+pub fn choice<'a>(p: &Pal, items: Vec<(String, bool, Msg)>) -> El<'a> {
+    seg(p, items.into_iter().map(|(l, on, m)| (l, on, Some(m))).collect())
+}
+
+/// A switch that sends `m` when pressed.
+pub fn sw<'a>(p: &Pal, on: bool, m: Msg) -> El<'a> {
+    switch(p, on, Some(m))
+}
+
+/// A row that only says something (no control).
+pub fn info_row<'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>) -> El<'a> {
+    srow(p, g, title, sub, iced::widget::Space::new().width(Length::Fixed(0.0)).into())
+}
+
+/// A row with a value on the right (In use, 82%…).
+pub fn value_row<'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, value: impl Into<String>, accent: bool) -> El<'a> {
+    srow(p, g, title, sub, t1(value.into(), sz(13.0), if accent { p.accent } else { p.muted }).into())
+}
+
+/// A row you press (no chevron): the button's words on the right.
+pub fn act_row<'a>(p: &Pal, g: G, title: impl Into<String>, sub: impl Into<String>, label: impl Into<String>, m: Option<Msg>) -> El<'a> {
+    srow(p, g, title, sub, pill(p, label.into(), true, m))
+}
+
+/// Mantel's SetDropdown, in Settings' look: the row shows what's picked and Change; pressing it lists the choices
+/// under it (with a field to narrow a long list), and picking one sends `on(id)`.
+pub fn chooser<'a>(a: &'a App, key: &str, g: G, title: impl Into<String>, sub: impl Into<String>, options: Vec<(String, String)>, current: &str, on: impl Fn(String) -> Msg + 'a) -> El<'a> {
+    let p = a.sh.p;
+    let st = &a.system;
+    let cur = options.iter().find(|o| o.0 == current).map(|o| o.1.clone()).unwrap_or_else(|| if current.is_empty() { "Pick one".into() } else { current.to_string() });
+    let open = st.open == key;
+    let head = srow(&p, g, title, sub, row![t1(cur, sz(13.0), p.text), pill(&p, if open { "Close" } else { "Change" }, true, Some(Msg::Open(key.to_string())))].spacing(12.0).align_y(iced::Center).into());
+    if !open {
+        return head;
+    }
+    let mut c = Column::new().spacing(6.0).push(head);
+    let q = st.txt("chooser").to_lowercase();
+    if options.len() > 12 {
+        c = c.push(field(&p, "Find one", st.txt("chooser"), |s| Msg::Text("chooser", s)).width(Length::Fixed(sz(320.0))));
+    }
+    let mut n = 0;
+    for (id, label) in options.iter() {
+        if !q.is_empty() && !label.to_lowercase().contains(&q) && !id.to_lowercase().contains(&q) {
+            continue;
+        }
+        let mark = if id == current { "  ✓" } else { "" };
+        c = c.push(pick_row(&p, format!("{label}{mark}"), on(id.clone())));
+        n += 1;
+        if n >= 40 {
+            break;
+        }
+    }
+    c.into()
+}
+
+/// A short line under the rows (Mantel's small muted Text).
+pub fn line<'a>(p: &Pal, s: impl Into<String>) -> El<'a> {
+    note(p, s, false)
+}
+
+/// "Reading…" or why a read failed, for a page whose read hasn't come back with anything to show.
+pub fn waiting<'a>(a: &'a App, key: &str, what: &str) -> Option<El<'a>> {
+    let st = &a.system;
+    let p = a.sh.p;
+    if st.has(key) {
+        return None;
+    }
+    Some(if !st.read(key) {
+        note(&p, format!("Reading {what}…"), false)
+    } else {
+        note(&p, format!("{} couldn't be read{}", cap(what), if st.raw(key).is_empty() { ".".to_string() } else { format!(": {}", st.raw(key)) }), true)
+    })
+}
+
+pub fn cap(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => String::new(),
+    }
+}
+
+/// Options for a choice of minutes ([0, 2, 5]) as words.
+pub fn minutes_word(m: i64) -> String {
+    match m {
+        -1 => "As plugged in".into(),
+        0 => "Never".into(),
+        60 => "1 hour".into(),
+        120 => "2 hours".into(),
+        m => format!("{m} min"),
+    }
+}
+
+// ------------------------------------------------------------------ Startup (SetStartup.qml)
+
+/// Startup: Start in (Game Mode, Desktop Mode, Server mode once it's on), Server mode's schedule, reopening your apps
+/// and leaving. Start in and the schedule through hearth-server-mode (session.conf's NIMBUS_START_MODE, only that
+/// line); on Plasma the session's own (ksmserverrc: restore the last session, confirm logging out) too.
+fn startup(a: &App) -> El<'_> {
+    let p = a.sh.p;
+    let st = &a.system;
+    let srv = st.j("server");
+    let server_on = vb(srv, "settings.on");
+    let scheduled = server_on && vb(srv, "settings.schedule.on");
+    let start_in = if st.has("server") { vs(srv, "startIn") } else { st.start.clone() };
+    let mut c = Column::new().spacing(10.0);
+    c = c.push(t(format!("What this PC opens when it turns on{}", if server_on { ", and when it changes mode by itself." } else { "." }), sz(14.0), p.muted));
+    if server_on {
+        c = c.push(srow(&p, G::Power, "When this PC turns on", "Start in one mode every time, or follow a schedule", choice(&p, vec![
+            ("Always the same mode".into(), !scheduled, Msg::Exec(Ex::new(py("hearth-server-mode", &["set", "scheduleOn", "off"])).ok("Starting in the same mode every time").re("server"))),
+            ("Follow a schedule".into(), scheduled, Msg::Exec(Ex::new(py("hearth-server-mode", &["set", "scheduleOn", "on"])).ok("Following the schedule ✓").re("server"))),
+        ])));
+    }
+    c = c.push(head(&p, if scheduled { "Modes in the schedule" } else { "Start in" }));
+    // The same words as Home's Recommended row: what this PC opens when it turns on.
+    c = c.push(srow(&p, G::Power, "Start in", "What this PC opens when it turns on", seg(&p, vec![
+        ("Game Mode".into(), !scheduled && start_in == "game", Some(Msg::Exec(Ex::new(py("hearth-server-mode", &["start-in", "game"])).ok("Starts in Game Mode ✓").re("server")))),
+        ("Desktop Mode".into(), !scheduled && start_in == "desktop", Some(Msg::Exec(Ex::new(py("hearth-server-mode", &["start-in", "desktop"])).ok("Starts in Desktop Mode ✓").re("server")))),
+        ("Server mode".into(), !scheduled && start_in == "server", if server_on { Some(Msg::Exec(Ex::new(py("hearth-server-mode", &["start-in", "server"])).ok("Starts in Server mode ✓").re("server"))) } else { None }),
+    ])));
+    let modes = [
+        ("game", G::Pad, "Game Mode", "Steam Game Mode or Hearth Game Mode (Gaming), for the TV and controllers"),
+        ("desktop", G::Grid, "Desktop Mode", if plasma() { "KDE Plasma with windows, files and apps" } else { "The Mantel desktop with windows, files and apps" }),
+        ("server", G::Server, "Server mode", "A dashboard and full power for your services; one press to play"),
+    ];
+    let mut cards = iced::widget::Row::new().spacing(12.0);
+    for (id, g, name, sub) in modes {
+        let usable = id != "server" || server_on;
+        let chosen = !scheduled && start_in == id;
+        let body = column![
+            row![hearth_ui::ui::glyph(g, if chosen { p.accent } else { p.text }, sz(20.0), 1.8), hearth_ui::ui::ts(name, sz(16.0), p.text), t1(if chosen { "· Start in" } else { "" }, sz(14.0), p.accent)].spacing(8.0).align_y(iced::Center),
+            t(if usable { sub.to_string() } else { "Off. Press to turn it on in Home server › Server mode".to_string() }, sz(13.0), p.muted)
+        ]
+        .spacing(8.0);
+        let msg = if !usable { Msg::Go("hs-server") } else { Msg::Exec(Ex::new(py("hearth-server-mode", &["start-in", id])).ok(format!("Starts in {name} ✓")).re("server")) };
+        cards = cards.push(
+            iced::widget::mouse_area(iced::widget::container(body).padding(16.0).width(Length::Fill).style(hearth_ui::ui::boxed(p.panel, p.r(12.0), Some((if chosen { p.accent } else { p.line }, if chosen { 2.0 } else { 1.0 })))))
+                .on_press(msg)
+                .interaction(iced::mouse::Interaction::Pointer),
+        );
+    }
+    c = c.push(cards);
+    if scheduled {
+        c = c.push(head(&p, "Schedule"));
+        for (day, name) in [("weekday", "Monday – Friday"), ("weekend", "Saturday – Sunday")] {
+            let items = va(srv, &format!("settings.schedule.{day}"));
+            let words: Vec<String> = items.iter().map(|x| format!("{} from {}", mode_name(&vs(x, "mode")), vs(x, "at"))).collect();
+            c = c.push(info_row(&p, G::Clock, name, words.join(" · ")));
+        }
+        c = c.push(line(&p, "The schedule's changes are edited on the Home server › Server mode page (the controller: ← → move, A mode, X remove)."));
+    }
+    c = c.push(head(&p, "When you sign in"));
+    let k = st.j("k-session");
+    // Plasma: the session's own restore (ksmserverrc loginMode: restorePreviousLogout / emptySession); Hearth's
+    // restoreApps too (Mantel's SessionRestore.qml).
+    let restore = if plasma() && st.has("k-session") { vs(k, "login") == "restorePreviousLogout" || (vs(k, "login").is_empty() && a.sh.d_bool("restoreApps", false)) } else { a.sh.d_bool("restoreApps", false) };
+    let restore_kde = |on: bool| if plasma() { vec![kw("ksmserverrc", &["General"], "loginMode", if on { "restorePreviousLogout" } else { "emptySession" })] } else { vec![] };
+    c = c.push(srow(&p, G::Update, "Reopen my apps from last time", "The apps open when you signed out or left Desktop Mode open again (not games or Steam)", sw(&p, restore, Msg::Desk(serde_json::json!({"restoreApps": !restore}), Ex::none().and_all(restore_kde(!restore)).re("k-session")))));
+    c = c.push(head(&p, "When you leave"));
+    let confirm = if plasma() && st.has("k-session") && !vs(k, "confirm").is_empty() { vs(k, "confirm") == "true" } else { a.sh.d_bool("confirmLogout", false) };
+    let confirm_kde = |on: bool| if plasma() { vec![kw("ksmserverrc", &["General"], "confirmLogout", if on { "true" } else { "false" })] } else { vec![] };
+    c = c.push(srow(&p, G::User, "Confirm before logging out", "Log out (in the app menu, Super+X and the desktop's menu) asks first, so a stray click can't close your apps", sw(&p, confirm, Msg::Desk(serde_json::json!({"confirmLogout": !confirm}), Ex::none().and_all(confirm_kde(!confirm)).re("k-session")))));
+    let leave = a.sh.d_str("leaveDefault");
+    let opts = [("", "Lock"), ("Sleep", "Sleep"), ("Restart", "Restart"), ("Shut down", "Shut down"), ("Log out", "Log out"), ("Game Mode", "Game Mode")];
+    c = c.push(chooser(a, "leave", G::Power, "Default leave option", "What the power menu has picked when it opens: press the power button twice (or A) to do it", opts.iter().map(|(v, l)| (v.to_string(), l.to_string())).collect(), &leave, |v| Msg::Desk(serde_json::json!({"leaveDefault": v}), Ex::none())));
+    if scheduled {
+        c = c.push(head(&p, "When it's time to change"));
+        c = c.push(value_row(&p, G::Pad, "If a game is running", "Server mode never closes your game: the change waits until it ends", "Wait until the game ends", false));
+        c = c.push(value_row(&p, G::Grid, "If you're in Desktop Mode", "Unsaved work stays open: the schedule never switches away from Desktop Mode", "Stay", false));
+        c = c.push(value_row(&p, G::Server, "In Server mode", "The dashboard counts down 10 seconds first; B cancels", "10-second countdown", false));
+    }
+    if !st.has("server") && st.read("server") {
+        c = c.push(line(&p, format!("Server mode's settings couldn't be read ({}); Start in still works.", st.raw("server"))));
+    }
+    c.into()
+}
+
+pub fn mode_name(m: &str) -> &'static str {
+    match m {
+        "server" => "Server mode",
+        "desktop" => "Desktop Mode",
+        _ => "Game Mode",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn values_and_reads() {
+        let v: Value = serde_json::json!({"a": {"b": [1, {"c": "x"}]}, "n": "12", "t": true});
+        assert_eq!(vs(&v, "a.b.1.c"), "x");
+        assert_eq!(vf(&v, "n", 0.0), 12.0);
+        assert!(vb(&v, "t"));
+        assert!(at(&v, "a.z").is_null());
+        assert_eq!(kv("until=2099,1,1\nfullscreen=true\n")["fullscreen"], "true");
+        for p in PAGES {
+            assert!(crate::registry::page(p).is_some(), "{p} isn't a Settings page");
+            for k in reads_of(p) {
+                assert!(!reader(k).is_empty(), "{p}'s read {k} runs nothing");
+            }
+        }
+        assert_eq!(kw("kdeglobals", &["Sounds"], "Enable", "false").join(" "), "kwriteconfig6 --notify --file kdeglobals --group Sounds --key Enable false");
+    }
+    #[test]
+    fn every_system_page_is_built() {
+        for p in crate::registry::PAGES.iter().filter(|p| p.cat == "system" && !p.landing) {
+            assert!(PAGES.contains(&p.id), "System's page {} isn't built", p.id);
+        }
+    }
+    #[test]
+    fn a_job_times_out() {
+        let o = one(&sv(&["sleep", "5"]), "", 1);
+        assert!(!o.ok && o.err.contains("too long"));
+        let o = one(&sv(&["sh", "-c", "cat; printf %s \"$HEARTH_INPUT\""]), "hi", 5);
+        assert_eq!(o.out, "hihi");
+    }
 }
