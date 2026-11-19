@@ -985,9 +985,9 @@ fn login_screen(a: &App) -> E<'_> {
                 container(Space::new()).width(Length::Fixed(w)).height(Length::Fixed(ht)).style(ui::boxed(Pal::a(iced::Color::BLACK, 0.45), 0.0, None)),
                 words.width(Length::Fixed(w)),
             ];
-            container(shot).center_x(Length::Fill).style(ui::boxed(base, 12.0, None)).into()
+            E::from(container(shot).center_x(Length::Fill).style(ui::boxed(base, 12.0, None)))
         }
-        None => words.style(ui::boxed(base, 12.0, None)).into(),
+        None => E::from(words.style(ui::boxed(base, 12.0, None))),
     });
     let pics = st.lsc.as_ref().map(|s| kit::strs(s, "pictures")).unwrap_or_default();
     if !pics.is_empty() {
