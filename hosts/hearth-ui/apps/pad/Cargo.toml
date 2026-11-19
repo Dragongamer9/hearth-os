@@ -1,0 +1,31 @@
+# hearth-pad-host: the controller in KDE Plasma (the Fedora edition) the way Mantel gives it on Debian. It runs
+# hearth-pad --plasma (desktop/shell/hearth-pad, the one controller helper for every desktop) and draws what Mantel
+# draws around it (Pad.qml, RadialMenu.qml, Help.qml, Keyboard.qml / OskBoard.qml, HintStrip.qml) as layer-shell
+# overlays that KWin keeps on top and that never take the keyboard: the Hearth menu, the on-screen keyboard, the
+# controls card, short messages and the button hints. No version line: the owner picks every version number.
+[package]
+name = "hearth-pad-host"
+edition = "2021"
+description = "The controller in KDE Plasma: Hearth menu, on-screen keyboard, controls card"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-pad-host"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }
+# Layer-shell windows for iced 0.14 (KWin supports wlr-layer-shell): drawn with the workspace's tiny-skia renderer.
+# No default features: the theme detection it brings would talk to D-Bus at start (Hearth's look is theme.rs's).
+iced_layershell = { version = "0.19", default-features = false }
+# Only to ask the compositor whether it has layer-shell before anything is drawn (exit 4: the launcher falls back).
+wayland-client = "0.31"
+# Hearth's on-screen keyboard is one engine for all of Hearth (ui/osk/hearth-osk.js, docs/OSK.md): it runs here as
+# it is, in QuickJS, so the Fedora edition types exactly like Mantel, Game Mode and the apps (same layouts, words,
+# accents, Ember Wheel, osk.json and osk-words.json).
+rquickjs = "0.14"

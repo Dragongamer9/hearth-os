@@ -17,7 +17,7 @@ publish = false
 path = "src/lib.rs"
 
 [workspace]
-members = ["apps/task-manager", "apps/system-restore", "apps/reliability", "apps/settings", "apps/files", "apps/capture"]
+members = ["apps/task-manager", "apps/system-restore", "apps/reliability", "apps/settings", "apps/files", "apps/capture", "apps/pad"]
 resolver = "2"
 
 [workspace.dependencies]

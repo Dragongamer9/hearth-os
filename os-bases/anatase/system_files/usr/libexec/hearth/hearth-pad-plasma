@@ -1,14 +1,33 @@
 #!/bin/sh
-# The controller as a mouse and keyboard in KDE Plasma (the Fedora edition), as Mantel gives it on Debian: right
-# stick the pointer, A / RT click, X / LT right-click, left stick scroll, B Esc, D-pad arrows (hearth-pad
-# --standalone: Plasma draws no Hearth menus, so Guide and Y do nothing here yet). Started by Plasma's autostart
+# The controller in KDE Plasma (the Fedora edition), as Mantel gives it on Debian. Started by Plasma's autostart
 # (hearth-pad-plasma.desktop); nimbus-session stops it with Desktop Mode. Never twice, never in Firehold on Plasma
 # (it has its own) and never outside KDE.
+#   hearth-pad-host (hosts/hearth-ui/apps/pad) when it's installed: it runs hearth-pad --plasma and draws Hearth's
+#     menu (Guide), the on-screen keyboard (Y, Guide + X), the controls card (View) and the button hints, as
+#     layer-shell overlays KWin keeps on top.
+#   Else, or when it can't draw here (exit 4: no layer-shell) or it stopped within its first 20 seconds:
+#     hearth-pad --standalone, the controller as a plain mouse and keyboard (right stick the pointer, A / RT click,
+#     X / LT right-click, left stick scroll, B Esc, D-pad arrows), so the controller always works.
 case ":${XDG_CURRENT_DESKTOP:-}:" in *:KDE:*) ;; *) exit 0 ;; esac
 [ "${HEARTH_FIREHOLD_PLASMA:-}" = 1 ] && exit 0
 pad=/usr/share/nimbus/desktop/shell/hearth-pad
+host="${HEARTH_PAD_HOST:-/usr/bin/hearth-pad-host}"
 [ -f "$pad" ] || exit 0
 pgrep -u "$(id -u)" -f 'desktop/shell/hearth-pad' >/dev/null 2>&1 && exit 0
+pgrep -u "$(id -u)" -x hearth-pad-host >/dev/null 2>&1 && exit 0
 log="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/pad.log"
 mkdir -p "$(dirname "$log")"
+if [ -x "$host" ]; then
+  start=$(date +%s)
+  "$host" </dev/null >/dev/null 2>>"$log"
+  rc=$?
+  ran=$(( $(date +%s) - start ))
+  # Ended with the desktop (or asked to): nothing more to do. Couldn't draw, or broke at once: the plain controller.
+  if [ "$rc" != 4 ] && { [ "$rc" = 0 ] || [ "$ran" -ge 20 ]; }; then
+    exit 0
+  fi
+  echo "$(date '+%Y-%m-%d %H:%M:%S') hearth-pad-plasma: hearth-pad-host ended ($rc after ${ran}s): the controller as a plain mouse and keyboard" >>"$log"
+  # Only while Plasma is still here (its Wayland socket).
+  [ -n "${WAYLAND_DISPLAY:-}" ] && [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/$WAYLAND_DISPLAY" ] || exit 0
+fi
 exec python3 "$pad" --standalone </dev/null >/dev/null 2>>"$log"
