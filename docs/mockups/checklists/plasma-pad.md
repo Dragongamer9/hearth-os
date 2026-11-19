@@ -36,7 +36,7 @@ os-bases/anatase/system_files/usr/libexec/hearth/hearth-pad-plasma (hearth-pad -
 - [x] the card: Hearth mark, "Controller controls", the line under it, Plasma's fifteen controls in two columns — hosts/hearth-ui/apps/pad/src/view.rs: "(\"View + A\", \"The taskbar (D-pad along it, A opens)\"),"
 - [x] More help: Welcome & Tips (hearth-tools --app welcome --page help) — hosts/hearth-ui/apps/pad/src/main.rs: "\"--app\".into(), \"welcome\".into(), \"--page\".into(), \"help\".into()"
 - [x] closes on a click and by itself after 12 s; View again closes it — hosts/hearth-ui/apps/pad/src/main.rs: "wait(12_000, Wait::Help, g)"
-- [x] short messages at the top (Controller mouse on / off, hearth-pad's toast), gone after 1.8 s, clicks go through — hosts/hearth-ui/apps/pad/src/main.rs: "wait(1800, Wait::Toast, g)"
+- [x] short messages at the top (Controller mouse on / off, hearth-pad's toast), gone after 1.8 s, clicks go through — hosts/hearth-ui/apps/pad/src/main.rs: "1.8 s as Help.qml has it"
 
 ## The button hints (HintStrip.qml)
 - [x] A Open, X Options, Y Keyboard, ☰ Apps, ⌂ Hearth menu, ⧉ Controls in a pill along the bottom — hosts/hearth-ui/apps/pad/src/view.rs: "(\"⌂\", p.accent, \"Hearth menu\"),"
