@@ -12,7 +12,7 @@ on:
         type: boolean
         default: false
       test_tag:
-        description: 'Publish ONLY to this owner-approved test tag of hearth-peppermint (test-<name>, e.g. test-switch) once every check passes. Never testing, latest or a testing-<version>-<date> tag'
+        description: 'Publish ONLY to this owner-approved test tag of hearth-peppermint (test-<name>, e.g. test-switch) and this version''s dated testing-<version>-<date> copy, once every check passes. Never :testing or :latest'
         type: string
         default: ''
   # 1.14.1 (the last Debian update, Nov 19, 2026; the Debian edition is archived and merged into Fedora): no push
@@ -1065,6 +1065,23 @@ jobs:
           sudo podman run --rm --privileged -v "$PWD/.github/scripts/hearth-box-check.sh:/box.sh:ro" \
             -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-peppermint:latest bash /box.sh flatpak || echo "::warning title=box check::the flatpak check didn't finish"
 
+      # 1.14.1 (red flag 2): before it's published, a virtual PC on the Debian 1.13 devices have updates to it and starts
+      # by itself, switches to the released Fedora edition (hearth-os:test-1.15) with 1.14.1's own Switch edition, starts
+      # Fedora by itself with Debian pinned in the boot menu, and switches back to the very same 1.14.1. Required.
+      - name: Switch edition (VM)
+        timeout-minutes: 150
+        run: |
+          sudo rm -f /var/lib/containers/cache/blob-info-cache-v1.sqlite /var/lib/containers/cache/blob-info-cache-v1.boltdb
+          DEBIAN_IMAGE=ghcr.io/dragongamer9/hearth-peppermint:testing-1.13.0-20261116 NEW_DEBIAN=localhost/hearth-peppermint:latest \
+            bash .github/scripts/edition-switch-vm.sh ghcr.io/dragongamer9/hearth-os:test-1.15 "$PWD/edition-switch"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        continue-on-error: true
+        with:
+          name: edition-switch-vm
+          path: edition-switch
+          if-no-files-found: ignore
+
       - name: Publish to GitHub Container Registry
         if: ${{ success() && (env.PUBLISH == 'true' || env.TAG_IN != '') }}
         run: |
@@ -1079,7 +1096,10 @@ jobs:
             # (the owner's dad's PC is pinned on testing-1.13.0-20261116).
             echo "$TAG_IN" | grep -Eqx 'test-[a-z0-9][a-z0-9.-]{0,40}' || { echo "::error title=publish::refusing tag '$TAG_IN': only test-<name> tags (e.g. test-switch)"; exit 1; }
             [ "$IMAGE" = ghcr.io/dragongamer9/hearth-peppermint ] || { echo "::error title=publish::refusing image $IMAGE"; exit 1; }
-            tags="$TAG_IN"
+            # Plus its own dated copy (testing-<this version>-<date>), so image-point.yml can later point :testing at
+            # exactly this tried image on the owner's word. Never the pinned 1.13 one.
+            tags="$TAG_IN testing-$v-$(date -u +%Y%m%d)"
+            case " $tags " in *" testing-1.13.0-20261116 "*|*" testing "*|*" latest "*) echo "::error title=publish::refusing tags $tags"; exit 1 ;; esac
           fi
           for tag in $tags; do
             # 1.13: the rechunked image exactly as made (its layers' digests are what devices already have).
