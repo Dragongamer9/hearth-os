@@ -42,16 +42,16 @@ fn streams(st: &State, which: &str) -> Vec<Stream> {
     let mut out: Vec<Stream> = Vec::new();
     for x in list.as_array().map(|a| a.as_slice()).unwrap_or(&[]) {
         let props = at(x, "properties");
-        let mut app = vs(props, "application.name");
+        let mut app = kg(props, "application.name");
         if app.is_empty() {
-            app = vs(props, "media.name");
+            app = kg(props, "media.name");
         }
         // Monitors and Hearth's own level meters aren't apps.
-        if app.is_empty() || vs(props, "stream.monitor") == "true" || app.starts_with("PulseAudio Volume Control") {
+        if app.is_empty() || kg(props, "stream.monitor") == "true" || app.starts_with("PulseAudio Volume Control") {
             continue;
         }
         let idx = vf(x, "index", -1.0) as i64;
-        let id = vs(props, "object.id");
+        let id = kg(props, "object.id");
         let dev = vf(x, if which == "play" { "sink" } else { "source" }, -1.0) as i64;
         let vol = pct(at(x, "volume"));
         match out.iter_mut().find(|s| s.app == app) {
@@ -78,7 +78,7 @@ fn devices(st: &State, which: &str) -> Vec<(i64, String, String, String, String)
                 .map(|x| {
                     let props = at(x, "properties");
                     let desc = if vs(x, "description").is_empty() { vs(x, "name") } else { vs(x, "description") };
-                    (vf(x, "index", -1.0) as i64, vs(x, "name"), desc, vs(props, "object.serial"), vs(props, "object.id"))
+                    (vf(x, "index", -1.0) as i64, vs(x, "name"), desc, kg(props, "object.serial"), kg(props, "object.id"))
                 })
                 .collect()
         })

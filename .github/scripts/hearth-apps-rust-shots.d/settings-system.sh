@@ -138,5 +138,12 @@ for page in display sound sound-speakers sound-apps push-to-talk sounds notifica
             about info-cpu info-gpu info-memory info-graphics info-pci info-usb info-sensors info-modules info-interrupts info-energy install; do
   run "settings-sys-$page" hearth-settings 0 "$BIN/hearth-settings-app" --page "$page"
 done
+# The pages' other states: a display change waiting for Keep, over-amplification's warning, Hibernate's first-time
+# question, a chooser's list, a notification app opened, Memory with a change not saved yet.
+HEARTH_SYSTEM_SHOW=keep run settings-sys-display-keep hearth-settings 0 "$BIN/hearth-settings-app" --page display
+HEARTH_SYSTEM_SHOW=flag:askoveramp run settings-sys-sound-overamp hearth-settings 0 "$BIN/hearth-settings-app" --page sound
+HEARTH_SYSTEM_SHOW=text:askhib=hibernate run settings-sys-power-hibernate hearth-settings 0 "$BIN/hearth-settings-app" --page power
+HEARTH_SYSTEM_SHOW=open:lang run settings-sys-region-chooser hearth-settings 0 "$BIN/hearth-settings-app" --page region
+HEARTH_SYSTEM_SHOW=open:app:Discord run settings-sys-notifications-app hearth-settings 0 "$BIN/hearth-settings-app" --page notifications
 unset HEARTH_SYSTEM_FIXTURE XDG_CURRENT_DESKTOP
 rm -f "$HOME/.config/nimbus/bar.json"

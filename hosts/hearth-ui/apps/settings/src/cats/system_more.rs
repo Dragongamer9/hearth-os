@@ -112,12 +112,12 @@ fn notifications(a: &App) -> El<'_> {
         c = c.push(line(&p, "Apps show here once they've sent a notification."));
     }
     for (name, kde) in apps {
-        let r = at(rules, &name);
-        let allow = if kde { vs(k, &format!("app.{name}.ShowInHistory")) != "false" || vs(k, &format!("app.{name}.ShowPopups")) != "false" } else { at(r, "allow").as_bool().unwrap_or(true) };
-        let popups = if kde { vs(k, &format!("app.{name}.ShowPopups")) != "false" } else { !va(st.j("desk"), "muted").iter().any(|m| m.as_str() == Some(name.as_str())) };
+        let r = rules.get(&name).unwrap_or(&NULL);
+        let allow = if kde { kg(k, &format!("app.{name}.ShowInHistory")) != "false" || kg(k, &format!("app.{name}.ShowPopups")) != "false" } else { at(r, "allow").as_bool().unwrap_or(true) };
+        let popups = if kde { kg(k, &format!("app.{name}.ShowPopups")) != "false" } else { !va(st.j("desk"), "muted").iter().any(|m| m.as_str() == Some(name.as_str())) };
         let sound = vb(r, "sound");
         let lock = vb(r, "lockScreen");
-        let prio = if kde { if vs(k, &format!("app.{name}.ShowPopupsInDndMode")) == "true" { "high".to_string() } else { "normal".to_string() } } else { let v = vs(r, "priority"); if v.is_empty() { "normal".to_string() } else { v } };
+        let prio = if kde { if kg(k, &format!("app.{name}.ShowPopupsInDndMode")) == "true" { "high".to_string() } else { "normal".to_string() } } else { let v = vs(r, "priority"); if v.is_empty() { "normal".to_string() } else { v } };
         let summary = if !allow { "Off: nothing from it is shown or kept".to_string() } else { [if popups { "Pop-ups" } else { "No pop-ups" }, if sound { "sound" } else { "" }, if lock { "on the lock screen" } else { "" }, if prio == "high" { "high priority" } else if prio == "low" { "list only" } else { "" }].iter().filter(|x| !x.is_empty()).copied().collect::<Vec<_>>().join(" · ") };
         let key = format!("app:{name}");
         let open = st.open == key;
@@ -417,7 +417,7 @@ fn storage(a: &App) -> El<'_> {
     let have = st.has("clean");
     c = c.push(act_row(&p, G::Search, if have { "Look again" } else { "Find things to clean up" }, "Shader caches, Proton prefixes of games that are gone, and leftover downloads. Nothing is deleted until you say so.", if have { "Look again" } else { "Find" }, Some(Msg::Exec(Ex::new(core("diskspace.cleanList", json!({}))).store("clean").fail("Couldn't look for things to clean up").secs(120)))));
     let picked = st.j("cleanpick");
-    let is_on = |c: &Value| -> bool { let k = vs(c, "key"); match at(picked, &k) { Value::Bool(b) => *b, _ => vb(c, "selectable") && vb(c, "on") } };
+    let is_on = |c: &Value| -> bool { let k = vs(c, "key"); match picked.get(&k) { Some(Value::Bool(b)) => *b, _ => vb(c, "selectable") && vb(c, "on") } };
     for it in clean {
         let saves: Vec<String> = va(it, "saves").iter().map(|x| x.as_str().unwrap_or("").to_string()).collect();
         let mut parts = vec![vs(it, "where"), gbs(vf(it, "bytes", 0.0))];

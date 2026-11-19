@@ -256,6 +256,15 @@ pub fn vf(v: &Value, path: &str, d: f64) -> f64 {
 pub fn va<'v>(v: &'v Value, path: &str) -> &'v [Value] {
     at(v, path).as_array().map(|a| a.as_slice()).unwrap_or(&[])
 }
+/// One key as it is (keys with dots in them: PipeWire's "application.name", the KDE reads' "app.<id>.ShowPopups").
+pub fn kg(v: &Value, key: &str) -> String {
+    match v.get(key) {
+        Some(Value::String(s)) => s.clone(),
+        Some(Value::Number(n)) => n.to_string(),
+        Some(Value::Bool(b)) => b.to_string(),
+        _ => String::new(),
+    }
+}
 pub fn present(v: &Value, path: &str) -> bool {
     !at(v, path).is_null()
 }
@@ -593,6 +602,22 @@ pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
     if page == "battery" || page == "info-energy" {
         st.num.entry("hours").or_insert(24.0);
     }
+    // CI's pictures of a page's other states: HEARTH_SYSTEM_SHOW=keep (the display change waiting), open:KEY (a
+    // chooser's list), flag:KEY, text:KEY=VALUE.
+    if let Ok(show) = std::env::var("HEARTH_SYSTEM_SHOW") {
+        let leak = |s: &str| -> &'static str { Box::leak(s.to_string().into_boxed_str()) };
+        for part in show.split(',').filter(|x| !x.is_empty()) {
+            if part == "keep" {
+                st.keep = Some(Keep { prev: serde_json::json!({"outputs": {}}), names: vec![], left: 15 });
+            } else if let Some(k) = part.strip_prefix("open:") {
+                st.open = k.to_string();
+            } else if let Some(k) = part.strip_prefix("flag:") {
+                st.flag.insert(leak(k), true);
+            } else if let Some((k, v)) = part.strip_prefix("text:").and_then(|x| x.split_once('=')) {
+                st.text.insert(leak(k), v.to_string());
+            }
+        }
+    }
     Task::batch(reads_of(page).iter().map(|k| read(k)))
 }
 
@@ -704,7 +729,8 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
                 if !d.is_object() {
                     *d = Value::Object(Default::default());
                 }
-                let parts: Vec<&str> = path.splitn(2, '.').collect();
+                // Memory's changes are "group.key"; other drafts (what's picked to clean up) keep the key whole.
+                let parts: Vec<&str> = if target == "memdraft" { path.splitn(2, '.').collect() } else { vec![path.as_str()] };
                 if parts.len() == 2 {
                     if !d[parts[0]].is_object() {
                         d[parts[0]] = Value::Object(Default::default());
@@ -983,12 +1009,6 @@ fn startup(a: &App) -> El<'_> {
         ])));
     }
     c = c.push(head(&p, if scheduled { "Modes in the schedule" } else { "Start in" }));
-    // The same words as Home's Recommended row: what this PC opens when it turns on.
-    c = c.push(srow(&p, G::Power, "Start in", "What this PC opens when it turns on", seg(&p, vec![
-        ("Game Mode".into(), !scheduled && start_in == "game", Some(Msg::Exec(Ex::new(py("hearth-server-mode", &["start-in", "game"])).ok("Starts in Game Mode ✓").re("server")))),
-        ("Desktop Mode".into(), !scheduled && start_in == "desktop", Some(Msg::Exec(Ex::new(py("hearth-server-mode", &["start-in", "desktop"])).ok("Starts in Desktop Mode ✓").re("server")))),
-        ("Server mode".into(), !scheduled && start_in == "server", if server_on { Some(Msg::Exec(Ex::new(py("hearth-server-mode", &["start-in", "server"])).ok("Starts in Server mode ✓").re("server"))) } else { None }),
-    ])));
     let modes = [
         ("game", G::Pad, "Game Mode", "Steam Game Mode or Hearth Game Mode (Gaming), for the TV and controllers"),
         ("desktop", G::Grid, "Desktop Mode", if plasma() { "KDE Plasma with windows, files and apps" } else { "The Mantel desktop with windows, files and apps" }),

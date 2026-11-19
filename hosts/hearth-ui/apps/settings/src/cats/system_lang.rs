@@ -145,7 +145,7 @@ fn datetime(a: &App) -> El<'_> {
                 let here = zone.split('/').next().unwrap_or("").to_string();
                 for (r, n) in seen {
                     let in_use = r.replace(' ', "_") == here;
-                    c = c.push(link_row(&p, G::Wifi, r.clone(), if in_use { "In use".to_string() } else { format!("{n} places") }, Msg::Text("tzregion", r)));
+                    c = c.push(link_row(&p, G::Wifi, r.clone(), if in_use { "In use".to_string() } else { format!("{n} {}", if n == 1 { "place" } else { "places" }) }, Msg::Text("tzregion", r)));
                 }
             } else {
                 c = c.push(link_row(&p, G::Arrow, "All regions", region.clone(), Msg::Text("tzregion", String::new())));
@@ -603,7 +603,7 @@ fn search_plasma(a: &App) -> El<'_> {
     }
     c = c.push(head(&p, "In the app menu's search and Alt+Space (KRunner)"));
     for (id, title, sub) in RUNNERS {
-        let on = vs(k, &format!("run.{id}")) != "false";
+        let on = kg(k, &format!("run.{id}")) != "false";
         c = c.push(srow(&p, G::Search, title, sub, sw(&p, on, Msg::Exec(Ex::new(kw("krunnerrc", &["Plugins"], &format!("{id}Enabled"), if on { "false" } else { "true" })).re("k-search")))));
     }
     c = c.push(line(&p, "Alt+Space or Alt+F2 opens KDE's search bar (KRunner) at the top of the screen, with everything above."));

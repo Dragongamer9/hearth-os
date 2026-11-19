@@ -14,7 +14,7 @@ use super::*;
 use iced::widget::{column, row};
 use hearth_ui::ui::{self, btn, glyph, ts, Kind};
 use iced::widget::canvas::{self, Frame, Geometry, LineCap, Path, Stroke};
-use iced::widget::{container, Row};
+use iced::widget::container;
 use iced::{mouse, Color, Point, Rectangle, Renderer, Theme};
 use serde_json::json;
 
@@ -313,17 +313,20 @@ fn profiles(a: &App) -> El<'_> {
         let cur = saved("power.plugged");
         plug = plug.push(small_choice(&p, "Power mode", modes.iter().map(|(v, l)| (l.to_string(), cur == *v, mode_set("power.plugged", *v))).collect()));
     }
-    let mut cols = Row::new().spacing(12.0).push(column2(&p, G::Power, "Plugged in", if on_bat { "" } else { "In use now" }, plug));
+    // One above the other (side by side the choices don't fit the window's width).
+    let mut cols = Column::new().spacing(12.0).push(column2(&p, G::Power, "Plugged in", if on_bat { "" } else { "In use now" }, plug));
     if has_bat {
         let off_b = screen_off(a, true);
         let sl_b = sleep_after(a, true);
         let mut bat = Column::new();
         let with_as = |list: &[i64]| -> Vec<i64> { std::iter::once(-1).chain(list.iter().copied()).collect() };
-        // "As plugged in" is shown when Hearth's own says so (Plasma's profile then has the plugged-in time).
-        let hearth_off = a.sh.d_num("screenOffBattery", -1.0) as i64;
-        let hearth_sl = a.sh.d_num("sleepBattery", -1.0) as i64;
-        bat = bat.push(small_choice(&p, "Screen off after", with_as(&OFF_CHOICES[..5]).iter().map(|m| (minutes_word(*m), if hearth_off == -1 { *m == -1 } else { off_b == *m }, set_time(a, "screenOffBattery", *m))).collect()));
-        bat = bat.push(small_choice(&p, "Sleep after", with_as(&SLEEP_CHOICES[..5]).iter().map(|m| (minutes_word(*m), if hearth_sl == -1 { *m == -1 } else { sl_b == *m }, set_time(a, "sleepBattery", *m))).collect()));
+        // "As plugged in" while Hearth's own says so and the battery's time (PowerDevil's on Plasma) is the same.
+        let as_off = a.sh.d_num("screenOffBattery", -1.0) as i64 == -1 && off_b == off_ac;
+        let as_sl = a.sh.d_num("sleepBattery", -1.0) as i64 == -1 && sl_b == sl_ac;
+        let off_b = if as_off { -1 } else { off_b };
+        let sl_b = if as_sl { -1 } else { sl_b };
+        bat = bat.push(small_choice(&p, "Screen off after", with_as(&OFF_CHOICES).iter().map(|m| (minutes_word(*m), off_b == *m, set_time(a, "screenOffBattery", *m))).collect()));
+        bat = bat.push(small_choice(&p, "Sleep after", with_as(&SLEEP_CHOICES).iter().map(|m| (minutes_word(*m), sl_b == *m, set_time(a, "sleepBattery", *m))).collect()));
         if st.has("hw") {
             let cur = saved("power.unplugged");
             bat = bat.push(small_choice(&p, "Power mode", modes.iter().map(|(v, l)| (l.to_string(), cur == *v, mode_set("power.unplugged", *v))).collect()));

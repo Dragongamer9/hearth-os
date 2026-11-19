@@ -411,7 +411,9 @@ pub fn view(a: &App) -> El<'_> {
     c = c.push(head(&p, "Scale & layout"));
     if vb(o, "enabled") {
         let now = (vf(o, "scale", 1.0) * 100.0).round() / 100.0;
-        let mut steps: Vec<f64> = if k { vec![1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0] } else { vec![1.0, 1.25, 1.5, 1.75, 2.0] };
+        // Four steps as the mockup shows them (100% to 175%; on a big sharp screen 150% to 250%), and the one in use.
+        let native_w = sizes(o).first().map(|x| x.0).unwrap_or(0);
+        let mut steps: Vec<f64> = if native_w >= 3000 { vec![1.5, 1.75, 2.0, 2.5] } else { vec![1.0, 1.25, 1.5, 1.75] };
         if !steps.iter().any(|s| (s - now).abs() < 0.001) {
             steps.push(now);
             steps.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
