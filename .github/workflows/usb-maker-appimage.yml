@@ -62,7 +62,9 @@ jobs:
       - name: It starts (on a virtual screen) and lists the drives
         run: |
           A=$GITHUB_WORKSPACE/out/hearth-usb-maker.AppImage
-          $A --list > /tmp/list.json 2>/tmp/list.err; echo "::notice title=--list::exit $? · $(head -c 300 /tmp/list.json | tr '\n' ' ')"
+          # (The runner has no udisks2 running: the list may fail here; that's only noted.)
+          rc=0; $A --list > /tmp/list.json 2>/tmp/list.err || rc=$?
+          echo "::notice title=--list::exit $rc · $(head -c 300 /tmp/list.json | tr '\n' ' ') $(tail -c 300 /tmp/list.err | tr '\n' ' ')"
           Xvfb :9 -screen 0 1280x800x24 >/dev/null 2>&1 & sleep 2
           DISPLAY=:9 timeout 20 $A >/tmp/run.log 2>&1 & pid=$!
           sleep 12
