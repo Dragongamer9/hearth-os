@@ -810,6 +810,14 @@ fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
     if a.main.is_none() {
         return Task::none();
     }
+    // Ctrl+Page Up / Down: the previous / next page (Take, Edit when there's a shot, Recent), as in Settings and the
+    // other apps with tabs; the controller's LB / RB send these (hearth-pad --plasma, PLASMA_TAB_APPS).
+    if modifiers.control() && matches!(key.as_ref(), Key::Named(Named::PageUp) | Key::Named(Named::PageDown)) {
+        let pages: Vec<Page> = if a.shot.is_empty() { vec![Page::Take, Page::Recent] } else { vec![Page::Take, Page::Edit, Page::Recent] };
+        let i = pages.iter().position(|p| *p == a.page).unwrap_or(0);
+        let j = if matches!(key.as_ref(), Key::Named(Named::PageDown)) { (i + 1) % pages.len() } else { (i + pages.len() - 1) % pages.len() };
+        return update(a, Msg::Page(pages[j]));
+    }
     match a.page {
         Page::Edit => {
             let ctrl = modifiers.control();

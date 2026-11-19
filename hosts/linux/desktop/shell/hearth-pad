@@ -181,6 +181,32 @@ PLASMA_APPS = {
 }
 
 
+# Hearth's pure-Rust apps (hosts/hearth-ui; the Fedora edition on KDE Plasma), by Wayland app id. Each button has ONE
+# owner there, so a press never does two things (the owner on the Ally, Nov 19: LB / RB switched Settings' tabs and
+# windows at once):
+# - PLASMA_PAD_READERS: the app reads the controller itself (Settings' pad.rs: A, B, X, Y, LB, RB, the D-pad and ☰ are
+#   its own), so the helper sends nothing for those buttons there; the sticks (pointer, scroll), RT / LT (clicks),
+#   L3 / R3, View (and View + a button) and Guide stay the helper's.
+# - PLASMA_TAB_APPS: apps with tabs or pages that don't read the controller: LB / RB are their previous / next tab
+#   (Ctrl+Page Up / Down, each app's own shortcut) instead of switching windows; everything else as on the desktop.
+# The other Rust apps (System Restore, Reliability history) have no tabs: LB / RB switch windows there, as anywhere.
+PLASMA_PAD_READERS = {
+    'hearth-settings': ('a', 'b', 'x', 'y', 'lb', 'rb', 'up', 'down', 'left', 'right', 'menu'),
+}
+PLASMA_TAB_APPS = ('hearth-g15-app', 'hearth-tasks', 'hearth-files', 'hearth-file-chooser', 'hearth-capture')
+
+
+def plasma_rust_owner(cls, name):
+    """Who has this button over the window in front: 'app' (it reads the controller itself), 'tabs' (LB / RB are its
+    tabs, typed as Ctrl+Page Up / Down) or None (the helper, as everywhere)."""
+    c = app_key(cls)
+    if name in PLASMA_PAD_READERS.get(c, ()):
+        return 'app'
+    if c in PLASMA_TAB_APPS and name in ('lb', 'rb'):
+        return 'tabs'
+    return None
+
+
 def plasma_app(cls):
     c = (cls or '').lower()
     return PLASMA_APPS.get(c[len('org.kde.'):] if c.startswith('org.kde.') else c)
@@ -940,6 +966,13 @@ class Pad:
             if down:
                 self.view_used = True
                 self.plasma_do(PLASMA_VIEW[name])
+            return
+        own = None if self.key_overlay else plasma_rust_owner(self.win[0], name)
+        if own == 'app' and down:
+            return            # the app reads this button itself (a release still ends what the helper began)
+        if own == 'tabs':
+            if down:
+                self.tap('KEY_LEFTCTRL', 'KEY_PAGEDOWN' if name == 'rb' else 'KEY_PAGEUP')
             return
         if not self.keys_ctx:
             return self.desk_button(name, down, now)

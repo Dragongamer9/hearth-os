@@ -498,6 +498,72 @@ class PlasmaTest(unittest.TestCase):
         pad.tick(5.0, 0.01)
         self.assertEqual(out.log[-1], ('KEY_LEFTALT', False))
 
+    def front(self, pad, cls):
+        pad.command({'cmd': 'window', 'cls': cls, 'caption': 'x', 'fullscreen': False, 'kind': 'normal'})
+
+    def test_rust_settings_reads_its_own_buttons(self):
+        """Settings (hearth-settings) reads A, B, X, Y, LB, RB, the D-pad and the menu button itself (pad.rs): the
+        helper sends nothing for them (no Alt+Tab, no Enter / Esc, no click), so nothing happens twice."""
+        pad, out = self.make()
+        self.front(pad, 'hearth-settings')
+        for i, b in enumerate(('lb', 'rb', 'a', 'b', 'x', 'y', 'up', 'down', 'left', 'right', 'menu')):
+            press(pad, b, 0.5 * i)
+        pad.tick(20.0, 0.01)
+        self.assertEqual(out.log, [])
+        self.assertNotIn({'t': 'launcher'}, out.sent)
+        press(pad, 'rt', 30.0)                                   # RT still clicks where the pointer is
+        self.assertEqual(out.log, [('BTN_LEFT', True), ('BTN_LEFT', False)])
+        pad.axes(0, 0, 1.0, 0); pad.tick(30.2, 0.05)             # and the stick still moves the pointer
+        self.assertGreater(out.moved[0], 0)
+
+    def test_rust_settings_release_after_switching_in(self):
+        pad, out = self.make()
+        self.front(pad, 'firefox')
+        pad.button('a', True, 0.0)                               # a click held down over another window...
+        self.front(pad, 'hearth-settings')
+        pad.button('a', False, 0.1)                              # ...is let go, not left stuck
+        self.assertEqual(out.log, [('BTN_LEFT', True), ('BTN_LEFT', False)])
+
+    def test_rust_tab_apps_lb_rb_switch_tabs(self):
+        for cls in ('hearth-g15-app', 'hearth-tasks', 'hearth-files', 'hearth-file-chooser', 'hearth-capture'):
+            pad, out = self.make()
+            self.front(pad, cls)
+            press(pad, 'rb', 0.0); press(pad, 'lb', 0.2)
+            pad.tick(10.0, 0.01)
+            self.assertEqual(out.log, [('KEY_LEFTCTRL', True), ('KEY_PAGEDOWN', True), ('KEY_PAGEDOWN', False), ('KEY_LEFTCTRL', False),
+                                       ('KEY_LEFTCTRL', True), ('KEY_PAGEUP', True), ('KEY_PAGEUP', False), ('KEY_LEFTCTRL', False)], cls)
+            self.assertNotIn('KEY_LEFTALT', [n for n, d in out.log], cls)
+            out.log.clear()
+            press(pad, 'a', 1.0); press(pad, 'b', 1.2)           # A clicks, B is Esc: once each
+            self.assertEqual([n for n, d in out.log if d], ['BTN_LEFT', 'KEY_ESC'], cls)
+
+    def test_rust_apps_without_tabs_switch_windows(self):
+        for cls in ('hearth-restore', 'hearth-reliability'):
+            pad, out = self.make()
+            self.front(pad, cls)
+            press(pad, 'rb', 0.0)
+            self.assertEqual(out.log[:3], [('KEY_LEFTALT', True), ('KEY_TAB', True), ('KEY_TAB', False)], cls)
+
+    def test_rust_apps_plasma_overlay_takes_over(self):
+        """The taskbar (View + A) over Settings has the keys: the helper drives it, not Settings."""
+        pad, out = self.make()
+        self.front(pad, 'hearth-settings')
+        pad.button('view', True, 0.0); press(pad, 'a', 0.1); pad.button('view', False, 0.2)
+        out.log.clear()
+        press(pad, 'right', 0.3)
+        self.assertEqual([n for n, d in out.log if d], ['KEY_RIGHT'])
+
+    def test_rust_apps_listed_match_their_app_ids(self):
+        root = PATH.parent.parent.parent.parent.parent / 'hosts' / 'hearth-ui' / 'apps'
+        ids = {'hearth-settings': 'settings/src/main.rs', 'hearth-g15-app': 'g15/src/app/main.rs', 'hearth-tasks': 'task-manager/src/main.rs',
+               'hearth-files': 'files/src/app.rs', 'hearth-file-chooser': 'files/src/app.rs', 'hearth-capture': 'capture/src/main.rs',
+               'hearth-restore': 'system-restore/src/main.rs', 'hearth-reliability': 'reliability/src/main.rs'}
+        for i, f in ids.items():
+            self.assertIn('"%s"' % i, (root / f).read_text(), i)
+        self.assertIn('Subscription::run(pad::presses)', (root / 'settings/src/main.rs').read_text())
+        for f in ('task-manager/src/main.rs', 'capture/src/main.rs'):
+            self.assertIn('Named::PageDown', (root / f).read_text(), f)
+
     def test_menus_take_keys(self):
         pad, out = self.make()
         pad.command({'cmd': 'window', 'cls': 'plasmashell', 'caption': '', 'fullscreen': False, 'kind': 'popup'})

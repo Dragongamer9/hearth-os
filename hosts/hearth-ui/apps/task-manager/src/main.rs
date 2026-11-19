@@ -1144,9 +1144,11 @@ fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
             }
             Task::none()
         }
-        Key::Named(Named::ArrowDown) | Key::Named(Named::ArrowUp) if modifiers.control() => {
+        // Ctrl+Down / Up and Ctrl+Page Down / Up: the next / previous page (the controller's LB / RB send the latter:
+        // hearth-pad --plasma, PLASMA_TAB_APPS).
+        Key::Named(Named::ArrowDown) | Key::Named(Named::ArrowUp) | Key::Named(Named::PageDown) | Key::Named(Named::PageUp) if modifiers.control() => {
             let i = Page::ALL.iter().position(|p| *p == a.page).unwrap_or(0);
-            let down = matches!(key.as_ref(), Key::Named(Named::ArrowDown));
+            let down = matches!(key.as_ref(), Key::Named(Named::ArrowDown) | Key::Named(Named::PageDown));
             let j = if down { (i + 1).min(Page::ALL.len() - 1) } else { i.saturating_sub(1) };
             a.set_page(Page::ALL[j])
         }

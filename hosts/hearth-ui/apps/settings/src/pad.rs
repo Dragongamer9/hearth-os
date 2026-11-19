@@ -2,7 +2,9 @@
 //! controller is being used (the controller look, layout B) and its buttons work the same everywhere: Mantel's
 //! hearth-pad types keys into Settings (A Enter, B Esc, the D-pad arrows, Y Ctrl+F, X Ctrl+D, LB / RB Ctrl+Page Up /
 //! Down), but on KDE Plasma (the Fedora edition) hearth-pad is a mouse there and A is a click, so the buttons are
-//! read here too; main.rs drops the keys and clicks a press also sent (nothing happens twice).
+//! read here too; main.rs drops the keys and clicks a press also sent (nothing happens twice). On Plasma these buttons
+//! are this app's alone: hearth-pad --plasma sends nothing for A, B, X, Y, LB, RB, the D-pad and ☰ while Settings
+//! (app id hearth-settings) is in front (PLASMA_PAD_READERS), so LB / RB switch categories and never windows too.
 //!
 //! Light at rest: one thread that sleeps in the kernel (poll with no timeout) until a controller sends something or
 //! /dev/input changes (inotify: a controller plugged in or switched on). It only reads (never grabs), so Steam,
