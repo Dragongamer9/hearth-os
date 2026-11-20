@@ -78,6 +78,34 @@ def find(app_id):
     for k, v in read_state().items():
         if isinstance(v, dict) and matches(app_id, v.get('names', [])):
             return v
+    return scan(app_id)
+
+
+def scan(app_id):
+    """An app that exported its menus (com.canonical.dbusmenu at /MenuBar/N) without registering its window, as some
+    do on Wayland: found on the session bus by its process. Only when the app in front asks (no polling)."""
+    try:
+        import dbus
+        bus = dbus.SessionBus()
+        dbo = dbus.Interface(bus.get_object('org.freedesktop.DBus', '/org/freedesktop/DBus'), 'org.freedesktop.DBus')
+        for n in dbo.ListNames():
+            if not str(n).startswith(':'):
+                continue
+            try:
+                pid = int(dbo.GetConnectionUnixProcessID(n))
+            except dbus.DBusException:
+                continue
+            if not matches(app_id, who(pid)):
+                continue
+            try:
+                xml = dbus.Interface(bus.get_object(n, '/MenuBar'), 'org.freedesktop.DBus.Introspectable').Introspect()
+            except dbus.DBusException:
+                continue
+            m = re.search(r'<node name="(\d+)"', str(xml))
+            if m:
+                return {'service': str(n), 'path': '/MenuBar/' + m.group(1), 'pid': pid, 'names': who(pid)}
+    except Exception:
+        return None
     return None
 
 

@@ -170,3 +170,38 @@ class LabwcHelper(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class GlobalMenu(unittest.TestCase):
+    """hearth-globalmenu: Hearth's own menu source on labwc (mockup firehold-plasma 11)."""
+    def setUp(self):
+        loader = importlib.machinery.SourceFileLoader('hearth_globalmenu', str(SHELL / 'hearth-globalmenu'))
+        spec = importlib.util.spec_from_loader('hearth_globalmenu', loader)
+        self.g = importlib.util.module_from_spec(spec)
+        loader.exec_module(self.g)
+
+    def test_an_app_id_finds_its_process(self):
+        self.assertTrue(self.g.matches('org.kde.dolphin', ['dolphin']))
+        self.assertTrue(self.g.matches('hearth-files', ['hearth-files']))
+        self.assertFalse(self.g.matches('org.kde.dolphin', ['kate']))
+        self.assertFalse(self.g.matches('', ['dolphin']))
+
+    def test_a_menu_as_the_bar_draws_it(self):
+        n = (0, {}, [(1, {'label': '_File', 'children-display': 'submenu'}, [
+            (2, {'label': 'New _window', 'shortcut': [['Control', 'n']]}, []),
+            (3, {'type': 'separator'}, []),
+            (4, {'label': 'Hidden', 'visible': False}, []),
+            (5, {'label': 'Send to', 'children-display': 'submenu'}, [(6, {'label': "Dad's PC"}, [])]),
+            (7, {'label': 'Quit', 'enabled': False}, [])])])
+        top = self.g.node(n[2][0])
+        self.assertEqual(top['label'], 'File')
+        self.assertEqual([i['label'] for i in top['items']], ['New window', '', 'Send to', 'Quit'])
+        self.assertEqual(top['items'][0]['shortcut'], 'Ctrl+n')
+        self.assertEqual(top['items'][1]['kind'], 'separator')
+        self.assertEqual(top['items'][2]['kind'], 'sub')
+        self.assertFalse(top['items'][3]['enabled'])
+
+    def test_it_never_writes_a_setting(self):
+        t = (SHELL / 'hearth-globalmenu').read_text()
+        self.assertNotIn('.config', t)
+        self.assertIn('XDG_RUNTIME_DIR', t)

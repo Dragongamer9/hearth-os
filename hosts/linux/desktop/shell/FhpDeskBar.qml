@@ -35,7 +35,8 @@ PanelWindow {
         const e = AppIcons.entryFor(front.appId);
         const n = e ? String(e.name) : String(front.appId || "");
         // A runtime's name (qml, wine, java, python) says nothing: the window's title does (Trains 2010).
-        return /^(qml|qml6|wine.*|java|python3?|.*\.exe)$/i.test(n) || n === "" ? String(front.title || "Firehold").split(" — ")[0].split(" - ")[0] : n;
+        // (no desktop entry: the window's own title, not its app id)
+        return !e || /^(qml|qml6|wine.*|java|python3?|.*\.exe)$/i.test(n) || n === "" ? String(front.title || n || "Firehold").split(" — ")[0].split(" - ")[0] : n;
     }
     FhGlobalMenu { id: gm; active: true }
     readonly property var globalMenu: gm

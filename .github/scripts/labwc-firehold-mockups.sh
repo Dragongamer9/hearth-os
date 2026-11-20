@@ -213,7 +213,7 @@ sys.exit(app.exec())
 PY
 if python3 -c 'import PyQt6.QtWidgets' 2>/dev/null; then
   # (as an app from the menu starts on labwc: Mantel's Qt look, qt6ct, which puts its menus in the registrar)
-  QT_QPA_PLATFORMTHEME=qt6ct GIO_LAUNCHED_DESKTOP_FILE="$HOME/.local/share/applications/hearth-files.desktop" \
+  QT_LOGGING_RULES="qt.qpa.menus*=true;qt.qpa.theme*=true" QT_QPA_PLATFORMTHEME=qt6ct GIO_LAUNCHED_DESKTOP_FILE="$HOME/.local/share/applications/hearth-files.desktop" \
     python3 /tmp/lw-files.py >"$OUT/files-standin.log" 2>&1 & FPID=$!
   sleep 6
   on_monitor() {   # the window on the monitor (labwc's Move to output, Super+Shift+→), in front
@@ -222,7 +222,7 @@ if python3 -c 'import PyQt6.QtWidgets' 2>/dev/null; then
     timeout 10 quickshell ipc -p "$SH" call firehold focus "$1" >/dev/null 2>&1; sleep 2
   }
   on_monitor "Hearth Files — Pictures"
-  note "the Desk bar: $(timeout 10 quickshell ipc -p "$SH" call firehold bar 2>/dev/null) · registered: $(cat "$XDG_RUNTIME_DIR/hearth-globalmenu.json" 2>/dev/null | head -c 300)"
+  note "the Desk bar: $(timeout 10 quickshell ipc -p "$SH" call firehold bar 2>/dev/null) · registered: $(cat "$XDG_RUNTIME_DIR/hearth-globalmenu.json" 2>/dev/null | head -c 300) · its menus: $(python3 "$SH/hearth-globalmenu" layout hearth-files 2>&1 | head -c 200) · Qt: $(grep -iE 'menu|theme|dbus' "$OUT/files-standin.log" | head -4 | cut -c1-120 | tr '\n' '|')"
   ipc barmenu File; sleep 2
   ipc bartip true; sleep 2
   shot lw-11-desk-bar-app-menus 11-desk-bar-app-menus.png HEADLESS-2
