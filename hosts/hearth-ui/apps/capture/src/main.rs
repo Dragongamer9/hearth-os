@@ -252,6 +252,8 @@ impl App {
         }
         let mut s = app::window("hearth-capture-pill", size, size);
         s.resizable = false;
+        // See-through around the pill, as Mantel's (its window gets a clear background: the theme below).
+        s.transparent = true;
         s.level = window::Level::AlwaysOnTop;
         let (id, t) = window::open(s);
         self.pill = Some(id);
@@ -984,10 +986,24 @@ fn main() -> iced::Result {
     }
     // How it draws (the graphics card where it starts), before iced starts: its windows open later (boot).
     app::renderer("hearth-capture");
+    // The pills (the countdown, the scrolling capture's) are see-through around their round shape: drawing with the
+    // processor, Capture's buffers carry alpha (hearth-ui's softbuffer, as hearth-pad's overlays); every other window
+    // of Capture paints its own solid background, so it stays opaque.
+    std::env::set_var("HEARTH_SOFTBUFFER_ALPHA", "1");
     iced::daemon(boot, update, view)
         .title(|_a: &App, _id: window::Id| "Capture".to_string())
         .subscription(subscription)
-        .theme(|a: &App, _id: window::Id| app::iced_theme(&a.p))
+        .theme(|a: &App, id: window::Id| {
+            if Some(id) == a.pill {
+                // Only the pill's window: a clear background, so nothing shows around the pill.
+                iced::Theme::custom(
+                    "Hearth pill",
+                    iced::theme::Palette { background: iced::Color::TRANSPARENT, text: a.p.text, primary: a.p.accent, success: a.p.good, warning: a.p.warn, danger: a.p.danger },
+                )
+            } else {
+                app::iced_theme(&a.p)
+            }
+        })
         .default_font(app::INTER)
         .run()
 }
