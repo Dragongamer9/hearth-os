@@ -1260,7 +1260,7 @@ fn subscription(_a: &App) -> Subscription<Msg> {
 fn main() -> iced::Result {
     if app::handle_cli(
         "hearth-store-app",
-        "Hearth Store: Dragongamer9's apps for Hearth OS, installed, updated, repaired and uninstalled.\n  --check                 the daily look for updates (the user timer), no window\n  --page home|yours|updates|built-in|settings|app:ID|repair:ID\n  --show menu|uninstall:ID   open with the ⋯ menu or the uninstall dialog (pictures)\n  --controller / --mouse  the controller look, or the other, whatever is used",
+        "Hearth Store: Dragongamer9's apps for Hearth OS, installed, updated, repaired and uninstalled.\n  --check                 the daily look for updates (the user timer), no window\n  --page home|yours|updates|built-in|settings|app:ID|repair:ID\n  --app ID                then an app's page, from the page --page opened (its back goes there)\n  --show menu|uninstall:ID   open with the ⋯ menu or the uninstall dialog (pictures)\n  --controller / --mouse  the controller look, or the other, whatever is used",
     ) {
         return Ok(());
     }

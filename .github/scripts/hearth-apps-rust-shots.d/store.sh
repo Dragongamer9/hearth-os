@@ -18,7 +18,9 @@ store_done() {
 
 store_home home-a
 run store-1-home hearth-store 20 "$BIN/hearth-store-app"
-run store-2-app-page hearth-store 0 "$BIN/hearth-store-app" --page app:command-center --show menu
+# store-2 as the mockup has it: Command Center opened from Your apps (the same step as pressing its row there), so
+# its back says "‹ Your apps".
+run store-2-app-page hearth-store 0 "$BIN/hearth-store-app" --page yours --app command-center --show menu
 run store-3-updates hearth-store 0 "$BIN/hearth-store-app" --page updates
 run store-4-installing hearth-store 0 "$BIN/hearth-store-app" --demo-progress-app hearth-ai --demo-progress 62
 run store-6-uninstall hearth-store 0 "$BIN/hearth-store-app" --page app:hearth-ai --show uninstall:hearth-ai
