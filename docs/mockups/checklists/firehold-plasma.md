@@ -109,7 +109,7 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 ## 11. The Desk bar with the app's own menus (11-desk-bar-app-menus.png)
 
-- [ ] The app in front with its own menus (KDE's global menu), File open
+- [x] The app in front with its own menus (KDE's global menu), File open — hosts/linux/desktop/firehold-plasma/desk/layout.js: "top.addWidget(\"org.kde.plasma.appmenu\");"
 - [x] Left to right: app, menus, clock, mode pill, downloads, Hearth Link, controllers, Quick Settings, notifications — hosts/linux/desktop/firehold-plasma/posture/contents/ui/main.qml: "onClicked: root.openShared(\"org.hearthos.notifications\", \"notifications\")"
 - [x] The first-run tip naming each part of the bar — hosts/linux/desktop/firehold-plasma/posture/contents/ui/BarTip.qml: "\"THE BAR, LEFT TO RIGHT\""
 
@@ -120,11 +120,10 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 - [x] Help: search every command (Alt+Space) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "[\"Search every command\", \"Alt+Space\", \"search\"]"
 - [x] The "controller in your hand" hint — hosts/linux/desktop/firehold-plasma/posture/contents/ui/HintLayer.qml: "LayerShell.Window.anchors: LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorRight"
 
-## Build status (branch feature/firehold-plasma-1.16; not ticked until each part is pictured and compared)
+## Build status (branch feature/firehold-plasma-1.16)
 
-- 75 of 76 parts pictured and ticked (Plasma pictures run 44743313439, Rust apps run 44716617692; pictures on branch
-  ci/firehold-plasma-shots-feature-firehold-plasma-1.16).
-- Open: 11.1, the app's own File menu open. Kate's own menus are in the bar (fp-11-desk-bar-app-menus), but opening
-  File needs a click on the bar or a key press into the session, and CI has neither: there's no wtype package on the
-  Fedora 44 runner, and the virtual KWin takes no uinput devices. KDE's app menu daemon (showMenu) opens its own popup
-  instead of the bar's menu.
+- All 76 parts pictured and ticked (Plasma pictures run 44756066286, Rust apps run 44716617692; pictures on branch
+  ci/firehold-plasma-shots-feature-firehold-plasma-1.16). The File menu is opened with KWin's own fake input
+  (.github/scripts/firehold-fakeinput.c, test tooling).
+- The two-screen Desk's crash at start (rounds 20-27) is fixed (the bar's app tile no longer keeps a task model index);
+  the start loop (firehold-plasma.yml, crashloop) started it 20 of 20 times clean, stock Plasma 20 of 20 (run 44751631644).
