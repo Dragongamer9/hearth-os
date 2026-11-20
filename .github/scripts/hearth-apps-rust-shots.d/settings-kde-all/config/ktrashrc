@@ -1,0 +1,6 @@
+[/home/ci/.local/share/Trash]
+UseTimeLimit=true
+Days=30
+UseSizeLimit=true
+Percent=5
+LimitReachedAction=1

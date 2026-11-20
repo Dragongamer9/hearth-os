@@ -1,0 +1,9 @@
+[Common]
+ShadowSize=ShadowMedium
+
+[Windeco]
+TitleAlignment=AlignLeft
+
+[Style]
+MenuOpacity=85
+WindowDragMode=WD_FULL

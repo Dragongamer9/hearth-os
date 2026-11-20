@@ -1,0 +1,1 @@
+{"wm": "kwin", "outputs": [{"name": "DP-2", "description": "Dell AW3225QF", "enabled": true, "hdr": {"capable": true, "on": true}, "sdrBrightness": 250, "hdrCal": {"capable": true, "peak": 1000, "avg": 450, "min": 0.0005, "peakSet": 640, "avgSet": null, "minSet": null}}]}

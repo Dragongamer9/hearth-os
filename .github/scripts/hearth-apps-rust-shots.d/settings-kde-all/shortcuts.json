@@ -1,0 +1,17 @@
+{"ok": true, "running": true, "components": [
+ {"id": "kwin", "name": "KWin", "actions": [
+  {"id": "Overview", "name": "Toggle Overview", "keys": ["Meta+W"], "default": ["Meta+W"]},
+  {"id": "Window Close", "name": "Close Window", "keys": ["Alt+F4"], "default": ["Alt+F4"]},
+  {"id": "Window Maximize", "name": "Maximize Window", "keys": ["Meta+PgUp"], "default": ["Meta+PgUp"]},
+  {"id": "Switch to Desktop 1", "name": "Switch to Desktop 1", "keys": ["Ctrl+F1"], "default": ["Ctrl+F1"]},
+  {"id": "Walk Through Windows", "name": "Walk Through Windows", "keys": ["Alt+Tab", "Meta+Tab"], "default": ["Alt+Tab"]},
+  {"id": "view_zoom_in", "name": "Zoom In", "keys": ["Meta+=", "Meta++"], "default": ["Meta+=", "Meta++"]}]},
+ {"id": "ksmserver", "name": "Session Management", "actions": [
+  {"id": "Lock Session", "name": "Lock Session", "keys": ["Meta+L", "Screensaver"], "default": ["Meta+L", "Screensaver"]},
+  {"id": "Log Out", "name": "Log Out", "keys": ["Ctrl+Alt+Del"], "default": ["Ctrl+Alt+Del"]}]},
+ {"id": "org.kde.spectacle.desktop", "name": "Spectacle", "actions": [
+  {"id": "RectangularRegionScreenShot", "name": "Capture Rectangular Region", "keys": ["Meta+Shift+S"], "default": ["Meta+Shift+Print"]},
+  {"id": "_launch", "name": "Launch Spectacle", "keys": ["Print"], "default": ["Print"]}]},
+ {"id": "plasmashell", "name": "Plasma", "actions": [
+  {"id": "activate application launcher", "name": "Activate Application Launcher", "keys": ["Meta", "Alt+F1"], "default": ["Meta", "Alt+F1"]},
+  {"id": "clipboard_action", "name": "Show Clipboard Items at Mouse Position", "keys": ["Meta+V"], "default": ["Meta+V"]}]}]}

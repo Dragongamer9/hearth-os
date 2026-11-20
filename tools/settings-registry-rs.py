@@ -1,6 +1,6 @@
 #!/usr/bin/python3
 """Writes hosts/hearth-ui/apps/settings/src/pages_list.rs from Mantel's page registry
-(hosts/linux/desktop/shell/settings-pages.js): every page's id, category, label, line, search words, parent, and
+(hosts/linux/desktop/shell/settings-pages.js, plus the KDE pages in kde-settings.json): every page's id, category, label, line, search words, parent, and
 whether it's hidden or a landing. Run it again when settings-pages.js changes (the Rust Settings app's
 test checks they agree)."""
 import json, os, re, subprocess, sys
@@ -20,6 +20,10 @@ lines = ['// Written by tools/settings-registry-rs.py from hosts/linux/desktop/s
 for c in data['c']:
     lines.append('    (%s, %s, %s),' % (lit(c['id']), lit(c['label']), lit(c['landing'])))
 lines += ['];', '', '#[rustfmt::skip]', 'pub const PAGES: &[Page] = &[']
+# The Rust app's own pages for KDE's System Settings modules (cats/kde.rs; not Mantel's): after Mantel's.
+kde = os.path.join(ROOT, 'hosts/linux/desktop/shell/kde-settings.json')
+if os.path.exists(kde):
+    data['p'] = data['p'] + [dict(p, hidden=p.get('hidden', False)) for p in json.load(open(kde, encoding='utf-8'))['pages']]
 seen = set()
 for p in data['p']:
     if p['id'] in seen:

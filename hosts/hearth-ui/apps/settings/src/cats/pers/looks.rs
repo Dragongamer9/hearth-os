@@ -494,7 +494,7 @@ pub fn appearance(a: &App) -> E<'_> {
         if theirs {
             r = r.push(btn(&p, "Use Hearth's look", ui::Kind::Primary, false, Some(Msg::UseHearthLook)));
         }
-        r = r.push(btn(&p, "Global Themes in KDE", ui::Kind::Normal, false, Some(Msg::Kde("kcm_lookandfeel"))));
+        r = r.push(btn(&p, "All KDE settings", ui::Kind::Normal, false, Some(Msg::Go("kde-settings"))));
         c = c.push(irow(&p, Ic::G(G::Palette), format!("KDE's Global Theme: {shown}"), if theirs { "Picked in KDE's System Settings: Hearth's apps follow it. Pick a look below to go back to Hearth's" } else { "Hearth's look, as a Global Theme: KDE's panel, window frames, colours and splash follow it" }, r.into()));
     }
     c = c.push(head(&p, "Look"));
