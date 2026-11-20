@@ -101,16 +101,16 @@ jobs:
             sleep 5
             local w; w=$(comm -13 <(echo "$before") <(xdotool search --name . 2>/dev/null | sort) | tail -1)
             echo "::notice title=lavapipe $n::window ${w:-none}, vkcube $(kill -0 $pid 2>/dev/null && echo running || echo gone) | $(grep -iE 'basalt|error|fail|abort' "$n.log" | head -12 | tr '\n' '|' | cut -c1-1500)"
-            if [ -n "$w" ]; then import -window "$w" "shots/$n.png"; else import -window root -crop 520x520+0+0 "shots/$n.png"; fi
+            if [ -n "$w" ]; then import -window "$w" "shots/$n.png"; else import -window root -crop 540x560+0+0 +repage "shots/$n.png"; fi
             kill $pid 2>/dev/null; wait $pid 2>/dev/null
           }
           cube cube-before DUMMY=1
           cube cube-after ENABLE_VKBASALT=1 VKBASALT_CONFIG_FILE="$RUNNER_TEMP/vkb/game.conf" VKBASALT_LOG_LEVEL=info
           grep -qi basalt cube-before.log && echo "::error title=lavapipe::vkBasalt loaded without ENABLE_VKBASALT"
           if [ -f shots/cube-before.png ] && [ -f shots/cube-after.png ]; then
-            convert shots/cube-before.png -gravity north -background black -splice 0x44 -fill white -pointsize 22 -annotate +0+10 'Without' shots/a.png
-            convert shots/cube-after.png -gravity north -background black -splice 0x44 -fill white -pointsize 22 -annotate +0+10 'With Sharper graphics (100%%, SMAA, richer colour)' shots/b.png
-            convert shots/a.png shots/b.png -background black -splice 12x0 +append shots/vkb-lavapipe-before-after.png
+            convert shots/cube-before.png +repage -background black -gravity north -splice 0x44 -gravity northwest -fill white -pointsize 20 -annotate +14+12 'Without' shots/a.png
+            convert shots/cube-after.png +repage -background black -gravity north -splice 0x44 -gravity northwest -fill white -pointsize 20 -annotate +14+12 'With Sharper graphics: 100%%, SMAA, richer colour' shots/b.png
+            convert shots/a.png shots/b.png +repage -background black -gravity west -splice 12x0 +append +repage shots/vkb-lavapipe-before-after.png
             echo "::notice title=lavapipe::the two cubes differ by $(compare -metric RMSE shots/cube-before.png shots/cube-after.png null: 2>&1)"
           fi
           rm -f shots/a.png shots/b.png shots/cube-before.png shots/cube-after.png
