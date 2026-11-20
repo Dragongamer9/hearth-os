@@ -95,6 +95,15 @@ fn frame_of(img: &::image::RgbaImage, g: Geo, i: u32) -> Option<::image::RgbaIma
     Some(::image::imageops::crop_imm(img, x, y, w, h).to_image())
 }
 
+/// The memory a sheet took while it was read goes back to the system (a whole sheet is ~20 MB as pixels; without this
+/// the window would keep holding it at rest).
+fn give_back() {
+    #[cfg(all(target_os = "linux", target_env = "gnu"))]
+    unsafe {
+        libc::malloc_trim(0);
+    }
+}
+
 fn handle(px: ::image::RgbaImage) -> Handle {
     let (w, h) = (px.width(), px.height());
     Handle::from_rgba(w, h, px.into_raw())
@@ -131,6 +140,7 @@ pub fn load_posters(sheets: Vec<Sheet>, g: Geo) -> Option<impl Future<Output = (
                 st.posters.insert(s.path.clone(), h);
             }
         }
+        give_back();
         let _ = tx.send(());
     });
     Some(async move {
@@ -173,6 +183,7 @@ pub fn load_frames(s: &Sheet, g: Geo) -> Option<impl Future<Output = ()> + Send 
                 st.playing = Some((s.path.clone(), Some(Arc::new(out))));
             }
         }
+        give_back();
         let _ = tx.send(());
     });
     Some(async move {
@@ -182,8 +193,9 @@ pub fn load_frames(s: &Sheet, g: Geo) -> Option<impl Future<Output = ()> + Send 
 
 /// Nothing plays any more: its frames go.
 pub fn stop() {
-    if let Ok(mut st) = store().lock() {
-        st.playing = None;
+    let had = store().lock().ok().and_then(|mut st| st.playing.take()).is_some();
+    if had {
+        give_back();
     }
 }
 

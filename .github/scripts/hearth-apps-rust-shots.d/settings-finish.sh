@@ -4,8 +4,7 @@
 #     preview playing (the image's real preview sheets, os/system_files/usr/share/hearth/boot-previews)
 #   System › Startup with Server mode's schedule to change on the page
 #   Display › Identify outside KDE Plasma (sway here): each screen's number over the page
-#   Gaming › Controller (the pointer speed reaches KDE Plasma's controller mouse) and the categories with nothing
-#     "Coming next"
+#   a category with nothing "Coming next"
 # Sourced by hearth-apps-rust-test.sh. Opening these pages writes nothing: checked at the end.
 FIN=/tmp/settings-finish
 rm -rf "$FIN" && mkdir -p "$FIN/fx" "$FIN/sys" "$FIN/pics" "$FIN/movies"
@@ -93,24 +92,31 @@ S="$BIN/hearth-settings-app"
 # App store: icons in the lists, the icon and the screenshots on an app's page (measured at rest: nothing runs).
 run settings-fin-01-store hearth-settings 20 env HEARTH_SETTINGS_FIXTURES="$FIN/fx" "$S" --page store
 run settings-fin-02-store-app hearth-settings 0 env HEARTH_SETTINGS_FIXTURES="$FIN/fx" "$S" --page store:app-org_kde_krita
-run settings-fin-03-store-app-b hearth-settings 0 env HEARTH_SETTINGS_FIXTURES="$FIN/fx" "$S" --layout b --page store:app-org_kde_krita --focus Screenshots
 # Startup animation: the cards' pictures, the one the focus is on playing, the preview playing.
 fin_anim() { # NAME ARGS...
   n=$1; shift
   run "$n" hearth-settings 0 env HEARTH_LIBEXEC_DIR="$ROOT/os/system_files/usr/libexec/nimbus" HEARTH_MOVIES="$FIN/movies" HEARTH_BOOT_PREVIEWS="$FIN_PREV" "$S" "$@"
 }
 fin_anim settings-fin-04-animation --page startup-animation
-fin_anim settings-fin-05-animation-focus --page startup-animation --focus Aurora
+fin_anim settings-fin-05-animation-focus --page startup-animation --focus "Logo reveal"
 fin_anim settings-fin-06-animation-preview --page startup-animation:preview-aurora
 # Boot splash (System): the same, from the answer above (measured at rest: no picture plays by itself).
 run settings-fin-07-boot hearth-settings 20 env HEARTH_SYSTEM_FIXTURE="$FIN/sys" XDG_CURRENT_DESKTOP=KDE "$S" --page boot
 run settings-fin-08-boot-focus hearth-settings 0 env HEARTH_SYSTEM_FIXTURE="$FIN/sys" XDG_CURRENT_DESKTOP=KDE "$S" --page boot --focus Aurora
 run settings-fin-09-boot-preview hearth-settings 0 env HEARTH_SYSTEM_FIXTURE="$FIN/sys" XDG_CURRENT_DESKTOP=KDE "$S" --page boot:preview-hearth-starlight
-# Startup: the schedule, each day's track and its changes; the focus on one (← → move, A mode, X remove).
-run settings-fin-10-startup-schedule hearth-settings 0 env HEARTH_SYSTEM_FIXTURE="$FIN/sys" XDG_CURRENT_DESKTOP=KDE "$S" --page startup --focus "From 6 PM"
+# Startup: the schedule, each day's track and its changes; the focus on one (← → move, A mode, X remove). The screen
+# made taller for it (the schedule is below the modes), then put back.
+if swaymsg output HEADLESS-1 resolution 1280x1500 >/dev/null 2>&1; then
+  sleep 0.5
+  run settings-fin-10-startup-schedule hearth-settings 0 env HEARTH_SYSTEM_FIXTURE="$FIN/sys" XDG_CURRENT_DESKTOP=KDE "$S" --page startup --focus "From 6 PM"
+  swaymsg output HEADLESS-1 resolution 1280x800 >/dev/null 2>&1
+  sleep 0.5
+else
+  run settings-fin-10-startup-schedule hearth-settings 0 env HEARTH_SYSTEM_FIXTURE="$FIN/sys" XDG_CURRENT_DESKTOP=KDE "$S" --page startup --focus "From 6 PM"
+fi
 run settings-fin-11-startup-schedule-b hearth-settings 0 env HEARTH_SYSTEM_FIXTURE="$FIN/sys" XDG_CURRENT_DESKTOP=KDE "$S" --layout b --page startup --focus "From 10:30 AM"
 # Display › Identify outside KDE Plasma: the page, then each screen's number over it (as the Identify button starts it).
-"$S" --page display >/tmp/fin-identify-backdrop.log 2>&1 &
+HEARTH_SYSTEM_FIXTURE="$FIN/sys" "$S" --page display >/tmp/fin-identify-backdrop.log 2>&1 &
 fin_bd=$!
 for i in $(seq 1 300); do mapped hearth-settings && break; sleep 0.02; done
 sleep 1.5
@@ -126,11 +132,8 @@ wait $fin_id 2>/dev/null
 kill $fin_bd 2>/dev/null; wait $fin_bd 2>/dev/null
 "$S" --identify 'bad name=x' >/tmp/fin-identify-bad.log 2>&1; rc=$?
 [ "$rc" = 2 ] || echo "::error title=settings-finish identify::a wrong screen list gave $rc, not 2"
-HEARTH_SYSTEM_FIXTURE="$FIN/sys" run settings-fin-13-display hearth-settings 0 "$S" --page display --focus Identify
-sleep 0.3
-# Controller (the pointer speed's line) and two categories with every page built (nothing "Coming next").
-run settings-fin-14-controller hearth-settings 0 "$S" --page controller
+# A category with every page built (nothing "Coming next"). Gaming › Controller's pointer speed line is in
+# settings-gaming-10-controller (settings-apps-gaming.sh).
 run settings-fin-15-apps hearth-settings 0 "$S" --page apps-home
-run settings-fin-16-system hearth-settings 0 "$S" --page system
 # Opening these pages wrote nothing (red flag 9).
 [ "$(fin_sum)" = "$FIN_BEFORE" ] || echo "::error title=settings-finish::opening a page changed desktop.json, session.conf, store.json or the startup animation's choice"

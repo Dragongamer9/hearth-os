@@ -96,6 +96,7 @@ jobs:
     outputs:
       shots: ${{ steps.list.outputs.shots }}
       shots2: ${{ steps.list.outputs.shots2 }}
+      shots3: ${{ steps.list.outputs.shots3 }}
     steps:
       - name: A screen in memory (sway), grim, fonts, Python
         run: |
@@ -129,11 +130,12 @@ jobs:
         id: list
         if: always()
         run: |
-          # A matrix holds at most 256 jobs, so the pictures go out in two of them (250 each; any beyond 500 are said).
+          # A matrix holds at most 256 jobs, so the pictures go out in three of them (250 each; any beyond 750 are said).
           ls shots/*.png 2>/dev/null | xargs -r -n1 basename | sed 's/\.png$//' > /tmp/shots.txt || true
           echo "shots=$(python3 -c 'import json,sys; print(json.dumps([l.strip() for l in open(sys.argv[1]) if l.strip()][:250]))' /tmp/shots.txt)" >> "$GITHUB_OUTPUT"
           echo "shots2=$(python3 -c 'import json,sys; print(json.dumps([l.strip() for l in open(sys.argv[1]) if l.strip()][250:500]))' /tmp/shots.txt)" >> "$GITHUB_OUTPUT"
-          n=$(grep -c . /tmp/shots.txt || true); [ "${n:-0}" -le 500 ] || echo "::warning title=pictures::$n pictures taken; only the first 500 are posted"
+          echo "shots3=$(python3 -c 'import json,sys; print(json.dumps([l.strip() for l in open(sys.argv[1]) if l.strip()][500:750]))' /tmp/shots.txt)" >> "$GITHUB_OUTPUT"
+          n=$(grep -c . /tmp/shots.txt || true); [ "${n:-0}" -le 750 ] || echo "::warning title=pictures::$n pictures taken; only the first 750 are posted"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -173,6 +175,28 @@ jobs:
       fail-fast: false
       matrix:
         shot: ${{ fromJSON(needs.run.outputs.shots2 || '[]') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: hearth-apps-rust-shots
+          path: .
+      - name: Picture ${{ matrix.shot }}
+        run: |
+          python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow >/dev/null 2>&1 || python3 -m pip install --quiet pillow >/dev/null
+          python3 .github/scripts/firehold-shot.py ${{ matrix.shot }}
+
+  pictures-3:
+    needs: run
+    if: always() && needs.run.result != 'skipped' && needs.run.outputs.shots3 != '[]' && needs.run.outputs.shots3 != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: ${{ fromJSON(needs.run.outputs.shots3 || '[]') }}
     steps:
       - uses: actions/checkout@v4
         with:
