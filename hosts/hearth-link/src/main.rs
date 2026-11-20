@@ -4,7 +4,7 @@
 //!   hearth-link call <command> [JSON]   one request to the running service (what the UI sends), its answer as JSON
 //!   hearth-link status                  = call status
 //!   hearth-link id                      this device's id (its public key)
-//!   hearth-link moon-session HOST APP [BITRATE]   Moonlight in its private network (moonlight.rs starts this)
+//!   hearth-link moon-session HOST APP           Moonlight in its private network (moonlight.rs starts this)
 
 use serde_json::Value;
 
