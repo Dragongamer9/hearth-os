@@ -16,6 +16,8 @@ source "$(dirname "$0")/ci-kwin-tools.sh"
 
 export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home USER=root
 mkdir -p "$XDG_RUNTIME_DIR" "$HOME/Pictures/Screenshots" "$HOME/Videos" "$HOME/.config/nimbus" && chmod 700 "$XDG_RUNTIME_DIR"
+# The folders as a desktop sign-in sets them (xdg-user-dirs; without it xdg-user-dir says the home folder).
+printf 'XDG_PICTURES_DIR="$HOME/Pictures"\nXDG_VIDEOS_DIR="$HOME/Videos"\n' > "$HOME/.config/user-dirs.dirs"
 dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE XDG_SESSION_TYPE=wayland KDE_FULL_SESSION=true KDE_SESSION_VERSION=6
@@ -120,7 +122,7 @@ kshot "$OUT/kw-04-picker-every-screen.png"; halves kw-04-picker-every-screen
 p0=$(win hearth-capture-pick-0 "$OUT/kw-windows-picker.txt"); p1=$(win hearth-capture-pick-1 "$OUT/kw-windows-picker.txt")
 if [ -n "$p0" ] && [ -n "$p1" ]; then
   g0=$(geo "$p0"); g1=$(geo "$p1")
-  if [ "$g0" = "0,0 1920x1080" ] && [ "$g1" = "1920,0 1920x1080" ]; then
+  if [ "$(printf '%s\n%s\n' "$g0" "$g1" | sort | tr '\n' ' ')" = "0,0 1920x1080 1920,0 1920x1080 " ]; then
     ok "One picker on every screen" "Super+Shift+S: hearth-capture-pick-0 at $g0, hearth-capture-pick-1 at $g1 (full screen each: $(echo "$p0" | grep -o 'fullscreen=[a-z]*') $(echo "$p1" | grep -o 'fullscreen=[a-z]*'))"
   else
     fail "One picker on every screen" "the pickers aren't one on each screen: $g0 / $g1 ($(tr '\n' '|' <"$OUT/kw-windows-picker.txt" | cut -c1-600))"
@@ -250,6 +252,24 @@ if grep -q '"state": "recording"' "$XDG_RUNTIME_DIR/hearth-record/state.json" 2>
 else
   echo "::warning title=Record's pipeline::$(tail -c 1500 "$OUT/gst-launch-args.txt" 2>/dev/null)"
   echo "::warning title=Record's parse::$(grep -aiE 'error|syntax|warn|no element|no property|could not' "$OUT/gst-debug.txt" 2>/dev/null | tail -8 | cut -c1-300 | tr '\n' '|')"
+  # Which part GStreamer here can't read (each piece on its own, parsed only).
+  bis=""
+  while IFS= read -r t; do
+    timeout 8 /usr/bin/gst-launch-1.0 -q $t >/tmp/gp.txt 2>&1 </dev/null
+    grep -q "syntax error" /tmp/gp.txt && bis="$bis SYNTAX[$t]" || bis="$bis ok[$(echo "$t" | cut -c1-40)]"
+  done <<'GP'
+fakesrc num-buffers=1 ! fakesink
+matroskamux name=mux ! fakesink videotestsrc num-buffers=3 ! queue ! x264enc ! queue ! mux.
+matroskamux name=mux ! filesink location="/tmp/a b.mkv" videotestsrc num-buffers=3 ! queue ! openh264enc ! h264parse ! queue ! mux.
+videotestsrc num-buffers=3 ! video/x-raw,framerate=30/1 ! fakesink
+videotestsrc num-buffers=3 ! videorate ! video/x-raw,framerate=30/1 ! fakesink
+pulsesrc device="@DEFAULT_MONITOR@" num-buffers=3 ! fakesink
+pulsesrc device=@DEFAULT_MONITOR@ num-buffers=3 ! fakesink
+pipewiresrc fd=9 path=50 do-timestamp=true ! fakesink
+pipewiresrc path=50 ! fakesink
+audiotestsrc num-buffers=3 ! opusenc bitrate=160000 ! fakesink
+GP
+  echo "::warning title=Record's pieces::$bis"
   echo "::warning title=Record's log::$(tr '\n' '|' <"$XDG_RUNTIME_DIR/hearth-record/last.log" 2>/dev/null | tail -c 1500)"
   fail "Record" "KDE's screen-sharing portal didn't start a recording: $(cut -c1-300 "$OUT/record-start.json") · $(tr '\n' '|' <"$XDG_RUNTIME_DIR/hearth-record/last.log" 2>/dev/null | tail -c 500) · portal: $(grep -aiE 'screencast|error|warn' "$OUT/xdg-desktop-portal.log" | tail -4 | tr '\n' '|' | cut -c1-400)"
 fi

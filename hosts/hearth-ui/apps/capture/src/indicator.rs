@@ -177,7 +177,7 @@ fn view(i: &Ind) -> Element<'_, M> {
         let words = format!("{} {} connected", i.who(), if v.len() > 1 { "are" } else { "is" });
         col = col.push(pill(&p, false, words, "Disconnect", i.blink, M::OpenRemote, M::Disconnect));
     }
-    container(col).width(Length::Fill).height(Length::Fill).align_right(Length::Fill).style(boxed(p.bg, 0.0, None)).into()
+    container(col).width(Length::Fill).height(Length::Fill).align_right(Length::Fill).style(boxed(Color::TRANSPARENT, 0.0, None)).into()
 }
 
 fn subscription(_i: &Ind) -> Subscription<M> {
@@ -195,13 +195,19 @@ pub fn run() -> iced::Result {
     let mut probe = Ind { p: hearth_ui::theme::load(), rec: Value::Null, vnc: Value::Null, start: Instant::now(), seen: false, idle_since: None, blink: true, rows: 1 };
     probe.read_files();
     let rows = (usize::from(probe.recording()) + usize::from(!probe.viewers().is_empty())).max(1);
+    // See-through around the pill (Mantel's dot is only the pill): buffers with alpha, as hearth-pad's overlays
+    // (hearth-ui's softbuffer), on tiny-skia; set before the window. This small window is seldom redrawn.
+    std::env::set_var("HEARTH_SOFTBUFFER_ALPHA", "1");
+    std::env::set_var("ICED_BACKEND", "tiny-skia");
     let mut s = app::window(APP_ID, (300.0, height(rows)), (200.0, 34.0));
     s.resizable = false;
+    s.transparent = true;
     s.level = window::Level::AlwaysOnTop;
     iced::application(boot, update, view)
         .title("Capture")
         .subscription(subscription)
         .theme(|i: &Ind| app::iced_theme(&i.p))
+        .style(|i: &Ind, _t: &iced::Theme| iced::theme::Style { background_color: iced::Color::TRANSPARENT, text_color: i.p.text })
         .window(s)
         .default_font(app::INTER)
         .run()

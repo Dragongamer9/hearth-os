@@ -1,0 +1,389 @@
+#!/usr/bin/python3
+"""hearth-tray-host: apps' tray icons (StatusNotifierItem) for Hearth's panel on KDE Plasma (plasma-hearth; Mantel's
+bar shows them in its status island, shim/SystemTray.qml). Plasma 6's own tray reads them in its own C++ and no longer
+offers them to other widgets, so this small host does what Quickshell's tray did for Mantel: it tells KDE's
+StatusNotifierWatcher there's a tray (so apps show their icons), reads each app's icon, title and tooltip, and passes
+clicks, scrolls and its menu (com.canonical.dbusmenu) back to the app.
+
+  hearth-tray-host wait SEQ         the icons once they differ from SEQ (asleep until an app's icon changes): one
+                                    JSON line {seq, items: [{id, title, tooltip, sub, icon, status, isMenu, hasMenu}]}
+  hearth-tray-host do ID WHAT X Y   WHAT: activate | secondary | context | scroll-up | scroll-down | scroll-left | scroll-right
+  hearth-tray-host menu ID          the app's menu: {items: [{id, label, icon, enabled, check, sep, depth}]}
+  hearth-tray-host click ID ITEM    an item of that menu chosen
+  hearth-tray-host serve            (internal) the host itself, started by the first wait; it ends when no bar has
+                                    asked for a while
+Nothing polls: the host sleeps until D-Bus says something changed. Icons given as pictures are written once as PNG
+files in $XDG_RUNTIME_DIR/hearth/tray (the session's memory) and named by their content."""
+import hashlib
+import json
+import os
+import socket
+import struct
+import subprocess
+import sys
+import threading
+import time
+import zlib
+
+RUN = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth')
+SOCK = os.path.join(RUN, 'tray.sock')
+ICONS = os.path.join(RUN, 'tray')
+IDLE = 300                  # s without a bar waiting before the host ends
+WATCHER = 'org.kde.StatusNotifierWatcher'
+WATCHER_PATH = '/StatusNotifierWatcher'
+ITEM_IFACES = ('org.kde.StatusNotifierItem', 'org.freedesktop.StatusNotifierItem')
+
+
+def png(w, h, rgba):
+    def chunk(k, d):
+        c = k + d
+        return struct.pack('>I', len(d)) + c + struct.pack('>I', zlib.crc32(c) & 0xffffffff)
+    raw = b''.join(b'\x00' + rgba[y * w * 4:(y + 1) * w * 4] for y in range(h))
+    return b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', w, h, 8, 6, 0, 0, 0)) + chunk(b'IDAT', zlib.compress(raw, 6)) + chunk(b'IEND', b'')
+
+
+def pixmap_file(pixmaps):
+    """The SNI's pictures (w, h, ARGB32 big-endian bytes): the one nearest 64 px, as a PNG file (its path)."""
+    best = None
+    for w, h, data in pixmaps or []:
+        if w <= 0 or h <= 0 or len(data) < w * h * 4:
+            continue
+        if best is None or abs(w - 64) < abs(best[0] - 64):
+            best = (w, h, bytes(data))
+    if not best:
+        return ''
+    w, h, data = best
+    rgba = bytearray(w * h * 4)
+    for i in range(w * h):
+        a, r, g, b = data[i * 4:i * 4 + 4]
+        rgba[i * 4:i * 4 + 4] = bytes((r, g, b, a))
+    name = hashlib.sha1(bytes(rgba) + struct.pack('>II', w, h)).hexdigest()[:20] + '.png'
+    path = os.path.join(ICONS, name)
+    if not os.path.exists(path):
+        os.makedirs(ICONS, mode=0o700, exist_ok=True)
+        tmp = path + '.tmp'
+        with open(tmp, 'wb') as f:
+            f.write(png(w, h, bytes(rgba)))
+        os.replace(tmp, path)
+    return path
+
+
+def theme_file(name, theme_path):
+    """An icon name found in the app's own icon folder (IconThemePath), else the name for the icon theme."""
+    if theme_path and name and '/' not in name:
+        best = ''
+        for root, _dirs, files in os.walk(theme_path):
+            for ext in ('.svg', '.png'):
+                if name + ext in files:
+                    p = os.path.join(root, name + ext)
+                    if not best or ext == '.svg':
+                        best = p
+        if best:
+            return best
+    return name
+
+
+# ------------------------------------------------------------------ the host (serve)
+def serve():
+    from gi.repository import Gio, GLib
+    os.makedirs(RUN, mode=0o700, exist_ok=True)
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    if os.path.exists(SOCK):
+        try:
+            c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); c.settimeout(2); c.connect(SOCK); c.close()
+            return 0                        # one is already answering
+        except OSError:
+            os.unlink(SOCK)
+    try:
+        srv.bind(SOCK)
+    except OSError:
+        return 0
+    os.chmod(SOCK, 0o600)
+    srv.listen(8)
+    bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+    lock = threading.Condition()
+    st = {'seq': 1, 'items': {}, 'order': [], 'waiting': 0, 'last': time.time(), 'subs': {}}
+    host_name = 'org.kde.StatusNotifierHost-%d' % os.getpid()
+
+    def changed():
+        with lock:
+            st['seq'] += 1
+            lock.notify_all()
+
+    def split(svc):
+        if '/' in svc:
+            i = svc.index('/')
+            return svc[:i], svc[i:]
+        return svc, '/StatusNotifierItem'
+
+    def read_item(key):
+        name, path = split(key)
+        props = None
+        for iface in ITEM_IFACES:
+            try:
+                r = bus.call_sync(name, path, 'org.freedesktop.DBus.Properties', 'GetAll', GLib.Variant('(s)', (iface,)),
+                                  None, 0, 3000, None)
+                props = r.unpack()[0]
+                if props:
+                    break
+            except GLib.Error:
+                continue
+        if not props:
+            with lock:
+                st['items'].pop(key, None)
+            changed()
+            return
+        tip = props.get('ToolTip') or ('', [], '', '')
+        icon = props.get('IconName') or ''
+        if props.get('Status') == 'NeedsAttention' and (props.get('AttentionIconName') or props.get('AttentionIconPixmap')):
+            icon = props.get('AttentionIconName') or ''
+            pm = props.get('AttentionIconPixmap')
+        else:
+            pm = props.get('IconPixmap')
+        icon = theme_file(icon, props.get('IconThemePath') or '') if icon else pixmap_file(pm)
+        menu = props.get('Menu') or ''
+        item = {'id': key, 'title': props.get('Title') or props.get('Id') or '', 'appId': props.get('Id') or '',
+                            'tooltip': tip[2] if len(tip) > 2 else '', 'sub': tip[3] if len(tip) > 3 else '', 'icon': icon,
+                            'status': props.get('Status') or 'Active', 'isMenu': bool(props.get('ItemIsMenu')),
+                'hasMenu': bool(menu) and menu != '/NO_DBUSMENU', 'menu': menu if menu != '/NO_DBUSMENU' else ''}
+        with lock:
+            st['items'][key] = item
+        changed()
+
+    def add(key):
+        if key in st['subs']:
+            return
+        with lock:
+            if key not in st['order']:
+                st['order'].append(key)
+        name, path = split(key)
+        st['subs'][key] = bus.signal_subscribe(name, None, None, path, None, Gio.DBusSignalFlags.NONE,
+                                               lambda *_a: GLib.idle_add(lambda: (read_item(key), False)[1]))
+        read_item(key)
+
+    def remove(key):
+        sid = st['subs'].pop(key, None)
+        if sid is not None:
+            bus.signal_unsubscribe(sid)
+        with lock:
+            st['items'].pop(key, None)
+            if key in st['order']:
+                st['order'].remove(key)
+        changed()
+
+    def register():
+        try:
+            bus.call_sync(WATCHER, WATCHER_PATH, WATCHER, 'RegisterStatusNotifierHost', GLib.Variant('(s)', (host_name,)), None, 0, 3000, None)
+            r = bus.call_sync(WATCHER, WATCHER_PATH, 'org.freedesktop.DBus.Properties', 'Get',
+                              GLib.Variant('(ss)', (WATCHER, 'RegisteredStatusNotifierItems')), None, 0, 3000, None)
+            for key in r.unpack()[0]:
+                add(key)
+        except GLib.Error:
+            pass
+        return False
+
+    def on_watcher(_c, _s, _p, _i, sig, params):
+        key = params.unpack()[0]
+        if sig == 'StatusNotifierItemRegistered':
+            add(key)
+        elif sig == 'StatusNotifierItemUnregistered':
+            remove(key)
+
+    def on_owner(_c, _s, _p, _i, _sig, params):
+        name, _old, new = params.unpack()
+        if name == WATCHER and new:
+            GLib.timeout_add(300, register)          # KDE's watcher (kded) started again
+        elif name and not new:
+            for key in [k for k in st['order'] if split(k)[0] == name]:
+                remove(key)                          # the app went
+
+    Gio.bus_own_name_on_connection(bus, host_name, 0, None, None)
+    bus.signal_subscribe(WATCHER, WATCHER, None, WATCHER_PATH, None, Gio.DBusSignalFlags.NONE, on_watcher)
+    bus.signal_subscribe('org.freedesktop.DBus', 'org.freedesktop.DBus', 'NameOwnerChanged', '/org/freedesktop/DBus', None,
+                         Gio.DBusSignalFlags.NONE, on_owner)
+    GLib.idle_add(register)
+
+    def on_main(fn):
+        """FN on GLib's thread (D-Bus calls), its answer back here."""
+        box, done = {}, threading.Event()
+
+        def go():
+            try:
+                box['v'] = fn()
+            except Exception as e:      # noqa: BLE001
+                box['v'] = {'ok': False, 'error': str(e)[:200]}
+            done.set()
+            return False
+        GLib.idle_add(go)
+        done.wait(10)
+        return box.get('v', {'ok': False, 'error': 'no answer'})
+
+    def act(key, what, x, y):
+        name, path = split(key)
+        it = st['items'].get(key) or {}
+        method, args = {'activate': ('Activate', (x, y)), 'secondary': ('SecondaryActivate', (x, y)), 'context': ('ContextMenu', (x, y)),
+                        'scroll-up': ('Scroll', (120, 'vertical')), 'scroll-down': ('Scroll', (-120, 'vertical')),
+                        'scroll-left': ('Scroll', (-120, 'horizontal')), 'scroll-right': ('Scroll', (120, 'horizontal'))}.get(what, (None, None))
+        if not method:
+            return {'ok': False, 'error': 'unknown action'}
+        sig = '(ii)' if method != 'Scroll' else '(is)'
+        for iface in ITEM_IFACES:
+            try:
+                bus.call_sync(name, path, iface, method, GLib.Variant(sig, args), None, 0, 3000, None)
+                return {'ok': True}
+            except GLib.Error as e:
+                err = e.message
+        # An app whose only answer to a click is its menu (ItemIsMenu, or no Activate): the bar shows the menu.
+        return {'ok': False, 'menu': bool(it.get('hasMenu')), 'error': err[:200]}
+
+    def menu(key):
+        name, _path = split(key)
+        it = st['items'].get(key) or {}
+        mp = it.get('menu') or ''
+        if not mp:
+            return {'items': []}
+        try:
+            bus.call_sync(name, mp, 'com.canonical.dbusmenu', 'AboutToShow', GLib.Variant('(i)', (0,)), None, 0, 2000, None)
+        except GLib.Error:
+            pass
+        r = bus.call_sync(name, mp, 'com.canonical.dbusmenu', 'GetLayout', GLib.Variant('(iias)', (0, -1, [])), None, 0, 3000, None)
+        _rev, layout = r.unpack()
+        out = []
+
+        def walk(node, depth):
+            mid, props, kids = node
+            if depth > 0 and props.get('visible', True) is not False:
+                # The access-key underscore out ("_Quit" → "Quit"; "__" is an underscore).
+                label = str(props.get('label', '')).replace('__', '\0').replace('_', '').replace('\0', '_')
+                out.append({'id': int(mid), 'label': label, 'icon': props.get('icon-name', ''), 'enabled': props.get('enabled', True) is not False,
+                            'sep': props.get('type') == 'separator', 'check': props.get('toggle-state', -1) if props.get('toggle-type') else -1,
+                            'sub': props.get('children-display') == 'submenu', 'depth': depth - 1})
+            if depth < 3:
+                for k in kids:
+                    walk(k, depth + 1)
+        walk(layout, 0)
+        return {'items': out}
+
+    def click(key, mid):
+        name, _path = split(key)
+        mp = (st['items'].get(key) or {}).get('menu') or ''
+        if not mp:
+            return {'ok': False}
+        bus.call_sync(name, mp, 'com.canonical.dbusmenu', 'Event', GLib.Variant('(isvu)', (mid, 'clicked', GLib.Variant('s', ''), int(time.time()) & 0x7fffffff)),
+                      None, 0, 3000, None)
+        return {'ok': True}
+
+    def client(c):
+        try:
+            f = c.makefile('rw')
+            parts = f.readline().strip().split('\x1f')
+            cmd = parts[0]
+            if cmd == 'WAIT':
+                since = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 0
+                with lock:
+                    st['waiting'] += 1
+                    while st['seq'] == since:
+                        lock.wait(30)
+                        try:
+                            c.setblocking(False)
+                            if c.recv(1, socket.MSG_PEEK) == b'':
+                                break              # the bar went
+                        except BlockingIOError:
+                            pass
+                        except OSError:
+                            break
+                        finally:
+                            c.setblocking(True)
+                    items = [st['items'][k] for k in st['order'] if k in st['items'] and st['items'][k]['status'] != 'Passive']
+                    seq = st['seq']
+                    st['waiting'] -= 1
+                    st['last'] = time.time()
+                f.write(json.dumps({'seq': seq, 'items': items}) + '\n')
+            elif cmd == 'DO' and len(parts) >= 5:
+                f.write(json.dumps(on_main(lambda: act(parts[1], parts[2], int(float(parts[3])), int(float(parts[4]))))) + '\n')
+            elif cmd == 'MENU' and len(parts) >= 2:
+                f.write(json.dumps(on_main(lambda: menu(parts[1]))) + '\n')
+            elif cmd == 'CLICK' and len(parts) >= 3:
+                f.write(json.dumps(on_main(lambda: click(parts[1], int(parts[2])))) + '\n')
+            f.flush()
+        except (OSError, ValueError):
+            pass
+        finally:
+            try:
+                c.close()
+            except OSError:
+                pass
+
+    def accept():
+        while True:
+            c, _ = srv.accept()
+            threading.Thread(target=client, args=(c,), daemon=True).start()
+
+    def idle():
+        with lock:
+            if st['waiting'] == 0 and time.time() - st['last'] > IDLE:
+                try:
+                    os.unlink(SOCK)
+                except OSError:
+                    pass
+                os._exit(0)
+        return True
+
+    threading.Thread(target=accept, daemon=True).start()
+    GLib.timeout_add_seconds(60, idle)
+    GLib.MainLoop().run()
+    return 0
+
+
+# ------------------------------------------------------------------ asking the host
+def ask(line, timeout, start=True):
+    for attempt in range(2):
+        c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        c.settimeout(timeout)
+        try:
+            c.connect(SOCK)
+            c.sendall((line + '\n').encode())
+            data = b''
+            while not data.endswith(b'\n'):
+                b = c.recv(65536)
+                if not b:
+                    break
+                data += b
+            return data.decode(errors='replace').strip() or '{}'
+        except (OSError, socket.timeout):
+            if attempt or not start:
+                return json.dumps({'error': 'no tray host'})
+            subprocess.Popen([sys.executable, os.path.abspath(__file__), 'serve'], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+            for _ in range(30):
+                time.sleep(0.1)
+                if os.path.exists(SOCK):
+                    break
+        finally:
+            c.close()
+    return json.dumps({'error': 'no tray host'})
+
+
+def main(argv):
+    if not argv:
+        print(__doc__)
+        return 2
+    cmd, rest = argv[0], argv[1:]
+    if cmd == 'serve':
+        return serve()
+    if cmd == 'wait':
+        print(ask('WAIT\x1f' + (rest[0] if rest else '0'), 660))
+    elif cmd == 'do' and len(rest) >= 2:
+        print(ask('\x1f'.join(['DO', rest[0], rest[1], rest[2] if len(rest) > 2 else '0', rest[3] if len(rest) > 3 else '0']), 15, start=False))
+    elif cmd == 'menu' and rest:
+        print(ask('MENU\x1f' + rest[0], 15, start=False))
+    elif cmd == 'click' and len(rest) >= 2:
+        print(ask('\x1f'.join(['CLICK', rest[0], rest[1]]), 15, start=False))
+    else:
+        print(__doc__)
+        return 2
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
