@@ -168,6 +168,9 @@ ALLOWED = {
     '.github/scripts/anatase-image-check.sh',
     # CI only: Hearth's panel on Plasma's pictures set up the runner's throwaway account (desk.json's pins and recents).
     '.github/scripts/plasma-hearth-shots.sh',
+    # CI only: the games' desktop icons pictures set up the runner's throwaway account (desk.json, desktop.json, library.json).
+    '.github/scripts/games-desktop-icons-desktops.sh',
+    '.github/scripts/games-desktop-icons-app.sh',
 }
 
 
