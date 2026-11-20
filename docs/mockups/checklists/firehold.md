@@ -11,7 +11,7 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 - [x] Top bar: the Firehold logo tile (flame) at the left — hosts/linux/desktop/shell/FireholdCouch.qml: "c.strokeStyle = \"#2a1206\""
 - [x] Top bar tabs: Home (selected, underlined), Library, Apps, Store — hosts/linux/desktop/shell/FireholdCouch.qml: "[[\"home\", \"Home\"], [\"library\", \"Library\"], [\"apps\", \"Apps\"], [\"store\", \"Store\"]]"
 - [x] Top bar: the posture pill with its dot: "Couch · switches to Desk when you touch the mouse" — hosts/linux/desktop/shell/FireholdCouch.qml: "Couch · switches to Desk when you touch the mouse"
-- [x] Top bar: Wi-Fi status — hosts/linux/desktop/shell/FireholdCouch.qml: "cw.net = k === \"wifi\" ? \"Wi-Fi\""
+- [x] Top bar: Wi-Fi status — hosts/linux/desktop/shell/FireholdCouch.qml: "NetBtWatch.netKind === \"wifi\" ? \"Wi-Fi\""
 - [x] Top bar: battery percentage (78%) — hosts/linux/desktop/shell/FireholdCouch.qml: "Math.round(batt.percentage * 100) + \"%\""
 - [x] Top bar: the clock (10:22 PM) — hosts/linux/desktop/shell/FireholdCouch.qml: "\"h:mm AP\""
 - [x] Top bar: the account avatar (initial, round) — hosts/linux/desktop/shell/FireholdCouch.qml: "text: cw.initial"
