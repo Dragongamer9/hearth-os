@@ -207,5 +207,24 @@ PlasmoidItem {
             interval: 3000; running: main.role === "bar"
             onTriggered: console.warn("plasma-hearth: the bar is drawn " + (rep.GraphicsInfo.api === GraphicsInfo.Software ? "by the processor (no blur)" : "on the graphics card (api " + rep.GraphicsInfo.api + ")"))
         }
+        // CI (HEARTH_PLASMA_PANEL_CI): what Glass's frost and the tray have, said when a look changes.
+        Timer {
+            interval: 2500; running: main.role === "bar" && Hearth.env("HEARTH_PLASMA_PANEL_CI") === "1"; repeat: true
+            property string said: ""
+            onTriggered: {
+                const fr = [];
+                const walk = (it, d) => {
+                    if (!it || d > 40) return;
+                    if (it.gpu !== undefined && it.wall !== undefined && it.at !== undefined) {
+                        const kids = it.children || [];
+                        fr.push("gpu=" + it.gpu + " blur=" + kids.map(k => k.status !== undefined ? k.status + "/" + k.active + "/" + (k.item ? "item" : "none") : "-").join(","));
+                    }
+                    for (const k of (it.children || [])) walk(k, d + 1);
+                };
+                walk(rep.Window.contentItem, 0);
+                const s = "frost " + fr.length + " [" + fr.slice(0, 2).join(" ; ") + "] tray " + SystemTray.items.length;
+                if (s !== said) { said = s; console.warn("plasma-hearth: ci: " + s); }
+            }
+        }
     }
 }

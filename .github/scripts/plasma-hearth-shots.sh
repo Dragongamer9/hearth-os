@@ -204,6 +204,7 @@ PY
   done
   setlook hearth dark "appMenu=hearth"
   echo "::notice title=Tray and player::$(tr '\n' ' ' <"$OUT/fixtures.log" | cut -c1-400)"
+  echo "::notice title=Frost and tray (the bar says)::$(grep -ah "plasma-hearth: ci:" "$OUT"/plasmashell*.log | sed 's/.*ci: //' | tr '\n' '|' | cut -c1-1500)"
   bad=$(grep -aE "org\.hearthos" "$OUT/plasmashell.log" | grep -iE "MprisPlayers|MediaPill|MediaCard|MenuNowPlaying|SystemTray|Frost" | grep -iE "error|TypeError|ReferenceError|undefined" | sort -u | head -8)
   [ -n "$bad" ] && echo "::warning title=plasmashell about the extras::$(printf '%s' "$bad" | cut -c1-230 | tr '\n' '|')"
   pkill -f plasma-hearth-fixtures.py; pkill konsole; pkill dolphin; pkill plasmashell; sleep 2; pkill -9 -f /tmp/kwin_wayland

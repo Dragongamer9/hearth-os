@@ -199,7 +199,7 @@ fi
 
 # ============================================================== one screen: recording (KDE's screen-sharing portal)
 # (CI: each gst-launch hearth-record runs is written down, to say what it was asked when it fails)
-mkdir -p /tmp/gstshim && printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> %s/gst-launch-args.txt\nexec /usr/bin/gst-launch-1.0 "$@"\n' "$OUT" > /tmp/gstshim/gst-launch-1.0 && chmod +x /tmp/gstshim/gst-launch-1.0
+mkdir -p /tmp/gstshim && printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> %s/gst-launch-args.txt\nGST_DEBUG=GST_PIPELINE:5 GST_DEBUG_NO_COLOR=1 exec /usr/bin/gst-launch-1.0 "$@" 2>>%s/gst-debug.txt\n' "$OUT" "$OUT" > /tmp/gstshim/gst-launch-1.0 && chmod +x /tmp/gstshim/gst-launch-1.0
 export PATH=/tmp/gstshim:$PATH
 start_kwin 1 || exit 0
 XDP=$(ls /usr/libexec/xdg-desktop-portal 2>/dev/null | head -1)
@@ -249,6 +249,7 @@ if grep -q '"state": "recording"' "$XDG_RUNTIME_DIR/hearth-record/state.json" 2>
   fi
 else
   echo "::warning title=Record's pipeline::$(tail -c 1500 "$OUT/gst-launch-args.txt" 2>/dev/null)"
+  echo "::warning title=Record's parse::$(grep -aiE 'error|syntax|warn|no element|no property|could not' "$OUT/gst-debug.txt" 2>/dev/null | tail -8 | cut -c1-300 | tr '\n' '|')"
   echo "::warning title=Record's log::$(tr '\n' '|' <"$XDG_RUNTIME_DIR/hearth-record/last.log" 2>/dev/null | tail -c 1500)"
   fail "Record" "KDE's screen-sharing portal didn't start a recording: $(cut -c1-300 "$OUT/record-start.json") · $(tr '\n' '|' <"$XDG_RUNTIME_DIR/hearth-record/last.log" 2>/dev/null | tail -c 500) · portal: $(grep -aiE 'screencast|error|warn' "$OUT/xdg-desktop-portal.log" | tail -4 | tr '\n' '|' | cut -c1-400)"
 fi
