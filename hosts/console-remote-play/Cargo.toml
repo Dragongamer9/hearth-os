@@ -2,10 +2,11 @@
 # docs/mockups/checklists/console-remote-play.md): a Hearth Store app that streams your own Xbox from home, the way
 # Greenlight does (MIT). Pure Rust on hearth-ui (iced); the stream through GStreamer's webrtcbin with the graphics
 # card decoding (VA-API). Its own workspace, so GStreamer's libraries are needed only here (the OS image's hearth-ui
-# build is untouched). Built and tested only in GitHub Actions (console-remote-play.yml). No version line: the owner
-# picks every version number.
+# build is untouched). Built and tested only in GitHub Actions (console-remote-play.yml). Version 1.0: the owner's
+# number (Nov 20, 2026); he picks every one after it too.
 [package]
 name = "hearth-console-remote-play"
+version = "1.0.0"
 edition = "2021"
 description = "Hearth Console Remote Play: play your own Xbox from anywhere"
 license = "GPL-3.0-or-later"

@@ -1682,7 +1682,15 @@ fn theme(_a: &App) -> iced::Theme {
     iced::Theme::custom("Hearth Console Remote Play", iced::theme::Palette { background: look::BG, text: look::TX, primary: look::ACC, success: look::OK, warning: look::WARN, danger: look::BAD })
 }
 
+/// The app's version (the owner's number, Nov 20, 2026).
+pub const VERSION: &str = "1.0";
+
 fn main() -> iced::Result {
+    if app::flag("--version") {
+        println!("Hearth Console Remote Play {VERSION}, a Hearth Store app. It isn't made by Microsoft.");
+        println!("Its sign-in and stream follow Greenlight, xal-node and xbox-xcloud-player by Jim Kroon (MIT; LICENSES/greenlight-MIT.txt).");
+        return Ok(());
+    }
     if app::handle_cli(
         "hearth-console-remote-play",
         "Hearth Console Remote Play: play your own Xbox from anywhere (a Hearth Store app; not made by Microsoft).\n  --page welcome|signin|signed-in|consoles|connecting|stream|trouble|settings|cloud\n  --game-mode             the Ally's Game Mode pages (also when started in gamescope)\n  --show menu,bar,pill,disconnect-tip,warning,shot   (pictures)",

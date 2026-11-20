@@ -6,7 +6,7 @@
 #   run       every page on a headless screen (sway): the desktop pages at 1920 x 1080, the Ally's Game Mode pages at
 #             1280 x 800, CPU at rest, opening writes nothing, no token in a log or a file
 #   pictures  each picture as SHOT notices (one job each)
-# No version number anywhere: the owner picks it. Nothing is released from here.
+# Its version (1.0) is the owner's. Nothing is released from here.
 name: Hearth Console Remote Play
 
 on:
@@ -73,6 +73,7 @@ jobs:
         run: |
           mkdir -p bin
           cp hosts/console-remote-play/target/release/hearth-console-remote-play bin/
+          echo "::notice title=version::$(bin/hearth-console-remote-play --version | head -1)"
           cp hosts/console-remote-play/helper/hearth-console-remote-play-signin bin/
       - uses: actions/upload-artifact@v4
         with:

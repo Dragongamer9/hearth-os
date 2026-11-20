@@ -3,7 +3,13 @@
 A Hearth Store app that plays the owner's own Xbox at home on his ROG Ally (Game Mode) and his laptop, over the
 internet, with Xbox Remote Play, the way the open-source Greenlight app does it. Approved mockups:
 `docs/mockups/console-remote-play/` (18 pages); every part is listed in `docs/mockups/checklists/console-remote-play.md`
-(red flag 11). It has no version number yet: the owner picks it.
+(red flag 11). Version **1.0** (the owner's number, Nov 20, 2026), a Store app with its own releases.
+
+## Decided (the owner, Nov 20, 2026)
+
+- The Greenlight-style sign-in (presenting itself as Microsoft's Xbox app, as Greenlight does) is fine.
+- The app's version is **1.0** (Cargo.toml, `--version`).
+- He'll make the app's own GitHub repository later; the Store listing (catalog.json) waits for it.
 
 ## What it's built on: Greenlight's findings (MIT)
 
@@ -13,7 +19,7 @@ packages (xal-node 1.1.5, xbox-xcloud-player 0.2.11; the GitHub pages can't be r
 app is written anew in Rust from what they show, and their copyright and MIT notice go in the app's About and
 `LICENSES/greenlight-MIT.txt` with the AppImage, as MIT asks when code is ported closely (the input packet layout is).
 
-**It's unofficial.** Microsoft publishes no API for this. Greenlight talks to the same private services as the
+**It's unofficial** (the owner okayed it, Nov 20). Microsoft publishes no API for this. Greenlight talks to the same private services as the
 Xbox app and **presents itself as Microsoft's own Xbox app** (its sign-in client id `000000004c20a908`, an "Android"
 device token, and `Microsoft.GamingApp` in the stream's device info). Microsoft could change or block this at any
 time, and it may go against Microsoft's terms of use (an account could in the worst case be limited). This is the README's open question 1, still
@@ -144,5 +150,5 @@ over a file that didn't read). Opening the app or a page writes nothing; CI chec
   graphics card; both match the mockup (run 44767047864). Its second line is a layer of its own across the page: laid
   out next to the title, iced measured it to the title's width and the CPU renderer clipped it there.
 - Needs a device: a real sign-in, Wake, the picture, sound, delay, the controller and rumble with his Xbox.
-- Needs the owner: the app's own GitHub repository (for the Store's AppImage releases), his okay on the unofficial
-  sign-in, and its version number. Nothing is released and it isn't in the Store's list yet.
+- Waiting for the owner: the app's own GitHub repository (he'll make it later); the Store listing and the first 1.0
+  release wait for it. The sign-in (okayed) and the version (1.0) are decided.

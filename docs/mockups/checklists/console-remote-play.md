@@ -3,9 +3,13 @@
 Mockups: console-remote-play/remote-play-1a-welcome.png, console-remote-play/remote-play-1b-sign-in-window.png, console-remote-play/remote-play-1c-signed-in.png, console-remote-play/remote-play-2-my-consoles.png, console-remote-play/remote-play-3-connecting.png, console-remote-play/remote-play-4-streaming-bar.png, console-remote-play/remote-play-4b-streaming-data-warning.png, console-remote-play/remote-play-5-connection-trouble.png, console-remote-play/remote-play-6-settings.png, console-remote-play/remote-play-8-cloud-optional.png, console-remote-play/remote-play-g1-ally-sign-in.png, console-remote-play/remote-play-g2-ally-consoles.png, console-remote-play/remote-play-g3-ally-connecting.png, console-remote-play/remote-play-g5-ally-trouble.png, console-remote-play/remote-play-g6-ally-settings.png, console-remote-play/remote-play-g7a-ally-streaming-overlay.png, console-remote-play/remote-play-g7b-ally-quick-menu.png, console-remote-play/remote-play-g8-ally-cloud-optional.png
 Release: next
 
+Store app 1.0: `Release: next` stays because Release names a Hearth OS update and Hearth OS 1.0 is already released
+(the app's own version, 1.0, is in hosts/console-remote-play/Cargo.toml). The owner, Nov 20: the Greenlight-style
+sign-in is fine; version 1.0; he'll make the GitHub repository later.
+
 Approved by the owner on Nov 20, 2026 (06:14). Source of the pictures: hearth-workspace
 `hearth/mockups/remote-play` (remote-play.html, make.py; the decisions are in its README). It's a Hearth Store app
-with its own updates, apart from Hearth OS releases: `Release: next` until the owner picks its number. The plan is
+with its own updates, apart from Hearth OS releases. The plan is
 docs/CONSOLE-REMOTE-PLAY.md. Yellow notes on pages 1b, 4b, g7a and g7b explain behaviour and aren't parts.
 Parts that need a real Xbox are ticked only once pictured with CI's stand-in and say "(needs testing on a device)".
 
