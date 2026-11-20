@@ -10,6 +10,7 @@ pub mod app;
 pub mod backend;
 pub mod briefcase;
 pub mod dnd;
+pub mod dragout;
 pub mod drive;
 pub mod extras;
 pub mod icons;

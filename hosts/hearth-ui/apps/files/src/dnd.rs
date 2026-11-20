@@ -61,6 +61,14 @@ pub fn moved(a: &mut App, p: Point) {
         let (dx, dy) = (p.x - pd.start.x, p.y - pd.start.y);
         if dx * dx + dy * dy > 36.0 {
             let pd = a.drag_pending.take().unwrap();
+            // Out of the window, it becomes the system's drag, for other apps (dragout.rs).
+            let c = a.p.accent;
+            crate::dragout::send(crate::dragout::Cmd::Arm {
+                paths: pd.paths.iter().filter(|x| x.starts_with('/')).cloned().collect(),
+                w: a.win.0 as f64,
+                h: a.win.1 as f64,
+                accent: ((c.r * 255.0) as u8, (c.g * 255.0) as u8, (c.b * 255.0) as u8),
+            });
             a.drag = Some(Drag { paths: pd.paths, label: pd.label, at: p, from_split: pd.from_split, item: None, area: None });
         }
     }
@@ -89,6 +97,7 @@ pub fn update(a: &mut App, m: DMsg) -> Task<Msg> {
         }
         DMsg::Release => {
             a.drag_pending = None;
+            crate::dragout::send(crate::dragout::Cmd::Disarm);
             let Some(d) = a.drag.take() else { return Task::none() };
             let Some(dest) = d.item.clone().or(d.area.clone()) else { return Task::none() };
             return drop_on(a, d.paths, &dest);

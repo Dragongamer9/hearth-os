@@ -475,6 +475,10 @@ pub enum Msg {
     Bc(crate::briefcase::BMsg),
     Pad(crate::pad::PMsg),
     Dnd(crate::dnd::DMsg),
+    WinOpened(iced::window::Id, f32, f32),
+    WinSize(f32, f32),
+    DragOutReady(Option<(usize, usize)>),
+    DragOut(crate::dragout::Out),
 }
 
 /// What to do once hearth-files answered.
@@ -600,6 +604,8 @@ pub struct App {
     pub drag_pending: Option<crate::dnd::Pending>,
     /// What a submenu (Tags ›) is about.
     pub menu_targets: Vec<String>,
+    /// The window's size (for dragging out: when the pointer leaves it).
+    pub win: (f32, f32),
 }
 
 pub const SCROLL_ID: &str = "files-main";
@@ -709,6 +715,7 @@ impl App {
             drag: None,
             drag_pending: None,
             menu_targets: vec![],
+            win: (1180.0, 740.0),
         };
         // CI's pictures: the wider left menu (as dragged past 200 px), shown, never saved.
         if s.show.split(',').any(|x| x == "widenav") {
@@ -2530,6 +2537,15 @@ fn update_inner(app: &mut App, m: Msg) -> Task<Msg> {
         Msg::Cursor(p) => {
             app.cursor = p;
             crate::dnd::moved(app, p);
+            // The window opened before its events were listened to: its handles are asked for now.
+            if !app.picking() && crate::dragout::ask_once() {
+                return iced::window::latest()
+                    .then(|id| match id {
+                        Some(id) => iced::window::run(id, |w| crate::dragout::handles_of(w)),
+                        None => Task::done(None),
+                    })
+                    .map(Msg::DragOutReady);
+            }
         }
         Msg::Key(ev) => return crate::menus::key(app, ev),
         Msg::FileDropped(p) => {
@@ -3065,6 +3081,27 @@ fn update_inner(app: &mut App, m: Msg) -> Task<Msg> {
         Msg::Bc(m) => return crate::briefcase::update(app, m),
         Msg::Pad(m) => return crate::pad::update(app, m),
         Msg::Dnd(m) => return crate::dnd::update(app, m),
+        Msg::WinOpened(id, w, h) => {
+            app.win = (w, h);
+            // Dragging out to other apps: on the window's own Wayland connection (dragout.rs).
+            if !app.picking() && crate::dragout::ask_once() {
+                return iced::window::run(id, |w| crate::dragout::handles_of(w)).map(Msg::DragOutReady);
+            }
+        }
+        Msg::WinSize(w, h) => app.win = (w, h),
+        Msg::DragOutReady(h) => {
+            if let Some((d, s)) = h {
+                crate::dragout::start(d, s);
+            }
+        }
+        Msg::DragOut(o) => match o {
+            crate::dragout::Out::Started(_) => {
+                // The system has the drag now: Files' own ends.
+                app.drag = None;
+                app.drag_pending = None;
+            }
+            crate::dragout::Out::Ended(_) => {}
+        },
     }
     Task::none()
 }
@@ -3101,6 +3138,9 @@ pub fn subscription(a: &App) -> Subscription<Msg> {
             subs.push(Subscription::run_with(Run { seq: j.seq, cmd: j.cmd.clone() }, backend::lines).map(Msg::Job));
         }
     }
+    // The window's size, and the news of a drag out to another app (dragout.rs).
+    subs.push(iced::event::listen_with(window_events));
+    subs.push(Subscription::run(crate::dragout::events).map(Msg::DragOut));
     // The terminal panel's command, while it runs; Esc and Ctrl+C on its line (its text box keeps them otherwise).
     if let Some(r) = &a.term.run {
         subs.push(Subscription::run_with(r.clone(), crate::terminal::lines).map(|l| Msg::Term(crate::terminal::TMsg::Out(l))));
@@ -3120,6 +3160,14 @@ pub fn subscription(a: &App) -> Subscription<Msg> {
         subs.push(iced::time::every(std::time::Duration::from_millis(16)).map(|_| Msg::Pad(crate::pad::PMsg::Tick)));
     }
     Subscription::batch(subs)
+}
+
+fn window_events(e: iced::Event, _s: iced::event::Status, id: iced::window::Id) -> Option<Msg> {
+    match e {
+        iced::Event::Window(iced::window::Event::Opened { size, .. }) => Some(Msg::WinOpened(id, size.width, size.height)),
+        iced::Event::Window(iced::window::Event::Resized(size)) => Some(Msg::WinSize(size.width, size.height)),
+        _ => None,
+    }
 }
 
 fn a_(v: &[&str]) -> Vec<String> {
