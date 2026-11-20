@@ -7,7 +7,6 @@ CASE missing | crash | noreg: hearth-kwin-im isn't there / crashes at once / doe
 CASE user: the person picked KDE's keyboard in System Settings (their ~/.config/kwinrc): that's what runs, and their
   file is exactly as it was.
 Prints ::error:: for what's wrong (exit 1), and the findings into OUT/results.txt; a picture OUT/pad-k4N-CASE.png."""
-import hashlib
 import os
 import subprocess
 import sys
@@ -69,11 +68,14 @@ else:
     if hearth:
         err('input method (%s)' % CASE, 'hearth-kwin-im still runs: %s' % hearth)
 if CASE == 'user':
-    want = open('/tmp/user-kwinrc.sha').read().strip()
-    have = hashlib.sha256(open(os.path.join(os.environ['HOME'], '.config/kwinrc'), 'rb').read()).hexdigest()
-    note('your own setting (user)', 'kept as it was' if want == have else 'CHANGED')
-    if want != have:
-        err('your own setting', '~/.config/kwinrc changed during the session')
+    # KWin itself keeps other things in the same file (its desktops' ids, tiling): what must stay is the person's
+    # virtual-keyboard choice, every line of it, and nothing of Hearth's may appear in it.
+    text = open(os.path.join(os.environ['HOME'], '.config/kwinrc')).read()
+    before = open('/tmp/user-kwinrc.txt').read()
+    kept = all(ln in text.splitlines() for ln in before.splitlines() if ln.strip())
+    note('your own setting (user)', ('kept: ' if kept else 'CHANGED: ') + text[:900])
+    if not kept or 'hearth' in text.lower():
+        err('your own setting', '~/.config/kwinrc lost the virtual-keyboard choice or got Hearth in it: %r' % text[:600])
 # A window with a focused text field, so the picture shows the desktop working with that input method.
 w = subprocess.Popen(['python3', '/tmp/padwin.py', 'id=org.hearth.PadFallback', 'title=Typing (%s)' % CASE, 'focus=1',
                       'text=KWin input method: %s' % ('Hearth typing' if hearth else "KDE's keyboard" if kde else 'none')],

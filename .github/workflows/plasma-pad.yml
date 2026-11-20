@@ -160,7 +160,7 @@ jobs:
           rm -f "$XDG_RUNTIME_DIR/hearth/kwin-im-failed"
           # The person's own choice (System Settings › Virtual keyboard: KDE's keyboard) wins and is never written.
           printf '[Wayland]\nInputMethod[$e]=/usr/share/applications/org.kde.plasma.keyboard.desktop\nVirtualKeyboardEnabled=true\n' > "$HOME/.config/kwinrc"
-          sha256sum "$HOME/.config/kwinrc" | cut -d' ' -f1 > /tmp/user-kwinrc.sha
+          cp "$HOME/.config/kwinrc" /tmp/user-kwinrc.txt
           session_start user && python3 .github/scripts/plasma-pad-fallback.py shots user || rc=1
           session_stop user
           rm -f "$HOME/.config/kwinrc"
