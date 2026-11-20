@@ -1978,6 +1978,11 @@ fi
 chmod 755 /usr/libexec/nimbus/hearth-memory /usr/libexec/nimbus/hearth-hwset /usr/libexec/nimbus/hearth-diskguard /usr/libexec/nimbus/hearth-screen-psr /usr/libexec/nimbus/hearth-oem-account 2>/dev/null || true
 systemctl enable hearth-memory.service hearth-memguard.service hearth-hwset.service hearth-diskguard.service hearth-gamecores.service hearth-app-rules.service
 systemctl enable hearth-screen-psr.service hearth-oem-account.service hearth-dns-client.service
+# Quick ACKs on the loopback (1.16): older Windows games that talk to themselves over 127.0.0.1 (Trains 2010's
+# TADDaemon) load far faster. A oneshot after network.target that never fails, plus NetworkManager's dispatcher hook
+# when lo comes back up (anatase_files: usr/libexec/nimbus/hearth-loopback-quickack).
+chmod 755 /usr/libexec/nimbus/hearth-loopback-quickack /usr/lib/NetworkManager/dispatcher.d/90-hearth-loopback-quickack
+systemctl enable hearth-loopback-quickack.service || echo "::warning title=loopback quickack::not enabled"
 systemctl --global enable hearth-oem-notice.service
 # Low battery (1.11): UPower warns at 10%, is critical at 5%, and at 2% shuts down cleanly.
 if [ -f /etc/UPower/UPower.conf ]; then

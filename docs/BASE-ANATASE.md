@@ -240,3 +240,14 @@ These come from Anatase's description and haven't been checked on a running Anat
   doesn't trust, so moving there with Secure Boot on may also need it turned off;
 - moving with packages layered on top (`rpm-ostree rebase`) to the images that have no rpm database (Ubuntu,
   CachyOS, Peppermint).
+
+## Quick ACKs on the loopback (1.16)
+
+Some older Windows games under Proton talk to a part of themselves over 127.0.0.1 TCP: Trains 2010's asset database
+(TADDaemon) gets each request as a few small writes and then a read, so Nagle's algorithm and Linux's delayed ACK held
+every request for about 40 ms, and loading a route took 3½ minutes on the owner's dad's PC (25–30 seconds with the fix).
+`hearth-loopback-quickack.service` (a oneshot after network.target, `RemainAfterExit`) runs
+`/usr/libexec/nimbus/hearth-loopback-quickack`, which adds `quickack 1` to lo's local routes (127.0.0.0/8 and 127.0.0.1;
+::1 where the PC has it) only when they're there and don't have it yet. It never fails (logged, exit 0) and never holds
+up starting the PC; NetworkManager's dispatcher (`90-hearth-loopback-quickack`) runs it again when lo or the network
+comes back up. Only loopback routes change; nothing that leaves the PC. Test: `hosts/linux/test/test_loopback_quickack.py`.
