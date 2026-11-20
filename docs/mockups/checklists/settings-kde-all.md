@@ -45,7 +45,7 @@ windows (kcm_kwin4_genericscripted and each effect's: Window effects).
 - [x] kcm_cddb (CDDB Retrieval: Configure the CDDB Retrieval) → Hearth Settings › Music CDs (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-cddb\""
 - [x] kcm_cellular_network (Cellular Network: Management of cellular networks) → Hearth Settings › Connection details (already there) — hosts/hearth-ui/apps/settings/src/cats/net.rs: "\"net-details\""
 - [x] kcm_clock (Date & Time: Date and Time) → Hearth Settings › Date & time (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"datetime\""
-- [ ] kcm_colord (Color Management: Manage color profile of devices) → Hearth Settings › Colour profiles (new: built, waiting for its CI pictures)
+- [x] kcm_colord (Color Management: Manage color profile of devices) → Hearth Settings › Colour profiles (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-colord\""
 - [x] kcm_colors (Colors: Choose color scheme) → Hearth Settings › Colours (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-colors\""
 - [x] kcm_componentchooser (Default Applications: Choose default Applications) → Hearth Settings › Default apps (already there) — hosts/hearth-ui/apps/settings/src/cats/apps.rs: "\"defaults\""
 - [x] kcm_cpu (Advanced CPU Information: Advanced CPU Information) → Hearth Settings › Info Center (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"info-cpu\""
@@ -60,7 +60,7 @@ windows (kcm_kwin4_genericscripted and each effect's: Window effects).
 - [x] kcm_feedback (User Feedback: Configure user feedback settings) → Hearth Settings › KDE user feedback (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-feedback\""
 - [x] kcm_filetypes (File Associations: Configure file associations) → Hearth Settings › File types (already there) — hosts/hearth-ui/apps/settings/src/cats/apps.rs: "\"file-types\""
 - [x] kcm_firmware_security (Firmware Security Information: Firmware Security Information) → Hearth Settings › Firmware & device security (already there) — hosts/hearth-ui/apps/settings/src/cats/privacy.rs: "\"firmware\""
-- [ ] kcm_fontinst (Font Management: Install, manage and preview fonts) → Hearth Settings › Font management (new: built, waiting for its CI pictures)
+- [x] kcm_fontinst (Font Management: Install, manage and preview fonts) → Hearth Settings › Font management (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-fontinst\""
 - [x] kcm_fonts (Fonts: Configure user interface fonts) → Hearth Settings › Fonts, cursor & icons (already there) — hosts/hearth-ui/apps/settings/src/cats/pers.rs: "\"fonts\""
 - [x] kcm_gamecontroller (Game Controller: Test and Configure Game Controllers) → Hearth Settings › Controllers in KDE (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-gamecontroller\""
 - [x] kcm_glx (GLX information: GLX information) → Hearth Settings › Info Center · Vulkan & OpenGL (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"info-graphics\""
@@ -69,7 +69,7 @@ windows (kcm_kwin4_genericscripted and each effect's: Window effects).
 - [x] kcm_kaccounts (Online Accounts: Configure your internet accounts such as Google, Live, Owncloud) → Hearth Settings › Online accounts (already there) — hosts/hearth-ui/apps/settings/src/cats/accounts.rs: "\"online-accounts\""
 - [x] kcm_kded (Background Services: Configure background services) → Hearth Settings › KDE background services (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-kded\""
 - [x] kcm_keyboard (Keyboard: Keyboard Hardware and Layout) → Hearth Settings › Keyboard (already there) — hosts/hearth-ui/apps/settings/src/cats/bt.rs: "\"keyboard\""
-- [ ] kcm_keys (Shortcuts: Configure Keyboard Shortcuts) → Hearth Settings › KDE shortcuts (new: built, waiting for its CI pictures)
+- [x] kcm_keys (Shortcuts: Configure Keyboard Shortcuts) → Hearth Settings › KDE shortcuts (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-shortcuts\""
 - [x] kcm_krdpserver (Remote Desktop: Configure Remote Desktop) → Hearth Settings › Remote desktop (RDP) (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-krdp\""
 - [x] kcm_krunnersettings (KRunner Settings) → Hearth Settings › KRunner (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-krunner\""
 - [x] kcm_kscreen (Display Configuration: Manage and configure monitors and displays) → Hearth Settings › Display (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"display\""
@@ -101,14 +101,14 @@ windows (kcm_kwin4_genericscripted and each effect's: Window effects).
 - [x] kcm_notifications (Notifications: Event Notifications and Actions) → Hearth Settings › Notifications (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"notifications\""
 - [x] kcm_opencl (OpenCL API information: OpenCL API information) → Hearth Settings › More system information (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-info\""
 - [x] kcm_pci (PCI information: PCI information) → Hearth Settings › Info Center · PCI (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"info-pci\""
-- [x] kcm_plasmakeyboard (On-Screen Keyboard: Configuration for Plasma Keyboard) → Hearth Settings › Plasma's on-screen keyboard (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-plasmakeyboard\""
+- [x] kcm_plasmakeyboard (On-Screen Keyboard: Configuration for Plasma Keyboard) → Hearth Settings › Plasma Keyboard (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-plasmakeyboard\""
 - [x] kcm_plasmalogin (Login Screen: Configure Login Manager) → Hearth Settings › Login screen (already there) — hosts/hearth-ui/apps/settings/src/cats/accounts.rs: "\"login-screen\""
 - [x] kcm_plasmasearch (Plasma Search: Configure search settings) → Hearth Settings › Search (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"search\""
 - [x] kcm_powerdevilprofilesconfig (Power Management: Power Management) → Hearth Settings › Plugged in, battery & lid (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"power-profiles\""
 - [x] kcm_printer_manager (Printers: Configure your printers) → Hearth Settings › Printers (already there) — hosts/hearth-ui/apps/settings/src/cats/bt.rs: "\"printers\""
 - [x] kcm_proxy (Proxy: Configure the proxy servers used) → Hearth Settings › Proxy (already there) — hosts/hearth-ui/apps/settings/src/cats/net.rs: "\"proxy\""
 - [x] kcm_pulseaudio (Sound: Configure audio devices and volume) → Hearth Settings › Sound (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"sound\""
-- [ ] kcm_push_notifications (Push Services: Configure notifications from online services) → Hearth Settings › Push services (new: built, waiting for its CI pictures)
+- [x] kcm_push_notifications (Push Services: Configure notifications from online services) → Hearth Settings › Push services (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-push\""
 - [x] kcm_qtquicksettings (Plasma Renderer: No description available) → Hearth Settings › Plasma renderer (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-renderer\""
 - [x] kcm_recentFiles (Recent Files: Manage your file activity history preferences) → Hearth Settings › Recent files (already there) — hosts/hearth-ui/apps/settings/src/cats/privacy.rs: "\"recent-files\""
 - [x] kcm_regionandlang (Region & Language: Language Setting, Numeric, Currency and Time Formats) → Hearth Settings › Region & language (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"region\""
@@ -129,10 +129,25 @@ windows (kcm_kwin4_genericscripted and each effect's: Window effects).
 - [x] kcm_usb (USB devices attached to this computer: USB devices attached to this computer) → Hearth Settings › Info Center · USB (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"info-usb\""
 - [x] kcm_users (Users: Manage user accounts) → Hearth Settings › Your account and other people (already there) — hosts/hearth-ui/apps/settings/src/cats/accounts.rs: "\"users\""
 - [x] kcm_vaapi (Information about the Video Acceleration API (VA-API): Information about the Video Acceleration API (VA-API)) → Hearth Settings › More system information (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-info\""
-- [x] kcm_virtualkeyboard (Virtual Keyboard: Select which virtual keyboard to use) → Hearth Settings › Plasma's on-screen keyboard (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-plasmakeyboard\""
+- [x] kcm_virtualkeyboard (Virtual Keyboard: Select which virtual keyboard to use) → Hearth Settings › Plasma Keyboard (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-plasmakeyboard\""
 - [x] kcm_vulkan (Vulkan graphics API information: Vulkan graphics API information) → Hearth Settings › Info Center · Vulkan & OpenGL (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"info-graphics\""
 - [x] kcm_wallpaper (Wallpaper: Configure the wallpaper) → Hearth Settings › Wallpaper per screen, slideshow & picture of the day (already there) — hosts/hearth-ui/apps/settings/src/cats/pers.rs: "\"wallpaper-more\""
 - [x] kcm_wayland (Information about the Wayland Compositor: Information about the Wayland Compositor) → Hearth Settings › More system information (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-info\""
 - [x] kcm_webshortcuts (Web Search Keywords: Configure Web search keywords) → Hearth Settings › Web search keywords (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-webshortcuts\""
 - [x] kcm_workspace (General Behavior: Configure general workspace behavior) → Hearth Settings › General behaviour (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-workspace\""
 - [x] kcm_xserver (X-Server information: X-Server information) → Hearth Settings › More system information (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-info\""
+
+
+## Parts of KDE's modules not built yet
+
+What each page above still lacks next to its KDE module, and why (open until built or the owner decides):
+
+- [ ] KDE shortcuts: adding your own shortcut for a command or a script (KDE's "Add New"); changing and resetting the existing ones is built
+- [ ] Push services: Gotify and NextPush, which need a password for your server (Hearth's pages don't keep passwords); ntfy and Mozilla Autopush are built
+- [ ] Remote desktop (RDP): extra RDP users with their own passwords (KDE keeps those in KDE Wallet); signing in with your own account's password is built
+- [ ] Global theme, Plasma style, Colours, Title bars: "Get New…" (downloading more from the KDE Store); everything installed can be picked
+- [ ] Font management: a preview of each font, and KDE's own way of turning fonts off (Hearth turns them off with a fontconfig file every app reads)
+- [ ] Device actions: editing the actions that come with the system; adding and removing your own is built
+- [ ] Activities: each activity's icon, its own shortcut and "don't remember what I open in it"
+- [ ] Controllers in KDE: a live test of each controller's buttons and sticks (the plugged-in list is built)
+- [ ] Display (already Hearth's page): "Calibrate HDR" still opens KDE's display settings (kcmshell6 kcm_kscreen, cats/system_display.rs)

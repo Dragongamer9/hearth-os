@@ -122,7 +122,8 @@ class KdeSettings(unittest.TestCase):
         pages_list = (ROOT / 'hosts/hearth-ui/apps/settings/src/pages_list.rs').read_text()
         js = (SHELL / 'settings-pages.js').read_text()
         for p in spec['pages']:
-            self.assertIn('id: "%s"' % p['id'], pages_list, 'run tools/settings-registry-rs.py')
+            self.assertIn('id: "%s", cat: "%s", label: %s' % (p['id'], p['cat'], json.dumps(p['label'], ensure_ascii=False)), pages_list,
+                          'run tools/settings-registry-rs.py')
             self.assertNotIn('id: "%s"' % p['id'], js, "the KDE pages are the Rust app's, not Mantel's")
             for k in ('cat', 'label', 'desc', 'words', 'kcm', 'rows'):
                 self.assertIn(k, p, '%s has no %s' % (p['id'], k))
