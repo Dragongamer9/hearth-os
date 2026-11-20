@@ -26,24 +26,32 @@ def imports(text):
 
 class SharedCouch(unittest.TestCase):
     def test_fhcouch_is_the_plasma_couch(self):
-        d = SHELL / 'fhcouch'
-        for f in sorted(UI.iterdir()):
-            link = d / f.name
-            if f.name in KDE_ONLY:
-                self.assertFalse(link.exists(), '%s is KDE-only: labwc must not load it' % f.name)
-                continue
-            self.assertTrue(link.is_symlink(), 'fhcouch/%s: should be a link to the Plasma Couch\'s own file' % f.name)
-            self.assertEqual(link.resolve(), f.resolve(), 'fhcouch/%s points elsewhere' % f.name)
-        self.assertEqual((d / 'firehold.js').resolve(), (SHELL / 'firehold.js').resolve())
-        for link in d.iterdir():
-            self.assertTrue(link.exists(), 'fhcouch/%s is a broken link' % link.name)
-            # (relative links inside the desktop folder: they work wherever it's copied, /usr/share/nimbus/desktop)
-            self.assertFalse(os.readlink(link).startswith('/'), 'fhcouch/%s: an absolute link' % link.name)
+        # (copied when the image is built: Quickshell doesn't follow links into its shell folder)
+        import shutil, subprocess
+        with tempfile.TemporaryDirectory() as t:
+            d = pathlib.Path(t) / 'desktop'
+            shutil.copytree(ROOT / 'hosts/linux/desktop/firehold-plasma', d / 'firehold-plasma', symlinks=True)
+            (d / 'shell').mkdir()
+            shutil.copy(SHELL / 'firehold.js', d / 'shell')
+            subprocess.run(['bash', str(ROOT / 'hosts/linux/desktop/labwc-fedora/install-couch.sh'), str(d)], check=True, capture_output=True)
+            out = d / 'shell/fhcouch'
+            for f in sorted(UI.iterdir()):
+                if f.suffix not in ('.qml', '.js'):
+                    continue
+                if f.name in KDE_ONLY:
+                    self.assertFalse((out / f.name).exists(), '%s is KDE-only: labwc must not load it' % f.name)
+                else:
+                    self.assertEqual((out / f.name).read_bytes(), f.read_bytes(), f.name)
+            self.assertEqual((out / 'firehold.js').read_bytes(), (SHELL / 'firehold.js').read_bytes())
+        self.assertFalse((SHELL / 'fhcouch').exists(), 'fhcouch is made when the image is built, never kept in git (one copy)')
+        self.assertIn('install-couch.sh', (ROOT / 'os-bases/anatase/build.sh').read_text())
 
     def test_what_labwc_loads_has_no_kde_import(self):
-        for link in (SHELL / 'fhcouch').glob('*.qml'):
-            for imp in imports(link.read_text()):
-                self.assertFalse(imp.startswith('org.kde'), 'fhcouch/%s imports %s (KDE only): through the host instead' % (link.name, imp))
+        for f in UI.glob('*.qml'):
+            if f.name in KDE_ONLY:
+                continue
+            for imp in imports(f.read_text()):
+                self.assertFalse(imp.startswith('org.kde'), '%s imports %s (KDE only): through the host instead' % (f.name, imp))
 
     def test_both_hosts_give_the_same_names(self):
         plasma = (UI / 'PlasmaHost.qml').read_text()

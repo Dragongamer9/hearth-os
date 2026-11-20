@@ -83,6 +83,7 @@ jobs:
           bash os-bases/anatase/labwc-install.sh 2>&1 | grep -E '::|^Error' || true
           bash os-bases/anatase/labwc-install.sh --check
           mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          bash /usr/share/nimbus/desktop/labwc-fedora/install-couch.sh /usr/share/nimbus/desktop
           install -Dm755 hosts/linux/session/nimbus-session /usr/bin/nimbus-session
           install -Dm755 hosts/linux/session/nimbus-mode /usr/bin/nimbus-mode
           chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/open.sh
@@ -123,6 +124,7 @@ jobs:
           dnf5 -y install python3 python3-pillow python3-dbus python3-gobject procps-ng dbus-daemon dbus-tools findutils >/dev/null
           bash os-bases/anatase/labwc-install.sh 2>&1 | grep -E '::|^Error' || true
           mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          bash /usr/share/nimbus/desktop/labwc-fedora/install-couch.sh /usr/share/nimbus/desktop
           install -Dm755 hosts/linux/session/nimbus-session /usr/bin/nimbus-session
           chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/open.sh
           find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +

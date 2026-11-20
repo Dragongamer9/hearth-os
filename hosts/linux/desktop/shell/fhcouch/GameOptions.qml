@@ -1,1 +1,0 @@
-../../firehold-plasma/couch/contents/ui/GameOptions.qml

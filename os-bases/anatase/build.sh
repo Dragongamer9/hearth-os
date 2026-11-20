@@ -876,6 +876,8 @@ for f in /usr/share/wayland-sessions/labwc.desktop; do
   [ -e "$f" ] && mkdir -p /usr/share/hearth/desktop-sessions && mv "$f" "/usr/share/hearth/desktop-sessions/wayland-sessions-$(basename "$f")"
 done
 chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons 2>/dev/null || true
+# Firehold on labwc's approved Couch: Firehold on Plasma's own pages, copied into the shell folder (install-couch.sh).
+bash /usr/share/nimbus/desktop/labwc-fedora/install-couch.sh /usr/share/nimbus/desktop || true
 if [ "$lw_ok" = 1 ] && [ -f /usr/share/nimbus/desktop/shell/shell.qml ]; then
   install -Dm755 /usr/share/nimbus/desktop/labwc-fedora/hearth-labwc-desktop /usr/bin/hearth-labwc-desktop
   echo "::notice title=labwc on Fedora::Mantel and Firehold on labwc can be picked ($(rpm -q labwc), Quickshell $(cat /usr/share/hearth/quickshell-ref 2>/dev/null))"
