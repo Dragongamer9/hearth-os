@@ -679,20 +679,27 @@ impl PipeOr for String {
 }
 
 // ================================================================ Ithil (IthilDetail.qml)
+/// Her brain's clock (seconds since the dashboard started), in its own steps as IthilBrain.qml's timers: the big one
+/// every 50 ms, the tile's every 120 ms; in light mode (the CPU draws) the tile's every 500 ms.
+fn brain_clock(a: &App, compact: bool) -> f64 {
+    let step = if compact { if a.light() { 0.5 } else { 0.12 } } else { 0.05 };
+    ((a.anim_t as f64) / step).floor() * step
+}
+
 pub fn brain_widget<'a>(a: &App, compact: bool) -> E<'a> {
     let it = a.d.as_ref().and_then(|d| d.get("ithil")).cloned().unwrap_or(Value::Null);
     let live = compact || a.ithil_win == "live";
     let b = brain::Brain {
         data: a.ithil_prep.clone(),
         // (the tile's: its clock in half seconds, so it's drawn again only twice a second)
-        yaw: a.yaw + if a.still() { 0.0 } else { (if compact { (a.anim_t * 2.0).floor() / 2.0 } else { a.anim_t }) * 0.18 },
+        yaw: a.yaw + if a.still() { 0.0 } else { brain_clock(a, compact) as f32 * 0.18 },
         pitch: a.pitch,
         zoom: if compact { 1.05 } else { 1.0 },
         xray: a.xray && !compact,
         live,
         asleep: s(&it, "state") == "asleep",
         t: a.tpos,
-        now_ms: if a.still() { 0.0 } else if compact { (a.now * 2.0).floor() * 500.0 } else { a.now * 1000.0 },
+        now_ms: if a.still() { 0.0 } else { (brain_clock(a, compact) + a.start_secs()) * 1000.0 },
         step: if compact { 3 } else { 1 },
     };
     let c: E = draw::canvas(b, Length::Fill, Length::Fill);
