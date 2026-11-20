@@ -1,0 +1,5 @@
+::notice title=Panels::   string "top 68 none org.hearthos.panel:bar | bottom 84 none org.hearthos.panel:dock"
+Compositor does not support the virtual keyboard protocol
+Compositor does not support the virtual keyboard protocol
+::notice title=At rest::plasmashell used 8563 ticks (1/100 s) in 60 s with Hearth's panel up and the wallpaper moving (processor drawing), 7 away from the PC (wallpaper still)
+::notice title=Firehold style::the shared plasmoids in a top panel: 41,42

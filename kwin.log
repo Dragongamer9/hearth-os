@@ -1,0 +1,33 @@
+KWIN environment variables: QList("KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1")
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Accepting client connections on sockets: QList("wayland-hearth")
+MESA-EGL: warning: Not allowed to force software rendering when API explicitly selects a hardware device.
+Module 'org.kde.kwin.decoration' does not contain a module identifier directive - it cannot be protected from external registrations.
+kf.config.core: Watching absolute paths is not supported "/tmp/home/.local/share/color-schemes/Hearth.colors"
+kwin_virtualkeyboard: Input method is trying to show itself but without a context. Aborting.
+kwin_virtualkeyboard: Input method is trying to show itself but without a context. Aborting.
+kwin_virtualkeyboard: Input method is trying to show itself but without a context. Aborting.
+kwin_virtualkeyboard: Input method is trying to show itself but without a context. Aborting.
+kwin_virtualkeyboard: Input method is trying to show itself but without a context. Aborting.
+kwin_virtualkeyboard: Input method is trying to show itself but without a context. Aborting.
+kwin_virtualkeyboard: Input method is trying to show itself but without a context. Aborting.
+kwin_virtualkeyboard: Input method is trying to show itself but without a context. Aborting.
+kwin_virtualkeyboard: Input method is trying to show itself but without a context. Aborting.
+kwin_virtualkeyboard: Input method is trying to show itself but without a context. Aborting.
+js: HEARTHWIN ---- 6 windows
+js: HEARTHWIN plasmashell |  | notification=false critical=false osd=false | 0,0 1920x1080
+js: HEARTHWIN plasmashell |  | notification=false critical=false osd=false | 0,0 1920x1080
+js: HEARTHWIN org.kde.dolphin | Documents — Dolphin | notification=false critical=false osd=false | 576,240 768x584
+js: HEARTHWIN plasmashell |  | notification=false critical=false osd=false | 0,0 1920x68
+js: HEARTHWIN plasmashell |  | notification=false critical=false osd=false | 0,996 1920x84
+js: HEARTHWIN plasmashell |  | notification=false critical=false osd=false | 750,70 420x162
+js: HEARTHWIN ---- 6 windows
+js: HEARTHWIN plasmashell |  | notification=false critical=false osd=false | 0,0 1920x1080
+js: HEARTHWIN org.kde.dolphin | Documents — Dolphin | notification=false critical=false osd=false | 576,240 768x584
+js: HEARTHWIN org.kde.konsole | hearth-os : bash — Konsole | notification=false critical=false osd=false | 500,281 919x502
+js: HEARTHWIN plasmashell |  | notification=false critical=false osd=false | 0,1018 1920x62
+js: HEARTHWIN plasmashell |  | notification=false critical=false osd=false | 0,0 1920x56
+js: HEARTHWIN plasmashell |  | notification=false critical=false osd=false | 1350,68 556x733
