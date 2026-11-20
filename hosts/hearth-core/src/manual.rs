@@ -58,6 +58,8 @@ pub fn apply(opts: &Value, cmd: &str, args: Vec<String>, proton: bool) -> (Strin
     if proton { if let Some(p) = opts["proton"].as_str().filter(|p| !p.is_empty()) { env.push(("PROTONPATH".into(), p.into())); } }
     if proton && opts["fsr"] == true { env.push(("WINE_FULLSCREEN_FSR".into(), "1".into())); }
     if opts["mangohud"] == true { env.push(("MANGOHUD".into(), "1".into())); }
+    // Sharper graphics (vkbasalt.rs): ENABLE_VKBASALT=1 and the game's own vkBasalt.conf, only while it's on.
+    env.extend(crate::vkbasalt::launch_env(opts));
     let mut a = args;
     a.extend(split_args(opts["args"].as_str().unwrap_or("")));
     let mut c = cmd.to_string();
@@ -115,6 +117,17 @@ mod tests {
         let (c, a, e) = apply(&json!({"args": "-skipintro \"-w 1\"", "mangohud": true, "proton": "GE-Proton", "fsr": true}), "/usr/bin/hearth-proton-run", vec!["g.exe".into()], true);
         assert_eq!(c, "/usr/bin/hearth-proton-run"); assert_eq!(a, vec!["g.exe", "-skipintro", "-w 1"]);
         assert!(e.contains(&("PROTONPATH".into(), "GE-Proton".into())) && e.contains(&("MANGOHUD".into(), "1".into())) && e.contains(&("WINE_FULLSCREEN_FSR".into(), "1".into())));
+    }
+    #[test]
+    fn sharper_graphics_in_the_environment() {
+        let d = tempfile::tempdir().unwrap();
+        let conf = d.path().join("vkbasalt/epic_x.conf");
+        let (_, _, e) = apply(&json!({"vkbasalt": {"on": true}, "vkbasaltConf": conf}), "/usr/bin/hearth-proton-run", vec!["g.exe".into()], true);
+        assert!(e.contains(&("ENABLE_VKBASALT".into(), "1".into())), "{e:?}");
+        assert!(e.contains(&("VKBASALT_CONFIG_FILE".into(), conf.to_string_lossy().to_string())));
+        assert!(std::fs::read_to_string(&conf).unwrap().contains("toggleKey = Home"));
+        let (_, _, e) = apply(&json!({"vkbasalt": {"on": false}, "vkbasaltConf": conf}), "/g/run", vec![], false);
+        assert!(!e.iter().any(|(k, _)| k.contains("VKBASALT")), "off: nothing added");
     }
     #[test]
     fn a_desktop_file_with_an_empty_path_starts() {

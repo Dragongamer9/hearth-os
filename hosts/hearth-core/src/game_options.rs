@@ -4,18 +4,25 @@
 //! while it was in front ("hhdPower": {HHD key: value}, see hhd::game_power_key) and their name for its page
 //! ("powerLabel"). Setting the power limit on the game's page replaces them. "perfSaved": Quick Access › Performance
 //! keeps this game's frame limit and power for it alone ("Saved for <game> only"), not for every game.
+//! "vkbasalt": Sharper graphics (vkbasalt.rs), {on, strength, smaa, vibrance, key}, off unless turned on; a change
+//! to it is merged into what's saved (turning it on keeps your strength).
 
 use crate::store::Store;
 use serde_json::{json, Map, Value};
 use std::path::Path;
 
 pub fn defaults() -> Value {
-    json!({"proton": "", "args": "", "env": "", "mangohud": false, "gamemode": false, "fsr": false, "fpsLimit": 0, "tdp": 0, "cloudSaves": true, "hhdPower": {}, "powerLabel": "", "perfSaved": false})
+    json!({"proton": "", "args": "", "env": "", "mangohud": false, "gamemode": false, "fsr": false, "fpsLimit": 0, "tdp": 0, "cloudSaves": true, "hhdPower": {}, "powerLabel": "", "perfSaved": false,
+           "vkbasalt": crate::vkbasalt::defaults()})
 }
 
 pub fn get(store: &Store, id: &str) -> Value {
     let mut o = defaults();
     if let Some(saved) = store.data["gameOptions"][id].as_object() { for (k, v) in saved { if o.get(k).is_some() { o[k] = v.clone(); } } }
+    // Sharper graphics: the defaults with what's saved on top, and (only while it's on) where its conf goes, for the
+    // start (manual::apply). Not saved: clean() leaves vkbasaltConf out.
+    o["vkbasalt"] = crate::vkbasalt::settings(&o["vkbasalt"]);
+    if o["vkbasalt"]["on"] == true { o["vkbasaltConf"] = json!(crate::vkbasalt::conf_path(&crate::paths::config_dir(), id)); }
     o
 }
 
@@ -26,6 +33,7 @@ pub fn clean(patch: &Value) -> Map<String, Value> {
     for (k, def) in d.as_object().unwrap() {
         let Some(v) = patch.get(k) else { continue };
         let c = match def {
+            Value::Object(_) if k == "vkbasalt" => { let m = crate::vkbasalt::clean(v); if m.is_empty() { continue; } Value::Object(m) }
             Value::Bool(_) => json!(v.as_bool().unwrap_or(v.as_f64().map(|n| n != 0.0).unwrap_or(false))),
             Value::Object(_) => json!(v.as_object().map(|m| m.iter().filter(|(k, x)| crate::hhd::game_power_key(k) && (x.is_number() || x.is_boolean() || x.is_string()))
                 .take(32).map(|(k, x)| (k.clone(), x.clone())).collect::<Map<String, Value>>()).unwrap_or_default()),
@@ -60,7 +68,15 @@ pub fn set(store: &mut Store, id: &str, patch: &Value) -> Result<(), String> {
     let id = id.to_string();
     store.update(|d| {
         let cur = crate::store::object_at(crate::store::object_in(d, "gameOptions"), id, json!({}));
-        for (k, v) in c { cur[k] = v; }
+        for (k, v) in c {
+            // Sharper graphics: only the parts changed (the rest stay as they were saved).
+            if k == "vkbasalt" {
+                if !cur["vkbasalt"].is_object() { cur["vkbasalt"] = json!({}); }
+                if let (Some(m), Value::Object(n)) = (cur["vkbasalt"].as_object_mut(), v) { for (a, b) in n { m.insert(a, b); } }
+                continue;
+            }
+            cur[k] = v;
+        }
     }).map_err(|e| e.to_string())
 }
 
@@ -115,5 +131,28 @@ mod tests {
         let o = get(&s, "epic:x");
         assert_eq!(o["hhdPower"], json!({})); assert_eq!(o["powerLabel"], ""); assert_eq!(o["tdp"], 20);
         assert_eq!(get(&s, "other")["hhdPower"], json!({}));
+    }
+    #[test]
+    fn sharper_graphics_is_off_and_merges() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut s = Store::open(dir.path().join("l.json"));
+        let o = get(&s, "gog:1");
+        assert_eq!(o["vkbasalt"]["on"], false); assert_eq!(o["vkbasalt"]["key"], "Home");
+        assert!(o.get("vkbasaltConf").is_none());
+        set(&mut s, "gog:1", &json!({"vkbasalt": {"strength": 70}})).unwrap();
+        set(&mut s, "gog:1", &json!({"vkbasalt": {"on": true, "bogus": 1}})).unwrap();
+        let o = get(&s, "gog:1");
+        assert_eq!(o["vkbasalt"]["strength"], 70, "turning it on kept the strength");
+        assert_eq!(o["vkbasalt"]["on"], true);
+        assert!(o["vkbasaltConf"].as_str().unwrap().ends_with("vkbasalt/gog_1.conf"));
+        assert!(s.data["gameOptions"]["gog:1"].get("vkbasaltConf").is_none());
+        assert!(s.data["gameOptions"]["gog:1"]["vkbasalt"].get("bogus").is_none());
+        // Another setting saved later leaves it alone; damaged saved data reads as the defaults.
+        set(&mut s, "gog:1", &json!({"mangohud": true})).unwrap();
+        assert_eq!(get(&s, "gog:1")["vkbasalt"]["on"], true);
+        s.data["gameOptions"]["gog:2"] = json!({"vkbasalt": "x"});
+        assert_eq!(get(&s, "gog:2")["vkbasalt"]["on"], false);
+        set(&mut s, "gog:2", &json!({"vkbasalt": {"on": true}})).unwrap();
+        assert_eq!(get(&s, "gog:2")["vkbasalt"]["on"], true);
     }
 }

@@ -692,6 +692,16 @@ command -v 7z >/dev/null || command -v 7zz >/dev/null || command -v 7za >/dev/nu
 for p in fio glmark2 vkmark; do command -v "$p" >/dev/null || echo "warning: Hearth Benchmark: $p isn't installed (its test will be skipped)"; done
 command -v 7z >/dev/null || command -v 7zz >/dev/null || command -v 7za >/dev/null || echo "warning: Hearth Benchmark: 7-Zip isn't installed (the processor tests will be skipped)"
 # ---- end Hearth Benchmark
+# ---- Sharper graphics (the owner, Nov 20 01:36; hearth-core vkbasalt.rs): Fedora's vkBasalt, the Vulkan layer that
+# sharpens a game's picture (CAS), with SMAA and a colour boost. It does nothing until a game's "Sharper graphics" is
+# turned on in Hearth Games (or ENABLE_VKBASALT=1 is in a game's launch options): the layer only loads when that's set.
+# The 32-bit one too, for 32-bit games through Proton. Optional: a missing package is a warning here, never a failed
+# image, and the switch then says vkBasalt isn't installed.
+dnf5 -y install --skip-unavailable --skip-broken vkBasalt vkBasalt.i686 || echo "warning: vkBasalt couldn't be installed (Sharper graphics will say it isn't available)"
+ls /usr/share/vulkan/implicit_layer.d/ 2>/dev/null | grep -qi '^vkbasalt' \
+  && echo "vkBasalt: $(rpm -q vkBasalt 2>/dev/null | tr '\n' ' ')" \
+  || echo "::warning title=vkBasalt::not installed (Fedora $FEDORA has no vkBasalt package?): Sharper graphics says it isn't available"
+# ---- end Sharper graphics
 
 # The session (Game Mode + Desktop Mode), installed to the system paths instead of /usr/local.
 install -Dm755 /ctx/session/nimbus-session /usr/bin/nimbus-session

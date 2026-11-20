@@ -31,6 +31,7 @@ pub mod hearth_mods;
 // ---- end of Hearth's gaming apps
 pub mod game_options;
 pub mod game_extras;   // a game's cloud saves and DLC on Hearth Games' page (stage two, 1.13)
+pub mod vkbasalt;      // a game's "Sharper graphics" (vkBasalt: sharpening, SMAA, colour boost), off unless turned on
 pub mod proton_run;    // hearth-proton-run: Windows programs with Proton, offline and without Steam (owner's red flag)
 pub mod proton_pick;   // the Proton a game with no pick of its own starts with: the built-in GE-Proton (the Proton detector plugs in here)
 pub mod gameinfo;

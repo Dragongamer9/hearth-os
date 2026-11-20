@@ -39,6 +39,10 @@ pub const CALLS: &[(&str, &[&str])] = &[
     ("recomps.list", &[]), ("recomps.details", &["id", "fresh"]), ("recomps.places", &[]), ("recomps.checkUpdates", &[]),
     ("recomps.install", &["id", "place"]), ("recomps.cancel", &["id"]), ("recomps.uninstall", &["id", "keep"]),
     ("recomps.pickGame", &["id"]), ("recomps.useGame", &["id", "path", "anyway"]), ("recomps.skip", &["id", "tag"]),
+    // Sharper graphics (hearth-core vkbasalt.rs): a game's switch and its parts (strength "0".."100"), and the launch
+    // options to copy for Steam and Faugus Launcher's own games (vkbasalt.shared makes the conf that one names).
+    ("game.vkbasalt", &["id"]), ("game.setVkbasalt", &["id", "on", "strength", "smaa", "vibrance", "key"]),
+    ("vkbasalt.info", &[]), ("vkbasalt.shared", &[]),
 ];
 
 /// The tabs the window has (`--tab <name>` opens on one).
@@ -317,5 +321,21 @@ mod tests {
         assert_eq!(ids, vec!["gog:1", "battlenet:app"]);
         let d = only_our_downloads(json!({"active": [{"id": "steam:2"}, {"id": "epic:x"}]}));
         assert_eq!(d["active"].as_array().unwrap().len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod vkbasalt_tests {
+    use super::*;
+
+    #[test]
+    fn sharper_graphics_calls() {
+        let (m, a) = check("game.setVkbasalt", &json!({"id": "gog:1207658924", "on": true, "strength": "55", "smaa": false, "path": "/etc"})).unwrap();
+        assert_eq!(m, "game.setVkbasalt");
+        assert_eq!(a, json!({"id": "gog:1207658924", "on": true, "strength": "55", "smaa": false}));
+        assert!(check("game.vkbasalt", &json!({"id": "battlenet:wow"})).is_ok());
+        assert!(check("game.vkbasalt", &json!({"id": "steam:620"})).is_err(), "Steam's games keep Steam's launch options");
+        assert!(check("game.setVkbasalt", &json!({"id": "gog:1", "strength": 55})).is_err(), "numbers go as text");
+        assert!(check("vkbasalt.info", &json!({})).is_ok() && check("vkbasalt.shared", &json!({})).is_ok());
     }
 }
