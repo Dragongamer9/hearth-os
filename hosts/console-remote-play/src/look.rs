@@ -64,6 +64,17 @@ pub fn one<'a>(tx: text::Text<'a>) -> text::Text<'a> {
     tx.wrapping(text::Wrapping::None)
 }
 
+/// `rich` on one line, never wrapped (a short line that must not be measured narrower than it is).
+pub fn rich1<'a, M: 'a>(s: &str, size: f32, col: Color, bold: Color) -> E<'a, M> {
+    let mut spans: Vec<iced::widget::text::Span<'a, (), Font>> = Vec::new();
+    for (i, part) in s.split("**").enumerate() {
+        if !part.is_empty() {
+            spans.push(iced::widget::span(part.to_string()).size(size).color(if i % 2 == 1 { bold } else { col }).font(if i % 2 == 1 { w(font::Weight::Semibold) } else { INTER }));
+        }
+    }
+    iced::widget::rich_text(spans).line_height(1.4).wrapping(text::Wrapping::None).into()
+}
+
 /// `rich`, as wide as its place (so it wraps there).
 pub fn rich_w<'a, M: 'a>(s: &str, size: f32, col: Color, bold: Color) -> E<'a, M> {
     let mut spans: Vec<iced::widget::text::Span<'a, (), Font>> = Vec::new();

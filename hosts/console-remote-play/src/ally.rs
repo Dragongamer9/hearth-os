@@ -184,7 +184,7 @@ fn trouble(a: &App) -> E<'_, Msg> {
     let col = column![
         row![
             container(glyph(G::Console, Color::from_rgb8(0xff, 0x8a, 0x8a), 36.0)).center_x(Length::Fixed(64.0)).center_y(Length::Fixed(64.0)).style(bx(Color::from_rgb8(0x2a, 0x16, 0x16), 18.0, Some((Color::from_rgb8(0x6a, 0x2d, 0x2d), 1.0)))),
-            column![one(t6("Couldn't reach your Xbox", 27.0, TX)), container(rich(&format!("{what} {on}"), 16.0, MUT, SOFT, false)).width(Length::Fill).style(bx(BG, 0.0, None))].spacing(4.0).width(Length::Fill)
+            column![one(t6("Couldn't reach your Xbox", 27.0, TX)), rich1(&format!("{what} {on}"), 16.0, MUT, SOFT)].spacing(4.0).width(Length::Fill)
         ]
         .spacing(18.0)
         .width(Length::Fill)
