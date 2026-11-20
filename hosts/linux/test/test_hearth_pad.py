@@ -682,6 +682,12 @@ class PlasmaTest(unittest.TestCase):
         self.assertEqual(len(out.sent), n + 1)
         pad.command({'cmd': 'touchfield', 'on': True, 'now': t + 5.0})
         self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        # Not over a fullscreen game (SDL asks for text input all the time).
+        pad.command({'cmd': 'osk', 'open': False})
+        pad.command({'cmd': 'window', 'cls': 'steam_app_570', 'caption': 'Dota 2', 'fullscreen': True, 'kind': 'normal'})
+        k = len(out.sent)
+        pad.command({'cmd': 'touchfield', 'on': True, 'now': t + 20.0})
+        self.assertEqual(len(out.sent), k)
 
     def test_hearth_apps_like_mantels(self):
         pad, out = self.make()

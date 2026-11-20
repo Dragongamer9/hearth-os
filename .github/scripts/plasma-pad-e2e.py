@@ -439,6 +439,10 @@ for _ in range(20):          # KWin says it's fullscreen a moment after it's map
     if 'fullscreen: paused' in tail(pad_log, 400):
         break
     time.sleep(0.25)
+ht = tail(host_log, 100000)
+if ht.rfind('keyboard open') > ht.rfind('keyboard closed'):
+    notice('fullscreen game', 'the keyboard was still open from before: closed with B first (%s)' % tail(pad_log, 200))
+    press('b', after=0.8)
 n0 = out_len()
 press('a', after=0.2)
 axes(0, 0, 1.0, 0)
