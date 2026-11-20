@@ -9,8 +9,12 @@ Item {
     property QtObject couch
     readonly property real k: couch.k
     readonly property var storeIds: ["org.kde.discover", "steam", "com.heroicgameslauncher.hgl", "net.lutris.Lutris", "hearth-store"]
+    readonly property var mediaCats: ["AudioVideo", "Audio", "Video", "Player", "TV"]
     readonly property var items: couch.tab === "store"
         ? couch.apps.filter(function (a) { return ap.storeIds.indexOf(a.id) >= 0; })
+        : couch.tab === "media"
+        // Media (Firehold on Plasma 1.16's tab): your video, music and streaming apps.
+        ? couch.apps.filter(function (a) { return (a.categories || []).some(function (c) { return ap.mediaCats.indexOf(c) >= 0; }); })
         : [{ id: "::settings", name: "Couch and Desk", icon: "preferences-desktop", comment: "Firehold's settings" },
            { id: "::family", name: "Family and friends", icon: "preferences-remote-desktop", comment: "Connect to their PCs with Moonlight" }]
             .concat(couch.apps.filter(function (a) { return a.id !== "hearth-family" && a.id !== "hearth-family.desktop"; }))

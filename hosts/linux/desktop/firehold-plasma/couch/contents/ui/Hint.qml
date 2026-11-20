@@ -1,12 +1,13 @@
-// A hint at the bottom: the button's round badge and what it does (A Play, X Options...).
+// A hint at the bottom (the mockups' .hint): the button's round badge in its colour and what it does.
 import QtQuick
+import "fhp.js" as H
 
 Row {
     id: h
     property QtObject couch
     property string key: "A"
     property string label: ""
-    property color tint: "#8fe0a8"
+    property color tint: H.keyColor(key)
     spacing: 10 * couch.k
     Rectangle {
         anchors.verticalCenter: parent.verticalCenter
@@ -19,9 +20,9 @@ Row {
             couchRef: h.couch
             anchors.centerIn: parent
             text: h.key
-            color: "#1a110c"
-            font.pixelSize: 15 * h.couch.k
-            font.weight: Font.Bold
+            color: "#111111"
+            font.pixelSize: 14 * h.couch.k
+            font.weight: Font.ExtraBold
         }
     }
     T {
@@ -29,5 +30,6 @@ Row {
         anchors.verticalCenter: parent.verticalCenter
         text: h.label
         font.pixelSize: 19 * h.couch.k
+        font.weight: Font.Medium
     }
 }

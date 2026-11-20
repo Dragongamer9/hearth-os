@@ -19,6 +19,7 @@ pub mod a11y;
 pub mod accounts;
 pub mod apps;
 pub mod bt;
+pub mod couch;
 pub mod g15;
 pub mod gaming;
 pub mod home;
@@ -32,7 +33,7 @@ pub mod system;
 pub mod updates;
 
 pub fn built(id: &str) -> bool {
-    [home::PAGES, system::PAGES, net::PAGES, bt::PAGES, g15::PAGES, link::PAGES, pers::PAGES, apps::PAGES, gaming::PAGES, accounts::PAGES, hs::PAGES, privacy::PAGES, a11y::PAGES, updates::PAGES, kde::PAGES]
+    [home::PAGES, system::PAGES, couch::PAGES, net::PAGES, bt::PAGES, g15::PAGES, link::PAGES, pers::PAGES, apps::PAGES, gaming::PAGES, accounts::PAGES, hs::PAGES, privacy::PAGES, a11y::PAGES, updates::PAGES, kde::PAGES]
         .iter()
         .any(|l| l.contains(&id))
 }

@@ -49,7 +49,19 @@ Item {
         if (role(i, NM.Notifications.HasDefaultActionRole) === true)
             acts.unshift({ identifier: "default", text: role(i, NM.Notifications.DefaultActionLabelRole) || "Open", invoke: function () { const r = srv.rowOf(id); if (r >= 0) model.invokeDefaultAction(model.index(r, 0)); } });
         const u = role(i, NM.Notifications.UrgencyRole);
-        const img = role(i, NM.Notifications.ImageRole);
+        // Its picture: an image path, else the first picture among its files (x-kde-urls: a screenshot, a clip's
+        // thumbnail; Plasma loads image-path itself into an image QML can't keep).
+        const img0 = role(i, NM.Notifications.ImageRole);
+        let img = typeof img0 === "string" ? img0 : "";
+        if (img === "" && NM.Notifications.UrlsRole !== undefined) {
+            try {
+                const urls = role(i, NM.Notifications.UrlsRole);
+                for (let k = 0; urls && k < urls.length && img === ""; k++) {
+                    const u = String(urls[k]);
+                    if (/^file:\/\/.*\.(png|jpe?g|webp)$/i.test(u)) img = u;
+                }
+            } catch (e) {}
+        }
         const closedFns = [];
         const n = {
             id: id, nid: id, tracked: false, resident: false, hints: ({}),

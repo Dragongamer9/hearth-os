@@ -14,6 +14,14 @@ name: Firehold on Plasma
 
 on:
   workflow_dispatch:
+    inputs:
+      crashloop:
+        description: 'Only the start loop: the two-screen Desk and stock Plasma started N times each, cores and backtraces'
+        type: boolean
+        default: false
+      starts:
+        description: 'Starts of each (crashloop)'
+        default: '15'
   push:
     branches: ['feature/firehold-plasma']
     paths: ['hosts/linux/desktop/firehold-plasma/**', '.github/workflows/firehold-plasma.yml', '.github/scripts/firehold-plasma-*.sh',
@@ -23,7 +31,7 @@ permissions:
   contents: write    # the screenshots branch
 
 concurrency:
-  group: firehold-plasma-${{ github.ref }}
+  group: firehold-plasma-${{ github.ref }}-${{ inputs.crashloop }}
   cancel-in-progress: true
 
 env:
@@ -34,9 +42,45 @@ env:
   PLASMA_EXTRA: >-
     python3-evdev libnotify qt6-qtdeclarative kf6-kirigami layer-shell-qt kpipewire pipewire wireplumber kactivitymanagerd
     plasma-integration gdb kglobalacceld spectacle kscreenlocker plasma-nm plasma-pa qt6-qttools dolphin konsole kate kde-cli-tools kscreen
+    python3-gobject rsms-inter-fonts wtype kf6-kded kf6-kdeclarative gcc wayland-devel plasma-wayland-protocols-devel elfutils-debuginfod-client
 
 jobs:
+  crashloop:
+    if: ${{ inputs.crashloop }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      options: --privileged
+    steps:
+      - name: Install Plasma
+        run: |
+          dnf -y install $PLASMA_PKGS >/dev/null
+          dnf -y install --skip-unavailable $PLASMA_EXTRA >/dev/null || true
+      - uses: actions/checkout@v4
+      - name: Put Firehold on Plasma where the image puts it
+        run: |
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          bash /usr/share/nimbus/desktop/plasma-hearth/install.sh / >/tmp/ph-install.log 2>&1 || true
+          bash /usr/share/nimbus/desktop/firehold-plasma/install.sh /
+      - name: Start the two-screen Desk and stock Plasma again and again
+        timeout-minutes: 50
+        shell: bash
+        run: bash .github/scripts/firehold-plasma-crashloop.sh crash "${{ inputs.starts }}"
+      - name: Publish the results to a branch
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          git config --global --add safe.directory "$PWD"
+          to="ci/firehold-plasma-crash-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+          mkdir -p pub && cp crash/*.txt crash/*.log pub/ 2>/dev/null
+          cd pub && git init -q -b "$to" && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Firehold on Plasma start loop ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
+
   screens:
+    if: ${{ !inputs.crashloop }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
     container:
@@ -59,7 +103,14 @@ jobs:
           cp os/branding/wallpapers/hearth-fireside.jpg /usr/share/wallpapers/Hearth-fireside/contents/images/3840x2160.jpg
           printf '{ "KPlugin": { "Id": "Hearth-fireside", "Name": "Hearth Fireside" } }\n' > /usr/share/wallpapers/Hearth-fireside/metadata.json
           for d in branding/icons/png/*x*; do mkdir -p "/usr/share/icons/hicolor/$(basename "$d")/apps" && cp "$d"/*.png "/usr/share/icons/hicolor/$(basename "$d")/apps/"; done
+          # Hearth's shared Quick Settings and notifications (Firehold's look on its bar), as the image has them.
+          bash /usr/share/nimbus/desktop/plasma-hearth/install.sh / >/tmp/ph-install.log 2>&1 || echo "::warning title=shared widgets::$(tail -3 /tmp/ph-install.log | tr '\n' ' ')"
           bash /usr/share/nimbus/desktop/firehold-plasma/install.sh /
+          # The image's default look is Hearth's dark one (os-bases/anatase/build.sh: /etc/xdg/kdeglobals, applied by
+          # hearth-plasma-looks in the session): here its colours straight into the system's kdeglobals, so KDE's apps
+          # and their menus are dark as on a device and in the mockups.
+          install -Dm644 hosts/linux/desktop/theme/Hearth.colors /usr/share/color-schemes/Hearth.colors
+          { grep -v '^#' hosts/linux/desktop/theme/Hearth.colors; printf '\n[Icons]\nTheme=breeze-dark\n'; } > /etc/xdg/kdeglobals
           ls -la /usr/share/plasma/shells/ /usr/bin/hearth-firehold-plasma
 
       - name: Check (QML, packages, scripts, the helper's tests)
@@ -118,6 +169,7 @@ jobs:
           cd .. && [ ! -e shots/FAILED ]
 
   idle:
+    if: ${{ !inputs.crashloop }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     container:
