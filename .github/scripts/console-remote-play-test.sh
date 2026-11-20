@@ -107,7 +107,8 @@ HEARTH_CRP_AUTO_REDIRECT=1 run crp-1c-signed-in 0 9 --page signin
 run crp-2-my-consoles 20 3 --page consoles
 run crp-3-connecting 0 4 --page connecting
 HEARTH_CRP_NET="wifi|5|Home" run crp-4-streaming-bar 0 4 --page stream --show bar,pill,disconnect-tip
-seed 18100000000
+# 16.5 GB before this stream, 1.6 GB in it (the stand-in's): 18.1 GB, over the 90 % warning.
+seed 16500000000
 run crp-4b-streaming-data-warning 0 5 --page stream --show warning,shot
 seed 14600000000
 HEARTH_CRP_NET="wifi|2.4|OfficeNet" run crp-5-connection-trouble 0 4 --page trouble

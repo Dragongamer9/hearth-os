@@ -684,7 +684,6 @@ fn pics_for(a: &mut App, list: &[Game]) -> Task<Msg> {
         if g.picture.is_empty() || a.pics.contains_key(&g.picture) {
             continue;
         }
-        a.pics.insert(g.picture.clone(), image::Handle::from_bytes(Vec::<u8>::new()));
         let u = g.picture.clone();
         let u2 = u.clone();
         t.push(work(move || fetch_pic(u), move |b| Msg::Pic(u2.clone(), b)));
@@ -828,14 +827,17 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
                     a.gamertag = g;
                     a.signed_in = true;
                     let p = a.page;
-                    if p == Page::Welcome && app::arg("--page").is_none() {
-                        return go(a, Page::Consoles);
-                    }
-                    let mut t = vec![go(a, p)];
-                    if matches!(p, Page::Connecting | Page::Stream | Page::Trouble) {
-                        // CI's stand-in stream (the pages past My consoles).
+                    // The console list once, at the start (the sidebar's status, whether Cloud shows); asked for again
+                    // only by My consoles' Refresh.
+                    let mut t = Vec::new();
+                    if a.consoles == Load::Idle {
                         a.consoles = Load::Loading;
                         t.push(work(list_consoles, Msg::Consoles));
+                    }
+                    if p == Page::Welcome && app::arg("--page").is_none() {
+                        t.push(go(a, Page::Consoles));
+                    } else {
+                        t.push(go(a, p));
                     }
                     Task::batch(t)
                 }

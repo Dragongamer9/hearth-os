@@ -457,7 +457,7 @@ fn trouble(a: &App) -> E<'_, Msg> {
     col = col.push(
         row![
             container(glyph(G::Console, Color::from_rgb8(0xff, 0x8a, 0x8a), 52.0)).center_x(Length::Fixed(96.0)).center_y(Length::Fixed(96.0)).style(bx(Color::from_rgb8(0x2a, 0x16, 0x16), 24.0, Some((Color::from_rgb8(0x6a, 0x2d, 0x2d), 1.0)))),
-            column![one(t6("Couldn't reach your Xbox", 34.0, TX)), t(trouble_words(a), 17.0, MUT)].spacing(6.0)
+            column![one(t6("Couldn't reach your Xbox", 34.0, TX)), t(trouble_words(a), 17.0, MUT)].spacing(6.0).width(Length::Fill)
         ]
         .spacing(26.0)
         .align_y(iced::Center),

@@ -72,6 +72,7 @@ def label(text, cls=(), markup=False, xalign=0.0, wrap=False):
     else:
         lb.set_text(text)
     lb.set_xalign(xalign)
+    lb.set_valign(Gtk.Align.CENTER)
     lb.set_line_wrap(wrap)
     for c in cls:
         lb.get_style_context().add_class(c)
@@ -82,6 +83,7 @@ def lock(size=18):
     """The green lock (drawn: no emoji font needed)."""
     da = Gtk.DrawingArea()
     da.set_size_request(size, size)
+    da.set_valign(Gtk.Align.CENTER)
 
     def draw(_w, cr):
         k = size / 24.0
@@ -105,6 +107,7 @@ def app_icon(size=36):
     """Hearth's ember tile with a controller and signal waves (no Microsoft or Xbox marks)."""
     da = Gtk.DrawingArea()
     da.set_size_request(size, size)
+    da.set_valign(Gtk.Align.CENTER)
 
     def draw(_w, cr):
         import cairo
@@ -277,6 +280,7 @@ class SignIn:
     def button(self, text, cb):
         b = Gtk.Button(label=text)
         b.get_style_context().add_class('btn')
+        b.set_valign(Gtk.Align.CENTER)
         b.connect('clicked', cb)
         return b
 
