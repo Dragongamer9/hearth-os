@@ -82,9 +82,12 @@ PlasmoidItem {
         const w = parts[0];
         if (w === "identify" || w === "identify-off") identifyOn = w === "identify";
         else if (w === "popup" || w === "popup-off") { if (!parts[2] || parts[2] === myScreen) popupOpen = w === "popup"; }
+        else if (w === "hint" || w === "hint-off") hintOn = w === "hint";
         else { readModes(); for (let i = 0; i < layers.count; i++) { const l = layers.objectAt(i); if (l && l.item) l.item.readModes(); } }
     }
     property bool identifyOn: false
+    property bool hintOn: false
+    Loader { active: root.hintOn; source: "HintLayer.qml"; onLoaded: item.bar = root }
     Loader { active: root.identifyOn; source: "IdentifyLayer.qml"; onLoaded: item.bar = root }
     readonly property string modeKey: Plasmoid.configuration.key || ""
     onModeKeyChanged: {

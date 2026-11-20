@@ -10,8 +10,6 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Shapes
-import org.kde.plasma.plasma5support as P5Support
-import org.kde.taskmanager as TaskManager
 import "firehold.js" as F
 import "fhp.js" as H
 
@@ -77,40 +75,17 @@ Item {
         if (key === "posture" && value === "desk") run(["switch", "desk", "--why", "pick"]);
     }
 
-    // ------------------------------------------------------------------ the helper (Plasma's executable source)
-    P5Support.DataSource {
-        id: sh
-        engine: "executable"
-        property var cbs: ({})
-        property int n: 0
-        onNewData: function (source, data) {
-            const cb = sh.cbs[source];
-            delete sh.cbs[source];
-            sh.disconnectSource(source);
-            if (cb) cb(String(data["stdout"] || ""));
-        }
-    }
+    // ------------------------------------------------------------------ the compositor's side (Host.qml: Plasma's here)
+    Host { id: host; onWindowsChanged: fh.readWins() }
     function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
-    function run(args, cb) {
-        sh.n += 1;
-        const cmd = "hearth-firehold-plasma " + args.map(q).join(" ") + " #" + sh.n;
-        sh.cbs[cmd] = cb || null;
-        sh.connectSource(cmd);
-    }
+    function run(args, cb) { host.exec("hearth-firehold-plasma " + args.map(q).join(" "), cb); }
     function lastJson(t) {
         const l = String(t || "").trim().split("\n").pop();
         try { return JSON.parse(l); } catch (e) { return null; }
     }
 
     // ------------------------------------------------------------------ the clock, the bar's status
-    P5Support.DataSource {
-        id: clock
-        engine: "time"
-        connectedSources: ["Local"]
-        interval: 60000
-        intervalAlignment: P5Support.Types.AlignToMinute
-    }
-    readonly property var now: clock.data["Local"] && clock.data["Local"]["DateTime"] ? clock.data["Local"]["DateTime"] : new Date()
+    readonly property var now: host.now
     property var sys: ({})
     property bool sysBusy: false
     function refreshSys(all) {
@@ -183,35 +158,13 @@ Item {
                  modeName: here ? "Couch" : "Desk", here: here };
     })
 
-    // ------------------------------------------------------------------ windows (Plasma's task model)
-    TaskManager.TasksModel {
-        id: tasks
-        groupMode: TaskManager.TasksModel.GroupDisabled
-        sortMode: TaskManager.TasksModel.SortLastActivated
-        filterByVirtualDesktop: false
-        filterByScreen: false
-        filterByActivity: false
-        filterNotMinimized: false
-        onCountChanged: fh.readWins()
-        onDataChanged: fh.readWins()
-    }
+    // ------------------------------------------------------------------ windows (the Host's list)
     property var wins: []
     property string winsKey: ""
     property var seen: ({})
     property string lastGameId: ""
     function readWins() {
-        const R = TaskManager.AbstractTasksModel;
-        const out = [];
-        for (let i = 0; i < tasks.count; i++) {
-            const ix = tasks.makeModelIndex(i);
-            if (!tasks.data(ix, R.IsWindow) || tasks.data(ix, R.IsLauncher) || tasks.data(ix, R.IsStartup)) continue;
-            const ids = tasks.data(ix, R.WinIdList) || [];
-            const uuid = ids.length ? String(ids[0]) : "";
-            out.push({ row: i, id: uuid || String(i), uuid: uuid, appId: String(tasks.data(ix, R.AppId) || ""),
-                       appName: String(tasks.data(ix, R.AppName) || ""), title: String(tasks.data(ix, Qt.DisplayRole) || ""),
-                       activated: !!tasks.data(ix, R.IsActive), minimized: !!tasks.data(ix, R.IsMinimized),
-                       fullscreen: !!tasks.data(ix, R.IsFullScreen), pid: Number(tasks.data(ix, R.AppPid) || 0) });
-        }
+        const out = host.windows();
         const key = JSON.stringify(out);
         if (key === winsKey) return;
         winsKey = key;
@@ -233,7 +186,6 @@ Item {
         for (const w of wins) { const x = F.gameFor(w, library); if (x && x.id === g.id) return w; }
         return null;
     }
-    function idx(w) { return tasks.makeModelIndex(w.row); }
 
     // Go to a game or window: in front, the Couch steps aside; a game full screen on the Couch (Games: Follow).
     function goTo(w, asWindow) {
@@ -243,12 +195,12 @@ Item {
         const game = F.isGame(w, library);
         if (game) lastGameId = w.id;
         if (layered) stepAside();
-        tasks.requestActivate(idx(w));
+        host.activate(w.row);
         const full = game && !asWindow && gamesOpen !== "window" && gamesOpen !== "stay";
-        if (game && full !== w.fullscreen) tasks.requestToggleFullScreen(idx(w));
+        if (game && full !== w.fullscreen) host.toggleFullScreen(w.row);
     }
-    function toggleFull(w) { if (w) tasks.requestToggleFullScreen(idx(w)); }
-    function closeWin(w) { if (w) tasks.requestClose(idx(w)); }
+    function toggleFull(w) { if (w) host.toggleFullScreen(w.row); }
+    function closeWin(w) { if (w) host.close(w.row); }
     function play(g, asWindow) {
         if (!g) return;
         const w = windowFor(g);
@@ -367,7 +319,13 @@ Item {
     function key(k) {
         if (away) { run(["back", "pad"]); return true; }
         if (k === Qt.Key_F1) { guide(false); return true; }
-        if (k === Qt.Key_Menu || k === Qt.Key_F2) { page = page === "settings" ? "tabs" : "settings"; return true; }
+        // ≡: Hearth's shared Quick Settings over the Couch (mockup 08); where it isn't installed, the Couch's own settings.
+        if (k === Qt.Key_Menu) {
+            if (page === "settings") { page = "tabs"; return true; }
+            run(["do", "open-applet", "org.hearthos.quicksettings"], function (t) { const o = fh.lastJson(t); if (o && o.missing) fh.page = "settings"; });
+            return true;
+        }
+        if (k === Qt.Key_F2) { page = page === "settings" ? "tabs" : "settings"; return true; }
         if (optionsGame) return optionsPage.key(k);
         if (page === "switcher") return switcherPage.key(k);
         if (page === "settings") return settingsPage.key(k);

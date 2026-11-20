@@ -57,7 +57,7 @@ Item {
             dismiss: function () { const r = srv.rowOf(id); if (r >= 0) model.close(model.index(r, 0)); },
             expire: function () { const r = srv.rowOf(id); if (r >= 0) model.expire(model.index(r, 0)); }, appName: String(role(i, NM.Notifications.ApplicationNameRole) || ""), summary: String(role(i, NM.Notifications.SummaryRole) || ""),
             body: String(role(i, NM.Notifications.BodyRole) || "").replace(/\s+$/, ""), appIcon: String(role(i, NM.Notifications.ApplicationIconNameRole) || role(i, NM.Notifications.IconNameRole) || ""),
-            image: typeof img === "string" ? img : "", urgency: u === NM.Notifications.CriticalUrgency ? 2 : u === NM.Notifications.LowUrgency ? 0 : 1,
+            image: typeof img === "string" ? img : "", imageObj: img && typeof img !== "string" ? img : null, urgency: u === NM.Notifications.CriticalUrgency ? 2 : u === NM.Notifications.LowUrgency ? 0 : 1,
             actions: acts, desktopEntry: String(role(i, NM.Notifications.DesktopEntryRole) || ""), expireTimeout: Number(role(i, NM.Notifications.TimeoutRole) || 0),
             transient: role(i, NM.Notifications.TransientRole) === true,
             // A Reply box (Plasma's inline replies: messengers, KDE Connect), as Quickshell's

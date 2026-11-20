@@ -118,7 +118,7 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 - [x] Standard menus for an app with none of its own (the app menu, Window, Help) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "[[\"app\", root.appName], [\"window\", \"Window\"], [\"help\", \"Help\"]]"
 - [x] Window › Move to screen (each screen with its mode) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "here ? \"here now\" : s.mode === \"couch\" ? \"goes full screen\""
 - [x] Help: search every command (Alt+Space) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "[\"Search every command\", \"Alt+Space\", \"search\"]"
-- [x] The "controller in your hand" hint — hosts/linux/desktop/firehold-plasma/hearth-firehold-plasma: "notify('A controller is in your hand'"
+- [ ] The "controller in your hand" hint
 
 ## Build status (branch feature/firehold-plasma-1.16; not ticked until each part is pictured and compared)
 

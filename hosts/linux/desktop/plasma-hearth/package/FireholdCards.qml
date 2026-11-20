@@ -115,11 +115,14 @@ LayerPanel {
                     Text { visible: card.urgent; text: "Stays until you answer"; color: F.accent; font.pixelSize: 14; font.family: fc.fontName }
                     // A picture (a recorded clip, a screenshot)
                     Rectangle {
-                        visible: card.image !== "" && pic.status === Image.Ready
+                        readonly property var live: card.image === "" && card.n && card.n.imageObj ? card.n.imageObj : null
+                        visible: (card.image !== "" && pic.status === Image.Ready) || (!!live && liveImg.status === Loader.Ready)
                         Layout.topMargin: 6
                         Layout.preferredWidth: 220; Layout.preferredHeight: 124
                         radius: 8; clip: true; color: F.tile
-                        Image { id: pic; anchors.fill: parent; source: card.image; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(440, 248) }
+                        Image { id: pic; anchors.fill: parent; visible: card.image !== ""; source: card.image; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(440, 248) }
+                        // Plasma's own picture of it (image-data, or an image-path it loaded): CardImage.qml.
+                        Loader { id: liveImg; anchors.fill: parent; active: !!parent.live; source: "CardImage.qml"; onLoaded: item.img = Qt.binding(() => parent.live) }
                     }
                     // A reply box (messages)
                     Rectangle {

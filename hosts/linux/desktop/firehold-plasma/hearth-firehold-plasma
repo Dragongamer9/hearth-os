@@ -846,6 +846,17 @@ def dnd_changed(fd):
                   'string:Firehold dnd ' + ('on' if v == 'on' else 'off'), reply=False)
 
 
+def couch_quick_widget():
+    """Hearth's shared Quick Settings (org.hearthos.quicksettings, Firehold's look) in each Couch desktop, once, when
+    it's installed: the Couch's ≡ opens it over the Couch (mockup firehold-plasma 08). Added only where it's missing;
+    the widget's own settings are left as they are."""
+    js = ('if((knownWidgetTypes||[]).indexOf("org.hearthos.quicksettings")>=0){desktops().forEach(function(d){'
+          'if(d.type!="org.hearthos.firehold.couch")return;'
+          'if(d.widgets().some(function(w){return w.type=="org.hearthos.quicksettings";}))return;'
+          'var w=d.addWidget("org.hearthos.quicksettings");w.currentConfigGroup=["General"];w.writeConfig("style","firehold");});}')
+    dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript', 'string:' + js, reply=False)
+
+
 def desk_pad(name):
     """The controller used on the Desk (mockup firehold-plasma 12): View opens the bar's menus for the app in front;
     any other button says, once in a while, what the controller can do here."""
@@ -854,7 +865,10 @@ def desk_pad(name):
         return
     if time.time() - _hand[0] > 600:
         _hand[0] = time.time()
-        notify('A controller is in your hand', 'Press ≡ for the Couch on this screen, or View for these menus with the controller', 'input-gaming')
+        # 'A controller is in your hand' at the bottom right of the bar's screen (the mode pill's HintLayer.qml);
+        # gone again 8 s later (a helper that sleeps, then says so: no timer in the bar).
+        ping_modes('hint')
+        detach([sys.executable, os.path.abspath(__file__), 'ping-later', '8', 'hint-off'])
 
 
 class Pad:
@@ -1295,6 +1309,15 @@ def do(action, arg=''):
         out = dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript',
                         'string:var n=0;panels().forEach(function(p){p.widgets().forEach(function(w){if(w.type=="%s")n++;});});print(n);' % arg)
         return {'ok': bool(re.search(r'string "[1-9]', out))}
+    elif action == 'open-applet' and arg == 'org.hearthos.quicksettings' and current_posture() == 'couch':
+        # On the Couch: Hearth's shared Quick Settings in its Couch look, over the Couch (the widget sits in the
+        # Couch's own desktop, not in a panel); the same "open" key hearth-plasma-panel writes.
+        out = dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript',
+                        'string:var n=0,v=%s;desktops().forEach(function(d){d.widgets().forEach(function(w){'
+                        'if(w.type=="org.hearthos.quicksettings"){w.currentConfigGroup=["General"];w.writeConfig("open",v);n++;}});});print(n);'
+                        % json.dumps('quick:%.3f' % time.time()))
+        if not re.search(r'string "[1-9]', out or ''):
+            return {'ok': False, 'missing': True}
     elif action == 'open-applet' and arg in ('org.hearthos.quicksettings', 'org.hearthos.notifications') and have('hearth-plasma-panel'):
         # The shared widgets open through hearth-plasma-panel (their own "open" key).
         quiet(['hearth-plasma-panel', 'open', 'quick' if arg.endswith('quicksettings') else 'calendar'], 8)
@@ -2104,11 +2127,13 @@ def main(argv):
             return session()
         elif what == 'ready' and a and re.match(r'^[a-z.]+$', a[0]):
             write_small(os.path.join(run_dir(), 'ready-' + a[0]), str(time.time()))
+            if a[0] == COUCH:
+                couch_quick_widget()
         elif what == 'switch' and a:
             why = a[a.index('--why') + 1] if '--why' in a[:-1] else ''
             tab = next((x for x in a[1:] if x in ('home', 'library', 'apps', 'store', 'switcher', 'settings')), '')
             switch(a[0], tab, why)
-        elif what == 'ping' and a and a[0] in ('modes', 'popup', 'popup-off', 'identify', 'identify-off', 'qs', 'qs-off', 'notes', 'notes-off', 'menu-app', 'menu-window', 'menu-move', 'menu-help', 'menu-off'):
+        elif what == 'ping' and a and a[0] in ('modes', 'popup', 'popup-off', 'identify', 'identify-off', 'qs', 'qs-off', 'notes', 'notes-off', 'menu-app', 'menu-window', 'menu-move', 'menu-help', 'menu-off', 'hint', 'hint-off'):
             # The Desk's mode pill and the Couch: read the modes again, open or close Modes (on SCREEN), Identify.
             scr = a[1] if len(a) > 1 and re.match(r'^[A-Za-z0-9_.-]{1,40}$', a[1]) else ''
             ping_modes(a[0], scr)
@@ -2133,6 +2158,9 @@ def main(argv):
             print(json.dumps(quick_settings()))
         elif what == 'qs-do' and a:
             print(json.dumps(qs_do(a[0], a[1] if len(a) > 1 else '')))
+        elif what == 'ping-later' and len(a) == 2 and a[0].isdigit() and a[1] in ('hint-off',):
+            time.sleep(min(int(a[0]), 60))
+            ping_modes(a[1])
         elif what == 'pad-button' and a and re.match(r'^[a-z]{1,12}$', a[0]):
             # A controller button pressed on the Desk (the checks use it: no controller in CI).
             if current_posture() == 'desk':

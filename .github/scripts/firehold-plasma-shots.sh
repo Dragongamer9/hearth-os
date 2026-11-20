@@ -110,6 +110,21 @@ for k in /usr/libexec/kactivitymanagerd /usr/lib64/libexec/kactivitymanagerd /us
 for k in /usr/libexec/kglobalacceld /usr/lib64/libexec/kglobalacceld /usr/bin/kglobalacceld; do [ -x "$k" ] && { "$k" >"$OUT/kglobalaccel.log" 2>&1 & break; }; done
 sleep 3
 
+# Hearth's shared Quick Settings over the Couch answers as mockup 08 shows (a ROG Ally: its battery, earbuds, its own
+# power steps, Game Mode switched off); the screen in Couch.
+export HEARTH_QUICK_FIXTURE=/tmp/fhp-quick-couch.json
+python3 - "$HEARTH_QUICK_FIXTURE" <<'PY'
+import json, sys
+json.dump({"device": "ROG Ally", "line": "ROG Ally · battery 64% · up 2 h", "battery": 64, "user": "Chris", "batteryMore": {"left": "about 2 h 40 min", "limit": 80},
+ "wifi": {"on": True, "ssid": "Home-5G", "strength": "strong"}, "bt": {"on": True, "connected": 1, "names": ["Earbuds"]},
+ "osk": False, "night": {"on": False, "until": "9 PM"}, "dnd": {"on": False, "byHand": False, "schedule": True, "from": "11 PM", "to": "7 AM", "games": True, "family": True},
+ "sinks": [{"name": "buds", "word": "Earbuds", "default": True, "volume": 45}], "brightness": [{"id": "", "label": "This screen", "percent": 70, "max": 100}],
+ "power": "balanced", "powerNames": {"power-saver": "Silent · 10 W", "balanced": "Balanced · 18 W", "performance": "Turbo · 25 W"},
+ "devices": [{"name": "Earbuds", "kind": "headset", "percent": 70, "low": False}, {"name": "8BitDo", "kind": "pad", "percent": 18, "player": 2, "low": True}],
+ "gameModeOff": True, "modes": [{"name": "Virtual-0", "tv": False, "label": "Built-in", "mode": "couch"}, {"name": "Virtual-1", "tv": False, "label": "Built-in", "mode": "couch"}]},
+ open(sys.argv[1], "w"))
+PY
+
 # ---- the Couch, as nimbus-session starts it.
 hearth-firehold-plasma begin org.hearthos.firehold
 since=$(date +%s)
@@ -129,6 +144,15 @@ key down down down down right; sleep 1
 python3 "$(dirname "$0")/firehold-plasma-fixtures.py" --low "$FX"; hearth-firehold-plasma ask cards; sleep 4
 shot fp-02-couch-home-rows
 key b
+# Quick Settings with the controller over the Couch (mockup 08): the Couch's ≡ (the Menu key); B (Escape) closes it.
+key up up up up; sleep 1
+echo "Couch's widgets: $(dbus-send --session --print-reply --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript string:'print(desktops().map(function(d){return d.type + ": " + d.widgets().map(function(w){return w.type;}).join(",");}).join(" | "))' 2>&1 | tail -1)" > "$OUT/couch-quick.txt"
+command -v wtype >/dev/null && timeout 5 wtype -k Menu || hearth-firehold-plasma do open-applet org.hearthos.quicksettings >>"$OUT/couch-quick.txt"
+sleep 4
+shot fp-08-quick-settings-couch
+command -v wtype >/dev/null && timeout 5 wtype -k Escape || hearth-firehold-plasma do open-applet org.hearthos.quicksettings >/dev/null
+sleep 2
+shot fp-08b-quick-settings-closed
 hearth-firehold-plasma ask tab:library; sleep 3
 key right x down; sleep 2
 shot fp-03-couch-game-options
@@ -237,6 +261,8 @@ sleep 3
 pkill -f kactivitymanagerd; pkill -f kglobalacceld; sleep 1
 for k in /usr/libexec/kactivitymanagerd /usr/lib64/libexec/kactivitymanagerd /usr/bin/kactivitymanagerd; do [ -x "$k" ] && { "$k" >"$OUT/kamd2.log" 2>&1 & break; }; done
 for k in /usr/libexec/kglobalacceld /usr/lib64/libexec/kglobalacceld /usr/bin/kglobalacceld; do [ -x "$k" ] && { "$k" >"$OUT/kglobalaccel2.log" 2>&1 & break; }; done
+# KDE's daemon (its app menu module: KDE's global menu in the bar, mockup 11).
+command -v kded6 >/dev/null && { kded6 >"$OUT/kded2.log" 2>&1 & }
 sleep 3
 export HEARTH_FIREHOLD_SCREENS="Virtual-0::LG 27GP850:2560 × 1440 · 165 Hz · DisplayPort 1,Virtual-1:tv:TCL 55″ TV:3840 × 2160 · 60 Hz · HDMI 2" HEARTH_FIREHOLD_TV_SCREENS=Virtual-1
 # Hearth's shared Quick Settings answers as mockup 07 shows (HEARTH_QUICK_FIXTURE), a history from yesterday (mockup 10,
@@ -316,6 +342,15 @@ shot fp-14-controller-hint 0 1920
 { echo "notify-send: $(command -v notify-send || echo none)"; echo "posture: $(cat "$RUN/posture" 2>/dev/null)"
   echo "in Hearth's history: $(grep -c 'controller is in your hand' "$HOME/.local/state/nimbus/notifications.json" 2>/dev/null)"
   notify-send -a Check check check 2>&1; echo "notify-send exit $?"; } > "$OUT/controller-hint.txt" 2>&1
+# The app's own menus (mockup 11): Kate in front, its menus in the bar from KDE's global menu, File open (Alt+F).
+printf 'Age of the Ring 8.4 patch notes\n' > /tmp/patch-notes.txt
+QT_QPA_PLATFORMTHEME=kde kate /tmp/patch-notes.txt >/dev/null 2>&1 &
+sleep 8; front "patch-notes" false; sleep 3
+command -v wtype >/dev/null && timeout 5 wtype -M alt -k f -m alt; sleep 3
+shot fp-11-desk-bar-app-menus 0 1920
+command -v wtype >/dev/null && timeout 5 wtype -k Escape; sleep 1
+echo "kate's menus: $(hearth-firehold-plasma menus "$(pgrep -x kate | head -1)")" >> "$OUT/controller-hint.txt"
+front "Trains 2010" false; sleep 2
 # While you played (mockup 10): notifications that come while a game is full screen are held back.
 front "Trains 2010" true; sleep 3
 note '{"app": "Friends", "summary": "Mira", "body": "Ready for co-op tonight?"}'; sleep 1
