@@ -11,7 +11,10 @@ PanelWindow {
     id: pw
     property var fh
     property string scrName: ""
-    readonly property bool primary: screen === Quickshell.screens[0]
+    // The Couch the controller drives: the TV's when a TV is Couch, else the first screen's (Firehold.qml).
+    readonly property bool primary: fh.padScreen === scrName
+    onPrimaryChanged: if (primary && shown) fh.activeCouch = pw
+    Component.onCompleted: { fh.couches = fh.couches.concat([pw]); if (shown && (primary || !fh.activeCouch)) fh.activeCouch = pw; }
     readonly property bool shown: fh.unlocked && fh.postureOfName(scrName) === "couch" && fh.view === "home"
     visible: shown
     color: "#0f0b0a"
@@ -65,8 +68,7 @@ PanelWindow {
         if (shown) { shownAt = Date.now(); if (primary || !fh.activeCouch) fh.activeCouch = pw; if (couch) couch.forceActiveFocus(); }
         else if (fh.activeCouch === pw) fh.activeCouch = null;
     }
-    Component.onCompleted: if (shown && (primary || !fh.activeCouch)) fh.activeCouch = pw
-    Component.onDestruction: if (fh.activeCouch === pw) fh.activeCouch = null
+    Component.onDestruction: { fh.couches = fh.couches.filter(c => c !== pw); if (fh.activeCouch === pw) fh.activeCouch = null; }
 
     // The controller's buttons from Mantel's pad helper (Firehold.qml padButton): the same keys the Couch takes from
     // hearth-firehold-plasma's controller under Plasma.

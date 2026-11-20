@@ -340,6 +340,13 @@ Scope {
     }
     // Every other button goes to what's in front: the Guide panel or the Couch screen on the main screen.
     property var activeCouch: null
+    // (Firehold on labwc: every screen's Couch, for requests that are for all of them, and the screen the controller
+    // drives: a TV that's Couch, else the first screen)
+    property var couches: []
+    readonly property string padScreen: {
+        const tv = sharedCouch && liveModes.read ? liveModes.modes.screens.find(s => s.tv && s.mode !== "desk") : null;
+        return tv ? tv.name : (Quickshell.screens.length ? Quickshell.screens[0].name : "");
+    }
     property var guidePanel: null
     property var settingsPanel: null
     function padButton(b, down) {
@@ -435,7 +442,13 @@ Scope {
         function tab(name: string): void { if (fhs.unlocked && ["home", "library", "apps", "store"].concat(fhs.sharedCouch ? ["media"] : []).indexOf(name) >= 0) { fhs.home(); fhs.tab = name; } }
         // The approved Couch (FhpCouch.qml, Firehold on labwc): a request as hearth-firehold-plasma ask gives it under
         // Plasma (cards, settings, modes, key:a ...).
-        function ask(cmd: string): void { if (cmd === "modes") liveModes.readModes(); if (fhs.activeCouch && fhs.activeCouch.couch && /^[a-z]+(:[a-z0-9_.-]{1,40})?$/.test(cmd)) fhs.activeCouch.couch.handle(cmd); }
+        function ask(cmd: string): void {
+            if (!/^[a-z]+(:[a-z0-9_.-]{1,40})?$/.test(cmd)) return;
+            if (cmd === "modes") liveModes.readModes();
+            // modes, cards, identify: every screen's Couch; the rest (keys, tabs): the one the controller drives
+            const all = ["modes", "cards", "identify", "identify-off"].indexOf(cmd) >= 0;
+            for (const c of (all ? fhs.couches : [fhs.activeCouch])) if (c && c.couch) c.couch.handle(cmd);
+        }
         function open(what: string): void {
             if (!fhs.unlocked) return;
             if (what === "switcher") { fhs.guideShown = false; fhs.view = "home"; fhs.page = "switcher"; }
