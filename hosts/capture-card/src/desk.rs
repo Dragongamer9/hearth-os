@@ -128,7 +128,7 @@ pub fn view(a: &App) -> E<'_, Msg> {
         Page::Settings => settings(a),
     };
     let mut layers: Vec<E<'_, Msg>> = vec![page];
-    if let Some(d) = a.dd {
+    if let Some(d) = a.dd.filter(|d| *d != Dd::Sort) {
         layers.push(chooser(a, d));
     }
     if let Some(d) = &a.dlg {
@@ -367,7 +367,26 @@ fn chooser(a: &App, d: Dd) -> E<'_, Msg> {
         c = c.push(click(container(row![one(t(words, 16.0, if on { INK } else { TX })), fill()]).padding(pad(10.0, 14.0, 10.0, 14.0)).width(Length::Fill).style(bx(if on { ACC } else { CARD }, 9.0, None)), Some(Msg::Pick(d, v))));
     }
     c = c.push(gap(1.0, 6.0)).push(row![fill(), btn("Close", None, B::Normal, false, 15.0, false, Some(Msg::Dd(None)))]);
-    hearth_ui::ui::dialog(Space::new().into(), container(c).padding(20.0).width(Length::Fixed(420.0)).style(shadowed(SIDE, 14.0, Some((LINE, 1.0)), 40.0)).into(), Some(Msg::Dd(None)))
+    modal(container(c).padding(20.0).width(Length::Fixed(420.0)).style(shadowed(SIDE, 14.0, Some((LINE, 1.0)), 40.0)).into(), Msg::Dd(None))
+}
+
+/// A dialog over the whole window: the page dimmed behind it, a click outside closes it.
+pub fn modal<'a>(inner: E<'a, Msg>, close: Msg) -> E<'a, Msg> {
+    let dim = container(iced::widget::opaque(inner)).center_x(Length::Fill).center_y(Length::Fill).style(bx(Color { r: 0.0, g: 0.0, b: 0.0, a: 0.55 }, 0.0, None));
+    iced::widget::opaque(mouse_area(dim).on_press(close))
+}
+
+/// Sort by (4, "Newest first ▾"): its choices drop down under it, over the grid.
+fn sort_menu(a: &App) -> E<'_, Msg> {
+    let now = a.prefs.sort.clone();
+    let mut c = Column::new().spacing(2.0);
+    for (v, words) in dd_choices(a, Dd::Sort) {
+        let on = v.as_str() == Some(now.as_str());
+        let r = row![one(t(words, 15.0, if on { INK } else { TX })), fill(), one(t(if on { "✓" } else { "" }, 14.0, INK))].align_y(iced::Center);
+        c = c.push(click(container(r).padding(pad(9.0, 14.0, 9.0, 14.0)).width(Length::Fill).style(bx(if on { ACC } else { Color::TRANSPARENT }, 8.0, None)), Some(Msg::Pick(Dd::Sort, v))));
+    }
+    let list = container(c).padding(6.0).width(Length::Fixed(240.0)).style(shadowed(SIDE, 12.0, Some((LINE, 1.0)), 30.0));
+    container(iced::widget::opaque(list)).align_right(Length::Fill).into()
 }
 
 fn settings(a: &App) -> E<'_, Msg> {
@@ -540,7 +559,7 @@ fn library(a: &App) -> E<'_, Msg> {
     let shown = a.shown();
     let small = a.tab == Tab::Shot;
     let cols = if small { 4 } else { 3 };
-    let mut grid = Column::new().spacing(if small { 14.0 } else { 18.0 });
+    let mut grid = Column::new().spacing(if small { 14.0 } else { 18.0 }).padding(pad(10.0, 0.0, 0.0, 0.0));
     for (r, chunk) in shown.chunks(cols).enumerate() {
         let mut rr = Row::new().spacing(if small { 14.0 } else { 18.0 });
         for (c, it) in chunk.iter().enumerate() {
@@ -562,7 +581,12 @@ fn library(a: &App) -> E<'_, Msg> {
             MUT,
         )));
     }
-    let left = column![h1("Recordings & screenshots"), row![tabs, fill(), sort].align_y(iced::Center), gap(1.0, 18.0), scrollable(grid).height(Length::Fill)].width(Length::Fill);
+    let below: E<'_, Msg> = if a.dd == Some(Dd::Sort) {
+        stack![scrollable(grid).height(Length::Fill), mouse_area(container(sort_menu(a)).width(Length::Fill).height(Length::Fill)).on_press(Msg::Dd(None))].width(Length::Fill).height(Length::Fill).into()
+    } else {
+        scrollable(grid).height(Length::Fill).into()
+    };
+    let left = column![h1("Recordings & screenshots"), row![tabs, fill(), sort].align_y(iced::Center), gap(1.0, 8.0), below].width(Length::Fill);
     let page = container(row![left, column![side(a)]].spacing(26.0)).padding(pad(26.0, 34.0, 26.0, 34.0)).width(Length::Fill).height(Length::Fill);
     let rec_sel = a.picked().map(|i| i.kind == Kind::Rec).unwrap_or(a.tab != Tab::Shot);
     frame(
@@ -588,14 +612,29 @@ fn dialog<'a>(a: &'a App, d: &Dlg) -> E<'a, Msg> {
         ]
         .spacing(14.0),
     };
-    hearth_ui::ui::dialog(Space::new().into(), container(c).padding(22.0).width(Length::Fixed(520.0)).style(shadowed(SIDE, 14.0, Some((LINE, 1.0)), 40.0)).into(), Some(Msg::CloseDlg))
+    modal(container(c).padding(22.0).width(Length::Fixed(520.0)).style(shadowed(SIDE, 14.0, Some((LINE, 1.0)), 40.0)).into(), Msg::CloseDlg)
 }
 
 // ------------------------------------------------------------------ 1 the viewer
 /// The picture: one widget the size of the window that paints its own black bars and the card's frame in them (Fit,
 /// Fill or Stretch), so whatever is drawn above it (the bar, the pills, the quick menu) covers the whole window.
 pub fn picture(a: &App) -> E<'_, Msg> {
-    iced::widget::canvas(Video { frame: a.frame.clone(), fit: a.prefs.fit.clone() }).width(Length::Fill).height(Length::Fill).into()
+    // Drawn by the CPU (tiny-skia): painted whole as one canvas, so the bars are always redrawn under the overlays.
+    // Drawn by the graphics card (wgpu, what PCs and the Ally use): the image widget in a black box the window's size
+    // (wgpu draws every frame whole).
+    if hearth_ui::app::renderer("hearth-capture-card") == "cpu" || !hearth_ui::app::gpu_started() {
+        return iced::widget::canvas(Video { frame: a.frame.clone(), fit: a.prefs.fit.clone() }).width(Length::Fill).height(Length::Fill).into();
+    }
+    let fit = match a.prefs.fit.as_str() {
+        "fill" => iced::ContentFit::Cover,
+        "stretch" => iced::ContentFit::Fill,
+        _ => iced::ContentFit::Contain,
+    };
+    let pic: E<'_, Msg> = match a.frame.as_ref() {
+        Some(h) => image(h.clone()).content_fit(fit).width(Length::Fill).height(Length::Fill).into(),
+        None => Space::new().width(Length::Fill).height(Length::Fill).into(),
+    };
+    container(pic).center_x(Length::Fill).center_y(Length::Fill).clip(true).style(bx(Color::BLACK, 0.0, None)).into()
 }
 
 struct Video {

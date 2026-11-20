@@ -416,6 +416,7 @@ impl App {
         }
         if a.shows("sort") {
             a.dd = Some(Dd::Sort);
+            a.ring = false;
         }
         (a, Task::batch(t))
     }
