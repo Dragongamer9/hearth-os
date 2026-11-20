@@ -106,11 +106,15 @@ pub enum Msg {
     CancelTake,
     Grabbed(Value),
     Still(Value),
-    StillLoaded(Result<picture::Pic, String>),
+    /// The screens (name, where it is on the desktop) for one picker on each, as Mantel's; empty: only the one
+    /// you're on.
+    ScreensListed(Vec<(String, R)>),
+    StillEach(Vec<(String, R)>, Value),
+    StillsLoaded(Vec<(String, R)>, Vec<Result<picture::Pic, String>>),
     GrabTimeout(u64),
-    PickPress(f32, f32, f32, f32),
-    PickMove(f32, f32, f32, f32),
-    PickRelease,
+    PickPress(usize, f32, f32, f32, f32),
+    PickMove(usize, f32, f32, f32, f32),
+    PickRelease(usize),
     PickDone,
     PickCancel,
     ScrollGo(String),
@@ -125,7 +129,10 @@ pub enum Msg {
 pub struct App {
     pub p: Pal,
     pub main: Option<window::Id>,
-    pub picker: Option<window::Id>,
+    /// The area picker: one window on each screen (Mantel's), each with its still picture.
+    pub screens: Vec<PickScreen>,
+    /// The screen the box is on.
+    pub sel_screen: usize,
     pub pill: Option<window::Id>,
     pub main_size: Size,
     pub page: Page,
@@ -141,12 +148,10 @@ pub struct App {
     pub countdown: i64,
     pub pending: &'static str,
     pub grab_seq: u64,
-    pub still: Option<picture::Pic>,
     pub pick_hint: String,
     pub sel: Option<R>,
     pub sel_sizing: bool,
     pub pick_drag: Option<(f32, f32, Option<R>, bool)>,
-    pub pick_size: (f32, f32),
     pub scroll_geo: Option<R>,
     pub scroll_info: Value,
     pub scroll_note: String,
@@ -155,6 +160,16 @@ pub struct App {
     /// Only for this run (CI's --delay, the menu's "take one now").
     pub delay_once: Option<i64>,
     pub ci_scroll_pill: bool,
+}
+
+/// One screen's picker: its name (KWin's), where it is on the desktop (logical pixels), its still picture, its
+/// window and that window's size.
+pub struct PickScreen {
+    pub name: String,
+    pub geo: R,
+    pub still: picture::Pic,
+    pub win: Option<window::Id>,
+    pub size: (f32, f32),
 }
 
 fn prefs_path() -> std::path::PathBuf {
@@ -183,6 +198,17 @@ impl App {
     }
     pub fn has_recorder(&self) -> bool {
         !helper::s(&self.tools, "record").is_empty()
+    }
+    /// The size of the picker the box is on (logical pixels).
+    pub fn pick_size(&self) -> (f32, f32) {
+        self.screens.get(self.sel_screen).map(|s| s.size).unwrap_or((1280.0, 800.0))
+    }
+    pub fn picker_of(&self, id: window::Id) -> Option<usize> {
+        self.screens.iter().position(|s| s.win == Some(id))
+    }
+    fn close_pickers(&mut self) -> Task<Msg> {
+        let t: Vec<Task<Msg>> = self.screens.iter_mut().filter_map(|s| s.win.take()).map(window::close).collect();
+        Task::batch(t)
     }
     /// Your choice, kept (only when it changed; merged into the file, red flag 9).
     fn set_pref(&mut self, k: &str, v: Value) {
@@ -218,6 +244,9 @@ impl App {
         }
     }
     fn open_pill(&mut self, size: (f32, f32), place: kwin::Place) -> Task<Msg> {
+        self.open_pill_on(size, place, String::new())
+    }
+    fn open_pill_on(&mut self, size: (f32, f32), place: kwin::Place, screen: String) -> Task<Msg> {
         if self.pill.is_some() {
             return Task::none();
         }
@@ -227,7 +256,7 @@ impl App {
         let (id, t) = window::open(s);
         self.pill = Some(id);
         let (w, h) = size;
-        t.map(Msg::Opened).chain(Task::perform(kwin::place_async("hearth-capture-pill", w, h, place), |_| Msg::Noop))
+        t.map(Msg::Opened).chain(Task::perform(kwin::place_async("hearth-capture-pill", w, h, place, screen), |_| Msg::Noop))
     }
 
     fn load_tools(&self) -> Task<Msg> {
@@ -288,11 +317,19 @@ impl App {
         Task::batch([Task::perform(helper::call(args, None, 40), Msg::Grabbed), guard])
     }
 
-    /// The area picker over a still picture of the screen (Mantel's: one per screen; a Wayland app can only cover
-    /// the screen it's on, so here it's the screen you're on, which is the one KWin takes as "this screen").
+    /// The area picker over a still picture of each screen, one picker on every screen at once (Mantel's). On KDE
+    /// Plasma the screens come from KDE's screen settings (Mantel's hearth-screens get, kscreen-doctor) and a KWin
+    /// script puts each picker full screen on its own screen (kwin::place_pickers); elsewhere, or when the screens
+    /// can't be read, it's the one screen you're on.
     fn pick_area(&mut self, hint: &str) -> Task<Msg> {
         self.phase = Phase::Grab;
         self.pick_hint = hint.to_string();
+        if helper::on_kwin() {
+            return Task::perform(helper::screens(), Msg::ScreensListed);
+        }
+        self.grab_one_still()
+    }
+    fn grab_one_still(&mut self) -> Task<Msg> {
         let mut args = vec!["grab".to_string(), "screen".to_string()];
         if self.pointer() {
             args.push("--pointer".into());
@@ -304,10 +341,8 @@ impl App {
         self.phase = Phase::Idle;
         self.error = msg.to_string();
         self.page = Page::Take;
-        let close_picker = match self.picker.take() {
-            Some(id) => window::close(id),
-            None => Task::none(),
-        };
+        let close_picker = self.close_pickers();
+        self.screens.clear();
         Task::batch([close_picker, self.close_pill(), self.open_main()])
     }
 
@@ -317,42 +352,39 @@ impl App {
         self.phase = Phase::Idle;
         self.page = Page::Edit;
         let p = path.to_string();
-        let close_picker = match self.picker.take() {
-            Some(id) => window::close(id),
-            None => Task::none(),
-        };
+        let close_picker = self.close_pickers();
+        self.screens.clear();
         Task::batch([close_picker, self.close_pill(), self.open_main(), self.load_tools(), Task::perform(picture::load_async(p.clone()), move |r| Msg::Loaded(p.clone(), r))])
     }
 
     fn pick_done(&mut self) -> Task<Msg> {
-        let (Some(sel), Some(still)) = (self.sel, self.still.as_ref()) else { return Task::none() };
+        let (Some(sel), Some(scr)) = (self.sel, self.screens.get(self.sel_screen)) else { return Task::none() };
         if sel.w < 4.0 || sel.h < 4.0 {
             return Task::none();
         }
-        let (sw, sh) = self.pick_size;
+        let (sw, sh) = scr.size;
         if self.pending == "scroll" {
-            let g = R::new(sel.x.round(), sel.y.round(), sel.w.round(), sel.h.round());
-            return self.start_scroll(g);
+            // Where it is on the whole desktop (the box is on its own screen's picker).
+            let g = R::new((scr.geo.x + sel.x).round(), (scr.geo.y + sel.y).round(), sel.w.round(), sel.h.round());
+            let below = draw::pill_below(sel, sh);
+            let name = scr.name.clone();
+            return self.start_scroll(g, below, name);
         }
-        let c = draw::picker_to_crop(sel, sw, sh, still.w as f32, still.h as f32);
-        let path = still.path.clone();
-        self.still = None;
+        let c = draw::picker_to_crop(sel, sw, sh, scr.still.w as f32, scr.still.h as f32);
+        let path = scr.still.path.clone();
         self.edit(&path, Some(c))
     }
     fn pick_cancel(&mut self) -> Task<Msg> {
         self.phase = Phase::Idle;
         self.sel = None;
-        self.still = None;
         self.page = Page::Take;
-        let close_picker = match self.picker.take() {
-            Some(id) => window::close(id),
-            None => Task::none(),
-        };
+        let close_picker = self.close_pickers();
+        self.screens.clear();
         Task::batch([close_picker, self.open_main()])
     }
 
     // ------------------------------------------------ scrolling capture
-    fn start_scroll(&mut self, g: R) -> Task<Msg> {
+    fn start_scroll(&mut self, g: R, below: bool, screen: String) -> Task<Msg> {
         self.scroll_geo = Some(g);
         self.scroll_info = Value::Object(Map::new());
         self.scroll_note.clear();
@@ -365,13 +397,11 @@ impl App {
         if self.pointer() {
             args.push("--pointer".into());
         }
-        let close_picker = match self.picker.take() {
-            Some(id) => window::close(id),
-            None => Task::none(),
-        };
-        // The pill goes outside the area when it fits: below it when the area starts near the top.
-        let below = g.y < 110.0 && g.y + g.h < self.pick_size.1 - 110.0;
-        let pill = self.open_pill((pages::scroll_pill_width(self), 56.0), if below { kwin::Place::Bottom(24.0) } else { kwin::Place::Top(24.0) });
+        let close_picker = self.close_pickers();
+        self.screens.clear();
+        // The pill goes outside the area when it fits: below it when the area starts near the top (draw::pill_below),
+        // on the screen the area is on.
+        let pill = self.open_pill_on((pages::scroll_pill_width(self), 56.0), if below { kwin::Place::Bottom(24.0) } else { kwin::Place::Top(24.0) }, screen);
         // The picker's windows go first (they'd be in the pictures), then the pictures start.
         let go = Task::perform(hearth_ui::run::after(500), move |_| Msg::ScrollGo(args.join("\u{1f}")));
         Task::batch([close_picker, pill, go])
@@ -405,7 +435,8 @@ fn boot() -> (App, Task<Msg>) {
     let mut a = App {
         p: hearth_ui::theme::load(),
         main: None,
-        picker: None,
+        screens: Vec::new(),
+        sel_screen: 0,
         pill: None,
         main_size: Size::new(1120.0, 720.0),
         page: Page::Take,
@@ -421,12 +452,10 @@ fn boot() -> (App, Task<Msg>) {
         countdown: 0,
         pending: "area",
         grab_seq: 0,
-        still: None,
         pick_hint: String::new(),
         sel: None,
         sel_sizing: false,
         pick_drag: None,
-        pick_size: (1280.0, 800.0),
         scroll_geo: None,
         scroll_info: Value::Object(Map::new()),
         scroll_note: String::new(),
@@ -465,10 +494,14 @@ fn boot() -> (App, Task<Msg>) {
         a.sel = app::arg("--sel").and_then(|s| parse_geo(&s));
         Task::batch([a.load_tools(), Task::done(Msg::Still(serde_json::json!({"ok": true, "path": f})))])
     } else if a.ci_scroll_pill {
+        // CI: the pill as a scrolling capture of this area shows it (--scroll-pill-area X,Y,W,H; the pill goes below
+        // an area that starts near the top, as Take does).
         a.phase = Phase::Scroll;
-        a.scroll_geo = Some(R::new(200.0, 300.0, 700.0, 400.0));
+        let g = app::arg("--scroll-pill-area").and_then(|s| parse_geo(&s)).unwrap_or(R::new(200.0, 300.0, 700.0, 400.0));
+        a.scroll_geo = Some(g);
         a.scroll_info = serde_json::json!({"frames": 6, "height": 2140, "width": 700, "auto": true});
-        a.open_pill((pages::scroll_pill_width(&a), 56.0), kwin::Place::Top(24.0))
+        let below = draw::pill_below(g, app::arg("--screen-height").and_then(|v| v.parse().ok()).unwrap_or(1080.0));
+        a.open_pill((pages::scroll_pill_width(&a), 56.0), if below { kwin::Place::Bottom(24.0) } else { kwin::Place::Top(24.0) })
     } else if MODES.contains(&first.as_str()) || app::arg("--take").is_some() {
         let m = app::arg("--take").unwrap_or(first);
         Task::batch([a.load_tools(), a.take(&m)])
@@ -491,14 +524,14 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             if a.main == Some(id) {
                 a.main = None;
             }
-            if a.picker == Some(id) {
-                a.picker = None;
+            if let Some(i) = a.picker_of(id) {
+                a.screens[i].win = None;
             }
             if a.pill == Some(id) {
                 a.pill = None;
             }
             // The window closed by you, with nothing being taken: Capture ends.
-            if a.main.is_none() && a.picker.is_none() && a.pill.is_none() && a.phase == Phase::Idle {
+            if a.main.is_none() && a.screens.iter().all(|s| s.win.is_none()) && a.pill.is_none() && a.phase == Phase::Idle {
                 return iced::exit();
             }
         }
@@ -506,8 +539,8 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             if a.main == Some(id) {
                 a.main_size = s;
             }
-            if a.picker == Some(id) {
-                a.pick_size = (s.width, s.height);
+            if let Some(i) = a.picker_of(id) {
+                a.screens[i].size = (s.width, s.height);
             }
         }
         Msg::Drag => return a.main.map(window::drag).unwrap_or_else(Task::none),
@@ -656,39 +689,101 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             let e = helper::s(&v, "error");
             return a.failed(if e.is_empty() { "Couldn't take the picture" } else { e });
         }
+        Msg::ScreensListed(list) => {
+            if a.phase != Phase::Grab {
+                return Task::none();
+            }
+            // Two or more screens: a still picture of each (Mantel's grab-each); one, or none read: as before.
+            if list.len() < 2 {
+                return a.grab_one_still();
+            }
+            let mut args = vec!["grab-each".to_string()];
+            if a.pointer() {
+                args.push("--pointer".into());
+            }
+            args.extend(list.iter().map(|(n, _)| n.clone()));
+            return Task::perform(helper::call(args, None, 60), move |v| Msg::StillEach(list.clone(), v));
+        }
+        Msg::StillEach(list, v) => {
+            if a.phase != Phase::Grab {
+                return Task::none();
+            }
+            if !helper::b(&v, "ok") {
+                let e = helper::s(&v, "error");
+                return a.failed(if e.is_empty() { "Couldn't take the picture" } else { e });
+            }
+            let paths: Vec<String> = list.iter().map(|(n, _)| v.get("shots").and_then(|s| s.get(n)).map(|s| helper::s(s, "path").to_string()).unwrap_or_default()).collect();
+            return Task::perform(picture::load_many_async(paths), move |r| Msg::StillsLoaded(list.clone(), r));
+        }
         Msg::Still(v) => {
             if !helper::b(&v, "ok") {
                 let e = helper::s(&v, "error");
                 return a.failed(if e.is_empty() { "Couldn't take the picture" } else { e });
             }
             let p = helper::s(&v, "path").to_string();
-            return Task::perform(picture::load_async(p), Msg::StillLoaded);
+            return Task::perform(picture::load_many_async(vec![p]), |r| Msg::StillsLoaded(Vec::new(), r));
         }
-        Msg::StillLoaded(r) => match r {
-            Err(e) => return a.failed(&format!("Couldn't take the picture: {e}")),
-            Ok(pic) => {
-                a.still = Some(pic);
-                a.sel_sizing = false;
-                a.pick_drag = None;
-                a.phase = Phase::Pick;
-                let mut s = app::window("hearth-capture", (1280.0, 800.0), (320.0, 240.0));
+        Msg::StillsLoaded(list, results) => {
+            let mut screens = Vec::new();
+            for (i, r) in results.into_iter().enumerate() {
+                match r {
+                    Err(e) => return a.failed(&format!("Couldn't take the picture: {e}")),
+                    Ok(pic) => {
+                        let (name, geo) = list.get(i).cloned().unwrap_or_else(|| (String::new(), R::new(0.0, 0.0, 1280.0, 800.0)));
+                        screens.push(PickScreen { name, geo, still: pic, win: None, size: (geo.w, geo.h) });
+                    }
+                }
+            }
+            if screens.is_empty() {
+                return a.failed("Couldn't take the picture");
+            }
+            a.sel_screen = 0;
+            a.sel_sizing = false;
+            a.pick_drag = None;
+            a.phase = Phase::Pick;
+            let many = screens.len() > 1;
+            let mut tasks = vec![a.close_main()];
+            let mut places = Vec::new();
+            for (i, scr) in screens.iter_mut().enumerate() {
+                // One picker: Capture's own window name (as before); one on each screen: a name each, so KWin's
+                // script can put each on its screen.
+                let app_id = if many { format!("hearth-capture-pick-{i}") } else { "hearth-capture".to_string() };
+                let mut s = app::window(&app_id, (scr.geo.w.max(320.0), scr.geo.h.max(240.0)), (320.0, 240.0));
                 s.fullscreen = true;
                 s.resizable = false;
                 let (id, t) = window::open(s);
-                a.picker = Some(id);
-                return Task::batch([a.close_main(), t.map(Msg::Opened).chain(window::size(id).map(move |sz| Msg::Resized(id, sz)))]);
+                scr.win = Some(id);
+                tasks.push(t.map(Msg::Opened).chain(window::size(id).map(move |sz| Msg::Resized(id, sz))));
+                places.push((app_id, scr.name.clone()));
             }
-        },
-        Msg::PickPress(x, y, w, h) => {
-            a.pick_size = (w, h);
+            a.screens = screens;
+            if many {
+                tasks.push(Task::perform(kwin::place_pickers_async(places), |_| Msg::Noop));
+            }
+            return Task::batch(tasks);
+        }
+        Msg::PickPress(i, x, y, w, h) => {
+            if i >= a.screens.len() {
+                return Task::none();
+            }
+            // A box on another screen starts there (the one before goes).
+            if i != a.sel_screen {
+                a.sel_screen = i;
+                a.sel = None;
+                a.sel_sizing = false;
+            }
+            a.screens[i].size = (w, h);
             let moving = a.sel.map(|c| c.contains(x, y)).unwrap_or(false);
             a.pick_drag = Some((x, y, a.sel, moving));
             if !moving {
                 a.sel = Some(R::new(x, y, 0.0, 0.0));
             }
         }
-        Msg::PickMove(x, y, w, h) => {
-            a.pick_size = (w, h);
+        Msg::PickMove(i, x, y, w, h) => {
+            if i != a.sel_screen || i >= a.screens.len() {
+                return Task::none();
+            }
+            a.screens[i].size = (w, h);
             if let Some((sx, sy, start, moving)) = a.pick_drag {
                 if moving {
                     if let Some(s) = start {
@@ -699,7 +794,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 }
             }
         }
-        Msg::PickRelease => {
+        Msg::PickRelease(i) => {
+            if i != a.sel_screen {
+                return Task::none();
+            }
             if let Some((_, _, _, moving)) = a.pick_drag.take() {
                 if !moving && a.sel.map(|s| s.w < 4.0 || s.h < 4.0).unwrap_or(false) {
                     a.sel = None;
@@ -852,8 +950,8 @@ fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
 }
 
 fn view(a: &App, id: window::Id) -> Element<'_, Msg> {
-    if Some(id) == a.picker {
-        return picker::view(a);
+    if let Some(i) = a.picker_of(id) {
+        return picker::view(a, i);
     }
     if Some(id) == a.pill {
         return pages::pill_view(a);

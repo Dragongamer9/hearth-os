@@ -25,6 +25,7 @@ Recording pop-up with Stop (Recorder.qml). Output: one JSON line; failures print
 """
 import json
 import os
+import shlex
 import shutil
 import signal
 import subprocess
@@ -362,6 +363,11 @@ def pipeline(fd, node, o, enc, path, aac, fmt=None):
     return mux + ' ' + v + a
 
 
+def launch_args(desc):
+    """The gst-launch description as its arguments, one word each, quotes taken off (a quoted file name stays one)."""
+    return shlex.split(desc)
+
+
 def cmd_run(args):
     """The recording; whatever happens, the state isn't left at starting or recording when it ends."""
     try:
@@ -467,8 +473,10 @@ def _run(args):
     rc = 1
     for i, enc in enumerate(encs):
         fd = sess.fd()
-        # One argument: gst-launch joins its arguments into one description anyway, and the file name has spaces.
-        cmd = ['gst-launch-1.0', '-e', '-q', pipeline(fd, sess.node(), o, enc, rec_path, aac, fmt)]
+        # One word an argument, as a shell gives them (the file name, with its spaces, is one): gst-launch escapes the
+        # spaces inside each argument, so the whole description as one argument reads as one long word (GStreamer
+        # 1.26 and later say "syntax error").
+        cmd = ['gst-launch-1.0', '-e', '-q'] + launch_args(pipeline(fd, sess.node(), o, enc, rec_path, aac, fmt))
         started = time.time()
         child['p'] = subprocess.Popen(cmd, pass_fds=(fd,), stdin=subprocess.DEVNULL)
         os.close(fd)

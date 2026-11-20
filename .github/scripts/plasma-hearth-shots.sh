@@ -4,9 +4,13 @@
 # (desktop-test.yml looks/mantel/<look>-<mode>-1-desktop, -2-quick-settings, -3-launcher, -4-notifications-dashboard)
 # and the five app menus. Checks (::error:: and OUT/FAILED): Hearth's panel goes in and comes out again (undo), and
 # plasmashell says nothing about Hearth's files. Pictures and logs in OUT.
-#   plasma-hearth-shots.sh OUT
+#   plasma-hearth-shots.sh OUT [all|extras]
+# extras (plasma-hearth.yml's extras job): KWin drawing with OpenGL (Mesa's software GL on a vgem render node, so
+# Plasma draws as on a PC with a graphics card), then Glass's frosted blur, Alt+Tab held down (KWin's fake input),
+# apps' tray icons and what's playing (a pretend music player): ph-7x pictures.
 set +e +o pipefail
 OUT=${1:-shots}
+PART=${2:-all}
 mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd)
 exec > >(tee "$OUT/step.log") 2>&1
 fail() { echo "::error title=$1::$2"; touch "$OUT/FAILED"; }
@@ -95,10 +99,125 @@ PY
 }
 open_() { hearth-plasma-panel open "$1" >>"$OUT/sync.log" 2>&1; sleep 3; }
 
+# ---- extras: Glass's blur, Alt+Tab, tray icons, now playing (PART=extras; ph-7x pictures)
+ph_extras() {
+  source "$(dirname "$0")/ci-kwin-tools.sh"
+  export KWIN_LOG="$OUT/kwin.log"
+  command -v kbuildsycoca6 >/dev/null && kbuildsycoca6 --noincremental >/dev/null 2>&1
+  local api bin bout fp
+  sleep 4
+  api=$(grep -a "plasma-hearth: the bar is drawn" "$OUT/plasmashell.log" | tail -1 | sed 's/.*plasma-hearth: //')
+  echo "::notice title=Drawing::${api:-not said} · KWin: $(grep -aiE 'opengl|qpainter|egl' "$OUT/kwin.log" | head -3 | tr '\n' '|' | cut -c1-300)"
+  dolphin "$HOME/Documents" >"$OUT/dolphin.log" 2>&1 &
+  sleep 6
+  # -- Glass's frosted blur behind the islands (Mantel's Frost.qml: a copy of the wallpaper under each island,
+  # blurred on the graphics card). Its own wallpaper, as Mantel's pictures, and a sharp striped one, where the blur is
+  # easy to see and to measure: the stripes' contrast inside the clock pill against the same stripes under the bar.
+  python3 - /tmp/stripes.png <<'PY'
+import sys
+from PIL import Image, ImageDraw
+im = Image.new('RGB', (1920, 1080), '#10233f'); d = ImageDraw.Draw(im)
+for x in range(0, 1920, 12):
+    d.rectangle([x, 0, x + 5, 1080], fill='#f2f4f8')
+for y in range(0, 1080, 90):
+    d.rectangle([0, y, 1920, y + 3], fill='#ff8a3d')
+im.save(sys.argv[1])
+PY
+  setlook glass dark
+  shot ph-70-glass-dark-desktop
+  setlook glass light
+  shot ph-71-glass-light-desktop
+  setlook glass dark wallpaper=/tmp/stripes.png
+  sleep 3
+  shot ph-72-glass-dark-stripes
+  python3 - "$OUT/ph-72-glass-dark-stripes.png" "$OUT/ph-72b-glass-blur-close.png" > "$OUT/blur.txt" 2>&1 <<'PY'
+import sys
+from PIL import Image, ImageStat
+im = Image.open(sys.argv[1]).convert('RGB')
+im.crop((760, 0, 1160, 110)).resize((1200, 330), Image.NEAREST).save(sys.argv[2])
+g = im.convert('L')
+# The clock pill's top strip (above its text) and the same strip of wallpaper under the bar.
+print('%.1f %.1f' % (ImageStat.Stat(g.crop((900, 15, 1020, 20))).stddev[0], ImageStat.Stat(g.crop((900, 100, 1020, 105))).stddev[0]))
+PY
+  read -r bin bout < "$OUT/blur.txt"
+  if python3 -c "import sys; sys.exit(0 if float('${bin:-99}') < 0.35 * float('${bout:-0}') else 1)" 2>/dev/null; then
+    echo "::notice title=Glass blur::contrast of the stripes $bin inside the clock pill against $bout under the bar (${api:-not said})"
+  else
+    echo "::warning title=Glass blur::contrast of the stripes '$bin' inside the clock pill against '$bout' under the bar (${api:-not said})"
+  fi
+  # Plasma drawing with the processor here (it found no OpenGL it could use): once more with OpenGL asked for, so the
+  # picture shows what a PC with a graphics card shows (Mantel's frost is blurred only there).
+  case "$api" in *processor*|"")
+    kquitapp6 plasmashell >/dev/null 2>&1 || pkill -x plasmashell
+    for i in $(seq 1 20); do pgrep -x plasmashell >/dev/null || break; sleep 1; done
+    QSG_RHI_BACKEND=opengl plasmashell >>"$OUT/plasmashell-gl.log" 2>&1 &
+    for i in $(seq 1 60); do js 'print("up")' | grep -q '"up"' && break; sleep 1; done
+    sleep 12
+    shot ph-72c-glass-dark-stripes-opengl
+    api=$(grep -a "plasma-hearth: the bar is drawn" "$OUT/plasmashell-gl.log" | tail -1 | sed 's/.*plasma-hearth: //')
+    python3 - "$OUT/ph-72c-glass-dark-stripes-opengl.png" "$OUT/ph-72d-glass-blur-close-opengl.png" > "$OUT/blur2.txt" 2>&1 <<'PY'
+import sys
+from PIL import Image, ImageStat
+im = Image.open(sys.argv[1]).convert('RGB')
+im.crop((760, 0, 1160, 110)).resize((1200, 330), Image.NEAREST).save(sys.argv[2])
+g = im.convert('L')
+print('%.1f %.1f' % (ImageStat.Stat(g.crop((900, 15, 1020, 20))).stddev[0], ImageStat.Stat(g.crop((900, 100, 1020, 105))).stddev[0]))
+PY
+    echo "::notice title=Glass blur (OpenGL asked for)::contrast inside / under: $(cat "$OUT/blur2.txt" | tr '\n' ' ' | cut -c1-200) (${api:-not said}; $(grep -aiE 'rhi|opengl|egl|graphics' "$OUT/plasmashell-gl.log" | head -3 | tr '\n' '|' | cut -c1-300))" ;;
+  esac
+  setlook glass dark wallpaper=
+  # -- Alt+Tab held down: Mantel's switcher (org.hearth.switcher) over two windows, Hearth dark
+  setlook hearth dark
+  open_ close
+  konsole >/dev/null 2>&1 & sleep 5
+  grep -A2 "TabBox" "$HOME/.config/kwinrc" > "$OUT/tabbox.txt" 2>&1
+  shot ph-73a-before-alt-tab
+  fake "k 56 1" "s 300" "k 15 1" "k 15 0" "s 6000" "k 56 0" &
+  fp=$!
+  sleep 2.2
+  shot ph-73-alt-tab-held
+  kwins "$OUT/kwin-windows-alt-tab.txt"
+  wait $fp
+  sleep 1
+  if python3 - "$OUT/ph-73a-before-alt-tab.png" "$OUT/ph-73-alt-tab-held.png" <<'PY'
+import sys
+from PIL import Image, ImageChops, ImageStat
+a, b = (Image.open(p).convert('RGB').crop((360, 380, 1560, 700)) for p in sys.argv[1:3])
+# The switcher's card in the middle of the screen while Alt is held (nothing else changed since the picture before).
+d = sum(ImageStat.Stat(ImageChops.difference(a, b)).mean) / 3
+sys.exit(0 if d > 6 else 1)
+PY
+  then echo "::notice title=Alt+Tab::Mantel's switcher shows while Alt is held ($(tr '\n' ' ' <"$OUT/tabbox.txt" | cut -c1-200)); KWin's windows then: $(grep -v '^----\|^====' "$OUT/kwin-windows-alt-tab.txt" | cut -d'|' -f1,3 | tr '\n' ';' | cut -c1-400)"
+  else fail "Alt+Tab" "nothing showed while Alt+Tab was held ($(tr '\n' ' ' <"$OUT/tabbox.txt" | cut -c1-200); $(tail -c 300 "$OUT/fake-input.txt" 2>/dev/null))"
+  fi
+  # -- apps' tray icons (StatusNotifierItem: KDE's watcher, kded's) and a pretend music player playing a track
+  [ -x /usr/bin/kded6 ] && { kded6 >"$OUT/kded.log" 2>&1 & sleep 4; }
+  pkill -f plasma-welcome   # KDE's welcome window, which kded opens on a new account
+  python3 "$(dirname "$0")/plasma-hearth-fixtures.py" > "$OUT/fixtures.log" 2>&1 &
+  sleep 12
+  shot ph-74-tray-and-now-playing
+  python3 -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).crop((760, 0, 1920, 90)).save(sys.argv[2])' "$OUT/ph-74-tray-and-now-playing.png" "$OUT/ph-74b-tray-and-pill-close.png" 2>/dev/null
+  open_ calendar; shot ph-75-dashboard-now-playing; open_ calendar
+  for st in tiles start; do
+    setlook hearth dark "appMenu=$st"
+    open_ launcher; shot "ph-76-menu-$st-now-playing"; open_ launcher
+  done
+  setlook hearth dark "appMenu=hearth"
+  echo "::notice title=Tray and player::$(tr '\n' ' ' <"$OUT/fixtures.log" | cut -c1-400)"
+  echo "::notice title=Tray host::$(pgrep -fa hearth-tray-host | cut -c1-200 | tr '\n' ';') · asked: $(timeout 20 python3 /usr/share/nimbus/desktop/plasma-hearth/hearth-tray-host wait 0 2>&1 | cut -c1-700)"
+  echo "::notice title=Frost and tray (the bar says)::$(grep -ah "plasma-hearth: ci:" "$OUT"/plasmashell*.log | sed 's/.*ci: //' | tr '\n' '|' | cut -c1-1500)"
+  bad=$(grep -aE "org\.hearthos" "$OUT/plasmashell.log" | grep -iE "MprisPlayers|MediaPill|MediaCard|MenuNowPlaying|SystemTray|Frost" | grep -iE "error|TypeError|ReferenceError|undefined" | sort -u | head -8)
+  [ -n "$bad" ] && echo "::warning title=plasmashell about the extras::$(printf '%s' "$bad" | cut -c1-230 | tr '\n' '|')"
+  pkill -f plasma-hearth-fixtures.py; pkill konsole; pkill dolphin; pkill plasmashell; sleep 2; pkill -9 -f /tmp/kwin_wayland
+  ls "$OUT"/*.png | wc -l > "$OUT/count.txt"
+}
+
 # ---- KWin and plain KDE Plasma
 for p in pipewire wireplumber; do command -v $p >/dev/null && { $p >"$OUT/$p.log" 2>&1 & }; done
 cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
 export QT_LOGGING_RULES="kwin_scripting.debug=true;js.debug=true"
+# extras: a render node for KWin's OpenGL (vgem; Mesa draws in software), so Plasma draws as with a graphics card.
+[ "$PART" = extras ] && { modprobe vgem 2>/dev/null; echo "::notice title=Render node::$(ls /dev/dri 2>/dev/null | tr '\n' ' ')"; }
 /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >"$OUT/kwin.log" 2>&1 &
 for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
 [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { fail KWin "didn't start: $(tail -5 "$OUT/kwin.log" | tr '\n' '|' | cut -c1-600)"; exit 0; }
@@ -131,6 +250,7 @@ grep -q "PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock" "$LD" 2>/dev/null \
   || fail lock "Hearth's lock screen wasn't picked for KDE's screen locker: $(grep -a "lock screen stays" "$OUT/login.json" | cut -c1-300)"
 sleep 8
 echo "::notice title=Panels::$(js 'print(panels().map(function(p){return p.location+" "+p.height+" "+p.hiding+" "+p.widgets().map(function(w){w.currentConfigGroup=["General"];return w.type+":"+w.readConfig("role","")}).join(",")}).join(" | "))' | tail -1 | cut -c1-600)"
+[ "$PART" = extras ] && { ph_extras; exit 0; }
 
 # A window and notifications, as Mantel's pictures have. Mantel's CI sends them over its run (desktop-test.yml): the
 # older ones before a restart of the desktop (in the dashboard they're the history Hearth kept, with "Open <app>"

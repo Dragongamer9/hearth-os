@@ -138,6 +138,12 @@ pub fn picker_to_crop(sel: R, screen_w: f32, screen_h: f32, img_w: f32, img_h: f
     clamp_rect(R { x: sel.x * kx, y: sel.y * ky, w: sel.w * kx, h: sel.h * ky }, img_w, img_h)
 }
 
+/// The scrolling capture's pill goes below the area when the area starts near the top of its screen (and leaves
+/// room under it), else at the top (Mantel's CaptureIndicator placement).
+pub fn pill_below(area: R, screen_h: f32) -> bool {
+    area.y < 110.0 && area.y + area.h < screen_h - 110.0
+}
+
 /// The picker's box moved (D-pad / arrows) or sized, kept on the screen.
 pub fn move_sel(s: R, dx: f32, dy: f32, w: f32, h: f32) -> R {
     R { x: (s.x + dx).min(w - s.w).max(0.0), y: (s.y + dy).min(h - s.h).max(0.0), w: s.w, h: s.h }
@@ -318,6 +324,13 @@ pub fn rgb(c: u32) -> (u8, u8, u8) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_scroll_pill_goes_below_an_area_near_the_top() {
+        assert!(super::pill_below(super::R::new(100.0, 40.0, 600.0, 400.0), 1080.0));
+        assert!(!super::pill_below(super::R::new(100.0, 300.0, 600.0, 400.0), 1080.0));
+        assert!(!super::pill_below(super::R::new(0.0, 0.0, 1920.0, 1080.0), 1080.0));
+    }
+
     use super::*;
 
     #[test]

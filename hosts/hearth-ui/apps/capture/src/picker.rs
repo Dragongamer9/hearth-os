@@ -1,5 +1,6 @@
-//! The area picker (Capture.qml's): a still picture of the screen, dimmed outside the box you drag; the box's
-//! corners, its size by it, what to do at the top, and Take / Cancel by the box. Drag a new box, drag inside it to
+//! The area picker (Capture.qml's): one on every screen at once, each a still picture of its screen, dimmed outside
+//! the box you drag (all of it on the screens without the box); the box's corners, its size by it, what to do at
+//! the top of each screen, and Take / Cancel by the box. Drag a new box, drag inside it to
 //! move it, double-click to take. The D-pad / arrows move it (Shift: a little), X / Tab / Space switches to sizing
 //! it, Enter (A) takes, Esc (B) cancels.
 
@@ -17,6 +18,8 @@ use std::time::Instant;
 
 struct Picker<'a> {
     a: &'a App,
+    /// Which screen's picker this is (App::screens).
+    i: usize,
 }
 
 #[derive(Default)]
@@ -40,14 +43,14 @@ impl<'a> canvas::Program<Msg> for Picker<'a> {
                     return Some(canvas::Action::publish(Msg::PickDone).and_capture());
                 }
                 st.pressed = true;
-                Some(canvas::Action::publish(Msg::PickPress(q.x, q.y, b.width, b.height)).and_capture())
+                Some(canvas::Action::publish(Msg::PickPress(self.i, q.x, q.y, b.width, b.height)).and_capture())
             }
             canvas::Event::Mouse(mouse::Event::CursorMoved { position }) if st.pressed => {
-                Some(canvas::Action::publish(Msg::PickMove(position.x - b.x, position.y - b.y, b.width, b.height)).and_capture())
+                Some(canvas::Action::publish(Msg::PickMove(self.i, position.x - b.x, position.y - b.y, b.width, b.height)).and_capture())
             }
             canvas::Event::Mouse(mouse::Event::ButtonReleased(mouse::Button::Left)) if st.pressed => {
                 st.pressed = false;
-                Some(canvas::Action::publish(Msg::PickRelease).and_capture())
+                Some(canvas::Action::publish(Msg::PickRelease(self.i)).and_capture())
             }
             _ => None,
         }
@@ -59,9 +62,10 @@ impl<'a> canvas::Program<Msg> for Picker<'a> {
         let mut f = Frame::new(renderer, b.size());
         let (w, h) = (b.width, b.height);
         // The still picture is the image under this canvas (a canvas draws its images over its shapes).
-        // Dimmed outside the box (all of it when there's no box).
+        // Dimmed outside the box (all of it when there's no box on this screen).
         let dim = Color::from_rgba8(5, 7, 10, 0x8c as f32 / 255.0);
-        match a.sel {
+        let sel = if self.i == a.sel_screen { a.sel } else { None };
+        match sel {
             None => f.fill_rectangle(Point::ORIGIN, b.size(), dim),
             Some(s) => {
                 f.fill_rectangle(Point::ORIGIN, Size::new(w, s.y), dim);
@@ -100,9 +104,9 @@ impl<'a> canvas::Program<Msg> for Picker<'a> {
     }
 }
 
-pub fn view(a: &App) -> Element<'_, Msg> {
+pub fn view(a: &App, i: usize) -> Element<'_, Msg> {
     let p = a.p;
-    let cv = canvas::Canvas::new(Picker { a }).width(Length::Fill).height(Length::Fill);
+    let cv = canvas::Canvas::new(Picker { a, i }).width(Length::Fill).height(Length::Fill);
     // What to do, at the top.
     let hint = if a.pick_hint.is_empty() { "Drag around what you want".to_string() } else { a.pick_hint.clone() };
     let top = container(
@@ -113,15 +117,15 @@ pub fn view(a: &App) -> Element<'_, Msg> {
     .padding(Padding { top: 0.0, right: 18.0, bottom: 0.0, left: 18.0 })
     .center_y(Length::Fixed(46.0))
     .style(hearth_ui::ui::boxed(Pal::a(p.panel, 0.95), 23.0, Some((p.line, 1.0))));
-    let base: Element<'_, Msg> = match a.still.as_ref() {
+    let base: Element<'_, Msg> = match a.screens.get(i).map(|s| &s.still) {
         Some(still) => iced::widget::image(still.handle.clone()).content_fit(iced::ContentFit::Fill).filter_method(FilterMethod::Linear).width(Length::Fill).height(Length::Fill).into(),
         None => container(Space::new()).width(Length::Fill).height(Length::Fill).style(hearth_ui::ui::boxed(Color::BLACK, 0.0, None)).into(),
     };
     let mut layers = stack![base, cv, container(top).center_x(Length::Fill).padding(Padding { top: 28.0, right: 0.0, bottom: 0.0, left: 0.0 })].width(Length::Fill).height(Length::Fill);
-    // Take and Cancel by the box (not while dragging it).
-    if let Some(s) = a.sel {
+    // Take and Cancel by the box (not while dragging it), on its screen.
+    if let Some(s) = a.sel.filter(|_| i == a.sel_screen) {
         if a.pick_drag.is_none() && s.w >= 4.0 {
-            let (w, h) = a.pick_size;
+            let (w, h) = a.pick_size();
             let (bw, bh) = (180.0, 38.0);
             let x = (s.x + s.w - bw).min(w - bw - 8.0).max(8.0);
             let y = if s.y + s.h + 56.0 < h { s.y + s.h + 10.0 } else { (s.y + s.h - bh - 10.0).max(8.0) };
@@ -133,7 +137,7 @@ pub fn view(a: &App) -> Element<'_, Msg> {
 }
 
 pub fn key(a: &mut App, key: &Key, m: Modifiers) -> Task<Msg> {
-    let (w, h) = a.pick_size;
+    let (w, h) = a.pick_size();
     let step = if m.shift() { 4.0 } else { 24.0 };
     let c = a.sel.unwrap_or_else(|| draw::start_sel(w, h));
     let (dx, dy) = match key.as_ref() {

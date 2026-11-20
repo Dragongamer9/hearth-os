@@ -52,14 +52,17 @@ backend shared with Firehold on Plasma: /usr/libexec/hearth/hearth-quick (qs / q
 - [x] Quick settings' weather row, the dashboard's weather tile and events, notifications with their apps' icons and buttons (pictured with Hearth Time's stand-in, as Mantel's CI) — .github/scripts/plasma-hearth-shots.sh: "--weather-summary"
 - [x] Settings pages in the app menu's search (Mantel's settings-pages.js) — hosts/linux/desktop/plasma-hearth/shim/SettingsNav.qml: "settings-pages.js"
 - [x] Keyboard layout button and copies and downloads (Plasma's keyboard layout and job progress) — hosts/linux/desktop/plasma-hearth/shim/PlasmaHub.qml: "KB.KeyboardLayout"
-- [ ] Alt+Tab: Mantel's switcher (org.hearth.switcher, KWin's task switcher) — set; CI's virtual screen can't hold Alt down, so it isn't pictured on Plasma yet (needs testing on a device)
+- [x] Alt+Tab: Mantel's switcher (org.hearth.switcher, KWin's task switcher), pictured with Alt held down through KWin's fake input (CI extras ph-73: the card in the middle, each window's live picture, the one you'll switch to lit in the accent) — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "('kwinrc', 'TabBox', 'LayoutName', 'org.hearth.switcher')"
 - [x] KDE's own pop-ups never show, critical ones too (paused while Hearth shows them; KWin's window list in CI has no KDE notification window) — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "'--notify'"
 
-## Not built yet
+## Built in 1.16's last round (CI extras: plasma-hearth.yml's extras job, KWin drawing with OpenGL)
 
-- [ ] Glass's frosted blur behind the islands (the milky fill and edge are there)
-- [ ] Tray icons of apps (Plasma's statusnotifieritem source is wired; not pictured, needs testing on a device)
-- [ ] What's playing in the pill and the Now playing tile (Plasma's media players; needs testing on a device)
+- [x] Glass's frosted blur behind the islands: Mantel's frost copy drawn small and stretched back (blurred on any PC, graphics card or not, next to no cost), cut to each island's round corners on the graphics card; under the milky fill and edge (CI ph-70, ph-71, ph-72/72b: a sharp striped wallpaper is smooth behind the clock pill) — hosts/linux/desktop/shell/Frost.qml: "layer.textureSize"
+- [x] Tray icons of apps: Plasma 6's tray offers them to no other widget, so Hearth's own small tray host (tells KDE's watcher there's a tray; icons, titles, tooltips; clicks, scrolls and the app's own menu in Mantel's pop-up menu; asleep until an icon changes) (CI ph-74/74b: two apps' icons in the status island) — hosts/linux/desktop/plasma-hearth/hearth-tray-host: "RegisterStatusNotifierHost"
+- [x] What's playing in the pill and the Now playing tile (Plasma's media players): the clock pill's cover, title, artist, level meter and play/pause; the Tiles and Start screen menus' Now playing tile; the dashboard's media card with its position, length and controls (CI ph-74b, ph-75, ph-76) — hosts/linux/desktop/plasma-hearth/shim/MprisPlayers.qml: "positionChanged: function"
+
+## Built after the first stage
+
 - [x] Background apps, camera and microphone, printing, disks buttons (Mantel's hearth-notifyd through a go-between; the microphone from Plasma's sound service) — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "def notifyd_bridge"
 - [x] Firehold's style for org.hearthos.quicksettings (mockups firehold-plasma 07 and 08: Desk and Couch) — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "Couch (08)"
 - [x] Firehold's style for org.hearthos.notifications (mockups firehold-plasma 09 cards and 10 list) — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "Stays until you answer"

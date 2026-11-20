@@ -56,8 +56,9 @@ build org.hearthos.notifications "Hearth's notifications" "Hearth's notification
 mkdir -p "$ROOT/usr/share/nimbus/desktop/plasma-hearth"
 if [ "$(cd "$ROOT/usr/share/nimbus/desktop/plasma-hearth" && pwd)" != "$SRC" ]; then
   install -m755 "$SRC/hearth-plasma-panel" "$ROOT/usr/share/nimbus/desktop/plasma-hearth/hearth-plasma-panel"
+  install -m755 "$SRC/hearth-tray-host" "$ROOT/usr/share/nimbus/desktop/plasma-hearth/hearth-tray-host"
 else
-  chmod 755 "$SRC/hearth-plasma-panel"
+  chmod 755 "$SRC/hearth-plasma-panel" "$SRC/hearth-tray-host"
 fi
 ln -sfn /usr/share/nimbus/desktop/plasma-hearth/hearth-plasma-panel "$ROOT/usr/bin/hearth-plasma-panel"
 # New accounts get Hearth's panel at their first sign-in (the mark in /etc/skel; accounts made before don't have it),

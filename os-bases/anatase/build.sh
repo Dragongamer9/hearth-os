@@ -1935,12 +1935,12 @@ SH
   mkdir -p /usr/share/kglobalaccel
   cat > /usr/share/kglobalaccel/hearth-capture.desktop <<'DESKTOP'
 [Desktop Entry]
-# Hearth Capture's keys on KDE Plasma (os-bases/anatase/build.sh "Capture (Rust)"), as in Mantel.
+# Hearth Capture's keys on KDE Plasma (os-bases/anatase/build.sh "Capture (Rust)"), as in Mantel. No NoDisplay
+# here: KDE's shortcuts skip a file in this folder that has it (kglobalacceld loadSettings), and menus never read it.
 Type=Application
 Name=Capture
 Icon=hearth-capture
 Exec=/usr/bin/hearth-capture-app
-NoDisplay=true
 Actions=print;area;
 
 [Desktop Action print]
