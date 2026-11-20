@@ -165,6 +165,7 @@ function openGame(g) {
     ${g.installed && EXTRAS.includes(g.source) ? '<div class="extras"><section class="saves"><h3>Cloud saves</h3><p class="msg small">Looking…</p></section><section class="dlcs"><h3>DLC</h3><p class="msg small">Looking…</p></section></div>' : ''}
     <div class="row">${acts.join('')}</div>`, { wide: true });
   if (g.installed && EXTRAS.includes(g.source)) gameExtras(g, d);
+  VKB.mount(g, d);   // Sharper graphics (vkbasalt.js)
   d.onclick = e => {
     const x = e.target.closest('[data-x]');
     if (x) { extraAct(g, d, x.dataset.x, x.dataset.dlc); return; }
@@ -333,6 +334,7 @@ function render() {
     if (el) el.focus();
   }
   if (S.tab === 'recomps') rcAfterRender();
+  if (S.tab === 'stores' && !S.loading) VKB.stores(main.querySelector('.cards'));   // Steam's and Faugus' own games (vkbasalt.js)
   const q = $('#q'); if (q) q.oninput = () => { S.q = q.value; const g = $('.grid'); if (g) g.innerHTML = shown().map(tileHtml).join('') || '<div class="empty" style="grid-column:1/-1">No game by that name.</div>'; };
 }
 function setTab(t) { S.tab = t; render(); KIT.focusFirst('#main .f'); poll(); }

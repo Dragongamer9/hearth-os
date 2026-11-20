@@ -1,0 +1,142 @@
+# Sharper graphics (vkBasalt; hearth-core vkbasalt.rs, Hearth Games' ui/vkbasalt.js; the owner, Nov 20 01:36): the
+# tests for the conf, the environment and the per-game setting (hearth-core), Hearth Games' allowed calls
+# (hearth-gaming), the page checks (Python), pictures of the switch in Hearth Games' page (its preview, as the mouse
+# and as the controller sees it) and the Stores tab's launch options for Steam and Faugus, and one before/after
+# picture of vkBasalt itself with the conf Hearth writes (vkcube on lavapipe, Mesa's software Vulkan).
+# Pictures come back as SHOT notices (pictures job; .github/scripts/firehold-shot.py).
+name: Sharper graphics (vkBasalt)
+
+on:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  run:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      shots: ${{ steps.list.outputs.shots }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            hosts/hearth-core
+            hosts/hearth-gaming
+      - name: Page checks (Python)
+        run: |
+          set -o pipefail
+          python3 -m unittest hosts/linux/test/test_vkbasalt.py hosts/linux/test/test_hearth_gamestore.py -v 2>&1 | tee py.log \
+            || { echo "::error title=Python tests::$(grep -E '^(FAIL|ERROR|AssertionError)' -A3 py.log | head -40 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=Python tests::$(tail -3 py.log | tr '\n' ' ')"
+      - name: hearth-core tests (the conf, the environment, the game's options)
+        working-directory: hosts/hearth-core
+        run: |
+          set -o pipefail
+          mkdir -p "$RUNNER_TEMP/vkb"
+          HEARTH_VKBASALT_CI_CONF="$RUNNER_TEMP/vkb/game.conf" cargo test --lib -- vkbasalt sharper game_options manual:: 2>&1 | tee core.log \
+            || { echo "::error title=hearth-core tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 core.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=hearth-core tests::$(grep -E '^test result' core.log | tr '\n' ' ')"
+          echo "::notice title=The conf Hearth writes (everything turned up)::$(tr '\n' '|' < "$RUNNER_TEMP/vkb/game.conf")"
+      - name: WebKit and GTK (Hearth Games' library builds with Tauri)
+        run: |
+          sudo rm -f /var/lib/man-db/auto-update
+          for i in 1 2 3; do sudo timeout 240 apt-get -o DPkg::Lock::Timeout=120 update -qq && break; sleep 10; done
+          for i in 1 2 3; do
+            sudo DEBIAN_FRONTEND=noninteractive timeout 600 apt-get -o DPkg::Lock::Timeout=120 install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+              xvfb imagemagick xdotool x11-utils mesa-vulkan-drivers vulkan-tools >/dev/null && break
+            sleep 10
+          done
+          sudo DEBIAN_FRONTEND=noninteractive timeout 300 apt-get -o DPkg::Lock::Timeout=120 install -y -qq vkbasalt >/dev/null \
+            || echo "::warning title=vkBasalt::Ubuntu's vkbasalt package didn't install (no before/after picture)"
+      - name: Hearth Games' calls (hearth-gaming)
+        working-directory: hosts/hearth-gaming
+        run: |
+          set -o pipefail
+          cargo test --lib gamestore 2>&1 | tee gs.log \
+            || { echo "::error title=hearth-gaming tests::$(grep -E '^(error|---- |thread .* panicked)' -A8 gs.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=hearth-gaming tests::$(grep -E '^test result' gs.log | tr '\n' ' ')"
+      - name: Pictures of the switch (Hearth Games' page preview)
+        if: always()
+        run: |
+          set +e
+          mkdir -p shots
+          U="file://$GITHUB_WORKSPACE/hosts/hearth-gaming/ui/games.html"
+          C=$(command -v google-chrome || command -v chromium || command -v chromium-browser)
+          shot() {   # name size query
+            timeout 90 "$C" --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size="$2" --virtual-time-budget=8000 \
+              --screenshot="shots/$1.png" "$U$3" >/dev/null 2>&1 || echo "::warning title=pictures::$1 wasn't taken"
+          }
+          # The mouse: a desktop window. The controller: the handheld's screen, the switch focused, the A / − + hints.
+          shot vkb-game-mouse 1440,900 '?vkb=gog:1'
+          shot vkb-game-controller 1280,800 '?vkb=gog:1&pad=1'
+          shot vkb-game-off 1280,800 '?vkb=gog:1&vkbon=0'
+          shot vkb-not-installed 1280,800 '?vkb=gog:1&missing=1&vkbon=0'
+          shot vkb-stores-mouse 1440,900 '?tab=stores&vkbcard=1'
+          shot vkb-stores-controller 1280,800 '?tab=stores&vkbcard=1&pad=1'
+      - name: Before and after (vkBasalt on lavapipe, with the conf Hearth writes)
+        if: always()
+        run: |
+          set +e
+          ls /usr/share/vulkan/implicit_layer.d/ 2>/dev/null | grep -qi vkbasalt || { echo "::warning title=lavapipe::vkBasalt isn't installed here: no before/after"; exit 0; }
+          ICD=$(ls /usr/share/vulkan/icd.d/lvp_icd*.json 2>/dev/null | head -1)
+          [ -n "$ICD" ] || { echo "::warning title=lavapipe::no lavapipe ICD"; exit 0; }
+          export DISPLAY=:98 VK_ICD_FILENAMES="$ICD" VK_DRIVER_FILES="$ICD"
+          Xvfb :98 -screen 0 1120x600x24 >/dev/null 2>&1 &
+          sleep 2
+          before=$(xdotool search --name . 2>/dev/null | sort)
+          timeout 60 vkcube --width 520 --height 520 > before.log 2>&1 &
+          sleep 4
+          w1=$(comm -13 <(echo "$before") <(xdotool search --name . 2>/dev/null | sort) | tail -1)
+          [ -n "$w1" ] && xdotool windowmove "$w1" 20 60
+          mid=$(xdotool search --name . 2>/dev/null | sort)
+          ENABLE_VKBASALT=1 VKBASALT_CONFIG_FILE="$RUNNER_TEMP/vkb/game.conf" VKBASALT_LOG_LEVEL=info timeout 60 vkcube --width 520 --height 520 > after.log 2>&1 &
+          sleep 4
+          w2=$(comm -13 <(echo "$mid") <(xdotool search --name . 2>/dev/null | sort) | tail -1)
+          [ -n "$w2" ] && xdotool windowmove "$w2" 580 60
+          sleep 3
+          mkdir -p shots
+          import -window root shots/raw.png
+          convert shots/raw.png -fill white -pointsize 22 -annotate +30+40 'Without' -annotate +590+40 'With Sharper graphics (sharpening 100 %, SMAA, richer colour)' shots/vkb-lavapipe-before-after.png
+          rm -f shots/raw.png
+          echo "::notice title=vkBasalt in the 'after' cube::$(grep -i basalt after.log | head -12 | tr '\n' '|' | cut -c1-1500)"
+          grep -qi basalt before.log && echo "::error title=lavapipe::vkBasalt loaded without ENABLE_VKBASALT"
+          pkill vkcube
+      - name: What the pictures show
+        if: always()
+        id: list
+        run: |
+          out=""; names=""
+          for f in shots/*.png; do [ -f "$f" ] || continue; n=$(basename "$f" .png); out="$out $n: $(identify -format '%wx%h, spread %[fx:standard_deviation]' "$f") |"; names="$names\"$n\","; done
+          echo "::notice title=Pictures::$out"
+          echo "shots=[${names%,}]" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: vkbasalt-shots
+          path: shots
+          retention-days: 14
+
+  pictures:
+    needs: run
+    if: always() && needs.run.outputs.shots != '[]' && needs.run.outputs.shots != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: ${{ fromJSON(needs.run.outputs.shots || '[]') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: vkbasalt-shots
+          path: shots
+      - name: Picture ${{ matrix.shot }}
+        run: |
+          python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow >/dev/null 2>&1 || python3 -m pip install --quiet pillow >/dev/null
+          python3 .github/scripts/firehold-shot.py ${{ matrix.shot }}

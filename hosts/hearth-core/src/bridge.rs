@@ -1113,6 +1113,30 @@ impl Bridge {
                 crate::game_options::set(&mut self.library.store, &id, &json!({"cloudSaves": a["on"] == true}))?;
                 Ok(json!({"on": a["on"] == true}))
             }
+            // Sharper graphics (vkbasalt.rs): a game's switch, strength, SMAA and colour boost (off unless turned on), and
+            // the launch options to copy for Steam and Faugus Launcher's own games. Reading them writes nothing.
+            "game.vkbasalt" => {
+                let id = req("id")?;
+                if !self.library.games.contains_key(&id) { return Err("That game isn't in the library anymore.".into()); }
+                Ok(crate::vkbasalt::status(&id, &crate::game_options::get(&self.library.store, &id)["vkbasalt"], &paths::config_dir()))
+            }
+            "game.setVkbasalt" => {
+                let id = req("id")?;
+                if !self.library.games.contains_key(&id) { return Err("That game isn't in the library anymore.".into()); }
+                let mut patch = serde_json::Map::new();
+                for k in ["on", "strength", "smaa", "vibrance", "key"] { if !a[k].is_null() { patch.insert(k.into(), a[k].clone()); } }
+                let patch = crate::vkbasalt::clean(&Value::Object(patch));
+                if patch.is_empty() { return Err("Nothing to change.".into()); }
+                crate::game_options::set(&mut self.library.store, &id, &json!({"vkbasalt": patch}))?;
+                let s = crate::game_options::get(&self.library.store, &id)["vkbasalt"].clone();
+                // The conf is made from what's saved now (the next start writes it too, if this one couldn't).
+                if s["on"] == true {
+                    if let Err(e) = crate::vkbasalt::write_conf(&crate::vkbasalt::conf_path(&paths::config_dir(), &id), &s) { log(&format!("vkbasalt: {id}: {e}")); }
+                }
+                Ok(crate::vkbasalt::status(&id, &s, &paths::config_dir()))
+            }
+            "vkbasalt.info" => Ok(crate::vkbasalt::info(&paths::config_dir())),
+            "vkbasalt.shared" => crate::vkbasalt::write_shared(&paths::config_dir()),
             "game.syncSaves" => {
                 let (id, dir) = (req("id")?, req("direction")?);
                 let g = self.library.games.get(&id).cloned().ok_or("That game isn't in the library anymore.")?;
@@ -1569,7 +1593,8 @@ impl Bridge {
         let kind = match g.source { "steam" => "steam", "emu" => "emu", "beacon" => "beacon", "manual" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "manual" => "native", "recomps" if g.exe.as_deref().map(|e| e.to_lowercase().ends_with(".exe")).unwrap_or(false) => "proton", "recomps" => "native", _ if own_proton => "proton", _ => "external" };
         Ok(json!({"id": id, "kind": kind, "options": crate::game_options::get(&self.library.store, id),
                   "protonChoices": if kind == "proton" { crate::game_options::proton_choices(&paths::home()) } else { vec![] },
-                  "gamemode": system::has("gamemoderun"), "canResetPrefix": own_proton}))
+                  "gamemode": system::has("gamemoderun"), "canResetPrefix": own_proton,
+                  "vkbasalt": crate::vkbasalt::status(id, &crate::game_options::get(&self.library.store, id)["vkbasalt"], &paths::config_dir())}))
     }
     /// Opens a picker for the request in hand without holding the bridge (picker.rs) and answers it when the picker
     /// closes: the choice comes back as {type:'internal', what:'picked'} and `picked` finishes the call.
