@@ -128,9 +128,13 @@ pub fn fill(items: &[Item]) -> bool {
         return false;
     }
     let mut cache = read_cache();
-    // Forget files that are gone (by their key).
+    // Forget files that are gone, and the old entries of files that changed (by their key).
     let live: std::collections::HashSet<String> = items.iter().map(|i| key(&i.path, i.size, i.mtime)).collect();
-    cache.retain(|k, _| live.contains(k) || !Path::new(k.split('|').next().unwrap_or("")).exists());
+    let listed: std::collections::HashSet<String> = items.iter().map(|i| i.path.display().to_string()).collect();
+    cache.retain(|k, _| {
+        let p = k.split('|').next().unwrap_or("");
+        live.contains(k) || (!listed.contains(p) && Path::new(p).exists())
+    });
     let dir = crate::cache_dir().join("thumbs");
     let _ = std::fs::create_dir_all(&dir);
     let mut added = false;

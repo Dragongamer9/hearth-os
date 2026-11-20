@@ -72,6 +72,7 @@ jobs:
       - name: Tests
         run: |
           cd hosts/capture-card
+          set -o pipefail
           cargo test --release -- --test-threads=1 2>&1 | tee ../../test.log || { grep -E "panicked|FAILED|^error" -A3 ../../test.log | head -30 | while read -r l; do echo "::error title=cargo test::$l"; done; exit 1; }
           echo "::notice title=cargo test::$(grep -E '^test result' ../../test.log | tr '\n' ' ' | cut -c1-500)"
       - name: Gather
@@ -90,6 +91,7 @@ jobs:
     continue-on-error: true
     steps:
       - name: A fake V4L2 card (v4l2loopback), fed 1080p60 MJPEG, read back as the app reads a card
+        shell: bash {0}
         run: |
           sudo apt-get update -qq >/dev/null
           sudo apt-get install -y -qq v4l2loopback-dkms v4l-utils gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad "linux-headers-$(uname -r)" >/dev/null 2>&1 || true
@@ -115,6 +117,7 @@ jobs:
             echo "::notice title=loopback read::600 frames of 1080p MJPEG read through v4l2src and decoded by jpegdec in ${real} s (at 60 a second: 10 s); CPU $(python3 -c "print('%.0f' % (100 * ($user + $sys) / $real))") % of a core (the CPU path; the app uses the graphics card's decoder where there is one)"
           else
             echo "::warning title=loopback read::v4l2src couldn't read the fake card (exit $rc): $(tail -c 400 /tmp/read.log | tr '\n' ' ')"
+            echo "::warning title=loopback feed::$(tail -c 400 /tmp/feed.log | tr '\n' ' ')"
           fi
           kill $feed 2>/dev/null
 
@@ -146,6 +149,15 @@ jobs:
         run: |
           chmod +x bin/*
           HEARTH_SHOTS_ONLY="${{ inputs.only }}" bash .github/scripts/capture-card-test.sh
+      - name: Notes 1
+        if: always()
+        run: sed -n '1,10p' notes.txt 2>/dev/null | while IFS=$'\t' read -r t m; do echo "::notice title=$t::$m"; done
+      - name: Notes 2
+        if: always()
+        run: sed -n '11,20p' notes.txt 2>/dev/null | while IFS=$'\t' read -r t m; do echo "::notice title=$t::$m"; done
+      - name: Notes 3
+        if: always()
+        run: sed -n '21,30p' notes.txt 2>/dev/null | while IFS=$'\t' read -r t m; do echo "::notice title=$t::$m"; done
       - name: The pictures taken
         id: list
         if: always()

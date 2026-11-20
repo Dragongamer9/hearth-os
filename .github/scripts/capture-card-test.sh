@@ -8,6 +8,7 @@
 # card arrives.
 set -u
 ROOT="$PWD"
+: > "$ROOT/notes.txt"; chmod 666 "$ROOT/notes.txt"
 BIN="$ROOT/bin"
 FIX="$ROOT/hosts/capture-card/tests/fixtures"
 mkdir -p "$ROOT/shots" && chmod 777 "$ROOT/shots"
@@ -104,6 +105,8 @@ export SWAYSOCK=$(ls "$XDG_RUNTIME_DIR"/sway-ipc.* 2>/dev/null | head -1)
 [ -n "$WAYLAND_DISPLAY" ] || { echo "::error title=sway::no Wayland screen: $(tail -5 /tmp/sway.log | tr '\n' '|')"; exit 1; }
 
 mkdir -p /tmp/cc/card
+# note TITLE TEXT: a notice, printed by the workflow's Notes steps (GitHub keeps 10 notices a step).
+note() { printf '%s\t%s\n' "$1" "$(echo "$2" | tr '\n\t' '  ' | cut -c1-1500)" >> "$ROOT/notes.txt"; }
 card() { # card PICTURE: the stand-in card, sending PICTURE (written so the app's watch sees it arrive)
   cat > /tmp/cc/card.json.new <<EOF
 {"name": "Monster 4K", "chip": "USB3 Video (MS2130)", "speed": 5000, "id": "345f:2130",
@@ -162,7 +165,7 @@ run() {
 
 "$BIN/hearth-capture-card" --probe > /tmp/probe.txt 2>&1; nocard
 card /tmp/cc/scene.jpg; "$BIN/hearth-capture-card" --probe > /tmp/probe.txt 2>&1
-while read -r l; do echo "::notice title=--probe::$l"; done < /tmp/probe.txt
+note "--probe" "$(tr '\n' '|' < /tmp/probe.txt)"
 
 # ---------------- 2b no card, at rest; then the card arrives and the picture comes up by itself
 nocard
@@ -194,7 +197,7 @@ if want cc-1-viewer; then
   open_app cc-1-viewer 5 --show bar,pill,tip
   shoot cc-1-viewer
   measure cc-1-viewer VIEWING 15 $pid
-  grep -h "delay" /tmp/cc-1-viewer.log | tail -2 | while read -r l; do echo "::notice title=delay::$l"; done
+  note delay "$(grep -h "delay" /tmp/cc-1-viewer.log | tail -2 | tr '\n' '|')"
   close_app cc-1-viewer
 fi
 # The bar and the pill hidden: nothing else on screen.
@@ -202,23 +205,27 @@ run cc-1c-viewer-bar-hidden 0 9 --show pill-only
 
 # ---------------- 1b recording (a real MP4 through the app's own encoder) and a screenshot
 if want cc-1b-viewer-recording; then
-  before=$(ls "$HOME/Videos/Capture Card" | wc -l)
-  open_app cc-1b-viewer-recording 9 --show record,shot
+  # The picture while recording (and a screenshot just taken).
+  open_app cc-1b-viewer-recording 7 --show record,shot
   shoot cc-1b-viewer-recording
   close_app cc-1b-viewer-recording
-  sleep 1
+  ls -t "$HOME/Videos/Capture Card"/*.mp4 | head -1 | xargs -r -I{} rm -f "{}"
+  ls -t "$HOME/Pictures/Screenshots"/Capture*.png | head -1 | while read -r f; do
+    note screenshot "saved $(basename "$f") ($(python3 -c "from PIL import Image; import sys; print('%dx%d' % Image.open(sys.argv[1]).size)" "$f"))"
+    mv "$f" /tmp/cc/shot.png
+  done
+  # A real recording, started and stopped by the app (5 s), checked with GStreamer's own reader.
+  GST_DEBUG=2 open_app cc-1e-recording-file 9 --show record,stop-record
+  close_app cc-1e-recording-file
   newest=$(ls -t "$HOME/Videos/Capture Card"/*.mp4 2>/dev/null | head -1)
-  if [ "$(ls "$HOME/Videos/Capture Card" | wc -l)" -gt "$before" ] && [ -s "$newest" ]; then
-    info=$(gst-discoverer-1.0 "$newest" 2>&1 | grep -E "Duration|video:|audio:|container" | tr '\n' ' ' | tr -s ' ')
-    echo "::notice title=recording::$(basename "$newest"): $(du -h "$newest" | cut -f1) · $info"
-    cp "$newest" /tmp/cc/recording.mp4
+  if [ -n "$newest" ] && [ -s "$newest" ] && [ "$(stat -c %Y "$newest")" -gt "$(( $(date +%s) - 120 ))" ]; then
+    info=$(gst-discoverer-1.0 "$newest" 2>&1 | grep -iE "Duration|video|audio|container|h\.264|aac|opus" | tr '\n' ' ' | tr -s ' ')
+    note recording "$(basename "$newest"): $(du -h "$newest" | cut -f1) · $info"
+    mv "$newest" /tmp/cc/recording.mp4
   else
-    echo "::warning title=recording::no recording was made: $(grep -h -i -E 'record|encoder' /tmp/cc-1b-viewer-recording.log | tail -3 | tr '\n' '|')"
+    echo "::warning title=recording::no recording was made: $(grep -h -i -E 'recording|encoder|WARN|ERROR' /tmp/cc-1e-recording-file.log | grep -v 'recording: queue' | tail -6 | cut -c1-300 | tr '\n' '|')"
   fi
-  ls "$HOME/Pictures/Screenshots"/Capture*.png | tail -1 | while read -r f; do echo "::notice title=screenshot::saved $(basename "$f") ($(python3 -c "from PIL import Image; import sys; print('%dx%d' % Image.open(sys.argv[1]).size)" "$f"))"; done
-  # The new files aren't the mockup's: put the library back as it was for the next pictures.
-  [ -n "$newest" ] && [ -f /tmp/cc/recording.mp4 ] && rm -f "$newest"
-  ls -t "$HOME/Pictures/Screenshots"/Capture*.png | head -1 | xargs -r -I{} mv "{}" /tmp/cc/shot.png
+  note "recording log" "$(grep -h 'hearth-capture-card: recording' /tmp/cc-1e-recording-file.log | grep -v 'recording: queue' | tr '\n' '|')"
 fi
 
 # ---------------- 3 Settings, 4 Recordings, 4b Screenshots (at rest)
@@ -248,11 +255,12 @@ swaymsg output HEADLESS-1 resolution 1920x1080 >/dev/null; sleep 0.5
 if [ -e "$HOME/.config/nimbus/capture-card.json" ]; then
   echo "::error title=settings::opening pages wrote capture-card.json: $(cat "$HOME/.config/nimbus/capture-card.json")"
 else
-  echo "::notice title=settings::opening every page wrote no settings file"
+  note settings "opening every page wrote no settings file"
 fi
 for f in /tmp/cc-*.log; do grep -h -m3 -E 'panicked|stopped:|GStreamer:' "$f" 2>/dev/null | while read -r l; do echo "::warning title=$(basename "$f" .log)::$(echo "$l" | cut -c1-600)"; done; done
-grep -h "pipeline:" /tmp/cc-1-viewer.log 2>/dev/null | head -1 | while read -r l; do echo "::notice title=pipeline::$(echo "$l" | cut -c1-900)"; done
-grep -h "recording:" /tmp/cc-1b-viewer-recording.log 2>/dev/null | head -1 | while read -r l; do echo "::notice title=recording pipeline::$(echo "$l" | cut -c1-900)"; done
+note pipeline "$(grep -h "pipeline:" /tmp/cc-1-viewer.log 2>/dev/null | head -1)"
+note "recording pipeline" "$(grep -h "recording: queue" /tmp/cc-1e-recording-file.log 2>/dev/null | head -1)"
+note library "$(python3 -c "import json; d=json.load(open('/home/ci/.cache/hearth/capture-card/library.json')); print(len(d), 'files known;', [v for k, v in d.items() if k.endswith('.png') or '.png|' in k][:1])" 2>&1)"
 kill %1 2>/dev/null
 exit 0
 INNER
@@ -268,10 +276,10 @@ while read -r kind name rest; do
   eval "$(echo "$rest" | tr ' ' '\n' | sed 's/^/r_/')"
   case "$kind" in
     RESULT)
-      echo "::notice title=$name::at rest ${r_cpu} % of a core, ${r_rss} MB"
+      printf '%s\t%s\n' "$name" "at rest ${r_cpu} % of a core, ${r_rss} MB" >> "$ROOT/notes.txt"
       python3 -c 'import sys; c=float(sys.argv[2]); print("::error title=%s::%.2f %% of a core at rest (limit 0.3 %%)" % (sys.argv[1], c)) if c > 0.3 else None; sys.exit(1 if c > 0.3 else 0)' "$name" "$r_cpu" || fail=1 ;;
-    WAITING) echo "::notice title=$name::waiting for a signal (the stand-in card sends a small black picture 5 times a second): ${r_cpu} % of a core, ${r_rss} MB" ;;
-    VIEWING) echo "::notice title=$name::showing 1080p60 (decoding and drawing with the CPU here): ${r_cpu} % of a core, ${r_rss} MB" ;;
+    WAITING) printf '%s\t%s\n' "$name" "waiting for a signal (the stand-in card sends a small black picture 5 times a second): ${r_cpu} % of a core, ${r_rss} MB" >> "$ROOT/notes.txt" ;;
+    VIEWING) printf '%s\t%s\n' "$name" "showing 1080p60 (decoding and drawing with the CPU here): ${r_cpu} % of a core, ${r_rss} MB" >> "$ROOT/notes.txt" ;;
   esac
 done < "$ROOT/results.txt"
 ls -la "$ROOT/shots" | tail -25

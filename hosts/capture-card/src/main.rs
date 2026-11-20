@@ -403,11 +403,10 @@ impl App {
             note_gen: 0,
         };
         let mut a = a;
-        let mut t = vec![work(scan, |(c, s)| Msg::Cards(c, s))];
-        match page {
-            Page::Library => t.push(load_items(&a)),
-            Page::Settings => a.store_chip = store_chip(),
-            Page::Live => {}
+        // The cards, and the list's counts (the sidebar and the quick menu show them).
+        let mut t = vec![work(scan, |(c, s)| Msg::Cards(c, s)), load_items(&a)];
+        if page == Page::Settings {
+            a.store_chip = store_chip();
         }
         if a.shows("menu") {
             a.menu = true;
@@ -815,6 +814,10 @@ fn handle(a: &mut App, m: Msg) -> Task<Msg> {
                 return if a.page == Page::Library { load_items(a) } else { Task::none() };
             }
             if gen != video::current() {
+                if e == VEv::Frame {
+                    // An old pipeline's frame: taken and dropped, so it never holds up the new one's.
+                    let _ = video::frame();
+                }
                 return Task::none();
             }
             on_video(a, e)
@@ -1016,15 +1019,16 @@ fn handle(a: &mut App, m: Msg) -> Task<Msg> {
             Task::none()
         }
         Msg::Items(v) => {
-            let todo: Vec<Item> = v.iter().filter(|i| i.info.as_ref().and_then(|x| x.thumb.as_ref()).is_none()).cloned().collect();
+            let todo = v.iter().any(|i| i.info.as_ref().and_then(|x| x.thumb.as_ref()).is_none());
+            let all = v.clone();
             set_items(a, v);
-            if todo.is_empty() {
+            if !todo {
                 return Task::none();
             }
             let (r, s) = (a.rec_dir(), a.shot_dir());
             work(
                 move || {
-                    library::fill(&todo);
+                    library::fill(&all);
                     library::scan(&r, &s)
                 },
                 Msg::Filled,
@@ -1185,6 +1189,13 @@ fn on_video(a: &mut App, e: VEv) -> Task<Msg> {
         VEv::Recording(r) => {
             match r {
                 Ok(f) => {
+                    if a.shows("stop-record") {
+                        // CI: a short recording, ended by the app itself (so its file is finished properly).
+                        a.rec = Some((Instant::now(), f));
+                        a.rec_size = 0;
+                        a.rec_free = cc::free_words(&a.rec_dir());
+                        return after(5000, Msg::Record);
+                    }
                     a.rec = Some((Instant::now(), f));
                     a.rec_size = 0;
                     a.rec_free = cc::free_words(&a.rec_dir());
@@ -1192,7 +1203,10 @@ fn on_video(a: &mut App, e: VEv) -> Task<Msg> {
                         a.bar = false;
                     }
                 }
-                Err(e) => a.note = Some(e),
+                Err(e) => {
+                    cc::log(&format!("recording: {e}"));
+                    a.note = Some(e);
+                }
             }
             Task::none()
         }

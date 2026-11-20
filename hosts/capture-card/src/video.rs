@@ -303,6 +303,8 @@ mod imp {
 
     pub fn stop() {
         GEN.fetch_add(1, Ordering::Relaxed);
+        // A frame the window was told of but never took must not hold up the next pipeline's.
+        PENDING.store(false, Ordering::Release);
         let r = RUN.lock().unwrap().take();
         *FRAME.lock().unwrap() = None;
         if let Some(r) = r {
@@ -562,6 +564,7 @@ mod imp {
         let bin = match gst::parse::bin_from_description(&desc, false) {
             Ok(b) => b,
             Err(e) => {
+                crate::log(&format!("recording couldn't be set up: {e}"));
                 send(gen, Event::Recording(Err(format!("Recording couldn't start: {e}"))));
                 return;
             }
@@ -590,6 +593,7 @@ mod imp {
             ok = bin.sync_state_with_parent().is_ok();
         }
         if !ok {
+            crate::log("recording couldn't be hooked into the picture");
             for (tee, tp) in pads {
                 tee.release_request_pad(&tp);
             }
@@ -598,6 +602,7 @@ mod imp {
             send(gen, Event::Recording(Err("Recording couldn't start.".into())));
             return;
         }
+        crate::log(&format!("recording into {}", file.display()));
         r.rec = Some(Rec { bin, pads, file: file.clone(), since: Instant::now() });
         send(gen, Event::Recording(Ok(file)));
     }
@@ -645,6 +650,7 @@ mod imp {
                 tee.release_request_pad(tp);
             }
             let good = ok && std::fs::metadata(&file).map(|m| m.len() > 0).unwrap_or(false);
+            crate::log(&format!("recording ended (its end reached the file: {ok}; {} bytes)", std::fs::metadata(&file).map(|m| m.len()).unwrap_or(0)));
             send(gen, Event::Recorded(if good { Ok(file.clone()) } else { Err(format!("The recording {} may be cut short.", file.file_name().unwrap_or_default().to_string_lossy())) }));
         };
         if blocking {

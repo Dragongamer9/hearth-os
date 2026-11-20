@@ -160,12 +160,17 @@ pub fn click<'a, M: Clone + 'a>(e: impl Into<E<'a, M>>, m: Option<M>) -> E<'a, M
     }
 }
 
-/// The focus ring (`.focus`: 3 px orange, 3 px outside). Space is always kept, so nothing moves with the focus.
+/// The focus ring (`.focus`: 3 px orange), drawn over the control's own edge, so the control keeps the size the
+/// mockups give it and nothing moves with the focus.
 pub fn ring<'a, M: 'a>(on: bool, r: f32, inner: impl Into<E<'a, M>>) -> E<'a, M> {
-    container(inner)
-        .padding(6.0)
-        .style(move |_: &Theme| container::Style { border: Border { color: if on { ACC } else { Color::TRANSPARENT }, width: 3.0, radius: (r + 6.0).into() }, ..container::Style::default() })
-        .into()
+    if !on {
+        return inner.into();
+    }
+    let edge = container(Space::new().width(Length::Fill).height(Length::Fill))
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(move |_: &Theme| container::Style { border: Border { color: ACC, width: 3.0, radius: r.into() }, ..container::Style::default() });
+    iced::widget::stack![inner.into(), edge].into()
 }
 
 /// A ring drawn on the element's own edge (`.focus` with outline-offset 0: the console card, tiles).
@@ -683,7 +688,7 @@ mod tests {
         assert!((p[0].0[1].0 + 0.7).abs() < 0.001 && (p[0].0[1].1 + 2.9).abs() < 0.001);
         for g in [G::Card, G::Live, G::Shield, G::Folder, G::Store, G::Bolt, G::Usb, G::Mic] {
             for d in def(g).0 {
-                assert!(!parse(d).is_empty(), "{g:?}");
+                assert!(!parse(d.trim_start_matches('*')).is_empty(), "{g:?}");
             }
         }
     }

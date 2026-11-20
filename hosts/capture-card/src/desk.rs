@@ -426,7 +426,7 @@ fn tile<'a>(a: &'a App, i: usize, it: &cc::library::Item, small: bool) -> E<'a, 
     } else {
         container(column![one(t6(b, 15.5, TX)), one(t(s, 13.5, MUT))].spacing(2.0)).padding(pad(12.0, 14.0, 12.0, 14.0))
     };
-    let body = column![stack(im).height(Length::Fixed(h)), cap];
+    let body = column![stack(im).width(Length::Fill).height(Length::Fixed(h)), cap];
     let tile = container(body)
         .width(Length::Fill)
         .clip(true)
@@ -459,7 +459,7 @@ fn side<'a>(a: &'a App) -> E<'a, Msg> {
         let play = container(container(glyph(G::Play, TX, 28.0)).padding(pad(0.0, 0.0, 0.0, 5.0))).center_x(Length::Fixed(70.0)).center_y(Length::Fixed(70.0)).style(bx(Color { r: 0.0, g: 0.0, b: 0.0, a: 0.67 }, 35.0, None));
         layers.push(container(click(play, Some(Msg::Play(it.path.clone())))).center_x(Length::Fill).center_y(Length::Fixed(prev_h)).into());
     }
-    let preview = container(stack(layers)).width(Length::Fill).height(Length::Fixed(prev_h)).clip(true).style(bx(DEEP, 10.0, None));
+    let preview = container(stack(layers).width(Length::Fill)).width(Length::Fill).height(Length::Fixed(prev_h)).clip(true).style(bx(DEEP, 10.0, None));
     let info = it.info.clone();
     let pic_words = match (&info, it.kind) {
         (Some(x), Kind::Rec) if x.w > 0 => format!("{} × {} · {} fps", x.w, x.h, x.fps),
