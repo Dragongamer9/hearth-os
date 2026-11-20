@@ -1,43 +1,53 @@
-# Hearth's panel on KDE Plasma (stage 1 of "Hearth Classic on Plasma")
+# Hearth Classic on Plasma, stage 1: Hearth's panel (Mantel's bar, dock, app menus, Quick settings, notifications)
 
 Mockups: plasma-hearth/mantel-hearth-dark-1-desktop.jpg, plasma-hearth/mantel-hearth-dark-3-launcher.jpg
 Release: 1.16
 
-The approved look is Mantel's own bar, dock and app menus on Debian, in every Hearth look. Mantel's CI pictures of
-every look are on the branch ci/desktop-shots (looks/mantel/<look>-<mode>-1-desktop.png, -3-launcher.png, and
-looks/mantel/bars/ for the bar edges and the five app menus); two are copied here, the rest get added as each look is
-pictured on Plasma and compared side by side.
+The approved look is Mantel's own (Debian's Desktop Mode) in every Hearth look. Mantel's CI pictures of every look
+are on the branch ci/desktop-shots (looks/mantel/<look>-<mode>-1-desktop, -2-quick-settings, -3-launcher,
+-4-notifications-dashboard, and looks/mantel/bars/ for the five app menus); Plasma's are on
+ci/plasma-hearth-shots-feature-plasma-hearth-menu (.github/workflows/plasma-hearth.yml), compared side by side.
 
-## Status (paused Nov 19 for the owner's usage limit)
+How it's built: hosts/linux/desktop/plasma-hearth/install.sh makes Plasma packages out of Mantel's own files
+(Islands.qml, Dock.qml, Launcher.qml and its four styles, QuickAccess.qml, ClockPanel.qml, Notifications.qml, Theme.qml,
+Settings.qml, DeskState.qml...), taking out only the Quickshell lines (transform.py), so every look, sub theme, mode,
+accent, frame and panel transparency is Mantel's to the pixel; shim/ does what Quickshell did with Plasma's own pieces.
+Packages: org.hearthos.panel (the bar and the dock, in two Plasma panels whose own background is hidden),
+org.hearthos.appmenu, org.hearthos.quicksettings, org.hearthos.notifications (for KDE's own panel). Quick settings'
+backend shared with Firehold on Plasma: /usr/libexec/hearth/hearth-quick (qs / qs-do, the same JSON).
 
-Done: Mantel's bar, dock, app menus, theme and settings code read; the design below decided; nothing built yet.
-In progress: nothing. Next step: write hosts/linux/desktop/plasma-hearth/ (below), then the CI workflow.
+## Built and pictured (all 10 looks: Hearth, Steam, Gaming, Zen, Glass, Synthwave, Cabin, Console dark, Hearth and Glass light)
 
-## How it's built (decided)
+- [x] The bar is Mantel's own islands bar, in every look — hosts/linux/desktop/plasma-hearth/install.sh: "Islands.qml"
+- [x] Start island: the Hearth flame, the desktops (KWin's, through Plasma's task manager), the window in front — hosts/linux/desktop/plasma-hearth/shim/WinList.qml: "TaskManager.VirtualDesktopInfo"
+- [x] Clock pill with the date, and the newest notification in it — hosts/linux/desktop/plasma-hearth/package/main.qml: "Notifications.qml"
+- [x] Status island: Discord, keyboard, network, Bluetooth, volume, battery, notifications with the count — hosts/linux/desktop/plasma-hearth/shim/Pipewire.qml: "PaSink.qml"
+- [x] Game Mode button in every look, hidden when Game Mode is off — hosts/linux/desktop/plasma-hearth/install.sh: "Islands.qml"
+- [x] Gaming's performance island (CPU, RAM) — hosts/linux/desktop/plasma-hearth/install.sh: "PerfIsland.qml"
+- [x] Bar styles: floating islands, Steam's full-width bar, Zen's thin bar, Console's shelf with its hints — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "function bandOf(sw)"
+- [x] Plasma's own panel background hidden, so only the islands show — hosts/linux/desktop/plasma-hearth/package/main.qml: "panel-background"
+- [x] Dock: the flame, Task view, pinned apps (desk.json, Mantel's), running apps grouped with their dots, Show desktop — hosts/linux/desktop/plasma-hearth/install.sh: "Dock.qml"
+- [x] App menus: Hearth, Centred, Tiles (with its search field in the bar), Start screen, Classic — hosts/linux/desktop/plasma-hearth/install.sh: "MenuCentred.qml"
+- [x] The app menu with Super (Plasma's launcher key) and as a launcher for KDE's own panel — hosts/linux/desktop/plasma-hearth/package/metadata.json: "org.kde.plasma.launchermenu"
+- [x] Quick settings, Mantel's, in every look — hosts/linux/desktop/plasma-hearth/install.sh: "QuickAccess.qml"
+- [x] The dashboard: notifications, calendar, system — hosts/linux/desktop/plasma-hearth/install.sh: "ClockPanel.qml"
+- [x] Notification pop-ups, Mantel's, under the clock pill (on Plasma's own notification service; KDE's own pop-ups pause meanwhile) — hosts/linux/desktop/plasma-hearth/shim/NotificationServer.qml: "showAddedDuringInhibition"
+- [x] Every look follows Hearth's settings live (desktop.json, desk.json, bar.json, the apps: a systemd .path unit, nothing polls) — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel.path: "PathChanged=%h/.local/share/nimbus/desktop.json"
+- [x] Bar layouts: one main bar on any edge, the dock on or off, auto-hide — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "SYNC_JS"
+- [x] Settings › Bar and dock: Hearth's panel or KDE's panel (your panels saved first; back to KDE's default panel) — hosts/hearth-ui/apps/settings/src/cats/pers/desk.rs: "Hearth's panel"
+- [x] Settings › Bar and dock › App menu lists Hearth's five menus for KDE's own panel, in Kickoff's place — hosts/hearth-ui/apps/settings/src/cats/pers/desk.rs: "Hearth's menu: {l}"
+- [x] Your old panels exactly as they were (hearth-plasma-panel restore) — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "def save_panels"
+- [x] Quick settings' backend shared with Firehold on Plasma — hosts/linux/desktop/plasma-hearth/hearth-quick: "hearth-quick qs"
+- [x] Nothing at rest (plasmashell measured in CI: a few hundredths of a second a minute) — .github/scripts/plasma-hearth-shots.sh: "at rest"
 
-- One copy of the code: hosts/linux/desktop/plasma-hearth/install.sh builds the Plasma packages from Mantel's own
-  files (Islands.qml, Dock.qml, Launcher.qml, MenuCentred/Tiles/Start/Classic.qml, MenuSearch, MenuTile, PopMenu,
-  Frame, Icon, Theme, Settings, SettingsWriter, DeskState, BarLayout...), dropping only the Quickshell imports and
-  the layer-shell lines, so the bar looks exactly like Mantel's in every look, sub theme, mode, accent and frame.
-- Small stand-ins (shim/) do what Quickshell did, with Plasma's own pieces: commands through Plasma's executable
-  source, windows and desktops from org.kde.taskmanager, sound from plasma-pa, battery from powermanagement,
-  network from plasma-nm, Bluetooth from BluezQt, notifications' count from Plasma's notification server.
-- Package org.hearthos.panel (roles bar / dock) in two Plasma panels (top bar, bottom dock; the panel's own
-  background hidden, so only Mantel's islands show); org.hearthos.appmenu is the same menu as a launcher for KDE's
-  own panel (Settings › App launcher). The menus and right-click menus open as full-screen layer windows, as Mantel.
-- hearth-plasma-panel (helper): apply (saves your panels first, then puts Hearth's in), undo (KDE's default panel),
-  sync (after a Hearth setting changes: the panels follow the look, bar edge and auto-hide; event driven by a
-  systemd .path unit, nothing running at rest). Only run when you pick it: an update never rearranges your panel.
+## Not built yet
 
-## Parts
-
-- [ ] Top bar: start island (Hearth flame, desktops, the window in front)
-- [ ] Top bar: clock pill (time, date, newest notification, what's playing)
-- [ ] Top bar: status island (tray, Discord, keyboard, network, Bluetooth, volume, battery, notifications)
-- [ ] Top bar: Game Mode button in every look (hidden when Game Mode is off)
-- [ ] Bar styles: floating islands, one full-width bar, Console's shelf, thin (Zen)
-- [ ] Bar layout: top bar + dock, one main bar on any edge, auto-hide, network speed
-- [ ] Dock: flame, pinned and running apps grouped, running dots, right-click menu, Show desktop
-- [ ] App menus: Hearth, Centred, Tiles, Start screen, Classic, with search
-- [ ] Every look pictured on Plasma next to Mantel's: Hearth, Steam, Gaming, Zen, Glass, Synthwave, Cabin, Console (dark), Hearth and Glass (light)
-- [ ] Settings › Personalization › Bar and dock: "Hearth's panel" (apply / back to KDE's panel)
+- [ ] The desktop under the bar in each look: the look's own wallpaper and Mantel's desktop clock (stage 2: desktop pieces)
+- [ ] Critical notifications pop up twice: KDE still shows its own for critical ones while Hearth's are up (KDE's "critical in Do not disturb"); normal ones are Hearth's only
+- [ ] Glass's frosted blur behind the islands (the milky fill and edge are there)
+- [ ] Tray icons of apps (Plasma's statusnotifieritem source is wired; not pictured, needs testing on a device)
+- [ ] What's playing in the pill and the Now playing tile (Plasma's media players; needs testing on a device)
+- [ ] Copies and downloads, background apps, camera and microphone, printing, disks, keyboard layout buttons (Mantel's own services)
+- [ ] Settings pages found by the app menu's search (the Rust Settings app's page list)
+- [ ] Firehold's style for org.hearthos.quicksettings and org.hearthos.notifications (mockups firehold-plasma 07-10)
+- [ ] Stage 2: volume and brightness pop-ups, Alt+Tab, window frames, desktop right-click menu, lock screen, power menu

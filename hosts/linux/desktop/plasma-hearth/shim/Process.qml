@@ -37,7 +37,7 @@ Item {
         if (w >= 0) { cmd.splice(w, 2); }
         started();
         Hearth.call(cmd, (out, code) => {
-            if (g !== p.gen) return;
+            if (!p || g !== p.gen) return;
             p.give(out);
             if (w >= 0) { if (p.running) again.restart(); return; }
             p.running = false;

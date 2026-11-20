@@ -20,7 +20,7 @@ Item {
         if (!Hearth.envReady || path === "" || path.startsWith("/.") || path.startsWith("/undefined")) return;
         const g = ++gen;
         Hearth.call(["cat", "--", path], (out, code) => {
-            if (g !== f.gen) return;
+            if (!f || g !== f.gen) return;
             if (code === 0) { f.content = out; f.loaded(); } else f.loadFailed(2);
         });
     }
