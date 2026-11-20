@@ -642,6 +642,26 @@ class PlasmaTest(unittest.TestCase):
         pad.command({'cmd': 'window', 'cls': 'org.kde.krunner', 'caption': '', 'fullscreen': False, 'kind': 'normal', 'now': 50.5})
         self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
 
+    def test_password_prompts_get_the_password_keyboard(self):
+        # Plasma's own password prompts (KDE's polkit agent...): the keyboard opens in its password mode (Mantel's
+        # over Hearth's own prompt), by itself when the controller brought the prompt up, and switches back after.
+        pad, out = self.make()
+        pad.command({'cmd': 'window', 'cls': 'org.kde.dolphin', 'caption': 'Home', 'fullscreen': False, 'kind': 'normal', 'now': 0.0})
+        press(pad, 'a', 10.0)
+        pad.command({'cmd': 'window', 'cls': 'org.kde.polkit-kde-authentication-agent-1', 'caption': 'Authentication Required',
+                     'fullscreen': False, 'kind': 'normal', 'now': 10.5})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True, 'mode': 'password'})
+        pad.command({'cmd': 'osk', 'open': True})
+        press(pad, 'y', 11.0)
+        pad.command({'cmd': 'window', 'cls': 'org.kde.dolphin', 'caption': 'Home', 'fullscreen': False, 'kind': 'normal', 'now': 12.0})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True, 'mode': 'text'})
+        pad.command({'cmd': 'osk', 'open': False})
+        # Y over a prompt that came up without the controller: the password keyboard too; elsewhere the plain one.
+        pad.command({'cmd': 'window', 'cls': 'ksshaskpass', 'caption': '', 'fullscreen': False, 'kind': 'normal', 'now': 60.0})
+        self.assertNotIn({'t': 'osk', 'open': True, 'mode': 'password'}, out.sent[-1:])
+        pad.want_osk()
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True, 'mode': 'password'})
+
     def test_hearth_apps_like_mantels(self):
         pad, out = self.make()
         def win(cls):
