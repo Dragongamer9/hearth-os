@@ -90,24 +90,30 @@ jobs:
           export DISPLAY=:98 VK_ICD_FILENAMES="$ICD" VK_DRIVER_FILES="$ICD"
           Xvfb :98 -screen 0 1120x600x24 >/dev/null 2>&1 &
           sleep 2
-          before=$(xdotool search --name . 2>/dev/null | sort)
-          timeout 60 vkcube --width 520 --height 520 > before.log 2>&1 &
-          sleep 4
-          w1=$(comm -13 <(echo "$before") <(xdotool search --name . 2>/dev/null | sort) | tail -1)
-          [ -n "$w1" ] && xdotool windowmove "$w1" 20 60
-          mid=$(xdotool search --name . 2>/dev/null | sort)
-          ENABLE_VKBASALT=1 VKBASALT_CONFIG_FILE="$RUNNER_TEMP/vkb/game.conf" VKBASALT_LOG_LEVEL=info timeout 60 vkcube --width 520 --height 520 > after.log 2>&1 &
-          sleep 4
-          w2=$(comm -13 <(echo "$mid") <(xdotool search --name . 2>/dev/null | sort) | tail -1)
-          [ -n "$w2" ] && xdotool windowmove "$w2" 580 60
-          sleep 3
           mkdir -p shots
-          import -window root shots/raw.png
-          convert shots/raw.png -fill white -pointsize 22 -annotate +30+40 'Without' -annotate +590+40 'With Sharper graphics (sharpening 100 %, SMAA, richer colour)' shots/vkb-lavapipe-before-after.png
-          rm -f shots/raw.png
-          echo "::notice title=vkBasalt in the 'after' cube::$(grep -i basalt after.log | head -12 | tr '\n' '|' | cut -c1-1500)"
-          grep -qi basalt before.log && echo "::error title=lavapipe::vkBasalt loaded without ENABLE_VKBASALT"
-          pkill vkcube
+          # One cube at a time, each pictured on its own after the same few seconds (the same frame count, so nearly
+          # the same angle), then side by side.
+          cube() {   # name, then the environment
+            local n=$1; shift
+            local before; before=$(xdotool search --name . 2>/dev/null | sort)
+            env "$@" timeout 60 vkcube --width 520 --height 520 > "$n.log" 2>&1 &
+            local pid=$!
+            sleep 5
+            local w; w=$(comm -13 <(echo "$before") <(xdotool search --name . 2>/dev/null | sort) | tail -1)
+            echo "::notice title=lavapipe $n::window ${w:-none}, vkcube $(kill -0 $pid 2>/dev/null && echo running || echo gone) | $(grep -iE 'basalt|error|fail|abort' "$n.log" | head -12 | tr '\n' '|' | cut -c1-1500)"
+            if [ -n "$w" ]; then import -window "$w" "shots/$n.png"; else import -window root -crop 520x520+0+0 "shots/$n.png"; fi
+            kill $pid 2>/dev/null; wait $pid 2>/dev/null
+          }
+          cube cube-before DUMMY=1
+          cube cube-after ENABLE_VKBASALT=1 VKBASALT_CONFIG_FILE="$RUNNER_TEMP/vkb/game.conf" VKBASALT_LOG_LEVEL=info
+          grep -qi basalt cube-before.log && echo "::error title=lavapipe::vkBasalt loaded without ENABLE_VKBASALT"
+          if [ -f shots/cube-before.png ] && [ -f shots/cube-after.png ]; then
+            convert shots/cube-before.png -gravity north -background black -splice 0x44 -fill white -pointsize 22 -annotate +0+10 'Without' shots/a.png
+            convert shots/cube-after.png -gravity north -background black -splice 0x44 -fill white -pointsize 22 -annotate +0+10 'With Sharper graphics (100%%, SMAA, richer colour)' shots/b.png
+            convert shots/a.png shots/b.png -background black -splice 12x0 +append shots/vkb-lavapipe-before-after.png
+            echo "::notice title=lavapipe::the two cubes differ by $(compare -metric RMSE shots/cube-before.png shots/cube-after.png null: 2>&1)"
+          fi
+          rm -f shots/a.png shots/b.png shots/cube-before.png shots/cube-after.png
       - name: What the pictures show
         if: always()
         id: list
