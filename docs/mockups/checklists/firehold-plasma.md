@@ -122,11 +122,9 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 ## Build status (branch feature/firehold-plasma-1.16; not ticked until each part is pictured and compared)
 
-- 68 of 76 parts pictured and ticked (Plasma pictures run 44704692710, branch ci/firehold-plasma-shots-feature-firehold-plasma-1.16).
-- Open: Settings rows 5.3 and 5.4 are built (hosts/hearth-ui/apps/settings/src/cats/couch.rs) but not yet pictured: the
-  Rust apps' picture is taken 2.5 s after the window maps, before the controller presses reach those rows.
-- Open: Quick Settings with the controller over the Couch (section 8): the shared widget has it (style "firehold", its
-  couch look), but the Couch shell has no panel for the shared widget to sit in.
-- Open: the recorded clip's picture in its card (9): the shared cards show `h.image`; a notification's image-path
-  doesn't reach it under Plasma yet (shared widget).
-- Open: the app's own menus with File open (11.1): CI's apps don't export KDE's global menu (no appmenu module there).
+- 75 of 76 parts pictured and ticked (Plasma pictures run 44743313439, Rust apps run 44716617692; pictures on branch
+  ci/firehold-plasma-shots-feature-firehold-plasma-1.16).
+- Open: 11.1, the app's own File menu open. Kate's own menus are in the bar (fp-11-desk-bar-app-menus), but opening
+  File needs a click on the bar or a key press into the session, and CI has neither: there's no wtype package on the
+  Fedora 44 runner, and the virtual KWin takes no uinput devices. KDE's app menu daemon (showMenu) opens its own popup
+  instead of the bar's menu.
