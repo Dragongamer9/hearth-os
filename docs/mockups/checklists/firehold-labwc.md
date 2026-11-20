@@ -59,10 +59,10 @@ helper's labwc paths are in hearth-firehold-plasma (LABWC). A part is ticked her
 
 ## 5. Settings › Couch, Desk and Away (05-settings-modes.png)
 
-- [ ] In the Settings look, its own page
-- [ ] For each screen: the mode it starts in, what's on its Couch home, sound in Couch
-- [ ] Switching by itself: a controller puts the TV in Couch, the mouse puts its own screen in Desk, Away after a time, what keeps running while Away, games follow the mode
-- [ ] The line "Switching modes is never a settings change" (switching is live state, never saved by itself: red flag 9)
+- [x] In the Settings look, its own page (pictured on labwc in the image: lw-05-settings-modes-1/2/3 on ci/anatase-looks run-44770672255) — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "pub const PAGES: &[&str] = &[\"couch-desk-away\", \"couch-away\"];"
+- [x] For each screen: the mode it starts in, what's on its Couch home, sound in Couch (pictured on labwc in the image: lw-05-settings-modes-1/2/3 on ci/anatase-looks run-44770672255) — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "\"Sound in Couch\", \"Switches the output when this screen goes Couch\""
+- [x] Switching by itself: a controller puts the TV in Couch, the mouse puts its own screen in Desk, Away after a time, what keeps running while Away, games follow the mode (pictured on labwc in the image: lw-05-settings-modes-1/2/3 on ci/anatase-looks run-44770672255) — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "\"Away when nobody's here\", \"No controller, mouse or keyboard for this long, and nothing playing\""
+- [x] The line "Switching modes is never a settings change" (switching is live state, never saved by itself: red flag 9) (pictured on labwc in the image: lw-05-settings-modes-1/2/3 on ci/anatase-looks run-44770672255) — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "Switching modes is never a settings change."
 
 ## 6. Away (06-away.png)
 

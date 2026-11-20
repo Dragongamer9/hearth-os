@@ -111,6 +111,17 @@ battery fixes; on the owner's devices 1.14's shell used 13-27 % (with the contro
 second on top, a separate process). The pictures: hearth-os branch ci/labwc-fedora, copied to hearth-workspace
 `hearth/assets/1.16-labwc-fedora-shots`.
 
+### In the Fedora image, Firehold's checks of Nov 20 (runs 44753408908 and 44770672255, commit 749366336)
+
+Only in the image (the container on the same commit: 0.05 %, 276 MB, the event 0.04 s): Firehold held 432 MB from its
+first minute and was busy once, about 6 minutes into the rest (the shell's main thread 1.7 s, no log line, no program
+started); Mantel had a smaller one-off (0.85 % in one minute). A container with the image's portals, gvfs, evdev, KDE's
+Qt integration and CJK fonts (run 44787315817) didn't show it (0.09 %, 294 MB). Done: the image now makes its font
+and icon caches at build time (build.sh: fc-cache, gtk-update-icon-cache for every theme), since a cache older than
+the fonts makes every program read the fonts itself; the rest check says whether the caches are current and, in the
+image, samples the shell with perf through the whole rest (perf-rest*.txt) and keeps its notes (rest-notes.txt).
+Firehold leaves out a window that's already gone (a null in labwc's window list gave "appId of null").
+
 ### In the Fedora image, round 3 (run 44705691945, commit 526783b09)
 
 - Mantel: 0.10 % at rest, busiest minute 0.56 % (under the limits), 287 MB, Files 0.17-0.19 s. Passes.

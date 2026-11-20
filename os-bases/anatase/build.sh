@@ -2306,6 +2306,10 @@ sed -i \
 printf 'LOGO=hearth\nVARIANT="Fedora edition (test), Fedora %s"\nVARIANT_ID=hearth-anatase\nHOME_URL="https://hearthos.fun"\n' "$FEDORA" >> /usr/lib/os-release
 grep -qx 'PRETTY_NAME="Hearth OS"' /usr/lib/os-release && grep -qx 'LOGO=hearth' /usr/lib/os-release
 
+# Font and icon caches made here, once, for every font and icon the image has (1.16, Firehold on labwc: a cache that's
+# out of date is made again by the desktop itself, a one-off stall of the shell): never on the PC.
+fc-cache -s -f >/dev/null 2>&1 || true
+for t in /usr/share/icons/*/; do [ -f "$t/index.theme" ] && gtk-update-icon-cache -q -f -t "$t" >/dev/null 2>&1; done; true
 dnf5 clean all
 # Unlock the file system: the image's own packages (the start of the record of yours: hearth-unlock --record).
 rpm -qa --qf '%{NAME}\n' | grep -vx gpg-pubkey | sort -u > /usr/share/hearth/rpm-baseline.list

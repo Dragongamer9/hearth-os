@@ -655,7 +655,7 @@ jobs:
           rc=0
           for k in classic firehold; do
             sudo podman run --rm --privileged -v "$PWD:/src:ro" -v /tmp/lwout:/out hearth-os:anatase \
-              bash -c "cd /src && SESSION_FILE=/usr/bin/nimbus-session PERF=/src/tools/perf-measure.py timeout 1800 bash .github/scripts/labwc-fedora-rest.sh $k /out/$k 600" || rc=1
+              bash -c "cd /src && (command -v perf >/dev/null || dnf5 -y install perf >/dev/null 2>&1 || true); SESSION_FILE=/usr/bin/nimbus-session PERF_REST=1 PERF=/src/tools/perf-measure.py timeout 1800 bash .github/scripts/labwc-fedora-rest.sh $k /out/$k 600" || rc=1
             for f in /tmp/lwout/$k/*; do [ -f "$f" ] && sudo cp "$f" "/tmp/anatase-looks/labwc-$k-$(basename "$f")"; done
             { echo "### $k on labwc"; echo; sudo cat /tmp/lwout/$k/rest.md 2>/dev/null; } >> "$GITHUB_STEP_SUMMARY"
           done

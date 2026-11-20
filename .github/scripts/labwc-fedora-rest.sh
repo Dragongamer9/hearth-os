@@ -164,6 +164,20 @@ rss() { awk '/^VmRSS:/{print int($2 / 1024)}' "/proc/$1/status" 2>/dev/null || e
 allticks() { for p in /proc/[0-9]*; do [ -O "$p" ] || continue; grep -q '^State:[[:space:]]*Z' "$p/status" 2>/dev/null && continue; n=${p#/proc/}; printf '%s %s %s\n' "$n" "$(awk '{print $14 + $15}' "$p/stat" 2>/dev/null)" "$(tr '\0' ' ' <"$p/cmdline" 2>/dev/null | cut -c1-120)"; done; }
 SLOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
 frames() { grep -c -E 'Frame rendered|Frame prepared' "$SLOG" 2>/dev/null || echo 0; }
+# Font caches out of date (a folder of fonts newer than every cache: each program then reads the fonts itself, a
+# one-off stall and memory the cache would share; the image's, Nov 20)
+note "font caches: $(python3 - <<'PY'
+import glob, os
+caches = [f for d in ('/usr/lib/fontconfig/cache', '/var/cache/fontconfig') for f in glob.glob(d + '/*cache*')]
+newest = max([os.path.getmtime(f) for f in caches] or [0])
+dirs = set()
+for root in ('/usr/share/fonts', '/usr/local/share/fonts'):
+    for d, _, _ in os.walk(root):
+        dirs.add(d)
+stale = sorted(d for d in dirs if os.path.getmtime(d) > newest)
+print('%d cache files, %d font folders, %d newer than the caches%s' % (len(caches), len(dirs), len(stale), (': ' + ', '.join(stale[:6])) if stale else ''))
+PY
+)"
 allticks >"$OUT/procs-start.txt"; n0=$(wc -l <"$OUT/procs-start.txt")
 s0=$(ticks "$qs"); c0=$(ticks "$LPID"); m0=$(rss "$qs"); f0=$(frames)
 # Every 5 s through the rest: the shell's threads, its children and every busy process, and how far the shell's log
@@ -371,5 +385,6 @@ json.dump({"kind": "$KIND", "up_s": "$up", "shell_pct": $sp / 100, "worst_minute
 PY
 grep -v -E 'Frame rendered|Frame prepared' "$SLOG" | tail -c 200000 >"$OUT/shell.log" 2>/dev/null
 grep -E 'Frame rendered|Frame prepared' "$SLOG" | tail -n 200 >"$OUT/frames-tail.log" 2>/dev/null
+cp "$OUT/rest.md" "$OUT/rest-notes.txt" 2>/dev/null || true     # (the image's looks branch keeps .txt, not .md)
 kill "$LPID" 2>/dev/null; sleep 2; pkill -u "$(id -u)" -x quickshell 2>/dev/null
 exit "$fail"

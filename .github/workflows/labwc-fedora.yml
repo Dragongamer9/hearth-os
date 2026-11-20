@@ -71,12 +71,8 @@ jobs:
       matrix:
         kind: [classic, firehold]
         like: ['']
-        include:
-          # What the image has and this container doesn't (Nov 20: Firehold busy once at rest and 150 MB bigger only
-          # in the image): the portals, gvfs, the controller helper's evdev, KDE's Qt integration, the CJK fonts, a
-          # privileged container like the image check's; the shell sampled by perf through the whole rest.
-          - kind: firehold
-            like: image
+        # (like: image, Nov 20: the portals, gvfs, evdev, KDE's Qt integration, the CJK fonts in a privileged container
+        # didn't bring the image's busy moment here; the image check samples it with perf itself now)
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

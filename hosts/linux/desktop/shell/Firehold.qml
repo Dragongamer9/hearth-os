@@ -174,7 +174,8 @@ Scope {
     function closeAll() { guideShown = false; settingsShown = false; page = "tabs"; view = "home"; }
 
     // ------------------------------------------------------------------ windows and games
-    readonly property var wins: WinList.toplevels ? WinList.toplevels.values : []
+    // (a window that closed can stay in the list as null for a moment: left out, nothing reads a window that's gone)
+    readonly property var wins: WinList.toplevels ? WinList.toplevels.values.filter(t => !!t) : []
     function entryName(w) { const e = AppIcons.entryFor(w.appId); return e ? e.name : ""; }
     // 1.16 (the busy minute in the Fedora image, docs/LABWC-FEDORA.md): the lists the Couch is built from change only
     // when what they hold changes. Any window coming or going (a notification's helper, a password prompt, a dialog)
