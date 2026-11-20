@@ -299,5 +299,9 @@ cache, the ad blocker and quiet hours & rules are Mantel's. The AIs' cores move 
 at the screen's rate, the "ready" breathing and the dim screen's faint cores too; the owner, Nov 20: "smooth like
 Mantel"), but never while the screen is off, another window is in front or Reduce motion is on. Only when the app has
 to draw with the processor (no graphics card, or the watcher's fallback after two quick closes) do they move in the
-light way: 5 times a second, and only while something is at work. Guide or ☰ while Settings or Ithil's app is in front
+light way: 5 times a second, and only while something is at work. The "ready" breathing alone never runs faster than 30 times a
+second. **The never-lag guard**: while the cores move, the dashboard measures its own CPU time over about 10 seconds;
+over 3 % of one core it goes to 30 a second, still over it goes to the light way, and over the light way's 8 % the
+AIs stand still. Each step lasts the rest of that session (nothing is saved, no setting changes), and the dashboard
+says "Smooth motion turned down to keep this PC fast" with **Try smooth again**. Guide or ☰ while Settings or Ithil's app is in front
 brings the dashboard back: it opens its window again (exit 42, restarted at once by the watcher), and cage shows it on top.
