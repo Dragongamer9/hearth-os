@@ -1,0 +1,483 @@
+#!/usr/bin/python3
+"""Hearth's panel on KDE Plasma (Hearth Classic on Plasma, stage 1): Mantel's bar, dock and app menus in Plasma's
+panels (docs/mockups/checklists/plasma-hearth-bar.md).
+
+  hearth-plasma-panel status         one JSON line: in use or not, the panels, the saved copies of your old ones
+  hearth-plasma-panel apply          Hearth's panel: your panels are saved first (a copy of Plasma's files), then
+                                     replaced by Hearth's bar and dock, laid out for your look (Settings › Bar and dock)
+  hearth-plasma-panel undo           back to KDE's own default panel (Hearth's bar and dock taken off)
+  hearth-plasma-panel restore [DIR]  your old panels exactly as they were (the newest saved copy; Plasma restarts)
+  hearth-plasma-panel sync           after a Hearth setting changed (hearth-plasma-panel.path: desktop.json, desk.json,
+                                     bar.json, the apps): Hearth's panels follow your look, bar edge and auto-hide, and
+                                     re-read what changed. Does nothing when Hearth's panel isn't in use.
+  hearth-plasma-panel open launcher|quick|calendar|search   opens (or closes) it on Hearth's bar
+  hearth-plasma-panel env | apps | launch FILE [ACTION] | run ARGV...   used by the panel itself
+
+Red flags kept: nothing here runs by itself except `sync` (from a .path unit, only after you changed something, and
+it only changes Hearth's own two panels, to follow Hearth's own Bar and dock settings: never anyone else's); `apply` and `undo`
+run only when you pick them; your old panels are always saved first, so they can come back exactly as they were.
+"""
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+
+SHELL = '/usr/share/nimbus/desktop/shell'
+THEME = '/usr/share/nimbus/desktop/theme/palettes.json'
+IDS = ('org.hearthos.panel',)
+
+
+def home():
+    return os.environ.get('HOME') or os.path.expanduser('~')
+
+
+def cfg():
+    return os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config')
+
+
+def data():
+    return os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share')
+
+
+def read_json(p, d=None):
+    try:
+        with open(p) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return d
+
+
+def detach(argv):
+    try:
+        subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True, close_fds=True)
+        return True
+    except OSError:
+        return False
+
+
+# ------------------------------------------------------------------ apps (.desktop files, as KDE's menu reads them)
+def app_dirs():
+    dirs = [os.path.join(data(), 'applications')]
+    for d in (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':'):
+        if d:
+            dirs.append(os.path.join(d, 'applications'))
+    for extra in ('/var/lib/flatpak/exports/share/applications', os.path.join(data(), 'flatpak/exports/share/applications')):
+        if extra not in dirs:
+            dirs.append(extra)
+    return dirs
+
+
+def parse_desktop(path):
+    groups, cur = {}, None
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                line = line.rstrip('\n')
+                if not line or line.startswith('#'):
+                    continue
+                if line.startswith('[') and line.endswith(']'):
+                    cur = groups.setdefault(line[1:-1], {})
+                elif cur is not None and '=' in line:
+                    k, v = line.split('=', 1)
+                    cur[k.strip()] = v.strip()
+    except OSError:
+        return {}
+    return groups
+
+
+def localized(e, key):
+    lang = (os.environ.get('LANG') or '').split('.')[0]
+    for k in (key + '[' + lang + ']', key + '[' + lang.split('_')[0] + ']') if lang else ():
+        if e.get(k):
+            return e[k]
+    return e.get(key, '')
+
+
+def apps():
+    seen, out = set(), []
+    for d in app_dirs():
+        if not os.path.isdir(d):
+            continue
+        for root, _dirs, files in os.walk(d):
+            for fn in sorted(files):
+                if not fn.endswith('.desktop'):
+                    continue
+                path = os.path.join(root, fn)
+                rel = os.path.relpath(path, d).replace(os.sep, '-')
+                aid = rel[:-len('.desktop')]
+                if aid in seen:
+                    continue
+                seen.add(aid)
+                g = parse_desktop(path)
+                e = g.get('Desktop Entry') or {}
+                if e.get('Type', 'Application') != 'Application' or e.get('Hidden', '').lower() == 'true':
+                    continue
+                only = [x for x in e.get('OnlyShowIn', '').split(';') if x]
+                nots = [x for x in e.get('NotShowIn', '').split(';') if x]
+                hidden = e.get('NoDisplay', '').lower() == 'true' or (only and 'KDE' not in only) or 'KDE' in nots
+                acts = []
+                for a in [x for x in e.get('Actions', '').split(';') if x][:8]:
+                    s = g.get('Desktop Action ' + a) or {}
+                    if s.get('Exec'):
+                        acts.append({'id': a, 'name': localized(s, 'Name') or a, 'icon': s.get('Icon', '')})
+                out.append({'id': aid, 'path': path, 'name': localized(e, 'Name'), 'genericName': localized(e, 'GenericName'),
+                            'comment': localized(e, 'Comment'), 'keywords': [k for k in localized(e, 'Keywords').split(';') if k],
+                            'icon': e.get('Icon', ''), 'execString': e.get('Exec', ''), 'noDisplay': bool(hidden),
+                            'startupClass': e.get('StartupWMClass', ''), 'terminal': e.get('Terminal', '').lower() == 'true',
+                            'categories': [c for c in e.get('Categories', '').split(';') if c], 'actions': acts})
+    return out
+
+
+def exec_argv(line):
+    try:
+        words = shlex.split(line)
+    except ValueError:
+        return []
+    out = []
+    for w in words:
+        if re.fullmatch(r'%[fFuUdDnNickvm]', w):
+            continue
+        out.append(w.replace('%%', '%'))
+    return out
+
+
+def launch(target, action=''):
+    path = target
+    if not os.path.isabs(path):
+        hit = [a for a in apps() if a['id'] == target.replace('.desktop', '')]
+        if not hit:
+            return 1
+        path = hit[0]['path']
+    g = parse_desktop(path)
+    if action:
+        s = g.get('Desktop Action ' + action) or {}
+        argv = exec_argv(s.get('Exec', ''))
+        return 0 if argv and detach(argv) else 1
+    for tool in (['kioclient', 'exec', path], ['kioclient5', 'exec', path], ['gio', 'launch', path]):
+        if shutil.which(tool[0]):
+            return 0 if detach(tool) else 1
+    argv = exec_argv((g.get('Desktop Entry') or {}).get('Exec', ''))
+    return 0 if argv and detach(argv) else 1
+
+
+# ------------------------------------------------------------------ what Mantel's files start (Quickshell.execDetached)
+def run(argv):
+    """Start what Mantel's bar or menus asked for, the Plasma way where Mantel used its own shell."""
+    if not argv:
+        return 1
+    if argv[0] == 'sh' and any(a.endswith('theme/apply.sh') for a in argv):
+        return 0          # labwc's theming; on Plasma the look is hearth-plasma-looks' (desktop.json's .path unit)
+    if argv[0] == 'quickshell' and 'call' in argv:
+        i = argv.index('call')
+        what, fn, rest = (argv[i + 1:i + 2] or [''])[0], (argv[i + 2:i + 3] or [''])[0], argv[i + 3:]
+        if what == 'files' and rest:
+            return 0 if detach(['xdg-open', rest[0]]) else 1
+        if what == 'lock':
+            return 0 if detach(['loginctl', 'lock-session']) else 1
+        if what == 'tasks':
+            return 0 if detach(['hearth-task-manager']) or detach(['plasma-systemmonitor']) else 1
+        if what == 'help':
+            return 0
+        return 0
+    if argv[0] == 'nimbus-mode' and argv[1:2] == ['logout']:
+        if shutil.which('qdbus6') or shutil.which('dbus-send'):
+            return 0 if detach(['dbus-send', '--session', '--dest=org.kde.Shutdown', '--type=method_call', '/Shutdown', 'org.kde.Shutdown.logout']) else 1
+    return 0 if detach(argv) else 1
+
+
+def env():
+    keys = ('HOME', 'USER', 'LOGNAME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_RUNTIME_DIR', 'LANG',
+            'HEARTH_LEGACY_GAME_MODE', 'HEARTH_LINK_KIND', 'HEARTH_PLASMA_PANEL_CI')
+    o = {k: os.environ[k] for k in keys if os.environ.get(k)}
+    o.setdefault('HOME', home())
+    o.setdefault('USER', os.environ.get('LOGNAME') or os.path.basename(home()))
+    o['HEARTH_WM'] = 'kwin'
+    return o
+
+
+# ------------------------------------------------------------------ Plasma's panels (plasmashell's scripting)
+def plasma_js(js, timeout=20):
+    """Runs a script in plasmashell (org.kde.PlasmaShell.evaluateScript); its print() output, or None."""
+    for tool in (['qdbus6'], ['qdbus-qt6'], ['qdbus']):
+        if shutil.which(tool[0]):
+            cmd = tool + ['org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript', js]
+            break
+    else:
+        cmd = ['gdbus', 'call', '--session', '--dest', 'org.kde.plasmashell', '--object-path', '/PlasmaShell',
+               '--method', 'org.kde.PlasmaShell.evaluateScript', js]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if r.returncode != 0:
+        sys.stderr.write(r.stderr)
+        return None
+    out = r.stdout.strip()
+    if cmd[0] == 'gdbus':   # ('text',)
+        m = re.match(r"^\('(.*)',\)$", out, re.S)
+        out = m.group(1).encode().decode('unicode_escape') if m else out
+    return out
+
+
+def last_json(text):
+    for line in reversed((text or '').splitlines()):
+        line = line.strip()
+        if line.startswith('{'):
+            try:
+                return json.loads(line)
+            except ValueError:
+                pass
+    return None
+
+
+def look_params():
+    """Mantel's Theme.qml bar and dock rules, from desktop.json and palettes.json (one source of truth)."""
+    d = read_json(os.path.join(data(), 'nimbus', 'desktop.json'), {}) or {}
+    pal = read_json(THEME, {}) or {}
+    look = d.get('look') if isinstance(d.get('look'), str) and isinstance(pal.get(d.get('look')), dict) else 'steam'
+    ld = pal.get(look) or {}
+    steam = look == 'steam'
+    bs = d.get('barStyle') if d.get('barStyle') in ('floating', 'bar') else ''
+    look_isl = ld.get('islandStyle') if ld.get('islandStyle') in ('floating', 'bar', 'shelf') else ('bar' if steam else 'floating')
+    island = bs or look_isl
+    one = d.get('barLayout') == 'one'
+    edge = (d.get('barEdge') if d.get('barEdge') in ('bottom', 'top', 'left', 'right') else 'bottom') if one else 'top'
+    dock_floats = d.get('dockFloat') != 'off'
+    dock_auto = d.get('dockMode') == 'autohide' or (d.get('dockMode') != 'shown' and ld.get('dockAutoHide') is True)
+    return {'island': island, 'thin': island == 'bar' and ld.get('thin') is True and bs != 'bar', 'edge': edge, 'one': one,
+            'dockFloats': dock_floats, 'dockAuto': dock_auto, 'barAuto': dock_auto and (one or not dock_floats),
+            'hints': ld.get('hints') is True, 'look': look}
+
+
+# The panels, laid out as Mantel's Islands.qml and Dock.qml size themselves (the band and the dock's height).
+GEOMETRY_JS = r'''
+var P = __PARAMS__;
+function bandOf(sw) {
+  var vertical = P.edge === "left" || P.edge === "right";
+  var main = P.island === "shelf" && (P.one || !P.dockFloats) ? "bar" : P.island;
+  var style = vertical && main === "shelf" ? "bar" : main;
+  var compact = sw <= 1440 && style !== "shelf";
+  var h = style === "shelf" ? 72 : vertical ? (compact ? 52 : 56) : P.thin ? 32 : style === "bar" ? 44 : compact ? 48 : 52;
+  var out = style === "floating" ? 10 : style === "shelf" ? 18 : 0, inn = style === "floating" ? 6 : style === "shelf" ? 10 : 0;
+  return h + out + inn;
+}
+function dockOf(sw, sh) {
+  var shelf = P.island === "shelf", attached = P.island === "bar", compact = sw <= 1440;
+  var tile = shelf ? Math.round(Math.min(212, sh * 0.17)) : compact ? 68 : 56;
+  var body = shelf ? tile * 1.18 + 76 : attached ? tile + 8 : tile + 16;
+  var gap = (shelf ? 24 : attached ? 0 : 10) + (P.hints ? 48 : 0);
+  return { h: Math.round(body + gap + 2), fill: shelf || attached };
+}
+function roleOf(p) {
+  var ws = p.widgets("org.hearthos.panel");
+  if (!ws.length) return "";
+  ws[0].currentConfigGroup = ["General"];
+  return String(ws[0].readConfig("role", "bar"));
+}
+function shape(p, role) {
+  var g = screenGeometry(p.screen);
+  p.floating = false;
+  try { p.opacity = "opaque"; } catch (e) {}
+  if (role === "dock") {
+    var d = dockOf(g.width, g.height);
+    p.location = "bottom"; p.height = d.h;
+    p.lengthMode = "fill";
+    p.hiding = P.dockAuto ? "autohide" : "none";
+  } else {
+    p.location = P.edge; p.height = bandOf(g.width); p.lengthMode = "fill";
+    p.hiding = P.barAuto ? "autohide" : "none";
+  }
+}
+function stampAll(ps) {
+  for (var i = 0; i < ps.length; i++) {
+    var ws = ps[i].widgets("org.hearthos.panel");
+    for (var j = 0; j < ws.length; j++) { ws[j].currentConfigGroup = ["General"]; ws[j].writeConfig("stamp", P.stamp); }
+  }
+}
+'''
+
+
+def params(extra=None):
+    p = look_params()
+    p['stamp'] = '%.3f' % time.time()
+    p.update(extra or {})
+    return GEOMETRY_JS.replace('__PARAMS__', json.dumps(p))
+
+
+def hearth_panels_js():
+    return 'var ps=panels();var n=0;for(var i=0;i<ps.length;i++)if(ps[i].widgets("org.hearthos.panel").length)n++;'
+
+
+def status():
+    out = plasma_js(hearth_panels_js() + 'var o={hearth:n>0,panels:[]};for(var i=0;i<ps.length;i++){var t=[];var w=ps[i].widgets();'
+                    'for(var j=0;j<w.length;j++)t.push(w[j].type);o.panels.push({id:ps[i].id,location:ps[i].location,widgets:t});}'
+                    'print(JSON.stringify(o));')
+    o = last_json(out) or {'hearth': False, 'panels': [], 'plasma': False}
+    o['saved'] = sorted(os.listdir(backup_root()))[-5:] if os.path.isdir(backup_root()) else []
+    print(json.dumps(o))
+    return 0
+
+
+def backup_root():
+    return os.path.join(data(), 'hearth', 'plasma-panel')
+
+
+def save_panels():
+    """A copy of Plasma's own files about your panels, before Hearth's panel changes them."""
+    dest = os.path.join(backup_root(), time.strftime('%Y-%m-%d-%H%M%S'))
+    os.makedirs(dest, exist_ok=True)
+    n = 0
+    for f in ('plasma-org.kde.plasma.desktop-appletsrc', 'plasmashellrc'):
+        src = os.path.join(cfg(), f)
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(dest, f))
+            n += 1
+    return dest if n else dest
+
+
+def remember(choice):
+    """Your pick, in desktop.json (merged; the one record Mantel and Settings share)."""
+    io = os.path.join(SHELL, 'hearth_settings_io.py')
+    path = os.path.join(data(), 'nimbus', 'desktop.json')
+    if os.path.isfile(io):
+        subprocess.run([sys.executable, io, 'merge', path, json.dumps({'plasmaPanel': choice}), '--history'],
+                       capture_output=True, timeout=20)
+
+
+APPLY_JS = r'''
+var ps = panels();
+for (var i = ps.length - 1; i >= 0; i--) ps[i].remove();
+var bar = new Panel("org.kde.panel");
+var w = bar.addWidget("org.hearthos.panel");
+w.currentConfigGroup = ["General"]; w.writeConfig("role", "bar");
+shape(bar, "bar");
+if (P.dockFloats) {
+  var dock = new Panel("org.kde.panel");
+  var d = dock.addWidget("org.hearthos.panel");
+  d.currentConfigGroup = ["General"]; d.writeConfig("role", "dock");
+  shape(dock, "dock");
+}
+stampAll(panels());
+print(JSON.stringify({ok: true, panels: panels().length}));
+'''
+
+SYNC_JS = r'''
+var ps = panels(), bar = null, dock = null;
+for (var i = 0; i < ps.length; i++) { var r = roleOf(ps[i]); if (r === "bar") bar = ps[i]; else if (r === "dock") dock = ps[i]; }
+if (bar || dock) {
+  if (bar) shape(bar, "bar");
+  if (dock && P.dockFloats) shape(dock, "dock");
+  if (!dock && P.dockFloats && bar) {
+    dock = new Panel("org.kde.panel"); var d = dock.addWidget("org.hearthos.panel");
+    d.currentConfigGroup = ["General"]; d.writeConfig("role", "dock"); shape(dock, "dock");
+  }
+  if (dock && !P.dockFloats && bar) dock.remove();
+  stampAll(panels());
+  print(JSON.stringify({ok: true, hearth: true}));
+} else print(JSON.stringify({ok: true, hearth: false}));
+'''
+
+UNDO_JS = r'''
+var ps = panels();
+for (var i = ps.length - 1; i >= 0; i--) if (ps[i].widgets("org.hearthos.panel").length) ps[i].remove();
+if (!panels().length) loadTemplate("org.kde.plasma.desktop.defaultPanel");
+print(JSON.stringify({ok: true, panels: panels().length}));
+'''
+
+
+def apply():
+    dest = save_panels()
+    out = plasma_js(params() + APPLY_JS)
+    o = last_json(out)
+    if not o or not o.get('ok'):
+        print(json.dumps({'ok': False, 'why': "Plasma's panel didn't answer", 'saved': dest}))
+        return 1
+    remember('hearth')
+    print(json.dumps({'ok': True, 'saved': dest}))
+    return 0
+
+
+def undo():
+    out = plasma_js(UNDO_JS)
+    o = last_json(out)
+    if not o or not o.get('ok'):
+        print(json.dumps({'ok': False, 'why': "Plasma's panel didn't answer"}))
+        return 1
+    remember('kde')
+    print(json.dumps({'ok': True}))
+    return 0
+
+
+def restore(which=''):
+    root = backup_root()
+    dirs = sorted(os.listdir(root)) if os.path.isdir(root) else []
+    pick = which if which in dirs else (dirs[-1] if dirs else '')
+    if not pick:
+        print(json.dumps({'ok': False, 'why': 'No saved panels'}))
+        return 1
+    src = os.path.join(root, pick)
+    for f in os.listdir(src):
+        shutil.copy2(os.path.join(src, f), os.path.join(cfg(), f))
+    detach(['sh', '-c', 'systemctl --user restart plasma-plasmashell.service || (kquitapp6 plasmashell; sleep 2; kstart plasmashell)'])
+    remember('kde')
+    print(json.dumps({'ok': True, 'restored': pick}))
+    return 0
+
+
+def sync():
+    out = plasma_js(params() + SYNC_JS)
+    o = last_json(out) or {'ok': False}
+    print(json.dumps(o))
+    return 0
+
+
+def main(argv):
+    cmd, rest = (argv[1] if len(argv) > 1 else 'status'), argv[2:]
+    if cmd == 'env':
+        print(json.dumps(env()))
+    elif cmd == 'apps':
+        print(json.dumps(apps()))
+    elif cmd == 'launch' and rest:
+        return launch(rest[0], rest[1] if len(rest) > 1 else '')
+    elif cmd == 'run':
+        return run(rest)
+    elif cmd == 'osk':       # the on-screen keyboard (KWin's), on or off
+        cur = subprocess.run(['dbus-send', '--session', '--print-reply', '--dest=org.kde.KWin', '/VirtualKeyboard',
+                              'org.freedesktop.DBus.Properties.Get', 'string:org.kde.kwin.VirtualKeyboard', 'string:active'],
+                             capture_output=True, text=True, timeout=5).stdout
+        on = 'true' in cur
+        subprocess.run(['dbus-send', '--session', '--dest=org.kde.KWin', '/VirtualKeyboard', 'org.freedesktop.DBus.Properties.Set',
+                        'string:org.kde.kwin.VirtualKeyboard', 'string:active', 'variant:boolean:' + ('false' if on else 'true')],
+                       capture_output=True, timeout=5)
+    elif cmd == 'status':
+        return status()
+    elif cmd == 'apply':
+        return apply()
+    elif cmd == 'undo':
+        return undo()
+    elif cmd == 'restore':
+        return restore(rest[0] if rest else '')
+    elif cmd == 'sync':
+        return sync()
+    elif cmd == 'open' and rest and rest[0] in ('launcher', 'quick', 'calendar', 'search'):
+        # Opens (or closes again) the app menu, Quick settings or the dashboard on Hearth's bar: for a shortcut
+        # of your own, and CI's pictures.
+        out = plasma_js('var ps=panels();for(var i=0;i<ps.length;i++){var ws=ps[i].widgets("org.hearthos.panel");'
+                        'for(var j=0;j<ws.length;j++){ws[j].currentConfigGroup=["General"];if(String(ws[j].readConfig("role","bar"))==="bar")'
+                        'ws[j].writeConfig("open",%s);}}print("{}");' % json.dumps('%s:%.3f' % (rest[0], time.time())))
+        return 0 if out is not None else 1
+    elif cmd == 'js' and rest:       # CI and checks: the layout script as it would run (nothing applied)
+        print(params() + {'apply': APPLY_JS, 'sync': SYNC_JS, 'undo': UNDO_JS}.get(rest[0], ''))
+    else:
+        print(__doc__)
+        return 2
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

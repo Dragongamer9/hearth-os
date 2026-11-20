@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <!-- bar | dock | menu: which part of Hearth's panel this is (hearth-plasma-panel apply writes it) -->
+    <entry name="role" type="String"><default></default></entry>
+    <!-- hearth-plasma-panel sync: a Hearth file changed, read it again -->
+    <entry name="stamp" type="String"><default></default></entry>
+    <!-- hearth-plasma-panel open WHAT: open the app menu, Quick settings or the dashboard (WHAT:time) -->
+    <entry name="open" type="String"><default></default></entry>
+  </group>
+</kcfg>
