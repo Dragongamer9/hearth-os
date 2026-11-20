@@ -1,0 +1,13 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Pointer stage</title>
+<!-- tv-ui-check.js: a website (sample-site.html) with Hearth TV's pointer layer (assets/tv/pointer.html) over it, as
+     ViewerActivity stacks them on the TV. The layer's config comes after # like on the TV. -->
+<style>html,body{margin:0;height:100%;overflow:hidden;background:#000}iframe{position:fixed;inset:0;width:100%;height:100%;border:0}#ptr{pointer-events:none;background:transparent}</style>
+</head>
+<body>
+<iframe id="site" src="sample-site.html"></iframe>
+<iframe id="ptr"></iframe>
+<script>document.getElementById('ptr').src = '/assets/tv/pointer.html' + location.hash;</script>
+</body>
+</html>

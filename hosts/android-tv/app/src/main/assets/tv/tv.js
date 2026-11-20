@@ -40,6 +40,7 @@
     link: { sendTo: true, friends: true },
     saver: { after: 10, pictures: 'media', clock: true },
     player: { frame: true, hdr: 'auto', night: false, dialog: false, out: 'tv', subSize: 'm' },
+    pointer: { speed: 'normal', size: 'm', startOn: true },   // the remote's pointer on websites (pointer.js)
     updates: { auto: false }
   };
   T.DEFAULTS = DEFAULTS;
@@ -106,6 +107,11 @@
     root.setProperty('--r', Math.min(look.corner || 4, 12) + 'px');
     if (look.font) root.setProperty('--font', "'" + look.font + "', Inter, 'Noto Sans', Roboto, sans-serif");
     T.lookWallpaper = T.wallpaperUrl(s.wallpaper || (sub && sub.wallpaper) || look.wallpaper);
+  };
+  /** The look's colours for the pointer over a website (pointer.html, drawn outside this page). */
+  T.pointerLook = function () {
+    var cs = getComputedStyle(document.documentElement), g = function (v) { return (cs.getPropertyValue(v) || '').trim(); };
+    return { accent: g('--focus'), panel: g('--panel'), text: g('--text'), font: g('--font') };
   };
   T.lookName = function () {
     var p = T.palettes || {}, l = p[T.settings.look];

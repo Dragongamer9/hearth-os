@@ -18,6 +18,8 @@ function fileFor(url) {
   if (p.startsWith('/assets/tv/theme/wallpapers/')) return path.join(ROOT, 'hosts/linux/desktop/shell/images/wallpapers', p.slice('/assets/tv/theme/wallpapers/'.length));
   if (p.startsWith('/assets/tv/theme/backgrounds/')) return path.join(ROOT, 'os/branding/wallpapers', p.slice('/assets/tv/theme/backgrounds/'.length));
   if (p.startsWith('/assets/')) return path.join(ASSETS, p.slice('/assets/'.length));
+  // The pointer's stage: a pretend website with the pointer layer over it (tools/tv-pointer).
+  if (p.startsWith('/test/') && !p.includes('..')) return path.join(__dirname, 'tv-pointer', p.slice('/test/'.length));
   return null;
 }
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.jpg': 'image/jpeg', '.png': 'image/png' };
@@ -131,10 +133,95 @@ const B = (n) => `/assets/tv/theme/backgrounds/${n}.jpg`;
     await ev(`hearthTV.go('settings', ${JSON.stringify(p)}); hearthTV.screens.settings.act('page', ${JSON.stringify(p)})`);
     await shot('8-settings-' + p.toLowerCase().replace(/ /g, '-'), 900);
   }
+  // Settings › Remote and controllers › Pointer on websites, the Pointer size row chosen.
+  await ev("hearthTV.go('settings', 'Remote and controllers'); hearthTV.screens.settings.act('page', 'Remote and controllers')"); await page.waitForTimeout(400);
+  await ev("(function(){var b=[].slice.call(document.querySelectorAll('.srow')).filter(function(x){return /Pointer size/.test(x.textContent)})[0]; if(!b) throw new Error('no Pointer size row'); hearthTV.render(b.getAttribute('data-key'))})()");
+  await shot('10-pointer-settings');
+  for (const want of ['Pointer on websites', 'Start websites in pointer mode', 'Pointer speed', 'Pointer size']) {
+    if (!(await ev(`document.body.textContent.includes(${JSON.stringify(want)})`))) errors.push('settings: no "' + want + '"');
+  }
+  await ev("hearthTV.screens.settings.act('row', [].slice.call(document.querySelectorAll('.srow')).filter(function(x){return /Pointer speed/.test(x.textContent)})[0].getAttribute('data-arg'))"); await page.waitForTimeout(200);
+  if (!(await ev("hearthTV.settings.pointer.speed === 'fast'"))) errors.push('settings: Pointer speed did not go Normal › Fast');
+  await ev("hearthTV.screens.settings.act('row', [].slice.call(document.querySelectorAll('.srow')).filter(function(x){return /Pointer speed/.test(x.textContent)})[0].getAttribute('data-arg'))");
+  await ev("hearthTV.screens.settings.act('row', [].slice.call(document.querySelectorAll('.srow')).filter(function(x){return /Pointer speed/.test(x.textContent)})[0].getAttribute('data-arg'))");
+  if (!(await ev("hearthTV.settings.pointer.speed === 'normal'"))) errors.push('settings: Pointer speed did not come back to Normal');
+  // Opening a website hands the viewer the look's colours for the pointer.
+  await ev("window.__viewer = null; HearthTVNative.openViewer = function (u, t, l) { window.__viewer = [u, t, l]; }; hearthTV.theaterPlay(hearthTV.json('theater')[1])");
+  const viewer = await ev('window.__viewer');
+  if (!viewer || !JSON.parse(viewer[2] || '{}').accent) errors.push('theater: openViewer got no look for the pointer: ' + JSON.stringify(viewer));
   await ev("hearthTV.set('saver', {after:10, pictures:'wallpapers', clock:true}); hearthTV.go('screensaver')"); await shot('9-screensaver', 1500);
   await ev("hearthTV.back(); hearthTV.set('look','hearth'); hearthTV.applyLook(); hearthTV.go('home')"); await shot('looks-hearth-warm', 1500);
   await ev("hearthTV.set('look','gaming'); hearthTV.set('sub','inferno'); hearthTV.applyLook(); hearthTV.render()"); await shot('looks-gaming-inferno', 900);
   await ev("hearthTV.set('look','steam'); hearthTV.set('sub',''); hearthTV.applyLook(); hearthTV.play({id:'mov1',kind:'movie',title:'Sintel',mins:15,pct:0,year:2010,tags:['4K']})"); await shot('player', 1200);
+
+  // The remote's pointer on a website: pointer.html over a pretend video site, stacked as ViewerActivity stacks them.
+  // A stand-in for ViewerActivity (HearthPointerNative) clicks, long-presses and scrolls what's under the pointer.
+  const pctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
+  await pctx.addInitScript(() => {
+    if (!location.pathname.endsWith('/pointer.html')) return;
+    const site = () => parent.document.getElementById('site');
+    const at = (fx, fy) => { const f = site(); return f.contentDocument.elementFromPoint(fx * f.clientWidth, fy * f.clientHeight); };
+    parent.pointerCalls = [];
+    const note = (n, a) => parent.pointerCalls.push([n].concat(a));
+    window.HearthPointerNative = {
+      ready: () => note('ready', []), move: (fx, fy) => note('move', [fx, fy]), log: () => {},
+      tap: (fx, fy) => { note('tap', [fx, fy]); const el = at(fx, fy); if (el) { el.click(); if (el.focus) el.focus(); } },
+      longPress: (fx, fy) => { note('longPress', [fx, fy]); const el = at(fx, fy); if (el) el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })); },
+      rightClick: (fx, fy) => { note('rightClick', [fx, fy]); const el = at(fx, fy); if (el) el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, button: 2 })); },
+      scroll: (fx, fy, sx, sy) => { note('scroll', [fx, fy, sx, sy]); site().contentWindow.scrollBy(sx * site().clientWidth, sy * site().clientHeight); },
+      back: () => note('back', []), setMode: (m) => note('setMode', [m])
+    };
+  });
+  const pp = await pctx.newPage();
+  pp.on('pageerror', (e) => errors.push('pointer: ' + e.message));
+  const stage = (o) => base + '/test/stage.html#' + encodeURIComponent(JSON.stringify(o));
+  const pshot = async (name, wait) => { await pp.waitForTimeout(wait || 300); await pp.screenshot({ path: path.join(OUT, name + '.jpg'), type: 'jpeg', quality: 80 }); console.log('shot', name); };
+  const pf = (code) => pp.frames().find((f) => f.url().includes('/pointer.html')).evaluate(code);
+  const said = () => pp.evaluate(() => document.getElementById('site').contentDocument.getElementById('said').textContent);
+  const steam = { accent: '#66c0f4', panel: '#1e2633', text: '#dce5ed' };
+  await pp.goto(stage({ speed: 'normal', size: 'm', startOn: true, look: steam })); await pp.waitForTimeout(1200);
+  if (await pf("hp.pointer.mode") !== 'pointer') errors.push('pointer: websites should start in pointer mode');
+  await pshot('pointer-1-website-and-hint');
+  // Held ▶ for 0.7 s: it starts slow and speeds up.
+  const x0 = await pf('hp.pointer.x');
+  await pf("hp.key('right', true)"); await pp.waitForTimeout(700); await pf("hp.key('right', false)");
+  const x1 = await pf('hp.pointer.x');
+  if (!(x1 > x0 + 40)) errors.push(`pointer: holding ▶ moved it only ${x1 - x0}px`);
+  // Onto the player's Play button, then OK.
+  const play = await pp.evaluate(() => { const f = document.getElementById('site'); const r = f.contentDocument.getElementById('play').getBoundingClientRect(); return [(r.left + r.width / 2) / f.clientWidth, (r.top + r.height / 2) / f.clientHeight]; });
+  await pf(`hp.place(${play[0]}, ${play[1]})`);
+  await pf('hp.ok(true)'); await pf('hp.ok(false)');
+  await pshot('pointer-2-click-on-play', 120);
+  if (await said() !== 'Play clicked') errors.push('pointer: OK did not click the Play button under the pointer (' + await said() + ')');
+  // Holding OK: the pointer's menu.
+  await pf('hp.ok(true)'); await pp.waitForTimeout(800); await pf('hp.ok(false)');
+  if (await pf('hp.pointer.menu') !== 0) errors.push('pointer: holding OK did not open the menu');
+  await pshot('pointer-3-long-press-menu');
+  await pf('hp.ok(true)'); await pf('hp.ok(false)');
+  if (await said() !== 'Menu of the player') errors.push('pointer: Long-press here did not reach the page (' + await said() + ')');
+  // The menu's Switch to page mode: the pointer hides and the hint says how to get it back.
+  await pf('hp.ok(true)'); await pp.waitForTimeout(800); await pf('hp.ok(false)');
+  await pf("hp.key('down', true); hp.key('down', false); hp.key('down', true); hp.key('down', false)");
+  await pf('hp.ok(true)'); await pf('hp.ok(false)');
+  if (await pf('hp.pointer.mode') !== 'page') errors.push('pointer: Switch to page mode did not switch');
+  await pshot('pointer-4-page-mode-hint', 500);
+  // Back in pointer mode, holding ▼ at the bottom edge scrolls the page.
+  await pf("hp.mode('pointer'); hp.place(0.5, 0.98)");
+  await pf("hp.key('down', true)"); await pp.waitForTimeout(900); await pf("hp.key('down', false)");
+  const scrolled = await pp.evaluate(() => document.getElementById('site').contentWindow.scrollY);
+  if (!(scrolled > 50)) errors.push('pointer: the page did not scroll at the bottom edge (' + scrolled + ')');
+  await pf('hp.scroll(-1, 0)');
+  // Back: goes back a page (ViewerActivity's part), the menu first when it's open.
+  await pf('hp.back()');
+  const calls = await pp.evaluate(() => window.pointerCalls.map((c) => c[0]));
+  for (const want of ['ready', 'move', 'tap', 'longPress', 'scroll', 'setMode', 'back']) if (!calls.includes(want)) errors.push('pointer: no ' + want + ' call');
+  // Large, in another look, over the page's white header: still clear.
+  await pp.goto(stage({ size: 'l', startOn: true, look: { accent: '#ff7a1a', panel: '#2a1a14', text: '#fff3e8' } })); await pp.waitForTimeout(1000);
+  await pf('hp.place(0.42, 0.045)');
+  await pshot('pointer-5-large-on-white');
+  await pp.goto(stage({ size: 's', startOn: false, look: steam })); await pp.waitForTimeout(1000);
+  if (await pf('hp.pointer.mode') !== 'page') errors.push('pointer: "Start websites in pointer mode" off should start in page mode');
+  await pctx.close();
 
   await browser.close(); server.close();
   if (errors.length) { console.log('::error title=Hearth TV page::' + errors.slice(0, 15).join(' | ').slice(0, 3900)); process.exit(1); }
