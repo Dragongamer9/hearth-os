@@ -351,23 +351,32 @@ sleep 8; front "patch-notes" false; sleep 3
 # File open: KDE's app menu daemon's showMenu (what a window's menu button asks): the bar's global menu opens Kate's
 # first menu, File.
 cat > /tmp/fhp-file-menu.py <<'PY'
-import dbus, sys
+import dbus, re, sys
 bus = dbus.SessionBus()
 pid = int(sys.argv[1])
 dbo = bus.get_object('org.freedesktop.DBus', '/org/freedesktop/DBus')
+def paths(n, p):
+    # the dbusmenu objects under /MenuBar (Qt puts them at /MenuBar/1 and so on)
+    xml = bus.get_object(n, p).Introspect(dbus_interface='org.freedesktop.DBus.Introspectable')
+    if 'com.canonical.dbusmenu' in xml:
+        yield p
+    for c in re.findall(r'<node name="([^"]+)"', xml):
+        yield from paths(n, p.rstrip('/') + '/' + c)
 for n in dbo.ListNames(dbus_interface='org.freedesktop.DBus'):
     if not n.startswith(':'):
         continue
     try:
         if int(dbo.GetConnectionUnixProcessID(n, dbus_interface='org.freedesktop.DBus')) != pid:
             continue
-        lay = bus.get_object(n, '/MenuBar').GetLayout(0, 1, dbus.Array([], signature='s'), dbus_interface='com.canonical.dbusmenu')
+        for p in paths(n, '/MenuBar'):
+            lay = bus.get_object(n, p).GetLayout(0, 1, dbus.Array([], signature='s'), dbus_interface='com.canonical.dbusmenu')
+            first = int(lay[1][2][0][0])
+            print('menu', n, p, first)
+            bus.get_object('org.kde.kappmenu', '/KAppMenu').showMenu(0, 0, n, dbus.ObjectPath(p), first, dbus_interface='org.kde.kappmenu')
+            sys.exit(0)
     except Exception as e:
-        continue
-    first = int(lay[1][2][0][0])
-    print('menu', n, first)
-    bus.get_object('org.kde.kappmenu', '/KAppMenu').showMenu(0, 0, n, dbus.ObjectPath('/MenuBar'), first, dbus_interface='org.kde.kappmenu')
-    break
+        print('no menu on', n, e)
+print('no menus found for', pid)
 PY
 timeout 15 python3 /tmp/fhp-file-menu.py "$(pgrep -x kate | head -1)" >> "$OUT/controller-hint.txt" 2>&1; sleep 3
 shot fp-11-desk-bar-app-menus 0 1920
