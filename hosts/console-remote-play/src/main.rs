@@ -158,6 +158,10 @@ pub struct App {
     pub laptop: bool,
     /// The window's size (the tooltip over Disconnect is placed from it).
     pub size: (f32, f32),
+    /// A frame is being made ready for the screen; the newest one after it waits here.
+    pub allocating: bool,
+    pub next_frame: Option<image::Handle>,
+    shown: Option<Alloc>,
 }
 
 #[derive(Debug, Clone)]
@@ -219,7 +223,18 @@ pub enum Msg {
     Net(Net),
     Used(data::Used),
     Size(f32, f32),
+    Allocated(image::Handle, Alloc),
     None,
+}
+
+/// A frame's place in the renderer's memory, kept while it's on screen.
+#[derive(Clone)]
+pub struct Alloc(std::sync::Arc<std::sync::Mutex<Option<image::Allocation>>>);
+
+impl std::fmt::Debug for Alloc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Alloc")
+    }
 }
 
 // ------------------------------------------------------------------ small helpers
@@ -478,6 +493,9 @@ impl App {
             inhibit: None,
             laptop: has_battery(),
             size: (1920.0, 1080.0),
+            allocating: false,
+            next_frame: None,
+            shown: None,
         };
         let stand_in = fixture().is_some() && !matches!(page, Page::Welcome | Page::SignIn);
         let first = page;
@@ -790,6 +808,9 @@ fn stream_ended(a: &mut App) -> Task<Msg> {
         let _ = c.wait();
     }
     a.frame = None;
+    a.next_frame = None;
+    a.shown = None;
+    a.allocating = false;
     a.menu = false;
     let mut t = vec![];
     if a.full && !a.ally {
@@ -1245,6 +1266,18 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             a.net = n;
             Task::none()
         }
+        Msg::Allocated(h, alloc) => {
+            a.allocating = false;
+            let ok = alloc.0.lock().map(|g| g.is_some()).unwrap_or(false);
+            if ok && a.page == Page::Stream {
+                a.frame = Some(h);
+                a.shown = Some(alloc);
+            }
+            match a.next_frame.take() {
+                Some(h) if stream::running() => show_frame(a, h),
+                _ => Task::none(),
+            }
+        }
         Msg::Size(w, h) => {
             a.size = (w, h);
             Task::none()
@@ -1447,7 +1480,13 @@ fn on_stream(a: &mut App, e: SEv) -> Task<Msg> {
         }
         SEv::Frame => {
             if let Some(f) = stream::frame() {
-                a.frame = Some(image::Handle::from_rgba(f.w, f.h, f.rgba));
+                let h = image::Handle::from_rgba(f.w, f.h, f.rgba);
+                if a.allocating {
+                    // A newer frame waits in place of any older one still waiting.
+                    a.next_frame = Some(h);
+                    return Task::none();
+                }
+                return show_frame(a, h);
             } else if a.frame.is_none() {
                 a.frame = a.still.clone();
             }
@@ -1615,6 +1654,16 @@ fn wide_cut(bytes: &[u8], ratio: f32) -> Option<(u32, u32, Vec<u8>)> {
     let y = (h - nh) / 2;
     let cut = ::image::imageops::crop_imm(&img, 0, y, w, nh).to_image();
     Some((w, nh, cut.into_raw()))
+}
+
+/// iced 0.14 loads images in the background (on the graphics card): a frame is shown once it's ready for the screen
+/// (allocated), so the picture never goes blank while frames keep coming (replacing the handle every frame would leave
+/// the screen always one unloaded frame behind, so black). The allocation is kept until the next frame is on screen.
+/// The same as Capture Card's (hosts/capture-card).
+fn show_frame(a: &mut App, h: image::Handle) -> Task<Msg> {
+    a.allocating = true;
+    let h2 = h.clone();
+    image::allocate(h).map(move |r| Msg::Allocated(h2.clone(), Alloc(std::sync::Arc::new(std::sync::Mutex::new(r.ok())))))
 }
 
 /// Saves a screenshot: Pictures › Screenshots › Console Remote Play YYYY-MM-DD HH-MM-SS.png.

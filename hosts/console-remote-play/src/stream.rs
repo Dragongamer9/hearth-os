@@ -669,6 +669,9 @@ fn read_stats(s: &gstreamer::StructureRef) -> (u64, Option<u32>, u64, u64) {
 
 /// The stand-in stream for CI's pictures (HEARTH_CRP_FIXTURE): the steps in turn, then "started" with made-up stats
 /// (the window shows the fixture's still picture), so every streaming page can be pictured. Never used outside CI.
+/// How many frames the stand-in has made (CI's check that frames keep coming).
+pub static STAND_IN_FRAMES: AtomicU32 = AtomicU32::new(0);
+
 pub fn start_stand_in(out: (u32, u32), step_only: Option<&'static str>) {
     stop();
     let tx = Tx::new();
@@ -705,8 +708,32 @@ pub fn start_stand_in(out: (u32, u32), step_only: Option<&'static str>) {
             Stats { delay_ms: Some(34), mbps: 7.9, height: 720, fps: 60, loss: 0.002, session_bytes: 400_000_000 }
         };
         send(Event::Stats(st));
+        // A moving stand-in: the fixture's picture as 30 new frames a second, each a little different (a corner
+        // block's shade), so the window is tested as it is with a real stream (frames replacing frames).
+        let base = crate::fixture().and_then(|f| image::open(f.join("stream-frame.jpg")).ok()).map(|i| i.resize_exact(out.0, out.1, image::imageops::FilterType::Triangle).to_rgba8());
+        let mut n: u32 = 0;
         while !ctl.stop.load(Ordering::Relaxed) {
-            std::thread::sleep(Duration::from_millis(200));
+            if let Some(b) = &base {
+                let mut px = b.as_raw().clone();
+                let shade = (n % 64) as u8 * 2;
+                for y in 0..6usize {
+                    for x in 0..6usize {
+                        let i = (y * out.0 as usize + x) * 4;
+                        px[i] = shade;
+                        px[i + 1] = shade;
+                        px[i + 2] = shade;
+                    }
+                }
+                *FRAME.lock().unwrap() = Some(Frame { w: out.0, h: out.1, rgba: px });
+                STAND_IN_FRAMES.fetch_add(1, Ordering::Relaxed);
+                if !FRAME_PENDING.swap(true, Ordering::AcqRel) {
+                    send(Event::Frame);
+                }
+                n += 1;
+                std::thread::sleep(Duration::from_millis(33));
+            } else {
+                std::thread::sleep(Duration::from_millis(200));
+            }
         }
         send(Event::Ended);
         *RUNNING.lock().unwrap() = None;

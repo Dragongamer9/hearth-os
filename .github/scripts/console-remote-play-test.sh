@@ -107,6 +107,9 @@ HEARTH_CRP_AUTO_REDIRECT=1 run crp-1c-signed-in 0 9 --page signin
 run crp-2-my-consoles 20 3 --page consoles
 run crp-3-connecting 0 4 --page connecting
 HEARTH_CRP_NET="wifi|5|Home" run crp-4-streaming-bar 0 4 --page stream --show bar,pill,disconnect-tip
+# The stream drawn by the graphics card (wgpu, as on the Ally), with the stand-in sending 30 new frames a second:
+# each frame is made ready before it's shown, so the picture must never be blank.
+HEARTH_RENDERER=gpu HEARTH_CRP_NET="wifi|5|Home" run crp-4-streaming-bar-gpu 0 6 --page stream --show bar,pill,disconnect-tip
 # 16.5 GB before this stream, 1.6 GB in it (the stand-in's): 18.1 GB, over the 90 % warning.
 seed 16500000000
 run crp-4b-streaming-data-warning 0 5 --page stream --show warning,shot
@@ -126,6 +129,7 @@ HEARTH_CRP_NET="wifi|2.4|OfficeNet" run crp-g5-ally-trouble 0 4 --game-mode --pa
 HEARTH_RENDERER=gpu HEARTH_CRP_NET="wifi|2.4|OfficeNet" run crp-g5-ally-trouble-gpu 0 6 --game-mode --page trouble
 run crp-g6-ally-settings 20 3 --game-mode --page settings
 run crp-g7a-ally-streaming-overlay 0 4 --game-mode --page stream --show pill
+HEARTH_RENDERER=gpu run crp-g7a-ally-streaming-overlay-gpu 0 6 --game-mode --page stream --show pill
 run crp-g7b-ally-quick-menu 0 4 --game-mode --page stream --show menu
 run crp-g8-ally-cloud-optional 0 4 --game-mode --page cloud
 
