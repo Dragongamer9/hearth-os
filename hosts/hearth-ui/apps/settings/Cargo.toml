@@ -20,6 +20,9 @@ iced = { workspace = true, features = ["image", "qr_code", "advanced"] }
 # The wallpapers', account pictures' and login screen's pictures (pics.rs): decoded here off the window's thread and
 # shrunk, as Hearth Files does.
 image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+# The boot splashes' and startup animations' preview sheets (bootpics.rs), decoded at a half or less of their size for
+# the cards' posters (JPEG's own scaled decoding), so a whole sheet is never held for one small picture.
+jpeg-decoder = { version = "0.3", default-features = false }
 serde_json = { workspace = true }
 futures = { workspace = true }
 libc = { workspace = true }

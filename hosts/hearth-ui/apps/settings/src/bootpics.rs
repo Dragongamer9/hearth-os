@@ -73,26 +73,62 @@ fn store() -> &'static Mutex<Store> {
     S.get_or_init(|| Mutex::new(Store { posters: HashMap::new(), playing: None }))
 }
 
-fn decode(path: &str) -> Option<::image::RgbaImage> {
+/// A sheet's pixels (RGB) at about `want_w` wide or more, and the sheet's frame shape at that size. The sheets are
+/// JPEGs: decoded at 1/2, 1/4 or 1/8 of their size straight from the file when that's enough (a card's poster needs
+/// half), so a poster never holds a whole sheet in memory; anything else is read whole by the image crate.
+fn decode(path: &str, g: Geo, want_w: u32) -> Option<(::image::RgbImage, Geo)> {
     if std::fs::metadata(path).map(|m| m.len() > MAX_BYTES).unwrap_or(true) {
         return None;
     }
-    if let Ok((w, h)) = ::image::image_dimensions(path) {
-        if (w as u64) * (h as u64) > 60_000_000 {
-            return None;
+    let (img, ow) = match jpeg_scaled(path, want_w) {
+        Some(x) => x,
+        None => {
+            if let Ok((w, h)) = ::image::image_dimensions(path) {
+                if (w as u64) * (h as u64) > 60_000_000 {
+                    return None;
+                }
+            }
+            let img = ::image::ImageReader::open(path).ok()?.with_guessed_format().ok()?.decode().ok()?.to_rgb8();
+            let w = img.width();
+            (img, w)
         }
-    }
-    Some(::image::ImageReader::open(path).ok()?.with_guessed_format().ok()?.decode().ok()?.to_rgba8())
+    };
+    let k = img.width() as f64 / ow.max(1) as f64;
+    let sg = Geo { fw: ((g.fw as f64 * k).round() as u32).max(1), fh: ((g.fh as f64 * k).round() as u32).max(1), ..g };
+    Some((img, sg))
 }
 
-/// Frame `i` of a sheet (inside the sheet: a sheet that's smaller than it says gives what's there).
-fn frame_of(img: &::image::RgbaImage, g: Geo, i: u32) -> Option<::image::RgbaImage> {
+/// A JPEG decoded at the smallest of its own scales (1, 1/2, 1/4, 1/8) that's at least `want_w` wide, and its full
+/// width. None when it isn't a JPEG this can read.
+fn jpeg_scaled(path: &str, want_w: u32) -> Option<(::image::RgbImage, u32)> {
+    let f = std::fs::File::open(path).ok()?;
+    let mut d = jpeg_decoder::Decoder::new(std::io::BufReader::new(f));
+    d.read_info().ok()?;
+    let info = d.info()?;
+    let (ow, oh) = (info.width as u32, info.height as u32);
+    if ow == 0 || oh == 0 || (ow as u64) * (oh as u64) > 60_000_000 {
+        return None;
+    }
+    let tw = want_w.clamp(1, ow);
+    let th = ((oh as u64 * tw as u64) / ow as u64).max(1) as u32;
+    let (w, h) = d.scale(tw as u16, th as u16).ok()?;
+    let px = d.decode().ok()?;
+    let rgb: Vec<u8> = match d.info()?.pixel_format {
+        jpeg_decoder::PixelFormat::RGB24 => px,
+        jpeg_decoder::PixelFormat::L8 => px.iter().flat_map(|&v| [v, v, v]).collect(),
+        _ => return None,
+    };
+    Some((::image::RgbImage::from_raw(w as u32, h as u32, rgb)?, ow))
+}
+
+/// Frame `i` of a sheet (inside the sheet: a sheet that's smaller than it says gives what's there), as RGBA.
+fn frame_of(img: &::image::RgbImage, g: Geo, i: u32) -> Option<::image::RgbaImage> {
     let (x, y) = ((i % g.cols) * g.fw, (i / g.cols) * g.fh);
     if x >= img.width() || y >= img.height() {
         return None;
     }
     let (w, h) = (g.fw.min(img.width() - x), g.fh.min(img.height() - y));
-    Some(::image::imageops::crop_imm(img, x, y, w, h).to_image())
+    Some(::image::DynamicImage::ImageRgb8(::image::imageops::crop_imm(img, x, y, w, h).to_image()).to_rgba8())
 }
 
 /// The memory a sheet took while it was read goes back to the system (a whole sheet is ~20 MB as pixels; without this
@@ -132,7 +168,8 @@ pub fn load_posters(sheets: Vec<Sheet>, g: Geo) -> Option<impl Future<Output = (
     let (tx, rx) = futures::channel::oneshot::channel::<()>();
     let _ = std::thread::Builder::new().name("hearth-settings-boot-pictures".into()).spawn(move || {
         for s in todo {
-            let h = decode(&s.path).and_then(|img| frame_of(&img, g, s.poster)).map(|f| {
+            // Half the sheet's size is enough for a card (its frames are 200 wide then; a card is 128).
+            let h = decode(&s.path, g, g.cols * CARD_W as u32).and_then(|(img, sg)| frame_of(&img, sg, s.poster)).map(|f| {
                 let (w, h) = ((CARD_W as u32) * 2, (CARD_H as u32) * 2);
                 handle(::image::imageops::resize(&f, w.min(f.width()), h.min(f.height()), ::image::imageops::FilterType::Triangle))
             });
@@ -169,9 +206,9 @@ pub fn load_frames(s: &Sheet, g: Geo) -> Option<impl Future<Output = ()> + Send 
     let (tx, rx) = futures::channel::oneshot::channel::<()>();
     let _ = std::thread::Builder::new().name("hearth-settings-boot-frames".into()).spawn(move || {
         let mut out = Vec::new();
-        if let Some(img) = decode(&s.path) {
+        if let Some((img, sg)) = decode(&s.path, g, g.cols * g.fw) {
             for i in 0..s.frames {
-                match frame_of(&img, g, i) {
+                match frame_of(&img, sg, i) {
                     Some(f) => out.push(handle(f)),
                     None => break,
                 }
@@ -315,13 +352,13 @@ mod tests {
     #[test]
     fn a_frame_is_cut_from_its_place_in_the_sheet() {
         let g = Geo { fw: 4, fh: 2, cols: 3, fps: 10 };
-        let mut img = ::image::RgbaImage::new(12, 4);
+        let mut img = ::image::RgbImage::new(12, 4);
         for (x, y, px) in img.enumerate_pixels_mut() {
-            *px = ::image::Rgba([(x / 4) as u8, (y / 2) as u8, 0, 255]);
+            *px = ::image::Rgb([(x / 4) as u8, (y / 2) as u8, 0]);
         }
         let f = frame_of(&img, g, 4).unwrap();
         assert_eq!((f.width(), f.height()), (4, 2));
-        assert_eq!(f.get_pixel(0, 0).0[..2], [1, 1]);
+        assert_eq!(f.get_pixel(0, 0).0, [1, 1, 0, 255]);
         assert!(frame_of(&img, g, 6).is_none());
     }
 
