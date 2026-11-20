@@ -350,6 +350,20 @@ evd=$(( ($(ticks "$qs") - t0d) * 100 / HZ )); md1=$(rss "$qs")
 note "an app's menu entry added, written again 5 times unchanged, renamed and removed: the shell used $(printf "%d.%02d s" $((evd / 100)) $((evd % 100))) of the processor (memory ${md0} → ${md1} MB)"
 [ "$evd" -le 100 ] || err "an app's menu entry coming, written again, changing and going cost the shell $(printf "%d.%02d s" $((evd / 100)) $((evd % 100))) of the processor (limit 1 s): the app lists are made again for nothing"
 [ $((md1 - md0)) -le 10 ] || err "an app's menu entry coming and going left the shell ${md0} → ${md1} MB: something made for the app list isn't let go"
+# ...and the app lists really made again, eight times (one of the 300 entries renamed each time, every entry written
+# again too: a whole folder looked at again, as an update does): memory stays where it was (the integration image
+# check of Nov 20: Firehold 460 → 576 MB at rest, a leak per rebuild would fit), each rebuild well under a second.
+t0r=$(ticks "$qs"); mr0=$(rss "$qs")
+for r in 1 2 3 4 5 6 7 8; do
+  for f in "$HOME"/.local/share/applications/hearth-rest-fill-*.desktop; do touch "$f"; done
+  sed -i "s/^Name=Rest Fill 001.*/Name=Rest Fill 001 round $r/" "$HOME/.local/share/applications/hearth-rest-fill-001.desktop"
+  sleep 6
+done
+sleep 10
+evr=$(( ($(ticks "$qs") - t0r) * 100 / HZ )); mr1=$(rss "$qs")
+note "the app lists made again 8 times (300 entries written again, one renamed): the shell used $(printf "%d.%02d s" $((evr / 100)) $((evr % 100))) of the processor, memory ${mr0} → ${mr1} MB"
+[ "$evr" -le 400 ] || err "the app lists made again 8 times cost the shell $(printf "%d.%02d s" $((evr / 100)) $((evr % 100))) (limit 4 s, half a second each)"
+[ $((mr1 - mr0)) -le 15 ] || err "the app lists made again 8 times left the shell ${mr0} → ${mr1} MB: each rebuild keeps something"
 
 # ---- Hearth Files: cold (first time) and warm, from the command to the first change on screen (grim, unscaled ppm)
 if [ "$KIND" = classic ]; then
