@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hearth OS</title>
-<meta name="description" content="Hearth OS is a free, Debian-based OS for gaming PCs and handhelds: it turns on into Steam Game Mode with all your games in one place, has a desktop that feels like Windows, only friendlier, and updates that can always go back.">
+<meta name="description" content="Hearth OS is a free, Fedora-based OS for gaming PCs and handhelds: it turns on into Steam Game Mode with all your games in one place, has a desktop that feels like Windows, only friendlier, and updates that can always go back.">
 <meta property="og:title" content="Hearth OS">
-<meta property="og:description" content="A free, Debian-based gaming OS for PCs and handhelds: Steam Game Mode on the couch, Mantel on the desk.">
+<meta property="og:description" content="A free, Fedora-based gaming OS for PCs and handhelds: Steam Game Mode on the couch, KDE Plasma with Hearth's apps on the desk.">
 <meta property="og:image" content="img/desk-classic.webp">
 <meta name="theme-color" content="#171a21">
 <meta name="color-scheme" content="dark light">
@@ -442,7 +442,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
   <div class="wrap">
     <div class="copy">
       <h1 class="big">Your PC,<br><em>ready to play.</em></h1>
-      <p class="lede">Turn it on and you're in Steam Game Mode, with your Steam, GOG, Epic and Battle.net games in one place. And when you want a desktop, it feels like Windows, only friendlier. Free, and built on Debian.</p>
+      <p class="lede">Turn it on and you're in Steam Game Mode, with your Steam, GOG, Epic and Battle.net games in one place. And when you want a desktop, it feels like Windows, only friendlier. Free, and built on Fedora.</p>
       <div class="ctas">
         <a class="btn go" href="#download"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Get Hearth OS</a>
         <a class="btn line" href="#soundtrack" id="heroPlay">Play the soundtrack</a>
@@ -501,7 +501,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
   <div class="wrap">
     <div class="apphead">
       <div>
-        <span class="eyebrow">Mantel, the desktop</span>
+        <span class="eyebrow">The desktop</span>
         <h2 class="h2x">Feels like Windows.<br>Friendlier.</h2>
       </div>
       <p>The apps you already know how to use, in plain words. Your files live on a Hearth (C:) drive, Windows programs open with a double-click, and Super+R and Super+X do what your hands expect.</p>
@@ -591,10 +591,10 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
     <div class="get">
       <div class="box main">
         <h3>Offline USB</h3>
-        <p>Hearth OS on Debian on the stick, so it installs without internet. It updates itself to the newest version after installing.</p>
-        <p class="v" data-file="hearth-os-peppermint.iso"></p>
-        <a class="btn go" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download <small>about 4.3 GB</small></a>
-        <a class="small" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso.sha256">SHA-256 checksum</a>
+        <p>Hearth OS, Fedora edition, on the stick, so it installs without internet. It updates itself to the newest version after installing.</p>
+        <p class="v" data-file="hearth-os-anatase.iso"></p>
+        <a class="btn go" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-anatase.iso"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download <small>about 6 GB</small></a>
+        <a class="small" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-anatase.iso.sha256">SHA-256 checksum</a>
       </div>
       <div class="side">
         <div class="box alt" id="recovery">
@@ -606,7 +606,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
         </div>
       </div>
     </div>
-    <p class="small" style="margin-top:20px">Nvidia graphics and other ways to install are in <a href="docs/install.html">Installing</a>. Hearth OS is in beta: keep a backup of anything important.</p>
+    <p class="small" style="margin-top:20px">Fedora is Hearth OS's main version: the Debian edition has been merged into it and archived. Nvidia graphics and other ways to install are in <a href="docs/install.html">Installing</a>. Hearth OS is in beta: keep a backup of anything important.</p>
 
     <div class="ember" id="ember">
       <div>
@@ -638,11 +638,11 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
     <div class="faq">
       <div>
         <details><summary>What hardware does it need?</summary><p>Steam Deck, ROG Ally, Legion Go and most x86-64 desktops and laptops with AMD, Intel or Nvidia (GTX 16 / RTX 20 and newer) graphics. For installing, a USB stick of 16 GB or more and a drive of 64 GB or more.</p></details>
-        <details><summary>Do I need a Steam account?</summary><p>Steam Game Mode is Valve's Steam client, so you sign in to Steam there. Mantel, Hearth's desktop, works without one.</p></details>
+        <details><summary>Do I need a Steam account?</summary><p>Steam Game Mode is Valve's Steam client, so you sign in to Steam there. Desktop Mode works without one.</p></details>
         <details><summary>Can I go back to the last version?</summary><p>Yes. Updates keep the previous system in the boot menu; pick it, or use Settings › System › Updates. A version that fails to start twice in a row goes back by itself, and holding Volume Down while it starts opens Hearth Recovery. If nothing starts, the <a href="#recovery">Recovery USB</a> can start the previous version.</p></details>
       </div>
       <div>
-        <details><summary>I'm on Anatase. What now?</summary><p>Anatase keeps working on its last version, but gets no more updates. To keep getting updates, install Hearth OS on Debian; games on a separate drive stay.</p></details>
+        <details><summary>I'm on Hearth OS on Debian. What now?</summary><p>Fedora is Hearth OS's main version now: the Debian edition has been merged into it and archived. Move over in Settings › Updates › Switch edition: your home folder stays exactly as it is, and the Debian version you came from stays in the boot menu so you can go back.</p></details>
         <details><summary>Is it really free?</summary><p>Yes. Hearth OS is free and open source under the GPL-3.0. Games you buy come from the stores as usual.</p></details>
         <details><summary>Something broke. How do I report it?</summary><p>Send logs from Settings › System › Help &amp; logs or with <code>hearth-send-logs</code>, and <a href="docs/troubleshooting.html#ask">tell us what happened</a>.</p></details>
       </div>
@@ -663,7 +663,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
     <a href="docs/troubleshooting.html#ask">Report a problem</a>
     <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
     <a href="#support" id="support-foot" hidden>Support</a>
-    <p class="legal">Hearth OS is an independent project, not affiliated with or endorsed by Valve, Epic Games, GOG, Microsoft, Blizzard, ASUS, Lenovo or Debian.
+    <p class="legal">Hearth OS is an independent project, not affiliated with or endorsed by Valve, Epic Games, GOG, Microsoft, Blizzard, ASUS, Lenovo, the Fedora Project or Debian.
       Steam, Steam Deck, Epic Games, GOG, Xbox, Battle.net, ROG Ally and Legion Go are trademarks of their owners. Screenshots are of Hearth itself, taken by its automatic tests.
       The Anybody and Figtree typefaces are under the SIL Open Font License (<a href="fonts/OFL.txt">Anybody</a>, <a href="fonts/OFL-figtree.txt">Figtree</a>).</p>
   </div>
@@ -733,7 +733,7 @@ fetch('https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/latest.json', {cache:
     el.textContent = t;
     var small = el.parentNode.querySelector('.btn small'); if (small && e.size > 0) small.textContent = (e.size / 1e9).toFixed(1) + ' GB';
   });
-  var live = d['hearth-os-peppermint.iso'] || d['hearth-os-live.iso']; if (live && ok(live.version)) document.getElementById('get-title').textContent = 'Get Hearth OS ' + shown(live.version);
+  var live = d['hearth-os-anatase.iso']; if (live && ok(live.version)) document.getElementById('get-title').textContent = 'Get Hearth OS ' + shown(live.version);
 }).catch(function(){});
 
 // Copy buttons.

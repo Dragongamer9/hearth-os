@@ -1,9 +1,9 @@
-# Hearth's small installer USB (os/installer): boots into the Hearth app's install screens and downloads Hearth OS
-# while installing, so the ISO is about 2 GB. The universal installer, one ISO for every PC: its screens offer
-# Hearth OS on Anatase (recommended, ghcr.io/dragongamer9/hearth-os:latest) or the Beta Experimental editions on
-# Ubuntu, CachyOS and Peppermint (:testing). Builds the ISO, boots it in a virtual machine and saves screenshots
-# to the ci/installer-shots branch. Uploads to the download site (Cloudflare R2, as hearth-os-installer.iso) only
-# when run by hand with Upload ticked.
+# Hearth's installer USB (os/installer): boots into the Hearth app's install screens. 1.16: the offline USB is the
+# Fedora edition's (edition: anatase, ghcr.io/dragongamer9/hearth-os:stable on the stick, pinned by digest), uploaded
+# as hearth-os-anatase.iso, which the website's Download and Hearth Disks' "Make a bootable USB" point at. The other
+# editions (Debian: peppermint, archived in 1.16) can still be built. Builds the ISO, goes through every screen in a
+# virtual PC and installs (End-to-end), with screenshots on a ci/ branch. Uploads to the download site (Cloudflare R2)
+# only when run by hand with Upload ticked, and only after End-to-end passed (the owner's go-ahead, like a release).
 name: Hearth installer ISO
 
 on:
@@ -18,8 +18,8 @@ on:
       edition:
         description: 'installer: the small online installer (every edition). An edition: its offline installer (the installer plus that edition, no internet needed)'
         type: choice
-        options: [installer, ubuntu, cachyos, peppermint]
-        default: peppermint
+        options: [anatase, installer, ubuntu, cachyos, peppermint]
+        default: anatase
       e2e:
         description: 'End-to-end test before uploading: go through every installer screen in a virtual PC (screenshots), install, then start the installed system'
         type: boolean
@@ -29,6 +29,10 @@ on:
         type: choice
         options: [rust, electron]
         default: rust
+      carry_tag:
+        description: 'anatase only, for a test before the release: carry this test tag (test-<version>, e.g. test-1.15) instead of :stable. The installed system still updates from :stable. Never uploaded. Empty: :stable'
+        type: string
+        default: ''
 
 permissions:
   contents: write
@@ -42,6 +46,7 @@ jobs:
       HAVE_R2: ${{ secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
       APP: ${{ inputs.app || 'rust' }}
       ED: ${{ inputs.edition || 'installer' }}
+      CARRY: ${{ inputs.carry_tag || '' }}
       SHOTS: ${{ inputs.app == 'electron' && 'ci/installer-shots-electron' || 'ci/installer-shots' }}${{ inputs.edition && inputs.edition != 'installer' && format('-{0}', inputs.edition) || '' }}
     steps:
       - uses: actions/checkout@v4
@@ -89,6 +94,12 @@ jobs:
             # The edition's image, as the installer's table names it (hearth-install EDITIONS), pinned by digest.
             img=$(grep -oP "^    '$ED': \{'image': '\K[^']+" os/live/src/hearth-install)
             [ -n "$img" ] || { echo "::error title=Offline installer::no image for $ED in hearth-install"; exit 1; }
+            if [ -n "$CARRY" ]; then
+              # A test before the release: the same package's test tag on the stick (hearth-install only checks the
+              # package name), while the installed system's updates still come from the table's tag.
+              [ "$ED" = anatase ] && echo "$CARRY" | grep -Eqx 'test-[0-9]+(\.[0-9]+)*' || { echo "::error title=Offline installer::carry_tag is for anatase and test-<version> only"; exit 1; }
+              img="${img%:*}:$CARRY"
+            fi
             digest=$(skopeo inspect --retry-times 3 --format '{{.Digest}}' "docker://$img")
             ref="${img%:*}@$digest"
             echo "::notice title=Offline installer::$ED carries $img ($ref)"
@@ -148,7 +159,7 @@ jobs:
           git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/e2e-ui-${{ env.ED }} || true
 
       - name: Upload to the download site (Cloudflare R2)
-        if: env.HAVE_R2 == 'true' && inputs.upload && steps.e2e.outcome == 'success'
+        if: env.HAVE_R2 == 'true' && inputs.upload && inputs.carry_tag == '' && steps.e2e.outcome == 'success'
         env:
           R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}

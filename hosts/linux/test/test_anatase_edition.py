@@ -157,25 +157,39 @@ class Plasma(unittest.TestCase):
 
 
 class Workflow(unittest.TestCase):
-    def test_publish_only_to_a_test_tag(self):
+    def test_publishing_the_release_and_test_tags(self):
+        """1.16: a release on main publishes the release channel (:stable, :stable-<version>, the old test tags
+        devices follow); by hand only test-<version> tags; never :latest, :testing or Debian's image."""
         wf = (REPO / '.github' / 'workflows' / 'base-anatase.yml').read_text()
-        self.assertIn("PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' }}", wf)
+        self.assertIn("PUBLISH: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)) }}", wf)
         self.assertIn("TAG_IN: ${{ github.event_name == 'workflow_dispatch' && inputs.test_tag || '' }}", wf)
-        self.assertIn('TEST_TAG: test-1.15', wf)
+        self.assertIn('STABLE_TAG: stable\n', wf)
+        self.assertIn('BRIDGE_TAGS: test-1.15\n', wf, "1.15's devices (test-1.15) get the release through their tag")
         self.assertIn('IMAGE: ghcr.io/dragongamer9/hearth-os\n', wf)
-        self.assertNotIn('push:\n', wf.split('jobs:')[0], 'no builds on push')
-        step = wf.split('- name: Publish to the test tag')[1]
-        self.assertIn("grep -Eqx 'test-[0-9]+(\\.[0-9]+)*'", step)
+        trig = wf.split('jobs:')[0]
+        self.assertIn('push:\n    branches: [main]\n', trig, 'a release (a push to main) publishes the release channel')
+        self.assertNotIn('pull_request', trig)
+        step = wf.split('- name: Publish (the release, or the test tag)')[1].split('\n  # ')[0]
         self.assertIn('success()', step)
+        self.assertIn('[ "$GITHUB_REF" = refs/heads/main ]', step)
+        self.assertIn('tags="$STABLE_TAG $STABLE_TAG-$v $BRIDGE_TAGS"', step)
+        self.assertIn("python3 tools/hearth_version.py show", step)
+        self.assertIn("by hand only test-<version> tags", step)
         pushes = re.findall(r'podman push .*', step)
-        self.assertEqual(len(pushes), 1, pushes)     # one push, of this run's image, to the checked test tag
-        self.assertRegex(pushes[0], r'^podman push (--[\w-]+(?: [\w./-]+)? )*--digestfile /tmp/digest hearth-os:anatase "\$IMAGE:\$tag"$')
+        self.assertEqual(len(pushes), 2, pushes)     # the first tag, then the same image to the others
+        for p in pushes:
+            self.assertRegex(p, r'^podman push (--[\w-]+(?: [\w./-]+)? )*--digestfile /tmp/digest hearth-os:anatase "\$IMAGE:\$tag"$')
         for never in (':latest', 'hearth-peppermint', ':testing'):
             self.assertNotIn(never, step)
+        self.assertIn('case "$tag" in latest|testing|testing-*)', step)
         self.assertIn('not the image this run built', step)
         dispatch = wf.split('workflow_dispatch:')[1].split('env:')[0]
         self.assertRegex(dispatch, r"publish:[\s\S]*?default: false")
         self.assertRegex(dispatch, r"test_tag:[\s\S]*?default: ''")
+        # The image knows which channel it's for, and the check reads it.
+        self.assertIn('--build-arg HEARTH_CHANNEL="${{ steps.ver.outputs.channel }}"', wf)
+        self.assertIn('-e HEARTH_CHANNEL="${{ steps.ver.outputs.channel }}"', wf)
+        self.assertIn('if [ "$PUBLISH" != true ] && [ -n "$TAG_IN" ]; then ch="$TAG_IN"; else ch="$STABLE_TAG"; fi', wf)
         # reuse_run: only this workflow's runs, only when the app sources didn't change, every artifact there.
         self.assertRegex(dispatch, r"reuse_run:[\s\S]*?default: ''")
         self.assertIn('[ "$path" = .github/workflows/base-anatase.yml ]', wf)
@@ -184,10 +198,27 @@ class Workflow(unittest.TestCase):
         for job in ('app', 'browser', 'hearth-steam', 'kde'):
             self.assertIn("  %s:\n    name:" % job, wf)
         self.assertEqual(wf.count("if: ${{ github.event_name != 'workflow_dispatch' || inputs.reuse_run == '' }}"), 4)
-        # The guard itself.
-        for tag, ok in (('test-1.15', True), ('test-1', True), ('latest', False), ('testing', False), ('test-1.15;x', False), ('test-', False)):
-            r = subprocess.run(['bash', '-c', "echo \"$1\" | grep -Eqx 'test-[0-9]+(\\.[0-9]+)*'", '_', tag])
+        # The guards themselves.
+        tag_ok = r"'stable|stable-[0-9]+(\.[0-9]+)*|test-[0-9]+(\.[0-9]+)*'"
+        self.assertIn("grep -Eqx " + tag_ok, step)
+        for tag, ok in (('stable', True), ('stable-1.16', True), ('test-1.15', True), ('test-1', True), ('latest', False),
+                        ('testing', False), ('test-1.15;x', False), ('test-', False), ('stable-', False), ('1.16', False)):
+            r = subprocess.run(['bash', '-c', "echo \"$1\" | grep -Eqx " + tag_ok, '_', tag])
             self.assertEqual(r.returncode == 0, ok, tag)
+
+    def test_the_image_says_its_channel(self):
+        b = (ANATASE / 'build.sh').read_text()
+        self.assertIn('"image-tag": "${HEARTH_CHANNEL}", "channel": "${CH_KIND}", "test": ${CH_TEST}', b)
+        self.assertNotIn('"image-tag": "test-1.15"', b)
+        c = (ANATASE / 'Containerfile').read_text()
+        self.assertIn('ARG HEARTH_CHANNEL=stable', c)
+        self.assertIn('HEARTH_CHANNEL="${HEARTH_CHANNEL}" /ctx/build.sh', c)
+        # build.sh's own channel switch, as a shell snippet.
+        snippet = b.split('HEARTH_CHANNEL=${HEARTH_CHANNEL:-stable}')[1].split('cat > /usr/share/nimbus/image-info.json')[0]
+        for ch, want in (('stable', 'stable false'), ('test-1.16', 'test true')):
+            out = subprocess.run(['bash', '-c', 'set -e; HEARTH_CHANNEL=$1' + snippet + 'echo "$CH_KIND $CH_TEST"', '_', ch], capture_output=True, text=True)
+            self.assertEqual(out.stdout.strip(), want, ch)
+        self.assertNotEqual(subprocess.run(['bash', '-c', 'HEARTH_CHANNEL=latest' + snippet + 'echo ok'], capture_output=True, text=True).returncode, 0)
 
     def test_build_script(self):
         b = (ANATASE / 'build.sh').read_text()

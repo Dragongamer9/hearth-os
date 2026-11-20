@@ -9,12 +9,14 @@ warn() { if bash -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::warni
 echo "--- the base"
 check "it's Fedora $(rpm -E %fedora) (45 or newer)" "[ \"\$(rpm -E %fedora)\" -ge 45 ]"
 echo "::notice title=base::$(. /usr/lib/os-release; echo "$PRETTY_NAME, Fedora $(rpm -E %fedora)"); kernel $(ls /usr/lib/modules | sort -V | tail -1); $(rpm -q --qf '%{NAME} %{VERSION}' plasma-workspace kwin gamescope steam hhd 2>/dev/null | tr '\n' ';')"
-check "it says it's the Anatase edition, the test" "grep -q '\"base\": \"anatase\"' /usr/share/nimbus/image-info.json && grep -q '\"image-tag\": \"test-1.15\"' /usr/share/nimbus/image-info.json"
+# The tag it's for (base-anatase.yml's HEARTH_CHANNEL: stable for the release and branch checks, test-<version> for a test).
+CH=${HEARTH_CHANNEL:-stable}
+check "it says it's the Fedora edition (Anatase), for $CH" "python3 -c 'import json, sys; i = json.load(open(\"/usr/share/nimbus/image-info.json\")); sys.exit(0 if i[\"base\"] == \"anatase\" and i[\"image-tag\"] == sys.argv[1] and i[\"channel\"] == (\"stable\" if sys.argv[1] == \"stable\" else \"test\") and i[\"test\"] == (sys.argv[1] != \"stable\") else 1)' $CH"
 check "bootc and podman are there (updates and Switch edition)" "command -v bootc && command -v podman"
 check "video can be decoded by the graphics chip (VA-API: Intel iHD and AMD)" "test -e /usr/lib64/dri/iHD_drv_video.so && test -e /usr/lib64/dri/radeonsi_drv_video.so && command -v vainfo"
 
 echo "--- updates, Switch edition, the boot chain (red flag 2)"
-check "hearth-admin is valid Python and knows the Anatase test tag" "python3 -m py_compile /usr/libexec/nimbus/hearth-admin && grep -q \"'test-1.15'\" /usr/libexec/nimbus/hearth-admin"
+check "hearth-admin is valid Python and knows the release channel (stable) and the old test tags" "python3 -m py_compile /usr/libexec/nimbus/hearth-admin && grep -q \"^STABLE_TAG = 'stable'\" /usr/libexec/nimbus/hearth-admin && grep -q 'hearth-os:test-' /usr/libexec/nimbus/hearth-admin"
 check "the polkit rule for hearth-admin is installed" "test -f /usr/share/polkit-1/rules.d/49-hearth-admin.rules"
 check "the clean install's first start is installed, enabled and also runs without a plan (a switch by hand from Debian)" \
   "test -x /usr/libexec/nimbus/hearth-clean-install && test -L /etc/systemd/system/multi-user.target.wants/hearth-clean-install.service && grep -q 'ConditionPathExists=$' /usr/lib/systemd/system/hearth-clean-install.service.d/20-hearth-arrival.conf"

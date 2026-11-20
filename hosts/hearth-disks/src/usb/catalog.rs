@@ -424,11 +424,14 @@ pub mod tests {
         assert!(bad.is_empty(), "usb/catalog.json:\n{}", bad.join("\n"));
         // What the owner asked for is there.
         for id in ["fedora-workstation", "fedora-kde", "ubuntu-lts", "kubuntu-lts", "debian-netinst", "debian-live-kde", "mint-cinnamon", "popos-intel",
-                   "arch", "cachyos", "bazzite", "opensuse-tumbleweed", "manjaro-kde", "windows-11", "hearth-peppermint", "hearth-recovery"] {
+                   "arch", "cachyos", "bazzite", "opensuse-tumbleweed", "manjaro-kde", "windows-11", "hearth-fedora", "hearth-recovery"] {
             assert!(c.entry(id).is_some(), "{id} is missing");
         }
-        // Not offered any more: the small online installer and the archived Anatase offline USB.
-        for id in ["hearth-installer", "hearth-live"] { assert!(c.entry(id).is_none(), "{id} is offered again"); }
+        // Not offered any more: the small online installer, the archived Anatase live USB and (1.16) the archived
+        // Debian offline USB: Hearth OS's offline USB is the Fedora edition's.
+        for id in ["hearth-installer", "hearth-live", "hearth-peppermint"] { assert!(c.entry(id).is_none(), "{id} is offered again"); }
+        let h = c.entry("hearth-fedora").unwrap();
+        assert!(serde_json::to_string(&h.resolve).unwrap().contains("/hearth-os-anatase.iso"));
     }
 
     #[test]
