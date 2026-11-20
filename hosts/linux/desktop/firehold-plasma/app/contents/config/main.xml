@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0 http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+    <!-- Not a setting: hearth-firehold-plasma's "the modes changed" ping ("modes|time"); the modes themselves are live
+         state in $XDG_RUNTIME_DIR. Firehold's settings are in ~/.config/nimbus/firehold.json. -->
+    <entry name="modes" type="String">
+      <default></default>
+    </entry>
+    <!-- Not a setting: a mode key (Super+Shift+C/D/A) from the KWin script, "mode|screen|time". -->
+    <entry name="key" type="String">
+      <default></default>
+    </entry>
+  </group>
+</kcfg>

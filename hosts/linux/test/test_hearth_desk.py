@@ -213,10 +213,17 @@ class Icons(Base):
         self.assertEqual(cellof['Projects'], (0, 0))
         self.assertEqual(cellof['notes.txt'], (0, 1))
         self.assertEqual(cellof['a.txt'], (0, 2))
-        # A removed file is forgotten.
+        # A file that's gone for now (an app saving it anew) keeps its place for when it's back, and a new file
+        # doesn't take that place while there's room elsewhere.
         os.remove(os.path.join(self.desk, 'notes.txt'))
         self.hd.icons(4, 3)
-        self.assertNotIn('notes.txt', self.saved()['icons'])
+        self.assertEqual(self.saved()['icons']['notes.txt'], [0, 1])
+        self.touch('b.txt')
+        r = self.hd.icons(4, 3)
+        self.assertNotEqual({e['name']: (e['col'], e['row']) for e in r['entries']}['b.txt'], (0, 1))
+        self.touch('notes.txt', 'hi again')
+        r = self.hd.icons(4, 3)
+        self.assertEqual({e['name']: (e['col'], e['row']) for e in r['entries']}['notes.txt'], (0, 1))
 
     def test_place_moves_and_swaps(self):
         self.touch('a')
@@ -242,6 +249,35 @@ class Icons(Base):
         r = self.hd.icons(3, 3)
         self.assertTrue(r['entries'][0]['col'] < 3)
         self.assertEqual(self.saved()['icons']['a'], [8, 8])
+
+    def test_places_survive_icons_off_and_on_and_a_restart(self):
+        """The owner, Nov 19 (his dad's PC: icons off and on, then a shell restart, moved them): a red flag."""
+        for n in ('Projects', 'notes.txt', 'photo.png', 'game.desktop'):
+            self.touch(n)
+        self.hd.icons(10, 6)
+        self.hd.place('notes.txt', 7, 4, 10, 6)
+        self.hd.place('photo.png', 3, 2, 10, 6)
+        before = self.saved()['icons']
+        self.hd.set_switch('desktopIcons', 'off')
+        self.hd.set_switch('desktopIcons', 'on')
+        self.hd.icons(10, 6)
+        self.hd = load(self.home)               # the shell (or plasmashell) restarted
+        self.hd.icons(4, 3)                     # first look before the bar's size is known: a smaller grid
+        r = self.hd.icons(10, 6)
+        self.assertEqual(self.saved()['icons'], before, 'nothing saved changes by itself')
+        cellof = {e['name']: (e['col'], e['row']) for e in r['entries']}
+        self.assertEqual(cellof['notes.txt'], (7, 4))
+        self.assertEqual(cellof['photo.png'], (3, 2))
+
+    def test_dragging_on_a_small_screen_keeps_the_others_places(self):
+        for n in ('a', 'b', 'c'):
+            self.touch(n)
+        self.hd.icons(10, 10)
+        self.hd.place('c', 9, 9, 10, 10)
+        self.hd.icons(3, 3)                     # a smaller screen: c shows somewhere else for now
+        self.hd.place('a', 1, 1, 3, 3)          # you move a
+        self.assertEqual(self.saved()['icons']['c'], [9, 9], "c's own place stays")
+        self.assertEqual(self.saved()['icons']['a'], [1, 1])
 
     def test_arrange(self):
         for n in ('c', 'a', 'b'):

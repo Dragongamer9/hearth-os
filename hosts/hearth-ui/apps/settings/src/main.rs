@@ -31,7 +31,7 @@ mod registry;
 mod shared;
 mod widgets;
 
-use cats::{a11y, accounts, apps, bt, g15, gaming, home, hs, link, net, pers, privacy, system, updates};
+use cats::{a11y, accounts, apps, bt, couch, g15, gaming, home, hs, link, net, pers, privacy, system, updates};
 use hearth_ui::app::{self, win};
 use hearth_ui::run;
 use iced::keyboard::{key::Named, Event as KEvent, Key, Modifiers};
@@ -46,6 +46,7 @@ macro_rules! each_cat {
             (home, Home, home),
             (quick, Quick, quick),
             (system, System, system),
+            (couch, Couch, couch),
             (net, Net, net),
             (bt, Bt, bt),
             (g15, G15, g15),

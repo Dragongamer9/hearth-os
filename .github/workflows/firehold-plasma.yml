@@ -34,6 +34,7 @@ env:
   PLASMA_EXTRA: >-
     python3-evdev libnotify qt6-qtdeclarative kf6-kirigami layer-shell-qt kpipewire pipewire wireplumber kactivitymanagerd
     plasma-integration gdb kglobalacceld spectacle kscreenlocker plasma-nm plasma-pa qt6-qttools dolphin konsole kate kde-cli-tools kscreen
+    python3-gobject rsms-inter-fonts
 
 jobs:
   screens:
@@ -59,6 +60,8 @@ jobs:
           cp os/branding/wallpapers/hearth-fireside.jpg /usr/share/wallpapers/Hearth-fireside/contents/images/3840x2160.jpg
           printf '{ "KPlugin": { "Id": "Hearth-fireside", "Name": "Hearth Fireside" } }\n' > /usr/share/wallpapers/Hearth-fireside/metadata.json
           for d in branding/icons/png/*x*; do mkdir -p "/usr/share/icons/hicolor/$(basename "$d")/apps" && cp "$d"/*.png "/usr/share/icons/hicolor/$(basename "$d")/apps/"; done
+          # Hearth's shared Quick Settings and notifications (Firehold's look on its bar), as the image has them.
+          bash /usr/share/nimbus/desktop/plasma-hearth/install.sh / >/tmp/ph-install.log 2>&1 || echo "::warning title=shared widgets::$(tail -3 /tmp/ph-install.log | tr '\n' ' ')"
           bash /usr/share/nimbus/desktop/firehold-plasma/install.sh /
           ls -la /usr/share/plasma/shells/ /usr/bin/hearth-firehold-plasma
 

@@ -25,6 +25,17 @@ clock.writeConfig("dateFormat", "custom");
 clock.writeConfig("customDateFormat", "ddd MMM d");
 top.addWidget("org.kde.plasma.panelspacer");
 top.addWidget("org.hearthos.firehold.posture");
+// Quick Settings and notifications: Hearth's shared widgets in Firehold's look (mockups firehold-plasma 07-10), when
+// they're installed; else KDE's tray has them.
+var known = knownWidgetTypes || [];
+var shared = 0;
+["org.hearthos.quicksettings", "org.hearthos.notifications"].forEach(function (id) {
+    if (known.indexOf(id) < 0) return;
+    var w = top.addWidget(id);
+    w.currentConfigGroup = ["General"];
+    w.writeConfig("style", "firehold");
+    shared++;
+});
 top.addWidget("org.kde.plasma.systemtray");
 
 var dock = new Panel;

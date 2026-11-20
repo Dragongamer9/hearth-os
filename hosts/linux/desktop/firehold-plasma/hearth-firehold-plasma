@@ -15,6 +15,13 @@ restarts only plasmashell with the other shell package: KWin, the session and ev
                               so), the controller in the Couch, Automatic posture
   ready PACKAGE               the shell came up (the Couch's containment, the Desk's posture pill)
   switch couch|desk [TAB] [--why pad|mouse|keys]
+                              every screen to that mode
+  modes                       each screen's mode now (live state, $XDG_RUNTIME_DIR), the automatic switching's settings
+  mode SCREENS couch|desk|away [--why pad|mouse|keys|pick|idle]
+                              SCREENS: names, "all", "tv" or "others" (comma separated); the shell follows: every
+                              screen Couch is the Couch shell, any Desk screen the Desk shell with the Couch and Away
+                              screens as full-screen layers
+  back pad|mouse|keys|pick    back from Away (the controller: the TVs to the Couch; the mouse: the others to the Desk)
   plain                       plain Plasma for the rest of this session (the saved choice isn't touched)
   ask CMD                     tell the Couch (guide, open, home, settings, tab:library...)
   listen                      the Couch's ear: one request, then it ends (the Couch starts it again)
@@ -24,6 +31,13 @@ restarts only plasmashell with the other shell package: KWin, the session and ev
                               brightness, power, VRR, tearing, overlay)
   do ACTION                   screenshot, volume-up/down, brightness-up/down, osk, vrr, tearing, power, overlay,
                               record, friends, quit-game PID
+  home [fast] | home-after SECS [fast]
+                              the Couch home's cards (downloads from Steam's and Heroic's own files, Hearth OS's
+                              update, controller and headset batteries, Hearth Link's devices, where games are up to);
+                              fast: only what changes quickly. home-after: the same after SECS (the Couch's next look)
+  qs | qs-do WHAT [ARG]       Quick Settings: what it shows; a press (wifi, bt, dnd, night, screenshot, osk, volume N,
+                              output SINK, brightness ID:N, power PROFILE, lock, sleep, restart, shutdown, gamemode,
+                              settings [PAGE])
   apps | launch ID            the Apps tab
   library | cached | play ID | page ID
                               the games (desktop/shell/hearth-firehold, as Mantel's Firehold)
@@ -105,9 +119,27 @@ def detach(cmd):
         return False
 
 
+NOTIFY_PY = r"""
+import subprocess, sys
+t, x, i = sys.argv[1:4]
+try:
+    ok = subprocess.run(['notify-send', '-a', 'Firehold', '-i', i, t, x], capture_output=True, timeout=10).returncode == 0
+except (OSError, subprocess.SubprocessError):
+    ok = False
+if not ok:
+    # notify-send can't reach the session bus in some sessions: the same notification with dbus-python.
+    try:
+        import dbus
+        n = dbus.Interface(dbus.SessionBus().get_object('org.freedesktop.Notifications', '/org/freedesktop/Notifications'), 'org.freedesktop.Notifications')
+        n.Notify('Firehold', 0, i, t, x, [], {}, -1)
+    except Exception:
+        pass
+"""
+
+
 def notify(title, text, icon='hearth'):
-    if have('notify-send'):
-        detach(['notify-send', '-a', 'Firehold', '-i', icon, title, text])
+    """A notification, in the background (never waits): notify-send, or dbus-python when that can't connect."""
+    detach([sys.executable, '-c', NOTIFY_PY, title, text, icon])
 
 
 def write_small(path, text):
@@ -153,7 +185,7 @@ def set_setting(key, value):
 
 def posture_mode(s=None):
     s = settings() if s is None else s
-    return s.get('posture') if s.get('posture') in ('auto', 'couch', 'desk') else 'auto'
+    return s.get('posture') if s.get('posture') in ('auto', 'couch', 'desk', 'manual') else 'auto'
 
 
 def start_posture(s=None):
@@ -301,6 +333,7 @@ def tell_kwin(posture):
 
 
 def tell_games(v):
+    v = 'window' if v == 'stay' else v      # Stay as they are: KWin leaves games as they are (as "window" does)
     v = v if v in ('follow', 'fullscreen', 'window') else 'follow'
     dbus_send('org.kde.kglobalaccel', '/component/kwin', 'org.kde.kglobalaccel.Component.invokeShortcut',
               'string:Firehold games ' + v, reply=False)
@@ -361,10 +394,26 @@ def ask(cmd):
     dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript', 'string:' + js, reply=False)
 
 
-def listen():
+def bar_tell(msg):
+    """The Desk bar's applets (the mode pill, the app tile): each listens on its own FIFO (hearth-firehold-plasma
+    listen bar-posture / bar-app, asleep until a line comes); one that isn't listening is skipped."""
+    for name in ('bar-posture', 'bar-app'):
+        try:
+            fd = os.open(requests_path() + '-' + name, os.O_WRONLY | os.O_NONBLOCK)
+        except OSError:
+            continue
+        try:
+            os.write(fd, (msg + '\n').encode())
+        except OSError:
+            pass
+        finally:
+            os.close(fd)
+
+
+def listen(name=''):
     """The Couch's ear: waits (asleep in select, no polling) for one request on a FIFO in $XDG_RUNTIME_DIR, prints it
     and ends; the Couch starts it again. Ends by itself when the plasmashell that started it is gone."""
-    p = requests_path()
+    p = requests_path() + ('-' + name if name else '')
     try:
         os.mkfifo(p, 0o600)
     except FileExistsError:
@@ -386,7 +435,7 @@ def listen():
                 continue
             if b'\n' in buf:
                 line = buf.split(b'\n', 1)[0].decode(errors='replace').strip()
-                if re.match(r'^[a-z]+(:[a-z0-9_.-]{1,40})?$', line):
+                if re.match(r'^[a-z]+(:[a-z0-9_.-]{1,40})?$', line) or (name and re.match(r'^[a-z-]+\|\d+\|[A-Za-z0-9_.-]{0,40}$', line)):
                     print(line)
                     sys.stdout.flush()
                     return 0
@@ -410,12 +459,25 @@ def current_posture():
     return p if p in ('couch', 'desk') else 'desk'
 
 
-def switch(posture, tab='', why=''):
+def switch(posture, tab='', why='', keep_modes=False):
     if posture not in ('couch', 'desk'):
         raise ValueError('couch or desk')
     if read_small(os.path.join(run_dir(), 'failed')):
         log('switch %s skipped: Firehold failed this session (plain Plasma)' % posture)
         return
+    if not keep_modes:
+        # Every screen to this mode (the Couch's Guide button, the Desk's pill): the live modes follow.
+        try:
+            now = int(time.time() * 1000)
+            ss = screen_modes()
+            for x in ss:
+                x.update({'mode': posture, 'why': why, 'at': now})
+            if ss:
+                write_modes(ss, {})
+                tell_kwin_screens(ss)
+            away_power(False)
+        except (OSError, ValueError) as e:
+            log('modes: %s' % e)
     was = current_posture()
     write_small(os.path.join(run_dir(), 'posture'), posture)
     try:
@@ -430,6 +492,7 @@ def switch(posture, tab='', why=''):
     if running == pkg and was == posture:
         if posture == 'couch' and tab:
             ask('tab:' + tab)
+        ping_modes()
         return
     since = time.time()
     restart_shell(pkg)
@@ -444,6 +507,248 @@ def switch(posture, tab='', why=''):
                                             else 'You picked the Desk.') + ' Everything stayed open. Press the Guide button to go back to the Couch.')
         finally:
             os._exit(0)
+
+
+# ------------------------------------------------------------------ Couch, Desk and Away for each screen (mockups 04-06)
+# Live state, never a setting (the owner: "Switching modes is never a settings change"): $XDG_RUNTIME_DIR's
+# modes.json, {"screens": {NAME: {"mode": "couch"|"desk"|"away", "why": TEXT, "at": ms}}, "before": {...}}. Every screen
+# Couch: the Couch shell (org.hearthos.firehold) draws each screen; any screen Desk: the Desk shell, and a Couch or
+# Away screen gets its Couch or Away as a full-screen layer over it (the posture applet on that screen's bar opens it).
+# Away on a Couch shell screen is the Couch's own Away page. Only what you choose here, in Settings or the automatic
+# switching you turned on changes a screen's mode; Firehold's settings (firehold.json) are never written by switching.
+
+MODES = ('couch', 'desk', 'away')
+WHY = {'pad': 'when the controller woke it', 'mouse': 'since you moved the mouse', 'keys': 'since you typed',
+       'pick': 'you picked it', 'start': 'when the PC started', 'idle': 'nobody was here', 'guide': 'the Guide button'}
+
+
+def modes_path():
+    return os.path.join(run_dir(), 'modes.json')
+
+
+def read_modes():
+    d = read_json(modes_path(), {}) or {}
+    return d if isinstance(d, dict) else {}
+
+
+def kscreen_outputs():
+    """The screens that are on, KDE's own list (kscreen-doctor): name, connector type, size in mm."""
+    fx = os.environ.get('HEARTH_FIREHOLD_SCREENS')   # checks: "NAME[:tv],NAME"
+    if fx:
+        return [{'name': x.split(':')[0], 'tv': ':tv' in x, 'label': x.split(':')[2] if x.count(':') >= 2 else '',
+                 'spec': x.split(':')[3] if x.count(':') >= 3 else ''} for x in fx.split(',') if x]
+    j = quiet(['kscreen-doctor', '-j'], 5) if have('kscreen-doctor') else ''
+    try:
+        outs = json.loads(j).get('outputs', []) if j else []
+    except ValueError:
+        outs = []
+    tvs = set(x for x in os.environ.get('HEARTH_FIREHOLD_TV_SCREENS', '').split(',') if x)
+    out = []
+    for o in outs:
+        if not o.get('enabled') or not isinstance(o.get('name'), str):
+            continue
+        mm = o.get('sizeMM') or o.get('sizeMm') or o.get('physicalSize') or {}
+        diag = ((mm.get('width') or 0) ** 2 + (mm.get('height') or 0) ** 2) ** 0.5 if isinstance(mm, dict) else 0
+        label = edid_name(o['name'])
+        spec = []
+        cur = o.get('currentModeId')
+        for md in o.get('modes') or []:
+            if isinstance(md, dict) and str(md.get('id')) == str(cur):
+                sz_ = md.get('size') or {}
+                if sz_.get('width'):
+                    spec.append('%d × %d' % (sz_['width'], sz_['height']))
+                if md.get('refreshRate'):
+                    spec.append('%d Hz' % round(md['refreshRate']))
+        spec.append(connector_name(o['name']))
+        tv = o['name'] in tvs or 'TV' in label.upper().split() or (o['name'].upper().startswith('HDMI') and diag > 900)
+        out.append({'name': o['name'], 'tv': tv, 'label': label, 'spec': ' · '.join(spec)})
+    return out
+
+
+def connector_name(n):
+    m = re.match(r'^(HDMI|DP|eDP|DVI|VGA)[-A-Z]*-?(\d+)$', n or '')
+    if not m:
+        return n
+    return {'HDMI': 'HDMI', 'DP': 'DisplayPort', 'eDP': 'Built-in', 'DVI': 'DVI', 'VGA': 'VGA'}[m.group(1)] + ('' if m.group(1) == 'eDP' else ' ' + m.group(2))
+
+
+def edid_name(conn):
+    """A screen's own name from its EDID (the monitor name it gives itself: "LG ULTRAGEAR", "TCL TV")."""
+    import glob
+    for f in glob.glob('/sys/class/drm/card*-%s/edid' % conn):
+        try:
+            with open(f, 'rb') as fh:
+                e = fh.read(128)
+        except OSError:
+            continue
+        if len(e) < 128:
+            continue
+        for off in (54, 72, 90, 108):
+            if e[off:off + 3] == b'\x00\x00\x00' and e[off + 3] == 0xFC:
+                return e[off + 5:off + 18].split(b'\n')[0].decode('ascii', 'replace').strip()
+    return ''
+
+
+def screen_modes():
+    """Each screen that's on and its mode now (a screen not seen before takes the posture this session has)."""
+    d = read_modes()
+    have_ = d.get('screens') if isinstance(d.get('screens'), dict) else {}
+    cur = current_posture()
+    out = []
+    for o in kscreen_outputs() or [{'name': n, 'tv': False} for n in have_]:
+        e = have_.get(o['name']) if isinstance(have_.get(o['name']), dict) else {}
+        out.append({'name': o['name'], 'tv': o['tv'], 'label': o.get('label') or ('TV' if o['tv'] else 'Monitor'), 'spec': o.get('spec') or '',
+                    'mode': e.get('mode') if e.get('mode') in MODES else cur,
+                    'why': e.get('why') or '', 'at': e.get('at') or 0})
+    return out
+
+
+def write_modes(screens, before=None):
+    d = read_modes()
+    d['screens'] = {s['name']: {'mode': s['mode'], 'why': s.get('why', ''), 'at': s.get('at', 0)} for s in screens}
+    if before is not None:
+        d['before'] = before
+    write_small(modes_path(), json.dumps(d))
+
+
+def identify():
+    """Identify (Settings › Couch, Desk and Away): each screen's number on it for a few seconds."""
+    ping_modes('identify')
+    if os.fork() == 0:
+        os.setsid()
+        try:
+            time.sleep(4)
+            ping_modes('identify-off')
+        finally:
+            os._exit(0)
+
+
+def ping_modes(what='modes', screen=''):
+    """The Couch and the Desk's posture applets read the modes again (Plasma's scripting: their "modes" key; the time
+    is all it carries)."""
+    v = '%s|%d|%s' % (what, int(time.time() * 1000), screen)
+    bar_tell(v)
+    js = ('var v="%s";desktops().forEach(function(d){if(d.type=="%s"){d.currentConfigGroup=["General"];d.writeConfig("request",v);}});'
+          'panels().forEach(function(p){p.widgets().forEach(function(w){if(w.type=="org.hearthos.firehold.posture"||w.type=="org.hearthos.firehold.app"){'
+          'w.currentConfigGroup=["General"];w.writeConfig("modes",v);}});});' % (v, CONTAINMENT))
+    dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript', 'string:' + js, reply=False)
+
+
+def tell_kwin_screens(screens):
+    """KWin's side, a screen at a time (the KWin script's own shortcuts, "Firehold Couch on NAME" / "Firehold Desk on NAME")."""
+    for s in screens:
+        name = ('Firehold Couch on ' if s['mode'] == 'couch' else 'Firehold Desk on ') + s['name']
+        dbus_send('org.kde.kglobalaccel', '/component/kwin', 'org.kde.kglobalaccel.Component.invokeShortcut', 'string:' + name, reply=False)
+
+
+def away_power(on):
+    """Away: the power saver profile while every screen is Away (the profile you had comes back with you)."""
+    saved = os.path.join(run_dir(), 'away-profile')
+    if not have('powerprofilesctl'):
+        return
+    if on and not os.path.exists(saved):
+        cur = quiet(['powerprofilesctl', 'get'], 3).strip()
+        if cur:
+            write_small(saved, cur)
+            quiet(['powerprofilesctl', 'set', 'power-saver'], 5)
+    elif not on and os.path.exists(saved):
+        prev = read_small(saved)
+        try:
+            os.unlink(saved)
+        except OSError:
+            pass
+        if prev in ('power-saver', 'balanced', 'performance'):
+            quiet(['powerprofilesctl', 'set', prev], 5)
+
+
+def set_modes(targets, mode, why=''):
+    """TARGETS: screen names, "all", "tv" (the TVs) or "others" (every screen but the TVs)."""
+    if mode not in MODES:
+        raise ValueError('couch, desk or away')
+    screens = screen_modes()
+    if not screens:
+        return switch(mode if mode != 'away' else 'couch', '', why)
+    d = read_modes()
+    before = None
+    if mode == 'away' and not any(s['mode'] == 'away' for s in screens):
+        before = {s['name']: s['mode'] for s in screens}
+    now = int(time.time() * 1000)
+    for s in screens:
+        hit = ('all' in targets or s['name'] in targets or ('tv' in targets and s['tv']) or ('others' in targets and not s['tv']))
+        if hit and s['mode'] != mode:
+            s.update({'mode': mode, 'why': why, 'at': now})
+    write_modes(screens, before if before is not None else d.get('before'))
+    apply_modes(screens, why)
+    if mode == 'away' and all(x['mode'] == 'away' for x in screens):
+        detach([sys.executable, os.path.realpath(__file__), 'away-later', str(now)])
+    return None
+
+
+def away_later(since):
+    """While Away (Settings › Couch, Desk and Away › While Away): the screens off after their time, then the lock
+    (your PIN), only if it's still the same Away. Asleep until then."""
+    s = settings()
+    off = s.get('awayScreenOff') if isinstance(s.get('awayScreenOff'), int) else 10
+    lock = s.get('awayLock') if isinstance(s.get('awayLock'), int) else 10
+    steps = sorted([(off, 'off'), (lock, 'lock')])
+    start = since / 1000.0
+    for mins, what in steps:
+        if mins <= 0:
+            continue
+        wait = start + mins * 60 - time.time()
+        if wait > 0:
+            time.sleep(wait)
+        ss = screen_modes()
+        if not ss or not all(x['mode'] == 'away' for x in ss) or min(x['at'] for x in ss) > since:
+            return 0
+        if what == 'off' and have('kscreen-doctor'):
+            quiet(['kscreen-doctor', '--dpms', 'off'], 10)
+        elif what == 'lock' and have('loginctl'):
+            quiet(['loginctl', 'lock-session'], 10)
+    return 0
+
+
+def come_back(why):
+    """Back from Away: the modes the screens had before (the controller brings the TVs to the Couch)."""
+    d = read_modes()
+    before = d.get('before') if isinstance(d.get('before'), dict) else {}
+    screens = screen_modes()
+    now = int(time.time() * 1000)
+    for s in screens:
+        if s['mode'] == 'away':
+            m = before.get(s['name']) if before.get(s['name']) in ('couch', 'desk') else 'desk'
+            if why == 'pad' and s['tv']:
+                m = 'couch'
+            elif why in ('mouse', 'keys') and not s['tv']:
+                m = 'desk'
+            s.update({'mode': m, 'why': why, 'at': now})
+    write_modes(screens, {})
+    apply_modes(screens, why)
+
+
+def apply_modes(screens, why=''):
+    modes = [s['mode'] for s in screens]
+    away_power(bool(modes) and all(m == 'away' for m in modes))
+    live = [m for m in modes if m != 'away']
+    if live:
+        want = 'couch' if all(m == 'couch' for m in live) else 'desk'
+    else:
+        want = current_posture()
+    tell_kwin_screens(screens)
+    pkg = shell_for(want)
+    if read_small(os.path.join(run_dir(), 'shell')) != pkg or current_posture() != want:
+        switch(want, '', why, keep_modes=True)
+    else:
+        ping_modes()
+
+
+def modes_info():
+    s = settings()
+    return {'screens': screen_modes(), 'auto': s.get('autoPad', True) is not False or s.get('autoMouse', True) is not False,
+            'autoPad': s.get('autoPad', True) is not False, 'autoPadScope': s.get('autoPadScope') if s.get('autoPadScope') in ('tv', 'every') else 'tv',
+            'autoMouse': s.get('autoMouse', True) is not False,
+            'awayAfter': s.get('awayAfter') if isinstance(s.get('awayAfter'), int) and s.get('awayAfter') >= 0 else 20,
+            'why': WHY}
 
 
 # ------------------------------------------------------------------ the controller and Automatic posture
@@ -469,15 +774,87 @@ def couch_front():
     return read_small(os.path.join(run_dir(), 'front')) in ('front', 'guide') and current_posture() == 'couch'
 
 
+def any_away():
+    return any(x['mode'] == 'away' for x in screen_modes())
+
+
 def guide_pressed(twice):
     s = settings()
+    if any_away():
+        come_back('pad')
+        return
+    screens = screen_modes()
+    tvs = [x for x in screens if x['tv']]
+    if (len(screens) > 1 and tvs and s.get('autoPadScope') != 'every' and posture_mode(s) == 'auto'
+            and any(x['mode'] != 'couch' for x in tvs)):
+        # Automatic, the TV only (Settings › Couch, Desk and Away): the controller brings the TV to the Couch.
+        set_modes(['tv'], 'couch', 'pad')
+        return
+    if current_posture() != 'couch' and any(x['mode'] == 'couch' for x in screens):
+        # Some screens Couch, some Desk: the Couch there (a layer over the Desk) comes in front.
+        ask('open' if twice or s.get('guide') == 'open' else 'home')
+        return
     if current_posture() != 'couch':
-        if posture_mode(s) != 'desk':
+        if posture_mode(s) not in ('desk', 'manual'):
             switch('couch', 'home' if not twice else '', 'pad')
             if twice:
                 time.sleep(0.1)
         return
     ask('open' if twice or s.get('guide') == 'open' else 'guide')
+
+
+_hand = [0.0]
+HEARTH_QUICK = '/usr/libexec/hearth/hearth-quick'
+# Presses the shared backend knows (the rest, and Do not disturb, which also tells Firehold's KWin script, stay here).
+SHARED_QS = ('wifi', 'bt', 'night', 'screenshot', 'osk', 'volume', 'output', 'brightness', 'power', 'lock', 'logout')
+
+
+def dnd_watch():
+    """Do not disturb pressed in Hearth's shared Quick Settings or notifications (hearth-quick writes the same live
+    file, $XDG_RUNTIME_DIR/hearth-firehold-plasma/dnd): watched with inotify, no timer, so Firehold's KWin script
+    hears it at once. None when inotify isn't there (the press from Firehold's own buttons still tells it)."""
+    try:
+        import ctypes
+        libc = ctypes.CDLL(None, use_errno=True)
+        fd = libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
+        if fd < 0:
+            return None
+        d = run_dir()
+        os.makedirs(d, exist_ok=True)
+        if libc.inotify_add_watch(fd, d.encode(), 0x00000008 | 0x00000080) < 0:   # IN_CLOSE_WRITE | IN_MOVED_TO
+            os.close(fd)
+            return None
+        return fd
+    except (OSError, AttributeError):
+        return None
+
+
+_dnd_last = [None]
+
+
+def dnd_changed(fd):
+    try:
+        data = os.read(fd, 65536)
+    except OSError:
+        return
+    if b'dnd' not in data:
+        return
+    v = read_small(os.path.join(run_dir(), 'dnd')) or 'off'
+    if v != _dnd_last[0]:
+        _dnd_last[0] = v
+        dbus_send('org.kde.kglobalaccel', '/component/kwin', 'org.kde.kglobalaccel.Component.invokeShortcut',
+                  'string:Firehold dnd ' + ('on' if v == 'on' else 'off'), reply=False)
+
+
+def desk_pad(name):
+    """The controller used on the Desk (mockup firehold-plasma 12): View opens the bar's menus for the app in front;
+    any other button says, once in a while, what the controller can do here."""
+    if name == 'view':
+        ping_modes('menu-window')
+        return
+    if time.time() - _hand[0] > 600:
+        _hand[0] = time.time()
+        notify('A controller is in your hand', 'Press ≡ for the Couch on this screen, or View for these menus with the controller', 'input-gaming')
 
 
 class Pad:
@@ -543,6 +920,8 @@ class Pad:
                     self.guide_at = now
             return
         if not couch_front():
+            if down and current_posture() == 'desk':
+                desk_pad(name)
             return
         if name in ('up', 'down', 'left', 'right'):
             self.held = (name, time.time() + REPEAT_FIRST) if down else None
@@ -622,6 +1001,41 @@ class Pad:
             self.devs.pop(dev.path, None)
 
 
+def away_after():
+    v = settings().get('awayAfter')
+    return v if isinstance(v, int) and v >= 0 else 20
+
+
+def idle_wait(last_input):
+    m = away_after()
+    if not m:
+        return 600
+    return max(5, last_input[0] + m * 60 - time.time())
+
+
+def something_playing():
+    """A video or music playing (MPRIS) keeps the PC from going Away by itself."""
+    out = dbus_send('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus.ListNames', timeout=3)
+    for name in re.findall(r'"(org\.mpris\.MediaPlayer2\.[^"]+)"', out):
+        st = dbus_send(name, '/org/mpris/MediaPlayer2', 'org.freedesktop.DBus.Properties.Get',
+                       'string:org.mpris.MediaPlayer2.Player', 'string:PlaybackStatus', timeout=3)
+        if '"Playing"' in st:
+            return True
+    return False
+
+
+def idle_check(last_input):
+    """Away after N minutes with nobody at either screen and nothing playing (Settings › Couch, Desk and Away)."""
+    m = away_after()
+    if not m or time.time() - last_input[0] < m * 60:
+        return
+    last_input[0] = time.time()           # looked: the next look is N minutes from now
+    if posture_mode() != 'auto' or any_away() or something_playing():
+        return
+    log('nobody here for %d min: Away' % m)
+    set_modes(['all'], 'away', 'idle')
+
+
 def begin(pkg):
     """nimbus-session, just before Plasma starts with Firehold: this session's start (an earlier session's markers
     don't count)."""
@@ -676,18 +1090,25 @@ def session():
             watcher = subprocess.Popen([sys.executable, ph, 'watch'], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True, bufsize=1)
         except OSError:
             watcher = None
+    last_input = [time.time()]
+    dnd_fd = dnd_watch()
     while True:
         fds = list(pad.devs.values()) if pad else []
         if watcher and watcher.stdout:
             fds.append(watcher.stdout)
+        if dnd_fd is not None:
+            fds.append(dnd_fd)
         try:
-            r, _, _ = select.select(fds, [], [], pad.wait() if pad else 60)
+            r, _, _ = select.select(fds, [], [], min(pad.wait() if pad else 60, idle_wait(last_input)))
         except (OSError, ValueError):
             if pad:
                 pad.scan()
             time.sleep(1)
             continue
         for f in r:
+            if f is dnd_fd:
+                dnd_changed(dnd_fd)
+                continue
             if watcher and f is watcher.stdout:
                 line = f.readline()
                 if not line:
@@ -697,12 +1118,24 @@ def session():
                     kind = json.loads(line).get('t')
                 except ValueError:
                     continue
-                if kind in ('mouse', 'keys') and current_posture() == 'couch' and posture_mode() == 'auto':
-                    switch('desk', '', kind)
+                last_input[0] = time.time()
+                if kind not in ('mouse', 'keys'):
+                    continue
+                st = settings()
+                if any_away():
+                    come_back(kind)
+                elif current_posture() == 'couch' and posture_mode(st) == 'auto' and st.get('autoMouse', True) is not False:
+                    if len(screen_modes()) > 1:
+                        # Only the screen the mouse is on (the Couch on it sees the pointer) or the one you type on.
+                        ask('input:' + kind)
+                    else:
+                        switch('desk', '', kind)
             elif pad:
                 pad.read(f)
+                last_input[0] = time.time()
         if pad:
             pad.timeout()
+        idle_check(last_input)
 
 
 # ------------------------------------------------------------------ what the bars and the Guide show, and do
@@ -731,8 +1164,17 @@ def sysinfo(full=True):
         name = (pw.pw_gecos.split(',')[0] or pw.pw_name).strip()
         out['user'] = name
         out['initial'] = name[:1].upper()
+        for f in (os.path.join(home(), '.face.icon'), os.path.join(home(), '.face'), '/var/lib/AccountsService/icons/' + pw.pw_name):
+            if os.path.isfile(f) and os.access(f, os.R_OK):
+                out['face'] = f
+                break
     except (KeyError, ImportError):
         pass
+    # Screens that are TVs when Qt can't tell (a TV that says nothing about itself): HEARTH_FIREHOLD_TV_SCREENS=HDMI-A-1,...
+    out['tvScreens'] = [x for x in os.environ.get('HEARTH_FIREHOLD_TV_SCREENS', '').split(',') if re.match(r'^[A-Za-z0-9_.-]{1,40}$', x)]
+    fx = os.environ.get('HEARTH_FIREHOLD_SYS_FIXTURE')   # pictures in CI only
+    if fx:
+        out.update(read_json(fx, {}) or {})
     if not full:
         return out
     v = quiet(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@'], 3)
@@ -832,10 +1274,122 @@ def do(action, arg=''):
         detach(['nimbus-mode', 'game'])
     elif action == 'plain':
         plain()
+    elif action == 'wake' and re.fullmatch(r'[0-9a-f]{16,128}', arg or ''):
+        detach([sys.executable, os.path.join(SHELL_DIR, 'hearth-device-status'), 'wake', arg])
+    elif action == 'help' and re.fullmatch(r'[0-9a-f]{16,128}', arg or ''):
+        # Help on a family member's device: its remote desktop (Hearth Link), then Moonlight to see it.
+        r = read_json_line(quiet([sys.executable, os.path.join(SHELL_DIR, 'hearth-link-settings'), 'remote', arg], 15)) or {}
+        if r.get('on'):
+            detach(['sh', '-c', 'command -v moonlight >/dev/null && exec moonlight || exec flatpak run com.moonlight_stream.Moonlight'])
+            return {'ok': True, 'host': r.get('host') or ''}
+        return {'ok': False, 'error': "Its remote desktop is off: turn on Remote desktop on that device"}
+    elif action == 'uninstall' and re.match(r'^[a-z]+:[A-Za-z0-9_.:-]{1,80}$', arg or ''):
+        # Steam asks first itself; everything else opens Hearth's game page, where Uninstall asks first.
+        if arg.startswith('steam:') and arg[6:].isdigit():
+            detach(['steam', 'steam://uninstall/' + arg[6:]])
+        else:
+            return games(['page', arg]) == 0 and {'ok': True} or {'ok': False}
+    elif action == 'media-app' and re.match(r'^[A-Za-z0-9_.+-]{1,120}$', arg or ''):
+        launch(arg)
+    elif action == 'has-applet' and re.match(r'^[a-z0-9.]{3,80}$', arg or ''):
+        out = dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript',
+                        'string:var n=0;panels().forEach(function(p){p.widgets().forEach(function(w){if(w.type=="%s")n++;});});print(n);' % arg)
+        return {'ok': bool(re.search(r'string "[1-9]', out))}
+    elif action == 'open-applet' and arg in ('org.hearthos.quicksettings', 'org.hearthos.notifications') and have('hearth-plasma-panel'):
+        # The shared widgets open through hearth-plasma-panel (their own "open" key).
+        quiet(['hearth-plasma-panel', 'open', 'quick' if arg.endswith('quicksettings') else 'calendar'], 8)
+    elif action == 'open-applet' and re.match(r'^[a-z0-9.]{3,80}$', arg or ''):
+        # Another Plasma applet's popup (the shared Quick Settings and notifications, org.hearthos.quicksettings /
+        # org.hearthos.notifications): Plasma's own "activate widget" shortcut for it. Not there: says so.
+        out = dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript',
+                        'string:var r=[];panels().forEach(function(p){p.widgets().forEach(function(w){if(w.type=="%s")r.push(w.id);});});print(r.join(","));' % arg)
+        ids = re.findall(r'\d+', (re.search(r'string "([^"]*)"', out) or re.search('()', '')).group(1) or '')
+        if not ids:
+            return {'ok': False, 'missing': True}
+        dbus_send('org.kde.kglobalaccel', '/component/plasmashell', 'org.kde.kglobalaccel.Component.invokeShortcut',
+                  'string:activate widget ' + ids[0], reply=False)
+    elif action == 'window':
+        return window_action(*(arg.split(':', 1) if ':' in arg else (arg, '')))
+    elif action == 'identify':
+        identify()
+    elif action == 'settings-page' and re.match(r'^[a-z0-9-]{1,40}$', arg or ''):
+        # Hearth's Settings (the pure-Rust app on the Fedora edition) on that page.
+        detach(['hearth-settings-app', '--page', arg] if have('hearth-settings-app') else ['systemsettings'])
     elif action == 'systemsettings':
         detach(['systemsettings'] + ([arg] if re.match(r'^kcm_[a-z0-9_]+$', arg or '') else []))
     else:
         raise ValueError('unknown action')
+    return {'ok': True}
+
+
+WINDOW_JS = {
+    'fullscreen': 'w.fullScreen = !w.fullScreen;',
+    'above': 'w.keepAbove = !w.keepAbove;',
+    'maximize': 'w.setMaximize(!(w.maximizeMode == 3), !(w.maximizeMode == 3));',
+    'minimize': 'w.minimized = true;',
+    'close': 'w.closeWindow();',
+    'snap-left': 'workspace.slotWindowQuickTileLeft();',
+    'snap-right': 'workspace.slotWindowQuickTileRight();',
+}
+
+
+def own_menus(pid):
+    """Whether an app has menus of its own for KDE's global menu: a Qt Widgets app (KDE's, most Qt apps) or a GTK app
+    with the app menu module exports them; games, Windows apps (Wine), Electron and Qt Quick apps don't."""
+    # What KDE's global menu reads: the app's D-Bus connection with a /MenuBar object (com.canonical.dbusmenu).
+    names = re.findall(r'string "(:[0-9.]+)"', dbus_send('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus.ListNames', timeout=3))
+    seen_dbus = bool(names)
+    for n in names:
+        got = re.search(r'uint32 (\d+)', dbus_send('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus.GetConnectionUnixProcessID', 'string:' + n, timeout=2))
+        if got and int(got.group(1)) == pid:
+            if 'node name="MenuBar"' in dbus_send(n, '/', 'org.freedesktop.DBus.Introspectable.Introspect', timeout=2):
+                return True
+    if seen_dbus:
+        return False
+    try:
+        maps = open('/proc/%d/maps' % pid, encoding='utf-8', errors='replace').read()
+    except OSError:
+        return True      # can't tell: the app's own (KDE's global menu shows whatever it has)
+    if re.search(r'libQt[56]Widgets\.so', maps):
+        return True
+    return 'appmenu-gtk-module' in maps or 'libappmenu-gtk' in maps
+
+
+def window_action(what, arg=''):
+    """The Desk bar's Window menu (mockup firehold-plasma 12), on the window in front, through KWin's script API."""
+    if what in WINDOW_JS:
+        kwin_run('var w = workspace.activeWindow; if (w) { %s }' % WINDOW_JS[what], 'org.hearthos.firehold.window')
+    elif what == 'move' and re.match(r'^[A-Za-z0-9_.-]{1,40}$', arg):
+        # Move to screen: KWin sends it there; on a Couch screen the KWin script makes a game full screen.
+        kwin_run('var w = workspace.activeWindow; var o = workspace.screens.filter(function (s) { return s.name == "%s"; })[0];'
+                 ' if (w && o) workspace.sendClientToScreen(w, o);' % arg, 'org.hearthos.firehold.window')
+    elif what == 'kill' and arg.isdigit():
+        try:
+            os.kill(int(arg), signal.SIGKILL)
+        except OSError:
+            pass
+    elif what == 'screenshot':
+        detach(['spectacle', '-b', '-n', '-a'])
+    elif what == 'record':
+        detach(['spectacle', '-b', '-n', '--record', 'window'])
+    elif what == 'folder' and arg.isdigit():
+        try:
+            exe = os.path.realpath('/proc/%s/exe' % arg)
+            # A Windows app's folder is its .exe's (Wine's command line), else the program's own.
+            cmd = open('/proc/%s/cmdline' % arg, 'rb').read().split(b'\0')
+            win = [c.decode(errors='replace') for c in cmd if c.lower().endswith(b'.exe')]
+            folder = os.path.dirname(win[0].replace('\\', '/')) if win and win[0].startswith('/') else os.path.dirname(exe)
+            detach(['xdg-open', folder])
+        except OSError:
+            return {'ok': False}
+    elif what == 'logs':
+        detach(['hearth-send-logs', ('Sent from the Desk bar: ' + arg)[:200]])
+    elif what == 'search':
+        detach(['krunner'])
+    elif what == 'shortcuts':
+        detach(['systemsettings', 'kcm_keys'])
+    else:
+        raise ValueError('unknown window action')
     return {'ok': True}
 
 
@@ -887,7 +1441,9 @@ def apps():
                 continue
             if 'KDE' in e.get('NotShowIn', '').split(';'):
                 continue
-            out.append({'id': n[:-8], 'name': e['Name'], 'icon': e.get('Icon', ''), 'comment': e.get('Comment', '')})
+            out.append({'id': n[:-8], 'name': e['Name'], 'icon': e.get('Icon', ''), 'comment': e.get('Comment', ''),
+                        'categories': [c for c in e.get('Categories', '').split(';') if c][:12],
+                        'web': 'firefox' in e.get('Exec', '').lower() and n[:-8].lower() not in ('firefox', 'org.mozilla.firefox')})
     out.sort(key=lambda a: a['name'].lower())
     return out
 
@@ -900,6 +1456,629 @@ def launch(app_id):
     if have('gtk-launch'):
         return detach(['gtk-launch', app_id])
     return False
+
+
+# ------------------------------------------------------------------ the Couch home's cards (mockups firehold-plasma 01, 02)
+# Everything here only reads: Steam's own files on this PC (never the Steam account), Heroic's download list, Beacon's
+# files, the batteries the kernel and UPower see, Hearth Link's devices. `home` prints one JSON line; the Couch asks
+# again only while it's on screen (every few seconds while something downloads, else once a minute).
+
+BEACON_SERIES = {'rotwk': 'The Battle for Middle-earth II', 'bfme2': 'The Lord of the Rings', 'bfme1': 'The Lord of the Rings',
+                 'aotr': 'The Battle for Middle-earth II mod', 'conquest': 'The Lord of the Rings', 'uaw': '', 'swgb': 'Star Wars'}
+
+
+def data_home():
+    return os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share')
+
+
+def read_json(path, default=None):
+    try:
+        with open(path, encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def vdf_values(text):
+    """Steam's text files (appmanifest, libraryfolders): every "key" "value" pair, flat (enough for what's read here)."""
+    return re.findall(r'"([^"\n]+)"\s+"([^"\n]*)"', text or '')
+
+
+def steam_roots():
+    out = []
+    for d in (os.path.join(home(), '.local/share/Steam'), os.path.join(home(), '.steam/steam'),
+              os.path.join(home(), '.var/app/com.valvesoftware.Steam/.local/share/Steam')):
+        r = os.path.realpath(d)
+        if os.path.isdir(os.path.join(r, 'steamapps')) and r not in out:
+            out.append(r)
+    return out
+
+
+def steam_libraries():
+    libs = []
+    for root in steam_roots():
+        libs.append(os.path.join(root, 'steamapps'))
+        try:
+            with open(os.path.join(root, 'steamapps', 'libraryfolders.vdf'), encoding='utf-8', errors='replace') as f:
+                for k, v in vdf_values(f.read()):
+                    if k == 'path':
+                        libs.append(os.path.join(v.replace('\\\\', '/'), 'steamapps'))
+        except OSError:
+            pass
+    seen, out = set(), []
+    for l in libs:
+        r = os.path.realpath(l)
+        if r not in seen and os.path.isdir(r):
+            seen.add(r)
+            out.append(r)
+    return out
+
+
+# Steam's AppState flags (appmanifest StateFlags).
+ST_INSTALLED, ST_UPDATE_REQUIRED, ST_RUNNING, ST_PAUSED, ST_STARTED, ST_DOWNLOADING = 4, 2, 256, 512, 1024, 1048576
+
+
+def size_text(b):
+    if b >= 1e9:
+        return '%.1f GB' % (b / 1e9)
+    return '%d MB' % max(1, round(b / 1e6))
+
+
+def left_text(secs):
+    if secs is None:
+        return ''
+    m = max(1, round(secs / 60))
+    return '%d min' % m if m < 60 else '%d h %d min' % (m // 60, m % 60)
+
+
+def steam_downloads(now=None):
+    """Steam's downloads, from its own files on this PC: each appmanifest's state and byte counts. The time left comes
+    from the bytes done since the last look ($XDG_RUNTIME_DIR, not a setting)."""
+    now = now or time.time()
+    rates_path = os.path.join(run_dir(), 'download-rates.json')
+    before = read_json(rates_path, {}) or {}
+    after, out = {}, []
+    for lib in steam_libraries():
+        try:
+            names = os.listdir(lib)
+        except OSError:
+            continue
+        for n in names:
+            m = re.match(r'^appmanifest_(\d+)\.acf$', n)
+            if not m:
+                continue
+            try:
+                with open(os.path.join(lib, n), encoding='utf-8', errors='replace') as f:
+                    vals = dict(vdf_values(f.read()))
+            except OSError:
+                continue
+            try:
+                flags = int(vals.get('StateFlags', '0'))
+                total = int(vals.get('BytesToDownload', '0'))
+                done = int(vals.get('BytesDownloaded', '0'))
+            except ValueError:
+                continue
+            if total <= 0 or done >= total or not flags & (ST_UPDATE_REQUIRED | ST_RUNNING | ST_STARTED | ST_DOWNLOADING | ST_PAUSED):
+                continue
+            appid = m.group(1)
+            running = bool(flags & (ST_RUNNING | ST_DOWNLOADING | ST_STARTED)) and not flags & ST_PAUSED
+            left = None
+            prev = before.get(appid)
+            if running and isinstance(prev, list) and len(prev) == 2 and now > prev[0] and done > prev[1]:
+                left = (total - done) / ((done - prev[1]) / (now - prev[0]))
+            after[appid] = [now, done] if running else prev
+            out.append({'id': 'steam:' + appid, 'title': vals.get('name') or appid, 'store': 'Steam',
+                        'what': 'update' if flags & ST_INSTALLED else 'install', 'done': done, 'total': total,
+                        'percent': int(done * 100 / total), 'state': 'running' if running else ('paused' if flags & ST_PAUSED else 'waiting'),
+                        'line': 'Steam · %s of %s%s' % (size_text(done).replace(' GB', '') if total >= 1e9 and done >= 1e9 else size_text(done),
+                                                        size_text(total), (' · ' + left_text(left)) if left is not None else '')})
+    try:
+        write_small(rates_path, json.dumps({k: v for k, v in after.items() if v}))
+    except OSError:
+        pass
+    return out
+
+
+def heroic_downloads():
+    """Heroic's download list (its own store file): what's downloading and what's waiting, with Heroic's progress
+    when it has written one."""
+    out = []
+    d = read_json(os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'heroic', 'store',
+                               'download-manager.json'), {}) or {}
+    for item in d.get('queue') or [] if isinstance(d, dict) else []:
+        if not isinstance(item, dict):
+            continue
+        p = item.get('params') if isinstance(item.get('params'), dict) else {}
+        info = p.get('gameInfo') if isinstance(p.get('gameInfo'), dict) else {}
+        title = info.get('title') or p.get('appName')
+        if not isinstance(title, str) or not title:
+            continue
+        prog = item.get('progress') if isinstance(item.get('progress'), dict) else {}
+        pct = prog.get('percent') if isinstance(prog.get('percent'), (int, float)) else None
+        running = item.get('status') == 'running' or item.get('type') == 'current'
+        line = 'Heroic'
+        if isinstance(prog.get('bytes'), str):
+            line += ' · ' + prog['bytes']
+        if isinstance(prog.get('eta'), str) and prog['eta']:
+            line += ' · ' + prog['eta']
+        out.append({'id': '%s:%s' % (p.get('runner') or 'heroic', p.get('appName') or title), 'title': title, 'store': 'Heroic',
+                    'what': 'update' if p.get('isUpdate') else 'install', 'percent': int(pct) if pct is not None else -1,
+                    'state': 'running' if running else 'waiting', 'line': line})
+    return out
+
+
+def os_update_ready():
+    """A Hearth OS update that's downloaded and goes in at the next start (ostree's staged deployment)."""
+    return os.path.exists('/run/ostree/staged-deployment')
+
+
+def battery_level(p):
+    c = read_small(p + '/capacity')
+    if c.isdigit():
+        return int(c)
+    return {'Full': 100, 'High': 80, 'Normal': 55, 'Low': 20, 'Critical': 5}.get(read_small(p + '/capacity_level'), -1)
+
+
+def device_batteries():
+    """Controllers, headsets, mice: the kernel's device batteries (scope Device), then UPower's (Bluetooth headsets)."""
+    pads, other = [], []
+    base = os.environ.get('HEARTH_POWER_SUPPLY', '/sys/class/power_supply')
+    try:
+        names = sorted(os.listdir(base))
+    except OSError:
+        names = []
+    seen = set()
+    for n in names:
+        p = os.path.join(base, n)
+        if read_small(p + '/scope') != 'Device' or read_small(p + '/type') not in ('Battery', ''):
+            continue
+        lvl = battery_level(p)
+        if lvl < 0:
+            continue
+        model = read_small(p + '/model_name') or n
+        low = n.lower() + ' ' + model.lower()
+        kind = ('mouse' if re.search(r'hidpp|mouse|mx ', low) else 'keyboard' if 'keyboard' in low
+                else 'headset' if re.search(r'headset|headphone|buds', low) else 'pad')
+        seen.add(model.lower())
+        (pads if kind == 'pad' else other).append({'name': model, 'kind': kind, 'percent': lvl,
+                                                   'charging': read_small(p + '/status') == 'Charging'})
+    dump = quiet(['upower', '--dump'], 4) if have('upower') else ''
+    for block in dump.split('\n\n'):
+        kind = re.search(r'^\s*(headset|headphones|gaming-input|mouse|keyboard)\s*$', block, re.M)
+        pct = re.search(r'percentage:\s*(\d+)', block)
+        model = re.search(r'model:\s*(.+)', block)
+        if not kind or not pct:
+            continue
+        name = model.group(1).strip() if model else kind.group(1)
+        if name.lower() in seen:
+            continue
+        seen.add(name.lower())
+        k = {'headphones': 'headset', 'gaming-input': 'pad'}.get(kind.group(1), kind.group(1))
+        (pads if k == 'pad' else other).append({'name': name, 'kind': k, 'percent': int(pct.group(1)), 'charging': False})
+    for i, d in enumerate(pads):
+        d['player'] = i + 1
+    for d in pads + other:
+        d['low'] = d['percent'] <= 20 and not d['charging']
+    return pads + other
+
+
+def hearth_devices():
+    """Your other Hearth devices (Hearth Link), as hearth-device-status and hearth-link-settings tell them, and what
+    Hearth Storage does with saves (backed up there, following you between devices)."""
+    out = []
+    ds = os.path.join(SHELL_DIR, 'hearth-device-status')
+    st = read_json_line(quiet([sys.executable, ds, 'devices'], 12)) if os.path.isfile(ds) else None
+    link = os.path.join(SHELL_DIR, 'hearth-link-settings')
+    ls = read_json_line(quiet([sys.executable, link, 'status'], 8)) if os.path.isfile(link) and not os.environ.get('HEARTH_DEVICES_SAMPLE') else None
+    rel = {}
+    for p in (ls or {}).get('paired') or [] if isinstance(ls, dict) else []:
+        if isinstance(p, dict) and isinstance(p.get('id'), str):
+            rel[p['id']] = p
+    for d in (st or {}).get('devices') or [] if isinstance(st, dict) else []:
+        if not isinstance(d, dict) or d.get('friend'):
+            continue   # a friend's device is for copying games only
+        s = d.get('status') if isinstance(d.get('status'), dict) else {}
+        r = rel.get(d.get('id'), {})
+        out.append({'id': d.get('id') or '', 'name': d.get('name') or s.get('name') or 'Device', 'online': d.get('online') is True,
+                    'kind': s.get('kind') or '', 'mode': s.get('mode') or '', 'lastSeen': d.get('lastSeen') or 0,
+                    'playing': (s.get('playing') or {}).get('title') if isinstance(s.get('playing'), dict) else '',
+                    'battery': (s.get('battery') or {}).get('percent') if isinstance(s.get('battery'), dict) else None,
+                    'uptime': s.get('uptime') or 0, 'wake': d.get('wake') is True,
+                    'family': (r.get('relation') or d.get('relation')) == 'family',
+                    'savesAt': d.get('savesAt') or s.get('savesAt') or 0, 'backupAt': d.get('backupAt') or s.get('backupAt') or 0})
+    storage = (ls or {}).get('storage') if isinstance(ls, dict) and isinstance(ls.get('storage'), dict) else {}
+    return out, storage
+
+
+def profiles_list():
+    """Hearth's profiles (its data folder's profiles.json): who can be playing a game."""
+    d = read_json(os.path.join(data_home(), 'nimbus', 'profiles.json'), {}) or {}
+    out = []
+    for p in d.get('list') or [] if isinstance(d, dict) else []:
+        if isinstance(p, dict) and isinstance(p.get('id'), str) and re.match(r'^[A-Za-z0-9_-]{1,40}$', p['id']):
+            out.append({'id': p['id'], 'name': p.get('name') if isinstance(p.get('name'), str) else ''})
+    active = d.get('active') if isinstance(d, dict) else None
+    out.sort(key=lambda p: 0 if p['id'] == active else 1)
+    return out
+
+
+def read_json_line(t):
+    for line in reversed((t or '').strip().splitlines()):
+        try:
+            return json.loads(line)
+        except ValueError:
+            continue
+    return None
+
+
+def progress():
+    """Where each game is up to, when the game or Beacon says it: Hearth's progress files
+    (~/.local/share/hearth/progress/<id>.json: {"campaign", "chapter", "of", "name", "percent", "series", "details"}),
+    Beacon's (~/.local/share/beacon/progress.json, keyed by Beacon's game, the same fields), Beacon's play time and the
+    mod you picked last. Nothing for a game that doesn't say."""
+    out = {}
+    pdir = os.path.join(data_home(), 'hearth', 'progress')
+    try:
+        names = os.listdir(pdir)
+    except OSError:
+        names = []
+    for n in names:
+        if n.endswith('.json'):
+            v = read_json(os.path.join(pdir, n))
+            if isinstance(v, dict):
+                out[n[:-5].replace('_', ':', 1)] = v
+    bdir = os.path.join(data_home(), 'beacon')
+    bp = read_json(os.path.join(bdir, 'progress.json'), {}) or {}
+    pt = read_json(os.path.join(bdir, 'playtime.json'), {}) or {}
+    cfg = read_json(os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'beacon', 'config.json'), {}) or {}
+    mods = cfg.get('selected_mod') if isinstance(cfg, dict) and isinstance(cfg.get('selected_mod'), dict) else {}
+    for slug in set(list(bp) + list(pt) + list(mods)) if isinstance(bp, dict) and isinstance(pt, dict) else []:
+        if not re.match(r'^[a-z0-9:_-]{1,40}$', slug):
+            continue
+        e = dict(out.get('beacon:' + slug, {}))
+        if isinstance(bp.get(slug), dict):
+            for k, v in bp[slug].items():
+                e.setdefault(k, v)
+        if isinstance(pt.get(slug), dict) and isinstance(pt[slug].get('seconds'), int):
+            e.setdefault('hours', round(pt[slug]['seconds'] / 3600))
+        if isinstance(mods.get(slug), str) and mods[slug]:
+            e.setdefault('mod', mods[slug])
+        e.setdefault('series', BEACON_SERIES.get(slug, ''))
+        e.setdefault('launcher', 'Beacon')
+        out['beacon:' + slug] = e
+    clean = {}
+    for gid, e in out.items():
+        c = {}
+        for k in ('campaign', 'name', 'series', 'details', 'mod', 'launcher', 'build', 'who', 'layout', 'saves', 'runner',
+                  'version', 'size', 'note'):
+            if isinstance(e.get(k), str) and e[k].strip():
+                c[k] = e[k].strip()[:90]
+        for k in ('chapter', 'of', 'percent', 'hours'):
+            if isinstance(e.get(k), (int, float)) and e[k] >= 0:
+                c[k] = e[k]
+        if c:
+            clean[gid] = c
+    return clean
+
+
+def added_times():
+    """When each Steam game came onto this PC (its manifest's first write): the Recently added row."""
+    out = {}
+    for lib in steam_libraries():
+        try:
+            for n in os.listdir(lib):
+                m = re.match(r'^appmanifest_(\d+)\.acf$', n)
+                if m:
+                    st = os.stat(os.path.join(lib, n))
+                    out['steam:' + m.group(1)] = int(min(st.st_mtime, st.st_ctime) * 1000)
+        except OSError:
+            continue
+    return out
+
+
+def home_cards(fast=False):
+    fx = os.environ.get('HEARTH_FIREHOLD_HOME_FIXTURE')   # pictures in CI only
+    if fx:
+        d = read_json(fx, {}) or {}
+        d.setdefault('at', int(time.time() * 1000))
+        return d
+    dl = steam_downloads() + heroic_downloads()
+    out = {'at': int(time.time() * 1000), 'downloads': dl, 'osUpdate': os_update_ready(), 'controllers': device_batteries()}
+    if not fast:
+        devs, storage = hearth_devices()
+        out['devices'] = devs
+        out['savesToStorage'] = storage.get('backupSaves') is True
+        own = [d for d in devs if not d['family'] and d['kind'] in ('handheld', 'laptop', 'desktop')]
+        out['alsoOn'] = own[0]['name'] if storage.get('savesFollow') is True and own else ''
+        out['progress'] = progress()
+        out['added'] = added_times()
+        out['profiles'] = profiles_list()
+        out['server'] = server_card()
+        out['notifications'] = away_notifications()
+    return out
+
+
+def away_notifications():
+    """Away's "Waiting for you": how many notifications came since a screen went Away (Hearth's own history,
+    ~/.local/state/nimbus/notifications.json; only a count, nothing of what they say)."""
+    since = [v.get('at') for v in (read_modes().get('screens') or {}).values() if isinstance(v, dict) and v.get('mode') == 'away' and isinstance(v.get('at'), (int, float))]
+    if not since:
+        return 0
+    h = read_json(os.path.join(os.environ.get('HOME') or os.path.expanduser('~'), '.local', 'state', 'nimbus', 'notifications.json'), {}) or {}
+    return sum(1 for v in (h.values() if isinstance(h, dict) else []) if isinstance(v, dict) and isinstance(v.get('time'), (int, float)) and v['time'] >= min(since))
+
+
+def server_card():
+    """Away's Home server card: Server mode's services on this PC (hearth-device-status status), when it serves."""
+    ds = os.path.join(SHELL_DIR, 'hearth-device-status')
+    st = read_json_line(quiet([sys.executable, ds, 'status'], 8)) if os.path.isfile(ds) else None
+    srv = st.get('server') if isinstance(st, dict) and isinstance(st.get('server'), dict) else None
+    if not srv:
+        return None
+    lines, title = [], ''
+    for sv in srv.get('services') or []:
+        if not isinstance(sv, dict):
+            continue
+        if sv.get('title') == 'Media' and sv.get('state') == 'running':
+            title = 'Media server on'
+            lines.append('Nobody watching' if str(sv.get('big')) == '0' else '%s watching' % sv.get('big'))
+        elif sv.get('title') == 'Backups':
+            lines.append('Backups: %s' % (sv.get('chip') or sv.get('state') or ''))
+    st_ = srv.get('status') if isinstance(srv.get('status'), dict) else {}
+    return {'title': title or st_.get('title') or 'Home server on', 'lines': lines[:2]}
+
+
+def home_after(secs, fast):
+    """The Couch's next look at its cards: asleep for SECS (it asks only while it's on screen), then one line."""
+    end = time.time() + max(0, min(secs, 300))
+    parent = os.getppid()
+    while time.time() < end:
+        time.sleep(min(5, end - time.time()))
+        if os.getppid() != parent:
+            return 0
+    print(json.dumps(home_cards(fast)))
+    return 0
+
+
+# ------------------------------------------------------------------ Quick Settings (mockups firehold-plasma 07, 08)
+# What the tiles, sliders and rows show: NetworkManager, BlueZ, KWin's on-screen keyboard and Night Light, PipeWire,
+# KDE's screen brightness (PowerDevil, external monitors too), power-profiles-daemon, the device batteries. Read when
+# Quick Settings opens (and after a press), never in a loop. Each press is the person's own change.
+
+POWER_STEPS = {'rog ally': {'power-saver': 'Silent · 10 W', 'balanced': 'Balanced · 18 W', 'performance': 'Turbo · 25 W'},
+               'steam deck': {'power-saver': 'Quiet · 8 W', 'balanced': 'Balanced · 12 W', 'performance': 'Fast · 15 W'},
+               'legion go': {'power-saver': 'Quiet · 8 W', 'balanced': 'Balanced · 15 W', 'performance': 'Performance · 20 W'}}
+
+
+def product():
+    return (read_small('/sys/class/dmi/id/product_name') or '').strip()
+
+
+def device_word():
+    """"ROG Ally", "Nvidia PC", "Laptop": what this device is, in its own words."""
+    p = product()
+    low = p.lower()
+    for k in POWER_STEPS:
+        if k.replace(' ', '') in low.replace(' ', ''):
+            return {'rog ally': 'ROG Ally', 'steam deck': 'Steam Deck', 'legion go': 'Legion Go'}[k], k
+    chassis = read_small('/sys/class/dmi/id/chassis_type')
+    if chassis in ('8', '9', '10', '14', '31', '32'):
+        return 'Laptop', ''
+    vend = ''
+    try:
+        import glob
+        for d in glob.glob('/sys/class/drm/card[0-9]/device/vendor'):
+            v = read_small(d)
+            vend = {'0x10de': 'Nvidia', '0x1002': 'AMD', '0x8086': 'Intel'}.get(v, vend)
+            if vend == 'Nvidia':
+                break
+    except OSError:
+        pass
+    return ((vend + ' PC') if vend else 'This PC'), ''
+
+
+def uptime_words():
+    try:
+        secs = float(read_small('/proc/uptime').split()[0])
+    except (ValueError, IndexError):
+        return ''
+    d, h, m = int(secs // 86400), int(secs % 86400 // 3600), int(secs % 3600 // 60)
+    return 'up %d day%s' % (d, '' if d == 1 else 's') if d else 'up %d h' % h if h else 'up %d min' % m
+
+
+def ac_online():
+    import glob
+    for f in glob.glob('/sys/class/power_supply/*/online'):
+        if read_small(os.path.join(os.path.dirname(f), 'type')) == 'Mains':
+            return read_small(f) == '1'
+    return True
+
+
+def wifi_state():
+    on = quiet(['nmcli', 'radio', 'wifi'], 4).strip() == 'enabled' if have('nmcli') else False
+    ssid, sig = '', -1
+    for line in quiet(['nmcli', '-t', '-f', 'ACTIVE,SSID,SIGNAL', 'dev', 'wifi'], 6).splitlines() if on else []:
+        parts = line.rsplit(':', 1)
+        if line.startswith('yes:') and len(parts) == 2:
+            ssid, sig = parts[0][4:].replace('\\:', ':'), int(parts[1]) if parts[1].isdigit() else -1
+            break
+    return {'on': on, 'ssid': ssid, 'strength': 'strong' if sig >= 70 else 'good' if sig >= 45 else 'weak' if sig >= 0 else ''}
+
+
+def bt_state():
+    if not have('bluetoothctl'):
+        return {'on': False, 'connected': 0, 'names': []}
+    show = quiet(['bluetoothctl', 'show'], 4)
+    on = 'Powered: yes' in show
+    names = []
+    for line in quiet(['bluetoothctl', 'devices', 'Connected'], 4).splitlines() if on else []:
+        p = line.split(' ', 2)
+        if len(p) == 3 and p[0] == 'Device':
+            names.append(p[2])
+    return {'on': on, 'connected': len(names), 'names': names[:4]}
+
+
+def osk_on():
+    out = dbus_send('org.kde.KWin', '/VirtualKeyboard', 'org.freedesktop.DBus.Properties.Get', 'string:org.kde.kwin.VirtualKeyboard', 'string:enabled', timeout=3)
+    return 'true' in out
+
+
+def night_light():
+    """KWin's Night Light (org.kde.KWin.NightLight): on now, and until when."""
+    def prop(n):
+        return dbus_send('org.kde.KWin', '/org/kde/KWin/NightLight', 'org.freedesktop.DBus.Properties.Get', 'string:org.kde.KWin.NightLight', 'string:' + n, timeout=3)
+    running = 'true' in prop('running')
+    until = ''
+    m = re.search(r'uint64 (\d+)', prop('scheduledTransitionDateTime'))
+    if m and int(m.group(1)) > 0:
+        until = time.strftime('%I %p', time.localtime(int(m.group(1)))).lstrip('0')
+    return {'on': running, 'until': until}
+
+
+def sinks():
+    """The outputs (PipeWire through pactl's JSON): name, what to call it, which is the default, the volume."""
+    out = []
+    j = quiet(['pactl', '-f', 'json', 'list', 'sinks'], 4) if have('pactl') else ''
+    default = quiet(['pactl', 'get-default-sink'], 3).strip() if have('pactl') else ''
+    try:
+        lst = json.loads(j) if j else []
+    except ValueError:
+        lst = []
+    for x in lst:
+        if not isinstance(x, dict):
+            continue
+        desc = x.get('description') or x.get('name') or ''
+        props = x.get('properties') or {}
+        form = str(props.get('device.form_factor') or '')
+        low = (desc + ' ' + form + ' ' + str(x.get('name'))).lower()
+        word = ('Headset' if re.search(r'headset|headphone|buds|arctis', low) else 'TV (HDMI)' if 'hdmi' in low
+                else 'Speakers' if re.search(r'speaker|analog|built-in', low) else desc[:20])
+        vol = -1
+        try:
+            v = next(iter((x.get('volume') or {}).values()))
+            vol = int(str(v.get('value_percent', '-1')).rstrip('%'))
+        except (StopIteration, AttributeError, ValueError):
+            pass
+        out.append({'name': x.get('name'), 'word': word, 'desc': desc, 'default': x.get('name') == default, 'volume': vol, 'muted': x.get('mute') is True})
+    return out
+
+
+def brightness_list():
+    """KDE's screen brightness (org.kde.ScreenBrightness: built-in screens and DDC monitors), else brightnessctl."""
+    out = []
+    names = re.findall(r'string "([^"]+)"', dbus_send('org.kde.ScreenBrightness', '/org/kde/ScreenBrightness', 'org.freedesktop.DBus.Properties.Get',
+                                                      'string:org.kde.ScreenBrightness', 'string:DisplaysDBusNames', timeout=3))
+    for n in names:
+        def p(k):
+            return dbus_send('org.kde.ScreenBrightness', '/org/kde/ScreenBrightness/' + n, 'org.freedesktop.DBus.Properties.Get',
+                             'string:org.kde.ScreenBrightness.Display', 'string:' + k, timeout=3)
+        lab = re.search(r'string "([^"]*)"', p('Label'))
+        cur = re.search(r'int32 (\d+)', p('Brightness'))
+        mx = re.search(r'int32 (\d+)', p('MaxBrightness'))
+        if cur and mx and int(mx.group(1)) > 0:
+            out.append({'id': n, 'label': lab.group(1) if lab else n, 'percent': round(int(cur.group(1)) * 100 / int(mx.group(1))), 'max': int(mx.group(1))})
+    if not out:
+        b = quiet(['brightnessctl', '-m'], 3) if have('brightnessctl') else ''
+        m = re.search(r',(\d+)%,', b)
+        if m:
+            out.append({'id': '', 'label': 'This screen', 'percent': int(m.group(1)), 'max': 100})
+    return out
+
+
+def quick_settings():
+    fx = os.environ.get('HEARTH_FIREHOLD_QS_FIXTURE')   # pictures in CI only
+    if fx:
+        return read_json(fx, {}) or {}
+    word, key = device_word()
+    batt = sysinfo(False).get('battery', -1)
+    prof = quiet(['powerprofilesctl', 'get'], 3).strip() if have('powerprofilesctl') else ''
+    desk = read_json(os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'nimbus', 'desktop.json'), {}) or {}
+    s = settings()
+    return {'device': word, 'line': ' · '.join(x for x in [word, 'plugged in' if ac_online() else ('battery %d%%' % batt if batt >= 0 else ''), uptime_words()] if x),
+            'battery': batt, 'wifi': wifi_state(), 'bt': bt_state(), 'osk': osk_on(), 'night': night_light(),
+            'dnd': dnd_state(s), 'sinks': sinks(), 'brightness': brightness_list(), 'power': prof,
+            'powerNames': POWER_STEPS.get(key, {'power-saver': 'Power saver', 'balanced': 'Balanced', 'performance': 'Performance'}),
+            'devices': device_batteries(), 'gameModeOff': desk.get('gameModeOff') is True, 'modes': screen_modes()}
+
+
+def dnd_state(s=None):
+    """Do not disturb: Firehold's schedule (firehold.json "dnd": {"from": "23:00", "to": "07:00", "games": true}) and
+    whether it's on now (on by hand, in the schedule's hours, or a game full screen)."""
+    s = settings() if s is None else s
+    d = s.get('dnd') if isinstance(s.get('dnd'), dict) else {}
+    frm, to = d.get('from', '23:00'), d.get('to', '07:00')
+    now = time.strftime('%H:%M')
+    in_hours = (frm <= now < to) if frm < to else (now >= frm or now < to)
+    by_hand = read_small(os.path.join(run_dir(), 'dnd')) == 'on'
+    sched = d.get('schedule', True) is not False
+    def ampm(hm):
+        try:
+            h, m = map(int, hm.split(':'))
+        except ValueError:
+            return hm
+        return '%d%s %s' % (h % 12 or 12, (':%02d' % m) if m else '', 'AM' if h < 12 else 'PM')
+    return {'on': by_hand or (sched and in_hours), 'byHand': by_hand, 'schedule': sched, 'from': ampm(frm), 'to': ampm(to),
+            'games': d.get('games', True) is not False, 'family': d.get('family', True) is not False}
+
+
+def qs_do(what, arg=''):
+    """A Quick Settings press."""
+    if what == 'wifi':
+        quiet(['nmcli', 'radio', 'wifi', 'off' if wifi_state()['on'] else 'on'], 6)
+    elif what == 'bt':
+        quiet(['bluetoothctl', 'power', 'off' if bt_state()['on'] else 'on'], 6)
+    elif what == 'dnd':
+        # Do not disturb by hand (live state until you turn it off or restart; the schedule is a setting).
+        p = os.path.join(run_dir(), 'dnd')
+        write_small(p, 'off' if read_small(p) == 'on' else 'on')
+        tell_dnd()
+        # Firehold's KWin script hears it too (the coordinator: after a Do not disturb press, tell it ourselves).
+        dbus_send('org.kde.kglobalaccel', '/component/kwin', 'org.kde.kglobalaccel.Component.invokeShortcut',
+                  'string:Firehold dnd ' + read_small(p), reply=False)
+    elif what == 'night':
+        # KDE's own Night Light switch (kwinrc [NightColor] Active, through KConfig; KWin reads it again). A KWin
+        # inhibit wouldn't outlast this short helper, so the tile is the setting itself, changed only by your press.
+        import hearth_kconfig as kc
+        on = night_light()['on']
+        kc.update(kc.user_path('kwinrc'), {'NightColor': {'Active': 'false' if on else 'true'}})
+        dbus_send('org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure', reply=False)
+    elif what == 'screenshot':
+        return do('screenshot')
+    elif what == 'osk':
+        return do('osk')
+    elif what == 'volume' and re.match(r'^\d{1,3}$', arg):
+        quiet(['wpctl', 'set-volume', '@DEFAULT_AUDIO_SINK@', '%d%%' % min(100, int(arg))], 3)
+    elif what == 'output' and re.match(r'^[A-Za-z0-9_.:-]{1,160}$', arg):
+        quiet(['pactl', 'set-default-sink', arg], 4)
+    elif what == 'brightness' and re.match(r'^[A-Za-z0-9_]{0,60}:\d{1,3}$', arg):
+        d, v = arg.split(':')
+        if d:
+            b = [x for x in brightness_list() if x['id'] == d]
+            if b:
+                dbus_send('org.kde.ScreenBrightness', '/org/kde/ScreenBrightness/' + d, 'org.kde.ScreenBrightness.Display.SetBrightness',
+                          'int32:%d' % round(int(v) * b[0]['max'] / 100), 'uint32:0', reply=False)
+        else:
+            quiet(['brightnessctl', 'set', '%d%%' % int(v)], 3)
+    elif what == 'power' and arg in ('power-saver', 'balanced', 'performance'):
+        quiet(['powerprofilesctl', 'set', arg], 5)
+    elif what == 'lock':
+        detach(['loginctl', 'lock-session'])
+    elif what in ('sleep', 'restart', 'shutdown'):
+        detach(['systemctl', {'sleep': 'suspend', 'restart': 'reboot', 'shutdown': 'poweroff'}[what]])
+    elif what == 'logout':
+        dbus_send('org.kde.Shutdown', '/Shutdown', 'org.kde.Shutdown.logout', reply=False)
+    elif what == 'gamemode':
+        return do('gamemode')
+    elif what == 'settings':
+        detach(['hearth-settings-app'] + (['--page', arg] if re.match(r'^[a-z0-9-]{1,40}$', arg or '') else []))
+    else:
+        raise ValueError('unknown')
+    return {'ok': True}
+
+
+def tell_dnd():
+    """KDE's own Do not disturb follows (the notifications applet's inhibition, through its D-Bus service)."""
+    ping_modes('dnd')
 
 
 def games(argv):
@@ -929,6 +2108,47 @@ def main(argv):
             why = a[a.index('--why') + 1] if '--why' in a[:-1] else ''
             tab = next((x for x in a[1:] if x in ('home', 'library', 'apps', 'store', 'switcher', 'settings')), '')
             switch(a[0], tab, why)
+        elif what == 'ping' and a and a[0] in ('modes', 'popup', 'popup-off', 'identify', 'identify-off', 'qs', 'qs-off', 'notes', 'notes-off', 'menu-app', 'menu-window', 'menu-move', 'menu-help', 'menu-off'):
+            # The Desk's mode pill and the Couch: read the modes again, open or close Modes (on SCREEN), Identify.
+            scr = a[1] if len(a) > 1 and re.match(r'^[A-Za-z0-9_.-]{1,40}$', a[1]) else ''
+            ping_modes(a[0], scr)
+        elif what == 'menus' and a and a[0].isdigit():
+            print('own' if own_menus(int(a[0])) else 'standard')
+        elif what == 'tip':
+            # The Desk bar's first-run tip: shown once (state in ~/.local/state, not a setting).
+            f = os.path.join(os.path.dirname(state_path()), 'firehold-bar-tip')
+            if os.environ.get('HEARTH_FIREHOLD_TIP') == 'always' or not os.path.exists(f):
+                print('show')
+                try:
+                    write_small(f, str(int(time.time())))
+                except OSError:
+                    pass
+            else:
+                print('seen')
+        elif what in ('qs', 'qs-do') and os.path.isfile(HEARTH_QUICK) and (what == 'qs' or (a and a[0] in SHARED_QS)):
+            # Hearth's shared Quick Settings backend (one for Hearth Classic and Firehold) when it's installed.
+            r = subprocess.run([sys.executable, HEARTH_QUICK, what] + a[:2], capture_output=True, text=True, timeout=20)
+            sys.stdout.write(r.stdout)
+        elif what == 'qs':
+            print(json.dumps(quick_settings()))
+        elif what == 'qs-do' and a:
+            print(json.dumps(qs_do(a[0], a[1] if len(a) > 1 else '')))
+        elif what == 'pad-button' and a and re.match(r'^[a-z]{1,12}$', a[0]):
+            # A controller button pressed on the Desk (the checks use it: no controller in CI).
+            if current_posture() == 'desk':
+                desk_pad(a[0])
+        elif what == 'modes':
+            print(json.dumps(modes_info()))
+        elif what == 'mode' and len(a) >= 2:
+            why = a[a.index('--why') + 1] if '--why' in a[:-1] else 'pick'
+            if why not in WHY:
+                raise ValueError('bad reason')
+            targets = [x for x in a[0].split(',') if re.match(r'^[A-Za-z0-9_.-]{1,40}$', x)]
+            set_modes(targets, a[1], why)
+        elif what == 'away-later' and a and a[0].isdigit():
+            return away_later(int(a[0]))
+        elif what == 'back' and a and a[0] in ('pad', 'mouse', 'keys', 'pick'):
+            come_back(a[0])
         elif what == 'begin' and a and a[0] in (COUCH, DESK):
             begin(a[0])
         elif what == 'plain':
@@ -936,7 +2156,7 @@ def main(argv):
         elif what == 'ask' and a:
             ask(a[0])
         elif what == 'listen':
-            return listen()
+            return listen(a[0] if a and a[0] in ('bar-posture', 'bar-app') else '')
         elif what == 'state' and a and a[0] in ('front', 'back', 'guide'):
             write_small(os.path.join(run_dir(), 'front'), a[0])
         elif what == 'tab':
@@ -954,6 +2174,10 @@ def main(argv):
             print(json.dumps(sysinfo(bool(a and a[0] == 'all'))))
         elif what == 'do' and a:
             print(json.dumps(do(a[0], a[1] if len(a) > 1 else '')))
+        elif what == 'home':
+            print(json.dumps(home_cards(bool(a and a[0] == 'fast'))))
+        elif what == 'home-after' and a and a[0].isdigit():
+            return home_after(int(a[0]), len(a) > 1 and a[1] == 'fast')
         elif what == 'apps':
             print(json.dumps(apps()))
         elif what == 'launch' and a:

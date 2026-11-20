@@ -16,6 +16,12 @@ cp -a "$SRC/couch" "$P/plasmoids/org.hearthos.firehold.couch"
 # The Couch's rules are Mantel's Firehold's (one copy: desktop/shell/firehold.js).
 cp "$SRC/../shell/firehold.js" "$P/plasmoids/org.hearthos.firehold.couch/contents/ui/firehold.js" || ok=0
 cp -a "$SRC/posture" "$P/plasmoids/org.hearthos.firehold.posture"
+# The Desk's mode pill shows a Couch or Away screen's page over the Desk, and its Modes popup uses the Couch's parts:
+# the Couch's own files, copied next to it (one source: couch/contents/ui).
+mkdir -p "$P/plasmoids/org.hearthos.firehold.posture/contents/ui/couch"
+cp "$SRC"/couch/contents/ui/*.qml "$SRC"/couch/contents/ui/*.js "$P/plasmoids/org.hearthos.firehold.posture/contents/ui/couch/" || ok=0
+cp "$SRC/../shell/firehold.js" "$P/plasmoids/org.hearthos.firehold.posture/contents/ui/couch/firehold.js" || ok=0
+rm -f "$P/plasmoids/org.hearthos.firehold.posture/contents/ui/couch/main.qml"
 cp -a "$SRC/app" "$P/plasmoids/org.hearthos.firehold.app"
 # The Desk: Plasma's own desktop shell under Firehold's name, with Firehold's first layout and none of the desktop
 # shell's update scripts (they're for plain Plasma's own panels).

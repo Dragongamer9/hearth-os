@@ -1,0 +1,8 @@
+[Unit]
+Description=Hearth's panel on Plasma: read Hearth's settings again (hearth-plasma-panel sync)
+PartOf=graphical-session.target
+
+[Service]
+Type=oneshot
+TimeoutStartSec=30
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/plasma-hearth/hearth-plasma-panel sync
