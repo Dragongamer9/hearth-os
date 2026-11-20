@@ -14,6 +14,12 @@ const fn c(r: u8, g: u8, b: u8) -> Color {
     Color { r: r as f32 / 255.0, g: g as f32 / 255.0, b: b as f32 / 255.0, a: 1.0 }
 }
 pub const BG: Color = c(0x15, 0x17, 0x1c);
+
+/// The page colour, a hair apart when `tint` is set (the same on screen): changing it makes the CPU renderer draw the
+/// whole window again.
+pub fn page_bg(tint: bool) -> Color {
+    if tint { Color { b: BG.b + 0.0004, ..BG } } else { BG }
+}
 pub const SIDE: Color = c(0x1b, 0x1e, 0x24);
 pub const CARD: Color = c(0x20, 0x24, 0x2b);
 pub const CARD2: Color = c(0x27, 0x2b, 0x33);

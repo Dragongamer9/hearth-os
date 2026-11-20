@@ -95,7 +95,7 @@ fn lbrb<'a>() -> E<'a, Msg> {
 fn frame<'a>(a: &'a App, nav: bool, page: E<'a, Msg>, left: Vec<E<'a, Msg>>, right: Vec<E<'a, Msg>>) -> E<'a, Msg> {
     let body: E<'a, Msg> = if nav { row![sidebar(a), page].height(Length::Fill).into() } else { container(page).width(Length::Fill).height(Length::Fill).into() };
     let all: E<'a, Msg> = column![title_bar(), body, hints(left, right, 54.0, 28.0, 28.0, BG)].into();
-    let all = container(all).style(bx(BG, 0.0, None)).width(Length::Fill).height(Length::Fill);
+    let all = container(all).style(bx(page_bg(a.tint), 0.0, None)).width(Length::Fill).height(Length::Fill);
     hearth_ui::ui::edges(all.into(), Msg::Resize)
 }
 

@@ -46,7 +46,7 @@ fn top<'a>(a: &'a App, tabs: bool) -> E<'a, Msg> {
 }
 
 fn frame<'a>(a: &'a App, tabs: bool, body: E<'a, Msg>, left: Vec<E<'a, Msg>>, right: Vec<E<'a, Msg>>) -> E<'a, Msg> {
-    container(column![top(a, tabs), container(body).width(Length::Fill).height(Length::Fill), hints(left, right, 56.0, 24.0, 24.0, BG)]).style(bx(BG, 0.0, None)).width(Length::Fill).height(Length::Fill).into()
+    container(column![top(a, tabs), container(body).width(Length::Fill).height(Length::Fill), hints(left, right, 56.0, 24.0, 24.0, BG)]).style(bx(page_bg(a.tint), 0.0, None)).width(Length::Fill).height(Length::Fill).into()
 }
 
 fn bare<'a>(body: E<'a, Msg>, left: Vec<E<'a, Msg>>, right: Vec<E<'a, Msg>>) -> E<'a, Msg> {
