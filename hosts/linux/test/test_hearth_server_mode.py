@@ -343,6 +343,21 @@ class FedoraServer(SessionBase):
         self.assertIsNone(self.read('hearth-server-mode.pid'))
 
 
+class CageWatcher(SessionBase):
+    def test_guide_bringing_the_dashboard_back_is_not_a_failure(self):
+        """The dashboard ends with 42 to come back in front of Settings or Ithil's app: started again at once."""
+        app = os.path.join(self.bin, 'hearth-server-app')
+        self.write(app, '#!/bin/sh\nn=$(cat "$HOME/app-n" 2>/dev/null || echo 0); n=$((n + 1)); echo $n > "$HOME/app-n"\n'
+                        '[ "$n" -le 2 ] && { sleep 2; exit 42; }\nexit 1\n')
+        e = self.env(HEARTH_SERVER_APP=app)
+        p = subprocess.Popen(['sh', '-c', 'sh "$0"; echo done', str(ROOT / 'hosts/linux/desktop/server/cage/run')], env=e, stdout=subprocess.PIPE, text=True)
+        out = p.communicate(timeout=60)[0]
+        self.assertIn('done', out)
+        self.assertEqual(open(os.path.join(self.home, 'app-n')).read().strip(), '5', 'two comebacks, then three quick closes')
+        self.assertIn('keeps closing', self.read('hearth-server-dash-failed'))
+        self.assertEqual(open(os.path.join(self.home, '.local/share/nimbus/server-dash.log')).read().count('back to the front'), 2)
+
+
 class WholeFedoraSession(SessionBase):
     """The whole session on the Fedora edition with Game Mode off: Server mode that fails goes to Desktop Mode."""
 

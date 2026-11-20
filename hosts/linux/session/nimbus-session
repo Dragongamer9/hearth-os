@@ -1710,8 +1710,7 @@ run_server() {
   kill "$wpid" 2>/dev/null
   [ -n "$ipid" ] && kill "$ipid" 2>/dev/null
   rm -f "$RUN/hearth-server-mode.pid" "$RUN/hearth-server-dash-up"
-  # (cage: its watcher and the dashboard never outlive it.)
-  [ "$sdisp" = cage ] && { pkill -TERM -u "$(id -u)" -f "$SERVER_CAGE_RUN" 2>/dev/null; pkill -TERM -u "$(id -u)" -f "hearth-server-app" 2>/dev/null; }
+  # (cage: its watcher ends by itself within 5 s once cage is gone, and the dashboard with its screen.)
   # Power limits back to how they were, the screen on (never waited on for long, never fatal).
   server_helper leaving >/dev/null
   ran=$(( $(date +%s) - started ))

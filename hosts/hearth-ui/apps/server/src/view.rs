@@ -202,7 +202,23 @@ pub fn view(a: &App) -> E<'_> {
     }
     match a.overlay {
         Overlay::Detail => match a.cur() {
-            Some(t) => stack![base, click(scrim(), Msg::Close), centred(detail(a, &d, &t, k))].into(),
+            Some(t) => {
+                let id = s(&t, "id");
+                let page: E = match id.as_str() {
+                    "team" => crate::pages::team_page(a, &t, k),
+                    "ithil" => crate::pages::ithil_page(a, k),
+                    "cache" => crate::pages::cache_page(a, &t, k),
+                    "ads" => crate::pages::ads_page(a, &t, k),
+                    "rules" => crate::pages::rules_page(a, &t, k),
+                    _ => return stack![base, click(scrim(), Msg::Close), centred(detail(a, &d, &t, k))].into(),
+                };
+                let mut boxc = Column::new().push(page);
+                if matches!(id.as_str(), "cache" | "ads" | "rules") && !a.toast.is_empty() {
+                    boxc = boxc.push(container(tx(a.toast.clone(), 15.0 * k, G::acc())).padding(Padding { top: 0.0, right: 32.0 * k, bottom: 16.0 * k, left: 32.0 * k }));
+                }
+                let card = container(boxc).width(Length::Fixed(1620.0 * k)).height(Length::Fixed(860.0 * k)).clip(true).style(boxed(G::panel(), 22.0 * k, Some((G::line(), 1.0))));
+                stack![base, click(scrim(), Msg::Close), centred(card.into())].into()
+            }
             None => base,
         },
         Overlay::Menu => stack![base, click(scrim(), Msg::Close), centred(menu(a, k))].into(),
@@ -294,7 +310,7 @@ fn left_column<'a>(a: &'a App, d: &Value, k: f32) -> E<'a> {
             let name_c = if working { draw::core_color(&id) } else { G::hi() };
             crow = crow.push(
                 column![
-                    draw::canvas(draw::Core { kind: id.clone(), working, off: st == "off", fade: 1.0 }, Length::Fixed(110.0 * k), Length::Fixed(100.0 * k)),
+                    draw::canvas(draw::Core { kind: id.clone(), working, off: st == "off", fade: 1.0, t: a.anim_t, still: a.still() }, Length::Fixed(110.0 * k), Length::Fixed(100.0 * k)),
                     txs(s(c, "name").to_uppercase(), 14.0 * k, name_c),
                     tx(s(c, "status"), 13.5 * k, G::muted())
                 ]
@@ -408,15 +424,9 @@ fn tile<'a>(t: &Value, k: f32, focused: bool, a: &'a App) -> E<'a> {
     }
     let mut col = Column::new().spacing(8.0 * k).width(Length::Fill).height(Length::Fill).push(head);
     let boxes = arr(t, "boxes");
-    // The AI team: its engines, small (Mantel draws its live mesh here).
+    // The AI team: its live mesh, small (AiMesh.qml compact).
     if truthy(t, "mesh") {
-        let engines = a.d.as_ref().and_then(|d| d.get("team")).map(|tm| arr(tm, "engines")).unwrap_or_default();
-        let mut m = Column::new().spacing(5.0 * k);
-        for e in engines.iter().take(4) {
-            let on = s(e, "state") != "off";
-            m = m.push(row![dot(if s(e, "state") == "working" { acc } else if on { G::ok() } else { muted }, 8.0 * k), tx(s(e, "name"), 13.5 * k, ctext), fill(), tx(s(e, "status"), 12.5 * k, muted)].spacing(8.0 * k).align_y(iced::Center));
-        }
-        col = col.push(container(m).padding(10.0 * k).width(Length::Fill).height(Length::Fill).clip(true).style(boxed(sunk, 10.0 * k, None)));
+        col = col.push(container(crate::pages::mesh(a, k, true)).padding(4.0 * k).width(Length::Fill).height(Length::Fill).clip(true).style(boxed(sunk, 10.0 * k, None)));
     }
     // Ithil, two tiles wide: her state, then her mood, what she's focused on, her four needs.
     if let Some(it) = t.get("ithil").filter(|v| v.is_object()) {
@@ -443,10 +453,7 @@ fn tile<'a>(t: &Value, k: f32, focused: bool, a: &'a App) -> E<'a> {
         right = right.push(tx(if !truthy(it, "running") { "Her app isn't running · A to start her".to_string() } else {
             format!("{}{}", if truthy(it, "brainLoaded") { "Brain loaded" } else { "Brain not loaded" }, { let x = s(it, "answered"); if x.is_empty() { x } else { format!(" · answered you {x}") } })
         }, 13.0 * k, muted));
-        let brain = container(column![draw::canvas(draw::Core { kind: "ithil".into(), working: s(it, "state") == "awake" && truthy(it, "running"), off: !truthy(it, "running"), fade: 1.0 }, Length::Fill, Length::Fill)])
-            .width(Length::FillPortion(1))
-            .height(Length::Fill)
-            .style(boxed(rgb(0x2a2232), 10.0 * k, None));
+        let brain = crate::pages::tile_brain(a, k);
         col = col.push(row![brain, right].spacing(18.0 * k).height(Length::Fill));
     }
     let big = s(t, "big");
@@ -631,7 +638,7 @@ fn sline<'a>(k: f32, ic: &str, title: String, sub: String, tone: Color) -> E<'a>
     .into()
 }
 
-fn sbutton<'a>(k: f32, label: &str, key: &str, primary: bool, m: Msg) -> E<'a> {
+pub fn sbutton<'a>(k: f32, label: &str, key: &str, primary: bool, m: Msg) -> E<'a> {
     let fg = if primary { G::ink() } else { G::text() };
     let b = container(
         row![
@@ -942,7 +949,7 @@ fn idle<'a>(a: &App, d: &Value, k: f32) -> E<'a> {
     }
     let mut cores = Row::new().spacing(70.0 * k);
     for c in arr(d, "cores") {
-        cores = cores.push(draw::canvas(draw::Core { kind: s(&c, "id"), working: s(&c, "state") == "working", off: false, fade: 0.32 }, Length::Fixed(90.0 * k), Length::Fixed(90.0 * k)));
+        cores = cores.push(draw::canvas(draw::Core { kind: s(&c, "id"), working: s(&c, "state") == "working", off: false, fade: 0.32, t: 0.0, still: true }, Length::Fixed(90.0 * k), Length::Fixed(90.0 * k)));
     }
     black(
         column![

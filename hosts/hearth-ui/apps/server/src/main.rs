@@ -14,8 +14,12 @@
 //!
 //! For CI's pictures: --show detail:N | switch | remote | back | menu | dim, and --sel N.
 
+mod brain;
 mod draw;
+mod pages;
 mod view;
+
+pub const SITE_ID: &str = "server-site";
 
 use hearth_ui::app;
 use hearth_ui::run;
@@ -60,6 +64,18 @@ pub enum Msg {
     RemoteCancel,
     Close,
     DetailAct(String),
+    // 1.16: the animation clock, the window's focus, the feature pages and Ithil's brain
+    Anim,
+    Focus(bool),
+    Back,
+    FeatRow(usize),
+    FeatKey(String),
+    PickChoice(usize),
+    Site(String),
+    IthilWin(String),
+    BrainMove(iced::Point),
+    BrainLeave,
+    BrainRead(run::Output),
 }
 
 pub struct App {
@@ -95,6 +111,36 @@ pub struct App {
     pub plasma: bool,
     show: Option<String>,
     up_written: bool,
+    // the animation clock (seconds since start), whether the window has the keyboard (Settings or Ithil's app
+    // above it in cage: not), Reduce motion (desktop.json, read only)
+    pub anim_t: f32,
+    start: f64,
+    pub focused: bool,
+    pub reduce: bool,
+    last_anim: f64,
+    // Ithil: her log for the brain, the window shown (live | 24 | all), where in it, X-ray, how her brain is turned
+    pub ithil_prep: brain::Prepared,
+    brain_reading: bool,
+    last_brain: f64,
+    pub ithil_win: String,
+    pub tpos: f32,
+    pub xray: bool,
+    moved: f64,
+    pub yaw: f32,
+    pub pitch: f32,
+    mouse_last: Option<iced::Point>,
+    // the cache's, the ad blocker's and the rules' pages: the picked row, X once (empty), the site box, the new-rule
+    // picker (step 0 off, 1 When, 2 Do; the picked of each), its numbers (drive °C, power W, from, to) and the device
+    pub fsel: usize,
+    pub ask_empty: bool,
+    pub typing: bool,
+    pub site: String,
+    pub step: u8,
+    pub wi: usize,
+    pub di: usize,
+    pub when_vals: (i64, i64, i64, i64),
+    pub fan_pct: i64,
+    pub device: String,
 }
 
 pub const COLS: usize = 5;
@@ -125,6 +171,12 @@ pub fn truthy(v: &Value, k: &str) -> bool {
 
 fn now() -> f64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs_f64()).unwrap_or(0.0)
+}
+
+/// Settings › Accessibility's Reduce motion (desktop.json reduceMotion): the cores and the brain stand still.
+fn reduce_motion() -> bool {
+    let data = std::env::var("XDG_DATA_HOME").ok().filter(|x| !x.is_empty()).unwrap_or_else(|| format!("{}/.local/share", hearth_ui::paths::home().display()));
+    std::fs::read_to_string(format!("{data}/nimbus/desktop.json")).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok()).map(|v| v.get("reduceMotion") == Some(&Value::Bool(true))).unwrap_or(false)
 }
 
 /// Game Mode on this PC (desktop.json's gameModeOff, written only by Settings): read, never written.
@@ -177,6 +229,31 @@ impl App {
             plasma,
             show: app::arg("--show"),
             up_written: false,
+            anim_t: 0.0,
+            start: t,
+            focused: true,
+            reduce: reduce_motion(),
+            last_anim: t,
+            ithil_prep: brain::Prepared::default(),
+            brain_reading: false,
+            last_brain: 0.0,
+            ithil_win: "live".into(),
+            tpos: 120.0,
+            xray: false,
+            moved: 0.0,
+            yaw: -1.1,
+            pitch: 0.22,
+            mouse_last: None,
+            fsel: 0,
+            ask_empty: false,
+            typing: false,
+            site: String::new(),
+            step: 0,
+            wi: 0,
+            di: 0,
+            when_vals: (50, 300, 23 * 60, 7 * 60),
+            fan_pct: 40,
+            device: String::new(),
         };
         if let Some(n) = app::arg("--sel").and_then(|x| x.parse().ok()) {
             a.sel = n;
@@ -492,6 +569,284 @@ impl App {
         self.cells().iter().enumerate().filter(|(_, c)| c.0 == 0).map(|(i, _)| i + 1).last().unwrap_or(0)
     }
 
+    /// Nothing moves while Reduce motion is on, the screen is dim or off, or another window (Settings, Ithil's app)
+    /// is in front: the dashboard then draws only when its data changes.
+    pub fn still(&self) -> bool {
+        self.reduce || !self.focused || self.screen != Screen::On
+    }
+    fn animating(&self) -> bool {
+        if self.still() {
+            return false;
+        }
+        let Some(d) = &self.d else { return false };
+        !arr(d, "cores").is_empty() || d.get("ithil").map(|v| v.is_object()).unwrap_or(false) || self.tiles().iter().any(|t| truthy(t, "mesh"))
+    }
+    fn open_detail(&mut self) {
+        self.overlay = Overlay::Detail;
+        self.fsel = 0;
+        self.ask_empty = false;
+        self.typing = false;
+        self.step = 0;
+    }
+    fn read_brain(&mut self) -> Task<Msg> {
+        let has = self.d.as_ref().and_then(|d| d.get("ithil")).map(|v| v.is_object()).unwrap_or(false);
+        if !has || self.brain_reading || self.still() {
+            return Task::none();
+        }
+        self.brain_reading = true;
+        self.last_brain = now();
+        let h = if self.ithil_win == "all" { "0" } else { "24" };
+        Task::perform(run::spawn(self.cmd(&["ithil-brain", h])), Msg::BrainRead)
+    }
+    fn ithil_step(&mut self, d: f32) -> Task<Msg> {
+        self.moved = now();
+        let mut t = Task::none();
+        if self.ithil_win == "live" {
+            self.ithil_win = "24".into();
+            self.tpos = 118.0;
+            self.brain_reading = false;
+            t = self.read_brain();
+        }
+        self.tpos = (self.tpos + d).clamp(0.0, 120.0);
+        t
+    }
+    fn ithil_cycle(&mut self, d: i32) -> Task<Msg> {
+        let w = ["live", "24", "all"];
+        let i = w.iter().position(|x| *x == self.ithil_win).unwrap_or(0) as i32;
+        self.ithil_win = w[((i + d + 3) % 3) as usize].into();
+        self.tpos = 120.0;
+        self.brain_reading = false;
+        self.read_brain()
+    }
+
+    // ---------------------------------------------------------------- the cache, the ad blocker, the rules
+    fn feat_rows(&self) -> usize {
+        let Some(t) = self.cur() else { return 1 };
+        match s(&t, "id").as_str() {
+            "cache" => 1 + pages::STORES.len(),
+            "ads" => 1 + pages::ads_devices(&t).len(),
+            "rules" => {
+                let (q, r, _) = pages::rules_of(&t);
+                q.len() + r.len() + 1
+            }
+            _ => 1,
+        }
+    }
+    /// Their changes: hearth-server-mode dns … (the cache, the ad blocker) or rules … (quiet hours and rules).
+    fn feature_act(&mut self, args: Vec<String>) -> Task<Msg> {
+        if args.first().map(String::as_str) == Some("settings") {
+            self.settings("hs-server");
+            return Task::none();
+        }
+        let what = if self.cur_id() == "rules" { "rules" } else { "dns" };
+        let said = match args.first().map(String::as_str).unwrap_or("") {
+            "cache" => "Game download cache",
+            "store" => "Stores",
+            "cache-empty" => "The cache is being emptied",
+            "ads" | "ads-pause" => "Ad blocker",
+            "allow" => "Allowed",
+            "device" => "Your devices",
+            "quiet-add" => "Quiet hours made (off until you turn it on)",
+            "quiet-set" | "quiet-remove" => "Quiet hours",
+            "rule-add" => "Rule made (off until you turn it on)",
+            "rule-set" | "rule-pause" | "rule-remove" => "Rule",
+            "while" => "While quiet",
+            _ => "Saved",
+        };
+        let mut full = vec![what.to_string()];
+        full.extend(args);
+        let refs: Vec<&str> = full.iter().map(String::as_str).collect();
+        self.act(&refs, &format!("{said} ✓"))
+    }
+    fn feat_pick(&mut self, d: i64) {
+        match self.step {
+            1 => self.wi = (self.wi as i64 + d).clamp(0, pages::whens(self).len() as i64 - 1) as usize,
+            2 => self.di = (self.di as i64 + d).clamp(0, pages::dos(self).len() as i64 - 1) as usize,
+            _ => {
+                if !self.typing {
+                    self.fsel = (self.fsel as i64 + d).clamp(0, self.feat_rows() as i64 - 1) as usize;
+                }
+                self.ask_empty = false;
+            }
+        }
+    }
+    fn feat_adjust(&mut self, d: i64) {
+        if self.cur_id() != "rules" {
+            return;
+        }
+        if self.step == 1 {
+            let w = pages::whens(self)[self.wi].0;
+            let v = &mut self.when_vals;
+            match w {
+                "drive" => v.0 = (v.0 + 5 * d).clamp(30, 90),
+                "power" => v.1 = (v.1 + 50 * d).clamp(50, 1500),
+                "time" | "quiet" => v.2 = (v.2 + 30 * d + 1440) % 1440,
+                _ => {}
+            }
+        } else if self.step == 2 && pages::dos(self)[self.di].0 == "fans" {
+            self.fan_pct = (self.fan_pct + 10 * d).clamp(20, 100);
+        }
+    }
+    fn new_rule(&mut self) {
+        self.step = 1;
+        self.wi = 0;
+        self.di = 0;
+        self.device = self.cur().map(|t| arr(&t, "devices")).and_then(|d| d.first().map(|x| x.as_str().map(String::from).unwrap_or_else(|| x.to_string()))).unwrap_or_default();
+    }
+    fn feat_enter(&mut self) -> Task<Msg> {
+        let Some(t) = self.cur() else { return Task::none() };
+        let id = s(&t, "id");
+        let sel = self.fsel;
+        let st = |b: bool| if b { "off" } else { "on" }.to_string();
+        match id.as_str() {
+            "cache" => {
+                self.ask_empty = false;
+                let c = t.get("cache").cloned().unwrap_or(Value::Null);
+                if sel == 0 {
+                    self.feature_act(vec!["cache".into(), st(truthy(&c, "on"))])
+                } else {
+                    let s_ = pages::STORES[sel - 1];
+                    let on = c.get("stores").map(|x| truthy(x, s_)).unwrap_or(false);
+                    self.feature_act(vec!["store".into(), s_.into(), st(on)])
+                }
+            }
+            "ads" => {
+                if self.typing {
+                    let site = self.site.trim().to_string();
+                    self.typing = false;
+                    return if site.is_empty() { Task::none() } else { self.feature_act(vec!["allow".into(), site]) };
+                }
+                let ad = t.get("ads").cloned().unwrap_or(Value::Null);
+                if sel == 0 {
+                    self.feature_act(vec!["ads".into(), st(truthy(&ad, "on"))])
+                } else {
+                    let d = pages::ads_devices(&t).get(sel - 1).cloned().unwrap_or(Value::Null);
+                    self.feature_act(vec!["device".into(), s(&d, "id"), st(truthy(&d, "on"))])
+                }
+            }
+            "rules" => {
+                let (quiet, rules, _) = pages::rules_of(&t);
+                let hh = pages::hhmm;
+                if self.step == 1 {
+                    if pages::whens(self)[self.wi].0 == "quiet" {
+                        self.step = 0;
+                        let v = self.when_vals;
+                        return self.feature_act(vec!["quiet-add".into(), "Quiet hours".into(), hh(v.2), hh(v.3), "mon-fri".into()]);
+                    }
+                    self.step = 2;
+                    return Task::none();
+                }
+                if self.step == 2 {
+                    let v = self.when_vals;
+                    let w = match pages::whens(self)[self.wi].0 {
+                        "device" => format!("device:{}", if self.device.is_empty() { "phone".into() } else { self.device.clone() }),
+                        "time" => format!("time:{}-{}", hh(v.2), hh(v.3)),
+                        "drive" => format!("drive:{}", v.0),
+                        "power" => format!("power:{}", v.1),
+                        x => x.to_string(),
+                    };
+                    let d = match pages::dos(self)[self.di].0 { "fans" => format!("fans:{}", self.fan_pct), x => x.to_string() };
+                    self.step = 0;
+                    self.fsel = quiet.len() + rules.len();
+                    return self.feature_act(vec!["rule-add".into(), w, d]);
+                }
+                if sel == quiet.len() + rules.len() {
+                    self.new_rule();
+                    return Task::none();
+                }
+                if sel < quiet.len() {
+                    let q = &quiet[sel];
+                    self.feature_act(vec!["quiet-set".into(), s(q, "id"), st(truthy(q, "on"))])
+                } else {
+                    let r = &rules[sel - quiet.len()];
+                    self.feature_act(vec!["rule-set".into(), s(r, "id"), st(truthy(r, "on"))])
+                }
+            }
+            _ => Task::none(),
+        }
+    }
+    /// X, Y and ☰ on those pages (ServerDash.qml featureKey).
+    fn feat_key(&mut self, k: &str) -> Task<Msg> {
+        let Some(t) = self.cur() else { return Task::none() };
+        let id = s(&t, "id");
+        match (id.as_str(), k) {
+            (_, "enter") => self.feat_enter(),
+            ("cache", "x") => {
+                if self.ask_empty {
+                    self.ask_empty = false;
+                    self.feature_act(vec!["cache-empty".into(), "sure".into()])
+                } else {
+                    self.ask_empty = true;
+                    Task::none()
+                }
+            }
+            ("cache", "y") | ("ads", "menu") => self.feature_act(vec!["settings".into()]),
+            ("ads", "x") => {
+                self.typing = true;
+                self.site.clear();
+                iced::widget::operation::focus(SITE_ID)
+            }
+            ("ads", "y") => {
+                let paused = t.get("ads").and_then(|a| a.get("view")).and_then(|v| f(v, "pausedUntil")).unwrap_or(0.0) > 0.0;
+                if self.fsel == 0 {
+                    self.feature_act(vec!["ads-pause".into(), if paused { "0" } else { "3600" }.into()])
+                } else {
+                    let d = pages::ads_devices(&t).get(self.fsel - 1).cloned().unwrap_or(Value::Null);
+                    self.feature_act(vec!["device".into(), s(&d, "id"), "pause".into()])
+                }
+            }
+            ("rules", "x") => {
+                if self.step > 0 {
+                    return Task::none();
+                }
+                let (quiet, rules, _) = pages::rules_of(&t);
+                let sel = self.fsel;
+                if sel >= quiet.len() + rules.len() {
+                    return Task::none();
+                }
+                // edit = remove it and pick it again (its When and Do picked as they were)
+                if sel < quiet.len() {
+                    let tk = self.feature_act(vec!["quiet-remove".into(), s(&quiet[sel], "id")]);
+                    self.new_rule();
+                    self.wi = pages::whens(self).len() - 1;
+                    return tk;
+                }
+                let r = rules[sel - quiet.len()].clone();
+                let wk = s(&r, "when").split(':').next().unwrap_or("").to_string();
+                let dk = s(&r, "do").split(':').next().unwrap_or("").to_string();
+                let tk = self.feature_act(vec!["rule-remove".into(), s(&r, "id")]);
+                self.new_rule();
+                self.wi = pages::whens(self).iter().position(|x| x.0 == wk).unwrap_or(0);
+                self.di = pages::dos(self).iter().position(|x| x.0 == dk).unwrap_or(0);
+                tk
+            }
+            ("rules", "y") => {
+                let (quiet, rules, _) = pages::rules_of(&t);
+                if self.step > 0 || self.fsel < quiet.len() || self.fsel >= quiet.len() + rules.len() {
+                    return Task::none();
+                }
+                let r = &rules[self.fsel - quiet.len()];
+                let paused = truthy(r, "paused");
+                self.feature_act(vec!["rule-pause".into(), s(r, "id"), if paused { "0" } else { "3600" }.into()])
+            }
+            ("rules", "menu") => {
+                self.new_rule();
+                Task::none()
+            }
+            _ => Task::none(),
+        }
+    }
+    /// B on those pages: out of the site box or a picker step first.
+    fn feat_back(&mut self) {
+        if self.typing {
+            self.typing = false;
+        } else if self.step > 0 {
+            self.step -= 1;
+        } else {
+            self.overlay = Overlay::None;
+        }
+    }
+
     fn write_up_mark(&mut self) {
         if self.up_written {
             return;
@@ -532,10 +887,28 @@ impl App {
                 self.back_at = now() + 1e9;
             }
             "dim" => self.screen = Screen::Dim,
+            "new-rule" => {
+                if let Some(i) = self.tiles().iter().position(|t| s(t, "id") == "rules") {
+                    self.sel = i + 1;
+                    self.open_detail();
+                    self.new_rule();
+                }
+            }
+            x if x.starts_with("page:") => {
+                let id = &x[5..];
+                if let Some(i) = self.tiles().iter().position(|t| s(t, "id") == id) {
+                    self.sel = i + 1;
+                    self.open_detail();
+                }
+                if let Some(w) = app::arg("--ithil-win") {
+                    self.ithil_win = w;
+                    self.tpos = 80.0;
+                }
+            }
             x if x.starts_with("detail:") => {
                 if let Ok(n) = x[7..].parse::<usize>() {
                     self.sel = n;
-                    self.overlay = Overlay::Detail;
+                    self.open_detail();
                 }
             }
             _ => {}
@@ -561,6 +934,9 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                     a.d = Some(v);
                     a.sample();
                     a.apply_show();
+                    if a.last_brain == 0.0 {
+                        return a.read_brain();
+                    }
                 }
                 None => eprintln!("server mode: dash: {}", o.why()),
             }
@@ -613,7 +989,10 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             if a.up_written && t - a.last_alive >= 10.0 {
                 a.alive();
             }
-            let it = a.idle_tick();
+            let mut it = a.idle_tick();
+            if t - a.last_brain >= 3.0 {
+                it = Task::batch([it, a.read_brain()]);
+            }
             if t - a.last_read >= 4.0 {
                 return Task::batch([it, a.refresh()]);
             }
@@ -632,9 +1011,11 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Pick(i) => {
             a.wake();
             a.sel = i;
-            a.overlay = if i == 0 { Overlay::None } else { Overlay::Detail };
             if i == 0 {
+                a.overlay = Overlay::None;
                 a.play();
+            } else {
+                a.open_detail();
             }
         }
         Msg::Play => {
@@ -650,6 +1031,59 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Close => a.overlay = Overlay::None,
         Msg::DetailAct(x) => return detail_act(a, &x),
         Msg::Key(ev) => return key(a, ev),
+        Msg::Anim => {
+            let t = now();
+            let dt = (t - a.last_anim).min(0.2) as f32;
+            a.last_anim = t;
+            a.anim_t = (t - a.start) as f32;
+            // not live: the window plays through slowly by itself (120 s), unless you just moved it
+            if a.overlay == Overlay::Detail && a.cur_id() == "ithil" && a.ithil_win != "live" && t - a.moved > 4.0 {
+                a.tpos = if a.tpos >= 120.0 { 0.0 } else { a.tpos + dt };
+            }
+        }
+        Msg::Focus(fo) => {
+            a.focused = fo;
+            if fo {
+                a.wake();
+                a.last_anim = now();
+            }
+        }
+        Msg::Back => a.feat_back(),
+        Msg::FeatRow(i) => {
+            a.fsel = i;
+            return a.feat_enter();
+        }
+        Msg::FeatKey(k) => return a.feat_key(&k),
+        Msg::PickChoice(i) => {
+            if a.step == 1 {
+                a.wi = i;
+            } else {
+                a.di = i;
+            }
+            return a.feat_enter();
+        }
+        Msg::Site(v) => a.site = v.chars().take(253).collect(),
+        Msg::IthilWin(w) => {
+            a.ithil_win = w;
+            a.tpos = 120.0;
+            a.brain_reading = false;
+            return a.read_brain();
+        }
+        Msg::BrainMove(p) => {
+            // the pointer over her brain turns it (the right stick moves the pointer)
+            if let Some(l) = a.mouse_last {
+                a.yaw += (p.x - l.x) * 0.01;
+                a.pitch = (a.pitch + (p.y - l.y) * 0.01).clamp(-1.4, 1.4);
+            }
+            a.mouse_last = Some(p);
+        }
+        Msg::BrainLeave => a.mouse_last = None,
+        Msg::BrainRead(o) => {
+            a.brain_reading = false;
+            if let Some(v) = o.json() {
+                a.ithil_prep = brain::prepare(Some(&v));
+            }
+        }
     }
     Task::none()
 }
@@ -670,12 +1104,20 @@ fn detail_act(a: &mut App, x: &str) -> Task<Msg> {
         "talk" => a.ithil_act("A"),
         "ithil-restart" => a.ithil_act("X"),
         "ithil-sleep" => a.ithil_act("Y"),
+        "ithil-settings" => a.ithil_act("menu"),
         other => a.service_act(cur, other),
     }
 }
 
 /// From hearth-pad: Guide is Play, ☰ the menu, Y pause / resume (server-mode.qml's).
 fn pad(a: &mut App, ev: &str) -> Task<Msg> {
+    // Settings or Ithil's app is in front of the dashboard in cage (it doesn't have the keyboard): Guide or ☰ bring
+    // the dashboard back. cage shows the window that opened last, so the dashboard opens its window again: it ends
+    // with 42 and its watcher (desktop/server/cage/run) starts it again at once, not counted as a failure.
+    if !a.focused && (ev == "guide" || ev == "menu") && std::env::var("HEARTH_WM").as_deref() == Ok("cage") {
+        eprintln!("server mode: Guide while another window is in front: the dashboard comes back to the front");
+        std::process::exit(42);
+    }
     let asleep = a.screen != Screen::On;
     a.wake();
     if asleep {
@@ -683,7 +1125,7 @@ fn pad(a: &mut App, ev: &str) -> Task<Msg> {
     }
     let id = a.cur_id();
     if a.overlay == Overlay::Detail && matches!(id.as_str(), "cache" | "ads" | "rules") && (ev == "menu" || ev == "y") {
-        return detail_act(a, "settings");
+        return a.feat_key(ev);
     }
     if a.overlay == Overlay::Detail && id == "ithil" {
         if ev == "menu" {
@@ -691,6 +1133,10 @@ fn pad(a: &mut App, ev: &str) -> Task<Msg> {
         }
         if ev == "y" {
             return a.ithil_act("Y");
+        }
+        if ev == "view" {
+            a.xray = !a.xray;
+            return Task::none();
         }
     }
     match ev {
@@ -721,7 +1167,8 @@ fn pad(a: &mut App, ev: &str) -> Task<Msg> {
 }
 
 fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
-    let KEvent::KeyPressed { key, .. } = ev else { return Task::none() };
+    let KEvent::KeyPressed { key, modifiers, .. } = ev else { return Task::none() };
+    let shift = modifiers.shift();
     let asleep = a.screen != Screen::On;
     a.wake();
     if asleep {
@@ -780,9 +1227,42 @@ fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
         }
         Overlay::Detail => {
             let id = a.cur_id();
+            if matches!(id.as_str(), "cache" | "ads" | "rules") {
+                // ▲ ▼ pick a row, A turns it on or off, X / Y / ☰ as their pages say, ◀ ▶ a new rule's number, B back
+                if back {
+                    a.feat_back();
+                } else if up || down {
+                    a.feat_pick(if down { 1 } else { -1 });
+                } else if left || right {
+                    a.feat_adjust(if right { 1 } else { -1 });
+                } else if enter {
+                    return a.feat_enter();
+                } else if x {
+                    return a.feat_key("x");
+                } else if y {
+                    return a.feat_key("y");
+                } else if menu {
+                    return a.feat_key("menu");
+                }
+                return Task::none();
+            }
             if back {
                 a.overlay = Overlay::None;
                 return Task::none();
+            }
+            if id == "ithil" {
+                // LB / RB (Alt+Tab from the pad) or the arrows move through time, ▲ ▼ the window, V X-ray
+                if is(Named::Tab) || left || right {
+                    let backw = left || (is(Named::Tab) && shift);
+                    return a.ithil_step(if backw { -4.0 } else { 4.0 });
+                }
+                if up || down {
+                    return a.ithil_cycle(if down { 1 } else { -1 });
+                }
+                if ch == "v" {
+                    a.xray = !a.xray;
+                    return Task::none();
+                }
             }
             return match id.as_str() {
                 "ithil" if enter => a.ithil_act("A"),
@@ -791,9 +1271,8 @@ fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
                 "team" if enter => detail_act(a, "pause"),
                 "team" if x => detail_act(a, "restart"),
                 "team" if y => detail_act(a, "settings-team"),
-                "cache" | "ads" | "rules" if y || menu || enter => detail_act(a, "settings"),
                 "ai" if enter => detail_act(a, "unload"),
-                "ithil" | "team" | "cache" | "ads" | "rules" => Task::none(),
+                "ithil" | "team" => Task::none(),
                 _ if x => detail_act(a, "restart"),
                 _ if y => detail_act(a, "pause"),
                 _ => Task::none(),
@@ -814,7 +1293,7 @@ fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
         if a.sel == 0 {
             a.play();
         } else if a.cur().is_some() {
-            a.overlay = Overlay::Detail;
+            a.open_detail();
         }
         return Task::none();
     }
@@ -851,6 +1330,8 @@ fn window_event(e: iced::Event, _s: iced::event::Status, _w: iced::window::Id) -
     match e {
         Event::Window(window::Event::Opened { size, .. }) => Some(Msg::Opened(size)),
         Event::Window(window::Event::Resized(size)) => Some(Msg::Resized(size)),
+        Event::Window(window::Event::Focused) => Some(Msg::Focus(true)),
+        Event::Window(window::Event::Unfocused) => Some(Msg::Focus(false)),
         Event::Mouse(mouse::Event::ButtonPressed(_)) | Event::Mouse(mouse::Event::CursorMoved { .. }) => Some(Msg::Wake),
         Event::Touch(_) => Some(Msg::Wake),
         _ => None,
@@ -921,7 +1402,11 @@ fn subscription(a: &App) -> Subscription<Msg> {
     // Once a second while a countdown shows, else every 2 s (the clock, the countdown file, idle): never faster.
     let fast = a.overlay == Overlay::Switch || a.remote.is_some();
     let tick = iced::time::every(Duration::from_millis(if fast { 1000 } else { 2000 })).map(|_| Msg::Tick);
+    // The cores, the AI team's mesh and Ithil's brain move about 15 times a second, only while the dashboard is on
+    // the screen, in front, and Reduce motion is off (still()); otherwise nothing ticks but the 2-second clock.
+    let anim = if a.animating() { iced::time::every(Duration::from_millis(66)).map(|_| Msg::Anim) } else { Subscription::none() };
     Subscription::batch([
+        anim,
         tick,
         iced::keyboard::listen().map(Msg::Key),
         iced::event::listen_with(window_event),

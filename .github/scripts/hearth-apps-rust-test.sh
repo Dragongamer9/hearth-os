@@ -202,6 +202,8 @@ while read -r kind name rest; do
   [ "$kind" = RESULT ] || continue
   eval "$(echo "$rest" | tr ' ' '\n' | sed 's/^/r_/')"
   lim_cpu=0.3; [ "${name#tm-}" != "$name" ] && lim_cpu=3
+  # Server mode's dashboard while its AIs move (only while it's on the screen and in front): live, like Task Manager.
+  [ "${name#server-live}" != "$name" ] && lim_cpu=3
   echo "$name: first frame ${r_firstframe} ms, at rest ${r_cpu}% of a core, ${r_rss} MB resident (${r_pss} MB proportional), ${r_threads} threads" >> /tmp/at-rest.txt
   if [ "${name#gpu-}" != "$name" ]; then
     # Through wgpu on CI's software drivers: only CPU at rest has a limit (it must stay ~0 whatever draws).

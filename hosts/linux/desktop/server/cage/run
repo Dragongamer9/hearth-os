@@ -39,7 +39,10 @@ while :; do
       started=0
     fi
   done
-  wait "$apid" 2>/dev/null
+  wait "$apid" 2>/dev/null; code=$?
+  # 42: Guide pressed while Settings or Ithil's app was in front: the dashboard opens its window again at once, so
+  # cage shows it in front (not a failure).
+  if [ "$code" = 42 ] && [ $(( $(date +%s) - started )) -ge 2 ]; then echo "--- $(date '+%F %T') back to the front (Guide)" >>"$DASH_LOG"; continue; fi
   if [ $(($(date +%s) - started)) -lt 20 ]; then fails=$((fails + 1)); else fails=0; fi
   [ "$fails" -ge 3 ] && give_up "Server mode's dashboard keeps closing right after it starts."
   echo "--- restarting the dashboard" >>"$DASH_LOG"

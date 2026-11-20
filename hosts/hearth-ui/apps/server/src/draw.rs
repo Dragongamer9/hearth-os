@@ -183,75 +183,153 @@ pub struct Core {
     pub off: bool,
     /// The dim screen's faint copy (opacity 0.32 there).
     pub fade: f32,
+    /// Seconds (the dashboard's animation clock), for ServerCore.qml's motions; still (Reduce motion, the dim
+    /// screen, the window away) keeps it standing still.
+    pub t: f32,
+    pub still: bool,
 }
+
+/// ServerCore.qml's looping motions: `x` (0..1 of a cycle) through the keyframes (each a value and how long to reach it).
+fn keys(t: f32, start: f32, frames: &[(f32, f32)]) -> f32 {
+    let total: f32 = frames.iter().map(|f| f.1).sum();
+    if total <= 0.0 {
+        return start;
+    }
+    let mut x = (t * 1000.0) % total;
+    let mut from = start;
+    for &(to, d) in frames {
+        if x <= d && d > 0.0 {
+            let k = x / d;
+            let e = 0.5 - 0.5 * (std::f32::consts::PI * k).cos(); // in-out
+            return from + (to - from) * e;
+        }
+        x -= d;
+        from = to;
+    }
+    from
+}
+
 impl<M> canvas::Program<M> for Core {
     type State = Memo;
     fn draw(&self, st: &Memo, r: &Renderer, _t: &Theme, b: Rectangle, _c: mouse::Cursor) -> Vec<Geometry> {
-        memo(st, r, b, format!("{} {} {} {}", self.kind, self.working, self.off, self.fade), |f| {
+        let tk = if self.still { 0.0 } else { (self.t * 30.0).round() / 30.0 };
+        memo(st, r, b, format!("{} {} {} {} {} {}", self.kind, self.working, self.off, self.fade, self.still, tk), |f| {
             let s = b.width.min(b.height) / 1.5; // room around it for the rings it sends out
             let c = Point::new(b.width / 2.0, b.height / 2.0);
             let o = if self.off { 0.38 } else { 1.0 } * self.fade;
             let base = core_color(&self.kind);
             let col = |k: f32| a(base, k * o);
             let line = |f: &mut Frame, p: &Path, k: f32, w: f32| f.stroke(p, stroke(col(k), w));
-            if self.working {
-                line(f, &Path::circle(c, s * 0.5 * 1.18), 0.55, 2.0);
-                line(f, &Path::circle(c, s * 0.5 * 1.42), 0.28, 1.0);
-            }
-            match self.kind.as_str() {
-                "gpu" => {
-                    line(f, &Path::circle(c, s * 0.46), 0.85, 1.0);
-                    line(f, &ellipse(c.x, c.y, s * 0.46, s * 0.24), 0.5, 1.0);
-                    line(f, &ellipse(c.x, c.y, s * 0.46, s * 0.08), 0.38, 1.0);
-                    line(f, &ellipse(c.x, c.y, s * 0.23, s * 0.46), 0.7, 1.0);
-                    line(f, &ellipse(c.x, c.y, s * 0.36, s * 0.46), 0.45, 1.0);
-                }
-                "comfy" => {
-                    let cell = s * 0.14;
-                    let gap = s * 0.04;
-                    let w = cell * 4.0 + gap * 3.0;
-                    let ks = [0.85, 0.38, 0.7, 0.5];
-                    for i in 0..16 {
-                        let (x, y) = ((i % 4) as f32, (i / 4) as f32);
-                        f.fill_rectangle(Point::new(c.x - w / 2.0 + x * (cell + gap), c.y - w / 2.0 + y * (cell + gap)), Size::new(cell, cell), col(ks[i % 4]));
-                    }
-                }
-                "voice" => {
-                    line(f, &Path::circle(c, s * 0.44), 0.38, 1.0);
-                    let hs = [0.5, 0.9, 0.7, 1.0, 0.6, 0.8];
-                    let bw = s * 0.05;
-                    let gap = s * 0.04;
-                    let total = bw * 6.0 + gap * 5.0;
-                    for (i, h) in hs.iter().enumerate() {
-                        let hh = s * 0.52 * h;
-                        f.fill_rectangle(Point::new(c.x - total / 2.0 + i as f32 * (bw + gap), c.y - hh / 2.0), Size::new(bw, hh), col(1.0));
-                    }
-                }
-                "listen" => {
-                    for (i, sc) in [0.45f32, 0.75, 1.05].iter().enumerate() {
-                        line(f, &Path::circle(c, s * 0.5 * sc), [0.85, 0.55, 0.25][i], 2.0);
-                    }
-                }
-                "hearth" => {
-                    for i in 0..3 {
-                        let fi = i as f32;
-                        let w = s * (0.56 - fi * 0.1);
-                        f.fill(&ellipse(b.width / 2.0 - s / 2.0 + s * (0.12 + fi * 0.06) + w / 2.0, b.height / 2.0 - s / 2.0 + s * (0.26 + fi * 0.02) + w * 0.4, w / 2.0, w * 0.4), col([0.32, 0.22, 0.4][i]));
-                        let w2 = s * (0.5 - fi * 0.1);
-                        f.fill(&ellipse(b.width / 2.0 - s / 2.0 + s * (0.38 + fi * 0.05) + w2 / 2.0, b.height / 2.0 - s / 2.0 + s * (0.38 + fi * 0.03) + w2 * 0.4, w2 / 2.0, w2 * 0.4), col([0.18, 0.14, 0.24][i]));
-                    }
-                    line(f, &Path::circle(c, s * 0.4), 0.6, 1.0);
-                }
-                _ => {
-                    for (i, sc) in [0.92f32, 0.68, 0.44].iter().enumerate() {
-                        line(f, &Path::circle(c, s * sc / 2.0), [0.5, 0.7, 0.85][i], 1.0);
-                    }
+            let t = tk;
+            let talk = self.working;
+            let moving = !self.still;
+            // Rings sent out while it talks (0.7 → 1.55, 1.4 s, the second half a cycle later).
+            if talk {
+                for i in 0..2 {
+                    let ph = if moving { ((t * 1000.0 + 700.0 * i as f32) % 1400.0) / 1400.0 } else { 0.45 + 0.3 * i as f32 };
+                    let sc = 0.7 + 0.85 * (1.0 - (1.0 - ph) * (1.0 - ph));
+                    line(f, &Path::circle(c, s * 0.5 * sc), 0.9 * (1.0 - ph), if i == 0 { 2.0 } else { 1.0 });
                 }
             }
-            // The iris in the middle.
-            f.fill(&Path::circle(c, s * 0.216), col(0.12));
-            f.fill(&Path::circle(c, s * 0.12), a(Color::from_rgb8(5, 3, 2), o.max(0.6)));
-            line(f, &Path::circle(c, s * 0.12), 1.0, 2.0);
+            // The body's own motion while it talks.
+            let (mut scale, mut rot) = (1.0f32, 0.0f32);
+            if talk && moving {
+                match self.kind.as_str() {
+                    "gpu" => scale = keys(t, 1.0, &[(1.04, 90.0), (1.0, 90.0)]),
+                    "listen" => scale = keys(t, 1.0, &[(1.22, 550.0), (1.0, 550.0)]),
+                    "hearth" => {
+                        scale = keys(t, 1.0, &[(1.12, 550.0), (1.0, 550.0)]);
+                        rot = keys(t, 0.0, &[(-10.0, 550.0), (0.0, 550.0)]);
+                    }
+                    "comfy" => scale = keys(t, 1.0, &[(1.12, 125.0), (0.94, 125.0), (1.0, 125.0)]),
+                    "voice" => rot = keys(t, 0.0, &[(8.0, 125.0), (-8.0, 250.0), (0.0, 125.0)]),
+                    _ => {}
+                }
+            }
+            f.with_save(|f| {
+                f.translate(iced::Vector::new(c.x, c.y));
+                f.rotate(rot.to_radians());
+                f.scale(scale);
+                let c = Point::ORIGIN;
+                match self.kind.as_str() {
+                    "gpu" => {
+                        line(f, &Path::circle(c, s * 0.46), 0.85, 1.0);
+                        line(f, &ellipse(c.x, c.y, s * 0.46, s * 0.24), 0.5, 1.0);
+                        line(f, &ellipse(c.x, c.y, s * 0.46, s * 0.08), 0.38, 1.0);
+                        // two rings turning (their width 0.5 → -1 → 1 → 0.5 over 8 s, the second the other way)
+                        let xs = if moving { keys(t, 0.5, &[(-1.0, 2000.0), (1.0, 4000.0), (0.5, 2000.0)]) } else { 0.5 };
+                        line(f, &ellipse(c.x, c.y, (s * 0.46 * xs).abs().max(0.5), s * 0.46), 0.7, 1.0);
+                        line(f, &ellipse(c.x, c.y, (s * 0.46 * -xs).abs().max(0.5), s * 0.46), 0.7, 1.0);
+                    }
+                    "comfy" => {
+                        let cell = s * 0.14;
+                        let gap = s * 0.04;
+                        let w = cell * 4.0 + gap * 3.0;
+                        let ks = [0.85, 0.38, 0.7, 0.5];
+                        f.with_save(|f| {
+                            if moving {
+                                f.rotate((t / 30.0 * 360.0 % 360.0).to_radians());
+                            }
+                            for i in 0..16 {
+                                let (x, y) = ((i % 4) as f32, (i / 4) as f32);
+                                let d = 550.0 + ((i * 7 % 17) as f32) * 50.0;
+                                let fl = if moving { keys(t, 1.0, &[(0.3, d), (1.0, d)]) } else { 1.0 };
+                                f.fill_rectangle(Point::new(-w / 2.0 + x * (cell + gap), -w / 2.0 + y * (cell + gap)), Size::new(cell, cell), col(ks[i % 4] * fl));
+                            }
+                        });
+                    }
+                    "voice" => {
+                        line(f, &Path::circle(c, s * 0.44), 0.38, 1.0);
+                        let hs = [0.5, 0.9, 0.7, 1.0, 0.6, 0.8];
+                        let bw = s * 0.05;
+                        let gap = s * 0.04;
+                        let total = bw * 6.0 + gap * 5.0;
+                        for (i, h) in hs.iter().enumerate() {
+                            let d = 250.0 + i as f32 * 40.0;
+                            let k = if moving { keys(t, 1.0, &[(0.2, d), (1.0, d)]) } else { 1.0 };
+                            let hh = s * 0.52 * h * k;
+                            f.fill_rectangle(Point::new(-total / 2.0 + i as f32 * (bw + gap), -hh / 2.0), Size::new(bw, hh), col(1.0));
+                        }
+                    }
+                    "listen" => {
+                        for i in 0..3 {
+                            let sc = if moving {
+                                let x = ((t * 1000.0 - 800.0 * i as f32).rem_euclid(2400.0)) / 2400.0;
+                                0.25 + 0.9 * (1.0 - (1.0 - x) * (1.0 - x))
+                            } else {
+                                [0.45f32, 0.75, 1.05][i]
+                            };
+                            let op = if moving { (1.0 - (sc - 0.25) / 0.9).max(0.0) } else { 0.6 };
+                            line(f, &Path::circle(c, s * 0.5 * sc), 0.85 * op, 2.0);
+                        }
+                    }
+                    "hearth" => {
+                        f.with_save(|f| {
+                            if moving {
+                                f.rotate((t / 9.0 * 360.0 % 360.0).to_radians());
+                            }
+                            for i in 0..3 {
+                                let fi = i as f32;
+                                let w = s * (0.56 - fi * 0.1);
+                                f.fill(&ellipse(-s / 2.0 + s * (0.12 + fi * 0.06) + w / 2.0, -s / 2.0 + s * (0.26 + fi * 0.02) + w * 0.4, w / 2.0, w * 0.4), col([0.32, 0.22, 0.4][i]));
+                                let w2 = s * (0.5 - fi * 0.1);
+                                f.fill(&ellipse(-s / 2.0 + s * (0.38 + fi * 0.05) + w2 / 2.0, -s / 2.0 + s * (0.38 + fi * 0.03) + w2 * 0.4, w2 / 2.0, w2 * 0.4), col([0.18, 0.14, 0.24][i]));
+                            }
+                        });
+                        line(f, &Path::circle(c, s * 0.4), 0.6, 1.0);
+                    }
+                    _ => {
+                        for (i, sc) in [0.92f32, 0.68, 0.44].iter().enumerate() {
+                            line(f, &Path::circle(c, s * sc / 2.0), [0.5, 0.7, 0.85][i], 1.0);
+                        }
+                    }
+                }
+                // The iris in the middle (it pulses faster while talking).
+                let ir = if !moving { 1.0 } else if talk { keys(t, 1.0, &[(1.18, 130.0), (0.94, 160.0), (1.0, 130.0)]) } else { keys(t, 1.0, &[(1.07, 2000.0), (1.0, 2000.0)]) };
+                f.fill(&Path::circle(c, s * 0.216 * ir), col(0.12));
+                f.fill(&Path::circle(c, s * 0.12 * ir), a(Color::from_rgb8(5, 3, 2), o.max(0.6)));
+                line(f, &Path::circle(c, s * 0.12 * ir), 1.0, 2.0);
+            });
         })
     }
 }
@@ -359,7 +437,7 @@ pub fn icon<'a, M: 'a>(name: &str, color: Color, size: f32) -> Element<'a, M> {
     canvas(Icon { name: name.to_string(), color }, Length::Fixed(size), Length::Fixed(size))
 }
 
-type Lines = (Vec<Vec<(f32, f32)>>, Vec<(f32, f32, f32)>);
+pub type Lines = (Vec<Vec<(f32, f32)>>, Vec<(f32, f32, f32)>);
 
 fn arc(cx: f32, cy: f32, r: f32, from: f32, to: f32) -> Vec<(f32, f32)> {
     (0..=20).map(|i| {
@@ -368,7 +446,7 @@ fn arc(cx: f32, cy: f32, r: f32, from: f32, to: f32) -> Vec<(f32, f32)> {
     }).collect()
 }
 
-fn icon_lines(name: &str) -> Lines {
+pub fn icon_lines(name: &str) -> Lines {
     let v = |p: &[(f32, f32)]| p.to_vec();
     match name {
         "server" => (vec![v(&[(4.0, 4.0), (20.0, 4.0), (20.0, 10.0), (4.0, 10.0), (4.0, 4.0)]), v(&[(4.0, 14.0), (20.0, 14.0), (20.0, 20.0), (4.0, 20.0), (4.0, 14.0)])], vec![(7.5, 7.0, 0.9), (7.5, 17.0, 0.9)]),
