@@ -84,6 +84,14 @@ if [ -d "$d/bd" ]; then
   stop
 fi
 
+# ---- For comparison: the player's own start screen at rest, with no disc (what it costs without the disc part).
+start empty
+sleep 3
+t() { local s=0 x; for x in $pid $(pgrep -P "$pid"); do s=$((s + $(awk '{print $14 + $15}' "/proc/$x/stat" 2>/dev/null || echo 0))); done; echo $s; }
+a=$(t); sleep 10; b=$(t)
+result "CPU at rest (start screen, no disc, 10 s)" "$(awk -v a="$a" -v b="$b" -v hz="$(getconf CLK_TCK)" 'BEGIN { printf "%.2f %% of a core", (b - a) / hz / 10 * 100 }')"
+stop
+
 # ---- The controller and remote buttons.
 if [ -f "$d/hearth-test.iso" ]; then
   start pad --disc "$d/hearth-test.iso" --show controller

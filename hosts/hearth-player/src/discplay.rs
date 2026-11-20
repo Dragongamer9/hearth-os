@@ -321,7 +321,9 @@ pub fn play(o: &Opened, server: &Server, ffmpeg: Option<&str>, encoders: &[Strin
             let t = o.info.titles.iter().find(|t| t.n == n).ok_or("That title isn't on the disc.")?;
             let ff = ffmpeg.ok_or("Playing DVDs needs ffmpeg, which isn't installed.")?;
             let (from, start) = dvd::seek_point(io.as_ref(), t, at);
-            let vurl = server.virtual_url(Arc::new(dvd::TitleFile::new(io, t, from)), &format!("title-{n}.vob"));
+            let mut tf = dvd::TitleFile::new(io, t, from);
+            if let Some(id) = sub { tf = tf.with_subtitle(id); }
+            let vurl = server.virtual_url(Arc::new(tf), &format!("title-{n}.vob"));
             let args = stream_args(&StreamOpts { input: vurl.clone(), audio, sub, palette: t.palette.clone(), size: (t.width, t.height), reencode, encoders: encoders.to_vec() });
             let url = server.live_url(Live { program: ff.into(), args, mime: "video/x-matroska".into() }, &format!("Title {n}.mkv"));
             urls.extend([vurl, url.clone()]);

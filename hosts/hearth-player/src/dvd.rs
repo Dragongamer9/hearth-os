@@ -500,12 +500,41 @@ pub fn seek_point(io: &dyn DvdIo, t: &Title, at: f64) -> (u64, f64) {
     (0, 0.0)
 }
 
+/// One sector holding an empty subtitle (SPU) for stream `id` (0x20...), with the pack header and time of `first` (the
+/// title's first sector from where it plays). Put in front of the title, it lets ffmpeg know the subtitle stream from
+/// the start: a DVD's subtitles otherwise only show up as a stream when the first one is said, which can be minutes in.
+pub fn spu_primer(first: &[u8], id: u32) -> Option<Vec<u8>> {
+    if first.len() < 14 || first[0..4] != [0, 0, 1, 0xBA] || first[4] >> 6 != 1 { return None; }
+    let scr = (crate::disc::pack_time(&first[..14])? * 90000.0).round() as u64;
+    let mut s = vec![0u8; SECTOR];
+    s[..14].copy_from_slice(&first[..14]);
+    s[13] = 0xF8; // no stuffing
+    let pts = scr;
+    let spu = [0x00, 0x0A, 0x00, 0x04, 0x00, 0x00, 0x00, 0x04, 0x02, 0xFF];
+    let mut pes = vec![0, 0, 1, 0xBD, 0, 0, 0x81, 0x80, 5,
+        0x21 | ((pts >> 29) & 0x0E) as u8, (pts >> 22) as u8, (((pts >> 14) & 0xFE) | 1) as u8, (pts >> 7) as u8, (((pts << 1) & 0xFE) | 1) as u8,
+        id as u8];
+    pes.extend_from_slice(&spu);
+    let len = (pes.len() - 6) as u16;
+    pes[4..6].copy_from_slice(&len.to_be_bytes());
+    s[14..14 + pes.len()].copy_from_slice(&pes);
+    // The rest of the sector is a padding packet.
+    let at = 14 + pes.len();
+    let pad = (SECTOR - at - 6) as u16;
+    s[at..at + 4].copy_from_slice(&[0, 0, 1, 0xBE]);
+    s[at + 4..at + 6].copy_from_slice(&pad.to_be_bytes());
+    for b in &mut s[at + 6..] { *b = 0xFF; }
+    Some(s)
+}
+
 /// The title's video, as one file of sectors (its cells one after another), from sector `from` on.
 pub struct TitleFile {
     pub io: Arc<dyn DvdIo>,
     pub vts: u32,
     /// (first sector on the disc, sectors) for each part.
     pub runs: Vec<(u32, u64)>,
+    /// Bytes in front of the title (an empty subtitle: `spu_primer`).
+    pub prefix: Vec<u8>,
 }
 
 impl TitleFile {
@@ -518,14 +547,32 @@ impl TitleFile {
             runs.push((c.first + skip as u32, len - skip));
             skip = 0;
         }
-        TitleFile { io, vts: t.vts, runs }
+        TitleFile { io, vts: t.vts, runs, prefix: Vec::new() }
+    }
+
+    /// With an empty subtitle for stream `id` in front (see `spu_primer`).
+    pub fn with_subtitle(mut self, id: u32) -> TitleFile {
+        let mut first = vec![0u8; SECTOR];
+        if let Some((s, _)) = self.runs.first() {
+            if self.io.read(self.vts, *s, 1, &mut first).unwrap_or(0) == 1 {
+                if let Some(p) = spu_primer(&first, id) { self.prefix = p; }
+            }
+        }
+        self
     }
 }
 
 impl crate::server::VFile for TitleFile {
-    fn len(&self) -> u64 { self.runs.iter().map(|r| r.1).sum::<u64>() * SECTOR as u64 }
+    fn len(&self) -> u64 { self.prefix.len() as u64 + self.runs.iter().map(|r| r.1).sum::<u64>() * SECTOR as u64 }
     fn mime(&self) -> &str { "video/mpeg" }
     fn read_at(&self, off: u64, buf: &mut [u8]) -> io::Result<usize> {
+        let p = self.prefix.len() as u64;
+        if off < p {
+            let k = ((p - off) as usize).min(buf.len());
+            buf[..k].copy_from_slice(&self.prefix[off as usize..off as usize + k]);
+            return Ok(k);
+        }
+        let off = off - p;
         let mut sector = off / SECTOR as u64;
         let skip = (off % SECTOR as u64) as usize;
         for (first, len) in &self.runs {
@@ -694,6 +741,27 @@ pub mod tests {
         let mut b = vec![0u8; 10];
         assert_eq!(f.read_at(SECTOR as u64 + 20, &mut b).unwrap(), 10);
         assert_eq!(b[1], 151u8, "the second sector read is disc sector 151");
+    }
+
+    #[test]
+    fn subtitle_primer() {
+        let (vmg, vts) = fake_ifos();
+        let io: Arc<dyn DvdIo> = Arc::new(Mem(vmg, vts));
+        let t = titles(io.as_ref()).unwrap();
+        let f = TitleFile::new(io.clone(), &t[0], 1).with_subtitle(0x21);
+        assert_eq!(f.prefix.len(), SECTOR);
+        let s = &f.prefix;
+        assert_eq!(&s[..4], &[0, 0, 1, 0xBA]);
+        assert_eq!(&s[14..18], &[0, 0, 1, 0xBD]);
+        let len = u16::from_be_bytes([s[18], s[19]]) as usize;
+        assert_eq!(s[14 + 6 + 3 + 5], 0x21, "the subtitle stream's id");
+        assert_eq!(&s[14 + 6 + len..14 + 6 + len + 4], &[0, 0, 1, 0xBE], "padding after it");
+        assert!(!scrambled(s));
+        use crate::server::VFile;
+        assert_eq!(f.len(), (SECTOR + 399 * SECTOR) as u64);
+        let mut b = vec![0u8; 10];
+        f.read_at(SECTOR as u64 + 20, &mut b).unwrap();
+        assert_eq!(b[1], 1u8, "then the title's own first sector (disc sector 1)");
     }
 
     #[test]
