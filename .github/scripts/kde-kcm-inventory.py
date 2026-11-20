@@ -4,7 +4,7 @@
 id, name, description, category, package, file) and kcfg.tar.gz (each module's settings schema, /usr/share/config.kcfg),
 and posts both as gzip+base64 notices: "INV-PARTS what n", then "INV what i" (kde-kcm-inventory.yml, 9 a step).
   kde-kcm-inventory.py collect | kde-kcm-inventory.py post WHAT FIRST LAST"""
-import base64, glob, gzip, io, json, os, re, subprocess, sys, tarfile
+import base64, glob, gzip, io, json, os, re, shutil, subprocess, sys, tarfile
 
 def meta(path):
     """The plugin's JSON from its .qtmetadata (Qt 6: CBOR after "QTMETADATA !" and a 4-byte header)."""
@@ -51,15 +51,39 @@ def collect():
     ver = subprocess.run(['rpm', '-q', 'plasma-workspace', 'plasma-desktop', 'kwin', 'plasma-systemsettings', 'kinfocenter'],
                          capture_output=True, text=True).stdout
     json.dump({'kcms': out, 'categories': cats, 'kcmshell6_list': lst, 'versions': ver}, open('kcms.json', 'w'), indent=1)
-    # What a few KCMs without a kcfg write (their config files, groups and keys show in their strings).
+    # What the last parts write and call (dig.json): the exact names, read from the image's own programs.
     dig = {}
-    for so in glob.glob('/usr/lib64/qt6/plugins/plasma/kcms/systemsettings*/*.so'):
-        if any(k in so for k in ('push_notifications', 'fontinst', 'kcm_keys', 'colord', 'kwin_scripts')):
-            out_s = subprocess.run(['strings', '-n', '4', so], capture_output=True, text=True, timeout=60).stdout.splitlines()
-            keep = [x for x in out_s if re.search(r'(rc$|\.conf|^\[|Url|Type|Provider|Distributor|kglobalaccel|setForeign|QKeySequence|colormgr|org\.freedesktop|fontconfig|fonts|Enabled$|kpackage)', x)]
-            dig[os.path.basename(so)] = keep[:400]
-    for f in glob.glob('/usr/share/applications/*kunifiedpush*') + glob.glob('/usr/share/dbus-1/services/*UnifiedPush*') + glob.glob('/etc/xdg/*push*'):
-        dig[f] = open(f, errors='replace').read()[:2000].splitlines()
+    def strs(path, pat, n=300):
+        try:
+            out_s = subprocess.run(['strings', '-n', '4', path], capture_output=True, text=True, timeout=60).stdout.splitlines()
+        except Exception as e:
+            return [str(e)]
+        return [x for x in out_s if re.search(pat, x)][:n]
+    def sh(cmd):
+        try:
+            r = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=60)
+            return (r.stdout + r.stderr).splitlines()[:300]
+        except Exception as e:
+            return [str(e)]
+    dig['kscreen-doctor --help'] = sh('kscreen-doctor --help')
+    dig['kscreen-doctor strings'] = strs(shutil.which('kscreen-doctor') or '/usr/bin/kscreen-doctor', r'(?i)brightness|hdr|wcg|gamut|override|iccprofile|sdr')
+    for pat, rx in (('/usr/lib*/libexec/kf6/kunifiedpush-distributor', r'(?i)gotify|nextpush|ntfy|url|token|password|user|login|wallet|keychain'),
+                    ('/usr/libexec/kunifiedpush-distributor', r'(?i)gotify|nextpush|ntfy|url|token|password|user|login|wallet|keychain'),
+                    ('/usr/bin/krdpserver', r'(?i)keychain|wallet|KRDP|password|Users'),
+                    ('/usr/lib64/qt6/plugins/plasma/kcms/systemsettings/kcm_krdpserver.so', r'(?i)keychain|wallet|KRDP|password|Users|service'),
+                    ('/usr/lib64/qt6/plugins/plasma/kcms/systemsettings/kcm_keys.so', r'(?i)net\.local|X-KDE|desktop|Exec|khotkeys|_launch|command'),
+                    ('/usr/lib64/qt6/plugins/plasma/kcms/systemsettings/kcm_activities.so', r'(?i)OTR|isOTR|Features|Private|icon|shortcut|switch-to'),
+                    ('/usr/bin/kactivitymanagerd', r'(?i)OTR|Features|SetValue|GetValue|switch-to|ActivityManager'),
+                    ('/usr/libexec/kactivitymanagerd', r'(?i)OTR|Features|SetValue|GetValue|switch-to|ActivityManager'),
+                    ('/usr/lib64/qt6/plugins/plasma/kcms/systemsettings_qwidgets/kcm_solid_actions.so', r'(?i)solid/actions|Hidden|X-KDE|desktop')):
+        for f in glob.glob(pat):
+            dig[f] = strs(f, rx)
+    for f in glob.glob('/usr/share/knsrcfiles/*.knsrc'):
+        if any(k in f for k in ('lookandfeel', 'color', 'plasma-themes', 'aurorae', 'window-decorations', 'plasma_themes', 'kwin')):
+            dig[f] = open(f, errors='replace').read()[:1500].splitlines()
+    dig['knsrcfiles'] = sorted(os.path.basename(x) for x in glob.glob('/usr/share/knsrcfiles/*'))
+    dig['kwallet-query --help'] = sh('kwallet-query --help')
+    dig['which'] = sh('which kwallet-query kpackagetool6 knewstuff-dialog6 kscreen-doctor qdbus6 kglobalaccel6 2>&1; ls /usr/libexec/kf6 | head -40')
     json.dump(dig, open('dig.json', 'w'), indent=0)
     with tarfile.open('kcfg.tar.gz', 'w:gz') as t:
         for f in sorted(glob.glob('/usr/share/config.kcfg/*.kcfg')):

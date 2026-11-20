@@ -25,7 +25,7 @@ jobs:
           dnf5 -y install --skip-unavailable --skip-broken plasma-nm plasma-pa plasma-systemmonitor powerdevil kscreen libkscreen kscreenlocker \
             bluedevil polkit-kde xdg-desktop-portal-kde plasma-breeze breeze-icon-theme breeze-cursor-theme kde-cli-tools \
             plasma-systemsettings kinfocenter kwin-effects kdecoration aurorae plasma-milou milou kmenuedit \
-            kglobalacceld plasma-integration plasma-discover-flatpak kwalletmanager5 kwallet-pam kde-gtk-config plasma-thunderbolt >/dev/null || true
+            kglobalacceld plasma-integration plasma-discover-flatpak kwalletmanager5 kwallet-pam kde-gtk-config plasma-thunderbolt krdp kunifiedpush kf6-kwallet kf6-knewstuff kactivitymanagerd >/dev/null || true
           dnf5 -y group install --skip-unavailable --skip-broken kde-desktop >/dev/null 2>&1 || echo "::warning title=group::kde-desktop didn't install as a whole"
           python3 -m pip install --quiet --break-system-packages cbor2 || python3 -m pip install --quiet cbor2
       - name: List them
