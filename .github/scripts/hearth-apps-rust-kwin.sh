@@ -28,6 +28,8 @@ SH=/usr/share/nimbus/desktop/shell
 command -v kbuildsycoca6 >/dev/null && kbuildsycoca6 --noincremental >/dev/null 2>&1
 pipewire >"$OUT/pipewire.log" 2>&1 & sleep 1
 wireplumber >"$OUT/wireplumber.log" 2>&1 & sleep 2
+# The desktop's sound for recordings (PipeWire's PulseAudio side, as a sign-in starts it).
+command -v pipewire-pulse >/dev/null && { pipewire-pulse >"$OUT/pipewire-pulse.log" 2>&1 & sleep 1; }
 
 start_kwin() {   # start_kwin SCREENS
   pkill -f /tmp/kwin_wayland; sleep 1
