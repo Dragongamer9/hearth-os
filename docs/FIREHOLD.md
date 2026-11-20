@@ -277,7 +277,7 @@ supported pieces: plasmashell shell packages, Plasma's QML (its task model, Kiri
 LayerShellQt), Plasma's scripting interface, and one KWin script through KWin's script API.
 
 Code: `hosts/linux/desktop/firehold-plasma` (installed into the Anatase image by `install.sh` from `build.sh`).
-Checklist: `docs/mockups/checklists/firehold-plasma.md`. CI: `.github/workflows/firehold-plasma.yml` (pictures on the
+Checklist: `docs/mockups/checklists/firehold-plasma-test.md`. CI: `.github/workflows/firehold-plasma.yml` (pictures on the
 branch `ci/firehold-plasma-shots-<branch>`, and ten minutes at rest next to plain Plasma).
 
 - **Couch** is the shell package `org.hearthos.firehold`; its desktop is the containment `org.hearthos.firehold.couch`

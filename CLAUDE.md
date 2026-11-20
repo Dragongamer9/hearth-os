@@ -1,12 +1,14 @@
 # Working on Hearth OS
 
-Hearth OS is a Debian-based, SteamOS-style OS (1.0): Steam Game Mode (Valve's Steam in gamescope, with the Hearth Sync
-Decky plugin in `hosts/decky-hearth-sync`) and Desktop Mode (Hearth Classic: labwc + the Mantel QML shell, the only
-desktop). Hearth's own Game Mode (gamescope + the web UI in `ui/`) is archived but its code stays: it runs first-time
-setup and the fallback. Edition: **Debian** (internally Peppermint; Debian bootc, `os-bases/peppermint`); Anatase
-(Fedora bootc, `os-bases/anatase`) is archived. Ember is the Windows 11 shell (`hosts/windows`). Website: hearthos.fun
-(`site/`, deployed from main). Archived parts and where their code lives: `docs/ARCHIVED.md` (code in `archive/`, docs
-in `docs/archive/`). The owner is Dragongamer9.
+Hearth OS is a Fedora-based, SteamOS-style OS (from 1.16): Steam Game Mode (Valve's Steam in gamescope, with the
+Hearth Sync Decky plugin in `hosts/decky-hearth-sync`) and Desktop Mode (stock KDE Plasma on KWin with Hearth's apps,
+`hosts/hearth-ui`, and Firehold on Plasma coming in 1.16). Hearth's own Game Mode (gamescope + the web UI in `ui/`) is
+archived but its code stays: it runs first-time setup and the fallback. Edition: **Fedora** (internally Anatase; Fedora
+bootc, `os-bases/anatase`, image `ghcr.io/dragongamer9/hearth-os:test-1.15`); Debian (Peppermint, `os-bases/peppermint`,
+Mantel on labwc/KWin) was archived and merged into Fedora on Nov 19, 2026 on the owner's word: nothing new is published
+for it, its devices keep what they have, and its folder stays because the Fedora build uses its `system_files`. Ember is
+the Windows 11 shell (`hosts/windows`). Website: hearthos.fun (`site/`, deployed from main). Archived parts and where
+their code lives: `docs/ARCHIVED.md` (code in `archive/`, docs in `docs/archive/`). The owner is Dragongamer9.
 
 ## The owner's rules (always)
 

@@ -6,7 +6,7 @@
 
 <p align="center">
   <b>Steam Game Mode on the couch. Mantel on the desk.</b><br>
-  A free, Debian-based OS for gaming PCs and handhelds.
+  A free, Fedora-based OS for gaming PCs and handhelds.
 </p>
 
 <p align="center">
@@ -20,7 +20,7 @@
 
 <p align="center">
   <a href="https://github.com/Dragongamer9/hearth-os/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Dragongamer9/hearth-os?label=release&color=1a9fff"></a>
-  <img alt="Built on Debian 13" src="https://img.shields.io/badge/built%20on-Debian%2013-a80030">
+  <img alt="Built on Fedora" src="https://img.shields.io/badge/built%20on-Fedora-51a2da">
   <a href="LICENSE"><img alt="License: GPL-3.0" src="https://img.shields.io/badge/license-GPL--3.0-555"></a>
 </p>
 
@@ -29,8 +29,10 @@
 </p>
 
 Hearth OS starts straight into **Steam Game Mode**, the same full-screen gamepad interface SteamOS uses. Your games
-from other stores show up in Steam's library too, and **Mantel**, Hearth's own desktop, is one press away. It's built
-on Debian 13, updates as one piece, and always keeps the version before so a bad update can't strand you.
+from other stores show up in Steam's library too, and the desktop (KDE Plasma with Hearth's own apps) is one press
+away. It's built on Fedora, updates as one piece, and always keeps the version before so a bad update can't strand you.
+From 1.16 Hearth OS is Fedora-based: the Debian edition has been merged into it (Debian devices keep running the
+version they have).
 
 ## What you get
 
@@ -39,8 +41,9 @@ on Debian 13, updates as one piece, and always keeps the version before so a bad
 - **Hearth Sync** (a small Decky plugin) puts your games from outside Steam into Steam's library with their covers:
   Epic and GOG (Heroic, Minigalaxy), Battle.net, Xbox Cloud Gaming, emulators, recomps, Beacon and your own.
 - **Hearth Games**: free and open games ready to install with one press, offline once they're on your PC.
-- **Mantel**, the desktop (labwc + Quickshell): works with a controller, a mouse and keyboard or touch, with a
-  Steam-style look, accent colours, light and dark, the Hearth menu on the Guide button and an on-screen keyboard.
+- **Desktop Mode**: KDE Plasma with Hearth's apps (Settings, Hearth Files, Capture, Task Manager and more) and every
+  Hearth look as a Plasma theme; with a controller too: the Guide menu, an on-screen keyboard, button hints and a
+  controller mouse. (Mantel, Hearth's own desktop on the Debian edition, stays in the repository.)
 - **Windows-like tools**: Hearth Files (tabs, a details pane, previous versions, drive letters with Hearth (C:)
   everywhere), Task Manager (Processes, Performance with settings for every part, App history, Startup, Services,
   Scheduled tasks) and Resource Monitor.
@@ -49,8 +52,8 @@ on Debian 13, updates as one piece, and always keeps the version before so a bad
 - **Server mode**: your PC as a home server (backups, shared folders, media, AI) with a dashboard you can open from
   your phone; **Hearth Link** pairs all your Hearth devices; **Hearth Storage** shares updates and games between them.
 - **Hearth AI Command Center** and AI sharing: the AIs on your PCs, used from any of your devices.
-- **Debian 13 underneath**, image-based (bootc): one image for AMD, Intel and Nvidia. A normal writable system (apt and
-  .deb files work) that can be locked in Settings.
+- **Fedora underneath** (Anatase, Fedora 45), image-based (bootc): one image for AMD, Intel and Nvidia. Apps come as
+  Flatpaks (Bazaar), AppImages or rpm packages; the file system can be unlocked in Settings.
 
 <p align="center">
   <img src="site/img/s18-task-manager.webp" width="760" alt="Task Manager in Mantel">
@@ -59,11 +62,12 @@ on Debian 13, updates as one piece, and always keeps the version before so a bad
 ## Install
 
 Download both from [hearthos.fun](https://hearthos.fun/#download) and write them to USB sticks (for example with
-Hearth Disks, balenaEtcher or Ventoy):
+Hearth Disks, balenaEtcher or Ventoy). **The USB files are still the Debian ones for now** (they install the older
+Debian edition, which no longer gets updates); a new Fedora USB installer and Recovery USB come with 1.16:
 
 | | | |
 |---|---|---|
-| **Hearth OS USB** (offline installer, Debian) | about 6 GB | [hearth-os-peppermint.iso](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso) · [SHA-256](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso.sha256) |
+| **Hearth OS USB** (offline installer, still Debian until 1.16) | about 6 GB | [hearth-os-peppermint.iso](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso) · [SHA-256](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso.sha256) |
 | **Recovery USB** (reinstall keeping your files, copy files off, start the previous version) | about 5 GB | [hearth-recovery.iso](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso) · [SHA-256](https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso.sha256) |
 
 The installer needs no internet. Step by step: [hearthos.fun/docs/install.html](https://hearthos.fun/docs/install.html).
@@ -90,7 +94,7 @@ version brought is in the [release notes](https://hearthos.fun/docs/releases.htm
 
 - **Ember** is Hearth on Windows 11 (below).
 - **Hearth for Android** runs Hearth's screens on a tablet or phone: [docs/ANDROID.md](docs/ANDROID.md).
-- **The ARM build** (`hearth-peppermint-arm64`) is Hearth OS for ARM PCs and boards.
+- **The ARM build** (`hearth-peppermint-arm64`, Debian-based) was Hearth OS for ARM PCs and boards; it's paused.
 
 ## Ember (Windows 11)
 
@@ -107,7 +111,8 @@ More: [docs/EMBER.md](docs/EMBER.md).
 ## Where things are
 
 ```
-os-bases/peppermint/     The Debian image (bootc): Containerfile, build.sh and its own system files
+os-bases/anatase/        The Fedora image (bootc): Containerfile and build.sh (Hearth OS from 1.16)
+os-bases/peppermint/     The Debian image (archived Nov 19, 2026, merged into Fedora; its system_files are still used)
 os/                      Shared system files (os/system_files), the installer USB (os/live), Recovery (os/recovery)
 hosts/linux/             The Linux session and Mantel (desktop/shell: Quickshell QML; desktop/labwc; desktop/theme)
 hosts/linux/test/        The Linux tests (Python), run on every push
@@ -131,7 +136,7 @@ are so existing installs keep updating.
 
 ## Archived
 
-Kept in the repository, but not built or shipped: the Anatase (Fedora), Ubuntu, CachyOS and Bazzite editions, Hearth Plasma / GNOME /
+Kept in the repository, but not built or shipped: the Debian edition (archived Nov 19, 2026: merged into Fedora, which goes out with 1.16), the Ubuntu, CachyOS and Bazzite editions, Hearth Plasma / GNOME /
 COSMIC / Deepin, multi-seat and Couch Co-op, the old Hearth Decky plugin, the small online installer and Hearth's app
 store. (Hearth for Android is back: [docs/ANDROID.md](docs/ANDROID.md).) What each was and where its code lives: [docs/ARCHIVED.md](docs/ARCHIVED.md).
 

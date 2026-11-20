@@ -1,10 +1,10 @@
 # Hearth OS on Anatase
 
-**Back as a test (1.15, the owner, Nov 17: "Bring Anatase back and up to speed on 1.15 so i can test it").** Hearth OS
-on Debian stays the main edition: the installer, the website and every Debian device are unchanged. Anatase is offered
-as **Hearth OS on Anatase (test)** in Settings › Updates › Switch edition, to try beside Debian on the owner's own
-devices. It ran smoother than Debian for him; he left it because Debian lets him unlock the file system, so Anatase now
-has that too.
+**The Hearth OS edition from 1.16 (1.15's work, not released on its own; the owner, Nov 19, 2026: "Only Fedora, Archive Debian"), shown as "Fedora".** It came
+back as a test on Nov 17 ("Bring Anatase back and up to speed on 1.15 so i can test it"); the owner ran 1.15 on his ROG
+Ally and laptop ("everything seems to be working", "running smooth") and made it the only edition. The Debian edition is
+archived, merged into this one (docs/ARCHIVED.md); its devices keep what they have. The notes below still say "test"
+where they describe how the switch was built; the image tag is still `test-1.15`, which is what Fedora devices follow.
 
 | | Hearth OS on Anatase (test) |
 |---|---|

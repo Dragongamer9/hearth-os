@@ -1,7 +1,7 @@
 # Hearth Settings as its own pure-Rust app (the approved new Settings' layouts A and B, for the Fedora edition)
 
 Mockups: next-update/settings-A1-home-mouse.png, next-update/settings-A2-display-mouse.png, next-update/settings-B1-quick-controller.png, next-update/settings-B2-display-controller.png
-Release: next
+Release: 1.16
 
 The owner (Nov 18, 2026): Settings is its own app, not tied to the Game Mode app, in pure Rust like the new Task
 Manager (hosts/hearth-ui/apps/settings). It follows the Global Theme picked in KDE, as every Hearth app must.

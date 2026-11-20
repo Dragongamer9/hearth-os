@@ -28,9 +28,10 @@ PAGES = [
 ]
 
 
-# Hearth OS is Debian-based (edition id 'peppermint', shown as "Debian"). Anatase is archived (November 2026), Ubuntu
-# and CachyOS since October 2026. (id, name, base; base '' when the name already says it)
-EDITIONS = [('peppermint', 'Debian', ''), ('anatase', 'Anatase', 'Fedora, archived')]
+# Hearth OS is Fedora-based from 1.16 (edition id 'anatase', shown as "Fedora"; the owner, Nov 19, 2026). The Debian
+# edition (id 'peppermint') was merged into it: its devices keep running what they have. Ubuntu and CachyOS are archived
+# since October 2026. (id, name, base; base '' when the name already says it)
+EDITIONS = [('anatase', 'Fedora', ''), ('peppermint', 'Debian', 'archived')]
 # Sections (by heading id) that only apply to some editions; everything else is for all of them.
 SECTION_EDS = {
     'podman': 'ubuntu cachyos peppermint',
@@ -147,14 +148,14 @@ def page(slug, title, lead, body):
 
 
 EDITION_NOTES = (
-    only('anatase', '''<p><b>Anatase</b> is Fedora underneath, as an image (bootc). <span class="ver">Archived</span> It gets no more updates: <a href="updates.html#switch">switch to Debian</a> to keep getting them. It's locked and immutable: the system can't be changed, only updated in one piece.</p>
-<ul>APPS<li>Steam: from Flathub, installed the first time the device is online.</li>
-<li>Terminal tools that change the system use <code>rpm-ostree</code> (Fedora's image tool).</li></ul>''')
-    + only('peppermint', '''<p><b>Debian</b>: Hearth OS on Debian 13 "trixie", made into an image (bootc). It's the main edition: every change is tested on it first.</p>
-<ul>APPS<li>It's a normal writable system: <code>sudo apt install</code> and .deb files (double-click one in Files) install anywhere and are kept across restarts. After an update, the packages you added come back by themselves.</li>
-<li>Updates still come as a whole new version, and the version before stays startable with its own packages. If something you install stops Hearth from starting, the next start leaves your changes off by itself.</li>
-<li>To lock it (the system as the image made it): <b>Settings › Updates &amp; Recovery › Unlocked system</b>, or <code>sudo hearth-unlock --lock</code>.</li><li>Steam: built in, from Debian's packages.</li></ul>''')
-).replace('APPS', '<li>Apps: Flatpak, from Flathub, in the <b>Apps</b> store (Desktop Mode).</li>')
+    only('anatase', '''<p><b>Fedora</b>: Hearth OS on Fedora (Anatase, Fedora 45), made into an image (bootc). It's the Hearth OS edition from 1.16: every update comes here.</p>
+<ul>APPS<li>Desktop Mode is KDE Plasma with Hearth's apps in its menu (Settings, Hearth Files, Capture, Task Manager and more) and Hearth's looks as Plasma themes; <b>Back to Game Mode</b> is first on the taskbar.</li>
+<li>The system is locked as the image made it. To add packages that stay across restarts: <b>Settings › Updates &amp; Recovery › Unlock the file system</b> (off unless you turn it on). Apps also come as AppImages or rpm packages.</li>
+<li>Steam: built in.</li></ul>''')
+    + only('peppermint', '''<p><b>Debian</b>: Hearth OS on Debian 13 "trixie" (bootc). <span class="ver">Archived</span> From 1.16 Hearth OS is Fedora-based, and the Debian edition is archived (merged into Fedora). A Debian PC keeps working on the version it has and still starts as before, but gets no more updates; the Fedora USB that comes with 1.16 moves it to Fedora.</p>
+<ul>APPS<li>It's a normal writable system: <code>sudo apt install</code> and .deb files (double-click one in Files) install anywhere and are kept across restarts.</li>
+<li>Desktop Mode is Mantel, Hearth's own desktop. Steam: built in, from Debian's packages.</li></ul>''')
+).replace('APPS', '<li>Apps: Flatpak, from Flathub, in the <b>Bazaar</b> app store (Desktop Mode).</li>')
 
 # ------------------------------------------------------------------ Overview
 INDEX = f'''
@@ -168,8 +169,8 @@ INDEX = f'''
 </div>
 {h2('what', 'What Hearth OS is')}
 <p>Hearth OS is a controller-first gaming system for handhelds and PCs. It starts in <b>Game Mode</b>, a console-style
-screen with Steam, Epic, GOG, Xbox and your other games in one library, and has a full desktop called <b>Mantel</b> one
-button away (<b>Desktop Mode</b>).</p>
+screen with Steam, Epic, GOG, Xbox and your other games in one library, and has a full desktop one button away
+(<b>Desktop Mode</b>: KDE Plasma with Hearth's own apps). It's built on <b>Fedora</b>.</p>
 <p>It's <b>image-based</b>: the whole system is one tested image that updates in one piece, in the background.
 An update can't half-install, and the version you had before stays on the drive so you can go back to it.</p>
 <div class="note"><p>Hearth OS is in <b>beta</b>. It works for everyday play, but expect rough edges. When something breaks,
@@ -179,12 +180,13 @@ An update can't half-install, and the version you had before stays on the drive 
 <p>Hearth looks and works the same on every edition. What changes is the Linux underneath it.</p>
 <div class="tbl"><table>
 <tr><th>Edition</th><th>Built on</th><th>Status</th><th>Good for</th></tr>
-<tr><td><b>Debian</b></td><td>Debian 13</td><td>Recommended</td><td>Everyone. The main edition, the one that gets updates. A normal writable system: apt and .deb files install anywhere; it can be locked in Settings.</td></tr>
-<tr><td><b>Anatase</b></td><td>Fedora (Anatase)</td><td>Archived</td><td>No more updates (November 2026). Installs keep working on their last version. Locked and immutable: the system can't be changed.</td></tr>
+<tr><td><b>Fedora</b></td><td>Fedora 45 (Anatase)</td><td>Hearth OS</td><td>Everyone. The edition that gets updates, from 1.16. Locked as the image made it, with Unlock the file system in Settings; apps as Flatpaks, AppImages or rpm packages.</td></tr>
+<tr><td><b>Debian</b></td><td>Debian 13</td><td>Archived</td><td>Merged into Fedora. PCs already on it keep working on their version and still start; no more updates. A normal writable system: apt and .deb files install anywhere.</td></tr>
 </table></div>
 <p>Both have the automatic fallback (an update that doesn't start goes back by itself) and Hearth Recovery. You can <a href="updates.html#switch">switch edition</a> later without a USB stick. Your games and saves come along.</p>
-<div class="note"><p><b>Anatase, Ubuntu and CachyOS are archived.</b> Hearth OS is Debian-based now. Already on one of them?
-It gets no more updates: <a href="updates.html#switch">switch to Debian</a> and your games come with you.</p></div>
+<div class="note"><p><b>Hearth OS is Fedora-based from 1.16: the Debian edition is archived (merged into Fedora).</b> On Debian? Your PC
+keeps working on its version; the Fedora USB that comes with 1.16 moves it to Fedora (<a href="updates.html#switch">Switching edition</a>).
+Ubuntu and CachyOS are archived too.</p></div>
 
 {h2('yours', 'About your edition')}
 <p class="ed" data-ed="all">Pick your edition above to see what's particular about it.</p>
@@ -203,10 +205,12 @@ INSTALL = f'''
 {h2('download', 'Downloads')}
 <p>The <b>offline USB</b> carries the whole system and installs without internet. Keep a <b>Recovery USB</b> too,
 for a device that won't start.</p>
+<div class="note"><p><b>A new USB installer comes with 1.16.</b> Hearth OS is Fedora-based from 1.16, but the USB files here
+are still the Debian ones: they install the Debian edition, which is archived and gets no more updates.
+The Fedora USB installer and Recovery USB come with 1.16.</p></div>
 <div class="tbl"><table>
 <tr><th>Download</th><th>Size</th><th>Internet while installing</th></tr>
-<tr class="ed" data-ed="anatase"><td><a href="{R2}hearth-os-live.iso">Anatase, offline USB</a> (archived)</td><td>about 9 GB</td><td>Not needed. Try it before installing.</td></tr>
-<tr class="ed" data-ed="peppermint"><td><a href="{R2}hearth-os-peppermint.iso">Debian, offline USB</a> (recommended)</td><td>about 4.3 GB</td><td>Not needed</td></tr>
+<tr><td><a href="{R2}hearth-os-peppermint.iso">Offline USB</a> (still the Debian one: <b>a new USB installer comes with 1.16</b>, made from Fedora)</td><td>about 4.3 GB</td><td>Not needed</td></tr>
 <tr><td><a href="{R2}hearth-recovery.iso">Hearth Recovery USB</a> (<a href="troubleshooting.html#recovery-usb">repairs a Hearth device that won't start</a>)</td><td>about 5 GB</td><td>Only to update or send logs</td></tr>
 </table></div>
 <p>To check a download wasn't damaged, compare its checksum (a <code>.sha256</code> file sits next to each ISO, for example
@@ -226,7 +230,7 @@ for a device that won't start.</p>
 <li><b>Plug in the stick and turn the device on</b> while pressing its boot-menu key: often <b>F12</b>, <b>F11</b> or <b>F8</b> on PCs.
 On a <b>ROG Ally</b>: hold <b>Volume Down</b> while pressing power.</li>
 <li><b>Pick the USB stick</b> in the list. If it isn't there, Secure Boot or "Fast Boot" may be hiding it: turn those off in the firmware settings (often <b>Del</b> or <b>F2</b> at power-on).</li>
-<li><b>Try it out.</b> The offline Anatase USB starts Hearth straight away with a welcome card. Nothing on the drive changes until you choose to install.</li>
+<li><b>Start the installer.</b> Nothing on the drive changes until you choose to install.</li>
 </ol>
 
 {h2('installing', 'Installing')}
@@ -242,8 +246,7 @@ If an install fails on your hardware, <a href="troubleshooting.html#logs">send t
 {h2('first', 'The first start')}
 <ul>
 <li>Hearth starts in Steam Game Mode: sign in to Steam on its own screen. Epic, GOG and Xbox sign in from Desktop Mode's <b>Settings › Games &amp; stores</b>.</li>
-<li class="ed" data-ed="anatase">Steam installs itself (from Flathub) the first time the device is online, so after an offline install it appears a few minutes after you connect.</li>
-<li class="ed" data-ed="ubuntu cachyos peppermint">Steam is already installed (from the edition's own packages).</li>
+<li>Steam is already installed.</li>
 <li>An installed system starts at the version the ISO was made with, and <a href="updates.html">updates itself</a> to the newest one once it's online.</li>
 </ul>
 
@@ -271,7 +274,7 @@ UPDATES = f'''
 <h3>From Settings</h3>
 <p><b>Settings › Updates › Go back to</b> (the version before) makes it the one that starts next, then restart.
 Changed your mind before restarting? The same place offers <b>Stay on</b> the version you have. It's there on the Hearth OS
-images (Anatase) while the older version is still kept, and not while a new update waits for a restart.</p>
+images while the older version is still kept, and not while a new update waits for a restart.</p>
 <h3>From the boot menu</h3>
 <p>Restart, and in the boot menu pick the second <b>Hearth OS</b> entry (the older version). On a handheld, the boot menu
 can be moved with the D-pad or volume buttons.</p>
@@ -281,8 +284,11 @@ can be moved with the D-pad or volume buttons.</p>
 <p>Then restart. The next update moves you forward again.</p>
 
 {h2('switch', 'Switching edition')}
-<p>Move to Hearth OS on Debian without a USB stick: <b>Settings › System › Updates › Switch edition</b>. On Anatase, Ubuntu or CachyOS
-(archived) the same button moves you to Debian.</p>
+<p>Hearth OS is Fedora-based from 1.16; the Debian edition is archived (merged into Fedora). A Debian PC keeps working on the
+version it has. To move it to Fedora, install from the Fedora USB that comes with 1.16 (games on a separate drive stay).
+On Fedora, <b>Settings › Updates › Switch edition</b> can still take you to the archived Debian edition.</p>
+<div class="note warn"><p>Don't switch a Debian PC to Fedora by hand (with <code>bootc switch</code>): the switch in Settings first
+clears what would make Fedora start to a black screen, and warns when Secure Boot has to be turned off.</p></div>
 <ul>
 <li><b>Kept:</b> your account, your games, saves and store libraries (Steam, Epic, GOG...).</li>
 <li><b>Set aside:</b> the rest of your home folder goes into a folder called <code>.old-hearth-</code> plus the date, for 30 days,
@@ -292,8 +298,8 @@ so you can copy back anything you need. After 30 days it's deleted.</li>
 <div class="note warn ed" data-ed="ubuntu cachyos peppermint"><p><b>Installed from 0.3.0 or earlier:</b> switching edition (and updating) fails with
 "podman executable not found in PATH". See <a href="troubleshooting.html#podman">the fix</a>.</p></div>
 <h3>Switching from a terminal</h3>
-<p>The same switch as the Settings button (<code>peppermint</code> is the Debian edition's name inside Hearth):</p>
-{cmd('switch-edition', 'pkexec /usr/libexec/nimbus/hearth-admin move-to-new-os --edition peppermint')}
+<p>The same switch as the Settings button (<code>anatase</code> is the Fedora edition's name inside Hearth, <code>peppermint</code> Debian's):</p>
+{cmd('switch-edition', 'pkexec /usr/libexec/nimbus/hearth-admin move-to-new-os --edition anatase')}
 <p>When it says <b>Done. Restart to start the new Hearth OS.</b>, restart.</p>
 
 {h2('versions', 'Versions')}
@@ -307,7 +313,8 @@ second with each update after it (1.1, 1.2 … 1.10). Settings › About shows t
 USING = f'''
 {h2('modes', 'Game Mode and Desktop Mode')}
 <p><b>Game Mode</b> is Steam's own Game Mode, the console-style screen Hearth starts in (like SteamOS). <b>Desktop Mode</b>
-(Mantel) is a full desktop with windows, a file manager, a terminal and Hearth's Settings.</p>
+is a full desktop with windows, a file manager, a terminal and Hearth's Settings: on Fedora that's KDE Plasma with Hearth's
+apps; on the Debian edition it's Mantel, Hearth's own desktop (what most of this page describes).</p>
 <ul>
 <li>To the desktop: Steam's <b>Power › Switch to Desktop</b>.</li>
 <li>Back to Game Mode: the <b>Game Mode</b> button on the desktop's taskbar, or the power menu.</li>
@@ -388,7 +395,7 @@ for you. Then type <code>claude</code> in the Terminal. It keeps itself up to da
 {cmd('claude-code', 'hearth-claude install-code')}
 <p><code>hearth-claude status</code>, <code>update</code> and <code>remove</code> do the rest (<code>remove-code</code> for Claude Code).
 Removing keeps your chats (they're in your Claude account) and settings.</p>
-{only('anatase', '<div class="note"><p>Anthropic supports Claude Desktop for Linux (in beta) on Debian and Ubuntu. On Anatase, Hearth runs Anthropic\'s Debian build from your home folder: it should work, but Anthropic doesn\'t support it there yet. Claude Code is supported everywhere.</p></div>')}
+{only('anatase', '<div class="note"><p>Anthropic supports Claude Desktop for Linux (in beta) on Debian and Ubuntu. On Fedora, Hearth runs Anthropic\'s Debian build from your home folder: it should work, but Anthropic doesn\'t support it there yet. Claude Code is supported everywhere.</p></div>')}
 {only('peppermint', '<div class="note"><p>On Debian you can also install <code>claude-desktop</code> with apt from Anthropic\'s repository, following Anthropic\'s instructions. Then apt keeps it up to date and Hearth leaves it alone.</p></div>')}
 
 {h2('logs', 'Sending logs')}
@@ -409,9 +416,9 @@ real devices.</p></div>
 a Steam Deck run them. Hearth is built right into it through Decky Loader and the <b>Hearth Decky plugin</b>.</p>
 <p>You keep everything that's Steam's: the library, game pages, store, downloads, friends and chat, the overlay, Quick
 Access and the on-screen keyboard. Hearth adds its own stores, pages and tools on top. It doesn't replace Steam's.</p>
-<p><span class="ver">Next update</span> Hearth OS is now Debian + Mantel (Desktop Mode) + Steam Game Mode: the device starts
-in Steam Game Mode and every Game Mode button opens it. If Steam can't start (not installed, safe graphics, Steam
-closing right away or failing twice), Mantel opens and says why, with a <b>Try Steam Game Mode again</b> button.
+<p><span class="ver">Next update</span> Hearth OS is now Fedora + Desktop Mode (KDE Plasma with Hearth's apps; Mantel on the
+Debian edition) + Steam Game Mode: the device starts in Steam Game Mode and every Game Mode button opens it. If Steam
+can't start (not installed, safe graphics, Steam closing right away or failing twice), the desktop opens and says why, with a <b>Try Steam Game Mode again</b> button.
 Multi-seat and Couch Co-op are hidden for now.</p>
 <p><span class="ver">Next update</span> <b>Hearth Game Mode is back</b> as a choice: Settings › Gaming › Game Mode has two
 cards, <b>Steam Game Mode</b> (the default) and <b>Hearth Game Mode</b>. See <a href="#hearth-game-mode">Hearth Game Mode</a> below.</p>
@@ -640,7 +647,7 @@ Don't include passwords.</p>
     <textarea name="what" rows="5" maxlength="4000" required placeholder="What you did, what you expected, and what happened instead. Error messages word for word help a lot."></textarea></label>
   <div class="row2">
     <label>Edition
-      <select name="edition"><option value="">Not sure</option><option>Debian</option><option>Anatase</option><option>Ember (Windows)</option></select></label>
+      <select name="edition"><option value="">Not sure</option><option>Fedora</option><option>Debian</option><option>Ember (Windows)</option></select></label>
     <label>Hearth version <input name="version" maxlength="20" placeholder="e.g. 0.3.1 (Settings › Updates)"></label>
   </div>
   <div class="row2">
@@ -678,7 +685,7 @@ REQUESTS = f'''
     <label>What kind of request?
       <select name="type"><option>New feature</option><option>Change something</option><option>New edition</option><option>Device support</option><option>Other</option></select></label>
     <label>For which edition?
-      <select name="edition"><option value="">Every edition</option><option>Debian</option><option>Anatase</option><option>Ember (Windows)</option><option>A new edition</option></select></label>
+      <select name="edition"><option value="">Every edition</option><option>Fedora</option><option>Debian</option><option>Ember (Windows)</option><option>A new edition</option></select></label>
   </div>
   <label><span>In a few words <span class="req">(needed)</span></span>
     <input name="title" maxlength="120" required placeholder="e.g. Hearth OS on openSUSE, or a battery saver for handhelds"></label>

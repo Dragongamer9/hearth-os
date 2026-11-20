@@ -1,7 +1,7 @@
 # Capture in pure Rust (Mantel's Capture, ported for the Fedora edition)
 
 Mockups: capture-mantel/1-take.jpg, capture-mantel/2-editor-share.jpg, capture-mantel/3-scroll-pill.jpg
-Release: next
+Release: 1.16
 
 Capture has no approved mockup of its own: these three pictures are Mantel's Capture as built and shown in 1.14 (CI
 pictures on KWin, Nov 17), the look this port matches part for part (Capture.qml, CaptureEditor.qml, CaptureBtn.qml,

@@ -1,7 +1,7 @@
 # Task Manager in pure Rust (the approved Task Manager mockups, ported from Mantel)
 
 Mockups: next-update/tm-1-processes-with-pid.png, next-update/tm-2-details.png, next-update/tm-3-cpu-power-settings.png, next-update/tm-4-disk-health-settings.png, next-update/tm-5-network-apps-settings.png, next-update/tm-6-gpu-tuning.png, next-update/tm-7-battery-health-settings.png, next-update/tm-8-startup-services-tasks.png, next-update/task-manager-memory.png, next-update/task-manager-swap-settings.png
-Release: next
+Release: 1.16
 
 The pure-Rust Task Manager (hosts/hearth-ui/apps/task-manager, docs/APPS-ANATASE.md) for Hearth OS, Fedora edition, where
 Mantel's QML Task Manager can't run. The same mockups as task-manager.md; every part has to be in before it replaces

@@ -1,6 +1,6 @@
 // Firehold's Couch on Plasma (a test, docs/FIREHOLD.md "Firehold on Plasma"): the desktop containment of the shell
 // package org.hearthos.firehold, on KDE's own KWin. Home, Library, Apps and Store, Everything open, the Guide and
-// Settings › Couch and Desk (docs/mockups/firehold, checklist docs/mockups/checklists/firehold-plasma.md).
+// Settings › Couch and Desk (docs/mockups/firehold, checklist docs/mockups/checklists/firehold-plasma-test.md).
 //
 // Windows come from Plasma's own task model (org.kde.taskmanager, as Plasma's task manager has them), games from
 // desktop/shell/hearth-firehold (the same list Mantel's Firehold shows), settings from ~/.config/nimbus/firehold.json

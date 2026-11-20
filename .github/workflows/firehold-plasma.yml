@@ -17,7 +17,7 @@ on:
   push:
     branches: ['feature/firehold-plasma']
     paths: ['hosts/linux/desktop/firehold-plasma/**', '.github/workflows/firehold-plasma.yml', '.github/scripts/firehold-plasma-*.sh',
-            'hosts/linux/test/test_firehold_plasma.py', 'docs/mockups/checklists/firehold-plasma.md']
+            'hosts/linux/test/test_firehold_plasma.py', 'docs/mockups/checklists/firehold-plasma-test.md']
 
 permissions:
   contents: write    # the screenshots branch
