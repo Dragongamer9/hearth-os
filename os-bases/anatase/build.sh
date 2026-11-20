@@ -1464,7 +1464,7 @@ chmod 755 /usr/libexec/hearth-app-kinds
 # Manager, System Restore and Reliability history, the ones that ran only inside Mantel. They take those apps' own
 # menu entries and commands here (this edition has no Mantel), and are left out, with their entries as before, when
 # they weren't built or can't start.
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app; do
   [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
   install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/bin/$b"
   # (grep -c, not -q: under pipefail an early grep -q could cut ldd off and hide the match)
@@ -1508,7 +1508,23 @@ for pair in restore:hearth-system-restore reliability:hearth-reliability-history
   fi
   ln -sf "$b" "/usr/bin/hearth-$id"
 done
-echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app; do [ -x /usr/bin/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/bin/$b | cut -f1)"; done)"
+# >>> Hearth Store (feature/hearth-store; docs/HEARTH-STORE.md)
+# The Hearth Store (hearth-store-app) is only here, in the Fedora image (the owner, Nov 19: "built into Hearth OS and not
+# available elsewhere"). Its list of apps (/usr/share/hearth/store/catalog.json), menu entry, icon and the daily-check
+# user timer come from os-bases/anatase/system_files. The timer is turned on only when the app is here; it only reads
+# release pages and writes the Store's cache (never booting, the session or the system). The signing key's public half
+# (/usr/share/hearth/store/catalog-key.pub) is put here only once the owner has made one (docs/HEARTH-STORE.md).
+if [ -x /usr/bin/hearth-store-app ]; then
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["apps"], "no apps"' /usr/share/hearth/store/catalog.json \
+    || { echo "::error title=Hearth Store::its list of apps (catalog.json) can't be read"; exit 1; }
+  install -d /usr/lib/systemd/user/timers.target.wants
+  ln -sf ../hearth-store-check.timer /usr/lib/systemd/user/timers.target.wants/hearth-store-check.timer
+  echo "::notice title=Hearth Store::$(python3 -c 'import json; d=json.load(open("/usr/share/hearth/store/catalog.json")); print("%d apps in its list (serial %d)" % (len(d["apps"]), d.get("serial", 0)))')$( [ -s /usr/share/hearth/store/catalog-key.pub ] && echo ', signing key built in' || echo ', no signing key yet: the built-in list only')"
+else
+  rm -f /usr/share/applications/hearth-store.desktop /usr/lib/systemd/user/hearth-store-check.service /usr/lib/systemd/user/hearth-store-check.timer
+fi
+# <<< Hearth Store
+echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app; do [ -x /usr/bin/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/bin/$b | cut -f1)"; done)"
 # The owner (Nov 18): every Hearth app that runs under Plasma is installed and shown in Plasma's menu, and Hearth's own
 # apps are the defaults there (menu and file types); KDE's apps stay installed but never take Hearth's place. So, for
 # Plasma (KDE) only, each kind's list becomes Hearth's own first (in Hearth Classic's order), then the Hearth KDE
