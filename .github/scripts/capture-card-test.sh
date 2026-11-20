@@ -219,7 +219,7 @@ if want cc-1b-viewer-recording; then
   close_app cc-1e-recording-file
   newest=$(ls -t "$HOME/Videos/Capture Card"/*.mp4 2>/dev/null | head -1)
   if [ -n "$newest" ] && [ -s "$newest" ] && [ "$(stat -c %Y "$newest")" -gt "$(( $(date +%s) - 120 ))" ]; then
-    info=$(gst-discoverer-1.0 "$newest" 2>&1 | grep -iE "Duration|video|audio|container|h\.264|aac|opus" | tr '\n' ' ' | tr -s ' ')
+    info=$(gst-discoverer-1.0 -v "$newest" 2>&1 | grep -iE "Duration|video #|audio #|container|Width|Height|Frame rate|Seekable|Sample rate" | sort -u | tr '\n' ' ' | tr -s ' ')
     note recording "$(basename "$newest"): $(du -h "$newest" | cut -f1) · $info"
     mv "$newest" /tmp/cc/recording.mp4
   else

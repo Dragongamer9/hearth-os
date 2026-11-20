@@ -48,7 +48,7 @@ pub fn viewer(a: &App) -> E<'_, Msg> {
         layers.push(quick_menu(a));
     }
     let _ = HINT;
-    stack(layers).into()
+    stack(layers).width(Length::Fill).height(Length::Fill).into()
 }
 
 /// The quick menu (5b): opened with ☰ (Menu) on this PC's controller, or Esc. B closes it.

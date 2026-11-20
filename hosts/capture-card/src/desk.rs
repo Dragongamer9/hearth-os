@@ -140,7 +140,7 @@ pub fn view(a: &App) -> E<'_, Msg> {
     if layers.len() == 1 {
         return layers.pop().unwrap();
     }
-    stack(layers).into()
+    stack(layers).width(Length::Fill).height(Length::Fill).into()
 }
 
 fn looking(a: &App) -> E<'_, Msg> {
@@ -188,14 +188,14 @@ fn no_signal(a: &App) -> E<'_, Msg> {
     .width(Length::Fill)
     .style(bx(QUIET, 12.0, None));
     let usb_end: Option<E<'_, Msg>> = if usb3 { Some(chip("You're on USB 3.0", Ch::Ok, None, 13.5)) } else if c.map(|c| c.speed > 0).unwrap_or(false) { Some(chip("You're on USB 2.0", Ch::Bad, None, 13.5)) } else { None };
-    let mut body = Column::new().width(Length::Fixed(1080.0));
+    let mut body = Column::new().width(Length::Fill).max_width(1080.0);
     body = body.push(head).push(gap(1.0, 26.0)).push(status).push(gap(1.0, 22.0));
     body = body.push(sec("If it stays black, try these", 0.0));
     body = body.push(tip_row(G::Usb, "Use a USB 3.0 port", "The blue (or SS-marked) ports on your laptop. On USB 2.0 the card can only send a small, choppy picture.", usb_end)).push(gap(1.0, 8.0));
     body = body.push(tip_row(G::Shield, "Turn off HDCP on the Xbox", "On the Xbox: **Settings › General › TV & display options › Video modes**, then untick **Allow HDCP**. With HDCP on, the Xbox sends nothing to a capture card. (Some streaming apps on the Xbox need it on.)", None)).push(gap(1.0, 8.0));
     body = body.push(tip_row(G::Tv, "Set the Xbox to 1080p at 60 Hz", "On the Xbox: Settings › General › TV & display options › **Resolution: 1080p** and **Refresh rate: 60 Hz**. That's the sharpest, smoothest picture this card can bring in.", None)).push(gap(1.0, 8.0));
     body = body.push(tip_row(G::Card, "Check the HDMI cable", "Xbox HDMI out goes into the card's **HDMI IN**, and the Xbox is on (not in sleep).", None));
-    let page = container(body).center_x(Length::Fill).center_y(Length::Fill).style(bx(DEEP, 0.0, None));
+    let page = container(body).padding(pad(0.0, 40.0, 0.0, 40.0)).center_x(Length::Fill).center_y(Length::Fill).style(bx(DEEP, 0.0, None));
     frame(a, page.into(), vec![hint(&["A"], "Select", 16.0), hint(&["B"], "Back", 16.0)], vec![lbrb("Live view / Recordings / Settings")])
 }
 
@@ -204,7 +204,7 @@ fn no_card(a: &App) -> E<'_, Msg> {
         container(row![ri(g, 40.0), column![t(title.to_string(), 17.0, TX), t(line.to_string(), 14.0, MUT).line_height(1.4)].spacing(3.0).width(Length::Fill)].spacing(16.0).align_y(iced::Top))
             .padding(pad(14.0, 20.0, 14.0, 20.0))
             .width(Length::FillPortion(1))
-            .height(Length::Fixed(110.0))
+            .height(Length::Fixed(if a.size.0 < 1600.0 { 130.0 } else { 110.0 }))
             .style(bx(CARD, 12.0, None))
             .into()
     };
@@ -221,12 +221,14 @@ fn no_card(a: &App) -> E<'_, Msg> {
             small(G::Tv, "1080p at 60 Hz", "On the Xbox, in TV & display options. The best this card brings in.")
         ]
         .spacing(16.0)
-        .width(Length::Fixed(1080.0)),
+        .width(Length::Fill),
         gap(1.0, 26.0),
         row![dotted(WARN, 9.0), gap(7.0, 1.0), one(t("Looking for a capture card… (it watches for USB devices being plugged in; nothing runs in between)", 15.0, MUT))].align_y(iced::Center)
     ]
-    .align_x(iced::Center);
-    let page = container(body).center_x(Length::Fill).center_y(Length::Fill).style(bx(DEEP, 0.0, None));
+    .align_x(iced::Center)
+    .width(Length::Fill)
+    .max_width(1080.0);
+    let page = container(body).padding(pad(0.0, 40.0, 0.0, 40.0)).center_x(Length::Fill).center_y(Length::Fill).style(bx(DEEP, 0.0, None));
     frame(a, page.into(), vec![hint(&["A"], "Select", 16.0), hint(&["B"], "Back", 16.0)], vec![lbrb("Live view / Recordings / Settings")])
 }
 
@@ -724,7 +726,7 @@ pub fn viewer(a: &App) -> E<'_, Msg> {
     if let Some(n) = note(a) {
         layers.push(container(n).center_x(Length::Fill).padding(pad(90.0, 0.0, 0.0, 0.0)).into());
     }
-    let all: E<'_, Msg> = stack(layers).into();
+    let all: E<'_, Msg> = stack(layers).width(Length::Fill).height(Length::Fill).into();
     if a.full {
         return all;
     }
