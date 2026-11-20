@@ -204,6 +204,7 @@ PY
   done
   setlook hearth dark "appMenu=hearth"
   echo "::notice title=Tray and player::$(tr '\n' ' ' <"$OUT/fixtures.log" | cut -c1-400)"
+  echo "::notice title=Tray host::$(pgrep -fa hearth-tray-host | cut -c1-200 | tr '\n' ';') · asked: $(timeout 20 python3 /usr/share/nimbus/desktop/plasma-hearth/hearth-tray-host wait 0 2>&1 | cut -c1-700)"
   echo "::notice title=Frost and tray (the bar says)::$(grep -ah "plasma-hearth: ci:" "$OUT"/plasmashell*.log | sed 's/.*ci: //' | tr '\n' '|' | cut -c1-1500)"
   bad=$(grep -aE "org\.hearthos" "$OUT/plasmashell.log" | grep -iE "MprisPlayers|MediaPill|MediaCard|MenuNowPlaying|SystemTray|Frost" | grep -iE "error|TypeError|ReferenceError|undefined" | sort -u | head -8)
   [ -n "$bad" ] && echo "::warning title=plasmashell about the extras::$(printf '%s' "$bad" | cut -c1-230 | tr '\n' '|')"
