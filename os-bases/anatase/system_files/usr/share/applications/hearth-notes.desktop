@@ -1,0 +1,24 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Notes
+GenericName=Notes
+Comment=Your notes and the hearth-workspace repository: live preview, today's log, a board, a graph, synced with GitHub
+Exec=/usr/bin/hearth-notes-app
+TryExec=/usr/bin/hearth-notes-app
+Icon=hearth-notes
+Categories=Office;Utility;TextEditor;
+Keywords=notes;markdown;obsidian;wiki;log;journal;kanban;graph;git;github;workspace;
+StartupWMClass=hearth-notes
+Actions=today;graph;sync;
+
+[Desktop Action today]
+Name=Today's log
+Exec=/usr/bin/hearth-notes-app --page today
+
+[Desktop Action graph]
+Name=Graph
+Exec=/usr/bin/hearth-notes-app --page graph
+
+[Desktop Action sync]
+Name=Sync with GitHub
+Exec=/usr/bin/hearth-notes-app --page sync
