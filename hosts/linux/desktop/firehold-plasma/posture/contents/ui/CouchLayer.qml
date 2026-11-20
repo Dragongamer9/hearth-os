@@ -22,6 +22,9 @@ Window {
     }
     width: screen ? screen.width : 1920
     height: screen ? screen.height : 1080
+    // The layer goes on the window's own screen (not the one the compositor would pick).
+    LayerShell.Window.screenConfiguration: LayerShell.Window.ScreenFromQWindow
+    screen: target()
     LayerShell.Window.scope: "hearth-firehold-couch"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorRight
