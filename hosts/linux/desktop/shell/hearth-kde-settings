@@ -26,6 +26,13 @@ same files, groups and keys, and KDE's own tools where the KCM uses one (plasma-
                                             (xdg-user-dirs-update, as KDE's Locations page)
   hearth-kde-settings device-actions        JSON: what can be done when a device is plugged in (Solid's actions);
                                             device-action-add (stdin {name, exec, kind}), device-action-remove FILE
+  hearth-kde-settings shortcuts             JSON: every KDE shortcut (kglobalshortcutsrc); shortcut-set COMPONENT ACTION
+                                            KEYS ("Meta+L", "" for none; tabs between several), through kglobalaccel
+  hearth-kde-settings push                  JSON: KDE's push service (KUnifiedPush); push-set PROVIDER [URL] (Ntfy, Autopush)
+  hearth-kde-settings fonts                 JSON: fonts you installed (turned off or not), every family; font-install FILE,
+                                            font-remove FILE (kept in fonts/.removed), font-off FILE on|off
+  hearth-kde-settings colord                JSON: screens', printers' and cameras' colour profiles (colormgr);
+                                            colord-default DEVICE PROFILE, colord-import FILE.icc
   hearth-kde-settings kded                  JSON: KDE's background services (kded modules) and whether each starts
   hearth-kde-settings kded-set NAME on|off  starts or stops one now and remembers it (kded6 over D-Bus, kded5rc)
 
@@ -271,6 +278,14 @@ def get(pid):
             current['userdirs'] = userdirs()
         if r.get('type') == 'deviceactions':
             current['deviceactions'] = device_actions()
+        if r.get('type') == 'shortcuts':
+            current['shortcuts'] = shortcuts()
+        if r.get('type') == 'push':
+            current['push'] = push()
+        if r.get('type') == 'fonts':
+            current['fonts'] = fonts()
+        if r.get('type') == 'colord':
+            current['colord'] = colord()
     return {'page': pid, 'current': current, 'files': files, 'mine': mine, 'locked': locked, 'bad': bad, 'lists': lists, 'info': info,
             'status': status()}
 
@@ -940,6 +955,327 @@ def device_action_remove(fname):
     return device_actions()
 
 
+# ------------------------------------------------------------------ fonts (KDE's Font Management)
+FONT_EXT = ('.ttf', '.otf', '.ttc', '.otc', '.pfb', '.pfa', '.woff', '.woff2', '.pcf', '.bdf')
+
+
+def font_dir():
+    return os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'fonts')
+
+
+def reject_conf():
+    base = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+    return os.path.join(base, 'fontconfig', 'conf.d', '90-hearth-fonts-turned-off.conf')
+
+
+def turned_off():
+    return re.findall(r'<glob>(.*?)</glob>', read(reject_conf()))
+
+
+def fonts():
+    f = fixture('fonts.json')
+    if f is not None:
+        return f
+    mine = font_dir()
+    code, out, _ = run(['fc-list', '-f', '%{family[0]}|%{style[0]}|%{file}\\n'], 20) if shutil.which('fc-list') else (1, '', '')
+    families, user = set(), []
+    for line in out.splitlines():
+        parts = line.split('|')
+        if len(parts) != 3:
+            continue
+        families.add(parts[0])
+        if parts[2].startswith(mine) or parts[2].startswith(os.path.expanduser('~/.fonts')):
+            user.append({'family': parts[0], 'style': parts[1], 'file': parts[2], 'off': False})
+    off = turned_off()
+    for g in off:
+        if os.path.exists(g) and not any(u['file'] == g for u in user):
+            user.append({'family': os.path.basename(g), 'style': '', 'file': g, 'off': True})
+    for u in user:
+        u['off'] = u['file'] in off
+    return {'yours': sorted(user, key=lambda u: (u['family'], u['style'])), 'families': sorted(families), 'count': len(families)}
+
+
+def fc_cache():
+    if shutil.which('fc-cache'):
+        run(['fc-cache', '-f', font_dir()], 120)
+
+
+def font_install(path):
+    path = os.path.abspath(path)
+    if not os.path.isfile(path) or not path.lower().endswith(FONT_EXT):
+        raise Fail('%s is not a font file' % os.path.basename(path))
+    if fixture_dir():
+        return fonts()
+    d = font_dir()
+    os.makedirs(d, exist_ok=True)
+    dest = os.path.join(d, os.path.basename(path))
+    if os.path.exists(dest):
+        raise Fail('%s is already installed' % os.path.basename(path))
+    tmp = dest + '.part'
+    shutil.copyfile(path, tmp)
+    os.replace(tmp, dest)
+    fc_cache()
+    hsio.log_event('kde: font installed %s' % os.path.basename(path))
+    return fonts()
+
+
+def font_remove(path):
+    path = os.path.abspath(path)
+    if not path.startswith(font_dir() + os.sep) or not os.path.isfile(path):
+        raise Fail('Only fonts you installed can be removed')
+    if fixture_dir():
+        return fonts()
+    keep = os.path.join(font_dir(), '.removed')
+    os.makedirs(keep, exist_ok=True)
+    os.replace(path, os.path.join(keep, os.path.basename(path)))
+    fc_cache()
+    hsio.log_event('kde: font removed %s (kept in %s)' % (os.path.basename(path), keep))
+    return fonts()
+
+
+def font_off(path, off):
+    path = os.path.abspath(path)
+    cur = [g for g in turned_off() if g != path]
+    if off:
+        cur.append(path)
+    if fixture_dir():
+        return fonts()
+    esc = lambda x: x.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    text = ('<?xml version="1.0"?>\n<!DOCTYPE fontconfig SYSTEM "urn:fontconfig:fonts.dtd">\n'
+            '<!-- Hearth Settings > Font management: fonts you turned off (every app leaves them out). -->\n<fontconfig>\n'
+            '  <selectfont>\n    <rejectfont>\n' + ''.join('      <glob>%s</glob>\n' % esc(g) for g in cur) +
+            '    </rejectfont>\n  </selectfont>\n</fontconfig>\n')
+    os.makedirs(os.path.dirname(reject_conf()), exist_ok=True)
+    hsio.write_text(reject_conf(), text)
+    fc_cache()
+    hsio.log_event('kde: font %s %s' % ('off' if off else 'on', os.path.basename(path)))
+    return fonts()
+
+
+# ------------------------------------------------------------------ colour profiles (colord, as KDE's Color Management)
+def colormgr(args, secs=10):
+    if not shutil.which('colormgr'):
+        raise Fail('Colour management (colord) is not installed')
+    code, out, err = run(['colormgr'] + args, secs)
+    if code != 0:
+        raise Fail((err or out).strip()[:300] or 'colord did not answer')
+    return out
+
+
+def blocks(text):
+    out, cur = [], {}
+    for line in text.splitlines():
+        if not line.strip():
+            if cur:
+                out.append(cur)
+                cur = {}
+            continue
+        if ':' in line:
+            k, v = line.split(':', 1)
+            k = k.strip()
+            if k.startswith('Profile '):
+                cur.setdefault('profiles', []).append(v.strip())
+            else:
+                cur[k] = v.strip()
+    if cur:
+        out.append(cur)
+    return out
+
+
+def colord():
+    f = fixture('colord.json')
+    if f is not None:
+        return f
+    try:
+        devs = blocks(colormgr(['get-devices']))
+        profs = blocks(colormgr(['get-profiles']))
+    except Fail as e:
+        return {'ok': False, 'why': str(e), 'devices': [], 'profiles': []}
+    devices = [{'path': d.get('Object Path', ''), 'kind': d.get('Kind', ''), 'name': ' '.join(x for x in (d.get('Vendor', ''), d.get('Model', '')) if x) or d.get('Device ID', ''),
+                'profiles': [p.split(' ')[0] for p in d.get('profiles', [])]} for d in devs]
+    profiles = [{'path': p.get('Object Path', ''), 'title': p.get('Title', '') or os.path.basename(p.get('Filename', '')), 'file': p.get('Filename', '')} for p in profs]
+    return {'ok': True, 'devices': devices, 'profiles': profiles}
+
+
+def colord_default(dev, prof):
+    if not (dev.startswith('/org/freedesktop/ColorManager/') and prof.startswith('/org/freedesktop/ColorManager/')):
+        raise Fail('bad device or profile')
+    if fixture_dir():
+        return colord()
+    cur = next((d for d in colord()['devices'] if d['path'] == dev), None)
+    if cur is None:
+        raise Fail('That device is gone')
+    if prof not in cur['profiles']:
+        colormgr(['device-add-profile', dev, prof])
+    colormgr(['device-make-profile-default', dev, prof])
+    hsio.log_event('kde: colour profile %s for %s' % (prof, dev))
+    return colord()
+
+
+def colord_import(path):
+    path = os.path.abspath(path)
+    if not os.path.isfile(path) or not path.lower().endswith(('.icc', '.icm')):
+        raise Fail('%s is not a colour profile (.icc)' % os.path.basename(path))
+    if fixture_dir():
+        return colord()
+    colormgr(['import-profile', path], 30)
+    hsio.log_event('kde: colour profile imported %s' % os.path.basename(path))
+    return colord()
+
+
+# ------------------------------------------------------------------ keyboard shortcuts (kglobalaccel, as KDE's Shortcuts)
+QT_MODS = {'meta': 0x10000000, 'super': 0x10000000, 'ctrl': 0x04000000, 'control': 0x04000000, 'alt': 0x08000000, 'shift': 0x02000000}
+QT_KEYS = {'space': 0x20, 'esc': 0x01000000, 'escape': 0x01000000, 'tab': 0x01000001, 'backtab': 0x01000002, 'backspace': 0x01000003,
+           'return': 0x01000004, 'enter': 0x01000005, 'ins': 0x01000006, 'insert': 0x01000006, 'del': 0x01000007, 'delete': 0x01000007,
+           'pause': 0x01000008, 'print': 0x01000009, 'sysreq': 0x0100000a, 'home': 0x01000010, 'end': 0x01000011, 'left': 0x01000012,
+           'up': 0x01000013, 'right': 0x01000014, 'down': 0x01000015, 'pgup': 0x01000016, 'pageup': 0x01000016, 'pgdown': 0x01000017,
+           'pagedown': 0x01000017, 'menu': 0x01000055, 'volume down': 0x01000070, 'volume mute': 0x01000071, 'volume up': 0x01000072,
+           'media play': 0x01000080, 'media stop': 0x01000081, 'media previous': 0x01000082, 'media next': 0x01000083,
+           'launch mail': 0x010000a0, 'calculator': 0x010000cb, 'monbrightnessup': 0x010000b2, 'monbrightnessdown': 0x010000b3}
+
+
+def key_code(text):
+    """'Meta+Shift+S' -> Qt's combined key code (QKeyCombination::toCombined)."""
+    parts = [x for x in re.split(r'\+(?=.)', text.strip()) if x]
+    if not parts:
+        raise Fail('no key')
+    code = 0
+    for m in parts[:-1]:
+        if m.lower() not in QT_MODS:
+            raise Fail('%s is not Ctrl, Alt, Shift or Meta' % m)
+        code |= QT_MODS[m.lower()]
+    k = parts[-1]
+    if len(k) == 1:
+        c = ord(k.upper())
+        if c > 0xff:
+            raise Fail('%s can\'t be a shortcut key' % k)
+        code |= c
+    elif re.match(r'^F([1-9]|[1-2][0-9]|3[0-5])$', k, re.I):
+        code |= 0x01000030 + int(k[1:]) - 1
+    elif k.lower() in QT_KEYS:
+        code |= QT_KEYS[k.lower()]
+    else:
+        raise Fail('%s is not a key Hearth knows' % k)
+    return code
+
+
+def split_keys(v):
+    return [] if not v or v == 'none' else [x for x in v.split('\t') if x and x != 'none']
+
+
+def shortcuts():
+    f = fixture('shortcuts.json')
+    if f is not None:
+        return f
+    try:
+        values, _, _ = kc.effective('kglobalshortcutsrc')
+    except kc.BadFile as e:
+        return {'ok': False, 'why': "Your kglobalshortcutsrc couldn't be read (%s)" % e, 'components': []}
+    comps = []
+    for g, kv in sorted(values.items()):
+        if g == kc.DEFAULT_GROUP:
+            continue
+        name = kv.get('_k_friendly_name') or g.split('][')[-1].replace('.desktop', '')
+        acts = []
+        for k, v in sorted(kv.items()):
+            if k.startswith('_k_'):
+                continue
+            parts = v.split(',')
+            if len(parts) >= 3:
+                cur, dflt, friendly = parts[0], parts[1], ','.join(parts[2:])
+            else:
+                cur, dflt, friendly = v, '', k
+            acts.append({'id': k, 'name': friendly or k, 'keys': split_keys(cur), 'default': split_keys(dflt)})
+        if acts:
+            comps.append({'id': g, 'name': name, 'actions': sorted(acts, key=lambda a: a['name'].lower())})
+    comps.sort(key=lambda c: c['name'].lower())
+    return {'ok': True, 'running': has_name('org.kde.kglobalaccel'), 'components': comps}
+
+
+def shortcut_set(comp, action, keys_text):
+    keys = split_keys(keys_text.replace(' / ', '\t'))
+    codes = [key_code(k) for k in keys]
+    sc = shortcuts()
+    c = next((x for x in sc['components'] if x['id'] == comp), None)
+    a = next((x for x in (c or {}).get('actions', []) if x['id'] == action), None)
+    if a is None:
+        raise Fail('That shortcut is not one of KDE\'s')
+    for other in sc['components']:
+        for oa in other['actions']:
+            if (other['id'], oa['id']) != (comp, action) and set(oa['keys']) & set(keys):
+                raise Fail('%s is already used by %s (%s): change that one first' % (', '.join(set(oa['keys']) & set(keys)), oa['name'], other['name']))
+    if fixture_dir():
+        return {'ok': True, 'preview': True}
+    if not has_name('org.kde.kglobalaccel'):
+        raise Fail("KDE's shortcuts can only be changed on KDE Plasma (its shortcut service isn't running here)")
+    ident = [comp.split('][')[-1], action, c['name'], a['name']]
+    from gi.repository import GLib
+    conn = bus()
+    try:
+        conn.call_sync('org.kde.kglobalaccel', '/kglobalaccel', 'org.kde.KGlobalAccel', 'setForeignShortcutKeys',
+                       GLib.Variant('(asa(ai))', (ident, [[x] for x in codes])), None, 0, 4000, None)
+    except Exception as e:
+        raise Fail('The shortcut wasn\'t changed: %s' % (str(e).split(':')[-1].strip() or e))
+    hsio.log_event('kde: shortcut %s / %s = %s' % (comp, action, keys_text))
+    return {'ok': True}
+
+
+# ------------------------------------------------------------------ push services (KUnifiedPush, as KDE's Push Services)
+PUSH_DEST = 'org.unifiedpush.Distributor.kde'
+PUSH_PROVIDERS = {'Ntfy': 'ntfy', 'Autopush': 'Mozilla Autopush', 'Gotify': 'Gotify', 'NextPush': 'NextPush (Nextcloud)'}
+
+
+def push_obj():
+    """Where KDE's push service has its management methods (found by asking it, not guessed)."""
+    for path in ('/Management', '/'):
+        try:
+            xml = call(PUSH_DEST, path, 'org.freedesktop.DBus.Introspectable', 'Introspect')[0]
+        except Fail:
+            continue
+        m = re.search(r'<interface name="([^"]+)">(?:(?!</interface>).)*setPushProvider', xml, re.S)
+        if m:
+            return path, m.group(1)
+    return None
+
+
+def push():
+    f = fixture('push.json')
+    if f is not None:
+        return f
+    o = push_obj() if has_name(PUSH_DEST) else None
+    if not o:
+        return {'running': False, 'providers': PUSH_PROVIDERS}
+    out = {'running': True, 'providers': PUSH_PROVIDERS}
+    for prop in ('pushProviderId', 'pushProviderConfiguration'):
+        try:
+            out[prop] = call(PUSH_DEST, o[0], 'org.freedesktop.DBus.Properties', 'Get', '(ss)', (o[1], prop))[0]
+        except Fail:
+            pass
+    cfg = out.get('pushProviderConfiguration') or {}
+    out['url'] = cfg.get('Url', '') if isinstance(cfg, dict) else ''
+    return out
+
+
+def push_set(provider, url):
+    if provider not in ('Ntfy', 'Autopush'):
+        raise Fail('%s needs a sign-in: pick it on KDE Plasma in its own window' % PUSH_PROVIDERS.get(provider, provider))
+    if url and not re.match(r'^https?://[^\s]+$', url):
+        raise Fail('The server must be a web address (https://...)')
+    if fixture_dir():
+        return {'running': True, 'pushProviderId': provider, 'url': url, 'providers': PUSH_PROVIDERS, 'preview': True}
+    o = push_obj() if has_name(PUSH_DEST) else None
+    if not o:
+        raise Fail("KDE's push service isn't running here (it runs on KDE Plasma)")
+    from gi.repository import GLib
+    cfg = {'Url': GLib.Variant('s', url)} if url else {}
+    try:
+        bus().call_sync(PUSH_DEST, o[0], o[1], 'setPushProvider', GLib.Variant('(sa{sv})', (provider, cfg)), None, 0, 6000, None)
+    except Exception as e:
+        raise Fail('It wasn\'t changed: %s' % (str(e).split(':')[-1].strip() or e))
+    hsio.log_event('kde: push provider %s %s' % (provider, url))
+    return push()
+
+
 def main(argv):
     c = argv[1] if len(argv) > 1 else ''
     a = argv[2:]
@@ -977,6 +1313,28 @@ def main(argv):
         return device_action_add(os.environ.get('HEARTH_INPUT') or sys.stdin.read())
     if c == 'device-action-remove' and len(a) == 1:
         return device_action_remove(a[0])
+    if c == 'shortcuts':
+        return shortcuts()
+    if c == 'shortcut-set' and len(a) == 3:
+        return shortcut_set(a[0], a[1], a[2])
+    if c == 'push':
+        return push()
+    if c == 'push-set' and len(a) in (1, 2):
+        return push_set(a[0], a[1] if len(a) > 1 else '')
+    if c == 'fonts':
+        return fonts()
+    if c == 'font-install' and len(a) == 1:
+        return font_install(a[0])
+    if c == 'font-remove' and len(a) == 1:
+        return font_remove(a[0])
+    if c == 'font-off' and len(a) == 2 and a[1] in ('on', 'off'):
+        return font_off(a[0], a[1] == 'off')
+    if c == 'colord':
+        return colord()
+    if c == 'colord-default' and len(a) == 2:
+        return colord_default(a[0], a[1])
+    if c == 'colord-import' and len(a) == 1:
+        return colord_import(a[0])
     if c == 'allowlist':
         return {f: {g: sorted(k) for g, k in gs.items()} for f, gs in allowlist().items()}
     raise Fail(__doc__.split('\n\n')[2] if c in ('', '-h', '--help') else 'unknown command %s' % c)

@@ -47,6 +47,13 @@ kde kde-43-cddb --page kde-cddb
 kde kde-44-krdp --page kde-krdp
 kde kde-45-info --page kde-info
 kde kde-46-b-nighttime --layout b --page kde-nighttime --focus "Night starts"
+# Batch 4: KDE shortcuts (one app open, and a search), push services, colour profiles, font management.
+kde kde-60-shortcuts --page kde-shortcuts
+kde kde-61-shortcuts-kwin --page kde-shortcuts:kwin
+kde kde-62-push --page kde-push
+kde kde-63-colord --page kde-colord
+kde kde-64-fontinst --page kde-fontinst
+kde kde-65-b-shortcuts --layout b --page kde-shortcuts:kwin --focus "Toggle Overview"
 # The lower part of the long pages (the focus on their last rows scrolls them there).
 kde kde-50-workspace-end --page kde-workspace --focus "On the taskbar too"
 kde kde-51-style-end --page kde-style --focus "GTK apps' theme"

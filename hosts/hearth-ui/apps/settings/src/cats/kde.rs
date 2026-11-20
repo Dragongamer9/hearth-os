@@ -27,7 +27,7 @@ pub const PAGES: &[&str] = &[
     "kde-decorations", "kde-screenlock", "kde-session", "kde-renderer", "kde-feedback", "kde-tabbox", "kde-krunner",
     "kde-webshortcuts", "kde-updates", "kde-trash", "kde-netpref", "kde-kwin-scripts", "kde-kded", "kde-activities",
     "kde-locations", "kde-device-actions", "kde-nighttime", "kde-plasmakeyboard", "kde-gamecontroller", "kde-cddb",
-    "kde-krdp", "kde-info",
+    "kde-krdp", "kde-info", "kde-shortcuts", "kde-push", "kde-colord", "kde-fontinst",
 ];
 
 const SPEC_TEXT: &str = include_str!("../../../../../linux/desktop/shell/kde-settings.json");
@@ -131,6 +131,10 @@ pub struct State {
     pub pages: HashMap<&'static str, Pg>,
     /// `--page PAGE:pick`: the page's first list opens once it's read (pictures, tests).
     pub want_pick: bool,
+    /// Shortcuts: waiting for the new keys of (page, component, action).
+    pub capture: Option<(&'static str, String, String)>,
+    /// Shortcuts: the component shown (its id).
+    pub open_comp: Option<String>,
     /// A long list open over the page: (its page, its row).
     pub pick: Option<(&'static str, usize)>,
 }
@@ -161,10 +165,21 @@ pub enum Msg {
     Run(&'static str, Vec<String>, Option<String>),
     Folder(&'static str, String),
     FolderGot(&'static str, String, Res),
+    /// A file to hand to one of the helper's commands (a font to install, a colour profile to import).
+    FileFor(&'static str, &'static str, &'static str),
+    /// Shortcuts: wait for the new keys of this one (component, action); the keys pressed.
+    Capture(&'static str, String, String),
+    Key(iced::keyboard::Event),
+    OpenComp(Option<String>),
+    FileForGot(&'static str, &'static str, Res),
 }
 
 pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
     st.want_pick = sh.part == "pick";
+    // `--page kde-shortcuts:COMPONENT`: that app's shortcuts open.
+    if page == "kde-shortcuts" && !sh.part.is_empty() && sh.part != "pick" {
+        st.open_comp = Some(sh.part.clone());
+    }
     let pg = st.pages.entry(page).or_default();
     pg.say.clear();
     pg.temp.clear();
@@ -500,6 +515,32 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
                 return update(sh, st, Msg::Run(page, vec!["userdir-set".into(), key, path], None));
             }
         }
+        Msg::Capture(page, comp, action) => {
+            st.capture = Some((page, comp, action));
+        }
+        Msg::Key(iced::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+            let Some((page, comp, action)) = st.capture.clone() else { return Task::none() };
+            if matches!(key.as_ref(), iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape)) {
+                st.capture = None;
+                return Task::none();
+            }
+            if let Some(text) = shortcut_text(&key, modifiers) {
+                st.capture = None;
+                return update(sh, st, Msg::Run(page, vec!["shortcut-set".into(), comp, action, text], None));
+            }
+        }
+        Msg::Key(_) => {}
+        Msg::OpenComp(c) => st.open_comp = c,
+        Msg::FileFor(page, cmd, filter) => {
+            let what = if cmd == "font-install" { "Choose a font" } else { "Choose a colour profile" };
+            return read(crate::cats::pers::kit::file_picker(what, false, filter), move |r| Msg::FileForGot(page, cmd, r));
+        }
+        Msg::FileForGot(page, cmd, r) => {
+            let path = r.out.trim().lines().last().unwrap_or("").trim().to_string();
+            if r.ok && path.starts_with('/') {
+                return update(sh, st, Msg::Run(page, vec![cmd.to_string(), path], None));
+            }
+        }
         Msg::Applied(page, r) => {
             let pg = st.pages.entry(page).or_default();
             pg.saving = false;
@@ -514,12 +555,74 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
     Task::none()
 }
 
-pub fn subscription(_st: &State) -> Subscription<Msg> {
-    Subscription::none()
+/// Only while a shortcut waits for its keys (nothing at rest).
+pub fn subscription(st: &State) -> Subscription<Msg> {
+    if st.capture.is_some() {
+        iced::keyboard::listen().map(Msg::Key)
+    } else {
+        Subscription::none()
+    }
 }
 
 pub fn back(st: &mut State) -> bool {
-    st.pick.take().is_some()
+    st.pick.take().is_some() || st.capture.take().is_some() || st.open_comp.take().is_some()
+}
+
+/// A key pressed as KDE writes it ("Meta+Shift+S"); None for a modifier alone (still waiting) or a key that can't be
+/// one.
+pub fn shortcut_text(key: &iced::keyboard::Key, m: iced::keyboard::Modifiers) -> Option<String> {
+    use iced::keyboard::key::Named as N;
+    use iced::keyboard::Key;
+    let k = match key.as_ref() {
+        Key::Character(c) => c.to_uppercase(),
+        Key::Named(n) => match n {
+            N::Space => "Space".into(),
+            N::Tab => "Tab".into(),
+            N::Enter => "Return".into(),
+            N::Backspace => "Backspace".into(),
+            N::Delete => "Del".into(),
+            N::Insert => "Ins".into(),
+            N::Home => "Home".into(),
+            N::End => "End".into(),
+            N::PageUp => "PgUp".into(),
+            N::PageDown => "PgDown".into(),
+            N::ArrowLeft => "Left".into(),
+            N::ArrowRight => "Right".into(),
+            N::ArrowUp => "Up".into(),
+            N::ArrowDown => "Down".into(),
+            N::PrintScreen => "Print".into(),
+            N::Pause => "Pause".into(),
+            N::F1 => "F1".into(),
+            N::F2 => "F2".into(),
+            N::F3 => "F3".into(),
+            N::F4 => "F4".into(),
+            N::F5 => "F5".into(),
+            N::F6 => "F6".into(),
+            N::F7 => "F7".into(),
+            N::F8 => "F8".into(),
+            N::F9 => "F9".into(),
+            N::F10 => "F10".into(),
+            N::F11 => "F11".into(),
+            N::F12 => "F12".into(),
+            _ => return None,
+        },
+        _ => return None,
+    };
+    let mut s = String::new();
+    if m.logo() {
+        s.push_str("Meta+");
+    }
+    if m.control() {
+        s.push_str("Ctrl+");
+    }
+    if m.alt() {
+        s.push_str("Alt+");
+    }
+    if m.shift() {
+        s.push_str("Shift+");
+    }
+    s.push_str(&k);
+    Some(s)
 }
 
 // ---------------------------------------------------------------- drawing
@@ -876,6 +979,126 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
                 let add = if ready && !name.trim().is_empty() && !cmd.trim().is_empty() { Some(Msg::Run(page, vec!["device-action-add".into()], Some(input))) } else { None };
                 v.push(button_row(&p, G::Plus, "Add this action".into(), String::new(), "Add", add));
             }
+            "shortcuts" => {
+                let sc = pg.data.pointer("/current/shortcuts").cloned().unwrap_or(Value::Null);
+                let comps = sc.get("components").and_then(Value::as_array).cloned().unwrap_or_default();
+                let live = sc.get("running").and_then(Value::as_bool).unwrap_or(false);
+                if pg.read && !live {
+                    v.push(words(&p, "KDE's shortcuts are changed through KDE Plasma's shortcut service: open this page on KDE Plasma to change them. Here they're shown as they're saved.", false));
+                }
+                if !s(&sc, "why").is_empty() {
+                    v.push(words(&p, s(&sc, "why").to_string(), true));
+                }
+                if let Some((_, c, a)) = &a.kde.capture {
+                    v.push(words(&p, format!("Press the new shortcut for {} (Esc: cancel)…", comps.iter().find(|x| s(x, "id") == c).and_then(|x| x.get("actions")).and_then(Value::as_array).and_then(|l| l.iter().find(|y| s(y, "id") == a)).map(|y| s(y, "name").to_string()).unwrap_or_default()), false));
+                }
+                let qkey = 1000 + i * 100 + 50;
+                let qraw = pg.text.get(&qkey).cloned().unwrap_or_default();
+                let q = qraw.to_lowercase();
+                v.push(srow(&p, G::Search, "Find a shortcut", "By what it does or its keys", field(&p, "Screenshot, Meta+L…", &qraw, move |t| Msg::Text(page, qkey, t)).width(Length::Fixed(sz(300.0))).into()));
+                let open = a.kde.open_comp.clone();
+                for c in comps.iter() {
+                    let cid = s(c, "id").to_string();
+                    let acts = c.get("actions").and_then(Value::as_array).cloned().unwrap_or_default();
+                    let matching: Vec<&Value> = acts.iter().filter(|x| q.is_empty() || s(x, "name").to_lowercase().contains(&q) || x.get("keys").map(|k| k.to_string().to_lowercase().contains(&q)).unwrap_or(false)).collect();
+                    if matching.is_empty() {
+                        continue;
+                    }
+                    let shown = !q.is_empty() || open.as_deref() == Some(cid.as_str());
+                    if !shown {
+                        v.push(link_row(&p, G::Keyboard, s(c, "name").to_string(), format!("{} shortcuts", acts.len()), Msg::OpenComp(Some(cid.clone()))));
+                        continue;
+                    }
+                    v.push(head(&p, s(c, "name").to_string()));
+                    for x in matching {
+                        let aid = s(x, "id").to_string();
+                        let keys: Vec<String> = x.get("keys").and_then(Value::as_array).map(|k| k.iter().map(text_of).collect()).unwrap_or_default();
+                        let dflt: Vec<String> = x.get("default").and_then(Value::as_array).map(|k| k.iter().map(text_of).collect()).unwrap_or_default();
+                        let ch = if live { Some(Msg::Capture(page, cid.clone(), aid.clone())) } else { None };
+                        let df = if live && keys != dflt { Some(Msg::Run(page, vec!["shortcut-set".into(), cid.clone(), aid.clone(), dflt.join("\t")], None)) } else { None };
+                        let cl = if live && !keys.is_empty() { Some(Msg::Run(page, vec!["shortcut-set".into(), cid.clone(), aid.clone(), String::new()], None)) } else { None };
+                        for m in [&ch, &df, &cl] {
+                            nav::control(Kind::Press, m.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                        }
+                        let ctl: E<'a> = row![btn(&p, "Change", hearth_ui::ui::Kind::Normal, false, ch), btn(&p, "Default", hearth_ui::ui::Kind::Normal, false, df), btn(&p, "None", hearth_ui::ui::Kind::Normal, false, cl)].spacing(6.0).align_y(iced::Center).into();
+                        let line = if keys.is_empty() { "No shortcut".to_string() } else { keys.join("  or  ") };
+                        let line = if keys != dflt && !dflt.is_empty() { format!("{line} · KDE's: {}", dflt.join(" or ")) } else { line };
+                        v.push(srow(&p, G::Keyboard, s(x, "name").to_string(), line, ctl));
+                    }
+                }
+            }
+            "push" => {
+                let pu = pg.data.pointer("/current/push").cloned().unwrap_or(Value::Null);
+                let live = pu.get("running").and_then(Value::as_bool).unwrap_or(false);
+                if pg.read && !live {
+                    v.push(words(&p, "KDE's push service isn't running here (it runs on KDE Plasma).", false));
+                }
+                let cur = s(&pu, "pushProviderId").to_string();
+                let ukey = 1000 + i * 100 + 60;
+                let url = pg.text.get(&ukey).cloned().unwrap_or_else(|| s(&pu, "url").to_string());
+                let names = [("Ntfy", "ntfy"), ("Autopush", "Mozilla Autopush"), ("Gotify", "Gotify"), ("NextPush", "NextPush (Nextcloud)")];
+                let items: Vec<(String, bool, Option<Msg>)> = names.iter().map(|(k, l)| (l.to_string(), cur == *k, if live && (*k == "Ntfy" || *k == "Autopush") { Some(Msg::Run(page, vec!["push-set".into(), k.to_string(), url.clone()], None)) } else { None })).collect();
+                v.push(choice_wide(&p, G::Server, "Push service", if cur.is_empty() { "None picked: apps can't get notices from online services".to_string() } else { "Apps' notices from online services come through it".to_string() }, items));
+                let save = if live && (cur == "Ntfy" || cur == "Autopush") { Some(Msg::Run(page, vec!["push-set".into(), cur.clone(), url.clone()], None)) } else { None };
+                nav::control(Kind::Press, save.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                v.push(srow(&p, G::Link, "Its server", "Empty: the service's own", row![field(&p, "https://ntfy.sh", &url, move |t| Msg::Text(page, ukey, t)).width(Length::Fixed(sz(280.0))), btn(&p, "Save", hearth_ui::ui::Kind::Normal, false, save)].spacing(8.0).align_y(iced::Center).into()));
+                v.push(small(&p, "Gotify and NextPush need a sign-in to your own server; Hearth doesn't keep passwords, so set those in KDE's own push window on KDE Plasma."));
+            }
+            "fonts" => {
+                let f = pg.data.pointer("/current/fonts").cloned().unwrap_or(Value::Null);
+                let yours = f.get("yours").and_then(Value::as_array).cloned().unwrap_or_default();
+                let inst = if ready { Some(Msg::FileFor(page, "font-install", "*.ttf *.otf *.ttc *.woff2")) } else { None };
+                v.push(button_row(&p, G::Plus, "Install a font".into(), "A .ttf, .otf or .ttc file: for you only, every app can use it".into(), "Choose a font…", inst));
+                v.push(head(&p, "Fonts you installed"));
+                if yours.is_empty() {
+                    v.push(small(&p, if pg.read { "None yet." } else { "Reading…" }));
+                }
+                for u in yours.iter() {
+                    let file = s(u, "file").to_string();
+                    let off = u.get("off").and_then(Value::as_bool).unwrap_or(false);
+                    let name = format!("{}{}{}", s(u, "family"), if s(u, "style").is_empty() { "" } else { " · " }, s(u, "style"));
+                    let tog = if ready { Some(Msg::Run(page, vec!["font-off".into(), file.clone(), if off { "on".into() } else { "off".into() }], None)) } else { None };
+                    let rm = if ready { Some(Msg::Run(page, vec!["font-remove".into(), file.clone()], None)) } else { None };
+                    nav::control(Kind::Toggle(!off), tog.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                    nav::control(Kind::Press, rm.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                    let ctl: E<'a> = row![btn(&p, if off { "Turn on" } else { "Turn off" }, hearth_ui::ui::Kind::Normal, false, tog), btn(&p, "Remove", hearth_ui::ui::Kind::Normal, false, rm)].spacing(8.0).align_y(iced::Center).into();
+                    v.push(srow(&p, G::Palette, name, format!("{}{}", if off { "Turned off · " } else { "" }, file.rsplit('/').next().unwrap_or("")), ctl));
+                }
+                let fams = f.get("families").and_then(Value::as_array).cloned().unwrap_or_default();
+                if !fams.is_empty() {
+                    v.push(head(&p, format!("Every font on this PC ({})", fams.len())));
+                    let names: Vec<String> = fams.iter().map(text_of).collect();
+                    v.push(card(&p, t(names.join(" · "), sz(13.0), p.muted)));
+                }
+            }
+            "colord" => {
+                let c = pg.data.pointer("/current/colord").cloned().unwrap_or(Value::Null);
+                if pg.read && !c.get("ok").and_then(Value::as_bool).unwrap_or(false) {
+                    v.push(words(&p, format!("{}.", if s(&c, "why").is_empty() { "Colour management isn't running" } else { s(&c, "why") }), false));
+                }
+                let profiles = c.get("profiles").and_then(Value::as_array).cloned().unwrap_or_default();
+                let devices = c.get("devices").and_then(Value::as_array).cloned().unwrap_or_default();
+                for d in devices.iter() {
+                    let dpath = s(d, "path").to_string();
+                    let has: Vec<String> = d.get("profiles").and_then(Value::as_array).map(|a| a.iter().map(text_of).collect()).unwrap_or_default();
+                    let cur = has.first().cloned().unwrap_or_default();
+                    let kind = match s(d, "kind") { "display" => "Screen", "printer" => "Printer", "camera" => "Camera", "scanner" => "Scanner", "webcam" => "Webcam", k => k };
+                    v.push(head(&p, format!("{kind}: {}", s(d, "name"))));
+                    if profiles.is_empty() {
+                        v.push(small(&p, "No colour profiles are installed."));
+                    }
+                    for pr in profiles.iter() {
+                        let ppath = s(pr, "path").to_string();
+                        let here = ppath == cur;
+                        let m = if ready && !here { Some(Msg::Run(page, vec!["colord-default".into(), dpath.clone(), ppath.clone()], None)) } else { None };
+                        nav::control(Kind::Press, m.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                        let ctl: E<'a> = if here { row![t("In use", sz(13.0), p.accent), hearth_ui::ui::glyph(G::Check, p.accent, 16.0, 2.4)].spacing(8.0).align_y(iced::Center).into() } else { btn(&p, "Use", hearth_ui::ui::Kind::Normal, false, m) };
+                        v.push(srow(&p, G::Palette, s(pr, "title").to_string(), s(pr, "file").rsplit('/').next().unwrap_or("").to_string(), ctl));
+                    }
+                }
+                let imp = if ready { Some(Msg::FileFor(page, "colord-import", "*.icc *.icm")) } else { None };
+                v.push(button_row(&p, G::Plus, "Add a colour profile".into(), "An .icc file from your screen's or printer's maker, or from a calibration".into(), "Choose a file…", imp));
+            }
             "link" => {
                 let to = sid(s(r, "page"));
                 v.push(link_row(&p, g, title, sub, Msg::Go(to)));
@@ -939,7 +1162,7 @@ mod tests {
             assert!(crate::registry::page(id).is_some(), "{id} isn't in pages_list.rs: run tools/settings-registry-rs.py");
             for r in rows_of(id) {
                 let ty = s(r, "type");
-                assert!(["plugins", "kded", "activities", "userdirs", "deviceactions", "hub", "head", "note", "switch", "choice", "number", "pick", "text", "file", "firmware", "info", "link"].contains(&ty), "{id}: row type {ty}");
+                assert!(["shortcuts", "push", "fonts", "colord", "plugins", "kded", "activities", "userdirs", "deviceactions", "hub", "head", "note", "switch", "choice", "number", "pick", "text", "file", "firmware", "info", "link"].contains(&ty), "{id}: row type {ty}");
                 if ["switch", "choice", "number", "text", "file"].contains(&ty) {
                     assert!(!s(r, "file").is_empty() && !s(r, "group").is_empty() && !s(r, "key").is_empty(), "{id}: {} has no file/group/key", s(r, "title"));
                 }

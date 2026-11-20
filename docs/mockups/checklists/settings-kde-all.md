@@ -9,8 +9,8 @@ mockups above, both looks), so KDE's own System Settings is never needed on the 
 
 **The list** is every module in Fedora 45's Plasma 6.8.3 (kcmshell6 --list in the Fedora image, CI job
 kde-kcm-inventory.yml, Nov 19, 2026; KDE's website can't be read from the owner's sessions), plus the modules that are a
-part of another (window frame themes, KRunner, Trash). 108 modules: 64 already had a Hearth page, 40 have a new page
-(hosts/linux/desktop/shell/kde-settings.json, drawn by cats/kde.rs, saved by hearth-kde-settings), 4 are in the next
+part of another (window frame themes, KRunner, Trash). 108 modules: 64 already had a Hearth page, 44 have a new page
+(hosts/linux/desktop/shell/kde-settings.json, drawn by cats/kde.rs, saved by hearth-kde-settings), 0 are in the next
 batches. A new page is ticked once its CI pictures were opened and checked.
 
 **How the new pages save**: only the keys a page lists, the way the KCM does (the same file, group and key as the KCM's
@@ -44,7 +44,7 @@ windows (kcm_kwin4_genericscripted and each effect's: Window effects).
 - [ ] kcm_cddb (CDDB Retrieval: Configure the CDDB Retrieval) → Hearth Settings › Music CDs (new: built, waiting for its CI pictures)
 - [x] kcm_cellular_network (Cellular Network: Management of cellular networks) → Hearth Settings › Connection details (already there) — hosts/hearth-ui/apps/settings/src/cats/net.rs: "\"net-details\""
 - [x] kcm_clock (Date & Time: Date and Time) → Hearth Settings › Date & time (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"datetime\""
-- [ ] kcm_colord (Color Management: Manage color profile of devices) → new page kde-colord (batch 3): Colour management: each screen's and printer's colour profile
+- [ ] kcm_colord (Color Management: Manage color profile of devices) → Hearth Settings › Colour profiles (new: built, waiting for its CI pictures)
 - [ ] kcm_colors (Colors: Choose color scheme) → Hearth Settings › Colours (new: built, waiting for its CI pictures)
 - [x] kcm_componentchooser (Default Applications: Choose default Applications) → Hearth Settings › Default apps (already there) — hosts/hearth-ui/apps/settings/src/cats/apps.rs: "\"defaults\""
 - [x] kcm_cpu (Advanced CPU Information: Advanced CPU Information) → Hearth Settings › Info Center (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"info-cpu\""
@@ -59,7 +59,7 @@ windows (kcm_kwin4_genericscripted and each effect's: Window effects).
 - [ ] kcm_feedback (User Feedback: Configure user feedback settings) → Hearth Settings › KDE user feedback (new: built, waiting for its CI pictures)
 - [x] kcm_filetypes (File Associations: Configure file associations) → Hearth Settings › File types (already there) — hosts/hearth-ui/apps/settings/src/cats/apps.rs: "\"file-types\""
 - [x] kcm_firmware_security (Firmware Security Information: Firmware Security Information) → Hearth Settings › Firmware & device security (already there) — hosts/hearth-ui/apps/settings/src/cats/privacy.rs: "\"firmware\""
-- [ ] kcm_fontinst (Font Management: Install, manage and preview fonts) → new page kde-fontinst (batch 3): Font management: install, enable, disable, remove fonts
+- [ ] kcm_fontinst (Font Management: Install, manage and preview fonts) → Hearth Settings › Font management (new: built, waiting for its CI pictures)
 - [x] kcm_fonts (Fonts: Configure user interface fonts) → Hearth Settings › Fonts, cursor & icons (already there) — hosts/hearth-ui/apps/settings/src/cats/pers.rs: "\"fonts\""
 - [ ] kcm_gamecontroller (Game Controller: Test and Configure Game Controllers) → Hearth Settings › Controllers in KDE (new: built, waiting for its CI pictures)
 - [x] kcm_glx (GLX information: GLX information) → Hearth Settings › Info Center · Vulkan & OpenGL (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"info-graphics\""
@@ -68,7 +68,7 @@ windows (kcm_kwin4_genericscripted and each effect's: Window effects).
 - [x] kcm_kaccounts (Online Accounts: Configure your internet accounts such as Google, Live, Owncloud) → Hearth Settings › Online accounts (already there) — hosts/hearth-ui/apps/settings/src/cats/accounts.rs: "\"online-accounts\""
 - [ ] kcm_kded (Background Services: Configure background services) → Hearth Settings › KDE background services (new: built, waiting for its CI pictures)
 - [x] kcm_keyboard (Keyboard: Keyboard Hardware and Layout) → Hearth Settings › Keyboard (already there) — hosts/hearth-ui/apps/settings/src/cats/bt.rs: "\"keyboard\""
-- [ ] kcm_keys (Shortcuts: Configure Keyboard Shortcuts) → new page kde-shortcuts (batch 2): KDE's keyboard shortcuts: every app's and Plasma's
+- [ ] kcm_keys (Shortcuts: Configure Keyboard Shortcuts) → Hearth Settings › KDE shortcuts (new: built, waiting for its CI pictures)
 - [ ] kcm_krdpserver (Remote Desktop: Configure Remote Desktop) → Hearth Settings › Remote desktop (RDP) (new: built, waiting for its CI pictures)
 - [ ] kcm_krunnersettings (KRunner Settings) → Hearth Settings › KRunner (new: built, waiting for its CI pictures)
 - [x] kcm_kscreen (Display Configuration: Manage and configure monitors and displays) → Hearth Settings › Display (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"display\""
@@ -107,7 +107,7 @@ windows (kcm_kwin4_genericscripted and each effect's: Window effects).
 - [x] kcm_printer_manager (Printers: Configure your printers) → Hearth Settings › Printers (already there) — hosts/hearth-ui/apps/settings/src/cats/bt.rs: "\"printers\""
 - [x] kcm_proxy (Proxy: Configure the proxy servers used) → Hearth Settings › Proxy (already there) — hosts/hearth-ui/apps/settings/src/cats/net.rs: "\"proxy\""
 - [x] kcm_pulseaudio (Sound: Configure audio devices and volume) → Hearth Settings › Sound (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"sound\""
-- [ ] kcm_push_notifications (Push Services: Configure notifications from online services) → new page kde-push (batch 2): Push services (KUnifiedPush)
+- [ ] kcm_push_notifications (Push Services: Configure notifications from online services) → Hearth Settings › Push services (new: built, waiting for its CI pictures)
 - [ ] kcm_qtquicksettings (Plasma Renderer: No description available) → Hearth Settings › Plasma renderer (new: built, waiting for its CI pictures)
 - [x] kcm_recentFiles (Recent Files: Manage your file activity history preferences) → Hearth Settings › Recent files (already there) — hosts/hearth-ui/apps/settings/src/cats/privacy.rs: "\"recent-files\""
 - [x] kcm_regionandlang (Region & Language: Language Setting, Numeric, Currency and Time Formats) → Hearth Settings › Region & language (already there) — hosts/hearth-ui/apps/settings/src/cats/system.rs: "\"region\""

@@ -384,6 +384,33 @@
         {"type": "info", "title": "KWin", "from": "kwin"},
         {"type": "link", "icon": "info", "title": "Info Center", "sub": "Processor, graphics, memory, PCI, USB", "page": "info-cpu"}
       ]
+    },
+    {
+      "id": "kde-shortcuts", "cat": "bt", "label": "KDE shortcuts", "kcm": ["kcm_keys"], "desc": "Every keyboard shortcut of KDE Plasma and its apps: change, back to KDE's, or none", "words": "shortcuts keyboard shortcuts global shortcuts hotkeys kglobalaccel meta key kwin plasma spectacle change shortcut", "intro": "KDE Plasma's shortcuts, app by app. Hearth's own shortcuts are in Keyboard.", "plasma": true,
+      "rows": [
+        {"type": "shortcuts"},
+        {"type": "link", "icon": "keyboard", "title": "Hearth's shortcuts", "sub": "In Keyboard", "page": "keyboard"}
+      ]
+    },
+    {
+      "id": "kde-push", "cat": "net", "label": "Push services", "kcm": ["kcm_push_notifications"], "desc": "Which push service apps use to get notices from online services (UnifiedPush)", "words": "push notifications unifiedpush kunifiedpush ntfy gotify nextpush autopush distributor", "intro": "Apps like chat apps get notices from their servers through one push service, without each keeping a connection open.", "plasma": true,
+      "rows": [
+        {"type": "push"}
+      ]
+    },
+    {
+      "id": "kde-colord", "cat": "system", "label": "Colour profiles", "kcm": ["kcm_colord"], "desc": "Each screen's, printer's and camera's colour profile (ICC), and adding one", "words": "color management colour management icc profile colord calibration monitor printer colours", "intro": "A colour profile makes a screen or printer show colours as they should be. Most people never need one.",
+      "rows": [
+        {"type": "colord"},
+        {"type": "link", "icon": "display", "title": "Display", "sub": "HDR, night light, resolution", "page": "display"}
+      ]
+    },
+    {
+      "id": "kde-fontinst", "cat": "pers", "label": "Font management", "kcm": ["kcm_fontinst"], "desc": "Install your own fonts, turn one off or remove it, and every font on this PC", "words": "font management install fonts ttf otf remove font disable font fontinst typefaces", "intro": "Fonts you install are for your account and every app (KDE, GTK, Hearth's). Which font apps use is in Fonts, cursor & icons.",
+      "rows": [
+        {"type": "fonts"},
+        {"type": "link", "icon": "palette", "title": "Fonts, cursor & icons", "sub": "The font apps use and its size", "page": "fonts"}
+      ]
     }
   ]
 }
