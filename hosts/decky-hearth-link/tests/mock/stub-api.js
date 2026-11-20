@@ -43,6 +43,8 @@ const STATES = {
   "not-installed": () => ({ running: false, installed: false, error: "Hearth Link isn't running on this device", last: null }),
   "home-server": () => base(),
   "home-server-playing": () => ({ ...base(), playing: true }),
+  family: () => base(),
+  "family-sharing": () => base(),
 };
 // Home server's Quick Access tile (main.py home_server): only in the home-server states (elsewhere the helper isn't there).
 const home = { lightMode: true, resumed: false };
@@ -113,6 +115,11 @@ const handlers = {
     if (cmd === "local.games") return { ok: true, data: { games: mine } };
     if (cmd === "games") return { ok: true, data: { games: theirs } };
     if (st() === "error" && cmd === "send") return { ok: false, error: "Steam Deck has only 80 GB free: it needs 32 GB more" };
+    // Family and friends with Moonlight: in the family states only (elsewhere nobody has added this PC).
+    if (cmd === "moonlight.friends") return { ok: true, data: st().startsWith("family") ? { friends: [
+      { id: id("f"), name: "Dad's PC", online: true, sharing: true, what: "desktop", ask: true },
+      { id: id("9"), name: "Sam's Deck", online: false, sharing: null, what: "games", ask: false }], connected: null, moonlight: true } : { friends: [], connected: null, moonlight: true } };
+    if (cmd === "moonlight.share.status") return { ok: true, data: st() === "family-sharing" ? { on: true, session: { who: "Chris's PC", what: "desktop", until: now + 42 * 60000 - 30000, connected: true } } : { on: false, session: null } };
     return { ok: true, data: null };
   },
 };

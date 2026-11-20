@@ -125,3 +125,12 @@ On a device: the panel in Steam's Quick Access (only drawn over stand-ins so far
 a controller, Steam's restart call, how soon Hearth Sync picks up a non-Steam game copied here, and `systemctl --user
 start` from inside Decky, the sync switches between two real devices, and Decky's install of a plugin zip from
 another device (`utilities/install_plugin` with a `file://` artifact, which Decky Loader's own code supports).
+
+## Family and friends
+
+**Family and friends** (only when there's something to show): the PCs that let this one connect with Moonlight
+(docs/HEARTH-LINK.md "Family and friends with Moonlight"), each with Connect (Moonlight through Hearth Link) and Remove,
+Disconnect while connected, and when someone is connected to this PC, who and **Stop sharing now**. Turning it on and
+adding people is in Desktop Mode's Settings › Gaming › Family and friends. main.py lets only `moonlight.friends`,
+`moonlight.connect`, `moonlight.disconnect`, `moonlight.forget`, `moonlight.share.status` and `moonlight.stop` through,
+and gives the panel only names, online, what they get and who's connected (never the people list or a code).

@@ -220,6 +220,19 @@ jobs:
           mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-g15" "$CARGO_TARGET_DIR/release/hearth-g15-app" /tmp/app/
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of hearth-g15
+      # ---- Family and friends with Moonlight (hosts/hearth-ui/apps/family, docs/HEARTH-LINK.md): hearth-family-app, the
+      # "wants to connect" question, the "is connected" notice with Stop sharing now, and the list of PCs that let this
+      # one connect. Not fatal: without it Hearth Link asks and tells with notifications instead.
+      - name: Build hearth-family-app (Family and friends)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          apt-get install -y -qq libxkbcommon-dev libwayland-dev libfontconfig-dev libfreetype-dev >/dev/null
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          (cd hosts/hearth-ui && cargo build --release -p hearth-family) || { echo "::warning title=hearth-family-app::it didn't build, so this image asks with notifications instead"; exit 1; }
+          mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-family-app" /tmp/app/
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of hearth-family-app
       # ---- Hearth Photos and Hearth Documents (hosts/hearth-photos, hosts/hearth-documents): the picture viewer and
       # the PDF / e-book / comic reader, built the same way and put beside the app in hearth-app.tar (build.sh installs
       # them, with their menu entries and file types; their icons come with the Hearth icon set). Not fatal.

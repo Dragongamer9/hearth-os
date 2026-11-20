@@ -201,6 +201,84 @@ A's on C only once A turns it on, remote desktop and its PIN from A and B and ne
 Share my game library each refused until C turns it on (A can't), then only that kind, the library without settings,
 off again at once; removed on A, gone everywhere).
 
+## Family and friends with Moonlight
+
+The owner, Nov 20, 2026: "add the ability to connect to family and friends pc with moonlight have it a deal they have
+to enable". Code: `hosts/hearth-link/src/moonlight.rs`; screens: Settings › Gaming › **Family and friends**
+(`hosts/hearth-ui/apps/settings/src/cats/gaming/family.rs`), `hearth-family-app` (`hosts/hearth-ui/apps/family`),
+Hearth Games' **Family and friends** tab, Steam Game Mode's Quick Access (Hearth Link › Family and friends) and
+Firehold's Couch (Apps › Family and friends).
+
+**On the PC being connected to** (your dad's, a friend's):
+
+- **Let family and friends connect (Moonlight)** is off until that person turns it on. Turning it on first says plainly
+  what it allows: seeing this PC's screen, controlling it with a mouse, keyboard or controller, and hearing its sound.
+- **Who can connect:** only the people they add. **Add a person** shows a one-time code: 6 digits on the same network,
+  and a 10-character code with its QR code for anywhere (Hearth Link's pairing, works once, no password). A PC that's
+  paired already (your devices, Dad's PC) keeps whose it is; a new one is paired as a friend's device. Each person can
+  be removed any time (that also unpairs their Moonlight from this PC's Sunshine).
+- **Per person:** **Ask every time** (the default: "Chris wants to connect" with Allow, Deny and Always allow Chris on
+  this PC's screen; nobody answering in 60 seconds is a no) or **Always allow**; **Whole desktop** or **Games only**;
+  a **time limit** (none, 30 minutes, 1, 2 or 3 hours) after which the session ends by itself.
+- **While someone is connected:** a notice that stays on top and in the taskbar ("Chris is connected (Moonlight)") with
+  **Stop sharing now**, a notification, and the line in Settings and Game Mode's Quick Access with Stop sharing now.
+  Without `hearth-family-app` (an image built without it) the question and the notice are notifications with buttons.
+- **Turning it off** ends every session at once (Hearth Link closes their connection, so the picture stops) and nobody
+  new can connect. Sunshine's own pairing of their Moonlight stays until they're removed.
+
+**On the connecting PC** (yours): Family and friends lists each PC that lets this one connect, online or offline (each
+is asked once when the list opens: nothing polls), with **Connect** (Moonlight opens on that PC's screen) and
+**Remove**, and **Add with a code** for the code their person gives you.
+
+**How it gets there (no router ports, no UPnP, no Tailscale needed):**
+
+- Moonlight's connections go through Hearth Link's own connection to that PC: QUIC with TLS 1.3, each device's key
+  pinned at pairing, direct on the same network or hole punched over the internet, through the relay only when
+  nothing else works. Its own protocol (`hearth/link-moonlight/1`) is only answered from a paired device the PC has
+  just said yes to (`moonlight.ask`), and only for that session.
+- Here, Moonlight runs in a private network of its own (a user and network namespace with only `lo`): Hearth Link opens
+  Sunshine's ports there (TCP 47984, 47989, 48010; UDP 47998, 47999, 48000, from that PC's own Sunshine port) at an
+  address of its own per PC (127.77.x.y), and carries each TCP connection on a QUIC stream and each UDP packet in QUIC
+  datagrams (split in up to 8 parts when the path's datagrams are smaller; a packet with a lost part is dropped, as a
+  network would). Your own Sunshine (if this PC has one) is never in the way, and Moonlight reaches nothing else.
+- There, Sunshine only takes connections from that PC itself (Hearth's nftables table, `remote-fw local`: only `lo`;
+  Tailscale too when Use this PC from anywhere is on). Sunshine is set up when the switch is turned on but only
+  started for a session (unless Remote play or Use this PC from anywhere keeps it running), and stopped again after.
+- Moonlight still pairs with that PC's Sunshine (its certificate) the first time: Hearth makes a one-time PIN, gives it
+  to Moonlight here (`moonlight pair HOST --pin`, in its environment only) and sends it over Hearth Link to that PC's
+  Sunshine (`hearth-remote-desktop pin`, named `Hearth <first 8 of the device id>`). It's never shown or logged.
+- **Games only** starts them in Sunshine's **Steam Big Picture** app, and Sunshine's prep command refuses **Desktop**
+  for them (`hearth-remote-desktop session start` reads the session file). Sunshine shows the whole screen whatever app
+  is picked, so outside Game Mode they still see what's on the screen: on a PC in Game Mode that's Steam.
+- Through the relay, Moonlight is started at 5 Mbps (`--bitrate 5000`); direct, at Moonlight's own setting.
+
+**Settings and secrets:** the switch and each person's choices are in `~/.config/nimbus/family-moonlight.json` (`on`,
+`people: {deviceId: {name, always, what, limitMinutes}}`), written only when the person changes something, through
+settings_file.rs (atomic, `.bak`, merged; a file that can't be read is never saved over, and Settings says so). Device
+ids aren't secrets; the keys stay in Hearth Link's store (identity.key, peers.json: `moonlight` on a peer says that PC
+lets this one connect). Who's connected now: `$XDG_RUNTIME_DIR/hearth-link/moonlight-session.json` while it lasts.
+
+**Calls:** between devices (any relation; each checks the switch and the list itself): `moonlight.hello`,
+`moonlight.offer`, `moonlight.revoke`, `moonlight.ask`, `moonlight.pin`, `moonlight.end`. From the UI:
+`moonlight.share.status`, `moonlight.share.set {on}`, `moonlight.share.person {id, always?, what?, limitMinutes?}`,
+`moonlight.share.remove {id}`, `moonlight.share.invite`, `moonlight.share.invite.close`, `moonlight.stop`,
+`moonlight.friends {check?}`, `moonlight.connect {id}`, `moonlight.disconnect`, `moonlight.forget {id}`,
+`moonlight.join {code, id?}` (6 digits: the PC on this network showing a code). Sunshine's side:
+`hearth-remote-desktop family on|off|start|idle|paired KEY|forget KEY`.
+
+**Tests:** `cargo test` (moonlight.rs: packets split and put back, a lost part drops only its packet, the choices read
+safely and saved merged, never over a file that can't be read), `hosts/linux/test/test_hearth_remote_desktop.py`
+(Sunshine kept to this PC and not started at rest, off undone, Games only refuses Desktop, the local-only rule),
+`hearth-link.yml`'s e2e (`e2e.py family`: off until turned on, a person added with a code, a question answered no
+then yes, Moonlight's TCP and UDP from its private network to a stand-in Sunshine with its one-time PIN, Stop sharing
+now, Always allow with Games only and a time limit, turning it off ending the session, removing; `e2e.py internet`:
+the same through the relay and hole punched, speeds posted), the Decky panel's tests and pictures, and the Rust apps'
+pictures (`family-*`, mouse and controller looks).
+
+**Needs the owner's say:** how far to lower Moonlight through the relay (iroh's public relays are shared and slow for
+video; 5 Mbps for now, or say "direct only" and Hearth won't use the relay for Moonlight), and whether Games only
+should also be refused outside Game Mode (Sunshine can't show only the games while a desktop is on screen).
+
 ## Calls (the service's socket, `hearth-link call`)
 
 - `pair.open {internet?: bool, seconds?: n, as?: "mine"|"family"|"friend", mine?: bool}`: shows the 6-digit code;

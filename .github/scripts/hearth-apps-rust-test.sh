@@ -61,6 +61,8 @@ ticks() { awk '{print $14 + $15}' "/proc/$1/stat" 2>/dev/null || echo 0; }
 # run NAME APP_ID REST BINARY ARGS...: start, time the first frame, picture, and (REST > 0) measure at rest.
 run() {
   name=$1; appid=$2; rest=$3; shift 3
+  # Actions › Hearth apps (pure Rust) › "only": just the runs whose names match (the others are skipped).
+  if [ -n "${HEARTH_SHOTS_ONLY:-}" ] && ! printf '%s' "$name" | grep -Eq "$HEARTH_SHOTS_ONLY"; then return 0; fi
   t0=$(now_ms)
   "$@" >"/tmp/$name.log" 2>&1 &
   pid=$!
@@ -96,6 +98,7 @@ run() {
 # (HEARTH_UI_FRAMES); CPU from /proc. One BENCH line each; a picture after the scroll shows where it got to.
 bench() {
   name=$1; appid=$2; rend=$3; kind=$4; shift 4
+  if [ -n "${HEARTH_SHOTS_ONLY:-}" ] && ! printf '%s' "$name" | grep -Eq "$HEARTH_SHOTS_ONLY"; then return 0; fi
   fr="/tmp/frames-$name"; rm -f "$fr"
   t0=$(now_ms)
   HEARTH_UI_FRAMES="$fr" HEARTH_RENDERER="$rend" "$@" >"/tmp/$name.log" 2>&1 &

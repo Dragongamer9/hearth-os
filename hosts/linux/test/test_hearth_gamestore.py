@@ -88,8 +88,9 @@ class Recomps(unittest.TestCase):
         self.assertIn('data-tab="recomps"', HTML)
         self.assertIn('<script src="recomps.js"></script>', HTML)
         self.assertLess(HTML.index('recomps.js'), HTML.index('games.js'))
-        self.assertIn("const TABS = ['library', 'downloads', 'stores', 'recomps'];", JS)
-        self.assertIn('pub const TABS: &[&str] = &["library", "downloads", "stores", "recomps"];', LIB)
+        # Family and friends (docs/HEARTH-LINK.md) is the tab after Recomps.
+        self.assertIn("const TABS = ['library', 'downloads', 'stores', 'recomps', 'family'];", JS)
+        self.assertIn('pub const TABS: &[&str] = &["library", "downloads", "stores", "recomps", "family"];', LIB)
 
     def test_every_recomps_call_is_one_hearth_cores_bridge_answers(self):
         bridge = (self.CORE / 'bridge.rs').read_text()

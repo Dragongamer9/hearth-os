@@ -1319,6 +1319,19 @@ else
   echo "::warning title=hearth-g15::the Hearth app's build didn't carry hearth-g15 (os/nimbus-app), so this image has no G15 support"
 fi
 # ---- end of hearth-g15
+# ---- Family and friends with Moonlight (hearth-family-app, docs/HEARTH-LINK.md): the question, the notice with Stop
+# sharing now and the list of PCs that let this one connect, built by CI next to the Hearth app (base-peppermint.yml).
+# Without it Hearth Link asks and tells with notifications (Allow / Deny, Stop sharing now).
+if [ -x /ctx/nimbus-app/hearth-family-app ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-family-app /usr/bin/hearth-family-app
+  if ldd /usr/bin/hearth-family-app | grep 'not found'; then
+    echo "::warning title=hearth-family-app::it needs libraries this image doesn't have, so it's left out"
+    rm -f /usr/bin/hearth-family-app
+  fi
+else
+  echo "::warning title=hearth-family-app::the Hearth app's build didn't carry it, so Family and friends asks with notifications"
+fi
+# ---- end of hearth-family-app
 cat > /usr/share/applications/hearth-tasks.desktop <<DESKTOP
 [Desktop Entry]
 Name=Task Manager

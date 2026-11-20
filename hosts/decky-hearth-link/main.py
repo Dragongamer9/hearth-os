@@ -164,11 +164,20 @@ CALLS = {
     'storage.updates.status': {},
     'storage.devices': {},
     'storage.saves.set': {'follow': _strict_bool},
+    # Family and friends with Moonlight (hearth-link moonlight.rs): the PCs that let this one connect, connecting, and
+    # who is connected to this one (Stop sharing now). Turning it on, adding and removing people: Settings only.
+    'moonlight.friends': {'check?': _bool},
+    'moonlight.connect': {'id': _peer},
+    'moonlight.disconnect': {},
+    'moonlight.forget': {'id': _peer},
+    'moonlight.share.status': {},
+    'moonlight.stop': {},
 }
 # Sent to Hearth Link as another command (only these arguments).
 SENT_AS = {'storage.saves.set': lambda a: ('storage.set', {'savesFollow': a['follow']})}
 TIMEOUTS = {'status': 8, 'games': 45, 'send': 30, 'get': 30, 'sync.now': 70, 'pair.join': 40, 'pair.open': 20,
-            'storage.cache.status': 20, 'storage.cache.get': 30, 'storage.devices': 15}
+            'storage.cache.status': 20, 'storage.cache.get': 30, 'storage.devices': 15,
+            'moonlight.friends': 20, 'moonlight.connect': 190, 'moonlight.share.status': 8}
 
 
 def request(cmd, args):
@@ -266,12 +275,44 @@ def call(cmd, args=None, link=None):
             data = {'games': clean_games((data or {}).get('games') if isinstance(data, dict) else None)}
         elif cmd == 'storage.devices':
             data = clean_devices(data)
+        elif cmd == 'moonlight.friends':
+            data = clean_friends(data)
+        elif cmd in ('moonlight.share.status', 'moonlight.stop'):
+            data = clean_share(data)
         return {'ok': True, 'data': data}
     log('hearth link: %s: %s' % (cmd, text(r.get('error'), 160)))
     return {'ok': False, 'error': text(r.get('error') or "That didn't work", 300)}
 
 
 # ---- what the panel gets back: short, and nothing secret
+def clean_friends(v):
+    """The PCs that let this one connect: name, online, sharing and what they get; who this PC is connected to now."""
+    v = v if isinstance(v, dict) else {}
+    out = []
+    for f in (v.get('friends') or [])[:32]:
+        if not isinstance(f, dict):
+            continue
+        try:
+            pid = _peer(f.get('id'))
+        except ValueError:
+            continue
+        out.append({'id': pid, 'name': text(f.get('name'), 40), 'online': f.get('online') is True,
+                    'sharing': f.get('sharing') if isinstance(f.get('sharing'), bool) else None,
+                    'what': 'games' if f.get('what') == 'games' else 'desktop', 'ask': f.get('ask') is not False})
+    c = v.get('connected') if isinstance(v.get('connected'), dict) else None
+    conn = {'name': text(c.get('name'), 40), 'relay': c.get('relay') is True, 'until': _num(c.get('until'))} if c else None
+    return {'friends': out, 'connected': conn, 'moonlight': v.get('moonlight') is True}
+
+
+def clean_share(v):
+    """This PC's side, in short: on or not, and who is connected now (never the people list or any code)."""
+    v = v if isinstance(v, dict) else {}
+    s = v.get('session') if isinstance(v.get('session'), dict) else None
+    sess = {'who': text(s.get('who'), 40), 'what': 'games' if s.get('what') == 'games' else 'desktop', 'until': _num(s.get('until')),
+            'connected': s.get('connected') is True} if s else None
+    return {'on': v.get('on') is True, 'session': sess}
+
+
 def _num(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 

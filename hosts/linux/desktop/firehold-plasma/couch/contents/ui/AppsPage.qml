@@ -1,5 +1,6 @@
 // Apps and Store (the tabs of mockups 1 and 5; no mockup of their own yet): the menu's apps as big tiles, and the
-// stores. The first Apps tile is Settings › Couch and Desk.
+// stores. The first Apps tile is Settings › Couch and Desk; the second Family and friends (connect to their PCs with
+// Moonlight through Hearth Link: hearth-family-app in the controller look, docs/HEARTH-LINK.md).
 import QtQuick
 import org.kde.kirigami as Kirigami
 
@@ -10,7 +11,9 @@ Item {
     readonly property var storeIds: ["org.kde.discover", "steam", "com.heroicgameslauncher.hgl", "net.lutris.Lutris", "hearth-store"]
     readonly property var items: couch.tab === "store"
         ? couch.apps.filter(function (a) { return ap.storeIds.indexOf(a.id) >= 0; })
-        : [{ id: "::settings", name: "Couch and Desk", icon: "preferences-desktop", comment: "Firehold's settings" }].concat(couch.apps)
+        : [{ id: "::settings", name: "Couch and Desk", icon: "preferences-desktop", comment: "Firehold's settings" },
+           { id: "::family", name: "Family and friends", icon: "preferences-remote-desktop", comment: "Connect to their PCs with Moonlight" }]
+            .concat(couch.apps.filter(function (a) { return a.id !== "hearth-family" && a.id !== "hearth-family.desktop"; }))
     property int current: 0
     function key(kk) {
         const n = items.length;
@@ -26,6 +29,7 @@ Item {
     function open(a) {
         if (!a) return;
         if (a.id === "::settings") couch.page = "settings";
+        else if (a.id === "::family") couch.run(["family"]);
         else couch.launchApp(a);
     }
     GridView {

@@ -25,6 +25,7 @@ restarts only plasmashell with the other shell package: KWin, the session and ev
   do ACTION                   screenshot, volume-up/down, brightness-up/down, osk, vrr, tearing, power, overlay,
                               record, friends, quit-game PID
   apps | launch ID            the Apps tab
+  family                       Family and friends: hearth-family-app (controller look), or Hearth Games' tab
   library | cached | play ID | page ID
                               the games (desktop/shell/hearth-firehold, as Mantel's Firehold)
 
@@ -958,6 +959,11 @@ def main(argv):
             print(json.dumps(apps()))
         elif what == 'launch' and a:
             launch(a[0])
+        elif what == 'family':
+            # Family and friends (docs/HEARTH-LINK.md): the PCs that let this one connect, in the controller look;
+            # Hearth Games' Family and friends tab where hearth-family-app isn't.
+            if not (have('hearth-family-app') and detach(['hearth-family-app', '--layout', 'b'])):
+                detach(['hearth-gamestore', '--tab', 'family'])
         elif what in ('library', 'cached', 'play', 'page'):
             return games([what] + a)
         else:

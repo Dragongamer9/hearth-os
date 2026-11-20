@@ -4,7 +4,7 @@
 // was copied here, and only while Steam has it.
 import { ButtonItem, DropdownItem, Field, PanelSection, PanelSectionRow, ProgressBarWithInfo, TextField, ToggleField, staticClasses } from "@decky/ui";
 import { definePlugin, toaster } from "@decky/api";
-import { Component, ReactNode, useEffect, useRef, useState } from "react";
+import { Component, Fragment, ReactNode, useEffect, useRef, useState } from "react";
 import { FaNetworkWired } from "react-icons/fa";
 import {
   Answer, Down, Game, Job, POLL, STORAGE_POLL, Status, afterCopy, active, ago, bytes, canWake, deviceLine, healthSummary, hasStorage,
@@ -511,6 +511,83 @@ function NoticeButtons() {
 }
 // ---- end Discord
 
+// ---- Family and friends with Moonlight (docs/HEARTH-LINK.md): the PCs that let this one connect (online or not: each is
+// asked once when the panel opens, nothing polls), Connect (Moonlight through Hearth Link) and Remove; and when someone
+// is connected to this PC, who, with Stop sharing now. Turning it on and adding people: Settings › Gaming › Family and friends.
+type Friend = { id: string; name: string; online: boolean; sharing: boolean | null; what: string; ask: boolean };
+type Friends = { friends: Friend[]; connected: { name: string; relay: boolean; until: number | null } | null; moonlight: boolean };
+type Share = { on: boolean; session: { who: string; what: string; until: number | null; connected: boolean } | null };
+const whatWord = (w: string) => (w === "games" ? "Games only" : "Whole desktop");
+const minsLeft = (until: number | null | undefined) => {
+  if (!until) return "";
+  const m = Math.max(0, Math.ceil((until - Date.now()) / 60000));
+  return m >= 60 ? ` · ${Math.floor(m / 60)} h ${m % 60} min left` : ` · ${m} min left`;
+};
+function friendLine(p: Friend): string {
+  if (!p.online) return "Offline";
+  if (p.sharing === false) return "Online · not letting anyone connect right now";
+  return `Online · ${whatWord(p.what)}${p.ask ? " · they're asked first" : ""}`;
+}
+function FamilySection() {
+  const [f, setF] = useState<Friends | null>(null);
+  const [mine, setMine] = useState<Share | null>(null);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState("");
+  const alive = useRef(true);
+  const load = (check: boolean) => {
+    linkCall("moonlight.friends", check ? { check: true } : {}).then((r) => { if (alive.current && r && r.ok) setF(r.data as Friends); }).catch(() => {});
+    linkCall("moonlight.share.status", {}).then((r) => { if (alive.current && r && r.ok) setMine(r.data as Share); }).catch(() => {});
+  };
+  useEffect(() => { load(true); return () => { alive.current = false; }; }, []);
+  // Only while something's connected: the time left and whether it ended.
+  const live = !!(mine?.session || f?.connected);
+  useEffect(() => { if (!live) return; const t = setInterval(() => load(false), 20000); return () => clearInterval(t); }, [live]);
+  const act = async (key: string, cmd: string, args: Record<string, unknown>, said: string) => {
+    setBusy(key); setMsg(key.startsWith("connect:") ? "Asking… they may need to say yes on their PC" : "");
+    const r = await linkCall(cmd, args).catch(() => ({ ok: false, error: "Hearth Link didn't answer" }));
+    if (!alive.current) return;
+    setBusy(""); setMsg(r.ok ? said : r.error || "That didn't work"); load(true);
+  };
+  const list = f?.friends || [];
+  const sess = mine?.session;
+  if (!list.length && !sess && !f?.connected) return null;
+  return (
+    <PanelSection title="Family and friends">
+      {sess && (
+        <>
+          <Line>{`${sess.who} is connected to this PC`}</Line>
+          <Line style={dim}>{`They can see and control it and hear its sound · ${whatWord(sess.what)}${minsLeft(sess.until)}`}</Line>
+          <PanelSectionRow>
+            <ButtonItem layout="below" disabled={busy === "stop"} onClick={() => act("stop", "moonlight.stop", {}, "Stopped: they were disconnected")}>Stop sharing now</ButtonItem>
+          </PanelSectionRow>
+        </>
+      )}
+      {f?.connected && (
+        <PanelSectionRow>
+          <ButtonItem layout="below" description={`Moonlight is open${f.connected.relay ? " · through Hearth Link's relay" : ""}${minsLeft(f.connected.until)}`}
+            onClick={() => act("disconnect", "moonlight.disconnect", {}, "Disconnected")}>{`Disconnect from ${f.connected.name}`}</ButtonItem>
+        </PanelSectionRow>
+      )}
+      {list.map((p) => (
+        <Fragment key={p.id}>
+          <PanelSectionRow>
+            <ButtonItem layout="below" description={friendLine(p)} disabled={!p.online || p.sharing === false || !!f?.connected || !!busy}
+              onClick={() => act(`connect:${p.id}`, "moonlight.connect", { id: p.id }, `Connected to ${p.name}: Moonlight is opening`)}>
+              {busy === `connect:${p.id}` ? `Asking ${p.name}…` : `Connect to ${p.name}`}
+            </ButtonItem>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ButtonItem layout="inline" disabled={!!busy} onClick={() => act(`remove:${p.id}`, "moonlight.forget", { id: p.id }, `${p.name} is off your list`)}>{`Remove ${p.name}`}</ButtonItem>
+          </PanelSectionRow>
+        </Fragment>
+      ))}
+      {f && !f.moonlight && list.length > 0 && <Line style={warn}>Moonlight isn't installed: Desktop Mode › Settings › Gaming › Remote play › Moonlight</Line>}
+      {msg && <Line style={dim}>{msg}</Line>}
+    </PanelSection>
+  );
+}
+// ---- end Family and friends
+
 export default definePlugin(() => {
   let stop: (() => void) | null = null;
   let gone = false;
@@ -518,7 +595,7 @@ export default definePlugin(() => {
   return {
     name: "Hearth Link",
     titleView: <div className={staticClasses.Title}>Hearth Link</div>,
-    content: <HearthOnly name="Hearth Link" what="Your saves, plugins and settings on every Hearth device."><NoticeButtons /><Guard><HomeServer /></Guard><Guard><YourServers /></Guard><Panel /><Guard><DiscordSection /></Guard></HearthOnly>,
+    content: <HearthOnly name="Hearth Link" what="Your saves, plugins and settings on every Hearth device."><NoticeButtons /><Guard><HomeServer /></Guard><Guard><YourServers /></Guard><Panel /><Guard><FamilySection /></Guard><Guard><DiscordSection /></Guard></HearthOnly>,
     icon: <FaNetworkWired />,
     onDismount() { gone = true; if (stop) stop(); },
   };

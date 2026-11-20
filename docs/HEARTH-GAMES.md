@@ -162,3 +162,11 @@ first time, with the same checksum check.
   `legendary install <dlc>`; GOG: `gogdl info` (dlcs) and `gogdl download --with-dlcs --dlcs …` into the game's own
   folder (GOG's DLC goes with its game: uninstalling the game removes it). One DLC job at a time; the page looks
   again every few seconds while one runs.
+
+## Family and friends
+
+The **Family and friends** tab (`hearth-gamestore --tab family`; Firehold's Couch opens it where hearth-family-app
+isn't) lists the PCs that let this one connect with Moonlight through Hearth Link (docs/HEARTH-LINK.md "Family and
+friends with Moonlight"): online or not, Connect, Remove, Disconnect, and Add with a code. The calls go straight to the
+Hearth Link service (`moonlight.friends`, `moonlight.connect`, `moonlight.disconnect`, `moonlight.forget`,
+`moonlight.join`, checked in gamestore.rs); sharing this PC is Settings' only.
