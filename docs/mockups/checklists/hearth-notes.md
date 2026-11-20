@@ -35,7 +35,7 @@ can't turn text); New item's releases are the vault's own release tags.
 - [x] Action buttons: Home, New note, Today's log, This week, Atlas, Close — hosts/hearth-ui/apps/notes/src/today.rs: "action_btn(a, \"◷ Today's log\""
 - [x] Date title, "Friday, November 20, 2026", « Yesterday | Tomorrow », US Central time — hosts/hearth-ui/apps/notes/src/today.rs: "tm(day::long(a.day)"
 - [x] The day starts at 6:00 AM (a setting, shown in Settings) — hosts/hearth-ui/apps/notes/src/day.rs: "fn the_log_day_starts_at_6_am"
-- [ ] Productivity bar (0–10) and optional habit tracker (Writing, Workout, Reading), kept apart from the log
+- [x] Productivity bar (0–10) and optional habit tracker (Writing, Workout, Reading), kept apart from the log — hosts/hearth-ui/apps/notes/src/trackers.rs: "fn trackers_are_kept_apart_from_the_log"
 - [x] Quick add: Made / Changed / Decided / Stored at / Waiting, with the line it will add — hosts/hearth-ui/apps/notes/src/today.rs: "pub fn quick_line("
 - [x] Sections Made, Decided, Stored at, Waiting, What happened today, New tasks — hosts/hearth-ui/apps/notes/src/today.rs: "fn the_log_sorted_into_its_sections"
 - [x] Right column: month calendar, sections of the page, still waiting from the last 5 logs, modified today — hosts/hearth-ui/apps/notes/src/today.rs: "\"Still waiting\""
@@ -52,7 +52,7 @@ can't turn text); New item's releases are the vault's own release tags.
 - [x] Real counts from the vault: a project with no notes says "no notes yet" — hosts/hearth-ui/apps/notes/src/gview.rs: "\"no notes yet\""
 
 ## 3b Graph modes
-- [ ] 10 modes with live previews: Galaxy, Solar system, Black hole, Ember, Railway map, Night sky, Neural, City at night, Timeline river, Classic
+- [x] 10 modes with live previews: Galaxy, Solar system, Black hole, Ember, Railway map, Night sky, Neural, City at night, Timeline river, Classic — hosts/hearth-ui/apps/notes/src/gview.rs: "let cols = ((n_day as f32 * 2.0).sqrt().ceil() as usize).clamp(1, 14);"
 - [x] Reduce motion, Customise, Stays light — hosts/hearth-ui/apps/notes/src/gview.rs: "\"Stays light\""
 
 ## 3c Galaxy

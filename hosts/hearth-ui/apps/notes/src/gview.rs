@@ -346,7 +346,10 @@ impl<'a> Sky<'a> {
                 for &i in &shown {
                     let nd = &g.nodes[i];
                     let col = if nd.project == "log" { Color::from_rgb8(0xee, 0xec, 0xe8) } else { self.color_of(i) };
-                    out.push(P { i, x: mx + (nd.x - cxn) / hx * sx * 0.9, y: my + (nd.y - cyn) / hy * sy * 0.9, r: self.size_of(i), c: col, a: 1.0, label: if self.small { nd.links >= 3 || Some(i) == sel || nd.project == "log" } else { busy(i) || nd.project == "log" } });
+                    // The few beyond the middle 90 % are kept just inside the edges.
+                    let x = (mx + (nd.x - cxn) / hx * sx * 0.9).clamp(left - z(20.0), right + z(20.0));
+                    let y = (my + (nd.y - cyn) / hy * sy * 0.9).clamp(top - z(20.0), bottom + z(10.0));
+                    out.push(P { i, x, y, r: self.size_of(i), c: col, a: 1.0, label: if self.small { nd.links >= 3 || Some(i) == sel || nd.project == "log" } else { busy(i) || nd.project == "log" } });
                 }
             }
         }
@@ -889,7 +892,7 @@ impl<'a> Sky<'a> {
                         for q in mem.iter().step_by(step) {
                             fr.stroke(&Path::line(Point::new(q.x, q.y), focal), Stroke::default().with_color(Pal::a(Pal::mix(col, Color::WHITE, 0.5), 0.13)).with_width(0.7));
                         }
-                        for k in 0..12u32 {
+                        for k in 0..40u32 {
                             // The fan: trails from all over the cloud to its edge facing Home.
                             let ang = rnd(hash(pj) + 900 + k) * TAU;
                             let d = rnd(hash(pj) + 950 + k).sqrt();
@@ -899,13 +902,13 @@ impl<'a> Sky<'a> {
                         fr.stroke(&Path::line(focal, Point::new(c.x - dir.0 / dl * rr * 0.12, c.y - dir.1 / dl * rr * 0.09)), Stroke::default().with_color(Color::from_rgba8(0xff, 0xd0, 0xa0, 0.10)).with_width(1.0));
                         // Star dust in the cloud (drawn, not notes): as much as the project has notes, so the cloud's
                         // size and brightness follow its real count; its label says the count itself.
-                        let dust = (n as u32 * if cpu { 4 } else { 14 }).min(if cpu { 160 } else { 700 });
+                        let dust = (n as u32 * if cpu { 8 } else { 30 }).min(if cpu { 300 } else { 1400 });
                         for k in 0..dust {
                             let (u, v) = (rnd(hash(pj) + k * 2), rnd(hash(pj) + k * 2 + 1));
                             let ang = v * TAU;
-                            let d = u.powf(0.75);
+                            let d = u.powf(0.6);
                             let bright = rnd(hash(pj) + k * 2 + 7);
-                            fr.fill(&Path::circle(Point::new(ccx + ang.cos() * cr * 1.35 * d, ccy + ang.sin() * cr * 1.0 * d), 0.5 + bright * 0.9), Pal::a(Pal::mix(col, Color::WHITE, 0.65), 0.30 + bright * 0.5));
+                            fr.fill(&Path::circle(Point::new(ccx + ang.cos() * cr * 1.35 * d, ccy + ang.sin() * cr * 1.0 * d), 0.6 + bright * 1.1), Pal::a(Pal::mix(col, Color::WHITE, 0.7), 0.40 + bright * 0.55));
                         }
                     }
                     if !self.small {
