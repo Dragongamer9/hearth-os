@@ -132,8 +132,9 @@ import sys
 from PIL import Image
 fr = [Image.open('/tmp/server-frame-%d.png' % i).convert('RGB') for i in range(1, 7)]
 w, h = fr[0].size
-k = w / 1920.0
-box = (int(24 * k), int(150 * k), int(1430 * k), int(330 * k))   # the AIs' panel
+k = max(0.55, min(w / 1920.0, h / 1080.0))                       # the dashboard's own scale (view.rs)
+top = (78 + 14 + 178 + 12) * k                                     # below the top line and This PC
+box = (int(36 * k), int(top), int(w - (36 + 430 + 22) * k), int(top + 214 * k))   # the AIs' panel
 cr = [f.crop(box) for f in fr]
 cw, ch = cr[0].size
 out = Image.new('RGB', (cw, ch * 6 + 5 * 4), (40, 30, 20))
