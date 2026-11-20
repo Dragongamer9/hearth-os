@@ -30,7 +30,9 @@ Item {
                 sourceSize: Qt.size(Math.max(64, Math.ceil(a.width * Screen.devicePixelRatio)), Math.max(64, Math.ceil(a.height * Screen.devicePixelRatio)))
                 smooth: true; mipmap: true
             }
-            Rectangle { id: mask; anchors.fill: parent; radius: a.radius; visible: false; layer.enabled: true }
+            // (1.16: the mask's own picture only where it's used, with a graphics card; without one every tile kept an
+            // unused full-size copy, part of Firehold's 480 MB on the Fedora image)
+            Rectangle { id: mask; anchors.fill: parent; radius: a.radius; visible: false; layer.enabled: !parent.soft }
             // Qt's software renderer (no GPU: CI, safe graphics) can't run MultiEffect's shader: the picture itself, square-cornered.
             readonly property bool soft: GraphicsInfo.api === GraphicsInfo.Software
             MultiEffect {

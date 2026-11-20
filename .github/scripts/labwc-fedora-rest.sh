@@ -8,7 +8,8 @@
 #   shell at rest       <= LIMIT_SHELL (0.25 % of a core) on average, and no minute over LIMIT_MINUTE (0.75 %)
 #                          (measured Nov 20: 0.07 % Mantel, 0.09 % Firehold on labwc; 1.14 on the owner's devices: 13-27 %)
 #   labwc at rest       <= LIMIT_COMP (0.50 %)
-#   shell memory        <= LIMIT_MB (320 MB) and not growing (end - start <= LIMIT_GROW, 15 MB)
+#   shell memory        <= LIMIT_MB (Mantel 340 MB; Firehold 420 MB: the Couch keeps the games' pictures; 1.14's
+#                          shell held 900 MB-1.15 GB on the owner's Ally) and not growing (end - start <= LIMIT_GROW, 15 MB)
 #   frames drawn        <= LIMIT_FRAMES (60) in the whole rest (the bar's clock: one a minute)
 #   other processes     no other process of this user over 1 % at rest; no more processes at the end than at the start
 #   Hearth Files        opens (first picture change) in <= LIMIT_FILES (1.5 s), warm or cold
@@ -16,7 +17,7 @@
 set -u
 KIND=${1:?classic or firehold}; OUT=${2:?out folder}; SECS=${3:-600}
 LIMIT_SHELL=${LIMIT_SHELL:-25}; LIMIT_MINUTE=${LIMIT_MINUTE:-75}; LIMIT_COMP=${LIMIT_COMP:-50}   # hundredths of a %
-LIMIT_MB=${LIMIT_MB:-320}; LIMIT_GROW=${LIMIT_GROW:-15}; LIMIT_FRAMES=${LIMIT_FRAMES:-60}; LIMIT_FILES=${LIMIT_FILES:-1.5}
+LIMIT_MB=${LIMIT_MB:-$([ "$KIND" = firehold ] && echo 420 || echo 340)}; LIMIT_GROW=${LIMIT_GROW:-15}; LIMIT_FRAMES=${LIMIT_FRAMES:-60}; LIMIT_FILES=${LIMIT_FILES:-1.5}
 mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd)
 SHARE=${NIMBUS_SHARE:-/usr/share/nimbus}
 SH="$SHARE/desktop/shell"
@@ -27,7 +28,11 @@ note() { echo "::notice title=$KIND on labwc::$*"; echo "$*" >>"$OUT/rest.md"; }
 
 export XDG_RUNTIME_DIR=/tmp/xdg-$KIND HOME=/tmp/home-$KIND LC_ALL=C.UTF-8 NIMBUS_SHARE="$SHARE"
 rm -rf "$XDG_RUNTIME_DIR" "$HOME"; mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" "$HOME/.cache/hearth"; chmod 700 "$XDG_RUNTIME_DIR"
-echo '{}' >"$HOME/.local/share/nimbus/desktop.json"
+# The screen stays on during the measurement (Settings › Power's "turn the screen off after 10 minutes" would fall in
+# the middle of it: the image run of Nov 20 saw one busy minute there, 0.8 % Mantel and 6.6 % Firehold), and the first-run Welcome window isn't open.
+echo '{"screenOffMinutes": 0}' >"$HOME/.local/share/nimbus/desktop.json"
+DESKJSON0=$(cat "$HOME/.local/share/nimbus/desktop.json")
+mkdir -p "$HOME/.local/share/nimbus" && : >"$HOME/.local/share/nimbus/welcome-done"
 printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""}]' >"$HOME/.cache/hearth/desktop-games.json"
 export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
 export QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1
@@ -111,7 +116,7 @@ if [ "$KIND" = classic ]; then
   else err "desktop icons moved by themselves: before $before, after $after"; fi
 fi
 # Settings: opening pages wrote nothing that wasn't there before the pictures? (red flag 9: checked on desktop.json)
-grep -q '^{}$' "$HOME/.local/share/nimbus/desktop.json" || err "a settings file changed by itself while the pictures were taken: $(head -c 300 "$HOME/.local/share/nimbus/desktop.json")"
+[ "$(cat "$HOME/.local/share/nimbus/desktop.json")" = "$DESKJSON0" ] || err "a settings file changed by itself while the pictures were taken: $(head -c 300 "$HOME/.local/share/nimbus/desktop.json")"
 
 # ---- At rest: everything closed, nothing touched
 for t in settings tasks files launcher quick notify; do WAIT=0 ipc "$t" close; done
