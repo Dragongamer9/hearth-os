@@ -115,9 +115,9 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 ## 12. The Desk bar's standard menus (12-desk-bar-standard-menus.png)
 
-- [ ] Standard menus for an app with none of its own (the app menu, Window, Help)
+- [x] Standard menus for an app with none of its own (the app menu, Window, Help) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "[[\"app\", root.appName], [\"window\", \"Window\"], [\"help\", \"Help\"]]"
 - [ ] Window › Move to screen (each screen with its mode)
-- [ ] Help: search every command (Alt+Space)
+- [x] Help: search every command (Alt+Space) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "[\"Search every command\", \"Alt+Space\", \"search\"]"
 - [ ] The "controller in your hand" hint
 
 ## Build status (branch feature/firehold-plasma-1.16; not ticked until each part is pictured and compared)

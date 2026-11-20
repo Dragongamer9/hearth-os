@@ -60,14 +60,17 @@ PlasmoidItem {
     }
     Component.onCompleted: listen()
     property var screens: []
-    function readScreens(then) { helper(["modes"], function (t) { try { root.screens = JSON.parse(t.trim().split("\n").pop()).screens || []; } catch (e) {} if (then) then(); }); }
+    function readScreens(then) { helper(["modes"], function (t) { try { root.screens = JSON.parse(t.trim().split("\n").pop()).screens || []; } catch (e) {} root.readFrontScreen(); if (then) then(); }); }
     function modeName(m) { return m === "couch" ? "Couch" : m === "away" ? "Away" : "Desk"; }
     // The screen the app in front is on (Plasma's task model has its screen's place).
-    readonly property var frontGeo: active && active.valid ? tasks.data(active, TaskManager.AbstractTasksModel.ScreenGeometry) : null
-    readonly property string frontScreen: {
-        if (!frontGeo) return "";
-        for (const s of Qt.application.screens) if (s.virtualX === frontGeo.x && s.virtualY === frontGeo.y) return s.name;
-        return "";
+    // The screen the app in front is on (Plasma's task model has its screen's place), looked at when Window opens.
+    property string frontScreen: ""
+    function readFrontScreen() {
+        const t = tasks.activeTask;
+        const g = t && t.valid ? tasks.data(t, TaskManager.AbstractTasksModel.ScreenGeometry) : null;
+        let name = "";
+        if (g) for (const s of Qt.application.screens) if (s.virtualX === g.x && s.virtualY === g.y) name = s.name;
+        frontScreen = name;
     }
     readonly property string nameUp: (appName || "This app").toUpperCase()
     // [label, shortcut, action, kind, what it does] (StdMenu.qml)
