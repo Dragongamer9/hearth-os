@@ -40,7 +40,10 @@ python3 - "$ROOT" "$SV/dash.json" "$SV/full.json" "$SV/quiet.json" 2>/tmp/svgen.
 import importlib.machinery, json, sys, time
 root = sys.argv[1]
 sys.path.insert(0, root + '/hosts/linux/desktop/shell')
-sm = importlib.machinery.SourceFileLoader('sm', root + '/hosts/linux/desktop/shell/hearth-server-mode').load_module()
+import importlib.util
+_l = importlib.machinery.SourceFileLoader('sm', root + '/hosts/linux/desktop/shell/hearth-server-mode')
+sm = importlib.util.module_from_spec(importlib.util.spec_from_loader('sm', _l))
+_l.exec_module(sm)
 import hearth_ithil
 d = json.load(open(sys.argv[2]))
 now = time.time()
