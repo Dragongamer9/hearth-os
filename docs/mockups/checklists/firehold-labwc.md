@@ -96,7 +96,7 @@ helper's labwc paths are in hearth-firehold-plasma (LABWC). A part is ticked her
 - [x] Cards at the top right, each with its app, time, text and actions — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "readonly property var acts: n ? Array.from(n.actions || [])"
 - [x] An urgent card stays until answered (Dad's PC asks for help, Connect with Remote desktop) — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "text: \"Stays until you answer\""
 - [x] Game ready card: Play / Play on the TV — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "visible: card.acts.length > 0"
-- [ ] A card with a picture (a recorded clip)
+- [x] A card with a picture (a recorded clip) — hosts/linux/desktop/shell/DeskState.qml: "n.hints[\"image-path\"]"
 - [x] A message card with a reply box in the card — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "visible: !!card.n && card.n.hasInlineReply === true"
 - [x] "2 more" when there are more — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: " more</b> · \""
 
@@ -111,24 +111,24 @@ helper's labwc paths are in hearth-firehold-plasma (LABWC). A part is ticked her
 
 ## 11. The Desk bar with the app's own menus (11-desk-bar-app-menus.png)
 
-- [ ] The app in front with its own menus (KDE's global menu), File open
-- [ ] Left to right: app, menus, clock, mode pill, downloads, Hearth Link, controllers, Quick Settings, notifications
-- [ ] The first-run tip naming each part of the bar
+- [x] The app in front with its own menus (KDE's global menu), File open — hosts/linux/desktop/shell/hearth-globalmenu: "BUS_NAME = 'com.canonical.AppMenu.Registrar'"
+- [x] Left to right: app, menus, clock, mode pill, downloads, Hearth Link, controllers, Quick Settings, notifications — hosts/linux/desktop/shell/FhpDeskBar.qml: "TrayButton { anchors.verticalCenter: parent.verticalCenter; glyph: \"bell\""
+- [x] The first-run tip naming each part of the bar — hosts/linux/desktop/firehold-plasma/couch/contents/ui/BarTipCard.qml: "\"THE BAR, LEFT TO RIGHT\""
 
 ## 12. The Desk bar's standard menus (12-desk-bar-standard-menus.png)
 
-- [ ] Standard menus for an app with none of its own (the app menu, Window, Help)
-- [ ] Window › Move to screen (each screen with its mode)
-- [ ] Help: search every command (Alt+Space)
-- [ ] The "controller in your hand" hint
+- [x] Standard menus for an app with none of its own (the app menu, Window, Help) — hosts/linux/desktop/shell/FhpDeskBar.qml: "[[\"app\", bar.appName], [\"window\", \"Window\"], [\"help\", \"Help\"]]"
+- [x] Window › Move to screen (each screen with its mode) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/deskmenus.js: "here ? \"here now\" : s.mode === \"couch\" ? \"goes full screen\""
+- [x] Help: search every command (Alt+Space) — hosts/linux/desktop/shell/FhpDeskBar.qml: "else if (a === \"search\") ipc([\"searchbar\", \"key\"]);"
+- [x] The "controller in your hand" hint — hosts/linux/desktop/shell/Firehold.qml: "\"A controller is in your hand\""
 
 ## Build status
 
-- 64 of 76 parts pictured on labwc and ticked (labwc-fedora.yml run 44737405862, branch ci/labwc-fedora
-  run-44737405862/mockups: lw-NN next to mockup-NN; also hearth-workspace hearth/assets/1.16-firehold-labwc-mockups).
+- 72 of 76 parts pictured on labwc and ticked (labwc-fedora.yml run 44748680972, branch ci/labwc-fedora
+  run-44748680972/mockups: lw-NN next to mockup-NN; copies in hearth-workspace hearth/assets/1.16-firehold-labwc-mockups).
+  The Desk bar's own menus come from Hearth's menu source (hearth-globalmenu); the stand-in apps are a Qt Widgets
+  "Hearth Files" with the mockup's menus and a "Trains 2010" window with none.
 - Pictures are drawn without a graphics card (CI): the art is square-cornered there (Qt's software drawing can't run the
   rounding effect); on a PC with a graphics card it's rounded as drawn.
-- Open: 5 (Settings › Couch, Desk and Away: the same Rust page as Firehold on Plasma; not yet pictured on labwc).
-- Open: 9.4 the recorded clip's picture in its card (the same gap as under Plasma: the image doesn't reach the card).
-- Open: 11 and 12, the Desk bar (batch 5): Hearth's own menu source on labwc (hearth-globalmenu, a menu registrar and
-  reader) and the bar's tray, standard menus and first-run tip.
+- Open: 5, Settings › Couch, Desk and Away (Hearth's Rust Settings app on labwc): pictured in the image run (the
+  container has no Rust apps), ticked from those pictures.

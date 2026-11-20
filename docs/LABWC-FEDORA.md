@@ -141,11 +141,25 @@ didn't show, and what was done:
 
 ## Firehold on labwc and the 12 approved 1.16 Firehold mockups
 
-Firehold on labwc is Debian's Firehold as it was (Couch: Home, Library, Apps, Store, Everything open; the Guide; Couch
-and Desk settings; the Desk). The 1.16 mockups (docs/mockups/firehold-plasma on feature/firehold-plasma-1.16) are being
-built for Firehold on Plasma; Firehold on labwc doesn't have them yet. Compared with its pictures it lacks: 01/02 Home's
-new layout (the status pills for downloads, controllers and Wi-Fi, the Media tab, the hero with Continue / Open in a
-window / Game page, Continue playing and Recently added rows, the Downloads, Controllers and Now playing cards),
-03 game options, 04 modes per screen (Couch on the TV, Desk on the monitor), 05 Settings › Modes, 06 Away, 07/08
-Quick Settings on the Desk and in the Couch, 09/10 Firehold's notification cards and history, 11/12 the Desk bar's
-app menus, standard menus and full status area.
+The owner decided on Nov 20 that Firehold on labwc gets all twelve (checklist docs/mockups/checklists/firehold-labwc.md).
+They're Firehold on Plasma's own files, one copy:
+- The Couch's pages (desktop/firehold-plasma/couch/contents/ui) run on labwc through a host: PlasmaHost.qml gives them
+  Plasma's helper runner, clock, task model and media; desktop/shell/FhCouchHost.qml (with FhMedia.qml, FhIcon.qml) gives
+  labwc's. They're copied into desktop/shell/fhcouch with a qmldir when the image is built (labwc-fedora/install-couch.sh:
+  Quickshell doesn't follow links, and finds a subfolder's types reliably only with a qmldir). If they can't load,
+  Firehold shows its own Couch (FireholdCouch.qml).
+- Quick Settings, the notification cards and list (desktop/plasma-hearth/package FireholdQuick, FireholdCards,
+  FireholdHistory) are copied next to Mantel's files with Quickshell's imports put back; Hearth.qml and LayerPanel.qml
+  give what they ask (on Plasma that's plasma-hearth/shim). hearth-quick has labwc paths (Mantel's keyboard, Night light,
+  Do not disturb, screenshot, log out).
+- The modes for each screen are hearth-firehold-plasma's live modes (never a setting); on labwc it reads the screens
+  from wlr-randr, never calls KWin or plasmashell, and tells Mantel through Quickshell's IPC. FhModes.qml makes Mantel's
+  Firehold follow them; the Modes card is the shared ModesCard.qml.
+- The Desk bar (FhpDeskBar.qml): the app's own menus come from Hearth's own menu source (shell/hearth-globalmenu: the
+  com.canonical.AppMenu.Registrar apps put their menus in, and a reader of their com.canonical.dbusmenu menus; it also
+  finds menus an app exported without registering). Apps with none get Hearth's standard menus (deskmenus.js). The menu
+  card, tray buttons and first-run tip are shared (MenuCard, TrayButton, BarTipCard).
+- One fix for both desktops: a notification's picture (image-path) now reaches its card (DeskState.qml; under Plasma,
+  KImage.qml draws the picture KDE's service hands over).
+- At rest, the shared Couch asks for its home cards only while someone's using the PC (DeskState.idle stops it); the
+  menu registrar sleeps until an app registers.

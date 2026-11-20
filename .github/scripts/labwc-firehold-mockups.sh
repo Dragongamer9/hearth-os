@@ -171,6 +171,7 @@ ipc list
 # The apps are stand-ins: a Qt Widgets "Hearth Files" with the mockup's menus (it puts them in the menu registrar as
 # KDE's apps do) and a "Trains 2010" window with no menus.
 fhp mode HEADLESS-2 desk --why mouse; sleep 3
+timeout 10 quickshell ipc -p "$SH" call notifications clear >/dev/null 2>&1; sleep 1     # (09's cards out of the way)
 mkdir -p "$HOME/.local/share/applications"
 printf '[Desktop Entry]\nType=Application\nName=Hearth Files\nExec=hearth-files\nIcon=system-file-manager\n' >"$HOME/.local/share/applications/hearth-files.desktop"
 cat > /tmp/lw-files.py <<'PY'

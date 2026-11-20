@@ -97,7 +97,7 @@ PanelWindow {
             // (Hearth's own apps in the flame's orange, any other app in green, as the mockups draw them)
             width: 30 * bar.k; height: width; radius: 8 * bar.k
             color: !bar.front || /^(hearth|nimbus|org\.hearthos)/i.test(String(bar.front.appId || "")) || bar.appName.indexOf("Hearth") === 0 ? "#ff7a2f" : "#4f8a5c"
-            L { anchors.centerIn: parent; text: bar.appName.charAt(0).toUpperCase(); color: "#ffffff"; font.weight: Font.ExtraBold; font.pixelSize: 15 * bar.k }
+            L { anchors.centerIn: parent; text: bar.appName.replace(/^Hearth\s+/, "").charAt(0).toUpperCase(); color: "#ffffff"; font.weight: Font.ExtraBold; font.pixelSize: 15 * bar.k }
             TapHandler { onTapped: bar.fh.couchHome() }
         }
         Item {
