@@ -83,7 +83,7 @@ PanelWindow {
     }
     readonly property var taskItems: {
         const out = [], byKey = {};
-        void DesktopEntries.applications.values.length;
+        void AppEntries.rev;
         for (const id of DeskState.pins) {
             const entry = DesktopEntries.byId(id);
             if (!entry || byKey[id]) continue;

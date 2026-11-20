@@ -60,7 +60,7 @@ PanelWindow {
     // Pinned apps first (in pin order), then the other open apps; each app's windows share one button.
     readonly property var taskItems: {
         const out = [], byKey = {};
-        void DesktopEntries.applications.values.length;   // look again once the app list has loaded
+        void AppEntries.rev;   // look again once the app list has loaded
         for (const id of DeskState.pins) {
             const entry = DesktopEntries.byId(id);
             if (!entry || byKey[id]) continue;
