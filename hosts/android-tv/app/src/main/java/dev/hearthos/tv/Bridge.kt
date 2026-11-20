@@ -115,8 +115,9 @@ class Bridge(private val a: MainActivity) {
         val url = LocalServer.url(a) ?: return JSONObject().put("ok", false).toString()
         return JSONObject().put("ok", true).put("url", url).put("qr", Qr.dataUrl(url)).toString()
     }
-    @JavascriptInterface fun openViewer(url: String, title: String) {
-        a.startActivity(Intent(a, ViewerActivity::class.java).putExtra("url", url).putExtra("title", title))
+    /** A website full screen; [look] is Hearth TV's look now (the pointer's colours, ViewerActivity). */
+    @JavascriptInterface fun openViewer(url: String, title: String, look: String) {
+        a.startActivity(Intent(a, ViewerActivity::class.java).putExtra("url", url).putExtra("title", title).putExtra("look", look))
     }
 
     // Voice search (Android's own speech screen, the remote's mic).

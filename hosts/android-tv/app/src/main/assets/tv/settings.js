@@ -52,7 +52,7 @@
   var ROWS = [];
   function head(n) { ROWS.push({ kind: 'head', name: n }); }
   function toggle(name, why, on, fn, opts) { ROWS.push(Object.assign({ kind: 'toggle', name: name, why: why, on: !!on, fn: fn }, opts || {})); }
-  function choice(name, why, val, fn) { ROWS.push({ kind: 'choice', name: name, why: why, val: val, fn: fn }); }
+  function choice(name, why, val, fn, opts) { ROWS.push(Object.assign({ kind: 'choice', name: name, why: why, val: val, fn: fn }, opts || {})); }
   function action(name, why, val, fn, opts) { ROWS.push(Object.assign({ kind: 'action', name: name, why: why, val: val, fn: fn }, opts || {})); }
   function note(t) { ROWS.push({ kind: 'note', name: t }); }
   function cycle(path, opts, labels) {
@@ -210,6 +210,12 @@
       toggle('Turn on with the TV', 'The TV remote also works devices plugged in over HDMI', T.n('tvSettingGet', 'hdmi_control_auto_wakeup_enabled') !== '0', function (v) {
         T.call('tvSetting', 'hdmi_control_auto_wakeup_enabled', v ? '1' : '0').then(function (r) { if (!r || !r.adb) T.toast('This needs network debugging (Settings › TV Cleanup)'); else T.toast('Saved'); });
       });
+      // The remote's mouse pointer on websites in Theater (pointer.js, ViewerActivity.kt).
+      head('Pointer on websites');
+      var SPEED = { slow: 'Slow', normal: 'Normal', fast: 'Fast' }, SIZE = { s: 'Small', m: 'Medium', l: 'Large' };
+      toggle('Start websites in pointer mode', 'The remote moves a mouse pointer on websites · hold ↩ to switch to page mode', s.pointer.startOn !== false, function (v) { T.set('pointer.startOn', v); });
+      choice('Pointer speed', 'It starts slow and speeds up the longer you hold a button', SPEED[s.pointer.speed] || 'Normal', function () { cycle('pointer.speed', ['slow', 'normal', 'fast'], SPEED); });
+      choice('Pointer size', 'In your look\'s colour, with a shadow so it shows on any page', SIZE[s.pointer.size] || 'Medium', function () { cycle('pointer.size', ['s', 'm', 'l'], SIZE); }, { pointer: s.pointer.size });
     }
     else if (page === 'About') {
       var dev = T.json('device') || {}, u = ST.update;
@@ -352,8 +358,13 @@
       act: function (act) { if (act === 'unpair') { T.call('link', 'unpair', JSON.stringify({ id: p.id })).then(function () { T.close(); T.toast('Unpaired ' + p.name); refreshLink(); }); return true; } return false; }
     });
   }
+  /** The pointer as websites show it, at its size (pointer.html draws the same arrow). */
+  function pointerPic(size) {
+    var px = { s: 34, m: 48, l: 66 }[size] || 48;
+    return '<span style="width:76px;height:76px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:var(--r);background:var(--bg)"><svg viewBox="0 0 24 24" width="' + px + '" height="' + px + '" style="overflow:visible;filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))"><path d="M3 2 L3 19.2 L7.6 15 L10.7 21.8 L13.6 20.5 L10.6 13.9 L16.8 13.9 Z" fill="var(--focus)" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></span>';
+  }
   function buttonGuide() {
-    var rows = [['OK / A', 'Open, play, change a setting'], ['◀ ▶ ▲ ▼', 'Move around · in the player, skip 1 minute with the buttons, 10 s with ◀ ▶ in Theater'], ['Back / B', 'Back one step · closes a pop-up'], ['Home', 'Always comes back to Hearth TV\'s Home'], ['☰ Menu / Start', 'Options: pin, mark watched, remove'], ['Input', 'Switch input'], ['Mic / Search', 'Search (hold the mic to talk)'], ['Play/Pause / X', 'Play or pause']];
+    var rows = [['OK / A', 'Open, play, change a setting'], ['◀ ▶ ▲ ▼', 'Move around · in the player, skip 1 minute with the buttons, 10 s with ◀ ▶ in Theater'], ['Back / B', 'Back one step · closes a pop-up'], ['Home', 'Always comes back to Hearth TV\'s Home'], ['☰ Menu / Start', 'Options: pin, mark watched, remove'], ['Input', 'Switch input'], ['Mic / Search', 'Search (hold the mic to talk)'], ['Play/Pause / X', 'Play or pause'], ['On a website', 'A pointer: ▲▼◀▶ move, OK clicks, hold OK to right-click, CH +/− scroll, hold ↩ for page mode']];
     T.open({ id: 'guide', first: 'gBack', render: function () { return '<div class="dim"><div class="dialog on-panel" style="width:1000px"><span style="font-size:30px;font-weight:700">Button guide</span>' + rows.map(function (r) { return '<div style="display:flex;gap:24px;font-size:20px;padding:6px 0"><span style="width:240px;font-weight:700">' + E(r[0]) + '</span><span class="soft">' + E(r[1]) + '</span></div>'; }).join('') + '<button class="btn small" data-f data-key="gBack" data-act="close">Done</button></div></div>'; } });
   }
 
@@ -420,6 +431,7 @@
           out += '<button class="srow" data-f data-key="r' + i + '" data-act="row" data-arg="' + i + '"' + (r.dataUpdate ? ' data-update' : '') + '>' +
             (r.img ? '<span style="width:128px;height:72px;border-radius:var(--r);overflow:hidden;position:relative;flex:none;display:block;background:var(--bg)"><img class="art" src="' + E(r.img) + '" alt=""></span>' : '') +
             (r.swatch ? '<span style="width:44px;height:44px;border-radius:22px;background:' + E(r.swatch) + ';flex:none"></span>' : '') +
+            (r.pointer ? pointerPic(r.pointer) : '') +
             '<span style="flex:1;display:flex;flex-direction:column;gap:4px"><span class="n">' + E(r.name) + '</span>' + (r.why ? '<span class="w">' + E(r.why) + '</span>' : '') + '</span>' +
             '<span class="v" style="color:' + col + '">' + E(val || '') + '</span>' +
             (r.kind === 'toggle' ? '<span class="sw' + (r.on ? ' on' : '') + '"></span>' : r.kind === 'choice' ? '<span class="muted" style="font-size:22px">›</span>' : '') + '</button>';

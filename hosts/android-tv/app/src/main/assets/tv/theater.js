@@ -13,7 +13,7 @@
     if (!x) return;
     var list = links(); list.forEach(function (y) { if (y.id === x.id) { y.opened = Date.now(); if (!y.pct) y.pct = 1; } }); save(list);
     if (x.yt || x.list) { TH.playing = x; T.go('theaterPlayer', x); }
-    else { T.sentBy = ''; T.n('openViewer', x.url, x.title || ''); }
+    else { T.sentBy = ''; T.n('openViewer', x.url, x.title || '', JSON.stringify(T.pointerLook())); }
   };
   T.screen('theater', {
     first: 't0',

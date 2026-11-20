@@ -9,7 +9,7 @@ name: Hearth TV
 
 on:
   push:
-    paths: ['hosts/android-tv/**', 'hosts/hearth-link/**', 'hosts/hearth-core/**', 'hosts/linux/desktop/theme/palettes.json', 'tools/tv-ui-check.js', '.github/workflows/android-tv.yml']
+    paths: ['hosts/android-tv/**', 'hosts/hearth-link/**', 'hosts/hearth-core/**', 'hosts/linux/desktop/theme/palettes.json', 'tools/tv-ui-check.js', 'tools/tv-pointer/**', '.github/workflows/android-tv.yml']
   workflow_dispatch:
 
 concurrency:
@@ -120,6 +120,7 @@ jobs:
             echo "::error title=Hearth TV unit tests::$( (grep -E -A8 '^e: |FAILED|What went wrong|AssertionError|Exception' test.log | head -60; echo ===; tail -25 test.log) | tr '\n' '|' | cut -c1-3900)"
             exit 1
           fi
+          echo "::notice title=Hearth TV unit tests::$(cat app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | grep -o '<testsuite [^>]*' | sed -E 's/.*name="([^"]*)".*tests="([0-9]+)".*failures="([0-9]+)".*/\1: \2 tests, \3 failed/' | tr '\n' ' ')"
       - name: Build the APK
         env:
           HEARTH_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -174,6 +175,15 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      # The remote's pointer on websites (assets/tv/pointer.js): its logic, without a TV.
+      - name: Pointer unit tests
+        run: |
+          set -o pipefail
+          if ! node --test hosts/android-tv/test/pointer.test.js 2>&1 | tee pointer-test.log; then
+            echo "::error title=Pointer unit tests::$(grep -E -A12 '^not ok' pointer-test.log | head -60 | tr '\n' '|' | cut -c1-3900)"
+            exit 1
+          fi
+          echo "::notice title=Pointer unit tests::$(grep -E '^# (pass|fail)' pointer-test.log | tr '\n' ' ')"
       - name: Check the page as Hearth TV
         run: |
           cd tools && npm i --no-save --no-audit --no-fund playwright@1.48.2 >/dev/null && npx playwright install --with-deps chromium >/dev/null
