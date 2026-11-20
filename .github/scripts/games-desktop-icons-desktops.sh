@@ -207,27 +207,6 @@ launched timeout 30 kioclient exec "$HOME/Desktop/Witcher Tales.desktop"
 check_launch plasma
 sleep 2; shot plasma-2b-after-open
 
-# ---------------------------------------------------------------- 2b. A menu entry left from Debian (hearth-stale-launchers)
-# The owner's laptop: ~/.local/share/applications/steam.desktop from Debian (Exec=/usr/games/steam) over Fedora's working
-# one. The sign-in check's notice; nothing changes until "Use the system one" is clicked (here: no click, then the
-# helper's own fix and undo).
-mkdir -p "$HOME/.local/share/applications" /usr/local/bin
-printf '#!/bin/sh\necho steam >> /tmp/home/nimbus-calls\n' > /usr/local/bin/steam; chmod 755 /usr/local/bin/steam
-[ -e /usr/share/applications/steam.desktop ] || printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=/usr/local/bin/steam %%U\nIcon=steam\n' > /usr/share/applications/steam.desktop
-printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=/usr/games/steam %%U\nIcon=steam\n' > "$HOME/.local/share/applications/steam.desktop"
-STALE="python3 $SRC/hosts/linux/desktop/shell/hearth-stale-launchers"
-$STALE scan > "$OUT/stale-scan.json"
-grep -q '"missing": "/usr/games/steam"' "$OUT/stale-scan.json" && ok "stale entry found" || fail stale "Debian's steam.desktop wasn't found: $(cat "$OUT/stale-scan.json")"
-$STALE check > "$OUT/stale-check.json" 2>&1 &
-sleep 6; shot plasma-6-stale-menu-entry-notice
-pkill -f "hearth-stale-launchers check"; pkill -f "notify-send -a Hearth"; sleep 1
-[ -e "$HOME/.local/share/applications/steam.desktop" ] && ok "nothing changed without a click" || fail stale "the entry changed without a click"
-$STALE fix "$HOME/.local/share/applications/steam.desktop" > "$OUT/stale-fix.json" 2>&1
-[ -e "$HOME/.local/share/applications/steam.desktop.hearth-old" ] && [ ! -e "$HOME/.local/share/applications/steam.desktop" ] && ok "Use the system one renamed it" || fail stale "fix: $(cat "$OUT/stale-fix.json")"
-$STALE undo "$HOME/.local/share/applications/steam.desktop.hearth-old" > "$OUT/stale-undo.json" 2>&1
-[ -e "$HOME/.local/share/applications/steam.desktop" ] && ok "Undo put it back" || fail stale "undo: $(cat "$OUT/stale-undo.json")"
-rm -f "$HOME/.local/share/applications/steam.desktop"
-
 # ---------------------------------------------------------------- 3. Hearth's panel on Plasma (Mantel's desktop over Plasma's)
 mkdir -p "$HOME/.config/hearth" && cp /etc/skel/.config/hearth/plasma-panel-new "$HOME/.config/hearth/" 2>/dev/null
 timeout 120 hearth-plasma-panel login > "$OUT/login.json" 2>&1
@@ -245,6 +224,27 @@ launched python3 /usr/share/nimbus/desktop/shell/hearth-desk launch "$HOME/Deskt
 check_launch plasma-hearth
 apply uninstalled; sleep 8
 shot plasma-4-hearth-panel-after-uninstall
+# ---------------------------------------------------------------- 4. A menu entry left from Debian (hearth-stale-launchers), its notice shown by Hearth's panel
+# The owner's laptop: ~/.local/share/applications/steam.desktop from Debian (Exec=/usr/games/steam) over Fedora's working
+# one. The sign-in check's notice; nothing changes until "Use the system one" is clicked (here: no click, then the
+# helper's own fix and undo).
+mkdir -p "$HOME/.local/share/applications" /usr/local/bin
+printf '#!/bin/sh\necho steam >> /tmp/home/nimbus-calls\n' > /usr/local/bin/steam; chmod 755 /usr/local/bin/steam
+[ -e /usr/share/applications/steam.desktop ] || printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=/usr/local/bin/steam %%U\nIcon=steam\n' > /usr/share/applications/steam.desktop
+printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=/usr/games/steam %%U\nIcon=steam\n' > "$HOME/.local/share/applications/steam.desktop"
+STALE="python3 $SRC/hosts/linux/desktop/shell/hearth-stale-launchers"
+$STALE scan > "$OUT/stale-scan.json"
+grep -q '"missing": "/usr/games/steam"' "$OUT/stale-scan.json" && ok "stale entry found" || fail stale "Debian's steam.desktop wasn't found: $(cat "$OUT/stale-scan.json")"
+$STALE check > "$OUT/stale-check.json" 2>&1 &
+sleep 10; shot plasma-6-stale-menu-entry-notice
+pkill -f "hearth-stale-launchers check"; pkill -f "notify-send -a Hearth"; sleep 1
+[ -e "$HOME/.local/share/applications/steam.desktop" ] && ok "nothing changed without a click" || fail stale "the entry changed without a click"
+$STALE fix "$HOME/.local/share/applications/steam.desktop" > "$OUT/stale-fix.json" 2>&1
+[ -e "$HOME/.local/share/applications/steam.desktop.hearth-old" ] && [ ! -e "$HOME/.local/share/applications/steam.desktop" ] && ok "Use the system one renamed it" || fail stale "fix: $(cat "$OUT/stale-fix.json")"
+$STALE undo "$HOME/.local/share/applications/steam.desktop.hearth-old" > "$OUT/stale-undo.json" 2>&1
+[ -e "$HOME/.local/share/applications/steam.desktop" ] && ok "Undo put it back" || fail stale "undo: $(cat "$OUT/stale-undo.json")"
+rm -f "$HOME/.local/share/applications/steam.desktop"
+
 hearth-plasma-panel undo > "$OUT/undo.json" 2>&1; sleep 8
 shot plasma-5-kde-after-uninstall
 cp "$HOME/.config/nimbus/desk.json" "$OUT/desk-after-plasma.json"
