@@ -1,0 +1,63 @@
+# Every KDE System Settings module (KCM) in the Fedora edition's Plasma, listed from Fedora 45's own packages (KDE's
+# website can't be read from the owner's sessions). Hearth Settings' "every KDE setting" work starts from this list
+# (docs/mockups/checklists/settings-kde-all.md). Only on its own branch; posts the list as INV notices.
+name: KDE settings modules (inventory)
+
+on:
+  push:
+    branches: ['feature/settings-kde-all']
+    paths: ['.github/workflows/kde-kcm-inventory.yml', '.github/scripts/kde-kcm-inventory.py']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    container: registry.fedoraproject.org/fedora:45
+    steps:
+      - uses: actions/checkout@v4
+      - name: Plasma as the Fedora edition installs it (os-bases/anatase/build.sh)
+        run: |
+          dnf5 -y install plasma-workspace plasma-desktop kwin python3 python3-pip rpm >/dev/null
+          dnf5 -y install --skip-unavailable --skip-broken plasma-nm plasma-pa plasma-systemmonitor powerdevil kscreen libkscreen kscreenlocker \
+            bluedevil polkit-kde xdg-desktop-portal-kde plasma-breeze breeze-icon-theme breeze-cursor-theme kde-cli-tools \
+            plasma-systemsettings kinfocenter kwin-effects kdecoration aurorae plasma-milou milou kmenuedit \
+            kglobalacceld plasma-integration plasma-discover-flatpak kwalletmanager5 kwallet-pam kde-gtk-config plasma-thunderbolt >/dev/null || true
+          dnf5 -y group install --skip-unavailable --skip-broken kde-desktop >/dev/null 2>&1 || echo "::warning title=group::kde-desktop didn't install as a whole"
+          python3 -m pip install --quiet --break-system-packages cbor2 || python3 -m pip install --quiet cbor2
+      - name: List them
+        run: python3 .github/scripts/kde-kcm-inventory.py collect
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kcm-inventory
+          path: |
+            kcms.json
+            kcfg.tar.gz
+
+  post:
+    needs: collect
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [['kcms.json', 1], ['kcms.json', 46], ['kcms.json', 91], ['kcfg.tar.gz', 1], ['kcfg.tar.gz', 46], ['kcfg.tar.gz', 91], ['kcfg.tar.gz', 136], ['kcfg.tar.gz', 181]]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        with:
+          name: kcm-inventory
+      - name: Post 1
+        run: f=${{ matrix.part[1] }}; python3 .github/scripts/kde-kcm-inventory.py post ${{ matrix.part[0] }} $f $((f+8))
+      - name: Post 2
+        run: f=${{ matrix.part[1] }}; python3 .github/scripts/kde-kcm-inventory.py post ${{ matrix.part[0] }} $((f+9)) $((f+17))
+      - name: Post 3
+        run: f=${{ matrix.part[1] }}; python3 .github/scripts/kde-kcm-inventory.py post ${{ matrix.part[0] }} $((f+18)) $((f+26))
+      - name: Post 4
+        run: f=${{ matrix.part[1] }}; python3 .github/scripts/kde-kcm-inventory.py post ${{ matrix.part[0] }} $((f+27)) $((f+35))
+      - name: Post 5
+        run: f=${{ matrix.part[1] }}; python3 .github/scripts/kde-kcm-inventory.py post ${{ matrix.part[0] }} $((f+36)) $((f+44))
