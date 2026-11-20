@@ -516,10 +516,21 @@ impl App {
 
     pub fn shown_games(&self) -> Vec<Game> {
         match self.tab {
-            CloudTab::Recent => match &self.games {
-                Load::Ready(g) => g.clone(),
-                _ => Vec::new(),
-            },
+            // Recently played first (large), then the rest of the cloud library (smaller), as the mockup.
+            CloudTab::Recent => {
+                let mut v = match &self.games {
+                    Load::Ready(g) => g.clone(),
+                    _ => Vec::new(),
+                };
+                if let Load::Ready(all) = &self.all_games {
+                    for g in all {
+                        if !v.iter().any(|x| x.title == g.title) {
+                            v.push(g.clone());
+                        }
+                    }
+                }
+                v
+            }
             CloudTab::All | CloudTab::Search => {
                 let all = match &self.all_games {
                     Load::Ready(g) => g.clone(),
@@ -653,7 +664,8 @@ fn go(a: &mut App, page: Page) -> Task<Msg> {
         }
         Page::Cloud if a.games == Load::Idle => {
             a.games = Load::Loading;
-            work(|| load_games(true), |r| Msg::Games(true, r))
+            a.all_games = Load::Loading;
+            Task::batch([work(|| load_games(true), |r| Msg::Games(true, r)), work(|| load_games(false), |r| Msg::Games(false, r))])
         }
         _ => Task::none(),
     }
