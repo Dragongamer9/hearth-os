@@ -13,6 +13,8 @@ Window {
     property string screenName: ""
     title: "Firehold Couch on " + screenName
     visible: false
+    // Its own window, not a child of the bar's panel (a panel is a layer: Qt won't show a window that hangs off one).
+    transientParent: null
     flags: Qt.FramelessWindowHint
     color: "#0f0b0a"
     width: 1920; height: 1080
