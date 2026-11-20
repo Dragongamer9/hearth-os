@@ -1,14 +1,14 @@
 # Hearth Notes (approved Nov 20, 2026, 03:20; the plan and the owner's decisions: hearth-workspace hearth/mockups/hearth-notes/README.md)
 
 Mockups: hearth-notes/notes-1-main.png, hearth-notes/notes-2-today.png, hearth-notes/notes-2b-board.png, hearth-notes/notes-3-graph-classic.png, hearth-notes/notes-3b-graph-modes.png, hearth-notes/notes-3c-galaxy.png, hearth-notes/notes-3d-solar-system.png, hearth-notes/notes-3e-black-hole.png, hearth-notes/notes-3f-customise-graph.png, hearth-notes/notes-3g-ember.png, hearth-notes/notes-3h-railway-map.png, hearth-notes/notes-4-search.png, hearth-notes/notes-5-sync.png, hearth-notes/notes-6-conflict.png, hearth-notes/notes-7-new-item.png, hearth-notes/notes-8-settings.png, hearth-notes/notes-9-controller.png
-Release: next
+Release: 1.16
 
-The release is to be picked by the owner ("next" until he gives it). The app is hosts/hearth-ui/apps/notes
+The owner put it in 1.16 (Nov 20). The app is hosts/hearth-ui/apps/notes
 (hearth-notes-app; docs/HEARTH-NOTES.md), built into the Fedora image and listed in the Hearth Store as Built in.
 Pictures: hearth-apps-rust.yml (.github/scripts/hearth-apps-rust-shots.d/notes.sh, notes-1…13), each opened next to
 its mockup before a part is ticked.
 
-Status (Nov 20): built and tested green in CI (hearth-apps-rust 44718850634, only=notes: cargo test, every page
+Status (Nov 20): every part matches its mockup in CI's pictures (hearth-apps-rust 44733060214; the four that didn't at first, Classic's fit, Today's habits, Black hole's clouds and Timeline river's days, were unticked, fixed and checked again in 44726277660, 44728802122 and 44733060214). First built green in only=notes: cargo test, every page
 pictured, both pages at rest 0.00 % of a core, 49 MB). Every page opened next to its mockup; fixes from that in the next
 commit. Needs testing on a device: the graph on a real graphics card (CI draws with the CPU), the clone with the owner's
 own Git sign-in, Sync by itself, and the controller on the Ally. Where the app differs from the picture on purpose:
@@ -65,7 +65,7 @@ can't turn text); New item's releases are the vault's own release tags.
 
 ## 3e Black hole
 - [x] Home (INDEX.md) as a black hole: orange-gold accretion disk, lensing glow, dark core, "Home" pill — hosts/hearth-ui/apps/notes/src/gview.rs: "The near side of the disk crosses the core"
-- [ ] Each project a big cloud of star points with fan-shaped link trails pulled toward Home, labelled with its name and page count
+- [x] Each project a big cloud of star points with fan-shaped link trails pulled toward Home, labelled with its name and page count — hosts/hearth-ui/apps/notes/src/gview.rs: "A bigger cloud sits a little closer in, so all of it stays on the map."
 - [x] Faint orbit rings across the map, deep space behind, orphans at the edge — hosts/hearth-ui/apps/notes/src/gview.rs: "Faint orbit rings, the clouds"
 - [x] Floating control pill: zoom out, zoom in, reset, pause, fullscreen; "7 backlinks" in the corner — hosts/hearth-ui/apps/notes/src/gview.rs: "fn controls(a: &App)"
 - [x] Fly to, filters, hover card with Open note — hosts/hearth-ui/apps/notes/src/gview.rs: "\"Fly here\""

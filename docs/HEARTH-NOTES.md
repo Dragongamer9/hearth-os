@@ -1,4 +1,4 @@
-# Hearth Notes (working name; the release is the owner's to pick)
+# Hearth Notes (working name; in 1.16, the owner, Nov 20)
 
 Dragongamer9's own Obsidian, connected to his hearth-workspace repository: Markdown notes with live preview and
 `[[links]]`, the daily log as a dashboard, a Board made from checklists, a graph in ten modes, search, Git sync that runs
