@@ -190,6 +190,7 @@ fn trouble(a: &App) -> E<'_, Msg> {
             column![one(t6("Couldn't reach your Xbox", 27.0, TX)), rich(&line, 16.0, MUT, SOFT, false)].spacing(4.0).width(Length::Fill)
         ]
         .spacing(18.0)
+        .width(Length::Fill)
         .align_y(iced::Center),
         gap(1.0, 16.0),
         tip(G::Up, "Home upload speed: about 10 Mbps or more", "Run a speed test at home; the upload number is the one that counts."),
