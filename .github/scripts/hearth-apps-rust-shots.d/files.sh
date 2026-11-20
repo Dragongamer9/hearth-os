@@ -103,3 +103,64 @@ run chooser-2-open hearth-file-chooser 0 "$BIN/hearth-file-chooser" /tmp/files-o
 look hearth light
 run files-16-hearth-light hearth-files 0 "$BIN/hearth-files-app" "$H" --view details
 look steam dark
+
+# ---------------------------------------------------------------- Mantel's Files beyond the mockups (made after the
+# mockups' pictures, so those stay as the mockups show them): the wider left menu, This PC with a nearly full drive and
+# network locations, the terminal panel, split view, tags and git badges, Act as administrator, Sharing, the Briefcase,
+# shared folders, drag and drop, and the Open / Save window's keyboard in Game Mode.
+FX="$ROOT/.github/scripts/hearth-apps-rust-shots.d/files-fixture.py"
+SD="$HEARTH_SHELL_DIR"
+run files-17-wide-nav hearth-files 0 "$BIN/hearth-files-app" "$H" --view details --show widenav
+run files-18-thispc-full hearth-files 0 env HEARTH_FILES_HELPER="$FX" "$BIN/hearth-files-app" --page thispc
+run files-19-terminal hearth-files 0 "$BIN/hearth-files-app" "$H" --view details --show term
+run files-20-split hearth-files 0 "$BIN/hearth-files-app" "$H" --view details --show split,select
+# A git repository (one change, one new file, one added) with tagged files (user.xdg.tags, as Dolphin keeps them).
+G="$H/Projects/hearth-os"
+printf 'echo build\n' > "$G/build.sh"; printf '# Hearth OS\n' > "$G/README.md"; mkdir -p "$G/os"; printf 'x\n' > "$G/os/kernel.conf"
+( cd "$G" && git init -q && git add docs/ROADMAP.md build.sh && git -c user.name=CI -c user.email=ci@invalid commit -qm start \
+  && printf '## 1.16\n' >> docs/ROADMAP.md && git add os/kernel.conf ) >/dev/null 2>&1 || echo "::warning title=files git::the sample repository wasn't made"
+for t in "Work:$G/README.md" "Important:$G/build.sh" "Work:$G/build.sh" "Taxes:$H/Downloads/invoice-0412.pdf"; do
+  python3 "$SD/hearth-files" tag-set --add "${t%%:*}" "${t#*:}" >/dev/null 2>&1 || echo "::warning title=files tags::couldn't tag ${t#*:}"
+done
+run files-21-tags-git hearth-files 0 "$BIN/hearth-files-app" "$G" --view details --show pane
+run files-22-tags-git-large hearth-files 0 "$BIN/hearth-files-app" "$G" --view large
+run files-23-tag-menu hearth-files 0 "$BIN/hearth-files-app" "$G" --view details --show tagmenu
+run files-24-admin hearth-files 0 "$BIN/hearth-files-app" /usr/share --view details --show admin
+run files-25-sharing hearth-files 0 env HEARTH_FILES_HELPER="$FX" "$BIN/hearth-files-app" "$H" --view details --show sharing
+# A Briefcase in Documents holding three reports: one up to date, one newer at the original, one newer in the Briefcase,
+# and a file of its own that isn't linked to anything.
+R="$H/Documents/Reports"; B="$H/Documents/Work Briefcase"
+mkdir -p "$R"; printf 'Q3\n' > "$R/report-q3.txt"; printf 'notes\n' > "$R/notes.txt"; printf '# Plan\n' > "$R/plan.md"
+python3 "$SD/hearth-briefcase" new "$H/Documents" "Work Briefcase" >/dev/null 2>&1 \
+  && python3 "$SD/hearth-briefcase" add "$B" "$R/report-q3.txt" "$R/notes.txt" "$R/plan.md" >/dev/null 2>&1 \
+  || echo "::warning title=files briefcase::the sample Briefcase wasn't made"
+sleep 1.2
+printf 'more notes\n' >> "$R/notes.txt"; printf 'step two\n' >> "$B/plan.md"; printf 'scratch\n' > "$B/scratch.txt"
+run files-26-briefcase hearth-files 0 "$BIN/hearth-files-app" "$B" --view details
+run files-27-bc-update hearth-files 0 "$BIN/hearth-files-app" "$B" --view details --show bc-update-all
+run files-28-bc-unlock hearth-files 0 "$BIN/hearth-files-app" "$B" --view details --show bc-password
+run files-29-bc-setlock hearth-files 0 "$BIN/hearth-files-app" "$B" --view details --show bc-setlock
+run files-30-bc-customize hearth-files 0 "$BIN/hearth-files-app" "$B" --view details --show bc-customize
+run files-31-bc-menu hearth-files 0 "$BIN/hearth-files-app" "$B" --view details --show menu-bc
+run files-32-bc-addto hearth-files 0 "$BIN/hearth-files-app" "$R" --view details --show bc-addto
+run files-33-bc-icons hearth-files 0 "$BIN/hearth-files-app" "$H/Documents" --view large
+run files-34-netsign hearth-files 0 env HEARTH_FILES_HELPER="$FX" "$BIN/hearth-files-app" "$H" --view details --show netsign
+run files-35-drag hearth-files 0 "$BIN/hearth-files-app" "$H" --view details --show drag
+# Game Mode's Open / Save window: Hearth's keyboard inside it (hearth-portal sets HEARTH_PICKER_PAD=1 over a game).
+run chooser-3-keyboard hearth-file-chooser 0 env HEARTH_PICKER_PAD=1 "$BIN/hearth-file-chooser" /tmp/files-save.json --show osk
+# hearth-portal itself opening it where there's no Quickshell (the Fedora edition): its own run_picker, as an app's
+# Save request reaches it over D-Bus (test_hearth_portal.py checks the D-Bus side and Plasma's kde-portals.conf).
+: > /tmp/files-rust.ok
+cat > /tmp/portal-pick.py <<'PY'
+import importlib.machinery, importlib.util, json, os, signal, sys
+signal.signal(signal.SIGTERM, lambda *a: sys.exit(0))
+path = os.path.join(os.environ['HEARTH_SHELL_DIR'], 'hearth-portal')
+loader = importlib.machinery.SourceFileLoader('hearth_portal', path)
+spec = importlib.util.spec_from_loader('hearth_portal', loader)
+hp = importlib.util.module_from_spec(spec)
+loader.exec_module(hp)
+req = json.load(open('/tmp/files-save.json'))
+req['title'] = 'Save As – Text Editor'
+print(json.dumps(hp.run_picker(req, env=dict(os.environ), game=False)))
+PY
+run chooser-4-portal hearth-file-chooser 0 env HEARTH_FILES_RUST_OK=/tmp/files-rust.ok PATH="$BIN:$PATH" python3 /tmp/portal-pick.py

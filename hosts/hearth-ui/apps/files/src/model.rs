@@ -34,6 +34,8 @@ pub struct Entry {
     pub item: Value,
     /// Installed apps: the app.
     pub app: Option<Value>,
+    /// A Briefcase folder: its look {icon, color, badge, locked} (hearth-files list).
+    pub briefcase: Value,
 }
 
 fn s(v: &Value, k: &str) -> String {
@@ -57,6 +59,7 @@ impl Entry {
             orig_path: s(v, "origPath"),
             appimage: v.get("appimage").and_then(Value::as_bool).unwrap_or(false),
             in_menu: v.get("inMenu").and_then(Value::as_bool).unwrap_or(false),
+            briefcase: v.get("briefcase").filter(|b| b.is_object()).cloned().unwrap_or(Value::Null),
             ..Default::default()
         }
     }
@@ -74,6 +77,8 @@ pub struct Listing {
     pub total: Option<u64>,
     pub error: String,
     pub select: String,
+    /// This folder is a Briefcase: its look (hearth-files list).
+    pub briefcase: Value,
 }
 
 impl Listing {
@@ -88,6 +93,7 @@ impl Listing {
             total: v.get("total").and_then(Value::as_u64),
             error: String::new(),
             select: s(v, "select"),
+            briefcase: v.get("briefcase").filter(|b| b.is_object()).cloned().unwrap_or(Value::Null),
         }
     }
     pub fn page(path: &str, name: &str) -> Listing {

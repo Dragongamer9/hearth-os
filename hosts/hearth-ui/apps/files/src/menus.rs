@@ -92,7 +92,7 @@ impl App {
             items.push(MenuItem::new("pick-cancel", "Cancel").key("Esc"));
             items.push(MenuItem::sep());
         }
-        if !self.picking() && !self.in_trash() && !self.menu_full {
+        if !self.picking() && !self.in_trash() && !self.menu_full && !crate::briefcase::in_briefcase(self) {
             if let Some(e) = &e {
                 let mut q: Vec<MenuItem> = Vec::new();
                 if w {
@@ -125,8 +125,10 @@ impl App {
                 if n == 1 && model::is_archive(e) && w {
                     q.push(MenuItem::new("extracthere", "Extract here").icon(Ic::Zip));
                 }
-                if e.dir && n == 1 {
+                if e.dir && n == 1 && !e.briefcase.is_object() {
                     q.push(MenuItem::new("lockbc", "Lock as a Briefcase").icon(Ic::Lock));
+                }
+                if e.dir && n == 1 {
                     q.push(MenuItem::new("terminal", "Open in Terminal").key("Shift+F4").icon(Ic::Keyboard));
                 }
                 if n == 2 && t.iter().all(|p| p.starts_with('/')) {
@@ -136,6 +138,7 @@ impl App {
                     q.push(MenuItem::new("prevver", "Restore previous versions").icon(Ic::Clock));
                 }
                 q.push(MenuItem::new("copywin", "Copy as path").key("C:\\…").icon(Ic::Link));
+                q.extend(crate::extras::menu_items(self, Some(e), n));
                 q.push(MenuItem::sep());
                 q.push(MenuItem::new("props", "Properties").key("Alt+Enter").icon(Ic::Info));
                 q.push(MenuItem::new("more", "Show more options").icon(Ic::Dots));
@@ -174,6 +177,8 @@ impl App {
                     items.push(MenuItem::new("preview", "Preview").key("Space").icon(Ic::Eye));
                 }
             }
+            items.extend(crate::briefcase::menu_items(self, e.as_ref(), n, &t));
+            items.extend(crate::extras::menu_items(self, e.as_ref(), n));
             items.push(MenuItem::sep());
             if n > 0 {
                 if w {
@@ -243,6 +248,7 @@ impl App {
                 if self.tabs.len() > 1 {
                     items.push(MenuItem::new("closetab", "Close tab").key("Ctrl+W").icon(Ic::Close));
                 }
+                items.extend(crate::extras::folder_menu_items(self));
             }
             let bm = match &e {
                 Some(e) if e.dir => e.path.clone(),
@@ -254,6 +260,10 @@ impl App {
             }
             if (e.is_none() && !self.on_home() || e.as_ref().map(|x| x.dir).unwrap_or(false)) && !self.picking() {
                 items.push(MenuItem::new("terminal", "Open in Terminal").key("Shift+F4").icon(Ic::Keyboard));
+            }
+            if e.is_none() && !self.picking() {
+                items.push(MenuItem::new("termpanel", if self.term.on { "Hide the terminal panel" } else { "Terminal panel" }).key("F4").icon(Ic::Terminal));
+                items.push(MenuItem::new("splitview", if self.split.is_some() { "Close split view" } else { "Split view" }).key("F9").icon(Ic::Split));
             }
             if e.is_some() || !self.on_home() {
                 items.push(MenuItem::sep());
@@ -289,6 +299,10 @@ impl App {
             items.push(MenuItem::sep());
             items.push(MenuItem::new("tp-unmount", "Unmount"));
             items.push(MenuItem::new("tp-eject", "Safely remove"));
+        }
+        if e.pc == "net" && d.get("net").map(|n| n.is_object()).unwrap_or(false) {
+            items.push(MenuItem::sep());
+            items.push(MenuItem::new("tp-auto", "Connect automatically").check(sv(&d, "sub") == "Connects by itself"));
         }
         if real {
             items.push(MenuItem::sep());
@@ -466,6 +480,8 @@ impl App {
         if !self.on_home() && !self.on_special() {
             items.push(MenuItem::new("terminal", "Open in Terminal").key("Shift+F4").icon(Ic::Keyboard));
         }
+        items.push(MenuItem::new("termpanel", if self.term.on { "Hide the terminal panel" } else { "Terminal panel" }).key("F4").icon(Ic::Terminal));
+        items.push(MenuItem::new("splitview", if self.split.is_some() { "Close split view" } else { "Split view" }).key("F9").icon(Ic::Split));
         items.push(MenuItem::new("newtab", "New tab").key("Ctrl+T").icon(Ic::Plus));
         if !self.on_home() {
             items.push(MenuItem::sep());
@@ -490,6 +506,12 @@ pub fn place_menu(a: &mut App) {
     if sv(&p.raw, "section") == "drives" && !p.path.is_empty() && p.raw.get("removable") == Some(&Value::Bool(true)) {
         items.push(MenuItem::new("p-unmount", "Unmount"));
         items.push(MenuItem::new("p-eject", "Safely remove"));
+    }
+    if let Some(net) = p.raw.get("net").filter(|n| n.is_object()) {
+        if !sv(net, "share").is_empty() {
+            items.push(MenuItem::new("p-open", "Open"));
+            items.push(MenuItem::new("p-auto", "Connect automatically").check(p.raw.get("auto") == Some(&Value::Bool(true)) || sv(&p.raw, "sub") == "Connects by itself"));
+        }
     }
     if p.raw.get("bookmark") == Some(&Value::Bool(true)) {
         items.push(MenuItem::new("p-unbookmark", "Remove bookmark").danger());
@@ -658,6 +680,7 @@ pub fn command(a: &mut App, c: &str) -> Task<Msg> {
         "sorttype" => return run_menu(a, "sort:type"),
         "sortsize" => return run_menu(a, "sort:size"),
         "clinux" => return run_menu(a, "c-linux"),
+        c if c.starts_with("bc-") => return crate::briefcase::command(a, c),
         _ => {}
     }
     Task::none()
@@ -776,6 +799,13 @@ pub fn run_menu(a: &mut App, id: &str) -> Task<Msg> {
                 }
             }
         }
+    }
+    if id.starts_with("x-") {
+        let e2 = e.clone();
+        return crate::extras::run(a, id, t, e2);
+    }
+    if id.starts_with("bc-") {
+        return crate::briefcase::run(a, id, t);
     }
     if let Some(choice) = id.strip_prefix("fo-") {
         // A script or program: Run in Terminal, Run, or Open in Hearth Text (hearth-files remembers nothing here).
@@ -948,7 +978,34 @@ pub fn run_menu(a: &mut App, id: &str) -> Task<Msg> {
             a.rebuild();
             return a.remember_view_pub();
         }
-        "trash" => return a.trash_paths(t),
+        "trash" => {
+            // As administrator in a system folder: deleted for good (there's no Trash for system files).
+            if crate::extras::admin_here(a) && t.iter().any(|p| backend::system_path(p)) {
+                let title = if t.len() == 1 { format!("Delete “{}” for good?", base(&t[0])) } else { format!("Delete {} items for good?", t.len()) };
+                a.confirm(&title, "As administrator, system files have no Trash: this can't be undone.", "Delete", Yes::Delete(t));
+                return Task::none();
+            }
+            return a.trash_paths(t);
+        }
+        "termpanel" => return crate::terminal::update(a, crate::terminal::TMsg::Toggle),
+        "splitview" => return crate::split::update(a, crate::split::SMsg::Toggle),
+        "p-auto" | "tp-auto" => {
+            let (net, on) = if id == "p-auto" {
+                match a.places.get(a.place_index) {
+                    Some(p) => (p.raw.get("net").cloned().unwrap_or(Value::Null), !(p.raw.get("auto") == Some(&Value::Bool(true)) || sv(&p.raw, "sub") == "Connects by itself")),
+                    None => return Task::none(),
+                }
+            } else {
+                match &e {
+                    Some(e) => (e.item.get("net").cloned().unwrap_or(Value::Null), sv(&e.item, "sub") != "Connects by itself"),
+                    None => return Task::none(),
+                }
+            };
+            if !net.is_object() {
+                return Task::none();
+            }
+            return crate::extras::update(a, crate::extras::XMsg::Auto(net, on));
+        }
         "delete" => {
             if t.is_empty() {
                 return Task::none();
@@ -1006,19 +1063,9 @@ pub fn run_menu(a: &mut App, id: &str) -> Task<Msg> {
         }
         "lockbc" => {
             if let Some(e) = &e {
-                // Briefcase.qml's lockAsBriefcase: a new Briefcase beside it, this folder added to it.
-                let parent = parent_of(&e.path);
-                let name = format!("{} (Briefcase)", e.name);
-                let helper = hearth_ui::run::shell_helper("hearth-briefcase");
-                let src = e.path.clone();
-                let cmd = vec!["sh".to_string(), "-c".into(), "set -e; out=$(python3 \"$1\" new \"$2\" \"$3\" | tail -1); p=$(printf '%s' \"$out\" | python3 -c 'import json,sys; print(json.load(sys.stdin).get(\"path\",\"\"))'); [ -n \"$p\" ] || { echo \"$out\"; exit 1; }; python3 \"$1\" add \"$p\" \"$4\" | tail -1".into(), "sh".into(), helper, parent, name.clone(), src];
-                return Task::perform(backend::call_cmd(cmd, 120, None), move |r| Msg::Did(Then::PlacesToo(format!("Made “{name}”")), r));
+                // Briefcase.qml's lockAsBriefcase: a new Briefcase beside it holding this folder, then its lock.
+                return crate::briefcase::lock_as_briefcase(e.path.clone());
             }
-        }
-        "bc-new" => {
-            let helper = hearth_ui::run::shell_helper("hearth-briefcase");
-            let cmd = vec!["python3".to_string(), helper, "new".into(), a.path.clone(), "Briefcase".into()];
-            return Task::perform(backend::call_cmd(cmd, 60, None), |r| Msg::Did(Then::PlacesToo("Made a Briefcase".into()), r));
         }
         "prevver" => {
             if let Some(e) = &e {
@@ -1220,7 +1267,8 @@ pub fn dialog_ok(a: &mut App) -> Task<Msg> {
     match a.overlay.clone() {
         Some(Overlay::Input(i)) => {
             a.overlay = None;
-            let text = i.text.trim().to_string();
+            // A password is sent as it was typed; other answers without spaces around them.
+            let text = if i.secret { i.text.clone() } else { i.text.trim().to_string() };
             if text.is_empty() {
                 return Task::none();
             }
@@ -1254,6 +1302,7 @@ pub fn dialog_ok(a: &mut App) -> Task<Msg> {
                     let req = JobReq { verb: "compress".into(), paths: t, dest: dir.clone(), decide: Map::new(), fmt: fmt.into(), archive: format!("{dir}/{file}"), here: false, undo: None };
                     a.start_job(req)
                 }
+                Ask::Fx(f) => crate::extras::ask_done(a, f, text),
                 Ask::ExtractTo(arch) => {
                     let mut d = text;
                     if let Some(r) = d.strip_prefix('~') {
@@ -1269,23 +1318,14 @@ pub fn dialog_ok(a: &mut App) -> Task<Msg> {
         }
         Some(Overlay::Confirm(c)) => {
             a.overlay = None;
-            match c.yes {
-                Yes::Delete(t) => {
-                    let n = t.len();
-                    let mut args = vec!["delete".to_string()];
-                    args.extend(t);
-                    Task::perform(backend::call(args, 120), move |r| Msg::Did(Then::Deleted(n), r))
+            if c.button == 2 {
+                if let Some((_, y)) = c.alt {
+                    return run_yes(a, y);
                 }
-                Yes::Empty => Task::perform(backend::call(a_(&["empty-trash"]), 120), |r| Msg::Did(Then::Emptied, r)),
-                Yes::PickFinish(p) => a.pick_done_with(p),
-                Yes::Wallpaper(p) => {
-                    backend::detached(&[String::from("hearth-wallpaper"), p], None);
-                    Task::none()
-                }
-                Yes::RunAppImage(p) => a.run_appimage(&p, true),
-                Yes::Note => Task::none(),
             }
+            run_yes(a, c.yes)
         }
+        Some(Overlay::Bc) => crate::briefcase::update(a, crate::briefcase::BMsg::Ok),
         Some(Overlay::Apps(d)) => open_with(a, Some(d.sel)),
         Some(Overlay::Preview(pv)) => {
             a.overlay = None;
@@ -1323,6 +1363,27 @@ impl App {
             println!("{res}");
         }
         iced::exit()
+    }
+}
+
+/// What a yes/no question does when you say yes.
+pub fn run_yes(a: &mut App, y: Yes) -> Task<Msg> {
+    match y {
+        Yes::Delete(t) => {
+            let n = t.len();
+            let mut args = vec!["delete".to_string()];
+            args.extend(t);
+            Task::perform(backend::call(args, 120), move |r| Msg::Did(Then::Deleted(n), r))
+        }
+        Yes::Empty => Task::perform(backend::call(a_(&["empty-trash"]), 120), |r| Msg::Did(Then::Emptied, r)),
+        Yes::PickFinish(p) => a.pick_done_with(p),
+        Yes::Wallpaper(p) => {
+            backend::detached(&[String::from("hearth-wallpaper"), p], None);
+            Task::none()
+        }
+        Yes::RunAppImage(p) => a.run_appimage(&p, true),
+        Yes::Note => Task::none(),
+        Yes::Then(m) => update(a, m),
     }
 }
 
@@ -1616,6 +1677,14 @@ pub fn did(a: &mut App, then: Then, r: Reply) -> Task<Msg> {
             }
             Task::batch(t)
         }
+        Then::Linked(msg) => {
+            let items: Vec<String> = r.get("items").as_array().map(|x| x.iter().filter_map(|v| v.as_str().map(String::from)).collect()).unwrap_or_default();
+            if !items.is_empty() {
+                a.push_undo(Op::Create { items });
+            }
+            let s = a.say(&msg, false);
+            Task::batch(vec![s, a.reload()])
+        }
         Then::Compare(t) => {
             if r.get("same").as_bool() == Some(true) {
                 return a.say(&format!("“{}” and “{}” are the same", base(&t[0]), base(&t[1])), false);
@@ -1693,11 +1762,13 @@ pub fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
                 return Task::none();
             }
             Overlay::Confirm(c) => {
+                // With a third choice (Just this time): Cancel, it, then OK, left to right.
+                let alt = c.alt.is_some();
                 match named {
-                    Some(Named::ArrowLeft) | Some(Named::ArrowUp) => c.button = 0,
-                    Some(Named::ArrowRight) | Some(Named::ArrowDown) | Some(Named::Tab) => c.button = 1,
+                    Some(Named::ArrowLeft) | Some(Named::ArrowUp) => c.button = if alt && c.button == 1 { 2 } else { 0 },
+                    Some(Named::ArrowRight) | Some(Named::ArrowDown) | Some(Named::Tab) => c.button = if alt && c.button == 0 { 2 } else { 1 },
                     Some(Named::Enter) | Some(Named::Space) => {
-                        if c.button == 1 {
+                        if c.button == 1 || c.button == 2 {
                             return dialog_ok(a);
                         }
                         a.overlay = None;
@@ -1758,6 +1829,9 @@ pub fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
                 }
                 return Task::none();
             }
+            Overlay::Bc => {
+                return crate::briefcase::key(a, named, shift);
+            }
             Overlay::Input(_) | Overlay::Props(_) => {
                 if let Some(Named::Escape) = named {
                     return update(a, Msg::DlgCancel);
@@ -1774,6 +1848,20 @@ pub fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
             a.renaming = None;
         }
         return Task::none();
+    }
+    // The terminal panel's line (F4) and the split view (F9) take their own keys while you're in them.
+    if a.zone == Zone::Term && a.term.on {
+        if let Some(t) = crate::terminal::key(a, named, ctrl, ch.as_deref()) {
+            return t;
+        }
+        if named.is_none() {
+            return Task::none();
+        }
+    }
+    if a.zone == Zone::Split && a.split.is_some() && !ctrl && !alt {
+        if let Some(t) = crate::split::key(a, named) {
+            return t;
+        }
     }
     if a.editing_path {
         if let Some(Named::Escape) = named {
@@ -1874,6 +1962,8 @@ pub fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
         Some(Named::F5) => return update(a, Msg::Refresh),
         Some(Named::F3) => return operation::focus(SEARCH_ID),
         Some(Named::F4) if shift => return run_menu(a, "terminal"),
+        Some(Named::F4) if !a.picking() => return crate::terminal::update(a, crate::terminal::TMsg::Toggle),
+        Some(Named::F9) if !a.picking() => return crate::split::update(a, crate::split::SMsg::Toggle),
         Some(Named::BrowserBack) => return a.go_back(),
         Some(Named::BrowserForward) => return a.go_forward(),
         _ => {}
