@@ -662,6 +662,19 @@ class PlasmaTest(unittest.TestCase):
         pad.want_osk()
         self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True, 'mode': 'password'})
 
+    def test_touching_a_text_field_opens_the_keyboard(self):
+        # KWin's panel shown (a touch on a text field): it opens, long after any controller use; hidden: nothing.
+        pad, out = self.make()
+        pad.command({'cmd': 'window', 'cls': 'org.kde.dolphin', 'caption': 'Home', 'fullscreen': False, 'kind': 'normal', 'now': 0.0})
+        n = len(out.sent)
+        pad.command({'cmd': 'touchfield', 'on': False})
+        self.assertEqual(len(out.sent), n)
+        pad.command({'cmd': 'touchfield', 'on': True})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        pad.command({'cmd': 'osk', 'open': True})
+        pad.command({'cmd': 'touchfield', 'on': True})   # already open: once
+        self.assertEqual(len(out.sent), n + 1)
+
     def test_hearth_apps_like_mantels(self):
         pad, out = self.make()
         def win(cls):

@@ -958,6 +958,8 @@ class Pad:
                                str(m.get('kind', '')), m.get('now'))
         elif c == 'textfield' and self.plasma:
             self.plasma_textfield(bool(m.get('on')), m.get('now'))
+        elif c == 'touchfield' and self.plasma:
+            self.plasma_touchfield(bool(m.get('on')))
 
     # ------------------------------------------------------------------ Hearth Plasma (--plasma)
     def plasma_keys(self):
@@ -1053,6 +1055,13 @@ class Pad:
         self.textfield = on
         if on and not was and self.win[0].lower() not in PLASMA_SHELL:
             self.plasma_auto_osk(now)
+
+    def plasma_touchfield(self, on):
+        """KWin showed its input panel: a text field was touched (KDE's keyboard would pop up here). Hearth's keyboard
+        opens, whenever the controller was last used (the controller rule above is for focus that came from it)."""
+        if on and self.mode != 'osk':
+            note('a text field was touched: the keyboard opens')
+            self.want_osk()
 
     def plasma_auto_osk(self, now):
         if self.mode == 'desk' and not self.paused and now - self.last_input < PLASMA_OSK_RECENT:
@@ -1858,6 +1867,19 @@ def plasma_bus(inbox):
                     pass
             bus.signal_subscribe('org.kde.KWin', 'org.kde.kwin.VirtualKeyboard', 'activeChanged', '/VirtualKeyboard',
                                  None, Gio.DBusSignalFlags.NONE, text_field)
+
+            # KWin shows its input method's panel when a text field got the keyboard from a touch (or a pen), never
+            # for the mouse or the keyboard: Hearth's typing (hearth-kwin-im --panel) has an invisible one, so this
+            # is when Hearth's keyboard opens for touch, as KDE's keyboard did.
+            def touch_field(conn, sender, path, iface, signal, params):
+                try:
+                    on = call(bus, 'org.kde.KWin', '/VirtualKeyboard', 'org.freedesktop.DBus.Properties', 'Get',
+                              GLib.Variant('(ss)', ('org.kde.kwin.VirtualKeyboard', 'visible')), '(v)').unpack()[0]
+                    inbox.put({'cmd': 'touchfield', 'on': bool(on)})
+                except GLib.Error:
+                    pass
+            bus.signal_subscribe('org.kde.KWin', 'org.kde.kwin.VirtualKeyboard', 'visibleChanged', '/VirtualKeyboard',
+                                 None, Gio.DBusSignalFlags.NONE, touch_field)
 
             def first():
                 try:

@@ -43,7 +43,9 @@ kde() {
 child=""
 trap 'if [ -n "$child" ]; then kill -TERM "$child" 2>/dev/null; wait "$child" 2>/dev/null; fi; exit 0' TERM INT HUP
 t0=$(date +%s)
-"$IM" &
+# --panel: KWin shows its (invisible) input panel when a text field is touched, as for KDE's keyboard, and
+# hearth-pad --plasma opens Hearth's keyboard then.
+"$IM" --panel &
 child=$!
 wait "$child"
 rc=$?

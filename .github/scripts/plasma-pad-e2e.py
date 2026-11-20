@@ -473,6 +473,41 @@ if open_now:
     press('b', after=1.0)
 shot('pad-k33-live-all-closed')
 
+# Touch users keep their pop-up keyboard: a finger on a text field opens Hearth's keyboard (KWin shows Hearth's
+# typing's input panel only for touch, as for KDE's keyboard); a mouse click on one doesn't. No controller use for
+# 10 s first, so the controller rule (8 s) can't be what opens it.
+press('b', after=0.3)
+time.sleep(10)
+
+
+def kb_open():
+    return [w for w in kwin_windows() if len(w) == 6 and w[0] == 'hearth-pad-host' and w[5] > 150]
+
+
+mw = window(id='org.hearth.PadMouse', title='Mouse', text='A text field clicked with the mouse.', max='1')
+click(500, 117)
+time.sleep(2.0)
+v = vk()
+opened = kb_open()
+notice('mouse click on a text field', 'KWin %s · keyboard %s' % (v, 'OPEN' if opened else 'not open'))
+shot('pad-k34-mouse-click-text-field')
+if opened:
+    error('mouse click', "a mouse click on a text field opened the keyboard (only touch and the controller may)")
+close(mw)
+tw = window(id='org.hearth.PadTouch', title='Touch', text='A text field touched with a finger.', max='1')
+fake('td 1 500 117', 'tf')
+time.sleep(0.1)
+fake('tu 1', 'tf')
+time.sleep(2.5)
+v = vk()
+opened = kb_open()
+notice('touch on a text field', 'KWin %s · keyboard %s · %s' % (v, 'open' if opened else 'NOT open', tail(pad_log, 300)))
+shot('pad-k35-touch-text-field')
+if not opened:
+    error('touch', "touching a text field didn't open Hearth's keyboard: KWin %s" % v)
+press('b', after=0.8)
+close(tw)
+
 # At rest again (nothing open): nothing may run.
 time.sleep(14)
 c = cpu(host.pid, 15)
