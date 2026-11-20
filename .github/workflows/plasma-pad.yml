@@ -169,6 +169,8 @@ jobs:
           rm -f "$HOME/.config/kwinrc"
           # Touch users keep their pop-up keyboard: a fresh session (no touch before), KWin's own pointer and touch.
           rm -f "$XDG_RUNTIME_DIR/hearth/kwin-im-failed"
+          # KDE's own panel at the bottom again (a fresh Plasma layout), so the test window's field is where it's expected.
+          rm -f "$HOME/.config/plasma-org.kde.plasma.desktop-appletsrc" "$HOME/.config/plasmashellrc"
           session_start touch && python3 .github/scripts/plasma-pad-touch.py test shots bin || rc=1
           session_stop touch
           exit $rc

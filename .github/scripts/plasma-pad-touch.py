@@ -92,7 +92,7 @@ def test(out, bin_dir):
             err('picture ' + name, repr(e))
 
     def window(wid, title, text):
-        p = subprocess.Popen(['python3', '/tmp/padwin.py', 'id=' + wid, 'title=' + title, 'text=' + text, 'fullscreen=1'],
+        p = subprocess.Popen(['python3', '/tmp/padwin.py', 'id=' + wid, 'title=' + title, 'text=' + text, 'max=1'],
                              env=dict(os.environ, GDK_BACKEND='wayland'), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(3.5)
         return p
@@ -107,9 +107,9 @@ def test(out, bin_dir):
     time.sleep(6)
     im = subprocess.run(['pgrep', '-af', 'libexec/hearth/hearth-kwin-im( |$)'], capture_output=True, text=True).stdout.strip()
     note('touch session', 'hearth-kwin-im: %s · KWin: %s' % (im or 'NOT running', vk()))
-    # The field in a fullscreen test window sits at y 88 (nothing above it). The mouse first, with no controller use.
+    # The field in a maximized test window sits at y 117 (KDE's own panel at the bottom: a fresh Plasma). The mouse first, with no controller use.
     mw = window('org.hearth.PadMouse', 'Mouse', 'A text field clicked with a real mouse.')
-    dev('click 600 88')
+    dev('click 600 117')
     time.sleep(2.0)
     v = vk()
     note('mouse click on a text field (real mouse)', 'KWin %s · keyboard %s' % (v, 'OPEN' if kb_open() else 'not open'))
@@ -120,7 +120,7 @@ def test(out, bin_dir):
         err('mouse click', 'a mouse click on a text field opened the keyboard (only touch and the controller may)')
     close(mw)
     tw = window('org.hearth.PadTouch', 'Touch', 'A text field touched with a finger (a real touchscreen).')
-    dev('tap 600 88')
+    dev('tap 600 117')
     time.sleep(2.5)
     v = vk()
     note('touch on a text field (real touchscreen)', 'KWin %s · keyboard %s · pad.log %s' % (v, 'open' if kb_open() else 'NOT open', tail(pad_log, 300)))
