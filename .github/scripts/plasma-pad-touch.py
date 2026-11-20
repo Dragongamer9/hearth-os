@@ -121,6 +121,20 @@ def test(out, bin_dir):
     if kb_open():
         err('mouse click', 'a mouse click on a text field opened the keyboard (only touch and the controller may)')
     close(mw)
+    # The same over a fullscreen window (a fullscreen browser), still with no touch yet in this session: KWin's
+    # pointer events here can't make KWin forget an earlier touch (a real mouse does, through libinput), so every
+    # no-touch check comes before the first touch. The field of a fullscreen test window sits at y 88.
+    fw = window('org.hearth.PadFullMouse', 'Fullscreen', 'A fullscreen window: its field clicked with the pointer.', 'full')
+    dev('click 600 88')
+    time.sleep(2.0)
+    v = vk()
+    note('fullscreen, pointer click', 'KWin %s · keyboard %s · %s' % (v, 'OPEN' if kb_open() else 'not open', tail(pad_log, 300)))
+    shot('pad-k37-fullscreen-click-no-keyboard')
+    if v.get('active') not in ('1', 'True'):
+        err('fullscreen click', "the click didn't reach the fullscreen window's field (KWin %s)" % v)
+    if kb_open():
+        err('fullscreen click', 'the keyboard opened over a fullscreen window without a touch')
+    close(fw)
     tw = window('org.hearth.PadTouch', 'Touch', 'A text field touched (KWin\'s own touch events).')
     dev('tap 600 117')
     time.sleep(2.5)
@@ -137,25 +151,7 @@ def test(out, bin_dir):
     if kb_open():
         err('close', 'the keyboard came back by itself after B closed it')
     close(tw)
-    # Over a fullscreen window (a fullscreen browser): no touch, no keyboard; a touch tap opens it. The field of a
-    # fullscreen test window sits at y 88.
-    time.sleep(4)
-    # The pointer used last (the touch above is behind us), as when you use the mouse after touching: a click on the
-    # empty desktop.
-    dev('click 900 600')
-    time.sleep(1.0)
-    note('before the fullscreen window', 'KWin %s' % vk())
-    fw = window('org.hearth.PadFullMouse', 'Fullscreen', 'A fullscreen window: its field clicked with the pointer.', 'full')
-    dev('click 600 88')
-    time.sleep(2.0)
-    v = vk()
-    note('fullscreen, pointer click', 'KWin %s · keyboard %s · %s' % (v, 'OPEN' if kb_open() else 'not open', tail(pad_log, 300)))
-    shot('pad-k37-fullscreen-click-no-keyboard')
-    if v.get('active') not in ('1', 'True'):
-        err('fullscreen click', "the click didn't reach the fullscreen window's field (KWin %s)" % v)
-    if kb_open():
-        err('fullscreen click', 'the keyboard opened over a fullscreen window without a touch')
-    close(fw)
+    # A touch tap opens it over a fullscreen window too (a fullscreen browser). Its field sits at y 88.
     fw = window('org.hearth.PadFullTouch', 'Fullscreen', 'A fullscreen window: its field touched.', 'full')
     dev('tap 600 88')
     time.sleep(2.5)
