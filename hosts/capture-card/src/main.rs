@@ -145,8 +145,21 @@ pub struct App {
     b_down: bool,
     retry: u32,
     pub size: (f32, f32),
+    allocating: bool,
+    next_frame: Option<(image::Handle, u64, Instant)>,
+    shown: Option<Alloc>,
     pub encoders: (Option<String>, Option<String>),
     note_gen: u64,
+}
+
+/// A frame's place in the renderer's memory, kept while it's on screen.
+#[derive(Clone)]
+pub struct Alloc(std::sync::Arc<std::sync::Mutex<Option<image::Allocation>>>);
+
+impl std::fmt::Debug for Alloc {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Alloc")
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -205,6 +218,7 @@ pub enum Msg {
     Leave,
     NoteOff,
     NoteHide(u64),
+    Allocated(image::Handle, u64, Instant, Alloc),
     Size(f32, f32),
     None,
 }
@@ -402,6 +416,9 @@ impl App {
             b_down: false,
             retry: 0,
             size: (1920.0, 1080.0),
+            allocating: false,
+            next_frame: None,
+            shown: None,
             encoders: (None, None),
             note_gen: 0,
         };
@@ -1091,6 +1108,27 @@ fn handle(a: &mut App, m: Msg) -> Task<Msg> {
             }
             Task::none()
         }
+        Msg::Allocated(h, base, at, alloc) => {
+            a.allocating = false;
+            let ok = alloc.0.lock().map(|g| g.is_some()).unwrap_or(false);
+            if ok && matches!(a.sig, Sig::Live | Sig::Starting) {
+                // From the card to the screen: to now, plus the screen's next refresh (about 16 ms at 60 Hz).
+                let total = base + at.elapsed().as_millis() as u64 + 16;
+                a.delay_acc.0 += total;
+                a.delay_acc.1 += 1;
+                if a.delay_ms.is_none() || a.delay_acc.2.elapsed() >= Duration::from_secs(1) {
+                    a.delay_ms = Some((a.delay_acc.0 / a.delay_acc.1.max(1) as u64) as u32);
+                    a.delay_acc = (0, 0, Instant::now());
+                    remember_live(a);
+                }
+                a.frame = Some(h);
+                a.shown = Some(alloc);
+            }
+            match a.next_frame.take() {
+                Some((h, b, t)) if video::running() => show_frame(a, h, b, t),
+                _ => Task::none(),
+            }
+        }
         Msg::NoteOff => {
             a.note = None;
             Task::none()
@@ -1139,6 +1177,15 @@ fn set_items(a: &mut App, v: Vec<Item>) {
     if a.sel >= n {
         a.sel = n.saturating_sub(1);
     }
+}
+
+/// iced 0.14 loads images in the background: a frame is shown once it's ready for the screen (allocated), so the
+/// picture never goes blank while frames keep coming (the graphics card's renderer would otherwise always be one new
+/// frame behind and show none). The allocation is kept until the next frame replaces it.
+fn show_frame(a: &mut App, h: image::Handle, base: u64, at: Instant) -> Task<Msg> {
+    a.allocating = true;
+    let h2 = h.clone();
+    image::allocate(h).map(move |r| Msg::Allocated(h2.clone(), base, at, Alloc(std::sync::Arc::new(std::sync::Mutex::new(r.ok())))))
 }
 
 fn on_video(a: &mut App, e: VEv) -> Task<Msg> {
@@ -1193,21 +1240,16 @@ fn on_video(a: &mut App, e: VEv) -> Task<Msg> {
             Task::batch(t)
         }
         VEv::Frame => {
-            if std::env::var_os("HEARTH_CAPTURE_STILL").is_some() && a.frame.is_some() {
-                // CI's check of how the graphics card draws: the first frame only.
-                let _ = video::frame();
-                return Task::none();
-            }
             if let Some(f) = video::frame() {
-                let total = f.delay_ns / 1_000_000 + f.at.elapsed().as_millis() as u64 + 16;
-                a.delay_acc.0 += total;
-                a.delay_acc.1 += 1;
-                if a.delay_ms.is_none() || a.delay_acc.2.elapsed() >= Duration::from_secs(1) {
-                    a.delay_ms = Some((a.delay_acc.0 / a.delay_acc.1.max(1) as u64) as u32);
-                    a.delay_acc = (0, 0, Instant::now());
-                    remember_live(a);
+                // The card's frame to this moment, in ms.
+                let base = f.delay_ns / 1_000_000 + f.at.elapsed().as_millis() as u64;
+                let h = image::Handle::from_rgba(f.w, f.h, f.rgba);
+                if a.allocating {
+                    // One frame is being made ready for the screen: the newest waits (older ones are dropped).
+                    a.next_frame = Some((h, base, Instant::now()));
+                    return Task::none();
                 }
-                a.frame = Some(image::Handle::from_rgba(f.w, f.h, f.rgba));
+                return show_frame(a, h, base, Instant::now());
             }
             Task::none()
         }

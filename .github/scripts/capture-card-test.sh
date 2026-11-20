@@ -202,8 +202,6 @@ if want cc-1-viewer; then
 fi
 # The graphics card's drawing (Mesa's software Vulkan here), the viewer and a page of thumbnails.
 HEARTH_RENDERER=gpu run cc-1g-viewer-gpu 0 6 --show bar,pill
-HEARTH_RENDERER=gpu HEARTH_CAPTURE_STILL=1 run cc-1h-viewer-gpu-still 0 6 --show bar,pill
-HEARTH_RENDERER=gpu HEARTH_CAPTURE_OUT=1280x720 run cc-1i-viewer-gpu-720 0 6 --show bar,pill
 HEARTH_RENDERER=gpu run cc-4g-screenshots-gpu 0 6 --page screenshots
 # The bar and the pill hidden: nothing else on screen.
 run cc-1c-viewer-bar-hidden 0 9 --show pill-only

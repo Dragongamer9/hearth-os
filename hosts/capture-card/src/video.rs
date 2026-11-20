@@ -148,10 +148,7 @@ pub fn describe(ask: &Ask, va: bool, have_pw: bool) -> String {
         (false, true) => "identity name=dec",
         (false, false) => "identity name=dec",
     };
-    // HEARTH_CAPTURE_OUT=WxH: the window's picture at that size (CI's checks of how the graphics card draws it).
-    let out = std::env::var("HEARTH_CAPTURE_OUT").ok().and_then(|s| crate::prefs::parse_size(&s)).map(|(w, h)| format!(",width={w},height={h}")).unwrap_or_default();
-    let scale = if out.is_empty() { "" } else { "videoscale ! " };
-    let to_rgba = if va { format!("vapostproc ! video/x-raw,format=RGBA{out}") } else { format!("videoconvert n-threads=2 ! {scale}video/x-raw,format=RGBA{out}") };
+    let to_rgba = if va { "vapostproc ! video/x-raw,format=RGBA" } else { "videoconvert n-threads=2 ! video/x-raw,format=RGBA" };
     let view = if ask.low_delay {
         format!("vt. ! queue name=vq max-size-buffers=1 max-size-bytes=0 max-size-time=0 leaky=downstream ! {to_rgba} ! appsink name=pic sync=false max-buffers=1 drop=true")
     } else {
