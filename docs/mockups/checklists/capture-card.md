@@ -88,3 +88,10 @@ v4l2loopback refuses MJPEG from GStreamer's v4l2sink).
 Needs a real card on a device: the real USB card's name, chip and speed, its microphone being picked, the graphics
 card's JPEG decoder (VA-API; it falls back to the CPU by itself), the delay with real hardware, CPU while showing a
 picture on the laptop (CI draws with the CPU: 130 % there is CI's software drawing), keep-awake.
+
+Coordinator's follow-ups (Nov 20): the overlays (bar, pills, quick menu) draw over the whole window at any screen
+shape. The picture is one widget the window's size with its own black bars, and is pictured at 1280 × 800 on both
+renderers (cc-5d CPU, cc-5f graphics card). The focus ring is drawn 3 px outside the control (look.rs Outline) and takes
+no room. "Newest first ▾" is a real drop-down with Newest first, Oldest first, Name (A to Z), Biggest first and Longest
+first (recordings) (cc-4d). Each frame is shown once iced has it ready for the screen (image::allocate). Before that
+the graphics card's renderer showed no live picture at all (cc-1g). The delay readout is measured to that moment.
