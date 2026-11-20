@@ -235,11 +235,13 @@ printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=/usr/games/steam %%U
 STALE="python3 $SRC/hosts/linux/desktop/shell/hearth-stale-launchers"
 $STALE scan > "$OUT/stale-scan.json"
 grep -q '"missing": "/usr/games/steam"' "$OUT/stale-scan.json" && ok "stale entry found" || fail stale "Debian's steam.desktop wasn't found: $(cat "$OUT/stale-scan.json")"
+timeout 40 dbus-monitor --session "interface='org.freedesktop.Notifications'" > "$OUT/stale-dbus.txt" 2>&1 &
 $STALE check > "$OUT/stale-check.json" 2>&1 &
 sleep 4; shot plasma-6-stale-menu-entry-notice
 echo "::notice title=Menu entry notice::notify-send: $(command -v notify-send || echo missing) | running: $(pgrep -af 'notify-send' | head -2 | tr '\n' ' ')"
 hearth-plasma-panel open calendar >/dev/null 2>&1; sleep 3; shot plasma-6b-stale-notice-in-dashboard; hearth-plasma-panel open calendar >/dev/null 2>&1; sleep 1
 pkill -f "hearth-stale-launchers check"; pkill -f "notify-send -a Hearth"; sleep 1
+echo "::notice title=Menu entry notice on D-Bus::$(grep -c 'member=Notify' "$OUT/stale-dbus.txt") Notify call(s); $(grep -o 'member=[A-Za-z]*' "$OUT/stale-dbus.txt" | sort | uniq -c | tr '\n' ' ')"
 [ -e "$HOME/.local/share/applications/steam.desktop" ] && ok "nothing changed without a click" || fail stale "the entry changed without a click"
 $STALE fix "$HOME/.local/share/applications/steam.desktop" > "$OUT/stale-fix.json" 2>&1
 [ -e "$HOME/.local/share/applications/steam.desktop.hearth-old" ] && [ ! -e "$HOME/.local/share/applications/steam.desktop" ] && ok "Use the system one renamed it" || fail stale "fix: $(cat "$OUT/stale-fix.json")"

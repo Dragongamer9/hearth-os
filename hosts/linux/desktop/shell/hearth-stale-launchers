@@ -164,8 +164,48 @@ def undo(old):
     return {'ok': True, 'file': base}
 
 
+def notify_gio(title, body, actions):
+    """The notice through the session's notification service (org.freedesktop.Notifications) with GLib's D-Bus, waiting
+    in GLib's main loop (no CPU) for a button or its closing. None when GLib's Python bindings aren't here."""
+    try:
+        from gi.repository import Gio, GLib
+    except Exception:  # noqa: BLE001 - not installed: notify-send instead
+        return None
+    try:
+        bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        flat = []
+        for k, label in actions:
+            flat += [k, label]
+        hints = {'urgency': GLib.Variant('y', 1), 'desktop-entry': GLib.Variant('s', 'hearth')}
+        r = bus.call_sync('org.freedesktop.Notifications', '/org/freedesktop/Notifications', 'org.freedesktop.Notifications',
+                          'Notify', GLib.Variant('(susssasa{sv}i)', ('Hearth', 0, 'dialog-warning', title, body, flat, hints, 0)),
+                          GLib.VariantType('(u)'), Gio.DBusCallFlags.NONE, 10000, None)
+        nid = r.unpack()[0]
+    except Exception:  # noqa: BLE001 - no notification service: nothing to show
+        return ''
+    loop, out = GLib.MainLoop(), {'pick': ''}
+
+    def on_signal(_c, _s, _p, _i, name, params):
+        v = params.unpack()
+        if v[0] != nid:
+            return
+        if name == 'ActionInvoked':
+            out['pick'] = v[1]
+        loop.quit()
+    subs = [bus.signal_subscribe('org.freedesktop.Notifications', 'org.freedesktop.Notifications', n,
+                                 '/org/freedesktop/Notifications', None, Gio.DBusSignalFlags.NONE, on_signal)
+            for n in ('ActionInvoked', 'NotificationClosed')]
+    loop.run()
+    for sid in subs:
+        bus.signal_unsubscribe(sid)
+    return out['pick']
+
+
 def notify(title, body, actions):
     """A notice with buttons; waits (blocked, no CPU) until it's answered or closed. The chosen action, or ''."""
+    pick = notify_gio(title, body, actions)
+    if pick is not None:
+        return pick
     argv = ['notify-send', '-a', 'Hearth', '-i', 'dialog-warning', '--wait']
     for k, label in actions:
         argv += ['-A', f'{k}={label}']
