@@ -35,8 +35,21 @@ PlasmoidItem {
     function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
     function helper(args, cb) { sh.run("hearth-firehold-plasma " + args.map(q).join(" "), cb); }
     // The app's own menus (KDE's global menu widget next to this one) or, for an app with none, Hearth's standard ones.
-    Loader { id: probe; source: "AppMenuProbe.qml" }
-    readonly property bool ownMenus: probe.status === Loader.Ready && probe.item.available
+    // Whether the app in front has menus of its own (hearth-firehold-plasma menus PID: a Qt Widgets or GTK app with
+    // the app menu module), asked when the app in front changes.
+    property bool ownMenus: true
+    onPidChanged: if (pid > 0) helper(["menus", String(pid)], function (t) { root.ownMenus = t.trim() !== "standard"; })
+    property int listenFails: 0
+    function listen() {
+        helper(["listen", "bar-app"], function (t) {
+            const l = t.trim();
+            if (l === "" || l.indexOf("error") === 0) { root.listenFails += 1; if (root.listenFails < 3) root.listen(); return; }
+            root.listenFails = 0;
+            root.handlePing(l);
+            root.listen();
+        });
+    }
+    Component.onCompleted: listen()
     property var screens: []
     function readScreens() { helper(["modes"], function (t) { try { root.screens = JSON.parse(t.trim().split("\n").pop()).screens || []; } catch (e) {} }); }
     function modeName(m) { return m === "couch" ? "Couch" : m === "away" ? "Away" : "Desk"; }
@@ -73,8 +86,9 @@ PlasmoidItem {
     property Item menuRow: null
     // hearth-firehold-plasma ping menu-window (the checks' pictures): a standard menu opens as if pressed.
     readonly property string ping: Plasmoid.configuration.modes || ""
-    onPingChanged: {
-        const w = ping.split("|")[0];
+    onPingChanged: handlePing(ping)
+    function handlePing(v) {
+        const w = v.split("|")[0];
         if (w === "menu-off") open = "";
         else if (w.indexOf("menu-") === 0 && menuRow) {
             const which = w.slice(5);
@@ -116,7 +130,7 @@ PlasmoidItem {
                     anchors.verticalCenter: parent.verticalCenter
                     width: mt.implicitWidth + 24; height: 30; radius: 8
                     color: root.open === modelData[0] ? "#2eff7a2f" : "transparent"
-                    Text { id: mt; anchors.centerIn: parent; text: modelData[1]; color: "#d8d1ca"; font.pixelSize: 15 }
+                    Text { id: mt; anchors.centerIn: parent; text: modelData[1]; color: Kirigami.Theme.textColor; font.pixelSize: 15 }
                     MouseArea { anchors.fill: parent; onClicked: { if (modelData[0] === "window") root.readScreens(); root.menuAnchor = mb; root.open = modelData[0]; } }
                 }
             }

@@ -20,9 +20,9 @@ Window {
     width: screen ? screen.width : 1920
     height: screen ? screen.height : 1080
     LayerShell.Window.scope: "hearth-firehold-couch"
-    LayerShell.Window.layer: LayerShell.Window.LayerTop
+    LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
-    LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityOnDemand
+    LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityExclusive
     LayerShell.Window.exclusionZone: -1
     function show() {
         visible = true; requestActivate(); couch.forceActiveFocus();

@@ -376,10 +376,26 @@ def ask(cmd):
     dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript', 'string:' + js, reply=False)
 
 
-def listen():
+def bar_tell(msg):
+    """The Desk bar's applets (the mode pill, the app tile): each listens on its own FIFO (hearth-firehold-plasma
+    listen bar-posture / bar-app, asleep until a line comes); one that isn't listening is skipped."""
+    for name in ('bar-posture', 'bar-app'):
+        try:
+            fd = os.open(requests_path() + '-' + name, os.O_WRONLY | os.O_NONBLOCK)
+        except OSError:
+            continue
+        try:
+            os.write(fd, (msg + '\n').encode())
+        except OSError:
+            pass
+        finally:
+            os.close(fd)
+
+
+def listen(name=''):
     """The Couch's ear: waits (asleep in select, no polling) for one request on a FIFO in $XDG_RUNTIME_DIR, prints it
     and ends; the Couch starts it again. Ends by itself when the plasmashell that started it is gone."""
-    p = requests_path()
+    p = requests_path() + ('-' + name if name else '')
     try:
         os.mkfifo(p, 0o600)
     except FileExistsError:
@@ -401,7 +417,7 @@ def listen():
                 continue
             if b'\n' in buf:
                 line = buf.split(b'\n', 1)[0].decode(errors='replace').strip()
-                if re.match(r'^[a-z]+(:[a-z0-9_.-]{1,40})?$', line):
+                if re.match(r'^[a-z]+(:[a-z0-9_.-]{1,40})?$', line) or (name and re.match(r'^[a-z-]+\|\d+\|[A-Za-z0-9_.-]{0,40}$', line)):
                     print(line)
                     sys.stdout.flush()
                     return 0
@@ -593,6 +609,7 @@ def ping_modes(what='modes', screen=''):
     """The Couch and the Desk's posture applets read the modes again (Plasma's scripting: their "modes" key; the time
     is all it carries)."""
     v = '%s|%d|%s' % (what, int(time.time() * 1000), screen)
+    bar_tell(v)
     js = ('var v="%s";desktops().forEach(function(d){if(d.type=="%s"){d.currentConfigGroup=["General"];d.writeConfig("request",v);}});'
           'panels().forEach(function(p){p.widgets().forEach(function(w){if(w.type=="org.hearthos.firehold.posture"||w.type=="org.hearthos.firehold.app"){'
           'w.currentConfigGroup=["General"];w.writeConfig("modes",v);}});});' % (v, CONTAINMENT))
@@ -1227,6 +1244,18 @@ WINDOW_JS = {
     'snap-left': 'workspace.slotWindowQuickTileLeft();',
     'snap-right': 'workspace.slotWindowQuickTileRight();',
 }
+
+
+def own_menus(pid):
+    """Whether an app has menus of its own for KDE's global menu: a Qt Widgets app (KDE's, most Qt apps) or a GTK app
+    with the app menu module exports them; games, Windows apps (Wine), Electron and Qt Quick apps don't."""
+    try:
+        maps = open('/proc/%d/maps' % pid, encoding='utf-8', errors='replace').read()
+    except OSError:
+        return True      # can't tell: the app's own (KDE's global menu shows whatever it has)
+    if re.search(r'libQt[56]Widgets\.so', maps):
+        return True
+    return 'appmenu-gtk-module' in maps or 'libappmenu-gtk' in maps
 
 
 def window_action(what, arg=''):
@@ -1972,6 +2001,8 @@ def main(argv):
             # The Desk's mode pill and the Couch: read the modes again, open or close Modes (on SCREEN), Identify.
             scr = a[1] if len(a) > 1 and re.match(r'^[A-Za-z0-9_.-]{1,40}$', a[1]) else ''
             ping_modes(a[0], scr)
+        elif what == 'menus' and a and a[0].isdigit():
+            print('own' if own_menus(int(a[0])) else 'standard')
         elif what == 'tip':
             # The Desk bar's first-run tip: shown once (state in ~/.local/state, not a setting).
             f = os.path.join(os.path.dirname(state_path()), 'firehold-bar-tip')
@@ -2006,7 +2037,7 @@ def main(argv):
         elif what == 'ask' and a:
             ask(a[0])
         elif what == 'listen':
-            return listen()
+            return listen(a[0] if a and a[0] in ('bar-posture', 'bar-app') else '')
         elif what == 'state' and a and a[0] in ('front', 'back', 'guide'):
             write_small(os.path.join(run_dir(), 'front'), a[0])
         elif what == 'tab':

@@ -65,8 +65,20 @@ PlasmoidItem {
     }
     function modeName(m) { return m === "couch" ? "Couch" : m === "away" ? "Away" : "Desk"; }
     readonly property string modesPing: Plasmoid.configuration.modes || ""
-    onModesPingChanged: {
-        const parts = modesPing.split("|");
+    onModesPingChanged: handlePing(modesPing)
+    // The helper's own channel to this applet (a FIFO it sleeps on, like the Couch's ear).
+    property int listenFails: 0
+    function listen() {
+        helper(["listen", "bar-posture"], function (t) {
+            const l = t.trim();
+            if (l === "" || l.indexOf("error") === 0) { root.listenFails += 1; if (root.listenFails < 3) root.listen(); return; }
+            root.listenFails = 0;
+            root.handlePing(l);
+            root.listen();
+        });
+    }
+    function handlePing(v) {
+        const parts = v.split("|");
         const w = parts[0];
         if (w === "identify" || w === "identify-off") identifyOn = w === "identify";
         else if (w === "popup" || w === "popup-off") { if (!parts[2] || parts[2] === myScreen) popupOpen = w === "popup"; }
@@ -132,6 +144,7 @@ PlasmoidItem {
     Component.onCompleted: {
         helper(["ready", "org.hearthos.firehold.desk"]);
         askCards(true);
+        listen();
         helper(["tip"], function (t) { if (t.trim() === "show") root.tipShown = true; });
         helper(["sys"], function (t) { const o = root.lastJson(t); if (o) root.net = o.net || ""; });
         helper(["get"], function (t) { const o = root.lastJson(t); if (o && typeof o === "object") root.cfg = o; });
@@ -158,8 +171,8 @@ PlasmoidItem {
                     anchors.centerIn: parent
                     spacing: 8
                     Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 9; height: 9; radius: 4.5; color: root.me.mode === "couch" ? "#ff7a2f" : "#5bb8ff" }
-                    Text { anchors.verticalCenter: parent.verticalCenter; text: root.modeName(root.me.mode); color: "#f2ede8"; font.pixelSize: 14; font.weight: Font.DemiBold }
-                    Text { anchors.verticalCenter: parent.verticalCenter; visible: !!root.tv; text: root.tv ? "· TV: " + root.modeName(root.tv.mode) : ""; color: "#6f6a66"; font.pixelSize: 14; font.weight: Font.Medium }
+                    Text { anchors.verticalCenter: parent.verticalCenter; text: root.modeName(root.me.mode); color: Kirigami.Theme.textColor; font.pixelSize: 14; font.weight: Font.DemiBold }
+                    Text { anchors.verticalCenter: parent.verticalCenter; visible: !!root.tv; text: root.tv ? "· TV: " + root.modeName(root.tv.mode) : ""; color: Kirigami.Theme.disabledTextColor; font.pixelSize: 14; font.weight: Font.Medium }
                 }
                 MouseArea { anchors.fill: parent; onClicked: root.popupOpen = !root.popupOpen }
             }

@@ -1,6 +1,7 @@
 // One of the Desk bar's tray buttons (the mockups' .tray .t): a line icon (or the download ring) and a short text.
 import QtQuick
 import QtQuick.Shapes
+import org.kde.kirigami as Kirigami
 import "couch"
 
 Rectangle {
@@ -11,12 +12,12 @@ Rectangle {
     signal clicked()
     height: 34; radius: 9
     width: Math.max(34, row.implicitWidth + 18)
-    color: ma.containsMouse ? "#1affffff" : "transparent"
+    color: ma.containsMouse ? Qt.rgba(Kirigami.Theme.textColor.r, Kirigami.Theme.textColor.g, Kirigami.Theme.textColor.b, 0.1) : "transparent"
     Row {
         id: row
         anchors.centerIn: parent
         spacing: 6
-        Glyph { visible: tr.glyph !== ""; name: tr.glyph || "pad"; size: 17; color: "#dddddd"; anchors.verticalCenter: parent.verticalCenter }
+        Glyph { visible: tr.glyph !== ""; name: tr.glyph || "pad"; size: 17; color: Kirigami.Theme.textColor; anchors.verticalCenter: parent.verticalCenter }
         Shape {
             visible: tr.ring > -2
             width: 18; height: 18
@@ -25,7 +26,7 @@ Rectangle {
             ShapePath { strokeColor: "#444444"; strokeWidth: 3; fillColor: "transparent"; PathAngleArc { centerX: 9; centerY: 9; radiusX: 7.5; radiusY: 7.5; startAngle: 0; sweepAngle: 360 } }
             ShapePath { strokeColor: "#ff7a2f"; strokeWidth: 3; fillColor: "transparent"; PathAngleArc { centerX: 9; centerY: 9; radiusX: 7.5; radiusY: 7.5; startAngle: -90; sweepAngle: 360 * Math.max(0.05, tr.ring / 100) } }
         }
-        Text { visible: tr.text !== ""; text: tr.text; color: "#dddddd"; font.pixelSize: 14; anchors.verticalCenter: parent.verticalCenter }
+        Text { visible: tr.text !== ""; text: tr.text; color: Kirigami.Theme.textColor; font.pixelSize: 14; anchors.verticalCenter: parent.verticalCenter }
     }
     MouseArea { id: ma; anchors.fill: parent; hoverEnabled: true; onClicked: tr.clicked() }
 }
