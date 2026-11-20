@@ -111,8 +111,29 @@ battery fixes; on the owner's devices 1.14's shell used 13-27 % (with the contro
 second on top, a separate process). The pictures: hearth-os branch ci/labwc-fedora, copied to hearth-workspace
 `hearth/assets/1.16-labwc-fedora-shots`.
 
+### In the Fedora image itself (base-anatase.yml, run 44681524720)
+
+Mantel 0.15 % at rest (316 MB), Firehold on labwc 0.73 % (479 MB), Files 0.27-0.38 s. Three things the container
+didn't show, and what was done:
+- The first-run **Welcome & Tips** window (hearth-tools, WebKit) was open during the rest and used about 1.9 % of a
+  core on its own while just showing. It opens once per account; not changed here (it's hearth-tools'), noted for the
+  owner.
+- **One busy minute about 10 minutes after the shell starts**: 0.8 % (Mantel) and 6.3-6.6 % (Firehold, about 4 s of
+  the processor), with 5 frames and, in Firehold, 15 MB more for that minute. It isn't the screen turning off (run
+  44693525304 kept the screen on and it was still there) and it never shows in the plain Fedora container, so it's
+  something only the image has at that moment (the 10-minute shell-health and space checks, the firmware check, the
+  Hearth app's game list). **Still open**: the image run's required step fails on it.
+- **Firehold's memory** with the image's game pictures: 475 MB (limit 420 MB; Mantel 282 MB). Every tile also kept an
+  unused full-size mask picture without a graphics card (now only with one); that wasn't the main part. **Still
+  open.**
+
 ## Firehold on labwc and the 12 approved 1.16 Firehold mockups
 
 Firehold on labwc is Debian's Firehold as it was (Couch: Home, Library, Apps, Store, Everything open; the Guide; Couch
 and Desk settings; the Desk). The 1.16 mockups (docs/mockups/firehold-plasma on feature/firehold-plasma-1.16) are being
-built for Firehold on Plasma; Firehold on labwc doesn't have them yet: see the report of the run that pictured it.
+built for Firehold on Plasma; Firehold on labwc doesn't have them yet. Compared with its pictures it lacks: 01/02 Home's
+new layout (the status pills for downloads, controllers and Wi-Fi, the Media tab, the hero with Continue / Open in a
+window / Game page, Continue playing and Recently added rows, the Downloads, Controllers and Now playing cards),
+03 game options, 04 modes per screen (Couch on the TV, Desk on the monitor), 05 Settings › Modes, 06 Away, 07/08
+Quick Settings on the Desk and in the Couch, 09/10 Firehold's notification cards and history, 11/12 the Desk bar's
+app menus, standard menus and full status area.
