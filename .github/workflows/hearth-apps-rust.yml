@@ -55,7 +55,7 @@ jobs:
             exit 1
           fi
           ls -la target/release/ | grep hearth-
-          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app; do
+          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app; do
             echo "::notice title=size::$b $(du -h target/release/$b | cut -f1)"
           done
       - name: Tests
@@ -66,7 +66,7 @@ jobs:
       - name: Gather
         run: |
           mkdir -p bin
-          cp hosts/hearth-ui/target/release/hearth-task-manager hosts/hearth-ui/target/release/hearth-system-restore hosts/hearth-ui/target/release/hearth-reliability-history hosts/hearth-ui/target/release/hearth-settings-app hosts/hearth-ui/target/release/hearth-files-app hosts/hearth-ui/target/release/hearth-file-chooser hosts/hearth-ui/target/release/hearth-capture-app hosts/hearth-ui/target/release/hearth-pad-host hosts/hearth-ui/target/release/hearth-g15 hosts/hearth-ui/target/release/hearth-g15-app hosts/hearth-ui/target/release/hearth-store-app hosts/hearth-ui/target/release/hearth-server-app bin/
+          cp hosts/hearth-ui/target/release/hearth-task-manager hosts/hearth-ui/target/release/hearth-system-restore hosts/hearth-ui/target/release/hearth-reliability-history hosts/hearth-ui/target/release/hearth-settings-app hosts/hearth-ui/target/release/hearth-files-app hosts/hearth-ui/target/release/hearth-file-chooser hosts/hearth-ui/target/release/hearth-capture-app hosts/hearth-ui/target/release/hearth-pad-host hosts/hearth-ui/target/release/hearth-g15 hosts/hearth-ui/target/release/hearth-g15-app hosts/hearth-ui/target/release/hearth-store-app hosts/hearth-ui/target/release/hearth-server-app hosts/hearth-ui/target/release/hearth-resmon-app bin/
       - uses: actions/upload-artifact@v4
         with:
           name: hearth-apps-rust
@@ -101,7 +101,7 @@ jobs:
         run: |
           dnf -y install --skip-unavailable git sway cage wlopm grim procps-ng python3 python3-pillow util-linux shadow-utils libxkbcommon libwayland-client libwayland-cursor \
             mesa-vulkan-drivers vulkan-loader mesa-dri-drivers mesa-libEGL mesa-libgbm libglvnd-egl \
-            fontconfig rsms-inter-fonts google-noto-sans-fonts google-noto-sans-symbols-fonts dejavu-sans-fonts dejavu-sans-mono-fonts systemd >/dev/null
+            fontconfig rsms-inter-fonts google-noto-sans-fonts google-noto-sans-symbols-fonts dejavu-sans-fonts dejavu-sans-mono-fonts systemd kdialog qt6-qtwayland >/dev/null
           for b in sway cage wlopm grim swaymsg runuser; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed"; done
           fc-list | grep -qi inter && echo "::notice title=fonts::Inter is here" || echo "::warning title=fonts::no Inter (the mockups' font)"
       - uses: actions/checkout@v4
@@ -117,6 +117,14 @@ jobs:
       - name: The measurements (first frame, memory, CPU at rest, scrolling) and their limits
         if: always()
         run: bash .github/scripts/hearth-apps-rust-test.sh --report
+      # A step's notices stop at ten, and the apps' own fill the step above: Resource Monitor's measurements and the
+      # Fedora menu's dialogs get their own (written by .github/scripts/hearth-apps-rust-shots.d/resmon.sh, fedora-menu.sh).
+      - name: Resource Monitor at rest, and the Fedora menu's dialogs
+        if: always()
+        run: |
+          [ -f shots/resmon-results.txt ] || { echo "::warning title=resmon::no measurements (resmon.sh didn't run)"; exit 0; }
+          head -n 8 shots/resmon-results.txt | while read -r l; do echo "::notice title=resmon::$l"; done
+          rm -f shots/resmon-results.txt
       - name: The pictures taken (each posted by its own job)
         id: list
         if: always()

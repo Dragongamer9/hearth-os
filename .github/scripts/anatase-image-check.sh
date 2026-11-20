@@ -60,7 +60,9 @@ python3 - <<'PY' || fail=1
 import configparser, glob, os, shutil, sys
 dirs = (['/usr/share/hearth/app-kinds-plasma/applications'] if os.path.isdir('/usr/share/hearth/app-kinds-plasma/applications') else []) + \
     ['/usr/local/share/applications', '/usr/share/applications']
-must = {'hearth-settings.desktop', 'hearth-logs.desktop', 'hearth-send-logs.desktop', 'hearth-gamemode.desktop'}
+must = {'hearth-settings.desktop', 'hearth-logs.desktop', 'hearth-send-logs.desktop', 'hearth-gamemode.desktop',
+        # the owner, Nov 19: Resource Monitor (hearth-resmon-app), Windows apps and Join a friend's game show here too
+        'hearth-resmon.desktop', 'hearth-winapps.desktop', 'hearth-join.desktop'}
 named = ['hearth-calculator.desktop', 'hearth-camera.desktop', 'hearth-maps.desktop', 'hearth-write.desktop', 'hearth-sheets.desktop',
          'hearth-slides.desktop', 'hearth-paint.desktop', 'hearth-contacts.desktop', 'hearth-clock.desktop', 'hearth-calendar.desktop',
          'hearth-text.desktop', 'hearth-photos.desktop', 'hearth-player.desktop', 'hearth-terminal.desktop', 'hearth-documents.desktop',
@@ -96,6 +98,43 @@ for d in named:
         print('::warning title=Plasma menu::%s isn\'t in Plasma\'s menu: %s' % (d, next((h for h in hidden if h.startswith(d)), 'not in this image')))
 print('::notice title=Plasma menu (desktop-entry rules)::%d shown under KDE: %s' % (len(shown), ', '.join(shown)))
 print('::notice title=Plasma menu (hidden)::%s' % (', '.join(hidden) or 'none'))
+# One reader for PDFs and e-books shows under KDE (Hearth's Documents, or Reader: KDE's Okular build, or Okular), and it's
+# Plasma's default for them (kde-mimeapps.list, read first in Plasma), with its program here.
+def why_hidden(p):
+    c = configparser.RawConfigParser(strict=False, interpolation=None); c.optionxform = str
+    c.read(p)
+    e = c['Desktop Entry'] if c.has_section('Desktop Entry') else {}
+    if e.get('NoDisplay', '').lower() == 'true' or e.get('Hidden', '').lower() == 'true': return 'NoDisplay'
+    if e.get('OnlyShowIn') and 'KDE' not in e.get('OnlyShowIn').split(';'): return 'OnlyShowIn=' + e.get('OnlyShowIn')
+    if 'KDE' in (e.get('NotShowIn') or '').split(';'): return 'NotShowIn=KDE'
+    if e.get('TryExec') and not shutil.which(e.get('TryExec')): return 'TryExec missing'
+    prog = (e.get('Exec') or '').split()[0] if e.get('Exec') else ''
+    if prog and not shutil.which(prog): return 'program missing: ' + prog
+    return None
+def find(d):
+    return next((x + '/' + d for x in dirs if os.path.exists(x + '/' + d)), None)
+readers = [d for d in ('hearth-documents.desktop', 'hearth-reader.desktop', 'org.kde.okular.desktop') if find(d) and not why_hidden(find(d))]
+defaults = {}
+for lst in ('/etc/xdg/kde-mimeapps.list', '/usr/share/applications/mimeapps.list'):
+    c = configparser.RawConfigParser(strict=False, interpolation=None); c.optionxform = str
+    try:
+        c.read(lst)
+    except configparser.Error:
+        continue
+    if c.has_section('Default Applications'):
+        for m in ('application/pdf', 'application/epub+zip'):
+            if m not in defaults and c['Default Applications'].get(m):
+                defaults[m] = (c['Default Applications'][m].split(';')[0], lst)
+print('::notice title=Plasma menu (reader)::shown: %s; defaults: %s' % (', '.join(readers) or 'none', ', '.join('%s=%s (%s)' % (m, v[0], v[1]) for m, v in defaults.items()) or 'none'))
+if len(readers) != 1:
+    bad.append('one PDF and e-book reader (shown: %s)' % (', '.join(readers) or 'none'))
+for m in ('application/pdf', 'application/epub+zip'):
+    if readers and defaults.get(m, ('',))[0] != readers[0]:
+        bad.append('%s opens with %s, not %s' % (m, defaults.get(m, ('nothing',))[0], readers[0]))
+# KWin's helpers for Mantel aren't built for this edition: their entries aren't here either (no "isn't in this image").
+for k in ('im', 'cast'):
+    if os.path.exists('/usr/share/applications/hearth-kwin-%s.desktop' % k) and not os.access('/usr/libexec/hearth/hearth-kwin-%s' % k, os.X_OK):
+        bad.append('hearth-kwin-%s.desktop names a program that isn\'t here' % k)
 if bad:
     print('::error title=Plasma menu::Hearth apps that must be in Plasma\'s menu but aren\'t: ' + ', '.join(bad)); sys.exit(1)
 PY

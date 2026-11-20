@@ -19,6 +19,11 @@ echo "Anatase on Fedora $FEDORA"
 # Hearth's (os/system_files, shared with the Bazzite build), then this image's Anatase-specific ones on top.
 cp -avf /ctx/system_files/. /
 cp -avf /ctx/anatase_files/. /
+# KWin's own helpers for Mantel (hearth-kwin-im, hearth-kwin-cast: built only for the Debian edition) aren't in this
+# image: Plasma uses KDE's own input method and screen casting here. Their entries named programs that aren't here
+# (the build's "isn't in this image" warning), so they go, on this edition only.
+for k in im cast; do [ -x "/usr/libexec/hearth/hearth-kwin-$k" ] || rm -f "/usr/share/applications/hearth-kwin-$k.desktop"; done
+chmod 755 /usr/libexec/hearth/hearth-winapps-open /usr/libexec/hearth/hearth-join 2>/dev/null || true
 # From the Debian edition, as they are (os-bases/peppermint/system_files): Hearth's boot menu writer and its units (only
 # active on a PC whose boot menu is Hearth's, i.e. one that came here from Debian: their 10-hearth-anatase.conf drop-ins),
 # GRUB's Hearth theme, the writable system's units and their "run from the image's /usr" drop-ins, the /etc guard.
@@ -1384,12 +1389,18 @@ update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # helper, which finds the game or starts Play together. libsecret stays (other apps use the keyring; it was here before).
 dnf5 -y install --skip-unavailable --skip-broken libsecret || true
 if [ -f /usr/share/nimbus/desktop/shell/hearth-discord ]; then chmod 755 /usr/share/nimbus/desktop/shell/hearth-discord; fi
+# The Fedora edition (the owner, Nov 19): it shows in Plasma's menu as Join a friend's game, which asks for the invite
+# link (KDE's dialog) when it's opened from the menu (/usr/libexec/hearth/hearth-join, os-bases/anatase/system_files).
 cat > /usr/share/applications/hearth-join.desktop <<'DESKTOP'
 [Desktop Entry]
 Type=Application
-Name=Hearth (game invites)
-NoDisplay=true
-Exec=python3 /usr/share/nimbus/desktop/shell/hearth-discord join --link %u
+Name=Join a friend's game
+Comment=Open the invite link a friend sent you from Discord: their game, or Play together
+Exec=/usr/libexec/hearth/hearth-join %u
+TryExec=/usr/libexec/hearth/hearth-join
+Icon=hearth-connect
+Categories=Game;Network;
+Keywords=join;invite;discord;friend;play together;link;
 MimeType=x-scheme-handler/hearth;
 DESKTOP
 update-desktop-database -q /usr/share/applications 2>/dev/null || true
@@ -1475,7 +1486,7 @@ chmod 755 /usr/libexec/hearth-app-kinds
 # Manager, System Restore and Reliability history, the ones that ran only inside Mantel. They take those apps' own
 # menu entries and commands here (this edition has no Mantel), and are left out, with their entries as before, when
 # they weren't built or can't start.
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app; do
   [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
   install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/bin/$b"
   # (grep -c, not -q: under pipefail an early grep -q could cut ldd off and hide the match)
@@ -1540,7 +1551,66 @@ else
   rm -f /usr/share/applications/hearth-store.desktop /usr/lib/systemd/user/hearth-store-check.service /usr/lib/systemd/user/hearth-store-check.timer
 fi
 # <<< Hearth Store
-echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app; do [ -x /usr/bin/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/bin/$b | cut -f1)"; done)"
+# >>> Resource Monitor (Rust) (feature/resmon-rust; hosts/hearth-ui/apps/resmon, docs/mockups/checklists/resource-monitor.md)
+# Mantel's Resource Monitor runs only inside Mantel (Quickshell), which this edition doesn't have, so its menu entry
+# (hearth-resmon.desktop, OnlyShowIn=Nimbus) was hidden under Plasma. Here it's the pure-Rust hearth-resmon-app, with
+# the same helper (desktop/shell/hearth-resmon) and the same files. Its entry shows under KDE and opens it; the
+# hearth-resmon command opens it too (a tab name opens that tab; the helper's own words still go to the helper).
+# Debian's entry and command stay Mantel's (os/system_files, untouched).
+if [ -x /usr/bin/hearth-resmon-app ]; then
+  cat > /usr/share/applications/hearth-resmon.desktop <<DESKTOP
+[Desktop Entry]
+Name=Resource Monitor
+Comment=See inside this PC: its board, every part and port, and what each program uses, live
+Exec=/usr/bin/hearth-resmon-app
+TryExec=/usr/bin/hearth-resmon-app
+Icon=hearth-resmon
+Type=Application
+Categories=System;Monitor;
+Keywords=resource;monitor;resmon;hardware;motherboard;memory;ram;cpu;gpu;disk;network;ports;slots;sensors;temperature;
+StartupWMClass=hearth-resmon
+Actions=overview;processor;memory;disk;network;graphics;
+
+[Desktop Action overview]
+Name=Overview
+Exec=/usr/bin/hearth-resmon-app --page overview
+
+[Desktop Action processor]
+Name=Processor
+Exec=/usr/bin/hearth-resmon-app --page cpu
+
+[Desktop Action memory]
+Name=Memory
+Exec=/usr/bin/hearth-resmon-app --page memory
+
+[Desktop Action disk]
+Name=Disk
+Exec=/usr/bin/hearth-resmon-app --page disk
+
+[Desktop Action network]
+Name=Network
+Exec=/usr/bin/hearth-resmon-app --page network
+
+[Desktop Action graphics]
+Name=Graphics
+Exec=/usr/bin/hearth-resmon-app --page gpu
+DESKTOP
+  cat > /usr/bin/hearth-resmon <<'SH'
+#!/bin/sh
+# Opens Resource Monitor on the Fedora edition (hearth-resmon-app, pure Rust; os-bases/anatase/build.sh "Resource
+# Monitor (Rust)"). `hearth-resmon TAB` opens a tab (pc overview cpu memory disk network gpu); anything else goes to
+# the helper (hearth-resmon pc, sample…), as on Debian.
+case "${1:-}" in
+  "") exec /usr/bin/hearth-resmon-app ;;
+  open) exec /usr/bin/hearth-resmon-app ${2:+--page "$2"} ;;
+  pc|overview|cpu|memory|disk|network|gpu) exec /usr/bin/hearth-resmon-app --page "$1" ;;
+  *) exec python3 /usr/share/nimbus/desktop/shell/hearth-resmon "$@" ;;
+esac
+SH
+  chmod 755 /usr/bin/hearth-resmon
+fi
+# <<< Resource Monitor (Rust)
+echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app; do [ -x /usr/bin/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/bin/$b | cut -f1)"; done)"
 # The owner (Nov 18): every Hearth app that runs under Plasma is installed and shown in Plasma's menu, and Hearth's own
 # apps are the defaults there (menu and file types); KDE's apps stay installed but never take Hearth's place. So, for
 # Plasma (KDE) only, each kind's list becomes Hearth's own first (in Hearth Classic's order), then the Hearth KDE
