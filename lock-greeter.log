@@ -1,0 +1,24 @@
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+qml: hearth-lock-screen: loaded
+Property expectingPrompt for Qt::ItemDataRole(260) at QModelIndex(0,0,0x0,PAMAuthenticatorModel(0x5c84df821a20)) has no notify signal
+Property iconName for Qt::ItemDataRole(258) at QModelIndex(0,0,0x0,PAMAuthenticatorModel(0x5c84df821a20)) has no notify signal
+Property enabled for Qt::UserRole at QModelIndex(0,0,0x0,PAMAuthenticatorModel(0x5c84df821a20)) has no notify signal
+Property type for Qt::ItemDataRole(257) at QModelIndex(0,0,0x0,PAMAuthenticatorModel(0x5c84df821a20)) has no notify signal
+Property passwordField for Qt::ItemDataRole(259) at QModelIndex(0,0,0x0,PAMAuthenticatorModel(0x5c84df821a20)) has no notify signal
+Property tooltip for Qt::ItemDataRole(261) at QModelIndex(0,0,0x0,PAMAuthenticatorModel(0x5c84df821a20)) has no notify signal
+Property showPrompt for Qt::ItemDataRole(262) at QModelIndex(0,0,0x0,PAMAuthenticatorModel(0x5c84df821a20)) has no notify signal
+Locked at 1795154703
+kscreenlocker_greet: PamAuthenticators: Authenticator changed to PamAuthenticators::Authenticator::Regular
+kscreenlocker_greet: Worker not ready yet, cannot authenticate.
+kscreenlocker_greet: Worker not ready yet, cannot authenticate.
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.

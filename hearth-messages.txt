@@ -1,0 +1,8 @@
+      6 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:366:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+      6 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:358:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+      5 qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+      5 qml: plasma-hearth: notifications: service up
+      5 qml: plasma-hearth: Plasma's notification service is up: Hearth shows the notifications
+      3 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:366:5: QML Image: Cannot open: file:///.config/nimbus/wallpaper.png
+      3 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:358:5: QML Image: Cannot open: file:///.config/nimbus/wallpaper.jpg
+      1 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/main.qml:73:5: QML Loader (parent or ancestor of Image): Cannot open: file:///.config/nimbus/wallpaper.jpg

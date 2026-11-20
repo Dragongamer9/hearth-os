@@ -1,0 +1,224 @@
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+qt.qml.propertyCache.append: Member visible of the object PlasmaQuick::Dialog overrides a member of the base object. Consider renaming it or adding final or override specifier
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+kde.plasmashell: Activity added twice "3ff6721c-7650-4b48-b5bc-064c10a2fa99"
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+virtual QStringList Solid::Backends::UPower::UPowerManager::allDevices()  error:  QDBusError("org.freedesktop.DBus.Error.Disconnected", "Not connected to D-Bus server")
+qml: plasma-hearth: Plasma's notification service is up: Hearth shows the notifications
+qml: plasma-hearth: notifications: service up
+qml: plasma-hearth: Plasma's notification service is up: Hearth shows the notifications
+qml: plasma-hearth: notifications: service up
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:358:5: QML Image: Cannot open: file:///.config/nimbus/wallpaper.jpg
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/main.qml:73:5: QML Loader (parent or ancestor of Image): Cannot open: file:///.config/nimbus/wallpaper.jpg
+kf.coreaddons: "Could not find plugin plasma5support/dataengine/plasma_engine_statusnotifieritem"
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:366:5: QML Image: Cannot open: file:///.config/nimbus/wallpaper.png
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:358:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:366:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+qt.qml.propertyCache.append: Member visible of the object PlasmaQuick::Dialog overrides a member of the base object. Consider renaming it or adding final or override specifier
+virtual QStringList Solid::Backends::UPower::UPowerManager::allDevices()  error:  QDBusError("org.freedesktop.DBus.Error.Disconnected", "Not connected to D-Bus server")
+qml: plasma-hearth: Plasma's notification service is up: Hearth shows the notifications
+qml: plasma-hearth: notifications: service up
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:358:5: QML Image: Cannot open: file:///.config/nimbus/wallpaper.jpg
+kf.coreaddons: "Could not find plugin plasma5support/dataengine/plasma_engine_statusnotifieritem"
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:366:5: QML Image: Cannot open: file:///.config/nimbus/wallpaper.png
+qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:358:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:366:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+qt.qml.propertyCache.append: Member data of the object QQuickCanvasItem_QML_569 overrides a member of the base object. Consider renaming it or adding final or override specifier
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:358:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:366:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:358:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:366:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:358:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:366:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+qt.qml.propertyCache.append: Member visible of the object PlasmaQuick::Dialog overrides a member of the base object. Consider renaming it or adding final or override specifier
+virtual QStringList Solid::Backends::UPower::UPowerManager::allDevices()  error:  QDBusError("org.freedesktop.DBus.Error.Disconnected", "Not connected to D-Bus server")
+qml: plasma-hearth: Plasma's notification service is up: Hearth shows the notifications
+qml: plasma-hearth: notifications: service up
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:358:5: QML Image: Cannot open: file:///.config/nimbus/wallpaper.jpg
+kf.coreaddons: "Could not find plugin plasma5support/dataengine/plasma_engine_statusnotifieritem"
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:366:5: QML Image: Cannot open: file:///.config/nimbus/wallpaper.png
+qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:358:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:366:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+qt.qml.propertyCache.append: Final member StackingOrder is overridden in class QQmlDMAbstractItemModelData. The override won't be used.
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+qt.qml.propertyCache.append: Member visible of the object PlasmaQuick::Dialog overrides a member of the base object. Consider renaming it or adding final or override specifier
+qt.qml.propertyCache.append: Final member StackingOrder is overridden in class QQmlDMAbstractItemModelData. The override won't be used.
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+qml: plasma-hearth: Plasma's notification service is up: Hearth shows the notifications
+qml: plasma-hearth: notifications: service up
+qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.

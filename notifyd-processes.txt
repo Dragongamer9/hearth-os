@@ -1,0 +1,3 @@
+1723 python3 /usr/share/nimbus/desktop/plasma-hearth/hearth-plasma-panel notifyd-bridge
+1726 python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio
+3194 python3 /usr/share/nimbus/desktop/plasma-hearth/hearth-plasma-panel notifyd-wait 11
