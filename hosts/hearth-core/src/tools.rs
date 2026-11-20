@@ -74,6 +74,10 @@ pub fn problem(o: &Output) -> String {
 /// `cancel` stops it (and everything it started).
 pub fn run(t: &Tool, args: &[&str], env: &[(&str, String)], on_line: Option<Arc<dyn Fn(&str) + Send + Sync>>, cancel: Option<Arc<AtomicBool>>, timeout: Option<std::time::Duration>) -> Result<Output, String> {
     let exe = ensure(t)?;
+    // The tools run in Hearth's own tools folder. When the image carries the tool (/usr/lib/hearth/tools), nothing
+    // downloaded one, so that folder may not exist yet, and starting in a missing folder fails as "No such file or
+    // directory" (seen on a 1.13 PC: GOG installs never started).
+    let _ = std::fs::create_dir_all(dir());
     let mut cmd = Command::new(&exe);
     cmd.args(args).current_dir(dir()).env("PYTHONIOENCODING", "utf-8").env("PYTHONUNBUFFERED", "1")
         .stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
