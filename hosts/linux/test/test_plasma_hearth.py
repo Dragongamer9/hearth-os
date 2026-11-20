@@ -112,15 +112,17 @@ class Panel(unittest.TestCase):
         self.assertNotIn(('plasmanotifyrc', 'Notifications', 'CriticalInDndMode'), self.settings, 'one you never set is taken away again')
 
     def test_hearths_lock_screen_only_when_the_locker_shows_it(self):
+        self.h.lock_ok = lambda: (False, 'not here')
         self.h.apply()
-        self.assertNotIn(('kscreenlockerrc', 'Greeter', 'Theme'), self.settings, "a lock screen the locker can't show is never picked")
+        self.assertFalse(os.path.exists(self.h.lock_dropin()), "a lock screen the locker can't show is never picked")
         self.h.undo()
         self.h.lock_ok = lambda: (True, 'ok')
-        self.settings[('kscreenlockerrc', 'Greeter', 'Theme')] = 'org.kde.breeze.desktop'
         self.h.apply()
-        self.assertEqual(self.settings[('kscreenlockerrc', 'Greeter', 'Theme')], 'org.hearthos.mantel-lock')
+        t = open(self.h.lock_dropin()).read()
+        self.assertIn('Environment=PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock', t)
+        self.assertIn('plasma-kwin_wayland.service.d', self.h.lock_dropin(), 'only KWin (which starts the locker) gets it')
         self.h.undo()
-        self.assertEqual(self.settings[('kscreenlockerrc', 'Greeter', 'Theme')], 'org.kde.breeze.desktop', 'your lock screen comes back')
+        self.assertFalse(os.path.exists(self.h.lock_dropin()), "KDE's own lock screen comes back")
 
     def test_picking_it_again_keeps_what_undo_puts_back(self):
         self.settings[('plasmarc', 'OSD', 'Enabled')] = 'true'
@@ -185,11 +187,11 @@ class Build(unittest.TestCase):
             self.assertTrue(all('Quickshell' in a or 'WlrLayershell' in a or 'anchors {' in a or 'mask:' in a or 'resolvedUrl' in a for a in changed), changed)
             self.assertTrue(os.path.isfile(os.path.join(root, 'etc/skel', self.mark_rel())))
             self.assertTrue(os.path.isfile(os.path.join(root, 'etc/xdg/autostart/hearth-plasma-panel-login.desktop')))
-            lock = os.path.join(root, 'usr/share/plasma/look-and-feel/org.hearthos.mantel-lock')
+            lock = os.path.join(root, 'usr/share/plasma/shells/org.hearth.mantel-lock')
             self.assertEqual(open(os.path.join(lock, 'contents/lockscreen/LockScreen.qml')).read(),
                              open(os.path.join(ROOT, 'hosts/linux/desktop/kwin-lock/contents/lockscreen/LockScreen.qml')).read(),
                              "the lock screen is Mantel's own")
-            self.assertEqual(json.load(open(os.path.join(lock, 'metadata.json')))['KPackageStructure'], 'Plasma/LookAndFeel')
+            self.assertEqual(json.load(open(os.path.join(lock, 'metadata.json')))['KPackageStructure'], 'Plasma/Shell')
 
     def mark_rel(self):
         return os.path.join('.config', 'hearth', 'plasma-panel-new')

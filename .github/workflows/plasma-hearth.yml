@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
   push:
     branches: ['feature/plasma-hearth-menu']
-    paths: ['hosts/linux/desktop/plasma-hearth/**', 'hosts/linux/test/test_plasma_hearth.py', '.github/workflows/plasma-hearth.yml', '.github/scripts/plasma-hearth-shots.sh',
+    paths: ['hosts/linux/desktop/plasma-hearth/**', 'hosts/linux/test/test_plasma_hearth.py', 'hosts/linux/test/test_hearth_desk.py', 'hosts/linux/desktop/shell/hearth-desk', '.github/workflows/plasma-hearth.yml', '.github/scripts/plasma-hearth-shots.sh',
             'docs/mockups/checklists/plasma-hearth-bar.md']
 
 permissions:
@@ -79,7 +79,7 @@ jobs:
           done
           python3 -m py_compile hosts/linux/desktop/plasma-hearth/hearth-plasma-panel hosts/linux/desktop/plasma-hearth/transform.py || fail=1
           bash -n hosts/linux/desktop/plasma-hearth/install.sh .github/scripts/plasma-hearth-shots.sh || fail=1
-          timeout 300 python3 -m unittest hosts/linux/test/test_mockups.py hosts/linux/test/test_plasma_hearth.py >/tmp/py.out 2>&1 \
+          timeout 300 python3 -m unittest hosts/linux/test/test_mockups.py hosts/linux/test/test_plasma_hearth.py hosts/linux/test/test_hearth_desk.py >/tmp/py.out 2>&1 \
             || { echo "::error title=tests::$(grep -E '^(FAIL|ERROR|AssertionError|[A-Za-z]*Error)' /tmp/py.out | head -8 | tr '\n' '|' | cut -c1-900)"; fail=1; }
           python3 /usr/share/nimbus/desktop/plasma-hearth/hearth-plasma-panel apps | python3 -c 'import json,sys; a=json.load(sys.stdin); print("::notice title=apps::%d apps, e.g. %s" % (len(a), ", ".join(x["name"] for x in a[:8])))'
           exit $fail

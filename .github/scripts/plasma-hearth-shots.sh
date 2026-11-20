@@ -123,11 +123,12 @@ grep -q '"first": "applied"' "$OUT/login.json" || fail login "a new account's fi
 grep -q '"guard": "up"' "$OUT/login.json" || fail login "Hearth's bar didn't say it's up: $(tr '\n' ' ' <"$OUT/login.json" | cut -c1-600)"
 [ -e "$HOME/.config/hearth/plasma-panel-new" ] && fail login "the first sign-in mark is still there (it must happen once)"
 ls "$HOME/.local/share/hearth/plasma-panel/" >"$OUT/saved-panels.txt" 2>&1
-for f in plasmanotifyrc plasmarc kwinrc kscreenlockerrc; do echo "== $f"; cat "$HOME/.config/$f" 2>&1; done > "$OUT/kde-settings-after-apply.txt"
+for f in plasmanotifyrc plasmarc kwinrc systemd/user/plasma-kwin_wayland.service.d/hearth-lock-screen.conf; do echo "== $f"; cat "$HOME/.config/$f" 2>&1; done > "$OUT/kde-settings-after-apply.txt"
 grep -q "CriticalInDndMode=false" "$HOME/.config/plasmanotifyrc" || fail kde-settings "KDE's critical pop-ups weren't paused (plasmanotifyrc)"
 ls "$HOME/.local/share/aurorae/themes/" > "$OUT/aurorae-themes.txt" 2>&1
-grep -q "Theme=org.hearthos.mantel-lock" "$HOME/.config/kscreenlockerrc" 2>/dev/null \
-  || fail lock "Hearth's lock screen wasn't picked for KDE's screen locker: $(cat "$HOME/.config/kscreenlockerrc" 2>&1 | tr '\n' ' ' | cut -c1-200) $(grep -a "lock screen stays" "$OUT/login.json" | cut -c1-300)"
+LD="$HOME/.config/systemd/user/plasma-kwin_wayland.service.d/hearth-lock-screen.conf"
+grep -q "PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock" "$LD" 2>/dev/null \
+  || fail lock "Hearth's lock screen wasn't picked for KDE's screen locker: $(grep -a "lock screen stays" "$OUT/login.json" | cut -c1-300)"
 sleep 8
 echo "::notice title=Panels::$(js 'print(panels().map(function(p){return p.location+" "+p.height+" "+p.hiding+" "+p.widgets().map(function(w){w.currentConfigGroup=["General"];return w.type+":"+w.readConfig("role","")}).join(",")}).join(" | "))' | tail -1 | cut -c1-600)"
 
@@ -225,30 +226,10 @@ python3 -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).crop((960
 pgrep -fa "notifyd" > "$OUT/notifyd-processes.txt" 2>&1
 fx_none; sleep 22
 
-# ---- what KDE's screen locker reads its lock screen from (for the checks below)
-G=$(ls /usr/libexec/kscreenlocker_greet /usr/lib64/libexec/kscreenlocker_greet 2>/dev/null | head -1)
-{ echo "== greeter: $G"; [ -n "$G" ] && "$G" --help 2>&1 | head -30
-  echo "== kpackagetool6"; kpackagetool6 --type Plasma/LookAndFeel --show org.hearthos.mantel-lock 2>&1 | head -20
-  echo "== kcfg"; cat /usr/share/config.kcfg/kscreenlockersettings.kcfg 2>/dev/null | grep -n -B2 -A3 -i "theme" | head -40
-  echo "== strings"; [ -n "$G" ] && strings -n 5 "$G" 2>/dev/null | grep -n -i -E "lookandfeel|lockscreenmainscript|Theme|PLASMA_DEFAULT_SHELL|Greeter" | head -40
-  for lib in /usr/lib64/libKScreenLocker*.so* /usr/lib64/libkscreenlocker*.so*; do [ -f "$lib" ] && { echo "== $lib"; strings -n 5 "$lib" | grep -n -i -E "^Theme$|Greeter|LookAndFeel" | head -20; }; done
-  for v in config theme-path theme-id; do
-    T=$(mktemp -d); export_args=""
-    case $v in
-      config) printf '[Greeter]\nTheme=org.hearthos.mantel-lock\n' > $T/kscreenlockerrc; args="--testing" ;;
-      theme-path) args="--testing --theme /usr/share/plasma/look-and-feel/org.hearthos.mantel-lock" ;;
-      theme-id) args="--testing --theme org.hearthos.mantel-lock" ;;
-    esac
-    XDG_CONFIG_HOME=$T QT_QPA_PLATFORM=offscreen timeout 10 "$G" $args > $T/out 2>&1
-    echo "== $v: $(grep -c 'hearth-lock-screen: loaded' $T/out) loaded"; grep -v -E 'notify signal|locale|UTF-8|manual|more information' $T/out | head -12
-    rm -rf $T
-  done; } > "$OUT/lock-diagnostics.txt" 2>&1
-echo "::notice title=Lock screen::$(grep -E '^== (config|theme-path|theme-id):' "$OUT/lock-diagnostics.txt" | tr '\n' ' ')"
-
 # ---- Mantel's lock screen in KDE's screen locker (its own test run, on the screen: what locking shows)
 G=$(ls /usr/libexec/kscreenlocker_greet /usr/lib64/libexec/kscreenlocker_greet 2>/dev/null | head -1)
 if [ -n "$G" ]; then
-  "$G" --testing > "$OUT/lock-greeter.log" 2>&1 & gp=$!
+  PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock "$G" --testing > "$OUT/lock-greeter.log" 2>&1 & gp=$!   # what KWin gives it
   sleep 6; shot ph-27-lock-screen; kill $gp 2>/dev/null; sleep 1
   grep -q "hearth-lock-screen: loaded" "$OUT/lock-greeter.log" || fail lock "KDE's screen locker didn't show Hearth's lock screen: $(grep -v 'notify signal' "$OUT/lock-greeter.log" | tail -4 | tr '\n' '|' | cut -c1-400)"
 else
@@ -286,6 +267,28 @@ setlook hearth dark 'barLayout=split' 'dockMode=autohide'
 shot ph-41-hearth-dock-autohide
 setlook hearth dark 'dockMode=shown'
 
+# ---- Desktop icons stay where you put them (the owner, Nov 19 23:34; a red flag): notes.txt moved (as a drag does,
+# through Mantel's hearth-desk and desk.json's "icons"), desktop icons off and on, then Plasma restarted. Every saved
+# place must be the same, and notes.txt shown where it was put.
+HD="python3 /usr/share/nimbus/desktop/shell/hearth-desk"
+$HD place notes.txt 6 3 18 8 > "$OUT/icon-place.json" 2>&1
+# (hearth-plasma-panel sync: what the .path unit runs when desk.json changes; CI has no systemd user session)
+$HD set desktopIcons off >/dev/null 2>&1; hearth-plasma-panel sync >>"$OUT/sync.log" 2>&1; sleep 4
+shot ph-28-icons-off
+$HD set desktopIcons on >/dev/null 2>&1; hearth-plasma-panel sync >>"$OUT/sync.log" 2>&1; sleep 4
+shot ph-28a-icon-moved
+python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("icons", {}), sort_keys=True))' "$HOME/.config/nimbus/desk.json" > "$OUT/icon-places-before.json" 2>&1
+kquitapp6 plasmashell >/dev/null 2>&1 || pkill -x plasmashell
+for i in $(seq 1 20); do pgrep -x plasmashell >/dev/null || break; sleep 1; done
+plasmashell >>"$OUT/plasmashell.log" 2>&1 &
+for i in $(seq 1 60); do js 'print("up")' | grep -q '"up"' && break; sleep 1; done
+sleep 12
+shot ph-28b-icon-after-restart
+python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("icons", {}), sort_keys=True))' "$HOME/.config/nimbus/desk.json" > "$OUT/icon-places-after.json" 2>&1
+cmp -s "$OUT/icon-places-before.json" "$OUT/icon-places-after.json" \
+  || fail icons "desktop icons' saved places changed by themselves (off and on, then a restart): $(cat "$OUT/icon-places-before.json") → $(cat "$OUT/icon-places-after.json")"
+grep -q '"notes.txt": \[6, 3\]' "$OUT/icon-places-after.json" || fail icons "notes.txt isn't where it was put: $(cut -c1-300 "$OUT/icon-places-after.json")"
+
 # ---- at rest: plasmashell's processor time over a minute with Hearth's panel up. CI draws with the processor (no
 # graphics card), so a moving wallpaper costs a lot here; then away from the PC (Mantel's wallpapers hold still).
 open_ close
@@ -299,9 +302,9 @@ echo "::notice title=At rest::plasmashell used $moving ticks (1/100 s) in 60 s w
 
 # ---- back to KDE's panel (Settings › Bar and dock › KDE's panel)
 hearth-plasma-panel undo > "$OUT/undo.json" 2>&1; sleep 6
-for f in plasmanotifyrc plasmarc kwinrc kscreenlockerrc; do echo "== $f"; cat "$HOME/.config/$f" 2>&1; done > "$OUT/kde-settings-after-undo.txt"
+for f in plasmanotifyrc plasmarc kwinrc systemd/user/plasma-kwin_wayland.service.d/hearth-lock-screen.conf; do echo "== $f"; cat "$HOME/.config/$f" 2>&1; done > "$OUT/kde-settings-after-undo.txt"
 grep -q "CriticalInDndMode=false" "$HOME/.config/plasmanotifyrc" && fail undo "KDE's critical pop-ups setting wasn't put back"
-grep -q "Theme=org.hearthos.mantel-lock" "$HOME/.config/kscreenlockerrc" 2>/dev/null && fail undo "KDE's lock screen setting wasn't put back"
+[ -e "$LD" ] && fail undo "Hearth's lock screen is still picked for KWin after undo ($LD)"
 shot ph-50-back-to-kde-panel
 left=$(js 'var n=0;var ps=panels();for(var i=0;i<ps.length;i++)n+=ps[i].widgets("org.hearthos.panel").length;print(n+"/"+ps.length)' | tail -1)
 case "$left" in *'"0/'[1-9]*) ;; *) fail undo "Hearth's panel didn't come out, or no KDE panel came back: $left" ;; esac
@@ -337,7 +340,8 @@ qs_fixture desk
 kwriteconfig6 --file plasmanotifyrc --group Notifications --key CriticalInDndMode --notify false 2>/dev/null
 kquitapp6 plasmashell >/dev/null 2>&1 || pkill -x plasmashell
 for i in $(seq 1 20); do pgrep -x plasmashell >/dev/null || break; sleep 1; done
-HEARTH_QUICK_FIXTURE=$QF plasmashell >>"$OUT/plasmashell.log" 2>&1 &
+# (a time zone where it's afternoon now, so Firehold's quiet hours, 11 PM - 7 AM, aren't on, as in the mockups)
+HEARTH_QUICK_FIXTURE=$QF TZ=$(python3 -c 'import time; h=time.gmtime().tm_hour; print("Etc/GMT%+d" % -((14 - h + 12) % 24 - 12))') plasmashell >>"$OUT/plasmashell.log" 2>&1 &
 for i in $(seq 1 60); do js 'print("up")' | grep -q '"up"' && break; sleep 1; done
 sleep 6
 ids=$(js 'var p=new Panel("org.kde.panel");p.location="top";p.height=40;var a=p.addWidget("org.hearthos.quicksettings");a.currentConfigGroup=["General"];a.writeConfig("style","firehold");var b=p.addWidget("org.hearthos.notifications");b.currentConfigGroup=["General"];b.writeConfig("style","firehold");print(a.id+","+b.id)' | grep -o '"[0-9]*,[0-9]*"' | tr -d '"')

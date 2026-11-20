@@ -405,23 +405,27 @@ KDE_KEYS = [('plasmanotifyrc', 'Notifications', 'CriticalInDndMode', 'false'),
             ('kwinrc', 'TabBox', 'LayoutName', 'org.hearth.switcher')]
 
 
-# Mantel's lock screen in KDE's screen locker (the same LockScreen.qml as Mantel on KWin, desktop/kwin-lock), as a
-# Plasma look-and-feel package with only a lock screen (install.sh). The locker reads its lock screen from the theme
-# kscreenlockerrc [Greeter] Theme names; Hearth's panel names this one only after the locker's own test run (off
-# screen) showed it loading, so a lock screen that can't show is never picked (the locker would cover the screen).
-# Undo puts the setting back as it was.
-LOCK_ID = 'org.hearthos.mantel-lock'
-LOCK_KEY = ('kscreenlockerrc', 'Greeter', 'Theme', LOCK_ID)
+# Mantel's lock screen in KDE's screen locker: the same Plasma shell package Mantel on KWin uses
+# (org.hearth.mantel-lock, desktop/kwin-lock: only a lock screen). KDE's locker (6.8) reads its lock screen from the
+# shell package PLASMA_DEFAULT_SHELL names in KWin's environment (KWin starts the locker), so Hearth's panel gives
+# KWin, and only KWin, that name: a drop-in for its user service (plasma-kwin_wayland.service), from the next sign-in.
+# Plasma's own shell (plasmashell) is a service of its own and never sees it. Written only after the locker's own
+# test run (off screen) showed Hearth's lock screen loading, so a lock screen that can't show is never picked (the
+# locker would cover the screen); undo takes it away again.
+LOCK_ID = 'org.hearth.mantel-lock'
+
+
+def lock_dropin():
+    return os.path.join(cfg(), 'systemd', 'user', 'plasma-kwin_wayland.service.d', 'hearth-lock-screen.conf')
 
 
 def lock_ok():
-    pkg = os.path.join('/usr/share/plasma/look-and-feel', LOCK_ID)
+    pkg = os.path.join('/usr/share/plasma/shells', LOCK_ID)
     if not os.path.isfile(os.path.join(pkg, 'contents', 'lockscreen', 'LockScreen.qml')):
         return False, "Hearth's lock screen isn't installed"
     try:
         import importlib.machinery
         import importlib.util
-        import tempfile
         loader = importlib.machinery.SourceFileLoader('hearth_lockcheck', os.path.join(SHELL, 'hearth-lockcheck'))
         spec = importlib.util.spec_from_loader('hearth_lockcheck', loader)
         lc = importlib.util.module_from_spec(spec)
@@ -431,24 +435,51 @@ def lock_ok():
     g = lc.greeter()
     if not g:
         return False, "KDE's screen locker isn't installed"
-    tmp = tempfile.mkdtemp(prefix='hearth-lock-')
+    env = dict(os.environ, PLASMA_DEFAULT_SHELL=LOCK_ID, QT_QPA_PLATFORM='offscreen', QT_FORCE_STDERR_LOGGING='1')
+    for k in ('WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'DISPLAY'):
+        env.pop(k, None)
     try:
-        with open(os.path.join(tmp, 'kscreenlockerrc'), 'w') as fh:
-            fh.write('[Greeter]\nTheme=%s\n' % LOCK_ID)
-        env = dict(os.environ, XDG_CONFIG_HOME=tmp, QT_QPA_PLATFORM='offscreen', QT_FORCE_STDERR_LOGGING='1')
-        for k in ('WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'DISPLAY'):
-            env.pop(k, None)
         out = lc.run_greeter(g, env)
     except OSError as e:
         return False, "the screen locker won't run: %s" % e
-    finally:
-        shutil.rmtree(tmp, ignore_errors=True)
     bad = [m for m in lc.FAIL_MARKS if m in out]
     if bad:
         return False, bad[0]
     if lc.LOADED not in out:
         return False, "the screen locker's test run didn't show Hearth's lock screen"
     return True, 'ok'
+
+
+def lock_take():
+    ok, why = lock_ok()
+    if not ok:
+        sys.stderr.write("hearth-plasma-panel: KDE's own lock screen stays (%s)\n" % why)
+        return False
+    p = lock_dropin()
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    tmp = p + '.part'
+    with open(tmp, 'w') as fh:
+        fh.write("# Hearth's lock screen in KDE's screen locker while Hearth's panel is in use (hearth-plasma-panel;\n"
+                 "# undo or KDE's panel in Settings › Bar and dock takes it away). Only KWin gets it.\n"
+                 "[Service]\nEnvironment=PLASMA_DEFAULT_SHELL=%s\n" % LOCK_ID)
+    os.replace(tmp, p)
+    reload_units()
+    return True
+
+
+def lock_give_back():
+    try:
+        os.remove(lock_dropin())
+    except OSError:
+        return
+    reload_units()
+
+
+def reload_units():
+    try:
+        subprocess.run(['systemctl', '--user', 'daemon-reload'], capture_output=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        pass
 
 
 def kcfg(tool):
@@ -494,11 +525,7 @@ def kde_take(dest):
     # Hearth's own, are what undo puts back.
     before = last_kde_settings() if in_use() else None
     keys = list(KDE_KEYS)
-    ok, why = lock_ok()
-    if ok:
-        keys.append(LOCK_KEY)
-    else:
-        sys.stderr.write("hearth-plasma-panel: KDE's own lock screen stays (%s)\n" % why)
+    lock_take()
     old = {}
     for f, g, k, v in keys:
         key = '%s|%s|%s' % (f, g, k)
@@ -513,6 +540,7 @@ def kde_take(dest):
 
 
 def kde_give_back():
+    lock_give_back()
     old = last_kde_settings()
     for key, v in (old or {}).items():
         f, g, k = key.split('|')

@@ -21,19 +21,26 @@ FocusScope {
     readonly property string fontName: F.font(Qt.fontFamilies())
 
     function toggle() { if (shown) close(); else open(); }
-    function open() {
-        refresh();
+    // Desk or Couch: this screen's mode, as the backend says it when it opens (worked out again once it answered).
+    function placeFor() {
         const me = thisScreen();
         couch = !!me && me.mode === "couch";
-        tab = 0; focusAt = -1; keys = couch;
-        shown = true;
-        forceActiveFocus();
+        keys = couch;
+        focusAt = -1;
         if (couch) Qt.callLater(() => { const f = fq.focusables(); fq.focusAt = f.length ? fq.order.indexOf(f[0]) : -1; });
     }
+    function open() {
+        tab = 0;
+        placeFor();
+        shown = true;
+        forceActiveFocus();
+        refresh(() => fq.placeFor());
+    }
     function close() { shown = false; }
-    function refresh() {
+    function refresh(then) {
         Hearth.call(["python3", Hearth.quick, "qs"], (out) => {
             try { const o = JSON.parse(out.trim().split("\n").pop() || "{}"); if (o && typeof o === "object") fq.qs = o; } catch (e) {}
+            if (then && fq.shown) then();
         });
     }
     function press(what, arg) {
