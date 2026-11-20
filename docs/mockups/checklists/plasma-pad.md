@@ -11,6 +11,14 @@ HintStrip.qml), ported part by part. The three pictures in docs/mockups/plasma-p
 approve or change; they're not drawn mockups. Code: hosts/hearth-ui/apps/pad (binary hearth-pad-host), started by
 os-bases/anatase/system_files/usr/libexec/hearth/hearth-pad-plasma (hearth-pad --standalone stays the fallback).
 
+Pictured in a real KDE Plasma session (Nov 20, 2026): .github/workflows/plasma-pad.yml (KDE's KWin and plasmashell on
+Fedora 45, GTK test windows, hearth-pad --plasma with a simulated controller, KWin's own touch), run 44725743352,
+pictures pad-k01 to pad-k33 (hearth-workspace hearth/assets/1.16-plasma-pad-shots). Notes for the owner: the ember's
+warmth pulses while the controller is used and holds still 30 s after its last press (0.00 % of a core with the
+keyboard left open; 5 % while it pulses on CI's CPU drawing); an accent picked on the keyboard (long touch, hold A)
+reaches apps only where hearth-pad's US-layout keyboard can type it: accented letters need KWin's input method, which
+the Fedora edition leaves to KDE's plasma-keyboard (an open question, not a part of these mockups).
+
 ## Running the controller helper (Pad.qml)
 - [x] hearth-pad --plasma started, read and written one JSON line at a time, started again 3 s after it ends (not after exit 2 / 3) — hosts/hearth-ui/apps/pad/src/link.rs: "if tx.unbounded_send(Ev::Ended(code)).is_err() || code == 2 || code == 3"
 - [x] ready: the controller mouse setting and an open keyboard told again — hosts/hearth-ui/apps/pad/src/main.rs: "pad_send(json!({ \"cmd\": \"mouse\", \"on\": self.mouse_on }));"
