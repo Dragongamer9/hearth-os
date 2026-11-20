@@ -39,6 +39,8 @@ dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && expor
 # The XDG data dirs as nimbus-session sets them.
 eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' "${SESSION_FILE:-/usr/bin/nimbus-session}")" 2>/dev/null || true
 
+# A Desktop folder from the start, as every account has (the icons' pictures below put files in it).
+mkdir -p "$HOME/Desktop"
 # The one-time "Pick your browser" question answered, so it isn't over the pictures and Files' timing.
 python3 "$SH/hearth-browser" asked >/dev/null 2>&1 || true
 t0=$(date +%s.%N)
@@ -97,6 +99,7 @@ if [ "$KIND" = classic ]; then
   python3 "$SH/hearth-desk" place Notes.txt 9 3 18 8 >/dev/null 2>&1
   python3 "$SH/hearth-desk" place Photos 14 6 18 8 >/dev/null 2>&1
   sleep 4; shot 20-icons-placed
+  python3 "$SH/hearth-desk" icons 18 8 --look >"$OUT/icons-placed.json" 2>&1
   before=$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("icons"), sort_keys=True))' "$HOME/.config/nimbus/desk.json")
   python3 "$SH/hearth-desk" set desktopIcons off >/dev/null 2>&1; sleep 4; shot 21-icons-off
   python3 "$SH/hearth-desk" set desktopIcons on >/dev/null 2>&1; sleep 4
