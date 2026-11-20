@@ -45,6 +45,8 @@ Item {
                        title: String(t.title || ""), activated: !!t.activated, minimized: !!t.minimized, fullscreen: !!t.fullscreen,
                        pid: 0, tl: t });
         }
+        // (windows that closed are let go: nothing here holds on to a window that's gone)
+        for (const t of Array.from(hh.idOf.keys())) if (list.indexOf(t) < 0) hh.idOf.delete(t);
         const key = JSON.stringify(out.map(w => [w.id, w.appId, w.appName, w.title, w.activated, w.minimized, w.fullscreen]));
         if (key === hh.last.key) return hh.last.list;
         hh.last.key = key; hh.last.list = out;
