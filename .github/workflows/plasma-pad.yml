@@ -1,0 +1,190 @@
+# The controller in KDE Plasma, for real (docs/mockups/checklists/plasma-pad.md): hearth-pad-host built on Fedora 45
+# (the Fedora edition), then run in a real KDE Plasma session (KDE's KWin on a virtual screen, plasmashell with KDE's
+# panel, then Hearth's) with real windows, hearth-pad --plasma and KWin's hearthpad script, a simulated controller and
+# KWin's own touch (.github/scripts/plasma-pad-e2e.py): the Hearth menu's motion and logo, the ember's glide, sparks
+# and warmth, a long touch's accents, the password mode over KDE's password prompt, the keyboard opening by itself on
+# a text field, the overlays over a controller app and a fullscreen game, Quick Access, and the CPU it costs.
+#   build      cargo build / test of hearth-pad-host only (errors as annotations)
+#   base       what the Fedora edition's base image has for KWin's input method (the text-field signal needs one)
+#   plasma     the session and the pictures
+#   pictures   each picture as SHOT notices (one job each)
+name: Controller on Plasma (real session)
+
+on:
+  push:
+    branches: ['feature/plasma-pad-finish']
+    paths: ['hosts/hearth-ui/apps/pad/**', 'hosts/linux/desktop/shell/hearth-pad', 'hosts/linux/desktop/plasma-hearth/hearth-plasma-panel',
+            '.github/workflows/plasma-pad.yml', '.github/scripts/plasma-pad-*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: plasma-pad-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: registry.fedoraproject.org/fedora:45
+    steps:
+      - name: Rust and the libraries iced uses
+        run: dnf -y install git tar zstd gcc pkgconf-pkg-config rust cargo libxkbcommon-devel wayland-devel fontconfig-devel freetype-devel python3 >/dev/null
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            hosts/hearth-ui/target
+          key: hearth-pad-f45-${{ hashFiles('hosts/hearth-ui/**/Cargo.toml') }}-${{ github.sha }}
+          restore-keys: |
+            hearth-pad-f45-${{ hashFiles('hosts/hearth-ui/**/Cargo.toml') }}-
+            hearth-pad-f45-
+      - name: Build and test hearth-pad-host
+        run: |
+          set -o pipefail
+          cd hosts/hearth-ui
+          if ! cargo build --release -p hearth-pad-host 2>&1 | tee ../../build.log; then
+            awk '/^error/{if (b) print b; b=$0; n=0; next} b && n < 16 {b=b "|" $0; n++} END{if (b) print b}' ../../build.log | head -20 | while read -r l; do
+              echo "::error title=cargo build::$(echo "$l" | cut -c1-3800)"
+            done
+            exit 1
+          fi
+          grep -E '^warning' -A6 ../../build.log | grep -v '^--$' | head -60 | tr '\n' '|' | cut -c1-3500 | sed 's/^/::notice title=warnings::/'
+          echo
+          cargo test --release -p hearth-pad-host 2>&1 | tee ../../test.log || { grep -E "panicked|FAILED|^error" -A3 ../../test.log | head -20 | tr '\n' '|' | cut -c1-3500 | sed 's/^/::error title=cargo test::/'; echo; exit 1; }
+          echo "::notice title=cargo test::$(grep -E '^test result' ../../test.log | tr '\n' ' ' | cut -c1-500)"
+          mkdir -p ../../bin && cp target/release/hearth-pad-host ../../bin/
+          echo "::notice title=size::$(du -h ../../bin/hearth-pad-host | cut -f1)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-pad-host
+          path: bin
+          retention-days: 7
+
+  base:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: os-bases/anatase
+      - name: The Fedora edition's base image - KWin's input method
+        run: |
+          base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+          docker pull -q "$base" >/dev/null || { echo "::warning title=base::couldn't pull $base"; exit 0; }
+          out=$(docker run --rm "$base" sh -c 'rpm -q plasma-keyboard maliit-keyboard qt6-qtvirtualkeyboard kwin 2>&1; echo "--- kwinrc:"; cat /etc/xdg/kwinrc 2>/dev/null | head -30; echo "--- entries:"; grep -ls "X-KDE-Wayland-VirtualKeyboard=true" /usr/share/applications/*.desktop 2>/dev/null' 2>&1)
+          echo "::notice title=base image input method::$(printf '%s' "$out" | tr '\n' '|' | cut -c1-3000)"
+
+  plasma:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    container:
+      image: registry.fedoraproject.org/fedora:45
+      options: --privileged -v /dev:/dev
+    steps:
+      - name: KDE Plasma (what the Fedora edition has), GTK for the test windows, the fake-input helper's build
+        run: |
+          dnf -y install git python3 python3-dbus python3-gobject python3-pillow gtk3 procps-ng dbus-daemon dbus-tools glib2 \
+            plasma-workspace kwin plasma-desktop plasma-breeze breeze-icon-theme kf6-kpackage xorg-x11-server-Xwayland mesa-dri-drivers \
+            qt6-qtdeclarative kf6-kirigami layer-shell-qt kactivitymanagerd plasma-integration kglobalacceld plasma5support qt6-qtwayland \
+            kf6-kconfig qt6-qt5compat kde-cli-tools rsms-inter-fonts google-noto-sans-fonts google-noto-sans-symbols-fonts google-noto-color-emoji-fonts \
+            dejavu-sans-fonts libxkbcommon fontconfig gcc pkgconf-pkg-config wayland-devel wayland-protocols-devel glib2-devel \
+            plasma-wayland-protocols-devel >/dev/null
+          dnf -y install --skip-unavailable plasma-pa plasma-nm pipewire wireplumber qt6-qttools >/dev/null || true
+          for b in kwin_wayland plasmashell gdbus; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
+          echo "::notice title=Plasma::$(rpm -q plasma-workspace kwin layer-shell-qt gtk3 | tr '\n' ' ')"
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: hearth-pad-host
+          path: bin
+      - name: Hearth's files where the Fedora image puts them
+        run: |
+          chmod +x bin/*
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          mkdir -p /usr/share/kwin/scripts && cp -a os/system_files/usr/share/kwin/scripts/hearthpad /usr/share/kwin/scripts/
+          mkdir -p /usr/share/backgrounds/hearth && cp os/branding/wallpapers/hearth-*.jpg /usr/share/backgrounds/hearth/ 2>/dev/null || true
+          bash /usr/share/nimbus/desktop/plasma-hearth/install.sh / > /tmp/install.log 2>&1 || echo "::warning title=Hearth's panel::$(tail -5 /tmp/install.log | tr '\n' ' ')"
+          # KWin's own touch and pointer for the long-touch test (hearth-kwin-cast input), run the way only Hearth's
+          # portal may run it: from a root-owned script named hearth-portal.
+          bash hosts/linux/desktop/kwin-helpers/build.sh /tmp/kh >/tmp/kh.log 2>&1 || echo "::error title=fake input::$(tail -5 /tmp/kh.log | tr '\n' ' ')"
+          install -Dm755 /tmp/kh/hearth-kwin-cast /usr/libexec/hearth/hearth-kwin-cast
+          cp os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/
+          mkdir -p /usr/local/lib/padtest
+          printf '%s\n' '#!/usr/bin/python3' 'import subprocess, sys' 'sys.exit(subprocess.call(["/usr/libexec/hearth/hearth-kwin-cast", "input"]))' > /usr/local/lib/padtest/hearth-portal
+          chmod 755 /usr/local/lib/padtest /usr/local/lib/padtest/hearth-portal
+      - name: The session, the controller, the pictures
+        timeout-minutes: 30
+        shell: bash
+        run: |
+          set +e +o pipefail
+          mkdir -p shots
+          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home USER=chris
+          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.config" "$HOME/.local/share/nimbus" && chmod 700 "$XDG_RUNTIME_DIR"
+          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+          export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE XDG_SESSION_TYPE=wayland KDE_FULL_SESSION=true KDE_SESSION_VERSION=6
+          export QT_FORCE_STDERR_LOGGING=1 KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 LIBGL_ALWAYS_SOFTWARE=1 HEARTH_PLASMA_PANEL_CI=1
+          [ -e /etc/xdg/menus/applications.menu ] || export XDG_MENU_PREFIX=$(basename "$(ls /etc/xdg/menus/*-applications.menu 2>/dev/null | head -1)" applications.menu)
+          for p in pipewire wireplumber; do command -v $p >/dev/null && { $p >"shots/$p.log" 2>&1 & }; done
+          cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
+          # KWin scripts' print() in its log (the test reads where the keyboard's overlay is).
+          export QT_LOGGING_RULES="kwin_scripting.debug=true;js.debug=true"
+          /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
+          for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+          [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { echo "::error title=KWin::didn't start: $(tail -5 shots/kwin.log | tr '\n' '|')"; exit 1; }
+          export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland
+          for k in /usr/libexec/kactivitymanagerd /usr/lib64/libexec/kactivitymanagerd /usr/bin/kactivitymanagerd; do [ -x "$k" ] && { "$k" >shots/kamd.log 2>&1 & break; }; done
+          for k in /usr/libexec/kglobalacceld /usr/lib64/libexec/kglobalacceld /usr/bin/kglobalacceld; do [ -x "$k" ] && { "$k" >shots/kglobalaccel.log 2>&1 & break; }; done
+          plasmashell >shots/plasmashell.log 2>&1 &
+          js() { timeout 15 dbus-send --session --print-reply --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "string:$1" 2>&1; }
+          for i in $(seq 1 60); do js 'print("up")' | grep -q '"up"' && break; sleep 1; done
+          sleep 6
+          js 'var d=desktops();for(var i=0;i<d.length;i++){d[i].wallpaperPlugin="org.kde.image";d[i].currentConfigGroup=["Wallpaper","org.kde.image","General"];d[i].writeConfig("Image","file:///usr/share/backgrounds/hearth/hearth-fireside.jpg");}' >/dev/null
+          sleep 2
+          echo "::notice title=KWin::$(grep -iE 'opengl|qpainter|compositing|llvmpipe' shots/kwin.log | head -4 | tr '\n' '|' | cut -c1-600)"
+          timeout 1500 python3 .github/scripts/plasma-pad-e2e.py shots bin; rc=$?
+          echo "::notice title=KWin log::$(grep -aiE 'hearth|layer|error|warn' shots/kwin.log | tail -12 | tr '\n' '|' | sed 's/%/%25/g' | cut -c1-2500)"
+          exit $rc
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: plasma-pad-shots
+          path: shots
+          retention-days: 14
+      - name: The pictures taken
+        id: list
+        if: always()
+        run: echo "shots=$(ls shots/*.png 2>/dev/null | xargs -r -n1 basename | sed 's/\.png$//' | python3 -c 'import json,sys; print(json.dumps([l.strip() for l in sys.stdin if l.strip()]))')" >> "$GITHUB_OUTPUT"
+    outputs:
+      shots: ${{ steps.list.outputs.shots }}
+
+  pictures:
+    needs: plasma
+    if: always() && needs.plasma.outputs.shots != '[]' && needs.plasma.outputs.shots != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: ${{ fromJSON(needs.plasma.outputs.shots || '[]') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: plasma-pad-shots
+          path: shots
+      - name: Picture ${{ matrix.shot }}
+        run: |
+          python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow >/dev/null 2>&1 || python3 -m pip install --quiet pillow >/dev/null
+          python3 .github/scripts/firehold-shot.py ${{ matrix.shot }}

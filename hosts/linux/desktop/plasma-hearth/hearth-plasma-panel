@@ -1003,11 +1003,17 @@ def main(argv):
         # of your own, and CI's pictures.
         # Hearth's bar takes them all; the shared Quick settings and notifications widgets (in any panel: KDE's, or
         # Firehold on Plasma's bar) take their own (quick, calendar).
-        out = plasma_js('var ps=panels(),ids=["org.hearthos.panel","org.hearthos.quicksettings","org.hearthos.notifications"];'
+        # Prints {"n": how many widgets took it} (0: none of Hearth's is on any panel; the controller's Hearth menu then
+        # says where Quick Access comes from).
+        out = plasma_js('var ps=panels(),ids=["org.hearthos.panel","org.hearthos.quicksettings","org.hearthos.notifications"],n=0;'
                         'for(var i=0;i<ps.length;i++){var ws=ps[i].widgets();'
                         'for(var j=0;j<ws.length;j++){if(ids.indexOf(ws[j].type)<0)continue;ws[j].currentConfigGroup=["General"];'
                         'if(ws[j].type!=="org.hearthos.panel"||String(ws[j].readConfig("role","bar"))==="bar")'
-                        'ws[j].writeConfig("open",%s);}}print("{}");' % json.dumps('%s:%.3f' % (rest[0], time.time())))
+                        '{ws[j].writeConfig("open",%s);if(ws[j].type==="org.hearthos.panel"||ws[j].type===%s)n++;}}}'
+                        'print(JSON.stringify({n:n}));' % (json.dumps('%s:%.3f' % (rest[0], time.time())),
+                                                           json.dumps({'quick': 'org.hearthos.quicksettings', 'calendar': 'org.hearthos.notifications'}.get(rest[0], ''))))
+        m = re.search(r'\{"n":\d+\}', out or '')
+        print(m.group(0) if m else '{"n": 0}')
         return 0 if out is not None else 1
     elif cmd == 'js' and rest:       # CI and checks: the layout script as it would run (nothing applied)
         print(params() + {'apply': APPLY_JS, 'sync': SYNC_JS, 'undo': UNDO_JS}.get(rest[0], ''))

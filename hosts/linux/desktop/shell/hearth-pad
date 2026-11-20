@@ -164,6 +164,18 @@ PLASMA_SHELL = ('plasmashell', 'org.kde.plasmashell')
 PLASMA_KEY_APPS = ('krunner', 'org.kde.krunner', 'dolphin', 'org.kde.dolphin', 'systemsettings',
                    'org.kde.systemsettings', 'kscreenlocker_greet', 'org.kde.kscreenlocker_greet')
 PLASMA_SEARCH = ('krunner', 'org.kde.krunner', 'konsole', 'org.kde.konsole')   # open the keyboard when they come up
+# Plasma's own password prompts (KDE's polkit agent, KDE Wallet and the secret service, ssh / GnuPG / kdesu asking for a
+# passphrase), by window class. Over them the on-screen keyboard is in its password mode (no suggestions, nothing
+# learned, no emoji), as Mantel's is over Hearth's own password prompt (Pad.qml: SettingsNav.polkitShown), and it
+# opens by itself when one comes up after the controller was used: Plasma's prompts don't tell Hearth anything else.
+PLASMA_PASSWORD = ('org.kde.polkit-kde-authentication-agent-1', 'polkit-kde-authentication-agent-1',
+                   'org.kde.polkit-kde-authentication-agent', 'org.kde.ksecretd', 'ksecretd', 'org.kde.kwalletd6',
+                   'kwalletd6', 'org.kde.kwalletd5', 'kwalletd5', 'org.kde.ksshaskpass', 'ksshaskpass', 'pinentry-qt',
+                   'org.gnupg.pinentry-qt', 'pinentry-qt5', 'org.kde.kdesu', 'kdesu', 'org.kde.kdesudo')
+
+
+def plasma_password(cls):
+    return (cls or '').strip().lower() in PLASMA_PASSWORD
 # Hearth Plasma's own apps (the KDE-based Hearth Files, Terminal, Text, Reader, Capture, Calculator), like Mantel's: D-pad
 # moves, A opens, B back, X the context menu, Y search, LB / RB tabs, LT / RT scroll. Only what differs from that per
 # app; None: the app does it itself (Hearth Files from Dolphin reads the controller for those: hearthgamepad.cpp),
@@ -506,8 +518,12 @@ class Pad:
             self.repeat.clear()
 
     def want_osk(self):
-        """Y: asks the shell for the on-screen keyboard (it answers osk {open: true})."""
-        self.out.send({'t': 'osk', 'open': True})
+        """Y: asks the shell for the on-screen keyboard (it answers osk {open: true}). On Plasma, over one of its
+        password prompts, in the keyboard's password mode."""
+        if self.plasma and plasma_password(self.win[0]):
+            self.out.send({'t': 'osk', 'open': True, 'mode': 'password'})
+        else:
+            self.out.send({'t': 'osk', 'open': True})
 
     def open_osk(self, split=False):
         self.set_mode('osk')
@@ -1020,6 +1036,14 @@ class Pad:
             note('in front: %r (%s)%s%s' % (cls, kind or '?', ', fullscreen: paused' if fs else '', ', keys' if self.keys_ctx else ''))
         if cls.lower() in PLASMA_SEARCH and before[0].lower() not in PLASMA_SEARCH:
             self.plasma_auto_osk(now)
+        pw = plasma_password(cls)
+        if pw != plasma_password(before[0]):
+            if self.mode == 'osk':
+                # The keyboard is open: it switches to (or back from) its password mode with the prompt.
+                self.out.send({'t': 'osk', 'open': True, 'mode': 'password' if pw else 'text'})
+            elif pw:
+                note('a password prompt is in front (%r)' % cls)
+                self.plasma_auto_osk(now)
 
     def plasma_textfield(self, on, now=None):
         """KWin: a text field got (or lost) the focus. Like Hearth Classic's own text fields, the keyboard opens by

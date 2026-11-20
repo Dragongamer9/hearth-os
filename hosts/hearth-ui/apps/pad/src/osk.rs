@@ -219,6 +219,8 @@ pub struct Vm {
     pub fast: String,
     pub position: String,
     pub theme: String,
+    /// the ember glides with its sparks (osk.json trail, on unless turned off)
+    pub trail: bool,
 }
 
 fn s(v: &Value, k: &str) -> String {
@@ -295,6 +297,7 @@ impl Vm {
             fast: s(&st, "fast"),
             position: s(&st, "position"),
             theme: s(&st, "theme"),
+            trail: st.get("trail").and_then(Value::as_bool) != Some(false),
         }
     }
 

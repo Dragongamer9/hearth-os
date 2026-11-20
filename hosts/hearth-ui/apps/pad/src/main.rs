@@ -15,8 +15,11 @@
 //! Started by /usr/libexec/hearth/hearth-pad-plasma (Plasma's autostart). Exit 4: this desktop has no layer-shell,
 //! the launcher then falls back to hearth-pad --standalone (the controller as a plain mouse and keyboard).
 //!
-//! For CI's pictures: --show menu | keyboard | accents | wheel | controls | hints | toast (no helper started).
+//! For CI's pictures: --show menu | menu-closing | keyboard | glide | accents | longtouch | password | wheel | controls |
+//! hints | toast (no helper started), and --at MS: the open / close motion and the ember held still that many
+//! milliseconds in (anim.rs).
 
+mod anim;
 mod link;
 mod looks;
 mod osk;
@@ -80,6 +83,8 @@ pub enum Wait {
     Toast = 1,
     Hints = 2,
     Save = 3,
+    /// a touch held on a key (OskKey.qml pressAndHoldInterval: 480 ms) opens its accents
+    Long = 4,
 }
 
 #[to_layer_message(multi)]
@@ -98,6 +103,17 @@ pub enum Msg {
     SuggTap(usize),
     AltTap(usize),
     Tick,
+    /// a frame while something moves (anim.rs)
+    Frame,
+    /// a key pressed / let go with the mouse or a finger (a tap types on letting go, a long touch opens accents)
+    KeyDown(usize, usize),
+    KeyUp(usize, usize),
+    PressEnd,
+    /// after a long touch: the finger slid onto accent i / was lifted there
+    AltHover(usize),
+    AltLift(usize),
+    /// Hearth's Quick settings opened on this many of Plasma's panels (0: none has it)
+    Quick(i64),
     Waited(Wait, u64),
     Clip(Vec<String>),
     Nothing,
@@ -117,7 +133,18 @@ pub struct App {
     pub toast: String,
     hints_until: Option<Instant>,
     /// the newest wait of each kind (an older one that ends does nothing)
-    gens: [u64; 4],
+    gens: [u64; 5],
+    /// what the overlays move by (anim.rs), and the Hearth menu's open / close motion
+    pub clock: anim::Clock,
+    pub radial_anim: Option<anim::Radial>,
+    /// the keyboard's ember: its glides from key to key (the newest last), and since when it shows (its warmth)
+    pub glides: Vec<anim::Glide>,
+    pub ember_since: Option<Instant>,
+    /// a key held with the mouse or a finger, and whether that became a long touch (its accents open)
+    press: Option<(usize, usize)>,
+    held: bool,
+    /// "text", or "password" over Plasma's password prompts (hearth-pad says so): no suggestions, nothing learned
+    pub kb_mode: String,
     // the keyboard
     kb: bool,
     osk: Option<osk::Osk>,
@@ -254,20 +281,30 @@ impl App {
             }
             "radial" => {
                 if m.get("open").and_then(Value::as_bool).unwrap_or(false) {
-                    GM_OFF.store(game_modes_off(), std::sync::atomic::Ordering::Relaxed);
-                    self.radial = true;
-                    self.sel = m.get("sel").and_then(Value::as_i64).unwrap_or(-1) as i32;
-                    tasks.push(self.open(Kind::Radial));
+                    let sel = m.get("sel").and_then(Value::as_i64).unwrap_or(-1) as i32;
+                    if self.radial {
+                        // Still open: the stick moved the light (hearth-pad says every change).
+                        self.set_sel(sel);
+                    } else {
+                        GM_OFF.store(game_modes_off(), std::sync::atomic::Ordering::Relaxed);
+                        self.radial = true;
+                        self.sel = sel;
+                        let now = self.clock.now;
+                        self.radial_anim = Some(anim::Radial { opened: now, closing: None, lit_prev: -1, lit_at: now });
+                        tasks.push(self.open(Kind::Radial));
+                    }
                 } else {
-                    self.radial = false;
-                    tasks.push(self.close(Kind::Radial));
+                    tasks.push(self.radial_closing());
                     let pick = m.get("pick").and_then(Value::as_i64).unwrap_or(-1);
                     if pick >= 0 && (pick as usize) < ITEMS.len() {
                         tasks.push(self.run(ITEMS[pick as usize].action));
                     }
                 }
             }
-            "osk" => tasks.push(if m.get("open").and_then(Value::as_bool).unwrap_or(false) { self.open_kb() } else { self.close_kb() }),
+            "osk" => {
+                let mode = if m.get("mode").and_then(Value::as_str) == Some("password") { "password" } else { "text" };
+                tasks.push(if m.get("open").and_then(Value::as_bool).unwrap_or(false) { self.open_kb_as(mode) } else { self.close_kb() })
+            }
             "oskpad" => {
                 if self.kb {
                     let b = m.get("b").and_then(Value::as_str).unwrap_or("");
@@ -299,12 +336,15 @@ impl App {
             "keyboard" => return self.open_kb(),
             // Hearth's Quick Access widget (Meta+Alt+A) where Plasma has it; the Fedora edition's Plasma doesn't
             // carry it yet, so there the Hearth menu opens Hearth Settings (its home has the quick tiles).
+            // Hearth's Quick settings (Mantel's QuickSettings, the Fedora edition's org.hearthos.quicksettings: on Hearth's
+            // bar, or as its own widget in any panel), opened through hearth-plasma-panel like its own shortcut.
+            // A Plasma without it on any panel: Debian's older Hearth Plasma widget (Meta+Alt+A), else Hearth
+            // Settings, and it says where Quick Access comes from (Msg::Quick).
             "quick" => {
-                if std::path::Path::new("/usr/share/plasma/plasmoids/org.hearth.quicksettings").exists() {
-                    pad_send(json!({ "cmd": "plasma", "do": "quick" }));
-                } else {
-                    bg(vec!["hearth-settings-app".into()]);
-                }
+                return Task::perform(
+                    hearth_ui::run::spawn(vec!["timeout".into(), "6".into(), "hearth-plasma-panel".into(), "open".into(), "quick".into()]),
+                    |o| Msg::Quick(o.json().and_then(|v| v.get("n").and_then(Value::as_i64)).unwrap_or(0)),
+                );
             }
             "close" => pad_send(json!({ "cmd": "plasma", "do": "close" })),
             "game" if gm_hidden("game") => return self.show_toast("Game Mode is off on this PC (Settings › System › Startup)"),
@@ -333,6 +373,106 @@ impl App {
             _ => {}
         }
         Task::none()
+    }
+
+    /// The light moved to item `i` (the old one fades as the new one grows: RadialMenu.qml's quick Behaviors).
+    fn set_sel(&mut self, i: i32) {
+        if i != self.sel {
+            if let Some(r) = self.radial_anim.as_mut() {
+                r.lit_prev = self.sel;
+                r.lit_at = self.clock.now;
+            }
+            self.sel = i;
+        }
+    }
+
+    /// The Hearth menu closes: it fades and shrinks for a moment (RadialMenu.qml's closing), then its overlay goes.
+    fn radial_closing(&mut self) -> Task<Msg> {
+        self.radial = false;
+        match self.radial_anim.as_mut() {
+            Some(r) if self.ids.contains_key(&Kind::Radial) => {
+                if r.closing.is_none() {
+                    r.closing = Some(self.clock.now);
+                }
+                Task::none()
+            }
+            _ => {
+                self.radial_anim = None;
+                self.close(Kind::Radial)
+            }
+        }
+    }
+
+    /// How often a frame is needed now (ms), or none: only while something moves. The Hearth menu opening or closing
+    /// and the ember gliding get every frame; the ember's slow warmth (a 2.4 s pulse) 20 a second.
+    fn frame_every(&self) -> Option<u64> {
+        if self.clock.frozen.is_some() {
+            return None;
+        }
+        if let Some(r) = self.radial_anim.as_ref() {
+            if r.closing.is_some() || anim::radial_moving(r, &self.clock) {
+                return Some(16);
+            }
+        }
+        if self.kb && self.ember_since.is_some() {
+            return Some(if anim::ember_moving(&self.glides, &self.clock) { 16 } else { 50 });
+        }
+        None
+    }
+
+    /// What has finished moving: a closed Hearth menu's overlay goes, old glides are let go.
+    fn settle(&mut self) -> Task<Msg> {
+        let mut t = Task::none();
+        if let Some(r) = self.radial_anim {
+            if let Some(c) = r.closing {
+                if self.clock.frozen.is_none() && self.clock.ms(c) >= anim::CLOSING {
+                    self.radial_anim = None;
+                    t = self.close(Kind::Radial);
+                }
+            }
+        }
+        if self.glides.len() > 1 && self.clock.frozen.is_none() {
+            let c = self.clock;
+            let last = self.glides.len() - 1;
+            let mut i = 0;
+            self.glides.retain(|g| {
+                let keep = i == last || c.ms(g.at) < anim::GLIDE + anim::SPARK;
+                i += 1;
+                keep
+            });
+        }
+        t
+    }
+
+    /// Where the ember goes (OskBoard.qml): it shows on the picked key while the controller is used, glides to the
+    /// next one, and its warmth pulses from the moment it showed.
+    fn track_ember(&mut self) {
+        let size = self.ids.get(&Kind::Keyboard).and_then(|id| self.sizes.get(id)).copied();
+        let target = match (self.vm.as_ref(), size) {
+            (Some(vm), Some(s)) if self.kb && view::ember_shown(vm) => view::sel_rect(vm, s),
+            _ => None,
+        };
+        let Some(r) = target else {
+            self.glides.clear();
+            self.ember_since = None;
+            return;
+        };
+        let now = self.clock.now;
+        let trail = self.vm.as_ref().map(|v| v.trail).unwrap_or(true);
+        if self.ember_since.is_none() {
+            self.ember_since = Some(now);
+        }
+        let moved = self.glides.last().map(|g| (g.to.0 - r.0).abs() > 0.5 || (g.to.1 - r.1).abs() > 0.5 || (g.to.2 - r.2).abs() > 0.5).unwrap_or(true);
+        if moved {
+            let from = anim::ember_rect(&self.glides, &self.clock).unwrap_or(r);
+            self.glides.push(anim::Glide { from, to: r, at: now, trail });
+        }
+        if let Some(p) = std::env::var_os("HEARTH_PAD_GEOMETRY") {
+            // CI only: where the keys are, so a test can touch one.
+            if let (Some(vm), Some(s)) = (self.vm.as_ref(), size) {
+                let _ = std::fs::write(p, view::geometry(vm, s).to_string());
+            }
+        }
     }
 
     fn show_help(&mut self) -> Task<Msg> {
@@ -399,10 +539,19 @@ impl App {
                 tasks.push(self.fit_kb());
             }
         }
+        self.track_ember();
         Task::batch(tasks)
     }
 
     fn open_kb(&mut self) -> Task<Msg> {
+        self.open_kb_as("text")
+    }
+
+    /// Keyboard.qml's openKb(mode): "text", or "password" (no suggestions, nothing learned, no emoji key).
+    fn open_kb_as(&mut self, mode: &str) -> Task<Msg> {
+        self.kb_mode = mode.to_string();
+        self.press = None;
+        self.held = false;
         if self.osk.is_none() && self.osk_err.is_empty() {
             match osk::Osk::new() {
                 Ok(o) => self.osk = Some(o),
@@ -417,7 +566,7 @@ impl App {
         let mut tasks = Vec::new();
         if let Some(o) = self.osk.as_mut() {
             o.prepare(&cfg);
-            let step = o.call("__e.reset('text', ''); __e.setHints(true);");
+            let step = o.call(&format!("__e.reset({}, ''); __e.setHints(true);", json!(mode)));
             tasks.push(self.apply(step));
         }
         self.restyle();
@@ -441,8 +590,25 @@ impl App {
         }
         self.kb = false;
         self.busy = false;
+        self.press = None;
+        self.held = false;
+        self.glides.clear();
+        self.ember_since = None;
         pad_send(json!({ "cmd": "osk", "open": false }));
         self.close(Kind::Keyboard)
+    }
+
+    /// Where the letter `v` is on the keyboard now.
+    fn find_key(&self, v: &str) -> Option<(usize, usize)> {
+        let vm = self.vm.as_ref()?;
+        for (r, row) in vm.rows.iter().enumerate() {
+            for (c, k) in row.iter().enumerate() {
+                if k.t == "ch" && k.v == v {
+                    return Some((r, c));
+                }
+            }
+        }
+        None
     }
 
     fn restyle(&mut self) {
@@ -521,7 +687,14 @@ fn new() -> (App, Task<Msg>) {
         help: false,
         toast: String::new(),
         hints_until: None,
-        gens: [0; 4],
+        gens: [0; 5],
+        clock: anim::Clock::new(app::arg("--at").and_then(|v| v.parse::<f32>().ok())),
+        radial_anim: None,
+        glides: Vec::new(),
+        ember_since: None,
+        press: None,
+        held: false,
+        kb_mode: "text".into(),
         kb: false,
         osk: None,
         osk_err: String::new(),
@@ -534,6 +707,16 @@ fn new() -> (App, Task<Msg>) {
     };
     let task = match app::arg("--show").as_deref() {
         Some("menu") => a.on_pad(&json!({ "t": "radial", "open": true, "sel": 1 })),
+        // Closing, from fully open (with --at: that far into the close).
+        Some("menu-closing") => {
+            let t = a.on_pad(&json!({ "t": "radial", "open": true, "sel": 1 }));
+            if let Some(r) = a.radial_anim.as_mut() {
+                r.opened -= Duration::from_secs(5);
+                r.lit_at -= Duration::from_secs(5);
+            }
+            let c = a.radial_closing();
+            Task::batch([t, c])
+        }
         Some("keyboard") => {
             let t = a.open_kb();
             // A word on its way, so the suggestions show (typing goes nowhere: no helper runs for pictures).
@@ -545,6 +728,26 @@ fn new() -> (App, Task<Msg>) {
         Some("accents") => {
             let t = a.open_kb();
             let t2 = a.engine("__e.state.sel = { r: 1, c: 2 }; var t0 = Date.now(); __e.handle('a', true, t0); __e.tick(t0 + 600);");
+            Task::batch([t, t2])
+        }
+        // The ember gliding from one key to the next (the move is made once the keyboard's overlay has its size).
+        Some("glide") => {
+            let t = a.open_kb();
+            let t2 = a.engine("__e.setHints(true); __e.state.sel = { r: 2, c: 3 }; __d = true;");
+            Task::batch([t, t2])
+        }
+        // A long touch on "e": the real press, the 480 ms wait, then the finger slides onto the second accent.
+        Some("longtouch") => {
+            let t = a.open_kb();
+            let (r, c) = a.find_key("e").unwrap_or((1, 2));
+            Task::batch([t, Task::done(Msg::KeyDown(r, c)), Task::perform(hearth_ui::run::after(900), |_| Msg::AltHover(1))])
+        }
+        // Over a password prompt: the keyboard's password mode, a few letters on their way (no suggestions).
+        Some("password") => {
+            let t = a.open_kb_as("password");
+            let t2 = a.engine(
+                "var R = __e.view().rows; ['h','u','n','t'].forEach(function (ch) { for (var r = 0; r < R.length; r++) for (var c = 0; c < R[r].length; c++) if (R[r][c].t === 'ch' && R[r][c].v === ch) { __e.tap(r, c); return; } }); __e.setHints(true); __e.state.sel = { r: 2, c: 4 }; __d = true;",
+            );
             Task::batch([t, t2])
         }
         Some("wheel") => {
@@ -567,13 +770,22 @@ fn new() -> (App, Task<Msg>) {
 }
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
+    a.clock.now = Instant::now();
+    let t = update_inner(a, m);
+    let s = a.settle();
+    Task::batch([t, s])
+}
+
+/// --show glide: the ember's move is made once (after the keyboard's overlay has its size).
+static GLIDE_SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn update_inner(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
         Msg::Pad(link::Ev::Line(v)) => return a.on_pad(&v),
         Msg::Pad(link::Ev::Ended(code)) => {
             eprintln!("hearth-pad-host: hearth-pad ended ({code}){}", if code == 2 || code == 3 { ": not started again" } else { "" });
             // Its menus can't be answered any more.
-            a.radial = false;
-            return Task::batch([a.close(Kind::Radial), a.close_kb(), a.sync_hints()]);
+            return Task::batch([a.radial_closing(), a.close_kb(), a.sync_hints()]);
         }
         Msg::Theme => {
             a.p = hearth_ui::theme::load();
@@ -584,6 +796,11 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             match a.kind(id) {
                 Some(Kind::Radial) | Some(Kind::Help) => a.scr = s,
                 Some(Kind::Keyboard) => {
+                    a.track_ember();
+                    if app::arg("--show").as_deref() == Some("glide") && !GLIDE_SHOWN.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                        // One key to the right: the glide starts now (held still by --at).
+                        return a.engine("__e.state.sel = { r: 2, c: 4 }; __d = true;");
+                    }
                     let h = a.kb_height(s.width);
                     if (h as f32 - s.height).abs() > 1.0 {
                         return a.fit_kb();
@@ -597,9 +814,12 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             if let Some(k) = a.kind(id) {
                 a.ids.remove(&k);
                 match k {
-                    Kind::Radial if a.radial => {
-                        a.radial = false;
-                        pad_send(json!({ "cmd": "radial", "open": false }));
+                    Kind::Radial => {
+                        a.radial_anim = None;
+                        if a.radial {
+                            a.radial = false;
+                            pad_send(json!({ "cmd": "radial", "open": false }));
+                        }
                     }
                     Kind::Keyboard if a.kb => {
                         a.kb = false;
@@ -610,19 +830,27 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 }
             }
         }
-        Msg::RadialHover(i) => a.sel = i,
+        Msg::RadialHover(i) => {
+            if a.radial {
+                a.set_sel(i);
+            }
+        }
         // Picked or closed with the mouse or touch: hearth-pad still thinks the menu is open.
         Msg::RadialPick(i) => {
-            a.radial = false;
+            if !a.radial {
+                return Task::none();
+            }
             pad_send(json!({ "cmd": "radial", "open": false }));
-            let t = a.close(Kind::Radial);
+            let t = a.radial_closing();
             let r = if i >= 0 && (i as usize) < ITEMS.len() { a.run(ITEMS[i as usize].action) } else { Task::none() };
             return Task::batch([t, r, a.sync_hints()]);
         }
         Msg::RadialDismiss => {
-            a.radial = false;
+            if !a.radial {
+                return Task::none();
+            }
             pad_send(json!({ "cmd": "radial", "open": false }));
-            return Task::batch([a.close(Kind::Radial), a.sync_hints()]);
+            return Task::batch([a.radial_closing(), a.sync_hints()]);
         }
         Msg::HelpClose => return a.hide_help(),
         Msg::OpenWelcome => {
@@ -630,6 +858,50 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             return a.hide_help();
         }
         Msg::KeyTap(r, c) => return a.engine(&format!("__e.setHints(false); __e.tap({r}, {c});")),
+        // OskKey.qml: a tap types when the finger (or the mouse button) lets go on the key; held 480 ms it opens the
+        // key's accents instead, and the finger can slide onto one and lift there to type it.
+        Msg::KeyDown(r, c) => {
+            a.press = Some((r, c));
+            a.held = false;
+            let g = a.next(Wait::Long);
+            return wait(480, Wait::Long, g);
+        }
+        Msg::KeyUp(r, c) => {
+            let was = a.press.take();
+            if a.held {
+                // Lifted on the key itself: its accents stay open (tap one, or B / the D-pad).
+                a.held = false;
+            } else if was == Some((r, c)) {
+                return a.engine(&format!("__e.setHints(false); __e.tap({r}, {c});"));
+            }
+        }
+        Msg::PressEnd => {
+            a.press = None;
+            a.held = false;
+        }
+        Msg::AltHover(i) => {
+            if a.held {
+                return a.engine(&format!("__e.hoverAlt({i});"));
+            }
+        }
+        Msg::AltLift(i) => {
+            if a.held {
+                a.held = false;
+                a.press = None;
+                return a.engine(&format!("__e.pickAlt({i});"));
+            }
+        }
+        Msg::Frame => {}
+        Msg::Quick(n) => {
+            if n <= 0 {
+                if std::path::Path::new("/usr/share/plasma/plasmoids/org.hearth.quicksettings").exists() {
+                    pad_send(json!({ "cmd": "plasma", "do": "quick" }));
+                } else {
+                    bg(vec!["hearth-settings-app".into()]);
+                    return a.show_toast("Quick Access is part of Hearth's bar (Settings › Bar and dock)");
+                }
+            }
+        }
         Msg::SuggTap(i) => return a.engine(&format!("__e.setHints(false); __e.tap(-1, {i});")),
         Msg::AltTap(i) => return a.engine(&format!("__e.pickAlt({i});")),
         Msg::Tick => return a.engine("__e.tick(Date.now());"),
@@ -645,6 +917,14 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 }
                 Wait::Hints => return a.sync_hints(),
                 Wait::Save => a.save_learned(),
+                Wait::Long => {
+                    if let Some((r, c)) = a.press {
+                        if !a.held && a.kb {
+                            a.held = true;
+                            return a.engine(&format!("__e.longPress({r}, {c});"));
+                        }
+                    }
+                }
             }
         }
         Msg::Clip(items) => {
@@ -689,6 +969,10 @@ fn subscription(a: &App) -> Subscription<Msg> {
     if a.kb && a.busy {
         subs.push(iced::time::every(Duration::from_millis(16)).map(|_| Msg::Tick));
     }
+    // The menu's open / close and the ember: frames only while they move.
+    if let Some(ms) = a.frame_every() {
+        subs.push(iced::time::every(Duration::from_millis(ms)).map(|_| Msg::Frame));
+    }
     Subscription::batch(subs)
 }
 
@@ -718,7 +1002,8 @@ fn main() {
     if app::handle_cli(
         "hearth-pad-host",
         "The controller in KDE Plasma: runs hearth-pad --plasma and draws the Hearth menu, the on-screen keyboard and the controls.\n\
-         --show menu|keyboard|accents|wheel|controls|hints|toast  one of them, for pictures (no controller helper)\n\
+         --show menu|menu-closing|keyboard|glide|accents|longtouch|password|wheel|controls|hints|toast  one of them, for pictures (no controller helper)\n\
+         --at MS  the motion held still MS milliseconds in (pictures)\n\
          --no-helper  don't start hearth-pad",
     ) {
         return;

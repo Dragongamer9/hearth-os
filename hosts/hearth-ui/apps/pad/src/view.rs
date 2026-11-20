@@ -2,14 +2,17 @@
 //! the short messages (Help.qml, with osk-plasma.qml's list for Plasma), the button hints (HintStrip.qml) and the
 //! on-screen keyboard (OskBoard.qml / OskKey.qml, drawing what the shared engine says).
 
+use crate::anim;
 use crate::looks::Look;
 use crate::osk::{Key, Vm, MOD_KEYS};
 use crate::{gm_hidden, App, Msg, ITEMS};
+use iced::widget::image;
+use std::sync::OnceLock;
 use hearth_ui::ui::{self, glyph, t, tb, ts};
 use hearth_ui::Pal;
 use iced::widget::canvas::{self, Frame, Geometry, Path, Stroke};
 use iced::widget::{column, container, mouse_area, row, stack, text, Space, Stack};
-use iced::{font, mouse, Background, Border, Color, Element, Length, Padding, Point, Rectangle, Renderer, Shadow, Size, Theme, Vector};
+use iced::{font, mouse, Background, Border, Color, Element, Length, Padding, Point, Rectangle, Renderer, Shadow, Size, Theme};
 
 fn at<'a>(x: f32, y: f32, e: Element<'a, Msg>) -> Element<'a, Msg> {
     container(e).padding(Padding { top: y.max(0.0), left: x.max(0.0), right: 0.0, bottom: 0.0 }).into()
@@ -30,8 +33,41 @@ fn wt(w: font::Weight) -> iced::Font {
 
 struct Ring {
     p: Pal,
-    sel: i32,
     size: f32,
+    /// the ring's opacity while it opens / closes, and how lit each item is (0..1) while the light moves
+    op: f32,
+    lit: [f32; 8],
+    /// no glow picture: the warmth drawn instead
+    warm: bool,
+}
+
+/// Mantel's pictures (desktop/shell/images), read from the shell folder the first time they're drawn; None when
+/// they aren't there (then the flame mark and a drawn warmth stand in).
+fn picture(name: &'static str, slot: &'static OnceLock<Option<image::Handle>>) -> Option<image::Handle> {
+    slot.get_or_init(|| match std::fs::read(hearth_ui::run::shell_dir().join("images").join(name)) {
+        Ok(b) => Some(image::Handle::from_bytes(b)),
+        Err(e) => {
+            eprintln!("hearth-pad-host: images/{name}: {e} (drawn without it)");
+            None
+        }
+    })
+    .clone()
+}
+pub fn logo_picture() -> Option<image::Handle> {
+    static L: OnceLock<Option<image::Handle>> = OnceLock::new();
+    picture("hearth-logo.png", &L)
+}
+fn glow_picture() -> Option<image::Handle> {
+    static G: OnceLock<Option<image::Handle>> = OnceLock::new();
+    picture("ember-glow.png", &G)
+}
+
+/// The Hearth logo (images/hearth-logo.png, as RadialMenu.qml and Help.qml show it), or the flame mark without it.
+pub fn logo<'a>(p: Pal, size: f32, op: f32) -> Element<'a, Msg> {
+    match logo_picture() {
+        Some(h) => image(h).width(Length::Fixed(size)).height(Length::Fixed(size)).opacity(op).into(),
+        None => flame(Pal { accent: Pal::a(p.accent, op), flame: Pal::a(p.flame, op), ..p }, size),
+    }
 }
 
 impl canvas::Program<Msg> for Ring {
@@ -40,13 +76,17 @@ impl canvas::Program<Msg> for Ring {
         let mut f = Frame::new(renderer, bounds.size());
         let (cx, cy, s) = (bounds.width / 2.0, bounds.height / 2.0, self.size);
         let p = self.p;
-        // The soft disc behind the items, warmed by the fire in the middle.
+        let op = self.op;
+        let al = |c: Color| Pal::a(c, c.a * op);
+        // The soft disc behind the items, warmed by the fire in the middle (the glow picture is its own layer).
         let disc = Path::circle(Point::new(cx, cy), s / 2.0);
-        f.fill(&disc, glass(&p));
-        f.stroke(&disc, Stroke::default().with_color(p.line).with_width(1.0));
-        for i in 0..12 {
-            let r = s * 0.275 * (1.0 - i as f32 / 12.0);
-            f.fill(&Path::circle(Point::new(cx, cy), r), Pal::a(p.accent, 0.016));
+        f.fill(&disc, al(glass(&p)));
+        f.stroke(&disc, Stroke::default().with_color(al(p.line)).with_width(1.0));
+        if self.warm {
+            for i in 0..12 {
+                let r = s * 0.275 * (1.0 - i as f32 / 12.0);
+                f.fill(&Path::circle(Point::new(cx, cy), r), Pal::a(p.accent, 0.016 * op));
+            }
         }
         for i in 0..ITEMS.len() {
             // Game Mode off on this PC: its slot stays empty.
@@ -55,11 +95,11 @@ impl canvas::Program<Msg> for Ring {
             }
             let ang = i as f32 / ITEMS.len() as f32 * std::f32::consts::TAU;
             let r = s * 0.36;
-            let lit = self.sel == i as i32;
-            let d = s * 0.17 * if lit { 1.14 } else { 1.0 };
+            let k = self.lit[i];
+            let d = s * 0.17 * (1.0 + 0.14 * k);
             let c = Path::circle(Point::new(cx + ang.sin() * r, cy - ang.cos() * r), d / 2.0);
-            f.fill(&c, if lit { p.accent } else { p.panel2 });
-            f.stroke(&c, Stroke::default().with_color(if lit { Pal::mix(p.accent, Color::WHITE, 0.2) } else { p.line }).with_width(1.0));
+            f.fill(&c, al(Pal::mix(p.panel2, p.accent, k)));
+            f.stroke(&c, Stroke::default().with_color(al(Pal::mix(p.line, Pal::mix(p.accent, Color::WHITE, 0.2), k))).with_width(1.0));
         }
         vec![f.into_geometry()]
     }
@@ -106,24 +146,41 @@ pub fn flame<'a>(p: Pal, size: f32) -> Element<'a, Msg> {
 pub fn radial(a: &App, size: Size) -> Element<'_, Msg> {
     let p = a.p;
     let (w, h) = (size.width, size.height);
-    let s = w.min(h) * 0.62;
+    // RadialMenu.qml: the ring grows from 0.85 (OutBack) and fades in, the screen dims; closing runs it back.
+    let (scale, op, dim_a) = a.radial_anim.as_ref().map(|r| anim::radial_look(r, &a.clock)).unwrap_or((1.0, 1.0, 0.55));
+    let s = w.min(h) * 0.62 * scale;
     let (cx, cy) = (w / 2.0, h / 2.0);
-    let dim = mouse_area(container(Space::new()).width(Length::Fill).height(Length::Fill).style(ui::boxed(Pal::a(Color::BLACK, 0.55), 0.0, None)))
+    let al = |c: Color| Pal::a(c, c.a * op);
+    let mut lit = [0.0f32; 8];
+    for (i, l) in lit.iter_mut().enumerate() {
+        *l = match a.radial_anim.as_ref() {
+            Some(r) => anim::lit_amount(r, a.sel, i as i32, &a.clock),
+            None => (a.sel == i as i32) as i32 as f32,
+        };
+    }
+    let dim = mouse_area(container(Space::new()).width(Length::Fill).height(Length::Fill).style(ui::boxed(Pal::a(Color::BLACK, dim_a), 0.0, None)))
         .on_press(Msg::RadialDismiss);
-    let ring = canvas::Canvas::new(Ring { p, sel: a.sel, size: s }).width(Length::Fill).height(Length::Fill);
+    let glow = glow_picture();
+    let ring = canvas::Canvas::new(Ring { p, size: s, op, lit, warm: glow.is_none() }).width(Length::Fill).height(Length::Fill);
     let label = if a.sel >= 0 && (a.sel as usize) < ITEMS.len() { item_label(a, a.sel as usize) } else { "Hearth".to_string() };
     let centre = container(
         column![
-            flame(p, s * 0.16),
-            text(label).size((s * 0.05).max(16.0)).color(p.text).font(wt(font::Weight::Semibold)),
-            t("Stick to choose · A select · B close", (s * 0.028).max(11.0), p.muted),
+            logo(p, s * 0.16, op),
+            text(label).size((s * 0.05).max(16.0)).color(al(p.text)).font(wt(font::Weight::Semibold)),
+            t("Stick to choose · A select · B close", (s * 0.028).max(11.0), al(p.muted)),
         ]
         .spacing(s * 0.02)
         .align_x(iced::Center),
     )
     .center_x(Length::Fill)
     .center_y(Length::Fill);
-    let mut layers: Vec<Element<'_, Msg>> = vec![dim.into(), ring.into(), centre.into()];
+    let mut layers: Vec<Element<'_, Msg>> = vec![dim.into(), ring.into()];
+    // The ember's glow behind the middle (images/ember-glow.png at 0.18).
+    if let Some(g) = glow {
+        let gs = s * 0.55;
+        layers.push(container(image(g).width(Length::Fixed(gs)).height(Length::Fixed(gs)).opacity(0.18 * op)).center_x(Length::Fill).center_y(Length::Fill).into());
+    }
+    layers.push(centre.into());
     for (i, it) in ITEMS.iter().enumerate() {
         if gm_hidden(it.action) {
             continue;
@@ -131,8 +188,8 @@ pub fn radial(a: &App, size: Size) -> Element<'_, Msg> {
         let ang = i as f32 / ITEMS.len() as f32 * std::f32::consts::TAU;
         let d = s * 0.17;
         let (x, y) = (cx + ang.sin() * s * 0.36 - d / 2.0, cy - ang.cos() * s * 0.36 - d / 2.0);
-        let lit = a.sel == i as i32;
-        let icon = sized(d, d, glyph(it.icon, if lit { p.ink } else { p.text }, d * 0.42, 2.0));
+        let ic = al(Pal::mix(p.text, p.ink, lit[i]));
+        let icon = sized(d, d, glyph(it.icon, ic, d * 0.42, 2.0));
         let hit = mouse_area(icon).on_enter(Msg::RadialHover(i as i32)).on_press(Msg::RadialPick(i as i32)).interaction(mouse::Interaction::Pointer);
         layers.push(at(x, y, hit.into()));
     }
@@ -193,7 +250,7 @@ pub fn help(a: &App, size: Size) -> Element<'_, Msg> {
     .interaction(mouse::Interaction::Pointer);
     let card = container(
         column![
-            row![flame(p, 36.0), ts("Controller controls", 22.0, p.text)].spacing(12.0).align_y(iced::Center),
+            row![logo(p, 36.0, 1.0), ts("Controller controls", 22.0, p.text)].spacing(12.0).align_y(iced::Center),
             t("The controller works like a mouse and keyboard everywhere in Desktop Mode. It pauses while a game is fullscreen.", 13.0, p.muted),
             container(grid).padding(Padding { top: 6.0, ..Padding::ZERO }),
             container(more).padding(Padding { top: 8.0, ..Padding::ZERO }),
@@ -310,7 +367,6 @@ pub fn key_spans(vm: &Vm, iw: f32, gap: f32) -> Vec<Vec<(f32, f32)>> {
 fn key_view<'a>(vm: &Vm, look: &Look, k: &Key, r: usize, c: usize, m: &Metrics) -> Element<'a, Msg> {
     let th = *look;
     let modk = MOD_KEYS.contains(&k.t.as_str());
-    let ember = vm.active && !vm.wheel.as_ref().map(|w| w.0).unwrap_or(false);
     let sel = vm.active && vm.sel == (r as i64, c as i64);
     let aim_l = vm.split.as_ref().and_then(|s| s.0) == Some((r as i64, c as i64));
     let aim_r = vm.split.as_ref().and_then(|s| s.1) == Some((r as i64, c as i64));
@@ -347,8 +403,6 @@ fn key_view<'a>(vm: &Vm, look: &Look, k: &Key, r: usize, c: usize, m: &Metrics) 
         (3.0, Color::from_rgb8(0xff, 0xd3, 0x6b))
     } else if aim_l {
         (3.0, th.accent)
-    } else if sel && ember {
-        (3.0, th.accent)
     } else if outlined {
         (th.kb, if modk { th.mbc.unwrap_or(th.kbc) } else { th.kbc })
     } else {
@@ -374,8 +428,6 @@ fn key_view<'a>(vm: &Vm, look: &Look, k: &Key, r: usize, c: usize, m: &Metrics) 
         let gc = Pal::a(if lit { th.sel_text } else { th.muted }, 0.6);
         inner.push(container(text(g).size(10.0).color(gc).font(wt(font::Weight::Black))).align_right(Length::Fill).padding(Padding { top: 4.0, right: 6.0, ..Padding::ZERO }).into());
     }
-    let glow = sel && ember;
-    let accent = th.accent;
     let body = container(Stack::with_children(inner).width(Length::Fill).height(Length::Fill))
         .width(Length::Fill)
         .height(Length::Fixed(m.key_h))
@@ -383,13 +435,104 @@ fn key_view<'a>(vm: &Vm, look: &Look, k: &Key, r: usize, c: usize, m: &Metrics) 
             text_color: None,
             background: Some(Background::Color(bg)),
             border: Border { color: bc, width: bw, radius: radius.into() },
-            shadow: if glow { Shadow { color: Pal::a(accent, 0.35), offset: Vector::new(0.0, 0.0), blur_radius: 14.0 } } else { Shadow::default() },
+            shadow: Shadow::default(),
             snap: true,
         });
     if k.t == "none" {
         return body.into();
     }
-    mouse_area(body).on_press(Msg::KeyTap(r, c)).interaction(mouse::Interaction::Pointer).into()
+    // OskKey.qml's touch: a tap types on letting go; held 480 ms, the key's accents open (main.rs KeyDown / KeyUp).
+    mouse_area(body).on_press(Msg::KeyDown(r, c)).on_release(Msg::KeyUp(r, c)).interaction(mouse::Interaction::Pointer).into()
+}
+
+/// Does the ember show (OskBoard.qml): on the picked key while the controller is used, not over the Ember Wheel.
+pub fn ember_shown(vm: &Vm) -> bool {
+    vm.active && vm.sel.0 >= 0 && !vm.wheel.as_ref().map(|w| w.0).unwrap_or(false)
+}
+
+/// The board inside the keyboard's overlay, and where its keys start on it (keyboard() lays them out the same way).
+fn board_frame(vm: &Vm, size: Size) -> (f32, f32, Metrics, f32, f32, f32) {
+    let board_w = (size.width - 16.0).max(100.0);
+    let board_h = (size.height - 6.0).max(60.0);
+    let m = metrics(vm, board_h);
+    let iw = board_w - 24.0;
+    let (kx, ky) = (12.0, 8.0 + m.top_h + m.gap);
+    (board_w, board_h, m, iw, kx, ky)
+}
+
+/// The picked key on the board: x, y, width, height.
+pub fn sel_rect(vm: &Vm, size: Size) -> Option<anim::Rect4> {
+    let (_, _, m, iw, kx, ky) = board_frame(vm, size);
+    let (r, c) = vm.sel;
+    if r < 0 || c < 0 {
+        return None;
+    }
+    let (x, w) = *key_spans(vm, iw, m.gap).get(r as usize)?.get(c as usize)?;
+    Some((kx + x, ky + r as f32 * (m.key_h + m.gap), w, m.key_h))
+}
+
+/// For CI's touch test: each letter key's middle and the open accents' middles, in the overlay's own coordinates.
+pub fn geometry(vm: &Vm, size: Size) -> serde_json::Value {
+    let (_, _, m, iw, kx, ky) = board_frame(vm, size);
+    let (ox, oy) = (8.0, if vm.position == "top" { 0.0 } else { 6.0 });
+    let spans = key_spans(vm, iw, m.gap);
+    let mut keys = serde_json::Map::new();
+    for (r, row) in vm.rows.iter().enumerate() {
+        for (c, k) in row.iter().enumerate() {
+            if let Some((x, w)) = spans.get(r).and_then(|s| s.get(c)) {
+                if k.t == "ch" {
+                    let y = ky + r as f32 * (m.key_h + m.gap);
+                    keys.insert(k.v.clone(), serde_json::json!([ox + kx + x + w / 2.0, oy + y + m.key_h / 2.0]));
+                }
+            }
+        }
+    }
+    let alts: Vec<serde_json::Value> = popup_frame(vm, &m, iw, &spans)
+        .map(|(x, y, n)| (0..n).map(|i| serde_json::json!([ox + kx + x + 6.0 + i as f32 * (m.key_h + 6.0) + m.key_h / 2.0, oy + ky + y + 6.0 + m.key_h / 2.0])).collect())
+        .unwrap_or_default();
+    serde_json::json!({ "w": size.width, "h": size.height, "keys": keys, "alts": alts, "popup": vm.popup.as_ref().map(|p| p.0.clone()) })
+}
+
+/// Where the accents' row sits over the picked key (x, y in the keys' area, how many).
+fn popup_frame(vm: &Vm, m: &Metrics, iw: f32, spans: &[Vec<(f32, f32)>]) -> Option<(f32, f32, usize)> {
+    let (alts, _) = vm.popup.as_ref()?;
+    let (r, c) = vm.sel;
+    if r < 0 || c < 0 {
+        return None;
+    }
+    let (sx, sw) = *spans.get(r as usize)?.get(c as usize)?;
+    let sy = r as f32 * (m.key_h + m.gap);
+    let pw = iw.min((m.key_h + 6.0) * alts.len() as f32 + 12.0);
+    let ph = m.key_h + 12.0;
+    let x = (sx + sw / 2.0 - pw / 2.0).min(iw - pw).max(0.0);
+    let y = (sy - ph - 6.0).max(-ph / 2.0);
+    Some((x, y, alts.len()))
+}
+
+/// Hearth's ember (OskBoard.qml): a ring in the accent around the picked key that glides from key to key, the warmth
+/// under it pulsing, and the short trail of sparks it leaves.
+struct Ember {
+    ring: anim::Rect4,
+    warmth: f32,
+    sparks: Vec<(f32, f32, f32, f32)>,
+    accent: Color,
+    radius: f32,
+}
+
+impl canvas::Program<Msg> for Ember {
+    type State = ();
+    fn draw(&self, _s: &(), renderer: &Renderer, _t: &Theme, bounds: Rectangle, _c: mouse::Cursor) -> Vec<Geometry> {
+        let mut f = Frame::new(renderer, bounds.size());
+        for (x, y, k, o) in &self.sparks {
+            f.fill(&Path::circle(Point::new(*x, *y), 4.5 * k), Pal::a(self.accent, *o));
+        }
+        let (x, y, w, h) = self.ring;
+        // the warmth under it (6 px beyond the ring)
+        f.fill(&Path::rounded_rectangle(Point::new(x - 9.0, y - 9.0), Size::new(w + 18.0, h + 18.0), (self.radius + 8.0).into()), Pal::a(self.accent, self.warmth));
+        let ring = Path::rounded_rectangle(Point::new(x - 1.5, y - 1.5), Size::new(w + 3.0, h + 3.0), (self.radius + 1.5).into());
+        f.stroke(&ring, Stroke::default().with_color(self.accent).with_width(3.0));
+        vec![f.into_geometry()]
+    }
 }
 
 struct Glow {
@@ -526,20 +669,20 @@ pub fn keyboard<'a>(a: &'a App, size: Size) -> Element<'a, Msg> {
     // where the keys start on the board
     let (kx, ky) = (12.0, 8.0 + m.top_h + m.gap);
     let spans = key_spans(vm, iw, m.gap);
-    let sel_rect = || -> Option<(f32, f32, f32)> {
-        let (r, c) = vm.sel;
-        if r < 0 {
-            return None;
+    // Hearth's ember over the keys (OskBoard.qml z 2-3: the sparks, the warmth, the ring), where its glide has got to.
+    if ember_shown(vm) {
+        let ring = anim::ember_rect(&a.glides, &a.clock).or_else(|| sel_rect(vm, size));
+        if let Some(ring) = ring {
+            let warmth = a.ember_since.map(|t0| anim::warmth(t0, &a.clock)).unwrap_or(0.22);
+            let sparks = anim::sparks(&a.glides, &a.clock);
+            let radius = key_radius(&th, vm, m.key_h);
+            layers.push(canvas::Canvas::new(Ember { ring, warmth, sparks, accent: th.accent, radius }).width(Length::Fill).height(Length::Fill).into());
         }
-        let (x, w) = *spans.get(r as usize)?.get(c as usize)?;
-        Some((x, r as f32 * (m.key_h + m.gap), w))
-    };
+    }
     // accents (hold A, View, or a long touch)
-    if let (Some((alts, pi)), Some((sx, sy, sw))) = (vm.popup.as_ref(), sel_rect()) {
+    if let (Some((alts, pi)), Some((x, y, _))) = (vm.popup.as_ref(), popup_frame(vm, &m, iw, &spans)) {
         let pw = iw.min((m.key_h + 6.0) * alts.len() as f32 + 12.0);
         let ph = m.key_h + 12.0;
-        let x = (sx + sw / 2.0 - pw / 2.0).min(iw - pw).max(0.0);
-        let y = (sy - ph - 6.0).max(-ph / 2.0);
         let mut r = row![].spacing(6.0);
         for (i, s) in alts.iter().enumerate() {
             let sel = *pi == i as i64;
@@ -552,7 +695,8 @@ pub fn keyboard<'a>(a: &'a App, size: Size) -> Element<'a, Msg> {
                     border: Border { color: acc, width: if sel { 3.0 } else { 0.0 }, radius: 10.0.into() },
                     ..container::Style::default()
                 });
-            r = r.push(mouse_area(cell).on_press(Msg::AltTap(i)).interaction(mouse::Interaction::Pointer));
+            // A tap picks it; after a long touch, sliding onto it lights it and lifting there types it.
+            r = r.push(mouse_area(cell).on_press(Msg::AltTap(i)).on_enter(Msg::AltHover(i)).on_release(Msg::AltLift(i)).interaction(mouse::Interaction::Pointer));
         }
         let pop = container(r).padding(6.0).width(Length::Fixed(pw)).height(Length::Fixed(ph)).style(ui::boxed(th.bg2, 14.0, Some((Pal::a(Color::WHITE, 0.08), 1.0))));
         layers.push(at(kx + x, ky + y, pop.into()));
@@ -594,7 +738,8 @@ pub fn keyboard<'a>(a: &'a App, size: Size) -> Element<'a, Msg> {
             shadow: Shadow::default(),
             snap: true,
         });
-    container(board)
+    // A press let go anywhere else ends it (a long touch lifted off the keys leaves the accents open).
+    container(mouse_area(board).on_release(Msg::PressEnd))
         .padding(Padding { left: 8.0, right: 8.0, top: if top_pos { 0.0 } else { 6.0 }, bottom: if top_pos { 6.0 } else { 0.0 } })
         .into()
 }
