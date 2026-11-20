@@ -304,16 +304,14 @@ hearth-firehold-plasma begin org.hearthos.firehold.desk
 now=$(($(date +%s) * 1000))
 printf '{"screens": {"Virtual-1": {"mode": "couch", "why": "pad", "at": %s}, "Virtual-0": {"mode": "desk", "why": "mouse", "at": %s}}}' "$now" "$now" > "$RUN/modes.json"
 since=$(date +%s)
-HEARTH_FIREHOLD_TIP=always PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk plasmashell -p org.hearthos.firehold.desk >>"$OUT/plasmashell2.log" 2>&1 &
-PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk hearth-firehold-plasma session >"$OUT/session2.log" 2>&1 &
-if ! wait_ready org.hearthos.firehold.desk 40 && command -v gdb >/dev/null; then
-  # It crashed (seen now and then since round 20): its backtrace under gdb, in desk2-gdb.txt; then as before.
-  pkill -f "hearth-firehold-plasma session"; pkill plasmashell; sleep 2; rm -f "$RUN/failed"
-  HEARTH_FIREHOLD_TIP=always KDE_DEBUG=1 PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk timeout 70 gdb -batch -ex run -ex "thread apply all bt 30" --args plasmashell -p org.hearthos.firehold.desk >"$OUT/desk2-gdb.txt" 2>&1
-  pkill plasmashell; sleep 2; rm -f "$RUN/failed"; hearth-firehold-plasma begin org.hearthos.firehold.desk
+# Under gdb from the start (the two-screen Desk has crashed now and then at start since round 20, and not again under
+# gdb when started a second time): a crash leaves its backtrace in desk2-gdb.txt.
+if command -v gdb >/dev/null; then
+  HEARTH_FIREHOLD_TIP=always KDE_DEBUG=1 PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk timeout 1500 gdb -batch -ex run -ex "thread apply all bt 30" --args plasmashell -p org.hearthos.firehold.desk >"$OUT/desk2-gdb.txt" 2>&1 &
+else
   HEARTH_FIREHOLD_TIP=always PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk plasmashell -p org.hearthos.firehold.desk >>"$OUT/plasmashell2.log" 2>&1 &
-  PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk hearth-firehold-plasma session >"$OUT/session2b.log" 2>&1 &
 fi
+PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk hearth-firehold-plasma session >"$OUT/session2.log" 2>&1 &
 wait_ready org.hearthos.firehold.desk 90 && echo "::notice title=Two screens::the Desk shell is up" || fail "Two screens" "the Desk didn't come up"
 python3 "$FX/mpris.py" >"$OUT/mpris2.log" 2>&1 &
 dolphin "$HOME/Pictures" >/dev/null 2>&1 &
@@ -415,6 +413,7 @@ shot fp-04-modes-per-screen 0 1920
 hearth-firehold-plasma ping popup-off Virtual-0; sleep 1
 hearth-firehold-plasma mode Virtual-1 away --why pick; sleep 6
 shot fp-06-away 1920 1920
+cat "$OUT/desk2-gdb.txt" >> "$OUT/plasmashell2.log" 2>/dev/null
 grep -E "org\.hearthos|firehold" "$OUT/plasmashell2.log" | grep -iE "error|TypeError|ReferenceError|is not a type|is not installed|Cannot assign|not defined|failed|Unable to assign" | sort -u | head -12 > "$OUT/qml2-errors.txt"
 echo "::notice title=plasmashell about Firehold (two screens)::$(grep -E "firehold|org\.hearthos" "$OUT/plasmashell2.log" | sort -u | head -12 | cut -c1-250 | sed -e ':a;N;$!ba;s/\n/%0A/g')"
 [ -s "$OUT/qml2-errors.txt" ] && fail "Firehold QML (two screens)" "$(cut -c1-300 "$OUT/qml2-errors.txt" | sed -e 's/%/%25/g' | sed -e ':a;N;$!ba;s/\n/%0A/g')"
