@@ -1,0 +1,9 @@
+{"kded": true, "modules": [
+ {"name": "appmenu", "label": "App menus in the panel", "what": "Lets the Global Menu widget show apps' menus", "running": true, "autoload": true},
+ {"name": "bluedevil", "label": "Bluetooth", "what": "KDE's Bluetooth service (pairing, receiving files)", "running": true, "autoload": true},
+ {"name": "freespacenotifier", "label": "Low space warning", "what": "Warns when your home folder is nearly full", "running": true, "autoload": true},
+ {"name": "gtkconfig", "label": "GTK settings", "what": "Gives GTK apps your fonts, theme and cursor", "running": true, "autoload": true},
+ {"name": "kded_bolt", "label": "Thunderbolt", "what": "Tells you about new Thunderbolt devices", "running": false, "autoload": true},
+ {"name": "donationmessage", "label": "Donation message", "what": "KDE's yearly request for a donation", "running": false, "autoload": false},
+ {"name": "smartmonitor", "label": "Drive health", "what": "Warns when a drive's health (SMART) gets worse", "running": true, "autoload": true},
+ {"name": "browserintegrationreminder", "label": "Browser integration reminder", "what": "Suggests the Plasma browser extension", "running": false, "autoload": false}]}

@@ -23,6 +23,41 @@ kde kde-07-screenlock --page kde-screenlock
 kde kde-08-session --page kde-session
 kde kde-09-renderer --page kde-renderer
 kde kde-10-feedback --page kde-feedback
+# Batch 2: task switcher, KRunner, web search keywords, app updates, Trash, connection preferences, KWin scripts,
+# KDE's background services, activities, your folders, device actions.
+kde kde-20-tabbox --page kde-tabbox
+kde kde-21-krunner --page kde-krunner
+kde kde-22-webshortcuts --page kde-webshortcuts
+kde kde-23-updates --page kde-updates
+kde kde-24-trash --page kde-trash
+kde kde-25-netpref --page kde-netpref
+kde kde-26-kwin-scripts --page kde-kwin-scripts
+kde kde-27-kded --page kde-kded
+kde kde-28-activities --page kde-activities
+kde kde-29-locations --page kde-locations
+kde kde-30-device-actions --page kde-device-actions
+kde kde-31-b-tabbox --layout b --page kde-tabbox --focus "Windows from"
+kde kde-32-b-kded --layout b --page kde-kded --focus "Low space warning"
+# Batch 3: day and night times, Plasma's on-screen keyboard, controllers in KDE, music CDs, remote desktop (RDP), the
+# rest of the Info Center.
+kde kde-40-nighttime --page kde-nighttime
+kde kde-41-plasmakeyboard --page kde-plasmakeyboard
+kde kde-42-gamecontroller --page kde-gamecontroller
+kde kde-43-cddb --page kde-cddb
+kde kde-44-krdp --page kde-krdp
+kde kde-45-info --page kde-info
+kde kde-46-b-nighttime --layout b --page kde-nighttime --focus "Night starts"
+# The lower part of the long pages (the focus on their last rows scrolls them there).
+kde kde-50-workspace-end --page kde-workspace --focus "On the taskbar too"
+kde kde-51-style-end --page kde-style --focus "GTK apps' theme"
+kde kde-52-decorations-end --page kde-decorations --focus "Shadow strength"
+kde kde-53-screenlock-end --page kde-screenlock --focus "Sign-in options"
+kde kde-54-tabbox-end --page kde-tabbox --focus "Order"
+kde kde-55-device-actions-end --page kde-device-actions --focus "Add this action"
+kde kde-56-info-end --page kde-info --focus "Info Center"
+kde kde-57-cddb-end --page kde-cddb --focus "MP3: write ID3 tags"
+kde kde-58-plasmakeyboard-end --page kde-plasmakeyboard --focus "Hearth's on-screen keyboard"
+kde kde-59-all-end --page kde-settings --focus "More system information"
 # Long lists open over the page (A / a click on the name).
 kde kde-11-colors-list --page kde-colors:pick
 kde kde-12-decorations-list --page kde-decorations:pick

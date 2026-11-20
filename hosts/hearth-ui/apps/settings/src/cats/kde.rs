@@ -23,7 +23,11 @@ use std::sync::OnceLock;
 
 /// The pages, as kde-settings.json lists them (a test checks they agree).
 pub const PAGES: &[&str] = &[
-    "kde-settings", "kde-workspace", "kde-style", "kde-plasma-style", "kde-colors", "kde-global-theme", "kde-decorations", "kde-screenlock", "kde-session", "kde-renderer", "kde-feedback",
+    "kde-settings", "kde-workspace", "kde-style", "kde-plasma-style", "kde-colors", "kde-global-theme",
+    "kde-decorations", "kde-screenlock", "kde-session", "kde-renderer", "kde-feedback", "kde-tabbox", "kde-krunner",
+    "kde-webshortcuts", "kde-updates", "kde-trash", "kde-netpref", "kde-kwin-scripts", "kde-kded", "kde-activities",
+    "kde-locations", "kde-device-actions", "kde-nighttime", "kde-plasmakeyboard", "kde-gamecontroller", "kde-cddb",
+    "kde-krdp", "kde-info",
 ];
 
 const SPEC_TEXT: &str = include_str!("../../../../../linux/desktop/shell/kde-settings.json");
@@ -84,6 +88,7 @@ fn icon(name: &str) -> G {
         "moon" => G::Moon,
         "close" => G::Close,
         "maximize" => G::Maximize,
+        "minimize" => G::Minimize,
         "shield" => G::Shield,
         "camera" => G::Camera,
         "play" => G::Play,
@@ -148,6 +153,14 @@ pub enum Msg {
     Saved(&'static str, usize, Res),
     Applied(&'static str, Res),
     Go(&'static str),
+    /// A KWin script (any `<id>Enabled` plugin row) on or off.
+    Plugin(&'static str, usize, String, bool),
+    /// A KDE background service on or off (now and at sign-in).
+    Kded(&'static str, String, bool),
+    /// One of the helper's own commands for this page (activity add NAME, userdir-set KEY PATH, ...), then read again.
+    Run(&'static str, Vec<String>, Option<String>),
+    Folder(&'static str, String),
+    FolderGot(&'static str, String, Res),
 }
 
 pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
@@ -186,6 +199,25 @@ fn row_val(pg: &Pg, r: &Value) -> String {
 
 fn truthy(v: &str) -> bool {
     v.eq_ignore_ascii_case("true") || v == "1"
+}
+
+/// A switch row: on now? ("onoff": [on, off] values for keys that aren't true / false; "invert": the key says off).
+fn switch_on(pg: &Pg, r: &Value) -> bool {
+    let cur = row_val(pg, r);
+    let on = match r.get("onoff").and_then(Value::as_array) {
+        Some(v) => v.first().map(text_of).as_deref() == Some(cur.as_str()),
+        None => truthy(&cur),
+    };
+    on != r.get("invert").and_then(Value::as_bool).unwrap_or(false)
+}
+
+/// What a switch row writes to be on / off.
+fn switch_value(r: &Value, on: bool) -> Value {
+    let key_on = on != r.get("invert").and_then(Value::as_bool).unwrap_or(false);
+    match r.get("onoff").and_then(Value::as_array) {
+        Some(v) => Value::String(v.get(if key_on { 0 } else { 1 }).map(text_of).unwrap_or_default()),
+        None => Value::Bool(key_on),
+    }
 }
 
 /// The default a key has on this page (the row that changes it), for "needs".
@@ -236,6 +268,13 @@ fn def_of_extra(r: &Value, k: &str) -> Value {
 }
 
 fn list(pg: &Pg, r: &Value) -> Vec<(String, String)> {
+    let none: Vec<(String, String)> = r.get("none").and_then(Value::as_str).map(|l| vec![(String::new(), l.to_string())]).unwrap_or_default();
+    let mut v = none;
+    v.extend(list_only(pg, r));
+    v
+}
+
+fn list_only(pg: &Pg, r: &Value) -> Vec<(String, String)> {
     pg.data
         .get("lists")
         .and_then(|l| l.get(s(r, "from")))
@@ -302,9 +341,10 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             if s(r, "type") == "firmware" {
                 return update(sh, st, Msg::Firmware(page, on));
             }
-            let (file, input) = change(s(r, "file"), s(r, "group"), kv(vec![(s(r, "key").into(), Value::Bool(on))]));
+            let w = switch_value(r, on);
+            let (file, input) = change(s(r, "file"), s(r, "group"), kv(vec![(s(r, "key").into(), w.clone())]));
             sh.reread_history = true;
-            return save(st, page, i, &file, input, vec![(s(r, "group").into(), s(r, "key").into(), on.to_string())]);
+            return save(st, page, i, &file, input, vec![(s(r, "group").into(), s(r, "key").into(), text_of(&w))]);
         }
         Msg::Opt(page, i, o) => {
             let Some(r) = row_of(page, i) else { return Task::none() };
@@ -360,6 +400,28 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
         Msg::TextSave(page, i) => {
             let Some(r) = row_of(page, i) else { return Task::none() };
             let Some(v) = st.pages.entry(page).or_default().text.remove(&i) else { return Task::none() };
+            // A number or a time of day, checked before it's saved (KDE would read anything else as 0 or midnight).
+            let v = v.trim().replace('−', "-");
+            let v = if r.get("number").and_then(Value::as_bool).unwrap_or(false) {
+                match v.replace(',', ".").parse::<f64>() {
+                    Ok(n) if n.is_finite() && n.abs() <= 180.0 => format!("{n}"),
+                    _ => {
+                        st.pages.entry(page).or_default().say.bad(format!("\"{v}\" isn't a number between -180 and 180"));
+                        return Task::none();
+                    }
+                }
+            } else if r.get("time").and_then(Value::as_bool).unwrap_or(false) {
+                let parts: Vec<u32> = v.split(':').filter_map(|x| x.trim().parse().ok()).collect();
+                match parts.as_slice() {
+                    [h, m] | [h, m, _] if *h < 24 && *m < 60 => format!("{h:02}:{m:02}:00"),
+                    _ => {
+                        st.pages.entry(page).or_default().say.bad(format!("\"{v}\" isn't a time like 18:00"));
+                        return Task::none();
+                    }
+                }
+            } else {
+                v
+            };
             let (file, input) = change(s(r, "file"), s(r, "group"), kv(vec![(s(r, "key").into(), Value::String(v.clone()))]));
             sh.reread_history = true;
             return save(st, page, i, &file, input, vec![(s(r, "group").into(), s(r, "key").into(), v)]);
@@ -406,6 +468,36 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             } else {
                 pg.say.bad(r.err);
                 return read(helper(&["get", page], 30), move |r| Msg::Got(page, r));
+            }
+        }
+        Msg::Plugin(page, i, id, on) => {
+            let Some(r) = row_of(page, i) else { return Task::none() };
+            let key = format!("{id}Enabled");
+            let (file, input) = change(s(r, "file"), s(r, "group"), kv(vec![(key.clone(), Value::Bool(on))]));
+            sh.reread_history = true;
+            return save(st, page, i, &file, input, vec![(s(r, "group").into(), key, on.to_string())]);
+        }
+        Msg::Kded(page, name, on) => {
+            let pg = st.pages.entry(page).or_default();
+            pg.saving = true;
+            sh.reread_history = true;
+            return read(helper(&["kded-set", &name, if on { "on" } else { "off" }], 20), move |r| Msg::Applied(page, r));
+        }
+        Msg::Run(page, args, input) => {
+            let pg = st.pages.entry(page).or_default();
+            pg.saving = true;
+            pg.text.clear();
+            sh.reread_history = true;
+            let a: Vec<&str> = args.iter().map(String::as_str).collect();
+            return read_in(helper(&a, 30), input, move |r| Msg::Applied(page, r));
+        }
+        Msg::Folder(page, key) => {
+            return read(crate::cats::pers::kit::file_picker("Choose a folder", true, ""), move |r| Msg::FolderGot(page, key.clone(), r));
+        }
+        Msg::FolderGot(page, key, r) => {
+            let path = r.out.trim().lines().last().unwrap_or("").trim().to_string();
+            if r.ok && path.starts_with('/') {
+                return update(sh, st, Msg::Run(page, vec!["userdir-set".into(), key, path], None));
             }
         }
         Msg::Applied(page, r) => {
@@ -555,8 +647,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
             "head" => v.push(head(&p, title)),
             "note" => v.push(small(&p, title)),
             "switch" => {
-                let cur = row_val(pg, r);
-                let is_on = truthy(&cur);
+                let is_on = switch_on(pg, r);
                 v.push(sw(&p, g, title, sub, is_on, if on { Some(Msg::Switch(page, i, !is_on)) } else { None }));
             }
             "choice" => {
@@ -578,14 +669,36 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
                 let unit = s(r, "unit");
                 let shown = if r.get("percent").and_then(Value::as_bool).unwrap_or(false) { format!("{:.0} %", 100.0 * cur / hi) } else if r.get("int").and_then(Value::as_bool).unwrap_or(false) { format!("{} {unit}", cur.round() as i64) } else { format!("{cur:.1} {unit}") };
                 let line = if sub.is_empty() { shown.trim().to_string() } else { format!("{} · {}", shown.trim(), sub) };
-                let ctl: E<'a> = if on { slider_f32(cur.clamp(lo, hi), lo..=hi, step, move |x| Msg::Num(page, i, x), Msg::NumDone(page, i)) } else { t(shown.trim().to_string(), sz(13.0), p.muted).into() };
+                let int = r.get("int").and_then(Value::as_bool).unwrap_or(false) && lo >= 0.0;
+                let ctl: E<'a> = if !on {
+                    t(shown.trim().to_string(), sz(13.0), p.muted).into()
+                } else if int {
+                    // Whole numbers: the value shows as one (500, not 500.0).
+                    let (l, h) = (lo as u32, hi as u32);
+                    let _ = step;
+                    slider_u32((cur.round().max(0.0) as u32).clamp(l, h), l..=h, move |x| Msg::Num(page, i, x as f32), Msg::NumDone(page, i))
+                } else {
+                    slider_f32(cur.clamp(lo, hi), lo..=hi, step, move |x| Msg::Num(page, i, x), Msg::NumDone(page, i))
+                };
                 v.push(srow(&p, g, title, line, ctl));
             }
             "pick" => {
                 let items = list(pg, r);
                 let cur = row_val(pg, r);
                 let on = on || (ready && r.get("tool").is_some() && r.get("file").is_none());
-                v.push(pick_row(&p, page, i, g, title, if items.is_empty() && pg.read { format!("{}{}Nothing to pick from is installed here", sub, if sub.is_empty() { "" } else { ". " }) } else { sub }, &items, &cur, on && !items.is_empty()));
+                let can = on && !items.is_empty();
+                v.push(pick_row(&p, page, i, g, title, if items.is_empty() && pg.read { format!("{}{}Nothing to pick from is installed here", sub, if sub.is_empty() { "" } else { ". " }) } else { sub }, &items, &cur, can));
+                // A page that's mostly this one choice lists every option too (as KDE's grid of themes does).
+                if r.get("list_all").and_then(Value::as_bool).unwrap_or(false) && !items.is_empty() {
+                    v.push(head(&p, "Installed"));
+                    for (k, label) in items.iter() {
+                        let here = *k == cur;
+                        let m = if can && !here { Some(Msg::Picked(page, i, k.clone())) } else { None };
+                        nav::control(Kind::Press, m.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                        let ctl: E<'a> = if here { row![t("In use", sz(13.0), p.accent), hearth_ui::ui::glyph(G::Check, p.accent, 16.0, 2.4)].spacing(8.0).align_y(iced::Center).into() } else { btn(&p, "Use", hearth_ui::ui::Kind::Normal, false, m) };
+                        v.push(srow(&p, g, label.clone(), String::new(), ctl));
+                    }
+                }
             }
             "text" => {
                 let cur = pg.text.get(&i).cloned().unwrap_or_else(|| row_val(pg, r));
@@ -635,6 +748,133 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
                         v.push(link_row(&p, crate::frame::cat_glyph(cid), s(x, "label").to_string(), s(x, "desc").to_string(), Msg::Go(sid(s(x, "id")))));
                     }
                 }
+            }
+            "plugins" => {
+                // Every installed one (kwinrc [Plugins] <id>Enabled), its name and what it does.
+                let items = pg.data.get("lists").and_then(|l| l.get(s(r, "from"))).and_then(Value::as_array).cloned().unwrap_or_default();
+                if items.is_empty() && pg.read {
+                    v.push(small(&p, "None are installed."));
+                }
+                for x in items.iter().filter_map(Value::as_array) {
+                    let id = x.first().map(text_of).unwrap_or_default();
+                    let name = x.get(1).map(text_of).unwrap_or_else(|| id.clone());
+                    let what = x.get(2).map(text_of).unwrap_or_default();
+                    let def = x.get(3).and_then(Value::as_bool).unwrap_or(false);
+                    let cur = val(pg, s(r, "file"), s(r, "group"), &format!("{id}Enabled"), &Value::String(def.to_string()));
+                    let is_on = truthy(&cur);
+                    v.push(sw(&p, g, name, what, is_on, if on { Some(Msg::Plugin(page, i, id.clone(), !is_on)) } else { None }));
+                }
+            }
+            "kded" => {
+                let k = pg.data.pointer("/current/kded").cloned().unwrap_or(Value::Null);
+                let mods = k.get("modules").and_then(Value::as_array).cloned().unwrap_or_default();
+                if pg.read && !k.get("kded").and_then(Value::as_bool).unwrap_or(false) {
+                    v.push(words(&p, "KDE's background services aren't running here (they run on KDE Plasma): what starts at sign-in can still be set.", false));
+                }
+                if mods.is_empty() && pg.read {
+                    v.push(small(&p, "None are installed."));
+                }
+                let (mut running, mut stopped) = (Vec::new(), Vec::new());
+                for m in mods.iter() {
+                    let name = s(m, "name").to_string();
+                    let auto = m.get("autoload").and_then(Value::as_bool).unwrap_or(true);
+                    let run_now = m.get("running").and_then(Value::as_bool).unwrap_or(false);
+                    let what = s(m, "what");
+                    let line = format!("{}{}{}", if run_now { "Running now" } else { "Not running" }, if what.is_empty() { "" } else { " · " }, what);
+                    let e = sw(&p, g, s(m, "label").to_string(), line, auto, if ready { Some(Msg::Kded(page, name, !auto)) } else { None });
+                    if run_now { running.push(e) } else { stopped.push(e) }
+                }
+                if !running.is_empty() {
+                    v.push(head(&p, "Running"));
+                    v.extend(running);
+                }
+                if !stopped.is_empty() {
+                    v.push(head(&p, "Not running"));
+                    v.extend(stopped);
+                }
+            }
+            "activities" => {
+                let a = pg.data.pointer("/current/activities").cloned().unwrap_or(Value::Null);
+                let list = a.get("list").and_then(Value::as_array).cloned().unwrap_or_default();
+                let cur = s(&a, "current").to_string();
+                let live = a.get("running").and_then(Value::as_bool).unwrap_or(false);
+                if pg.read && !live {
+                    v.push(words(&p, "Activities run on KDE Plasma: open this page there to change them.", false));
+                }
+                let n = list.len();
+                for (k, x) in list.iter().enumerate() {
+                    let id = s(x, "id").to_string();
+                    let name = s(x, "name").to_string();
+                    let tkey = 1000 + i * 100 + k;
+                    let typed = pg.text.get(&tkey).cloned();
+                    let shown = typed.clone().unwrap_or_else(|| name.clone());
+                    let fld = field(&p, "Name", &shown, move |t| Msg::Text(page, tkey, t)).width(Length::Fixed(sz(220.0)));
+                    let fld = match &typed {
+                        Some(tn) if live && !tn.trim().is_empty() => fld.on_submit(Msg::Run(page, vec!["activity".into(), "rename".into(), id.clone(), tn.clone()], None)),
+                        _ => fld,
+                    };
+                    let is_cur = id == cur;
+                    let sw_msg = if live && !is_cur { Some(Msg::Run(page, vec!["activity".into(), "switch".into(), id.clone()], None)) } else { None };
+                    let rm_msg = if live && n > 1 { Some(Msg::Run(page, vec!["activity".into(), "remove".into(), id.clone()], None)) } else { None };
+                    nav::control(Kind::Press, sw_msg.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                    nav::control(Kind::Press, rm_msg.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                    let ctl: E<'a> = row![fld, btn(&p, if is_cur { "In use" } else { "Switch to it" }, hearth_ui::ui::Kind::Normal, false, sw_msg), btn(&p, "Remove", hearth_ui::ui::Kind::Normal, false, rm_msg)].spacing(8.0).align_y(iced::Center).into();
+                    v.push(srow(&p, g, name, if is_cur { "The activity you're in".to_string() } else { String::new() }, ctl));
+                }
+                let nkey = 1000 + i * 100 + 99;
+                let new_name = pg.text.get(&nkey).cloned().unwrap_or_default();
+                let add = if live && !new_name.trim().is_empty() { Some(Msg::Run(page, vec!["activity".into(), "add".into(), new_name.clone()], None)) } else { None };
+                let mut fld = field(&p, "A name, like Work or Games", &new_name, move |t| Msg::Text(page, nkey, t)).width(Length::Fixed(sz(260.0)));
+                if let Some(m) = add.clone() {
+                    fld = fld.on_submit(m);
+                }
+                nav::control(Kind::Press, add.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                v.push(srow(&p, G::Plus, "New activity", "", row![fld, btn(&p, "Add", hearth_ui::ui::Kind::Primary, false, add)].spacing(8.0).align_y(iced::Center).into()));
+            }
+            "userdirs" => {
+                let dirs = pg.data.pointer("/current/userdirs").and_then(Value::as_array).cloned().unwrap_or_default();
+                for d in dirs.iter() {
+                    let key = s(d, "key").to_string();
+                    let m = if ready { Some(Msg::Folder(page, key)) } else { None };
+                    v.push(button_row(&p, g, s(d, "label").to_string(), s(d, "path").to_string(), "Change…", m));
+                }
+            }
+            "deviceactions" => {
+                let acts = pg.data.pointer("/current/deviceactions").and_then(Value::as_array).cloned().unwrap_or_default();
+                if acts.is_empty() && pg.read {
+                    v.push(small(&p, "No device actions are installed here."));
+                }
+                let mut last = String::new();
+                let mut sorted: Vec<&Value> = acts.iter().collect();
+                sorted.sort_by(|a, b| s(a, "kinds").cmp(s(b, "kinds")).then(s(a, "name").cmp(s(b, "name"))));
+                for x in sorted {
+                    let kinds = s(x, "kinds").to_string();
+                    if kinds != last {
+                        v.push(head(&p, format!("When you plug in: {kinds}")));
+                        last = kinds;
+                    }
+                    let mine = x.get("mine").and_then(Value::as_bool).unwrap_or(false);
+                    let line = s(x, "exec").to_string();
+                    if mine {
+                        let m = if ready { Some(Msg::Run(page, vec!["device-action-remove".into(), s(x, "file").to_string()], None)) } else { None };
+                        v.push(button_row(&p, g, s(x, "name").to_string(), format!("Yours · {line}"), "Remove", m));
+                    } else {
+                        v.push(srow(&p, g, s(x, "name").to_string(), line, Space::new().width(Length::Shrink).into()));
+                    }
+                }
+                // Your own action.
+                v.push(head(&p, "Add your own"));
+                let (kn, kc, kk) = (1000 + i * 100 + 1, 1000 + i * 100 + 2, 1000 + i * 100 + 3);
+                let name = pg.text.get(&kn).cloned().unwrap_or_default();
+                let cmd = pg.text.get(&kc).cloned().unwrap_or_default();
+                let kind = pg.text.get(&kk).cloned().unwrap_or_else(|| "StorageVolume".into());
+                v.push(srow(&p, G::Plus, "Its name", "What the pop-up shows", field(&p, "Back up my photos", &name, move |t| Msg::Text(page, kn, t)).width(Length::Fixed(sz(300.0))).into()));
+                v.push(srow(&p, G::Cog, "The command", "%f is the device's folder", field(&p, "rsync -a %f/DCIM ~/Pictures/", &cmd, move |t| Msg::Text(page, kc, t)).width(Length::Fixed(sz(300.0))).into()));
+                let kinds = [("StorageVolume", "Drives"), ("Camera", "Cameras"), ("PortableMediaPlayer", "Phones and music players"), ("OpticalDisc", "Discs")];
+                v.push(choice_wide(&p, G::Drive, "For", "", kinds.iter().map(|(k, l)| (l.to_string(), kind == *k, Some(Msg::Text(page, kk, k.to_string())))).collect()));
+                let input = serde_json::json!({"name": name, "exec": cmd, "kind": kind}).to_string();
+                let add = if ready && !name.trim().is_empty() && !cmd.trim().is_empty() { Some(Msg::Run(page, vec!["device-action-add".into()], Some(input))) } else { None };
+                v.push(button_row(&p, G::Plus, "Add this action".into(), String::new(), "Add", add));
             }
             "link" => {
                 let to = sid(s(r, "page"));
@@ -699,7 +939,7 @@ mod tests {
             assert!(crate::registry::page(id).is_some(), "{id} isn't in pages_list.rs: run tools/settings-registry-rs.py");
             for r in rows_of(id) {
                 let ty = s(r, "type");
-                assert!(["hub", "head", "note", "switch", "choice", "number", "pick", "text", "file", "firmware", "info", "link"].contains(&ty), "{id}: row type {ty}");
+                assert!(["plugins", "kded", "activities", "userdirs", "deviceactions", "hub", "head", "note", "switch", "choice", "number", "pick", "text", "file", "firmware", "info", "link"].contains(&ty), "{id}: row type {ty}");
                 if ["switch", "choice", "number", "text", "file"].contains(&ty) {
                     assert!(!s(r, "file").is_empty() && !s(r, "group").is_empty() && !s(r, "key").is_empty(), "{id}: {} has no file/group/key", s(r, "title"));
                 }

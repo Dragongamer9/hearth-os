@@ -118,8 +118,8 @@
       "plasma": true,
       "rows": [
         {"type": "pick", "icon": "grid", "title": "Window frame theme", "sub": "", "file": "kwinrc", "group": "org.kde.kdecoration2", "key": "library", "key2": "theme", "def": "org.kde.breeze|Breeze", "from": "decorations", "list_all": true},
-        {"type": "choice", "icon": "grid", "title": "Title bar buttons", "sub": "Which buttons and on which side", "file": "kwinrc", "group": "org.kde.kdecoration2", "key": "ButtonsOnRight", "def": "HIAX", "wide": true,
-         "opts": [["HIAX", "KDE: menu left; minimize, maximize, close right", {"ButtonsOnLeft": "MS"}], ["IAX", "Windows: minimize, maximize, close right", {"ButtonsOnLeft": "M"}], ["X", "Close only", {"ButtonsOnLeft": ""}], ["", "Mac: close, minimize, maximize left", {"ButtonsOnLeft": "XIA"}]]},
+        {"type": "choice", "icon": "grid", "title": "Title bar buttons", "sub": "KDE's: the menu on the left; minimize, maximize and close on the right. Like Windows: the same without help and all-desktops. Like a Mac: close, minimize, maximize on the left", "file": "kwinrc", "group": "org.kde.kdecoration2", "key": "ButtonsOnRight", "def": "HIAX", "wide": true,
+         "opts": [["HIAX", "KDE's", {"ButtonsOnLeft": "MS"}], ["IAX", "Like Windows", {"ButtonsOnLeft": "M"}], ["X", "Close only", {"ButtonsOnLeft": ""}], ["", "Like a Mac", {"ButtonsOnLeft": "XIA"}]]},
         {"type": "switch", "icon": "info", "title": "Tooltips on the title bar's buttons", "sub": "", "file": "kwinrc", "group": "org.kde.kdecoration2", "key": "ShowToolTips", "def": "true"},
         {"type": "switch", "icon": "close", "title": "Double-click the menu button to close", "sub": "", "file": "kwinrc", "group": "org.kde.kdecoration2", "key": "CloseOnDoubleClickOnMenu", "def": "false"},
         {"type": "switch", "icon": "grid", "title": "The theme's own border size", "sub": "Off: pick one below", "file": "kwinrc", "group": "org.kde.kdecoration2", "key": "BorderSizeAuto", "def": "true"},
@@ -195,9 +195,194 @@
       "intro": "KDE's own anonymous feedback, separate from Hearth's player count. Nothing is sent unless you pick it here.",
       "plasma": true,
       "rows": [
-        {"type": "choice", "icon": "shield", "title": "Send KDE", "sub": "", "file": "PlasmaUserFeedback", "group": "Global", "key": "FeedbackLevel", "def": "0", "wide": true,
-         "opts": [["0", "Nothing"], ["16", "Basic facts about this PC"], ["32", "Basic facts and how much you use Plasma"], ["48", "More about this PC"], ["64", "More about this PC and how you use Plasma"]]},
+        {"type": "choice", "icon": "shield", "title": "Send KDE", "sub": "Basic: Plasma's version, the screen's size and the like. With use: how often you use Plasma's parts. Never your files, what you type or who you are", "file": "PlasmaUserFeedback", "group": "Global", "key": "FeedbackLevel", "def": "0", "wide": true,
+         "opts": [["0", "Nothing"], ["16", "Basic"], ["32", "Basic, with use"], ["48", "More"], ["64", "More, with use"]]},
         {"type": "link", "icon": "users", "title": "Player count", "sub": "Hearth's own anonymous count", "page": "player-count"}
+      ]
+    },
+    {
+      "id": "kde-tabbox", "cat": "pers", "label": "Task switcher", "kcm": ["kcm_kwintabbox"], "desc": "Which windows Alt+Tab lists and in what order; its look is in Window effects", "words": "task switcher alt tab alt+tab window switcher which windows current desktop activity screen minimized one per app order recently used tabbox", "intro": "What Alt+Tab (and Alt+` for the app you're on) goes through. How it looks is in Window effects.", "plasma": true,
+      "rows": [
+        {"type": "link", "icon": "rocket", "title": "How the task switcher looks", "sub": "In Window effects", "page": "kwin-effects"},
+        {"type": "head", "title": "Alt+Tab"},
+        {"type": "choice", "icon": "grid", "title": "Windows from", "sub": "Virtual desktops", "file": "kwinrc", "group": "TabBox", "key": "DesktopMode", "def": "1", "wide": true, "opts": [["1", "This desktop"], ["0", "Every desktop"], ["2", "The other desktops"]]},
+        {"type": "choice", "icon": "display", "title": "On screens", "sub": "", "file": "kwinrc", "group": "TabBox", "key": "MultiScreenMode", "def": "0", "wide": true, "opts": [["0", "Every screen"], ["1", "The screen you're on"], ["2", "The other screens"]]},
+        {"type": "choice", "icon": "grid", "title": "Activities", "sub": "", "file": "kwinrc", "group": "TabBox", "key": "ActivitiesMode", "def": "1", "wide": true, "opts": [["1", "This activity"], ["0", "Every activity"], ["2", "The other activities"]]},
+        {"type": "choice", "icon": "minimize", "title": "Minimized windows", "sub": "", "file": "kwinrc", "group": "TabBox", "key": "MinimizedMode", "def": "0", "wide": true, "opts": [["0", "Listed too"], ["1", "Left out"], ["2", "Only those"]]},
+        {"type": "choice", "icon": "store", "title": "Each app", "sub": "", "file": "kwinrc", "group": "TabBox", "key": "ApplicationsMode", "def": "0", "wide": true, "opts": [["0", "Every window"], ["1", "Only its last window"]]},
+        {"type": "choice", "icon": "list", "title": "Order", "sub": "", "file": "kwinrc", "group": "TabBox", "key": "SwitchingMode", "def": "0", "wide": true, "opts": [["0", "Most recently used first"], ["1", "As they're stacked"]]},
+        {"type": "switch", "icon": "display", "title": "Show the desktop in the list", "sub": "An extra entry that minimizes everything", "file": "kwinrc", "group": "TabBox", "key": "ShowDesktopMode", "def": "0", "onoff": ["1", "0"]},
+        {"type": "number", "icon": "clock", "title": "Wait before it shows", "sub": "A quick Alt+Tab swaps windows without showing the switcher", "file": "kwinrc", "group": "TabBox", "key": "DelayTime", "def": 90, "min": 0, "max": 1000, "step": 10, "unit": "ms", "int": true},
+        {"type": "head", "title": "Alt+` (the app you're on)"},
+        {"type": "choice", "icon": "grid", "title": "Windows from", "sub": "", "file": "kwinrc", "group": "TabBoxAlternative", "key": "DesktopMode", "def": "1", "wide": true, "opts": [["1", "This desktop"], ["0", "Every desktop"], ["2", "The other desktops"]]},
+        {"type": "choice", "icon": "minimize", "title": "Minimized windows", "sub": "", "file": "kwinrc", "group": "TabBoxAlternative", "key": "MinimizedMode", "def": "0", "wide": true, "opts": [["0", "Listed too"], ["1", "Left out"], ["2", "Only those"]]},
+        {"type": "choice", "icon": "list", "title": "Order", "sub": "", "file": "kwinrc", "group": "TabBoxAlternative", "key": "SwitchingMode", "def": "0", "wide": true, "opts": [["0", "Most recently used first"], ["1", "As they're stacked"]]}
+      ]
+    },
+    {
+      "id": "kde-krunner", "cat": "system", "label": "KRunner", "kcm": ["kcm_krunnersettings", "kcm_krunner_charrunner", "kcm_krunner_dictionary", "kcm_krunner_kill", "kcm_krunner_spellcheck"], "desc": "Where KRunner opens, what it remembers, and what it searches", "words": "krunner alt space search bar position top centre floating history remember last search plugins runners", "intro": "KRunner is KDE Plasma's search bar (Alt+Space). Which kinds of things it finds are in Search.", "plasma": true,
+      "rows": [
+        {"type": "choice", "icon": "search", "title": "Where it opens", "sub": "", "file": "krunnerrc", "group": "General", "key": "FreeFloating", "def": "false", "opts": [["false", "At the top"], ["true", "In the middle"]]},
+        {"type": "choice", "icon": "clock", "title": "What you searched before", "sub": "", "file": "krunnerrc", "group": "General", "key": "historyBehavior", "def": "CompletionSuggestion", "wide": true, "opts": [["CompletionSuggestion", "Suggest it as you type"], ["ImmediateCompletion", "Fill it in as you type"], ["Disabled", "Don't remember"]]},
+        {"type": "switch", "icon": "search", "title": "Keep the last search", "sub": "KRunner opens with what you searched last time", "file": "krunnerrc", "group": "General", "key": "RetainPriorSearch", "def": "true"},
+        {"type": "link", "icon": "search", "title": "What it searches", "sub": "Apps, files, the calculator, units, web shortcuts… (in Search)", "page": "search"},
+        {"type": "link", "icon": "search", "title": "Web search keywords", "sub": "gg:, wp: and the others", "page": "kde-webshortcuts"}
+      ]
+    },
+    {
+      "id": "kde-webshortcuts", "cat": "net", "label": "Web search keywords", "kcm": ["kcm_webshortcuts"], "desc": "Type gg:cats or wp:fire in KRunner, Files' address bar or a KDE app to search a site", "words": "web shortcuts web search keywords gg wp ddg search providers duckduckgo google wikipedia default search engine krunner", "intro": "A short word, then : and what you're looking for, searches that site from KRunner, Files' address bar and KDE apps.",
+      "rows": [
+        {"type": "switch", "icon": "search", "title": "Use web search keywords", "sub": "", "file": "kuriikwsfilterrc", "group": "General", "key": "EnableWebShortcuts", "def": "true"},
+        {"type": "choice", "icon": "keyboard", "title": "Between the keyword and the search", "sub": "", "file": "kuriikwsfilterrc", "group": "General", "key": "KeywordDelimiter", "def": ":", "opts": [[":", "A colon  (gg:cats)"], [" ", "A space  (gg cats)"]]},
+        {"type": "pick", "icon": "search", "title": "When you type words that aren't a web address", "sub": "Search with this site (empty: don't search)", "file": "kuriikwsfilterrc", "group": "General", "key": "DefaultWebShortcut", "def": "", "from": "searchproviders", "none": "Don't search"},
+        {"type": "switch", "icon": "list", "title": "Only the sites you prefer", "sub": "KRunner suggests only your preferred sites below", "file": "kuriikwsfilterrc", "group": "General", "key": "UsePreferredWebShortcutsOnly", "def": "false"},
+        {"type": "info", "title": "The keywords", "from": "searchproviders"}
+      ]
+    },
+    {
+      "id": "kde-updates", "cat": "updates", "label": "App updates (Discover)", "kcm": ["kcm_updates"], "desc": "How often you're told about app updates, and installing them by itself", "words": "software update discover flatpak updates notify unattended automatic updates offline how often", "intro": "KDE's Discover and its updates for your apps (Flatpak). Hearth OS's own updates are in Updates & recovery.", "plasma": true,
+      "rows": [
+        {"type": "choice", "icon": "clock", "title": "Tell me about app updates", "sub": "", "file": "PlasmaDiscoverUpdates", "group": "Global", "key": "RequiredNotificationInterval", "def": "86400", "wide": true, "opts": [["86400", "Every day"], ["604800", "Every week"], ["2592000", "Every month"], ["-1", "Never"]]},
+        {"type": "switch", "icon": "update", "title": "Install app updates by itself", "sub": "In the background, without asking", "file": "PlasmaDiscoverUpdates", "group": "Global", "key": "UseUnattendedUpdates", "def": "false"},
+        {"type": "link", "icon": "update", "title": "Hearth OS updates", "sub": "Updates & recovery", "page": "updates"},
+        {"type": "link", "icon": "store", "title": "App store", "sub": "Find, install and update apps", "page": "store"}
+      ]
+    },
+    {
+      "id": "kde-trash", "cat": "system", "label": "Trash", "kcm": ["kcm_trash"], "desc": "Empty old files from the Trash by itself, and how big it may get", "words": "trash bin recycle bin size limit delete old files empty automatically days percent", "intro": "The Trash in your home folder (KDE's and Hearth Files' Trash).",
+      "rows": [
+        {"type": "switch", "icon": "clock", "title": "Delete files that have been in the Trash for a while", "sub": "", "file": "ktrashrc", "group": "$TRASH", "key": "UseTimeLimit", "def": "false"},
+        {"type": "number", "icon": "clock", "title": "After", "sub": "", "file": "ktrashrc", "group": "$TRASH", "key": "Days", "def": 7, "min": 1, "max": 365, "step": 1, "unit": "days", "int": true, "needs": ["ktrashrc", "$TRASH", "UseTimeLimit", "true"]},
+        {"type": "switch", "icon": "drive", "title": "Limit its size", "sub": "", "file": "ktrashrc", "group": "$TRASH", "key": "UseSizeLimit", "def": "true"},
+        {"type": "number", "icon": "drive", "title": "At most", "sub": "Of the drive", "file": "ktrashrc", "group": "$TRASH", "key": "Percent", "def": 10, "min": 1, "max": 100, "step": 1, "unit": "%", "needs": ["ktrashrc", "$TRASH", "UseSizeLimit", "true"]},
+        {"type": "choice", "icon": "drive", "title": "When it's full", "sub": "", "file": "ktrashrc", "group": "$TRASH", "key": "LimitReachedAction", "def": "0", "wide": true, "needs": ["ktrashrc", "$TRASH", "UseSizeLimit", "true"], "opts": [["0", "Tell me"], ["1", "Delete the oldest files"], ["2", "Delete the biggest files"]]}
+      ]
+    },
+    {
+      "id": "kde-netpref", "cat": "net", "label": "Connection preferences", "kcm": ["kcm_netpref"], "desc": "How long KDE apps wait for a server, and FTP's passive mode", "words": "connection preferences timeout socket proxy server response ftp passive mode partial uploads kio network", "intro": "For KDE apps and Files when they open files on other computers (KIO).",
+      "rows": [
+        {"type": "number", "icon": "clock", "title": "Wait for data", "sub": "", "file": "kioslaverc", "group": "<default>", "key": "ReadTimeout", "def": 15, "min": 2, "max": 360, "step": 1, "unit": "s", "int": true},
+        {"type": "number", "icon": "clock", "title": "Wait to connect", "sub": "", "file": "kioslaverc", "group": "<default>", "key": "ConnectTimeout", "def": 20, "min": 1, "max": 360, "step": 1, "unit": "s", "int": true},
+        {"type": "number", "icon": "clock", "title": "Wait to connect to a proxy", "sub": "", "file": "kioslaverc", "group": "<default>", "key": "ProxyConnectTimeout", "def": 10, "min": 1, "max": 360, "step": 1, "unit": "s", "int": true},
+        {"type": "number", "icon": "clock", "title": "Wait for a server to answer", "sub": "", "file": "kioslaverc", "group": "<default>", "key": "ResponseTimeout", "def": 600, "min": 1, "max": 3600, "step": 10, "unit": "s", "int": true},
+        {"type": "head", "title": "FTP"},
+        {"type": "switch", "icon": "wifi", "title": "Passive mode", "sub": "Works through most firewalls", "file": "kio_ftprc", "group": "<default>", "key": "DisablePassiveMode", "def": "false", "invert": true},
+        {"type": "switch", "icon": "drive", "title": "Mark uploads that didn't finish", "sub": "Their name ends in .part until they're done", "file": "kio_ftprc", "group": "<default>", "key": "MarkPartial", "def": "true"}
+      ]
+    },
+    {
+      "id": "kde-kwin-scripts", "cat": "pers", "label": "KWin scripts", "kcm": ["kcm_kwin_scripts"], "desc": "Small add-ons for KDE's window manager: turn each on or off", "words": "kwin scripts add-ons extensions window manager scripts minimize all video wall tiling scripts", "intro": "Scripts change how KWin handles windows. Each is used at once when you turn it on.", "plasma": true,
+      "rows": [
+        {"type": "plugins", "file": "kwinrc", "group": "Plugins", "from": "kwinscripts", "icon": "grid"}
+      ]
+    },
+    {
+      "id": "kde-kded", "cat": "system", "label": "KDE background services", "kcm": ["kcm_kded"], "desc": "KDE's small services: which start when you sign in, and stopping one now", "words": "background services kded modules startup services kde daemon", "intro": "Small parts of KDE that run in the background. Turning one off stops it now and when you sign in. Hearth's own background programs are in Background services.", "plasma": true,
+      "rows": [
+        {"type": "kded", "icon": "cog"},
+        {"type": "link", "icon": "cog", "title": "Hearth's background services", "sub": "Programs that run for you", "page": "services"}
+      ]
+    },
+    {
+      "id": "kde-activities", "cat": "pers", "label": "Activities", "kcm": ["kcm_activities"], "desc": "Separate sets of windows and widgets for work, play or anything: make, rename, switch, remove", "words": "activities activity workspaces kactivitymanagerd switch activity", "intro": "An activity is its own set of windows, desktop widgets and recent files. KDE Plasma has one to start with.", "plasma": true,
+      "rows": [
+        {"type": "activities", "icon": "grid"},
+        {"type": "link", "icon": "clock", "title": "What activities remember", "sub": "Recent files", "page": "recent-files"}
+      ]
+    },
+    {
+      "id": "kde-locations", "cat": "system", "label": "Your folders", "kcm": ["kcm_desktoppaths"], "desc": "Where your Desktop, Documents, Downloads, Music, Pictures and Videos folders are", "words": "locations folders desktop documents downloads music pictures videos xdg user dirs personal files move folder", "intro": "Apps save to and open these folders. Changing one points apps to another folder; nothing is moved.",
+      "rows": [
+        {"type": "userdirs", "icon": "folder"},
+        {"type": "link", "icon": "drive", "title": "Drives & folders", "sub": "Hearth (C:) and Windows folder names", "page": "drives"}
+      ]
+    },
+    {
+      "id": "kde-device-actions", "cat": "bt", "label": "Device actions", "kcm": ["kcm_solid_actions"], "desc": "What you can do when you plug in a drive, a phone, a camera or a disc", "words": "device actions solid actions plug in usb drive camera phone disc open with notifier", "intro": "What KDE Plasma's device pop-up offers when something is plugged in. What happens by itself is in USB devices & drives.",
+      "rows": [
+        {"type": "deviceactions", "icon": "drive"},
+        {"type": "link", "icon": "drive", "title": "USB devices & drives", "sub": "Mounting by itself, new USB devices", "page": "usb-devices"}
+      ]
+    },
+    {
+      "id": "kde-nighttime", "cat": "system", "label": "Day and night times", "kcm": ["kcm_nighttime"], "desc": "When KDE Plasma counts it as day or night: from where you are, or times you set", "words": "day night cycle sunrise sunset times location latitude longitude night light global theme light dark", "intro": "Night light and the light and dark Global Themes follow these times.", "plasma": true,
+      "rows": [
+        {"type": "choice", "icon": "moon", "title": "Day and night come from", "sub": "", "file": "knighttimerc", "group": "General", "key": "Source", "def": "Location", "opts": [["Location", "Where you are"], ["Times", "Times I set"]]},
+        {"type": "switch", "icon": "wifi", "title": "Find where you are by itself", "sub": "Off: type your latitude and longitude", "file": "knighttimerc", "group": "Location", "key": "Automatic", "def": "true", "needs": ["knighttimerc", "General", "Source", "Location"]},
+        {"type": "text", "icon": "info", "title": "Latitude", "sub": "North is +, south is − (for example 51.5)", "file": "knighttimerc", "group": "Location", "key": "Latitude", "def": "0", "number": true, "needs": ["knighttimerc", "Location", "Automatic", "false"]},
+        {"type": "text", "icon": "info", "title": "Longitude", "sub": "East is +, west is − (for example −0.12)", "file": "knighttimerc", "group": "Location", "key": "Longitude", "def": "0", "number": true, "needs": ["knighttimerc", "Location", "Automatic", "false"]},
+        {"type": "text", "icon": "moon", "title": "Night starts", "sub": "24-hour time, like 18:00", "file": "knighttimerc", "group": "Times", "key": "SunsetStart", "def": "18:00:00", "time": true, "needs": ["knighttimerc", "General", "Source", "Times"]},
+        {"type": "text", "icon": "clock", "title": "Day starts", "sub": "24-hour time, like 06:30", "file": "knighttimerc", "group": "Times", "key": "SunriseStart", "def": "06:00:00", "time": true, "needs": ["knighttimerc", "General", "Source", "Times"]},
+        {"type": "number", "icon": "clock", "title": "Change over", "sub": "How long the change from day to night takes", "file": "knighttimerc", "group": "Times", "key": "TransitionDuration", "def": 1800, "min": 300, "max": 7200, "step": 300, "unit": "s", "int": true, "needs": ["knighttimerc", "General", "Source", "Times"]},
+        {"type": "link", "icon": "display", "title": "Night light", "sub": "In Display", "page": "display"}
+      ]
+    },
+    {
+      "id": "kde-plasmakeyboard", "cat": "bt", "label": "Plasma's on-screen keyboard", "kcm": ["kcm_plasmakeyboard", "kcm_virtualkeyboard"], "desc": "Which on-screen keyboard KDE Plasma uses, and Plasma Keyboard's sounds, buzz and keys", "words": "virtual keyboard on screen keyboard osk plasma keyboard maliit input method vibration sound auto capital diacritics", "intro": "KDE Plasma's own on-screen keyboard. Hearth's on-screen keyboard (with the controller) is in Keyboard and works everywhere.", "plasma": true,
+      "rows": [
+        {"type": "choice", "icon": "keyboard", "title": "Plasma's on-screen keyboard", "sub": "KWin opens it when you tap a text field", "file": "kwinrc", "group": "Wayland", "key": "InputMethod", "def": "", "wide": true, "opts": [["", "None (Hearth's keyboard)"], ["/usr/share/applications/org.kde.plasma.keyboard.desktop", "Plasma Keyboard"], ["/usr/share/applications/com.github.maliit.keyboard.desktop", "Maliit"]]},
+        {"type": "head", "title": "Plasma Keyboard"},
+        {"type": "switch", "icon": "sound", "title": "Sound on key presses", "sub": "", "file": "plasmakeyboardrc", "group": "General", "key": "soundEnabled", "def": "false"},
+        {"type": "switch", "icon": "pad", "title": "Buzz on key presses", "sub": "", "file": "plasmakeyboardrc", "group": "General", "key": "vibrationEnabled", "def": "true"},
+        {"type": "number", "icon": "pad", "title": "How long it buzzes", "sub": "", "file": "plasmakeyboardrc", "group": "General", "key": "vibrationMs", "def": 10, "min": 5, "max": 100, "step": 5, "unit": "ms", "int": true, "needs": ["plasmakeyboardrc", "General", "vibrationEnabled", "true"]},
+        {"type": "switch", "icon": "keyboard", "title": "Capital letters by themselves", "sub": "At the start of a sentence", "file": "plasmakeyboardrc", "group": "General", "key": "autoCapitalizationEnabled", "def": "true"},
+        {"type": "switch", "icon": "keyboard", "title": "Move between keys with the arrow keys", "sub": "", "file": "plasmakeyboardrc", "group": "General", "key": "keyboardNavigationEnabled", "def": "false"},
+        {"type": "switch", "icon": "display", "title": "As wide as the screen", "sub": "", "file": "plasmakeyboardrc", "group": "General", "key": "panelFillScreenWidth", "def": "true"},
+        {"type": "switch", "icon": "keyboard", "title": "Accents when a key is held", "sub": "Hold e for é, è, ê…", "file": "plasmakeyboardrc", "group": "General", "key": "diacriticsPopupEnabled", "def": "true"},
+        {"type": "number", "icon": "clock", "title": "Hold for", "sub": "", "file": "plasmakeyboardrc", "group": "General", "key": "diacriticsHoldThresholdMs", "def": 600, "min": 100, "max": 1500, "step": 50, "unit": "ms", "int": true, "needs": ["plasmakeyboardrc", "General", "diacriticsPopupEnabled", "true"]},
+        {"type": "link", "icon": "keyboard", "title": "Hearth's on-screen keyboard", "sub": "In Keyboard", "page": "keyboard"}
+      ]
+    },
+    {
+      "id": "kde-gamecontroller", "cat": "gaming", "label": "Controllers in KDE", "kcm": ["kcm_gamecontroller"], "desc": "The controllers plugged in, and KWin using a controller as a mouse and keyboard", "words": "game controller gamepad joystick test kwin emulation mouse keyboard", "intro": "KDE Plasma's controller settings. Hearth's own (controller mouse, button layout) are in Controller.",
+      "rows": [
+        {"type": "switch", "icon": "pad", "title": "Use a controller as a mouse and keyboard in KWin", "sub": "KDE Plasma's own; Hearth's controller mouse does this already, so leave it off unless you don't use Hearth's", "file": "kwinrc", "group": "Plugins", "key": "gamecontrollerEnabled", "def": "false", "plasma": true},
+        {"type": "info", "title": "Controllers plugged in", "from": "controllers"},
+        {"type": "link", "icon": "pad", "title": "Hearth's controller settings", "sub": "Controller mouse, button layout, remapping", "page": "controller"}
+      ]
+    },
+    {
+      "id": "kde-cddb", "cat": "apps", "label": "Music CDs", "kcm": ["kcm_cddb", "kcm_audiocd"], "desc": "Looking up a CD's album and track names, and the quality of songs ripped from CDs", "words": "cddb musicbrainz freedb gnudb cd lookup audio cd rip flac mp3 lame ogg vorbis opus quality", "intro": "For KDE's CD apps and Files' audio CD folder.",
+      "rows": [
+        {"type": "head", "title": "Album and track names"},
+        {"type": "switch", "icon": "search", "title": "Look them up on MusicBrainz", "sub": "", "file": "kcmcddbrc", "group": "Lookup", "key": "MusicBrainzLookupEnabled", "def": "true"},
+        {"type": "switch", "icon": "search", "title": "Look them up on gnudb (freedb)", "sub": "", "file": "kcmcddbrc", "group": "Lookup", "key": "FreedbLookupEnabled", "def": "true"},
+        {"type": "text", "icon": "server", "title": "gnudb server", "sub": "", "file": "kcmcddbrc", "group": "Lookup", "key": "hostname", "def": "gnudb.gnudb.org", "needs": ["kcmcddbrc", "Lookup", "FreedbLookupEnabled", "true"]},
+        {"type": "switch", "icon": "drive", "title": "Remember names already found", "sub": "Kept on this PC", "file": "kcmcddbrc", "group": "Lookup", "key": "CacheLookupEnabled", "def": "true"},
+        {"type": "head", "title": "Ripping"},
+        {"type": "number", "icon": "sound", "title": "FLAC compression", "sub": "Higher is smaller and slower; the sound is the same", "file": "kcmaudiocd_encoder_flac_rc", "group": "Flac", "key": "flac_compression_level", "def": 5, "min": 0, "max": 8, "step": 1, "unit": "", "int": true},
+        {"type": "number", "icon": "sound", "title": "Opus quality", "sub": "", "file": "kcmaudiocd_encoder_opus_rc", "group": "Vorbis", "key": "opus_vbr", "def": 6, "min": 0, "max": 10, "step": 1, "unit": "", "int": true},
+        {"type": "switch", "icon": "list", "title": "Opus: write the song's details", "sub": "", "file": "kcmaudiocd_encoder_opus_rc", "group": "Vorbis", "key": "opus_comments", "def": "true"},
+        {"type": "choice", "icon": "sound", "title": "MP3 bit rate", "sub": "", "file": "kcmaudiocd_encoder_lame_rc", "group": "Lame", "key": "bitrate_variable", "def": "true", "opts": [["true", "Variable (better)", {"bitrate_constant": "false"}], ["false", "Constant", {"bitrate_constant": "true"}]]},
+        {"type": "switch", "icon": "list", "title": "MP3: write ID3 tags", "sub": "The song's name and artist in the file", "file": "kcmaudiocd_encoder_lame_rc", "group": "Lame", "key": "id3_tag", "def": "true"}
+      ]
+    },
+    {
+      "id": "kde-krdp", "cat": "system", "label": "Remote desktop (RDP)", "kcm": ["kcm_krdpserver"], "desc": "KDE Plasma's own remote desktop server for Windows' Remote Desktop app: on at sign-in, port, quality", "words": "rdp remote desktop krdp windows mstsc server port quality", "intro": "KDE Plasma's RDP server (Windows' Remote Desktop Connection can connect). Hearth's VNC remote desktop is in Remote desktop.", "plasma": true,
+      "rows": [
+        {"type": "switch", "icon": "display", "title": "Start it when you sign in", "sub": "", "file": "krdpserverrc", "group": "General", "key": "Autostart", "def": "false"},
+        {"type": "switch", "icon": "user", "title": "Sign in with your own password", "sub": "Your account's name and password on this PC", "file": "krdpserverrc", "group": "General", "key": "SystemUserEnabled", "def": "false"},
+        {"type": "number", "icon": "wifi", "title": "Port", "sub": "", "file": "krdpserverrc", "group": "General", "key": "ListenPort", "def": 3389, "min": 1024, "max": 65535, "step": 1, "unit": "", "int": true},
+        {"type": "switch", "icon": "rocket", "title": "Adjust the picture to the connection", "sub": "", "file": "krdpserverrc", "group": "General", "key": "AdaptiveQuality", "def": "true"},
+        {"type": "number", "icon": "display", "title": "Picture quality", "sub": "", "file": "krdpserverrc", "group": "General", "key": "Quality", "def": 75, "min": 0, "max": 100, "step": 5, "unit": "%", "int": true},
+        {"type": "switch", "icon": "display", "title": "Its own screens", "sub": "This PC's screens go dark while someone is connected", "file": "krdpserverrc", "group": "General", "key": "ExclusiveMode", "def": "false"},
+        {"type": "link", "icon": "display", "title": "Hearth's remote desktop (VNC)", "sub": "Through Tailscale", "page": "remote-desktop"}
+      ]
+    },
+    {
+      "id": "kde-info", "cat": "system", "label": "More system information", "kcm": ["kcm_audio_information", "kcm_block_devices", "kcm_edid", "kcm_kwinsupportinfo", "kcm_network", "kcm_opencl", "kcm_samba", "kcm_vaapi", "kcm_wayland", "kcm_xserver"], "desc": "Sound devices, drives, screens' details, network, Samba, OpenCL, video acceleration, Wayland, X11, KWin", "words": "info center information audio block devices drives partitions edid screens network interfaces samba opencl vaapi video acceleration wayland x server xwayland kwin support", "intro": "The rest of KDE's Info Center. Processor, graphics, memory, PCI and USB are in About › Info Center.",
+      "rows": [
+        {"type": "info", "title": "Sound devices", "from": "audio"},
+        {"type": "info", "title": "Drives and partitions", "from": "block"},
+        {"type": "info", "title": "What your screens say about themselves (EDID)", "from": "edid"},
+        {"type": "info", "title": "Network", "from": "network"},
+        {"type": "info", "title": "Windows sharing (Samba)", "from": "samba"},
+        {"type": "info", "title": "Video acceleration (VA-API)", "from": "vaapi"},
+        {"type": "info", "title": "OpenCL", "from": "opencl"},
+        {"type": "info", "title": "Wayland", "from": "wayland"},
+        {"type": "info", "title": "X11 apps (Xwayland)", "from": "xserver"},
+        {"type": "info", "title": "KWin", "from": "kwin"},
+        {"type": "link", "icon": "info", "title": "Info Center", "sub": "Processor, graphics, memory, PCI, USB", "page": "info-cpu"}
       ]
     }
   ]

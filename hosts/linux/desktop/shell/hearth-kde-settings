@@ -20,6 +20,12 @@ same files, groups and keys, and KDE's own tools where the KCM uses one (plasma-
   hearth-kde-settings info KIND             JSON rows [[label, value], ...] for an Info Center page
   hearth-kde-settings firmware              JSON {can, on}: open the firmware setup at the next restart (logind)
   hearth-kde-settings firmware-set on|off
+  hearth-kde-settings activities            JSON: KDE's activities (kactivitymanagerd); activity add NAME | rename ID NAME |
+                                            remove ID | switch ID
+  hearth-kde-settings userdirs              JSON: your folders (Desktop, Documents...); userdir-set KEY PATH
+                                            (xdg-user-dirs-update, as KDE's Locations page)
+  hearth-kde-settings device-actions        JSON: what can be done when a device is plugged in (Solid's actions);
+                                            device-action-add (stdin {name, exec, kind}), device-action-remove FILE
   hearth-kde-settings kded                  JSON: KDE's background services (kded modules) and whether each starts
   hearth-kde-settings kded-set NAME on|off  starts or stops one now and remembers it (kded6 over D-Bus, kded5rc)
 
@@ -74,6 +80,23 @@ def allowlist(sp=None):
                     if len(o) > 2 and isinstance(o[2], dict):
                         g.update(o[2])
     return out
+
+
+def trash_group():
+    """KDE's Trash settings are in a group named after the Trash folder (ktrashrc [/home/you/.local/share/Trash])."""
+    return os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'Trash')
+
+
+def expand(group):
+    return group.replace('$TRASH', trash_group())
+
+
+def alias(d):
+    """The Trash's group also under "$TRASH", as the pages name it."""
+    t = trash_group()
+    if isinstance(d, dict) and t in d:
+        d['$TRASH'] = d[t]
+    return d
 
 
 def page_of(pid, sp=None):
@@ -224,9 +247,11 @@ def get(pid):
         except kc.BadFile as e:
             bad[n] = str(e)
             files[n], mine[n], locked[n] = {}, {}, {}
+        for d in (files[n], mine[n], locked[n]):
+            alias(d)
     lists = {}
     for r in rows(page):
-        if r.get('from') and r['from'] not in lists:
+        if r.get('from') and r.get('type') != 'info' and r['from'] not in lists:
             lists[r['from']] = list_kind(r['from'])
     info = {}
     for r in rows(page):
@@ -238,6 +263,14 @@ def get(pid):
             current['gtktheme'] = gtk_current()
         if r.get('type') == 'firmware':
             current['firmware'] = firmware_get()
+        if r.get('type') == 'kded':
+            current['kded'] = kded()
+        if r.get('type') == 'activities':
+            current['activities'] = activities()
+        if r.get('type') == 'userdirs':
+            current['userdirs'] = userdirs()
+        if r.get('type') == 'deviceactions':
+            current['deviceactions'] = device_actions()
     return {'page': pid, 'current': current, 'files': files, 'mine': mine, 'locked': locked, 'bad': bad, 'lists': lists, 'info': info,
             'status': status()}
 
@@ -248,6 +281,11 @@ def set_file(name, raw):
     except ValueError:
         raise Fail('expected JSON on stdin')
     allow = allowlist()
+    for page in spec()['pages']:
+        for r in rows(page):
+            if r.get('type') == 'plugins' and r.get('file') == name:
+                g = allow.setdefault(name, {}).setdefault(r['group'], set())
+                g.update(x[0] + 'Enabled' for x in list_kind(r['from']))
     if name not in allow or not isinstance(changes, dict) or not changes:
         raise Fail('%s is not a file these pages change' % name)
     for g, kv in changes.items():
@@ -259,6 +297,7 @@ def set_file(name, raw):
         for k, v in kv.items():
             if v is not None and not isinstance(v, (str, int, float, bool)):
                 raise Fail('%s: a value must be text, a number or true/false' % k)
+    changes = {expand(g): kv for g, kv in changes.items()}
     try:
         _, _, locked = kc.effective(name)
     except kc.BadFile as e:
@@ -280,8 +319,14 @@ def set_file(name, raw):
     if changed:
         notify_changed(name, changes)
         reloaded = reload(name)
+        if name == 'kwinrc' and 'Plugins' in changes and has_name('org.kde.KWin'):
+            try:
+                call('org.kde.KWin', '/Scripting', 'org.kde.kwin.Scripting', 'start')
+            except Fail as e:
+                hsio.log_event('kde: KWin scripts not started: %s' % e)
         hsio.log_event('kde: %s %s' % (name, json.dumps(changes, sort_keys=True)[:400]))
     values, mine, lk = kc.effective(name)
+    alias(values), alias(mine), alias(lk)
     return {'file': name, 'changed': changed, 'reloaded': reloaded, 'values': values, 'mine': mine, 'locked': lk}
 
 
@@ -386,6 +431,14 @@ def desktop_name(path, key='Name'):
     return ''
 
 
+def meta_json(d):
+    try:
+        with open(os.path.join(d, 'metadata.json'), encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
 def meta_name(d):
     p = os.path.join(d, 'metadata.json')
     if os.path.isfile(p):
@@ -470,7 +523,13 @@ def list_kind(kind):
         for d in dd:
             for p in sorted(glob.glob(os.path.join(d, 'kwin*/scripts/*/'))):
                 pk = os.path.basename(p.rstrip('/'))
-                add(pk, meta_name(p) or pk)
+                if pk in seen:
+                    continue
+                m = meta_json(p)
+                kp = m.get('KPlugin') or {}
+                seen.add(pk)
+                out.append([pk, kp.get('Name') or meta_name(p) or pk, kp.get('Description', ''),
+                            bool(kp.get('EnabledByDefault', False)), d.startswith(os.path.expanduser('~'))])
     elif kind == 'krunner':
         for pd in plugin_dirs():
             for so in sorted(glob.glob(os.path.join(pd, 'kf6/krunner/*.so'))):
@@ -482,6 +541,12 @@ def list_kind(kind):
                 b = os.path.basename(so)[:-3]
                 add({'breeze6': 'Breeze', 'breeze': 'Breeze', 'oxygen6': 'Oxygen'}.get(b, b.capitalize()), {'breeze6': 'Breeze', 'oxygen6': 'Oxygen'}.get(b, b.capitalize()))
         add('Fusion', 'Fusion')
+    elif kind == 'searchproviders':
+        for d in dd:
+            for p in sorted(glob.glob(os.path.join(d, 'kf6/searchproviders/*.desktop')) + glob.glob(os.path.join(d, 'kservices6/searchproviders/*.desktop'))):
+                if desktop_name(p, 'Hidden').lower() == 'true':
+                    continue
+                add(os.path.basename(p)[:-8], desktop_name(p))
     elif kind == 'soundtheme':
         add('freedesktop', 'FreeDesktop')
         for d in dd:
@@ -510,6 +575,48 @@ def info_kind(kind):
     if f is not None:
         return f
     rows_ = []
+    if kind == 'searchproviders':
+        seen = set()
+        for d in data_dirs():
+            for p in sorted(glob.glob(os.path.join(d, 'kf6/searchproviders/*.desktop'))):
+                b = os.path.basename(p)
+                if b in seen or desktop_name(p, 'Hidden').lower() == 'true':
+                    continue
+                seen.add(b)
+                keys = desktop_name(p, 'Keys')
+                rows_.append([desktop_name(p) or b[:-8], ', '.join(k.strip() + ':' for k in keys.split(',') if k.strip())])
+        return rows_ or [['Web search keywords', 'None are installed here']]
+    if kind == 'vaapi':
+        if not shutil.which('vainfo'):
+            return [['Video acceleration', 'vainfo isn\'t installed']]
+        code, out, err = run(['vainfo'], 10)
+        for line in (out + err).splitlines():
+            m = re.search(r'(Driver version|VA-API version):\s*(.+)', line)
+            if m:
+                rows_.append([m.group(1), m.group(2).strip()])
+        profiles = sorted({m.group(1) for m in re.finditer(r'VAProfile(\w+?)\s*:\s*VAEntrypointVLD', out)})
+        if profiles:
+            rows_.append(['Plays back with the graphics card', ', '.join(profiles)[:400]])
+        encode = sorted({m.group(1) for m in re.finditer(r'VAProfile(\w+?)\s*:\s*VAEntrypointEnc', out)})
+        if encode:
+            rows_.append(['Records with the graphics card', ', '.join(encode)[:400]])
+        return rows_ or [['Video acceleration', 'Not available on this graphics card or driver']]
+    if kind == 'opencl':
+        if not shutil.which('clinfo'):
+            return [['OpenCL', 'clinfo isn\'t installed']]
+        code, out, _ = run(['clinfo', '-l'], 10)
+        for line in out.splitlines():
+            m = re.match(r'\s*(Platform|`--|\+--)\s*#?(\d+)?:?\s*(.+)', line)
+            if line.strip():
+                rows_.append(['Platform' if line.startswith('Platform') else 'Device', line.split(':', 1)[-1].strip()])
+        return rows_ or [['OpenCL', 'No OpenCL platforms']]
+    if kind == 'controllers':
+        for block in read('/proc/bus/input/devices').split('\n\n'):
+            name = re.search(r'^N: Name="(.*)"', block, re.M)
+            handlers = re.search(r'^H: Handlers=(.*)$', block, re.M)
+            if name and handlers and re.search(r'\bjs\d+', handlers.group(1)):
+                rows_.append([name.group(1), 'Plugged in (' + ' '.join(h for h in handlers.group(1).split() if h.startswith(('js', 'event'))) + ')'])
+        return rows_ or [['Controllers', 'None plugged in']]
     if kind == 'wayland':
         rows_.append(['Session', os.environ.get('XDG_SESSION_TYPE', '') or 'unknown'])
         rows_.append(['Wayland display', os.environ.get('WAYLAND_DISPLAY', '') or 'none'])
@@ -605,6 +712,40 @@ def info_kind(kind):
 
 
 # ------------------------------------------------------------------ background services (kded)
+KDED = {
+    'appmenu': ('App menus in the panel', 'Lets the Global Menu widget show apps\' menus'),
+    'baloosearchmodule': ('File search updates', 'Tells open folders when the file index finds changes'),
+    'bluedevil': ('Bluetooth', "KDE's Bluetooth service (pairing, receiving files)"),
+    'browserintegrationreminder': ('Browser integration reminder', 'Suggests the Plasma browser extension'),
+    'colorcorrectlocationupdater': ('Night light location', "Updates Night light's sunrise and sunset from where you are"),
+    'device_automounter': ('Automatic mounting', 'Mounts drives when they are plugged in (USB devices & drives)'),
+    'donationmessage': ('Donation message', "KDE's yearly request for a donation"),
+    'freespacenotifier': ('Low space warning', 'Warns when your home folder is nearly full'),
+    'gtkconfig': ('GTK settings', 'Gives GTK apps your fonts, theme and cursor'),
+    'inotify': ('Folder watcher', 'Tells KDE apps when files change'),
+    'kameleon': ('Keyboard lights', "Puts the accent colour on keyboards with coloured lights"),
+    'kded_accounts': ('Online accounts', 'Connects your online accounts to KDE apps'),
+    'kded_bolt': ('Thunderbolt', 'Tells you about new Thunderbolt devices'),
+    'kded_touchpad': ('Touchpad', 'Turns the touchpad off while a mouse is plugged in, if you asked'),
+    'keyboard': ('Keyboard layouts', 'Applies your keyboard layouts'),
+    'kscreen': ('Screens', 'Remembers each screen arrangement'),
+    'ktimezoned': ('Time zone changes', 'Tells apps when the time zone changes'),
+    'networkmanagement': ('Network notices', 'Network sign-in pop-ups and connection notices'),
+    'plasma_accentcolor_service': ('Accent from the wallpaper', 'Takes the accent colour from your wallpaper'),
+    'printmanager': ('Printer notices', 'Tells you about new printers and print jobs'),
+    'proxyscout': ('Proxy setup script', 'Reads a proxy setup script (PAC) for KDE apps'),
+    'remotenotifier': ('Network folders', 'Tells Files when network folders change'),
+    'smartmonitor': ('Drive health', "Warns when a drive's health (SMART) gets worse"),
+    'solidautoeject': ('Eject button', 'Ejects a disc when its button is pressed'),
+    'soliduiserver': ('Device passwords', 'Asks for the password of an encrypted drive'),
+    'statusnotifierwatcher': ('System tray', 'Lets apps put an icon in the system tray'),
+    'audioshortcutsservice': ('Sound keys', 'The mute and microphone keys'),
+    'plasma-session-shortcuts': ('Session shortcuts', 'Shortcuts to sign out, restart and shut down'),
+    'geotimezoned': ('Time zone from your location', 'Sets the time zone from where you are'),
+    'desktopnotifier': ('Desktop folder', 'Updates the desktop when its folder changes'),
+}
+
+
 def kded():
     f = fixture('kded.json')
     if f is not None:
@@ -622,7 +763,8 @@ def kded():
     out = []
     for m in mods:
         auto = (conf.get('Module-' + m, {}).get('autoload', 'true')).lower() != 'false'
-        out.append({'name': m, 'running': m in loaded, 'autoload': auto})
+        label, what = KDED.get(m, (m.replace('kded_', '').replace('_', ' ').capitalize(), ''))
+        out.append({'name': m, 'label': label, 'what': what, 'running': m in loaded, 'autoload': auto})
     return {'modules': out, 'kded': bool(loaded) or has_name('org.kde.kded6')}
 
 
@@ -640,6 +782,162 @@ def kded_set(name, on):
         now = False
     hsio.log_event('kde: kded %s %s' % (name, 'on' if on else 'off'))
     return {'name': name, 'autoload': bool(on), 'now': now}
+
+
+# ------------------------------------------------------------------ activities (kactivitymanagerd over D-Bus)
+ACT = ('org.kde.ActivityManager', '/ActivityManager/Activities', 'org.kde.ActivityManager.Activities')
+
+
+def activities():
+    f = fixture('activities.json')
+    if f is not None:
+        return f
+    if not has_name(ACT[0]):
+        return {'running': False, 'list': []}
+    try:
+        ids = call(*ACT, 'ListActivities')[0]
+        cur = call(*ACT, 'CurrentActivity')[0]
+        return {'running': True, 'current': cur, 'list': [{'id': i, 'name': call(*ACT, 'ActivityName', '(s)', (i,))[0]} for i in ids]}
+    except Fail as e:
+        return {'running': False, 'list': [], 'error': str(e)}
+
+
+def activity(op, a):
+    if fixture_dir():
+        return activities()
+    if not has_name(ACT[0]):
+        raise Fail("KDE's activities only run on KDE Plasma")
+    if op == 'add':
+        name = (a[0] if a else '').strip()[:80]
+        if not name:
+            raise Fail('An activity needs a name')
+        call(*ACT, 'AddActivity', '(s)', (name,))
+    elif op == 'rename':
+        call(*ACT, 'SetActivityName', '(ss)', (a[0], a[1].strip()[:80]))
+    elif op == 'remove':
+        if len(activities()['list']) <= 1:
+            raise Fail('The last activity stays')
+        call(*ACT, 'RemoveActivity', '(s)', (a[0],))
+    elif op == 'switch':
+        call(*ACT, 'SetCurrentActivity', '(s)', (a[0],))
+    hsio.log_event('kde: activity %s' % op)
+    return activities()
+
+
+# ------------------------------------------------------------------ your folders (xdg-user-dirs, as KDE's Locations page)
+USERDIRS = [('DESKTOP', 'Desktop'), ('DOCUMENTS', 'Documents'), ('DOWNLOAD', 'Downloads'), ('MUSIC', 'Music'),
+            ('PICTURES', 'Pictures'), ('VIDEOS', 'Videos'), ('PUBLICSHARE', 'Public'), ('TEMPLATES', 'Templates')]
+
+
+def userdirs():
+    f = fixture('userdirs.json')
+    if f is not None:
+        return f
+    base = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+    text = read(os.path.join(base, 'user-dirs.dirs'))
+    home = os.path.expanduser('~')
+    out = []
+    for key, label in USERDIRS:
+        m = re.search(r'^XDG_%s_DIR="(.*)"' % key, text, re.M)
+        path = (m.group(1) if m else '$HOME/' + label).replace('$HOME', home)
+        out.append({'key': key, 'label': label, 'path': path})
+    return out
+
+
+def userdir_set(key, path):
+    if key not in dict(USERDIRS):
+        raise Fail('%s is not one of your folders' % key)
+    path = os.path.abspath(os.path.expanduser(path))
+    if not os.path.isdir(path):
+        raise Fail('%s is not a folder' % path)
+    if fixture_dir():
+        return userdirs()
+    if not shutil.which('xdg-user-dirs-update'):
+        raise Fail('xdg-user-dirs-update is not installed')
+    code, out, err = run(['xdg-user-dirs-update', '--set', key, path], 10)
+    if code != 0:
+        raise Fail((err or out).strip()[:300] or 'It could not be changed')
+    hsio.log_event('kde: folder %s -> %s' % (key, path))
+    return userdirs()
+
+
+# ------------------------------------------------------------------ device actions (Solid's .desktop files)
+KINDS = [('StorageVolume', 'Drives'), ('OpticalDisc', 'Discs'), ('Camera', 'Cameras'), ('PortableMediaPlayer', 'Music players and phones'),
+         ('StorageAccess', 'Drives'), ('Block', 'Drives')]
+
+
+def action_dirs():
+    return [os.path.join(d, 'solid/actions') for d in data_dirs()]
+
+
+def parse_desktop(path):
+    groups, g = {}, None
+    for line in read(path).splitlines():
+        line = line.strip()
+        if line.startswith('[') and line.endswith(']'):
+            g = line[1:-1]
+            groups.setdefault(g, {})
+        elif '=' in line and g is not None and not line.startswith('#'):
+            k, v = line.split('=', 1)
+            groups[g][k.strip()] = v.strip()
+    return groups
+
+
+def device_actions():
+    f = fixture('deviceactions.json')
+    if f is not None:
+        return f
+    user = action_dirs()[0]
+    seen, out = set(), []
+    for d in action_dirs():
+        for p in sorted(glob.glob(os.path.join(d, '*.desktop'))):
+            b = os.path.basename(p)
+            if b in seen:
+                continue
+            seen.add(b)
+            g = parse_desktop(p)
+            de = g.get('Desktop Entry', {})
+            if de.get('Hidden', '').lower() == 'true':
+                continue
+            pred = de.get('X-KDE-Solid-Predicate', '')
+            kinds = sorted({label for k, label in KINDS if k in pred}) or ['Devices']
+            for a in [x for x in de.get('Actions', '').split(';') if x]:
+                da = g.get('Desktop Action ' + a, {})
+                out.append({'file': b, 'name': da.get('Name', a), 'exec': da.get('Exec', ''), 'kinds': ', '.join(kinds),
+                            'mine': p.startswith(user)})
+    return out
+
+
+def device_action_add(raw):
+    try:
+        a = json.loads(raw or '{}')
+    except ValueError:
+        raise Fail('expected JSON')
+    name, cmd, kind = (a.get('name') or '').strip()[:80], (a.get('exec') or '').strip()[:400], a.get('kind', 'StorageVolume')
+    if not name or not cmd or kind not in dict(KINDS) or '\n' in name + cmd:
+        raise Fail('An action needs a name, a command and a kind of device')
+    slug = re.sub(r'[^a-z0-9]+', '-', name.lower()).strip('-')[:40] or 'action'
+    d = action_dirs()[0]
+    os.makedirs(d, exist_ok=True)
+    path = os.path.join(d, 'hearth-%s.desktop' % slug)
+    if os.path.exists(path):
+        raise Fail('There is already an action with that name')
+    text = ('[Desktop Entry]\nX-KDE-Solid-Predicate=IS %s\nType=Service\nActions=open;\n\n'
+            '[Desktop Action open]\nName=%s\nExec=%s\nIcon=system-run\n' % (kind, name, cmd))
+    hsio.write_text(path, text)
+    hsio.log_event('kde: device action %s' % name)
+    return device_actions()
+
+
+def device_action_remove(fname):
+    if not re.match(r'^[A-Za-z0-9_.-]+\.desktop$', fname):
+        raise Fail('bad name')
+    path = os.path.join(action_dirs()[0], fname)
+    if not os.path.isfile(path):
+        raise Fail('Only actions you made can be removed')
+    os.replace(path, path + '.bak')
+    hsio.log_event('kde: device action removed %s (kept as .bak)' % fname)
+    return device_actions()
 
 
 def main(argv):
@@ -665,6 +963,20 @@ def main(argv):
         return kded()
     if c == 'kded-set' and len(a) == 2 and a[1] in ('on', 'off'):
         return kded_set(a[0], a[1] == 'on')
+    if c == 'activities':
+        return activities()
+    if c == 'activity' and a and a[0] in ('add', 'rename', 'remove', 'switch'):
+        return activity(a[0], a[1:])
+    if c == 'userdirs':
+        return userdirs()
+    if c == 'userdir-set' and len(a) == 2:
+        return userdir_set(a[0], a[1])
+    if c == 'device-actions':
+        return device_actions()
+    if c == 'device-action-add':
+        return device_action_add(os.environ.get('HEARTH_INPUT') or sys.stdin.read())
+    if c == 'device-action-remove' and len(a) == 1:
+        return device_action_remove(a[0])
     if c == 'allowlist':
         return {f: {g: sorted(k) for g, k in gs.items()} for f, gs in allowlist().items()}
     raise Fail(__doc__.split('\n\n')[2] if c in ('', '-h', '--help') else 'unknown command %s' % c)

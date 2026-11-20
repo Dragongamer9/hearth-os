@@ -8,3 +8,10 @@ BorderSize=Large
 
 [Input]
 TabletMode=off
+
+[TabBox]
+DesktopMode=0
+ApplicationsMode=1
+
+[Plugins]
+krohnkiteEnabled=true
