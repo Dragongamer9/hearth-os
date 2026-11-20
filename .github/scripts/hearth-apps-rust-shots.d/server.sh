@@ -36,7 +36,7 @@ HEARTH_SERVER_DASH_FIXTURE="$SV/down.json" run server-9-service-down-opened hear
 # 1.16: the tiles' own pages (as Mantel's): the AI team, Ithil (a stand-in ~/HearthAI, as desktop-test.yml makes it),
 # the game download cache, the ad blocker and quiet hours & rules, with the mockups' numbers.
 python3 "$ROOT/hosts/linux/test/fixtures/ithil-home.py" "$HOME/HearthAI"
-python3 - "$ROOT" "$SV/dash.json" "$SV/full.json" "$SV/quiet.json" <<'PY2'
+python3 - "$ROOT" "$SV/dash.json" "$SV/full.json" "$SV/quiet.json" 2>/tmp/svgen.err >/tmp/svgen.out <<'PY2'
 import importlib.machinery, json, sys, time
 root = sys.argv[1]
 sys.path.insert(0, root + '/hosts/linux/desktop/shell')
@@ -58,7 +58,11 @@ team = sm.team_view(today, [{'name': 'Living room TV', 'what': ['Media']}], engi
 d['team'] = team
 d['tiles'].insert(0, {'id': 'team', 'title': 'AI team', 'engine': 'One AI address · 4 engines', 'icon': 'sparkle', 'state': 'running', 'chip': team['chip'],
                       'new': True, 'mesh': True, 'actions': ['restart', 'pause']})
-v = hearth_ithil.view()
+try:
+    v = hearth_ithil.view() or {}
+except Exception as e:  # noqa: BLE001
+    import traceback; traceback.print_exc()
+    v = {}
 v.update({'running': True, 'state': 'awake', 'chip': 'Awake', 'version': '0.6', 'brainLoaded': True})
 d['tiles'].insert(1, {'id': 'ithil', 'title': 'Ithil', 'engine': 'Her own mind · Hearth AI 0.6', 'icon': 'moon', 'state': 'running', 'chip': 'Awake',
                       'new': True, 'wide': True, 'ithil': v, 'actions': []})
@@ -95,6 +99,10 @@ for c in q['cores']:
 json.dump(q, open(sys.argv[4], 'w'))
 print('tiles: ' + ' '.join('%d=%s' % (i + 1, t['id']) for i, t in enumerate(d['tiles'])))
 PY2
+[ -s "$SV/full.json" ] && echo "::notice title=server fixture::$(cat /tmp/svgen.out)" \
+  || echo "::error title=server fixture::the pages' test data wasn't made: $(tail -c 1500 /tmp/svgen.err | tr '\n' '|')"
+HEARTH_SERVER_DASH_FIXTURE="$SV/full.json" timeout 30 python3 "$HEARTH_SHELL_DIR/hearth-server-mode" dash >/tmp/svdash.out 2>/tmp/svdash.err \
+  || echo "::error title=server fixture::dash with it failed: $(tail -c 1500 /tmp/svdash.err | tr '\n' '|')"
 export HEARTH_SERVER_DASH_FIXTURE="$SV/full.json"
 nrules=$(python3 -c "import json,sys; print(len(json.load(open(sys.argv[1]))['tiles']))" "$SV/full.json")
 run server-live-dashboard hearth-server 20 "$SB"

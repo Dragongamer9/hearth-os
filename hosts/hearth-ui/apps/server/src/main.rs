@@ -116,6 +116,7 @@ pub struct App {
     pub anim_t: f32,
     start: f64,
     pub focused: bool,
+    seen_focus: bool,
     pub reduce: bool,
     last_anim: f64,
     // Ithil: her log for the brain, the window shown (live | 24 | all), where in it, X-ray, how her brain is turned
@@ -232,6 +233,7 @@ impl App {
             anim_t: 0.0,
             start: t,
             focused: true,
+            seen_focus: false,
             reduce: reduce_motion(),
             last_anim: t,
             ithil_prep: brain::Prepared::default(),
@@ -1042,6 +1044,14 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             }
         }
         Msg::Focus(fo) => {
+            // Only once the window has had the keyboard (a screen without a keyboard, like CI's, never gives it):
+            // losing it then means another window is in front.
+            if fo {
+                a.seen_focus = true;
+            }
+            if !a.seen_focus {
+                return Task::none();
+            }
             a.focused = fo;
             if fo {
                 a.wake();
