@@ -15,19 +15,23 @@ Window {
     transientParent: null
     color: "#0f0b0a"
     onVisibleChanged: console.warn("firehold: Couch layer on", screenName, "visible", visible, width + "x" + height)
-    screen: {
+    function target() {
         const l = Qt.application.screens;
         for (let i = 0; i < l.length; i++) if (l[i].name === screenName) return l[i];
-        return l.length ? l[0] : null;
+        return null;
     }
     width: screen ? screen.width : 1920
     height: screen ? screen.height : 1080
     LayerShell.Window.scope: "hearth-firehold-couch"
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
-    LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorLeft | LayerShell.Window.AnchorRight
+    LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorRight
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityExclusive
     LayerShell.Window.exclusionZone: -1
+    Component.onCompleted: console.warn("firehold: Couch layer made for", screenName)
+    // Its screen is set just before it first shows (Wayland puts a layer on its output once, when it's made).
     function show() {
+        const t = target();
+        if (t && screen !== t) screen = t;
         visible = true; requestActivate(); couch.forceActiveFocus();
         console.warn("firehold: the Couch over the Desk on", screenName, "(window on", screen ? screen.name : "no screen", ")");
     }
