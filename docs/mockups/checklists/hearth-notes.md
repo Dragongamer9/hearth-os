@@ -35,7 +35,7 @@ can't turn text); New item's releases are the vault's own release tags.
 - [x] Action buttons: Home, New note, Today's log, This week, Atlas, Close — hosts/hearth-ui/apps/notes/src/today.rs: "action_btn(a, \"◷ Today's log\""
 - [x] Date title, "Friday, November 20, 2026", « Yesterday | Tomorrow », US Central time — hosts/hearth-ui/apps/notes/src/today.rs: "tm(day::long(a.day)"
 - [x] The day starts at 6:00 AM (a setting, shown in Settings) — hosts/hearth-ui/apps/notes/src/day.rs: "fn the_log_day_starts_at_6_am"
-- [x] Productivity bar (0–10) and optional habit tracker (Writing, Workout, Reading), kept apart from the log — hosts/hearth-ui/apps/notes/src/trackers.rs: "fn trackers_are_kept_apart_from_the_log"
+- [ ] Productivity bar (0–10) and optional habit tracker (Writing, Workout, Reading), kept apart from the log
 - [x] Quick add: Made / Changed / Decided / Stored at / Waiting, with the line it will add — hosts/hearth-ui/apps/notes/src/today.rs: "pub fn quick_line("
 - [x] Sections Made, Decided, Stored at, Waiting, What happened today, New tasks — hosts/hearth-ui/apps/notes/src/today.rs: "fn the_log_sorted_into_its_sections"
 - [x] Right column: month calendar, sections of the page, still waiting from the last 5 logs, modified today — hosts/hearth-ui/apps/notes/src/today.rs: "\"Still waiting\""
@@ -46,13 +46,13 @@ can't turn text); New item's releases are the vault's own release tags.
 - [x] Moving a card ticks its box or edits its line in the note — hosts/hearth-ui/apps/notes/src/board.rs: "fn moving_a_card_ticks_its_box_or_edits_its_line"
 
 ## 3 Graph, Classic
-- [x] Nodes coloured by project (all 8 projects plus daily logs), filters by project and tag, colour by, link distance — hosts/hearth-ui/apps/notes/src/gview.rs: "\"Link distance\""
+- [ ] Nodes coloured by project (all 8 projects plus daily logs), filters by project and tag, colour by, link distance
 - [x] Hover card with Open note and Show only its links; legend — hosts/hearth-ui/apps/notes/src/gview.rs: "\"Show only its links\""
 - [x] Drawn on the graphics card with a light CPU fallback; animates only while visible; Reduce motion still; ~0 % CPU at rest — hosts/hearth-ui/apps/notes/src/gview.rs: "fn glow(fr: &mut Frame"
 - [x] Real counts from the vault: a project with no notes says "no notes yet" — hosts/hearth-ui/apps/notes/src/gview.rs: "\"no notes yet\""
 
 ## 3b Graph modes
-- [x] 10 modes with live previews: Galaxy, Solar system, Black hole, Ember, Railway map, Night sky, Neural, City at night, Timeline river, Classic — hosts/hearth-ui/apps/notes/src/gview.rs: "(\"river\", \"Timeline river\""
+- [ ] 10 modes with live previews: Galaxy, Solar system, Black hole, Ember, Railway map, Night sky, Neural, City at night, Timeline river, Classic
 - [x] Reduce motion, Customise, Stays light — hosts/hearth-ui/apps/notes/src/gview.rs: "\"Stays light\""
 
 ## 3c Galaxy
@@ -65,7 +65,7 @@ can't turn text); New item's releases are the vault's own release tags.
 
 ## 3e Black hole
 - [x] Home (INDEX.md) as a black hole: orange-gold accretion disk, lensing glow, dark core, "Home" pill — hosts/hearth-ui/apps/notes/src/gview.rs: "The near side of the disk crosses the core"
-- [x] Each project a big cloud of star points with fan-shaped link trails pulled toward Home, labelled with its name and page count — hosts/hearth-ui/apps/notes/src/gview.rs: "fn cloud_of(a: &App"
+- [ ] Each project a big cloud of star points with fan-shaped link trails pulled toward Home, labelled with its name and page count
 - [x] Faint orbit rings across the map, deep space behind, orphans at the edge — hosts/hearth-ui/apps/notes/src/gview.rs: "Faint orbit rings, the clouds"
 - [x] Floating control pill: zoom out, zoom in, reset, pause, fullscreen; "7 backlinks" in the corner — hosts/hearth-ui/apps/notes/src/gview.rs: "fn controls(a: &App)"
 - [x] Fly to, filters, hover card with Open note — hosts/hearth-ui/apps/notes/src/gview.rs: "\"Fly here\""

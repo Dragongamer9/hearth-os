@@ -246,7 +246,7 @@ impl<'a> Sky<'a> {
                     let (u, v) = (unit(rel, 11), unit(rel, 12));
                     let ang = v * TAU;
                     let d = u.sqrt();
-                    out.push(P { i, x: ccx + ang.cos() * cr * 1.3 * d, y: ccy + ang.sin() * cr * 0.95 * d, r: 1.6, c: Pal::mix(project_color(&a.p, &nd.project), Color::WHITE, 0.55), a: 0.95, label: false });
+                    out.push(P { i, x: ccx + ang.cos() * cr * 1.3 * d, y: ccy + ang.sin() * cr * 0.95 * d, r: 2.2, c: Pal::mix(project_color(&a.p, &nd.project), Color::WHITE, 0.55), a: 0.95, label: false });
                 }
             }
             "ember" => {
@@ -313,21 +313,40 @@ impl<'a> Sky<'a> {
                     let d = g.nodes[i].log.unwrap_or_else(|| day::log_day(g.nodes[i].mtime, 0));
                     let k = days.iter().position(|x| *x == d).unwrap_or(0) as f32;
                     let x = w * 0.06 + (k + 0.5) / nd_ * w * 0.88 + cam.x * m;
-                    let yr = river_y(x, w, h);
+                    let yr = river_y(x, w, h) + 6.0;
                     let c = seen.entry(d).or_insert(0);
-                    let (row_, col_) = (*c / 6, *c % 6);
+                    let n_day = shown.iter().filter(|&&j| g.nodes[j].log.unwrap_or_else(|| day::log_day(g.nodes[j].mtime, 0)) == d).count();
+                    let cols = ((n_day as f32 * 2.0).sqrt().ceil() as usize).clamp(1, 14);
+                    let (row_, col_) = (*c / cols, *c % cols);
                     *c += 1;
-                    out.push(P { i, x: x - 20.0 + col_ as f32 * 8.0, y: yr - 10.0 - row_ as f32 * 8.0 + (tt + k).sin() * 1.5, r: 3.0, c: Color::from_rgb8(0xff, 0xa8, 0x50), a: 1.0, label: false });
+                    out.push(P { i, x: x - (cols as f32 - 1.0) * 4.0 + col_ as f32 * 8.0, y: yr - 10.0 - row_ as f32 * 8.0 + (tt + k).sin() * 1.5, r: 3.0, c: Color::from_rgb8(0xff, 0xa8, 0x50), a: 1.0, label: false });
                 }
             }
             _ => {
-                let spread = a.gf("linkDistance", 0.75).clamp(0.2, 1.0) * 0.35 + 0.72;
-                let ax = (w / m).min(1.7) * 0.92;
+                // Fit the notes into the free part of the canvas (the filter panel takes the right side of the
+                // full-size page): the middle 90 % of them by place, so a few far ones don't push the rest aside.
+                let spread = a.gf("linkDistance", 0.75).clamp(0.2, 1.0) * 0.4 + 0.7;
+                let pct = |v: &mut Vec<f32>| -> (f32, f32) {
+                    v.sort_by(|x, y| x.total_cmp(y));
+                    if v.is_empty() {
+                        return (-1.0, 1.0);
+                    }
+                    let lo = v[(v.len() as f32 * 0.05) as usize];
+                    let hi = v[((v.len() as f32 * 0.95) as usize).min(v.len() - 1)];
+                    if hi - lo < 0.05 { (lo - 0.5, hi + 0.5) } else { (lo, hi) }
+                };
+                let (x0, x1) = pct(&mut shown.iter().map(|&i| g.nodes[i].x).collect());
+                let (y0, y1) = pct(&mut shown.iter().map(|&i| g.nodes[i].y).collect());
+                let panel = if self.small || a.g.customise { 0.0 } else { z(400.0) + z(56.0) };
+                let (left, right, top, bottom) = if self.small { (w * 0.08, w * 0.92, h * 0.10, h * 0.88) } else { (z(60.0), w - panel - z(40.0), z(120.0), h - z(90.0)) };
+                let (mx, my) = ((left + right) / 2.0 + cam.x * m, (top + bottom) / 2.0 + cam.y * m);
+                let (sx, sy) = ((right - left).max(40.0) / 2.0 * zoom * spread, (bottom - top).max(40.0) / 2.0 * zoom * spread);
+                let (cxn, cyn) = ((x0 + x1) / 2.0, (y0 + y1) / 2.0);
+                let (hx, hy) = (((x1 - x0) / 2.0).max(0.05), ((y1 - y0) / 2.0).max(0.05));
                 for &i in &shown {
                     let nd = &g.nodes[i];
-                    let s = m * 0.40 * zoom * spread;
                     let col = if nd.project == "log" { Color::from_rgb8(0xee, 0xec, 0xe8) } else { self.color_of(i) };
-                    out.push(P { i, x: cx + nd.x * s * ax, y: cy + nd.y * s, r: self.size_of(i), c: col, a: 1.0, label: if self.small { nd.links >= 3 || Some(i) == sel || nd.project == "log" } else { busy(i) || nd.project == "log" } });
+                    out.push(P { i, x: mx + (nd.x - cxn) / hx * sx * 0.9, y: my + (nd.y - cyn) / hy * sy * 0.9, r: self.size_of(i), c: col, a: 1.0, label: if self.small { nd.links >= 3 || Some(i) == sel || nd.project == "log" } else { busy(i) || nd.project == "log" } });
                 }
             }
         }
@@ -868,15 +887,25 @@ impl<'a> Sky<'a> {
                         let mem: Vec<&P> = placed.iter().filter(|q| a.graph.nodes[q.i].project == pj).collect();
                         let step = if cpu { 4 } else { 1 };
                         for q in mem.iter().step_by(step) {
-                            fr.stroke(&Path::line(Point::new(q.x, q.y), focal), Stroke::default().with_color(Pal::a(Pal::mix(col, Color::WHITE, 0.5), 0.06)).with_width(0.7));
+                            fr.stroke(&Path::line(Point::new(q.x, q.y), focal), Stroke::default().with_color(Pal::a(Pal::mix(col, Color::WHITE, 0.5), 0.13)).with_width(0.7));
+                        }
+                        for k in 0..12u32 {
+                            // The fan: trails from all over the cloud to its edge facing Home.
+                            let ang = rnd(hash(pj) + 900 + k) * TAU;
+                            let d = rnd(hash(pj) + 950 + k).sqrt();
+                            let from = Point::new(ccx + ang.cos() * cr * 1.3 * d, ccy + ang.sin() * cr * 0.95 * d);
+                            fr.stroke(&Path::line(from, focal), Stroke::default().with_color(Color::from_rgba8(0xff, 0xe8, 0xc8, 0.10)).with_width(0.8));
                         }
                         fr.stroke(&Path::line(focal, Point::new(c.x - dir.0 / dl * rr * 0.12, c.y - dir.1 / dl * rr * 0.09)), Stroke::default().with_color(Color::from_rgba8(0xff, 0xd0, 0xa0, 0.10)).with_width(1.0));
-                        // Background star dust in the cloud (drawn, not notes).
-                        let dust = if cpu { 60 } else { 260 };
+                        // Star dust in the cloud (drawn, not notes): as much as the project has notes, so the cloud's
+                        // size and brightness follow its real count; its label says the count itself.
+                        let dust = (n as u32 * if cpu { 4 } else { 14 }).min(if cpu { 160 } else { 700 });
                         for k in 0..dust {
                             let (u, v) = (rnd(hash(pj) + k * 2), rnd(hash(pj) + k * 2 + 1));
                             let ang = v * TAU;
-                            fr.fill(&Path::circle(Point::new(ccx + ang.cos() * cr * 1.35 * u.sqrt(), ccy + ang.sin() * cr * 1.0 * u.sqrt()), 0.6), Pal::a(Pal::mix(col, Color::WHITE, 0.6), 0.25));
+                            let d = u.powf(0.75);
+                            let bright = rnd(hash(pj) + k * 2 + 7);
+                            fr.fill(&Path::circle(Point::new(ccx + ang.cos() * cr * 1.35 * d, ccy + ang.sin() * cr * 1.0 * d), 0.5 + bright * 0.9), Pal::a(Pal::mix(col, Color::WHITE, 0.65), 0.30 + bright * 0.5));
                         }
                     }
                     if !self.small {
