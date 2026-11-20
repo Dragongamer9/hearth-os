@@ -20,6 +20,8 @@
   .card span { width: 168px; height: 94px; border-radius: 8px; background: #ccd; flex: none; }
   h1 { font-size: 26px; margin: 18px 0 6px; }
   #said { font-size: 20px; color: #0a7d2c; min-height: 26px; }
+  #menu { position: fixed; display: none; flex-direction: column; min-width: 240px; background: #fff; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,.3); padding: 6px 0; font-size: 18px; }
+  #menu span { padding: 10px 18px; } #menu span:first-child { background: #eef; }
   .more { height: 1400px; padding: 0 48px; font-size: 18px; color: #555; }
 </style>
 </head>
@@ -38,11 +40,17 @@
     <div class="card"><span></span>Espresso at home</div>
   </aside>
 </main>
+<div id="menu"><span>Copy video link</span><span>Copy video link at this time</span><span>Loop</span><span>Stats for nerds</span></div>
 <div class="more">More videos further down the page…</div>
 <script>
   // tv-ui-check.js's stand-in for ViewerActivity clicks what's under the pointer; the page says what it got.
   document.getElementById('play').addEventListener('click', function () { document.getElementById('said').textContent = 'Play clicked'; document.title = 'Sample video site · played'; });
-  document.getElementById('play').addEventListener('contextmenu', function () { document.getElementById('said').textContent = 'Menu of the player'; });
+  // The player's own right-click menu (as video sites have).
+  document.getElementById('play').addEventListener('contextmenu', function (e) {
+    e.preventDefault(); document.getElementById('said').textContent = 'Menu of the player';
+    var m = document.getElementById('menu'); m.style.left = e.clientX + 'px'; m.style.top = e.clientY + 'px'; m.style.display = 'flex';
+  });
+  document.addEventListener('click', function () { document.getElementById('menu').style.display = 'none'; });
 </script>
 </body>
 </html>

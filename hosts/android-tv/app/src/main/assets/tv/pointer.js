@@ -1,11 +1,12 @@
 /* Hearth TV: the remote's mouse pointer on websites (Theater's viewer, ViewerActivity.kt).
-   This page (pointer.html) is a see-through layer over the website: it draws the pointer, the hint and the pointer's
-   menu, and works out where the pointer is. Nothing of it goes into the website: the clicks, long-presses, hovering and
-   scrolling are real touch and mouse events that ViewerActivity puts into the website's own view
-   (HearthPointerNative: move, tap, longPress, rightClick, scroll, back, setMode).
-   The remote: ▲▼◀▶ move (slow at first, faster when held), OK clicks, hold OK for the menu (long-press, right-click,
-   page mode), Back closes the menu or goes back a page, CH +/− or the number keys scroll, ☰ or a colour key switches
-   between pointer and page mode. Nothing is drawn while the pointer stands still.
+   This page (pointer.html) is a see-through layer over the website: it draws the pointer and its hint, and works out
+   where the pointer is. Nothing of it goes into the website: pressing, hovering and scrolling are real touch and mouse
+   events that ViewerActivity puts into the website's own view (HearthPointerNative: move, press, release, scroll,
+   back, setMode).
+   The remote (the owner, Nov 20: OK is a left click, holding OK a right click): ▲▼◀▶ move (slow at first, faster when
+   held), OK presses at the pointer like a finger, so a short press clicks and holding it is a long-press (the site's
+   right-click menu), Back goes back a page, holding Back (or ☰, a colour key) switches between pointer and page mode,
+   CH +/− or the number keys scroll. Nothing is drawn while the pointer stands still.
    The same file is the pointer's logic for the unit tests (hosts/android-tv/test/pointer.test.js). */
 (function (root, factory) {
   var P = factory();
@@ -14,20 +15,13 @@
 })(this, function () {
   'use strict';
   var SPEEDS = { slow: 0.6, normal: 1, fast: 1.6 };
-  var SIZES = { s: 30, m: 42, l: 58 };           // the pointer's height in pixels on a 1080p screen
-  var LONG_MS = 600;                             // holding OK this long opens the menu
+  var SIZES = { s: 34, m: 48, l: 66 };           // the pointer's height in pixels on a 1080p screen
+  var LONG_MS = 500;                             // holding OK this long is a long-press (Chromium's own time)
   var MOVE_MS = 33;                              // hovering reaches the website at most 30 times a second
   var BASE = 0.22;                               // screen heights a second at first
   var MAXMUL = 5, RAMP_DELAY = 150, RAMP_MS = 1100;
   var NUDGE = 0.006;                             // one short press: a small, precise step
   var DIRS = { up: [0, -1], down: [0, 1], left: [-1, 0], right: [1, 0] };
-  var MENU = [
-    { id: 'long', label: 'Long-press here', why: 'Like holding a finger on it: opens the site\'s own menu' },
-    { id: 'right', label: 'Right-click here', why: 'For sites that use a mouse\'s right button' },
-    { id: 'page', label: 'Switch to page mode', why: 'The remote works the page the way the site built it' },
-    { id: 'close', label: 'Close', why: '' }
-  ];
-
   /** How fast the pointer goes (screen heights a second) after a button has been held [heldMs]. */
   function speedAt(heldMs, speed) {
     var f = SPEEDS[speed] || 1;
@@ -37,8 +31,8 @@
 
   function hintText(mode) {
     return mode === 'pointer'
-      ? { title: 'Pointer', keys: [['▲▼◀▶', 'Move'], ['OK', 'Click'], ['Hold OK', 'Long-press, right-click, page mode'], ['CH +/−', 'Scroll'], ['↩', 'Back a page']] }
-      : { title: 'Page mode', keys: [['▲▼◀▶ OK', 'Work the page the way the site built it'], ['Hold OK', 'Pointer'], ['↩', 'Back a page']] };
+      ? { title: 'Pointer', keys: [['▲▼◀▶', 'Move'], ['OK', 'Click'], ['Hold OK', 'Right-click'], ['CH +/−', 'Scroll'], ['↩', 'Back a page'], ['Hold ↩', 'Page mode']] }
+      : { title: 'Page mode', keys: [['▲▼◀▶ OK', 'Work the page the way the site built it'], ['Hold ↩', 'Pointer'], ['↩', 'Back a page']] };
   }
 
   function Pointer(o) {
@@ -51,12 +45,8 @@
     this.x = this.W / 2; this.y = this.H / 2;
     this.held = {}; this.last = 0; this.lastMove = -1e9;
     this.scrollX = 0; this.scrollY = 0;
-    this.okAt = 0; this.okLong = false; this.okTimer = null;
-    this.menu = null;                              // the menu's chosen row while it's open
-    this.menuHeld = {};
+    this.okAt = 0;                                 // when OK went down (0: it's up)
     this.view = o.view || function () {};
-    this.later = o.later || function (fn, ms) { return setTimeout(fn, ms); };
-    this.cancel = o.cancel || function (t) { clearTimeout(t); };
     this.frame = o.frame || null;                  // requestAnimationFrame
     this.running = false;
   }
@@ -84,15 +74,6 @@
 
   P.key = function (dir, down, now) {
     if (!DIRS[dir] || this.mode !== 'pointer') return false;
-    if (this.menu !== null) {
-      // One step a press in the menu (a held button doesn't run through it).
-      var was = this.menuHeld[dir]; this.menuHeld[dir] = down;
-      if (down && !was && (dir === 'up' || dir === 'down')) {
-        this.menu = (this.menu + (dir === 'down' ? 1 : MENU.length - 1)) % MENU.length;
-        this.view(this, 'menu');
-      }
-      return true;
-    }
     if (down) {
       if (this.held[dir]) return true;
       this.held[dir] = now || 1;
@@ -144,52 +125,35 @@
       this.scrollX = 0; this.scrollY = 0;
     }
   };
-  /** Every button let go (Hearth TV went to the background). */
+  /** Every button let go (Hearth TV went to the background): a press still down is lifted where it is. */
   P.release = function () {
     this.held = {};
-    if (this.okTimer !== null) this.cancel(this.okTimer);
-    this.okTimer = null; this.okAt = 0; this.okLong = false;
+    if (this.okAt) { this.okAt = 0; this.call('release', this.fx(), this.fy()); this.view(this, 'up'); }
   };
 
+  /** OK down and up: a finger on the website at the pointer. A short press is a click, a long one a long-press. */
   P.ok = function (down, now) {
     if (this.mode !== 'pointer') return false;
-    var self = this;
     if (down) {
       if (this.okAt) return true;
-      this.okAt = now || 1; this.okLong = false;
-      this.okTimer = this.later(function () {
-        self.okTimer = null; self.okLong = true;
-        if (self.menu === null) self.openMenu();
-      }, LONG_MS);
+      this.okAt = now || 1;
+      this.held = {};
+      this.call('press', this.fx(), this.fy());
+      this.view(this, 'press');
       return true;
     }
     if (!this.okAt) return true;
-    if (this.okTimer !== null) this.cancel(this.okTimer);
-    var wasLong = this.okLong;
-    this.okTimer = null; this.okAt = 0; this.okLong = false;
-    if (wasLong) return true;                      // the menu just opened; OK again picks from it
-    if (this.menu !== null) { this.pick(MENU[this.menu].id); return true; }
-    this.click();
+    var long = (now || 1) - this.okAt >= LONG_MS;
+    this.okAt = 0;
+    this.call('release', this.fx(), this.fy());
+    this.view(this, long ? 'long' : 'click');
     return true;
   };
-  P.click = function () { this.call('tap', this.fx(), this.fy()); this.view(this, 'click'); };
-  P.openMenu = function () { this.held = {}; this.menuHeld = {}; this.menu = 0; this.view(this, 'menu'); };
-  P.closeMenu = function () { this.menu = null; this.view(this, 'menu'); };
-  P.pick = function (id) {
-    this.closeMenu();
-    if (id === 'long') { this.call('longPress', this.fx(), this.fy()); this.view(this, 'click'); }
-    else if (id === 'right') { this.call('rightClick', this.fx(), this.fy()); this.view(this, 'click'); }
-    else if (id === 'page') { this.call('setMode', 'page'); this.setMode('page'); }
-  };
-  /** Back: closes the menu first, otherwise the website goes back a page (ViewerActivity: or leaves full screen). */
-  P.back = function () {
-    if (this.menu !== null) { this.closeMenu(); return 'menu'; }
-    this.call('back');
-    return 'page';
-  };
+  /** Back: the website goes back a page (ViewerActivity: or leaves a video's full screen first). */
+  P.back = function () { this.release(); this.call('back'); return 'page'; };
   P.setMode = function (m) {
     m = m === 'page' ? 'page' : 'pointer';
-    this.release(); this.menu = null; this.mode = m;
+    this.release(); this.mode = m;
     this.view(this, 'mode');
   };
   /** The scroll keys: [dy] -1 up, 1 down (half a screen); [dx] the same sideways. */
@@ -209,29 +173,16 @@
     if (look.text) css.setProperty('--text', look.text);
     if (look.font) css.setProperty('--font', look.font);
     var $ = function (id) { return doc.getElementById(id); };
-    var ptr = $('hp-ptr'), ring = $('hp-ring'), hint = $('hp-hint'), menu = $('hp-menu');
+    var ptr = $('hp-ptr'), ring = $('hp-ring'), hint = $('hp-hint');
     var hintTimer = null;
     function scale(p) { return p.H / 1080; }
     function showHint(p) {
       var h = hintText(p.mode), s = '<b class="t">' + h.title + '</b>';
       h.keys.forEach(function (k) { s += '<span class="k"><span class="kb">' + k[0] + '</span>' + k[1] + '</span>'; });
-      if (p.mode === 'pointer') s += '<span class="k soft">☰ or a colour key: page mode</span>';
       hint.innerHTML = s;
       hint.className = 'on ' + p.mode;
       if (hintTimer) win.clearTimeout(hintTimer);
       hintTimer = win.setTimeout(function () { hint.className = p.mode; }, 7000);
-    }
-    function drawMenu(p) {
-      if (p.menu === null) { menu.className = ''; menu.innerHTML = ''; return; }
-      var s = '<span class="mt">At the pointer</span>';
-      MENU.forEach(function (m, i) { s += '<span class="mi' + (i === p.menu ? ' on' : '') + '"><b>' + m.label + '</b>' + (m.why ? '<i>' + m.why + '</i>' : '') + '</span>'; });
-      s += '<span class="mf">OK choose · ▲▼ move · ↩ close</span>';
-      menu.innerHTML = s;
-      menu.className = 'on';
-      var k = scale(p), w = menu.offsetWidth || 520 * k, h = menu.offsetHeight || 360 * k, gap = 28 * k;
-      var left = p.x + gap + w > p.W ? p.x - gap - w : p.x + gap;
-      var top = Math.max(16 * k, Math.min(p.H - h - 16 * k, p.y - 20 * k));
-      menu.style.left = Math.max(16 * k, left) + 'px'; menu.style.top = top + 'px';
     }
     function draw(p, what) {
       var k = scale(p), sz = SIZES[p.size] * k;
@@ -239,11 +190,12 @@
       // The tip of the arrow (3,2 in its 24×24 drawing) is the pointer's place.
       ptr.style.transform = 'translate3d(' + (p.x - sz * 3 / 24) + 'px,' + (p.y - sz * 2 / 24) + 'px,0)';
       ptr.style.display = p.mode === 'pointer' ? 'block' : 'none';
-      if (what === 'click') {
+      // OK held: a ring fills around the tip; let go: it fades (a click), or stays a moment (a long-press).
+      if (what === 'press' || what === 'click' || what === 'long' || what === 'up') {
         ring.style.left = p.x + 'px'; ring.style.top = p.y + 'px';
-        ring.className = ''; void ring.offsetWidth; ring.className = 'go';
+        ring.className = ''; void ring.offsetWidth;
+        ring.className = what === 'press' ? 'down' : what === 'up' ? '' : what;
       }
-      if (what === 'menu' || what === 'mode') drawMenu(p);
       if (what === 'mode' || what === 'start') showHint(p);
     }
     var p = new Pointer({
@@ -271,5 +223,5 @@
 
   if (typeof document !== 'undefined' && document.getElementById && document.getElementById('hp-root')) mount(document, window);
 
-  return { Pointer: Pointer, speedAt: speedAt, hintText: hintText, SPEEDS: SPEEDS, SIZES: SIZES, MENU: MENU, LONG_MS: LONG_MS, MOVE_MS: MOVE_MS, BASE: BASE, MAXMUL: MAXMUL, NUDGE: NUDGE };
+  return { Pointer: Pointer, speedAt: speedAt, hintText: hintText, SPEEDS: SPEEDS, SIZES: SIZES, LONG_MS: LONG_MS, MOVE_MS: MOVE_MS, BASE: BASE, MAXMUL: MAXMUL, NUDGE: NUDGE };
 });

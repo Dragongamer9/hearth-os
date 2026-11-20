@@ -13,7 +13,7 @@ enum class PointerKey(val js: String = "") {
     val isDirection get() = js.isNotEmpty()
 
     companion object {
-        /** Holding OK this long in page mode brings the pointer back (pointer.js uses the same time for its menu). */
+        /** Holding Back this long switches between pointer and page mode. */
         const val LONG_MS = 600L
 
         fun of(code: Int): PointerKey = when (code) {

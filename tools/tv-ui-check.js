@@ -155,7 +155,8 @@ const B = (n) => `/assets/tv/theme/backgrounds/${n}.jpg`;
   await ev("hearthTV.set('look','steam'); hearthTV.set('sub',''); hearthTV.applyLook(); hearthTV.play({id:'mov1',kind:'movie',title:'Sintel',mins:15,pct:0,year:2010,tags:['4K']})"); await shot('player', 1200);
 
   // The remote's pointer on a website: pointer.html over a pretend video site, stacked as ViewerActivity stacks them.
-  // A stand-in for ViewerActivity (HearthPointerNative) clicks, long-presses and scrolls what's under the pointer.
+  // A stand-in for ViewerActivity (HearthPointerNative): OK's press and release are a click, or a long-press (the
+  // site's contextmenu) when held 0.5 s or more, on what's under the pointer; scrolling scrolls the site.
   const pctx = await browser.newContext({ viewport: { width: 1920, height: 1080 } });
   await pctx.addInitScript(() => {
     if (!location.pathname.endsWith('/pointer.html')) return;
@@ -165,16 +166,21 @@ const B = (n) => `/assets/tv/theme/backgrounds/${n}.jpg`;
     const note = (n, a) => parent.pointerCalls.push([n].concat(a));
     window.HearthPointerNative = {
       ready: () => note('ready', []), move: (fx, fy) => note('move', [fx, fy]), log: () => {},
-      tap: (fx, fy) => { note('tap', [fx, fy]); const el = at(fx, fy); if (el) { el.click(); if (el.focus) el.focus(); } },
-      longPress: (fx, fy) => { note('longPress', [fx, fy]); const el = at(fx, fy); if (el) el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true })); },
-      rightClick: (fx, fy) => { note('rightClick', [fx, fy]); const el = at(fx, fy); if (el) el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, button: 2 })); },
+      press: (fx, fy) => { note('press', [fx, fy]); window.__pressAt = Date.now(); },
+      release: (fx, fy) => {
+        note('release', [fx, fy]); const el = at(fx, fy), f = site(), held = Date.now() - (window.__pressAt || Date.now());
+        if (!el) return;
+        if (held >= 500) el.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: fx * f.clientWidth, clientY: fy * f.clientHeight }));
+        else { el.click(); if (el.focus) el.focus(); }
+      },
       scroll: (fx, fy, sx, sy) => { note('scroll', [fx, fy, sx, sy]); site().contentWindow.scrollBy(sx * site().clientWidth, sy * site().clientHeight); },
       back: () => note('back', []), setMode: (m) => note('setMode', [m])
     };
   });
   const pp = await pctx.newPage();
   pp.on('pageerror', (e) => errors.push('pointer: ' + e.message));
-  const stage = (o) => base + '/test/stage.html#' + encodeURIComponent(JSON.stringify(o));
+  let stageN = 0; // a new address each time, so the layer really starts again with its new settings
+  const stage = (o) => base + '/test/stage.html?n=' + (++stageN) + '#' + encodeURIComponent(JSON.stringify(o));
   const pshot = async (name, wait) => { await pp.waitForTimeout(wait || 300); await pp.screenshot({ path: path.join(OUT, name + '.jpg'), type: 'jpeg', quality: 80 }); console.log('shot', name); };
   const pf = (code) => pp.frames().find((f) => f.url().includes('/pointer.html')).evaluate(code);
   const said = () => pp.evaluate(() => document.getElementById('site').contentDocument.getElementById('said').textContent);
@@ -193,17 +199,12 @@ const B = (n) => `/assets/tv/theme/backgrounds/${n}.jpg`;
   await pf('hp.ok(true)'); await pf('hp.ok(false)');
   await pshot('pointer-2-click-on-play', 120);
   if (await said() !== 'Play clicked') errors.push('pointer: OK did not click the Play button under the pointer (' + await said() + ')');
-  // Holding OK: the pointer's menu.
-  await pf('hp.ok(true)'); await pp.waitForTimeout(800); await pf('hp.ok(false)');
-  if (await pf('hp.pointer.menu') !== 0) errors.push('pointer: holding OK did not open the menu');
-  await pshot('pointer-3-long-press-menu');
-  await pf('hp.ok(true)'); await pf('hp.ok(false)');
-  if (await said() !== 'Menu of the player') errors.push('pointer: Long-press here did not reach the page (' + await said() + ')');
-  // The menu's Switch to page mode: the pointer hides and the hint says how to get it back.
-  await pf('hp.ok(true)'); await pp.waitForTimeout(800); await pf('hp.ok(false)');
-  await pf("hp.key('down', true); hp.key('down', false); hp.key('down', true); hp.key('down', false)");
-  await pf('hp.ok(true)'); await pf('hp.ok(false)');
-  if (await pf('hp.pointer.mode') !== 'page') errors.push('pointer: Switch to page mode did not switch');
+  // Holding OK: a long-press, which opens the site's own right-click menu.
+  await pf('hp.ok(true)'); await pp.waitForTimeout(700); await pf('hp.ok(false)');
+  if (await said() !== 'Menu of the player') errors.push('pointer: holding OK did not reach the page as a long-press (' + await said() + ')');
+  await pshot('pointer-3-hold-ok-site-menu', 150);
+  // Holding Back (ViewerActivity) or ☰ switches to page mode: the pointer hides and the hint says how to get it back.
+  await pf("hp.mode('page')");
   await pshot('pointer-4-page-mode-hint', 500);
   // Back in pointer mode, holding ▼ at the bottom edge scrolls the page.
   await pf("hp.mode('pointer'); hp.place(0.5, 0.98)");
@@ -214,7 +215,7 @@ const B = (n) => `/assets/tv/theme/backgrounds/${n}.jpg`;
   // Back: goes back a page (ViewerActivity's part), the menu first when it's open.
   await pf('hp.back()');
   const calls = await pp.evaluate(() => window.pointerCalls.map((c) => c[0]));
-  for (const want of ['ready', 'move', 'tap', 'longPress', 'scroll', 'setMode', 'back']) if (!calls.includes(want)) errors.push('pointer: no ' + want + ' call');
+  for (const want of ['ready', 'move', 'press', 'release', 'scroll', 'back']) if (!calls.includes(want)) errors.push('pointer: no ' + want + ' call');
   // Large, in another look, over the page's white header: still clear.
   await pp.goto(stage({ size: 'l', startOn: true, look: { accent: '#ff7a1a', panel: '#2a1a14', text: '#fff3e8' } })); await pp.waitForTimeout(1000);
   await pf('hp.place(0.42, 0.045)');

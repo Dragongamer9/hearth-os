@@ -213,7 +213,7 @@
       // The remote's mouse pointer on websites in Theater (pointer.js, ViewerActivity.kt).
       head('Pointer on websites');
       var SPEED = { slow: 'Slow', normal: 'Normal', fast: 'Fast' }, SIZE = { s: 'Small', m: 'Medium', l: 'Large' };
-      toggle('Start websites in pointer mode', 'The remote moves a mouse pointer on websites · hold OK to switch to page mode', s.pointer.startOn !== false, function (v) { T.set('pointer.startOn', v); });
+      toggle('Start websites in pointer mode', 'The remote moves a mouse pointer on websites · hold ↩ to switch to page mode', s.pointer.startOn !== false, function (v) { T.set('pointer.startOn', v); });
       choice('Pointer speed', 'It starts slow and speeds up the longer you hold a button', SPEED[s.pointer.speed] || 'Normal', function () { cycle('pointer.speed', ['slow', 'normal', 'fast'], SPEED); });
       choice('Pointer size', 'In your look\'s colour, with a shadow so it shows on any page', SIZE[s.pointer.size] || 'Medium', function () { cycle('pointer.size', ['s', 'm', 'l'], SIZE); }, { pointer: s.pointer.size });
     }
@@ -360,11 +360,11 @@
   }
   /** The pointer as websites show it, at its size (pointer.html draws the same arrow). */
   function pointerPic(size) {
-    var px = { s: 30, m: 42, l: 58 }[size] || 42;
-    return '<span style="width:64px;height:64px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:var(--r);background:var(--bg)"><svg viewBox="0 0 24 24" width="' + px + '" height="' + px + '" style="overflow:visible;filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))"><path d="M3 2 L3 19.2 L7.6 15 L10.7 21.8 L13.6 20.5 L10.6 13.9 L16.8 13.9 Z" fill="var(--focus)" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></span>';
+    var px = { s: 34, m: 48, l: 66 }[size] || 48;
+    return '<span style="width:76px;height:76px;flex:none;display:flex;align-items:center;justify-content:center;border-radius:var(--r);background:var(--bg)"><svg viewBox="0 0 24 24" width="' + px + '" height="' + px + '" style="overflow:visible;filter:drop-shadow(0 2px 4px rgba(0,0,0,.6))"><path d="M3 2 L3 19.2 L7.6 15 L10.7 21.8 L13.6 20.5 L10.6 13.9 L16.8 13.9 Z" fill="var(--focus)" stroke="#fff" stroke-width="1.7" stroke-linejoin="round"/></svg></span>';
   }
   function buttonGuide() {
-    var rows = [['OK / A', 'Open, play, change a setting'], ['◀ ▶ ▲ ▼', 'Move around · in the player, skip 1 minute with the buttons, 10 s with ◀ ▶ in Theater'], ['Back / B', 'Back one step · closes a pop-up'], ['Home', 'Always comes back to Hearth TV\'s Home'], ['☰ Menu / Start', 'Options: pin, mark watched, remove'], ['Input', 'Switch input'], ['Mic / Search', 'Search (hold the mic to talk)'], ['Play/Pause / X', 'Play or pause'], ['On a website', 'A pointer: ▲▼◀▶ move, OK clicks, hold OK for long-press, right-click or page mode, CH +/− scroll']];
+    var rows = [['OK / A', 'Open, play, change a setting'], ['◀ ▶ ▲ ▼', 'Move around · in the player, skip 1 minute with the buttons, 10 s with ◀ ▶ in Theater'], ['Back / B', 'Back one step · closes a pop-up'], ['Home', 'Always comes back to Hearth TV\'s Home'], ['☰ Menu / Start', 'Options: pin, mark watched, remove'], ['Input', 'Switch input'], ['Mic / Search', 'Search (hold the mic to talk)'], ['Play/Pause / X', 'Play or pause'], ['On a website', 'A pointer: ▲▼◀▶ move, OK clicks, hold OK to right-click, CH +/− scroll, hold ↩ for page mode']];
     T.open({ id: 'guide', first: 'gBack', render: function () { return '<div class="dim"><div class="dialog on-panel" style="width:1000px"><span style="font-size:30px;font-weight:700">Button guide</span>' + rows.map(function (r) { return '<div style="display:flex;gap:24px;font-size:20px;padding:6px 0"><span style="width:240px;font-weight:700">' + E(r[0]) + '</span><span class="soft">' + E(r[1]) + '</span></div>'; }).join('') + '<button class="btn small" data-f data-key="gBack" data-act="close">Done</button></div></div>'; } });
   }
 

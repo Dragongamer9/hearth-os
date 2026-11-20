@@ -3,18 +3,13 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const HP = require('../app/src/main/assets/tv/pointer.js');
 
-// A pretend ViewerActivity (HearthPointerNative) that notes every call, and timers we run by hand.
+// A pretend ViewerActivity (HearthPointerNative) that notes every call, and what the layer draws.
 function make(opts) {
-  const calls = [], timers = [];
+  const calls = [], drawn = [];
   const native = new Proxy({}, { get: (_, k) => (...a) => { calls.push([k, ...a]); return null; } });
-  const p = new HP.Pointer(Object.assign({
-    native, width: 1920, height: 1080,
-    later: (fn, ms) => { timers.push({ fn, ms }); return timers.length - 1; },
-    cancel: (i) => { if (timers[i]) timers[i].fn = null; }
-  }, opts || {}));
-  const fire = () => timers.splice(0).forEach((t) => t.fn && t.fn());
+  const p = new HP.Pointer(Object.assign({ native, width: 1920, height: 1080, view: (_, what) => drawn.push(what) }, opts || {}));
   const of = (k) => calls.filter((c) => c[0] === k);
-  return { p, calls, of, fire };
+  return { p, calls, of, drawn };
 }
 // Holds [dir] for [ms], one frame every 16 ms.
 function hold(p, dir, ms, t0) {
@@ -109,48 +104,39 @@ test('nothing runs while the pointer stands still', () => {
   assert.equal(p.running, false);
 });
 
-test('OK clicks at the pointer', () => {
-  const { p, of, fire } = make();
+test('OK is a finger at the pointer: a short press clicks', () => {
+  const { p, of, drawn } = make();
   p.place(0.25, 0.75);
-  p.ok(true, 1000); p.ok(false, 1100);
-  fire();
-  assert.deepEqual(of('tap'), [['tap', 0.25, 0.75]]);
-  assert.equal(p.menu, null);
+  p.ok(true, 1000); p.ok(false, 1120);
+  assert.deepEqual(of('press'), [['press', 0.25, 0.75]]);
+  assert.deepEqual(of('release'), [['release', 0.25, 0.75]]);
+  assert.ok(drawn.includes('press') && drawn.includes('click'));
 });
 
-test('holding OK opens the menu (no click); OK there picks, ▲▼ move', () => {
-  const { p, of, fire } = make();
-  p.ok(true, 1000); fire(); p.ok(false, 1700);
-  assert.equal(p.menu, 0); assert.equal(of('tap').length, 0);
-  // ▲▼ move in the menu, the pointer stays put
-  const x = p.x;
-  p.key('down', true, 1800); p.key('down', false, 1810);
-  assert.equal(p.menu, 1); assert.equal(p.x, x);
-  p.ok(true, 1900); p.ok(false, 1950);
-  assert.equal(p.menu, null);
-  assert.equal(of('rightClick').length, 1);
+test('holding OK is a long-press (the site\'s right-click menu)', () => {
+  const { p, of, drawn } = make();
+  p.ok(true, 1000); p.ok(true, 1300); // a repeat while held: still one press
+  p.ok(false, 1000 + HP.LONG_MS + 50);
+  assert.equal(of('press').length, 1); assert.equal(of('release').length, 1);
+  assert.equal(drawn[drawn.length - 1], 'long');
+  p.ok(false, 3000); // a stray release: nothing
+  assert.equal(of('release').length, 1);
 });
 
-test('the menu: long-press, and page mode', () => {
-  let { p, of, fire } = make();
-  p.ok(true, 0); fire(); p.ok(false, 700);
-  p.ok(true, 800); p.ok(false, 850);
-  assert.equal(of('longPress').length, 1);
-  ({ p, of, fire } = make());
-  p.ok(true, 0); fire(); p.ok(false, 700);
-  p.key('up', true, 750); p.key('up', true, 751); // held: no repeat step
-  p.key('up', false, 760); p.key('up', true, 770); p.key('up', false, 780);
-  assert.equal(HP.MENU[p.menu].id, 'page');
-  p.ok(true, 800); p.ok(false, 850);
-  assert.equal(p.mode, 'page');
-  assert.deepEqual(of('setMode'), [['setMode', 'page']]);
+test('moving while OK is held drags (the move reaches ViewerActivity, which moves the finger)', () => {
+  const { p, of } = make();
+  p.ok(true, 1000);
+  p.key('right', true, 1010); p.tick(1100); p.key('right', false, 1110);
+  p.ok(false, 1200);
+  assert.ok(of('move').length > 0);
+  assert.ok(of('release')[0][1] > 0.5, 'released where it was dragged to');
 });
 
-test('Back closes the menu first, then goes back a page', () => {
-  const { p, of, fire } = make();
-  p.ok(true, 0); fire(); p.ok(false, 700);
-  assert.equal(p.back(), 'menu'); assert.equal(p.menu, null); assert.equal(of('back').length, 0);
-  assert.equal(p.back(), 'page'); assert.equal(of('back').length, 1);
+test('Back goes back a page, lifting a press first', () => {
+  const { p, of } = make();
+  p.ok(true, 0);
+  assert.equal(p.back(), 'page');
+  assert.equal(of('release').length, 1); assert.equal(of('back').length, 1);
 });
 
 test('page mode: the pointer leaves the buttons alone', () => {
@@ -158,7 +144,7 @@ test('page mode: the pointer leaves the buttons alone', () => {
   assert.equal(p.key('right', true, 0), false);
   assert.equal(p.ok(true, 0), false);
   assert.equal(p.scrollKey(1), false);
-  assert.equal(of('tap').length + of('move').length + of('scroll').length, 0);
+  assert.equal(of('press').length + of('move').length + of('scroll').length, 0);
   p.setMode('pointer');
   assert.equal(p.key('right', true, 0), true);
 });
@@ -169,13 +155,21 @@ test('scroll keys: half a screen at the pointer', () => {
   assert.deepEqual(of('scroll').map((c) => [c[3], c[4]]), [[0, 0.5], [0, -0.5], [0.5, 0]]);
 });
 
-test('letting go of everything (Hearth TV in the background) stops the pointer', () => {
-  const { p, fire, of } = make();
+test('letting go of everything (Hearth TV in the background) stops the pointer and lifts a press', () => {
+  const { p, of } = make();
   p.key('right', true, 0); p.ok(true, 0);
-  p.release(); fire();
-  assert.equal(p.holding(), false); assert.equal(p.menu, null);
+  p.release();
+  assert.equal(p.holding(), false); assert.equal(p.okAt, 0);
+  assert.equal(of('release').length, 1);
   p.ok(false, 100);
-  assert.equal(of('tap').length, 0);
+  assert.equal(of('release').length, 1);
+});
+
+test('switching mode lifts a press and stops moving', () => {
+  const { p, of } = make();
+  p.key('up', true, 0); p.ok(true, 0);
+  p.setMode('page');
+  assert.equal(p.mode, 'page'); assert.equal(p.holding(), false); assert.equal(of('release').length, 1);
 });
 
 test('a new screen size keeps the pointer at the same place', () => {
@@ -186,6 +180,7 @@ test('a new screen size keeps the pointer at the same place', () => {
 });
 
 test('the hint says how to switch', () => {
-  assert.match(HP.hintText('pointer').keys.map((k) => k.join(' ')).join(' '), /Hold OK.*page mode/);
-  assert.match(HP.hintText('page').keys.map((k) => k.join(' ')).join(' '), /Hold OK Pointer/);
+  const pt = HP.hintText('pointer').keys.map((k) => k.join(' ')).join(' · ');
+  assert.match(pt, /OK Click/); assert.match(pt, /Hold OK Right-click/); assert.match(pt, /Hold ↩ Page mode/);
+  assert.match(HP.hintText('page').keys.map((k) => k.join(' ')).join(' · '), /Hold ↩ Pointer/);
 });

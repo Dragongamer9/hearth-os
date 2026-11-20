@@ -88,32 +88,32 @@ arrow keys.
 
 - **Pointer mode** (how websites start, unless Settings › Remote and controllers › Start websites in pointer mode is
   off): the pointer shows at the centre. ▲▼◀▶ move it, slowly at first for small steps and faster the longer you
-  hold a button. OK clicks at the pointer. Holding OK opens the pointer's menu: Long-press here (like holding a finger
-  on it: the site's own menu), Right-click here, Switch to page mode. CH +/− (or Page up/down, or the number keys 2
-  and 8; 4 and 6 sideways) scroll, and pushing the pointer past the top or bottom edge scrolls too. Back closes the
-  menu, leaves a video's full screen, goes back a page, and leaves the website from its first page. A hint at the
-  bottom says all this for a few seconds when a website opens and when the mode changes.
-- **Page mode** (☰ Menu, a colour key or a controller's Start switch at any time; or the pointer's menu): the remote
-  works the page the way the site built it (arrows and OK go to the site), for sites with good D-pad support. In a
-  video's full screen OK plays and pauses and ◀ ▶ skip 10 s, as the viewer always did. Holding OK brings the pointer
-  back. Play/pause, ⏩ ⏪ and a controller's Y (full screen) work in both modes.
+  hold a button. OK clicks at the pointer, and holding OK is a right-click (a long-press, like holding a finger on
+  it: the site's own menu); a ring around the tip fills while you hold it. CH +/− (or Page up/down, or the number
+  keys 2 and 8; 4 and 6 sideways) scroll, and pushing the pointer past an edge scrolls too. Back leaves a video's full
+  screen, goes back a page, and leaves the website from its first page. A hint at the bottom says all this for a few
+  seconds when a website opens and when the mode changes.
+- **Page mode** (hold Back, or press ☰ Menu, a colour key or a controller's Start; the same again brings the pointer
+  back): the remote works the page the way the site built it (arrows and OK go to the site), for sites with good
+  D-pad support. In a video's full screen OK plays and pauses and ◀ ▶ skip 10 s, as the viewer always did.
+  Play/pause, ⏩ ⏪ and a controller's Y (full screen) work in both modes.
 - **Clicks are real**: the pointer is drawn by a see-through layer over the website (`assets/tv/pointer.html`,
-  `pointer.js`: Hearth's own page from the APK, never put into the site). A click is a real tap put into the website's
-  own view, a long-press a held tap, hovering and scrolling real mouse events at the pointer, so the site's buttons,
+  `pointer.js`: Hearth's own page from the APK, never put into the site). OK is a real finger put on the website's own
+  view at the pointer (pressed while OK is down, so moving meanwhile drags), hovering and scrolling real mouse events, so the site's buttons,
   menus, video players and their controls work as with a finger or a mouse, inside frames too. When a click lands on
   a text field, the TV's own keyboard opens.
 - **Looks**: the pointer is in your look's accent colour with a white edge and a soft shadow, so it shows on light and
-  dark pages; the hint and menu use the look's colours.
+  dark pages; the hint uses the look's colours.
 - **Settings** (Settings › Remote and controllers › Pointer on websites): Start websites in pointer mode (on), Pointer
   speed (Slow, Normal, Fast), Pointer size (Small, Medium, Large), saved in settings.json's `pointer` like every
   setting (merged, atomic, .bak); nothing is written until you change one.
 - Nothing runs while the pointer stands still: it's only redrawn while a button is held.
 - Hearth TV's own screens, Theater's YouTube player and My Media's player keep their D-pad navigation: the pointer is
   only on websites.
-- Tests: `hosts/android-tv/test/pointer.test.js` (speed and acceleration, edges and scrolling, clicks, the menu, Back,
-  page mode, nothing running at rest; `node --test`), `PointerKeysTest.kt` (the remote's buttons, the wheel, the
+- Tests: `hosts/android-tv/test/pointer.test.js` (speed and acceleration, edges and scrolling, clicks and long-presses,
+  dragging, Back, page mode, nothing running at rest; `node --test`), `PointerKeysTest.kt` (the remote's buttons, the wheel, the
   settings' defaults; Gradle's unit tests), and `tools/tv-ui-check.js`, which stacks the pointer over a pretend video
-  site (`tools/tv-pointer/`), clicks its Play button, long-presses it, scrolls it and pictures it (`pointer-*.jpg`)
+  site (`tools/tv-pointer/`), clicks its Play button, holds OK on it (its own menu opens), scrolls it and pictures it (`pointer-*.jpg`)
   and the settings rows (`10-pointer-settings.jpg`). The real touch and mouse events on a TV can't be run in CI (no
   TV there): they need trying on the TV.
 

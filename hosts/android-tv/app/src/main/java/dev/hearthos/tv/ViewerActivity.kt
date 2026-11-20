@@ -29,14 +29,15 @@ import org.json.JSONObject
  * fills the TV.
  *
  * Pointer mode (the default; Settings › Remote and controllers › Pointer on websites): a mouse pointer drawn by a
- * see-through layer over the website (assets/tv/pointer.html, pointer.js). ▲▼◀▶ move it, OK clicks, holding OK opens
- * its menu (long-press, right-click, page mode), CH +/− or 2/8 scroll, Back goes back a page (or leaves the page's full
- * screen). The clicks are real touch events put into the website's own view, hovering and scrolling real mouse events,
+ * see-through layer over the website (assets/tv/pointer.html, pointer.js). ▲▼◀▶ move it; OK is a finger on the page at
+ * the pointer (the owner, Nov 20: OK a left click, holding OK a right click), so a short press clicks and holding it
+ * long-presses (the site's right-click menu); CH +/− or 2/8 scroll; Back goes back a page (or leaves the page's full
+ * screen). Presses are real touch events put into the website's own view, hovering and scrolling real mouse events,
  * so the site's buttons, menus and video players work as with a finger or a mouse; a text field opens the TV's keyboard.
  *
- * Page mode (☰, a colour key, or the pointer's menu): the remote works the page the way the site built it (arrows and
- * OK go to the site); in a video's full screen OK plays/pauses and ◀ ▶ skip 10 s, as before. Holding OK brings the
- * pointer back. Play/pause, ⏩ ⏪ and a controller's Y work in both modes.
+ * Page mode (hold Back, or ☰ / a colour key; the same again goes back): the remote works the page the way the site
+ * built it (arrows and OK go to the site); in a video's full screen OK plays/pauses and ◀ ▶ skip 10 s, as before.
+ * Play/pause, ⏩ ⏪ and a controller's Y work in both modes.
  */
 class ViewerActivity : Activity() {
     private lateinit var web: WebView
@@ -47,8 +48,13 @@ class ViewerActivity : Activity() {
     private val ui = Handler(Looper.getMainLooper())
     @Volatile private var layerReady = false
     private var pointerMode = true
-    private var okDown = false
-    private var okLong = false
+    private var backDown = false
+    private var backLong = false
+    /** The touch OK holds down on the website (pointer mode), lifted on OK's release, Back, or leaving. */
+    private var pressAt = 0L
+    private var pressView: View? = null
+    private var pressX = 0f
+    private var pressY = 0f
 
     private fun video(js: String) = web.evaluateJavascript(
         "(function(){var v=[].slice.call(document.querySelectorAll('video')).sort(function(a,b){return b.clientWidth*b.clientHeight-a.clientWidth*a.clientHeight})[0];if(!v)return false;$js;return true})()", null)
@@ -138,8 +144,14 @@ class ViewerActivity : Activity() {
         val first = down && e.repeatCount == 0
         val pointer = pointerMode && layerReady
         when (k) {
-            PointerKey.BACK -> { if (first) { if (pointer) layerJs("back()") else goBack() }; return true }
-            PointerKey.MODE -> { if (first && layerReady) setMode(!pointerMode); return if (layerReady) true else super.dispatchKeyEvent(e) }
+            // Back acts when it's let go, so holding it can switch between pointer and page mode.
+            PointerKey.BACK -> {
+                if (first) { backDown = true; backLong = false }
+                else if (down && backDown && !backLong && layerReady && PointerKey.isLong(e.downTime, e.eventTime)) { backLong = true; setMode(!pointerMode) }
+                else if (up && backDown) { backDown = false; if (!backLong) { if (pointer) layerJs("back()") else goBack() } }
+                return true
+            }
+            PointerKey.MODE -> { if (!layerReady) return super.dispatchKeyEvent(e); if (first) setMode(!pointerMode); return true }
             PointerKey.PLAYPAUSE -> { if (first) video("v.paused?v.play():v.pause()"); return true }
             PointerKey.FF -> { if (down) video("v.currentTime=v.currentTime+10"); return true }
             PointerKey.REW -> { if (down) video("v.currentTime=Math.max(0,v.currentTime-10)"); return true }
@@ -157,26 +169,13 @@ class ViewerActivity : Activity() {
             }
             return super.dispatchKeyEvent(e)
         }
-        // Page mode. OK is held back until it's let go, so holding it can bring the pointer back.
-        if (k == PointerKey.OK) {
-            if (first) { okDown = true; okLong = false; return true }
-            if (down) {
-                if (okDown && !okLong && layerReady && PointerKey.isLong(e.downTime, e.eventTime)) { okLong = true; setMode(true) }
+        // Page mode: the site gets the keys, except in a video's full screen (OK play/pause, ◀ ▶ 10 s, as before).
+        if (full != null) {
+            if (k == PointerKey.OK) { if (first) video("v.paused?v.play():v.pause()"); return true }
+            if (k == PointerKey.LEFT || k == PointerKey.RIGHT) {
+                if (down) video(if (k == PointerKey.LEFT) "v.currentTime=Math.max(0,v.currentTime-10)" else "v.currentTime=v.currentTime+10")
                 return true
             }
-            if (up && okDown) {
-                okDown = false
-                if (!okLong) {
-                    if (full != null) video("v.paused?v.play():v.pause()")
-                    else { super.dispatchKeyEvent(KeyEvent(e.downTime, e.downTime, KeyEvent.ACTION_DOWN, e.keyCode, 0, e.metaState)); super.dispatchKeyEvent(e) }
-                }
-                return true
-            }
-            return true
-        }
-        if (full != null && (k == PointerKey.LEFT || k == PointerKey.RIGHT)) {
-            if (down) video(if (k == PointerKey.LEFT) "v.currentTime=Math.max(0,v.currentTime-10)" else "v.currentTime=v.currentTime+10")
-            return true
         }
         return super.dispatchKeyEvent(e)
     }
@@ -204,6 +203,15 @@ class ViewerActivity : Activity() {
 
     private fun generic(t: View, ev: MotionEvent) { try { t.dispatchGenericMotionEvent(ev) } finally { ev.recycle() } }
 
+    /** Lifts the press OK holds down; [cancel] (Hearth TV leaving the screen) clicks nothing. */
+    private fun lift(x: Float, y: Float, cancel: Boolean = false) {
+        val pv = pressView ?: return
+        if (pressAt == 0L) return
+        touch(pv, if (cancel) MotionEvent.ACTION_CANCEL else MotionEvent.ACTION_UP, x, y, pressAt)
+        pressAt = 0L; pressView = null
+        if (!cancel) ui.postDelayed({ keyboardIfTyping() }, 380)
+    }
+
     /** A tap that lands on a text field opens the TV's keyboard. */
     private fun keyboardIfTyping() {
         if (full != null) return
@@ -222,24 +230,20 @@ class ViewerActivity : Activity() {
             work(t, (fx.coerceIn(0.0, 1.0) * t.width).toFloat(), (fy.coerceIn(0.0, 1.0) * t.height).toFloat())
         }
         @JavascriptInterface fun ready() { layerReady = true; ui.post { if (!pointerMode) layerJs("mode('page')") } }
-        @JavascriptInterface fun move(fx: Double, fy: Double) = at(fx, fy) { t, x, y -> generic(t, mouse(MotionEvent.ACTION_HOVER_MOVE, x, y)) }
-        @JavascriptInterface fun tap(fx: Double, fy: Double) = at(fx, fy) { t, x, y ->
-            val d = SystemClock.uptimeMillis()
-            touch(t, MotionEvent.ACTION_DOWN, x, y, d)
-            ui.postDelayed({ touch(t, MotionEvent.ACTION_UP, x, y, d) }, 60)
-            ui.postDelayed({ keyboardIfTyping() }, 380)
+        /** Hovering; while OK holds a press down, the finger moves (dragging a slider or a video's bar). */
+        @JavascriptInterface fun move(fx: Double, fy: Double) = at(fx, fy) { t, x, y ->
+            val pv = pressView
+            if (pressAt != 0L && pv != null) { pressX = x; pressY = y; touch(pv, MotionEvent.ACTION_MOVE, x, y, pressAt) }
+            else generic(t, mouse(MotionEvent.ACTION_HOVER_MOVE, x, y))
         }
-        @JavascriptInterface fun longPress(fx: Double, fy: Double) = at(fx, fy) { t, x, y ->
-            val d = SystemClock.uptimeMillis()
-            touch(t, MotionEvent.ACTION_DOWN, x, y, d)
-            ui.postDelayed({ touch(t, MotionEvent.ACTION_UP, x, y, d) }, 900)
+        /** OK down: a finger on the page at the pointer. */
+        @JavascriptInterface fun press(fx: Double, fy: Double) = at(fx, fy) { t, x, y ->
+            if (pressAt != 0L) return@at
+            pressAt = SystemClock.uptimeMillis(); pressView = t; pressX = x; pressY = y
+            touch(t, MotionEvent.ACTION_DOWN, x, y, pressAt)
         }
-        @JavascriptInterface fun rightClick(fx: Double, fy: Double) = at(fx, fy) { t, x, y ->
-            val d = SystemClock.uptimeMillis()
-            val dn = mouse(MotionEvent.ACTION_DOWN, x, y, MotionEvent.BUTTON_SECONDARY, downAt = d)
-            t.dispatchTouchEvent(dn); dn.recycle()
-            ui.postDelayed({ val u = mouse(MotionEvent.ACTION_UP, x, y, 0, downAt = d); t.dispatchTouchEvent(u); u.recycle() }, 60)
-        }
+        /** OK up: the finger lifts. Held long enough, Chromium has made it a long-press (the site's menu). */
+        @JavascriptInterface fun release(fx: Double, fy: Double) = at(fx, fy) { _, x, y -> lift(x, y) }
         /** [sx], [sy]: how far to scroll, in fractions of the screen (a mouse wheel's turn at the pointer). */
         @JavascriptInterface fun scroll(fx: Double, fy: Double, sx: Double, sy: Double) = at(fx, fy) { t, x, y ->
             val vc = ViewConfiguration.get(this@ViewerActivity)
@@ -254,6 +258,7 @@ class ViewerActivity : Activity() {
 
     override fun onPause() {
         layerJs("release()")
+        lift(pressX, pressY, cancel = true)
         super.onPause()
     }
 
