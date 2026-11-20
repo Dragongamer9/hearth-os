@@ -166,6 +166,8 @@ ALLOWED = {
     '.github/scripts/hearth-apps-rust-test.sh',
     # CI only: the Fedora image check sets up its test cases in throwaway mktemp folders.
     '.github/scripts/anatase-image-check.sh',
+    # CI only: Hearth's panel on Plasma's pictures set up the runner's throwaway account (desk.json's pins and recents).
+    '.github/scripts/plasma-hearth-shots.sh',
 }
 
 
