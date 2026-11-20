@@ -140,13 +140,16 @@ def test(out, bin_dir):
     # Over a fullscreen window (a fullscreen browser): no touch, no keyboard; a touch tap opens it. The field of a
     # fullscreen test window sits at y 88.
     time.sleep(4)
-    # The pointer moved last (the touch above is behind us), as when you use the mouse after touching.
-    dev('move 900 600')
+    # The pointer used last (the touch above is behind us), as when you use the mouse after touching: a click on the
+    # empty desktop.
+    dev('click 900 600')
+    time.sleep(1.0)
+    note('before the fullscreen window', 'KWin %s' % vk())
     fw = window('org.hearth.PadFullMouse', 'Fullscreen', 'A fullscreen window: its field clicked with the pointer.', 'full')
     dev('click 600 88')
     time.sleep(2.0)
     v = vk()
-    note('fullscreen, pointer click', 'KWin %s · keyboard %s' % (v, 'OPEN' if kb_open() else 'not open'))
+    note('fullscreen, pointer click', 'KWin %s · keyboard %s · %s' % (v, 'OPEN' if kb_open() else 'not open', tail(pad_log, 300)))
     shot('pad-k37-fullscreen-click-no-keyboard')
     if v.get('active') not in ('1', 'True'):
         err('fullscreen click', "the click didn't reach the fullscreen window's field (KWin %s)" % v)
