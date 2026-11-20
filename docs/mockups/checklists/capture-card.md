@@ -19,7 +19,7 @@ Parts that need a real capture card are ticked once pictured with CI's stand-in 
 device)".
 
 ## 1 Viewer (desktop, full screen)
-- [x] Picture from the card fills the screen; nothing else on screen when the bar is hidden — hosts/capture-card/src/desk.rs: "\"stretch\" => iced::ContentFit::Fill"
+- [x] Picture from the card fills the screen; nothing else on screen when the bar is hidden — hosts/capture-card/src/desk.rs: "paints its own black bars and the card's frame in them"
 - [x] Top pill when it starts: source, 1080p60, "Move the mouse or press any key to show the bar · Esc leaves full screen" — hosts/capture-card/src/desk.rs: "Move the mouse or press any key to show the bar · Esc leaves full screen"
 - [x] Slim bar, hides 2 s after the mouse stops: card name, USB 3.0 · MJPEG, green 1080p60 signal badge — hosts/capture-card/src/main.rs: "after(2000, Msg::BarHide(a.bar_gen))"
 - [x] Delay readout (45 ms) and the Low delay toggle (needs testing on a device) — hosts/capture-card/src/desk.rs: "src(delay_words(a), \"delay\".into())"
@@ -50,7 +50,7 @@ device)".
 - [x] "Your choices are saved the moment you change one" (settings_file.rs; opening writes nothing) — hosts/capture-card/src/prefs.rs: "Opening the app or a"
 
 ## 4 Recordings and screenshots
-- [x] Tabs Recordings · 6, Screenshots · 14, Everything; Newest first — hosts/capture-card/src/desk.rs: "\"Newest first ▾\""
+- [x] Tabs Recordings · 6, Screenshots · 14, Everything; Newest first — hosts/capture-card/src/desk.rs: "\"Longest first\""
 - [x] Grid of thumbnails with length, date and size; the picked one outlined — hosts/capture-card/src/desk.rs: "format!(\"{} · {}\", cc::when(it.mtime, now), cc::size(it.size))"
 - [x] Side panel: preview, name, date, details (length, picture, size, folder) — hosts/capture-card/src/desk.rs: "kv(\"Saved in\""
 - [x] Recordings: Play, Show in folder, Rename, Delete; Screenshots: Copy, Show in folder, Rename, Delete — hosts/capture-card/src/desk.rs: "btn(\"Delete\", None, B::Danger"

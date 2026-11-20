@@ -232,6 +232,7 @@ fi
 run cc-3-settings 20 3 --page settings
 run cc-4-recordings 20 4 --page recordings
 run cc-4b-screenshots 20 4 --page screenshots
+run cc-4d-sort-choices 0 4 --page recordings --show sort
 # A real recording's own thumbnail and length (worked out by the app through GStreamer).
 if want cc-4c-real-recording && [ -f /tmp/cc/recording.mp4 ]; then
   cp /tmp/cc/recording.mp4 "$HOME/Videos/Capture Card/Capture 2099-01-01 00-00-00.mp4"
@@ -247,6 +248,8 @@ run cc-5b-game-mode-quick-menu 0 4 --game-mode --show menu
 swaymsg output HEADLESS-1 resolution 1280x800 >/dev/null; sleep 0.5
 run cc-5c-ally-viewer 0 2.5 --game-mode --show pill
 run cc-5d-ally-quick-menu 0 4 --game-mode --show menu
+# The same drawn by the graphics card (Mesa's software Vulkan here): what the Ally uses.
+HEARTH_RENDERER=gpu run cc-5f-ally-quick-menu-gpu 0 6 --game-mode --show menu
 nocard
 run cc-5e-ally-no-card 0 3 --game-mode
 swaymsg output HEADLESS-1 resolution 1920x1080 >/dev/null; sleep 0.5

@@ -32,7 +32,7 @@ pub struct Prefs {
     pub shot_dir: String,
     pub full_screen: bool,
     pub keep_awake: bool,
-    /// "newest" or "oldest" (Recordings & screenshots).
+    /// "newest", "oldest", "name", "size" or "length" (Recordings & screenshots).
     pub sort: String,
     /// The file couldn't be read (and wasn't restored from its .bak): nothing is written until it can be.
     pub unreadable: bool,
@@ -91,7 +91,7 @@ pub fn from_map(m: &Map<String, Value>) -> Prefs {
         shot_dir: s(m, "screenshotsDir", &[], ""),
         full_screen: b(m, "startFullScreen", d.full_screen),
         keep_awake: b(m, "keepAwake", d.keep_awake),
-        sort: s(m, "sort", &["newest", "oldest"], &d.sort),
+        sort: s(m, "sort", &["newest", "oldest", "name", "size", "length"], &d.sort),
         unreadable: false,
     }
 }

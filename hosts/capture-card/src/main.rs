@@ -47,6 +47,7 @@ pub enum Tab {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Dd {
+    Sort,
     Card,
     Size,
     Sound,
@@ -413,6 +414,9 @@ impl App {
         if a.shows("menu") {
             a.menu = true;
         }
+        if a.shows("sort") {
+            a.dd = Some(Dd::Sort);
+        }
         (a, Task::batch(t))
     }
 
@@ -438,8 +442,13 @@ impl App {
                 Tab::All => true,
             })
             .collect();
-        if self.prefs.sort == "oldest" {
-            v.reverse();
+        let secs = |i: &Item| i.info.as_ref().map(|x| x.secs).unwrap_or(0);
+        match self.prefs.sort.as_str() {
+            "oldest" => v.reverse(),
+            "name" => v.sort_by_key(|i| i.name().to_lowercase()),
+            "size" => v.sort_by(|a, b| b.size.cmp(&a.size)),
+            "length" => v.sort_by(|a, b| secs(b).cmp(&secs(a)).then(b.mtime.cmp(&a.mtime))),
+            _ => {}
         }
         v
     }
@@ -831,10 +840,7 @@ fn handle(a: &mut App, m: Msg) -> Task<Msg> {
             a.preview = None;
             Task::none()
         }
-        Msg::Sort => {
-            let v = if a.prefs.sort == "oldest" { "newest" } else { "oldest" };
-            update(a, Msg::Set("sort", json!(v)))
-        }
+        Msg::Sort => update(a, Msg::Dd(Some(Dd::Sort))),
         Msg::Select(i) => {
             a.sel = i;
             a.preview = None;
@@ -871,6 +877,11 @@ fn handle(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Pick(d, v) => {
             a.dd = None;
             match d {
+                Dd::Sort => {
+                    a.sel = 0;
+                    a.preview = None;
+                    update(a, Msg::Set("sort", v))
+                }
                 Dd::Card => update(a, Msg::Set("card", v)),
                 Dd::Sound => update(a, Msg::Set("sound", v)),
                 Dd::Size => update(a, Msg::Set("size", v)),

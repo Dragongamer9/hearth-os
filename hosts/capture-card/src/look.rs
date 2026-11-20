@@ -160,17 +160,76 @@ pub fn click<'a, M: Clone + 'a>(e: impl Into<E<'a, M>>, m: Option<M>) -> E<'a, M
     }
 }
 
-/// The focus ring (`.focus`: 3 px orange), drawn over the control's own edge, so the control keeps the size the
-/// mockups give it and nothing moves with the focus.
+/// The focus ring (`.focus`: a 3 px orange outline, 3 px outside the control), drawn around the control without
+/// taking any room, so rows keep the height the mockups give them and nothing moves with the focus.
 pub fn ring<'a, M: 'a>(on: bool, r: f32, inner: impl Into<E<'a, M>>) -> E<'a, M> {
     if !on {
         return inner.into();
     }
-    let edge = container(Space::new().width(Length::Fill).height(Length::Fill))
-        .width(Length::Fill)
-        .height(Length::Fill)
-        .style(move |_: &Theme| container::Style { border: Border { color: ACC, width: 3.0, radius: r.into() }, ..container::Style::default() });
-    iced::widget::stack![inner.into(), edge].into()
+    Element::new(Outline { content: inner.into(), radius: r })
+}
+
+/// The ring itself: the control as it is, and the outline drawn above it, outside its bounds.
+pub struct Outline<'a, M> {
+    content: E<'a, M>,
+    radius: f32,
+}
+
+mod outline {
+    use super::{Outline, ACC};
+    use iced::advanced::layout::{self, Layout};
+    use iced::advanced::renderer::{self, Renderer as _};
+    use iced::advanced::widget::operation::Operation;
+    use iced::advanced::widget::{tree, Tree};
+    use iced::advanced::{overlay, Clipboard, Shell, Widget};
+    use iced::{mouse, Border, Color, Event, Length, Rectangle, Size, Vector};
+
+    /// outline-offset 3 px, outline 3 px.
+    const OFFSET: f32 = 3.0;
+    const WIDTH: f32 = 3.0;
+
+    impl<'a, M: 'a> Widget<M, iced::Theme, iced::Renderer> for Outline<'a, M> {
+        fn size(&self) -> Size<Length> {
+            self.content.as_widget().size()
+        }
+        fn size_hint(&self) -> Size<Length> {
+            self.content.as_widget().size_hint()
+        }
+        fn layout(&mut self, tree: &mut Tree, renderer: &iced::Renderer, limits: &layout::Limits) -> layout::Node {
+            self.content.as_widget_mut().layout(&mut tree.children[0], renderer, limits)
+        }
+        fn draw(&self, tree: &Tree, renderer: &mut iced::Renderer, theme: &iced::Theme, style: &renderer::Style, layout: Layout<'_>, cursor: mouse::Cursor, viewport: &Rectangle) {
+            self.content.as_widget().draw(&tree.children[0], renderer, theme, style, layout, cursor, viewport);
+            let b = layout.bounds();
+            let e = OFFSET + WIDTH;
+            let ring = Rectangle { x: b.x - e, y: b.y - e, width: b.width + 2.0 * e, height: b.height + 2.0 * e };
+            let r = self.radius + OFFSET + WIDTH / 2.0;
+            renderer.with_layer(ring, |rd| {
+                rd.fill_quad(renderer::Quad { bounds: ring, border: Border { color: ACC, width: WIDTH, radius: r.into() }, shadow: iced::Shadow::default(), snap: true }, Color::TRANSPARENT);
+            });
+        }
+        fn tag(&self) -> tree::Tag {
+            tree::Tag::stateless()
+        }
+        fn children(&self) -> Vec<Tree> {
+            vec![Tree::new(&self.content)]
+        }
+        fn diff(&self, tree: &mut Tree) {
+            tree.diff_children(std::slice::from_ref(&self.content));
+        }
+        fn operate(&mut self, tree: &mut Tree, layout: Layout<'_>, renderer: &iced::Renderer, operation: &mut dyn Operation) {
+            self.content.as_widget_mut().operate(&mut tree.children[0], layout, renderer, operation)
+        }
+        fn update(&mut self, tree: &mut Tree, event: &Event, layout: Layout<'_>, cursor: mouse::Cursor, renderer: &iced::Renderer, clipboard: &mut dyn Clipboard, shell: &mut Shell<'_, M>, viewport: &Rectangle) {
+            self.content.as_widget_mut().update(&mut tree.children[0], event, layout, cursor, renderer, clipboard, shell, viewport)
+        }
+        fn mouse_interaction(&self, tree: &Tree, layout: Layout<'_>, cursor: mouse::Cursor, viewport: &Rectangle, renderer: &iced::Renderer) -> mouse::Interaction {
+            self.content.as_widget().mouse_interaction(&tree.children[0], layout, cursor, viewport, renderer)
+        }
+        fn overlay<'b>(&'b mut self, tree: &'b mut Tree, layout: Layout<'b>, renderer: &iced::Renderer, viewport: &Rectangle, translation: Vector) -> Option<overlay::Element<'b, M, iced::Theme, iced::Renderer>> {
+            self.content.as_widget_mut().overlay(&mut tree.children[0], layout, renderer, viewport, translation)
+        }
+    }
 }
 
 /// A ring drawn on the element's own edge (`.focus` with outline-offset 0: the console card, tiles).

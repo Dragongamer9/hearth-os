@@ -279,8 +279,27 @@ impl<M> iced::widget::canvas::Program<M> for Plug {
 }
 
 // ------------------------------------------------------------------ 3 Settings
+/// The sort choices' words.
+pub fn sort_words(s: &str) -> &'static str {
+    match s {
+        "oldest" => "Oldest first",
+        "name" => "Name (A to Z)",
+        "size" => "Biggest first",
+        "length" => "Longest first",
+        _ => "Newest first",
+    }
+}
+
 pub fn dd_choices(a: &App, d: Dd) -> Vec<(Value, String)> {
     match d {
+        Dd::Sort => {
+            // Longest first only where there are recordings (screenshots have no length).
+            let mut v = vec!["newest", "oldest", "name", "size"];
+            if a.tab != Tab::Shot {
+                v.push("length");
+            }
+            v.into_iter().map(|s| (json!(s), sort_words(s).to_string())).collect()
+        }
         Dd::Card => {
             let mut v: Vec<(Value, String)> = a.cards.iter().map(|c| (json!(c.id), format!("{} ({})", c.name, c.usb_words()))).collect();
             if v.is_empty() {
@@ -308,6 +327,7 @@ pub fn dd_choices(a: &App, d: Dd) -> Vec<(Value, String)> {
 
 pub fn dd_now(a: &App, d: Dd) -> Value {
     match d {
+        Dd::Sort => json!(a.prefs.sort),
         Dd::Card => json!(a.card.as_ref().map(|c| c.id.clone()).unwrap_or_default()),
         Dd::Size => json!(format!("{}x{}", a.prefs.w, a.prefs.h)),
         Dd::Sound => json!(a.prefs.sound),
@@ -337,6 +357,7 @@ fn chooser(a: &App, d: Dd) -> E<'_, Msg> {
     let now = dd_now(a, d);
     let title = match d {
         Dd::Card => "Capture card",
+        Dd::Sort => "Sort by",
         Dd::Size => "Resolution",
         Dd::Sound => "Sound comes from",
     };
@@ -515,7 +536,7 @@ fn library(a: &App) -> E<'_, Msg> {
         15.0,
         false,
     );
-    let sort = click(one(t(if a.prefs.sort == "oldest" { "Oldest first ▾" } else { "Newest first ▾" }, 14.0, MUT)), Some(Msg::Sort));
+    let sort = click(one(t(format!("{} ▾", sort_words(&a.prefs.sort)), 14.0, MUT)), Some(Msg::Dd(Some(Dd::Sort))));
     let shown = a.shown();
     let small = a.tab == Tab::Shot;
     let cols = if small { 4 } else { 3 };
@@ -571,19 +592,43 @@ fn dialog<'a>(a: &'a App, d: &Dlg) -> E<'a, Msg> {
 }
 
 // ------------------------------------------------------------------ 1 the viewer
+/// The picture: one widget the size of the window that paints its own black bars and the card's frame in them (Fit,
+/// Fill or Stretch), so whatever is drawn above it (the bar, the pills, the quick menu) covers the whole window.
 pub fn picture(a: &App) -> E<'_, Msg> {
-    let fit = match a.prefs.fit.as_str() {
-        "fill" => iced::ContentFit::Cover,
-        "stretch" => iced::ContentFit::Fill,
-        _ => iced::ContentFit::Contain,
-    };
-    let pic: E<'_, Msg> = match a.frame.as_ref() {
-        Some(h) => image(h.clone()).content_fit(fit).width(Length::Fill).height(Length::Fill).into(),
-        None => Space::new().width(Length::Fill).height(Length::Fill).into(),
-    };
-    // The black around a picture of another shape is its own layer under the picture, so a panel drawn over both
-    // (the quick menu) is never covered by it.
-    stack![container(Space::new()).width(Length::Fill).height(Length::Fill).style(bx(Color::BLACK, 0.0, None)), container(pic).center_x(Length::Fill).center_y(Length::Fill)].width(Length::Fill).height(Length::Fill).into()
+    iced::widget::canvas(Video { frame: a.frame.clone(), fit: a.prefs.fit.clone() }).width(Length::Fill).height(Length::Fill).into()
+}
+
+struct Video {
+    frame: Option<image::Handle>,
+    fit: String,
+}
+
+/// Where a w × h picture goes in a box (Fit: all of it, Fill: the box covered, Stretch: the box).
+pub fn place(fit: &str, w: f32, h: f32, bw: f32, bh: f32) -> iced::Rectangle {
+    if fit == "stretch" || w <= 0.0 || h <= 0.0 {
+        return iced::Rectangle { x: 0.0, y: 0.0, width: bw, height: bh };
+    }
+    let s = if fit == "fill" { (bw / w).max(bh / h) } else { (bw / w).min(bh / h) };
+    let (pw, ph) = (w * s, h * s);
+    iced::Rectangle { x: (bw - pw) / 2.0, y: (bh - ph) / 2.0, width: pw, height: ph }
+}
+
+impl<M> iced::widget::canvas::Program<M> for Video {
+    type State = ();
+    fn draw(&self, _s: &(), r: &iced::Renderer, _t: &Theme, b: iced::Rectangle, _c: iced::mouse::Cursor) -> Vec<iced::widget::canvas::Geometry> {
+        let mut f = iced::widget::canvas::Frame::new(r, b.size());
+        f.fill_rectangle(iced::Point::ORIGIN, b.size(), Color::BLACK);
+        if let Some(h) = &self.frame {
+            let (w, ht) = match h {
+                image::Handle::Rgba { width, height, .. } => (*width as f32, *height as f32),
+                _ => (b.width, b.height),
+            };
+            let rect = place(&self.fit, w, ht, b.width, b.height);
+            let img = iced::widget::canvas::Image::new(h.clone());
+            f.with_clip(iced::Rectangle { x: 0.0, y: 0.0, width: b.width, height: b.height }, |f| f.draw_image(rect, img));
+        }
+        vec![f.into_geometry()]
+    }
 }
 
 fn src<'a>(b: String, s: String) -> E<'a, Msg> {
