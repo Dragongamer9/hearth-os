@@ -1475,7 +1475,7 @@ chmod 755 /usr/libexec/hearth-app-kinds
 # Manager, System Restore and Reliability history, the ones that ran only inside Mantel. They take those apps' own
 # menu entries and commands here (this edition has no Mantel), and are left out, with their entries as before, when
 # they weren't built or can't start.
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app; do
   [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
   install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/bin/$b"
   # (grep -c, not -q: under pipefail an early grep -q could cut ldd off and hide the match)
@@ -1484,6 +1484,11 @@ for b in hearth-task-manager hearth-system-restore hearth-reliability-history he
     rm -f "/usr/bin/$b"
   fi
 done
+# Server mode on this edition (docs/SERVER-MODE.md, "On the Fedora edition"): no labwc or Quickshell here, so its
+# dashboard is hearth-server-app, full screen in cage (a kiosk compositor: one app on the screen, nothing else; it ends
+# when the dashboard's watcher ends). wlopm turns the screen off after idle. Missing: Server mode falls back as before.
+dnf5 -y install --skip-unavailable cage wlopm || true
+echo "::notice title=Server mode (cage)::$(for b in cage wlopm hearth-server-app; do command -v $b >/dev/null 2>&1 && printf '%s ' "$b" || printf 'no-%s ' "$b"; done)$(rpm -q cage 2>/dev/null | head -1)"
 dnf5 -y install --skip-unavailable rsms-inter-fonts >/dev/null 2>&1 || true
 if [ -x /usr/bin/hearth-task-manager ]; then
   cat > /usr/share/applications/hearth-tasks.desktop <<DESKTOP
@@ -1535,7 +1540,7 @@ else
   rm -f /usr/share/applications/hearth-store.desktop /usr/lib/systemd/user/hearth-store-check.service /usr/lib/systemd/user/hearth-store-check.timer
 fi
 # <<< Hearth Store
-echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app; do [ -x /usr/bin/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/bin/$b | cut -f1)"; done)"
+echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app; do [ -x /usr/bin/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/bin/$b | cut -f1)"; done)"
 # The owner (Nov 18): every Hearth app that runs under Plasma is installed and shown in Plasma's menu, and Hearth's own
 # apps are the defaults there (menu and file types); KDE's apps stay installed but never take Hearth's place. So, for
 # Plasma (KDE) only, each kind's list becomes Hearth's own first (in Hearth Classic's order), then the Hearth KDE
@@ -2000,6 +2005,11 @@ fi
 chmod 755 /usr/libexec/nimbus/hearth-memory /usr/libexec/nimbus/hearth-hwset /usr/libexec/nimbus/hearth-diskguard /usr/libexec/nimbus/hearth-screen-psr /usr/libexec/nimbus/hearth-oem-account 2>/dev/null || true
 systemctl enable hearth-memory.service hearth-memguard.service hearth-hwset.service hearth-diskguard.service hearth-gamecores.service hearth-app-rules.service
 systemctl enable hearth-screen-psr.service hearth-oem-account.service hearth-dns-client.service
+# Quick ACKs on the loopback (1.16): older Windows games that talk to themselves over 127.0.0.1 (Trains 2010's
+# TADDaemon) load far faster. A oneshot after network.target that never fails, plus NetworkManager's dispatcher hook
+# when lo comes back up (anatase_files: usr/libexec/nimbus/hearth-loopback-quickack).
+chmod 755 /usr/libexec/nimbus/hearth-loopback-quickack /usr/lib/NetworkManager/dispatcher.d/90-hearth-loopback-quickack
+systemctl enable hearth-loopback-quickack.service || echo "::warning title=loopback quickack::not enabled"
 systemctl --global enable hearth-oem-notice.service
 # Low battery (1.11): UPower warns at 10%, is critical at 5%, and at 2% shuts down cleanly.
 if [ -f /etc/UPower/UPower.conf ]; then

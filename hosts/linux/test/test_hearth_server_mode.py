@@ -242,6 +242,146 @@ class RunServer(SessionBase):
         self.assertIn('Server', out)
 
 
+CAGE = '''#!/bin/sh
+# Stand-in for cage in Server mode on the Fedora edition: $CAGE_DO says what each start does.
+n=$(cat "$HOME/cage-n" 2>/dev/null || echo 0); n=$((n + 1)); echo $n > "$HOME/cage-n"
+echo "cage $*" >> "$HOME/cage-ran"
+do=$(echo "$CAGE_DO" | cut -d, -f$n)
+case "$do" in
+  up-game) : > "$XDG_RUNTIME_DIR/hearth-server-dash-up"; echo game > "$XDG_RUNTIME_DIR/nimbus-next" ;;
+  never-up) sleep 30 ;;
+  crash) exit 1 ;;
+  gaveup) : > "$XDG_RUNTIME_DIR/hearth-server-dash-up"; echo "the dashboard keeps closing" > "$XDG_RUNTIME_DIR/hearth-server-dash-failed" ;;
+  real) shift; [ "$1" = -s ] && shift; [ "$1" = -- ] && shift; exec "$@" ;;
+  *) exit 0 ;;
+esac
+exit 0
+'''
+
+
+class FedoraServer(SessionBase):
+    """1.16, the Fedora edition: no labwc or Quickshell, so the dashboard is hearth-server-app in cage; every fallback
+    stays (Game Mode, or Desktop Mode while Game Mode is off)."""
+
+    def setUp(self):
+        super().setUp()
+        for b in ('labwc', 'quickshell'):
+            os.remove(os.path.join(self.bin, b))
+        self.write(os.path.join(self.bin, 'cage'), CAGE)
+        self.write(os.path.join(self.bin, 'hearth-server-app'), '#!/bin/sh\nexit 1\n')
+        self.cage_run = str(ROOT / 'hosts/linux/desktop/server/cage/run')
+
+    def run_block(self, script_tail='run_server; echo "rc=$?"', **env):
+        env.setdefault('PATH', self.bin + ':/usr/bin:/bin')
+        env.setdefault('HEARTH_SERVER_CAGE_RUN', self.cage_run)
+        if shutil.which('labwc', path='/usr/bin:/bin') and shutil.which('quickshell', path='/usr/bin:/bin'):
+            self.skipTest('labwc and Quickshell are installed here')
+        return RunServer.run_block(self, script_tail, **env)
+
+    def cage_starts(self):
+        p = os.path.join(self.home, 'cage-ran')
+        return open(p).read().splitlines() if os.path.exists(p) else []
+
+    def test_play_from_the_dashboard_in_cage(self):
+        r = self.run_block(CAGE_DO='up-game')
+        self.assertIn('rc=0', r.stdout, r.stderr)
+        self.assertEqual(self.read('nimbus-next'), 'game')
+        self.assertIsNone(self.read('hearth-server-mode-failed'))
+        self.assertEqual(len(self.cage_starts()), 1)
+        self.assertIn(self.cage_run, self.cage_starts()[0], 'cage runs the watcher')
+        self.assertIn('in cage', self.log)
+
+    def test_debian_keeps_labwc_when_both_are_there(self):
+        self.write(os.path.join(self.bin, 'labwc'), LABWC)
+        self.write(os.path.join(self.bin, 'quickshell'), '#!/bin/sh\nexit 0\n')
+        self.run_block(LABWC_DO='up-game', CAGE_DO='up-game')
+        self.assertEqual(self.cage_starts(), [])
+        self.assertEqual(self.labwc_starts(), ['start server=1'])
+
+    def test_no_cage_or_no_app_opens_game_mode(self):
+        os.remove(os.path.join(self.bin, 'cage'))
+        self.run_block(CAGE_DO='up-game')
+        self.assertEqual(self.read('nimbus-next'), 'game')
+        self.assertIn("isn't installed", self.read('hearth-server-mode-failed'))
+
+    def test_missing_watcher_opens_game_mode(self):
+        self.run_block(CAGE_DO='up-game', HEARTH_SERVER_CAGE_RUN='/nonexistent/run')
+        self.assertIn('files are missing', self.read('hearth-server-mode-failed'))
+        self.assertEqual(self.cage_starts(), [])
+
+    def test_never_up_crash_and_giving_up_open_game_mode(self):
+        for do, why in (('never-up', "didn't appear"), ('crash', 'closed right away'), ('gaveup', 'keeps closing')):
+            for f in ('nimbus-next', 'hearth-server-mode-failed'):
+                try:
+                    os.remove(os.path.join(self.run_dir, f))
+                except OSError:
+                    pass
+            os.makedirs(os.path.join(self.home, '.local/state/nimbus'), exist_ok=True)
+            open(os.path.join(self.home, 'cage-n'), 'w').write('0')
+            self.run_block(CAGE_DO=do)
+            self.assertEqual(self.read('nimbus-next'), 'game', do)
+            self.assertIn(why, self.read('hearth-server-mode-failed'), do)
+
+    def test_two_failures_pause_it(self):
+        for _ in range(2):
+            open(os.path.join(self.home, 'cage-n'), 'w').write('0')
+            self.run_block(CAGE_DO='crash')
+        self.assertEqual(self.run_block('server_start_mode').stdout.strip(), 'game')
+
+    def test_game_mode_off_falls_back_to_desktop_mode(self):
+        r = self.run_block('game_modes_off() { true; }\nrun_server; echo "rc=$?"', CAGE_DO='crash')
+        self.assertIn('rc=0', r.stdout)
+        self.assertEqual(self.read('nimbus-next'), 'desktop')
+        self.assertIn('Desktop Mode instead', self.log)
+
+    def test_the_real_watcher_gives_up_after_three_quick_closes(self):
+        t = time.time()
+        self.run_block(CAGE_DO='real', HEARTH_SERVER_APP=os.path.join(self.bin, 'hearth-server-app'), SERVER_UP_SECS='30')
+        self.assertLess(time.time() - t, 25)
+        self.assertEqual(self.read('nimbus-next'), 'game')
+        self.assertIn('keeps closing', self.read('hearth-server-mode-failed'))
+        self.assertIsNone(self.read('hearth-server-mode.pid'))
+
+
+class CageWatcher(SessionBase):
+    def test_guide_bringing_the_dashboard_back_is_not_a_failure(self):
+        """The dashboard ends with 42 to come back in front of Settings or Ithil's app: started again at once."""
+        app = os.path.join(self.bin, 'hearth-server-app')
+        self.write(app, '#!/bin/sh\nn=$(cat "$HOME/app-n" 2>/dev/null || echo 0); n=$((n + 1)); echo $n > "$HOME/app-n"\n'
+                        '[ "$n" -le 2 ] && { sleep 2; exit 42; }\nexit 1\n')
+        e = self.env(HEARTH_SERVER_APP=app)
+        p = subprocess.Popen(['sh', '-c', 'sh "$0"; echo done', str(ROOT / 'hosts/linux/desktop/server/cage/run')], env=e, stdout=subprocess.PIPE, text=True)
+        out = p.communicate(timeout=60)[0]
+        self.assertIn('done', out)
+        self.assertEqual(open(os.path.join(self.home, 'app-n')).read().strip(), '5', 'two comebacks, then three quick closes')
+        self.assertIn('keeps closing', self.read('hearth-server-dash-failed'))
+        self.assertEqual(open(os.path.join(self.home, '.local/share/nimbus/server-dash.log')).read().count('back to the front'), 2)
+
+
+class WholeFedoraSession(SessionBase):
+    """The whole session on the Fedora edition with Game Mode off: Server mode that fails goes to Desktop Mode."""
+
+    def test_game_mode_off_and_server_mode_crashing_opens_desktop_mode(self):
+        for tool in ('steam', 'gamescope'):
+            if shutil.which(tool):
+                self.skipTest(tool + ' is installed here')
+        os.remove(os.path.join(self.bin, 'quickshell'))
+        self.write(os.path.join(self.bin, 'cage'), CAGE)
+        self.write(os.path.join(self.bin, 'hearth-server-app'), '#!/bin/sh\nexit 1\n')
+        os.makedirs(os.path.join(self.home, '.config/nimbus'), exist_ok=True)
+        os.makedirs(os.path.join(self.home, '.local/share/nimbus'), exist_ok=True)
+        open(os.path.join(self.home, '.config/nimbus/session.conf'), 'w').write('NIMBUS_START_MODE=server\n')
+        open(os.path.join(self.home, '.local/share/nimbus/desktop.json'), 'w').write('{"gameModeOff": true}\n')
+        e = self.env(CAGE_DO='crash', LABWC_DO='', HEARTH_SERVER_CAGE_RUN=str(ROOT / 'hosts/linux/desktop/server/cage/run'))
+        r = subprocess.run(['sh', str(SESSION)], env=e, capture_output=True, text=True, timeout=90)
+        log = pathlib.Path(self.home, '.local/share/nimbus/session.log')
+        log = log.read_text() if log.exists() else ''
+        self.assertEqual(r.returncode, 0, log + r.stderr)
+        self.assertIn('Desktop Mode instead (Game Mode is off', log)
+        self.assertNotIn('steam game mode', log.lower().split('desktop mode instead')[-1][:200])
+        self.assertIn('start server=0', self.labwc_starts(), log)
+
+
 class WholeSession(SessionBase):
     """nimbus-session for real (stand-ins for labwc and the helper; no Steam or gamescope here)."""
 

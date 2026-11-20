@@ -1,0 +1,15 @@
+# Quick ACKs on the loopback (docs/BASE-ANATASE.md): older Windows games that talk to themselves over 127.0.0.1 load far
+# faster (Trains 2010: 3½ minutes → about 30 seconds). Once at start, after the network; it never fails (the leading
+# "-" and the script's exit 0), takes milliseconds and has its own time limit, so it can't hold up starting the PC.
+[Unit]
+Description=Hearth: quick ACKs on the loopback (games that talk to themselves over 127.0.0.1)
+After=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=-/usr/libexec/nimbus/hearth-loopback-quickack
+TimeoutStartSec=15
+
+[Install]
+WantedBy=multi-user.target

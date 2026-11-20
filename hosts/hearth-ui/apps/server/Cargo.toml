@@ -1,0 +1,20 @@
+# Server mode's dashboard on the Fedora edition (pure Rust, hearth-ui; docs/SERVER-MODE.md "On the Fedora edition"):
+# Mantel's server-mode.qml / ServerDash.qml ported, run full screen in cage by nimbus-session's run_server. No version
+# line: the owner picks every version number.
+[package]
+name = "hearth-server-app"
+edition = "2021"
+description = "Server mode's dashboard: what the server is doing, its services, Play"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-server-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }
