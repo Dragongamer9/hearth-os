@@ -5,7 +5,8 @@
 # Mantel's files (hosts/linux/desktop/shell) are copied with only these changes (transform.py): the Quickshell
 # imports and the layer-shell lines are taken out, and Qt.resolvedUrl("x") points at Mantel's own folder (its
 # helpers and pictures stay there: one copy). shim/ gives what Quickshell gave, with Plasma's own pieces.
-# Installs org.hearthos.panel (the bar and the dock) and org.hearthos.appmenu (the Hearth app menu for any panel),
+# Installs org.hearthos.panel (the bar and the dock) and, for any panel, org.hearthos.appmenu (the Hearth app menu),
+# org.hearthos.quicksettings and org.hearthos.notifications (Hearth's notifications: only one of them takes them),
 # the helper, and the .path unit that tells the panel when Hearth's files changed. It never changes anyone's panel:
 # Hearth's panel is put in only when you pick it (hearth-plasma-panel apply). Never fails the image.
 set -u
@@ -21,7 +22,8 @@ MANTEL="Theme.qml subthemes.js Settings.qml SettingsWriter.qml DeskState.qml Lea
   NetSpeed.qml NotifyRules.qml Frame.qml Icon.qml icon-data.js MenuHints.qml MenuSearch.qml MenuTile.qml MenuCentred.qml
   MenuClassic.qml MenuTiles.qml MenuStart.qml MenuStyles.qml PopMenu.qml Islands.qml Dock.qml TaskStrip.qml Launcher.qml
   DeskSwitcher.qml MediaPill.qml PerfIsland.qml Stats.qml SearchSources.qml WinPreviewTip.qml menu-nav.js menu-search.js
-  QuickAccess.qml PhoneStatus.qml ClockPanel.qml MediaCard.qml StatsCard.qml calendars.js"
+  QuickAccess.qml PhoneStatus.qml ClockPanel.qml MediaCard.qml StatsCard.qml calendars.js Notifications.qml NotifReply.qml
+  Sounds.qml"
 
 build() {   # build ID NAME DESCRIPTION
   local id=$1 dir="$P/$1"
@@ -44,6 +46,8 @@ PY
 }
 build org.hearthos.panel "Hearth's panel" "Hearth's bar and dock from Debian's Desktop Mode: the islands, your apps, the app menus and Game Mode, in every Hearth look"
 build org.hearthos.appmenu "Hearth's app menu" "Hearth's app menus (Hearth, Centred, Tiles, Start screen, Classic) from the Hearth flame, in any panel"
+build org.hearthos.quicksettings "Hearth's Quick settings" "Hearth's Quick settings (Wi-Fi, Bluetooth, sound, brightness, Game Mode...) from its button, in any panel"
+build org.hearthos.notifications "Hearth's notifications" "Hearth's notification pop-ups and the notification centre with the calendar, from its bell, in any panel"
 
 mkdir -p "$ROOT/usr/share/nimbus/desktop/plasma-hearth"
 if [ "$(cd "$ROOT/usr/share/nimbus/desktop/plasma-hearth" && pwd)" != "$SRC" ]; then
@@ -52,6 +56,9 @@ else
   chmod 755 "$SRC/hearth-plasma-panel"
 fi
 ln -sfn /usr/share/nimbus/desktop/plasma-hearth/hearth-plasma-panel "$ROOT/usr/bin/hearth-plasma-panel"
+# Quick settings' backend, shared with Firehold on Plasma (the same qs / qs-do commands and JSON).
+mkdir -p "$ROOT/usr/libexec/hearth"
+install -m755 "$SRC/hearth-quick" "$ROOT/usr/libexec/hearth/hearth-quick"
 install -m644 "$SRC/hearth-plasma-panel.path" "$SRC/hearth-plasma-panel.service" "$ROOT/usr/lib/systemd/user/"
 mkdir -p "$ROOT/usr/lib/systemd/user/plasma-workspace.target.wants"
 ln -sfn ../hearth-plasma-panel.path "$ROOT/usr/lib/systemd/user/plasma-workspace.target.wants/hearth-plasma-panel.path"

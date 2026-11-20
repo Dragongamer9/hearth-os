@@ -29,7 +29,7 @@ const WALLS_JS: &str = r#"var o={desktops:[],plugins:[]};try{o.plugins=Object.ke
 /// panel's widgets as they are), the old launcher's place in it (the start when there's none), the new one written
 /// there and the old one removed, then the panel reads its order again. hosts/linux/test/test_plasma_panel_js.py runs
 /// it against a stand-in panel.
-pub const SWAP_LAUNCHER_JS: &str = r#"var L=["org.kde.plasma.kickoff","org.kde.plasma.kicker","org.kde.plasma.kickerdash"];var ws=p.widgets();var old=null;for(var i=0;i<ws.length;i++)if(L.indexOf(ws[i].type)>=0){old=ws[i];break;}p.currentConfigGroup=["General"];var ord=String(p.readConfig("AppletOrder",""));var ids=[];var parts=ord.split(";");for(var i=0;i<parts.length;i++)if(parts[i]!=="")ids.push(parts[i]);if(!ids.length)for(var i=0;i<ws.length;i++)ids.push(String(ws[i].id));var at=old?ids.indexOf(String(old.id)):0;if(at<0)at=0;var n=p.addWidget(__NEW__);if(n){var k=ids.indexOf(String(n.id));if(k>=0)ids.splice(k,1);if(old){var o=ids.indexOf(String(old.id));if(o>=0)ids.splice(o,1);old.remove();}if(at>ids.length)at=ids.length;ids.splice(at,0,String(n.id));p.currentConfigGroup=["General"];p.writeConfig("AppletOrder",ids.join(";"));p.reloadConfig();}"#;
+pub const SWAP_LAUNCHER_JS: &str = r#"var L=["org.kde.plasma.kickoff","org.kde.plasma.kicker","org.kde.plasma.kickerdash","org.hearthos.appmenu"];var ws=p.widgets();var old=null;for(var i=0;i<ws.length;i++)if(L.indexOf(ws[i].type)>=0){old=ws[i];break;}p.currentConfigGroup=["General"];var ord=String(p.readConfig("AppletOrder",""));var ids=[];var parts=ord.split(";");for(var i=0;i<parts.length;i++)if(parts[i]!=="")ids.push(parts[i]);if(!ids.length)for(var i=0;i<ws.length;i++)ids.push(String(ws[i].id));var at=old?ids.indexOf(String(old.id)):0;if(at<0)at=0;var n=p.addWidget(__NEW__);if(n){var k=ids.indexOf(String(n.id));if(k>=0)ids.splice(k,1);if(old){var o=ids.indexOf(String(old.id));if(o>=0)ids.splice(o,1);old.remove();}if(at>ids.length)at=ids.length;ids.splice(at,0,String(n.id));p.currentConfigGroup=["General"];p.writeConfig("AppletOrder",ids.join(";"));p.reloadConfig();}"#;
 
 const LAUNCHERS: &[(&str, &str, &str)] = &[
     ("org.kde.plasma.kickoff", "Application Launcher", "KDE's menu with favourites, search and categories"),
@@ -170,6 +170,10 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
                 st.msg_bad = true;
             }
             return Task::batch([read_panels(), read_walls()]);
+        }
+        // Hearth's panel on Plasma (hosts/linux/desktop/plasma-hearth): put in or taken off only when you pick it.
+        Msg::PanelPick(k) => {
+            return Task::perform(kit::run_in(vec!["hearth-plasma-panel".into(), k.into()], String::new()), Msg::JsDone);
         }
         Msg::EditMode => {
             return kde(vec!["timeout".into(), "5".into(), "dbus-send".into(), "--session".into(), "--dest=org.kde.plasmashell".into(), "--type=method_call".into(), "/PlasmaShell".into(), "org.freedesktop.DBus.Properties.Set".into(), "string:org.kde.PlasmaShell".into(), "string:editMode".into(), "variant:boolean:true".into()]);
@@ -370,7 +374,15 @@ pub fn bar_dock(a: &App) -> E<'_> {
     }
     c = c.push(head(&p, "Bar and dock"));
     let bs = sh.d_str("barStyle");
-    if plasma {
+    // Hearth's panel (Mantel's bar, dock and app menus on Plasma, plasma-hearth) or KDE's own panel.
+    let hearth_panel = plasma && panels(st).iter().any(|pn| has_widget(pn, "org.hearthos.panel"));
+    if plasma && st.panels.is_some() {
+        c = c.push(irow(&p, Ic::Window, "Panel", if hearth_panel { "Hearth's panel: the bar and dock from Hearth's Desktop Mode, in your look" } else { "KDE's panel. Hearth's panel is the bar and dock from Hearth's Desktop Mode, in your look (your panel is saved first)" }, seg(&p, vec![
+            ("Hearth's panel".into(), hearth_panel, if hearth_panel { None } else { Some(Msg::PanelPick("apply")) }),
+            ("KDE's panel".into(), !hearth_panel, if hearth_panel { Some(Msg::PanelPick("undo")) } else { None }),
+        ])));
+    }
+    if plasma && !hearth_panel {
         let ps = panels(st);
         if st.panels.is_none() {
             c = c.push(small(&p, if st.panel_err.is_empty() { "Asking KDE's panel…".to_string() } else { format!("{}.", st.panel_err) }));
@@ -422,7 +434,16 @@ pub fn bar_dock(a: &App) -> E<'_> {
                 let swap = SWAP_LAUNCHER_JS.replace("__NEW__", &kit::js_str(id));
                 c = c.push(irow(&p, Ic::Menu, *label, *sub, if on { t1("In use", sz(13.0), p.accent).into() } else { btn(&p, "Use", ui::Kind::Normal, false, Some(Msg::Js(swap))) }));
             }
-            if cur.is_empty() {
+            // Hearth's app menus (Mantel's five, org.hearthos.appmenu) in the same place; the style is Hearth's appMenu.
+            let am = sh.d_str("appMenu");
+            let hearth_on = has_widget(&pn, "org.hearthos.appmenu");
+            let swap = SWAP_LAUNCHER_JS.replace("__NEW__", &kit::js_str("org.hearthos.appmenu"));
+            for (v, l, d) in [("hearth", "Hearth", "Big centred panel with Apps and Games tabs"), ("centred", "Centred", "Pinned apps and Recommended, above the centred dock"), ("tiles", "Tiles", "App list and live tiles in the corner"), ("start", "Start screen", "Full-screen live tiles; easiest with a controller"), ("classic", "Classic", "Two columns with your places; glassy, from the corner")] {
+                let on = hearth_on && (am == v || (am.is_empty() && v == "hearth"));
+                let act = if hearth_on { Msg::Set(json!({"appMenu": v})) } else { Msg::JsSet(swap.clone(), json!({"appMenu": v})) };
+                c = c.push(irow(&p, Ic::Menu, format!("Hearth's menu: {l}"), d, if on { t1("In use", sz(13.0), p.accent).into() } else { btn(&p, "Use", ui::Kind::Normal, false, Some(act)) }));
+            }
+            if cur.is_empty() && !hearth_on {
                 c = c.push(small(&p, "This panel has no app launcher: Use puts one on it."));
             }
         }

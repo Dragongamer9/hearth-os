@@ -6,6 +6,8 @@ import QtQuick.Window
 Window {
     id: pw
     readonly property AnchorInfo anchor: AnchorInfo {}
+    property real implicitWidth: 1
+    property real implicitHeight: 1
     flags: Qt.ToolTip | Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput
     color: "transparent"
     width: Math.max(1, implicitWidth)

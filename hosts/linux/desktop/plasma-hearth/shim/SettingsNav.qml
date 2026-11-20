@@ -16,6 +16,9 @@ Item {
     property var activityShows: null
     property var activityMoveItems: null
     property var pad: null
+    property var widgets: null
+    property bool activitiesMany: false
+    property string activityName: ""
     property string menuEdit: ""
     property bool overlay: false
     function openPage(p) { Hearth.run(["hearth-settings-app"].concat(p ? ["--page", String(p)] : [])); }

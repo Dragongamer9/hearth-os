@@ -35,13 +35,26 @@ Item {
             l.menuRequested.connect((entry, x, y) => m.appMenuFor(entry, x, y));
         }
     }
-    Overlay { id: quickW; name: "hearth-quick"; source: "QuickAccess.qml" }
+    Overlay {
+        id: quickW
+        name: "hearth-quick"
+        source: "QuickAccess.qml"
+        onContentChanged: if (content) {
+            const q = content;
+            q.keyboardRequested.connect(() => Hearth.run(["python3", Hearth.helper, "osk"]));
+            q.settingsRequested.connect(() => SettingsNav.openPage(""));
+            q.pageRequested.connect(p => SettingsNav.openPage(p));
+            q.lockRequested.connect(() => Hearth.run(["loginctl", "lock-session"]));
+            // Mantel's power menu comes to Plasma with stage 2; until then KDE's own (Lock, Sleep, Restart, Shut down).
+            q.powerRequested.connect(() => Hearth.run(["dbus-send", "--session", "--dest=org.kde.LogoutPrompt", "--type=method_call", "/LogoutPrompt", "org.kde.LogoutPrompt.promptAll"]));
+        }
+    }
     Overlay { id: calendarW; name: "hearth-calendar"; source: "ClockPanel.qml" }
 
     function toggleLauncher() { launcherW.wanted = true; if (launcherW.ready) launcherW.content.toggle(); else launcherW.pending = () => launcherW.content.toggle(); }
     function openMenuSearch() { launcherW.wanted = true; if (launcherW.ready) launcherW.content.openMenuSearch(); else launcherW.pending = () => launcherW.content.openMenuSearch(); }
     function toggleQuick() { quickW.wanted = true; const f = () => { const q = quickW.content; if (typeof q.toggle === "function") q.toggle(); else q.shown = !q.shown; }; if (quickW.ready) f(); else quickW.pending = f; }
-    function toggleCalendar() { calendarW.wanted = true; const f = () => { const c = calendarW.content; if (typeof c.toggle === "function") c.toggle(); else c.shown = !c.shown; }; if (calendarW.ready) f(); else calendarW.pending = f; }
+    function toggleCalendar() { calendarW.wanted = true; const f = () => { const c = calendarW.content; if (typeof c.toggle === "function") c.toggle(Hearth.screen, false); else c.shown = !c.shown; }; if (calendarW.ready) f(); else calendarW.pending = f; }
 
     // The bar's and dock's menus: Mantel's right-click menu (PopMenu.qml), placed on the screen.
     function popProxy(xOff) {

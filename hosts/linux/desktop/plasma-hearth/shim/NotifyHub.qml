@@ -23,6 +23,18 @@ Item {
     property var layout: ({ layouts: [], index: 0, canSwitch: false })
     property string layoutName: ""
     property string layoutShort: ""
+    property var badges: ({})
+    property bool jobServer: false
+    property var jobs: []
+    property var keys: []
+    property bool sharing: false
+    property bool testFullscreen: false
+    property bool testSharing: false
+    signal jobFinished(var j)
+    signal quietEnded(int count, string why)
+    readonly property var defaults: ({ autoFullscreen: true, autoSharing: true, schedule: false, scheduleFrom: "22:00", scheduleTo: "07:00", keepHistory: true })
+    function pref(k) { return defaults[k]; }
+    function noteMissed() { missed++; }
     function badgeFor(id) { return null; }
     function send(o) {}
     function jobAction(id, what) {}

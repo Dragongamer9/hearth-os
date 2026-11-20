@@ -1,8 +1,9 @@
 // Hearth's panel on KDE Plasma (plasma-hearth; docs/mockups/checklists/plasma-hearth-bar.md): Mantel's own bar
 // (Islands.qml), dock (Dock.qml) and app menus (Launcher.qml and its four other styles) inside Plasma's panels, from
 // Mantel's own files (install.sh takes out only the Quickshell lines; shim/ does what Quickshell did, with Plasma's
-// pieces). One package, three roles (its "role" setting): "bar" (the top bar), "dock", and "menu" (the Hearth flame
-// in any panel: org.hearthos.appmenu, Settings › Bar and dock › App menu). The panel's own background is hidden, so
+// pieces). One package, five roles (its "role" setting): "bar" (the top bar), "dock", and for any panel "menu" (the
+// Hearth flame: org.hearthos.appmenu, Settings › Bar and dock › App menu), "quick" (Quick settings' button:
+// org.hearthos.quicksettings) and "notes" (Hearth's notifications and the bell: org.hearthos.notifications). The panel's own background is hidden, so
 // only Mantel's islands show, and the bar covers Plasma's whole panel window as Mantel's PanelWindow did.
 import QtQuick
 import QtQuick.Layouts
@@ -14,7 +15,8 @@ PlasmoidItem {
     id: main
     readonly property string role: {
         const r = String(Plasmoid.configuration.role || "");
-        if (Plasmoid.pluginName === "org.hearthos.appmenu") return "menu";
+        const byId = { "org.hearthos.appmenu": "menu", "org.hearthos.quicksettings": "quick", "org.hearthos.notifications": "notes" }[Plasmoid.pluginName];
+        if (byId) return byId;
         return r === "dock" || r === "menu" ? r : "bar";
     }
     preferredRepresentation: fullRepresentation
@@ -44,20 +46,24 @@ PlasmoidItem {
     Connections { target: Plasmoid; function onActivated() { menus.toggleLauncher(); } }
 
     Menus { id: menus; host: main; anchorItem: main.fullRepresentationItem }
+    // Notifications (Mantel's Notifications.qml: the pop-ups under the clock pill and the history the dashboard
+    // shows), on Plasma's own notification service: Hearth's bar or Hearth's bell takes them, if nothing else does.
+    readonly property bool small: role === "menu" || role === "quick" || role === "notes"
+    Loader { active: main.role === "bar" || main.role === "notes"; source: "Notifications.qml" }
 
     fullRepresentation: Item {
         id: rep
         readonly property bool vertical: Plasmoid.formFactor === PlasmaCore.Types.Vertical
-        Layout.fillWidth: main.role !== "menu"
-        Layout.fillHeight: main.role !== "menu"
-        Layout.minimumWidth: main.role === "menu" ? Math.max(24, height) : 0
+        Layout.fillWidth: !main.small
+        Layout.fillHeight: !main.small || !vertical
+        Layout.minimumWidth: main.small ? Math.max(24, height) : 0
         Layout.preferredWidth: Layout.minimumWidth
-        Layout.minimumHeight: main.role === "menu" && vertical ? width : 0
+        Layout.minimumHeight: main.small && vertical ? width : 0
 
         // The whole panel window, as Mantel's PanelWindow (its islands, gaps and menus are worked out from it).
         Item {
             id: cover
-            visible: main.role !== "menu"
+            visible: !main.small
             property point o: Qt.point(0, 0)
             x: -o.x
             y: -o.y
@@ -102,22 +108,42 @@ PlasmoidItem {
                 onStatusChanged: if (status === Loader.Error) console.warn("plasma-hearth: Mantel's dock (Dock.qml) couldn't load")
             }
         }
-        // "menu": the Hearth flame, as the bar's own app menu button.
+        // "menu", "quick", "notes": one button, as the bar's own (the flame; Quick settings; the bell with the
+        // count of new notifications).
         Item {
             anchors.fill: parent
-            visible: main.role === "menu"
+            visible: main.small
+            readonly property bool lit: main.role === "menu" ? menus.launcherShown : main.role === "quick" ? menus.quickShown : menus.calendarShown
             Rectangle {
                 anchors.centerIn: parent
                 width: Math.min(parent.width, parent.height) - 4; height: width
                 radius: Theme.r(10)
-                color: flameArea.containsMouse || menus.launcherShown ? Theme.panel3 : "transparent"
+                color: btnArea.containsMouse || parent.lit ? Theme.panel3 : "transparent"
             }
             Image {
+                visible: main.role === "menu"
                 anchors.centerIn: parent
                 width: Math.round(Math.min(parent.width, parent.height) * 0.62); height: width
                 source: Hearth.shellUrl("images/hearth-logo.png"); smooth: true; mipmap: true
             }
-            MouseArea { id: flameArea; anchors.fill: parent; hoverEnabled: true; onClicked: menus.toggleLauncher() }
+            Icon {
+                visible: main.role !== "menu"
+                anchors.centerIn: parent
+                size: Math.round(Math.min(parent.width, parent.height) * 0.56)
+                name: main.role === "quick" ? "menu" : NotifyHub.quiet ? "bell-off" : "bell"
+                color: NotifyHub.quiet && main.role === "notes" ? Theme.muted : Theme.text
+            }
+            Rectangle {
+                visible: main.role === "notes" && DeskState.unseen > 0 && !NotifyHub.quiet
+                x: parent.width / 2 + 2; y: 2
+                width: Math.max(16, badge.implicitWidth + 8); height: 16; radius: 8
+                color: Theme.accent; border.color: Theme.panel; border.width: 1
+                Text { id: badge; anchors.centerIn: parent; text: DeskState.unseen > 9 ? "9+" : String(DeskState.unseen); color: Theme.accentInk; font.pixelSize: 10; font.bold: true; font.family: Theme.font }
+            }
+            MouseArea {
+                id: btnArea; anchors.fill: parent; hoverEnabled: true
+                onClicked: main.role === "menu" ? menus.toggleLauncher() : main.role === "quick" ? menus.toggleQuick() : menus.toggleCalendar()
+            }
         }
 
         // Where this panel's window starts, against this item (Plasma's panel puts its own margins round its
@@ -125,7 +151,7 @@ PlasmoidItem {
         function place() {
             const p = rep.mapToItem(null, 0, 0);
             cover.o = Qt.point(Math.round(p.x), Math.round(p.y));
-            if (main.role !== "menu") hideBackground();
+            if (!main.small) hideBackground();
             Hearth.screen = { width: rep.Screen.width, height: rep.Screen.height, name: rep.Screen.name };
         }
         // Plasma's own panel background (and its shadow edge) off: Mantel's islands draw the bar.

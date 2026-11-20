@@ -19,12 +19,20 @@ DROP = [
 ]
 
 
-def fix(text):
+# Names a Quickshell window may use that an Item already has (it's an Item here): renamed in that file.
+RENAME = {'ClockPanel.qml': [('function left(sec)', 'function timeLeft(sec)'), ('root.left((', 'root.timeLeft((')]}
+
+
+def fix(text, name=''):
+    for a, b in RENAME.get(name, []):
+        text = text.replace(a, b)
     out = []
     for line in text.split('\n'):
         if any(p.match(line) for p in DROP):
             out.append('// (plasma-hearth: ' + line.strip()[:60].replace('*/', '') + ')')
             continue
+        # A small window inside a file (Notifications.qml's pop-ups): a layer window of its own (LayerPanel.qml).
+        line = re.sub(r'^(\s+)PanelWindow \{', r'\1LayerPanel {', line)
         out.append(line.replace('Qt.resolvedUrl("', 'Hearth.shellUrl("'))
     return '\n'.join(out)
 
@@ -35,7 +43,7 @@ def main(d):
         p = os.path.join(d, fn)
         if fn.endswith('.qml'):
             t = open(p, encoding='utf-8').read()
-            t2 = fix(t)
+            t2 = fix(t, fn)
             if t2 != t:
                 open(p, 'w', encoding='utf-8').write(t2)
             if not fn[0].isupper():

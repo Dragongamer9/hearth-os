@@ -5,7 +5,6 @@ Item {
     id: c
     enum Precision { Hours, Minutes, Seconds }
     property int precision: SystemClock.Minutes
-    property bool enabled: true
     property var date: new Date()
     readonly property int hours: date.getHours()
     readonly property int minutes: date.getMinutes()
