@@ -1,7 +1,6 @@
 // Apps and Store (the tabs of mockups 1 and 5; no mockup of their own yet): the menu's apps as big tiles, and the
 // stores. The first Apps tile is Settings › Couch and Desk.
 import QtQuick
-import org.kde.kirigami as Kirigami
 
 Item {
     id: ap
@@ -50,12 +49,14 @@ Item {
             color: "#1d1512"
             border.width: index === ap.current ? 3 * ap.k : 1
             border.color: index === ap.current ? ap.couch.pal.accent : ap.couch.pal.line
-            Kirigami.Icon {
+            // (1.16: the icon is drawn by a small file: Plasma's own icons, KIcon.qml, unless the Couch's host has
+            // its own, as Firehold on labwc does: desktop/shell/FhIcon.qml)
+            Loader {
                 anchors.horizontalCenter: parent.horizontalCenter
                 y: 36 * ap.k
                 width: 88 * ap.k; height: width
-                source: modelData.icon || "application-x-executable"
-                fallback: "application-x-executable"
+                source: ap.couch.host && ap.couch.host.iconFile ? ap.couch.host.iconFile : "KIcon.qml"
+                onLoaded: item.name = Qt.binding(function () { return modelData.icon || "application-x-executable"; })
             }
             T {
                 couchRef: ap.couch

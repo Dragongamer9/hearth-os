@@ -17,7 +17,8 @@ on:
     branches: [feature/labwc-fedora]
     # (a new workflow can't be started by hand until it's on main: pushes to this branch start it)
     paths: ['.github/workflows/labwc-fedora.yml', '.github/scripts/labwc-fedora-rest.sh', 'hosts/linux/desktop/**',
-            'hosts/linux/session/**', 'os-bases/anatase/quickshell-build.sh', 'os-bases/anatase/labwc-install.sh']
+            'hosts/linux/session/**', 'os-bases/anatase/quickshell-build.sh', 'os-bases/anatase/labwc-install.sh',
+            '.github/scripts/labwc-firehold-mockups.sh', '.github/scripts/firehold-plasma-fixtures.py']
 
 permissions:
   contents: write
@@ -36,7 +37,7 @@ jobs:
       - name: Tests
         run: |
           python3 -m unittest hosts.linux.test.test_labwc_fedora_session hosts.linux.test.test_firehold_plasma -v 2>&1 | tail -40
-          python3 -m unittest hosts.linux.test.test_labwc_fedora_session hosts.linux.test.test_firehold_plasma hosts.linux.test.test_mantel_rest
+          python3 -m unittest hosts.linux.test.test_labwc_fedora_session hosts.linux.test.test_firehold_plasma hosts.linux.test.test_mantel_rest hosts.linux.test.test_firehold_labwc hosts.linux.test.test_firehold
 
   quickshell:
     name: Build Quickshell v0.3.2 (Fedora 45)
@@ -103,9 +104,44 @@ jobs:
           path: /tmp/out/${{ matrix.kind }}
           retention-days: 5
 
+  mockups:
+    name: Firehold on labwc, the approved screens
+    needs: quickshell
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora:45
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: quickshell-fedora
+          path: /tmp/qsa
+      - name: Install (as the image does)
+        run: |
+          tar -C / -xzf /tmp/qsa/quickshell.tgz
+          dnf5 -y install python3 python3-pillow python3-dbus python3-gobject procps-ng dbus-daemon dbus-tools findutils >/dev/null
+          bash os-bases/anatase/labwc-install.sh 2>&1 | grep -E '::|^Error' || true
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          install -Dm755 hosts/linux/session/nimbus-session /usr/bin/nimbus-session
+          chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/open.sh
+          find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +
+      - name: The approved screens on labwc
+        run: |
+          mkdir -p /tmp/out/mockups
+          timeout 900 bash .github/scripts/labwc-firehold-mockups.sh /tmp/out/mockups; rc=$?
+          { echo "### Firehold on labwc, the approved screens"; echo; cat /tmp/out/mockups/mockups.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: labwc-mockups
+          path: /tmp/out/mockups
+          retention-days: 5
+
   post:
     name: Post the pictures (ci/labwc-fedora)
-    needs: rest
+    needs: [rest, mockups]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-latest
     timeout-minutes: 10

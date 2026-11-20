@@ -2,18 +2,22 @@
 // controller): the app, the title and episode, its picture, pause and skip, the time and its bar. Loaded on its own
 // (Home's Loader), so a Plasma without this model only loses this card. The time moves when the Couch looks at its
 // cards again (no timer: the owner's rule on lag).
+// 1.16: the player comes from a small source file: Plasma's (PlasmaMedia.qml) unless the Couch's host has its own
+// (Firehold on labwc: desktop/shell/FhMedia.qml, Quickshell's MPRIS). Each gives the same few names.
 import QtQuick
-import org.kde.plasma.private.mpris as Mpris
 import "fhp.js" as H
 
 Card {
     id: mc
     property QtObject couch: null
     k: couch ? couch.k : 1
-    Mpris.Mpris2Model { id: mpris }
-    readonly property var cp: mpris.currentPlayer
-    readonly property bool playing: !!cp && cp.playbackStatus === Mpris.PlaybackStatus.Playing
-    readonly property bool has: !!cp && String(cp.track || "") !== "" && cp.playbackStatus !== Mpris.PlaybackStatus.Stopped
+    Loader {
+        id: src
+        source: mc.couch && mc.couch.host && mc.couch.host.mediaFile ? mc.couch.host.mediaFile : "PlasmaMedia.qml"
+    }
+    readonly property var cp: src.item ? src.item.cp : null
+    readonly property bool playing: !!src.item && src.item.playing
+    readonly property bool has: !!src.item && src.item.has
     readonly property string title: cp ? ((cp.album && String(cp.album) !== String(cp.track) ? cp.album + " · " : "") + cp.track) : ""
     readonly property var info: has ? { app: String(cp.desktopEntry || ""), identity: String(cp.identity || ""), title: title,
                                         short: String(cp.artist || cp.album || cp.track || ""), playing: playing } : null
@@ -23,7 +27,7 @@ Card {
     height: 92 * k
     Connections {
         target: mc.couch
-        function onCardsChanged() { if (mc.cp && mc.playing) mc.cp.updatePosition(); }
+        function onCardsChanged() { if (src.item && mc.playing) src.item.updatePosition(); }
     }
     RoundClip {
         id: pic
@@ -81,7 +85,7 @@ Card {
                 required property var modelData
                 width: 50 * mc.k; height: 34 * mc.k; radius: 10 * mc.k; color: H.P.nb
                 Glyph { anchors.centerIn: parent; name: modelData === "pause" ? (mc.playing ? "pause" : "play") : "next"; size: 16 * mc.k; filled: modelData !== "pause" || !mc.playing }
-                MouseArea { anchors.fill: parent; onClicked: { if (!mc.cp) return; if (modelData === "pause") mc.cp.PlayPause(); else mc.cp.Next(); } }
+                MouseArea { anchors.fill: parent; onClicked: { if (!src.item) return; if (modelData === "pause") src.item.playPause(); else src.item.next(); } }
             }
         }
     }

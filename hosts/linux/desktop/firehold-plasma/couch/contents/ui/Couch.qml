@@ -10,8 +10,6 @@
 import QtQuick
 import QtQuick.Window
 import QtQuick.Shapes
-import org.kde.plasma.plasma5support as P5Support
-import org.kde.taskmanager as TaskManager
 import "firehold.js" as F
 import "fhp.js" as H
 
@@ -52,7 +50,18 @@ Item {
     property string page: "tabs"           // tabs | switcher (Everything open) | settings
     property bool guideShown: false
     property bool started: false
-    readonly property bool front: Window.active
+    // ------------------------------------------------------------------ the desktop it runs on (1.16)
+    // The helper, the clock and the windows come from a host: Plasma's (PlasmaHost.qml, loaded here) unless one is
+    // given, as Firehold on labwc gives its own (desktop/shell/FhCouchHost.qml). The pages below are the same on both.
+    property QtObject hostIn: null
+    Loader { id: plasmaHost; active: fh.hostIn === null; source: "PlasmaHost.qml" }
+    readonly property QtObject host: hostIn || plasmaHost.item
+    // A host that says what's in front itself (labwc: the Couch's layer is up and nothing is over it).
+    readonly property bool front: host && host.hosted ? host.front === true : Window.active
+    // Nobody's used the PC for a while (labwc: the shell's idle, 30 s): the home's cards aren't asked for again until
+    // someone's back (then at once).
+    readonly property bool resting: !!host && host.hosted === true && host.resting === true
+    onRestingChanged: if (started && !resting && front) cardsNow()
     onFrontChanged: {
         if (!started) return;
         run(["state", front ? "front" : (guideShown ? "guide" : "back")]);
@@ -77,40 +86,20 @@ Item {
         if (key === "posture" && value === "desk") run(["switch", "desk", "--why", "pick"]);
     }
 
-    // ------------------------------------------------------------------ the helper (Plasma's executable source)
-    P5Support.DataSource {
-        id: sh
-        engine: "executable"
-        property var cbs: ({})
-        property int n: 0
-        onNewData: function (source, data) {
-            const cb = sh.cbs[source];
-            delete sh.cbs[source];
-            sh.disconnectSource(source);
-            if (cb) cb(String(data["stdout"] || ""));
-        }
-    }
-    function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
+    // ------------------------------------------------------------------ the helper (the host runs hearth-firehold-plasma)
+    property var pending: []
     function run(args, cb) {
-        sh.n += 1;
-        const cmd = "hearth-firehold-plasma " + args.map(q).join(" ") + " #" + sh.n;
-        sh.cbs[cmd] = cb || null;
-        sh.connectSource(cmd);
+        if (host) host.run(args, cb || null);
+        else pending.push([args, cb || null]);
     }
+    onHostChanged: if (host) { const p = pending; pending = []; for (const x of p) host.run(x[0], x[1]); }
     function lastJson(t) {
         const l = String(t || "").trim().split("\n").pop();
         try { return JSON.parse(l); } catch (e) { return null; }
     }
 
-    // ------------------------------------------------------------------ the clock, the bar's status
-    P5Support.DataSource {
-        id: clock
-        engine: "time"
-        connectedSources: ["Local"]
-        interval: 60000
-        intervalAlignment: P5Support.Types.AlignToMinute
-    }
-    readonly property var now: clock.data["Local"] && clock.data["Local"]["DateTime"] ? clock.data["Local"]["DateTime"] : new Date()
+    // ------------------------------------------------------------------ the clock (the host's, once a minute), the bar's status
+    readonly property var now: host && host.now ? host.now : new Date()
     property var sys: ({})
     property bool sysBusy: false
     function refreshSys(all) {
@@ -146,7 +135,7 @@ Item {
         if (full) cardsFullAt = Date.now();
     }
     function askCards() {
-        if (cardsAsking || !front || page !== "tabs") return;
+        if (cardsAsking || !front || page !== "tabs" || resting) return;
         cardsAsking = true;
         const busy = (cards.downloads || []).some(function (d) { return d.state === "running"; });
         const full = !busy || Date.now() - cardsFullAt > 55000;
@@ -183,42 +172,14 @@ Item {
                  modeName: here ? "Couch" : "Desk", here: here };
     })
 
-    // ------------------------------------------------------------------ windows (Plasma's task model)
-    TaskManager.TasksModel {
-        id: tasks
-        groupMode: TaskManager.TasksModel.GroupDisabled
-        sortMode: TaskManager.TasksModel.SortLastActivated
-        filterByVirtualDesktop: false
-        filterByScreen: false
-        filterByActivity: false
-        filterNotMinimized: false
-        onCountChanged: fh.readWins()
-        onDataChanged: fh.readWins()
-    }
-    property var wins: []
-    property string winsKey: ""
+    // ------------------------------------------------------------------ windows (the host's: Plasma's task model, or labwc's list)
+    readonly property var wins: host && host.wins ? host.wins : []
     property var seen: ({})
     property string lastGameId: ""
-    function readWins() {
-        const R = TaskManager.AbstractTasksModel;
-        const out = [];
-        for (let i = 0; i < tasks.count; i++) {
-            const ix = tasks.makeModelIndex(i);
-            if (!tasks.data(ix, R.IsWindow) || tasks.data(ix, R.IsLauncher) || tasks.data(ix, R.IsStartup)) continue;
-            const ids = tasks.data(ix, R.WinIdList) || [];
-            const uuid = ids.length ? String(ids[0]) : "";
-            out.push({ row: i, id: uuid || String(i), uuid: uuid, appId: String(tasks.data(ix, R.AppId) || ""),
-                       appName: String(tasks.data(ix, R.AppName) || ""), title: String(tasks.data(ix, Qt.DisplayRole) || ""),
-                       activated: !!tasks.data(ix, R.IsActive), minimized: !!tasks.data(ix, R.IsMinimized),
-                       fullscreen: !!tasks.data(ix, R.IsFullScreen), pid: Number(tasks.data(ix, R.AppPid) || 0) });
-        }
-        const key = JSON.stringify(out);
-        if (key === winsKey) return;
-        winsKey = key;
+    onWinsChanged: {
         const s = {}, t = Date.now();
-        for (const w of out) s[w.id] = seen[w.id] || t;
+        for (const w of wins) s[w.id] = seen[w.id] || t;
         seen = s;
-        wins = out;
     }
     readonly property var openList: F.openItems(wins, library, function (w) { return w.appName; })
     readonly property var playing: F.playingIds(wins, library)
@@ -233,7 +194,6 @@ Item {
         for (const w of wins) { const x = F.gameFor(w, library); if (x && x.id === g.id) return w; }
         return null;
     }
-    function idx(w) { return tasks.makeModelIndex(w.row); }
 
     // Go to a game or window: in front, the Couch steps aside; a game full screen on the Couch (Games: Follow).
     function goTo(w, asWindow) {
@@ -243,12 +203,12 @@ Item {
         const game = F.isGame(w, library);
         if (game) lastGameId = w.id;
         if (layered) stepAside();
-        tasks.requestActivate(idx(w));
+        host.activate(w);
         const full = game && !asWindow && gamesOpen !== "window" && gamesOpen !== "stay";
-        if (game && full !== w.fullscreen) tasks.requestToggleFullScreen(idx(w));
+        if (game && full !== w.fullscreen) host.toggleFull(w);
     }
-    function toggleFull(w) { if (w) tasks.requestToggleFullScreen(idx(w)); }
-    function closeWin(w) { if (w) tasks.requestClose(idx(w)); }
+    function toggleFull(w) { if (w && host) host.toggleFull(w); }
+    function closeWin(w) { if (w && host) host.closeWin(w); }
     function play(g, asWindow) {
         if (!g) return;
         const w = windowFor(g);
@@ -264,6 +224,7 @@ Item {
         page = "tabs";
         tab = t || "home";
         if (layered) comeBack();
+        else if (host && host.hosted) host.home();
         else if (!front) run(["do", "home"]);
         if (Window.window) Window.window.requestActivate();
         forceActiveFocus();
@@ -281,6 +242,8 @@ Item {
         guideShown = true;
     }
     function guide(twice) {
+        // (A host with its own Guide, Firehold on labwc's: it decides.)
+        if (host && host.hosted) { host.guide(twice === true); return; }
         if (twice || guideButton === "open") {
             guideShown = false;
             if (page === "switcher" && front) { page = "tabs"; return; }
@@ -392,7 +355,6 @@ Item {
         run(["library"], function (t) { fh.take(t, false); });
         run(["apps"], function (t) { const a = fh.lastJson(t); if (Array.isArray(a)) fh.apps = a; });
         refreshSys(false);
-        readWins();
         started = true;
         forceActiveFocus();
         run(["state", front ? "front" : "back"]);

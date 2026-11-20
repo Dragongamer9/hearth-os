@@ -237,7 +237,9 @@ class Guards(unittest.TestCase):
         self.assertNotRegex(code(shell), r'(?m)^\s*Firehold\s*\{')       # never as a type: a problem in it can't stop the shell
         f = code((SHELL / 'Firehold.qml').read_text())
         self.assertIn('cfg.firehold.unlocked === true) || cfg["firehold.unlocked"] === true', f)
-        for what in ('model: fhs.unlocked ? Quickshell.screens : []', 'active: fhs.unlocked && fhs.guideShown', 'active: fhs.unlocked && fhs.noticeShown',
+        # (1.16: two lists of Couch screens, Firehold's own and the approved one on labwc; locked, both are empty)
+        for what in ('model: fhs.unlocked && !fhs.sharedCouch ? Quickshell.screens : []', 'model: fhs.unlocked && fhs.sharedCouch ? Quickshell.screens : []',
+                     'active: fhs.unlocked && fhs.guideShown', 'active: fhs.unlocked && fhs.noticeShown',
                      'active: fhs.unlocked && fhs.settingsShown', 'running: fhs.unlocked && fhs.mode === "auto"'):
             self.assertIn(what, f)
         for fn in ('function begin()', 'function switchTo(', 'function input(', 'function guide(', 'function padButton(', 'function loadLibrary('):

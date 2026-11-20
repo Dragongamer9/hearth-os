@@ -342,10 +342,25 @@ Scope {
     Timer { id: noticeTimer; interval: 6000; onTriggered: fhs.noticeShown = false }
 
     // ------------------------------------------------------------------ the screens
+    // 1.16: Firehold on labwc's Couch is the approved one (FhpCouch.qml: the same pages as Firehold on Plasma). Under
+    // KWin or Firehold's own compositor, or if it can't load, Firehold's own Couch (FireholdCouch.qml).
+    property bool sharedCouchFailed: false
+    readonly property bool sharedCouch: sessionPicked && WinList.wm === "labwc" && !sharedCouchFailed
     Variants {
-        model: fhs.unlocked ? Quickshell.screens : []
+        model: fhs.unlocked && !fhs.sharedCouch ? Quickshell.screens : []
         delegate: Component {
             FireholdCouch {
+                required property var modelData
+                screen: modelData
+                scrName: modelData.name
+                fh: fhs
+            }
+        }
+    }
+    Variants {
+        model: fhs.unlocked && fhs.sharedCouch ? Quickshell.screens : []
+        delegate: Component {
+            FhpCouch {
                 required property var modelData
                 screen: modelData
                 scrName: modelData.name
@@ -400,7 +415,10 @@ Scope {
         function desk(): void { fhs.switchTo("desk", ""); }
         // As if a real mouse moved (Automatic) or a key was typed: checks of the Desk switch.
         function input(kind: string): void { fhs.input(kind); }
-        function tab(name: string): void { if (fhs.unlocked && ["home", "library", "apps", "store"].indexOf(name) >= 0) { fhs.home(); fhs.tab = name; } }
+        function tab(name: string): void { if (fhs.unlocked && ["home", "library", "apps", "store"].concat(fhs.sharedCouch ? ["media"] : []).indexOf(name) >= 0) { fhs.home(); fhs.tab = name; } }
+        // The approved Couch (FhpCouch.qml, Firehold on labwc): a request as hearth-firehold-plasma ask gives it under
+        // Plasma (cards, settings, modes, key:a ...).
+        function ask(cmd: string): void { if (fhs.activeCouch && fhs.activeCouch.couch && /^[a-z]+(:[a-z0-9_.-]{1,40})?$/.test(cmd)) fhs.activeCouch.couch.handle(cmd); }
         function open(what: string): void {
             if (!fhs.unlocked) return;
             if (what === "switcher") { fhs.guideShown = false; fhs.view = "home"; fhs.page = "switcher"; }

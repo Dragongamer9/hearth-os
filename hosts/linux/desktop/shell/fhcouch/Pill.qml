@@ -1,0 +1,1 @@
+../../firehold-plasma/couch/contents/ui/Pill.qml
