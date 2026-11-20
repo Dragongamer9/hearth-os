@@ -1,9 +1,9 @@
 #!/usr/bin/python3
-"""Touch users keep their pop-up keyboard (plasma-pad.yml, KWin nested in labwc so input is real):
-  plasma-pad-touch.py devices FIFO        a uinput absolute mouse and a uinput touchscreen, run before the session
-                                          (labwc reads them); lines on FIFO: "click X Y", "tap X Y"
-  plasma-pad-touch.py test OUT BIN FIFO   in the running session: a mouse click on a text field doesn't open Hearth's
-                                          keyboard, a touch tap does, B closes it and it stays closed, nothing at rest
+"""Touch users keep their pop-up keyboard (plasma-pad.yml): in a fresh Plasma session (nothing touched yet, so KWin's
+last input is no leftover touch), with KWin's own pointer and touch (hearth-kwin-cast input, KWin tells a pointer
+event from a touch event by the kind of event, as for a real mouse and touchscreen):
+  plasma-pad-touch.py test OUT BIN        a mouse click on a text field doesn't open Hearth's keyboard, a touch tap
+                                          does, B closes it and it stays closed, nothing at rest
 Hearth's typing (hearth-kwin-im --panel) is KWin's input method; KWin shows its panel only for touch, and hearth-pad
 --plasma opens Hearth's keyboard then (pad.log: "a text field was touched")."""
 import json
@@ -13,53 +13,7 @@ import sys
 import time
 
 
-def devices(fifo):
-    import evdev
-    e = evdev.ecodes
-    A = evdev.AbsInfo
-    mouse = evdev.UInput({e.EV_KEY: [e.BTN_LEFT, e.BTN_RIGHT],
-                          e.EV_ABS: [(e.ABS_X, A(0, 0, 1919, 0, 0, 0)), (e.ABS_Y, A(0, 0, 1079, 0, 0, 0))]},
-                         name='Hearth check absolute mouse')
-    touch = evdev.UInput({e.EV_KEY: [e.BTN_TOUCH],
-                          e.EV_ABS: [(e.ABS_X, A(0, 0, 1919, 0, 0, 0)), (e.ABS_Y, A(0, 0, 1079, 0, 0, 0)),
-                                     (e.ABS_MT_SLOT, A(0, 0, 9, 0, 0, 0)), (e.ABS_MT_TRACKING_ID, A(0, 0, 65535, 0, 0, 0)),
-                                     (e.ABS_MT_POSITION_X, A(0, 0, 1919, 0, 0, 0)), (e.ABS_MT_POSITION_Y, A(0, 0, 1079, 0, 0, 0))]},
-                         name='Hearth check touchscreen', input_props=[e.INPUT_PROP_DIRECT])
-    if not os.path.exists(fifo):
-        os.mkfifo(fifo)
-    tid = 1
-    while True:
-        with open(fifo) as f:
-            for line in f:
-                p = line.split()
-                if len(p) != 3:
-                    continue
-                x, y = int(p[1]), int(p[2])
-                if p[0] == 'click':
-                    mouse.write(e.EV_ABS, e.ABS_X, x)
-                    mouse.write(e.EV_ABS, e.ABS_Y, y)
-                    mouse.syn()
-                    time.sleep(0.15)
-                    for v in (1, 0):
-                        mouse.write(e.EV_KEY, e.BTN_LEFT, v)
-                        mouse.syn()
-                        time.sleep(0.08)
-                elif p[0] == 'tap':
-                    tid += 1
-                    for k, v in ((e.ABS_MT_SLOT, 0), (e.ABS_MT_TRACKING_ID, tid), (e.ABS_MT_POSITION_X, x), (e.ABS_MT_POSITION_Y, y)):
-                        touch.write(e.EV_ABS, k, v)
-                    touch.write(e.EV_KEY, e.BTN_TOUCH, 1)
-                    touch.write(e.EV_ABS, e.ABS_X, x)
-                    touch.write(e.EV_ABS, e.ABS_Y, y)
-                    touch.syn()
-                    time.sleep(0.08)
-                    touch.write(e.EV_ABS, e.ABS_MT_SLOT, 0)
-                    touch.write(e.EV_ABS, e.ABS_MT_TRACKING_ID, -1)
-                    touch.write(e.EV_KEY, e.BTN_TOUCH, 0)
-                    touch.syn()
-
-
-def test(out, bin_dir, fifo):
+def test(out, bin_dir):
     import dbus
     from PIL import Image
     bus = dbus.SessionBus()
@@ -95,9 +49,20 @@ def test(out, bin_dir, fifo):
         t = tail(host_log, 100000)
         return t.rfind('keyboard open') > t.rfind('keyboard closed')
 
+    fake = subprocess.Popen(['python3', '/usr/local/lib/padtest/hearth-portal'], stdin=subprocess.PIPE, text=True,
+                            stdout=open(os.path.join(out, 'fake-input-touch.log'), 'w'), stderr=subprocess.STDOUT)
+    time.sleep(1.0)
+
     def dev(line):
-        with open(fifo, 'w') as f:
-            f.write(line + '\n')
+        x, y = line.split()[1:]
+        if line.startswith('click'):
+            seq = ['a %s %s' % (x, y), 'b 272 1', 'b 272 0']
+        else:
+            seq = ['td 3 %s %s' % (x, y), 'tf', 'tu 3', 'tf']
+        for ln in seq:
+            fake.stdin.write(ln + '\n')
+            fake.stdin.flush()
+            time.sleep(0.1)
         time.sleep(0.4)
 
     def press(b):
@@ -109,13 +74,6 @@ def test(out, bin_dir, fifo):
         time.sleep(0.4)
 
     def shot(name):
-        # Nested, the picture is labwc's (grim), as kwin-input.yml takes them: KWin's own capture isn't for nested KWin.
-        if os.environ.get('OUTER'):
-            r = subprocess.run(['grim', os.path.join(out, name + '.png')], env=dict(os.environ, WAYLAND_DISPLAY=os.environ['OUTER']),
-                               capture_output=True, text=True, timeout=20)
-            if r.returncode:
-                err('picture ' + name, r.stderr[-300:])
-            return
         try:
             i = dbus.Interface(bus.get_object('org.kde.KWin', '/org/kde/KWin/ScreenShot2'), 'org.kde.KWin.ScreenShot2')
             r, w = os.pipe()
@@ -148,13 +106,9 @@ def test(out, bin_dir, fifo):
                             stdout=subprocess.DEVNULL, stderr=open(host_log, 'w'))
     time.sleep(6)
     im = subprocess.run(['pgrep', '-af', 'libexec/hearth/hearth-kwin-im( |$)'], capture_output=True, text=True).stdout.strip()
-    note('touch session', 'hearth-kwin-im: %s · KWin: %s · labwc input: %s' % (im or 'NOT running', vk(),
-         ' | '.join(l for l in tail(os.path.join(out, 'labwc-touch.log'), 20000).splitlines() if 'Hearth check' in l)[-400:]))
+    note('touch session', 'hearth-kwin-im: %s · KWin: %s' % (im or 'NOT running', vk()))
     # The field in a fullscreen test window sits at y 88 (nothing above it). The mouse first, with no controller use.
     mw = window('org.hearth.PadMouse', 'Mouse', 'A text field clicked with a real mouse.')
-    # The first click may only give KWin's window labwc's focus; the second is the one in the field.
-    dev('click 600 88')
-    time.sleep(1.0)
     dev('click 600 88')
     time.sleep(2.0)
     v = vk()
@@ -190,11 +144,9 @@ def test(out, bin_dir, fifo):
     if c > 0.3:
         err('pad at rest (touch session)', '%.2f%% of a core at rest' % c)
     host.terminate()
+    fake.terminate()
     return 1 if bad else 0
 
 
 if __name__ == '__main__':
-    if sys.argv[1] == 'devices':
-        devices(sys.argv[2])
-    else:
-        sys.exit(test(sys.argv[2], sys.argv[3], sys.argv[4]))
+    sys.exit(test(sys.argv[2], sys.argv[3]))

@@ -435,6 +435,10 @@ close(ca)
 # A fullscreen game: the controller pauses (no pointer, no keys); Guide still opens the Hearth menu over it.
 game = window(id='padtest-game', title='A Game', text='A fullscreen game: the controller pauses here.', fullscreen='1')
 time.sleep(1.0)
+for _ in range(20):          # KWin says it's fullscreen a moment after it's mapped
+    if 'fullscreen: paused' in tail(pad_log, 400):
+        break
+    time.sleep(0.25)
 n0 = out_len()
 press('a', after=0.2)
 axes(0, 0, 1.0, 0)
