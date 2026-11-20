@@ -58,6 +58,17 @@ pub fn one<'a>(tx: text::Text<'a>) -> text::Text<'a> {
     tx.wrapping(text::Wrapping::None)
 }
 
+/// `rich`, as wide as its place (so it wraps there).
+pub fn rich_w<'a, M: 'a>(s: &str, size: f32, col: Color, bold: Color) -> E<'a, M> {
+    let mut spans: Vec<iced::widget::text::Span<'a, (), Font>> = Vec::new();
+    for (i, part) in s.split("**").enumerate() {
+        if !part.is_empty() {
+            spans.push(iced::widget::span(part.to_string()).size(size).color(if i % 2 == 1 { bold } else { col }).font(if i % 2 == 1 { w(font::Weight::Semibold) } else { INTER }));
+        }
+    }
+    iced::widget::rich_text(spans).line_height(1.4).width(Length::Fill).into()
+}
+
 /// Rich text: plain and **bold** parts ("Hold **View + Menu** for 1 second").
 pub fn rich<'a, M: 'a>(s: &str, size: f32, col: Color, bold: Color, center: bool) -> E<'a, M> {
     let mut spans: Vec<iced::widget::text::Span<'a, (), Font>> = Vec::new();
