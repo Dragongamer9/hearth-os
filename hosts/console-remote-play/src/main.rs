@@ -158,8 +158,6 @@ pub struct App {
     pub laptop: bool,
     /// The window's size (the tooltip over Disconnect is placed from it).
     pub size: (f32, f32),
-    /// Flipped to draw the whole window again (see `update`).
-    pub tint: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -221,7 +219,6 @@ pub enum Msg {
     Net(Net),
     Used(data::Used),
     Size(f32, f32),
-    Repaint,
     None,
 }
 
@@ -481,7 +478,6 @@ impl App {
             inhibit: None,
             laptop: has_battery(),
             size: (1920.0, 1080.0),
-            tint: false,
         };
         let stand_in = fixture().is_some() && !matches!(page, Page::Welcome | Page::SignIn);
         let first = page;
@@ -823,24 +819,8 @@ fn picture_for(a: &App, metered: bool) -> (bool, u32) {
     (hd && !saver, if saver { 5000 } else { 0 })
 }
 
-/// Every change goes through here. When the page changes, the whole window is drawn again a moment later (`tint`): with
-/// the CPU (tiny-skia) only the parts iced thinks changed are redrawn, and a line that had been measured on the page
-/// before could stay cut short (the Ally's trouble page after Connecting). The two tints look the same.
 pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
-    let before = a.page;
-    let t = step(a, m);
-    if a.page != before {
-        return Task::batch([t, after(80, Msg::Repaint)]);
-    }
-    t
-}
-
-fn step(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
-        Msg::Repaint => {
-            a.tint = !a.tint;
-            Task::none()
-        }
         Msg::None => Task::none(),
         Msg::Drag => win::drag(),
         Msg::Max => win::toggle_maximize(),
