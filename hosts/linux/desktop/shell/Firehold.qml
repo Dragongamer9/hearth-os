@@ -450,7 +450,10 @@ Scope {
             fhs.goTo(w, false);
             return true;
         }
-        function press(button: string): void { fhs.padButton(button, true); fhs.padButton(button, false); }
+        function press(button: string): void {
+            if (fhs.sharedCouch) console.info("firehold: press " + button + " couchUp " + fhs.couchUp + " couch " + (fhs.activeCouch ? fhs.activeCouch.scrName : "none"));
+            fhs.padButton(button, true); fhs.padButton(button, false);
+        }
         function filter(key: string): void { fhs.libFilter = key; }
         function search(text: string): void { fhs.libQuery = text; }
         function library(): void { fhs.loadLibrary(false); }

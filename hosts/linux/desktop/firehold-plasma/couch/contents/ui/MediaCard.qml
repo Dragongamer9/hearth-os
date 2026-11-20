@@ -13,7 +13,7 @@ Card {
     k: couch ? couch.k : 1
     Loader {
         id: src
-        source: mc.couch && mc.couch.host && mc.couch.host.mediaFile ? mc.couch.host.mediaFile : "PlasmaMedia.qml"
+        source: !mc.couch || !mc.couch.host ? "" : (mc.couch.host.mediaFile || "PlasmaMedia.qml")
     }
     readonly property var cp: src.item ? src.item.cp : null
     readonly property bool playing: !!src.item && src.item.playing

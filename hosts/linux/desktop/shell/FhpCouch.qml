@@ -71,6 +71,7 @@ PanelWindow {
     // The controller's buttons from Mantel's pad helper (Firehold.qml padButton): the same keys the Couch takes from
     // hearth-firehold-plasma's controller under Plasma.
     function press(b) {
+        console.info("firehold: Couch on " + scrName + " takes " + b + (couch ? " (" + couch.page + ", " + couch.tab + ")" : " (not loaded)"));
         if (!couch) return;
         if (b === "view") { couch.page = couch.page === "switcher" ? "tabs" : "switcher"; return; }
         if (b === "menu") { couch.key(Qt.Key_Menu); return; }

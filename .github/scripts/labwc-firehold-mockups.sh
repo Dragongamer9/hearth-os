@@ -60,6 +60,7 @@ ipc couch; ipc ask cards; sleep 3
 shot lw-01-couch-home 01-couch-home.png
 press down down down down right
 python3 "$HERE/firehold-plasma-fixtures.py" --low "$FX"; ipc ask cards; sleep 4
+note "after the presses: $(timeout 10 quickshell ipc -p "$SH" call firehold state 2>/dev/null | cut -c1-200)"
 shot lw-02-couch-home-rows 02-couch-home-rows.png
 press b; ipc tab library; sleep 2
 press right x down; sleep 2
@@ -87,6 +88,7 @@ ipc modes false
 # ---- QML errors from the shared Couch's files or the labwc host
 errs=$(grep -E 'fhcouch/|FhpCouch|FhCouchHost|FhMedia|FhIcon' "$SLOG" | grep -iE 'error|TypeError|ReferenceError|is not defined|Cannot|Unable|failed' | sort | uniq -c | sort -rn | head -12)
 [ -z "$errs" ] || err "QML messages from the approved Couch: $(echo "$errs" | cut -c1-200 | tr '\n' '|')"
+note "presses: $(grep -E 'firehold: (press|Couch on)' "$SLOG" | sed 's/\x1b\[[0-9;]*m//g' | head -6 | cut -c1-160 | tr '\n' '|')"
 grep -v -E 'Frame rendered|Frame prepared' "$SLOG" | tail -c 200000 >"$OUT/shell.log" 2>/dev/null
 note "pictures: $(ls "$OUT"/lw-*.png 2>/dev/null | wc -l)"
 kill "$LPID" 2>/dev/null; sleep 2; pkill -x quickshell 2>/dev/null

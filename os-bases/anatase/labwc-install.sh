@@ -14,6 +14,7 @@ OPTIONAL=(qt6-qt5compat qt6-qtimageformats qt6-qtmultimedia qt6ct
   xdg-desktop-portal xdg-desktop-portal-wlr xdg-desktop-portal-gtk libnotify
   python3-evdev python3-gobject python3-dbus
   breeze-cursor-theme breeze-icon-theme adwaita-icon-theme hicolor-icon-theme rsms-inter-fonts google-noto-sans-fonts
+  google-noto-sans-math-fonts google-noto-sans-symbols-fonts google-noto-sans-symbols2-fonts
   gnome-keyring libsecret gvfs gvfs-smb gvfs-fuse gocryptfs fuse3 poppler-utils
   tesseract tesseract-langpack-eng zbar mate-polkit)
 check() {
