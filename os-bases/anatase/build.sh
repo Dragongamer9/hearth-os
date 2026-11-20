@@ -19,9 +19,20 @@ echo "Anatase on Fedora $FEDORA"
 # Hearth's (os/system_files, shared with the Bazzite build), then this image's Anatase-specific ones on top.
 cp -avf /ctx/system_files/. /
 cp -avf /ctx/anatase_files/. /
-# KWin's own helpers for Mantel (hearth-kwin-im, hearth-kwin-cast: built only for the Debian edition) aren't in this
-# image: Plasma uses KDE's own input method and screen casting here. Their entries named programs that aren't here
-# (the build's "isn't in this image" warning), so they go, on this edition only.
+# Hearth's typing (hearth-kwin-im, the owner, Nov 20, 2026: accents and any character from Hearth's on-screen keyboard
+# reach apps), built in the Containerfile's kwinim stage, as KWin's input method by default: KWin starts it through
+# hearth-kwin-im-launch, which falls back to KDE's own keyboard (plasma-keyboard) by itself when it's missing, crashes
+# or doesn't get the input-method protocol. The default goes in the system's /etc/xdg/kwinrc (merged: only keys not
+# set there); anyone's own System Settings › Virtual keyboard choice wins and is never written. hearth-kwin-cast
+# (screen casting) stays Debian's: Plasma uses KDE's own here.
+if [ -x /ctx/kwin-im/hearth-kwin-im ] && [ -f /usr/share/applications/hearth-kwin-im.desktop ]; then
+  install -Dm755 /ctx/kwin-im/hearth-kwin-im /usr/libexec/hearth/hearth-kwin-im
+  chmod 755 /usr/libexec/hearth/hearth-kwin-im-launch /usr/libexec/hearth/hearth-kwin-im-default
+  sed -i 's|^Exec=.*|Exec=/usr/libexec/hearth/hearth-kwin-im-launch|' /usr/share/applications/hearth-kwin-im.desktop
+  echo "::notice title=Hearth's typing::$(python3 /usr/libexec/hearth/hearth-kwin-im-default /etc/xdg/kwinrc); fallback: $(ls /usr/share/applications/org.kde.plasma.keyboard.desktop 2>/dev/null || echo 'no plasma-keyboard')"
+else
+  echo "::warning title=Hearth's typing::hearth-kwin-im isn't in this image: KDE's own keyboard stays KWin's input method (accents from Hearth's keyboard won't reach apps)"
+fi
 for k in im cast; do [ -x "/usr/libexec/hearth/hearth-kwin-$k" ] || rm -f "/usr/share/applications/hearth-kwin-$k.desktop"; done
 chmod 755 /usr/libexec/hearth/hearth-winapps-open /usr/libexec/hearth/hearth-join 2>/dev/null || true
 # From the Debian edition, as they are (os-bases/peppermint/system_files): Hearth's boot menu writer and its units (only

@@ -9,6 +9,14 @@
 # i.anatase.org/anatase:stable (also :rolling, :testing), signed by Anatase with cosign.
 ARG BASE_IMAGE=i.anatase.org/anatase:stable
 
+# Hearth's typing for KWin (hearth-kwin-im, the same as Debian's: hosts/linux/desktop/kwin-helpers), built against
+# this base's own libraries in a stage of its own, so no compiler ends up in the image. Never fails the build: without
+# it the image simply has no hearth-kwin-im, and KDE's own keyboard stays KWin's input method (hearth-kwin-im-launch).
+FROM ${BASE_IMAGE} AS kwinim
+COPY hosts/linux/desktop/kwin-helpers /src
+RUN mkdir -p /out && { dnf5 -y install gcc pkgconf-pkg-config wayland-devel wayland-protocols-devel >/dev/null 2>&1 \
+      && HEARTH_IM_ONLY=1 bash /src/build.sh /out; } || echo "hearth-kwin-im wasn't built: KDE's own keyboard stays KWin's input method"
+
 # Files the build script needs, kept out of the final image (the same as os/Containerfile, plus this image's own).
 FROM scratch AS ctx
 COPY os-bases/anatase/build.sh /build.sh
@@ -23,6 +31,7 @@ COPY hosts/hearth-kde /hearth-kde
 # Pieces of the Debian edition this image uses as they are: its boot menu writer (for a PC that came from Debian and
 # starts through Debian's GRUB), the writable system's units and drop-ins, the /etc guard (build.sh picks them).
 COPY os-bases/peppermint/system_files /peppermint_files
+COPY --from=kwinim /out /kwin-im
 
 FROM ${BASE_IMAGE}
 

@@ -5,6 +5,7 @@
 # Needs a C compiler, pkg-config, wayland-scanner, libwayland-client, GLib/GIO, wayland-protocols (the
 # input-method XML) and plasma-wayland-protocols (KWin's screencast XML). Used by os-bases/peppermint/builder.sh
 # and .github/workflows/kwin-input.yml; never run on the owner's machine.
+# HEARTH_IM_ONLY=1: only hearth-kwin-im (needs only wayland-client and wayland-protocols): the Fedora edition's image.
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 OUT=${1:-$HERE/out}
@@ -17,6 +18,14 @@ find_xml() {   # the first of these that exists
 }
 WP=$(pkg-config --variable=pkgdatadir wayland-protocols 2>/dev/null || echo /usr/share/wayland-protocols)
 IM_XML=$(find_xml "$WP/unstable/input-method/input-method-unstable-v1.xml" /usr/share/wayland-protocols/unstable/input-method/input-method-unstable-v1.xml)
+if [ "${HEARTH_IM_ONLY:-}" = 1 ]; then
+  wayland-scanner client-header "$IM_XML" "$GEN/input-method-unstable-v1-client-protocol.h"
+  wayland-scanner private-code "$IM_XML" "$GEN/input-method-unstable-v1-protocol.c"
+  cc -O2 -g -Wall -Wextra -Werror=implicit-function-declaration -Werror=incompatible-pointer-types -D_FORTIFY_SOURCE=2 -fstack-protector-strong \
+    -I"$GEN" -o "$OUT/hearth-kwin-im" "$HERE/hearth-kwin-im.c" "$GEN/input-method-unstable-v1-protocol.c" $(pkg-config --cflags --libs wayland-client)
+  ls -l "$OUT/hearth-kwin-im"
+  exit 0
+fi
 PWP=$(pkg-config --variable=pkgdatadir plasma-wayland-protocols 2>/dev/null || true)
 CAST_XML=$(find_xml "${PWP:-/nonexistent}/screencast.xml" /usr/share/plasma-wayland-protocols/screencast.xml)
 FAKE_XML=$(find_xml "${PWP:-/nonexistent}/fake-input.xml" /usr/share/plasma-wayland-protocols/fake-input.xml)

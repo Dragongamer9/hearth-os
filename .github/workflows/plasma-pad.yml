@@ -14,7 +14,8 @@ on:
   push:
     branches: ['feature/plasma-pad-finish']
     paths: ['hosts/hearth-ui/apps/pad/**', 'hosts/linux/desktop/shell/hearth-pad', 'hosts/linux/desktop/plasma-hearth/hearth-plasma-panel',
-            '.github/workflows/plasma-pad.yml', '.github/scripts/plasma-pad-*']
+            '.github/workflows/plasma-pad.yml', '.github/scripts/plasma-pad-*', 'os-bases/anatase/system_files/usr/libexec/hearth/hearth-kwin-im-*',
+            'hosts/linux/desktop/kwin-helpers/**', 'os-bases/anatase/Containerfile']
   workflow_dispatch:
 
 permissions:
@@ -119,41 +120,50 @@ jobs:
           bash hosts/linux/desktop/kwin-helpers/build.sh /tmp/kh >/tmp/kh.log 2>&1 || echo "::error title=fake input::$(tail -5 /tmp/kh.log | tr '\n' ' ')"
           install -Dm755 /tmp/kh/hearth-kwin-cast /usr/libexec/hearth/hearth-kwin-cast
           cp os/system_files/usr/share/applications/hearth-kwin-cast.desktop /usr/share/applications/
+          # Hearth's typing as KWin's input method, exactly as the Fedora image's build.sh sets it up.
+          install -Dm755 /tmp/kh/hearth-kwin-im /usr/libexec/hearth/hearth-kwin-im
+          install -m755 os-bases/anatase/system_files/usr/libexec/hearth/hearth-kwin-im-launch os-bases/anatase/system_files/usr/libexec/hearth/hearth-kwin-im-default /usr/libexec/hearth/
+          cp os/system_files/usr/share/applications/hearth-kwin-im.desktop /usr/share/applications/
+          sed -i 's|^Exec=.*|Exec=/usr/libexec/hearth/hearth-kwin-im-launch|' /usr/share/applications/hearth-kwin-im.desktop
+          echo "::notice title=Hearth typing setup::$(python3 /usr/libexec/hearth/hearth-kwin-im-default /etc/xdg/kwinrc) · $(rpm -q plasma-keyboard) · $(tr '\n' '|' </etc/xdg/kwinrc)"
           mkdir -p /usr/local/lib/padtest
           printf '%s\n' '#!/usr/bin/python3' 'import subprocess, sys' 'sys.exit(subprocess.call(["/usr/libexec/hearth/hearth-kwin-cast", "input"]))' > /usr/local/lib/padtest/hearth-portal
           chmod 755 /usr/local/lib/padtest /usr/local/lib/padtest/hearth-portal
       - name: The session, the controller, the pictures
-        timeout-minutes: 30
+        timeout-minutes: 40
         shell: bash
         run: |
           set +e +o pipefail
-          mkdir -p shots
-          export XDG_RUNTIME_DIR=/tmp/xdg HOME=/tmp/home USER=chris
-          mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.config" "$HOME/.local/share/nimbus" && chmod 700 "$XDG_RUNTIME_DIR"
-          dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
-          export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
-          export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE XDG_SESSION_TYPE=wayland KDE_FULL_SESSION=true KDE_SESSION_VERSION=6
-          export QT_FORCE_STDERR_LOGGING=1 KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 LIBGL_ALWAYS_SOFTWARE=1 HEARTH_PLASMA_PANEL_CI=1
-          [ -e /etc/xdg/menus/applications.menu ] || export XDG_MENU_PREFIX=$(basename "$(ls /etc/xdg/menus/*-applications.menu 2>/dev/null | head -1)" applications.menu)
-          for p in pipewire wireplumber; do command -v $p >/dev/null && { $p >"shots/$p.log" 2>&1 & }; done
-          cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
-          # KWin scripts' print() in its log (the test reads where the keyboard's overlay is).
-          export QT_LOGGING_RULES="kwin_scripting.debug=true;js.debug=true"
-          /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
-          for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
-          [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { echo "::error title=KWin::didn't start: $(tail -5 shots/kwin.log | tr '\n' '|')"; exit 1; }
-          export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland
-          for k in /usr/libexec/kactivitymanagerd /usr/lib64/libexec/kactivitymanagerd /usr/bin/kactivitymanagerd; do [ -x "$k" ] && { "$k" >shots/kamd.log 2>&1 & break; }; done
-          for k in /usr/libexec/kglobalacceld /usr/lib64/libexec/kglobalacceld /usr/bin/kglobalacceld; do [ -x "$k" ] && { "$k" >shots/kglobalaccel.log 2>&1 & break; }; done
-          plasmashell >shots/plasmashell.log 2>&1 &
-          js() { timeout 15 dbus-send --session --print-reply --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "string:$1" 2>&1; }
-          for i in $(seq 1 60); do js 'print("up")' | grep -q '"up"' && break; sleep 1; done
-          sleep 6
-          js 'var d=desktops();for(var i=0;i<d.length;i++){d[i].wallpaperPlugin="org.kde.image";d[i].currentConfigGroup=["Wallpaper","org.kde.image","General"];d[i].writeConfig("Image","file:///usr/share/backgrounds/hearth/hearth-fireside.jpg");}' >/dev/null
-          sleep 2
+          source .github/scripts/plasma-pad-session.sh
+          session_start main || exit 1
           echo "::notice title=KWin::$(grep -iE 'opengl|qpainter|compositing|llvmpipe' shots/kwin.log | head -4 | tr '\n' '|' | cut -c1-600)"
           timeout 1500 python3 .github/scripts/plasma-pad-e2e.py shots bin; rc=$?
-          echo "::notice title=KWin log::$(grep -aiE 'hearth|layer|error|warn' shots/kwin.log | tail -12 | tr '\n' '|' | sed 's/%/%25/g' | cut -c1-2500)"
+          echo "::notice title=KWin log::$(grep -aiE 'hearth|input ?method|layer|error' shots/kwin.log | tail -12 | tr '\n' '|' | sed 's/%/%25/g' | cut -c1-2500)"
+          session_stop main
+          # Hearth's typing guarded: KWin and Plasma come up whatever happens to it, with KDE's keyboard instead.
+          rm -f "$XDG_RUNTIME_DIR/hearth/kwin-im-failed"
+          session_start hearth && python3 .github/scripts/plasma-pad-fallback.py shots hearth || rc=1
+          session_stop hearth
+          IM=/usr/libexec/hearth/hearth-kwin-im
+          cp "$IM" /tmp/hearth-kwin-im.real
+          for case in missing crash noreg; do
+            rm -f "$XDG_RUNTIME_DIR/hearth/kwin-im-failed" "$IM"
+            case $case in
+              crash) printf '#!/bin/sh\nkill -SEGV $$\n' > "$IM"; chmod 755 "$IM" ;;
+              noreg) printf '#!/bin/sh\necho "hearth-kwin-im: no zwp_input_method_v1 here" >&2\nexit 2\n' > "$IM"; chmod 755 "$IM" ;;
+            esac
+            session_start "$case" && python3 .github/scripts/plasma-pad-fallback.py shots "$case" || rc=1
+            echo "::notice title=KWin ($case)::$(grep -aiE 'input ?method|virtual|crash' shots/kwin.log | tail -6 | tr '\n' '|' | cut -c1-1200)"
+            session_stop "$case"
+          done
+          install -m755 /tmp/hearth-kwin-im.real "$IM"
+          rm -f "$XDG_RUNTIME_DIR/hearth/kwin-im-failed"
+          # The person's own choice (System Settings › Virtual keyboard: KDE's keyboard) wins and is never written.
+          printf '[Wayland]\nInputMethod[$e]=/usr/share/applications/org.kde.plasma.keyboard.desktop\nVirtualKeyboardEnabled=true\n' > "$HOME/.config/kwinrc"
+          sha256sum "$HOME/.config/kwinrc" | cut -d' ' -f1 > /tmp/user-kwinrc.sha
+          session_start user && python3 .github/scripts/plasma-pad-fallback.py shots user || rc=1
+          session_stop user
+          rm -f "$HOME/.config/kwinrc"
           exit $rc
       - name: What it found (1)
         if: always()
@@ -167,6 +177,9 @@ jobs:
       - name: What it found (4)
         if: always()
         run: sed -n '31,40p' shots/results.txt 2>/dev/null || true
+      - name: What it found (5)
+        if: always()
+        run: sed -n '41,50p' shots/results.txt 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

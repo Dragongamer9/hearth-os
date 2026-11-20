@@ -166,6 +166,8 @@ def up(app):
         e.set_visibility(False)
         e.set_input_purpose(Gtk.InputPurpose.PASSWORD)
     box.pack_start(e, False, False, 0)
+    # What's in the field, for the checks (what typing reached the app).
+    e.connect('changed', lambda x: open('/tmp/entry-%s.txt' % a['id'], 'w').write(x.get_text()))
     w.add(box)
     if a.get('fullscreen') == '1':
         w.fullscreen()
@@ -317,6 +319,23 @@ try:
 except (OSError, ValueError) as e:
     geo = {}
     error('geometry', repr(e))
+# Hearth's typing is KWin's input method (the image's /etc/xdg/kwinrc): what the keyboard types reaches the app whole.
+im = subprocess.run(['pgrep', '-f', 'libexec/hearth/hearth-kwin-im$'], capture_output=True, text=True).stdout.split()
+notice('Hearth typing', 'hearth-kwin-im %s, socket %s' % (im or 'NOT running', os.path.exists(os.path.join(os.environ['XDG_RUNTIME_DIR'], 'hearth', 'im.sock'))))
+if not im:
+    error('Hearth typing', "hearth-kwin-im isn't KWin's input method in this session")
+ENTRY = '/tmp/entry-org.hearth.PadTest.txt'
+click(500, 117)     # the Notes window's text field has the keyboard
+time.sleep(1.0)
+
+
+def entry():
+    try:
+        return open(ENTRY, encoding='utf-8').read()
+    except OSError:
+        return ''
+
+
 if geo.get('keys', {}).get('e'):
     ex, ey = geo['keys']['e']
     top = 1080 - geo['h']
@@ -344,7 +363,21 @@ if geo.get('keys', {}).get('e'):
         shot('pad-k25-live-long-touch-slide')
         fake('tu 0', 'tf')
         time.sleep(0.8)
-        notice('long touch typed', (typed_since(n0)[-400:] or '(nothing in the simulated output)') + ' | host: ' + tail(host_log, 300))
+        got = entry()
+        notice('long touch typed', 'the app has %r' % got)
+        if 'è' not in got:
+            error('accent typed', 'the accent picked with a long touch (è) didn\'t reach the app: %r' % got)
+        # A plain tap on "x" and on "ñ"-less keys still types (through Hearth's typing too).
+        gx, gy = geo['keys'].get('x', (0, 0))
+        if gx:
+            fake('td 0 %d %d' % (gx, top + gy), 'tf')
+            time.sleep(0.12)
+            fake('tu 0', 'tf')
+            time.sleep(0.8)
+        notice('tap typed', 'the app has %r' % entry())
+        if not entry().endswith('x'):
+            error('tap typed', 'a tap on x didn\'t reach the app: %r' % entry())
+        shot('pad-k25b-live-accent-in-app')
     else:
         error('long touch', 'no accents opened after a long touch on e (%s)' % tail(host_log, 400))
         fake('tu 0', 'tf')
@@ -444,6 +477,11 @@ shot('pad-k33-live-all-closed')
 time.sleep(14)
 c = cpu(host.pid, 15)
 notice('pad at rest (live)', '%.2f%% of a core' % c)
+for pid in im:
+    ci = cpu(int(pid), 10)
+    notice('hearth-kwin-im at rest', '%.2f%% of a core' % ci)
+    if ci > 0.3:
+        error('hearth-kwin-im at rest', '%.2f%% of a core at rest (limit 0.3%%)' % ci)
 if c > 0.3:
     error('pad at rest (live)', '%.2f%% of a core at rest (limit 0.3%%)' % c)
 
