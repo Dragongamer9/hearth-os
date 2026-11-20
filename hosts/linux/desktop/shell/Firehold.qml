@@ -94,14 +94,27 @@ Scope {
     onPostureChanged: if (unlocked && started) Quickshell.execDetached(["sh", "-c", 'mkdir -p "$(dirname "$1")" && printf %s "$2" > "$1.tmp" && mv -f "$1.tmp" "$1"', "sh", lastPosture.path, posture])
     onModeChanged: if (unlocked && started && mode !== "auto") switchTo(mode, "")
 
-    function postureOf(scr) { return F.screenPosture(perScreen, scr ? scr.name : "", posture); }
-    function postureOfName(n) { return F.screenPosture(perScreen, n, posture); }
-    readonly property bool anyCouch: unlocked && (posture === "couch" || Object.keys(perScreen).some(k => perScreen[k] === "couch"))
+    // 1.16, Firehold on labwc: each screen's mode is the live modes' (FhModes.qml: Couch, Desk or Away, never a
+    // setting); an Away screen shows the Couch's Away page.
+    FhModes { id: liveModes; fh: fhs; active: fhs.unlocked && fhs.sharedCouch }
+    property alias modes: liveModes
+    function liveMode(n) { if (!sharedCouch || !liveModes.read) return ""; const m = liveModes.modeOf(n); return m === "away" ? "couch" : m; }
+    function postureOf(scr) { return postureOfName(scr ? scr.name : ""); }
+    function postureOfName(n) { return liveMode(n) || F.screenPosture(perScreen, n, posture); }
+    readonly property bool anyCouch: unlocked && (posture === "couch" || Object.keys(perScreen).some(k => perScreen[k] === "couch")
+                                                  || (sharedCouch && liveModes.read && liveModes.modes.screens.some(s => s.mode !== "desk")))
+    // The Desk's bar and dock go on the first screen that's Desk (the TV can be Couch while the monitor is Desk).
+    readonly property var deskScreen: Quickshell.screens.find(s => postureOfName(s.name) === "desk") || Quickshell.screens[0] || null
+    // The modes changed (the Modes card, Away, the helper): Mantel's posture follows, nothing is written back.
+    property bool following: false
+    function followModes(p) { if (p === posture) return; following = true; switchTo(p, ""); following = false; }
 
     // why: "pad" | "mouse" | "keys" | "" (a choice in Settings, or the Guide panel's "Put it in a window").
     function switchTo(p, why) {
         if (!unlocked || p === posture) return;
         posture = p;
+        // (Firehold on labwc: every screen to that mode in the live modes too, unless this came from them)
+        if (sharedCouch && !following) liveModes.helper(["switch", p, "--why", why || "pick"]);
         if (p === "desk") {
             guideShown = false;
             view = "home";
@@ -418,7 +431,7 @@ Scope {
         function tab(name: string): void { if (fhs.unlocked && ["home", "library", "apps", "store"].concat(fhs.sharedCouch ? ["media"] : []).indexOf(name) >= 0) { fhs.home(); fhs.tab = name; } }
         // The approved Couch (FhpCouch.qml, Firehold on labwc): a request as hearth-firehold-plasma ask gives it under
         // Plasma (cards, settings, modes, key:a ...).
-        function ask(cmd: string): void { if (fhs.activeCouch && fhs.activeCouch.couch && /^[a-z]+(:[a-z0-9_.-]{1,40})?$/.test(cmd)) fhs.activeCouch.couch.handle(cmd); }
+        function ask(cmd: string): void { if (cmd === "modes") liveModes.readModes(); if (fhs.activeCouch && fhs.activeCouch.couch && /^[a-z]+(:[a-z0-9_.-]{1,40})?$/.test(cmd)) fhs.activeCouch.couch.handle(cmd); }
         function open(what: string): void {
             if (!fhs.unlocked) return;
             if (what === "switcher") { fhs.guideShown = false; fhs.view = "home"; fhs.page = "switcher"; }
@@ -440,6 +453,8 @@ Scope {
         function close(): void { fhs.closeAll(); fhs.deskMenu = ""; }
         // Checks: the Desk bar's File, Edit or View menu open ("" closes it).
         function menu(name: string): void { fhs.deskMenu = name; }
+        // The Desk bar's Modes card (Firehold on labwc), open or closed.
+        function modes(open: bool): void { liveModes.popupOpen = open && fhs.sharedCouch; }
         // Checks: every Couch screen drawn again whole (CI's software renderer under labwc headless can leave a partial
         // repaint shifted in a screenshot; a real screen draws whole frames).
         function redraw(): void { fhs.redraws++; }

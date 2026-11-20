@@ -14,7 +14,7 @@ import "firehold.js" as F
 Scope {
     id: dk
     property var fh
-    readonly property var scr: Quickshell.screens.length ? Quickshell.screens[0] : null
+    readonly property var scr: fh.deskScreen || (Quickshell.screens.length ? Quickshell.screens[0] : null)
     readonly property real k: scr ? Math.min(scr.width / 1920, scr.height / 1080) : 1
     readonly property string font: F.font(Theme.font)
     Component.onCompleted: SettingsNav.fireholdDesk = true
@@ -100,13 +100,23 @@ Scope {
         Row {
             anchors { right: parent.right; rightMargin: 16 * dk.k; verticalCenter: parent.verticalCenter }
             spacing: 14 * dk.k
+            // The mode pill (mockup firehold-plasma 04 on labwc: "Desk · TV: Couch", the Modes card under it); without
+            // the live modes (KWin, Firehold's compositor) Couch and Desk settings as before.
             Rectangle {
+                id: pill
+                readonly property var lm: dk.fh.sharedCouch ? dk.fh.modes : null
                 anchors.verticalCenter: parent.verticalCenter
-                width: deskT.implicitWidth + 40 * dk.k; height: deskT.implicitHeight + 8 * dk.k; radius: 14 * dk.k
-                color: F.C.card; border.width: 1; border.color: F.C.line
-                Rectangle { x: 12 * dk.k; anchors.verticalCenter: parent.verticalCenter; width: 8 * dk.k; height: width; radius: width / 2; color: F.C.blue }
-                T { id: deskT; x: 28 * dk.k; anchors.verticalCenter: parent.verticalCenter; text: "Desk"; font.pixelSize: 14 * dk.k; font.weight: Font.DemiBold }
-                TapHandler { onTapped: dk.fh.settingsShown = true }
+                width: pillRow.implicitWidth + 26 * dk.k; height: 30 * dk.k; radius: 15 * dk.k
+                color: pill.lm && pill.lm.popupOpen ? "#38ff7a2f" : F.C.card; border.width: 1; border.color: F.C.line
+                Row {
+                    id: pillRow
+                    anchors.centerIn: parent
+                    spacing: 8 * dk.k
+                    Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 9 * dk.k; height: width; radius: width / 2; color: pill.lm && pill.lm.me.mode === "couch" ? F.C.accent : F.C.blue }
+                    T { id: deskT; anchors.verticalCenter: parent.verticalCenter; text: pill.lm ? pill.lm.modeName(pill.lm.me.mode) : "Desk"; font.pixelSize: 14 * dk.k; font.weight: Font.DemiBold }
+                    T { anchors.verticalCenter: parent.verticalCenter; visible: !!pill.lm && !!pill.lm.tv; text: pill.lm && pill.lm.tv ? "· TV: " + pill.lm.modeName(pill.lm.tv.mode) : ""; color: F.C.muted; font.pixelSize: 14 * dk.k; font.weight: Font.Medium }
+                }
+                TapHandler { onTapped: { if (pill.lm) pill.lm.popupOpen = !pill.lm.popupOpen; else dk.fh.settingsShown = true; } }
             }
             T {
                 anchors.verticalCenter: parent.verticalCenter; text: dk.status; color: F.C.muted; font.pixelSize: 14 * dk.k; visible: text !== ""
@@ -115,6 +125,22 @@ Scope {
         }
     }
 
+    // The Modes card (the Couch's own ModesCard.qml, as under Plasma) under the pill, at the bar's right.
+    PopupWindow {
+        id: modesPop
+        anchor.window: bar
+        anchor.rect.x: bar.width - implicitWidth - 140 * dk.k
+        anchor.rect.y: 44 * dk.k + 10 * dk.k
+        visible: dk.fh.sharedCouch && dk.fh.modes.popupOpen && modesCard.status === Loader.Ready
+        implicitWidth: modesCard.item ? modesCard.item.width : 800
+        implicitHeight: modesCard.item ? modesCard.item.height : 600
+        color: "transparent"
+        Loader {
+            id: modesCard
+            active: dk.fh.sharedCouch && dk.fh.modes.popupOpen
+            Component.onCompleted: setSource("fhcouch/ModesCard.qml", { bar: dk.fh.modes })
+        }
+    }
     property var menuItems: ({})
     // The open menu, under its name.
     PopupWindow {

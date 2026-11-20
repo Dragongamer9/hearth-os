@@ -83,7 +83,7 @@ class SharedCouch(unittest.TestCase):
             self.assertRegex(b, r'property \w+ %s\b' % f, 'MediaCard reads cp.%s: FhMedia.qml lacks it' % f)
 
     def test_nothing_runs_by_itself_in_the_labwc_host(self):
-        for f in ('FhCouchHost.qml', 'FhpCouch.qml', 'FhMedia.qml', 'FhIcon.qml'):
+        for f in ('FhCouchHost.qml', 'FhpCouch.qml', 'FhMedia.qml', 'FhIcon.qml', 'FhModes.qml', 'FhRun.qml'):
             t = (SHELL / f).read_text()
             self.assertNotRegex(t, r'\bTimer\s*\{', '%s: no timers (the owner\'s rule on lag)' % f)
             self.assertNotRegex(t, r'\bloops\s*:', '%s: no animations' % f)

@@ -18,5 +18,8 @@ for f in "$UI"/*.qml "$UI"/*.js; do
   cp "$f" "$OUT/" || echo "install-couch: couldn't copy $f"
 done
 cp "$D/shell/firehold.js" "$OUT/firehold.js" || echo "install-couch: couldn't copy firehold.js"
+# Each page names its neighbours by type (T, Card, Home...): a qmldir saying which file each one is, so the QML engine
+# doesn't have to find them by looking in the folder (under Quickshell some were missed: "T is not a type").
+for f in "$OUT"/*.qml; do n=$(basename "$f" .qml); echo "$n 1.0 $n.qml"; done >"$OUT/qmldir"
 echo "install-couch: $(ls "$OUT" | wc -l) files in $OUT"
 exit 0

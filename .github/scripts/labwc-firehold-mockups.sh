@@ -26,8 +26,9 @@ echo '{"screenOffMinutes": 0}' >"$HOME/.local/share/nimbus/desktop.json"
 FX=/tmp/fhp-fixtures-lw
 python3 "$HERE/firehold-plasma-fixtures.py" "$HOME" "$FX" || err "the stand-ins couldn't be written"
 export HEARTH_FIREHOLD_HOME_FIXTURE="$FX/home.json" HEARTH_FIREHOLD_SYS_FIXTURE="$FX/sys.json"
-export HEARTH_FIREHOLD_TV_SCREENS=HEADLESS-1 HEARTH_FIREHOLD_SCREENS="HEADLESS-1:tv:TCL 55″ TV:3840 × 2160 · 60 Hz · HDMI 2"
-export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+# Two screens, as the mockups have them: the TV (HEADLESS-1) and the monitor (HEADLESS-2), side by side.
+export HEARTH_FIREHOLD_TV_SCREENS=HEADLESS-1 HEARTH_FIREHOLD_SCREENS="HEADLESS-1:tv:TCL 55″ TV:3840 × 2160 · 60 Hz · HDMI 2,HEADLESS-2::LG 27GP850:2560 × 1440 · 165 Hz · DisplayPort 1"
+export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=2
 export QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1
 export HEARTH_WM=labwc HEARTH_FEDORA_LABWC=1 HEARTH_FIREHOLD_SESSION=1
 dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
@@ -38,7 +39,8 @@ sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec labwc -C "$1"' sh 
 LPID=$!
 for i in $(seq 60); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 0.5; done
 export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
-wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 >/dev/null 2>&1 || true
+wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 --pos 0,0 >/dev/null 2>&1 || true
+wlr-randr --output HEADLESS-2 --custom-mode 1920x1080 --pos 1920,0 >/dev/null 2>&1 || true
 for i in $(seq 240); do [ -e "$XDG_RUNTIME_DIR/hearth-shell-up" ] && break; sleep 0.5; done
 [ -e "$XDG_RUNTIME_DIR/hearth-shell-up" ] || { err "Mantel didn't come up: $(tail -c 1500 "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null | tr '\n' ' ')"; exit 1; }
 SLOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
@@ -47,7 +49,7 @@ sleep 12
 
 ipc() { timeout 20 quickshell ipc -p "$SH" call firehold "$@" >/dev/null 2>&1 || echo "ipc $* failed" >>"$OUT/ipc.txt"; sleep "${WAIT:-2}"; }
 press() { for b in "$@"; do ipc press "$b"; done; }
-shot() { grim "$OUT/$1.png" 2>/dev/null || echo "no picture $1" >>"$OUT/ipc.txt"; cp "$MOCK/$2" "$OUT/mockup-$2" 2>/dev/null || true; }
+shot() { grim -o "${3:-HEADLESS-1}" "$OUT/$1.png" 2>/dev/null || echo "no picture $1" >>"$OUT/ipc.txt"; cp "$MOCK/$2" "$OUT/mockup-$2" 2>/dev/null || true; }
 fhp() { python3 "$FHP" "$@"; }
 
 grep -q "the shared Couch didn't load" "$SLOG" && err "the approved Couch didn't load: $(grep -iE 'fhcouch|Couch.qml' "$SLOG" | head -6 | tr '\n' '|' | cut -c1-900)"
@@ -73,6 +75,14 @@ fhp modes >"$OUT/modes-after.json" 2>&1
 grep -q '"mode": "away"' "$OUT/modes-after.json" && err "the controller didn't bring the screen back from Away: $(head -c 300 "$OUT/modes-after.json")"
 python3 -c 'import json,sys; sys.exit(json.load(open(sys.argv[1])) != json.load(open(sys.argv[2])))' "$HOME/.config/nimbus/firehold.json" /tmp/fh-before.json || err "switching to Away and back wrote Firehold's settings (red flag 9): $(head -c 300 "$HOME/.config/nimbus/firehold.json")"
 shot lw-06b-back-from-away 01-couch-home.png
+
+# ---- 04 Modes for each screen: the TV Couch, the monitor Desk (the mouse is there), the Modes card from its pill
+fhp mode HEADLESS-2 desk --why mouse; sleep 5
+note "modes: $(fhp modes 2>/dev/null | head -c 300)"
+ipc modes true; sleep 3
+shot lw-04-modes-per-screen 04-modes-per-screen.png HEADLESS-2
+grim "$OUT/lw-04b-both-screens.png" 2>/dev/null
+ipc modes false
 
 # ---- QML errors from the shared Couch's files or the labwc host
 errs=$(grep -E 'fhcouch/|FhpCouch|FhCouchHost|FhMedia|FhIcon' "$SLOG" | grep -iE 'error|TypeError|ReferenceError|is not defined|Cannot|Unable|failed' | sort | uniq -c | sort -rn | head -12)

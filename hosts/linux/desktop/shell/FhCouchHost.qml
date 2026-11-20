@@ -5,7 +5,6 @@
 // Nothing runs by itself here: no timer; a helper only when the Couch asks for something.
 import QtQuick
 import Quickshell
-import Quickshell.Io
 
 Item {
     id: hh
@@ -15,25 +14,14 @@ Item {
     readonly property bool resting: DeskState.idle
     readonly property string mediaFile: Qt.resolvedUrl("FhMedia.qml")
     readonly property string iconFile: Qt.resolvedUrl("FhIcon.qml")
-    // (an absolute path: Quickshell keeps a relative one from leaving the shell's folder)
-    readonly property string helper: Quickshell.shellDir.replace(/\/shell\/?$/, "") + "/firehold-plasma/hearth-firehold-plasma"
-
-    // ---- the helper: one process per question, its answer to the Couch's callback
-    // ("state" and "listen" are for Plasma's controller and requests; on labwc Mantel's own pad helper and IPC do that.)
+    // ---- the helper: one process per question (FhRun.qml), its answer to the Couch's callback
+    // ("state", "listen" and "ready" are for Plasma's controller and requests; on labwc Mantel's own pad helper and IPC
+    // do that.)
     readonly property var notHere: ["state", "listen", "ready"]
-    Component {
-        id: procComp
-        Process {
-            id: p
-            property var cb: null
-            stdout: StdioCollector { onStreamFinished: { const f = p.cb; p.cb = null; if (f) f(text); } }
-            onExited: Qt.callLater(() => p.destroy())
-        }
-    }
+    FhRun { id: runner }
     function run(args, cb) {
         if (!args || !args.length || notHere.indexOf(args[0]) >= 0) return;
-        const p = procComp.createObject(hh, { command: ["python3", helper].concat(args.map(a => String(a))), cb: cb || null });
-        if (p) p.running = true;
+        runner.run(args, cb);
     }
 
     // ---- the clock, once a minute

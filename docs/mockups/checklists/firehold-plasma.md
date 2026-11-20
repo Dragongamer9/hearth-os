@@ -49,11 +49,11 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 ## 4. Modes for each screen (04-modes-per-screen.png)
 
 - [x] Opens from the Desk bar's mode pill — hosts/linux/desktop/firehold-plasma/posture/contents/ui/main.qml: "MouseArea { anchors.fill: parent; onClicked: root.popupOpen = !root.popupOpen }"
-- [x] Both screens drawn as placed, each named (TCL TV, LG monitor), with its current mode — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "return (qa ? qa.virtualX : 0) - (qb ? qb.virtualX : 0);"
-- [x] Couch / Desk / Away choice for each screen — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "options: [\"Couch\", \"Desk\", \"Away\"]"
-- [x] Buttons: Both Couch, Both Desk, Away now — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "\"Away now (both)\""
-- [x] Switches: Automatic, Away after 20 minutes — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "\" min with nobody at \""
-- [x] Key and button hints — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "\"Keys: Super+Shift+C Couch · Super+Shift+D Desk · Super+Shift+A Away · Guide button: Couch on the \""
+- [x] Both screens drawn as placed, each named (TCL TV, LG monitor), with its current mode — hosts/linux/desktop/firehold-plasma/couch/contents/ui/ModesCard.qml: "return (qa ? qa.virtualX : 0) - (qb ? qb.virtualX : 0);"
+- [x] Couch / Desk / Away choice for each screen — hosts/linux/desktop/firehold-plasma/couch/contents/ui/ModesCard.qml: "options: [\"Couch\", \"Desk\", \"Away\"]"
+- [x] Buttons: Both Couch, Both Desk, Away now — hosts/linux/desktop/firehold-plasma/couch/contents/ui/ModesCard.qml: "\"Away now (both)\""
+- [x] Switches: Automatic, Away after 20 minutes — hosts/linux/desktop/firehold-plasma/couch/contents/ui/ModesCard.qml: "\" min with nobody at \""
+- [x] Key and button hints — hosts/linux/desktop/firehold-plasma/couch/contents/ui/ModesCard.qml: "\"Keys: Super+Shift+C Couch · Super+Shift+D Desk · Super+Shift+A Away · Guide button: Couch on the \""
 
 ## 5. Settings › Couch, Desk and Away (05-settings-modes.png)
 
