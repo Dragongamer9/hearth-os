@@ -171,6 +171,8 @@ ALLOWED = {
     # CI only: the games' desktop icons pictures set up the runner's throwaway account (desk.json, desktop.json, library.json).
     '.github/scripts/games-desktop-icons-desktops.sh',
     '.github/scripts/games-desktop-icons-app.sh',
+    # CI only: dragging out of Hearth Files sets the look in the runner's throwaway account.
+    '.github/scripts/files-drag-out.sh',
 }
 
 
