@@ -44,7 +44,7 @@ backend shared with Firehold on Plasma: /usr/libexec/hearth/hearth-quick (qs / q
 - [x] The default on new Fedora installs and new accounts' first sign-in only, never for an account that already has a panel (the owner, Nov 19 22:11) — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "def first_login"
 - [x] KDE's panel comes back by itself, and says so, when Hearth's bar doesn't start — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "def guard"
 - [x] Mantel's desktop: each look's own wallpaper or moving scene, the desktop clock, desktop icons with their folder and file pictures — hosts/linux/desktop/plasma-hearth/shim/IconImage.qml: "name|fallback"
-- [ ] Desktop icons stay where you put them: off and on, a restart, signing out and in, a smaller screen (the owner, Nov 19 23:34; hearth-desk never changes a saved place by itself; CI picture ph-28b pending)
+- [x] Desktop icons stay where you put them: off and on, a restart, signing out and in, a smaller screen (the owner, Nov 19 23:34; Mantel's hearth-desk never changes a saved place by itself; CI ph-28a/ph-28b: moved, off and on, restarted, same place) — hosts/linux/desktop/shell/hearth-desk: "Only the icons that moved"
 - [x] The desktop's right-click menu (Mantel's) — hosts/linux/desktop/plasma-hearth/package/DesktopLayer.qml: "backgroundMenu"
 - [x] Mantel's power menu — hosts/linux/desktop/plasma-hearth/install.sh: "PowerMenu.qml"
 - [x] Volume and brightness bars (Mantel's; KDE's own on-screen display off while Hearth's panel is in use) — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "('plasmarc', 'OSD', 'Enabled', 'false')"
@@ -63,4 +63,4 @@ backend shared with Firehold on Plasma: /usr/libexec/hearth/hearth-quick (qs / q
 - [x] Background apps, camera and microphone, printing, disks buttons (Mantel's hearth-notifyd through a go-between; the microphone from Plasma's sound service) — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "def notifyd_bridge"
 - [x] Firehold's style for org.hearthos.quicksettings (mockups firehold-plasma 07 and 08: Desk and Couch) — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "Couch (08)"
 - [x] Firehold's style for org.hearthos.notifications (mockups firehold-plasma 09 cards and 10 list) — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "Stays until you answer"
-- [ ] The lock screen (Mantel's, hosts/linux/desktop/kwin-lock, in KDE's screen locker: KWin's own environment names it, from the next sign-in, only after the locker's test run shows it; CI picture ph-27 pending)
+- [x] The lock screen (Mantel's, hosts/linux/desktop/kwin-lock, in KDE's screen locker: KWin's own environment names it, from the next sign-in, only after the locker's test run shows it; CI ph-27; needs testing on a device) — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "plasma-kwin_wayland.service.d"
