@@ -1,0 +1,232 @@
+#!/usr/bin/python3
+"""hearth-stale-launchers: your own menu entries that point to a program that isn't here (1.16).
+
+The owner's Fedora laptop kept ~/.local/share/applications/steam.desktop from Debian (Exec=/usr/games/steam). Your
+own copy of an entry wins over the system's one with the same file name, so Steam wouldn't start from the menu,
+though Fedora's /usr/share/applications/steam.desktop (/usr/bin/steam) was fine.
+
+  hearth-stale-launchers scan          JSON: your entries whose program is missing while the system's entry works
+  hearth-stale-launchers fix FILE      "Use the system one": your copy renamed to FILE.hearth-old (never deleted)
+  hearth-stale-launchers undo OLD      puts a renamed copy back (when nothing has taken its name since)
+  hearth-stale-launchers check         once at sign-in (Fedora edition's autostart): a notice listing them, with
+                                       "Use the system one", then "Undo"; nothing changes without your click
+
+Nothing runs after the check: it looks once, and waits (no CPU) only while its notice is open. Output is one JSON
+line; failures print "error: ..." and exit 1.
+"""
+import json
+import os
+import shlex
+import shutil
+import subprocess
+import sys
+
+SUFFIX = '.hearth-old'
+
+
+class Fail(Exception):
+    pass
+
+
+def home():
+    return os.path.abspath(os.path.expanduser('~'))
+
+
+def user_dir():
+    base = os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share')
+    return os.path.join(base, 'applications')
+
+
+def system_dirs():
+    dirs = os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share'
+    out = []
+    for d in dirs.split(':'):
+        if d and os.path.isabs(d):
+            p = os.path.join(d, 'applications')
+            if os.path.realpath(p) != os.path.realpath(user_dir()) and p not in out:
+                out.append(p)
+    return out
+
+
+def parse(path):
+    """The [Desktop Entry] keys of a .desktop file (first value wins), or None when it can't be read."""
+    out, section = {}, None
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                line = line.strip()
+                if line.startswith('['):
+                    section = line
+                    continue
+                if section != '[Desktop Entry]' or '=' not in line or line.startswith('#'):
+                    continue
+                k, v = line.split('=', 1)
+                out.setdefault(k.strip(), v.strip())
+    except OSError:
+        return None
+    return out
+
+
+def program(fields):
+    """The program an entry's Exec starts ("env A=b prog" and "VAR=x prog" skipped to prog), or None."""
+    try:
+        words = shlex.split(fields.get('Exec', ''))
+    except ValueError:
+        return None
+    i = 0
+    if words and os.path.basename(words[0]) == 'env':
+        i = 1
+        while i < len(words) and (words[i].startswith('-') or '=' in words[i]):
+            i += 1
+    while i < len(words) and '=' in words[i] and not words[i].startswith('/'):
+        i += 1
+    return words[i] if i < len(words) else None
+
+
+def exists(prog, path=None):
+    if not prog:
+        return False
+    if '/' in prog:
+        return os.path.isfile(prog) and os.access(prog, os.X_OK)
+    return shutil.which(prog, path=path) is not None
+
+
+def runnable(fields, path=None):
+    """Whether an entry starts something that is here (a Link or D-Bus-activated entry counts as fine)."""
+    if fields.get('Type', 'Application') != 'Application':
+        return True
+    if fields.get('DBusActivatable', '').lower() == 'true' and not fields.get('Exec'):
+        return True
+    return exists(program(fields), path)
+
+
+def system_entry(name):
+    for d in system_dirs():
+        p = os.path.join(d, name)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def scan(path=None):
+    """Your entries (top level of ~/.local/share/applications) whose program is missing while the system's entry with
+    the same file name starts a program that's here. Hidden ones (Hidden=true: you removed the app from the menu) are
+    yours to keep."""
+    d = user_dir()
+    out = []
+    try:
+        names = sorted(os.listdir(d))
+    except OSError:
+        return out
+    for n in names:
+        p = os.path.join(d, n)
+        if not n.endswith('.desktop') or not os.path.isfile(p) or os.path.islink(p):
+            continue
+        mine = parse(p)
+        if mine is None or mine.get('Hidden', '').lower() == 'true' or runnable(mine, path):
+            continue
+        sp = system_entry(n)
+        theirs = parse(sp) if sp else None
+        if not theirs or not runnable(theirs, path):
+            continue
+        out.append({'file': p, 'name': mine.get('Name') or theirs.get('Name') or n[:-8], 'missing': program(mine) or '',
+                    'system': sp, 'systemProgram': program(theirs) or ''})
+    return out
+
+
+def free_old(p):
+    t = p + SUFFIX
+    n = 2
+    while os.path.lexists(t):
+        t = f'{p}{SUFFIX}.{n}'
+        n += 1
+    return t
+
+
+def fix(path, path_env=None):
+    """Renames your copy out of the way (only one scan still finds), so the system's entry is the one in the menu."""
+    p = os.path.abspath(os.path.expanduser(path))
+    if p not in [e['file'] for e in scan(path_env)]:
+        raise Fail("That menu entry isn't one Hearth found pointing to a missing program")
+    old = free_old(p)
+    os.rename(p, old)
+    return {'ok': True, 'file': p, 'old': old}
+
+
+def undo(old):
+    o = os.path.abspath(os.path.expanduser(old))
+    base = o.split(SUFFIX)[0]
+    if SUFFIX not in os.path.basename(o) or os.path.dirname(o) != user_dir() or not os.path.isfile(o):
+        raise Fail("That isn't a menu entry Hearth set aside")
+    if os.path.lexists(base):
+        raise Fail('“' + os.path.basename(base) + "” is there again, so the old one stays set aside")
+    os.rename(o, base)
+    return {'ok': True, 'file': base}
+
+
+def notify(title, body, actions):
+    """A notice with buttons; waits (blocked, no CPU) until it's answered or closed. The chosen action, or ''."""
+    argv = ['notify-send', '-a', 'Hearth', '-i', 'dialog-warning', '--wait']
+    for k, label in actions:
+        argv += ['-A', f'{k}={label}']
+    argv += [title, body]
+    try:
+        r = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, text=True)
+    except OSError:
+        return ''
+    return r.stdout.strip().splitlines()[-1] if r.stdout.strip() else ''
+
+
+def check():
+    found = scan()
+    if not found:
+        return {'found': 0}
+    lines = [f"{e['name']}'s menu entry points to a program that isn't here ({e['missing']}), maybe left from Debian."
+             for e in found]
+    title = 'A menu entry points to a missing program' if len(found) == 1 else f'{len(found)} menu entries point to missing programs'
+    pick = notify(title, '\n'.join(lines) + '\nThe system has a working one. Yours is kept, renamed, if you switch.',
+                  [('use', 'Use the system one'), ('later', 'Not now')])
+    if pick != 'use':
+        return {'found': len(found), 'changed': 0}
+    done = []
+    for e in found:
+        try:
+            done.append(fix(e['file']))
+        except (Fail, OSError):
+            pass
+    names = ', '.join(e['name'] for e in found)
+    if notify('Using the system’s menu entry' if len(done) == 1 else 'Using the system’s menu entries',
+              f'{names} starts from the menu again. Your old entry is kept as '
+              + ', '.join(os.path.basename(d['old']) for d in done) + '.', [('undo', 'Undo')]) == 'undo':
+        for d in done:
+            try:
+                undo(d['old'])
+            except (Fail, OSError):
+                pass
+        return {'found': len(found), 'changed': 0, 'undone': True}
+    return {'found': len(found), 'changed': len(done)}
+
+
+def main(argv):
+    c, rest = (argv[0] if argv else ''), argv[1:]
+    try:
+        if c == 'scan' and not rest:
+            out = scan()
+        elif c == 'fix' and len(rest) == 1:
+            out = fix(rest[0])
+        elif c == 'undo' and len(rest) == 1:
+            out = undo(rest[0])
+        elif c == 'check' and not rest:
+            out = check()
+        else:
+            print('usage: hearth-stale-launchers scan | fix FILE | undo OLD | check', file=sys.stderr)
+            return 2
+    except (Fail, OSError) as e:
+        print(f'error: {e}')
+        return 1
+    print(json.dumps(out), flush=True)
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

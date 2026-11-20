@@ -3671,10 +3671,16 @@ def folder_sig(path, hidden=True):
     return hash(tuple(out))
 
 
+WATCH_ONCE = False      # `watch --once`: the first line, then done (for Hearth's panel on Plasma, whose program runner
+                        # gives a program's output only when it ends: plasma-hearth/shim/Process.qml starts it again)
+
+
 def watch_print(word):
     try:
         print(word, flush=True)
     except (BrokenPipeError, OSError):
+        sys.exit(0)
+    if WATCH_ONCE:
         sys.exit(0)
 
 
@@ -4335,6 +4341,11 @@ def cmd(argv):
     rest = args[1:]
     if c == 'watch' and len(rest) == 1:
         watch(rest[0])
+        return
+    if c == 'watch' and len(rest) == 2 and rest[0] == '--once':
+        global WATCH_ONCE
+        WATCH_ONCE = True
+        watch(rest[1])
         return
     if c in EXTRA_COMMANDS:
         import hearth_files_extras as hx

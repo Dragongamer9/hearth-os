@@ -17,6 +17,10 @@ exec > >(tee "$OUT/step.log") 2>&1
 fail() { echo "::error title=$1::$2"; touch "$OUT/FAILED"; }
 ok() { echo "ok: $1"; }
 SRC=$PWD
+# Folder watches (inotify): CI's runner shares its limits with everything else running there; a desktop that can't get
+# a watch doesn't see new files. Raised as a real device has them (Fedora: 8192 instances).
+echo "::notice title=inotify::before: instances $(cat /proc/sys/fs/inotify/max_user_instances) watches $(cat /proc/sys/fs/inotify/max_user_watches)"
+sysctl -qw fs.inotify.max_user_instances=8192 fs.inotify.max_user_watches=524288 2>/dev/null || echo "::warning title=inotify::couldn't raise the limits"
 export HOME=/tmp/home XDG_RUNTIME_DIR=/tmp/xdg USER=chris
 mkdir -p "$HOME/.config/nimbus" "$HOME/.local/share/nimbus" "$HOME/Desktop" "$XDG_RUNTIME_DIR" && chmod 700 "$XDG_RUNTIME_DIR"
 dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
@@ -202,6 +206,27 @@ fi
 launched timeout 30 kioclient exec "$HOME/Desktop/Witcher Tales.desktop"
 check_launch plasma
 sleep 2; shot plasma-2b-after-open
+
+# ---------------------------------------------------------------- 2b. A menu entry left from Debian (hearth-stale-launchers)
+# The owner's laptop: ~/.local/share/applications/steam.desktop from Debian (Exec=/usr/games/steam) over Fedora's working
+# one. The sign-in check's notice; nothing changes until "Use the system one" is clicked (here: no click, then the
+# helper's own fix and undo).
+mkdir -p "$HOME/.local/share/applications" /usr/local/bin
+printf '#!/bin/sh\necho steam >> /tmp/home/nimbus-calls\n' > /usr/local/bin/steam; chmod 755 /usr/local/bin/steam
+[ -e /usr/share/applications/steam.desktop ] || printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=/usr/local/bin/steam %%U\nIcon=steam\n' > /usr/share/applications/steam.desktop
+printf '[Desktop Entry]\nType=Application\nName=Steam\nExec=/usr/games/steam %%U\nIcon=steam\n' > "$HOME/.local/share/applications/steam.desktop"
+STALE="python3 $SRC/hosts/linux/desktop/shell/hearth-stale-launchers"
+$STALE scan > "$OUT/stale-scan.json"
+grep -q '"missing": "/usr/games/steam"' "$OUT/stale-scan.json" && ok "stale entry found" || fail stale "Debian's steam.desktop wasn't found: $(cat "$OUT/stale-scan.json")"
+$STALE check > "$OUT/stale-check.json" 2>&1 &
+sleep 6; shot plasma-6-stale-menu-entry-notice
+pkill -f "hearth-stale-launchers check"; pkill -f "notify-send -a Hearth"; sleep 1
+[ -e "$HOME/.local/share/applications/steam.desktop" ] && ok "nothing changed without a click" || fail stale "the entry changed without a click"
+$STALE fix "$HOME/.local/share/applications/steam.desktop" > "$OUT/stale-fix.json" 2>&1
+[ -e "$HOME/.local/share/applications/steam.desktop.hearth-old" ] && [ ! -e "$HOME/.local/share/applications/steam.desktop" ] && ok "Use the system one renamed it" || fail stale "fix: $(cat "$OUT/stale-fix.json")"
+$STALE undo "$HOME/.local/share/applications/steam.desktop.hearth-old" > "$OUT/stale-undo.json" 2>&1
+[ -e "$HOME/.local/share/applications/steam.desktop" ] && ok "Undo put it back" || fail stale "undo: $(cat "$OUT/stale-undo.json")"
+rm -f "$HOME/.local/share/applications/steam.desktop"
 
 # ---------------------------------------------------------------- 3. Hearth's panel on Plasma (Mantel's desktop over Plasma's)
 mkdir -p "$HOME/.config/hearth" && cp /etc/skel/.config/hearth/plasma-panel-new "$HOME/.config/hearth/" 2>/dev/null

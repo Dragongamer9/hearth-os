@@ -15,7 +15,7 @@ on:
   workflow_dispatch:
   push:
     branches: ['feature/games-desktop-icons']
-    paths: ['hosts/hearth-core/src/desktop_icons.rs', 'hosts/hearth-core/src/library.rs', 'hosts/hearth-gaming/**', 'hosts/linux/desktop/shell/hearth-desk',
+    paths: ['hosts/hearth-core/src/desktop_icons.rs', 'hosts/hearth-core/src/library.rs', 'hosts/hearth-gaming/**', 'hosts/linux/desktop/shell/hearth-desk', 'hosts/linux/desktop/shell/hearth-stale-launchers', 'hosts/linux/desktop/shell/hearth-files', 'hosts/linux/desktop/plasma-hearth/shim/**',
             '.github/workflows/games-desktop-icons.yml', '.github/scripts/games-desktop-icons-*.sh']
 
 permissions:
@@ -58,7 +58,7 @@ jobs:
           set -o pipefail
           (cd hosts/hearth-gaming && cargo test --lib gamestore -- --test-threads=1 2>&1 | tee gs.log) || { echo "::error title=Hearth Games tests::$(grep -E '^(error|warning: unused|---- |thread .* panicked)' -A8 hosts/hearth-gaming/gs.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           echo "::notice title=Hearth Games tests::$(grep -E '^test result' hosts/hearth-gaming/gs.log | tr '\n' ' ')"
-          python3 -m unittest hosts/linux/test/test_hearth_gamestore.py hosts/linux/test/test_hearth_desk.py 2>&1 | tail -3
+          python3 -m unittest hosts/linux/test/test_hearth_gamestore.py hosts/linux/test/test_hearth_desk.py hosts/linux/test/test_hearth_stale_launchers.py hosts/linux/test/test_files_live.py 2>&1 | tail -3
       - name: Build Hearth Games
         working-directory: hosts/hearth-gaming
         run: |

@@ -29,6 +29,23 @@ hf = load()
 
 
 class Watch(unittest.TestCase):
+    def test_once_says_the_first_change_and_ends(self):
+        # Hearth's panel on Plasma runs it this way (plasma-hearth/shim/Process.qml), again after each answer.
+        with tempfile.TemporaryDirectory() as d:
+            p = subprocess.Popen([sys.executable, HELPER, 'watch', '--once', d], stdout=subprocess.PIPE, text=True)
+            try:
+                time.sleep(0.5)
+                with open(os.path.join(d, 'Witcher Tales.desktop'), 'w') as f:
+                    f.write('[Desktop Entry]\n')
+                out, _ = p.communicate(timeout=10)
+            finally:
+                if p.poll() is None:
+                    p.kill()
+            self.assertEqual(out.strip(), 'changed')
+            self.assertEqual(p.returncode, 0)
+        shim = open(os.path.join(SHELL, '..', 'plasma-hearth', 'shim', 'Process.qml')).read()
+        self.assertIn('"--once"', shim)
+
     def test_a_burst_is_one_line_and_a_deleted_folder_says_gone(self):
         with tempfile.TemporaryDirectory() as t:
             d = os.path.join(t, 'open')
