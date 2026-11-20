@@ -25,10 +25,19 @@ same files, groups and keys, and KDE's own tools where the KCM uses one (plasma-
   hearth-kde-settings userdirs              JSON: your folders (Desktop, Documents...); userdir-set KEY PATH
                                             (xdg-user-dirs-update, as KDE's Locations page)
   hearth-kde-settings device-actions        JSON: what can be done when a device is plugged in (Solid's actions);
-                                            device-action-add (stdin {name, exec, kind}), device-action-remove FILE
+                                            device-action-add (stdin {name, exec, kind}), device-action-remove FILE,
+                                            device-action-edit (stdin {file, action, name, exec}: your copy of a system
+                                            action), device-action-reset FILE (back to the system's)
   hearth-kde-settings shortcuts             JSON: every KDE shortcut (kglobalshortcutsrc); shortcut-set COMPONENT ACTION
                                             KEYS ("Meta+L", "" for none; tabs between several), through kglobalaccel
   hearth-kde-settings push                  JSON: KDE's push service (KUnifiedPush); push-set PROVIDER [URL] (Ntfy, Autopush)
+  hearth-kde-settings rdp-users             JSON: KRDP's users; rdp-user-add USER (password on stdin only: into KDE Wallet),
+                                            rdp-user-remove USER
+  hearth-kde-settings push-signin PROVIDER URL [USER]   Gotify / NextPush, the token or app password on stdin only
+  hearth-kde-settings commands              JSON: your own command shortcuts; command-set (stdin {file?, name, exec, keys}),
+                                            command-remove FILE
+  hearth-kde-settings store KIND [SEARCH]   JSON: the KDE Store's items for KIND (lookandfeel, colorschemes,
+                                            plasma-themes, aurorae); store-install KIND ID, store-remove KIND ID
   hearth-kde-settings fonts                 JSON: fonts you installed (turned off or not), every family; font-install FILE,
                                             font-remove FILE (kept in fonts/.removed), font-off FILE on|off
   hearth-kde-settings colord                JSON: screens', printers' and cameras' colour profiles (colormgr);
@@ -280,6 +289,9 @@ def get(pid):
             current['deviceactions'] = device_actions()
         if r.get('type') == 'shortcuts':
             current['shortcuts'] = shortcuts()
+            current['commands'] = commands()
+        if r.get('type') == 'rdpusers':
+            current['rdpusers'] = rdp_users()
         if r.get('type') == 'push':
             current['push'] = push()
         if r.get('type') == 'fonts':
@@ -801,6 +813,21 @@ def kded_set(name, on):
 
 # ------------------------------------------------------------------ activities (kactivitymanagerd over D-Bus)
 ACT = ('org.kde.ActivityManager', '/ActivityManager/Activities', 'org.kde.ActivityManager.Activities')
+# "Don't remember what's opened in it" (KDE's activity page: isPrivate): the Scoring plugin's off-the-record switch.
+FEAT = ('org.kde.ActivityManager', '/ActivityManager/Features', 'org.kde.ActivityManager.Features')
+OTR = 'org.kde.ActivityManager.Resources.Scoring/isOTR/%s'
+# The icons the page offers (freedesktop names every icon theme has).
+ACT_ICONS = ('activities', 'user-home', 'applications-games', 'applications-office', 'applications-internet',
+             'applications-multimedia', 'applications-graphics', 'applications-development', 'folder-music', 'weather-clear-night')
+
+
+def activity_keys(aid):
+    try:
+        values, _, _ = kc.effective('kglobalshortcutsrc')
+    except kc.BadFile:
+        return []
+    v = values.get('ActivityManager', {}).get('switch-to-activity-' + aid, '')
+    return split_keys(v.split(',')[0]) if v else []
 
 
 def activities():
@@ -812,7 +839,20 @@ def activities():
     try:
         ids = call(*ACT, 'ListActivities')[0]
         cur = call(*ACT, 'CurrentActivity')[0]
-        return {'running': True, 'current': cur, 'list': [{'id': i, 'name': call(*ACT, 'ActivityName', '(s)', (i,))[0]} for i in ids]}
+        out = []
+        for i in ids:
+            a = {'id': i, 'name': call(*ACT, 'ActivityName', '(s)', (i,))[0], 'icon': '', 'private': False, 'shortcut': []}
+            try:
+                a['icon'] = call(*ACT, 'ActivityIcon', '(s)', (i,))[0]
+            except Fail:
+                pass
+            try:
+                a['private'] = bool(call(*FEAT, 'GetValue', '(s)', (OTR % i,))[0])
+            except Fail:
+                pass
+            a['shortcut'] = activity_keys(i)
+            out.append(a)
+        return {'running': True, 'current': cur, 'list': out}
     except Fail as e:
         return {'running': False, 'list': [], 'error': str(e)}
 
@@ -835,6 +875,19 @@ def activity(op, a):
         call(*ACT, 'RemoveActivity', '(s)', (a[0],))
     elif op == 'switch':
         call(*ACT, 'SetCurrentActivity', '(s)', (a[0],))
+    elif op == 'icon':
+        if a[1] not in ACT_ICONS:
+            raise Fail('%s is not one of the icons offered' % a[1])
+        call(*ACT, 'SetActivityIcon', '(ss)', (a[0], a[1]))
+    elif op == 'private':
+        from gi.repository import GLib
+        try:
+            bus().call_sync(FEAT[0], FEAT[1], FEAT[2], 'SetValue', GLib.Variant('(sv)', (OTR % a[0], GLib.Variant('b', a[1] == 'on'))), None, 0, 4000, None)
+        except Exception as e:
+            raise Fail('It wasn\'t changed: %s' % (str(e).split(':')[-1].strip() or e))
+    elif op == 'shortcut':
+        name = next((x['name'] for x in activities()['list'] if x['id'] == a[0]), a[0])
+        set_keys(['ActivityManager', 'switch-to-activity-' + a[0], 'Activity Manager', 'Switch to activity "%s"' % name], a[1])
     hsio.log_event('kde: activity %s' % op)
     return activities()
 
@@ -903,6 +956,7 @@ def device_actions():
     if f is not None:
         return f
     user = action_dirs()[0]
+    system_files = {os.path.basename(p) for d in action_dirs()[1:] for p in glob.glob(os.path.join(d, '*.desktop'))}
     seen, out = set(), []
     for d in action_dirs():
         for p in sorted(glob.glob(os.path.join(d, '*.desktop'))):
@@ -918,8 +972,9 @@ def device_actions():
             kinds = sorted({label for k, label in KINDS if k in pred}) or ['Devices']
             for a in [x for x in de.get('Actions', '').split(';') if x]:
                 da = g.get('Desktop Action ' + a, {})
-                out.append({'file': b, 'name': da.get('Name', a), 'exec': da.get('Exec', ''), 'kinds': ', '.join(kinds),
-                            'mine': p.startswith(user)})
+                mine = p.startswith(user)
+                out.append({'file': b, 'action': a, 'name': da.get('Name', a), 'exec': da.get('Exec', ''), 'kinds': ', '.join(kinds),
+                            'mine': mine and b not in system_files, 'system': b in system_files, 'changed': mine and b in system_files})
     return out
 
 
@@ -941,6 +996,50 @@ def device_action_add(raw):
             '[Desktop Action open]\nName=%s\nExec=%s\nIcon=system-run\n' % (kind, name, cmd))
     hsio.write_text(path, text)
     hsio.log_event('kde: device action %s' % name)
+    return device_actions()
+
+
+def system_action(fname):
+    for d in action_dirs()[1:]:
+        p = os.path.join(d, fname)
+        if os.path.isfile(p):
+            return p
+    return None
+
+
+def device_action_edit(raw):
+    """A system action changed the way KDE's page does it: your own copy with the same name (in your solid/actions),
+    which KDE uses instead; the system's file is never touched."""
+    try:
+        a = json.loads(raw or '{}')
+    except ValueError:
+        raise Fail('expected JSON')
+    fname, act = a.get('file', ''), a.get('action', '')
+    name, cmd = (a.get('name') or '').strip()[:80], (a.get('exec') or '').strip()[:400]
+    if not re.match(r'^[A-Za-z0-9_.-]+\.desktop$', fname) or not re.match(r'^[A-Za-z0-9_.-]{1,60}$', act):
+        raise Fail('bad action')
+    if not name or not cmd or '\n' in name + cmd:
+        raise Fail('An action needs a name and a command')
+    user = os.path.join(action_dirs()[0], fname)
+    if not os.path.isfile(user):
+        src = system_action(fname)
+        if not src:
+            raise Fail('That action is gone')
+        os.makedirs(os.path.dirname(user), exist_ok=True)
+        hsio.write_text(user, read(src))
+    kc.update(user, {'Desktop Action ' + act: {'Name': name, 'Exec': cmd}})
+    hsio.log_event('kde: device action changed %s' % fname)
+    return device_actions()
+
+
+def device_action_reset(fname):
+    if not re.match(r'^[A-Za-z0-9_.-]+\.desktop$', fname):
+        raise Fail('bad name')
+    user = os.path.join(action_dirs()[0], fname)
+    if not system_action(fname) or not os.path.isfile(user):
+        raise Fail('That action is already the system\'s')
+    os.replace(user, user + '.bak')
+    hsio.log_event('kde: device action %s back to the system version (yours kept as .bak)' % fname)
     return device_actions()
 
 
@@ -978,12 +1077,15 @@ def fonts():
         return f
     mine = font_dir()
     code, out, _ = run(['fc-list', '-f', '%{family[0]}|%{style[0]}|%{file}\\n'], 20) if shutil.which('fc-list') else (1, '', '')
-    families, user = set(), []
+    families, user, files = set(), [], {}
     for line in out.splitlines():
         parts = line.split('|')
         if len(parts) != 3:
             continue
         families.add(parts[0])
+        # One file per family for its preview: the regular one when there is one.
+        if parts[0] not in files or parts[1].lower() in ('regular', 'book', 'roman'):
+            files[parts[0]] = parts[2]
         if parts[2].startswith(mine) or parts[2].startswith(os.path.expanduser('~/.fonts')):
             user.append({'family': parts[0], 'style': parts[1], 'file': parts[2], 'off': False})
     off = turned_off()
@@ -992,7 +1094,8 @@ def fonts():
             user.append({'family': os.path.basename(g), 'style': '', 'file': g, 'off': True})
     for u in user:
         u['off'] = u['file'] in off
-    return {'yours': sorted(user, key=lambda u: (u['family'], u['style'])), 'families': sorted(families), 'count': len(families)}
+    return {'yours': sorted(user, key=lambda u: (u['family'], u['style'])), 'families': sorted(families), 'count': len(families),
+            'files': files}
 
 
 def fc_cache():
@@ -1204,20 +1307,106 @@ def shortcut_set(comp, action, keys_text):
         for oa in other['actions']:
             if (other['id'], oa['id']) != (comp, action) and set(oa['keys']) & set(keys):
                 raise Fail('%s is already used by %s (%s): change that one first' % (', '.join(set(oa['keys']) & set(keys)), oa['name'], other['name']))
+    set_keys([comp.split('][')[-1], action, c['name'], a['name']], '\t'.join(keys))
+    return {'ok': True}
+
+
+def set_keys(ident, keys_text):
+    """Gives KDE's shortcut service (kglobalaccel) the keys for one action: [component, action, their names]."""
+    keys = split_keys(keys_text)
+    codes = [key_code(k) for k in keys]
     if fixture_dir():
-        return {'ok': True, 'preview': True}
+        return
     if not has_name('org.kde.kglobalaccel'):
         raise Fail("KDE's shortcuts can only be changed on KDE Plasma (its shortcut service isn't running here)")
-    ident = [comp.split('][')[-1], action, c['name'], a['name']]
     from gi.repository import GLib
-    conn = bus()
     try:
-        conn.call_sync('org.kde.kglobalaccel', '/kglobalaccel', 'org.kde.KGlobalAccel', 'setForeignShortcutKeys',
-                       GLib.Variant('(asa(ai))', (ident, [[x] for x in codes])), None, 0, 4000, None)
+        bus().call_sync('org.kde.kglobalaccel', '/kglobalaccel', 'org.kde.KGlobalAccel', 'setForeignShortcutKeys',
+                        GLib.Variant('(asa(ai))', (ident, [[x] for x in codes])), None, 0, 4000, None)
     except Exception as e:
         raise Fail('The shortcut wasn\'t changed: %s' % (str(e).split(':')[-1].strip() or e))
-    hsio.log_event('kde: shortcut %s / %s = %s' % (comp, action, keys_text))
-    return {'ok': True}
+    hsio.log_event('kde: shortcut %s / %s = %s' % (ident[0], ident[1], keys_text))
+
+
+# Your own commands with a shortcut, as KDE's Shortcuts page makes them ("Add New › Command or Script"): an app file
+# net.local.<name>.desktop in your applications folder with X-KDE-GlobalAccel-CommandShortcut=true, its keys given to
+# kglobalaccel for that file's "_launch".
+def apps_dir():
+    return os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'applications')
+
+
+def commands():
+    f = fixture('commands.json')
+    if f is not None:
+        return f
+    try:
+        values, _, _ = kc.effective('kglobalshortcutsrc')
+    except kc.BadFile:
+        values = {}
+    out = []
+    for p in sorted(glob.glob(os.path.join(apps_dir(), 'net.local.*.desktop'))):
+        g = parse_desktop(p).get('Desktop Entry', {})
+        if g.get('X-KDE-GlobalAccel-CommandShortcut', '').lower() != 'true':
+            continue
+        b = os.path.basename(p)
+        v = values.get('services][' + b, {}).get('_launch', '')
+        out.append({'file': b, 'name': g.get('Name', b), 'exec': g.get('Exec', ''), 'keys': split_keys(v.split(',')[0]) if v else []})
+    return out
+
+
+def command_set(raw):
+    try:
+        a = json.loads(raw or '{}')
+    except ValueError:
+        raise Fail('expected JSON')
+    name, cmd, keys = (a.get('name') or '').strip()[:80], (a.get('exec') or '').strip()[:500], (a.get('keys') or '').strip()
+    if not name or not cmd or '\n' in name + cmd:
+        raise Fail('A command needs a name and what it runs')
+    fname = a.get('file') or ''
+    if fname:
+        if not re.match(r'^net\.local\.[A-Za-z0-9_.-]+\.desktop$', fname):
+            raise Fail('bad command')
+    else:
+        slug = re.sub(r'[^a-z0-9]+', '-', cmd.split()[0].rsplit('/', 1)[-1].lower()).strip('-') or 'command'
+        fname = 'net.local.%s.desktop' % slug
+        n = 1
+        while os.path.exists(os.path.join(apps_dir(), fname)):
+            n += 1
+            fname = 'net.local.%s-%d.desktop' % (slug, n)
+    for k in split_keys(keys):
+        key_code(k)
+    path = os.path.join(apps_dir(), fname)
+    os.makedirs(apps_dir(), exist_ok=True)
+    text = ('[Desktop Entry]\nType=Application\nName=%s\nExec=%s\nNoDisplay=true\nX-KDE-GlobalAccel-CommandShortcut=true\n'
+            % (name, cmd))
+    hsio.write_text(path, text)
+    set_keys([fname, '_launch', name, name], keys)
+    hsio.log_event('kde: command shortcut %s' % fname)
+    return commands()
+
+
+def command_keys(fname, keys):
+    if not re.match(r'^net\.local\.[A-Za-z0-9_.-]+\.desktop$', fname):
+        raise Fail('bad command')
+    path = os.path.join(apps_dir(), fname)
+    if not os.path.isfile(path):
+        raise Fail('That command is gone')
+    name = parse_desktop(path).get('Desktop Entry', {}).get('Name', fname)
+    set_keys([fname, '_launch', name, name], keys)
+    return commands()
+
+
+def command_remove(fname):
+    if not re.match(r'^net\.local\.[A-Za-z0-9_.-]+\.desktop$', fname):
+        raise Fail('bad command')
+    path = os.path.join(apps_dir(), fname)
+    if not os.path.isfile(path):
+        raise Fail('That command is gone')
+    name = parse_desktop(path).get('Desktop Entry', {}).get('Name', fname)
+    set_keys([fname, '_launch', name, name], '')
+    os.replace(path, path + '.bak')
+    hsio.log_event('kde: command shortcut removed %s (kept as .bak)' % fname)
+    return commands()
 
 
 # ------------------------------------------------------------------ push services (KUnifiedPush, as KDE's Push Services)
@@ -1276,6 +1465,323 @@ def push_set(provider, url):
     return push()
 
 
+# ------------------------------------------------------------------ passwords: only into KDE Wallet (or KDE's own service)
+# A password typed on a page comes on stdin only (never on the command line, in the environment, a file or a log) and
+# goes straight to KDE Wallet over its D-Bus interface (kwalletd6), or to KDE's push service, which keeps it itself.
+WALLET = ('org.kde.kwalletd6', '/modules/kwalletd6', 'org.kde.KWallet')
+APPID = 'Hearth Settings'
+
+
+def secret_in():
+    v = sys.stdin.read()
+    v = v[:-1] if v.endswith('\n') else v
+    if not v or len(v) > 4096 or '\n' in v:
+        raise Fail('Type the password (one line)')
+    return v
+
+
+def wallet_call(method, sig, args):
+    """One call to KDE Wallet (tests replace this with a pretend wallet)."""
+    if not has_name(WALLET[0]):
+        raise Fail('KDE Wallet isn\'t running (it runs on KDE Plasma), so the password can\'t be kept')
+    from gi.repository import GLib, Gio
+    try:
+        r = bus().call_sync(WALLET[0], WALLET[1], WALLET[2], method, GLib.Variant(sig, tuple(args)), None, Gio.DBusCallFlags.NONE, 120000, None)
+    except Exception as e:
+        raise Fail('KDE Wallet said no: %s' % (str(e).split(':')[-1].strip() or 'it was closed'))
+    return r.unpack()[0] if r is not None else None
+
+
+def wallet_write(folder, key, value):
+    name = 'kdewallet'
+    try:
+        name = wallet_call('networkWallet', '()', ()) or name
+    except Fail:
+        pass
+    h = wallet_call('open', '(sxs)', (name, 0, APPID))
+    if not isinstance(h, int) or h < 0:
+        raise Fail('KDE Wallet stayed closed (it asks for its own password first)')
+    if not wallet_call('hasFolder', '(iss)', (h, folder, APPID)):
+        wallet_call('createFolder', '(iss)', (h, folder, APPID))
+    if wallet_call('writePassword', '(issss)', (h, folder, key, value, APPID)) != 0:
+        raise Fail('KDE Wallet didn\'t keep it')
+    wallet_call('close', '(ibs)', (h, False, APPID))
+
+
+def wallet_remove(folder, key):
+    h = wallet_call('open', '(sxs)', ('kdewallet', 0, APPID))
+    if isinstance(h, int) and h >= 0:
+        wallet_call('removeEntry', '(isss)', (h, folder, key, APPID))
+        wallet_call('close', '(ibs)', (h, False, APPID))
+
+
+# Remote desktop (RDP): KDE's KRDP keeps its users' names in krdpserverrc [General] Users and each one's password in
+# KDE Wallet (QtKeychain, service "KRDP"), as kcm_krdpserver does.
+def rdp_users():
+    f = fixture('rdpusers.json')
+    if f is not None:
+        return f
+    try:
+        v, _, _ = kc.effective('krdpserverrc')
+    except kc.BadFile as e:
+        return {'users': [], 'why': str(e)}
+    return {'users': [u for u in (v.get('General', {}).get('Users', '')).split(',') if u.strip()], 'wallet': has_name(WALLET[0])}
+
+
+def rdp_user_add(user):
+    if not re.match(r'^[A-Za-z0-9_.@-]{1,64}$', user):
+        raise Fail('A name with letters, numbers, . _ - or @')
+    secret = secret_in()
+    if fixture_dir():
+        return rdp_users()
+    wallet_write('KRDP', user, secret)
+    del secret
+    users = rdp_users()['users']
+    if user not in users:
+        kc.update(kc.user_path('krdpserverrc'), {'General': {'Users': ','.join(users + [user])}})
+    hsio.log_event('kde: RDP user %s added (password in KDE Wallet)' % user)
+    return rdp_users()
+
+
+def rdp_user_remove(user):
+    users = rdp_users()['users']
+    if user not in users:
+        raise Fail('%s is not an RDP user' % user)
+    if fixture_dir():
+        return rdp_users()
+    try:
+        wallet_remove('KRDP', user)
+    except Fail:
+        pass
+    kc.update(kc.user_path('krdpserverrc'), {'General': {'Users': ','.join(u for u in users if u != user)}})
+    hsio.log_event('kde: RDP user %s removed' % user)
+    return rdp_users()
+
+
+def push_signin(provider, url, user):
+    """Gotify (its client token) or NextPush (your Nextcloud name and an app password): handed to KDE's push service
+    over its own D-Bus call, which keeps them itself; nothing is written by Hearth."""
+    if provider not in ('Gotify', 'NextPush'):
+        raise Fail('bad provider')
+    if not re.match(r'^https?://[^\s]+$', url or ''):
+        raise Fail('The server must be a web address (https://...)')
+    if provider == 'NextPush' and not re.match(r'^[^\s]{1,128}$', user or ''):
+        raise Fail('Type your Nextcloud name')
+    secret = secret_in()
+    if fixture_dir():
+        return {'running': True, 'pushProviderId': provider, 'url': url, 'providers': PUSH_PROVIDERS, 'preview': True}
+    o = push_obj() if has_name(PUSH_DEST) else None
+    if not o:
+        raise Fail("KDE's push service isn't running here (it runs on KDE Plasma)")
+    from gi.repository import GLib
+    cfg = {'Url': GLib.Variant('s', url)}
+    if provider == 'Gotify':
+        cfg['ClientToken'] = GLib.Variant('s', secret)
+    else:
+        cfg['UserName'] = GLib.Variant('s', user)
+        cfg['AppPassword'] = GLib.Variant('s', secret)
+    try:
+        bus().call_sync(PUSH_DEST, o[0], o[1], 'setPushProvider', GLib.Variant('(sa{sv})', (provider, cfg)), None, 0, 6000, None)
+    except Exception as e:
+        raise Fail('It wasn\'t changed: %s' % (str(e).split(':')[-1].strip() or e))
+    del secret, cfg
+    hsio.log_event('kde: push provider %s %s' % (provider, url))
+    return push()
+
+
+# ------------------------------------------------------------------ "Get New…": the KDE Store, as KNewStuff gets it
+# KNewStuff's own description of each kind (/usr/share/knsrcfiles/*.knsrc: its store, categories and how to install)
+# and the store's OCS API (what KNewStuff's dialog talks to). Downloads go to ~/.cache/hearth/kde-store; installs go
+# only into your own folders (kpackagetool6 without --global, or ~/.local/share/<TargetDir>); what each install put
+# where is kept in ~/.local/share/hearth/kde-store.json so Remove takes away just that.
+STORE_KINDS = {'lookandfeel': 'lookandfeel.knsrc', 'colorschemes': 'colorschemes.knsrc', 'plasma-themes': 'plasma-themes.knsrc',
+               'aurorae': 'aurorae.knsrc'}
+OCS = 'https://api.kde-look.org/ocs/v1/'
+UA = {'User-Agent': 'Hearth Settings (KNewStuff-compatible)'}
+
+
+def knsrc(kind):
+    if kind not in STORE_KINDS:
+        raise Fail('no store kind %s' % kind)
+    for d in data_dirs():
+        p = os.path.join(d, 'knsrcfiles', STORE_KINDS[kind])
+        if os.path.isfile(p):
+            g = parse_desktop(p)
+            return g.get('KNewStuff3') or g.get('KNewStuff') or {}
+    raise Fail("KDE's description of this kind (%s) isn't installed" % STORE_KINDS[kind])
+
+
+def cache_dir():
+    d = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.expanduser('~/.cache'), 'hearth', 'kde-store')
+    os.makedirs(d, exist_ok=True)
+    return d
+
+
+def fetch(url, limit=300 << 20, secs=60):
+    import urllib.request
+    if not url.startswith('https://'):
+        raise Fail('Only https downloads')
+    req = urllib.request.Request(url, headers=UA)
+    with urllib.request.urlopen(req, timeout=secs) as r:
+        data = r.read(limit + 1)
+    if len(data) > limit:
+        raise Fail('That download is too big')
+    return data
+
+
+def ocs_xml(path):
+    import xml.etree.ElementTree as ET
+    try:
+        return ET.fromstring(fetch(OCS + path, 8 << 20, 30))
+    except Fail:
+        raise
+    except Exception as e:
+        raise Fail("The KDE Store didn't answer (%s)" % str(e)[:160])
+
+
+def store_registry():
+    p = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'hearth', 'kde-store.json')
+    try:
+        with open(p, encoding='utf-8') as f:
+            return p, json.load(f)
+    except (OSError, ValueError):
+        return p, {}
+
+
+def store(kind, search='', sort='down'):
+    f = fixture('store-%s.json' % kind)
+    if f is not None:
+        return f
+    k = knsrc(kind)
+    wanted = [c.strip() for c in k.get('Categories', '').split(',') if c.strip()]
+    cats = []
+    for c in ocs_xml('content/categories').iter('category'):
+        name, cid = (c.findtext('name') or ''), (c.findtext('id') or '')
+        if name in wanted or (c.findtext('display_name') or '') in wanted:
+            cats.append(cid)
+    if not cats:
+        raise Fail("The KDE Store has no %s now" % kind)
+    import urllib.parse
+    q = urllib.parse.urlencode({'categories': 'x'.join(cats), 'search': search[:80], 'sortmode': sort if sort in ('down', 'new', 'high') else 'down',
+                                'page': 0, 'pagesize': 24})
+    items = []
+    _, reg = store_registry()
+    for c in ocs_xml('content/data?' + q).iter('content'):
+        cid = c.findtext('id') or ''
+        if not re.match(r'^\d{1,12}$', cid):
+            continue
+        items.append({'id': cid, 'name': (c.findtext('name') or '')[:80], 'by': (c.findtext('personid') or '')[:60],
+                      'downloads': c.findtext('downloads') or '', 'score': c.findtext('score') or '',
+                      'summary': re.sub(r'<[^>]+>', '', c.findtext('summary') or c.findtext('description') or '')[:200],
+                      'preview': c.findtext('smallpreviewpic1') or c.findtext('previewpic1') or '', 'installed': cid in reg.get(kind, {})})
+    # The pictures, fetched at most once each (into the cache), four at a time.
+    from concurrent.futures import ThreadPoolExecutor
+    def thumb(it):
+        url = it.pop('preview', '')
+        path = os.path.join(cache_dir(), '%s.img' % it['id'])
+        if url.startswith('https://') and not os.path.exists(path):
+            try:
+                data = fetch(url, 4 << 20, 15)
+                with open(path + '.part', 'wb') as fh:
+                    fh.write(data)
+                os.replace(path + '.part', path)
+            except Exception:
+                pass
+        it['thumb'] = path if os.path.exists(path) else ''
+        return it
+    with ThreadPoolExecutor(4) as ex:
+        items = list(ex.map(thumb, items))
+    return {'kind': kind, 'items': items}
+
+
+def safe_extract(archive, dest):
+    import tarfile, zipfile
+    os.makedirs(dest, exist_ok=True)
+    top = []
+    if zipfile.is_zipfile(archive):
+        with zipfile.ZipFile(archive) as z:
+            for n in z.namelist():
+                t = os.path.realpath(os.path.join(dest, n))
+                if not t.startswith(os.path.realpath(dest) + os.sep):
+                    raise Fail('That download has files outside its folder')
+            z.extractall(dest)
+            top = sorted({n.split('/')[0] for n in z.namelist() if n.split('/')[0]})
+    else:
+        with tarfile.open(archive) as t:
+            t.extractall(dest, filter='data')
+            top = sorted({m.name.split('/')[0] for m in t.getmembers() if m.name.split('/')[0] not in ('', '.')})
+    return [os.path.join(dest, x) for x in top]
+
+
+def store_install(kind, cid):
+    if not re.match(r'^\d{1,12}$', cid):
+        raise Fail('bad item')
+    if fixture_dir():
+        return {'ok': True, 'preview': True}
+    k = knsrc(kind)
+    c = next(iter(ocs_xml('content/data/%s' % cid).iter('content')), None)
+    url = c.findtext('downloadlink1') if c is not None else ''
+    if not url:
+        raise Fail('That item has nothing to download')
+    print('progress: 10 Downloading', flush=True)
+    data = fetch(url)
+    name = re.sub(r'[^A-Za-z0-9._-]+', '_', (c.findtext('downloadname1') or 'item'))[:100]
+    path = os.path.join(cache_dir(), cid + '-' + name)
+    with open(path, 'wb') as fh:
+        fh.write(data)
+    print('progress: 60 Installing', flush=True)
+    share = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
+    put = []
+    if k.get('KPackageType'):
+        if not shutil.which('kpackagetool6'):
+            raise Fail('kpackagetool6 is only on KDE Plasma')
+        before = set(glob.glob(os.path.join(share, 'plasma', '*', '*')))
+        code, out, err = run(['kpackagetool6', '--type', k['KPackageType'], '--install', path], 120)
+        if code != 0:
+            code, out, err = run(['kpackagetool6', '--type', k['KPackageType'], '--upgrade', path], 120)
+        if code != 0:
+            raise Fail((err or out).strip().splitlines()[-1][:300] if (err or out).strip() else 'It could not be installed')
+        put = sorted(set(glob.glob(os.path.join(share, 'plasma', '*', '*'))) - before)
+    else:
+        target = os.path.join(share, k.get('TargetDir') or k.get('InstallPath') or '')
+        if target.rstrip('/') == share.rstrip('/'):
+            raise Fail("KDE's description says nowhere to put it")
+        if k.get('Uncompress', 'never') in ('archive', 'always', 'subdir') and not path.endswith('.colors'):
+            put = safe_extract(path, target)
+        else:
+            os.makedirs(target, exist_ok=True)
+            dest = os.path.join(target, name)
+            shutil.copyfile(path, dest)
+            put = [dest]
+    os.remove(path)
+    reg_path, reg = store_registry()
+    reg.setdefault(kind, {})[cid] = {'name': c.findtext('name') or cid, 'paths': put}
+    os.makedirs(os.path.dirname(reg_path), exist_ok=True)
+    hsio.write_text(reg_path, json.dumps(reg, indent=1))
+    hsio.log_event('kde: store %s %s installed' % (kind, cid))
+    return {'ok': True, 'installed': put}
+
+
+def store_remove(kind, cid):
+    reg_path, reg = store_registry()
+    it = reg.get(kind, {}).get(cid)
+    if not it:
+        raise Fail('Only what was installed from here can be removed here')
+    if fixture_dir():
+        return {'ok': True, 'preview': True}
+    share = os.path.realpath(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'))
+    keep = os.path.join(cache_dir(), 'removed')
+    os.makedirs(keep, exist_ok=True)
+    for p in it.get('paths', []):
+        rp = os.path.realpath(p)
+        if rp.startswith(share + os.sep) and os.path.exists(rp):
+            shutil.move(rp, os.path.join(keep, os.path.basename(rp)))
+    del reg[kind][cid]
+    hsio.write_text(reg_path, json.dumps(reg, indent=1))
+    hsio.log_event('kde: store %s %s removed (kept in %s)' % (kind, cid, keep))
+    return {'ok': True}
+
+
 def main(argv):
     c = argv[1] if len(argv) > 1 else ''
     a = argv[2:]
@@ -1301,7 +1807,7 @@ def main(argv):
         return kded_set(a[0], a[1] == 'on')
     if c == 'activities':
         return activities()
-    if c == 'activity' and a and a[0] in ('add', 'rename', 'remove', 'switch'):
+    if c == 'activity' and a and a[0] in ('add', 'rename', 'remove', 'switch', 'icon', 'private', 'shortcut'):
         return activity(a[0], a[1:])
     if c == 'userdirs':
         return userdirs()
@@ -1311,12 +1817,38 @@ def main(argv):
         return device_actions()
     if c == 'device-action-add':
         return device_action_add(os.environ.get('HEARTH_INPUT') or sys.stdin.read())
+    if c == 'device-action-edit':
+        return device_action_edit(os.environ.get('HEARTH_INPUT') or sys.stdin.read())
+    if c == 'device-action-reset' and len(a) == 1:
+        return device_action_reset(a[0])
     if c == 'device-action-remove' and len(a) == 1:
         return device_action_remove(a[0])
     if c == 'shortcuts':
         return shortcuts()
     if c == 'shortcut-set' and len(a) == 3:
         return shortcut_set(a[0], a[1], a[2])
+    if c == 'commands':
+        return commands()
+    if c == 'command-set':
+        return command_set(os.environ.get('HEARTH_INPUT') or sys.stdin.read())
+    if c == 'command-keys' and len(a) == 2:
+        return command_keys(a[0], a[1])
+    if c == 'command-remove' and len(a) == 1:
+        return command_remove(a[0])
+    if c == 'store' and len(a) in (1, 2, 3):
+        return store(a[0], a[1] if len(a) > 1 else '', a[2] if len(a) > 2 else 'down')
+    if c == 'store-install' and len(a) == 2:
+        return store_install(a[0], a[1])
+    if c == 'store-remove' and len(a) == 2:
+        return store_remove(a[0], a[1])
+    if c == 'rdp-users':
+        return rdp_users()
+    if c == 'rdp-user-add' and len(a) == 1:
+        return rdp_user_add(a[0])
+    if c == 'rdp-user-remove' and len(a) == 1:
+        return rdp_user_remove(a[0])
+    if c == 'push-signin' and len(a) in (2, 3):
+        return push_signin(a[0], a[1], a[2] if len(a) > 2 else '')
     if c == 'push':
         return push()
     if c == 'push-set' and len(a) in (1, 2):

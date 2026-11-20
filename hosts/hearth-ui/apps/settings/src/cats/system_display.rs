@@ -521,8 +521,8 @@ pub fn view(a: &App) -> El<'_> {
         if k && vb(o, "hdrCal.capable") {
             let peak = vf(o, "hdrCal.peakSet", 0.0);
             let shown = if peak > 0.0 { peak } else { vf(o, "hdrCal.peak", 0.0) };
-            // KDE's own calibration (its test pictures) on Plasma: Hearth's HdrCalibrate.qml needs Mantel.
-            c = c.push(link_row(&p, G::Display, "Calibrate HDR", format!("Brightest {} nits{} · in KDE's display settings", shown.round(), if peak > 0.0 { " (calibrated)" } else { " (what the screen says)" }), Msg::App(sv(&["kcmshell6", "kcm_kscreen"]))));
+            // Hearth's own calibration (cats/kde.rs, as Mantel's HdrCalibrate.qml): no KDE window.
+            c = c.push(link_row(&p, G::Display, "Calibrate HDR", format!("Brightest {} nits{} · three steps with test pictures", shown.round(), if peak > 0.0 { " (calibrated)" } else { " (what the screen says)" }), Msg::Go("kde-hdr")));
         }
     }
     if k && vb(o, "edr.capable") {

@@ -138,16 +138,14 @@ windows (kcm_kwin4_genericscripted and each effect's: Window effects).
 - [x] kcm_xserver (X-Server information: X-Server information) → Hearth Settings › More system information (new) — hosts/linux/desktop/shell/kde-settings.json: "\"id\": \"kde-info\""
 
 
-## Parts of KDE's modules not built yet
+## The parts that were open (the owner, Nov 20: "go ahead", all into 1.16)
 
-What each page above still lacks next to its KDE module, and why (open until built or the owner decides):
-
-- [ ] KDE shortcuts: adding your own shortcut for a command or a script (KDE's "Add New"); changing and resetting the existing ones is built
-- [ ] Push services: Gotify and NextPush, which need a password for your server (Hearth's pages don't keep passwords); ntfy and Mozilla Autopush are built
-- [ ] Remote desktop (RDP): extra RDP users with their own passwords (KDE keeps those in KDE Wallet); signing in with your own account's password is built
-- [ ] Global theme, Plasma style, Colours, Title bars: "Get New…" (downloading more from the KDE Store); everything installed can be picked
-- [ ] Font management: a preview of each font, and KDE's own way of turning fonts off (Hearth turns them off with a fontconfig file every app reads)
-- [ ] Device actions: editing the actions that come with the system; adding and removing your own is built
-- [ ] Activities: each activity's icon, its own shortcut and "don't remember what I open in it"
-- [ ] Controllers in KDE: a live test of each controller's buttons and sticks (the plugged-in list is built)
-- [ ] Display (already Hearth's page): "Calibrate HDR" still opens KDE's display settings (kcmshell6 kcm_kscreen, cats/system_display.rs)
+- [ ] KDE shortcuts: your own commands and scripts with a shortcut (KDE's "Add New › Command or Script": add, change, remove)
+- [ ] Push services: Gotify and NextPush, the token or app password typed on the page and handed only to KDE's push service (KUnifiedPush keeps it)
+- [ ] Remote desktop (RDP): other people with their own passwords, kept in KDE Wallet only (QtKeychain's KRDP folder)
+- [ ] Global theme, Plasma style, Colours, Title bars: "Get New…" from the KDE Store (knewstuff's own descriptions and the store's API; installs in your folders only)
+- [ ] Font management: a preview of each font, drawn in itself
+- [ ] Device actions: editing the system's actions as your own copy (the system's file never touched) and "Reset to the system version"
+- [ ] Activities: each one's icon, its own shortcut to switch to it, and "remember what's opened in it"
+- [ ] Controllers in KDE: a live test of buttons, sticks, triggers and the D-pad, listening only while the page is open
+- [ ] Display: Calibrate HDR in Hearth's own three steps (no KDE window)

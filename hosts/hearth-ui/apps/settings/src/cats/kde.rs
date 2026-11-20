@@ -27,8 +27,15 @@ pub const PAGES: &[&str] = &[
     "kde-decorations", "kde-screenlock", "kde-session", "kde-renderer", "kde-feedback", "kde-tabbox", "kde-krunner",
     "kde-webshortcuts", "kde-updates", "kde-trash", "kde-netpref", "kde-kwin-scripts", "kde-kded", "kde-activities",
     "kde-locations", "kde-device-actions", "kde-nighttime", "kde-plasmakeyboard", "kde-gamecontroller", "kde-cddb",
-    "kde-krdp", "kde-info", "kde-shortcuts", "kde-push", "kde-colord", "kde-fontinst",
+    "kde-krdp", "kde-info", "kde-shortcuts", "kde-push", "kde-colord", "kde-fontinst", "kde-store", "kde-hdr",
 ];
+
+#[path = "kde_pad.rs"]
+pub mod pad_test;
+
+/// The page on the screen now (kept by dialog(), which the frame asks every time it draws): the live controller test
+/// listens only while its page is shown.
+static SHOWN: std::sync::Mutex<&'static str> = std::sync::Mutex::new("");
 
 const SPEC_TEXT: &str = include_str!("../../../../../linux/desktop/shell/kde-settings.json");
 
@@ -60,6 +67,31 @@ fn text_of(v: &Value) -> String {
         Value::Null => String::new(),
         x => x.to_string(),
     }
+}
+
+/// Runs a helper with a password on its stdin only (not in its environment or on its command line), off the window's
+/// thread; its last JSON line or why it failed.
+fn secret_run<M: Send + 'static>(cmd: Vec<String>, secret: String, f: impl Fn(Res) -> M + Send + 'static) -> Task<M> {
+    use std::io::Write;
+    use std::process::{Command, Stdio};
+    let (tx, rx) = futures::channel::oneshot::channel();
+    let _ = std::thread::Builder::new().name("hearth-settings-secret".into()).spawn(move || {
+        let mut res = Res { ok: false, v: Value::Null, err: "It didn't start".into(), out: String::new() };
+        if let Ok(mut child) = Command::new(&cmd[0]).args(&cmd[1..]).env_remove("HEARTH_INPUT").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn() {
+            if let Some(mut sin) = child.stdin.take() {
+                let _ = sin.write_all(secret.as_bytes());
+            }
+            drop(secret);
+            if let Ok(o) = child.wait_with_output() {
+                let out = String::from_utf8_lossy(&o.stdout).to_string();
+                let err = String::from_utf8_lossy(&o.stderr).to_string();
+                let v = out.lines().rev().find_map(|l| serde_json::from_str::<Value>(l).ok()).unwrap_or(Value::Null);
+                res = Res { ok: o.status.success(), v, err: err.trim().lines().last().unwrap_or("").to_string(), out };
+            }
+        }
+        let _ = tx.send(res);
+    });
+    Task::perform(async move { rx.await.unwrap_or_default() }, f)
 }
 
 fn helper(args: &[&str], secs: u32) -> Vec<String> {
@@ -137,9 +169,53 @@ pub struct State {
     pub capture: Option<(&'static str, String, String)>,
     /// Shortcuts: the component shown (its id).
     pub open_comp: Option<String>,
+    /// Font management: fonts loaded for their preview (family names, kept for the app's life), and the one shown.
+    pub fonts_loaded: Vec<&'static str>,
+    pub font_shown: Option<String>,
+    /// Device actions: the one being edited (file, action).
+    pub editing: Option<(String, String)>,
+    /// Controllers in KDE: what the live test read last.
+    pub pads: Vec<pad_test::Pad>,
+    /// Calibrate HDR.
+    pub hdr: Hdr,
+    /// Activities: waiting for an activity's shortcut keys (its id).
+    pub act_capture: Option<(&'static str, String)>,
+    /// "Get New…": the kind, what the store answered, the search, the order, and what's being installed.
+    pub store_kind: &'static str,
+    pub store: Value,
+    pub store_q: String,
+    pub store_sort: &'static str,
+    pub store_busy: String,
+    pub store_say: Say,
+    /// `--page PAGE:part` for the pictures: calibrate (HDR's steps), preview (a font), edit (a device action).
+    pub want: String,
     /// A long list open over the page: (its page, its row).
     pub pick: Option<(&'static str, usize)>,
 }
+
+/// Calibrate HDR (Hearth's own three steps, as Mantel's HdrCalibrate.qml): the brightest small spot (peak), the
+/// brightest whole screen (average) and the darkest (lowest), each with its test picture over the whole window, the
+/// screen changing as you move it (hearth-screens apply: KWin's brightness overrides, nothing saved); Finish asks
+/// "Keep these settings?" for 15 s (a wrong one goes back by itself); Cancel puts back what was there.
+#[derive(Default)]
+pub struct Hdr {
+    pub info: Value,
+    pub name: String,
+    pub on: bool,
+    pub step: usize,
+    pub vals: [f32; 3],
+    pub start0: Value,
+    pub keep: Option<u32>,
+    pub say: Say,
+    /// B / Esc in the calibration: put back what was there (sent once from the subscription).
+    pub cancel_due: bool,
+}
+
+pub const HDR_STEPS: [(&str, &str, f32, f32, &str); 3] = [
+    ("Brightest spot", "Move it down until the small square in the middle only just stands out from the box around it.", 100.0, 2000.0, "nits"),
+    ("Brightest across the screen", "Move it down until the white looks as bright as it can without flickering or dimming after a moment.", 80.0, 1500.0, "nits"),
+    ("Darkest", "Move it until you can just see every one of the dark squares, and the background stays black.", 0.0, 0.5, "nits"),
+];
 
 #[derive(Debug, Clone)]
 pub enum Msg {
@@ -174,12 +250,55 @@ pub enum Msg {
     Key(iced::keyboard::Event),
     OpenComp(Option<String>),
     End,
+    FontShow(String, String),
+    FontBytes(String, Option<Vec<u8>>),
+    FontLoaded(String, bool),
+    Edit(Option<(String, String)>),
+    Pads(Vec<pad_test::Pad>),
+    HdrGot(Res),
+    HdrStart,
+    HdrSet(f32),
+    HdrApply,
+    HdrStep(i32),
+    HdrReset,
+    HdrFinish,
+    HdrCancel,
+    HdrApplied(Res),
+    HdrKeep(bool),
+    HdrTick,
+    /// A helper command that gets a password typed on the page (on its stdin only): (page, args, the field's key).
+    Secret(&'static str, Vec<String>, usize),
+    /// Activities: wait for the keys of this activity's own shortcut.
+    ActCapture(&'static str, String),
+    /// "Get New…": the KDE Store for a kind (lookandfeel, colorschemes, plasma-themes, aurorae).
+    Store(&'static str),
+    StoreGot(Res),
+    StoreSearch(String),
+    StoreSort(&'static str),
+    StoreFind,
+    StoreRun(Vec<String>),
+    StoreDone(Res),
+    Pics,
     FileForGot(&'static str, &'static str, Res),
 }
 
 pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
     st.want_pick = sh.part == "pick";
     st.want_end = sh.part == "end";
+    st.want = sh.part.clone();
+    if page == "kde-store" {
+        st.store_kind = match sh.part.as_str() {
+            "colorschemes" => "colorschemes",
+            "plasma-themes" => "plasma-themes",
+            "aurorae" => "aurorae",
+            _ => "lookandfeel",
+        };
+        if st.store_sort.is_empty() {
+            st.store_sort = "down";
+        }
+        let (k, q, o) = (st.store_kind.to_string(), st.store_q.clone(), st.store_sort.to_string());
+        return read(helper(&["store", &k, &q, &o], 90), Msg::StoreGot);
+    }
     // `--page kde-shortcuts:COMPONENT`: that app's shortcuts open.
     if page == "kde-shortcuts" && !sh.part.is_empty() && sh.part != "pick" && sh.part != "end" {
         st.open_comp = Some(sh.part.clone());
@@ -188,7 +307,33 @@ pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
     pg.say.clear();
     pg.temp.clear();
     st.pick = None;
-    read(helper(&["get", page], 30), move |r| Msg::Got(page, r))
+    let t = read(helper(&["get", page], 30), move |r| Msg::Got(page, r));
+    if page == "kde-hdr" {
+        st.hdr.say.clear();
+        return Task::batch([t, read(crate::cats::apps::kit::py("hearth-screens", &["info"], 30), Msg::HdrGot)]);
+    }
+    t
+}
+
+/// The first screen with HDR on that KWin knows the brightness of (or the one picked before).
+fn hdr_out(h: &Hdr) -> Option<&Value> {
+    let outs = h.info.get("outputs").and_then(Value::as_array)?;
+    outs.iter().find(|o| s(o, "name") == h.name).or_else(|| outs.iter().find(|o| o.pointer("/hdrCal/capable").and_then(Value::as_bool).unwrap_or(false)))
+}
+
+fn hdr_apply(h: &Hdr, cal: Value) -> Task<Msg> {
+    let mut outs = Map::new();
+    outs.insert(h.name.clone(), serde_json::json!({ "hdrCal": cal }));
+    let arg = serde_json::json!({ "outputs": outs }).to_string();
+    read(crate::cats::apps::kit::py("hearth-screens", &["apply", &arg], 30), Msg::HdrApplied)
+}
+
+fn hdr_now(h: &Hdr) -> Value {
+    serde_json::json!({"peak": h.vals[0].round(), "avg": h.vals[1].round().min(h.vals[0].round()), "min": (h.vals[2] * 10000.0).round() / 10000.0})
+}
+
+fn win_mode(full: bool) -> Task<Msg> {
+    iced::window::latest().and_then(move |id| iced::window::set_mode(id, if full { iced::window::Mode::Fullscreen } else { iced::window::Mode::Windowed }))
 }
 
 // ---------------------------------------------------------------- reading the page's values
@@ -354,6 +499,23 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             if std::mem::take(&mut st.want_pick) {
                 st.pick = rows_of(page).iter().position(|r| s(r, "type") == "pick").map(|i| (page, i));
             }
+            let want = std::mem::take(&mut st.want);
+            if want == "preview" {
+                let f = st.pages.get(page).and_then(|pg| pg.data.pointer("/current/fonts")).cloned().unwrap_or(Value::Null);
+                let first = f.get("files").and_then(Value::as_object).and_then(|m| m.iter().next().map(|(k, v)| (k.clone(), text_of(v))));
+                if let Some((fam, file)) = first {
+                    return update(sh, st, Msg::FontShow(fam, file));
+                }
+            }
+            if want == "edit" {
+                let a = st.pages.get(page).and_then(|pg| pg.data.pointer("/current/deviceactions")).and_then(Value::as_array).and_then(|l| l.iter().find(|x| x.get("system").and_then(Value::as_bool).unwrap_or(false)).cloned());
+                if let Some(a) = a {
+                    st.editing = Some((s(&a, "file").to_string(), s(&a, "action").to_string()));
+                }
+            }
+            if want.starts_with("calibrate") {
+                st.want = want;
+            }
             if std::mem::take(&mut st.want_end) {
                 return Task::perform(hearth_ui::run::after(400), |_| Msg::End);
             }
@@ -510,6 +672,9 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             pg.saving = true;
             pg.text.clear();
             sh.reread_history = true;
+            if args.first().map(|x| x == "device-action-edit").unwrap_or(false) {
+                st.editing = None;
+            }
             let a: Vec<&str> = args.iter().map(String::as_str).collect();
             return read_in(helper(&a, 30), input, move |r| Msg::Applied(page, r));
         }
@@ -526,6 +691,17 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             st.capture = Some((page, comp, action));
         }
         Msg::Key(iced::keyboard::Event::KeyPressed { key, modifiers, .. }) => {
+            if let Some((page, id)) = st.act_capture.clone() {
+                if matches!(key.as_ref(), iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape)) {
+                    st.act_capture = None;
+                    return Task::none();
+                }
+                if let Some(text) = shortcut_text(&key, modifiers) {
+                    st.act_capture = None;
+                    return update(sh, st, Msg::Run(page, vec!["activity".into(), "shortcut".into(), id, text], None));
+                }
+                return Task::none();
+            }
             let Some((page, comp, action)) = st.capture.clone() else { return Task::none() };
             if matches!(key.as_ref(), iced::keyboard::Key::Named(iced::keyboard::key::Named::Escape)) {
                 st.capture = None;
@@ -533,6 +709,10 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             }
             if let Some(text) = shortcut_text(&key, modifiers) {
                 st.capture = None;
+                if let Some(file) = comp.strip_prefix("services][").filter(|f| f.starts_with("net.local.")) {
+                    // One of your own commands: its keys (the command may have had none yet).
+                    return update(sh, st, Msg::Run(page, vec!["command-keys".into(), file.to_string(), text], None));
+                }
                 return update(sh, st, Msg::Run(page, vec!["shortcut-set".into(), comp, action, text], None));
             }
         }
@@ -541,6 +721,187 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
         Msg::End => {
             return iced::widget::operation::scroll_to(iced::widget::Id::new(crate::nav::PAGE), iced::widget::operation::AbsoluteOffset { x: None, y: Some(1.0e6) });
         }
+        Msg::Secret(page, args, key) => {
+            let pg = st.pages.entry(page).or_default();
+            let Some(secret) = pg.text.remove(&key) else { return Task::none() };
+            pg.saving = true;
+            pg.text.clear();
+            sh.reread_history = true;
+            let a: Vec<&str> = args.iter().map(String::as_str).collect();
+            return secret_run(helper(&a, 150), secret, move |r| Msg::Applied(page, r));
+        }
+        Msg::ActCapture(page, id) => st.act_capture = Some((page, id)),
+        Msg::Store(kind) => {
+            st.store_kind = kind;
+            st.store = Value::Null;
+            st.store_say.clear();
+            if st.store_sort.is_empty() {
+                st.store_sort = "down";
+            }
+            sh.go("kde-store");
+            return update(sh, st, Msg::StoreFind);
+        }
+        Msg::StoreFind => {
+            st.store = Value::Null;
+            let (k, q, o) = (st.store_kind.to_string(), st.store_q.clone(), st.store_sort.to_string());
+            return read(helper(&["store", &k, &q, &o], 90), Msg::StoreGot);
+        }
+        Msg::StoreGot(r) => {
+            if r.ok {
+                st.store = r.v;
+                let thumbs: Vec<(String, crate::pics::Cut)> = st.store.get("items").and_then(Value::as_array).map(|a| a.iter().map(|x| (s(x, "thumb").to_string(), crate::pics::WALL)).collect()).unwrap_or_default();
+                if let Some(f) = crate::pics::load(thumbs) {
+                    return Task::perform(f, |_| Msg::Pics);
+                }
+            } else {
+                st.store = serde_json::json!({"items": []});
+                st.store_say.bad(r.err);
+            }
+        }
+        Msg::Pics => {}
+        Msg::StoreSearch(q) => st.store_q = q,
+        Msg::StoreSort(o) => {
+            st.store_sort = o;
+            return update(sh, st, Msg::StoreFind);
+        }
+        Msg::StoreRun(args) => {
+            st.store_busy = args.get(2).cloned().unwrap_or_default();
+            st.store_say.clear();
+            sh.reread_history = true;
+            let a: Vec<&str> = args.iter().map(String::as_str).collect();
+            return read(helper(&a, 600), Msg::StoreDone);
+        }
+        Msg::StoreDone(r) => {
+            st.store_busy.clear();
+            if r.ok {
+                st.store_say.ok("Done: it's in the list on its page now");
+            } else {
+                st.store_say.bad(r.err);
+            }
+            return update(sh, st, Msg::StoreFind);
+        }
+        Msg::FontShow(family, file) => {
+            if family.is_empty() {
+                st.font_shown = None;
+                return Task::none();
+            }
+            st.font_shown = Some(family.clone());
+            if st.fonts_loaded.iter().any(|f| *f == family) {
+                return Task::none();
+            }
+            let (tx, rx) = futures::channel::oneshot::channel();
+            let _ = std::thread::Builder::new().name("hearth-settings-font".into()).spawn(move || {
+                // A font file of at most 40 MB (bigger ones are only listed).
+                let ok = std::fs::metadata(&file).map(|m| m.len() < 40 << 20).unwrap_or(false);
+                let _ = tx.send(if ok { std::fs::read(&file).ok() } else { None });
+            });
+            return Task::perform(async move { rx.await.ok().flatten() }, move |b| Msg::FontBytes(family.clone(), b));
+        }
+        Msg::FontBytes(family, bytes) => {
+            let Some(b) = bytes else { return Task::none() };
+            return iced::font::load(b).map(move |r| Msg::FontLoaded(family.clone(), r.is_ok()));
+        }
+        Msg::FontLoaded(family, ok) => {
+            if ok && !st.fonts_loaded.iter().any(|f| *f == family) {
+                // Kept for as long as Settings is open (iced draws a font by its family's name).
+                st.fonts_loaded.push(Box::leak(family.into_boxed_str()));
+            }
+        }
+        Msg::Edit(e) => {
+            st.editing = e;
+            if let Some(pg) = st.pages.get_mut("kde-device-actions") {
+                pg.text.retain(|k, _| *k < 2000);
+            }
+        }
+        Msg::Pads(p) => st.pads = p,
+        Msg::HdrGot(r) => {
+            if r.ok {
+                st.hdr.info = r.v;
+                if let Some(o) = hdr_out(&st.hdr).cloned() {
+                    st.hdr.name = s(&o, "name").to_string();
+                    let w = std::mem::take(&mut st.want);
+                    if w.starts_with("calibrate") {
+                        let t = update(sh, st, Msg::HdrStart);
+                        if w == "calibrate3" {
+                            st.hdr.step = 2;
+                        }
+                        return t;
+                    }
+                }
+            } else {
+                st.hdr.say.bad(r.err);
+            }
+        }
+        Msg::HdrStart => {
+            let Some(o) = hdr_out(&st.hdr).cloned() else { return Task::none() };
+            let c = o.get("hdrCal").cloned().unwrap_or(Value::Null);
+            let f = |k: &str| c.get(k).and_then(Value::as_f64).map(|x| x as f32);
+            st.hdr.start0 = serde_json::json!({"peak": c.get("peakSet"), "avg": c.get("avgSet"), "min": c.get("minSet")});
+            let peak = f("peakSet").or(f("peak")).unwrap_or(600.0);
+            st.hdr.vals = [peak, f("avgSet").or(f("avg")).unwrap_or(peak.min(400.0)), f("minSet").or(f("min")).unwrap_or(0.005)];
+            st.hdr.step = 0;
+            st.hdr.on = true;
+            st.hdr.say.clear();
+            return win_mode(true);
+        }
+        Msg::HdrSet(v) => {
+            let (_, _, lo, hi, _) = HDR_STEPS[st.hdr.step];
+            st.hdr.vals[st.hdr.step] = v.clamp(lo, hi);
+        }
+        Msg::HdrApply => return hdr_apply(&st.hdr, hdr_now(&st.hdr)),
+        Msg::HdrStep(d) => {
+            let n = st.hdr.step as i32 + d;
+            if n < 0 {
+                return update(sh, st, Msg::HdrCancel);
+            }
+            if n > 2 {
+                return update(sh, st, Msg::HdrFinish);
+            }
+            st.hdr.step = n as usize;
+        }
+        Msg::HdrReset => {
+            let c = hdr_out(&st.hdr).and_then(|o| o.get("hdrCal")).cloned().unwrap_or(Value::Null);
+            let d = [600.0, 400.0, 0.0];
+            let k = ["peak", "avg", "min"][st.hdr.step];
+            st.hdr.vals[st.hdr.step] = c.get(k).and_then(Value::as_f64).map(|x| x as f32).unwrap_or(d[st.hdr.step]);
+            return hdr_apply(&st.hdr, hdr_now(&st.hdr));
+        }
+        Msg::HdrFinish => {
+            st.hdr.on = false;
+            st.hdr.keep = Some(15);
+            sh.reread_history = true;
+            return Task::batch([win_mode(false), hdr_apply(&st.hdr, hdr_now(&st.hdr))]);
+        }
+        Msg::HdrCancel => {
+            st.hdr.on = false;
+            st.hdr.cancel_due = false;
+            return Task::batch([win_mode(false), hdr_apply(&st.hdr, st.hdr.start0.clone())]);
+        }
+        Msg::HdrApplied(r) => {
+            if !r.ok {
+                st.hdr.say.bad(r.err);
+            } else if let Some(p) = r.v.get("problem").and_then(Value::as_str).filter(|p| !p.is_empty()) {
+                st.hdr.say.bad(p.to_string());
+            }
+            if r.ok && r.v.get("outputs").is_some() {
+                st.hdr.info = r.v;
+            }
+        }
+        Msg::HdrKeep(yes) => {
+            st.hdr.keep = None;
+            if yes {
+                let names = serde_json::json!([st.hdr.name]).to_string();
+                st.hdr.say.ok("Kept: KWin uses these from now on");
+                return read(crate::cats::apps::kit::py("hearth-screens", &["keep", &names], 30), Msg::HdrApplied);
+            }
+            st.hdr.say.ok("Put back as it was");
+            return hdr_apply(&st.hdr, st.hdr.start0.clone());
+        }
+        Msg::HdrTick => match st.hdr.keep {
+            Some(n) if n > 1 => st.hdr.keep = Some(n - 1),
+            Some(_) => return update(sh, st, Msg::HdrKeep(false)),
+            None => {}
+        },
         Msg::FileFor(page, cmd, filter) => {
             let what = if cmd == "font-install" { "Choose a font" } else { "Choose a colour profile" };
             return read(crate::cats::pers::kit::file_picker(what, false, filter), move |r| Msg::FileForGot(page, cmd, r));
@@ -567,15 +928,30 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
 
 /// Only while a shortcut waits for its keys (nothing at rest).
 pub fn subscription(st: &State) -> Subscription<Msg> {
-    if st.capture.is_some() {
-        iced::keyboard::listen().map(Msg::Key)
-    } else {
-        Subscription::none()
+    let mut v = Vec::new();
+    if st.capture.is_some() || st.act_capture.is_some() {
+        v.push(iced::keyboard::listen().map(Msg::Key));
     }
+    // The live controller test, only while its page is on the screen.
+    if *SHOWN.lock().unwrap_or_else(|e| e.into_inner()) == "kde-gamecontroller" {
+        v.push(Subscription::run(pad_test::watch).map(Msg::Pads));
+    }
+    if st.hdr.cancel_due {
+        v.push(Subscription::run(|| futures::stream::once(async {})).map(|_| Msg::HdrCancel));
+    }
+    // "Keep these settings?" after Calibrate HDR counts down (15 s at most).
+    if st.hdr.keep.is_some() {
+        v.push(iced::time::every(std::time::Duration::from_secs(1)).map(|_| Msg::HdrTick));
+    }
+    Subscription::batch(v)
 }
 
 pub fn back(st: &mut State) -> bool {
-    st.pick.take().is_some() || st.capture.take().is_some() || st.open_comp.take().is_some()
+    if st.hdr.on {
+        st.hdr.cancel_due = true;
+        return true;
+    }
+    st.pick.take().is_some() || st.capture.take().is_some() || st.act_capture.take().is_some() || st.open_comp.take().is_some() || st.editing.take().is_some()
 }
 
 /// A key pressed as KDE writes it ("Meta+Shift+S"); None for a modifier alone (still waiting) or a key that can't be
@@ -656,6 +1032,10 @@ fn sub_of(pg: &Pg, page_plasma: bool, r: &Value) -> String {
     } else {
         sub
     }
+}
+
+fn a_kde_capture(c: &Option<(&'static str, String)>, id: &str) -> bool {
+    c.as_ref().map(|(_, x)| x == id).unwrap_or(false)
 }
 
 /// A long list (themes, styles): ‹ name › to step through it, or a click (A) to see them all.
@@ -852,7 +1232,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
             "hub" => {
                 // Every other KDE page, under its category's name.
                 for (cid, clabel, _) in crate::registry::CATEGORIES.iter() {
-                    let here: Vec<&Value> = spec()["pages"].as_array().map(|a| a.iter().filter(|x| s(x, "cat") == *cid && s(x, "id") != page).collect()).unwrap_or_default();
+                    let here: Vec<&Value> = spec()["pages"].as_array().map(|a| a.iter().filter(|x| s(x, "cat") == *cid && s(x, "id") != page && !x.get("hidden").and_then(Value::as_bool).unwrap_or(false)).collect()).unwrap_or_default();
                     if here.is_empty() {
                         continue;
                     }
@@ -907,6 +1287,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
                 }
             }
             "activities" => {
+                let a_capture = a.kde.act_capture.clone();
                 let a = pg.data.pointer("/current/activities").cloned().unwrap_or(Value::Null);
                 let list = a.get("list").and_then(Value::as_array).cloned().unwrap_or_default();
                 let cur = s(&a, "current").to_string();
@@ -932,7 +1313,22 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
                     nav::control(Kind::Press, sw_msg.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
                     nav::control(Kind::Press, rm_msg.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
                     let ctl: E<'a> = row![fld, btn(&p, if is_cur { "In use" } else { "Switch to it" }, hearth_ui::ui::Kind::Normal, false, sw_msg), btn(&p, "Remove", hearth_ui::ui::Kind::Normal, false, rm_msg)].spacing(8.0).align_y(iced::Center).into();
-                    v.push(srow(&p, g, name, if is_cur { "The activity you're in".to_string() } else { String::new() }, ctl));
+                    v.push(srow(&p, g, name.clone(), if is_cur { "The activity you're in".to_string() } else { String::new() }, ctl));
+                    // Its icon, its own shortcut, and whether it remembers what's opened in it (KDE's activity page).
+                    let icon_now = s(x, "icon").to_string();
+                    let icons = [("activities", "Activities"), ("user-home", "Home"), ("applications-games", "Games"), ("applications-office", "Work"), ("applications-internet", "Web"), ("applications-multimedia", "Media"), ("applications-graphics", "Art"), ("applications-development", "Code"), ("folder-music", "Music"), ("weather-clear-night", "Night")];
+                    let items: Vec<(String, bool, Option<Msg>)> = icons.iter().map(|(k, l)| (l.to_string(), icon_now == *k, if live { Some(Msg::Run(page, vec!["activity".into(), "icon".into(), id.clone(), k.to_string()], None)) } else { None })).collect();
+                    v.push(container(choice_wide(&p, G::Palette, format!("{name}: its icon"), "", items)).padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 40.0 }).into());
+                    let private = x.get("private").and_then(Value::as_bool).unwrap_or(false);
+                    v.push(container(sw(&p, G::Clock, format!("{name}: remember what's opened in it"), "Off: files and apps used in it don't show in Recent files or the search", !private, if live { Some(Msg::Run(page, vec!["activity".into(), "private".into(), id.clone(), if private { "off".into() } else { "on".into() }], None)) } else { None })).padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 40.0 }).into());
+                    let keys: Vec<String> = x.get("shortcut").and_then(Value::as_array).map(|k| k.iter().map(text_of).collect()).unwrap_or_default();
+                    let waiting = a_kde_capture(&a_capture, &id);
+                    let ch = if live { Some(Msg::ActCapture(page, id.clone())) } else { None };
+                    let cl = if live && !keys.is_empty() { Some(Msg::Run(page, vec!["activity".into(), "shortcut".into(), id.clone(), String::new()], None)) } else { None };
+                    nav::control(Kind::Press, ch.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                    nav::control(Kind::Press, cl.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                    let line = if waiting { "Press the new shortcut… (Esc: cancel)".to_string() } else if keys.is_empty() { "No shortcut".to_string() } else { keys.join(" or ") };
+                    v.push(container(srow(&p, G::Keyboard, format!("{name}: shortcut to switch to it"), line, row![btn(&p, "Change", hearth_ui::ui::Kind::Normal, false, ch), btn(&p, "None", hearth_ui::ui::Kind::Normal, false, cl)].spacing(6.0).into())).padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 40.0 }).into());
                 }
                 let nkey = 1000 + i * 100 + 99;
                 let new_name = pg.text.get(&nkey).cloned().unwrap_or_default();
@@ -967,12 +1363,36 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
                         last = kinds;
                     }
                     let mine = x.get("mine").and_then(Value::as_bool).unwrap_or(false);
+                    let changed = x.get("changed").and_then(Value::as_bool).unwrap_or(false);
+                    let (file, action) = (s(x, "file").to_string(), s(x, "action").to_string());
                     let line = s(x, "exec").to_string();
-                    if mine {
-                        let m = if ready { Some(Msg::Run(page, vec!["device-action-remove".into(), s(x, "file").to_string()], None)) } else { None };
+                    let editing = a.kde.editing.as_ref() == Some(&(file.clone(), action.clone()));
+                    if editing {
+                        // KDE's way: your own copy of the system's action (same name, in your folder) is used instead;
+                        // the system's file is never changed.
+                        let (kn, kc) = (2000 + 1, 2000 + 2);
+                        let name = pg.text.get(&kn).cloned().unwrap_or_else(|| s(x, "name").to_string());
+                        let cmd = pg.text.get(&kc).cloned().unwrap_or_else(|| line.clone());
+                        v.push(srow(&p, G::Cog, "Its name", "What the pop-up shows", field(&p, "", &name, move |t| Msg::Text(page, kn, t)).width(Length::Fixed(sz(320.0))).into()));
+                        v.push(srow(&p, G::Cog, "The command", "%f is the device's folder, %i its id", field(&p, "", &cmd, move |t| Msg::Text(page, kc, t)).width(Length::Fixed(sz(320.0))).into()));
+                        let input = serde_json::json!({"file": file, "action": action, "name": name, "exec": cmd}).to_string();
+                        let save = if ready && !name.trim().is_empty() && !cmd.trim().is_empty() { Some(Msg::Run(page, vec!["device-action-edit".into()], Some(input))) } else { None };
+                        for m in [&save, &Some(Msg::Edit(None))] {
+                            nav::control(Kind::Press, m.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                        }
+                        v.push(srow(&p, G::Check, "Save your version", "The system's own stays as it is: Reset brings it back", row![btn(&p, "Save", hearth_ui::ui::Kind::Primary, false, save), btn(&p, "Cancel", hearth_ui::ui::Kind::Normal, false, Some(Msg::Edit(None)))].spacing(8.0).into()));
+                    } else if mine {
+                        let m = if ready { Some(Msg::Run(page, vec!["device-action-remove".into(), file.clone()], None)) } else { None };
                         v.push(button_row(&p, g, s(x, "name").to_string(), format!("Yours · {line}"), "Remove", m));
                     } else {
-                        v.push(srow(&p, g, s(x, "name").to_string(), line, Space::new().width(Length::Shrink).into()));
+                        let ed = if ready { Some(Msg::Edit(Some((file.clone(), action.clone())))) } else { None };
+                        let rs = if ready && changed { Some(Msg::Run(page, vec!["device-action-reset".into(), file.clone()], None)) } else { None };
+                        nav::control(Kind::Press, ed.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                        if changed {
+                            nav::control(Kind::Press, rs.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                        }
+                        let ctl: E<'a> = if changed { row![btn(&p, "Edit", hearth_ui::ui::Kind::Normal, false, ed), btn(&p, "Reset to the system version", hearth_ui::ui::Kind::Normal, false, rs)].spacing(8.0).into() } else { btn(&p, "Edit", hearth_ui::ui::Kind::Normal, false, ed) };
+                        v.push(srow(&p, g, s(x, "name").to_string(), if changed { format!("Changed by you · {line}") } else { line }, ctl));
                     }
                 }
                 // Your own action.
@@ -989,6 +1409,46 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
                 let add = if ready && !name.trim().is_empty() && !cmd.trim().is_empty() { Some(Msg::Run(page, vec!["device-action-add".into()], Some(input))) } else { None };
                 v.push(button_row(&p, G::Plus, "Add this action".into(), String::new(), "Add", add));
             }
+            "hdrcal" => {
+                let h = &a.kde.hdr;
+                let o = hdr_out(h).cloned().unwrap_or(Value::Null);
+                let capable = o.pointer("/hdrCal/capable").and_then(Value::as_bool).unwrap_or(false);
+                if let Some(n) = h.keep {
+                    let keep = Msg::HdrKeep(true);
+                    let back = Msg::HdrKeep(false);
+                    nav::control(Kind::Press, vec![act(keep.clone())], Vec::new(), Vec::new(), String::new(), String::new());
+                    nav::control(Kind::Press, vec![act(back.clone())], Vec::new(), Vec::new(), String::new(), String::new());
+                    v.push(srow(&p, G::Display, "Keep these settings?", format!("They go back by themselves in {n} s"), row![btn(&p, "Keep", hearth_ui::ui::Kind::Primary, false, Some(keep)), btn(&p, "Go back", hearth_ui::ui::Kind::Normal, false, Some(back))].spacing(8.0).into()));
+                }
+                if h.info.is_null() {
+                    v.push(small(&p, "Reading the screens…"));
+                } else if !capable {
+                    v.push(words(&p, "No screen here has HDR on with a brightness KWin knows. Turn HDR on for a screen in Display, then come back.", false));
+                } else {
+                    let c = o.get("hdrCal").cloned().unwrap_or(Value::Null);
+                    let val = |set: &str, says: &str, unit: &str| match c.get(set).and_then(Value::as_f64) {
+                        Some(x) => format!("{x} {unit} (calibrated)"),
+                        None => format!("{} {unit} (what the screen says)", c.get(says).map(text_of).unwrap_or_else(|| "?".into())),
+                    };
+                    v.push(fact(&p, "Screen", format!("{} ({})", s(&o, "description"), s(&o, "name"))));
+                    v.push(fact(&p, "Brightest spot", val("peakSet", "peak", "nits")));
+                    v.push(fact(&p, "Brightest across the screen", val("avgSet", "avg", "nits")));
+                    v.push(fact(&p, "Darkest", val("minSet", "min", "nits")));
+                    let start = if h.keep.is_none() { Some(Msg::HdrStart) } else { None };
+                    v.push(button_row(&p, G::Display, "Calibrate this screen".into(), "Three steps over the whole screen, each with a test picture: the screen changes as you move it".into(), "Start", start));
+                }
+                if let Some(e) = say_view(&p, &h.say) {
+                    v.push(e);
+                }
+            }
+            "padtest" => {
+                if a.kde.pads.is_empty() {
+                    v.push(card(&p, t("Plug in a controller or switch one on: its buttons, sticks and triggers show here as you use them.", sz(14.0), p.muted)));
+                }
+                for pad in a.kde.pads.iter() {
+                    v.push(pad_card(&p, pad));
+                }
+            }
             "shortcuts" => {
                 let sc = pg.data.pointer("/current/shortcuts").cloned().unwrap_or(Value::Null);
                 let comps = sc.get("components").and_then(Value::as_array).cloned().unwrap_or_default();
@@ -1002,6 +1462,28 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
                 if let Some((_, c, a)) = &a.kde.capture {
                     v.push(words(&p, format!("Press the new shortcut for {} (Esc: cancel)…", comps.iter().find(|x| s(x, "id") == c).and_then(|x| x.get("actions")).and_then(Value::as_array).and_then(|l| l.iter().find(|y| s(y, "id") == a)).map(|y| s(y, "name").to_string()).unwrap_or_default()), false));
                 }
+                // Your own commands with a shortcut (KDE's "Add New › Command or Script").
+                let cmds = pg.data.pointer("/current/commands").and_then(Value::as_array).cloned().unwrap_or_default();
+                v.push(head(&p, "Your own commands"));
+                for c in cmds.iter() {
+                    let file = s(c, "file").to_string();
+                    let keys: Vec<String> = c.get("keys").and_then(Value::as_array).map(|k| k.iter().map(text_of).collect()).unwrap_or_default();
+                    let ch = if live { Some(Msg::Capture(page, format!("services][{file}"), "_launch".into())) } else { None };
+                    let rm = if ready { Some(Msg::Run(page, vec!["command-remove".into(), file.clone()], None)) } else { None };
+                    nav::control(Kind::Press, ch.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                    nav::control(Kind::Press, rm.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                    v.push(srow(&p, G::Rocket, s(c, "name").to_string(), format!("{} · {}", if keys.is_empty() { "No shortcut".to_string() } else { keys.join(" or ") }, s(c, "exec")), row![btn(&p, "Change", hearth_ui::ui::Kind::Normal, false, ch), btn(&p, "Remove", hearth_ui::ui::Kind::Normal, false, rm)].spacing(6.0).into()));
+                }
+                let (cn, ce, ck) = (1000 + i * 100 + 80, 1000 + i * 100 + 81, 1000 + i * 100 + 82);
+                let cname = pg.text.get(&cn).cloned().unwrap_or_default();
+                let cexec = pg.text.get(&ce).cloned().unwrap_or_default();
+                let ckeys = pg.text.get(&ck).cloned().unwrap_or_default();
+                v.push(srow(&p, G::Plus, "A new command: its name", "", field(&p, "Open my notes", &cname, move |t| Msg::Text(page, cn, t)).width(Length::Fixed(sz(300.0))).into()));
+                v.push(srow(&p, G::Cog, "What it runs", "A command or a script", field(&p, "kate ~/notes.txt", &cexec, move |t| Msg::Text(page, ce, t)).width(Length::Fixed(sz(300.0))).into()));
+                v.push(srow(&p, G::Keyboard, "Its shortcut", "Like Meta+N (Meta is the Windows key)", field(&p, "Meta+N", &ckeys, move |t| Msg::Text(page, ck, t)).width(Length::Fixed(sz(300.0))).into()));
+                let input = serde_json::json!({"name": cname, "exec": cexec, "keys": ckeys}).to_string();
+                let add = if ready && !cname.trim().is_empty() && !cexec.trim().is_empty() { Some(Msg::Run(page, vec!["command-set".into()], Some(input))) } else { None };
+                v.push(button_row(&p, G::Plus, "Add this command".into(), String::new(), "Add", add));
                 let qkey = 1000 + i * 100 + 50;
                 let qraw = pg.text.get(&qkey).cloned().unwrap_or_default();
                 let q = qraw.to_lowercase();
@@ -1037,6 +1519,67 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
                     }
                 }
             }
+            "rdpusers" => {
+                let ru = pg.data.pointer("/current/rdpusers").cloned().unwrap_or(Value::Null);
+                let users: Vec<String> = ru.get("users").and_then(Value::as_array).map(|a| a.iter().map(text_of).collect()).unwrap_or_default();
+                v.push(head(&p, "Other people who may connect"));
+                if users.is_empty() {
+                    v.push(small(&p, "None yet."));
+                }
+                for u in users.iter() {
+                    let m = if ready { Some(Msg::Run(page, vec!["rdp-user-remove".into(), u.clone()], None)) } else { None };
+                    v.push(button_row(&p, G::User, u.clone(), "Its password is in KDE Wallet".into(), "Remove", m));
+                }
+                let (uk, pk) = (1000 + i * 100 + 70, 1000 + i * 100 + 71);
+                let uname = pg.text.get(&uk).cloned().unwrap_or_default();
+                v.push(srow(&p, G::Plus, "Their name", "What they type in their RDP app", field(&p, "", &uname, move |t| Msg::Text(page, uk, t)).width(Length::Fixed(sz(280.0))).into()));
+                let typed = pg.text.get(&pk).map(|x| !x.is_empty()).unwrap_or(false);
+                v.push(srow(&p, G::Shield, "Their password", "Kept in KDE Wallet, never anywhere else", field(&p, "", pg.text.get(&pk).map(String::as_str).unwrap_or(""), move |t| Msg::Text(page, pk, t)).secure(true).width(Length::Fixed(sz(280.0))).into()));
+                let add = if ready && typed && !uname.trim().is_empty() { Some(Msg::Secret(page, vec!["rdp-user-add".into(), uname.trim().to_string()], pk)) } else { None };
+                v.push(button_row(&p, G::Plus, "Add this person".into(), String::new(), "Add", add));
+            }
+            "getnew" => {
+                let kind: &'static str = match s(r, "kind") {
+                    "lookandfeel" => "lookandfeel",
+                    "colorschemes" => "colorschemes",
+                    "plasma-themes" => "plasma-themes",
+                    _ => "aurorae",
+                };
+                v.push(link_row(&p, G::Store, "Get New…", "More from the KDE Store, installed for you only", Msg::Store(kind)));
+            }
+            "store" => {
+                let st = &a.kde;
+                let kinds = [("lookandfeel", "Global themes"), ("colorschemes", "Colour schemes"), ("plasma-themes", "Plasma styles"), ("aurorae", "Title bars")];
+                let label = kinds.iter().find(|(k, _)| *k == st.store_kind).map(|(_, l)| *l).unwrap_or("Global themes");
+                v.push(choice_wide(&p, G::Store, "From the KDE Store", label, kinds.iter().map(|(k, l)| (l.to_string(), st.store_kind == *k, Some(Msg::Store(*k)))).collect()));
+                v.push(srow(&p, G::Search, "Find", "", row![field(&p, "Search the KDE Store", &st.store_q, Msg::StoreSearch).on_submit(Msg::StoreFind).width(Length::Fixed(sz(260.0))), btn(&p, "Search", hearth_ui::ui::Kind::Normal, false, Some(Msg::StoreFind))].spacing(8.0).into()));
+                let sorts = [("down", "Most downloaded"), ("new", "Newest"), ("high", "Best rated")];
+                v.push(choice(&p, G::List, "Order", "", sorts.iter().map(|(k, l)| (l.to_string(), st.store_sort == *k, Some(Msg::StoreSort(*k)))).collect()));
+                if let Some(e) = say_view(&p, &st.store_say) {
+                    v.push(e);
+                }
+                if st.store.is_null() {
+                    v.push(small(&p, "Asking the KDE Store…"));
+                }
+                let items = st.store.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
+                for x in items.iter() {
+                    let id = s(x, "id").to_string();
+                    let inst = x.get("installed").and_then(Value::as_bool).unwrap_or(false);
+                    let busy = st.store_busy == id;
+                    let m = if busy || !st.store_busy.is_empty() { None } else if inst { Some(Msg::StoreRun(vec!["store-remove".into(), st.store_kind.to_string(), id.clone()])) } else { Some(Msg::StoreRun(vec!["store-install".into(), st.store_kind.to_string(), id.clone()])) };
+                    nav::control(Kind::Press, m.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                    let it = nav::item(s(x, "name"), "", false);
+                    let pic: E<'a> = match crate::pics::get(s(x, "thumb"), crate::pics::WALL) {
+                        Some(h) => crate::pics::tile(h, 190.0, 96.0),
+                        None => container(Space::new()).width(Length::Fixed(190.0)).height(Length::Fixed(96.0)).style(hearth_ui::ui::boxed(Pal::mix(p.panel, p.text, 0.08), p.r(8.0), None)).into(),
+                    };
+                    let words_ = column![tm(s(x, "name").to_string(), sz(15.0), p.text), t(format!("by {} · {} downloads{}", s(x, "by"), s(x, "downloads"), if s(x, "score").is_empty() { String::new() } else { format!(" · rated {}%", s(x, "score")) }), sz(12.0), p.muted), t(s(x, "summary").to_string(), sz(12.0), p.muted)].spacing(3.0).width(Length::Fill);
+                    let b = btn(&p, if busy { if inst { "Removing…" } else { "Installing…" } } else if inst { "Remove" } else { "Install" }, if inst { hearth_ui::ui::Kind::Normal } else { hearth_ui::ui::Kind::Primary }, false, m);
+                    let body = container(row![pic, words_, b].spacing(16.0).align_y(iced::Center)).id(it.key).padding(12.0).width(Length::Fill).style(row_style(p, p.panel, p.r(10.0), it.lit));
+                    v.push(ring(&p, it.lit, p.r(10.0), body));
+                }
+                v.push(small(&p, "From store.kde.org (the KDE Store), as KDE's own Get New… window shows it. Installed in your own folders only; Remove takes away just what was installed here."));
+            }
             "push" => {
                 let pu = pg.data.pointer("/current/push").cloned().unwrap_or(Value::Null);
                 let live = pu.get("running").and_then(Value::as_bool).unwrap_or(false);
@@ -1052,13 +1595,47 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
                 let save = if live && (cur == "Ntfy" || cur == "Autopush") { Some(Msg::Run(page, vec!["push-set".into(), cur.clone(), url.clone()], None)) } else { None };
                 nav::control(Kind::Press, save.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
                 v.push(srow(&p, G::Link, "Its server", "Empty: the service's own", row![field(&p, "https://ntfy.sh", &url, move |t| Msg::Text(page, ukey, t)).width(Length::Fixed(sz(280.0))), btn(&p, "Save", hearth_ui::ui::Kind::Normal, false, save)].spacing(8.0).align_y(iced::Center).into()));
-                v.push(small(&p, "Gotify and NextPush need a sign-in to your own server; Hearth doesn't keep passwords, so set those in KDE's own push window on KDE Plasma."));
+                // Gotify and NextPush: your server, and its token or app password (handed to KDE's push service, which
+                // keeps it; never shown, saved or logged by Hearth).
+                let (gu, nu, nn, sk) = (1000 + i * 100 + 61, 1000 + i * 100 + 62, 1000 + i * 100 + 63, 1000 + i * 100 + 64);
+                v.push(head(&p, "Gotify or NextPush (your own server)"));
+                let gurl = pg.text.get(&gu).cloned().unwrap_or_else(|| if cur == "Gotify" || cur == "NextPush" { s(&pu, "url").to_string() } else { String::new() });
+                v.push(srow(&p, G::Link, "Server", "Your Gotify or Nextcloud's web address", field(&p, "https://push.example.org", &gurl, move |t| Msg::Text(page, gu, t)).width(Length::Fixed(sz(300.0))).into()));
+                let nname = pg.text.get(&nn).cloned().unwrap_or_default();
+                v.push(srow(&p, G::User, "Nextcloud name", "Only for NextPush", field(&p, "", &nname, move |t| Msg::Text(page, nn, t)).width(Length::Fixed(sz(300.0))).into()));
+                let typed = pg.text.get(&sk).map(|x| !x.is_empty()).unwrap_or(false);
+                let dots = "•".repeat(pg.text.get(&sk).map(|x| x.chars().count()).unwrap_or(0));
+                let _ = (&nu, &dots);
+                v.push(srow(&p, G::Shield, "Token or app password", "Gotify's client token, or an app password from Nextcloud's security settings", field(&p, "", pg.text.get(&sk).map(String::as_str).unwrap_or(""), move |t| Msg::Text(page, sk, t)).secure(true).width(Length::Fixed(sz(300.0))).into()));
+                let ok = live && typed && gurl.starts_with("http");
+                let g_msg = if ok { Some(Msg::Secret(page, vec!["push-signin".into(), "Gotify".into(), gurl.clone()], sk)) } else { None };
+                let n_msg = if ok && !nname.trim().is_empty() { Some(Msg::Secret(page, vec!["push-signin".into(), "NextPush".into(), gurl.clone(), nname.clone()], sk)) } else { None };
+                for m in [&g_msg, &n_msg] {
+                    nav::control(Kind::Press, m.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                }
+                v.push(srow(&p, G::Check, "Use it", "The token or password goes to KDE's push service only", row![btn(&p, "Use Gotify", hearth_ui::ui::Kind::Normal, false, g_msg), btn(&p, "Use NextPush", hearth_ui::ui::Kind::Normal, false, n_msg)].spacing(8.0).into()));
             }
             "fonts" => {
                 let f = pg.data.pointer("/current/fonts").cloned().unwrap_or(Value::Null);
                 let yours = f.get("yours").and_then(Value::as_array).cloned().unwrap_or_default();
                 let inst = if ready { Some(Msg::FileFor(page, "font-install", "*.ttf *.otf *.ttc *.woff2")) } else { None };
                 v.push(button_row(&p, G::Plus, "Install a font".into(), "A .ttf, .otf or .ttc file: for you only, every app can use it".into(), "Choose a font…", inst));
+                // The preview: the font picked below, drawn in itself.
+                if let Some(fam) = &a.kde.font_shown {
+                    let loaded = a.kde.fonts_loaded.iter().find(|x| **x == fam.as_str()).copied();
+                    let sample = |text: &'static str, size: f32| -> E<'a> {
+                        match loaded {
+                            Some(name) => iced::widget::text(text).size(sz(size)).color(p.text).font(iced::Font { family: iced::font::Family::Name(name), ..iced::Font::DEFAULT }).into(),
+                            None => t("Loading…", sz(14.0), p.muted).into(),
+                        }
+                    };
+                    v.push(card(&p, column![
+                        row![tm(fam.clone(), sz(15.0), p.text).width(Length::Fill), btn(&p, "Close", hearth_ui::ui::Kind::Normal, false, Some(Msg::FontShow(String::new(), String::new())))].align_y(iced::Center),
+                        sample("The quick brown fox jumps over the lazy dog", 28.0),
+                        sample("ABCDEFGHIJKLMNOPQRSTUVWXYZ abcdefghijklmnopqrstuvwxyz 0123456789 !?&@€", 18.0),
+                        sample("Hearth OS · Sphinx of black quartz, judge my vow.", 14.0),
+                    ].spacing(10.0)));
+                }
                 v.push(head(&p, "Fonts you installed"));
                 if yours.is_empty() {
                     v.push(small(&p, if pg.read { "None yet." } else { "Reading…" }));
@@ -1068,17 +1645,27 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
                     let off = u.get("off").and_then(Value::as_bool).unwrap_or(false);
                     let name = format!("{}{}{}", s(u, "family"), if s(u, "style").is_empty() { "" } else { " · " }, s(u, "style"));
                     let tog = if ready { Some(Msg::Run(page, vec!["font-off".into(), file.clone(), if off { "on".into() } else { "off".into() }], None)) } else { None };
+                    let pv = Some(Msg::FontShow(s(u, "family").to_string(), file.clone()));
+                    nav::control(Kind::Press, pv.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
                     let rm = if ready { Some(Msg::Run(page, vec!["font-remove".into(), file.clone()], None)) } else { None };
                     nav::control(Kind::Toggle(!off), tog.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
                     nav::control(Kind::Press, rm.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
-                    let ctl: E<'a> = row![btn(&p, if off { "Turn on" } else { "Turn off" }, hearth_ui::ui::Kind::Normal, false, tog), btn(&p, "Remove", hearth_ui::ui::Kind::Normal, false, rm)].spacing(8.0).align_y(iced::Center).into();
+                    let ctl: E<'a> = row![btn(&p, "Preview", hearth_ui::ui::Kind::Normal, false, pv), btn(&p, if off { "Turn on" } else { "Turn off" }, hearth_ui::ui::Kind::Normal, false, tog), btn(&p, "Remove", hearth_ui::ui::Kind::Normal, false, rm)].spacing(8.0).align_y(iced::Center).into();
                     v.push(srow(&p, G::Palette, name, format!("{}{}", if off { "Turned off · " } else { "" }, file.rsplit('/').next().unwrap_or("")), ctl));
                 }
+                // Every font on this PC: pick one to see it.
                 let fams = f.get("families").and_then(Value::as_array).cloned().unwrap_or_default();
+                let files = f.get("files").cloned().unwrap_or(Value::Null);
                 if !fams.is_empty() {
                     v.push(head(&p, format!("Every font on this PC ({})", fams.len())));
-                    let names: Vec<String> = fams.iter().map(text_of).collect();
-                    v.push(card(&p, t(names.join(" · "), sz(13.0), p.muted)));
+                    for fam in fams.iter().map(text_of) {
+                        let file = files.get(&fam).map(text_of).unwrap_or_default();
+                        let m = if file.is_empty() { None } else { Some(Msg::FontShow(fam.clone(), file)) };
+                        let here = a.kde.font_shown.as_deref() == Some(fam.as_str());
+                        nav::control(Kind::Press, m.iter().cloned().map(act).collect(), Vec::new(), Vec::new(), String::new(), String::new());
+                        let ctl: E<'a> = if here { t("Shown above", sz(13.0), p.accent).into() } else { btn(&p, "Preview", hearth_ui::ui::Kind::Normal, false, m) };
+                        v.push(srow(&p, G::Palette, fam.clone(), String::new(), ctl));
+                    }
                 }
             }
             "colord" => {
@@ -1125,8 +1712,110 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
     Some(column_of(v))
 }
 
+/// Calibrate HDR over the whole window: the step's test picture on black, and a card with its value.
+fn hdr_view(a: &App) -> E<'_> {
+    let p = a.sh.p;
+    let h = &a.kde.hdr;
+    let (title, sub, lo, hi, unit) = HDR_STEPS[h.step];
+    let v = h.vals[h.step];
+    let white = Color::WHITE;
+    let picture: E<'_> = match h.step {
+        0 => container(container(Space::new()).width(Length::Fixed(140.0)).height(Length::Fixed(140.0)).style(hearth_ui::ui::boxed(Color::from_rgb8(0xf4, 0xf4, 0xf4), 0.0, None)))
+            .center_x(Length::Fixed(350.0))
+            .center_y(Length::Fixed(350.0))
+            .style(hearth_ui::ui::boxed(white, 0.0, None))
+            .into(),
+        1 => container(Space::new()).width(Length::Fill).height(Length::Fill).style(hearth_ui::ui::boxed(white, 0.0, None)).into(),
+        _ => {
+            let mut r = iced::widget::Row::new().spacing(24.0);
+            for k in [1u8, 2, 3, 4, 6, 8] {
+                r = r.push(container(Space::new()).width(Length::Fixed(110.0)).height(Length::Fixed(110.0)).style(hearth_ui::ui::boxed(Color::from_rgb8(k, k, k), 8.0, None)));
+            }
+            r.into()
+        }
+    };
+    let shown = if h.step == 2 { format!("{v:.3} {unit}") } else { format!("{} {unit}", v.round()) };
+    let screen_says = hdr_out(h).and_then(|o| o.get("hdrCal")).and_then(|c| c.get(["peak", "avg", "min"][h.step])).map(text_of).unwrap_or_else(|| "?".into());
+    let step = (hi - lo) / 200.0;
+    let card = column![
+        row![tm(format!("Calibrate HDR · {} of 3 · {title}", h.step + 1), sz(20.0), p.text).width(Length::Fill), tm(shown, sz(20.0), p.accent)].align_y(iced::Center),
+        t(sub, sz(14.0), p.muted),
+        srow(&p, G::Display, "Brightness", format!("The screen says {screen_says} nits"), slider_f32(v, lo..=hi, step, Msg::HdrSet, Msg::HdrApply)),
+        row![
+            Space::new().width(Length::Fill),
+            btn(&p, "Cancel", hearth_ui::ui::Kind::Normal, false, Some(Msg::HdrCancel)),
+            btn(&p, "What the screen says", hearth_ui::ui::Kind::Normal, false, Some(Msg::HdrReset)),
+            btn(&p, if h.step > 0 { "Back" } else { "Cancel" }, hearth_ui::ui::Kind::Normal, false, Some(Msg::HdrStep(-1))),
+            btn(&p, if h.step < 2 { "Next" } else { "Finish" }, hearth_ui::ui::Kind::Primary, false, Some(Msg::HdrStep(1))),
+        ]
+        .spacing(10.0),
+    ]
+    .spacing(10.0);
+    for m in [Msg::HdrCancel, Msg::HdrReset, Msg::HdrStep(-1), Msg::HdrStep(1)] {
+        nav::control(Kind::Press, vec![act(m)], Vec::new(), Vec::new(), String::new(), String::new());
+    }
+    let card = container(card).padding(20.0).width(Length::Fixed(760.0)).style(hearth_ui::ui::boxed(p.panel, p.r(18.0), Some((p.line, 1.0))));
+    let pic: E<'_> = if h.step == 1 { picture } else { container(picture).center_x(Length::Fill).center_y(Length::Fill).into() };
+    container(iced::widget::stack![pic, container(card).center_x(Length::Fill).align_bottom(Length::Fill).padding(48.0)])
+        .width(Length::Fill)
+        .height(Length::Fill)
+        .style(hearth_ui::ui::boxed(Color::BLACK, 0.0, None))
+        .into()
+}
+
+/// One controller in the live test: its buttons lit while held, both sticks, the triggers and the D-pad.
+fn pad_card<'a>(p: &Pal, pad: &pad_test::Pad) -> E<'a> {
+    let lit = |on: bool, label: String| -> E<'a> {
+        container(t(label, sz(13.0), if on { p.ink } else { p.text }))
+            .padding(Padding { top: 6.0, right: 12.0, bottom: 6.0, left: 12.0 })
+            .style(hearth_ui::ui::boxed(if on { p.accent } else { Pal::mix(p.panel, p.text, 0.08) }, p.r(8.0), None))
+            .into()
+    };
+    let mut buttons = iced::widget::Row::new().spacing(6.0);
+    for (code, name) in pad_test::BUTTONS {
+        buttons = buttons.push(lit(pad.held.contains(code), name.to_string()));
+    }
+    let pp = *p;
+    let stick = |x: f32, y: f32, name: &'static str| -> E<'a> {
+        let size = 92.0;
+        let dot = 16.0;
+        let left = ((x + 1.0) / 2.0 * (size - dot)).clamp(0.0, size - dot);
+        let top = ((y + 1.0) / 2.0 * (size - dot)).clamp(0.0, size - dot);
+        let field = container(container(container(Space::new()).width(Length::Fixed(dot)).height(Length::Fixed(dot)).style(hearth_ui::ui::boxed(pp.accent, dot / 2.0, None))).padding(Padding { top, right: 0.0, bottom: 0.0, left }))
+            .width(Length::Fixed(size))
+            .height(Length::Fixed(size))
+            .style(hearth_ui::ui::boxed(Pal::mix(pp.panel, pp.text, 0.06), size / 2.0, Some((pp.line, 1.0))));
+        column![field, t(format!("{name}  {x:+.2}, {y:+.2}"), sz(12.0), pp.muted)].spacing(6.0).align_x(iced::Center).into()
+    };
+    let trigger = |v: f32, name: &'static str| -> E<'a> {
+        let w = 140.0;
+        column![
+            t(format!("{name}  {:.0} %", v * 100.0), sz(12.0), pp.muted),
+            container(container(Space::new()).width(Length::Fixed((w * v).max(2.0))).height(Length::Fixed(10.0)).style(hearth_ui::ui::boxed(pp.accent, 5.0, None))).width(Length::Fixed(w)).style(hearth_ui::ui::boxed(Pal::mix(pp.panel, pp.text, 0.08), 5.0, None)),
+        ]
+        .spacing(6.0)
+        .into()
+    };
+    let dpad = row![lit(pad.hat[0] < 0, "←".into()), column![lit(pad.hat[1] < 0, "↑".into()), lit(pad.hat[1] > 0, "↓".into())].spacing(4.0), lit(pad.hat[0] > 0, "→".into())].spacing(4.0).align_y(iced::Center);
+    card(
+        p,
+        column![
+            tm(pad.name.clone(), sz(15.0), p.text),
+            buttons,
+            row![stick(pad.axes[0], pad.axes[1], "Left stick"), stick(pad.axes[2], pad.axes[3], "Right stick"), column![trigger(pad.axes[4], "LT"), trigger(pad.axes[5], "RT")].spacing(14.0), column![t("D-pad", sz(12.0), p.muted), dpad].spacing(6.0)].spacing(28.0).align_y(iced::Center),
+        ]
+        .spacing(14.0),
+    )
+}
+
 /// A long list open over the page: every choice, the chosen one marked.
 pub fn dialog<'a>(a: &'a App) -> Option<(E<'a>, Option<Msg>)> {
+    if let Ok(mut w) = SHOWN.lock() {
+        *w = a.page;
+    }
+    if a.page == "kde-hdr" && a.kde.hdr.on {
+        return Some((hdr_view(a), None));
+    }
     let (page, i) = a.kde.pick?;
     if page != a.page {
         return None;
@@ -1172,7 +1861,7 @@ mod tests {
             assert!(crate::registry::page(id).is_some(), "{id} isn't in pages_list.rs: run tools/settings-registry-rs.py");
             for r in rows_of(id) {
                 let ty = s(r, "type");
-                assert!(["shortcuts", "push", "fonts", "colord", "plugins", "kded", "activities", "userdirs", "deviceactions", "hub", "head", "note", "switch", "choice", "number", "pick", "text", "file", "firmware", "info", "link"].contains(&ty), "{id}: row type {ty}");
+                assert!(["rdpusers", "getnew", "store", "hdrcal", "padtest", "shortcuts", "push", "fonts", "colord", "plugins", "kded", "activities", "userdirs", "deviceactions", "hub", "head", "note", "switch", "choice", "number", "pick", "text", "file", "firmware", "info", "link"].contains(&ty), "{id}: row type {ty}");
                 if ["switch", "choice", "number", "text", "file"].contains(&ty) {
                     assert!(!s(r, "file").is_empty() && !s(r, "group").is_empty() && !s(r, "key").is_empty(), "{id}: {} has no file/group/key", s(r, "title"));
                 }

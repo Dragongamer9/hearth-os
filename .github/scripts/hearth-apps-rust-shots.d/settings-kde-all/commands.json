@@ -1,0 +1,1 @@
+[{"file": "net.local.kate.desktop", "name": "Open my notes", "exec": "kate /home/ci/notes.txt", "keys": ["Meta+N"]}, {"file": "net.local.hearth-files.desktop", "name": "Games folder", "exec": "hearth-files /home/ci/Games", "keys": []}]

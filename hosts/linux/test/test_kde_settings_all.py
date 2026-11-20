@@ -113,6 +113,65 @@ class KdeSettings(unittest.TestCase):
         self.assertIn('locked', str(e.exception))
         self.assertFalse((self.cfg / 'kscreenlockerrc').exists())
 
+    def test_a_password_goes_only_to_the_pretend_wallet(self):
+        import io
+        secret = 'Sw0rdfish-not-a-real-one'
+        calls = []
+
+        def fake_wallet(method, sig, args):
+            calls.append((method, args))
+            return {'open': 7, 'hasFolder': False, 'createFolder': True, 'writePassword': 0, 'close': 0, 'networkWallet': 'kdewallet'}.get(method)
+        with mock.patch.object(self.h, 'wallet_call', side_effect=fake_wallet), mock.patch.object(self.h.sys, 'stdin', io.StringIO(secret + '\n')):
+            out = self.h.rdp_user_add('dad')
+        self.assertEqual(out['users'], ['dad'])
+        self.assertIn(('writePassword', (7, 'KRDP', 'dad', secret, 'Hearth Settings')), calls)
+        # Nowhere on disk: not the config, not Hearth's log, not a backup.
+        for root, _, files in os.walk(self.tmp.name):
+            for f in files:
+                with open(os.path.join(root, f), 'rb') as fh:
+                    self.assertNotIn(secret.encode(), fh.read(), 'the password was written to %s' % f)
+        # Not from the environment or the command line: only stdin.
+        with mock.patch.dict(os.environ, {'HEARTH_INPUT': secret}), mock.patch.object(self.h.sys, 'stdin', io.StringIO('')):
+            with self.assertRaises(self.h.Fail):
+                self.h.rdp_user_add('mum')
+
+    def test_your_commands_and_device_actions(self):
+        with mock.patch.object(self.h, 'set_keys') as keys:
+            out = self.h.command_set(json.dumps({'name': 'Notes', 'exec': 'kate ~/notes.txt', 'keys': 'Meta+N'}))
+        self.assertEqual([c['name'] for c in out], ['Notes'])
+        keys.assert_called_once()
+        self.assertEqual(keys.call_args[0][1], 'Meta+N')
+        f = out[0]['file']
+        self.assertTrue(f.startswith('net.local.kate'))
+        with self.assertRaises(self.h.Fail):
+            self.h.command_set(json.dumps({'name': 'x', 'exec': 'y', 'keys': 'Hyper+Q'}))
+        with mock.patch.object(self.h, 'set_keys'):
+            self.assertEqual(self.h.command_remove(f), [])
+        # A system device action changed as your copy; the system's file untouched; reset brings it back.
+        sysd = pathlib.Path(self.tmp.name) / 'sysdata' / 'solid' / 'actions'
+        sysd.mkdir(parents=True)
+        orig = '[Desktop Entry]\nX-KDE-Solid-Predicate=IS Camera\nActions=get;\n\n[Desktop Action get]\nName=Get photos\nExec=gwenview_importer %f\n'
+        (sysd / 'cam.desktop').write_text(orig)
+        with mock.patch.dict(os.environ, {'XDG_DATA_DIRS': str(sysd.parent.parent), 'XDG_DATA_HOME': str(pathlib.Path(self.tmp.name) / 'data')}):
+            out = self.h.device_action_edit(json.dumps({'file': 'cam.desktop', 'action': 'get', 'name': 'Copy photos', 'exec': 'rsync -a %f ~/Pictures'}))
+            self.assertEqual(out[0]['name'], 'Copy photos')
+            self.assertTrue(out[0]['changed'])
+            self.assertEqual((sysd / 'cam.desktop').read_text(), orig)
+            out = self.h.device_action_reset('cam.desktop')
+            self.assertEqual(out[0]['name'], 'Get photos')
+
+    def test_store_downloads_stay_in_their_folder(self):
+        import zipfile
+        d = pathlib.Path(self.tmp.name)
+        z = d / 'bad.zip'
+        with zipfile.ZipFile(z, 'w') as zf:
+            zf.writestr('../../evil.txt', 'x')
+        with self.assertRaises(self.h.Fail):
+            self.h.safe_extract(str(z), str(d / 'out'))
+        self.assertFalse((d / 'evil.txt').exists())
+        with self.assertRaises(self.h.Fail):
+            self.h.store_install('lookandfeel', '1; rm -rf ~')
+
     def test_the_spec_the_rust_pages_and_the_checklist_agree(self):
         spec = json.loads(SPEC.read_text())
         ids = [p['id'] for p in spec['pages']]
