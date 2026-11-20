@@ -12,10 +12,14 @@ Item {
     // never blinks empty between two pictures.
     property bool live: false
     readonly property bool ready: art.item !== null && art.item.ready
+    // 1.16 (Firehold's memory: 475 MB with the image's game pictures): a picture is only held while it can be seen:
+    // its tab showing and its window up. Off-screen tabs and a hidden Couch let theirs go; Qt keeps the last few in its
+    // own small cache, so coming back is quick. Each is decoded at the tile's size (sourceSize below), never bigger.
+    readonly property bool seen: a.visible && a.width > 0 && a.height > 0 && a.Window.visibility !== Window.Hidden
     Loader {
         id: art
         anchors.fill: parent
-        active: a.source !== ""
+        active: a.source !== "" && a.seen
         sourceComponent: Item {
             readonly property bool ready: img.status === Image.Ready
             Image {

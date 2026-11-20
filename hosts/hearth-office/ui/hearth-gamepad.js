@@ -35,6 +35,32 @@
   let wasActive = true;
   let guard = null;             // pad index → { b: Set(button indices), a: Set(axis indices) } held from before
   let raf = 0, last = 0, timer = 0, started = 0, seenPad = false, hintEl = null, hintShown = false;
+  // 1.16 (the owner's red flag: nothing heavy at rest): every frame only while a controller is in use. With no
+  // controller, the window not in front, or nothing moved for QUIET_MS, the page gets no frames from here: the 100 ms
+  // timer looks instead (IDLE_MS between looks; a press is seen within about 0.1 s and frames come back at once).
+  // Before, every Hearth app with a controller page asked for a frame 60 times a second for as long as it was open
+  // (the Welcome window: about 2 % of a core doing nothing).
+  const QUIET_MS = 3000, IDLE_MS = 90, NOPAD_MS = 250;
+  let quietSince = 0, lastSig = '', idleWait = 0;
+  function sig(pads) {
+    let s = '';
+    for (const g of pads) {
+      s += g.index + ':';
+      (g.buttons || []).forEach((x, i) => { if (x && (x.pressed || x.value > 0.5)) s += 'b' + i; });
+      (g.axes || []).forEach((v, i) => { if (Math.abs(v || 0) > 0.2) s += 'a' + i + (v > 0 ? '+' : '-'); });
+      s += ';';
+    }
+    return s;
+  }
+  function busy(t) {
+    if (!G.active()) { idleWait = NOPAD_MS; return false; }
+    const pads = raw();
+    if (!pads.length) { idleWait = NOPAD_MS; return false; }
+    const s = sig(pads);
+    if (s !== lastSig || s.indexOf('b') >= 0 || s.indexOf('a') >= 0) { lastSig = s; quietSince = t; }
+    idleWait = IDLE_MS;
+    return t - quietSince < QUIET_MS;
+  }
 
   function hasFocus() { try { return !doc || typeof doc.hasFocus !== 'function' || doc.hasFocus(); } catch (e) { return true; } }
   /** The window has the focus: not hidden, and not blurred (a page that never saw a blur counts as focused, so a
@@ -118,7 +144,7 @@
       try { fn(last); } catch (e) { if (root.console) root.console.error('controller:', e); }
     }
     maybeHint();
-    schedule();
+    if (busy(last)) schedule();
   }
   function schedule() {
     if (raf || !loops.length) return;
@@ -126,7 +152,7 @@
   }
   function watchdog() {
     if (!loops.length) return;
-    if (now() - last > 250) {
+    if (now() - last > (raf ? 250 : (idleWait || IDLE_MS))) {
       if (raf && root.cancelAnimationFrame) root.cancelAnimationFrame(raf);
       raf = 0;
       tick();
@@ -136,13 +162,14 @@
     if (typeof fn !== 'function' || loops.includes(fn)) return;
     loops.push(fn);
     if (!started) started = now();
+    quietSince = now();
     if (!timer) timer = root.setInterval(watchdog, 100);
     schedule();
   };
   G.stop = function (fn) { const i = loops.indexOf(fn); if (i >= 0) loops.splice(i, 1); };
 
   function lost() { blurred = true; wasActive = false; }
-  function back() { blurred = false; schedule(); }
+  function back() { blurred = false; quietSince = now(); schedule(); }
   if (root.addEventListener) {
     root.addEventListener('blur', lost);
     root.addEventListener('focus', back);

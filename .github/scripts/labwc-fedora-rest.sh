@@ -121,6 +121,12 @@ fi
 # ---- At rest: everything closed, nothing touched
 for t in settings tasks files launcher quick notify; do WAIT=0 ipc "$t" close; done
 sleep 30
+# The start's own work done first: the game lists Hearth's app answers (Firehold's library, the app menu's Games) can
+# take minutes in CI (stores that can't be reached) and arrive in the middle of the rest. Up to 5 minutes.
+w0=$(date +%s)
+while pgrep -f 'hearth-firehold library|hearth-games list|--list-games' >/dev/null 2>&1 && [ $(( $(date +%s) - w0 )) -lt 300 ]; do sleep 5; done
+note "the start's game lists answered after $(( $(date +%s) - w0 )) s more$(pgrep -f -- '--list-games' >/dev/null && echo ' (still running after 5 minutes)')"
+sleep 10
 HZ=$(getconf CLK_TCK)
 qs=$(pgrep -u "$(id -u)" -x quickshell | head -1)
 [ -n "$qs" ] || qs=$(pgrep -u "$(id -u)" -f '^quickshell -p' | head -1)
@@ -133,6 +139,59 @@ SLOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
 frames() { grep -c -E 'Frame rendered|Frame prepared' "$SLOG" 2>/dev/null || echo 0; }
 allticks >"$OUT/procs-start.txt"; n0=$(wc -l <"$OUT/procs-start.txt")
 s0=$(ticks "$qs"); c0=$(ticks "$LPID"); m0=$(rss "$qs"); f0=$(frames)
+# Every 5 s through the rest: the shell's threads, its children and every busy process, and how far the shell's log
+# has got, so a busy moment can be pinned on what did it (rest-trace.txt; the busiest 5 s are named in the summary).
+python3 - "$qs" "$SECS" "$SLOG" "$OUT/rest-trace.txt" "$OUT/rest-busiest.txt" <<'PY' &
+import os, sys, time
+qs, secs, slog, out, best = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4], sys.argv[5]
+hz = os.sysconf('SC_CLK_TCK')
+def stat(path):
+    try:
+        s = open(path).read(); c = s[s.index('(') + 1:s.rindex(')')]; f = s[s.rindex(')') + 2:].split()
+        return c, int(f[11]) + int(f[12]), f[1]
+    except (OSError, ValueError, IndexError):
+        return None
+def snap():
+    th = {}
+    for t in os.listdir('/proc/%s/task' % qs) if os.path.isdir('/proc/%s/task' % qs) else []:
+        r = stat('/proc/%s/task/%s/stat' % (qs, t))
+        if r: th[t] = (r[0], r[1])
+    pr = {}
+    for p in os.listdir('/proc'):
+        if p.isdigit():
+            r = stat('/proc/%s/stat' % p)
+            if r:
+                try: cmd = open('/proc/%s/cmdline' % p, 'rb').read().replace(b'\0', b' ').decode(errors='replace')[:100]
+                except OSError: cmd = r[0]
+                pr[p] = (cmd or r[0], r[1], r[2])
+    try: lines = sum(1 for _ in open(slog, errors='replace'))
+    except OSError: lines = 0
+    return th, pr, lines
+t0 = time.monotonic(); a = snap(); rows = []
+with open(out, 'w') as f:
+    while time.monotonic() - t0 < secs:
+        time.sleep(5)
+        b = snap(); el = time.monotonic() - t0
+        thr = sorted(((v[1] - a[0].get(k, (v[0], v[1]))[1], v[0]) for k, v in b[0].items()), reverse=True)[:3]
+        procs = sorted(((v[1] - (a[1][k][1] if k in a[1] else 0), v[0]) for k, v in b[1].items() if k != qs), reverse=True)[:3]
+        kids = [v[0] for k, v in b[1].items() if v[2] == qs and k not in a[1]]
+        shell = sum(d for d, _ in sorted(((v[1] - a[0].get(k, (v[0], v[1]))[1], v[0]) for k, v in b[0].items())))
+        row = '%5.0fs shell %3d ticks | threads %s | others %s | new children %s | log %d→%d' % (
+            el, shell, ', '.join('%s %d' % (n, d) for d, n in thr if d), ', '.join('%s %d' % (n, d) for d, n in procs if d),
+            '; '.join(kids) or '-', a[2], b[2])
+        f.write(row + '\n'); f.flush(); rows.append((shell, row, a[2], b[2]))
+        a = b
+rows.sort(reverse=True)
+with open(best, 'w') as f:
+    for shell, row, l0, l1 in rows[:3]:
+        f.write(row + '\n')
+        try:
+            lines = open(slog, errors='replace').read().splitlines()[l0:l1]
+            for l in lines[-8:]:
+                if 'Frame rendered' not in l: f.write('    log: ' + l[:200] + '\n')
+        except OSError: pass
+PY
+TRACE=$!
 mins=""; last=$s0; worst=0
 for i in $(seq $((SECS / 60))); do
   sleep 60
@@ -140,6 +199,8 @@ for i in $(seq $((SECS / 60))); do
   mins="$mins $d"; [ "$d" -gt "$worst" ] && worst=$d
   echo "minute $i: shell $d, memory $(rss "$qs") MB, frames $(( $(frames) - f0 ))" >>"$OUT/rest-minutes.txt"
 done
+wait "$TRACE" 2>/dev/null
+note "the busiest 5 s at rest: $(head -1 "$OUT/rest-busiest.txt" 2>/dev/null | cut -c1-400)"
 kill -0 "$qs" 2>/dev/null || err "the shell ended during the rest (crashed or restarted)"
 s1=$(ticks "$qs"); c1=$(ticks "$LPID"); m1=$(rss "$qs"); f1=$(frames)
 allticks >"$OUT/procs-end.txt"; n1=$(wc -l <"$OUT/procs-end.txt")
@@ -199,6 +260,20 @@ for run in ('cold', 'warm', 'warm2'):
 PY
   note "Hearth Files: $(grep -E '^(OK|SLOW)' "$OUT/files-check.txt" | tr '\n' ' ')"
   ! grep -q '^SLOW' "$OUT/files-check.txt" || err "Hearth Files opened slowly: $(grep -E '^SLOW|grim' "$OUT/files-check.txt" | tr '\n' ' ') (limit ${LIMIT_FILES} s)"
+fi
+
+# ---- The Welcome & Tips window (hearth-tools, WebKit) just showing, 60 s: it asked for a frame 60 times a second
+# (the controller loop, ui/pad/hearth-gamepad.js), about 1.9 % of a core in the image (Nov 20). Limit 0.5 %.
+if [ "$KIND" = classic ] && command -v hearth-tools >/dev/null 2>&1; then
+  hearth-tools --app welcome >/dev/null 2>&1 &
+  WPID=$!; sleep 20
+  wt() { t=0; for p in $(pgrep -f 'hearth-tools --app welcome|WebKitWebProcess|WebKitNetworkProcess'); do t=$(( t + $(awk '{print $14 + $15}' /proc/$p/stat 2>/dev/null || echo 0) )); done; echo $t; }
+  w0=$(wt); sleep 60; w1=$(wt)
+  wp=$(( (w1 - w0) * 10000 / HZ / 60 ))
+  note "the Welcome window just showing: $(pct "$wp") of a core"
+  [ "$wp" -le 50 ] || err "the Welcome window used $(pct "$wp") of a core just showing (limit 0.50 %)"
+  shot 30-welcome
+  kill "$WPID" 2>/dev/null; pkill -f 'hearth-tools --app welcome' 2>/dev/null; sleep 2
 fi
 
 # ---- What the shell starts while at rest (2 minutes, traced after the measurement so it doesn't count)

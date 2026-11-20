@@ -54,6 +54,7 @@ function page() {
     if (!f.length) intervals.forEach(cb => cb());
   };
   env.fire = (n) => (listeners[n] || []).forEach(f => f({}));
+  env.framesQueued = () => frames.length;
   env.docFire = (n) => (docListeners[n] || []).forEach(f => f({}));
   return env;
 }
@@ -176,7 +177,7 @@ test('the "press any button" note shows once where a controller was used before,
   env.frame(1600);
   assert.strictEqual(env.body.length, 1);
   assert.match(env.body[0].textContent, /Press any button/);
-  env.connect(); env.press(0, true); env.frame();
+  env.connect(); env.fire('gamepadconnected'); env.press(0, true); env.frame();   // (the browser says so with the first press)
   assert.strictEqual(env.body.length, 0);
   env.frame(5000);
   assert.strictEqual(env.body.length, 0, 'only once');
@@ -187,4 +188,22 @@ test('no note in an app the controller was never used in', () => {
   env.G.loop(() => env.G.pads());
   env.frame(); env.frame(3000);
   assert.strictEqual(env.body.length, 0);
+});
+
+// 1.16, the owner's red flag (nothing heavy at rest): frames only while a controller is in use.
+function rafCount(env, n) { let c = 0; for (let i = 0; i < n; i++) { const before = env.framesQueued(); env.frame(); c += before; } return c; }
+test('no frames asked for with no controller, out of focus, or after 3 s of nothing moving; a press brings them back', () => {
+  const env = page();
+  let n = 0;
+  env.G.loop(() => { n++; env.G.pads(); });
+  env.frame();
+  for (let i = 0; i < 10; i++) env.frame(100);
+  assert.strictEqual(env.framesQueued(), 0, 'no controller: no frames, only the timer');
+  assert.ok(n >= 3, 'the timer still looks about 4 times a second (' + n + ')');
+  env.connect(); env.fire('gamepadconnected');
+  assert.strictEqual(env.framesQueued(), 1, 'a controller: frames again');
+  for (let i = 0; i < 250; i++) env.frame();          // 4 s with nothing pressed
+  assert.strictEqual(env.framesQueued(), 0, 'quiet: no frames');
+  env.press(0, true); env.frame(100);                  // the timer sees the press within 0.1 s
+  assert.strictEqual(env.framesQueued(), 1, 'a press: frames again at once');
 });

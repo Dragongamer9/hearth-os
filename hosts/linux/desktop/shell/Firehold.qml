@@ -253,8 +253,10 @@ Scope {
         let d;
         try { d = JSON.parse(text.trim().split("\n").pop()); } catch (e) { return; }
         if (!d || !Array.isArray(d.games)) return;
-        library = d.games;
-        counts = d.counts || ({});
+        // 1.16 (the rest fixes): only when it changed. A new list rebuilds every tile and reloads every picture (seconds
+        // of work on a handheld), and the answer is usually the same as the cached one.
+        if (JSON.stringify(d.games) !== JSON.stringify(library)) library = d.games;
+        if (JSON.stringify(d.counts || {}) !== JSON.stringify(counts)) counts = d.counts || ({});
         libraryLoaded = true;
     }
     Process { id: cacheProc; command: ["python3", fhs.libHelper, "cached"]; stdout: StdioCollector { onStreamFinished: if (!fhs.libraryLoaded) fhs.takeLibrary(text) } }
