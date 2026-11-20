@@ -32,9 +32,13 @@ if [ -f "$d/hearth-test.iso" ]; then
   start dvd --disc "$d/hearth-test.iso"
   shot disc-dvd-own-menu 4
   result "CPU at rest (the DVD's own menu, a still picture, 10 s)" "$(rest)"
+  # The menu's sound: its own ffmpeg (Opus in Ogg) while the menu is up, gone once the film starts.
+  if pgrep -f 'ogg -flush_packets' >/dev/null; then result "DVD menu sound" "playing while the menu is up"; else result "DVD menu sound" "NO sound stream with the menu up"; fails=$((fails + 1)); fi
   key Down; shot disc-dvd-own-menu-down 2
   key Up; sleep 1
   key Return
+  sleep 4
+  if pgrep -f 'ogg -flush_packets' >/dev/null; then result "DVD menu sound after the film started" "STILL RUNNING"; fails=$((fails + 1)); else result "DVD menu sound after the film started" "stopped"; fi
   if p=$(wait_pos 2000000); then result "DVD menu: Play the film" "plays (at ${p} µs)"; else result "DVD menu: Play the film" "NO (position $p)"; fails=$((fails + 1)); tail -30 run-dvd.log; fi
   shot disc-dvd-playing 2
   key l

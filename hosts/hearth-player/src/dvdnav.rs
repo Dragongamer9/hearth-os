@@ -150,6 +150,10 @@ struct Shared {
     waiting: bool,
     /// The last sector sent (for the primer when the picture starts again).
     last: Option<[u8; 2048]>,
+    /// The menu's sectors since its picture started (at most 4096: 8 MB), so its sound can start from the same place.
+    history: std::collections::VecDeque<[u8; 2048]>,
+    /// The menu's sound stream, while one is listening (its own ffmpeg: `menu_audio_args`).
+    audio: Option<std::sync::mpsc::SyncSender<[u8; 2048]>>,
 }
 
 pub struct MenuSession {
@@ -171,7 +175,7 @@ impl MenuSession {
     /// menu's first sectors, so the palette and the buttons are known before the picture starts.
     pub fn open(target: &Path, emit: Box<dyn Fn(Value) + Send + Sync>) -> io::Result<Arc<MenuSession>> {
         let mut nav = Nav::open(target)?;
-        let mut sh = Shared { state: MenuState::default(), kicked: false, pending: Vec::new(), palette: Vec::new(), spu: 0x20, done: false, waiting: false, last: None };
+        let mut sh = Shared { state: MenuState::default(), kicked: false, pending: Vec::new(), palette: Vec::new(), spu: 0x20, done: false, waiting: false, last: None, history: Default::default(), audio: None };
         let mut buf = [0u8; 2048];
         let mut tried_menu = false;
         for _ in 0..20000 {
@@ -248,12 +252,27 @@ impl MenuSession {
         self.state()
     }
 
-    /// Stops the picture (another stream, or the page left the menu).
+    /// Stops the picture and the sound (another stream, or the page left the menu, or a title starts).
     pub fn stop(&self) {
         self.gen.fetch_add(1, Ordering::SeqCst);
-        self.sh.lock().unwrap().done = true;
+        { let mut sh = self.sh.lock().unwrap(); sh.done = true; sh.audio = None; }
         self.cv.notify_all();
     }
+
+    /// Hands a sector to the sound stream (and keeps it for a sound stream that starts a moment later).
+    fn tap(&self, b: &[u8; 2048]) {
+        let mut sh = self.sh.lock().unwrap();
+        if sh.history.len() >= 4096 { sh.history.pop_front(); }
+        sh.history.push_back(*b);
+        let gone = match &sh.audio { Some(tx) => matches!(tx.try_send(*b), Err(std::sync::mpsc::TrySendError::Disconnected(_))), None => false };
+        if gone { sh.audio = None; }
+    }
+
+    /// The menu's sectors for its sound: from where the picture started, then as they come, until the menu stops.
+    pub fn audio_source(self: &Arc<Self>) -> Arc<dyn crate::server::StreamSource> { Arc::new(MenuAudio(self.clone())) }
+
+    /// A sound stream is listening (tests).
+    pub fn audio_on(&self) -> bool { self.sh.lock().unwrap().audio.is_some() }
 
     fn changed(&self, f: impl FnOnce(&mut MenuState)) {
         let st = { let mut sh = self.sh.lock().unwrap(); let before = sh.state.clone(); f(&mut sh.state); (sh.state != before).then(|| sh.state.clone()) };
@@ -281,11 +300,11 @@ impl MenuSession {
         let my = self.gen.fetch_add(1, Ordering::SeqCst) + 1;
         // A stream before this one waiting on a still menu stops waiting (and ends: it's no longer the newest).
         self.cv.notify_all();
-        let (pending, spu, last) = { let mut sh = self.sh.lock().unwrap(); sh.done = false; (std::mem::take(&mut sh.pending), sh.spu, sh.last) };
+        let (pending, spu, last) = { let mut sh = self.sh.lock().unwrap(); sh.done = false; sh.history.clear(); (std::mem::take(&mut sh.pending), sh.spu, sh.last) };
         if let Some(first) = pending.first().or(last.as_ref()) {
             if let Some(p) = crate::dvd::spu_primer(first, spu) { out.write_all(&p)?; }
         }
-        for s in &pending { out.write_all(s)?; }
+        for s in &pending { self.tap(s); out.write_all(s)?; }
         let mut buf = [0u8; 2048];
         loop {
             if self.gen.load(Ordering::SeqCst) != my { return Ok(()); }
@@ -296,15 +315,18 @@ impl MenuSession {
                 (ev, len, title, if ev == HIGHLIGHT || ev == NAV_PACKET { Some(nav.selected()) } else { None })
             };
             if let Some((t, p)) = title {
+                // A title starts: the menu's sound stops at once (the page then plays the title).
+                self.sh.lock().unwrap().audio = None;
                 (self.emit)(json!({"play": {"title": t, "part": p}}));
                 return Ok(());
             }
             match ev {
-                BLOCK_OK => { let _ = len; out.write_all(&buf)?; self.sh.lock().unwrap().last = Some(buf); }
+                BLOCK_OK => { let _ = len; self.tap(&buf); out.write_all(&buf)?; self.sh.lock().unwrap().last = Some(buf); }
                 NAV_PACKET => {
                     let b = pci_buttons(&buf);
                     let sel = sel.unwrap_or(0);
                     self.changed(|s| { if !b.is_empty() { s.buttons = b; } s.selected = sel; });
+                    self.tap(&buf);
                     out.write_all(&buf)?;
                 }
                 HIGHLIGHT => { let sel = sel.unwrap_or(0); self.changed(|s| s.selected = sel); }
@@ -323,10 +345,31 @@ impl MenuSession {
                     unsafe { (nav.f.still_skip)(nav.h) };
                 }
                 WAIT => { let nav = self.nav.lock().unwrap(); unsafe { (nav.f.wait_skip)(nav.h) }; }
-                STOP => { (self.emit)(json!({"end": true})); return Ok(()); }
+                STOP => { self.sh.lock().unwrap().audio = None; (self.emit)(json!({"end": true})); return Ok(()); }
                 _ => {}
             }
         }
+    }
+}
+
+/// The menu's sound: the same sectors as its picture, for a second ffmpeg that keeps only the sound.
+struct MenuAudio(Arc<MenuSession>);
+
+impl crate::server::StreamSource for MenuAudio {
+    fn mime(&self) -> &str { "video/mpeg" }
+    fn stream(&self, out: &mut dyn Write) -> io::Result<()> {
+        let (tx, rx) = std::sync::mpsc::sync_channel::<[u8; 2048]>(1024);
+        // What the picture has had so far, then the rest as it comes (in one go under the lock: nothing is missed).
+        let before: Vec<[u8; 2048]> = {
+            let mut sh = self.0.sh.lock().unwrap();
+            if sh.done { return Ok(()); }
+            sh.audio = Some(tx);
+            sh.history.iter().copied().collect()
+        };
+        for b in &before { out.write_all(b)?; }
+        // recv ends when the menu stops (the sender is dropped): ffmpeg then reaches the end and stops too.
+        while let Ok(b) = rx.recv() { out.write_all(&b)?; }
+        Ok(())
     }
 }
 
@@ -344,6 +387,17 @@ pub fn menu_args(input: &str, palette: &[String], spu: u32) -> Vec<String> {
     a.extend(["-f".into(), "mpeg".into(), "-i".into(), input.to_string()]);
     a.extend(["-filter_complex".into(), format!("[0:v:0]scale=720:ih[b];[b][0:i:{spu:#x}]overlay=eof_action=repeat:repeatlast=1,select='not(mod(n,3))',scale='trunc(ih*dar/2)*2':ih,setsar=1[v]"), "-map".into(), "[v]".into()]);
     a.extend(["-an", "-sn", "-fps_mode", "passthrough", "-c:v", "mjpeg", "-q:v", "5", "-f", "mpjpeg", "-flush_packets", "1", "pipe:1"].map(String::from));
+    a
+}
+
+/// ffmpeg for the menu's sound: its first sound track at the disc's own pace, as Opus in Ogg (the page's <audio>).
+pub fn menu_audio_args(input: &str, encoders: &[String]) -> Vec<String> {
+    let mut a: Vec<String> = ["-hide_banner", "-loglevel", "error", "-nostdin", "-re", "-fflags", "+genpts+discardcorrupt", "-probesize", "512k", "-analyzeduration", "1M", "-f", "mpeg", "-i"].map(String::from).to_vec();
+    a.push(input.to_string());
+    a.extend(["-map", "0:a:0", "-vn", "-sn", "-ac", "2"].map(String::from));
+    if encoders.iter().any(|e| e == "libopus") { a.extend(["-c:a", "libopus", "-b:a", "128k"].map(String::from)); }
+    else { a.extend(["-c:a", "libvorbis", "-q:a", "5"].map(String::from)); }
+    a.extend(["-f", "ogg", "-flush_packets", "1", "pipe:1"].map(String::from));
     a
 }
 
@@ -381,5 +435,7 @@ mod tests {
         assert!(a.contains("-re "), "{a}");
         assert!(a.contains("[b][0:i:0x20]overlay"), "{a}");
         assert!(a.contains("-c:v mjpeg") && a.ends_with("-f mpjpeg -flush_packets 1 pipe:1"), "{a}");
+        let s = menu_audio_args("http://x/m", &["libopus".to_string()]).join(" ");
+        assert!(s.contains("-re ") && s.contains("-map 0:a:0 -vn") && s.contains("-c:a libopus") && s.ends_with("-f ogg -flush_packets 1 pipe:1"), "{s}");
     }
 }

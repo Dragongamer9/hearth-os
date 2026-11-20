@@ -105,10 +105,38 @@ fn fixture_discs() {
             std::thread::sleep(std::time::Duration::from_millis(300));
             assert!(String::from_utf8_lossy(&head).contains("image/jpeg"), "the menu's picture comes as JPEG frames: {:?}; ffmpeg said: {}", String::from_utf8_lossy(&head), hearth_player::server::last_stream_error());
         }
-        // Down to "Title 2", press it: the disc goes on to title 2 and the page is told.
+        // The menu again from its start (the picture above read the still menu to its end), its picture into nothing
+        // here; its sound comes as Ogg from its own ffmpeg.
+        m.stop();
+        let s3 = seen.clone();
+        let m = MenuSession::open(&dir.join("hearth-test.iso"), Box::new(move |v| s3.lock().unwrap().push(v))).expect("the menu starts again");
         let m2 = m.clone();
         let t = std::thread::spawn(move || { let _ = m2.stream(&mut std::io::sink()); });
         std::thread::sleep(std::time::Duration::from_millis(500));
+        if let Some(ff) = tools.ffmpeg.as_deref() {
+            let aurl = server.stream_url(m.audio_source(), "menu-sound.vob");
+            let ogg = server.live_url(hearth_player::server::Live { program: ff.into(), args: hearth_player::dvdnav::menu_audio_args(&aurl, &tools.encoders), mime: "audio/ogg".into() }, "menu-sound.ogg");
+            let head = first_bytes(&ogg, 4);
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            assert_eq!(&head, b"OggS", "the menu's sound comes as Ogg; ffmpeg said: {}", hearth_player::server::last_stream_error());
+        }
+        // The sound's own stream: on while the menu is up, ended as soon as a title starts.
+        let aurl = server.stream_url(m.audio_source(), "menu-sound-2.vob");
+        let (done_tx, done_rx) = std::sync::mpsc::channel();
+        let reader = std::thread::spawn(move || {
+            let rest = aurl.strip_prefix("http://").unwrap();
+            let (host, path) = rest.split_once('/').unwrap();
+            let mut s = std::net::TcpStream::connect(host).unwrap();
+            write!(s, "GET /{path} HTTP/1.1\r\nHost: {host}\r\n\r\n").unwrap();
+            let mut n = 0usize;
+            let mut buf = [0u8; 65536];
+            while let Ok(k) = s.read(&mut buf) { if k == 0 { break; } n += k; }
+            let _ = done_tx.send(n);
+        });
+        for _ in 0..50 { if m.audio_on() { break; } std::thread::sleep(std::time::Duration::from_millis(100)); }
+        assert!(m.audio_on(), "the menu's sound stream is on while the menu is up");
+        assert!(done_rx.recv_timeout(std::time::Duration::from_millis(500)).is_err(), "and keeps going");
+        // Down to "Title 2", press it: the disc goes on to title 2 and the page is told.
         assert_eq!(m.command("down", 0, 0).selected, 2, "down picks the second button");
         m.command("activate", 0, 0);
         let mut played = None;
@@ -119,6 +147,10 @@ fn fixture_discs() {
         m.stop();
         let _ = t.join();
         assert_eq!(played, Some(2), "the button played title 2: {:?}", seen.lock().unwrap());
+        let got = done_rx.recv_timeout(std::time::Duration::from_secs(10)).expect("the menu's sound stream ended when the title started");
+        assert!(got > 2048, "it had the menu's sectors ({got} bytes)");
+        assert!(!m.audio_on());
+        let _ = reader.join();
     } else { println!("no menu test (menu made: {}, libdvdnav: {})", dir.join("menu.made").exists(), hearth_player::dvdnav::have_dvdnav()); }
 
     // Locked.
