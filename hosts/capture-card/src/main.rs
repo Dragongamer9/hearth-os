@@ -1193,6 +1193,11 @@ fn on_video(a: &mut App, e: VEv) -> Task<Msg> {
             Task::batch(t)
         }
         VEv::Frame => {
+            if std::env::var_os("HEARTH_CAPTURE_STILL").is_some() && a.frame.is_some() {
+                // CI's check of how the graphics card draws: the first frame only.
+                let _ = video::frame();
+                return Task::none();
+            }
             if let Some(f) = video::frame() {
                 let total = f.delay_ns / 1_000_000 + f.at.elapsed().as_millis() as u64 + 16;
                 a.delay_acc.0 += total;
