@@ -1,0 +1,9 @@
+---- 7
+plasmashell |  | 0,0 1920x1080 | fullscreen=false | keepAbove=false | excludeFromCapture=false | screen=Virtual-0 | {46d53ead-15a0-4145-a21d-32d6ae6a6ba2}
+plasmashell |  | 0,0 1920x1080 | fullscreen=false | keepAbove=false | excludeFromCapture=false | screen=Virtual-0 | {39df5f22-0f84-44a7-b752-05ad6fd0635f}
+org.kde.dolphin | Documents — Dolphin | 576,240 768x584 | fullscreen=false | keepAbove=false | excludeFromCapture=false | screen=Virtual-0 | {ef12b378-1285-41f8-b278-d77ef82556bb}
+org.kde.konsole | hearth-os : bash — Konsole | 500,281 919x502 | fullscreen=false | keepAbove=false | excludeFromCapture=false | screen=Virtual-0 | {8109fd44-a655-45d1-ad58-a390768657c1}
+plasmashell |  | 0,0 1920x68 | fullscreen=false | keepAbove=false | excludeFromCapture=false | screen=Virtual-0 | {a714ccc0-e1e5-4674-8fe5-6effbb385caf}
+plasmashell |  | 0,996 1920x84 | fullscreen=false | keepAbove=false | excludeFromCapture=false | screen=Virtual-0 | {537a6a9a-02a9-4bf9-993d-164a6116c901}
+ |  | 644,406 633x269 | fullscreen=false | keepAbove=false | excludeFromCapture=false | screen=Virtual-0 | {f370b3d8-df2f-4cc2-9530-1bd1408c88c8}
+==== end

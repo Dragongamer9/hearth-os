@@ -1,0 +1,25 @@
+hearth-plasma-looks: Plasma is not running; nothing to do
+hearth-plasma-looks: Global Theme org.hearthos.glass: exit 0 /usr/bin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-glass-Dark: exit 0 Successfully applied the color scheme HearthOS-glass-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-glass: exit 0
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.glass", "scheme": "HearthOS-glass-Dark", "style": "hearth-glass", "colours": true}
+hearth-plasma-looks: Hearth's apps follow HearthOS-glass-Dark (dark)
+hearth-plasma-looks: Global Theme org.hearthos.glass: exit 0 /usr/bin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-glass-Light: exit 0 Successfully applied the color scheme HearthOS-glass-Light to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-glass-light: exit 0
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.glass", "scheme": "HearthOS-glass-Light", "style": "hearth-glass-light", "colours": true}
+hearth-plasma-looks: Hearth's apps follow HearthOS-glass-Light (light)
+hearth-plasma-looks: Global Theme org.hearthos.glass: exit 0 /usr/bin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-glass-Dark: exit 0 Successfully applied the color scheme HearthOS-glass-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-glass: exit 0
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.glass", "scheme": "HearthOS-glass-Dark", "style": "hearth-glass", "colours": true}
+hearth-plasma-looks: Hearth's apps follow HearthOS-glass-Dark (dark)
+hearth-plasma-looks: Hearth's apps follow HearthOS-glass-Dark (dark)
+hearth-plasma-looks: Global Theme org.hearthos.hearth: exit 0 /usr/bin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-hearth-Dark: exit 0 Successfully applied the color scheme HearthOS-hearth-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-hearth: exit 0
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.hearth", "scheme": "HearthOS-hearth-Dark", "style": "hearth-hearth", "colours": true}
+hearth-plasma-looks: Hearth's apps follow HearthOS-hearth-Dark (dark)
+hearth-plasma-looks: Hearth's apps follow HearthOS-hearth-Dark (dark)
+hearth-plasma-looks: Hearth's apps follow HearthOS-hearth-Dark (dark)
+hearth-plasma-looks: Hearth's apps follow HearthOS-hearth-Dark (dark)

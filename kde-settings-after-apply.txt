@@ -1,0 +1,45 @@
+== plasmanotifyrc
+[Notifications]
+CriticalInDndMode=false
+== plasmarc
+[OSD]
+Enabled=false
+== kwinrc
+[Desktops]
+Id_1=d735678f-aee9-4929-8520-cb4fdbacf6e3
+Id_2=5eecab34-216e-49b7-a613-7d86adde41e9
+Id_3=5664529f-54bf-4ca1-9d49-c14981e6981c
+Id_4=0c6a1407-3765-40ef-a0c0-4cdda61ea965
+Number=4
+Rows=1
+
+[TabBox]
+LayoutName=org.hearth.switcher
+
+[Tiling][0c6a1407-3765-40ef-a0c0-4cdda61ea965][373d5b3f-7a4f-4404-b9b8-21ff1919bd86]
+padding=4
+tiles={"layoutDirection":"horizontal","tiles":[{"width":0.25},{"width":0.5},{"width":0.25}]}
+
+[Tiling][5664529f-54bf-4ca1-9d49-c14981e6981c][373d5b3f-7a4f-4404-b9b8-21ff1919bd86]
+padding=4
+tiles={"layoutDirection":"horizontal","tiles":[{"width":0.25},{"width":0.5},{"width":0.25}]}
+
+[Tiling][5eecab34-216e-49b7-a613-7d86adde41e9][373d5b3f-7a4f-4404-b9b8-21ff1919bd86]
+padding=4
+tiles={"layoutDirection":"horizontal","tiles":[{"width":0.25},{"width":0.5},{"width":0.25}]}
+
+[Tiling][d735678f-aee9-4929-8520-cb4fdbacf6e3][373d5b3f-7a4f-4404-b9b8-21ff1919bd86]
+padding=4
+tiles={"layoutDirection":"horizontal","tiles":[{"width":0.25},{"width":0.5},{"width":0.25}]}
+
+[Xwayland]
+Scale=1
+
+[org.kde.kdecoration2]
+theme=__aurorae__svg__hearth-8f1867c5
+library=org.kde.kwin.aurorae
+== systemd/user/plasma-kwin_wayland.service.d/hearth-lock-screen.conf
+# Hearth's lock screen in KDE's screen locker while Hearth's panel is in use (hearth-plasma-panel;
+# undo or KDE's panel in Settings › Bar and dock takes it away). Only KWin gets it.
+[Service]
+Environment=PLASMA_DEFAULT_SHELL=org.hearth.mantel-lock

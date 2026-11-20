@@ -1,0 +1,20 @@
+KWIN environment variables: QList("KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1")
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Accepting client connections on sockets: QList("wayland-hearth")
+MESA-EGL: warning: Not allowed to force software rendering when API explicitly selects a hardware device.
+Module 'org.kde.kwin.decoration' does not contain a module identifier directive - it cannot be protected from external registrations.
+kf.config.core: Watching absolute paths is not supported "/tmp/home/.local/share/color-schemes/Hearth.colors"
+js: CIWIN ---- 7
+js: CIWIN plasmashell |  | 0,0 1920x1080 | fullscreen=false | keepAbove=false | excludeFromCapture=false | screen=Virtual-0 | {46d53ead-15a0-4145-a21d-32d6ae6a6ba2}
+js: CIWIN plasmashell |  | 0,0 1920x1080 | fullscreen=false | keepAbove=false | excludeFromCapture=false | screen=Virtual-0 | {39df5f22-0f84-44a7-b752-05ad6fd0635f}
+js: CIWIN org.kde.dolphin | Documents — Dolphin | 576,240 768x584 | fullscreen=false | keepAbove=false | excludeFromCapture=false | screen=Virtual-0 | {ef12b378-1285-41f8-b278-d77ef82556bb}
+js: CIWIN org.kde.konsole | hearth-os : bash — Konsole | 500,281 919x502 | fullscreen=false | keepAbove=false | excludeFromCapture=false | screen=Virtual-0 | {8109fd44-a655-45d1-ad58-a390768657c1}
+js: CIWIN plasmashell |  | 0,0 1920x68 | fullscreen=false | keepAbove=false | excludeFromCapture=false | screen=Virtual-0 | {a714ccc0-e1e5-4674-8fe5-6effbb385caf}
+js: CIWIN plasmashell |  | 0,996 1920x84 | fullscreen=false | keepAbove=false | excludeFromCapture=false | screen=Virtual-0 | {537a6a9a-02a9-4bf9-993d-164a6116c901}
+js: CIWIN  |  | 644,406 633x269 | fullscreen=false | keepAbove=false | excludeFromCapture=false | screen=Virtual-0 | {f370b3d8-df2f-4cc2-9530-1bd1408c88c8}
+js: CIWIN ==== end
+kwin_virtualkeyboard: Input method is trying to show itself but without a context. Aborting.
+kwin_virtualkeyboard: Input method is trying to show itself but without a context. Aborting.
