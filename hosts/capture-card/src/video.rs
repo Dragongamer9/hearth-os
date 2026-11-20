@@ -15,8 +15,8 @@
 //! mode (a few small frames a second, or none at all when the card sends nothing) and comes back by itself on the
 //! first real picture. Nothing here polls: threads sleep in GStreamer's bus or on a channel.
 //!
-//! CI's stand-in card (card.rs fake_picture): `multifilesrc` sends its JPEG as the card's MJPEG at the mode's frame
-//! rate, paced by the clock, and `audiotestsrc` stands in for the microphone; the rest of the pipeline is the same.
+//! CI's stand-in card (card.rs fake_picture): an appsrc sends its JPEG as the card's MJPEG at the mode's frame rate
+//! (a thread reads it again when it changes, so CI can make the signal arrive), and `audiotestsrc` stands in for the microphone; the rest of the pipeline is the same.
 
 use crate::card::Card;
 use futures::channel::mpsc::{unbounded, UnboundedReceiver, UnboundedSender};
@@ -138,7 +138,7 @@ pub fn describe(ask: &Ask, va: bool, have_pw: bool) -> String {
     let (fmt, w, h, fps) = if ask.watching { ask.card.lightest().unwrap_or(("MJPG".into(), ask.w, ask.h, 5)) } else { (ask.format.clone(), ask.w, ask.h, ask.fps) };
     let mjpg = fmt == "MJPG" || fake.is_some();
     let src = match fake {
-        Some(p) => format!("multifilesrc name=src location=\"{}\" loop=true caps=\"image/jpeg,framerate={fps}/1\" ! jpegparse ! identity sync=true", p.display().to_string().replace('"', "")),
+        Some(_) => format!("appsrc name=src is-live=true do-timestamp=true format=time caps=\"image/jpeg,framerate={fps}/1\" ! jpegparse"),
         None if mjpg => format!("v4l2src name=src device=\"{}\" ! image/jpeg,width={w},height={h},framerate={fps}/1", ask.card.dev.display()),
         None => format!("v4l2src name=src device=\"{}\" ! video/x-raw,format=YUY2,width={w},height={h},framerate={fps}/1", ask.card.dev.display()),
     };
@@ -476,6 +476,36 @@ mod imp {
                 return Err(e);
             }
         }
+        // CI's stand-in card: its JPEG, sent at the mode's frame rate (read again when the file changes).
+        if let Some(pic) = ask.card.fake_picture.clone() {
+            if let Some(src) = pipeline.by_name("src").and_then(|e| e.downcast::<gstreamer_app::AppSrc>().ok()) {
+                let fps = if watching { ask.card.lightest().map(|m| m.3).unwrap_or(5) } else { ask.fps }.max(1);
+                let _ = std::thread::Builder::new().name("cc-stand-in".into()).spawn(move || {
+                    let step = Duration::from_micros(1_000_000 / fps as u64);
+                    let (mut seen, mut data) = (None, Vec::new());
+                    let mut next = Instant::now();
+                    while gen == current() {
+                        let m = std::fs::metadata(&pic).and_then(|m| m.modified()).ok();
+                        if m != seen {
+                            if let Ok(b) = std::fs::read(&pic) {
+                                data = b;
+                            }
+                            seen = m;
+                        }
+                        if !data.is_empty() && src.push_buffer(gst::Buffer::from_slice(data.clone())).is_err() {
+                            break;
+                        }
+                        next += step;
+                        let now = Instant::now();
+                        if next > now {
+                            std::thread::sleep(next - now);
+                        } else {
+                            next = now;
+                        }
+                    }
+                });
+            }
+        }
         let p2 = pipeline.clone();
         let _ = std::thread::Builder::new().name("cc-bus".into()).stack_size(128 * 1024).spawn(move || loop {
             let Some(m) = bus.timed_pop_filtered(gst::ClockTime::NONE, &[gst::MessageType::Error, gst::MessageType::Eos, gst::MessageType::Application]) else { return };
@@ -570,27 +600,50 @@ mod imp {
             }
         };
         let mut pads = Vec::new();
+        let mut why: Vec<String> = Vec::new();
         let mut ok = r.pipeline.add(&bin).is_ok();
+        if !ok {
+            why.push("add".into());
+        }
         for (tee_name, q) in [("vt", "rvq"), ("at", "raq")] {
             let (Some(tee), Some(qe)) = (r.pipeline.by_name(tee_name), bin.by_name(q)) else { continue };
             let Some(sinkpad) = qe.static_pad("sink") else { continue };
-            let Ok(ghost) = gst::GhostPad::with_target(&sinkpad) else {
-                ok = false;
-                continue;
+            let ghost = match gst::GhostPad::builder_with_target(&sinkpad) {
+                Ok(b) => b.name(format!("in_{q}")).build(),
+                Err(e) => {
+                    why.push(format!("ghost {q}: {e}"));
+                    ok = false;
+                    continue;
+                }
             };
             let ghost = ghost.upcast::<gst::Pad>();
             let _ = ghost.set_active(true);
-            ok &= bin.add_pad(&ghost).is_ok();
+            if let Err(e) = bin.add_pad(&ghost) {
+                why.push(format!("add pad {q}: {e}"));
+                ok = false;
+            }
             match tee.request_pad_simple("src_%u") {
                 Some(tp) => {
-                    ok &= tp.link(&ghost).is_ok();
+                    if let Err(e) = tp.link(&ghost) {
+                        why.push(format!("link {tee_name}: {e:?}"));
+                        ok = false;
+                    }
                     pads.push((tee, tp));
                 }
-                None => ok = false,
+                None => {
+                    why.push(format!("no pad on {tee_name}"));
+                    ok = false;
+                }
             }
         }
         if ok {
-            ok = bin.sync_state_with_parent().is_ok();
+            if let Err(e) = bin.sync_state_with_parent() {
+                why.push(format!("start: {e}"));
+                ok = false;
+            }
+        }
+        if !ok {
+            crate::log(&format!("recording: hooking it in failed: {}", why.join("; ")));
         }
         if !ok {
             crate::log("recording couldn't be hooked into the picture");
@@ -756,7 +809,7 @@ mod tests {
         let mut a = ask();
         a.card.fake_picture = Some("/tmp/scene.jpg".into());
         let f = describe(&a, false, false);
-        assert!(f.starts_with("multifilesrc name=src location=\"/tmp/scene.jpg\" loop=true caps=\"image/jpeg,framerate=60/1\""));
+        assert!(f.starts_with("appsrc name=src is-live=true do-timestamp=true format=time caps=\"image/jpeg,framerate=60/1\" ! jpegparse"));
         assert!(f.contains("audiotestsrc") && f.contains("jpegdec name=dec"));
         let r = describe_rec(Path::new("/v/Capture 1.mp4"), true, "vah264enc", Some("fdkaacenc"));
         assert!(r.contains("vapostproc ! video/x-raw,format=NV12") && r.contains("vah264enc bitrate=30000") && r.contains("mp4mux name=mux") && r.contains("fdkaacenc"));

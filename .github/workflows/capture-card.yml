@@ -104,13 +104,13 @@ jobs:
           fi
           ls -la /dev/video42
           # The feed: a moving test picture as 1080p60 MJPEG into the fake card.
-          gst-launch-1.0 -q videotestsrc is-live=true pattern=ball ! video/x-raw,width=1920,height=1080,framerate=60/1 ! jpegenc quality=85 ! image/jpeg ! v4l2sink device=/dev/video42 sync=true >/tmp/feed.log 2>&1 &
+          sudo gst-launch-1.0 -q videotestsrc is-live=true pattern=ball ! video/x-raw,width=1920,height=1080,framerate=60/1 ! jpegenc quality=85 ! image/jpeg ! v4l2sink device=/dev/video42 sync=true >/tmp/feed.log 2>&1 &
           feed=$!
           sleep 3
-          v4l2-ctl -d /dev/video42 --all 2>/dev/null | grep -E "Card type|Width/Height|Pixel Format|Frames per second" | while read -r l; do echo "::notice title=loopback card::$l"; done
+          sudo v4l2-ctl -d /dev/video42 --all 2>/dev/null | grep -E "Card type|Width/Height|Pixel Format|Frames per second" | while read -r l; do echo "::notice title=loopback card::$l"; done
           # The app's own path: v4l2src at 1080p60 MJPEG → jpegdec → RGBA, 600 frames, with its CPU.
           TIMEFORMAT='%R %U %S'
-          { time timeout 30 gst-launch-1.0 -q v4l2src device=/dev/video42 num-buffers=600 ! image/jpeg,width=1920,height=1080,framerate=60/1 ! jpegdec ! videoconvert ! video/x-raw,format=RGBA ! fakesink sync=false >/tmp/read.log 2>&1 ; } 2>/tmp/time.txt
+          { time sudo timeout 30 gst-launch-1.0 -q v4l2src device=/dev/video42 num-buffers=600 ! image/jpeg,width=1920,height=1080,framerate=60/1 ! jpegdec ! videoconvert ! video/x-raw,format=RGBA ! fakesink sync=false >/tmp/read.log 2>&1 ; } 2>/tmp/time.txt
           rc=$?
           read -r real user sys < /tmp/time.txt
           if [ $rc -eq 0 ]; then
@@ -119,7 +119,7 @@ jobs:
             echo "::warning title=loopback read::v4l2src couldn't read the fake card (exit $rc): $(tail -c 400 /tmp/read.log | tr '\n' ' ')"
             echo "::warning title=loopback feed::$(tail -c 400 /tmp/feed.log | tr '\n' ' ')"
           fi
-          kill $feed 2>/dev/null
+          sudo pkill -f "v4l2sink device=/dev/video42" 2>/dev/null
 
   run:
     needs: build
