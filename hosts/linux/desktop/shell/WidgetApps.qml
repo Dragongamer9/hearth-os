@@ -9,7 +9,7 @@ WidgetBase {
     id: w
     readonly property var chosen: list("apps")
     readonly property var ids: chosen !== null ? chosen : (DeskState.pins || []).slice(0, 6)
-    readonly property var entries: { void AppEntries.rev; return ids.map(id => AppEntries.byId(id)).filter(e => !!e); }
+    readonly property var entries: { void AppEntries.rev; return ids.map(id => DesktopEntries.byId(id)).filter(e => !!e); }
     readonly property var allApps: { const a = AppEntries.values.filter(e => !e.noDisplay); a.sort((x, y) => String(x.name).localeCompare(String(y.name))); return a; }
     implicitWidth: 340; implicitHeight: 210
 

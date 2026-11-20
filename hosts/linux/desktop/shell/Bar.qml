@@ -62,7 +62,7 @@ PanelWindow {
         const out = [], byKey = {};
         void AppEntries.rev;   // look again once the app list has loaded
         for (const id of DeskState.pins) {
-            const entry = AppEntries.byId(id);
+            const entry = DesktopEntries.byId(id);
             if (!entry || byKey[id]) continue;
             byKey[id] = { key: id, id: id, entry: entry, pinned: true, own: false, windows: [] };
             out.push(byKey[id]);

@@ -75,7 +75,7 @@ Singleton {
         const a = raw.toLowerCase(), x = index;
         const hit = x.byId[a] || x.byClass[a] || x.byFlatpak[a] || x.byExec[a];
         if (hit) return hit;
-        try { const h = AppEntries.wrap(DesktopEntries.heuristicLookup(raw)); if (h) return h; } catch (e) {}
+        try { const h = DesktopEntries.heuristicLookup(raw); if (h) return h; } catch (e) {}
         return x.byLast[a.split(".").pop()] || null;
     }
 
