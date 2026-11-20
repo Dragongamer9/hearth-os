@@ -304,6 +304,13 @@ notice('pad keyboard open', 'ember pulsing: %.2f%% of a core, %.1f MB resident' 
 if c > 8.0:
     error('pad keyboard open', '%.2f%% of a core with the keyboard open (more than 8%%)' % c)
 
+# Left open and untouched for 30 s: the warmth holds still and nothing is drawn (never lag).
+time.sleep(31)
+c2 = cpu(host.pid, 10)
+notice('pad keyboard open, left alone', '%.2f%% of a core' % c2)
+if c2 > 0.5:
+    error('pad keyboard open, left alone', '%.2f%% of a core with the keyboard open and nobody using it (limit 0.5%%)' % c2)
+
 # A long touch on "e" (KWin's touch): its accents open after 480 ms; sliding onto the second and lifting types it.
 try:
     geo = json.load(open(GEO))
@@ -422,7 +429,16 @@ axes()
 time.sleep(3.0)
 shot('pad-k32-live-quick-access')
 notice('host after Quick Access (Hearth bar)', tail(host_log, 400))
+# Closed again (Quick settings toggles; B hides the keyboard if a text field had opened it).
+subprocess.run(['timeout', '20', 'hearth-plasma-panel', 'open', 'quick'], capture_output=True)
 press('b', after=0.5)
+time.sleep(1.0)
+ws = kwin_windows()
+open_now = [w for w in ws if len(w) == 6 and w[0] == 'hearth-pad-host']
+notice('overlays open before the rest measurement', open_now or 'none')
+if open_now:
+    press('b', after=1.0)
+shot('pad-k33-live-all-closed')
 
 # At rest again (nothing open): nothing may run.
 time.sleep(14)

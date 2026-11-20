@@ -156,6 +156,19 @@ pub fn ember_moving(glides: &[Glide], c: &Clock) -> bool {
     glides.last().map(|g| c.ms(g.at) < GLIDE + SPARK).unwrap_or(false)
 }
 
+/// The warmth pulses while the controller is in use; this long after its last press it holds still (no frames while
+/// an open keyboard is left alone: the never-lag rule).
+pub const WARM_FOR: std::time::Duration = std::time::Duration::from_secs(30);
+
+/// The warmth now: pulsing, or held where it was once the controller was left alone (WARM_FOR after `pad_at`).
+pub fn warmth_now(since: Instant, pad_at: Instant, c: &Clock) -> f32 {
+    let held = pad_at + WARM_FOR;
+    if c.frozen.is_none() && c.now > held {
+        return warmth(since, &Clock { now: held.max(since), frozen: None });
+    }
+    warmth(since, c)
+}
+
 /// The warmth under the ember (OskBoard.qml): from 0.22 up to 0.32 (1.1 s), then down to 0.18 (1.3 s) and up again,
 /// for as long as the ember shows.
 pub fn warmth(since: Instant, c: &Clock) -> f32 {

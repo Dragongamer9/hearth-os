@@ -22,15 +22,15 @@ os-bases/anatase/system_files/usr/libexec/hearth/hearth-pad-plasma (hearth-pad -
 - [x] nothing runs at rest (pictured run: 0.00 % of a core, 6.9 MB) — .github/scripts/hearth-apps-rust-shots.d/pad.sh: "At rest (nothing open, no helper): nothing may run."
 
 ## The Hearth menu (RadialMenu.qml, Guide)
-- [x] the screen dimmed, the soft disc with the warm glow in the middle — hosts/hearth-ui/apps/pad/src/view.rs: "The soft disc behind the items, warmed by the fire in the middle."
+- [x] the screen dimmed, the soft disc with the warm glow in the middle — hosts/hearth-ui/apps/pad/src/view.rs: "// The soft disc behind the items, warmed by the fire in the middle (the glow picture is its own layer)."
 - [x] the Hearth mark in the middle, the lit item's name under it, "Stick to choose · A select · B close" — hosts/hearth-ui/apps/pad/src/view.rs: "Stick to choose · A select · B close"
 - [x] eight items clockwise from the top: Apps, Keyboard, Quick Access, Close window, Game Mode, Screenshot, Controller mouse (on / off), Controls — hosts/hearth-ui/apps/pad/src/main.rs: "Item { action: \"screenshot\", label: \"Screenshot\", icon: G::Camera },"
-- [x] the lit item in the accent, a little bigger — hosts/hearth-ui/apps/pad/src/view.rs: "let d = s * 0.17 * if lit { 1.14 } else { 1.0 };"
+- [x] the lit item in the accent, a little bigger — hosts/hearth-ui/apps/pad/src/view.rs: "let d = s * 0.17 * (1.0 + 0.14 * k);"
 - [x] the mouse and touch: pointing lights an item, a click runs it, a click outside closes the menu — hosts/hearth-ui/apps/pad/src/view.rs: "on_enter(Msg::RadialHover(i as i32)).on_press(Msg::RadialPick(i as i32))"
 - [x] what the items do in Plasma (osk-plasma.qml): Plasma's launcher, the keyboard, Alt+F4, Game Mode, Spectacle — hosts/hearth-ui/apps/pad/src/main.rs: "sleep 0.5; spectacle -f -b -n 2>/dev/null"
-- [ ] the open / close animation (scale and fade): drawn at once, no animation
-- [ ] the Hearth logo picture (images/hearth-logo.png): drawn as a flame mark instead (the apps' renderer has no image support switched on)
-- [ ] Quick Access: Hearth's Quick Access widget isn't in the Fedora edition's Plasma yet; the item opens Hearth Settings there
+- [x] the open / close animation: the ring grows from 0.85 (OutBack, 260 ms) and fades in (140 ms), the screen dims to 0.55; closing runs it back and the overlay goes after 320 ms; the lit item grows to 1.14 and takes the accent over 140 ms (pictured in a real Plasma session: plasma-pad.yml pad-k01, k02, k04, k05) — hosts/hearth-ui/apps/pad/src/anim.rs: "pub fn radial_look(r: &Radial, c: &Clock) -> (f32, f32, f32) {"
+- [x] the Hearth logo picture (images/hearth-logo.png) in the middle and on the controls card, and the ember glow picture (images/ember-glow.png at 0.18) behind it — hosts/hearth-ui/apps/pad/src/view.rs: "picture(\"hearth-logo.png\", &L)"
+- [x] Quick Access: Hearth's Quick settings (Hearth's bar or its own Quick settings widget in any panel) opens, through hearth-plasma-panel open quick; with KDE's own panel only it says "Quick Access is part of Hearth's bar (Settings › Bar and dock)" and opens Hearth Settings (pictured: pad-k31, pad-k32) — hosts/hearth-ui/apps/pad/src/main.rs: "\"hearth-plasma-panel\".into(), \"open\".into(), \"quick\".into()"
 
 ## The controls card and messages (Help.qml)
 - [x] the card: Hearth mark, "Controller controls", the line under it, Plasma's fifteen controls in two columns — hosts/hearth-ui/apps/pad/src/view.rs: "(\"View + A\", \"The taskbar (D-pad along it, A opens)\"),"
@@ -50,7 +50,7 @@ os-bases/anatase/system_files/usr/libexec/hearth/hearth-pad-plasma (hearth-pad -
 - [x] the strip: word suggestions (the first in the accent) or what the controller does, and the layout badge — hosts/hearth-ui/apps/pad/src/view.rs: "A type · X ⌫ · Y space · LT ⇧ · LB RB move · ☰ Enter · B hide · hold A for accents · RT clicks"
 - [x] the keys by the engine's widths, modifier keys, Enter and caps lock in the accent, Shift on, keys that are off faded — hosts/hearth-ui/apps/pad/src/view.rs: "} else if k.go || k.lock {"
 - [x] the controller buttons on the keys (X ⌫, Y space, LT, RT...) while it's used — hosts/hearth-ui/apps/pad/src/osk.rs: "pub fn glyph(&self, k: &Key) -> String {"
-- [x] the picked key ringed in the accent with its warmth — hosts/hearth-ui/apps/pad/src/view.rs: "shadow: if glow { Shadow { color: Pal::a(accent, 0.35)"
+- [x] the picked key ringed in the accent with its warmth (the ember, OskBoard.qml) — hosts/hearth-ui/apps/pad/src/view.rs: "struct Ember {"
 - [x] accents above the key (hold A, View), pick with the D-pad or a tap — hosts/hearth-ui/apps/pad/src/view.rs: "// accents (hold A, View, or a long touch)"
 - [x] the Ember Wheel over the keys: eight coals, the tilted one bigger and lit with its four letters — hosts/hearth-ui/apps/pad/src/view.rs: "let pd = wd * 0.26 * if on { 1.45 } else { 1.0 };"
 - [x] split sticks' aims (two rings) and the split shape (halves at the edges) — hosts/hearth-ui/apps/pad/src/view.rs: "Color::from_rgb8(0xff, 0xd3, 0x6b)"
@@ -59,10 +59,10 @@ os-bases/anatase/system_files/usr/libexec/hearth/hearth-pad-plasma (hearth-pad -
 - [x] learned words kept in osk-words.json the safe way (merged, atomic, .bak), shared with Game Mode — hosts/hearth-ui/apps/pad/src/main.rs: "hearth_ui::settings_file::merge_json(&path, &m)"
 - [x] the clipboard panel's recent copies, from Plasma's Klipper — hosts/hearth-ui/apps/pad/src/main.rs: "getClipboardHistoryMenu"
 - [x] taps with the mouse or touch on keys, suggestions and accents — hosts/hearth-ui/apps/pad/src/main.rs: "Msg::KeyTap(r, c) => return a.engine"
-- [ ] the ember's glide and its trail of sparks, and the pulsing warmth: the ring moves at once, no animation
-- [ ] a long touch on a letter for its accents (touch only; hold A and View do it with the controller)
-- [ ] the password mode for Hearth's password prompt (Plasma's own prompts don't tell Hearth; the keyboard opens in text mode)
-- [ ] opening by itself on a text field after the controller was used: hearth-pad does it (KWin's virtual keyboard signal), not tested on a device yet
+- [x] the ember's glide (130 ms OutCubic) and its trail of sparks (one at most every 70 ms, rising 14 px and fading over 450 ms; none with trail off), and the warmth under it pulsing 0.22 → 0.32 → 0.18 (frames only while it shows: 20 a second for the warmth; pictured pad-k06, k07, k08, k09, k23) — hosts/hearth-ui/apps/pad/src/anim.rs: "pub fn sparks(glides: &[Glide], c: &Clock) -> Vec<(f32, f32, f32, f32)> {"
+- [x] a long touch on a letter for its accents: a tap types on letting go, held 480 ms the accents open, slide onto one and lift to type it (KWin's own touch in CI: pad-k24, k25, k26) — hosts/hearth-ui/apps/pad/src/view.rs: "on_press(Msg::KeyDown(r, c)).on_release(Msg::KeyUp(r, c))"
+- [x] the password mode (no suggestions, nothing learned, no emoji key) over Plasma's own password prompts (KDE's polkit agent, KDE Wallet, ssh / GnuPG / kdesu askers, by window class), opening by itself when one comes up after the controller was used (pad-k10, pad-k28) — hosts/linux/desktop/shell/hearth-pad: "PLASMA_PASSWORD = ('org.kde.polkit-kde-authentication-agent-1'"
+- [x] opening by itself on a text field after the controller was used (KWin's text-field signal; works with the Fedora image's plasma-keyboard; pictured in a real Plasma session pad-k27, k27b) (needs testing on a device) — hosts/linux/desktop/shell/hearth-pad: "self.plasma_auto_osk(now)"
 
 ## Still to see on a device (needs testing on the ROG Ally)
-- [ ] the overlays over a real KWin session, a controller app and a fullscreen game
+- [x] the overlays over a real KWin session, a controller app and a fullscreen game (CI: KDE's KWin and plasmashell, plasma-pad.yml pad-k20 to k32; the controller paused over the fullscreen game) (needs testing on the ROG Ally) — .github/scripts/plasma-pad-e2e.py: "A fullscreen game: the controller pauses (no pointer, no keys)"

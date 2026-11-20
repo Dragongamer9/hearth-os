@@ -673,7 +673,7 @@ pub fn keyboard<'a>(a: &'a App, size: Size) -> Element<'a, Msg> {
     if ember_shown(vm) {
         let ring = anim::ember_rect(&a.glides, &a.clock).or_else(|| sel_rect(vm, size));
         if let Some(ring) = ring {
-            let warmth = a.ember_since.map(|t0| anim::warmth(t0, &a.clock)).unwrap_or(0.22);
+            let warmth = a.ember_since.map(|t0| anim::warmth_now(t0, a.pad_at, &a.clock)).unwrap_or(0.22);
             let sparks = anim::sparks(&a.glides, &a.clock);
             let radius = key_radius(&th, vm, m.key_h);
             layers.push(canvas::Canvas::new(Ember { ring, warmth, sparks, accent: th.accent, radius }).width(Length::Fill).height(Length::Fill).into());

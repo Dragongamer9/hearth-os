@@ -140,6 +140,8 @@ pub struct App {
     /// the keyboard's ember: its glides from key to key (the newest last), and since when it shows (its warmth)
     pub glides: Vec<anim::Glide>,
     pub ember_since: Option<Instant>,
+    /// the controller last used on the keyboard: the warmth pulses only while it's in use (WARM_FOR)
+    pub pad_at: Instant,
     /// a key held with the mouse or a finger, and whether that became a long touch (its accents open)
     press: Option<(usize, usize)>,
     held: bool,
@@ -306,6 +308,7 @@ impl App {
                 tasks.push(if m.get("open").and_then(Value::as_bool).unwrap_or(false) { self.open_kb_as(mode) } else { self.close_kb() })
             }
             "oskpad" => {
+                self.pad_at = self.clock.now;
                 if self.kb {
                     let b = m.get("b").and_then(Value::as_str).unwrap_or("");
                     let down = m.get("down").and_then(Value::as_bool).unwrap_or(false);
@@ -313,6 +316,7 @@ impl App {
                 }
             }
             "oskaxes" => {
+                self.pad_at = self.clock.now;
                 if self.kb {
                     let f = |k: &str| m.get(k).and_then(Value::as_f64).unwrap_or(0.0);
                     tasks.push(self.engine(&format!("__e.axes({}, {}, {}, {}, Date.now());", f("lx"), f("ly"), f("rx"), f("ry"))));
@@ -415,7 +419,14 @@ impl App {
             }
         }
         if self.kb && self.ember_since.is_some() {
-            return Some(if anim::ember_moving(&self.glides, &self.clock) { 16 } else { 50 });
+            if anim::ember_moving(&self.glides, &self.clock) {
+                return Some(16);
+            }
+            // Never lag: the warmth holds still once the controller has been left alone a while, so an open
+            // keyboard nobody uses draws nothing.
+            if self.clock.now.saturating_duration_since(self.pad_at) < anim::WARM_FOR {
+                return Some(50);
+            }
         }
         None
     }
@@ -550,6 +561,7 @@ impl App {
     /// Keyboard.qml's openKb(mode): "text", or "password" (no suggestions, nothing learned, no emoji key).
     fn open_kb_as(&mut self, mode: &str) -> Task<Msg> {
         self.kb_mode = mode.to_string();
+        self.pad_at = self.clock.now;
         self.press = None;
         self.held = false;
         if self.osk.is_none() && self.osk_err.is_empty() {
@@ -692,6 +704,7 @@ fn new() -> (App, Task<Msg>) {
         radial_anim: None,
         glides: Vec::new(),
         ember_since: None,
+        pad_at: Instant::now(),
         press: None,
         held: false,
         kb_mode: "text".into(),
