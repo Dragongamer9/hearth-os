@@ -14,6 +14,6 @@ chmod +x "$FHP_STUB/hearth-firehold-plasma"
 run settings-couch-1-modes hearth-settings 0 env PATH="$FHP_STUB:$PATH" "$BIN/hearth-settings-app" --page couch-desk-away --layout b
 run settings-couch-3-starts-in hearth-settings 0 env PATH="$FHP_STUB:$PATH" "$BIN/hearth-settings-app" --page couch-desk-away --layout b --press "right down down down down down down"
 run settings-couch-4-switching hearth-settings 0 env PATH="$FHP_STUB:$PATH" "$BIN/hearth-settings-app" --page couch-desk-away --layout b --press "right down down down down down down down down down"
-run settings-couch-5-games hearth-settings 0 env PATH="$FHP_STUB:$PATH" "$BIN/hearth-settings-app" --page couch-desk-away --layout b --press "right down down down down down down down down down down down down"
+run settings-couch-5-games hearth-settings 0 env PATH="$FHP_STUB:$PATH" "$BIN/hearth-settings-app" --page couch-desk-away --layout b --press "right down down down down down down down down down down down down down down down down"
 run settings-couch-2-away hearth-settings 0 env PATH="$FHP_STUB:$PATH" "$BIN/hearth-settings-app" --page couch-away --layout b
 rm -rf "$FHP_STUB"

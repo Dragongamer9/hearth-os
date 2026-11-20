@@ -50,7 +50,23 @@ function setCouch(on) {
 // A game that opens on the Couch (or with Games: Always full screen) starts full screen. Going to a running game from
 // the Couch is the Couch's own doing (it asks for full screen itself), so "Open in a window" stays a window.
 function onCouchScreen(w) { return !!(w && w.output && couchOn[w.output.name]); }
-workspace.windowAdded.connect(function (w) { if (couch || onCouchScreen(w) || games === "fullscreen") full(w); });
+// The Couch over the Desk on a Couch screen (the Desk bar's window "Firehold Couch on NAME"): on that screen, full
+// screen, not in the task bar or the window switcher.
+function placeCouch(w) {
+    var m = /^Firehold Couch on (.+)$/.exec(String(w.caption || ""));
+    if (!m) return false;
+    var o = workspace.screens.filter(function (s) { return s.name === m[1]; })[0];
+    if (o && w.output !== o) workspace.sendClientToScreen(w, o);
+    w.skipTaskbar = true;
+    w.skipSwitcher = true;
+    w.skipPager = true;
+    w.fullScreen = true;
+    return true;
+}
+workspace.windowAdded.connect(function (w) {
+    if (placeCouch(w)) return;
+    if (couch || onCouchScreen(w) || games === "fullscreen") full(w);
+});
 
 // Each screen's own mode: a game on a Couch screen goes full screen, back on a Desk screen it goes back in its window.
 function setScreen(name, on) {

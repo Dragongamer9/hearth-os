@@ -1,45 +1,28 @@
 // This screen's Couch (or Away) over the Desk, while another screen is Desk: the Couch's own page (Couch.qml, copied in
-// with install.sh) in a full-screen layer on this screen (KDE's LayerShellQt, which KWin speaks). A window or game
-// coming in front hides it; Home and the Guide bring it back.
+// with install.sh) full screen on that screen. A plain window (a layer can't be put on another screen from the bar:
+// Wayland places it on the bar's), named "Firehold Couch on NAME" so Firehold's KWin script puts it on its screen, full
+// screen, out of the task bar and the window switcher. A window or game coming in front hides it; Home and the
+// Guide bring it back.
 import QtQuick
 import QtQuick.Window
-import org.kde.layershell 1.0 as LayerShell
 import "couch"
 
 Window {
     id: cw
     property QtObject bar: null
     property string screenName: ""
+    title: "Firehold Couch on " + screenName
     visible: false
-    // Its own surface on its own screen, not a child of the bar's panel (whose screen it isn't on).
-    transientParent: null
+    flags: Qt.FramelessWindowHint
     color: "#0f0b0a"
-    onVisibleChanged: console.warn("firehold: Couch layer on", screenName, "visible", visible, width + "x" + height)
-    function target() {
-        const l = Qt.application.screens;
-        for (let i = 0; i < l.length; i++) if (l[i].name === screenName) return l[i];
-        return null;
-    }
-    width: screen ? screen.width : 1920
-    height: screen ? screen.height : 1080
-    // The layer goes on the window's own screen (not the one the compositor would pick).
-    LayerShell.Window.screenConfiguration: LayerShell.Window.ScreenFromQWindow
-    screen: target()
-    LayerShell.Window.scope: "hearth-firehold-couch"
-    LayerShell.Window.layer: LayerShell.Window.LayerOverlay
-    LayerShell.Window.anchors: LayerShell.Window.AnchorTop | LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorRight
-    LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityExclusive
-    LayerShell.Window.exclusionZone: -1
-    Component.onCompleted: console.warn("firehold: Couch layer made for", screenName)
-    // Its screen is set just before it first shows (Wayland puts a layer on its output once, when it's made).
+    width: 1920; height: 1080
+    onVisibleChanged: console.warn("firehold: Couch on", screenName, "visible", visible)
     function show() {
-        const t = target();
-        if (!t) return;
-        // Made on the wrong screen (Wayland places a layer once, when it's made): again, on its own.
-        if (visible && screen !== t) visible = false;
-        if (screen !== t) screen = t;
-        visible = true; requestActivate(); couch.forceActiveFocus();
-        console.warn("firehold: the Couch over the Desk on", screenName, "(window on", screen ? screen.name : "no screen", ")");
+        if (screenName === "") return;
+        visible = true;
+        raise();
+        requestActivate();
+        couch.forceActiveFocus();
     }
     Couch {
         id: couch

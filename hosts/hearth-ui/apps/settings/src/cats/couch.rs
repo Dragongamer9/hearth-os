@@ -189,7 +189,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
         let home: Vec<String> = c.get("couchHome").and_then(Value::as_array).map(|l| l.iter().filter_map(|x| x.as_str().map(String::from)).collect())
             .unwrap_or_else(|| ["Hero", "Continue", "Recently added", "Watch and listen", "Downloads", "Controllers"].iter().map(|s| s.to_string()).collect());
         col = col.push(srow(&p, G::Home, "Couch home", "What's on Home and in which order",
-            row![t(home.join(", "), sz(15.0), p.muted), glyph(G::Chevron, p.muted, 14.0, 2.0)].spacing(10.0).align_y(iced::Center).into()));
+            row![t(home.join(", "), sz(15.0), p.muted).width(Length::Fixed(sz(300.0))), glyph(G::Chevron, p.muted, 14.0, 2.0)].spacing(10.0).align_y(iced::Center).into()));
         col = col.push(srow(&p, G::Sound, "Sound in Couch", "Switches the output when this screen goes Couch",
             choice(&p, &sound, &[("tv", if tv { "TV speakers" } else { "This screen's speakers" }), ("keep", "Keep what I picked")], |v| Msg::Screen("sound", v))));
     }
