@@ -164,12 +164,14 @@ def cards(now, low=False):
             {'name': 'MX Master 3', 'kind': 'mouse', 'percent': 40, 'charging': False, 'low': False}],
         'devices': [
             {'id': 'd1' * 16, 'name': "Dad's PC", 'online': True, 'kind': 'desktop', 'mode': 'desktop', 'playing': 'Trains 2010',
-             'uptime': 3700, 'family': True, 'wake': True, 'battery': None, 'lastSeen': now},
+             'uptime': 3700, 'family': True, 'wake': True, 'battery': None, 'lastSeen': now, 'backupAt': last_night - 48 * M},
             {'id': 'a1' * 16, 'name': 'ROG Ally', 'online': False, 'kind': 'handheld', 'mode': '', 'playing': '', 'battery': 64,
              'savesAt': now - 10 * M, 'wake': True, 'family': False, 'lastSeen': now - 10 * M},
             {'id': 'b1' * 16, 'name': 'Laptop', 'online': False, 'kind': 'laptop', 'mode': '', 'playing': '', 'battery': None,
              'backupAt': last_night, 'wake': False, 'family': False, 'lastSeen': now - 20 * H}],
         'savesToStorage': True, 'alsoOn': 'ROG Ally',
+        # Away's cards (mockup 06): the home server, and the notifications that came while nobody was here.
+        'server': {'title': 'Media server on', 'lines': ['Nobody watching', 'Photos backup at 2 AM']}, 'notifications': 3,
         'progress': {
             'beacon:rotwk': {'series': 'The Battle for Middle-earth II', 'campaign': 'Angmar', 'chapter': 5, 'of': 8, 'name': 'The Fall of Arthedain',
                              'percent': 62, 'hours': 31, 'mod': 'Edain 4.8 submod', 'launcher': 'Beacon'},

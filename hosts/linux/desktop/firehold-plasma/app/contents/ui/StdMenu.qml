@@ -58,59 +58,59 @@ PlasmaCore.Dialog {
                 Repeater { model: m.subItems; delegate: row }
             }
         }
-    }
-    Component {
-        id: row
-        Item {
-            id: r
-            required property var modelData
-            readonly property string kind: modelData[3] || ""
-            readonly property bool hot: ma.containsMouse || (kind === "sub" && m.subOpen)
-            width: parent ? parent.width : 0
-            height: kind === "sep" ? 13 : kind === "head" ? 30 : 38
-            Rectangle { visible: r.kind === "sep"; anchors.centerIn: parent; width: parent.width - 16; height: 1; color: "#14ffffff" }
-            Rectangle {
-                visible: r.kind !== "sep" && r.kind !== "head"
-                anchors.fill: parent; radius: 8
-                color: r.hot ? "#ff7a2f" : "transparent"
-            }
-            Kirigami.Icon {
-                id: ic
-                visible: !!r.modelData[5]
-                x: 14; anchors.verticalCenter: parent.verticalCenter
-                width: visible ? 18 : 0; height: 18
-                source: r.modelData[5] || ""
-                color: r.hot ? "#1d0d03" : "#f2ede8"; isMask: true
-            }
-            Text {
-                visible: r.kind !== "sep"
-                x: 14 + (ic.visible ? 26 : 0); anchors.verticalCenter: parent.verticalCenter
-                width: parent.width - 28 - (ic.visible ? 26 : 0) - right.implicitWidth - 12; elide: Text.ElideRight
-                textFormat: Text.StyledText
-                text: r.modelData[0] + (r.modelData[4] ? "<font color=\"" + (r.hot ? "#5a2a0c" : "#8f8781") + "\"> · " + r.modelData[4] + "</font>" : "")
-                color: r.kind === "head" ? "#6f6a66" : r.hot ? "#1d0d03" : r.kind === "red" ? "#ff9b9b" : "#f2ede8"
-                font.pixelSize: r.kind === "head" ? 12 : 16; font.weight: r.kind === "head" ? Font.Bold : Font.Normal
-                font.letterSpacing: r.kind === "head" ? 1 : 0
-            }
-            Text {
-                id: right
-                visible: r.kind !== "sep" && r.kind !== "head"
-                anchors.right: parent.right; anchors.rightMargin: 14; anchors.verticalCenter: parent.verticalCenter
-                text: r.modelData[1] || ""
-                color: r.hot ? "#5a2a0c" : "#6f6a66"; font.pixelSize: 14
-            }
-            MouseArea {
-                id: ma
-                anchors.fill: parent
-                enabled: r.kind !== "sep" && r.kind !== "head"
-                hoverEnabled: true
-                onEntered: if (r.kind === "sub") m.openSub(r)
-                onClicked: function (mouse) {
-                    if (r.kind === "sub") { m.openSub(r); return; }
-                    // "Snap left · right": the left half snaps left, the right half right.
-                    const a = r.kind === "pair" ? String(r.modelData[2]).split("|")[mouse.x < width / 2 ? 0 : 1] : r.modelData[2];
-                    m.picked(a);
-                    m.visible = false;
+        Component {
+            id: row
+            Item {
+                id: r
+                required property var modelData
+                readonly property string kind: modelData[3] || ""
+                readonly property bool hot: ma.containsMouse || (kind === "sub" && m.subOpen)
+                width: parent ? parent.width : 0
+                height: kind === "sep" ? 13 : kind === "head" ? 30 : 38
+                Rectangle { visible: r.kind === "sep"; anchors.centerIn: parent; width: parent.width - 16; height: 1; color: "#14ffffff" }
+                Rectangle {
+                    visible: r.kind !== "sep" && r.kind !== "head"
+                    anchors.fill: parent; radius: 8
+                    color: r.hot ? "#ff7a2f" : "transparent"
+                }
+                Kirigami.Icon {
+                    id: ic
+                    visible: !!r.modelData[5]
+                    x: 14; anchors.verticalCenter: parent.verticalCenter
+                    width: visible ? 18 : 0; height: 18
+                    source: r.modelData[5] || ""
+                    color: r.hot ? "#1d0d03" : "#f2ede8"; isMask: true
+                }
+                Text {
+                    visible: r.kind !== "sep"
+                    x: 14 + (ic.visible ? 26 : 0); anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width - 28 - (ic.visible ? 26 : 0) - right.implicitWidth - 12; elide: Text.ElideRight
+                    textFormat: Text.StyledText
+                    text: r.modelData[0] + (r.modelData[4] ? "<font color=\"" + (r.hot ? "#5a2a0c" : "#8f8781") + "\"> · " + r.modelData[4] + "</font>" : "")
+                    color: r.kind === "head" ? "#6f6a66" : r.hot ? "#1d0d03" : r.kind === "red" ? "#ff9b9b" : "#f2ede8"
+                    font.pixelSize: r.kind === "head" ? 12 : 16; font.weight: r.kind === "head" ? Font.Bold : Font.Normal
+                    font.letterSpacing: r.kind === "head" ? 1 : 0
+                }
+                Text {
+                    id: right
+                    visible: r.kind !== "sep" && r.kind !== "head"
+                    anchors.right: parent.right; anchors.rightMargin: 14; anchors.verticalCenter: parent.verticalCenter
+                    text: r.modelData[1] || ""
+                    color: r.hot ? "#5a2a0c" : "#6f6a66"; font.pixelSize: 14
+                }
+                MouseArea {
+                    id: ma
+                    anchors.fill: parent
+                    enabled: r.kind !== "sep" && r.kind !== "head"
+                    hoverEnabled: true
+                    onEntered: if (r.kind === "sub") m.openSub(r)
+                    onClicked: function (mouse) {
+                        if (r.kind === "sub") { m.openSub(r); return; }
+                        // "Snap left · right": the left half snaps left, the right half right.
+                        const a = r.kind === "pair" ? String(r.modelData[2]).split("|")[mouse.x < width / 2 ? 0 : 1] : r.modelData[2];
+                        m.picked(a);
+                        m.visible = false;
+                    }
                 }
             }
         }

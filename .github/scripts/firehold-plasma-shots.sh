@@ -313,6 +313,7 @@ hearth-firehold-plasma ping menu-off; sleep 1
 # A controller button pressed on the Desk (no controller here: the same call the controller's button makes).
 hearth-firehold-plasma pad-button a; sleep 3
 shot fp-14-controller-hint 0 1920
+echo "::notice title=Controller hint::notify-send: $(command -v notify-send || echo none) · in Hearth's history: $(grep -c 'controller is in your hand' "$HOME/.local/state/nimbus/notifications.json" 2>/dev/null) · $(notify-send -a Check 'check' 'check' 2>&1 | head -c 200)"
 # While you played (mockup 10): notifications that come while a game is full screen are held back.
 front "Trains 2010" true; sleep 3
 note '{"app": "Friends", "summary": "Mira", "body": "Ready for co-op tonight?"}'; sleep 1
@@ -325,7 +326,7 @@ if command -v hearth-plasma-panel >/dev/null; then
   note '{"app": "Firefox", "summary": "Firefox download finished", "body": "hollow-pines.tar.zst · 2.9 GB", "timeout": 30000}'; sleep 1
   note '{"app": "Hearth OS", "summary": "Hearth OS update ready", "body": "Nothing changes until you restart", "timeout": 30000}'; sleep 1
   note '{"app": "Discord", "summary": "Ryder in #bfme-nights", "body": "“Edain game at 11? I'"'"'ll host.”", "actions": ["inline-reply", "Reply", "read", "Mark read"], "reply": "Reply...", "timeout": 30000}'; sleep 1
-  note '{"app": "Hearth Recorder", "summary": "Saved the last 30 seconds", "body": "Rise of the Witch-king · 1440p · 96 MB", "image": "'"$HOME"'/.cache/hearth/art/beacon_rotwk.jpg", "actions": ["open", "Open", "share", "Copy a share link", "delete", "Delete"], "timeout": 30000}'; sleep 1
+  note '{"app": "Hearth Recorder", "summary": "Saved the last 30 seconds", "body": "Rise of the Witch-king · 1440p · 96 MB", "image": "file://'"$HOME"'/.cache/hearth/art/beacon_rotwk.jpg", "actions": ["open", "Open", "share", "Copy a share link", "delete", "Delete"], "timeout": 30000}'; sleep 1
   note '{"app": "Downloads", "summary": "Helldivers 2 is ready", "body": "The 6.0 GB update finished (Steam).", "actions": ["play", "Play", "tv", "Play on the TV"], "timeout": 30000}'; sleep 1
   note '{"app": "Hearth Link", "summary": "Dad'"'"'s PC asks for help", "body": "“Trains 2010 won'"'"'t start after the update.” He'"'"'s at his PC now.", "urgency": 2, "actions": ["connect", "Connect (Remote desktop)", "later", "Call him back later", "notnow", "Not now"]}'; sleep 3
   shot fp-09-notification-cards 0 1920

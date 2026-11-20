@@ -122,6 +122,10 @@ def detach(cmd):
 def notify(title, text, icon='hearth'):
     if have('notify-send'):
         detach(['notify-send', '-a', 'Firehold', '-i', icon, title, text])
+    elif have('gdbus'):
+        # No libnotify: the same notification over D-Bus (GLib's gdbus is always there with Plasma).
+        detach(['gdbus', 'call', '--session', '--dest', 'org.freedesktop.Notifications', '--object-path', '/org/freedesktop/Notifications',
+                '--method', 'org.freedesktop.Notifications.Notify', 'Firehold', '0', icon, title, text, '[]', '{}', '-1'])
 
 
 def write_small(path, text):
@@ -1776,7 +1780,18 @@ def home_cards(fast=False):
         out['added'] = added_times()
         out['profiles'] = profiles_list()
         out['server'] = server_card()
+        out['notifications'] = away_notifications()
     return out
+
+
+def away_notifications():
+    """Away's "Waiting for you": how many notifications came since a screen went Away (Hearth's own history,
+    ~/.local/state/nimbus/notifications.json; only a count, nothing of what they say)."""
+    since = [v.get('at') for v in (read_modes().get('screens') or {}).values() if isinstance(v, dict) and v.get('mode') == 'away' and isinstance(v.get('at'), (int, float))]
+    if not since:
+        return 0
+    h = read_json(os.path.join(os.environ.get('HOME') or os.path.expanduser('~'), '.local', 'state', 'nimbus', 'notifications.json'), {}) or {}
+    return sum(1 for v in (h.values() if isinstance(h, dict) else []) if isinstance(v, dict) and isinstance(v.get('time'), (int, float)) and v['time'] >= min(since))
 
 
 def server_card():
