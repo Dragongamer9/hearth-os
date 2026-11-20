@@ -151,6 +151,8 @@ pub struct App {
 
 /// More than this much of one core over ~10 s while the smooth motion runs, and it's turned down.
 const GUARD_PCT: f64 = 3.0;
+/// The light mode's own limit: over it too, and the AIs stand still for the rest of the session.
+const GUARD_LIGHT_PCT: f64 = 8.0;
 
 /// This process's own CPU time (user + system) in clock ticks, from /proc/self/stat.
 fn own_cpu_ticks() -> Option<u64> {
@@ -616,7 +618,7 @@ impl App {
     /// mode. For the rest of this session only (nothing is written anywhere); the dashboard says so, with Try smooth
     /// again.
     fn guard_tick(&mut self) {
-        if self.light() || self.smooth_level >= 2 {
+        if self.smooth_level >= 3 {
             self.cpu_win.clear();
             return;
         }
@@ -640,11 +642,13 @@ impl App {
         }
         let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as f64;
         let pct = 100.0 * (ticks - c0) as f64 / hz / (t - t0);
-        if pct > GUARD_PCT {
-            self.smooth_level += 1;
+        // smooth (60 or 30 a second): 3 %; the light mode (also when the CPU draws): its own 8 %, then it stands still
+        let limit = if self.light() { GUARD_LIGHT_PCT } else { GUARD_PCT };
+        if pct > limit {
+            self.smooth_level = if self.light() { 3 } else { self.smooth_level + 1 };
             self.guard_note = true;
             self.cpu_win.clear();
-            eprintln!("server mode: smooth motion turned down to keep this PC fast ({pct:.1} % of a core over {:.0} s; now {})", t - t0, if self.smooth_level >= 2 { "the light mode" } else { "30 a second" });
+            eprintln!("server mode: smooth motion turned down to keep this PC fast ({pct:.1} % of a core over {:.0} s; now {})", t - t0, match self.smooth_level { 1 => "30 a second", 2 => "the light mode", _ => "standing still" });
         }
     }
     /// How often the dashboard moves (ms), or None.
@@ -653,7 +657,7 @@ impl App {
     /// Light mode (drawn with the CPU): only while something is at work (a core working, a sender lit in the AI
     /// team's mesh, or the AI team's or Ithil's page open), 5 times a second; Ithil's small brain alone twice a second.
     pub fn anim_rate(&self) -> Option<u64> {
-        if self.still() {
+        if self.still() || self.smooth_level >= 3 {
             return None;
         }
         let d = self.d.as_ref()?;

@@ -184,7 +184,11 @@ pub fn view(a: &App) -> E<'_> {
         .style(boxed(Color::from_rgba(0.008, 0.004, 0.0, 0.92), 0.0, None))
     ];
 
-    let page = column![top, body, hints].width(Length::Fill).height(Length::Fill);
+    let mut page = column![top, body, hints].width(Length::Fill).height(Length::Fill);
+    // CI's frame counter (HEARTH_UI_FRAMES; nothing without it)
+    if let Some(m) = hearth_ui::ui::frame_meter() {
+        page = page.push(m);
+    }
     let base: E = stack![
         container(Space::new()).width(Length::Fill).height(Length::Fill).style(boxed(G::bg(), 0.0, None)),
         draw::canvas(draw::Dots { step: 24.0 * k, color: Color::from_rgba(1.0, 0.70, 0.28, 0.07) }, Length::Fill, Length::Fill),
