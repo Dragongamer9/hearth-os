@@ -64,7 +64,7 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 ## 6. Away (06-away.png)
 
-- [x] Big clock and date — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Away.qml: "text: Qt.formatTime(aw.couch.now, \"h:mm\")"
+- [x] Big clock and date — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Away.qml: "text: Qt.formatTime(aw.couch.now, \"h:mm AP\")"
 - [x] Cards for what keeps working: a download, Hearth Link serving another device, the home server — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Away.qml: "kind: \"Home server\""
 - [x] Notifications shown only as a count while Away — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Away.qml: "lines: [\"Hidden here so nobody else reads them\"]"
 - [x] Power and screen-off notes — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Away.qml: "text: [\"Fans quiet: Power saver until you're back\","

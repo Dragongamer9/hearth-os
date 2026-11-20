@@ -4,6 +4,8 @@ import QtQuick
 
 Image {
     property string name: ""
+    property bool mask: false          // (as KIcon.qml: a menu's line icon)
+    property color tint: "#f2ede8"
     anchors.fill: parent
     asynchronous: true; smooth: true; mipmap: true
     sourceSize.width: Math.ceil(width * Screen.devicePixelRatio); sourceSize.height: Math.ceil(height * Screen.devicePixelRatio)

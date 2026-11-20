@@ -23,6 +23,11 @@ cp "$SRC"/couch/contents/ui/*.qml "$SRC"/couch/contents/ui/*.js "$P/plasmoids/or
 cp "$SRC/../shell/firehold.js" "$P/plasmoids/org.hearthos.firehold.posture/contents/ui/couch/firehold.js" || ok=0
 rm -f "$P/plasmoids/org.hearthos.firehold.posture/contents/ui/couch/main.qml"
 cp -a "$SRC/app" "$P/plasmoids/org.hearthos.firehold.app"
+# The app menus' card is the Couch's too (MenuCard.qml, shared with Firehold on labwc): the Couch's files next to it.
+mkdir -p "$P/plasmoids/org.hearthos.firehold.app/contents/ui/couch"
+cp "$SRC"/couch/contents/ui/*.qml "$SRC"/couch/contents/ui/*.js "$P/plasmoids/org.hearthos.firehold.app/contents/ui/couch/" || ok=0
+cp "$SRC/../shell/firehold.js" "$P/plasmoids/org.hearthos.firehold.app/contents/ui/couch/firehold.js" || ok=0
+rm -f "$P/plasmoids/org.hearthos.firehold.app/contents/ui/couch/main.qml"
 # The Desk: Plasma's own desktop shell under Firehold's name, with Firehold's first layout and none of the desktop
 # shell's update scripts (they're for plain Plasma's own panels).
 if [ -f "$P/shells/org.kde.plasma.desktop/metadata.json" ]; then

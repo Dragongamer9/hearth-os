@@ -12,6 +12,7 @@ Item {
     Item {
         id: inner
         anchors.fill: parent
+        clip: rc.soft          // (without the effect: at least nothing spills over the edges)
         layer.enabled: !rc.soft
         layer.effect: MultiEffect {
             maskEnabled: true
