@@ -94,5 +94,5 @@ pub fn quick_menu(a: &App) -> E<'_, Msg> {
         .width(Length::Fixed(if c { 560.0 } else { 620.0 }))
         .height(Length::Fill)
         .style(shadowed(BG, 0.0, Some((LINE, 1.0)), 80.0));
-    container(panel).align_right(Length::Fill).height(Length::Fill).into()
+    container(iced::widget::opaque(panel)).align_right(Length::Fill).height(Length::Fill).into()
 }

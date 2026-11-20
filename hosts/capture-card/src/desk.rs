@@ -581,7 +581,9 @@ pub fn picture(a: &App) -> E<'_, Msg> {
         Some(h) => image(h.clone()).content_fit(fit).width(Length::Fill).height(Length::Fill).into(),
         None => Space::new().width(Length::Fill).height(Length::Fill).into(),
     };
-    container(pic).center_x(Length::Fill).center_y(Length::Fill).clip(true).style(bx(Color::BLACK, 0.0, None)).into()
+    // The black around a picture of another shape is its own layer under the picture, so a panel drawn over both
+    // (the quick menu) is never covered by it.
+    stack![container(Space::new()).width(Length::Fill).height(Length::Fill).style(bx(Color::BLACK, 0.0, None)), container(pic).center_x(Length::Fill).center_y(Length::Fill)].width(Length::Fill).height(Length::Fill).into()
 }
 
 fn src<'a>(b: String, s: String) -> E<'a, Msg> {
