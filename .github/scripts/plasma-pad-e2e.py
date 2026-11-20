@@ -449,49 +449,6 @@ shot('pad-k30-live-over-fullscreen-game')
 press('b', after=0.8)
 close(game)
 
-# Touch users keep their pop-up keyboard: a finger on a text field opens Hearth's keyboard (KWin shows Hearth's
-# typing's input panel only for touch, as for KDE's keyboard); a mouse click on one doesn't. KDE's own panel is still
-# at the bottom here, so the maximized test windows' field is at y 117. No controller use for 10 s first, so the
-# controller rule (8 s) can't be what opens it.
-def kb_is_open():
-    t = tail(host_log, 100000)
-    return t.rfind('keyboard open') > t.rfind('keyboard closed')
-
-
-for _ in range(3):
-    if kb_is_open():
-        press('b', after=0.8)
-if kb_is_open():
-    error('touch test', "the keyboard couldn't be closed before the touch test")
-time.sleep(10)
-mw = window(id='org.hearth.PadMouse', title='Mouse', text='A text field clicked with the mouse.', max='1')
-click(500, 117)
-time.sleep(2.0)
-v = vk()
-opened = kb_is_open()
-notice('mouse click on a text field', 'KWin %s · touch mode %s · keyboard %s' % (v, tablet(), 'OPEN' if opened else 'not open'))
-shot('pad-k34-mouse-click-text-field')
-if not v.get('active'):
-    error('mouse click', "the mouse click didn't reach the text field (KWin: %s), so it proves nothing" % v)
-if opened:
-    error('mouse click', "a mouse click on a text field opened the keyboard (only touch and the controller may)")
-close(mw)
-tw = window(id='org.hearth.PadTouch', title='Touch', text='A text field touched with a finger.', max='1')
-fake('td 1 500 117', 'tf')
-time.sleep(0.1)
-fake('tu 1', 'tf')
-time.sleep(2.5)
-v = vk()
-opened = kb_is_open()
-notice('touch on a text field', 'KWin %s · keyboard %s · %s' % (v, 'open' if opened else 'NOT open', tail(pad_log, 300)))
-shot('pad-k35-touch-text-field')
-if not opened:
-    error('touch', "touching a text field didn't open Hearth's keyboard: KWin %s" % v)
-for _ in range(3):
-    if kb_is_open():
-        press('b', after=0.8)
-close(tw)
-
 # Quick Access from the Hearth menu: with KDE's own panel (no Hearth bar) it says where Quick Access comes from.
 press('guide', after=0.6)
 axes(1.0, 0)

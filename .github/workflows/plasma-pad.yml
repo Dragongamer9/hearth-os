@@ -98,7 +98,7 @@ jobs:
             qt6-qtdeclarative kf6-kirigami layer-shell-qt kactivitymanagerd plasma-integration kglobalacceld plasma5support qt6-qtwayland \
             kf6-kconfig qt6-qt5compat kde-cli-tools rsms-inter-fonts google-noto-sans-fonts google-noto-sans-symbols-fonts google-noto-color-emoji-fonts \
             dejavu-sans-fonts libxkbcommon fontconfig gcc pkgconf-pkg-config wayland-devel wayland-protocols-devel glib2-devel \
-            plasma-wayland-protocols-devel >/dev/null
+            plasma-wayland-protocols-devel labwc wlr-randr systemd-udev libinput kmod python3-evdev >/dev/null
           # plasma-keyboard: the Fedora edition's base image has it (KDE's own on-screen keyboard, KWin's input method).
           dnf -y install --skip-unavailable plasma-pa plasma-nm pipewire wireplumber qt6-qttools plasma-keyboard >/dev/null || true
           for b in kwin_wayland plasmashell gdbus; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
@@ -168,6 +168,16 @@ jobs:
           session_start user && python3 .github/scripts/plasma-pad-fallback.py shots user || rc=1
           session_stop user
           rm -f "$HOME/.config/kwinrc"
+          # Touch users keep their pop-up keyboard: real input (KWin nested in labwc, a uinput mouse and touchscreen).
+          rm -f "$XDG_RUNTIME_DIR/hearth/kwin-im-failed"
+          modprobe uinput 2>/dev/null
+          python3 .github/scripts/plasma-pad-touch.py devices /tmp/padinput > shots/padinput.log 2>&1 &
+          devpid=$!
+          sleep 2
+          session_start_nested touch && python3 .github/scripts/plasma-pad-touch.py test shots bin /tmp/padinput || rc=1
+          echo "::notice title=labwc (touch)::$(grep -aiE 'hearth check|touch|pointer|error' shots/labwc-touch.log | tail -8 | tr '\n' '|' | cut -c1-1500)"
+          session_stop_nested touch
+          kill $devpid 2>/dev/null
           exit $rc
       - name: What it found (1)
         if: always()
