@@ -150,7 +150,8 @@ SetPage {
         else if (id === "firehold-labwc") fjob.run(["choose", "firehold"], done, fail);
         else fjob.run(["choose", "plasma"], () => fpjob.run(["choose", id === "firehold-plasma" ? "firehold" : "plasma"], done, fail), fail);
     }
-    SetJob { id: fjob; helper: "../labwc-fedora/hearth-labwc-desktop" }
+    // (an absolute path: Quickshell doesn't let a relative one leave the shell's folder)
+    SetJob { id: fjob; helper: Quickshell.shellDir.replace(/\/shell\/?$/, "") + "/labwc-fedora/hearth-labwc-desktop" }
     SetJob { id: fpjob; helper: "/usr/bin/hearth-firehold-plasma" }
     Text {
         visible: page.fedora
