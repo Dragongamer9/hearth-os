@@ -1473,12 +1473,20 @@ try:
     r['tcpOk'] = got == len(big) + 2
     s.close()
     u.settimeout(0.2)
+    # Paced like a stream: 1000 packets a second (about 10 Mbit/s each way), read back as they come.
     n, back = 1500, 0
+    u.setblocking(False)
     t0 = time.time()
     for i in range(n):
+        while time.time() < t0 + i / 1000.0:
+            try:
+                u.recvfrom(65536)
+                back += 1
+            except (BlockingIOError, OSError):
+                time.sleep(0.0002)
         u.sendto(i.to_bytes(4, 'big') + os.urandom(1196), (host, 47998))
-        if i % 50 == 49:
-            time.sleep(0.01)
+    u.setblocking(True)
+    u.settimeout(0.2)
     end = time.time() + 3
     while time.time() < end and back < n:
         try:
@@ -1573,7 +1581,7 @@ def moon_session(a, host, tag, what='desktop'):
         if (res.get('tcp') or {}).get(p) != '%s:hello %s' % (tag, p):
             bad.append('TCP %s: %r' % (p, (res.get('tcp') or {}).get(p)))
     for k, v in (res.get('udp') or {}).items():
-        if not v or v.get('tag') != tag or not v.get('same'):
+        if not v or v.get('tag') != tag + ':' or not v.get('same'):
             bad.append('UDP %s: %s' % (k, v))
     if not res.get('tcpOk'):
         bad.append('the 16 MB came back wrong')
