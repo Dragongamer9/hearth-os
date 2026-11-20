@@ -34,3 +34,6 @@ rquickjs = "0.14"
 # iced_layershell's devtools match winit-core's key codes exhaustively; winit-core 0.31.0-beta.4 made that enum
 # non-exhaustive, which doesn't build: held at the beta it was made for (Cargo picks the newest otherwise).
 winit-core = "=0.31.0-beta.2"
+# hearth-ui's app.rs logs through log's boxed logger (its "std" feature): another app turns it on in a whole-workspace
+# build, this says so for a build of this app alone (CI's plasma-pad.yml).
+log = { version = "0.4", features = ["std"] }
