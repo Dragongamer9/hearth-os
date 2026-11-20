@@ -555,7 +555,12 @@ impl Library {
         }
         self.save_queue();
         let title = self.games.get(id).map(|g| g.title.clone()).unwrap_or_else(|| id.to_string());
-        if error.is_none() { self.record_installed(id); self.scan(); }
+        if error.is_none() {
+            self.record_installed(id);
+            self.scan();
+            // "Add a desktop icon" was ticked when it was installed (Hearth Games): its icon now.
+            if let Some(g) = self.games.get(id) { crate::desktop_icons::installed(g); }
+        }
         // Failed because the store's sign-in expired: the page offers Sign in again with the error.
         let source = id.split_once(':').map(|x| x.0).unwrap_or("");
         let expired = error.filter(|e| *e != "cancelled").and(Some(source)).filter(|s| stores::expiry::is_expired(s));
@@ -582,6 +587,8 @@ impl Library {
             }
             _ => return Err(format!("Uninstall {} from its store app.", g.title)),
         }
+        // Its desktop icon goes too: only the one Hearth made, and only while it's untouched (desktop_icons.rs).
+        crate::desktop_icons::game_gone(id);
         self.scan();
         Ok(())
     }

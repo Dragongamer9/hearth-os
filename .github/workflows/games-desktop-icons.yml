@@ -1,0 +1,142 @@
+# Hearth Games' desktop icons (1.16, the owner Nov 19 2026: "add the ability to add desktop icons, for games that you
+# install"; hearth-core desktop_icons.rs, docs/HEARTH-GAMES.md).
+#   app:      hearth-core's and Hearth Games' unit tests for it (the launcher's exact contents, a file of yours never
+#             overwritten or removed, the install's tick box, uninstalling), then the real hearth-gamestore window on a
+#             home with one GOG game installed: the library card's menu, Add to desktop, Remove's menu, Uninstall
+#             (.github/scripts/games-desktop-icons-app.sh). Its Desktop folder before, after Add and after Uninstall
+#             goes to the next job.
+#   desktops: those Desktop folders on Mantel's desktop (labwc; Firehold's Desk draws the same one), KDE Plasma's own
+#             desktop and Hearth's panel on Plasma, on Fedora 44 (.github/scripts/games-desktop-icons-desktops.sh):
+#             the icon shows in a free spot, nothing else moves, it starts the game without asking.
+# Pictures and logs go to the branches ci/games-desktop-icons-<job>-<branch>. Failures are ::error:: annotations.
+name: Hearth Games desktop icons
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feature/games-desktop-icons']
+    paths: ['hosts/hearth-core/src/desktop_icons.rs', 'hosts/hearth-core/src/library.rs', 'hosts/hearth-gaming/**', 'hosts/linux/desktop/shell/hearth-desk',
+            '.github/workflows/games-desktop-icons.yml', '.github/scripts/games-desktop-icons-*.sh']
+
+permissions:
+  contents: write    # the pictures' branches
+
+concurrency:
+  group: games-desktop-icons-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  app:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: hosts/hearth-gaming
+      - name: WebKit and GTK, and the tools for the pictures
+        run: |
+          sudo rm -f /var/lib/man-db/auto-update
+          for i in 1 2 3; do sudo timeout 240 apt-get -o DPkg::Lock::Timeout=120 update -qq && break; echo "apt update try $i failed"; sleep 10; done
+          for i in 1 2 3; do
+            sudo DEBIAN_FRONTEND=noninteractive timeout 600 apt-get -o DPkg::Lock::Timeout=120 install -y -qq libwebkit2gtk-4.1-dev libgtk-3-dev librsvg2-dev libsoup-3.0-dev libjavascriptcoregtk-4.1-dev \
+              xvfb imagemagick dbus-x11 xdotool x11-utils fonts-dejavu-core >/dev/null && break
+            echo "apt install try $i failed"; sleep 10
+          done
+      - name: hearth-core's tests (desktop icons, the library, the art cache, play-now)
+        working-directory: hosts/hearth-core
+        run: |
+          set -o pipefail
+          cargo test --lib -- desktop_icons desktop_games artcache library:: 2>&1 | tee core.log || { echo "::error title=hearth-core tests::$(grep -E '^(error|warning: unused|---- |thread .* panicked)' -A8 core.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=hearth-core tests::$(grep -E '^test result' core.log | tr '\n' ' ')"
+      - name: Hearth Games' tests (its calls, the cards' desktop marks) and the page's
+        run: |
+          set -o pipefail
+          (cd hosts/hearth-gaming && cargo test --lib gamestore -- --test-threads=1 2>&1 | tee gs.log) || { echo "::error title=Hearth Games tests::$(grep -E '^(error|warning: unused|---- |thread .* panicked)' -A8 hosts/hearth-gaming/gs.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          echo "::notice title=Hearth Games tests::$(grep -E '^test result' hosts/hearth-gaming/gs.log | tr '\n' ' ')"
+          python3 -m unittest hosts/linux/test/test_hearth_gamestore.py hosts/linux/test/test_hearth_desk.py 2>&1 | tail -3
+      - name: Build Hearth Games
+        working-directory: hosts/hearth-gaming
+        run: |
+          set -o pipefail
+          cargo build --release --bin hearth-gamestore 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A8 build.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+      - name: The window, driven (card menu, Add to desktop, Remove, Uninstall)
+        if: always()
+        run: bash .github/scripts/games-desktop-icons-app.sh hosts/hearth-gaming/target/release/hearth-gamestore shots
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: desktop-states
+          path: shots/state-*.tgz
+      - name: Publish pictures to a branch
+        if: always()
+        run: |
+          set +e
+          ls shots/*.png >/dev/null 2>&1 || exit 0
+          to="ci/games-desktop-icons-app-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+          mkdir -p pub && cp shots/*.png shots/*.log shots/*.txt shots/*.desktop pub/ 2>/dev/null
+          printf '# Hearth Games desktop icons (the window), %s\n\n' "${GITHUB_SHA::7}" > pub/README.md
+          for f in pub/*.png; do printf '## %s\n\n![%s](%s)\n\n' "$(basename "$f" .png)" "$(basename "$f")" "$(basename "$f")" >> pub/README.md; done
+          cd pub && git init -q -b "$to" && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth Games desktop icons pictures ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
+          echo "::notice title=Pictures::branch $to"
+          cd .. && [ ! -e shots/FAILED ]
+
+  desktops:
+    needs: app
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      options: --privileged
+    steps:
+      - name: Install labwc, Quickshell (Mantel) and KDE Plasma (what the Anatase image has)
+        run: |
+          dnf -y install dnf5-plugins git python3 python3-dbus python3-pillow procps-ng dbus-daemon dbus-tools labwc xorg-x11-server-Xwayland \
+            qt6-qtsvg grim wlr-randr google-noto-sans-fonts adwaita-icon-theme breeze-icon-theme hicolor-icon-theme rsms-inter-fonts \
+            plasma-workspace kwin plasma-desktop plasma-breeze qt6-qtdeclarative-devel kf6-kpackage mesa-dri-drivers >/dev/null
+          dnf -y install --skip-unavailable libnotify qt6-qtdeclarative kf6-kirigami layer-shell-qt pipewire wireplumber kactivitymanagerd plasma-integration \
+            kglobalacceld plasma-nm plasma-pa plasma5support qt6-qttools dolphin konsole kde-cli-tools dejavu-sans-fonts wtype qt6-qtwayland \
+            kf6-kconfig qt6-qt5compat python3-gobject kimageformats qt6-qtimageformats >/dev/null || true
+          dnf -y copr enable errornointernet/quickshell >/dev/null && dnf -y install quickshell >/dev/null
+          for b in labwc quickshell kwin_wayland plasmashell kioclient; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: desktop-states
+          path: states
+      - name: Put Hearth's desktop and panel where the image puts them
+        run: |
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          mkdir -p /usr/share/backgrounds/hearth && cp os/branding/wallpapers/hearth-*.jpg /usr/share/backgrounds/hearth/
+          for d in branding/icons/png/*x*; do mkdir -p "/usr/share/icons/hicolor/$(basename "$d")/apps" && cp "$d"/*.png "/usr/share/icons/hicolor/$(basename "$d")/apps/"; done
+          mkdir -p /usr/share/icons/hicolor/scalable/apps && cp branding/icons/apps/*.svg /usr/share/icons/hicolor/scalable/apps/
+          mkdir -p /usr/libexec/nimbus && install -m755 os-bases/anatase/system_files/usr/libexec/nimbus/hearth-plasma-looks /usr/libexec/nimbus/
+          bash /usr/share/nimbus/desktop/plasma-hearth/install.sh / > /tmp/install.log 2>&1 || echo "::warning title=install::$(tail -5 /tmp/install.log | tr '\n' ' ' | cut -c1-400)"
+          ls states
+      - name: The icon on Mantel's, Plasma's and Hearth's panel's desktops
+        timeout-minutes: 30
+        shell: bash
+        run: bash .github/scripts/games-desktop-icons-desktops.sh states shots
+      - name: Publish pictures to a branch
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          ls shots/*.png >/dev/null 2>&1 || exit 0
+          git config --global --add safe.directory "$PWD"
+          to="ci/games-desktop-icons-desktops-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+          mkdir -p pub && cp shots/*.png shots/*.log shots/*.txt shots/*.json pub/ 2>/dev/null
+          printf '# Hearth Games desktop icons on the desktops, %s\n\n' "${GITHUB_SHA::7}" > pub/README.md
+          for f in pub/*.png; do printf '## %s\n\n![%s](%s)\n\n' "$(basename "$f" .png)" "$(basename "$f")" "$(basename "$f")" >> pub/README.md; done
+          cd pub && git init -q -b "$to" && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth Games desktop icons on the desktops ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
+          echo "::notice title=Pictures::branch $to"
+          cd .. && [ ! -e shots/FAILED ]

@@ -9,7 +9,7 @@ const call = (method, args = {}) => KIT.invoke('call', { method, args });
 
 const S = {
   tab: 'library', loading: true, info: {}, games: [], acc: {}, bn: {}, dl: { active: [], recent: [] }, drives: null,
-  filt: 'all', installedOnly: false, q: '', busy: {}, error: '',
+  filt: 'all', installedOnly: false, q: '', busy: {}, error: '', desktop: {},
 };
 const TABS = ['library', 'downloads', 'stores', 'recomps'];
 const STORE = { gog: 'GOG', epic: 'Epic Games', amazon: 'Amazon', battlenet: 'Battle.net' };
@@ -32,6 +32,7 @@ async function loadAll(rescan = false) {
     S.acc = Object.fromEntries((acc.accounts || []).filter(a => ['gog', 'epic', 'amazon'].includes(a.store)).map(a => [a.store, a]));
     S.bn = acc.battlenet || {};
     S.games = (lib.games || []).filter(g => !g.hidden);
+    S.desktop = lib.desktop || {};
     S.drives = drives;
     S.error = '';
   } catch (e) { S.error = KIT.err(e); }
@@ -101,7 +102,7 @@ async function refreshAll() {
   loadAll(true);
 }
 const driveLabel = d => `${d.name}${d.kind === 'home' && !/device/i.test(d.name) ? ' (this device)' : ''}`;
-async function install(g) {
+async function install(g, icon) {
   if (g.source === 'battlenet') return openBattlenet('Install it in Battle.net: it shows here when it\'s done.');
   const drives = S.drives?.drives || [];
   let chosen = drives.find(d => d.current) || drives[0];
@@ -114,7 +115,10 @@ async function install(g) {
       try { S.drives = await KIT.invoke('use_drive', { mount: chosen.mount }); } catch (e) { return KIT.alert('Couldn\'t use that drive', esc(KIT.err(e)), false); }
     }
   }
-  try { await call('game.install', { id: g.id }); KIT.toast(`${g.title} is downloading`); } catch (e) { return KIT.alert(`Couldn't install ${g.title}`, esc(KIT.err(e)), false); }
+  // The tick box: its icon is made when the install is done (hearth-core desktop_icons.rs); the choice is kept for next time.
+  if (icon != null && canIcon(g)) { try { await KIT.invoke('desktop_on_install', { id: g.id, on: !!icon, remember: true }); S.desktop.tickDefault = !!icon; } catch (e) { KIT.toast(KIT.err(e)); } }
+  try { await call('game.install', { id: g.id }); KIT.toast(`${g.title} is downloading${icon ? '. Its icon goes on your desktop when it\'s installed' : ''}`); }
+  catch (e) { if (icon) KIT.invoke('desktop_on_install', { id: g.id, on: false, remember: false }).catch(() => {}); return KIT.alert(`Couldn't install ${g.title}`, esc(KIT.err(e)), false); }
   await loadDownloads(); poll(); loadAll();
 }
 async function uninstall(g) {
@@ -122,6 +126,63 @@ async function uninstall(g) {
   try { await call('game.uninstall', { id: g.id }); KIT.toast(`${g.title} is uninstalled`); } catch (e) { KIT.alert(`Couldn't uninstall ${g.title}`, esc(KIT.err(e)), false); }
   loadAll();
 }
+// ---------------------------------------------------------------- desktop icons (hearth-core desktop_icons.rs)
+// A launcher in your Desktop folder that starts the game the way Play does. Remove (and uninstalling) takes off only
+// the one Hearth made, never a file of yours.
+const canIcon = g => !!S.desktop.available && g.id !== 'battlenet:app' && ['gog', 'epic', 'amazon', 'battlenet'].includes(g.source);
+async function desktopIcon(g, on) {
+  try {
+    const r = await KIT.invoke('desktop_icon', { id: g.id, on });
+    g.onDesktop = !!r.onDesktop;
+    if (on) KIT.toast(r.already ? `${g.title} is already on your desktop` : `${g.title} is on your desktop`);
+    else KIT.toast(r.removed ? `${g.title} is off your desktop` : (r.kept || `${g.title} wasn't on your desktop`));
+  } catch (e) { KIT.alert(on ? `Couldn't add ${g.title} to your desktop` : `Couldn't take ${g.title} off your desktop`, esc(KIT.err(e)), false); }
+  render();
+}
+async function setIconOnInstall(g, on) {
+  try { await KIT.invoke('desktop_on_install', { id: g.id, on, remember: false }); g.iconOnInstall = on; KIT.toast(on ? `Its icon goes on your desktop when it's installed` : 'No desktop icon for this one'); }
+  catch (e) { KIT.toast(KIT.err(e)); }
+}
+
+// A library card's menu, next to its card (or where you right-clicked).
+const MENU_G = { play: '▶', desk: '⊞', undesk: '⊟', page: 'ⓘ', install: '⤓', uninstall: '✕', pause: '❚❚', resume: '▶', cancel: '✕' };
+function cardMenu(g, at) {
+  const dl = downloading(g);
+  const items = [];
+  if (g.installed) items.push({ id: 'play', label: 'Play' });
+  else if (dl) items.push(g.state === 'paused' ? { id: 'resume', label: 'Carry on downloading' } : { id: 'pause', label: 'Pause the download' });
+  else if (g.installKind === 'nimbus' || (g.source === 'battlenet' && g.id !== 'battlenet:app')) items.push({ id: 'install', label: g.source === 'battlenet' ? 'Install in Battle.net' : 'Install' });
+  if (g.installed && canIcon(g)) items.push(g.onDesktop ? { id: 'undesk', label: 'Remove from desktop', sub: 'Takes off the icon Hearth made' } : { id: 'desk', label: 'Add to desktop', sub: 'An icon that starts it, on your desktop' });
+  items.push({ id: 'page', label: 'Game details' });
+  if (g.installed && g.canUninstall && g.source !== 'battlenet') items.push({ sep: true }, { id: 'uninstall', label: 'Uninstall', danger: true });
+  else if (dl) items.push({ sep: true }, { id: 'cancel', label: 'Cancel the download', danger: true });
+  const html = `<div class="mh">${esc(g.title)}</div>${items.map(it => it.sep ? '<hr>' : `<button class="mi f ${it.danger ? 'danger' : ''}" data-m="${it.id}"><span class="g">${MENU_G[it.id] || ''}</span><span>${esc(it.label)}${it.sub ? `<small>${esc(it.sub)}</small>` : ''}</span></button>`).join('')}`;
+  const v = KIT.dialog(html);
+  v.classList.add('menuveil');
+  const d = v.querySelector('.dlg'); d.classList.add('cardmenu');
+  const r = d.getBoundingClientRect();
+  const x = Math.max(8, Math.min(at.x, innerWidth - r.width - 8)), y = Math.max(8, Math.min(at.y, innerHeight - r.height - 8));
+  d.style.left = `${x}px`; d.style.top = `${y}px`;
+  d.querySelector('.mi')?.focus();
+  v.onclick = e => {
+    const b = e.target.closest('[data-m]');
+    if (!b) { if (!e.target.closest('.dlg')) KIT.close(); return; }
+    const a = b.dataset.m; KIT.close();
+    if (a === 'play') play(g); else if (a === 'install') install(g); else if (a === 'uninstall') uninstall(g);
+    else if (a === 'desk') desktopIcon(g, true); else if (a === 'undesk') desktopIcon(g, false);
+    else if (a === 'page') openGame(g);
+    else if (a === 'pause') dlOp('game.pauseInstall', g.id); else if (a === 'resume') dlOp('game.resumeInstall', g.id);
+    else if (a === 'cancel') dlOp('game.cancelInstall', g.id);
+  };
+}
+function menuFor(el, at) {
+  const box = el?.closest('.tilebox'); const tile = box?.querySelector('.tile'); const g = tile && game(tile.dataset.id);
+  if (!g) return false;
+  const r = (at ? null : (box.querySelector('.more') || tile).getBoundingClientRect());
+  cardMenu(g, at || { x: r.left, y: r.bottom + 4 });
+  return true;
+}
+
 async function play(g) {
   try { await KIT.invoke('play', { id: g.id }); KIT.toast(`Starting ${g.title}…`); } catch (e) { KIT.alert(`Couldn't start ${g.title}`, esc(KIT.err(e)), false); }
 }
@@ -147,8 +208,13 @@ function openGame(g) {
     acts.push(`<button class="btn danger f" data-g="cancel">Cancel</button>`);
   } else if (g.source === 'battlenet' && g.id !== 'battlenet:app') acts.push(`<button class="btn primary f" data-g="install" data-autofocus>Install in Battle.net</button>`);
   else if (g.installKind === 'nimbus') acts.push(`<button class="btn primary f" data-g="install" data-autofocus>Install</button>`);
+  if (g.installed && canIcon(g)) acts.push(g.onDesktop ? `<button class="btn f" data-g="undesk">Remove from desktop</button>` : `<button class="btn f" data-g="desk">Add to desktop</button>`);
   if (g.installed && g.canUninstall && g.source !== 'battlenet') acts.push(`<button class="btn danger f" data-g="uninstall">Uninstall</button>`);
   acts.push(`<button class="btn f" data-g="close">Back</button>`);
+  // Installing (or downloading): "Add a desktop icon", as you last chose it (off until you tick it once).
+  const tickOn = dl ? !!g.iconOnInstall : (g.iconOnInstall || !!S.desktop.tickDefault);
+  const tick = !g.installed && g.installKind === 'nimbus' && canIcon(g)
+    ? `<button class="tick f ${tickOn ? 'on' : ''}" data-g="tick" role="checkbox" aria-checked="${tickOn}"><i></i><span>Add a desktop icon<small>${dl ? 'When it\'s installed, an icon that starts it goes on your desktop' : 'Once it\'s installed, an icon that starts it goes on your desktop'}</small></span></button>` : '';
   const facts = [
     ['Store', STORE[g.source] || g.source],
     g.installed && g.path ? ['Installed in', `<span class="path">${esc(g.path)}</span>`] : null,
@@ -163,14 +229,22 @@ function openGame(g) {
     ${g.note ? `<p class="note">${esc(g.note)}</p>` : ''}
     ${!g.installed && !dl && g.installKind !== 'nimbus' && g.source !== 'battlenet' ? '<p class="note">Hearth can\'t install this one itself; its store\'s own app can.</p>' : ''}
     ${g.installed && EXTRAS.includes(g.source) ? '<div class="extras"><section class="saves"><h3>Cloud saves</h3><p class="msg small">Looking…</p></section><section class="dlcs"><h3>DLC</h3><p class="msg small">Looking…</p></section></div>' : ''}
-    <div class="row">${acts.join('')}</div>`, { wide: true });
+    ${tick}<div class="row">${acts.join('')}</div>`, { wide: true });
   if (g.installed && EXTRAS.includes(g.source)) gameExtras(g, d);
   d.onclick = e => {
     const x = e.target.closest('[data-x]');
     if (x) { extraAct(g, d, x.dataset.x, x.dataset.dlc); return; }
     const b = e.target.closest('[data-g]'); if (!b) return;
-    const a = b.dataset.g; KIT.close();
-    if (a === 'play') play(g); else if (a === 'install') install(g); else if (a === 'uninstall') uninstall(g);
+    const a = b.dataset.g;
+    if (a === 'tick') {
+      const on = !b.classList.contains('on'); b.classList.toggle('on', on); b.setAttribute('aria-checked', on);
+      if (dl) setIconOnInstall(g, on);
+      return;
+    }
+    const want = d.querySelector('[data-g="tick"]'); const icon = want ? want.classList.contains('on') : null;
+    KIT.close();
+    if (a === 'play') play(g); else if (a === 'install') install(g, icon); else if (a === 'uninstall') uninstall(g);
+    else if (a === 'desk') desktopIcon(g, true); else if (a === 'undesk') desktopIcon(g, false);
     else if (a === 'pause') dlOp('game.pauseInstall', g.id); else if (a === 'resume') dlOp('game.resumeInstall', g.id);
     else if (a === 'cancel') dlOp('game.cancelInstall', g.id);
   };
@@ -234,10 +308,10 @@ function tileHtml(g) {
   const dl = downloading(g);
   const p = pic(g), w = !p && widePic(g);
   const state = g.installed ? '<span class="badge good">Installed</span>' : dl ? `<span class="badge">${g.state === 'paused' ? 'Paused' : g.progress != null ? Math.round(g.progress * 100) + '%' : 'Queued'}</span>` : '';
-  return `<button class="tile f ${g.installed || dl ? '' : 'dim'}" data-id="${esc(g.id)}">
+  return `<div class="tilebox"><button class="tile f ${g.installed || dl ? '' : 'dim'}" data-id="${esc(g.id)}">
     <span class="cover">${p ? `<img loading="lazy" src="${esc(p)}" alt="">` : w ? `<img class="wide" loading="lazy" src="${esc(w)}" alt="">` : `<span class="letter">${esc((g.title || '?')[0])}</span>`}
       ${dl ? `<span class="pbar"><i style="width:${Math.round((g.progress || 0) * 100)}%"></i></span>` : ''}</span>
-    <span class="t">${esc(g.title)}</span><span class="s"><span>${esc(STORE[g.source] || g.source)}</span>${state}</span></button>`;
+    <span class="t">${esc(g.title)}</span><span class="s"><span>${esc(STORE[g.source] || g.source)}</span>${state}${g.onDesktop ? '<span class="badge" title="On your desktop">On desktop</span>' : ''}</span></button><button class="more" data-more aria-label="More for ${esc(g.title)}" tabindex="-1">⋯</button></div>`;
 }
 function updateTiles() {
   for (const d of S.dl.active || []) {
@@ -326,7 +400,7 @@ function render() {
   const main = $('#main');
   if (S.loading) main.innerHTML = '<div class="empty"><div class="prog spin"><i></i></div>Reading your library…</div>';
   else main.innerHTML = (S.error ? `<p class="bad">${esc(S.error)}</p>` : '') + (S.tab === 'library' ? libraryHtml() : S.tab === 'downloads' ? downloadsHtml() : S.tab === 'recomps' ? recompsHtml() : storesHtml());
-  $('#foot').innerHTML = '<span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>X</b>Refresh</span>' + (S.tab === 'library' || S.tab === 'recomps' ? '<span><b>Y</b>Search</span>' : '') + '<span><b class="wide">LB</b><b class="wide">RB</b>Library, Downloads, Stores, Recomps</span>';
+  $('#foot').innerHTML = '<span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>X</b>Refresh</span>' + (S.tab === 'library' || S.tab === 'recomps' ? '<span><b>Y</b>Search</span>' : '') + (S.tab === 'library' ? '<span><b class="wide">☰</b>Menu</span>' : '') + '<span><b class="wide">LB</b><b class="wide">RB</b>Library, Downloads, Stores, Recomps</span>';
   if (had && !KIT.dialogOpen()) {
     const h = CSS.escape(had);
     const el = document.querySelector(`#main [data-id="${h}"], #main [data-act="${h}"], #main [data-filt="${h}"], #main [data-rc="${h}"], #main [data-rcs="${h}"], #main [data-rca="${h}"], #main #${h}`);
@@ -341,6 +415,7 @@ document.addEventListener('click', e => {
   if (KIT.dialogOpen()) return;
   const t = e.target.closest('.tab'); if (t) return setTab(t.dataset.tab);
   if (S.tab === 'recomps' && rcClick(e)) return;
+  const more = e.target.closest('[data-more]'); if (more) { menuFor(more); return; }
   const tile = e.target.closest('.tile'); if (tile) { const g = game(tile.dataset.id); if (g) openGame(g); return; }
   const f = e.target.closest('[data-filt]'); if (f) { S.filt = f.dataset.filt; render(); return; }
   const dv = e.target.closest('[data-drive]'); if (dv) { KIT.invoke('use_drive', { mount: dv.dataset.drive }).then(r => { S.drives = r; KIT.toast('New games go there now'); render(); }).catch(err => KIT.toast(KIT.err(err))); return; }
@@ -358,6 +433,18 @@ document.addEventListener('click', e => {
     case 'battlenet-setup': return setupBattlenet();
   }
 });
+// The card's menu: right-click, the Menu key (or Shift+F10), Start on a controller.
+document.addEventListener('contextmenu', e => {
+  const box = e.target.closest('.tilebox');
+  if (!box && !e.target.closest('.cardmenu')) return;
+  e.preventDefault();   // not the web view's own menu (Reload, Inspect…)
+  if (box && !KIT.dialogOpen() && S.tab !== 'recomps') menuFor(box, e.clientX || e.clientY ? { x: e.clientX, y: e.clientY } : null);
+});
+document.addEventListener('keydown', e => {
+  if (KIT.dialogOpen() || !(e.key === 'ContextMenu' || (e.shiftKey && e.key === 'F10'))) return;
+  if (menuFor(document.activeElement)) e.preventDefault();
+});
+KIT.onStart = () => { if (S.tab !== 'recomps') menuFor(document.activeElement); };
 KIT.onTab = d => setTab(TABS[(TABS.indexOf(S.tab) + d + TABS.length) % TABS.length]);
 KIT.onX = () => { if (S.tab === 'recomps') { rcLoad(); KIT.toast('Recomps: looking again…'); } else refreshAll(); };
 KIT.onY = () => { const q = S.tab === 'library' ? $('#q') : S.tab === 'recomps' ? $('#rq') : null; if (q) { q.focus(); if (KIT.usingPad()) KIT.openOsk(q); } };
@@ -383,6 +470,8 @@ if (!KIT.live) {
     { id: 'gog:13', title: 'New Game Plus', sizeBytes: 2e7, installed: false }, { id: 'gog:14', title: 'Original Soundtrack', installed: false, owned: false }] };
   KIT.demo = (cmd, a) => {
     if (cmd === 'info') return { version: '1.7.0', proton: 'GE-Proton10-25', canPlay: true };
+    if (cmd === 'desktop_icon') { const g = games.find(x => x.id === a.id); if (g) g.onDesktop = a.on; return { ok: true, onDesktop: a.on, removed: !a.on }; }
+    if (cmd === 'desktop_on_install') { const g = games.find(x => x.id === a.id); if (g) g.iconOnInstall = a.on; return { ok: true }; }
     if (cmd === 'drives') return { installRoot: '/home/you/Games', drives: [{ name: 'This device', kind: 'home', mount: '/', free: 212e9, current: true }, { name: 'Games SSD', kind: 'disk', mount: '/var/mnt/games-1', free: 1.4e12 }] };
     if (cmd === 'call') {
       const m = a.method;
@@ -390,7 +479,7 @@ if (!KIT.live) {
       if (m === 'accounts.status') return { accounts: [{ store: 'gog', signedIn: true, name: 'dragon', owned: 6, installed: 2, fetched: Date.now() - 36e5 }, { store: 'epic', signedIn: true, name: 'dragon', owned: 4, installed: 0, fetched: Date.now() - 72e5 }, { store: 'amazon', signedIn: true, name: 'Chris', owned: 2, installed: 1, fetched: Date.now() - 18e5 }], battlenet: { installed: true, via: 'faugus', faugus: true, games: 1 } };
       if (m === 'game.saves') return a.args.id === 'gog:1' ? { supported: true, on: true, last: { at: Date.now() - 3e5, dir: 'up', ok: true }, folder: '/home/you/Games/Witcher Tales/saves' } : { supported: false };
       if (m === 'game.dlc') return { dlc: DEMO_DLC[a.args.id] || [] };
-      if (m === 'library.get') return { games };
+      if (m === 'library.get') return { games, desktop: { available: true, tickDefault: false } };
       if (m === 'library.downloads') return { active: [games[1]], recent: [{ id: 'gog:2' }] };
       return {};
     }

@@ -19,6 +19,7 @@ pub mod bridge;
 pub mod defaults;   // Settings › Default apps (desktop/shell/hearth-system)
 pub mod collections;
 pub mod desktop_games;
+pub mod desktop_icons;   // Hearth Games' "Add to desktop": a game's icon on the desktop (only Hearth's own is ever removed)
 pub mod discord;   // Discord: "Playing X", Ask to join / Join, Play together invites (Rich Presence over the local IPC; docs/DISCORD.md)
 pub mod display;
 pub mod diskspace;   // Settings › Storage: drives, games by size, moving games, clean up, low space (docs/STORAGE.md)
