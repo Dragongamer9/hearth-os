@@ -219,6 +219,12 @@ with open(best, 'w') as f:
         except OSError: pass
 PY
 TRACE=$!
+# PERF_REST=1 (the image-like check in labwc-fedora.yml): the shell's processor time sampled through the whole rest, so
+# a busy moment that comes once (the image's, Nov 20) can be pinned on what the shell was doing (perf-rest.txt).
+RPERF=""
+if [ "${PERF_REST:-0}" = 1 ] && command -v perf >/dev/null 2>&1; then
+  perf record -q -F 199 -g -p "$qs" -o /tmp/perf-rest-$KIND.data -- sleep "$SECS" >/dev/null 2>&1 & RPERF=$!
+fi
 mins=""; last=$s0; worst=0
 for i in $(seq $((SECS / 60))); do
   sleep 60
@@ -227,6 +233,19 @@ for i in $(seq $((SECS / 60))); do
   echo "minute $i: shell $d, memory $(rss "$qs") MB, frames $(( $(frames) - f0 ))" >>"$OUT/rest-minutes.txt"
 done
 wait "$TRACE" 2>/dev/null
+if [ -n "$RPERF" ]; then
+  wait "$RPERF" 2>/dev/null
+  perf report -i /tmp/perf-rest-$KIND.data --stdio --no-children --percent-limit 1 --sort dso,sym 2>/dev/null | grep -v '^$' | head -200 >"$OUT/perf-rest.txt" || true
+  perf report -i /tmp/perf-rest-$KIND.data --stdio --children --percent-limit 4 --sort sym -g caller,0.5,callee --max-stack 40 2>/dev/null | grep -v '^$' | head -400 >"$OUT/perf-rest-calls.txt" || true
+  perf script -i /tmp/perf-rest-$KIND.data -F time,sym 2>/dev/null | awk 'NF {t=int($1); n[t]++} END {for (k in n) print k, n[k]}' | sort -n >"$OUT/perf-rest-seconds.txt" || true
+  pk=$(sort -k2 -n "$OUT/perf-rest-seconds.txt" 2>/dev/null | tail -1 | cut -d' ' -f1)
+  if [ -n "$pk" ]; then
+    perf report -i /tmp/perf-rest-$KIND.data --time "$((pk - 4)),$((pk + 4))" --stdio --no-children --percent-limit 1 --sort dso,sym 2>/dev/null | grep -v '^$' | head -150 >"$OUT/perf-rest-peak.txt" || true
+    perf report -i /tmp/perf-rest-$KIND.data --time "$((pk - 4)),$((pk + 4))" --stdio --children --percent-limit 3 --sort sym -g caller,0.5,callee --max-stack 60 2>/dev/null | grep -v '^$' | head -500 >"$OUT/perf-rest-peak-calls.txt" || true
+    note "the busiest second at rest (perf): $pk, $(head -c 0 /dev/null)$(grep -m6 '%' "$OUT/perf-rest-peak.txt" | tr -s ' ' | cut -c1-90 | tr '\n' '|')"
+  fi
+  rm -f /tmp/perf-rest-$KIND.data
+fi
 note "the busiest 5 s at rest: $(head -1 "$OUT/rest-busiest.txt" 2>/dev/null | cut -c1-400)$(awk 'NR > 1 && /^    log: / {print} /^ *[0-9]+s shell/ && NR > 1 {exit}' "$OUT/rest-busiest.txt" | head -6 | cut -c1-200 | tr '\n' '|')"
 [ "$KIND" = firehold ] && note "Firehold after the rest: $(timeout 10 quickshell ipc -p "$SH" call firehold state 2>/dev/null | cut -c1-160)"
 note "the drive while at rest: $(df -h / 2>/dev/null | awk 'NR == 2 {print $4 " free of " $2}'); the shell's memory: $(awk '/^(Rss|Anonymous|Pss_File|Shared_Clean|Private_Dirty):/ {printf "%s %d MB, ", $1, $2 / 1024}' /proc/$qs/smaps_rollup 2>/dev/null)"

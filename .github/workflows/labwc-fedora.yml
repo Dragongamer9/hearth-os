@@ -59,17 +59,24 @@ jobs:
           retention-days: 3
 
   rest:
-    name: ${{ matrix.kind }} on labwc, pictured and at rest
+    name: ${{ matrix.kind }} on labwc${{ matrix.like && ', like the image' || '' }}, pictured and at rest
     needs: quickshell
     runs-on: ubuntu-latest
     container:
       image: registry.fedoraproject.org/fedora:45
-      options: --cap-add=SYS_PTRACE --security-opt seccomp=unconfined
+      options: ${{ matrix.like && '--privileged' || '--cap-add=SYS_PTRACE --security-opt seccomp=unconfined' }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         kind: [classic, firehold]
+        like: ['']
+        include:
+          # What the image has and this container doesn't (Nov 20: Firehold busy once at rest and 150 MB bigger only
+          # in the image): the portals, gvfs, the controller helper's evdev, KDE's Qt integration, the CJK fonts, a
+          # privileged container like the image check's; the shell sampled by perf through the whole rest.
+          - kind: firehold
+            like: image
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -89,20 +96,29 @@ jobs:
           chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/open.sh
           find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +
           cp /tmp/labwc-missing-packages.txt /tmp/missing.txt 2>/dev/null || : > /tmp/missing.txt
+      - name: What the image has besides
+        if: matrix.like == 'image'
+        run: |
+          dnf5 -y install --skip-unavailable xdg-desktop-portal xdg-desktop-portal-gtk xdg-desktop-portal-kde gvfs gvfs-fuse \
+            python3-evdev python3-gobject python3-dbus plasma-integration kf6-frameworkintegration google-noto-sans-cjk-vf-fonts \
+            dconf >/dev/null 2>&1 || echo "::warning title=like the image::some packages didn't install"
+          cp -a os/system_files/usr/share/xdg-desktop-portal os/system_files/usr/share/dbus-1 /usr/share/ 2>/dev/null || true
+          rpm -q xdg-desktop-portal plasma-integration python3-evdev | tr '\n' ' '; echo
       - name: ${{ matrix.kind }} on labwc
         run: |
           mkdir -p /tmp/out && chmod 777 /tmp/out
           secs="${{ inputs.rest_secs }}"; secs=${secs:-600}
           # (As root in this container, as desktop-test.yml runs Mantel; strace needs it to watch the shell.)
-          PERF="$PWD/tools/perf-measure.py" timeout 2400 bash .github/scripts/labwc-fedora-rest.sh ${{ matrix.kind }} /tmp/out/${{ matrix.kind }} $secs; rc=$?
-          cp /tmp/missing.txt /tmp/out/${{ matrix.kind }}/missing-packages.txt
-          { echo "### ${{ matrix.kind }} on labwc"; echo; cat /tmp/out/${{ matrix.kind }}/rest.md; } >> "$GITHUB_STEP_SUMMARY"
+          k="${{ matrix.kind }}${{ matrix.like && '-like-image' || '' }}"
+          PERF_REST=${{ matrix.like && '1' || '0' }} PERF="$PWD/tools/perf-measure.py" timeout 2400 bash .github/scripts/labwc-fedora-rest.sh ${{ matrix.kind }} /tmp/out/$k $secs; rc=$?
+          cp /tmp/missing.txt /tmp/out/$k/missing-packages.txt
+          { echo "### $k on labwc"; echo; cat /tmp/out/$k/rest.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $rc
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: labwc-${{ matrix.kind }}
-          path: /tmp/out/${{ matrix.kind }}
+          name: labwc-${{ matrix.kind }}${{ matrix.like && '-like-image' || '' }}
+          path: /tmp/out/${{ matrix.kind }}${{ matrix.like && '-like-image' || '' }}
           retention-days: 5
 
   mockups:
