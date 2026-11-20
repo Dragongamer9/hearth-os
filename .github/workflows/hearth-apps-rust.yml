@@ -161,7 +161,7 @@ jobs:
         run: |
           dnf -y install git python3 python3-dbus python3-gobject python3-pillow procps-ng dbus-daemon dbus-tools kwin \
             plasma-workspace xdg-desktop-portal xdg-desktop-portal-kde pipewire wireplumber pipewire-gstreamer \
-            gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-base-tools xorg-x11-server-Xwayland \
+            gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugins-base-tools xorg-x11-server-Xwayland \
             mesa-dri-drivers gcc pkgconf-pkg-config wayland-devel plasma-wayland-protocols libnotify wl-clipboard \
             google-noto-sans-fonts rsms-inter-fonts dejavu-sans-fonts breeze-icon-theme kf6-kservice libxkbcommon >/dev/null
           dnf -y install --skip-unavailable libkscreen kscreen gstreamer1-plugin-openh264 qt6-qtwayland xdg-user-dirs >/dev/null || true

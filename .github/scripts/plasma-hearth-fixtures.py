@@ -69,7 +69,7 @@ def register():
     for p in ('/TrayMail', '/TraySync'):
         try:
             bus.call_sync('org.kde.StatusNotifierWatcher', '/StatusNotifierWatcher', 'org.kde.StatusNotifierWatcher',
-                          'RegisterStatusNotifierItem', GLib.Variant('(s)', (bus.get_unique_name() + p,)), None, 0, 5000, None)
+                          'RegisterStatusNotifierItem', GLib.Variant('(s)', (p,)), None, 0, 5000, None)   # a path: the watcher adds who sent it (as KDE's apps do)
         except GLib.Error as e:
             print('register failed', e.message, flush=True)
     print('tray icons registered', flush=True)

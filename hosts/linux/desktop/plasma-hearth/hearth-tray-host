@@ -198,7 +198,7 @@ def serve():
                 remove(key)                          # the app went
 
     Gio.bus_own_name_on_connection(bus, host_name, 0, None, None)
-    bus.signal_subscribe(WATCHER, WATCHER, None, WATCHER_PATH, None, Gio.DBusSignalFlags.NONE, on_watcher)
+    bus.signal_subscribe(None, WATCHER, None, WATCHER_PATH, None, Gio.DBusSignalFlags.NONE, on_watcher)   # whoever is the watcher now
     bus.signal_subscribe('org.freedesktop.DBus', 'org.freedesktop.DBus', 'NameOwnerChanged', '/org/freedesktop/DBus', None,
                          Gio.DBusSignalFlags.NONE, on_owner)
     GLib.idle_add(register)
