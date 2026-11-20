@@ -87,6 +87,9 @@ Scope {
         if (!unlocked) return;
         posture = F.startPosture(startIn, mode, lastPosture.text().trim());
         loadLibrary(true);
+        // Firehold on labwc: every screen starts in that posture in the live modes (never a setting), then they're read.
+        if (sharedCouch) liveModes.helper(["switch", posture, "--why", "start"], function () { fhs.modesReady = true; liveModes.readModes(); });
+        else modesReady = true;
     }
     // "Start in: Where you left off": the posture you were in, as state (not a setting) in $XDG_RUNTIME_DIR's
     // neighbour ~/.local/state, written only when you switch.
@@ -96,7 +99,8 @@ Scope {
 
     // 1.16, Firehold on labwc: each screen's mode is the live modes' (FhModes.qml: Couch, Desk or Away, never a
     // setting); an Away screen shows the Couch's Away page.
-    FhModes { id: liveModes; fh: fhs; active: fhs.unlocked && fhs.sharedCouch }
+    property bool modesReady: false
+    FhModes { id: liveModes; fh: fhs; active: fhs.unlocked && fhs.sharedCouch && fhs.modesReady }
     property alias modes: liveModes
     function liveMode(n) { if (!sharedCouch || !liveModes.read) return ""; const m = liveModes.modeOf(n); return m === "away" ? "couch" : m; }
     function postureOf(scr) { return postureOfName(scr ? scr.name : ""); }
