@@ -11,39 +11,39 @@ feature/firehold-plasma: no roadmap item is ticked for it. Proofs point at its f
 ## 1. Couch Home (1-couch-home.png)
 
 - [x] Top bar: the Firehold logo tile (flame) at the left — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Logo.qml: "strokeColor: \"#2a1206\""
-- [x] Top bar tabs: Home (selected, underlined), Library, Apps, Store — hosts/linux/desktop/firehold-plasma/couch/contents/ui/TopBar.qml: "[[\"home\", \"Home\"], [\"library\", \"Library\"], [\"apps\", \"Apps\"], [\"store\", \"Store\"]]"
-- [x] Top bar: the posture pill with its dot: "Couch · switches to Desk when you touch the mouse" — hosts/linux/desktop/firehold-plasma/couch/contents/ui/TopBar.qml: "Couch · switches to Desk when you touch the mouse"
+- [x] Top bar tabs: Home (selected, underlined), Library, Apps, Store — hosts/linux/desktop/firehold-plasma/couch/contents/ui/TopBar.qml: "[\"home\", \"Home\"], [\"library\", \"Library\"], [\"apps\", \"Apps\"]"
+- [ ] Top bar: the posture pill with its dot: "Couch · switches to Desk when you touch the mouse" (not in the 1.16 design: the 1.16 pill says "Couch · on the TV" (mockup firehold-plasma 01))
 - [x] Top bar: Wi-Fi status — hosts/linux/desktop/firehold-plasma/hearth-firehold-plasma: "out['net'] = 'Wi-Fi' if t == 'wifi' else 'Wired'"
 - [x] Top bar: battery percentage (78%) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/TopBar.qml: "text: bar.couch.sys.battery + \"%\""
 - [x] Top bar: the clock (10:22 PM) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/TopBar.qml: "Qt.formatTime(bar.couch.now, \"h:mm AP\")"
 - [x] Top bar: the account avatar (initial, round) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/TopBar.qml: "text: bar.couch.sys.initial"
 - [x] Hero card: the last game played, in a wide rounded card with its colours as a gradient — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "readonly property var game: couch.continueGame"
 - [x] Hero: "CONTINUE · 41 MIN AGO" line (accent, capitals, how long ago) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "\"CONTINUE · \" + F.ago("
-- [x] Hero: the game's name, large (Ember Trails) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "font.pixelSize: 64 * home.k"
-- [x] Hero line: the chapter (when the game's entry has one) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "home.game.chapter || \"\""
-- [x] Hero line: "Saved on this PC and in the cloud" — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "\"Saved on this PC and in the cloud\""
-- [x] Hero line: "runs natively, no Game Mode" — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "\"runs natively, no Game Mode\""
-- [x] Hero: Resume button (accent, selected) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "home.running ? \"Resume\" : \"Play\""
+- [x] Hero: the game's name, large (Ember Trails) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "font.pixelSize: 68 * home.k; font.weight: Font.ExtraBold"
+- [x] Hero line: the chapter (when the game's entry has one) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "text: H.chapterLine(home.gp)"
+- [x] Hero line: "Saved on this PC and in the cloud" — hosts/linux/desktop/firehold-plasma/couch/contents/ui/fhp.js: "g.cloudSaves ? \"saved on this PC and in the cloud\""
+- [x] Hero line: "runs natively, no Game Mode" — hosts/linux/desktop/firehold-plasma/couch/contents/ui/fhp.js: "parts.push(\"runs natively, no Game Mode\");"
+- [x] Hero: Resume button (accent, selected) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "(home.running ? \"Resume\" : \"Continue\")"
 - [x] Hero: "Open in a window" button — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "\"Open in a window\""
-- [x] Hero: the game's art on the right (the dashed "Game art" area) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "text: \"Game art\""
-- [x] Recent row: title "Recent" — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "text: \"Recent\""
-- [x] Recent row: seven tiles with the game's art, its store on the tile and its name under it — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "F.recent(couch.library, 7,"
-- [x] "Open on this PC" row with "· the same windows you see on the Desk" — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "\" · the same windows you see on the Desk\""
-- [x] Open windows as cards: icon, name and what's in it (Plasma's own task model) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "couch.openList.filter(function (o) { return o.kind === \"window\"; })"
-- [x] Hint bar: A Play — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "key: \"A\"; label: \"Play\""
+- [x] Hero: the game's art on the right (the dashed "Game art" area) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "Art { anchors.fill: parent; game: home.game; want: \"hero\""
+- [ ] Recent row: title "Recent" (not in the 1.16 design: 1.16 has "Continue playing" and "Recently added" rows instead (mockup firehold-plasma 01))
+- [ ] Recent row: seven tiles with the game's art, its store on the tile and its name under it (not in the 1.16 design: 1.16 rows have five tiles (mockup firehold-plasma 01))
+- [ ] "Open on this PC" row with "· the same windows you see on the Desk" (not in the 1.16 design: 1.16 shows open windows on the Everything open page, not as a Home row)
+- [ ] Open windows as cards: icon, name and what's in it (Plasma's own task model) (not in the 1.16 design: 1.16 shows them on the Everything open page (section 4), not on Home)
+- [x] Hint bar: A Play — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "key: \"A\"; label: home.row === 0 ? \"Continue\" : \"Play\""
 - [x] Hint bar: X Options — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "key: \"X\"; label: \"Options\""
 - [x] Hint bar: Y Search — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "key: \"Y\"; label: \"Search\""
-- [x] Hint bar: ≡ Guide: Quick Access — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "label: \"Guide: Quick Access\""
+- [ ] Hint bar: ≡ Guide: Quick Access (not in the 1.16 design: 1.16 hint bar has "≡ Quick Settings" (mockup firehold-plasma 01))
 - [x] Hint bar: LB RB Tabs — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "key: \"LB RB\"; label: \"Tabs\""
-- [x] The warm dark background (gradient) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/main.qml: "fh.tab === \"home\" && fh.page === \"tabs\" ? \"#2a1409\""
+- [x] The warm dark background (gradient) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Couch.qml: "GradientStop { position: 0.0; color: \"#1d120d\" }"
 
 ## 2. Desk (2-desk.png)
 
 - [x] Top bar: app tile at the left with the focused app's name — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "text: root.appName || \"Firehold\""
 - [x] Top bar: the focused app's menus (File, Edit, View): KDE's global menu widget — hosts/linux/desktop/firehold-plasma/desk/layout.js: "top.addWidget(\"org.kde.plasma.appmenu\");"
 - [x] Top bar: date and clock in the middle (Mon Nov 16 · 10:22 PM) — hosts/linux/desktop/firehold-plasma/desk/layout.js: "clock.writeConfig(\"customDateFormat\", \"ddd MMM d\");"
-- [x] Top bar: the posture pill "Desk" with its blue dot — hosts/linux/desktop/firehold-plasma/posture/contents/ui/main.qml: "Text { text: \"Desk\""
-- [x] Top bar: Wi-Fi · battery (Wi-Fi · 78%) — hosts/linux/desktop/firehold-plasma/posture/contents/ui/main.qml: "text: [root.net, root.batteryText].filter(Boolean).join(\" · \")"
+- [x] Top bar: the posture pill "Desk" with its blue dot — hosts/linux/desktop/firehold-plasma/posture/contents/ui/main.qml: "color: root.me.mode === \"couch\" ? \"#ff7a2f\" : \"#5bb8ff\""
+- [ ] Top bar: Wi-Fi · battery (Wi-Fi · 78%) (not in the 1.16 design: 1.16 bar shows Wi-Fi and battery in Hearth's Quick Settings button, not as "Wi-Fi · 78%")
 - [ ] A window with its title (Hearth Files — Pictures) and three round window buttons, the close one in the accent colour
 - [ ] Hearth Files' picture grid inside it (two rows of five)
 - [ ] The game in a window with the accent border (the same game resumed on the Couch)
@@ -90,7 +90,7 @@ feature/firehold-plasma: no roadmap item is ticked for it. Proofs point at its f
 - [x] A grid of live pictures of every game and window (three a row): KWin's screencast through PipeWire, as Plasma's task manager does — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Thumb.qml: "TaskManager.ScreencastingRequest {"
 - [x] Each card's tag: GAME or WINDOW — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Switcher.qml: "card.game ? \"GAME\" : \"WINDOW\""
 - [x] The selected card with the accent border and glow — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Switcher.qml: "Qt.rgba(1, 138 / 255, 61 / 255, 0.22)"
-- [x] Each card's name and what it's doing (firehold.js's openItems, as Mantel's Firehold) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/main.qml: "F.openItems(wins, library, function (w) { return w.appName; })"
+- [x] Each card's name and what it's doing (firehold.js's openItems, as Mantel's Firehold) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Couch.qml: "F.openItems(wins, library, function (w) { return w.appName; })"
 - [x] Hint bar: A Go to it — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Switcher.qml: "label: \"Go to it\""
 - [x] Hint bar: X Close — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Switcher.qml: "label: \"Close\""
 - [x] Hint bar: Y Window ⇄ full screen — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Switcher.qml: "label: \"Window ⇄ full screen\""
@@ -98,18 +98,18 @@ feature/firehold-plasma: no roadmap item is ticked for it. Proofs point at its f
 
 ## 5. Library (5-library.png)
 
-- [x] Top bar: logo tile and tabs Home, Library (selected, underlined), Apps, Store — hosts/linux/desktop/firehold-plasma/couch/contents/ui/TopBar.qml: "visible: bar.couch.tab !== \"library\""
+- [x] Top bar: logo tile and tabs Home, Library (selected, underlined), Apps, Store — hosts/linux/desktop/firehold-plasma/couch/contents/ui/TopBar.qml: "readonly property bool on: bar.couch.tab === modelData[0]"
 - [x] Search box: "Search 412 games" (the real count) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "\"Search \" + (lib.couch.counts.all || lib.couch.library.length) + \" games\""
-- [x] Filter chips with counts: All, Installed, Steam, GOG, Epic, Windows apps, Emulators, Your games — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "readonly property var chips: F.chips(couch.counts)"
+- [ ] Filter chips with counts: All, Installed, Steam, GOG, Epic, Windows apps, Emulators, Your games (not in the 1.16 design: 1.16 chips are All, Installed, Steam, Beacon, Heroic, Windows apps, Your games (mockup firehold-plasma 03))
 - [x] Tall game tiles with their art, six a row — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "readonly property int cols: 6"
-- [x] Each tile's store tag (Steam, GOG, Epic, Emulator, Windows app, Your game) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "text: cell.modelData.store || \"\""
-- [x] Each tile's state: Playing, Installed, Update ready, Not installed, Dev build, Cloud saves — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "text: F.status(cell.modelData, lib.couch.playing)"
-- [x] Each game's name under its tile — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "text: cell.modelData.title"
-- [x] The selected tile with the accent border — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "border.color: lib.couch.pal.accent"
-- [x] Hint bar: A Play — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "text: \"A Play\""
-- [x] Hint bar: X Game options — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "text: \"X Game options\""
-- [x] Hint bar: Y Search — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "text: \"Y Search\""
-- [x] Hint bar: LT RT Filters — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "text: \"LT RT Filters\""
+- [x] Each tile's store tag (Steam, GOG, Epic, Emulator, Windows app, Your game) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "text: lib.tagFor(cell.modelData)"
+- [ ] Each tile's state: Playing, Installed, Update ready, Not installed, Dev build, Cloud saves (not in the 1.16 design: 1.16 tiles show only Playing, Update ready and Not installed (mockup firehold-plasma 03))
+- [ ] Each game's name under its tile (not in the 1.16 design: 1.16 tiles have no name under them (mockup firehold-plasma 03))
+- [x] The selected tile with the accent border — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "Ring { visible: cell.index === lib.current"
+- [x] Hint bar: A Play — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "key: \"A\"; label: \"Play\""
+- [x] Hint bar: X Game options — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "key: \"X\"; label: \"Game options\""
+- [x] Hint bar: Y Search — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "key: \"Y\"; label: \"Search\""
+- [x] Hint bar: LT RT Filters — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Library.qml: "key: \"LT RT\"; label: \"Filters\""
 
 ## 6. Settings › Couch and Desk (6-settings-couch-desk.png)
 
