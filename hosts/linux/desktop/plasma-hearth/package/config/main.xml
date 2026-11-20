@@ -9,5 +9,7 @@
     <entry name="stamp" type="String"><default></default></entry>
     <!-- hearth-plasma-panel open WHAT: open the app menu, Quick settings or the dashboard (WHAT:time) -->
     <entry name="open" type="String"><default></default></entry>
+    <!-- classic | firehold: the shared Quick settings' and notifications' look (Mantel's, or Firehold on Plasma's) -->
+    <entry name="style" type="String"><default>classic</default></entry>
   </group>
 </kcfg>

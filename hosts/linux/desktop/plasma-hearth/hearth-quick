@@ -7,9 +7,10 @@ commands and JSON Firehold's helper had (hearth-firehold-plasma qs / qs-do, move
                                     Light, Do not disturb (with Firehold's schedule), outputs, brightness (KDE's
                                     org.kde.ScreenBrightness, external monitors too), power profile and its steps,
                                     device batteries, Game Mode off, per-screen modes (Firehold's, when it's there)
+  hearth-quick dnd                  one JSON line: Do not disturb now (on, by hand, its schedule), nothing else
   hearth-quick qs-do WHAT [ARG]     a press: wifi, bt, dnd, night, screenshot, osk, volume N, output SINK,
                                     brightness ID:N, power PROFILE, lock, sleep, restart, shutdown, logout, gamemode,
-                                    settings PAGE
+                                    settings PAGE, mode SCREEN:couch|desk|away (Firehold's modes)
   HEARTH_QUICK_FIXTURE=FILE         (CI pictures only) qs answers FILE's JSON (HEARTH_FIREHOLD_QS_FIXTURE works too)
 
 Read when Quick settings opens (and after a press), never in a loop. Each press is the person's own change.
@@ -309,7 +310,42 @@ def quick_settings():
             'battery': batt, 'wifi': wifi_state(), 'bt': bt_state(), 'osk': osk_on(), 'night': night_light(),
             'dnd': dnd_state(s), 'sinks': sinks(), 'brightness': brightness_list(), 'power': prof,
             'powerNames': POWER_STEPS.get(key, {'power-saver': 'Power saver', 'balanced': 'Balanced', 'performance': 'Performance'}),
-            'devices': device_batteries(), 'gameModeOff': desk.get('gameModeOff') is True, 'modes': screen_modes()}
+            'devices': device_batteries(), 'gameModeOff': desk.get('gameModeOff') is True, 'modes': screen_modes(),
+            'user': user_name(), 'batteryMore': battery_more()}
+
+
+def battery_more():
+    """This device's battery beyond its percent: how long it lasts at this rate ("about 2 h 40 min") and where
+    charging stops (its charge limit, when it has one)."""
+    import glob
+    for p in sorted(glob.glob('/sys/class/power_supply/*')):
+        if read_small(p + '/type') != 'Battery' or read_small(p + '/scope') == 'Device':
+            continue
+        def num(n):
+            try:
+                return int(read_small(p + '/' + n) or 0)
+            except ValueError:
+                return 0
+        now, rate = (num('energy_now'), num('power_now')) if num('energy_now') else (num('charge_now'), num('current_now'))
+        left = ''
+        if rate > 0 and now > 0 and read_small(p + '/status') == 'Discharging':
+            mins = int(now * 60 / rate)
+            left = 'about %d h %d min' % (mins // 60, mins % 60) if mins >= 60 else 'about %d min' % mins
+        limit = num('charge_control_end_threshold')
+        return {'left': left, 'limit': limit if 0 < limit < 100 else 0}
+    return {'left': '', 'limit': 0}
+
+
+def user_name():
+    """You, as the header says it: your account's full name (its first word), else the account name."""
+    try:
+        import pwd
+        pw = pwd.getpwuid(os.getuid())
+        full = (pw.pw_gecos or '').split(',')[0].strip()
+        name = full.split()[0] if full else pw.pw_name
+        return name[:1].upper() + name[1:]
+    except (KeyError, ImportError, IndexError):
+        return (os.environ.get('USER') or 'You').capitalize()
 
 
 def qs_do(what, arg=''):
@@ -355,6 +391,12 @@ def qs_do(what, arg=''):
         detach(['systemctl', {'sleep': 'suspend', 'restart': 'reboot', 'shutdown': 'poweroff'}[what]])
     elif what == 'logout':
         dbus_send('org.kde.Shutdown', '/Shutdown', 'org.kde.Shutdown.logout', reply=False)
+    elif what == 'mode' and re.match(r'^[A-Za-z0-9_.,-]{1,80}:(couch|desk|away)$', arg or ''):
+        # A screen's mode (Firehold on Plasma's Couch, Desk and Away), your pick in Quick settings' Modes.
+        if not os.path.isfile(FIREHOLD):
+            return {'ok': False, 'why': "Firehold on Plasma isn't here"}
+        name, mode = arg.rsplit(':', 1)
+        quiet([sys.executable, FIREHOLD, 'mode', name, mode, '--why', 'pick'], 10)
     elif what == 'gamemode':
         detach(['nimbus-mode', 'game'])
     elif what == 'settings':
@@ -418,6 +460,8 @@ def main(argv):
     try:
         if what == 'qs':
             print(json.dumps(quick_settings()))
+        elif what == 'dnd':          # Do not disturb only (the notification cards ask when one comes in)
+            print(json.dumps(dnd_state()))
         elif what == 'qs-do' and a:
             print(json.dumps(qs_do(a[0], a[1] if len(a) > 1 else '')))
         else:

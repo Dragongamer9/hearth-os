@@ -22,15 +22,10 @@ Item {
     Component.onCompleted: { console.info("plasma-hearth: notifications: service " + (serving ? "up" : "not up yet")); hold(); }
     // KDE's own pop-ups pause while Hearth draws them (hearth-plasma-panel hold-popups: Plasma's inhibition, held
     // only while this runs; nothing saved). Notifications still all come in.
-    // KDE's critical pop-ups too (KDE lets those through a pause): Plasma's own setting, changed in this session only
-    // while Hearth shows the notifications and put back as it was when this goes (hearth-plasma-panel apply / undo
-    // keep the file the same way, so the next sign-in matches).
-    NM.Settings { id: nms }
-    property var critWas: undefined
-    function quietCritical() { if (!serving || critWas !== undefined) return; critWas = nms.criticalPopupsInDoNotDisturbMode; nms.criticalPopupsInDoNotDisturbMode = false; }
-    Component.onDestruction: if (critWas !== undefined) nms.criticalPopupsInDoNotDisturbMode = critWas
+    // KDE's critical pop-ups too (KDE lets those through a pause): Plasma's own setting, which hearth-plasma-panel
+    // apply writes (and tells the running session about) and undo puts back as it was.
     property bool holding: false
-    function hold() { quietCritical(); if (!serving || holding) return; holding = true; Hearth.call(["python3", Hearth.helper, "hold-popups"], (out) => { console.info("plasma-hearth: KDE's pop-ups: " + out.trim()); srv.holding = false; }); }
+    function hold() { if (!serving || holding) return; holding = true; Hearth.call(["python3", Hearth.helper, "hold-popups"], (out) => { console.info("plasma-hearth: KDE's pop-ups: " + out.trim()); srv.holding = false; }); }
     NM.Notifications {
         id: model
         showNotifications: true
@@ -64,7 +59,11 @@ Item {
             body: String(role(i, NM.Notifications.BodyRole) || ""), appIcon: String(role(i, NM.Notifications.ApplicationIconNameRole) || role(i, NM.Notifications.IconNameRole) || ""),
             image: typeof img === "string" ? img : "", urgency: u === NM.Notifications.CriticalUrgency ? 2 : u === NM.Notifications.LowUrgency ? 0 : 1,
             actions: acts, desktopEntry: String(role(i, NM.Notifications.DesktopEntryRole) || ""), expireTimeout: Number(role(i, NM.Notifications.TimeoutRole) || 0),
-            transient: role(i, NM.Notifications.TransientRole) === true
+            transient: role(i, NM.Notifications.TransientRole) === true,
+            // A Reply box (Plasma's inline replies: messengers, KDE Connect), as Quickshell's
+            hasInlineReply: role(i, NM.Notifications.HasReplyActionRole) === true,
+            inlineReplyPlaceholder: String(role(i, NM.Notifications.ReplyPlaceholderTextRole) || ""),
+            sendInlineReply: function (t) { const r = srv.rowOf(id); if (r >= 0) { try { model.reply(model.index(r, 0), String(t), NM.Notifications.None); } catch (e) { console.warn("plasma-hearth: reply: " + e); } } }
         };
         live[id] = n;
         notification(n);

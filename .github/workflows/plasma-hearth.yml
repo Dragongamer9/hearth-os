@@ -31,7 +31,7 @@ env:
   PLASMA_EXTRA: >-
     libnotify qt6-qtdeclarative kf6-kirigami layer-shell-qt pipewire wireplumber kactivitymanagerd plasma-integration
     kglobalacceld plasma-nm plasma-pa plasma5support qt6-qttools dolphin konsole kate kde-cli-tools rsms-inter-fonts
-    dejavu-sans-fonts dejavu-sans-mono-fonts wtype qt6-qtwayland kf6-kconfig qt6-qt5compat
+    dejavu-sans-fonts dejavu-sans-mono-fonts wtype qt6-qtwayland kf6-kconfig qt6-qt5compat python3-gobject kscreenlocker
 
 jobs:
   screens:

@@ -9,8 +9,8 @@ Item {
     property var host: null
     property Item anchorItem: null
     readonly property bool launcherShown: launcherW.ready && launcherW.content.shown
-    readonly property bool quickShown: quickW.ready && quickW.content.shown === true
-    readonly property bool calendarShown: calendarW.ready && calendarW.content.shown === true
+    readonly property bool quickShown: firehold ? (fhQuickW.ready && fhQuickW.content.shown === true) : (quickW.ready && quickW.content.shown === true)
+    readonly property bool calendarShown: firehold ? (fhListW.ready && fhListW.content.shown === true) : (calendarW.ready && calendarW.content.shown === true)
     readonly property string menuQuery: launcherW.ready ? launcherW.content.menuQuery : ""
     function scr() { return Hearth.screen; }
 
@@ -50,6 +50,16 @@ Item {
         }
     }
     Overlay { id: calendarW; name: "hearth-calendar"; source: "ClockPanel.qml" }
+    // Firehold on Plasma's style of the shared Quick settings and notification list (their "style" setting).
+    Overlay {
+        id: fhQuickW
+        name: "hearth-firehold-quick"
+        source: "FireholdQuick.qml"
+        onContentChanged: if (content) content.openNotifications.connect(() => m.toggleCalendar())
+    }
+    Overlay { id: fhListW; name: "hearth-firehold-notifications"; source: "FireholdHistory.qml" }
+    readonly property bool firehold: Hearth.style === "firehold"
+    function toggleFh(w) { w.wanted = true; if (w.ready) w.content.toggle(); else w.pending = () => w.content.toggle(); }
     Overlay { id: dialogW; name: "hearth-dialog"; source: "DeskDialog.qml"; wanted: true }
     Overlay {
         id: powerW
@@ -67,12 +77,21 @@ Item {
     function showBright(p) { if (volOsd.item) volOsd.item.showBrightness(p); }
     function popMenu() { return popW.content; }
     function deskDialog() { return dialogW.content; }
+    // hearth-plasma-panel open close: everything Hearth opened goes away (the power and right-click menus, the app
+    // menu, Quick settings, the dashboard), as clicking outside them does.
+    function closeAll() {
+        if (powerW.ready) powerW.content.shown = false;
+        if (popW.ready) popW.content.close();
+        if (launcherShown) toggleLauncher();
+        if (quickShown) toggleQuick();
+        if (calendarShown) toggleCalendar();
+    }
     function openPower() { if (powerW.ready && typeof powerW.content.open === "function") powerW.content.open(); }
 
     function toggleLauncher() { launcherW.wanted = true; if (launcherW.ready) launcherW.content.toggle(); else launcherW.pending = () => launcherW.content.toggle(); }
     function openMenuSearch() { launcherW.wanted = true; if (launcherW.ready) launcherW.content.openMenuSearch(); else launcherW.pending = () => launcherW.content.openMenuSearch(); }
-    function toggleQuick() { quickW.wanted = true; const f = () => { const q = quickW.content; if (typeof q.toggle === "function") q.toggle(); else q.shown = !q.shown; }; if (quickW.ready) f(); else quickW.pending = f; }
-    function toggleCalendar() { calendarW.wanted = true; const f = () => { const c = calendarW.content; if (typeof c.toggle === "function") c.toggle(Hearth.screen, false); else c.shown = !c.shown; }; if (calendarW.ready) f(); else calendarW.pending = f; }
+    function toggleQuick() { if (firehold) { toggleFh(fhQuickW); return; } quickW.wanted = true; const f = () => { const q = quickW.content; if (typeof q.toggle === "function") q.toggle(); else q.shown = !q.shown; }; if (quickW.ready) f(); else quickW.pending = f; }
+    function toggleCalendar() { if (firehold) { toggleFh(fhListW); return; } calendarW.wanted = true; const f = () => { const c = calendarW.content; if (typeof c.toggle === "function") c.toggle(Hearth.screen, false); else c.shown = !c.shown; }; if (calendarW.ready) f(); else calendarW.pending = f; }
 
     // The bar's and dock's menus: Mantel's right-click menu (PopMenu.qml), placed on the screen.
     function popProxy(xOff) {

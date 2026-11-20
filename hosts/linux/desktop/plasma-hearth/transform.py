@@ -20,7 +20,14 @@ DROP = [
 
 
 # Names a Quickshell window may use that an Item already has (it's an Item here): renamed in that file.
-RENAME = {'ClockPanel.qml': [('function left(sec)', 'function timeLeft(sec)'), ('root.left((', 'root.timeLeft((')]}
+RENAME = {'ClockPanel.qml': [('function left(sec)', 'function timeLeft(sec)'), ('root.left((', 'root.timeLeft((')],
+          # Firehold's style of the shared notifications (FireholdCards.qml draws the cards): Mantel's own pop-ups
+          # step aside; Mantel's rules (what pops up, the history) stay the ones deciding.
+          'Notifications.qml': [('readonly property var keys: DeskState.popups.slice(0, 4)',
+                                 'readonly property var keys: Hearth.style === "firehold" ? [] : DeskState.popups.slice(0, 4)'),
+                                # its Reply box takes the keyboard while you type (LayerPanel.qml's wantsKeys)
+                                ('WlrLayershell.keyboardFocus: popups.replying ? WlrKeyboardFocus.OnDemand : WlrKeyboardFocus.None',
+                                 'wantsKeys: popups.replying')]}
 # Small windows of their own (a bar at the top of the screen): a real layer window on Plasma (LayerPanel.qml), their
 # edges and margins kept.
 OWN_WINDOW = {'VolumeOsd.qml', 'SystemOsd.qml'}

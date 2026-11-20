@@ -38,7 +38,7 @@ build() {   # build ID NAME DESCRIPTION
   # Mantel's pictures (the looks' scenes and wallpapers): its own folder, one copy.
   ln -sfn /usr/share/nimbus/desktop/shell/images "$dir/contents/ui/images"
   cp "$SRC"/shim/*.qml "$dir/contents/ui/"
-  cp "$SRC"/package/*.qml "$dir/contents/ui/"
+  cp "$SRC"/package/*.qml "$SRC"/package/*.js "$dir/contents/ui/"
   cp "$SRC/package/config/main.xml" "$dir/contents/config/main.xml"
   python3 "$SRC/transform.py" "$dir/contents/ui" || ok=0
   python3 - "$SRC/package/metadata.json" "$dir/metadata.json" "$id" "$2" "$3" <<'PY' || ok=0
@@ -65,6 +65,31 @@ ln -sfn /usr/share/nimbus/desktop/plasma-hearth/hearth-plasma-panel "$ROOT/usr/b
 mkdir -p "$ROOT/etc/skel/.config/hearth" "$ROOT/etc/xdg/autostart"
 echo "Hearth's panel at this account's first sign-in (hearth-plasma-panel login removes this file)" > "$ROOT/etc/skel/.config/hearth/plasma-panel-new"
 install -m644 "$SRC/hearth-plasma-panel-login.desktop" "$ROOT/etc/xdg/autostart/hearth-plasma-panel-login.desktop"
+# Mantel's lock screen in KDE's screen locker: Mantel on KWin's own LockScreen.qml (desktop/kwin-lock), as a Plasma
+# look-and-feel package with only a lock screen (KDE's locker won't read a file from outside its package, so it's
+# copied). Hearth's panel picks it only after the locker's own test run shows it loading (hearth-plasma-panel).
+LOCKSRC="$SRC/../kwin-lock/contents/lockscreen/LockScreen.qml"
+LNF="$ROOT/usr/share/plasma/look-and-feel/org.hearthos.mantel-lock"
+if [ -f "$LOCKSRC" ]; then
+  rm -rf "$LNF"; mkdir -p "$LNF/contents/lockscreen"
+  cp "$LOCKSRC" "$LNF/contents/lockscreen/LockScreen.qml"
+  cat > "$LNF/metadata.json" <<'JSON'
+{
+    "KPackageStructure": "Plasma/LookAndFeel",
+    "KPlugin": {
+        "Authors": [{ "Name": "Hearth OS" }],
+        "Description": "Hearth's lock screen (Mantel's) in KDE's screen locker, while Hearth's panel is in use",
+        "Id": "org.hearthos.mantel-lock",
+        "License": "GPL-2.0-or-later",
+        "Name": "Hearth lock screen"
+    },
+    "X-Plasma-APIVersion": "2",
+    "Hidden": true
+}
+JSON
+else
+  echo "plasma-hearth: Mantel's lock screen (kwin-lock) isn't there"; ok=0
+fi
 # Quick settings' backend, shared with Firehold on Plasma (the same qs / qs-do commands and JSON).
 mkdir -p "$ROOT/usr/libexec/hearth"
 install -m755 "$SRC/hearth-quick" "$ROOT/usr/libexec/hearth/hearth-quick"

@@ -17,6 +17,13 @@ Item {
     property bool envReady: false
     property string stamp: ""
     property var screen: ({ width: 1920, height: 1080, name: "" })
+    // The shared Quick settings' and notifications' look (their "style" setting): "classic" (Mantel's) or
+    // "firehold" (Firehold on Plasma's, mockups 07-10). Where Hearth's panel is (Plasma's edge and its size), for
+    // Firehold's cards and Quick settings to open beside it.
+    property string style: "classic"
+    property int panelEdge: 0          // 0 top, 1 bottom, 2 left, 3 right
+    property int panelSize: 0
+    readonly property string quick: "/usr/libexec/hearth/hearth-quick"
 
     function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
     P5Support.DataSource {

@@ -51,6 +51,8 @@ Item {
         if (e && e.icon) return e.icon;
         return appId ? String(appId).replace(/\.desktop$/, "") : "";
     }
+    // An app's picture or Hearth's generic one (the desktop's launchers, Open with lists).
+    function source(icon, appId) { return find(icon, appId) || generic; }
     // Hearth's own windows (Mantel's Files, Settings...): their app's picture.
     function own(title) { return /Files/.test(title || "") ? "system-file-manager" : /Settings/.test(title || "") ? "preferences-system" : ""; }
 }

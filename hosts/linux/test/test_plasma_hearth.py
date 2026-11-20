@@ -46,6 +46,7 @@ class Panel(unittest.TestCase):
         self.h.kread = lambda f, g, k: self.settings.get((f, g, k))
         self.h.kwrite = self.fake_kwrite
         self.h.detach = lambda argv: True
+        self.h.lock_ok = lambda: (False, 'not here')
 
     def tearDown(self):
         os.environ.clear()
@@ -110,6 +111,24 @@ class Panel(unittest.TestCase):
         self.assertEqual(self.settings.get(('plasmarc', 'OSD', 'Enabled')), 'true', 'a value you had comes back')
         self.assertNotIn(('plasmanotifyrc', 'Notifications', 'CriticalInDndMode'), self.settings, 'one you never set is taken away again')
 
+    def test_hearths_lock_screen_only_when_the_locker_shows_it(self):
+        self.h.apply()
+        self.assertNotIn(('kscreenlockerrc', 'Greeter', 'Theme'), self.settings, "a lock screen the locker can't show is never picked")
+        self.h.undo()
+        self.h.lock_ok = lambda: (True, 'ok')
+        self.settings[('kscreenlockerrc', 'Greeter', 'Theme')] = 'org.kde.breeze.desktop'
+        self.h.apply()
+        self.assertEqual(self.settings[('kscreenlockerrc', 'Greeter', 'Theme')], 'org.hearthos.mantel-lock')
+        self.h.undo()
+        self.assertEqual(self.settings[('kscreenlockerrc', 'Greeter', 'Theme')], 'org.kde.breeze.desktop', 'your lock screen comes back')
+
+    def test_picking_it_again_keeps_what_undo_puts_back(self):
+        self.settings[('plasmarc', 'OSD', 'Enabled')] = 'true'
+        self.h.apply()
+        self.h.apply()      # Settings › Bar and dock › Hearth's panel again, while it's in use
+        self.h.undo()
+        self.assertEqual(self.settings.get(('plasmarc', 'OSD', 'Enabled')), 'true', "KDE's settings from before Hearth's panel, not Hearth's")
+
     def test_apply_saves_your_panels_first(self):
         cfg = os.path.join(self.tmp, '.config')
         os.makedirs(cfg, exist_ok=True)
@@ -118,6 +137,31 @@ class Panel(unittest.TestCase):
         saved = os.listdir(self.h.backup_root())
         self.assertTrue(saved)
         self.assertTrue(os.path.isfile(os.path.join(self.h.backup_root(), saved[0], 'plasma-org.kde.plasma.desktop-appletsrc')))
+
+
+class NotifydBridge(unittest.TestCase):
+    """Mantel's hearth-notifyd on Plasma: the go-between answers a wait with what changed, and passes asks on."""
+    def test_changes_come_through_and_asks_go_back(self):
+        run = tempfile.mkdtemp(prefix='hpn', dir='/tmp')
+        fake = os.path.join(run, 'notifyd')
+        with open(fake, 'w') as f:
+            f.write('import json, sys\nprint(json.dumps({"t": "disks", "disks": [{"name": "USB STICK"}]}), flush=True)\n'
+                    'for line in sys.stdin:\n    print(json.dumps({"t": "done", "ok": True, "asked": json.loads(line)}), flush=True)\n')
+        env = dict(os.environ, XDG_RUNTIME_DIR=run, HEARTH_NOTIFYD=fake)
+        h = os.path.join(PH, 'hearth-plasma-panel')
+        try:
+            out = subprocess.run([sys.executable, h, 'notifyd-wait', '0'], env=env, capture_output=True, text=True, timeout=30).stdout
+            o = json.loads(out.strip().splitlines()[-1])
+            self.assertEqual(o['msgs'][0]['t'], 'disks', out)
+            self.assertEqual(o['msgs'][0]['disks'][0]['name'], 'USB STICK')
+            r = subprocess.run([sys.executable, h, 'notifyd-send', '{"op": "eject", "path": "/dev/sda1"}'], env=env, capture_output=True, text=True, timeout=30).stdout
+            self.assertTrue(json.loads(r.strip().splitlines()[-1])['ok'], r)
+            out = subprocess.run([sys.executable, h, 'notifyd-wait', str(o['seq'])], env=env, capture_output=True, text=True, timeout=30).stdout
+            m = json.loads(out.strip().splitlines()[-1])['msgs']
+            self.assertEqual(m[-1]['asked'], {'op': 'eject', 'path': '/dev/sda1'}, out)
+        finally:
+            subprocess.run(['pkill', '-f', 'hearth-plasma-panel notifyd-bridge'], capture_output=True)
+            shutil.rmtree(run, ignore_errors=True)
 
 
 class Build(unittest.TestCase):
@@ -141,6 +185,11 @@ class Build(unittest.TestCase):
             self.assertTrue(all('Quickshell' in a or 'WlrLayershell' in a or 'anchors {' in a or 'mask:' in a or 'resolvedUrl' in a for a in changed), changed)
             self.assertTrue(os.path.isfile(os.path.join(root, 'etc/skel', self.mark_rel())))
             self.assertTrue(os.path.isfile(os.path.join(root, 'etc/xdg/autostart/hearth-plasma-panel-login.desktop')))
+            lock = os.path.join(root, 'usr/share/plasma/look-and-feel/org.hearthos.mantel-lock')
+            self.assertEqual(open(os.path.join(lock, 'contents/lockscreen/LockScreen.qml')).read(),
+                             open(os.path.join(ROOT, 'hosts/linux/desktop/kwin-lock/contents/lockscreen/LockScreen.qml')).read(),
+                             "the lock screen is Mantel's own")
+            self.assertEqual(json.load(open(os.path.join(lock, 'metadata.json')))['KPackageStructure'], 'Plasma/LookAndFeel')
 
     def mark_rel(self):
         return os.path.join('.config', 'hearth', 'plasma-panel-new')

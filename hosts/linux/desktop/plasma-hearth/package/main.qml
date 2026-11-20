@@ -43,11 +43,20 @@ PlasmoidItem {
         else if (w === "deskmenu" && deskL.item) deskL.item.backgroundMenu(900, 500);
         else if (w === "osd") menus.showOsd(0.62, false);
         else if (w === "osd-bright") menus.showBright(80);
+        else if (w === "close") menus.closeAll();
     }
     Component.onCompleted: openSeen = openAsk
 
-    // Super (Plasma's launcher key, as Kickoff's): the app menu.
-    Connections { target: Plasmoid; function onActivated() { menus.toggleLauncher(); } }
+    // Super (Plasma's launcher key, as Kickoff's), or the widget's own shortcut ("activate widget", what Firehold's
+    // bar presses): what this one opens.
+    Connections { target: Plasmoid; function onActivated() { main.role === "quick" ? menus.toggleQuick() : main.role === "notes" ? menus.toggleCalendar() : menus.toggleLauncher(); } }
+    // The shared Quick settings' and notifications' look: "classic" (Mantel's) or "firehold" (Firehold on Plasma's).
+    readonly property string style: String(Plasmoid.configuration.style || "") === "firehold" && main.small ? "firehold" : "classic"
+    Binding { target: Hearth; property: "style"; value: main.style }
+    readonly property int edge: Plasmoid.location === PlasmaCore.Types.BottomEdge ? 1 : Plasmoid.location === PlasmaCore.Types.LeftEdge ? 2 : Plasmoid.location === PlasmaCore.Types.RightEdge ? 3 : 0
+    Binding { target: Hearth; property: "panelEdge"; value: main.edge }
+    // Firehold's notification cards (style "firehold"; Mantel's own pop-ups step aside then).
+    Loader { active: main.style === "firehold" && main.role === "notes"; source: "FireholdCards.qml"; onLoaded: item.openList.connect(() => menus.toggleCalendar()) }
 
     Menus { id: menus; host: main; anchorItem: main.fullRepresentationItem }
     // Notifications (Mantel's Notifications.qml: the pop-ups under the clock pill and the history the dashboard
@@ -164,6 +173,7 @@ PlasmoidItem {
             cover.o = Qt.point(Math.round(p.x), Math.round(p.y));
             if (!main.small) hideBackground();
             Hearth.screen = { width: rep.Screen.width, height: rep.Screen.height, name: rep.Screen.name };
+            if (main.small && rep.Window.window) Hearth.panelSize = rep.vertical ? rep.Window.width : rep.Window.height;   // Firehold's cards open beside it
         }
         // Plasma's own panel background (and its shadow edge) off: Mantel's islands draw the bar.
         function hideBackground() {

@@ -845,7 +845,10 @@ done
 # ---- Hearth Classic on Plasma (hosts/linux/desktop/plasma-hearth; docs/mockups/checklists/plasma-hearth-bar.md): Mantel's
 # bar, dock, app menus, Quick settings and notifications as Plasma packages (org.hearthos.panel, .appmenu, .quicksettings,
 # .notifications), the shared Quick settings backend (/usr/libexec/hearth/hearth-quick) and hearth-plasma-panel.
-# Only installed: nobody's panel changes until they pick Hearth's panel in Settings › Bar and dock. Never fails the image.
+# Also Mantel's lock screen for KDE's screen locker (org.hearthos.mantel-lock, picked only while Hearth's panel is in use
+# and only after the locker's own test run shows it). A new account's first sign-in gets Hearth's panel (the owner,
+# Nov 19: /etc/skel's mark); nobody else's panel changes until they pick it in Settings › Bar and dock, and a panel that
+# doesn't come up gives way to KDE's own. Never fails the image.
 bash /usr/share/nimbus/desktop/plasma-hearth/install.sh / || echo "::warning title=Hearth's panel::not installed"
 for f in /usr/share/plasma/plasmoids/org.hearthos.panel/metadata.json /usr/share/plasma/plasmoids/org.hearthos.appmenu/contents/ui/Launcher.qml /usr/libexec/hearth/hearth-quick; do
   [ -e "$f" ] || echo "::warning title=Hearth's panel::$f is missing (KDE's own panel is unchanged)"

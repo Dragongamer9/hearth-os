@@ -405,6 +405,52 @@ KDE_KEYS = [('plasmanotifyrc', 'Notifications', 'CriticalInDndMode', 'false'),
             ('kwinrc', 'TabBox', 'LayoutName', 'org.hearth.switcher')]
 
 
+# Mantel's lock screen in KDE's screen locker (the same LockScreen.qml as Mantel on KWin, desktop/kwin-lock), as a
+# Plasma look-and-feel package with only a lock screen (install.sh). The locker reads its lock screen from the theme
+# kscreenlockerrc [Greeter] Theme names; Hearth's panel names this one only after the locker's own test run (off
+# screen) showed it loading, so a lock screen that can't show is never picked (the locker would cover the screen).
+# Undo puts the setting back as it was.
+LOCK_ID = 'org.hearthos.mantel-lock'
+LOCK_KEY = ('kscreenlockerrc', 'Greeter', 'Theme', LOCK_ID)
+
+
+def lock_ok():
+    pkg = os.path.join('/usr/share/plasma/look-and-feel', LOCK_ID)
+    if not os.path.isfile(os.path.join(pkg, 'contents', 'lockscreen', 'LockScreen.qml')):
+        return False, "Hearth's lock screen isn't installed"
+    try:
+        import importlib.machinery
+        import importlib.util
+        import tempfile
+        loader = importlib.machinery.SourceFileLoader('hearth_lockcheck', os.path.join(SHELL, 'hearth-lockcheck'))
+        spec = importlib.util.spec_from_loader('hearth_lockcheck', loader)
+        lc = importlib.util.module_from_spec(spec)
+        loader.exec_module(lc)
+    except (OSError, ImportError, SyntaxError) as e:
+        return False, 'no lock check here (%s)' % e
+    g = lc.greeter()
+    if not g:
+        return False, "KDE's screen locker isn't installed"
+    tmp = tempfile.mkdtemp(prefix='hearth-lock-')
+    try:
+        with open(os.path.join(tmp, 'kscreenlockerrc'), 'w') as fh:
+            fh.write('[Greeter]\nTheme=%s\n' % LOCK_ID)
+        env = dict(os.environ, XDG_CONFIG_HOME=tmp, QT_QPA_PLATFORM='offscreen', QT_FORCE_STDERR_LOGGING='1')
+        for k in ('WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'DISPLAY'):
+            env.pop(k, None)
+        out = lc.run_greeter(g, env)
+    except OSError as e:
+        return False, "the screen locker won't run: %s" % e
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    bad = [m for m in lc.FAIL_MARKS if m in out]
+    if bad:
+        return False, bad[0]
+    if lc.LOADED not in out:
+        return False, "the screen locker's test run didn't show Hearth's lock screen"
+    return True, 'ok'
+
+
 def kcfg(tool):
     for t in (tool + '6', tool):
         if shutil.which(t):
@@ -425,14 +471,38 @@ def kwrite(f, g, k, v):
     t = kcfg('kwriteconfig')
     if not t:
         return False
-    args = [t, '--file', f, '--group', g, '--key', k] + (['--delete'] if v is None else [v])
+    # --notify: the running session's KDE pieces read it again now (Plasma's notification pop-ups keep their
+    # settings in memory and only re-read a change sent this way), not only at the next sign-in.
+    args = [t, '--file', f, '--group', g, '--key', k, '--notify'] + (['--delete'] if v is None else [v])
+    if subprocess.run(args, capture_output=True, timeout=10).returncode == 0:
+        return True
+    args.remove('--notify')    # an older kwriteconfig without --notify: the file still changes
     return subprocess.run(args, capture_output=True, timeout=10).returncode == 0
 
 
+def last_kde_settings():
+    root = backup_root()
+    for d in sorted(os.listdir(root), reverse=True) if os.path.isdir(root) else []:
+        old = read_json(os.path.join(root, d, 'kde-settings.json'))
+        if isinstance(old, dict):
+            return old
+    return None
+
+
 def kde_take(dest):
+    # Picked again while it's in use: KDE's settings as they were before Hearth's panel (the last saved copy), not
+    # Hearth's own, are what undo puts back.
+    before = last_kde_settings() if in_use() else None
+    keys = list(KDE_KEYS)
+    ok, why = lock_ok()
+    if ok:
+        keys.append(LOCK_KEY)
+    else:
+        sys.stderr.write("hearth-plasma-panel: KDE's own lock screen stays (%s)\n" % why)
     old = {}
-    for f, g, k, v in KDE_KEYS:
-        old['%s|%s|%s' % (f, g, k)] = kread(f, g, k)
+    for f, g, k, v in keys:
+        key = '%s|%s|%s' % (f, g, k)
+        old[key] = before[key] if before and key in before else kread(f, g, k)
         kwrite(f, g, k, v)
     try:
         with open(os.path.join(dest, 'kde-settings.json'), 'w') as fh:
@@ -443,14 +513,10 @@ def kde_take(dest):
 
 
 def kde_give_back():
-    root = backup_root()
-    for d in sorted(os.listdir(root), reverse=True) if os.path.isdir(root) else []:
-        old = read_json(os.path.join(root, d, 'kde-settings.json'))
-        if isinstance(old, dict):
-            for key, v in old.items():
-                f, g, k = key.split('|')
-                kwrite(f, g, k, v)
-            break
+    old = last_kde_settings()
+    for key, v in (old or {}).items():
+        f, g, k = key.split('|')
+        kwrite(f, g, k, v)
     subprocess.run(['dbus-send', '--session', '--type=method_call', '--dest=org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure'],
                    capture_output=True, timeout=10)
 
@@ -548,6 +614,202 @@ def hold_popups():
     while True:
         signal.pause()
 
+
+# ------------------------------------------------------------------ Mantel's hearth-notifyd, on Plasma
+# Mantel's tray extras (background apps, the camera, printing, removable disks, Caps Lock / Num Lock, dock badges)
+# come from hearth-notifyd, which talks in JSON lines on its stdin / stdout. Plasma's command runner only hands
+# back what a program printed once it ends, so a small go-between keeps hearth-notifyd running and answers the panel
+# one change at a time: the panel waits with `notifyd-wait SEQ` (asleep until something changes, then it prints the
+# changes since SEQ and ends, and the panel asks again), and `notifyd-send JSON` passes the panel's asks on (cancel
+# a print, eject a disk, quit a background app). Nothing polls; it goes away a little while after the panel does.
+# Job progress is Plasma's own (plasmashell serves org.kde.JobViewServer, so hearth-notifyd leaves it alone); a job
+# hearth-notifyd does serve (no Plasma service yet) comes through too.
+NOTIFYD = os.environ.get('HEARTH_NOTIFYD') or os.path.join(SHELL, 'hearth-notifyd')
+BRIDGE_IDLE = 30
+
+
+def bridge_sock():
+    return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-plasma-panel', 'notifyd.sock')
+
+
+def notifyd_bridge():
+    import socket
+    import threading
+    path = bridge_sock()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        if os.path.exists(path):
+            try:   # one already answering: this one isn't needed
+                c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); c.settimeout(2); c.connect(path); c.close()
+                return 0
+            except OSError:
+                os.unlink(path)
+        srv.bind(path)
+    except OSError:
+        return 0
+    srv.listen(8)
+    lock = threading.Condition()
+    st = {'seq': 0, 'kept': {}, 'waiting': 0, 'last': time.time(), 'proc': None, 'stop': False, 'tries': 0}
+
+    def key(m):
+        t = m.get('t', '')
+        if t in ('job', 'badge'):
+            return '%s:%s' % (t, m.get('id', m.get('app', '')))
+        if t == 'done':
+            return 'done:%d' % (st['seq'] + 1)
+        return t
+
+    def keep(m):
+        with lock:
+            st['seq'] += 1
+            m = dict(m, _seq=st['seq'])
+            st['kept'][key(m)] = m
+            dones = sorted((k for k in st['kept'] if k.startswith('done:')), key=lambda k: st['kept'][k]['_seq'])
+            for k in dones[:-20]:
+                del st['kept'][k]
+            lock.notify_all()
+
+    def run_notifyd():
+        while not st['stop'] and st['tries'] < 8:
+            try:
+                p = subprocess.Popen(['python3', NOTIFYD, 'serve', '--stdio'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.DEVNULL, text=True, bufsize=1)
+            except OSError:
+                return
+            st['proc'] = p
+            started = time.time()
+            for line in p.stdout:
+                try:
+                    m = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(m, dict):
+                    keep(m)
+            p.wait()
+            st['proc'] = None
+            if time.time() - started > 60:
+                st['tries'] = 0
+            st['tries'] += 1
+            if not st['stop']:
+                time.sleep(2 * st['tries'])
+
+    def closed(c):
+        import select
+        try:
+            r, _, _ = select.select([c], [], [], 0)
+            return bool(r) and c.recv(1, socket.MSG_PEEK) == b''
+        except OSError:
+            return True
+
+    def client(c):
+        try:
+            f = c.makefile('rw')
+            line = f.readline().strip()
+            if line.startswith('SEND '):
+                p = st['proc']
+                ok = False
+                if p and p.stdin:
+                    try:
+                        p.stdin.write(line[5:] + '\n'); p.stdin.flush(); ok = True
+                    except OSError:
+                        ok = False
+                f.write(json.dumps({'ok': ok}) + '\n'); f.flush()
+            elif line.startswith('WAIT '):
+                try:
+                    since = int(line[5:])
+                except ValueError:
+                    since = 0
+                with lock:
+                    st['waiting'] += 1
+                    if since > st['seq']:   # the go-between started again: everything, from the start
+                        since = 0
+                    gone = False
+                    while st['seq'] <= since and not st['stop'] and not gone:
+                        lock.wait(15)
+                        gone = closed(c)     # the panel stopped waiting (plasmashell went)
+                    out = sorted((m for m in st['kept'].values() if m['_seq'] > since), key=lambda m: m['_seq'])
+                    seq = st['seq']
+                    st['waiting'] -= 1
+                    st['last'] = time.time()
+                if not gone:
+                    f.write(json.dumps({'seq': seq, 'msgs': out}) + '\n'); f.flush()
+        except OSError:
+            with lock:
+                st['last'] = time.time()
+        finally:
+            try:
+                c.close()
+            except OSError:
+                pass
+
+    def idle():   # nobody has asked for a while (the panel went): stop
+        while True:
+            time.sleep(BRIDGE_IDLE)
+            with lock:
+                if st['waiting'] == 0 and time.time() - st['last'] > BRIDGE_IDLE:
+                    st['stop'] = True
+                    lock.notify_all()
+            if st['stop']:
+                p = st['proc']
+                if p:
+                    try:
+                        p.stdin.close()
+                    except OSError:
+                        pass
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+                os._exit(0)
+
+    threading.Thread(target=run_notifyd, daemon=True).start()
+    threading.Thread(target=idle, daemon=True).start()
+    while True:
+        c, _ = srv.accept()
+        threading.Thread(target=client, args=(c,), daemon=True).start()
+
+
+def bridge_ask(line, timeout=None):
+    import socket
+    for attempt in range(12):
+        c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            c.connect(bridge_sock())
+        except OSError:
+            c.close()
+            if attempt == 0:
+                detach(['python3', os.path.abspath(__file__), 'notifyd-bridge'])
+            time.sleep(0.5)
+            continue
+        c.settimeout(timeout)
+        c.sendall((line + '\n').encode())
+        f = c.makefile('r')
+        out = f.readline()
+        c.close()
+        return out.strip()
+    return ''
+
+
+def notifyd_wait(since):
+    import signal
+    try:
+        import ctypes
+        ctypes.CDLL('libc.so.6').prctl(1, signal.SIGTERM)   # PR_SET_PDEATHSIG: ends with the panel
+    except (OSError, AttributeError):
+        pass
+    if not os.path.exists(NOTIFYD):
+        print(json.dumps({'seq': 0, 'msgs': [], 'missing': True}))
+        return 1
+    out = bridge_ask('WAIT %d' % since)
+    print(out or json.dumps({'seq': since, 'msgs': [], 'down': True}))
+    return 0 if out else 1
+
+
+def notifyd_send(obj):
+    out = bridge_ask('SEND ' + json.dumps(json.loads(obj)), timeout=10)
+    print(out or json.dumps({'ok': False}))
+    return 0
 
 # ------------------------------------------------------------------ new accounts, and a panel that can't start
 # The owner (Nov 19): Hearth's panel is the default on new Fedora installs: only on a fresh install or a new account's
@@ -649,7 +911,13 @@ def main(argv):
         return mark_ready()
     elif cmd == 'hold-popups':
         return hold_popups()
-    elif cmd == 'open' and rest and rest[0] in ('launcher', 'quick', 'calendar', 'search', 'power', 'deskmenu', 'osd', 'osd-bright'):
+    elif cmd == 'notifyd-bridge':
+        return notifyd_bridge()
+    elif cmd == 'notifyd-wait':
+        return notifyd_wait(int(rest[0]) if rest and rest[0].isdigit() else 0)
+    elif cmd == 'notifyd-send' and rest:
+        return notifyd_send(rest[0])
+    elif cmd == 'open' and rest and rest[0] in ('launcher', 'quick', 'calendar', 'search', 'power', 'deskmenu', 'osd', 'osd-bright', 'close'):
         # Opens (or closes again) the app menu, Quick settings or the dashboard on Hearth's bar: for a shortcut
         # of your own, and CI's pictures.
         out = plasma_js('var ps=panels();for(var i=0;i<ps.length;i++){var ws=ps[i].widgets("org.hearthos.panel");'

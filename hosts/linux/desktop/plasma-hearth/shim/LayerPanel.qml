@@ -14,12 +14,13 @@ Window {
     property int exclusiveZone: 0
     property var mask: null
     property string scopeName: "hearth-notifications"
+    property bool wantsKeys: false     // typing in it (a notification's Reply box): the keyboard while it's asked for
     width: Math.max(1, implicitWidth)
     height: Math.max(1, implicitHeight)
-    flags: Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus
+    flags: wantsKeys ? Qt.FramelessWindowHint : (Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus)
     LayerShell.Window.scope: scopeName
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
-    LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
+    LayerShell.Window.keyboardInteractivity: wantsKeys ? LayerShell.Window.KeyboardInteractivityOnDemand : LayerShell.Window.KeyboardInteractivityNone
     LayerShell.Window.exclusionZone: -1
     LayerShell.Window.anchors: (anchors.top ? LayerShell.Window.AnchorTop : 0) | (anchors.bottom ? LayerShell.Window.AnchorBottom : 0)
         | (anchors.left ? LayerShell.Window.AnchorLeft : 0) | (anchors.right ? LayerShell.Window.AnchorRight : 0)
