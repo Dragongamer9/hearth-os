@@ -1,0 +1,3 @@
+[TabBox]
+LayoutName=org.hearth.switcher
+

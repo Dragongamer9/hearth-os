@@ -1,0 +1,4 @@
+watcher KDE's
+/__w/hearth-os/hearth-os/.github/scripts/plasma-hearth-fixtures.py:61: DeprecationWarning: Gio.DBusConnection.register_object is deprecated
+  bus.register_object(path, Gio.DBusNodeInfo.new_for_xml(ITEM).interfaces[0], call, lambda c, s, p, i, prop: props[prop], None)
+tray icons registered
