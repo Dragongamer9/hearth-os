@@ -55,16 +55,17 @@ kde kde-63-colord --page kde-colord
 kde kde-64-fontinst --page kde-fontinst
 kde kde-65-b-shortcuts --layout b --page kde-shortcuts:kwin --focus "Toggle Overview"
 # The lower part of the long pages (the focus on their last rows scrolls them there).
-kde kde-50-workspace-end --page kde-workspace --focus "On the taskbar too"
-kde kde-51-style-end --page kde-style --focus "GTK apps' theme"
-kde kde-52-decorations-end --page kde-decorations --focus "Shadow strength"
-kde kde-53-screenlock-end --page kde-screenlock --focus "Sign-in options"
-kde kde-54-tabbox-end --page kde-tabbox --focus "Order"
-kde kde-55-device-actions-end --page kde-device-actions --focus "Add this action"
-kde kde-56-info-end --page kde-info --focus "Info Center"
-kde kde-57-cddb-end --page kde-cddb --focus "MP3: write ID3 tags"
-kde kde-58-plasmakeyboard-end --page kde-plasmakeyboard --focus "Hearth's on-screen keyboard"
-kde kde-59-all-end --page kde-settings --focus "More system information"
+kde kde-50-workspace-end --page kde-workspace:end
+kde kde-51-style-end --page kde-style:end
+kde kde-52-decorations-end --page kde-decorations:end
+kde kde-53-screenlock-end --page kde-screenlock:end
+kde kde-54-tabbox-end --page kde-tabbox:end
+kde kde-55-device-actions-end --page kde-device-actions:end
+kde kde-56-info-end --page kde-info:end
+kde kde-57-cddb-end --page kde-cddb:end
+kde kde-58-plasmakeyboard-end --page kde-plasmakeyboard:end
+kde kde-59-all-end --page kde-settings:end
+kde kde-66-shortcuts-end --page kde-shortcuts:end
 # Long lists open over the page (A / a click on the name).
 kde kde-11-colors-list --page kde-colors:pick
 kde kde-12-decorations-list --page kde-decorations:pick

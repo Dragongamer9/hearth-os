@@ -131,6 +131,8 @@ pub struct State {
     pub pages: HashMap<&'static str, Pg>,
     /// `--page PAGE:pick`: the page's first list opens once it's read (pictures, tests).
     pub want_pick: bool,
+    /// `--page PAGE:end`: the page scrolls to its end once it's read (pictures of long pages).
+    pub want_end: bool,
     /// Shortcuts: waiting for the new keys of (page, component, action).
     pub capture: Option<(&'static str, String, String)>,
     /// Shortcuts: the component shown (its id).
@@ -171,13 +173,15 @@ pub enum Msg {
     Capture(&'static str, String, String),
     Key(iced::keyboard::Event),
     OpenComp(Option<String>),
+    End,
     FileForGot(&'static str, &'static str, Res),
 }
 
 pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
     st.want_pick = sh.part == "pick";
+    st.want_end = sh.part == "end";
     // `--page kde-shortcuts:COMPONENT`: that app's shortcuts open.
-    if page == "kde-shortcuts" && !sh.part.is_empty() && sh.part != "pick" {
+    if page == "kde-shortcuts" && !sh.part.is_empty() && sh.part != "pick" && sh.part != "end" {
         st.open_comp = Some(sh.part.clone());
     }
     let pg = st.pages.entry(page).or_default();
@@ -349,6 +353,9 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             }
             if std::mem::take(&mut st.want_pick) {
                 st.pick = rows_of(page).iter().position(|r| s(r, "type") == "pick").map(|i| (page, i));
+            }
+            if std::mem::take(&mut st.want_end) {
+                return Task::perform(hearth_ui::run::after(400), |_| Msg::End);
             }
         }
         Msg::Switch(page, i, on) => {
@@ -531,6 +538,9 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
         }
         Msg::Key(_) => {}
         Msg::OpenComp(c) => st.open_comp = c,
+        Msg::End => {
+            return iced::widget::operation::scroll_to(iced::widget::Id::new(crate::nav::PAGE), iced::widget::operation::AbsoluteOffset { x: None, y: Some(1.0e6) });
+        }
         Msg::FileFor(page, cmd, filter) => {
             let what = if cmd == "font-install" { "Choose a font" } else { "Choose a colour profile" };
             return read(crate::cats::pers::kit::file_picker(what, false, filter), move |r| Msg::FileForGot(page, cmd, r));

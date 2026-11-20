@@ -254,7 +254,7 @@
         {"type": "switch", "icon": "clock", "title": "Delete files that have been in the Trash for a while", "sub": "", "file": "ktrashrc", "group": "$TRASH", "key": "UseTimeLimit", "def": "false"},
         {"type": "number", "icon": "clock", "title": "After", "sub": "", "file": "ktrashrc", "group": "$TRASH", "key": "Days", "def": 7, "min": 1, "max": 365, "step": 1, "unit": "days", "int": true, "needs": ["ktrashrc", "$TRASH", "UseTimeLimit", "true"]},
         {"type": "switch", "icon": "drive", "title": "Limit its size", "sub": "", "file": "ktrashrc", "group": "$TRASH", "key": "UseSizeLimit", "def": "true"},
-        {"type": "number", "icon": "drive", "title": "At most", "sub": "Of the drive", "file": "ktrashrc", "group": "$TRASH", "key": "Percent", "def": 10, "min": 1, "max": 100, "step": 1, "unit": "%", "needs": ["ktrashrc", "$TRASH", "UseSizeLimit", "true"]},
+        {"type": "number", "icon": "drive", "title": "At most", "sub": "Of the drive", "file": "ktrashrc", "group": "$TRASH", "key": "Percent", "def": 10, "min": 1, "max": 100, "step": 1, "unit": "%", "int": true, "needs": ["ktrashrc", "$TRASH", "UseSizeLimit", "true"]},
         {"type": "choice", "icon": "drive", "title": "When it's full", "sub": "", "file": "ktrashrc", "group": "$TRASH", "key": "LimitReachedAction", "def": "0", "wide": true, "needs": ["ktrashrc", "$TRASH", "UseSizeLimit", "true"], "opts": [["0", "Tell me"], ["1", "Delete the oldest files"], ["2", "Delete the biggest files"]]}
       ]
     },
@@ -318,7 +318,7 @@
       ]
     },
     {
-      "id": "kde-plasmakeyboard", "cat": "bt", "label": "Plasma's on-screen keyboard", "kcm": ["kcm_plasmakeyboard", "kcm_virtualkeyboard"], "desc": "Which on-screen keyboard KDE Plasma uses, and Plasma Keyboard's sounds, buzz and keys", "words": "virtual keyboard on screen keyboard osk plasma keyboard maliit input method vibration sound auto capital diacritics", "intro": "KDE Plasma's own on-screen keyboard. Hearth's on-screen keyboard (with the controller) is in Keyboard and works everywhere.", "plasma": true,
+      "id": "kde-plasmakeyboard", "cat": "bt", "label": "Plasma Keyboard", "kcm": ["kcm_plasmakeyboard", "kcm_virtualkeyboard"], "desc": "Which on-screen keyboard KDE Plasma uses, and Plasma Keyboard's sounds, buzz and keys", "words": "virtual keyboard on screen keyboard osk plasma keyboard maliit input method vibration sound auto capital diacritics", "intro": "KDE Plasma's own on-screen keyboard. Hearth's on-screen keyboard (with the controller) is in Keyboard and works everywhere.", "plasma": true,
       "rows": [
         {"type": "choice", "icon": "keyboard", "title": "Plasma's on-screen keyboard", "sub": "KWin opens it when you tap a text field", "file": "kwinrc", "group": "Wayland", "key": "InputMethod", "def": "", "wide": true, "opts": [["", "None (Hearth's keyboard)"], ["/usr/share/applications/org.kde.plasma.keyboard.desktop", "Plasma Keyboard"], ["/usr/share/applications/com.github.maliit.keyboard.desktop", "Maliit"]]},
         {"type": "head", "title": "Plasma Keyboard"},
