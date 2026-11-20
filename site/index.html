@@ -578,10 +578,10 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
     <div class="get">
       <div class="box main">
         <h3>Offline USB</h3>
-        <p>Hearth OS on the stick, so it installs without internet. <b>A new USB installer comes with 1.16.</b> Until then this file is the older Debian one: it installs, but the Debian edition is archived and gets no more updates.</p>
-        <p class="v" data-file="hearth-os-peppermint.iso"></p>
-        <a class="btn go" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download <small>about 4.3 GB</small></a>
-        <a class="small" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso.sha256">SHA-256 checksum</a>
+        <p>Hearth OS, Fedora edition, on the stick, so it installs without internet. It updates itself to the newest version after installing.</p>
+        <p class="v" data-file="hearth-os-anatase.iso"></p>
+        <a class="btn go" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-anatase.iso"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download <small>about 9 GB</small></a>
+        <a class="small" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-anatase.iso.sha256">SHA-256 checksum</a>
       </div>
       <div class="side">
         <div class="box alt" id="recovery">
@@ -593,7 +593,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
         </div>
       </div>
     </div>
-    <p class="small" style="margin-top:20px">Nvidia graphics and other ways to install are in <a href="docs/install.html">Installing</a>. Hearth OS is in beta: keep a backup of anything important.</p>
+    <p class="small" style="margin-top:20px">Fedora is Hearth OS's main version: the Debian edition has been merged into it and archived. Nvidia graphics and other ways to install are in <a href="docs/install.html">Installing</a>. Hearth OS is in beta: keep a backup of anything important.</p>
 
     <div class="ember" id="ember">
       <div>
@@ -625,12 +625,11 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
     <div class="faq">
       <div>
         <details><summary>What hardware does it need?</summary><p>Steam Deck, ROG Ally, Legion Go and most x86-64 desktops and laptops with AMD, Intel or Nvidia (GTX 16 / RTX 20 and newer) graphics. For installing, a USB stick of 16 GB or more and a drive of 64 GB or more.</p></details>
-        <details><summary>Do I need a Steam account?</summary><p>Steam Game Mode is Valve's Steam client, so you sign in to Steam there. The desktop works without one.</p></details>
+        <details><summary>Do I need a Steam account?</summary><p>Steam Game Mode is Valve's Steam client, so you sign in to Steam there. Desktop Mode works without one.</p></details>
         <details><summary>Can I go back to the last version?</summary><p>Yes. Updates keep the previous system in the boot menu; pick it, or use Settings › System › Updates. A version that fails to start twice in a row goes back by itself, and holding Volume Down while it starts opens Hearth Recovery. If nothing starts, the <a href="#recovery">Recovery USB</a> can start the previous version.</p></details>
       </div>
       <div>
-        <details><summary>I'm on the Debian edition. What now?</summary><p>Hearth OS is Fedora-based from 1.16, and the Debian edition is archived (merged into Fedora). Your PC keeps working on the version it has and still starts as before, but gets no more updates. To move it to Fedora, install from the Fedora USB that comes with 1.16; games on a separate drive stay. Apps: .deb files still install on Debian; on Fedora, apps come as Flatpaks (Bazaar), AppImages or rpm packages.</p></details>
-        <details><summary>I'm on the older Fedora-based Hearth (Anatase). What now?</summary><p>Keep using your current version for now: it keeps starting as before. The new Fedora edition and the Fedora USB to move to it come with 1.16; games on a separate drive stay.</p></details>
+        <details><summary>I'm on Hearth OS on Debian. What now?</summary><p>Fedora is Hearth OS's main version now: the Debian edition has been merged into it and archived. Move over in Settings › Updates › Switch edition: your home folder stays exactly as it is, and the Debian version you came from stays in the boot menu so you can go back.</p></details>
         <details><summary>Is it really free?</summary><p>Yes. Hearth OS is free and open source under the GPL-3.0. Games you buy come from the stores as usual.</p></details>
         <details><summary>Something broke. How do I report it?</summary><p>Send logs from Settings › System › Help &amp; logs or with <code>hearth-send-logs</code>, and <a href="docs/troubleshooting.html#ask">tell us what happened</a>.</p></details>
       </div>
@@ -721,8 +720,7 @@ fetch('https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/latest.json', {cache:
     el.textContent = t;
     var small = el.parentNode.querySelector('.btn small'); if (small && e.size > 0) small.textContent = (e.size / 1e9).toFixed(1) + ' GB';
   });
-  // The heading no longer shows the USB file's version: until 1.16's Fedora USB the file is the older Debian one
-  // (decided Nov 19, 2026, for 1.16), so the heading stays "Get Hearth OS" and each box shows its own file's version.
+  var live = d['hearth-os-anatase.iso']; if (live && ok(live.version)) document.getElementById('get-title').textContent = 'Get Hearth OS ' + shown(live.version);
 }).catch(function(){});
 
 // Copy buttons.

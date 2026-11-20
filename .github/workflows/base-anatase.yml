@@ -1,24 +1,35 @@
-# Builds Hearth OS on Anatase: 1.15's test edition beside Debian (the owner, Nov 17: "Bring Anatase back and up to speed
-# on 1.15 so i can test it"), from os-bases/anatase (Fedora bootc; docs/BASE-ANATASE.md). The same Hearth apps as the
-# Debian edition (the app jobs are base-peppermint.yml's), stock KDE Plasma as Desktop Mode.
-# Publishing (red flag 5): ONLY by hand, and ONLY to a test tag of ghcr.io/dragongamer9/hearth-os that only devices
-# the owner switches follow: test-1.15 (and a dated test-1.15-<date> copy). Two ways: "publish" from main, or
-# "test_tag" (test-<version> only, e.g. test-1.15) from any branch: the owner's approval of Nov 17, 11:15 PM ("when
-# the Anatase test build passes all its checks, it may publish that same image straight to a test-only tag"). Either
-# way the image is pushed by this same job only after every required check passed, and the pushed digest is checked.
-# Never :latest or :testing (the old pre-archive build), never hearth-peppermint (Debian devices follow it), never a
-# release or the website. Failures show up as annotations on the run.
-name: Hearth OS (Anatase base, test)
+# Builds Hearth OS, Fedora edition (internally Anatase: os-bases/anatase, Fedora bootc; docs/BASE-ANATASE.md), the
+# main edition from 1.16 (the owner, Nov 19: Fedora is the only edition, Debian is archived). The same Hearth apps as
+# the Debian edition had (the app jobs are base-peppermint.yml's), stock KDE Plasma as Desktop Mode.
+# Publishing (red flag 5), always by this same job and only after every required check passed (the pushed digest is
+# checked), to ghcr.io/dragongamer9/hearth-os only:
+#   - The release channel: a push to main (main is releases: the owner says when), or publish ticked on main by hand,
+#     publishes :stable (what installed systems, the offline USB and Switch edition follow), a versioned copy
+#     :stable-<version> (e.g. stable-1.16, the way Debian had :testing and :testing-<version>-<date>), and the old
+#     test tags in BRIDGE_TAGS (test-1.15): devices the owner put on a test tag get the release through it, and the
+#     release's own update then moves them to :stable (hearth-admin's release channel; the version they start from
+#     stays the one to go back to).
+#   - A test tag: test_tag (test-<version> only, e.g. test-1.16) from any branch, the owner's approval of Nov 17,
+#     11:15 PM ("when the Anatase test build passes all its checks, it may publish that same image straight to a
+#     test-only tag"). Only devices the owner switches follow those.
+# Never :latest or :testing (the old pre-archive build), never hearth-peppermint (Debian devices follow it, and the
+# owner moves his Debian PCs by hand), never the website. A branch run without test_tag builds and checks the image as
+# the release would be (image-info says stable) and publishes nothing. Failures show up as annotations on the run.
+name: Hearth OS (Fedora edition, Anatase base)
 
 on:
+  # The release: every push to main that changes what the image is made of (the same list as Debian's had).
+  push:
+    branches: [main]
+    paths: ['.github/scripts/**', 'os-bases/anatase/**', 'os-bases/peppermint/system_files/**', 'os/system_files/**', 'os/branding/**', 'hosts/**', 'ui/**', 'branding/icons/**', 'tools/app-bundle.py', 'tools/hearth_version.py', 'os/app-abi', '.github/workflows/base-anatase.yml']
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish to ghcr.io/dragongamer9/hearth-os:test-1.15 (main only; the owner says when). Off: build and check only'
+        description: 'Publish the release (main only; the owner says when): ghcr.io/dragongamer9/hearth-os:stable, :stable-<version> and the old test tags devices follow (BRIDGE_TAGS). Off: build and check only'
         type: boolean
         default: false
       test_tag:
-        description: 'Owner-approved test tag to publish to from this branch once every check passes (test-<version> only, e.g. test-1.15). Empty: none'
+        description: 'Owner-approved test tag to publish to from this branch once every check passes (test-<version> only, e.g. test-1.16). Empty: none'
         type: string
         default: ''
       reuse_run:
@@ -32,7 +43,11 @@ on:
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-os
-  TEST_TAG: test-1.15
+  # The release channel's tag (hearth-admin FEDORA_STABLE, newos.rs, hearth-install's and hearth-recovery's tables).
+  STABLE_TAG: stable
+  # Test tags devices were put on before there was a release channel: each release is published to them too, so those
+  # devices get it by a plain update and then follow :stable (1.15's devices, e.g. the owner's ROG Ally, are on test-1.15).
+  BRIDGE_TAGS: test-1.15
 
 concurrency:
   group: hearth-anatase-${{ github.ref }}
@@ -529,8 +544,8 @@ jobs:
       packages: write
       actions: read     # reuse_run: the earlier run's artifacts
     env:
-      # Only main, only by hand, only with publish ticked (red flag 5)...
-      PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish && github.ref == 'refs/heads/main' }}
+      # The release: only main, by a push there (a release) or by hand with publish ticked (red flag 5)...
+      PUBLISH: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && inputs.publish)) }}
       # ...or an owner-approved test tag given by hand (checked against test-<version> in the step).
       TAG_IN: ${{ github.event_name == 'workflow_dispatch' && inputs.test_tag || '' }}
       REUSE: ${{ github.event_name == 'workflow_dispatch' && inputs.reuse_run || '' }}
@@ -549,6 +564,12 @@ jobs:
           set -o pipefail
           v=$(grep -oP '(?<=<Version>)[^<]+' hosts/windows/Nimbus.Host/Nimbus.Host.csproj | head -1)
           echo "version=$v" >> "$GITHUB_OUTPUT"
+          # Which channel this image is for (written into its image-info.json): the release (stable) unless it's built
+          # for a test tag. A check build on a branch is checked as the release would be.
+          if [ "$PUBLISH" != true ] && [ -n "$TAG_IN" ]; then ch="$TAG_IN"; else ch="$STABLE_TAG"; fi
+          echo "$ch" | grep -Eqx 'stable|test-[0-9]+(\.[0-9]+)*' || { echo "::error title=channel::refusing tag '$ch': only stable or test-<version> (e.g. test-1.16)"; exit 1; }
+          echo "channel=$ch" >> "$GITHUB_OUTPUT"
+          echo "::notice title=channel::this image is for ghcr.io/dragongamer9/hearth-os:$ch (publish: $PUBLISH)"
           [ -n "$REUSE" ] || exit 0
           echo "$REUSE" | grep -Eqx '[0-9]{6,20}' || { echo "::error title=reuse_run::'$REUSE' isn't a run id"; exit 1; }
           info=$(gh api "repos/${{ github.repository }}/actions/runs/$REUSE" --jq '[.path, .repository.full_name, .head_sha] | @tsv') \
@@ -631,7 +652,7 @@ jobs:
           set -o pipefail
           exec > >(tee /tmp/step.log) 2>&1
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" -e "Copying blob" -e "Copying config" -e "Writing manifest" /tmp/step.log | tail -30 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=image::$msg"' ERR
-          sudo podman build --pull=newer -f os-bases/anatase/Containerfile --build-arg NIMBUS_VERSION="${{ steps.ver.outputs.version }}" -t hearth-os:anatase .
+          sudo podman build --pull=newer -f os-bases/anatase/Containerfile --build-arg NIMBUS_VERSION="${{ steps.ver.outputs.version }}" --build-arg HEARTH_CHANNEL="${{ steps.ver.outputs.channel }}" -t hearth-os:anatase .
           sflat=$(grep -o "warning: couldn't install Steam from RPM Fusion.*" /tmp/step.log | tail -1 || true)
           if [ -n "$sflat" ]; then echo "::warning title=Steam::$sflat"; fi
           for w in $(grep -o "warning: [a-zA-Z0-9_. -]*\(isn't in this build\|didn't install\|wasn't built\|couldn't install\)[^\"]*" /tmp/step.log | cut -c1-160 | sort -u | head -15 | tr ' ' '_'); do echo "::warning title=build::$(echo "$w" | tr '_' ' ')"; done
@@ -640,7 +661,7 @@ jobs:
       - name: Check the image
         run: |
           set -o pipefail
-          sudo podman run --rm -v "$PWD:/src:ro" hearth-os:anatase bash /src/.github/scripts/anatase-image-check.sh 2>&1 | tee /tmp/check.log
+          sudo podman run --rm -e HEARTH_CHANNEL="${{ steps.ver.outputs.channel }}" -v "$PWD:/src:ro" hearth-os:anatase bash /src/.github/scripts/anatase-image-check.sh 2>&1 | tee /tmp/check.log
 
       # Warn-only: screenshots of Hearth's looks as Plasma Global Themes (Hearth in full: desktop, app menu, Dolphin,
       # System Settings; then one per look picked as Hearth's Settings picks it). Posted to the ci/anatase-looks branch
@@ -713,29 +734,56 @@ jobs:
             IDLE_SECS=600 bash .github/scripts/desktop-idle-compare.sh ghcr.io/dragongamer9/hearth-peppermint:testing mantel | tee -a /tmp/idle.txt
           { echo '### Desktop Mode at rest (virtual screen, software drawing)'; echo; echo '```'; grep '^RESULT' /tmp/idle.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
 
-      # Only to a test tag, only by hand (red flag 5), only after every required check above passed (a failed step stops
-      # the job before this). Never :latest, :testing or hearth-peppermint. The pushed digest is checked.
-      - name: Publish to the test tag
+      # Only after every required check above passed (a failed step stops the job before this; red flag 5): the release
+      # (main) to :stable, :stable-<version> and BRIDGE_TAGS, or a test tag (test-<version>) given by hand. Never :latest,
+      # :testing or hearth-peppermint. The first tag is pushed with every layer compressed afresh, the others reuse
+      # those layers in this same package, so every tag is the same image; each pushed digest is checked.
+      - name: Publish (the release, or the test tag)
         if: ${{ success() && (env.PUBLISH == 'true' || env.TAG_IN != '') }}
+        env:
+          VERSION: ${{ steps.ver.outputs.version }}
+          CHANNEL: ${{ steps.ver.outputs.channel }}
         run: |
           set -o pipefail
-          tag="${TAG_IN:-$TEST_TAG}"
-          echo "$tag" | grep -Eqx 'test-[0-9]+(\.[0-9]+)*' || { echo "::error title=publish::refusing tag '$tag': only test-<version> tags (e.g. test-1.15)"; exit 1; }
           [ "$IMAGE" = ghcr.io/dragongamer9/hearth-os ] || { echo "::error title=publish::refusing image $IMAGE"; exit 1; }
+          if [ "$PUBLISH" = true ]; then
+            [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error title=publish::the release is published from main only"; exit 1; }
+            [ "$CHANNEL" = "$STABLE_TAG" ] || { echo "::error title=publish::this image was built for $CHANNEL, not the release"; exit 1; }
+            v=$(python3 tools/hearth_version.py show "$VERSION")
+            tags="$STABLE_TAG $STABLE_TAG-$v $BRIDGE_TAGS"
+          else
+            tags="$TAG_IN"
+            [ "$CHANNEL" = "$TAG_IN" ] || { echo "::error title=publish::this image was built for $CHANNEL, not $TAG_IN"; exit 1; }
+          fi
+          for tag in $tags; do
+            case "$tag" in latest|testing|testing-*) echo "::error title=publish::refusing tag '$tag'"; exit 1;; esac
+            echo "$tag" | grep -Eqx 'stable|stable-[0-9]+(\.[0-9]+)*|test-[0-9]+(\.[0-9]+)*' || { echo "::error title=publish::refusing tag '$tag': only stable, stable-<version> or test-<version> (e.g. test-1.16)"; exit 1; }
+            if [ "$PUBLISH" != true ]; then echo "$tag" | grep -Eqx 'test-[0-9]+(\.[0-9]+)*' || { echo "::error title=publish::refusing tag '$tag': by hand only test-<version> tags (e.g. test-1.16)"; exit 1; }; fi
+          done
           echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
           # Forget where layers were seen before (the switch test pulled Debian's image from ghcr): otherwise the
           # push tries to borrow them from that other package and ghcr answers 403 (run 44270616388).
           sudo rm -f /var/lib/containers/cache/blob-info-cache-v1.sqlite /var/lib/containers/cache/blob-info-cache-v1.boltdb
-          # Every layer compressed afresh, so no layer is ever "reused" from another package (still 403 with the cache gone, run 44278111249).
-          sudo podman push --force-compression --compression-format gzip --digestfile /tmp/digest hearth-os:anatase "$IMAGE:$tag"
-          d=$(cat /tmp/digest)
-          echo "::notice title=published::$IMAGE:$tag = $d (built and checked by run ${{ github.run_id }}, commit ${{ github.sha }})"
-          # No dated copy and no skopeo: skopeo's own token request for this package gets 403 from ghcr (runs
-          # 44278111249, 44297685387), after the push above had already gone through. The read-back is a warning only.
-          raw=$(sudo skopeo inspect --raw --creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" "docker://$IMAGE:$tag" 2>/dev/null | sha256sum | cut -d' ' -f1 || true)
-          if [ -n "$raw" ] && [ "$raw" != "$(printf '' | sha256sum | cut -d' ' -f1)" ] && [ "sha256:$raw" != "$d" ]; then
-            echo "::warning title=publish::$IMAGE:$tag reads back as sha256:$raw, not the image this run built ($d): check by hand"
-          fi
+          first=""
+          for tag in $tags; do
+            if [ -z "$first" ]; then
+              # Every layer compressed afresh, so no layer is ever "reused" from another package (still 403 with the cache gone, run 44278111249).
+              sudo podman push --force-compression --compression-format gzip --digestfile /tmp/digest hearth-os:anatase "$IMAGE:$tag"
+              first=$(cat /tmp/digest)
+            else
+              # The same image again: the layers just pushed to this package are reused, so the manifest is the same.
+              sudo podman push --compression-format gzip --digestfile /tmp/digest hearth-os:anatase "$IMAGE:$tag"
+              [ "$(cat /tmp/digest)" = "$first" ] || echo "::warning title=publish::$IMAGE:$tag is $(cat /tmp/digest), not $first (the same image, compressed differently): devices that come through it download the release again"
+            fi
+            echo "::notice title=published::$IMAGE:$tag = $(cat /tmp/digest) (built and checked by run ${{ github.run_id }}, commit ${{ github.sha }})"
+            # No skopeo copy: skopeo's own token request for this package gets 403 from ghcr (runs 44278111249,
+            # 44297685387), after the push had already gone through. The read-back is a warning only.
+            raw=$(sudo skopeo inspect --raw --creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" "docker://$IMAGE:$tag" 2>/dev/null | sha256sum | cut -d' ' -f1 || true)
+            if [ -n "$raw" ] && [ "$raw" != "$(printf '' | sha256sum | cut -d' ' -f1)" ] && [ "sha256:$raw" != "$(cat /tmp/digest)" ]; then
+              echo "::warning title=publish::$IMAGE:$tag reads back as sha256:$raw, not the image this run built ($(cat /tmp/digest)): check by hand"
+            fi
+          done
+          { echo "### Published"; echo; for tag in $tags; do echo "- \`$IMAGE:$tag\`"; done; } >> "$GITHUB_STEP_SUMMARY"
 
   # The screenshots on a branch of their own (ci/anatase-looks, replaced each run: one copy), so they can be opened
   # without downloading artifacts. Only pictures and logs; nothing else is pushed.

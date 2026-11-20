@@ -196,11 +196,28 @@ fn updates_page<'a>(a: &'a App) -> E<'a, Msg> {
     }
     let plugins = st.get("plugins");
     let idle_up = can && phase == "idle" && !available && !staged;
-    if idle_up || plugins.is_object() {
+    // Where updates come from (hearth-admin's "channel", 1.16): Hearth OS releases (:stable), or a test tag. A PC on
+    // a test tag whose version is out as a release moves to the releases with its next update, by itself.
+    let ch = at(u, "channel");
+    let kind = s(ch, "channel");
+    let show_ch = can && (kind == "stable" || kind == "test");
+    if idle_up || plugins.is_object() || show_ch {
         rs.add(h(&p, "Updates"));
     }
     if idle_up {
         rs.add(r("update", "Update anyway").sub("Downloads anything new for Hearth and its apps, even small fixes").on(admin("update", st).msg()).el(&p));
+    }
+    if show_ch {
+        let tag = s(ch, "following").rsplit(':').next().unwrap_or("").to_string();
+        let rel = s(ch, "release");
+        let sub = if kind == "stable" {
+            "Hearth OS releases: every update is a tested release, and the version before always stays to go back to".to_string()
+        } else if !s(ch, "moveTo").is_empty() && !rel.is_empty() {
+            format!("Test builds ({tag}). Hearth {} is out: the next update moves this PC to Hearth OS releases, and the version you're on stays in the boot menu to go back to", crate::data::shown_version(&rel))
+        } else {
+            format!("Test builds ({tag}). Once this version is released, the next update moves this PC to Hearth OS releases by itself")
+        };
+        rs.add(r("update", "Updates from").sub(sub).value(if kind == "stable" { "Releases" } else { "Test builds" }).el(&p));
     }
 
     // Decky plugins.

@@ -1,7 +1,7 @@
-# Hearth OS on Anatase (1.15: back as a test beside Debian). Anatase (Fedora, bootc; one image for AMD, Intel and
-# Nvidia, with Handheld Daemon and Valve's gamescope) with the Hearth session: Steam Game Mode with Hearth Sync, and
-# stock KDE Plasma as Desktop Mode with Hearth's apps. Published only to ghcr.io/dragongamer9/hearth-os:test-1.15,
-# by hand from main (base-anatase.yml). See docs/BASE-ANATASE.md.
+# Hearth OS, Fedora edition (internally Anatase; the main edition from 1.16). Anatase (Fedora, bootc; one image for
+# AMD, Intel and Nvidia, with Handheld Daemon and Valve's gamescope) with the Hearth session: Steam Game Mode with
+# Hearth Sync, and stock KDE Plasma as Desktop Mode with Hearth's apps. Published by base-anatase.yml: releases (main)
+# to ghcr.io/dragongamer9/hearth-os:stable, owner-approved tests to test-<version>. See docs/BASE-ANATASE.md.
 # Built by .github/workflows/base-anatase.yml from the repository root:
 #   podman build -f os-bases/anatase/Containerfile -t hearth-os .
 # os/nimbus-app must hold the Hearth app build (hearth, browser/, and browser-cef/ if built); CI puts it there.
@@ -28,6 +28,8 @@ FROM ${BASE_IMAGE}
 
 ARG NIMBUS_VERSION=0.0.0
 ARG BASE_IMAGE
+# The tag this image is published to (image-info.json's "image-tag"): stable (a release) or test-<version>.
+ARG HEARTH_CHANNEL=stable
 LABEL org.opencontainers.image.title="Hearth OS" \
       org.opencontainers.image.description="Hearth OS: Anatase with a controller-first Game Mode and Desktop Mode" \
       org.opencontainers.image.source="https://github.com/Dragongamer9/hearth-os" \
@@ -38,7 +40,7 @@ LABEL org.opencontainers.image.title="Hearth OS" \
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/cache \
     --mount=type=tmpfs,dst=/tmp \
-    BASE_IMAGE="${BASE_IMAGE}" NIMBUS_VERSION="${NIMBUS_VERSION}" /ctx/build.sh
+    BASE_IMAGE="${BASE_IMAGE}" NIMBUS_VERSION="${NIMBUS_VERSION}" HEARTH_CHANNEL="${HEARTH_CHANNEL}" /ctx/build.sh
 
 # /var belongs to the installed system, not the image (Anatase's template does the same; tmpfiles.d recreates
 # what's needed at boot).

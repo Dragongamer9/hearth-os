@@ -782,8 +782,16 @@ chmod 755 /usr/libexec/nimbus/*
 echo "${NIMBUS_VERSION:-0.0.0}" > /usr/share/nimbus/version
 # Which Hearth this is (the Bazzite build has /usr/share/ublue-os/image-info.json for the same; the other editions
 # write this same file).
+# "image-tag": the tag it's published to (base-anatase.yml: stable for a release, test-<version> for a test build);
+# "channel": stable or test (hearth-admin's release channel).
+HEARTH_CHANNEL=${HEARTH_CHANNEL:-stable}
+case "$HEARTH_CHANNEL" in
+  stable) CH_KIND=stable; CH_TEST=false ;;
+  test-[0-9]*) CH_KIND=test; CH_TEST=true ;;
+  *) echo "unknown channel $HEARTH_CHANNEL (stable or test-<version>)"; exit 1 ;;
+esac
 cat > /usr/share/nimbus/image-info.json <<INFO
-{"image-name": "hearth-os", "image-ref": "ghcr.io/dragongamer9/hearth-os", "image-tag": "test-1.15", "test": true, "desktop": "plasma", "base": "anatase", "base-detail": "Anatase (Fedora ${FEDORA})", "base-image": "${BASE_IMAGE:-i.anatase.org/anatase:stable}", "version": "${NIMBUS_VERSION:-0.0.0}"}
+{"image-name": "hearth-os", "image-ref": "ghcr.io/dragongamer9/hearth-os", "image-tag": "${HEARTH_CHANNEL}", "channel": "${CH_KIND}", "test": ${CH_TEST}, "desktop": "plasma", "base": "anatase", "base-detail": "Anatase (Fedora ${FEDORA})", "base-image": "${BASE_IMAGE:-i.anatase.org/anatase:stable}", "version": "${NIMBUS_VERSION:-0.0.0}"}
 INFO
 
 # The Hearth app itself (the archived Game Mode in a window): hidden from menus as on Debian; Hearth Settings opens it at

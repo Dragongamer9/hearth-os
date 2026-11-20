@@ -266,9 +266,10 @@ class Plan(unittest.TestCase):
             H.check_plan({**GOOD, 'disk': '/dev/sda; rm -rf /'})
 
     def test_default_image(self):
+        # 1.16: the Fedora edition is the default (Debian is archived).
         p = H.check_plan({k: v for k, v in GOOD.items() if k != 'edition'})
-        self.assertEqual(p['edition'], 'peppermint')
-        self.assertEqual(p['image'], 'ghcr.io/dragongamer9/hearth-peppermint:testing')
+        self.assertEqual(p['edition'], 'anatase')
+        self.assertEqual(p['image'], 'ghcr.io/dragongamer9/hearth-os:stable')
 
 
 class CloseVolumes(unittest.TestCase):
@@ -444,8 +445,8 @@ class Edition(unittest.TestCase):
         H.cpu_v3 = self._v3
 
     def test_the_four_images(self):
-        self.assertEqual(H.image(), 'ghcr.io/dragongamer9/hearth-peppermint:testing')
-        self.assertEqual(H.image('anatase'), 'ghcr.io/dragongamer9/hearth-os:latest')
+        self.assertEqual(H.image(), 'ghcr.io/dragongamer9/hearth-os:stable')
+        self.assertEqual(H.image('anatase'), 'ghcr.io/dragongamer9/hearth-os:stable')
         self.assertEqual(H.image('ubuntu'), 'ghcr.io/dragongamer9/hearth-ubuntu:testing')
         self.assertEqual(H.image('cachyos'), 'ghcr.io/dragongamer9/hearth-cachyos:testing')
         self.assertEqual(H.image('peppermint'), 'ghcr.io/dragongamer9/hearth-peppermint:testing')
@@ -473,8 +474,9 @@ class Edition(unittest.TestCase):
         self.assertEqual(H.check_plan({**base, 'image': 'ghcr.io/dragongamer9/hearth-peppermint:testing'})['edition'], 'peppermint')
         with self.assertRaises(H.Fail):   # an archived edition's image
             H.check_plan({**base, 'image': 'ghcr.io/dragongamer9/hearth-ubuntu:testing'})
-        with self.assertRaises(H.Fail):   # Anatase is archived too
+        with self.assertRaises(H.Fail):   # the old pre-archive Anatase build: not in the table
             H.check_plan({**base, 'image': 'ghcr.io/dragongamer9/hearth-os:latest'})
+        self.assertEqual(H.check_plan({**base, 'image': 'ghcr.io/dragongamer9/hearth-os:stable'})['edition'], 'anatase')
         for bad in ('ghcr.io/dragongamer9/hearth:latest', 'ghcr.io/dragongamer9/hearth-nvidia:latest',
                     'ghcr.io/dragongamer9/hearth-ubuntu:latest', 'docker.io/evil/os:latest', 'ghcr.io/dragongamer9/hearth-os@sha256:abc'):
             with self.assertRaises(H.Fail, msg=bad):
@@ -492,7 +494,8 @@ class Edition(unittest.TestCase):
         rows = {r['id']: r for r in H.edition_choices(list(H.EDITIONS), False, False)}
         self.assertFalse(rows['cachyos']['allowed'])
         self.assertTrue(rows['anatase']['allowed'] and rows['ubuntu']['allowed'] and rows['peppermint']['allowed'])
-        self.assertEqual(H.EDITIONS['peppermint']['label'], 'Debian')
+        self.assertEqual(H.EDITIONS['peppermint']['label'], 'Debian (archived)')
+        self.assertEqual(H.EDITIONS['anatase']['label'], 'Hearth OS')
         self.assertNotIn('Peppermint', H.EDITIONS['peppermint']['about'])
 
     def test_reads_cpu_flags(self):
@@ -527,23 +530,26 @@ class Edition(unittest.TestCase):
             self.assertEqual(H.this_usb(f), 'installer')
             open(f, 'w').write('auto\n')       # older installer USBs
             self.assertEqual(H.this_usb(f), 'installer')
-            open(f, 'w').write('anatase\n')      # the archived Anatase live USB: offers what the small installer does
-            self.assertEqual(H.this_usb(f), 'installer')
-            open(f, 'w').write('peppermint\n')   # the Debian offline installer
+            open(f, 'w').write('anatase\n')      # 1.16: the Fedora edition's offline USB
+            self.assertEqual(H.this_usb(f), 'anatase')
+            open(f, 'w').write('peppermint\n')   # the Debian offline installer (archived, still installs Debian)
             self.assertEqual(H.this_usb(f), 'peppermint')
-            self.assertEqual(H.this_usb(f'{d}/missing'), 'peppermint')
+            self.assertEqual(H.this_usb(f'{d}/missing'), 'anatase')
             open(f, 'w').write('ubuntu\n')        # the archived Ubuntu offline installer
             self.assertEqual(H.this_usb(f), 'installer')
             open(f, 'w').write('something\n')
-            self.assertEqual(H.this_usb(f), 'peppermint')
+            self.assertEqual(H.this_usb(f), 'anatase')
         self.assertEqual(H.editions_offered('peppermint'), ['peppermint'])
-        self.assertEqual((H.usb_edition('peppermint'), H.usb_edition('installer')), ('peppermint', 'peppermint'))
+        self.assertEqual((H.usb_edition('peppermint'), H.usb_edition('installer')), ('peppermint', 'anatase'))
+        self.assertEqual(H.usb_edition('anatase'), 'anatase')
+        self.assertEqual(H.editions_offered('anatase'), ['anatase'])
         self.assertEqual(H.published_all(['peppermint']), {}, 'an offline USB has its edition with it')
-        self.assertEqual(H.editions_offered('installer'), ['peppermint'])   # Anatase, Ubuntu and CachyOS are archived
+        # 1.16: only the Fedora edition is offered (Debian is archived: not offered, Ubuntu and CachyOS archived).
+        self.assertEqual(H.editions_offered('installer'), ['anatase'])
         rows = H.edition_choices(H.editions_offered('installer'), True, False, {})
-        self.assertEqual([r['id'] for r in rows if r['recommended']], ['peppermint'])
+        self.assertEqual([r['id'] for r in rows if r['recommended']], ['anatase'])
         self.assertEqual([r['id'] for r in rows if r['beta']], [])
-        self.assertEqual([r['label'] for r in rows], ['Debian'])
+        self.assertEqual([r['label'] for r in rows], ['Hearth OS'])
         self.assertTrue(rows[0]['allowed'])               # couldn't ask (offline): still allowed
         by = {r['id']: r for r in H.edition_choices(['peppermint'], True, False, {'peppermint': False})}
         self.assertEqual((by['peppermint']['allowed'], by['peppermint']['reason']), (False, 'Not ready yet'))

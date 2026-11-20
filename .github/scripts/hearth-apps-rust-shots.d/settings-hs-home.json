@@ -1805,17 +1805,26 @@
  },
  "hearth-admin update-status": {
   "booted": {
-   "version": "1.14.0",
-   "image": "ghcr.io/dragongamer9/hearth-anatase:latest",
-   "timestamp": "2026-11-17T20:00:00Z"
+   "version": "1.15.0",
+   "image": "ghcr.io/dragongamer9/hearth-os:test-1.15",
+   "timestamp": "2026-11-18T20:00:00Z"
   },
   "available": {
-   "version": "1.15.0"
+   "version": "1.16.0",
+   "channel": "stable"
   },
   "rollback": {
-   "version": "1.13.0"
+   "version": "1.14.0"
   },
-  "staged": null
+  "staged": null,
+  "channel": {
+   "following": "ghcr.io/dragongamer9/hearth-os:test-1.15",
+   "channel": "test",
+   "testOf": "1.15",
+   "moveTo": "ghcr.io/dragongamer9/hearth-os:stable",
+   "release": "1.16.0",
+   "same": false
+  }
  },
  "sh [ -x /usr/libexec/nimbus/hearth-admin*": {
   "ok": true

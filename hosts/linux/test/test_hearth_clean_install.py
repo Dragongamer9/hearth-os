@@ -367,9 +367,9 @@ class Admin(unittest.TestCase):
         self.assertEqual(ha.drop_cached_images('/nonexistent/repo'), 0)
 
     def test_editions(self):
-        # 1.15: the Anatase test has its own tag only (never the old pre-archive :latest or :testing).
-        self.assertEqual(ha.new_os_image('anatase'), 'ghcr.io/dragongamer9/hearth-os:test-1.15')
-        self.assertEqual(ha.new_os_image('anatase', True), 'ghcr.io/dragongamer9/hearth-os:test-1.15')
+        # 1.16: the Fedora edition's release channel only (never the old pre-archive :latest or :testing).
+        self.assertEqual(ha.new_os_image('anatase'), 'ghcr.io/dragongamer9/hearth-os:stable')
+        self.assertEqual(ha.new_os_image('anatase', True), 'ghcr.io/dragongamer9/hearth-os:stable')
         self.assertNotIn('anatase', ha.ARCHIVED_EDITIONS)
         self.assertEqual(ha.move_args(['--edition', 'anatase']), ('anatase', False))
         for e in ('ubuntu', 'cachyos', 'peppermint'):
@@ -524,7 +524,7 @@ class AnataseTest(unittest.TestCase):
                 mock.patch.object(ha, 'bootc_status', lambda quiet=False: {}), mock.patch('builtins.print'):
             ha.move_to_new_os('anatase', False)
         self.assertEqual(pinned, [1])
-        self.assertEqual(images, [['bootc', 'switch', 'ghcr.io/dragongamer9/hearth-os:test-1.15']])
+        self.assertEqual(images, [['bootc', 'switch', 'ghcr.io/dragongamer9/hearth-os:stable']])
         p = jload(plan)
         self.assertEqual((p['edition'], p['fromEdition'], p['keepHome']), ('anatase', 'peppermint', True))
 

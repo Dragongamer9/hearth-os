@@ -1,20 +1,58 @@
-# Hearth OS on Anatase
+# Hearth OS, Fedora edition (Anatase)
 
-**The Hearth OS edition from 1.16 (1.15's work, not released on its own; the owner, Nov 19, 2026: "Only Fedora, Archive Debian"), shown as "Fedora".** It came
-back as a test on Nov 17 ("Bring Anatase back and up to speed on 1.15 so i can test it"); the owner ran 1.15 on his ROG
-Ally and laptop ("everything seems to be working", "running smooth") and made it the only edition. The Debian edition is
-archived, merged into this one (docs/ARCHIVED.md); its devices keep what they have. The notes below still say "test"
-where they describe how the switch was built; the image tag is still `test-1.15`, which is what Fedora devices follow.
+**The main edition from 1.16 (the owner, Nov 19: "Fedora (Anatase) is the only edition. Debian is archived and is no
+longer offered").** It came back as a test beside Debian in 1.15 (the owner, Nov 17: "Bring Anatase back and up to
+speed on 1.15 so i can test it"); Debian is merged into it and archived. Inside Hearth its edition id stays `anatase`.
+The installer, the offline USB, the website and Switch edition offer it; the owner's Debian PCs move over by hand
+(Settings › Updates › Switch edition), and Debian's own image and channel are left as they are.
 
-| | Hearth OS on Anatase (test) |
+| | Hearth OS, Fedora edition |
 |---|---|
 | Base | Anatase (`i.anatase.org/anatase:stable`, Fedora 45 or newer), bootc, composefs |
-| Image | `ghcr.io/dragongamer9/hearth-os:test-1.15` only (never `:latest` or `:testing`, which hold the old pre-archive build) |
+| Image | `ghcr.io/dragongamer9/hearth-os:stable` (releases) and `:stable-<version>`; tests on `:test-<version>` (never `:latest` or `:testing`, which hold the old pre-archive build). See "Release channel" below |
 | Game Mode | Steam Game Mode with Hearth Sync (Decky built in), Hearth Game Mode as on Debian |
 | Desktop Mode | stock KDE Plasma (plasmashell on KDE's own KWin) with Hearth's apps in Plasma's menu; "Back to Game Mode" in the menu and on the taskbar (Super+G) |
 | Not here | Mantel and labwc (archived on Anatase), Firehold (its shell needs Mantel; a later stage is Firehold as a Plasma shell), Hearth's own login screen (Anatase's stays) |
 | Unlock the file system | Settings › Updates & Recovery, off unless you turn it on (below) |
-| Workflow | `.github/workflows/base-anatase.yml`: by hand; publishes only from main, only with publish ticked, only to the test tag |
+| Workflow | `.github/workflows/base-anatase.yml`: a release (push to main) publishes the release channel; a test tag only by hand |
+
+## Release channel (1.16)
+
+What the Debian edition did with `:testing` and `:testing-<version>-<date>`, the Fedora edition does with a channel
+called **stable** (chosen Nov 19; `:latest` and `:testing` of this package hold the old pre-archive build, so a new
+name means no old install moves by surprise):
+
+| Tag | What it is | Published by |
+|---|---|---|
+| `ghcr.io/dragongamer9/hearth-os:stable` | The release channel: what installed systems, the offline USB (`hearth-install`), Recovery and Switch edition follow | `base-anatase.yml`, on a push to main (a release) or by hand with publish ticked on main |
+| `:stable-<version>` (e.g. `stable-1.16`) | The same image under its version, kept when the next release moves `:stable` | the same publish |
+| `:test-<version>` (e.g. `test-1.16`) | Owner-approved test builds, only for devices the owner switches | by hand, `test_tag`, from any branch, after every check passed |
+| `BRIDGE_TAGS` (`test-1.15`) | Old test tags devices were put on before the channel existed: each release is published there too | the release publish |
+
+- The image says which tag it was built for (`/usr/share/nimbus/image-info.json`: `"image-tag": "stable"`,
+  `"channel": "stable"`, `"test": false`; a test build `test-1.16`, `"test"`, `true`). A branch check build is built as
+  the release would be. `anatase-image-check.sh` checks it.
+- Every tag is the same image: the first push compresses every layer afresh (ghcr's 403 on borrowed layers), the next
+  ones reuse them in this package, and each pushed digest is compared.
+- **Devices on a test tag move by themselves, with their next update** (`hearth-admin`'s release channel). Chosen over a
+  one-tap switch because a device on test-1.15 runs 1.15's Hearth, which has no such switch: the only thing that reaches
+  it is an update on its own tag. So:
+  1. The 1.16 release is published to `test-1.15` too (`BRIDGE_TAGS`): the device updates to 1.16 the normal way.
+  2. From then on its updates check `:stable` as well: when the device follows `test-<V>` and `:stable` holds version V
+     or newer, `update-check` offers that release and `update` is `bootc switch ghcr.io/dragongamer9/hearth-os:stable`
+     (`rpm-ostree rebase` with layered packages) instead of `bootc upgrade`. It is one new version like any update:
+     nothing changes until the restart, the version it starts from stays in the boot menu, and `bootc rollback`
+     (Settings › Updates › Go back) goes back to it.
+  3. When `:stable` is already what's running (it came through the test tag), nothing is downloaded and the move
+     waits for the next release, so the boot menu never gets an extra copy of the same version and the version before
+     stays the one to go back to.
+  - Never moved: a test of a version that isn't released yet (`test-1.17` while `:stable` is 1.16), Debian's images,
+    `:latest`/`:testing`, and anything when the registry can't be asked (offline: the update goes on as before). A move
+    that fails falls back to the normal update from the test tag.
+  - Settings › Updates says where updates come from ("Updates from: Releases" or "Test builds (test-1.15)", and that
+    the next update moves the PC to the releases).
+- Tests: `hosts/linux/test/test_fedora_release_channel.py` (the move, the registry answer, every place that names the
+  image), `test_anatase_edition.py` (the workflow's tags and guards, the image's channel).
 
 ## Desktop Mode: KDE Plasma
 
@@ -118,19 +156,19 @@ So Hearth OS on Anatase gets the same design as Debian's writable system, in Fed
   file into /usr, a restart, an update with the reapply, a hand-copied file staying behind, a rollback, lock/unlock, a
   safe start, the boot chain excluded.
 
-## Trying it on a device
+## Trying a test build on a device
 
-Publishing needs the owner's go-ahead (red flag 5). With it: Actions › **Hearth OS (Anatase base, test)** › Run workflow,
-with **test_tag** `test-1.15` (any branch; only `test-<version>` is accepted), or **publish** ticked on `main`. The image
-job builds, runs every required check, and only then pushes that same image to `ghcr.io/dragongamer9/hearth-os:test-1.15`
-and a dated `test-1.15-<date>` copy, and checks both tags have the digest it pushed. Nothing else is ever pushed.
+Publishing needs the owner's go-ahead (red flag 5). With it: Actions › **Hearth OS (Fedora edition, Anatase base)** ›
+Run workflow, with **test_tag** `test-<version>` (any branch; only `test-<version>` is accepted). The image job
+builds, runs every required check, and only then pushes that same image to that tag and checks its digest. Releases
+come from main (see "Release channel").
 
 On the device (ROG Ally or the laptop), from Hearth OS on Debian:
 
 - **From a Debian with 1.15's Switch edition**: Settings › Updates › Switch edition › **Hearth OS on Anatase (test)**.
 - **From Debian 1.13** (its Switch edition refuses Anatase and doesn't know the test tag): the same move with 1.15's own
   `hearth-admin`, taken from the repository at a fixed commit (it pins Debian, forgets the kept container images,
-  leaves the home folder as it is and switches to `:test-1.15`; nothing changes until the restart):
+  leaves the home folder as it is and switches to `:stable` (1.16; 1.15's own hearth-admin switched to `:test-1.15`); nothing changes until the restart):
 
   ```
   curl -fsSL -o /tmp/hearth-admin https://raw.githubusercontent.com/Dragongamer9/hearth-os/<commit>/os/system_files/usr/libexec/nimbus/hearth-admin

@@ -63,21 +63,19 @@ can be moved with the D-pad or volume buttons.</p>
 <p>Then restart. The next update moves you forward again.</p>
 
 </section><section><h2 id="switch">Switching edition</h2>
-<p>Hearth OS is Fedora-based from 1.16; the Debian edition is archived (merged into Fedora). A Debian PC keeps working on the
-version it has. To move it to Fedora, install from the Fedora USB that comes with 1.16 (games on a separate drive stay).
-On Fedora, <b>Settings › Updates › Switch edition</b> can still take you to the archived Debian edition.</p>
+<p>Move from Hearth OS on Debian (archived) to the Fedora edition, the main one, without a USB stick: <b>Settings › System › Updates › Switch edition</b>.</p>
 <div class="note warn"><p>Don't switch a Debian PC to Fedora by hand (with <code>bootc switch</code>): the switch in Settings first
 clears what would make Fedora start to a black screen, and warns when Secure Boot has to be turned off.</p></div>
 <ul>
-<li><b>Kept:</b> your account, your games, saves and store libraries (Steam, Epic, GOG...).</li>
-<li><b>Set aside:</b> the rest of your home folder goes into a folder called <code>.old-hearth-</code> plus the date, for 30 days,
-so you can copy back anything you need. After 30 days it's deleted.</li>
-<li>The new edition downloads in the background (about 3 GB), then starts at the next restart. Before anything starts you see exactly what's kept.</li>
+<li><b>Kept:</b> your whole home folder, exactly as it is: your account, games, saves, store libraries, files and settings.</li>
+<li><b>Kept in the boot menu:</b> the Debian version you came from (pinned), so you can go back to it. Switch edition on Fedora takes you back to that very version, as you left it.</li>
+<li>The new edition downloads in the background, then starts at the next restart. Before anything starts you see exactly what's kept.</li>
+<li>Secure Boot: Debian's boot loader doesn't start Fedora's kernel, so Settings asks you to turn Secure Boot off first when it's on.</li>
 </ul>
 <div class="note warn ed" data-ed="ubuntu cachyos peppermint"><p><b>Installed from 0.3.0 or earlier:</b> switching edition (and updating) fails with
 "podman executable not found in PATH". See <a href="troubleshooting.html#podman">the fix</a>.</p></div>
 <h3>Switching from a terminal</h3>
-<p>The same switch as the Settings button (<code>anatase</code> is the Fedora edition's name inside Hearth, <code>peppermint</code> Debian's):</p>
+<p>The same switch as the Settings button (<code>anatase</code> is the Fedora edition's name inside Hearth):</p>
 <div class="cmd" data-cmd="switch-edition"><pre><code>pkexec /usr/libexec/nimbus/hearth-admin move-to-new-os --edition anatase</code></pre></div>
 <p>When it says <b>Done. Restart to start the new Hearth OS.</b>, restart.</p>
 
