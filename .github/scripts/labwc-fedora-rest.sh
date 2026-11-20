@@ -5,17 +5,18 @@
 # Files' opening time. The owner's red flags: never freeze or lag, nothing heavy at rest.
 #   labwc-fedora-rest.sh classic|firehold OUT [SECONDS]
 # Fails (exit 1, ::error annotations) when the desktop is over the same limits as KDE Plasma's check:
-#   shell at rest       <= LIMIT_SHELL (0.50 % of a core) on average, and no minute over LIMIT_MINUTE (1.5 %)
+#   shell at rest       <= LIMIT_SHELL (0.25 % of a core) on average, and no minute over LIMIT_MINUTE (0.75 %)
+#                          (measured Nov 20: 0.07 % Mantel, 0.09 % Firehold on labwc; 1.14 on the owner's devices: 13-27 %)
 #   labwc at rest       <= LIMIT_COMP (0.50 %)
-#   shell memory        <= LIMIT_MB (350 MB) and not growing (end - start <= LIMIT_GROW, 15 MB)
+#   shell memory        <= LIMIT_MB (320 MB) and not growing (end - start <= LIMIT_GROW, 15 MB)
 #   frames drawn        <= LIMIT_FRAMES (60) in the whole rest (the bar's clock: one a minute)
 #   other processes     no other process of this user over 1 % at rest; no more processes at the end than at the start
 #   Hearth Files        opens (first picture change) in <= LIMIT_FILES (1.5 s), warm or cold
 # Writes OUT/*.png, OUT/rest.json, OUT/rest.md, OUT/execs.txt (what the shell started while at rest), logs.
 set -u
 KIND=${1:?classic or firehold}; OUT=${2:?out folder}; SECS=${3:-600}
-LIMIT_SHELL=${LIMIT_SHELL:-50}; LIMIT_MINUTE=${LIMIT_MINUTE:-150}; LIMIT_COMP=${LIMIT_COMP:-50}   # hundredths of a %
-LIMIT_MB=${LIMIT_MB:-350}; LIMIT_GROW=${LIMIT_GROW:-15}; LIMIT_FRAMES=${LIMIT_FRAMES:-60}; LIMIT_FILES=${LIMIT_FILES:-1.5}
+LIMIT_SHELL=${LIMIT_SHELL:-25}; LIMIT_MINUTE=${LIMIT_MINUTE:-75}; LIMIT_COMP=${LIMIT_COMP:-50}   # hundredths of a %
+LIMIT_MB=${LIMIT_MB:-320}; LIMIT_GROW=${LIMIT_GROW:-15}; LIMIT_FRAMES=${LIMIT_FRAMES:-60}; LIMIT_FILES=${LIMIT_FILES:-1.5}
 mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd)
 SHARE=${NIMBUS_SHARE:-/usr/share/nimbus}
 SH="$SHARE/desktop/shell"

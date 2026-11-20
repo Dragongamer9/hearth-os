@@ -67,7 +67,14 @@ T7CS-FRKM-59), the roadmap (1.13-1.15, 1.14 pulled) and the shell's code.
      the bar's menu opens, and every 5 minutes only while you have a vault.
    - Activities checked every window every 2 s with only Main: now every 30 s, only with more than one activity.
    - The controller hints ticked every second all day: one 12-second timer started by the press.
-   - The out-of-memory watch: every 60 s (was 20 s).
+   - The out-of-memory watch: every 60 s (was 20 s), read straight from /proc (was a shell, grep and head each time).
+   - **The on-screen keyboard's glow** kept animating while the keyboard was closed (its window hidden, the board
+     not), which woke the shell 60 times a second all day: the board now hides with its window. Found in CI by
+     tracing the shell at rest (1,291 wake-ups in 20 s on its main thread).
+   - The bar's clock pill animated its width every minute (about 20 frames a minute): not while nobody's there.
+   - Firehold's Couch read nmcli every 15 s: now NetBtWatch.qml too.
+   - The recording and remote-desktop state files (not there until used) were re-read every 2 s and reset the shell's
+     state each time: now only when something changed.
    - **The moving wallpaper** (the default fireside) redrew the whole screen every frame behind every window: it now
      holds still while any window is open and after 30 s without input (was 3 minutes, and only behind maximized ones).
 2. **Memory** (1.14: 400-670 MB on the laptop, up to 1.15 GB on the Ally): measured in CI at rest (must stay under
@@ -80,14 +87,22 @@ T7CS-FRKM-59), the roadmap (1.13-1.15, 1.14 pulled) and the shell's code.
 CI keeps them from coming back: `hosts/linux/test/test_mantel_rest.py` (no always-on fast timer, no polling bar, the
 helpers asleep when idle, the wallpaper's rules), `test_labwc_fedora_session.py` (a choice, never a fallback, no loop,
 the pick written only by a pick), and `.github/scripts/labwc-fedora-rest.sh`, which fails when a desktop is over:
-the shell at rest 0.50 % of a core on average or 1.5 % in any minute, labwc 0.50 %, the shell over 350 MB or growing
+the shell at rest 0.25 % of a core on average or 0.75 % in any minute, labwc 0.50 %, the shell over 320 MB or growing
 more than 15 MB in 10 minutes, more than 60 frames drawn at rest, any other process over 1 %, more processes at the
 end, more than 2 programs started in 2 minutes at rest, Hearth Files over 1.5 s.
 
-## Measurements
+## Measurements (CI, Fedora 45, a virtual 1920x1080 screen, software drawing, 10 minutes at rest)
 
-See the latest CI run (labwc-fedora.yml's summary and the pictures on the branch ci/labwc-fedora); copied to
-hearth-workspace `hearth/research/2026-11-19-labwc-fedora/` with the pictures.
+| | Shell at rest | Busiest minute | labwc | Shell memory | Frames drawn | Programs started | Hearth Files |
+|---|---|---|---|---|---|---|---|
+| Before (round 1, run 44668815171) | 0.59 % | 0.66 % | 0.00 % | 279 → 269 MB | 123 | 6 in 2 min | (not timed) |
+| Mantel (Hearth Classic, labwc), run 44678744824 | **0.07 %** | 0.10 % | 0.00 % | 267 → 254 MB | 16 | 0 | 0.28 s cold, 0.24 s warm |
+| Firehold on labwc, run 44678744824 | **0.09 %** | 0.10 % | 0.00 % | 252 → 251 MB | 17 | 0 | |
+
+Up in 5-6 s. labwc 0.20.2 (wlroots 0.20.2), Quickshell v0.3.2 on Qt 6.11.2. Round 1 already had the bar, pad and
+battery fixes; on the owner's devices 1.14's shell used 13-27 % (with the controller helper's own 125 wake-ups a
+second on top, a separate process). The pictures: hearth-os branch ci/labwc-fedora, copied to hearth-workspace
+`hearth/assets/1.16-labwc-fedora-shots`.
 
 ## Firehold on labwc and the 12 approved 1.16 Firehold mockups
 
