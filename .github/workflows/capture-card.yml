@@ -1,0 +1,183 @@
+# Capture Card (hosts/capture-card; docs/mockups/checklists/capture-card.md): a Hearth Store app (version 1.0).
+# Built and tested only here, in Fedora 45 as Hearth OS, Fedora edition is. There's no capture card in CI:
+#   build     cargo build --release and cargo test (the card's V4L2 questions, picking a mode, the pipelines,
+#             no-signal detection, the microphone, the library, settings), errors as annotations
+#   loopback  (Ubuntu's own runner, not a container) tries v4l2loopback: a fake V4L2 card fed 1080p60 MJPEG by
+#             GStreamer, read back through v4l2src → jpegdec as the app does, with its CPU; GitHub's runners may not
+#             load the module, and then it says so (CI's stand-in card below is used for the app either way)
+#   run       every page on a headless screen (sway) with CI's stand-in card (HEARTH_CAPTURE_FAKE_CARD: its JPEG
+#             sent as the card's MJPEG at 60 frames a second through the same pipeline): no card, no signal, the
+#             picture coming up by itself, the viewer and its bar, recording and a screenshot, Settings, Recordings
+#             and Screenshots, Game Mode's viewer and quick menu; CPU at rest and while showing a picture; opening
+#             writes no settings
+#   pictures  each picture as SHOT notices (one job each)
+# Nothing is released from here.
+name: Capture Card
+
+on:
+  # A new workflow can only be started by hand once it's on main; until then, pushes to its branch start it.
+  push:
+    branches: ['feature/capture-card']
+    paths: ['hosts/capture-card/**', 'hosts/hearth-ui/src/**', '.github/workflows/capture-card.yml', '.github/scripts/capture-card-test.sh']
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Only the pictures whose names match this (an extended regex); empty: all of them'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: capture-card-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: registry.fedoraproject.org/fedora:45
+    steps:
+      - name: Rust, the libraries iced uses, and GStreamer's
+        run: |
+          dnf -y install git tar zstd gcc pkgconf-pkg-config rust cargo libxkbcommon-devel wayland-devel fontconfig-devel freetype-devel python3 \
+            gstreamer1-devel gstreamer1-plugins-base-devel >/dev/null
+          echo "::notice title=toolchain::$(rustc --version) · $(cargo --version) · GStreamer $(pkg-config --modversion gstreamer-1.0)"
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            hosts/capture-card/target
+          key: cc-f45-${{ hashFiles('hosts/capture-card/Cargo.toml', 'hosts/hearth-ui/Cargo.toml') }}-${{ github.sha }}
+          restore-keys: cc-f45-${{ hashFiles('hosts/capture-card/Cargo.toml', 'hosts/hearth-ui/Cargo.toml') }}-
+      - name: Build
+        run: |
+          set -o pipefail
+          cd hosts/capture-card
+          if ! cargo build --release 2>&1 | tee ../../build.log; then
+            grep -E '^error' -A14 ../../build.log | grep -v '^--$' | head -600 > ../../errs.txt
+            awk '/^error/{if (b) print b; b=$0; next} {b=b "|" $0} END{print b}' ../../errs.txt | head -40 | while read -r l; do
+              echo "::error title=cargo build::$(echo "$l" | cut -c1-3800)"
+            done
+            exit 1
+          fi
+          echo "::notice title=size::$(du -h target/release/hearth-capture-card | cut -f1)"
+          grep -c '^warning' ../../build.log | xargs -I{} echo "::notice title=warnings::{} warnings"
+      - name: Tests
+        run: |
+          cd hosts/capture-card
+          cargo test --release -- --test-threads=1 2>&1 | tee ../../test.log || { grep -E "panicked|FAILED|^error" -A3 ../../test.log | head -30 | while read -r l; do echo "::error title=cargo test::$l"; done; exit 1; }
+          echo "::notice title=cargo test::$(grep -E '^test result' ../../test.log | tr '\n' ' ' | cut -c1-500)"
+      - name: Gather
+        run: |
+          mkdir -p bin
+          cp hosts/capture-card/target/release/hearth-capture-card bin/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: capture-card
+          path: bin
+          retention-days: 7
+
+  loopback:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    continue-on-error: true
+    steps:
+      - name: A fake V4L2 card (v4l2loopback), fed 1080p60 MJPEG, read back as the app reads a card
+        run: |
+          sudo apt-get update -qq >/dev/null
+          sudo apt-get install -y -qq v4l2loopback-dkms v4l-utils gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad "linux-modules-extra-$(uname -r)" >/dev/null 2>&1 || true
+          if ! sudo modprobe v4l2loopback devices=1 video_nr=42 card_label="Stand-in card" exclusive_caps=1 2>/tmp/mod.txt; then
+            echo "::warning title=loopback::v4l2loopback can't be loaded on this runner ($(head -c 300 /tmp/mod.txt | tr '\n' ' ')): the app's pictures use CI's stand-in card instead"
+            exit 0
+          fi
+          ls -la /dev/video42
+          # The feed: a moving test picture as 1080p60 MJPEG into the fake card.
+          gst-launch-1.0 -q videotestsrc is-live=true pattern=ball ! video/x-raw,width=1920,height=1080,framerate=60/1 ! jpegenc quality=85 ! image/jpeg ! v4l2sink device=/dev/video42 sync=true >/tmp/feed.log 2>&1 &
+          feed=$!
+          sleep 3
+          v4l2-ctl -d /dev/video42 --all 2>/dev/null | grep -E "Card type|Width/Height|Pixel Format|Frames per second" | while read -r l; do echo "::notice title=loopback card::$l"; done
+          # The app's own path: v4l2src at 1080p60 MJPEG → jpegdec → RGBA, 600 frames, with its CPU.
+          TIMEFORMAT='%R %U %S'
+          { time timeout 30 gst-launch-1.0 -q v4l2src device=/dev/video42 num-buffers=600 ! image/jpeg,width=1920,height=1080,framerate=60/1 ! jpegdec ! videoconvert ! video/x-raw,format=RGBA ! fakesink sync=false >/tmp/read.log 2>&1 ; } 2>/tmp/time.txt
+          rc=$?
+          read -r real user sys < /tmp/time.txt
+          if [ $rc -eq 0 ]; then
+            echo "::notice title=loopback read::600 frames of 1080p MJPEG read through v4l2src and decoded by jpegdec in ${real} s (at 60 a second: 10 s); CPU $(python3 -c "print('%.0f' % (100 * ($user + $sys) / $real))") % of a core (the CPU path; the app uses the graphics card's decoder where there is one)"
+          else
+            echo "::warning title=loopback read::v4l2src couldn't read the fake card (exit $rc): $(tail -c 400 /tmp/read.log | tr '\n' ' ')"
+          fi
+          kill $feed 2>/dev/null
+
+  run:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container: registry.fedoraproject.org/fedora:45
+    outputs:
+      shots: ${{ steps.list.outputs.shots }}
+    steps:
+      - name: A screen in memory (sway), grim, fonts, GStreamer
+        run: |
+          dnf -y install --skip-unavailable git sway grim procps-ng python3 python3-pillow util-linux shadow-utils libxkbcommon libwayland-client libwayland-cursor \
+            mesa-vulkan-drivers vulkan-loader mesa-dri-drivers mesa-libEGL mesa-libgbm libglvnd-egl fontconfig rsms-inter-fonts google-noto-sans-fonts \
+            google-noto-sans-symbols-fonts google-noto-sans-symbols-2-fonts dejavu-sans-fonts dejavu-sans-mono-fonts \
+            gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugin-openh264 gstreamer1-plugins-base-tools >/dev/null
+          for b in sway grim swaymsg runuser; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed"; done
+          for e in multifilesrc jpegparse jpegdec videoconvert appsink audiotestsrc mp4mux h264parse openh264enc fdkaacenc opusenc; do
+            gst-inspect-1.0 "$e" >/dev/null 2>&1 || echo "::warning title=GStreamer::no $e here"
+          done
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: capture-card
+          path: bin
+      - name: Every page, measured and pictured
+        timeout-minutes: 30
+        run: |
+          chmod +x bin/*
+          HEARTH_SHOTS_ONLY="${{ inputs.only }}" bash .github/scripts/capture-card-test.sh
+      - name: The pictures taken
+        id: list
+        if: always()
+        run: |
+          ls shots/*.png 2>/dev/null | xargs -r -n1 basename | sed 's/\.png$//' > /tmp/shots.txt || true
+          ONLY="${{ inputs.only }}"
+          if [ -n "$ONLY" ]; then grep -E "$ONLY" /tmp/shots.txt > /tmp/s2.txt || true; mv /tmp/s2.txt /tmp/shots.txt; fi
+          echo "shots=$(python3 -c 'import json,sys; print(json.dumps([l.strip() for l in open(sys.argv[1]) if l.strip()][:200]))' /tmp/shots.txt)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: capture-card-shots
+          path: |
+            shots
+            results.txt
+          retention-days: 14
+
+  pictures:
+    needs: run
+    if: always() && needs.run.result != 'skipped' && needs.run.outputs.shots != '[]' && needs.run.outputs.shots != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: ${{ fromJSON(needs.run.outputs.shots || '[]') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: capture-card-shots
+          path: .
+      - name: Picture ${{ matrix.shot }}
+        run: |
+          python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow >/dev/null 2>&1 || python3 -m pip install --quiet pillow >/dev/null
+          python3 .github/scripts/firehold-shot.py ${{ matrix.shot }}

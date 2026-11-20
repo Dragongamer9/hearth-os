@@ -1,0 +1,55 @@
+# Capture Card (docs/mockups/capture-card, checklist docs/mockups/checklists/capture-card.md): a Hearth Store app that
+# shows a USB HDMI capture card full screen (UVC, MJPEG or YUYV, 1080p60, its sound as a USB microphone), so the owner
+# can play his Xbox on the laptop's screen. Pure Rust on hearth-ui (iced); the picture and sound through GStreamer
+# (v4l2src, VA-API where the graphics card can, PipeWire). Its own workspace, like Console Remote Play, so GStreamer's
+# libraries are needed only here (the OS image's hearth-ui build is untouched). Built and tested only in GitHub Actions
+# (capture-card.yml). Version 1.0 is the owner's number (Nov 20, 2026); never change it without asking him.
+[package]
+name = "hearth-capture-card"
+version = "1.0.0"
+edition = "2021"
+description = "Capture Card: your Xbox (or any HDMI) on this PC's screen through a USB capture card"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+name = "cc"
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-capture-card"
+path = "src/main.rs"
+
+[features]
+default = ["media"]
+# The picture, sound and recording (GStreamer). Without it every page still works and the viewer says so.
+media = ["dep:gstreamer", "dep:gstreamer-app"]
+
+[dependencies]
+hearth-ui = { path = "../hearth-ui" }
+iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "wayland", "x11", "canvas", "crisp", "smol", "image"] }
+serde_json = "1"
+futures = "0.3"
+libc = "0.2"
+# hearth-ui sets its own logger (set_boxed_logger needs log's std).
+log = { version = "0.4", features = ["std"] }
+# Screenshots (PNG) and the thumbnails (the same image crate iced uses).
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+gstreamer = { version = "0.24", optional = true, features = ["v1_22"] }
+gstreamer-app = { version = "0.24", optional = true }
+
+[dev-dependencies]
+tempfile = "3"
+
+[workspace]
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = true
+panic = "abort"
+
+# The same softbuffer hearth-ui uses (hosts/hearth-ui/vendor/README.md).
+[patch.crates-io]
+softbuffer = { path = "../hearth-ui/vendor/softbuffer" }
