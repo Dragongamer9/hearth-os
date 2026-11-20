@@ -206,6 +206,8 @@ PLASMA_PAD_READERS = {
     'hearth-settings': ('a', 'b', 'x', 'y', 'lb', 'rb', 'up', 'down', 'left', 'right', 'menu'),
     # The Hearth Store (feature/hearth-store): reads the controller as Settings does (apps/store/src/pad.rs).
     'hearth-store': ('a', 'b', 'x', 'y', 'lb', 'rb', 'up', 'down', 'left', 'right', 'menu'),
+    # Hearth Notes (feature/hearth-notes): its controller layout (apps/notes/src/pad.rs), with the triggers too.
+    'hearth-notes': ('a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'up', 'down', 'left', 'right', 'menu'),
 }
 PLASMA_TAB_APPS = ('hearth-g15-app', 'hearth-tasks', 'hearth-files', 'hearth-file-chooser', 'hearth-capture')
 

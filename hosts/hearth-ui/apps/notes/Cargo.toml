@@ -1,0 +1,27 @@
+# Hearth Notes (pure Rust, hearth-ui; docs/HEARTH-NOTES.md, the approved mockups docs/mockups/hearth-notes): the owner's
+# own Obsidian, connected to his hearth-workspace repository: Markdown notes with live preview and [[links]], the daily
+# log (Today), a Board from checklists, a graph with ten modes, search, Git sync with the workspace's own check, and a
+# controller layout. Listed in the Hearth Store as built in. No version line: the owner picks every version number.
+[package]
+name = "hearth-notes"
+edition = "2021"
+description = "Hearth Notes: Markdown notes in a folder (the hearth-workspace repository), synced with Git"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-notes-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true, features = ["image"] }
+serde_json = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"

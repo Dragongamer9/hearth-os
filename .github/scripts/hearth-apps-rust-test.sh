@@ -61,8 +61,6 @@ ticks() { awk '{print $14 + $15}' "/proc/$1/stat" 2>/dev/null || echo 0; }
 # run NAME APP_ID REST BINARY ARGS...: start, time the first frame, picture, and (REST > 0) measure at rest.
 run() {
   name=$1; appid=$2; rest=$3; shift 3
-  # Actions › Hearth apps (pure Rust) › "only": just the runs whose names match (the others are skipped).
-  if [ -n "${HEARTH_SHOTS_ONLY:-}" ] && ! printf '%s' "$name" | grep -Eq "$HEARTH_SHOTS_ONLY"; then return 0; fi
   t0=$(now_ms)
   "$@" >"/tmp/$name.log" 2>&1 &
   pid=$!
@@ -98,7 +96,6 @@ run() {
 # (HEARTH_UI_FRAMES); CPU from /proc. One BENCH line each; a picture after the scroll shows where it got to.
 bench() {
   name=$1; appid=$2; rend=$3; kind=$4; shift 4
-  if [ -n "${HEARTH_SHOTS_ONLY:-}" ] && ! printf '%s' "$name" | grep -Eq "$HEARTH_SHOTS_ONLY"; then return 0; fi
   fr="/tmp/frames-$name"; rm -f "$fr"
   t0=$(now_ms)
   HEARTH_UI_FRAMES="$fr" HEARTH_RENDERER="$rend" "$@" >"/tmp/$name.log" 2>&1 &
@@ -127,6 +124,10 @@ bench() {
   sleep 0.3
 }
 
+# The workflow's "only" input (in /tmp/shots-only; the one filter, family-moonlight's and Hearth Notes' merged): only these shots.d files (comma list, no
+# .sh), without the other apps' runs, so one app's pictures cost one short run. Empty: everything, as always.
+ONLY=$(cat /tmp/shots-only 2>/dev/null | tr -d ' \n')
+if [ -z "$ONLY" ]; then
 look steam dark
 # Measured runs (the first of each app), then the pictures of their other pages and dialogs.
 run restore-1-points hearth-restore 20 "$BIN/hearth-system-restore"
@@ -176,8 +177,14 @@ bench scroll-gpu-settings-long hearth-settings gpu touchpad "$BIN/hearth-setting
 bench scroll-gpu-files-3000 hearth-files gpu touchpad "$BIN/hearth-files-app" "$HOME/bench-3000" --view details
 HEARTH_RENDERER=gpu run gpu-settings-1-home hearth-settings 20 "$BIN/hearth-settings-app"
 HEARTH_RENDERER=gpu run gpu-files-1-details hearth-files 20 "$BIN/hearth-files-app" "$HOME/bench-3000" --view details
+fi
 # Each app's own pictures (one file per app or Settings category, so they're worked on apart): .d/NAME.sh uses run().
-for f in "$ROOT"/.github/scripts/hearth-apps-rust-shots.d/*.sh; do [ -f "$f" ] && . "$f"; done
+for f in "$ROOT"/.github/scripts/hearth-apps-rust-shots.d/*.sh; do
+  [ -f "$f" ] || continue
+  if [ -n "$ONLY" ] && ! echo ",$ONLY," | grep -q ",$(basename "$f" .sh),"; then continue; fi
+  . "$f"
+done
+[ -n "$ONLY" ] && { kill %1 2>/dev/null; exit 0; }
 look steam dark
 look hearth light
 run look-hearth-light-restore hearth-restore 0 "$BIN/hearth-system-restore"
