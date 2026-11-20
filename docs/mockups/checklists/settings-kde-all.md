@@ -140,12 +140,12 @@ windows (kcm_kwin4_genericscripted and each effect's: Window effects).
 
 ## The parts that were open (the owner, Nov 20: "go ahead", all into 1.16)
 
-- [ ] KDE shortcuts: your own commands and scripts with a shortcut (KDE's "Add New › Command or Script": add, change, remove)
-- [ ] Push services: Gotify and NextPush, the token or app password typed on the page and handed only to KDE's push service (KUnifiedPush keeps it)
-- [ ] Remote desktop (RDP): other people with their own passwords, kept in KDE Wallet only (QtKeychain's KRDP folder)
-- [ ] Global theme, Plasma style, Colours, Title bars: "Get New…" from the KDE Store (knewstuff's own descriptions and the store's API; installs in your folders only)
-- [ ] Font management: a preview of each font, drawn in itself
-- [ ] Device actions: editing the system's actions as your own copy (the system's file never touched) and "Reset to the system version"
-- [ ] Activities: each one's icon, its own shortcut to switch to it, and "remember what's opened in it"
-- [ ] Controllers in KDE: a live test of buttons, sticks, triggers and the D-pad, listening only while the page is open
-- [ ] Display: Calibrate HDR in Hearth's own three steps (no KDE window)
+- [x] KDE shortcuts: your own commands and scripts with a shortcut (KDE's "Add New › Command or Script": add, change, remove) — hosts/linux/desktop/shell/hearth-kde-settings: "X-KDE-GlobalAccel-CommandShortcut=true"
+- [x] Push services: Gotify and NextPush, the token or app password typed on the page and handed only to KDE's push service (KUnifiedPush keeps it) — hosts/linux/desktop/shell/hearth-kde-settings: "def push_signin(provider, url, user):"
+- [x] Remote desktop (RDP): other people with their own passwords, kept in KDE Wallet only (QtKeychain's KRDP folder) — hosts/linux/desktop/shell/hearth-kde-settings: "wallet_write('KRDP', user, secret)"
+- [x] Global theme, Plasma style, Colours, Title bars: "Get New…" from the KDE Store (knewstuff's own descriptions and the store's API; installs in your folders only) — hosts/linux/desktop/shell/hearth-kde-settings: "def store_install(kind, cid):"
+- [x] Font management: a preview of each font, drawn in itself — hosts/hearth-ui/apps/settings/src/cats/kde.rs: "The quick brown fox jumps over the lazy dog"
+- [x] Device actions: editing the system's actions as your own copy (the system's file never touched) and "Reset to the system version" — hosts/linux/desktop/shell/hearth-kde-settings: "def device_action_reset(fname):"
+- [x] Activities: each one's icon, its own shortcut to switch to it, and "remember what's opened in it" — hosts/linux/desktop/shell/hearth-kde-settings: "OTR = 'org.kde.ActivityManager.Resources.Scoring/isOTR/%s'"
+- [x] Controllers in KDE: a live test of buttons, sticks, triggers and the D-pad, listening only while the page is open — hosts/hearth-ui/apps/settings/src/cats/kde_pad.rs: "break; // the page was closed"
+- [x] Display: Calibrate HDR in Hearth's own three steps (no KDE window) — hosts/hearth-ui/apps/settings/src/cats/system_display.rs: "Msg::Go(\"kde-hdr\")"
