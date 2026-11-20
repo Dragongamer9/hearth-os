@@ -1,0 +1,426 @@
+#!/usr/bin/python3
+"""Hearth Console Remote Play's sign-in window (docs/CONSOLE-REMOTE-PLAY.md, "Sign-in"; mockups 1b and g1).
+
+Microsoft's own sign-in page in a window inside the app, the way Greenlight does it: Hearth draws only the frame
+(the lock, "Sign in with Microsoft", "Microsoft's own page", the read-only address, the three steps, the note, Reload
+page and Cancel); the middle is Microsoft's real page (WebKitGTK). The password is typed into Microsoft's page and
+never reaches Hearth. The page ends by going to ms-xal-000000004c20a908://auth?code=…: the window catches that
+address (never loads it), hands it to the app on stdout (a pipe, never a file or a log) and closes by itself.
+
+The browser here is ephemeral: no cookies, no cache, nothing of the sign-in is kept on disk.
+In Game Mode (--game-mode) it fills the screen with Game Mode's top bar and hints, and Hearth's on-screen keyboard
+comes up for each box on Microsoft's page (and on X); B cancels.
+
+  hearth-console-remote-play-signin --url URL [--game-mode] [--user NAME]
+  stdout: "REDIRECT <address>" (signed in), or "CANCEL"; exit 0 / 1
+"""
+import argparse
+import glob
+import os
+import struct
+import sys
+
+import gi
+
+gi.require_version('Gtk', '3.0')
+gi.require_version('WebKit2', '4.1')
+from gi.repository import GLib, Gtk, Gdk, WebKit2  # noqa: E402
+
+REDIRECT = 'ms-xal-000000004c20a908'
+OSK_DIRS = [os.environ.get('HEARTH_OSK_DIR', ''), os.path.join(os.path.dirname(os.path.abspath(__file__)), 'osk'),
+            '/usr/share/nimbus/ui/osk', '/usr/share/hearth/osk', '/usr/share/nimbus/desktop/shell/osk']
+
+CSS = b"""
+window, .crp { background: #1b1e24; color: #e9ebef; font-family: Inter, sans-serif; }
+.dim { background: rgba(0,0,0,0.66); }
+.frame { background: #1b1e24; border: 1px solid rgba(255,255,255,0.14); border-radius: 16px; }
+.ih { border-bottom: 1px solid #2f343d; padding: 0 18px; min-height: 58px; }
+.ih .title { font-size: 18px; font-weight: 600; }
+.chip { border: 1px solid #3c414c; border-radius: 20px; padding: 3px 12px; font-size: 13.5px; color: #cfd3da; }
+.chip.ok { border-color: #2f6b45; color: #7fe0a3; }
+.chip.on { border-color: #ff7a2f; color: #ff9a52; }
+.x { color: #9aa1ad; font-size: 18px; background: none; border: none; box-shadow: none; padding: 0 6px; }
+.ia { background: #15171c; color: #9aa1ad; font-size: 14px; padding: 0 18px; min-height: 40px; border-bottom: 1px solid #2f343d; }
+.mono { font-family: "DejaVu Sans Mono", monospace; font-size: 13.5px; color: #cfd3da; }
+.lock { color: #4ccf7a; }
+.if { border-top: 1px solid #2f343d; padding: 14px 18px; }
+.step { background: #20242b; border-radius: 12px; padding: 10px 14px; }
+.step .s { min-width: 30px; min-height: 30px; border-radius: 15px; font-weight: 700; }
+.step.done .s { background: #173524; color: #8ff0b3; }
+.step.wait .s { border: 2px solid #3a3f49; color: #6f7682; font-size: 13px; }
+.step.wait .rt { color: #8a909b; }
+.rt { font-size: 15px; }
+.rs { color: #9aa1ad; font-size: 14.5px; }
+.rs b { color: #dfe2e7; }
+button.btn { background: transparent; background-image: none; border: 1px solid #3c414c; border-radius: 9px; color: #dfe2e7;
+  font-size: 15px; padding: 8px 18px; box-shadow: none; text-shadow: none; }
+button.btn:hover { background: rgba(255,255,255,0.06); }
+button.btn:focus { outline: 3px solid #ff7a2f; outline-offset: 2px; }
+.gtop { background: #1b1e24; border-bottom: 1px solid #2f343d; min-height: 64px; padding: 0 26px; }
+.gtop .t { font-size: 20px; font-weight: 600; }
+.gtop .u { color: #9aa1ad; font-size: 16px; }
+.ic { background-image: linear-gradient(135deg, #ff8a3d, #d9531e); border-radius: 10px; color: #1b1006; font-weight: 800; }
+.hints { background: #15171c; border-top: 1px solid #2f343d; min-height: 56px; padding: 0 24px; color: #c9ccd3; font-size: 17px; }
+.hb { border: 2px solid #9aa1ad; border-radius: 14px; min-width: 28px; min-height: 28px; font-size: 12px; font-weight: 700; color: #c9ccd3; }
+"""
+
+
+def label(text, cls=(), markup=False, xalign=0.0, wrap=False):
+    lb = Gtk.Label()
+    if markup:
+        lb.set_markup(text)
+    else:
+        lb.set_text(text)
+    lb.set_xalign(xalign)
+    lb.set_line_wrap(wrap)
+    for c in cls:
+        lb.get_style_context().add_class(c)
+    return lb
+
+
+def lock(size=18):
+    """The green lock (drawn: no emoji font needed)."""
+    da = Gtk.DrawingArea()
+    da.set_size_request(size, size)
+
+    def draw(_w, cr):
+        k = size / 24.0
+        cr.scale(k, k)
+        cr.set_source_rgb(0x4c / 255, 0xcf / 255, 0x7a / 255)
+        cr.set_line_width(1.9)
+        cr.rectangle(5, 11, 14, 10)
+        cr.stroke()
+        cr.arc(12, 9, 4, 3.14159, 0)
+        cr.move_to(8, 9)
+        cr.line_to(8, 11)
+        cr.move_to(16, 9)
+        cr.line_to(16, 11)
+        cr.stroke()
+        return False
+    da.connect('draw', draw)
+    return da
+
+
+def app_icon(size=36):
+    """Hearth's ember tile with a controller and signal waves (no Microsoft or Xbox marks)."""
+    da = Gtk.DrawingArea()
+    da.set_size_request(size, size)
+
+    def draw(_w, cr):
+        import cairo
+        g = cairo.LinearGradient(0, 0, size, size)
+        g.add_color_stop_rgb(0, 1.0, 0x8a / 255, 0x3d / 255)
+        g.add_color_stop_rgb(1, 0xd9 / 255, 0x53 / 255, 0x1e / 255)
+        r = size * 0.28
+        cr.new_sub_path()
+        cr.arc(size - r, r, r, -1.5708, 0)
+        cr.arc(size - r, size - r, r, 0, 1.5708)
+        cr.arc(r, size - r, r, 1.5708, 3.14159)
+        cr.arc(r, r, r, 3.14159, 4.71239)
+        cr.close_path()
+        cr.set_source(g)
+        cr.fill()
+        k = size * 0.61 / 24.0
+        cr.translate(size * 0.195, size * 0.195)
+        cr.scale(k, k)
+        cr.set_source_rgb(0x1b / 255, 0x10 / 255, 0x06 / 255)
+        cr.set_line_width(1.9)
+        cr.move_to(6.5, 11)
+        cr.line_to(17.5, 11)
+        cr.curve_to(20, 11, 21.5, 13, 20.9, 15.3)
+        cr.line_to(20.2, 18.2)
+        cr.curve_to(19.8, 19.6, 18.2, 20, 17.2, 19)
+        cr.line_to(15, 17)
+        cr.line_to(9, 17)
+        cr.line_to(7.2, 19)
+        cr.curve_to(6.2, 20, 4.2, 19.6, 3.8, 18.2)
+        cr.line_to(3.1, 15.3)
+        cr.curve_to(2.5, 13, 4, 11, 6.5, 11)
+        cr.stroke()
+        cr.move_to(8, 13.5)
+        cr.line_to(8, 15.5)
+        cr.move_to(7, 14.5)
+        cr.line_to(9, 14.5)
+        cr.move_to(9, 7.5)
+        cr.curve_to(10.6, 5.9, 13.4, 5.9, 15, 7.5)
+        cr.move_to(7, 5)
+        cr.curve_to(9.8, 2.4, 14.2, 2.4, 17, 5)
+        cr.stroke()
+        return False
+    da.connect('draw', draw)
+    return da
+
+
+class SignIn:
+    def __init__(self, url, game, user):
+        self.done = False
+        self.game = game
+        self.win = Gtk.Window(title='Sign in with Microsoft')
+        self.win.set_wmclass('hearth-console-remote-play-signin', 'Hearth Console Remote Play')
+        self.win.set_role('sign-in')
+        self.win.get_style_context().add_class('crp')
+        self.win.connect('delete-event', lambda *_: self.finish('CANCEL') or True)
+        self.win.connect('key-press-event', self.on_key)
+        if game:
+            self.win.fullscreen()
+        else:
+            self.win.set_default_size(980, 880)
+            self.win.set_type_hint(Gdk.WindowTypeHint.DIALOG)
+            self.win.set_position(Gtk.WindowPosition.CENTER)
+
+        # Microsoft's page, in an ephemeral browser: nothing of the sign-in is kept.
+        ctx = WebKit2.WebContext.new_ephemeral()
+        ctx.register_uri_scheme(REDIRECT, self.on_scheme)
+        ucm = WebKit2.UserContentManager()
+        if game:
+            self.add_keyboard(ucm)
+        self.web = GLibWeb(ctx, ucm)
+        self.web.connect('decide-policy', self.on_policy)
+        self.web.connect('load-changed', self.on_load)
+        self.web.connect('notify::uri', self.on_uri)
+
+        frame = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        frame.get_style_context().add_class('frame')
+        # Title: lock, Sign in with Microsoft, the Microsoft's own page chip, ✕
+        ih = Gtk.Box(spacing=12)
+        ih.get_style_context().add_class('ih')
+        ih.pack_start(lock(20), False, False, 0)
+        ih.pack_start(label('Sign in with Microsoft', ('title',)), False, False, 0)
+        ih.pack_start(label("Microsoft's own page", ('chip',)), False, False, 6)
+        x = Gtk.Button(label='✕')
+        x.get_style_context().add_class('x')
+        x.connect('clicked', lambda *_: self.finish('CANCEL'))
+        ih.pack_end(x, False, False, 0)
+        frame.pack_start(ih, False, False, 0)
+        # The read-only address.
+        ia = Gtk.Box(spacing=8)
+        ia.get_style_context().add_class('ia')
+        ia.pack_start(lock(13), False, False, 0)
+        self.addr = label('https://login.live.com/…', ('mono',))
+        self.addr.set_ellipsize(3)
+        self.addr.set_max_width_chars(60)
+        ia.pack_start(self.addr, False, False, 0)
+        ia.pack_end(label('Comes from Microsoft' if game else 'Read-only address · this page comes from Microsoft'), False, False, 0)
+        frame.pack_start(ia, False, False, 0)
+        frame.pack_start(self.web, True, True, 0)
+        # The steps and the note.
+        foot = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        foot.get_style_context().add_class('if')
+        if game:
+            row = Gtk.Box(spacing=10)
+            self.chip_open = label('✓ Page opened', ('chip', 'ok'))
+            self.chip_open.set_opacity(0.35)
+            row.pack_start(self.chip_open, False, False, 0)
+            row.pack_start(label('Signing in…', ('chip', 'on')), False, False, 0)
+            row.pack_start(label('Your password goes to Microsoft only. The app keeps just the sign-in token, in the system keyring.', ('rs',), wrap=True), True, True, 0)
+            row.pack_end(self.button('Cancel', lambda *_: self.finish('CANCEL')), False, False, 0)
+            foot.pack_start(row, False, False, 0)
+        else:
+            steps = Gtk.Box(spacing=10, homogeneous=True)
+            self.step1 = self.step('1', "Microsoft's page opened", 'wait')
+            self.spin = Gtk.Spinner()
+            steps.pack_start(self.step1, True, True, 0)
+            steps.pack_start(self.step('', "Sign in on Microsoft's page", 'now', spinner=self.spin), True, True, 0)
+            steps.pack_start(self.step('3', 'The window closes by itself', 'wait'), True, True, 0)
+            foot.pack_start(steps, False, False, 0)
+            row = Gtk.Box(spacing=14)
+            note = label("Hearth Console Remote Play never sees or stores your password: you type it into Microsoft's page. "
+                         "It keeps only the sign-in token Microsoft gives it, in the system keyring, so you stay signed in. "
+                         "<b>Sign out</b> in Settings removes it.", ('rs',), markup=True, wrap=True)
+            row.pack_start(note, True, True, 0)
+            row.pack_start(self.button('Reload page', lambda *_: self.web.reload()), False, False, 0)
+            self.cancel = self.button('Cancel', lambda *_: self.finish('CANCEL'))
+            row.pack_start(self.cancel, False, False, 0)
+            foot.pack_start(row, False, False, 0)
+        frame.pack_start(foot, False, False, 0)
+
+        if game:
+            outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+            top = Gtk.Box(spacing=14)
+            top.get_style_context().add_class('gtop')
+            top.pack_start(app_icon(36), False, False, 0)
+            top.pack_start(label('Console Remote Play', ('t',)), False, False, 0)
+            top.pack_end(label(user or 'Not signed in yet', ('u',)), False, False, 0)
+            outer.pack_start(top, False, False, 0)
+            mid = Gtk.Box()
+            mid.get_style_context().add_class('dim')
+            frame.set_margin_start(24)
+            frame.set_margin_end(24)
+            frame.set_margin_top(14)
+            frame.set_margin_bottom(14)
+            mid.pack_start(frame, True, True, 0)
+            outer.pack_start(mid, True, True, 0)
+            hints = Gtk.Box(spacing=24)
+            hints.get_style_context().add_class('hints')
+            for b, what in (('A', 'Select'), ('X', 'Keyboard'), ('B', 'Cancel sign-in')):
+                h = Gtk.Box(spacing=8)
+                bl = label(b, ('hb',), xalign=0.5)
+                h.pack_start(bl, False, False, 0)
+                h.pack_start(label(what), False, False, 0)
+                hints.pack_start(h, False, False, 0)
+            hints.pack_end(label("Hearth's on-screen keyboard comes up for each box"), False, False, 0)
+            outer.pack_start(hints, False, False, 0)
+            self.win.add(outer)
+        else:
+            self.win.add(frame)
+        self.watch_pads()
+        self.web.load_uri(url)
+        self.win.show_all()
+        if not game:
+            self.cancel.grab_focus()
+        self.spin_on()
+
+    def spin_on(self):
+        if hasattr(self, 'spin'):
+            self.spin.start()
+
+    def button(self, text, cb):
+        b = Gtk.Button(label=text)
+        b.get_style_context().add_class('btn')
+        b.connect('clicked', cb)
+        return b
+
+    def step(self, n, text, kind, spinner=None):
+        b = Gtk.Box(spacing=12)
+        b.get_style_context().add_class('step')
+        b.get_style_context().add_class(kind)
+        if spinner is not None:
+            spinner.set_size_request(30, 30)
+            b.pack_start(spinner, False, False, 0)
+        else:
+            s = label(n, ('s',), xalign=0.5)
+            s.set_size_request(30, 30)
+            b.pack_start(s, False, False, 0)
+            b.num = s
+        b.pack_start(label(text, ('rt',)), False, False, 0)
+        return b
+
+    def add_keyboard(self, ucm):
+        """Hearth's on-screen keyboard on Microsoft's page (Game Mode): ui/osk, the one keyboard (docs/OSK.md)."""
+        for d in OSK_DIRS:
+            js, css = os.path.join(d or '/nonexistent', 'hearth-osk.js'), os.path.join(d or '/nonexistent', 'hearth-osk.css')
+            if os.path.isfile(js):
+                if os.path.isfile(css):
+                    ucm.add_style_sheet(WebKit2.UserStyleSheet(open(css).read(), WebKit2.UserContentInjectedFrames.TOP_FRAME,
+                                                               WebKit2.UserStyleLevel.USER, None, None))
+                glue = ("\n;(function(){function open(t){try{if(window.HearthOSK&&t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'))"
+                        "HearthOSK.open({target:t,pad:true});}catch(e){}}"
+                        "document.addEventListener('focusin',function(e){open(e.target);},true);"
+                        "window.__hearthKeyboard=function(){open(document.activeElement);};})();")
+                ucm.add_script(WebKit2.UserScript(open(js).read() + glue, WebKit2.UserContentInjectedFrames.TOP_FRAME,
+                                                  WebKit2.UserScriptInjectionTime.END, None, None))
+                return
+
+    # ---------------------------------------------------------------- catching the end of the sign-in
+    def caught(self, uri):
+        if uri and uri.startswith(REDIRECT + '://'):
+            self.finish('REDIRECT ' + uri)
+            return True
+        return False
+
+    def on_scheme(self, request):
+        self.caught(request.get_uri())
+        try:
+            request.finish_error(GLib.Error('handled by Hearth'))
+        except Exception:
+            pass
+
+    def on_policy(self, view, decision, kind):
+        try:
+            if kind in (WebKit2.PolicyDecisionType.NAVIGATION_ACTION, WebKit2.PolicyDecisionType.NEW_WINDOW_ACTION):
+                uri = decision.get_navigation_action().get_request().get_uri()
+                if self.caught(uri):
+                    decision.ignore()
+                    return True
+        except Exception:
+            pass
+        return False
+
+    def on_load(self, view, ev):
+        if ev == WebKit2.LoadEvent.FINISHED:
+            if self.game:
+                self.chip_open.set_opacity(1.0)
+            else:
+                st = self.step1.get_style_context()
+                st.remove_class('wait')
+                st.add_class('done')
+                self.step1.num.set_text('✓')
+
+    def on_uri(self, *_):
+        uri = self.web.get_uri() or ''
+        if self.caught(uri):
+            return
+        shown = uri.split('?')[0]
+        if len(shown) > 60:
+            shown = shown[:58] + '…'
+        self.addr.set_text(shown or 'https://login.live.com/…')
+
+    def finish(self, line):
+        if self.done:
+            return
+        self.done = True
+        try:
+            sys.stdout.write(line + '\n')
+            sys.stdout.flush()
+        except Exception:
+            pass
+        Gtk.main_quit()
+
+    def on_key(self, w, ev):
+        if ev.keyval == Gdk.KEY_Escape:
+            self.finish('CANCEL')
+            return True
+        return False
+
+    # ---------------------------------------------------------------- the controller: B cancels, X the keyboard
+    def watch_pads(self):
+        self.pads = []
+        for p in sorted(glob.glob('/dev/input/event*')):
+            try:
+                fd = os.open(p, os.O_RDONLY | os.O_NONBLOCK | os.O_CLOEXEC)
+            except OSError:
+                continue
+            self.pads.append(fd)
+            GLib.io_add_watch(fd, GLib.PRIORITY_DEFAULT, GLib.IO_IN | GLib.IO_HUP | GLib.IO_ERR, self.on_pad)
+
+    def on_pad(self, fd, cond):
+        if cond & (GLib.IO_HUP | GLib.IO_ERR):
+            return False
+        try:
+            data = os.read(fd, 24 * 32)
+        except OSError:
+            return True
+        for i in range(0, len(data) - 23, 24):
+            _s, _us, ty, code, value = struct.unpack('llHHi', data[i:i + 24])
+            if ty == 1 and value == 1:
+                if code == 0x131:
+                    self.finish('CANCEL')
+                elif code == 0x133 and self.game:
+                    self.web.run_javascript('window.__hearthKeyboard && window.__hearthKeyboard()', None, None, None)
+        return True
+
+
+def GLibWeb(ctx, ucm):
+    """A WebView with this context and these user scripts (WebKit2GTK 4.1)."""
+    return WebKit2.WebView(web_context=ctx, user_content_manager=ucm)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument('--url', required=True)
+    ap.add_argument('--game-mode', action='store_true')
+    ap.add_argument('--user', default='')
+    a = ap.parse_args()
+    if not (a.url.startswith('https://') or (a.url.startswith('file://') and os.environ.get('HEARTH_CRP_FIXTURE'))):
+        print('CANCEL')
+        return 1
+    prov = Gtk.CssProvider()
+    prov.load_from_data(CSS)
+    Gtk.StyleContext.add_provider_for_screen(Gdk.Screen.get_default(), prov, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
+    s = SignIn(a.url, a.game_mode, a.user)
+    Gtk.main()
+    return 0 if s.done else 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

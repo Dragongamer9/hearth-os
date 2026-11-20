@@ -1,0 +1,352 @@
+{
+ "_comment": "CI's stand-in for Microsoft's services (made-up answers, no real tokens): src/http.rs reads this when HEARTH_CRP_FIXTURE is set, and cargo test uses it.",
+ "POST device.auth.xboxlive.com/device/authenticate": {
+  "body": {
+   "Token": "stand-in-device-token"
+  }
+ },
+ "POST sisu.xboxlive.com/authenticate": {
+  "headers": {
+   "x-sessionid": "stand-in-session"
+  },
+  "body": {
+   "MsaOauthRedirect": "https://login.live.com/oauth20_authorize.srf?stand-in=1",
+   "MsaRequestParameters": {}
+  }
+ },
+ "POST login.live.com/oauth20_token.srf": {
+  "body": {
+   "access_token": "stand-in-access",
+   "refresh_token": "stand-in-refresh",
+   "lpt": "stand-in-transfer",
+   "expires_in": 3600
+  }
+ },
+ "POST sisu.xboxlive.com/authorize": {
+  "body": {
+   "DeviceToken": "stand-in-device-token",
+   "TitleToken": {
+    "Token": "stand-in-title"
+   },
+   "UserToken": {
+    "Token": "stand-in-user"
+   },
+   "AuthorizationToken": {
+    "DisplayClaims": {
+     "xui": [
+      {
+       "gtg": "EmberRunner42",
+       "uhs": "1234567890"
+      }
+     ]
+    }
+   }
+  }
+ },
+ "POST xsts.auth.xboxlive.com/xsts/authorize": {
+  "body": {
+   "Token": "stand-in-xsts",
+   "DisplayClaims": {
+    "xui": [
+     {
+      "uhs": "1234567890"
+     }
+    ]
+   }
+  }
+ },
+ "POST xhome.gssv-play-prod.xboxlive.com/v2/login/user": {
+  "body": {
+   "gsToken": "stand-in-home",
+   "durationInSeconds": 14400,
+   "offeringSettings": {
+    "regions": [
+     {
+      "name": "StandIn",
+      "baseUri": "https://home.stand-in.test",
+      "isDefault": true
+     }
+    ]
+   }
+  }
+ },
+ "POST xgpuweb.gssv-play-prod.xboxlive.com/v2/login/user": {
+  "body": {
+   "gsToken": "stand-in-cloud",
+   "durationInSeconds": 14400,
+   "offeringSettings": {
+    "regions": [
+     {
+      "name": "StandIn",
+      "baseUri": "https://cloud.stand-in.test",
+      "isDefault": true
+     }
+    ]
+   }
+  }
+ },
+ "GET home.stand-in.test/v6/servers/home": {
+  "body": {
+   "results": [
+    {
+     "deviceName": "Living room",
+     "serverId": "F4000000STANDIN",
+     "powerState": "ConnectedStandby",
+     "consoleType": "XboxSeriesX",
+     "playPath": "",
+     "outOfHomeWarning": true
+    }
+   ]
+  }
+ },
+ "GET xccs.xboxlive.com/lists/devices": {
+  "body": {
+   "result": [
+    {
+     "id": "F4000000STANDIN",
+     "name": "Living room",
+     "consoleType": "XboxSeriesX",
+     "powerState": "ConnectedStandby",
+     "remoteManagementEnabled": true,
+     "consoleStreamingEnabled": true
+    }
+   ]
+  }
+ },
+ "POST xccs.xboxlive.com/commands": {
+  "body": {
+   "status": {
+    "errorCode": "OK"
+   }
+  }
+ },
+ "GET xccs.xboxlive.com/consoles/F4000000STANDIN": {
+  "body": {
+   "powerState": "On"
+  }
+ },
+ "POST home.stand-in.test/v5/sessions/home/play": {
+  "body": {
+   "sessionPath": "v5/sessions/home/STANDIN-SESSION",
+   "sessionId": "STANDIN-SESSION"
+  }
+ },
+ "GET home.stand-in.test/v5/sessions/home/STANDIN-SESSION/state": [
+  {
+   "body": {
+    "state": "Provisioning"
+   }
+  },
+  {
+   "body": {
+    "state": "Provisioned"
+   }
+  }
+ ],
+ "GET home.stand-in.test/v5/sessions/home/STANDIN-SESSION/configuration": {
+  "body": {
+   "keepAlivePulseInSeconds": 60
+  }
+ },
+ "POST home.stand-in.test/v5/sessions/home/STANDIN-SESSION/sdp": {
+  "status": 202
+ },
+ "GET home.stand-in.test/v5/sessions/home/STANDIN-SESSION/sdp": [
+  {
+   "status": 204
+  },
+  {
+   "body": {
+    "exchangeResponse": "{\"sdp\": \"v=0\\r\\no=- 1 2 IN IP4 127.0.0.1\\r\\ns=-\\r\\nt=0 0\\r\\n\", \"status\": \"success\"}"
+   }
+  }
+ ],
+ "POST home.stand-in.test/v5/sessions/home/STANDIN-SESSION/ice": {
+  "status": 202
+ },
+ "GET home.stand-in.test/v5/sessions/home/STANDIN-SESSION/ice": {
+  "body": {
+   "exchangeResponse": "[{\"candidate\": \"a=candidate:1 1 UDP 100 192.0.2.10 9002 typ host\", \"sdpMid\": \"0\", \"sdpMLineIndex\": 0}, {\"candidate\": \"a=end-of-candidates\", \"sdpMid\": \"0\", \"sdpMLineIndex\": 0}]"
+  }
+ },
+ "POST home.stand-in.test/v5/sessions/home/STANDIN-SESSION/keepalive": {
+  "body": {}
+ },
+ "DELETE home.stand-in.test/v5/sessions/home/STANDIN-SESSION": {
+  "body": {}
+ },
+ "GET cloud.stand-in.test/v2/titles/mru": {
+  "body": {
+   "results": [
+    {
+     "titleId": "STANDIN0",
+     "details": {
+      "productId": "PRODUCT0",
+      "hasEntitlement": true
+     }
+    },
+    {
+     "titleId": "STANDIN1",
+     "details": {
+      "productId": "PRODUCT1",
+      "hasEntitlement": true
+     }
+    },
+    {
+     "titleId": "STANDIN2",
+     "details": {
+      "productId": "PRODUCT2",
+      "hasEntitlement": true
+     }
+    },
+    {
+     "titleId": "STANDIN3",
+     "details": {
+      "productId": "PRODUCT3",
+      "hasEntitlement": true
+     }
+    }
+   ]
+  }
+ },
+ "GET cloud.stand-in.test/v2/titles": {
+  "body": {
+   "results": [
+    {
+     "titleId": "STANDIN0",
+     "details": {
+      "productId": "PRODUCT0",
+      "hasEntitlement": true
+     }
+    },
+    {
+     "titleId": "STANDIN1",
+     "details": {
+      "productId": "PRODUCT1",
+      "hasEntitlement": true
+     }
+    },
+    {
+     "titleId": "STANDIN2",
+     "details": {
+      "productId": "PRODUCT2",
+      "hasEntitlement": true
+     }
+    },
+    {
+     "titleId": "STANDIN3",
+     "details": {
+      "productId": "PRODUCT3",
+      "hasEntitlement": true
+     }
+    },
+    {
+     "titleId": "STANDIN4",
+     "details": {
+      "productId": "PRODUCT4",
+      "hasEntitlement": true
+     }
+    },
+    {
+     "titleId": "STANDIN5",
+     "details": {
+      "productId": "PRODUCT5",
+      "hasEntitlement": true
+     }
+    },
+    {
+     "titleId": "STANDIN6",
+     "details": {
+      "productId": "PRODUCT6",
+      "hasEntitlement": true
+     }
+    },
+    {
+     "titleId": "STANDIN7",
+     "details": {
+      "productId": "PRODUCT7",
+      "hasEntitlement": true
+     }
+    }
+   ]
+  }
+ },
+ "POST catalog.gamepass.com/v3/products": {
+  "body": {
+   "Products": {
+    "PRODUCT0": {
+     "ProductTitle": "Lanternfall",
+     "Categories": [
+      "Adventure"
+     ],
+     "Image_Tile": {
+      "URL": "cloud-0.jpg"
+     }
+    },
+    "PRODUCT1": {
+     "ProductTitle": "Rust Run Rally",
+     "Categories": [
+      "Racing"
+     ],
+     "Image_Tile": {
+      "URL": "cloud-1.jpg"
+     }
+    },
+    "PRODUCT2": {
+     "ProductTitle": "Tidewatch",
+     "Categories": [
+      "Exploration"
+     ],
+     "Image_Tile": {
+      "URL": "cloud-2.jpg"
+     }
+    },
+    "PRODUCT3": {
+     "ProductTitle": "Ironroot Siege",
+     "Categories": [
+      "Strategy"
+     ],
+     "Image_Tile": {
+      "URL": "cloud-3.jpg"
+     }
+    },
+    "PRODUCT4": {
+     "ProductTitle": "Ember Drift",
+     "Categories": [
+      "Racing"
+     ],
+     "Image_Tile": {
+      "URL": "cloud-4.jpg"
+     }
+    },
+    "PRODUCT5": {
+     "ProductTitle": "Hollow Pines",
+     "Categories": [
+      "Survival"
+     ],
+     "Image_Tile": {
+      "URL": "cloud-5.jpg"
+     }
+    },
+    "PRODUCT6": {
+     "ProductTitle": "Stormglass",
+     "Categories": [
+      "Puzzle"
+     ],
+     "Image_Tile": {
+      "URL": "cloud-6.jpg"
+     }
+    },
+    "PRODUCT7": {
+     "ProductTitle": "Quiet Orbit",
+     "Categories": [
+      "Sim"
+     ],
+     "Image_Tile": {
+      "URL": "cloud-7.jpg"
+     }
+    }
+   }
+  }
+ }
+}

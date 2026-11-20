@@ -1,0 +1,147 @@
+# Hearth Console Remote Play (hosts/console-remote-play; docs/CONSOLE-REMOTE-PLAY.md): a Hearth Store app.
+# Built and tested only here, in Fedora 45 as Hearth OS, Fedora edition is (it can't reach a real Xbox: Microsoft's
+# services are CI's stand-in, tests/fixtures/http.json):
+#   build     cargo build --release and cargo test (the sign-in's signing and PKCE, the recorded answers, the
+#             controller packets, settings and the monthly data), errors as annotations
+#   run       every page on a headless screen (sway): the desktop pages at 1920 x 1080, the Ally's Game Mode pages at
+#             1280 x 800, CPU at rest, opening writes nothing, no token in a log or a file
+#   pictures  each picture as SHOT notices (one job each)
+# No version number anywhere: the owner picks it. Nothing is released from here.
+name: Hearth Console Remote Play
+
+on:
+  # A new workflow can only be started by hand once it's on main; until then, pushes to its branch start it.
+  push:
+    branches: ['feature/console-remote-play']
+    paths: ['hosts/console-remote-play/**', 'hosts/hearth-ui/src/**', '.github/workflows/console-remote-play.yml', '.github/scripts/console-remote-play-test.sh']
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Only the pictures whose names match this (an extended regex); empty: all of them'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: console-remote-play-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: registry.fedoraproject.org/fedora:45
+    steps:
+      - name: Rust, the libraries iced uses, and GStreamer's
+        run: |
+          dnf -y install git tar zstd gcc pkgconf-pkg-config rust cargo libxkbcommon-devel wayland-devel fontconfig-devel freetype-devel python3 \
+            gstreamer1-devel gstreamer1-plugins-base-devel gstreamer1-plugins-bad-free-devel >/dev/null
+          echo "::notice title=toolchain::$(rustc --version) · $(cargo --version) · GStreamer $(pkg-config --modversion gstreamer-1.0) · webrtc $(pkg-config --modversion gstreamer-webrtc-1.0)"
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            hosts/console-remote-play/target
+          key: crp-f45-${{ hashFiles('hosts/console-remote-play/Cargo.toml', 'hosts/hearth-ui/Cargo.toml') }}-${{ github.sha }}
+          restore-keys: crp-f45-${{ hashFiles('hosts/console-remote-play/Cargo.toml', 'hosts/hearth-ui/Cargo.toml') }}-
+      - name: Build
+        run: |
+          set -o pipefail
+          cd hosts/console-remote-play
+          if ! cargo build --release 2>&1 | tee ../../build.log; then
+            grep -E '^error' -A14 ../../build.log | grep -v '^--$' | head -600 > ../../errs.txt
+            awk '/^error/{if (b) print b; b=$0; next} {b=b "|" $0} END{print b}' ../../errs.txt | head -40 | while read -r l; do
+              echo "::error title=cargo build::$(echo "$l" | cut -c1-3800)"
+            done
+            exit 1
+          fi
+          echo "::notice title=size::$(du -h target/release/hearth-console-remote-play | cut -f1)"
+          grep -c '^warning' ../../build.log | xargs -I{} echo "::notice title=warnings::{} warnings"
+      - name: Tests
+        run: |
+          cd hosts/console-remote-play
+          cargo test --release -- --test-threads=1 2>&1 | tee ../../test.log || { grep -E "panicked|FAILED|^error" -A3 ../../test.log | head -30 | while read -r l; do echo "::error title=cargo test::$l"; done; exit 1; }
+          echo "::notice title=cargo test::$(grep -E '^test result' ../../test.log | tr '\n' ' ' | cut -c1-500)"
+      - name: Gather
+        run: |
+          mkdir -p bin
+          cp hosts/console-remote-play/target/release/hearth-console-remote-play bin/
+          cp hosts/console-remote-play/helper/hearth-console-remote-play-signin bin/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: console-remote-play
+          path: bin
+          retention-days: 7
+
+  run:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container: registry.fedoraproject.org/fedora:45
+    outputs:
+      shots: ${{ steps.list.outputs.shots }}
+    steps:
+      - name: A screen in memory (sway), grim, fonts, GStreamer, WebKitGTK
+        run: |
+          dnf -y install --skip-unavailable git sway grim procps-ng python3 python3-pillow util-linux shadow-utils libxkbcommon libwayland-client libwayland-cursor \
+            mesa-vulkan-drivers vulkan-loader mesa-dri-drivers mesa-libEGL mesa-libgbm libglvnd-egl fontconfig rsms-inter-fonts google-noto-sans-fonts \
+            google-noto-sans-symbols-fonts google-noto-sans-symbols-2-fonts dejavu-sans-fonts dejavu-sans-mono-fonts \
+            gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free \
+            webkit2gtk4.1 gtk3 python3-gobject python3-cairo adwaita-icon-theme >/dev/null
+          for b in sway grim swaymsg runuser; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed"; done
+          python3 -c 'import gi; gi.require_version("WebKit2", "4.1"); from gi.repository import WebKit2' || echo "::warning title=setup::no WebKitGTK for Python (the sign-in window)"
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: console-remote-play
+          path: bin
+      - name: Every page, measured and pictured
+        timeout-minutes: 30
+        run: |
+          chmod +x bin/*
+          HEARTH_SHOTS_ONLY="${{ inputs.only }}" bash .github/scripts/console-remote-play-test.sh
+      - name: The pictures taken
+        id: list
+        if: always()
+        run: |
+          ls shots/*.png 2>/dev/null | xargs -r -n1 basename | sed 's/\.png$//' > /tmp/shots.txt || true
+          ONLY="${{ inputs.only }}"
+          if [ -n "$ONLY" ]; then grep -E "$ONLY" /tmp/shots.txt > /tmp/s2.txt || true; mv /tmp/s2.txt /tmp/shots.txt; fi
+          echo "shots=$(python3 -c 'import json,sys; print(json.dumps([l.strip() for l in open(sys.argv[1]) if l.strip()][:200]))' /tmp/shots.txt)" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: console-remote-play-shots
+          path: |
+            shots
+            results.txt
+          retention-days: 14
+
+  pictures:
+    needs: run
+    if: always() && needs.run.result != 'skipped' && needs.run.outputs.shots != '[]' && needs.run.outputs.shots != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: ${{ fromJSON(needs.run.outputs.shots || '[]') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: console-remote-play-shots
+          path: .
+      - name: Picture ${{ matrix.shot }}
+        run: |
+          python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow >/dev/null 2>&1 || python3 -m pip install --quiet pillow >/dev/null
+          python3 .github/scripts/firehold-shot.py ${{ matrix.shot }}

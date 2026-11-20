@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- CI's stand-in for Microsoft's sign-in page (the real one comes from login.live.com). Drawn as the approved mockup
+     draws it: a plain outline, so nothing of Microsoft's design is copied. -->
+<html><head><meta charset="utf-8"><title>Microsoft's own sign-in page (CI stand-in)</title>
+<style>
+body{margin:0;background:#f3f3f3;color:#1b1b1b;font-family:Inter,sans-serif;padding:34px 46px;position:relative}
+.tag{position:absolute;right:14px;top:12px;font-size:12px;font-weight:700;color:#666;border:1px dashed #999;border-radius:6px;padding:2px 8px}
+h1{font-size:22px;font-weight:600;margin:0 0 8px}
+p{font-size:15px;color:#555;line-height:1.5;margin:0 0 26px}
+.bar{height:14px;width:40%;background:#d4d4d8;border-radius:7px;margin-bottom:16px}
+input{display:block;box-sizing:border-box;width:100%;height:44px;background:#fff;border:2px dashed #b8b8c0;border-radius:6px;margin-bottom:14px;padding:0 14px;font-size:15px;font-family:Inter,sans-serif}
+.go{display:flex;justify-content:flex-end;margin-top:6px}.go span{width:120px;height:40px;background:#c9c9cf;border-radius:6px}
+</style></head><body>
+<div class="tag">Microsoft's page</div>
+<h1>Microsoft's own sign-in page</h1>
+<p>Shown here as a plain outline. In the app this area is Microsoft's real page, loaded straight from Microsoft.</p>
+<div class="bar"></div>
+<input placeholder="email">
+<input placeholder="password, typed on Microsoft's page" type="password">
+<div class="go"><span></span></div>
+<script>
+// CI only: with auto=1 the stand-in "signs in" after a moment, the way Microsoft's page ends: it goes to the app's
+// redirect address, which the sign-in window catches (and never loads).
+var q = new URLSearchParams(location.search);
+if (q.get('auto') === '1') setTimeout(function () {
+  location.href = 'ms-xal-000000004c20a908://auth?code=STANDIN&state=' + encodeURIComponent(q.get('state') || '');
+}, 1500);
+</script>
+</body></html>
