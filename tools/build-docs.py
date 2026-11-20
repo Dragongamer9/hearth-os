@@ -204,7 +204,7 @@ INSTALL = f'''
 for a device that won't start.</p>
 <div class="tbl"><table>
 <tr><th>Download</th><th>Size</th><th>Internet while installing</th></tr>
-<tr><td><a href="{R2}hearth-os-anatase.iso">Hearth OS, offline USB</a> (the Fedora edition)</td><td>about 6 GB</td><td>Not needed</td></tr>
+<tr><td><a href="{R2}hearth-os-anatase.iso">Hearth OS, offline USB</a> (the Fedora edition)</td><td>about 9 GB</td><td>Not needed</td></tr>
 <tr><td><a href="{R2}hearth-recovery.iso">Hearth Recovery USB</a> (<a href="troubleshooting.html#recovery-usb">repairs a Hearth device that won't start</a>)</td><td>about 5 GB</td><td>Only to update or send logs</td></tr>
 </table></div>
 <p>To check a download wasn't damaged, compare its checksum (a <code>.sha256</code> file sits next to each ISO, for example

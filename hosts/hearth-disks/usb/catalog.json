@@ -270,7 +270,7 @@
     },
     {
       "id": "hearth-fedora", "group": "hearth", "family": "Hearth OS", "name": "Hearth OS", "flavour": "Offline USB",
-      "homepage": "https://hearthos.fun/docs/install.html", "sizeHint": "6 GB",
+      "homepage": "https://hearthos.fun/docs/install.html", "sizeHint": "9 GB",
       "about": "Hearth OS, Fedora edition, on the USB drive, so it installs without internet.",
       "resolve": { "kind": "single", "url": "https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-anatase.iso" },
       "checksums": { "file": "{url}.sha256" },
