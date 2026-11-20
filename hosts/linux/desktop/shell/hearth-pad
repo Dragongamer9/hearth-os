@@ -224,6 +224,7 @@ def plasma_rust_owner(cls, name):
 def plasma_app(cls):
     c = (cls or '').lower()
     return PLASMA_APPS.get(c[len('org.kde.'):] if c.startswith('org.kde.') else c)
+PLASMA_TOUCH_AFTER_CLOSE = 3.0   # s: a touch-shown panel doesn't reopen the keyboard this soon after it closed
 PLASMA_OSK_RECENT = 8.0      # s: a text field opens the keyboard by itself only this soon after the controller was used
 
 
@@ -371,6 +372,7 @@ class Pad:
         self.win = ('', '', False, '')   # --plasma: the window in front (class, title, fullscreen, kind), from KWin
         self.key_overlay = False   # --plasma: the taskbar / Overview / a popup has the keys until a window says otherwise
         self.textfield = False     # --plasma: KWin says a text field has the focus
+        self.osk_closed_at = -1e9  # --plasma: when the on-screen keyboard last closed (a touch reopens it only later)
         self.last_input = -1e9     # when a controller button last went down
         self.guide_from = None     # what was open when Guide went down (Guide + X closes the keyboard if it was)
         self.done = False          # --game: turned off with View + Menu
@@ -533,6 +535,7 @@ class Pad:
     def close_osk(self):
         self.set_mode('desk')
         self.osk_split = False
+        self.osk_closed_at = time.monotonic()
 
     def open_radial(self):
         self.set_mode('radial')
@@ -959,7 +962,7 @@ class Pad:
         elif c == 'textfield' and self.plasma:
             self.plasma_textfield(bool(m.get('on')), m.get('now'))
         elif c == 'touchfield' and self.plasma:
-            self.plasma_touchfield(bool(m.get('on')))
+            self.plasma_touchfield(bool(m.get('on')), m.get('now'))
 
     # ------------------------------------------------------------------ Hearth Plasma (--plasma)
     def plasma_keys(self):
@@ -1056,10 +1059,13 @@ class Pad:
         if on and not was and self.win[0].lower() not in PLASMA_SHELL:
             self.plasma_auto_osk(now)
 
-    def plasma_touchfield(self, on):
+    def plasma_touchfield(self, on, now=None):
         """KWin showed its input panel: a text field was touched (KDE's keyboard would pop up here). Hearth's keyboard
-        opens, whenever the controller was last used (the controller rule above is for focus that came from it)."""
-        if on and self.mode != 'osk':
+        opens, whenever the controller was last used (the controller rule above is for focus that came from it). Not
+        right after you closed it (B, its hide key): KWin shows its panel again when the windows make room back, and
+        the keyboard must stay closed then."""
+        now = time.monotonic() if now is None else now
+        if on and self.mode != 'osk' and now - self.osk_closed_at >= PLASMA_TOUCH_AFTER_CLOSE:
             note('a text field was touched: the keyboard opens')
             self.want_osk()
 

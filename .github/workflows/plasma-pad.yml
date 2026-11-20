@@ -135,11 +135,15 @@ jobs:
         run: |
           set +e +o pipefail
           source .github/scripts/plasma-pad-session.sh
+          # KWin's touch mode off, as on a PC with a mouse (CI's only pointer is KWin's fake-input device, which can also
+          # touch, so KWin would otherwise switch itself into touch mode, where KDE's keyboard shows on every field).
+          printf '[Input]\nTabletMode=off\n' > "$HOME/.config/kwinrc"
           session_start main || exit 1
           echo "::notice title=KWin::$(grep -iE 'opengl|qpainter|compositing|llvmpipe' shots/kwin.log | head -4 | tr '\n' '|' | cut -c1-600)"
           timeout 1500 python3 .github/scripts/plasma-pad-e2e.py shots bin; rc=$?
           echo "::notice title=KWin log::$(grep -aiE 'hearth|input ?method|layer|error' shots/kwin.log | tail -12 | tr '\n' '|' | sed 's/%/%25/g' | cut -c1-2500)"
           session_stop main
+          rm -f "$HOME/.config/kwinrc"
           # Hearth's typing guarded: KWin and Plasma come up whatever happens to it, with KDE's keyboard instead.
           rm -f "$XDG_RUNTIME_DIR/hearth/kwin-im-failed"
           session_start hearth && python3 .github/scripts/plasma-pad-fallback.py shots hearth || rc=1

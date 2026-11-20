@@ -5,6 +5,7 @@ import importlib.machinery
 import json
 import importlib.util
 import pathlib
+import time
 import unittest
 
 PATH = pathlib.Path(__file__).resolve().parent.parent / 'desktop' / 'shell' / 'hearth-pad'
@@ -674,6 +675,13 @@ class PlasmaTest(unittest.TestCase):
         pad.command({'cmd': 'osk', 'open': True})
         pad.command({'cmd': 'touchfield', 'on': True})   # already open: once
         self.assertEqual(len(out.sent), n + 1)
+        # Closed (B): KWin's panel shown again as the windows make room doesn't bring it back; a touch later does.
+        pad.command({'cmd': 'osk', 'open': False})
+        t = time.monotonic()
+        pad.command({'cmd': 'touchfield', 'on': True, 'now': t + 1.0})
+        self.assertEqual(len(out.sent), n + 1)
+        pad.command({'cmd': 'touchfield', 'on': True, 'now': t + 5.0})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
 
     def test_hearth_apps_like_mantels(self):
         pad, out = self.make()

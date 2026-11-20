@@ -68,6 +68,15 @@ def shot(name):
         error('picture ' + name, repr(e))
 
 
+def tablet():
+    """KWin's touch (tablet) mode: in it KDE shows its keyboard on every text field, as KWin does Hearth's panel."""
+    try:
+        p = dbus.Interface(BUS.get_object('org.kde.KWin', '/org/kde/KWin'), 'org.freedesktop.DBus.Properties')
+        return {str(k): str(v) for k, v in p.GetAll('org.kde.KWin.TabletModeManager').items()}
+    except Exception as e:
+        return {'error': repr(e)[:120]}
+
+
 def vk():
     """KWin's virtual keyboard state (what tells hearth-pad a text field has the focus)."""
     try:
@@ -460,7 +469,7 @@ click(500, 117)
 time.sleep(2.0)
 v = vk()
 opened = kb_is_open()
-notice('mouse click on a text field', 'KWin %s · keyboard %s' % (v, 'OPEN' if opened else 'not open'))
+notice('mouse click on a text field', 'KWin %s · touch mode %s · keyboard %s' % (v, tablet(), 'OPEN' if opened else 'not open'))
 shot('pad-k34-mouse-click-text-field')
 if not v.get('active'):
     error('mouse click', "the mouse click didn't reach the text field (KWin: %s), so it proves nothing" % v)
