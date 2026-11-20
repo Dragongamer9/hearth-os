@@ -52,6 +52,7 @@ Item {
             readonly property bool activated: model.IsActive === true
             property bool minimized: model.IsMinimized === true
             property bool maximized: model.IsMaximized === true
+            readonly property bool fullscreen: model.IsFullScreen === true
             readonly property var desktops: model.VirtualDesktops || []
             readonly property var icon: model.decoration
             function idx() { return tasks.makeModelIndex(w.index); }

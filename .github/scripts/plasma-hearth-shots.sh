@@ -22,6 +22,17 @@ export QT_FORCE_STDERR_LOGGING=1 KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 LIBGL_AL
 [ -e /etc/xdg/menus/applications.menu ] || export XDG_MENU_PREFIX=$(basename "$(ls /etc/xdg/menus/*-applications.menu 2>/dev/null | head -1)" applications.menu)
 D="$HOME/.local/share/nimbus/desktop.json"
 printf '{"pins": ["hearth-maps", "hearth-paint", "org.kde.konsole"], "recent": ["org.kde.dolphin", "org.kde.konsole", "org.kde.kate"]}\n' > "$HOME/.config/nimbus/desk.json"
+# Hearth Time's stand-in (hosts/hearth-time), as Mantel's CI: an event for the calendar, a weather line.
+mkdir -p /usr/local/bin
+printf '%s\n' '#!/bin/sh' 'case "$1" in' \
+  '  --events) d=$(date +%F); printf "{\"events\":[{\"title\":\"Dentist\",\"date\":\"%s\",\"lastDate\":\"%s\",\"allDay\":false,\"start\":%s000,\"end\":%s000,\"location\":\"Smile Clinic\",\"color\":\"\"}]}\n" "$d" "$d" "$(date -d "+2 hours" +%s)" "$(date -d "+3 hours" +%s)" ;;' \
+  '  --weather-summary) echo "{\"place\":\"Lisbon\",\"line\":\"18° Partly cloudy\",\"day\":true}" ;;' 'esac' > /usr/local/bin/hearth-time
+chmod +x /usr/local/bin/hearth-time
+# Desktop icons, as Mantel's pictures have.
+mkdir -p "$HOME/Desktop/Projects"
+# A Flatpak-style app whose notifications take its icon from its desktop entry.
+mkdir -p "$HOME/.local/share/applications"
+printf '[Desktop Entry]\nType=Application\nName=Flatpak test\nIcon=applications-games\nExec=true\n' > "$HOME/.local/share/applications/org.hearth.IconTest.desktop"
 # Games, as Mantel's pictures have (hearth-games' copy from last time).
 mkdir -p "$HOME/.cache/hearth"
 printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""},{"id":"beacon:bfme2","title":"The Battle for Middle-earth II","source":"beacon","cover":"","wide":"","icon":""}]' > "$HOME/.cache/hearth/desktop-games.json"
@@ -66,6 +77,7 @@ for kv in sys.argv[4:]:
     except ValueError: d[k] = v
 open(p, "w").write(json.dumps(d, indent=2) + "\n")
 PY
+  [ -x /usr/libexec/nimbus/hearth-plasma-looks ] && timeout 60 python3 /usr/libexec/nimbus/hearth-plasma-looks sync >>"$OUT/looks.log" 2>&1
   hearth-plasma-panel sync >>"$OUT/sync.log" 2>&1
   sleep 4
 }
@@ -92,6 +104,9 @@ shot ph-00-plain-kde-plasma
 hearth-plasma-panel apply > "$OUT/apply.json" 2>&1
 grep -q '"ok": true' "$OUT/apply.json" || fail apply "hearth-plasma-panel apply: $(tr '\n' ' ' <"$OUT/apply.json" | cut -c1-600)"
 ls "$HOME/.local/share/hearth/plasma-panel/" >"$OUT/saved-panels.txt" 2>&1
+for f in plasmanotifyrc plasmarc kwinrc; do echo "== $f"; cat "$HOME/.config/$f" 2>&1; done > "$OUT/kde-settings-after-apply.txt"
+grep -q "CriticalInDndMode=false" "$HOME/.config/plasmanotifyrc" || fail kde-settings "KDE's critical pop-ups weren't paused (plasmanotifyrc)"
+ls "$HOME/.local/share/aurorae/themes/" > "$OUT/aurorae-themes.txt" 2>&1
 sleep 8
 echo "::notice title=Panels::$(js 'print(panels().map(function(p){return p.location+" "+p.height+" "+p.hiding+" "+p.widgets().map(function(w){w.currentConfigGroup=["General"];return w.type+":"+w.readConfig("role","")}).join(",")}).join(" | "))' | tail -1 | cut -c1-600)"
 
@@ -101,9 +116,17 @@ sleep 6
 cat > /tmp/notify.py <<'PY'
 import dbus, sys
 n = dbus.Interface(dbus.SessionBus().get_object('org.freedesktop.Notifications', '/org/freedesktop/Notifications'), 'org.freedesktop.Notifications')
-print(n.Notify(sys.argv[1], 0, sys.argv[4] if len(sys.argv) > 4 else '', sys.argv[2], sys.argv[3], [], {'urgency': dbus.Byte(int(sys.argv[5]) if len(sys.argv) > 5 else 1)}, 30000))
+a = sys.argv + [''] * 12
+acts = [x for x in a[6:10] if x != '']
+hints = {'urgency': dbus.Byte(int(a[5]) if a[5] else 1)}
+if a[10]: hints['desktop-entry'] = a[10]
+print(n.Notify(a[1], 0, a[4], a[2], a[3], acts, hints, 30000))
 PY
 note() { timeout 10 python3 /tmp/notify.py "$@" >>"$OUT/notify.log" 2>&1 || echo "notify failed: $*" >>"$OUT/notify.log"; }
+note "Printers" "2 cartridges are low" "Black toner (12 %), Magenta (8 %) · HP LaserJet M209"; sleep 1
+note "Other App" "Second one" "For the count on the bell"; sleep 1
+note "Test App" "Hello from a test" "Notifications pop up in the corner" "" 1 default Open later "Remind me"; sleep 1
+note "Flatpak test" "From a Flatpak app" "Its icon comes from its desktop entry" "" 1 "" "" "" "" org.hearth.IconTest; sleep 1
 note "Friends" "Mira" "Ready for co-op tonight?"; sleep 1
 note "Hearth" "Download finished" "Celeste is ready to play" "" 2
 sleep 2
@@ -120,6 +143,13 @@ for lm in "hearth dark" "steam dark" "gaming dark" "zen dark" "glass dark" "synt
   open_ calendar; shot "ph-$n-$1-$2-4-notifications-dashboard"; open_ calendar
   n=$((n + 1))
 done
+
+# ---- Mantel's power menu, the desktop's right-click menu, the volume and brightness bars (Hearth dark)
+setlook hearth dark
+open_ power; shot ph-20-power-menu; hearth-plasma-panel open power >/dev/null 2>&1; timeout 5 wtype -k Escape 2>/dev/null; sleep 2
+open_ deskmenu; shot ph-21-desktop-menu; timeout 5 wtype -k Escape 2>/dev/null; sleep 2
+open_ osd; sleep 0; shot ph-22-volume-bar; sleep 2
+open_ osd-bright; shot ph-23-brightness-bar; sleep 2
 
 # ---- the five app menus (Settings › Bar and dock › App menu), Hearth dark
 for st in hearth centred tiles start classic; do
@@ -147,6 +177,8 @@ echo "::notice title=At rest::plasmashell used $(( (t1 - t0) )) ticks (1/100 s) 
 
 # ---- back to KDE's panel (Settings › Bar and dock › KDE's panel)
 hearth-plasma-panel undo > "$OUT/undo.json" 2>&1; sleep 6
+for f in plasmanotifyrc plasmarc kwinrc; do echo "== $f"; cat "$HOME/.config/$f" 2>&1; done > "$OUT/kde-settings-after-undo.txt"
+grep -q "CriticalInDndMode=false" "$HOME/.config/plasmanotifyrc" && fail undo "KDE's critical pop-ups setting wasn't put back"
 shot ph-50-back-to-kde-panel
 left=$(js 'var n=0;var ps=panels();for(var i=0;i<ps.length;i++)n+=ps[i].widgets("org.hearthos.panel").length;print(n+"/"+ps.length)' | tail -1)
 case "$left" in *'"0/'[1-9]*) ;; *) fail undo "Hearth's panel didn't come out, or no KDE panel came back: $left" ;; esac

@@ -11,10 +11,13 @@ Window {
     property real implicitWidth: 100
     property real implicitHeight: 100
     property var screen0: null
+    property int exclusiveZone: 0
+    property var mask: null
+    property string scopeName: "hearth-notifications"
     width: Math.max(1, implicitWidth)
     height: Math.max(1, implicitHeight)
     flags: Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus
-    LayerShell.Window.scope: "hearth-notifications"
+    LayerShell.Window.scope: scopeName
     LayerShell.Window.layer: LayerShell.Window.LayerOverlay
     LayerShell.Window.keyboardInteractivity: LayerShell.Window.KeyboardInteractivityNone
     LayerShell.Window.exclusionZone: -1

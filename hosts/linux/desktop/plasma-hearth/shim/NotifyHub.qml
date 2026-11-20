@@ -32,6 +32,9 @@ Item {
     property bool testSharing: false
     signal jobFinished(var j)
     signal quietEnded(int count, string why)
+    signal capsToggled(bool on)
+    signal numToggled(bool on)
+    signal layoutSwitched(string name)
     readonly property var defaults: ({ autoFullscreen: true, autoSharing: true, schedule: false, scheduleFrom: "22:00", scheduleTo: "07:00", keepHistory: true })
     function pref(k) { return defaults[k]; }
     function noteMissed() { missed++; }

@@ -31,7 +31,7 @@ env:
   PLASMA_EXTRA: >-
     libnotify qt6-qtdeclarative kf6-kirigami layer-shell-qt pipewire wireplumber kactivitymanagerd plasma-integration
     kglobalacceld plasma-nm plasma-pa plasma5support qt6-qttools dolphin konsole kate kde-cli-tools rsms-inter-fonts
-    dejavu-sans-fonts dejavu-sans-mono-fonts wtype qt6-qtwayland
+    dejavu-sans-fonts dejavu-sans-mono-fonts wtype qt6-qtwayland kf6-kconfig qt6-qt5compat
 
 jobs:
   screens:
@@ -55,6 +55,10 @@ jobs:
           mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
           mkdir -p /usr/share/backgrounds/hearth && cp os/branding/wallpapers/hearth-*.jpg /usr/share/backgrounds/hearth/
           for d in branding/icons/png/*x*; do mkdir -p "/usr/share/icons/hicolor/$(basename "$d")/apps" && cp "$d"/*.png "/usr/share/icons/hicolor/$(basename "$d")/apps/"; done
+          # Hearth's looks as Plasma Global Themes (the Fedora image's hearth-plasma-looks: KDE apps in each look's colours)
+          mkdir -p /usr/libexec/nimbus && install -m755 os-bases/anatase/system_files/usr/libexec/nimbus/hearth-plasma-looks /usr/libexec/nimbus/
+          logo=$(ls branding/icons/apps/hearth.svg branding/icons/apps/*.svg 2>/dev/null | head -1); mkdir -p /usr/share/icons/hicolor/scalable/apps; [ -n "$logo" ] && cp "$logo" /usr/share/icons/hicolor/scalable/apps/hearth.svg
+          python3 /usr/libexec/nimbus/hearth-plasma-looks build > /tmp/looks.json 2>/tmp/looks.err || echo "::warning title=looks::$(tail -3 /tmp/looks.err | tr '\n' ' ' | cut -c1-400)"
           bash /usr/share/nimbus/desktop/plasma-hearth/install.sh / | tee /tmp/install.log
           grep -q "installed with gaps" /tmp/install.log && echo "::warning title=install::$(tr '\n' ' ' </tmp/install.log | cut -c1-600)"
           ls -la /usr/share/plasma/plasmoids/ /usr/bin/hearth-plasma-panel

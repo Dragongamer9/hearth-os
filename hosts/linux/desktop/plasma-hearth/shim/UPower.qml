@@ -7,6 +7,7 @@ import org.kde.plasma.plasma5support as P5Support
 Item {
     P5Support.DataSource { id: pm; engine: "powermanagement"; connectedSources: ["Battery"] }
     readonly property var b: pm.data["Battery"] || ({})
+    readonly property bool onBattery: b["State"] === "Discharging"
     readonly property var displayDevice: ({
         isLaptopBattery: b["Has Battery"] === true || b["Has Cumulative"] === true,
         percentage: (Number(b["Percent"]) || 0) / 100,

@@ -390,8 +390,89 @@ print(JSON.stringify({ok: true, panels: panels().length}));
 '''
 
 
+# KDE's own settings Hearth's panel changes while it's in use, and what they were (saved with your panels; `undo`
+# puts each back, or removes it when it wasn't set). Each is one of KDE's pieces Hearth's panel draws itself:
+#   KDE's critical pop-ups while Hearth holds KDE's pop-ups (Hearth shows every notification itself; when Hearth's
+#   panel isn't running nothing is held, so KDE's pop-ups all come back), KDE's on-screen display (Hearth's volume and
+#   brightness bars), and the window frames (Mantel's own, theme/hearth_aurorae.py).
+KDE_KEYS = [('plasmanotifyrc', 'Notifications', 'CriticalInDndMode', 'false'),
+            ('plasmarc', 'OSD', 'Enabled', 'false'),
+            ('kwinrc', 'org.kde.kdecoration2', 'library', 'org.kde.kwin.aurorae'),
+            ('kwinrc', 'org.kde.kdecoration2', 'theme', '__aurorae__svg__hearth')]
+
+
+def kcfg(tool):
+    for t in (tool + '6', tool):
+        if shutil.which(t):
+            return t
+    return None
+
+
+def kread(f, g, k):
+    t = kcfg('kreadconfig')
+    if not t:
+        return None
+    r = subprocess.run([t, '--file', f, '--group', g, '--key', k, '--default', '__hearth_none__'], capture_output=True, text=True, timeout=10)
+    v = r.stdout.rstrip('\n')
+    return None if v == '__hearth_none__' else v
+
+
+def kwrite(f, g, k, v):
+    t = kcfg('kwriteconfig')
+    if not t:
+        return False
+    args = [t, '--file', f, '--group', g, '--key', k] + (['--delete'] if v is None else [v])
+    return subprocess.run(args, capture_output=True, timeout=10).returncode == 0
+
+
+def kde_take(dest):
+    old = {}
+    for f, g, k, v in KDE_KEYS:
+        old['%s|%s|%s' % (f, g, k)] = kread(f, g, k)
+        kwrite(f, g, k, v)
+    try:
+        with open(os.path.join(dest, 'kde-settings.json'), 'w') as fh:
+            json.dump(old, fh)
+    except OSError:
+        pass
+    frames()
+
+
+def kde_give_back():
+    root = backup_root()
+    for d in sorted(os.listdir(root), reverse=True) if os.path.isdir(root) else []:
+        old = read_json(os.path.join(root, d, 'kde-settings.json'))
+        if isinstance(old, dict):
+            for key, v in old.items():
+                f, g, k = key.split('|')
+                kwrite(f, g, k, v)
+            break
+    subprocess.run(['dbus-send', '--session', '--type=method_call', '--dest=org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure'],
+                   capture_output=True, timeout=10)
+
+
+def in_use():
+    d = read_json(os.path.join(data(), 'nimbus', 'desktop.json'), {}) or {}
+    return d.get('plasmaPanel') == 'hearth'
+
+
+def frames():
+    """Mantel's own window frames for your look (theme/hearth-theme writes the Aurorae theme and picks it), while
+    Hearth's panel is in use."""
+    ht = os.path.join(os.path.dirname(SHELL), 'theme', 'hearth-theme')
+    if not os.path.isfile(ht):
+        return 1
+    env = dict(os.environ, HEARTH_WM='kwin')
+    subprocess.run([sys.executable, ht], env=env, capture_output=True, timeout=60)
+    kwrite('kwinrc', 'org.kde.kdecoration2', 'library', 'org.kde.kwin.aurorae')
+    subprocess.run(['dbus-send', '--session', '--type=method_call', '--dest=org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure'],
+                   capture_output=True, timeout=10)
+    return 0
+
+
 def apply():
     dest = save_panels()
+    kde_take(dest)
     out = plasma_js(params() + APPLY_JS)
     o = last_json(out)
     if not o or not o.get('ok'):
@@ -409,6 +490,7 @@ def undo():
         print(json.dumps({'ok': False, 'why': "Plasma's panel didn't answer"}))
         return 1
     remember('kde')
+    kde_give_back()
     print(json.dumps({'ok': True}))
     return 0
 
@@ -430,6 +512,8 @@ def restore(which=''):
 
 
 def sync():
+    if in_use():
+        frames()
     out = plasma_js(params() + SYNC_JS)
     o = last_json(out) or {'ok': False}
     print(json.dumps(o))
@@ -489,9 +573,11 @@ def main(argv):
         return restore(rest[0] if rest else '')
     elif cmd == 'sync':
         return sync()
+    elif cmd == 'frames':        # hearth-plasma-looks after a Global Theme: Mantel's frames back, if Hearth's panel is in use
+        return frames() if in_use() else 0
     elif cmd == 'hold-popups':
         return hold_popups()
-    elif cmd == 'open' and rest and rest[0] in ('launcher', 'quick', 'calendar', 'search'):
+    elif cmd == 'open' and rest and rest[0] in ('launcher', 'quick', 'calendar', 'search', 'power', 'deskmenu', 'osd', 'osd-bright'):
         # Opens (or closes again) the app menu, Quick settings or the dashboard on Hearth's bar: for a shortcut
         # of your own, and CI's pictures.
         out = plasma_js('var ps=panels();for(var i=0;i<ps.length;i++){var ws=ps[i].widgets("org.hearthos.panel");'

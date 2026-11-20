@@ -23,7 +23,9 @@ MANTEL="Theme.qml subthemes.js Settings.qml SettingsWriter.qml DeskState.qml Lea
   MenuClassic.qml MenuTiles.qml MenuStart.qml MenuStyles.qml PopMenu.qml Islands.qml Dock.qml TaskStrip.qml Launcher.qml
   DeskSwitcher.qml MediaPill.qml PerfIsland.qml Stats.qml SearchSources.qml WinPreviewTip.qml menu-nav.js menu-search.js
   QuickAccess.qml PhoneStatus.qml ClockPanel.qml MediaCard.qml StatsCard.qml calendars.js Notifications.qml NotifReply.qml
-  Sounds.qml"
+  Sounds.qml Frost.qml FrostBlur.qml Scene.qml Wallpaper.qml WallShow.qml DeskClock.qml Desktop.qml DesktopMenu.qml
+  DeskDialog.qml search-bar.js SearchBar.qml VolumeOsd.qml SystemOsd.qml PowerMenu.qml
+  LeaveConfirm.qml"
 
 build() {   # build ID NAME DESCRIPTION
   local id=$1 dir="$P/$1"

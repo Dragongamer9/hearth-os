@@ -21,13 +21,22 @@ DROP = [
 
 # Names a Quickshell window may use that an Item already has (it's an Item here): renamed in that file.
 RENAME = {'ClockPanel.qml': [('function left(sec)', 'function timeLeft(sec)'), ('root.left((', 'root.timeLeft((')]}
+# Small windows of their own (a bar at the top of the screen): a real layer window on Plasma (LayerPanel.qml), their
+# edges and margins kept.
+OWN_WINDOW = {'VolumeOsd.qml', 'SystemOsd.qml'}
 
 
 def fix(text, name=''):
     for a, b in RENAME.get(name, []):
         text = text.replace(a, b)
     out = []
+    own = name in OWN_WINDOW
+    if own:
+        text = re.sub(r'(?m)^PanelWindow \{', 'LayerPanel {', text, count=1)
     for line in text.split('\n'):
+        if own and re.match(r'^    anchors \{', line):
+            out.append(line)
+            continue
         if any(p.match(line) for p in DROP):
             out.append('// (plasma-hearth: ' + line.strip()[:60].replace('*/', '') + ')')
             continue

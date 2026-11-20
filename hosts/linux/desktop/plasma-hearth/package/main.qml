@@ -39,6 +39,10 @@ PlasmoidItem {
         else if (w === "search") menus.openMenuSearch();
         else if (w === "quick") menus.toggleQuick();
         else if (w === "calendar") menus.toggleCalendar();
+        else if (w === "power") menus.openPower();
+        else if (w === "deskmenu" && deskL.item) deskL.item.backgroundMenu(900, 500);
+        else if (w === "osd") menus.showOsd(0.62, false);
+        else if (w === "osd-bright") menus.showBright(80);
     }
     Component.onCompleted: openSeen = openAsk
 
@@ -50,6 +54,9 @@ PlasmoidItem {
     // shows), on Plasma's own notification service: Hearth's bar or Hearth's bell takes them, if nothing else does.
     readonly property bool small: role === "menu" || role === "quick" || role === "notes"
     Loader { active: main.role === "bar" || main.role === "notes"; source: "Notifications.qml" }
+    // Mantel's desktop (wallpaper, desktop clock, icons, right-click menu) under the windows, with Hearth's bar.
+    Loader { id: deskL; active: main.role === "bar"; source: "DesktopLayer.qml"; onLoaded: item.menus = menus }
+    // hearth-plasma-panel open power (Mantel's power menu), osd-test (CI pictures of the volume bar)
 
     fullRepresentation: Item {
         id: rep

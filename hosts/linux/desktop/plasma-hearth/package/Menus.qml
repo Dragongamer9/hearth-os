@@ -28,6 +28,7 @@ Item {
         function wire() {
             const l = content;
             l.popMenu = popW.content;
+            l.dialog = Qt.binding(() => dialogW.content);
             l.barSearch = Qt.binding(() => Theme.appMenu === "tiles" && !!m.host && m.host.role === "bar");
             l.screen = Qt.binding(() => Hearth.screen);
             l.settingsRequested.connect(() => SettingsNav.openPage(""));
@@ -45,11 +46,28 @@ Item {
             q.settingsRequested.connect(() => SettingsNav.openPage(""));
             q.pageRequested.connect(p => SettingsNav.openPage(p));
             q.lockRequested.connect(() => Hearth.run(["loginctl", "lock-session"]));
-            // Mantel's power menu comes to Plasma with stage 2; until then KDE's own (Lock, Sleep, Restart, Shut down).
-            q.powerRequested.connect(() => Hearth.run(["dbus-send", "--session", "--dest=org.kde.LogoutPrompt", "--type=method_call", "/LogoutPrompt", "org.kde.LogoutPrompt.promptAll"]));
+            q.powerRequested.connect(() => m.openPower());
         }
     }
     Overlay { id: calendarW; name: "hearth-calendar"; source: "ClockPanel.qml" }
+    Overlay { id: dialogW; name: "hearth-dialog"; source: "DeskDialog.qml"; wanted: true }
+    Overlay {
+        id: powerW
+        name: "hearth-power"
+        source: "PowerMenu.qml"
+        wanted: true
+    }
+    // The volume and brightness bars and the small messages (Caps Lock, keyboard layout): Mantel's, small layer
+    // windows at the top of the screen (KDE's own on-screen display is off while Hearth's panel is in use).
+    Loader { id: volOsd; active: !!m.host && m.host.role === "bar"; source: "VolumeOsd.qml" }
+    Loader { id: sysOsd; active: !!m.host && m.host.role === "bar"; source: "SystemOsd.qml" }
+    Connections { target: Buttons; function onBrightnessOsd(pct) { if (volOsd.item) volOsd.item.showBrightness(pct); } }
+    Binding { target: Buttons; property: "quiet"; value: m.quickShown }
+    function showOsd(v, mu) { if (volOsd.item) volOsd.item.show(v, mu); }
+    function showBright(p) { if (volOsd.item) volOsd.item.showBrightness(p); }
+    function popMenu() { return popW.content; }
+    function deskDialog() { return dialogW.content; }
+    function openPower() { if (powerW.ready && typeof powerW.content.open === "function") powerW.content.open(); }
 
     function toggleLauncher() { launcherW.wanted = true; if (launcherW.ready) launcherW.content.toggle(); else launcherW.pending = () => launcherW.content.toggle(); }
     function openMenuSearch() { launcherW.wanted = true; if (launcherW.ready) launcherW.content.openMenuSearch(); else launcherW.pending = () => launcherW.content.openMenuSearch(); }
