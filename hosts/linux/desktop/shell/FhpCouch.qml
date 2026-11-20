@@ -35,7 +35,15 @@ PanelWindow {
         anchors.fill: parent
         focus: true
         Component.onCompleted: setSource("fhcouch/Couch.qml", { hostIn: host, screenFor: pw.scrName })
-        onStatusChanged: if (status === Loader.Error) { console.warn("firehold: the shared Couch didn't load; Firehold's own Couch instead"); pw.fh.sharedCouchFailed = true; }
+        onStatusChanged: if (status === Loader.Error) {
+            console.warn("firehold: the shared Couch didn't load; Firehold's own Couch instead");
+            // (why, for Send logs: each page's own error)
+            for (const f of ["Couch", "Home", "TopBar", "Library", "AppsPage", "Switcher", "CouchSettings", "Away", "GameOptions", "GameTile", "Seg", "Toggle"]) {
+                const c = Qt.createComponent("fhcouch/" + f + ".qml");
+                if (c.status === Component.Error) console.warn("firehold: fhcouch/" + f + ".qml: " + c.errorString().replace(/\n/g, " | "));
+            }
+            pw.fh.sharedCouchFailed = true;
+        }
     }
 
     // Mantel's Firehold and this Couch agree on the tab and Everything open (the Desk's dock, the Guide twice).

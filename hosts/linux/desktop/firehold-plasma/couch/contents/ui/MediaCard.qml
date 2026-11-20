@@ -17,7 +17,7 @@ Card {
     }
     readonly property var cp: src.item ? src.item.cp : null
     readonly property bool playing: !!src.item && src.item.playing
-    readonly property bool has: !!src.item && src.item.has
+    readonly property bool has: !!src.item && src.item.has && !!cp
     readonly property string title: cp ? ((cp.album && String(cp.album) !== String(cp.track) ? cp.album + " · " : "") + cp.track) : ""
     readonly property var info: has ? { app: String(cp.desktopEntry || ""), identity: String(cp.identity || ""), title: title,
                                         short: String(cp.artist || cp.album || cp.track || ""), playing: playing } : null

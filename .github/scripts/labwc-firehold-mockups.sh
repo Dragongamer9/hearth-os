@@ -71,7 +71,7 @@ shot lw-06-away 06-away.png
 press a; sleep 4
 fhp modes >"$OUT/modes-after.json" 2>&1
 grep -q '"mode": "away"' "$OUT/modes-after.json" && err "the controller didn't bring the screen back from Away: $(head -c 300 "$OUT/modes-after.json")"
-cmp -s "$HOME/.config/nimbus/firehold.json" /tmp/fh-before.json || err "switching to Away and back wrote Firehold's settings (red flag 9): $(head -c 300 "$HOME/.config/nimbus/firehold.json")"
+python3 -c 'import json,sys; sys.exit(json.load(open(sys.argv[1])) != json.load(open(sys.argv[2])))' "$HOME/.config/nimbus/firehold.json" /tmp/fh-before.json || err "switching to Away and back wrote Firehold's settings (red flag 9): $(head -c 300 "$HOME/.config/nimbus/firehold.json")"
 shot lw-06b-back-from-away 01-couch-home.png
 
 # ---- QML errors from the shared Couch's files or the labwc host
