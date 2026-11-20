@@ -65,6 +65,10 @@ PLAIN = 'org.kde.plasma.desktop'
 CONTAINMENT = 'org.hearthos.firehold.couch'
 SCRIPT_NAME = 'org.hearthos.firehold'
 READY_SECS = int(os.environ.get('FIREHOLD_PLASMA_READY_SECS', '45'))
+# 1.16: Firehold on labwc (Fedora edition, docs/LABWC-FEDORA.md) draws the same Couch with this helper behind it. There
+# KWin, Plasma's shell and KDE's screen tools aren't running: the screens come from wlr-randr, a mode change only
+# writes the live modes (Mantel's Firehold.qml follows them), and nothing is sent to KWin or plasmashell.
+LABWC = os.environ.get('HEARTH_WM') == 'labwc'
 
 
 def home():
@@ -329,11 +333,15 @@ def watch_ready(pkg, since, secs=READY_SECS):
 
 def tell_kwin(posture):
     """The KWin script's posture shortcuts (registered by it; invoked through KDE's global shortcuts service)."""
+    if LABWC:
+        return
     name = 'Firehold Couch posture' if posture == 'couch' else 'Firehold Desk posture'
     dbus_send('org.kde.kglobalaccel', '/component/kwin', 'org.kde.kglobalaccel.Component.invokeShortcut', 'string:' + name, reply=False)
 
 
 def tell_games(v):
+    if LABWC:
+        return
     v = 'window' if v == 'stay' else v      # Stay as they are: KWin leaves games as they are (as "window" does)
     v = v if v in ('follow', 'fullscreen', 'window') else 'follow'
     dbus_send('org.kde.kglobalaccel', '/component/kwin', 'org.kde.kglobalaccel.Component.invokeShortcut',
@@ -488,6 +496,11 @@ def switch(posture, tab='', why='', keep_modes=False):
     if tab:
         write_small(os.path.join(run_dir(), 'tab'), tab)
     tell_kwin(posture)
+    if LABWC:
+        if tab:
+            write_small(os.path.join(run_dir(), 'tab'), tab)
+        ping_modes()
+        return
     pkg = shell_for(posture)
     running = read_small(os.path.join(run_dir(), 'shell'))
     if running == pkg and was == posture:
@@ -538,6 +551,8 @@ def kscreen_outputs():
     if fx:
         return [{'name': x.split(':')[0], 'tv': ':tv' in x, 'label': x.split(':')[2] if x.count(':') >= 2 else '',
                  'spec': x.split(':')[3] if x.count(':') >= 3 else ''} for x in fx.split(',') if x]
+    if LABWC:
+        return labwc_outputs()
     j = quiet(['kscreen-doctor', '-j'], 5) if have('kscreen-doctor') else ''
     try:
         outs = json.loads(j).get('outputs', []) if j else []
@@ -560,6 +575,33 @@ def kscreen_outputs():
                     spec.append('%d × %d' % (sz_['width'], sz_['height']))
                 if md.get('refreshRate'):
                     spec.append('%d Hz' % round(md['refreshRate']))
+        spec.append(connector_name(o['name']))
+        tv = o['name'] in tvs or 'TV' in label.upper().split() or (o['name'].upper().startswith('HDMI') and diag > 900)
+        out.append({'name': o['name'], 'tv': tv, 'label': label, 'spec': ' · '.join(spec)})
+    return out
+
+
+def labwc_outputs():
+    """The screens that are on under labwc (wlr-randr --json): the same fields as kscreen_outputs."""
+    j = quiet(['wlr-randr', '--json'], 5) if have('wlr-randr') else ''
+    try:
+        outs = json.loads(j) if j else []
+    except ValueError:
+        outs = []
+    tvs = set(x for x in os.environ.get('HEARTH_FIREHOLD_TV_SCREENS', '').split(',') if x)
+    out = []
+    for o in outs if isinstance(outs, list) else []:
+        if not isinstance(o, dict) or not o.get('enabled', True) or not isinstance(o.get('name'), str):
+            continue
+        ps = o.get('physical_size') or {}
+        diag = ((ps.get('width') or 0) ** 2 + (ps.get('height') or 0) ** 2) ** 0.5 if isinstance(ps, dict) else 0
+        label = edid_name(o['name']) or ' '.join(x for x in (o.get('make'), o.get('model')) if isinstance(x, str) and x and x != 'Unknown')[:40]
+        spec = []
+        for md in o.get('modes') or []:
+            if isinstance(md, dict) and md.get('current'):
+                spec.append('%d × %d' % (md.get('width') or 0, md.get('height') or 0))
+                if md.get('refresh'):
+                    spec.append('%d Hz' % round(md['refresh']))
         spec.append(connector_name(o['name']))
         tv = o['name'] in tvs or 'TV' in label.upper().split() or (o['name'].upper().startswith('HDMI') and diag > 900)
         out.append({'name': o['name'], 'tv': tv, 'label': label, 'spec': ' · '.join(spec)})
@@ -629,6 +671,11 @@ def ping_modes(what='modes', screen=''):
     is all it carries)."""
     v = '%s|%d|%s' % (what, int(time.time() * 1000), screen)
     bar_tell(v)
+    if LABWC:
+        # Mantel's Firehold and its Couch (FhpCouch.qml) through Quickshell's IPC: "ask modes" (or identify).
+        if have('quickshell') and what in ('modes', 'identify', 'identify-off', 'menu-window'):
+            detach(['quickshell', 'ipc', '-p', SHELL_DIR, 'call', 'firehold', 'ask', what if what != 'menu-window' else 'modes'])
+        return
     js = ('var v="%s";desktops().forEach(function(d){if(d.type=="%s"){d.currentConfigGroup=["General"];d.writeConfig("request",v);}});'
           'panels().forEach(function(p){p.widgets().forEach(function(w){if(w.type=="org.hearthos.firehold.posture"||w.type=="org.hearthos.firehold.app"){'
           'w.currentConfigGroup=["General"];w.writeConfig("modes",v);}});});' % (v, CONTAINMENT))
@@ -637,6 +684,8 @@ def ping_modes(what='modes', screen=''):
 
 def tell_kwin_screens(screens):
     """KWin's side, a screen at a time (the KWin script's own shortcuts, "Firehold Couch on NAME" / "Firehold Desk on NAME")."""
+    if LABWC:
+        return
     for s in screens:
         name = ('Firehold Couch on ' if s['mode'] == 'couch' else 'Firehold Desk on ') + s['name']
         dbus_send('org.kde.kglobalaccel', '/component/kwin', 'org.kde.kglobalaccel.Component.invokeShortcut', 'string:' + name, reply=False)
@@ -702,7 +751,9 @@ def away_later(since):
         ss = screen_modes()
         if not ss or not all(x['mode'] == 'away' for x in ss) or min(x['at'] for x in ss) > since:
             return 0
-        if what == 'off' and have('kscreen-doctor'):
+        if what == 'off' and LABWC and have('wlopm'):
+            quiet(['wlopm', '--off', '*'], 10)
+        elif what == 'off' and have('kscreen-doctor'):
             quiet(['kscreen-doctor', '--dpms', 'off'], 10)
         elif what == 'lock' and have('loginctl'):
             quiet(['loginctl', 'lock-session'], 10)
@@ -730,6 +781,14 @@ def come_back(why):
 def apply_modes(screens, why=''):
     modes = [s['mode'] for s in screens]
     away_power(bool(modes) and all(m == 'away' for m in modes))
+    if LABWC:
+        # labwc: no shell to restart; Mantel's Firehold.qml and the Couch read the modes file again (they watch it).
+        live = [m for m in modes if m != 'away']
+        if live:
+            p = 'couch' if all(m == 'couch' for m in live) else 'desk'
+            write_small(os.path.join(run_dir(), 'posture'), p)
+        ping_modes()
+        return
     live = [m for m in modes if m != 'away']
     if live:
         want = 'couch' if all(m == 'couch' for m in live) else 'desk'

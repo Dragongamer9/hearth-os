@@ -377,11 +377,11 @@ PanelWindow {
                 }
             }
 
-            // Network, read from NetworkManager every 10 seconds
+            // Network, from NetworkManager when it changes (1.16: NetBtWatch.qml, no polling)
             BarButton {
                 id: net
-                property string kind: ""     // wifi | ethernet | ""
-                property string name: ""
+                readonly property string kind: NetBtWatch.netKind     // wifi | ethernet | ""
+                readonly property string name: NetBtWatch.netName
                 // 1.14: the speed, down and up (Settings › Bar and dock › Network speed in the bar; NetSpeed.qml).
                 readonly property bool showSpeed: Settings.netSpeed
                 wide: showSpeed && !bar.portrait
@@ -397,21 +397,6 @@ PanelWindow {
                     icon: net.kind === "wifi" ? "network-wireless-signal-good-symbolic" : net.kind === "ethernet" ? "network-wired-symbolic" : "network-offline-symbolic"
                     label: net.showSpeed && !bar.portrait ? NetSpeed.text : ""
                 }
-                Process {
-                    id: nmcli
-                    command: ["nmcli", "-t", "-f", "TYPE,STATE,CONNECTION", "device"]
-                    stdout: StdioCollector {
-                        onStreamFinished: {
-                            let k = "", n = "";
-                            for (const line of text.split("\n")) {
-                                const f = line.split(":");
-                                if (f[1] === "connected" && (f[0] === "wifi" || f[0] === "ethernet") && !k) { k = f[0]; n = f.slice(2).join(":").replace(/\\(.)/g, "$1"); }   // nmcli -t puts a backslash before ":" in names
-                            }
-                            net.kind = k; net.name = n;
-                        }
-                    }
-                }
-                Timer { interval: 10000; running: true; repeat: true; triggeredOnStart: true; onTriggered: nmcli.running = true }
             }
 
             // Vaults (1.14, SetVaults.qml): shown when you have one; lit while one is unlocked. Click: lock, open or
@@ -445,9 +430,9 @@ PanelWindow {
             // Bluetooth (when there's an adapter): lit when a device is connected; click for Bluetooth settings.
             BarButton {
                 id: bt
-                property bool present: false
-                property bool powered: false
-                property var connected: []          // names of connected devices
+                readonly property bool present: NetBtWatch.btPresent
+                readonly property bool powered: NetBtWatch.btPowered
+                readonly property var connected: NetBtWatch.btConnected          // names of connected devices
                 visible: present
                 tip: !powered ? "Bluetooth is off" : connected.length ? "Connected: " + connected.join(", ") : "Bluetooth is on"
                 onClicked: bar.settingsRequested("bluetooth")
@@ -456,21 +441,8 @@ PanelWindow {
                     { label: "Bluetooth settings", icon: "gear", run: () => bar.settingsRequested("bluetooth") }
                 ])
                 Icon { anchors.centerIn: parent; name: "bt"; size: 18; color: !bt.powered ? Theme.muted : bt.connected.length ? Theme.accent : Theme.text }
-                // Asked every 15 s (BlueZ through bluetoothctl, like Settings › Bluetooth).
-                Process {
-                    id: btProc
-                    command: ["sh", "-c", "command -v bluetoothctl >/dev/null || exit 3; bluetoothctl --timeout 3 show 2>/dev/null | grep -E '^Controller|Powered:'; echo ---; bluetoothctl --timeout 3 devices Connected 2>/dev/null"]
-                    stdout: StdioCollector {
-                        onStreamFinished: {
-                            const parts = text.split("---");
-                            bt.present = /Controller/.test(parts[0] || "");
-                            bt.powered = /Powered:\s*yes/.test(parts[0] || "");
-                            bt.connected = (parts[1] || "").split("\n").map(l => l.match(/^Device\s+\S+\s+(.+)$/)).filter(Boolean).map(m => m[1].trim());
-                        }
-                    }
-                }
-                Process { id: btSet; onExited: btProc.running = true }
-                Timer { interval: 15000; running: true; repeat: true; triggeredOnStart: true; onTriggered: if (!btProc.running) btProc.running = true }
+                // 1.16: from BlueZ when it changes (NetBtWatch.qml), read again right after turning it on or off.
+                Process { id: btSet; onExited: NetBtWatch.refreshBt() }
             }
 
             // Discord (Discord.qml): toggles Discord's small window by the bar (the first press asks which Discord)

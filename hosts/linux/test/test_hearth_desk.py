@@ -534,3 +534,56 @@ class PlaceMany(Base):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class IconsKeepTheirPlace(Base):
+    """1.16, the owner's rule (Nov 19): every icon keeps the place you gave it, through icons off and on, a shell
+    restart, signing out and in and screen size changes (his dad's 1.13 PC: icons moved after off/on and pkill)."""
+
+    def setUp(self):
+        super().setUp()
+        for n in ('a.txt', 'b.txt', 'c.txt', 'd.txt'):
+            self.touch(n)
+        self.hd.icons(8, 6)                      # first look on the real grid: new icons remembered
+        self.hd.place('d.txt', 7, 5, 8, 6)       # dragged to the far corner
+        self.before = self.saved()['icons']
+
+    def where(self, out):
+        return {e['name']: (e['col'], e['row']) for e in out['entries']}
+
+    def test_a_restart_on_a_small_grid_writes_nothing(self):
+        # The shell starting again: the bar and dock not there yet, a 3 x 2 grid for a moment (only looked at).
+        out = self.hd.icons(3, 2, look=True)
+        self.assertEqual(self.saved()['icons'], self.before)
+        self.assertNotEqual(self.where(out)['d.txt'], (7, 5))       # shown where it fits for now
+        self.assertEqual(self.where(self.hd.icons(8, 6))['d.txt'], (7, 5))   # back in its place
+        self.assertEqual(self.saved()['icons'], self.before)
+
+    def test_a_smaller_screen_never_overwrites_a_saved_place(self):
+        self.hd.icons(4, 3)                      # a smaller screen, settled
+        self.hd.place('a.txt', 1, 1, 4, 3)       # you move another icon there
+        s = self.saved()['icons']
+        self.assertEqual(s['d.txt'], [7, 5], 'an icon you didn\'t move keeps its saved place')
+        self.assertEqual(s['a.txt'], [1, 1])
+        self.assertEqual(self.where(self.hd.icons(8, 6))['d.txt'], (7, 5))
+
+    def test_icons_off_and_on_and_cli_restart(self):
+        self.hd.set_switch('desktopIcons', 'off')
+        self.hd.set_switch('desktopIcons', 'on')
+        r = self.run_cli('icons', '3', '2', '--look')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        r = self.run_cli('icons', '8', '6')
+        self.assertEqual(r.returncode, 0, r.stderr)
+        self.assertEqual(self.saved()['icons'], self.before)
+
+    def test_only_the_moved_icons_are_written_and_other_keys_are_kept(self):
+        p = os.path.join(self.home, '.config', 'nimbus', 'desk.json')
+        d = self.saved(); d['someoneElse'] = 1
+        d['icons']['gone-elsewhere.txt'] = [2, 2]     # a place another writer just saved
+        with open(p, 'w', encoding='utf-8') as f:
+            json.dump(d, f)
+        self.hd.place_many([('b.txt', 5, 0)], 8, 6)
+        s = self.saved()
+        self.assertEqual(s['icons']['b.txt'], [5, 0])
+        self.assertEqual(s['icons']['d.txt'], [7, 5])
+        self.assertTrue(os.path.exists(p + '.bak'))

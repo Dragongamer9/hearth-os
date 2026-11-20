@@ -1,6 +1,7 @@
 // A game's picture on a tile or the hero: the game's own art (Hearth's cover, wide or hero picture) when it has one,
 // else its two colours with hills and a moon, as the mockups draw a game without art. Rounded by the caller (clip).
 import QtQuick
+import QtQuick.Window
 import QtQuick.Shapes
 
 Item {
@@ -79,9 +80,10 @@ Item {
         id: img
         anchors.fill: parent
         visible: art.hasArt
-        source: art.src === "" ? "" : (art.src.indexOf("/") === 0 ? "file://" + art.src : art.src)
+        // (1.16: only while it can be seen, a hidden tab or page holds no pictures; decoded at the size it's drawn)
+        source: art.src === "" || !art.visible ? "" : (art.src.indexOf("/") === 0 ? "file://" + art.src : art.src)
         fillMode: Image.PreserveAspectCrop
         asynchronous: true
-        sourceSize.width: Math.min(1600, Math.ceil(art.width * 1.5))
+        sourceSize.width: Math.min(1600, Math.ceil(art.width * Screen.devicePixelRatio))
     }
 }

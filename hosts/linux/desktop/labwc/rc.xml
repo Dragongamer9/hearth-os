@@ -152,6 +152,8 @@
     <keybind key="W-d"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar showDesktop'" /></keybind>
     <keybind key="W-m"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar showDesktop'" /></keybind>
     <!-- Two or more screens: Super+Shift+Left/Right moves the window to the next screen that way. -->
+    <!-- Keep above others (Firehold on labwc's Desk bar › Window, 1.16; also Super+Alt+T) -->
+    <keybind key="W-A-t"><action name="ToggleAlwaysOnTop" /></keybind>
     <keybind key="W-S-Left"><action name="MoveToOutput" direction="left" wrap="yes" /></keybind>
     <keybind key="W-S-Right"><action name="MoveToOutput" direction="right" wrap="yes" /></keybind>
     <!-- Virtual desktops: switch, take the window along, or send it without following.

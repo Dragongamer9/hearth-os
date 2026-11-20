@@ -448,6 +448,13 @@ run_desktop() {
   # (desktop/shell/DesktopNotice.qml through hearth-your-desktop notice; desktop-retired-told then keeps it quiet).
   # 1.15, the Anatase test (the owner, Nov 17): Desktop Mode there is stock KDE Plasma with Hearth's apps; that image
   # has no Mantel or labwc (run_plasma).
+  # >>> labwc on the Fedora edition (1.16, feature/labwc-fedora): Mantel or Firehold on labwc, only when picked;
+  # if it doesn't come up, KDE Plasma (run_fedora_labwc). Plasma failing never comes here.
+  if plasma_image && [ -z "$HEARTH_SEAT" ]; then
+    lw=$(fedora_labwc_choice)
+    if [ "$lw" != none ]; then run_fedora_labwc "$lw"; lrc=$?; [ "$lrc" -ne 200 ] && return "$lrc"; fi
+  fi
+  # <<< labwc on the Fedora edition
   if plasma_image && [ -z "$HEARTH_SEAT" ]; then run_plasma; return $?; fi
   d=$(retired_desktop)
   if [ -n "$d" ] && [ -z "$HEARTH_SEAT" ] && [ ! -e "$DESK_STATE/desktop-retired-told" ]; then
@@ -549,6 +556,95 @@ run_plasma() {
 firehold_rust_saved() {
   grep -qs '"desktop"[[:space:]]*:[[:space:]]*"firehold"' "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/firehold-rust.json"
 }
+
+# >>> labwc on the Fedora edition (1.16; docs/LABWC-FEDORA.md). The owner (Nov 19): "port over the entire labwc as well,
+# have it as a selection ... Don't have it as a fallback either", and "a Firehold version that uses labwc". Two choices
+# in Settings › Your desktop (hearth-labwc-desktop): session.conf's HEARTH_PLASMA_DESKTOP=classic (Mantel, Hearth
+# Classic) or =classicfirehold (Firehold on labwc: Mantel's Firehold, on for that sign-in only). Read only here.
+#  - Only when picked: nothing else in this file starts labwc on this image; Plasma or Firehold on Plasma failing stays
+#    as it was (Steam Game Mode, recovery).
+#  - When it doesn't come up (labwc or Quickshell missing, labwc ending within HEARTH_LABWC_EARLY_SECS (15 s), Mantel not
+#    saying it's up within HEARTH_LABWC_UP_SECS (45 s), Mantel giving up: hearth-labwc-shell-failed): KDE Plasma for the
+#    rest of this sign-in, and a notification says why. Twice in a row: KDE Plasma until it's picked again. Never a loop:
+#    one try per Desktop Mode start, none again after a failure this sign-in. The choice itself is never changed here.
+fedora_labwc_choice() {
+  c=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_PLASMA_DESKTOP=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
+  case "$c" in classic) echo classic ;; classicfirehold) echo firehold ;; *) echo none ;; esac
+}
+LABWC_UP_SECS="${HEARTH_LABWC_UP_SECS:-45}"
+LABWC_EARLY_SECS="${HEARTH_LABWC_EARLY_SECS:-15}"
+LABWC_GOOD_SECS="${HEARTH_LABWC_GOOD_SECS:-60}"
+fedora_labwc_failed() {   # $1: why (plain words, for the person)
+  : >"$RUN/hearth-labwc-failed"; desk_fails_add labwc
+  mkdir -p "$DESK_STATE"; printf '%s\n' "$1" >"$DESK_STATE/labwc-why.tmp" && mv -f "$DESK_STATE/labwc-why.tmp" "$DESK_STATE/labwc-why"
+  if [ "$(desk_fails labwc)" -ge 2 ]; then
+    t="$FEDORA_LABWC_NAME didn't start twice in a row"; b="$1 KDE Plasma opens instead until you pick it again in Settings › Your desktop."
+  else
+    t="$FEDORA_LABWC_NAME didn't start"; b="$1 KDE Plasma opened instead for now. Your choice is kept."
+  fi
+  log "desktop: $t ($1); KDE Plasma instead"
+  if have notify-send; then ( sleep 25; notify-send -a "Hearth" -i hearth "$t" "$b" ) >/dev/null 2>&1 & fi
+}
+run_fedora_labwc() {   # $1: classic | firehold. 200: didn't come up (the caller opens KDE Plasma); else labwc's end.
+  if [ "$1" = firehold ]; then FEDORA_LABWC_NAME="Firehold on labwc"; else FEDORA_LABWC_NAME="Hearth Classic (labwc)"; fi
+  if [ -e "$RUN/hearth-labwc-failed" ]; then log "desktop: $FEDORA_LABWC_NAME didn't start earlier this sign-in; KDE Plasma"; return 200; fi
+  if [ "$(desk_fails labwc)" -ge 2 ]; then log "desktop: $FEDORA_LABWC_NAME didn't start twice in a row; KDE Plasma until it's picked again"; return 200; fi
+  miss=""
+  have labwc || miss="labwc"
+  have quickshell || miss="${miss:+$miss and }Quickshell"
+  [ -f "$SHARE/desktop/shell/shell.qml" ] || miss="${miss:+$miss and }Mantel's files"
+  if [ -n "$miss" ]; then fedora_labwc_failed "This Hearth OS is missing $miss."; return 200; fi
+  log "desktop mode: $FEDORA_LABWC_NAME"
+  CONF="$SHARE/desktop/labwc"
+  if [ -f "$SHARE/desktop/shell/hearth-system" ] && have python3; then
+    CONF="$(timeout 10 python3 "$SHARE/desktop/shell/hearth-system" labwc-config 2>/dev/null)" || CONF="$SHARE/desktop/labwc"
+    [ -f "$CONF/rc.xml" ] || CONF="$SHARE/desktop/labwc"
+  fi
+  LABWC_LOG="$(dirname "$LOG")/labwc.log"
+  [ -f "$LABWC_LOG" ] && [ "$(wc -c <"$LABWC_LOG")" -gt 1000000 ] && mv -f "$LABWC_LOG" "$LABWC_LOG.old"
+  echo "--- $(date '+%F %T') Desktop Mode ($FEDORA_LABWC_NAME)" >>"$LABWC_LOG"
+  rm -f "$RUN/hearth-shell-up" "$RUN/hearth-labwc-shell-failed"
+  (
+    if [ -d /sys/module/nvidia_drm ]; then export WLR_NO_HARDWARE_CURSORS=1; fi
+    unset PLASMA_DEFAULT_SHELL HEARTH_FIREHOLD_PLASMA HEARTH_FIREHOLD_SESSION
+    [ "$1" = firehold ] && export HEARTH_FIREHOLD_SESSION=1
+    export HEARTH_WM=labwc HEARTH_FEDORA_LABWC=1
+    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec labwc -C "$1"' sh "$CONF"
+  ) >>"$LABWC_LOG" 2>&1 &
+  lpid=$!
+  echo "$lpid" >"$RUN/hearth-labwc.pid"
+  started=$(date +%s); up=0
+  while kill -0 "$lpid" 2>/dev/null; do
+    [ -e "$RUN/hearth-shell-up" ] && { up=1; break; }
+    [ -s "$NEXT" ] || [ -e "$RUN/hearth-labwc-shell-failed" ] && break
+    [ $(( $(date +%s) - started )) -ge "$LABWC_UP_SECS" ] && break
+    sleep 1
+  done
+  if [ "$up" = 0 ] && [ ! -s "$NEXT" ]; then
+    why=$(head -c 200 "$RUN/hearth-labwc-shell-failed" 2>/dev/null)
+    if [ -z "$why" ]; then
+      if ! kill -0 "$lpid" 2>/dev/null; then why="labwc ended right after it started."
+      else why="Its taskbar and menus didn't come up within $LABWC_UP_SECS seconds."; fi
+    fi
+    kill -TERM "$lpid" 2>/dev/null
+    i=0; while kill -0 "$lpid" 2>/dev/null && [ "$i" -lt 10 ]; do sleep 0.5; i=$((i + 1)); done
+    kill -KILL "$lpid" 2>/dev/null
+    wait "$lpid" 2>/dev/null
+    rm -f "$RUN/hearth-labwc.pid"
+    fedora_labwc_failed "$why"; return 200
+  fi
+  wait "$lpid"; code=$?
+  rm -f "$RUN/hearth-labwc.pid"
+  ran=$(( $(date +%s) - started ))
+  log "desktop mode: $FEDORA_LABWC_NAME ended (code $code, after ${ran} s)"
+  if [ ! -s "$NEXT" ] && { [ -e "$RUN/hearth-labwc-shell-failed" ] || [ "$ran" -lt "$LABWC_EARLY_SECS" ]; }; then
+    fedora_labwc_failed "$(head -c 200 "$RUN/hearth-labwc-shell-failed" 2>/dev/null || echo "It closed right after it started.")"
+    return 200
+  fi
+  [ "$ran" -ge "$LABWC_GOOD_SECS" ] && desk_fails_reset labwc
+  return 0
+}
+# <<< labwc on the Fedora edition
 
 # ---- Desktop Mode's notices: why Mantel started the way it did. Lines "<what> <why> <when>" in
 # ~/.local/state/hearth/desktop-notice; Mantel shows it once (DesktopNotice.qml) and Settings › System › Your desktop

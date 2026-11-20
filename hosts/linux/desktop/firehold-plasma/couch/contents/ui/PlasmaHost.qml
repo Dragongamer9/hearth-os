@@ -1,14 +1,18 @@
-// What the Couch needs from its compositor and desktop, on KDE Plasma (KWin): the helper run as a command (Plasma's
-// executable source), the clock (Plasma's time source, once a minute) and the windows (Plasma's task model). Everything
-// else in the Couch (Couch.qml and its pages) is the same on every compositor: Firehold on labwc puts its own Host.qml
-// with these same properties, signal and functions in place of this one.
+// What the Couch (Couch.qml) needs from the desktop it runs on, under KDE Plasma: the helper (Plasma's executable
+// source runs hearth-firehold-plasma), the clock (Plasma's time source, once a minute), the windows (Plasma's own task
+// model) and what each does. Couch.qml loads this one unless a host is given to it; Firehold on labwc gives its own
+// (desktop/shell/FhCouchHost.qml, 1.16): the Couch's pages are the same files on both.
 import QtQuick
 import org.kde.plasma.plasma5support as P5Support
 import org.kde.taskmanager as TaskManager
 
 Item {
-    id: host
-    // ---- the helper: exec(command line, function (stdout) {})
+    id: ph
+    // Plasma decides what's in front itself (the Couch's window active), so these are Couch.qml's own.
+    readonly property bool hosted: false
+    readonly property string mediaFile: ""
+    readonly property string iconFile: ""
+
     P5Support.DataSource {
         id: sh
         engine: "executable"
@@ -21,13 +25,14 @@ Item {
             if (cb) cb(String(data["stdout"] || ""));
         }
     }
-    function exec(cmd, cb) {
+    function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
+    function run(args, cb) {
         sh.n += 1;
-        const c = cmd + " #" + sh.n;
-        sh.cbs[c] = cb || null;
-        sh.connectSource(c);
+        const cmd = "hearth-firehold-plasma " + args.map(q).join(" ") + " #" + sh.n;
+        sh.cbs[cmd] = cb || null;
+        sh.connectSource(cmd);
     }
-    // ---- the clock (a new value each minute, on the minute)
+
     P5Support.DataSource {
         id: clock
         engine: "time"
@@ -36,9 +41,7 @@ Item {
         intervalAlignment: P5Support.Types.AlignToMinute
     }
     readonly property var now: clock.data["Local"] && clock.data["Local"]["DateTime"] ? clock.data["Local"]["DateTime"] : new Date()
-    // ---- the windows: windows() lists them ({row, id, uuid, appId, appName, title, activated, minimized, fullscreen,
-    // pid}); windowsChanged() says the list may be different; activate / toggleFullScreen / close take a row.
-    signal windowsChanged()
+
     TaskManager.TasksModel {
         id: tasks
         groupMode: TaskManager.TasksModel.GroupDisabled
@@ -47,10 +50,12 @@ Item {
         filterByScreen: false
         filterByActivity: false
         filterNotMinimized: false
-        onCountChanged: host.windowsChanged()
-        onDataChanged: host.windowsChanged()
+        onCountChanged: ph.readWins()
+        onDataChanged: ph.readWins()
     }
-    function windows() {
+    property var wins: []
+    property string winsKey: ""
+    function readWins() {
         const R = TaskManager.AbstractTasksModel;
         const out = [];
         for (let i = 0; i < tasks.count; i++) {
@@ -63,9 +68,14 @@ Item {
                        activated: !!tasks.data(ix, R.IsActive), minimized: !!tasks.data(ix, R.IsMinimized),
                        fullscreen: !!tasks.data(ix, R.IsFullScreen), pid: Number(tasks.data(ix, R.AppPid) || 0) });
         }
-        return out;
+        const key = JSON.stringify(out);
+        if (key === winsKey) return;
+        winsKey = key;
+        wins = out;
     }
-    function activate(row) { tasks.requestActivate(tasks.makeModelIndex(row)); }
-    function toggleFullScreen(row) { tasks.requestToggleFullScreen(tasks.makeModelIndex(row)); }
-    function close(row) { tasks.requestClose(tasks.makeModelIndex(row)); }
+    Component.onCompleted: readWins()
+    function idx(w) { return tasks.makeModelIndex(w.row); }
+    function activate(w) { tasks.requestActivate(idx(w)); }
+    function toggleFull(w) { tasks.requestToggleFullScreen(idx(w)); }
+    function closeWin(w) { tasks.requestClose(idx(w)); }
 }

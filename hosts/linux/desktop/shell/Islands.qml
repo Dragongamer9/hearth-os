@@ -150,40 +150,13 @@ PanelWindow {
     readonly property bool hasBatt: batt && batt.isLaptopBattery
     readonly property int battPct: batt ? Math.round(batt.percentage * 100) : 0
     readonly property bool charging: batt && batt.state === UPowerDeviceState.Charging
-    property string netKind: ""
-    property string netName: ""
-    Process {
-        id: nmcli
-        command: ["nmcli", "-t", "-f", "TYPE,STATE,CONNECTION", "device"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                let k = "", n = "";
-                for (const line of text.split("\n")) {
-                    const f = line.split(":");
-                    if (f[1] === "connected" && (f[0] === "wifi" || f[0] === "ethernet") && !k) { k = f[0]; n = f.slice(2).join(":").replace(/\\(.)/g, "$1"); }
-                }
-                isl.netKind = k; isl.netName = n;
-            }
-        }
-    }
-    Timer { interval: 10000; running: true; repeat: true; triggeredOnStart: true; onTriggered: nmcli.running = true }
-    property bool btPresent: false
-    property bool btPowered: false
-    property var btConnected: []
-    Process {
-        id: btProc
-        command: ["sh", "-c", "command -v bluetoothctl >/dev/null || exit 3; bluetoothctl --timeout 3 show 2>/dev/null | grep -E '^Controller|Powered:'; echo ---; bluetoothctl --timeout 3 devices Connected 2>/dev/null"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                const parts = text.split("---");
-                isl.btPresent = /Controller/.test(parts[0] || "");
-                isl.btPowered = /Powered:\s*yes/.test(parts[0] || "");
-                isl.btConnected = (parts[1] || "").split("\n").map(l => l.match(/^Device\s+\S+\s+(.+)$/)).filter(Boolean).map(m => m[1].trim());
-            }
-        }
-    }
-    Process { id: btSet; onExited: btProc.running = true }
-    Timer { interval: 15000; running: true; repeat: true; triggeredOnStart: true; onTriggered: if (!btProc.running) btProc.running = true }
+    // 1.16: the network and Bluetooth from NetBtWatch.qml, read when they change (no polling).
+    readonly property string netKind: NetBtWatch.netKind
+    readonly property string netName: NetBtWatch.netName
+    readonly property bool btPresent: NetBtWatch.btPresent
+    readonly property bool btPowered: NetBtWatch.btPowered
+    readonly property var btConnected: NetBtWatch.btConnected
+    Process { id: btSet; onExited: NetBtWatch.refreshBt() }
     readonly property var front: WinList.activeToplevel
     SystemClock { id: clock; precision: SystemClock.Minutes }
 
@@ -387,7 +360,8 @@ PanelWindow {
                 height: parent.height
                 width: pillRow.implicitWidth + 28
                 rad: Theme.r(height / 2)
-                Behavior on width { enabled: !Settings.reduceMotion; NumberAnimation { duration: Theme.calm; easing.type: Easing.OutCubic } }
+                // (1.16: not while nobody's there: the clock's minute changed its width, and the animation drew ~20 frames a minute)
+                Behavior on width { enabled: !Settings.reduceMotion && !DeskState.idle; NumberAnimation { duration: Theme.calm; easing.type: Easing.OutCubic } }
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: isl.calendarRequested() }
                 RowLayout {
                     id: pillRow

@@ -114,12 +114,22 @@ LayerPanel {
                     Text { Layout.fillWidth: true; visible: text !== ""; text: card.h ? card.h.body : ""; color: "#ddd2ca"; font.pixelSize: 15; font.family: fc.fontName; wrapMode: Text.Wrap; maximumLineCount: 3; elide: Text.ElideRight }
                     Text { visible: card.urgent; text: "Stays until you answer"; color: F.accent; font.pixelSize: 14; font.family: fc.fontName }
                     // A picture (a recorded clip, a screenshot)
+                    // (1.16: its file, or the picture itself when the notification service gives only that, as KDE's
+                    // does under Plasma: drawn by Hearth.imageFile, KImage.qml there)
                     Rectangle {
-                        visible: card.image !== "" && pic.status === Image.Ready
+                        readonly property var obj: !!card.n && card.n.imageObj ? card.n.imageObj : null
+                        visible: (card.image !== "" && pic.status === Image.Ready) || (!!obj && objPic.status === Loader.Ready)
                         Layout.topMargin: 6
                         Layout.preferredWidth: 220; Layout.preferredHeight: 124
                         radius: 8; clip: true; color: F.tile
                         Image { id: pic; anchors.fill: parent; source: card.image; fillMode: Image.PreserveAspectCrop; asynchronous: true; sourceSize: Qt.size(440, 248) }
+                        Loader {
+                            id: objPic
+                            anchors.fill: parent
+                            active: card.image === "" && !!parent.obj && !!Hearth.imageFile
+                            source: Hearth.imageFile || ""
+                            onLoaded: item.picture = Qt.binding(() => parent.obj)
+                        }
                     }
                     // A reply box (messages)
                     Rectangle {

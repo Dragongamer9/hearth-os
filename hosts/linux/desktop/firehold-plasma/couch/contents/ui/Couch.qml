@@ -50,7 +50,18 @@ Item {
     property string page: "tabs"           // tabs | switcher (Everything open) | settings
     property bool guideShown: false
     property bool started: false
-    readonly property bool front: Window.active
+    // ------------------------------------------------------------------ the desktop it runs on (1.16)
+    // The helper, the clock and the windows come from a host: Plasma's (PlasmaHost.qml, loaded here) unless one is
+    // given, as Firehold on labwc gives its own (desktop/shell/FhCouchHost.qml). The pages below are the same on both.
+    property QtObject hostIn: null
+    Loader { id: plasmaHost; active: fh.hostIn === null; source: "PlasmaHost.qml" }
+    readonly property QtObject host: hostIn || plasmaHost.item
+    // A host that says what's in front itself (labwc: the Couch's layer is up and nothing is over it).
+    readonly property bool front: host && host.hosted ? host.front === true : Window.active
+    // Nobody's used the PC for a while (labwc: the shell's idle, 30 s): the home's cards aren't asked for again until
+    // someone's back (then at once).
+    readonly property bool resting: !!host && host.hosted === true && host.resting === true
+    onRestingChanged: if (started && !resting && front) cardsNow()
     onFrontChanged: {
         if (!started) return;
         run(["state", front ? "front" : (guideShown ? "guide" : "back")]);
@@ -75,17 +86,20 @@ Item {
         if (key === "posture" && value === "desk") run(["switch", "desk", "--why", "pick"]);
     }
 
-    // ------------------------------------------------------------------ the compositor's side (Host.qml: Plasma's here)
-    Host { id: host; onWindowsChanged: fh.readWins() }
-    function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
-    function run(args, cb) { host.exec("hearth-firehold-plasma " + args.map(q).join(" "), cb); }
+    // ------------------------------------------------------------------ the helper (the host runs hearth-firehold-plasma)
+    property var pending: []
+    function run(args, cb) {
+        if (host) host.run(args, cb || null);
+        else pending.push([args, cb || null]);
+    }
+    onHostChanged: if (host) { const p = pending; pending = []; for (const x of p) host.run(x[0], x[1]); }
     function lastJson(t) {
         const l = String(t || "").trim().split("\n").pop();
         try { return JSON.parse(l); } catch (e) { return null; }
     }
 
-    // ------------------------------------------------------------------ the clock, the bar's status
-    readonly property var now: host.now
+    // ------------------------------------------------------------------ the clock (the host's, once a minute), the bar's status
+    readonly property var now: host && host.now ? host.now : new Date()
     property var sys: ({})
     property bool sysBusy: false
     function refreshSys(all) {
@@ -121,7 +135,7 @@ Item {
         if (full) cardsFullAt = Date.now();
     }
     function askCards() {
-        if (cardsAsking || !front || page !== "tabs") return;
+        if (cardsAsking || !front || page !== "tabs" || resting) return;
         cardsAsking = true;
         const busy = (cards.downloads || []).some(function (d) { return d.state === "running"; });
         const full = !busy || Date.now() - cardsFullAt > 55000;
@@ -158,23 +172,29 @@ Item {
                  modeName: here ? "Couch" : "Desk", here: here };
     })
 
-    // ------------------------------------------------------------------ windows (the Host's list)
-    property var wins: []
-    property string winsKey: ""
+    // ------------------------------------------------------------------ windows (the host's: Plasma's task model, or labwc's list)
+    readonly property var wins: host && host.wins ? host.wins : []
     property var seen: ({})
     property string lastGameId: ""
-    function readWins() {
-        const out = host.windows();
-        const key = JSON.stringify(out);
-        if (key === winsKey) return;
-        winsKey = key;
+    onWinsChanged: {
         const s = {}, t = Date.now();
-        for (const w of out) s[w.id] = seen[w.id] || t;
+        for (const w of wins) s[w.id] = seen[w.id] || t;
         seen = s;
-        wins = out;
     }
-    readonly property var openList: F.openItems(wins, library, function (w) { return w.appName; })
-    readonly property var playing: F.playingIds(wins, library)
+    // (1.16, the rest fixes: these lists change only when what they hold changes. A window or a notification's helper
+    // coming and going made new ones, and a new list builds every tile and loads every picture again.)
+    readonly property var openFresh: F.openItems(wins, library, function (w) { return w.appName; })
+    readonly property var playingFresh: F.playingIds(wins, library)
+    property var openList: []
+    property var playing: []
+    property string openSig: "-"
+    function syncLists() {
+        const g = openFresh.map(function (o) { return o.kind + "\u0001" + o.name + "\u0001" + o.sub + "\u0001" + (o.win ? o.win.id : ""); }).join("\u0002");
+        if (g !== openSig) { openSig = g; openList = openFresh; }
+        if (playingFresh.join("\u0001") !== playing.join("\u0001")) playing = playingFresh;
+    }
+    onOpenFreshChanged: syncLists()
+    onPlayingFreshChanged: syncLists()
     readonly property var continueGame: F.continueGame(library, playing)
     function gameWins() { return wins.filter(function (w) { return F.isGame(w, fh.library); }); }
     function frontGame() {
@@ -195,12 +215,12 @@ Item {
         const game = F.isGame(w, library);
         if (game) lastGameId = w.id;
         if (layered) stepAside();
-        host.activate(w.row);
+        host.activate(w);
         const full = game && !asWindow && gamesOpen !== "window" && gamesOpen !== "stay";
-        if (game && full !== w.fullscreen) host.toggleFullScreen(w.row);
+        if (game && full !== w.fullscreen) host.toggleFull(w);
     }
-    function toggleFull(w) { if (w) host.toggleFullScreen(w.row); }
-    function closeWin(w) { if (w) host.close(w.row); }
+    function toggleFull(w) { if (w && host) host.toggleFull(w); }
+    function closeWin(w) { if (w && host) host.closeWin(w); }
     function play(g, asWindow) {
         if (!g) return;
         const w = windowFor(g);
@@ -216,6 +236,7 @@ Item {
         page = "tabs";
         tab = t || "home";
         if (layered) comeBack();
+        else if (host && host.hosted) host.home();
         else if (!front) run(["do", "home"]);
         if (Window.window) Window.window.requestActivate();
         forceActiveFocus();
@@ -233,6 +254,8 @@ Item {
         guideShown = true;
     }
     function guide(twice) {
+        // (A host with its own Guide, Firehold on labwc's: it decides.)
+        if (host && host.hosted) { host.guide(twice === true); return; }
         if (twice || guideButton === "open") {
             guideShown = false;
             if (page === "switcher" && front) { page = "tabs"; return; }
@@ -322,6 +345,7 @@ Item {
         // ≡: Hearth's shared Quick Settings over the Couch (mockup 08); where it isn't installed, the Couch's own settings.
         if (k === Qt.Key_Menu) {
             if (page === "settings") { page = "tabs"; return true; }
+            if (host && host.hosted) { host.quick(); return true; }    // (Firehold on labwc: its own Quick Settings)
             run(["do", "open-applet", "org.hearthos.quicksettings"], function (t) { const o = fh.lastJson(t); if (o && o.missing) fh.page = "settings"; });
             return true;
         }
@@ -350,7 +374,7 @@ Item {
         run(["library"], function (t) { fh.take(t, false); });
         run(["apps"], function (t) { const a = fh.lastJson(t); if (Array.isArray(a)) fh.apps = a; });
         refreshSys(false);
-        readWins();
+        syncLists();
         started = true;
         forceActiveFocus();
         run(["state", front ? "front" : "back"]);

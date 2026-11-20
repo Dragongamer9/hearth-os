@@ -49,11 +49,11 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 ## 4. Modes for each screen (04-modes-per-screen.png)
 
 - [x] Opens from the Desk bar's mode pill — hosts/linux/desktop/firehold-plasma/posture/contents/ui/main.qml: "MouseArea { anchors.fill: parent; onClicked: root.popupOpen = !root.popupOpen }"
-- [x] Both screens drawn as placed, each named (TCL TV, LG monitor), with its current mode — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "return (qa ? qa.virtualX : 0) - (qb ? qb.virtualX : 0);"
-- [x] Couch / Desk / Away choice for each screen — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "options: [\"Couch\", \"Desk\", \"Away\"]"
-- [x] Buttons: Both Couch, Both Desk, Away now — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "\"Away now (both)\""
-- [x] Switches: Automatic, Away after 20 minutes — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "\" min with nobody at \""
-- [x] Key and button hints — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "\"Keys: Super+Shift+C Couch · Super+Shift+D Desk · Super+Shift+A Away · Guide button: Couch on the \""
+- [x] Both screens drawn as placed, each named (TCL TV, LG monitor), with its current mode — hosts/linux/desktop/firehold-plasma/couch/contents/ui/ModesCard.qml: "return (qa ? qa.virtualX : 0) - (qb ? qb.virtualX : 0);"
+- [x] Couch / Desk / Away choice for each screen — hosts/linux/desktop/firehold-plasma/couch/contents/ui/ModesCard.qml: "options: [\"Couch\", \"Desk\", \"Away\"]"
+- [x] Buttons: Both Couch, Both Desk, Away now — hosts/linux/desktop/firehold-plasma/couch/contents/ui/ModesCard.qml: "\"Away now (both)\""
+- [x] Switches: Automatic, Away after 20 minutes — hosts/linux/desktop/firehold-plasma/couch/contents/ui/ModesCard.qml: "\" min with nobody at \""
+- [x] Key and button hints — hosts/linux/desktop/firehold-plasma/couch/contents/ui/ModesCard.qml: "\"Keys: Super+Shift+C Couch · Super+Shift+D Desk · Super+Shift+A Away · Guide button: Couch on the \""
 
 ## 5. Settings › Couch, Desk and Away (05-settings-modes.png)
 
@@ -64,7 +64,7 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 ## 6. Away (06-away.png)
 
-- [x] Big clock and date — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Away.qml: "text: Qt.formatTime(aw.couch.now, \"h:mm\")"
+- [x] Big clock and date — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Away.qml: "text: Qt.formatTime(aw.couch.now, \"h:mm AP\")"
 - [x] Cards for what keeps working: a download, Hearth Link serving another device, the home server — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Away.qml: "kind: \"Home server\""
 - [x] Notifications shown only as a count while Away — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Away.qml: "lines: [\"Hidden here so nobody else reads them\"]"
 - [x] Power and screen-off notes — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Away.qml: "text: [\"Fans quiet: Power saver until you're back\","
@@ -84,7 +84,7 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 ## 8. Quick Settings with the controller (08-quick-settings-couch.png)
 
-- [x] LB / RB tabs and the focus ring — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "couch && (event.key === Qt.Key_PageUp || event.key === Qt.Key_PageDown)"
+- [x] LB / RB tabs and the focus ring — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "couch && (k === Qt.Key_PageUp || k === Qt.Key_PageDown)"
 - [x] Power row with the device's own steps (Silent 10 W / Balanced 18 W / Turbo 25 W on the Ally) — hosts/linux/desktop/plasma-hearth/hearth-quick: "'rog ally': {'power-saver': 'Silent · 10 W'"
 - [x] "Game Mode is off on this device · turn it on in Settings › System › Startup" when Game Mode is switched off — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "text: \"Game Mode is off on this device\""
 - [x] Button hints — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "{ k: \"A\", c: \"#3ecf6e\", t: \"Toggle\" }"
@@ -111,13 +111,13 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 - [x] The app in front with its own menus (KDE's global menu), File open — hosts/linux/desktop/firehold-plasma/desk/layout.js: "top.addWidget(\"org.kde.plasma.appmenu\");"
 - [x] Left to right: app, menus, clock, mode pill, downloads, Hearth Link, controllers, Quick Settings, notifications — hosts/linux/desktop/firehold-plasma/posture/contents/ui/main.qml: "onClicked: root.openShared(\"org.hearthos.notifications\", \"notifications\")"
-- [x] The first-run tip naming each part of the bar — hosts/linux/desktop/firehold-plasma/posture/contents/ui/BarTip.qml: "\"THE BAR, LEFT TO RIGHT\""
+- [x] The first-run tip naming each part of the bar — hosts/linux/desktop/firehold-plasma/couch/contents/ui/BarTipCard.qml: "\"THE BAR, LEFT TO RIGHT\""
 
 ## 12. The Desk bar's standard menus (12-desk-bar-standard-menus.png)
 
 - [x] Standard menus for an app with none of its own (the app menu, Window, Help) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "[[\"app\", root.appName], [\"window\", \"Window\"], [\"help\", \"Help\"]]"
-- [x] Window › Move to screen (each screen with its mode) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "here ? \"here now\" : s.mode === \"couch\" ? \"goes full screen\""
-- [x] Help: search every command (Alt+Space) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "[\"Search every command\", \"Alt+Space\", \"search\"]"
+- [x] Window › Move to screen (each screen with its mode) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/deskmenus.js: "here ? \"here now\" : s.mode === \"couch\" ? \"goes full screen\""
+- [x] Help: search every command (Alt+Space) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/deskmenus.js: "[\"Search every command\", \"Alt+Space\", \"search\"]"
 - [x] The "controller in your hand" hint — hosts/linux/desktop/firehold-plasma/posture/contents/ui/HintLayer.qml: "LayerShell.Window.anchors: LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorRight"
 
 ## Build status (branch feature/firehold-plasma-1.16)

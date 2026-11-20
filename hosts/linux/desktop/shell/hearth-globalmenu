@@ -1,0 +1,246 @@
+#!/usr/bin/python3
+"""hearth-globalmenu: the app's own menus for Firehold on labwc's Desk bar (1.16, mockup firehold-plasma 11), Hearth's
+own menu source where KDE's global menu isn't there (labwc has no KWin). Apps that can put their menus in a global
+menu (Qt Widgets apps: KDE's and most Qt apps; GTK apps with the app menu module) do so when a menu registrar is on
+the session bus: this is that registrar, and the reader of the menus they export (com.canonical.dbusmenu).
+
+  hearth-globalmenu serve            the registrar (com.canonical.AppMenu.Registrar). Asleep until an app registers or
+                                  leaves (no polling); writes $XDG_RUNTIME_DIR/hearth-globalmenu.json (who has menus)
+  hearth-globalmenu has APP_ID       one JSON line: {"menus": true|false} for the app in front (its Wayland app id)
+  hearth-globalmenu layout APP_ID    one JSON line: the app's menus, {"menus": [{"id", "label", "items": [{"id",
+                                  "label", "shortcut", "enabled", "kind": "item"|"separator"|"sub", "items"...}]}]}
+  hearth-globalmenu click SERVICE PATH ID
+                                  what the person picked (the app does it itself)
+
+Only reads menus and passes on a click; never changes a setting.
+"""
+import json
+import os
+import re
+import sys
+import time
+
+BUS_NAME = 'com.canonical.AppMenu.Registrar'
+PROPS = ['type', 'label', 'enabled', 'visible', 'children-display', 'shortcut', 'toggle-type', 'toggle-state']
+
+
+def state_path():
+    return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-globalmenu.json')
+
+
+def read_state():
+    try:
+        with open(state_path()) as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def write_state(d):
+    """(Runtime state, not a setting: written in place so the bar's watch on the file keeps seeing it.)"""
+    with open(state_path(), 'w') as f:
+        json.dump(d, f)
+
+
+def who(pid):
+    """What a process is called, the ways a Wayland app id can say it."""
+    names = set()
+    try:
+        names.add(os.path.basename(os.readlink('/proc/%d/exe' % pid)).lower())
+    except OSError:
+        pass
+    try:
+        cmd = open('/proc/%d/cmdline' % pid, 'rb').read().split(b'\0')
+        if cmd and cmd[0]:
+            names.add(os.path.basename(cmd[0].decode(errors='replace')).lower())
+    except OSError:
+        pass
+    try:
+        env = open('/proc/%d/environ' % pid, 'rb').read().split(b'\0')
+        for e in env:
+            if e.startswith(b'GIO_LAUNCHED_DESKTOP_FILE='):
+                names.add(os.path.basename(e.split(b'=', 1)[1].decode(errors='replace')).lower().replace('.desktop', ''))
+    except OSError:
+        pass
+    return sorted(n for n in names if n)
+
+
+def matches(app_id, names):
+    a = (app_id or '').lower().replace('.desktop', '')
+    if not a:
+        return False
+    last = a.split('.')[-1]
+    return any(n == a or n == last or n.replace('-', '') == last.replace('-', '') for n in names)
+
+
+def find(app_id):
+    for k, v in read_state().items():
+        if isinstance(v, dict) and matches(app_id, v.get('names', [])):
+            return v
+    return scan(app_id)
+
+
+def scan(app_id):
+    """An app that exported its menus (com.canonical.dbusmenu at /MenuBar/N) without registering its window, as some
+    do on Wayland: found on the session bus by its process. Only when the app in front asks (no polling)."""
+    try:
+        import dbus
+        bus = dbus.SessionBus()
+        dbo = dbus.Interface(bus.get_object('org.freedesktop.DBus', '/org/freedesktop/DBus'), 'org.freedesktop.DBus')
+        for n in dbo.ListNames():
+            if not str(n).startswith(':'):
+                continue
+            try:
+                pid = int(dbo.GetConnectionUnixProcessID(n))
+            except dbus.DBusException:
+                continue
+            if not matches(app_id, who(pid)):
+                continue
+            try:
+                xml = dbus.Interface(bus.get_object(n, '/MenuBar'), 'org.freedesktop.DBus.Introspectable').Introspect()
+            except dbus.DBusException:
+                continue
+            m = re.search(r'<node name="(\d+)"', str(xml))
+            if m:
+                return {'service': str(n), 'path': '/MenuBar/' + m.group(1), 'pid': pid, 'names': who(pid)}
+    except Exception:
+        return None
+    return None
+
+
+def serve():
+    import dbus
+    import dbus.service
+    import dbus.mainloop.glib
+    from gi.repository import GLib
+    dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+    bus = dbus.SessionBus()
+    if bus.name_has_owner(BUS_NAME):
+        print('another menu registrar is running (KDE\'s): nothing to do')
+        return 0
+    name = dbus.service.BusName(BUS_NAME, bus)
+    reg = {}
+
+    def save():
+        write_state(reg)
+
+    def gone(n, old, new):
+        if new == '' and n in reg:
+            del reg[n]
+            save()
+
+    bus.add_signal_receiver(gone, signal_name='NameOwnerChanged', dbus_interface='org.freedesktop.DBus', path='/org/freedesktop/DBus')
+
+    class Registrar(dbus.service.Object):
+        @dbus.service.method(BUS_NAME, in_signature='uo', out_signature='', sender_keyword='sender')
+        def RegisterWindow(self, window_id, path, sender=None):
+            pid = int(bus.get_unix_process_id(sender)) if sender else 0
+            reg[str(sender)] = {'service': str(sender), 'path': str(path), 'window': int(window_id), 'pid': pid, 'names': who(pid), 'at': int(time.time())}
+            save()
+
+        @dbus.service.method(BUS_NAME, in_signature='u', out_signature='', sender_keyword='sender')
+        def UnregisterWindow(self, window_id, sender=None):
+            for k in [k for k, v in reg.items() if v.get('window') == int(window_id) and k == str(sender)]:
+                del reg[k]
+            save()
+
+        @dbus.service.method(BUS_NAME, in_signature='u', out_signature='so')
+        def GetMenuForWindow(self, window_id):
+            for v in reg.values():
+                if v.get('window') == int(window_id):
+                    return v['service'], dbus.ObjectPath(v['path'])
+            return '', dbus.ObjectPath('/')
+
+    Registrar(name, '/com/canonical/AppMenu/Registrar')
+    save()
+    _ = name
+    GLib.MainLoop().run()
+    return 0
+
+
+def clean(label):
+    """dbusmenu's mnemonic underscores out ("_File" → "File", "__" stays one)."""
+    return re.sub(r'_(?!_)', '', str(label or '')).replace('__', '_')
+
+
+def shortcut(v):
+    try:
+        parts = [str(x) for x in v[0]] if v else []
+    except (TypeError, IndexError):
+        return ''
+    nice = {'Control': 'Ctrl', 'Super': 'Meta', 'Return': 'Enter', 'Delete': 'Del'}
+    return '+'.join(nice.get(p, p) for p in parts)
+
+
+def node(n):
+    """One dbusmenu node (id, {props}, [children]) as JSON."""
+    nid, props, kids = int(n[0]), dict(n[1]), list(n[2])
+    if props.get('visible', True) is False:
+        return None
+    kind = 'separator' if str(props.get('type', '')) == 'separator' else ('sub' if kids or str(props.get('children-display', '')) == 'submenu' else 'item')
+    out = {'id': nid, 'label': clean(props.get('label', '')), 'enabled': bool(props.get('enabled', True)), 'kind': kind,
+           'shortcut': shortcut(props.get('shortcut')) if 'shortcut' in props else ''}
+    if str(props.get('toggle-type', '')) in ('checkmark', 'radio'):
+        out['checked'] = int(props.get('toggle-state', 0)) == 1
+    if kids:
+        out['items'] = [x for x in (node(k) for k in kids) if x]
+    return out
+
+
+def layout(app_id):
+    v = find(app_id)
+    if not v:
+        return {'menus': [], 'has': False}
+    import dbus
+    bus = dbus.SessionBus()
+    m = dbus.Interface(bus.get_object(v['service'], v['path']), 'com.canonical.dbusmenu')
+    try:
+        m.AboutToShow(0)
+    except dbus.DBusException:
+        pass
+    _rev, root = m.GetLayout(0, -1, PROPS)
+    tops = []
+    for k in list(root[2]):
+        # A top menu's own items come when it's about to be shown (Qt fills them then).
+        try:
+            if m.AboutToShow(int(k[0])):
+                _r, k = m.GetLayout(int(k[0]), -1, PROPS)
+        except dbus.DBusException:
+            pass
+        x = node(k)
+        if x and x['label']:
+            tops.append(x)
+    return {'menus': tops, 'has': bool(tops), 'service': v['service'], 'path': v['path']}
+
+
+def click(service, path, item):
+    import dbus
+    bus = dbus.SessionBus()
+    m = dbus.Interface(bus.get_object(service, path), 'com.canonical.dbusmenu')
+    m.Event(int(item), 'clicked', dbus.Int32(0, variant_level=1), dbus.UInt32(int(time.time())))
+    return {'ok': True}
+
+
+def main(argv):
+    c = argv[1] if len(argv) > 1 else ''
+    try:
+        if c == 'serve':
+            return serve()
+        if c == 'has' and len(argv) == 3:
+            print(json.dumps({'menus': find(argv[2]) is not None}))
+        elif c == 'layout' and len(argv) == 3:
+            print(json.dumps(layout(argv[2])))
+        elif c == 'click' and len(argv) == 5 and re.match(r'^[:A-Za-z0-9_.-]{1,80}$', argv[2]) and re.match(r'^/[A-Za-z0-9_/]{0,120}$', argv[3]) and argv[4].isdigit():
+            print(json.dumps(click(argv[2], argv[3], argv[4])))
+        else:
+            print(__doc__)
+            return 2
+    except Exception as e:      # an app that went away, a bus that isn't there: nothing shown, nothing broken
+        print(json.dumps({'menus': [], 'has': False, 'error': str(e)[:200]}))
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

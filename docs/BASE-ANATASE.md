@@ -12,7 +12,8 @@ The installer, the offline USB, the website and Switch edition offer it; the own
 | Image | `ghcr.io/dragongamer9/hearth-os:stable` (releases) and `:stable-<version>`; tests on `:test-<version>` (never `:latest` or `:testing`, which hold the old pre-archive build). See "Release channel" below |
 | Game Mode | Steam Game Mode with Hearth Sync (Decky built in), Hearth Game Mode as on Debian |
 | Desktop Mode | stock KDE Plasma (plasmashell on KDE's own KWin) with Hearth's apps in Plasma's menu; "Back to Game Mode" in the menu and on the taskbar (Super+G) |
-| Not here | Mantel and labwc (archived on Anatase), Firehold (its shell needs Mantel; a later stage is Firehold as a Plasma shell), Hearth's own login screen (Anatase's stays) |
+| Also, when picked (1.16) | Mantel (Hearth Classic) and Firehold on labwc, in Settings › Your desktop, never a fallback (docs/LABWC-FEDORA.md) |
+| Not here | Hearth's own login screen (Anatase's stays) |
 | Unlock the file system | Settings › Updates & Recovery, off unless you turn it on (below) |
 | Workflow | `.github/workflows/base-anatase.yml`: a release (push to main) publishes the release channel; a test tag only by hand |
 

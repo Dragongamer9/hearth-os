@@ -226,8 +226,12 @@ class Workflow(unittest.TestCase):
         for need in ('plasma-workspace', 'startplasma-wayland', 'DECKY_VERSION=', 'decky-hearth-sync', 'GE_PROTON=',
                      'hearth-unlock.service', 'rpm-baseline.list', 'hearth-bls-grub.service', 'Back to Game Mode'):
             self.assertIn(need, b)
+        # (1.16: labwc and Quickshell come back only as a choice, in their own marked block: test_labwc_fedora_session.py)
+        lw = re.search(r'# >>> labwc on the Fedora edition.*?# <<< labwc on the Fedora edition\n', b, re.S)
+        self.assertIsNotNone(lw)
+        rest = b.replace(lw.group(0), '')
         for gone in ('dnf5 -y install labwc', 'quickshell', 'gnome-shell mutter', 'cosmic_pkgs'):
-            self.assertNotIn(gone, b.replace('Quickshell', ''))
+            self.assertNotIn(gone, rest.replace('Quickshell', ''))
 
 
 if __name__ == '__main__':

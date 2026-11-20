@@ -105,20 +105,25 @@ FocusScope {
     function focused() { return focusAt >= 0 && focusAt < order.length ? order[focusAt] : null; }
     function isFocused(it) { return keys && !!it && focused() === it; }
     // A on the Mode tile: Desk; held: Away.
-    Keys.onReleased: event => {
-        if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) && !event.isAutoRepeat && holdA.running) { holdA.stop(); cMode.activate(); event.accepted = true; }
+    // (1.16: the keys are functions too, so Firehold on labwc's controller can press them: keyDown / keyUp)
+    function keyUp(k, auto) {
+        if ((k === Qt.Key_Return || k === Qt.Key_Enter || k === Qt.Key_Space) && !auto && holdA.running) { holdA.stop(); cMode.activate(); return true; }
+        return false;
     }
-    Keys.onPressed: event => {
+    function keyDown(k, auto) {
         const it = focused();
-        if (event.key === Qt.Key_Escape) { close(); event.accepted = true; }
-        else if (event.key === Qt.Key_Down || event.key === Qt.Key_Tab) { moveFocus(1); event.accepted = true; }
-        else if (event.key === Qt.Key_Up || event.key === Qt.Key_Backtab) { moveFocus(-1); event.accepted = true; }
-        else if ((event.key === Qt.Key_Left || event.key === Qt.Key_Right) && it && typeof it.adjust === "function") { keys = true; it.adjust(event.key === Qt.Key_Right ? 1 : -1); event.accepted = true; }
-        else if (event.key === Qt.Key_Left || event.key === Qt.Key_Right) { moveFocus(event.key === Qt.Key_Right ? 1 : -1); event.accepted = true; }
-        else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) && it === cMode) { if (!event.isAutoRepeat) holdA.restart(); event.accepted = true; }
-        else if ((event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_Space) && it) { keys = true; it.activate(); event.accepted = true; }
-        else if (couch && (event.key === Qt.Key_PageUp || event.key === Qt.Key_PageDown)) { tab = event.key === Qt.Key_PageDown ? 1 : 0; event.accepted = true; }
+        if (k === Qt.Key_Escape) { close(); return true; }
+        if (k === Qt.Key_Down || k === Qt.Key_Tab) { moveFocus(1); return true; }
+        if (k === Qt.Key_Up || k === Qt.Key_Backtab) { moveFocus(-1); return true; }
+        if ((k === Qt.Key_Left || k === Qt.Key_Right) && it && typeof it.adjust === "function") { keys = true; it.adjust(k === Qt.Key_Right ? 1 : -1); return true; }
+        if (k === Qt.Key_Left || k === Qt.Key_Right) { moveFocus(k === Qt.Key_Right ? 1 : -1); return true; }
+        if ((k === Qt.Key_Return || k === Qt.Key_Enter || k === Qt.Key_Space) && it === cMode) { if (!auto) holdA.restart(); return true; }
+        if ((k === Qt.Key_Return || k === Qt.Key_Enter || k === Qt.Key_Space) && it) { keys = true; it.activate(); return true; }
+        if (couch && (k === Qt.Key_PageUp || k === Qt.Key_PageDown)) { tab = k === Qt.Key_PageDown ? 1 : 0; return true; }
+        return false;
     }
+    Keys.onReleased: event => { if (fq.keyUp(event.key, event.isAutoRepeat)) event.accepted = true; }
+    Keys.onPressed: event => { if (fq.keyDown(event.key, event.isAutoRepeat)) event.accepted = true; }
 
     // Outside it: closes, as clicking away from a Plasma popup does.
     Rectangle { anchors.fill: parent; color: fq.couch ? "#66000000" : "transparent" }

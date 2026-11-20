@@ -44,7 +44,7 @@ Item {
     Column {
         anchors.horizontalCenter: parent.horizontalCenter
         y: 110 * aw.k
-        T { couchRef: aw.couch; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatTime(aw.couch.now, "h:mm"); font.pixelSize: 150 * aw.k; font.weight: Font.ExtraLight; font.letterSpacing: -4.5 * aw.k }
+        T { couchRef: aw.couch; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatTime(aw.couch.now, "h:mm AP").replace(/\s*[AP]M$/i, ""); font.pixelSize: 150 * aw.k; font.weight: Font.ExtraLight; font.letterSpacing: -4.5 * aw.k }
         T { couchRef: aw.couch; anchors.horizontalCenter: parent.horizontalCenter; text: Qt.formatDate(aw.couch.now, "dddd, MMMM d"); color: H.P.mut; font.pixelSize: 26 * aw.k }
         Item { width: 1; height: 34 * aw.k }
         T { couchRef: aw.couch; anchors.horizontalCenter: parent.horizontalCenter; text: "AWAY · THIS PC KEEPS WORKING"; color: H.P.ac2; font.pixelSize: 18 * aw.k; font.weight: Font.Bold; font.letterSpacing: 2.2 * aw.k }

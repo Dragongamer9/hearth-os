@@ -663,6 +663,34 @@ jobs:
           set -o pipefail
           sudo podman run --rm -e HEARTH_CHANNEL="${{ steps.ver.outputs.channel }}" -v "$PWD:/src:ro" hearth-os:anatase bash /src/.github/scripts/anatase-image-check.sh 2>&1 | tee /tmp/check.log
 
+      # >>> labwc on the Fedora edition (1.16, docs/LABWC-FEDORA.md). REQUIRED: Mantel (Hearth Classic) and Firehold on
+      # labwc, started in this image as nimbus-session starts them, pictured, then 10 minutes at rest under the limits in
+      # labwc-fedora-rest.sh (CPU near 0, memory not growing, no frames drawn, no programs started, Files quick). The
+      # pictures go with the looks (ci/anatase-looks, labwc-<kind>-*).
+      - name: Mantel and Firehold on labwc, pictured and at rest (10 minutes each)
+        timeout-minutes: 60
+        run: |
+          mkdir -p /tmp/anatase-looks /tmp/lwout && chmod 777 /tmp/lwout
+          sudo podman run --rm hearth-os:anatase test -x /usr/bin/hearth-labwc-desktop \
+            || { echo "::error title=labwc on Fedora::this image doesn't offer labwc (Quickshell or labwc missing: see the build's warnings)"; exit 1; }
+          rc=0
+          for k in classic firehold; do
+            sudo podman run --rm --privileged -v "$PWD:/src:ro" -v /tmp/lwout:/out hearth-os:anatase \
+              bash -c "cd /src && (command -v perf >/dev/null || dnf5 -y install perf >/dev/null 2>&1 || true); SESSION_FILE=/usr/bin/nimbus-session PERF_REST=1 PERF=/src/tools/perf-measure.py timeout 1800 bash .github/scripts/labwc-fedora-rest.sh $k /out/$k 600" || rc=1
+            for f in /tmp/lwout/$k/*; do [ -f "$f" ] && sudo cp "$f" "/tmp/anatase-looks/labwc-$k-$(basename "$f")"; done
+            { echo "### $k on labwc"; echo; sudo cat /tmp/lwout/$k/rest.md 2>/dev/null; } >> "$GITHUB_STEP_SUMMARY"
+          done
+          # Firehold on labwc's approved screens (docs/mockups/checklists/firehold-labwc.md), in this image: the Couch,
+          # Modes, Away, Settings › Couch, Desk and Away (the image's own Settings app), Quick Settings, notifications, the
+          # Desk bar's menus. Pictures as labwc-mockups-lw-NN-*.png with the looks.
+          sudo podman run --rm --privileged -v "$PWD:/src:ro" -v /tmp/lwout:/out hearth-os:anatase \
+            bash -c "cd /src && (python3 -c 'import PIL, PyQt6.QtWidgets' 2>/dev/null || dnf5 -y install python3-pillow python3-pyqt6 >/dev/null 2>&1 || true); MOCKUPS=/src/docs/mockups/firehold-plasma SESSION_FILE=/usr/bin/nimbus-session timeout 1200 bash .github/scripts/labwc-firehold-mockups.sh /out/mockups" || rc=1
+          for f in /tmp/lwout/mockups/*; do [ -f "$f" ] && sudo cp "$f" "/tmp/anatase-looks/labwc-mockups-$(basename "$f")"; done
+          { echo "### Firehold on labwc, the approved screens"; echo; sudo cat /tmp/lwout/mockups/mockups.md 2>/dev/null; } >> "$GITHUB_STEP_SUMMARY"
+          sudo chmod -R a+r /tmp/anatase-looks
+          exit $rc
+      # <<< labwc on the Fedora edition
+
       # Warn-only: screenshots of Hearth's looks as Plasma Global Themes (Hearth in full: desktop, app menu, Dolphin,
       # System Settings; then one per look picked as Hearth's Settings picks it). Posted to the ci/anatase-looks branch
       # by the looks job below (artifacts can't be opened from the owner's sessions).

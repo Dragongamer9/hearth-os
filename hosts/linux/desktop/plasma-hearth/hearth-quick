@@ -25,6 +25,19 @@ import time
 
 FIREHOLD = '/usr/share/nimbus/desktop/firehold-plasma/hearth-firehold-plasma'
 sys.path.insert(0, '/usr/share/nimbus/desktop/shell')   # hearth_kconfig (Night Light's switch), as Firehold's helper
+# 1.16: Firehold on labwc (Fedora edition) uses this same backend. There KWin isn't running: the on-screen keyboard,
+# Night Light, Do not disturb, the screenshot and logging out are Mantel's own (its IPC, its settings file).
+LABWC = os.environ.get('HEARTH_WM') == 'labwc'
+SHELL = os.path.join(os.path.dirname(os.path.dirname(os.path.realpath(__file__))), 'shell')
+
+
+def mantel(*args, timeout=5):
+    """Mantel's IPC (quickshell ipc call ...), Firehold on labwc only."""
+    return quiet(['quickshell', 'ipc', '-p', SHELL, 'call'] + list(args), timeout) if have('quickshell') else ''
+
+
+def desktop_json():
+    return os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share'), 'nimbus', 'desktop.json')
 
 
 def log(msg):
@@ -210,11 +223,23 @@ def bt_state():
     return {'on': on, 'connected': len(names), 'names': names[:4]}
 
 def osk_on():
+    if LABWC:
+        try:
+            return json.loads(mantel('keyboard', 'state') or '{}').get('open') is True
+        except ValueError:
+            return False
     out = dbus_send('org.kde.KWin', '/VirtualKeyboard', 'org.freedesktop.DBus.Properties.Get', 'string:org.kde.kwin.VirtualKeyboard', 'string:enabled', timeout=3)
     return 'true' in out
 
 def night_light():
-    """KWin's Night Light (org.kde.KWin.NightLight): on now, and until when."""
+    """KWin's Night Light (org.kde.KWin.NightLight): on now, and until when. Under labwc: Mantel's (its nightLight
+    setting, wlsunset from sunset to sunrise)."""
+    if LABWC:
+        try:
+            with open(desktop_json()) as f:
+                return {'on': json.load(f).get('nightLight') is True, 'until': ''}
+        except (OSError, ValueError, AttributeError):
+            return {'on': False, 'until': ''}
     def prop(n):
         return dbus_send('org.kde.KWin', '/org/kde/KWin/NightLight', 'org.freedesktop.DBus.Properties.Get', 'string:org.kde.KWin.NightLight', 'string:' + n, timeout=3)
     running = 'true' in prop('running')
@@ -359,6 +384,10 @@ def qs_do(what, arg=''):
         p = os.path.join(run_dir(), 'dnd')
         write_small(p, 'off' if read_small(p) == 'on' else 'on')
         tell_dnd()
+    elif what == 'night' and LABWC:
+        # Mantel's own Night light setting (desktop.json "nightLight": that key only, merged, atomic, .bak): your press.
+        import hearth_settings_io as io
+        io.merge_json(desktop_json(), {'nightLight': not night_light()['on']})
     elif what == 'night':
         # KDE's own Night Light switch (kwinrc [NightColor] Active, through KConfig; KWin reads it again). A KWin
         # inhibit wouldn't outlast this short helper, so the tile is the setting itself, changed only by your press.
@@ -389,6 +418,8 @@ def qs_do(what, arg=''):
         detach(['loginctl', 'lock-session'])
     elif what in ('sleep', 'restart', 'shutdown'):
         detach(['systemctl', {'sleep': 'suspend', 'restart': 'reboot', 'shutdown': 'poweroff'}[what]])
+    elif what == 'logout' and LABWC:
+        mantel('leave', 'logout')          # (it asks first, as Mantel's own Log out does)
     elif what == 'logout':
         dbus_send('org.kde.Shutdown', '/Shutdown', 'org.kde.Shutdown.logout', reply=False)
     elif what == 'mode' and re.match(r'^[A-Za-z0-9_.,-]{1,80}:(couch|desk|away)$', arg or ''):
@@ -432,7 +463,10 @@ def screen_modes():
 
 def tell_dnd():
     """Firehold on Plasma's own Do not disturb ping is its helper's (hearth-firehold-plasma calls this backend,
-    then tells its KWin script); nothing else to tell here."""
+    then tells its KWin script); nothing else to tell here. Under labwc Mantel's own notifications hold their pop-ups
+    too (its IPC)."""
+    if LABWC:
+        mantel('notifications', 'dnd', 'on' if dnd_state().get('on') else 'off')
     return None
 
 
@@ -440,12 +474,18 @@ def screenshot():
     pics = quiet(['xdg-user-dir', 'PICTURES'], 3).strip() or os.path.join(home(), 'Pictures')
     os.makedirs(pics, exist_ok=True)
     f = os.path.join(pics, 'Screenshot_%s.png' % time.strftime('%Y%m%d_%H%M%S'))
-    detach(['sh', '-c', 'sleep 0.6; exec spectacle -b -n -f -o "$1"', 'sh', f])
+    if LABWC:
+        detach(['sh', '-c', 'sleep 0.6; exec grim "$1"', 'sh', f])
+    else:
+        detach(['sh', '-c', 'sleep 0.6; exec spectacle -b -n -f -o "$1"', 'sh', f])
     return {'ok': True, 'file': f}
 
 
 def osk_toggle():
-    """KWin's own on-screen keyboard switch (org.kde.kwin.VirtualKeyboard)."""
+    """KWin's own on-screen keyboard switch (org.kde.kwin.VirtualKeyboard); under labwc, Mantel's keyboard."""
+    if LABWC:
+        mantel('keyboard', 'close' if osk_on() else 'open')
+        return {'ok': True}
     cur = dbus_send('org.kde.KWin', '/VirtualKeyboard', 'org.freedesktop.DBus.Properties.Get',
                     'string:org.kde.kwin.VirtualKeyboard', 'string:enabled')
     v = 'false' if 'true' in cur else 'true'

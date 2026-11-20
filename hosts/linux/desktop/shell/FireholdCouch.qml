@@ -41,7 +41,7 @@ PanelWindow {
         if (shown) { shownAt = Date.now(); if (primary || !fh.activeCouch) fh.activeCouch = cw; keys.forceActiveFocus(); }
         else if (fh.activeCouch === cw) fh.activeCouch = null;
     }
-    Component.onCompleted: if (shown && (primary || !fh.activeCouch)) fh.activeCouch = cw
+    Component.onCompleted: { syncApps(); if (shown && (primary || !fh.activeCouch)) fh.activeCouch = cw; }
     Component.onDestruction: if (fh.activeCouch === cw) fh.activeCouch = null
     property double shownAt: 0
 
@@ -319,19 +319,8 @@ PanelWindow {
     readonly property var batt: UPower.displayDevice
     readonly property string battery: batt && batt.isLaptopBattery ? Math.round(batt.percentage * 100) + "%" : ""
     readonly property string initial: (Quickshell.env("USER") || "H").charAt(0).toUpperCase()
-    property string net: ""
-    Timer { interval: 15000; running: cw.shown; repeat: true; triggeredOnStart: true; onTriggered: netProc.running = true }
-    Process {
-        id: netProc
-        command: ["nmcli", "-t", "-f", "TYPE,STATE", "device"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                let k = "";
-                for (const l of text.split("\n")) { const f = l.split(":"); if (f[1] === "connected" && (f[0] === "wifi" || f[0] === "ethernet")) { k = f[0]; break; } }
-                cw.net = k === "wifi" ? "Wi-Fi" : k === "ethernet" ? "Wired" : "Offline";
-            }
-        }
-    }
+    // 1.16: from NetBtWatch.qml, when the network changes (no polling).
+    readonly property string net: NetBtWatch.netKind === "wifi" ? "Wi-Fi" : NetBtWatch.netKind === "ethernet" ? "Wired" : "Offline"
 
     // ================================================================== Home
     readonly property var recentList: F.recent(fh.library, 7, hero.game ? hero.game.id : "")
@@ -581,11 +570,20 @@ PanelWindow {
     }
 
     // ================================================================== Apps (your apps, as big tiles)
-    readonly property var appList: {
+    // (1.16, the rest fixes: a new list only when the apps themselves changed, not each time the app folders are
+    // looked at again, so the tiles and their icons aren't all made again for nothing.)
+    readonly property var appFresh: {
         const all = DesktopEntries.applications ? DesktopEntries.applications.values : [];
         return all.filter(e => !e.noDisplay && e.name)
                   .slice().sort((a, b) => a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1);
     }
+    property var appList: []
+    property string appSig: ""
+    function syncApps() {
+        const g = appFresh.map(e => (e.id || "") + "\u0001" + e.name + "\u0001" + (e.icon || "")).join("\u0002");
+        if (g !== appSig) { appSig = g; appList = appFresh; }
+    }
+    onAppFreshChanged: syncApps()
     component TileGrid: GridView {
         id: tg
         property var owner: null
@@ -608,7 +606,8 @@ PanelWindow {
                 Image {
                     anchors.centerIn: parent; width: 88 * tg.kk; height: width; asynchronous: true; smooth: true; mipmap: true
                     sourceSize.width: Math.ceil(width * Screen.devicePixelRatio); sourceSize.height: Math.ceil(height * Screen.devicePixelRatio)
-                    source: at.modelData.iconUrl || AppIcons.find(at.modelData.icon || "", at.modelData.id || "")
+                    // (only while its tab is showing: a hidden tab holds no icons)
+                    source: tg.visible && tg.parent && tg.parent.visible ? (at.modelData.iconUrl || AppIcons.find(at.modelData.icon || "", at.modelData.id || "")) : ""
                 }
                 TapHandler { onTapped: { tg.currentIndex = at.index; tg.owner.zone = "grid"; tg.activate(at.index); } }
             }

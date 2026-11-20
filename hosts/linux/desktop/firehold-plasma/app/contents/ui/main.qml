@@ -8,6 +8,7 @@ import org.kde.plasma.core as PlasmaCore
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.plasma5support as P5Support
 import org.kde.taskmanager as TaskManager
+import "couch/deskmenus.js" as DM
 
 PlasmoidItem {
     id: root
@@ -85,28 +86,11 @@ PlasmoidItem {
         if (g) for (const s of Qt.application.screens) if (s.virtualX === g.x && s.virtualY === g.y) name = s.name;
         frontScreen = name;
     }
-    readonly property string nameUp: (appName || "This app").toUpperCase()
-    // [label, shortcut, action, kind, what it does] (StdMenu.qml)
-    readonly property var appItems: [["THE \u201C" + nameUp + "\u201D MENU · STANDARD FOR EVERY APP", "", "", "head"],
-        ["About " + (appName || "this app"), "", "about", "", "From its desktop entry"],
-        ["Settings for this app", "", "settings", "", "Proton version, controller layout, which screen it opens on"],
-        ["Open its folder", "", "folder", "", "Where it's installed"],
-        ["Send logs", "", "logs", "", "When it misbehaves"], ["Quit", "Ctrl+Q", "close"]]
-    readonly property var windowItems: [[nameUp + " HAS NO MENUS OF ITS OWN · THESE ARE HEARTH'S", "", "", "head"],
-        ["Full screen", "F11", "fullscreen"], ["Move to screen ›", "Super+Shift+← →", "", "sub"],
-        ["Keep above others", "", "above"], ["Snap left · right", "Super+← →", "snap-left|snap-right", "pair"],
-        ["Maximize", "Super+↑", "maximize"], ["Minimize", "Super+↓", "minimize"], ["", "", "", "sep"],
-        ["Take a screenshot of it", "Alt+Print", "screenshot"], ["Record it", "Super+Alt+R", "record"], ["", "", "", "sep"],
-        ["Close", "Alt+F4", "close"], ["Force quit (not answering)", "", "kill", "red"]]
-    // Move to screen ›: each screen with its mode; where the app would go full screen (a Couch screen), where it is.
-    readonly property var moveItems: screens.map(function (s) {
-        const here = s.name === root.frontScreen;
-        return [(s.label || s.name) + " · " + root.modeName(s.mode) + (here ? " ✓" : ""),
-                here ? "here now" : s.mode === "couch" ? "goes full screen" : s.mode === "away" ? "waits there" : "in a window", "move:" + s.name,
-                "", "", s.tv ? "video-television" : "video-display"];
-    })
-    readonly property var helpItems: [["HELP", "", "", "head"], ["Search every command", "Alt+Space", "search"],
-        ["Keyboard shortcuts", "", "shortcuts", "", "Hearth's and KDE's in one list"]]
+    // (the rows are the Couch's deskmenus.js, shared with Firehold on labwc's Desk bar)
+    readonly property var appItems: DM.appItems(appName)
+    readonly property var windowItems: DM.windowItems(appName)
+    readonly property var moveItems: DM.moveItems(screens, frontScreen)
+    readonly property var helpItems: DM.helpItems()
     function act(a) {
         if (a === "kill" || a === "folder") helper(["do", "window", a + ":" + root.pid]);
         else if (a === "logs") helper(["do", "window", "logs:" + root.appName]);

@@ -16,6 +16,12 @@ FROM ${BASE_IMAGE} AS kwinim
 COPY hosts/linux/desktop/kwin-helpers /src
 RUN mkdir -p /out && { dnf5 -y install gcc pkgconf-pkg-config wayland-devel wayland-protocols-devel >/dev/null 2>&1 \
       && HEARTH_IM_ONLY=1 bash /src/build.sh /out; } || echo "hearth-kwin-im wasn't built: KDE's own keyboard stays KWin's input method"
+# >>> labwc on the Fedora edition (1.16, docs/LABWC-FEDORA.md): Quickshell v0.3.2 for Mantel, built against this very
+# base image's Qt (Quickshell uses Qt's private API), in a stage of its own: only its files reach the image.
+FROM ${BASE_IMAGE} AS quickshell
+COPY os-bases/anatase/quickshell-build.sh /quickshell-build.sh
+RUN --mount=type=cache,dst=/var/cache bash /quickshell-build.sh /out
+# <<< labwc on the Fedora edition
 
 # Files the build script needs, kept out of the final image (the same as os/Containerfile, plus this image's own).
 FROM scratch AS ctx
@@ -32,6 +38,9 @@ COPY hosts/hearth-kde /hearth-kde
 # starts through Debian's GRUB), the writable system's units and drop-ins, the /etc guard (build.sh picks them).
 COPY os-bases/peppermint/system_files /peppermint_files
 COPY --from=kwinim /out /kwin-im
+# labwc on the Fedora edition: Quickshell (above) and what Mantel needs (labwc-install.sh, run by build.sh).
+COPY --from=quickshell /out /quickshell
+COPY os-bases/anatase/labwc-install.sh /labwc-install.sh
 
 FROM ${BASE_IMAGE}
 

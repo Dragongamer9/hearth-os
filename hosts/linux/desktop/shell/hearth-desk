@@ -5,7 +5,8 @@
   hearth-desk pin ID                        keep an app on the taskbar (ID: its .desktop id, e.g. firefox)
   hearth-desk unpin ID                      take it off again
   hearth-desk set KEY on|off                desktopIcons | dnd
-  hearth-desk icons COLS ROWS               what's in your Desktop folder, each with its place on a COLS x ROWS grid
+  hearth-desk icons COLS ROWS [--look]      what's in your Desktop folder, each with its place on a COLS x ROWS grid
+                                            (--look: only reads; Mantel asks this way until its grid has settled)
   hearth-desk place NAME COL ROW COLS ROWS  move one desktop icon to a place (swaps with an icon already there)
   hearth-desk place-many COLS ROWS NAME COL ROW [NAME COL ROW...]
                                             move several icons at once (icons in the way take the places left)
@@ -412,7 +413,30 @@ def layout(names, saved, cols, rows):
     return placed, fresh
 
 
-def icons(cols, rows):
+def save_icons(changes):
+    """Only these icons' places (and None: forget it), merged into the latest desk.json under its lock (red flag 9:
+    another writer's keys, and every other icon's saved place, are never written over). 1.16: the owner's dad's PC
+    moved icons after turning them off and on and a shell restart, because whole layouts were saved."""
+    if not changes:
+        return
+    def change(data):
+        cur = data.get('icons') if isinstance(data.get('icons'), dict) else {}
+        cur = dict(cur)
+        for n, cell in changes.items():
+            if cell is None:
+                cur.pop(n, None)
+            else:
+                cur[n] = [int(cell[0]), int(cell[1])]
+        data['icons'] = cur
+    if hsio and hasattr(hsio, 'update_json'):
+        hsio.update_json(config_path(), change)
+    else:
+        s = load()
+        change(s)
+        save(s)
+
+
+def icons(cols, rows, look=False):
     d = desktop_dir()
     if not d or not os.path.isdir(d):
         return {'dir': d, 'exists': False, 'entries': []}
@@ -430,15 +454,14 @@ def icons(cols, rows):
     # dropped by looking (the owner, Nov 19: icons stay where you put them, a red flag): a place outside today's grid
     # (a smaller screen, a bigger bar) is kept for when there's room again, and the place of a file that isn't
     # there right now (an app saving it anew, the folder not readable yet at sign-in) for when it's back. Only when
-    # far more are kept than could ever show do the missing ones' places go.
+    # far more are kept than could ever show do the missing ones' places go. New icons' places are saved only once
+    # the grid has settled (not with --look), only those icons, merged under desk.json's lock (save_icons).
     gone = [n for n in s['icons'] if n not in placed]
     drop = gone if len(s['icons']) > MAX_PLACES else []
-    if fresh or drop:
-        for n in drop:
-            del s['icons'][n]
-        for n in fresh:
-            s['icons'][n] = list(placed[n])
-        save(s)
+    if not look and (fresh or drop):
+        ch = {n: None for n in drop}
+        ch.update({n: placed[n] for n in fresh})
+        save_icons(ch)
     for e in items:
         e['col'], e['row'] = placed[e['name']]
     return {'dir': d, 'exists': True, 'entries': items}
@@ -477,9 +500,7 @@ def place_many(moves, cols, rows):
         new[n] = spare.pop(0) if spare else placed[n]
     # Only the icons that moved (the dragged ones and the ones they pushed aside) get new places: every other
     # icon keeps its own saved place, also one that's shown elsewhere today because the grid is smaller.
-    for n in list(want) + displaced:
-        s['icons'][n] = list(new[n])
-    save(s)
+    save_icons({n: new[n] for n in list(want) + displaced})
     return icons(cols, rows)
 
 
@@ -804,8 +825,8 @@ def cmd(argv):
         out = unpin(rest[0])
     elif c == 'set' and len(rest) == 2:
         out = set_switch(rest[0], rest[1])
-    elif c == 'icons' and len(rest) == 2:
-        out = icons(num(rest[0]), num(rest[1]))
+    elif c == 'icons' and len(rest) in (2, 3) and (len(rest) == 2 or rest[2] == '--look'):
+        out = icons(num(rest[0]), num(rest[1]), look=len(rest) == 3)
     elif c == 'place' and len(rest) == 5:
         out = place(rest[0], num(rest[1]), num(rest[2]), num(rest[3]), num(rest[4]))
     elif c == 'place-many' and len(rest) >= 5 and (len(rest) - 2) % 3 == 0:
