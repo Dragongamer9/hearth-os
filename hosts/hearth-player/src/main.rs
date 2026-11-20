@@ -21,6 +21,9 @@ Usage: hearth-player [options] [files, folders, playlists or web addresses...]
   --fullscreen     start full screen
   --music          start in the music view
   --podcasts       start in Podcasts & Radio
+  --disc [PATH]    play a disc: a drive (/dev/sr0), a .cue, an .iso or a VIDEO_TS folder
+                   (no PATH: the first drive with a disc in it)
+  --show WHAT      open with a screen showing (disc, controller), for pictures of it
   --version        print the version
   -h, --help       this help
 ";
@@ -33,6 +36,8 @@ struct App {
     next_job: AtomicU32,
     #[cfg(target_os = "linux")]
     mpris: tokio::sync::OnceCell<Option<hearth_player::mpris::Mpris>>,
+    #[cfg(target_os = "linux")]
+    discs: Mutex<HashMap<String, Arc<hearth_player::discplay::Opened>>>,
 }
 
 fn err<E: std::fmt::Display>(e: E) -> String { e.to_string() }
@@ -316,6 +321,121 @@ fn save_playlist(path: String, items: Vec<String>) -> Result<String, String> {
 #[tauri::command(async)]
 fn file_exists(path: String) -> bool { Path::new(&path).exists() }
 
+// ------------------------------------------------------------------ CDs and DVDs (src/disc.rs, dvd.rs, discplay.rs)
+
+/// The CD/DVD drives and what's in them.
+#[tauri::command(async)]
+fn disc_drives() -> Value {
+    #[cfg(target_os = "linux")]
+    { json!(hearth_player::disc::drives()) }
+    #[cfg(not(target_os = "linux"))]
+    { json!([]) }
+}
+
+/// Opens a disc (a drive, a .cue, an .iso or a disc's folder): its titles, chapters, tracks and names.
+#[tauri::command(async)]
+fn disc_open(app: tauri::State<Arc<App>>, path: Option<String>) -> Result<Value, String> {
+    #[cfg(target_os = "linux")]
+    {
+        use hearth_player::discplay;
+        let path = match path.filter(|p| !p.is_empty()) { Some(p) => p, None => discplay::default_source().ok_or(discplay::EMPTY_NOTE)? };
+        let o = Arc::new(discplay::open(&path)?);
+        let info = json!(o.info);
+        let mut d = app.discs.lock().unwrap();
+        for (_, old) in d.drain() { old.forget(&app.server); }
+        d.insert(o.info.id.clone(), o);
+        Ok(info)
+    }
+    #[cfg(not(target_os = "linux"))]
+    { let _ = (app, path); Err("Discs play on Hearth OS (Linux) for now.".into()) }
+}
+
+/// Starts title (DVD) or track (CD, VCD) `n` at `at` seconds, with a sound track and subtitles (DVD stream ids).
+#[tauri::command(async)]
+fn disc_play(app: tauri::State<Arc<App>>, id: String, n: u32, at: Option<f64>, audio: Option<u32>, sub: Option<u32>, reencode: Option<bool>) -> Result<Value, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let o = app.discs.lock().unwrap().get(&id).cloned().ok_or("The disc isn't open any more.")?;
+        let t = app.tools.lock().unwrap().clone();
+        let p = hearth_player::discplay::play(&o, &app.server, t.ffmpeg.as_deref(), &t.encoders, n, at.unwrap_or(0.0), audio, sub, reencode.unwrap_or(false))?;
+        Ok(json!(p))
+    }
+    #[cfg(not(target_os = "linux"))]
+    { let _ = (app, id, n, at, audio, sub, reencode); Err("Discs play on Hearth OS (Linux) for now.".into()) }
+}
+
+/// An audio CD's names from the internet (MusicBrainz, then CDDB).
+#[tauri::command(async)]
+fn disc_names(app: tauri::State<Arc<App>>, id: String) -> Result<Value, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let o = app.discs.lock().unwrap().get(&id).cloned().ok_or("The disc isn't open any more.")?;
+        let toc = o.toc().ok_or("Only music CDs have names to look up.")?;
+        Ok(json!(hearth_player::disc::lookup_names(toc)?))
+    }
+    #[cfg(not(target_os = "linux"))]
+    { let _ = (app, id); Err("Not here".into()) }
+}
+
+/// Opens the tray (and forgets the disc).
+#[tauri::command(async)]
+fn disc_eject(app: tauri::State<Arc<App>>, device: String) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        let mut d = app.discs.lock().unwrap();
+        d.retain(|_, o| { let same = o.info.device.as_deref() == Some(device.as_str()); if same { o.forget(&app.server); } !same });
+        drop(d);
+        hearth_player::disc::eject(&device)
+    }
+    #[cfg(not(target_os = "linux"))]
+    { let _ = (app, device); Err("Not here".into()) }
+}
+
+/// Whether DVD decoding (libdvdcss) is installed, and whether Hearth Player can add it on this system.
+#[tauri::command(async)]
+fn dvd_decoding() -> Value {
+    #[cfg(target_os = "linux")]
+    {
+        let os = std::fs::read_to_string("/etc/os-release").unwrap_or_default();
+        let fedora = os.lines().any(|l| l == "ID=fedora" || l == "ID=\"fedora\"" || (l.starts_with("ID_LIKE=") && l.contains("fedora")));
+        let helper = Path::new("/usr/libexec/nimbus/hearth-dvd-decoding").exists();
+        json!({"installed": hearth_player::dvd::have_dvdcss(), "canAdd": (fedora && helper) || std::env::var_os("HEARTH_PLAYER_DVD_DECODING_DEMO").is_some()})
+    }
+    #[cfg(not(target_os = "linux"))]
+    { json!({"installed": false, "canAdd": false}) }
+}
+
+/// Adds (or removes) DVD decoding: libdvdcss from RPM Fusion's free-tainted repository, through hearth-admin (which
+/// asks for an administrator's password). Only after you said yes in the player. Progress as a job.
+#[tauri::command]
+fn dvd_decoding_change(handle: tauri::AppHandle, app: tauri::State<Arc<App>>, add: bool) -> Result<u32, String> {
+    let app = app.inner().clone();
+    let (id, _cancel) = new_job(&app);
+    spawn_job(handle, app, id, "dvd-decoding", move |progress| {
+        use std::io::BufRead;
+        progress(0.02, if add { "Adding DVD decoding" } else { "Removing DVD decoding" });
+        let demo = std::env::var_os("HEARTH_PLAYER_DVD_DECODING_DEMO").is_some();
+        let mut child = (if demo { std::process::Command::new("sh").args(["-c", "echo 'progress: 50 Downloading'; echo '{\"ok\": true, \"live\": true}'"]).stdout(std::process::Stdio::piped()).spawn() }
+            else { std::process::Command::new("pkexec").args(["/usr/libexec/nimbus/hearth-admin", if add { "dvd-decoding-add" } else { "dvd-decoding-remove" }]).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn() })
+            .map_err(|e| format!("Couldn't start it: {e}"))?;
+        let out = child.stdout.take().unwrap();
+        let mut last = Value::Null;
+        let mut error = String::new();
+        for line in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+            if let Some(rest) = line.strip_prefix("progress: ") {
+                let (pct, what) = rest.split_once(' ').unwrap_or((rest, ""));
+                progress(pct.parse::<f64>().unwrap_or(0.0) / 100.0, what);
+            } else if let Some(e) = line.strip_prefix("error: ") { error = e.to_string(); }
+            else if line.starts_with('{') { last = serde_json::from_str(&line).unwrap_or(Value::Null); }
+        }
+        let st = child.wait().map_err(err)?;
+        if st.code() == Some(126) || st.code() == Some(127) { return Err("It wasn't allowed (the password was cancelled).".into()); }
+        if !st.success() { return Err(if error.is_empty() { "It didn't work.".into() } else { error }); }
+        Ok(last)
+    });
+    Ok(id)
+}
+
 #[tauri::command]
 fn quit(app: tauri::AppHandle) { awake::set(""); app.exit(0); }
 
@@ -336,11 +456,21 @@ fn pick_drawing() {
     if fallback || nvidia { std::env::set_var(VAR, "1"); }
 }
 
+#[cfg(target_os = "linux")]
+fn is_disc(p: &Path) -> bool { hearth_player::disc::looks_like_disc(p) }
+#[cfg(not(target_os = "linux"))]
+fn is_disc(_: &Path) -> bool { false }
+
 fn main() {
     let mut files = Vec::new();
     let (mut full, mut view) = (false, "player");
-    for a in std::env::args().skip(1) {
+    let mut disc: Option<String> = None;
+    let mut show = String::new();
+    let mut args = std::env::args().skip(1).peekable();
+    while let Some(a) = args.next() {
         match a.as_str() {
+            "--disc" => { disc = Some(match args.peek() { Some(n) if !n.starts_with("--") => { let n = args.next().unwrap(); if n.starts_with('/') { n } else { std::env::current_dir().map(|d| d.join(&n).to_string_lossy().into_owned()).unwrap_or(n) } } _ => String::new() }); }
+            "--show" => { show = args.next().unwrap_or_default(); }
             "-h" | "--help" => { print!("{USAGE}"); return; }
             "--version" => { println!("hearth-player {}", env!("CARGO_PKG_VERSION")); return; }
             "--fullscreen" => full = true,
@@ -350,6 +480,8 @@ fn main() {
             _ => {
                 let p = Path::new(&a);
                 let full_path = if a.contains("://") || p.is_absolute() { a.clone() } else { std::env::current_dir().map(|d| d.join(p).to_string_lossy().into_owned()).unwrap_or(a.clone()) };
+                // A drive, a disc image or a disc's folder (Plasma's "Play disc" passes the drive or the mounted folder).
+                if disc.is_none() && is_disc(Path::new(&full_path)) { disc = Some(full_path); continue; }
                 files.push(full_path);
             }
         }
@@ -360,11 +492,13 @@ fn main() {
     let app = Arc::new(App {
         server,
         tools: Mutex::new(tools::detect()),
-        launch: json!({"files": files, "view": view, "fullscreen": full}),
+        launch: json!({"files": files, "view": view, "fullscreen": full, "disc": disc, "show": show}),
         jobs: Mutex::new(HashMap::new()),
         next_job: AtomicU32::new(0),
         #[cfg(target_os = "linux")]
         mpris: tokio::sync::OnceCell::new(),
+        #[cfg(target_os = "linux")]
+        discs: Mutex::new(HashMap::new()),
     });
 
     tauri::Builder::default().plugin(apptheme::plugin())
@@ -372,7 +506,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             init, open_paths, folder_tracks, list_dir, media_url, proxy_url, probe, subtitle_vtt, subtitle_file_vtt, art_url,
             tags_read, tags_write, store_get, store_set, keep_awake, now_playing, fullscreen, set_title, net_get, save_frame,
-            job_cancel, edit_plan, edit_start, prepare_start, download_start, delete_download, save_playlist, file_exists, quit
+            job_cancel, edit_plan, edit_start, prepare_start, download_start, delete_download, save_playlist, file_exists, quit,
+            disc_drives, disc_open, disc_play, disc_names, disc_eject, dvd_decoding, dvd_decoding_change
         ])
         .setup(move |a| {
             let w = WebviewWindowBuilder::new(a, "main", WebviewUrl::App("index.html".into()))
@@ -383,6 +518,12 @@ fn main() {
                 .background_color(apptheme::bg())
                 .build()?;
             let _ = w.set_focus();
+            // A disc going in or out: udev tells (a thread asleep on its socket; nothing is checked over and over).
+            #[cfg(target_os = "linux")]
+            {
+                let h = a.handle().clone();
+                hearth_player::disc::watch(move |dev| { let _ = h.emit("player://disc", json!({"device": dev})); });
+            }
             #[cfg(target_os = "linux")]
             {
                 let handle = a.handle().clone();

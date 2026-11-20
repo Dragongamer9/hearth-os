@@ -11,9 +11,40 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 
+/// A file made up as it's read: a disc's track or title (its sectors), with byte ranges like a real file.
+pub trait VFile: Send + Sync {
+    fn len(&self) -> u64;
+    fn mime(&self) -> &str;
+    /// Reads from `off` into `buf`; how many bytes (0 at the end).
+    fn read_at(&self, off: u64, buf: &mut [u8]) -> std::io::Result<usize>;
+}
+
+/// A program whose output is sent as it comes (ffmpeg turning a DVD title into Matroska): started for each request,
+/// stopped when the web view hangs up (it does when it seeks, which starts a new one).
+#[derive(Clone, Debug)]
+pub struct Live { pub program: String, pub args: Vec<String>, pub mime: String }
+
+#[derive(Clone)]
 enum Entry {
     File(PathBuf),
     Bytes(Arc<Vec<u8>>, String),
+    Virtual(Arc<dyn VFile>),
+    Live(Arc<Live>),
+}
+
+struct VReader { f: Arc<dyn VFile>, pos: u64 }
+impl Read for VReader {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        let n = self.f.read_at(self.pos, buf)?;
+        self.pos += n as u64;
+        Ok(n)
+    }
+}
+impl Seek for VReader {
+    fn seek(&mut self, p: SeekFrom) -> std::io::Result<u64> {
+        self.pos = match p { SeekFrom::Start(x) => x, SeekFrom::Current(d) => (self.pos as i64 + d).max(0) as u64, SeekFrom::End(d) => (self.f.len() as i64 + d).max(0) as u64 };
+        Ok(self.pos)
+    }
 }
 
 pub struct Server {
@@ -102,6 +133,25 @@ impl Server {
         format!("{}/f/{}/{}", self.base(), id, url_encode(name))
     }
 
+    /// The address of a made-up file (a disc's track or title).
+    pub fn virtual_url(&self, f: Arc<dyn VFile>, name: &str) -> String {
+        let id = self.next.fetch_add(1, Ordering::SeqCst).to_string();
+        self.entries.lock().unwrap().insert(id.clone(), Entry::Virtual(f));
+        format!("{}/f/{}/{}", self.base(), id, url_encode(name))
+    }
+
+    /// The address of a program's output (a DVD title through ffmpeg).
+    pub fn live_url(&self, l: Live, name: &str) -> String {
+        let id = self.next.fetch_add(1, Ordering::SeqCst).to_string();
+        self.entries.lock().unwrap().insert(id.clone(), Entry::Live(Arc::new(l)));
+        format!("{}/f/{}/{}", self.base(), id, url_encode(name))
+    }
+
+    /// Forgets addresses made for a disc (when it's ejected or another one is played).
+    pub fn forget(&self, url: &str) {
+        if let Some(id) = url.split("/f/").nth(1).and_then(|r| r.split('/').next()) { self.entries.lock().unwrap().remove(id); }
+    }
+
     /// The address that streams an internet address through this server.
     pub fn proxy_url(&self, url: &str) -> String { format!("{}/p?u={}", self.base(), url_encode(url)) }
 
@@ -135,16 +185,11 @@ impl Server {
         }
         let Some(rest) = rest.strip_prefix("f/") else { return simple(&mut out, 404, "Not here") };
         let id = rest.split('/').next().unwrap_or("");
-        let entry = {
-            let e = self.entries.lock().unwrap();
-            match e.get(id) {
-                Some(Entry::File(p)) => Some(Entry::File(p.clone())),
-                Some(Entry::Bytes(b, m)) => Some(Entry::Bytes(b.clone(), m.clone())),
-                None => None,
-            }
-        };
+        let entry = self.entries.lock().unwrap().get(id).cloned();
         match entry {
             None => simple(&mut out, 404, "Not here"),
+            Some(Entry::Virtual(f)) => { let len = f.len(); let mime = f.mime().to_string(); send(&mut out, &mut VReader { f, pos: 0 }, len, &mime, headers.get("range"), head) }
+            Some(Entry::Live(l)) => live(&mut out, &l, head),
             Some(Entry::Bytes(b, mime)) => send(&mut out, &mut std::io::Cursor::new(&b[..]), b.len() as u64, &mime, headers.get("range"), head),
             Some(Entry::File(p)) => {
                 let Ok(mut f) = std::fs::File::open(&p) else { return simple(&mut out, 404, "That file isn't there any more") };
@@ -186,6 +231,45 @@ fn send<R: Read + Seek>(out: &mut TcpStream, src: &mut R, len: u64, mime: &str, 
         if out.write_all(&buf[..got]).is_err() { break; }
         left -= got as u64;
     }
+    Ok(())
+}
+
+/// What the last stream's program said when it stopped (its last lines), for telling why a disc didn't play.
+static LAST_STREAM_ERROR: Mutex<String> = Mutex::new(String::new());
+pub fn last_stream_error() -> String { LAST_STREAM_ERROR.lock().unwrap().clone() }
+
+/// Runs the program and sends what it writes until it ends or the web view hangs up; then it's stopped.
+fn live(out: &mut TcpStream, l: &Live, head: bool) -> std::io::Result<()> {
+    write!(out, "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", l.mime)?;
+    if head { return Ok(()); }
+    let mut child = match std::process::Command::new(&l.program).args(&l.args).stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::piped()).spawn() {
+        Ok(c) => c,
+        Err(_) => return Ok(()),
+    };
+    // What the program says goes to Hearth Player's own output (its last lines are kept for "why it stopped").
+    if let Some(err) = child.stderr.take() {
+        std::thread::spawn(move || {
+            let mut last = std::collections::VecDeque::new();
+            for line in BufReader::new(err).lines().map_while(Result::ok) {
+                if last.len() == 20 { last.pop_front(); }
+                last.push_back(line);
+            }
+            if !last.is_empty() {
+                let text = last.into_iter().collect::<Vec<_>>().join("\n  ");
+                eprintln!("hearth-player: the disc stream said:\n  {text}");
+                *LAST_STREAM_ERROR.lock().unwrap() = text;
+            }
+        });
+    }
+    let mut so = child.stdout.take().unwrap();
+    let mut buf = vec![0u8; 128 * 1024];
+    loop {
+        let n = match so.read(&mut buf) { Ok(0) | Err(_) => break, Ok(n) => n };
+        if out.write_all(&buf[..n]).is_err() { break; }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
     Ok(())
 }
 
@@ -264,6 +348,29 @@ mod tests {
         let bad = url.replace(&s.token, "nottoken");
         assert_eq!(get(&bad, None).0, 404);
         let vtt = s.bytes_url(b"WEBVTT\n\n".to_vec(), "text/vtt", "a.vtt");
+        struct Count;
+        impl VFile for Count {
+            fn len(&self) -> u64 { 300_000 }
+            fn mime(&self) -> &str { "audio/wav" }
+            fn read_at(&self, off: u64, buf: &mut [u8]) -> std::io::Result<usize> {
+                let n = buf.len().min((300_000 - off.min(300_000)) as usize).min(1000);
+                for (i, b) in buf[..n].iter_mut().enumerate() { *b = ((off + i as u64) % 251) as u8; }
+                Ok(n)
+            }
+        }
+        let v = s.virtual_url(Arc::new(Count), "Track 1.wav");
+        let (c, h, b) = get(&v, Some("bytes=1000-1009"));
+        assert_eq!(c, 206);
+        assert_eq!(b, (1000..1010).map(|x| (x % 251) as u8).collect::<Vec<_>>());
+        assert!(h.iter().any(|(k, v)| k == "content-type" && v == "audio/wav"));
+        assert_eq!(get(&v, None).2.len(), 300_000);
+        let l = s.live_url(Live { program: "printf".into(), args: vec!["hello".into()], mime: "video/x-matroska".into() }, "title.mkv");
+        let (c, h, b) = get(&l, None);
+        assert_eq!(c, 200);
+        assert_eq!(b, b"hello");
+        assert!(h.iter().any(|(k, v)| k == "content-type" && v == "video/x-matroska"));
+        s.forget(&l);
+        assert_eq!(get(&l, None).0, 404);
         assert_eq!(get(&vtt, None).2, b"WEBVTT\n\n");
         let _ = std::fs::remove_file(&p);
     }

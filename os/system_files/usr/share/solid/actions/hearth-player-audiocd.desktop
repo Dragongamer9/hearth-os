@@ -1,0 +1,11 @@
+# Plasma's "a disc was inserted" pop-up for music CDs: "Play disc in Hearth Player" (docs/PLAYER-DISCS.md).
+[Desktop Entry]
+X-KDE-Solid-Predicate=[ IS OpticalDisc AND OpticalDisc.availableContent & 'Audio' ]
+Type=Service
+Actions=hearth-player-play;
+X-KDE-Priority=TopLevel
+
+[Desktop Action hearth-player-play]
+Name=Play disc in Hearth Player
+Icon=hearth-player
+Exec=hearth-player --disc %d

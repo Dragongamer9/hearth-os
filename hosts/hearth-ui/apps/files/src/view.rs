@@ -300,6 +300,8 @@ fn nav_pane(a: &App) -> El<'_> {
             "gallery" => Ic::Gallery,
             "homeserver" => Ic::Cloud,
             _ if q.kind == "system" || (q.section == "pc" && q.depth == 1 && q.raw.get("letter").is_some() && q.kind != "usb" && q.raw.get("removable") != Some(&Value::Bool(true))) => Ic::Disc,
+            // CD/DVD drives (hearth-files' optical_drives): a disc, not a USB stick.
+            _ if q.kind == "optical" => Ic::Disc,
             _ if q.raw.get("removable") == Some(&Value::Bool(true)) => Ic::Usb,
             _ => icons::place_icon(&q.kind),
         };
@@ -761,6 +763,8 @@ fn pc_icon(e: &Entry) -> Ic {
     if e.pc == "net" {
         let k = sv(d, "kind");
         if k == "device" || k == "phone" || sv(d, "sub").contains("Hearth Link") { Ic::Phone } else { Ic::Server }
+    } else if sv(d, "kind") == "optical" {
+        Ic::Disc
     } else if d.get("removable") == Some(&Value::Bool(true)) || matches!(sv(d, "kind").as_str(), "usb" | "sd" | "removable") {
         Ic::Usb
     } else {

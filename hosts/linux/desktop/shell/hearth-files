@@ -678,7 +678,9 @@ def mounts():
 def drive_kind(dev):
     if 'mmcblk' in dev:
         return 'sd', 'SD card'
-    if dev.startswith('/dev/sd') or dev.startswith('/dev/sr'):
+    if dev.startswith('/dev/sr'):
+        return 'optical', 'CD/DVD drive'
+    if dev.startswith('/dev/sd'):
         return 'usb', 'USB drive'
     return 'drive', 'Drive'
 
@@ -1552,6 +1554,11 @@ def eject(path):
     errors = []
     if dev and shutil.which('udisksctl'):
         r = subprocess.run(['udisksctl', 'unmount', '-b', dev], capture_output=True, text=True, timeout=60)
+        if r.returncode == 0 and dev.startswith('/dev/sr'):
+            # A CD/DVD drive: open the tray (powering it off isn't a thing).
+            if shutil.which('eject'):
+                subprocess.run(['eject', dev], capture_output=True, timeout=30)
+            return {'ok': True}
         if r.returncode == 0:
             # Power the USB drive off too (fine if it can't: SD card readers usually can't).
             subprocess.run(['udisksctl', 'power-off', '-b', re.sub(r'(p?\d+)$', '', dev) if 'mmcblk' not in dev
@@ -2455,7 +2462,7 @@ def unmounted_drives(flat=None):
     for d in flat:
         fs = d.get('fstype') or ''
         if d.get('rm') and fs and fs not in ('swap', 'crypto_LUKS', 'LVM2_member') and not d.get('mountpoint') \
-                and d.get('type') in ('part', 'disk'):
+                and d.get('type') in ('part', 'disk') and not (d.get('path') or '').startswith('/dev/sr'):
             path = d.get('path') or '/dev/' + d.get('name', '')
             kind, sub = drive_kind(path)
             size = int(d.get('size') or 0)
@@ -2465,7 +2472,88 @@ def unmounted_drives(flat=None):
     return out
 
 
+# ---- CD/DVD drives (Hearth Player plays DVDs, Video CDs and music CDs: docs/PLAYER-DISCS.md)
+DISC_NAMES = {'dvd': 'DVD film', 'vcd': 'Video CD', 'svcd': 'Super Video CD', 'audio-cd': 'Music CD', 'bluray': 'Blu-ray disc',
+              'data': 'Data disc', 'blank': 'Empty disc'}
+
+
+def iso_root_names(dev):
+    """The names in a data disc's top folder (ISO 9660, read off the drive) and its volume name; ([], '') if none."""
+    try:
+        with open(dev, 'rb', buffering=0) as f:
+            f.seek(16 * 2048)
+            pvd = f.read(2048)
+            if len(pvd) < 2048 or pvd[0] != 1 or pvd[1:6] != b'CD001':
+                return [], ''
+            label = pvd[40:72].decode('latin-1').strip()
+            lba = int.from_bytes(pvd[158:162], 'little')
+            size = min(int.from_bytes(pvd[166:170], 'little'), 64 * 2048)
+            f.seek(lba * 2048)
+            data = f.read(-(-size // 2048) * 2048)
+    except OSError:
+        return [], ''
+    names = []
+    for off in range(0, len(data), 2048):
+        sec, i = data[off:off + 2048], 0
+        while i + 33 < len(sec) and sec[i]:
+            nl = sec[i + 32]
+            if nl and not (nl == 1 and sec[i + 33] <= 1):
+                names.append(sec[i + 33:i + 33 + nl].decode('latin-1').split(';')[0].rstrip('.').upper())
+            i += sec[i]
+    return names, label
+
+
+def disc_in(dev):
+    """What's in a CD/DVD drive: (kind, label), kind '' when it's empty. udev says whether there's a disc and if it's
+    music or Blu-ray; a data disc's top folder says DVD film (VIDEO_TS) or Video CD (MPEGAV, MPEG2)."""
+    try:
+        r = subprocess.run(['udevadm', 'info', '--query=property', '--name', dev], capture_output=True, text=True, timeout=4)
+        props = dict(l.split('=', 1) for l in r.stdout.splitlines() if '=' in l)
+    except (OSError, subprocess.TimeoutExpired):
+        props = {}
+    if props.get('ID_CDROM_MEDIA') != '1':
+        return '', ''
+    label = props.get('ID_FS_LABEL', '')
+    if any(k.startswith('ID_CDROM_MEDIA_BD') for k in props):
+        return 'bluray', label
+    if props.get('ID_CDROM_MEDIA_STATE') == 'blank':
+        return 'blank', ''
+    if int(props.get('ID_CDROM_MEDIA_TRACK_COUNT_AUDIO') or 0) > 0:
+        return 'audio-cd', label
+    names, vol = iso_root_names(dev)
+    kind = 'dvd' if 'VIDEO_TS' in names else 'svcd' if 'MPEG2' in names and ('SVCD' in names or 'EXT' in names) \
+        else 'vcd' if 'MPEGAV' in names else 'bluray' if 'BDMV' in names else 'data'
+    return kind, label or vol
+
+
+def optical_drives(flat=None):
+    """CD/DVD drives that aren't mounted: empty ones, and ones with a film or music disc (which open in Hearth Player).
+    Mounted data discs are listed with the other mounted drives."""
+    flat = lsblk_flat() if flat is None else flat
+    out = []
+    for d in flat:
+        path = d.get('path') or '/dev/' + d.get('name', '')
+        if d.get('type') != 'rom' or not path.startswith('/dev/sr') or d.get('mountpoint'):
+            continue
+        kind, label = disc_in(path)
+        nice = ' '.join(w.capitalize() for w in label.replace('_', ' ').split()) if label and label.isupper() else label
+        what = DISC_NAMES.get(kind, 'No disc')
+        player = kind in ('dvd', 'vcd', 'svcd', 'audio-cd')
+        out.append({'id': 'dev:' + path, 'label': nice or (what if kind else 'CD/DVD drive'), 'path': '', 'device': path,
+                    'kind': 'optical', 'sub': 'CD/DVD drive · ' + (what + (' · plays in Hearth Player' if player else '') if kind else 'no disc'),
+                    'section': 'drives', 'mounted': False, 'removable': True, 'disc': kind, 'total': None})
+    return out
+
+
 def mount(device):
+    # A film or music disc isn't a folder of files: it opens in Hearth Player instead.
+    if device.startswith('/dev/sr'):
+        kind, _ = disc_in(device)
+        if not kind:
+            raise Fail("There's no disc in the drive")
+        if kind in ('dvd', 'vcd', 'svcd', 'audio-cd') and shutil.which('hearth-player'):
+            spawn(['hearth-player', '--disc', device])
+            return {'ok': True, 'path': '', 'player': True}
     if not device.startswith('/dev/') or not shutil.which('udisksctl'):
         raise Fail("Couldn't mount the drive" + ('' if shutil.which('udisksctl') else ' (udisksctl is missing)'))
     r = subprocess.run(['udisksctl', 'mount', '-b', device, '--no-user-interaction'], capture_output=True, text=True,
@@ -3835,8 +3923,9 @@ REAL_FS = {'ext2', 'ext3', 'ext4', 'btrfs', 'xfs', 'f2fs', 'ntfs', 'ntfs3', 'exf
            'bcachefs', 'hfsplus', 'udf', 'iso9660', 'zfs'}
 # Category order on This PC (Windows-like): internal data drives, Hearth Disks games drives, Steam library drives,
 # USB sticks and SD cards.
-DRIVE_RANK = {'drive': 1, 'games': 2, 'steam': 3, 'usb': 4, 'sd': 5}
-DRIVE_NAMES = {'drive': 'Local Disk', 'games': 'Games', 'steam': 'Games', 'usb': 'USB drive', 'sd': 'SD card'}
+DRIVE_RANK = {'drive': 1, 'games': 2, 'steam': 3, 'usb': 4, 'sd': 5, 'optical': 6}
+DRIVE_NAMES = {'drive': 'Local Disk', 'games': 'Games', 'steam': 'Games', 'usb': 'USB drive', 'sd': 'SD card',
+               'optical': 'CD/DVD drive'}
 
 
 def lsblk_flat():
@@ -3934,6 +4023,8 @@ def pc_drives(flat=None, letters=True):
         removable = any(under(mp, os.path.realpath(b)) or under(mp, b) for b in media_bases())
         if 'mmcblk' in dev:
             cat = 'sd'
+        elif dev.startswith('/dev/sr'):
+            cat = 'optical'
         elif d.get('tran') == 'usb' or (d.get('rm') and removable):
             cat = 'usb'
         elif re.match(r'^/(var/)?mnt/games-', mp):
@@ -3945,14 +4036,15 @@ def pc_drives(flat=None, letters=True):
         name = (d.get('label') or '').strip() or (os.path.basename(mp) if removable else '') or DRIVE_NAMES[cat]
         free, total = free_space(mp)
         key = ('uuid:' + d['uuid']) if d.get('uuid') else ('mount:' + mp)
-        sub = {'sd': 'SD card', 'usb': 'USB drive', 'games': 'Games drive', 'steam': 'Steam library', 'drive': 'Drive'}[cat]
+        sub = {'sd': 'SD card', 'usb': 'USB drive', 'games': 'Games drive', 'steam': 'Steam library', 'drive': 'Drive',
+               'optical': 'CD/DVD drive'}[cat]
         out.append({'id': 'drive:' + mp, 'key': key, 'name': name, 'path': mp, 'device': dev,
-                    'kind': {'sd': 'sd', 'usb': 'usb', 'games': 'games', 'steam': 'games', 'drive': 'drive'}[cat],
+                    'kind': {'sd': 'sd', 'usb': 'usb', 'games': 'games', 'steam': 'games', 'drive': 'drive', 'optical': 'optical'}[cat],
                     'cat': cat, 'sub': sub, 'section': 'drives', 'free': free, 'total': total, 'removable': removable,
                     'mounted': True, 'fs': fst.get(mp, d.get('fstype') or '')})
-    for u in unmounted_drives(flat):
+    for u in unmounted_drives(flat) + optical_drives(flat):
         d = by_dev.get(u.get('device')) or {}
-        cat = 'sd' if 'mmcblk' in (u.get('device') or '') else 'usb'
+        cat = 'sd' if 'mmcblk' in (u.get('device') or '') else 'optical' if (u.get('device') or '').startswith('/dev/sr') else 'usb'
         out.append(dict(u, key=('uuid:' + d['uuid']) if d.get('uuid') else 'dev:' + u.get('device', ''), name=u['label'],
                         cat=cat))
     out.sort(key=lambda x: (DRIVE_RANK.get(x['cat'], 9), not x.get('mounted', True)))

@@ -1,0 +1,228 @@
+#!/usr/bin/python3
+"""hearth-dvd-decoding: DVD decoding (libdvdcss) for Hearth Player, added only when you ask for it.
+
+Most shop-bought DVDs are locked (CSS). libdvdcss unlocks them; Fedora doesn't ship it for legal reasons and Hearth OS
+doesn't put it in the image. When a locked DVD can't be read, Hearth Player explains why and offers "Add DVD
+decoding"; only after you say yes there (and give an administrator's password: 49-hearth-admin.rules) does it run
+`hearth-admin dvd-decoding-add`, which runs this. See docs/PLAYER-DISCS.md.
+
+  hearth-dvd-decoding status   JSON: {"installed", "can_add", "how"}  (no root needed)
+  hearth-dvd-decoding add      as root: RPM Fusion's free-tainted repository (its own file, signed with the RPM Fusion
+                               key the image already has), then libdvdcss: rpm-ostree on the Fedora edition (layered
+                               on top of the image: the version before stays in the boot menu, updates keep it), dnf
+                               elsewhere. Progress lines, then {"ok": true, "live": bool}
+  hearth-dvd-decoding remove   as root: libdvdcss out again and the repository file removed
+
+Output like hearth-admin: "log: ...", "progress: <0-100> <what>", one JSON line; "error: ..." and exit 1 on failure.
+Nothing here starts a service, touches the boot menu or changes a setting.
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+REPO_FILE = '/etc/yum.repos.d/hearth-dvd-decoding.repo'
+REPO_ID = 'hearth-rpmfusion-free-tainted'
+PACKAGE = 'libdvdcss'
+LIB_DIRS = ['/usr/lib64', '/usr/lib', '/usr/lib/x86_64-linux-gnu', '/usr/lib/aarch64-linux-gnu']
+DEFAULT_METALINK = 'https://mirrors.rpmfusion.org/metalink?repo=free-fedora-tainted-$releasever&arch=$basearch'
+
+
+def say(kind, text):
+    print(f'{kind}: {text}', flush=True)
+
+
+def fail(msg):
+    say('error', msg)
+    sys.exit(1)
+
+
+def installed(root='/'):
+    return any(glob.glob(os.path.join(root, d.lstrip('/'), 'libdvdcss.so*')) for d in LIB_DIRS)
+
+
+def os_release(root='/'):
+    out = {}
+    try:
+        with open(os.path.join(root, 'etc/os-release')) as f:
+            for line in f:
+                k, _, v = line.strip().partition('=')
+                if k:
+                    out[k] = v.strip().strip('"')
+    except OSError:
+        pass
+    return out
+
+
+def is_fedora(rel):
+    return rel.get('ID') == 'fedora' or 'fedora' in rel.get('ID_LIKE', '').split()
+
+
+def tool(name):
+    return shutil.which(name, path=os.environ.get('PATH', '') + ':/usr/bin:/usr/sbin')
+
+
+def how():
+    """rpm-ostree (the Fedora edition: an image), dnf (a Fedora with dnf), or '' (can't add it here)."""
+    if not is_fedora(os_release()):
+        return ''
+    if tool('rpm-ostree') and os.path.exists('/run/ostree-booted'):
+        return 'rpm-ostree'
+    if tool('dnf5') or tool('dnf'):
+        return 'dnf'
+    return ''
+
+
+def status():
+    h = how()
+    return {'installed': installed(), 'can_add': bool(h), 'how': h}
+
+
+def rpmfusion_free(root='/'):
+    """The gpgkey and metalink lines of the image's own (switched off) RPM Fusion free repository, if it's there."""
+    key, metalink = '', ''
+    for path in sorted(glob.glob(os.path.join(root, 'etc/yum.repos.d/rpmfusion-free*.repo'))):
+        try:
+            with open(path) as fh:
+                text = fh.read()
+        except OSError:
+            continue
+        m = re.search(r'^\[rpmfusion-free\]\s*$(.*?)(?=^\[|\Z)', text, re.M | re.S)
+        if not m:
+            continue
+        sec = m.group(1)
+        k = re.search(r'^gpgkey\s*=\s*(\S+)', sec, re.M)
+        ml = re.search(r'^metalink\s*=\s*(\S+)', sec, re.M)
+        key = k.group(1) if k else key
+        metalink = ml.group(1) if ml else metalink
+    return key, metalink
+
+
+def repo_text(key, metalink):
+    """The repository file: only RPM Fusion's free-tainted part (libdvdcss and a few like it), signed and checked."""
+    ml = metalink.replace('repo=free-fedora-', 'repo=free-fedora-tainted-', 1) if 'repo=free-fedora-' in metalink and 'tainted' not in metalink else (metalink or DEFAULT_METALINK)
+    return (
+        '# Added by Hearth Player\'s "Add DVD decoding" after you said yes (hearth-dvd-decoding; docs/PLAYER-DISCS.md).\n'
+        '# Only RPM Fusion\'s free-tainted packages (libdvdcss for DVDs). Kept on so updates keep libdvdcss;\n'
+        '# "Remove DVD decoding" in Hearth Player takes it out again.\n'
+        f'[{REPO_ID}]\n'
+        'name=RPM Fusion for Fedora $releasever - Free tainted (DVD decoding)\n'
+        f'metalink={ml}\n'
+        'enabled=1\n'
+        'type=rpm\n'
+        'gpgcheck=1\n'
+        'repo_gpgcheck=0\n'
+        f'gpgkey={key}\n'
+    )
+
+
+def write_atomic(path, text):
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        f.write(text)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+
+
+def run_progress(argv, lo, hi, what):
+    """Runs a command, passing its lines on as log lines and nudging the progress along."""
+    say('progress', f'{lo} {what}')
+    try:
+        p = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, bufsize=1)
+    except OSError as e:
+        return 1, str(e)
+    last, pct = '', lo
+    for line in p.stdout:
+        line = line.rstrip()
+        if not line:
+            continue
+        last = line
+        say('log', line[:300])
+        pct = min(hi - 1, pct + 2)
+        say('progress', f'{pct} {what}')
+    try:
+        p.wait(timeout=1800)
+    except subprocess.TimeoutExpired:
+        p.kill()
+        return 1, 'it took too long'
+    return p.returncode, last
+
+
+def add():
+    if os.geteuid() != 0:
+        fail('run this through hearth-admin (pkexec)')
+    if installed():
+        print(json.dumps({'ok': True, 'live': True, 'already': True}), flush=True)
+        return
+    h = how()
+    if not h:
+        fail("DVD decoding can't be added here: this isn't the Fedora edition of Hearth OS.")
+    key, metalink = rpmfusion_free()
+    if not key:
+        cands = sorted(glob.glob('/etc/pki/rpm-gpg/RPM-GPG-KEY-rpmfusion-free-fedora-*'))
+        key = 'file://' + cands[-1] if cands else ''
+    if not key:
+        fail("RPM Fusion's signing key isn't on this system, so its packages can't be checked. Nothing was changed.")
+    say('progress', '5 Adding RPM Fusion (free-tainted)')
+    write_atomic(REPO_FILE, repo_text(key, metalink))
+    live = True
+    if h == 'rpm-ostree':
+        # Layered on top of the image: a new version with libdvdcss, the one before kept in the boot menu. --apply-live
+        # puts it in the running system too, so there's no restart (when that can't be done, it's there after one).
+        rc, last = run_progress(['rpm-ostree', 'install', '--idempotent', '--allow-inactive', '--apply-live', PACKAGE], 10, 95, 'Downloading DVD decoding')
+        if rc != 0:
+            rc, last = run_progress(['rpm-ostree', 'install', '--idempotent', '--allow-inactive', PACKAGE], 10, 95, 'Downloading DVD decoding')
+            live = False
+    else:
+        dnf = tool('dnf5') or tool('dnf')
+        rc, last = run_progress([dnf, '-y', 'install', PACKAGE], 10, 95, 'Downloading DVD decoding')
+    if rc != 0:
+        try:
+            os.remove(REPO_FILE)
+        except OSError:
+            pass
+        fail("DVD decoding couldn't be added" + (f': {last}' if last else '') + '. Nothing was changed.')
+    live = live and installed()
+    say('progress', '100 Done')
+    print(json.dumps({'ok': True, 'live': live}), flush=True)
+
+
+def remove():
+    if os.geteuid() != 0:
+        fail('run this through hearth-admin (pkexec)')
+    h = how()
+    rc, last = 0, ''
+    if h == 'rpm-ostree':
+        rc, last = run_progress(['rpm-ostree', 'uninstall', '--idempotent', PACKAGE], 10, 95, 'Removing DVD decoding')
+    elif h == 'dnf':
+        dnf = tool('dnf5') or tool('dnf')
+        rc, last = run_progress([dnf, '-y', 'remove', PACKAGE], 10, 95, 'Removing DVD decoding')
+    if rc != 0:
+        fail("DVD decoding couldn't be removed" + (f': {last}' if last else ''))
+    try:
+        os.remove(REPO_FILE)
+    except OSError:
+        pass
+    say('progress', '100 Done')
+    print(json.dumps({'ok': True}), flush=True)
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    if cmd == 'status' and len(argv) == 2:
+        print(json.dumps(status()), flush=True)
+    elif cmd == 'add' and len(argv) == 2:
+        add()
+    elif cmd == 'remove' and len(argv) == 2:
+        remove()
+    else:
+        fail('usage: hearth-dvd-decoding status | add | remove')
+
+
+if __name__ == '__main__':
+    main(sys.argv)
