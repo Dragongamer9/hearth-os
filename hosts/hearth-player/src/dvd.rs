@@ -444,8 +444,9 @@ pub fn is_nav(s: &[u8]) -> bool {
 
 /// The time into the cell a navigation pack says its VOBU starts at (DSI's c_eltm).
 pub fn nav_cell_time(s: &[u8]) -> Option<f64> {
-    if !is_nav(s) || s.len() < 0x423 || s[0x400..0x404] != [0, 0, 1, 0xBF] || s[0x406] != 1 { return None; }
-    Some(dvd_time(&s[0x41F..0x423]))
+    // DSI from 0x407: nv_pck_scr, nv_pck_lbn, vobu_ea, three ref ends (4 bytes each), vob_idn (2), zero, c_idn, c_eltm.
+    if !is_nav(s) || s.len() < 0x427 || s[0x400..0x404] != [0, 0, 1, 0xBF] || s[0x406] != 1 { return None; }
+    Some(dvd_time(&s[0x423..0x427]))
 }
 
 /// Looks at the start of the title for scrambled sectors (a few hundred sectors: under a megabyte).
@@ -625,7 +626,7 @@ pub mod tests {
                 s.fill(0);
                 s[0..4].copy_from_slice(&[0, 0, 1, 0xBA]); s[4] = 0x44; s[13] = 0xF8;
                 // A navigation pack every 10 sectors, else video.
-                if (sector as usize + k) % 10 == 0 { s[14..18].copy_from_slice(&[0, 0, 1, 0xBB]); s[0x400..0x404].copy_from_slice(&[0, 0, 1, 0xBF]); s[0x406] = 1; s[0x421] = 0x02; s[0x422] = 0xC0; }
+                if (sector as usize + k) % 10 == 0 { s[14..18].copy_from_slice(&[0, 0, 1, 0xBB]); s[0x400..0x404].copy_from_slice(&[0, 0, 1, 0xBF]); s[0x406] = 1; s[0x425] = 0x02; s[0x426] = 0xC0; }
                 else { s[14..18].copy_from_slice(&[0, 0, 1, 0xE0]); s[20] = 0x80; s[21] = (sector as u8).wrapping_add(k as u8); }
             }
             Ok(n)
