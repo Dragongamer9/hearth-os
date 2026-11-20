@@ -18,6 +18,7 @@ Window {
     width: 1920; height: 1080
     onVisibleChanged: console.warn("firehold: Couch on", screenName, "visible", visible)
     function show() {
+        console.warn("firehold: Couch for", screenName);
         if (screenName === "") return;
         visible = true;
         raise();

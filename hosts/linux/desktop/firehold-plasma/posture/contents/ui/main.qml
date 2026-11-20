@@ -115,7 +115,7 @@ PlasmoidItem {
         delegate: Loader {
             required property var modelData
             source: "CouchLayer.qml"
-            onLoaded: { item.bar = root; item.screenName = modelData; Qt.callLater(item.show); }
+            onLoaded: { item.bar = root; item.screenName = String(modelData); item.show(); }
         }
     }
 
