@@ -173,6 +173,10 @@ ALLOWED = {
     '.github/scripts/games-desktop-icons-app.sh',
     # CI only: dragging out of Hearth Files sets the look in the runner's throwaway account.
     '.github/scripts/files-drag-out.sh',
+    # CI only: Firehold on labwc's mockup pictures set up the runner's throwaway account (HOME=/tmp/home-mock).
+    '.github/scripts/labwc-firehold-mockups.sh',
+    # CI only: Mantel and Firehold on labwc measured at rest in a throwaway account (HOME=/tmp/home-<kind>).
+    '.github/scripts/labwc-fedora-rest.sh',
 }
 
 

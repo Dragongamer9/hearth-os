@@ -584,6 +584,7 @@
   }
  ],
  "skipped": [
+  {"labwc": "W-A-t", "why": "not needed under KWin: keep above others is in KWin's own window menu (Alt+F3) and Firehold on Plasma's Desk bar › Window; labwc's key is for Firehold on labwc's Desk bar (1.16)"},
   {
    "labwc": "W-C-S-F1",
    "why": "not needed under KWin: Snap layouts place the window through WinList (hearth-kwin-bridge), not hidden keys"
