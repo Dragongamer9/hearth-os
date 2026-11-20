@@ -36,7 +36,7 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 ## 3. Game options (03-couch-game-options.png)
 
 - [x] Opens with X on a tile, over the dimmed Couch home, controller-focused — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Home.qml: "if (kk === Qt.Key_X) { const g = rowGame(row, col); if (g) couch.openOptions(g); return true; }"
-- [ ] Play on the TV · Couch / on the monitor · Desk
+- [x] Play on the TV · Couch / on the monitor · Desk — hosts/linux/desktop/firehold-plasma/couch/contents/ui/GameOptions.qml: "playOn: \"Play on\""
 - [x] Open in a window — hosts/linux/desktop/firehold-plasma/couch/contents/ui/GameOptions.qml: "window: \"Open in a window\""
 - [x] Controller layout — hosts/linux/desktop/firehold-plasma/couch/contents/ui/GameOptions.qml: "layout: \"Controller layout\""
 - [x] Pin to Home — hosts/linux/desktop/firehold-plasma/couch/contents/ui/GameOptions.qml: "\"Keeps it at the front of Continue playing\""
@@ -64,23 +64,23 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 ## 6. Away (06-away.png)
 
-- [ ] Big clock and date
+- [x] Big clock and date — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Away.qml: "text: Qt.formatTime(aw.couch.now, \"h:mm\")"
 - [ ] Cards for what keeps working: a download, Hearth Link serving another device, the home server
-- [ ] Notifications shown only as a count while Away
-- [ ] Power and screen-off notes
-- [ ] How to come back (any button, key or the mouse)
+- [x] Notifications shown only as a count while Away — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Away.qml: "lines: [\"Hidden here so nobody else reads them\"]"
+- [x] Power and screen-off notes — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Away.qml: "text: [\"Fans quiet: Power saver until you're back\","
+- [x] How to come back (any button, key or the mouse) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/Away.qml: "text: \"Back to the Couch\""
 
 ## 7. Quick Settings on the Desk (07-quick-settings-desk.png)
 
-- [ ] Opens from the bar; you, the device and how long it's been up; Settings, Lock, Power
-- [ ] Tiles: Wi-Fi (network and strength), Bluetooth (connected count), Do not disturb (with its schedule), Keyboard, Night light (until when), Screenshot
-- [ ] Modes for each screen in Quick Settings
-- [ ] Volume with the output picker (Headset / TV (HDMI) / Speakers) and percent
-- [ ] Brightness for the monitor; "TV: set on the TV's remote"
-- [ ] Power profile: Power saver / Balanced / Performance
-- [ ] Batteries of the PC's devices (controllers, headset, mouse), a low one in warning colour
-- [ ] Return to Game Mode: desktop apps close first and it asks about unsaved work; Go
-- [ ] Notifications summary line with Open all
+- [x] Opens from the bar; you, the device and how long it's been up; Settings, Lock, Power — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "text: \"Lock\"; focused: fq.isFocused(bLock)"
+- [x] Tiles: Wi-Fi (network and strength), Bluetooth (connected count), Do not disturb (with its schedule), Keyboard, Night light (until when), Screenshot — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "wifi.strength && !couch ? \" · \" + wifi.strength"
+- [x] Modes for each screen in Quick Settings — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "\"each screen on its own\""
+- [x] Volume with the output picker (Headset / TV (HDMI) / Speakers) and percent — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "visible: fq.sinkList.length > 1"
+- [x] Brightness for the monitor; "TV: set on the TV's remote" — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "text: \"TV: set on the TV's remote\""
+- [x] Power profile: Power saver / Balanced / Performance — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "\"power-saver\": \"Power saver\", \"balanced\": \"Balanced\", \"performance\": \"Performance\""
+- [x] Batteries of the PC's devices (controllers, headset, mouse), a low one in warning colour — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "parent.parent.modelData.low ? F.warn : F.text"
+- [x] Return to Game Mode: desktop apps close first and it asks about unsaved work; Go — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "\"Steam Game Mode · desktop apps close first, it asks about unsaved work\""
+- [x] Notifications summary line with Open all — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "text: \"Open all ›\""
 
 ## 8. Quick Settings with the controller (08-quick-settings-couch.png)
 
@@ -91,21 +91,21 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 ## 9. Notification cards (09-notification-cards.png)
 
-- [ ] Cards at the top right, each with its app, time, text and actions
-- [ ] An urgent card stays until answered (Dad's PC asks for help, Connect with Remote desktop)
-- [ ] Game ready card: Play / Play on the TV
+- [x] Cards at the top right, each with its app, time, text and actions — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "readonly property var acts: n ? Array.from(n.actions || [])"
+- [x] An urgent card stays until answered (Dad's PC asks for help, Connect with Remote desktop) — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "text: \"Stays until you answer\""
+- [x] Game ready card: Play / Play on the TV — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "visible: card.acts.length > 0"
 - [ ] A card with a picture (a recorded clip)
-- [ ] A message card with a reply box in the card
-- [ ] "2 more" when there are more
+- [x] A message card with a reply box in the card — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "visible: !!card.n && card.n.hasInlineReply === true"
+- [x] "2 more" when there are more — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: " more</b> · \""
 
 ## 10. Notification history (10-notification-history.png)
 
-- [ ] Opens from the clock; a calendar
-- [ ] Do not disturb schedule (11 PM–7 AM, in full-screen games) and its exceptions (Hearth Link family messages always through)
-- [ ] Filter chips
-- [ ] "While you played: N held back"
-- [ ] The list grouped Today / Yesterday, an action on each
-- [ ] Mute an app; kept for 7 days
+- [x] Opens from the clock; a calendar — hosts/linux/desktop/plasma-hearth/package/FireholdHistory.qml: "the time, the calendar, Do not disturb"
+- [x] Do not disturb schedule (11 PM–7 AM, in full-screen games) and its exceptions (Hearth Link family messages always through) — hosts/linux/desktop/plasma-hearth/package/FireholdHistory.qml: "text: \"Always lets through: \""
+- [x] Filter chips — hosts/linux/desktop/plasma-hearth/package/FireholdHistory.qml: "{ id: \"games\", t: \"Games\" }"
+- [x] "While you played: N held back" — hosts/linux/desktop/plasma-hearth/package/FireholdHistory.qml: "// While you played"
+- [x] The list grouped Today / Yesterday, an action on each — hosts/linux/desktop/plasma-hearth/package/fh.js: "return \"Yesterday\";"
+- [x] Mute an app; kept for 7 days — hosts/linux/desktop/plasma-hearth/package/FireholdHistory.qml: "mute this app for 1 hour, or for good · Kept for 7 days"
 
 ## 11. The Desk bar with the app's own menus (11-desk-bar-app-menus.png)
 
