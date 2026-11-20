@@ -155,6 +155,18 @@ jobs:
           timeout 1500 python3 .github/scripts/plasma-pad-e2e.py shots bin; rc=$?
           echo "::notice title=KWin log::$(grep -aiE 'hearth|layer|error|warn' shots/kwin.log | tail -12 | tr '\n' '|' | sed 's/%/%25/g' | cut -c1-2500)"
           exit $rc
+      - name: What it found (1)
+        if: always()
+        run: sed -n '1,10p' shots/results.txt 2>/dev/null || true
+      - name: What it found (2)
+        if: always()
+        run: sed -n '11,20p' shots/results.txt 2>/dev/null || true
+      - name: What it found (3)
+        if: always()
+        run: sed -n '21,30p' shots/results.txt 2>/dev/null || true
+      - name: What it found (4)
+        if: always()
+        run: sed -n '31,40p' shots/results.txt 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:

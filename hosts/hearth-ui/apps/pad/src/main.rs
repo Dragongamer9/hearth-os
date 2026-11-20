@@ -797,14 +797,13 @@ fn update_inner(a: &mut App, m: Msg) -> Task<Msg> {
                 Some(Kind::Radial) | Some(Kind::Help) => a.scr = s,
                 Some(Kind::Keyboard) => {
                     a.track_ember();
-                    if app::arg("--show").as_deref() == Some("glide") && !GLIDE_SHOWN.swap(true, std::sync::atomic::Ordering::Relaxed) {
-                        // One key to the right: the glide starts now (held still by --at).
+                    let h = a.kb_height(s.width);
+                    let fit = if (h as f32 - s.height).abs() > 1.0 { a.fit_kb() } else { Task::none() };
+                    if app::arg("--show").as_deref() == Some("glide") && (h as f32 - s.height).abs() <= 1.0 && !GLIDE_SHOWN.swap(true, std::sync::atomic::Ordering::Relaxed) {
+                        // At its full height, one key to the right: the glide starts now (held still by --at).
                         return a.engine("__e.state.sel = { r: 2, c: 4 }; __d = true;");
                     }
-                    let h = a.kb_height(s.width);
-                    if (h as f32 - s.height).abs() > 1.0 {
-                        return a.fit_kb();
-                    }
+                    return fit;
                 }
                 _ => {}
             }

@@ -20,8 +20,13 @@ os.makedirs(OUT, exist_ok=True)
 FAILED = []
 
 
+RESULTS = os.path.join(OUT, 'results.txt')
+
+
 def notice(t, m):
-    print('::notice title=%s::%s' % (t, str(m).replace('\n', '|').replace('%', '%25')[:3500]), flush=True)
+    # GitHub keeps ten notices a step: they're kept in OUT/results.txt and posted by later steps, ten each.
+    with open(RESULTS, 'a') as f:
+        f.write('::notice title=%s::%s\n' % (t, str(m).replace('\n', '|').replace('%', '%25')[:3000]))
 
 
 def error(t, m):
@@ -121,7 +126,7 @@ def kwin_windows():
                 'print("%s " + JSON.stringify([String(w.resourceClass), String(w.caption), g.x, g.y, g.width, g.height])); }' % tag)
     try:
         sc = dbus.Interface(BUS.get_object('org.kde.KWin', '/Scripting'), 'org.kde.kwin.Scripting')
-        sid = int(sc.loadScript('/tmp/padwins.js', tag))
+        sid = int(sc.loadScript('/tmp/padwins.js', tag, signature='ss'))
         dbus.Interface(BUS.get_object('org.kde.KWin', '/Scripting/Script%d' % sid), 'org.kde.kwin.Script').run()
         time.sleep(1.0)
         sc.unloadScript(tag)
@@ -142,8 +147,11 @@ def kwin_windows():
 WIN = r'''
 import sys, gi
 gi.require_version('Gtk', '3.0')
+from gi.repository import GLib
+GLib.set_prgname(dict(x.split('=', 1) for x in sys.argv[1:])['id'])
 from gi.repository import Gtk, Gio, GLib
 a = dict(x.split('=', 1) for x in sys.argv[1:])
+GLib.set_prgname(a['id'])   # the Wayland app id KWin reports as the window's class
 app = Gtk.Application(application_id=a['id'], flags=Gio.ApplicationFlags.NON_UNIQUE)
 def up(app):
     w = Gtk.ApplicationWindow(application=app, title=a.get('title', 'Test'))
@@ -329,7 +337,7 @@ if geo.get('keys', {}).get('e'):
         shot('pad-k25-live-long-touch-slide')
         fake('tu 0', 'tf')
         time.sleep(0.8)
-        notice('long touch typed', typed_since(n0)[-400:] or '(nothing)')
+        notice('long touch typed', (typed_since(n0)[-400:] or '(nothing in the simulated output)') + ' | host: ' + tail(host_log, 300))
     else:
         error('long touch', 'no accents opened after a long touch on e (%s)' % tail(host_log, 400))
         fake('tu 0', 'tf')
@@ -342,7 +350,7 @@ press('b', after=1.0)
 # A text field gets the focus after the controller was used: the keyboard opens by itself (KWin's text-field signal).
 notice('KWin virtual keyboard (before)', vk())
 press('a', after=0.3)
-click(500, 142)
+click(500, 117)
 time.sleep(2.0)
 notice('KWin virtual keyboard (text field focused)', vk())
 shot('pad-k27-live-text-field')
