@@ -1061,14 +1061,11 @@ class Pad:
 
     def plasma_touchfield(self, on, now=None):
         """KWin showed its input panel: a text field was touched (KDE's keyboard would pop up here). Hearth's keyboard
-        opens, whenever the controller was last used (the controller rule above is for focus that came from it). Not
+        opens, whenever the controller was last used (the controller rule above is for focus that came from it), over
+        fullscreen apps too (KWin shows the panel only for touch or a pen, so games asking for text input don't). Not
         right after you closed it (B, its hide key): KWin shows its panel again when the windows make room back, and
         the keyboard must stay closed then."""
         now = time.monotonic() if now is None else now
-        if on and self.fs_pause:
-            # A fullscreen game (SDL and others ask for text input all the time): not over it; Y still opens it.
-            note('a text field in a fullscreen window: the keyboard waits for Y')
-            return
         if on and self.mode != 'osk' and now - self.osk_closed_at >= PLASMA_TOUCH_AFTER_CLOSE:
             note('a text field was touched: the keyboard opens')
             self.want_osk()

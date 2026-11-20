@@ -23,7 +23,7 @@ Virtual keyboard choice wins and is never written). CI: a long touch's è and a 
 three fallbacks and the person's own choice in real Plasma sessions (pad-k40 to pad-k44). Touch keeps its pop-up
 keyboard (the coordinator, Nov 20): hearth-kwin-im --panel gives KWin an invisible input panel, which KWin shows only
 when a text field is focused by touch (as for plasma-keyboard); hearth-pad --plasma then opens Hearth's keyboard. Not
-for a mouse or keyboard focus, not right after you closed it (3 s), not over a fullscreen game (Y still opens it).
+for a mouse or keyboard focus, not right after you closed it (3 s); over fullscreen apps too (KWin shows the panel only for touch or a pen).
 CI run 44765273652: a touch tap opened it, a mouse click didn't, B closed it and it stayed closed, 0.00 % at rest
 (pad-k34 to pad-k36).
 

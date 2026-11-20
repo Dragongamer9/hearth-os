@@ -57,6 +57,8 @@ def test(out, bin_dir):
         x, y = line.split()[1:]
         if line.startswith('click'):
             seq = ['a %s %s' % (x, y), 'b 272 1', 'b 272 0']
+        elif line.startswith('move'):
+            seq = ['a %s %s' % (x, y)]
         else:
             seq = ['td 3 %s %s' % (x, y), 'tf', 'tu 3', 'tf']
         for ln in seq:
@@ -91,8 +93,8 @@ def test(out, bin_dir):
         except Exception as e:
             err('picture ' + name, repr(e))
 
-    def window(wid, title, text):
-        p = subprocess.Popen(['python3', '/tmp/padwin.py', 'id=' + wid, 'title=' + title, 'text=' + text, 'max=1'],
+    def window(wid, title, text, mode='max'):
+        p = subprocess.Popen(['python3', '/tmp/padwin.py', 'id=' + wid, 'title=' + title, 'text=' + text, ('fullscreen=1' if mode == 'full' else 'max=1')],
                              env=dict(os.environ, GDK_BACKEND='wayland'), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(3.5)
         return p
@@ -108,22 +110,22 @@ def test(out, bin_dir):
     im = subprocess.run(['pgrep', '-af', 'libexec/hearth/hearth-kwin-im( |$)'], capture_output=True, text=True).stdout.strip()
     note('touch session', 'hearth-kwin-im: %s · KWin: %s' % (im or 'NOT running', vk()))
     # The field in a maximized test window sits at y 117 (KDE's own panel at the bottom: a fresh Plasma). The mouse first, with no controller use.
-    mw = window('org.hearth.PadMouse', 'Mouse', 'A text field clicked with a real mouse.')
+    mw = window('org.hearth.PadMouse', 'Mouse', 'A text field clicked with the pointer (KWin\'s own pointer events).')
     dev('click 600 117')
     time.sleep(2.0)
     v = vk()
-    note('mouse click on a text field (real mouse)', 'KWin %s · keyboard %s' % (v, 'OPEN' if kb_open() else 'not open'))
+    note('mouse click on a text field (pointer)', 'KWin %s · keyboard %s' % (v, 'OPEN' if kb_open() else 'not open'))
     shot('pad-k34-mouse-click-text-field')
     if v.get('active') not in ('1', 'True'):
         err('mouse click', "the click didn't reach the text field (KWin %s), so it proves nothing" % v)
     if kb_open():
         err('mouse click', 'a mouse click on a text field opened the keyboard (only touch and the controller may)')
     close(mw)
-    tw = window('org.hearth.PadTouch', 'Touch', 'A text field touched with a finger (a real touchscreen).')
+    tw = window('org.hearth.PadTouch', 'Touch', 'A text field touched (KWin\'s own touch events).')
     dev('tap 600 117')
     time.sleep(2.5)
     v = vk()
-    note('touch on a text field (real touchscreen)', 'KWin %s · keyboard %s · pad.log %s' % (v, 'open' if kb_open() else 'NOT open', tail(pad_log, 300)))
+    note('touch on a text field (touch)', 'KWin %s · keyboard %s · pad.log %s' % (v, 'open' if kb_open() else 'NOT open', tail(pad_log, 300)))
     shot('pad-k35-touch-text-field')
     if not kb_open():
         err('touch', "touching a text field didn't open Hearth's keyboard: KWin %s" % v)
@@ -135,6 +137,32 @@ def test(out, bin_dir):
     if kb_open():
         err('close', 'the keyboard came back by itself after B closed it')
     close(tw)
+    # Over a fullscreen window (a fullscreen browser): no touch, no keyboard; a touch tap opens it. The field of a
+    # fullscreen test window sits at y 88.
+    time.sleep(4)
+    # The pointer moved last (the touch above is behind us), as when you use the mouse after touching.
+    dev('move 900 600')
+    fw = window('org.hearth.PadFullMouse', 'Fullscreen', 'A fullscreen window: its field clicked with the pointer.', 'full')
+    dev('click 600 88')
+    time.sleep(2.0)
+    v = vk()
+    note('fullscreen, pointer click', 'KWin %s · keyboard %s' % (v, 'OPEN' if kb_open() else 'not open'))
+    shot('pad-k37-fullscreen-click-no-keyboard')
+    if v.get('active') not in ('1', 'True'):
+        err('fullscreen click', "the click didn't reach the fullscreen window's field (KWin %s)" % v)
+    if kb_open():
+        err('fullscreen click', 'the keyboard opened over a fullscreen window without a touch')
+    close(fw)
+    fw = window('org.hearth.PadFullTouch', 'Fullscreen', 'A fullscreen window: its field touched.', 'full')
+    dev('tap 600 88')
+    time.sleep(2.5)
+    v = vk()
+    note('fullscreen, touch', 'KWin %s · keyboard %s' % (v, 'open' if kb_open() else 'NOT open'))
+    shot('pad-k38-fullscreen-touch-keyboard')
+    if not kb_open():
+        err('fullscreen touch', "touching a fullscreen window's text field didn't open Hearth's keyboard: KWin %s" % v)
+    press('b')
+    close(fw)
     time.sleep(14)
     a = sum(int(x) for x in open('/proc/%d/stat' % host.pid).read().rsplit(')', 1)[1].split()[11:13])
     time.sleep(15)
