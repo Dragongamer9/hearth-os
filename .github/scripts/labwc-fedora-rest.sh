@@ -153,31 +153,45 @@ rm -f "$OUT/execs.raw"
 # Diagnostics (never fail the check): which system calls the shell makes at rest (each wake-up), and where its time goes.
 if command -v strace >/dev/null 2>&1; then
   timeout 60 strace -c -f -qq -p "$qs" -o "$OUT/syscalls.txt" >/dev/null 2>&1 || true
+  # ...and which files it looks at (by path, 30 s), the threads that wake up most, and what's left over (zombies)
+  timeout 30 strace -f -qq -e trace=newfstatat,statx,inotify_add_watch,openat,access -e signal=none -o /tmp/st-$KIND.raw -p "$qs" >/dev/null 2>&1 || true
+  grep -o '"[^"]*"' /tmp/st-$KIND.raw 2>/dev/null | sort | uniq -c | sort -rn | head -40 >"$OUT/files-looked-at.txt"
+  timeout 20 strace -f -qq -e trace=ppoll,poll,epoll_wait -e signal=none -o /tmp/pp-$KIND.raw -p "$qs" >/dev/null 2>&1 || true
+  awk '{print $1}' /tmp/pp-$KIND.raw 2>/dev/null | sort | uniq -c | sort -rn | head -12 | while read -r n tid; do
+    printf '%s wakeups in 20 s: thread %s %s\n' "$n" "$tid" "$(cat /proc/$qs/task/$tid/comm 2>/dev/null)"; done >"$OUT/wakeups.txt"
+  rm -f /tmp/st-$KIND.raw /tmp/pp-$KIND.raw
 fi
+ps -eo pid,ppid,stat,etimes,comm,args 2>/dev/null | awk '$3 ~ /Z/' >"$OUT/zombies.txt"
 if command -v perf >/dev/null 2>&1; then
   timeout 90 perf record -q -F 499 -g -p "$qs" -o /tmp/perf-$KIND.data -- sleep 60 >/dev/null 2>&1 || true
   perf report -i /tmp/perf-$KIND.data --stdio --no-children --percent-limit 1.5 --sort dso,sym 2>/dev/null | grep -v '^$' | head -150 >"$OUT/perf.txt" || true
   rm -f /tmp/perf-$KIND.data
 fi
 
-# ---- Hearth Files: cold (first time) and warm, timed from the command to the first change on screen
-if [ "$KIND" = classic ] && [ -f "${PERF:-tools/perf-measure.py}" ]; then
-  P="$OUT/files.json"
-  for run in cold warm warm2; do
-    python3 "${PERF:-tools/perf-measure.py}" open "Hearth Files ($run)" "$P" -- quickshell ipc -p "$SH" call files home >/dev/null 2>&1
-    WAIT=3 ipc files close
-  done
-  python3 "${PERF:-tools/perf-measure.py}" report "$P" >"$OUT/files.md" 2>/dev/null
-  python3 - "$P" "$LIMIT_FILES" >>"$OUT/files-check.txt" <<'PY'
-import json, sys
-d = json.load(open(sys.argv[1])); lim = float(sys.argv[2])
-for k, v in d.items():
-    if not isinstance(v, dict) or 'first' not in v:
-        continue
-    print('%s %s %s' % ('OK' if v['first'] is not None and v['first'] <= lim else 'SLOW', k, v.get('first')))
+# ---- Hearth Files: cold (first time) and warm, from the command to the first change on screen (grim, unscaled ppm)
+if [ "$KIND" = classic ]; then
+  python3 - "$SH" "$LIMIT_FILES" >"$OUT/files-check.txt" 2>&1 <<'PY'
+import hashlib, subprocess, sys, time
+sh, lim = sys.argv[1], float(sys.argv[2])
+def frame():
+    r = subprocess.run(['grim', '-t', 'ppm', '-'], capture_output=True, timeout=10)
+    if r.returncode != 0:
+        print('grim failed: %s' % r.stderr.decode()[:200]); return ''
+    return hashlib.sha1(r.stdout).hexdigest()
+def ipc(*a):
+    return subprocess.Popen(['quickshell', 'ipc', '-p', sh, 'call'] + list(a), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+for run in ('cold', 'warm', 'warm2'):
+    base = frame(); t0 = time.monotonic(); ipc('files', 'home'); first = None
+    while time.monotonic() - t0 < 10:
+        f = frame()
+        if f and f != base:
+            first = time.monotonic() - t0; break
+        time.sleep(0.02)
+    print('%s Hearth Files (%s) %s' % ('OK' if first is not None and first <= lim else 'SLOW', run, 'never' if first is None else '%.2f s' % first))
+    ipc('files', 'close').wait(); time.sleep(3)
 PY
-  note "Hearth Files: $(tr '\n' ' ' <"$OUT/files-check.txt")"
-  ! grep -q '^SLOW' "$OUT/files-check.txt" || err "Hearth Files opened slowly: $(grep '^SLOW' "$OUT/files-check.txt" | tr '\n' ' ') (limit ${LIMIT_FILES} s)"
+  note "Hearth Files: $(grep -E '^(OK|SLOW)' "$OUT/files-check.txt" | tr '\n' ' ')"
+  ! grep -q '^SLOW' "$OUT/files-check.txt" || err "Hearth Files opened slowly: $(grep -E '^SLOW|grim' "$OUT/files-check.txt" | tr '\n' ' ') (limit ${LIMIT_FILES} s)"
 fi
 
 python3 - "$OUT/rest.json" <<PY
