@@ -167,6 +167,9 @@ mod linux {
                 let job = with_bridge(|b| b.recomps.jobs.lock().map(|j| j.get(id).cloned()).ok().flatten()).unwrap_or(Value::Null);
                 if !gamestore::use_game_ok(&job, a["path"].as_str().unwrap_or("")) { return Err("Choose your copy again first.".into()); }
             }
+            // Family and friends with Moonlight: straight to the Hearth Link service (connecting waits for the other
+            // PC's answer, up to about three minutes).
+            if m.starts_with("moonlight.") { return hearth_core::link::call(&m, &a, if m == "moonlight.connect" { 200 } else { 40 }); }
             let v = bridge_call(&m, &a)?;
             Ok(match m.as_str() {
                 "library.get" => gamestore::only_ours(v),

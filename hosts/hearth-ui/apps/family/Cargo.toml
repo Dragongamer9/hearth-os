@@ -1,0 +1,19 @@
+# Family and friends with Moonlight (pure Rust, hearth-ui; hearth-link's moonlight.rs, docs/HEARTH-LINK.md): the "wants
+# to connect" question and the "is connected" notice with Stop sharing now on the PC being connected to, and the list
+# of PCs that let this one connect. No version line: the owner picks every version number.
+[package]
+name = "hearth-family"
+edition = "2021"
+description = "Family and friends with Moonlight: the question, the notice, the list"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-family-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }

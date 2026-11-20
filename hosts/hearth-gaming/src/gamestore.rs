@@ -39,10 +39,14 @@ pub const CALLS: &[(&str, &[&str])] = &[
     ("recomps.list", &[]), ("recomps.details", &["id", "fresh"]), ("recomps.places", &[]), ("recomps.checkUpdates", &[]),
     ("recomps.install", &["id", "place"]), ("recomps.cancel", &["id"]), ("recomps.uninstall", &["id", "keep"]),
     ("recomps.pickGame", &["id"]), ("recomps.useGame", &["id", "path", "anyway"]), ("recomps.skip", &["id", "tag"]),
+    // Family and friends with Moonlight (hearth-link moonlight.rs): the PCs that let this one connect, straight to the
+    // Hearth Link service (ids are its devices', 64 hex). Turning sharing on and adding people: Settings only.
+    ("moonlight.friends", &["check"]), ("moonlight.connect", &["id"]), ("moonlight.disconnect", &[]), ("moonlight.forget", &["id"]),
+    ("moonlight.join", &["code"]),
 ];
 
 /// The tabs the window has (`--tab <name>` opens on one).
-pub const TABS: &[&str] = &["library", "downloads", "stores", "recomps"];
+pub const TABS: &[&str] = &["library", "downloads", "stores", "recomps", "family"];
 
 /// A port's id in Hearth Recomps' catalogue: the same rule as hearth-core recomps.rs (lowercase letters, digits, '-').
 pub fn recomp_id_ok(id: &str) -> bool {
@@ -102,9 +106,11 @@ pub fn check(method: &str, args: &Value) -> Result<(String, Value), String> {
         if !STORES.contains(&s) { return Err("Hearth Games signs in to GOG, Epic Games and Amazon".into()); }
     }
     let recomp = m.starts_with("recomps.");
+    let link = m.starts_with("moonlight.");
     if keys.contains(&"id") {
         let id = out.get("id").and_then(Value::as_str).unwrap_or("");
-        if recomp { if !recomp_id_ok(id) { return Err("That isn't one of Hearth Recomps' ports".into()); } }
+        if link { if !(id.len() == 64 && id.chars().all(|c| c.is_ascii_hexdigit())) { return Err("That isn't one of your family and friends' PCs".into()); } }
+        else if recomp { if !recomp_id_ok(id) { return Err("That isn't one of Hearth Recomps' ports".into()); } }
         else if !game_id_ok(id) { return Err("That isn't a GOG, Epic, Amazon or Battle.net game".into()); }
     }
     // A DLC is one of the game's own store's ids (or "": all of them).
@@ -230,6 +236,20 @@ mod tests {
         assert!(check("accounts.signIn", &json!({})).is_err());
         assert!(check("game.install", &json!({"id": 5})).is_err());
         assert!(check("game.install", &json!({"id": "gog:1\n2"})).is_err());
+    }
+
+    #[test]
+    fn family_and_friends_calls_only_with_a_devices_id() {
+        let dad = "3f".repeat(32);
+        assert!(check("moonlight.friends", &json!({"check": true})).is_ok());
+        assert!(check("moonlight.connect", &json!({"id": dad})).is_ok());
+        assert!(check("moonlight.connect", &json!({"id": "gog:1207658924"})).is_err());
+        assert!(check("moonlight.forget", &json!({"id": "../x"})).is_err());
+        assert!(check("moonlight.join", &json!({"code": "K7M-4QX-92HC"})).is_ok());
+        // Sharing this PC (turning it on, adding and removing people) is Settings' only.
+        for m in ["moonlight.share.set", "moonlight.share.invite", "moonlight.share.remove", "moonlight.share.person", "moonlight.stop"] {
+            assert!(check(m, &json!({})).is_err(), "{m}");
+        }
     }
 
     #[test]

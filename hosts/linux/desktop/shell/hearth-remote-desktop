@@ -27,6 +27,14 @@ Not settings, never in that file:
   hearth-remote-desktop gate                   Sunshine's ExecStartPre while Tailscale only: waits for the rule
   hearth-remote-desktop awake                  the transient unit that keeps the PC awake while a device streams
   hearth-remote-desktop quick                  who's streaming, in short (Game Mode's Quick Access)
+  hearth-remote-desktop family on|off          Family and friends (Hearth Link, docs/HEARTH-LINK.md): Sunshine tuned and
+                                               reachable only from this PC itself (Hearth Link's tunnel ends there),
+                                               not started; off: undone unless Use this PC from anywhere is on
+  hearth-remote-desktop family start           Sunshine started for someone Hearth Link let in (port, running)
+  hearth-remote-desktop family paired KEY      whether Moonlight on that person's PC is paired (Sunshine's name KEY)
+  hearth-remote-desktop family idle            the session ended: Sunshine's app closed, Sunshine stopped if it ran only
+                                               for this
+  hearth-remote-desktop family forget KEY      that person's Moonlight unpaired from Sunshine
 Output: one JSON line; failures print "error: ..." and exit 1. No shell anywhere: every command is an argument list.
 """
 import base64
@@ -68,6 +76,11 @@ DROPIN_NAME = 'hearth-remote-desktop.conf'
 UNITS = ('app-dev.lizardbyte.app.Sunshine.service', 'sunshine.service')
 SUNSHINE_PORT = 47989
 DEFAULTS = {'on': False, 'reach': 'tailscale', 'keepAwake': True}
+# Family and friends with Moonlight: its switch is Hearth Link's (hosts/hearth-link/src/moonlight.rs), read here only.
+FAMILY = os.environ.get('HEARTH_FAMILY_MOONLIGHT') or os.path.join(CONFIG_HOME, 'nimbus', 'family-moonlight.json')
+# Who is connected through it now, and what they get (written by Hearth Link, read by the prep command).
+FAMILY_SESSION = os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-link', 'moonlight-session.json')
+KEY_RE = re.compile(r'^Hearth [0-9a-f]{8}$')
 TS_NETS = [ipaddress.ip_network('100.64.0.0/10'), ipaddress.ip_network('fd7a:115c:a1e0::/48')]
 NAME_RE = re.compile(r"^[\w .'()-]{1,40}$")
 RELAY_TIP = "Your work network is blocking direct connections; it will feel laggier"
@@ -487,11 +500,16 @@ def clean_int(v, lo, hi):
 
 
 def session(what):
-    """Sunshine runs this when a stream starts and ends (its global prep command). Never fails: a failing prep command
-    would stop Sunshine from streaming at all."""
+    """Sunshine runs this when a stream starts and ends (its global prep command). Never fails (a failing prep command
+    stops Sunshine from streaming at all), except on purpose: Desktop for someone Family and friends gives Games only."""
     try:
         if what == 'start':
             e = os.environ
+            fam = family_session()
+            # Family and friends' Games only: Sunshine's Desktop is refused for them (the one time this fails).
+            if fam.get('what') == 'games' and e.get('SUNSHINE_APP_NAME', '') == 'Desktop':
+                sio.log_event('hearth-remote-desktop: Desktop refused: %s gets games only' % re.sub(r'[^\w .\'()-]', '', str(fam.get('who', '')))[:40])
+                return {'ok': False, 'refused': 'Games only'}
             who = re.sub(r'[^\w .\'()-]', '', e.get('SUNSHINE_CLIENT_NAME', ''))[:40]
             runtime_write('session.json', {'who': who, 'app': re.sub(r'[^\w .\'()-]', '', e.get('SUNSHINE_APP_NAME', ''))[:40],
                                            'width': clean_int(e.get('SUNSHINE_CLIENT_WIDTH'), 1, 16384),
@@ -501,7 +519,7 @@ def session(what):
             if load().get('keepAwake') and run(['systemctl', '--user', 'is-active', '--quiet', AWAKE_UNIT + '.service'], 5)[0] != 0:
                 run(['systemd-run', '--user', '--unit=' + AWAKE_UNIT, '--collect', '--property=RuntimeMaxSec=86400',
                      '/usr/bin/python3', SELF, 'awake'], 10)
-            if which('notify-send'):
+            if which('notify-send') and not fam:
                 run(['notify-send', '-a', 'Hearth', 'Using this PC from anywhere',
                      '%s is using this PC through Moonlight' % (who or 'A device')], 5)
         else:
@@ -698,11 +716,27 @@ def root(args):
 
 
 def fw_state():
+    """'tailscale-only' (Use this PC from anywhere), 'local-only' (Family and friends: only this PC itself) or 'open'."""
     try:
         with open(FW_MARK) as f:
-            return 'tailscale-only' if f.read().strip() == 'tailscale-only' else 'open'
+            v = f.read().strip()
+        return v if v in ('tailscale-only', 'local-only') else 'open'
     except OSError:
         return 'open'
+
+
+def family_on():
+    v = sio.load_json(FAMILY, {}, repair=False) if os.path.exists(FAMILY) else {}
+    return isinstance(v, dict) and v.get('on') is True
+
+
+def family_session():
+    try:
+        with open(FAMILY_SESSION) as f:
+            v = json.load(f)
+        return v if isinstance(v, dict) else {}
+    except (OSError, ValueError):
+        return {}
 
 
 def dropin_path(unit):
@@ -710,8 +744,9 @@ def dropin_path(unit):
 
 
 def dropin_text():
-    return ('# Hearth: Use this PC from anywhere (Settings > Remote play). Sunshine starts only once Hearth\'s\n'
-            '# Tailscale-only rule is loaded (hearth-remote-desktop gate waits up to 30 s for it). Off: this file goes.\n'
+    return ('# Hearth: Use this PC from anywhere (Settings > Remote play) or Family and friends (Settings > Gaming).\n'
+            '# Sunshine starts only once Hearth\'s rule is loaded (Tailscale only, or this PC only; hearth-remote-desktop\n'
+            '# gate waits up to 30 s for it). Both off: this file goes.\n'
             '[Service]\nExecStartPre=/usr/bin/python3 %s gate\n' % SELF)
 
 
@@ -730,10 +765,10 @@ def unit_file(unit):
 def gate(wait=30, sleep=time.sleep):
     """Sunshine's ExecStartPre while it's Tailscale only: no rule, no start."""
     for _ in range(int(wait)):
-        if fw_state() == 'tailscale-only':
+        if fw_state() in ('tailscale-only', 'local-only'):
             return {'ok': True}
         sleep(1)
-    raise Fail("Hearth's Tailscale-only rule isn't loaded, so Sunshine wasn't started")
+    raise Fail("Hearth's rule for Sunshine (Tailscale only, or this PC only) isn't loaded, so Sunshine wasn't started")
 
 
 def wait_api(seconds=15, sleep=time.sleep):
@@ -798,6 +833,8 @@ def turn_off():
     st = state()
     unit = st.get('unit') or sunshine_unit()
     note = ''
+    if family_on():
+        return family_keep(st, unit)
     had_gate = False
     if unit:
         link = wants_link(unit)
@@ -831,6 +868,104 @@ def turn_off():
         st.pop(k, None)
     state_write(st)
     return note
+
+
+def family_keep(st, unit):
+    """Use this PC from anywhere off while Family and friends is on: Sunshine keeps Hearth's values and the drop-in, but
+    only this PC itself can reach it now (Hearth Link's tunnel), and it no longer starts with your session."""
+    note = ''
+    if unit:
+        link = wants_link(unit)
+        if st.get('linked') and os.path.islink(link):
+            os.remove(link)
+    st.pop('linked', None)
+    try:
+        root(['remote-fw', 'local', str(sunshine_port())])
+    except Fail as e:
+        note = 'Sunshine is still reachable as before (%s). Turn this on and off again to try once more.' % e
+    if unit:
+        run(['systemctl', '--user', 'daemon-reload'], 30)
+        if st.get('startedSunshine') and not unit_enabled(unit) and unit_active(unit) and not family_session():
+            run(['systemctl', '--user', 'stop', unit], 30)
+    st['family'] = True
+    state_write(st)
+    return note
+
+
+def family_cmd(a):
+    """Family and friends (Hearth Link's switch is the setting; this only does what it needs to Sunshine)."""
+    sub = a[0] if a else ''
+    if sub == 'on':
+        if load()['on']:
+            st = state()
+            st['family'] = True
+            state_write(st)
+            return {'ok': True, 'firewall': fw_state()}
+        unit = sunshine_unit()
+        if not unit:
+            raise Fail("Sunshine isn't on this system. It comes with Hearth OS on PCs (x86).")
+        port = sunshine_port()
+        st = state()
+        # The rule first: if Sunshine can't be kept to this PC, nothing else changes.
+        root(['remote-fw', 'local', str(port)])
+        sio.write_text(dropin_path(unit), dropin_text())
+        was_active = unit_active(unit)
+        st['unit'] = unit
+        changed = tune_apply(st, gpu())
+        st['desktop'] = desktop_app(st)
+        st['family'] = True
+        state_write(st)
+        run(['systemctl', '--user', 'daemon-reload'], 30)
+        if was_active and changed:
+            run(['systemctl', '--user', 'restart', unit], 30)
+        return {'ok': True, 'firewall': fw_state()}
+    if sub == 'off':
+        st = state()
+        st.pop('family', None)
+        state_write(st)
+        if load()['on']:
+            return {'ok': True}
+        note = turn_off()
+        return {'ok': True, 'note': note}
+    if sub == 'start':
+        unit = sunshine_unit()
+        if not unit:
+            raise Fail("Sunshine isn't on this system")
+        if not unit_active(unit):
+            run(['systemctl', '--user', 'reset-failed', unit], 10)
+            code, out = run(['systemctl', '--user', 'start', unit], 40)
+            if code != 0:
+                raise Fail("Sunshine couldn't start on this PC")
+            runtime_write('family.json', {'started': True, 'at': int(now())})
+        if wait_api():
+            ensure_login()
+        return {'ok': True, 'port': sunshine_port(), 'running': unit_active(unit)}
+    if sub == 'paired' and len(a) == 2 and KEY_RE.match(a[1]):
+        cl, _ = clients()
+        return {'paired': any(c.get('name') == a[1] for c in cl)}
+    if sub == 'forget' and len(a) == 2 and KEY_RE.match(a[1]):
+        cl, _ = clients()
+        n = 0
+        for c in cl:
+            if c.get('name') == a[1]:
+                unpair(c['uuid'])
+                n += 1
+        return {'ok': True, 'removed': n}
+    if sub == 'idle':
+        try:
+            api('POST', '/api/apps/close', {}, login=creds(), timeout=8)
+        except Fail:
+            pass
+        if runtime_read('family.json').get('started'):
+            unit = sunshine_unit()
+            if unit and not load()['on'] and not unit_enabled(unit) and unit_active(unit):
+                run(['systemctl', '--user', 'stop', unit], 30)
+            try:
+                os.remove(os.path.join(RUNTIME, 'family.json'))
+            except OSError:
+                pass
+        return {'ok': True}
+    raise Fail('family on|off|start|idle | family paired|forget KEY')
 
 
 def set_cmd(key, raw):
@@ -892,7 +1027,7 @@ def status():
             'address': addr, 'clients': cl, 'needsLogin': needs_login, 'stream': stream,
             'peers': [{k: p[k] for k in ('name', 'os', 'ip', 'path', 'relay')} for p in ts.get('peers') or []][:12],
             'awake': run(['systemctl', '--user', 'is-active', '--quiet', AWAKE_UNIT + '.service'], 5)[0] == 0,
-            'gameMode': game_mode()}
+            'gameMode': game_mode(), 'family': family_on()}
 
 
 def quick():
@@ -922,8 +1057,11 @@ def main(argv):
         elif len(a) in (1, 2) and a[0] == 'check':
             res = check(a[1] if len(a) == 2 else None)
         elif len(a) == 2 and a[0] == 'session' and a[1] in ('start', 'end'):
-            print(json.dumps(session(a[1])))
-            return 0
+            r = session(a[1])
+            print(json.dumps(r))
+            return 0 if r.get('ok') else 1
+        elif a and a[0] == 'family':
+            res = family_cmd(a[1:])
         elif a == ['gate']:
             res = gate()
         elif a == ['awake']:
@@ -932,7 +1070,7 @@ def main(argv):
             res = quick()
         else:
             raise Fail('usage: hearth-remote-desktop status | set on|reach|keepAwake VALUE | start | pin PIN [NAME] | '
-                       'unpair UUID | check [IP] | session start|end | gate | awake | quick')
+                       'unpair UUID | check [IP] | session start|end | gate | awake | quick | family ...')
     except Fail as e:
         msg = str(e)
         print('error: ' + ("Sunshine has its own login: type it once under Sunshine's username and password" if msg == 'AUTH' else msg))

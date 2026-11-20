@@ -10,6 +10,7 @@ use iced::{Element, Subscription, Task};
 mod boot;
 mod controller;
 mod discord;
+mod family;
 mod games;
 mod handheld;
 mod kwingames;
@@ -65,6 +66,7 @@ pages! {
     ("games", games, Games, games),
     ("discord", discord, Discord, discord),
     ("remote", remote, Remote, remote),
+    ("family", family, Family, family),
     ("controller", controller, Controller, controller),
     ("kwin-games", kwingames, KwinGames, kwingames),
     ("handheld", handheld, Handheld, handheld),
@@ -82,6 +84,10 @@ fn shown() -> &'static str {
 pub fn subscription(st: &State) -> Subscription<Msg> {
     match shown() {
         "remote" if remote::rd_on(&st.remote) => iced::time::every(std::time::Duration::from_secs(5)).map(|_| Msg::Remote(remote::M::Tick)),
+        "family" => match family::live(&st.family) {
+            Some(secs) => iced::time::every(std::time::Duration::from_secs(secs)).map(|_| Msg::Family(family::M::Tick)),
+            None => Subscription::none(),
+        },
         "handheld" if handheld::live(&st.handheld) => iced::time::every(std::time::Duration::from_secs(6)).map(|_| Msg::Handheld(handheld::M::Tick)),
         _ => Subscription::none(),
     }
@@ -91,6 +97,9 @@ pub fn dialog<'a>(a: &'a App) -> Option<(Element<'a, Msg>, Option<Msg>)> {
     SHOWN.store(PAGES.iter().position(|p| *p == a.page).unwrap_or(usize::MAX), std::sync::atomic::Ordering::Relaxed);
     if a.page == "startup-animation" {
         return boot::dialog(&a.sh, &a.gaming.boot).map(|(d, o)| (d.map(Msg::Boot), o.map(Msg::Boot)));
+    }
+    if a.page == "family" {
+        return family::dialog(&a.sh, &a.gaming.family).map(|(d, o)| (d.map(Msg::Family), o.map(Msg::Family)));
     }
     None
 }
@@ -102,6 +111,7 @@ pub fn back(st: &mut State) -> bool {
         "startup-animation" => boot::back(&mut st.boot),
         "controller" => controller::back(&mut st.controller),
         "handheld" => handheld::back(&mut st.handheld),
+        "family" => family::back(&mut st.family),
         _ => false,
     }
 }

@@ -152,6 +152,8 @@ pub struct Peer {
     pub their_shares: Shares,
     /// A family member's device's network cards, so your devices can wake it (it says them in hello).
     pub macs: Vec<String>,
+    /// That PC lets this one connect with Moonlight (moonlight.rs; it said so): "desktop" or "games", empty if not.
+    pub moonlight: String,
 }
 
 /// Whose a paired device is.

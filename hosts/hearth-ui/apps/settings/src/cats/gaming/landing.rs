@@ -245,6 +245,7 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     v.push(head(&p, "Your games"));
     v.push(link_row(&p, G::Store, "Games & stores", "Epic Games, GOG and Xbox accounts, library sources, mods and saves", M::Go("games")));
     v.push(link_row(&p, G::Play, "Remote play", "Stream this PC's games to your phone or TV, play another PC here, or use this PC from anywhere", M::Go("remote")));
+    v.push(link_row(&p, G::Users, "Family and friends", "Let family and friends connect to this PC with Moonlight, and connect to theirs", M::Go("family")));
     v.push(link_row(&p, G::Drive, "Game storage", "Games by size, moving games between drives, low space warning · System › Storage", M::Go("storage")));
     v.push(link_row(&p, G::Update, "Saved games", "Every game's saves, backed up and put back (Ludusavi)", M::Go("savedgames")));
 

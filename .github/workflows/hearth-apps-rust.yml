@@ -12,6 +12,11 @@ on:
     paths: ['hosts/hearth-ui/**', 'hosts/hearth-core/src/settings_file.rs', 'hosts/linux/desktop/theme/palettes.json',
             '.github/workflows/hearth-apps-rust.yml', '.github/scripts/hearth-apps-rust-*', '.github/scripts/hearth-ui-build.sh']
   workflow_dispatch:
+    inputs:
+      only:
+        description: 'Only the runs and pictures whose names match this (an extended regex, like "family"); empty: all of them'
+        required: false
+        default: ''
 
 permissions:
   contents: read
@@ -55,7 +60,7 @@ jobs:
             exit 1
           fi
           ls -la target/release/ | grep hearth-
-          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app; do
+          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-family-app; do
             echo "::notice title=size::$b $(du -h target/release/$b | cut -f1)"
           done
       - name: Tests
@@ -66,7 +71,7 @@ jobs:
       - name: Gather
         run: |
           mkdir -p bin
-          cp hosts/hearth-ui/target/release/hearth-task-manager hosts/hearth-ui/target/release/hearth-system-restore hosts/hearth-ui/target/release/hearth-reliability-history hosts/hearth-ui/target/release/hearth-settings-app hosts/hearth-ui/target/release/hearth-files-app hosts/hearth-ui/target/release/hearth-file-chooser hosts/hearth-ui/target/release/hearth-capture-app hosts/hearth-ui/target/release/hearth-pad-host hosts/hearth-ui/target/release/hearth-g15 hosts/hearth-ui/target/release/hearth-g15-app bin/
+          cp hosts/hearth-ui/target/release/hearth-task-manager hosts/hearth-ui/target/release/hearth-system-restore hosts/hearth-ui/target/release/hearth-reliability-history hosts/hearth-ui/target/release/hearth-settings-app hosts/hearth-ui/target/release/hearth-files-app hosts/hearth-ui/target/release/hearth-file-chooser hosts/hearth-ui/target/release/hearth-capture-app hosts/hearth-ui/target/release/hearth-pad-host hosts/hearth-ui/target/release/hearth-g15 hosts/hearth-ui/target/release/hearth-g15-app hosts/hearth-ui/target/release/hearth-family-app bin/
       - uses: actions/upload-artifact@v4
         with:
           name: hearth-apps-rust
@@ -113,7 +118,7 @@ jobs:
         timeout-minutes: 40
         run: |
           chmod +x bin/*
-          HEARTH_REPORT_LATER=1 bash .github/scripts/hearth-apps-rust-test.sh
+          HEARTH_SHOTS_ONLY="${{ inputs.only }}" HEARTH_REPORT_LATER=1 bash .github/scripts/hearth-apps-rust-test.sh
       - name: The measurements (first frame, memory, CPU at rest, scrolling) and their limits
         if: always()
         run: bash .github/scripts/hearth-apps-rust-test.sh --report
@@ -123,6 +128,8 @@ jobs:
         run: |
           # A matrix holds at most 256 jobs, so the pictures go out in two of them (250 each; any beyond 500 are said).
           ls shots/*.png 2>/dev/null | xargs -r -n1 basename | sed 's/\.png$//' > /tmp/shots.txt || true
+          ONLY="${{ inputs.only }}"
+          if [ -n "$ONLY" ]; then grep -E "$ONLY" /tmp/shots.txt > /tmp/shots-only.txt || true; mv /tmp/shots-only.txt /tmp/shots.txt; fi
           echo "shots=$(python3 -c 'import json,sys; print(json.dumps([l.strip() for l in open(sys.argv[1]) if l.strip()][:250]))' /tmp/shots.txt)" >> "$GITHUB_OUTPUT"
           echo "shots2=$(python3 -c 'import json,sys; print(json.dumps([l.strip() for l in open(sys.argv[1]) if l.strip()][250:500]))' /tmp/shots.txt)" >> "$GITHUB_OUTPUT"
           n=$(grep -c . /tmp/shots.txt || true); [ "${n:-0}" -le 500 ] || echo "::warning title=pictures::$n pictures taken; only the first 500 are posted"

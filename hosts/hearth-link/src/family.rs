@@ -77,6 +77,9 @@ pub fn switch_of_item(id: &str) -> &'static str {
 
 /// A request `p` sent this device may be answered: checked before anything runs.
 pub fn allowed(p: &Peer, op: &str) -> bool {
+    // Family and friends with Moonlight: between any paired devices; each request checks the PC's own switch and
+    // list itself (moonlight.rs).
+    if crate::moonlight::is_op(op) { return true; }
     match p.rel() {
         Rel::Mine => true,
         Rel::Friend => friend_may(op),
@@ -96,6 +99,7 @@ pub fn allowed(p: &Peer, op: &str) -> bool {
 
 /// This device may ask `p` for `op` (the family member's own switches stop it before anything goes out).
 pub fn may_ask(p: &Peer, op: &str) -> bool {
+    if crate::moonlight::is_op(op) { return true; }
     match p.rel() {
         Rel::Mine => true,
         // Saying it's a friend's device now (after this one made it one).
@@ -496,7 +500,7 @@ impl Node {
 
 /// Mantel's remote desktop helper (Settings › Remote play › Use this PC from anywhere).
 pub const REMOTE_HELPER: &str = "/usr/share/nimbus/desktop/shell/hearth-remote-desktop";
-fn remote_helper() -> String { std::env::var("HEARTH_REMOTE_DESKTOP").unwrap_or_else(|_| REMOTE_HELPER.to_string()) }
+pub(crate) fn remote_helper() -> String { std::env::var("HEARTH_REMOTE_DESKTOP").unwrap_or_else(|_| REMOTE_HELPER.to_string()) }
 
 /// Runs a helper (python3 PATH ARGS...) and reads its last line as JSON, stopped after `secs`.
 pub fn run_timed(path: &str, args: &[&str], secs: u64) -> Result<Value, String> {

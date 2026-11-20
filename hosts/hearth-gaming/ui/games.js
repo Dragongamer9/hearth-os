@@ -11,7 +11,7 @@ const S = {
   tab: 'library', loading: true, info: {}, games: [], acc: {}, bn: {}, dl: { active: [], recent: [] }, drives: null,
   filt: 'all', installedOnly: false, q: '', busy: {}, error: '',
 };
-const TABS = ['library', 'downloads', 'stores', 'recomps'];
+const TABS = ['library', 'downloads', 'stores', 'recomps', 'family'];
 const STORE = { gog: 'GOG', epic: 'Epic Games', amazon: 'Amazon', battlenet: 'Battle.net' };
 const MARK = { gog: 'GOG', epic: 'EPIC', amazon: 'prime', battlenet: 'B.net' };
 // Stage two (1.13): each installed game's cloud saves and its DLC (GOG and Epic; Amazon games have neither through nile).
@@ -36,7 +36,7 @@ async function loadAll(rescan = false) {
     S.error = '';
   } catch (e) { S.error = KIT.err(e); }
   if (S.loading && S.info.store) S.filt = S.info.store;
-  if (S.loading && TABS.includes(S.info.tab)) S.tab = S.info.tab;
+  if (S.loading && TABS.includes(S.info.tab)) { S.tab = S.info.tab; if (S.tab === 'family') famLoad(); }
   S.loading = false;
   render();
 }
@@ -315,6 +315,58 @@ function storesHtml() {
       <p class="note">${proton}</p></div>
   </div></div>`;
 }
+// ---------------------------------------------------------------- Family and friends (docs/HEARTH-LINK.md)
+// The PCs that let this one connect with Moonlight through Hearth Link: online or not (each asked once when the tab
+// opens; nothing polls), Connect, Remove, and Add with a code. Sharing this PC is Settings › Gaming › Family and friends.
+const FAM = { data: null, loading: false, busy: '', msg: '', bad: false };
+async function famLoad() {
+  FAM.loading = true; if (S.tab === 'family') render();
+  try { FAM.data = await call('moonlight.friends', { check: true }); } catch (e) { FAM.msg = KIT.err(e); FAM.bad = true; }
+  FAM.loading = false; if (S.tab === 'family') { render(); KIT.focusFirst('#main .f'); }
+}
+async function famAct(cmd, args, key, said) {
+  FAM.busy = key; FAM.msg = key.startsWith('connect:') ? 'Asking… they may need to say yes on their PC' : ''; FAM.bad = false; render();
+  try { await call(cmd, args); FAM.msg = said; } catch (e) { FAM.msg = KIT.err(e); FAM.bad = true; }
+  FAM.busy = ''; famLoad();
+}
+const famWhat = w => (w === 'games' ? 'Games only' : 'Whole desktop');
+function famLine(p) {
+  if (!p.online) return 'Offline';
+  if (p.sharing === false) return 'Online · not letting anyone connect right now';
+  return `Online · ${famWhat(p.what)}${p.ask === false ? '' : ' · they\'re asked first'}`;
+}
+function familyHtml() {
+  const d = FAM.data || {};
+  const list = d.friends || [];
+  const conn = d.connected;
+  let h = '<div class="fam"><p class="note">Their PCs that let you connect with Moonlight. The picture goes through Hearth Link, encrypted end to end; no router ports are opened.</p>';
+  if (conn) h += `<div class="card pc"><span><b>Connected to ${esc(conn.name)}</b><small>Moonlight is open${conn.relay ? ' · through Hearth Link\'s relay' : ''}</small></span><button class="btn f danger" data-fam="disconnect">Disconnect</button></div>`;
+  if (FAM.loading && !FAM.data) h += '<p class="note">Looking for them…</p>';
+  if (FAM.data && !list.length) h += '<p class="note">Nobody yet. When someone adds you on their PC (Settings › Gaming › Family and friends › Add a person), type the code they give you below.</p>';
+  for (const p of list) {
+    const can = p.online && p.sharing !== false && !conn && !FAM.busy;
+    h += `<div class="card pc"><span><b>${esc(p.name)}<i class="dot${p.online ? ' on' : ''}"></i></b><small>${esc(famLine(p))}</small></span>`
+      + `<button class="btn f primary" data-fam="connect" data-id="${esc(p.id)}" data-name="${esc(p.name)}"${can ? '' : ' disabled'}>${FAM.busy === 'connect:' + p.id ? 'Connecting…' : 'Connect'}</button>`
+      + `<button class="btn f" data-fam="remove" data-id="${esc(p.id)}" data-name="${esc(p.name)}">Remove</button></div>`;
+  }
+  if (FAM.data && !FAM.data.moonlight) h += '<p class="bad">Moonlight isn\'t installed: Settings › Gaming › Remote play › Moonlight › Install.</p>';
+  h += '<div class="join"><input class="inp f" id="famcode" placeholder="Add with a code (like 482 913 or K7M-4QX-92HC)"><button class="btn f" data-fam="join">Add</button></div>';
+  if (FAM.msg) h += `<p class="${FAM.bad ? 'bad' : 'note'}">${esc(FAM.msg)}</p>`;
+  return h + '</div>';
+}
+function famClick(e) {
+  const b = e.target.closest('[data-fam]'); if (!b) return false;
+  const { id, name } = b.dataset;
+  switch (b.dataset.fam) {
+    case 'connect': famAct('moonlight.connect', { id }, 'connect:' + id, `Connected to ${name}: Moonlight is opening.`); break;
+    case 'remove': famAct('moonlight.forget', { id }, 'remove:' + id, `${name} is off your list. They can add you again with a code.`); break;
+    case 'disconnect': famAct('moonlight.disconnect', {}, 'disconnect', 'Disconnected.'); break;
+    case 'join': { const c = ($('#famcode')?.value || '').trim(); if (!c) { FAM.msg = 'Type the code their PC shows'; FAM.bad = true; render(); break; }
+      famAct('moonlight.join', { code: c }, 'join', 'Added. Their PC shows up here once it says you may connect.'); break; }
+  }
+  return true;
+}
+
 function render() {
   document.querySelectorAll('#tabs .tab').forEach(t => t.classList.toggle('on', t.dataset.tab === S.tab));
   const n = S.games.length, inst = S.games.filter(g => g.installed).length;
@@ -325,7 +377,7 @@ function render() {
   const had = ae?.closest('#main') ? (ae.dataset.id || ae.dataset.act || ae.dataset.filt || ae.dataset.rc || ae.dataset.rcs || ae.dataset.rca || ae.id) : null;
   const main = $('#main');
   if (S.loading) main.innerHTML = '<div class="empty"><div class="prog spin"><i></i></div>Reading your library…</div>';
-  else main.innerHTML = (S.error ? `<p class="bad">${esc(S.error)}</p>` : '') + (S.tab === 'library' ? libraryHtml() : S.tab === 'downloads' ? downloadsHtml() : S.tab === 'recomps' ? recompsHtml() : storesHtml());
+  else main.innerHTML = (S.error ? `<p class="bad">${esc(S.error)}</p>` : '') + (S.tab === 'library' ? libraryHtml() : S.tab === 'downloads' ? downloadsHtml() : S.tab === 'recomps' ? recompsHtml() : S.tab === 'family' ? familyHtml() : storesHtml());
   $('#foot').innerHTML = '<span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>X</b>Refresh</span>' + (S.tab === 'library' || S.tab === 'recomps' ? '<span><b>Y</b>Search</span>' : '') + '<span><b class="wide">LB</b><b class="wide">RB</b>Library, Downloads, Stores, Recomps</span>';
   if (had && !KIT.dialogOpen()) {
     const h = CSS.escape(had);
@@ -335,12 +387,13 @@ function render() {
   if (S.tab === 'recomps') rcAfterRender();
   const q = $('#q'); if (q) q.oninput = () => { S.q = q.value; const g = $('.grid'); if (g) g.innerHTML = shown().map(tileHtml).join('') || '<div class="empty" style="grid-column:1/-1">No game by that name.</div>'; };
 }
-function setTab(t) { S.tab = t; render(); KIT.focusFirst('#main .f'); poll(); }
+function setTab(t) { S.tab = t; render(); KIT.focusFirst('#main .f'); poll(); if (t === 'family') famLoad(); }
 
 document.addEventListener('click', e => {
   if (KIT.dialogOpen()) return;
   const t = e.target.closest('.tab'); if (t) return setTab(t.dataset.tab);
   if (S.tab === 'recomps' && rcClick(e)) return;
+  if (S.tab === 'family' && famClick(e)) return;
   const tile = e.target.closest('.tile'); if (tile) { const g = game(tile.dataset.id); if (g) openGame(g); return; }
   const f = e.target.closest('[data-filt]'); if (f) { S.filt = f.dataset.filt; render(); return; }
   const dv = e.target.closest('[data-drive]'); if (dv) { KIT.invoke('use_drive', { mount: dv.dataset.drive }).then(r => { S.drives = r; KIT.toast('New games go there now'); render(); }).catch(err => KIT.toast(KIT.err(err))); return; }
@@ -359,7 +412,7 @@ document.addEventListener('click', e => {
   }
 });
 KIT.onTab = d => setTab(TABS[(TABS.indexOf(S.tab) + d + TABS.length) % TABS.length]);
-KIT.onX = () => { if (S.tab === 'recomps') { rcLoad(); KIT.toast('Recomps: looking again…'); } else refreshAll(); };
+KIT.onX = () => { if (S.tab === 'recomps') { rcLoad(); KIT.toast('Recomps: looking again…'); } else if (S.tab === 'family') famLoad(); else refreshAll(); };
 KIT.onY = () => { const q = S.tab === 'library' ? $('#q') : S.tab === 'recomps' ? $('#rq') : null; if (q) { q.focus(); if (KIT.usingPad()) KIT.openOsk(q); } };
 KIT.onBack = () => {
   if (S.tab === 'recomps' && RC.q) { RC.q = ''; render(); }
@@ -387,6 +440,7 @@ if (!KIT.live) {
     if (cmd === 'call') {
       const m = a.method;
       if (m.startsWith('recomps.')) return rcDemo(m, a.args || {});
+      if (m === 'moonlight.friends') return { friends: [{ id: '3f'.repeat(32), name: "Dad's PC", online: true, sharing: true, what: 'desktop', ask: true }, { id: '9e'.repeat(32), name: "Sam's Deck", online: false, sharing: null, what: 'games', ask: false }], connected: null, moonlight: true };
       if (m === 'accounts.status') return { accounts: [{ store: 'gog', signedIn: true, name: 'dragon', owned: 6, installed: 2, fetched: Date.now() - 36e5 }, { store: 'epic', signedIn: true, name: 'dragon', owned: 4, installed: 0, fetched: Date.now() - 72e5 }, { store: 'amazon', signedIn: true, name: 'Chris', owned: 2, installed: 1, fetched: Date.now() - 18e5 }], battlenet: { installed: true, via: 'faugus', faugus: true, games: 1 } };
       if (m === 'game.saves') return a.args.id === 'gog:1' ? { supported: true, on: true, last: { at: Date.now() - 3e5, dir: 'up', ok: true }, folder: '/home/you/Games/Witcher Tales/saves' } : { supported: false };
       if (m === 'game.dlc') return { dlc: DEMO_DLC[a.args.id] || [] };

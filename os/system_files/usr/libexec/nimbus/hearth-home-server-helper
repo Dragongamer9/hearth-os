@@ -62,6 +62,8 @@ Storage's shares in /etc/samba/hearth-storage.conf, the home server's in /etc/sa
                         Tailscale and this PC itself: its own nftables table, /etc/hearth/remote-desktop.nft, loaded again
                         at boot by hearth-remote-desktop-firewall.service (enabled only now); /run/hearth/remote-desktop-fw
                         says it loaded (Sunshine's drop-in waits for it: no rule, no start)
+  remote-fw local [PORT]  Family and friends (Moonlight through Hearth Link, docs/HEARTH-LINK.md): the same table, but
+                        Sunshine's ports only from this PC itself (lo: Hearth Link's tunnel ends there); mark local-only
   remote-fw off         the table, its file, the mark and the boot unit go (Sunshine as Sunshine itself sets it up)
   remote-fw load        the boot unit: the saved rule loaded again (nothing when there's none)
 
@@ -3416,19 +3418,20 @@ def sunshine_ports(base=SUNSHINE_PORT):
     return [base - 5, base, base + 1, base + 21], [base + 9, base + 10, base + 11, base + 13, base + 21]
 
 
-def rd_nft_text(base=SUNSHINE_PORT):
-    """Sunshine only through Tailscale (and this PC itself): a table of its own, so the home server's rules and these
-    never undo each other, and deleting it takes every rule away again."""
+def rd_nft_text(base=SUNSHINE_PORT, local=False):
+    """Sunshine only through Tailscale (and this PC itself), or (local) only from this PC itself: a table of its own,
+    so the home server's rules and these never undo each other, and deleting it takes every rule away again."""
     tcp, udp = sunshine_ports(base)
     return '\n'.join(['#!/usr/sbin/nft -f',
-                      '# Hearth: Use this PC from anywhere (Settings > Remote play). Sunshine only through Tailscale.',
+                      ('# Hearth: Family and friends (Settings > Gaming). Sunshine only from this PC itself (local-only).' if local else
+                       '# Hearth: Use this PC from anywhere (Settings > Remote play). Sunshine only through Tailscale.'),
                       '# Written by hearth-home-server-helper; turning it off deletes this table.',
                       'table inet %s' % RD_NFT_TABLE,
                       'delete table inet %s' % RD_NFT_TABLE,
                       'table inet %s {' % RD_NFT_TABLE,
                       '\tchain input {',
                       '\t\ttype filter hook input priority -10; policy accept;',
-                      '\t\tiifname { "lo", "%s" } accept' % TAILSCALE_IFACE,
+                      ('\t\tiifname "lo" accept' if local else '\t\tiifname { "lo", "%s" } accept' % TAILSCALE_IFACE),
                       '\t\ttcp dport { %s } counter drop' % ', '.join(str(p) for p in tcp),
                       '\t\tudp dport { %s } counter drop' % ', '.join(str(p) for p in udp),
                       '\t}', '}', ''])
@@ -3452,8 +3455,13 @@ def rd_load():
     code, out = run(['nft', '-f', RD_NFT_FILE])
     if code != 0:
         return {'ok': False, 'error': "Hearth's Tailscale-only rule for Sunshine didn't load"}
-    write(RD_MARK, 'tailscale-only\n', 0o644)
-    return {'ok': True, 'firewall': 'tailscale-only'}
+    try:
+        with open(RD_NFT_FILE) as f:
+            kind = 'local-only' if '(local-only)' in f.read(400) else 'tailscale-only'
+    except OSError:
+        kind = 'tailscale-only'
+    write(RD_MARK, kind + '\n', 0o644)
+    return {'ok': True, 'firewall': kind}
 
 
 def remote_fw(mode, raw_port=None):
@@ -3462,11 +3470,11 @@ def remote_fw(mode, raw_port=None):
     if mode == 'load':
         return rd_load()
     caller()
-    if mode == 'tailscale':
+    if mode in ('tailscale', 'local'):
         base = rd_base(raw_port)
         if not which('nft'):
-            raise Fail("nftables (nft) isn't installed, so Sunshine can't be kept to Tailscale only: nothing was turned on")
-        write(RD_NFT_FILE, rd_nft_text(base))
+            raise Fail("nftables (nft) isn't installed, so Sunshine can't be kept to %s: nothing was turned on" % ('this PC only' if mode == 'local' else 'Tailscale only'))
+        write(RD_NFT_FILE, rd_nft_text(base, local=mode == 'local'))
         res = rd_load()
         if not res.get('ok'):
             remove(RD_NFT_FILE)
@@ -3476,7 +3484,7 @@ def remote_fw(mode, raw_port=None):
         if run(['systemctl', 'is-enabled', RD_UNIT])[0] != 0:
             run(['systemctl', 'enable', RD_UNIT])
         tcp, udp = sunshine_ports(base)
-        return {'ok': True, 'firewall': 'tailscale-only', 'tcp': tcp, 'udp': udp}
+        return {'ok': True, 'firewall': res.get('firewall', 'tailscale-only'), 'tcp': tcp, 'udp': udp}
     if mode == 'off':
         remove(RD_NFT_FILE)
         remove(RD_MARK)
@@ -3485,7 +3493,7 @@ def remote_fw(mode, raw_port=None):
         if run(['systemctl', 'is-enabled', RD_UNIT])[0] == 0:
             run(['systemctl', 'disable', RD_UNIT])
         return {'ok': True, 'firewall': 'open'}
-    raise Fail('remote-fw tailscale [PORT] | off | load')
+    raise Fail('remote-fw tailscale [PORT] | local [PORT] | off | load')
 
 
 # ------------------------------------------------------------------ the ransomware guard
@@ -3641,10 +3649,10 @@ def main(argv):
             res = gpu_limit(a[1])
         elif a == ['guard-reset']:
             res = guard_reset()
-        elif len(a) in (2, 3) and a[0] == 'remote-fw' and a[1] in ('tailscale', 'off', 'load'):
+        elif len(a) in (2, 3) and a[0] == 'remote-fw' and a[1] in ('tailscale', 'local', 'off', 'load'):
             if a[1] == 'load' and os.environ.get('PKEXEC_UID'):
                 raise Fail('remote-fw load is for the boot unit only')
-            res = remote_fw(a[1], a[2] if len(a) == 3 and a[1] == 'tailscale' else None)
+            res = remote_fw(a[1], a[2] if len(a) == 3 and a[1] in ('tailscale', 'local') else None)
         else:
             raise Fail('usage: hearth-home-server-helper apply | smb-password | drives | format-plan DEV | format | '
                        'snapshot run | tailscale start|stop | exit-node on|off | wol IFACE | person-add | person-password | '
@@ -3652,7 +3660,7 @@ def main(argv):
                        'backup-now ID | backup-snapshots ID | backup-restore | receive-add NAME | receive-remove USER | '
                        'alerts run|test | power run | ups-status | app-install NAME | app-remove NAME | services run | guard-reset | '
                        'svc stop|start|restart ollama|jellyfin | gpu-limit WATTS|reset | '
-                       'remote-fw tailscale [PORT]|off|load')
+                       'remote-fw tailscale|local [PORT]|off|load')
         print(json.dumps(res))
         return 0
     except FAILS as e:
