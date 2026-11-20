@@ -365,7 +365,9 @@ pub fn to_show(it: Rectangle, view: Rectangle, content: Rectangle, offset: f32) 
     if top - m < offset {
         Some((top - m).clamp(0.0, max))
     } else if bottom + m > offset + view.height {
-        Some((bottom + m - view.height).clamp(0.0, max))
+        // Near the end of the page: all the way down, so a closing line under the last row shows too.
+        let want = bottom + m - view.height;
+        Some(if max - want < 120.0 { max } else { want }.clamp(0.0, max))
     } else {
         None
     }
@@ -562,5 +564,7 @@ mod tests {
         assert_eq!(to_show(row(50.0), view, content, 0.0), None);
         assert_eq!(to_show(row(600.0), view, content, 0.0), Some(276.0));
         assert_eq!(to_show(row(10.0), view, content, 300.0), Some(0.0));
+        // The last row near the end: all the way down (the page's closing line shows too).
+        assert_eq!(to_show(row(1100.0), view, content, 0.0), Some(800.0));
     }
 }

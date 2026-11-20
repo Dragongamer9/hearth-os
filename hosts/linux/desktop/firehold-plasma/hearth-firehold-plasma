@@ -850,11 +850,14 @@ def couch_quick_widget():
     """Hearth's shared Quick Settings (org.hearthos.quicksettings, Firehold's look) in each Couch desktop, once, when
     it's installed: the Couch's ≡ opens it over the Couch (mockup firehold-plasma 08). Added only where it's missing;
     the widget's own settings are left as they are."""
-    js = ('if((knownWidgetTypes||[]).indexOf("org.hearthos.quicksettings")>=0){desktops().forEach(function(d){'
-          'if(d.type!="org.hearthos.firehold.couch")return;'
-          'if(d.widgets().some(function(w){return w.type=="org.hearthos.quicksettings";}))return;'
-          'var w=d.addWidget("org.hearthos.quicksettings");w.currentConfigGroup=["General"];w.writeConfig("style","firehold");});}')
-    dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript', 'string:' + js, reply=False)
+    js = ('var known=(typeof knownWidgetTypes!=="undefined"&&knownWidgetTypes)||[],r=[];'
+          'if(known.indexOf("org.hearthos.quicksettings")<0){print("not installed");}else{var ds=desktops();'
+          'for(var i=0;i<ds.length;i++){var d=ds[i];if(d.type!="org.hearthos.firehold.couch")continue;'
+          'var ws=d.widgets(),have=false;for(var j=0;j<ws.length;j++)if(ws[j].type=="org.hearthos.quicksettings")have=true;'
+          'if(have){r.push("there");continue;}'
+          'var w=d.addWidget("org.hearthos.quicksettings");w.currentConfigGroup=["General"];w.writeConfig("style","firehold");r.push("added");}'
+          'print(r.join(","));}')
+    return dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript', 'string:' + js, timeout=10)
 
 
 def desk_pad(name):
@@ -2128,7 +2131,9 @@ def main(argv):
         elif what == 'ready' and a and re.match(r'^[a-z.]+$', a[0]):
             write_small(os.path.join(run_dir(), 'ready-' + a[0]), str(time.time()))
             if a[0] == COUCH:
-                couch_quick_widget()
+                out = couch_quick_widget()
+                if os.environ.get('HEARTH_FIREHOLD_PLASMA') == '1':
+                    print(out)
         elif what == 'switch' and a:
             why = a[a.index('--why') + 1] if '--why' in a[:-1] else ''
             tab = next((x for x in a[1:] if x in ('home', 'library', 'apps', 'store', 'switcher', 'settings')), '')

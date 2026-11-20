@@ -49,7 +49,11 @@ Item {
         if (role(i, NM.Notifications.HasDefaultActionRole) === true)
             acts.unshift({ identifier: "default", text: role(i, NM.Notifications.DefaultActionLabelRole) || "Open", invoke: function () { const r = srv.rowOf(id); if (r >= 0) model.invokeDefaultAction(model.index(r, 0)); } });
         const u = role(i, NM.Notifications.UrgencyRole);
-        const img = role(i, NM.Notifications.ImageRole);
+        // Its picture: an image path, else the first picture among its files (x-kde-urls: a screenshot, a clip's
+        // thumbnail; Plasma loads image-path itself into an image QML can't keep).
+        const urls = Array.from(role(i, NM.Notifications.UrlsRole) || []).map(u => String(u)).filter(u => /^file:\/\/.*\.(png|jpe?g|webp)$/i.test(u));
+        const img0 = role(i, NM.Notifications.ImageRole);
+        const img = typeof img0 === "string" && img0 !== "" ? img0 : (urls[0] || "");
         const closedFns = [];
         const n = {
             id: id, nid: id, tracked: false, resident: false, hints: ({}),
@@ -57,7 +61,7 @@ Item {
             dismiss: function () { const r = srv.rowOf(id); if (r >= 0) model.close(model.index(r, 0)); },
             expire: function () { const r = srv.rowOf(id); if (r >= 0) model.expire(model.index(r, 0)); }, appName: String(role(i, NM.Notifications.ApplicationNameRole) || ""), summary: String(role(i, NM.Notifications.SummaryRole) || ""),
             body: String(role(i, NM.Notifications.BodyRole) || "").replace(/\s+$/, ""), appIcon: String(role(i, NM.Notifications.ApplicationIconNameRole) || role(i, NM.Notifications.IconNameRole) || ""),
-            image: typeof img === "string" ? img : "", imageObj: img && typeof img !== "string" ? img : null, urgency: u === NM.Notifications.CriticalUrgency ? 2 : u === NM.Notifications.LowUrgency ? 0 : 1,
+            image: typeof img === "string" ? img : "", urgency: u === NM.Notifications.CriticalUrgency ? 2 : u === NM.Notifications.LowUrgency ? 0 : 1,
             actions: acts, desktopEntry: String(role(i, NM.Notifications.DesktopEntryRole) || ""), expireTimeout: Number(role(i, NM.Notifications.TimeoutRole) || 0),
             transient: role(i, NM.Notifications.TransientRole) === true,
             // A Reply box (Plasma's inline replies: messengers, KDE Connect), as Quickshell's

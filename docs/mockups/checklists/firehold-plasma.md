@@ -59,7 +59,7 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 - [x] In the Settings look, its own page — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "pub const PAGES: &[&str] = &[\"couch-desk-away\", \"couch-away\"];"
 - [x] For each screen: the mode it starts in, what's on its Couch home, sound in Couch — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "\"Sound in Couch\", \"Switches the output when this screen goes Couch\""
-- [ ] Switching by itself: a controller puts the TV in Couch, the mouse puts its own screen in Desk, Away after a time, what keeps running while Away, games follow the mode
+- [x] Switching by itself: a controller puts the TV in Couch, the mouse puts its own screen in Desk, Away after a time, what keeps running while Away, games follow the mode — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "\"Away when nobody's here\", \"No controller, mouse or keyboard for this long, and nothing playing\""
 - [ ] The line "Switching modes is never a settings change" (switching is live state, never saved by itself: red flag 9)
 
 ## 6. Away (06-away.png)
@@ -118,7 +118,7 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 - [x] Standard menus for an app with none of its own (the app menu, Window, Help) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "[[\"app\", root.appName], [\"window\", \"Window\"], [\"help\", \"Help\"]]"
 - [x] Window › Move to screen (each screen with its mode) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "here ? \"here now\" : s.mode === \"couch\" ? \"goes full screen\""
 - [x] Help: search every command (Alt+Space) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "[\"Search every command\", \"Alt+Space\", \"search\"]"
-- [ ] The "controller in your hand" hint
+- [x] The "controller in your hand" hint — hosts/linux/desktop/firehold-plasma/posture/contents/ui/HintLayer.qml: "LayerShell.Window.anchors: LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorRight"
 
 ## Build status (branch feature/firehold-plasma-1.16; not ticked until each part is pictured and compared)
 

@@ -146,7 +146,8 @@ shot fp-02-couch-home-rows
 key b
 # Quick Settings with the controller over the Couch (mockup 08): the Couch's ≡ (the Menu key); B (Escape) closes it.
 key up up up up; sleep 1
-echo "Couch's widgets: $(dbus-send --session --print-reply --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript string:'print(desktops().map(function(d){return d.type + ": " + d.widgets().map(function(w){return w.type;}).join(",");}).join(" | "))' 2>&1 | tail -1)" > "$OUT/couch-quick.txt"
+echo "added: $(hearth-firehold-plasma ready org.hearthos.firehold 2>&1 | tail -2)" > "$OUT/couch-quick.txt"; sleep 4
+echo "Couch's widgets: $(dbus-send --session --print-reply --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript string:'print(desktops().map(function(d){return d.type + ": " + d.widgets().map(function(w){return w.type;}).join(",");}).join(" | "))' 2>&1 | tail -1)" >> "$OUT/couch-quick.txt"
 command -v wtype >/dev/null && timeout 5 wtype -k Menu || hearth-firehold-plasma do open-applet org.hearthos.quicksettings >>"$OUT/couch-quick.txt"
 sleep 4
 shot fp-08-quick-settings-couch
@@ -294,6 +295,7 @@ n = dbus.Interface(dbus.SessionBus().get_object('org.freedesktop.Notifications',
 o = json.loads(sys.argv[1])
 hints = {'urgency': dbus.Byte(o.get('urgency', 1))}
 if o.get('image'): hints['image-path'] = o['image']
+if o.get('urls'): hints['x-kde-urls'] = dbus.Array(o['urls'], signature='s')
 if o.get('reply'): hints['x-kde-reply-placeholder-text'] = o['reply']
 print(n.Notify(o['app'], 0, '', o['summary'], o.get('body', ''), o.get('actions', []), hints, o.get('timeout', -1)))
 PY
@@ -346,9 +348,10 @@ shot fp-14-controller-hint 0 1920
 printf 'Age of the Ring 8.4 patch notes\n' > /tmp/patch-notes.txt
 QT_QPA_PLATFORMTHEME=kde kate /tmp/patch-notes.txt >/dev/null 2>&1 &
 sleep 8; front "patch-notes" false; sleep 3
-command -v wtype >/dev/null && timeout 5 wtype -M alt -k f -m alt; sleep 3
+# File open: the global menu widget's own "activate" (its first menu), as its shortcut does.
+hearth-firehold-plasma do open-applet org.kde.plasma.appmenu >> "$OUT/controller-hint.txt"; sleep 3
 shot fp-11-desk-bar-app-menus 0 1920
-command -v wtype >/dev/null && timeout 5 wtype -k Escape; sleep 1
+hearth-firehold-plasma do open-applet org.kde.plasma.appmenu >/dev/null; sleep 1
 echo "kate's menus: $(hearth-firehold-plasma menus "$(pgrep -x kate | head -1)")" >> "$OUT/controller-hint.txt"
 front "Trains 2010" false; sleep 2
 # While you played (mockup 10): notifications that come while a game is full screen are held back.
@@ -363,7 +366,7 @@ if command -v hearth-plasma-panel >/dev/null; then
   note '{"app": "Firefox", "summary": "Firefox download finished", "body": "hollow-pines.tar.zst · 2.9 GB", "timeout": 30000}'; sleep 1
   note '{"app": "Hearth OS", "summary": "Hearth OS update ready", "body": "Nothing changes until you restart", "timeout": 30000}'; sleep 1
   note '{"app": "Discord", "summary": "Ryder in #bfme-nights", "body": "“Edain game at 11? I'"'"'ll host.”", "actions": ["inline-reply", "Reply", "read", "Mark read"], "reply": "Reply...", "timeout": 30000}'; sleep 1
-  note '{"app": "Hearth Recorder", "summary": "Saved the last 30 seconds", "body": "Rise of the Witch-king · 1440p · 96 MB", "image": "file://'"$HOME"'/.cache/hearth/art/beacon_rotwk.jpg", "actions": ["open", "Open", "share", "Copy a share link", "delete", "Delete"], "timeout": 30000}'; sleep 1
+  note '{"app": "Hearth Recorder", "summary": "Saved the last 30 seconds", "body": "Rise of the Witch-king · 1440p · 96 MB", "urls": ["file://'"$HOME"'/.cache/hearth/art/beacon_rotwk.jpg"], "actions": ["open", "Open", "share", "Copy a share link", "delete", "Delete"], "timeout": 30000}'; sleep 1
   note '{"app": "Downloads", "summary": "Helldivers 2 is ready", "body": "The 6.0 GB update finished (Steam).", "actions": ["play", "Play", "tv", "Play on the TV"], "timeout": 30000}'; sleep 1
   note '{"app": "Hearth Link", "summary": "Dad'"'"'s PC asks for help", "body": "“Trains 2010 won'"'"'t start after the update.” He'"'"'s at his PC now.", "urgency": 2, "actions": ["connect", "Connect (Remote desktop)", "later", "Call him back later", "notnow", "Not now"]}'; sleep 3
   shot fp-09-notification-cards 0 1920
