@@ -4,6 +4,9 @@
 //! Drivers. All through hearth-store, except Drivers: on the Fedora edition the system is an image (bootc), so the
 //! PC's parts are read with lspci and rpm (dnf's packages) and drivers come with Hearth OS's updates.
 //! `hearth-settings store:updates`, `store:sources`, `store:drivers`, `store:app-org_kde_krita` open at that part.
+//! The apps' icons and screenshots are drawn as the pictures themselves (SetStore.qml's Images): hearth-store pics
+//! saves each one once in its cache (Flathub's https:// addresses; a file path is used as it is), pics.rs reads it off
+//! the window's thread, and the page is drawn again when it's ready. Until then (or offline) the store mark stands in.
 
 use super::kit::{self, *};
 use super::kit::button;
@@ -47,6 +50,12 @@ pub struct St {
     pub confirm: String,
     pub say: Say,
     pub busy: Busy,
+    /// The pictures' files: Flathub's address → the file hearth-store saved it in.
+    pub pics: std::collections::HashMap<String, String>,
+    /// Addresses already asked for (each once while Settings is open).
+    pub asked: std::collections::HashSet<String>,
+    /// The screenshot in front on an app's page (SetStore.qml's shotsCard.at).
+    pub shot: usize,
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +91,12 @@ pub enum M {
     RemoveSource(String),
     // (feature/hearth-store) "Hearth's own apps": opens the Hearth Store (hearth-store-app, Fedora image only).
     HearthStore,
+    /// hearth-store pics answered (address → file).
+    Pics(Res),
+    /// Pictures read: draw again.
+    PicsReady,
+    /// The screenshots: one back (-1) or on (1).
+    Shot(i32),
 }
 
 /// What to read again after a job.
@@ -162,6 +177,7 @@ pub fn update(sh: &mut Shared, st: &mut St, m: M) -> Task<M> {
                     st.say.ok("Offline: showing what Flathub showed last time.");
                 }
                 st.home = r.v;
+                return want_pics(st);
             } else {
                 st.say.bad(r.err);
             }
@@ -189,6 +205,7 @@ pub fn update(sh: &mut Shared, st: &mut St, m: M) -> Task<M> {
             st.loading = false;
             if r.ok {
                 st.apps = ga(&r.v, "apps").to_vec();
+                return want_pics(st);
             } else {
                 st.say.bad(r.err);
             }
@@ -207,6 +224,8 @@ pub fn update(sh: &mut Shared, st: &mut St, m: M) -> Task<M> {
             st.loading = false;
             if r.ok {
                 st.app = r.v;
+                st.shot = 0;
+                return want_pics(st);
             } else {
                 st.say.bad(r.err);
             }
@@ -344,6 +363,23 @@ pub fn update(sh: &mut Shared, st: &mut St, m: M) -> Task<M> {
             st.src_url.clear();
             return update(sh, st, M::Work(vec!["source-add".into(), name.clone(), u], format!("{name} was added."), Then::Sources));
         }
+        M::Pics(r) => {
+            if let Some(m) = r.v.get("pics").and_then(Value::as_object) {
+                for (u, f) in m {
+                    if let Some(f) = f.as_str() {
+                        st.pics.insert(u.clone(), f.to_string());
+                    }
+                }
+            }
+            return draw_pics(st);
+        }
+        M::PicsReady => {}
+        M::Shot(d) => {
+            let n = ga(&st.app, "screenshots").len();
+            if n > 0 {
+                st.shot = (st.shot as i64 + d as i64).clamp(0, n as i64 - 1) as usize;
+            }
+        }
         M::RemoveSource(n) => {
             let key = format!("src:{n}");
             if st.confirm != key {
@@ -356,19 +392,108 @@ pub fn update(sh: &mut Shared, st: &mut St, m: M) -> Task<M> {
     Task::none()
 }
 
+// ---------------------------------------------------------------- the apps' pictures
+
+/// Every picture the page shows now: (its address, its shape).
+fn shown_pics(st: &St) -> Vec<(String, crate::pics::Cut)> {
+    let mut v: Vec<(String, crate::pics::Cut)> = Vec::new();
+    let icon = |a: &Value, v: &mut Vec<(String, crate::pics::Cut)>| {
+        let u = gs(a, "icon");
+        if !u.is_empty() {
+            v.push((u, crate::pics::ICON));
+        }
+    };
+    for k in ["popular", "trending", "new"] {
+        for a in ga(&st.home, k).iter().take(8) {
+            icon(a, &mut v);
+        }
+    }
+    for a in &st.apps {
+        icon(a, &mut v);
+    }
+    if !st.app.is_null() {
+        icon(&st.app, &mut v);
+        for s in ga(&st.app, "screenshots") {
+            let u = gs(s, "url");
+            if !u.is_empty() {
+                v.push((u, crate::pics::SHOT));
+            }
+        }
+    }
+    v
+}
+
+/// The file a picture is in (a file path is used as it is), once it's known.
+fn file_of(st: &St, url: &str) -> Option<String> {
+    if url.starts_with('/') {
+        return Some(url.to_string());
+    }
+    st.pics.get(url).cloned()
+}
+
+/// Asks hearth-store for the pictures not asked for yet (Flathub's addresses, one a line on its stdin), and reads
+/// the ones already saved.
+fn want_pics(st: &mut St) -> Task<M> {
+    let mut ask: Vec<String> = Vec::new();
+    for (u, _) in shown_pics(st) {
+        if !u.starts_with('/') && !st.pics.contains_key(&u) && st.asked.insert(u.clone()) {
+            ask.push(u);
+        }
+    }
+    let draw = draw_pics(st);
+    if ask.is_empty() {
+        return draw;
+    }
+    Task::batch([draw, kit::read_in(hs(&["pics"], 90), Some(ask.join("\n") + "\n"), M::Pics)])
+}
+
+/// Reads (off the window's thread) the pictures whose files are known, then draws again.
+fn draw_pics(st: &St) -> Task<M> {
+    let items: Vec<(String, crate::pics::Cut)> = shown_pics(st).into_iter().filter_map(|(u, c)| file_of(st, &u).map(|f| (f, c))).collect();
+    match crate::pics::load(items) {
+        Some(f) => Task::perform(f, |_| M::PicsReady),
+        None => Task::none(),
+    }
+}
+
+/// An app's icon in its rounded box (SetStore.qml: 48 in a list, 96 on its page), the store mark until it's read.
+fn icon_pic<'a>(p: &hearth_ui::Pal, st: &St, a: &Value, size: f32) -> E<'a, M> {
+    let h = file_of(st, &gs(a, "icon")).and_then(|f| crate::pics::get(&f, crate::pics::ICON));
+    let inner: E<'a, M> = match h {
+        Some(h) => crate::pics::fit(h, size, size),
+        None => hearth_ui::ui::glyph(G::Store, p.text, sz(size * 0.45), 1.8),
+    };
+    iced::widget::container(inner)
+        .center_x(Length::Fixed(size))
+        .center_y(Length::Fixed(size))
+        .style(hearth_ui::ui::boxed(p.panel3, p.r(if size > 60.0 { 20.0 } else { 12.0 }), None))
+        .into()
+}
+
 fn stars(n: f64) -> String {
     let f = (n.round() as usize).min(5);
     format!("{}{}", "★".repeat(f), "☆".repeat(5 - f))
 }
 
-fn app_line<'a>(p: &hearth_ui::Pal, a: &Value) -> E<'a, M> {
+/// One app in a list (SetStore.qml's AppLine): its icon, name (✓ verified), summary · developer, ›.
+fn app_line<'a>(p: &hearth_ui::Pal, st: &St, a: &Value) -> E<'a, M> {
     let mut name = gs(a, "name");
     if gb(a, "verified") {
         name.push_str("  ✓");
     }
     let dev = gs(a, "developer");
     let sub = if dev.is_empty() { gs(a, "summary") } else { format!("{} · {dev}", gs(a, "summary")) };
-    r(G::Store, name, sub).chev().on(M::App(gs(a, "id"))).view(p)
+    let msg = M::App(gs(a, "id"));
+    crate::nav::control(crate::nav::Kind::Open, vec![Box::new(msg.clone()) as crate::nav::Act], Vec::new(), Vec::new(), String::new(), String::new());
+    let nr = crate::nav::item(&name, &sub, false);
+    let words = column![tb(name, sz(15.0), p.text), t(sub, sz(12.0), p.muted)].spacing(2.0).width(Length::Fill);
+    let line = row![icon_pic(p, st, a, 48.0), words, hearth_ui::ui::glyph(G::Chevron, p.muted, 14.0, 2.0)].spacing(14.0).align_y(iced::Center);
+    let c = iced::widget::container(line)
+        .id(nr.key)
+        .padding(iced::Padding { top: 12.0, right: 16.0, bottom: 12.0, left: 16.0 })
+        .width(Length::Fill)
+        .style(row_style(*p, p.panel, p.r(10.0), nr.lit));
+    iced::widget::mouse_area(c).on_press(msg).interaction(iced::mouse::Interaction::Pointer).into()
 }
 
 pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
@@ -401,7 +526,7 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
                 g.push(r(G::Search, "Nothing found", "").view(&p));
             }
             for a in &st.apps {
-                g.push(app_line(&p, a));
+                g.push(app_line(&p, st, a));
             }
             v.push(group(&p, st.cat_label.clone(), g));
         }
@@ -431,7 +556,7 @@ fn discover<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut Vec<E<'a, M>>) {
         if l.is_empty() {
             continue;
         }
-        v.push(group(p, title, l.iter().take(8).map(|a| app_line(p, a)).collect()));
+        v.push(group(p, title, l.iter().take(8).map(|a| app_line(p, st, a)).collect()));
     }
 }
 
@@ -454,7 +579,7 @@ fn app_page<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut Vec<E<'a, M>>) {
     .into_iter()
     .filter(|x| !x.is_empty())
     .collect();
-    v.push(row![icon_box(p, G::Store), column![tb(name, sz(26.0), p.text), t(gs(a, "summary"), sz(15.0), p.text), t(facts.join("  ·  "), sz(13.0), p.muted)].spacing(4.0).width(Length::Fill)].spacing(18.0).align_y(iced::Center).into());
+    v.push(row![icon_pic(p, st, a, 96.0), column![tb(name, sz(26.0), p.text), t(gs(a, "summary"), sz(15.0), p.text), t(facts.join("  ·  "), sz(13.0), p.muted)].spacing(4.0).width(Length::Fill)].spacing(18.0).align_y(iced::Center).into());
     let mut bs: Vec<E<M>> = Vec::new();
     if !installed {
         bs.push(button(p, "Install", true, Some(M::Install)));
@@ -464,9 +589,31 @@ fn app_page<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut Vec<E<'a, M>>) {
     }
     bs.push(pill(p, "Back", false, Some(M::Show(st.back))));
     v.push(buttons(bs));
-    let shots = ga(a, "screenshots").len();
-    if shots > 0 {
-        v.push(small(p, format!("{} on Flathub's page for it", plural(shots, "screenshot", "screenshots"))));
+    // Screenshots (SetStore.qml's shotsCard): side by side, the one in front first; Left / Right move through them.
+    let shots = ga(a, "screenshots");
+    if !shots.is_empty() {
+        let n = shots.len();
+        let at = st.shot.min(n - 1);
+        let h = sz(356.0);
+        let w = (h * 16.0 / 9.0).round();
+        let mut strip = Row::new().spacing(12.0);
+        for s in shots.iter().skip(at) {
+            let pic = file_of(st, &gs(s, "url")).and_then(|f| crate::pics::get(&f, crate::pics::SHOT));
+            let inner: E<M> = match pic {
+                Some(hd) => crate::pics::fit(hd, w, h),
+                None => t(if gs(s, "caption").is_empty() { "Screenshot".to_string() } else { gs(s, "caption") }, sz(13.0), p.muted).into(),
+            };
+            strip = strip.push(iced::widget::container(inner).center_x(Length::Fixed(w)).center_y(Length::Fixed(h)).style(hearth_ui::ui::boxed(p.panel3, p.r(10.0), None)));
+        }
+        let (prev, next) = (if at > 0 { Some(M::Shot(-1)) } else { None }, if at + 1 < n { Some(M::Shot(1)) } else { None });
+        crate::nav::control(crate::nav::Kind::Choice, next.iter().cloned().map(|m| Box::new(m) as crate::nav::Act).collect(), prev.iter().cloned().map(|m| Box::new(m) as crate::nav::Act).collect(), next.iter().cloned().map(|m| Box::new(m) as crate::nav::Act).collect(), String::new(), format!("{} of {n}", at + 1));
+        let nr = crate::nav::item("Screenshots", &format!("{} of {n}", at + 1), false);
+        let card = column![
+            iced::widget::container(strip).height(Length::Fixed(h)).width(Length::Fill).clip(true),
+            row![t(format!("{} of {n}", at + 1), sz(12.0), p.muted).width(Length::Fill), button(p, "‹", false, prev), button(p, "›", false, next)].spacing(8.0).align_y(iced::Center),
+        ]
+        .spacing(10.0);
+        v.push(iced::widget::container(card).id(nr.key).padding(12.0).width(Length::Fill).style(row_style(*p, p.panel, p.r(12.0), nr.lit)).into());
     }
     v.push(t(gs(a, "description"), sz(14.0), p.text).into());
     let reviews = ga(a, "reviews");

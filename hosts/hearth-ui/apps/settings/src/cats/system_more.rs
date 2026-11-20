@@ -570,12 +570,35 @@ fn your_desktop(a: &App) -> El<'_> {
 
 // ------------------------------------------------------------------ Boot splash (SetBoot.qml's "splash")
 
+/// Each splash's card: its name and its preview sheet (bootpics.rs).
+pub fn boot_cards(st: &State) -> Vec<(String, crate::bootpics::Sheet)> {
+    va(st.j("boot"), "splash.presets").iter().filter_map(|s| crate::bootpics::sheet(s).map(|sh| (vs(s, "label"), sh))).collect()
+}
+
+/// The sheet that plays now on Boot splash (the preview's, or the card under the mouse or the focus).
+pub fn boot_active(st: &State) -> Option<crate::bootpics::Sheet> {
+    let pv = st.boot_pv.as_ref().and_then(crate::bootpics::sheet);
+    crate::bootpics::active(pv, &st.flip, &boot_cards(st))
+}
+
+/// The posters of the splashes, read once the list is.
+pub fn boot_posters(st: &State) -> Task<Msg> {
+    let Some(g) = crate::bootpics::geo(st.j("boot")) else { return Task::none() };
+    match crate::bootpics::load_posters(boot_cards(st).into_iter().map(|c| c.1).collect(), g) {
+        Some(f) => Task::perform(f, |_| Msg::BootPics),
+        None => Task::none(),
+    }
+}
+
+/// Boot splash (SetBoot.qml's "splash" part with SetBootCard.qml): each splash as a card with its picture (playing
+/// while the mouse or the focus is on it); a card opens its preview (boot_preview), and only Use this there chooses.
 fn boot(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
     let b = st.j("boot");
     let mut c = Column::new().spacing(10.0);
-    c = c.push(t("What the screen shows while Hearth OS starts. Pick one to see what it is; it changes only when you choose Use this, and takes effect from the next start. If a splash can't be shown, Hearth OS starts in text as before.", sz(13.0), p.muted));
+    c = c.push(head(&p, if st.busy.is_empty() { "Boot splash" } else { "Boot splash · saving…" }));
+    c = c.push(t("What the screen shows while Hearth OS starts. Pick one to see it play; it changes only when you choose Use this, and takes effect from the next start. If a splash can't be shown, Hearth OS starts in text as before.", sz(12.0), p.muted));
     if let Some(w) = waiting(a, "boot", "the boot splashes") {
         c = c.push(w);
         return c.into();
@@ -583,25 +606,55 @@ fn boot(a: &App) -> El<'_> {
     let current = vs(b, "splash.current");
     let movies = va(b, "movie.list");
     for s in va(b, "splash.presets") {
-        let id = vs(s, "id");
-        let in_use = id == current;
         let pair = vs(s, "pair");
         let pair_label = movies.iter().find(|m| vs(m, "id") == pair).map(|m| format!("Goes with the {} startup animation", vs(m, "label"))).unwrap_or_default();
-        let key = format!("boot:{id}");
-        let open = st.open == key;
-        let sub = [vs(s, "about"), pair_label].iter().filter(|x| !x.is_empty()).cloned().collect::<Vec<_>>().join(" · ");
-        c = c.push(srow(&p, G::Rocket, vs(s, "label"), sub, if in_use { t1("In use", sz(13.0), p.accent).into() } else { pill(&p, if open { "Close" } else { "Preview" }, true, Some(Msg::Open(key.clone()))) }));
-        if open && !in_use {
-            let label = vs(s, "label");
-            c = c.push(card(&p, row![
-                column![ts(format!("Use {label}?"), sz(15.0), p.text), t("It shows from the next start. The boot menu gets plymouth.splash= (nothing is rebuilt), and the one you have now stays in the list.", sz(13.0), p.muted)].spacing(2.0).width(Length::Fill),
-                btn(&p, "Use this", Kind::Primary, false, Some(Msg::Seq(vec![Msg::Open(String::new()), Msg::Exec(Ex::new(adm("hearth-admin", vec!["boot-splash".into(), id.clone()])).re("boot").ok(format!("{label} shows from the next start.")).fail("Couldn't change the boot splash"))]))),
-                btn(&p, "Cancel", Kind::Normal, false, Some(Msg::Open(String::new())))
-            ].spacing(10.0).align_y(iced::Center)));
-        }
+        c = c.push(crate::cats::gaming::boot::boot_card(&p, &st.flip, s, vs(s, "id") == current, pair_label, Msg::BootPreview(Some(s.clone())), Msg::BootHover, Msg::BootUnhover));
     }
     c = c.push(link_row(&p, G::Pad, "Startup animation (Steam Game Mode)", "Gaming › Startup animation", Msg::Go("startup-animation")));
     c.into()
+}
+
+/// A boot splash's preview (SetBootPreview.qml) over the page: it plays; Use this, Use with its startup animation
+/// (when that one is there), Close. Looking changes nothing.
+pub fn boot_preview(a: &App) -> Option<(El<'_>, Option<Msg>)> {
+    let st = &a.system;
+    let item = st.boot_pv.as_ref()?;
+    let p = a.sh.p;
+    let b = st.j("boot");
+    let id = vs(item, "id");
+    let label = vs(item, "label");
+    let in_use = vs(b, "splash.current") == id;
+    let can_change = vb(b, "splash.canChange");
+    let can_use = st.busy.is_empty() && can_change && !matches!(item.get("available"), Some(Value::Bool(false)));
+    let pair = vs(item, "pair");
+    let pair_ok = !pair.is_empty() && va(b, "movie.list").iter().any(|m| vs(m, "id") == pair);
+    let splash_cmd = adm("hearth-admin", vec!["boot-splash".into(), id.clone()]);
+    let mut bs: Vec<El> = Vec::new();
+    if !in_use {
+        bs.push(btn(&p, "Use this", Kind::Primary, false, if can_use { Some(Msg::Seq(vec![Msg::BootPreview(None), Msg::Exec(Ex::new(splash_cmd.clone()).re("boot").ok(format!("{label} shows from the next start.")).fail("Couldn't change the boot splash"))])) } else { None }));
+    }
+    if can_use && pair_ok {
+        let movie = lx("hearth-boot-look", &["movie", &pair]);
+        let ex = if in_use { Ex::new(movie) } else { Ex::new(splash_cmd.clone()).and(movie) };
+        bs.push(btn(&p, "Use with its startup animation", Kind::Normal, false, Some(Msg::Seq(vec![Msg::BootPreview(None), Msg::Exec(ex.re("boot").ok(format!("{label}: the splash shows from the next start, and the startup animation plays the next time Steam Game Mode starts.")).fail("Couldn't use them as a set"))]))));
+    }
+    bs.push(btn(&p, "Close", Kind::Normal, false, Some(Msg::BootPreview(None))));
+    let note_line = if in_use {
+        ("This is the one in use.", p.flame)
+    } else if !can_change {
+        ("The boot splash can't be changed on this edition: this is only a look.", p.muted)
+    } else {
+        ("Only a preview: nothing changes until you choose Use this.", p.muted)
+    };
+    let body = column![
+        ui::tb(format!("Boot splash: {label}"), sz(20.0), p.text),
+        container(crate::cats::gaming::boot::preview_screen(&p, &st.flip, item, 640.0)).center_x(Length::Fill),
+        t(format!("{}. On your screen it fills the screen and keeps going until Hearth OS has started; drawn here from the splash's own script.", vs(item, "about").trim_end_matches('.')), sz(13.0), p.muted),
+        t(note_line.0, sz(12.0), note_line.1),
+        Row::with_children(bs).spacing(10.0),
+    ]
+    .spacing(14.0);
+    Some((ui::dialog_box(&p, 680.0, body), Some(Msg::BootPreview(None))))
 }
 
 // ------------------------------------------------------------------ Remote desktop (hearth-vnc)

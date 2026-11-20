@@ -1,6 +1,7 @@
 //! Every Settings page (pages_list.rs, written from Mantel's settings-pages.js) and the 13 categories. A page is
-//! built when one of the category modules (cats/*.rs, and quick.rs for the Quick tab) lists it in its PAGES; the
-//! others show on their category as "Coming next" and open nothing. The controller look (layout B) groups the
+//! built when one of the category modules (cats/*.rs, and quick.rs for the Quick tab) lists it in its PAGES: every
+//! page is now (the test every_page_of_mantels_settings_is_built); one added to settings-pages.js later would show on
+//! its category as "Coming next" and open nothing until it's built. The controller look (layout B) groups the
 //! categories in 8 tabs (TABS, as settings-pages.js), each listing its pages on the left.
 
 pub use crate::pages_list::{CATEGORIES, PAGES};
@@ -124,6 +125,15 @@ mod tests {
         }
         assert_eq!(resolve("keyboard:osk").map(|r| r.0), Some("keyboard"));
         assert_eq!(chain("sound-apps").iter().map(|p| p.id).collect::<Vec<_>>(), vec!["sound", "sound-apps"]);
+    }
+
+    #[test]
+    fn every_page_of_mantels_settings_is_built() {
+        // Nothing is left as "Coming next": every page of Mantel's Settings (settings-pages.js, pages_list.rs) and of
+        // KDE's System Settings (kde-settings.json) is drawn here; the categories' own pages are their lists.
+        let missing: Vec<&str> = PAGES.iter().filter(|p| !p.landing && !built(p.id)).map(|p| p.id).collect();
+        assert!(missing.is_empty(), "pages not built yet: {missing:?}");
+        assert!(PAGES.len() > 150, "{}", PAGES.len());
     }
 
     #[test]

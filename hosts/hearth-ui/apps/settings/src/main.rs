@@ -18,9 +18,11 @@
 //! `hearth-settings-app [PAGE[:part]]` or `--page PAGE` opens at a page (Mantel's page ids); `--layout a|b` keeps one
 //! look (pictures, tests; also HEARTH_SETTINGS_LAYOUT); `--focus TITLE` puts the focus on a row; `--find WORDS` searches.
 
+mod bootpics;
 mod cats;
 mod data;
 mod frame;
+mod identify;
 mod look;
 mod nav;
 mod pad;
@@ -492,6 +494,14 @@ fn x_action(a: &mut App) -> Task<Msg> {
         nav::reset();
         return update(a, Msg::Quick(quick::Msg::Picking));
     }
+    // Startup's schedule: X removes the change the focus is on (SetStartup.qml's X / ☰).
+    if a.page == "startup" {
+        if let Some(f) = nav::focused() {
+            if let Some((day, i)) = system::sched_focused(&a.system, &f.title, &f.sub) {
+                return update(a, Msg::System(system::Msg::Sched(day, i, system::SchedOp::Remove)));
+            }
+        }
+    }
     if !a.sh.big {
         return Task::none();
     }
@@ -702,6 +712,10 @@ fn view(a: &App) -> Element<'_, Msg> {
 }
 
 fn main() -> iced::Result {
+    // Display › Identify outside KDE Plasma: this program again, showing each screen's number for 3 s (identify.rs).
+    if let Some(spec) = app::arg("--identify") {
+        std::process::exit(identify::run(&spec));
+    }
     if app::handle_cli(
         "hearth-settings-app",
         "Hearth Settings: every page of Hearth's Settings in its own app.\n  [PAGE[:part]] | --page PAGE   open at a page (home, quick, wifi, bluetooth, display, sound, power, appearance, updates, about...)\n  --layout a|b   keep the keyboard-and-mouse look (a) or the controller look (b); otherwise it follows what you use\n  --focus TITLE  put the focus on the row with this name\n  --find WORDS   search\n  --press \"right down a\"  controller presses after a moment (up down left right a b x y lb rb menu)",

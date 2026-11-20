@@ -17,26 +17,31 @@ use std::sync::{Mutex, OnceLock};
 /// Pictures this big aren't decoded (it would take too long and too much memory), as in Hearth Files.
 const MAX_BYTES: u64 = 60 * 1024 * 1024;
 
-/// The shape a picture is shown in: its width and height on screen (it's made twice that, for sharp edges), and
-/// whether it's a circle.
+/// The shape a picture is shown in: its width and height on screen (it's made twice that, for sharp edges), whether
+/// it's a circle, and whether the whole picture fits inside it (an app's screenshot) rather than its middle filling it.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Cut {
     pub w: u32,
     pub h: u32,
     pub round: bool,
+    pub fit: bool,
 }
 
 /// Your account picture (drawn at any size up to this, in its circle).
-pub const ROUND: Cut = Cut { w: 64, h: 64, round: true };
+pub const ROUND: Cut = Cut { w: 64, h: 64, round: true, fit: false };
 /// A wallpaper's tile in Personalization.
-pub const WALL: Cut = Cut { w: 190, h: 96, round: false };
+pub const WALL: Cut = Cut { w: 190, h: 96, round: false, fit: false };
 /// A small picture beside its name in a list.
-pub const ROW: Cut = Cut { w: 64, h: 40, round: false };
+pub const ROW: Cut = Cut { w: 64, h: 40, round: false, fit: false };
 /// The login screen's preview: a screen, 16:9.
-pub const SCREEN: Cut = Cut { w: 462, h: 260, round: false };
+pub const SCREEN: Cut = Cut { w: 462, h: 260, round: false, fit: false };
+/// An app's icon in the App store (48 in a list, 96 on its page: drawn from the same picture).
+pub const ICON: Cut = Cut { w: 96, h: 96, round: false, fit: true };
+/// An app's screenshot in the App store, the whole picture (SetStore.qml: PreserveAspectFit).
+pub const SHOT: Cut = Cut { w: 320, h: 180, round: false, fit: true };
 
 fn key(path: &str, c: Cut) -> String {
-    format!("{path}|{}x{}{}", c.w, c.h, if c.round { "o" } else { "" })
+    format!("{path}|{}x{}{}{}", c.w, c.h, if c.round { "o" } else { "" }, if c.fit { "f" } else { "" })
 }
 
 fn cache() -> &'static Mutex<HashMap<String, Option<Handle>>> {
@@ -110,6 +115,14 @@ fn decode(path: &str, c: Cut) -> Option<Handle> {
     }
     let img = ::image::ImageReader::open(&f).ok()?.with_guessed_format().ok()?.decode().ok()?;
     let (iw, ih) = (img.width().max(1), img.height().max(1));
+    if c.fit {
+        // The whole picture, as big as fits in twice the shape (never bigger than it is).
+        let k = ((c.w * 2) as f64 / iw as f64).min((c.h * 2) as f64 / ih as f64).min(1.0);
+        let (tw, th) = (((iw as f64) * k).round().max(1.0) as u32, ((ih as f64) * k).round().max(1.0) as u32);
+        let px = if (tw, th) == (iw, ih) { img.to_rgba8() } else { img.resize_exact(tw, th, ::image::imageops::FilterType::Triangle).to_rgba8() };
+        let (w, h) = (px.width(), px.height());
+        return Some(Handle::from_rgba(w, h, px.into_raw()));
+    }
     // The middle of the picture in the shape's proportions.
     let want = c.w.max(1) as f64 / c.h.max(1) as f64;
     let (cw, ch) = if iw as f64 / ih as f64 > want {
@@ -172,6 +185,11 @@ pub fn load(items: Vec<(String, Cut)>) -> Option<impl Future<Output = ()> + Send
 /// The picture (already in its shape) drawn w × h.
 pub fn tile<'a, M: 'a>(h: Handle, w: f32, ht: f32) -> Element<'a, M> {
     image(h).width(Length::Fixed(w)).height(Length::Fixed(ht)).content_fit(ContentFit::Fill).into()
+}
+
+/// The whole picture inside w × h (an app's screenshot or icon: SetStore.qml's PreserveAspectFit).
+pub fn fit<'a, M: 'a>(h: Handle, w: f32, ht: f32) -> Element<'a, M> {
+    image(h).width(Length::Fixed(w)).height(Length::Fixed(ht)).content_fit(ContentFit::Contain).into()
 }
 
 /// Your picture in its circle (as Mantel shows it), `size` across.

@@ -144,6 +144,11 @@ pub struct State {
     pub updates: data::Updates,
     /// A slider that waits a moment before it's saved (its key, and the ticks left).
     pub settle: Option<(&'static str, u32)>,
+    /// Boot splash: the splash whose preview is open, and its pictures (bootpics.rs).
+    pub boot_pv: Option<Value>,
+    pub flip: crate::bootpics::Flip,
+    /// Startup: the schedule as it's being changed ({weekday, weekend}), saved a moment after the last change.
+    pub sched: Option<Value>,
 }
 
 impl State {
@@ -212,6 +217,25 @@ pub enum Msg {
     Desktop(&'static str),
     SwitchNow,
     StartIn(&'static str),
+    // Boot splash
+    BootPreview(Option<Value>),
+    BootPics,
+    BootTick,
+    BootHover(String),
+    BootUnhover(String),
+    // Startup: a change of the schedule (its day, which change, what to do), and saving it.
+    Sched(&'static str, usize, SchedOp),
+    SchedSave,
+}
+
+/// What a change of Server mode's schedule does (SetStartup.qml: ← → move it 30 minutes, A changes its mode, X removes
+/// it; Add a change).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum SchedOp {
+    Move(i32),
+    Mode,
+    Remove,
+    Add,
 }
 
 // ------------------------------------------------------------------ reading JSON answers
@@ -594,6 +618,15 @@ pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
     st.desk_saved = false;
     st.rename = None;
     st.settle = None;
+    st.boot_pv = None;
+    st.flip.halt();
+    st.sched = None;
+    // `hearth-settings boot:preview-<id>` opens that splash's preview once the list is read.
+    if page == "boot" {
+        if let Some(id) = sh.part.strip_prefix("preview-") {
+            st.text.insert("bootwant", id.to_string());
+        }
+    }
     st.start = data::start_mode();
     sh.desktop = crate::shared::read_desktop();
     for f in files_of(page) {
@@ -625,6 +658,12 @@ pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
 fn after_read(st: &mut State, key: &'static str) -> Task<Msg> {
     match key {
         "pset" if st.page == "battery" || st.page == "info-energy" => power::history(st),
+        "boot" => {
+            if let Some(want) = st.text.remove("bootwant") {
+                st.boot_pv = va(st.j("boot"), "splash.presets").iter().find(|x| vs(x, "id") == want).cloned();
+            }
+            more::boot_posters(st)
+        }
         _ => Task::none(),
     }
 }
@@ -647,6 +686,10 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             st.v.insert(key, val);
             if key == "screens" {
                 display::took(st);
+            }
+            if key == "server" && !matches!(st.settle, Some(("sched", _))) && st.busy.is_empty() {
+                let v = st.j("server");
+                st.sched = Some(serde_json::json!({"weekday": at(v, "settings.schedule.weekday"), "weekend": at(v, "settings.schedule.weekend")}));
             }
             return after_read(st, key);
         }
@@ -788,6 +831,30 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             }
         }
         Msg::RenameCancel => st.rename = None,
+        Msg::BootPreview(v) => {
+            if v.is_none() {
+                st.flip.halt();
+            }
+            st.boot_pv = v;
+        }
+        Msg::BootPics => {}
+        Msg::BootTick => {
+            let a = more::boot_active(st);
+            let g = crate::bootpics::geo(st.j("boot"));
+            return match st.flip.tick(a.as_ref(), g) {
+                Some(f) => Task::perform(f, |_| Msg::BootPics),
+                None => Task::none(),
+            };
+        }
+        Msg::BootHover(path) => st.flip.hover(path),
+        Msg::BootUnhover(path) => {
+            st.flip.unhover(&path);
+            if more::boot_active(st).is_none() {
+                st.flip.halt();
+            }
+        }
+        Msg::Sched(day, i, op) => sched_edit(st, day, i, op),
+        Msg::SchedSave => return sched_save(sh, st),
         Msg::Desktop(pick) => {
             st.desk_saved = true;
             st.desk.chosen = pick.to_string();
@@ -820,6 +887,7 @@ fn slider_save(sh: &mut Shared, st: &mut State, k: &'static str) -> Task<Msg> {
         "vol" | "mic" | "balance" | "appvol" | "recvol" => sound::slider_save(sh, st, k),
         "bright" | "autooff" | "sdr" | "gamut" | "overscan" | "barrier" | "nighttemp" | "ext" => display::slider_save(sh, st, k),
         "tdp" => power::slider_save(sh, st, k),
+        "sched" => sched_save(sh, st),
         _ => Task::none(),
     }
 }
@@ -871,6 +939,10 @@ pub fn subscription(st: &State) -> Subscription<Msg> {
     if st.settle.is_some() {
         s.push(iced::time::every(std::time::Duration::from_millis(600)).map(|_| Msg::Settle));
     }
+    // Boot splash: a picture plays (its preview, or the card under the mouse or the focus), only while the page shows.
+    if st.page == "boot" && BOOT_SHOWN.load(std::sync::atomic::Ordering::Relaxed) && more::boot_active(st).is_some() {
+        s.push(iced::time::every(crate::bootpics::every(crate::bootpics::geo(st.j("boot")))).map(|_| Msg::BootTick));
+    }
     let n = live_every(st);
     if n > 0 && PAGES.contains(&st.page) {
         s.push(iced::time::every(std::time::Duration::from_secs(n)).map(|_| Msg::Live));
@@ -878,11 +950,22 @@ pub fn subscription(st: &State) -> Subscription<Msg> {
     Subscription::batch(s)
 }
 
-pub fn dialog<'a>(_a: &'a App) -> Option<(Element<'a, Msg>, Option<Msg>)> {
+/// Boot splash is the page showing (set while the window is drawn): its pictures play only then.
+static BOOT_SHOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn dialog<'a>(a: &'a App) -> Option<(Element<'a, Msg>, Option<Msg>)> {
+    BOOT_SHOWN.store(a.page == "boot", std::sync::atomic::Ordering::Relaxed);
+    if a.page == "boot" {
+        return more::boot_preview(a);
+    }
     None
 }
 
 pub fn back(st: &mut State) -> bool {
+    if st.boot_pv.take().is_some() {
+        st.flip.halt();
+        return true;
+    }
     if !st.open.is_empty() {
         st.open.clear();
         return true;
@@ -1045,12 +1128,7 @@ fn startup(a: &App) -> El<'_> {
     c = c.push(cards);
     if scheduled {
         c = c.push(head(&p, "Schedule"));
-        for (day, name) in [("weekday", "Monday – Friday"), ("weekend", "Saturday – Sunday")] {
-            let items = va(srv, &format!("settings.schedule.{day}"));
-            let words: Vec<String> = items.iter().map(|x| format!("{} from {}", mode_name(&vs(x, "mode")), vs(x, "at"))).collect();
-            c = c.push(info_row(&p, G::Clock, name, words.join(" · ")));
-        }
-        c = c.push(line(&p, "The schedule's changes are edited on the Home server › Server mode page (the controller: ← → move, A mode, X remove)."));
+        c = c.push(schedule(a));
     }
     c = c.push(head(&p, "When you sign in"));
     let k = st.j("k-session");
@@ -1078,6 +1156,192 @@ fn startup(a: &App) -> El<'_> {
     c.into()
 }
 
+// ------------------------------------------------------------------ Startup's schedule (SetStartup.qml)
+
+/// "18:30" → minutes after midnight.
+pub fn sched_mins(at: &str) -> i32 {
+    let (h, m) = at.split_once(':').unwrap_or(("0", "0"));
+    h.trim().parse::<i32>().unwrap_or(0).clamp(0, 23) * 60 + m.trim().parse::<i32>().unwrap_or(0).clamp(0, 59)
+}
+/// Minutes → "18:30" (round the clock).
+pub fn sched_at(m: i32) -> String {
+    let m = m.rem_euclid(1440);
+    format!("{:02}:{:02}", m / 60, m % 60)
+}
+/// "18:30" → "6:30 PM", "00:00" → "12 AM" (SetStartup.qml's label).
+pub fn sched_label(at: &str) -> String {
+    let m = sched_mins(at);
+    let (h, mm) = (m / 60, m % 60);
+    format!("{}{} {}", (h + 11) % 12 + 1, if mm > 0 { format!(":{mm:02}") } else { String::new() }, if h < 12 { "AM" } else { "PM" })
+}
+const SCHED_DAYS: [(&str, &str); 2] = [("weekday", "Monday – Friday"), ("weekend", "Saturday – Sunday")];
+
+/// One change of the schedule, as SetStartup.qml makes it: the list sorted by time again, saved a moment after the
+/// last change (several quick moves are one save). Never fewer than one change a day or more than eight.
+pub fn sched_edit(st: &mut State, day: &'static str, i: usize, op: SchedOp) {
+    let mut d = st.sched.clone().unwrap_or_else(|| serde_json::json!({"weekday": [], "weekend": []}));
+    if !d[day].is_array() {
+        d[day] = Value::Array(Vec::new());
+    }
+    let Some(list) = d[day].as_array_mut() else { return };
+    let taken = |list: &[Value], m: i32, skip: usize| list.iter().enumerate().any(|(j, x)| j != skip && sched_mins(&vs(x, "at")) == m.rem_euclid(1440));
+    match op {
+        SchedOp::Move(step) => {
+            if i >= list.len() {
+                return;
+            }
+            let mut m = sched_mins(&vs(&list[i], "at"));
+            for _ in 0..48 {
+                m = (m + step * 30).rem_euclid(1440);
+                if !taken(&list[..], m, i) {
+                    break;
+                }
+            }
+            list[i]["at"] = Value::String(sched_at(m));
+        }
+        SchedOp::Mode => {
+            if i >= list.len() {
+                return;
+            }
+            let order = ["server", "game", "desktop"];
+            let cur = vs(&list[i], "mode");
+            let n = order.iter().position(|x| *x == cur).map(|k| (k + 1) % 3).unwrap_or(1);
+            list[i]["mode"] = Value::String(order[n].into());
+        }
+        SchedOp::Remove => {
+            if i < list.len() && list.len() > 1 {
+                list.remove(i);
+            }
+        }
+        SchedOp::Add => {
+            if list.len() >= 8 {
+                return;
+            }
+            let last = list.last().map(|x| sched_mins(&vs(x, "at"))).unwrap_or(0);
+            let mut m = (last + 60).min(1410);
+            for _ in 0..48 {
+                if !taken(&list[..], m, usize::MAX) {
+                    break;
+                }
+                m = (m + 30).rem_euclid(1440);
+            }
+            list.push(serde_json::json!({"at": sched_at(m), "mode": "game"}));
+        }
+    }
+    list.sort_by_key(|x| sched_mins(&vs(x, "at")));
+    st.sched = Some(d);
+    st.settle = Some(("sched", 2));
+}
+
+/// Saves the schedule as it is on the page (hearth-server-mode schedule-set, the schedule on its stdin: it checks it
+/// and saves only what changed, through hearth_settings_io), then reads it again.
+pub fn sched_save(sh: &mut Shared, st: &mut State) -> Task<Msg> {
+    let Some(d) = st.sched.clone() else { return Task::none() };
+    let body = serde_json::json!({"weekday": d.get("weekday").cloned().unwrap_or(Value::Null), "weekend": d.get("weekend").cloned().unwrap_or(Value::Null)}).to_string();
+    update(sh, st, Msg::Exec(Ex::new(py("hearth-server-mode", &["schedule-set"])).input(body).ok("Schedule saved ✓").fail("Couldn't save the schedule").re("server").secs(30)))
+}
+
+/// The change the controller's focus is on (its row's name and line), for X: remove it.
+pub fn sched_focused(st: &State, title: &str, sub: &str) -> Option<(&'static str, usize)> {
+    let d = st.sched.as_ref()?;
+    for (day, name) in SCHED_DAYS {
+        if !sub.ends_with(name) {
+            continue;
+        }
+        if let Some(i) = va(d, day).iter().position(|x| format!("From {}", sched_label(&vs(x, "at"))) == title) {
+            return Some((day, i));
+        }
+    }
+    None
+}
+
+fn mode_colour(p: &Pal, m: &str) -> iced::Color {
+    match m {
+        "desktop" => iced::Color::from_rgb(0.357, 0.82, 0.545),
+        "server" => iced::Color::from_rgb(0.545, 0.612, 0.969),
+        _ => p.accent,
+    }
+}
+
+/// A small button on a change's row (the mouse's way to move or remove it).
+fn sched_btn<'a>(p: &Pal, label: &'static str, m: Msg) -> El<'a> {
+    iced::widget::mouse_area(
+        iced::widget::container(t1(label, sz(13.0), p.muted))
+            .padding(iced::Padding { top: 3.0, right: 10.0, bottom: 3.0, left: 10.0 })
+            .style(hearth_ui::ui::boxed(iced::Color::TRANSPARENT, 12.0, Some((p.line, 1.0)))),
+    )
+    .on_press(m)
+    .interaction(iced::mouse::Interaction::Pointer)
+    .into()
+}
+
+/// The schedule (SetStartup.qml): each day as a 24-hour track, a block per mode; each change on its own row (← → move
+/// it 30 minutes, A changes its mode, X removes it; and with the mouse, its buttons); Add a change.
+fn schedule(a: &App) -> El<'_> {
+    let p = a.sh.p;
+    let st = &a.system;
+    let empty = serde_json::json!({});
+    let d = st.sched.as_ref().unwrap_or(&empty);
+    let mut c = Column::new().spacing(8.0);
+    for (day, name) in SCHED_DAYS {
+        let items = va(d, day);
+        // The track: from midnight to the first change in the last change's mode (it carries over), then each.
+        let mut track = iced::widget::Row::new().spacing(2.0).height(Length::Fixed(sz(30.0)));
+        for k in 0..=items.len() {
+            let from = if k == 0 { 0 } else { sched_mins(&vs(&items[k - 1], "at")) };
+            let to = if k < items.len() { sched_mins(&vs(&items[k], "at")) } else { 1440 };
+            if to <= from {
+                continue;
+            }
+            let mode = if k == 0 { items.last().map(|x| vs(x, "mode")).unwrap_or_default() } else { vs(&items[k - 1], "mode") };
+            let col = mode_colour(&p, &mode);
+            let words = if to - from >= 240 { format!("{} · {} – {}", mode_name(&mode), sched_label(&sched_at(from)), sched_label(&sched_at(to))) } else { String::new() };
+            track = track.push(
+                iced::widget::container(t1(words, sz(12.0), p.text))
+                    .padding(iced::Padding { top: 0.0, right: 4.0, bottom: 0.0, left: 8.0 })
+                    .center_y(Length::Fill)
+                    .width(Length::FillPortion((to - from) as u16))
+                    .clip(true)
+                    .style(hearth_ui::ui::boxed(iced::Color { a: 0.35, ..col }, 6.0, None)),
+            );
+        }
+        c = c.push(card(&p, column![hearth_ui::ui::ts(name, sz(15.0), p.text), track].spacing(10.0)));
+        for (i, x) in items.iter().enumerate() {
+            let at = vs(x, "at");
+            let mode = vs(x, "mode");
+            let title = format!("From {}", sched_label(&at));
+            let sub = format!("{} · {name}", mode_name(&mode));
+            let act = |op: SchedOp| -> crate::nav::Act { Box::new(Msg::Sched(day, i, op)) };
+            crate::nav::control(crate::nav::Kind::Choice, vec![act(SchedOp::Mode)], vec![act(SchedOp::Move(-1))], vec![act(SchedOp::Move(1))], String::new(), String::new());
+            let nr = crate::nav::item(&title, &sub, false);
+            let dot = iced::widget::container(iced::widget::Space::new()).width(Length::Fixed(12.0)).height(Length::Fixed(12.0)).style(hearth_ui::ui::boxed(mode_colour(&p, &mode), 6.0, None));
+            let mut line = iced::widget::Row::new()
+                .spacing(12.0)
+                .align_y(iced::Center)
+                .push(dot)
+                .push(hearth_ui::ui::ts(title, sz(15.0), p.text))
+                .push(iced::widget::mouse_area(t1(mode_name(&mode), sz(15.0), p.muted)).on_press(Msg::Sched(day, i, SchedOp::Mode)).interaction(iced::mouse::Interaction::Pointer))
+                .push(iced::widget::Space::new().width(Length::Fill))
+                .push(t1("← → move · A mode · X remove", sz(12.0), p.muted))
+                .push(sched_btn(&p, "‹", Msg::Sched(day, i, SchedOp::Move(-1))))
+                .push(sched_btn(&p, "›", Msg::Sched(day, i, SchedOp::Move(1))));
+            if items.len() > 1 {
+                line = line.push(sched_btn(&p, "×", Msg::Sched(day, i, SchedOp::Remove)));
+            }
+            let row_el = iced::widget::container(line)
+                .id(nr.key)
+                .padding(iced::Padding { top: sz(14.0), right: 18.0, bottom: sz(14.0), left: 18.0 })
+                .width(Length::Fill)
+                .style(crate::widgets::row_style(p, p.panel, p.r(10.0), nr.lit));
+            c = c.push(crate::widgets::ring(&p, nr.lit, p.r(10.0), row_el));
+        }
+        if items.len() < 8 {
+            c = c.push(link_row(&p, G::Plus, "Add a change", "A new change an hour after the last one", Msg::Sched(day, items.len(), SchedOp::Add)));
+        }
+    }
+    c.into()
+}
+
 /// Game Mode on this PC is off (desktop.json's gameModeOff is true; missing or anything else: On).
 pub fn game_modes_off(sh: &Shared) -> bool {
     sh.d_bool("gameModeOff", false)
@@ -1098,6 +1362,32 @@ pub fn mode_name(m: &str) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_schedule_is_changed_as_setstartup_does() {
+        assert_eq!(sched_label("18:30"), "6:30 PM");
+        assert_eq!(sched_label("00:00"), "12 AM");
+        assert_eq!(sched_label("12:00"), "12 PM");
+        assert_eq!((sched_at(-30), sched_at(1470)), ("23:30".to_string(), "00:30".to_string()));
+        let mut st = State::default();
+        st.sched = Some(serde_json::json!({"weekday": [{"at": "00:00", "mode": "server"}, {"at": "18:00", "mode": "game"}], "weekend": [{"at": "09:00", "mode": "game"}]}));
+        sched_edit(&mut st, "weekday", 1, SchedOp::Move(1));
+        assert_eq!(vs(st.sched.as_ref().unwrap(), "weekday.1.at"), "18:30");
+        sched_edit(&mut st, "weekday", 1, SchedOp::Mode);
+        assert_eq!(vs(st.sched.as_ref().unwrap(), "weekday.1.mode"), "desktop");
+        // Moving onto another change's time skips past it; the list stays in order.
+        sched_edit(&mut st, "weekday", 0, SchedOp::Move(-1));
+        assert_eq!(vs(st.sched.as_ref().unwrap(), "weekday.1.at"), "23:30");
+        assert_eq!(vs(st.sched.as_ref().unwrap(), "weekday.0.at"), "18:30");
+        sched_edit(&mut st, "weekend", 1, SchedOp::Add);
+        assert_eq!(vs(st.sched.as_ref().unwrap(), "weekend.1.at"), "10:00");
+        sched_edit(&mut st, "weekend", 0, SchedOp::Remove);
+        sched_edit(&mut st, "weekend", 0, SchedOp::Remove);
+        assert_eq!(va(st.sched.as_ref().unwrap(), "weekend").len(), 1, "never fewer than one a day");
+        assert_eq!(st.settle, Some(("sched", 2)));
+        assert_eq!(sched_focused(&st, "From 6:30 PM", "Desktop Mode · Monday – Friday"), Some(("weekday", 0)));
+        assert_eq!(sched_focused(&st, "From 6:30 PM", "Desktop Mode · Saturday – Sunday"), None);
+    }
     #[test]
     fn values_and_reads() {
         let v: Value = serde_json::json!({"a": {"b": [1, {"c": "x"}]}, "n": "12", "t": true});
