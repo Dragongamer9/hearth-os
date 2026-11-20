@@ -20,6 +20,7 @@
 //! milliseconds in (anim.rs).
 
 mod anim;
+mod im;
 mod link;
 mod looks;
 mod osk;
@@ -530,7 +531,16 @@ impl App {
         let mut tasks = Vec::new();
         for o in step.out {
             match o.get("k").and_then(Value::as_str).unwrap_or("") {
-                "emit" => pad_send(json!({ "cmd": "emit", "text": o.get("text").cloned().unwrap_or(json!("")), "mods": o.get("mods").cloned().unwrap_or(json!([])) })),
+                "emit" => {
+                    // Hearth's input method commits any character into the text field (accents too); with modifier
+                    // keys, no text field, or KDE's keyboard as KWin's input method, hearth-pad's uinput keyboard types.
+                    let text = o.get("text").and_then(Value::as_str).unwrap_or("").to_string();
+                    let mods = o.get("mods").cloned().unwrap_or(json!([]));
+                    let plain = mods.as_array().map(|a| a.is_empty()).unwrap_or(true);
+                    if !(plain && !text.is_empty() && im::commit(&text) == Some(true)) {
+                        pad_send(json!({ "cmd": "emit", "text": text, "mods": mods }));
+                    }
+                }
                 "key" => pad_send(json!({ "cmd": "key", "key": o.get("key").cloned().unwrap_or(json!("")), "n": o.get("n").cloned().unwrap_or(json!(1)), "mods": o.get("mods").cloned().unwrap_or(json!([])) })),
                 "rumble" => pad_send(json!({ "cmd": "rumble", "strength": o.get("strength").cloned().unwrap_or(json!(0.3)), "ms": o.get("ms").cloned().unwrap_or(json!(20)) })),
                 "hide" => tasks.push(self.close_kb()),
@@ -585,6 +595,8 @@ impl App {
         let was = self.kb;
         self.kb = true;
         if !was {
+            // One line each way (pad.log on a PC; CI's checks read it).
+            eprintln!("hearth-pad-host: keyboard open ({mode})");
             let split = self.vm.as_ref().map(|v| v.fast == "split").unwrap_or(false);
             pad_send(json!({ "cmd": "osk", "open": true, "split": split }));
             // Recent copies for the keyboard's clipboard panel: Plasma keeps them in Klipper.
@@ -606,6 +618,7 @@ impl App {
         self.held = false;
         self.glides.clear();
         self.ember_since = None;
+        eprintln!("hearth-pad-host: keyboard closed");
         pad_send(json!({ "cmd": "osk", "open": false }));
         self.close(Kind::Keyboard)
     }

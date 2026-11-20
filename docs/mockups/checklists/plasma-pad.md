@@ -13,11 +13,19 @@ os-bases/anatase/system_files/usr/libexec/hearth/hearth-pad-plasma (hearth-pad -
 
 Pictured in a real KDE Plasma session (Nov 20, 2026): .github/workflows/plasma-pad.yml (KDE's KWin and plasmashell on
 Fedora 45, GTK test windows, hearth-pad --plasma with a simulated controller, KWin's own touch), run 44725743352,
-pictures pad-k01 to pad-k33 (hearth-workspace hearth/assets/1.16-plasma-pad-shots). Notes for the owner: the ember's
-warmth pulses while the controller is used and holds still 30 s after its last press (0.00 % of a core with the
-keyboard left open; 5 % while it pulses on CI's CPU drawing); an accent picked on the keyboard (long touch, hold A)
-reaches apps only where hearth-pad's US-layout keyboard can type it: accented letters need KWin's input method, which
-the Fedora edition leaves to KDE's plasma-keyboard (an open question, not a part of these mockups).
+pictures pad-k01 to pad-k33 (hearth-workspace hearth/assets/1.16-plasma-pad-shots). The owner's decisions (Nov 20): the
+ember's warmth pulses while the controller is used and holds still 30 s after its last press (kept: 0.00 % of a core
+with the keyboard left open; 4-5 % while it pulses on CI's CPU drawing); accents and every other character reach apps
+through Hearth's typing, KWin's input method on this edition too (hearth-kwin-im through
+os-bases/anatase/system_files/usr/libexec/hearth/hearth-kwin-im-launch, which hands over to KDE's plasma-keyboard by
+itself when it's missing, crashes or isn't given the protocol; the default sits in /etc/xdg/kwinrc, a person's own
+Virtual keyboard choice wins and is never written). CI: a long touch's è and a tapped x reached a real GTK app; the
+three fallbacks and the person's own choice in real Plasma sessions (pad-k40 to pad-k44). Touch keeps its pop-up
+keyboard (the coordinator, Nov 20): hearth-kwin-im --panel gives KWin an invisible input panel, which KWin shows only
+when a text field is focused by touch (as for plasma-keyboard); hearth-pad --plasma then opens Hearth's keyboard. Not
+for a mouse or keyboard focus, not right after you closed it (3 s); over fullscreen apps too (KWin shows the panel only for touch or a pen).
+CI run 44765273652: a touch tap opened it, a mouse click didn't, B closed it and it stayed closed, 0.00 % at rest
+(pad-k34 to pad-k36).
 
 ## Running the controller helper (Pad.qml)
 - [x] hearth-pad --plasma started, read and written one JSON line at a time, started again 3 s after it ends (not after exit 2 / 3) — hosts/hearth-ui/apps/pad/src/link.rs: "if tx.unbounded_send(Ev::Ended(code)).is_err() || code == 2 || code == 3"
@@ -53,7 +61,7 @@ the Fedora edition leaves to KDE's plasma-keyboard (an open question, not a part
 ## The on-screen keyboard (Keyboard.qml, OskBoard.qml, OskKey.qml, OskThemes.qml)
 - [x] Hearth's one keyboard engine (ui/osk/hearth-osk.js) as it is, so layouts, words, accents, Ember Wheel and split sticks are the same — hosts/hearth-ui/apps/pad/src/osk.rs: "__e = HearthOSK.createEngine({"
 - [x] Y and Guide + X open it (hearth-pad), B or its key hides it; its buttons and sticks from hearth-pad (oskpad, oskaxes) — hosts/hearth-ui/apps/pad/src/main.rs: "__e.setHints(true); __e.handle({}, {}, Date.now());"
-- [x] typing through hearth-pad's uinput keyboard (emit / key), rumble on a key — hosts/hearth-ui/apps/pad/src/main.rs: "\"emit\" => pad_send(json!({ \"cmd\": \"emit\""
+- [x] typing: any character through Hearth's typing (KWin's input method, hearth-kwin-im), else hearth-pad's uinput keyboard (emit / key), rumble on a key — hosts/hearth-ui/apps/pad/src/main.rs: "if !(plain && !text.is_empty() && im::commit(&text) == Some(true)) {"
 - [x] docked at the bottom (or top) taking its own space so windows shrink, its height by the size setting — hosts/hearth-ui/apps/pad/src/main.rs: "exclusive_zone: Some(h as i32),"
 - [x] the strip: word suggestions (the first in the accent) or what the controller does, and the layout badge — hosts/hearth-ui/apps/pad/src/view.rs: "A type · X ⌫ · Y space · LT ⇧ · LB RB move · ☰ Enter · B hide · hold A for accents · RT clicks"
 - [x] the keys by the engine's widths, modifier keys, Enter and caps lock in the accent, Shift on, keys that are off faded — hosts/hearth-ui/apps/pad/src/view.rs: "} else if k.go || k.lock {"

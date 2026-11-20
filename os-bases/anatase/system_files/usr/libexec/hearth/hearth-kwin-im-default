@@ -1,0 +1,90 @@
+#!/usr/bin/python3
+"""Hearth's typing (hearth-kwin-im, through hearth-kwin-im-launch) as KWin's input method by default on the Fedora
+edition (the owner, Nov 20, 2026). Run by the image build only, on the system's file (/etc/xdg/kwinrc), never on
+anyone's own ~/.config/kwinrc: KDE reads the person's file over the system's, so a choice made in System Settings ›
+Keyboard › Virtual keyboard (KDE's keyboard, none, ...) always wins and is never touched.
+
+  hearth-kwin-im-default [FILE]     FILE: default /etc/xdg/kwinrc
+
+Merged, not replaced: only [Wayland] InputMethod and VirtualKeyboardEnabled are added, and only where the file
+doesn't have them already; every other line stays as it was. A file that can't be read is left alone. Written
+atomically, the old file kept as FILE.bak. Prints one line saying what it did."""
+import os
+import sys
+
+ENTRY = '/usr/share/applications/hearth-kwin-im.desktop'
+WANT = (('InputMethod', ENTRY), ('VirtualKeyboardEnabled', 'true'))
+
+
+def key_of(line):
+    """The key of 'Key=value' / 'Key[$e]=value' (None for groups, comments and blanks)."""
+    s = line.strip()
+    if not s or s.startswith('#') or s.startswith('[') or '=' not in s:
+        return None
+    k = s.split('=', 1)[0].strip()
+    return k.split('[', 1)[0]
+
+
+def merge(text):
+    """(new text, keys added)"""
+    lines = text.splitlines()
+    start = end = None
+    for i, ln in enumerate(lines):
+        s = ln.strip()
+        if s.startswith('[') and s.endswith(']'):
+            if start is not None and end is None:
+                end = i
+            if s == '[Wayland]':
+                start, end = i, None
+    have = set()
+    if start is not None:
+        stop = end if end is not None else len(lines)
+        have = {key_of(ln) for ln in lines[start + 1:stop]}
+    add = ['%s=%s' % (k, v) for k, v in WANT if k not in have]
+    if not add:
+        return text, []
+    if start is None:
+        body = '\n'.join(lines).rstrip('\n')
+        out = (body + '\n\n' if body else '') + '[Wayland]\n' + '\n'.join(add) + '\n'
+    else:
+        stop = end if end is not None else len(lines)
+        # after the group's last key (before blank lines that end it)
+        at = stop
+        while at > start + 1 and not lines[at - 1].strip():
+            at -= 1
+        lines[at:at] = add
+        out = '\n'.join(lines) + '\n'
+    return out, [a.split('=', 1)[0] for a in add]
+
+
+def main(argv):
+    path = argv[1] if len(argv) > 1 else '/etc/xdg/kwinrc'
+    text = ''
+    if os.path.exists(path):
+        try:
+            with open(path, encoding='utf-8') as f:
+                text = f.read()
+        except (OSError, UnicodeDecodeError) as e:
+            print('hearth-kwin-im-default: %s left as it is (%s)' % (path, e))
+            return 0
+    out, added = merge(text)
+    if not added:
+        print('hearth-kwin-im-default: %s already says which input method KWin uses: left as it is' % path)
+        return 0
+    os.makedirs(os.path.dirname(path) or '.', exist_ok=True)
+    if text:
+        with open(path + '.bak', 'w', encoding='utf-8') as f:
+            f.write(text)
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        f.write(out)
+        f.flush()
+        os.fsync(f.fileno())
+    os.chmod(tmp, 0o644)
+    os.replace(tmp, path)
+    print('hearth-kwin-im-default: %s: %s added' % (path, ', '.join(added)))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

@@ -5,6 +5,7 @@ import importlib.machinery
 import json
 import importlib.util
 import pathlib
+import time
 import unittest
 
 PATH = pathlib.Path(__file__).resolve().parent.parent / 'desktop' / 'shell' / 'hearth-pad'
@@ -661,6 +662,31 @@ class PlasmaTest(unittest.TestCase):
         self.assertNotIn({'t': 'osk', 'open': True, 'mode': 'password'}, out.sent[-1:])
         pad.want_osk()
         self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True, 'mode': 'password'})
+
+    def test_touching_a_text_field_opens_the_keyboard(self):
+        # KWin's panel shown (a touch on a text field): it opens, long after any controller use; hidden: nothing.
+        pad, out = self.make()
+        pad.command({'cmd': 'window', 'cls': 'org.kde.dolphin', 'caption': 'Home', 'fullscreen': False, 'kind': 'normal', 'now': 0.0})
+        n = len(out.sent)
+        pad.command({'cmd': 'touchfield', 'on': False})
+        self.assertEqual(len(out.sent), n)
+        pad.command({'cmd': 'touchfield', 'on': True})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        pad.command({'cmd': 'osk', 'open': True})
+        pad.command({'cmd': 'touchfield', 'on': True})   # already open: once
+        self.assertEqual(len(out.sent), n + 1)
+        # Closed (B): KWin's panel shown again as the windows make room doesn't bring it back; a touch later does.
+        pad.command({'cmd': 'osk', 'open': False})
+        t = time.monotonic()
+        pad.command({'cmd': 'touchfield', 'on': True, 'now': t + 1.0})
+        self.assertEqual(len(out.sent), n + 1)
+        pad.command({'cmd': 'touchfield', 'on': True, 'now': t + 5.0})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        # Over a fullscreen app too (a fullscreen browser on the Ally): touch opens it there, as KDE's keyboard did.
+        pad.command({'cmd': 'osk', 'open': False})
+        pad.command({'cmd': 'window', 'cls': 'firefox', 'caption': 'Hearth Browser', 'fullscreen': True, 'kind': 'normal'})
+        pad.command({'cmd': 'touchfield', 'on': True, 'now': t + 20.0})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
 
     def test_hearth_apps_like_mantels(self):
         pad, out = self.make()

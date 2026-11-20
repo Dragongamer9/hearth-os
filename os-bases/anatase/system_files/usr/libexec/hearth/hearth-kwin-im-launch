@@ -1,0 +1,62 @@
+#!/bin/sh
+# Hearth's typing as KWin's input method on the Fedora edition (the owner, Nov 20, 2026: accents and every other
+# character from Hearth's on-screen keyboard reach apps). KWin starts this (hearth-kwin-im.desktop's Exec, picked by
+# /etc/xdg/kwinrc's system default: hearth-kwin-im-default; anyone's own choice in System Settings › Keyboard ›
+# Virtual keyboard wins over it and is never written). It runs hearth-kwin-im (hosts/linux/desktop/kwin-helpers,
+# the same as Debian's) and guards it so KDE Plasma always gets an input method:
+#   - hearth-kwin-im isn't there, or it ended at once earlier in this sign-in (crashed, or KWin didn't give it the
+#     input-method protocol): KDE's own on-screen keyboard (plasma-keyboard) runs instead, for the rest of the session
+#     (the mark is in $XDG_RUNTIME_DIR, so the next sign-in tries Hearth's again);
+#   - it ends at once now: the mark is made, and this ends the way a crash does so KWin starts its input method again,
+#     which is then KDE's keyboard (KWin starts an input method again only after a crash);
+#   - it ends after running a while: KWin starts it again the same way.
+# Nothing else is touched: no setting is written, KWin and Plasma come up whatever happens here.
+IM="${HEARTH_KWIN_IM:-/usr/libexec/hearth/hearth-kwin-im}"
+KDE_ENTRY="${HEARTH_KDE_IM_ENTRY:-/usr/share/applications/org.kde.plasma.keyboard.desktop}"
+RUN="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hearth"
+MARK="$RUN/kwin-im-failed"
+LOG="${XDG_DATA_HOME:-${HOME:-/tmp}/.local/share}/nimbus/pad.log"
+QUICK="${HEARTH_KWIN_IM_QUICK:-15}"
+
+say() {
+  mkdir -p "$(dirname "$LOG")" 2>/dev/null
+  echo "$(date '+%Y-%m-%d %H:%M:%S') hearth-kwin-im-launch: $*" >>"$LOG" 2>/dev/null
+  echo "hearth-kwin-im-launch: $*" >&2
+}
+
+kde() {
+  if [ ! -f "$KDE_ENTRY" ]; then
+    say "$1; KDE's on-screen keyboard isn't installed either: no input method this session"
+    exit 0
+  fi
+  # Its Exec line, without the desktop-entry field codes (%u, %f...).
+  cmd=$(sed -n 's/^Exec=//p' "$KDE_ENTRY" | head -1 | sed 's/ *%[a-zA-Z]//g')
+  [ -n "$cmd" ] || { say "$1; KDE's keyboard entry has no Exec line"; exit 0; }
+  say "$1: KDE's on-screen keyboard instead ($cmd)"
+  # shellcheck disable=SC2086
+  exec $cmd
+}
+
+[ -e "$MARK" ] && kde "Hearth's typing ended at once earlier in this sign-in ($(cat "$MARK" 2>/dev/null))"
+[ -x "$IM" ] || kde "$IM isn't there"
+
+child=""
+trap 'if [ -n "$child" ]; then kill -TERM "$child" 2>/dev/null; wait "$child" 2>/dev/null; fi; exit 0' TERM INT HUP
+t0=$(date +%s)
+# --panel: KWin shows its (invisible) input panel when a text field is touched, as for KDE's keyboard, and
+# hearth-pad --plasma opens Hearth's keyboard then.
+"$IM" --panel &
+child=$!
+wait "$child"
+rc=$?
+child=""
+ran=$(( $(date +%s) - t0 ))
+if [ "$ran" -lt "$QUICK" ]; then
+  mkdir -p "$RUN" 2>/dev/null && chmod 700 "$RUN" 2>/dev/null
+  echo "exit $rc after ${ran}s" >"$MARK"
+  say "hearth-kwin-im ended at once (exit $rc after ${ran}s): KDE's on-screen keyboard for the rest of this sign-in"
+else
+  say "hearth-kwin-im ended (exit $rc after ${ran}s): KWin starts it again"
+fi
+# KWin starts its input method again only after a crash: end like one.
+kill -KILL $$
