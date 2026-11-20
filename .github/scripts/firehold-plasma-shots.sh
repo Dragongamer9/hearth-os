@@ -97,6 +97,18 @@ wait_ready() {   # wait_ready PACKAGE SECONDS: the package said it's up after $s
 }
 apps_pids() { for p in dolphin konsole kate "$(basename "$QML")"; do pgrep -x "$p" | head -1; done | tr '\n' ' '; }
 
+# KWin's own fake input (org_kde_kwin_fake_input) for presses and clicks in the pictures: firehold-fakeinput.c, test
+# tooling, built here; KWin offers it only to a program whose desktop file asks for it.
+FAKE=/usr/local/bin/hearth-ci-fakeinput
+FIP=$(ls /usr/share/plasma-wayland-protocols/fake-input.xml 2>/dev/null | head -1)
+if command -v gcc >/dev/null && command -v wayland-scanner >/dev/null && [ -n "$FIP" ]; then
+  wayland-scanner client-header "$FIP" /tmp/fake-input-client-protocol.h && wayland-scanner private-code "$FIP" /tmp/fake-input-protocol.c \
+    && gcc -O1 -I/tmp -o "$FAKE" "$(dirname "$0")/firehold-fakeinput.c" /tmp/fake-input-protocol.c -lwayland-client -lm >"$OUT/fakeinput-build.txt" 2>&1
+  printf '[Desktop Entry]\nType=Application\nName=Hearth CI fake input\nExec=%s\nNoDisplay=true\nX-KDE-Wayland-Interfaces=org_kde_kwin_fake_input\n' "$FAKE" \
+    > /usr/share/applications/org.hearthos.ci-fakeinput.desktop
+fi
+[ -x "$FAKE" ] || echo "fake input not built: gcc $(command -v gcc) scanner $(command -v wayland-scanner) xml $FIP" >> "$OUT/fakeinput-build.txt"
+
 # ---- KWin (KDE's own, unchanged) on a virtual screen, PipeWire for window pictures, Plasma's activities.
 for p in pipewire wireplumber; do command -v $p >/dev/null && { $p >"$OUT/$p.log" 2>&1 & }; done
 cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
@@ -109,6 +121,21 @@ for k in /usr/libexec/kactivitymanagerd /usr/lib64/libexec/kactivitymanagerd /us
 # KDE's global shortcuts service (the Plasma session starts it; the KWin script's shortcuts go through it).
 for k in /usr/libexec/kglobalacceld /usr/lib64/libexec/kglobalacceld /usr/bin/kglobalacceld; do [ -x "$k" ] && { "$k" >"$OUT/kglobalaccel.log" 2>&1 & break; }; done
 sleep 3
+
+# Hearth's shared Quick Settings over the Couch answers as mockup 08 shows (a ROG Ally: its battery, earbuds, its own
+# power steps, Game Mode switched off); the screen in Couch.
+export HEARTH_QUICK_FIXTURE=/tmp/fhp-quick-couch.json
+python3 - "$HEARTH_QUICK_FIXTURE" <<'PY'
+import json, sys
+json.dump({"device": "ROG Ally", "line": "ROG Ally · battery 64% · up 2 h", "battery": 64, "user": "Chris", "batteryMore": {"left": "about 2 h 40 min", "limit": 80},
+ "wifi": {"on": True, "ssid": "Home-5G", "strength": "strong"}, "bt": {"on": True, "connected": 1, "names": ["Earbuds"]},
+ "osk": False, "night": {"on": False, "until": "9 PM"}, "dnd": {"on": False, "byHand": False, "schedule": True, "from": "11 PM", "to": "7 AM", "games": True, "family": True},
+ "sinks": [{"name": "buds", "word": "Earbuds", "default": True, "volume": 45}], "brightness": [{"id": "", "label": "This screen", "percent": 70, "max": 100}],
+ "power": "balanced", "powerNames": {"power-saver": "Silent · 10 W", "balanced": "Balanced · 18 W", "performance": "Turbo · 25 W"},
+ "devices": [{"name": "Earbuds", "kind": "headset", "percent": 70, "low": False}, {"name": "8BitDo", "kind": "pad", "percent": 18, "player": 2, "low": True}],
+ "gameModeOff": True, "modes": [{"name": "Virtual-0", "tv": False, "label": "Built-in", "mode": "couch"}, {"name": "Virtual-1", "tv": False, "label": "Built-in", "mode": "couch"}]},
+ open(sys.argv[1], "w"))
+PY
 
 # ---- the Couch, as nimbus-session starts it.
 hearth-firehold-plasma begin org.hearthos.firehold
@@ -129,6 +156,16 @@ key down down down down right; sleep 1
 python3 "$(dirname "$0")/firehold-plasma-fixtures.py" --low "$FX"; hearth-firehold-plasma ask cards; sleep 4
 shot fp-02-couch-home-rows
 key b
+# Quick Settings with the controller over the Couch (mockup 08): the Couch's ≡ (the Menu key); B (Escape) closes it.
+key up up up up; sleep 1
+echo "added: $(hearth-firehold-plasma ready org.hearthos.firehold 2>&1 | tail -2)" > "$OUT/couch-quick.txt"; sleep 4
+echo "Couch's widgets: $(dbus-send --session --print-reply --dest=org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript string:'print(desktops().map(function(d){return d.type + ": " + d.widgets().map(function(w){return w.type;}).join(",");}).join(" | "))' 2>&1 | tail -1)" >> "$OUT/couch-quick.txt"
+command -v wtype >/dev/null && timeout 5 wtype -k Menu || hearth-firehold-plasma do open-applet org.hearthos.quicksettings >>"$OUT/couch-quick.txt"
+sleep 4
+shot fp-08-quick-settings-couch
+command -v wtype >/dev/null && timeout 5 wtype -k Escape || hearth-firehold-plasma do open-applet org.hearthos.quicksettings >/dev/null
+sleep 2
+shot fp-08b-quick-settings-closed
 hearth-firehold-plasma ask tab:library; sleep 3
 key right x down; sleep 2
 shot fp-03-couch-game-options
@@ -237,6 +274,8 @@ sleep 3
 pkill -f kactivitymanagerd; pkill -f kglobalacceld; sleep 1
 for k in /usr/libexec/kactivitymanagerd /usr/lib64/libexec/kactivitymanagerd /usr/bin/kactivitymanagerd; do [ -x "$k" ] && { "$k" >"$OUT/kamd2.log" 2>&1 & break; }; done
 for k in /usr/libexec/kglobalacceld /usr/lib64/libexec/kglobalacceld /usr/bin/kglobalacceld; do [ -x "$k" ] && { "$k" >"$OUT/kglobalaccel2.log" 2>&1 & break; }; done
+# KDE's daemon (its app menu module: KDE's global menu in the bar, mockup 11).
+command -v kded6 >/dev/null && { kded6 >"$OUT/kded2.log" 2>&1 & }
 sleep 3
 export HEARTH_FIREHOLD_SCREENS="Virtual-0::LG 27GP850:2560 × 1440 · 165 Hz · DisplayPort 1,Virtual-1:tv:TCL 55″ TV:3840 × 2160 · 60 Hz · HDMI 2" HEARTH_FIREHOLD_TV_SCREENS=Virtual-1
 # Hearth's shared Quick Settings answers as mockup 07 shows (HEARTH_QUICK_FIXTURE), a history from yesterday (mockup 10,
@@ -268,6 +307,7 @@ n = dbus.Interface(dbus.SessionBus().get_object('org.freedesktop.Notifications',
 o = json.loads(sys.argv[1])
 hints = {'urgency': dbus.Byte(o.get('urgency', 1))}
 if o.get('image'): hints['image-path'] = o['image']
+if o.get('urls'): hints['x-kde-urls'] = dbus.Array(o['urls'], signature='s')
 if o.get('reply'): hints['x-kde-reply-placeholder-text'] = o['reply']
 print(n.Notify(o['app'], 0, '', o['summary'], o.get('body', ''), o.get('actions', []), hints, o.get('timeout', -1)))
 PY
@@ -276,6 +316,8 @@ hearth-firehold-plasma begin org.hearthos.firehold.desk
 now=$(($(date +%s) * 1000))
 printf '{"screens": {"Virtual-1": {"mode": "couch", "why": "pad", "at": %s}, "Virtual-0": {"mode": "desk", "why": "mouse", "at": %s}}}' "$now" "$now" > "$RUN/modes.json"
 since=$(date +%s)
+# Started as the session starts it (KDE's crash handler on). The crash at start seen in rounds 20-27 was the bar's app
+# tile reading a kept task model index; firehold-plasma-crashloop.sh starts it 20 times in a row to prove it's gone.
 HEARTH_FIREHOLD_TIP=always PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk plasmashell -p org.hearthos.firehold.desk >>"$OUT/plasmashell2.log" 2>&1 &
 PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk hearth-firehold-plasma session >"$OUT/session2.log" 2>&1 &
 wait_ready org.hearthos.firehold.desk 90 && echo "::notice title=Two screens::the Desk shell is up" || fail "Two screens" "the Desk didn't come up"
@@ -316,6 +358,51 @@ shot fp-14-controller-hint 0 1920
 { echo "notify-send: $(command -v notify-send || echo none)"; echo "posture: $(cat "$RUN/posture" 2>/dev/null)"
   echo "in Hearth's history: $(grep -c 'controller is in your hand' "$HOME/.local/state/nimbus/notifications.json" 2>/dev/null)"
   notify-send -a Check check check 2>&1; echo "notify-send exit $?"; } > "$OUT/controller-hint.txt" 2>&1
+# The app's own menus (mockup 11): Kate in front, its menus in the bar from KDE's global menu, File open (Alt+F).
+printf 'Age of the Ring 8.4 patch notes\n' > /tmp/patch-notes.txt
+QT_QPA_PLATFORMTHEME=kde kate /tmp/patch-notes.txt >/dev/null 2>&1 &
+sleep 8; front "patch-notes" false; sleep 3
+# File open: KDE's app menu daemon's showMenu with no place (-1, -1: as a shortcut asks), so the bar's global menu
+# opens Kate's first menu, File, under its button.
+cat > /tmp/fhp-file-menu.py <<'PY'
+import dbus, re, sys
+bus = dbus.SessionBus()
+pid = int(sys.argv[1])
+dbo = bus.get_object('org.freedesktop.DBus', '/org/freedesktop/DBus')
+def paths(n, p):
+    # the dbusmenu objects under /MenuBar (Qt puts them at /MenuBar/1 and so on)
+    xml = bus.get_object(n, p).Introspect(dbus_interface='org.freedesktop.DBus.Introspectable')
+    if 'com.canonical.dbusmenu' in xml:
+        yield p
+    for c in re.findall(r'<node name="([^"]+)"', xml):
+        yield from paths(n, p.rstrip('/') + '/' + c)
+for n in dbo.ListNames(dbus_interface='org.freedesktop.DBus'):
+    if not n.startswith(':'):
+        continue
+    try:
+        if int(dbo.GetConnectionUnixProcessID(n, dbus_interface='org.freedesktop.DBus')) != pid:
+            continue
+        for p in paths(n, '/MenuBar'):
+            lay = bus.get_object(n, p).GetLayout(0, 1, dbus.Array([], signature='s'), dbus_interface='com.canonical.dbusmenu')
+            first = int(lay[1][2][0][0])
+            print('menu', n, p, first)
+            bus.get_object('org.kde.kappmenu', '/KAppMenu').showMenu(-1, -1, n, dbus.ObjectPath(p), first, dbus_interface='org.kde.kappmenu')   # -1: the bar's own menu shows it
+            sys.exit(0)
+    except Exception as e:
+        print('no menu on', n, e)
+print('no menus found for', pid)
+PY
+if [ -x "$FAKE" ]; then
+  # A click on File in the bar (Kate's own menus, KDE's global menu), as a person does.
+  "$FAKE" click 124 31 >> "$OUT/controller-hint.txt" 2>&1; echo "fake input click: $?" >> "$OUT/controller-hint.txt"; sleep 3
+else
+  timeout 15 python3 /tmp/fhp-file-menu.py "$(pgrep -x kate | head -1)" >> "$OUT/controller-hint.txt" 2>&1; sleep 3
+fi
+shot fp-11-desk-bar-app-menus 0 1920
+[ -x "$FAKE" ] && "$FAKE" keys 1; sleep 1
+front "patch-notes" false; sleep 1
+echo "kate's menus: $(hearth-firehold-plasma menus "$(pgrep -x kate | head -1)")" >> "$OUT/controller-hint.txt"
+front "Trains 2010" false; sleep 2
 # While you played (mockup 10): notifications that come while a game is full screen are held back.
 front "Trains 2010" true; sleep 3
 note '{"app": "Friends", "summary": "Mira", "body": "Ready for co-op tonight?"}'; sleep 1
@@ -328,7 +415,7 @@ if command -v hearth-plasma-panel >/dev/null; then
   note '{"app": "Firefox", "summary": "Firefox download finished", "body": "hollow-pines.tar.zst · 2.9 GB", "timeout": 30000}'; sleep 1
   note '{"app": "Hearth OS", "summary": "Hearth OS update ready", "body": "Nothing changes until you restart", "timeout": 30000}'; sleep 1
   note '{"app": "Discord", "summary": "Ryder in #bfme-nights", "body": "“Edain game at 11? I'"'"'ll host.”", "actions": ["inline-reply", "Reply", "read", "Mark read"], "reply": "Reply...", "timeout": 30000}'; sleep 1
-  note '{"app": "Hearth Recorder", "summary": "Saved the last 30 seconds", "body": "Rise of the Witch-king · 1440p · 96 MB", "image": "file://'"$HOME"'/.cache/hearth/art/beacon_rotwk.jpg", "actions": ["open", "Open", "share", "Copy a share link", "delete", "Delete"], "timeout": 30000}'; sleep 1
+  note '{"app": "Hearth Recorder", "summary": "Saved the last 30 seconds", "body": "Rise of the Witch-king · 1440p · 96 MB", "urls": ["file://'"$HOME"'/.cache/hearth/art/beacon_rotwk.jpg"], "actions": ["open", "Open", "share", "Copy a share link", "delete", "Delete"], "timeout": 30000}'; sleep 1
   note '{"app": "Downloads", "summary": "Helldivers 2 is ready", "body": "The 6.0 GB update finished (Steam).", "actions": ["play", "Play", "tv", "Play on the TV"], "timeout": 30000}'; sleep 1
   note '{"app": "Hearth Link", "summary": "Dad'"'"'s PC asks for help", "body": "“Trains 2010 won'"'"'t start after the update.” He'"'"'s at his PC now.", "urgency": 2, "actions": ["connect", "Connect (Remote desktop)", "later", "Call him back later", "notnow", "Not now"]}'; sleep 3
   shot fp-09-notification-cards 0 1920

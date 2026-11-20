@@ -330,7 +330,14 @@ Item {
     function key(k) {
         if (away) { run(["back", "pad"]); return true; }
         if (k === Qt.Key_F1) { guide(false); return true; }
-        if (k === Qt.Key_Menu || k === Qt.Key_F2) { page = page === "settings" ? "tabs" : "settings"; return true; }
+        // ≡: Hearth's shared Quick Settings over the Couch (mockup 08); where it isn't installed, the Couch's own settings.
+        if (k === Qt.Key_Menu) {
+            if (page === "settings") { page = "tabs"; return true; }
+            if (host && host.hosted) { host.quick(); return true; }    // (Firehold on labwc: its own Quick Settings)
+            run(["do", "open-applet", "org.hearthos.quicksettings"], function (t) { const o = fh.lastJson(t); if (o && o.missing) fh.page = "settings"; });
+            return true;
+        }
+        if (k === Qt.Key_F2) { page = page === "settings" ? "tabs" : "settings"; return true; }
         if (optionsGame) return optionsPage.key(k);
         if (page === "switcher") return switcherPage.key(k);
         if (page === "settings") return settingsPage.key(k);

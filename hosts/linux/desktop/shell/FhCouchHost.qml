@@ -63,4 +63,5 @@ Item {
     // ---- what Mantel's Firehold decides
     function guide(twice) { if (fh) fh.guide(twice); }
     function home() { if (fh) fh.home(); }
+    function quick() { if (fh) fh.toggleQuick(); }
 }

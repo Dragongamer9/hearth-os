@@ -70,7 +70,8 @@ run() {
     kill -0 $pid 2>/dev/null || break
     sleep 0.005
   done
-  sleep 2.5
+  # SHOT_WAIT (seconds, default 2.5): longer for a picture whose --press presses need more time (Firehold's Settings).
+  sleep "${SHOT_WAIT:-2.5}"
   grim "$ROOT/shots/$name.png" 2>/tmp/grim.log || echo "::warning title=$name::grim: $(cat /tmp/grim.log)"
   cpu=-1; rss=-1; pss=-1
   if [ "$rest" -gt 0 ] && kill -0 $pid 2>/dev/null; then

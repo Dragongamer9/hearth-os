@@ -59,8 +59,8 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 - [x] In the Settings look, its own page — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "pub const PAGES: &[&str] = &[\"couch-desk-away\", \"couch-away\"];"
 - [x] For each screen: the mode it starts in, what's on its Couch home, sound in Couch — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "\"Sound in Couch\", \"Switches the output when this screen goes Couch\""
-- [ ] Switching by itself: a controller puts the TV in Couch, the mouse puts its own screen in Desk, Away after a time, what keeps running while Away, games follow the mode
-- [ ] The line "Switching modes is never a settings change" (switching is live state, never saved by itself: red flag 9)
+- [x] Switching by itself: a controller puts the TV in Couch, the mouse puts its own screen in Desk, Away after a time, what keeps running while Away, games follow the mode — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "\"Away when nobody's here\", \"No controller, mouse or keyboard for this long, and nothing playing\""
+- [x] The line "Switching modes is never a settings change" (switching is live state, never saved by itself: red flag 9) — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "Switching modes is never a settings change."
 
 ## 6. Away (06-away.png)
 
@@ -84,17 +84,17 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 ## 8. Quick Settings with the controller (08-quick-settings-couch.png)
 
-- [ ] LB / RB tabs and the focus ring
-- [ ] Power row with the device's own steps (Silent 10 W / Balanced 18 W / Turbo 25 W on the Ally)
-- [ ] "Game Mode is off on this device · turn it on in Settings › System › Startup" when Game Mode is switched off
-- [ ] Button hints
+- [x] LB / RB tabs and the focus ring — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "couch && (k === Qt.Key_PageUp || k === Qt.Key_PageDown)"
+- [x] Power row with the device's own steps (Silent 10 W / Balanced 18 W / Turbo 25 W on the Ally) — hosts/linux/desktop/plasma-hearth/hearth-quick: "'rog ally': {'power-saver': 'Silent · 10 W'"
+- [x] "Game Mode is off on this device · turn it on in Settings › System › Startup" when Game Mode is switched off — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "text: \"Game Mode is off on this device\""
+- [x] Button hints — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "{ k: \"A\", c: \"#3ecf6e\", t: \"Toggle\" }"
 
 ## 9. Notification cards (09-notification-cards.png)
 
 - [x] Cards at the top right, each with its app, time, text and actions — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "readonly property var acts: n ? Array.from(n.actions || [])"
 - [x] An urgent card stays until answered (Dad's PC asks for help, Connect with Remote desktop) — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "text: \"Stays until you answer\""
 - [x] Game ready card: Play / Play on the TV — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "visible: card.acts.length > 0"
-- [ ] A card with a picture (a recorded clip)
+- [x] A card with a picture (a recorded clip) — hosts/linux/desktop/plasma-hearth/shim/NotificationServer.qml: "if (/^file:\\/\\/.*\\.(png|jpe?g|webp)$/i.test(u)) img = u;"
 - [x] A message card with a reply box in the card — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "visible: !!card.n && card.n.hasInlineReply === true"
 - [x] "2 more" when there are more — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: " more</b> · \""
 
@@ -109,7 +109,7 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 ## 11. The Desk bar with the app's own menus (11-desk-bar-app-menus.png)
 
-- [ ] The app in front with its own menus (KDE's global menu), File open
+- [x] The app in front with its own menus (KDE's global menu), File open — hosts/linux/desktop/firehold-plasma/desk/layout.js: "top.addWidget(\"org.kde.plasma.appmenu\");"
 - [x] Left to right: app, menus, clock, mode pill, downloads, Hearth Link, controllers, Quick Settings, notifications — hosts/linux/desktop/firehold-plasma/posture/contents/ui/main.qml: "onClicked: root.openShared(\"org.hearthos.notifications\", \"notifications\")"
 - [x] The first-run tip naming each part of the bar — hosts/linux/desktop/firehold-plasma/couch/contents/ui/BarTipCard.qml: "\"THE BAR, LEFT TO RIGHT\""
 
@@ -118,15 +118,12 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 - [x] Standard menus for an app with none of its own (the app menu, Window, Help) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "[[\"app\", root.appName], [\"window\", \"Window\"], [\"help\", \"Help\"]]"
 - [x] Window › Move to screen (each screen with its mode) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/deskmenus.js: "here ? \"here now\" : s.mode === \"couch\" ? \"goes full screen\""
 - [x] Help: search every command (Alt+Space) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/deskmenus.js: "[\"Search every command\", \"Alt+Space\", \"search\"]"
-- [x] The "controller in your hand" hint — hosts/linux/desktop/firehold-plasma/hearth-firehold-plasma: "notify('A controller is in your hand'"
+- [x] The "controller in your hand" hint — hosts/linux/desktop/firehold-plasma/posture/contents/ui/HintLayer.qml: "LayerShell.Window.anchors: LayerShell.Window.AnchorBottom | LayerShell.Window.AnchorRight"
 
-## Build status (branch feature/firehold-plasma-1.16; not ticked until each part is pictured and compared)
+## Build status (branch feature/firehold-plasma-1.16)
 
-- 68 of 76 parts pictured and ticked (Plasma pictures run 44704692710, branch ci/firehold-plasma-shots-feature-firehold-plasma-1.16).
-- Open: Settings rows 5.3 and 5.4 are built (hosts/hearth-ui/apps/settings/src/cats/couch.rs) but not yet pictured: the
-  Rust apps' picture is taken 2.5 s after the window maps, before the controller presses reach those rows.
-- Open: Quick Settings with the controller over the Couch (section 8): the shared widget has it (style "firehold", its
-  couch look), but the Couch shell has no panel for the shared widget to sit in.
-- Open: the recorded clip's picture in its card (9): the shared cards show `h.image`; a notification's image-path
-  doesn't reach it under Plasma yet (shared widget).
-- Open: the app's own menus with File open (11.1): CI's apps don't export KDE's global menu (no appmenu module there).
+- All 76 parts pictured and ticked (Plasma pictures run 44756066286, Rust apps run 44716617692; pictures on branch
+  ci/firehold-plasma-shots-feature-firehold-plasma-1.16). The File menu is opened with KWin's own fake input
+  (.github/scripts/firehold-fakeinput.c, test tooling).
+- The two-screen Desk's crash at start (rounds 20-27) is fixed (the bar's app tile no longer keeps a task model index);
+  the start loop (firehold-plasma.yml, crashloop) started it 20 of 20 times clean, stock Plasma 20 of 20 (run 44751631644).
