@@ -1775,6 +1775,15 @@ def family():
 
 if __name__ == '__main__':
     what = sys.argv[1] if len(sys.argv) > 1 else 'lan'
+    # Moonlight's private network (moonlight.rs) runs hearth-link again inside a user namespace where only root is
+    # mapped: the runner's home (0750, its own user) can't be entered from there, so the binary is run from /tmp. On a
+    # device the person's own user is mapped and hearth-link is /usr/bin/hearth-link.
+    if os.path.exists(BIN) and not BIN.startswith('/usr/'):
+        os.makedirs('/tmp/hl-bin', exist_ok=True)
+        os.chmod('/tmp/hl-bin', 0o755)
+        shutil.copy(BIN, '/tmp/hl-bin/hearth-link')
+        os.chmod('/tmp/hl-bin/hearth-link', 0o755)
+        BIN = '/tmp/hl-bin/hearth-link'
     try:
         try:
             {'lan': lan, 'internet': internet, 'family': family}[what]()
