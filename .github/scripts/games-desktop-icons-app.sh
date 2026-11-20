@@ -107,11 +107,15 @@ python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert "gog:1207658
 ls "$N/desktop-icons/" > "$OUT/desktop-icons-folder-after.txt" 2>&1
 grep -q '^gog_1207658924\.' "$OUT/desktop-icons-folder-after.txt" && fail uninstall "Hearth's copy of the picture is still kept"
 listing uninstalled; state uninstalled
-# Its page now, not installed: Install with the "Add a desktop icon" tick box (off: never ticked).
-firstcard
-key Return
-shot app-8-page-install-tickbox 2
-key Escape
+# A game's page before it's installed: Install with the "Add a desktop icon" tick box (off: never ticked). This home
+# isn't signed in to GOG, so no game that isn't installed is listed: the page's preview (its sample library, opened
+# in a plain browser) shows it.
+UI="$(cd "$(dirname "$0")/../.." && pwd)/hosts/hearth-gaming/ui/games.html"
+for g in "game=epic:b:app-8-page-install-tickbox" "menu=gog:1:app-9-preview-card-menu"; do
+  q=${g%:*}; name=${g##*:}
+  timeout 60 google-chrome --headless=new --no-sandbox --disable-gpu --hide-scrollbars --window-size=1280,800 --virtual-time-budget=5000 \
+    --screenshot="$OUT/$name.png" "file://$UI?$q" > /dev/null 2>&1 || echo "no picture $name (chrome)"
+done
 [ -e "$HOME/.config/nimbus/hearth-games.json" ] && fail settings "hearth-games.json was written by opening a page: $(cat "$HOME/.config/nimbus/hearth-games.json")"
 pkill -f "$BIN" || true
 echo "::notice title=Desktop folder::before: $(tr '\n' ',' < "$OUT/desktop-before.txt") | added: $(tr '\n' ',' < "$OUT/desktop-added.txt") | after uninstall: $(tr '\n' ',' < "$OUT/desktop-uninstalled.txt")"

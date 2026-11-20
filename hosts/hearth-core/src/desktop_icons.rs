@@ -177,10 +177,10 @@ fn free_name(dir: &Path, stem: &str) -> PathBuf {
         .unwrap_or_else(|| dir.join(format!("{stem} {}.desktop", crate::library::now_ms())))
 }
 
-/// metadata::trusted for desktops that read it (GNOME's); best effort, never waits more than a few seconds.
-fn mark_trusted(file: &Path) {
+/// A small helper program, best effort: never waits more than a few seconds, nothing it prints is kept.
+fn run_quietly(prog: &str, args: &[&std::ffi::OsStr]) {
     if cfg!(test) { return; }
-    let Ok(mut c) = std::process::Command::new("gio").arg("set").arg(file).args(["metadata::trusted", "true"])
+    let Ok(mut c) = std::process::Command::new(prog).args(args)
         .stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn() else { return };
     let start = std::time::Instant::now();
     while start.elapsed() < std::time::Duration::from_secs(3) {
@@ -189,6 +189,31 @@ fn mark_trusted(file: &Path) {
     }
     let _ = c.kill();
     let _ = c.wait();
+}
+
+/// metadata::trusted for desktops that read it (GNOME's).
+fn mark_trusted(file: &Path) {
+    use std::ffi::OsStr;
+    run_quietly("gio", &[OsStr::new("set"), file.as_os_str(), OsStr::new("metadata::trusted"), OsStr::new("true")]);
+}
+
+/// file:// address of a path, every byte but plain letters, digits and / . _ ~ - written as %XX.
+pub fn file_url(p: &Path) -> String {
+    use std::os::unix::ffi::OsStrExt;
+    let mut out = String::from("file://");
+    for b in p.as_os_str().as_bytes() {
+        if b.is_ascii_alphanumeric() || b"/._~-".contains(b) { out.push(*b as char); } else { out.push_str(&format!("%{b:02X}")); }
+    }
+    out
+}
+
+/// KDE's desktop (Plasma's folder view) and Dolphin hear at once that the Desktop folder changed: KIO's own KDirNotify
+/// signal, as KDE apps send it when they add or remove a file (their folder watch catches it too, only later).
+fn tell_kde(signal: &str, arg: &str) {
+    if std::env::var_os("DBUS_SESSION_BUS_ADDRESS").is_none() && std::env::var_os("XDG_RUNTIME_DIR").is_none() { return; }
+    let member = format!("org.kde.KDirNotify.{signal}");
+    use std::ffi::OsStr;
+    run_quietly("dbus-send", &[OsStr::new("--session"), OsStr::new("--type=signal"), OsStr::new("/"), OsStr::new(&member), OsStr::new(arg)]);
 }
 
 /// "Add to desktop": the launcher for this installed game. Already there (Hearth's, untouched): left as it is.
@@ -216,6 +241,7 @@ pub fn add_in(p: &Places, id: &str, title: &str, installed: bool, art: &[(&'stat
     use std::os::unix::fs::PermissionsExt;
     let _ = std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o755));
     mark_trusted(&file);
+    tell_kde("FilesAdded", &format!("string:{}", file_url(&dir)));
     let f = file.to_string_lossy().to_string();
     let rec = json!({"file": f, "sha256": sha(text.as_bytes()), "icon": icon, "title": title, "at": crate::library::now_ms()});
     crate::settings_file::update_json(&p.record(), |m| {
@@ -235,6 +261,7 @@ pub fn remove_in(p: &Places, id: &str) -> Result<Value, String> {
         let path = Path::new(f);
         if is_ours(path, id, m["sha256"].as_str().unwrap_or("")) {
             std::fs::remove_file(path).map_err(|e| format!("Couldn't take the icon off your desktop ({e})"))?;
+            tell_kde("FilesRemoved", &format!("array:string:{}", file_url(path)));
             out["removed"] = json!(true);
             crate::bridge::log(&format!("desktop icons: {id} removed {f}"));
         } else if std::fs::symlink_metadata(path).is_ok() {
@@ -346,6 +373,7 @@ mod tests {
         assert_eq!(file_stem("  \n "), "Game");
         assert_eq!(file_stem(&"x".repeat(300)).len(), 80);
         assert_eq!(art_order(&[("hero", "h".into()), ("cover", "c".into()), ("icon", "i".into())]), vec!["i", "c", "h"]);
+        assert_eq!(file_url(Path::new("/home/me/Desktop/Baldur's Gate, 3.desktop")), "file:///home/me/Desktop/Baldur%27s%20Gate%2C%203.desktop");
     }
 
     #[test]

@@ -54,6 +54,10 @@ for n in sorted(names):
         shutil.copy2(a, b)
 print('desktop:', sorted(os.listdir(have)))
 PY
+  # What Hearth Games sends when it adds or removes an icon (desktop_icons.rs tell_kde): KDE's KDirNotify, so Plasma's
+  # desktop shows the change at once.
+  [ -n "$TELL_KDE" ] && timeout 5 dbus-send --session --type=signal / org.kde.KDirNotify.FilesAdded "string:file://$HOME/Desktop"
+  true
 }
 places() { python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("icons", {}), sort_keys=True))' "$HOME/.config/nimbus/desk.json" 2>/dev/null; }
 # Only one icon's worth of the screen changed between two pictures (above the bar at the bottom): nothing moved.
@@ -114,20 +118,21 @@ PY
 # A double-click on Mantel's desktop runs the launcher through hearth-desk launch.
 launched python3 "$SH/hearth-desk" launch "$HOME/Desktop/Witcher Tales.desktop"
 check_launch mantel
-# Firehold's Desk (unlocked the way the owner does: seven taps on the version), the same desktop under its bar and dock.
-for i in 1 2 3 4 5 6 7; do q settings tapversion >/dev/null; sleep 0.3; done
-sleep 3; q firehold input mouse >/dev/null; sleep 5
-grim "$OUT/mantel-3-firehold-desk.png"
-echo "::notice title=Firehold::$(q firehold state | head -c 300)"
-q firehold desk >/dev/null
 apply uninstalled; sleep 8
-grim "$OUT/mantel-4-after-uninstall.png"
+grim "$OUT/mantel-3-after-uninstall.png"
 LAST=$(places)
 python3 - "$BEFORE" "$LAST" <<'PY' && ok "Mantel: after uninstalling, your icons are where they were" || fail mantel "icons moved after uninstalling: $BEFORE → $LAST"
 import json, sys
 b, a = json.loads(sys.argv[1]), json.loads(sys.argv[2])
 assert all(a.get(k) == v for k, v in b.items())
 PY
+# Firehold's Desk (unlocked the way the owner does: seven taps on the version), the same desktop under its bar and
+# dock, with the icon added again (it goes back to the place it had).
+apply added; sleep 6
+for i in 1 2 3 4 5 6 7; do q settings tapversion >/dev/null; sleep 0.3; done
+sleep 3; q firehold input mouse >/dev/null; sleep 5
+grim "$OUT/mantel-4-firehold-desk-icon.png"
+echo "::notice title=Firehold::$(q firehold state | head -c 300)"
 cp "$HOME/.config/nimbus/desk.json" "$OUT/desk-after-mantel.json"
 echo "::notice title=Mantel log::$(grep -ai 'desktop\.qml\|hearth-desk' "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null | tail -5 | cut -c1-200 | tr '\n' '|')"
 pkill -f "quickshell" ; kill $LABWC; sleep 3; pkill -x labwc
@@ -135,6 +140,7 @@ unset WAYLAND_DISPLAY WLR_BACKENDS WLR_RENDERER WLR_LIBINPUT_NO_DEVICES WLR_HEAD
 
 # ---------------------------------------------------------------- 2. KDE Plasma's own desktop
 apply before
+TELL_KDE=1
 export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE XDG_SESSION_TYPE=wayland KDE_FULL_SESSION=true KDE_SESSION_VERSION=6
 export QT_FORCE_STDERR_LOGGING=1 KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 LIBGL_ALWAYS_SOFTWARE=1 HEARTH_PLASMA_PANEL_CI=1
 [ -e /etc/xdg/menus/applications.menu ] || export XDG_MENU_PREFIX=$(basename "$(ls /etc/xdg/menus/*-applications.menu 2>/dev/null | head -1)" applications.menu)
@@ -175,7 +181,19 @@ sleep 6
 shot plasma-1-before
 apply added; sleep 8
 shot plasma-2-icon-added
-one_icon plasma-1-before plasma-2-icon-added plasma
+if grep -q None "$OUT/diff-plasma-2-icon-added.txt" 2>/dev/null; then
+  # Plasma's folder watch hasn't noticed the new file yet (CI's container): Plasma started again, as a sign-in does.
+  echo "::warning title=plasma::the new icon didn't show within 8 s; Plasma restarted to show it (see plasma-2a-after-restart)"
+  kquitapp6 plasmashell >/dev/null 2>&1 || pkill -x plasmashell
+  for i in $(seq 1 20); do pgrep -x plasmashell >/dev/null || break; sleep 1; done
+  plasmashell >> "$OUT/plasmashell.log" 2>&1 &
+  for i in $(seq 1 60); do js 'print("up")' | grep -q '"up"' && break; sleep 1; done
+  sleep 12
+  shot plasma-2a-after-restart
+  one_icon plasma-1-before plasma-2a-after-restart plasma
+else
+  one_icon plasma-1-before plasma-2-icon-added plasma
+fi
 # KDE's own way to open it (what a double-click on Plasma's desktop does): it asks first for a launcher it doesn't trust.
 launched timeout 30 kioclient exec "$HOME/Desktop/Witcher Tales.desktop"
 check_launch plasma

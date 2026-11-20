@@ -145,7 +145,7 @@ async function setIconOnInstall(g, on) {
 }
 
 // A library card's menu, next to its card (or where you right-clicked).
-const MENU_G = { play: '▶', desk: '⊞', undesk: '⊟', page: 'ⓘ', install: '⤓', uninstall: '✕', pause: '❚❚', resume: '▶', cancel: '✕' };
+const MENU_G = { play: '▶', desk: '⊞', undesk: '⊟', page: '›', install: '⤓', uninstall: '✕', pause: '❚❚', resume: '▶', cancel: '✕' };
 function cardMenu(g, at) {
   const dl = downloading(g);
   const items = [];
@@ -486,7 +486,14 @@ if (!KIT.live) {
     return {};
   };
   const want = new URLSearchParams(location.search).get('tab'); if (TABS.includes(want)) S.tab = want;
+  // ?game=<id>: that game's page, ?menu=<id>: its card's menu (CI pictures of the preview).
+  KIT.demoOpen = new URLSearchParams(location.search);
 }
 
 render();
-loadAll().then(() => { loadDownloads(); poll(); KIT.focusFirst('#main .f'); });
+loadAll().then(() => {
+  loadDownloads(); poll(); KIT.focusFirst('#main .f');
+  const o = KIT.demoOpen; if (!o) return;
+  if (o.get('game') && game(o.get('game'))) openGame(game(o.get('game')));
+  else if (o.get('menu')) { const t = document.querySelector(`.tile[data-id="${CSS.escape(o.get('menu'))}"]`); if (t) menuFor(t); }
+});
