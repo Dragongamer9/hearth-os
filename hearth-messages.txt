@@ -1,0 +1,16 @@
+      6 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:369:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.png
+      6 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:361:5: QML Image: Cannot open: file:///tmp/home/.config/nimbus/wallpaper.jpg
+      5 qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+      5 qml: plasma-hearth: notifications: service up
+      5 qml: plasma-hearth: ci: frost 0 [] tray 0
+      5 qml: plasma-hearth: Plasma's notification service is up: Hearth shows the notifications
+      3 qml: plasma-hearth: the bar is drawn on the graphics card (api 3)
+      3 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:369:5: QML Image: Cannot open: file:///.config/nimbus/wallpaper.png
+      3 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Wallpaper.qml:361:5: QML Image: Cannot open: file:///.config/nimbus/wallpaper.jpg
+      3 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Islands.qml:158: ReferenceError: NetBtWatch is not defined
+      3 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Islands.qml:157: ReferenceError: NetBtWatch is not defined
+      3 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Islands.qml:156: ReferenceError: NetBtWatch is not defined
+      3 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Islands.qml:155: ReferenceError: NetBtWatch is not defined
+      3 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/Islands.qml:154: ReferenceError: NetBtWatch is not defined
+      2 qml: plasma-hearth: ci: frost 7 [gpu=true blur=-,- ; gpu=true blur=-,-] tray 0
+      1 file:///usr/share/plasma/plasmoids/org.hearthos.panel/contents/ui/main.qml:73:5: QML Loader (parent or ancestor of Image): Cannot open: file:///.config/nimbus/wallpaper.jpg

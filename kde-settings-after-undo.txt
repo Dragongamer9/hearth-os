@@ -1,0 +1,33 @@
+== plasmanotifyrc
+== plasmarc
+[Theme]
+name=hearth-hearth
+== kwinrc
+[Desktops]
+Id_1=33882f1b-1ae8-4c03-ab3f-3386404b7140
+Id_2=7c7f4a28-2d00-43dd-9171-217720b08436
+Id_3=faf65743-242a-4a27-8684-40c7c67fe887
+Id_4=4fc5188a-3688-4101-a0d2-fa42264b1031
+Number=4
+Rows=1
+
+[Tiling][33882f1b-1ae8-4c03-ab3f-3386404b7140][74776302-4adf-48c2-be7c-cde2d5a0b5f6]
+padding=4
+tiles={"layoutDirection":"horizontal","tiles":[{"width":0.25},{"width":0.5},{"width":0.25}]}
+
+[Tiling][4fc5188a-3688-4101-a0d2-fa42264b1031][74776302-4adf-48c2-be7c-cde2d5a0b5f6]
+padding=4
+tiles={"layoutDirection":"horizontal","tiles":[{"width":0.25},{"width":0.5},{"width":0.25}]}
+
+[Tiling][7c7f4a28-2d00-43dd-9171-217720b08436][74776302-4adf-48c2-be7c-cde2d5a0b5f6]
+padding=4
+tiles={"layoutDirection":"horizontal","tiles":[{"width":0.25},{"width":0.5},{"width":0.25}]}
+
+[Tiling][faf65743-242a-4a27-8684-40c7c67fe887][74776302-4adf-48c2-be7c-cde2d5a0b5f6]
+padding=4
+tiles={"layoutDirection":"horizontal","tiles":[{"width":0.25},{"width":0.5},{"width":0.25}]}
+
+[Xwayland]
+Scale=1
+== systemd/user/plasma-kwin_wayland.service.d/hearth-lock-screen.conf
+cat: /tmp/home/.config/systemd/user/plasma-kwin_wayland.service.d/hearth-lock-screen.conf: No such file or directory
