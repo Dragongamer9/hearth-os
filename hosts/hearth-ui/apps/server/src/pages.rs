@@ -565,7 +565,7 @@ impl<M> canvas::Program<M> for Mesh {
             let ls = 11.0 * k * sc * fz;
             let bw = (twidth(&name, ns) + twidth(&cnt, ns) + 30.0 * k * sc).max(twidth(&last, ls) + 22.0 * k * sc);
             let bh = if last.is_empty() { 30.0 } else { 46.0 } * k * sc * fz;
-            let op = if active || f(x, "n").unwrap_or(0.0) > 0.0 { 1.0 } else { 0.55 };
+            let op = if active || crate::f(x, "n").unwrap_or(0.0) > 0.0 { 1.0 } else { 0.55 };
             let path = rr(p.x - bw / 2.0, p.y - bh / 2.0, bw, bh, 8.0 * k * sc);
             f.fill(&path, alpha(if active { rgb(0x1e130a) } else { rgb(0x140c05) }, op));
             f.stroke(&path, Stroke::default().with_color(alpha(if active { c } else { Color::from_rgba(201.0 / 255.0, 163.0 / 255.0, 114.0 / 255.0, 0.22) }, op)).with_width(if active { 2.0 } else { 1.0 }));

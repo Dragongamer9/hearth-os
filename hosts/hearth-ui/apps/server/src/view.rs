@@ -196,7 +196,9 @@ pub fn view(a: &App) -> E<'_> {
 
     // ---- overlays
     let scrim = || -> E<'static> { container(Space::new()).width(Length::Fill).height(Length::Fill).style(boxed(Color::from_rgba(0.012, 0.008, 0.004, 0.82), 0.0, None)).into() };
-    let centred = |e: E<'static>| -> E<'static> { container(e).center(Length::Fill).into() };
+    fn centred(e: E<'_>) -> E<'_> {
+        container(e).center(Length::Fill).into()
+    }
     if a.remote.is_some() || a.overlay == Overlay::Switch {
         return stack![base, scrim(), centred(switch(a, &d, k))].into();
     }
