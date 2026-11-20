@@ -122,6 +122,8 @@ run crp-g1-ally-sign-in 0 6 --game-mode --page signin
 run crp-g2-ally-consoles 20 3 --game-mode --page consoles
 run crp-g3-ally-connecting 0 4 --game-mode --page connecting
 HEARTH_CRP_NET="wifi|2.4|OfficeNet" run crp-g5-ally-trouble 0 4 --game-mode --page trouble
+# The same page drawn by the graphics card (Mesa's software Vulkan here): what most devices use.
+HEARTH_RENDERER=gpu HEARTH_CRP_NET="wifi|2.4|OfficeNet" run crp-g5-ally-trouble-gpu 0 6 --game-mode --page trouble
 run crp-g6-ally-settings 20 3 --game-mode --page settings
 run crp-g7a-ally-streaming-overlay 0 4 --game-mode --page stream --show pill
 run crp-g7b-ally-quick-menu 0 4 --game-mode --page stream --show menu
