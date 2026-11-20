@@ -98,7 +98,7 @@ jobs:
             qt6-qtdeclarative kf6-kirigami layer-shell-qt kactivitymanagerd plasma-integration kglobalacceld plasma5support qt6-qtwayland \
             kf6-kconfig qt6-qt5compat kde-cli-tools rsms-inter-fonts google-noto-sans-fonts google-noto-sans-symbols-fonts google-noto-color-emoji-fonts \
             dejavu-sans-fonts libxkbcommon fontconfig gcc pkgconf-pkg-config wayland-devel wayland-protocols-devel glib2-devel \
-            plasma-wayland-protocols-devel labwc wlr-randr systemd-udev libinput kmod python3-evdev >/dev/null
+            plasma-wayland-protocols-devel labwc wlr-randr grim systemd-udev libinput kmod python3-evdev >/dev/null
           # plasma-keyboard: the Fedora edition's base image has it (KDE's own on-screen keyboard, KWin's input method).
           dnf -y install --skip-unavailable plasma-pa plasma-nm pipewire wireplumber qt6-qttools plasma-keyboard >/dev/null || true
           for b in kwin_wayland plasmashell gdbus; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done

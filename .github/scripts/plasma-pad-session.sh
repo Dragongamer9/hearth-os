@@ -75,6 +75,7 @@ session_start_nested() {
   OUTER=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
   [ -n "$OUTER" ] || { echo "::error title=labwc ($name)::didn't start: $(tail -5 "shots/labwc-$name.log" | tr '\n' '|')"; return 1; }
   WAYLAND_DISPLAY=$OUTER wlr-randr --output HEADLESS-1 --custom-mode 1920x1080
+  export OUTER
   WAYLAND_DISPLAY=$OUTER /tmp/kwin_wayland --wayland-display "$OUTER" --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >shots/kwin.log 2>&1 &
   for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
   [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { echo "::error title=KWin nested ($name)::didn't start: $(tail -5 shots/kwin.log | tr '\n' '|')"; return 1; }
@@ -91,6 +92,7 @@ session_start_nested() {
 
 session_stop_nested() {
   session_stop "$1"
+  unset OUTER
   pkill labwc; sleep 1; pkill -9 labwc
   rm -f "$XDG_RUNTIME_DIR"/wayland-? "$XDG_RUNTIME_DIR"/wayland-?.lock
 }

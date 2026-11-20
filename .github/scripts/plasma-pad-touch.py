@@ -109,6 +109,13 @@ def test(out, bin_dir, fifo):
         time.sleep(0.4)
 
     def shot(name):
+        # Nested, the picture is labwc's (grim), as kwin-input.yml takes them: KWin's own capture isn't for nested KWin.
+        if os.environ.get('OUTER'):
+            r = subprocess.run(['grim', os.path.join(out, name + '.png')], env=dict(os.environ, WAYLAND_DISPLAY=os.environ['OUTER']),
+                               capture_output=True, text=True, timeout=20)
+            if r.returncode:
+                err('picture ' + name, r.stderr[-300:])
+            return
         try:
             i = dbus.Interface(bus.get_object('org.kde.KWin', '/org/kde/KWin/ScreenShot2'), 'org.kde.KWin.ScreenShot2')
             r, w = os.pipe()
@@ -145,6 +152,9 @@ def test(out, bin_dir, fifo):
          ' | '.join(l for l in tail(os.path.join(out, 'labwc-touch.log'), 20000).splitlines() if 'Hearth check' in l)[-400:]))
     # The field in a fullscreen test window sits at y 88 (nothing above it). The mouse first, with no controller use.
     mw = window('org.hearth.PadMouse', 'Mouse', 'A text field clicked with a real mouse.')
+    # The first click may only give KWin's window labwc's focus; the second is the one in the field.
+    dev('click 600 88')
+    time.sleep(1.0)
     dev('click 600 88')
     time.sleep(2.0)
     v = vk()
