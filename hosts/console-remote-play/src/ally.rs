@@ -181,14 +181,18 @@ fn trouble(a: &App) -> E<'_, Msg> {
     let what = if a.trouble.as_ref().map(|t| t.1).unwrap_or(false) { format!("{name} is on, but the picture couldn't get through.") } else { desk::trouble_words(a) };
     let on = format!("You're on **{}**.", a.net.words());
     let tip = |g: G, title: &str, l: &str| -> E<'static, Msg> { srow(Some(ri(g, 40.0)), title, Some(t(l.to_string(), 15.0, MUT).into()), None, 19.0, CARD, pad(14.0, 18.0, 14.0, 18.0), false) };
+    // The line under the title is its own layer over the header (laid out across the page's whole width), so it's
+    // never measured to the title's width (the CPU renderer clipped it there).
+    let head = row![
+        container(glyph(G::Console, Color::from_rgb8(0xff, 0x8a, 0x8a), 36.0)).center_x(Length::Fixed(64.0)).center_y(Length::Fixed(64.0)).style(bx(Color::from_rgb8(0x2a, 0x16, 0x16), 18.0, Some((Color::from_rgb8(0x6a, 0x2d, 0x2d), 1.0)))),
+        column![one(t6("Couldn't reach your Xbox", 27.0, TX)), gap(1.0, 26.0)]
+    ]
+    .spacing(18.0)
+    .width(Length::Fill)
+    .align_y(iced::Center);
+    let under = container(rich1(&format!("{what} {on}"), 16.0, MUT, SOFT)).padding(pad(38.0, 0.0, 0.0, 82.0)).width(Length::Fill);
     let col = column![
-        row![
-            container(glyph(G::Console, Color::from_rgb8(0xff, 0x8a, 0x8a), 36.0)).center_x(Length::Fixed(64.0)).center_y(Length::Fixed(64.0)).style(bx(Color::from_rgb8(0x2a, 0x16, 0x16), 18.0, Some((Color::from_rgb8(0x6a, 0x2d, 0x2d), 1.0)))),
-            column![one(t6("Couldn't reach your Xbox", 27.0, TX)), rich1(&format!("{what} {on}"), 16.0, MUT, SOFT)].spacing(4.0).width(Length::Fill)
-        ]
-        .spacing(18.0)
-        .width(Length::Fill)
-        .align_y(iced::Center),
+        stack![head, under],
         gap(1.0, 16.0),
         tip(G::Up, "Home upload speed: about 10 Mbps or more", "Run a speed test at home; the upload number is the one that counts."),
         gap(1.0, 8.0),
