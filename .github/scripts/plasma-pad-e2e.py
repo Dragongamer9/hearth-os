@@ -320,7 +320,7 @@ except (OSError, ValueError) as e:
     geo = {}
     error('geometry', repr(e))
 # Hearth's typing is KWin's input method (the image's /etc/xdg/kwinrc): what the keyboard types reaches the app whole.
-im = subprocess.run(['pgrep', '-f', 'libexec/hearth/hearth-kwin-im$'], capture_output=True, text=True).stdout.split()
+im = subprocess.run(['pgrep', '-f', 'libexec/hearth/hearth-kwin-im( |$)'], capture_output=True, text=True).stdout.split()
 notice('Hearth typing', 'hearth-kwin-im %s, socket %s' % (im or 'NOT running', os.path.exists(os.path.join(os.environ['XDG_RUNTIME_DIR'], 'hearth', 'im.sock'))))
 if not im:
     error('Hearth typing', "hearth-kwin-im isn't KWin's input method in this session")

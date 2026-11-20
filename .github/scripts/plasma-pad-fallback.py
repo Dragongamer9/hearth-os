@@ -43,7 +43,7 @@ try:
     vk = {str(k): str(v) for k, v in p.GetAll('org.kde.kwin.VirtualKeyboard').items()}
 except Exception as e:
     vk = {'error': repr(e)}
-hearth = procs('libexec/hearth/hearth-kwin-im$')
+hearth = procs('libexec/hearth/hearth-kwin-im( |$)')
 kde = procs('plasma-keyboard')
 plasma = procs('plasmashell')
 log = ''
