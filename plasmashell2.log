@@ -1,0 +1,74 @@
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+qt.qml.propertyCache.append: Member visible of the object PlasmaQuick::Dialog overrides a member of the base object. Consider renaming it or adding final or override specifier
+virtual QStringList Solid::Backends::UPower::UPowerManager::allDevices()  error:  QDBusError("org.freedesktop.DBus.Error.Disconnected", "Not connected to D-Bus server")
+qml: plasma-hearth: Plasma's notification service is up: Hearth shows the notifications
+qml: plasma-hearth: notifications: service up
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+qml: firehold: Couch for Virtual-1
+qml: firehold: Couch on Virtual-1 visible true
+qml: firehold: modes on the Desk bar (Virtual-0): ["Virtual-0=desk","Virtual-1=couch"]
+qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+qml: firehold: Couch for Virtual-1
+qml: firehold: Couch for Virtual-1
+qml: firehold: modes on the Desk bar (Virtual-0): ["Virtual-0=desk","Virtual-1=couch"]
+qml: firehold: modes on the Desk bar (Virtual-0): ["Virtual-0=desk","Virtual-1=couch"]
+qml: firehold: modes on the Desk bar (Virtual-0): ["Virtual-0=desk","Virtual-1=couch"]
+qml: firehold: modes on the Desk bar (Virtual-0): ["Virtual-0=desk","Virtual-1=couch"]
+qml: firehold: modes on the Desk bar (Virtual-0): ["Virtual-0=desk","Virtual-1=couch"]
+qml: firehold: modes on the Desk bar (Virtual-0): ["Virtual-0=desk","Virtual-1=couch"]
+qml: firehold: modes on the Desk bar (Virtual-0): ["Virtual-0=desk","Virtual-1=away"]
+qml: firehold: Couch for Virtual-1
+Couldn't start kglobalaccel from org.kde.kglobalaccel.service: QDBusError("org.freedesktop.DBus.Error.Disconnected", "Not connected to D-Bus server")
+dbus[2467]: arguments to dbus_pending_call_block() were incorrect, assertion "pending != NULL" failed in file ../dbus/dbus-pending-call.c line 768.
+This is normally a bug in some application using the D-Bus library.
+
+  D-Bus not built with -rdynamic so unable to print a backtrace
+KCrash: Attempting to start /usr/bin/plasmashell
+KCrash: Application 'plasmashell' crashing... crashRecursionCounter = 2
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Failed to create wl_display (No such file or directory)
+qt.qpa.plugin: Could not load the Qt platform plugin "wayland" in "" even though it was found.
+This application failed to start because no Qt platform plugin could be initialized. Reinstalling the application may fix this problem.
+
+Available platform plugins are: vnc, eglfs, vkkhrdisplay, linuxfb, minimal, minimalegl, wayland-brcm, wayland-egl, wayland, offscreen, xcb.
+

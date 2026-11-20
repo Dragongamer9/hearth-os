@@ -1,0 +1,22 @@
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+org.kde.plasma.welcome.kded: Launching Welcome Center with no last seen version
+kf.kio.gui: Failed to determine systemd version, falling back to extremely legacy forking mode.
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+kf.kcmutils: Trying to use rootObject before initialization is completed, whilst using setInitializationDelayed. Forcing completion
+kf.modemmanagerqt: Failed enumerating MM objects: "org.freedesktop.DBus.Error.Disconnected" 
+ "Not connected to D-Bus server"
+The Wayland connection broke. Did the Wayland compositor die?
+Failed to write to the pipe: Bad file descriptor.
