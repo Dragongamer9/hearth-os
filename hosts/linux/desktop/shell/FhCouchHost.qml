@@ -32,14 +32,14 @@ Item {
     // (each window keeps one id while it's open; the same list as before is handed back when nothing the Couch shows
     // changed, so its tiles aren't made again: the rest fixes)
     property var idOf: new Map()
-    property var last: ({ key: "", list: [] })
+    property var last: ({ key: "", list: [], n: 0 })
     readonly property var wins: {
         const list = WinList.toplevels ? WinList.toplevels.values : [];
         const out = [];
         for (const t of list) {
             if (!t) continue;
             let id = WinList.widOf(t);
-            if (!id) { id = hh.idOf.get(t); if (!id) { id = "lw" + (hh.idOf.size + 1); hh.idOf.set(t, id); } }
+            if (!id) { id = hh.idOf.get(t); if (!id) { id = "lw" + (++hh.last.n); hh.idOf.set(t, id); } }
             const e = AppIcons.entryFor(t.appId);
             out.push({ id: String(id), uuid: String(id), appId: String(t.appId || ""), appName: e ? String(e.name) : String(t.appId || ""),
                        title: String(t.title || ""), activated: !!t.activated, minimized: !!t.minimized, fullscreen: !!t.fullscreen,
