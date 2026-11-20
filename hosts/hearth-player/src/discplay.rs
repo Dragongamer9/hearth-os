@@ -51,6 +51,8 @@ pub struct Info {
     pub note: String,
     /// A stable name for remembering where you stopped.
     pub key: String,
+    /// The disc's own menu can run here (libdvdnav, and the disc isn't locked).
+    pub menu: bool,
 }
 
 pub struct Opened {
@@ -59,6 +61,8 @@ pub struct Opened {
     sectors: Option<Arc<dyn Sectors>>,
     pub toc: Option<Toc>,
     urls: Mutex<Vec<String>>,
+    /// Titles looked at for interlacing (title -> interlaced).
+    interlaced: Mutex<std::collections::HashMap<u32, bool>>,
 }
 
 pub const BLURAY_NOTE: &str = "This is a Blu-ray disc. Hearth Player plays DVDs, Video CDs and music CDs, but not Blu-ray discs.";
@@ -102,6 +106,7 @@ fn dvd_info(info: &mut Info, io: &Arc<dyn DvdIo>) -> Result<(), String> {
     info.encrypted = dvd::title_scrambled(io.as_ref(), main);
     if info.encrypted { info.note = if info.dvdcss { ENCRYPTED_NOTE_HAVE.into() } else { ENCRYPTED_NOTE.into() }; }
     info.key = format!("dvd:{}", dvd::disc_key(io.as_ref()));
+    info.menu = !info.encrypted && crate::dvdnav::have_dvdnav();
     info.titles = titles;
     Ok(())
 }
@@ -124,7 +129,7 @@ pub fn open(path: &str) -> Result<Opened, String> {
     let mut info = Info { id: id_for(path), source: path.to_string(), ..Default::default() };
     let p = Path::new(path);
     let ext = p.extension().map(|e| e.to_string_lossy().to_ascii_lowercase()).unwrap_or_default();
-    let mut o = Opened { info: Info::default(), dvd: None, sectors: None, toc: None, urls: Mutex::new(Vec::new()) };
+    let mut o = Opened { info: Info::default(), dvd: None, sectors: None, toc: None, urls: Mutex::new(Vec::new()), interlaced: Mutex::new(Default::default()) };
     let fin = |mut o: Opened, info: Info| { o.info = info; Ok(o) };
 
     if path.starts_with("/dev/") {
@@ -309,6 +314,8 @@ pub struct Plan {
     pub duration: f64,
     /// Seeking starts a new stream (DVD, VCD); else the web view seeks by itself (audio CD).
     pub restart: bool,
+    /// The title is interlaced and is smoothed out (encoded again) while it plays.
+    pub deinterlaced: bool,
 }
 
 /// Plays title (DVD) or track (CD, VCD) `n` from `at` seconds.
@@ -321,13 +328,14 @@ pub fn play(o: &Opened, server: &Server, ffmpeg: Option<&str>, encoders: &[Strin
             let t = o.info.titles.iter().find(|t| t.n == n).ok_or("That title isn't on the disc.")?;
             let ff = ffmpeg.ok_or("Playing DVDs needs ffmpeg, which isn't installed.")?;
             let (from, start) = dvd::seek_point(io.as_ref(), t, at);
+            let inter = { let known = o.interlaced.lock().unwrap().get(&n).copied(); known.unwrap_or_else(|| { let v = dvd::title_interlaced(io.clone(), t); o.interlaced.lock().unwrap().insert(n, v); v }) };
             let mut tf = dvd::TitleFile::new(io, t, from);
             if let Some(id) = sub { tf = tf.with_subtitle(id); }
             let vurl = server.virtual_url(Arc::new(tf), &format!("title-{n}.vob"));
-            let args = stream_args(&StreamOpts { input: vurl.clone(), audio, sub, palette: t.palette.clone(), size: (t.width, t.height), reencode, encoders: encoders.to_vec() });
+            let args = stream_args(&StreamOpts { input: vurl.clone(), audio, sub, palette: t.palette.clone(), size: (t.width, t.height), reencode: reencode || inter, encoders: encoders.to_vec() });
             let url = server.live_url(Live { program: ff.into(), args, mime: "video/x-matroska".into() }, &format!("Title {n}.mkv"));
             urls.extend([vurl, url.clone()]);
-            Plan { url, start, duration: t.duration, restart: true }
+            Plan { url, start, duration: t.duration, restart: true, deinterlaced: inter }
         }
         "vcd" | "svcd" => {
             let src = o.sectors.clone().ok_or("The disc isn't open.")?;
@@ -339,14 +347,14 @@ pub fn play(o: &Opened, server: &Server, ffmpeg: Option<&str>, encoders: &[Strin
             let args = stream_args(&StreamOpts { input: vurl.clone(), audio: None, sub: None, reencode, encoders: encoders.to_vec(), ..Default::default() });
             let url = server.live_url(Live { program: ff.into(), args, mime: "video/x-matroska".into() }, &format!("Part {n}.mkv"));
             urls.extend([vurl, url.clone()]);
-            Plan { url, start: t.duration * frac, duration: t.duration, restart: true }
+            Plan { url, start: t.duration * frac, duration: t.duration, restart: true, deinterlaced: false }
         }
         "audio-cd" => {
             let src = o.sectors.clone().ok_or("The CD isn't open.")?;
             let t = o.info.tracks.iter().find(|t| t.n == n).ok_or("That track isn't on the CD.")?;
             let url = server.virtual_url(Arc::new(WavTrack { src, start: t.start, sectors: t.sectors }), &format!("Track {n}.wav"));
             urls.push(url.clone());
-            Plan { url, start: 0.0, duration: t.duration, restart: false }
+            Plan { url, start: 0.0, duration: t.duration, restart: false, deinterlaced: false }
         }
         _ => return Err(if o.info.note.is_empty() { "There's nothing on this disc to play here.".into() } else { o.info.note.clone() }),
     };

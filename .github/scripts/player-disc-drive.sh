@@ -24,12 +24,18 @@ wait_pos() { local p; for i in $(seq 45); do p=$(pos); [ "${p:-0}" -gt "$1" ] 2>
 result() { echo "RESULT $1: $2"; }
 key() { front; xdotool key "$@"; }
 
-# ---- DVD: its screen, play the film, seek, sound tracks, the disc menu over the film.
+# ---- DVD: its own menu first (libdvdnav: move, press "Play the film"), then playing, a seek, sound tracks, the
+# titles list over the film; then the titles list on its own (B from the menu).
+cpu() { local s=0 x; for x in $pid $(pgrep -P "$pid"); do s=$((s + $(awk '{print $14 + $15}' "/proc/$x/stat" 2>/dev/null || echo 0))); done; echo $s; }
+rest() { local a b; sleep 3; a=$(cpu); sleep 10; b=$(cpu); awk -v a="$a" -v b="$b" -v hz="$(getconf CLK_TCK)" 'BEGIN { printf "%.2f %% of a core", (b - a) / hz / 10 * 100 }'; }
 if [ -f "$d/hearth-test.iso" ]; then
   start dvd --disc "$d/hearth-test.iso"
-  shot disc-dvd 2
+  shot disc-dvd-own-menu 4
+  result "CPU at rest (the DVD's own menu, a still picture, 10 s)" "$(rest)"
+  key Down; shot disc-dvd-own-menu-down 2
+  key Up; sleep 1
   key Return
-  if p=$(wait_pos 2000000); then result "DVD plays" "yes (at ${p} µs)"; else result "DVD plays" "NO (position $p)"; fails=$((fails + 1)); tail -30 run-dvd.log; fi
+  if p=$(wait_pos 2000000); then result "DVD menu: Play the film" "plays (at ${p} µs)"; else result "DVD menu: Play the film" "NO (position $p)"; fails=$((fails + 1)); tail -30 run-dvd.log; fi
   shot disc-dvd-playing 2
   key l
   # Past 14.5 s means the stream started again near 13 s and played on (the time shown while it starts doesn't count).
@@ -37,6 +43,9 @@ if [ -f "$d/hearth-test.iso" ]; then
   key a; shot disc-dvd-sound 2
   key Escape; sleep 1
   key d; shot disc-dvd-menu 2
+  stop
+  start dvd2 --disc "$d/hearth-test.iso"
+  sleep 2; key Escape; shot disc-dvd 2
   stop
 fi
 

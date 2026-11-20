@@ -12,7 +12,7 @@ const SRC = fs.readFileSync(path.join(__dirname, '../../../ui/pad/hearth-gamepad
 
 function page() {
   let t = 0;
-  const listeners = {}, docListeners = {}, frames = [], intervals = [], body = [];
+  const listeners = {}, docListeners = {}, frames = [], intervals = [], body = [], timeouts = [];
   const storage = {};
   const pad = { id: 'Xbox Wireless Controller', index: 0, mapping: 'standard', connected: true, timestamp: 0,
     buttons: Array.from({ length: 17 }, () => ({ pressed: false, touched: false, value: 0 })), axes: [0, 0, 0, 0] };
@@ -37,7 +37,7 @@ function page() {
     requestAnimationFrame: f => { if (!env.rafOn) return 0; frames.push(f); return frames.length; },
     cancelAnimationFrame: () => {},
     setInterval: f => { intervals.push(f); return intervals.length; },
-    setTimeout: () => 0,
+    setTimeout: (f, ms) => { timeouts.push({ f, ms }); return timeouts.length; },
     addEventListener: (n, f) => { (listeners[n] = listeners[n] || []).push(f); },
     console: { error() { env.errors = (env.errors || 0) + 1; } },
   };
@@ -45,6 +45,10 @@ function page() {
   vm.runInNewContext(SRC, win);
   env.G = win.HearthGamepad;
   env.storage = storage;
+  env.frames = frames;
+  env.timeouts = timeouts;
+  // Runs the waiting timers of `ms` (the 10-a-second look at rest).
+  env.runTimeouts = (ms) => { t += ms; const due = timeouts.filter(x => x.ms === ms); timeouts.splice(0, timeouts.length, ...timeouts.filter(x => x.ms !== ms)); due.forEach(x => x.f()); };
   env.body = body;
   // One frame: time moves on 16 ms, pending rAF callbacks run (or, with rAF stopped, the 100 ms timer does).
   env.frame = (ms = 16) => {
@@ -187,4 +191,34 @@ test('no note in an app the controller was never used in', () => {
   env.G.loop(() => env.G.pads());
   env.frame(); env.frame(3000);
   assert.strictEqual(env.body.length, 0);
+});
+
+test('at rest without a controller no frames are asked for; one connecting brings them back', () => {
+  const env = page();
+  let n = 0;
+  env.G.loop(() => { n++; });
+  for (let i = 0; i < 200; i++) env.frame();        // 3.2 s: past the first seconds
+  const before = n;
+  for (let i = 0; i < 60; i++) env.frame();
+  assert.strictEqual(n, before, 'nothing runs at rest');
+  assert.strictEqual(env.frames.length, 0, 'no frame asked for');
+  env.connect(); env.fire('gamepadconnected');
+  env.frame();
+  assert.ok(n > before, 'back to every frame');
+});
+
+test('a controller there but untouched is looked at 10 times a second, and a press brings frames back', () => {
+  const env = page();
+  env.connect();
+  let n = 0;
+  env.G.loop(() => { n++; env.G.pads(); });
+  for (let i = 0; i < 200; i++) env.frame();
+  assert.strictEqual(env.frames.length, 0, 'no frames asked for while untouched');
+  assert.ok(env.timeouts.some(x => x.ms === 100), 'a 100 ms look instead');
+  const before = n;
+  env.runTimeouts(100);
+  assert.strictEqual(n, before + 1);
+  env.press(0, true);
+  env.runTimeouts(100);
+  assert.ok(env.frames.length > 0, 'a press: every frame again');
 });

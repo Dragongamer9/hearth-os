@@ -17,6 +17,8 @@ pub mod disc;
 pub mod discplay;
 #[cfg(target_os = "linux")]
 pub mod dvd;
+#[cfg(target_os = "linux")]
+pub mod dvdnav;
 pub mod media;
 pub mod net;
 pub mod server;

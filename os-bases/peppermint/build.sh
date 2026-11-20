@@ -593,6 +593,10 @@ UNIT
     || { mkdir -p /etc/systemd/user/default.target.wants && ln -sf /usr/lib/systemd/user/hearth-time.service /etc/systemd/user/default.target.wants/hearth-time.service; }
 fi
 # ---- end of Hearth Time
+# The "a disc was inserted" notice for Hearth Player (hearth-disc-notify, asleep on udev; docs/PLAYER-DISCS.md); its
+# unit only starts where Hearth Player is installed.
+install -d /usr/lib/systemd/user/default.target.wants
+ln -sf ../hearth-disc-notify.service /usr/lib/systemd/user/default.target.wants/hearth-disc-notify.service
 # ---- Hearth Tools (hosts/hearth-tools): Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers &
 # Scanner and Welcome & Tips in one program (/usr/bin/hearth-tools --app NAME), built with the app (base-peppermint.yml)
 # and carried in os/nimbus-app/hearth-tools/ with its menu entries (hearth-*.desktop; their icons come with Hearth's icon set). What the

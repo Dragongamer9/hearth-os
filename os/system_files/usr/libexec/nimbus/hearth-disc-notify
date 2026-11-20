@@ -1,0 +1,240 @@
+#!/usr/bin/python3
+"""hearth-disc-notify: "A disc was inserted", with Play disc and Eject, wherever Hearth shows notices.
+
+A small user service (hearth-disc-notify.service). It waits on udev's netlink socket (it sleeps in the kernel until a
+disc goes in or comes out: nothing is checked over and over) and sends a desktop notification with two buttons. That
+reaches every place Hearth shows notices: Mantel's and Firehold's notifications (hearth-notifyd), Plasma's, and in Steam
+Game Mode the Hearth Link plugin's toasts (hearth-discord's notify-bridge passes the buttons on; the toast plays the
+disc, and Quick Access › Hearth Link has both buttons). Pressing a button sends ActionInvoked back here:
+  Play disc  hearth-player --disc /dev/srN        Eject  the desktop lets go of it (udisks), then the tray opens.
+While Hearth Player is open it says so itself, so nothing is sent then. Blank discs say nothing.
+docs/PLAYER-DISCS.md.
+
+  hearth-disc-notify            run (the service)
+  hearth-disc-notify --once     wait for one disc event, print what would be said (tests)
+"""
+import json
+import os
+import shutil
+import socket
+import subprocess
+import sys
+
+NAMES = {'dvd': 'DVD film', 'vcd': 'Video CD', 'svcd': 'Super Video CD', 'audio-cd': 'Music CD', 'bluray': 'Blu-ray disc',
+         'data': 'Data disc'}
+IFACE = 'org.freedesktop.Notifications'
+PATH = '/org/freedesktop/Notifications'
+
+
+def parse_uevent(b):
+    """A uevent's properties: udev's (a "libudev" header first) or the kernel's ("ACTION@path")."""
+    if b.startswith(b'libudev\0') and len(b) >= 24:
+        off = int.from_bytes(b[16:20], sys.byteorder)
+        ln = int.from_bytes(b[20:24], sys.byteorder)
+        b = b[off:off + ln]
+    out = {}
+    for kv in b.split(b'\0'):
+        k, sep, v = kv.partition(b'=')
+        if sep:
+            out[k.decode('utf-8', 'replace')] = v.decode('utf-8', 'replace')
+    return out
+
+
+def drive_of(p):
+    """The CD/DVD drive an event is about, else None."""
+    if p.get('SUBSYSTEM') != 'block':
+        return None
+    name = p.get('DEVNAME', '')
+    dev = name if name.startswith('/dev/') else '/dev/' + name
+    return dev if dev.startswith('/dev/sr') else None
+
+
+def iso_root_names(dev):
+    """The names in a data disc's top folder (ISO 9660) and its volume name."""
+    try:
+        with open(dev, 'rb', buffering=0) as f:
+            f.seek(16 * 2048)
+            pvd = f.read(2048)
+            if len(pvd) < 2048 or pvd[0] != 1 or pvd[1:6] != b'CD001':
+                return [], ''
+            label = pvd[40:72].decode('latin-1').strip()
+            lba = int.from_bytes(pvd[158:162], 'little')
+            size = min(int.from_bytes(pvd[166:170], 'little'), 64 * 2048)
+            f.seek(lba * 2048)
+            data = f.read(-(-size // 2048) * 2048)
+    except OSError:
+        return [], ''
+    names = []
+    for off in range(0, len(data), 2048):
+        sec, i = data[off:off + 2048], 0
+        while i + 33 < len(sec) and sec[i]:
+            nl = sec[i + 32]
+            if nl and not (nl == 1 and sec[i + 33] <= 1):
+                names.append(sec[i + 33:i + 33 + nl].decode('latin-1').split(';')[0].rstrip('.').upper())
+            i += sec[i]
+    return names, label
+
+
+def kind_of(props, dev, read_root=iso_root_names):
+    """(kind, label) of the disc the event says is in the drive; ('', '') when there's none (or a blank one)."""
+    if props.get('ID_CDROM_MEDIA') != '1' or props.get('ID_CDROM_MEDIA_STATE') == 'blank':
+        return '', ''
+    label = props.get('ID_FS_LABEL', '')
+    if any(k.startswith('ID_CDROM_MEDIA_BD') for k in props):
+        return 'bluray', label
+    if int(props.get('ID_CDROM_MEDIA_TRACK_COUNT_AUDIO') or 0) > 0:
+        return 'audio-cd', label
+    names, vol = read_root(dev)
+    kind = 'dvd' if 'VIDEO_TS' in names else 'svcd' if 'MPEG2' in names and ('SVCD' in names or 'EXT' in names) \
+        else 'vcd' if 'MPEGAV' in names else 'bluray' if 'BDMV' in names else 'data'
+    return kind, label or vol
+
+
+def pretty(label):
+    label = (label or '').strip()
+    if label and label.isupper():
+        return ' '.join(w.capitalize() for w in label.replace('_', ' ').split())
+    return label
+
+
+def message(kind, label):
+    """What the notice says, and its buttons ([key, label, ...] as the notification spec has them)."""
+    what = NAMES.get(kind, 'Disc')
+    body = (pretty(label) + ' · ' + what) if label else what
+    if kind == 'bluray':
+        return 'A disc was inserted', body + '. Blu-ray discs don\'t play in Hearth Player.', ['eject', 'Eject']
+    if kind == 'data':
+        return 'A disc was inserted', body, ['play', 'Show its files', 'eject', 'Eject']
+    return 'A disc was inserted', body, ['play', 'Play disc', 'eject', 'Eject']
+
+
+def eject(dev):
+    try:
+        with open('/proc/mounts') as f:
+            mounted = any(l.split()[0] == dev for l in f if l.strip())
+    except OSError:
+        mounted = False
+    if mounted and shutil.which('udisksctl'):
+        subprocess.run(['udisksctl', 'unmount', '-b', dev, '--no-user-interaction'], capture_output=True, timeout=30)
+    if shutil.which('eject'):
+        subprocess.run(['eject', dev], capture_output=True, timeout=30)
+
+
+def play(dev):
+    prog = shutil.which('hearth-player') or '/usr/bin/hearth-player'
+    try:
+        subprocess.Popen([prog, '--disc', dev], stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True)
+    except OSError:
+        pass
+
+
+def netlink():
+    s = socket.socket(socket.AF_NETLINK, socket.SOCK_DGRAM | socket.SOCK_CLOEXEC, 15)   # NETLINK_KOBJECT_UEVENT
+    for group in (2, 1):   # udev's events (with ID_CDROM_MEDIA), else the kernel's
+        try:
+            s.bind((0, group))
+            return s
+        except OSError:
+            continue
+    s.close()
+    raise OSError('no uevent socket')
+
+
+class Notifier:
+    def __init__(self):
+        from gi.repository import Gio, GLib
+        self.Gio, self.GLib = Gio, GLib
+        self.bus = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        self.state = {}     # drive -> (kind, label) last seen
+        self.shown = {}     # notification id -> drive
+        self.bus.signal_subscribe(None, IFACE, 'ActionInvoked', PATH, None, Gio.DBusSignalFlags.NONE, self.on_action, None)
+        self.bus.signal_subscribe(None, IFACE, 'NotificationClosed', PATH, None, Gio.DBusSignalFlags.NONE, self.on_closed, None)
+
+    def player_open(self):
+        try:
+            r = self.bus.call_sync('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'ListNames', None, None,
+                                   self.Gio.DBusCallFlags.NONE, 3000, None)
+            return any(n.startswith('org.mpris.MediaPlayer2.HearthPlayer') for n in r.unpack()[0])
+        except Exception:
+            return False
+
+    def notify(self, dev, kind, label):
+        GLib = self.GLib
+        summary, body, actions = message(kind, label)
+        hints = {'desktop-entry': GLib.Variant('s', 'hearth-player'), 'x-hearth-disc': GLib.Variant('s', dev), 'urgency': GLib.Variant('y', 1)}
+        old = next((i for i, d in self.shown.items() if d == dev), 0)
+        try:
+            r = self.bus.call_sync('org.freedesktop.Notifications', PATH, IFACE, 'Notify',
+                                   GLib.Variant('(susssasa{sv}i)', ('Hearth Player', old, 'media-optical', summary, body, actions, hints, 20000)),
+                                   None, self.Gio.DBusCallFlags.NONE, 5000, None)
+            self.shown[r.unpack()[0]] = dev
+        except Exception as e:   # nobody shows notifications right now: fine
+            print('hearth-disc-notify: no notice shown (%s)' % type(e).__name__, file=sys.stderr, flush=True)
+
+    def close(self, dev):
+        for nid, d in list(self.shown.items()):
+            if d == dev:
+                try:
+                    self.bus.call_sync('org.freedesktop.Notifications', PATH, IFACE, 'CloseNotification', self.GLib.Variant('(u)', (nid,)),
+                                       None, self.Gio.DBusCallFlags.NONE, 3000, None)
+                except Exception:
+                    pass
+                self.shown.pop(nid, None)
+
+    def on_action(self, _conn, _sender, _path, _iface, _sig, params, _data):
+        nid, key = params.unpack()
+        dev = self.shown.get(nid)
+        if not dev:
+            return
+        if key == 'play':
+            play(dev)
+        elif key == 'eject':
+            eject(dev)
+        self.close(dev)
+
+    def on_closed(self, _conn, _sender, _path, _iface, _sig, params, _data):
+        self.shown.pop(params.unpack()[0], None)
+
+    def event(self, props):
+        dev = drive_of(props)
+        if not dev:
+            return
+        now = kind_of(props, dev) if props.get('ACTION') != 'remove' else ('', '')
+        before = self.state.get(dev, ('', ''))
+        self.state[dev] = now
+        if now[0] and now != before:
+            if not self.player_open():
+                self.notify(dev, *now)
+        elif not now[0] and before[0]:
+            self.close(dev)
+
+    def run(self):
+        s = netlink()
+        GLib = self.GLib
+
+        def readable(_fd, _cond):
+            try:
+                self.event(parse_uevent(s.recv(16384)))
+            except OSError:
+                pass
+            return True
+        GLib.io_add_watch(s.fileno(), GLib.PRIORITY_DEFAULT, GLib.IO_IN, readable)
+        GLib.MainLoop().run()
+
+
+def main(argv):
+    if '--once' in argv:
+        s = netlink()
+        while True:
+            p = parse_uevent(s.recv(16384))
+            dev = drive_of(p)
+            if dev:
+                print(json.dumps({'drive': dev, 'disc': kind_of(p, dev)}), flush=True)
+                return 0
+    Notifier().run()
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

@@ -29,6 +29,8 @@
         <div class="acts-row"><button class="btn primary f" data-act="goOpen">Open files</button><button class="btn f" data-act="playDisc" id="playDiscBtn" hidden><span data-i="disc"></span> Play disc</button></div>
         <p class="dim" id="discHere" hidden></p>
       </div>
+      <!-- A DVD's own menu (libdvdnav): its picture as JPEG frames, and its buttons drawn over it. -->
+      <div class="dvdmenu" id="dvdmenu" hidden><div class="menu-box" id="menuBox"><img id="menuPic" alt="The disc's menu"><div class="menu-btns" id="menuBtns"></div></div></div>
       <!-- A disc: its titles and chapters (DVD), parts (Video CD) or songs (music CD), or why it can't play. -->
       <div class="disc" id="disc" hidden>
         <div class="disc-side">

@@ -14,7 +14,7 @@ import {
 import { HearthOnly, hearthOs } from "./hearth-only";
 import { StorageInfo, deckyInstall, fetchPlugin, games, getStatus, getStorage, linkCall, restartSteam, setSync, startLink, steamCanRestart, syncInfo,
   homeServer, homeServerLight, homeServerResume } from "./link";
-import { DiscordQuick, discordOpen, discordSet, discordSetup, discordStatus, discordToasts } from "./link";
+import { DiscordQuick, Toast, discordOpen, discordSet, discordSetup, discordStatus, discordToasts, notificationAction } from "./link";
 import { ServerShort, servers } from "./link";
 
 const warn = { color: "#ffb37a" };
@@ -465,17 +465,49 @@ function DiscordSection() {
 /** Discord's notifications (and other apps') while Steam Game Mode runs, as Decky toasts: the backend's notification
  *  bridge collects them; only what each notification itself says. */
 let toastSeq = 0;
+// The newest notification with buttons (Hearth Player's "A disc was inserted": Play disc, Eject), for Quick Access.
+let withButtons: Toast | null = null;
+const buttonWatchers = new Set<() => void>();
+function setWithButtons(t: Toast | null) { withButtons = t; buttonWatchers.forEach((f) => f()); }
+async function press(t: Toast, key: string) {
+  await notificationAction(t.id ?? 0, key).catch(() => null);
+  if (withButtons === t) setWithButtons(null);
+}
 function startToasts(): () => void {
   let first = true;
   const t = setInterval(async () => {
     const list = await discordToasts(toastSeq).catch(() => []);
     for (const n of list || []) {
       toastSeq = Math.max(toastSeq, n.seq);
-      if (!first) { try { toaster.toast({ title: n.title || n.app, body: n.body || n.app }); } catch { /* Decky has no toaster */ } }
+      const acts = n.actions || [];
+      if (acts.length && n.id) setWithButtons(n);
+      if (!first) {
+        // A toast with buttons does the first one when pressed (Play disc); all of them are in Quick Access too.
+        const body = acts.length ? `${n.body || n.app} · Press to ${acts[0][1].toLowerCase()} (Quick Access › Hearth Link: ${acts.map((a) => a[1]).join(", ")})` : (n.body || n.app);
+        try { toaster.toast({ title: n.title || n.app, body, onClick: acts.length ? () => { press(n, acts[0][0]); } : undefined }); } catch { /* Decky has no toaster */ }
+      }
     }
     first = false;
   }, 3000);
   return () => clearInterval(t);
+}
+
+/** Quick Access › Hearth Link: the newest notification that has buttons (a disc that went in: Play disc, Eject). */
+function NoticeButtons() {
+  const [, redraw] = useState(0);
+  useEffect(() => { const f = () => redraw((x) => x + 1); buttonWatchers.add(f); return () => { buttonWatchers.delete(f); }; }, []);
+  const t = withButtons;
+  if (!t || !(t.actions || []).length) return null;
+  return (
+    <PanelSection title={t.title || t.app}>
+      <Line>{t.body}</Line>
+      {(t.actions || []).map(([key, label]) => (
+        <PanelSectionRow key={key}>
+          <ButtonItem layout="below" onClick={() => press(t, key)}>{label}</ButtonItem>
+        </PanelSectionRow>
+      ))}
+    </PanelSection>
+  );
 }
 // ---- end Discord
 
@@ -486,7 +518,7 @@ export default definePlugin(() => {
   return {
     name: "Hearth Link",
     titleView: <div className={staticClasses.Title}>Hearth Link</div>,
-    content: <HearthOnly name="Hearth Link" what="Your saves, plugins and settings on every Hearth device."><Guard><HomeServer /></Guard><Guard><YourServers /></Guard><Panel /><Guard><DiscordSection /></Guard></HearthOnly>,
+    content: <HearthOnly name="Hearth Link" what="Your saves, plugins and settings on every Hearth device."><NoticeButtons /><Guard><HomeServer /></Guard><Guard><YourServers /></Guard><Panel /><Guard><DiscordSection /></Guard></HearthOnly>,
     icon: <FaNetworkWired />,
     onDismount() { gone = true; if (stop) stop(); },
   };

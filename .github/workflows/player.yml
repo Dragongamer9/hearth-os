@@ -48,12 +48,13 @@ jobs:
           ffmpeg -hide_banner -version | head -1
       - name: What discs are read with, and what makes the fixture discs (libdvdread, dvdauthor, genisoimage, vcdimager)
         run: |
+          for p in libdvdnav4 libdvdnav4t64; do timeout 300 sudo apt-get -o Acquire::Retries=3 install -y -qq "$p" >/dev/null 2>&1 && { echo "$p installed"; break; }; done
           for p in libdvdread8t64 libdvdread8; do timeout 300 sudo apt-get -o Acquire::Retries=3 install -y -qq "$p" >/dev/null 2>&1 && { echo "$p installed"; break; }; done
           timeout 600 sudo apt-get -o Acquire::Retries=3 install -y -qq dvdauthor genisoimage vcdimager fonts-dejavu-core >/dev/null || echo "::warning title=Disc tools::some couldn't be installed"
       - name: Fixture discs
         run: |
           bash "$GITHUB_WORKSPACE/.github/scripts/player-disc-fixtures.sh" "$RUNNER_TEMP/discs" 2>&1 | tee discs.log
-          echo "::notice title=Fixture discs::$(grep -E '^(made|locked|subtitles|DVD|VCD):' discs.log | tr '\n' ' ')"
+          echo "::notice title=Fixture discs::$(grep -E '^(made|locked|subtitles|menu|DVD|VCD):' discs.log | tr '\n' ' ')"
       - name: Unit tests and the edits with ffmpeg
         env:
           HEARTH_DISC_FIXTURES: ${{ runner.temp }}/discs

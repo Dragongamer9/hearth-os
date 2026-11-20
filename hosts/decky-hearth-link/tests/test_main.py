@@ -316,6 +316,32 @@ class DiscordQuickAccess(unittest.TestCase):
         self.assertEqual([t['body'] for t in self.m.toasts_since(last - 2)], ['msg 23', 'msg 24'])
         self.assertEqual(self.m.toasts_since('bad')[0]['body'], 'msg 5')
 
+    def test_notice_buttons(self):
+        # Hearth Player's "A disc was inserted": its buttons come with the toast, a press goes to the bridge, and a
+        # notification taken back (the disc came out) loses them.
+        import asyncio
+        self.m.TOASTS.clear()
+        t = self.m.toast_take(json.dumps({'id': 7, 'app': 'Hearth Player', 'title': 'A disc was inserted', 'body': 'Film · DVD film',
+                                          'actions': [['play', 'Play disc'], ['eject', 'Eject'], ['bad key!', 'x']]}))
+        self.assertEqual(t['actions'], [['play', 'Play disc'], ['eject', 'Eject']])
+        sent = []
+
+        class Stdin:
+            def write(self, b): sent.append(b)
+            async def drain(self): pass
+
+        class Bridge:
+            stdin = Stdin()
+        plugin = self.m.Plugin()
+        plugin._bridge = Bridge()
+        self.assertEqual(asyncio.run(plugin.notification_action(7, 'format')), {'ok': False}, 'only its own buttons')
+        self.assertEqual(asyncio.run(plugin.notification_action(7, 'play')), {'ok': True})
+        self.assertEqual(sent, [b'action 7 play\n'])
+        self.assertEqual(self.m.TOASTS[-1]['actions'], [], 'pressed once')
+        self.m.toast_take(json.dumps({'id': 8, 'app': 'Hearth Player', 'title': 'A disc was inserted', 'body': 'x', 'actions': [['eject', 'Eject']]}))
+        self.assertIsNone(self.m.toast_take(json.dumps({'closed': 8})))
+        self.assertEqual(self.m.TOASTS[-1]['actions'], [])
+
 
 if __name__ == '__main__':
     unittest.main()

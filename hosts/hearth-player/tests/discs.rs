@@ -79,6 +79,48 @@ fn fixture_discs() {
         } else { println!("the fixture has no subtitles (spumux couldn't make them)"); }
     }
 
+    // Interlaced: title 2 is (and is smoothed out while it plays), title 1 isn't (played as it is).
+    let p1 = discplay::play(&d, &server, tools.ffmpeg.as_deref(), &tools.encoders, 1, 0.0, None, None, false).unwrap();
+    let p2 = discplay::play(&d, &server, tools.ffmpeg.as_deref(), &tools.encoders, 2, 0.0, None, None, false).unwrap();
+    assert!(!p1.deinterlaced, "title 1 is progressive");
+    assert!(p2.deinterlaced, "title 2 is interlaced");
+    if tools.ffmpeg.is_some() { assert_eq!(first_bytes(&p2.url, 4), vec![0x1A, 0x45, 0xDF, 0xA3], "the interlaced title, smoothed out"); }
+
+    // The disc's own menu (libdvdnav): its buttons, its picture as JPEG frames, and a button that plays a title.
+    if dir.join("menu.made").exists() && hearth_player::dvdnav::have_dvdnav() {
+        use hearth_player::dvdnav::{menu_args, MenuSession};
+        use std::sync::{Arc, Mutex};
+        assert!(i.menu, "the disc's menu can run");
+        let seen: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
+        let s2 = seen.clone();
+        let m = MenuSession::open(&dir.join("hearth-test.iso"), Box::new(move |v| s2.lock().unwrap().push(v))).expect("the menu starts");
+        let st = m.state();
+        println!("menu: {:?}", st);
+        assert_eq!(st.buttons.len(), 2, "two buttons");
+        assert!((st.buttons[0].y0 as i32 - 300).abs() <= 2 && (st.buttons[1].y0 as i32 - 370).abs() <= 2, "{:?}", st.buttons);
+        if let Some(ff) = tools.ffmpeg.as_deref() {
+            let vurl = server.stream_url(m.clone(), "menu.vob");
+            let url = server.live_url(hearth_player::server::Live { program: ff.into(), args: menu_args(&vurl, &m.palette(), m.spu()), mime: "multipart/x-mixed-replace;boundary=ffmpeg".into() }, "menu.mjpeg");
+            let head = first_bytes(&url, 120);
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            assert!(String::from_utf8_lossy(&head).contains("image/jpeg"), "the menu's picture comes as JPEG frames: {:?}; ffmpeg said: {}", String::from_utf8_lossy(&head), hearth_player::server::last_stream_error());
+        }
+        // Down to "Title 2", press it: the disc goes on to title 2 and the page is told.
+        let m2 = m.clone();
+        let t = std::thread::spawn(move || { let _ = m2.stream(&mut std::io::sink()); });
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        assert_eq!(m.command("down", 0, 0).selected, 2, "down picks the second button");
+        m.command("activate", 0, 0);
+        let mut played = None;
+        for _ in 0..100 {
+            if let Some(v) = seen.lock().unwrap().iter().find(|v| v.get("play").is_some()) { played = Some(v["play"]["title"].as_i64().unwrap_or(0)); break; }
+            std::thread::sleep(std::time::Duration::from_millis(100));
+        }
+        m.stop();
+        let _ = t.join();
+        assert_eq!(played, Some(2), "the button played title 2: {:?}", seen.lock().unwrap());
+    } else { println!("no menu test (menu made: {}, libdvdnav: {})", dir.join("menu.made").exists(), hearth_player::dvdnav::have_dvdnav()); }
+
     // Locked.
     let l = open(dir.join("hearth-locked.iso"));
     assert_eq!(l.info.kind, "dvd");

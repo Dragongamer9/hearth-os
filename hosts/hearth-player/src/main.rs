@@ -38,6 +38,9 @@ struct App {
     mpris: tokio::sync::OnceCell<Option<hearth_player::mpris::Mpris>>,
     #[cfg(target_os = "linux")]
     discs: Mutex<HashMap<String, Arc<hearth_player::discplay::Opened>>>,
+    /// The DVD menu running (one at a time): the disc's id and its session.
+    #[cfg(target_os = "linux")]
+    menu: Mutex<Option<(String, Arc<hearth_player::dvdnav::MenuSession>)>>,
 }
 
 fn err<E: std::fmt::Display>(e: E) -> String { e.to_string() }
@@ -364,6 +367,62 @@ fn disc_play(app: tauri::State<Arc<App>>, id: String, n: u32, at: Option<f64>, a
     { let _ = (app, id, n, at, audio, sub, reencode); Err("Discs play on Hearth OS (Linux) for now.".into()) }
 }
 
+/// Starts (or, with `again`, restarts the picture of) the disc's own DVD menu: libdvdnav runs it, ffmpeg turns its
+/// picture into JPEG frames. The menu's buttons come back as "player://dvdmenu" events, and so does the title a button
+/// plays. An error means the disc's menu can't run (the titles screen stands in).
+#[tauri::command(async)]
+fn disc_menu_start(handle: tauri::AppHandle, app: tauri::State<Arc<App>>, id: String, again: Option<bool>) -> Result<Value, String> {
+    #[cfg(target_os = "linux")]
+    {
+        use hearth_player::dvdnav::{menu_args, MenuSession};
+        let o = app.discs.lock().unwrap().get(&id).cloned().ok_or("The disc isn't open any more.")?;
+        if !o.info.menu { return Err("This disc's own menu can't run here.".into()); }
+        let ff = app.tools.lock().unwrap().ffmpeg.clone().ok_or("The disc's menu needs ffmpeg, which isn't installed.")?;
+        let mut cur = app.menu.lock().unwrap();
+        let reuse = again.unwrap_or(false) && cur.as_ref().map(|(i, _)| *i == id).unwrap_or(false);
+        let session = if reuse {
+            let s = cur.as_ref().unwrap().1.clone();
+            s.stop();
+            s
+        } else {
+            if let Some((_, s)) = cur.take() { s.stop(); }
+            let h = handle.clone();
+            let s = MenuSession::open(Path::new(&o.info.source), Box::new(move |v| { let _ = h.emit("player://dvdmenu", v); }))
+                .map_err(|e| format!("The disc's menu didn't start: {e}"))?;
+            *cur = Some((id.clone(), s.clone()));
+            s
+        };
+        drop(cur);
+        let vurl = app.server.stream_url(session.clone(), "menu.vob");
+        let url = app.server.live_url(hearth_player::server::Live { program: ff, args: menu_args(&vurl, &session.palette(), session.spu()), mime: "multipart/x-mixed-replace;boundary=ffmpeg".into() }, "menu.mjpeg");
+        Ok(json!({"url": url, "menu": session.state()}))
+    }
+    #[cfg(not(target_os = "linux"))]
+    { let _ = (handle, app, id, again); Err("Not here".into()) }
+}
+
+/// A move or press in the disc's menu: up, down, left, right, activate, hover/click (x, y on the menu's picture),
+/// root, title.
+#[tauri::command(async)]
+fn disc_menu_cmd(app: tauri::State<Arc<App>>, cmd: String, x: Option<i32>, y: Option<i32>) -> Result<Value, String> {
+    #[cfg(target_os = "linux")]
+    {
+        let s = app.menu.lock().unwrap().as_ref().map(|(_, s)| s.clone()).ok_or("The disc's menu isn't running.")?;
+        Ok(json!(s.command(&cmd, x.unwrap_or(0), y.unwrap_or(0))))
+    }
+    #[cfg(not(target_os = "linux"))]
+    { let _ = (app, cmd, x, y); Err("Not here".into()) }
+}
+
+/// Leaves the disc's menu (it stops reading the disc).
+#[tauri::command(async)]
+fn disc_menu_stop(app: tauri::State<Arc<App>>) {
+    #[cfg(target_os = "linux")]
+    if let Some((_, s)) = app.menu.lock().unwrap().take() { s.stop(); }
+    #[cfg(not(target_os = "linux"))]
+    let _ = app;
+}
+
 /// An audio CD's names from the internet (MusicBrainz, then CDDB).
 #[tauri::command(async)]
 fn disc_names(app: tauri::State<Arc<App>>, id: String) -> Result<Value, String> {
@@ -499,6 +558,8 @@ fn main() {
         mpris: tokio::sync::OnceCell::new(),
         #[cfg(target_os = "linux")]
         discs: Mutex::new(HashMap::new()),
+        #[cfg(target_os = "linux")]
+        menu: Mutex::new(None),
     });
 
     tauri::Builder::default().plugin(apptheme::plugin())
@@ -507,7 +568,8 @@ fn main() {
             init, open_paths, folder_tracks, list_dir, media_url, proxy_url, probe, subtitle_vtt, subtitle_file_vtt, art_url,
             tags_read, tags_write, store_get, store_set, keep_awake, now_playing, fullscreen, set_title, net_get, save_frame,
             job_cancel, edit_plan, edit_start, prepare_start, download_start, delete_download, save_playlist, file_exists, quit,
-            disc_drives, disc_open, disc_play, disc_names, disc_eject, dvd_decoding, dvd_decoding_change
+            disc_drives, disc_open, disc_play, disc_names, disc_eject, dvd_decoding, dvd_decoding_change,
+            disc_menu_start, disc_menu_cmd, disc_menu_stop
         ])
         .setup(move |a| {
             let w = WebviewWindowBuilder::new(a, "main", WebviewUrl::App("index.html".into()))

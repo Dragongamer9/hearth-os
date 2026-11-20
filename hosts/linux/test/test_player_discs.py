@@ -100,6 +100,43 @@ class PlasmaAndDesktop(unittest.TestCase):
         self.assertIn('[Desktop Action disc]', entry)
 
 
+class DiscNotice(unittest.TestCase):
+    """hearth-disc-notify: the "A disc was inserted" notice with Play disc and Eject (udev events, never polling)."""
+    def setUp(self):
+        self.n = load(SYS / 'usr/libexec/nimbus/hearth-disc-notify', 'hearth_disc_notify')
+
+    def test_events_and_what_it_says(self):
+        n = self.n
+        k = b'change@/devices/x/block/sr0\0ACTION=change\0DEVNAME=sr0\0SUBSYSTEM=block\0DISK_MEDIA_CHANGE=1\0'
+        self.assertEqual(n.drive_of(n.parse_uevent(k)), '/dev/sr0')
+        u = bytearray(b'libudev\0') + (0xfeedcafe).to_bytes(4, 'big')
+        props = b'ACTION=change\0SUBSYSTEM=block\0DEVNAME=/dev/sr1\0ID_CDROM_MEDIA=1\0ID_FS_LABEL=MY_FILM\0'
+        u += (40).to_bytes(4, sys.byteorder) + (40).to_bytes(4, sys.byteorder) + len(props).to_bytes(4, sys.byteorder)
+        u += bytes(40 - len(u)) + props
+        p = n.parse_uevent(bytes(u))
+        self.assertEqual(n.drive_of(p), '/dev/sr1')
+        self.assertEqual(n.kind_of(p, '/dev/sr1', read_root=lambda d: (['VIDEO_TS', 'AUDIO_TS'], 'X')), ('dvd', 'MY_FILM'))
+        self.assertEqual(n.kind_of({'ID_CDROM_MEDIA': '1', 'ID_CDROM_MEDIA_TRACK_COUNT_AUDIO': '12'}, 'd'), ('audio-cd', ''))
+        self.assertEqual(n.kind_of({'ID_CDROM_MEDIA': '1', 'ID_CDROM_MEDIA_BD': '1'}, 'd'), ('bluray', ''))
+        self.assertEqual(n.kind_of({'ID_CDROM_MEDIA': '1', 'ID_CDROM_MEDIA_STATE': 'blank'}, 'd'), ('', ''), 'blank: nothing said')
+        self.assertEqual(n.kind_of({}, 'd'), ('', ''))
+        self.assertEqual(n.message('dvd', 'MY_FILM'), ('A disc was inserted', 'My Film · DVD film', ['play', 'Play disc', 'eject', 'Eject']))
+        self.assertEqual(n.message('bluray', '')[2], ['eject', 'Eject'], 'Blu-ray: only Eject')
+        self.assertIsNone(n.drive_of({'SUBSYSTEM': 'block', 'DEVNAME': 'sda'}))
+
+    def test_service_and_bridge(self):
+        unit = (SYS / 'usr/lib/systemd/user/hearth-disc-notify.service').read_text()
+        self.assertIn('ConditionPathExists=/usr/bin/hearth-player', unit)
+        self.assertIn('ExecStart=/usr/libexec/nimbus/hearth-disc-notify', unit)
+        for base in ('anatase', 'peppermint'):
+            self.assertIn('default.target.wants/hearth-disc-notify.service', (ROOT / 'os-bases' / base / 'build.sh').read_text(), base)
+        src = (SYS / 'usr/libexec/nimbus/hearth-disc-notify').read_text()
+        self.assertNotIn('time.sleep', src, 'no polling: it waits on udev')
+        bridge = (ROOT / 'hosts/linux/desktop/shell/hearth-discord').read_text()
+        self.assertIn("(['body', 'actions'],)", bridge, 'Steam Game Mode\'s bridge says it takes buttons')
+        self.assertIn("'ActionInvoked'", bridge)
+
+
 class FilesDrives(unittest.TestCase):
     def setUp(self):
         self.old = dict(os.environ)

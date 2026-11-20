@@ -24,8 +24,15 @@ pub trait VFile: Send + Sync {
 #[derive(Clone, Debug)]
 pub struct Live { pub program: String, pub args: Vec<String>, pub mime: String }
 
+/// Bytes made as they're asked for, with no end known (a DVD menu's sectors while it runs).
+pub trait StreamSource: Send + Sync {
+    fn mime(&self) -> &str;
+    fn stream(&self, out: &mut dyn Write) -> std::io::Result<()>;
+}
+
 #[derive(Clone)]
 enum Entry {
+    Stream(Arc<dyn StreamSource>),
     File(PathBuf),
     Bytes(Arc<Vec<u8>>, String),
     Virtual(Arc<dyn VFile>),
@@ -147,6 +154,13 @@ impl Server {
         format!("{}/f/{}/{}", self.base(), id, url_encode(name))
     }
 
+    /// The address of a stream with no known end (a DVD menu's sectors).
+    pub fn stream_url(&self, s: Arc<dyn StreamSource>, name: &str) -> String {
+        let id = self.next.fetch_add(1, Ordering::SeqCst).to_string();
+        self.entries.lock().unwrap().insert(id.clone(), Entry::Stream(s));
+        format!("{}/f/{}/{}", self.base(), id, url_encode(name))
+    }
+
     /// Forgets addresses made for a disc (when it's ejected or another one is played).
     pub fn forget(&self, url: &str) {
         if let Some(id) = url.split("/f/").nth(1).and_then(|r| r.split('/').next()) { self.entries.lock().unwrap().remove(id); }
@@ -190,6 +204,11 @@ impl Server {
             None => simple(&mut out, 404, "Not here"),
             Some(Entry::Virtual(f)) => { let len = f.len(); let mime = f.mime().to_string(); send(&mut out, &mut VReader { f, pos: 0 }, len, &mime, headers.get("range"), head) }
             Some(Entry::Live(l)) => live(&mut out, &l, head),
+            Some(Entry::Stream(src)) => {
+                write!(out, "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", src.mime())?;
+                if head { return Ok(()); }
+                src.stream(&mut out)
+            }
             Some(Entry::Bytes(b, mime)) => send(&mut out, &mut std::io::Cursor::new(&b[..]), b.len() as u64, &mime, headers.get("range"), head),
             Some(Entry::File(p)) => {
                 let Ok(mut f) = std::fs::File::open(&p) else { return simple(&mut out, 404, "That file isn't there any more") };
