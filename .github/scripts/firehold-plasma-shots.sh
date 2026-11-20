@@ -253,6 +253,9 @@ echo "::notice title=Two screens::$(hearth-firehold-plasma modes | cut -c1-600)"
 shot fp-10-two-screens
 shot fp-11-desk-bar-tip 0 1920
 shot fp-12-couch-layer-on-tv 1920 1920
+kwin_js 'var l = workspace.windowList(); for (var i = 0; i < l.length; i++) { var w = l[i]; print("FHWIN " + w.caption + " | " + w.resourceClass + " | " + (w.output ? w.output.name : "") + " | " + w.frameGeometry.x + "," + w.frameGeometry.y + " " + w.frameGeometry.width + "x" + w.frameGeometry.height + " | layer " + w.layer + " | hidden " + w.hidden + " | min " + w.minimized); }'
+sleep 1
+echo "::notice title=KWin's windows (two screens)::$(grep FHWIN "$OUT/kwin2.log" | tail -20 | cut -c1-160 | sed -e ':a;N;$!ba;s/\n/%0A/g')"
 # Game options with two screens: Play on the TV · Couch / the monitor · Desk.
 hearth-firehold-plasma ask tab:library; sleep 3
 key right x down; sleep 3

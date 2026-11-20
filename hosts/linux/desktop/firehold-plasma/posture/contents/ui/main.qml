@@ -106,8 +106,12 @@ PlasmoidItem {
         onLoaded: item.bar = root
     }
     // Each Couch or Away screen's page over the Desk (the bar is on one screen; it opens them on every screen).
+    // Only when the set of Couch / Away screens changes are the layers made again (not at every look at the modes).
+    readonly property string layerKey: modes.screens.filter(function (s) { return s.mode === "couch" || s.mode === "away"; }).map(function (s) { return s.name; }).join(",")
+    property var layerScreens: []
+    onLayerKeyChanged: layerScreens = layerKey === "" ? [] : layerKey.split(",")
     Instantiator {
-        model: root.modes.screens.filter(function (s) { return s.mode === "couch" || s.mode === "away"; }).map(function (s) { return s.name; })
+        model: root.layerScreens
         delegate: Loader {
             required property var modelData
             source: "CouchLayer.qml"

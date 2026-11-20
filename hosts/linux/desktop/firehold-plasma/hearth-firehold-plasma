@@ -785,6 +785,20 @@ def guide_pressed(twice):
     ask('open' if twice or s.get('guide') == 'open' else 'guide')
 
 
+_hand = [0.0]
+
+
+def desk_pad(name):
+    """The controller used on the Desk (mockup firehold-plasma 12): View opens the bar's menus for the app in front;
+    any other button says, once in a while, what the controller can do here."""
+    if name == 'view':
+        ping_modes('menu-window')
+        return
+    if time.time() - _hand[0] > 600:
+        _hand[0] = time.time()
+        notify('A controller is in your hand', 'Press ≡ for the Couch on this screen, or View for these menus with the controller', 'input-gaming')
+
+
 class Pad:
     def __init__(self, evdev):
         self.evdev = evdev
@@ -848,6 +862,8 @@ class Pad:
                     self.guide_at = now
             return
         if not couch_front():
+            if down and current_posture() == 'desk':
+                desk_pad(name)
             return
         if name in ('up', 'down', 'left', 'right'):
             self.held = (name, time.time() + REPEAT_FIRST) if down else None

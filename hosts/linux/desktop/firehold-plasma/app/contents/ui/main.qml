@@ -22,8 +22,16 @@ PlasmoidItem {
         filterByActivity: false
     }
     readonly property var active: tasks.activeTask
-    readonly property string appName: active && active.valid ? String(tasks.data(active, TaskManager.AbstractTasksModel.AppName) || "") : ""
-    readonly property int pid: active && active.valid ? Number(tasks.data(active, TaskManager.AbstractTasksModel.AppPid) || 0) : 0
+    readonly property string rawName: active && active.valid ? String(tasks.data(active, TaskManager.AbstractTasksModel.AppName) || "") : ""
+    readonly property string rawTitle: active && active.valid ? String(tasks.data(active, Qt.DisplayRole) || "") : ""
+    readonly property string rawId: active && active.valid ? String(tasks.data(active, TaskManager.AbstractTasksModel.AppId) || "") : ""
+    // A runtime's name (qml, wine, java, python) says nothing: the window's title does (Trains 2010).
+    readonly property string frontName: /^(qml|qml6|wine.*|java|python3?|.*\.exe)$/i.test(rawName) ? rawTitle.split(" — ")[0].split(" - ")[0] : rawName
+    // The app stays named while one of Plasma's own popups (a menu from this bar) has the keyboard.
+    property string appName: ""
+    onFrontNameChanged: if (frontName !== "" && !/plasmashell|org\.kde\.plasmashell/i.test(rawId)) appName = frontName
+    property int pid: 0
+    readonly property int rawPid: active && active.valid ? Number(tasks.data(active, TaskManager.AbstractTasksModel.AppPid) || 0) : 0
     P5Support.DataSource {
         id: sh
         engine: "executable"
@@ -38,6 +46,7 @@ PlasmoidItem {
     // Whether the app in front has menus of its own (hearth-firehold-plasma menus PID: a Qt Widgets or GTK app with
     // the app menu module), asked when the app in front changes.
     property bool ownMenus: true
+    onRawPidChanged: if (rawPid > 0 && !/plasmashell/i.test(rawId)) pid = rawPid
     onPidChanged: if (pid > 0) helper(["menus", String(pid)], function (t) { root.ownMenus = t.trim() !== "standard"; })
     property int listenFails: 0
     function listen() {
@@ -75,7 +84,7 @@ PlasmoidItem {
         active: root.open !== ""
         source: "StdMenu.qml"
         onLoaded: {
-            item.items = root.open === "app" ? root.appItems : root.open === "window" ? root.windowItems : root.helpItems;
+            item.items = Qt.binding(function () { return root.open === "app" ? root.appItems : root.open === "window" ? root.windowItems : root.helpItems; });
             item.anchorItem = root.menuAnchor;
             item.picked.connect(root.act);
             item.visibleChanged.connect(function () { if (!item.visible) root.open = ""; });

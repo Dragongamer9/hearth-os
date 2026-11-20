@@ -107,7 +107,7 @@ PlasmaCore.Dialog {
                             }
                             T {
                                 couchRef: mp.ui; anchors.horizontalCenter: parent.horizontalCenter
-                                text: mp.label(modelData) + (modelData.tv ? " · " + mp.connector(modelData.name) : modelData.name === mp.bar.myScreen ? " · the mouse is here" : "")
+                                text: mp.label(modelData) + (modelData.tv ? " · " + (/(HDMI|DisplayPort|DVI) \d+/.exec(modelData.spec || "") || [mp.connector(modelData.name)])[0] : modelData.name === mp.bar.myScreen ? " · the mouse is here" : "")
                                 font.pixelSize: 14
                             }
                         }
