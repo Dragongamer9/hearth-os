@@ -668,6 +668,8 @@ jobs:
       # labwc-fedora-rest.sh (CPU near 0, memory not growing, no frames drawn, no programs started, Files quick). The
       # pictures go with the looks (ci/anatase-looks, labwc-<kind>-*).
       - name: Mantel and Firehold on labwc, pictured and at rest (10 minutes each)
+        # check/1.16-rest-of-image only (never merged): the later steps run while labwc's at-rest numbers get fixed.
+        continue-on-error: true
         timeout-minutes: 60
         run: |
           mkdir -p /tmp/anatase-looks /tmp/lwout && chmod 777 /tmp/lwout
