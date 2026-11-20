@@ -121,6 +121,33 @@ run server-17b-rules-new-rule hearth-server 0 "$SB" --show new-rule
 # With the graphics card (here Mesa's software Vulkan: the CPU does the graphics card's work, so this number is far
 # above a PC's): the smooth mode, ServerCore.qml's motions at the screen's rate. Reported, no limit.
 HEARTH_RENDERER=gpu run gpu-server-live-smooth hearth-server 20 "$SB"
+# The never-lag guard: on CI's software Vulkan (llvmpipe: every frame is the CPU drawing the whole screen, so even a
+# few frames a second cost a lot here) the smooth motion is far over 3 % of a core, so it turns itself down step by
+# step (30 a second, the light mode, then standing still), each after ~10 s, and says so on the dashboard. Proven by
+# the frames it still draws once settled (its own frame counter, HEARTH_UI_FRAMES): at most the 2-second clock's
+# (about 0.5 a second) plus the light mode's 5, so under 6 a second, after 45 s; the steps it took; nothing written.
+# Its CPU then is reported as gpu-server-live-guard-* (no limit: llvmpipe's cost per frame isn't a PC's).
+( rm -f /tmp/server-guard-frames
+  HEARTH_RENDERER=gpu HEARTH_UI_FRAMES=/tmp/server-guard-frames "$SB" >/tmp/server-guard.log 2>&1 & gpid=$!
+  for i in $(seq 1 200); do mapped hearth-server && break; sleep 0.05; done
+  sleep 45
+  f0=$(cat /tmp/server-guard-frames 2>/dev/null || echo 0); a=$(ticks $gpid); sleep 15; b=$(ticks $gpid); f1=$(cat /tmp/server-guard-frames 2>/dev/null || echo 0)
+  hz=$(getconf CLK_TCK)
+  cpu=$(python3 -c "print('%.2f' % (100.0 * ($b - $a) / $hz / 15))")
+  fps=$(python3 -c "print('%.1f' % (($f1 - $f0) / 15.0))")
+  rss=$(awk '/^VmRSS/ {printf "%.1f", $2/1024}' /proc/$gpid/status)
+  grim "$ROOT/shots/server-19-smooth-turned-down.png" 2>/dev/null
+  kill $gpid 2>/dev/null; wait $gpid 2>/dev/null
+  steps=$(grep -c 'smooth motion turned down' /tmp/server-guard.log)
+  # (The name carries the result: GitHub keeps only ten notices a step, and the measurements' notice always shows.)
+  echo "RESULT gpu-server-live-guard-${steps}-steps-${fps}-fps-settled firstframe=0 cpu=$cpu rss=${rss:-0} pss=${rss:-0} threads=0" >> "$ROOT/results.txt"
+  ok=1
+  python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) < 6.0 else 1)' "$fps" || { ok=0; echo "::error title=server guard::still $fps frames a second 45 s after start: the guard didn't settle it"; }
+  [ "$steps" -ge 1 ] || { ok=0; echo "::error title=server guard::the guard never turned the smooth motion down on CI's software Vulkan"; }
+  [ -e "$HOME/.config/nimbus/server-mode.json" ] && { ok=0; echo "::error title=server guard::server-mode.json was written"; }
+  [ "$ok" = 1 ] || echo "RESULT server-guard-failed firstframe=-1 cpu=999 rss=0 pss=0 threads=0" >> "$ROOT/results.txt"
+  true
+) || echo "::warning title=server guard::not measured"
 # The cores moving: six frames a sixth of a second apart, side by side (the AIs' panel), as one picture.
 ( HEARTH_RENDERER=gpu "$SB" >/tmp/server-frames.log 2>&1 & fpid=$!
   for i in $(seq 1 200); do mapped hearth-server && break; sleep 0.05; done
