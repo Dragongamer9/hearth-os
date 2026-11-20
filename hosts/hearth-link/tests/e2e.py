@@ -1227,7 +1227,7 @@ elif a and a[0] == 'pin':
 elif a and a[0] == 'family':
     # One line each (two can run at once: the session's end and turning it off).
     with open(os.path.join(os.environ['HOME'], 'family-calls.jsonl'), 'a') as f:
-        f.write(json.dumps(a) + '\n')
+        f.write(json.dumps(a) + chr(10))
     if a[1:2] == ['start']:
         print(json.dumps({'ok': True, 'port': 47989, 'running': True}))
     elif a[1:2] == ['paired']:
