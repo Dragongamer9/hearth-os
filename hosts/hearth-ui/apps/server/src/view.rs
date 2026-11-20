@@ -312,7 +312,7 @@ fn left_column<'a>(a: &'a App, d: &Value, k: f32) -> E<'a> {
             let name_c = if working { draw::core_color(&id) } else { G::hi() };
             crow = crow.push(
                 column![
-                    draw::canvas(draw::Core { kind: id.clone(), working, off: st == "off", fade: 1.0, t: a.anim_t, still: a.still() }, Length::Fixed(110.0 * k), Length::Fixed(100.0 * k)),
+                    draw::canvas(draw::Core { kind: id.clone(), working, off: st == "off", fade: 1.0, t: a.anim_t, still: a.still() || !working }, Length::Fixed(110.0 * k), Length::Fixed(100.0 * k)),
                     txs(s(c, "name").to_uppercase(), 14.0 * k, name_c),
                     tx(s(c, "status"), 13.5 * k, G::muted())
                 ]

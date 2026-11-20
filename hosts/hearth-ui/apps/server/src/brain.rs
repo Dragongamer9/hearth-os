@@ -284,12 +284,23 @@ pub struct Brain {
     pub step: usize,
 }
 
+/// Her brain's drawing, kept until what it shows changes (the tile's turns twice a second; the dashboard's other
+/// frames reuse it).
+#[derive(Default)]
+pub struct BrainMemo {
+    cache: canvas::Cache,
+    key: std::cell::RefCell<String>,
+}
+
 impl<M> canvas::Program<M> for Brain {
-    type State = ();
-    fn draw(&self, _s: &(), renderer: &Renderer, _t: &Theme, b: Rectangle, _c: mouse::Cursor) -> Vec<Geometry> {
-        let mut f = Frame::new(renderer, b.size());
-        self.paint(&mut f, b.width, b.height);
-        vec![f.into_geometry()]
+    type State = BrainMemo;
+    fn draw(&self, st: &BrainMemo, renderer: &Renderer, _t: &Theme, b: Rectangle, _c: mouse::Cursor) -> Vec<Geometry> {
+        let key = format!("{} {} {} {} {} {} {} {} {} {:?}", self.yaw, self.pitch, self.zoom, self.xray, self.live, self.asleep, self.t, self.now_ms, self.data.ev.len(), b.size());
+        if *st.key.borrow() != key {
+            st.cache.clear();
+            *st.key.borrow_mut() = key;
+        }
+        vec![st.cache.draw(renderer, b.size(), |f| self.paint(f, b.width, b.height))]
     }
 }
 

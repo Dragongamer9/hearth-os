@@ -684,14 +684,15 @@ pub fn brain_widget<'a>(a: &App, compact: bool) -> E<'a> {
     let live = compact || a.ithil_win == "live";
     let b = brain::Brain {
         data: a.ithil_prep.clone(),
-        yaw: a.yaw + if a.still() { 0.0 } else { a.anim_t * 0.18 },
+        // (the tile's: its clock in half seconds, so it's drawn again only twice a second)
+        yaw: a.yaw + if a.still() { 0.0 } else { (if compact { (a.anim_t * 2.0).floor() / 2.0 } else { a.anim_t }) * 0.18 },
         pitch: a.pitch,
         zoom: if compact { 1.05 } else { 1.0 },
         xray: a.xray && !compact,
         live,
         asleep: s(&it, "state") == "asleep",
         t: a.tpos,
-        now_ms: if a.still() { 0.0 } else { a.now * 1000.0 },
+        now_ms: if a.still() { 0.0 } else if compact { (a.now * 2.0).floor() * 500.0 } else { a.now * 1000.0 },
         step: if compact { 3 } else { 1 },
     };
     let c: E = draw::canvas(b, Length::Fill, Length::Fill);

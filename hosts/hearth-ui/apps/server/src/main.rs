@@ -576,12 +576,32 @@ impl App {
     pub fn still(&self) -> bool {
         self.reduce || !self.focused || self.screen != Screen::On
     }
-    fn animating(&self) -> bool {
+    /// How often the dashboard moves (ms), or None: it stands still unless something is at work. Its AIs move only
+    /// while one is working (a core working, a sender lit in the AI team's mesh) or while the AI team's or Ithil's own
+    /// page is open, 8 times a second; Ithil's small brain on her tile alone turns twice a second. Nothing working:
+    /// nothing moves, and the screen is drawn only when its data changes (every 4 s, if it changed).
+    pub fn anim_rate(&self) -> Option<u64> {
         if self.still() {
-            return false;
+            return None;
         }
-        let Some(d) = &self.d else { return false };
-        !arr(d, "cores").is_empty() || d.get("ithil").map(|v| v.is_object()).unwrap_or(false) || self.tiles().iter().any(|t| truthy(t, "mesh"))
+        let d = self.d.as_ref()?;
+        if self.overlay == Overlay::Detail && matches!(self.cur_id().as_str(), "ithil" | "team") {
+            return Some(125);
+        }
+        if self.overlay == Overlay::None || self.overlay == Overlay::Back {
+            let busy = arr(d, "cores").iter().any(|c| s(c, "state") == "working")
+                || d.get("team").map(|tm| arr(tm, "senders").iter().any(|x| truthy(x, "active"))).unwrap_or(false);
+            if busy {
+                return Some(125);
+            }
+            if d.get("ithil").map(|v| v.is_object()).unwrap_or(false) {
+                return Some(500);
+            }
+        }
+        None
+    }
+    fn animating(&self) -> bool {
+        self.anim_rate().is_some()
     }
     fn open_detail(&mut self) {
         self.overlay = Overlay::Detail;
@@ -1412,9 +1432,9 @@ fn subscription(a: &App) -> Subscription<Msg> {
     // Once a second while a countdown shows, else every 2 s (the clock, the countdown file, idle): never faster.
     let fast = a.overlay == Overlay::Switch || a.remote.is_some();
     let tick = iced::time::every(Duration::from_millis(if fast { 1000 } else { 2000 })).map(|_| Msg::Tick);
-    // The cores, the AI team's mesh and Ithil's brain move about 15 times a second, only while the dashboard is on
-    // the screen, in front, and Reduce motion is off (still()); otherwise nothing ticks but the 2-second clock.
-    let anim = if a.animating() { iced::time::every(Duration::from_millis(66)).map(|_| Msg::Anim) } else { Subscription::none() };
+    // The cores, the AI team's mesh and Ithil's brain move only while something is at work (anim_rate) and the
+    // dashboard is on the screen, in front, with Reduce motion off (still()); otherwise only the 2-second clock ticks.
+    let anim = match a.anim_rate() { Some(ms) => iced::time::every(Duration::from_millis(ms)).map(|_| Msg::Anim), None => Subscription::none() };
     Subscription::batch([
         anim,
         tick,
