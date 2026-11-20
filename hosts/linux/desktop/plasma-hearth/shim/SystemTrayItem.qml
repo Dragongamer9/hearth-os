@@ -1,7 +1,6 @@
 // An app's tray icon (plasma-hearth: Plasma's statusnotifieritem source, SystemTray.qml).
 import QtQuick
 QtObject {
-    property string id: ""
     property string title: ""
     property string tooltipTitle: ""
     property string tooltipDescription: ""

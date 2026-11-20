@@ -436,6 +436,31 @@ def sync():
     return 0
 
 
+def hold_popups():
+    """While Hearth draws the notifications (Mantel's pop-ups), KDE's own pop-ups stay away: an inhibition held by
+    this process (org.freedesktop.Notifications.Inhibit, Plasma's own way for an app to pause pop-ups, not a setting:
+    nothing is saved). Every notification still comes in and is kept in the history; Hearth shows it. It ends when
+    the panel goes (this process ends with plasmashell), so KDE's pop-ups come back with KDE's panel. Sleeps; never polls."""
+    import signal
+    try:
+        import ctypes
+        ctypes.CDLL('libc.so.6').prctl(1, signal.SIGTERM)   # PR_SET_PDEATHSIG: end with the panel
+    except (OSError, AttributeError):
+        pass
+    try:
+        import dbus
+        bus = dbus.SessionBus()
+        n = dbus.Interface(bus.get_object('org.freedesktop.Notifications', '/org/freedesktop/Notifications'), 'org.freedesktop.Notifications')
+        cookie = n.Inhibit('org.hearthos.panel', "Hearth's panel shows your notifications", {})
+    except Exception as e:   # no dbus-python or no service: KDE's pop-ups stay as they are
+        print(json.dumps({'ok': False, 'why': str(e)[:200]}))
+        return 1
+    print(json.dumps({'ok': True, 'cookie': int(cookie)}), flush=True)
+    signal.signal(signal.SIGTERM, lambda *a: sys.exit(0))
+    while True:
+        signal.pause()
+
+
 def main(argv):
     cmd, rest = (argv[1] if len(argv) > 1 else 'status'), argv[2:]
     if cmd == 'env':
@@ -464,6 +489,8 @@ def main(argv):
         return restore(rest[0] if rest else '')
     elif cmd == 'sync':
         return sync()
+    elif cmd == 'hold-popups':
+        return hold_popups()
     elif cmd == 'open' and rest and rest[0] in ('launcher', 'quick', 'calendar', 'search'):
         # Opens (or closes again) the app menu, Quick settings or the dashboard on Hearth's bar: for a shortcut
         # of your own, and CI's pictures.

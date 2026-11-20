@@ -23,7 +23,7 @@ Item {
         for (const s of sni.sources) {
             const d = sni.data[s] || {};
             if (d.Status === "Passive") continue;
-            out.push(itemComp.createObject(st, { id: d.Id || s, title: d.Title || "", tooltipTitle: d.ToolTipTitle || "", tooltipDescription: d.ToolTipSubTitle || "",
+            out.push(itemComp.createObject(st, { title: d.Title || "", tooltipTitle: d.ToolTipTitle || "", tooltipDescription: d.ToolTipSubTitle || "",
                 icon: d.Icon || d.IconName || "", hasMenu: true, onlyMenu: d.ItemIsMenu === true, tray: st, source: s }));
         }
         for (const o of st.items) o.destroy();

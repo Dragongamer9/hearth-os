@@ -18,14 +18,19 @@ Item {
     property var live: ({})
     // plasmashell owns the notification service itself (it registers it at start); Hearth draws what comes in.
     readonly property bool serving: NM.Server.valid === true
-    onServingChanged: console.info("plasma-hearth: Plasma's notification service " + (serving ? "is up: Hearth shows the notifications" : "isn't up"))
-    Component.onCompleted: console.info("plasma-hearth: notifications: service " + (serving ? "up" : "not up yet"))
+    onServingChanged: { console.info("plasma-hearth: Plasma's notification service " + (serving ? "is up: Hearth shows the notifications" : "isn't up")); hold(); }
+    Component.onCompleted: { console.info("plasma-hearth: notifications: service " + (serving ? "up" : "not up yet")); hold(); }
+    // KDE's own pop-ups pause while Hearth draws them (hearth-plasma-panel hold-popups: Plasma's inhibition, held
+    // only while this runs; nothing saved). Notifications still all come in.
+    property bool holding: false
+    function hold() { if (!serving || holding) return; holding = true; Hearth.call(["python3", Hearth.helper, "hold-popups"], (out) => { console.info("plasma-hearth: KDE's pop-ups: " + out.trim()); srv.holding = false; }); }
     NM.Notifications {
         id: model
         showNotifications: true
         showJobs: false
         showExpired: true
         showDismissed: true
+        showAddedDuringInhibition: true
         groupMode: NM.Notifications.GroupDisabled
         onRowsInserted: (parent, first, last) => { if (srv.serving) for (let i = first; i <= last; i++) srv.add(i); }
         onRowsAboutToBeRemoved: (parent, first, last) => {
