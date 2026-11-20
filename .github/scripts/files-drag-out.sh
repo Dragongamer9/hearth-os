@@ -16,7 +16,7 @@ printf 'A file that goes to another app\n' > "$HOME/Outbox/drop-me.txt"
 dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_TYPE=wayland KDE_FULL_SESSION=true KDE_SESSION_VERSION=6
-export QT_FORCE_STDERR_LOGGING=1 KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 LIBGL_ALWAYS_SOFTWARE=1 LANG=C.UTF-8
+export QT_LOGGING_RULES="qml.debug=true;js.debug=true" QT_FORCE_STDERR_LOGGING=1 KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 LIBGL_ALWAYS_SOFTWARE=1 LANG=C.UTF-8
 export HEARTH_SHELL_DIR="$ROOT/hosts/linux/desktop/shell" HEARTH_PALETTES="$ROOT/hosts/linux/desktop/theme/palettes.json"
 mkdir -p "$HOME/.local/share/nimbus" && printf '{"look": "steam", "mode": "dark"}\n' > "$HOME/.local/share/nimbus/desktop.json"
 
@@ -97,7 +97,7 @@ Window {
         anchors.fill: parent
         onEntered: drag => { w.over = true; drag.accept(Qt.CopyAction); }
         onExited: w.over = false
-        onDropped: drop => { w.over = false; w.got = drop.urls.map(u => String(u)).join("\n"); console.log("DROPPED " + w.got); drop.accept(Qt.CopyAction); }
+        onDropped: drop => { w.over = false; w.got = drop.urls.map(u => String(u)).join("\n"); console.warn("DROPPED " + w.got); drop.accept(Qt.CopyAction); }
     }
 }
 QML
