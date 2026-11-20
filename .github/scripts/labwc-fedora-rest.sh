@@ -34,6 +34,33 @@ echo '{"screenOffMinutes": 0}' >"$HOME/.local/share/nimbus/desktop.json"
 DESKJSON0=$(cat "$HOME/.local/share/nimbus/desktop.json")
 mkdir -p "$HOME/.local/share/nimbus" && : >"$HOME/.local/share/nimbus/welcome-done"
 printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""}]' >"$HOME/.cache/hearth/desktop-games.json"
+# Without the Hearth app (this container), Firehold's library comes from its cache: 60 games with pictures the sizes
+# the stores use (cover 600x900, wide 920x430, hero 3840x1240), as the image's library has, so memory and the busy
+# moments are measured with pictures to load (the image run of Nov 20: 466 MB with them, 251 MB without).
+if ! command -v nimbus >/dev/null 2>&1 && python3 -c 'import PIL' 2>/dev/null; then
+  python3 - "$HOME/.cache/hearth" <<'PY'
+import json, os, sys, random
+from PIL import Image, ImageDraw
+d = sys.argv[1]; art = os.path.join(d, 'test-art'); os.makedirs(art, exist_ok=True)
+random.seed(7); games = []
+def pic(name, w, h, kind):
+    p = os.path.join(art, name); c1 = tuple(random.randrange(40, 220) for _ in range(3)); c2 = tuple(random.randrange(10, 120) for _ in range(3))
+    im = Image.new('RGB', (w, h), c1); dr = ImageDraw.Draw(im)
+    for i in range(0, w, max(8, w // 40)): dr.line([(i, 0), (i + h // 2, h)], fill=c2, width=max(2, w // 120))
+    im.save(p, 'PNG' if kind == 'png' else 'JPEG', quality=88); return 'file://' + p
+for i in range(60):
+    stores = ['steam', 'gog', 'epic', 'emu', 'manual']; src = stores[i % 5]
+    games.append({'id': '%s:%d' % (src, 1000 + i), 'title': 'Test Game %02d' % i, 'source': src, 'store': src.title(), 'kind': src if src != 'manual' else 'yours',
+                  'installed': i % 3 != 0, 'update': False, 'savesBackedUp': False, 'cloudSaves': False, 'devBuild': False,
+                  'cover': pic('c%d.jpg' % i, 600, 900, 'jpg'), 'wide': pic('w%d.jpg' % i, 920, 430, 'jpg'), 'hero': pic('h%d.png' % i, 3840, 1240, 'png'),
+                  'icon': '', 'lastPlayed': (1763600000000 - i * 3600000) if i < 12 else 0, 'minutes': 30 * i, 'system': '', 'chapter': ''})
+c = {}
+for g in games: c[g['kind']] = c.get(g['kind'], 0) + 1
+c['all'] = len(games); c['installed'] = sum(1 for g in games if g['installed'])
+json.dump({'games': games, 'counts': c}, open(os.path.join(d, 'firehold-library.json'), 'w'))
+PY
+  echo "seeded 60 test games with pictures" >>"$OUT/ipc.txt"
+fi
 export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
 export QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1
 # Every frame the shell draws is logged (one line each), so frames at rest can be counted.
@@ -200,7 +227,8 @@ for i in $(seq $((SECS / 60))); do
   echo "minute $i: shell $d, memory $(rss "$qs") MB, frames $(( $(frames) - f0 ))" >>"$OUT/rest-minutes.txt"
 done
 wait "$TRACE" 2>/dev/null
-note "the busiest 5 s at rest: $(head -1 "$OUT/rest-busiest.txt" 2>/dev/null | cut -c1-400)"
+note "the busiest 5 s at rest: $(head -1 "$OUT/rest-busiest.txt" 2>/dev/null | cut -c1-400)$(awk 'NR > 1 && /^    log: / {print} /^ *[0-9]+s shell/ && NR > 1 {exit}' "$OUT/rest-busiest.txt" | head -6 | cut -c1-200 | tr '\n' '|')"
+note "the drive while at rest: $(df -h / 2>/dev/null | awk 'NR == 2 {print $4 " free of " $2}'); the shell's memory: $(awk '/^(Rss|Anonymous|Pss_File|Shared_Clean|Private_Dirty):/ {printf "%s %d MB, ", $1, $2 / 1024}' /proc/$qs/smaps_rollup 2>/dev/null)"
 kill -0 "$qs" 2>/dev/null || err "the shell ended during the rest (crashed or restarted)"
 s1=$(ticks "$qs"); c1=$(ticks "$LPID"); m1=$(rss "$qs"); f1=$(frames)
 allticks >"$OUT/procs-end.txt"; n1=$(wc -l <"$OUT/procs-end.txt")
@@ -230,6 +258,18 @@ note "at rest over ${SECS} s: shell $(pct "$sp") of a core (worst minute $(pct "
 [ "$n1" -le $((n0 + 1)) ] || err "more processes at the end of the rest (${n0} → ${n1}): $(comm -13 <(cut -d' ' -f3- "$OUT/procs-start.txt" | sort) <(cut -d' ' -f3- "$OUT/procs-end.txt" | sort) | head -5 | tr '\n' '|')"
 busy=$(awk '$1 >= 1.0' "$OUT/procs-busy.txt")
 [ -z "$busy" ] || err "busy at rest: $(echo "$busy" | head -5 | tr '\n' '|')"
+
+# ---- Something happening at rest (the image's busy minute, Nov 20: a low-drive warning's notification and password
+# prompt came and went, and Firehold made every tile and picture again for it): a notification, then a window opening
+# and closing. The shell's share of it over 20 s: at most 1 s of the processor, and nothing made again for nothing.
+t0x=$(ticks "$qs"); mx0=$(rss "$qs")
+notify-send -a Test "A test notification" "Nothing to do" >/dev/null 2>&1 || true
+if command -v foot >/dev/null 2>&1; then foot -e sleep 4 >/dev/null 2>&1 & fi
+sleep 20
+ev=$(( ($(ticks "$qs") - t0x) * 100 / HZ ))
+note "a notification and a window coming and going at rest: the shell used $(printf "%d.%02d s" $((ev / 100)) $((ev % 100))) of the processor ($(rss "$qs") MB, was ${mx0} MB)"
+[ "$ev" -le 100 ] || err "a notification and a window coming and going at rest cost the shell $(printf "%d.%02d s" $((ev / 100)) $((ev % 100))) of the processor (limit 1 s): something is made again for nothing"
+for t in notify quick; do WAIT=0 ipc "$t" close; done
 
 # ---- Hearth Files: cold (first time) and warm, from the command to the first change on screen (grim, unscaled ppm)
 if [ "$KIND" = classic ]; then

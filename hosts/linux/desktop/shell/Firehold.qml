@@ -151,7 +151,7 @@ Scope {
     readonly property bool couchUp: anyCouch && view === "home"
     Binding { target: SettingsNav; property: "fireholdShown"; value: fhs.couchUp || fhs.guideShown || fhs.settingsShown }
     Binding { target: SettingsNav; property: "fireholdCouch"; value: fhs.anyCouch }
-    Component.onCompleted: SettingsNav.fireholdPad = (b, down) => fhs.padButton(b, down)
+    Component.onCompleted: { SettingsNav.fireholdPad = (b, down) => fhs.padButton(b, down); syncLists(); }
     Component.onDestruction: { SettingsNav.fireholdPad = null; SettingsNav.fireholdShown = false; SettingsNav.fireholdCouch = false; }
 
     function closeAll() { guideShown = false; settingsShown = false; page = "tabs"; view = "home"; }
@@ -159,8 +159,22 @@ Scope {
     // ------------------------------------------------------------------ windows and games
     readonly property var wins: WinList.toplevels ? WinList.toplevels.values : []
     function entryName(w) { const e = AppIcons.entryFor(w.appId); return e ? e.name : ""; }
-    readonly property var openList: F.openItems(wins, library, fhs.entryName)
-    readonly property var playing: F.playingIds(wins, library)
+    // 1.16 (the busy minute in the Fedora image, docs/LABWC-FEDORA.md): the lists the Couch is built from change only
+    // when what they hold changes. Any window coming or going (a notification's helper, a password prompt, a dialog)
+    // made new ones, and a new list rebuilds every tile and loads every picture again: 1.4 s of the processor at rest.
+    readonly property var openFresh: F.openItems(wins, library, fhs.entryName)
+    readonly property var playingFresh: F.playingIds(wins, library)
+    property var openList: []
+    property var playing: []
+    function openSig(l) { return l.map(o => o.kind + "\u0001" + o.name + "\u0001" + o.sub + "\u0001" + (WinList.widOf(o.win) || "")).join("\u0002"); }
+    property string openListSig: ""
+    function syncLists() {
+        const g = openSig(openFresh);
+        if (g !== openListSig || !openList.every(o => wins.indexOf(o.win) >= 0)) { openListSig = g; openList = openFresh; }
+        if (playingFresh.join("\u0001") !== playing.join("\u0001")) playing = playingFresh;
+    }
+    onOpenFreshChanged: syncLists()
+    onPlayingFreshChanged: syncLists()
     function games() { return wins.filter(w => F.isGame(w, library)); }
     function frontGame() {
         const a = WinList.activeToplevel;
