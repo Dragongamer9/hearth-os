@@ -94,7 +94,7 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 - [x] Cards at the top right, each with its app, time, text and actions — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "readonly property var acts: n ? Array.from(n.actions || [])"
 - [x] An urgent card stays until answered (Dad's PC asks for help, Connect with Remote desktop) — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "text: \"Stays until you answer\""
 - [x] Game ready card: Play / Play on the TV — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "visible: card.acts.length > 0"
-- [ ] A card with a picture (a recorded clip)
+- [x] A card with a picture (a recorded clip) — hosts/linux/desktop/plasma-hearth/shim/NotificationServer.qml: "if (/^file:\\/\\/.*\\.(png|jpe?g|webp)$/i.test(u)) img = u;"
 - [x] A message card with a reply box in the card — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: "visible: !!card.n && card.n.hasInlineReply === true"
 - [x] "2 more" when there are more — hosts/linux/desktop/plasma-hearth/package/FireholdCards.qml: " more</b> · \""
 

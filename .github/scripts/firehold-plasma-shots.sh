@@ -348,10 +348,30 @@ shot fp-14-controller-hint 0 1920
 printf 'Age of the Ring 8.4 patch notes\n' > /tmp/patch-notes.txt
 QT_QPA_PLATFORMTHEME=kde kate /tmp/patch-notes.txt >/dev/null 2>&1 &
 sleep 8; front "patch-notes" false; sleep 3
-# File open: the global menu widget's own "activate" (its first menu), as its shortcut does.
-hearth-firehold-plasma do open-applet org.kde.plasma.appmenu >> "$OUT/controller-hint.txt"; sleep 3
+# File open: KDE's app menu daemon's showMenu (what a window's menu button asks): the bar's global menu opens Kate's
+# first menu, File.
+cat > /tmp/fhp-file-menu.py <<'PY'
+import dbus, sys
+bus = dbus.SessionBus()
+pid = int(sys.argv[1])
+dbo = bus.get_object('org.freedesktop.DBus', '/org/freedesktop/DBus')
+for n in dbo.ListNames(dbus_interface='org.freedesktop.DBus'):
+    if not n.startswith(':'):
+        continue
+    try:
+        if int(dbo.GetConnectionUnixProcessID(n, dbus_interface='org.freedesktop.DBus')) != pid:
+            continue
+        lay = bus.get_object(n, '/MenuBar').GetLayout(0, 1, dbus.Array([], signature='s'), dbus_interface='com.canonical.dbusmenu')
+    except Exception as e:
+        continue
+    first = int(lay[1][2][0][0])
+    print('menu', n, first)
+    bus.get_object('org.kde.kappmenu', '/KAppMenu').showMenu(0, 0, n, dbus.ObjectPath('/MenuBar'), first, dbus_interface='org.kde.kappmenu')
+    break
+PY
+timeout 15 python3 /tmp/fhp-file-menu.py "$(pgrep -x kate | head -1)" >> "$OUT/controller-hint.txt" 2>&1; sleep 3
 shot fp-11-desk-bar-app-menus 0 1920
-hearth-firehold-plasma do open-applet org.kde.plasma.appmenu >/dev/null; sleep 1
+front "patch-notes" false; sleep 1
 echo "kate's menus: $(hearth-firehold-plasma menus "$(pgrep -x kate | head -1)")" >> "$OUT/controller-hint.txt"
 front "Trains 2010" false; sleep 2
 # While you played (mockup 10): notifications that come while a game is full screen are held back.
