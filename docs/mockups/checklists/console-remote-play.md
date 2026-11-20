@@ -17,7 +17,8 @@ checked by eye against its mockup; CI pictures are in hearth-workspace hearth/as
 Known differences that come from data, not the build: "Last seen just now" (the app knows when it asked, not when the
 Xbox was last online), the Cloud tiles' second line is the game's kind (Microsoft's list has no "played yesterday"),
 CI's sign-in address is the stand-in page's file:// address and CI says "this PC" (no battery, so not a laptop).
-Not proven anywhere yet: a real sign-in, Wake, the picture and sound, the delay, the controller and rumble on the Xbox.
+Drawn with the CPU (tiny-skia) the Ally's trouble page (g5) cuts its second line short after Connecting, an iced redraw
+quirk; drawn with the graphics card it's whole (crp-g5-ally-trouble-gpu). Not proven anywhere yet: a real sign-in, Wake, the picture and sound, the delay, the controller and rumble on the Xbox.
 
 ## 1 Welcome and sign-in
 - [x] Welcome: app icon (no Microsoft or Xbox marks), "Play your Xbox from anywhere", what it does — hosts/console-remote-play/src/desk.rs: "\"Play your Xbox from anywhere\""
