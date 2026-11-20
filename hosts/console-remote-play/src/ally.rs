@@ -204,7 +204,8 @@ fn trouble(a: &App) -> E<'_, Msg> {
             btn("Back to consoles", None, B::Normal, false, 17.0, a.ring && a.focus == 2, Some(Msg::Go(Page::Consoles)))
         ]
         .spacing(12.0)
-    ];
+    ]
+    .width(Length::Fill);
     frame(a, true, container(col).padding(pad(22.0, 34.0, 22.0, 34.0)).into(), vec![h(&["A"], "Try again"), h(&["X"], "Try at 720p"), h(&["B"], "Back")], vec![])
 }
 

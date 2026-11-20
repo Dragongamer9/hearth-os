@@ -610,8 +610,9 @@ fn settings(a: &App) -> E<'_, Msg> {
 }
 
 pub fn tile<'a>(a: &'a App, i: usize, g: &crp::xhome::Game, art_h: f32, small: bool, focused: bool, cap_size: f32, line: bool) -> E<'a, Msg> {
-    let art: E<'a, Msg> = match a.pics.get(&g.picture) {
-        Some(h) => image(h.clone()).content_fit(iced::ContentFit::Cover).width(Length::Fill).height(Length::Fixed(art_h)).into(),
+    let wide = if small { a.wide.get(&g.picture) } else { None };
+    let art: E<'a, Msg> = match wide.or_else(|| a.pics.get(&g.picture)) {
+        Some(h) => image(h.clone()).content_fit(if wide.is_some() { iced::ContentFit::Fill } else { iced::ContentFit::Cover }).width(Length::Fill).height(Length::Fixed(art_h)).into(),
         None => container(Space::new()).width(Length::Fill).height(Length::Fixed(art_h)).style(bx(CARD2, 0.0, None)).into(),
     };
     let mut cap = Column::new().spacing(2.0).push(one(t6(g.name.clone(), cap_size, TX)));

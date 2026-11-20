@@ -121,6 +121,8 @@ pub struct App {
     pub games: Load<Vec<Game>>,
     pub all_games: Load<Vec<Game>>,
     pub pics: HashMap<String, image::Handle>,
+    /// The same pictures cut to the smaller tiles' shape (wide), so nothing is drawn outside them.
+    pub wide: HashMap<String, image::Handle>,
     pub tab: CloudTab,
     pub search: String,
     pub focus: usize,
@@ -441,6 +443,7 @@ impl App {
             games: Load::Idle,
             all_games: Load::Idle,
             pics: HashMap::new(),
+            wide: HashMap::new(),
             tab: CloudTab::Recent,
             search: String::new(),
             focus: 0,
@@ -1219,6 +1222,9 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Pic(u, b) => {
             match b {
                 Some(b) if !b.is_empty() => {
+                    if let Some((w, h, px)) = wide_cut(&b, 2.8) {
+                        a.wide.insert(u.clone(), image::Handle::from_rgba(w, h, px));
+                    }
                     a.pics.insert(u, image::Handle::from_bytes(b));
                 }
                 _ => {
@@ -1599,6 +1605,16 @@ fn on_pad(a: &mut App, b: pad::Button) -> Task<Msg> {
         P::Rb => step_tab(a, 1),
         P::Menu | P::View => Task::none(),
     }
+}
+
+/// A picture cut to this shape (width / height), from its middle: the Cloud library's smaller tiles.
+fn wide_cut(bytes: &[u8], ratio: f32) -> Option<(u32, u32, Vec<u8>)> {
+    let img = ::image::load_from_memory(bytes).ok()?.to_rgba8();
+    let (w, h) = img.dimensions();
+    let nh = ((w as f32 / ratio).round() as u32).clamp(1, h);
+    let y = (h - nh) / 2;
+    let cut = ::image::imageops::crop_imm(&img, 0, y, w, nh).to_image();
+    Some((w, nh, cut.into_raw()))
 }
 
 /// Saves a screenshot: Pictures › Screenshots › Console Remote Play YYYY-MM-DD HH-MM-SS.png.
