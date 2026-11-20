@@ -46,7 +46,7 @@ can't turn text); New item's releases are the vault's own release tags.
 - [x] Moving a card ticks its box or edits its line in the note — hosts/hearth-ui/apps/notes/src/board.rs: "fn moving_a_card_ticks_its_box_or_edits_its_line"
 
 ## 3 Graph, Classic
-- [ ] Nodes coloured by project (all 8 projects plus daily logs), filters by project and tag, colour by, link distance
+- [x] Nodes coloured by project (all 8 projects plus daily logs), filters by project and tag, colour by, link distance — hosts/hearth-ui/apps/notes/src/gview.rs: "The few beyond the middle 90 % are kept just inside the edges."
 - [x] Hover card with Open note and Show only its links; legend — hosts/hearth-ui/apps/notes/src/gview.rs: "\"Show only its links\""
 - [x] Drawn on the graphics card with a light CPU fallback; animates only while visible; Reduce motion still; ~0 % CPU at rest — hosts/hearth-ui/apps/notes/src/gview.rs: "fn glow(fr: &mut Frame"
 - [x] Real counts from the vault: a project with no notes says "no notes yet" — hosts/hearth-ui/apps/notes/src/gview.rs: "\"no notes yet\""

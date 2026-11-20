@@ -370,9 +370,11 @@ fn cloud_of(a: &App, project: &str, cx: f32, cy: f32, rr: f32) -> (f32, f32, f32
     let angles = [("hearth", 185.0), ("tributary", 228.0), ("hearth-ai", 272.0), ("beacon", 330.0), ("other", 352.0), ("command-center", 25.0), ("quad-mech", 72.0), ("gravesleep", 118.0)];
     let deg = angles.iter().find(|x| x.0 == project).map(|x| x.1).unwrap_or(0.0f32) + a.g.cam.yaw.to_degrees() * 0.3;
     let n = *a.vault.project_counts().get(project).unwrap_or(&0) as f32;
-    let dist = if project == "other" { 0.62 } else { 0.86 };
+    let cr = 0.08 + (n.sqrt() * 0.045).min(0.30);
+    // A bigger cloud sits a little closer in, so all of it stays on the map.
+    let dist = if project == "other" { 0.62 } else { 0.86 } - cr * 0.55;
     let ang = deg.to_radians();
-    (cx + ang.cos() * rr * dist * 1.25, cy + ang.sin() * rr * dist * 0.88, rr * (0.08 + (n.sqrt() * 0.045).min(0.30)))
+    (cx + ang.cos() * rr * dist * 1.25, cy + ang.sin() * rr * dist * 0.88, rr * cr)
 }
 
 fn tag_groups(a: &App, shown: &[usize]) -> Vec<(String, Vec<usize>)> {
