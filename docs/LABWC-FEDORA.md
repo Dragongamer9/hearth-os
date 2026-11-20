@@ -111,6 +111,18 @@ battery fixes; on the owner's devices 1.14's shell used 13-27 % (with the contro
 second on top, a separate process). The pictures: hearth-os branch ci/labwc-fedora, copied to hearth-workspace
 `hearth/assets/1.16-labwc-fedora-shots`.
 
+### In the Fedora image, round 3 (run 44705691945, commit 526783b09)
+
+- Mantel: 0.10 % at rest, busiest minute 0.56 % (under the limits), 287 MB, Files 0.17-0.19 s. Passes.
+- The Welcome & Tips window just showing: **0.15 %** (was about 1.9 %). Hearth's WebKit apps asked for a frame 60 times
+  a second while open (ui/pad/hearth-gamepad.js, the controller loop); now only while a controller is in use, the
+  100 ms timer looks otherwise (synced to every app's copy).
+- Firehold on labwc: 0.38 % at rest, busiest minute **3.3 %** (was 6.3 %), 466 MB (limit 420). The 5-second trace pins
+  the busy moment (375 s into the rest, about 10 minutes after the start) on the shell's main thread with Qt's picture
+  loader and a new python3 child (a game-list load) and "qt.svg.draw: The requested buffer size is too big": the
+  Couch's library and pictures being loaded again. Not yet found what sets it off at that moment. **Still open**, with
+  the memory.
+
 ### In the Fedora image itself (base-anatase.yml, run 44681524720)
 
 Mantel 0.15 % at rest (316 MB), Firehold on labwc 0.73 % (479 MB), Files 0.27-0.38 s. Three things the container
