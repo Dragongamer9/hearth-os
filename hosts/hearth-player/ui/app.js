@@ -287,7 +287,7 @@ video.addEventListener('durationchange', () => { tick(); renderMarks(); });
 video.addEventListener('progress', tick);
 video.addEventListener('play', () => { updateButtons(); call('keep_awake', { mode: isVideo() ? 'video' : 'audio' }).catch(() => {}); mpris(); });
 video.addEventListener('pause', () => { updateButtons(); call('keep_awake', { mode: '' }).catch(() => {}); saveResume(); mpris(); wake(); });
-video.addEventListener('volumechange', () => { updateButtons(); S.settings.volume = video.volume; S.settings.muted = video.muted; saveSettings(); mpris(); });
+video.addEventListener('volumechange', () => { const snd = $('#menuSound'); if (snd) { snd.volume = video.volume; snd.muted = video.muted; } updateButtons(); S.settings.volume = video.volume; S.settings.muted = video.muted; saveSettings(); mpris(); });
 video.addEventListener('ratechange', () => { updateButtons(); mpris(); });
 video.addEventListener('seeked', () => { mpris(false, true); });
 video.addEventListener('loadedmetadata', () => { S.loadingSrc = false; tick(); renderMarks(); updateButtons(); });
@@ -1350,6 +1350,9 @@ async function startMenu(again = false) {
     if (S.item?.disc) { saveResume(); video.pause(); }
     M.on = true; M.state = r.menu;
     $('#menuPic').src = r.url;
+    // The menu's own music and sounds, at the player's volume; stopped with the menu.
+    const snd = $('#menuSound');
+    if (r.audio) { snd.src = r.audio; snd.volume = video.volume; snd.muted = video.muted; snd.play().catch(() => {}); }
     S.discPanel = false;
     $('#dvdmenu').hidden = false;
     setBodyMode(); updateButtons(); hints(); renderMenuBtns();
@@ -1361,6 +1364,7 @@ function stopMenu() {
   if (!M.on) return;
   M.on = false;
   $('#menuPic').removeAttribute('src');
+  const snd = $('#menuSound'); snd.pause(); snd.removeAttribute('src'); snd.load();
   $('#dvdmenu').hidden = true;
   call('disc_menu_stop').catch(() => {});
   hints();

@@ -395,7 +395,11 @@ fn disc_menu_start(handle: tauri::AppHandle, app: tauri::State<Arc<App>>, id: St
         drop(cur);
         let vurl = app.server.stream_url(session.clone(), "menu.vob");
         let url = app.server.live_url(hearth_player::server::Live { program: ff, args: menu_args(&vurl, &session.palette(), session.spu()), mime: "multipart/x-mixed-replace;boundary=ffmpeg".into() }, "menu.mjpeg");
-        Ok(json!({"url": url, "menu": session.state()}))
+        // The menu's sound (its music and button sounds): its own stream, stopped with the menu.
+        let encoders = app.tools.lock().unwrap().encoders.clone();
+        let aurl = app.server.stream_url(session.audio_source(), "menu-sound.vob");
+        let audio = app.server.live_url(hearth_player::server::Live { program: app.tools.lock().unwrap().ffmpeg.clone().unwrap_or_default(), args: hearth_player::dvdnav::menu_audio_args(&aurl, &encoders), mime: "audio/ogg".into() }, "menu-sound.ogg");
+        Ok(json!({"url": url, "audio": audio, "menu": session.state()}))
     }
     #[cfg(not(target_os = "linux"))]
     { let _ = (handle, app, id, again); Err("Not here".into()) }
