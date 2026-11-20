@@ -174,7 +174,9 @@ Singleton {
         try { const v = n.hints ? n.hints["value"] : undefined; return v === undefined || v === null || v === "" ? -1 : Math.max(0, Math.min(100, Number(v))); } catch (e) { return -1; }
     }
     function itemFrom(n, key, onLock) {
-        const img = String(n.image || "");
+        // (its picture: Quickshell's image, else the image-path hint itself, 1.16: a recorded clip's picture on its card)
+        let img = String(n.image || "");
+        try { if (!/^(file:\/\/|\/)/.test(img) && n.hints) img = String(n.hints["image-path"] || n.hints["image_path"] || img); } catch (e) {}
         let cat = "";
         try { cat = String((n.hints && n.hints["category"]) || ""); } catch (e) {}
         return {

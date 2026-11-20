@@ -111,13 +111,13 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 - [ ] The app in front with its own menus (KDE's global menu), File open
 - [x] Left to right: app, menus, clock, mode pill, downloads, Hearth Link, controllers, Quick Settings, notifications — hosts/linux/desktop/firehold-plasma/posture/contents/ui/main.qml: "onClicked: root.openShared(\"org.hearthos.notifications\", \"notifications\")"
-- [x] The first-run tip naming each part of the bar — hosts/linux/desktop/firehold-plasma/posture/contents/ui/BarTip.qml: "\"THE BAR, LEFT TO RIGHT\""
+- [x] The first-run tip naming each part of the bar — hosts/linux/desktop/firehold-plasma/couch/contents/ui/BarTipCard.qml: "\"THE BAR, LEFT TO RIGHT\""
 
 ## 12. The Desk bar's standard menus (12-desk-bar-standard-menus.png)
 
 - [x] Standard menus for an app with none of its own (the app menu, Window, Help) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "[[\"app\", root.appName], [\"window\", \"Window\"], [\"help\", \"Help\"]]"
-- [x] Window › Move to screen (each screen with its mode) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "here ? \"here now\" : s.mode === \"couch\" ? \"goes full screen\""
-- [x] Help: search every command (Alt+Space) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "[\"Search every command\", \"Alt+Space\", \"search\"]"
+- [x] Window › Move to screen (each screen with its mode) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/deskmenus.js: "here ? \"here now\" : s.mode === \"couch\" ? \"goes full screen\""
+- [x] Help: search every command (Alt+Space) — hosts/linux/desktop/firehold-plasma/couch/contents/ui/deskmenus.js: "[\"Search every command\", \"Alt+Space\", \"search\"]"
 - [x] The "controller in your hand" hint — hosts/linux/desktop/firehold-plasma/hearth-firehold-plasma: "notify('A controller is in your hand'"
 
 ## Build status (branch feature/firehold-plasma-1.16; not ticked until each part is pictured and compared)

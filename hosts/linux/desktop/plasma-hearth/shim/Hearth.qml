@@ -24,6 +24,8 @@ Item {
     property int panelEdge: 0          // 0 top, 1 bottom, 2 left, 3 right
     property int panelSize: 0
     readonly property string quick: "/usr/libexec/hearth/hearth-quick"
+    // A notification's picture that comes only as the picture itself (KDE's notifications under Plasma): KImage.qml
+    readonly property string imageFile: "KImage.qml"
 
     function q(s) { return "'" + String(s).replace(/'/g, "'\\''") + "'"; }
     P5Support.DataSource {

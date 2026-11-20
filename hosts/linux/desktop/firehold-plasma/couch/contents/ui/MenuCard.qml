@@ -2,7 +2,7 @@
 // on the right; headings, separators, a "›" row that opens its list beside it, red for Force quit), the mockups' dark
 // menu. Drawn in Plasma's popup (app/StdMenu.qml) and in Firehold on labwc's (desktop/shell/FhDeskMenu.qml, 1.16):
 // one card on both. A click says which (picked) and the popup closes.
-//   items, subItems: [label, shortcut or note on the right, action, kind (head | red | sep | sub | pair | off), what it
+//   items, subItems: [label, shortcut or note on the right, action, kind (head | red | sep | sub | pair | off: greyed), what it
 //   does, icon]; iconFile: the icon drawer (KIcon.qml under Plasma, FhIcon.qml under labwc).
 import QtQuick
 import QtQuick.Layouts
@@ -14,7 +14,11 @@ Item {
     property bool subOpen: false
     property string iconFile: ""
     signal picked(string action)
-    readonly property real subY: {
+    // (an app's own menus can have several "›" rows: the one that opened says so, and where it is)
+    signal subRequested(var row)
+    property real subAt: -1
+    readonly property real subY: subAt >= 0 ? subAt : firstSubY
+    readonly property real firstSubY: {
         let y = 8;
         for (const it of items) {
             if (it[3] === "sub") return y - 8;
@@ -78,7 +82,7 @@ Item {
                 width: parent.width - 28 - (ic.visible ? 26 : 0) - right.implicitWidth - 12; elide: Text.ElideRight
                 textFormat: Text.StyledText
                 text: r.modelData[0] + (r.modelData[4] ? "<font color=\"" + (r.hot ? "#5a2a0c" : "#8f8781") + "\"> · " + r.modelData[4] + "</font>" : "")
-                color: r.kind === "head" ? "#6f6a66" : r.hot ? "#1d0d03" : r.kind === "red" ? "#ff9b9b" : "#f2ede8"
+                color: r.kind === "head" || r.kind === "off" ? "#6f6a66" : r.hot ? "#1d0d03" : r.kind === "red" ? "#ff9b9b" : "#f2ede8"
                 font.pixelSize: r.kind === "head" ? 12 : 16; font.weight: r.kind === "head" ? Font.Bold : Font.Normal
                 font.letterSpacing: r.kind === "head" ? 1 : 0
             }
@@ -92,7 +96,7 @@ Item {
             MouseArea {
                 id: ma
                 anchors.fill: parent
-                enabled: r.kind !== "sep" && r.kind !== "head"
+                enabled: r.kind !== "sep" && r.kind !== "head" && r.kind !== "off"
                 hoverEnabled: true
                 onEntered: if (r.kind === "sub") m.openSub(r)
                 onClicked: function (mouse) {
@@ -104,7 +108,7 @@ Item {
             }
         }
     }
-    function openSub(rowItem) { subOpen = true; }
+    function openSub(rowItem) { subAt = rowItem.y; subOpen = true; subRequested(rowItem.modelData); }
     function rowsHeight(list) {
         let h = 0;
         for (const it of list) h += it[3] === "sep" ? 13 : it[3] === "head" ? 30 : 38;

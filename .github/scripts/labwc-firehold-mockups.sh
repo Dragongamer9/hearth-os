@@ -84,7 +84,7 @@ sleep 12
 
 ipc() { timeout 20 quickshell ipc -p "$SH" call firehold "$@" >/dev/null 2>&1 || echo "ipc $* failed" >>"$OUT/ipc.txt"; sleep "${WAIT:-2}"; }
 press() { for b in "$@"; do ipc press "$b"; done; }
-shot() { grim -o "${3:-HEADLESS-1}" "$OUT/$1.png" 2>/dev/null || echo "no picture $1" >>"$OUT/ipc.txt"; cp "$MOCK/$2" "$OUT/mockup-$2" 2>/dev/null || true; }
+shot() { if [ "${3:-}" = all ]; then grim "$OUT/$1.png"; else grim -o "${3:-HEADLESS-1}" "$OUT/$1.png"; fi 2>/dev/null || echo "no picture $1" >>"$OUT/ipc.txt"; cp "$MOCK/$2" "$OUT/mockup-$2" 2>/dev/null || true; }
 fhp() { python3 "$FHP" "$@"; }
 
 grep -q "the shared Couch didn't load" "$SLOG" && err "the approved Couch didn't load: $(grep -iE 'fhcouch|Couch.qml' "$SLOG" | head -6 | tr '\n' '|' | cut -c1-900)"
@@ -165,6 +165,105 @@ shot lw-09-notification-cards 09-notification-cards.png HEADLESS-2
 ipc list; sleep 3
 shot lw-10-notification-history 10-notification-history.png HEADLESS-2
 ipc list
+
+# ---- 11 the Desk bar with the app's own menus (Hearth's menu source on labwc: hearth-globalmenu), File open, and the
+# bar's first-run tip; 12 Hearth's standard menus for an app with none (Window › Move to screen), the controller hint.
+# The apps are stand-ins: a Qt Widgets "Hearth Files" with the mockup's menus (it puts them in the menu registrar as
+# KDE's apps do) and a "Trains 2010" window with no menus.
+ipc list 2>/dev/null; fhp mode HEADLESS-2 desk --why mouse; sleep 3
+mkdir -p "$HOME/.local/share/applications"
+printf '[Desktop Entry]\nType=Application\nName=Hearth Files\nExec=hearth-files\nIcon=system-file-manager\n' >"$HOME/.local/share/applications/hearth-files.desktop"
+cat > /tmp/lw-files.py <<'PY'
+import sys
+from PyQt6.QtWidgets import QApplication, QMainWindow, QLabel
+from PyQt6.QtGui import QAction, QKeySequence
+from PyQt6.QtCore import Qt
+app = QApplication(sys.argv)
+app.setDesktopFileName('hearth-files')
+app.setApplicationName('Hearth Files')
+w = QMainWindow(); w.setWindowTitle('Hearth Files — Pictures'); w.resize(1260, 760)
+w.setCentralWidget(QLabel('Pictures'))
+mb = w.menuBar()
+def menu(name, rows):
+    m = mb.addMenu(name)
+    for r in rows:
+        if r is None: m.addSeparator(); continue
+        if isinstance(r, tuple) and isinstance(r[1], list):
+            s = m.addMenu(r[0])
+            for x in r[1]: s.addAction(x)
+            continue
+        a = QAction(r[0], w)
+        if r[1]: a.setShortcut(QKeySequence(r[1]))
+        m.addAction(a)
+menu('&File', [('New window', 'Ctrl+N'), ('New tab', 'Ctrl+T'), ('New folder…', 'Ctrl+Shift+N'), ('New file', ['Text file', 'Spreadsheet']), None,
+               ('Open with', ['Hearth Photos', 'Hearth Paint']), ('Open in Terminal', 'Shift+F4'), ('Send to', ["Dad's PC", 'ROG Ally']), None,
+               ('Copy location', 'Ctrl+Alt+C'), ('Properties', 'Alt+Return'), None, ('Close tab', 'Ctrl+W'), ('Quit', 'Ctrl+Q')])
+for n in ('&Edit', '&View', '&Go', '&Bookmarks', '&Help'):
+    menu(n, [('Something', '')])
+w.show()
+sys.exit(app.exec())
+PY
+cat > /tmp/lw-trains.py <<'PY'
+import sys
+from PyQt6.QtWidgets import QApplication, QWidget
+app = QApplication(sys.argv)
+app.setDesktopFileName('trains2010')
+w = QWidget(); w.setWindowTitle('Trains 2010'); w.resize(1280, 800); w.setStyleSheet('background: #8a6a3a'); w.show()
+sys.exit(app.exec())
+PY
+if python3 -c 'import PyQt6.QtWidgets' 2>/dev/null; then
+  python3 /tmp/lw-files.py >"$OUT/files-standin.log" 2>&1 & FPID=$!
+  sleep 8
+  note "the Desk bar: $(timeout 10 quickshell ipc -p "$SH" call firehold bar 2>/dev/null) · registered: $(cat "$XDG_RUNTIME_DIR/hearth-globalmenu.json" 2>/dev/null | head -c 300)"
+  ipc barmenu File; sleep 2
+  ipc bartip true; sleep 2
+  shot lw-11-desk-bar-app-menus 11-desk-bar-app-menus.png HEADLESS-2
+  ipc barmenu ""; ipc bartip false
+  python3 /tmp/lw-trains.py >"$OUT/trains-standin.log" 2>&1 & TPID=$!
+  sleep 6
+  # a controller button while every screen is Desk: the hint; then the TV back to Couch, as the mockup has it
+  fhp mode all desk --why mouse; sleep 3
+  press x; sleep 1
+  fhp mode HEADLESS-1 couch --why pad; sleep 2
+  ipc barmenu move; sleep 1
+  shot lw-12-desk-bar-standard-menus 12-desk-bar-standard-menus.png HEADLESS-2
+  note "the Desk bar (no menus of its own): $(timeout 10 quickshell ipc -p "$SH" call firehold bar 2>/dev/null)"
+  ipc barmenu help; sleep 2
+  shot lw-12b-desk-bar-help 12-desk-bar-standard-menus.png HEADLESS-2
+  ipc barmenu ""
+  kill "$FPID" "$TPID" 2>/dev/null
+else
+  err "11-12: PyQt6 isn't here for the stand-in apps"
+fi
+
+note "the clip's notification in the history: $(python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); print([v.get("image") for v in d.values() if v.get("app") == "Hearth Recorder"])' "$HOME/.local/state/nimbus/notifications.json" 2>&1 | cut -c1-200)"
+
+# ---- 05 Settings › Couch, Desk and Away (Hearth's Settings, the Rust app: in the image, not in this container), on
+# labwc, in the controller look the mockup draws; the stand-in helper answers with the mockup's two screens.
+if command -v hearth-settings-app >/dev/null 2>&1; then
+  fhp mode all desk --why pick; sleep 4
+  STUB=$(mktemp -d)
+  cat > "$STUB/hearth-firehold-plasma" <<'SH'
+#!/bin/sh
+case "$1" in
+  get) echo '{"awayAfter": 20, "autoPad": true, "autoPadScope": "tv", "autoMouse": true, "games": "follow"}' ;;
+  modes) echo '{"screens": [{"name": "HEADLESS-1", "tv": true, "label": "TCL 55″ TV", "spec": "3840 × 2160 · 60 Hz · HDMI 2 on the RTX 5070", "mode": "couch", "why": "pad"}, {"name": "HEADLESS-2", "tv": false, "label": "LG 27GP850", "spec": "2560 × 1440 · 165 Hz · DisplayPort 1", "mode": "desk", "why": "mouse"}], "autoPad": true, "autoMouse": true, "awayAfter": 20}' ;;
+  *) exit 0 ;;
+esac
+SH
+  chmod +x "$STUB/hearth-firehold-plasma"
+  for v in "1-modes:" "2-switching:right down down down down down down down down down" "3-games:right down down down down down down down down down down down down down down down down"; do
+    n=${v%%:*}; pr=${v#*:}
+    if [ -n "$pr" ]; then PATH="$STUB:$PATH" hearth-settings-app --page couch-desk-away --layout b --press "$pr" >"$OUT/settings-$n.log" 2>&1 &
+    else PATH="$STUB:$PATH" hearth-settings-app --page couch-desk-away --layout b >"$OUT/settings-$n.log" 2>&1 & fi
+    sp=$!; sleep 7
+    shot lw-05-settings-modes-$n 05-settings-modes.png all
+    kill "$sp" 2>/dev/null; sleep 1
+  done
+  rm -rf "$STUB"
+else
+  note "05: Hearth's Settings app isn't in this container (pictured in the image run)"
+fi
 
 # ---- QML errors from the shared Couch's files or the labwc host
 errs=$(grep -E 'fhcouch/|FhpCouch|FhCouchHost|FhMedia|FhIcon' "$SLOG" | grep -iE 'error|TypeError|ReferenceError|is not defined|Cannot|Unable|failed' | sort | uniq -c | sort -rn | head -12)

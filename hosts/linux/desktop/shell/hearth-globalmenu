@@ -18,7 +18,6 @@ import json
 import os
 import re
 import sys
-import tempfile
 import time
 
 BUS_NAME = 'com.canonical.AppMenu.Registrar'
@@ -39,11 +38,9 @@ def read_state():
 
 
 def write_state(d):
-    path = state_path()
-    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path), prefix='.hearth-globalmenu-')
-    with os.fdopen(fd, 'w') as f:
+    """(Runtime state, not a setting: written in place so the bar's watch on the file keeps seeing it.)"""
+    with open(state_path(), 'w') as f:
         json.dump(d, f)
-    os.replace(tmp, path)
 
 
 def who(pid):

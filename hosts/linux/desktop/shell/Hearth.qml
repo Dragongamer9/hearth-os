@@ -15,6 +15,7 @@ Singleton {
     readonly property string quick: desktop + "/plasma-hearth/hearth-quick"
     readonly property string helper: desktop + "/firehold-plasma/hearth-firehold-plasma"
     readonly property string style: "firehold"
+    readonly property string imageFile: ""      // (Mantel's notifications keep the picture's file: nothing else needed)
     // Set by Firehold.qml: the screen Quick Settings opens on ({name, width, height}) and the Desk bar (top, its height
     // when it's there, 0 on the Couch).
     property var screen: ({ name: "", width: 1920, height: 1080 })

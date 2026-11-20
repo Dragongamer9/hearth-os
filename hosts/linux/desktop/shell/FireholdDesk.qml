@@ -57,8 +57,19 @@ Scope {
         else if (what === "full") w.fullscreen = !w.fullscreen;
         else Quickshell.execDetached(["python3", Quickshell.shellDir + "/hearth-type"].concat(what));
     }
+    // 1.16, Firehold on labwc: the approved Desk bar (FhpDeskBar.qml, mockups 04, 11, 12), by file name; until it's
+    // there, or if it can't load, this one.
+    LazyLoader {
+        id: newBar
+        active: dk.fh.sharedCouch
+        source: "FhpDeskBar.qml"
+        onItemChanged: if (item) { item.fh = dk.fh; item.screen = Qt.binding(() => dk.scr); dk.fh.deskBar = item; }
+        Component.onDestruction: if (dk.fh.deskBar) dk.fh.deskBar = null
+    }
+    readonly property bool approvedBar: !!newBar.item
     PanelWindow {
         id: bar
+        visible: !dk.approvedBar
         screen: dk.scr
         WlrLayershell.layer: WlrLayer.Top
         WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
@@ -128,7 +139,7 @@ Scope {
     // The Modes card (the Couch's own ModesCard.qml, as under Plasma) under the pill, at the bar's right.
     PopupWindow {
         id: modesPop
-        anchor.window: bar
+        anchor.window: dk.approvedBar ? newBar.item : bar
         anchor.rect.x: bar.width - implicitWidth - 140 * dk.k
         anchor.rect.y: 44 * dk.k + 10 * dk.k
         visible: dk.fh.sharedCouch && dk.fh.modes.popupOpen && modesCard.status === Loader.Ready

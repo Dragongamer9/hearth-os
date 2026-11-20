@@ -340,6 +340,8 @@ Scope {
     }
     // Every other button goes to what's in front: the Guide panel or the Couch screen on the main screen.
     property var activeCouch: null
+    property double handAt: 0
+    property var deskBar: null          // Firehold on labwc's Desk bar (FhpDeskBar.qml) while it's up
 
     // ------------------------------------------------------------------ Quick Settings and notifications (labwc, 1.16)
     // Firehold on labwc's are Firehold on Plasma's own (FireholdQuick, FireholdCards, FireholdHistory: mockups 07-10),
@@ -387,6 +389,15 @@ Scope {
     function padButton(b, down) {
         if (!unlocked) return;
         if (panelShown && b !== "guide") { panelPress(b, down); return; }
+        // Firehold on labwc, a controller on the Desk (mockup 12): View opens the bar's menus for the app in front;
+        // another button says, once in a while, what the controller can do here (as under Plasma).
+        if (sharedCouch && down && b !== "guide" && !couchUp && !guideShown && !settingsShown && deskBar) {
+            if (b === "view") { deskBar.openNamed("window"); return; }
+            if (Date.now() - handAt > 600000) {
+                handAt = Date.now();
+                Quickshell.execDetached(["notify-send", "-a", "Firehold", "-i", "input-gaming", "-t", "15000", "A controller is in your hand", "Press ≡ for the Couch on this screen, or View for these menus with the controller"]);
+            }
+        }
         if (b === "guide") { if (down) { guidePresses++; guideWait.restart(); } return; }
         if (!down) return;
         if (settingsShown && settingsPanel) { settingsPanel.press(b); return; }
@@ -515,6 +526,10 @@ Scope {
         function panels(): string { return JSON.stringify({ quick: fhQuick.shown, list: fhList.shown, cards: !!fhCards.item, screen: fhs.panelScreen ? fhs.panelScreen.name : "" }); }
         // The Desk bar's Modes card (Firehold on labwc), open or closed.
         function modes(open: bool): void { liveModes.popupOpen = open && fhs.sharedCouch; }
+        // The Desk bar's menus by name (File, Window, help, move; "" closes) and its first-run tip.
+        function barmenu(name: string): void { if (fhs.deskBar) fhs.deskBar.openNamed(name); }
+        function bartip(show: bool): void { if (fhs.deskBar) fhs.deskBar.tipShown = show; }
+        function bar(): string { const b = fhs.deskBar; return JSON.stringify(b ? { app: b.appName, own: b.ownMenus, menus: b.ownMenus ? b.globalMenu.menus.map(m => m.label) : [], open: b.open, tip: b.tipShown } : {}); }
         // Checks: every Couch screen drawn again whole (CI's software renderer under labwc headless can leave a partial
         // repaint shifted in a screenshot; a real screen draws whole frames).
         function redraw(): void { fhs.redraws++; }

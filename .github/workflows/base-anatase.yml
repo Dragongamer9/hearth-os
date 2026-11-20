@@ -659,6 +659,13 @@ jobs:
             for f in /tmp/lwout/$k/*; do [ -f "$f" ] && sudo cp "$f" "/tmp/anatase-looks/labwc-$k-$(basename "$f")"; done
             { echo "### $k on labwc"; echo; sudo cat /tmp/lwout/$k/rest.md 2>/dev/null; } >> "$GITHUB_STEP_SUMMARY"
           done
+          # Firehold on labwc's approved screens (docs/mockups/checklists/firehold-labwc.md), in this image: the Couch,
+          # Modes, Away, Settings › Couch, Desk and Away (the image's own Settings app), Quick Settings, notifications, the
+          # Desk bar's menus. Pictures as labwc-mockups-lw-NN-*.png with the looks.
+          sudo podman run --rm --privileged -v "$PWD:/src:ro" -v /tmp/lwout:/out hearth-os:anatase \
+            bash -c "cd /src && (python3 -c 'import PIL, PyQt6.QtWidgets' 2>/dev/null || dnf5 -y install python3-pillow python3-pyqt6 >/dev/null 2>&1 || true); MOCKUPS=/src/docs/mockups/firehold-plasma SESSION_FILE=/usr/bin/nimbus-session timeout 1200 bash .github/scripts/labwc-firehold-mockups.sh /out/mockups" || rc=1
+          for f in /tmp/lwout/mockups/*; do [ -f "$f" ] && sudo cp "$f" "/tmp/anatase-looks/labwc-mockups-$(basename "$f")"; done
+          { echo "### Firehold on labwc, the approved screens"; echo; sudo cat /tmp/lwout/mockups/mockups.md 2>/dev/null; } >> "$GITHUB_STEP_SUMMARY"
           sudo chmod -R a+r /tmp/anatase-looks
           exit $rc
       # <<< labwc on the Fedora edition
