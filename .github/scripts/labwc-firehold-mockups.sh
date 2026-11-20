@@ -28,6 +28,41 @@ python3 "$HERE/firehold-plasma-fixtures.py" "$HOME" "$FX" || err "the stand-ins 
 export HEARTH_FIREHOLD_HOME_FIXTURE="$FX/home.json" HEARTH_FIREHOLD_SYS_FIXTURE="$FX/sys.json"
 # Two screens, as the mockups have them: the TV (HEADLESS-1) and the monitor (HEADLESS-2), side by side.
 export HEARTH_FIREHOLD_TV_SCREENS=HEADLESS-1 HEARTH_FIREHOLD_SCREENS="HEADLESS-1:tv:TCL 55″ TV:3840 × 2160 · 60 Hz · HDMI 2,HEADLESS-2::LG 27GP850:2560 × 1440 · 165 Hz · DisplayPort 1"
+# Quick Settings answers as mockups 07 (the Nvidia PC) and 08 (the ROG Ally) show (hearth-quick's CI fixture), a
+# history from yesterday for the list (mockup 10), and a time zone where it's afternoon (the quiet hours aren't on).
+export HEARTH_QUICK_FIXTURE=/tmp/lw-quick.json
+qs_fixture() {   # desk | couch
+  python3 - "$HEARTH_QUICK_FIXTURE" "$1" <<'PY'
+import json, sys
+desk = {"device": "Nvidia PC", "line": "Nvidia PC · plugged in · up 3 days", "battery": -1, "user": "Chris",
+ "wifi": {"on": True, "ssid": "Home-5G", "strength": "strong"}, "bt": {"on": True, "connected": 3, "names": ["Xbox Controller", "Arctis 7", "MX Master"]},
+ "osk": False, "night": {"on": True, "until": "7 AM"}, "dnd": {"on": False, "byHand": False, "schedule": True, "from": "11 PM", "to": "7 AM", "games": True, "family": True},
+ "sinks": [{"name": "headset", "word": "Headset", "default": True, "volume": 64}, {"name": "hdmi", "word": "TV (HDMI)", "default": False, "volume": 50}, {"name": "spk", "word": "Speakers", "default": False, "volume": 40}],
+ "brightness": [{"id": "lg", "label": "LG monitor", "percent": 80, "max": 100}], "power": "balanced",
+ "powerNames": {"power-saver": "Power saver", "balanced": "Balanced", "performance": "Performance"},
+ "devices": [{"name": "Xbox Controller", "kind": "pad", "percent": 72, "player": 1, "low": False}, {"name": "8BitDo", "kind": "pad", "percent": 18, "player": 2, "low": True},
+             {"name": "Arctis 7", "kind": "headset", "percent": 60, "low": False}, {"name": "MX Master", "kind": "mouse", "percent": 40, "low": False}],
+ "gameModeOff": False, "modes": [{"name": "HEADLESS-1", "tv": True, "label": "TCL TV", "mode": "couch"}, {"name": "HEADLESS-2", "tv": False, "label": "LG monitor", "mode": "desk"}]}
+couch = dict(desk, device="ROG Ally", line="ROG Ally · battery 64% · up 2 h", battery=64, batteryMore={"left": "about 2 h 40 min", "limit": 80},
+ bt={"on": True, "connected": 1, "names": ["Earbuds"]}, night={"on": False, "until": "9 PM"},
+ sinks=[{"name": "buds", "word": "Earbuds", "default": True, "volume": 45}], brightness=[{"id": "", "label": "This screen", "percent": 70, "max": 100}],
+ powerNames={"power-saver": "Silent · 10 W", "balanced": "Balanced · 18 W", "performance": "Turbo · 25 W"},
+ devices=[{"name": "Earbuds", "kind": "headset", "percent": 70, "low": False}, {"name": "8BitDo", "kind": "pad", "percent": 18, "player": 2, "low": True}],
+ gameModeOff=True, modes=[{"name": "HEADLESS-1", "tv": True, "label": "Built-in", "mode": "couch"}])
+json.dump(desk if sys.argv[2] == "desk" else couch, open(sys.argv[1], "w"))
+PY
+}
+qs_fixture desk
+python3 - "$HOME/.local/state/nimbus/notifications.json" <<'PY'
+import json, os, sys, time
+os.makedirs(os.path.dirname(sys.argv[1]), exist_ok=True)
+now = int(time.time() * 1000); D = 86400000
+def n(k, app, summary, body, t):
+    return {"key": k, "app": app, "summary": summary, "body": body, "icon": "", "entry": "", "image": "", "time": t, "lock": False, "urgency": "normal", "category": "", "progress": -1}
+json.dump({"n:%d" % (now - D): n(now - D, "ROG Ally", "ROG Ally", "Saves backed up to this PC · 12 games", now - D - 3600000),
+           "n:%d" % (now - D + 1): n(now - D + 1, "Controller 2", "Controller 2", "Battery low · 12%", now - D - 7200000)}, open(sys.argv[1], "w"), indent=2)
+PY
+export TZ=$(python3 -c 'import time; h=time.gmtime().tm_hour; print("Etc/GMT%+d" % -((14 - h + 12) % 24 - 12))')
 export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=2
 export QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1
 export HEARTH_WM=labwc HEARTH_FEDORA_LABWC=1 HEARTH_FIREHOLD_SESSION=1
@@ -84,6 +119,52 @@ ipc modes true; sleep 3
 shot lw-04-modes-per-screen 04-modes-per-screen.png HEADLESS-2
 grim "$OUT/lw-04b-both-screens.png" 2>/dev/null
 ipc modes false
+
+# ---- 07 Quick Settings on the Desk (the monitor), 08 with the controller on the Couch (the Ally's answers)
+ipc quick; sleep 3
+note "panels: $(timeout 10 quickshell ipc -p "$SH" call firehold panels 2>/dev/null)"
+shot lw-07-quick-settings-desk 07-quick-settings-desk.png HEADLESS-2
+ipc quick; sleep 1
+qs_fixture couch
+fhp mode all couch --why pad; sleep 4
+press menu; sleep 3
+press down down down down down down down down; sleep 1
+shot lw-08-quick-settings-couch 08-quick-settings-couch.png HEADLESS-1
+press menu; sleep 1
+qs_fixture desk
+
+# ---- 09 notification cards on the Desk: an urgent one stays, a picture (a recorded clip), a message with a reply
+# box, a game that's ready, "2 more"; 10 the list from the clock
+fhp mode HEADLESS-2 desk --why mouse; sleep 4
+python3 - "$HERE/../../docs/mockups/firehold-plasma/06-away.png" /tmp/lw-clip.png <<'PY'
+import sys
+try:
+    from PIL import Image
+    Image.open(sys.argv[1]).convert('RGB').resize((640, 360)).save(sys.argv[2])
+except Exception:
+    pass
+PY
+cat > /tmp/lw-notify.py <<'PY'
+import dbus, json, sys
+n = dbus.Interface(dbus.SessionBus().get_object('org.freedesktop.Notifications', '/org/freedesktop/Notifications'), 'org.freedesktop.Notifications')
+o = json.loads(sys.argv[1])
+hints = {'urgency': dbus.Byte(o.get('urgency', 1))}
+if o.get('image'): hints['image-path'] = o['image']
+if o.get('reply'): hints['x-kde-reply-placeholder-text'] = o['reply']
+print(n.Notify(o['app'], 0, '', o['summary'], o.get('body', ''), o.get('actions', []), hints, o.get('timeout', 30000)))
+PY
+nfy() { timeout 10 python3 /tmp/lw-notify.py "$1" >>"$OUT/notify.log" 2>&1 || echo "notify failed: $1" >>"$OUT/notify.log"; sleep 1; }
+nfy '{"app": "Firefox", "summary": "Firefox download finished", "body": "hollow-pines.tar.zst · 2.9 GB"}'
+nfy '{"app": "Hearth OS", "summary": "Hearth OS update ready", "body": "Nothing changes until you restart"}'
+nfy '{"app": "Discord", "summary": "Ryder in #bfme-nights", "body": "“Edain game at 11? I will host.”", "actions": ["inline-reply", "Reply", "read", "Mark read"], "reply": "Reply to Ryder"}'
+nfy '{"app": "Hearth Recorder", "summary": "Saved the last 30 seconds", "body": "Rise of the Witch-king · 1440p · 96 MB", "image": "/tmp/lw-clip.png", "actions": ["open", "Open", "share", "Copy a share link"]}'
+nfy '{"app": "Downloads", "summary": "Helldivers 2 is ready", "body": "The 6.0 GB update finished (Steam).", "actions": ["play", "Play", "tv", "Play on the TV"]}'
+nfy '{"app": "Hearth Link", "summary": "Dad\u2019s PC asks for help", "body": "“Trains 2010 won\u2019t start after the update.” He\u2019s at his PC now.", "urgency": 2, "actions": ["connect", "Connect (Remote desktop)", "later", "Call him back later"], "timeout": 0}'
+sleep 2
+shot lw-09-notification-cards 09-notification-cards.png HEADLESS-2
+ipc list; sleep 3
+shot lw-10-notification-history 10-notification-history.png HEADLESS-2
+ipc list
 
 # ---- QML errors from the shared Couch's files or the labwc host
 errs=$(grep -E 'fhcouch/|FhpCouch|FhCouchHost|FhMedia|FhIcon' "$SLOG" | grep -iE 'error|TypeError|ReferenceError|is not defined|Cannot|Unable|failed' | sort | uniq -c | sort -rn | head -12)

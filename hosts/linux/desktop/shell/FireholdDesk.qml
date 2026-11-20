@@ -120,7 +120,7 @@ Scope {
             }
             T {
                 anchors.verticalCenter: parent.verticalCenter; text: dk.status; color: F.C.muted; font.pixelSize: 14 * dk.k; visible: text !== ""
-                TapHandler { onTapped: if (dk.fh.quick) dk.fh.quick.toggle() }
+                TapHandler { onTapped: dk.fh.toggleQuick() }
             }
         }
     }

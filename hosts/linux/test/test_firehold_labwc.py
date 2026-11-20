@@ -31,6 +31,7 @@ class SharedCouch(unittest.TestCase):
         with tempfile.TemporaryDirectory() as t:
             d = pathlib.Path(t) / 'desktop'
             shutil.copytree(ROOT / 'hosts/linux/desktop/firehold-plasma', d / 'firehold-plasma', symlinks=True)
+            shutil.copytree(ROOT / 'hosts/linux/desktop/plasma-hearth', d / 'plasma-hearth', symlinks=True)
             (d / 'shell').mkdir()
             shutil.copy(SHELL / 'firehold.js', d / 'shell')
             subprocess.run(['bash', str(ROOT / 'hosts/linux/desktop/labwc-fedora/install-couch.sh'), str(d)], check=True, capture_output=True)
@@ -43,6 +44,14 @@ class SharedCouch(unittest.TestCase):
                 else:
                     self.assertEqual((out / f.name).read_bytes(), f.read_bytes(), f.name)
             self.assertEqual((out / 'firehold.js').read_bytes(), (SHELL / 'firehold.js').read_bytes())
+            # Firehold's Quick Settings, cards and list: next to Mantel's files, with Quickshell's imports
+            for f in ('FireholdQuick', 'FireholdCards', 'FireholdHistory', 'FhState', 'FhTile'):
+                t = (d / 'shell' / (f + '.qml')).read_text()
+                self.assertIn('import Quickshell\n', t, f)
+                self.assertFalse((SHELL / (f + '.qml')).exists(), '%s.qml is Plasma\'s file, copied in at build time (one copy)' % f)
+            self.assertIn('Singleton {', (d / 'shell/FhState.qml').read_text())
+            self.assertTrue((d / 'shell/fh.js').exists())
+            self.assertIn('Home 1.0 Home.qml', (out / 'qmldir').read_text())
         self.assertFalse((SHELL / 'fhcouch').exists(), 'fhcouch is made when the image is built, never kept in git (one copy)')
         self.assertIn('install-couch.sh', (ROOT / 'os-bases/anatase/build.sh').read_text())
 
@@ -83,7 +92,7 @@ class SharedCouch(unittest.TestCase):
             self.assertRegex(b, r'property \w+ %s\b' % f, 'MediaCard reads cp.%s: FhMedia.qml lacks it' % f)
 
     def test_nothing_runs_by_itself_in_the_labwc_host(self):
-        for f in ('FhCouchHost.qml', 'FhpCouch.qml', 'FhMedia.qml', 'FhIcon.qml', 'FhModes.qml', 'FhRun.qml'):
+        for f in ('FhCouchHost.qml', 'FhpCouch.qml', 'FhMedia.qml', 'FhIcon.qml', 'FhModes.qml', 'FhRun.qml', 'FhPanel.qml', 'Hearth.qml', 'LayerPanel.qml'):
             t = (SHELL / f).read_text()
             self.assertNotRegex(t, r'\bTimer\s*\{', '%s: no timers (the owner\'s rule on lag)' % f)
             self.assertNotRegex(t, r'\bloops\s*:', '%s: no animations' % f)

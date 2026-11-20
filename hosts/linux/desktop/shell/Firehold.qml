@@ -336,10 +336,45 @@ Scope {
             home();
             return;
         }
-        if (quick) quick.toggle();
+        toggleQuick();
     }
     // Every other button goes to what's in front: the Guide panel or the Couch screen on the main screen.
     property var activeCouch: null
+
+    // ------------------------------------------------------------------ Quick Settings and notifications (labwc, 1.16)
+    // Firehold on labwc's are Firehold on Plasma's own (FireholdQuick, FireholdCards, FireholdHistory: mockups 07-10),
+    // on the screen you're using (the TV's Couch, or the Desk's screen); elsewhere Mantel's Quick Access as before.
+    readonly property var panelScreen: {
+        const n = anyCouch && posture === "couch" ? padScreen : (deskScreen ? deskScreen.name : padScreen);
+        return Quickshell.screens.find(s => s.name === n) || Quickshell.screens[0] || null;
+    }
+    Binding { target: Hearth; property: "screen"; when: fhs.sharedCouch && !!fhs.panelScreen; value: fhs.panelScreen ? { name: fhs.panelScreen.name, width: fhs.panelScreen.width, height: fhs.panelScreen.height } : ({}) }
+    Binding { target: Hearth; property: "panelSize"; when: fhs.sharedCouch; value: fhs.posture === "desk" && fhs.panelScreen === fhs.deskScreen ? Math.round(44 * Math.min(fhs.panelScreen.width / 1920, fhs.panelScreen.height / 1080)) : 0 }
+    Binding { target: SettingsNav; property: "fireholdCards"; value: fhs.unlocked && fhs.sharedCouch && !!fhCards.item }
+    FhPanel { id: fhQuick; name: "hearth-firehold-quick"; source: "FireholdQuick.qml"; screen: fhs.panelScreen }
+    FhPanel { id: fhList; name: "hearth-firehold-notifications"; source: "FireholdHistory.qml"; screen: fhs.panelScreen }
+    Connections { target: fhQuick.content; ignoreUnknownSignals: true; function onOpenNotifications() { fhQuick.close(); fhList.toggle(); } }
+    // (by file name: the cards are copied in when the image is built; without them Mantel's own pop-ups stay)
+    LazyLoader {
+        id: fhCards
+        active: fhs.unlocked && fhs.sharedCouch
+        source: "FireholdCards.qml"
+        onItemChanged: if (item) { item.screen = Qt.binding(() => fhs.panelScreen); item.openList.connect(() => fhList.toggle()); }
+    }
+    function toggleQuick() { if (sharedCouch) { fhList.close(); fhQuick.toggle(); } else if (quick) quick.toggle(); }
+    function toggleList() { if (sharedCouch) { fhQuick.close(); fhList.toggle(); } }
+    readonly property bool panelShown: sharedCouch && (fhQuick.shown || fhList.shown)
+    // The controller in an open panel: its keys (FireholdQuick's keyDown/keyUp; the list closes with B).
+    function panelPress(b, down) {
+        const k = { up: Qt.Key_Up, down: Qt.Key_Down, left: Qt.Key_Left, right: Qt.Key_Right, a: Qt.Key_Return, b: Qt.Key_Escape,
+                    lb: Qt.Key_PageUp, rb: Qt.Key_PageDown }[b];
+        if (fhQuick.shown) {
+            if (b === "menu") { if (down) fhQuick.close(); return; }
+            if (k !== undefined) { if (down) fhQuick.content.keyDown(k, false); else fhQuick.content.keyUp(k, false); }
+            return;
+        }
+        if (fhList.shown && down && (b === "b" || b === "menu")) fhList.close();
+    }
     // (Firehold on labwc: every screen's Couch, for requests that are for all of them, and the screen the controller
     // drives: a TV that's Couch, else the first screen)
     property var couches: []
@@ -351,6 +386,7 @@ Scope {
     property var settingsPanel: null
     function padButton(b, down) {
         if (!unlocked) return;
+        if (panelShown && b !== "guide") { panelPress(b, down); return; }
         if (b === "guide") { if (down) { guidePresses++; guideWait.restart(); } return; }
         if (!down) return;
         if (settingsShown && settingsPanel) { settingsPanel.press(b); return; }
@@ -473,6 +509,10 @@ Scope {
         function close(): void { fhs.closeAll(); fhs.deskMenu = ""; }
         // Checks: the Desk bar's File, Edit or View menu open ("" closes it).
         function menu(name: string): void { fhs.deskMenu = name; }
+        // Firehold on labwc's Quick Settings and notification list (mockups 07-10), open or closed.
+        function quick(): void { fhs.toggleQuick(); }
+        function list(): void { fhs.toggleList(); }
+        function panels(): string { return JSON.stringify({ quick: fhQuick.shown, list: fhList.shown, cards: !!fhCards.item, screen: fhs.panelScreen ? fhs.panelScreen.name : "" }); }
         // The Desk bar's Modes card (Firehold on labwc), open or closed.
         function modes(open: bool): void { liveModes.popupOpen = open && fhs.sharedCouch; }
         // Checks: every Couch screen drawn again whole (CI's software renderer under labwc headless can leave a partial

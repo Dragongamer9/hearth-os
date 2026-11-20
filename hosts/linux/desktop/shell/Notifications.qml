@@ -84,7 +84,7 @@ Scope {
         id: popups
         property bool replying: false      // typing in a pop-up's Reply box (NotifReply.qml): the keyboard is ours till then
         readonly property var keys: DeskState.popups.slice(0, 4)
-        visible: keys.length > 0
+        visible: keys.length > 0 && !SettingsNav.fireholdCards
         WlrLayershell.layer: WlrLayer.Overlay
         WlrLayershell.namespace: "nimbus-notifications"
         // Never takes the keyboard (or a WebKit app's controller) from the window in front: docs/CONTROLLER-FOCUS.md

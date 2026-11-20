@@ -76,7 +76,7 @@ PanelWindow {
         console.info("firehold: Couch on " + scrName + " takes " + b + (couch ? " (" + couch.page + ", " + couch.tab + ")" : " (not loaded)"));
         if (!couch) return;
         if (b === "view") { couch.page = couch.page === "switcher" ? "tabs" : "switcher"; return; }
-        if (b === "menu") { couch.key(Qt.Key_Menu); return; }
+        if (b === "menu") { fh.toggleQuick(); return; }      // ☰ Quick Settings (mockup 08)
         couch.handle("key:" + b);
     }
 }

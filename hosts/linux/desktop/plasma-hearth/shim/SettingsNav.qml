@@ -15,6 +15,7 @@ Item {
         keywords: (function () { const o = {}; for (const p of Reg.PAGES) o[p.id] = [p.words || "", p.old || "", (Reg.category(p.cat) || {}).label || ""].join(" ").trim(); return o; })(),
         open: function (p) { nav.openPage(p); }
     })
+    property bool fireholdCards: false      // (Firehold on labwc only: its cards draw the pop-ups)
     property bool fireholdDesk: false
     property bool fireholdCouch: false
     property var mixer: null
