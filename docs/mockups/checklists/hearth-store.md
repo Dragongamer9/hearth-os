@@ -8,10 +8,9 @@ image (os-bases/anatase/build.sh, its files in os-bases/anatase/system_files). P
 (.github/scripts/hearth-apps-rust-shots.d/store.sh, store-1…13).
 
 Status (Nov 19): built green in CI (hearth-apps-rust 44526860375, then 44535986019 with the picture fixes: store-1-home
-at rest 0.00 % of a core, 26.5 MB). Every page pictured (store-1…13) and opened next to its mockup. Open: the app
-page's "‹ Your apps" (the pictures open the page straight from Home with --page, so they show "‹ Home"; going there
-from Your apps says "‹ Your apps", but no picture proves it yet). Next: a picture opened from Your apps; merge
-feature/1.15-rust-apps's newer commits.
+at rest 0.00 % of a core, 26.5 MB). Every page pictured (store-1…13) and opened next to its mockup. Then merged with
+feature/1.15-rust-apps (d7b558459) and pictured again (44666623022, 44672203235): store-2 and store-6 open the app's page
+from Your apps, as their mockups, and say "‹ Your apps". Every part is built.
 
 Wording changed from the mockups by the owner's decisions (Nov 19):
 - "Not offering anything Debian": the "On older Debian PCs · System package (.deb)" line (store-2) and the "Older Debian
@@ -51,7 +50,7 @@ Wording changed from the mockups by the owner's decisions (Nov 19):
 - [x] Bar: A Select, B Back, Y Search, X Update all; LB RB Previous / next page — hosts/hearth-ui/apps/store/src/view.rs: "hint(&p, \"Y\", \"Search\"), hint(&p, \"X\", \"Update all\")"
 
 ## 2. An app's page (store-2)
-- [ ] "‹ Your apps" back (built, but the CI picture opens from Home and says "‹ Home")
+- [x] "‹ Your apps" back (store-2 is pictured opened from Your apps, the same step as pressing its row there) — .github/scripts/hearth-apps-rust-shots.d/store.sh: "--page yours --app command-center --show menu"
 - [x] The big icon, "Hearth AI Command Center", "Dragongamer9 · Your AI team: …" — hosts/hearth-ui/apps/store/src/view.rs: "format!(\"{} · {}\", e.author, e.tagline)"
 - [x] Chips: "Installed · 3.13.0" (green), "Updates itself", "Stable" — hosts/hearth-ui/apps/store/src/view.rs: "chip(&p, format!(\"Installed · {}\", i.version), Chip::Ok)"
 - [x] Open (orange, big) and ⋯ — hosts/hearth-ui/apps/store/src/view.rs: "btn(&p, \"⋯\", B::Normal, true"
