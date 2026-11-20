@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Plasma as the Fedora edition installs it (os-bases/anatase/build.sh)
         run: |
-          dnf5 -y install plasma-workspace plasma-desktop kwin python3 python3-pip rpm >/dev/null
+          dnf5 -y install plasma-workspace plasma-desktop kwin python3 python3-pip rpm binutils >/dev/null
           dnf5 -y install --skip-unavailable --skip-broken plasma-nm plasma-pa plasma-systemmonitor powerdevil kscreen libkscreen kscreenlocker \
             bluedevil polkit-kde xdg-desktop-portal-kde plasma-breeze breeze-icon-theme breeze-cursor-theme kde-cli-tools \
             plasma-systemsettings kinfocenter kwin-effects kdecoration aurorae plasma-milou milou kmenuedit \
@@ -36,6 +36,7 @@ jobs:
           path: |
             kcms.json
             kcfg.tar.gz
+            dig.json
 
   post:
     needs: collect
@@ -43,7 +44,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        part: [['kcms.json', 1], ['kcms.json', 46], ['kcms.json', 91], ['kcfg.tar.gz', 1], ['kcfg.tar.gz', 46], ['kcfg.tar.gz', 91], ['kcfg.tar.gz', 136], ['kcfg.tar.gz', 181]]
+        part: [['dig.json', 1]]
     steps:
       - uses: actions/checkout@v4
         with:

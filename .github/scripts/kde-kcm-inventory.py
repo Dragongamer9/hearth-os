@@ -4,7 +4,7 @@
 id, name, description, category, package, file) and kcfg.tar.gz (each module's settings schema, /usr/share/config.kcfg),
 and posts both as gzip+base64 notices: "INV-PARTS what n", then "INV what i" (kde-kcm-inventory.yml, 9 a step).
   kde-kcm-inventory.py collect | kde-kcm-inventory.py post WHAT FIRST LAST"""
-import base64, glob, gzip, io, json, os, subprocess, sys, tarfile
+import base64, glob, gzip, io, json, os, re, subprocess, sys, tarfile
 
 def meta(path):
     """The plugin's JSON from its .qtmetadata (Qt 6: CBOR after "QTMETADATA !" and a 4-byte header)."""
@@ -51,6 +51,16 @@ def collect():
     ver = subprocess.run(['rpm', '-q', 'plasma-workspace', 'plasma-desktop', 'kwin', 'plasma-systemsettings', 'kinfocenter'],
                          capture_output=True, text=True).stdout
     json.dump({'kcms': out, 'categories': cats, 'kcmshell6_list': lst, 'versions': ver}, open('kcms.json', 'w'), indent=1)
+    # What a few KCMs without a kcfg write (their config files, groups and keys show in their strings).
+    dig = {}
+    for so in glob.glob('/usr/lib64/qt6/plugins/plasma/kcms/systemsettings*/*.so'):
+        if any(k in so for k in ('push_notifications', 'fontinst', 'kcm_keys', 'colord', 'kwin_scripts')):
+            out_s = subprocess.run(['strings', '-n', '4', so], capture_output=True, text=True, timeout=60).stdout.splitlines()
+            keep = [x for x in out_s if re.search(r'(rc$|\.conf|^\[|Url|Type|Provider|Distributor|kglobalaccel|setForeign|QKeySequence|colormgr|org\.freedesktop|fontconfig|fonts|Enabled$|kpackage)', x)]
+            dig[os.path.basename(so)] = keep[:400]
+    for f in glob.glob('/usr/share/applications/*kunifiedpush*') + glob.glob('/usr/share/dbus-1/services/*UnifiedPush*') + glob.glob('/etc/xdg/*push*'):
+        dig[f] = open(f, errors='replace').read()[:2000].splitlines()
+    json.dump(dig, open('dig.json', 'w'), indent=0)
     with tarfile.open('kcfg.tar.gz', 'w:gz') as t:
         for f in sorted(glob.glob('/usr/share/config.kcfg/*.kcfg')):
             t.add(f, arcname=os.path.basename(f))
