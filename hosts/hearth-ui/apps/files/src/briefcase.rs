@@ -1477,6 +1477,15 @@ fn did(a: &mut App, then: BThen, r: Value) -> Task<Msg> {
             }
             a.bc.st = if bv(&r, "ok") { Some(r.clone()) } else { None };
             a.bc.st_at = Some(Instant::now());
+            // CI's picture of the right-click menu inside a Briefcase: once its status is in.
+            if a.show == "menu-bc" && a.bc.st.is_some() && !a.entries.is_empty() {
+                a.show.clear();
+                a.cur = 0;
+                a.touched = true;
+                a.cursor = iced::Point::new(420.0, 150.0);
+                a.open_menu(false);
+                return Task::none();
+            }
             if !first || a.bc.st.is_none() {
                 return Task::none();
             }
@@ -1960,10 +1969,12 @@ pub fn dialog(a: &App) -> Element<'_, Msg> {
         };
         btns = btns.push(pill(&p, l.into(), true, lit(a, "ok"), Msg::Bc(BMsg::Press(oi, 1))));
     }
-    col = col.push(container(btns).padding(Padding { top: 6.0, ..Padding::ZERO }));
-    let card = container(scrollable(col.padding(22.0)).height(Length::Shrink))
+    // The buttons stay in sight; what's above them scrolls when the window is too short for it (Customize).
+    let tall = mode == "customize";
+    let room = (a.area.get().1 + 40.0).clamp(260.0, 640.0);
+    let body = scrollable(col.padding(Padding { top: 22.0, right: 22.0, bottom: 4.0, left: 22.0 })).height(if tall { Length::Fixed(room) } else { Length::Shrink });
+    let card = container(column![body, container(btns).padding(Padding { top: 6.0, right: 22.0, bottom: 18.0, left: 22.0 })])
         .width(Length::Fixed(if wide { 760.0 } else { 560.0 }))
-        .max_height((a.area.get().1 + 100.0).clamp(300.0, 720.0))
         .style(ui::boxed(p.panel, p.r(14.0), Some((p.line, 1.0))));
     let _ = gap::<Msg>(1.0, 1.0);
     card.into()

@@ -2120,10 +2120,15 @@ impl App {
             }
         }
         if has("menu-bc") && !self.entries.is_empty() {
-            self.cur = 0;
-            self.touched = true;
-            self.cursor = Point::new(420.0, 150.0);
-            self.open_menu(false);
+            if self.bc.st.is_some() {
+                self.cur = 0;
+                self.touched = true;
+                self.cursor = Point::new(420.0, 150.0);
+                self.open_menu(false);
+            } else {
+                // Its status isn't in yet: when it comes (briefcase.rs).
+                self.show = "menu-bc".into();
+            }
         }
         for k in ["bc-update-all", "bc-setlock", "bc-customize", "bc-addto"] {
             if has(k) {
