@@ -65,7 +65,7 @@ fn tab_on(a: &App, t: &Tab) -> bool {
 }
 
 /// "‹ › hearth › mockups › hearth-store › README.md" and the Live / Source / Read switch.
-pub fn crumb(a: &App, right: Option<E<'static, Msg>>) -> E<'_, Msg> {
+pub fn crumb<'a>(a: &'a App, right: Option<E<'static, Msg>>) -> E<'a, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let rel = a.doc.as_ref().map(|d| d.rel.clone()).unwrap_or_default();
