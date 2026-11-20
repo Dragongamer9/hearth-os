@@ -1,0 +1,7 @@
+notify-send: /usr/bin/notify-send
+posture: desk
+in Hearth's history: 0
+Failed to show notification: Could not connect: Permission denied
+notify-send exit 1
+fake input click: 0
+kate's menus: own

@@ -1,0 +1,16 @@
+KWIN environment variables: QList("KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1")
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+Accepting client connections on sockets: QList("wayland-hearth")
+MESA-EGL: warning: Not allowed to force software rendering when API explicitly selects a hardware device.
+js: FHWIN  | plasmashell | Virtual-0 | 0,0 1920x1080 | layer 0 | hidden false | min false
+js: FHWIN  | plasmashell | Virtual-1 | 1920,0 1920x1080 | layer 0 | hidden false | min false
+js: FHWIN Welcome Center | org.kde.plasma-welcome | Virtual-0 | 636,238 648x604 | layer 2 | hidden false | min false
+js: FHWIN Pictures — Dolphin | org.kde.dolphin | Virtual-0 | 580,251 760x578 | layer 2 | hidden false | min false
+js: FHWIN  | plasmashell | Virtual-0 | 0,0 1920x62 | layer 3 | hidden false | min false
+js: FHWIN  | plasmashell | Virtual-0 | 652,999 616x81 | layer 3 | hidden false | min false
+js: FHWIN plasmashell | org.kde.plasmashell | Virtual-0 | 1235,46 520x443 | layer 3 | hidden false | min false
+js: FHWIN Firehold Couch on Virtual-1 | org.kde.plasmashell | Virtual-1 | 1920,0 1920x1080 | layer 5 | hidden false | min false
+kwin_screencast: PipeWire remote error:  connection error

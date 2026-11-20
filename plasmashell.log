@@ -1,0 +1,147 @@
+Detected locale "C" with character encoding "ANSI_X3.4-1968", which is not UTF-8.
+Qt depends on a UTF-8 locale, and has switched to "C.UTF-8" instead.
+If this causes problems, reconfigure your locale. See the locale(1) manual
+for more information.
+kde.plasmashell: Activity added twice "2ec1fcef-cc38-4838-b59e-1fe7dfdbdb6b"
+qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+qt.qml.propertyCache.append: Member visible of the object PlasmaQuick::Dialog overrides a member of the base object. Consider renaming it or adding final or override specifier
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+kde.plasmashell: Activity added twice "2ec1fcef-cc38-4838-b59e-1fe7dfdbdb6b"
+virtual QStringList Solid::Backends::UPower::UPowerManager::allDevices()  error:  QDBusError("org.freedesktop.DBus.Error.Disconnected", "Not connected to D-Bus server")
+qml: plasma-hearth: Plasma's notification service is up: Hearth shows the notifications
+qml: plasma-hearth: notifications: service up
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+qml: firehold: modes on the Desk bar (Virtual-0): ["Virtual-0=desk"]
+qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+qt.qml.propertyCache.append: Member visible of the object PlasmaQuick::Dialog overrides a member of the base object. Consider renaming it or adding final or override specifier
+virtual QStringList Solid::Backends::UPower::UPowerManager::allDevices()  error:  QDBusError("org.freedesktop.DBus.Error.Disconnected", "Not connected to D-Bus server")
+qml: plasma-hearth: Plasma's notification service is up: Hearth shows the notifications
+qml: plasma-hearth: notifications: service up
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+qml: firehold: modes on the Desk bar (Virtual-0): ["Virtual-0=desk"]
+qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+No QSGTexture provided from updateSampledImage(). This is wrong.
+qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QProcess: Destroyed while process ("/bin/sh") is still running.
+QQmlComponent: Component is not ready
+kf.plasma.quick: error when loading applet "" QList("Error loading Applet: package format is invalid (does not contain any metadata).", "")
+file:///usr/share/plasma/shells/org.kde.plasma.desktop/contents/applet/AppletError.qml:128:17: Unable to assign [undefined] to QString
+qt.qml.propertyCache.append: Member visible of the object PlasmaQuick::Dialog overrides a member of the base object. Consider renaming it or adding final or override specifier
+Could not load a session backend. Session management operations such as shutdown will not be operational. This is a setup issue.
+kde.plasmashell: Activity added twice "2ec1fcef-cc38-4838-b59e-1fe7dfdbdb6b"
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.sql.qsqlquery: QSqlQuery::value: not positioned on a valid record
+qt.qml.propertyCache.append: Final member StackingOrder is overridden in class QQmlDMAbstractItemModelData. The override won't be used.
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"

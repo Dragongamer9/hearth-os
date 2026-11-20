@@ -1,0 +1,12 @@
+2026-11-20 19:05:46 session: Firehold on Plasma (shell org.hearthos.firehold)
+2026-11-20 19:05:46 KWin script loaded (0)
+2026-11-20 19:05:47 org.hearthos.firehold is up
+2026-11-20 19:07:24 plasmashell --replace -p org.hearthos.firehold.desk
+2026-11-20 19:07:25 org.hearthos.firehold.desk is up
+2026-11-20 19:07:36 plasmashell --replace -p org.hearthos.firehold
+2026-11-20 19:07:37 org.hearthos.firehold is up
+2026-11-20 19:07:44 plasmashell --replace -p org.hearthos.firehold.desk
+2026-11-20 19:07:45 org.hearthos.firehold.desk is up
+2026-11-20 19:07:47 plasmashell --replace -p org.hearthos.firehold
+2026-11-20 19:08:12 org.hearthos.firehold didn't come up in 25 s: plain Plasma for this session
+2026-11-20 19:08:12 plasmashell --replace -p org.kde.plasma.desktop
