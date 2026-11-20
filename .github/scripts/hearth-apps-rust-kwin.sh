@@ -175,6 +175,24 @@ PY
   else
     fail "$name out of the pictures" "it's in KWin's screenshots (difference at its place '$d'; $(echo "$PL" | grep -o 'excludeFromCapture=[a-z/]*'))"
   fi
+  # See-through around the pill (Mantel's): its window's corners show what's behind (the same as without it),
+  # while its middle is the pill.
+  local c; c=$(python3 - "$OUT/$name-out.png" "$OUT/$name.png" "$g" <<'PY' 2>/dev/null
+import sys
+from PIL import Image
+a, b = Image.open(sys.argv[1]).convert('RGB'), Image.open(sys.argv[2]).convert('RGB')
+x, y = map(int, sys.argv[3].split(' ')[0].split(',')); w, h = map(int, sys.argv[3].split(' ')[1].split('x'))
+corners = [(x + 1, y + 1), (x + w - 2, y + 1), (x + 1, y + h - 2), (x + w - 2, y + h - 2)]
+d = max(sum(abs(p - q) for p, q in zip(a.getpixel(c), b.getpixel(c))) for c in corners)
+mid = sum(abs(p - q) for p, q in zip(a.getpixel((x + w // 2, y + 4)), b.getpixel((x + w // 2, y + 4))))
+print('%d %d' % (d, mid))
+PY
+)
+  if [ -n "$c" ] && [ "${c%% *}" -le 6 ]; then
+    ok "$name see-through" "its window's corners show what's behind it (corner difference ${c%% *}, the pill's edge ${c##* })"
+  else
+    fail "$name see-through" "its window isn't see-through around the pill (corner difference '${c%% *}', the pill's edge '${c##* }')"
+  fi
 }
 pill kw-07-countdown hearth-capture-pill --take all --delay 10
 g=$(geo "$PL")
