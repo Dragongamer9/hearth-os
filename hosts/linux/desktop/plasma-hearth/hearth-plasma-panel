@@ -622,8 +622,8 @@ def hold_popups():
 # one change at a time: the panel waits with `notifyd-wait SEQ` (asleep until something changes, then it prints the
 # changes since SEQ and ends, and the panel asks again), and `notifyd-send JSON` passes the panel's asks on (cancel
 # a print, eject a disk, quit a background app). Nothing polls; it goes away a little while after the panel does.
-# Job progress is Plasma's own (plasmashell serves org.kde.JobViewServer, so hearth-notifyd leaves it alone); a job
-# hearth-notifyd does serve (no Plasma service yet) comes through too.
+# Job progress is Plasma's own (plasmashell serves org.kde.JobViewServer; hearth-notifyd is told never to take it,
+# HEARTH_NOTIFYD_JOBS=off, so a restarted plasmashell gets it back).
 NOTIFYD = os.environ.get('HEARTH_NOTIFYD') or os.path.join(SHELL, 'hearth-notifyd')
 BRIDGE_IDLE = 30
 
@@ -674,7 +674,8 @@ def notifyd_bridge():
         while not st['stop'] and st['tries'] < 8:
             try:
                 p = subprocess.Popen(['python3', NOTIFYD, 'serve', '--stdio'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                     stderr=subprocess.DEVNULL, text=True, bufsize=1)
+                                     stderr=subprocess.DEVNULL, text=True, bufsize=1,
+                                     env=dict(os.environ, HEARTH_NOTIFYD_JOBS='off'))   # Plasma serves job progress
             except OSError:
                 return
             st['proc'] = p
@@ -811,6 +812,56 @@ def notifyd_send(obj):
     print(out or json.dumps({'ok': False}))
     return 0
 
+# ------------------------------------------------------------------ away from the PC, or locked
+# Mantel's moving wallpapers hold still after 3 minutes without input and while the screen is locked (Wallpaper.qml:
+# DeskState.idle, DeskState.locked; Mantel's IdlePower.qml and Lock.qml set them). On Plasma the panel asks this:
+# `idle-wait IDLE LOCKED` sleeps until either changes (KDE's own org.freedesktop.ScreenSaver: GetActive and
+# GetSessionIdleTime), then prints the new state and ends; the panel asks again. While you're there it wakes only
+# when 3 minutes could have passed (or every 20 s, to notice a lock); while you're away, every 2 s, so the
+# wallpaper moves again as soon as you're back. HEARTH_IDLE_TEST=FILE (CI): "idle" and/or "locked" in FILE instead.
+IDLE_SECS = 180
+
+
+def idle_state():
+    test = os.environ.get('HEARTH_IDLE_TEST')
+    if test:
+        t = read_small_text(test)
+        return 'idle' in t, 'locked' in t, 0
+    import dbus
+    ss = dbus.Interface(dbus.SessionBus().get_object('org.freedesktop.ScreenSaver', '/ScreenSaver'), 'org.freedesktop.ScreenSaver')
+    locked = bool(ss.GetActive())
+    secs = int(ss.GetSessionIdleTime())
+    if secs > 100000:          # some give milliseconds
+        secs //= 1000
+    return secs >= IDLE_SECS, locked, secs
+
+
+def read_small_text(p):
+    try:
+        with open(p) as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def idle_wait(was_idle, was_locked):
+    import signal
+    try:
+        import ctypes
+        ctypes.CDLL('libc.so.6').prctl(1, signal.SIGTERM)   # PR_SET_PDEATHSIG: ends with the panel
+    except (OSError, AttributeError):
+        pass
+    while True:
+        try:
+            idle, locked, secs = idle_state()
+        except Exception as e:   # no screen saver service (or no dbus-python): the wallpaper just keeps moving
+            print(json.dumps({'ok': False, 'why': str(e)[:200]}))
+            return 1
+        if idle != was_idle or locked != was_locked:
+            print(json.dumps({'ok': True, 'idle': idle, 'locked': locked}))
+            return 0
+        time.sleep(2 if (idle or os.environ.get('HEARTH_IDLE_TEST')) else max(2, min(20, IDLE_SECS - secs + 1)))
+
 # ------------------------------------------------------------------ new accounts, and a panel that can't start
 # The owner (Nov 19): Hearth's panel is the default on new Fedora installs: only on a fresh install or a new account's
 # first sign-in, never switched for anyone who already has a panel. A new account gets NEW_MARK from /etc/skel (an
@@ -911,6 +962,8 @@ def main(argv):
         return mark_ready()
     elif cmd == 'hold-popups':
         return hold_popups()
+    elif cmd == 'idle-wait' and len(rest) == 2:
+        return idle_wait(rest[0] == '1', rest[1] == '1')
     elif cmd == 'notifyd-bridge':
         return notifyd_bridge()
     elif cmd == 'notifyd-wait':
@@ -920,8 +973,12 @@ def main(argv):
     elif cmd == 'open' and rest and rest[0] in ('launcher', 'quick', 'calendar', 'search', 'power', 'deskmenu', 'osd', 'osd-bright', 'close'):
         # Opens (or closes again) the app menu, Quick settings or the dashboard on Hearth's bar: for a shortcut
         # of your own, and CI's pictures.
-        out = plasma_js('var ps=panels();for(var i=0;i<ps.length;i++){var ws=ps[i].widgets("org.hearthos.panel");'
-                        'for(var j=0;j<ws.length;j++){ws[j].currentConfigGroup=["General"];if(String(ws[j].readConfig("role","bar"))==="bar")'
+        # Hearth's bar takes them all; the shared Quick settings and notifications widgets (in any panel: KDE's, or
+        # Firehold on Plasma's bar) take their own (quick, calendar).
+        out = plasma_js('var ps=panels(),ids=["org.hearthos.panel","org.hearthos.quicksettings","org.hearthos.notifications"];'
+                        'for(var i=0;i<ps.length;i++){var ws=ps[i].widgets();'
+                        'for(var j=0;j<ws.length;j++){if(ids.indexOf(ws[j].type)<0)continue;ws[j].currentConfigGroup=["General"];'
+                        'if(ws[j].type!=="org.hearthos.panel"||String(ws[j].readConfig("role","bar"))==="bar")'
                         'ws[j].writeConfig("open",%s);}}print("{}");' % json.dumps('%s:%.3f' % (rest[0], time.time())))
         return 0 if out is not None else 1
     elif cmd == 'js' and rest:       # CI and checks: the layout script as it would run (nothing applied)

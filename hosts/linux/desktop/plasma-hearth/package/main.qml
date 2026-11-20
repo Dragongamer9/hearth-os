@@ -32,9 +32,11 @@ PlasmoidItem {
     readonly property string openAsk: String(Plasmoid.configuration.open || "")
     property string openSeen: ""
     onOpenAskChanged: {
-        if (openAsk === "" || openAsk === openSeen || role !== "bar") return;
-        openSeen = openAsk;
+        if (openAsk === "" || openAsk === openSeen) return;
         const w = openAsk.split(":")[0];
+        // The bar takes them all; the shared Quick settings and notifications widgets their own.
+        if (role !== "bar" && !(role === "quick" && w === "quick") && !(role === "notes" && w === "calendar")) return;
+        openSeen = openAsk;
         if (w === "launcher") menus.toggleLauncher();
         else if (w === "search") menus.openMenuSearch();
         else if (w === "quick") menus.toggleQuick();
@@ -65,6 +67,8 @@ PlasmoidItem {
     Loader { active: main.role === "bar" || main.role === "notes"; source: "Notifications.qml" }
     // Mantel's desktop (wallpaper, desktop clock, icons, right-click menu) under the windows, with Hearth's bar.
     Loader { id: deskL; active: main.role === "bar"; source: "DesktopLayer.qml"; onLoaded: item.menus = menus }
+    // Away or locked: Mantel's moving wallpapers hold still then (IdleLink.qml).
+    Loader { active: main.role === "bar"; source: "IdleLink.qml" }
     // hearth-plasma-panel open power (Mantel's power menu), osd-test (CI pictures of the volume bar)
 
     fullRepresentation: Item {

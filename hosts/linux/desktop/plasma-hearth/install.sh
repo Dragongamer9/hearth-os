@@ -84,9 +84,12 @@ if [ -f "$LOCKSRC" ]; then
         "Name": "Hearth lock screen"
     },
     "X-Plasma-APIVersion": "2",
+    "X-Plasma-MainScript": "defaults",
     "Hidden": true
 }
 JSON
+  # A look-and-feel package's main file (KDE's own have one); this one sets nothing, it's only the lock screen.
+  printf '# Hearth lock screen: only contents/lockscreen (nothing else of the look changes)\n' > "$LNF/contents/defaults"
 else
   echo "plasma-hearth: Mantel's lock screen (kwin-lock) isn't there"; ok=0
 fi

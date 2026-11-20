@@ -49,6 +49,9 @@ done
 # Mantel's hearth-notifyd (the tray's background apps, camera, printing, disks) reads these instead of the PC, as
 # Mantel's CI does (notify-widgets.yml): nothing of the kind going on, until the tray's own picture.
 FX=/tmp/notifyd-fx; mkdir -p $FX; export HEARTH_NOTIFYD_FIXTURES=$FX
+# Away from the PC (IdleLink.qml: KDE's screen saver says it after 3 minutes; this file stands in for it, as CI
+# can't wait that long): "idle" in it, and Mantel's moving wallpapers hold still.
+export HEARTH_IDLE_TEST=/tmp/hearth-idle; : > $HEARTH_IDLE_TEST
 fx_none() { echo '{"disks": []}' > $FX/disks.json; echo '{"jobs": []}' > $FX/printers.json; echo '{"apps": []}' > $FX/camera.json; echo '{"apps": []}' > $FX/background.json; }
 fx_none
 # Four desktops, as Mantel's pictures have.
@@ -141,7 +144,7 @@ a = sys.argv + [''] * 12
 acts = [x for x in a[6:10] if x != '']
 hints = {'urgency': dbus.Byte(int(a[5]) if a[5] else 1)}
 if a[10]: hints['desktop-entry'] = a[10]
-print(n.Notify(a[1], 0, a[4], a[2], a[3], acts, hints, -1))
+print(n.Notify(a[1], 0, a[4], a[2], a[3], acts, hints, int(a[11]) if a[11] else -1))
 PY
 note() { timeout 10 python3 /tmp/notify.py "$@" >>"$OUT/notify.log" 2>&1 || echo "notify failed: $*" >>"$OUT/notify.log"; }
 note "Printers" "2 cartridges are low" "Black toner (12 %), Magenta (8 %) · HP LaserJet M209"; sleep 1
@@ -222,6 +225,26 @@ python3 -c 'import sys; from PIL import Image; Image.open(sys.argv[1]).crop((960
 pgrep -fa "notifyd" > "$OUT/notifyd-processes.txt" 2>&1
 fx_none; sleep 22
 
+# ---- what KDE's screen locker reads its lock screen from (for the checks below)
+G=$(ls /usr/libexec/kscreenlocker_greet /usr/lib64/libexec/kscreenlocker_greet 2>/dev/null | head -1)
+{ echo "== greeter: $G"; [ -n "$G" ] && "$G" --help 2>&1 | head -30
+  echo "== kpackagetool6"; kpackagetool6 --type Plasma/LookAndFeel --show org.hearthos.mantel-lock 2>&1 | head -20
+  echo "== kcfg"; cat /usr/share/config.kcfg/kscreenlockersettings.kcfg 2>/dev/null | grep -n -B2 -A3 -i "theme" | head -40
+  echo "== strings"; [ -n "$G" ] && strings -n 5 "$G" 2>/dev/null | grep -n -i -E "lookandfeel|lockscreenmainscript|Theme|PLASMA_DEFAULT_SHELL|Greeter" | head -40
+  for lib in /usr/lib64/libKScreenLocker*.so* /usr/lib64/libkscreenlocker*.so*; do [ -f "$lib" ] && { echo "== $lib"; strings -n 5 "$lib" | grep -n -i -E "^Theme$|Greeter|LookAndFeel" | head -20; }; done
+  for v in config theme-path theme-id; do
+    T=$(mktemp -d); export_args=""
+    case $v in
+      config) printf '[Greeter]\nTheme=org.hearthos.mantel-lock\n' > $T/kscreenlockerrc; args="--testing" ;;
+      theme-path) args="--testing --theme /usr/share/plasma/look-and-feel/org.hearthos.mantel-lock" ;;
+      theme-id) args="--testing --theme org.hearthos.mantel-lock" ;;
+    esac
+    XDG_CONFIG_HOME=$T QT_QPA_PLATFORM=offscreen timeout 10 "$G" $args > $T/out 2>&1
+    echo "== $v: $(grep -c 'hearth-lock-screen: loaded' $T/out) loaded"; grep -v -E 'notify signal|locale|UTF-8|manual|more information' $T/out | head -12
+    rm -rf $T
+  done; } > "$OUT/lock-diagnostics.txt" 2>&1
+echo "::notice title=Lock screen::$(grep -E '^== (config|theme-path|theme-id):' "$OUT/lock-diagnostics.txt" | tr '\n' ' ')"
+
 # ---- Mantel's lock screen in KDE's screen locker (its own test run, on the screen: what locking shows)
 G=$(ls /usr/libexec/kscreenlocker_greet /usr/lib64/libexec/kscreenlocker_greet 2>/dev/null | head -1)
 if [ -n "$G" ]; then
@@ -263,10 +286,16 @@ setlook hearth dark 'barLayout=split' 'dockMode=autohide'
 shot ph-41-hearth-dock-autohide
 setlook hearth dark 'dockMode=shown'
 
-# ---- at rest: plasmashell's processor time over a minute with Hearth's panel up
-t0=$(awk '{print $14+$15}' /proc/$(pgrep -x plasmashell | head -1)/stat 2>/dev/null); sleep 60
-t1=$(awk '{print $14+$15}' /proc/$(pgrep -x plasmashell | head -1)/stat 2>/dev/null)
-echo "::notice title=At rest::plasmashell used $(( (t1 - t0) )) ticks (1/100 s) in 60 s with Hearth's panel up"
+# ---- at rest: plasmashell's processor time over a minute with Hearth's panel up. CI draws with the processor (no
+# graphics card), so a moving wallpaper costs a lot here; then away from the PC (Mantel's wallpapers hold still).
+open_ close
+cpu() { local p t0 t1; p=$(pgrep -x plasmashell | head -1); t0=$(awk '{print $14+$15}' /proc/$p/stat 2>/dev/null); sleep 60; t1=$(awk '{print $14+$15}' /proc/$p/stat 2>/dev/null); echo $(( t1 - t0 )); }
+moving=$(cpu)
+echo idle > $HEARTH_IDLE_TEST; sleep 6
+away=$(cpu)
+: > $HEARTH_IDLE_TEST; sleep 4
+echo "::notice title=At rest::plasmashell used $moving ticks (1/100 s) in 60 s with Hearth's panel up and the wallpaper moving (processor drawing), $away away from the PC (wallpaper still)"
+[ "$away" -gt 600 ] && echo "::warning title=At rest::plasmashell still used $away ticks in a minute with the wallpaper still: something else keeps drawing"
 
 # ---- back to KDE's panel (Settings › Bar and dock › KDE's panel)
 hearth-plasma-panel undo > "$OUT/undo.json" 2>&1; sleep 6
@@ -317,20 +346,20 @@ qid=${ids%,*}; nid=${ids#*,}
 act() { timeout 5 dbus-send --session --dest=org.kde.kglobalaccel /component/plasmashell org.kde.kglobalaccel.Component.invokeShortcut "string:activate widget $1" 2>/dev/null; sleep 3; }
 sleep 6
 if [ -n "$qid" ] && [ -n "$nid" ]; then
-  act "$qid"; shot ph-60-firehold-quick-settings-desk; act "$qid"
+  open_ quick; shot ph-60-firehold-quick-settings-desk; open_ quick
   qs_fixture couch
-  act "$qid"; timeout 5 wtype -k Down -k Down -k Down -k Down -k Down -k Down -k Down -k Down 2>/dev/null; sleep 1; shot ph-61-firehold-quick-settings-couch; act "$qid"
+  open_ quick; timeout 5 wtype -k Down -k Down -k Down -k Down -k Down -k Down -k Down -k Down 2>/dev/null; sleep 1; shot ph-61-firehold-quick-settings-couch; open_ quick
   # The cards (09): an urgent one stays, a picture, a message with a reply box, "2 more"
-  note "Firefox" "Firefox download finished" "hollow-pines.tar.zst · 2.9 GB" ; sleep 1
-  note "Hearth OS" "Hearth OS update ready" "Nothing changes until you restart" ; sleep 1
-  note "Discord" "Ryder in #bfme-nights" "“Edain game at 11? I'll host.”" "" 1 read "Mark read"; sleep 1
-  note "Hearth Recorder" "Saved the last 30 seconds" "Rise of the Witch-king · 1440p · 96 MB" "" 1 open Open share "Copy a share link"; sleep 1
-  note "Downloads" "Helldivers 2 is ready" "The 6.0 GB update finished (Steam)." "" 1 play Play tv "Play on the TV"; sleep 1
+  note "Firefox" "Firefox download finished" "hollow-pines.tar.zst · 2.9 GB" "" 1 "" "" "" "" "" 30000; sleep 1
+  note "Hearth OS" "Hearth OS update ready" "Nothing changes until you restart" "" 1 "" "" "" "" "" 30000; sleep 1
+  note "Discord" "Ryder in #bfme-nights" "“Edain game at 11? I'll host.”" "" 1 read "Mark read" "" "" "" 30000; sleep 1
+  note "Hearth Recorder" "Saved the last 30 seconds" "Rise of the Witch-king · 1440p · 96 MB" "" 1 open Open share "Copy a share link" "" 30000; sleep 1
+  note "Downloads" "Helldivers 2 is ready" "The 6.0 GB update finished (Steam)." "" 1 play Play tv "Play on the TV" "" 30000; sleep 1
   note "Hearth Link" "Dad's PC asks for help" "“Trains 2010 won't start after the update.” He's at his PC now." "" 2 connect "Connect (Remote desktop)" later "Call him back later"
   sleep 2
   shot ph-62-firehold-notification-cards
   wins kwin-windows-firehold
-  act "$nid"; shot ph-63-firehold-notification-list; act "$nid"
+  open_ calendar; shot ph-63-firehold-notification-list; open_ calendar
 else
   fail firehold "the shared plasmoids didn't go into a panel: $(js 'print(panels().length)' | tail -1)"
 fi
