@@ -99,7 +99,8 @@ qs=$(pgrep -u "$(id -u)" -x quickshell | head -1)
 [ -n "$qs" ] || { err "the shell isn't running before the rest"; exit 1; }
 ticks() { awk '{print $14 + $15}' "/proc/$1/stat" 2>/dev/null || echo 0; }
 rss() { awk '/^VmRSS:/{print int($2 / 1024)}' "/proc/$1/status" 2>/dev/null || echo 0; }
-allticks() { for p in /proc/[0-9]*; do [ -O "$p" ] || continue; n=${p#/proc/}; printf '%s %s %s\n' "$n" "$(awk '{print $14 + $15}' "$p/stat" 2>/dev/null)" "$(tr '\0' ' ' <"$p/cmdline" 2>/dev/null | cut -c1-120)"; done; }
+# (live ones only: in this container nothing reaps orphans, so finished ones stay as zombies; on a PC systemd reaps them)
+allticks() { for p in /proc/[0-9]*; do [ -O "$p" ] || continue; grep -q '^State:[[:space:]]*Z' "$p/status" 2>/dev/null && continue; n=${p#/proc/}; printf '%s %s %s\n' "$n" "$(awk '{print $14 + $15}' "$p/stat" 2>/dev/null)" "$(tr '\0' ' ' <"$p/cmdline" 2>/dev/null | cut -c1-120)"; done; }
 SLOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
 frames() { grep -c -E 'Frame rendered|Frame prepared' "$SLOG" 2>/dev/null || echo 0; }
 allticks >"$OUT/procs-start.txt"; n0=$(wc -l <"$OUT/procs-start.txt")
@@ -141,6 +142,37 @@ note "at rest over ${SECS} s: shell $(pct "$sp") of a core (worst minute $(pct "
 busy=$(awk '$1 >= 1.0' "$OUT/procs-busy.txt")
 [ -z "$busy" ] || err "busy at rest: $(echo "$busy" | head -5 | tr '\n' '|')"
 
+# ---- Hearth Files: cold (first time) and warm, from the command to the first change on screen (grim, unscaled ppm)
+if [ "$KIND" = classic ]; then
+  # (after 10 minutes nobody's there, Mantel turned the screen off, as Settings › Power says: back on first)
+  wlopm --on '*' >/dev/null 2>&1 || true; sleep 2
+  python3 - "$SH" "$LIMIT_FILES" >"$OUT/files-check.txt" 2>&1 <<'PY'
+import hashlib, subprocess, sys, time
+sh, lim = sys.argv[1], float(sys.argv[2])
+def frame():
+    try:
+        r = subprocess.run(['grim', '-t', 'ppm', '-'], capture_output=True, timeout=20)
+    except subprocess.TimeoutExpired:
+        print('grim took over 20 s'); return ''
+    if r.returncode != 0:
+        print('grim failed: %s' % r.stderr.decode()[:200]); return ''
+    return hashlib.sha1(r.stdout).hexdigest()
+def ipc(*a):
+    return subprocess.Popen(['quickshell', 'ipc', '-p', sh, 'call'] + list(a), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+for run in ('cold', 'warm', 'warm2'):
+    base = frame(); t0 = time.monotonic(); ipc('files', 'home'); first = None
+    while time.monotonic() - t0 < 10:
+        f = frame()
+        if f and f != base:
+            first = time.monotonic() - t0; break
+        time.sleep(0.02)
+    print('%s Hearth Files (%s) %s' % ('OK' if first is not None and first <= lim else 'SLOW', run, 'never' if first is None else '%.2f s' % first))
+    ipc('files', 'close').wait(); time.sleep(3)
+PY
+  note "Hearth Files: $(grep -E '^(OK|SLOW)' "$OUT/files-check.txt" | tr '\n' ' ')"
+  ! grep -q '^SLOW' "$OUT/files-check.txt" || err "Hearth Files opened slowly: $(grep -E '^SLOW|grim' "$OUT/files-check.txt" | tr '\n' ' ') (limit ${LIMIT_FILES} s)"
+fi
+
 # ---- What the shell starts while at rest (2 minutes, traced after the measurement so it doesn't count)
 if command -v strace >/dev/null 2>&1; then
   timeout 120 strace -f -qq --seccomp-bpf -e trace=execve -e signal=none -o "$OUT/execs.raw" -p "$qs" >/dev/null 2>&1
@@ -161,37 +193,12 @@ if command -v strace >/dev/null 2>&1; then
     printf '%s wakeups in 20 s: thread %s %s\n' "$n" "$tid" "$(cat /proc/$qs/task/$tid/comm 2>/dev/null)"; done >"$OUT/wakeups.txt"
   rm -f /tmp/st-$KIND.raw /tmp/pp-$KIND.raw
 fi
+kill -CONT "$qs" 2>/dev/null
 ps -eo pid,ppid,stat,etimes,comm,args 2>/dev/null | awk '$3 ~ /Z/' >"$OUT/zombies.txt"
 if command -v perf >/dev/null 2>&1; then
   timeout 90 perf record -q -F 499 -g -p "$qs" -o /tmp/perf-$KIND.data -- sleep 60 >/dev/null 2>&1 || true
   perf report -i /tmp/perf-$KIND.data --stdio --no-children --percent-limit 1.5 --sort dso,sym 2>/dev/null | grep -v '^$' | head -150 >"$OUT/perf.txt" || true
   rm -f /tmp/perf-$KIND.data
-fi
-
-# ---- Hearth Files: cold (first time) and warm, from the command to the first change on screen (grim, unscaled ppm)
-if [ "$KIND" = classic ]; then
-  python3 - "$SH" "$LIMIT_FILES" >"$OUT/files-check.txt" 2>&1 <<'PY'
-import hashlib, subprocess, sys, time
-sh, lim = sys.argv[1], float(sys.argv[2])
-def frame():
-    r = subprocess.run(['grim', '-t', 'ppm', '-'], capture_output=True, timeout=10)
-    if r.returncode != 0:
-        print('grim failed: %s' % r.stderr.decode()[:200]); return ''
-    return hashlib.sha1(r.stdout).hexdigest()
-def ipc(*a):
-    return subprocess.Popen(['quickshell', 'ipc', '-p', sh, 'call'] + list(a), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-for run in ('cold', 'warm', 'warm2'):
-    base = frame(); t0 = time.monotonic(); ipc('files', 'home'); first = None
-    while time.monotonic() - t0 < 10:
-        f = frame()
-        if f and f != base:
-            first = time.monotonic() - t0; break
-        time.sleep(0.02)
-    print('%s Hearth Files (%s) %s' % ('OK' if first is not None and first <= lim else 'SLOW', run, 'never' if first is None else '%.2f s' % first))
-    ipc('files', 'close').wait(); time.sleep(3)
-PY
-  note "Hearth Files: $(grep -E '^(OK|SLOW)' "$OUT/files-check.txt" | tr '\n' ' ')"
-  ! grep -q '^SLOW' "$OUT/files-check.txt" || err "Hearth Files opened slowly: $(grep -E '^SLOW|grim' "$OUT/files-check.txt" | tr '\n' ' ') (limit ${LIMIT_FILES} s)"
 fi
 
 python3 - "$OUT/rest.json" <<PY
