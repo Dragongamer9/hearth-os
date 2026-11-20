@@ -31,7 +31,10 @@ Window {
     // Its screen is set just before it first shows (Wayland puts a layer on its output once, when it's made).
     function show() {
         const t = target();
-        if (t && screen !== t) screen = t;
+        if (!t) return;
+        // Made on the wrong screen (Wayland places a layer once, when it's made): again, on its own.
+        if (visible && screen !== t) visible = false;
+        if (screen !== t) screen = t;
         visible = true; requestActivate(); couch.forceActiveFocus();
         console.warn("firehold: the Couch over the Desk on", screenName, "(window on", screen ? screen.name : "no screen", ")");
     }
