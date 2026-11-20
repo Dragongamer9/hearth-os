@@ -178,16 +178,13 @@ fn connecting(a: &App) -> E<'_, Msg> {
 
 fn trouble(a: &App) -> E<'_, Msg> {
     let name = a.conn.as_ref().map(|c| c.name.clone()).unwrap_or_else(|| "Your Xbox".into());
-    let line = if a.trouble.as_ref().map(|t| t.1).unwrap_or(false) {
-        format!("{name} is on, but the picture couldn't get through. You're on **{}**.", a.net.words())
-    } else {
-        format!("{} You're on **{}**.", desk::trouble_words(a), a.net.words())
-    };
+    let what = if a.trouble.as_ref().map(|t| t.1).unwrap_or(false) { format!("{name} is on, but the picture couldn't get through.") } else { desk::trouble_words(a) };
+    let on = format!("You're on **{}**.", a.net.words());
     let tip = |g: G, title: &str, l: &str| -> E<'static, Msg> { srow(Some(ri(g, 40.0)), title, Some(t(l.to_string(), 15.0, MUT).into()), None, 19.0, CARD, pad(14.0, 18.0, 14.0, 18.0), false) };
     let col = column![
         row![
             container(glyph(G::Console, Color::from_rgb8(0xff, 0x8a, 0x8a), 36.0)).center_x(Length::Fixed(64.0)).center_y(Length::Fixed(64.0)).style(bx(Color::from_rgb8(0x2a, 0x16, 0x16), 18.0, Some((Color::from_rgb8(0x6a, 0x2d, 0x2d), 1.0)))),
-            column![one(t6("Couldn't reach your Xbox", 27.0, TX)), rich_w(&line, 16.0, MUT, SOFT)].spacing(4.0).width(Length::Fill)
+            column![one(t6("Couldn't reach your Xbox", 27.0, TX)), row![t(what, 16.0, MUT), gap(5.0, 1.0), rich(&on, 16.0, MUT, SOFT, false)].align_y(iced::Center)].spacing(4.0).width(Length::Fill)
         ]
         .spacing(18.0)
         .width(Length::Fill)
