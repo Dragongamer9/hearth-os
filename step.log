@@ -1,0 +1,6 @@
+::notice title=Panels::   string "top 68 none org.hearthos.panel:bar | bottom 84 none org.hearthos.panel:dock"
+Compositor does not support the virtual keyboard protocol
+Compositor does not support the virtual keyboard protocol
+::notice title=At rest::plasmashell used 1 ticks (1/100 s) in 60 s with Hearth's panel up and the wallpaper moving (processor drawing), 0 away from the PC (wallpaper still)
+::notice title=Firehold style::the shared plasmoids in a top panel: 41,42
+::warning title=plasmashell about Hearth's panel::org.hearthos.panel/contents/ui/Islands.qml:154: ReferenceError: NetBtWatch is not defined%0Aorg.hearthos.panel/contents/ui/Islands.qml:155: ReferenceError: NetBtWatch is not defined%0Aorg.hearthos.panel/contents/ui/Islands.qml:156: ReferenceError: NetBtWatch is not defined%0Aorg.hearthos.panel/contents/ui/Islands.qml:157: ReferenceError: NetBtWatch is not defined%0Aorg.hearthos.panel/contents/ui/Islands.qml:158: ReferenceError: NetBtWatch is not defined

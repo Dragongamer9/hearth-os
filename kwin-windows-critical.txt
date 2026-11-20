@@ -1,0 +1,7 @@
+---- 6 windows
+plasmashell |  | notification=false critical=false osd=false | 0,0 1920x1080
+plasmashell |  | notification=false critical=false osd=false | 0,0 1920x1080
+org.kde.dolphin | Documents — Dolphin | notification=false critical=false osd=false | 576,240 768x584
+plasmashell |  | notification=false critical=false osd=false | 0,0 1920x68
+plasmashell |  | notification=false critical=false osd=false | 0,996 1920x84
+plasmashell |  | notification=false critical=false osd=false | 750,70 420x162
