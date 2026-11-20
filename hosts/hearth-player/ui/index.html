@@ -26,7 +26,22 @@
         <div class="big-ico" data-i="play"></div>
         <h2>Nothing playing</h2>
         <p>Open a video, a song, a folder or a playlist.</p>
-        <button class="btn primary f" data-act="goOpen">Open files</button>
+        <div class="acts-row"><button class="btn primary f" data-act="goOpen">Open files</button><button class="btn f" data-act="playDisc" id="playDiscBtn" hidden><span data-i="disc"></span> Play disc</button></div>
+        <p class="dim" id="discHere" hidden></p>
+      </div>
+      <!-- A disc: its titles and chapters (DVD), parts (Video CD) or songs (music CD), or why it can't play. -->
+      <div class="disc" id="disc" hidden>
+        <div class="disc-side">
+          <div class="disc-art" id="discArt" data-i="disc"></div>
+          <h2 id="discLabel"></h2>
+          <p class="dim" id="discKind"></p>
+          <div class="disc-acts" id="discActs"></div>
+          <div class="disc-choices" id="discChoices"></div>
+        </div>
+        <div class="disc-main">
+          <div class="disc-note" id="discNote" hidden></div>
+          <div class="disc-list scroll" id="discList"></div>
+        </div>
       </div>
       <div class="music" id="music" hidden>
         <div class="cover-wrap"><img id="cover" alt=""><div class="cover-none" id="coverNone" data-i="note"></div></div>
@@ -71,6 +86,8 @@
           <button class="ic f" data-act="subs" id="subsBtn" title="Subtitles (V)"><span data-i="cc"></span></button>
           <button class="ic f" data-act="audio" id="audioBtn" title="Sound track (A)"><span data-i="lang"></span></button>
           <button class="ic f" data-act="chapters" id="chapBtn" title="Chapters"><span data-i="list"></span></button>
+          <button class="ic f" data-act="discMenu" id="discBtn" title="Disc menu (Menu, or Select on a controller)" hidden><span data-i="disc"></span></button>
+          <button class="ic f" data-act="eject" id="ejectBtn" title="Eject" hidden><span data-i="eject"></span></button>
           <button class="ic f" data-act="queue" title="Play queue (Q)"><span data-i="queue"></span></button>
           <button class="ic f" data-act="shot" id="shotBtn" title="Save this frame as a picture (S)"><span data-i="camera"></span></button>
           <button class="ic f" data-act="edit" id="editBtn" title="Edit (E)"><span data-i="cut"></span></button>

@@ -7,11 +7,11 @@ TryExec=hearth-player
 Icon=hearth-player
 Type=Application
 Categories=AudioVideo;Audio;Video;Player;TV;
-MimeType=video/mp4;video/x-m4v;video/x-matroska;video/webm;video/quicktime;video/x-msvideo;video/avi;video/x-ms-wmv;video/x-flv;video/mpeg;video/mp2t;video/3gpp;video/3gpp2;video/ogg;video/x-ogm+ogg;video/vnd.avi;video/dv;video/x-mpeg2;audio/mpeg;audio/mp3;audio/x-mp3;audio/flac;audio/x-flac;audio/ogg;audio/x-vorbis+ogg;audio/vorbis;audio/opus;audio/x-opus+ogg;audio/mp4;audio/x-m4a;audio/m4a;audio/aac;audio/x-aac;audio/wav;audio/x-wav;audio/vnd.wave;audio/x-ms-wma;audio/x-aiff;audio/aiff;audio/x-ape;audio/x-wavpack;audio/x-matroska;audio/webm;audio/x-mpegurl;audio/mpegurl;application/vnd.apple.mpegurl;audio/x-scpls;application/x-ogg;
-Keywords=video;movie;film;music;song;audio;player;podcast;radio;playlist;subtitles;trim;cut;mp4;mkv;mp3;flac;
+MimeType=video/mp4;video/x-m4v;video/x-matroska;video/webm;video/quicktime;video/x-msvideo;video/avi;video/x-ms-wmv;video/x-flv;video/mpeg;video/mp2t;video/3gpp;video/3gpp2;video/ogg;video/x-ogm+ogg;video/vnd.avi;video/dv;video/x-mpeg2;audio/mpeg;audio/mp3;audio/x-mp3;audio/flac;audio/x-flac;audio/ogg;audio/x-vorbis+ogg;audio/vorbis;audio/opus;audio/x-opus+ogg;audio/mp4;audio/x-m4a;audio/m4a;audio/aac;audio/x-aac;audio/wav;audio/x-wav;audio/vnd.wave;audio/x-ms-wma;audio/x-aiff;audio/aiff;audio/x-ape;audio/x-wavpack;audio/x-matroska;audio/webm;audio/x-mpegurl;audio/mpegurl;application/vnd.apple.mpegurl;audio/x-scpls;application/x-ogg;x-content/video-dvd;x-content/video-vcd;x-content/video-svcd;x-content/audio-cdda;application/x-cue;
+Keywords=video;movie;film;music;song;audio;player;podcast;radio;playlist;subtitles;trim;cut;mp4;mkv;mp3;flac;dvd;cd;disc;vcd;
 StartupNotify=true
 StartupWMClass=hearth-player
-Actions=music;podcasts;
+Actions=music;podcasts;disc;
 X-Hearth-Controller=true
 
 [Desktop Action music]
@@ -21,3 +21,7 @@ Exec=hearth-player --music
 [Desktop Action podcasts]
 Name=Podcasts and Radio
 Exec=hearth-player --podcasts
+
+[Desktop Action disc]
+Name=Play disc
+Exec=hearth-player --disc

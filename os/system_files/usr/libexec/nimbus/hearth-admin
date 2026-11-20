@@ -103,6 +103,11 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      given back to you when root or a deleted account owns them, and a container
                                      id range for you (see hearth-home-repair). No arguments: only ever the
                                      account that ran pkexec
+  hearth-admin dvd-decoding-add | dvd-decoding-remove
+                                     Hearth Player's "Add DVD decoding" (only after you said yes there): libdvdcss from
+                                     RPM Fusion's free-tainted repository on the Fedora edition, layered with rpm-ostree
+                                     (see hearth-dvd-decoding, docs/PLAYER-DISCS.md). Always asks for an administrator's
+                                     password (49-hearth-admin.rules)
   ---- system tools (hosts/hearth-tools: Logs, Passwords & Keys, Printers & Scanner)
   hearth-admin confirm-password      check your own password before a saved password is shown; stdin:
                                      {"password": "..."}
@@ -3114,6 +3119,12 @@ def main(argv):
     elif cmd in ('decky-start', 'decky-stop') and len(argv) == 2:
         helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-decky')
         os.execv(sys.executable, [sys.executable, helper, cmd[6:]])
+    elif cmd in ('dvd-decoding-add', 'dvd-decoding-remove') and len(argv) == 2:
+        # Hearth Player's DVD decoding (libdvdcss, RPM Fusion free-tainted): its own script; asks for an administrator's
+        # password (49-hearth-admin.rules). Only ever after the person said yes in the player.
+        caller()
+        helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-dvd-decoding')
+        os.execv(sys.executable, [sys.executable, helper, cmd[len('dvd-decoding-'):]])
     elif cmd in ('import-scan', 'import-run', 'import-unmount', 'takeover-plan', 'takeover-run'):
         # Bringing games and files over from other drives, and removing the old system afterwards: their own
         # scripts, run as root like the rest.
@@ -3121,7 +3132,7 @@ def main(argv):
         helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-' + name)
         os.execv(sys.executable, [sys.executable, helper, sub])
     else:
-        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME | write-file PATH | home-repair | unlock on|off|resume|dismiss|reapply | deb-install FILE.deb | deb-remove PACKAGE | driver-install PACKAGE | usb-check|usb-raw|usb-prepare|usb-ventoy|usb-finish DEVICE ... | decky-install | decky-remove | decky-start | decky-stop')
+        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME | write-file PATH | home-repair | unlock on|off|resume|dismiss|reapply | deb-install FILE.deb | deb-remove PACKAGE | driver-install PACKAGE | usb-check|usb-raw|usb-prepare|usb-ventoy|usb-finish DEVICE ... | decky-install | decky-remove | decky-start | decky-stop | dvd-decoding-add | dvd-decoding-remove')
 
 
 if __name__ == '__main__':

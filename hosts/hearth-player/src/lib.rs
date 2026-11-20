@@ -4,12 +4,19 @@
 //! window, so the tests can run it: opening folders and playlists (media.rs), the local file server the page plays
 //! from (server.rs), ffmpeg for tracks, chapters, subtitles inside files and edits (tools.rs), song tags (tags.rs),
 //! podcasts and radio downloads (net.rs), what it remembers (store.rs), keeping the screen awake (awake.rs) and
-//! MPRIS for media keys (mpris.rs, Linux).
+//! MPRIS for media keys (mpris.rs, Linux). CDs and DVDs: disc.rs (drives, audio CDs, Video CDs, disc events),
+//! dvd.rs (DVD-Video) and discplay.rs (opening a disc and playing from it); docs/PLAYER-DISCS.md.
 
 /// Safe settings files shared by Hearth's apps (atomic, .bak, damaged files put back, never defaults over them).
 #[path = "../../hearth-apptheme/appfile.rs"]
 pub mod appfile;
 pub mod awake;
+#[cfg(target_os = "linux")]
+pub mod disc;
+#[cfg(target_os = "linux")]
+pub mod discplay;
+#[cfg(target_os = "linux")]
+pub mod dvd;
 pub mod media;
 pub mod net;
 pub mod server;

@@ -1170,6 +1170,13 @@ if [ ${#RPMF[@]} -gt 0 ]; then
 fi
 dnf5 -y install --skip-unavailable --skip-broken gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugin-libav gstreamer1-plugin-openh264 gstreamer1-plugin-dav1d gstreamer1-plugins-base-tools || true
 command -v ffmpeg >/dev/null || dnf5 -y install ffmpeg-free || echo "warning: no ffmpeg in this image: Hearth Player can't edit or convert"
+# Discs (docs/PLAYER-DISCS.md): libdvdread reads DVDs (Hearth Player loads it when it's there), libdvdnav comes with it
+# for other players, udisks mounts data discs, eject opens the tray. libdvdcss (locked shop DVDs) is NOT installed:
+# Fedora can't ship it and neither does Hearth OS; Hearth Player offers to add it from RPM Fusion free-tainted only
+# when a locked disc goes in and you say yes (hearth-dvd-decoding).
+dnf5 -y install --skip-unavailable --skip-broken libdvdread libdvdnav udisks2 util-linux-core || true
+rpm -q libdvdcss >/dev/null 2>&1 && { echo "warning: libdvdcss came into the image with something else; removing it (it's added only when asked)"; rpm -e --nodeps libdvdcss || true; }
+echo "::notice title=Hearth Player discs::$(rpm -q libdvdread libdvdnav 2>/dev/null | tr '\n' ' ') libdvdcss: $(rpm -q libdvdcss >/dev/null 2>&1 && echo in || echo 'not in (added on request)'); ffmpeg mpeg demuxer: $(ffmpeg -hide_banner -demuxers 2>/dev/null | grep -qw mpeg && echo yes || echo no)"
 # Video decoded by the graphics chip (VA-API), so browsers and players don't decode on the processor: the owner's
 # laptop (Intel UHD, Nov 18) played Firefox video on the CPU on Debian (its RDD process at 80%). Intel: RPM Fusion's
 # intel-media-driver (iHD, every codec), else Fedora's libva-intel-media-driver; AMD: mesa-va-drivers-freeworld

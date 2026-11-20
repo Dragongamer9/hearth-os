@@ -39,6 +39,13 @@ polkit.addRule(function (action, subject) {
         /^\S+\s+decky-install(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
+    // Hearth Player's "Add DVD decoding" (libdvdcss from RPM Fusion's free-tainted repository, added on top of the system)
+    // and taking it out again: always an administrator's password, like installing a .deb.
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+dvd-decoding-(add|remove)(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.AUTH_ADMIN;
+    }
     // Firmware updates (Settings › Firmware & security) write new firmware into the PC's parts: always an
     // administrator's password. Getting the list of firmware (firmware-refresh) doesn't ask.
     if (action.id == "org.freedesktop.policykit.exec" &&

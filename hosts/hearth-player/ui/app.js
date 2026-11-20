@@ -53,6 +53,9 @@ const ICON = {
   flipH: '<path d="M12 3v18M9 7 4 17h5zM15 7l5 10h-5z"/>', flipV: '<path d="M3 12h18M7 9 17 4v5zM7 15l10 5v-5z"/>',
   undo: '<path d="M9 14 4 9l5-5M4 9h10a6 6 0 0 1 0 12h-3"/>', redo: '<path d="m15 14 5-5-5-5M20 9H10a6 6 0 0 0 0 12h3"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>', x: '<path d="M6 6l12 12M18 6 6 18"/>',
+  disc: '<circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="2.2"/><path d="M12 5.8a6.2 6.2 0 0 1 6.2 6.2"/>',
+  eject: '<path d="M12 5 5 13h14zM5 17.5h14"/>', lock: '<rect x="5" y="10.5" width="14" height="9.5" rx="2"/><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5M12 14v2.5"/>',
+  pad: '<path d="M7.5 8h9a4.5 4.5 0 0 1 4.3 5.8l-1 3.4a2.2 2.2 0 0 1-3.7 1L14 16h-4l-2.1 2.2a2.2 2.2 0 0 1-3.7-1l-1-3.4A4.5 4.5 0 0 1 7.5 8z"/><path d="M8 11v3M6.5 12.5h3M15.5 11.5h.01M17.5 13.5h.01"/>',
 };
 const icon = n => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICON[n] || ''}</svg>`;
 function paintIcons(root = document) { for (const el of $$('[data-i]', root)) el.innerHTML = icon(el.dataset.i); }
@@ -65,6 +68,8 @@ const S = {
   shuffle: false, repeat: 'off', order: [], prepared: null, subs: [], subOn: -1, resume: {}, pad: false,
   full: false, pick: null, dir: '', places: [], podTab: 'shows', pods: { shows: [], state: {} }, radio: { favs: [] },
   track: 0, art: '', jobs: {}, loadingSrc: false,
+  // Discs: the open disc (its titles or tracks), the playing stream's start time, the drives, DVD decoding.
+  discInfo: null, disc: null, drives: [], decoding: null, discPanel: false,
 };
 
 // ---------------------------------------------------------------- toasts, sheets, menus, on-screen keyboard
@@ -141,7 +146,8 @@ function setView(v) {
   hints();
 }
 function hints() {
-  const h = S.view === 'play'
+  const h = S.view === 'play' && discPanelOn() ? discHints() : S.view === 'play' && S.item?.disc ? discPlayHints()
+    : S.view === 'play'
     ? (S.item ? '<span><b>A</b>Play/pause</span><span><b>◀ ▶</b>Seek</span><span><b>LB RB</b>Previous/next</span><span><b>X</b>Controls</span><span><b>Y</b>Edit</span><span><b>B</b>Back</span>' : '<span><b>A</b>Choose</span>')
     : '<span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>LB RB</b>Switch tabs</span>';
   $('#hints').innerHTML = h + `<span class="dim" id="hint"></span>`;
@@ -149,6 +155,9 @@ function hints() {
 
 // ---------------------------------------------------------------- playing
 const isVideo = () => S.item && S.item.kind === 'video';
+// A DVD title or Video CD part plays as a stream that starts at S.disc.offset: the time in it is that plus the video's.
+const restarts = () => !!(S.item?.disc && S.disc?.restart);
+const ct = () => (restarts() ? (S.disc.pending ?? (S.disc.offset + (video.currentTime || 0))) : video.currentTime);
 function setBodyMode() {
   document.body.classList.toggle('audio', !!S.item && !isVideo());
   document.body.classList.toggle('empty', !S.item);
@@ -156,6 +165,8 @@ function setBodyMode() {
   $('#music').hidden = !S.item || isVideo();
   $('#shotBtn').hidden = !isVideo(); $('#fullBtn').hidden = !isVideo();
   $('#subsBtn').hidden = !isVideo();
+  $('#disc').hidden = !S.discPanel || !S.discInfo;
+  document.body.classList.toggle('disc-open', !$('#disc').hidden);
 }
 function makeOrder() {
   const n = S.queue.length; S.order = [...Array(n).keys()];
@@ -179,6 +190,8 @@ async function playIndex(i, { at = null, noResume = false } = {}) {
   shownCue = null;
   $('#title').textContent = S.item.name;
   call('set_title', { title: `${S.item.title || S.item.name} - Hearth Player` }).catch(() => {});
+  if (S.item.disc) { await playDiscItem(S.item, { at, noResume }); return; }
+  S.disc = null;
   let url;
   try { url = await call('media_url', { path: S.item.path }); } catch (e) { notice(e.message); return; }
   await setSource(url);
@@ -208,7 +221,7 @@ async function setSource(url) {
   thumbs.src = null;
 }
 async function loadProbe(item, track) {
-  if (isUrl(item.path)) return;
+  if (isUrl(item.path) || item.disc) return;
   let p;
   try { p = await call('probe', { path: item.path }); } catch (_) { return; }
   if (track !== S.track) return;
@@ -237,8 +250,8 @@ function renderMarks() {
     if (E.s.cut) { cut.style.left = `${(E.s.cut[0] / d) * 100}%`; cut.style.width = `${((E.s.cut[1] - E.s.cut[0]) / d) * 100}%`; }
   }
 }
-const duration = () => (isFinite(video.duration) && video.duration > 0 ? video.duration : (S.probe?.duration || 0));
-const live = () => !!S.item && video.duration === Infinity;
+const duration = () => (S.item?.disc && S.disc ? S.disc.duration : isFinite(video.duration) && video.duration > 0 ? video.duration : (S.probe?.duration || 0));
+const live = () => !!S.item && !S.item.disc && video.duration === Infinity;
 
 function updateButtons() {
   setIcon($('#ppBtn'), video.paused ? 'play' : 'pause');
@@ -253,15 +266,19 @@ function updateButtons() {
   $('#subsBtn').classList.toggle('on', S.subOn >= 0);
   setIcon($('#fullBtn'), S.full ? 'unfull' : 'full');
   $('[data-act="prev"]').disabled = !S.item; $('[data-act="next"]').disabled = !S.item || (S.queue.length < 2 && S.repeat === 'off');
-  $('#editBtn').disabled = !S.item || isUrl(S.item.path);
+  $('#editBtn').disabled = !S.item || isUrl(S.item.path) || !!S.item.disc;
+  $('#discBtn').hidden = !S.discInfo || !S.item?.disc;
+  $('#ejectBtn').hidden = !S.discInfo?.device;
+  if (S.item?.disc) $('#shotBtn').hidden = !isVideo();
 }
 function tick() {
-  const d = duration(), t = video.currentTime;
+  const d = duration(), t = ct();
   $('#tCur').textContent = fmt(t);
   $('#tDur').textContent = live() ? 'LIVE' : fmt(d);
   const pct = d > 0 && !live() ? clamp(t / d, 0, 1) : 0;
   $('#done').style.width = `${pct * 100}%`; $('#knob').style.left = `${pct * 100}%`;
-  if (video.buffered.length && d > 0) $('#buf').style.width = `${clamp(video.buffered.end(video.buffered.length - 1) / d, 0, 1) * 100}%`;
+  if (restarts()) $('#buf').style.width = '0%';
+  else if (video.buffered.length && d > 0) $('#buf').style.width = `${clamp(video.buffered.end(video.buffered.length - 1) / d, 0, 1) * 100}%`;
   $('#seek').setAttribute('aria-valuetext', `${fmt(t)} of ${fmt(d)}`);
   if (!isVideo()) for (const r of $$('.trk')) r.classList.toggle('on', r.dataset.path === S.item?.path);
 }
@@ -276,6 +293,7 @@ video.addEventListener('seeked', () => { mpris(false, true); });
 video.addEventListener('loadedmetadata', () => { S.loadingSrc = false; tick(); renderMarks(); updateButtons(); });
 video.addEventListener('ended', () => {
   call('keep_awake', { mode: '' }).catch(() => {});
+  if (discEnded()) return;
   if (S.item) { delete S.resume[S.item.path]; saveResumeStore(); if (S.item.podcast) podMark(S.item.podcast.guid, { played: true, pos: 0 }); }
   if (S.repeat === 'one') { video.currentTime = 0; video.play(); return; }
   next(true);
@@ -283,6 +301,7 @@ video.addEventListener('ended', () => {
 video.addEventListener('error', () => {
   if (!S.item || !video.src) return;
   const code = video.error?.code;
+  if (S.item.disc) { discError(code); return; }
   // A file the web view can't play: make a copy it can (ffmpeg), once.
   if (!isUrl(S.item.path) && S.tools.ffmpeg && !S.prepared && (code === 4 || code === 3)) { prepare(S.item, null); return; }
   const why = code === 4 || code === 3 ? (S.tools.ffmpeg ? 'This file couldn\'t be played, even after converting it.' : 'This kind of file needs codecs that aren\'t installed (and ffmpeg isn\'t there to convert it).')
@@ -322,10 +341,11 @@ function playPause() {
   if (!S.item) { setView('open'); return; }
   if (video.paused) video.play().catch(e => toast(e.message)); else video.pause();
 }
-function seekTo(t) { if (!S.item || live()) return; const d = duration(); video.currentTime = clamp(t, 0, d > 0 ? d - 0.05 : t); osd(`${fmt(video.currentTime)} / ${fmt(d)}`); tick(); }
-const seekBy = dt => seekTo(video.currentTime + dt);
+function seekTo(t) { if (!S.item || live()) return; if (restarts()) { discSeek(t); return; } const d = duration(); video.currentTime = clamp(t, 0, d > 0 ? d - 0.05 : t); osd(`${fmt(video.currentTime)} / ${fmt(d)}`); tick(); }
+const seekBy = dt => seekTo(ct() + dt);
 function next(auto = false) {
   if (!S.queue.length) return;
+  if (!auto && S.item?.disc?.kind === 'dvd' && S.queue.length < 2) { chapterStep(1); return; }
   const k = S.order.indexOf(S.qi);
   if (k < S.order.length - 1) playIndex(S.order[k + 1]);
   else if (S.repeat === 'all') { if (S.shuffle) makeOrder(); playIndex(S.order[0]); }
@@ -333,7 +353,8 @@ function next(auto = false) {
 }
 function prev() {
   if (!S.queue.length) return;
-  if (video.currentTime > 4) { seekTo(0); return; }
+  if (S.item?.disc?.kind === 'dvd' && S.queue.length < 2) { chapterStep(-1); return; }
+  if (ct() > 4) { seekTo(0); return; }
   const k = S.order.indexOf(S.qi);
   if (k > 0) playIndex(S.order[k - 1]); else seekTo(0);
 }
@@ -374,8 +395,9 @@ video.addEventListener('timeupdate', drawCues);
 video.addEventListener('seeked', drawCues);
 async function selectSub(i, quiet = false) {
   S.subOn = -1;
-  if (i < 0) { S.settings.subsOff = true; saveSettings(); updateButtons(); drawCues(); if (!quiet) osd('Subtitles off'); return; }
+  if (i < 0) { S.settings.subsOff = true; saveSettings(); if (S.item?.disc?.sub != null) discSub(-1); updateButtons(); drawCues(); if (!quiet) osd('Subtitles off'); return; }
   const s = S.subs[i]; if (!s) return;
+  if (s.disc != null) { discSub(i); return; }
   if (s.text === false) { toast('Picture subtitles (Blu-ray and DVD) can\'t be shown yet. Try a text track or a subtitle file.'); return; }
   try {
     if (!s.cues) {
@@ -402,10 +424,12 @@ function cycleSubs() { if (!S.subs.length) { osd('No subtitles'); return; } sele
 
 function audioTracks() { return (S.probe?.streams || []).filter(s => s.kind === 'audio'); }
 function currentAudio() {
+  if (S.item?.disc) { const i = audioTracks().findIndex(a => a.id === S.item.disc.audio); return i < 0 ? 0 : i; }
   if (video.audioTracks && video.audioTracks.length > 1) { for (let i = 0; i < video.audioTracks.length; i++) if (video.audioTracks[i].enabled) return i; }
   return S.prepared?.audio ?? 0;
 }
 function selectAudio(n) {
+  if (S.item?.disc) { discAudio(n); return; }
   const at = video.audioTracks;
   if (at && at.length > 1) { for (let i = 0; i < at.length; i++) at[i].enabled = i === n; osd(audioTracks()[n]?.label || `Sound ${n + 1}`); return; }
   if (!S.tools.ffmpeg) { toast('Switching sound tracks in this file needs ffmpeg.'); return; }
@@ -413,13 +437,13 @@ function selectAudio(n) {
 }
 function audioMenu() { const cur = currentAudio(); menu('Sound track', audioTracks().map((s, i) => ({ label: s.label, on: i === cur, run: () => selectAudio(i) }))); }
 function chaptersMenu() {
-  const t = video.currentTime;
+  const t = ct();
   const ch = S.probe?.chapters || [];
   menu('Chapters', ch.map(c => ({ label: c.title, sub: fmt(c.start), on: t >= c.start && t < c.end, run: () => seekTo(c.start + 0.01) })));
 }
 function chapterStep(dir) {
   const ch = S.probe?.chapters || []; if (ch.length < 2) { seekBy(dir * 60); return; }
-  const t = video.currentTime;
+  const t = ct();
   const i = ch.findIndex(c => t >= c.start - 0.5 && t < c.end);
   const j = clamp((i < 0 ? 0 : i) + dir, 0, ch.length - 1);
   seekTo(ch[j].start + 0.01); osd(ch[j].title);
@@ -462,7 +486,7 @@ document.addEventListener('mousemove', wake);
 // Screenshot of the current frame.
 async function screenshot() {
   if (!isVideo()) return;
-  const at = video.currentTime;
+  const at = ct();
   let png = null;
   try {
     const c = document.createElement('canvas'); c.width = video.videoWidth; c.height = video.videoHeight;
@@ -480,7 +504,7 @@ seekEl.addEventListener('pointerdown', e => { if (!S.item) return; dragging = tr
 seekEl.addEventListener('pointermove', e => { if (dragging) seekTo(seekFrac(e) * duration()); showThumb(seekFrac(e)); });
 seekEl.addEventListener('pointerup', () => { dragging = false; });
 seekEl.addEventListener('pointerleave', () => { $('#thumb').hidden = true; });
-seekEl.addEventListener('focus', () => showThumb(duration() ? video.currentTime / duration() : 0));
+seekEl.addEventListener('focus', () => showThumb(duration() ? ct() / duration() : 0));
 seekEl.addEventListener('blur', () => { $('#thumb').hidden = true; });
 function showThumb(frac) {
   const d = duration(); if (!d || live()) return;
@@ -488,7 +512,8 @@ function showThumb(frac) {
   th.hidden = false; th.style.left = `${clamp(frac * 100, 8, 92)}%`;
   const ch = (S.probe?.chapters || []).find(c => t >= c.start && t < c.end);
   $('#thumbTime').textContent = `${fmt(t)}${ch && S.probe.chapters.length > 1 ? ` · ${ch.title}` : ''}`;
-  const canDraw = isVideo() && video.crossOrigin === 'anonymous';
+  // Not for disc streams: a picture from elsewhere in the title would start a second stream from the disc.
+  const canDraw = isVideo() && video.crossOrigin === 'anonymous' && !S.item?.disc;
   th.classList.toggle('nopic', !canDraw);
   if (!canDraw) return;
   if (!thumbs.vid) { thumbs.vid = document.createElement('video'); thumbs.vid.muted = true; thumbs.vid.preload = 'auto'; thumbs.vid.crossOrigin = 'anonymous';
@@ -506,7 +531,7 @@ function periodic() {
 }
 function saveResume() {
   if (!S.item || live()) return;
-  const t = video.currentTime, d = duration();
+  const t = ct(), d = duration();
   if (S.item.podcast) { if (t > 3) podMark(S.item.podcast.guid, { pos: t, dur: d, played: d > 0 && d - t < 30 }); return; }
   if (!(d > 120) || isUrl(S.item.path)) return;
   if (t > 5 && d - t > 15) S.resume[S.item.path] = { t: Math.round(t), d: Math.round(d), at: Date.now() };
@@ -531,10 +556,10 @@ function mpris(newTrack = false, seeked = false) {
   if (!S.item) return;
   const tg = S.item.tags || {};
   const st = {
-    status: video.paused ? (video.currentTime > 0 ? 'Paused' : 'Stopped') : 'Playing',
+    status: video.paused ? (ct() > 0 ? 'Paused' : 'Stopped') : 'Playing',
     title: tg.title || S.item.title || S.item.name, artist: tg.artist || S.item.artist || '', album: tg.album || S.item.album || '',
     artUrl: S.art || S.item.image || '', url: isUrl(S.item.path) ? S.item.path : `file://${S.item.path}`,
-    length: live() ? 0 : duration(), position: video.currentTime || 0, canNext: S.queue.length > 1 || S.repeat === 'all', canPrev: S.queue.length > 0,
+    length: live() ? 0 : duration(), position: ct() || 0, canNext: S.queue.length > 1 || S.repeat === 'all', canPrev: S.queue.length > 0,
     rate: video.playbackRate || 1, volume: video.muted ? 0 : video.volume, track: S.track, seeked,
   };
   const key = JSON.stringify({ ...st, position: Math.round(st.position / 5) });
@@ -580,14 +605,16 @@ async function renderMusic() {
   S.art = '';
   $('#cover').hidden = true; $('#coverNone').hidden = false;
   if (item.image) { $('#cover').src = item.image; $('#cover').hidden = false; $('#coverNone').hidden = true; S.art = item.image; }
-  else if (!isUrl(item.path)) call('art_url', { path: item.path }).then(u => { if (u && S.item === item) { $('#cover').src = u; $('#cover').hidden = false; $('#coverNone').hidden = true; S.art = u; mpris(true); } }).catch(() => {});
+  else if (!isUrl(item.path) && !item.disc) call('art_url', { path: item.path }).then(u => { if (u && S.item === item) { $('#cover').src = u; $('#cover').hidden = false; $('#coverNone').hidden = true; S.art = u; mpris(true); } }).catch(() => {});
   // The list: the play queue when it's a playlist or podcast, else the songs in this song's folder.
   let list = S.queue;
-  if (!isUrl(item.path) && S.queue.length <= 1) {
+  $('#coverNone').innerHTML = icon(item.disc ? 'disc' : 'note');
+  if (item.disc) { /* a CD's songs: the play queue */ }
+  else if (!isUrl(item.path) && S.queue.length <= 1) {
     try { const t = await call('folder_tracks', { path: item.path }); if (t.length > 1) { list = t; S.queue = t; S.qi = t.findIndex(x => x.path === item.path); makeOrder(); } } catch (_) {}
   }
   if (S.item !== item) return;
-  $('#tracks').innerHTML = list.map((t, i) => `<button class="trk f" data-path="${esc(t.path)}" data-q="${i}"><span class="n">${i + 1}</span><span>${esc(t.title || t.name)}</span><span class="d">${t.kind === 'video' ? 'video' : ''}</span></button>`).join('');
+  $('#tracks').innerHTML = list.map((t, i) => `<button class="trk f" data-path="${esc(t.path)}" data-q="${i}"><span class="n">${i + 1}</span><span>${esc(t.title || t.name)}</span><span class="d">${t.disc ? fmt(t.duration) : t.kind === 'video' ? 'video' : ''}</span></button>`).join('');
   tick(); updateButtons();
 }
 function renderNowPlaying() {
@@ -601,7 +628,8 @@ $('#tracks').addEventListener('click', e => { const b = e.target.closest('.trk')
 // ---------------------------------------------------------------- open (and picking a file for the edit panel)
 function renderPlaces() {
   const ico = { videos: 'film', music: 'note', downloads: 'download', home: 'home', podcasts: 'radio', drive: 'drive' };
-  $('#places').innerHTML = S.places.map(p => `<button class="place f ${p.path === S.placeOn ? 'on' : ''}" data-place="${esc(p.path)}">${icon(ico[p.kind] || 'folder')}<span>${esc(p.name)}</span></button>`).join('');
+  $('#places').innerHTML = S.places.map(p => `<button class="place f ${p.path === S.placeOn ? 'on' : ''}" data-place="${esc(p.path)}">${icon(ico[p.kind] || 'folder')}<span>${esc(p.name)}</span></button>`).join('')
+    + S.drives.map(d => `<button class="place f" data-drive="${esc(d.device)}">${icon(d.media ? 'disc' : 'drive')}<span>${esc(d.media && d.label ? d.label : d.name)}<small class="dim" style="display:block;font-size:.78em">${esc(driveLine(d))}</small></span></button>`).join('');
 }
 async function openDir(path, focusName) {
   if (!path) return;
@@ -622,7 +650,7 @@ async function openDir(path, focusName) {
 }
 function human(b) { const u = ['bytes', 'KB', 'MB', 'GB', 'TB']; let v = b, i = 0; while (v >= 1000 && i < u.length - 1) { v /= 1000; i++; } return `${v.toFixed(v < 10 && i ? 1 : 0)} ${u[i]}`; }
 function upDir() { const p = dirName(S.dir); if (p && p !== S.dir) openDir(p, baseName(S.dir)); else if (S.dir !== '/') openDir('/'); }
-$('#places').addEventListener('click', e => { const b = e.target.closest('[data-place]'); if (b) openDir(b.dataset.place); });
+$('#places').addEventListener('click', e => { const dv = e.target.closest('[data-drive]'); if (dv) { openDisc(dv.dataset.drive); return; } const b = e.target.closest('[data-place]'); if (b) openDir(b.dataset.place); });
 $('#files').addEventListener('click', e => {
   const b = e.target.closest('[data-e]'); if (!b) return;
   const en = S.entries[+b.dataset.e];
@@ -649,6 +677,7 @@ function cancelPick() { if (!S.pick) return false; const p = S.pick; S.pick = nu
 const E = { on: false, s: null, undo: [], redo: [], tags: null, tagsOrig: null, cover: { file: null, remove: false }, busy: false };
 function editDefaults() { return { start: 0, end: 0, cut: null, rotate: 0, hflip: false, vflip: false, mute: false, fadeIn: 0, fadeOut: 0, normalize: false, exact: false }; }
 async function openEdit() {
+  if (S.item?.disc) { toast('Discs can\'t be edited. Copy the film to a file first.'); return; }
   if (!S.item || isUrl(S.item.path)) { toast('Only files on this computer can be edited.'); return; }
   if (!S.tools.ffmpeg && isVideo()) { toast('Editing videos needs ffmpeg, which isn\'t installed.'); }
   E.on = true; E.s = editDefaults(); E.undo = []; E.redo = []; E.cover = { file: null, remove: false };
@@ -959,6 +988,345 @@ $('#v-pods').addEventListener('click', async e => {
 });
 $('#podSearch').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); podSearch(e.target.value); } });
 
+// ---------------------------------------------------------------- discs: DVDs, Video CDs, music CDs (src/disc*.rs, dvd.rs)
+// A disc opens on its own screen over Now playing: a DVD's titles and chapters (the disc's own menu isn't run: this is
+// the menu), a Video CD's parts, a music CD's songs; or why it can't play (locked DVD, Blu-ray, empty). Select (or a
+// remote's Menu) opens it again while the film plays. Discs going in and out come from udev (player://disc).
+const DISC_KIND = { dvd: 'DVD-Video', vcd: 'Video CD', svcd: 'Super Video CD', 'audio-cd': 'Music CD', data: 'Data disc', bluray: 'Blu-ray disc', blank: 'Empty disc', empty: 'No disc' };
+const playableKind = k => ['dvd', 'vcd', 'svcd', 'audio-cd', 'data'].includes(k);
+const discPanelOn = () => !!(S.discPanel && S.discInfo);
+function driveLine(d) { return d.media ? `${d.name} · ${DISC_KIND[d.kind] || 'Disc'}` : `${d.name} · no disc`; }
+function discHints() {
+  return '<span><b>A</b>Play</span><span><b>✥</b>Move</span>' + (S.discInfo?.device ? '<span><b>X</b>Eject</span>' : '') + '<span><b>Y</b>Controller buttons</span>' + (S.item?.disc ? '<span><b>B</b>Back to the film</span>' : '<span><b>B</b>Back</span>');
+}
+function discPlayHints() {
+  const dvd = S.item?.disc?.kind === 'dvd';
+  return `<span><b>A</b>Play/pause</span><span><b>◀ ▶</b>Seek</span><span><b>LB RB</b>${dvd ? 'Chapters' : 'Previous/next'}</span><span><b>Y</b>Sound${dvd ? ' and subtitles' : ''}</span><span><b>Select</b>Disc menu</span><span><b>B</b>Back</span>`;
+}
+function showDiscPanel(on) {
+  S.discPanel = !!on && !!S.discInfo;
+  if (S.discPanel) renderDisc();
+  setBodyMode(); updateButtons(); hints();
+  if (S.discPanel) setTimeout(() => ($('#disc [data-autofocus]') || $('#disc .f'))?.focus(), 0);
+  else if (document.activeElement?.closest?.('#disc')) document.activeElement.blur();
+}
+function toggleDiscPanel() { if (S.view !== 'play') setView('play'); showDiscPanel(!discPanelOn()); }
+
+async function refreshDrives(announce, device) {
+  const before = S.drives;
+  try { S.drives = (await call('disc_drives')) || []; } catch (_) { S.drives = []; }
+  const playable = S.drives.find(d => d.media && playableKind(d.kind));
+  $('#playDiscBtn').hidden = !playable;
+  $('#discHere').hidden = !playable;
+  if (playable) $('#discHere').textContent = `In the ${playable.name.toLowerCase().includes('drive') ? playable.name : 'drive'}: ${playable.label || DISC_KIND[playable.kind]}`;
+  if (S.view === 'open') renderPlaces();
+  if (!announce || !device) return;
+  const now = S.drives.find(d => d.device === device), was = before.find(d => d.device === device);
+  if (now?.media && !(was?.media && was.label === now.label && was.kind === now.kind)) {
+    const what = now.label || DISC_KIND[now.kind] || 'A disc';
+    if (playableKind(now.kind)) toast(`A disc was inserted: ${what}`, { label: 'Play disc', run: () => openDisc(device) });
+    else toast(`A disc was inserted: ${what}. ${now.kind === 'bluray' ? 'Blu-ray discs don\'t play in Hearth Player.' : ''}`.trim());
+  } else if (!now?.media && S.discInfo?.device === device) {
+    discGone();
+    toast('The disc was taken out.');
+  }
+}
+function discEvent(device) { refreshDrives(true, device); }
+
+function stopPlaying() {
+  video.pause(); video.removeAttribute('src'); video.load();
+  S.item = null; S.queue = []; S.qi = -1; S.disc = null; S.probe = null; S.subs = []; S.subOn = -1;
+  call('keep_awake', { mode: '' }).catch(() => {});
+  $('#title').textContent = '';
+  setBodyMode(); updateButtons(); hints(); tick();
+}
+function discGone() {
+  if (S.item?.disc) { saveResume(); stopPlaying(); }
+  S.discInfo = null; S.discPanel = false; setBodyMode(); updateButtons(); hints();
+}
+
+async function openDisc(path, { play = false } = {}) {
+  notice('Reading the disc…');
+  let info;
+  try { info = await call('disc_open', { path: path || null }); } catch (e) { closeNotice(); toast(e.message); return; }
+  closeNotice();
+  if (S.item?.disc && S.discInfo?.id !== info.id) stopPlaying();
+  S.discInfo = info;
+  S.discPrefs = { audio: undefined, sub: undefined };
+  if (info.kind === 'data' && info.folder) {
+    toast(`${info.label || 'The disc'}: its files`);
+    S.discPanel = false; setView('open'); openDir(info.folder); return;
+  }
+  if (S.decoding == null) S.decoding = await call('dvd_decoding').catch(() => ({ installed: false, canAdd: false }));
+  setView('play');
+  showDiscPanel(true);
+  if (info.kind === 'audio-cd' && info.tracks.every(t => /^Track \d+$/.test(t.title))) lookupNames(false);
+  if (play && info.kind === 'dvd' && !info.encrypted && info.main) playTitle(info.main);
+}
+
+const discPath = (info, n, name) => `/disc/${info.key || info.id}/${n}/${name}`;
+function titleItem(info, n) {
+  const name = `${info.label || 'DVD'} - Title ${n}`;
+  return { path: discPath(info, n, name), name, title: info.label || 'DVD', kind: 'video', disc: { id: info.id, kind: info.kind, n, audio: S.discPrefs?.audio, sub: S.discPrefs?.sub } };
+}
+function trackItems(info) {
+  return info.tracks.map(t => info.kind === 'audio-cd'
+    ? { path: discPath(info, t.n, t.title), name: t.title, title: t.title, artist: t.artist || info.artist, album: info.album || info.label, kind: 'audio', duration: t.duration, disc: { id: info.id, kind: info.kind, n: t.n } }
+    : { path: discPath(info, t.n, t.title), name: `${info.label} - ${t.title}`, title: info.label, kind: 'video', duration: t.duration, disc: { id: info.id, kind: info.kind, n: t.n } });
+}
+function playTitle(n, at = null) { const it = titleItem(S.discInfo, n); playQueue([it], 0, at != null ? { at } : {}); }
+function playTrack(n, at = null) { const items = trackItems(S.discInfo); playQueue(items, Math.max(0, items.findIndex(i => i.disc.n === n)), at != null ? { at } : {}); }
+
+// What the page plays for a disc item (playIndex hands it here).
+async function playDiscItem(item, { at = null, noResume = false } = {}) {
+  const info = S.discInfo, d = item.disc;
+  if (!info || info.id !== d.id) { notice('The disc isn\'t in the drive any more.'); return; }
+  const t = d.kind === 'dvd' ? info.titles.find(x => x.n === d.n) : null;
+  S.disc = null;
+  S.probe = t ? { duration: t.duration, chapters: t.chapters, streams: t.audio.map(a => ({ kind: 'audio', label: a.label, id: a.id, lang: a.lang })) } : { duration: item.duration || 0, chapters: [], streams: [] };
+  S.subs = t ? t.subs.map(x => ({ label: x.label, lang: x.lang, disc: x.id })) : [];
+  if (t) {
+    // Sound: your pick on the disc screen, else your usual language, else the disc's first.
+    if (d.audio == null) { const want = S.settings.discAudioLang; d.audio = (t.audio.find(a => want && a.lang === want) || t.audio[0])?.id ?? null; }
+    if (d.sub === undefined) { const want = S.settings.subLang; d.sub = S.settings.subsOff === false && want ? (t.subs.find(x => x.lang === want)?.id ?? null) : null; }
+    S.subOn = S.subs.findIndex(x => x.disc === d.sub);
+  }
+  const r = S.resume[item.path];
+  const resumeAt = at ?? (!noResume ? (r?.t || 0) : 0);
+  showDiscPanel(false);
+  setBodyMode();
+  try { await discStream(resumeAt > 5 || at != null ? resumeAt : 0); } catch (e) { notice(e.message, { actions: [{ label: 'Disc menu', run: () => { closeNotice(); showDiscPanel(true); } }] }); return; }
+  if (resumeAt > 5 && at == null) toast(`Carrying on from ${fmt(resumeAt)}`, { label: 'Start over', run: () => seekTo(0) });
+  if (!isVideo()) renderMusic();
+  renderMarks(); updateButtons(); mpris(true); hints();
+}
+async function discStream(at, { paused = false } = {}) {
+  const d = S.item.disc, track = S.track;
+  const p = await call('disc_play', { id: d.id, n: d.n, at: Math.max(0, at || 0), audio: d.audio ?? null, sub: d.sub ?? null, reencode: !!d.reencode });
+  if (track !== S.track) return;
+  const retries = S.disc?.retries || 0;
+  S.disc = { offset: p.restart ? p.start : 0, duration: p.duration, restart: p.restart, pending: null, retries };
+  await setSource(p.url);
+  video.addEventListener('loadedmetadata', () => { if (!p.restart && at > 1) video.currentTime = at; if (!paused) video.play().catch(() => {}); }, { once: true });
+  tick(); renderMarks();
+}
+let discSeekTimer;
+function discSeek(t) {
+  const d = duration();
+  t = clamp(t, 0, d > 1 ? d - 1 : t);
+  S.disc.pending = t;
+  osd(`${fmt(t)} / ${fmt(d)}`); tick();
+  clearTimeout(discSeekTimer);
+  const paused = video.paused && !!video.src;
+  discSeekTimer = setTimeout(() => discStream(t, { paused }).catch(e => toast(e.message)), 450);
+}
+function discError(code) {
+  const d = S.item.disc;
+  if (d.kind !== 'audio-cd' && !d.reencode) {
+    // The picture as it is didn't play: once more, made again (H.264).
+    d.reencode = true; discStream(ct()).catch(e => notice(e.message)); return;
+  }
+  notice(d.kind === 'audio-cd' ? 'This song couldn\'t be read from the CD. The disc may be scratched or dirty.' : 'This couldn\'t be played from the disc. The disc may be scratched or dirty.',
+    { actions: [{ label: 'Disc menu', run: () => { closeNotice(); showDiscPanel(true); } }] });
+}
+function discEnded() {
+  if (!S.item?.disc) return false;
+  // A stream that stopped well before the end (a hard-to-read spot): carry on just after it, twice at most.
+  if (restarts() && S.disc && duration() - ct() > 20 && S.disc.retries < 2) { S.disc.retries++; discStream(ct() + 2).catch(() => {}); return true; }
+  delete S.resume[S.item.path]; saveResumeStore();
+  if (S.item.kind === 'audio') return false;
+  showDiscPanel(true);
+  return true;
+}
+function discSub(i) {
+  const d = S.item?.disc; if (!d) return;
+  const s = i >= 0 ? S.subs[i] : null;
+  d.sub = s ? s.disc : null; S.subOn = s ? i : -1;
+  S.settings.subsOff = !s; if (s?.lang) S.settings.subLang = s.lang; saveSettings();
+  osd(s ? `${s.label} (drawn into the picture)` : 'Subtitles off');
+  discStream(ct()).catch(e => toast(e.message));
+  updateButtons();
+}
+function discAudio(n) {
+  const d = S.item?.disc; const a = audioTracks()[n]; if (!d || !a) return;
+  d.audio = a.id; if (a.lang) { S.settings.discAudioLang = a.lang; saveSettings(); }
+  osd(a.label);
+  discStream(ct()).catch(e => toast(e.message));
+}
+function discTracksMenu() {
+  const d = S.item?.disc; if (!d) return;
+  if (d.kind !== 'dvd') { queueMenu(); return; }
+  const au = audioTracks(), cur = currentAudio();
+  const items = au.map((a, i) => ({ label: a.label, sub: 'Sound', on: i === cur, run: () => discAudio(i) }));
+  items.push({ sep: true }, { label: 'Subtitles off', on: S.subOn < 0, run: () => discSub(-1) }, ...S.subs.map((s, i) => ({ label: s.label, sub: 'Subtitles', on: S.subOn === i, run: () => discSub(i) })));
+  menu('Sound and subtitles', items);
+}
+function prefLabel(list, id, none) { const x = list.find(a => a.id === id); return x ? x.label : none; }
+function pickPref(kind) {
+  const info = S.discInfo, t = info.titles.find(x => x.n === info.main) || info.titles[0];
+  if (kind === 'audio') menu('Sound', t.audio.map(a => ({ label: a.label, on: (S.discPrefs.audio ?? t.audio[0]?.id) === a.id, run: () => { S.discPrefs.audio = a.id; if (a.lang) { S.settings.discAudioLang = a.lang; saveSettings(); } renderDisc(); } })));
+  else menu('Subtitles', [{ label: 'Off', on: S.discPrefs.sub == null, run: () => { S.discPrefs.sub = null; renderDisc(); } }, ...t.subs.map(x => ({ label: x.label, sub: 'Drawn into the picture', on: S.discPrefs.sub === x.id, run: () => { S.discPrefs.sub = x.id; renderDisc(); } }))]);
+}
+
+function noteHtml(info) {
+  const dec = S.decoding || {};
+  if (info.encrypted) {
+    const acts = [];
+    if (!dec.installed && dec.canAdd) acts.push(`<button class="btn primary f" data-da="decoding" data-autofocus>${icon('plus')} Add DVD decoding</button>`);
+    if (dec.installed) acts.push(`<button class="btn primary f" data-da="again" data-autofocus>${icon('refresh')} Try again</button>`);
+    if (info.device) acts.push(`<button class="btn f" data-da="eject">${icon('eject')} Eject</button>`);
+    const extra = !dec.installed && !dec.canAdd ? '<p class="dim">Adding DVD decoding isn\'t offered on this edition of Hearth OS yet.</p>'
+      : !dec.installed ? '<p class="dim">Adding it asks for an administrator\'s password, needs the internet and takes about a minute. Nothing is added unless you say yes.</p>' : '';
+    return `<h3>${icon('lock')} This DVD is locked</h3><p>${esc(info.note)}</p>${extra}<div class="acts">${acts.join('')}</div>`;
+  }
+  const head = { bluray: 'Blu-ray discs don\'t play here', blank: 'This disc is empty', empty: 'No disc in the drive', data: 'Nothing to play here' }[info.kind] || 'This disc can\'t be played';
+  return `<h3>${icon('disc')} ${esc(head)}</h3><p>${esc(info.note)}</p><div class="acts">${info.device ? `<button class="btn primary f" data-da="eject" data-autofocus>${icon('eject')} Eject</button>` : ''}</div>`;
+}
+function renderDisc() {
+  const info = S.discInfo; if (!info) return;
+  $('#discLabel').textContent = info.label || DISC_KIND[info.kind] || 'Disc';
+  const total = info.kind === 'audio-cd' ? info.tracks.reduce((a, t) => a + t.duration, 0) : 0;
+  $('#discKind').textContent = [DISC_KIND[info.kind] || 'Disc',
+    info.kind === 'dvd' ? `${info.titles.length} ${info.titles.length === 1 ? 'title' : 'titles'}` : '',
+    info.kind === 'audio-cd' ? `${info.tracks.length} songs · ${fmt(total)}` : '',
+    (info.kind === 'vcd' || info.kind === 'svcd') ? `${info.tracks.length} ${info.tracks.length === 1 ? 'part' : 'parts'}` : '',
+    info.kind === 'audio-cd' && info.artist ? info.artist : ''].filter(Boolean).join(' · ');
+  $('#discArt').classList.toggle('locked', !!info.encrypted || !!info.note);
+  const acts = [];
+  const playing = S.item?.disc?.id === info.id;
+  if (playing) acts.push(`<button class="btn primary f" data-da="back" data-autofocus>${icon('play')} Back to ${isVideo() ? 'the film' : 'the music'}<small>${fmt(ct())}</small></button>`);
+  let choices = '';
+  if (info.kind === 'dvd' && !info.encrypted) {
+    const main = info.titles.find(t => t.n === info.main) || info.titles[0];
+    const r = S.resume[titleItem(info, main.n).path];
+    acts.push(`<button class="btn ${playing ? '' : 'primary'} f" data-da="title" data-n="${main.n}" ${playing ? '' : 'data-autofocus'}>${icon('play')} Play the film<small>${fmt(main.duration)}</small></button>`);
+    if (r?.t > 5) acts.push(`<button class="btn f" data-da="resume" data-n="${main.n}" data-t="${r.t}">${icon('refresh')} Carry on<small>${fmt(r.t)}</small></button>`);
+    if (main.audio.length > 1) choices += `<button class="chip f" data-da="prefAudio">${icon('lang')}<span>Sound</span><small>${esc(prefLabel(main.audio, S.discPrefs.audio ?? main.audio[0]?.id, 'The disc\'s own'))}</small></button>`;
+    if (main.subs.length) choices += `<button class="chip f" data-da="prefSub">${icon('cc')}<span>Subtitles</span><small>${esc(prefLabel(main.subs, S.discPrefs.sub, 'Off'))}</small></button>`;
+  }
+  if (info.kind === 'audio-cd') {
+    acts.push(`<button class="btn ${playing ? '' : 'primary'} f" data-da="all" ${playing ? '' : 'data-autofocus'}>${icon('play')} Play the CD<small>${fmt(total)}</small></button>`);
+    acts.push(`<button class="btn f" data-da="names">${icon('refresh')} Look up names online</button>`);
+  }
+  if ((info.kind === 'vcd' || info.kind === 'svcd') && info.tracks.length) acts.push(`<button class="btn ${playing ? '' : 'primary'} f" data-da="track" data-n="${info.tracks[0].n}" ${playing ? '' : 'data-autofocus'}>${icon('play')} Play<small>${fmt(info.tracks.reduce((a, t) => a + t.duration, 0))}</small></button>`);
+  if (info.device && !info.note) acts.push(`<button class="btn f" data-da="eject">${icon('eject')} Eject</button>`);
+  acts.push(`<button class="btn f" data-da="pad">${icon('pad')} Controller buttons</button>`);
+  if (S.decoding?.installed && info.kind === 'dvd') acts.push(`<button class="btn f" data-da="undecoding">${icon('trash')} Remove DVD decoding</button>`);
+  $('#discActs').innerHTML = acts.join('');
+  $('#discChoices').innerHTML = choices;
+  const note = $('#discNote');
+  note.hidden = !(info.encrypted || info.note);
+  if (!note.hidden) note.innerHTML = noteHtml(info);
+  const list = $('#discList');
+  if (info.kind === 'dvd' && !info.encrypted) {
+    const cur = playing ? S.item.disc.n : null;
+    list.innerHTML = `<div class="disc-head">${icon('list')}<span>Titles and chapters${info.reader === 'folder' ? '' : ''}. The disc's own menu isn't shown: pick here.</span></div>` + info.titles.map(t => {
+      const bits = [`${t.chapters.length} ${t.chapters.length === 1 ? 'chapter' : 'chapters'}`, t.audio.length > 1 ? `${t.audio.length} sound tracks` : '', t.subs.length ? `${t.subs.length} subtitles` : '', t.angles > 1 ? `${t.angles} camera angles (the first plays)` : ''].filter(Boolean).join(' · ');
+      const ch = t.chapters.length > 1 ? `<div class="disc-sub" data-for="${t.n}" ${t.n === (cur ?? info.main) ? '' : 'hidden'}>${t.chapters.map((c, i) => `<button class="chip f" data-ch="${t.n}" data-t="${c.start}">${i + 1} · ${fmt(c.start)}</button>`).join('')}</div>` : '';
+      return `<button class="disc-row f ${t.n === info.main ? 'main' : ''} ${t.n === cur ? 'on' : ''}" data-title="${t.n}"><span class="n">${t.n}</span><span>Title ${t.n}${t.n === info.main ? '<span class="tagm">The film</span>' : ''}<small>${esc(bits)}</small></span><span class="d">${fmt(t.duration)}</span></button>${ch}`;
+    }).join('');
+  } else if (info.kind === 'audio-cd' || info.kind === 'vcd' || info.kind === 'svcd') {
+    const cur = playing ? S.item.disc.n : null;
+    const from = info.namesFrom ? `Names from ${info.namesFrom}.` : info.tracks.some(t => !/^Track \d+$/.test(t.title)) ? 'Names from the disc (CD-Text).' : 'This disc has no names on it.';
+    list.innerHTML = (info.kind === 'audio-cd' ? `<div class="disc-head">${icon('note')}<span>${esc(from)}</span></div>` : '') + info.tracks.map(t => `<button class="disc-row f ${t.n === cur ? 'on' : ''}" data-trk="${t.n}"><span class="n">${t.n}</span><span>${esc(t.title)}${t.artist && t.artist !== info.artist ? `<small>${esc(t.artist)}</small>` : ''}</span><span class="d">${fmt(t.duration)}</span></button>`).join('');
+  } else list.innerHTML = '';
+  paintIcons($('#disc'));
+}
+$('#disc').addEventListener('focusin', e => {
+  const r = e.target.closest('[data-title]'); if (!r) return;
+  for (const s of $$('#disc .disc-sub')) s.hidden = s.dataset.for !== r.dataset.title;
+});
+$('#disc').addEventListener('click', e => {
+  const info = S.discInfo; if (!info) return;
+  const a = e.target.closest('[data-da]');
+  if (a) {
+    const n = +a.dataset.n;
+    switch (a.dataset.da) {
+      case 'title': playTitle(n); break;
+      case 'resume': playTitle(n, +a.dataset.t); break;
+      case 'all': playTrack(info.tracks[0].n); break;
+      case 'track': playTrack(n); break;
+      case 'back': showDiscPanel(false); if (video.paused) video.play().catch(() => {}); break;
+      case 'eject': ejectDisc(); break;
+      case 'pad': controllerSheet(); break;
+      case 'names': lookupNames(true); break;
+      case 'decoding': addDecoding(); break;
+      case 'undecoding': removeDecoding(); break;
+      case 'again': openDisc(info.source); break;
+      case 'prefAudio': pickPref('audio'); break;
+      case 'prefSub': pickPref('sub'); break;
+    }
+    return;
+  }
+  const t = e.target.closest('[data-title]'); if (t) { playTitle(+t.dataset.title); return; }
+  const c = e.target.closest('[data-ch]'); if (c) { playTitle(+c.dataset.ch, +c.dataset.t + 0.01); return; }
+  const k = e.target.closest('[data-trk]'); if (k) playTrack(+k.dataset.trk);
+});
+
+async function lookupNames(loud) {
+  const info = S.discInfo; if (!info || info.kind !== 'audio-cd') return;
+  if (loud) toast('Looking the CD up…');
+  try {
+    const n = await call('disc_names', { id: info.id });
+    if (S.discInfo !== info) return;
+    if (n.album) { info.album = n.album; info.label = n.album; }
+    if (n.artist) info.artist = n.artist;
+    n.tracks.forEach(([title, artist], i) => { if (info.tracks[i]) { if (title) info.tracks[i].title = title; if (artist) info.tracks[i].artist = artist; } });
+    info.namesFrom = n.from;
+    // The songs already in the play queue get their names too.
+    for (const q of S.queue) { const t = q.disc && info.tracks.find(x => x.n === q.disc.n); if (t) { q.title = q.name = t.title; q.artist = t.artist; q.album = info.album; } }
+    if (S.item?.disc && !isVideo()) renderMusic();
+    renderDisc();
+    if (loud) toast(`Names from ${n.from}`);
+  } catch (e) { if (loud) toast(e.message); }
+}
+
+async function ejectDisc() {
+  const dev = S.discInfo?.device || S.drives.find(d => d.media)?.device;
+  if (!dev) return;
+  if (S.item?.disc) { saveResume(); stopPlaying(); }
+  try { await call('disc_eject', { device: dev }); S.discInfo = null; S.discPanel = false; setBodyMode(); updateButtons(); hints(); osd('Ejected'); }
+  catch (e) { toast(e.message); }
+  refreshDrives(false);
+}
+
+async function decodingJob(add) {
+  const id = await call('dvd_decoding_change', { add });
+  S.jobs[id] = {
+    progress: (pct, text) => notice(text || (add ? 'Adding DVD decoding' : 'Removing DVD decoding'), { progress: pct }),
+    done: async r => {
+      closeNotice();
+      if (!r.ok) { toast(r.error); return; }
+      S.decoding = await call('dvd_decoding').catch(() => S.decoding);
+      if (add) toast(r.result && r.result.live === false ? 'DVD decoding is added. Restart the PC to use it.' : 'DVD decoding is added.');
+      else toast('DVD decoding is removed (from the next restart).');
+      if (S.discInfo) openDisc(S.discInfo.source);
+    },
+  };
+}
+async function addDecoding() {
+  if (S.decoding == null) S.decoding = await call('dvd_decoding').catch(() => ({}));
+  if (!S.decoding.canAdd) { toast('Adding DVD decoding isn\'t offered on this edition of Hearth OS yet.'); return; }
+  const ok = await confirmSheet('Add DVD decoding?',
+    `<p>Most DVDs from a shop are locked against copying. To play them, Hearth Player needs <b>libdvdcss</b>, a small free library that unlocks them.</p>
+     <p>Hearth OS can't include it for legal reasons. It comes from <b>RPM Fusion</b> (its "free-tainted" part), a well-known add-on source for Fedora. Whether you may use it where you live is up to you.</p>
+     <p>You'll be asked for an administrator's password. It needs the internet and takes about a minute. You can remove it again from the disc screen.</p>`, 'Add DVD decoding');
+  if (ok) decodingJob(true).catch(e => toast(e.message));
+}
+async function removeDecoding() {
+  const ok = await confirmSheet('Remove DVD decoding?', '<p>Locked DVDs won\'t play any more. You can add it again from the disc screen.</p>', 'Remove', { danger: true });
+  if (ok) decodingJob(false).catch(e => toast(e.message));
+}
+
+function controllerSheet() {
+  const row = (b, t) => `<b>${b}</b><span>${esc(t)}</span>`;
+  sheet(`<h2>Controller and remote</h2><div class="padmap">
+    <h4>Playing a disc</h4>${row('A', 'Play or pause')}${row('◀ ▶', 'Back or forward 10 seconds')}${row('LT RT', 'Back or forward 30 seconds')}${row('LB RB', 'Chapter (DVD) or song (CD) before, after')}${row('▲ ▼', 'Louder, or the buttons')}${row('Y', 'Sound and subtitles')}${row('Select', 'The disc menu')}${row('Start', 'Full screen')}${row('X', 'Show the buttons')}${row('B', 'Back')}
+    <h4>On the disc menu</h4>${row('✥', 'Move')}${row('A', 'Play what\'s picked')}${row('X', 'Eject the disc')}${row('Y', 'This list')}${row('LB RB', 'Switch tabs')}${row('B', 'Back to the film')}
+    <h4>A remote or keyboard</h4>${row('← →', 'Seek, or move')}${row('OK', 'Choose, or play and pause')}${row('Back', 'Back')}${row('Menu', 'The disc menu (or D)')}${row('⏯ ⏹', 'Play, pause, stop')}${row('⏏', 'Eject')}${row('⏮ ⏭', 'Chapter or song')}${row('?', 'This list')}
+  </div><div class="acts"><button class="btn primary f" data-autofocus onclick="closeSheet()">Done</button></div>`, { wide: true });
+}
+
 // ---------------------------------------------------------------- buttons
 const ACT = {
   goOpen: () => setView('open'), playPause, prev, next, back10: () => seekBy(-10), fwd10: () => seekBy(10),
@@ -966,6 +1334,7 @@ const ACT = {
   shuffle: () => { S.shuffle = !S.shuffle; makeOrder(); if (S.shuffle && S.qi >= 0) { const k = S.order.indexOf(S.qi); [S.order[0], S.order[k]] = [S.order[k], S.order[0]]; } S.settings.shuffle = S.shuffle; saveSettings(); updateButtons(); osd(S.shuffle ? 'Shuffle on' : 'Shuffle off'); },
   repeat: () => { S.repeat = { off: 'all', all: 'one', one: 'off' }[S.repeat]; S.settings.repeat = S.repeat; saveSettings(); updateButtons(); osd({ off: 'Repeat off', all: 'Repeat all', one: 'Repeat this one' }[S.repeat]); },
   speed: speedMenu, subs: subsMenu, audio: audioMenu, chapters: chaptersMenu, queue: queueMenu, shot: screenshot,
+  discMenu: () => toggleDiscPanel(), eject: () => ejectDisc(), playDisc: () => openDisc(S.drives.find(d => d.media)?.device || null),
   edit: () => (E.on ? closeEdit() : openEdit()), full: () => setFull(!S.full),
   up: upDir, playFolder: () => { if (S.pick) { cancelPick(); return; } openAndPlay([S.dir]); }, podGo: () => podSearch($('#podSearch').value),
 };
@@ -985,6 +1354,7 @@ function back() {
   if (oskTarget) { const i = oskTarget; closeOsk(); i.focus(); return true; }
   if (closeSheet()) return true;
   if (S.pick) return cancelPick();
+  if (discPanelOn() && S.item) { showDiscPanel(false); return true; }
   if (E.on) { closeEdit(); return true; }
   if (S.full) { setFull(false); return true; }
   if (S.view === 'pods' && S.podShow) { S.podShow = null; renderPods(); return true; }
@@ -1003,15 +1373,25 @@ document.addEventListener('keydown', e => {
     if (k === 'Escape') { e.preventDefault(); e.target.blur(); }
     return;
   }
-  if (k === 'Escape' || (k === 'Backspace' && !inField(e))) { if (back()) e.preventDefault(); return; }
+  if (k === 'Escape' || k === 'BrowserBack' || k === 'GoBack' || (k === 'Backspace' && !inField(e))) { if (back()) e.preventDefault(); return; }
+  // Remote controls: Menu (or the context menu key) for the disc menu, Eject, Stop.
+  if ((k === 'ContextMenu' || k === 'TV' || k === 'MediaTopMenu') && S.discInfo) { e.preventDefault(); toggleDiscPanel(); return; }
+  if (k === 'Eject' && S.discInfo?.device) { e.preventDefault(); ejectDisc(); return; }
+  if (k === 'MediaStop' && S.item) { e.preventDefault(); video.pause(); if (S.discInfo) showDiscPanel(true); return; }
+  if (k === '?' && !inField(e)) { e.preventDefault(); controllerSheet(); return; }
   if (ctrl && k.toLowerCase() === 'o') { e.preventDefault(); setView('open'); return; }
   if (ctrl && k.toLowerCase() === 'z') { e.preventDefault(); undo(); return; }
   if (ctrl && (k.toLowerCase() === 'y' || (e.shiftKey && k.toLowerCase() === 'z'))) { e.preventDefault(); redo(); return; }
   if (ctrl && k.toLowerCase() === 's' && E.on) { e.preventDefault(); saveEdit(); return; }
   if (ctrl && k.toLowerCase() === 'q') { e.preventDefault(); call('quit').catch(() => {}); return; }
   if (k === 'F11') { e.preventDefault(); if (isVideo()) setFull(!S.full); return; }
-  if (S.view === 'play' && !topSheet()) {
+  if (S.view === 'play' && !topSheet() && discPanelOn()) {
+    if (k === 'Enter' && document.activeElement === document.body) { e.preventDefault(); focusables()[0]?.focus(); return; }
+    if (k.toLowerCase() === 'd' && S.item) { e.preventDefault(); toggleDiscPanel(); return; }
+    if (k === 'MediaPlayPause' && S.item) { playPause(); return; }
+  } else if (S.view === 'play' && !topSheet()) {
     const letter = k.length === 1 ? k.toLowerCase() : '';
+    if (letter === 'd' && S.discInfo) { e.preventDefault(); toggleDiscPanel(); return; }
     const media = { ' ': playPause, k: playPause, j: () => seekBy(-10), l: () => seekBy(10), m: ACT.mute, f: () => isVideo() && setFull(!S.full), n: next, p: prev, v: cycleSubs, s: screenshot, e: ACT.edit, q: queueMenu, a: () => audioTracks().length > 1 && audioMenu(), '[': () => speedStep(-1), ']': () => speedStep(1), '=': () => setSpeed(1), ',': () => { video.pause(); seekBy(-1 / 25); }, '.': () => { video.pause(); seekBy(1 / 25); } };
     if (E.on) { media.i = () => change(s => { s.start = video.currentTime; }); media.o = () => change(s => { s.end = video.currentTime; }); }
     const onButton = document.activeElement && document.activeElement.tagName === 'BUTTON';
@@ -1100,6 +1480,17 @@ function pad() {
 function padPress(k) {
   const bare = playKeys();
   if (k === 'b') { back(); return; }
+  // A disc: Select opens and closes the disc menu (a remote's Menu button), Y the sound and subtitles.
+  if (k === 'select' && S.view === 'play' && S.discInfo && !topSheet()) { toggleDiscPanel(); return; }
+  if (S.view === 'play' && discPanelOn() && !topSheet()) {
+    if (k === 'a') { choose(); return; }
+    if (k === 'x' && S.discInfo?.device) { ejectDisc(); return; }
+    if (k === 'y') { controllerSheet(); return; }
+    if (k === 'lb' || k === 'rb') { cycleView(k === 'lb' ? -1 : 1); return; }
+    if (['up', 'down', 'left', 'right'].includes(k)) { move(k); return; }
+    return;
+  }
+  if (k === 'y' && S.view === 'play' && S.item?.disc && !topSheet()) { discTracksMenu(); return; }
   if (k === 'lb' && (S.view !== 'play' || !S.item)) { cycleView(-1); return; }
   if (k === 'rb' && (S.view !== 'play' || !S.item)) { cycleView(1); return; }
   if (S.view === 'play' && S.item && !topSheet()) {
@@ -1138,10 +1529,15 @@ window.addEventListener('gamepadconnected', () => { const h = $('#hint'); if (h)
   setBodyMode(); updateButtons(); hints();
   const l = init.launch || {};
   if (l.view === 'podcasts') { S.podTab = 'shows'; setView('pods'); } else setView('play');
-  if (l.files?.length) await openAndPlay(l.files);
+  listen('player://disc', ev => discEvent(ev.payload?.device));
+  refreshDrives(false);
+  if (l.disc != null) await openDisc(l.disc || null, { play: false });
+  else if (l.files?.length) await openAndPlay(l.files);
   else if (l.view === 'music') { const m = S.places.find(p => p.kind === 'music'); setView('open'); if (m) openDir(m.path); }
   if (l.fullscreen) setFull(true);
   HearthGamepad.loop(pad);
+  if (l.show === 'controller') controllerSheet();
+  else if (l.show === 'decoding') addDecoding();
   refreshShows(false);
   document.body.dataset.ready = '1';
 })().catch(e => { document.body.dataset.ready = 'error'; console.error(e); toast(String(e.message || e)); });
@@ -1182,6 +1578,12 @@ function demoInvoke(cmd, a) {
     case 'net_get': return D.net ? r(D.net(a.url)) : Promise.reject('No internet in the preview');
     case 'save_frame': (window.__demoCalls ||= []).push([cmd, { path: a.path, at: a.at, png: a.png ? a.png.slice(0, 22) : null }]); return r('/home/you/Videos/Sample clip 00-00-02.png');
     case 'file_exists': return r(false);
+    case 'disc_drives': return r(D.drives || []);
+    case 'disc_open': return D.disc ? r(D.disc) : Promise.reject(new Error('There\'s no disc in the drive.'));
+    case 'disc_play': (window.__demoCalls ||= []).push([cmd, a]); return r({ url: base + encodeURIComponent(D.discClip || 'Sample clip.webm'), start: a.at || 0, duration: (D.disc?.titles?.find(t => t.n === a.n)?.duration) || (D.disc?.tracks?.find(t => t.n === a.n)?.duration) || 12, restart: D.disc?.kind !== 'audio-cd' });
+    case 'disc_names': return Promise.reject(new Error('No internet in the preview'));
+    case 'dvd_decoding': return r(D.decoding || { installed: false, canAdd: true });
+    case 'disc_eject': (window.__demoCalls ||= []).push([cmd, a]); return r(null);
     default: (window.__demoCalls ||= []).push([cmd, a]); return r(null);
   }
 }
