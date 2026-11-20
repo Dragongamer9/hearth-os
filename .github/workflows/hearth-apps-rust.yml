@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       only:
-        description: 'Only these apps'' pictures: their shots.d names, a comma list (like "family,notes"; "kwin" or "capture" also runs Capture on KWin); empty: every app'
+        description: 'Only these apps'' pictures: their shots.d names, a comma list (like "family,notes"; "kwin" also runs the KWin jobs: "capture" Capture on KWin, "files" dragging out of Hearth Files); empty: every app'
         required: false
         default: ''
 
@@ -98,6 +98,8 @@ jobs:
   # at rest. Pictures as SHOT notices, one step each.
   drag-out:
     needs: build
+    # The one "only" input (a comma list): this job runs when it's empty or names files or kwin.
+    if: ${{ !inputs.only || contains(format(',{0},', inputs.only), ',files,') || contains(format(',{0},', inputs.only), ',kwin,') }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     container:
