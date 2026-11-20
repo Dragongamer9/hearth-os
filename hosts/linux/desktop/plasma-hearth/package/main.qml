@@ -205,7 +205,7 @@ PlasmoidItem {
         // How Plasma draws Hearth's bar (Glass's frosted blur needs the graphics card: Mantel's Frost.qml), said once.
         Timer {
             interval: 3000; running: main.role === "bar"
-            onTriggered: console.log("plasma-hearth: the bar is drawn " + (rep.GraphicsInfo.api === GraphicsInfo.Software ? "by the processor (no blur)" : "on the graphics card (api " + rep.GraphicsInfo.api + ")"))
+            onTriggered: console.warn("plasma-hearth: the bar is drawn " + (rep.GraphicsInfo.api === GraphicsInfo.Software ? "by the processor (no blur)" : "on the graphics card (api " + rep.GraphicsInfo.api + ")"))
         }
     }
 }

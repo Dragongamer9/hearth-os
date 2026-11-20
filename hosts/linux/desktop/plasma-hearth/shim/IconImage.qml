@@ -9,7 +9,9 @@ Item {
     id: ii
     property var source: ""
     property real implicitSize: 20
-    readonly property string src: String(source || "")
+    // An app's own tray picture comes as an icon (QIcon), not a name: given to Kirigami.Icon as it is.
+    readonly property bool text: typeof source === "string" || source instanceof String
+    readonly property string src: text ? String(source || "") : ""
     readonly property bool named: src !== "" && src.indexOf("://") < 0 && src.indexOf("/") !== 0
     implicitWidth: implicitSize
     implicitHeight: implicitSize

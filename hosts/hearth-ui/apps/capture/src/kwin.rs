@@ -173,8 +173,11 @@ fn script_for(app_id: &str, w: f32, h: f32, place: Place, screen: &str) -> Strin
     };
     let id = js_str(app_id);
     let sx = screen_expr(screen);
+    // Out of screenshots and screen sharing (KWin's excludeFromCapture). CI's pictures of where the pills go set
+    // HEARTH_CAPTURE_CI_IN_PICTURES, as KWin's own screenshots are then the only way to see them.
+    let exclude = if std::env::var_os("HEARTH_CAPTURE_CI_IN_PICTURES").is_some() { "" } else { "\n    if ('excludeFromCapture' in w) w.excludeFromCapture = true;" };
     format!(
-        "(function () {{\n  var l = workspace.windowList();\n  for (var i = 0; i < l.length; i++) {{\n    var w = l[i];\n    if (String(w.resourceClass) !== {id} && String(w.desktopFileName) !== {id}) continue;\n    var s = {sx};\n    var W = {w}, H = {h};\n    w.frameGeometry = {{ x: Math.round({xexpr}), y: Math.round({yexpr}), width: W, height: H }};\n    w.keepAbove = true; w.skipTaskbar = true; w.skipPager = true; w.skipSwitcher = true;\n    if ('excludeFromCapture' in w) w.excludeFromCapture = true;\n  }}\n}})();\n"
+        "(function () {{\n  var l = workspace.windowList();\n  for (var i = 0; i < l.length; i++) {{\n    var w = l[i];\n    if (String(w.resourceClass) !== {id} && String(w.desktopFileName) !== {id}) continue;\n    var s = {sx};\n    var W = {w}, H = {h};\n    w.frameGeometry = {{ x: Math.round({xexpr}), y: Math.round({yexpr}), width: W, height: H }};\n    w.keepAbove = true; w.skipTaskbar = true; w.skipPager = true; w.skipSwitcher = true;{exclude}\n  }}\n}})();\n"
     )
 }
 

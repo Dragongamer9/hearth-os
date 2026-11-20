@@ -1,18 +1,18 @@
 pragma Singleton
 
 // Apps' tray icons (StatusNotifierItem) for Mantel's bar (plasma-hearth): Plasma's statusnotifieritem source.
-// Connected only while there's a bar to show them; nothing polls (the source tells when an icon comes or changes).
+// Its sources are connected as they come (the singleton exists only where a bar shows them); nothing polls (the
+// source tells when an icon comes or changes).
 import QtQuick
 import org.kde.plasma.plasma5support as P5Support
 
 Item {
     id: st
     property var items: []
-    property int users: 0
     P5Support.DataSource {
         id: sni
         engine: "statusnotifieritem"
-        connectedSources: st.users > 0 ? sources : []
+        connectedSources: sources
         onSourceAdded: st.rebuild()
         onSourceRemoved: st.rebuild()
         onNewData: st.rebuild()
@@ -24,7 +24,7 @@ Item {
             const d = sni.data[s] || {};
             if (d.Status === "Passive") continue;
             out.push(itemComp.createObject(st, { title: d.Title || "", tooltipTitle: d.ToolTipTitle || "", tooltipDescription: d.ToolTipSubTitle || "",
-                icon: d.Icon || d.IconName || "", hasMenu: true, onlyMenu: d.ItemIsMenu === true, tray: st, source: s }));
+                icon: d.IconName || d.Icon || "", hasMenu: true, onlyMenu: d.ItemIsMenu === true, tray: st, source: s }));
         }
         for (const o of st.items) o.destroy();
         st.items = out;

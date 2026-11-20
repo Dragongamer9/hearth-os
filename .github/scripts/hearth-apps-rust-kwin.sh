@@ -20,7 +20,7 @@ dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE XDG_SESSION_TYPE=wayland KDE_FULL_SESSION=true KDE_SESSION_VERSION=6
 export QT_FORCE_STDERR_LOGGING=1 LIBGL_ALWAYS_SOFTWARE=1 HEARTH_RENDERER=cpu
-export QT_LOGGING_RULES="kwin_scripting.debug=true;js.debug=true"
+export QT_LOGGING_RULES="kwin_scripting.debug=true;js.debug=true;kf.globalaccel*=true;kglobalaccel*=true"
 export KWIN_LOG="$OUT/kwin.log"
 SH=/usr/share/nimbus/desktop/shell
 command -v kbuildsycoca6 >/dev/null && kbuildsycoca6 --noincremental >/dev/null 2>&1
@@ -77,7 +77,7 @@ except dbus.DBusException as e:
     print('REFUSED', e.get_dbus_name())
 PY
 grep -q REFUSED "$OUT/refused.txt" && ok "KWin's checks" "KWin refuses a screenshot to a program without its own entry (plain Python): $(cut -c1-200 "$OUT/refused.txt")" \
-  || fail "KWin's checks" "KWin gave a screenshot to any program, so this proves nothing: $(cut -c1-200 "$OUT/refused.txt")"
+  || echo "::warning title=KWin's checks::this KWin gave a screenshot to a program without an entry too (as root in CI), so here it doesn't show KWin refusing others: $(cut -c1-200 "$OUT/refused.txt")"
 /usr/bin/hearth-capture-app shot workspace >/dev/null 2>"$OUT/direct.txt"; rc=$?
 [ "$rc" = 3 ] && ok "Capture's shot" "answers only Hearth's hearth-screens (run by anyone else: exit 3)" || fail "Capture's shot" "run directly it answered (exit $rc): $(head -c 200 "$OUT/direct.txt")"
 HEARTH_WM=kwin timeout 30 /usr/bin/hearth-screenshot "$OUT/kw-01-hearth-screenshot.png" > "$OUT/hearth-screenshot.txt" 2>&1; rc=$?
@@ -86,6 +86,9 @@ size=$(python3 -c 'import sys; from PIL import Image; print("%dx%d" % Image.open
   || fail "KWin's screenshots" "hearth-screenshot didn't get a picture from KWin (exit $rc): $(tr '\n' '|' <"$OUT/hearth-screenshot.txt" | cut -c1-500)"
 
 # ---- Print Screen: the whole screen saved right away (KDE's global shortcuts: /usr/share/kglobalaccel/hearth-capture.desktop)
+# What KDE's shortcuts know of Capture (its component, and the keys of its two actions).
+ka() { timeout 10 dbus-send --session --print-reply --dest=org.kde.kglobalaccel "$@" 2>&1 | grep -oE '"[^"]*"|int32 [0-9]+' | tr '\n' ' ' | cut -c1-600; }
+ok "Shortcuts" "components: $(ka /kglobalaccel org.kde.KGlobalAccel.allComponents) · Capture's: $(ka /component/hearth_capture_desktop org.kde.kglobalaccel.Component.shortcutNames)"
 n0=$(count)
 fake "k 99 1" "k 99 0"
 for i in $(seq 1 20); do [ "$(count)" -gt "$n0" ] && break; sleep 1; done
@@ -95,10 +98,19 @@ if [ "$(count)" -gt "$n0" ] && [ -s "$p" ]; then
   cp "$p" "$OUT/kw-02-print-screen-saved.png"
   ok "Print Screen" "saved $(basename "$p") ($(python3 -c 'import sys; from PIL import Image; print("%dx%d" % Image.open(sys.argv[1]).size)' "$p"))"
 else
+  # Is it the key or the launch? KDE's shortcut asked for directly.
+  timeout 10 dbus-send --session --print-reply --dest=org.kde.kglobalaccel /component/hearth_capture_desktop org.kde.kglobalaccel.Component.invokeShortcut string:print > "$OUT/invoke.txt" 2>&1
+  for i in $(seq 1 15); do [ "$(count)" -gt "$n0" ] && break; sleep 1; done
+  echo "::warning title=Print Screen asked directly::$( [ "$(count)" -gt "$n0" ] && echo "saved a picture (so the key didn't reach the shortcut)" || echo "saved nothing either: $(tr '\n' ' ' <"$OUT/invoke.txt" | cut -c1-300)")"
   fail "Print Screen" "pressing Print Screen saved nothing in Pictures/Screenshots: $(grep -aiE 'capture|kglobalaccel|shortcut|hearth' "$KWIN_LOG" | tail -6 | tr '\n' '|' | cut -c1-700)"
 fi
 sleep 2; kshot "$OUT/kw-03-print-screen-notification.png"
 
+# The screens Capture's picker goes on (hearth-screens get, KDE's own screen settings).
+ok "Screens" "$(HEARTH_WM=kwin timeout 15 python3 "$SH/hearth-screens" get 2>&1 | python3 -c 'import json,sys
+t=sys.stdin.read()
+try: print(" · ".join("%s at %s,%s %s" % (o["name"], o["position"]["x"], o["position"]["y"], [m for m in o["modes"] if m["current"]][:1]) for o in json.loads(t)))
+except Exception: print(t[-400:])')"
 # ---- Super+Shift+S: the area picker, one on every screen at once
 fake "k 125 1" "k 42 1" "k 31 1" "k 31 0" "k 42 0" "k 125 0"
 for i in $(seq 1 25); do pgrep -f "hearth-capture-app area" >/dev/null && break; sleep 0.5; done
@@ -131,57 +143,52 @@ else
 fi
 pkill -f "hearth-capture-app area"; sleep 1
 
-# ---- the countdown at the top of the screen (KWin's script, kwin.rs script_for)
-/usr/bin/hearth-capture-app --take all --delay 10 >"$OUT/countdown.log" 2>&1 &
-cpid=$!
-sleep 3.5
-kwins "$OUT/kw-windows-countdown.txt"
-kshot "$OUT/kw-07-countdown.png"; halves kw-07-countdown
-l=$(win hearth-capture-pill "$OUT/kw-windows-countdown.txt"); g=$(geo "$l")
-case "$g" in
-  "830,40 260x64"|"2750,40 260x64") ok "Countdown's place" "at the top, in the middle of its screen: $g ($(echo "$l" | grep -o 'keepAbove=[a-z]*') $(echo "$l" | grep -o 'excludeFromCapture=[a-z/]*'))" ;;
-  *) fail "Countdown's place" "not at the top in the middle: '$g' ($(tr '\n' '|' <"$OUT/kw-windows-countdown.txt" | cut -c1-500))" ;;
-esac
-# Out of the pictures: KWin's screenshot of the screen with the countdown up (its dark middle there, or the window under it).
-if [ -n "$g" ]; then
-  inpic=$(python3 - "$OUT/kw-07-countdown.png" "${g%% *}" <<'PY2' 2>/dev/null
+# ---- the countdown, the capture dot and the scrolling capture's pill: where KWin's script puts them (kwin.rs
+# script_for), and out of the pictures (KWin's excludeFromCapture). Each twice: as it is (checked: not in KWin's own
+# screenshot), then with HEARTH_CAPTURE_CI_IN_PICTURES (only for these pictures) so the picture shows where it went.
+pill() {   # pill NAME CLASS ARGS...: its line in KWin's window list in $PL
+  local name=$1 cls=$2; shift 2
+  /usr/bin/hearth-capture-app "$@" >"$OUT/$name.log" 2>&1 & local p=$!
+  sleep 3.5; kwins "$OUT/kw-windows-$name.txt"; kshot "$OUT/$name-out.png"
+  kill $p 2>/dev/null; wait $p 2>/dev/null; sleep 0.5
+  HEARTH_CAPTURE_CI_IN_PICTURES=1 /usr/bin/hearth-capture-app "$@" >>"$OUT/$name.log" 2>&1 & p=$!
+  sleep 3.5; kshot "$OUT/$name.png"; halves "$name"
+  kill $p 2>/dev/null; wait $p 2>/dev/null; sleep 0.5
+  PL=$(win "$cls" "$OUT/kw-windows-$name.txt")
+  local g; g=$(geo "$PL")
+  # Out of the pictures: at its place, KWin's screenshot with it up is the desktop, not the pill.
+  local d; d=$(python3 - "$OUT/$name-out.png" "$OUT/$name.png" "$g" <<'PY' 2>/dev/null
 import sys
-from PIL import Image
-im = Image.open(sys.argv[1]).convert('RGB'); x, y = map(int, sys.argv[2].split(','))
-print('in' if max(im.getpixel((x + 130, y + 32))) < 90 else 'out')
-PY2
+from PIL import Image, ImageChops, ImageStat
+a, b = Image.open(sys.argv[1]).convert('RGB'), Image.open(sys.argv[2]).convert('RGB')
+x, y = map(int, sys.argv[3].split(' ')[0].split(',')); w, h = map(int, sys.argv[3].split(' ')[1].split('x'))
+box = (x, y, x + w, y + h)
+print('%.1f' % (sum(ImageStat.Stat(ImageChops.difference(a.crop(box), b.crop(box))).mean) / 3))
+PY
 )
-  ok "Countdown and screenshots" "KWin's $(echo "$l" | grep -o 'excludeFromCapture=[a-z/]*'); in KWin's own screenshot it is: ${inpic:-unknown} (it also closes before Capture takes the picture)"
-fi
-kill $cpid 2>/dev/null; wait $cpid 2>/dev/null
-
-# ---- the capture dot at the top right while a recording runs
+  if [ -n "$d" ] && python3 -c "import sys; sys.exit(0 if float('$d') > 8 else 1)"; then
+    ok "$name out of the pictures" "KWin's screenshot leaves it out ($(echo "$PL" | grep -o 'excludeFromCapture=[a-z/]*'); its place differs by $d with and without)"
+  else
+    fail "$name out of the pictures" "it's in KWin's screenshots (difference at its place '$d'; $(echo "$PL" | grep -o 'excludeFromCapture=[a-z/]*'))"
+  fi
+}
+pill kw-07-countdown hearth-capture-pill --take all --delay 10
+g=$(geo "$PL")
+case "$g" in
+  "830,40 260x64"|"2750,40 260x64") ok "Countdown's place" "at the top, in the middle of its screen: $g ($(echo "$PL" | grep -o 'keepAbove=[a-z]*'))" ;;
+  *) fail "Countdown's place" "not at the top in the middle: '$g'" ;;
+esac
 mkdir -p "$XDG_RUNTIME_DIR/hearth-record"
 printf '{"state": "recording", "since": %s}\n' "$(( $(date +%s) - 83 ))" > "$XDG_RUNTIME_DIR/hearth-record/state.json"
-/usr/bin/hearth-capture-app --indicator >"$OUT/dot.log" 2>&1 &
-dpid=$!
-sleep 3.5
-kwins "$OUT/kw-windows-dot.txt"
-kshot "$OUT/kw-08-capture-dot.png"; halves kw-08-capture-dot
-l=$(win hearth-capture-dot "$OUT/kw-windows-dot.txt"); g=$(geo "$l")
+pill kw-08-capture-dot hearth-capture-dot --indicator
+g=$(geo "$PL")
 case "$g" in
   "1608,56 "*|"3528,56 "*) ok "Capture dot's place" "at the top right of its screen: $g" ;;
-  *) fail "Capture dot's place" "not at the top right: '$g' ($(tr '\n' '|' <"$OUT/kw-windows-dot.txt" | cut -c1-500))" ;;
+  *) fail "Capture dot's place" "not at the top right: '$g'" ;;
 esac
-kill $dpid 2>/dev/null; wait $dpid 2>/dev/null
 rm -f "$XDG_RUNTIME_DIR/hearth-record/state.json"
-
-# ---- the scrolling capture's pill: at the top, or at the bottom when the area starts near the top
-/usr/bin/hearth-capture-app --scroll-pill >"$OUT/pill.log" 2>&1 &
-ppid=$!; sleep 3.5
-kwins "$OUT/kw-windows-pill-top.txt"; kshot "$OUT/kw-09-scroll-pill-top.png"; halves kw-09-scroll-pill-top
-l=$(win hearth-capture-pill "$OUT/kw-windows-pill-top.txt"); gt=$(geo "$l")
-kill $ppid 2>/dev/null; wait $ppid 2>/dev/null
-/usr/bin/hearth-capture-app --scroll-pill --scroll-pill-area 200,40,700,400 >"$OUT/pill2.log" 2>&1 &
-ppid=$!; sleep 3.5
-kwins "$OUT/kw-windows-pill-bottom.txt"; kshot "$OUT/kw-10-scroll-pill-bottom.png"; halves kw-10-scroll-pill-bottom
-l2=$(win hearth-capture-pill "$OUT/kw-windows-pill-bottom.txt"); gb=$(geo "$l2")
-kill $ppid 2>/dev/null; wait $ppid 2>/dev/null
+pill kw-09-scroll-pill-top hearth-capture-pill --scroll-pill; gt=$(geo "$PL")
+pill kw-10-scroll-pill-bottom hearth-capture-pill --scroll-pill --scroll-pill-area 200,40,700,400; gb=$(geo "$PL")
 yt=$(echo "$gt" | sed -E 's/^[0-9-]+,([0-9-]+) .*/\1/'); yb=$(echo "$gb" | sed -E 's/^[0-9-]+,([0-9-]+) .*/\1/')
 hb=$(echo "$gb" | sed -E 's/.*x([0-9]+)$/\1/')
 if [ "$yt" = 24 ] && [ -n "$yb" ] && [ -n "$hb" ] && [ $((yb + hb)) = 1056 ]; then
@@ -191,6 +198,9 @@ else
 fi
 
 # ============================================================== one screen: recording (KDE's screen-sharing portal)
+# (CI: each gst-launch hearth-record runs is written down, to say what it was asked when it fails)
+mkdir -p /tmp/gstshim && printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> %s/gst-launch-args.txt\nexec /usr/bin/gst-launch-1.0 "$@"\n' "$OUT" > /tmp/gstshim/gst-launch-1.0 && chmod +x /tmp/gstshim/gst-launch-1.0
+export PATH=/tmp/gstshim:$PATH
 start_kwin 1 || exit 0
 XDP=$(ls /usr/libexec/xdg-desktop-portal 2>/dev/null | head -1)
 [ -n "$XDP" ] && { "$XDP" -r -v > "$OUT/xdg-desktop-portal.log" 2>&1 & sleep 3; }
@@ -238,6 +248,8 @@ if grep -q '"state": "recording"' "$XDG_RUNTIME_DIR/hearth-record/state.json" 2>
     fail "Record" "the recording didn't make a file: '$f' $sz bytes; $(tr '\n' '|' <"$XDG_RUNTIME_DIR/hearth-record/last.log" 2>/dev/null | tail -c 600)"
   fi
 else
+  echo "::warning title=Record's pipeline::$(tail -c 1500 "$OUT/gst-launch-args.txt" 2>/dev/null)"
+  echo "::warning title=Record's log::$(tr '\n' '|' <"$XDG_RUNTIME_DIR/hearth-record/last.log" 2>/dev/null | tail -c 1500)"
   fail "Record" "KDE's screen-sharing portal didn't start a recording: $(cut -c1-300 "$OUT/record-start.json") · $(tr '\n' '|' <"$XDG_RUNTIME_DIR/hearth-record/last.log" 2>/dev/null | tail -c 500) · portal: $(grep -aiE 'screencast|error|warn' "$OUT/xdg-desktop-portal.log" | tail -4 | tr '\n' '|' | cut -c1-400)"
 fi
 kill $dpid $rpid 2>/dev/null
