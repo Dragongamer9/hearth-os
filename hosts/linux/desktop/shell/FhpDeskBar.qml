@@ -138,7 +138,7 @@ PanelWindow {
     FhRun { id: runner }
     property bool asking: false
     function askCards(first) {
-        if (asking || DeskState.idle) return;
+        if (asking || (!first && DeskState.idle)) return;      // (the first look always: what the bar shows when it comes up)
         asking = true;
         runner.run(first ? ["home", "fast"] : ["home-after", running.length ? "5" : "60", "fast"], function (t) {
             bar.asking = false;

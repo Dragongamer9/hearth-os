@@ -170,7 +170,7 @@ ipc list
 # bar's first-run tip; 12 Hearth's standard menus for an app with none (Window › Move to screen), the controller hint.
 # The apps are stand-ins: a Qt Widgets "Hearth Files" with the mockup's menus (it puts them in the menu registrar as
 # KDE's apps do) and a "Trains 2010" window with no menus.
-ipc list 2>/dev/null; fhp mode HEADLESS-2 desk --why mouse; sleep 3
+fhp mode HEADLESS-2 desk --why mouse; sleep 3
 mkdir -p "$HOME/.local/share/applications"
 printf '[Desktop Entry]\nType=Application\nName=Hearth Files\nExec=hearth-files\nIcon=system-file-manager\n' >"$HOME/.local/share/applications/hearth-files.desktop"
 cat > /tmp/lw-files.py <<'PY'
@@ -212,15 +212,23 @@ w = QWidget(); w.setWindowTitle('Trains 2010'); w.resize(1280, 800); w.setStyleS
 sys.exit(app.exec())
 PY
 if python3 -c 'import PyQt6.QtWidgets' 2>/dev/null; then
-  python3 /tmp/lw-files.py >"$OUT/files-standin.log" 2>&1 & FPID=$!
-  sleep 8
+  # (as an app from the menu starts on labwc: Mantel's Qt look, qt6ct, which puts its menus in the registrar)
+  QT_QPA_PLATFORMTHEME=qt6ct GIO_LAUNCHED_DESKTOP_FILE="$HOME/.local/share/applications/hearth-files.desktop" \
+    python3 /tmp/lw-files.py >"$OUT/files-standin.log" 2>&1 & FPID=$!
+  sleep 6
+  on_monitor() {   # the window on the monitor (labwc's Move to output, Super+Shift+→), in front
+    timeout 10 quickshell ipc -p "$SH" call firehold focus "$1" >/dev/null 2>&1; sleep 1
+    [ "$(timeout 10 quickshell ipc -p "$SH" call firehold screenOf "$1" 2>/dev/null)" = HEADLESS-2 ] || { wtype -M logo -M shift -k Right -m shift -m logo; sleep 2; }
+    timeout 10 quickshell ipc -p "$SH" call firehold focus "$1" >/dev/null 2>&1; sleep 2
+  }
+  on_monitor "Hearth Files — Pictures"
   note "the Desk bar: $(timeout 10 quickshell ipc -p "$SH" call firehold bar 2>/dev/null) · registered: $(cat "$XDG_RUNTIME_DIR/hearth-globalmenu.json" 2>/dev/null | head -c 300)"
   ipc barmenu File; sleep 2
   ipc bartip true; sleep 2
   shot lw-11-desk-bar-app-menus 11-desk-bar-app-menus.png HEADLESS-2
   ipc barmenu ""; ipc bartip false
   python3 /tmp/lw-trains.py >"$OUT/trains-standin.log" 2>&1 & TPID=$!
-  sleep 6
+  sleep 5; on_monitor "Trains 2010"
   # a controller button while every screen is Desk: the hint; then the TV back to Couch, as the mockup has it
   fhp mode all desk --why mouse; sleep 3
   press x; sleep 1

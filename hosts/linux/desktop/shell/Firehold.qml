@@ -526,6 +526,9 @@ Scope {
         function panels(): string { return JSON.stringify({ quick: fhQuick.shown, list: fhList.shown, cards: !!fhCards.item, screen: fhs.panelScreen ? fhs.panelScreen.name : "" }); }
         // The Desk bar's Modes card (Firehold on labwc), open or closed.
         function modes(open: bool): void { liveModes.popupOpen = open && fhs.sharedCouch; }
+        // Checks: the window with this title in front without the Couch stepping aside, and the screen it's on.
+        function focus(title: string): bool { const w = fhs.wins.find(t => t.title === title); if (!w) return false; w.activate(); return true; }
+        function screenOf(title: string): string { const w = fhs.wins.find(t => t.title === title); return w && w.screens && w.screens.length ? String(w.screens[0].name) : ""; }
         // The Desk bar's menus by name (File, Window, help, move; "" closes) and its first-run tip.
         function barmenu(name: string): void { if (fhs.deskBar) fhs.deskBar.openNamed(name); }
         function bartip(show: bool): void { if (fhs.deskBar) fhs.deskBar.tipShown = show; }
