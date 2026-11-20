@@ -484,18 +484,30 @@ def kb_open():
     return [w for w in kwin_windows() if len(w) == 6 and w[0] == 'hearth-pad-host' and w[5] > 150]
 
 
+def field_y(cls):
+    """The text field's height on screen in a maximized test window (Hearth's bar may sit above it now)."""
+    for w in kwin_windows():
+        if len(w) == 6 and w[0] == cls:
+            return int(w[3]) + 117
+    return 117
+
+
 mw = window(id='org.hearth.PadMouse', title='Mouse', text='A text field clicked with the mouse.', max='1')
-click(500, 117)
+my = field_y('org.hearth.PadMouse')
+click(500, my)
 time.sleep(2.0)
 v = vk()
 opened = kb_open()
-notice('mouse click on a text field', 'KWin %s · keyboard %s' % (v, 'OPEN' if opened else 'not open'))
+notice('mouse click on a text field', 'at y %d: KWin %s · keyboard %s' % (my, v, 'OPEN' if opened else 'not open'))
+if not v.get('active'):
+    error('mouse click', "the mouse click didn't reach the text field (KWin: %s), so it proves nothing" % v)
 shot('pad-k34-mouse-click-text-field')
 if opened:
     error('mouse click', "a mouse click on a text field opened the keyboard (only touch and the controller may)")
 close(mw)
 tw = window(id='org.hearth.PadTouch', title='Touch', text='A text field touched with a finger.', max='1')
-fake('td 1 500 117', 'tf')
+ty = field_y('org.hearth.PadTouch')
+fake('td 1 500 %d' % ty, 'tf')
 time.sleep(0.1)
 fake('tu 1', 'tf')
 time.sleep(2.5)
