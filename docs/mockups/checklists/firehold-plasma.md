@@ -60,7 +60,7 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 - [x] In the Settings look, its own page — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "pub const PAGES: &[&str] = &[\"couch-desk-away\", \"couch-away\"];"
 - [x] For each screen: the mode it starts in, what's on its Couch home, sound in Couch — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "\"Sound in Couch\", \"Switches the output when this screen goes Couch\""
 - [x] Switching by itself: a controller puts the TV in Couch, the mouse puts its own screen in Desk, Away after a time, what keeps running while Away, games follow the mode — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "\"Away when nobody's here\", \"No controller, mouse or keyboard for this long, and nothing playing\""
-- [ ] The line "Switching modes is never a settings change" (switching is live state, never saved by itself: red flag 9)
+- [x] The line "Switching modes is never a settings change" (switching is live state, never saved by itself: red flag 9) — hosts/hearth-ui/apps/settings/src/cats/couch.rs: "Switching modes is never a settings change."
 
 ## 6. Away (06-away.png)
 
@@ -84,10 +84,10 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 ## 8. Quick Settings with the controller (08-quick-settings-couch.png)
 
-- [ ] LB / RB tabs and the focus ring
-- [ ] Power row with the device's own steps (Silent 10 W / Balanced 18 W / Turbo 25 W on the Ally)
-- [ ] "Game Mode is off on this device · turn it on in Settings › System › Startup" when Game Mode is switched off
-- [ ] Button hints
+- [x] LB / RB tabs and the focus ring — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "couch && (event.key === Qt.Key_PageUp || event.key === Qt.Key_PageDown)"
+- [x] Power row with the device's own steps (Silent 10 W / Balanced 18 W / Turbo 25 W on the Ally) — hosts/linux/desktop/plasma-hearth/hearth-quick: "'rog ally': {'power-saver': 'Silent · 10 W'"
+- [x] "Game Mode is off on this device · turn it on in Settings › System › Startup" when Game Mode is switched off — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "text: \"Game Mode is off on this device\""
+- [x] Button hints — hosts/linux/desktop/plasma-hearth/package/FireholdQuick.qml: "{ k: \"A\", c: \"#3ecf6e\", t: \"Toggle\" }"
 
 ## 9. Notification cards (09-notification-cards.png)
 
