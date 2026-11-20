@@ -7,8 +7,9 @@ Capture has no approved mockup of its own: these three pictures are Mantel's Cap
 pictures on KWin, Nov 17), the look this port matches part for part (Capture.qml, CaptureEditor.qml, CaptureBtn.qml,
 CaptureGlyph.qml, CaptureIndicator.qml, capture-draw.js). The app is hosts/hearth-ui/apps/capture (hearth-capture-app),
 for KDE Plasma on KWin, where Mantel can't run; its pictures come from hearth-apps-rust.yml
-(.github/scripts/hearth-apps-rust-shots.d/capture.sh: capture-1 … capture-20). Parts that only a KWin session can
-show (KWin's screenshots, Print Screen, the pills' places) are built but left open until they're proven on a device.
+(.github/scripts/hearth-apps-rust-shots.d/capture.sh: capture-1 … capture-20), and on KDE's own KWin from its kwin job
+(.github/scripts/hearth-apps-rust-kwin.sh: kw-00 … kw-13; Capture installed as build.sh installs it, two screens side by
+side, keys through KWin's fake input so KDE's shortcuts see them as typed keys).
 
 ## 1-take: Take
 - [x] Title bar with Capture's camera, and the header: the camera in an accent square, "Capture", the Take / Edit / Recent pages (Recent with its count) — hosts/hearth-ui/apps/capture/src/pages.rs: "format!(\"Recent  {}\", a.recent.len())"
@@ -56,27 +57,27 @@ show (KWin's screenshots, Print Screen, the pills' places) are built but left op
 - [x] The size by the box ("· sizing" while sizing) — hosts/hearth-ui/apps/capture/src/picker.rs: "if a.sel_sizing { \"  ·  sizing\" }"
 - [x] At the top: "Drag around what you want" (or what this kind asks), "D-pad move · X size · A take · B cancel" — hosts/hearth-ui/apps/capture/src/picker.rs: "\"D-pad move  ·  X size  ·  A take  ·  B cancel\""
 - [x] Take and Cancel by the box; drag a box, drag inside it to move it, double-click to take; the D-pad moves and sizes it — hosts/hearth-ui/apps/capture/src/picker.rs: "draw::resize_sel(c, dx, dy, w, h)"
-- [ ] One picker on every screen at once (Mantel's): a Wayland app can only cover the screen it's on, so here it's the screen you're on
+- [x] One picker on every screen at once (Mantel's): on Plasma a picker window on each screen (KDE's screens from hearth-screens get, a still picture of each through grab-each), each put full screen on its own screen by a KWin script; the box on any of them (kw-04, kw-05: Super+Shift+S, a box dragged on the second screen; kw-06: Enter took it into the editor) — hosts/hearth-ui/apps/capture/src/kwin.rs: "workspace.sendClientToScreen(w, o)"
 
 ## 3-scroll-pill: scrolling capture
 - [x] The pill: "Scroll it slowly: Hearth joins the pictures" / "Scrolling and joining the pictures…", "N pictures · H pixels tall", Cancel, Done — hosts/hearth-ui/apps/capture/src/pages.rs: "format!(\"{frames} {}  ·  {tall} pixels tall\""
 - [x] Mantel's scrolling capture behind it (hearth-capture-helper scroll, scroll-stop) and the note in the editor — hosts/hearth-ui/apps/capture/src/main.rs: "\"It didn't scroll, so this is one picture. \""
-- [ ] The pill at the top of the screen, or the bottom when the area starts near the top, and out of the pictures (a KWin script: kwin.rs script_for; built, needs a test on a device)
+- [x] The pill at the top of the screen, or the bottom when the area starts near the top, on the area's screen, and out of the pictures (KWin's script: kw-09 at 24 from the top, kw-10 at 24 from the bottom; KWin's own screenshot leaves it out) — hosts/hearth-ui/apps/capture/src/main.rs: "draw::pill_below(sel, sh)"
 
 ## The countdown and the capture dot
 - [x] "Taking it in N" with the timer; a click cancels — hosts/hearth-ui/apps/capture/src/pages.rs: "format!(\"Taking it in {}\", a.countdown.max(1))"
 - [x] The capture dot: "Recording m:ss" with the blinking red dot and Stop; "<device> is connected" with Disconnect — hosts/hearth-ui/apps/capture/src/indicator.rs: "format!(\"Recording {}\", i.elapsed())"
-- [ ] The countdown at the top and the dot at the top right on Plasma (the KWin script; built, needs a test on a device)
+- [x] The countdown at the top and the dot at the top right on Plasma, both out of the pictures and the recording (kw-07: "Taking it in 7" at the top in the middle; kw-08: the dot, only its pill, 12 from the right, 56 from the top; kw-13: the recording has no dot) — hosts/hearth-ui/apps/capture/src/indicator.rs: "kwin::Place::TopRight(56.0, 12.0)"
 
 ## On KDE Plasma (os-bases/anatase/build.sh "Capture (Rust)")
 - [x] Capture in Plasma's menu (hearth-capture.desktop: the app, its actions; Spectacle's entries out of the menu), only when the app was built and starts — os-bases/anatase/build.sh: "# >>> Capture (Rust)"
-- [ ] Screenshots from KWin's org.kde.KWin.ScreenShot2, allowed through Capture's menu entry, for Capture, Print Screen and hearth-screenshot (kwin.rs `shot`; built, needs a test on a device)
-- [ ] Print Screen saves the whole screen right away, Super+Shift+S picks an area (KDE's global shortcuts; built, needs a test on a device)
-- [ ] Record through hearth-record (KDE's screen-sharing portal, PipeWire, GStreamer's encoder), else Hearth Recorder (built, needs a test on a device)
+- [x] Screenshots from KWin's org.kde.KWin.ScreenShot2, allowed through Capture's menu entry, for Capture, Print Screen and hearth-screenshot (kw-01: hearth-screenshot's picture of both screens; Capture's `shot` answers only Hearth's hearth-screens. CI runs as root, where this KWin also answered a program without an entry, so KWin turning others away is seen only on a PC) — hosts/hearth-ui/apps/capture/src/kwin.rs: "\"CaptureWorkspace\""
+- [x] Print Screen saves the whole screen right away, Super+Shift+S picks an area (KDE's global shortcuts; their file without NoDisplay, which KDE's shortcuts skip: kw-02 the saved picture, kw-04 the pickers) — os-bases/anatase/build.sh: "X-KDE-Shortcuts=Meta+Shift+S"
+- [x] Record through hearth-record (KDE's screen-sharing portal, PipeWire, GStreamer's encoder), else Hearth Recorder: KDE asks which screen (kw-11), the dot counts (kw-12), and the saved recording plays (kw-13, a frame of it); gst-launch now gets its description one word an argument (newer GStreamer read it as one word) — hosts/linux/desktop/shell/hearth-record: "launch_args(pipeline("
 
-## Status (Nov 18)
-Built and pictured in hearth-apps-rust.yml (capture-1 … capture-20, each opened next to the pictures above): every
-page, panel, the picker, the pills and the dot; a real screenshot and a real area picker through the helper (grim
-under CI's sway); Save and copy checked at full size with its markup and on the recent list; Take at rest 0 % CPU,
-22 MB. Open: the four device-only parts above (KWin, the keys, the pills' places, recording) and the one-picker-per-screen
-part Wayland doesn't allow. Mockups: Mantel's built pages stand in for mockups until the owner approves them as such.
+## Status (Nov 20)
+Every part built and pictured. On KWin (hearth-apps-rust.yml's kwin job, two screens): KWin's screenshots through
+Capture's entry, Print Screen and Super+Shift+S as typed keys, one picker on every screen, the countdown, the dot and the
+scrolling capture's pill where they go and out of KWin's screenshots, and a real recording through KDE's
+screen-sharing portal. On a PC still worth a look: KWin turning other programs away from screenshots (CI runs as root).
+Mockups: Mantel's built pages stand in for mockups until the owner approves them as such.
