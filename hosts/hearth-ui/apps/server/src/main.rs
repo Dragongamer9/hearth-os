@@ -573,18 +573,33 @@ impl App {
 
     /// Nothing moves while Reduce motion is on, the screen is dim or off, or another window (Settings, Ithil's app)
     /// is in front: the dashboard then draws only when its data changes.
+    /// Nothing moves while Reduce motion is on, the screen is off (black), or another window (Settings, Ithil's
+    /// app) is in front. The dim screen's faint cores move, as on Mantel.
     pub fn still(&self) -> bool {
-        self.reduce || !self.focused || self.screen != Screen::On
+        self.reduce || !self.focused || self.screen == Screen::Off
     }
-    /// How often the dashboard moves (ms), or None: it stands still unless something is at work. Its AIs move only
-    /// while one is working (a core working, a sender lit in the AI team's mesh) or while the AI team's or Ithil's own
-    /// page is open, 5 times a second; Ithil's small brain on her tile alone turns twice a second. Nothing working:
-    /// nothing moves, and the screen is drawn only when its data changes (every 4 s, if it changed).
+    /// Drawn with the CPU (tiny-skia: no graphics card here, wgpu didn't start, or the watcher's fallback after two
+    /// quick closes): the light mode, as smooth as the CPU allows without lagging the PC.
+    pub fn light(&self) -> bool {
+        hearth_ui::app::renderer("hearth-server") == "cpu" || (now() - self.start > 6.0 && !hearth_ui::app::gpu_started())
+    }
+    /// How often the dashboard moves (ms), or None.
+    /// With the graphics card (the owner, Nov 20: "smooth like Mantel"): ServerCore.qml's motions at the screen's own
+    /// rate (60 a second), the "ready" breathing too, whenever the dashboard is on the screen and in front.
+    /// Light mode (drawn with the CPU): only while something is at work (a core working, a sender lit in the AI
+    /// team's mesh, or the AI team's or Ithil's page open), 5 times a second; Ithil's small brain alone twice a second.
     pub fn anim_rate(&self) -> Option<u64> {
         if self.still() {
             return None;
         }
         let d = self.d.as_ref()?;
+        let has = !arr(d, "cores").is_empty() || d.get("ithil").map(|v| v.is_object()).unwrap_or(false) || self.tiles().iter().any(|t| truthy(t, "mesh"));
+        if !self.light() {
+            return if has { Some(16) } else { None };
+        }
+        if self.screen != Screen::On {
+            return None;
+        }
         if self.overlay == Overlay::Detail && matches!(self.cur_id().as_str(), "ithil" | "team") {
             return Some(200);
         }
@@ -599,6 +614,9 @@ impl App {
             }
         }
         None
+    }
+    pub fn start_secs(&self) -> f64 {
+        self.start
     }
     fn animating(&self) -> bool {
         self.anim_rate().is_some()

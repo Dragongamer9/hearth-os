@@ -207,6 +207,11 @@ while read -r kind name rest; do
   # its graphics card). Nothing at work: the ordinary 0.3 % (server-quiet-*).
   [ "${name#server-live}" != "$name" ] && lim_cpu=8
   echo "$name: first frame ${r_firstframe} ms, at rest ${r_cpu}% of a core, ${r_rss} MB resident (${r_pss} MB proportional), ${r_threads} threads" >> /tmp/at-rest.txt
+  # Server mode's smooth mode through wgpu (the owner, Nov 20: "smooth like Mantel"): it moves at the screen's rate,
+  # and CI's graphics card is Mesa's software Vulkan, so its CPU here is the graphics card's work done by the CPU.
+  # Reported, no limit; a PC draws it on its graphics card. (Drawn with the CPU it falls back to the light mode,
+  # measured as server-live-* with its own limit.)
+  if [ "${name#gpu-server-live}" != "$name" ]; then continue; fi
   if [ "${name#gpu-}" != "$name" ]; then
     # Through wgpu on CI's software drivers: only CPU at rest has a limit (it must stay ~0 whatever draws).
     python3 -c 'import sys; c=float(sys.argv[2]); print("::error title=%s::%.2f%% of a core at rest with wgpu" % (sys.argv[1], c)) if c > 0.3 else None; sys.exit(1 if c > 0.3 else 0)' "$name" "$r_cpu" || fail=1

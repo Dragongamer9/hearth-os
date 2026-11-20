@@ -294,5 +294,10 @@ on Nvidia, `WLR_NO_HARDWARE_CURSORS=1`). `desktop/server/cage/run` watches the d
 nimbus-session (`server_display`) uses labwc whenever labwc and Quickshell are there, else cage when cage and
 hearth-server-app are; every fallback is the same, and while Game Mode is off on this PC a failed Server mode opens
 Desktop Mode instead. The home server's services are system and user units and keep running whatever the screen shows.
-Not yet ported: the AI team's, Ithil's, the cache's, the ad blocker's and the rules' own pages (their tiles open the
-plain details page with Settings for the rest), and the cores' motion (they stand still; one that works shows its rings).
+Its own pages for the AI team (the live mesh), Ithil (her 3D / 4D brain, ported from ithil-brain.js), the game download
+cache, the ad blocker and quiet hours & rules are Mantel's. The AIs' cores move as on Mantel (ServerCore.qml's motions
+at the screen's rate, the "ready" breathing and the dim screen's faint cores too; the owner, Nov 20: "smooth like
+Mantel"), but never while the screen is off, another window is in front or Reduce motion is on. Only when the app has
+to draw with the processor (no graphics card, or the watcher's fallback after two quick closes) do they move in the
+light way: 5 times a second, and only while something is at work. Guide or ☰ while Settings or Ithil's app is in front
+brings the dashboard back: it opens its window again (exit 42, restarted at once by the watcher), and cage shows it on top.

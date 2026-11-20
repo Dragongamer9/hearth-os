@@ -118,6 +118,30 @@ run server-15-cache-opened hearth-server 0 "$SB" --show page:cache
 run server-16-adblock-opened hearth-server 0 "$SB" --show page:ads
 run server-17-rules-opened hearth-server 0 "$SB" --show page:rules
 run server-17b-rules-new-rule hearth-server 0 "$SB" --show new-rule
+# With the graphics card (here Mesa's software Vulkan: the CPU does the graphics card's work, so this number is far
+# above a PC's): the smooth mode, ServerCore.qml's motions at the screen's rate. Reported, no limit.
+HEARTH_RENDERER=gpu run gpu-server-live-smooth hearth-server 20 "$SB"
+# The cores moving: six frames a sixth of a second apart, side by side (the AIs' panel), as one picture.
+( HEARTH_RENDERER=gpu "$SB" >/tmp/server-frames.log 2>&1 & fpid=$!
+  for i in $(seq 1 200); do mapped hearth-server && break; sleep 0.05; done
+  sleep 4
+  for i in 1 2 3 4 5 6; do grim "/tmp/server-frame-$i.png" 2>/dev/null; sleep 0.16; done
+  kill $fpid 2>/dev/null; wait $fpid 2>/dev/null
+  python3 - "$ROOT/shots/server-18-cores-moving-6-frames.png" <<'PY3'
+import sys
+from PIL import Image
+fr = [Image.open('/tmp/server-frame-%d.png' % i).convert('RGB') for i in range(1, 7)]
+w, h = fr[0].size
+k = w / 1920.0
+box = (int(24 * k), int(150 * k), int(1430 * k), int(330 * k))   # the AIs' panel
+cr = [f.crop(box) for f in fr]
+cw, ch = cr[0].size
+out = Image.new('RGB', (cw, ch * 6 + 5 * 4), (40, 30, 20))
+for i, c in enumerate(cr):
+    out.paste(c, (0, i * (ch + 4)))
+out.save(sys.argv[1])
+PY3
+) || echo "::warning title=server frames::the cores' frames weren't taken"
 HEARTH_SERVER_DASH_FIXTURE="$SV/full.json" run server-quiet-dim hearth-server 20 "$SB" --show dim
 HEARTH_SERVER_DASH_FIXTURE="$SV/quiet.json" run server-quiet-nothing-working hearth-server 20 "$SB"
 export HEARTH_SERVER_DASH_FIXTURE="$SV/dash.json"

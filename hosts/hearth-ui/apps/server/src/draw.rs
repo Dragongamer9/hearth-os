@@ -212,7 +212,7 @@ fn keys(t: f32, start: f32, frames: &[(f32, f32)]) -> f32 {
 impl<M> canvas::Program<M> for Core {
     type State = Memo;
     fn draw(&self, st: &Memo, r: &Renderer, _t: &Theme, b: Rectangle, _c: mouse::Cursor) -> Vec<Geometry> {
-        let tk = if self.still { 0.0 } else { (self.t * 30.0).round() / 30.0 };
+        let tk = if self.still { 0.0 } else { (self.t * 60.0).round() / 60.0 };
         memo(st, r, b, format!("{} {} {} {} {} {}", self.kind, self.working, self.off, self.fade, self.still, tk), |f| {
             let s = b.width.min(b.height) / 1.5; // room around it for the rings it sends out
             let c = Point::new(b.width / 2.0, b.height / 2.0);

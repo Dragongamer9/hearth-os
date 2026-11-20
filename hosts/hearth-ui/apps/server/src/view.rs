@@ -312,7 +312,7 @@ fn left_column<'a>(a: &'a App, d: &Value, k: f32) -> E<'a> {
             let name_c = if working { draw::core_color(&id) } else { G::hi() };
             crow = crow.push(
                 column![
-                    draw::canvas(draw::Core { kind: id.clone(), working, off: st == "off", fade: 1.0, t: a.anim_t, still: a.still() || !working }, Length::Fixed(110.0 * k), Length::Fixed(100.0 * k)),
+                    draw::canvas(draw::Core { kind: id.clone(), working, off: st == "off", fade: 1.0, t: a.anim_t, still: a.still() || (a.light() && !working) }, Length::Fixed(110.0 * k), Length::Fixed(100.0 * k)),
                     txs(s(c, "name").to_uppercase(), 14.0 * k, name_c),
                     tx(s(c, "status"), 13.5 * k, G::muted())
                 ]
@@ -951,7 +951,7 @@ fn idle<'a>(a: &App, d: &Value, k: f32) -> E<'a> {
     }
     let mut cores = Row::new().spacing(70.0 * k);
     for c in arr(d, "cores") {
-        cores = cores.push(draw::canvas(draw::Core { kind: s(&c, "id"), working: s(&c, "state") == "working", off: false, fade: 0.32, t: 0.0, still: true }, Length::Fixed(90.0 * k), Length::Fixed(90.0 * k)));
+        cores = cores.push(draw::canvas(draw::Core { kind: s(&c, "id"), working: s(&c, "state") == "working", off: false, fade: 0.32, t: a.anim_t, still: a.still() || a.light() }, Length::Fixed(90.0 * k), Length::Fixed(90.0 * k)));
     }
     black(
         column![
