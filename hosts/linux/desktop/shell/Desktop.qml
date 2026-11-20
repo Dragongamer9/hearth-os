@@ -67,7 +67,7 @@ PanelWindow {
     function refresh() {
         if (!iconsOn || width <= 0) { entries = []; return; }
         const n = ++seq;
-        DeskState.call(["icons", String(cols), String(rows)], (r, err) => {
+        DeskState.call(["icons", String(cols), String(rows)].concat(gridSettled ? [] : ["--look"]), (r, err) => {
             if (n !== seq || dragging) return;
             if (err || !r) { entries = []; return; }
             dir = r.dir || "";
@@ -78,10 +78,17 @@ PanelWindow {
         });
     }
     Timer { id: soon; interval: 200; onTriggered: root.refresh() }
+    // 1.16 (the owner's rule, Nov 19: every icon keeps the place you gave it): while the grid is still changing (the
+    // bar and dock arriving after a restart, a screen being resized) the icons are only looked at, never saved, so a
+    // new icon's place is remembered only on the grid you really have. Saved places are only ever written for the
+    // icons you move (hearth-desk save_icons).
+    property bool gridSettled: false
+    Timer { id: settle; interval: 3000; onTriggered: { root.gridSettled = true; soon.restart(); } }
+    function gridChanged() { gridSettled = false; settle.restart(); soon.restart(); }
     onIconsOnChanged: soon.restart()
-    onColsChanged: soon.restart()
-    onRowsChanged: soon.restart()
-    Component.onCompleted: { soon.restart(); if (primary) DeskState.mainDesktop = root; }
+    onColsChanged: gridChanged()
+    onRowsChanged: gridChanged()
+    Component.onCompleted: { settle.restart(); soon.restart(); if (primary) DeskState.mainDesktop = root; }
     onPrimaryChanged: if (primary) DeskState.mainDesktop = root
     // Sorting or lining up changed (here or in another screen's menu): look again.
     Connections {

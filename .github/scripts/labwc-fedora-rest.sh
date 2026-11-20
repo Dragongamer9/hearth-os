@@ -88,6 +88,25 @@ else
   ipc settings page looks; shot 11-settings-looks; ipc settings close
   ipc firehold couch; shot 12-back-to-couch
 fi
+# ---- Desktop icons keep their places (the owner's rule, Nov 19): one dragged to a place, icons off and on, the shell
+# restarted (pkill quickshell, as on his dad's PC): every saved place the same, pictured before and after.
+if [ "$KIND" = classic ]; then
+  mkdir -p "$HOME/Desktop" && for n in Notes.txt Budget.ods Photos Trains.desktop; do
+    case "$n" in Photos) mkdir -p "$HOME/Desktop/$n" ;; *) echo x >"$HOME/Desktop/$n" ;; esac; done
+  sleep 6
+  python3 "$SH/hearth-desk" place Notes.txt 9 3 18 8 >/dev/null 2>&1
+  python3 "$SH/hearth-desk" place Photos 14 6 18 8 >/dev/null 2>&1
+  sleep 4; shot 20-icons-placed
+  before=$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("icons"), sort_keys=True))' "$HOME/.config/nimbus/desk.json")
+  python3 "$SH/hearth-desk" set desktopIcons off >/dev/null 2>&1; sleep 4; shot 21-icons-off
+  python3 "$SH/hearth-desk" set desktopIcons on >/dev/null 2>&1; sleep 4
+  rm -f "$XDG_RUNTIME_DIR/hearth-shell-up"; pkill -x quickshell 2>/dev/null
+  for i in $(seq 60); do [ -e "$XDG_RUNTIME_DIR/hearth-shell-up" ] && break; sleep 1; done
+  sleep 10; shot 22-icons-after-restart
+  after=$(python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("icons"), sort_keys=True))' "$HOME/.config/nimbus/desk.json")
+  if [ "$before" = "$after" ] && echo "$after" | grep -q '"Notes.txt": \[9, 3\]'; then note "desktop icons kept their places through off/on and a shell restart: $after"
+  else err "desktop icons moved by themselves: before $before, after $after"; fi
+fi
 # Settings: opening pages wrote nothing that wasn't there before the pictures? (red flag 9: checked on desktop.json)
 grep -q '^{}$' "$HOME/.local/share/nimbus/desktop.json" || err "a settings file changed by itself while the pictures were taken: $(head -c 300 "$HOME/.local/share/nimbus/desktop.json")"
 

@@ -82,7 +82,14 @@ T7CS-FRKM-59), the roadmap (1.13-1.15, 1.14 pulled) and the shell's code.
 3. **Slow Hearth Files**: timed cold and warm in CI (first change on screen within 1.5 s).
 4. **The laptop's screen freezes** (Intel PSR, "Atomic commit failed"): 1.14's Screen power saving covers the driver;
    the constant redraws that made it worse are gone (above).
-5. **A shell that can't start** sent Debian to Game Mode; here it ends labwc and KDE Plasma opens instead, with why.
+5. **Desktop icons moved by themselves** (the owner's dad's 1.13 PC, Nov 19: icons off and on, then `pkill
+   quickshell`, left them elsewhere; the owner's rule: every icon keeps the place you gave it). hearth-desk saved
+   whole layouts: every icon's place on whatever grid the shell had at that moment (a restart's grid before the bar
+   and dock arrive is smaller), and a drag wrote every icon. Now only the icons you move (and ones they push aside)
+   are written, merged into the latest desk.json under its lock with a .bak; Desktop.qml only looks (never saves)
+   until its grid has been the same for 3 seconds; a saved place outside a smaller screen's grid is never written
+   over. Tests: test_hearth_desk.py IconsKeepTheirPlace; CI pictures 20-22 (placed, off, after a restart).
+6. **A shell that can't start** sent Debian to Game Mode; here it ends labwc and KDE Plasma opens instead, with why.
 
 CI keeps them from coming back: `hosts/linux/test/test_mantel_rest.py` (no always-on fast timer, no polling bar, the
 helpers asleep when idle, the wallpaper's rules), `test_labwc_fedora_session.py` (a choice, never a fallback, no loop,
