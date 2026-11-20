@@ -313,7 +313,9 @@ hearth-firehold-plasma ping menu-off; sleep 1
 # A controller button pressed on the Desk (no controller here: the same call the controller's button makes).
 hearth-firehold-plasma pad-button a; sleep 3
 shot fp-14-controller-hint 0 1920
-echo "::notice title=Controller hint::notify-send: $(command -v notify-send || echo none) · in Hearth's history: $(grep -c 'controller is in your hand' "$HOME/.local/state/nimbus/notifications.json" 2>/dev/null) · $(notify-send -a Check 'check' 'check' 2>&1 | head -c 200)"
+{ echo "notify-send: $(command -v notify-send || echo none)"; echo "posture: $(cat "$RUN/posture" 2>/dev/null)"
+  echo "in Hearth's history: $(grep -c 'controller is in your hand' "$HOME/.local/state/nimbus/notifications.json" 2>/dev/null)"
+  notify-send -a Check check check 2>&1; echo "notify-send exit $?"; } > "$OUT/controller-hint.txt" 2>&1
 # While you played (mockup 10): notifications that come while a game is full screen are held back.
 front "Trains 2010" true; sleep 3
 note '{"app": "Friends", "summary": "Mira", "body": "Ready for co-op tonight?"}'; sleep 1

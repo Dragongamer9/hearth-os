@@ -60,7 +60,7 @@ PlasmoidItem {
     }
     Component.onCompleted: listen()
     property var screens: []
-    function readScreens() { helper(["modes"], function (t) { try { root.screens = JSON.parse(t.trim().split("\n").pop()).screens || []; } catch (e) {} }); }
+    function readScreens(then) { helper(["modes"], function (t) { try { root.screens = JSON.parse(t.trim().split("\n").pop()).screens || []; } catch (e) {} if (then) then(); }); }
     function modeName(m) { return m === "couch" ? "Couch" : m === "away" ? "Away" : "Desk"; }
     // The screen the app in front is on (Plasma's task model has its screen's place).
     readonly property var frontGeo: active && active.valid ? tasks.data(active, TaskManager.AbstractTasksModel.ScreenGeometry) : null
@@ -98,14 +98,14 @@ PlasmoidItem {
         else helper(["do", "window", a]);
     }
     property string open: ""
+    // The menu is made with its items already in it (its window takes its size from them when it first shows).
     Loader {
+        id: menuLoader
         active: root.open !== ""
-        source: "StdMenu.qml"
+        onActiveChanged: if (active) setSource("StdMenu.qml", {
+            items: root.open === "app" ? root.appItems : root.open === "window" || root.open === "move" ? root.windowItems : root.helpItems,
+            subItems: root.moveItems, subOpen: root.open === "move", anchorItem: root.menuAnchor })
         onLoaded: {
-            item.items = Qt.binding(function () { return root.open === "app" ? root.appItems : root.open === "window" || root.open === "move" ? root.windowItems : root.helpItems; });
-            item.subItems = Qt.binding(function () { return root.moveItems; });
-            item.subOpen = Qt.binding(function () { return root.open === "move"; });
-            item.anchorItem = root.menuAnchor;
             item.picked.connect(root.act);
             item.visibleChanged.connect(function () { if (!item.visible) root.open = ""; });
             item.visible = true;
@@ -123,8 +123,9 @@ PlasmoidItem {
             const which = w.slice(5);
             const btn = which === "move" ? "window" : which;
             for (let i = 0; i < menuRow.children.length; i++) if (menuRow.children[i].modelData && menuRow.children[i].modelData[0] === btn) menuAnchor = menuRow.children[i];
-            if (btn === "window") readScreens();
-            open = which;
+            // Window's screens read first, so Move to screen has them when it opens.
+            if (btn === "window") readScreens(function () { root.open = which; });
+            else open = which;
         }
     }
 
@@ -161,7 +162,7 @@ PlasmoidItem {
                     width: mt.implicitWidth + 24; height: 30; radius: 8
                     color: root.open === modelData[0] || (root.open === "move" && modelData[0] === "window") ? "#2eff7a2f" : "transparent"
                     Text { id: mt; anchors.centerIn: parent; text: modelData[1]; color: Kirigami.Theme.textColor; font.pixelSize: 15 }
-                    MouseArea { anchors.fill: parent; onClicked: { if (modelData[0] === "window") root.readScreens(); root.menuAnchor = mb; root.open = modelData[0]; } }
+                    MouseArea { anchors.fill: parent; onClicked: { root.menuAnchor = mb; const w = modelData[0]; if (w === "window") root.readScreens(function () { root.open = w; }); else root.open = w; } }
                 }
             }
         }

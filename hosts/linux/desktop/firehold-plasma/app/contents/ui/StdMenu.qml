@@ -34,11 +34,11 @@ PlasmaCore.Dialog {
         id: box
         width: card.width + (m.subOpen ? sub.width + 10 : 0)
         height: Math.max(card.height, m.subOpen ? m.subY + sub.height : 0)
-        Layout.minimumWidth: width; Layout.preferredWidth: width; Layout.maximumWidth: width
-        Layout.minimumHeight: height; Layout.preferredHeight: height; Layout.maximumHeight: height
+        Layout.minimumWidth: width; Layout.preferredWidth: width
+        Layout.minimumHeight: height; Layout.preferredHeight: height
         Rectangle {
             id: card
-            width: 520; height: col.implicitHeight + 16
+            width: 520; height: m.rowsHeight(m.items) + 16
             radius: 14; color: "#221e1c"; border.width: 1; border.color: "#1affffff"
             Column {
                 id: col
@@ -50,7 +50,7 @@ PlasmaCore.Dialog {
             id: sub
             visible: m.subOpen
             x: card.width + 10; y: m.subY
-            width: 430; height: subCol.implicitHeight + 16
+            width: 430; height: m.rowsHeight(m.subItems) + 16
             radius: 14; color: "#221e1c"; border.width: 1; border.color: "#1affffff"
             Column {
                 id: subCol
@@ -116,4 +116,10 @@ PlasmaCore.Dialog {
         }
     }
     function openSub(rowItem) { subOpen = true; }
+    // The popup's size from its items (known before it shows, so Plasma sizes its window right the first time).
+    function rowsHeight(list) {
+        let h = 0;
+        for (const it of list) h += it[3] === "sep" ? 13 : it[3] === "head" ? 30 : 38;
+        return h;
+    }
 }
