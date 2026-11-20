@@ -1,0 +1,1021 @@
+#!/usr/bin/python3
+"""Hearth's panel on KDE Plasma (Hearth Classic on Plasma, stage 1): Mantel's bar, dock and app menus in Plasma's
+panels (docs/mockups/checklists/plasma-hearth-bar.md).
+
+  hearth-plasma-panel status         one JSON line: in use or not, the panels, the saved copies of your old ones
+  hearth-plasma-panel apply          Hearth's panel: your panels are saved first (a copy of Plasma's files), then
+                                     replaced by Hearth's bar and dock, laid out for your look (Settings › Bar and dock)
+  hearth-plasma-panel undo           back to KDE's own default panel (Hearth's bar and dock taken off)
+  hearth-plasma-panel restore [DIR]  your old panels exactly as they were (the newest saved copy; Plasma restarts)
+  hearth-plasma-panel sync           after a Hearth setting changed (hearth-plasma-panel.path: desktop.json, desk.json,
+                                     bar.json, the apps): Hearth's panels follow your look, bar edge and auto-hide, and
+                                     re-read what changed. Does nothing when Hearth's panel isn't in use.
+  hearth-plasma-panel login          at sign-in: a new account's first sign-in gets Hearth's panel (the owner, Nov 19);
+                                     a Hearth's panel that doesn't start gives way to KDE's panel, and says so
+  hearth-plasma-panel open launcher|quick|calendar|search   opens (or closes) it on Hearth's bar
+  hearth-plasma-panel env | apps | launch FILE [ACTION] | run ARGV...   used by the panel itself
+
+Red flags kept: nothing here runs by itself except `sync` (from a .path unit, only after you changed something, and
+it only changes Hearth's own two panels, to follow Hearth's own Bar and dock settings: never anyone else's); `apply` and `undo`
+run only when you pick them; your old panels are always saved first, so they can come back exactly as they were.
+"""
+import json
+import os
+import re
+import shlex
+import shutil
+import subprocess
+import sys
+import time
+
+SHELL = '/usr/share/nimbus/desktop/shell'
+THEME = '/usr/share/nimbus/desktop/theme/palettes.json'
+IDS = ('org.hearthos.panel',)
+
+
+def home():
+    return os.environ.get('HOME') or os.path.expanduser('~')
+
+
+def cfg():
+    return os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config')
+
+
+def data():
+    return os.environ.get('XDG_DATA_HOME') or os.path.join(home(), '.local', 'share')
+
+
+def read_json(p, d=None):
+    try:
+        with open(p) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return d
+
+
+def detach(argv):
+    try:
+        subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                         start_new_session=True, close_fds=True)
+        return True
+    except OSError:
+        return False
+
+
+# ------------------------------------------------------------------ apps (.desktop files, as KDE's menu reads them)
+def app_dirs():
+    dirs = [os.path.join(data(), 'applications')]
+    for d in (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':'):
+        if d:
+            dirs.append(os.path.join(d, 'applications'))
+    for extra in ('/var/lib/flatpak/exports/share/applications', os.path.join(data(), 'flatpak/exports/share/applications')):
+        if extra not in dirs:
+            dirs.append(extra)
+    return dirs
+
+
+def parse_desktop(path):
+    groups, cur = {}, None
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                line = line.rstrip('\n')
+                if not line or line.startswith('#'):
+                    continue
+                if line.startswith('[') and line.endswith(']'):
+                    cur = groups.setdefault(line[1:-1], {})
+                elif cur is not None and '=' in line:
+                    k, v = line.split('=', 1)
+                    cur[k.strip()] = v.strip()
+    except OSError:
+        return {}
+    return groups
+
+
+def localized(e, key):
+    lang = (os.environ.get('LANG') or '').split('.')[0]
+    for k in (key + '[' + lang + ']', key + '[' + lang.split('_')[0] + ']') if lang else ():
+        if e.get(k):
+            return e[k]
+    return e.get(key, '')
+
+
+def apps():
+    seen, out = set(), []
+    for d in app_dirs():
+        if not os.path.isdir(d):
+            continue
+        for root, _dirs, files in os.walk(d):
+            for fn in sorted(files):
+                if not fn.endswith('.desktop'):
+                    continue
+                path = os.path.join(root, fn)
+                rel = os.path.relpath(path, d).replace(os.sep, '-')
+                aid = rel[:-len('.desktop')]
+                if aid in seen:
+                    continue
+                seen.add(aid)
+                g = parse_desktop(path)
+                e = g.get('Desktop Entry') or {}
+                if e.get('Type', 'Application') != 'Application' or e.get('Hidden', '').lower() == 'true':
+                    continue
+                only = [x for x in e.get('OnlyShowIn', '').split(';') if x]
+                nots = [x for x in e.get('NotShowIn', '').split(';') if x]
+                hidden = e.get('NoDisplay', '').lower() == 'true' or (only and 'KDE' not in only) or 'KDE' in nots
+                acts = []
+                for a in [x for x in e.get('Actions', '').split(';') if x][:8]:
+                    s = g.get('Desktop Action ' + a) or {}
+                    if s.get('Exec'):
+                        acts.append({'id': a, 'name': localized(s, 'Name') or a, 'icon': s.get('Icon', '')})
+                out.append({'id': aid, 'path': path, 'name': localized(e, 'Name'), 'genericName': localized(e, 'GenericName'),
+                            'comment': localized(e, 'Comment'), 'keywords': [k for k in localized(e, 'Keywords').split(';') if k],
+                            'icon': e.get('Icon', ''), 'execString': e.get('Exec', ''), 'noDisplay': bool(hidden),
+                            'startupClass': e.get('StartupWMClass', ''), 'terminal': e.get('Terminal', '').lower() == 'true',
+                            'categories': [c for c in e.get('Categories', '').split(';') if c], 'actions': acts})
+    return out
+
+
+def exec_argv(line):
+    try:
+        words = shlex.split(line)
+    except ValueError:
+        return []
+    out = []
+    for w in words:
+        if re.fullmatch(r'%[fFuUdDnNickvm]', w):
+            continue
+        out.append(w.replace('%%', '%'))
+    return out
+
+
+def launch(target, action=''):
+    path = target
+    if not os.path.isabs(path):
+        hit = [a for a in apps() if a['id'] == target.replace('.desktop', '')]
+        if not hit:
+            return 1
+        path = hit[0]['path']
+    g = parse_desktop(path)
+    if action:
+        s = g.get('Desktop Action ' + action) or {}
+        argv = exec_argv(s.get('Exec', ''))
+        return 0 if argv and detach(argv) else 1
+    for tool in (['kioclient', 'exec', path], ['kioclient5', 'exec', path], ['gio', 'launch', path]):
+        if shutil.which(tool[0]):
+            return 0 if detach(tool) else 1
+    argv = exec_argv((g.get('Desktop Entry') or {}).get('Exec', ''))
+    return 0 if argv and detach(argv) else 1
+
+
+# ------------------------------------------------------------------ what Mantel's files start (Quickshell.execDetached)
+def run(argv):
+    """Start what Mantel's bar or menus asked for, the Plasma way where Mantel used its own shell."""
+    if not argv:
+        return 1
+    if argv[0] == 'sh' and any(a.endswith('theme/apply.sh') for a in argv):
+        return 0          # labwc's theming; on Plasma the look is hearth-plasma-looks' (desktop.json's .path unit)
+    if argv[0] == 'quickshell' and 'call' in argv:
+        i = argv.index('call')
+        what, fn, rest = (argv[i + 1:i + 2] or [''])[0], (argv[i + 2:i + 3] or [''])[0], argv[i + 3:]
+        if what == 'files' and rest:
+            return 0 if detach(['xdg-open', rest[0]]) else 1
+        if what == 'lock':
+            return 0 if detach(['loginctl', 'lock-session']) else 1
+        if what == 'tasks':
+            return 0 if detach(['hearth-task-manager']) or detach(['plasma-systemmonitor']) else 1
+        if what == 'help':
+            return 0
+        return 0
+    if argv[0] == 'nimbus-mode' and argv[1:2] == ['logout']:
+        if shutil.which('qdbus6') or shutil.which('dbus-send'):
+            return 0 if detach(['dbus-send', '--session', '--dest=org.kde.Shutdown', '--type=method_call', '/Shutdown', 'org.kde.Shutdown.logout']) else 1
+    return 0 if detach(argv) else 1
+
+
+def env():
+    keys = ('HOME', 'USER', 'LOGNAME', 'XDG_CONFIG_HOME', 'XDG_CACHE_HOME', 'XDG_DATA_HOME', 'XDG_RUNTIME_DIR', 'LANG',
+            'HEARTH_LEGACY_GAME_MODE', 'HEARTH_LINK_KIND', 'HEARTH_PLASMA_PANEL_CI')
+    o = {k: os.environ[k] for k in keys if os.environ.get(k)}
+    o.setdefault('HOME', home())
+    o.setdefault('USER', os.environ.get('LOGNAME') or os.path.basename(home()))
+    o['HEARTH_WM'] = 'kwin'
+    return o
+
+
+# ------------------------------------------------------------------ Plasma's panels (plasmashell's scripting)
+def plasma_js(js, timeout=20):
+    """Runs a script in plasmashell (org.kde.PlasmaShell.evaluateScript); its print() output, or None."""
+    for tool in (['qdbus6'], ['qdbus-qt6'], ['qdbus']):
+        if shutil.which(tool[0]):
+            cmd = tool + ['org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript', js]
+            break
+    else:
+        cmd = ['gdbus', 'call', '--session', '--dest', 'org.kde.plasmashell', '--object-path', '/PlasmaShell',
+               '--method', 'org.kde.PlasmaShell.evaluateScript', js]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+    if r.returncode != 0:
+        sys.stderr.write(r.stderr)
+        return None
+    out = r.stdout.strip()
+    if cmd[0] == 'gdbus':   # ('text',)
+        m = re.match(r"^\('(.*)',\)$", out, re.S)
+        out = m.group(1).encode().decode('unicode_escape') if m else out
+    return out
+
+
+def last_json(text):
+    for line in reversed((text or '').splitlines()):
+        line = line.strip()
+        if line.startswith('{'):
+            try:
+                return json.loads(line)
+            except ValueError:
+                pass
+    return None
+
+
+def look_params():
+    """Mantel's Theme.qml bar and dock rules, from desktop.json and palettes.json (one source of truth)."""
+    d = read_json(os.path.join(data(), 'nimbus', 'desktop.json'), {}) or {}
+    pal = read_json(THEME, {}) or {}
+    look = d.get('look') if isinstance(d.get('look'), str) and isinstance(pal.get(d.get('look')), dict) else 'steam'
+    ld = pal.get(look) or {}
+    steam = look == 'steam'
+    bs = d.get('barStyle') if d.get('barStyle') in ('floating', 'bar') else ''
+    look_isl = ld.get('islandStyle') if ld.get('islandStyle') in ('floating', 'bar', 'shelf') else ('bar' if steam else 'floating')
+    island = bs or look_isl
+    one = d.get('barLayout') == 'one'
+    edge = (d.get('barEdge') if d.get('barEdge') in ('bottom', 'top', 'left', 'right') else 'bottom') if one else 'top'
+    dock_floats = d.get('dockFloat') != 'off'
+    dock_auto = d.get('dockMode') == 'autohide' or (d.get('dockMode') != 'shown' and ld.get('dockAutoHide') is True)
+    return {'island': island, 'thin': island == 'bar' and ld.get('thin') is True and bs != 'bar', 'edge': edge, 'one': one,
+            'dockFloats': dock_floats, 'dockAuto': dock_auto, 'barAuto': dock_auto and (one or not dock_floats),
+            'hints': ld.get('hints') is True, 'look': look}
+
+
+# The panels, laid out as Mantel's Islands.qml and Dock.qml size themselves (the band and the dock's height).
+GEOMETRY_JS = r'''
+var P = __PARAMS__;
+function bandOf(sw) {
+  var vertical = P.edge === "left" || P.edge === "right";
+  var main = P.island === "shelf" && (P.one || !P.dockFloats) ? "bar" : P.island;
+  var style = vertical && main === "shelf" ? "bar" : main;
+  var compact = sw <= 1440 && style !== "shelf";
+  var h = style === "shelf" ? 72 : vertical ? (compact ? 52 : 56) : P.thin ? 32 : style === "bar" ? 44 : compact ? 48 : 52;
+  var out = style === "floating" ? 10 : style === "shelf" ? 18 : 0, inn = style === "floating" ? 6 : style === "shelf" ? 10 : 0;
+  return h + out + inn;
+}
+function dockOf(sw, sh) {
+  var shelf = P.island === "shelf", attached = P.island === "bar", compact = sw <= 1440;
+  var tile = shelf ? Math.round(Math.min(212, sh * 0.17)) : compact ? 68 : 56;
+  var body = shelf ? tile * 1.18 + 76 : attached ? tile + 8 : tile + 16;
+  var gap = (shelf ? 24 : attached ? 0 : 10) + (P.hints ? 48 : 0);
+  return { h: Math.round(body + gap + 2), fill: shelf || attached };
+}
+function roleOf(p) {
+  var ws = p.widgets("org.hearthos.panel");
+  if (!ws.length) return "";
+  ws[0].currentConfigGroup = ["General"];
+  return String(ws[0].readConfig("role", "bar"));
+}
+function shape(p, role) {
+  var g = screenGeometry(p.screen);
+  p.floating = false;
+  try { p.opacity = "opaque"; } catch (e) {}
+  if (role === "dock") {
+    var d = dockOf(g.width, g.height);
+    p.location = "bottom"; p.height = d.h;
+    p.lengthMode = "fill";
+    p.hiding = P.dockAuto ? "autohide" : "none";
+  } else {
+    p.location = P.edge; p.height = bandOf(g.width); p.lengthMode = "fill";
+    p.hiding = P.barAuto ? "autohide" : "none";
+  }
+}
+function stampAll(ps) {
+  for (var i = 0; i < ps.length; i++) {
+    var ws = ps[i].widgets("org.hearthos.panel");
+    for (var j = 0; j < ws.length; j++) { ws[j].currentConfigGroup = ["General"]; ws[j].writeConfig("stamp", P.stamp); }
+  }
+}
+'''
+
+
+def params(extra=None):
+    p = look_params()
+    p['stamp'] = '%.3f' % time.time()
+    p.update(extra or {})
+    return GEOMETRY_JS.replace('__PARAMS__', json.dumps(p))
+
+
+def hearth_panels_js():
+    return 'var ps=panels();var n=0;for(var i=0;i<ps.length;i++)if(ps[i].widgets("org.hearthos.panel").length)n++;'
+
+
+def status():
+    out = plasma_js(hearth_panels_js() + 'var o={hearth:n>0,panels:[]};for(var i=0;i<ps.length;i++){var t=[];var w=ps[i].widgets();'
+                    'for(var j=0;j<w.length;j++)t.push(w[j].type);o.panels.push({id:ps[i].id,location:ps[i].location,widgets:t});}'
+                    'print(JSON.stringify(o));')
+    o = last_json(out) or {'hearth': False, 'panels': [], 'plasma': False}
+    o['saved'] = sorted(os.listdir(backup_root()))[-5:] if os.path.isdir(backup_root()) else []
+    print(json.dumps(o))
+    return 0
+
+
+def backup_root():
+    return os.path.join(data(), 'hearth', 'plasma-panel')
+
+
+def save_panels():
+    """A copy of Plasma's own files about your panels, before Hearth's panel changes them."""
+    dest = os.path.join(backup_root(), time.strftime('%Y-%m-%d-%H%M%S'))
+    os.makedirs(dest, exist_ok=True)
+    n = 0
+    for f in ('plasma-org.kde.plasma.desktop-appletsrc', 'plasmashellrc'):
+        src = os.path.join(cfg(), f)
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(dest, f))
+            n += 1
+    return dest if n else dest
+
+
+def remember(choice):
+    """Your pick, in desktop.json (merged; the one record Mantel and Settings share)."""
+    io = os.path.join(SHELL, 'hearth_settings_io.py')
+    path = os.path.join(data(), 'nimbus', 'desktop.json')
+    if os.path.isfile(io):
+        subprocess.run([sys.executable, io, 'merge', path, json.dumps({'plasmaPanel': choice}), '--history'],
+                       capture_output=True, timeout=20)
+
+
+APPLY_JS = r'''
+var ps = panels();
+for (var i = ps.length - 1; i >= 0; i--) ps[i].remove();
+var bar = new Panel("org.kde.panel");
+var w = bar.addWidget("org.hearthos.panel");
+w.currentConfigGroup = ["General"]; w.writeConfig("role", "bar");
+shape(bar, "bar");
+if (P.dockFloats) {
+  var dock = new Panel("org.kde.panel");
+  var d = dock.addWidget("org.hearthos.panel");
+  d.currentConfigGroup = ["General"]; d.writeConfig("role", "dock");
+  shape(dock, "dock");
+}
+stampAll(panels());
+print(JSON.stringify({ok: true, panels: panels().length}));
+'''
+
+SYNC_JS = r'''
+var ps = panels(), bar = null, dock = null;
+for (var i = 0; i < ps.length; i++) { var r = roleOf(ps[i]); if (r === "bar") bar = ps[i]; else if (r === "dock") dock = ps[i]; }
+if (bar || dock) {
+  if (bar) shape(bar, "bar");
+  if (dock && P.dockFloats) shape(dock, "dock");
+  if (!dock && P.dockFloats && bar) {
+    dock = new Panel("org.kde.panel"); var d = dock.addWidget("org.hearthos.panel");
+    d.currentConfigGroup = ["General"]; d.writeConfig("role", "dock"); shape(dock, "dock");
+  }
+  if (dock && !P.dockFloats && bar) dock.remove();
+  stampAll(panels());
+  print(JSON.stringify({ok: true, hearth: true}));
+} else print(JSON.stringify({ok: true, hearth: false}));
+'''
+
+UNDO_JS = r'''
+var ps = panels();
+for (var i = ps.length - 1; i >= 0; i--) if (ps[i].widgets("org.hearthos.panel").length) ps[i].remove();
+if (!panels().length) loadTemplate("org.kde.plasma.desktop.defaultPanel");
+print(JSON.stringify({ok: true, panels: panels().length}));
+'''
+
+
+# KDE's own settings Hearth's panel changes while it's in use, and what they were (saved with your panels; `undo`
+# puts each back, or removes it when it wasn't set). Each is one of KDE's pieces Hearth's panel draws itself:
+#   KDE's critical pop-ups while Hearth holds KDE's pop-ups (Hearth shows every notification itself; when Hearth's
+#   panel isn't running nothing is held, so KDE's pop-ups all come back), KDE's on-screen display (Hearth's volume and
+#   brightness bars), the window frames (Mantel's own, theme/hearth_aurorae.py) and Alt+Tab (Mantel's own switcher,
+#   org.hearth.switcher, the one Mantel on KWin uses).
+KDE_KEYS = [('plasmanotifyrc', 'Notifications', 'CriticalInDndMode', 'false'),
+            ('plasmarc', 'OSD', 'Enabled', 'false'),
+            ('kwinrc', 'org.kde.kdecoration2', 'library', 'org.kde.kwin.aurorae'),
+            ('kwinrc', 'org.kde.kdecoration2', 'theme', '__aurorae__svg__hearth'),
+            ('kwinrc', 'TabBox', 'LayoutName', 'org.hearth.switcher')]
+
+
+# Mantel's lock screen in KDE's screen locker: the same Plasma shell package Mantel on KWin uses
+# (org.hearth.mantel-lock, desktop/kwin-lock: only a lock screen). KDE's locker (6.8) reads its lock screen from the
+# shell package PLASMA_DEFAULT_SHELL names in KWin's environment (KWin starts the locker), so Hearth's panel gives
+# KWin, and only KWin, that name: a drop-in for its user service (plasma-kwin_wayland.service), from the next sign-in.
+# Plasma's own shell (plasmashell) is a service of its own and never sees it. Written only after the locker's own
+# test run (off screen) showed Hearth's lock screen loading, so a lock screen that can't show is never picked (the
+# locker would cover the screen); undo takes it away again.
+LOCK_ID = 'org.hearth.mantel-lock'
+
+
+def lock_dropin():
+    return os.path.join(cfg(), 'systemd', 'user', 'plasma-kwin_wayland.service.d', 'hearth-lock-screen.conf')
+
+
+def lock_ok():
+    pkg = os.path.join('/usr/share/plasma/shells', LOCK_ID)
+    if not os.path.isfile(os.path.join(pkg, 'contents', 'lockscreen', 'LockScreen.qml')):
+        return False, "Hearth's lock screen isn't installed"
+    try:
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader('hearth_lockcheck', os.path.join(SHELL, 'hearth-lockcheck'))
+        spec = importlib.util.spec_from_loader('hearth_lockcheck', loader)
+        lc = importlib.util.module_from_spec(spec)
+        loader.exec_module(lc)
+    except (OSError, ImportError, SyntaxError) as e:
+        return False, 'no lock check here (%s)' % e
+    g = lc.greeter()
+    if not g:
+        return False, "KDE's screen locker isn't installed"
+    env = dict(os.environ, PLASMA_DEFAULT_SHELL=LOCK_ID, QT_QPA_PLATFORM='offscreen', QT_FORCE_STDERR_LOGGING='1')
+    for k in ('WAYLAND_DISPLAY', 'WAYLAND_SOCKET', 'DISPLAY'):
+        env.pop(k, None)
+    try:
+        out = lc.run_greeter(g, env)
+    except OSError as e:
+        return False, "the screen locker won't run: %s" % e
+    bad = [m for m in lc.FAIL_MARKS if m in out]
+    if bad:
+        return False, bad[0]
+    if lc.LOADED not in out:
+        return False, "the screen locker's test run didn't show Hearth's lock screen"
+    return True, 'ok'
+
+
+def lock_take():
+    ok, why = lock_ok()
+    if not ok:
+        sys.stderr.write("hearth-plasma-panel: KDE's own lock screen stays (%s)\n" % why)
+        return False
+    p = lock_dropin()
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    tmp = p + '.part'
+    with open(tmp, 'w') as fh:
+        fh.write("# Hearth's lock screen in KDE's screen locker while Hearth's panel is in use (hearth-plasma-panel;\n"
+                 "# undo or KDE's panel in Settings › Bar and dock takes it away). Only KWin gets it.\n"
+                 "[Service]\nEnvironment=PLASMA_DEFAULT_SHELL=%s\n" % LOCK_ID)
+    os.replace(tmp, p)
+    reload_units()
+    return True
+
+
+def lock_give_back():
+    try:
+        os.remove(lock_dropin())
+    except OSError:
+        return
+    reload_units()
+
+
+def reload_units():
+    try:
+        subprocess.run(['systemctl', '--user', 'daemon-reload'], capture_output=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
+def kcfg(tool):
+    for t in (tool + '6', tool):
+        if shutil.which(t):
+            return t
+    return None
+
+
+def kread(f, g, k):
+    t = kcfg('kreadconfig')
+    if not t:
+        return None
+    r = subprocess.run([t, '--file', f, '--group', g, '--key', k, '--default', '__hearth_none__'], capture_output=True, text=True, timeout=10)
+    v = r.stdout.rstrip('\n')
+    return None if v == '__hearth_none__' else v
+
+
+def kwrite(f, g, k, v):
+    t = kcfg('kwriteconfig')
+    if not t:
+        return False
+    # --notify: the running session's KDE pieces read it again now (Plasma's notification pop-ups keep their
+    # settings in memory and only re-read a change sent this way), not only at the next sign-in.
+    args = [t, '--file', f, '--group', g, '--key', k, '--notify'] + (['--delete'] if v is None else [v])
+    if subprocess.run(args, capture_output=True, timeout=10).returncode == 0:
+        return True
+    args.remove('--notify')    # an older kwriteconfig without --notify: the file still changes
+    return subprocess.run(args, capture_output=True, timeout=10).returncode == 0
+
+
+def last_kde_settings():
+    root = backup_root()
+    for d in sorted(os.listdir(root), reverse=True) if os.path.isdir(root) else []:
+        old = read_json(os.path.join(root, d, 'kde-settings.json'))
+        if isinstance(old, dict):
+            return old
+    return None
+
+
+def kde_take(dest):
+    # Picked again while it's in use: KDE's settings as they were before Hearth's panel (the last saved copy), not
+    # Hearth's own, are what undo puts back.
+    before = last_kde_settings() if in_use() else None
+    keys = list(KDE_KEYS)
+    lock_take()
+    old = {}
+    for f, g, k, v in keys:
+        key = '%s|%s|%s' % (f, g, k)
+        old[key] = before[key] if before and key in before else kread(f, g, k)
+        kwrite(f, g, k, v)
+    try:
+        with open(os.path.join(dest, 'kde-settings.json'), 'w') as fh:
+            json.dump(old, fh)
+    except OSError:
+        pass
+    frames()
+
+
+def kde_give_back():
+    lock_give_back()
+    old = last_kde_settings()
+    for key, v in (old or {}).items():
+        f, g, k = key.split('|')
+        kwrite(f, g, k, v)
+    subprocess.run(['dbus-send', '--session', '--type=method_call', '--dest=org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure'],
+                   capture_output=True, timeout=10)
+
+
+def in_use():
+    d = read_json(os.path.join(data(), 'nimbus', 'desktop.json'), {}) or {}
+    return d.get('plasmaPanel') == 'hearth'
+
+
+def frames():
+    """Mantel's own window frames for your look (theme/hearth-theme writes the Aurorae theme and picks it), while
+    Hearth's panel is in use."""
+    ht = os.path.join(os.path.dirname(SHELL), 'theme', 'hearth-theme')
+    if not os.path.isfile(ht):
+        return 1
+    env = dict(os.environ, HEARTH_WM='kwin')
+    subprocess.run([sys.executable, ht], env=env, capture_output=True, timeout=60)
+    kwrite('kwinrc', 'org.kde.kdecoration2', 'library', 'org.kde.kwin.aurorae')
+    subprocess.run(['dbus-send', '--session', '--type=method_call', '--dest=org.kde.KWin', '/KWin', 'org.kde.KWin.reconfigure'],
+                   capture_output=True, timeout=10)
+    return 0
+
+
+def apply():
+    dest = save_panels()
+    kde_take(dest)
+    out = plasma_js(params() + APPLY_JS)
+    o = last_json(out)
+    if not o or not o.get('ok'):
+        print(json.dumps({'ok': False, 'why': "Plasma's panel didn't answer", 'saved': dest}))
+        return 1
+    remember('hearth')
+    print(json.dumps({'ok': True, 'saved': dest}))
+    return 0
+
+
+def undo():
+    out = plasma_js(UNDO_JS)
+    o = last_json(out)
+    if not o or not o.get('ok'):
+        print(json.dumps({'ok': False, 'why': "Plasma's panel didn't answer"}))
+        return 1
+    remember('kde')
+    kde_give_back()
+    print(json.dumps({'ok': True}))
+    return 0
+
+
+def restore(which=''):
+    root = backup_root()
+    dirs = sorted(os.listdir(root)) if os.path.isdir(root) else []
+    pick = which if which in dirs else (dirs[-1] if dirs else '')
+    if not pick:
+        print(json.dumps({'ok': False, 'why': 'No saved panels'}))
+        return 1
+    src = os.path.join(root, pick)
+    for f in os.listdir(src):
+        shutil.copy2(os.path.join(src, f), os.path.join(cfg(), f))
+    detach(['sh', '-c', 'systemctl --user restart plasma-plasmashell.service || (kquitapp6 plasmashell; sleep 2; kstart plasmashell)'])
+    remember('kde')
+    print(json.dumps({'ok': True, 'restored': pick}))
+    return 0
+
+
+def sync():
+    if in_use():
+        frames()
+    out = plasma_js(params() + SYNC_JS)
+    o = last_json(out) or {'ok': False}
+    print(json.dumps(o))
+    return 0
+
+
+def hold_popups():
+    """While Hearth draws the notifications (Mantel's pop-ups), KDE's own pop-ups stay away: an inhibition held by
+    this process (org.freedesktop.Notifications.Inhibit, Plasma's own way for an app to pause pop-ups, not a setting:
+    nothing is saved). Every notification still comes in and is kept in the history; Hearth shows it. It ends when
+    the panel goes (this process ends with plasmashell), so KDE's pop-ups come back with KDE's panel. Sleeps; never polls."""
+    import signal
+    try:
+        import ctypes
+        ctypes.CDLL('libc.so.6').prctl(1, signal.SIGTERM)   # PR_SET_PDEATHSIG: end with the panel
+    except (OSError, AttributeError):
+        pass
+    try:
+        import dbus
+        bus = dbus.SessionBus()
+        n = dbus.Interface(bus.get_object('org.freedesktop.Notifications', '/org/freedesktop/Notifications'), 'org.freedesktop.Notifications')
+        cookie = n.Inhibit('org.hearthos.panel', "Hearth's panel shows your notifications", {})
+    except Exception as e:   # no dbus-python or no service: KDE's pop-ups stay as they are
+        print(json.dumps({'ok': False, 'why': str(e)[:200]}))
+        return 1
+    print(json.dumps({'ok': True, 'cookie': int(cookie)}), flush=True)
+    signal.signal(signal.SIGTERM, lambda *a: sys.exit(0))
+    while True:
+        signal.pause()
+
+
+# ------------------------------------------------------------------ Mantel's hearth-notifyd, on Plasma
+# Mantel's tray extras (background apps, the camera, printing, removable disks, Caps Lock / Num Lock, dock badges)
+# come from hearth-notifyd, which talks in JSON lines on its stdin / stdout. Plasma's command runner only hands
+# back what a program printed once it ends, so a small go-between keeps hearth-notifyd running and answers the panel
+# one change at a time: the panel waits with `notifyd-wait SEQ` (asleep until something changes, then it prints the
+# changes since SEQ and ends, and the panel asks again), and `notifyd-send JSON` passes the panel's asks on (cancel
+# a print, eject a disk, quit a background app). Nothing polls; it goes away a little while after the panel does.
+# Job progress is Plasma's own (plasmashell serves org.kde.JobViewServer; hearth-notifyd is told never to take it,
+# HEARTH_NOTIFYD_JOBS=off, so a restarted plasmashell gets it back).
+NOTIFYD = os.environ.get('HEARTH_NOTIFYD') or os.path.join(SHELL, 'hearth-notifyd')
+BRIDGE_IDLE = 30
+
+
+def bridge_sock():
+    return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-plasma-panel', 'notifyd.sock')
+
+
+def notifyd_bridge():
+    import socket
+    import threading
+    path = bridge_sock()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        if os.path.exists(path):
+            try:   # one already answering: this one isn't needed
+                c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM); c.settimeout(2); c.connect(path); c.close()
+                return 0
+            except OSError:
+                os.unlink(path)
+        srv.bind(path)
+    except OSError:
+        return 0
+    srv.listen(8)
+    lock = threading.Condition()
+    st = {'seq': 0, 'kept': {}, 'waiting': 0, 'last': time.time(), 'proc': None, 'stop': False, 'tries': 0}
+
+    def key(m):
+        t = m.get('t', '')
+        if t in ('job', 'badge'):
+            return '%s:%s' % (t, m.get('id', m.get('app', '')))
+        if t == 'done':
+            return 'done:%d' % (st['seq'] + 1)
+        return t
+
+    def keep(m):
+        with lock:
+            st['seq'] += 1
+            m = dict(m, _seq=st['seq'])
+            st['kept'][key(m)] = m
+            dones = sorted((k for k in st['kept'] if k.startswith('done:')), key=lambda k: st['kept'][k]['_seq'])
+            for k in dones[:-20]:
+                del st['kept'][k]
+            lock.notify_all()
+
+    def run_notifyd():
+        while not st['stop'] and st['tries'] < 8:
+            try:
+                p = subprocess.Popen(['python3', NOTIFYD, 'serve', '--stdio'], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                     stderr=subprocess.DEVNULL, text=True, bufsize=1,
+                                     env=dict(os.environ, HEARTH_NOTIFYD_JOBS='off'))   # Plasma serves job progress
+            except OSError:
+                return
+            st['proc'] = p
+            started = time.time()
+            for line in p.stdout:
+                try:
+                    m = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(m, dict):
+                    keep(m)
+            p.wait()
+            st['proc'] = None
+            if time.time() - started > 60:
+                st['tries'] = 0
+            st['tries'] += 1
+            if not st['stop']:
+                time.sleep(2 * st['tries'])
+
+    def closed(c):
+        import select
+        try:
+            r, _, _ = select.select([c], [], [], 0)
+            return bool(r) and c.recv(1, socket.MSG_PEEK) == b''
+        except OSError:
+            return True
+
+    def client(c):
+        try:
+            f = c.makefile('rw')
+            line = f.readline().strip()
+            if line.startswith('SEND '):
+                p = st['proc']
+                ok = False
+                if p and p.stdin:
+                    try:
+                        p.stdin.write(line[5:] + '\n'); p.stdin.flush(); ok = True
+                    except OSError:
+                        ok = False
+                f.write(json.dumps({'ok': ok}) + '\n'); f.flush()
+            elif line.startswith('WAIT '):
+                try:
+                    since = int(line[5:])
+                except ValueError:
+                    since = 0
+                with lock:
+                    st['waiting'] += 1
+                    if since > st['seq']:   # the go-between started again: everything, from the start
+                        since = 0
+                    gone = False
+                    while st['seq'] <= since and not st['stop'] and not gone:
+                        lock.wait(15)
+                        gone = closed(c)     # the panel stopped waiting (plasmashell went)
+                    out = sorted((m for m in st['kept'].values() if m['_seq'] > since), key=lambda m: m['_seq'])
+                    seq = st['seq']
+                    st['waiting'] -= 1
+                    st['last'] = time.time()
+                if not gone:
+                    f.write(json.dumps({'seq': seq, 'msgs': out}) + '\n'); f.flush()
+        except OSError:
+            with lock:
+                st['last'] = time.time()
+        finally:
+            try:
+                c.close()
+            except OSError:
+                pass
+
+    def idle():   # nobody has asked for a while (the panel went): stop
+        while True:
+            time.sleep(BRIDGE_IDLE)
+            with lock:
+                if st['waiting'] == 0 and time.time() - st['last'] > BRIDGE_IDLE:
+                    st['stop'] = True
+                    lock.notify_all()
+            if st['stop']:
+                p = st['proc']
+                if p:
+                    try:
+                        p.stdin.close()
+                    except OSError:
+                        pass
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+                os._exit(0)
+
+    threading.Thread(target=run_notifyd, daemon=True).start()
+    threading.Thread(target=idle, daemon=True).start()
+    while True:
+        c, _ = srv.accept()
+        threading.Thread(target=client, args=(c,), daemon=True).start()
+
+
+def bridge_ask(line, timeout=None):
+    import socket
+    for attempt in range(12):
+        c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            c.connect(bridge_sock())
+        except OSError:
+            c.close()
+            if attempt == 0:
+                detach(['python3', os.path.abspath(__file__), 'notifyd-bridge'])
+            time.sleep(0.5)
+            continue
+        c.settimeout(timeout)
+        c.sendall((line + '\n').encode())
+        f = c.makefile('r')
+        out = f.readline()
+        c.close()
+        return out.strip()
+    return ''
+
+
+def notifyd_wait(since):
+    import signal
+    try:
+        import ctypes
+        ctypes.CDLL('libc.so.6').prctl(1, signal.SIGTERM)   # PR_SET_PDEATHSIG: ends with the panel
+    except (OSError, AttributeError):
+        pass
+    if not os.path.exists(NOTIFYD):
+        print(json.dumps({'seq': 0, 'msgs': [], 'missing': True}))
+        return 1
+    out = bridge_ask('WAIT %d' % since)
+    print(out or json.dumps({'seq': since, 'msgs': [], 'down': True}))
+    return 0 if out else 1
+
+
+def notifyd_send(obj):
+    out = bridge_ask('SEND ' + json.dumps(json.loads(obj)), timeout=10)
+    print(out or json.dumps({'ok': False}))
+    return 0
+
+# ------------------------------------------------------------------ away from the PC, or locked
+# Mantel's moving wallpapers hold still after 3 minutes without input and while the screen is locked (Wallpaper.qml:
+# DeskState.idle, DeskState.locked; Mantel's IdlePower.qml and Lock.qml set them). On Plasma the panel asks this:
+# `idle-wait IDLE LOCKED` sleeps until either changes (KDE's own org.freedesktop.ScreenSaver: GetActive and
+# GetSessionIdleTime), then prints the new state and ends; the panel asks again. While you're there it wakes only
+# when 3 minutes could have passed (or every 20 s, to notice a lock); while you're away, every 2 s, so the
+# wallpaper moves again as soon as you're back. HEARTH_IDLE_TEST=FILE (CI): "idle" and/or "locked" in FILE instead.
+IDLE_SECS = 180
+
+
+def idle_state():
+    test = os.environ.get('HEARTH_IDLE_TEST')
+    if test:
+        t = read_small_text(test)
+        return 'idle' in t, 'locked' in t, 0
+    import dbus
+    ss = dbus.Interface(dbus.SessionBus().get_object('org.freedesktop.ScreenSaver', '/ScreenSaver'), 'org.freedesktop.ScreenSaver')
+    locked = bool(ss.GetActive())
+    secs = int(ss.GetSessionIdleTime())
+    if secs > 100000:          # some give milliseconds
+        secs //= 1000
+    return secs >= IDLE_SECS, locked, secs
+
+
+def read_small_text(p):
+    try:
+        with open(p) as f:
+            return f.read()
+    except OSError:
+        return ''
+
+
+def idle_wait(was_idle, was_locked):
+    import signal
+    try:
+        import ctypes
+        ctypes.CDLL('libc.so.6').prctl(1, signal.SIGTERM)   # PR_SET_PDEATHSIG: ends with the panel
+    except (OSError, AttributeError):
+        pass
+    while True:
+        try:
+            idle, locked, secs = idle_state()
+        except Exception as e:   # no screen saver service (or no dbus-python): the wallpaper just keeps moving
+            print(json.dumps({'ok': False, 'why': str(e)[:200]}))
+            return 1
+        if idle != was_idle or locked != was_locked:
+            print(json.dumps({'ok': True, 'idle': idle, 'locked': locked}))
+            return 0
+        time.sleep(2 if (idle or os.environ.get('HEARTH_IDLE_TEST')) else max(2, min(20, IDLE_SECS - secs + 1)))
+
+# ------------------------------------------------------------------ new accounts, and a panel that can't start
+# The owner (Nov 19): Hearth's panel is the default on new Fedora installs: only on a fresh install or a new account's
+# first sign-in, never switched for anyone who already has a panel. A new account gets NEW_MARK from /etc/skel (an
+# account made before this update never has it); the first sign-in puts Hearth's panel in, then takes the mark away.
+NEW_MARK = os.path.join('.config', 'hearth', 'plasma-panel-new')
+READY_SECS = 45
+
+
+def ready_path():
+    return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-plasma-panel', 'ready-bar')
+
+
+def mark_ready():
+    p = ready_path()
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, 'w') as f:
+        f.write(str(int(time.time())))
+    return 0
+
+
+def notify(text):
+    detach(['notify-send', '-a', 'Hearth', '-i', 'hearth', "Hearth's panel", text])
+
+
+def first_login():
+    """A new account's first sign-in: Hearth's panel. Done once (the mark goes either way)."""
+    mark = os.path.join(home(), NEW_MARK)
+    if not os.path.isfile(mark):
+        return 'not new'
+    try:
+        os.remove(mark)
+    except OSError:
+        pass
+    if in_use():
+        return 'already'
+    return 'applied' if apply() == 0 else 'failed'
+
+
+def guard(wait=READY_SECS):
+    """Hearth's panel in use but its bar never said it's up (READY_SECS after sign-in): KDE's own panel back, so the
+    desktop always has a panel, and you're told (Settings › Bar and dock puts Hearth's back)."""
+    if not in_use():
+        return 'not in use'
+    since = time.time()
+    while time.time() - since < wait:
+        try:
+            if os.path.getmtime(ready_path()) >= since - 120:
+                return 'up'
+        except OSError:
+            pass
+        time.sleep(1)
+    undo()
+    notify("Hearth's panel couldn't start, so KDE's panel is back. Settings › Bar and dock can try Hearth's panel again.")
+    return 'fell back'
+
+
+def login():
+    """At sign-in (autostart): a new account's first sign-in gets Hearth's panel; then the panel is checked."""
+    a = first_login()
+    b = guard()
+    print(json.dumps({'first': a, 'guard': b}))
+    return 0
+
+
+def main(argv):
+    cmd, rest = (argv[1] if len(argv) > 1 else 'status'), argv[2:]
+    if cmd == 'env':
+        print(json.dumps(env()))
+    elif cmd == 'apps':
+        print(json.dumps(apps()))
+    elif cmd == 'launch' and rest:
+        return launch(rest[0], rest[1] if len(rest) > 1 else '')
+    elif cmd == 'run':
+        return run(rest)
+    elif cmd == 'osk':       # the on-screen keyboard (KWin's), on or off
+        cur = subprocess.run(['dbus-send', '--session', '--print-reply', '--dest=org.kde.KWin', '/VirtualKeyboard',
+                              'org.freedesktop.DBus.Properties.Get', 'string:org.kde.kwin.VirtualKeyboard', 'string:active'],
+                             capture_output=True, text=True, timeout=5).stdout
+        on = 'true' in cur
+        subprocess.run(['dbus-send', '--session', '--dest=org.kde.KWin', '/VirtualKeyboard', 'org.freedesktop.DBus.Properties.Set',
+                        'string:org.kde.kwin.VirtualKeyboard', 'string:active', 'variant:boolean:' + ('false' if on else 'true')],
+                       capture_output=True, timeout=5)
+    elif cmd == 'status':
+        return status()
+    elif cmd == 'apply':
+        return apply()
+    elif cmd == 'undo':
+        return undo()
+    elif cmd == 'restore':
+        return restore(rest[0] if rest else '')
+    elif cmd == 'sync':
+        return sync()
+    elif cmd == 'frames':        # hearth-plasma-looks after a Global Theme: Mantel's frames back, if Hearth's panel is in use
+        return frames() if in_use() else 0
+    elif cmd == 'login':
+        return login()
+    elif cmd == 'ready':
+        return mark_ready()
+    elif cmd == 'hold-popups':
+        return hold_popups()
+    elif cmd == 'idle-wait' and len(rest) == 2:
+        return idle_wait(rest[0] == '1', rest[1] == '1')
+    elif cmd == 'notifyd-bridge':
+        return notifyd_bridge()
+    elif cmd == 'notifyd-wait':
+        return notifyd_wait(int(rest[0]) if rest and rest[0].isdigit() else 0)
+    elif cmd == 'notifyd-send' and rest:
+        return notifyd_send(rest[0])
+    elif cmd == 'open' and rest and rest[0] in ('launcher', 'quick', 'calendar', 'search', 'power', 'deskmenu', 'osd', 'osd-bright', 'close'):
+        # Opens (or closes again) the app menu, Quick settings or the dashboard on Hearth's bar: for a shortcut
+        # of your own, and CI's pictures.
+        # Hearth's bar takes them all; the shared Quick settings and notifications widgets (in any panel: KDE's, or
+        # Firehold on Plasma's bar) take their own (quick, calendar).
+        out = plasma_js('var ps=panels(),ids=["org.hearthos.panel","org.hearthos.quicksettings","org.hearthos.notifications"];'
+                        'for(var i=0;i<ps.length;i++){var ws=ps[i].widgets();'
+                        'for(var j=0;j<ws.length;j++){if(ids.indexOf(ws[j].type)<0)continue;ws[j].currentConfigGroup=["General"];'
+                        'if(ws[j].type!=="org.hearthos.panel"||String(ws[j].readConfig("role","bar"))==="bar")'
+                        'ws[j].writeConfig("open",%s);}}print("{}");' % json.dumps('%s:%.3f' % (rest[0], time.time())))
+        return 0 if out is not None else 1
+    elif cmd == 'js' and rest:       # CI and checks: the layout script as it would run (nothing applied)
+        print(params() + {'apply': APPLY_JS, 'sync': SYNC_JS, 'undo': UNDO_JS}.get(rest[0], ''))
+    else:
+        print(__doc__)
+        return 2
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

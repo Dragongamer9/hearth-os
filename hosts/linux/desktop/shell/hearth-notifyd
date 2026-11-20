@@ -27,6 +27,7 @@ Checks and tests:
   hearth-notifyd test-job-v1 TITLE [SECONDS]   the same through the old JobViewServer
   hearth-notifyd test-badge APP COUNT [PROGRESS]   a Unity launcher badge for APP (a desktop id), progress 0-1
   hearth-notifyd parse-lsblk FILE | parse-lpstat FILE   the tray's readers on a saved output (unit tests)
+HEARTH_NOTIFYD_JOBS=off: it never serves org.kde.JobViewServer (Hearth on Plasma: plasmashell does).
 HEARTH_NOTIFYD_FIXTURES=DIR: keys.json, disks.json, printers.json, camera.json, background.json, layouts.json are read
 from DIR instead of the PC (CI pictures). Logs go to $XDG_RUNTIME_DIR/hearth/notifyd.log.
 """
@@ -589,7 +590,13 @@ class Hub:
             status['jobServer'] = False
             status['problem'] = 'Another program shows copy and download progress (it has org.kde.JobViewServer)'
             emit(dict(status, t='status'))
-        Gio.bus_own_name(Gio.BusType.SESSION, JOB_NAME, Gio.BusNameOwnerFlags.NONE, None, got, lost)
+        if os.environ.get('HEARTH_NOTIFYD_JOBS') == 'off':
+            # Hearth on Plasma: plasmashell shows copy and download progress itself (and must get the name back
+            # when it restarts), so this never takes it.
+            status['problem'] = 'Plasma shows copy and download progress itself'
+            emit(dict(status, t='status'))
+        else:
+            Gio.bus_own_name(Gio.BusType.SESSION, JOB_NAME, Gio.BusNameOwnerFlags.NONE, None, got, lost)
         self.conn.signal_subscribe(None, 'com.canonical.Unity.LauncherEntry', 'Update', None, None,
                                    Gio.DBusSignalFlags.NONE, self.on_unity)
         self.conn.signal_subscribe('org.kde.keyboard', 'org.kde.KeyboardLayouts', None, '/Layouts', None,

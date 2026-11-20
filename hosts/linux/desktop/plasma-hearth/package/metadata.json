@@ -1,0 +1,14 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Authors": [{ "Name": "Hearth OS" }],
+        "Category": "Windows and Tasks",
+        "Description": "Hearth's bar and dock from Debian's Desktop Mode: the islands, your apps, the app menus and Game Mode, in every Hearth look",
+        "Icon": "hearth",
+        "Id": "org.hearthos.panel",
+        "License": "GPL-2.0+",
+        "Name": "Hearth's panel"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-Provides": ["org.kde.plasma.launchermenu"]
+}

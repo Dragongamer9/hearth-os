@@ -116,6 +116,8 @@ pub enum Msg {
     JsDone(run::Output),
     EditMode,
     RemovePanel,
+    /// Hearth's panel ("apply") or KDE's own ("undo"): hearth-plasma-panel, which saves your panels first.
+    PanelPick(&'static str),
     DeskClock(String),
     Glass(String),
     // Fonts
