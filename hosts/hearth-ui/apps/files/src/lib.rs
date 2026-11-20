@@ -8,11 +8,24 @@
 
 pub mod app;
 pub mod backend;
+pub mod briefcase;
+pub mod dnd;
 pub mod drive;
+pub mod extras;
 pub mod icons;
 pub mod menus;
 pub mod model;
+pub mod osk_view;
+pub mod pad;
+pub mod split;
+pub mod terminal;
 pub mod thumbs;
 pub mod view;
+// Hearth's on-screen keyboard engine and its looks, shared with hearth-pad-host (the same files, not copies): the
+// Open / Save window draws the keyboard inside itself in Game Mode (pad.rs).
+#[path = "../../pad/src/osk.rs"]
+pub mod osk;
+#[path = "../../pad/src/looks.rs"]
+pub mod looks;
 
 pub use app::{run, Mode};

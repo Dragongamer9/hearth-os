@@ -19,11 +19,57 @@ use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 
+/// hearth-files: $HEARTH_FILES_HELPER (CI's pictures put a stand-in in front of it there), else the image's.
 pub fn helper() -> String {
-    hearth_ui::run::shell_helper("hearth-files")
+    std::env::var("HEARTH_FILES_HELPER").ok().filter(|s| !s.is_empty()).unwrap_or_else(|| hearth_ui::run::shell_helper("hearth-files"))
+}
+
+/// Act as administrator (FilesExtras.qml): on for this window only, never saved. While it's on, the few changes
+/// hearth-files-admin makes (a new folder or file, rename, delete, copy, move, permissions) go through pkexec when
+/// they touch a folder outside your home; polkit asks for an administrator's password (its own action,
+/// fun.hearthos.files-admin), and hearth-files-admin never touches what starts the PC.
+pub static ADMIN: AtomicBool = AtomicBool::new(false);
+pub const ADMIN_HELPER: &str = "/usr/libexec/nimbus/hearth-files-admin";
+const ADMIN_OPS: [&str; 7] = ["mkdir", "new-file", "rename", "delete", "copy", "move", "chmod"];
+
+fn homes() -> Vec<String> {
+    let h = std::env::var("HOME").unwrap_or_default();
+    let mut v = vec![h.clone()];
+    if let Ok(c) = std::fs::canonicalize(&h) {
+        v.push(c.to_string_lossy().into_owned());
+    }
+    v.retain(|x| !x.is_empty() && x != "/");
+    v
+}
+
+/// A folder outside your home (and not a drive you plugged in, the temporary folder or your session's own).
+pub fn system_path(p: &str) -> bool {
+    if !p.starts_with('/') {
+        return false;
+    }
+    if homes().iter().any(|h| p == h || p.starts_with(&format!("{h}/"))) {
+        return false;
+    }
+    !["/run/media/", "/media/", "/tmp", "/run/user/"].iter().any(|x| p.starts_with(x))
+}
+
+/// The command for hearth-files ARGS as administrator, or None (not on, not a change, or only your own files).
+pub fn admin_route(args: &[String]) -> Option<Vec<String>> {
+    if !ADMIN.load(Ordering::SeqCst) || args.is_empty() || !ADMIN_OPS.contains(&args[0].as_str()) {
+        return None;
+    }
+    if !args[1..].iter().any(|x| system_path(x)) {
+        return None;
+    }
+    let mut v = vec!["pkexec".to_string(), ADMIN_HELPER.to_string(), format!("files-{}", args[0])];
+    v.extend(args[1..].iter().cloned());
+    Some(v)
 }
 
 pub fn argv(args: &[String]) -> Vec<String> {
+    if let Some(r) = admin_route(args) {
+        return r;
+    }
     let mut v = vec!["python3".to_string(), helper()];
     v.extend(args.iter().cloned());
     v
@@ -113,7 +159,14 @@ pub fn run_blocking(cmd: &[String], secs: u64, input: Option<String>) -> (String
 
 /// hearth-files ARGS…: its answer.
 pub fn call(args: Vec<String>, secs: u64) -> impl Future<Output = Reply> + Send + 'static {
+    // As administrator, polkit waits for the password: the time limit starts after a few minutes, not seconds.
+    let secs = if admin_route(&args).is_some() { secs.max(300) } else { secs };
     call_cmd(argv(&args), secs, None)
+}
+
+/// hearth-files ARGS with `input` for it (a sharing password, as JSON) in HEARTH_INPUT, never on its command line.
+pub fn call_in(args: Vec<String>, secs: u64, input: String) -> impl Future<Output = Reply> + Send + 'static {
+    call_cmd(argv(&args), secs, if input.is_empty() { None } else { Some(input) })
 }
 
 /// Any program whose last line is JSON (hearth-briefcase, hearth-tasks…).

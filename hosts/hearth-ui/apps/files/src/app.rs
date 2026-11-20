@@ -105,6 +105,9 @@ pub enum Zone {
     Toolbar,
     Tabs,
     Pick,
+    /// The terminal panel's line (F4) and the split view (F9).
+    Term,
+    Split,
 }
 
 /// One item of a menu (Hearth Files' right-click menu, New, Sort, View, a place's menu…).
@@ -121,6 +124,8 @@ pub struct MenuItem {
     pub check: Option<bool>,
     pub sep: bool,
     pub heading: bool,
+    /// A tag's colour dot (Tags ›).
+    pub dot: Option<iced::Color>,
 }
 
 impl MenuItem {
@@ -157,6 +162,10 @@ impl MenuItem {
         self.check = Some(on);
         self
     }
+    pub fn dot(mut self, c: iced::Color) -> Self {
+        self.dot = Some(c);
+        self
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -180,6 +189,8 @@ pub enum Ask {
     FromTemplate(String, String),
     Compress(Vec<String>, String),
     ExtractTo(String),
+    /// Tags, signing in to a shared folder (extras.rs).
+    Fx(crate::extras::AskFx),
 }
 
 #[derive(Debug, Clone)]
@@ -188,6 +199,8 @@ pub struct Input {
     pub ok: String,
     pub text: String,
     pub ask: Ask,
+    /// A password: what's typed isn't shown.
+    pub secret: bool,
 }
 
 /// What a yes/no question does when you say yes.
@@ -199,6 +212,8 @@ pub enum Yes {
     Wallpaper(String),
     RunAppImage(String),
     Note,
+    /// Anything else: the message to act on.
+    Then(Msg),
 }
 
 #[derive(Debug, Clone)]
@@ -209,6 +224,8 @@ pub struct Confirm {
     pub danger: bool,
     pub yes: Yes,
     pub button: usize,
+    /// A third button between Cancel and OK (Just this time).
+    pub alt: Option<(String, Yes)>,
 }
 
 #[derive(Debug, Clone)]
@@ -256,6 +273,9 @@ pub struct Props {
     pub error: String,
     /// Hearth (C:)'s own folders: their rows, no Linux file behind them.
     pub cview: Option<(Entry, String)>,
+    /// Sharing (folders): hearth-files sharing's answer (Null until it's asked), and a change on its way.
+    pub share: Value,
+    pub share_busy: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -267,6 +287,8 @@ pub enum Overlay {
     Conflict(Cf),
     Preview(Pv),
     Props(Props),
+    /// The Briefcase's dialogs (briefcase.rs keeps what they show).
+    Bc,
 }
 
 /// A change Hearth Files made that Undo can take back (the last 50, this session).
@@ -445,6 +467,14 @@ pub enum Msg {
     PickFilter,
     PickChoice(usize),
     StopJob,
+    DlgAlt,
+    // the terminal panel, split view, extras, the Briefcase, the controller in the Open / Save window, drag and drop
+    Term(crate::terminal::TMsg),
+    Split(crate::split::SMsg),
+    Fx(crate::extras::XMsg),
+    Bc(crate::briefcase::BMsg),
+    Pad(crate::pad::PMsg),
+    Dnd(crate::dnd::DMsg),
 }
 
 /// What to do once hearth-files answered.
@@ -476,6 +506,7 @@ pub enum Then {
     Batch(usize),
     Compare(Vec<String>),
     ThisPcLetter,
+    Linked(String),
 }
 
 pub struct App {
@@ -560,6 +591,15 @@ pub struct App {
     pub touched: bool,
     /// Saved Games' tile on the Home page: how many games have saves there.
     pub saved_games: usize,
+    pub term: crate::terminal::Term,
+    pub split: Option<crate::split::Split>,
+    pub fx: crate::extras::Fx,
+    pub bc: crate::briefcase::Bc,
+    pub pad: crate::pad::Pad,
+    pub drag: Option<crate::dnd::Drag>,
+    pub drag_pending: Option<crate::dnd::Pending>,
+    /// What a submenu (Tags ›) is about.
+    pub menu_targets: Vec<String>,
 }
 
 pub const SCROLL_ID: &str = "files-main";
@@ -661,7 +701,19 @@ impl App {
             show: happ::arg("--show").unwrap_or_default(),
             touched: false,
             saved_games: 0,
+            term: Default::default(),
+            split: None,
+            fx: Default::default(),
+            bc: Default::default(),
+            pad: Default::default(),
+            drag: None,
+            drag_pending: None,
+            menu_targets: vec![],
         };
+        // CI's pictures: the wider left menu (as dragged past 200 px), shown, never saved.
+        if s.show.split(',').any(|x| x == "widenav") {
+            s.nav_w = 240.0;
+        }
         if let Some(v) = happ::arg("--view").and_then(|v| View::from(&v)) {
             s.view = v;
         }
@@ -669,6 +721,8 @@ impl App {
             Task::perform(backend::call(a(&["prefs"]), 10), |r| Msg::Prefs(r, true)),
             s.refresh_places(),
             Task::perform(backend::call(a(&["templates"]), 10), Msg::Templates),
+            crate::extras::refresh_tags(),
+            crate::briefcase::refresh_known(),
         ]);
         (s, first)
     }
@@ -732,7 +786,7 @@ impl App {
         self.listing.as_ref().map(|l| l.trash).unwrap_or(false)
     }
     pub fn writable(&self) -> bool {
-        self.listing.as_ref().map(|l| l.writable).unwrap_or(false) && self.found.is_none()
+        (self.listing.as_ref().map(|l| l.writable).unwrap_or(false) || crate::extras::admin_here(self)) && self.found.is_none()
     }
     pub fn current(&self) -> Option<&Entry> {
         self.entries.get(self.cur)
@@ -1244,11 +1298,11 @@ impl App {
 
     pub fn confirm(&mut self, title: &str, text: &str, ok: &str, yes: Yes) {
         let danger = matches!(yes, Yes::Delete(_) | Yes::Empty | Yes::PickFinish(_));
-        self.overlay = Some(Overlay::Confirm(Confirm { title: title.into(), text: text.into(), ok: ok.into(), danger, yes, button: 0 }));
+        self.overlay = Some(Overlay::Confirm(Confirm { title: title.into(), text: text.into(), ok: ok.into(), danger, yes, button: 0, alt: None }));
     }
 
     pub fn ask(&mut self, title: &str, initial: &str, ok: &str, select_to: usize, ask: Ask) -> Task<Msg> {
-        self.overlay = Some(Overlay::Input(Input { title: title.into(), ok: ok.into(), text: initial.into(), ask }));
+        self.overlay = Some(Overlay::Input(Input { title: title.into(), ok: ok.into(), text: initial.into(), ask, secret: false }));
         Task::batch(vec![operation::focus(DLG_ID), operation::select_range(DLG_ID, 0, select_to.min(initial.chars().count()))])
     }
 
@@ -1459,6 +1513,10 @@ impl App {
                 out.push(it);
             }
         }
+        // Tags (FilesExtras.qml): after your folders, each with how many carry it.
+        if !self.picking() {
+            out.extend(crate::extras::tag_places(self));
+        }
         let pc_open = *self.nav_open.get("thispc").unwrap_or(&true);
         out.push(NavItem { id: "thispc".into(), label: "This PC".into(), path: THIS_PC.into(), kind: "thispc".into(), section: "pc".into(), tree: "thispc".into(), open: pc_open, ..Default::default() });
         if pc_open {
@@ -1642,6 +1700,17 @@ impl App {
         if changed {
             let lp = l.path.clone();
             self.apply_folder_view(&lp);
+            // A Briefcase's own default view and sort (Customize), unless you chose one for this folder.
+            let mine = self.prefs.get("folders").and_then(|f| f.get(&lp)).is_some();
+            if l.briefcase.is_object() && !mine && happ::arg("--view").is_none() {
+                if let Some(v) = l.briefcase.get("view").and_then(Value::as_str).and_then(View::from) {
+                    self.view = v;
+                }
+                let so = sv(&l.briefcase, "sort");
+                if ["name", "date", "size", "type"].contains(&so.as_str()) {
+                    self.sort = so;
+                }
+            }
         }
         let want = if !l.select.is_empty() { l.select.clone() } else { sel };
         self.path = l.path.clone();
@@ -1652,7 +1721,7 @@ impl App {
                 self.cur = i;
             }
         }
-        let mut tasks = vec![self.want_thumbs()];
+        let mut tasks = vec![self.want_thumbs(), crate::extras::folder_loaded(self), crate::briefcase::opened(self)];
         if changed {
             tasks.push(operation::scroll_to(SCROLL_ID, operation::AbsoluteOffset { x: None, y: Some(0.0) }));
         } else {
@@ -1682,11 +1751,14 @@ impl App {
             self.touched = true;
             tasks.push(crate::menus::run_menu(self, "rename"));
         } else if has("select") && !self.entries.is_empty() {
-            self.show.clear();
             self.cur = 2.min(self.entries.len() - 1);
             self.touched = true;
             self.marked.insert(self.entries[self.cur].path.clone());
             tasks.push(self.details_lookups());
+            self.show = self.show.split(',').filter(|x| *x != "select").collect::<Vec<_>>().join(",");
+            tasks.push(self.show_more());
+        } else {
+            tasks.push(self.show_more());
         }
         Task::batch(tasks)
     }
@@ -1897,6 +1969,9 @@ impl App {
     fn open_pc_item(&mut self, e: &Entry) -> Task<Msg> {
         let d = &e.item;
         if e.pc == "net" {
+            if let Some(net) = d.get("net").filter(|n| n.is_object()).cloned() {
+                return crate::extras::net_open(self, net, String::new(), String::new(), false);
+            }
             if !sv(d, "path").is_empty() {
                 return self.navigate(&sv(d, "path"), "");
             }
@@ -1919,6 +1994,14 @@ impl App {
     pub fn open_place(&mut self, i: usize) -> Task<Msg> {
         let Some(p) = self.places.get(i).cloned() else { return Task::none() };
         self.place_index = i;
+        if p.kind == "tag" {
+            let t = sv(&p.raw, "tag");
+            return crate::extras::open_tag(self, &t);
+        }
+        // Your devices' shared folders: one click opens one (signing in the first time).
+        if let Some(net) = p.raw.get("net").filter(|n| n.is_object()).cloned() {
+            return crate::extras::net_open(self, net, String::new(), String::new(), false);
+        }
         if !p.tree.is_empty() && p.path.is_empty() {
             if p.empty && (p.tree == "homeserver" || p.tree == "network") {
                 return self.say("No home server or shared folders yet: Settings › Home server sets one up", false);
@@ -1991,10 +2074,85 @@ impl App {
     }
 
     pub fn close(&mut self) -> Task<Msg> {
+        if crate::pad::wanted() {
+            crate::pad::quit();
+        }
         if self.picking() {
             return self.pick_cancel();
         }
         iced::exit()
+    }
+
+    /// CI's pictures of the terminal panel, split view, Act as administrator, Tags ›, Sharing, the Briefcase's
+    /// dialogs, signing in to a shared folder, a drag and the Open / Save window's keyboard (--show, comma-separated):
+    /// each opens what it names once the folder is listed, the way a click would. Shown, never saved.
+    fn show_more(&mut self) -> Task<Msg> {
+        let list: Vec<String> = self.show.split(',').map(String::from).collect();
+        if list.iter().all(|x| x.is_empty() || x == "widenav" || x == "pane" || x == "tabs") {
+            return Task::none();
+        }
+        let has = |k: &str| list.iter().any(|x| x == k);
+        self.show.clear();
+        let mut t = vec![];
+        if has("term") {
+            t.push(crate::terminal::show(self, true));
+            self.term.input = "ls -l".into();
+            t.push(crate::terminal::update(self, crate::terminal::TMsg::Submit));
+        }
+        if has("split") {
+            t.push(crate::split::update(self, crate::split::SMsg::Toggle));
+            let d = format!("{}/Documents", self.home);
+            t.push(crate::split::load(self, &d));
+        }
+        if has("admin") {
+            t.push(crate::extras::update(self, crate::extras::XMsg::AdminOn));
+        }
+        if has("tagmenu") && !self.entries.is_empty() {
+            self.cur = 0;
+            self.touched = true;
+            let p = self.entries[0].path.clone();
+            self.cursor = Point::new(430.0, 210.0);
+            crate::extras::tag_menu(self, vec![p]);
+        }
+        if has("sharing") {
+            if let Some(e) = self.entries.iter().find(|e| e.dir).cloned() {
+                t.push(crate::extras::run(self, "x-share", vec![e.path.clone()], Some(e)));
+            }
+        }
+        if has("menu-bc") && !self.entries.is_empty() {
+            self.cur = 0;
+            self.touched = true;
+            self.cursor = Point::new(420.0, 150.0);
+            self.open_menu(false);
+        }
+        for k in ["bc-update-all", "bc-setlock", "bc-customize", "bc-addto"] {
+            if has(k) {
+                let tg = if k == "bc-addto" { self.entries.iter().find(|e| !e.dir).map(|e| vec![e.path.clone()]).unwrap_or_default() } else { vec![] };
+                t.push(crate::briefcase::run(self, k, tg));
+            }
+        }
+        if has("bc-password") {
+            let p = self.path.clone();
+            t.push(crate::briefcase::run(self, &format!("bc-unlock:{p}"), vec![]));
+        }
+        if has("netsign") {
+            match self.raw_places.iter().find_map(|q| q.get("net").filter(|n| n.is_object()).cloned()) {
+                Some(net) => t.push(crate::extras::net_open(self, net, String::new(), String::new(), false)),
+                // The left menu isn't in yet: when it comes (Msg::Places).
+                None => self.show = "netsign".into(),
+            }
+        }
+        if has("drag") {
+            if let (Some(src), Some(dst)) = (self.entries.iter().find(|e| !e.dir).cloned(), self.entries.iter().find(|e| e.dir).cloned()) {
+                self.touched = true;
+                self.cur = self.entries.iter().position(|e| e.path == src.path).unwrap_or(0);
+                self.drag = Some(crate::dnd::Drag { paths: vec![src.path.clone()], label: src.name.clone(), at: Point::new(470.0, 205.0), from_split: false, item: Some(dst.path.clone()), area: None });
+            }
+        }
+        if has("osk") {
+            t.push(crate::pad::open_kb(self));
+        }
+        Task::batch(t)
     }
 
     // ------------------------------------------------------------------ tabs
@@ -2257,6 +2415,7 @@ impl App {
             tasks.push(self.load(&p, &s, false));
         }
         tasks.push(self.refresh_places());
+        tasks.push(crate::split::reload(self));
         if !self.job_queue.is_empty() {
             let n = self.job_queue.remove(0);
             tasks.push(self.start_job(n));
@@ -2282,6 +2441,8 @@ impl App {
             count: Value::Null,
             error: String::new(),
             cview: None,
+            share: Value::Null,
+            share_busy: false,
         }));
         let mut args = vec!["props".to_string()];
         args.extend(paths.iter().cloned());
@@ -2310,6 +2471,8 @@ impl App {
             count: Value::Null,
             error: String::new(),
             cview: Some((e, win)),
+            share: Value::Null,
+            share_busy: false,
         }));
         Task::none()
     }
@@ -2359,7 +2522,10 @@ fn update_inner(app: &mut App, m: Msg) -> Task<Msg> {
         Msg::Minimize => return win::minimize(),
         Msg::Close => return app.close(),
         Msg::Resize(d) => return win::resize(d),
-        Msg::Cursor(p) => app.cursor = p,
+        Msg::Cursor(p) => {
+            app.cursor = p;
+            crate::dnd::moved(app, p);
+        }
         Msg::Key(ev) => return crate::menus::key(app, ev),
         Msg::FileDropped(p) => {
             let dest = app.path.clone();
@@ -2470,6 +2636,12 @@ fn update_inner(app: &mut App, m: Msg) -> Task<Msg> {
                     }
                 }
                 app.rebuild();
+                if app.show == "netsign" && app.listing.is_some() {
+                    if let Some(net) = app.raw_places.iter().find_map(|q| q.get("net").filter(|n| n.is_object()).cloned()) {
+                        app.show.clear();
+                        tasks.push(crate::extras::net_open(app, net, String::new(), String::new(), false));
+                    }
+                }
                 return Task::batch(tasks);
             }
         }
@@ -2729,6 +2901,12 @@ fn update_inner(app: &mut App, m: Msg) -> Task<Msg> {
             if app.renaming.is_some() {
                 return crate::menus::finish_rename(app);
             }
+            // A drag starts from here once the pointer moves (dnd.rs): what's picked, or this item.
+            if !app.on_special() && !app.on_home() {
+                let t = app.targets();
+                let name = app.entries.get(i).map(|e| e.name.clone()).unwrap_or_default();
+                crate::dnd::pending(app, t, &name, false);
+            }
             return app.details_lookups();
         }
         Msg::Double(i) => return app.activate(i),
@@ -2826,6 +3004,10 @@ fn update_inner(app: &mut App, m: Msg) -> Task<Msg> {
         Msg::PropsTab(i) => {
             if let Some(Overlay::Props(p)) = &mut app.overlay {
                 p.tab = i;
+                let tabs = crate::view::props_tabs(p);
+                if tabs.get(i) == Some(&"Sharing") && p.share.is_null() && p.paths.len() == 1 {
+                    return crate::extras::load_sharing(p.paths[0].clone());
+                }
             }
         }
         Msg::PropsName(n) => {
@@ -2864,6 +3046,20 @@ fn update_inner(app: &mut App, m: Msg) -> Task<Msg> {
         Msg::PickCancel => return app.pick_cancel(),
         Msg::PickFilter => crate::menus::filter_menu(app),
         Msg::PickChoice(i) => return crate::menus::choice_run(app, i),
+        Msg::DlgAlt => {
+            if let Some(Overlay::Confirm(c)) = app.overlay.clone() {
+                if let Some((_, y)) = c.alt {
+                    app.overlay = None;
+                    return crate::menus::run_yes(app, y);
+                }
+            }
+        }
+        Msg::Term(m) => return crate::terminal::update(app, m),
+        Msg::Split(m) => return crate::split::update(app, m),
+        Msg::Fx(m) => return crate::extras::update(app, m),
+        Msg::Bc(m) => return crate::briefcase::update(app, m),
+        Msg::Pad(m) => return crate::pad::update(app, m),
+        Msg::Dnd(m) => return crate::dnd::update(app, m),
     }
     Task::none()
 }
@@ -2899,6 +3095,24 @@ pub fn subscription(a: &App) -> Subscription<Msg> {
         if !j.cancelling {
             subs.push(Subscription::run_with(Run { seq: j.seq, cmd: j.cmd.clone() }, backend::lines).map(Msg::Job));
         }
+    }
+    // The terminal panel's command, while it runs; Esc and Ctrl+C on its line (its text box keeps them otherwise).
+    if let Some(r) = &a.term.run {
+        subs.push(Subscription::run_with(r.clone(), crate::terminal::lines).map(|l| Msg::Term(crate::terminal::TMsg::Out(l))));
+    }
+    if a.term.on && a.zone == Zone::Term {
+        subs.push(iced::event::listen_with(crate::terminal::captured_keys));
+    }
+    // An unlocked, locked Briefcase counts down to locking by itself: its status once a minute while it's shown.
+    if crate::briefcase::in_briefcase(a) && crate::briefcase::locked(a) && crate::briefcase::unlocked(a) {
+        subs.push(iced::time::every(std::time::Duration::from_secs(60)).map(|_| Msg::Bc(crate::briefcase::BMsg::Tick)));
+    }
+    // Game Mode's Open / Save window: its own hearth-pad, and the keyboard's frames while a button is held.
+    if a.picking() && crate::pad::wanted() && happ::arg("--show").is_none() {
+        subs.push(Subscription::run(crate::pad::stream).map(|v| Msg::Pad(crate::pad::PMsg::Ev(v))));
+    }
+    if a.pad.kb && a.pad.busy {
+        subs.push(iced::time::every(std::time::Duration::from_millis(16)).map(|_| Msg::Pad(crate::pad::PMsg::Tick)));
     }
     Subscription::batch(subs)
 }

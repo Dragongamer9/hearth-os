@@ -30,3 +30,6 @@ image = { version = "0.25", default-features = false, features = ["jpeg", "png",
 serde_json = { workspace = true }
 futures = { workspace = true }
 libc = { workspace = true }
+# The on-screen keyboard's engine (ui/osk/hearth-osk.js) runs in QuickJS, as in hearth-pad-host (apps/pad: the same
+# osk.rs), for the controller in the Open / Save window in Game Mode. Only started when that keyboard opens.
+rquickjs = "0.14"

@@ -80,6 +80,13 @@ pub enum Ic {
     Eye,
     Terminal,
     Split,
+    // Act as administrator, and the Briefcase's styles (drawn in its colour: Customize › Icon)
+    Shield,
+    BcBriefcase,
+    BcSatchel,
+    BcSuitcase,
+    BcBackpack,
+    BcBox,
 }
 
 struct Draw {
@@ -503,6 +510,47 @@ impl Draw {
             Ic::Split => {
                 p.line(&[(3.0, 5.0), (21.0, 5.0), (21.0, 19.0), (3.0, 19.0), (3.0, 5.0)], lw, c);
                 p.line(&[(12.0, 5.0), (12.0, 19.0)], lw, c);
+            }
+            Ic::Shield => {
+                p.line(&[(12.0, 2.5), (20.0, 5.5), (20.0, 11.0), (19.0, 15.0), (16.0, 18.5), (12.0, 21.5), (8.0, 18.5), (5.0, 15.0), (4.0, 11.0), (4.0, 5.5), (12.0, 2.5)], lw, c);
+                p.line(&[(8.5, 12.0), (11.0, 14.5), (15.5, 9.5)], lw, c);
+            }
+            // The Briefcase's styles, filled in its colour with a darker band (Mantel's bc-* icons).
+            Ic::BcBriefcase | Ic::BcSatchel | Ic::BcSuitcase | Ic::BcBackpack | Ic::BcBox => {
+                let dk = Color { r: c.r * 0.7, g: c.g * 0.7, b: c.b * 0.7, a: c.a };
+                match self.ic {
+                    Ic::BcBriefcase => {
+                        p.line(&[(9.0, 7.0), (9.0, 4.5), (15.0, 4.5), (15.0, 7.0)], lw, dk);
+                        p.rect(2.5, 7.0, 19.0, 13.0, 2.0, c);
+                        p.rect(2.5, 12.0, 19.0, 1.6, 0.0, dk);
+                        p.rect(10.5, 11.0, 3.0, 3.6, 0.6, dk);
+                    }
+                    Ic::BcSatchel => {
+                        p.arc(12.0, 9.0, 6.0, 180.0, 360.0, lw, dk);
+                        p.rect(3.0, 9.0, 18.0, 11.5, 4.0, c);
+                        p.poly(&[(3.0, 9.0), (21.0, 9.0), (19.0, 14.0), (5.0, 14.0)], dk);
+                        p.rect(10.5, 13.0, 3.0, 3.0, 0.6, c);
+                    }
+                    Ic::BcSuitcase => {
+                        p.line(&[(9.5, 5.5), (9.5, 3.5), (14.5, 3.5), (14.5, 5.5)], lw, dk);
+                        p.rect(5.0, 5.5, 14.0, 15.0, 2.0, c);
+                        p.rect(8.0, 5.5, 1.6, 15.0, 0.0, dk);
+                        p.rect(14.4, 5.5, 1.6, 15.0, 0.0, dk);
+                        p.circle(8.0, 21.3, 1.0, dk);
+                        p.circle(16.0, 21.3, 1.0, dk);
+                    }
+                    Ic::BcBackpack => {
+                        p.arc(12.0, 6.0, 3.0, 180.0, 360.0, lw, dk);
+                        p.rect(5.0, 6.0, 14.0, 15.5, 5.0, c);
+                        p.rect(7.5, 13.0, 9.0, 6.0, 1.6, dk);
+                        p.rect(7.5, 13.0, 9.0, 1.4, 0.0, c);
+                    }
+                    _ => {
+                        p.poly(&[(3.0, 8.0), (12.0, 4.0), (21.0, 8.0), (12.0, 12.0)], dk);
+                        p.poly(&[(3.0, 8.0), (12.0, 12.0), (12.0, 21.0), (3.0, 17.0)], c);
+                        p.poly(&[(21.0, 8.0), (12.0, 12.0), (12.0, 21.0), (21.0, 17.0)], Color { r: c.r * 0.85, g: c.g * 0.85, b: c.b * 0.85, a: c.a });
+                    }
+                }
             }
         }
     }

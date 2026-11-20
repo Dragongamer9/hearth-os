@@ -92,7 +92,27 @@ pub fn view(a: &App) -> El<'_> {
     if a.nav_shown() {
         body = body.push(nav_pane(a)).push(vline(p.line));
     }
-    body = body.push(container(main_area(a)).width(Length::Fill).height(Length::Fill));
+    // The folder, with Act as administrator's red bar above it and the terminal panel (F4) under it.
+    let mut mid = Column::new().width(Length::FillPortion(64)).height(Length::Fill);
+    if crate::extras::admin_here(a) {
+        mid = mid.push(admin_bar(a));
+    }
+    let folder: El = container(main_area(a)).width(Length::Fill).height(Length::Fill).into();
+    let folder: El = if a.drag.is_some() && a.path.starts_with('/') {
+        mouse_area(folder).on_enter(Msg::Dnd(crate::dnd::DMsg::Over(1, a.path.clone()))).on_exit(Msg::Dnd(crate::dnd::DMsg::Out(1, a.path.clone()))).into()
+    } else {
+        folder
+    };
+    mid = mid.push(folder);
+    if a.term.on && !picking {
+        let h = (a.area.get().1 * 0.4).clamp(150.0, 260.0);
+        mid = mid.push(crate::terminal::view(a, h));
+    }
+    body = body.push(mid);
+    // Split view (F9): a second folder beside this one.
+    if a.split.is_some() && !picking {
+        body = body.push(vline(p.line)).push(container(crate::split::view(a)).width(Length::FillPortion(36)).height(Length::Fill));
+    }
     if a.details_pane && !picking {
         body = body.push(vline(p.line)).push(details_pane(a));
     }
@@ -102,11 +122,21 @@ pub fn view(a: &App) -> El<'_> {
     }
     if picking {
         col = col.push(hline(p.line)).push(pick_bar(a));
+        // Game Mode: Hearth's on-screen keyboard at the bottom of the window (Y on the controller).
+        if a.pad.kb {
+            let h = (a.area.get().1 * 0.75).clamp(220.0, 300.0);
+            col = col.push(responsive(move |size: Size| crate::osk_view::keyboard(a, Size::new(size.width, h))).height(Length::Fixed(h + 6.0)));
+        }
     } else {
         col = col.push(status_bar(a));
     }
     let base: El = container(col).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
-    let base: El = mouse_area(base).on_move(Msg::Cursor).into();
+    let base: El = mouse_area(base).on_move(Msg::Cursor).on_release(Msg::Dnd(crate::dnd::DMsg::Release)).into();
+    // What's being dragged, beside the pointer.
+    let base: El = match crate::dnd::ghost(a) {
+        Some((at, g)) => stack![base, pin(g).x(at.x).y(at.y)].into(),
+        None => base,
+    };
     let base = match &a.overlay {
         Some(Overlay::Menu(m)) => {
             let (x, y) = menu_place(a, m);
@@ -114,6 +144,7 @@ pub fn view(a: &App) -> El<'_> {
             stack![base, catcher, pin(opaque(menu(a, m))).x(x).y(y)].into()
         }
         Some(Overlay::Props(pr)) => ui::dialog(base, props_dialog(a, pr), None),
+        Some(Overlay::Bc) => ui::dialog(base, crate::briefcase::dialog(a), None),
         Some(ov) => ui::dialog(base, dialog(a, ov), None),
         None => base,
     };
@@ -148,7 +179,7 @@ fn tab_strip(a: &App) -> El<'_> {
             border: Border { radius: iced::border::Radius { top_left: rr, top_right: rr, bottom_left: 0.0, bottom_right: 0.0 }, ..Border::default() },
             ..container::Style::default()
         });
-        r = r.push(mouse_area(tab).on_press(Msg::Tab(i)).on_middle_press(Msg::CloseTab(i)));
+        r = r.push(drop_on(a, &path, mouse_area(tab).on_press(Msg::Tab(i)).on_middle_press(Msg::CloseTab(i)).into()));
     }
     r = r.push(container(flat(&p, ico(Ic::Plus, p.muted, 15.0), Some(Msg::NewTab), pad(6.0, 8.0, 6.0, 8.0))).padding(pad(0.0, 0.0, 2.0, 4.0)));
     let drag = mouse_area(Space::new().width(Length::Fill).height(Length::Fixed(40.0))).on_press(Msg::Drag).on_double_click(Msg::Maximize);
@@ -196,12 +227,51 @@ fn address<'a>(a: &'a App, height: f32) -> El<'a> {
         if i > skip {
             r = r.push(t("›", 15.0, p.muted));
         }
-        let label = t1(ui::fit(&c.label, 28), 14.0, p.text);
-        r = r.push(flat(&p, label.into(), Some(Msg::Go(c.path.clone())), pad(3.0, 6.0, 3.0, 6.0)));
+        let label = t1(ui::fit(&c.label, 28), 14.0, if drop_lit(a, &c.path) { p.accent } else { p.text });
+        r = r.push(drop_on(a, &c.path, flat(&p, label.into(), Some(Msg::Go(c.path.clone())), pad(3.0, 6.0, 3.0, 6.0))));
     }
     let rest = mouse_area(Space::new().width(Length::Fill).height(Length::Fixed(height))).on_press(Msg::EditPath).interaction(mouse::Interaction::Text);
     r = r.push(rest);
     container(r).width(Length::Fill).height(Length::Fixed(height)).clip(true).style(ui::boxed(field_bg(&p), p.r(6.0), Some((p.line, 1.0)))).into()
+}
+
+/// Act as administrator: a red bar while it's on, with Stop (FileManager.qml).
+fn admin_bar(a: &App) -> El<'_> {
+    let p = a.p;
+    let stop = button(container(t1("Stop", 13.0, p.text)).center_y(Length::Fixed(20.0)))
+        .padding(pad(4.0, 14.0, 4.0, 14.0))
+        .on_press(Msg::Fx(crate::extras::XMsg::AdminOff))
+        .style(move |_: &Theme, st: button::Status| button::Style {
+            background: Some(Background::Color(if matches!(st, button::Status::Hovered | button::Status::Pressed) { p.panel3 } else { p.panel2 })),
+            text_color: p.text,
+            border: Border { color: p.line, width: 1.0, radius: p.r(14.0).into() },
+            shadow: Shadow::default(),
+            snap: true,
+        });
+    let r = row![
+        ico::<Msg>(Ic::Shield, p.danger, 18.0),
+        container(t1("Acting as administrator: changes here affect the whole PC and ask for an administrator's password. What starts the PC stays locked.", 13.0, p.text).font(ui::weight(iced::font::Weight::Semibold))).width(Length::Fill).clip(true),
+        stop,
+    ]
+    .spacing(10.0)
+    .align_y(iced::Center)
+    .padding(pad(0.0, 12.0, 0.0, 16.0));
+    container(column![container(r).height(Length::Fixed(43.0)).center_y(Length::Fixed(43.0)), hline::<Msg>(p.danger)])
+        .width(Length::Fill)
+        .style(ui::boxed(Pal::a(p.danger, 0.16), 0.0, None))
+        .into()
+}
+
+/// A folder, a place, a tab or an address step that takes a drop while something is dragged.
+fn drop_on<'a>(a: &App, path: &str, inner: El<'a>) -> El<'a> {
+    if a.drag.is_none() || path.is_empty() || !path.starts_with('/') {
+        return inner;
+    }
+    mouse_area(inner).on_enter(Msg::Dnd(crate::dnd::DMsg::Over(0, path.to_string()))).on_exit(Msg::Dnd(crate::dnd::DMsg::Out(0, path.to_string()))).into()
+}
+
+fn drop_lit(a: &App, path: &str) -> bool {
+    a.drag.is_some() && crate::dnd::target(a).as_deref() == Some(path)
 }
 
 fn nav_row(a: &App) -> El<'_> {
@@ -262,6 +332,7 @@ fn command_bar(a: &App) -> El<'_> {
         sep(),
         lb(Ic::Sort, "Sort", true, true, "sort"),
         lb(Ic::ViewList, "View", true, true, "view"),
+        bc_tools(a),
         Space::new().width(Length::Fill),
         {
             let c = if a.details_pane { p.accent } else { p.text };
@@ -272,6 +343,26 @@ fn command_bar(a: &App) -> El<'_> {
     .align_y(iced::Center)
     .spacing(2.0);
     container(r).padding(pad(2.0, 12.0, 6.0, 12.0)).width(Length::Fill).into()
+}
+
+/// Inside a Briefcase, the command bar's own buttons: Update All, Unlock or Lock, Customize (FileManager.qml).
+fn bc_tools(a: &App) -> El<'_> {
+    let p = a.p;
+    if !crate::briefcase::in_briefcase(a) {
+        return Space::new().into();
+    }
+    let mut r = Row::new().spacing(2.0).align_y(iced::Center).push(container(vline::<Msg>(p.line)).height(Length::Fixed(20.0)).padding(pad(0.0, 6.0, 0.0, 6.0)));
+    let look = a.listing.as_ref().map(|l| l.briefcase.clone()).unwrap_or(Value::Null);
+    for (t, ic, label) in [("bc-update-all", Ic::Refresh, "Update All"), ("bc-unlock", Ic::Lock, "Unlock"), ("bc-lock", Ic::Lock, "Lock"), ("bc-customize", crate::briefcase::icon_of(&look), "Customize")] {
+        if !crate::briefcase::tool_shown(a, t) {
+            continue;
+        }
+        let c = if t == "bc-customize" { crate::briefcase::color_of(a, &look) } else { p.text };
+        let inner = row![ico::<Msg>(ic, c, 16.0), t1(label, 14.0, p.text)].spacing(7.0).align_y(iced::Center);
+        let cmd: &'static str = t;
+        r = r.push(flat(&p, inner.into(), Some(Msg::Cmd(cmd)), pad(6.0, 10.0, 6.0, 10.0)));
+    }
+    r.into()
 }
 
 // ------------------------------------------------------------------ the left menu
@@ -296,6 +387,8 @@ fn nav_pane(a: &App) -> El<'_> {
         } else {
             gap(12.0, 26.0)
         };
+        let tag_dot = if q.kind == "tag" { Some(crate::extras::tag_color(&q.label)) } else { None };
+        let bc_look = if q.kind == "briefcase" { q.raw.get("look").cloned().filter(|l| l.is_object()).or_else(|| Some(serde_json::json!({}))) } else { None };
         let ic = match q.id.as_str() {
             "gallery" => Ic::Gallery,
             "homeserver" => Ic::Cloud,
@@ -305,18 +398,26 @@ fn nav_pane(a: &App) -> El<'_> {
             _ if q.raw.get("removable") == Some(&Value::Bool(true)) => Ic::Usb,
             _ => icons::place_icon(&q.kind),
         };
+        let lead: El = match (&tag_dot, &bc_look) {
+            (Some(c), _) => container(Space::new().width(Length::Fixed(10.0)).height(Length::Fixed(10.0))).style(ui::boxed(*c, 5.0, None)).center_x(Length::Fixed(16.0)).center_y(Length::Fixed(16.0)).into(),
+            (_, Some(l)) => crate::briefcase::bc_icon(a, l, false, 16.0),
+            _ => ico(ic, p.text, 16.0),
+        };
         let mut r = Row::new()
             .spacing(0.0)
             .align_y(iced::Center)
             .push(gap(depth * 9.0, 1.0))
             .push(arrow)
             .push(gap(4.0, 1.0))
-            .push(ico(ic, p.text, 16.0))
+            .push(lead)
             .push(gap(8.0, 1.0))
             .push(t1(q.label.clone(), 13.5, if lit { p.ink } else { p.text }).font(if here { ui::weight(iced::font::Weight::Medium) } else { hearth_ui::app::INTER }));
         r = r.push(Space::new().width(Length::Fill));
         if wide && !q.sub.is_empty() && (q.id == "homeserver" || q.id == "linux") {
             r = r.push(t1(q.sub.clone(), 12.5, p.muted));
+        }
+        if q.kind == "tag" {
+            r = r.push(t1(q.sub.clone(), 12.0, p.muted));
         }
         if wide && q.pinned {
             r = r.push(ico(Ic::Pin, p.text, 13.0));
@@ -327,12 +428,14 @@ fn nav_pane(a: &App) -> El<'_> {
                 r = r.push(t1(n.to_string(), 12.0, p.muted));
             }
         }
-        let bg = if lit { p.accent } else if here { p.sel() } else { Color::TRANSPARENT };
+        let over = drop_lit(a, &q.path);
+        let bg = if lit { p.accent } else if here || over { p.sel() } else { Color::TRANSPARENT };
         let accent = p.accent;
         let rr = p.r(6.0);
+        let ring = here || over;
         let cell = container(r.padding(pad(0.0, 8.0, 0.0, 0.0))).width(Length::Fill).height(Length::Fixed(28.0)).center_y(Length::Fixed(28.0)).style(move |_: &Theme| container::Style {
             background: Some(Background::Color(bg)),
-            border: Border { color: if here { Pal::a(accent, 0.7) } else { Color::TRANSPARENT }, width: if here { 1.0 } else { 0.0 }, radius: rr.into() },
+            border: Border { color: if ring { Pal::a(accent, if over { 1.0 } else { 0.7 }) } else { Color::TRANSPARENT }, width: if ring { 1.0 } else { 0.0 }, radius: rr.into() },
             ..container::Style::default()
         });
         let cell: El = if here {
@@ -342,7 +445,8 @@ fn nav_pane(a: &App) -> El<'_> {
         } else {
             cell.into()
         };
-        col = col.push(mouse_area(cell).on_press(Msg::Place(i)).on_right_press(Msg::PlaceRight(i)).on_middle_press(Msg::PlaceMiddle(i)).interaction(mouse::Interaction::Pointer));
+        let tgt = if q.kind == "trash" { a.trash_path() } else { q.path.clone() };
+        col = col.push(drop_on(a, &tgt, mouse_area(cell).on_press(Msg::Place(i)).on_right_press(Msg::PlaceRight(i)).on_middle_press(Msg::PlaceMiddle(i)).interaction(mouse::Interaction::Pointer).into()));
     }
     container(scrollable(col).height(Length::Fill)).width(Length::Fixed(a.nav_w)).height(Length::Fill).into()
 }
@@ -405,7 +509,49 @@ fn entry_icon<'a>(a: &'a App, e: &Entry, size: f32) -> El<'a> {
             return ico(Ic::Lock, a.p.text, size);
         }
     }
-    ico(icons::file_icon(model::kind_of(e), &e.name), a.p.text, size)
+    // A Briefcase: its style in its colour, its badge, a padlock when it's locked.
+    let base: El = if e.briefcase.is_object() {
+        crate::briefcase::bc_icon(a, &e.briefcase, e.briefcase.get("locked").and_then(Value::as_bool).unwrap_or(false), size)
+    } else {
+        ico(icons::file_icon(model::kind_of(e), &e.name), a.p.text, size)
+    };
+    with_marks(a, e, base, size)
+}
+
+/// The small marks on an item's icon (FilesMarks.qml, Briefcase.qml): its git status (a coloured badge at the bottom
+/// right: M changed, + added, ? not in git yet, ! in conflict, ✓ up to date), its tags (coloured dots at the bottom
+/// left, as Dolphin shows them) and, in a Briefcase, its status (a badge at the top right).
+fn with_marks<'a>(a: &'a App, e: &Entry, base: El<'a>, size: f32) -> El<'a> {
+    let p = a.p;
+    let git = crate::extras::git_of(a, e);
+    let git = if git == "ignored" { "" } else { git };
+    let bcb = if size >= 14.0 { crate::briefcase::badge_for(a, e) } else { None };
+    if git.is_empty() && e.tags.is_empty() && bcb.is_none() {
+        return base;
+    }
+    let mut layers: Vec<El<'a>> = vec![container(base).center_x(Length::Fixed(size)).center_y(Length::Fixed(size)).into()];
+    let bg = p.panel;
+    if !git.is_empty() {
+        let d = (size * 0.3).clamp(9.0, 28.0);
+        let c = crate::extras::git_color(a, git);
+        let (mark, _) = crate::extras::git_mark(git);
+        let dot = container(t1(mark, (d * 0.56).max(7.0), Color::WHITE).font(ui::weight(iced::font::Weight::Bold))).center_x(Length::Fixed(d)).center_y(Length::Fixed(d)).style(ui::boxed(c, d / 2.0, Some((bg, if size >= 20.0 { 2.0 } else { 1.0 }))));
+        layers.push(container(dot).align_right(Length::Fixed(size)).align_bottom(Length::Fixed(size)).into());
+    }
+    if !e.tags.is_empty() {
+        let d = (size * 0.16).clamp(5.0, 14.0);
+        let mut r = Row::new().spacing(1.0);
+        for tg in e.tags.iter().take(3) {
+            r = r.push(container(Space::new().width(Length::Fixed(d)).height(Length::Fixed(d))).style(ui::boxed(crate::extras::tag_color(tg), d / 2.0, Some((bg, 1.0)))));
+        }
+        layers.push(container(r).align_left(Length::Fixed(size)).align_bottom(Length::Fixed(size)).into());
+    }
+    if let Some((c, g)) = bcb {
+        let d = (size * 0.3).max(10.0);
+        let dot = container(t1(g, (d * 0.62).max(7.0), Color::WHITE).font(ui::weight(iced::font::Weight::Bold))).center_x(Length::Fixed(d)).center_y(Length::Fixed(d)).style(ui::boxed(c, d / 2.0, Some((p.bg, 1.0))));
+        layers.push(container(dot).align_right(Length::Fixed(size)).align_top(Length::Fixed(size)).into());
+    }
+    iced::widget::Stack::with_children(layers).width(Length::Fixed(size)).height(Length::Fixed(size)).into()
 }
 
 /// What a row does with the mouse: click picks, double-click opens, right-click asks, middle-click opens in a tab.
@@ -482,8 +628,12 @@ fn d_rows(a: &App) -> Vec<DRow> {
 
 fn details_list(a: &App) -> El<'_> {
     let p = a.p;
-    let cols = [("name", "Name", 0.0), ("date", "Date modified", 160.0), ("type", "Type", 150.0), ("size", "Size", 96.0)];
-    let header = details_header(a, &cols);
+    let in_bc = crate::briefcase::in_briefcase(a);
+    let header = if in_bc {
+        details_header(a, &[("name", "Name", 0.0), ("date", "Date modified", 160.0), ("type", "Type", 150.0), ("size", "Size", 96.0), ("", "Status", 190.0)])
+    } else {
+        details_header(a, &[("name", "Name", 0.0), ("date", "Date modified", 160.0), ("type", "Type", 150.0), ("size", "Size", 96.0)])
+    };
     let rows = d_rows(a);
     let total = rows.len();
     let body = responsive(move |size: Size| {
@@ -502,7 +652,7 @@ fn details_list(a: &App) -> El<'_> {
                 DRow::Item(i) => {
                     let e = &a.entries[*i];
                     let sel = a.marked.contains(&e.path) || (a.marked.is_empty() && *i == a.cur && a.zone == Zone::Main && a.has_focus_sel());
-                    let r = row![
+                    let mut r = row![
                         container(row![entry_icon(a, e, 16.0), name_cell(a, e, 14.0)].spacing(9.0).align_y(iced::Center)).width(Length::Fill),
                         container(t1(model::fmt_date(e.mtime, false), 13.5, p.muted)).width(Length::Fixed(160.0)).clip(true),
                         container(t1(model::kind_name(e), 13.5, p.muted)).width(Length::Fixed(150.0)).padding(pad(0.0, 8.0, 0.0, 0.0)).clip(true),
@@ -510,7 +660,13 @@ fn details_list(a: &App) -> El<'_> {
                     ]
                     .align_y(iced::Center)
                     .padding(pad(0.0, 2.0, 0.0, 12.0));
-                    col = col.push(clickable(row_box(a, r.into(), sel, *i == a.cur, ROW_H), *i));
+                    if in_bc {
+                        // A Briefcase's Status column: each item's status in its colour (Briefcase.qml).
+                        let c = crate::briefcase::badge_for(a, e).map(|b| b.0).unwrap_or(p.muted);
+                        r = r.push(container(row![container(Space::new().width(Length::Fixed(8.0)).height(Length::Fixed(8.0))).style(ui::boxed(c, 4.0, None)), t1(crate::briefcase::status_label(a, e), 13.0, p.text)].spacing(7.0).align_y(iced::Center)).width(Length::Fixed(190.0)).clip(true));
+                    }
+                    let el = clickable(row_box(a, r.into(), sel || drop_lit(a, &e.path), *i == a.cur, ROW_H), *i);
+                    col = col.push(if e.dir { drop_on(a, &e.path, el) } else { el });
                 }
             }
         }
@@ -544,7 +700,8 @@ fn compact_list(a: &App) -> El<'_> {
                 let e = &a.entries[j];
                 let sel = a.marked.contains(&e.path) || (a.marked.is_empty() && j == a.cur && a.has_focus_sel());
                 let r = row![entry_icon(a, e, 16.0), name_cell(a, e, 13.5)].spacing(8.0).align_y(iced::Center).padding(pad(0.0, 6.0, 0.0, 8.0));
-                c = c.push(clickable(row_box(a, r.into(), sel, j == a.cur, ROW_H), j));
+                let el = clickable(row_box(a, r.into(), sel || drop_lit(a, &e.path), j == a.cur, ROW_H), j);
+                c = c.push(if e.dir { drop_on(a, &e.path, el) } else { el });
             }
             cols = cols.push(c);
             i += per;
@@ -620,7 +777,11 @@ fn cell<'a>(a: &'a App, e: &Entry, i: usize, v: View) -> El<'a> {
         View::XLarge | View::Large => {
             let th = ch - 32.0;
             let pic: El = match thumb_of(a, e) {
-                Some(h) => img(h).width(Length::Fill).height(Length::Fixed(th)).content_fit(ContentFit::Cover).border_radius(iced::border::Radius { top_left: rr - 1.0, top_right: rr - 1.0, bottom_left: 0.0, bottom_right: 0.0 }).into(),
+                Some(h) => {
+                    let im: El = img(h).width(Length::Fill).height(Length::Fixed(th)).content_fit(ContentFit::Cover).border_radius(iced::border::Radius { top_left: rr - 1.0, top_right: rr - 1.0, bottom_left: 0.0, bottom_right: 0.0 }).into();
+                    let marks = with_marks(a, e, Space::new().into(), (th * 0.4).min(56.0));
+                    stack![im, container(marks).align_right(Length::Fill).align_bottom(Length::Fixed(th)).padding(6.0)].into()
+                }
                 None => container(entry_icon(a, e, th * 0.55)).center_x(Length::Fill).center_y(Length::Fixed(th)).into(),
             };
             column![pic, container(name_cell(a, e, 14.0)).padding(pad(0.0, 10.0, 0.0, 10.0)).height(Length::Fixed(32.0)).center_y(Length::Fixed(32.0)).clip(true)].into()
@@ -647,8 +808,10 @@ fn cell<'a>(a: &'a App, e: &Entry, i: usize, v: View) -> El<'a> {
                 .into()
         }
     };
-    let bx = container(inner).width(Length::Fixed(cw)).height(Length::Fixed(ch)).center_y(Length::Fixed(ch)).clip(true).style(frame(sel, lit));
-    clickable(bx.into(), i)
+    let over = drop_lit(a, &e.path);
+    let bx = container(inner).width(Length::Fixed(cw)).height(Length::Fixed(ch)).center_y(Length::Fixed(ch)).clip(true).style(frame(sel || over, lit || over));
+    let el = clickable(bx.into(), i);
+    if e.dir { drop_on(a, &e.path, el) } else { el }
 }
 
 // ------------------------------------------------------------------ the Home page (mockup files-3)
@@ -904,6 +1067,12 @@ fn details_pane(a: &App) -> El<'_> {
     }
     let Some(e) = a.current() else {
         col = col.push(t("Pick something to see its details.", 13.0, p.muted));
+        // In a Briefcase: its note, lock, sync and items.
+        let mut grid = Column::new().spacing(6.0);
+        for (k, v) in crate::briefcase::detail_rows(a, None) {
+            grid = grid.push(row![t1(k, 13.5, p.muted), Space::new().width(Length::Fill), t1(ui::fit(&v, 30), 13.5, p.text)].align_y(iced::Center));
+        }
+        col = col.push(grid);
         return container(col).height(Length::Fill).into();
     };
     let th = a.thumbs.get(&e.path);
@@ -937,9 +1106,14 @@ fn details_pane(a: &App) -> El<'_> {
     if !e.tags.is_empty() {
         rows.push(("Tags".into(), e.tags.join(", ")));
     }
+    let gs = crate::extras::git_of(a, e);
+    if !gs.is_empty() {
+        rows.push(("Git".into(), format!("{}{}", crate::extras::git_mark(gs).1, if a.fx.git_branch.is_empty() { String::new() } else { format!(" · {}", a.fx.git_branch) })));
+    }
     if a.versions_of == e.path {
         rows.push(("Previous versions".into(), a.versions.len().to_string()));
     }
+    rows.extend(crate::briefcase::detail_rows(a, Some(e)));
     let mut grid = Column::new().spacing(6.0);
     for (k, v) in rows {
         grid = grid.push(row![t1(k, 13.5, p.muted), Space::new().width(Length::Fill), t1(ui::fit(&v, 30), 13.5, p.text)].align_y(iced::Center));
@@ -973,6 +1147,11 @@ fn status_bar(a: &App) -> El<'_> {
         if a.search.is_some() {
             s = format!("{s} · searching…");
         }
+        if let Some(l) = &a.listing {
+            if !l.writable && l.error.is_empty() && !a.on_special() && !a.on_home() && a.path.starts_with('/') {
+                s = format!("{s}{}", if crate::extras::admin_here(a) { " · as administrator" } else { " · read-only" });
+            }
+        }
         t1(s, 13.0, p.muted)
     };
     // The drive you're on, the Windows way: "C: 96 GB free of 238 GB".
@@ -988,7 +1167,19 @@ fn status_bar(a: &App) -> El<'_> {
         (Some(f), Some(t)) if t > 0 => format!("{letter}: {} free of {}", model::fmt_space(f), model::fmt_space(t)),
         _ => String::new(),
     };
-    container(row![left, Space::new().width(Length::Fill), t1(right, 13.0, p.muted)].align_y(iced::Center))
+    // The branch of a git repository, a Briefcase's lock and sync (FileManager.qml's status bar).
+    let mut extra = Row::new().spacing(14.0).align_y(iced::Center);
+    let gl = crate::extras::git_line(a);
+    if !gl.is_empty() {
+        extra = extra.push(t1(gl, 13.0, p.muted));
+    }
+    if crate::briefcase::in_briefcase(a) {
+        let bl: Vec<String> = [crate::briefcase::lock_line(a), crate::briefcase::sync_line(a)].into_iter().filter(|x| !x.is_empty()).collect();
+        if !bl.is_empty() {
+            extra = extra.push(t1(bl.join(" · "), 13.0, p.muted));
+        }
+    }
+    container(row![left, Space::new().width(Length::Fill), extra, gap(14.0, 1.0), t1(right, 13.0, p.muted)].align_y(iced::Center))
         .padding(pad(0.0, 16.0, 0.0, 16.0))
         .height(Length::Fixed(26.0))
         .center_y(Length::Fixed(26.0))
@@ -1117,7 +1308,9 @@ fn menu<'a>(a: &'a App, m: &'a Menu) -> El<'a> {
         if any_check {
             r = r.push(container(if it.check == Some(true) { ico(Ic::Check, p.accent, 13.0) } else { gap(13.0, 13.0) }).width(Length::Fixed(16.0)));
         }
-        if let Some(ic) = it.icon {
+        if let Some(c) = it.dot {
+            r = r.push(container(Space::new().width(Length::Fixed(10.0)).height(Length::Fixed(10.0))).style(ui::boxed(c, 5.0, None)).center_x(Length::Fixed(16.0)).center_y(Length::Fixed(16.0)));
+        } else if let Some(ic) = it.icon {
             r = r.push(ico(ic, p.text, 16.0));
         } else if !any_check {
             r = r.push(gap(16.0, 16.0));
@@ -1161,7 +1354,7 @@ fn dialog<'a>(a: &'a App, ov: &'a Overlay) -> El<'a> {
         Overlay::Input(i) => {
             let col = column![
                 ts(i.title.clone(), 17.0, p.text),
-                text_input("", &i.text).id(DLG_ID).on_input(Msg::DlgText).on_submit(Msg::DlgOk).size(14.0).padding(9.0).style(input_style(p, true)),
+                text_input("", &i.text).id(DLG_ID).on_input(Msg::DlgText).on_submit(Msg::DlgOk).secure(i.secret).size(14.0).padding(9.0).style(input_style(p, true)),
                 buttons(vec![btn(&p, "Cancel", Kind::Normal, false, Some(Msg::DlgCancel)), btn(&p, i.ok.clone(), Kind::Primary, false, Some(Msg::DlgOk))]),
             ]
             .spacing(14.0);
@@ -1171,10 +1364,14 @@ fn dialog<'a>(a: &'a App, ov: &'a Overlay) -> El<'a> {
             let col = column![
                 ts(c.title.clone(), 17.0, p.text),
                 t(c.text.clone(), 13.5, p.muted),
-                buttons(vec![
-                    btn(&p, "Cancel", Kind::Normal, c.button == 0, Some(Msg::DlgCancel)),
-                    btn(&p, c.ok.clone(), if c.danger { Kind::Danger } else { Kind::Primary }, c.button == 1, Some(Msg::DlgOk)),
-                ]),
+                buttons({
+                    let mut b = vec![btn(&p, "Cancel", Kind::Normal, c.button == 0, Some(Msg::DlgCancel))];
+                    if let Some((label, _)) = &c.alt {
+                        b.push(btn(&p, label.clone(), Kind::Normal, c.button == 2, Some(Msg::DlgAlt)));
+                    }
+                    b.push(btn(&p, c.ok.clone(), if c.danger { Kind::Danger } else { Kind::Primary }, c.button == 1, Some(Msg::DlgOk)));
+                    b
+                }),
             ]
             .spacing(14.0);
             ui::dialog_box(&p, 480.0, col)
@@ -1290,23 +1487,19 @@ fn props_dialog<'a>(a: &'a App, pr: &'a Props) -> El<'a> {
     } else {
         let single = pr.paths.len() == 1;
         let is_file = single && info.get("dir").and_then(Value::as_bool) != Some(true);
-        let mut tabs = vec!["General"];
-        if single && info.get("trashed").and_then(Value::as_bool) != Some(true) && info.get("isLink").and_then(Value::as_bool) != Some(true) {
-            tabs.push("Permissions");
-        }
-        if is_file {
-            tabs.push("Checksums");
-        }
+        let tabs = props_tabs(pr);
         let mut tr = Row::new().spacing(4.0);
+        let sel_tab = if pr.tab == 99 { tabs.iter().position(|t| *t == "Sharing").unwrap_or(0) } else { pr.tab };
         for (i, tname) in tabs.iter().enumerate() {
-            let on = i == pr.tab;
+            let on = i == sel_tab;
             let c = if on { p.text } else { p.muted };
             tr = tr.push(flat(&p, column![t1(tname.to_string(), 14.0, c), container(Space::new().width(Length::Fill).height(Length::Fixed(2.0))).style(ui::boxed(if on { p.accent } else { Color::TRANSPARENT }, 1.0, None)).width(Length::Fill)].spacing(5.0).width(Length::Shrink).into(), Some(Msg::PropsTab(i)), pad(4.0, 10.0, 0.0, 10.0)));
         }
         if tabs.len() > 1 {
             body = body.push(tr);
         }
-        let tab = tabs.get(pr.tab).copied().unwrap_or("General");
+        let tab_i = if pr.tab == 99 { tabs.iter().position(|t| *t == "Sharing").unwrap_or(0) } else { pr.tab };
+        let tab = tabs.get(tab_i).copied().unwrap_or("General");
         let path = pr.paths.first().cloned().unwrap_or_default();
         match tab {
             "Permissions" => {
@@ -1330,6 +1523,33 @@ fn props_dialog<'a>(a: &'a App, pr: &'a Props) -> El<'a> {
                 }
                 if !mine {
                     body = body.push(t("Only its owner can change these.", 13.0, p.muted));
+                }
+            }
+            "Sharing" => {
+                // Share it on your network (Settings › Home server's shared folders, Samba), stop, or let others change files.
+                body = body.push(t("Share this folder with your other devices on your home network (Windows, a Mac, a phone, another Hearth device), through Settings › Home server's shared folders. Shares start read only.", 13.0, p.muted));
+                let sh = &pr.share;
+                if sh.is_null() || sh.get("error").is_some() {
+                    body = body.push(t(if sh.is_null() { "Looking…".to_string() } else { sv(sh, "error") }, 13.0, if sh.is_null() { p.muted } else { p.danger }));
+                } else {
+                    let shared = sh.get("shared").and_then(Value::as_bool).unwrap_or(false);
+                    let s2 = sh.get("share").cloned().unwrap_or(Value::Null);
+                    let write = s2.get("write").and_then(Value::as_bool).unwrap_or(false);
+                    let value = if shared { format!("Yes, as “{}”{}", sv(&s2, "name"), if write { " · others can change files" } else { " · read only" }) } else { "No".to_string() };
+                    let label = if pr.share_busy { "Working…" } else if shared { "Stop sharing" } else { "Share this folder" };
+                    body = body.push(prow(&p, "Shared", row![t1(value, 14.0, p.text), Space::new().width(Length::Fill), btn(&p, label, Kind::Normal, false, Some(Msg::Fx(crate::extras::XMsg::Share(if shared { "off".into() } else { "on".into() }))))].align_y(iced::Center).into()));
+                    if shared {
+                        body = body.push(container(ui::check(&p, write, "Others can change and add files", false, Msg::Fx(crate::extras::XMsg::Share(if write { "write-off".into() } else { "write-on".into() })))).padding(pad(14.0, 14.0, 14.0, 14.0)).width(Length::Fill).style(ui::boxed(p.panel2, p.r(10.0), None)));
+                        let how = s2.get("how").cloned().unwrap_or(Value::Null);
+                        if how.is_object() {
+                            body = body.push(prow(&p, "On Windows", ptext(&p, sv(&how, "windows"))));
+                            body = body.push(prow(&p, "On a Mac or phone", ptext(&p, sv(&how, "mac"))));
+                            if !sv(&how, "away").is_empty() {
+                                body = body.push(prow(&p, "Away (Tailscale)", ptext(&p, sv(&how, "away"))));
+                            }
+                        }
+                    }
+                    body = body.push(t(if sh.get("samba") == Some(&Value::Bool(false)) { "Samba (Windows file sharing) comes with the next Hearth OS update." } else { "Your devices ask for your user name and your sharing password: set it in Settings › Home server › Shared folders. Who else can open it: Settings › Home server › People." }, 13.0, p.muted));
                 }
             }
             "Checksums" => {
@@ -1397,6 +1617,24 @@ fn props_dialog<'a>(a: &'a App, pr: &'a Props) -> El<'a> {
         btn(&p, "OK", Kind::Primary, false, Some(Msg::PropsApply(true))),
     ]));
     container(column![head, hline::<Msg>(p.line), body]).width(Length::Fixed(700.0)).style(ui::boxed(p.panel, p.r(12.0), Some((p.line, 1.0)))).into()
+}
+
+/// Properties' tabs (FileProperties.qml): General, Permissions, Checksums for a file, Sharing for a folder.
+pub fn props_tabs(pr: &Props) -> Vec<&'static str> {
+    let info = &pr.info;
+    let single = pr.paths.len() == 1;
+    let is_file = single && info.get("dir").and_then(Value::as_bool) != Some(true);
+    let mut tabs = vec!["General"];
+    if single && info.get("trashed").and_then(Value::as_bool) != Some(true) && info.get("isLink").and_then(Value::as_bool) != Some(true) {
+        tabs.push("Permissions");
+    }
+    if is_file {
+        tabs.push("Checksums");
+    }
+    if single && !is_file && info.get("trashed").and_then(Value::as_bool) != Some(true) && info.get("isLink").and_then(Value::as_bool) != Some(true) && pr.paths[0].starts_with('/') && pr.loaded {
+        tabs.push("Sharing");
+    }
+    tabs
 }
 
 fn copy_btn<'a>(p: &Pal, path: String, msg: Msg) -> El<'a> {
