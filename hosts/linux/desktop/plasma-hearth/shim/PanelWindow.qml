@@ -11,4 +11,6 @@ Item {
     property int exclusiveZone: 0
     property var mask: null
     property bool focusable: false
+    // The window's own colour (the menus' darkened desktop behind them), drawn under everything in it.
+    Rectangle { anchors.fill: parent; z: -1000; color: pw.color; visible: pw.color.a > 0 }
 }

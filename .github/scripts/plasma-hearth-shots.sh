@@ -21,7 +21,16 @@ export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE XDG_SESSION_TYPE=wayland 
 export QT_FORCE_STDERR_LOGGING=1 KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 LIBGL_ALWAYS_SOFTWARE=1 HEARTH_PLASMA_PANEL_CI=1
 [ -e /etc/xdg/menus/applications.menu ] || export XDG_MENU_PREFIX=$(basename "$(ls /etc/xdg/menus/*-applications.menu 2>/dev/null | head -1)" applications.menu)
 D="$HOME/.local/share/nimbus/desktop.json"
-printf '{"pins": [], "recent": ["org.kde.dolphin", "org.kde.konsole", "org.kde.kate"]}\n' > "$HOME/.config/nimbus/desk.json"
+printf '{"pins": ["hearth-maps", "hearth-paint", "org.kde.konsole"], "recent": ["org.kde.dolphin", "org.kde.konsole", "org.kde.kate"]}\n' > "$HOME/.config/nimbus/desk.json"
+# Games, as Mantel's pictures have (hearth-games' copy from last time).
+mkdir -p "$HOME/.cache/hearth"
+printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""},{"id":"beacon:bfme2","title":"The Battle for Middle-earth II","source":"beacon","cover":"","wide":"","icon":""}]' > "$HOME/.cache/hearth/desktop-games.json"
+# Apps of your own (as Mantel's pictures have): yours come first in the menus, the system's in one folder.
+mkdir -p "$HOME/.local/share/applications"
+for a in "hearth-maps:Hearth Maps:applications-education-miscellaneous" "hearth-paint:Hearth Paint:applications-graphics" "aa-notes:Aa Notes:accessories-text-editor" "aa-music:Aa Music:multimedia-player"; do
+  IFS=: read -r id name icon <<<"$a"
+  printf '[Desktop Entry]\nType=Application\nName=%s\nIcon=%s\nExec=true\n' "$name" "$icon" > "$HOME/.local/share/applications/$id.desktop"
+done
 # Four desktops, as Mantel's pictures have.
 mkdir -p "$HOME/.config"; printf '[Desktops]\nNumber=4\nRows=1\n' > "$HOME/.config/kwinrc"
 
@@ -53,7 +62,8 @@ except Exception: d = {}
 d.update(look=look, mode=mode, accent="", subTheme="", wallMatch=True)
 for kv in sys.argv[4:]:
     k, v = kv.split("=", 1)
-    d[k] = json.loads(v) if v[:1] in '"[{tf0123456789' else v
+    try: d[k] = json.loads(v)
+    except ValueError: d[k] = v
 open(p, "w").write(json.dumps(d, indent=2) + "\n")
 PY
   hearth-plasma-panel sync >>"$OUT/sync.log" 2>&1
@@ -88,7 +98,14 @@ echo "::notice title=Panels::$(js 'print(panels().map(function(p){return p.locat
 # A window and a notification, as Mantel's pictures have.
 dolphin "$HOME/Documents" >"$OUT/dolphin.log" 2>&1 &
 sleep 6
-(timeout 15 notify-send -a "Hearth" "Download finished" "Celeste is ready to play" || true) &
+cat > /tmp/notify.py <<'PY'
+import dbus, sys
+n = dbus.Interface(dbus.SessionBus().get_object('org.freedesktop.Notifications', '/org/freedesktop/Notifications'), 'org.freedesktop.Notifications')
+print(n.Notify(sys.argv[1], 0, sys.argv[4] if len(sys.argv) > 4 else '', sys.argv[2], sys.argv[3], [], {'urgency': dbus.Byte(int(sys.argv[5]) if len(sys.argv) > 5 else 1)}, 30000))
+PY
+note() { timeout 10 python3 /tmp/notify.py "$@" >>"$OUT/notify.log" 2>&1 || echo "notify failed: $*" >>"$OUT/notify.log"; }
+note "Friends" "Mira" "Ready for co-op tonight?"; sleep 1
+note "Hearth" "Download finished" "Celeste is ready to play" "" 2
 sleep 2
 shot ph-01-hearth-dark-desktop
 

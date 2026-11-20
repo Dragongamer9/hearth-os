@@ -15,12 +15,11 @@ Item {
     property bool persistenceSupported: true
     property bool inlineReplySupported: false
     signal notification(var n)
-    property bool serving: false
     property var live: ({})
-    Component.onCompleted: {
-        try { srv.serving = NM.Server.init() === true || NM.Server.valid === true; } catch (e) { console.warn("plasma-hearth: Plasma's notification service: " + e); }
-        console.info("plasma-hearth: notifications " + (srv.serving ? "are Hearth's" : "stay with KDE's notifications widget"));
-    }
+    // plasmashell owns the notification service itself (it registers it at start); Hearth draws what comes in.
+    readonly property bool serving: NM.Server.valid === true
+    onServingChanged: console.info("plasma-hearth: Plasma's notification service " + (serving ? "is up: Hearth shows the notifications" : "isn't up"))
+    Component.onCompleted: console.info("plasma-hearth: notifications: service " + (serving ? "up" : "not up yet"))
     NM.Notifications {
         id: model
         showNotifications: true
