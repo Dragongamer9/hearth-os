@@ -19,10 +19,10 @@ SetPage {
     Component.onCompleted: load()
     SetJob { id: job; helper: "hearth-autostart" }
     readonly property var apps: {
-        void DesktopEntries.applications.values.length;
+        void AppEntries.rev;
         const have = (items || []).map(i => i.file);
         const q = find.trim().toLowerCase();
-        return Array.from(DesktopEntries.applications.values).filter(e => e && !e.noDisplay && e.id && have.indexOf(e.id + ".desktop") < 0 && have.indexOf(e.id) < 0
+        return AppEntries.values.filter(e => e && !e.noDisplay && e.id && have.indexOf(e.id + ".desktop") < 0 && have.indexOf(e.id) < 0
             && (q === "" || (e.name || "").toLowerCase().indexOf(q) >= 0)).sort((a, b) => (a.name || "").localeCompare(b.name || "")).slice(0, q === "" ? 8 : 20);
     }
 

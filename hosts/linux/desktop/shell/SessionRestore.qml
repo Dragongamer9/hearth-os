@@ -20,7 +20,7 @@ Scope {
     // The .desktop ids of the apps open now (Hearth's own windows and games left out).
     readonly property var openIds: {
         const out = [];
-        void DesktopEntries.applications.values.length;
+        void AppEntries.rev;
         for (const t of (wins || [])) {
             const a = t.appId || "";
             if (!a || /quickshell/i.test(a) || skip.test(a)) continue;

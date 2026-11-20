@@ -14,7 +14,7 @@ on:
         type: string
         default: '600'
   push:
-    branches: [feature/labwc-fedora]
+    branches: [feature/labwc-fedora, feature/labwc-rest-fix]
     # (a new workflow can't be started by hand until it's on main: pushes to this branch start it)
     paths: ['.github/workflows/labwc-fedora.yml', '.github/scripts/labwc-fedora-rest.sh', 'hosts/linux/desktop/**',
             'hosts/linux/session/**', 'os-bases/anatase/quickshell-build.sh', 'os-bases/anatase/labwc-install.sh',
@@ -82,7 +82,7 @@ jobs:
       - name: Install (as the image does)
         run: |
           tar -C / -xzf /tmp/qsa/quickshell.tgz
-          dnf5 -y install python3 python3-pillow procps-ng strace perf dbus-daemon dbus-tools findutils >/dev/null
+          dnf5 -y install python3 python3-pillow procps-ng strace perf inotify-tools fatrace dbus-daemon dbus-tools findutils >/dev/null
           bash os-bases/anatase/labwc-install.sh 2>&1 | grep -E '::|^Error' || true
           bash os-bases/anatase/labwc-install.sh --check
           mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
@@ -106,7 +106,7 @@ jobs:
           secs="${{ inputs.rest_secs }}"; secs=${secs:-600}
           # (As root in this container, as desktop-test.yml runs Mantel; strace needs it to watch the shell.)
           k="${{ matrix.kind }}${{ matrix.like && '-like-image' || '' }}"
-          PERF_REST=${{ matrix.like && '1' || '0' }} PERF="$PWD/tools/perf-measure.py" timeout 2400 bash .github/scripts/labwc-fedora-rest.sh ${{ matrix.kind }} /tmp/out/$k $secs; rc=$?
+          PERF_REST=1 PERF="$PWD/tools/perf-measure.py" timeout 2400 bash .github/scripts/labwc-fedora-rest.sh ${{ matrix.kind }} /tmp/out/$k $secs; rc=$?
           cp /tmp/missing.txt /tmp/out/$k/missing-packages.txt
           { echo "### $k on labwc"; echo; cat /tmp/out/$k/rest.md; } >> "$GITHUB_STEP_SUMMARY"
           exit $rc

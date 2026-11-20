@@ -205,3 +205,26 @@ class GlobalMenu(unittest.TestCase):
         t = (SHELL / 'hearth-globalmenu').read_text()
         self.assertNotIn('.config', t)
         self.assertIn('XDG_RUNTIME_DIR', t)
+
+
+class AppListAtRest(unittest.TestCase):
+    """1.16 (the integration image check, Nov 20): the app folders changing at rest rebuilt every app list once per
+    entry Quickshell moved. Only AppEntries.qml reads DesktopEntries.applications; it settles first and hands on a new
+    list only when the apps changed."""
+
+    def test_only_app_entries_reads_the_live_list(self):
+        users = [p.name for p in SHELL.glob('*.qml') if 'DesktopEntries.applications' in p.read_text() and p.name != 'AppEntries.qml']
+        self.assertEqual(users, [])
+
+    def test_it_settles_and_compares(self):
+        t = (SHELL / 'AppEntries.qml').read_text()
+        self.assertIn('pragma Singleton', t)
+        self.assertIn('settle.restart()', t)
+        self.assertIn('interval: 1500', t)
+        self.assertIn('.sort().join', t)          # the same apps in another order are no change
+        self.assertIn('had.has(e)', t)            # the same entries are kept
+
+    def test_the_rest_check_changes_an_entry(self):
+        t = (ROOT / '.github/scripts/labwc-fedora-rest.sh').read_text()
+        self.assertIn('hearth-rest-check.desktop', t)
+        self.assertIn('inotifywait', t)

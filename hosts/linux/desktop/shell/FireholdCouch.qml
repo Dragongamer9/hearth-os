@@ -573,7 +573,7 @@ PanelWindow {
     // (1.16, the rest fixes: a new list only when the apps themselves changed, not each time the app folders are
     // looked at again, so the tiles and their icons aren't all made again for nothing.)
     readonly property var appFresh: {
-        const all = DesktopEntries.applications ? DesktopEntries.applications.values : [];
+        const all = AppEntries.values;
         return all.filter(e => !e.noDisplay && e.name)
                   .slice().sort((a, b) => a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1);
     }

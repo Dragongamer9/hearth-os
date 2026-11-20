@@ -178,6 +178,25 @@ stale = sorted(d for d in dirs if os.path.getmtime(d) > newest)
 print('%d cache files, %d font folders, %d newer than the caches%s' % (len(caches), len(dirs), len(stale), (': ' + ', '.join(stale[:6])) if stale else ''))
 PY
 )"
+# Who touches the app folders and the desktop folder at rest (the integration image check of Nov 20: the shell's app
+# list was made again at rest twice, 1.7 s each): every change there with its time (inotifywait), and which program
+# wrote (fatrace, when it can run). app-folder-changes.txt, app-folder-writers.txt.
+WATCH_DIRS=""
+for d in "${XDG_DATA_HOME:-$HOME/.local/share}" $(echo "${XDG_DATA_DIRS:-/usr/local/share:/usr/share}" | tr ':' ' '); do
+  [ -d "$d/applications" ] && WATCH_DIRS="$WATCH_DIRS $d/applications"
+done
+[ -d "$HOME/.local/share" ] && WATCH_DIRS="$WATCH_DIRS $HOME/.local/share"
+[ -d "$HOME/Desktop" ] && WATCH_DIRS="$WATCH_DIRS $HOME/Desktop"
+IW=""; FT=""
+if command -v inotifywait >/dev/null 2>&1 && [ -n "$WATCH_DIRS" ]; then
+  # shellcheck disable=SC2086
+  inotifywait -m -r -q -e create,modify,close_write,moved_to,moved_from,delete,attrib --timefmt %s --format '%T %e %w%f' \
+    $WATCH_DIRS >"$OUT/app-folder-changes.txt" 2>/dev/null & IW=$!
+fi
+if command -v fatrace >/dev/null 2>&1; then
+  fatrace -t -f CWDO 2>/dev/null | grep --line-buffered -E '/applications/|/Desktop/|\.desktop$|/flatpak/exports' >"$OUT/app-folder-writers.txt" & FT=$!
+fi
+T_REST0=$(date +%s)
 allticks >"$OUT/procs-start.txt"; n0=$(wc -l <"$OUT/procs-start.txt")
 s0=$(ticks "$qs"); c0=$(ticks "$LPID"); m0=$(rss "$qs"); f0=$(frames)
 # Every 5 s through the rest: the shell's threads, its children and every busy process, and how far the shell's log
@@ -247,6 +266,13 @@ for i in $(seq $((SECS / 60))); do
   echo "minute $i: shell $d, memory $(rss "$qs") MB, frames $(( $(frames) - f0 ))" >>"$OUT/rest-minutes.txt"
 done
 wait "$TRACE" 2>/dev/null
+[ -n "$IW" ] && kill "$IW" 2>/dev/null; [ -n "$FT" ] && { kill "$FT" 2>/dev/null; pkill -x fatrace 2>/dev/null; }
+if [ -s "$OUT/app-folder-changes.txt" ]; then
+  note "the app and desktop folders changed at rest: $(wc -l <"$OUT/app-folder-changes.txt") times, first at $(( $(head -1 "$OUT/app-folder-changes.txt" | cut -d' ' -f1) - T_REST0 )) s: $(cut -d' ' -f2- "$OUT/app-folder-changes.txt" | sort | uniq -c | sort -rn | head -5 | tr -s ' ' | cut -c1-120 | tr '\n' '|')"
+  [ -s "$OUT/app-folder-writers.txt" ] && note "written by: $(awk '{print $2}' "$OUT/app-folder-writers.txt" | sort | uniq -c | sort -rn | head -5 | tr -s ' ' | tr '\n' '|')"
+else
+  note "the app and desktop folders didn't change at rest${IW:+}$( [ -z "$IW" ] && echo ' (not watched: no inotifywait)')"
+fi
 if [ -n "$RPERF" ]; then
   wait "$RPERF" 2>/dev/null
   perf report -i /tmp/perf-rest-$KIND.data --stdio --no-children --percent-limit 1 --sort dso,sym 2>/dev/null | grep -v '^$' | head -200 >"$OUT/perf-rest.txt" || true
@@ -304,6 +330,20 @@ ev=$(( ($(ticks "$qs") - t0x) * 100 / HZ ))
 note "a notification and a window coming and going at rest: the shell used $(printf "%d.%02d s" $((ev / 100)) $((ev % 100))) of the processor ($(rss "$qs") MB, was ${mx0} MB)"
 [ "$ev" -le 100 ] || err "a notification and a window coming and going at rest cost the shell $(printf "%d.%02d s" $((ev / 100)) $((ev % 100))) of the processor (limit 1 s): something is made again for nothing"
 for t in notify quick; do WAIT=0 ipc "$t" close; done
+
+# ---- An app's menu entry coming, being written again unchanged, changing and going (as an app store, a game's
+# launcher or Hearth's own entries do): the shell makes its app lists again once for each real change, after the
+# folder has settled, never for a file written again the same. Over 40 s: at most 1 s of the processor, memory back.
+APPS_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/applications"; mkdir -p "$APPS_HOME"
+t0d=$(ticks "$qs"); md0=$(rss "$qs")
+printf '[Desktop Entry]\nType=Application\nName=Rest Check App\nExec=true\nIcon=applications-games\n' >"$APPS_HOME/hearth-rest-check.desktop"; sleep 8
+for i in 1 2 3 4 5; do cp "$APPS_HOME/hearth-rest-check.desktop" "$APPS_HOME/.rc.tmp" && mv "$APPS_HOME/.rc.tmp" "$APPS_HOME/hearth-rest-check.desktop"; sleep 1; done; sleep 6
+sed -i 's/^Name=.*/Name=Rest Check App 2/' "$APPS_HOME/hearth-rest-check.desktop"; sleep 8
+rm -f "$APPS_HOME/hearth-rest-check.desktop"; sleep 10
+evd=$(( ($(ticks "$qs") - t0d) * 100 / HZ )); md1=$(rss "$qs")
+note "an app's menu entry added, written again 5 times unchanged, renamed and removed: the shell used $(printf "%d.%02d s" $((evd / 100)) $((evd % 100))) of the processor (memory ${md0} → ${md1} MB)"
+[ "$evd" -le 100 ] || err "an app's menu entry coming, written again, changing and going cost the shell $(printf "%d.%02d s" $((evd / 100)) $((evd % 100))) of the processor (limit 1 s): the app lists are made again for nothing"
+[ $((md1 - md0)) -le 10 ] || err "an app's menu entry coming and going left the shell ${md0} → ${md1} MB: something made for the app list isn't let go"
 
 # ---- Hearth Files: cold (first time) and warm, from the command to the first change on screen (grim, unscaled ppm)
 if [ "$KIND" = classic ]; then
