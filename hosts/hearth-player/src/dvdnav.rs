@@ -385,7 +385,7 @@ pub fn menu_args(input: &str, palette: &[String], spu: u32) -> Vec<String> {
     if palette.len() == 16 { a.extend(["-palette".into(), palette.join(",")]); }
     a.extend(["-canvas_size", "720x576"].map(String::from));
     a.extend(["-f".into(), "mpeg".into(), "-i".into(), input.to_string()]);
-    a.extend(["-filter_complex".into(), format!("[0:v:0]scale=720:ih[b];[b][0:i:{spu:#x}]overlay=eof_action=repeat:repeatlast=1,mpdecimate,select='not(mod(n,3))',scale='trunc(ih*dar/2)*2':ih,setsar=1[v]"), "-map".into(), "[v]".into()]);
+    a.extend(["-filter_complex".into(), format!("[0:v:0]scale=720:ih[b];[b][0:i:{spu:#x}]overlay=eof_action=repeat:repeatlast=1,select='not(mod(n,3))',scale='trunc(ih*dar/2)*2':ih,setsar=1[v]"), "-map".into(), "[v]".into()]);
     a.extend(["-an", "-sn", "-fps_mode", "passthrough", "-c:v", "mjpeg", "-q:v", "5", "-f", "mpjpeg", "-flush_packets", "1", "pipe:1"].map(String::from));
     a
 }
@@ -435,7 +435,6 @@ mod tests {
         assert!(a.contains("-re "), "{a}");
         assert!(a.contains("[b][0:i:0x20]overlay"), "{a}");
         assert!(a.contains("-c:v mjpeg") && a.ends_with("-f mpjpeg -flush_packets 1 pipe:1"), "{a}");
-        assert!(a.contains("mpdecimate"), "a still picture is encoded once, not again and again: {a}");
         let s = menu_audio_args("http://x/m", &["libopus".to_string()]).join(" ");
         assert!(s.contains("-re ") && s.contains("-map 0:a:0 -vn") && s.contains("-c:a libopus") && s.ends_with("-f ogg -flush_packets 1 pipe:1"), "{s}");
     }

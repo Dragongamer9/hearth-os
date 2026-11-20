@@ -19,7 +19,7 @@ The owner, Nov 20, 2026: "add the ability to watch movies from a CD or DVD drive
   one, the mouse points and clicks; the picked button has Hearth's ember ring. A button that plays the film hands it
   to the player (seeking, sound, subtitles, Carry on); when the film ends the menu comes back. B or Back goes to the
   titles list; the remote's Menu key brings the menu back while a film plays. The menu's picture comes as JPEG frames
-  (so a press answers at once; a still picture is encoded once, not again and again), and its own music and button
+  (so a press answers at once; a still menu's picture is one frame, decoded once), and its own music and button
   sounds play as they do on a DVD player (Opus, from a second ffmpeg that keeps only the sound), at the player's
   volume. The sound stops the moment a title starts or the menu closes. Where the menu can't run (no libdvdnav, a locked disc,
   a disc without menus), the titles list stands in.
@@ -84,7 +84,7 @@ disc). On the Debian edition the button isn't offered ("isn't offered on this ed
   (a thread asleep in `recv`: nothing is checked over and over; CI measures the CPU at rest on a disc screen).
 - `src/dvdnav.rs`: the disc's own menu: libdvdnav (`dlopen`), the buttons from each navigation pack's PCI, the moves and
   presses, still menus waiting on a condition variable (nothing runs meanwhile), and ffmpeg's JPEG frames (`-re`, the
-  menu's subpicture drawn in, repeated frames dropped). The menu's sound: the same sectors go to a second ffmpeg (sound
+  menu's subpicture drawn in). The menu's sound: the same sectors go to a second ffmpeg (sound
   only, Opus in Ogg, the page's <audio>), from where the menu's picture started; it ends when the menu stops or a title
   starts. A button that goes to a title ends the menu stream and tells the page which.
 - `os/system_files/usr/libexec/nimbus/hearth-disc-notify` (+ `hearth-disc-notify.service`): the notice. In Steam Game
