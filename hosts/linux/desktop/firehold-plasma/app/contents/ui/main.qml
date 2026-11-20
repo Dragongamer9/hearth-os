@@ -62,17 +62,35 @@ PlasmoidItem {
     property var screens: []
     function readScreens() { helper(["modes"], function (t) { try { root.screens = JSON.parse(t.trim().split("\n").pop()).screens || []; } catch (e) {} }); }
     function modeName(m) { return m === "couch" ? "Couch" : m === "away" ? "Away" : "Desk"; }
-    readonly property var appItems: [[(appName || "This app").toUpperCase() + " · STANDARD FOR EVERY APP", "", "", "head"],
-        ["About " + (appName || "this app"), "", "about"], ["Settings for this app", "", "settings"], ["Open its folder", "", "folder"],
-        ["Send logs", "", "logs"], ["Quit", "Ctrl+Q", "close"]]
-    readonly property var windowItems: [[(appName || "This app").toUpperCase() + " HAS NO MENUS OF ITS OWN · THESE ARE HEARTH'S", "", "", "head"],
-        ["Full screen", "F11", "fullscreen"]].concat(screens.map(function (s) {
-            return ["Move to screen › " + (s.label || s.name) + " · " + root.modeName(s.mode), "Super+Shift+← →", "move:" + s.name];
-        })).concat([["Keep above others", "", "above"], ["Snap left", "Super+←", "snap-left"], ["Snap right", "Super+→", "snap-right"],
+    // The screen the app in front is on (Plasma's task model has its screen's place).
+    readonly property var frontGeo: active && active.valid ? tasks.data(active, TaskManager.AbstractTasksModel.ScreenGeometry) : null
+    readonly property string frontScreen: {
+        if (!frontGeo) return "";
+        for (const s of Qt.application.screens) if (s.virtualX === frontGeo.x && s.virtualY === frontGeo.y) return s.name;
+        return "";
+    }
+    readonly property string nameUp: (appName || "This app").toUpperCase()
+    // [label, shortcut, action, kind, what it does] (StdMenu.qml)
+    readonly property var appItems: [["THE \u201C" + nameUp + "\u201D MENU · STANDARD FOR EVERY APP", "", "", "head"],
+        ["About " + (appName || "this app"), "", "about", "", "From its desktop entry"],
+        ["Settings for this app", "", "settings", "", "Proton version, controller layout, which screen it opens on"],
+        ["Open its folder", "", "folder", "", "Where it's installed"],
+        ["Send logs", "", "logs", "", "When it misbehaves"], ["Quit", "Ctrl+Q", "close"]]
+    readonly property var windowItems: [[nameUp + " HAS NO MENUS OF ITS OWN · THESE ARE HEARTH'S", "", "", "head"],
+        ["Full screen", "F11", "fullscreen"], ["Move to screen ›", "Super+Shift+← →", "", "sub"],
+        ["Keep above others", "", "above"], ["Snap left · right", "Super+← →", "snap-left|snap-right", "pair"],
         ["Maximize", "Super+↑", "maximize"], ["Minimize", "Super+↓", "minimize"], ["", "", "", "sep"],
         ["Take a screenshot of it", "Alt+Print", "screenshot"], ["Record it", "Super+Alt+R", "record"], ["", "", "", "sep"],
-        ["Close", "Alt+F4", "close"], ["Force quit (not answering)", "", "kill", "red"]])
-    readonly property var helpItems: [["Search every command", "Alt+Space", "search"], ["Keyboard shortcuts", "", "shortcuts"]]
+        ["Close", "Alt+F4", "close"], ["Force quit (not answering)", "", "kill", "red"]]
+    // Move to screen ›: each screen with its mode; where the app would go full screen (a Couch screen), where it is.
+    readonly property var moveItems: screens.map(function (s) {
+        const here = s.name === root.frontScreen;
+        return [(s.label || s.name) + " · " + root.modeName(s.mode) + (here ? " ✓" : ""),
+                here ? "here now" : s.mode === "couch" ? "goes full screen" : s.mode === "away" ? "waits there" : "in a window", "move:" + s.name,
+                "", "", s.tv ? "video-television" : "video-display"];
+    })
+    readonly property var helpItems: [["HELP", "", "", "head"], ["Search every command", "Alt+Space", "search"],
+        ["Keyboard shortcuts", "", "shortcuts", "", "Hearth's and KDE's in one list"]]
     function act(a) {
         if (a === "kill" || a === "folder") helper(["do", "window", a + ":" + root.pid]);
         else if (a === "logs") helper(["do", "window", "logs:" + root.appName]);
@@ -84,7 +102,9 @@ PlasmoidItem {
         active: root.open !== ""
         source: "StdMenu.qml"
         onLoaded: {
-            item.items = Qt.binding(function () { return root.open === "app" ? root.appItems : root.open === "window" ? root.windowItems : root.helpItems; });
+            item.items = Qt.binding(function () { return root.open === "app" ? root.appItems : root.open === "window" || root.open === "move" ? root.windowItems : root.helpItems; });
+            item.subItems = Qt.binding(function () { return root.moveItems; });
+            item.subOpen = Qt.binding(function () { return root.open === "move"; });
             item.anchorItem = root.menuAnchor;
             item.picked.connect(root.act);
             item.visibleChanged.connect(function () { if (!item.visible) root.open = ""; });
@@ -101,8 +121,9 @@ PlasmoidItem {
         if (w === "menu-off") open = "";
         else if (w.indexOf("menu-") === 0 && menuRow) {
             const which = w.slice(5);
-            for (let i = 0; i < menuRow.children.length; i++) if (menuRow.children[i].modelData && menuRow.children[i].modelData[0] === which) menuAnchor = menuRow.children[i];
-            if (which === "window") readScreens();
+            const btn = which === "move" ? "window" : which;
+            for (let i = 0; i < menuRow.children.length; i++) if (menuRow.children[i].modelData && menuRow.children[i].modelData[0] === btn) menuAnchor = menuRow.children[i];
+            if (btn === "window") readScreens();
             open = which;
         }
     }
@@ -138,7 +159,7 @@ PlasmoidItem {
                     required property var modelData
                     anchors.verticalCenter: parent.verticalCenter
                     width: mt.implicitWidth + 24; height: 30; radius: 8
-                    color: root.open === modelData[0] ? "#2eff7a2f" : "transparent"
+                    color: root.open === modelData[0] || (root.open === "move" && modelData[0] === "window") ? "#2eff7a2f" : "transparent"
                     Text { id: mt; anchors.centerIn: parent; text: modelData[1]; color: Kirigami.Theme.textColor; font.pixelSize: 15 }
                     MouseArea { anchors.fill: parent; onClicked: { if (modelData[0] === "window") root.readScreens(); root.menuAnchor = mb; root.open = modelData[0]; } }
                 }

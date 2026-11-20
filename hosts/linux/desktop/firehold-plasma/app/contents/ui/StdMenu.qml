@@ -1,11 +1,17 @@
 // One of the Desk bar's standard menus (mockup firehold-plasma 12): the app's own name menu, Window, Help, for an app
 // with no menus of its own. Plasma's popup under its button, the mockup's dark menu; a click does it and closes it.
+// Window's "Move to screen ›" opens its list of screens beside it (each with its mode), in the same popup.
 import QtQuick
+import QtQuick.Layouts
 import org.kde.plasma.core as PlasmaCore
+import org.kde.kirigami as Kirigami
 
 PlasmaCore.Dialog {
     id: m
-    property var items: []          // [label, shortcut, action, head|red|sep]
+    // [label, shortcut or note on the right, action, kind (head | red | sep | sub | pair), what it does, icon]
+    property var items: []
+    property var subItems: []           // the screens for "Move to screen ›"
+    property bool subOpen: false
     property Item anchorItem: null
     signal picked(string action)
     visualParent: anchorItem
@@ -14,49 +20,100 @@ PlasmaCore.Dialog {
     backgroundHints: PlasmaCore.Dialog.NoBackground
     hideOnWindowDeactivate: true
     flags: Qt.WindowStaysOnTopHint
-    mainItem: card
-    Rectangle {
-        id: card
-        width: 520; height: col.implicitHeight + 16
-        radius: 14; color: "#221e1c"; border.width: 1; border.color: "#1affffff"
-        Column {
-            id: col
-            x: 8; y: 8; width: parent.width - 16
-            Repeater {
-                model: m.items
-                delegate: Item {
-                    required property var modelData
-                    width: col.width
-                    height: modelData[3] === "sep" ? 13 : modelData[3] === "head" ? 30 : 38
-                    Rectangle { visible: modelData[3] === "sep"; anchors.centerIn: parent; width: parent.width - 16; height: 1; color: "#14ffffff" }
-                    Rectangle {
-                        visible: modelData[3] !== "sep" && modelData[3] !== "head"
-                        anchors.fill: parent; radius: 8
-                        color: ma.containsMouse ? "#ff7a2f" : "transparent"
-                    }
-                    Text {
-                        visible: modelData[3] !== "sep"
-                        x: 14; anchors.verticalCenter: parent.verticalCenter
-                        text: modelData[0]
-                        color: modelData[3] === "head" ? "#6f6a66" : ma.containsMouse ? "#1d0d03" : modelData[3] === "red" ? "#ff9b9b" : "#f2ede8"
-                        font.pixelSize: modelData[3] === "head" ? 12 : 16; font.weight: modelData[3] === "head" ? Font.Bold : Font.Normal
-                        font.letterSpacing: modelData[3] === "head" ? 1 : 0
-                    }
-                    Text {
-                        visible: modelData[3] !== "sep" && modelData[3] !== "head"
-                        anchors.right: parent.right; anchors.rightMargin: 14; anchors.verticalCenter: parent.verticalCenter
-                        text: modelData[1] || ""
-                        color: ma.containsMouse ? "#5a2a0c" : "#6f6a66"; font.pixelSize: 14
-                    }
-                    MouseArea {
-                        id: ma
-                        anchors.fill: parent
-                        enabled: modelData[3] !== "sep" && modelData[3] !== "head"
-                        hoverEnabled: true
-                        onClicked: { m.picked(modelData[2]); m.visible = false; }
-                    }
+    mainItem: box
+    // The submenu's top: level with "Move to screen ›".
+    readonly property real subY: {
+        let y = 8;
+        for (const it of items) {
+            if (it[3] === "sub") return y - 8;
+            y += it[3] === "sep" ? 13 : it[3] === "head" ? 30 : 38;
+        }
+        return 0;
+    }
+    Item {
+        id: box
+        width: card.width + (m.subOpen ? sub.width + 10 : 0)
+        height: Math.max(card.height, m.subOpen ? m.subY + sub.height : 0)
+        Layout.minimumWidth: width; Layout.preferredWidth: width; Layout.maximumWidth: width
+        Layout.minimumHeight: height; Layout.preferredHeight: height; Layout.maximumHeight: height
+        Rectangle {
+            id: card
+            width: 520; height: col.implicitHeight + 16
+            radius: 14; color: "#221e1c"; border.width: 1; border.color: "#1affffff"
+            Column {
+                id: col
+                x: 8; y: 8; width: parent.width - 16
+                Repeater { model: m.items; delegate: row }
+            }
+        }
+        Rectangle {
+            id: sub
+            visible: m.subOpen
+            x: card.width + 10; y: m.subY
+            width: 430; height: subCol.implicitHeight + 16
+            radius: 14; color: "#221e1c"; border.width: 1; border.color: "#1affffff"
+            Column {
+                id: subCol
+                x: 8; y: 8; width: parent.width - 16
+                Repeater { model: m.subItems; delegate: row }
+            }
+        }
+    }
+    Component {
+        id: row
+        Item {
+            id: r
+            required property var modelData
+            readonly property string kind: modelData[3] || ""
+            readonly property bool hot: ma.containsMouse || (kind === "sub" && m.subOpen)
+            width: parent ? parent.width : 0
+            height: kind === "sep" ? 13 : kind === "head" ? 30 : 38
+            Rectangle { visible: r.kind === "sep"; anchors.centerIn: parent; width: parent.width - 16; height: 1; color: "#14ffffff" }
+            Rectangle {
+                visible: r.kind !== "sep" && r.kind !== "head"
+                anchors.fill: parent; radius: 8
+                color: r.hot ? "#ff7a2f" : "transparent"
+            }
+            Kirigami.Icon {
+                id: ic
+                visible: !!r.modelData[5]
+                x: 14; anchors.verticalCenter: parent.verticalCenter
+                width: visible ? 18 : 0; height: 18
+                source: r.modelData[5] || ""
+                color: r.hot ? "#1d0d03" : "#f2ede8"; isMask: true
+            }
+            Text {
+                visible: r.kind !== "sep"
+                x: 14 + (ic.visible ? 26 : 0); anchors.verticalCenter: parent.verticalCenter
+                width: parent.width - 28 - (ic.visible ? 26 : 0) - right.implicitWidth - 12; elide: Text.ElideRight
+                textFormat: Text.StyledText
+                text: r.modelData[0] + (r.modelData[4] ? "<font color=\"" + (r.hot ? "#5a2a0c" : "#8f8781") + "\"> · " + r.modelData[4] + "</font>" : "")
+                color: r.kind === "head" ? "#6f6a66" : r.hot ? "#1d0d03" : r.kind === "red" ? "#ff9b9b" : "#f2ede8"
+                font.pixelSize: r.kind === "head" ? 12 : 16; font.weight: r.kind === "head" ? Font.Bold : Font.Normal
+                font.letterSpacing: r.kind === "head" ? 1 : 0
+            }
+            Text {
+                id: right
+                visible: r.kind !== "sep" && r.kind !== "head"
+                anchors.right: parent.right; anchors.rightMargin: 14; anchors.verticalCenter: parent.verticalCenter
+                text: r.modelData[1] || ""
+                color: r.hot ? "#5a2a0c" : "#6f6a66"; font.pixelSize: 14
+            }
+            MouseArea {
+                id: ma
+                anchors.fill: parent
+                enabled: r.kind !== "sep" && r.kind !== "head"
+                hoverEnabled: true
+                onEntered: if (r.kind === "sub") m.openSub(r)
+                onClicked: function (mouse) {
+                    if (r.kind === "sub") { m.openSub(r); return; }
+                    // "Snap left · right": the left half snaps left, the right half right.
+                    const a = r.kind === "pair" ? String(r.modelData[2]).split("|")[mouse.x < width / 2 ? 0 : 1] : r.modelData[2];
+                    m.picked(a);
+                    m.visible = false;
                 }
             }
         }
     }
+    function openSub(rowItem) { subOpen = true; }
 }

@@ -786,6 +786,46 @@ def guide_pressed(twice):
 
 
 _hand = [0.0]
+HEARTH_QUICK = '/usr/libexec/hearth/hearth-quick'
+# Presses the shared backend knows (the rest, and Do not disturb, which also tells Firehold's KWin script, stay here).
+SHARED_QS = ('wifi', 'bt', 'night', 'screenshot', 'osk', 'volume', 'output', 'brightness', 'power', 'lock', 'logout')
+
+
+def dnd_watch():
+    """Do not disturb pressed in Hearth's shared Quick Settings or notifications (hearth-quick writes the same live
+    file, $XDG_RUNTIME_DIR/hearth-firehold-plasma/dnd): watched with inotify, no timer, so Firehold's KWin script
+    hears it at once. None when inotify isn't there (the press from Firehold's own buttons still tells it)."""
+    try:
+        import ctypes
+        libc = ctypes.CDLL(None, use_errno=True)
+        fd = libc.inotify_init1(os.O_NONBLOCK | os.O_CLOEXEC)
+        if fd < 0:
+            return None
+        d = run_dir()
+        os.makedirs(d, exist_ok=True)
+        if libc.inotify_add_watch(fd, d.encode(), 0x00000008 | 0x00000080) < 0:   # IN_CLOSE_WRITE | IN_MOVED_TO
+            os.close(fd)
+            return None
+        return fd
+    except (OSError, AttributeError):
+        return None
+
+
+_dnd_last = [None]
+
+
+def dnd_changed(fd):
+    try:
+        data = os.read(fd, 65536)
+    except OSError:
+        return
+    if b'dnd' not in data:
+        return
+    v = read_small(os.path.join(run_dir(), 'dnd')) or 'off'
+    if v != _dnd_last[0]:
+        _dnd_last[0] = v
+        dbus_send('org.kde.kglobalaccel', '/component/kwin', 'org.kde.kglobalaccel.Component.invokeShortcut',
+                  'string:Firehold dnd ' + ('on' if v == 'on' else 'off'), reply=False)
 
 
 def desk_pad(name):
@@ -1033,10 +1073,13 @@ def session():
         except OSError:
             watcher = None
     last_input = [time.time()]
+    dnd_fd = dnd_watch()
     while True:
         fds = list(pad.devs.values()) if pad else []
         if watcher and watcher.stdout:
             fds.append(watcher.stdout)
+        if dnd_fd is not None:
+            fds.append(dnd_fd)
         try:
             r, _, _ = select.select(fds, [], [], min(pad.wait() if pad else 60, idle_wait(last_input)))
         except (OSError, ValueError):
@@ -1045,6 +1088,9 @@ def session():
             time.sleep(1)
             continue
         for f in r:
+            if f is dnd_fd:
+                dnd_changed(dnd_fd)
+                continue
             if watcher and f is watcher.stdout:
                 line = f.readline()
                 if not line:
@@ -2033,7 +2079,7 @@ def main(argv):
             why = a[a.index('--why') + 1] if '--why' in a[:-1] else ''
             tab = next((x for x in a[1:] if x in ('home', 'library', 'apps', 'store', 'switcher', 'settings')), '')
             switch(a[0], tab, why)
-        elif what == 'ping' and a and a[0] in ('modes', 'popup', 'popup-off', 'identify', 'identify-off', 'qs', 'qs-off', 'notes', 'notes-off', 'menu-app', 'menu-window', 'menu-help', 'menu-off'):
+        elif what == 'ping' and a and a[0] in ('modes', 'popup', 'popup-off', 'identify', 'identify-off', 'qs', 'qs-off', 'notes', 'notes-off', 'menu-app', 'menu-window', 'menu-move', 'menu-help', 'menu-off'):
             # The Desk's mode pill and the Couch: read the modes again, open or close Modes (on SCREEN), Identify.
             scr = a[1] if len(a) > 1 and re.match(r'^[A-Za-z0-9_.-]{1,40}$', a[1]) else ''
             ping_modes(a[0], scr)
@@ -2050,10 +2096,18 @@ def main(argv):
                     pass
             else:
                 print('seen')
+        elif what in ('qs', 'qs-do') and os.path.isfile(HEARTH_QUICK) and (what == 'qs' or (a and a[0] in SHARED_QS)):
+            # Hearth's shared Quick Settings backend (one for Hearth Classic and Firehold) when it's installed.
+            r = subprocess.run([sys.executable, HEARTH_QUICK, what] + a[:2], capture_output=True, text=True, timeout=20)
+            sys.stdout.write(r.stdout)
         elif what == 'qs':
             print(json.dumps(quick_settings()))
         elif what == 'qs-do' and a:
             print(json.dumps(qs_do(a[0], a[1] if len(a) > 1 else '')))
+        elif what == 'pad-button' and a and re.match(r'^[a-z]{1,12}$', a[0]):
+            # A controller button pressed on the Desk (the checks use it: no controller in CI).
+            if current_posture() == 'desk':
+                desk_pad(a[0])
         elif what == 'modes':
             print(json.dumps(modes_info()))
         elif what == 'mode' and len(a) >= 2:

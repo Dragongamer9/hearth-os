@@ -19,10 +19,16 @@ Window {
     color: "#0f0b0a"
     width: 1920; height: 1080
     onVisibleChanged: console.warn("firehold: Couch on", screenName, "visible", visible)
+    function readModes() { couch.readModes(); }
     function show() {
         console.warn("firehold: Couch for", screenName);
         if (screenName === "") return;
+        // Its own screen's size and place first (so it never shows small); then full screen there. KWin's script puts
+        // it on that screen too, by its name.
+        const s = Qt.application.screens.filter(function (q) { return q.name === screenName; })[0];
+        if (s) { x = s.virtualX; y = s.virtualY; width = s.width; height = s.height; }
         visible = true;
+        visibility = Window.FullScreen;
         raise();
         requestActivate();
         couch.forceActiveFocus();
@@ -31,6 +37,7 @@ Window {
         id: couch
         anchors.fill: parent
         layered: true
+        screenFor: cw.screenName
         focus: true
         onStepAside: cw.visible = false
         onComeBack: cw.show()

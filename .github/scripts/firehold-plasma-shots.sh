@@ -239,6 +239,39 @@ for k in /usr/libexec/kactivitymanagerd /usr/lib64/libexec/kactivitymanagerd /us
 for k in /usr/libexec/kglobalacceld /usr/lib64/libexec/kglobalacceld /usr/bin/kglobalacceld; do [ -x "$k" ] && { "$k" >"$OUT/kglobalaccel2.log" 2>&1 & break; }; done
 sleep 3
 export HEARTH_FIREHOLD_SCREENS="Virtual-0::LG 27GP850:2560 × 1440 · 165 Hz · DisplayPort 1,Virtual-1:tv:TCL 55″ TV:3840 × 2160 · 60 Hz · HDMI 2" HEARTH_FIREHOLD_TV_SCREENS=Virtual-1
+# Hearth's shared Quick Settings answers as mockup 07 shows (HEARTH_QUICK_FIXTURE), a history from yesterday (mockup 10,
+# in the file Hearth keeps it in), and a time zone where it's afternoon (the quiet hours, 11 PM - 7 AM, not on).
+export HEARTH_QUICK_FIXTURE=/tmp/fhp-quick.json
+python3 - "$HEARTH_QUICK_FIXTURE" "$HOME/.local/state/nimbus/notifications.json" <<'PY'
+import json, os, sys, time
+json.dump({"device": "Nvidia PC", "line": "Nvidia PC · plugged in · up 3 days", "battery": -1, "user": "Chris",
+ "wifi": {"on": True, "ssid": "Home-5G", "strength": "strong"}, "bt": {"on": True, "connected": 3, "names": ["Xbox Controller", "Arctis 7", "MX Master"]},
+ "osk": False, "night": {"on": True, "until": "7 AM"}, "dnd": {"on": False, "byHand": False, "schedule": True, "from": "11 PM", "to": "7 AM", "games": True, "family": True},
+ "sinks": [{"name": "headset", "word": "Headset", "default": True, "volume": 64}, {"name": "hdmi", "word": "TV (HDMI)", "default": False, "volume": 50}, {"name": "spk", "word": "Speakers", "default": False, "volume": 40}],
+ "brightness": [{"id": "lg", "label": "LG monitor", "percent": 80, "max": 100}], "power": "balanced",
+ "powerNames": {"power-saver": "Power saver", "balanced": "Balanced", "performance": "Performance"},
+ "devices": [{"name": "Xbox Controller", "kind": "pad", "percent": 72, "player": 1, "low": False}, {"name": "8BitDo", "kind": "pad", "percent": 18, "player": 2, "low": True},
+             {"name": "Arctis 7", "kind": "headset", "percent": 60, "low": False}, {"name": "MX Master", "kind": "mouse", "percent": 40, "low": False}],
+ "gameModeOff": False, "modes": [{"name": "Virtual-1", "tv": True, "label": "TCL TV", "mode": "couch"}, {"name": "Virtual-0", "tv": False, "label": "LG monitor", "mode": "desk"}]},
+ open(sys.argv[1], "w"))
+os.makedirs(os.path.dirname(sys.argv[2]), exist_ok=True)
+now = int(time.time() * 1000); D = 86400000
+def n(k, app, summary, body, t):
+    return {"key": k, "app": app, "summary": summary, "body": body, "icon": "", "entry": "", "image": "", "time": t, "lock": False, "urgency": "normal", "category": "", "progress": -1}
+json.dump({"n:%d" % (now - D): n(now - D, "ROG Ally", "ROG Ally", "Saves backed up to this PC · 12 games", now - D - 3600000),
+           "n:%d" % (now - D + 1): n(now - D + 1, "Controller 2", "Controller 2", "Battery low · 12%", now - D - 7200000)}, open(sys.argv[2], "w"), indent=2)
+PY
+export TZ=$(python3 -c 'import time; h=time.gmtime().tm_hour; print("Etc/GMT%+d" % -((14 - h + 12) % 24 - 12))')
+cat > /tmp/fhp-notify.py <<'PY'
+import dbus, json, sys
+n = dbus.Interface(dbus.SessionBus().get_object('org.freedesktop.Notifications', '/org/freedesktop/Notifications'), 'org.freedesktop.Notifications')
+o = json.loads(sys.argv[1])
+hints = {'urgency': dbus.Byte(o.get('urgency', 1))}
+if o.get('image'): hints['image-path'] = o['image']
+if o.get('reply'): hints['x-kde-reply-placeholder-text'] = o['reply']
+print(n.Notify(o['app'], 0, '', o['summary'], o.get('body', ''), o.get('actions', []), hints, o.get('timeout', -1)))
+PY
+note() { timeout 10 python3 /tmp/fhp-notify.py "$1" >>"$OUT/notify.log" 2>&1 || echo "notify failed: $1" >>"$OUT/notify.log"; }
 hearth-firehold-plasma begin org.hearthos.firehold.desk
 now=$(($(date +%s) * 1000))
 printf '{"screens": {"Virtual-1": {"mode": "couch", "why": "pad", "at": %s}, "Virtual-0": {"mode": "desk", "why": "mouse", "at": %s}}}' "$now" "$now" > "$RUN/modes.json"
@@ -264,13 +297,38 @@ key b; hearth-firehold-plasma ask tab:home; sleep 2
 # An app with no menus of its own in front on the monitor: Hearth's standard menus, Window open (mockup 12).
 sed 's/Rise of the Witch-king/Trains 2010/' /tmp/ember.qml > /tmp/trains.qml
 [ -n "$QML" ] && { "$QML" /tmp/trains.qml >/dev/null 2>&1 & }
-sleep 6; front "Trains 2010" false; sleep 2
-hearth-firehold-plasma ping menu-window; sleep 3
+sleep 6; front "Trains 2010" false
+# On the monitor, in a window (mockup 12 draws it there).
+kwin_js "var o = workspace.screens.filter(function (s) { return s.name === 'Virtual-0'; })[0]; workspace.windowList().forEach(function (w) { if (String(w.caption).indexOf('Trains 2010') >= 0) { workspace.sendClientToScreen(w, o); w.frameGeometry = { x: 70, y: 90, width: 1300, height: 820 }; workspace.activeWindow = w; } });"
+sleep 2
+hearth-firehold-plasma ping menu-move; sleep 3
 shot fp-13-desk-standard-menus 0 1920
 hearth-firehold-plasma ping menu-off; sleep 1
+hearth-firehold-plasma ping menu-app; sleep 3
+shot fp-13b-desk-app-menu 0 1920
+hearth-firehold-plasma ping menu-off; sleep 1
+hearth-firehold-plasma ping menu-help; sleep 3
+shot fp-13c-desk-help-menu 0 1920
+hearth-firehold-plasma ping menu-off; sleep 1
+# A controller button pressed on the Desk (no controller here: the same call the controller's button makes).
+hearth-firehold-plasma pad-button a; sleep 3
+shot fp-14-controller-hint 0 1920
+# While you played (mockup 10): notifications that come while a game is full screen are held back.
+front "Trains 2010" true; sleep 3
+note '{"app": "Friends", "summary": "Mira", "body": "Ready for co-op tonight?"}'; sleep 1
+note '{"app": "Steam", "summary": "Satisfactory installed", "body": "Ready to play"}'; sleep 3
+front "Trains 2010" false; sleep 2
 front "Pictures" false; sleep 2
 # Quick Settings on the Desk (mockup 07) and the notification history (10): Hearth's shared widgets, Firehold's look.
 if command -v hearth-plasma-panel >/dev/null; then
+  # The cards (mockup 09): urgent, a game ready, a clip with its picture, a message with a reply box, then "2 more".
+  note '{"app": "Firefox", "summary": "Firefox download finished", "body": "hollow-pines.tar.zst · 2.9 GB", "timeout": 30000}'; sleep 1
+  note '{"app": "Hearth OS", "summary": "Hearth OS update ready", "body": "Nothing changes until you restart", "timeout": 30000}'; sleep 1
+  note '{"app": "Discord", "summary": "Ryder in #bfme-nights", "body": "“Edain game at 11? I'"'"'ll host.”", "actions": ["inline-reply", "Reply", "read", "Mark read"], "reply": "Reply...", "timeout": 30000}'; sleep 1
+  note '{"app": "Hearth Recorder", "summary": "Saved the last 30 seconds", "body": "Rise of the Witch-king · 1440p · 96 MB", "image": "'"$HOME"'/.cache/hearth/art/beacon_rotwk.jpg", "actions": ["open", "Open", "share", "Copy a share link", "delete", "Delete"], "timeout": 30000}'; sleep 1
+  note '{"app": "Downloads", "summary": "Helldivers 2 is ready", "body": "The 6.0 GB update finished (Steam).", "actions": ["play", "Play", "tv", "Play on the TV"], "timeout": 30000}'; sleep 1
+  note '{"app": "Hearth Link", "summary": "Dad'"'"'s PC asks for help", "body": "“Trains 2010 won'"'"'t start after the update.” He'"'"'s at his PC now.", "urgency": 2, "actions": ["connect", "Connect (Remote desktop)", "later", "Call him back later", "notnow", "Not now"]}'; sleep 3
+  shot fp-09-notification-cards 0 1920
   hearth-plasma-panel open quick; sleep 4; shot fp-07-quick-settings-desk 0 1920; hearth-plasma-panel open close; sleep 1
   hearth-plasma-panel open calendar; sleep 4; shot fp-10-notification-history 0 1920; hearth-plasma-panel open close; sleep 1
 fi

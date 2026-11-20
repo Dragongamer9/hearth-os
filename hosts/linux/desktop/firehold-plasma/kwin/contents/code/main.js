@@ -61,6 +61,8 @@ function placeCouch(w) {
     w.skipSwitcher = true;
     w.skipPager = true;
     w.fullScreen = true;
+    // Not taken (a window KWin doesn't yet let go full screen): its screen's whole size instead.
+    if (o && !w.fullScreen) w.frameGeometry = { x: o.geometry.x, y: o.geometry.y, width: o.geometry.width, height: o.geometry.height };
     return true;
 }
 workspace.windowAdded.connect(function (w) {
@@ -68,6 +70,8 @@ workspace.windowAdded.connect(function (w) {
     // Its name can come a moment after the window (Qt sets the title after mapping): look again when it does.
     if (String(w.resourceClass || "").indexOf("plasmashell") >= 0 && w.captionChanged) {
         w.captionChanged.connect(function () { placeCouch(w); });
+        // And when Qt asks for full screen or a size after it's placed, or it moves screen: place it again.
+        if (w.outputChanged) w.outputChanged.connect(function () { placeCouch(w); });
     }
     if (couch || onCouchScreen(w) || games === "fullscreen") full(w);
 });

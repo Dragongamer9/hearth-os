@@ -21,6 +21,9 @@ Item {
     // Where this Couch is drawn: the Couch shell's desktop (main.qml), or a full-screen layer over the Desk on a screen
     // whose mode is Couch while another screen is Desk (CouchWindow.qml, opened by the Desk's posture applet).
     property bool layered: false
+    // A layer over the Desk is told its screen (Qt on Wayland may put the window's Screen on another one).
+    property string screenFor: ""
+    readonly property string here: screenFor !== "" ? screenFor : Screen.name
     signal stepAside()          // layered: a window or game comes in front, the Couch layer hides
     signal comeBack()           // layered: Home, the Guide: the Couch layer shows again
 
@@ -170,12 +173,12 @@ Item {
 
     // ------------------------------------------------------------------ this screen and the others
     readonly property real screenDiagMm: Screen.pixelDensity > 0 ? Math.sqrt(Screen.width * Screen.width + Screen.height * Screen.height) * Screen.devicePixelRatio / Screen.pixelDensity : 0
-    readonly property bool screenIsTv: (sys.tvScreens || []).indexOf(Screen.name) >= 0 || H.isTv(Screen.name, Screen.model, screenDiagMm)
-    readonly property string screenWord: /^(edp|lvds|dsi)/i.test(Screen.name) ? "screen" : "monitor"
+    readonly property bool screenIsTv: (sys.tvScreens || []).indexOf(fh.here) >= 0 || H.isTv(fh.here, Screen.model, screenDiagMm)
+    readonly property string screenWord: /^(edp|lvds|dsi)/i.test(fh.here) ? "screen" : "monitor"
     readonly property var screenList: Qt.application.screens.map(function (s) {
         const d = s.pixelDensity > 0 ? Math.sqrt(s.width * s.width + s.height * s.height) * s.devicePixelRatio / s.pixelDensity : 0;
         const tv = (fh.sys.tvScreens || []).indexOf(s.name) >= 0 || H.isTv(s.name, s.model, d);
-        const here = s.name === Screen.name;
+        const here = s.name === fh.here;
         return { name: s.name, label: tv ? "TV" : (/^(edp|lvds|dsi)/i.test(s.name) ? "This screen" : "Monitor"),
                  modeName: here ? "Couch" : "Desk", here: here };
     })
@@ -310,8 +313,8 @@ Item {
         else if (cmd === "cards") cardsNow();
         else if (cmd === "modes") { readModes(); mouseAsked = false; }
         else if (cmd === "identify" || cmd === "identify-off") identifyOn = cmd === "identify";
-        else if (cmd.indexOf("mode:") === 0) { if (front) setMode(Screen.name, cmd.slice(5), "pick"); }
-        else if (cmd.indexOf("input:") === 0) { if (front && !away) setMode(Screen.name, "desk", cmd.slice(6)); }
+        else if (cmd.indexOf("mode:") === 0) { if (front) setMode(fh.here, cmd.slice(5), "pick"); }
+        else if (cmd.indexOf("input:") === 0) { if (front && !away) setMode(fh.here, "desk", cmd.slice(6)); }
         // A controller button by name (the same keys hearth-firehold-plasma's controller sends; the checks use it).
         else if (cmd.indexOf("key:") === 0) {
             const m = { up: Qt.Key_Up, down: Qt.Key_Down, left: Qt.Key_Left, right: Qt.Key_Right, a: Qt.Key_Return, b: Qt.Key_Escape,
@@ -334,10 +337,12 @@ Item {
     property var modes: ({ screens: [] })
     function readModes() { run(["modes"], function (t) { const o = fh.lastJson(t); if (o && Array.isArray(o.screens)) fh.modes = o; }); }
     readonly property var myMode: {
-        for (const s of modes.screens) if (s.name === Screen.name) return s;
-        return { name: Screen.name, mode: "couch", why: "", tv: screenIsTv };
+        for (const s of modes.screens) if (s.name === fh.here) return s;
+        return { name: fh.here, mode: "couch", why: "", tv: screenIsTv };
     }
     readonly property bool away: myMode.mode === "away"
+    // Away covers its screen: a layer that stepped aside for a window comes back for it.
+    onAwayChanged: if (layered && away) comeBack()
     function setMode(target, mode, why) { run(["mode", target, mode, "--why", why || "pick"]); }
     // The mouse over this screen's Couch (more than one screen, Automatic): only this screen goes to the Desk.
     property bool mouseAsked: false
@@ -349,7 +354,7 @@ Item {
         onPositionChanged: {
             if (fh.mouseAsked || !fh.started || fh.away) return;
             fh.mouseAsked = true;
-            fh.setMode(Screen.name, "desk", "mouse");
+            fh.setMode(fh.here, "desk", "mouse");
         }
     }
 
@@ -450,7 +455,7 @@ Item {
         anchors.centerIn: parent
         width: 260 * fh.k; height: width; radius: 40 * fh.k
         color: "#e6221e1c"; border.width: 4 * fh.k; border.color: fh.pal.accent
-        T { couchRef: fh; anchors.centerIn: parent; text: String(Qt.application.screens.map(function (s) { return s.name; }).indexOf(Screen.name) + 1); font.pixelSize: 150 * fh.k; font.weight: Font.Bold }
+        T { couchRef: fh; anchors.centerIn: parent; text: String(Qt.application.screens.map(function (s) { return s.name; }).indexOf(fh.here) + 1); font.pixelSize: 150 * fh.k; font.weight: Font.Bold }
     }
     // Away (mockup 06): this screen is Away.
     Away { couch: fh; anchors.fill: parent; visible: fh.away; z: 50 }
