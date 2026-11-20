@@ -336,6 +336,17 @@ fn left_column<'a>(a: &'a App, d: &Value, k: f32) -> E<'a> {
             }
             None => trow = trow.push(tx("All quiet: nobody's asking right now", 16.0 * k, G::muted())),
         }
+        // The never-lag guard turned the motion down (this session only; nothing is saved).
+        if a.guard_note {
+            trow = trow.push(fill()).push(tx("Smooth motion turned down to keep this PC fast", 14.0 * k, G::acc())).push(click(
+                container(txs("Try smooth again", 13.0 * k, G::text()))
+                    .padding(Padding { top: 0.0, right: 12.0 * k, bottom: 0.0, left: 12.0 * k })
+                    .center_y(Length::Fixed(28.0 * k))
+                    .style(boxed(G::panel2(), 8.0 * k, Some((G::line2(), 1.0))))
+                    .into(),
+                Msg::SmoothAgain,
+            ));
+        }
         col = col.push(panel(
             k,
             "The AIs on this PC · the same as in your Command Center",

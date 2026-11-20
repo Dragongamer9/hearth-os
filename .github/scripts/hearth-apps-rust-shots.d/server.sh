@@ -121,6 +121,28 @@ run server-17b-rules-new-rule hearth-server 0 "$SB" --show new-rule
 # With the graphics card (here Mesa's software Vulkan: the CPU does the graphics card's work, so this number is far
 # above a PC's): the smooth mode, ServerCore.qml's motions at the screen's rate. Reported, no limit.
 HEARTH_RENDERER=gpu run gpu-server-live-smooth hearth-server 20 "$SB"
+# The never-lag guard: on CI's software Vulkan the smooth motion costs far over 3 % of a core, so within about 20 s it
+# turns itself down (30 a second, then the light mode) and says so on the dashboard. After 35 s its CPU over 15 s must
+# be under the light mode's own limit (8 %), the note must be there (its log line), and nothing was written.
+( HEARTH_RENDERER=gpu "$SB" >/tmp/server-guard.log 2>&1 & gpid=$!
+  for i in $(seq 1 200); do mapped hearth-server && break; sleep 0.05; done
+  sleep 35
+  a=$(ticks $gpid); sleep 15; b=$(ticks $gpid)
+  hz=$(getconf CLK_TCK)
+  cpu=$(python3 -c "print('%.2f' % (100.0 * ($b - $a) / $hz / 15))")
+  rss=$(awk '/^VmRSS/ {printf "%.1f", $2/1024}' /proc/$gpid/status)
+  grim "$ROOT/shots/server-19-smooth-turned-down.png" 2>/dev/null
+  kill $gpid 2>/dev/null; wait $gpid 2>/dev/null
+  steps=$(grep -c 'smooth motion turned down' /tmp/server-guard.log)
+  echo "::notice title=server guard::smooth motion turned down $steps time(s): $(grep 'smooth motion turned down' /tmp/server-guard.log | sed 's/^server mode: //' | tr '\n' '|'); after 35 s: $cpu % of a core over 15 s (light-mode limit 8 %)"
+  python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) <= 8.0 else 1)' "$cpu" || echo "::error title=server guard::still $cpu % of a core 35 s after start: the guard didn't settle it"
+  [ "$steps" -ge 1 ] || echo "::error title=server guard::the guard never turned the smooth motion down on CI's software Vulkan"
+  # In the measurements (server-live-*: the light mode's limit); no step down counts as a failure (999 %).
+  [ "$steps" -ge 1 ] || cpu=999
+  echo "RESULT server-live-guard-settled-after-${steps}-steps firstframe=0 cpu=$cpu rss=${rss:-0} pss=${rss:-0} threads=0" >> "$ROOT/results.txt"
+  [ -e "$HOME/.config/nimbus/server-mode.json" ] && echo "::error title=server guard::server-mode.json was written"
+  true
+) || echo "::warning title=server guard::not measured"
 # The cores moving: six frames a sixth of a second apart, side by side (the AIs' panel), as one picture.
 ( HEARTH_RENDERER=gpu "$SB" >/tmp/server-frames.log 2>&1 & fpid=$!
   for i in $(seq 1 200); do mapped hearth-server && break; sleep 0.05; done

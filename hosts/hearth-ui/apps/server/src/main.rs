@@ -76,6 +76,7 @@ pub enum Msg {
     BrainMove(iced::Point),
     BrainLeave,
     BrainRead(run::Output),
+    SmoothAgain,
 }
 
 pub struct App {
@@ -142,6 +143,22 @@ pub struct App {
     pub when_vals: (i64, i64, i64, i64),
     pub fan_pct: i64,
     pub device: String,
+    // the never-lag guard: 0 smooth, 1 at 30 a second, 2 the light mode (this session only); its note; the window
+    pub smooth_level: u8,
+    pub guard_note: bool,
+    cpu_win: std::collections::VecDeque<(f64, u64)>,
+}
+
+/// More than this much of one core over ~10 s while the smooth motion runs, and it's turned down.
+const GUARD_PCT: f64 = 3.0;
+
+/// This process's own CPU time (user + system) in clock ticks, from /proc/self/stat.
+fn own_cpu_ticks() -> Option<u64> {
+    let st = std::fs::read_to_string("/proc/self/stat").ok()?;
+    let rest = &st[st.rfind(')')? + 2..];
+    let f: Vec<&str> = rest.split_whitespace().collect();
+    // after the name: state is field 3, utime 14 and stime 15 (1-based), so 11 and 12 here
+    Some(f.get(11)?.parse::<u64>().ok()? + f.get(12)?.parse::<u64>().ok()?)
 }
 
 pub const COLS: usize = 5;
@@ -256,6 +273,9 @@ impl App {
             when_vals: (50, 300, 23 * 60, 7 * 60),
             fan_pct: 40,
             device: String::new(),
+            smooth_level: std::env::var("HEARTH_SERVER_SMOOTH_LEVEL").ok().and_then(|v| v.parse().ok()).unwrap_or(0),
+            guard_note: false,
+            cpu_win: std::collections::VecDeque::new(),
         };
         if let Some(n) = app::arg("--sel").and_then(|x| x.parse().ok()) {
             a.sel = n;
@@ -581,7 +601,51 @@ impl App {
     /// Drawn with the CPU (tiny-skia: no graphics card here, wgpu didn't start, or the watcher's fallback after two
     /// quick closes): the light mode, as smooth as the CPU allows without lagging the PC.
     pub fn light(&self) -> bool {
-        hearth_ui::app::renderer("hearth-server") == "cpu" || (now() - self.start > 6.0 && !hearth_ui::app::gpu_started())
+        self.smooth_level >= 2 || hearth_ui::app::renderer("hearth-server") == "cpu" || (now() - self.start > 6.0 && !hearth_ui::app::gpu_started())
+    }
+    /// Something moves for a reason (a core working, a sender lit, the AI team's or Ithil's page open): the screen's
+    /// rate. Otherwise only the "ready" breathing and Ithil's tile, which never need more than 30 a second.
+    fn at_work(&self) -> bool {
+        let Some(d) = self.d.as_ref() else { return false };
+        (self.overlay == Overlay::Detail && matches!(self.cur_id().as_str(), "ithil" | "team"))
+            || arr(d, "cores").iter().any(|c| s(c, "state") == "working")
+            || d.get("team").map(|tm| arr(tm, "senders").iter().any(|x| truthy(x, "active"))).unwrap_or(false)
+    }
+    /// The never-lag guard (the owner's rule: an update must never make his PCs lag): while the smooth motion runs,
+    /// the app's own CPU time over the last ~10 s. Over 3 % of one core: down to 30 a second; still over: the light
+    /// mode. For the rest of this session only (nothing is written anywhere); the dashboard says so, with Try smooth
+    /// again.
+    fn guard_tick(&mut self) {
+        if self.light() || self.smooth_level >= 2 {
+            self.cpu_win.clear();
+            return;
+        }
+        let t = now();
+        if let Some(&(last, _)) = self.cpu_win.back() {
+            if t - last < 1.0 {
+                return;
+            }
+            if t - last > 3.0 {
+                self.cpu_win.clear(); // it stood still in between (off, away): a new window
+            }
+        }
+        let Some(ticks) = own_cpu_ticks() else { return };
+        self.cpu_win.push_back((t, ticks));
+        while self.cpu_win.len() > 2 && t - self.cpu_win[1].0 >= 10.0 {
+            self.cpu_win.pop_front();
+        }
+        let (t0, c0) = self.cpu_win[0];
+        if t - t0 < 9.5 {
+            return;
+        }
+        let hz = unsafe { libc::sysconf(libc::_SC_CLK_TCK) }.max(1) as f64;
+        let pct = 100.0 * (ticks - c0) as f64 / hz / (t - t0);
+        if pct > GUARD_PCT {
+            self.smooth_level += 1;
+            self.guard_note = true;
+            self.cpu_win.clear();
+            eprintln!("server mode: smooth motion turned down to keep this PC fast ({pct:.1} % of a core over {:.0} s; now {})", t - t0, if self.smooth_level >= 2 { "the light mode" } else { "30 a second" });
+        }
     }
     /// How often the dashboard moves (ms), or None.
     /// With the graphics card (the owner, Nov 20: "smooth like Mantel"): ServerCore.qml's motions at the screen's own
@@ -595,7 +659,10 @@ impl App {
         let d = self.d.as_ref()?;
         let has = !arr(d, "cores").is_empty() || d.get("ithil").map(|v| v.is_object()).unwrap_or(false) || self.tiles().iter().any(|t| truthy(t, "mesh"));
         if !self.light() {
-            return if has { Some(16) } else { None };
+            if !has {
+                return None;
+            }
+            return Some(if self.smooth_level == 0 && self.at_work() { 16 } else { 33 });
         }
         if self.screen != Screen::On {
             return None;
@@ -1076,6 +1143,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             let dt = (t - a.last_anim).min(0.2) as f32;
             a.last_anim = t;
             a.anim_t = (t - a.start) as f32;
+            a.guard_tick();
             // not live: the window plays through slowly by itself (120 s), unless you just moved it
             if a.overlay == Overlay::Detail && a.cur_id() == "ithil" && a.ithil_win != "live" && t - a.moved > 4.0 {
                 a.tpos = if a.tpos >= 120.0 { 0.0 } else { a.tpos + dt };
@@ -1097,6 +1165,11 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
             }
         }
         Msg::Back => a.feat_back(),
+        Msg::SmoothAgain => {
+            a.smooth_level = 0;
+            a.guard_note = false;
+            a.cpu_win.clear();
+        }
         Msg::FeatRow(i) => {
             a.fsel = i;
             return a.feat_enter();
