@@ -1079,9 +1079,9 @@ def internet():
     wait_for('A to list B', lambda: any(f['id'] == b.id for f in a.call('moonlight.friends', {'check': True}, timeout=30)['friends']), 30)
     res, _ = moon_session(a, b, 'B')
     relayed = a.call('moonlight.friends')['connected'] or {}
-    if '--bitrate' not in res.get('args', []):
-        notice('moonlight: relay', 'the relayed connection didn\'t lower Moonlight\'s bitrate: %s / %s' % (res.get('args'), relayed))
-    notice('moonlight: through the relay', 'Moonlight\'s connections through the iroh relay (UDP between the NATs blocked): %.1f MB/s TCP, %d of %d video-sized packets back (%s)' % (res['tcpMBps'], res['udpBack'], res['udpSent'], 'said relayed, bitrate lowered' if relayed.get('relay') else 'not said relayed'))
+    if '--bitrate' in res.get('args', []):
+        fail('Moonlight through the relay should keep its own settings, but was started with: %s' % res.get('args'))
+    notice('moonlight: through the relay', 'Moonlight\'s connections through the iroh relay (UDP between the NATs blocked): %.1f MB/s TCP, %d of %d video-sized packets back (%s)' % (res['tcpMBps'], res['udpBack'], res['udpSent'], 'said relayed, Moonlight\'s own settings' if relayed.get('relay') else 'not said relayed'))
     a.call('moonlight.disconnect')
     wait_for('A\'s Moonlight to stop', lambda: os.path.exists(os.path.join(a.home, 'ml-ended.json')), 20)
     # Direct: UDP allowed again; a fresh copy (hole punching through both NATs, if they allow it).
@@ -1402,7 +1402,7 @@ for p in (47998, 47999, 48000):
 threading.Event().wait()
 """
 
-# Moonlight, as Hearth starts it in its private network: `pair HOST --pin PIN`, then `stream HOST APP [--bitrate N]`.
+# Moonlight, as Hearth starts it in its private network: `pair HOST --pin PIN`, then `stream HOST APP` (Moonlight's own settings).
 # Writes what it saw in its HOME (the connecting device's), then stays connected until the tunnel goes away.
 FAKE_MOONLIGHT = r"""#!/usr/bin/env python3
 import json, os, signal, socket, sys, threading, time

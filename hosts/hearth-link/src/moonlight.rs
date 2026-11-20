@@ -499,11 +499,11 @@ pub fn which(name: &str) -> Option<String> {
     std::env::split_paths(&path).map(|d| d.join(name)).find(|p| p.is_file()).map(|p| p.to_string_lossy().to_string())
 }
 
-/// `hearth-link moon-session HOST APP [BITRATE]`, run in Moonlight's private network: pairs Moonlight first when
+/// `hearth-link moon-session HOST APP`, run in Moonlight's private network: pairs Moonlight first when
 /// $HEARTH_MOON_PIN is set (`moonlight pair HOST --pin`), then becomes `moonlight stream HOST APP`.
 pub fn moon_session(args: &[String]) -> i32 {
     use std::os::unix::process::CommandExt;
-    let (Some(host), Some(app)) = (args.first(), args.get(1)) else { eprintln!("usage: hearth-link moon-session HOST APP [BITRATE]"); return 2 };
+    let (Some(host), Some(app)) = (args.first(), args.get(1)) else { eprintln!("usage: hearth-link moon-session HOST APP"); return 2 };
     let Some(ml) = moonlight_cmd() else { eprintln!("Moonlight isn't installed"); return 3 };
     if let Ok(pin) = std::env::var("HEARTH_MOON_PIN") {
         std::env::remove_var("HEARTH_MOON_PIN");
@@ -522,7 +522,6 @@ pub fn moon_session(args: &[String]) -> i32 {
     }
     let mut c = std::process::Command::new(&ml[0]);
     c.args(&ml[1..]).args(["stream", host.as_str(), app.as_str()]);
-    if let Some(b) = args.get(2).filter(|b| b.parse::<u32>().is_ok()) { c.args(["--bitrate", b.as_str()]); }
     let e = c.exec();
     eprintln!("Moonlight couldn't start: {e}");
     3
@@ -860,9 +859,9 @@ impl Node {
         let host = host_addr(id);
         let pin = if g["paired"] == true { None } else { Some(format!("{:04}", u16::from_le_bytes(crate::random_bytes::<2>()) % 10000)) };
         let exe = std::env::current_exe().map_err(|e| e.to_string())?.to_string_lossy().to_string();
-        let mut prog = vec![exe, "moon-session".into(), host.to_string(), g["app"].as_str().unwrap_or("Desktop").to_string()];
-        // Through the relay a lower bitrate keeps it smooth (owner's call how far: docs/HEARTH-LINK.md).
-        if relay { prog.push("5000".into()); }
+        let prog = vec![exe, "moon-session".into(), host.to_string(), g["app"].as_str().unwrap_or("Desktop").to_string()];
+        // Moonlight as it is on its own: its own bitrate and settings, direct or through the relay (the owner, Nov 20:
+        // "Family and friends should work like regular moonlight"); the person changes them in Moonlight.
         let mut envs: Vec<(String, String)> = Vec::new();
         if let Some(p) = &pin { envs.push(("HEARTH_MOON_PIN".into(), p.clone())); }
         let pv = match tokio::task::spawn_blocking(move || spawn_private(&prog, &envs, host, port)).await.map_err(|e| e.to_string())? {

@@ -249,8 +249,10 @@ is asked once when the list opens: nothing polls), with **Connect** (Moonlight o
   Sunshine (`hearth-remote-desktop pin`, named `Hearth <first 8 of the device id>`). It's never shown or logged.
 - **Games only** starts them in Sunshine's **Steam Big Picture** app, and Sunshine's prep command refuses **Desktop**
   for them (`hearth-remote-desktop session start` reads the session file). Sunshine shows the whole screen whatever app
-  is picked, so outside Game Mode they still see what's on the screen: on a PC in Game Mode that's Steam.
-- Through the relay, Moonlight is started at 5 Mbps (`--bitrate 5000`); direct, at Moonlight's own setting.
+  is picked: it works like Moonlight's own app list (the owner, Nov 20), with no extra rule about Game Mode.
+- **Like Moonlight on its own** (the owner, Nov 20: "Family and friends should work like regular moonlight"):
+  Moonlight starts with its own bitrate and settings, direct or through the relay, and the person can change them in
+  Moonlight. **Stop sharing now** ends the current session only; the switch stays on.
 
 **Settings and secrets:** the switch and each person's choices are in `~/.config/nimbus/family-moonlight.json` (`on`,
 `people: {deviceId: {name, always, what, limitMinutes}}`), written only when the person changes something, through
@@ -274,10 +276,6 @@ then yes, Moonlight's TCP and UDP from its private network to a stand-in Sunshin
 now, Always allow with Games only and a time limit, turning it off ending the session, removing; `e2e.py internet`:
 the same through the relay and hole punched, speeds posted), the Decky panel's tests and pictures, and the Rust apps'
 pictures (`family-*`, mouse and controller looks).
-
-**Needs the owner's say:** how far to lower Moonlight through the relay (iroh's public relays are shared and slow for
-video; 5 Mbps for now, or say "direct only" and Hearth won't use the relay for Moonlight), and whether Games only
-should also be refused outside Game Mode (Sunshine can't show only the games while a desktop is on screen).
 
 ## Calls (the service's socket, `hearth-link call`)
 
