@@ -116,18 +116,17 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 ## 12. The Desk bar's standard menus (12-desk-bar-standard-menus.png)
 
 - [x] Standard menus for an app with none of its own (the app menu, Window, Help) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "[[\"app\", root.appName], [\"window\", \"Window\"], [\"help\", \"Help\"]]"
-- [ ] Window › Move to screen (each screen with its mode)
+- [x] Window › Move to screen (each screen with its mode) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "here ? \"here now\" : s.mode === \"couch\" ? \"goes full screen\""
 - [x] Help: search every command (Alt+Space) — hosts/linux/desktop/firehold-plasma/app/contents/ui/main.qml: "[\"Search every command\", \"Alt+Space\", \"search\"]"
-- [ ] The "controller in your hand" hint
+- [x] The "controller in your hand" hint — hosts/linux/desktop/firehold-plasma/hearth-firehold-plasma: "notify('A controller is in your hand'"
 
 ## Build status (branch feature/firehold-plasma-1.16; not ticked until each part is pictured and compared)
 
-- Done, pictured (run 44524216417, fp-01/02/03): Couch home rows, cards, hero, Game options (sections 1-3). Fixes after
-  those pictures are pushed but not pictured yet.
-- Built, waiting for pictures (runs 44527587999 Plasma, 44527592179 Rust apps): Couch, Desk and Away per screen
-  (live state in $XDG_RUNTIME_DIR/hearth-firehold-plasma/modes.json, the Couch as a layer over the Desk, Modes popup
-  from the mode pill, Super+Shift+C/D/A, Identify), Away, Settings › System › Couch, Desk and Away (cats/couch.rs).
-- Backend only: Quick Settings (`hearth-firehold-plasma qs` / `qs-do`); its UI and the notification cards/history are
-  the shared plasmoids from feature/plasma-hearth-menu (style "firehold").
-- Next: open the stage 2 pictures and fix; Play on with two screens; hook the bar to the shared Quick Settings and
-  notifications; the Desk bar (sections 11-12: bar parts, first-run tip, standard menus, Move to screen).
+- 68 of 76 parts pictured and ticked (Plasma pictures run 44704692710, branch ci/firehold-plasma-shots-feature-firehold-plasma-1.16).
+- Open: Settings rows 5.3 and 5.4 are built (hosts/hearth-ui/apps/settings/src/cats/couch.rs) but not yet pictured: the
+  Rust apps' picture is taken 2.5 s after the window maps, before the controller presses reach those rows.
+- Open: Quick Settings with the controller over the Couch (section 8): the shared widget has it (style "firehold", its
+  couch look), but the Couch shell has no panel for the shared widget to sit in.
+- Open: the recorded clip's picture in its card (9): the shared cards show `h.image`; a notification's image-path
+  doesn't reach it under Plasma yet (shared widget).
+- Open: the app's own menus with File open (11.1): CI's apps don't export KDE's global menu (no appmenu module there).
