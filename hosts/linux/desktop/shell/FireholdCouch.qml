@@ -581,7 +581,9 @@ PanelWindow {
     property string appSig: ""
     function syncApps() {
         const g = appFresh.map(e => (e.id || "") + "\u0001" + e.name + "\u0001" + (e.icon || "")).join("\u0002");
-        if (g !== appSig) { appSig = g; appList = appFresh; }
+        // (also when an entry was made again: a tile never keeps an entry Quickshell let go)
+        const live = new Set(appFresh);
+        if (g !== appSig || appList.some(e => !live.has(e))) { appSig = g; appList = appFresh; }
     }
     onAppFreshChanged: syncApps()
     component TileGrid: GridView {

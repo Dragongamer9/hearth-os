@@ -341,6 +341,8 @@ for t in notify quick; do WAIT=0 ipc "$t" close; done
 # launcher or Hearth's own entries do): the shell makes its app lists again once for each real change, after the
 # folder has settled, never for a file written again the same. Over 40 s: at most 1 s of the processor, memory back.
 APPS_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/applications"; mkdir -p "$APPS_HOME"
+aes() { timeout 10 quickshell ipc -p "$SH" call appentries state 2>/dev/null | tail -1; }
+ae0=$(aes)
 t0d=$(ticks "$qs"); md0=$(rss "$qs")
 printf '[Desktop Entry]\nType=Application\nName=Rest Check App\nExec=true\nIcon=applications-games\n' >"$APPS_HOME/hearth-rest-check.desktop"; sleep 8
 for i in 1 2 3 4 5; do cp "$APPS_HOME/hearth-rest-check.desktop" "$APPS_HOME/.rc.tmp" && mv "$APPS_HOME/.rc.tmp" "$APPS_HOME/hearth-rest-check.desktop"; sleep 1; done; sleep 6
@@ -362,6 +364,11 @@ done
 sleep 10
 evr=$(( ($(ticks "$qs") - t0r) * 100 / HZ )); mr1=$(rss "$qs")
 note "the app lists made again 8 times (300 entries written again, one renamed): the shell used $(printf "%d.%02d s" $((evr / 100)) $((evr % 100))) of the processor, memory ${mr0} → ${mr1} MB"
+ae1=$(aes)
+note "the shell's app lists (AppEntries) before the entry changes: ${ae0:-no answer}; after: ${ae1:-no answer}"
+kill -0 "$qs" 2>/dev/null || err "the shell ended while the app entries changed (crashed or restarted)"
+r0=$(echo "$ae0" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read() or "{}").get("rev", -1))' 2>/dev/null); r1=$(echo "$ae1" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read() or "{}").get("rev", -1))' 2>/dev/null)
+[ -n "$r0" ] && [ -n "$r1" ] && [ "$r1" -gt "$r0" ] 2>/dev/null || err "the shell's app list didn't follow the entry changes (AppEntries ${ae0:-no answer} → ${ae1:-no answer}): Quickshell didn't look at the folder again, or the list got stuck"
 [ "$evr" -le 400 ] || err "the app lists made again 8 times cost the shell $(printf "%d.%02d s" $((evr / 100)) $((evr % 100))) (limit 4 s, half a second each)"
 [ $((mr1 - mr0)) -le 15 ] || err "the app lists made again 8 times left the shell ${mr0} → ${mr1} MB: each rebuild keeps something"
 
