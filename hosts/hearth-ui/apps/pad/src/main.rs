@@ -595,6 +595,8 @@ impl App {
         let was = self.kb;
         self.kb = true;
         if !was {
+            // One line each way (pad.log on a PC; CI's checks read it).
+            eprintln!("hearth-pad-host: keyboard open ({mode})");
             let split = self.vm.as_ref().map(|v| v.fast == "split").unwrap_or(false);
             pad_send(json!({ "cmd": "osk", "open": true, "split": split }));
             // Recent copies for the keyboard's clipboard panel: Plasma keeps them in Klipper.
@@ -616,6 +618,7 @@ impl App {
         self.held = false;
         self.glides.clear();
         self.ember_since = None;
+        eprintln!("hearth-pad-host: keyboard closed");
         pad_send(json!({ "cmd": "osk", "open": false }));
         self.close(Kind::Keyboard)
     }
