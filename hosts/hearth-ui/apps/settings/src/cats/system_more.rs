@@ -412,7 +412,7 @@ fn storage(a: &App) -> El<'_> {
     if games.is_empty() {
         c = c.push(line(&p, "Game sizes haven't been added up yet."));
     }
-    c = c.push(link_row(&p, G::Store, "Move games and add up sizes", "Moves a game to another drive, or adds up every game's size again. Opens in the Hearth app's window for now.", Msg::App(sv(&["nimbus", "--windowed", "--page", "diskspace"]))));
+    c = c.push(link_row(&p, G::Store, "Move games and add up sizes", "Moves a game to another drive, or adds up every game's size again. Opens in Hearth Game Mode (Desktop Mode closes first).", Msg::App(sv(&["nimbus-mode", "hearth-page", "diskspace"]))));
     c = c.push(head(&p, "Clean up"));
     let clean = va(st.j("clean"), "value.items");
     let have = st.has("clean");

@@ -4950,6 +4950,11 @@ var ENTRIES = [
 "i": "power"
 },
 {
+"t": "Game Mode on this PC",
+"p": "startup",
+"i": "pad"
+},
+{
 "t": "Add a change",
 "p": "startup",
 "d": "A new change an hour after the last one",

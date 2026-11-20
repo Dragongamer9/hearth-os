@@ -300,6 +300,14 @@ fn light_mode(st: &State) -> Option<bool> {
     cfg.is_object().then(|| kit::nf(cfg, "lightMode"))
 }
 
+/// Start in's two choices; with Game Mode off on this PC (System › Startup), Desktop Mode and the way to turn it on.
+fn start_in_items(sh: &Shared, st: &State) -> Vec<(String, bool, Option<Msg>)> {
+    if crate::cats::system::game_modes_off(sh) {
+        return vec![("Desktop Mode".into(), true, None), ("Game Mode: off".into(), false, Some(Msg::Go("startup")))];
+    }
+    vec![("Game Mode".into(), st.start == "game", Some(Msg::StartIn("game"))), ("Desktop Mode".into(), st.start == "desktop", Some(Msg::StartIn("desktop")))]
+}
+
 fn home_view<'a>(a: &'a App) -> Element<'a, Msg> {
     let sh = &a.sh;
     let st = &a.home;
@@ -352,10 +360,7 @@ fn home_view<'a>(a: &'a App) -> Element<'a, Msg> {
         column![ui::tm("Do not disturb", sz(15.0), p.text), t("Hold notifications until you turn it off", sz(13.0), p.muted)].spacing(2.0).width(Length::Fill),
         switch(&p, st.dnd, Some(Msg::Dnd(!st.dnd)))
     ].spacing(16.0).align_y(iced::Center));
-    rec = rec.push(hline(p.line)).push(inner_row(&p, G::Power, "Start in", "What this PC opens when it turns on", seg(&p, vec![
-        ("Game Mode".into(), st.start == "game", Some(Msg::StartIn("game"))),
-        ("Desktop Mode".into(), st.start == "desktop", Some(Msg::StartIn("desktop"))),
-    ])));
+    rec = rec.push(hline(p.line)).push(inner_row(&p, G::Power, "Start in", "What this PC opens when it turns on", seg(&p, start_in_items(sh, st))));
     let rec = titled_card(&p, "Recommended settings", Some(("See more", Msg::Go("quick"))), rec);
     let storage = titled_card(&p, "Storage", Some(("Manage", Msg::Go("storage"))), drive_rows(&p, &st.storage));
     // The last three changes, in settings-changes.js's words (this page's own read of the history; the frame's
@@ -589,7 +594,7 @@ fn quick_view<'a>(a: &'a App) -> Element<'a, Msg> {
         let c = container(column![
             row![ts("Start in", 20.0, p.text), Space::new().width(Length::Fill), t("What this PC opens when it turns on", 14.0, p.muted)],
             Space::new().height(Length::Fill),
-            seg(&p, vec![("Game Mode".into(), st.start == "game", Some(Msg::StartIn("game"))), ("Desktop Mode".into(), st.start == "desktop", Some(Msg::StartIn("desktop")))])
+            seg(&p, start_in_items(&a.sh, st))
         ])
         .padding(24.0)
         .width(Length::FillPortion(2))

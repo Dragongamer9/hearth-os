@@ -207,9 +207,11 @@ pub fn core<M: Send + 'static>(method: &str, args: Value, secs: u32, f: impl Fn(
 pub fn open(cmd: &[&str]) {
     hearth_ui::run::detached(cmd);
 }
-/// What has no app of its own yet opens in the Hearth app's window at that page (HearthCall.openPage).
+/// What has no app of its own yet opens in Hearth Game Mode at that page (nimbus-mode hearth-page): Hearth's screens
+/// are a mode, never a window on the desktop (the owner, Nov 19). Desktop Mode closes first; Switch to Desktop brings
+/// you back. With Game Mode off on this PC, nimbus-mode says so and nothing closes.
 pub fn open_hearth_page(page: &str) {
-    hearth_ui::run::detached(&["nimbus", "--windowed", "--page", page]);
+    hearth_ui::run::detached(&["nimbus-mode", "hearth-page", page]);
 }
 pub fn home() -> String {
     std::env::var("HOME").unwrap_or_default()

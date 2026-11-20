@@ -1002,6 +1002,17 @@ fn startup(a: &App) -> El<'_> {
     let start_in = if st.has("server") { vs(srv, "startIn") } else { st.start.clone() };
     let mut c = Column::new().spacing(10.0);
     c = c.push(t(format!("What this PC opens when it turns on{}", if server_on { ", and when it changes mode by itself." } else { "." }), sz(14.0), p.muted));
+    // Game Mode on this PC (the owner, Nov 19: "need to add a option that turns off the game modes"): desktop.json's
+    // gameModeOff through hearth_settings_io (merge, .bak, the change history); missing is On. nimbus-session reads it
+    // at every start (Off: Desktop Mode), nimbus-mode refuses Game Mode while it's off, and `nimbus-mode gamemodes
+    // apply` hides or shows Plasma's Back to Game Mode (menu, taskbar, Super+G) at once.
+    let gm_off = game_modes_off(&a.sh);
+    c = c.push(head(&p, "Game Mode on this PC"));
+    c = c.push(srow(&p, G::Pad, "Game Mode on this PC", if gm_off { "Off: this PC always starts in Desktop Mode. Back to Game Mode, Super+G and the Guide menu's Game Mode are hidden" } else { "On: Start in, Back to Game Mode, Super+G and the Guide menu's Game Mode can open Game Mode" }, choice(&p, vec![
+        ("On".into(), !gm_off, Msg::Desk(serde_json::json!({"gameModeOff": false}), Ex::none().and(gm_apply_cmd()).ok("Game Mode is on ✓"))),
+        ("Off".into(), gm_off, Msg::Desk(serde_json::json!({"gameModeOff": true}), Ex::none().and(gm_apply_cmd()).ok("Game Mode is off on this PC"))),
+    ])));
+    c = c.push(line(&p, "Game Mode stays available for recovery: if Desktop Mode can't start, Hearth still opens Game Mode so you always get a working screen. First-time setup runs as usual."));
     if server_on {
         c = c.push(srow(&p, G::Power, "When this PC turns on", "Start in one mode every time, or follow a schedule", choice(&p, vec![
             ("Always the same mode".into(), !scheduled, Msg::Exec(Ex::new(py("hearth-server-mode", &["set", "scheduleOn", "off"])).ok("Starting in the same mode every time").re("server"))),
@@ -1017,6 +1028,7 @@ fn startup(a: &App) -> El<'_> {
     let mut cards = iced::widget::Row::new().spacing(12.0);
     for (id, g, name, sub) in modes {
         let usable = id != "server" || server_on;
+        let sub = if id == "game" && gm_off { "Off on this PC (above): it starts in Desktop Mode until you turn Game Mode on" } else { sub };
         let chosen = !scheduled && start_in == id;
         let body = column![
             row![hearth_ui::ui::glyph(g, if chosen { p.accent } else { p.text }, sz(20.0), 1.8), hearth_ui::ui::ts(name, sz(16.0), p.text), t1(if chosen { "· Start in" } else { "" }, sz(14.0), p.accent)].spacing(8.0).align_y(iced::Center),
@@ -1064,6 +1076,15 @@ fn startup(a: &App) -> El<'_> {
         c = c.push(line(&p, format!("Server mode's settings couldn't be read ({}); Start in still works.", st.raw("server"))));
     }
     c.into()
+}
+
+/// Game Mode on this PC is off (desktop.json's gameModeOff is true; missing or anything else: On).
+pub fn game_modes_off(sh: &Shared) -> bool {
+    sh.d_bool("gameModeOff", false)
+}
+/// Plasma's Back to Game Mode entries shown or hidden to match (nimbus-mode gamemodes apply; 15 s at most).
+fn gm_apply_cmd() -> Vec<String> {
+    sv(&["timeout", "15", "nimbus-mode", "gamemodes", "apply"])
 }
 
 pub fn mode_name(m: &str) -> &'static str {

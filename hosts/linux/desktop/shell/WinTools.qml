@@ -256,9 +256,8 @@ Scope {
         { label: "Lock", key: "L", lock: true },
         { label: "Sleep", key: "S", cmd: ["python3", Buttons.helper, "sleep", "Desktop Mode: Super+X menu"] },
         { label: "Shut down", key: "U", cmd: ["systemctl", "poweroff"] },
-        { label: "Restart", key: "R", cmd: ["systemctl", "reboot"] },
-        { label: "Game Mode", key: "G", cmd: ["nimbus-mode", "game"] }
-    ]
+        { label: "Restart", key: "R", cmd: ["systemctl", "reboot"] }
+    ].concat(Settings.gameModeOff ? [] : [{ label: "Game Mode", key: "G", cmd: ["nimbus-mode", "game"] }])
     // From Super+X: the corner the Start button is in (Settings › Personalization › Bar and dock).
     function openWinx() {
         winxScreen = Quickshell.screens[0];
