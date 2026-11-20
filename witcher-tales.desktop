@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Witcher Tales
+Comment=Play Witcher Tales with Hearth
+Icon=/tmp/home/.local/share/nimbus/desktop-icons/gog_1207658924.png
+Exec=nimbus --play-now gog:1207658924
+Terminal=false
+Categories=Game;
+StartupNotify=false
+X-Hearth-Game=gog:1207658924

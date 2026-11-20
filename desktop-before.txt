@@ -1,0 +1,3 @@
+My Game.desktop 755
+Projects 755
+notes.txt 644

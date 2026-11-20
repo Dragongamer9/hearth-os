@@ -1,0 +1,13 @@
+ok: the launcher is on the desktop
+ok: its picture is kept in Hearth's folder (/tmp/home/.local/share/nimbus/desktop-icons/gog_1207658924.png)
+ok: executable (trusted)
+ok: Hearth noted it as its own
+::notice title=The launcher::[Desktop Entry]|Type=Application|Version=1.0|Name=Witcher Tales|Comment=Play Witcher Tales with Hearth|Icon=/tmp/home/.local/share/nimbus/desktop-icons/gog_1207658924.png|Exec=nimbus --play-now gog:1207658924|Terminal=false|Categories=Game;|StartupNotify=false|X-Hearth-Game=gog:1207658924|
+ok: notes.txt stayed
+ok: Projects stayed
+ok: My Game.desktop stayed
+ok: Witcher (my copy).desktop stayed
+::notice title=Desktop folder::before: My Game.desktop 755,Projects 755,notes.txt 644, | added: My Game.desktop 755,Projects 755,Witcher Tales.desktop 755,notes.txt 644, | after uninstall: My Game.desktop 755,Projects 755,Witcher (my copy).desktop 755,notes.txt 644,
+::notice title=Hearth Games log:: rtal.Account as a last-resort fallback||(/usr/libexec/xdg-desktop-portal:6356): xdg-desktop-portal-WARNING **: 08:45:51.587: Choosing gtk.portal for org.freedesktop.impl.portal.Email as a last-resort fallback||(/usr/libexec/xdg-desktop-portal:6356): xdg-desktop-portal-WARNING **: 08:45:51.588: Choosing gtk.portal for org.freedesktop.impl.portal.DynamicLauncher as a last-resort fallback|dbus-daemon[6347]: [session uid=1001 pid=6347] Successfully activated service 'org.freedesktop.portal.Desktop'|
+::notice title=Pictures:: app-1-library: 1280x800 spread 0.0728097 | app-2-card-menu: 1280x800 spread 0.0662566 | app-3-added: 1280x800 spread 0.0812317 | app-4-card-menu-remove: 1280x800 spread 0.0656207 | app-5-menu-uninstall: 1280x800 spread 0.0655139 | app-6-confirm-uninstall: 1280x800 spread 0.0693535 | app-7-after-uninstall: 1280x800 spread 0.0950064 | app-8-page-install-tickbox: 1280x800 spread 0.121121 | app-9-preview-card-menu: 1280x800 spread 0.113038 |
+::notice title=Checks passed::8
