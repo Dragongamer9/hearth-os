@@ -22,8 +22,15 @@ Item {
     Component.onCompleted: { console.info("plasma-hearth: notifications: service " + (serving ? "up" : "not up yet")); hold(); }
     // KDE's own pop-ups pause while Hearth draws them (hearth-plasma-panel hold-popups: Plasma's inhibition, held
     // only while this runs; nothing saved). Notifications still all come in.
+    // KDE's critical pop-ups too (KDE lets those through a pause): Plasma's own setting, changed in this session only
+    // while Hearth shows the notifications and put back as it was when this goes (hearth-plasma-panel apply / undo
+    // keep the file the same way, so the next sign-in matches).
+    NM.Settings { id: nms }
+    property var critWas: undefined
+    function quietCritical() { if (!serving || critWas !== undefined) return; critWas = nms.criticalPopupsInDoNotDisturbMode; nms.criticalPopupsInDoNotDisturbMode = false; }
+    Component.onDestruction: if (critWas !== undefined) nms.criticalPopupsInDoNotDisturbMode = critWas
     property bool holding: false
-    function hold() { if (!serving || holding) return; holding = true; Hearth.call(["python3", Hearth.helper, "hold-popups"], (out) => { console.info("plasma-hearth: KDE's pop-ups: " + out.trim()); srv.holding = false; }); }
+    function hold() { quietCritical(); if (!serving || holding) return; holding = true; Hearth.call(["python3", Hearth.helper, "hold-popups"], (out) => { console.info("plasma-hearth: KDE's pop-ups: " + out.trim()); srv.holding = false; }); }
     NM.Notifications {
         id: model
         showNotifications: true

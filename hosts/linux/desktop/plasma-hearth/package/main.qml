@@ -97,7 +97,11 @@ PlasmoidItem {
                     item.keyboardRequested.connect(() => Hearth.run(["python3", Hearth.helper, "osk"]));
                     item.menuSearchRequested.connect(() => menus.openMenuSearch());
                 }
-                onStatusChanged: if (status === Loader.Error) console.warn("plasma-hearth: Mantel's bar (Islands.qml) couldn't load")
+                // Up: hearth-plasma-panel login's check sees it (else KDE's panel comes back, and you're told).
+                onStatusChanged: {
+                    if (status === Loader.Error) console.warn("plasma-hearth: Mantel's bar (Islands.qml) couldn't load");
+                    else if (status === Loader.Ready) Hearth.call(["python3", Hearth.helper, "ready"], null);
+                }
             }
             Loader {
                 id: dockL

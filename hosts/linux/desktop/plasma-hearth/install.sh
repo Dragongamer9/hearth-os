@@ -25,7 +25,7 @@ MANTEL="Theme.qml subthemes.js Settings.qml SettingsWriter.qml DeskState.qml Lea
   QuickAccess.qml PhoneStatus.qml ClockPanel.qml MediaCard.qml StatsCard.qml calendars.js Notifications.qml NotifReply.qml
   Sounds.qml Frost.qml FrostBlur.qml Scene.qml Wallpaper.qml WallShow.qml DeskClock.qml Desktop.qml DesktopMenu.qml
   DeskDialog.qml search-bar.js SearchBar.qml VolumeOsd.qml SystemOsd.qml PowerMenu.qml
-  LeaveConfirm.qml"
+  LeaveConfirm.qml settings-pages.js"
 
 build() {   # build ID NAME DESCRIPTION
   local id=$1 dir="$P/$1"
@@ -35,6 +35,8 @@ build() {   # build ID NAME DESCRIPTION
     if [ -f "$SHELL_SRC/$f" ]; then cp "$SHELL_SRC/$f" "$dir/contents/ui/$f"; else echo "plasma-hearth: $f isn't in Mantel's folder"; ok=0; fi
   done
   cp -a "$SHELL_SRC/search" "$dir/contents/ui/search"
+  # Mantel's pictures (the looks' scenes and wallpapers): its own folder, one copy.
+  ln -sfn /usr/share/nimbus/desktop/shell/images "$dir/contents/ui/images"
   cp "$SRC"/shim/*.qml "$dir/contents/ui/"
   cp "$SRC"/package/*.qml "$dir/contents/ui/"
   cp "$SRC/package/config/main.xml" "$dir/contents/config/main.xml"
@@ -58,6 +60,11 @@ else
   chmod 755 "$SRC/hearth-plasma-panel"
 fi
 ln -sfn /usr/share/nimbus/desktop/plasma-hearth/hearth-plasma-panel "$ROOT/usr/bin/hearth-plasma-panel"
+# New accounts get Hearth's panel at their first sign-in (the mark in /etc/skel; accounts made before don't have it),
+# and every sign-in checks Hearth's panel came up (else KDE's panel comes back).
+mkdir -p "$ROOT/etc/skel/.config/hearth" "$ROOT/etc/xdg/autostart"
+echo "Hearth's panel at this account's first sign-in (hearth-plasma-panel login removes this file)" > "$ROOT/etc/skel/.config/hearth/plasma-panel-new"
+install -m644 "$SRC/hearth-plasma-panel-login.desktop" "$ROOT/etc/xdg/autostart/hearth-plasma-panel-login.desktop"
 # Quick settings' backend, shared with Firehold on Plasma (the same qs / qs-do commands and JSON).
 mkdir -p "$ROOT/usr/libexec/hearth"
 install -m755 "$SRC/hearth-quick" "$ROOT/usr/libexec/hearth/hearth-quick"

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth's panel
+Comment=A new account's first sign-in gets Hearth's panel; KDE's panel comes back if Hearth's can't start
+Exec=/usr/bin/python3 /usr/share/nimbus/desktop/plasma-hearth/hearth-plasma-panel login
+OnlyShowIn=KDE;
+NoDisplay=true
+X-KDE-autostart-phase=2

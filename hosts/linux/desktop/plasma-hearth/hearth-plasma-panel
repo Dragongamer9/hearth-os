@@ -10,6 +10,8 @@ panels (docs/mockups/checklists/plasma-hearth-bar.md).
   hearth-plasma-panel sync           after a Hearth setting changed (hearth-plasma-panel.path: desktop.json, desk.json,
                                      bar.json, the apps): Hearth's panels follow your look, bar edge and auto-hide, and
                                      re-read what changed. Does nothing when Hearth's panel isn't in use.
+  hearth-plasma-panel login          at sign-in: a new account's first sign-in gets Hearth's panel (the owner, Nov 19);
+                                     a Hearth's panel that doesn't start gives way to KDE's panel, and says so
   hearth-plasma-panel open launcher|quick|calendar|search   opens (or closes) it on Hearth's bar
   hearth-plasma-panel env | apps | launch FILE [ACTION] | run ARGV...   used by the panel itself
 
@@ -394,11 +396,13 @@ print(JSON.stringify({ok: true, panels: panels().length}));
 # puts each back, or removes it when it wasn't set). Each is one of KDE's pieces Hearth's panel draws itself:
 #   KDE's critical pop-ups while Hearth holds KDE's pop-ups (Hearth shows every notification itself; when Hearth's
 #   panel isn't running nothing is held, so KDE's pop-ups all come back), KDE's on-screen display (Hearth's volume and
-#   brightness bars), and the window frames (Mantel's own, theme/hearth_aurorae.py).
+#   brightness bars), the window frames (Mantel's own, theme/hearth_aurorae.py) and Alt+Tab (Mantel's own switcher,
+#   org.hearth.switcher, the one Mantel on KWin uses).
 KDE_KEYS = [('plasmanotifyrc', 'Notifications', 'CriticalInDndMode', 'false'),
             ('plasmarc', 'OSD', 'Enabled', 'false'),
             ('kwinrc', 'org.kde.kdecoration2', 'library', 'org.kde.kwin.aurorae'),
-            ('kwinrc', 'org.kde.kdecoration2', 'theme', '__aurorae__svg__hearth')]
+            ('kwinrc', 'org.kde.kdecoration2', 'theme', '__aurorae__svg__hearth'),
+            ('kwinrc', 'TabBox', 'LayoutName', 'org.hearth.switcher')]
 
 
 def kcfg(tool):
@@ -545,6 +549,70 @@ def hold_popups():
         signal.pause()
 
 
+# ------------------------------------------------------------------ new accounts, and a panel that can't start
+# The owner (Nov 19): Hearth's panel is the default on new Fedora installs: only on a fresh install or a new account's
+# first sign-in, never switched for anyone who already has a panel. A new account gets NEW_MARK from /etc/skel (an
+# account made before this update never has it); the first sign-in puts Hearth's panel in, then takes the mark away.
+NEW_MARK = os.path.join('.config', 'hearth', 'plasma-panel-new')
+READY_SECS = 45
+
+
+def ready_path():
+    return os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'hearth-plasma-panel', 'ready-bar')
+
+
+def mark_ready():
+    p = ready_path()
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    with open(p, 'w') as f:
+        f.write(str(int(time.time())))
+    return 0
+
+
+def notify(text):
+    detach(['notify-send', '-a', 'Hearth', '-i', 'hearth', "Hearth's panel", text])
+
+
+def first_login():
+    """A new account's first sign-in: Hearth's panel. Done once (the mark goes either way)."""
+    mark = os.path.join(home(), NEW_MARK)
+    if not os.path.isfile(mark):
+        return 'not new'
+    try:
+        os.remove(mark)
+    except OSError:
+        pass
+    if in_use():
+        return 'already'
+    return 'applied' if apply() == 0 else 'failed'
+
+
+def guard(wait=READY_SECS):
+    """Hearth's panel in use but its bar never said it's up (READY_SECS after sign-in): KDE's own panel back, so the
+    desktop always has a panel, and you're told (Settings › Bar and dock puts Hearth's back)."""
+    if not in_use():
+        return 'not in use'
+    since = time.time()
+    while time.time() - since < wait:
+        try:
+            if os.path.getmtime(ready_path()) >= since - 120:
+                return 'up'
+        except OSError:
+            pass
+        time.sleep(1)
+    undo()
+    notify("Hearth's panel couldn't start, so KDE's panel is back. Settings › Bar and dock can try Hearth's panel again.")
+    return 'fell back'
+
+
+def login():
+    """At sign-in (autostart): a new account's first sign-in gets Hearth's panel; then the panel is checked."""
+    a = first_login()
+    b = guard()
+    print(json.dumps({'first': a, 'guard': b}))
+    return 0
+
+
 def main(argv):
     cmd, rest = (argv[1] if len(argv) > 1 else 'status'), argv[2:]
     if cmd == 'env':
@@ -575,6 +643,10 @@ def main(argv):
         return sync()
     elif cmd == 'frames':        # hearth-plasma-looks after a Global Theme: Mantel's frames back, if Hearth's panel is in use
         return frames() if in_use() else 0
+    elif cmd == 'login':
+        return login()
+    elif cmd == 'ready':
+        return mark_ready()
     elif cmd == 'hold-popups':
         return hold_popups()
     elif cmd == 'open' and rest and rest[0] in ('launcher', 'quick', 'calendar', 'search', 'power', 'deskmenu', 'osd', 'osd-bright'):

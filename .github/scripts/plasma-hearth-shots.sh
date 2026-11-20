@@ -101,8 +101,14 @@ sleep 2
 shot ph-00-plain-kde-plasma
 
 # ---- Hearth's panel in (the person's pick: Settings › Bar and dock › Hearth's panel)
-hearth-plasma-panel apply > "$OUT/apply.json" 2>&1
-grep -q '"ok": true' "$OUT/apply.json" || fail apply "hearth-plasma-panel apply: $(tr '\n' ' ' <"$OUT/apply.json" | cut -c1-600)"
+# A new account's first sign-in (the owner, Nov 19: the default on new installs): /etc/skel's mark, then the sign-in
+# step Plasma's autostart runs. It puts Hearth's panel in and checks it came up.
+mkdir -p "$HOME/.config/hearth" && cp /etc/skel/.config/hearth/plasma-panel-new "$HOME/.config/hearth/" 2>/dev/null \
+  || fail install "no first sign-in mark in /etc/skel"
+timeout 120 hearth-plasma-panel login > "$OUT/login.json" 2>&1
+grep -q '"first": "applied"' "$OUT/login.json" || fail login "a new account's first sign-in didn't get Hearth's panel: $(tr '\n' ' ' <"$OUT/login.json" | cut -c1-600)"
+grep -q '"guard": "up"' "$OUT/login.json" || fail login "Hearth's bar didn't say it's up: $(tr '\n' ' ' <"$OUT/login.json" | cut -c1-600)"
+[ -e "$HOME/.config/hearth/plasma-panel-new" ] && fail login "the first sign-in mark is still there (it must happen once)"
 ls "$HOME/.local/share/hearth/plasma-panel/" >"$OUT/saved-panels.txt" 2>&1
 for f in plasmanotifyrc plasmarc kwinrc; do echo "== $f"; cat "$HOME/.config/$f" 2>&1; done > "$OUT/kde-settings-after-apply.txt"
 grep -q "CriticalInDndMode=false" "$HOME/.config/plasmanotifyrc" || fail kde-settings "KDE's critical pop-ups weren't paused (plasmanotifyrc)"
@@ -149,6 +155,9 @@ setlook hearth dark
 open_ power; shot ph-20-power-menu; hearth-plasma-panel open power >/dev/null 2>&1; timeout 5 wtype -k Escape 2>/dev/null; sleep 2
 open_ deskmenu; shot ph-21-desktop-menu; timeout 5 wtype -k Escape 2>/dev/null; sleep 2
 open_ osd; sleep 0; shot ph-22-volume-bar; sleep 2
+# Alt+Tab (KWin's task switcher, Mantel's own layout org.hearth.switcher), with two windows open
+konsole >/dev/null 2>&1 & sleep 5
+timeout 5 dbus-send --session --dest=org.kde.kglobalaccel /component/kwin org.kde.kglobalaccel.Component.invokeShortcut "string:Walk Through Windows" 2>/dev/null; sleep 1.5; shot ph-24-alt-tab; timeout 5 wtype -k Escape 2>/dev/null; sleep 1
 open_ osd-bright; shot ph-23-brightness-bar; sleep 2
 
 # ---- the five app menus (Settings › Bar and dock › App menu), Hearth dark

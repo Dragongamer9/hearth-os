@@ -40,14 +40,24 @@ backend shared with Firehold on Plasma: /usr/libexec/hearth/hearth-quick (qs / q
 - [x] Quick settings' backend shared with Firehold on Plasma — hosts/linux/desktop/plasma-hearth/hearth-quick: "hearth-quick qs"
 - [x] Nothing at rest (plasmashell measured in CI: a few hundredths of a second a minute) — .github/scripts/plasma-hearth-shots.sh: "at rest"
 
+- [x] The default on new Fedora installs and new accounts' first sign-in only, never for an account that already has a panel (the owner, Nov 19 22:11) — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "def first_login"
+- [x] KDE's panel comes back by itself, and says so, when Hearth's bar doesn't start — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "def guard"
+- [x] Mantel's desktop: each look's own wallpaper or moving scene, the desktop clock, desktop icons — hosts/linux/desktop/plasma-hearth/package/DesktopLayer.qml: "Wallpaper.qml"
+- [x] The desktop's right-click menu (Mantel's) — hosts/linux/desktop/plasma-hearth/package/DesktopLayer.qml: "backgroundMenu"
+- [x] Mantel's power menu — hosts/linux/desktop/plasma-hearth/install.sh: "PowerMenu.qml"
+- [x] Volume and brightness bars (Mantel's; KDE's own on-screen display off while Hearth's panel is in use) — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "('plasmarc', 'OSD', 'Enabled', 'false')"
+- [x] Mantel's window frames in every look (Aurorae, theme/hearth_aurorae.py) — hosts/linux/desktop/plasma-hearth/hearth-plasma-panel: "def frames"
+- [x] Quick settings' weather row, the dashboard's weather tile and events, notifications with their apps' icons and buttons (pictured with Hearth Time's stand-in, as Mantel's CI) — .github/scripts/plasma-hearth-shots.sh: "--weather-summary"
+- [x] Settings pages in the app menu's search (Mantel's settings-pages.js) — hosts/linux/desktop/plasma-hearth/shim/SettingsNav.qml: "settings-pages.js"
+- [x] Keyboard layout button and copies and downloads (Plasma's keyboard layout and job progress) — hosts/linux/desktop/plasma-hearth/shim/PlasmaHub.qml: "KB.KeyboardLayout"
+- [ ] Alt+Tab: Mantel's switcher (org.hearth.switcher, KWin's task switcher) — set, picture pending
+- [ ] KDE's own pop-ups never show, critical ones too (paused while Hearth shows them; picture pending)
+
 ## Not built yet
 
-- [ ] The desktop under the bar in each look: the look's own wallpaper and Mantel's desktop clock (stage 2: desktop pieces)
-- [ ] Critical notifications pop up twice: KDE still shows its own for critical ones while Hearth's are up (KDE's "critical in Do not disturb"); normal ones are Hearth's only
 - [ ] Glass's frosted blur behind the islands (the milky fill and edge are there)
 - [ ] Tray icons of apps (Plasma's statusnotifieritem source is wired; not pictured, needs testing on a device)
 - [ ] What's playing in the pill and the Now playing tile (Plasma's media players; needs testing on a device)
-- [ ] Copies and downloads, background apps, camera and microphone, printing, disks, keyboard layout buttons (Mantel's own services)
-- [ ] Settings pages found by the app menu's search (the Rust Settings app's page list)
+- [ ] Background apps, camera and microphone, printing, disks buttons (Mantel's own service hearth-notifyd streams; Plasma's equivalents to wire)
 - [ ] Firehold's style for org.hearthos.quicksettings and org.hearthos.notifications (mockups firehold-plasma 07-10)
-- [ ] Stage 2: volume and brightness pop-ups, Alt+Tab, window frames, desktop right-click menu, lock screen, power menu
+- [ ] The lock screen (Mantel's, hosts/linux/desktop/kwin-lock, in KDE's screen locker)
