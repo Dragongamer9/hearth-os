@@ -39,7 +39,7 @@ for k in /usr/libexec/kactivitymanagerd /usr/lib64/libexec/kactivitymanagerd /us
 for k in /usr/libexec/kglobalacceld /usr/lib64/libexec/kglobalacceld /usr/bin/kglobalacceld; do [ -x "$k" ] && { "$k" >"$OUT/kglobalaccel.log" 2>&1 & break; }; done
 sleep 3
 
-# start SHELL TAG I: one start; prints "up", "slow" or "crash"
+# start SHELL TAG I: one start; prints "up", "slow" or "crash". A window opens and one closes while it comes up.
 start() {
   local shell=$1 tag=$2 i=$3 log="$OUT/$2-$3.log"
   pkill -x kded6; sleep 0.3
@@ -47,6 +47,7 @@ start() {
   local since=$(date +%s)
   KDE_DEBUG=1 HEARTH_FIREHOLD_TIP=always PLASMA_DEFAULT_SHELL=$shell plasmashell -p "$shell" >"$log" 2>&1 &
   local pid=$! up=""
+  ( sleep 2; konsole >/dev/null 2>&1 & k=$!; sleep 3; kill $k ) &
   for s in $(seq 1 40); do
     kill -0 $pid 2>/dev/null || break
     if [ "$shell" = org.hearthos.firehold.desk ]; then
@@ -70,6 +71,12 @@ start() {
 }
 
 PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk hearth-firehold-plasma session >"$OUT/session.log" 2>&1 &
+# Windows open while it starts, as on a real desktop (the bar follows the window in front: Plasma's task model changes
+# under it while it comes up).
+dolphin "$HOME/Pictures" >/dev/null 2>&1 &
+konsole >/dev/null 2>&1 &
+kate >/dev/null 2>&1 &
+sleep 6
 for tag in firehold stock; do
   shell=org.hearthos.firehold.desk; [ $tag = stock ] && shell=org.kde.plasma.desktop
   [ $tag = firehold ] && { hearth-firehold-plasma begin $shell >/dev/null 2>&1

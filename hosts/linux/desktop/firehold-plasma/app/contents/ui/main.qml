@@ -20,18 +20,31 @@ PlasmoidItem {
         filterByVirtualDesktop: false
         filterByScreen: false
         filterByActivity: false
+        // Read afresh after the model has changed (never from a model index kept from before: a kept index can point
+        // at a row that's gone, and Plasma's task model crashed plasmashell reading one at start).
+        onActiveTaskChanged: Qt.callLater(root.readActive)
+        onDataChanged: Qt.callLater(root.readActive)
+        onCountChanged: Qt.callLater(root.readActive)
     }
-    readonly property var active: tasks.activeTask
-    readonly property string rawName: active && active.valid ? String(tasks.data(active, TaskManager.AbstractTasksModel.AppName) || "") : ""
-    readonly property string rawTitle: active && active.valid ? String(tasks.data(active, Qt.DisplayRole) || "") : ""
-    readonly property string rawId: active && active.valid ? String(tasks.data(active, TaskManager.AbstractTasksModel.AppId) || "") : ""
+    property string rawName: ""
+    property string rawTitle: ""
+    property string rawId: ""
+    property int rawPid: 0
+    function readActive() {
+        const a = tasks.activeTask;
+        const ok = !!a && a.valid;
+        const R = TaskManager.AbstractTasksModel;
+        rawName = ok ? String(tasks.data(a, R.AppName) || "") : "";
+        rawTitle = ok ? String(tasks.data(a, Qt.DisplayRole) || "") : "";
+        rawId = ok ? String(tasks.data(a, R.AppId) || "") : "";
+        rawPid = ok ? Number(tasks.data(a, R.AppPid) || 0) : 0;
+    }
     // A runtime's name (qml, wine, java, python) says nothing: the window's title does (Trains 2010).
     readonly property string frontName: /^(qml|qml6|wine.*|java|python3?|.*\.exe)$/i.test(rawName) ? rawTitle.split(" — ")[0].split(" - ")[0] : rawName
     // The app stays named while one of Plasma's own popups (a menu from this bar) has the keyboard.
     property string appName: ""
     onFrontNameChanged: if (frontName !== "" && !/plasmashell|org\.kde\.plasmashell/i.test(rawId)) appName = frontName
     property int pid: 0
-    readonly property int rawPid: active && active.valid ? Number(tasks.data(active, TaskManager.AbstractTasksModel.AppPid) || 0) : 0
     P5Support.DataSource {
         id: sh
         engine: "executable"
@@ -58,7 +71,7 @@ PlasmoidItem {
             root.listen();
         });
     }
-    Component.onCompleted: listen()
+    Component.onCompleted: { listen(); readActive(); }
     property var screens: []
     function readScreens(then) { helper(["modes"], function (t) { try { root.screens = JSON.parse(t.trim().split("\n").pop()).screens || []; } catch (e) {} root.readFrontScreen(); if (then) then(); }); }
     function modeName(m) { return m === "couch" ? "Couch" : m === "away" ? "Away" : "Desk"; }

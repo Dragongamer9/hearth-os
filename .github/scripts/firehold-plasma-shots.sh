@@ -103,7 +103,7 @@ FAKE=/usr/local/bin/hearth-ci-fakeinput
 FIP=$(ls /usr/share/plasma-wayland-protocols/fake-input.xml 2>/dev/null | head -1)
 if command -v gcc >/dev/null && command -v wayland-scanner >/dev/null && [ -n "$FIP" ]; then
   wayland-scanner client-header "$FIP" /tmp/fake-input-client-protocol.h && wayland-scanner private-code "$FIP" /tmp/fake-input-protocol.c \
-    && gcc -O1 -I/tmp -o "$FAKE" "$(dirname "$0")/firehold-fakeinput.c" /tmp/fake-input-protocol.c -lwayland-client >"$OUT/fakeinput-build.txt" 2>&1
+    && gcc -O1 -I/tmp -o "$FAKE" "$(dirname "$0")/firehold-fakeinput.c" /tmp/fake-input-protocol.c -lwayland-client -lm >"$OUT/fakeinput-build.txt" 2>&1
   printf '[Desktop Entry]\nType=Application\nName=Hearth CI fake input\nExec=%s\nNoDisplay=true\nX-KDE-Wayland-Interfaces=org_kde_kwin_fake_input\n' "$FAKE" \
     > /usr/share/applications/org.hearthos.ci-fakeinput.desktop
 fi
