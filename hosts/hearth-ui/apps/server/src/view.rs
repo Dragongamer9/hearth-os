@@ -353,7 +353,9 @@ fn services<'a>(a: &'a App, k: f32, used_above: f32) -> E<'a> {
     let tile_h = 262.0 * k;
     let gapk = 12.0 * k;
     let avail = a.size.height - 78.0 * k - 48.0 * k - 26.0 * k - used_above - 12.0 * k - (14.0 + 14.0 + 10.0 + 16.0) * k;
-    let fit = (((avail + gapk) / (tile_h + gapk)).floor() as usize).max(1);
+    // A row that only partly fits shows its top (the panel clips it), as Mantel's scrolling list does.
+    let room = (avail + gapk) / (tile_h + gapk);
+    let fit = (if room.fract() > 0.25 { room.ceil() } else { room.floor() } as usize).max(1);
     let rows_n = cells.iter().map(|c| c.0 + 1).max().unwrap_or(0);
     let sel_row = if a.sel >= 1 { cells.get(a.sel - 1).map(|c| c.0).unwrap_or(0) } else { 0 };
     let first = if sel_row + 1 > fit { sel_row + 1 - fit } else { 0 };
