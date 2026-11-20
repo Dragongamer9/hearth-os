@@ -306,6 +306,14 @@ printf '{"screens": {"Virtual-1": {"mode": "couch", "why": "pad", "at": %s}, "Vi
 since=$(date +%s)
 HEARTH_FIREHOLD_TIP=always PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk plasmashell -p org.hearthos.firehold.desk >>"$OUT/plasmashell2.log" 2>&1 &
 PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk hearth-firehold-plasma session >"$OUT/session2.log" 2>&1 &
+if ! wait_ready org.hearthos.firehold.desk 40 && command -v gdb >/dev/null; then
+  # It crashed (seen now and then since round 20): its backtrace under gdb, in desk2-gdb.txt; then as before.
+  pkill -f "hearth-firehold-plasma session"; pkill plasmashell; sleep 2; rm -f "$RUN/failed"
+  HEARTH_FIREHOLD_TIP=always KDE_DEBUG=1 PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk timeout 70 gdb -batch -ex run -ex "thread apply all bt 30" --args plasmashell -p org.hearthos.firehold.desk >"$OUT/desk2-gdb.txt" 2>&1
+  pkill plasmashell; sleep 2; rm -f "$RUN/failed"; hearth-firehold-plasma begin org.hearthos.firehold.desk
+  HEARTH_FIREHOLD_TIP=always PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk plasmashell -p org.hearthos.firehold.desk >>"$OUT/plasmashell2.log" 2>&1 &
+  PLASMA_DEFAULT_SHELL=org.hearthos.firehold.desk hearth-firehold-plasma session >"$OUT/session2b.log" 2>&1 &
+fi
 wait_ready org.hearthos.firehold.desk 90 && echo "::notice title=Two screens::the Desk shell is up" || fail "Two screens" "the Desk didn't come up"
 python3 "$FX/mpris.py" >"$OUT/mpris2.log" 2>&1 &
 dolphin "$HOME/Pictures" >/dev/null 2>&1 &
