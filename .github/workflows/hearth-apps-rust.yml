@@ -97,12 +97,14 @@ jobs:
     timeout-minutes: 40
     container:
       image: registry.fedoraproject.org/fedora:45
-      options: --privileged
+      options: --privileged -v /dev:/dev
     steps:
-      - name: KWin, Qt, the fake input's tools
+      - name: KWin, Qt, the fake input's tools (as plasma-pad.yml's KDE session)
         run: |
-          dnf -y install --skip-unavailable kwin python3 python3-dbus python3-pillow dbus-daemon dbus-tools procps-ng qt6-qtdeclarative qt6-qtdeclarative-devel \
-            qt6-qtwayland mesa-dri-drivers gcc wayland-devel plasma-wayland-protocols-devel rsms-inter-fonts google-noto-sans-fonts xorg-x11-server-Xwayland >/dev/null
+          dnf -y install python3 python3-dbus python3-pillow procps-ng dbus-daemon dbus-tools glib2 \
+            plasma-workspace kwin plasma-breeze breeze-icon-theme xorg-x11-server-Xwayland mesa-dri-drivers \
+            qt6-qtdeclarative qt6-qtdeclarative-devel qt6-qtwayland kf6-kconfig rsms-inter-fonts google-noto-sans-fonts \
+            libxkbcommon fontconfig gcc pkgconf-pkg-config wayland-devel plasma-wayland-protocols-devel >/dev/null
           for b in kwin_wayland wayland-scanner gcc; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed"; done
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4

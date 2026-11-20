@@ -16,7 +16,7 @@ printf 'A file that goes to another app\n' > "$HOME/Outbox/drop-me.txt"
 dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus"
 export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
 export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_TYPE=wayland KDE_FULL_SESSION=true KDE_SESSION_VERSION=6
-export QT_FORCE_STDERR_LOGGING=1 KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 LIBGL_ALWAYS_SOFTWARE=1
+export QT_FORCE_STDERR_LOGGING=1 KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1 KWIN_WAYLAND_NO_PERMISSION_CHECKS=1 LIBGL_ALWAYS_SOFTWARE=1 LANG=C.UTF-8
 export HEARTH_SHELL_DIR="$ROOT/hosts/linux/desktop/shell" HEARTH_PALETTES="$ROOT/hosts/linux/desktop/theme/palettes.json"
 mkdir -p "$HOME/.local/share/nimbus" && printf '{"look": "steam", "mode": "dark"}\n' > "$HOME/.local/share/nimbus/desktop.json"
 
@@ -63,8 +63,9 @@ rest() {   # rest PID SECONDS: % of a core
 
 cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
 /tmp/kwin_wayland --virtual --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >"$OUT/kwin.log" 2>&1 &
-for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
-[ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { fail KWin "didn't start: $(tail -5 "$OUT/kwin.log" | tr '\n' '|' | cut -c1-600)"; exit 0; }
+KW=$!
+for i in $(seq 1 90); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
+[ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] || { fail KWin "didn't start (running: $(kill -0 $KW 2>/dev/null && echo yes || echo no); sockets: $(ls $XDG_RUNTIME_DIR | tr '\n' ' ')): $(tail -c 1500 "$OUT/kwin.log" | tr '\n' '|')"; exit 0; }
 export WAYLAND_DISPLAY=wayland-hearth QT_QPA_PLATFORM=wayland
 sleep 2
 # The pointer exists once the fake input device does (KWin adds the seat's pointer then): a first move.
