@@ -487,6 +487,10 @@ def apply(pal, want, paths, kc):
             log('accent left as it is: %s' % e)
     code, out = run(['plasma-apply-desktoptheme', style_id(want['look'], want['mode'])])
     log('Plasma style %s: exit %s' % (style_id(want['look'], want['mode']), code))
+    # Hearth's panel (plasma-hearth) draws Mantel's window frames: the Global Theme's Breeze frames give way to them
+    # again (hearth-plasma-panel frames does nothing when Hearth's panel isn't in use).
+    if os.path.isfile('/usr/bin/hearth-plasma-panel'):
+        run(['/usr/bin/hearth-plasma-panel', 'frames'])
     if hearth_wallpaper(current_wallpaper(paths['appletsrc'])):
         w = '/usr/share/wallpapers/' + wallpaper_id(lk)
         if os.path.isdir(w):

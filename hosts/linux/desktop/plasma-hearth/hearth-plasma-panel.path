@@ -1,0 +1,16 @@
+[Unit]
+Description=Hearth's panel on Plasma follows Hearth's settings and your apps (only when it's in use)
+PartOf=graphical-session.target
+
+[Path]
+PathChanged=%h/.local/share/nimbus/desktop.json
+PathChanged=%h/.config/nimbus/desk.json
+PathChanged=%h/.config/nimbus/bar.json
+PathChanged=%h/.local/share/nimbus/library.json
+PathChanged=%h/.local/share/applications
+PathChanged=/usr/share/applications
+PathChanged=/var/lib/flatpak/exports/share/applications
+Unit=hearth-plasma-panel.service
+
+[Install]
+WantedBy=plasma-workspace.target
