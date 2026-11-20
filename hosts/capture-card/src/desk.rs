@@ -260,7 +260,7 @@ impl<M> iced::widget::canvas::Program<M> for Plug {
             f.stroke(&card, Stroke::default().with_color(ACC).with_width(2.0 * k));
             label(f, "card", 270.0, 95.0, 13.0, ACC2, true);
             // The dashed USB line: 10 on, 9 off.
-            let mut x = 310.0;
+            let mut x: f32 = 310.0;
             while x < 370.0 {
                 let e = (x + 10.0).min(370.0);
                 f.stroke(&Path::line(p(x, 90.0), p(e, 90.0)), Stroke::default().with_color(ACC).with_width(5.0 * k).with_line_cap(iced::widget::canvas::LineCap::Round));
