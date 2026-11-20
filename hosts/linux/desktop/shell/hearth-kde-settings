@@ -1,0 +1,681 @@
+#!/usr/bin/python3
+"""hearth-kde-settings: Hearth Settings' pages for every KDE System Settings module (KCM) that Hearth had no page for
+(the owner, Nov 19, 2026: "Build them all into Hearth Settings"; docs/mockups/checklists/settings-kde-all.md).
+
+Each page is described once, in kde-settings.json next to this file (the Rust Settings app draws the same file:
+hosts/hearth-ui/apps/settings/src/cats/kde.rs). A page reads and changes KDE's own settings the way its KCM does: the
+same files, groups and keys, and KDE's own tools where the KCM uses one (plasma-apply-colorscheme, ...).
+
+  * Only keys a page lists can be changed (the allowlist is built from kde-settings.json), only the keys changed are
+    written (hearth_kconfig: atomic, FILE.bak kept, every other line left as it was, a file that can't be read never
+    written over, [$i] locks kept), then KDE's "config changed" signal is sent and the program that reads it is asked
+    to read it again (KWin, KRunner, ...). Nothing is written when a page opens.
+  * On labwc (Hearth Classic) the pages still read and save KDE's files: the pages say which ones only KDE Plasma uses.
+
+  hearth-kde-settings status                JSON: on KDE Plasma? which KDE programs are running
+  hearth-kde-settings get PAGE              JSON: the page's files as KDE sees them (system defaults + yours), its lists
+  hearth-kde-settings set FILE              stdin {group: {key: value or null}}: change these keys (allowlisted) in FILE
+  hearth-kde-settings apply TOOL VALUE      runs KDE's own tool for a choice (TOOLS below), with a timeout
+  hearth-kde-settings list KIND             JSON [[value, label], ...]: what's installed (splash screens, styles, ...)
+  hearth-kde-settings info KIND             JSON rows [[label, value], ...] for an Info Center page
+  hearth-kde-settings firmware              JSON {can, on}: open the firmware setup at the next restart (logind)
+  hearth-kde-settings firmware-set on|off
+  hearth-kde-settings kded                  JSON: KDE's background services (kded modules) and whether each starts
+  hearth-kde-settings kded-set NAME on|off  starts or stops one now and remembers it (kded6 over D-Bus, kded5rc)
+
+HEARTH_KDE_FIXTURE=<dir>: tests and CI pictures read programs' answers (status.json, list-KIND.json, info-KIND.json,
+kded.json, gtk-current.json, firmware.json) from there and tools aren't run; files still come from $XDG_CONFIG_HOME / $XDG_CONFIG_DIRS.
+"""
+import glob
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+import hearth_kconfig as kc  # noqa: E402
+import hearth_settings_io as hsio  # noqa: E402
+
+SPEC_PATH = os.environ.get('HEARTH_KDE_SPEC') or os.path.join(HERE, 'kde-settings.json')
+
+
+class Fail(Exception):
+    pass
+
+
+def spec():
+    with open(SPEC_PATH, encoding='utf-8') as f:
+        return json.load(f)
+
+
+SETTABLE = ('switch', 'choice', 'number', 'pick', 'text', 'file')
+
+
+def rows(page):
+    for sec in page.get('rows', []):
+        yield sec
+
+
+def allowlist(sp=None):
+    """{file: {group: set(keys)}} every page may change."""
+    sp = sp or spec()
+    out = {}
+    for page in sp['pages']:
+        for r in rows(page):
+            if r.get('type') in SETTABLE and r.get('file') and not r.get('tool'):
+                out.setdefault(r['file'], {}).setdefault(r['group'], set()).add(r['key'])
+                g = out[r['file']][r['group']]
+                if r.get('key2'):                        # a pick that writes two keys ("library|theme")
+                    g.add(r['key2'])
+                for o in r.get('opts', []):              # a choice's other keys, written with it
+                    if len(o) > 2 and isinstance(o[2], dict):
+                        g.update(o[2])
+    return out
+
+
+def page_of(pid, sp=None):
+    sp = sp or spec()
+    for p in sp['pages']:
+        if p['id'] == pid:
+            return p
+    raise Fail('no page %s' % pid)
+
+
+def fixture_dir():
+    d = os.environ.get('HEARTH_KDE_FIXTURE')
+    return d if d and os.path.isdir(d) else None
+
+
+def fixture(name):
+    d = fixture_dir()
+    if not d:
+        return None
+    p = os.path.join(d, name)
+    if not os.path.isfile(p):
+        return None
+    try:
+        with open(p, encoding='utf-8') as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return None
+
+
+def run(cmd, secs=10, inp=None):
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=secs, input=inp)
+        return r.returncode, r.stdout, r.stderr
+    except (OSError, subprocess.SubprocessError) as e:
+        return 127, '', str(e)
+
+
+# ------------------------------------------------------------------ D-Bus (python3-gi; gdbus when it's missing)
+_BUS = []
+
+
+def bus():
+    if _BUS:
+        return _BUS[0]
+    conn = None
+    if os.environ.get('DBUS_SESSION_BUS_ADDRESS') or os.path.exists(os.path.join(os.environ.get('XDG_RUNTIME_DIR', '/nonexistent'), 'bus')):
+        try:
+            from gi.repository import Gio
+            conn = Gio.bus_get_sync(Gio.BusType.SESSION, None)
+        except Exception:
+            conn = None
+    _BUS.append(conn)
+    return conn
+
+
+def call(dest, path, iface, method, sig=None, args=(), timeout=4000):
+    conn = bus()
+    if conn is None:
+        raise Fail('no session bus')
+    from gi.repository import GLib, Gio
+    try:
+        params = GLib.Variant(sig, tuple(args)) if sig else None
+        r = conn.call_sync(dest, path, iface, method, params, None, Gio.DBusCallFlags.NONE, timeout, None)
+    except Exception as e:
+        raise Fail(str(e).split(':')[-1].strip() or 'D-Bus call failed')
+    return r.unpack() if r is not None else None
+
+
+def has_name(name):
+    try:
+        return bool(call('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'NameHasOwner', '(s)', (name,))[0])
+    except Fail:
+        return False
+
+
+def notify_changed(name, changes):
+    """KDE's "this config changed" signal (what kwriteconfig6 --notify sends): Plasma's watchers take it at once."""
+    conn = bus()
+    if conn is None or not changes:
+        return
+    try:
+        from gi.repository import GLib
+        payload = {g.replace('][', '\x1d'): [k.encode() for k in kv] for g, kv in changes.items()}
+        conn.emit_signal(None, '/' + name, 'org.kde.kconfig.notify', 'ConfigChanged', GLib.Variant('(a{saay})', (payload,)))
+        conn.flush_sync(None)
+    except Exception as e:
+        hsio.log_event('kde: config-changed signal not sent: %s' % e)
+
+
+# What reads each file again after a change (the KCM's own "save" does the same).
+RELOAD = {
+    'kwinrc': [('org.kde.KWin', '/KWin', 'org.kde.KWin', 'reconfigure')],
+    'kwinrulesrc': [('org.kde.KWin', '/KWin', 'org.kde.KWin', 'reconfigure')],
+    'breezerc': [('org.kde.KWin', '/KWin', 'org.kde.KWin', 'reconfigure')],
+    'krunnerrc': [('org.kde.krunner', '/App', 'org.kde.krunner.App', 'reloadConfig')],
+    'kded5rc': [],
+    'kscreenlockerrc': [('org.freedesktop.ScreenSaver', '/ScreenSaver', 'org.kde.screensaver', 'configure')],
+    'powerdevilrc': [('org.kde.Solid.PowerManagement', '/org/kde/Solid/PowerManagement', 'org.kde.Solid.PowerManagement', 'reparseConfiguration')],
+    'kcminputrc': [('org.kde.KWin', '/KWin', 'org.kde.KWin', 'reconfigure')],
+    'kxkbrc': [],
+}
+
+
+def reload(name):
+    done = []
+    for dest, path, iface, method in RELOAD.get(name, []):
+        if not has_name(dest):
+            continue
+        try:
+            call(dest, path, iface, method)
+            done.append(dest)
+        except Fail as e:
+            hsio.log_event('kde: %s %s failed: %s' % (dest, method, e))
+    return done
+
+
+# ------------------------------------------------------------------ status / get / set
+def on_plasma():
+    if os.environ.get('HEARTH_KDE_PLASMA') in ('0', '1'):
+        return os.environ['HEARTH_KDE_PLASMA'] == '1'
+    return 'KDE' in (os.environ.get('XDG_CURRENT_DESKTOP') or '').upper().split(':')
+
+
+def status():
+    f = fixture('status.json')
+    if f is not None:
+        return f
+    return {'plasma': on_plasma(), 'kwin': has_name('org.kde.KWin'), 'plasmashell': has_name('org.kde.plasmashell'),
+            'krunner': has_name('org.kde.krunner'), 'kded': has_name('org.kde.kded6'),
+            'desktop': os.environ.get('XDG_CURRENT_DESKTOP', '')}
+
+
+def files_of(page):
+    names = []
+    for r in rows(page):
+        if r.get('file') and r['file'] not in names:
+            names.append(r['file'])
+    return names
+
+
+def get(pid):
+    sp = spec()
+    page = page_of(pid, sp)
+    files, mine, locked, bad = {}, {}, {}, {}
+    for n in files_of(page):
+        try:
+            files[n], mine[n], locked[n] = kc.effective(n)
+        except kc.BadFile as e:
+            bad[n] = str(e)
+            files[n], mine[n], locked[n] = {}, {}, {}
+    lists = {}
+    for r in rows(page):
+        if r.get('from') and r['from'] not in lists:
+            lists[r['from']] = list_kind(r['from'])
+    info = {}
+    for r in rows(page):
+        if r.get('type') == 'info' and r.get('from') and r['from'] not in info:
+            info[r['from']] = info_kind(r['from'])
+    current = {}
+    for r in rows(page):
+        if r.get('current') == 'gtktheme':
+            current['gtktheme'] = gtk_current()
+        if r.get('type') == 'firmware':
+            current['firmware'] = firmware_get()
+    return {'page': pid, 'current': current, 'files': files, 'mine': mine, 'locked': locked, 'bad': bad, 'lists': lists, 'info': info,
+            'status': status()}
+
+
+def set_file(name, raw):
+    try:
+        changes = json.loads(raw or 'null')
+    except ValueError:
+        raise Fail('expected JSON on stdin')
+    allow = allowlist()
+    if name not in allow or not isinstance(changes, dict) or not changes:
+        raise Fail('%s is not a file these pages change' % name)
+    for g, kv in changes.items():
+        if not isinstance(kv, dict):
+            raise Fail('expected {group: {key: value}}')
+        extra = set(kv) - allow[name].get(g, set())
+        if extra:
+            raise Fail('%s in [%s] of %s is not a setting Hearth changes' % (', '.join(sorted(extra)), g, name))
+        for k, v in kv.items():
+            if v is not None and not isinstance(v, (str, int, float, bool)):
+                raise Fail('%s: a value must be text, a number or true/false' % k)
+    try:
+        _, _, locked = kc.effective(name)
+    except kc.BadFile as e:
+        raise Fail("Your %s couldn't be read, so it wasn't changed: %s" % (name, e))
+    for g, kv in changes.items():
+        for k in kv:
+            if k in locked.get(g, []) or '*' in locked.get(g, []):
+                raise Fail('%s is locked by the system (%s [%s])' % (k, name, g))
+    path = kc.user_path(name)
+    try:
+        changed = kc.update(path, changes)
+    except kc.Locked as e:
+        raise Fail("%s: %s, so it wasn't changed" % (name, e))
+    except kc.BadFile as e:
+        hsio.notice('kde-bad:%s' % name, "Your %s couldn't be read, so Hearth didn't change it (%s). Nothing was lost: "
+                    'the file is as it was.' % (name, e))
+        raise Fail("Your %s couldn't be read, so it wasn't changed: %s" % (name, e))
+    reloaded = []
+    if changed:
+        notify_changed(name, changes)
+        reloaded = reload(name)
+        hsio.log_event('kde: %s %s' % (name, json.dumps(changes, sort_keys=True)[:400]))
+    values, mine, lk = kc.effective(name)
+    return {'file': name, 'changed': changed, 'reloaded': reloaded, 'values': values, 'mine': mine, 'locked': lk}
+
+
+# ------------------------------------------------------------------ KDE's own tools
+# A choice a KCM applies with a tool (it writes its own settings). {VALUE} is the choice (checked against the list).
+TOOLS = {
+    'colorscheme': (['plasma-apply-colorscheme', '{VALUE}'], 'colors'),
+    'desktoptheme': (['plasma-apply-desktoptheme', '{VALUE}'], 'desktoptheme'),
+    'cursortheme': (['plasma-apply-cursortheme', '{VALUE}'], 'cursors'),
+    'icons': (['/usr/libexec/plasma-changeicons', '{VALUE}'], 'icons'),
+    'lookandfeel': (['plasma-apply-lookandfeel', '-a', '{VALUE}'], 'lookandfeel'),
+    'wallpaper-lock': (None, None),
+}
+
+
+def gtk_current():
+    f = fixture('gtk-current.json')
+    if f is not None:
+        return f
+    try:
+        return call('org.kde.kded6', '/GtkConfig', 'org.kde.GtkConfig', 'gtkTheme')[0]
+    except Fail:
+        pass
+    base = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+    for line in read(os.path.join(base, 'gtk-3.0', 'settings.ini')).splitlines():
+        if line.strip().startswith('gtk-theme-name'):
+            return line.split('=', 1)[1].strip()
+    return ''
+
+
+def set_gtk(value):
+    known = [v for v, _ in list_kind('gtktheme')]
+    if value not in known:
+        raise Fail('%s isn\'t installed' % value)
+    if fixture_dir():
+        return {'tool': 'gtktheme', 'value': value, 'ok': True, 'preview': True}
+    try:
+        call('org.kde.kded6', '/GtkConfig', 'org.kde.GtkConfig', 'setGtkTheme', '(s)', (value,))
+    except Fail as e:
+        raise Fail("KDE's GTK settings service isn't running, so GTK apps' theme can only be changed on KDE Plasma (%s)" % e)
+    hsio.log_event('kde: gtk theme %s' % value)
+    return {'tool': 'gtktheme', 'value': value, 'ok': True}
+
+
+LOGIND = ['busctl', '--system', '--timeout=4']
+
+
+def firmware_get():
+    f = fixture('firmware.json')
+    if f is not None:
+        return f
+    can = run(LOGIND + ['call', 'org.freedesktop.login1', '/org/freedesktop/login1', 'org.freedesktop.login1.Manager', 'CanRebootToFirmwareSetup'], 6)[1].split()
+    on = run(LOGIND + ['get-property', 'org.freedesktop.login1', '/org/freedesktop/login1', 'org.freedesktop.login1.Manager', 'RebootToFirmwareSetup'], 6)[1].split()
+    return {'can': len(can) > 1 and can[1].strip('"') == 'yes', 'on': len(on) > 1 and on[1] == 'true'}
+
+
+def firmware_set(on):
+    if fixture_dir():
+        return {'can': True, 'on': on, 'preview': True}
+    code, out, err = run(LOGIND + ['call', 'org.freedesktop.login1', '/org/freedesktop/login1', 'org.freedesktop.login1.Manager', 'SetRebootToFirmwareSetup', 'b', 'true' if on else 'false'], 8)
+    if code != 0:
+        raise Fail((err or out).strip()[:300] or "This PC can't be told to open its firmware setup")
+    return firmware_get()
+
+
+def apply_tool(tool, value):
+    if tool == 'gtktheme':
+        return set_gtk(value)
+    if tool not in TOOLS or TOOLS[tool][0] is None:
+        raise Fail('%s is not a tool these pages use' % tool)
+    cmd, kind = TOOLS[tool]
+    known = [v for v, _ in list_kind(kind)]
+    if value not in known:
+        raise Fail('%s isn\'t installed' % value)
+    if fixture_dir():
+        return {'tool': tool, 'value': value, 'ok': True, 'preview': True}
+    exe = cmd[0]
+    if not (shutil.which(exe) or os.path.exists(exe)):
+        raise Fail('%s is only on KDE Plasma (it isn\'t installed here)' % os.path.basename(exe))
+    code, out, err = run([c.replace('{VALUE}', value) for c in cmd], 30)
+    if code != 0:
+        raise Fail((err or out).strip().splitlines()[-1][:300] if (err or out).strip() else '%s failed' % exe)
+    hsio.log_event('kde: %s %s' % (tool, value))
+    return {'tool': tool, 'value': value, 'ok': True}
+
+
+# ------------------------------------------------------------------ what's installed
+def data_dirs():
+    dirs = [os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')]
+    dirs += (os.environ.get('XDG_DATA_DIRS') or '/usr/local/share:/usr/share').split(':')
+    return [d for d in dirs if d]
+
+
+def desktop_name(path, key='Name'):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            for line in f:
+                if line.startswith(key + '='):
+                    return line.split('=', 1)[1].strip()
+    except OSError:
+        pass
+    return ''
+
+
+def meta_name(d):
+    p = os.path.join(d, 'metadata.json')
+    if os.path.isfile(p):
+        try:
+            with open(p, encoding='utf-8') as f:
+                return (json.load(f).get('KPlugin') or {}).get('Name', '')
+        except (OSError, ValueError):
+            return ''
+    return desktop_name(os.path.join(d, 'metadata.desktop'))
+
+
+def plugin_dirs():
+    out = []
+    for d in ('/usr/lib64/qt6/plugins', '/usr/lib/qt6/plugins', '/usr/lib/x86_64-linux-gnu/qt6/plugins'):
+        if os.path.isdir(d):
+            out.append(d)
+    return out
+
+
+def list_kind(kind):
+    f = fixture('list-%s.json' % kind)
+    if f is not None:
+        return f
+    seen, out = set(), []
+
+    def add(v, label):
+        if v and v not in seen:
+            seen.add(v)
+            out.append([v, label or v])
+    dd = data_dirs()
+    if kind == 'splash':
+        add('None', 'None')
+        for d in dd:
+            for p in sorted(glob.glob(os.path.join(d, 'plasma/look-and-feel/*/contents/splash'))):
+                pk = p.split('/look-and-feel/')[1].split('/')[0]
+                add(pk, meta_name(os.path.join(d, 'plasma/look-and-feel', pk)))
+    elif kind == 'lookandfeel':
+        for d in dd:
+            for p in sorted(glob.glob(os.path.join(d, 'plasma/look-and-feel/*/'))):
+                pk = os.path.basename(p.rstrip('/'))
+                add(pk, meta_name(p))
+    elif kind == 'desktoptheme':
+        for d in dd:
+            for p in sorted(glob.glob(os.path.join(d, 'plasma/desktoptheme/*/'))):
+                pk = os.path.basename(p.rstrip('/'))
+                add(pk, meta_name(p) or pk.capitalize())
+    elif kind == 'colors':
+        for d in dd:
+            for p in sorted(glob.glob(os.path.join(d, 'color-schemes/*.colors'))):
+                add(os.path.basename(p)[:-7], desktop_name(p))
+    elif kind in ('icons', 'cursors'):
+        for d in dd + [os.path.expanduser('~/.icons')]:
+            for p in sorted(glob.glob(os.path.join(d, 'icons/*/index.theme') if not d.endswith('.icons') else os.path.join(d, '*/index.theme'))):
+                t = os.path.dirname(p)
+                has_cursors = os.path.isdir(os.path.join(t, 'cursors'))
+                dirs = desktop_name(p, 'Directories')
+                if kind == 'cursors' and has_cursors:
+                    add(os.path.basename(t), desktop_name(p))
+                elif kind == 'icons' and dirs and desktop_name(p, 'Hidden').lower() != 'true':
+                    add(os.path.basename(t), desktop_name(p))
+    elif kind == 'decorations':
+        add('org.kde.breeze|Breeze', 'Breeze')
+        for d in dd:
+            for p in sorted(glob.glob(os.path.join(d, 'aurorae/themes/*/'))):
+                pk = os.path.basename(p.rstrip('/'))
+                add('org.kde.kwin.aurorae|__aurorae__svg__' + pk, meta_name(p) or desktop_name(os.path.join(p, 'metadata.desktop')) or pk)
+        for pd in plugin_dirs():
+            for so in sorted(glob.glob(os.path.join(pd, 'org.kde.kdecoration3/*.so')) + glob.glob(os.path.join(pd, 'org.kde.kdecoration2/*.so'))):
+                b = os.path.basename(so)[:-3]
+                if b in ('breezedecoration', 'org.kde.breeze'):
+                    continue
+                if 'kwin5_aurorae' in b or 'aurorae' in b:
+                    continue
+                lib = 'org.kde.' + b.replace('decoration', '')
+                add(lib + '|', b.replace('decoration', '').capitalize())
+    elif kind == 'tabbox':
+        for d in dd:
+            for p in sorted(glob.glob(os.path.join(d, 'kwin*/tabbox/*/'))):
+                pk = os.path.basename(p.rstrip('/'))
+                add(pk, meta_name(p) or pk)
+    elif kind == 'kwinscripts':
+        for d in dd:
+            for p in sorted(glob.glob(os.path.join(d, 'kwin*/scripts/*/'))):
+                pk = os.path.basename(p.rstrip('/'))
+                add(pk, meta_name(p) or pk)
+    elif kind == 'krunner':
+        for pd in plugin_dirs():
+            for so in sorted(glob.glob(os.path.join(pd, 'kf6/krunner/*.so'))):
+                b = os.path.basename(so)[:-3]
+                add(b, b.replace('krunner_', '').replace('org.kde.', '').replace('_', ' ').capitalize())
+    elif kind == 'widgetstyle':
+        for pd in plugin_dirs():
+            for so in sorted(glob.glob(os.path.join(pd, 'styles/*.so'))):
+                b = os.path.basename(so)[:-3]
+                add({'breeze6': 'Breeze', 'breeze': 'Breeze', 'oxygen6': 'Oxygen'}.get(b, b.capitalize()), {'breeze6': 'Breeze', 'oxygen6': 'Oxygen'}.get(b, b.capitalize()))
+        add('Fusion', 'Fusion')
+    elif kind == 'soundtheme':
+        add('freedesktop', 'FreeDesktop')
+        for d in dd:
+            for p in sorted(glob.glob(os.path.join(d, 'sounds/*/index.theme'))):
+                add(os.path.basename(os.path.dirname(p)), desktop_name(p))
+    elif kind == 'gtktheme':
+        for d in dd + [os.path.expanduser('~/.themes')]:
+            for p in sorted(glob.glob(os.path.join(d, 'themes/*/gtk-3.0') if not d.endswith('.themes') else os.path.join(d, '*/gtk-3.0'))):
+                add(os.path.basename(os.path.dirname(p)), os.path.basename(os.path.dirname(p)))
+    else:
+        raise Fail('no list %s' % kind)
+    return out
+
+
+# ------------------------------------------------------------------ Info Center pages
+def read(path, limit=200000):
+    try:
+        with open(path, encoding='utf-8', errors='replace') as f:
+            return f.read(limit)
+    except OSError:
+        return ''
+
+
+def info_kind(kind):
+    f = fixture('info-%s.json' % kind)
+    if f is not None:
+        return f
+    rows_ = []
+    if kind == 'wayland':
+        rows_.append(['Session', os.environ.get('XDG_SESSION_TYPE', '') or 'unknown'])
+        rows_.append(['Wayland display', os.environ.get('WAYLAND_DISPLAY', '') or 'none'])
+        code, out, _ = run(['wayland-info'], 8) if shutil.which('wayland-info') else (1, '', '')
+        if code == 0:
+            for m in re.finditer(r"interface: '([^']+)',\s*version:\s*(\d+)", out):
+                rows_.append([m.group(1), 'version ' + m.group(2)])
+        else:
+            rows_.append(['Interfaces', 'wayland-info isn\'t installed'])
+    elif kind == 'xserver':
+        rows_.append(['X11 display (Xwayland)', os.environ.get('DISPLAY', '') or 'none'])
+        if shutil.which('xdpyinfo') and os.environ.get('DISPLAY'):
+            code, out, _ = run(['xdpyinfo'], 8)
+            for k in ('version number', 'vendor string', 'vendor release number', 'dimensions', 'resolution', 'depth of root window'):
+                m = re.search(r'^\s*%s:\s*(.+)$' % re.escape(k), out, re.M)
+                if m:
+                    rows_.append([k.capitalize(), m.group(1).strip()])
+    elif kind == 'network':
+        code, out, _ = run(['ip', '-brief', 'address'], 5)
+        for line in out.splitlines():
+            parts = line.split()
+            if len(parts) >= 2:
+                rows_.append([parts[0], ' · '.join(parts[1:])])
+    elif kind == 'samba':
+        code, out, _ = run(['smbstatus', '--brief'], 8) if shutil.which('smbstatus') else (1, '', '')
+        rows_.append(['Windows sharing (Samba)', 'running' if code == 0 else 'not running or not installed'])
+        for line in out.splitlines()[4:]:
+            if line.strip():
+                rows_.append(['Connected', line.strip()[:120]])
+        for line in read('/proc/mounts').splitlines():
+            p = line.split()
+            if len(p) > 2 and p[2] in ('cifs', 'smb3', 'nfs', 'nfs4'):
+                rows_.append(['Mounted ' + p[2], '%s on %s' % (p[0], p[1])])
+    elif kind == 'audio':
+        code, out, _ = run(['pactl', 'info'], 5) if shutil.which('pactl') else (1, '', '')
+        for line in out.splitlines():
+            if ':' in line:
+                k, v = line.split(':', 1)
+                if k.strip() in ('Server Name', 'Server Version', 'Default Sink', 'Default Source', 'Default Sample Specification'):
+                    rows_.append([k.strip(), v.strip()])
+        for line in read('/proc/asound/cards').splitlines():
+            m = re.match(r'\s*(\d+) \[(.+?)\s*\]: (.+)', line)
+            if m:
+                rows_.append(['Sound card %s' % m.group(1), m.group(3).strip()])
+        if not rows_:
+            rows_.append(['Sound', 'No sound server or cards were found'])
+    elif kind == 'block':
+        code, out, _ = run(['lsblk', '-J', '-o', 'NAME,SIZE,TYPE,FSTYPE,MOUNTPOINT,MODEL'], 8)
+        try:
+            for d in json.loads(out).get('blockdevices', []):
+                rows_.append([d.get('name', ''), ' · '.join(x for x in (d.get('model'), d.get('size'), d.get('type')) if x)])
+                for c in d.get('children', []) or []:
+                    rows_.append(['  ' + c.get('name', ''), ' · '.join(x for x in (c.get('size'), c.get('fstype'), c.get('mountpoint')) if x)])
+        except ValueError:
+            rows_.append(['Drives', 'lsblk couldn\'t be read'])
+    elif kind == 'firmware':
+        sb = run(['mokutil', '--sb-state'], 5)[1].strip() if shutil.which('mokutil') else ''
+        rows_.append(['Secure Boot', sb or ('UEFI' if os.path.isdir('/sys/firmware/efi') else 'Legacy BIOS (no Secure Boot)')])
+        rows_.append(['TPM security chip', 'present' if glob.glob('/sys/class/tpm/tpm*') else 'not found'])
+        for k, p in (('Firmware vendor', '/sys/class/dmi/id/bios_vendor'), ('Firmware version', '/sys/class/dmi/id/bios_version'), ('Firmware date', '/sys/class/dmi/id/bios_date')):
+            v = read(p).strip()
+            if v:
+                rows_.append([k, v])
+    elif kind == 'edid':
+        for e in sorted(glob.glob('/sys/class/drm/card*-*/edid')):
+            try:
+                with open(e, 'rb') as f:
+                    data = f.read()
+            except OSError:
+                continue
+            if len(data) < 128:
+                continue
+            name = os.path.basename(os.path.dirname(e)).split('-', 1)[1]
+            mfg = ''.join(chr(((data[8] << 8 | data[9]) >> s & 31) + 64) for s in (10, 5, 0))
+            rows_.append([name, '%s · product %04x · %d×%d cm' % (mfg, data[10] | data[11] << 8, data[21], data[22])])
+        if not rows_:
+            rows_.append(['Screens', 'No screen told its details (EDID)'])
+    elif kind == 'kwin':
+        code, out, _ = run(['qdbus6', 'org.kde.KWin', '/KWin', 'org.kde.KWin.supportInformation'], 8) if shutil.which('qdbus6') else (1, '', '')
+        if code == 0:
+            for line in out.splitlines():
+                if ':' in line and not line.startswith(' '):
+                    k, v = line.split(':', 1)
+                    if v.strip():
+                        rows_.append([k.strip(), v.strip()[:200]])
+                if len(rows_) > 80:
+                    break
+        else:
+            rows_.append(['KWin', 'KWin isn\'t running, so it can\'t say how it\'s set up'])
+    else:
+        raise Fail('no info %s' % kind)
+    return rows_
+
+
+# ------------------------------------------------------------------ background services (kded)
+def kded():
+    f = fixture('kded.json')
+    if f is not None:
+        return f
+    mods = []
+    for pd in plugin_dirs():
+        for so in sorted(glob.glob(os.path.join(pd, 'kf6/kded/*.so'))):
+            mods.append(os.path.basename(so)[:-3])
+    loaded = []
+    try:
+        loaded = list(call('org.kde.kded6', '/kded', 'org.kde.kded6', 'loadedModules')[0])
+    except Fail:
+        pass
+    conf, _, _ = kc.effective('kded5rc')
+    out = []
+    for m in mods:
+        auto = (conf.get('Module-' + m, {}).get('autoload', 'true')).lower() != 'false'
+        out.append({'name': m, 'running': m in loaded, 'autoload': auto})
+    return {'modules': out, 'kded': bool(loaded) or has_name('org.kde.kded6')}
+
+
+def kded_set(name, on):
+    if not re.match(r'^[A-Za-z0-9_.-]{1,80}$', name):
+        raise Fail('bad module name')
+    known = [m['name'] for m in kded()['modules']]
+    if name not in known:
+        raise Fail('%s isn\'t one of KDE\'s background services here' % name)
+    kc.update(kc.user_path('kded5rc'), {'Module-' + name: {'autoload': bool(on)}})
+    try:
+        call('org.kde.kded6', '/kded', 'org.kde.kded6', 'loadModule' if on else 'unloadModule', '(s)', (name,))
+        now = True
+    except Fail:
+        now = False
+    hsio.log_event('kde: kded %s %s' % (name, 'on' if on else 'off'))
+    return {'name': name, 'autoload': bool(on), 'now': now}
+
+
+def main(argv):
+    c = argv[1] if len(argv) > 1 else ''
+    a = argv[2:]
+    if c == 'status':
+        return status()
+    if c == 'get' and len(a) == 1:
+        return get(a[0])
+    if c == 'set' and len(a) == 1:
+        return set_file(a[0], os.environ.get('HEARTH_INPUT') or sys.stdin.read())
+    if c == 'apply' and len(a) == 2:
+        return apply_tool(a[0], a[1])
+    if c == 'list' and len(a) == 1:
+        return list_kind(a[0])
+    if c == 'info' and len(a) == 1:
+        return info_kind(a[0])
+    if c == 'firmware':
+        return firmware_get()
+    if c == 'firmware-set' and len(a) == 1 and a[0] in ('on', 'off'):
+        return firmware_set(a[0] == 'on')
+    if c == 'kded':
+        return kded()
+    if c == 'kded-set' and len(a) == 2 and a[1] in ('on', 'off'):
+        return kded_set(a[0], a[1] == 'on')
+    if c == 'allowlist':
+        return {f: {g: sorted(k) for g, k in gs.items()} for f, gs in allowlist().items()}
+    raise Fail(__doc__.split('\n\n')[2] if c in ('', '-h', '--help') else 'unknown command %s' % c)
+
+
+if __name__ == '__main__':
+    try:
+        print(json.dumps(main(sys.argv)))
+    except Fail as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)
+    except kc.BadFile as e:
+        print(str(e), file=sys.stderr)
+        sys.exit(1)

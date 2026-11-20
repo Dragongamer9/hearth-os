@@ -1117,7 +1117,7 @@ mod tests {
     #[test]
     fn every_system_page_is_built() {
         for p in crate::registry::PAGES.iter().filter(|p| p.cat == "system" && !p.landing) {
-            assert!(PAGES.contains(&p.id), "System's page {} isn't built", p.id);
+            assert!(PAGES.contains(&p.id) || crate::cats::kde::PAGES.contains(&p.id), "System's page {} isn't built", p.id);
         }
     }
     #[test]

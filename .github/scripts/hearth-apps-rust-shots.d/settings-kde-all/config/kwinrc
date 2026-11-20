@@ -1,0 +1,10 @@
+[org.kde.kdecoration2]
+library=org.kde.breeze
+theme=Breeze
+ButtonsOnLeft=M
+ButtonsOnRight=IAX
+BorderSizeAuto=false
+BorderSize=Large
+
+[Input]
+TabletMode=off

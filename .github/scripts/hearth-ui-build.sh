@@ -12,6 +12,8 @@ export HOME=/tmp/w CARGO_HOME=/tmp/w/cargo
 # hearth-ui includes hearth-core's settings_file.rs by path, and carries palettes.json as its built-in look.
 cp -a /src/hosts/hearth-ui /src/hosts/hearth-core /tmp/w/hosts/
 cp /src/hosts/linux/desktop/theme/palettes.json /tmp/w/hosts/linux/desktop/theme/
+# Settings' KDE pages (cats/kde.rs draws them from the same file hearth-kde-settings checks against).
+mkdir -p /tmp/w/hosts/linux/desktop/shell && cp /src/hosts/linux/desktop/shell/kde-settings.json /tmp/w/hosts/linux/desktop/shell/
 cd /tmp/w/hosts/hearth-ui
 if ! cargo build --release --workspace > /tmp/w/build.log 2>&1; then
   # The first errors as annotations (the build's log can't be read from here).
