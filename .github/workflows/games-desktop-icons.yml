@@ -49,9 +49,10 @@ jobs:
           done
       - name: hearth-core's tests (desktop icons, the library, the art cache, play-now)
         working-directory: hosts/hearth-core
+        timeout-minutes: 20
         run: |
           set -o pipefail
-          cargo test --lib -- desktop_icons desktop_games artcache library:: 2>&1 | tee core.log || { echo "::error title=hearth-core tests::$(grep -E '^(error|warning: unused|---- |thread .* panicked)' -A8 core.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
+          cargo test --lib -- --test-threads=4 desktop_icons desktop_games artcache library:: 2>&1 | tee core.log || { echo "::error title=hearth-core tests::$(grep -E '^(error|warning: unused|---- |thread .* panicked)' -A8 core.log | head -80 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
           echo "::notice title=hearth-core tests::$(grep -E '^test result' core.log | tr '\n' ' ')"
       - name: Hearth Games' tests (its calls, the cards' desktop marks) and the page's
         run: |
