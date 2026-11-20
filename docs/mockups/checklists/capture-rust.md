@@ -63,6 +63,7 @@ side, keys through KWin's fake input so KDE's shortcuts see them as typed keys).
 - [x] The pill: "Scroll it slowly: Hearth joins the pictures" / "Scrolling and joining the pictures…", "N pictures · H pixels tall", Cancel, Done — hosts/hearth-ui/apps/capture/src/pages.rs: "format!(\"{frames} {}  ·  {tall} pixels tall\""
 - [x] Mantel's scrolling capture behind it (hearth-capture-helper scroll, scroll-stop) and the note in the editor — hosts/hearth-ui/apps/capture/src/main.rs: "\"It didn't scroll, so this is one picture. \""
 - [x] The pill at the top of the screen, or the bottom when the area starts near the top, on the area's screen, and out of the pictures (KWin's script: kw-09 at 24 from the top, kw-10 at 24 from the bottom; KWin's own screenshot leaves it out) — hosts/hearth-ui/apps/capture/src/main.rs: "draw::pill_below(sel, sh)"
+- [x] The countdown's and the scrolling capture's pills see-through around their round shape, as Mantel's (their own windows only: transparent, a clear background; the rest of Capture stays opaque; CI on KWin: each window's corners show what's behind it) — hosts/hearth-ui/apps/capture/src/main.rs: "s.transparent = true;"
 
 ## The countdown and the capture dot
 - [x] "Taking it in N" with the timer; a click cancels — hosts/hearth-ui/apps/capture/src/pages.rs: "format!(\"Taking it in {}\", a.countdown.max(1))"
