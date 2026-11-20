@@ -61,7 +61,7 @@ PY
 }
 places() { python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("icons", {}), sort_keys=True))' "$HOME/.config/nimbus/desk.json" 2>/dev/null; }
 # Only one icon's worth of the screen changed between two pictures (above the bar at the bottom): nothing moved.
-one_icon() {   # before after what
+diffbox() {   # before after: the part of the screen that changed (above the bar), or None
   python3 - "$OUT/$1.png" "$OUT/$2.png" <<'PY' > "$OUT/diff-$2.txt"
 import sys
 from PIL import Image, ImageChops
@@ -71,6 +71,9 @@ box = (0, 0, w, int(h * 0.88))
 d = ImageChops.difference(a.crop(box), b.crop(box)).convert('L').point(lambda v: 255 if v > 40 else 0)
 print(d.getbbox())
 PY
+}
+one_icon() {   # before after what
+  diffbox "$1" "$2"
   bb=$(cat "$OUT/diff-$2.txt")
   python3 -c 'import sys,ast; b=ast.literal_eval(sys.argv[1]); sys.exit(0 if b and b[2]-b[0] <= 260 and b[3]-b[1] <= 260 else 1)' "$bb" \
     && ok "$3: only the new icon appeared ($bb)" || fail "$3" "more than one icon's place changed on the desktop (changed area $bb): something moved, or nothing appeared"
@@ -181,6 +184,7 @@ sleep 6
 shot plasma-1-before
 apply added; sleep 8
 shot plasma-2-icon-added
+diffbox plasma-1-before plasma-2-icon-added
 if grep -q None "$OUT/diff-plasma-2-icon-added.txt" 2>/dev/null; then
   # Plasma's folder watch hasn't noticed the new file yet (CI's container): Plasma started again, as a sign-in does.
   echo "::warning title=plasma::the new icon didn't show within 8 s; Plasma restarted to show it (see plasma-2a-after-restart)"
