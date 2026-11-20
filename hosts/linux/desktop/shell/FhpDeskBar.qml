@@ -112,7 +112,7 @@ PanelWindow {
             delegate: Rectangle {
                 id: mb
                 required property var modelData
-                anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenter: parent ? parent.verticalCenter : undefined
                 width: mt.implicitWidth + 24 * bar.k; height: 30 * bar.k; radius: 8 * bar.k
                 color: bar.open === modelData[0] ? "#2eff7a2f" : "transparent"
                 L { id: mt; anchors.centerIn: parent; text: mb.modelData[1]; font.pixelSize: 16 * bar.k }

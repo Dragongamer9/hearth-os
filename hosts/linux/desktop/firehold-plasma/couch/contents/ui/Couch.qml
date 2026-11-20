@@ -181,8 +181,20 @@ Item {
         for (const w of wins) s[w.id] = seen[w.id] || t;
         seen = s;
     }
-    readonly property var openList: F.openItems(wins, library, function (w) { return w.appName; })
-    readonly property var playing: F.playingIds(wins, library)
+    // (1.16, the rest fixes: these lists change only when what they hold changes. A window or a notification's helper
+    // coming and going made new ones, and a new list builds every tile and loads every picture again.)
+    readonly property var openFresh: F.openItems(wins, library, function (w) { return w.appName; })
+    readonly property var playingFresh: F.playingIds(wins, library)
+    property var openList: []
+    property var playing: []
+    property string openSig: "-"
+    function syncLists() {
+        const g = openFresh.map(function (o) { return o.kind + "\u0001" + o.name + "\u0001" + o.sub + "\u0001" + (o.win ? o.win.id : ""); }).join("\u0002");
+        if (g !== openSig) { openSig = g; openList = openFresh; }
+        if (playingFresh.join("\u0001") !== playing.join("\u0001")) playing = playingFresh;
+    }
+    onOpenFreshChanged: syncLists()
+    onPlayingFreshChanged: syncLists()
     readonly property var continueGame: F.continueGame(library, playing)
     function gameWins() { return wins.filter(function (w) { return F.isGame(w, fh.library); }); }
     function frontGame() {
@@ -362,6 +374,7 @@ Item {
         run(["library"], function (t) { fh.take(t, false); });
         run(["apps"], function (t) { const a = fh.lastJson(t); if (Array.isArray(a)) fh.apps = a; });
         refreshSys(false);
+        syncLists();
         started = true;
         forceActiveFocus();
         run(["state", front ? "front" : "back"]);

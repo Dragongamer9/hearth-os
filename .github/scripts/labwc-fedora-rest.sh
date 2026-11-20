@@ -228,6 +228,7 @@ for i in $(seq $((SECS / 60))); do
 done
 wait "$TRACE" 2>/dev/null
 note "the busiest 5 s at rest: $(head -1 "$OUT/rest-busiest.txt" 2>/dev/null | cut -c1-400)$(awk 'NR > 1 && /^    log: / {print} /^ *[0-9]+s shell/ && NR > 1 {exit}' "$OUT/rest-busiest.txt" | head -6 | cut -c1-200 | tr '\n' '|')"
+[ "$KIND" = firehold ] && note "Firehold after the rest: $(timeout 10 quickshell ipc -p "$SH" call firehold state 2>/dev/null | cut -c1-160)"
 note "the drive while at rest: $(df -h / 2>/dev/null | awk 'NR == 2 {print $4 " free of " $2}'); the shell's memory: $(awk '/^(Rss|Anonymous|Pss_File|Shared_Clean|Private_Dirty):/ {printf "%s %d MB, ", $1, $2 / 1024}' /proc/$qs/smaps_rollup 2>/dev/null)"
 kill -0 "$qs" 2>/dev/null || err "the shell ended during the rest (crashed or restarted)"
 s1=$(ticks "$qs"); c1=$(ticks "$LPID"); m1=$(rss "$qs"); f1=$(frames)
