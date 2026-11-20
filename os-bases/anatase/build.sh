@@ -1175,6 +1175,10 @@ command -v ffmpeg >/dev/null || dnf5 -y install ffmpeg-free || echo "warning: no
 # Fedora can't ship it and neither does Hearth OS; Hearth Player offers to add it from RPM Fusion free-tainted only
 # when a locked disc goes in and you say yes (hearth-dvd-decoding).
 dnf5 -y install --skip-unavailable --skip-broken libdvdread libdvdnav udisks2 util-linux-core || true
+# The "a disc was inserted" notice (Play disc, Eject) for every user: hearth-disc-notify, asleep on udev until a disc
+# goes in (its unit only starts where Hearth Player is installed).
+install -d /usr/lib/systemd/user/default.target.wants
+ln -sf ../hearth-disc-notify.service /usr/lib/systemd/user/default.target.wants/hearth-disc-notify.service
 rpm -q libdvdcss >/dev/null 2>&1 && { echo "warning: libdvdcss came into the image with something else; removing it (it's added only when asked)"; rpm -e --nodeps libdvdcss || true; }
 echo "::notice title=Hearth Player discs::$(rpm -q libdvdread libdvdnav 2>/dev/null | tr '\n' ' ') libdvdcss: $(rpm -q libdvdcss >/dev/null 2>&1 && echo in || echo 'not in (added on request)'); ffmpeg mpeg demuxer: $(ffmpeg -hide_banner -demuxers 2>/dev/null | grep -qw mpeg && echo yes || echo no)"
 # Video decoded by the graphics chip (VA-API), so browsers and players don't decode on the processor: the owner's

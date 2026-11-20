@@ -105,6 +105,7 @@ const handlers = {
   discord_open: () => ({ available: true, ok: true }),
   discord_setup: () => ({ ok: true }),
   discord_toasts: () => [],
+  notification_action: () => ({ ok: true }),
   status: () => STATES[st()](),
   storage: () => storageInfo(),
   start_link: () => ({ ok: true }),

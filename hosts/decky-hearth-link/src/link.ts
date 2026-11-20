@@ -57,9 +57,11 @@ export const homeServerResume = callable<[on: boolean], HomeQuick>("home_server_
 // Discord (docs/DISCORD.md): Quick Access › Hearth Link › Discord, and Discord's notifications as toasts.
 export type DiscordQuick = { available: boolean; ok?: boolean; error?: string; client?: string | null; opens?: string | null; appId?: boolean;
   enabled?: boolean; askToJoin?: boolean; running?: boolean; invite?: { pin: string; playTogether: boolean; title: string } | null };
-export type Toast = { seq: number; app: string; title: string; body: string };
+export type Toast = { seq: number; app: string; title: string; body: string; id?: number; actions?: [string, string][] };
 export const discordStatus = callable<[], DiscordQuick>("discord");
 export const discordSet = callable<[key: "enabled" | "askToJoin", on: boolean], DiscordQuick>("discord_set");
 export const discordOpen = callable<[], DiscordQuick>("discord_open");
 export const discordSetup = callable<[], { ok: boolean; error?: string }>("discord_setup");
 export const discordToasts = callable<[seq: number], Toast[]>("discord_toasts");
+// A notification's button ("A disc was inserted": Play disc, Eject), pressed from the toast or Quick Access.
+export const notificationAction = callable<[nid: number, key: string], { ok: boolean }>("notification_action");

@@ -589,6 +589,39 @@ impl crate::server::VFile for TitleFile {
     }
 }
 
+/// What MPEG-2 picture coding extensions in `b` say: (progressive frames, interlaced frames or fields).
+pub fn count_interlace(b: &[u8]) -> (u32, u32) {
+    let (mut prog, mut inter) = (0, 0);
+    let mut i = 0;
+    while i + 9 <= b.len() {
+        if b[i] == 0 && b[i + 1] == 0 && b[i + 2] == 1 && b[i + 3] == 0xB5 && b[i + 4] >> 4 == 8 {
+            let structure = b[i + 6] & 3;
+            let progressive = b[i + 8] >> 7 == 1;
+            if progressive && structure == 3 { prog += 1 } else { inter += 1 }
+            i += 9;
+        } else { i += 1; }
+    }
+    (prog, inter)
+}
+
+/// The title's pictures are interlaced (a TV recording, not a film): a few hundred sectors from a tenth of the way in
+/// are looked at (a film's frames are progressive even when they're shown at TV rate).
+pub fn title_interlaced(io: Arc<dyn DvdIo>, t: &Title) -> bool {
+    use crate::server::VFile;
+    let f = TitleFile::new(io, t, t.sectors() / 10);
+    let mut buf = vec![0u8; 64 * SECTOR];
+    let (mut prog, mut inter) = (0, 0);
+    let mut off = 0u64;
+    while off < 400 * SECTOR as u64 {
+        let n = f.read_at(off, &mut buf).unwrap_or(0);
+        if n == 0 { break; }
+        let (p, i) = count_interlace(&buf[..n]);
+        prog += p; inter += i;
+        off += n as u64;
+    }
+    inter >= 8 && inter > prog
+}
+
 /// A short stable name for a disc (its VIDEO_TS.IFO), for remembering where you stopped.
 pub fn disc_key(io: &dyn DvdIo) -> String {
     use sha2::{Digest, Sha256};
@@ -762,6 +795,16 @@ pub mod tests {
         let mut b = vec![0u8; 10];
         f.read_at(SECTOR as u64 + 20, &mut b).unwrap();
         assert_eq!(b[1], 1u8, "then the title's own first sector (disc sector 1)");
+    }
+
+    #[test]
+    fn interlace_flags() {
+        let ext = |structure: u8, prog: bool| vec![0, 0, 1, 0xB5, 0x8F, 0xFF, 0xF0 | structure, 0x80, if prog { 0x80 } else { 0 }];
+        let mut b = Vec::new();
+        for _ in 0..5 { b.extend(ext(3, true)); b.extend_from_slice(&[9, 9, 9]); }
+        b.extend(ext(1, false));
+        b.extend(ext(3, false));
+        assert_eq!(count_interlace(&b), (5, 2));
     }
 
     #[test]

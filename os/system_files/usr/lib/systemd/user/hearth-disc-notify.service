@@ -1,0 +1,18 @@
+# "A disc was inserted" with Play disc and Eject (hearth-disc-notify; docs/PLAYER-DISCS.md). It sleeps on udev's
+# netlink socket until a disc goes in or out: no polling. Only where Hearth Player is installed.
+[Unit]
+Description=Hearth Player: a notice when a disc goes in
+ConditionPathExists=/usr/bin/hearth-player
+After=graphical-session-pre.target
+
+[Service]
+Type=simple
+ExecStart=/usr/libexec/nimbus/hearth-disc-notify
+Restart=on-failure
+RestartSec=30
+Nice=10
+MemoryMax=80M
+CPUQuota=10%
+
+[Install]
+WantedBy=default.target

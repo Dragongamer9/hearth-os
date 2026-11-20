@@ -152,6 +152,17 @@ body.empty .disc, body.audio .disc { background:radial-gradient(900px 600px at 1
 .padmap h4 { grid-column:1 / -1; margin:.6em 0 0; color:var(--muted); font-weight:600; font-size:.85em; text-transform:uppercase; letter-spacing:.05em; }
 @media (max-width: 760px) { .disc { grid-template-columns:1fr; } .disc-art { width:5em; } .padmap { grid-template-columns:auto 1fr; } }
 
+/* Left-aligned text on the disc screen, its notes and the dialogs (the controller list too). */
+.disc, .disc-note, .disc-note p, .dlg, .dlg p, .padmap span { text-align:left; }
+.padmap h4 { text-align:left; }
+/* A DVD's own menu: the picture as big as it fits, the buttons over it; the picked one ringed in ember. */
+.dvdmenu { position:absolute; inset:0; z-index:3; background:#000; display:grid; place-items:center; }
+.menu-box { position:relative; max-width:100%; max-height:100%; display:grid; }
+.menu-box img { max-width:100%; max-height:100%; width:auto; height:auto; display:block; min-width:40vw; }
+.menu-btns { position:absolute; inset:0; }
+.menu-btns i { position:absolute; border-radius:8px; cursor:pointer; }
+.menu-btns i.sel { box-shadow:0 0 0 3px var(--ember), 0 0 24px color-mix(in srgb, var(--ember) 45%, transparent); background:color-mix(in srgb, var(--ember) 14%, transparent); }
+
 /* ---------------------------------------------------------------- open */
 .browser { display:grid; grid-template-columns:minmax(11em, 16em) 1fr; gap:var(--gut); padding:0 var(--gut); min-height:0; flex:1; }
 .places { display:flex; flex-direction:column; gap:.3em; padding:3px; }

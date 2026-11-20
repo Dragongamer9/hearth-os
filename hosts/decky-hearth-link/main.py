@@ -719,10 +719,20 @@ def toast_take(line):
         v = json.loads(line)
     except ValueError:
         return None
+    if isinstance(v, dict) and isinstance(v.get('closed'), int):
+        # The app took its notification back (the disc came out): its buttons go.
+        for t in TOASTS:
+            if t.get('id') == v['closed']:
+                t['actions'] = []
+        return None
     if not isinstance(v, dict) or not (v.get('title') or v.get('body')):
         return None
     TOAST_SEQ[0] += 1
     t = {'seq': TOAST_SEQ[0], 'app': text(v.get('app'), 40), 'title': text(v.get('title'), 120), 'body': text(v.get('body'), 240)}
+    if isinstance(v.get('id'), int):
+        t['id'] = v['id']
+    acts = v.get('actions') if isinstance(v.get('actions'), list) else []
+    t['actions'] = [[text(a[0], 20), text(a[1], 40)] for a in acts if isinstance(a, list) and len(a) == 2 and re.fullmatch(r'[\w.-]{1,20}', str(a[0]))][:3]
     TOASTS.append(t)
     del TOASTS[:-20]
     return t
@@ -798,6 +808,20 @@ class Plugin:
     async def discord_toasts(self, seq=0):
         return toasts_since(seq)
 
+    async def notification_action(self, nid, key):
+        """A toast's or Quick Access's button for a notification ("A disc was inserted": Play disc, Eject): sent to the
+        app through the bridge. Only buttons the notification itself has."""
+        t = next((x for x in TOASTS if x.get('id') == nid), None)
+        if not t or not any(a[0] == key for a in t.get('actions', [])):
+            return {'ok': False}
+        p = getattr(self, '_bridge', None)
+        if not p or not p.stdin:
+            return {'ok': False}
+        p.stdin.write(('action %d %s\n' % (int(nid), key)).encode())
+        await p.stdin.drain()
+        t['actions'] = []
+        return {'ok': True}
+
     async def _notify_bridge(self):
         """Discord's (and other apps') notifications while Steam Game Mode runs: hearth-discord notify-bridge, only
         while Hearth's core service answers (it runs next to Steam in Steam Game Mode and nowhere else) and only when
@@ -814,7 +838,7 @@ class Plugin:
         try:
             env = clean_env()
             p = await asyncio.create_subprocess_exec(shutil.which('python3', path=env['PATH']) or '/usr/bin/python3', prog, 'notify-bridge', '--while', core,
-                                                     stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
+                                                     stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
                                                      stderr=asyncio.subprocess.DEVNULL, env=env)
             self._bridge = p
             while True:

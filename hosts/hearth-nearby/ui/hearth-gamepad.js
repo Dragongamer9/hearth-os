@@ -1,11 +1,16 @@
 /* hearth-gamepad.js: how Hearth's apps read the controller (docs/CONTROLLER-FOCUS.md). One copy here; tools/pad-sync.py
  * copies it next to every app page that reads the controller (hosts/hearth-<app>/ui/hearth-gamepad.js).
  *
- *   HearthGamepad.loop(fn)   run fn(time) every frame for as long as the page lives (time: performance.now(), as
+ *   HearthGamepad.loop(fn)   run fn(time) every frame while the controller is in use (time: performance.now(), as
  *                            requestAnimationFrame gives it). An error in fn is logged and the next
  *                            frame comes anyway (a loop that rescheduled itself at its end died with the first error:
  *                            "the controller only works sometimes"). Frames come from requestAnimationFrame, and every
  *                            100 ms from a timer when the page stops getting frames (WebKitGTK pauses them).
+ *                            At rest it stops asking for frames (a page asking for every frame kept the apps at 1-2 % of
+ *                            a core doing nothing): for 3 s after the page opens or gets the focus back, and for 10 s after
+ *                            any press or stick move, it runs every frame; with a controller there but untouched it looks
+ *                            10 times a second (a press is still picked up at once: it goes back to every frame); with no
+ *                            controller, or without the focus, nothing runs until one connects or the focus comes back.
  *   HearthGamepad.pads()     the connected controllers (navigator.getGamepads(), the empty slots left out), with two
  *                            fixes for desktop windows:
  *                            - while the window isn't focused (or is hidden) none: WebKitGTK stops updating the state
@@ -35,6 +40,13 @@
   let wasActive = true;
   let guard = null;             // pad index → { b: Set(button indices), a: Set(axis indices) } held from before
   let raf = 0, last = 0, timer = 0, started = 0, seenPad = false, hintEl = null, hintShown = false;
+  // At rest (see HearthGamepad.loop): every frame until busyUntil, then 10 times a second with a controller there.
+  const WARM = 3000, BUSY = 10000, SLOW = 100;
+  let busyUntil = 0, slowTimer = 0;
+  function busy(ms) { busyUntil = Math.max(busyUntil, now() + ms); }
+  function touched(pads) {
+    return pads.some(g => (g.buttons || []).some(x => x && (x.pressed || x.value > 0.5)) || (g.axes || []).some(v => Math.abs(v || 0) > 0.15));
+  }
 
   function hasFocus() { try { return !doc || typeof doc.hasFocus !== 'function' || doc.hasFocus(); } catch (e) { return true; } }
   /** The window has the focus: not hidden, and not blurred (a page that never saw a blur counts as focused, so a
@@ -86,6 +98,7 @@
     const pads = raw();
     if (!wasActive) { wasActive = true; snapshot(pads); }
     if (pads.length) noteSeen(pads);
+    if (touched(pads)) busy(BUSY);
     return filtered(pads);
   };
 
@@ -121,11 +134,18 @@
     schedule();
   }
   function schedule() {
-    if (raf || !loops.length) return;
-    raf = root.requestAnimationFrame ? root.requestAnimationFrame(tick) : root.setTimeout(tick, 16);
+    if (raf || slowTimer || !loops.length) return;
+    if (now() < busyUntil) {
+      if (!timer) timer = root.setInterval(watchdog, 100);
+      raf = root.requestAnimationFrame ? root.requestAnimationFrame(tick) : root.setTimeout(tick, 16);
+      return;
+    }
+    // At rest: no frames asked for, no watchdog.
+    if (timer && root.clearInterval) { root.clearInterval(timer); timer = 0; }
+    if (G.active() && raw().length) slowTimer = root.setTimeout(() => { slowTimer = 0; tick(); }, SLOW) || 0;
   }
   function watchdog() {
-    if (!loops.length) return;
+    if (!loops.length || now() >= busyUntil) return;
     if (now() - last > 250) {
       if (raf && root.cancelAnimationFrame) root.cancelAnimationFrame(raf);
       raf = 0;
@@ -136,21 +156,24 @@
     if (typeof fn !== 'function' || loops.includes(fn)) return;
     loops.push(fn);
     if (!started) started = now();
+    busy(WARM);
     if (!timer) timer = root.setInterval(watchdog, 100);
     schedule();
   };
   G.stop = function (fn) { const i = loops.indexOf(fn); if (i >= 0) loops.splice(i, 1); };
 
   function lost() { blurred = true; wasActive = false; }
-  function back() { blurred = false; schedule(); }
+  function back() { blurred = false; busy(WARM); schedule(); }
   if (root.addEventListener) {
     root.addEventListener('blur', lost);
     root.addEventListener('focus', back);
     root.addEventListener('pageshow', back);
     root.addEventListener('gamepadconnected', back);
-    root.addEventListener('gamepaddisconnected', () => schedule());
+    root.addEventListener('gamepaddisconnected', () => { busy(WARM); schedule(); });
+    // Keys and the mouse don't need the controller loop; a key still wakes it briefly (a remote's keys and the pad mix).
+    root.addEventListener('keydown', () => { if (now() >= busyUntil) { busy(WARM); schedule(); } });
   }
-  if (doc && doc.addEventListener) doc.addEventListener('visibilitychange', () => { if (doc.hidden) wasActive = false; else schedule(); });
+  if (doc && doc.addEventListener) doc.addEventListener('visibilitychange', () => { if (doc.hidden) wasActive = false; else { busy(WARM); schedule(); } });
 
   root.HearthGamepad = G;
 })(typeof window !== 'undefined' ? window : globalThis);

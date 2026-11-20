@@ -5,16 +5,29 @@ The owner, Nov 20, 2026: "add the ability to watch movies from a CD or DVD drive
 
 ## What you get
 
-- **A disc goes in**: Plasma's "a disc was inserted" pop-up (Disks & Devices) offers **Play disc in Hearth Player**
-  for DVDs, Video CDs and music CDs (`os/system_files/usr/share/solid/actions/hearth-player-*.desktop`). If Hearth
+- **A disc goes in**: a notice "A disc was inserted" with **Play disc** and **Eject** wherever Hearth shows notices:
+  Mantel's and Firehold's notifications, Plasma's, and in Steam Game Mode a Hearth Link toast (pressing it plays the
+  disc; Quick Access › Hearth Link has both buttons). It comes from `hearth-disc-notify` (a user service asleep on
+  udev's netlink socket: no polling), and isn't sent while Hearth Player is open. Plasma's own "a disc was inserted"
+  pop-up (Disks & Devices) also offers **Play disc in Hearth Player** for DVDs, Video CDs and music CDs
+  (`os/system_files/usr/share/solid/actions/hearth-player-*.desktop`). If Hearth
   Player is already open it says so itself ("A disc was inserted: …" with **Play disc**), its start screen has a
   **Play disc** button while a disc is in, and the drives are in its Open view. Hearth Files lists the CD/DVD drive
   (with or without a disc); opening a film or music disc there starts Hearth Player, a data disc opens as a folder.
-- **DVD-Video**: the disc screen lists its titles (the film is marked and is the big **Play the film** button) with
-  their chapters, sound tracks and subtitles. **Carry on** picks up where you stopped (remembered per disc). Sound and
-  subtitles can be picked before playing or while playing (Y on a controller, A on a keyboard). The disc's own menu
-  isn't run: the backend reads the disc (libdvdread) but doesn't run menus, so this screen is the menu. Camera angles:
-  the first plays.
+- **DVD-Video, the disc's own menu**: a DVD opens in its own menu, as on a DVD player (libdvdnav runs it: its
+  buttons, highlights and jumps). The D-pad, the arrow keys or a remote move between its buttons, A / Enter / OK press
+  one, the mouse points and clicks; the picked button has Hearth's ember ring. A button that plays the film hands it
+  to the player (seeking, sound, subtitles, Carry on); when the film ends the menu comes back. B or Back goes to the
+  titles list; the remote's Menu key brings the menu back while a film plays. The menu's picture comes as JPEG frames
+  (so a press answers at once); a menu's own music isn't played. Where the menu can't run (no libdvdnav, a locked disc,
+  a disc without menus), the titles list stands in.
+- **DVD-Video, the titles list**: the disc's titles (the film is marked and is the big **Play the film** button) with
+  their chapters, sound tracks and subtitles, and **The disc's own menu**. **Carry on** picks up where you stopped
+  (remembered per disc). Sound and subtitles can be picked before playing or while playing (Y on a controller, A on a
+  keyboard). Camera angles: the first plays.
+- **Interlaced DVDs** (TV recordings) are always smoothed out (deinterlaced) while they play: the player looks at the
+  title's pictures when it starts it, and only an interlaced title is encoded again (films aren't touched). The cost is
+  only while it plays.
 - **Video CD and Super Video CD**: their parts, played and seekable.
 - **Music CDs**: the songs, with names from the disc's CD-Text, else looked up online (MusicBrainz, then CDDB/gnudb)
   by the disc's ID ("Look up names online" asks again). Only the disc's table of contents is sent.
@@ -67,6 +80,11 @@ disc). On the Debian edition the button isn't offered ("isn't offered on this ed
   person at the computer the drive), `.cue`/`.bin` and `.iso` images, MusicBrainz and CDDB disc IDs, a music CD track as
   a WAV file and a VCD track's MPEG (Mode 2 sectors read raw), the tray, and **disc events from udev's netlink socket**
   (a thread asleep in `recv`: nothing is checked over and over; CI measures the CPU at rest on a disc screen).
+- `src/dvdnav.rs`: the disc's own menu: libdvdnav (`dlopen`), the buttons from each navigation pack's PCI, the moves and
+  presses, still menus waiting on a condition variable (nothing runs meanwhile), and ffmpeg's JPEG frames (`-re`, the
+  menu's subpicture drawn in). A button that goes to a title ends the menu stream and tells the page which.
+- `os/system_files/usr/libexec/nimbus/hearth-disc-notify` (+ `hearth-disc-notify.service`): the notice. In Steam Game
+  Mode `hearth-discord notify-bridge` passes its buttons to the Hearth Link plugin and its presses back.
 - `src/dvd.rs`: the IFO files (titles, chapters, cells, sound and subtitle streams, the subtitles' colours), libdvdread
   loaded at run time (`dlopen`; without it a VIDEO_TS folder is read from its files), the scrambled-sector check, and
   seeking (the cell's share, then the next VOBU's own time from its navigation pack).
@@ -93,9 +111,12 @@ disc). On the Debian edition the button isn't offered ("isn't offered on this ed
 - `hosts/linux/test/test_player_discs.py`: libdvdcss never in an image, the repository file, hearth-admin and the
   password rule, the Plasma actions, Hearth Files' drives.
 
+## At rest
+
+Hearth Player costs nothing at rest (CI measures it on the start screen, a disc screen and a DVD's still menu): the
+controller reader (`ui/pad/hearth-gamepad.js`, every app's) used to ask for every frame for as long as an app was open
+(1.2-1.5 % of a core doing nothing); now it does only while the controller is in use (see docs/CONTROLLER-FOCUS.md).
+
 ## Not done yet
 
-- Running the disc's own DVD menus (libdvdnav's menus need a renderer of their own): the titles and chapters screen
-  stands in for them.
-- Hearth's own Game Mode notification for a disc (the archived web Game Mode); Steam Game Mode shows no pop-up.
-- Interlaced DVDs play as they are (combing on some TV discs) unless subtitles are on (then they're smoothed out).
+- A DVD menu's own music (the picture plays, the sound doesn't); menus on 352-wide discs are placed as 720-wide ones.

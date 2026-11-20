@@ -146,7 +146,7 @@ function setView(v) {
   hints();
 }
 function hints() {
-  const h = S.view === 'play' && discPanelOn() ? discHints() : S.view === 'play' && S.item?.disc ? discPlayHints()
+  const h = S.view === 'play' && menuOn() ? menuHints() : S.view === 'play' && discPanelOn() ? discHints() : S.view === 'play' && S.item?.disc ? discPlayHints()
     : S.view === 'play'
     ? (S.item ? '<span><b>A</b>Play/pause</span><span><b>◀ ▶</b>Seek</span><span><b>LB RB</b>Previous/next</span><span><b>X</b>Controls</span><span><b>Y</b>Edit</span><span><b>B</b>Back</span>' : '<span><b>A</b>Choose</span>')
     : '<span><b>A</b>Choose</span><span><b>B</b>Back</span><span><b>LB RB</b>Switch tabs</span>';
@@ -1041,6 +1041,7 @@ function stopPlaying() {
   setBodyMode(); updateButtons(); hints(); tick();
 }
 function discGone() {
+  stopMenu();
   if (S.item?.disc) { saveResume(); stopPlaying(); }
   S.discInfo = null; S.discPanel = false; setBodyMode(); updateButtons(); hints();
 }
@@ -1051,6 +1052,7 @@ async function openDisc(path, { play = false } = {}) {
   try { info = await call('disc_open', { path: path || null }); } catch (e) { closeNotice(); toast(e.message); return; }
   closeNotice();
   if (S.item?.disc && S.discInfo?.id !== info.id) stopPlaying();
+  stopMenu();
   S.discInfo = info;
   S.discPrefs = { audio: undefined, sub: undefined };
   if (info.kind === 'data' && info.folder) {
@@ -1060,6 +1062,8 @@ async function openDisc(path, { play = false } = {}) {
   if (S.decoding == null) S.decoding = await call('dvd_decoding').catch(() => ({ installed: false, canAdd: false }));
   setView('play');
   showDiscPanel(true);
+  // A DVD starts in its own menu, as on a DVD player (the titles screen is under it, and stands in when it can't run).
+  if (info.kind === 'dvd' && info.menu && !play) startMenu();
   if (info.kind === 'audio-cd' && info.tracks.every(t => /^Track \d+$/.test(t.title))) lookupNames(false);
   if (play && info.kind === 'dvd' && !info.encrypted && info.main) playTitle(info.main);
 }
@@ -1135,7 +1139,7 @@ function discEnded() {
   if (restarts() && S.disc && duration() - ct() > 20 && S.disc.retries < 2) { S.disc.retries++; discStream(ct() + 2).catch(() => {}); return true; }
   delete S.resume[S.item.path]; saveResumeStore();
   if (S.item.kind === 'audio') return false;
-  showDiscPanel(true);
+  if (S.discInfo?.menu) startMenu().then(ok => { if (!ok) showDiscPanel(true); }); else showDiscPanel(true);
   return true;
 }
 function discSub(i) {
@@ -1199,6 +1203,7 @@ function renderDisc() {
   if (info.kind === 'dvd' && !info.encrypted) {
     const main = info.titles.find(t => t.n === info.main) || info.titles[0];
     const r = S.resume[titleItem(info, main.n).path];
+    if (info.menu) acts.push(`<button class="btn f" data-da="menu">${icon('list')} The disc's own menu</button>`);
     acts.push(`<button class="btn ${playing ? '' : 'primary'} f" data-da="title" data-n="${main.n}" ${playing ? '' : 'data-autofocus'}>${icon('play')} Play the film<small>${fmt(main.duration)}</small></button>`);
     if (r?.t > 5) acts.push(`<button class="btn f" data-da="resume" data-n="${main.n}" data-t="${r.t}">${icon('refresh')} Carry on<small>${fmt(r.t)}</small></button>`);
     if (main.audio.length > 1) choices += `<button class="chip f" data-da="prefAudio">${icon('lang')}<span>Sound</span><small>${esc(prefLabel(main.audio, S.discPrefs.audio ?? main.audio[0]?.id, 'The disc\'s own'))}</small></button>`;
@@ -1220,7 +1225,7 @@ function renderDisc() {
   const list = $('#discList');
   if (info.kind === 'dvd' && !info.encrypted) {
     const cur = playing ? S.item.disc.n : null;
-    list.innerHTML = `<div class="disc-head">${icon('list')}<span>Titles and chapters${info.reader === 'folder' ? '' : ''}. The disc's own menu isn't shown: pick here.</span></div>` + info.titles.map(t => {
+    list.innerHTML = `<div class="disc-head">${icon('list')}<span>${info.menu ? 'Titles and chapters: pick one here, or use the disc\'s own menu.' : 'Titles and chapters. This disc\'s own menu can\'t run here: pick from them instead.'}</span></div>` + info.titles.map(t => {
       const bits = [`${t.chapters.length} ${t.chapters.length === 1 ? 'chapter' : 'chapters'}`, t.audio.length > 1 ? `${t.audio.length} sound tracks` : '', t.subs.length ? `${t.subs.length} subtitles` : '', t.angles > 1 ? `${t.angles} camera angles (the first plays)` : ''].filter(Boolean).join(' · ');
       const ch = t.chapters.length > 1 ? `<div class="disc-sub" data-for="${t.n}" ${t.n === (cur ?? info.main) ? '' : 'hidden'}>${t.chapters.map((c, i) => `<button class="chip f" data-ch="${t.n}" data-t="${c.start}">${i + 1} · ${fmt(c.start)}</button>`).join('')}</div>` : '';
       return `<button class="disc-row f ${t.n === info.main ? 'main' : ''} ${t.n === cur ? 'on' : ''}" data-title="${t.n}"><span class="n">${t.n}</span><span>Title ${t.n}${t.n === info.main ? '<span class="tagm">The film</span>' : ''}<small>${esc(bits)}</small></span><span class="d">${fmt(t.duration)}</span></button>${ch}`;
@@ -1248,6 +1253,7 @@ $('#disc').addEventListener('click', e => {
       case 'track': playTrack(n); break;
       case 'back': showDiscPanel(false); if (video.paused) video.play().catch(() => {}); break;
       case 'eject': ejectDisc(); break;
+      case 'menu': startMenu(); break;
       case 'pad': controllerSheet(); break;
       case 'names': lookupNames(true); break;
       case 'decoding': addDecoding(); break;
@@ -1282,6 +1288,7 @@ async function lookupNames(loud) {
 }
 
 async function ejectDisc() {
+  stopMenu();
   const dev = S.discInfo?.device || S.drives.find(d => d.media)?.device;
   if (!dev) return;
   if (S.item?.disc) { saveResume(); stopPlaying(); }
@@ -1322,9 +1329,83 @@ function controllerSheet() {
   const row = (b, t) => `<b>${b}</b><span>${esc(t)}</span>`;
   sheet(`<h2>Controller and remote</h2><div class="padmap">
     <h4>Playing a disc</h4>${row('A', 'Play or pause')}${row('◀ ▶', 'Back or forward 10 seconds')}${row('LT RT', 'Back or forward 30 seconds')}${row('LB RB', 'Chapter (DVD) or song (CD) before, after')}${row('▲ ▼', 'Louder, or the buttons')}${row('Y', 'Sound and subtitles')}${row('Select', 'The disc menu')}${row('Start', 'Full screen')}${row('X', 'Show the buttons')}${row('B', 'Back')}
-    <h4>On the disc menu</h4>${row('✥', 'Move')}${row('A', 'Play what\'s picked')}${row('X', 'Eject the disc')}${row('Y', 'This list')}${row('LB RB', 'Switch tabs')}${row('B', 'Back to the film')}
-    <h4>A remote or keyboard</h4>${row('← →', 'Seek, or move')}${row('OK', 'Choose, or play and pause')}${row('Back', 'Back')}${row('Menu', 'The disc menu (or D)')}${row('⏯ ⏹', 'Play, pause, stop')}${row('⏏', 'Eject')}${row('⏮ ⏭', 'Chapter or song')}${row('?', 'This list')}
+    <h4>In the disc's own menu</h4>${row('✥', 'Pick a button')}${row('A', 'Press it')}${row('B', 'The titles list')}${row('X', 'Eject the disc')}
+    <h4>On the titles list</h4>${row('✥', 'Move')}${row('A', 'Play what\'s picked')}${row('X', 'Eject the disc')}${row('Y', 'This list')}${row('LB RB', 'Switch tabs')}${row('B', 'Back to the film')}
+    <h4>A remote or keyboard</h4>${row('← →', 'Seek, or move')}${row('OK', 'Choose, or play and pause')}${row('Back', 'Back')}${row('Menu', 'The disc\'s own menu')}${row('D', 'The titles list')}${row('⏯ ⏹', 'Play, pause, stop')}${row('⏏', 'Eject')}${row('⏮ ⏭', 'Chapter or song')}${row('?', 'This list')}
   </div><div class="acts"><button class="btn primary f" data-autofocus onclick="closeSheet()">Done</button></div>`, { wide: true });
+}
+
+// ---------------------------------------------------------------- a DVD's own menu (src/dvdnav.rs)
+// libdvdnav runs the disc's menu; its picture comes as JPEG frames (an <img>), its buttons as rectangles drawn here.
+// D-pad, arrows or a remote move between buttons, A / Enter / OK press one, the mouse points and clicks. B or Back goes
+// to the titles screen (which stands in when a disc's menu can't run). A button that plays a title hands it to the
+// usual player (seeking, sound, subtitles).
+const M = { on: false, state: null };
+const menuOn = () => M.on && !!S.discInfo;
+function menuHints() { return '<span><b>✥</b>Pick a button</span><span><b>A</b>Press it</span><span><b>B</b>The titles list</span><span><b>Y</b>Controller buttons</span>'; }
+async function startMenu(again = false) {
+  const info = S.discInfo; if (!info?.menu) return false;
+  try {
+    const r = await call('disc_menu_start', { id: info.id, again });
+    if (S.item?.disc) { saveResume(); video.pause(); }
+    M.on = true; M.state = r.menu;
+    $('#menuPic').src = r.url;
+    S.discPanel = false;
+    $('#dvdmenu').hidden = false;
+    setBodyMode(); updateButtons(); hints(); renderMenuBtns();
+    if (document.activeElement && document.activeElement !== document.body) document.activeElement.blur();
+    return true;
+  } catch (e) { toast(`${e.message} Pick from its titles here.`); return false; }
+}
+function stopMenu() {
+  if (!M.on) return;
+  M.on = false;
+  $('#menuPic').removeAttribute('src');
+  $('#dvdmenu').hidden = true;
+  call('disc_menu_stop').catch(() => {});
+  hints();
+}
+function menuSize() { const img = $('#menuPic'); return { w: 720, h: img.naturalHeight === 576 ? 576 : 480 }; }
+function renderMenuBtns() {
+  const st = M.state || { buttons: [], selected: 0 }, { w, h } = menuSize();
+  $('#menuBtns').innerHTML = st.buttons.map((b, i) => `<i data-mb="${i + 1}" class="${i + 1 === st.selected ? 'sel' : ''}" style="left:${b.x0 / w * 100}%;top:${b.y0 / h * 100}%;width:${(b.x1 - b.x0) / w * 100}%;height:${(b.y1 - b.y0) / h * 100}%"></i>`).join('');
+}
+$('#menuPic').addEventListener('load', renderMenuBtns);
+async function menuCmd(cmd, x = 0, y = 0) {
+  try { M.state = await call('disc_menu_cmd', { cmd, x: Math.round(x), y: Math.round(y) }); renderMenuBtns(); } catch (_) { /* the menu ended meanwhile */ }
+}
+function menuXY(e) { const r = $('#menuBox').getBoundingClientRect(), { w, h } = menuSize(); return [clamp((e.clientX - r.left) / r.width, 0, 1) * w, clamp((e.clientY - r.top) / r.height, 0, 1) * h]; }
+$('#menuBox').addEventListener('click', e => { const [x, y] = menuXY(e); menuCmd('click', x, y); });
+let menuHover = 0;
+$('#menuBox').addEventListener('mousemove', e => {
+  const b = e.target.closest('[data-mb]'); const n = b ? +b.dataset.mb : 0;
+  if (n && n !== menuHover && n !== M.state?.selected) { const [x, y] = menuXY(e); menuCmd('hover', x, y); }
+  menuHover = n;
+});
+listen('player://dvdmenu', ev => {
+  const p = ev.payload || {};
+  if (!M.on) return;
+  if (p.menu) { M.state = p.menu; renderMenuBtns(); }
+  if (p.restart) startMenu(true);
+  if (p.play) {
+    // A button played a title: the usual player takes it from its chapter.
+    stopMenu();
+    const t = S.discInfo?.titles.find(x => x.n === p.play.title);
+    const ch = t?.chapters[(p.play.part || 1) - 1];
+    if (t) playTitle(t.n, ch && ch.start > 0.5 ? ch.start + 0.01 : null); else showDiscPanel(true);
+  }
+  if (p.end) { stopMenu(); showDiscPanel(true); }
+});
+// Keys and controller buttons while the disc's menu is on (true: taken).
+function menuKey(k) {
+  const dirs = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', up: 'up', down: 'down', left: 'left', right: 'right' };
+  if (dirs[k]) { menuCmd(dirs[k]); return true; }
+  if (k === 'Enter' || k === ' ' || k === 'a') { menuCmd('activate'); return true; }
+  if (['Escape', 'Backspace', 'BrowserBack', 'GoBack', 'b', 'select'].includes(k)) { stopMenu(); showDiscPanel(true); return true; }
+  if (k === 'ContextMenu' || k === 'MediaTopMenu' || k === 'TV') { menuCmd('root'); return true; }
+  if (k === 'y' || k === '?') { controllerSheet(); return true; }
+  if (k === 'Eject' || k === 'x') { stopMenu(); ejectDisc(); return true; }
+  return false;
 }
 
 // ---------------------------------------------------------------- buttons
@@ -1373,9 +1454,10 @@ document.addEventListener('keydown', e => {
     if (k === 'Escape') { e.preventDefault(); e.target.blur(); }
     return;
   }
+  if (S.view === 'play' && menuOn() && !topSheet() && !ctrl && menuKey(k.length === 1 ? k.toLowerCase() : k)) { e.preventDefault(); return; }
   if (k === 'Escape' || k === 'BrowserBack' || k === 'GoBack' || (k === 'Backspace' && !inField(e))) { if (back()) e.preventDefault(); return; }
   // Remote controls: Menu (or the context menu key) for the disc menu, Eject, Stop.
-  if ((k === 'ContextMenu' || k === 'TV' || k === 'MediaTopMenu') && S.discInfo) { e.preventDefault(); toggleDiscPanel(); return; }
+  if ((k === 'ContextMenu' || k === 'TV' || k === 'MediaTopMenu') && S.discInfo) { e.preventDefault(); if (S.discInfo.menu) startMenu().then(ok => { if (!ok) toggleDiscPanel(); }); else toggleDiscPanel(); return; }
   if (k === 'Eject' && S.discInfo?.device) { e.preventDefault(); ejectDisc(); return; }
   if (k === 'MediaStop' && S.item) { e.preventDefault(); video.pause(); if (S.discInfo) showDiscPanel(true); return; }
   if (k === '?' && !inField(e)) { e.preventDefault(); controllerSheet(); return; }
@@ -1480,6 +1562,7 @@ function pad() {
 function padPress(k) {
   const bare = playKeys();
   if (k === 'b') { back(); return; }
+  if (S.view === 'play' && menuOn() && !topSheet()) { menuKey(k); return; }
   // A disc: Select opens and closes the disc menu (a remote's Menu button), Y the sound and subtitles.
   if (k === 'select' && S.view === 'play' && S.discInfo && !topSheet()) { toggleDiscPanel(); return; }
   if (S.view === 'play' && discPanelOn() && !topSheet()) {
@@ -1583,6 +1666,8 @@ function demoInvoke(cmd, a) {
     case 'disc_play': (window.__demoCalls ||= []).push([cmd, a]); return r({ url: base + encodeURIComponent(D.discClip || 'Sample clip.webm'), start: a.at || 0, duration: (D.disc?.titles?.find(t => t.n === a.n)?.duration) || (D.disc?.tracks?.find(t => t.n === a.n)?.duration) || 12, restart: D.disc?.kind !== 'audio-cd' });
     case 'disc_names': return Promise.reject(new Error('No internet in the preview'));
     case 'dvd_decoding': return r(D.decoding || { installed: false, canAdd: true });
+    case 'disc_menu_start': return D.menu ? r({ url: base + 'menu.jpg', menu: D.menu }) : Promise.reject(new Error('No menu in the preview.'));
+    case 'disc_menu_cmd': (window.__demoCalls ||= []).push([cmd, a]); return r(D.menu || { buttons: [], selected: 0 });
     case 'disc_eject': (window.__demoCalls ||= []).push([cmd, a]); return r(null);
     default: (window.__demoCalls ||= []).push([cmd, a]); return r(null);
   }
