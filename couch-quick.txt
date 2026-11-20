@@ -1,0 +1,3 @@
+added:    string "there"
+Couch's widgets:    string "org.hearthos.firehold.couch: org.hearthos.quicksettings"
+{"ok": true}
