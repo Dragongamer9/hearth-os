@@ -1,0 +1,46 @@
+core_pattern: /tmp/cores/core.%e.%p.%t · ulimit -c unlimited
+firehold 1: up
+firehold 2: up
+firehold 3: up
+firehold 4: up
+firehold 5: up
+firehold 6: up
+firehold 7: up
+firehold 8: up
+firehold 9: up
+firehold 10: up
+firehold 11: up
+firehold 12: up
+firehold 13: up
+firehold 14: up
+firehold 15: up
+firehold 16: up
+firehold 17: up
+firehold 18: up
+firehold 19: up
+firehold 20: up
+firehold: 20 of 20 up, 0 crashed, 0 slow
+stock 1: up
+stock 2: up
+stock 3: up
+stock 4: up
+stock 5: up
+stock 6: up
+stock 7: up
+stock 8: up
+stock 9: up
+stock 10: up
+stock 11: up
+stock 12: up
+stock 13: up
+stock 14: up
+stock 15: up
+stock 16: up
+stock 17: up
+stock 18: up
+stock 19: up
+stock 20: up
+stock: 20 of 20 up, 0 crashed, 0 slow
+total 8
+drwxrwxrwt 2 root root 4096 Nov 20 14:17 .
+drwxrwxrwt 1 root root 4096 Nov 20 14:17 ..
