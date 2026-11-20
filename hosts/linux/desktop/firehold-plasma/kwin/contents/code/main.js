@@ -65,6 +65,10 @@ function placeCouch(w) {
 }
 workspace.windowAdded.connect(function (w) {
     if (placeCouch(w)) return;
+    // Its name can come a moment after the window (Qt sets the title after mapping): look again when it does.
+    if (String(w.resourceClass || "").indexOf("plasmashell") >= 0 && w.captionChanged) {
+        w.captionChanged.connect(function () { placeCouch(w); });
+    }
     if (couch || onCouchScreen(w) || games === "fullscreen") full(w);
 });
 
@@ -103,6 +107,12 @@ registerShortcut("Firehold Couch posture", "Firehold: Couch posture", "", functi
 registerShortcut("Firehold Desk posture", "Firehold: Desk posture", "", function () { setCouch(false); });
 registerShortcut("Firehold games follow", "Firehold: games follow the posture", "", function () { games = "follow"; });
 registerShortcut("Firehold games fullscreen", "Firehold: games always full screen", "", function () { games = "fullscreen"; });
+// Do not disturb (Quick Settings): kept here so a game going full screen doesn't bring a pop-up over it while it's on.
+var dnd = false;
+// The Couch windows already open when this script starts (it can be loaded after plasmashell).
+workspace.windowList().forEach(function (w) { placeCouch(w); });
+registerShortcut("Firehold dnd on", "Firehold: Do not disturb on", "", function () { dnd = true; });
+registerShortcut("Firehold dnd off", "Firehold: Do not disturb off", "", function () { dnd = false; });
 registerShortcut("Firehold games window", "Firehold: games always in a window", "", function () { games = "window"; });
 
 var GUIDE = 'var v="guide|"+Date.now();desktops().forEach(function(d){if(d.type=="org.hearthos.firehold.couch"){' +

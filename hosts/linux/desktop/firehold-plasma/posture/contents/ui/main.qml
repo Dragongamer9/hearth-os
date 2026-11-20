@@ -134,7 +134,9 @@ PlasmoidItem {
             root.askCards(false);
         });
     }
-    // Quick Settings and notifications are the shared Hearth applets when they're there, else Hearth's own Settings.
+    // Quick Settings and notifications are Hearth's shared widgets on this bar (Firehold's look) when they're there:
+    // then their own buttons are the bar's and these two step aside; else these open Hearth's Settings.
+    property bool sharedHere: false
     function openShared(id, fallbackPage) {
         helper(["do", "open-applet", id], function (t) {
             const o = root.lastJson(t);
@@ -149,6 +151,7 @@ PlasmoidItem {
         helper(["ready", "org.hearthos.firehold.desk"]);
         askCards(true);
         listen();
+        helper(["do", "has-applet", "org.hearthos.quicksettings"], function (t) { const o = root.lastJson(t); root.sharedHere = !!(o && o.ok); });
         helper(["tip"], function (t) { if (t.trim() === "show") root.tipShown = true; });
         helper(["sys"], function (t) { const o = root.lastJson(t); if (o) root.net = o.net || ""; });
         helper(["get"], function (t) { const o = root.lastJson(t); if (o && typeof o === "object") root.cfg = o; });
@@ -193,11 +196,12 @@ PlasmoidItem {
                 Tray { glyph: "link"; onClicked: root.helper(["do", "settings-page", "link"]) }
                 Tray { visible: root.pads.length > 0; glyph: "pad"; text: root.pads.length ? root.pads[0].percent + "%" : "" }
                 Tray {
+                    visible: !root.sharedHere
                     glyph: "speaker"
                     text: root.net || (root.batteryText !== "" ? root.batteryText : "")
                     onClicked: root.openShared("org.hearthos.quicksettings", "quick")
                 }
-                Tray { glyph: "bell"; text: root.notifCount > 0 ? String(root.notifCount) : ""; onClicked: root.openShared("org.hearthos.notifications", "notifications") }
+                Tray { visible: !root.sharedHere; glyph: "bell"; text: root.notifCount > 0 ? String(root.notifCount) : ""; onClicked: root.openShared("org.hearthos.notifications", "notifications") }
             }
         }
     }

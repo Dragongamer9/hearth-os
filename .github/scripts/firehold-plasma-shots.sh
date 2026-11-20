@@ -269,6 +269,11 @@ hearth-firehold-plasma ping menu-window; sleep 3
 shot fp-13-desk-standard-menus 0 1920
 hearth-firehold-plasma ping menu-off; sleep 1
 front "Pictures" false; sleep 2
+# Quick Settings on the Desk (mockup 07) and the notification history (10): Hearth's shared widgets, Firehold's look.
+if command -v hearth-plasma-panel >/dev/null; then
+  hearth-plasma-panel open quick; sleep 4; shot fp-07-quick-settings-desk 0 1920; hearth-plasma-panel open close; sleep 1
+  hearth-plasma-panel open calendar; sleep 4; shot fp-10-notification-history 0 1920; hearth-plasma-panel open close; sleep 1
+fi
 hearth-firehold-plasma ping popup Virtual-0; sleep 4
 shot fp-04-modes-per-screen 0 1920
 hearth-firehold-plasma ping popup-off Virtual-0; sleep 1

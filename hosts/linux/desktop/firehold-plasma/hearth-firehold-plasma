@@ -1227,6 +1227,13 @@ def do(action, arg=''):
             return games(['page', arg]) == 0 and {'ok': True} or {'ok': False}
     elif action == 'media-app' and re.match(r'^[A-Za-z0-9_.+-]{1,120}$', arg or ''):
         launch(arg)
+    elif action == 'has-applet' and re.match(r'^[a-z0-9.]{3,80}$', arg or ''):
+        out = dbus_send('org.kde.plasmashell', '/PlasmaShell', 'org.kde.PlasmaShell.evaluateScript',
+                        'string:var n=0;panels().forEach(function(p){p.widgets().forEach(function(w){if(w.type=="%s")n++;});});print(n);' % arg)
+        return {'ok': bool(re.search(r'string "[1-9]', out))}
+    elif action == 'open-applet' and arg in ('org.hearthos.quicksettings', 'org.hearthos.notifications') and have('hearth-plasma-panel'):
+        # The shared widgets open through hearth-plasma-panel (their own "open" key).
+        quiet(['hearth-plasma-panel', 'open', 'quick' if arg.endswith('quicksettings') else 'calendar'], 8)
     elif action == 'open-applet' and re.match(r'^[a-z0-9.]{3,80}$', arg or ''):
         # Another Plasma applet's popup (the shared Quick Settings and notifications, org.hearthos.quicksettings /
         # org.hearthos.notifications): Plasma's own "activate widget" shortcut for it. Not there: says so.
@@ -1950,6 +1957,9 @@ def qs_do(what, arg=''):
         p = os.path.join(run_dir(), 'dnd')
         write_small(p, 'off' if read_small(p) == 'on' else 'on')
         tell_dnd()
+        # Firehold's KWin script hears it too (the coordinator: after a Do not disturb press, tell it ourselves).
+        dbus_send('org.kde.kglobalaccel', '/component/kwin', 'org.kde.kglobalaccel.Component.invokeShortcut',
+                  'string:Firehold dnd ' + read_small(p), reply=False)
     elif what == 'night':
         # KDE's own Night Light switch (kwinrc [NightColor] Active, through KConfig; KWin reads it again). A KWin
         # inhibit wouldn't outlast this short helper, so the tile is the setting itself, changed only by your press.
