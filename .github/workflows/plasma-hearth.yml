@@ -14,7 +14,8 @@ on:
   push:
     branches: ['feature/plasma-hearth-menu']
     paths: ['hosts/linux/desktop/plasma-hearth/**', 'hosts/linux/test/test_plasma_hearth.py', 'hosts/linux/test/test_hearth_desk.py', 'hosts/linux/desktop/shell/hearth-desk', '.github/workflows/plasma-hearth.yml', '.github/scripts/plasma-hearth-shots.sh',
-            'docs/mockups/checklists/plasma-hearth-bar.md']
+            'docs/mockups/checklists/plasma-hearth-bar.md', '.github/scripts/ci-kwin-tools.sh', '.github/scripts/ci-fake-input.c',
+            '.github/scripts/plasma-hearth-fixtures.py']
 
 permissions:
   contents: write    # the screenshots branch
@@ -103,6 +104,55 @@ jobs:
           for f in pub/*.png; do printf '## %s\n\n![%s](%s)\n\n' "$(basename "$f" .png)" "$(basename "$f")" "$(basename "$f")" >> pub/README.md; done
           cd pub && git init -q -b "$to" && git add -A
           git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth on Plasma screenshots ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
+          echo "::notice title=Screenshots::branch $to"
+          cd .. && [ ! -e shots/FAILED ]
+
+  # Glass's frosted blur, Alt+Tab held down, apps' tray icons and what's playing (plasma-hearth-shots.sh extras):
+  # KWin draws with OpenGL on a vgem render node (Mesa in software), so Plasma draws as on a PC with a graphics card;
+  # keys through KWin's fake input (ci-kwin-tools.sh). Pictures to ci/plasma-hearth-extras-<branch>.
+  extras:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      options: --privileged -v /dev:/dev -v /lib/modules:/lib/modules:ro
+    steps:
+      - name: Install Plasma (what the Anatase image has) and the checking tools
+        run: |
+          dnf -y install $PLASMA_PKGS kmod gcc pkgconf-pkg-config wayland-devel plasma-wayland-protocols kf6-kded >/dev/null
+          dnf -y install --skip-unavailable $PLASMA_EXTRA >/dev/null || true
+          for b in kwin_wayland plasmashell kpackagetool6 wayland-scanner; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
+      - uses: actions/checkout@v4
+      - name: Put Hearth's panel where the image puts it
+        run: |
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          mkdir -p /usr/share/backgrounds/hearth && cp os/branding/wallpapers/hearth-*.jpg /usr/share/backgrounds/hearth/
+          for d in branding/icons/png/*x*; do mkdir -p "/usr/share/icons/hicolor/$(basename "$d")/apps" && cp "$d"/*.png "/usr/share/icons/hicolor/$(basename "$d")/apps/"; done
+          mkdir -p /usr/libexec/nimbus && install -m755 os-bases/anatase/system_files/usr/libexec/nimbus/hearth-plasma-looks /usr/libexec/nimbus/
+          logo=$(ls branding/icons/apps/hearth.svg branding/icons/apps/*.svg 2>/dev/null | head -1); mkdir -p /usr/share/icons/hicolor/scalable/apps; [ -n "$logo" ] && cp "$logo" /usr/share/icons/hicolor/scalable/apps/hearth.svg
+          python3 /usr/libexec/nimbus/hearth-plasma-looks build > /tmp/looks.json 2>/tmp/looks.err || echo "::warning title=looks::$(tail -3 /tmp/looks.err | tr '\n' ' ' | cut -c1-400)"
+          mkdir -p /usr/share/kwin/tabbox && cp -a os/system_files/usr/share/kwin/tabbox/org.hearth.switcher /usr/share/kwin/tabbox/
+          [ -d /usr/share/kwin-wayland ] && mkdir -p /usr/share/kwin-wayland/tabbox && cp -a os/system_files/usr/share/kwin/tabbox/org.hearth.switcher /usr/share/kwin-wayland/tabbox/
+          bash /usr/share/nimbus/desktop/plasma-hearth/install.sh / | tee /tmp/install.log
+          bash .github/scripts/ci-kwin-tools.sh install
+      - name: Glass's blur, Alt+Tab, tray icons, now playing
+        timeout-minutes: 25
+        shell: bash
+        run: bash .github/scripts/plasma-hearth-shots.sh shots extras
+      - name: Publish screenshots to a branch
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          ls shots/*.png >/dev/null 2>&1 || exit 0
+          git config --global --add safe.directory "$PWD"
+          to="ci/plasma-hearth-extras-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+          mkdir -p pub && cp shots/*.png shots/*.log shots/*.txt shots/*.json pub/ 2>/dev/null
+          printf '# Hearth on Plasma (extras), %s\n\n' "${GITHUB_SHA::7}" > pub/README.md
+          for f in pub/*.png; do printf '## %s\n\n![%s](%s)\n\n' "$(basename "$f" .png)" "$(basename "$f")" "$(basename "$f")" >> pub/README.md; done
+          cd pub && git init -q -b "$to" && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth on Plasma extras ${GITHUB_SHA::7}"
           git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
           echo "::notice title=Screenshots::branch $to"
           cd .. && [ ! -e shots/FAILED ]

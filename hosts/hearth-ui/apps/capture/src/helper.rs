@@ -134,6 +134,43 @@ pub fn call(args: Vec<String>, input: Option<Vec<u8>>, secs: u64) -> impl std::f
     async move { rx.await.unwrap_or_else(|_| serde_json::json!({"ok": false, "error": "it stopped"})) }
 }
 
+/// The screens that are on, for one area picker on each (Mantel's Capture: Quickshell's screens): Mantel's
+/// hearth-screens get, which on KDE Plasma reads KDE's own screen settings (kscreen-doctor). Each: KWin's name for
+/// it and where it is on the desktop in logical pixels (its mode over its scale, turned with it). Empty when they
+/// can't be read (then the picker is on the screen you're on, as before).
+pub fn screens() -> impl std::future::Future<Output = Vec<(String, crate::draw::R)>> + Send + 'static {
+    let (tx, rx) = futures::channel::oneshot::channel();
+    let _ = std::thread::Builder::new().name("capture-screens".into()).spawn(move || {
+        let hs = hearth_ui::run::shell_helper("hearth-screens");
+        let o = run_prog("python3", &[hs, "get".to_string()], None, Duration::from_secs(12));
+        let v: Value = o.out.lines().rev().find_map(|l| serde_json::from_str::<Value>(l.trim()).ok().filter(Value::is_array)).unwrap_or(Value::Null);
+        let _ = tx.send(parse_screens(&v));
+    });
+    async move { rx.await.unwrap_or_default() }
+}
+
+pub fn parse_screens(v: &Value) -> Vec<(String, crate::draw::R)> {
+    let mut out = Vec::new();
+    for o in v.as_array().map(|a| a.as_slice()).unwrap_or(&[]) {
+        if o.get("enabled").and_then(Value::as_bool) == Some(false) {
+            continue;
+        }
+        let name = s(o, "name").to_string();
+        let Some(m) = o.get("modes").and_then(Value::as_array).and_then(|l| l.iter().find(|m| b(m, "current"))) else { continue };
+        let scale = o.get("scale").and_then(Value::as_f64).filter(|x| *x > 0.0).unwrap_or(1.0);
+        let (mut w, mut h) = (n(m, "width") as f64 / scale, n(m, "height") as f64 / scale);
+        if matches!(s(o, "transform"), "90" | "270" | "flipped-90" | "flipped-270") {
+            std::mem::swap(&mut w, &mut h);
+        }
+        let pos = o.get("position").cloned().unwrap_or(Value::Null);
+        if name.is_empty() || w < 1.0 || h < 1.0 {
+            continue;
+        }
+        out.push((name, crate::draw::R::new(n(&pos, "x") as f32, n(&pos, "y") as f32, w.round() as f32, h.round() as f32)));
+    }
+    out
+}
+
 pub fn a(v: &[&str]) -> Vec<String> {
     v.iter().map(|s| s.to_string()).collect()
 }
@@ -168,6 +205,25 @@ pub fn runtime_dir() -> std::path::PathBuf {
         let _ = std::fs::set_permissions(&d, std::fs::Permissions::from_mode(0o700));
     }
     d
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn screens_are_read_in_logical_pixels() {
+        let v = serde_json::json!([
+            {"name": "DP-1", "enabled": true, "scale": 2.0, "transform": "normal", "position": {"x": 0, "y": 0},
+             "modes": [{"width": 3840, "height": 2160, "current": true}]},
+            {"name": "HDMI-A-1", "enabled": true, "scale": 1.0, "transform": "90", "position": {"x": 1920, "y": 0},
+             "modes": [{"width": 1920, "height": 1080, "current": false}, {"width": 1280, "height": 720, "current": true}]},
+            {"name": "eDP-1", "enabled": false, "modes": [{"width": 1920, "height": 1080, "current": true}]}
+        ]);
+        let l = super::parse_screens(&v);
+        assert_eq!(l.len(), 2);
+        assert_eq!(l[0].0, "DP-1");
+        assert_eq!((l[0].1.w, l[0].1.h), (1920.0, 1080.0));
+        assert_eq!((l[1].1.x, l[1].1.w, l[1].1.h), (1920.0, 720.0, 1280.0));
+    }
 }
 
 pub fn now_ms() -> u128 {

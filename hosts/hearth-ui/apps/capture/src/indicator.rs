@@ -91,7 +91,7 @@ fn boot() -> (Ind, Task<M>) {
     i.read_files();
     i.rows = (usize::from(i.recording()) + usize::from(!i.viewers().is_empty())).max(1);
     let h = height(i.rows);
-    (i, Task::perform(kwin::place_async(APP_ID, 300.0, h, kwin::Place::TopRight(56.0, 12.0)), |_| M::Noop))
+    (i, Task::perform(kwin::place_async(APP_ID, 300.0, h, kwin::Place::TopRight(56.0, 12.0), String::new()), |_| M::Noop))
 }
 
 fn shell(name: &str) -> String {

@@ -202,5 +202,10 @@ PlasmoidItem {
         Connections { target: rep.Window.window; ignoreUnknownSignals: true; function onWidthChanged() { placer.restart(); } function onHeightChanged() { placer.restart(); } }
         Timer { id: placer; interval: 40; onTriggered: rep.place() }
         Component.onCompleted: placer.restart()
+        // How Plasma draws Hearth's bar (Glass's frosted blur needs the graphics card: Mantel's Frost.qml), said once.
+        Timer {
+            interval: 3000; running: main.role === "bar"
+            onTriggered: console.log("plasma-hearth: the bar is drawn " + (rep.GraphicsInfo.api === GraphicsInfo.Software ? "by the processor (no blur)" : "on the graphics card (api " + rep.GraphicsInfo.api + ")"))
+        }
     }
 }

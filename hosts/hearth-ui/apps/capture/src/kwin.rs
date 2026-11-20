@@ -151,29 +151,56 @@ pub enum Place {
     TopRight(f32, f32),
 }
 
-fn script_for(app_id: &str, w: f32, h: f32, place: Place) -> String {
+/// The screen a pill goes on: the one named (a scrolling capture's area is on it), else the one you're on.
+fn screen_expr(screen: &str) -> String {
+    let active = "(workspace.activeScreen ? workspace.activeScreen.geometry : workspace.clientArea(KWin.FullScreenArea, w))";
+    if screen.is_empty() {
+        return active.to_string();
+    }
+    format!("(function () {{ var o = workspace.screens; for (var j = 0; j < o.length; j++) if (String(o[j].name) === {}) return o[j].geometry; return {active}; }})()", js_str(screen))
+}
+
+/// A JavaScript string literal (names come from KDE's screen settings; nothing else is put in a script).
+fn js_str(v: &str) -> String {
+    serde_json::Value::from(v).to_string()
+}
+
+fn script_for(app_id: &str, w: f32, h: f32, place: Place, screen: &str) -> String {
     let (xexpr, yexpr) = match place {
         Place::Top(m) => ("s.x + (s.width - W) / 2".to_string(), format!("s.y + {m}")),
         Place::Bottom(m) => ("s.x + (s.width - W) / 2".to_string(), format!("s.y + s.height - H - {m}")),
         Place::TopRight(top, right) => (format!("s.x + s.width - W - {right}"), format!("s.y + {top}")),
     };
+    let id = js_str(app_id);
+    let sx = screen_expr(screen);
     format!(
-        "(function () {{\n  var l = workspace.windowList();\n  for (var i = 0; i < l.length; i++) {{\n    var w = l[i];\n    if (String(w.resourceClass) !== '{app_id}' && String(w.desktopFileName) !== '{app_id}') continue;\n    var s = workspace.activeScreen ? workspace.activeScreen.geometry : workspace.clientArea(KWin.FullScreenArea, w);\n    var W = {w}, H = {h};\n    w.frameGeometry = {{ x: Math.round({xexpr}), y: Math.round({yexpr}), width: W, height: H }};\n    w.keepAbove = true; w.skipTaskbar = true; w.skipPager = true; w.skipSwitcher = true;\n    if ('excludeFromCapture' in w) w.excludeFromCapture = true;\n  }}\n}})();\n"
+        "(function () {{\n  var l = workspace.windowList();\n  for (var i = 0; i < l.length; i++) {{\n    var w = l[i];\n    if (String(w.resourceClass) !== {id} && String(w.desktopFileName) !== {id}) continue;\n    var s = {sx};\n    var W = {w}, H = {h};\n    w.frameGeometry = {{ x: Math.round({xexpr}), y: Math.round({yexpr}), width: W, height: H }};\n    w.keepAbove = true; w.skipTaskbar = true; w.skipPager = true; w.skipSwitcher = true;\n    if ('excludeFromCapture' in w) w.excludeFromCapture = true;\n  }}\n}})();\n"
     )
 }
 
-pub fn place(app_id: &str, w: f32, h: f32, place: Place) {
-    if !crate::helper::on_kwin() {
-        return;
-    }
-    // The window is on the screen first.
-    std::thread::sleep(std::time::Duration::from_millis(250));
+/// The area pickers, one on each screen (Mantel's: a layer-shell window per screen, which a Wayland app can't ask
+/// for itself on KWin): each picker window (its own name, hearth-capture-pick-N) sent to its screen and made full
+/// screen there, kept above and out of the taskbar and Alt+Tab. In the pictures they're still there (they show the
+/// still picture you pick on).
+fn script_pickers(list: &[(String, String)]) -> String {
+    let pairs: Vec<String> = list.iter().map(|(id, name)| format!("{}: {}", js_str(id), js_str(name))).collect();
+    format!(
+        "(function () {{\n  var want = {{ {} }};\n  var outs = workspace.screens;\n  var l = workspace.windowList();\n  for (var i = 0; i < l.length; i++) {{\n    var w = l[i];\n    var name = want[String(w.resourceClass)];\n    if (name === undefined) name = want[String(w.desktopFileName)];\n    if (name === undefined) continue;\n    var o = null;\n    for (var j = 0; j < outs.length; j++) if (String(outs[j].name) === name) o = outs[j];\n    if (!o) continue;\n    if (w.output !== o) workspace.sendClientToScreen(w, o);\n    var g = o.geometry;\n    if (!w.fullScreen) w.frameGeometry = {{ x: g.x, y: g.y, width: g.width, height: g.height }};\n    w.fullScreen = true;\n    w.keepAbove = true; w.skipTaskbar = true; w.skipPager = true; w.skipSwitcher = true;\n  }}\n}})();\n",
+        pairs.join(", ")
+    )
+}
+
+/// Runs a one-off KWin script (loaded, run, unloaded; its file gone), on KWin only.
+fn run_script(script: &str) {
     let name = format!("hearth-capture-place-{}", crate::helper::now_ms());
     let path = crate::helper::runtime_dir().join(format!("{name}.js"));
-    if std::fs::write(&path, script_for(app_id, w, h, place)).is_err() {
+    if std::fs::write(&path, script).is_err() {
         return;
     }
-    let Ok(conn) = zbus::blocking::connection::Builder::session().and_then(|b| b.method_timeout(std::time::Duration::from_secs(5)).build()) else { return };
+    let Ok(conn) = zbus::blocking::connection::Builder::session().and_then(|b| b.method_timeout(std::time::Duration::from_secs(5)).build()) else {
+        let _ = std::fs::remove_file(&path);
+        return;
+    };
     let path_s = path.to_string_lossy().to_string();
     let r = conn.call_method(Some("org.kde.KWin"), "/Scripting", Some("org.kde.kwin.Scripting"), "loadScript", &(path_s.as_str(), name.as_str()));
     if let Ok(m) = r {
@@ -191,10 +218,38 @@ pub fn place(app_id: &str, w: f32, h: f32, place: Place) {
     let _ = std::fs::remove_file(&path);
 }
 
-pub fn place_async(app_id: &'static str, w: f32, h: f32, p: Place) -> impl std::future::Future<Output = ()> + Send + 'static {
+pub fn place(app_id: &str, w: f32, h: f32, place: Place, screen: &str) {
+    if !crate::helper::on_kwin() {
+        return;
+    }
+    // The window is on the screen first.
+    std::thread::sleep(std::time::Duration::from_millis(250));
+    run_script(&script_for(app_id, w, h, place, screen));
+}
+
+pub fn place_async(app_id: &'static str, w: f32, h: f32, p: Place, screen: String) -> impl std::future::Future<Output = ()> + Send + 'static {
     let (tx, rx) = futures::channel::oneshot::channel();
     let _ = std::thread::Builder::new().name("capture-place".into()).spawn(move || {
-        place(app_id, w, h, p);
+        place(app_id, w, h, p, &screen);
+        let _ = tx.send(());
+    });
+    async move {
+        let _ = rx.await;
+    }
+}
+
+/// The pickers on their screens: once they're up, and again a moment later for one that was slow to show (the
+/// script only moves a picker that isn't where it belongs).
+pub fn place_pickers_async(list: Vec<(String, String)>) -> impl std::future::Future<Output = ()> + Send + 'static {
+    let (tx, rx) = futures::channel::oneshot::channel();
+    let _ = std::thread::Builder::new().name("capture-place".into()).spawn(move || {
+        if crate::helper::on_kwin() && !list.is_empty() {
+            let js = script_pickers(&list);
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            run_script(&js);
+            std::thread::sleep(std::time::Duration::from_millis(900));
+            run_script(&js);
+        }
         let _ = tx.send(());
     });
     async move {
@@ -208,9 +263,20 @@ mod tests {
 
     #[test]
     fn the_pill_script_names_the_window_and_the_place() {
-        let s = script_for("hearth-capture-pill", 260.0, 64.0, Place::Top(40.0));
-        assert!(s.contains("'hearth-capture-pill'") && s.contains("s.y + 40") && s.contains("excludeFromCapture"));
-        let s = script_for("hearth-capture-dot", 200.0, 34.0, Place::TopRight(56.0, 12.0));
+        let s = script_for("hearth-capture-pill", 260.0, 64.0, Place::Top(40.0), "");
+        assert!(s.contains("\"hearth-capture-pill\"") && s.contains("s.y + 40") && s.contains("excludeFromCapture") && s.contains("activeScreen"));
+        let s = script_for("hearth-capture-dot", 200.0, 34.0, Place::TopRight(56.0, 12.0), "");
         assert!(s.contains("s.width - W - 12") && s.contains("s.y + 56"));
+        let s = script_for("hearth-capture-pill", 300.0, 56.0, Place::Bottom(24.0), "HDMI-A-1");
+        assert!(s.contains("\"HDMI-A-1\"") && s.contains("s.y + s.height - H - 24"));
+    }
+
+    #[test]
+    fn each_picker_goes_full_screen_on_its_own_screen() {
+        let s = script_pickers(&[("hearth-capture-pick-0".into(), "DP-1".into()), ("hearth-capture-pick-1".into(), "HDMI-A-1\"';".into())]);
+        assert!(s.contains("\"hearth-capture-pick-0\": \"DP-1\""));
+        assert!(s.contains("sendClientToScreen") && s.contains("w.fullScreen = true"));
+        // A name is only ever a string in the script.
+        assert!(s.contains("\"HDMI-A-1\\\"';\""));
     }
 }

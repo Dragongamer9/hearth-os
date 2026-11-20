@@ -117,6 +117,17 @@ pub fn load_async(path: String) -> impl std::future::Future<Output = Result<Pic,
     async move { rx.await.unwrap_or_else(|_| Err("it stopped".into())) }
 }
 
+/// Several pictures (the area picker's, one per screen), read in order on one thread.
+pub fn load_many_async(paths: Vec<String>) -> impl std::future::Future<Output = Vec<Result<Pic, String>>> + Send + 'static {
+    let (tx, rx) = futures::channel::oneshot::channel();
+    let n = paths.len();
+    let _ = std::thread::Builder::new().name("capture-load".into()).spawn(move || {
+        let v: Vec<Result<Pic, String>> = paths.iter().map(|p| if p.is_empty() { Err("no picture of that screen".to_string()) } else { load(p) }).collect();
+        let _ = tx.send(v);
+    });
+    async move { rx.await.unwrap_or_else(|_| (0..n.max(1)).map(|_| Err("it stopped".to_string())).collect()) }
+}
+
 pub fn thumbs_async(paths: Vec<String>) -> impl std::future::Future<Output = Vec<(String, Option<(Handle, u32, u32)>)>> + Send + 'static {
     let (tx, rx) = futures::channel::oneshot::channel();
     let _ = std::thread::Builder::new().name("capture-thumbs".into()).spawn(move || {
