@@ -356,8 +356,8 @@ shot fp-14-controller-hint 0 1920
 printf 'Age of the Ring 8.4 patch notes\n' > /tmp/patch-notes.txt
 QT_QPA_PLATFORMTHEME=kde kate /tmp/patch-notes.txt >/dev/null 2>&1 &
 sleep 8; front "patch-notes" false; sleep 3
-# File open: KDE's app menu daemon's showMenu (what a window's menu button asks): the bar's global menu opens Kate's
-# first menu, File.
+# File open: KDE's app menu daemon's showMenu with no place (-1, -1: as a shortcut asks), so the bar's global menu
+# opens Kate's first menu, File, under its button.
 cat > /tmp/fhp-file-menu.py <<'PY'
 import dbus, re, sys
 bus = dbus.SessionBus()
@@ -380,7 +380,7 @@ for n in dbo.ListNames(dbus_interface='org.freedesktop.DBus'):
             lay = bus.get_object(n, p).GetLayout(0, 1, dbus.Array([], signature='s'), dbus_interface='com.canonical.dbusmenu')
             first = int(lay[1][2][0][0])
             print('menu', n, p, first)
-            bus.get_object('org.kde.kappmenu', '/KAppMenu').showMenu(0, 0, n, dbus.ObjectPath(p), first, dbus_interface='org.kde.kappmenu')
+            bus.get_object('org.kde.kappmenu', '/KAppMenu').showMenu(-1, -1, n, dbus.ObjectPath(p), first, dbus_interface='org.kde.kappmenu')   # -1: the bar's own menu shows it
             sys.exit(0)
     except Exception as e:
         print('no menu on', n, e)
