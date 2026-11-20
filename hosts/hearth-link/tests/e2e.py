@@ -1225,10 +1225,9 @@ elif a and a[0] == 'pin':
     open(os.path.join(os.environ['HOME'], 'pin-got.json'), 'w').write(json.dumps(a))
     print(json.dumps({'ok': True}))
 elif a and a[0] == 'family':
-    f = os.path.join(os.environ['HOME'], 'family-calls.json')
-    calls = json.load(open(f)) if os.path.exists(f) else []
-    calls.append(a)
-    open(f, 'w').write(json.dumps(calls))
+    # One line each (two can run at once: the session's end and turning it off).
+    with open(os.path.join(os.environ['HOME'], 'family-calls.jsonl'), 'a') as f:
+        f.write(json.dumps(a) + '\n')
     if a[1:2] == ['start']:
         print(json.dumps({'ok': True, 'port': 47989, 'running': True}))
     elif a[1:2] == ['paired']:
@@ -1559,6 +1558,13 @@ def rm(*paths):
             pass
 
 
+def family_calls(dev):
+    try:
+        return [json.loads(l) for l in open(os.path.join(dev.home, 'family-calls.jsonl')) if l.strip()]
+    except OSError:
+        return []
+
+
 def moon_session(a, host, tag, what='desktop'):
     """A connects to HOST; checks what its stand-in Moonlight saw. Returns that."""
     rm(os.path.join(a.home, 'ml-result.json'), os.path.join(a.home, 'ml-ended.json'))
@@ -1595,7 +1601,7 @@ def moon_session(a, host, tag, what='desktop'):
 def moon_family(a, b, c):
     """C is a friend's PC that lets A connect: off until C turns it on; A added with a code; asked every time."""
     sun = fake_sunshine('hfC', 'C')
-    rm(os.path.join(c.home, 'pin-got.json'), os.path.join(c.home, 'family-calls.json'))
+    rm(os.path.join(c.home, 'pin-got.json'), os.path.join(c.home, 'family-calls.jsonl'))
     st = c.call('moonlight.share.status')
     if st.get('on') is not False or st.get('people'):
         fail('Family and friends before C turned it on: %s' % st)
@@ -1603,7 +1609,7 @@ def moon_family(a, b, c):
     if 'Turn on' not in json.dumps(r):
         fail('adding a person while off: %s' % r)
     c.call('moonlight.share.set', {'on': True})
-    calls = read_json(os.path.join(c.home, 'family-calls.json')) or []
+    calls = family_calls(c)
     if ['family', 'on'] not in calls:
         fail('turning it on didn\'t set Sunshine up: %s' % calls)
     if (read_json(os.path.join(c.home, '.config/nimbus/family-moonlight.json')) or {}).get('on') is not True:
@@ -1688,7 +1694,7 @@ def moon_family(a, b, c):
     c.call('moonlight.share.set', {'on': False})
     wait_for('turning it off to cut A off', lambda: os.path.exists(os.path.join(a.home, 'ml-ended.json')), 20)
     off_s = time.time() - t0
-    if ['family', 'off'] not in (read_json(os.path.join(c.home, 'family-calls.json')) or []):
+    if ['family', 'off'] not in (family_calls(c)):
         fail('turning it off didn\'t undo Sunshine\'s setup')
     r = a.call('moonlight.connect', {'id': c.id}, timeout=60, ok=False)
     if "isn't letting anyone" not in json.dumps(r):
@@ -1697,7 +1703,7 @@ def moon_family(a, b, c):
     # Removing the person: C forgets A (Sunshine's pairing too), and A's list drops C.
     c.call('moonlight.share.set', {'on': True})
     c.call('moonlight.share.remove', {'id': a.id})
-    if ['family', 'forget', 'Hearth ' + a.id[:8]] not in (read_json(os.path.join(c.home, 'family-calls.json')) or []):
+    if ['family', 'forget', 'Hearth ' + a.id[:8]] not in (family_calls(c)):
         fail('removing A didn\'t unpair its Moonlight from Sunshine')
     wait_for('A to drop C', lambda: not any(f['id'] == c.id for f in a.call('moonlight.friends', {'check': True}, timeout=30)['friends']), 30)
     r = a.call('moonlight.connect', {'id': c.id}, timeout=60, ok=False)
