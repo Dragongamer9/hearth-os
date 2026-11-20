@@ -1,0 +1,131 @@
+# Mantel (Hearth Classic) and Firehold on labwc on the Fedora edition (1.16; docs/LABWC-FEDORA.md): the same Quickshell
+# the image builds (os-bases/anatase/quickshell-build.sh, v0.3.2), the same packages (labwc-install.sh), on Fedora 45.
+# Each desktop is started as nimbus-session starts it, pictured (the desktop, the menus, Quick Access, Settings' looks;
+# Firehold's Couch, Guide and Desk), then measured at rest for 10 minutes under the same limits as KDE Plasma's check
+# (.github/scripts/labwc-fedora-rest.sh: CPU near 0, memory not growing, no frames, no programs started, Files quick).
+# Fails when a desktop is over a limit. The pictures go to the branch ci/labwc-fedora (one copy, replaced each run).
+name: labwc on Fedora (Mantel and Firehold)
+
+on:
+  workflow_dispatch:
+    inputs:
+      rest_secs:
+        description: 'Seconds at rest (600: ten minutes)'
+        type: string
+        default: '600'
+  push:
+    branches: [feature/labwc-fedora]
+    # (a new workflow can't be started by hand until it's on main: pushes to this branch start it)
+    paths: ['.github/workflows/labwc-fedora.yml', '.github/scripts/labwc-fedora-rest.sh', 'hosts/linux/desktop/**',
+            'hosts/linux/session/**', 'os-bases/anatase/quickshell-build.sh', 'os-bases/anatase/labwc-install.sh']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: labwc-fedora-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  session:
+    name: Session tests (a choice, never a fallback)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tests
+        run: |
+          python3 -m unittest hosts.linux.test.test_labwc_fedora_session hosts.linux.test.test_firehold_plasma -v 2>&1 | tail -40
+          python3 -m unittest hosts.linux.test.test_labwc_fedora_session hosts.linux.test.test_firehold_plasma hosts.linux.test.test_mantel_rest
+
+  quickshell:
+    name: Build Quickshell v0.3.2 (Fedora 45)
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:45
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          set -o pipefail
+          bash os-bases/anatase/quickshell-build.sh /tmp/qs 2>&1 | tail -n 60 > /tmp/qs.log || { echo "::error title=Quickshell::$(tail -c 1500 /tmp/qs.log | tr '\n' ' ')"; exit 1; }
+          tail -3 /tmp/qs.log
+          tar -C /tmp/qs -czf /tmp/quickshell.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quickshell-fedora
+          path: /tmp/quickshell.tgz
+          retention-days: 3
+
+  rest:
+    name: ${{ matrix.kind }} on labwc, pictured and at rest
+    needs: quickshell
+    runs-on: ubuntu-latest
+    container:
+      image: registry.fedoraproject.org/fedora:45
+      options: --cap-add=SYS_PTRACE --security-opt seccomp=unconfined
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        kind: [classic, firehold]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: quickshell-fedora
+          path: /tmp/qsa
+      - name: Install (as the image does)
+        run: |
+          tar -C / -xzf /tmp/qsa/quickshell.tgz
+          dnf5 -y install python3 procps-ng strace dbus-daemon dbus-tools findutils >/dev/null
+          bash os-bases/anatase/labwc-install.sh 2>&1 | grep -E '::|^Error' || true
+          bash os-bases/anatase/labwc-install.sh --check
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          install -Dm755 hosts/linux/session/nimbus-session /usr/bin/nimbus-session
+          install -Dm755 hosts/linux/session/nimbus-mode /usr/bin/nimbus-mode
+          chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/open.sh
+          find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +
+          cp /tmp/labwc-missing-packages.txt /tmp/missing.txt 2>/dev/null || : > /tmp/missing.txt
+      - name: ${{ matrix.kind }} on labwc
+        run: |
+          mkdir -p /tmp/out && chmod 777 /tmp/out
+          secs="${{ inputs.rest_secs }}"; secs=${secs:-600}
+          # (As root in this container, as desktop-test.yml runs Mantel; strace needs it to watch the shell.)
+          PERF="$PWD/tools/perf-measure.py" timeout 2400 bash .github/scripts/labwc-fedora-rest.sh ${{ matrix.kind }} /tmp/out/${{ matrix.kind }} $secs; rc=$?
+          cp /tmp/missing.txt /tmp/out/${{ matrix.kind }}/missing-packages.txt
+          { echo "### ${{ matrix.kind }} on labwc"; echo; cat /tmp/out/${{ matrix.kind }}/rest.md; } >> "$GITHUB_STEP_SUMMARY"
+          exit $rc
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: labwc-${{ matrix.kind }}
+          path: /tmp/out/${{ matrix.kind }}
+          retention-days: 5
+
+  post:
+    name: Post the pictures (ci/labwc-fedora)
+    needs: rest
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          pattern: labwc-*
+          path: got
+      - name: Push to ci/labwc-fedora
+        run: |
+          set -e
+          [ -d got ] || { echo "::warning title=pictures::nothing to post"; exit 0; }
+          mkdir site && cd site && git init -q -b ci/labwc-fedora
+          for d in ../got/labwc-*; do
+            k=${d##*/labwc-}; mkdir -p "run-${{ github.run_id }}/$k"
+            find "$d" -maxdepth 1 -type f \( -name '*.png' -o -name '*.txt' -o -name '*.json' -o -name '*.md' -o -name '*.log' \) -size -5M -exec cp {} "run-${{ github.run_id }}/$k/" \;
+          done
+          printf 'Mantel and Firehold on labwc (Fedora 45, virtual screen, software drawing) from run %s, commit %s.\n' "${{ github.run_id }}" "${{ github.sha }}" > README.md
+          git add -A
+          git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com commit -q -m "labwc on Fedora pictures, run ${{ github.run_id }}"
+          git push -q -f "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/labwc-fedora
+          echo "::notice title=pictures::$(find "run-${{ github.run_id }}" -name '*.png' | wc -l) pictures on ci/labwc-fedora/run-${{ github.run_id }}"

@@ -849,6 +849,31 @@ dnf5 -y install --skip-unavailable --skip-broken grim slurp brightnessctl wlr-ra
 dnf5 -y install --skip-unavailable dbus-tools dbus-daemon python3-evdev || true
 echo "::notice title=Session bus::$(command -v dbus-run-session || echo 'no dbus-run-session'); controller mouse: $(python3 -c 'import evdev; print("evdev ok")' 2>&1 | tail -1)"
 
+# >>> labwc on the Fedora edition (1.16, feature/labwc-fedora; docs/LABWC-FEDORA.md): Mantel (Hearth Classic) and
+# Firehold on labwc as Desktop Mode choices in Settings › Your desktop, only when picked, never a fallback (nimbus-session
+# run_fedora_labwc; anything wrong: KDE Plasma, with a notification). Quickshell v0.3.2 from the Containerfile's own
+# stage (this image's Qt), labwc and Mantel's packages by Fedora's names (labwc-install.sh). If any of it can't be put
+# in, the choice isn't offered (hearth-labwc-desktop left out) and the image is still built: KDE Plasma is unchanged.
+QS=/quickshell; [ -d "$QS" ] || QS=/ctx/quickshell
+LWI=/labwc-install.sh; [ -f "$LWI" ] || LWI=/ctx/labwc-install.sh
+lw_ok=1
+if [ -x "$QS/usr/bin/quickshell" ]; then cp -a "$QS/." /; else echo "::warning title=labwc on Fedora::Quickshell wasn't built"; lw_ok=0; fi
+bash "$LWI" || lw_ok=0
+bash "$LWI" --check || lw_ok=0
+# labwc's own login entry starts labwc without Hearth's session: moved aside, like Plasma's (Desktop Mode starts it).
+for f in /usr/share/wayland-sessions/labwc.desktop; do
+  [ -e "$f" ] && mkdir -p /usr/share/hearth/desktop-sessions && mv "$f" "/usr/share/hearth/desktop-sessions/wayland-sessions-$(basename "$f")"
+done
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons 2>/dev/null || true
+if [ "$lw_ok" = 1 ] && [ -f /usr/share/nimbus/desktop/shell/shell.qml ]; then
+  install -Dm755 /usr/share/nimbus/desktop/labwc-fedora/hearth-labwc-desktop /usr/bin/hearth-labwc-desktop
+  echo "::notice title=labwc on Fedora::Mantel and Firehold on labwc can be picked ($(rpm -q labwc), Quickshell $(cat /usr/share/hearth/quickshell-ref 2>/dev/null))"
+else
+  rm -f /usr/bin/hearth-labwc-desktop
+  echo "::warning title=labwc on Fedora::not offered in this image (see the lines above); KDE Plasma and Firehold on Plasma as before"
+fi
+# <<< labwc on the Fedora edition
+
 # ------------------------------------------------------------------ Firehold (Rust, test): archived
 # The owner (Nov 19): "focus on the Plasma Firehold for the moment and archive the Rust Firehold". firehold-shell, its
 # build and its Plasma-menu choice are in archive/ (docs/ARCHIVED.md); this image has neither firehold-shell nor

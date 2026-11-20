@@ -9,9 +9,11 @@ import Quickshell.Wayland
 PanelWindow {
     id: strip
     readonly property bool always: false
-    property double now: Date.now()
-    Timer { interval: 1000; running: true; repeat: true; onTriggered: strip.now = Date.now() }
-    readonly property bool recent: DeskState.padSeen > 0 && now - DeskState.padSeen < 12000
+    // 12 s after the controller was last used (1.16: one timer started by the press, instead of one ticking every
+    // second all day).
+    property bool recent: false
+    Connections { target: DeskState; function onPadSeenChanged() { strip.recent = DeskState.padSeen > 0; if (strip.recent) hideAfter.restart(); } }
+    Timer { id: hideAfter; interval: 12000; onTriggered: strip.recent = false }
     // Not while a menu or dialog is open (DeskState.overlayShown): it has its own A / B row, and the strip showed
     // through behind it.
     visible: recent && !Theme.hints && !DeskState.overlayShown

@@ -1,0 +1,180 @@
+#!/bin/bash
+# Mantel (Hearth Classic) or Firehold on labwc on the Fedora edition (1.16; docs/LABWC-FEDORA.md), started the way
+# nimbus-session's run_fedora_labwc starts it (labwc -C desktop/labwc, its autostart, Quickshell), on a virtual
+# 1920x1080 screen with software drawing. Pictures first, then everything closed and measured at rest, then Hearth
+# Files' opening time. The owner's red flags: never freeze or lag, nothing heavy at rest.
+#   labwc-fedora-rest.sh classic|firehold OUT [SECONDS]
+# Fails (exit 1, ::error annotations) when the desktop is over the same limits as KDE Plasma's check:
+#   shell at rest       <= LIMIT_SHELL (0.50 % of a core) on average, and no minute over LIMIT_MINUTE (1.5 %)
+#   labwc at rest       <= LIMIT_COMP (0.50 %)
+#   shell memory        <= LIMIT_MB (350 MB) and not growing (end - start <= LIMIT_GROW, 15 MB)
+#   frames drawn        <= LIMIT_FRAMES (60) in the whole rest (the bar's clock: one a minute)
+#   other processes     no other process of this user over 1 % at rest; no more processes at the end than at the start
+#   Hearth Files        opens (first picture change) in <= LIMIT_FILES (1.5 s), warm or cold
+# Writes OUT/*.png, OUT/rest.json, OUT/rest.md, OUT/execs.txt (what the shell started while at rest), logs.
+set -u
+KIND=${1:?classic or firehold}; OUT=${2:?out folder}; SECS=${3:-600}
+LIMIT_SHELL=${LIMIT_SHELL:-50}; LIMIT_MINUTE=${LIMIT_MINUTE:-150}; LIMIT_COMP=${LIMIT_COMP:-50}   # hundredths of a %
+LIMIT_MB=${LIMIT_MB:-350}; LIMIT_GROW=${LIMIT_GROW:-15}; LIMIT_FRAMES=${LIMIT_FRAMES:-60}; LIMIT_FILES=${LIMIT_FILES:-1.5}
+mkdir -p "$OUT"; OUT=$(cd "$OUT" && pwd)
+SHARE=${NIMBUS_SHARE:-/usr/share/nimbus}
+SH="$SHARE/desktop/shell"
+fail=0
+err() { echo "::error title=$KIND on labwc::$*"; echo "FAIL: $*" >>"$OUT/rest.md"; fail=1; }
+note() { echo "::notice title=$KIND on labwc::$*"; echo "$*" >>"$OUT/rest.md"; }
+: >"$OUT/rest.md"
+
+export XDG_RUNTIME_DIR=/tmp/xdg-$KIND HOME=/tmp/home-$KIND LC_ALL=C.UTF-8 NIMBUS_SHARE="$SHARE"
+rm -rf "$XDG_RUNTIME_DIR" "$HOME"; mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" "$HOME/.cache/hearth"; chmod 700 "$XDG_RUNTIME_DIR"
+echo '{}' >"$HOME/.local/share/nimbus/desktop.json"
+printf '%s' '[{"id":"steam:570","title":"Dota 2","source":"steam","cover":"","wide":"","icon":""},{"id":"manual:1","title":"Celeste","source":"manual","cover":"","wide":"","icon":""}]' >"$HOME/.cache/hearth/desktop-games.json"
+export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
+export QT_QUICK_BACKEND=software LIBGL_ALWAYS_SOFTWARE=1
+# Every frame the shell draws is logged (one line each), so frames at rest can be counted.
+export QT_LOGGING_RULES="qt.scenegraph.time.renderloop.debug=true"
+export HEARTH_WM=labwc HEARTH_FEDORA_LABWC=1
+if [ "$KIND" = firehold ]; then export HEARTH_FIREHOLD_SESSION=1; else unset HEARTH_FIREHOLD_SESSION; fi
+dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+# The XDG data dirs as nimbus-session sets them.
+eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' "${SESSION_FILE:-/usr/bin/nimbus-session}")" 2>/dev/null || true
+
+t0=$(date +%s.%N)
+sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec labwc -C "$1"' sh "$SHARE/desktop/labwc" >"$OUT/labwc.log" 2>&1 &
+LPID=$!
+for i in $(seq 60); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 0.5; done
+export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 >/dev/null 2>&1 || true
+up=""
+for i in $(seq 240); do [ -e "$XDG_RUNTIME_DIR/hearth-shell-up" ] && { up=$(python3 -c "print('%.1f' % ($(date +%s.%N) - $t0))"); break; }; sleep 0.5; done
+if [ -z "$up" ]; then
+  err "Mantel didn't come up within 120 s: $(tail -c 1500 "$XDG_RUNTIME_DIR/nimbus-shell.log" 2>/dev/null | tr '\n' ' ')"
+  cp "$XDG_RUNTIME_DIR/nimbus-shell.log" "$OUT/" 2>/dev/null; kill "$LPID" 2>/dev/null; exit 1
+fi
+note "up in ${up} s"
+sleep 15
+ipc() { timeout 20 quickshell ipc -p "$SH" call "$@" >/dev/null 2>&1 || echo "ipc $* failed" >>"$OUT/ipc.txt"; sleep "${WAIT:-3}"; }
+shot() { grim "$OUT/$1.png" 2>/dev/null || echo "no picture $1" >>"$OUT/ipc.txt"; }
+
+# ---- Pictures: the desktop, its menus, Quick Access (quick settings), Settings' looks (the theme switcher)
+if [ "$KIND" = classic ]; then
+  shot 01-desktop
+  ipc launcher toggle; shot 02-app-menu; ipc launcher toggle
+  ipc launcher section games; shot 03-app-menu-games; ipc launcher close
+  ipc menu open; shot 04-hearth-menu; ipc menu close
+  ipc quick toggle; shot 05-quick-access; ipc quick toggle
+  ipc notify toggle; shot 06-notifications; ipc notify toggle
+  ipc settings page appearance; shot 07-settings-personalization
+  ipc settings page looks; shot 08-settings-looks
+  ipc settings page your-desktop; shot 09-settings-your-desktop
+  ipc settings close
+  ipc files home; shot 10-files; ipc files close
+  ipc tasks open; shot 11-task-manager; ipc tasks close
+  ipc searchbar open; shot 12-search-bar; ipc searchbar close
+  ipc help toggle; shot 13-controls; ipc help toggle
+else
+  shot 01-couch-home
+  ipc firehold tab library; shot 02-couch-library
+  ipc firehold tab apps; shot 03-couch-apps
+  ipc firehold tab store; shot 04-couch-store
+  ipc firehold open switcher; shot 05-couch-everything-open; ipc firehold close
+  ipc firehold open guide; shot 06-guide; ipc firehold close
+  ipc firehold open settings; shot 07-couch-and-desk-settings; ipc firehold close
+  ipc firehold desk; shot 08-desk
+  ipc launcher toggle; shot 09-desk-app-menu; ipc launcher toggle
+  ipc quick toggle; shot 10-desk-quick-access; ipc quick toggle
+  ipc settings page looks; shot 11-settings-looks; ipc settings close
+  ipc firehold couch; shot 12-back-to-couch
+fi
+# Settings: opening pages wrote nothing that wasn't there before the pictures? (red flag 9: checked on desktop.json)
+grep -q '^{}$' "$HOME/.local/share/nimbus/desktop.json" || err "a settings file changed by itself while the pictures were taken: $(head -c 300 "$HOME/.local/share/nimbus/desktop.json")"
+
+# ---- At rest: everything closed, nothing touched
+for t in settings tasks files launcher quick notify; do WAIT=0 ipc "$t" close; done
+sleep 30
+HZ=$(getconf CLK_TCK)
+qs=$(pgrep -u "$(id -u)" -x quickshell | head -1)
+[ -n "$qs" ] || qs=$(pgrep -u "$(id -u)" -f '^quickshell -p' | head -1)
+[ -n "$qs" ] || { err "the shell isn't running before the rest"; exit 1; }
+ticks() { awk '{print $14 + $15}' "/proc/$1/stat" 2>/dev/null || echo 0; }
+rss() { awk '/^VmRSS:/{print int($2 / 1024)}' "/proc/$1/status" 2>/dev/null || echo 0; }
+allticks() { for p in /proc/[0-9]*; do [ -O "$p" ] || continue; n=${p#/proc/}; printf '%s %s %s\n' "$n" "$(awk '{print $14 + $15}' "$p/stat" 2>/dev/null)" "$(tr '\0' ' ' <"$p/cmdline" 2>/dev/null | cut -c1-120)"; done; }
+SLOG="$XDG_RUNTIME_DIR/nimbus-shell.log"
+frames() { grep -c -E 'Frame rendered|Frame prepared' "$SLOG" 2>/dev/null || echo 0; }
+allticks >"$OUT/procs-start.txt"; n0=$(wc -l <"$OUT/procs-start.txt")
+s0=$(ticks "$qs"); c0=$(ticks "$LPID"); m0=$(rss "$qs"); f0=$(frames)
+mins=""; last=$s0; worst=0
+for i in $(seq $((SECS / 60))); do
+  sleep 60
+  s=$(ticks "$qs"); d=$(( (s - last) * 10000 / HZ / 60 )); last=$s
+  mins="$mins $d"; [ "$d" -gt "$worst" ] && worst=$d
+  echo "minute $i: shell $d, memory $(rss "$qs") MB, frames $(( $(frames) - f0 ))" >>"$OUT/rest-minutes.txt"
+done
+kill -0 "$qs" 2>/dev/null || err "the shell ended during the rest (crashed or restarted)"
+s1=$(ticks "$qs"); c1=$(ticks "$LPID"); m1=$(rss "$qs"); f1=$(frames)
+allticks >"$OUT/procs-end.txt"; n1=$(wc -l <"$OUT/procs-end.txt")
+sp=$(( (s1 - s0) * 10000 / HZ / SECS )); cp=$(( (c1 - c0) * 10000 / HZ / SECS )); fr=$(( f1 - f0 ))
+pct() { printf '%d.%02d %%' $(($1 / 100)) $(($1 % 100)); }
+# Other processes' processor time over the rest (by pid; new ones counted from 0).
+python3 - "$OUT/procs-start.txt" "$OUT/procs-end.txt" "$SECS" "$HZ" "$qs" "$LPID" >"$OUT/procs-busy.txt" <<'PY'
+import sys
+a = {l.split(' ', 2)[0]: l.rstrip('\n').split(' ', 2) for l in open(sys.argv[1])}
+secs, hz, skip = int(sys.argv[3]), int(sys.argv[4]), {sys.argv[5], sys.argv[6]}
+for l in open(sys.argv[2]):
+    p = l.rstrip('\n').split(' ', 2)
+    if len(p) < 3 or p[0] in skip or not p[1].isdigit():
+        continue
+    before = int(a[p[0]][1]) if p[0] in a and a[p[0]][1].isdigit() else 0
+    pc = (int(p[1]) - before) * 100.0 / hz / secs
+    if pc >= 0.2:
+        print('%.2f %s %s' % (pc, p[0], p[2]))
+PY
+note "at rest over ${SECS} s: shell $(pct "$sp") of a core (worst minute $(pct "$worst"); minutes:$mins), labwc $(pct "$cp"), shell memory ${m0} → ${m1} MB, ${fr} frames drawn, processes ${n0} → ${n1}"
+[ "$sp" -le "$LIMIT_SHELL" ] || err "the shell used $(pct "$sp") of a core at rest (limit $(pct "$LIMIT_SHELL"))"
+[ "$worst" -le "$LIMIT_MINUTE" ] || err "the shell's busiest minute at rest was $(pct "$worst") (limit $(pct "$LIMIT_MINUTE"))"
+[ "$cp" -le "$LIMIT_COMP" ] || err "labwc used $(pct "$cp") of a core at rest (limit $(pct "$LIMIT_COMP"))"
+[ "$m1" -le "$LIMIT_MB" ] || err "the shell holds ${m1} MB at rest (limit ${LIMIT_MB} MB)"
+[ $((m1 - m0)) -le "$LIMIT_GROW" ] || err "the shell's memory grew ${m0} → ${m1} MB in ${SECS} s at rest"
+[ "$fr" -le "$LIMIT_FRAMES" ] || err "the shell drew ${fr} frames in ${SECS} s at rest (limit ${LIMIT_FRAMES}): something keeps animating"
+[ "$n1" -le $((n0 + 1)) ] || err "more processes at the end of the rest (${n0} → ${n1}): $(comm -13 <(cut -d' ' -f3- "$OUT/procs-start.txt" | sort) <(cut -d' ' -f3- "$OUT/procs-end.txt" | sort) | head -5 | tr '\n' '|')"
+busy=$(awk '$1 >= 1.0' "$OUT/procs-busy.txt")
+[ -z "$busy" ] || err "busy at rest: $(echo "$busy" | head -5 | tr '\n' '|')"
+
+# ---- What the shell starts while at rest (2 minutes, traced after the measurement so it doesn't count)
+if command -v strace >/dev/null 2>&1; then
+  timeout 120 strace -f -qq --seccomp-bpf -e trace=execve -e signal=none -o "$OUT/execs.raw" -p "$qs" >/dev/null 2>&1
+  grep -o 'execve("[^"]*", \[[^]]*' "$OUT/execs.raw" 2>/dev/null | sed 's/^execve("//; s/", \[/ /' | cut -c1-200 | sort | uniq -c | sort -rn >"$OUT/execs.txt"
+  ne=$(awk '{s += $1} END {print s + 0}' "$OUT/execs.txt")
+  note "programs the shell started in 2 minutes at rest: ${ne}$( [ "$ne" -gt 0 ] && echo " ($(head -3 "$OUT/execs.txt" | sed 's/^ *//' | cut -c1-90 | tr '\n' '|'))")"
+  [ "$ne" -le 2 ] || err "the shell keeps starting programs at rest (${ne} in 2 minutes): $(head -4 "$OUT/execs.txt" | sed 's/^ *//' | cut -c1-120 | tr '\n' '|')"
+fi
+rm -f "$OUT/execs.raw"
+
+# ---- Hearth Files: cold (first time) and warm, timed from the command to the first change on screen
+if [ "$KIND" = classic ] && [ -f "${PERF:-tools/perf-measure.py}" ]; then
+  P="$OUT/files.json"
+  for run in cold warm warm2; do
+    python3 "${PERF:-tools/perf-measure.py}" open "Hearth Files ($run)" "$P" -- quickshell ipc -p "$SH" call files home >/dev/null 2>&1
+    WAIT=3 ipc files close
+  done
+  python3 "${PERF:-tools/perf-measure.py}" report "$P" >"$OUT/files.md" 2>/dev/null
+  python3 - "$P" "$LIMIT_FILES" >>"$OUT/files-check.txt" <<'PY'
+import json, sys
+d = json.load(open(sys.argv[1])); lim = float(sys.argv[2])
+for k, v in d.items():
+    if not isinstance(v, dict) or 'first' not in v:
+        continue
+    print('%s %s %s' % ('OK' if v['first'] is not None and v['first'] <= lim else 'SLOW', k, v.get('first')))
+PY
+  note "Hearth Files: $(tr '\n' ' ' <"$OUT/files-check.txt")"
+  ! grep -q '^SLOW' "$OUT/files-check.txt" || err "Hearth Files opened slowly: $(grep '^SLOW' "$OUT/files-check.txt" | tr '\n' ' ') (limit ${LIMIT_FILES} s)"
+fi
+
+python3 - "$OUT/rest.json" <<PY
+import json
+json.dump({"kind": "$KIND", "up_s": "$up", "shell_pct": $sp / 100, "worst_minute_pct": $worst / 100, "labwc_pct": $cp / 100,
+           "shell_mb_start": $m0, "shell_mb_end": $m1, "frames": $fr, "procs": [$n0, $n1], "secs": $SECS}, open("$OUT/rest.json", "w"))
+PY
+grep -v -E 'Frame rendered|Frame prepared' "$SLOG" | tail -c 200000 >"$OUT/shell.log" 2>/dev/null
+grep -E 'Frame rendered|Frame prepared' "$SLOG" | tail -n 200 >"$OUT/frames-tail.log" 2>/dev/null
+kill "$LPID" 2>/dev/null; sleep 2; pkill -u "$(id -u)" -x quickshell 2>/dev/null
+exit "$fail"

@@ -9,6 +9,13 @@
 # i.anatase.org/anatase:stable (also :rolling, :testing), signed by Anatase with cosign.
 ARG BASE_IMAGE=i.anatase.org/anatase:stable
 
+# >>> labwc on the Fedora edition (1.16, docs/LABWC-FEDORA.md): Quickshell v0.3.2 for Mantel, built against this very
+# base image's Qt (Quickshell uses Qt's private API), in a stage of its own: only its files reach the image.
+FROM ${BASE_IMAGE} AS quickshell
+COPY os-bases/anatase/quickshell-build.sh /quickshell-build.sh
+RUN --mount=type=cache,dst=/var/cache bash /quickshell-build.sh /out
+# <<< labwc on the Fedora edition
+
 # Files the build script needs, kept out of the final image (the same as os/Containerfile, plus this image's own).
 FROM scratch AS ctx
 COPY os-bases/anatase/build.sh /build.sh
@@ -23,6 +30,9 @@ COPY hosts/hearth-kde /hearth-kde
 # Pieces of the Debian edition this image uses as they are: its boot menu writer (for a PC that came from Debian and
 # starts through Debian's GRUB), the writable system's units and drop-ins, the /etc guard (build.sh picks them).
 COPY os-bases/peppermint/system_files /peppermint_files
+# labwc on the Fedora edition: Quickshell (above) and what Mantel needs (labwc-install.sh, run by build.sh).
+COPY --from=quickshell /out /quickshell
+COPY os-bases/anatase/labwc-install.sh /labwc-install.sh
 
 FROM ${BASE_IMAGE}
 

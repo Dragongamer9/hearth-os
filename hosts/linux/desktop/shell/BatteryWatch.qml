@@ -8,6 +8,7 @@
 import QtQuick
 import Quickshell
 import Quickshell.Io
+import Quickshell.Services.UPower
 
 Scope {
     id: bw
@@ -19,7 +20,13 @@ Scope {
     function say(title, body, urgent) {
         Quickshell.execDetached(["notify-send", "-a", "Hearth", "-i", "battery-caution", "-u", urgent ? "critical" : "normal", title, body]);
     }
-    Timer { interval: 30000; repeat: true; running: true; triggeredOnStart: true; onTriggered: if (!probe.running) probe.running = true }
+    // 1.16 (the rest fixes): read every 30 s only while on battery (or when UPower can't say), once when you plug in or
+    // unplug, and once at the start. Before, every 30 s all day on every PC: a shell, powerprofilesctl (Python) and
+    // brightnessctl each time.
+    readonly property bool watching: UPower.onBattery === true || !UPower.displayDevice
+    Timer { interval: 30000; repeat: true; running: bw.watching; onTriggered: if (!probe.running) probe.running = true }
+    Connections { target: UPower; function onOnBatteryChanged() { if (!probe.running) probe.running = true; } }
+    Component.onCompleted: probe.running = true
     Process {
         id: probe
         // capacity and status of every battery (the lowest discharging one counts), your choices, the power mode, brightness

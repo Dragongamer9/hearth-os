@@ -552,6 +552,12 @@ fn your_desktop(a: &App) -> El<'_> {
     if d.plasma_fh {
         opts.push(("firehold-plasma", "Firehold (Plasma, test)", "Firehold's Couch and Desk on KDE Plasma"));
     }
+    // >>> labwc on the Fedora edition (1.16, feature/labwc-fedora): only what you pick; never a fallback
+    if d.labwc {
+        opts.push(("classic", "Mantel (Hearth Classic, labwc)", "Hearth's own desktop: the bar, the dock, Quick Access and all of Hearth's apps, on labwc"));
+        opts.push(("firehold-labwc", "Firehold on labwc (test)", "Mantel's Firehold: the Couch for the controller, the Desk for the mouse, on labwc"));
+    }
+    // <<< labwc on the Fedora edition
     let mut c = Column::new().spacing(10.0).push(t("What Desktop Mode opens. Nothing changes until you switch to Desktop Mode again.", sz(14.0), p.muted));
     for (id, name, sub) in opts {
         let on = d.chosen == id;
@@ -564,7 +570,14 @@ fn your_desktop(a: &App) -> El<'_> {
         ].spacing(10.0).align_y(iced::Center)));
     }
     c = c.push(value_row(&p, G::Shield, "Safe start", "If a test desktop doesn't start, KDE Plasma opens for that sign-in and Hearth tells you why. Your choice stays saved.", "always on", true));
-    c = c.push(value_row(&p, G::Grid, "Mantel (Hearth Classic)", "Hearth's own desktop is on the Debian edition; this edition's desktop is KDE Plasma", "Debian edition", false));
+    // >>> labwc on the Fedora edition
+    if d.labwc && !d.labwc_missing.is_empty() {
+        c = c.push(info_row(&p, G::Info, "Mantel can't start on this PC yet", format!("This Hearth OS is missing {}. If you pick it, KDE Plasma opens instead and tells you why.", d.labwc_missing)));
+    }
+    if !d.labwc {
+        c = c.push(value_row(&p, G::Grid, "Mantel (Hearth Classic)", "Hearth's own desktop is on the Debian edition; this edition's desktop is KDE Plasma", "Debian edition", false));
+    }
+    // <<< labwc on the Fedora edition
     c.into()
 }
 

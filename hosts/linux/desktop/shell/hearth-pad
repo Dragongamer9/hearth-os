@@ -1542,12 +1542,33 @@ def deliver(pad, state, pressed, taps, names, now):
     return state
 
 
+# Devices already looked at that aren't controllers (keyboards, the touchpad, the power button...), by path and the
+# device node's identity: they're not opened again at every scan (1.16, the rest fixes: every input device was opened
+# and asked for its capabilities every 1-3 s, all day). A device plugged in again gets a new node and is looked at.
+_NOT_PADS = {}
+
+
+def _node_id(path):
+    try:
+        st = os.stat(path)
+        return (st.st_ino, st.st_rdev, st.st_ctime_ns)
+    except OSError:
+        return None
+
+
 def gamepads(evdev, known):
     e = evdev.ecodes
     found = {}
-    for path in evdev.list_devices():
+    paths = evdev.list_devices()
+    for p in list(_NOT_PADS):
+        if p not in paths:
+            _NOT_PADS.pop(p, None)
+    for path in paths:
         if path in known:
             found[path] = known[path]
+            continue
+        nid = _node_id(path)
+        if nid is not None and _NOT_PADS.get(path) == nid:
             continue
         try:
             d = evdev.InputDevice(path)
@@ -1559,6 +1580,8 @@ def gamepads(evdev, known):
             caps = d.capabilities()
             if d.name.startswith('Hearth ') or e.BTN_SOUTH not in caps.get(e.EV_KEY, []) or e.EV_ABS not in caps:
                 d.close()
+                if nid is not None:
+                    _NOT_PADS[path] = nid
                 continue
             found[path] = Controller(d, e)
             found[path].bmap = button_map(e, getattr(getattr(d, 'info', None), 'vendor', 0))
@@ -2009,7 +2032,13 @@ def main():
         try:
             link_fds = set(link.fds()) if link else set()
             olink_fds = set(olink.fds()) if olink else set()
-            ready, _, _ = select.select(list(fds) + list(olink_fds) + (list(link_fds) if link else [] if standalone else [sys.stdin.fileno()]), [], [], 0.008)
+            # 1.16 (the rest fixes): 125 times a second only while something is held or a stick or trigger is off
+            # centre; otherwise it sleeps until a press (the device wakes it at once), a message, or a quarter second.
+            srcs = list(pads.values()) + ([sim] if sim is not None else [])
+            busy = bool(pressed) or sim is not None or any(abs(c.ax[k]) >= DEAD for c in srcs for k in ('lx', 'ly', 'rx', 'ry')) \
+                or any(getattr(c, 'trig', {}).get(k) for c in srcs for k in ('lt', 'rt')) or getattr(pad, 'trig', {}).get('lt') or getattr(pad, 'trig', {}).get('rt')
+            wait = 0.008 if busy else max(0.008, min(0.25, next_scan - time.monotonic()))
+            ready, _, _ = select.select(list(fds) + list(olink_fds) + (list(link_fds) if link else [] if standalone else [sys.stdin.fileno()]), [], [], wait)
         except (OSError, ValueError):
             ready, link_fds, olink_fds = [], set(), set()
         for fd in ready:

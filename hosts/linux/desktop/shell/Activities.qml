@@ -110,7 +110,9 @@ Singleton {
         target: WinList.toplevels
         function onValuesChanged() { act.track(); }
     }
-    Timer { interval: 2000; running: true; repeat: true; onTriggered: act.track() }   // WinList, or a missed change
+    // A missed change: looked at again every 30 s, and only while there's more than one activity (1.16: it ran every
+    // 2 s all day, with only Main).
+    Timer { interval: 30000; running: act.list.length > 1; repeat: true; onTriggered: act.track() }
 
     // ------------------------------------------------ switching
     function switchTo(id) {

@@ -47,8 +47,13 @@ check "Plasma's pieces: startplasma-wayland, plasmashell, kwin_wayland, kscreen-
   "command -v startplasma-wayland && command -v plasmashell && command -v kwin_wayland && command -v kscreen-doctor && find /usr/libexec /usr/lib64 /usr/lib -name kscreenlocker_greet -type f | grep -q ."
 check "Plasma's menu file is there" "ls /etc/xdg/menus/applications.menu /etc/xdg/menus/*-applications.menu 2>/dev/null | grep -q ."
 warn "KWin's Overview, Breeze frames and Aurorae are there" "ls /usr/share/kwin*/effects/overview /usr/share/kwin/effects/overview 2>/dev/null | grep -q . ; ls /usr/lib64/qt6/plugins/org.kde.kdecoration*/ 2>/dev/null | grep -qi breeze"
-check "no labwc, Quickshell or Mantel session here (Mantel is archived on Anatase)" \
-  "! command -v labwc && ! command -v quickshell && test ! -e /usr/share/wayland-sessions/hearth-classic.desktop"
+# >>> labwc on the Fedora edition (1.16): labwc and Quickshell are here only as Settings › Your desktop's choices, never
+# as a login entry of their own; offered (hearth-labwc-desktop) only when both start.
+check "no Mantel or labwc login entries (labwc runs only when picked, inside Hearth's session)" \
+  "test ! -e /usr/share/wayland-sessions/hearth-classic.desktop && test ! -e /usr/share/wayland-sessions/labwc.desktop"
+check "labwc's choice offered only with labwc and a working Quickshell" \
+  "! test -e /usr/bin/hearth-labwc-desktop || { command -v labwc && command -v quickshell && ! ldd \"\$(command -v quickshell)\" | grep -q 'not found'; }"
+# <<< labwc on the Fedora edition
 check "KDE's own Plasma login entry is aside (Plasma starts from Hearth's session)" "test ! -e /usr/share/wayland-sessions/plasma.desktop"
 check "Back to Game Mode is in Plasma's menu and pinned once per account" \
   "grep -qx 'Name=Back to Game Mode' /usr/share/applications/hearth-gamemode.desktop && grep -q 'Exec=nimbus-mode game' /usr/share/applications/hearth-gamemode.desktop && grep -q hearth-gamemode.desktop /usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates/hearth-game-mode-launcher.js"

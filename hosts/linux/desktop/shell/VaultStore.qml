@@ -17,6 +17,7 @@ Singleton {
     function act(args) { run.command = ["python3", helper].concat(args); run.running = true; }
     // The bar's menu: lock or open each unlocked vault, unlock (in Settings) each locked one. openSettings(page).
     function menu(openSettings) {
+        refresh();
         const out = [];
         for (const v of vaults) {
             const one = v;
@@ -65,5 +66,9 @@ Singleton {
         id: run
         stdout: StdioCollector { onStreamFinished: { const err = text.split("\n").find(l => l.startsWith("error: ")); if (err) SettingsNav.toast(err.slice(7)); root.refresh(); } }
     }
-    Timer { interval: 15000; repeat: true; running: true; triggeredOnStart: true; onTriggered: root.refresh() }
+    // Whether each vault is open: read when the list changes (the file is watched), after every lock or unlock from
+    // here, when the bar's menu opens, and every 5 minutes while you have a vault (1.16: every 15 s for everyone,
+    // a shell and often Python each time).
+    Timer { interval: 300000; repeat: true; running: root.vaults.length > 0; onTriggered: root.refresh() }
+    Component.onCompleted: refresh()
 }

@@ -32,19 +32,8 @@ Scope {
     SystemClock { id: clock; precision: SystemClock.Minutes }
     readonly property var batt: UPower.displayDevice
     readonly property string status: [net, batt && batt.isLaptopBattery ? Math.round(batt.percentage * 100) + "%" : ""].filter(Boolean).join(" · ")
-    property string net: ""
-    Timer { interval: 15000; running: true; repeat: true; triggeredOnStart: true; onTriggered: netProc.running = true }
-    Process {
-        id: netProc
-        command: ["nmcli", "-t", "-f", "TYPE,STATE", "device"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                let kd = "";
-                for (const l of text.split("\n")) { const f = l.split(":"); if (f[1] === "connected" && (f[0] === "wifi" || f[0] === "ethernet")) { kd = f[0]; break; } }
-                dk.net = kd === "wifi" ? "Wi-Fi" : kd === "ethernet" ? "Wired" : "Offline";
-            }
-        }
-    }
+    // 1.16: from NetBtWatch.qml, when the network changes (no polling).
+    readonly property string net: NetBtWatch.netKind === "wifi" ? "Wi-Fi" : NetBtWatch.netKind === "ethernet" ? "Wired" : "Offline"
 
     component T: Text { color: F.C.text; font.family: F.font(Theme.font); textFormat: Text.PlainText; elide: Text.ElideRight }
 

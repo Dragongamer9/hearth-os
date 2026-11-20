@@ -505,27 +505,49 @@ pub fn time(out: &str) -> Time {
 pub struct Desk {
     pub plasma_fh: bool,
     pub chosen: String,
+    // >>> labwc on the Fedora edition (1.16, feature/labwc-fedora): hearth-labwc-desktop is in the image, and what's missing
+    pub labwc: bool,
+    pub labwc_missing: String,
+    // <<< labwc on the Fedora edition
 }
 
 // (Firehold (Rust, test) was archived on Nov 19: hearth-firehold-plasma's `choice` already answers "firehold" for a
 // device that had picked it, since that's what opens there now, and its next pick replaces that old pick.)
-pub const DESK: &str = "echo '#@fp'; command -v hearth-firehold-plasma >/dev/null && hearth-firehold-plasma choice 2>/dev/null; echo '#@has'; command -v hearth-firehold-plasma";
+pub const DESK: &str = "echo '#@fp'; command -v hearth-firehold-plasma >/dev/null && hearth-firehold-plasma choice 2>/dev/null; echo '#@has'; command -v hearth-firehold-plasma; command -v hearth-labwc-desktop; echo '#@lw'; command -v hearth-labwc-desktop >/dev/null && timeout 10 hearth-labwc-desktop status 2>/dev/null";
 
 pub fn desk(out: &str) -> Desk {
     let m = sections(out);
     let has = sec(&m, "has");
     let plasma_fh = has.contains("hearth-firehold-plasma");
-    let chosen = if plasma_fh && sec(&m, "fp").trim() == "firehold" { "firehold-plasma" } else { "plasma" };
-    Desk { plasma_fh, chosen: chosen.into() }
+    let mut chosen = if plasma_fh && sec(&m, "fp").trim() == "firehold" { "firehold-plasma" } else { "plasma" };
+    // >>> labwc on the Fedora edition: its own pick wins (the same session.conf line: classic / classicfirehold)
+    let labwc = has.contains("hearth-labwc-desktop");
+    let lw: serde_json::Value = serde_json::from_str(sec(&m, "lw").trim()).unwrap_or(serde_json::Value::Null);
+    if labwc {
+        match lw.get("choice").and_then(|v| v.as_str()).unwrap_or("") {
+            "classic" => chosen = "classic",
+            "firehold" => chosen = "firehold-labwc",
+            _ => {}
+        }
+    }
+    let labwc_missing = lw.get("missing").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(" and ")).unwrap_or_default();
+    // <<< labwc on the Fedora edition
+    Desk { plasma_fh, chosen: chosen.into(), labwc, labwc_missing }
 }
 
 /// Saving a Desktop Mode choice: Firehold on Plasma's own helper saves its own line (hearth_settings_io).
 pub fn desk_cmd(d: &Desk, pick: &str) -> Vec<String> {
     let fp = |w: &str| if d.plasma_fh { format!("hearth-firehold-plasma choose {w} >/dev/null") } else { "true".into() };
+    // >>> labwc on the Fedora edition: its picks, and KDE Plasma's pick moves off them (hearth-firehold-plasma alone
+    // writes nothing when its reader already says plasma)
+    let lw = |w: &str| if d.labwc { format!("hearth-labwc-desktop choose {w}") } else { "true".into() };
     let s = match pick {
+        "classic" => lw("classic"),
+        "firehold-labwc" => lw("firehold"),
         "firehold-plasma" => fp("firehold"),
-        _ => fp("plasma"),
+        _ => format!("{} && {}", lw("plasma"), fp("plasma")),
     };
+    // <<< labwc on the Fedora edition
     sh(&s)
 }
 
@@ -702,6 +724,15 @@ mod tests {
         assert!(c.contains("hearth-firehold-plasma choose plasma") && !c.contains("firehold-shell"));
         let none = desk("#@fp\n#@has\n");
         assert_eq!(none.chosen, "plasma");
+        // labwc on the Fedora edition
+        let l = desk("#@fp\nplasma\n#@has\n/usr/bin/hearth-firehold-plasma\n/usr/bin/hearth-labwc-desktop\n#@lw\n{\"choice\": \"firehold\", \"available\": true, \"missing\": []}\n");
+        assert_eq!(l.chosen, "firehold-labwc");
+        assert!(l.labwc && l.labwc_missing.is_empty());
+        let c = desk_cmd(&l, "plasma").join(" ");
+        assert!(c.contains("hearth-labwc-desktop choose plasma") && c.contains("hearth-firehold-plasma choose plasma"));
+        assert!(desk_cmd(&l, "classic").join(" ").contains("hearth-labwc-desktop choose classic"));
+        let gone = desk("#@fp\n#@has\n/usr/bin/hearth-labwc-desktop\n#@lw\n{\"choice\": \"classic\", \"available\": false, \"missing\": [\"Quickshell\"]}\n");
+        assert_eq!((gone.chosen.as_str(), gone.labwc_missing.as_str()), ("classic", "Quickshell"));
         assert_eq!(q("it's"), "'it'\\''s'");
     }
 }

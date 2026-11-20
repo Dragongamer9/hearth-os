@@ -13,7 +13,8 @@ Scope {
     property var settings: null
     property int kills: -1                    // the kernel's count when last read (-1: not read yet)
     property double tipAt: 0
-    Timer { interval: 20000; running: true; repeat: true; triggeredOnStart: true; onTriggered: if (!probe.running) probe.running = true }
+    // 1.16 (the rest fixes): every 60 s (was 20 s); the kernel's own count can't be missed, only told a little later.
+    Timer { interval: 60000; running: true; repeat: true; triggeredOnStart: true; onTriggered: if (!probe.running) probe.running = true }
     Process {
         id: probe
         command: ["sh", "-c", "grep -m1 '^oom_kill ' /proc/vmstat; head -n1 /proc/pressure/memory 2>/dev/null; true"]

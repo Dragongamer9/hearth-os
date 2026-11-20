@@ -1,0 +1,146 @@
+#!/usr/bin/python3
+"""hearth-labwc-desktop: Mantel (Hearth Classic) and Firehold on labwc as Desktop Mode choices on the Fedora edition
+(1.16, the owner, Nov 19: "port over the entire labwc as well, have it as a selection ... Don't have it as a fallback
+either"; docs/LABWC-FEDORA.md). Settings › Your desktop (Rust Settings) asks this.
+
+  choice                         "classic", "firehold" or "none" (another desktop: KDE Plasma or Firehold on Plasma)
+  choose classic|firehold|plasma save it: session.conf's HEARTH_PLASMA_DESKTOP (classic / classicfirehold), the one line
+                                 every Fedora desktop choice lives in. "plasma" writes only when one of these two is
+                                 saved (so picking KDE Plasma really moves off labwc); otherwise nothing is written.
+                                 Picking one of these again also clears "didn't start twice in a row" for it.
+  status                         one JSON line: {"choice", "available", "missing", "fails", "why"}
+
+Only a pick writes anything (red flag 9: atomic, with a .bak, only that one line, through hearth_settings_io). Reading
+or opening Settings never writes.
+"""
+import json
+import os
+import re
+import shutil
+import sys
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+SHARE = os.environ.get('NIMBUS_SHARE') or '/usr/share/nimbus'
+SHELL_DIR = os.path.join(SHARE, 'desktop', 'shell')
+for d in (SHELL_DIR, os.path.join(os.path.dirname(HERE), 'shell')):
+    if os.path.isfile(os.path.join(d, 'hearth_settings_io.py')):
+        sys.path.insert(0, d)
+        break
+
+KEY = 'HEARTH_PLASMA_DESKTOP'
+VALUES = {'classic': 'classic', 'firehold': 'classicfirehold'}   # letters only: the other readers take [a-z]*
+NAMES = {v: k for k, v in VALUES.items()}
+
+
+def home():
+    return os.environ.get('HOME') or os.path.expanduser('~')
+
+
+def session_conf():
+    return os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'nimbus', 'session.conf')
+
+
+def state_dir():
+    return os.path.join(os.environ.get('XDG_STATE_HOME') or os.path.join(home(), '.local', 'state'), 'hearth')
+
+
+def raw():
+    v = ''
+    try:
+        with open(session_conf(), encoding='utf-8', errors='replace') as f:
+            for line in f:
+                m = re.match(r'^\s*(?:export\s+)?' + KEY + r'=["\']?([a-z]*)', line)
+                if m:
+                    v = m.group(1)
+    except OSError:
+        pass
+    return v
+
+
+def choice():
+    return NAMES.get(raw(), 'none')
+
+
+def fails():
+    try:
+        with open(os.path.join(state_dir(), 'desktop-fails'), encoding='utf-8') as f:
+            for line in f:
+                p = line.split()
+                if len(p) == 2 and p[0] == 'labwc' and p[1].isdigit():
+                    return int(p[1])
+    except OSError:
+        pass
+    return 0
+
+
+def reset_fails():
+    """Picking it again: "twice in a row" starts over (state, not a setting: nimbus-session's desktop-fails file)."""
+    path = os.path.join(state_dir(), 'desktop-fails')
+    try:
+        with open(path, encoding='utf-8') as f:
+            lines = f.readlines()
+    except OSError:
+        return
+    keep = [l for l in lines if not l.startswith('labwc ')]
+    if keep == lines:
+        return
+    tmp = path + '.tmp'
+    with open(tmp, 'w', encoding='utf-8') as f:
+        f.writelines(keep)
+    os.replace(tmp, path)
+
+
+def missing():
+    out = []
+    if not shutil.which('labwc'):
+        out.append('labwc')
+    if not shutil.which('quickshell'):
+        out.append('Quickshell')
+    if not os.path.isfile(os.path.join(SHELL_DIR, 'shell.qml')):
+        out.append("Mantel's files")
+    return out
+
+
+def why():
+    try:
+        with open(os.path.join(state_dir(), 'labwc-why'), encoding='utf-8') as f:
+            return f.read().strip()[:300]
+    except OSError:
+        return ''
+
+
+def choose(v):
+    import hearth_settings_io as io
+    if v in VALUES:
+        reset_fails()
+        if raw() == VALUES[v]:
+            return
+        io.update_text(session_conf(), lambda t: io.conf_set_text(t, KEY, VALUES[v]))
+    elif v == 'plasma':
+        if raw() in NAMES:
+            io.update_text(session_conf(), lambda t: io.conf_set_text(t, KEY, 'plasma'))
+    else:
+        raise ValueError('classic, firehold or plasma')
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else 'status'
+    if cmd == 'choice':
+        print(choice())
+    elif cmd == 'choose' and len(argv) == 3:
+        try:
+            choose(argv[2])
+        except (ValueError, OSError) as e:
+            print('error: %s' % e, file=sys.stderr)
+            return 1
+    elif cmd == 'status':
+        m = missing()
+        print(json.dumps({'choice': choice(), 'available': not m, 'missing': m, 'fails': fails(), 'why': why()}))
+    else:
+        print(__doc__, file=sys.stderr)
+        return 2
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

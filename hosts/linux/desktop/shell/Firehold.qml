@@ -63,10 +63,15 @@ Scope {
         o[key] = value;
         writer.merge(o);
     }
-    readonly property bool unlocked: (cfg.firehold && typeof cfg.firehold === "object" && cfg.firehold.unlocked === true) || cfg["firehold.unlocked"] === true
+    // >>> Firehold on labwc (Fedora edition, 1.16; docs/LABWC-FEDORA.md): picked in Settings › Your desktop, the session
+    // says so (HEARTH_FIREHOLD_SESSION=1) and Firehold is on for that sign-in only. firehold.json is never written for it.
+    readonly property bool sessionPicked: Quickshell.env("HEARTH_FIREHOLD_SESSION") === "1"
+    // <<< Firehold on labwc
+    readonly property bool unlocked: sessionPicked || (cfg.firehold && typeof cfg.firehold === "object" && cfg.firehold.unlocked === true) || cfg["firehold.unlocked"] === true
     readonly property string mode: ["auto", "couch", "desk"].indexOf(cfg.posture) >= 0 ? cfg.posture : "auto"
     readonly property var perScreen: cfg.perScreen && typeof cfg.perScreen === "object" ? cfg.perScreen : ({})
-    readonly property string startIn: ["couch", "desk", "last"].indexOf(cfg.startIn) >= 0 ? cfg.startIn : "desk"
+    // (Firehold on labwc starts in the Couch unless you chose otherwise in Settings › Couch and Desk.)
+    readonly property string startIn: ["couch", "desk", "last"].indexOf(cfg.startIn) >= 0 ? cfg.startIn : (sessionPicked ? "couch" : "desk")
     readonly property string guideButton: ["quick", "open"].indexOf(cfg.guide) >= 0 ? cfg.guide : "quick"
     readonly property string gamesOpen: ["follow", "fullscreen", "window"].indexOf(cfg.games) >= 0 ? cfg.games : "follow"
     readonly property bool bigPicture: cfg.bigPicture === true

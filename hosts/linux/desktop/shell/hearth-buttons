@@ -212,10 +212,27 @@ def main():
     problems = {}
     reported = None
 
+    # Devices already looked at that don't have these keys, by path and node: not opened again every 5 s (1.16, the
+    # rest fixes). A device plugged in again gets a new node and is looked at.
+    skipped = {}
+
+    def node(path):
+        try:
+            st = os.stat(path)
+            return (st.st_ino, st.st_rdev, st.st_ctime_ns)
+        except OSError:
+            return None
+
     def rescan():
         nonlocal reported
-        for path in sorted(evdev.list_devices()):
+        paths = sorted(evdev.list_devices())
+        for p in [p for p in skipped if p not in paths]:
+            skipped.pop(p, None)
+        for path in paths:
             if path in devs:
+                continue
+            nid = node(path)
+            if nid is not None and skipped.get(path) == nid:
                 continue
             try:
                 d = evdev.InputDevice(path)
@@ -240,6 +257,8 @@ def main():
             else:
                 d.close()
                 problems.pop(path, None)
+                if nid is not None:
+                    skipped[path] = nid
         for path in [p for p in devs if not os.path.exists(p)]:
             devs.pop(path).close()
             power.discard(path)
@@ -256,7 +275,10 @@ def main():
             last_scan = now
         fds = {d.fd: (p, d) for p, d in devs.items()}
         try:
-            ready, _, _ = select.select(list(fds), [], [], 0.1)
+            # 1.16 (the rest fixes): 10 times a second only while the power button is held (for its long press);
+            # otherwise asleep until a key (the device wakes it at once) or the next look for devices.
+            wait = 0.1 if b.power_down is not None else max(0.1, 5 - (time.monotonic() - last_scan))
+            ready, _, _ = select.select(list(fds), [], [], wait)
         except (OSError, ValueError):
             ready = []
             last_scan = 0
@@ -265,6 +287,7 @@ def main():
             try:
                 for ev in d.read():
                     if ev.type == 1 and ev.code in WATCH:
+                        b.woke_up(time.monotonic())      # (a press that woke the PC is still seen as one)
                         b.key(ev.code, ev.value, time.monotonic())
             except OSError:          # unplugged
                 devs.pop(path, None)
