@@ -14,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       only:
-        description: 'Only these apps'' pictures: their shots.d names, a comma list (like "family,notes"); empty: every app'
+        description: 'Only these apps'' pictures: their shots.d names, a comma list (like "family,notes"; "kwin" or "capture" also runs Capture on KWin); empty: every app'
         required: false
         default: ''
 
@@ -159,6 +159,8 @@ jobs:
   # pills' and the dot's places, and recording through KDE's screen-sharing portal (.github/scripts/hearth-apps-rust-kwin.sh).
   kwin:
     needs: build
+    # The one "only" input (a comma list): this job runs when it's empty or names capture or kwin.
+    if: ${{ !inputs.only || contains(format(',{0},', inputs.only), ',capture,') || contains(format(',{0},', inputs.only), ',kwin,') }}
     runs-on: ubuntu-latest
     timeout-minutes: 40
     container:
