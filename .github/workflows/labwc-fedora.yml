@@ -14,7 +14,7 @@ on:
         type: string
         default: '600'
   push:
-    branches: [feature/labwc-fedora, feature/labwc-rest-fix]
+    branches: [feature/labwc-fedora, feature/labwc-rest-fix, feature/labwc-rest-old]
     # (a new workflow can't be started by hand until it's on main: pushes to this branch start it)
     paths: ['.github/workflows/labwc-fedora.yml', '.github/scripts/labwc-fedora-rest.sh', 'hosts/linux/desktop/**',
             'hosts/linux/session/**', 'os-bases/anatase/quickshell-build.sh', 'os-bases/anatase/labwc-install.sh',

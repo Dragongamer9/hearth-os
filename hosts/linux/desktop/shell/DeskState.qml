@@ -254,7 +254,7 @@ Singleton {
         }
         const h = history.find(x => x.key === key);
         if (id === "default" && h && h.entry) {
-            const e = DesktopEntries.byId(h.entry);
+            const e = AppEntries.byId(h.entry);
             if (e) { e.execute(); forget(key, false); return true; }
         }
         return false;

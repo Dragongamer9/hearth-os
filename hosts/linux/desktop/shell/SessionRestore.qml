@@ -77,7 +77,7 @@ Scope {
             const id = root.queue[0];
             root.queue = root.queue.slice(1);
             if (root.openIds.indexOf(id) >= 0) return;        // already open (it started by itself)
-            const e = DesktopEntries.byId(id);
+            const e = AppEntries.byId(id);
             if (e) e.execute();
         }
     }
