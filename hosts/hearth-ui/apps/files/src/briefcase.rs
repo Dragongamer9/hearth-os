@@ -491,7 +491,7 @@ pub fn detail_rows(a: &App, e: Option<&Entry>) -> Vec<(String, String)> {
 // ------------------------------------------------------------------ menus
 fn items_in(a: &App, t: &[String]) -> Vec<String> {
     let items = st(a).get("items").and_then(Value::as_array).cloned().unwrap_or_default();
-    t.iter().filter(|p| items.iter().any(|i| sv(i, "path") == **p)).cloned().collect()
+    t.iter().filter(|p| items.iter().any(|i| sv(i, "path") == **p || (parent_of(p) == a.path && sv(i, "name") == base(p)))).cloned().collect()
 }
 fn others(a: &App) -> Vec<Value> {
     let here = sv(st(a), "path");
@@ -673,6 +673,10 @@ fn ask_password(a: &mut App, path: String, name: String, then: Option<BMsg>) -> 
     let nm = if name.is_empty() { base(&path) } else { name };
     a.bc.pw = Pw { path: path.clone(), name: nm, then: then.map(Box::new), ..Default::default() };
     open_dialog(a, "password");
+    // CI's picture of this dialog (its Briefcase isn't locked: CI has no gocryptfs): shown as it opens.
+    if hearth_ui::app::arg("--show").map(|s| s.contains("bc-password")).unwrap_or(false) {
+        return iced::widget::operation::focus(PW_A);
+    }
     // A password this device remembers (only if you asked it to): tried first, quietly.
     bc_call(vec!["unlock".into(), path.clone(), "--keyring".into()], String::new(), BThen::Keyring(path))
 }
@@ -1695,10 +1699,11 @@ fn field<'a>(a: &'a App, id: &'static str, value: &str, hint: &str, secret: bool
 fn check<'a>(a: &'a App, id: &str, text: &str, on: bool, dim: bool) -> Element<'a, Msg> {
     let p = a.p;
     let lt = lit(a, id);
-    let box_ = container(if on { t1("✓", 13.0, p.ink).font(ui::weight(iced::font::Weight::Bold)) } else { t1(" ", 13.0, p.ink) })
+    let k = if dim { 0.5 } else { 1.0 };
+    let box_ = container(if on { t1("✓", 13.0, Pal::a(p.ink, k)).font(ui::weight(iced::font::Weight::Bold)) } else { t1(" ", 13.0, p.ink) })
         .center_x(Length::Fixed(20.0))
         .center_y(Length::Fixed(20.0))
-        .style(ui::boxed(if on { p.accent } else { Color::TRANSPARENT }, 5.0, Some((if on { p.accent } else { p.muted }, 2.0))));
+        .style(ui::boxed(if on { Pal::a(p.accent, k) } else { Color::TRANSPARENT }, 5.0, Some((if on { Pal::a(p.accent, k) } else { Pal::a(p.muted, k) }, 2.0))));
     let r = row![box_, t1(text.to_string(), 14.0, if dim { Pal::a(p.text, 0.5) } else { p.text })].spacing(10.0).align_y(iced::Center).padding(Padding { top: 0.0, right: 10.0, bottom: 0.0, left: 10.0 });
     let i = rows(a).iter().position(|r| r.1 == id).unwrap_or(0);
     mouse_area(container(r).width(Length::Fill).height(Length::Fixed(40.0)).center_y(Length::Fixed(40.0)).style(row_style(p, lt, Color::TRANSPARENT)))
@@ -1958,7 +1963,7 @@ pub fn dialog(a: &App) -> Element<'_, Msg> {
     col = col.push(container(btns).padding(Padding { top: 6.0, ..Padding::ZERO }));
     let card = container(scrollable(col.padding(22.0)).height(Length::Shrink))
         .width(Length::Fixed(if wide { 760.0 } else { 560.0 }))
-        .max_height(720.0)
+        .max_height((a.area.get().1 + 100.0).clamp(300.0, 720.0))
         .style(ui::boxed(p.panel, p.r(14.0), Some((p.line, 1.0))));
     let _ = gap::<Msg>(1.0, 1.0);
     card.into()

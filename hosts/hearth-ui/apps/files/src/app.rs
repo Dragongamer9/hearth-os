@@ -2101,7 +2101,7 @@ impl App {
         }
         if has("split") {
             t.push(crate::split::update(self, crate::split::SMsg::Toggle));
-            let d = format!("{}/Documents", self.home);
+            let d = format!("{}/Pictures", self.home);
             t.push(crate::split::load(self, &d));
         }
         if has("admin") {
@@ -2115,7 +2115,7 @@ impl App {
             crate::extras::tag_menu(self, vec![p]);
         }
         if has("sharing") {
-            if let Some(e) = self.entries.iter().find(|e| e.dir).cloned() {
+            if let Some(e) = self.entries.iter().find(|e| e.dir && e.cv.is_none() && e.path.starts_with('/')).cloned() {
                 t.push(crate::extras::run(self, "x-share", vec![e.path.clone()], Some(e)));
             }
         }
@@ -2143,7 +2143,7 @@ impl App {
             }
         }
         if has("drag") {
-            if let (Some(src), Some(dst)) = (self.entries.iter().find(|e| !e.dir).cloned(), self.entries.iter().find(|e| e.dir).cloned()) {
+            if let (Some(src), Some(dst)) = (self.entries.iter().find(|e| !e.dir).cloned(), self.entries.iter().find(|e| e.dir && e.cv.is_none() && e.path.starts_with('/')).cloned()) {
                 self.touched = true;
                 self.cur = self.entries.iter().position(|e| e.path == src.path).unwrap_or(0);
                 self.drag = Some(crate::dnd::Drag { paths: vec![src.path.clone()], label: src.name.clone(), at: Point::new(470.0, 205.0), from_split: false, item: Some(dst.path.clone()), area: None });
