@@ -40,7 +40,7 @@ Where the pictures say Hearth (Hearth Files aside, an app's own name) the deskto
 - [x] Top bar: app tile at the left with the focused app's name (Hearth Files) — hosts/linux/desktop/shell/FireholdDesk.qml: "text: dk.frontName"
 - [x] Top bar: the focused app's menus (File, Edit, View) — hosts/linux/desktop/shell/FireholdDesk.qml: "model: [\"File\", \"Edit\", \"View\"]"
 - [x] Top bar: date and clock in the middle (Mon Nov 16 · 10:22 PM) — hosts/linux/desktop/shell/FireholdDesk.qml: "Qt.formatDate(clock.date, \"ddd MMM d\") + \" · \""
-- [x] Top bar: the posture pill "Desk" with its blue dot — hosts/linux/desktop/shell/FireholdDesk.qml: "text: \"Desk\""
+- [x] Top bar: the posture pill "Desk" with its blue dot — hosts/linux/desktop/shell/FireholdDesk.qml: "text: pill.lm ? pill.lm.modeName(pill.lm.me.mode) : \"Desk\""
 - [x] Top bar: Wi-Fi · battery (Wi-Fi · 78%) — hosts/linux/desktop/shell/FireholdDesk.qml: ".filter(Boolean).join(\" · \")"
 - [x] A window with its title (Hearth Files — Pictures) and three round window buttons, the close one in the accent colour — hosts/linux/desktop/shell/FireholdFrames.qml: "color: modelData === \"close\" ? F.C.accent : F.C.card2"
 - [x] Hearth Files' picture grid inside it (two rows of five): Hearth Files itself, a window like any other on the Desk with Firehold's title bar — hosts/linux/desktop/shell/firehold.js: "if (mf) return { name: \"Hearth Files\", sub: mf[1] };"
