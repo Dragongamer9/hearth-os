@@ -105,7 +105,11 @@ fn fixture_discs() {
             std::thread::sleep(std::time::Duration::from_millis(300));
             assert!(String::from_utf8_lossy(&head).contains("image/jpeg"), "the menu's picture comes as JPEG frames: {:?}; ffmpeg said: {}", String::from_utf8_lossy(&head), hearth_player::server::last_stream_error());
         }
-        // The menu's picture runs (into nothing here); its sound comes as Ogg from its own ffmpeg.
+        // The menu again from its start (the picture above read the still menu to its end), its picture into nothing
+        // here; its sound comes as Ogg from its own ffmpeg.
+        m.stop();
+        let s3 = seen.clone();
+        let m = MenuSession::open(&dir.join("hearth-test.iso"), Box::new(move |v| s3.lock().unwrap().push(v))).expect("the menu starts again");
         let m2 = m.clone();
         let t = std::thread::spawn(move || { let _ = m2.stream(&mut std::io::sink()); });
         std::thread::sleep(std::time::Duration::from_millis(500));
