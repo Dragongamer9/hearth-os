@@ -10,6 +10,10 @@ Item {
     property real rad: 18
     clip: true
     readonly property bool gpu: GraphicsInfo.api !== GraphicsInfo.Software && GraphicsInfo.api !== GraphicsInfo.Unknown
+    // On the graphics card the frost is cut to the island's round corners (FrostBlur.qml, QtQuick.Effects).
+    readonly property var corners: gpu ? Qt.createComponent("FrostBlur.qml") : null
+    layer.enabled: !!corners && corners.status === Component.Ready
+    layer.effect: corners
     property point at: Qt.point(0, 0)
     function place() { const p = fr.mapToItem(null, 0, 0); at = Qt.point(p.x, p.y); }
     onWidthChanged: Qt.callLater(place)
