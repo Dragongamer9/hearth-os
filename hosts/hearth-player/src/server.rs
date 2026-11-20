@@ -234,6 +234,10 @@ fn send<R: Read + Seek>(out: &mut TcpStream, src: &mut R, len: u64, mime: &str, 
     Ok(())
 }
 
+/// What the last stream's program said when it stopped (its last lines), for telling why a disc didn't play.
+static LAST_STREAM_ERROR: Mutex<String> = Mutex::new(String::new());
+pub fn last_stream_error() -> String { LAST_STREAM_ERROR.lock().unwrap().clone() }
+
 /// Runs the program and sends what it writes until it ends or the web view hangs up; then it's stopped.
 fn live(out: &mut TcpStream, l: &Live, head: bool) -> std::io::Result<()> {
     write!(out, "HTTP/1.1 200 OK\r\nAccess-Control-Allow-Origin: *\r\nContent-Type: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n", l.mime)?;
@@ -251,7 +255,11 @@ fn live(out: &mut TcpStream, l: &Live, head: bool) -> std::io::Result<()> {
                 if last.len() == 20 { last.pop_front(); }
                 last.push_back(line);
             }
-            if !last.is_empty() { eprintln!("hearth-player: the disc stream said:\n  {}", last.into_iter().collect::<Vec<_>>().join("\n  ")); }
+            if !last.is_empty() {
+                let text = last.into_iter().collect::<Vec<_>>().join("\n  ");
+                eprintln!("hearth-player: the disc stream said:\n  {text}");
+                *LAST_STREAM_ERROR.lock().unwrap() = text;
+            }
         });
     }
     let mut so = child.stdout.take().unwrap();

@@ -62,6 +62,8 @@ jobs:
           cargo test -- --nocapture 2>&1 | tee test.log || { echo "::error title=tests::$(grep -E '^(error|---- |thread .* panicked)' -A12 test.log | head -80 | tr '\n' '|' | cut -c1-3900)"; exit 1; }
           echo "::notice title=Tests::$(grep -E '^test result' test.log | tr '\n' ' ')"
       - name: Build
+        # Still run when a test failed (the job fails either way), so one run shows everything.
+        if: ${{ !cancelled() }}
         run: |
           set -o pipefail
           cargo build --release 2>&1 | tee build.log || { echo "::error title=build::$(grep -E '^error' -A8 build.log | head -60 | tr '\n' '|' | cut -c1-3800)"; exit 1; }
@@ -142,6 +144,8 @@ jobs:
           echo "::notice title=Keep awake::$(grep inhibitor drive.log | head -1)"
           [ "$rc" = 0 ] || { echo "::error title=playback::$(tail -c 3000 drive.log | tr '\n' '|')"; exit 1; }
       - name: Discs in the app (DVD, locked DVD, music CD, Video CD, Blu-ray, controller buttons, a data disc)
+        # Still run when a test failed (the job fails either way), so one run shows everything.
+        if: ${{ !cancelled() }}
         run: |
           set -u
           export DISPLAY=:98 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=1 HEARTH_PLAYER_CONFIG="$RUNNER_TEMP/cfg-discs" HEARTH_PLAYER_NO_DVDCSS=1

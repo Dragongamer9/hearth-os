@@ -36,6 +36,7 @@ fn fixture_discs() {
     let Some(dir) = fixtures() else { eprintln!("no fixture discs (HEARTH_DISC_FIXTURES): nothing to test"); return };
     let tools = hearth_player::tools::detect();
     let server = Server::start().unwrap();
+    let mut sub_err: Option<String> = None;
 
     // DVD-Video.
     let d = open(dir.join("hearth-test.iso"));
@@ -72,7 +73,9 @@ fn fixture_discs() {
         if dir.join("subs.made").exists() {
             assert_eq!(t1.subs.len(), 1, "{:?}", t1.subs);
             let p3 = discplay::play(&d, &server, tools.ffmpeg.as_deref(), &tools.encoders, 1, 2.0, None, Some(t1.subs[0].id), false).unwrap();
-            assert_eq!(first_bytes(&p3.url, 4), vec![0x1A, 0x45, 0xDF, 0xA3], "with subtitles drawn in too");
+            let b = first_bytes(&p3.url, 4);
+            std::thread::sleep(std::time::Duration::from_millis(500));
+            if b != [0x1A, 0x45, 0xDF, 0xA3] { sub_err = Some(hearth_player::server::last_stream_error()); }
         } else { println!("the fixture has no subtitles (spumux couldn't make them)"); }
     }
 
@@ -123,5 +126,6 @@ fn fixture_discs() {
     assert_eq!(ff.info.titles.len(), 2);
     assert_eq!(ff.info.titles[0].chapters.len(), 4);
     assert_eq!(ff.info.key, d.info.key, "the same disc either way");
+    assert!(sub_err.is_none(), "a DVD title with subtitles drawn in didn't come out; ffmpeg said: {}", sub_err.unwrap_or_default());
     println!("all fixture discs read");
 }
