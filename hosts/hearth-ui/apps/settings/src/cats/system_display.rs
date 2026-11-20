@@ -293,10 +293,15 @@ pub fn view(a: &App) -> El<'_> {
         facts.push(format!("connected to the {}", gpu_short(&sh.info.gpu)));
     }
     let main_word = if on.len() < 2 || is_main { " · main display" } else { "" };
+    // Identify: on KDE Plasma, KDE's own screen numbers (kscreen's OSD); elsewhere Hearth's own, as Mantel's (each
+    // screen's number in its top-left corner for 3 s: identify.rs, this app started again, never waited for).
     let identify = if plasma() {
         Some(Msg::Exec(Ex::new(dbus("org.kde.kscreen.osdService", "/org/kde/kscreen/osdService", "org.kde.kscreen.osdService.showOutputIdentifier", &[])).fail("Couldn't show the screens' numbers")))
     } else {
-        None
+        // Started in the background through sh, so it's nobody's to wait for (no process left behind).
+        let mut cmd = vec!["sh".to_string(), "-c".into(), "\"$0\" \"$@\" >/dev/null 2>&1 &".into()];
+        cmd.extend(crate::identify::command(&on.iter().map(|x| vs(x, "name")).collect::<Vec<_>>()));
+        Some(Msg::Exec(Ex::new(cmd).secs(10).fail("Couldn't show the screens' numbers")))
     };
     let detect = Msg::Exec(Ex::new(screens(&["info"])).store("screens").ok(format!("Looked for screens again: {} {}", outs(st).len(), if outs(st).len() == 1 { "screen" } else { "screens" })));
     let mut pills = Row::new().spacing(8.0).push(pill(&p, "Identify", true, identify)).push(pill(&p, "Detect", false, Some(detect)));

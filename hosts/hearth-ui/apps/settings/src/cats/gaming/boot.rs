@@ -2,8 +2,10 @@
 //! SetBootPreview.qml): what Steam Game Mode plays while it starts. Steam's own, or one of Hearth's; a card opens its
 //! preview and only "Use this" (or "Use with its boot splash", which also sets the matching boot splash through
 //! hearth-admin) chooses. Through /usr/libexec/nimbus/hearth-boot-look; the animation is yours (copied into Steam's
-//! override folder as Steam Game Mode starts).
+//! override folder as Steam Game Mode starts). Each card shows its animation's picture (the preview sheet's poster
+//! frame) and plays it while the mouse or the controller's focus is on it; the preview plays it (bootpics.rs).
 
+use crate::bootpics::{self, Flip, Sheet};
 use crate::cats::apps::kit::{self, *};
 use crate::cats::apps::kit::button;
 use crate::shared::Shared;
@@ -20,6 +22,7 @@ pub struct St {
     pub preview: Option<Value>,
     pub saving: bool,
     pub say: Say,
+    pub flip: Flip,
 }
 
 #[derive(Debug, Clone)]
@@ -32,6 +35,12 @@ pub enum M {
     Splashed(String, String, Res),
     Movied(String, Res),
     Play(String),
+    /// The pictures (poster frames or a sheet's frames) were read: draw again.
+    Pics,
+    /// The clock while a picture plays.
+    Tick,
+    Hover(String),
+    Unhover(String),
 }
 
 fn look(args: &[&str]) -> Vec<String> {
@@ -50,7 +59,35 @@ pub fn open(_sh: &mut Shared, st: &mut St) -> Task<M> {
 }
 
 pub fn back(st: &mut St) -> bool {
-    st.preview.take().is_some()
+    let had = st.preview.take().is_some();
+    if had {
+        st.flip.halt();
+    }
+    had
+}
+
+/// Each animation's card: its name and its sheet.
+fn cards(st: &St) -> Vec<(String, Sheet)> {
+    ga(go(&st.st, "movie"), "list").iter().filter_map(|m| bootpics::sheet(m).map(|s| (gs(m, "label"), s))).collect()
+}
+
+/// The sheet that plays now (the preview's, the card under the mouse or the focus), if any.
+pub fn active(st: &St) -> Option<Sheet> {
+    let pv = st.preview.as_ref().and_then(bootpics::sheet);
+    bootpics::active(pv, &st.flip, &cards(st))
+}
+
+/// Something plays: the clock runs (gaming.rs subscription), at the sheets' frames a second.
+pub fn live(st: &St) -> Option<std::time::Duration> {
+    active(st).map(|_| bootpics::every(bootpics::geo(&st.st)))
+}
+
+fn posters(st: &St) -> Task<M> {
+    let Some(g) = bootpics::geo(&st.st) else { return Task::none() };
+    match bootpics::load_posters(cards(st).into_iter().map(|c| c.1).collect(), g) {
+        Some(f) => Task::perform(f, |_| M::Pics),
+        None => Task::none(),
+    }
 }
 
 fn movie_said(label: &str, r: &Res) -> String {
@@ -66,14 +103,35 @@ pub fn update(sh: &mut Shared, st: &mut St, m: M) -> Task<M> {
                 if !want.is_empty() {
                     st.preview = ga(go(&st.st, "movie"), "list").iter().find(|m| gs(m, "id") == want).cloned();
                 }
+                return posters(st);
             } else {
                 st.say.bad(r.err)
             }
         }
         M::Preview(v) => st.preview = Some(v),
-        M::Close => st.preview = None,
+        M::Close => {
+            st.preview = None;
+            st.flip.halt();
+        }
+        M::Pics => {}
+        M::Tick => {
+            let a = active(st);
+            let g = bootpics::geo(&st.st);
+            return match st.flip.tick(a.as_ref(), g) {
+                Some(f) => Task::perform(f, |_| M::Pics),
+                None => Task::none(),
+            };
+        }
+        M::Hover(path) => st.flip.hover(path),
+        M::Unhover(path) => {
+            st.flip.unhover(&path);
+            if active(st).is_none() {
+                st.flip.halt();
+            }
+        }
         M::Use(id, label) => {
             st.preview = None;
+            st.flip.halt();
             if gs(go(&st.st, "movie"), "current") == id {
                 return Task::none();
             }
@@ -84,6 +142,7 @@ pub fn update(sh: &mut Shared, st: &mut St, m: M) -> Task<M> {
         }
         M::UseSet(splash, movie, label) => {
             st.preview = None;
+            st.flip.halt();
             st.say.clear();
             st.saving = true;
             let cur = gs(go(&st.st, "splash"), "current");
@@ -130,11 +189,16 @@ fn label_of(list: &[Value], id: &str) -> String {
     list.iter().find(|x| gs(x, "id") == id).map(|x| gs(x, "label")).unwrap_or_default()
 }
 
-/// A choice's card: its picture's place (the preview sheet's frames aren't drawn here: a display mark stands in), its
-/// name, what it looks like, the matching splash, In use, Preview ›.
-fn boot_card<'a>(p: &hearth_ui::Pal, item: &Value, in_use: bool, pair: String, msg: M) -> E<'a, M> {
-    let pic = container(glyph(G::Display, p.muted, 22.0, 1.8)).center_x(Length::Fixed(128.0)).center_y(Length::Fixed(72.0)).style(ui::boxed(hearth_ui::theme::hex("#0b1016").unwrap_or(p.bg), 0.0, Some((p.line, 1.0))));
-    let mut info = column![tm(gs(item, "label"), sz(15.0), p.text), t(gs(item, "about"), sz(12.0), p.muted)].spacing(3.0).width(Length::Fill);
+/// A choice's card (SetBootCard.qml): its picture (the poster frame; it plays while the mouse or the focus is on it),
+/// its name, what it looks like, the matching one, In use, Preview ›. Shared with System › Boot splash.
+pub fn boot_card<'a, M: Clone + Send + 'static>(p: &hearth_ui::Pal, flip: &Flip, item: &Value, in_use: bool, pair: String, msg: M, hover: impl Fn(String) -> M, unhover: impl Fn(String) -> M) -> E<'a, M> {
+    let label = gs(item, "label");
+    let about = gs(item, "about");
+    crate::nav::control(crate::nav::Kind::Open, vec![Box::new(msg.clone()) as crate::nav::Act], Vec::new(), Vec::new(), String::new(), String::new());
+    let nr = crate::nav::item(&label, &about, false);
+    let sheet = bootpics::sheet(item);
+    let pic = bootpics::picture(p, flip, sheet.as_ref(), bootpics::CARD_W, bootpics::CARD_H, "");
+    let mut info = column![tm(label, sz(15.0), p.text), t(about, sz(12.0), p.muted)].spacing(3.0).width(Length::Fill);
     if !pair.is_empty() {
         info = info.push(t(pair, sz(11.0), p.muted));
     }
@@ -142,8 +206,19 @@ fn boot_card<'a>(p: &hearth_ui::Pal, item: &Value, in_use: bool, pair: String, m
     if in_use {
         rw = rw.push(tm("In use", sz(13.0), p.flame));
     }
-    rw = rw.push(t("Preview  ›", sz(13.0), p.muted));
-    mouse_area(container(rw).padding(Padding { top: 12.0, right: 16.0, bottom: 12.0, left: 12.0 }).width(Length::Fill).style(ui::boxed(p.panel, p.r(10.0), None))).on_press(msg).interaction(mouse::Interaction::Pointer).into()
+    rw = rw.push(t("Preview  ›", sz(13.0), if nr.lit { p.text } else { p.muted }));
+    let c = container(rw).id(nr.key).padding(Padding { top: 12.0, right: 16.0, bottom: 12.0, left: 12.0 }).width(Length::Fill).style(row_style(*p, p.panel, p.r(10.0), nr.lit));
+    let mut m = mouse_area(c).on_press(msg).interaction(mouse::Interaction::Pointer);
+    if let Some(s) = sheet {
+        m = m.on_enter(hover(s.path.clone())).on_exit(unhover(s.path));
+    }
+    m.into()
+}
+
+/// The preview's screen (SetBootPreview.qml): 16:9, the sheet playing, or "No preview for this one in this version".
+pub fn preview_screen<'a, M: 'a>(p: &hearth_ui::Pal, flip: &Flip, item: &Value, width: f32) -> E<'a, M> {
+    let w = width.min(720.0);
+    bootpics::picture(p, flip, bootpics::sheet(item).as_ref(), w, (w * 9.0 / 16.0).round(), "No preview for this one in this version")
 }
 
 pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
@@ -163,7 +238,7 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     for m in list {
         let pair = gs(m, "pair");
         let pl = if pair.is_empty() { String::new() } else { format!("Goes with the {} boot splash", label_of(splashes, &pair)) };
-        v.push(boot_card(&p, m, cur == gs(m, "id"), pl, M::Preview(m.clone())));
+        v.push(boot_card(&p, &st.flip, m, cur == gs(m, "id"), pl, M::Preview(m.clone()), M::Hover, M::Unhover));
     }
     if s.is_null() && st.say.text.is_empty() {
         v.push(words(&p, "Looking…", false));
@@ -194,11 +269,11 @@ pub fn dialog<'a>(sh: &'a Shared, st: &'a St) -> Option<(E<'a, M>, Option<M>)> {
     bs.push(button(&p, "Close", false, Some(M::Close)));
     let body = column![
         tb(format!("Startup animation: {label}"), sz(20.0), p.text),
-        container(glyph(G::Play, p.muted, 34.0, 1.8)).center_x(Length::Fill).center_y(Length::Fixed(200.0)).style(ui::boxed(hearth_ui::theme::hex("#0b1016").unwrap_or(p.bg), p.r(8.0), None)),
-        t(gs(m, "about"), sz(14.0), p.text),
+        container(preview_screen(&p, &st.flip, m, 640.0)).center_x(Length::Fill),
+        t(format!("{}. Steam Game Mode plays it once as it starts.", gs(m, "about").trim_end_matches('.')), sz(13.0), p.muted),
         t(if in_use { "This is the one in use." } else { "Only a preview: nothing changes until you choose Use this." }, sz(12.0), if in_use { p.flame } else { p.muted }),
         buttons(bs),
     ]
     .spacing(14.0);
-    Some((ui::dialog_box(&p, 620.0, body), Some(M::Close)))
+    Some((ui::dialog_box(&p, 680.0, body), Some(M::Close)))
 }

@@ -182,7 +182,7 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     let mut mouse: Vec<E<M>> = Vec::new();
     let pad_on = st.pad_on.unwrap_or(false);
     mouse.push(sw(&p, G::Pad, "Controller mouse", "Right stick moves the pointer, R2 clicks. Turns off by itself while a game is full screen.", pad_on, st.pad_on.map(|o| M::PadSet(!o))));
-    mouse.push(srow(&p, G::Pad, "Pointer speed", format!("{:.1}× · Hearth's desktop setting; KDE Plasma's controller mouse doesn't use it yet", st.speed), slider_f32(st.speed, 0.4..=2.0, 0.1, M::Speed, M::SpeedSet)));
+    mouse.push(srow(&p, G::Pad, "Pointer speed", format!("{:.1}× · how fast the right stick moves the pointer; the controller mouse uses it within a couple of seconds", st.speed), slider_f32(st.speed, 0.4..=2.0, 0.1, M::Speed, M::SpeedSet)));
     v.push(group(&p, "Controller mouse", mouse));
 
     let mut map: Vec<E<M>> = Vec::new();

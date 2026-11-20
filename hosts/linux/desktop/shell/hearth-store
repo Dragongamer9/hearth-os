@@ -28,6 +28,9 @@ Bazaar (hearth-flatpak open-bazaar) stays installed; this is the controller-frie
   hearth-store sources                 JSON: Flatpak sources (remotes): name, title, URL, yours or the system's, on/off
   hearth-store source-add NAME URL     add a source for you (--user): a https:// .flatpakrepo file or repo URL
   hearth-store source-remove NAME [--system]
+  hearth-store pics [URL...]           JSON {pics: {url: file}}: the apps' icons and screenshots (https:// addresses, one
+                                       a line on stdin / HEARTH_INPUT, or as arguments) saved once in the cache, for
+                                       the Rust Settings app, which draws pictures from files. Offline: the saved ones
 Flathub's answers are kept for a while (~/.cache/hearth/store), so the store opens offline with what it saw last
 (said so: "cached": true). Failures print "error: ..." and exit 1. Progress lines are "progress: <0-100> <what>".
 """
@@ -70,6 +73,63 @@ def fetch(url, body=None, timeout=12):
                                                            **({'Content-Type': 'application/json'} if data else {})})
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read(4_000_000).decode('utf-8'))
+
+
+PICS_MAX = 8_000_000          # bytes: a picture bigger than this isn't kept
+PICS_KEEP = 400               # pictures kept in the cache (the oldest go first)
+
+
+def fetch_bytes(url, timeout=10):
+    import urllib.request
+    req = urllib.request.Request(url, headers={'User-Agent': 'Hearth-OS-Store', 'Accept': 'image/png,image/jpeg,image/webp,image/*'})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return r.read(PICS_MAX + 1)
+
+
+def pictures(urls, getter=None, budget=40.0):
+    """The App store's pictures for the Rust Settings app (it draws files, not web addresses): each https:// icon or
+    screenshot downloaded once into the cache (~/.cache/hearth/store/pics, written whole then moved into place) and
+    kept. {url: file} for the ones there; offline or a failure leaves a picture out (its place stays drawn plain).
+    At most 60 a call and about `budget` seconds of downloading."""
+    d = os.path.join(CACHE, 'pics')
+    os.makedirs(d, mode=0o700, exist_ok=True)
+    out, t0, seen = {}, time.monotonic(), set()
+    for u in urls:
+        if len(seen) >= 60:
+            break
+        if not isinstance(u, str) or not u.startswith('https://') or len(u) > 2000 or u in seen:
+            continue
+        seen.add(u)
+        ext = os.path.splitext(urllib.parse.urlparse(u).path)[1].lower()
+        path = os.path.join(d, hashlib.sha1(u.encode()).hexdigest() + (ext if ext in ('.png', '.jpg', '.jpeg', '.webp') else '.img'))
+        try:
+            if os.path.getsize(path) > 0:
+                out[u] = path
+                continue
+        except OSError:
+            pass
+        if time.monotonic() - t0 > budget:
+            continue
+        try:
+            data = (getter or fetch_bytes)(u)
+        except Exception:  # offline, or that one picture isn't there
+            continue
+        if not data or len(data) > PICS_MAX:
+            continue
+        tmp = path + '.tmp'
+        with open(tmp, 'wb') as f:
+            f.write(data)
+        os.replace(tmp, path)
+        out[u] = path
+    try:
+        files = sorted((os.path.getmtime(os.path.join(d, n)), n) for n in os.listdir(d) if not n.endswith('.tmp'))
+        keep = set(out.values())
+        for _, n in files[:max(0, len(files) - PICS_KEEP)]:
+            if os.path.join(d, n) not in keep:
+                os.remove(os.path.join(d, n))
+    except OSError:
+        pass
+    return {'pics': out}
 
 
 def cached(key, url, body=None, ttl=None, getter=None):
@@ -425,6 +485,9 @@ def main(argv):
             out = sources()
         elif c == 'source-add' and len(rest) == 2:
             out = source_add(rest[0], rest[1])
+        elif c == 'pics':
+            text = os.environ.get('HEARTH_INPUT') or ('' if sys.stdin is None or sys.stdin.isatty() else sys.stdin.read(400_000))
+            out = pictures(rest + [l.strip() for l in text.splitlines() if l.strip()])
         elif c == 'source-remove' and rest:
             out = source_remove(rest[0], '--system' in rest)
         else:

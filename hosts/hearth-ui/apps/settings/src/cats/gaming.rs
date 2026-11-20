@@ -7,7 +7,7 @@ use crate::shared::Shared;
 use crate::App;
 use iced::{Element, Subscription, Task};
 
-mod boot;
+pub mod boot;
 mod controller;
 mod discord;
 mod games;
@@ -83,6 +83,11 @@ pub fn subscription(st: &State) -> Subscription<Msg> {
     match shown() {
         "remote" if remote::rd_on(&st.remote) => iced::time::every(std::time::Duration::from_secs(5)).map(|_| Msg::Remote(remote::M::Tick)),
         "handheld" if handheld::live(&st.handheld) => iced::time::every(std::time::Duration::from_secs(6)).map(|_| Msg::Handheld(handheld::M::Tick)),
+        // A startup animation's picture plays (its preview, or the card under the mouse or the focus).
+        "startup-animation" => match boot::live(&st.boot) {
+            Some(d) => iced::time::every(d).map(|_| Msg::Boot(boot::M::Tick)),
+            None => Subscription::none(),
+        },
         _ => Subscription::none(),
     }
 }

@@ -74,6 +74,11 @@ X the context menu, Y search (Files) and the keyboard, LB / RB tabs, LT / RT scr
 Shell's controller extension didn't start hearth-pad --gnome): Desktop Mode's pointer, clicks, scrolling and keys
 without the shell's menus; stdin isn't read, so it doesn't end when stdin closes.
 
+Pointer speed: Mantel's Pad.qml sends speed {value} from Hearth Settings › Controller. On KDE Plasma (--plasma, under
+hearth-pad-host) and --standalone nothing sends it, so there it's read from the same setting, desktop.json's
+pointerSpeed (the Rust Settings app saves it there), when this starts and again within 2 s of it changing (one stat of
+the file every 2 s; never written here).
+
 --game: Game Mode's controller mouse (started by Hearth, hearth-core padmouse.rs). Only the mouse: right stick,
 A / RT click, X / LT right-click, L3 middle-click, left stick scroll, B Esc, D-pad arrows, R3 precise. Guide, Menu,
 View, LB/RB and Y do nothing here (they're the game's and Hearth's). View + Menu together turns it off: it says
@@ -234,6 +239,50 @@ def app_key(app):
     """A window's app id or a .desktop id, compared without case and without ".desktop"."""
     a = str(app or '').strip().lower()
     return a[:-len('.desktop')] if a.endswith('.desktop') else a
+
+
+def desktop_json_path():
+    home = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
+    return os.path.join(home, 'nimbus', 'desktop.json')
+
+
+def saved_pointer_speed(path=None):
+    """Hearth Settings › Controller's pointer speed (desktop.json's pointerSpeed, kept to 0.2–3×), or None when it
+    isn't set or the file can't be read (the speed then stays as it is)."""
+    try:
+        with open(path or desktop_json_path(), encoding='utf-8') as f:
+            v = json.load(f).get('pointerSpeed')
+    except (OSError, ValueError, AttributeError):
+        return None
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v:
+        return None
+    return max(0.2, min(3.0, float(v)))
+
+
+class SpeedWatch:
+    """desktop.json's pointerSpeed for --plasma and --standalone (no shell sends speed there): read at the start and
+    whenever the file has changed, looked at once every `every` seconds."""
+
+    def __init__(self, path=None, every=2.0):
+        self.path = path or desktop_json_path()
+        self.every = every
+        self.next = 0.0
+        self.seen = None
+
+    def poll(self, now):
+        """The new speed when the file changed since the last look, else None."""
+        if now < self.next:
+            return None
+        self.next = now + self.every
+        try:
+            st = os.stat(self.path)
+            key = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            key = None
+        if key == self.seen:
+            return None
+        self.seen = key
+        return saved_pointer_speed(self.path) if key is not None else None
 
 
 def desktop_dirs():
@@ -1920,6 +1969,8 @@ def main():
         note('Game Mode controller mouse')
     if standalone:
         note('standalone: nobody draws the menus, the controller is a mouse and keyboard')
+    # Hearth Settings › Controller's pointer speed where no shell sends it (KDE Plasma, standalone).
+    speed_watch = SpeedWatch() if (plasma or standalone) and not cosmic else None
     inbox = queue.Queue()      # --plasma: what KWin says (plasma_bus's thread) for the main loop
     if plasma:
         note('Hearth Plasma controller')
@@ -1991,6 +2042,11 @@ def main():
             next_scan = now + (3 if pads else 1)
         if sim is not None:
             stats['events'] += sim.poll()
+        if speed_watch is not None:
+            sp = speed_watch.poll(now)
+            if sp is not None and hasattr(pad, 'speed') and abs(sp - pad.speed) > 1e-6:
+                pad.speed = sp
+                note('pointer speed %.1fx (Settings > Controller)' % sp)
         while plasma and not inbox.empty():
             m = inbox.get_nowait()
             if m.get('cmd') == 'probe':
