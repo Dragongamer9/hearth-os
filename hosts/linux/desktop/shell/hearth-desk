@@ -51,6 +51,7 @@ except ImportError:
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 MAX_PINS = 40
+MAX_PLACES = 500          # saved icon places kept for files that aren't on the desktop right now, at most
 DEFAULTS = {'pins': [], 'desktopIcons': True, 'dnd': False, 'icons': {}, 'autoArrange': False, 'sortBy': 'name',
             'muted': [], 'recent': [], 'pinnedOnce': []}
 SWITCHES = ('desktopIcons', 'dnd', 'autoArrange')
@@ -383,7 +384,9 @@ def cells(cols, rows):
 
 def layout(names, saved, cols, rows):
     """Place every name on the grid. Saved places inside the grid are kept (the first name wins a clash);
-    the rest take the first free places. Returns ({name: (col, row)}, names that got a new place)."""
+    the rest take the first free places, keeping clear of the places saved for icons that aren't there right now
+    (a file an app is saving anew, a drive not mounted yet) while there's room. Returns ({name: (col, row)}, names
+    that got a new place)."""
     cols, rows = max(1, cols), max(1, rows)
     taken, placed, fresh = set(), {}, []
     for n in names:
@@ -391,7 +394,10 @@ def layout(names, saved, cols, rows):
         if cell and 0 <= cell[0] < cols and 0 <= cell[1] < rows and tuple(cell) not in taken:
             placed[n] = (cell[0], cell[1])
             taken.add(placed[n])
-    free = [c for c in cells(cols, rows) if c not in taken]
+    present = set(names)
+    held = {tuple(c) for n, c in saved.items() if n not in present}
+    free = [c for c in cells(cols, rows) if c not in taken and c not in held] + \
+        [c for c in cells(cols, rows) if c not in taken and c in held]
     overflow = 0
     for n in names:
         if n in placed:
@@ -420,11 +426,15 @@ def icons(cols, rows):
             e['col'], e['row'] = placed[e['name']]
         return {'dir': d, 'exists': True, 'entries': items}
     placed, fresh = layout(names, s['icons'], cols, rows)
-    # Remember new icons' places (so the next new file doesn't shuffle them) and forget removed files.
-    # A saved place outside today's grid (a smaller screen) is kept for when the screen is big again.
+    # Remember new icons' places (so the next new file doesn't shuffle them). A saved place is never changed or
+    # dropped by looking (the owner, Nov 19: icons stay where you put them, a red flag): a place outside today's grid
+    # (a smaller screen, a bigger bar) is kept for when there's room again, and the place of a file that isn't
+    # there right now (an app saving it anew, the folder not readable yet at sign-in) for when it's back. Only when
+    # far more are kept than could ever show do the missing ones' places go.
     gone = [n for n in s['icons'] if n not in placed]
-    if fresh or gone:
-        for n in gone:
+    drop = gone if len(s['icons']) > MAX_PLACES else []
+    if fresh or drop:
+        for n in drop:
             del s['icons'][n]
         for n in fresh:
             s['icons'][n] = list(placed[n])
@@ -465,7 +475,9 @@ def place_many(moves, cols, rows):
     spare = [c for c in freed if c not in taken] + [c for c in cells(cols, rows) if c not in taken and c not in freed]
     for n in displaced:
         new[n] = spare.pop(0) if spare else placed[n]
-    for n in names:
+    # Only the icons that moved (the dragged ones and the ones they pushed aside) get new places: every other
+    # icon keeps its own saved place, also one that's shown elsewhere today because the grid is smaller.
+    for n in list(want) + displaced:
         s['icons'][n] = list(new[n])
     save(s)
     return icons(cols, rows)
