@@ -297,7 +297,7 @@ pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
             st.store_sort = "down";
         }
         let (k, q, o) = (st.store_kind.to_string(), st.store_q.clone(), st.store_sort.to_string());
-        return read(helper(&["store", &k, &q, &o], 90), Msg::StoreGot);
+        return Task::batch([read(helper(&["get", page], 30), move |r| Msg::Got(page, r)), read(helper(&["store", &k, &q, &o], 90), Msg::StoreGot)]);
     }
     // `--page kde-shortcuts:COMPONENT`: that app's shortcuts open.
     if page == "kde-shortcuts" && !sh.part.is_empty() && sh.part != "pick" && sh.part != "end" {
@@ -1745,7 +1745,7 @@ fn hdr_view(a: &App) -> E<'_> {
             Space::new().width(Length::Fill),
             btn(&p, "Cancel", hearth_ui::ui::Kind::Normal, false, Some(Msg::HdrCancel)),
             btn(&p, "What the screen says", hearth_ui::ui::Kind::Normal, false, Some(Msg::HdrReset)),
-            btn(&p, if h.step > 0 { "Back" } else { "Cancel" }, hearth_ui::ui::Kind::Normal, false, Some(Msg::HdrStep(-1))),
+            btn(&p, "Back", hearth_ui::ui::Kind::Normal, false, if h.step > 0 { Some(Msg::HdrStep(-1)) } else { None }),
             btn(&p, if h.step < 2 { "Next" } else { "Finish" }, hearth_ui::ui::Kind::Primary, false, Some(Msg::HdrStep(1))),
         ]
         .spacing(10.0),
@@ -1771,10 +1771,17 @@ fn pad_card<'a>(p: &Pal, pad: &pad_test::Pad) -> E<'a> {
             .style(hearth_ui::ui::boxed(if on { p.accent } else { Pal::mix(p.panel, p.text, 0.08) }, p.r(8.0), None))
             .into()
     };
-    let mut buttons = iced::widget::Row::new().spacing(6.0);
-    for (code, name) in pad_test::BUTTONS {
-        buttons = buttons.push(lit(pad.held.contains(code), name.to_string()));
+    // Two rows, so they fit beside the page's list in the controller look too.
+    let (mut b1, mut b2) = (iced::widget::Row::new().spacing(6.0), iced::widget::Row::new().spacing(6.0));
+    for (k, (code, name)) in pad_test::BUTTONS.iter().enumerate() {
+        let b = lit(pad.held.contains(code), name.to_string());
+        if k < 6 {
+            b1 = b1.push(b);
+        } else {
+            b2 = b2.push(b);
+        }
     }
+    let buttons = column![b1, b2].spacing(6.0);
     let pp = *p;
     let stick = |x: f32, y: f32, name: &'static str| -> E<'a> {
         let size = 92.0;

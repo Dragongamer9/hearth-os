@@ -228,8 +228,8 @@ pub const BUTTONS: &[(u16, &str)] = &[
     (0x13a, "View"),
     (0x13b, "Menu"),
     (0x13c, "Guide"),
-    (0x13d, "Left stick"),
-    (0x13e, "Right stick"),
+    (0x13d, "L3"),
+    (0x13e, "R3"),
 ];
 
 #[cfg(test)]
