@@ -46,10 +46,10 @@ f = json.load(open(sys.argv[2]))
 json.dump({"moonlight.friends": f}, open(sys.argv[1], "w"))
 PY
 for lay in a b; do
-  rest=0; [ "$lay" = a ] && rest=20
+  famrest=0; [ "$lay" = a ] && famrest=20
   run "family-05-wants-to-connect-$lay" hearth-family-ask 0 env HEARTH_FAMILY_FIXTURE="$FFX" "$BIN/hearth-family-app" --ask --name "Chris's PC" --what desktop --limit 60 --layout "$lay"
-  run "family-06-connected-notice-$lay" hearth-family-notice "$rest" env HEARTH_FAMILY_FIXTURE="$FFX" "$BIN/hearth-family-app" --notice --name "Chris's PC" --what desktop --until "$UNTIL" --layout "$lay"
-  run "family-07-friends-list-$lay" hearth-family "$rest" env HEARTH_FAMILY_FIXTURE="$FFX" "$BIN/hearth-family-app" --page friends --layout "$lay"
+  run "family-06-connected-notice-$lay" hearth-family-notice "$famrest" env HEARTH_FAMILY_FIXTURE="$FFX" "$BIN/hearth-family-app" --notice --name "Chris's PC" --what desktop --until "$UNTIL" --layout "$lay"
+  run "family-07-friends-list-$lay" hearth-family "$famrest" env HEARTH_FAMILY_FIXTURE="$FFX" "$BIN/hearth-family-app" --page friends --layout "$lay"
 done
 # Connected to Dad's PC (the list's top row), and nobody yet.
 python3 - "$FFX" <<'PY'

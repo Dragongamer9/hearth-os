@@ -70,12 +70,14 @@ jobs:
         env:
           LINK_BIN: ${{ github.workspace }}/hosts/hearth-link/target/release/hearth-link
         run: sudo -E python3 hosts/hearth-link/tests/e2e.py lan
-      - name: Three devices (pair once for all your devices, removing, a friend's device)
-        if: ${{ !cancelled() && (success() || steps.py.outcome == 'failure') }}
+      # Each e2e runs even when the one before failed (each sets up its own namespaces), so one doesn't hide the others.
+      - name: Three devices (pair once for all your devices, removing, a friend's device, Family and friends with Moonlight)
+        if: ${{ !cancelled() }}
         env:
           LINK_BIN: ${{ github.workspace }}/hosts/hearth-link/target/release/hearth-link
         run: sudo -E python3 hosts/hearth-link/tests/e2e.py family
-      - name: The internet path (NATs and a local iroh relay)
+      - name: The internet path (NATs and a local iroh relay; Moonlight through the relay and hole punched)
+        if: ${{ !cancelled() }}
         env:
           LINK_BIN: ${{ github.workspace }}/hosts/hearth-link/target/release/hearth-link
         run: |

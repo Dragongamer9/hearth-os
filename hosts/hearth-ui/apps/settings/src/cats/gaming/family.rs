@@ -268,6 +268,10 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     if on {
         let people = ga(s, "people");
         v.push(head(&p, "Who can connect"));
+        // A code showing comes first, so it's in view (the person's choices are below it).
+        if !go(s, "invite").is_null() {
+            v.push(code_card(&p, st));
+        }
         if people.is_empty() {
             v.push(words(&p, "Nobody yet. Add a person: they type a one-time code on their PC.", false));
         }
@@ -298,8 +302,6 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
         }
         if go(s, "invite").is_null() {
             v.push(r(G::Plus, "Add a person", "They get a one-time code to type on their PC (or a QR code to send them). No password").on(M::Call("moonlight.share.invite", Value::Null, String::new())).view(&p));
-        } else {
-            v.push(code_card(&p, st));
         }
         v.push(small(&p, "No router ports are opened. Moonlight's picture goes through Hearth Link's own connection (direct, or through its relay), encrypted end to end. While someone is connected, a notice with Stop sharing now stays on screen."));
     }

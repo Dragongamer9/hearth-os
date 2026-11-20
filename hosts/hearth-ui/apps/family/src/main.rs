@@ -411,7 +411,7 @@ fn view(a: &App) -> Element<'_, Msg> {
                 a.b(format!("Always allow {}", a.name), ui::Kind::Normal, a.big && a.fb == 2, Some(Msg::Answer("always"))),
             ].spacing(10.0).align_y(iced::Center));
             body = body.push(t(format!("Nobody answering in {secs} s is a no. You can change who may connect in Settings › Gaming › Family and friends."), a.s(12.0), p.muted));
-            frame(a, "Family and friends", G::Users, body.into(), a.hints(&[("A", "Choose"), ("B", "Deny"), ("◀ ▶", "Move")]), true)
+            frame(a, "Family and friends", G::Users, body.into(), a.hints(&[("A", "Choose"), ("B", "Deny"), ("← →", "Move")]), true)
         }
         Mode::Notice => {
             let dot = container(Space::new()).width(Length::Fixed(a.s(10.0))).height(Length::Fixed(a.s(10.0))).style(ui::boxed(p.good, a.s(5.0), None));
@@ -479,7 +479,7 @@ fn view(a: &App) -> Element<'_, Msg> {
                 c = c.push(t(a.said.0.clone(), a.s(13.0), if a.said.1 { p.danger } else { p.flame }));
             }
             c = c.push(t("The picture goes through Hearth Link's own connection, encrypted end to end. No router ports are opened.", a.s(12.0), p.muted));
-            frame(a, "Family and friends", G::Users, scrollable(c).height(Length::Fill).into(), a.hints(&[("A", "Connect"), ("◀ ▶", "Connect / Remove"), ("▲ ▼", "Move"), ("B", "Close")]), true)
+            frame(a, "Family and friends", G::Users, scrollable(c).height(Length::Fill).into(), a.hints(&[("A", "Connect"), ("← →", "Connect / Remove"), ("↑ ↓", "Move"), ("B", "Close")]), true)
         }
     }
 }
@@ -525,7 +525,7 @@ fn main() -> iced::Result {
     let big = matches!(app::arg("--layout").or_else(|| std::env::var("HEARTH_FAMILY_LAYOUT").ok()).unwrap_or_default().as_str(), "b" | "controller" | "pad");
     let k = if big { 1.35 } else { 1.0 };
     let (size, min) = match mode {
-        Mode::Ask => ((600.0 * k, 330.0 * k), (480.0, 280.0)),
+        Mode::Ask => ((600.0 * k, 290.0 * k), (480.0, 260.0)),
         Mode::Notice => ((460.0 * k, 200.0 * k), (380.0, 170.0)),
         Mode::Friends => ((820.0 * k, 600.0 * k), (560.0, 420.0)),
     };
