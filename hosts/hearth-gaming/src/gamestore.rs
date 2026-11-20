@@ -139,6 +139,25 @@ pub fn only_ours(mut lib: Value) -> Value {
     lib
 }
 
+/// The library's answer with each game's desktop icon (desktop_icons::status): `onDesktop` (Hearth's icon is on the
+/// desktop now), `iconOnInstall` (the install's tick box asked for one), and `desktop` {available, tickDefault} for
+/// the page (no Desktop folder to use: no Add to desktop).
+pub fn mark_desktop(mut lib: Value, status: &Value, tick_default: bool) -> Value {
+    let has = |k: &str, id: &str| status[k].as_array().map(|a| a.iter().any(|v| v == id)).unwrap_or(false);
+    if let Some(a) = lib["games"].as_array_mut() {
+        for g in a.iter_mut() {
+            let id = g["id"].as_str().unwrap_or("").to_string();
+            g["onDesktop"] = json!(has("on", &id));
+            g["iconOnInstall"] = json!(has("onInstall", &id));
+        }
+    }
+    if lib.is_object() { lib["desktop"] = json!({"available": status["available"] == true, "tickDefault": tick_default}); }
+    lib
+}
+
+/// Which games can get a desktop icon: an installed one of this app's stores (not Battle.net's own app entry).
+pub fn desktop_icon_ok(id: &str) -> bool { game_id_ok(id) && id != "battlenet:app" }
+
 /// The downloads' answer with only this app's games.
 pub fn only_our_downloads(mut d: Value) -> Value {
     for k in ["active", "queue", "recent", "items", "downloads"] {
@@ -306,6 +325,21 @@ mod tests {
             assert_eq!(art_file(&enc(&png)).map(|x| x.1), Some("image/png"));
             assert!(art_file(&enc(&txt)).is_none(), "only pictures");
         }
+    }
+
+    #[test]
+    fn library_cards_know_their_desktop_icons() {
+        let st = json!({"available": true, "on": ["gog:1"], "onInstall": ["epic:2"]});
+        let v = mark_desktop(json!({"games": [{"id": "gog:1"}, {"id": "epic:2"}, {"id": "amazon:3"}]}), &st, false);
+        assert_eq!(v["games"][0]["onDesktop"], true);
+        assert_eq!(v["games"][1]["onDesktop"], false);
+        assert_eq!(v["games"][1]["iconOnInstall"], true);
+        assert_eq!(v["games"][2]["iconOnInstall"], false);
+        assert_eq!(v["desktop"], json!({"available": true, "tickDefault": false}));
+        let v = mark_desktop(json!({"games": []}), &json!({"available": false}), true);
+        assert_eq!(v["desktop"], json!({"available": false, "tickDefault": true}));
+        assert!(desktop_icon_ok("gog:1") && desktop_icon_ok("battlenet:wow"));
+        assert!(!desktop_icon_ok("battlenet:app") && !desktop_icon_ok("steam:620") && !desktop_icon_ok("recomp:zelda64"));
     }
 
     #[test]

@@ -43,7 +43,7 @@ const KIT = (() => {
     first?.focus();
     return layer().firstChild;
   };
-  K.close = () => { if (K.sharedOsk() && HearthOSK.isOpen()) HearthOSK.close(); layer().innerHTML = ''; dlgBack = null; oskTarget = null; const b = backFocus; backFocus = null; setTimeout(() => { if (b && document.contains(b)) b.focus(); else K.focusFirst(); }, 0); };
+  K.close = () => { if (K.sharedOsk() && HearthOSK.isOpen()) HearthOSK.close(); layer().innerHTML = ''; dlgBack = null; oskTarget = null; const b = backFocus; backFocus = null; setTimeout(() => { if (K.dialogOpen()) return; if (b && document.contains(b)) b.focus(); else K.focusFirst(); }, 0); };
   K.progress = (title, text = 'Starting') => K.dialog(`<h2>${K.esc(title)}</h2><div class="prog spin" id="kit-pg"><i></i></div><div class="msg" id="kit-pgt">${K.esc(text)}</div>`, { locked: true });
   K.setProgress = (text, pct) => { const t = K.$('#kit-pgt'), p = K.$('#kit-pg'); if (t && text) t.textContent = text; if (p && pct != null) { p.classList.remove('spin'); p.firstChild.style.width = `${Math.round(pct * 100)}%`; } };
   K.alert = (title, text, ok = true) => new Promise(res => {

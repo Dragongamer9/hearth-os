@@ -57,6 +57,29 @@ class Page(unittest.TestCase):
         self.assertIn('games://closing', JS)
 
 
+class DesktopIcons(unittest.TestCase):
+    CORE = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'desktop_icons.rs').read_text()
+    LIBRARY = (ROOT / 'hosts' / 'hearth-core' / 'src' / 'library.rs').read_text()
+
+    def test_card_menu_and_page_offer_add_and_remove(self):
+        for text in ("'Add to desktop'", "'Remove from desktop'", 'data-g="desk"', 'data-g="undesk"', "'contextmenu'", "'ContextMenu'", 'KIT.onStart'):
+            self.assertIn(text, JS)
+        self.assertIn("KIT.invoke('desktop_icon'", JS)
+
+    def test_install_tick_box_is_off_until_chosen(self):
+        self.assertIn('Add a desktop icon', JS)
+        self.assertIn("'desktop_on_install'", JS)
+        self.assertIn('"desktopIconOnInstall"] == true', self.CORE, 'unset means off')
+
+    def test_the_engine_makes_and_removes_them(self):
+        uninstall = self.LIBRARY.split('pub fn uninstall', 1)[1].split('\n    }\n', 1)[0]
+        self.assertIn('desktop_icons::game_gone(id)', uninstall)
+        self.assertIn('desktop_icons::installed(g)', self.LIBRARY.split('pub fn install_done', 1)[1].split('\n    }\n', 1)[0])
+        self.assertIn('--play-now {id}', self.CORE)
+        self.assertIn('create_new(true)', self.CORE, 'never over a file that is there')
+        self.assertIn('settings_file::update_json', self.CORE, 'its record is written the safe way')
+
+
 class Recomps(unittest.TestCase):
     """Hearth Games › Recomps (docs/RECOMPS.md): a window on hearth-core's recomps engine, not a second engine."""
     CORE = ROOT / 'hosts' / 'hearth-core' / 'src'

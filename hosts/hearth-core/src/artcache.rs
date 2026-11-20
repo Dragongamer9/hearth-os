@@ -122,6 +122,17 @@ fn download(u: &str, dir: &std::path::Path) -> Result<PathBuf, String> {
     Ok(file)
 }
 
+/// A web picture as a file on this device now: the cache's copy, or downloaded into the cache first (waits for it,
+/// up to curl's 30 seconds). Used for a game's desktop icon (desktop_icons.rs), which needs a file.
+pub fn fetch_now(u: &str) -> Option<PathBuf> {
+    if !remote(u) || cfg!(test) { return None; }
+    let name = name_of(u);
+    let dir = { let c = cache().lock().unwrap(); if let Some(f) = c.index.get(&name) { return Some(f.clone()); } c.dir.clone() };
+    let file = download(u, &dir).ok()?;
+    cache().lock().unwrap().index.insert(name, file.clone());
+    Some(file)
+}
+
 /// Try everything that failed again (the network is back).
 pub fn retry() {
     let again: Vec<String> = { let mut c = cache().lock().unwrap(); c.failed.drain().map(|(u, _)| u).collect() };
