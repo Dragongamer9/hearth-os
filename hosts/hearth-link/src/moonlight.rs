@@ -641,7 +641,7 @@ fn helper(args: &[&str], secs: u64) -> Result<Value, String> { crate::family::ru
 impl Node {
     fn moon_said(&self, s: impl Into<String>) { *crate::lock(&self.moon.last) = Some((crate::now_ms(), s.into())); }
 
-    fn peer_name(&self, id: &str) -> String { crate::lock(&self.peers).get(id).map(|p| p.name.clone()).unwrap_or_else(|| "A paired device".into()) }
+    fn moon_name(&self, id: &str) -> String { crate::lock(&self.peers).get(id).map(|p| p.name.clone()).unwrap_or_else(|| "A paired device".into()) }
 
     /// After a pairing while "Add a person" showed its code: they may connect (asked every time, Whole desktop, no
     /// limit, until the person here changes that), and they're told.
@@ -722,7 +722,7 @@ impl Node {
                 for i in 0..20 {
                     let (p, k) = (pin.clone(), key.clone());
                     match tokio::task::spawn_blocking(move || helper(&["pin", p.as_str(), k.as_str()], 45)).await.map_err(|e| e.to_string())? {
-                        Ok(v) => { eprintln!("hearth-link: moonlight: {}: Moonlight paired with this PC's Sunshine", self.peer_name(peer)); return Ok(v); }
+                        Ok(v) => { eprintln!("hearth-link: moonlight: {}: Moonlight paired with this PC's Sunshine", self.moon_name(peer)); return Ok(v); }
                         Err(e) if e.contains("No device is waiting") && i < 19 => tokio::time::sleep(Duration::from_secs(1)).await,
                         Err(e) => return Err(e),
                     }
@@ -748,7 +748,7 @@ impl Node {
         let sh = load();
         if !sh.on { return Err(format!("{me} isn't letting anyone connect right now")); }
         let person = sh.person(peer).cloned().ok_or_else(|| format!("{me} hasn't added this PC to its family and friends"))?;
-        let who = { let n = self.peer_name(peer); if n.is_empty() { person.name.clone() } else { n } };
+        let who = { let n = self.moon_name(peer); if n.is_empty() { person.name.clone() } else { n } };
         if let Some(g) = crate::lock(&self.moon.grant).as_ref() {
             if g.peer != peer { return Err(format!("Someone else is connected to {me} right now. Try again later")); }
         }
@@ -814,7 +814,7 @@ impl Node {
         let Some((gen, port)) = gen_port else { conn.close(VarInt::from_u32(403), b"not now"); return; };
         if !load().on { conn.close(VarInt::from_u32(403), b"not sharing"); self.moon_end_if(gen, "sharing is off"); return; }
         if let Some(g) = crate::lock(&self.moon.grant).as_mut() { let _ = crate::write_atomic(&runtime_file(), grant_json(g).to_string().as_bytes()); }
-        eprintln!("hearth-link: moonlight: {}: connected", self.peer_name(&remote));
+        eprintln!("hearth-link: moonlight: {}: connected", self.moon_name(&remote));
         serve_tunnel(conn.clone(), port).await;
         let left = {
             let mut g = crate::lock(&self.moon.grant);
@@ -837,7 +837,7 @@ impl Node {
     /// Connect to a PC that lets this one: ask it, open the tunnel, start Moonlight in its own network (pairing it
     /// first with a one-time PIN when that PC's Sunshine doesn't know it yet). Answers once Moonlight is starting.
     async fn moon_connect(self: &Arc<Self>, id: &str) -> Result<Value, String> {
-        let name = self.peer_name(id);
+        let name = self.moon_name(id);
         if crate::lock(&self.peers).get(id).map(|p| p.moonlight.is_empty()).unwrap_or(true) { return Err(format!("{name} hasn't let this PC connect")); }
         if crate::lock(&self.moon.out).is_some() { return Err("This PC is connected to another one already: disconnect first".into()); }
         let ml = moonlight_cmd().ok_or("Moonlight isn't installed: Settings › Remote play › Moonlight › Install")?;
@@ -1008,7 +1008,7 @@ impl Node {
                 let _ = tokio::task::spawn_blocking(move || helper(&["family", "forget", key.as_str()], 30)).await;
                 let n = self.clone(); let id2 = id.clone();
                 tokio::spawn(async move { let _ = tokio::time::timeout(Duration::from_secs(10), n.request(&id2, &json!({"op": "moonlight.revoke"}))).await; });
-                eprintln!("hearth-link: moonlight: {} can't connect anymore (removed)", self.peer_name(&id));
+                eprintln!("hearth-link: moonlight: {} can't connect anymore (removed)", self.moon_name(&id));
                 Ok(self.moon_status())
             }
             "moonlight.share.invite" => {

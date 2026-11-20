@@ -491,7 +491,7 @@ const minsLeft = (until: number | null | undefined) => {
   const m = Math.max(0, Math.ceil((until - Date.now()) / 60000));
   return m >= 60 ? ` · ${Math.floor(m / 60)} h ${m % 60} min left` : ` · ${m} min left`;
 };
-export function friendLine(p: Friend): string {
+function friendLine(p: Friend): string {
   if (!p.online) return "Offline";
   if (p.sharing === false) return "Online · not letting anyone connect right now";
   return `Online · ${whatWord(p.what)}${p.ask ? " · they're asked first" : ""}`;
