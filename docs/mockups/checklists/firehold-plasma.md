@@ -48,12 +48,12 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 
 ## 4. Modes for each screen (04-modes-per-screen.png)
 
-- [ ] Opens from the Desk bar's mode pill
-- [ ] Both screens drawn as placed, each named (TCL TV, LG monitor), with its current mode
-- [ ] Couch / Desk / Away choice for each screen
-- [ ] Buttons: Both Couch, Both Desk, Away now
-- [ ] Switches: Automatic, Away after 20 minutes
-- [ ] Key and button hints
+- [x] Opens from the Desk bar's mode pill — hosts/linux/desktop/firehold-plasma/posture/contents/ui/main.qml: "MouseArea { anchors.fill: parent; onClicked: root.popupOpen = !root.popupOpen }"
+- [x] Both screens drawn as placed, each named (TCL TV, LG monitor), with its current mode — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "return (qa ? qa.virtualX : 0) - (qb ? qb.virtualX : 0);"
+- [x] Couch / Desk / Away choice for each screen — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "options: [\"Couch\", \"Desk\", \"Away\"]"
+- [x] Buttons: Both Couch, Both Desk, Away now — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "\"Away now (both)\""
+- [x] Switches: Automatic, Away after 20 minutes — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "\" min with nobody at \""
+- [x] Key and button hints — hosts/linux/desktop/firehold-plasma/posture/contents/ui/ModesPopup.qml: "\"Keys: Super+Shift+C Couch · Super+Shift+D Desk · Super+Shift+A Away · Guide button: Couch on the \""
 
 ## 5. Settings › Couch, Desk and Away (05-settings-modes.png)
 
@@ -110,8 +110,8 @@ Hearth never reads Steam account data: downloads come from Steam's files on the 
 ## 11. The Desk bar with the app's own menus (11-desk-bar-app-menus.png)
 
 - [ ] The app in front with its own menus (KDE's global menu), File open
-- [ ] Left to right: app, menus, clock, mode pill, downloads, Hearth Link, controllers, Quick Settings, notifications
-- [ ] The first-run tip naming each part of the bar
+- [x] Left to right: app, menus, clock, mode pill, downloads, Hearth Link, controllers, Quick Settings, notifications — hosts/linux/desktop/firehold-plasma/posture/contents/ui/main.qml: "onClicked: root.openShared(\"org.hearthos.notifications\", \"notifications\")"
+- [x] The first-run tip naming each part of the bar — hosts/linux/desktop/firehold-plasma/posture/contents/ui/BarTip.qml: "\"THE BAR, LEFT TO RIGHT\""
 
 ## 12. The Desk bar's standard menus (12-desk-bar-standard-menus.png)
 

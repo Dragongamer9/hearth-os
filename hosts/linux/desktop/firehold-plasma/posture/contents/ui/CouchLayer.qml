@@ -11,7 +11,10 @@ Window {
     property QtObject bar: null
     property string screenName: ""
     visible: false
+    // Its own surface on its own screen, not a child of the bar's panel (whose screen it isn't on).
+    transientParent: null
     color: "#0f0b0a"
+    onVisibleChanged: console.warn("firehold: Couch layer on", screenName, "visible", visible, width + "x" + height)
     screen: {
         const l = Qt.application.screens;
         for (let i = 0; i < l.length; i++) if (l[i].name === screenName) return l[i];

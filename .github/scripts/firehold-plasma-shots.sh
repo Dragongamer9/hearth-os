@@ -229,7 +229,7 @@ cp "$HOME/.local/state/nimbus/firehold-plasma.log" "$OUT/firehold-plasma.txt" 2>
 # outputs. The Desk shell with the Couch as a layer over the TV, the Modes popup from the monitor's mode pill, Away.
 pkill -f "hearth-firehold-plasma session"; pkill plasmashell; pkill dolphin; pkill konsole; pkill kate; pkill -f ember.qml; pkill -f mpris.py
 sleep 2; pkill -f /tmp/kwin_wayland; sleep 3
-/tmp/kwin_wayland --virtual --output-count 2 --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >"$OUT/kwin2.log" 2>&1 &
+QT_LOGGING_RULES="kwin_scripting.debug=true" /tmp/kwin_wayland --virtual --output-count 2 --width 1920 --height 1080 --no-lockscreen --socket wayland-hearth >"$OUT/kwin2.log" 2>&1 &
 KWIN=$!
 for i in $(seq 1 40); do [ -S "$XDG_RUNTIME_DIR/wayland-hearth" ] && break; sleep 1; done
 sleep 3
@@ -255,7 +255,7 @@ shot fp-11-desk-bar-tip 0 1920
 shot fp-12-couch-layer-on-tv 1920 1920
 kwin_js 'var l = workspace.windowList(); for (var i = 0; i < l.length; i++) { var w = l[i]; print("FHWIN " + w.caption + " | " + w.resourceClass + " | " + (w.output ? w.output.name : "") + " | " + w.frameGeometry.x + "," + w.frameGeometry.y + " " + w.frameGeometry.width + "x" + w.frameGeometry.height + " | layer " + w.layer + " | hidden " + w.hidden + " | min " + w.minimized); }'
 sleep 1
-echo "::notice title=KWin's windows (two screens)::$(grep FHWIN "$OUT/kwin2.log" | tail -20 | cut -c1-160 | sed -e ':a;N;$!ba;s/\n/%0A/g')"
+echo "::notice title=KWin's windows (two screens)::$(grep -h FHWIN "$OUT/kwin2.log" "$OUT/plasmashell2.log" | tail -20 | cut -c1-160 | sed -e ':a;N;$!ba;s/\n/%0A/g')"
 # Game options with two screens: Play on the TV · Couch / the monitor · Desk.
 hearth-firehold-plasma ask tab:library; sleep 3
 key right x down; sleep 3

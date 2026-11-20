@@ -1265,6 +1265,16 @@ WINDOW_JS = {
 def own_menus(pid):
     """Whether an app has menus of its own for KDE's global menu: a Qt Widgets app (KDE's, most Qt apps) or a GTK app
     with the app menu module exports them; games, Windows apps (Wine), Electron and Qt Quick apps don't."""
+    # What KDE's global menu reads: the app's D-Bus connection with a /MenuBar object (com.canonical.dbusmenu).
+    names = re.findall(r'string "(:[0-9.]+)"', dbus_send('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus.ListNames', timeout=3))
+    seen_dbus = bool(names)
+    for n in names:
+        got = re.search(r'uint32 (\d+)', dbus_send('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus.GetConnectionUnixProcessID', 'string:' + n, timeout=2))
+        if got and int(got.group(1)) == pid:
+            if 'node name="MenuBar"' in dbus_send(n, '/', 'org.freedesktop.DBus.Introspectable.Introspect', timeout=2):
+                return True
+    if seen_dbus:
+        return False
     try:
         maps = open('/proc/%d/maps' % pid, encoding='utf-8', errors='replace').read()
     except OSError:

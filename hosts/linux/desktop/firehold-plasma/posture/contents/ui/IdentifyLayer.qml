@@ -7,6 +7,7 @@ Window {
     id: iw
     property QtObject bar: null
     visible: true
+    transientParent: null
     color: "transparent"
     screen: {
         const l = Qt.application.screens;
