@@ -179,7 +179,7 @@ pub fn switcher(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let Some((q, sel)) = a.qs.as_ref() else { return gap(1.0, 1.0) };
-    let list = search::switcher(&a.vault, q, 6);
+    let list = search::switcher(&a.vault, q, 4);
     let input = text_input("Find or make a note", q).id(QS_ID).on_input(Msg::QsText).on_submit(Msg::QsPick(*sel, false)).size(f(19.0)).padding(pad(z(10.0), z(200.0), z(10.0), z(40.0))).style(look::field_style(&p, true));
     let field = stack![input, container(t("⌕", f(15.0), tn.muted)).center_y(Length::Fill).padding(pad(0.0, 0.0, 0.0, z(14.0))), container(t("Quick switcher · Ctrl+O", f(13.0), tn.muted)).align_right(Length::Fill).center_y(Length::Fill).padding(pad(0.0, z(16.0), 0.0, 0.0))];
     let mut rows = Column::new().spacing(z(4.0));

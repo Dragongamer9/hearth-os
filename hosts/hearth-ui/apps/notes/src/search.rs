@@ -178,7 +178,7 @@ pub fn switcher(v: &Vault, q: &str, max: usize) -> Vec<Switch> {
         let dir = n.rel.rsplit_once('/').map(|x| x.0.to_string()).unwrap_or_default();
         if let Some((s, at)) = fuzzy(q, &name) {
             by_name.push((s + 5, Switch { note: i, name, path: dir, at, line: None }));
-        } else if let Some((s, _)) = fuzzy(q, &n.rel) {
+        } else if let Some((s, _)) = fuzzy(q, &n.rel).filter(|_| q.contains('/')) {
             by_name.push((s - 10, Switch { note: i, name, path: dir, at: Vec::new(), line: None }));
         }
     }
@@ -186,7 +186,11 @@ pub fn switcher(v: &Vault, q: &str, max: usize) -> Vec<Switch> {
     let mut out: Vec<Switch> = by_name.into_iter().take(max).map(|x| x.1).collect();
     if q.trim().len() >= 2 && out.len() < max {
         let ql = q.trim().to_lowercase();
-        for (i, n) in v.notes.iter().enumerate() {
+        // Lines that mention it: the daily logs first, then the items' notes, the top files last.
+        let mut order: Vec<usize> = (0..v.notes.len()).collect();
+        order.sort_by_key(|&i| (if v.notes[i].log.is_some() { 0 } else if v.notes[i].rel.contains('/') { 1 } else { 2 }, v.notes[i].rel.clone()));
+        for i in order {
+            let n = &v.notes[i];
             if out.len() >= max {
                 break;
             }

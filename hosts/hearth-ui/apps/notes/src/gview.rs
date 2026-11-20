@@ -98,6 +98,8 @@ pub struct Sky<'a> {
     pub small: bool,
     /// Only the selected note and its links (Local graph, Show only its links).
     pub local: bool,
+    /// A preview tile in Graph modes: no labels.
+    pub tile: bool,
 }
 
 #[derive(Default)]
@@ -313,17 +315,17 @@ impl<'a> Sky<'a> {
                     let x = w * 0.06 + (k + 0.5) / nd_ * w * 0.88 + cam.x * m;
                     let yr = river_y(x, w, h);
                     let c = seen.entry(d).or_insert(0);
-                    let (row_, col_) = (*c / 3, *c % 3);
+                    let (row_, col_) = (*c / 6, *c % 6);
                     *c += 1;
-                    out.push(P { i, x: x - 8.0 + col_ as f32 * 8.0, y: yr - 10.0 - row_ as f32 * 8.0 + (tt + k).sin() * 1.5, r: 3.0, c: Color::from_rgb8(0xff, 0xa8, 0x50), a: 1.0, label: false });
+                    out.push(P { i, x: x - 20.0 + col_ as f32 * 8.0, y: yr - 10.0 - row_ as f32 * 8.0 + (tt + k).sin() * 1.5, r: 3.0, c: Color::from_rgb8(0xff, 0xa8, 0x50), a: 1.0, label: false });
                 }
             }
             _ => {
-                let spread = a.gf("linkDistance", 0.75).clamp(0.2, 1.0) * 0.9 + 0.55;
-                let ax = (w / m).min(1.7);
+                let spread = a.gf("linkDistance", 0.75).clamp(0.2, 1.0) * 0.35 + 0.72;
+                let ax = (w / m).min(1.7) * 0.92;
                 for &i in &shown {
                     let nd = &g.nodes[i];
-                    let s = m * 0.42 * zoom * spread;
+                    let s = m * 0.40 * zoom * spread;
                     let col = if nd.project == "log" { Color::from_rgb8(0xee, 0xec, 0xe8) } else { self.color_of(i) };
                     out.push(P { i, x: cx + nd.x * s * ax, y: cy + nd.y * s, r: self.size_of(i), c: col, a: 1.0, label: if self.small { nd.links >= 3 || Some(i) == sel || nd.project == "log" } else { busy(i) || nd.project == "log" } });
                 }
@@ -348,7 +350,7 @@ fn cloud_of(a: &App, project: &str, cx: f32, cy: f32, rr: f32) -> (f32, f32, f32
     let n = *a.vault.project_counts().get(project).unwrap_or(&0) as f32;
     let dist = if project == "other" { 0.62 } else { 0.86 };
     let ang = deg.to_radians();
-    (cx + ang.cos() * rr * dist * 1.25, cy + ang.sin() * rr * dist * 0.88, rr * (0.07 + (n.sqrt() * 0.03).min(0.22)))
+    (cx + ang.cos() * rr * dist * 1.25, cy + ang.sin() * rr * dist * 0.88, rr * (0.08 + (n.sqrt() * 0.045).min(0.30)))
 }
 
 fn tag_groups(a: &App, shown: &[usize]) -> Vec<(String, Vec<usize>)> {
@@ -836,7 +838,7 @@ impl<'a> Sky<'a> {
                     let nd = &a.graph.nodes[q.i];
                     if nd.project == "log" && a.gb("comets", true) {
                         fr.stroke(&Path::line(Point::new(q.x - 22.0, q.y + 9.0), Point::new(q.x, q.y)), Stroke::default().with_color(Color::from_rgba8(0xff, 0xff, 0xff, 0.35)).with_width(1.4).with_line_cap(LineCap::Round));
-                        if !self.small {
+                        if !self.small && !self.tile {
                             label(fr, &format!("log {}", nd.label), q.x, q.y - f(12.0) * 1.5, f(11.0), Color::from_rgba8(0xe6, 0xe6, 0xea, 0.85), true);
                         }
                     } else if nd.links > 0 && !self.small {
@@ -870,7 +872,7 @@ impl<'a> Sky<'a> {
                         }
                         fr.stroke(&Path::line(focal, Point::new(c.x - dir.0 / dl * rr * 0.12, c.y - dir.1 / dl * rr * 0.09)), Stroke::default().with_color(Color::from_rgba8(0xff, 0xd0, 0xa0, 0.10)).with_width(1.0));
                         // Background star dust in the cloud (drawn, not notes).
-                        let dust = if cpu { 30 } else { 120 };
+                        let dust = if cpu { 60 } else { 260 };
                         for k in 0..dust {
                             let (u, v) = (rnd(hash(pj) + k * 2), rnd(hash(pj) + k * 2 + 1));
                             let ang = v * TAU;
@@ -1082,7 +1084,7 @@ impl<'a> Sky<'a> {
             } else if Some(q.i) == sel {
                 fr.stroke(&Path::circle(at, q.r + 4.0), Stroke::default().with_color(Color::WHITE).with_width(1.6));
             }
-            if q.label && !(self.mode == "blackhole") {
+            if q.label && self.mode != "blackhole" && !self.tile {
                 let z_ = a.g.cam.zoom;
                 let alpha = if fade && z_ < 0.8 { (z_ / 0.8).powi(2) } else { 1.0 };
                 let size = f(12.0) * lsize * if self.small { 0.9 } else { 1.0 };
@@ -1100,12 +1102,17 @@ impl<'a> Sky<'a> {
 
 /// The canvas for a mode at a size.
 pub fn sky<'a>(a: &'a App, mode: &'a str, small: bool, local: bool) -> E<'a, Msg> {
-    canvas::Canvas::new(Sky { a, mode, small, local }).width(Length::Fill).height(Length::Fill).into()
+    canvas::Canvas::new(Sky { a, mode, small, local, tile: false }).width(Length::Fill).height(Length::Fill).into()
+}
+
+/// A mode's preview tile (Graph modes, saved looks): no labels.
+pub fn tile<'a>(a: &'a App, mode: &'a str) -> E<'a, Msg> {
+    canvas::Canvas::new(Sky { a, mode, small: true, local: false, tile: true }).width(Length::Fill).height(Length::Fill).into()
 }
 
 /// Where a note is on screen in the mode in use (for its hover card).
 fn screen_of(a: &App, i: usize, w: f32, h: f32) -> Option<(f32, f32, f32)> {
-    let s = Sky { a, mode: &a.g.mode, small: false, local: a.g.local };
+    let s = Sky { a, mode: &a.g.mode, small: false, local: a.g.local, tile: false };
     s.place(w, h).into_iter().find(|q| q.i == i).map(|q| (q.x, q.y, q.r))
 }
 
@@ -1160,7 +1167,7 @@ pub fn page(a: &App) -> E<'_, Msg> {
         let (w, h) = (size.width, size.height);
         let mut layers: Vec<E<Msg>> = vec![sky(a, &a.g.mode, false, a.g.local)];
         if a.g.mode == "classic" && a.gb("pictures", false) {
-            for q in (Sky { a, mode: &a.g.mode, small: false, local: a.g.local }).place(w, h) {
+            for q in (Sky { a, mode: &a.g.mode, small: false, local: a.g.local, tile: false }).place(w, h) {
                 if let Some(pic) = a.graph.nodes[q.i].picture.as_ref().and_then(|x| a.vault.resolve_file(x, &a.vault.notes[q.i].rel)) {
                     layers.push(pin(container(image(image::Handle::from_path(pic)).width(Length::Fixed(40.0)).height(Length::Fixed(25.0))).style(bx(Color::TRANSPARENT, 3.0, Some((Color::WHITE, 1.0))))).x(q.x - 20.0).y(q.y - 12.5).into());
                 }
@@ -1364,7 +1371,7 @@ fn filters(a: &App) -> Option<E<'_, Msg>> {
             _ => {}
         }
     }
-    Some(container(c).padding(pad(z(16.0), z(20.0), z(16.0), z(20.0))).width(Length::Fixed(z(360.0))).style(bx(Color::from_rgba8(0x17, 0x19, 0x1e, 0.94), 10.0, Some((tn.line, 1.0)))).into())
+    Some(container(c).padding(pad(z(16.0), z(20.0), z(16.0), z(20.0))).width(Length::Fixed(z(400.0))).style(bx(Color::from_rgba8(0x17, 0x19, 0x1e, 0.94), 10.0, Some((tn.line, 1.0)))).into())
 }
 
 fn tag_add(a: &App) -> E<'_, Msg> {
@@ -1486,7 +1493,7 @@ pub fn modes(a: &App) -> E<'_, Msg> {
             } else if in_use {
                 title = title.push(look::chip(&p, "In use", look::Chip::Plain));
             }
-            let card = column![container(sky(a, id, true, false)).height(Length::Fixed(z(190.0))).width(Length::Fill).clip(true), container(column![title, t(desc, f(14.0), tn.muted)].spacing(z(6.0))).padding(pad(z(12.0), z(16.0), z(14.0), z(16.0)))];
+            let card = column![container(tile(a, id)).height(Length::Fixed(z(190.0))).width(Length::Fill).clip(true), container(column![title, t(desc, f(14.0), tn.muted)].spacing(z(6.0))).padding(pad(z(12.0), z(16.0), z(14.0), z(16.0)))];
             let boxed = container(card).width(Length::Fill).style(bx(tn.card, 10.0, None)).clip(true);
             let el = mouse_area(look::ring(&p, focused, 10.0, boxed)).on_enter(Msg::GPickFocus(idx)).on_press(Msg::GMode(id.to_string())).interaction(mouse::Interaction::Pointer);
             r = r.push(container(el).width(Length::FillPortion(1)));
@@ -1589,7 +1596,7 @@ fn customise(a: &App) -> E<'_, Msg> {
     for nm in LOOKS {
         let (mode, _) = look_def(nm);
         let on = current == nm || (current.is_empty() && nm == "Ember" && a.g.mode == "ember");
-        let prev = container(sky(a, mode, true, false)).width(Length::Fill).height(Length::Fixed(z(54.0))).clip(true);
+        let prev = container(tile(a, mode)).width(Length::Fill).height(Length::Fixed(z(54.0))).clip(true);
         let tile = container(column![prev, container(t(nm, f(12.0), tn.text)).center_x(Length::Fill)].spacing(z(4.0))).padding(z(4.0)).width(Length::FillPortion(1)).style(bx(tn.card2, 6.0, Some((if on { p.accent } else { tn.line }, if on { 2.0 } else { 1.0 }))));
         looks = looks.push(click(tile, Some(Msg::LookApply(nm.to_string()))));
     }

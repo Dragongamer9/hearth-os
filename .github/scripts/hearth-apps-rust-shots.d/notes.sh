@@ -22,7 +22,8 @@ STORE_NOTE=hearth/mockups/hearth-store/README.md
 COMPACT="--open-folders hearth,other"
 
 notes_home main
-before=$(find "$HOME" -path "$HOME/hearth-workspace/.git" -prune -o -type f -newer "$NOTES_LOOK" -print 2>/dev/null | sort | md5sum)
+notes_files() { (cd "$HOME" && find . -path ./hearth-workspace/.git -prune -o -type f -print0 | sort -z | xargs -0 md5sum); }
+before=$(notes_files)
 # At rest: the main window, then the graph after its animation (3 s awake here, 30 s on a PC) has stopped.
 run notes-rest-files hearth-notes 20 "$N" --note "$STORE_NOTE" --no-auto-sync
 HEARTH_NOTES_AWAKE_SECS=2 run notes-rest-graph hearth-notes 20 "$N" --page graph --graph-mode galaxy --no-auto-sync
@@ -47,8 +48,9 @@ HEARTH_NOTES_REDUCE_MOTION=1 run notes-12-reduce-motion hearth-notes 0 "$N" --pa
 # Opening it wrote none of your settings (red flag 9) and nothing else of the app's: no hearth-notes.json, no
 # trackers or counts changed, the workspace untouched (git status clean).
 [ -e "$XDG_CONFIG_HOME/nimbus/hearth-notes.json" ] && echo "::error title=notes::opening Hearth Notes wrote hearth-notes.json: $(cat "$XDG_CONFIG_HOME/nimbus/hearth-notes.json" | head -c 300)"
-after=$(find "$HOME" -path "$HOME/hearth-workspace/.git" -prune -o -type f -newer "$NOTES_LOOK" -print 2>/dev/null | sort | md5sum)
-[ "$before" = "$after" ] || echo "::error title=notes::opening Hearth Notes wrote a file: $(find "$HOME" -path "$HOME/hearth-workspace/.git" -prune -o -type f -newer "$NOTES_LOOK" -print | head -5 | tr '\n' ' ')"
+after=$(notes_files)
+[ "$before" = "$after" ] || echo "::error title=notes::opening Hearth Notes wrote a file: $(diff <(echo "$before") <(echo "$after") | grep '^[<>]' | head -5 | tr '\n' ' ')"
+[ "$before" = "$after" ] && echo "::notice title=notes::opening every page wrote nothing: no settings, no counts, the workspace untouched"
 [ -z "$(git -C "$HOME/hearth-workspace" status --porcelain)" ] || echo "::error title=notes::opening Hearth Notes changed the workspace: $(git -C "$HOME/hearth-workspace" status --porcelain | head -5 | tr '\n' ' ')"
 notes_done
 

@@ -1458,7 +1458,7 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::QsText(s) => a.qs = Some((s, 0)),
         Msg::QsPick(i, _new_tab) => {
             let Some((q, _)) = a.qs.take() else { return Task::none() };
-            let list = search::switcher(&a.vault, &q, 6);
+            let list = search::switcher(&a.vault, &q, 4);
             if let Some(s) = list.get(i) {
                 let rel = a.vault.notes[s.note].rel.clone();
                 return a.open_rel(&rel);
@@ -1973,7 +1973,12 @@ fn first_open(a: &mut App) -> Task<Msg> {
         }
         a.run_search();
         if app::arg("--search-open").is_some() {
-            tasks.push(update(a, Msg::SearchOpen(0)));
+            if let Some(h) = a.hits.first() {
+                let rel = a.vault.notes[h.note].rel.clone();
+                tasks.push(a.open_rel_as(&rel, false));
+                a.page = Page::Search;
+                a.mode = Mode::Read;
+            }
             a.match_at = 1;
         }
     }
@@ -2082,7 +2087,7 @@ fn event(a: &mut App, ev: iced::Event) -> Task<Msg> {
                 Key::Named(Named::ArrowUp) | Key::Named(Named::ArrowDown) => {
                     let down = matches!(key.as_ref(), Key::Named(Named::ArrowDown));
                     if let Some((q, sel)) = a.qs.as_mut() {
-                        let n = search::switcher(&a.vault, q, 6).len();
+                        let n = search::switcher(&a.vault, q, 4).len();
                         if n > 0 {
                             *sel = if down { (*sel + 1) % n } else { (*sel + n - 1) % n };
                         }

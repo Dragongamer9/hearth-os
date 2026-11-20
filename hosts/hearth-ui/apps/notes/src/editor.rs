@@ -79,7 +79,7 @@ pub fn crumb<'a>(a: &'a App, right: Option<E<'static, Msg>>) -> E<'a, Msg> {
             r = r.push(t(format!("{part} › "), f(15.0), tn.muted));
         }
     }
-    r = r.push(Space::new().width(Length::Fill));
+    let mut r = row![container(r).width(Length::Fill).clip(true)].align_y(iced::Center);
     if let Some(x) = right {
         r = r.push(x);
     } else {

@@ -191,7 +191,7 @@ fn dashboard(a: &App) -> E<'_, Msg> {
         row![click(t("« Yesterday", f(15.0), accent2(&p)), Some(Msg::DayStep(-1))), t(" | ", f(15.0), tn.faint), click(t("Tomorrow »", f(15.0), if a.day < a.today { accent2(&p) } else { tn.faint }), if a.day < a.today { Some(Msg::DayStep(1)) } else { None })],
     ]
     .spacing(z(4.0));
-    let mut top = Row::new().spacing(z(24.0)).push(container(title).width(Length::Fixed(z(400.0))));
+    let mut top = Row::new().spacing(z(20.0)).push(container(title).width(Length::Shrink));
     if a.prefs.trackers {
         top = top.push(productivity(a)).push(habits(a));
     }
@@ -211,7 +211,7 @@ fn dashboard(a: &App) -> E<'_, Msg> {
         col.width(Length::Fill).into()
     };
     let mut tasks = Column::new().spacing(z(8.0)).push(row![tb("New tasks", f(24.0), accent2(&p)), gap(z(10.0), 1.0), t("show up on the Board", f(13.0), tn.muted)].align_y(iced::Center));
-    for (li, done, txt) in s.tasks.iter().take(6) {
+    for (li, done, txt) in s.tasks.iter().filter(|x| !x.2.starts_with("Waiting:")).take(6) {
         let b = container(if *done { hearth_ui::ui::glyph(hearth_ui::ui::G::Check, p.ink, z(14.0), 3.0) } else { gap(1.0, 1.0) }).center_x(Length::Fixed(z(22.0))).center_y(Length::Fixed(z(22.0))).style(bx(if *done { p.accent } else { Color::TRANSPARENT }, 4.0, if *done { None } else { Some((tn.muted, 1.2)) }));
         tasks = tasks.push(row![click(b, Some(Msg::TaskToggle(*li))), gap(z(14.0), 1.0), t(md::plain(txt), f(16.0), Pal::mix(tn.text, tn.muted, 0.08))].align_y(iced::Center));
     }
@@ -239,14 +239,14 @@ fn productivity(a: &App) -> E<'_, Msg> {
     }
     let bar = iced::widget::stack![look::progress(&p, v as f32 / 10.0, z(16.0), Length::Fill), steps];
     let scale = row![t("0", f(11.0), tn.faint), Space::new().width(Length::Fill), t("5", f(11.0), tn.faint), Space::new().width(Length::Fill), t("10", f(11.0), tn.faint)];
-    container(column![head, container(column![bar, scale].spacing(z(4.0))).padding(pad(z(10.0), z(14.0), z(8.0), z(14.0)))]).width(Length::Fixed(z(360.0))).style(bx(tn.card, 8.0, Some((tn.line, 1.0)))).clip(true).into()
+    container(column![head, container(column![bar, scale].spacing(z(4.0))).padding(pad(z(10.0), z(14.0), z(8.0), z(14.0)))]).width(Length::Fixed(z(330.0))).style(bx(tn.card, 8.0, Some((tn.line, 1.0)))).clip(true).into()
 }
 
 fn habits(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let head = container(row![ts("⚡ Habits", f(15.0), tn.text), Space::new().width(Length::Fill), t("optional", f(12.0), tn.muted)].align_y(iced::Center)).padding(pad(z(8.0), z(14.0), z(8.0), z(14.0))).style(bx(Color::from_rgb8(0x4a, 0x1f, 0x22), 0.0, None));
-    let mut r = Row::new().spacing(z(14.0)).align_y(iced::Center);
+    let mut r = Row::new().spacing(z(10.0)).align_y(iced::Center);
     for h in hearth_notes::trackers::HABITS {
         let on = a.track.habits.get(h).copied().unwrap_or(false);
         r = r.push(t(h, f(15.0), tn.text)).push(look::switch(&p, on, false, Some(Msg::Habit(h.to_string()))));

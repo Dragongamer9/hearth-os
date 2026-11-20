@@ -120,16 +120,18 @@ fn card<'a>(a: &'a App, c: &Card, i: usize) -> E<'a, Msg> {
     let done = c.status == Status::Done;
     let focused = i == a.card_focus && (a.pad || !a.focus.is_empty() || crate::app_flag_focus());
     let b = container(if done { glyph(G::Check, p.ink, z(14.0), 3.0) } else { gap(1.0, 1.0) }).center_x(Length::Fixed(z(22.0))).center_y(Length::Fixed(z(22.0))).style(bx(if done { p.accent } else { Color::TRANSPARENT }, 4.0, if done { None } else { Some((tn.muted, 1.2)) }));
+    // The card's words without its tags (the tag is on its own line below).
+    let words: String = c.text.split_whitespace().filter(|w| !(w.starts_with('#') && w.len() > 1)).collect::<Vec<_>>().join(" ");
     let txt: E<Msg> = if done {
-        stack![t(c.text.clone(), f(16.0), tn.muted), container(ui::hline(tn.muted)).height(Length::Fill).center_y(Length::Fill)].into()
+        stack![t(words.clone(), f(16.0), tn.muted), container(ui::hline(tn.muted)).height(Length::Fill).center_y(Length::Fill)].into()
     } else {
-        t(c.text.clone(), f(16.0), tn.text).into()
+        t(words, f(16.0), tn.text).into()
     };
     let n = &a.vault.notes[c.note];
     let from = if n.rel.ends_with("/README.md") { n.rel.trim_end_matches("/README.md").to_string() } else { n.rel.trim_end_matches(".md").to_string() };
     let tag: E<Msg> = if c.tag.is_empty() { gap(1.0, 1.0) } else { t1(format!("#{}", c.tag), f(13.0), accent2(&p)).into() };
     let meta = row![text(from).size(f(12.5)).font(MONO).color(tn.muted).wrapping(text::Wrapping::None), gap(z(12.0), 1.0), tag].align_y(iced::Center);
-    let inner = column![row![click(b, Some(Msg::CardTick(i))), gap(z(14.0), 1.0), container(txt).width(Length::Fill)].align_y(iced::Top), row![gap(z(36.0), 1.0), meta]].spacing(z(6.0));
+    let inner = column![row![click(b, Some(Msg::CardTick(i))), gap(z(14.0), 1.0), container(txt).width(Length::Fill)].align_y(iced::Top), row![gap(z(36.0), 1.0), container(meta).width(Length::Fill).clip(true)]].spacing(z(6.0));
     let stripe = container(Space::new()).width(Length::Fixed(3.0)).height(Length::Fill).style(bx(project_color(&p, if c.project.is_empty() { "?" } else { &c.project }), 2.0, None));
     let body = container(row![stripe, container(inner).padding(pad(z(14.0), z(16.0), z(14.0), z(14.0))).width(Length::Fill)].height(Length::Shrink)).width(Length::Fill).style(bx(tn.card, 8.0, Some((tn.line, 1.0)))).clip(true);
     let ma = mouse_area(body).on_press(Msg::CardDrag(i)).on_double_click(Msg::CardOpen(i)).interaction(iced::mouse::Interaction::Grab);
