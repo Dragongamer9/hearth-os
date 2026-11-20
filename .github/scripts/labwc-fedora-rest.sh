@@ -147,6 +147,12 @@ fi
 
 # ---- At rest: everything closed, nothing touched
 for t in settings tasks files launcher quick notify; do WAIT=0 ipc "$t" close; done
+# As many apps as the image has (about 300 menu entries; this container has few), after the pictures, so the app
+# folders changing costs here what it costs there (the integration image check of Nov 20: 1.7 s each time).
+mkdir -p "$HOME/.local/share/applications"
+for i in $(seq -w 1 300); do
+  printf '[Desktop Entry]\nType=Application\nName=Rest Fill %s\nGenericName=Filler app\nExec=true\nIcon=applications-other\nCategories=Utility;\n' "$i" >"$HOME/.local/share/applications/hearth-rest-fill-$i.desktop"
+done
 sleep 30
 # The start's own work done first: the game lists Hearth's app answers (Firehold's library, the app menu's Games) can
 # take minutes in CI (stores that can't be reached) and arrive in the middle of the rest. Up to 5 minutes.
