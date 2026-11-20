@@ -20,7 +20,12 @@ through Hearth's typing, KWin's input method on this edition too (hearth-kwin-im
 os-bases/anatase/system_files/usr/libexec/hearth/hearth-kwin-im-launch, which hands over to KDE's plasma-keyboard by
 itself when it's missing, crashes or isn't given the protocol; the default sits in /etc/xdg/kwinrc, a person's own
 Virtual keyboard choice wins and is never written). CI: a long touch's è and a tapped x reached a real GTK app; the
-three fallbacks and the person's own choice in real Plasma sessions (pad-k40 to pad-k44).
+three fallbacks and the person's own choice in real Plasma sessions (pad-k40 to pad-k44). Touch keeps its pop-up
+keyboard (the coordinator, Nov 20): hearth-kwin-im --panel gives KWin an invisible input panel, which KWin shows only
+when a text field is focused by touch (as for plasma-keyboard); hearth-pad --plasma then opens Hearth's keyboard. Not
+for a mouse or keyboard focus, not right after you closed it (3 s), not over a fullscreen game (Y still opens it).
+CI run 44765273652: a touch tap opened it, a mouse click didn't, B closed it and it stayed closed, 0.00 % at rest
+(pad-k34 to pad-k36).
 
 ## Running the controller helper (Pad.qml)
 - [x] hearth-pad --plasma started, read and written one JSON line at a time, started again 3 s after it ends (not after exit 2 / 3) — hosts/hearth-ui/apps/pad/src/link.rs: "if tx.unbounded_send(Ev::Ended(code)).is_err() || code == 2 || code == 3"
