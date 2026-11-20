@@ -38,6 +38,8 @@ dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && expor
 # The XDG data dirs as nimbus-session sets them.
 eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' "${SESSION_FILE:-/usr/bin/nimbus-session}")" 2>/dev/null || true
 
+# The one-time "Pick your browser" question answered, so it isn't over the pictures and Files' timing.
+python3 "$SH/hearth-browser" asked >/dev/null 2>&1 || true
 t0=$(date +%s.%N)
 sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec labwc -C "$1"' sh "$SHARE/desktop/labwc" >"$OUT/labwc.log" 2>&1 &
 LPID=$!
@@ -148,6 +150,15 @@ if command -v strace >/dev/null 2>&1; then
   [ "$ne" -le 2 ] || err "the shell keeps starting programs at rest (${ne} in 2 minutes): $(head -4 "$OUT/execs.txt" | sed 's/^ *//' | cut -c1-120 | tr '\n' '|')"
 fi
 rm -f "$OUT/execs.raw"
+# Diagnostics (never fail the check): which system calls the shell makes at rest (each wake-up), and where its time goes.
+if command -v strace >/dev/null 2>&1; then
+  timeout 60 strace -c -f -qq -p "$qs" -o "$OUT/syscalls.txt" >/dev/null 2>&1 || true
+fi
+if command -v perf >/dev/null 2>&1; then
+  timeout 90 perf record -q -F 499 -g -p "$qs" -o /tmp/perf-$KIND.data -- sleep 60 >/dev/null 2>&1 || true
+  perf report -i /tmp/perf-$KIND.data --stdio --no-children --percent-limit 1.5 --sort dso,sym 2>/dev/null | grep -v '^$' | head -150 >"$OUT/perf.txt" || true
+  rm -f /tmp/perf-$KIND.data
+fi
 
 # ---- Hearth Files: cold (first time) and warm, timed from the command to the first change on screen
 if [ "$KIND" = classic ] && [ -f "${PERF:-tools/perf-measure.py}" ]; then

@@ -319,19 +319,8 @@ PanelWindow {
     readonly property var batt: UPower.displayDevice
     readonly property string battery: batt && batt.isLaptopBattery ? Math.round(batt.percentage * 100) + "%" : ""
     readonly property string initial: (Quickshell.env("USER") || "H").charAt(0).toUpperCase()
-    property string net: ""
-    Timer { interval: 15000; running: cw.shown; repeat: true; triggeredOnStart: true; onTriggered: netProc.running = true }
-    Process {
-        id: netProc
-        command: ["nmcli", "-t", "-f", "TYPE,STATE", "device"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                let k = "";
-                for (const l of text.split("\n")) { const f = l.split(":"); if (f[1] === "connected" && (f[0] === "wifi" || f[0] === "ethernet")) { k = f[0]; break; } }
-                cw.net = k === "wifi" ? "Wi-Fi" : k === "ethernet" ? "Wired" : "Offline";
-            }
-        }
-    }
+    // 1.16: from NetBtWatch.qml, when the network changes (no polling).
+    readonly property string net: NetBtWatch.netKind === "wifi" ? "Wi-Fi" : NetBtWatch.netKind === "ethernet" ? "Wired" : "Offline"
 
     // ================================================================== Home
     readonly property var recentList: F.recent(fh.library, 7, hero.game ? hero.game.id : "")

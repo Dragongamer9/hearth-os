@@ -13,13 +13,30 @@ Scope {
     property var settings: null
     property int kills: -1                    // the kernel's count when last read (-1: not read yet)
     property double tipAt: 0
-    // 1.16 (the rest fixes): every 60 s (was 20 s); the kernel's own count can't be missed, only told a little later.
-    Timer { interval: 60000; running: true; repeat: true; triggeredOnStart: true; onTriggered: if (!probe.running) probe.running = true }
+    // 1.16 (the rest fixes): every 60 s (was 20 s), read straight from /proc (was a shell, grep and head each time);
+    // the kernel's own count can't be missed, only told a little later. If /proc can't be read that way, the old way.
+    Timer { interval: 60000; running: true; repeat: true; triggeredOnStart: true; onTriggered: oo.look() }
+    FileView { id: vmstat; path: "/proc/vmstat"; blockLoading: true; printErrors: false }
+    FileView { id: psi; path: "/proc/pressure/memory"; blockLoading: true; printErrors: false }
+    property bool direct: true
+    function look() {
+        if (direct) {
+            vmstat.reload(); psi.reload();
+            const t = (vmstat.text() || "") + "\n" + (psi.text() || "");
+            if (/^oom_kill \d+/m.test(t)) { if (oo.kills < 0) console.info("Mantel: the memory watch reads /proc directly"); take(t); return; }
+            direct = false;
+            console.info("Mantel: the memory watch can't read /proc directly; it asks grep instead");
+        }
+        if (!probe.running) probe.running = true;
+    }
     Process {
         id: probe
         command: ["sh", "-c", "grep -m1 '^oom_kill ' /proc/vmstat; head -n1 /proc/pressure/memory 2>/dev/null; true"]
-        stdout: StdioCollector {
-            onStreamFinished: {
+        stdout: StdioCollector { onStreamFinished: oo.take(text) }
+    }
+    function take(text) {
+        {
+            {
                 const k = text.match(/^oom_kill (\d+)/m);
                 const p = text.match(/^some avg10=([\d.]+) avg60=([\d.]+)/m);
                 if (k) {

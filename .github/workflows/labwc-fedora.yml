@@ -78,7 +78,7 @@ jobs:
       - name: Install (as the image does)
         run: |
           tar -C / -xzf /tmp/qsa/quickshell.tgz
-          dnf5 -y install python3 procps-ng strace dbus-daemon dbus-tools findutils >/dev/null
+          dnf5 -y install python3 procps-ng strace perf dbus-daemon dbus-tools findutils >/dev/null
           bash os-bases/anatase/labwc-install.sh 2>&1 | grep -E '::|^Error' || true
           bash os-bases/anatase/labwc-install.sh --check
           mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop

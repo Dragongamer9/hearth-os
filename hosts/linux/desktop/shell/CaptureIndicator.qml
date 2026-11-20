@@ -42,7 +42,7 @@ Scope {
         watchChanges: true
         onFileChanged: reload()
         onLoaded: { try { ci.rec = JSON.parse(text()); } catch (e) {} }
-        onLoadFailed: ci.rec = { state: "idle" }
+        onLoadFailed: if (!ci.rec || ci.rec.state !== "idle" || Object.keys(ci.rec).length !== 1) ci.rec = { state: "idle" }   // (1.16: only when it changed)
     }
     FileView {
         id: vncFile
@@ -51,7 +51,7 @@ Scope {
         watchChanges: true
         onFileChanged: reload()
         onLoaded: { try { ci.vnc = JSON.parse(text()); } catch (e) {} }
-        onLoadFailed: ci.vnc = { clients: [] }
+        onLoadFailed: if (!ci.vnc || !Array.isArray(ci.vnc.clients) || ci.vnc.clients.length || Object.keys(ci.vnc).length !== 1) ci.vnc = { clients: [] }
     }
     Timer { interval: 2000; running: true; repeat: true; onTriggered: { recFile.reload(); vncFile.reload(); } }
     // The time while the dot shows.

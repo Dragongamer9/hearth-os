@@ -360,7 +360,8 @@ PanelWindow {
                 height: parent.height
                 width: pillRow.implicitWidth + 28
                 rad: Theme.r(height / 2)
-                Behavior on width { enabled: !Settings.reduceMotion; NumberAnimation { duration: Theme.calm; easing.type: Easing.OutCubic } }
+                // (1.16: not while nobody's there: the clock's minute changed its width, and the animation drew ~20 frames a minute)
+                Behavior on width { enabled: !Settings.reduceMotion && !DeskState.idle; NumberAnimation { duration: Theme.calm; easing.type: Easing.OutCubic } }
                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: isl.calendarRequested() }
                 RowLayout {
                     id: pillRow

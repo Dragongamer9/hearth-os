@@ -127,13 +127,15 @@ def main(argv):
     cmd = argv[1] if len(argv) > 1 else 'status'
     if cmd == 'choice':
         print(choice())
-    elif cmd == 'choose' and len(argv) == 3:
+        return 0
+    if cmd == 'choose' and len(argv) == 3:
         try:
             choose(argv[2])
         except (ValueError, OSError) as e:
-            print('error: %s' % e, file=sys.stderr)
+            print('error: %s' % e)
             return 1
-    elif cmd == 'status':
+        cmd = 'status'
+    if cmd == 'status':
         m = missing()
         print(json.dumps({'choice': choice(), 'available': not m, 'missing': m, 'fails': fails(), 'why': why()}))
     else:
