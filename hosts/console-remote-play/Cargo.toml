@@ -42,7 +42,7 @@ ureq = "2"
 # Screenshots (PNG) and the stand-in's still picture (the same image crate iced uses).
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 gstreamer = { version = "0.24", optional = true }
-gstreamer-webrtc = { version = "0.24", optional = true }
+gstreamer-webrtc = { version = "0.24", optional = true, features = ["v1_22"] }
 gstreamer-sdp = { version = "0.24", optional = true }
 gstreamer-app = { version = "0.24", optional = true }
 gstreamer-video = { version = "0.24", optional = true }
