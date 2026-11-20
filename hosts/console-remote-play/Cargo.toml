@@ -35,6 +35,8 @@ p256 = { version = "0.13", features = ["ecdsa"] }
 sha2 = "0.10"
 base64 = "0.22"
 getrandom = "0.2"
+# hearth-ui sets its own logger (set_boxed_logger needs log's std; its workspace gets it from iced's other users).
+log = { version = "0.4", features = ["std"] }
 # HTTPS to Microsoft (rustls): tokens go in headers, never on a command line.
 ureq = "2"
 # Screenshots (PNG) and the stand-in's still picture (the same image crate iced uses).
