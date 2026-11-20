@@ -137,11 +137,12 @@ over a file that didn't read). Opening the app or a page writes nothing; CI chec
 - Built: every page of the 18 mockups (desktop and the Ally's Game Mode), the sign-in window, the sign-in protocol,
   the console list, Wake, Cloud's library, the stream's session and WebRTC through webrtcbin, the controller packets,
   View + Menu's menu, rumble, the monthly data, Data saver, screenshots, the settings.
-- CI (console-remote-play.yml, run 44759774912): cargo test (19 + 3 tests), every page pictured and checked against its
+- CI (console-remote-play.yml, run 44767047864): cargo test (19 + 3 tests), every page pictured and checked against its
   mockup, CPU at rest 0.00 % on every measured page, 32–45 MB, no settings file written by opening pages, the whole
   sign-in (stand-in page → caught redirect → tokens → keyring) passes, no token in any log or file.
-- Known: drawn with the CPU (tiny-skia), the Ally's trouble page cuts its second line short after coming from
-  Connecting (an iced redraw quirk); drawn with the graphics card, as on the Ally, it's whole (crp-g5-ally-trouble-gpu).
+- The Ally's trouble page is pictured both drawn by the CPU (tiny-skia, as on PCs without a graphics card) and by the
+  graphics card; both match the mockup (run 44767047864). Its second line is a layer of its own across the page: laid
+  out next to the title, iced measured it to the title's width and the CPU renderer clipped it there.
 - Needs a device: a real sign-in, Wake, the picture, sound, delay, the controller and rumble with his Xbox.
 - Needs the owner: the app's own GitHub repository (for the Store's AppImage releases), his okay on the unofficial
   sign-in, and its version number. Nothing is released and it isn't in the Store's list yet.
