@@ -97,6 +97,18 @@ wait_ready() {   # wait_ready PACKAGE SECONDS: the package said it's up after $s
 }
 apps_pids() { for p in dolphin konsole kate "$(basename "$QML")"; do pgrep -x "$p" | head -1; done | tr '\n' ' '; }
 
+# KWin's own fake input (org_kde_kwin_fake_input) for presses and clicks in the pictures: firehold-fakeinput.c, test
+# tooling, built here; KWin offers it only to a program whose desktop file asks for it.
+FAKE=/usr/local/bin/hearth-ci-fakeinput
+FIP=$(ls /usr/share/plasma-wayland-protocols/fake-input.xml 2>/dev/null | head -1)
+if command -v gcc >/dev/null && command -v wayland-scanner >/dev/null && [ -n "$FIP" ]; then
+  wayland-scanner client-header "$FIP" /tmp/fake-input-client-protocol.h && wayland-scanner private-code "$FIP" /tmp/fake-input-protocol.c \
+    && gcc -O1 -I/tmp -o "$FAKE" "$(dirname "$0")/firehold-fakeinput.c" /tmp/fake-input-protocol.c -lwayland-client >"$OUT/fakeinput-build.txt" 2>&1
+  printf '[Desktop Entry]\nType=Application\nName=Hearth CI fake input\nExec=%s\nNoDisplay=true\nX-KDE-Wayland-Interfaces=org_kde_kwin_fake_input\n' "$FAKE" \
+    > /usr/share/applications/org.hearthos.ci-fakeinput.desktop
+fi
+[ -x "$FAKE" ] || echo "fake input not built: gcc $(command -v gcc) scanner $(command -v wayland-scanner) xml $FIP" >> "$OUT/fakeinput-build.txt"
+
 # ---- KWin (KDE's own, unchanged) on a virtual screen, PipeWire for window pictures, Plasma's activities.
 for p in pipewire wireplumber; do command -v $p >/dev/null && { $p >"$OUT/$p.log" 2>&1 & }; done
 cp "$(command -v kwin_wayland)" /tmp/kwin_wayland
@@ -384,8 +396,14 @@ for n in dbo.ListNames(dbus_interface='org.freedesktop.DBus'):
         print('no menu on', n, e)
 print('no menus found for', pid)
 PY
-timeout 15 python3 /tmp/fhp-file-menu.py "$(pgrep -x kate | head -1)" >> "$OUT/controller-hint.txt" 2>&1; sleep 3
+if [ -x "$FAKE" ]; then
+  # A click on File in the bar (Kate's own menus, KDE's global menu), as a person does.
+  "$FAKE" click 124 31 >> "$OUT/controller-hint.txt" 2>&1; echo "fake input click: $?" >> "$OUT/controller-hint.txt"; sleep 3
+else
+  timeout 15 python3 /tmp/fhp-file-menu.py "$(pgrep -x kate | head -1)" >> "$OUT/controller-hint.txt" 2>&1; sleep 3
+fi
 shot fp-11-desk-bar-app-menus 0 1920
+[ -x "$FAKE" ] && "$FAKE" keys 1; sleep 1
 front "patch-notes" false; sleep 1
 echo "kate's menus: $(hearth-firehold-plasma menus "$(pgrep -x kate | head -1)")" >> "$OUT/controller-hint.txt"
 front "Trains 2010" false; sleep 2
