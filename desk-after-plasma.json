@@ -1,0 +1,32 @@
+{
+  "pins": [],
+  "desktopIcons": true,
+  "dnd": false,
+  "icons": {
+    "Projects": [
+      0,
+      0
+    ],
+    "notes.txt": [
+      0,
+      2
+    ],
+    "My Game.desktop": [
+      3,
+      0
+    ],
+    "Witcher Tales.desktop": [
+      0,
+      1
+    ],
+    "Witcher (my copy).desktop": [
+      0,
+      3
+    ]
+  },
+  "autoArrange": false,
+  "sortBy": "name",
+  "muted": [],
+  "recent": [],
+  "pinnedOnce": []
+}

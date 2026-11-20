@@ -1,0 +1,28 @@
+signal time=1795164661.394656 sender=org.freedesktop.DBus -> destination=:1.65 serial=2 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameAcquired
+   string ":1.65"
+signal time=1795164661.394705 sender=org.freedesktop.DBus -> destination=:1.65 serial=4 path=/org/freedesktop/DBus; interface=org.freedesktop.DBus; member=NameLost
+   string ":1.65"
+method call time=1795164661.537961 sender=:1.66 -> destination=org.freedesktop.Notifications serial=2 path=/org/freedesktop/Notifications; interface=org.freedesktop.Notifications; member=Notify
+   string "Hearth"
+   uint32 0
+   string "dialog-warning"
+   string "A menu entry points to a missing program"
+   string "Steam's menu entry points to a program that isn't here (/usr/games/steam), maybe left from Debian.
+The system has a working one. Yours is kept, renamed, if you switch."
+   array [
+      string "use"
+      string "Use the system one"
+      string "later"
+      string "Not now"
+   ]
+   array [
+      dict entry(
+         string "urgency"
+         variant             byte 1
+      )
+      dict entry(
+         string "desktop-entry"
+         variant             string "hearth"
+      )
+   ]
+   int32 0

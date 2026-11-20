@@ -1,0 +1,2 @@
+method return time=1795164603.332622 sender=:1.20 -> destination=:1.30 serial=347 reply_serial=2
+   string "org.kde.plasma.folder"

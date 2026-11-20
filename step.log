@@ -1,0 +1,28 @@
+::notice title=inotify::before: instances 128 watches 129238
+desktop: ['My Game.desktop', 'Projects', 'notes.txt']
+desktop: ['My Game.desktop', 'Projects', 'Witcher Tales.desktop', 'notes.txt']
+::notice title=Mantel's saved places::before: {"My Game.desktop": [3, 0], "Projects": [0, 0], "notes.txt": [0, 2]} | after Add to desktop: {"My Game.desktop": [3, 0], "Projects": [0, 0], "Witcher Tales.desktop": [0, 1], "notes.txt": [0, 2]}
+ok: Mantel: your icons kept their places, the new one took the first free place
+ok: mantel: the icon starts the game through Hearth
+desktop: ['My Game.desktop', 'Projects', 'Witcher (my copy).desktop', 'notes.txt']
+ok: Mantel: after uninstalling, your icons are where they were
+desktop: ['My Game.desktop', 'Projects', 'Witcher Tales.desktop', 'notes.txt']
+::notice title=Firehold::{"unlocked":true,"posture":"desk","mode":"auto","view":"home","tab":"home","page":"tabs","guide":false,"settings":false,"couchUp":false,"games":0,"counts":{"all":0,"installed":0,"steam":0,"gog":0,"epic":0,"winapp":0,"emu":0,"yours":0},"playing":[],"open":[],"notice":"","filter":"all","query":"","pic
+::notice title=Mantel log::
+desktop: ['My Game.desktop', 'Projects', 'notes.txt']
+::notice title=Plasma's desktop::   string "org.kde.plasma.folder"
+desktop: ['My Game.desktop', 'Projects', 'Witcher Tales.desktop', 'notes.txt']
+::warning title=plasma::the new icon didn't show within 8 s; Plasma restarted to show it (see plasma-2a-after-restart)
+ok: plasma: only the new icon appeared ((352, 8, 432, 90))
+ok: plasma: the icon starts the game through Hearth
+ok: Hearth's panel on Plasma: your icons kept their places
+ok: plasma-hearth: the icon starts the game through Hearth
+desktop: ['My Game.desktop', 'Projects', 'Witcher (my copy).desktop', 'notes.txt']
+ok: stale entry found
+::notice title=Menu entry notice::notify-send: /usr/bin/notify-send | running: 
+::notice title=Menu entry notice on D-Bus::1 Notify call(s);       1 member=NameAcquired       1 member=NameLost       1 member=Notify 
+ok: nothing changed without a click
+ok: Use the system one renamed it
+ok: Undo put it back
+::notice title=Pictures:: mantel-1-before: 1920x1080 spread 16.8 | mantel-2-icon-added: 1920x1080 spread 17.0 | mantel-3-after-uninstall: 1920x1080 spread 17.0 | mantel-4-firehold-desk-icon: 1920x1080 spread 18.3 | plasma-1-before: 1920x1080 spread 28.4 | plasma-2-icon-added: 1920x1080 spread 28.4 | plasma-2a-after-restart: 1920x1080 spread 28.6 | plasma-2b-after-open: 1920x1080 spread 28.6 | plasma-3-hearth-panel-icon-added: 1920x1080 spread 17.3 | plasma-4-hearth-panel-after-uninstall: 1920x1080 spread 18.4 | plasma-5-kde-after-uninstall: 1920x1080 spread 28.6 | plasma-6-stale-menu-entry-notice: 1920x1080 spread 20.2 | plasma-6b-stale-notice-in-dashboard: 1920x1080 spread 17.7 |
+::notice title=Checks passed::11
