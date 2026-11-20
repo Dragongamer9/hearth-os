@@ -7,6 +7,9 @@
 name: Sharper graphics (vkBasalt)
 
 on:
+  # A workflow that isn't on main yet can't be dispatched: this branch's pushes run it.
+  push:
+    branches: [feature/vkbasalt]
   workflow_dispatch:
 
 env:
