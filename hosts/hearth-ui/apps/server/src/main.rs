@@ -578,7 +578,7 @@ impl App {
     }
     /// How often the dashboard moves (ms), or None: it stands still unless something is at work. Its AIs move only
     /// while one is working (a core working, a sender lit in the AI team's mesh) or while the AI team's or Ithil's own
-    /// page is open, 8 times a second; Ithil's small brain on her tile alone turns twice a second. Nothing working:
+    /// page is open, 5 times a second; Ithil's small brain on her tile alone turns twice a second. Nothing working:
     /// nothing moves, and the screen is drawn only when its data changes (every 4 s, if it changed).
     pub fn anim_rate(&self) -> Option<u64> {
         if self.still() {
@@ -586,13 +586,13 @@ impl App {
         }
         let d = self.d.as_ref()?;
         if self.overlay == Overlay::Detail && matches!(self.cur_id().as_str(), "ithil" | "team") {
-            return Some(125);
+            return Some(200);
         }
         if self.overlay == Overlay::None || self.overlay == Overlay::Back {
             let busy = arr(d, "cores").iter().any(|c| s(c, "state") == "working")
                 || d.get("team").map(|tm| arr(tm, "senders").iter().any(|x| truthy(x, "active"))).unwrap_or(false);
             if busy {
-                return Some(125);
+                return Some(200);
             }
             if d.get("ithil").map(|v| v.is_object()).unwrap_or(false) {
                 return Some(500);
