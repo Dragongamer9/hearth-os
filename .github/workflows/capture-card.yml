@@ -103,18 +103,24 @@ jobs:
             exit 0
           fi
           ls -la /dev/video42
-          # The feed: a moving test picture as 1080p60 MJPEG into the fake card.
-          sudo gst-launch-1.0 -q videotestsrc is-live=true pattern=ball ! video/x-raw,width=1920,height=1080,framerate=60/1 ! jpegenc quality=85 ! image/jpeg ! v4l2sink device=/dev/video42 sync=true >/tmp/feed.log 2>&1 &
-          feed=$!
+          # The feed: a moving test picture as 1080p60 MJPEG into the fake card (YUYV if this v4l2loopback won't take MJPEG).
+          sudo gst-launch-1.0 -q videotestsrc is-live=true pattern=ball ! video/x-raw,width=1920,height=1080,framerate=60/1 ! jpegenc quality=85 ! image/jpeg,width=1920,height=1080,framerate=60/1 ! v4l2sink device=/dev/video42 sync=true >/tmp/feed.log 2>&1 &
           sleep 3
+          CAPS="image/jpeg,width=1920,height=1080,framerate=60/1 ! jpegdec"; KIND=MJPEG
+          if ! pgrep -f "v4l2sink device=/dev/video42" >/dev/null; then
+            echo "::notice title=loopback feed::MJPEG wasn't taken ($(tail -c 200 /tmp/feed.log | tr '\n' ' ')); feeding YUYV"
+            sudo gst-launch-1.0 -q videotestsrc is-live=true pattern=ball ! video/x-raw,format=YUY2,width=1920,height=1080,framerate=60/1 ! v4l2sink device=/dev/video42 sync=true >/tmp/feed.log 2>&1 &
+            sleep 3
+            CAPS="video/x-raw,format=YUY2,width=1920,height=1080,framerate=60/1"; KIND=YUYV
+          fi
           sudo v4l2-ctl -d /dev/video42 --all 2>/dev/null | grep -E "Card type|Width/Height|Pixel Format|Frames per second" | while read -r l; do echo "::notice title=loopback card::$l"; done
           # The app's own path: v4l2src at 1080p60 MJPEG → jpegdec → RGBA, 600 frames, with its CPU.
           TIMEFORMAT='%R %U %S'
-          { time sudo timeout 30 gst-launch-1.0 -q v4l2src device=/dev/video42 num-buffers=600 ! image/jpeg,width=1920,height=1080,framerate=60/1 ! jpegdec ! videoconvert ! video/x-raw,format=RGBA ! fakesink sync=false >/tmp/read.log 2>&1 ; } 2>/tmp/time.txt
+          { time sudo timeout 30 gst-launch-1.0 -q v4l2src device=/dev/video42 num-buffers=600 ! $CAPS ! videoconvert ! video/x-raw,format=RGBA ! fakesink sync=false >/tmp/read.log 2>&1 ; } 2>/tmp/time.txt
           rc=$?
           read -r real user sys < /tmp/time.txt
           if [ $rc -eq 0 ]; then
-            echo "::notice title=loopback read::600 frames of 1080p MJPEG read through v4l2src and decoded by jpegdec in ${real} s (at 60 a second: 10 s); CPU $(python3 -c "print('%.0f' % (100 * ($user + $sys) / $real))") % of a core (the CPU path; the app uses the graphics card's decoder where there is one)"
+            echo "::notice title=loopback read::600 frames of 1080p $KIND read through v4l2src (as the app reads a card) and made RGBA in ${real} s (at 60 a second: 10 s); CPU $(python3 -c "print('%.0f' % (100 * ($user + $sys) / $real))") % of a core (the CPU path; the app uses the graphics card's decoder where there is one)"
           else
             echo "::warning title=loopback read::v4l2src couldn't read the fake card (exit $rc): $(tail -c 400 /tmp/read.log | tr '\n' ' ')"
             echo "::warning title=loopback feed::$(tail -c 400 /tmp/feed.log | tr '\n' ' ')"

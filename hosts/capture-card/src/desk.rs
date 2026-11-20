@@ -399,7 +399,7 @@ fn settings(a: &App) -> E<'_, Msg> {
 // ------------------------------------------------------------------ 4 Recordings & screenshots
 fn thumb<'a>(a: &'a App, it: &cc::library::Item, w: f32, h: f32) -> E<'a, Msg> {
     let pic: E<'a, Msg> = match a.thumbs.get(&it.path) {
-        Some(hd) => image(hd.clone()).content_fit(iced::ContentFit::Cover).width(Length::Fill).height(Length::Fixed(h)).into(),
+        Some(hd) => image(hd.clone()).content_fit(iced::ContentFit::Fill).width(Length::Fill).height(Length::Fixed(h)).into(),
         None => Space::new().width(Length::Fill).height(Length::Fixed(h)).into(),
     };
     let _ = w;
@@ -449,10 +449,9 @@ fn side<'a>(a: &'a App) -> E<'a, Msg> {
         return container(empty).padding(20.0).width(Length::Fixed(470.0)).style(bx(SIDE, 14.0, None)).into();
     };
     let prev_h = 252.0;
-    let pic: E<'a, Msg> = match (it.kind, a.thumbs.get(&it.path)) {
-        (Kind::Shot, _) => image(image::Handle::from_path(&it.path)).content_fit(iced::ContentFit::Cover).width(Length::Fill).height(Length::Fixed(prev_h)).into(),
-        (_, Some(hd)) => image(hd.clone()).content_fit(iced::ContentFit::Cover).width(Length::Fill).height(Length::Fixed(prev_h)).into(),
-        _ => Space::new().width(Length::Fill).height(Length::Fixed(prev_h)).into(),
+    let pic: E<'a, Msg> = match a.previews.get(&it.path) {
+        Some(hd) => image(hd.clone()).content_fit(iced::ContentFit::Fill).width(Length::Fill).height(Length::Fixed(prev_h)).into(),
+        None => Space::new().width(Length::Fill).height(Length::Fixed(prev_h)).into(),
     };
     let mut layers: Vec<E<'a, Msg>> = vec![pic];
     if it.kind == Kind::Rec {

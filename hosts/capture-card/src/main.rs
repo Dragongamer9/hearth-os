@@ -133,6 +133,7 @@ pub struct App {
     pub tab: Tab,
     pub sel: usize,
     pub thumbs: HashMap<PathBuf, image::Handle>,
+    pub previews: HashMap<PathBuf, image::Handle>,
     pub preview: Option<(PathBuf, image::Handle)>,
     pub store_chip: (String, bool),
     pub note: Option<String>,
@@ -389,6 +390,7 @@ impl App {
             tab,
             sel: 0,
             thumbs: HashMap::new(),
+            previews: HashMap::new(),
             preview: None,
             store_chip: ("Up to date".into(), true),
             note: None,
@@ -1092,11 +1094,33 @@ fn handle(a: &mut App, m: Msg) -> Task<Msg> {
     }
 }
 
+/// A thumbnail cut to the shape it's shown in (width / height), from its middle: nothing is drawn outside its tile.
+fn cut(p: &Path, ratio: f32) -> Option<image::Handle> {
+    let img = ::image::open(p).ok()?.to_rgba8();
+    let (w, h) = img.dimensions();
+    let (nw, nh) = if (w as f32 / h as f32) > ratio { (((h as f32 * ratio).round() as u32).clamp(1, w), h) } else { (w, ((w as f32 / ratio).round() as u32).clamp(1, h)) };
+    let c = ::image::imageops::crop_imm(&img, (w - nw) / 2, (h - nh) / 2, nw, nh).to_image();
+    Some(image::Handle::from_rgba(nw, nh, c.into_raw()))
+}
+
+/// The shapes as the mockups draw them: recordings' tiles 330 × 206, screenshots' 246 × 144, the side panel 430 × 252.
+pub const TILE_REC: f32 = 330.0 / 206.0;
+pub const TILE_SHOT: f32 = 246.0 / 144.0;
+pub const PREVIEW: f32 = 430.0 / 252.0;
+
 fn set_items(a: &mut App, v: Vec<Item>) {
     a.items = v;
     for it in &a.items {
         if let Some(t) = it.info.as_ref().and_then(|x| x.thumb.as_ref()) {
-            a.thumbs.entry(it.path.clone()).or_insert_with(|| image::Handle::from_path(t));
+            if !a.thumbs.contains_key(&it.path) {
+                let r = if it.kind == Kind::Rec { TILE_REC } else { TILE_SHOT };
+                if let Some(h) = cut(t, r) {
+                    a.thumbs.insert(it.path.clone(), h);
+                }
+                if let Some(h) = cut(t, PREVIEW) {
+                    a.previews.insert(it.path.clone(), h);
+                }
+            }
         }
     }
     let n = a.shown().len();
