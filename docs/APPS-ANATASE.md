@@ -94,3 +94,17 @@ Hearth's look isn't COSMIC's (docs/FIREHOLD-RUST.md has the same reasoning).
 
 Still to port, in this order: Capture, Hearth Files (classic), Quick Settings, the on-screen keyboard, Hearth's file
 chooser (an xdg-desktop-portal FileChooser backend), notifications. The Tauri apps above become pure Rust after them.
+
+## Status of the 1.16 fixes (Nov 19, paused for usage)
+
+Done, green in CI (Hearth apps (pure Rust) run 44522638901 on d2a488793): the graphics card renderer (wgpu, tiny-skia as
+the fallback; hearth-pad-host stays on tiny-skia), icons kept between frames, the scroll measurement; one owner per
+controller button on Plasma (hearth-pad PLASMA_PAD_READERS / PLASMA_TAB_APPS); Settings' look no longer flipped by the
+controller's own pointer, and Accessibility › Controller look; the account picture in Settings' corner; Files: This PC
+first with the C: view on, each favourite once, no Gallery or separate Home server; Plasma's launcher swap in place and
+panel transparency; one firewall (firewalld for new installs, ufw kept where it ran); Logitech G15 and
+feature/game-mode-switch merged; Firehold (Rust) archived.
+In progress: the Fedora image check (base-anatase.yml, publish=false, run 44522656094).
+Next: read that run's result (and its smoothness check); then rebase onto the 1.15 release commit when it's given.
+Not pictured in CI (no Plasma there): the launcher's place and panel transparency (checked by
+hosts/linux/test/test_plasma_panel_js.py); try them on a device.
