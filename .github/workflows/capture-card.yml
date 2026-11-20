@@ -92,7 +92,10 @@ jobs:
       - name: A fake V4L2 card (v4l2loopback), fed 1080p60 MJPEG, read back as the app reads a card
         run: |
           sudo apt-get update -qq >/dev/null
-          sudo apt-get install -y -qq v4l2loopback-dkms v4l-utils gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad "linux-modules-extra-$(uname -r)" >/dev/null 2>&1 || true
+          sudo apt-get install -y -qq v4l2loopback-dkms v4l-utils gstreamer1.0-tools gstreamer1.0-plugins-base gstreamer1.0-plugins-good gstreamer1.0-plugins-bad "linux-headers-$(uname -r)" >/dev/null 2>&1 || true
+          sudo apt-get install -y -qq "linux-modules-extra-$(uname -r)" >/dev/null 2>&1 || true
+          # DKMS builds the module for this kernel when its headers are there.
+          sudo dkms autoinstall >/dev/null 2>&1 || true
           if ! sudo modprobe v4l2loopback devices=1 video_nr=42 card_label="Stand-in card" exclusive_caps=1 2>/tmp/mod.txt; then
             echo "::warning title=loopback::v4l2loopback can't be loaded on this runner ($(head -c 300 /tmp/mod.txt | tr '\n' ' ')): the app's pictures use CI's stand-in card instead"
             exit 0
