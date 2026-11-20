@@ -265,8 +265,9 @@ SH
     n=${v%%:*}; pr=${v#*:}
     if [ -n "$pr" ]; then PATH="$STUB:$PATH" hearth-settings-app --page couch-desk-away --layout b --press "$pr" >"$OUT/settings-$n.log" 2>&1 &
     else PATH="$STUB:$PATH" hearth-settings-app --page couch-desk-away --layout b >"$OUT/settings-$n.log" 2>&1 & fi
-    sp=$!; sleep 7
-    shot lw-05-settings-modes-$n 05-settings-modes.png all
+    sp=$!; sleep 3
+    wtype -M logo -k Up -m logo 2>/dev/null; sleep 5      # (maximized, as the mockup draws the page: labwc's Super+↑)
+    shot lw-05-settings-modes-$n 05-settings-modes.png HEADLESS-1
     kill "$sp" 2>/dev/null; sleep 1
   done
   rm -rf "$STUB"
