@@ -200,6 +200,9 @@ if want cc-1-viewer; then
   note delay "$(grep -h "delay" /tmp/cc-1-viewer.log | tail -2 | tr '\n' '|')"
   close_app cc-1-viewer
 fi
+# The graphics card's drawing (Mesa's software Vulkan here), the viewer and a page of thumbnails.
+HEARTH_RENDERER=gpu run cc-1g-viewer-gpu 0 6 --show bar,pill
+HEARTH_RENDERER=gpu run cc-4g-screenshots-gpu 0 6 --page screenshots
 # The bar and the pill hidden: nothing else on screen.
 run cc-1c-viewer-bar-hidden 0 9 --show pill-only
 
@@ -262,6 +265,7 @@ else
 fi
 for f in /tmp/cc-*.log; do grep -h -m3 -E 'panicked|stopped:|GStreamer:' "$f" 2>/dev/null | while read -r l; do echo "::warning title=$(basename "$f" .log)::$(echo "$l" | cut -c1-600)"; done; done
 note pipeline "$(grep -h "pipeline:" /tmp/cc-1-viewer.log 2>/dev/null | head -1)"
+note "gpu drawing" "$(grep -h -E "the picture:|hearth-ui:|wgpu|Selected" /tmp/cc-1g-viewer-gpu.log /tmp/cc-5f-ally-quick-menu-gpu.log 2>/dev/null | head -8 | tr '\n' '|')"
 note "recording pipeline" "$(grep -h "recording: queue" /tmp/cc-1e-recording-file.log 2>/dev/null | head -1)"
 note library "$(python3 -c "import json; d=json.load(open('/home/ci/.cache/hearth/capture-card/library.json')); print(len(d), 'files known;', [v for k, v in d.items() if k.endswith('.png') or '.png|' in k][:1])" 2>&1)"
 kill %1 2>/dev/null

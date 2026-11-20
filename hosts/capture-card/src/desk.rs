@@ -622,7 +622,10 @@ pub fn picture(a: &App) -> E<'_, Msg> {
     // Drawn by the CPU (tiny-skia): painted whole as one canvas, so the bars are always redrawn under the overlays.
     // Drawn by the graphics card (wgpu, what PCs and the Ally use): the image widget in a black box the window's size
     // (wgpu draws every frame whole).
-    if hearth_ui::app::renderer("hearth-capture-card") == "cpu" || !hearth_ui::app::gpu_started() {
+    let cpu = hearth_ui::app::renderer("hearth-capture-card") == "cpu" || !hearth_ui::app::gpu_started();
+    static SAID: std::sync::Once = std::sync::Once::new();
+    SAID.call_once(|| cc::log(if cpu { "the picture: a canvas (drawn by the CPU)" } else { "the picture: the image widget (drawn by the graphics card)" }));
+    if cpu {
         return iced::widget::canvas(Video { frame: a.frame.clone(), fit: a.prefs.fit.clone() }).width(Length::Fill).height(Length::Fill).into();
     }
     let fit = match a.prefs.fit.as_str() {
