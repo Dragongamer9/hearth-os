@@ -34,6 +34,10 @@ PlasmoidItem {
     onOpenAskChanged: {
         if (openAsk === "" || openAsk === openSeen) return;
         const w = openAsk.split(":")[0];
+        // Only a fresh ask: the setting stays in Plasma's file, and a Plasma that starts again must never open a
+        // menu by itself from an old one.
+        const at = Number(openAsk.split(":")[1] || 0) * 1000;
+        if (!(at > 0) || Math.abs(Date.now() - at) > 15000) { openSeen = openAsk; return; }
         // The bar takes them all; the shared Quick settings and notifications widgets their own.
         if (role !== "bar" && !(role === "quick" && w === "quick") && !(role === "notes" && w === "calendar")) return;
         openSeen = openAsk;

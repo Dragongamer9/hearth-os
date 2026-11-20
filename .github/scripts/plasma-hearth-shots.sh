@@ -269,9 +269,9 @@ setlook hearth dark 'dockMode=shown'
 
 # ---- Desktop icons stay where you put them (the owner, Nov 19 23:34; a red flag): notes.txt moved (as a drag does,
 # through Mantel's hearth-desk and desk.json's "icons"), desktop icons off and on, then Plasma restarted. Every saved
-# place must be the same, and notes.txt shown where it was put.
+# place must be the same, and notes.txt shown where it was put; and no menu opens by itself when Plasma starts again.
 HD="python3 /usr/share/nimbus/desktop/shell/hearth-desk"
-$HD place notes.txt 6 3 18 8 > "$OUT/icon-place.json" 2>&1
+$HD place notes.txt 3 5 18 8 > "$OUT/icon-place.json" 2>&1
 # (hearth-plasma-panel sync: what the .path unit runs when desk.json changes; CI has no systemd user session)
 $HD set desktopIcons off >/dev/null 2>&1; hearth-plasma-panel sync >>"$OUT/sync.log" 2>&1; sleep 4
 shot ph-28-icons-off
@@ -287,7 +287,7 @@ shot ph-28b-icon-after-restart
 python3 -c 'import json,sys; print(json.dumps(json.load(open(sys.argv[1])).get("icons", {}), sort_keys=True))' "$HOME/.config/nimbus/desk.json" > "$OUT/icon-places-after.json" 2>&1
 cmp -s "$OUT/icon-places-before.json" "$OUT/icon-places-after.json" \
   || fail icons "desktop icons' saved places changed by themselves (off and on, then a restart): $(cat "$OUT/icon-places-before.json") → $(cat "$OUT/icon-places-after.json")"
-grep -q '"notes.txt": \[6, 3\]' "$OUT/icon-places-after.json" || fail icons "notes.txt isn't where it was put: $(cut -c1-300 "$OUT/icon-places-after.json")"
+grep -q '"notes.txt": \[3, 5\]' "$OUT/icon-places-after.json" || fail icons "notes.txt isn't where it was put: $(cut -c1-300 "$OUT/icon-places-after.json")"
 
 # ---- at rest: plasmashell's processor time over a minute with Hearth's panel up. CI draws with the processor (no
 # graphics card), so a moving wallpaper costs a lot here; then away from the PC (Mantel's wallpapers hold still).
