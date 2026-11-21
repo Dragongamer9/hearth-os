@@ -11,6 +11,11 @@ on:
   push:
     paths: ['hosts/android-tv/**', 'hosts/hearth-link/**', 'hosts/hearth-core/**', 'hosts/linux/desktop/theme/palettes.json', 'tools/tv-ui-check.js', 'tools/tv-pointer/**', '.github/workflows/android-tv.yml']
   workflow_dispatch:
+    inputs:
+      release:
+        description: 'Release this Hearth TV version on its own (tv-v<version>; the owner says when)'
+        type: boolean
+        default: false
 
 concurrency:
   group: android-tv-${{ github.ref }}
@@ -146,25 +151,24 @@ jobs:
           name: hearth-tv-${{ steps.v.outputs.version }}
           path: hosts/android-tv/out/*.apk
           if-no-files-found: error
-      # The release of the Hearth OS this commit is (release.yml makes it from the same push, so it's waited for up to
-      # 30 minutes), else the newest published one. Never a draft: Hearth TV's own update check only sees published
-      # releases (Nov 21: 1.2 went on 1.14's, which was then made a draft, so TVs couldn't find it).
-      - name: Add the APK to this Hearth OS's release
-        if: github.ref == 'refs/heads/main'
+      # Hearth TV has releases of its own, not tied to Hearth OS (the owner, Nov 21: "it should not depend on Hearth OS"):
+      # tv-v<version>, never marked "latest" (Hearth OS's own release stays that). Made on main, or by hand with
+      # release ticked (only on the owner's okay). Hearth TV's update check reads every recent published release, so it
+      # finds it there (Nov 21: 1.2 had gone on 1.14's release, made a draft later, and TVs couldn't find it).
+      - name: Hearth TV's own release (tv-v<version>)
+        if: github.ref == 'refs/heads/main' || inputs.release
         env:
           GH_TOKEN: ${{ github.token }}
           V: ${{ steps.v.outputs.version }}
         run: |
-          os=$(python3 -c 'import json; print(json.load(open("hosts/linux/package.json"))["version"])')
-          tag=""
-          for i in $(seq 1 60); do
-            t=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$os" --jq 'select(.draft == false) | .tag_name' 2>/dev/null || true)
-            [ -n "$t" ] && { tag=$t; break; }
-            sleep 30
-          done
-          [ -n "$tag" ] || tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null || true)
-          [ -n "$tag" ] || { echo "::warning title=No release::the APK stays an artifact"; exit 0; }
-          gh release upload "$tag" "out/hearth-tv-$V.apk" --clobber --repo "$GITHUB_REPOSITORY"
+          tag="tv-v$V"
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" "out/hearth-tv-$V.apk" --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            printf 'Hearth TV %s for the TCL Google TV (docs/HEARTH-TV.md). Settings › About on the TV finds it, or install it with tools/hearth-tv/install.sh.\n' "$V" > /tmp/tv-notes.md
+            gh release create "$tag" "out/hearth-tv-$V.apk" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false \
+              --title "Hearth TV $V" --notes-file /tmp/tv-notes.md
+          fi
           echo "::notice title=Released::hearth-tv-$V.apk on $tag"
       - uses: actions/upload-artifact@v4
         if: failure()

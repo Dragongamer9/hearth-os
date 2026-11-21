@@ -10,8 +10,9 @@ checklist docs/mockups/checklists/hearth-tv.md.
 - Version: `hosts/android-tv/VERSION` (the owner picks it; 1.0 first, 1.1 with Send to TV, 1.2 with the remote's pointer on websites).
 - Built and tested by `.github/workflows/android-tv.yml`: Hearth Link for Android (arm64 and 32-bit arm), unit tests,
   the APK as the `hearth-tv-<version>` artifact, every screen photographed by `tools/tv-ui-check.js` onto the branch
-  `ci/tv-shots-<branch>`. On main the APK goes on the newest release as `hearth-tv-<version>.apk`, where Hearth TV's
-  own updates (Settings › About) find it.
+  `ci/tv-shots-<branch>`. Hearth TV has releases of its own (Nov 21: "it should not depend on Hearth OS"): `tv-v<version>`, never
+  marked latest, made on main or by hand with release ticked (the owner's okay), with `hearth-tv-<version>.apk`, where
+  Hearth TV's own updates (Settings › About) find it.
 
 ## Looks
 
