@@ -389,17 +389,6 @@ sleep 10
 evr=$(( ($(ticks "$qs") - t0r) * 100 / HZ )); mr1=$(rss "$qs")
 note "the app lists made again 8 times (300 entries written again, one renamed): the shell used $(printf "%d.%02d s" $((evr / 100)) $((evr % 100))) of the processor, memory ${mr0} → ${mr1} MB"
 ae1=$(aes)
-# The shell started again three times with entries coming, changing and going meanwhile: it stays up each time.
-for r in 1 2 3; do
-  rm -f "$XDG_RUNTIME_DIR/hearth-shell-up"; churn 20; pkill -x quickshell 2>/dev/null
-  for i in $(seq 60); do [ -e "$XDG_RUNTIME_DIR/hearth-shell-up" ] && break; sleep 1; done
-  sleep 22
-done
-qs=$(pgrep -u "$(id -u)" -x quickshell | head -1)
-segv=$(grep -c 'Segmentation fault\|core dumped' "$OUT/labwc.log" 2>/dev/null); segv=${segv:-0}
-note "the shell started again 3 times while menu entries came, changed and went (and once at the start): crashes ${segv}, running now: $([ -n "$qs" ] && echo yes || echo no), app lists $(aes)"
-[ "$segv" -eq 0 ] || err "the shell crashed ${segv} times ($(grep -m3 'Segmentation fault\|core dumped' "$OUT/labwc.log" | tr '\n' '|' | cut -c1-300)): a list kept an app entry that was gone"
-[ -n "$qs" ] || err "the shell isn't running after starting again with menu entries changing"
 note "the shell's app lists (AppEntries) before the entry changes: ${ae0:-no answer}; after: ${ae1:-no answer}"
 kill -0 "$qs" 2>/dev/null || err "the shell ended while the app entries changed (crashed or restarted)"
 r0=$(echo "$ae0" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read() or "{}").get("rev", -1))' 2>/dev/null); r1=$(echo "$ae1" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read() or "{}").get("rev", -1))' 2>/dev/null)
@@ -488,5 +477,16 @@ PY
 grep -v -E 'Frame rendered|Frame prepared' "$SLOG" | tail -c 200000 >"$OUT/shell.log" 2>/dev/null
 grep -E 'Frame rendered|Frame prepared' "$SLOG" | tail -n 200 >"$OUT/frames-tail.log" 2>/dev/null
 cp "$OUT/rest.md" "$OUT/rest-notes.txt" 2>/dev/null || true     # (the image's looks branch keeps .txt, not .md)
+# Last (its new starts would count as programs started at rest): the shell started again three times with entries coming, changing and going meanwhile: it stays up each time.
+for r in 1 2 3; do
+  rm -f "$XDG_RUNTIME_DIR/hearth-shell-up"; churn 20; pkill -x quickshell 2>/dev/null
+  for i in $(seq 60); do [ -e "$XDG_RUNTIME_DIR/hearth-shell-up" ] && break; sleep 1; done
+  sleep 22
+done
+qs=$(pgrep -u "$(id -u)" -x quickshell | head -1)
+segv=$(grep -c 'Segmentation fault\|core dumped' "$OUT/labwc.log" 2>/dev/null); segv=${segv:-0}
+note "the shell started again 3 times while menu entries came, changed and went (and once at the start): crashes ${segv}, running now: $([ -n "$qs" ] && echo yes || echo no), app lists $(aes)"
+[ "$segv" -eq 0 ] || err "the shell crashed ${segv} times ($(grep -m3 'Segmentation fault\|core dumped' "$OUT/labwc.log" | tr '\n' '|' | cut -c1-300)): a list kept an app entry that was gone"
+[ -n "$qs" ] || err "the shell isn't running after starting again with menu entries changing"
 kill "$LPID" 2>/dev/null; sleep 2; pkill -u "$(id -u)" -x quickshell 2>/dev/null
 exit "$fail"
