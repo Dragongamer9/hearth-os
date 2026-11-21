@@ -118,6 +118,21 @@ jobs:
           else
             echo "::notice title=Signing::no ANDROID_KEYSTORE_* secrets: signed with the debug key"
           fi
+      # Theater's ad blocker (AdBlock.kt): Hearth TV's own list of the ad networks behind scam overlays, plus two free
+      # public lists of ad servers (Peter Lowe's, free to use; anudeepND/blacklist's adservers, MIT). Without them the
+      # APK still has Hearth TV's own list (assets/tv/adblock.txt is it in the repository).
+      - name: Ad and tracker lists
+        run: |
+          out=app/src/main/assets/tv/adblock.txt
+          {
+            grep -v '^#' adblock/curated.txt
+            curl -fsSL --max-time 60 'https://pgl.yoyo.org/adservers/serverlist.php?hostformat=nohtml&showintro=0&mimetype=plaintext' || echo "::warning title=Ad list::Peter Lowe's list couldn't be fetched" >&2
+            curl -fsSL --max-time 60 https://raw.githubusercontent.com/anudeepND/blacklist/master/adservers.txt | awk '!/^#/ {print $2}' || echo "::warning title=Ad list::anudeepND's list couldn't be fetched" >&2
+          } | tr 'A-Z' 'a-z' | tr -d '\r' | grep -E '^[a-z0-9_-]+(\.[a-z0-9_-]+)*\.[a-z]{2,}$' | sort -u > /tmp/ads.txt
+          { echo "# Hearth TV's ad and tracker list, built $(date -u +%F): Hearth TV's own (adblock/curated.txt), Peter Lowe's ad servers (pgl.yoyo.org) and anudeepND/blacklist (MIT)"; cat /tmp/ads.txt; } > "$out"
+          n=$(wc -l < /tmp/ads.txt)
+          [ "$n" -ge 50 ] || { echo "::error title=Ad list::only $n domains"; exit 1; }
+          echo "::notice title=Ad list::$n ad and tracker domains in the APK ($(du -h "$out" | cut -f1))"
       - name: Unit tests
         run: |
           set -o pipefail

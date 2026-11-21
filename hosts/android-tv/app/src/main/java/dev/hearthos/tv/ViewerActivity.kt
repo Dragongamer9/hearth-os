@@ -31,6 +31,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
+import kotlin.concurrent.thread
 import org.json.JSONObject
 
 /**
@@ -64,6 +67,8 @@ class ViewerActivity : Activity() {
     private var pressView: View? = null
     private var pressX = 0f
     private var pressY = 0f
+    /** The page's own site (never blocked), kept here because the ad check runs off the window's thread. */
+    @Volatile private var pageSite = ""
 
     private fun video(js: String) = web.evaluateJavascript(
         "(function(){var v=[].slice.call(document.querySelectorAll('video')).sort(function(a,b){return b.clientWidth*b.clientHeight-a.clientWidth*a.clientHeight})[0];if(!v)return false;$js;return true})()", null)
@@ -91,7 +96,24 @@ class ViewerActivity : Activity() {
         }
         try { CookieManager.getInstance().setAcceptThirdPartyCookies(web, true) } catch (_: Exception) {}
         web.setBackgroundColor(Color.BLACK)
+        // Ads and trackers stopped before they load, and other sites' layers over the video taken away, in every
+        // frame (AdBlock.kt; the owner, Nov 21: QR-code and VPN-deal pop-ups over the videos).
+        thread(isDaemon = true) { AdBlock.load(applicationContext) }
+        pageSite = WebNav.site(Uri.parse(intent.getStringExtra("url") ?: "").host)
+        val everyFrame = try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) { WebViewCompat.addDocumentStartJavaScript(web, AdBlock.CLEAN_JS, setOf("*")); true } else false
+        } catch (e: Exception) { Logs.add("adblock: no page cleaner in every frame (${e.message})"); false }
         web.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                if (request.isForMainFrame) return null
+                return if (AdBlock.blocked(request.url.host, pageSite)) AdBlock.empty() else null
+            }
+            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                pageSite = WebNav.site(Uri.parse(url ?: "").host)
+            }
+            override fun onPageFinished(view: WebView, url: String?) {
+                if (!everyFrame) view.evaluateJavascript(AdBlock.CLEAN_JS, null)
+            }
             override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
                 if (!request.isForMainFrame) return false
                 val url = request.url.toString()
