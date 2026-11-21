@@ -8,6 +8,7 @@ apps or desktops, in your home folder, used instead of the one built into Hearth
     hearth-part ok <id>                              it started fine (it ran a while)
     hearth-part install <id> <version> <url> <sha256> <os> <inner path>
                                                      the Store installing a copy (a .tar.gz of the app's files)
+    hearth-part retry <id>                           try a copy that failed again (its failures forgotten)
     hearth-part remove <id>                          back to the built-in one for good (the copy goes to the Trash)
     hearth-part status [<id>]                        what's installed, as JSON
 
@@ -174,6 +175,19 @@ def ok(pid):
             pass
 
 
+def retry(pid):
+    if not _safe_id(pid):
+        return
+    try:
+        os.unlink(os.path.join(RUN, f"hearth-part-{pid}.failed"))
+    except OSError:
+        pass
+    try:
+        os.unlink(os.path.join(STATE, pid + ".json"))
+    except OSError:
+        pass
+
+
 def run(pid, builtin, args):
     p = chosen(pid, builtin)
     if p == builtin:
@@ -288,6 +302,9 @@ def main(argv):
         return 0
     if cmd == "install" and len(argv) == 8:
         install(*argv[2:8])
+        return 0
+    if cmd == "retry" and len(argv) == 3:
+        retry(argv[2])
         return 0
     if cmd == "remove" and len(argv) == 3:
         remove(argv[2])

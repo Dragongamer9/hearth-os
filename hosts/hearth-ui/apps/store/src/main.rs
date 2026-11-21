@@ -19,6 +19,7 @@ use hearth_store::catalog::{self, Catalog, Entry, Kind};
 use hearth_store::check;
 use hearth_store::files::{self, Check, Installed};
 use hearth_store::net::{self, Cancel, Fail};
+use hearth_store::parts;
 use hearth_store::prefs::{self, Prefs};
 use hearth_store::release::{self, Rel, Seen};
 use hearth_store::{newer, paths};
@@ -159,6 +160,11 @@ pub enum Msg {
     Pictures(String, Vec<(String, String)>),
     Clock,
     Details,
+    /// Quick updates (parts.rs): update, back to the built-in one, try a copy that failed again, and when it's done.
+    PartUpdate(String),
+    PartRemove(String),
+    PartRetry(String),
+    PartDone(String, Result<String, String>),
 }
 
 pub struct App {
@@ -192,6 +198,9 @@ pub struct App {
     pub here: BTreeSet<String>,
     /// Update all is going through the updates one after another.
     pub all: bool,
+    /// Quick updates installed in your home folder (by the entry's id), and the ones being worked on.
+    pub parts: BTreeMap<String, parts::Have>,
+    pub part_busy: BTreeSet<String>,
 }
 
 /// Where an app is: what its buttons say and do.
@@ -277,6 +286,8 @@ impl App {
             pics: BTreeMap::new(),
             here,
             all: false,
+            parts: BTreeMap::new(),
+            part_busy: BTreeSet::new(),
             cat,
         };
         pad::PAD_LOOK.store(a.pad, std::sync::atomic::Ordering::Relaxed);
@@ -352,7 +363,23 @@ impl App {
         }).collect()
     }
 
+    /// A quick update to offer for this entry (made for this Hearth OS, newer than what runs).
+    pub fn part_offer(&self, e: &Entry) -> Option<catalog::Part> {
+        e.part.as_ref().and_then(|p| parts::offer(p, self.parts.get(&e.id), &self.hearth).cloned())
+    }
+
+    /// Every quick update ready (Updates, Update all, the sidebar's count).
+    pub fn part_offers(&self) -> Vec<(Entry, catalog::Part)> {
+        self.cat.apps.iter().filter_map(|e| self.part_offer(e).map(|p| (e.clone(), p))).collect()
+    }
+
     fn read_installed(&mut self) {
+        self.parts.clear();
+        for e in self.cat.apps.iter() {
+            if let Some(h) = e.part.as_ref().and_then(|p| parts::have(&p.id)) {
+                self.parts.insert(e.id.clone(), h);
+            }
+        }
         self.inst.clear();
         for e in self.cat.apps.iter().filter(|e| e.kind == Kind::Install) {
             if let Some(i) = files::read_installed(&e.id) {
@@ -628,6 +655,42 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 }
             }
         }
+        Msg::PartUpdate(id) => {
+            let Some(e) = a.entry(&id).cloned() else { return Task::none() };
+            let Some(pt) = a.part_offer(&e) else { return Task::none() };
+            if a.offline() || !a.part_busy.insert(id.clone()) {
+                return Task::none();
+            }
+            a.say(format!("Updating {} to {}…", e.name, pt.version), false);
+            let done = if pt.id == "mantel" { format!("{} is on {}: your desktop restarts with it in a moment.", e.name, pt.version) } else { format!("{} is on {}: it opens with it next time.", e.name, pt.version) };
+            return Task::perform(net::off(move || parts::install(&pt).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("The update stopped; nothing changed.".into()))));
+        }
+        Msg::PartRemove(id) => {
+            let Some(e) = a.entry(&id).cloned() else { return Task::none() };
+            let Some(pid) = e.part.as_ref().map(|p| p.id.clone()) else { return Task::none() };
+            if !a.part_busy.insert(id.clone()) {
+                return Task::none();
+            }
+            let done = format!("{} is back to the one built into Hearth OS. Its update is in the Trash.", e.name);
+            return Task::perform(net::off(move || parts::remove(&pid).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("Nothing changed.".into()))));
+        }
+        Msg::PartRetry(id) => {
+            let Some(e) = a.entry(&id).cloned() else { return Task::none() };
+            let Some(pid) = e.part.as_ref().map(|p| p.id.clone()) else { return Task::none() };
+            if !a.part_busy.insert(id.clone()) {
+                return Task::none();
+            }
+            let done = format!("{} tries its update again the next time it starts.", e.name);
+            return Task::perform(net::off(move || parts::retry(&pid).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("Nothing changed.".into()))));
+        }
+        Msg::PartDone(id, r) => {
+            a.part_busy.remove(&id);
+            a.read_installed();
+            match r {
+                Ok(s) => a.say(s, false),
+                Err(s) => a.say(s, true),
+            }
+        }
         Msg::Start(id, kind) => {
             if a.prefs.metered {
                 return a.start(&id, kind);
@@ -642,11 +705,18 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             return a.start(&id, kind);
         }
         Msg::UpdateAll => {
-            // Apps that update themselves are opened instead (their own updater); the others one after another.
+            // Quick updates all at once (each is small and goes in its own folder); then apps that update themselves
+            // are opened instead (their own updater), and the others one after another.
+            let offers = a.part_offers();
+            let mut tasks: Vec<Task<Msg>> = offers.iter().map(|(e, _)| update(a, Msg::PartUpdate(e.id.clone()))).collect();
             let ready = a.ready();
             if let Some((e, _, _)) = ready.iter().find(|(e, _, _)| !e.self_updates) {
                 a.all = true;
-                return update(a, Msg::Start(e.id.clone(), JobKind::Update));
+                tasks.push(update(a, Msg::Start(e.id.clone(), JobKind::Update)));
+                return Task::batch(tasks);
+            }
+            if !tasks.is_empty() {
+                return Task::batch(tasks);
             }
             if ready.is_empty() {
                 a.say("Everything is up to date.", false);

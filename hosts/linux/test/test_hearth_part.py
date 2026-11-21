@@ -102,6 +102,16 @@ def test_a_failed_start_the_built_in_one_for_this_sign_in_then_twice_until_the_n
     assert m.chosen("files", builtin) == p2  # a new version starts clean
 
 
+def test_try_again_forgets_the_failures(tmp_path, builtin):
+    m = load(tmp_path)
+    p = put(tmp_path)
+    m.failed("files")
+    m.failed("files")
+    assert m.chosen("files", builtin) == builtin
+    m.retry("files")
+    assert m.chosen("files", builtin) == p
+
+
 def test_ok_clears_one_failure(tmp_path, builtin):
     m = load(tmp_path)
     p = put(tmp_path)

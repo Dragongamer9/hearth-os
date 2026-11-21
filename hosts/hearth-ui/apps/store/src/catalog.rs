@@ -74,6 +74,24 @@ pub struct Entry {
     /// The release the Store offers may be pinned here (the owner's okay): version, link, SHA-256, size. When it's
     /// set, the Store uses it instead of asking GitHub for the newest.
     pub pin: Option<Pin>,
+    /// A quick update for one of Hearth's own apps or Mantel (parts.rs, hearth-part): its newer copy, for the Hearth
+    /// OS it names, with the SHA-256 this signed list vouches for.
+    pub part: Option<Part>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct Part {
+    /// hearth-part's name for it: "mantel" or the program's ("hearth-files-app").
+    pub id: String,
+    pub version: String,
+    /// The Hearth OS it's made for ("1.17": 1.17 and 1.17.x).
+    pub os: String,
+    /// Inside the download: the program, or Mantel's folder.
+    pub path: String,
+    pub url: String,
+    pub sha256: String,
+    pub size: u64,
+    pub notes: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -124,8 +142,17 @@ impl Entry {
             let url = s(p, "url");
             (sha.len() == 64 && sha.chars().all(|c| c.is_ascii_hexdigit()) && url.starts_with("https://")).then(|| Pin { version: s(p, "version"), url, sha256: sha, size: p.get("size").and_then(Value::as_u64).unwrap_or(0) })
         });
+        let part = v.get("part").and_then(|p| {
+            let sha = s(p, "sha256").to_lowercase();
+            let (pid, version, os, path, url) = (s(p, "id"), s(p, "version"), s(p, "os"), s(p, "path"), s(p, "url"));
+            let ok_name = |x: &str| !x.is_empty() && x.len() <= 64 && x.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') && !x.starts_with('.');
+            (sha.len() == 64 && sha.chars().all(|c| c.is_ascii_hexdigit()) && url.starts_with("https://") && ok_name(&pid) && ok_name(&version) && !os.is_empty()
+                && !path.is_empty() && !path.split('/').any(|x| x == ".." || x.is_empty()))
+            .then(|| Part { id: pid, version, os, path, url, sha256: sha, size: p.get("size").and_then(Value::as_u64).unwrap_or(0), notes: list(p, "notes") })
+        });
         let short = s(v, "short");
         Some(Entry {
+            part,
             short: if short.is_empty() { name.clone() } else { short },
             tagline: s(v, "tagline"),
             card: s(v, "card"),

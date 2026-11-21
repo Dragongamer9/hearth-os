@@ -1,0 +1,121 @@
+# A quick update for one of Hearth's own apps or Mantel (docs/HEARTH-STORE.md, "Quick updates"): built from the
+# branch it's run on, put in its own GitHub release (part-<app>-<version>, never marked "latest", so Hearth OS's own
+# releases are untouched), and added to the Store's live list on the `store` branch with its SHA-256. Nothing reaches
+# a device until "Publish the Hearth Store list" is run (the owner's okay), and then only on the Hearth OS it's for.
+# Run by hand only, with the owner's version number (red flag 1).
+name: Quick update for an app
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: 'Which one'
+        required: true
+        type: choice
+        options: [mantel, hearth-files-app, hearth-settings-app, hearth-task-manager, hearth-capture-app, hearth-notes-app,
+                  hearth-g15-app, hearth-family-app, hearth-server-app, hearth-resmon-app, hearth-system-restore,
+                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host]
+      version:
+        description: "Its version (the owner's number, like 1.17.1)"
+        required: true
+      os:
+        description: 'The Hearth OS it is for (like 1.17: fits 1.17 and 1.17.x)'
+        required: true
+      notes:
+        description: "What's new, one line each, separated by |"
+        required: false
+        default: ''
+
+permissions:
+  contents: write     # the part's release and the store branch
+
+concurrency:
+  group: quick-update
+  cancel-in-progress: false
+
+jobs:
+  part:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    env:
+      APP: ${{ inputs.app }}
+      VER: ${{ inputs.version }}
+      OS: ${{ inputs.os }}
+      NOTES: ${{ inputs.notes }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the version and Hearth OS
+        run: |
+          echo "$VER" | grep -Eq '^[0-9]+(\.[0-9]+){1,3}$' || { echo "::error title=Quick update::'$VER' isn't a version like 1.17.1"; exit 1; }
+          echo "$OS" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$' || { echo "::error title=Quick update::'$OS' isn't a Hearth OS version like 1.17"; exit 1; }
+          if gh api "repos/$GITHUB_REPOSITORY/releases/tags/part-$APP-$VER" >/dev/null 2>&1; then
+            echo "::error title=Quick update::$APP $VER is already out; pick another number"; exit 1
+          fi
+      - name: Build it
+        run: |
+          mkdir -p /tmp/part /tmp/out
+          if [ "$APP" = mantel ]; then
+            test -f hosts/linux/desktop/shell/shell.qml
+            cp -a hosts/linux/desktop/shell /tmp/part/shell
+            echo "INNER=shell" >> "$GITHUB_ENV"
+          else
+            base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+            docker pull -q "$base"
+            docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-ui-build.sh 2>&1 | tail -40
+            tar -C /tmp/part -xf /tmp/out/hearth-ui.tar "./$APP"
+            test -x "/tmp/part/$APP"
+            echo "INNER=$APP" >> "$GITHUB_ENV"
+          fi
+          f="$APP-$VER.tar.gz"
+          tar -C /tmp/part -czf "/tmp/$f" --owner=0 --group=0 .
+          echo "FILE=/tmp/$f" >> "$GITHUB_ENV"
+          echo "SHA=$(sha256sum "/tmp/$f" | cut -d' ' -f1)" >> "$GITHUB_ENV"
+          echo "SIZE=$(stat -c %s "/tmp/$f")" >> "$GITHUB_ENV"
+      - name: Its release (never "latest")
+        run: |
+          printf '%s\n' "$NOTES" | tr '|' '\n' | sed '/^ *$/d; s/^ */- /' > /tmp/notes.md
+          printf '\nA quick update through the Hearth Store, for Hearth OS %s. SHA-256: %s\n' "$OS" "$SHA" >> /tmp/notes.md
+          gh release create "part-$APP-$VER" "$FILE" --target "$GITHUB_SHA" --latest=false \
+            --title "$APP $VER (quick update for Hearth OS $OS)" --notes-file /tmp/notes.md
+          echo "URL=https://github.com/$GITHUB_REPOSITORY/releases/download/part-$APP-$VER/$(basename "$FILE")" >> "$GITHUB_ENV"
+      - name: Add it to the Store's live list (the store branch)
+        run: |
+          git fetch --depth=1 origin store
+          git worktree add /tmp/store FETCH_HEAD
+          cd /tmp/store
+          python3 - <<'PY'
+          import json, os
+          p = "catalog.json"
+          d = json.load(open(p, encoding="utf-8"))
+          app, names = os.environ["APP"], {
+              "mantel": "Mantel (Hearth Classic)", "hearth-files-app": "Hearth Files", "hearth-settings-app": "Hearth Settings",
+              "hearth-task-manager": "Task Manager", "hearth-capture-app": "Capture", "hearth-notes-app": "Notes",
+              "hearth-g15-app": "Logitech G15", "hearth-family-app": "Family and friends", "hearth-server-app": "Server mode",
+              "hearth-resmon-app": "Resource monitor", "hearth-system-restore": "System Restore",
+              "hearth-reliability-history": "Reliability history", "hearth-file-chooser": "File chooser",
+              "hearth-pad-host": "Controller"}
+          part = {"id": app, "version": os.environ["VER"], "os": os.environ["OS"], "path": os.environ["INNER"],
+                  "url": os.environ["URL"], "sha256": os.environ["SHA"], "size": int(os.environ["SIZE"]),
+                  "notes": [l.strip() for l in os.environ.get("NOTES", "").split("|") if l.strip()]}
+          # The app's own entry when the list has one (its part, or the program it opens), else a new one.
+          for e in d["apps"]:
+              if (e.get("part") or {}).get("id") == app or e.get("partId") == app or (app != "mantel" and e.get("open") == app):
+                  e["part"] = part
+                  break
+          else:
+              e = {"id": "part-" + app, "name": names.get(app, app), "kind": "builtin", "part": part}
+              if app != "mantel":
+                  e["open"] = app
+              d["apps"].append(e)
+          d["serial"] = int(d.get("serial", 0)) + 1
+          tmp = p + ".tmp"
+          with open(tmp, "w", encoding="utf-8") as f:
+              json.dump(d, f, indent=2, ensure_ascii=False)
+              f.write("\n")
+          os.replace(tmp, p)
+          print(f"::notice title=Quick update::{app} {part['version']} for Hearth OS {part['os']} is in the store branch's list (serial {d['serial']}). Run Publish the Hearth Store list to send it.")
+          PY
+          python3 "$GITHUB_WORKSPACE/tools/store-check.py" catalog.json
+          git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com commit -qam "$APP $VER for Hearth OS $OS"
+          git push origin HEAD:store

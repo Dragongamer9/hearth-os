@@ -36,6 +36,14 @@ def problems(lst, built=None):
         if a.get("id") in seen:
             out.append(f"{who} is in the list twice")
         seen.add(a.get("id"))
+        part = a.get("part")
+        if part is not None:
+            import re
+            ok = isinstance(part, dict) and all(isinstance(part.get(k), str) and part.get(k) for k in ("id", "version", "os", "path", "url", "sha256"))
+            if not ok:
+                out.append(f"{who}'s quick update needs an id, version, os, path, url and sha256")
+            elif not (part["url"].startswith("https://") and re.fullmatch(r"[0-9a-f]{64}", part["sha256"]) and ".." not in part["path"].split("/")):
+                out.append(f"{who}'s quick update needs an https link, a 64-character SHA-256 and a path inside it")
         pin = a.get("pin")
         if pin is not None:
             if not (isinstance(pin, dict) and all(isinstance(pin.get(k), str) and pin.get(k) for k in ("version", "url", "sha256"))):

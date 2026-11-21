@@ -6,12 +6,14 @@
 //! * [`release`]: an app's newest release on GitHub (its AppImage, SHA256SUMS.txt, what's new);
 //! * [`files`]: installing, updating (one swap), checking and repairing, uninstalling (settings kept, or to the Trash);
 //! * [`net`]: downloads through curl, with time limits, that can be cancelled;
+//! * [`parts`]: quick updates for Hearth's own apps and Mantel (hearth-part does the work);
 //! * [`prefs`]: the Store's own settings (settings_file.rs: atomic, .bak, merged, never written by opening it).
 
 pub mod catalog;
 pub mod check;
 pub mod files;
 pub mod net;
+pub mod parts;
 pub mod paths;
 pub mod prefs;
 pub mod release;
