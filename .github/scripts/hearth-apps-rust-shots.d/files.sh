@@ -164,3 +164,20 @@ req['title'] = 'Save As – Text Editor'
 print(json.dumps(hp.run_picker(req, env=dict(os.environ), game=False)))
 PY
 run chooser-4-portal hearth-file-chooser 0 env HEARTH_FILES_RUST_OK=/tmp/files-rust.ok PATH="$BIN:$PATH" python3 /tmp/portal-pick.py
+
+# 1.17 Sort my Downloads (mockups docs/mockups/1.17-sort-downloads, checklist sort-downloads.md): a Downloads like the
+# owner's, the preview (files-30), then sorted with its note and Undo (files-31). In a home of its own, so the other
+# pictures' Downloads stay as they are.
+SH="$(mktemp -d)"
+mkdir -p "$SH/Downloads" "$SH/.config"
+for f in Capture-Card-1.1.0-x86_64.AppImage "AppImage(2).zip" AppImage.zip xbox-clip-1116.mp4 "Screenshot 2026-11-20.png" \
+         "Chevy 2500 console plan.pdf" hearth-os-anatase.iso tidy-downloads.sh wallpaper-train-4k.jpg trailer-music.flac \
+         Hearth-AI-Command-Center-3.14.0.AppImage budget.xlsx notes.txt lutris-installer.run; do
+  printf 'x' > "$SH/Downloads/$f"
+done
+HOME_KEEP="$HOME"; export HOME="$SH"
+run files-30-sort-downloads hearth-files 0 "$BIN/hearth-files-app" "$SH/Downloads" --view details --show sort
+run files-31-sorted hearth-files 0 "$BIN/hearth-files-app" "$SH/Downloads" --view details --show sort,sorted
+[ -e "$SH/Downloads/Installers/Capture-Card-1.1.0-x86_64.AppImage" ] || echo "::error title=Sort my Downloads::the AppImage wasn't moved into Installers"
+[ -e "$SH/Downloads/_to_delete/Old copies/AppImage(2).zip" ] || echo "::error title=Sort my Downloads::the second copy wasn't put in _to_delete"
+export HOME="$HOME_KEEP"

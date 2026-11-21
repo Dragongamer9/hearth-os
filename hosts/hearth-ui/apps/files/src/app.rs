@@ -1837,6 +1837,14 @@ impl App {
             self.touched = true;
             self.cursor = Point::new(382.0, 236.0);
             self.open_menu(false);
+        } else if has("sort") && self.overlay.is_none() {
+            // Sort my Downloads' preview (mockup sort-downloads-1), or with sorted: done, with its note (mockup 2).
+            let then = has("sorted");
+            self.show.clear();
+            tasks.push(crate::sortdl::update(self, crate::sortdl::SMsg::Open));
+            if then {
+                tasks.push(crate::sortdl::update(self, crate::sortdl::SMsg::Go));
+            }
         } else if has("view") && self.overlay.is_none() {
             self.show.clear();
             self.cursor = Point::new(422.0, 116.0);

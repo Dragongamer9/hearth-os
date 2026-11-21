@@ -43,3 +43,39 @@ store_done
 store_home home-c offline-world
 run store-8-offline-empty hearth-store 0 "$BIN/hearth-store-app"
 store_done
+
+# 1.17 quick updates (mockups docs/mockups/1.17-quick-updates, checklist quick-updates.md): this PC on Hearth OS 1.17,
+# Mantel and Hearth Files with quick updates waiting, Logitech G15's update gone back to the built-in one (store-14);
+# Hearth Files' own page once its quick update runs (store-15).
+QW="$SF/quick-world"
+mkdir -p "$QW"
+for f in releases.json fuse; do [ -e "$SF/$f" ] && cp -a "$SF/$f" "$QW/"; done
+echo '{"hearth": "1.17", "edition": "Fedora edition"}' > "$QW/this-pc.json"
+python3 - "$SF/catalog.json" "$QW" <<'PY'
+import json, os, sys
+d = json.load(open(sys.argv[1])); w = sys.argv[2]
+part = lambda pid, v, notes: {"id": pid, "version": v, "os": "1.17", "path": "shell" if pid == "mantel" else pid,
+    "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-%s-%s/%s-%s.tar.gz" % (pid, v, pid, v),
+    "sha256": "0" * 64, "size": 2 * 1024 * 1024 if pid == "mantel" else 9 * 1024 * 1024, "notes": notes}
+for a in d["apps"]:
+    if a["id"] == "mantel":
+        a["part"] = part("mantel", "1.17.1", ["Searching the app menu: a result always opens on the first click.", "The taskbar's clock keeps your 12 or 24 hour pick after a restart."])
+    if a["id"] == "files":
+        a["part"] = part("hearth-files-app", "1.17.2", ["Sort my Downloads remembers where it put things."])
+    if a["id"] == "g15":
+        a["part"] = part("hearth-g15-app", "1.17.1", [])
+json.dump(d, open(os.path.join(w, "catalog.json"), "w"), indent=1)
+for name, have in (("parts-a", {"hearth-g15-app": ("1.17.1", 2)}), ("parts-b", {"hearth-files-app": ("1.17.2", 0)})):
+    for pid, (v, fails) in have.items():
+        os.makedirs(os.path.join(w, name, "parts", pid, v), exist_ok=True)
+        json.dump({"id": pid, "version": v, "os": "1.17", "path": pid, "installed": 1795305600}, open(os.path.join(w, name, "parts", pid, "part.json"), "w"))
+        os.makedirs(os.path.join(w, name, "state"), exist_ok=True)
+        json.dump({"version": v, "fails": fails}, open(os.path.join(w, name, "state", pid + ".json"), "w"))
+PY
+store_home home-a quick-world
+export HEARTH_STORE_CATALOG="$QW/catalog.json" HEARTH_PARTS="$QW/parts-a/parts" HEARTH_PARTS_STATE="$QW/parts-a/state"
+run store-14-quick-updates hearth-store 0 "$BIN/hearth-store-app" --page updates
+export HEARTH_PARTS="$QW/parts-b/parts" HEARTH_PARTS_STATE="$QW/parts-b/state"
+run store-15-quick-app-page hearth-store 0 "$BIN/hearth-store-app" --page built-in --app files
+unset HEARTH_PARTS HEARTH_PARTS_STATE
+store_done
