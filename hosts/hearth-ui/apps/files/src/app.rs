@@ -289,6 +289,8 @@ pub enum Overlay {
     Props(Props),
     /// The Briefcase's dialogs (briefcase.rs keeps what they show).
     Bc,
+    /// Sort my Downloads' preview (sortdl.rs).
+    Sort,
 }
 
 /// A change Hearth Files made that Undo can take back (the last 50, this session).
@@ -299,6 +301,8 @@ pub enum Op {
     Trash { paths: Vec<String> },
     Copy { items: Vec<String> },
     Move { items: Vec<String>, srcs: Vec<String>, dest: String, back: String },
+    /// Sort my Downloads: (from, to) of everything it moved.
+    Sort { moves: Vec<(String, String)> },
 }
 
 #[derive(Debug, Clone)]
@@ -435,6 +439,9 @@ pub enum Msg {
     Right(usize),
     Middle(usize),
     BgPress,
+    /// Sort my Downloads (sortdl.rs), and its note going after a while.
+    Sort(crate::sortdl::SMsg),
+    SortNoteGone(u64),
     /// The pointer moved over the file view (its own coordinates): drag to select.
     BandMove(Point),
     BgRight,
@@ -592,6 +599,12 @@ pub struct App {
     pub band: Option<(Point, Point, HashSet<String>)>,
     /// The last place the pointer was over the file view's empty space (the band starts there).
     pub band_at: Point,
+    /// Sort my Downloads: what it would move (the preview), Show every file, and the note after it sorted
+    /// (moved, folders, left where they were).
+    pub sort_plan: Option<crate::sortdl::Plan>,
+    pub sort_every: bool,
+    pub sorted: Option<(usize, usize, usize)>,
+    pub sorted_seq: u64,
     pub mods: Modifiers,
     pub scroll_y: f32,
     pub area: Cell<(f32, f32)>,
@@ -708,6 +721,10 @@ impl App {
             cursor: Point::new(400.0, 300.0),
             band: None,
             band_at: Point::ORIGIN,
+            sort_plan: None,
+            sort_every: false,
+            sorted: None,
+            sorted_seq: 0,
             mods: Modifiers::default(),
             scroll_y: 0.0,
             area: Cell::new((900.0, 560.0)),
@@ -2365,6 +2382,7 @@ impl App {
             Op::Rename { to, .. } => vec![to.clone()],
             Op::Create { items } | Op::Copy { items } | Op::Move { items, .. } => items.clone(),
             Op::Trash { paths } => paths.clone(),
+            Op::Sort { moves } => moves.iter().map(|m| m.1.clone()).collect(),
         };
         let what = if n.len() == 1 { format!("“{}”", base(&n[0])) } else { format!("{} items", n.len()) };
         match op {
@@ -2373,6 +2391,7 @@ impl App {
             Op::Trash { .. } => format!("Trash {what}"),
             Op::Copy { .. } => format!("Copy {what}"),
             Op::Move { .. } => format!("Move {what}"),
+            Op::Sort { .. } => format!("Sort my Downloads ({what})"),
         }
     }
 
@@ -2406,6 +2425,15 @@ impl App {
                     JobReq { verb: "move".into(), paths: srcs.clone(), dest: dest.clone(), decide: Map::new(), fmt: String::new(), archive: String::new(), here: false, undo: Some((op.clone(), false)) }
                 };
                 self.start_job(req)
+            }
+            Op::Sort { moves } => {
+                // Quick renames inside Downloads, done here; each only when nothing of that name is in its way.
+                let n = crate::sortdl::swap(moves, is_undo);
+                if is_undo { self.redo.push(op.clone()) } else { self.undo.push(op.clone()) }
+                self.sorted = None;
+                let msg = format!("{}{} ({} of {})", if is_undo { "Undone: " } else { "Redone: " }, App::op_name(&op), n, moves.len());
+                let say = self.say(&msg, false);
+                Task::batch(vec![self.reload(), say])
             }
         }
     }
@@ -3160,6 +3188,12 @@ fn update_inner(app: &mut App, m: Msg) -> Task<Msg> {
         Msg::Fx(m) => return crate::extras::update(app, m),
         Msg::Bc(m) => return crate::briefcase::update(app, m),
         Msg::Pad(m) => return crate::pad::update(app, m),
+        Msg::Sort(m) => return crate::sortdl::update(app, m),
+        Msg::SortNoteGone(n) => {
+            if app.sorted_seq == n {
+                app.sorted = None;
+            }
+        }
         Msg::BandMove(p) => {
             app.band_at = p;
             if let Some(b) = app.band.as_mut() {

@@ -18,6 +18,7 @@ pub mod menus;
 pub mod model;
 pub mod osk_view;
 pub mod pad;
+pub mod sortdl;
 pub mod split;
 pub mod terminal;
 pub mod thumbs;
