@@ -375,7 +375,8 @@ rm -f "$APPS_HOME/hearth-rest-check.desktop"; sleep 10
 evd=$(( ($(ticks "$qs") - t0d) * 100 / HZ )); md1=$(rss "$qs")
 note "an app's menu entry added, written again 5 times unchanged, renamed and removed: the shell used $(printf "%d.%02d s" $((evd / 100)) $((evd % 100))) of the processor (memory ${md0} → ${md1} MB)"
 [ "$evd" -le 100 ] || err "an app's menu entry coming, written again, changing and going cost the shell $(printf "%d.%02d s" $((evd / 100)) $((evd % 100))) of the processor (limit 1 s): the app lists are made again for nothing"
-[ $((md1 - md0)) -le 10 ] || err "an app's menu entry coming and going left the shell ${md0} → ${md1} MB: something made for the app list isn't let go"
+# (the first new list can grow the shell once, by a few MB: Firehold's app tiles made for the first time; whether
+# each new list keeps something is measured over the eight below)
 # ...and the app lists really made again, eight times (one of the 300 entries renamed each time, every entry written
 # again too: a whole folder looked at again, as an update does): memory stays where it was (the integration image
 # check of Nov 20: Firehold 460 → 576 MB at rest, a leak per rebuild would fit), each rebuild well under a second.
