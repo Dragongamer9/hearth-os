@@ -189,6 +189,13 @@ for b in hearth-settings hearth-send-logs hearth-browser hearth-filemanager; do 
 for b in hearth-disks hearth-text hearth-time hearth-photos hearth-documents hearth-player hearth-calculator hearth-tools hearth-recorder hearth-link hearth-connect hearth-gamestore; do
   warn "$b is installed with every library it links" "test -x /usr/bin/$b && ! ldd /usr/bin/$b | grep -q 'not found'"
 done
+# 1.17 quick updates (docs/HEARTH-STORE.md): each Rust app's start uses the built-in program unless the Store installed
+# a copy, and the helper that decides works.
+check "hearth-part (Store quick updates) works" "test -x /usr/libexec/hearth/hearth-part && HOME=/nonexistent /usr/libexec/hearth/hearth-part status | grep -qx '{}'"
+for b in hearth-files-app hearth-settings-app hearth-task-manager hearth-store-app; do
+  [ -e "/usr/libexec/hearth/apps/$b" ] || continue
+  check "$b starts the built-in program without a Store copy" "sh -n /usr/bin/$b && grep -q 'exec /usr/libexec/hearth/apps/$b \"\$@\"' /usr/bin/$b && HOME=/nonexistent /usr/libexec/hearth/hearth-part path $b /usr/libexec/hearth/apps/$b | grep -qx /usr/libexec/hearth/apps/$b"
+done
 check "Hearth Settings opens the Hearth app's Settings without Mantel" "grep -q 'nimbus --windowed --settings' /usr/bin/hearth-settings"
 check "Game Mode's file dialogs aren't Mantel's picker here (it needs Quickshell)" "! grep -q 'FileChooser=hearth' /usr/share/xdg-desktop-portal/nimbus-portals.conf"
 

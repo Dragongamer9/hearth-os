@@ -1555,12 +1555,19 @@ chmod 755 /usr/libexec/hearth-app-kinds
 # they weren't built or can't start.
 for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app; do
   [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
-  install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/bin/$b"
+  # 1.17, quick updates through the Hearth Store (docs/HEARTH-STORE.md): the program itself in /usr/libexec/hearth/apps,
+  # and /usr/bin/$b a two-line start that uses the Store's newer copy only when one is installed (hearth-part checks
+  # it's for this Hearth OS and hasn't failed; else, and always without one, the built-in program, exec'd as before).
+  install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/libexec/hearth/apps/$b"
   # (grep -c, not -q: under pipefail an early grep -q could cut ldd off and hide the match)
-  if [ "$(ldd "/usr/bin/$b" 2>&1 | grep -c 'not found' || true)" != 0 ]; then
-    echo "::warning title=Hearth's pure-Rust apps::$b can't start here (missing $(ldd /usr/bin/$b | grep 'not found' | awk '{print $1}' | tr '\n' ' ')), left out"
-    rm -f "/usr/bin/$b"
+  if [ "$(ldd "/usr/libexec/hearth/apps/$b" 2>&1 | grep -c 'not found' || true)" != 0 ]; then
+    echo "::warning title=Hearth's pure-Rust apps::$b can't start here (missing $(ldd /usr/libexec/hearth/apps/$b | grep 'not found' | awk '{print $1}' | tr '\n' ' ')), left out"
+    rm -f "/usr/libexec/hearth/apps/$b"
+    continue
   fi
+  printf '#!/bin/sh\n# Hearth %s: the Hearth Store'"'"'s newer copy when one is installed (hearth-part), else the built-in program.\n[ -n "$HOME" ] && [ -e "$HOME/.local/share/hearth/parts/%s/part.json" ] && [ -x /usr/libexec/hearth/hearth-part ] && exec /usr/libexec/hearth/hearth-part run %s /usr/libexec/hearth/apps/%s "$@"\nexec /usr/libexec/hearth/apps/%s "$@"\n' "$b" "$b" "$b" "$b" "$b" > "/usr/bin/$b"
+  chmod 755 "/usr/bin/$b"
+  sh -n "/usr/bin/$b"
 done
 # Server mode on this edition (docs/SERVER-MODE.md, "On the Fedora edition"): no labwc or Quickshell here, so its
 # dashboard is hearth-server-app, full screen in cage (a kiosk compositor: one app on the screen, nothing else; it ends
@@ -1683,7 +1690,7 @@ fi
 # while it's open. Not built: its entry goes too.
 [ -x /usr/bin/hearth-notes-app ] || rm -f /usr/share/applications/hearth-notes.desktop
 # <<< Hearth Notes
-echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app; do [ -x /usr/bin/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/bin/$b | cut -f1)"; done)"
+echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app; do [ -x /usr/libexec/hearth/apps/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/libexec/hearth/apps/$b | cut -f1)"; done)"
 # The owner (Nov 18): every Hearth app that runs under Plasma is installed and shown in Plasma's menu, and Hearth's own
 # apps are the defaults there (menu and file types); KDE's apps stay installed but never take Hearth's place. So, for
 # Plasma (KDE) only, each kind's list becomes Hearth's own first (in Hearth Classic's order), then the Hearth KDE
