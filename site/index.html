@@ -449,7 +449,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
         <a class="btn line" href="#soundtrack" id="heroPlay">Play the soundtrack</a>
       </div>
       <div class="status">
-        <span><span class="tag now">Out now</span>Hearth OS 1.13</span>
+        <span><span class="tag now">Out now</span>Hearth OS 1.16</span>
         <span><span class="tag next">Next update</span>in development</span>
         <span class="livecount" id="live" role="status" aria-live="polite" hidden><i aria-hidden="true"></i><span id="liveText"></span></span>
       </div>
@@ -460,15 +460,15 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
   <div class="wrap">
     <div class="head">
       <span class="eyebrow">News</span>
-      <h2 class="h2x">An update on Hearth OS 1.15</h2>
-      <p class="lede">We're sorry: 1.15 is taking longer than planned, and 1.14 had to be pulled. Here's what happened and what we're doing about it.</p>
+      <h2 class="h2x">Hearth OS 1.16 is out</h2>
+      <p class="lede">1.15's work and much more, now on Fedora. After 1.14 had to be pulled, every part of 1.16 was checked for a quiet, smooth desktop before it went out.</p>
     </div>
     <div class="cards">
-      <div class="card"><h3>What went wrong with 1.14</h3><p>On some PCs and handhelds the desktop froze or stuttered, and its window manager (KWin) kept crashing. We took 1.14 down and moved everyone back to 1.13, which is stable. If you're on 1.13, you don't need to do anything.</p></div>
-      <div class="card"><h3>What we found</h3><p>A bug in the desktop's menu search that kept the processor busy; KWin put together on Debian without some of its own parts; videos in the browser played without the graphics chip's help on Intel PCs; and switching editions could leave a PC at the boot loader's prompt. These were problems in how Hearth was built, and they're being fixed.</p></div>
-      <div class="card"><h3>Moving to Fedora</h3><p>Hearth OS is moving to Fedora: the new Fedora edition, with KDE Plasma 6.8 as the desktop: newer KDE, newer graphics drivers and better video playback, straight out of the box.</p></div>
-      <div class="card"><h3>Safer updates</h3><p>Every update now goes to a test channel and is tried on real devices before anyone else gets it. A new check stops any update that makes the desktop run hot while it sits idle, and a new test switches editions on a test PC and restarts it to make sure it starts by itself.</p></div>
-      <div class="card"><h3>When is 1.15 out?</h3><p>No date yet. It comes out once it has been tested on real devices. Thanks for your patience.</p></div>
+      <div class="card"><h3>Fedora is Hearth OS</h3><p>The Fedora edition, with KDE Plasma 6.8, is now the only one. Debian PCs keep what they have, and Settings › Updates › Switch edition moves a PC over, with the version before kept in the boot menu.</p></div>
+      <div class="card"><h3>Hearth's look on Plasma</h3><p>Hearth's own panel, menus, Quick settings and notifications on KDE Plasma, Firehold on Plasma for the couch and the desk, and Mantel and Firehold on labwc as choices.</p></div>
+      <div class="card"><h3>New apps</h3><p>The Hearth Store, Hearth Notes, CDs and DVDs in Hearth Player, Server mode on Fedora, and family and friends with Moonlight, only when they turn it on.</p></div>
+      <div class="card"><h3>For your games</h3><p>Desktop icons for the games you install, sharper graphics with vkBasalt, and older Windows games that talk to themselves load far faster.</p></div>
+      <div class="card"><h3>Checked before it shipped</h3><p>Every new page was built from its approved design, and every desktop was measured sitting idle for ten minutes, so it stays quiet and cool.</p></div>
     </div>
   </div>
 </section>
@@ -543,7 +543,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
       <p class="lede">Couch-first gaming, a desktop anyone coming from Windows can use on day one, and a PC that quietly runs your home in the background. Updates come out often, and every one can be undone.</p>
     </div>
     <div class="road">
-      <article><p class="when"><i aria-hidden="true"></i>Coming next</p><h3>Hearth OS 1.15 on Fedora</h3><ul><li>Hearth OS, Fedora edition, with KDE Plasma 6.8 as the desktop</li><li>Hearth's apps in KDE's menu, and Back to Game Mode one click away</li><li>Unlock the system files to install packages, with a safe way back</li><li>Tried on a test channel first</li></ul></article>
+      <article><p class="when"><i aria-hidden="true"></i>Out now</p><h3>Hearth OS 1.16 on Fedora</h3><ul><li>Hearth OS, Fedora edition, with KDE Plasma 6.8</li><li>Hearth's panel and Firehold on Plasma; Mantel and Firehold on labwc as choices</li><li>The Hearth Store, Hearth Notes, and discs in Hearth Player</li><li>Family and friends with Moonlight</li></ul></article>
       <article class="next"><p class="when"><i aria-hidden="true"></i>Next</p><h3>Faster, and on your TV</h3><ul><li>Hearth's own apps made faster</li><li>Hearth TV: a Hearth home screen for your TV, with Send to TV from your PC and phone</li></ul></article>
       <article><p class="when"><i aria-hidden="true"></i>After that</p><h3>More games, less fuss</h3><ul><li>Per-app network limits</li><li>When a game breaks, reset its Windows setup and keep every save</li></ul></article>
     </div>
@@ -586,7 +586,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
       <div class="side">
         <div class="box alt" id="recovery">
           <h3>Recovery USB</h3>
-          <p>Keep one in a drawer. It starts the previous version, reinstalls keeping your files, or copies them off. It's still the Debian one; a Fedora Recovery USB comes with 1.16.</p>
+          <p>Keep one in a drawer. It starts the previous version, reinstalls keeping your files, or copies them off. It's still the Debian one; a Fedora Recovery USB comes with 1.17.</p>
           <p class="v" data-file="hearth-recovery.iso"></p>
           <a class="btn line" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download <small>about 5 GB</small></a>
           <a class="small" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso.sha256">SHA-256 checksum</a>
