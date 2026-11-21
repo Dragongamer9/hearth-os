@@ -170,6 +170,8 @@ class RustRetired(unittest.TestCase):
         s = SESSION.read_text()
         fn = re.search(r'^firehold_plasma_choice\(\) \{.*?^\}', s, re.S | re.M).group(0)
         fr = re.search(r'^firehold_rust_saved\(\) \{.*?^\}', s, re.S | re.M).group(0)
+        lw = re.search(r'^fedora_labwc_choice\(\) \{.*?^\}', s, re.S | re.M).group(0)
+        lp = re.search(r'^mantel_desktop_picked\(\) \{.*?\}$', s, re.M).group(0)
         run = s[s.index('  fh_pick=$(firehold_plasma_choice)'):s.index('  if [ "$fh_pick" = firehold ] && have hearth-firehold-plasma')]
         with tempfile.TemporaryDirectory() as d:
             cfg = os.path.join(d, '.config')
@@ -183,7 +185,7 @@ class RustRetired(unittest.TestCase):
             os.makedirs(bin_)
             pathlib.Path(bin_, 'notify-send').write_text('#!/bin/sh\necho "$@" >> "%s/notices"\n' % d)
             os.chmod(os.path.join(bin_, 'notify-send'), 0o755)
-            script = '\n'.join([fn, fr, 'log() { echo "$*" >> "%s/log"; }' % d, 'have() { command -v "$1" >/dev/null 2>&1; }',
+            script = '\n'.join([fn, fr, lw, lp, 'log() { echo "$*" >> "%s/log"; }' % d, 'have() { command -v "$1" >/dev/null 2>&1; }',
                                  'DESK_STATE="%s/state"' % d, run, 'wait', 'echo "PICK=$fh_pick"'])
             env = {'SESSION_CONF': conf, 'HOME': d, 'XDG_CONFIG_HOME': cfg, 'PATH': bin_ + ':' + os.environ['PATH']}
             out = subprocess.run(['sh', '-c', script.replace('sleep 25; ', '')], env=env, capture_output=True, text=True, timeout=20).stdout
@@ -204,6 +206,27 @@ class RustRetired(unittest.TestCase):
         self.assertEqual(self.run_plasma_choice('', None)[0], 'PICK=plasma')
         self.assertEqual(self.run_plasma_choice('', '{"desktop": "plasma"}')[0], 'PICK=plasma')
         self.assertEqual(self.run_plasma_choice('HEARTH_PLASMA_DESKTOP=firehold\n', None)[0], 'PICK=firehold')
+
+    def test_a_labwc_pick_wins_over_the_rust_pick(self):
+        # The owner (Nov 21): "i picked Hearth mantel classic and its putting me in firehold". When Mantel or Firehold
+        # on labwc is picked and Plasma opens instead (labwc didn't come up), it's plain KDE Plasma, not Firehold.
+        for line in ('HEARTH_PLASMA_DESKTOP=classic\n', 'HEARTH_PLASMA_DESKTOP=classicfirehold\n'):
+            first, _, notices, after = self.run_plasma_choice(line, '{"desktop": "firehold"}\n')
+            self.assertEqual(first, 'PICK=plasma', line)
+            self.assertEqual(notices, '', line)
+            self.assertEqual(after, '{"desktop": "firehold"}\n', 'the session never rewrites the pick')
+        with tempfile.TemporaryDirectory() as t:
+            env = dict(os.environ)
+            try:
+                os.environ.update({'HOME': t, 'XDG_CONFIG_HOME': os.path.join(t, '.config')})
+                h = load()
+                pathlib.Path(h.rust_pick_path()).parent.mkdir(parents=True)
+                pathlib.Path(h.rust_pick_path()).write_text('{"desktop": "firehold"}')
+                pathlib.Path(h.session_conf()).write_text('HEARTH_PLASMA_DESKTOP=classic\n')
+                self.assertEqual(h.effective_choice(), 'plasma')
+            finally:
+                os.environ.clear()
+                os.environ.update(env)
 
     def test_the_next_pick_replaces_the_rust_pick(self):
         with tempfile.TemporaryDirectory() as t:

@@ -11,6 +11,7 @@ import sys
 sys.dont_write_bytecode = True
 import importlib.machinery
 import importlib.util
+import json
 import os
 import pathlib
 import re
@@ -183,6 +184,25 @@ class Picker(unittest.TestCase):
         before = self.conf.read_text()
         self.p.choose('plasma')
         self.assertEqual(self.conf.read_text(), before)
+
+    def test_a_labwc_pick_replaces_the_firehold_rust_pick(self):
+        rust = pathlib.Path(self.p.rust_pick_path())
+        rust.parent.mkdir(parents=True)
+        rust.write_text('{"desktop": "firehold", "mine": 1}')
+        self.p.choose('classic')
+        self.assertEqual(json.loads(rust.read_text()), {'desktop': 'plasma', 'mine': 1}, 'merged: only its key changed')
+        self.assertEqual(self.p.choice(), 'classic')
+
+    def test_mantel_classic_is_never_firehold(self):
+        # The owner (Nov 21): Mantel (Hearth Classic) picked, Firehold came up: an old "Firehold unlocked" in
+        # firehold.json (Debian's Mantel) turned it on. On the Fedora edition Firehold is only "Firehold on labwc".
+        qml = (ROOT / 'hosts/linux/desktop/shell/Firehold.qml').read_text()
+        line = [l for l in qml.splitlines() if 'readonly property bool unlocked:' in l][0]
+        self.assertIn('sessionPicked || (!fedoraLabwc && (', line)
+        self.assertIn('Quickshell.env("HEARTH_FEDORA_LABWC") === "1"', qml)
+        s = SESSION.read_text()
+        self.assertIn('export HEARTH_WM=labwc HEARTH_FEDORA_LABWC=1', s)
+        self.assertIn('[ "$1" = firehold ] && export HEARTH_FIREHOLD_SESSION=1', s)
 
     def test_other_readers_never_take_these_for_firehold_on_plasma(self):
         fhp = load(FHP, 'hearth_firehold_plasma_t')

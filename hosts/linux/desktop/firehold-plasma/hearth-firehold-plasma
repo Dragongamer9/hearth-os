@@ -205,7 +205,7 @@ def start_posture(s=None):
     return 'couch' if read_small(state_path()) == 'couch' else 'desk'
 
 
-def choice():
+def raw_choice():
     v = ''
     try:
         with open(session_conf(), encoding='utf-8', errors='replace') as f:
@@ -215,7 +215,11 @@ def choice():
                     v = m.group(1)
     except OSError:
         pass
-    return 'firehold' if v == 'firehold' else 'plasma'
+    return v
+
+
+def choice():
+    return 'firehold' if raw_choice() == 'firehold' else 'plasma'
 
 
 def rust_pick_path():
@@ -234,7 +238,7 @@ def rust_picked():
 def effective_choice():
     """What Desktop Mode opens: your pick, or Firehold on Plasma for a device that had picked the archived Firehold
     (Rust) and hasn't picked again (nimbus-session's firehold_rust_saved, the same rule)."""
-    return 'firehold' if choice() == 'firehold' or rust_picked() else 'plasma'
+    return 'firehold' if choice() == 'firehold' or (rust_picked() and raw_choice() not in ('classic', 'classicfirehold')) else 'plasma'
 
 
 def choose(v):

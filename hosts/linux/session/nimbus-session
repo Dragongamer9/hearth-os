@@ -497,8 +497,10 @@ run_plasma() {
   fh_shell=""
   if have systemctl; then systemctl --user unset-environment PLASMA_DEFAULT_SHELL HEARTH_FIREHOLD_PLASMA >/dev/null 2>&1 || true; fi
   fh_pick=$(firehold_plasma_choice)
-  if [ "$fh_pick" != firehold ] && firehold_rust_saved; then
+  if [ "$fh_pick" != firehold ] && ! mantel_desktop_picked && firehold_rust_saved; then
     # "Firehold (Rust, test)" was archived (Nov 19): a device that had picked it gets Firehold on Plasma instead.
+    # Not when Mantel (Hearth Classic) or its Firehold was picked since (the owner, Nov 21: "i picked Hearth
+    # mantel classic and its putting me in firehold"): that pick wins, also when it didn't come up and Plasma opens.
     # Its saved pick is read, never rewritten here; picking again (Settings › Your desktop, or Plasma's menu) replaces
     # it. Said once.
     fh_pick=firehold
@@ -553,6 +555,8 @@ run_plasma() {
 # archive/hosts/firehold-shell): its pick (~/.config/nimbus/firehold-rust.json {"desktop": "firehold"}, written only by
 # the person's pick) is read here so that device opens Firehold on Plasma instead of a desktop that's gone (run_plasma).
 # Read only; hearth-firehold-plasma's next pick sets it back to plasma.
+# Mantel (Hearth Classic) or Firehold on labwc is the saved Desktop Mode choice (session.conf). Read only.
+mantel_desktop_picked() { [ "$(fedora_labwc_choice)" != none ]; }
 firehold_rust_saved() {
   grep -qs '"desktop"[[:space:]]*:[[:space:]]*"firehold"' "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/firehold-rust.json"
 }

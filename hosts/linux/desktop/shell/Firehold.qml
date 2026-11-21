@@ -67,7 +67,11 @@ Scope {
     // says so (HEARTH_FIREHOLD_SESSION=1) and Firehold is on for that sign-in only. firehold.json is never written for it.
     readonly property bool sessionPicked: Quickshell.env("HEARTH_FIREHOLD_SESSION") === "1"
     // <<< Firehold on labwc
-    readonly property bool unlocked: sessionPicked || (cfg.firehold && typeof cfg.firehold === "object" && cfg.firehold.unlocked === true) || cfg["firehold.unlocked"] === true
+    // On the Fedora edition, Mantel (Hearth Classic) picked in Settings › Your desktop is plain Mantel: Firehold there is
+    // only "Firehold on labwc" (the owner, Nov 21: "i picked Hearth mantel classic and its putting me in firehold"). An
+    // older "Firehold unlocked" in firehold.json (Debian's Mantel) is kept as it is, never read here, never rewritten.
+    readonly property bool fedoraLabwc: Quickshell.env("HEARTH_FEDORA_LABWC") === "1"
+    readonly property bool unlocked: sessionPicked || (!fedoraLabwc && ((cfg.firehold && typeof cfg.firehold === "object" && cfg.firehold.unlocked === true) || cfg["firehold.unlocked"] === true))
     readonly property string mode: ["auto", "couch", "desk"].indexOf(cfg.posture) >= 0 ? cfg.posture : "auto"
     readonly property var perScreen: cfg.perScreen && typeof cfg.perScreen === "object" ? cfg.perScreen : ({})
     // (Firehold on labwc starts in the Couch unless you chose otherwise in Settings › Couch and Desk.)

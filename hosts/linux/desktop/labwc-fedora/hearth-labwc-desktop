@@ -109,8 +109,24 @@ def why():
         return ''
 
 
+def rust_pick_path():
+    return os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'nimbus', 'firehold-rust.json')
+
+
+def rust_picked():
+    try:
+        with open(rust_pick_path(), encoding='utf-8') as f:
+            return json.load(f).get('desktop') == 'firehold'
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def choose(v):
     import hearth_settings_io as io
+    if v in VALUES and rust_picked():
+        # Your pick replaces the archived Firehold (Rust, test)'s, as hearth-firehold-plasma's does (only on a pick, its
+        # one key, merged: red flag 9), so it can never come back as Firehold on Plasma.
+        io.merge_json(rust_pick_path(), {'desktop': 'plasma'})
     if v in VALUES:
         reset_fails()
         if raw() == VALUES[v]:
