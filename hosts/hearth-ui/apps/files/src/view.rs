@@ -499,6 +499,24 @@ fn main_area(a: &App) -> El<'_> {
 }
 
 /// The scrollable every long view sits in (its offset is kept for drawing only the rows on screen).
+/// The file view's empty space: a press clears the picks and starts drag to select; the band is drawn over the files.
+fn bg_area<'a>(a: &'a App, content: El<'a>) -> El<'a> {
+    let inner: El = match a.band_rect() {
+        Some(r) => stack![
+            content,
+            pin(container(Space::new().width(Length::Fixed(r.width.max(1.0))).height(Length::Fixed(r.height.max(1.0)))).style({
+                let c = a.p.accent;
+                move |_: &Theme| container::Style { background: Some(Background::Color(Pal::a(c, 0.18))), border: Border { color: Pal::a(c, 0.8), width: 1.0, radius: 2.0.into() }, ..container::Style::default() }
+            }))
+            .x(r.x)
+            .y(r.y)
+        ]
+        .into(),
+        None => content,
+    };
+    mouse_area(inner).on_press(Msg::BgPress).on_right_press(Msg::BgRight).on_move(Msg::BandMove).into()
+}
+
 fn scroller<'a>(inner: El<'a>) -> El<'a> {
     scrollable(inner).id(SCROLL_ID).on_scroll(|v| Msg::Scrolled(v.absolute_offset().y)).height(Length::Fill).width(Length::Fill).into()
 }
@@ -673,8 +691,7 @@ fn details_list(a: &App) -> El<'_> {
         if last < total {
             col = col.push(gap(1.0, (total - last) as f32 * rh));
         }
-        let bg = mouse_area(container(col).width(Length::Fill)).on_press(Msg::BgPress).on_right_press(Msg::BgRight);
-        scroller(bg.into())
+        scroller(bg_area(a, container(col).width(Length::Fill).into()))
     });
     column![header, body].into()
 }
@@ -708,7 +725,7 @@ fn compact_list(a: &App) -> El<'_> {
         }
         a.cols.set(1);
         let _ = p;
-        scrollable(mouse_area(cols).on_press(Msg::BgPress).on_right_press(Msg::BgRight))
+        scrollable(bg_area(a, cols.into()))
             .direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::new()))
             .width(Length::Fill)
             .height(Length::Fill)
@@ -750,8 +767,7 @@ fn icon_grid(a: &App, v: View) -> El<'_> {
             col = col.push(gap(1.0, (nrows - last) as f32 * rh));
         }
         let _ = p;
-        let bg = mouse_area(container(col).width(Length::Fill)).on_press(Msg::BgPress).on_right_press(Msg::BgRight);
-        scroller(bg.into())
+        scroller(bg_area(a, container(col).width(Length::Fill).into()))
     })
     .into()
 }
