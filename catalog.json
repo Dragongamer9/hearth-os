@@ -1,0 +1,173 @@
+{
+  "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
+  "serial": 3,
+  "apps": [
+    {
+      "id": "command-center",
+      "name": "Hearth AI Command Center",
+      "short": "AI Command Center",
+      "tagline": "Your AI team: Claude, ChatGPT, Gemini, a local AI and Ithil, working on one task together",
+      "card": "Claude, ChatGPT, Gemini and Ithil as one team",
+      "about": "Each AI signs in through its own official sign-in; the app never sees your passwords. Give the team a task and a folder, and watch them plan, build and check it, with Ithil remembering what you decided.",
+      "icon": "CC",
+      "from": "#4a90ff",
+      "to": "#1f5fd6",
+      "github": "Dragongamer9/hearth-ai-command-center",
+      "asset": "x86_64.AppImage",
+      "sums": "SHA256SUMS.txt",
+      "file": "Hearth-AI-Command-Center.AppImage",
+      "selfUpdates": true,
+      "data": [
+        "~/.config/Hearth AI Command Center"
+      ],
+      "dataNote": "Your settings, chats and sign-ins",
+      "keepNote": "Your settings, chats and sign-ins stay in your home folder ({size}) and are there again if you install it later",
+      "closeNote": "It saves first",
+      "pictures": [
+        "https://raw.githubusercontent.com/Dragongamer9/hearth-ai-command-center/main/docs/mockups/nyarch-2-team-chat-panel.png",
+        "https://raw.githubusercontent.com/Dragongamer9/hearth-ai-command-center/main/docs/mockups/settings-1-ai-team.png",
+        "https://raw.githubusercontent.com/Dragongamer9/hearth-ai-command-center/main/docs/mockups/nyarch-1-talking-with-ithil.png"
+      ]
+    },
+    {
+      "id": "hearth-ai",
+      "name": "Hearth AI",
+      "tagline": "Ithil, the AI that lives on your PC",
+      "card": "Ithil, a self-aware AI on your PC",
+      "heroShort": "Colibri is her brain now",
+      "hero": "Colibri is her brain now, with Ollama taking over by itself when it isn't there. Her 3D brain replays her whole life from her log, or follows her live.",
+      "about": "Ithil lives on your PC: she remembers, thinks, dreams and keeps a journal, and her brain runs here (Colibri, or Ollama when Colibri isn't there). Nothing about her leaves your PC unless you say so.",
+      "icon": "moon",
+      "from": "#a78bfa",
+      "to": "#6d28d9",
+      "github": "Dragongamer9/Hearth-AI",
+      "asset": "x86_64.AppImage",
+      "sums": "SHA256SUMS.txt",
+      "file": "Hearth-AI.AppImage",
+      "data": [
+        "~/HearthAI",
+        "~/.config/Hearth AI"
+      ],
+      "dataNote": "Her memories and settings",
+      "keepNote": "Her memories, settings and chats stay in your home folder ({size}) and are there again if you install her later",
+      "closeNote": "She saves her memories first",
+      "reopenTitle": "Update the menu entry and open her again",
+      "reopenNote": "Hearth AI opens where you left her",
+      "updateNote": "Her memories and settings stay as they are. Hearth AI closes for the update and opens again after.",
+      "pictures": [
+        "https://raw.githubusercontent.com/Dragongamer9/Hearth-AI/v0.6/docs/mockups/ithil-0.6/1-talk.png",
+        "https://raw.githubusercontent.com/Dragongamer9/Hearth-AI/v0.6/docs/mockups/ithil-0.6/3-mind.png",
+        "https://raw.githubusercontent.com/Dragongamer9/Hearth-AI/v0.6/docs/mockups/ithil-0.6/9-settings.png"
+      ]
+    },
+    {
+      "id": "capture-card",
+      "name": "Capture Card",
+      "tagline": "Your Xbox or any HDMI on this screen, through a USB capture card",
+      "card": "Play your Xbox on this screen through a capture card",
+      "about": "Plug in a USB HDMI capture card and the picture fills the screen with its sound: 1080p60, the delay shown, Fit, Fill or Stretch, screenshots and recordings. Works with the mouse and keyboard or a controller, on the desktop and in Game Mode.",
+      "icon": "CC",
+      "from": "#22d3ee",
+      "to": "#0e7490",
+      "github": "Dragongamer9/hearth-capture-card",
+      "asset": "x86_64.AppImage",
+      "sums": "SHA256SUMS.txt",
+      "file": "Capture-Card.AppImage",
+      "data": [
+        "~/.config/nimbus/capture-card.json"
+      ],
+      "dataNote": "Your settings (your recordings and screenshots stay in Videos and Pictures)",
+      "keepNote": "Your settings stay in your home folder ({size}); your recordings and screenshots are never touched",
+      "pictures": [
+        "https://raw.githubusercontent.com/Dragongamer9/hearth-capture-card/main/docs/mockups/capture-card-1-viewer.png",
+        "https://raw.githubusercontent.com/Dragongamer9/hearth-capture-card/main/docs/mockups/capture-card-4-recordings.png",
+        "https://raw.githubusercontent.com/Dragongamer9/hearth-capture-card/main/docs/mockups/capture-card-5-game-mode-viewer.png"
+      ]
+    },
+    {
+      "id": "console-remote-play",
+      "name": "Hearth Console Remote Play",
+      "short": "Console Remote Play",
+      "tagline": "Play your own Xbox from anywhere",
+      "card": "Stream your Xbox from home, anywhere",
+      "about": "Sign in with Microsoft in a window inside the app (Microsoft's own page; your password never reaches the app), pick your Xbox, wake it and play. The delay is always shown, and a data limit counts on every network.",
+      "icon": "RP",
+      "from": "#34d399",
+      "to": "#047857",
+      "github": "Dragongamer9/hearth-console-remote-play",
+      "asset": "x86_64.AppImage",
+      "sums": "SHA256SUMS.txt",
+      "file": "Hearth-Console-Remote-Play.AppImage",
+      "data": [
+        "~/.config/nimbus/console-remote-play.json",
+        "~/.local/share/hearth/console-remote-play"
+      ],
+      "dataNote": "Your settings and this month's data count",
+      "keepNote": "Your settings and data count stay in your home folder ({size}) and are there again if you install it later",
+      "pictures": [
+        "https://raw.githubusercontent.com/Dragongamer9/hearth-console-remote-play/main/docs/mockups/remote-play-2-my-consoles.png",
+        "https://raw.githubusercontent.com/Dragongamer9/hearth-console-remote-play/main/docs/mockups/remote-play-4-streaming-bar.png",
+        "https://raw.githubusercontent.com/Dragongamer9/hearth-console-remote-play/main/docs/mockups/remote-play-g7a-ally-streaming-overlay.png"
+      ]
+    },
+    {
+      "id": "g15",
+      "name": "Logitech G15",
+      "card": "G-keys, macros and the keyboard's screen",
+      "tagline": "The G15's G-keys and macros, its screen and its lights",
+      "about": "Set up the G-keys and macros, choose what the keyboard's screen shows and set its lights. It's part of Hearth OS.",
+      "icon": "G15",
+      "from": "#f5a742",
+      "to": "#d9731e",
+      "kind": "builtin",
+      "open": "hearth-g15-app"
+    },
+    {
+      "id": "hearth-notes",
+      "name": "Hearth Notes",
+      "card": "Your notes and the workspace, synced with GitHub",
+      "tagline": "Markdown notes, the daily log, a board and a graph in ten modes, synced with your GitHub repository",
+      "about": "Notes in plain Markdown with live preview and [[links]], today's log, a board made from your checklists, and a graph you can see as a galaxy, a solar system or a railway map. It syncs with your hearth-workspace repository through this PC's own Git sign-in and runs the workspace's check before every push. It's part of Hearth OS.",
+      "icon": "N",
+      "from": "#ff8a3d",
+      "to": "#d9531e",
+      "kind": "builtin",
+      "open": "hearth-notes-app"
+    },
+    {
+      "id": "beacon",
+      "name": "Beacon",
+      "card": "Battle for Middle-earth and more, ready to play",
+      "tagline": "Battle for Middle-earth, Age of the Ring, LOTR: Conquest and more, ready to play",
+      "about": "Beacon sets up and starts the Battle for Middle-earth games and their mods, and other classics, ready to play. It's part of Hearth OS.",
+      "icon": "B",
+      "from": "#2fbf9b",
+      "to": "#138a6e",
+      "kind": "builtin",
+      "open": "beacon-app"
+    },
+    {
+      "id": "usb-maker",
+      "name": "Hearth USB maker",
+      "card": "Make a Hearth or Recovery USB stick",
+      "tagline": "A Hearth OS, Recovery or Windows USB stick",
+      "about": "Makes a bootable USB stick: Hearth OS, Hearth's Recovery USB, or another system. It's part of Hearth OS (in Hearth Disks).",
+      "icon": "USB",
+      "from": "#6fd34f",
+      "to": "#2e9a3a",
+      "kind": "builtin",
+      "open": "hearth-disks --usb"
+    },
+    {
+      "id": "hearth-buddy",
+      "name": "Hearth Buddy",
+      "card": "Turn a photo into a buddy that walks on your screen",
+      "tagline": "A desktop buddy made from your photo",
+      "about": "Cut a person or pet out of a photo and they walk around your screen.",
+      "icon": "smile",
+      "from": "#f472b6",
+      "to": "#db2777",
+      "kind": "coming"
+    }
+  ]
+}
