@@ -1,0 +1,26 @@
+1 1 tail -f /dev/null 
+1392 0 sleep 2 
+1403 0 inotifywait -m -r -q -e create,modify,close_write,moved_to,moved_from,delete,attrib --timefmt %s --format %T %e %w%f /tm
+1404 0 fatrace -t -f CWDO 
+1405 0 grep --line-buffered -E /applications/|/Desktop/|\.desktop$|/flatpak/exports 
+562 0 sh -e /__w/_temp/73c48d58-2e5f-4d06-8196-0f5205b934e5.sh 
+570 0 timeout 2400 bash .github/scripts/labwc-fedora-rest.sh firehold /tmp/out/firehold 600 
+571 6 bash .github/scripts/labwc-fedora-rest.sh firehold /tmp/out/firehold 600 
+583 6 dbus-daemon --session --fork --address=unix:path=/tmp/xdg-firehold/bus 
+589 38 labwc -C /usr/share/nimbus/desktop/labwc 
+627 1 /usr/libexec/gvfsd 
+645 0 sh /usr/share/nimbus/desktop/labwc/autostart 
+646 5 sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589 
+652 420 quickshell -p /usr/share/nimbus/desktop/shell 
+672 4 /usr/libexec/xdg-desktop-portal 
+681 0 /usr/libexec/xdg-permission-store 
+699 6 /usr/libexec/xdg-desktop-portal-gtk 
+708 0 /usr/libexec/at-spi-bus-launcher 
+713 0 /usr/bin/dbus-daemon --config-file=/usr/share/defaults/at-spi2/accessibility.conf --nofork --print-address 11 --address=
+715 0 /usr/libexec/at-spi2-registryd --use-gnome-session 
+756 11 /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-buttons 
+758 28 /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio 
+781 10 /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-posture watch 
+783 0 /usr/bin/udevadm monitor --udev --property --subsystem-match=block --subsystem-match=usb 
+853 0 /usr/bin/wl-paste --watch python3 /usr/share/nimbus/desktop/shell/hearth-clipboard store 
+867 8 /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-files watch /tmp/home-firehold/Desktop 

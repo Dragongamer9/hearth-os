@@ -1,0 +1,29 @@
+1 1 tail -f /dev/null 
+1180 0 /usr/libexec/gvfs-udisks2-volume-monitor 
+1278 148 quickshell -p /usr/share/nimbus/desktop/shell 
+1296 6 /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-buttons 
+1298 16 /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio 
+1314 0 /usr/bin/udevadm monitor --udev --property --subsystem-match=block --subsystem-match=usb 
+1353 0 /usr/bin/wl-paste --watch python3 /usr/share/nimbus/desktop/shell/hearth-clipboard store 
+1357 5 /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-files watch /tmp/home-classic/Desktop 
+1441 0 sleep 2 
+1452 0 inotifywait -m -r -q -e create,modify,close_write,moved_to,moved_from,delete,attrib --timefmt %s --format %T %e %w%f /tm
+1453 0 fatrace -t -f CWDO 
+1454 0 grep --line-buffered -E /applications/|/Desktop/|\.desktop$|/flatpak/exports 
+561 0 sh -e /__w/_temp/4429dc72-b606-45dc-b927-4a3bd4ea47c7.sh 
+569 0 timeout 2400 bash .github/scripts/labwc-fedora-rest.sh classic /tmp/out/classic 600 
+570 6 bash .github/scripts/labwc-fedora-rest.sh classic /tmp/out/classic 600 
+582 4 dbus-daemon --session --fork --address=unix:path=/tmp/xdg-classic/bus 
+588 45 labwc -C /usr/share/nimbus/desktop/labwc 
+626 1 /usr/libexec/gvfsd 
+644 0 sh /usr/share/nimbus/desktop/labwc/autostart 
+645 4 sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588 
+667 4 /usr/libexec/xdg-desktop-portal 
+677 0 /usr/libexec/xdg-permission-store 
+697 4 /usr/libexec/xdg-desktop-portal-gtk 
+707 0 /usr/libexec/at-spi-bus-launcher 
+712 0 /usr/bin/dbus-daemon --config-file=/usr/share/defaults/at-spi2/accessibility.conf --nofork --print-address 11 --address=
+714 0 /usr/libexec/at-spi2-registryd --use-gnome-session 
+751 8 /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-buttons 
+769 0 /usr/bin/udevadm monitor --udev --property --subsystem-match=block --subsystem-match=usb 
+810 0 /usr/bin/wl-paste --watch python3 /usr/share/nimbus/desktop/shell/hearth-clipboard store 

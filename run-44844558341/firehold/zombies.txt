@@ -1,0 +1,26 @@
+    596       1 Z       1063 sh <defunct>    [sh] <defunct>
+    633       1 Z       1063 gvfsd-fuse <def [gvfsd-fuse] <defunct>
+    643       1 Z       1063 sh <defunct>    [sh] <defunct>
+    648       1 Z       1063 sh <defunct>    [sh] <defunct>
+    650       1 Z       1063 sh <defunct>    [sh] <defunct>
+    655       1 Z       1063 sh <defunct>    [sh] <defunct>
+    656       1 Z       1063 sh <defunct>    [sh] <defunct>
+    657       1 Z       1063 sh <defunct>    [sh] <defunct>
+    688       1 Z       1063 xdg-document-po [xdg-document-po] <defunct>
+    831       1 Z       1060 mv <defunct>    [mv] <defunct>
+    844       1 Zs      1060 quickshell <def [quickshell] <defunct>
+    876       1 Zs      1059 agent <defunct> [agent] <defunct>
+    877       1 Zs      1059 python3 <defunc [python3] <defunct>
+    895       1 Z       1057 sh <defunct>    [sh] <defunct>
+   1101       1 Z       1015 sh <defunct>    [sh] <defunct>
+   1107       1 Z       1014 mv <defunct>    [mv] <defunct>
+   1116       1 Zs      1014 quickshell <def [quickshell] <defunct>
+   1126       1 Z       1011 python3 <defunc [python3] <defunct>
+   1193       1 Z        998 python3 <defunc [python3] <defunct>
+   1194       1 Z        998 sed <defunct>   [sed] <defunct>
+   1211       1 Z        998 python3 <defunc [python3] <defunct>
+   1284       1 Z        998 sh <defunct>    [sh] <defunct>
+   1311       1 Z        992 mv <defunct>    [mv] <defunct>
+   1317       1 Zs       992 quickshell <def [quickshell] <defunct>
+   2019       1 Z        461 python3 <defunc [python3] <defunct>
+   2354       1 Z        347 sh <defunct>    [sh] <defunct>

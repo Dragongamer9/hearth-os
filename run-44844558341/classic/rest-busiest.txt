@@ -1,0 +1,3 @@
+    5s shell   3 ticks | threads QThread 2, quickshell 1 | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1 | new children - | log 525→525
+  575s shell   2 ticks | threads quickshell 1, QThread 1 | others  | new children - | log 540→540
+  530s shell   2 ticks | threads quickshell 1, QThread 1 | others  | new children - | log 538→540

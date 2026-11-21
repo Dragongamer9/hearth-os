@@ -1,0 +1,120 @@
+    5s shell   4 ticks | threads quickshell 2, Thread (pooled) 1, QThread 1 | others  | new children - | log 294→294
+   10s shell   0 ticks | threads  | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 2, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 294→294
+   15s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 294→294
+   20s shell   2 ticks | threads Thread (pooled) 1, QThread 1 | others  | new children - | log 294→294
+   25s shell   1 ticks | threads Thread (pooled) 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 294→294
+   30s shell   0 ticks | threads  | others  | new children - | log 294→294
+   35s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 294→296
+   40s shell   0 ticks | threads  | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 2 | new children - | log 296→296
+   45s shell   1 ticks | threads quickshell 1 | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 296→296
+   50s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 296→296
+   55s shell   1 ticks | threads QThread 1 | others  | new children - | log 296→296
+   60s shell   0 ticks | threads  | others  | new children - | log 296→296
+   65s shell   1 ticks | threads quickshell 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 296→296
+   70s shell   0 ticks | threads  | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 296→296
+   75s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 296→296
+   80s shell   0 ticks | threads  | others  | new children - | log 296→296
+   85s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1 | new children - | log 296→296
+   90s shell   1 ticks | threads QThread 1 | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 296→296
+   95s shell   1 ticks | threads quickshell 1 | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 296→298
+  100s shell   0 ticks | threads  | others  | new children - | log 298→298
+  105s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 298→298
+  110s shell   1 ticks | threads quickshell 1 | others  | new children - | log 298→298
+  115s shell   0 ticks | threads  | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1 | new children - | log 298→298
+  120s shell   1 ticks | threads QThread 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 298→298
+  125s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 298→298
+  130s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1, python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1 | new children - | log 298→298
+  135s shell   1 ticks | threads Thread (pooled) 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 298→298
+  140s shell   0 ticks | threads  | others  | new children - | log 298→298
+  145s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 298→298
+  150s shell   1 ticks | threads quickshell 1 | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 298→298
+  155s shell   2 ticks | threads quickshell 1, QThread 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 298→300
+  160s shell   0 ticks | threads  | others  | new children - | log 300→300
+  165s shell   0 ticks | threads  | others  | new children - | log 300→300
+  170s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1, python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1 | new children - | log 300→300
+  175s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2 | new children - | log 300→300
+  180s shell   0 ticks | threads  | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1 | new children - | log 300→300
+  185s shell   1 ticks | threads QThread 1 | others  | new children - | log 300→300
+  190s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 300→300
+  195s shell   1 ticks | threads quickshell 1 | others  | new children - | log 300→300
+  200s shell   1 ticks | threads QThread 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 300→300
+  205s shell   0 ticks | threads  | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 300→300
+  210s shell   0 ticks | threads  | others  | new children - | log 300→300
+  215s shell   1 ticks | threads quickshell 1 | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1 | new children - | log 300→302
+  220s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2, python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1 | new children - | log 302→302
+  225s shell   0 ticks | threads  | others  | new children - | log 302→302
+  230s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 302→302
+  235s shell   0 ticks | threads  | others  | new children - | log 302→302
+  240s shell   1 ticks | threads QThread 1 | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 302→302
+  245s shell   1 ticks | threads quickshell 1 | others  | new children - | log 302→302
+  250s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 302→302
+  255s shell   1 ticks | threads quickshell 1 | others  | new children - | log 302→302
+  260s shell   0 ticks | threads  | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 2, sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 302→302
+  265s shell   0 ticks | threads  | others  | new children - | log 302→302
+  270s shell   1 ticks | threads QThread 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 302→302
+  275s shell   0 ticks | threads  | others  | new children - | log 302→304
+  280s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 304→304
+  285s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 304→304
+  290s shell   0 ticks | threads  | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1 | new children - | log 304→304
+  295s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 304→304
+  300s shell   2 ticks | threads quickshell 2 | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 304→304
+  305s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1 | new children - | log 304→304
+  310s shell   1 ticks | threads QThread 1 | others  | new children - | log 304→304
+  315s shell   0 ticks | threads  | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-buttons  1 | new children - | log 304→304
+  320s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1 | new children - | log 304→304
+  325s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 304→304
+  330s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-files watch /tmp/home-firehold/Desktop  1 | new children - | log 304→304
+  335s shell   0 ticks | threads  | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1 | new children - | log 304→306
+  340s shell   0 ticks | threads  | others  | new children - | log 306→306
+  345s shell   2 ticks | threads quickshell 1, QThread 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 306→306
+  350s shell   0 ticks | threads  | others tail -f /dev/null  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 306→306
+  355s shell   1 ticks | threads quickshell 1 | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1, python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1 | new children - | log 306→306
+  360s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 306→306
+  365s shell   0 ticks | threads  | others  | new children - | log 306→306
+  370s shell   1 ticks | threads QThread 1 | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 306→306
+  375s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-files watch /tmp/home-firehold/Desktop  1 | new children - | log 306→306
+  380s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 306→306
+  385s shell   1 ticks | threads QThread 1 | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1 | new children - | log 306→306
+  390s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 306→306
+  395s shell   2 ticks | threads quickshell 1, Thread (pooled) 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 306→308
+  400s shell   0 ticks | threads  | others  | new children - | log 308→308
+  405s shell   1 ticks | threads quickshell 1 | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1 | new children - | log 308→308
+  410s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 308→308
+  415s shell   0 ticks | threads  | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 308→308
+  420s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1 | new children - | log 308→308
+  425s shell   1 ticks | threads QThread 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 308→308
+  430s shell   0 ticks | threads  | others  | new children - | log 308→308
+  435s shell   0 ticks | threads  | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 308→308
+  440s shell   1 ticks | threads quickshell 1 | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 308→308
+  445s shell   0 ticks | threads  | others  | new children - | log 308→308
+  450s shell   0 ticks | threads  | others  | new children - | log 308→308
+  455s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 308→310
+  460s shell   1 ticks | threads QThread 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 310→310
+  465s shell   0 ticks | threads  | others  | new children - | log 310→310
+  470s shell   1 ticks | threads quickshell 1 | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1, python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 310→310
+  475s shell   1 ticks | threads quickshell 1 | others  | new children - | log 310→310
+  480s shell   0 ticks | threads  | others bash .github/scripts/labwc-fedora-rest.sh firehold /tmp/out/firehold 600  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 310→310
+  485s shell   0 ticks | threads  | others  | new children - | log 310→310
+  490s shell   0 ticks | threads  | others python3 5, python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 310→310
+  495s shell   1 ticks | threads QThread 1 | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 310→310
+  500s shell   0 ticks | threads  | others  | new children - | log 310→310
+  505s shell   0 ticks | threads  | others  | new children - | log 310→310
+  510s shell   1 ticks | threads Thread (pooled) 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 310→310
+  515s shell   1 ticks | threads quickshell 1 | others  | new children - | log 310→312
+  520s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1, python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 312→312
+  525s shell   2 ticks | threads quickshell 1, QThread 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 312→312
+  530s shell   0 ticks | threads  | others  | new children - | log 312→312
+  535s shell   0 ticks | threads  | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 312→312
+  540s shell   0 ticks | threads  | others  | new children - | log 312→312
+  545s shell   0 ticks | threads  | others  | new children - | log 312→312
+  550s shell   1 ticks | threads Thread (pooled) 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2 | new children - | log 312→312
+  555s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1 | new children - | log 312→312
+  560s shell   1 ticks | threads QThread 1 | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 2, sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 589  1 | new children - | log 312→312
+  565s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 312→312
+  570s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 312→312
+  575s shell   2 ticks | threads quickshell 2 | others  | new children - | log 312→314
+  580s shell   0 ticks | threads  | others /usr/libexec/xdg-desktop-portal-gtk  1 | new children - | log 314→314
+  585s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2, python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1 | new children - | log 314→314
+  590s shell   0 ticks | threads  | others  | new children - | log 314→314
+  595s shell   1 ticks | threads QThread 1 | others python3 - 652 600 /tmp/xdg-firehold/nimbus-shell.log /tmp/out/firehold/rest-trace.txt /tmp/out/fireh 1 | new children - | log 314→314
+  600s shell   1 ticks | threads QThread 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 314→314

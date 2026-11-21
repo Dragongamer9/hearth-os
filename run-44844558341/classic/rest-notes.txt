@@ -1,0 +1,14 @@
+up in 5.0 s
+desktop icons kept their places through off/on and a shell restart: {"Budget.ods": [0, 1], "Notes.txt": [9, 3], "Photos": [14, 6], "Trains.desktop": [0, 3]}
+the start's game lists answered after 0 s more
+font caches: 20 cache files, 5 font folders, 0 newer than the caches
+the app and desktop folders didn't change at rest
+the busiest 5 s at rest:     5s shell   3 ticks | threads QThread 2, quickshell 1 | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1 | new children - | log 525→525
+the drive while at rest: 86G free of 145G; the shell's memory: Rss: 235 MB, Pss_File: 59 MB, Shared_Clean: 19 MB, Private_Dirty: 126 MB, Anonymous: 111 MB, 
+at rest over 600 s: shell 0.06 % of a core (worst minute 0.11 %; minutes: 11 6 6 5 6 6 5 6 8 5), labwc 0.00 %, shell memory 238 → 235 MB, 17 frames drawn, processes 29 → 26
+a notification and a window coming and going at rest: the shell used 0.04 s of the processor (238 MB, was 236 MB)
+an app's menu entry added, written again 5 times unchanged, renamed and removed: the shell used 0.24 s of the processor (memory 238 → 241 MB)
+the app lists made again 8 times (300 entries written again, one renamed): the shell used 0.27 s of the processor, memory 241 → 241 MB
+the shell's app lists (AppEntries) before the entry changes: {"rev":2,"apps":304,"live":304}; after: {"rev":4,"apps":304,"live":304}
+Hearth Files: OK Hearth Files (cold) 0.16 s OK Hearth Files (warm) 0.18 s OK Hearth Files (warm2) 0.13 s 
+programs the shell started in 2 minutes at rest: 0

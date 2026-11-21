@@ -1,0 +1,7 @@
+86 wakeups in 20 s: thread 1283 QThread
+61 wakeups in 20 s: thread 1278 quickshell
+1 wakeups in 20 s: thread 1288 QQuickPixmapRea
+1 wakeups in 20 s: thread 1284 QQmlThread
+1 wakeups in 20 s: thread 1282 WaylandEventThr
+1 wakeups in 20 s: thread 1281 WaylandEventThr
+1 wakeups in 20 s: thread 1279 QDBusConnection

@@ -1,0 +1,13 @@
+up in 6.0 s
+the start's game lists answered after 0 s more
+font caches: 20 cache files, 5 font folders, 0 newer than the caches
+the app and desktop folders didn't change at rest
+the busiest 5 s at rest:     5s shell   4 ticks | threads quickshell 2, Thread (pooled) 1, QThread 1 | others  | new children - | log 294→294
+Firehold after the rest: {"unlocked":true,"posture":"couch","mode":"auto","view":"home","tab":"home","page":"tabs","guide":false,"settings":false,"couchUp":true,"games":60,"counts":{"st
+the drive while at rest: 86G free of 145G; the shell's memory: Rss: 281 MB, Pss_File: 60 MB, Shared_Clean: 20 MB, Private_Dirty: 150 MB, Anonymous: 150 MB, 
+at rest over 600 s: shell 0.09 % of a core (worst minute 0.13 %; minutes: 13 8 8 8 8 8 8 10 8 10), labwc 0.00 %, shell memory 281 → 281 MB, 20 frames drawn, processes 26 → 23
+a notification and a window coming and going at rest: the shell used 0.03 s of the processor (283 MB, was 282 MB)
+an app's menu entry added, written again 5 times unchanged, renamed and removed: the shell used 0.33 s of the processor (memory 283 → 296 MB)
+the app lists made again 8 times (300 entries written again, one renamed): the shell used 0.36 s of the processor, memory 296 → 294 MB
+the shell's app lists (AppEntries) before the entry changes: {"rev":3,"apps":304,"live":304}; after: {"rev":5,"apps":304,"live":304}
+programs the shell started in 2 minutes at rest: 0

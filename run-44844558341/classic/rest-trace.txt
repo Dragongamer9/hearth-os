@@ -1,0 +1,120 @@
+    5s shell   3 ticks | threads QThread 2, quickshell 1 | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1 | new children - | log 525→525
+   10s shell   1 ticks | threads quickshell 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 525→525
+   15s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1 | new children - | log 525→525
+   20s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2 | new children - | log 525→525
+   25s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-files watch /tmp/home-classic/Desktop  1 | new children - | log 525→525
+   30s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 525→525
+   35s shell   0 ticks | threads  | others  | new children - | log 525→525
+   40s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 525→525
+   45s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 2, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 525→525
+   50s shell   2 ticks | threads quickshell 1, QThread 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 525→527
+   55s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 527→527
+   60s shell   0 ticks | threads  | others  | new children - | log 527→527
+   65s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 527→527
+   70s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 527→527
+   75s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1 | new children - | log 527→527
+   80s shell   1 ticks | threads quickshell 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 527→527
+   85s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 527→527
+   90s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 527→527
+   95s shell   0 ticks | threads  | others  | new children - | log 527→527
+  100s shell   1 ticks | threads quickshell 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 527→527
+  105s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 527→527
+  110s shell   1 ticks | threads QThread 1 | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-buttons  1 | new children - | log 527→529
+  115s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 529→529
+  120s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 529→529
+  125s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1 | new children - | log 529→529
+  130s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 529→529
+  135s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 529→529
+  140s shell   1 ticks | threads quickshell 1 | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 529→529
+  145s shell   0 ticks | threads  | others  | new children - | log 529→529
+  150s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 529→529
+  155s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 529→529
+  160s shell   1 ticks | threads quickshell 1 | others  | new children - | log 529→529
+  165s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 529→529
+  170s shell   1 ticks | threads QThread 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 529→530
+  175s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 530→530
+  180s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1 | new children - | log 530→530
+  185s shell   0 ticks | threads  | others  | new children - | log 530→530
+  190s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2, sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1 | new children - | log 530→530
+  195s shell   0 ticks | threads  | others  | new children - | log 530→530
+  200s shell   1 ticks | threads quickshell 1 | others  | new children - | log 530→530
+  205s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2 | new children - | log 530→530
+  210s shell   0 ticks | threads  | others  | new children - | log 530→530
+  215s shell   0 ticks | threads  | others  | new children - | log 530→530
+  220s shell   1 ticks | threads QThread 1 | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 530→530
+  225s shell   1 ticks | threads Thread (pooled) 1 | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 530→530
+  230s shell   2 ticks | threads quickshell 1, Thread (pooled) 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 530→532
+  235s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 532→532
+  240s shell   2 ticks | threads quickshell 1, QThread 1 | others  | new children - | log 532→532
+  245s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  2, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-buttons  1 | new children - | log 532→532
+  250s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 532→532
+  255s shell   0 ticks | threads  | others  | new children - | log 532→532
+  260s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2 | new children - | log 532→532
+  265s shell   0 ticks | threads  | others  | new children - | log 532→532
+  270s shell   0 ticks | threads  | others  | new children - | log 532→532
+  275s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2 | new children - | log 532→532
+  280s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1 | new children - | log 532→532
+  285s shell   1 ticks | threads quickshell 1 | others /usr/libexec/xdg-desktop-portal-gtk  1 | new children - | log 532→532
+  290s shell   1 ticks | threads QThread 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2, python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1 | new children - | log 532→534
+  295s shell   1 ticks | threads quickshell 1 | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1 | new children - | log 534→534
+  300s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-files watch /tmp/home-classic/Desktop  1 | new children - | log 534→534
+  305s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 534→534
+  310s shell   0 ticks | threads  | others  | new children - | log 534→534
+  315s shell   0 ticks | threads  | others  | new children - | log 534→534
+  320s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2 | new children - | log 534→534
+  325s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1 | new children - | log 534→534
+  330s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 534→534
+  335s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 534→534
+  340s shell   0 ticks | threads  | others  | new children - | log 534→534
+  345s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 534→534
+  350s shell   2 ticks | threads quickshell 1, QThread 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 534→535
+  355s shell   1 ticks | threads quickshell 1 | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1 | new children - | log 535→535
+  360s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1, python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1, bash .github/scripts/labwc-fedora-rest.sh classic /tmp/out/classic 600  1 | new children - | log 535→535
+  365s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 535→535
+  370s shell   0 ticks | threads  | others  | new children - | log 535→535
+  375s shell   1 ticks | threads Thread (pooled) 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2 | new children - | log 535→535
+  380s shell   0 ticks | threads  | others  | new children - | log 535→535
+  385s shell   0 ticks | threads  | others  | new children - | log 535→535
+  390s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2 | new children - | log 535→535
+  395s shell   0 ticks | threads  | others  | new children - | log 535→535
+  400s shell   1 ticks | threads QThread 1 | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 535→535
+  405s shell   1 ticks | threads quickshell 1 | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1 | new children - | log 535→535
+  410s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 535→536
+  415s shell   1 ticks | threads quickshell 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 536→536
+  420s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 536→536
+  425s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 536→536
+  430s shell   0 ticks | threads  | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1 | new children - | log 536→536
+  435s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1 | new children - | log 536→536
+  440s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2 | new children - | log 536→536
+  445s shell   0 ticks | threads  | others  | new children - | log 536→536
+  450s shell   1 ticks | threads Thread (pooled) 1 | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 536→536
+  455s shell   1 ticks | threads QThread 1 | others tail -f /dev/null  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 536→536
+  460s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1 | new children - | log 536→536
+  465s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 536→536
+  470s shell   2 ticks | threads quickshell 2 | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 536→538
+  475s shell   0 ticks | threads  | others  | new children - | log 538→538
+  480s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 538→538
+  485s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 538→538
+  490s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 538→538
+  495s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-buttons  1 | new children - | log 538→538
+  500s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2 | new children - | log 538→538
+  505s shell   1 ticks | threads QThread 1 | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1 | new children - | log 538→538
+  510s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-files watch /tmp/home-classic/Desktop  1 | new children - | log 538→538
+  515s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 538→538
+  520s shell   1 ticks | threads quickshell 1 | others sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-buttons  1 | new children - | log 538→538
+  525s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 538→538
+  530s shell   2 ticks | threads quickshell 1, QThread 1 | others  | new children - | log 538→540
+  535s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 540→540
+  540s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-files watch /tmp/home-classic/Desktop  1 | new children - | log 540→540
+  545s shell   0 ticks | threads  | others  | new children - | log 540→540
+  550s shell   0 ticks | threads  | others python3 3, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2 | new children - | log 540→540
+  555s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1 | new children - | log 540→540
+  560s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 540→540
+  565s shell   0 ticks | threads  | others  | new children - | log 540→540
+  570s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2, sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 588  1, dbus-daemon --session --fork --address=unix:path=/tmp/xdg-classic/bus  1 | new children - | log 540→540
+  575s shell   2 ticks | threads quickshell 1, QThread 1 | others  | new children - | log 540→540
+  580s shell   1 ticks | threads quickshell 1 | others  | new children - | log 540→540
+  585s shell   0 ticks | threads  | others /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  2 | new children - | log 540→540
+  590s shell   0 ticks | threads  | others python3 - 1278 600 /tmp/xdg-classic/nimbus-shell.log /tmp/out/classic/rest-trace.txt /tmp/out/classi 1 | new children - | log 540→542
+  595s shell   0 ticks | threads  | others tail -f /dev/null  1, /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio  1 | new children - | log 542→542
+  600s shell   0 ticks | threads  | others  | new children - | log 542→542
