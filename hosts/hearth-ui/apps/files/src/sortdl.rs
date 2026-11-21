@@ -271,7 +271,7 @@ pub fn dialog(a: &App) -> Element<'_, Msg> {
     ];
     let mut col = Column::new().spacing(10.0);
     col = col.push(ts("Sort my Downloads", 22.0, p.text));
-    col = col.push(t1(format!("The {n} things loose in Downloads go into folders by what they are. Nothing is deleted or overwritten, and one click puts everything back."), 14.0, p.muted));
+    col = col.push(ui::t(format!("The {n} things loose in Downloads go into folders by what they are. Nothing is deleted or overwritten, and one click puts everything back."), 14.0, p.muted).width(Length::Fill));
     for g in 0..5 {
         let c = plan.count(g);
         if c == 0 && g == 4 {
