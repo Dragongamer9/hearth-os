@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Hearth OS</title>
-<meta name="description" content="Hearth OS is a free, Debian-based OS for gaming PCs and handhelds: it turns on into Steam Game Mode with all your games in one place, has a desktop that feels like Windows, only friendlier, and updates that can always go back.">
+<meta name="description" content="Hearth OS is a free, Fedora-based OS for gaming PCs and handhelds: it turns on into Steam Game Mode with all your games in one place, has a desktop that feels like Windows, only friendlier, and updates that can always go back.">
 <meta property="og:title" content="Hearth OS">
-<meta property="og:description" content="A free, Debian-based gaming OS for PCs and handhelds: Steam Game Mode on the couch, Mantel on the desk.">
+<meta property="og:description" content="A free, Fedora-based gaming OS for PCs and handhelds: Steam Game Mode on the couch, a KDE Plasma desktop with Hearth's apps on the desk.">
 <meta property="og:image" content="img/desk-classic.webp">
 <meta name="theme-color" content="#171a21">
 <meta name="color-scheme" content="dark light">
@@ -443,13 +443,13 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
   <div class="wrap">
     <div class="copy">
       <h1 class="big">Your PC,<br><em>ready to play.</em></h1>
-      <p class="lede">Turn it on and you're in Steam Game Mode, with your Steam, GOG, Epic and Battle.net games in one place. And when you want a desktop, it feels like Windows, only friendlier. Free and open source.</p>
+      <p class="lede">Turn it on and you're in Steam Game Mode, with your Steam, GOG, Epic and Battle.net games in one place. And when you want a desktop, it feels like Windows, only friendlier. Free, open source, and built on Fedora.</p>
       <div class="ctas">
         <a class="btn go" href="#download"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Get Hearth OS</a>
         <a class="btn line" href="#soundtrack" id="heroPlay">Play the soundtrack</a>
       </div>
       <div class="status">
-        <span><span class="tag now">Out now</span>Hearth OS 1.13</span>
+        <span><span class="tag now">Out now</span>Hearth OS 1.16</span>
         <span><span class="tag next">Next update</span>in development</span>
         <span class="livecount" id="live" role="status" aria-live="polite" hidden><i aria-hidden="true"></i><span id="liveText"></span></span>
       </div>
@@ -460,15 +460,15 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
   <div class="wrap">
     <div class="head">
       <span class="eyebrow">News</span>
-      <h2 class="h2x">An update on Hearth OS 1.15</h2>
-      <p class="lede">We're sorry: 1.15 is taking longer than planned, and 1.14 had to be pulled. Here's what happened and what we're doing about it.</p>
+      <h2 class="h2x">Hearth OS 1.16 is out</h2>
+      <p class="lede">1.15's work and much more, now on Fedora. After 1.14 had to be pulled, every part of 1.16 was checked for a quiet, smooth desktop before it went out.</p>
     </div>
     <div class="cards">
-      <div class="card"><h3>What went wrong with 1.14</h3><p>On some PCs and handhelds the desktop froze or stuttered, and its window manager (KWin) kept crashing. We took 1.14 down and moved everyone back to 1.13, which is stable. If you're on 1.13, you don't need to do anything.</p></div>
-      <div class="card"><h3>What we found</h3><p>A bug in the desktop's menu search that kept the processor busy; KWin put together on Debian without some of its own parts; videos in the browser played without the graphics chip's help on Intel PCs; and switching editions could leave a PC at the boot loader's prompt. These were problems in how Hearth was built, and they're being fixed.</p></div>
-      <div class="card"><h3>Moving to Fedora</h3><p>Hearth OS is moving to Fedora: the new Fedora edition, with KDE Plasma 6.8 as the desktop: newer KDE, newer graphics drivers and better video playback, straight out of the box.</p></div>
-      <div class="card"><h3>Safer updates</h3><p>Every update now goes to a test channel and is tried on real devices before anyone else gets it. A new check stops any update that makes the desktop run hot while it sits idle, and a new test switches editions on a test PC and restarts it to make sure it starts by itself.</p></div>
-      <div class="card"><h3>When is 1.15 out?</h3><p>No date yet. It comes out once it has been tested on real devices. Thanks for your patience.</p></div>
+      <div class="card"><h3>Fedora is Hearth OS</h3><p>The Fedora edition, with KDE Plasma 6.8, is now the only one. Debian PCs keep what they have, and Settings › Updates › Switch edition moves a PC over, with the version before kept in the boot menu.</p></div>
+      <div class="card"><h3>Hearth's look on Plasma</h3><p>Hearth's own panel, menus, Quick settings and notifications on KDE Plasma, Firehold on Plasma for the couch and the desk, and Mantel and Firehold on labwc as choices.</p></div>
+      <div class="card"><h3>New apps</h3><p>The Hearth Store, Hearth Notes, CDs and DVDs in Hearth Player, Server mode on Fedora, and family and friends with Moonlight, only when they turn it on.</p></div>
+      <div class="card"><h3>For your games</h3><p>Desktop icons for the games you install, sharper graphics with vkBasalt, and older Windows games that talk to themselves load far faster.</p></div>
+      <div class="card"><h3>Checked before it shipped</h3><p>Every new page was built from its approved design, and every desktop was measured sitting idle for ten minutes, so it stays quiet and cool.</p></div>
     </div>
   </div>
 </section>
@@ -495,7 +495,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
   <div class="wrap">
     <div class="apphead">
       <div>
-        <span class="eyebrow">Mantel, the desktop</span>
+        <span class="eyebrow">The desktop</span>
         <h2 class="h2x">Feels like Windows.<br>Friendlier.</h2>
       </div>
       <p>The apps you already know how to use, in plain words. Your files live on a Hearth (C:) drive, Windows programs open with a double-click, and Super+R and Super+X do what your hands expect.</p>
@@ -543,7 +543,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
       <p class="lede">Couch-first gaming, a desktop anyone coming from Windows can use on day one, and a PC that quietly runs your home in the background. Updates come out often, and every one can be undone.</p>
     </div>
     <div class="road">
-      <article><p class="when"><i aria-hidden="true"></i>Coming next</p><h3>Hearth OS 1.15 on Fedora</h3><ul><li>Hearth OS, Fedora edition, with KDE Plasma 6.8 as the desktop</li><li>Hearth's apps in KDE's menu, and Back to Game Mode one click away</li><li>Unlock the system files to install packages, with a safe way back</li><li>Tried on a test channel first</li></ul></article>
+      <article><p class="when"><i aria-hidden="true"></i>Out now</p><h3>Hearth OS 1.16 on Fedora</h3><ul><li>Hearth OS, Fedora edition, with KDE Plasma 6.8</li><li>Hearth's panel and Firehold on Plasma; Mantel and Firehold on labwc as choices</li><li>The Hearth Store, Hearth Notes, and discs in Hearth Player</li><li>Family and friends with Moonlight</li></ul></article>
       <article class="next"><p class="when"><i aria-hidden="true"></i>Next</p><h3>Faster, and on your TV</h3><ul><li>Hearth's own apps made faster</li><li>Hearth TV: a Hearth home screen for your TV, with Send to TV from your PC and phone</li></ul></article>
       <article><p class="when"><i aria-hidden="true"></i>After that</p><h3>More games, less fuss</h3><ul><li>Per-app network limits</li><li>When a game breaks, reset its Windows setup and keep every save</li></ul></article>
     </div>
@@ -578,22 +578,22 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
     <div class="get">
       <div class="box main">
         <h3>Offline USB</h3>
-        <p>Hearth OS on Debian on the stick, so it installs without internet. It updates itself to the newest version after installing.</p>
-        <p class="v" data-file="hearth-os-peppermint.iso"></p>
-        <a class="btn go" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download <small>about 4.3 GB</small></a>
-        <a class="small" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-peppermint.iso.sha256">SHA-256 checksum</a>
+        <p>Hearth OS, Fedora edition, on the stick, so it installs without internet. It updates itself to the newest version after installing.</p>
+        <p class="v" data-file="hearth-os-anatase.iso"></p>
+        <a class="btn go" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-anatase.iso"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download <small>about 9 GB</small></a>
+        <a class="small" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-anatase.iso.sha256">SHA-256 checksum</a>
       </div>
       <div class="side">
         <div class="box alt" id="recovery">
           <h3>Recovery USB</h3>
-          <p>Keep one in a drawer. It starts the previous version, reinstalls keeping your files, or copies them off.</p>
+          <p>Keep one in a drawer. It starts the previous version, reinstalls keeping your files, or copies them off. It's still the Debian one; a Fedora Recovery USB comes with 1.17.</p>
           <p class="v" data-file="hearth-recovery.iso"></p>
           <a class="btn line" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso"><svg class="ico" aria-hidden="true"><use href="#i-down"/></svg>Download <small>about 5 GB</small></a>
           <a class="small" href="https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-recovery.iso.sha256">SHA-256 checksum</a>
         </div>
       </div>
     </div>
-    <p class="small" style="margin-top:20px">Nvidia graphics and other ways to install are in <a href="docs/install.html">Installing</a>. Hearth OS is in beta: keep a backup of anything important.</p>
+    <p class="small" style="margin-top:20px">Fedora is Hearth OS's main version: the Debian edition has been merged into it and archived. Nvidia graphics and other ways to install are in <a href="docs/install.html">Installing</a>. Hearth OS is in beta: keep a backup of anything important.</p>
 
     <div class="ember" id="ember">
       <div>
@@ -625,11 +625,11 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
     <div class="faq">
       <div>
         <details><summary>What hardware does it need?</summary><p>Steam Deck, ROG Ally, Legion Go and most x86-64 desktops and laptops with AMD, Intel or Nvidia (GTX 16 / RTX 20 and newer) graphics. For installing, a USB stick of 16 GB or more and a drive of 64 GB or more.</p></details>
-        <details><summary>Do I need a Steam account?</summary><p>Steam Game Mode is Valve's Steam client, so you sign in to Steam there. Mantel, Hearth's desktop, works without one.</p></details>
+        <details><summary>Do I need a Steam account?</summary><p>Steam Game Mode is Valve's Steam client, so you sign in to Steam there. Desktop Mode works without one.</p></details>
         <details><summary>Can I go back to the last version?</summary><p>Yes. Updates keep the previous system in the boot menu; pick it, or use Settings › System › Updates. A version that fails to start twice in a row goes back by itself, and holding Volume Down while it starts opens Hearth Recovery. If nothing starts, the <a href="#recovery">Recovery USB</a> can start the previous version.</p></details>
       </div>
       <div>
-        <details><summary>I'm on the older Fedora-based Hearth. What now?</summary><p>Keep using your current version for now. Hearth OS is moving to its new Fedora edition, and your PC gets updates again once 1.15 has been tested and released.</p></details>
+        <details><summary>I'm on Hearth OS on Debian. What now?</summary><p>Fedora is Hearth OS's main version now: the Debian edition has been merged into it and archived. Move over in Settings › Updates › Switch edition: your home folder stays exactly as it is, and the Debian version you came from stays in the boot menu so you can go back.</p></details>
         <details><summary>Is it really free?</summary><p>Yes. Hearth OS is free and open source under the GPL-3.0. Games you buy come from the stores as usual.</p></details>
         <details><summary>Something broke. How do I report it?</summary><p>Send logs from Settings › System › Help &amp; logs or with <code>hearth-send-logs</code>, and <a href="docs/troubleshooting.html#ask">tell us what happened</a>.</p></details>
       </div>
@@ -650,7 +650,7 @@ html.has-wall.playing[data-theme="light"] section{background:color-mix(in srgb,v
     <a href="docs/troubleshooting.html#ask">Report a problem</a>
     <a href="https://github.com/Dragongamer9/hearth-os">GitHub</a>
     <a href="#support" id="support-foot" hidden>Support</a>
-    <p class="legal">Hearth OS is an independent project, not affiliated with or endorsed by Valve, Epic Games, GOG, Microsoft, Blizzard, ASUS, Lenovo or Debian.
+    <p class="legal">Hearth OS is an independent project, not affiliated with or endorsed by Valve, Epic Games, GOG, Microsoft, Blizzard, ASUS, Lenovo, Debian, Fedora or Red Hat.
       Steam, Steam Deck, Epic Games, GOG, Xbox, Battle.net, ROG Ally and Legion Go are trademarks of their owners. Screenshots are of Hearth itself, taken by its automatic tests.
       The Anybody and Figtree typefaces are under the SIL Open Font License (<a href="fonts/OFL.txt">Anybody</a>, <a href="fonts/OFL-figtree.txt">Figtree</a>).</p>
   </div>
@@ -720,7 +720,7 @@ fetch('https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/latest.json', {cache:
     el.textContent = t;
     var small = el.parentNode.querySelector('.btn small'); if (small && e.size > 0) small.textContent = (e.size / 1e9).toFixed(1) + ' GB';
   });
-  var live = d['hearth-os-peppermint.iso'] || d['hearth-os-live.iso']; if (live && ok(live.version)) document.getElementById('get-title').textContent = 'Get Hearth OS ' + shown(live.version);
+  var live = d['hearth-os-anatase.iso']; if (live && ok(live.version)) document.getElementById('get-title').textContent = 'Get Hearth OS ' + shown(live.version);
 }).catch(function(){});
 
 // Copy buttons.

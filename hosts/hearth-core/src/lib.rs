@@ -19,6 +19,7 @@ pub mod bridge;
 pub mod defaults;   // Settings › Default apps (desktop/shell/hearth-system)
 pub mod collections;
 pub mod desktop_games;
+pub mod desktop_icons;   // Hearth Games' "Add to desktop": a game's icon on the desktop (only Hearth's own is ever removed)
 pub mod discord;   // Discord: "Playing X", Ask to join / Join, Play together invites (Rich Presence over the local IPC; docs/DISCORD.md)
 pub mod display;
 pub mod diskspace;   // Settings › Storage: drives, games by size, moving games, clean up, low space (docs/STORAGE.md)
@@ -31,6 +32,7 @@ pub mod hearth_mods;
 // ---- end of Hearth's gaming apps
 pub mod game_options;
 pub mod game_extras;   // a game's cloud saves and DLC on Hearth Games' page (stage two, 1.13)
+pub mod vkbasalt;      // a game's "Sharper graphics" (vkBasalt: sharpening, SMAA, colour boost), off unless turned on
 pub mod proton_run;    // hearth-proton-run: Windows programs with Proton, offline and without Steam (owner's red flag)
 pub mod proton_pick;   // the Proton a game with no pick of its own starts with: the built-in GE-Proton (the Proton detector plugs in here)
 pub mod gameinfo;

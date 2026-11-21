@@ -1,0 +1,69 @@
+// Firehold on labwc's side of the shared Couch (1.16, docs/LABWC-FEDORA.md): what the Couch's pages
+// (desktop/firehold-plasma/couch/contents/ui, reached here through fhcouch/) need from the desktop they run on, as
+// PlasmaHost.qml gives them under Plasma: the helper (hearth-firehold-plasma, its labwc paths), the clock, the windows
+// (labwc's list, WinList) and what each does, what's in front, the Guide and Home (Mantel's Firehold.qml decides those).
+// Nothing runs by itself here: no timer; a helper only when the Couch asks for something.
+import QtQuick
+import Quickshell
+
+Item {
+    id: hh
+    property var fh: null                      // Mantel's Firehold.qml
+    readonly property bool hosted: true
+    property bool front: false                 // set by FireholdCouch.qml: its layer up, nothing over it
+    readonly property bool resting: DeskState.idle
+    readonly property string mediaFile: Qt.resolvedUrl("FhMedia.qml")
+    readonly property string iconFile: Qt.resolvedUrl("FhIcon.qml")
+    // ---- the helper: one process per question (FhRun.qml), its answer to the Couch's callback
+    // ("state", "listen" and "ready" are for Plasma's controller and requests; on labwc Mantel's own pad helper and IPC
+    // do that.)
+    readonly property var notHere: ["state", "listen", "ready"]
+    FhRun { id: runner }
+    function run(args, cb) {
+        if (!args || !args.length || notHere.indexOf(args[0]) >= 0) return;
+        runner.run(args, cb);
+    }
+
+    // ---- the clock, once a minute
+    SystemClock { id: clock; precision: SystemClock.Minutes }
+    readonly property var now: clock.date
+
+    // ---- the windows: labwc's (wlr foreign toplevels), as the Couch's pages read them
+    // (each window keeps one id while it's open; the same list as before is handed back when nothing the Couch shows
+    // changed, so its tiles aren't made again: the rest fixes)
+    property var idOf: new Map()
+    property var last: ({ key: "", list: [], n: 0 })
+    readonly property var wins: {
+        const list = WinList.toplevels ? WinList.toplevels.values : [];
+        const out = [];
+        for (const t of list) {
+            if (!t) continue;
+            let id = WinList.widOf(t);
+            if (!id) { id = hh.idOf.get(t); if (!id) { id = "lw" + (++hh.last.n); hh.idOf.set(t, id); } }
+            const e = AppIcons.entryFor(t.appId);
+            out.push({ id: String(id), uuid: String(id), appId: String(t.appId || ""), appName: e ? String(e.name) : String(t.appId || ""),
+                       title: String(t.title || ""), activated: !!t.activated, minimized: !!t.minimized, fullscreen: !!t.fullscreen,
+                       pid: 0, tl: t });
+        }
+        // (windows that closed are let go: nothing here holds on to a window that's gone)
+        for (const t of Array.from(hh.idOf.keys())) if (list.indexOf(t) < 0) hh.idOf.delete(t);
+        const key = JSON.stringify(out.map(w => [w.id, w.appId, w.appName, w.title, w.activated, w.minimized, w.fullscreen]));
+        if (key === hh.last.key) return hh.last.list;
+        hh.last.key = key; hh.last.list = out;
+        return out;
+    }
+    // A window you go to: in front, the Couch steps aside (Mantel's view "app"), full screen as the Couch asks.
+    function activate(w) {
+        if (!w || !w.tl) return;
+        if (fh) { fh.guideShown = false; fh.view = "app"; }
+        if (w.tl.minimized) w.tl.minimized = false;
+        w.tl.activate();
+    }
+    function toggleFull(w) { if (w && w.tl) w.tl.fullscreen = !w.tl.fullscreen; }
+    function closeWin(w) { if (w && w.tl) w.tl.close(); }
+
+    // ---- what Mantel's Firehold decides
+    function guide(twice) { if (fh) fh.guide(twice); }
+    function home() { if (fh) fh.home(); }
+    function quick() { if (fh) fh.toggleQuick(); }
+}

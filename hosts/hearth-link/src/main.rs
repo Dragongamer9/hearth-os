@@ -4,6 +4,7 @@
 //!   hearth-link call <command> [JSON]   one request to the running service (what the UI sends), its answer as JSON
 //!   hearth-link status                  = call status
 //!   hearth-link id                      this device's id (its public key)
+//!   hearth-link moon-session HOST APP           Moonlight in its private network (moonlight.rs starts this)
 
 use serde_json::Value;
 
@@ -17,6 +18,7 @@ fn main() {
             let t = std::env::var("HEARTH_LINK_CALL_TIMEOUT").ok().and_then(|t| t.parse().ok()).unwrap_or(120);
             print_result(hearth_link::ipc::call(&cmd, a, t))
         }
+        Some("moon-session") => hearth_link::moonlight::moon_session(&args[2..]),
         Some("status") => print_result(hearth_link::ipc::call("status", serde_json::json!({}), 20)),
         Some("id") => match hearth_link::state::load_or_make_key(&hearth_link::home_dir()) {
             Ok(k) => { println!("{}", k.public()); 0 }

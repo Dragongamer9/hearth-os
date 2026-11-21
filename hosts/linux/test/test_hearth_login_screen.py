@@ -621,7 +621,7 @@ class UnitsAndRules(unittest.TestCase):
         self.assertIn('LoginScreenSwitch', (SHELL / 'SetSignin.qml').read_text())
 
     def test_the_login_screens_pick_reaches_the_session_for_that_sign_in_only(self):
-        s = (SESSION_DIR / 'nimbus-session').read_text()
+        s = (SESSION_DIR / 'nimbus-session').read_text(encoding='utf-8')
         self.assertIn('case "${HEARTH_LOGIN_MODE:-}" in game|desktop) NIMBUS_START_MODE="$HEARTH_LOGIN_MODE" ;; esac', s)
         self.assertLess(s.index('. "$CONF/session.conf"'), s.index('HEARTH_LOGIN_MODE:-'))
 

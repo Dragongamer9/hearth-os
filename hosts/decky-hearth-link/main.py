@@ -164,11 +164,20 @@ CALLS = {
     'storage.updates.status': {},
     'storage.devices': {},
     'storage.saves.set': {'follow': _strict_bool},
+    # Family and friends with Moonlight (hearth-link moonlight.rs): the PCs that let this one connect, connecting, and
+    # who is connected to this one (Stop sharing now). Turning it on, adding and removing people: Settings only.
+    'moonlight.friends': {'check?': _bool},
+    'moonlight.connect': {'id': _peer},
+    'moonlight.disconnect': {},
+    'moonlight.forget': {'id': _peer},
+    'moonlight.share.status': {},
+    'moonlight.stop': {},
 }
 # Sent to Hearth Link as another command (only these arguments).
 SENT_AS = {'storage.saves.set': lambda a: ('storage.set', {'savesFollow': a['follow']})}
 TIMEOUTS = {'status': 8, 'games': 45, 'send': 30, 'get': 30, 'sync.now': 70, 'pair.join': 40, 'pair.open': 20,
-            'storage.cache.status': 20, 'storage.cache.get': 30, 'storage.devices': 15}
+            'storage.cache.status': 20, 'storage.cache.get': 30, 'storage.devices': 15,
+            'moonlight.friends': 20, 'moonlight.connect': 190, 'moonlight.share.status': 8}
 
 
 def request(cmd, args):
@@ -266,12 +275,44 @@ def call(cmd, args=None, link=None):
             data = {'games': clean_games((data or {}).get('games') if isinstance(data, dict) else None)}
         elif cmd == 'storage.devices':
             data = clean_devices(data)
+        elif cmd == 'moonlight.friends':
+            data = clean_friends(data)
+        elif cmd in ('moonlight.share.status', 'moonlight.stop'):
+            data = clean_share(data)
         return {'ok': True, 'data': data}
     log('hearth link: %s: %s' % (cmd, text(r.get('error'), 160)))
     return {'ok': False, 'error': text(r.get('error') or "That didn't work", 300)}
 
 
 # ---- what the panel gets back: short, and nothing secret
+def clean_friends(v):
+    """The PCs that let this one connect: name, online, sharing and what they get; who this PC is connected to now."""
+    v = v if isinstance(v, dict) else {}
+    out = []
+    for f in (v.get('friends') or [])[:32]:
+        if not isinstance(f, dict):
+            continue
+        try:
+            pid = _peer(f.get('id'))
+        except ValueError:
+            continue
+        out.append({'id': pid, 'name': text(f.get('name'), 40), 'online': f.get('online') is True,
+                    'sharing': f.get('sharing') if isinstance(f.get('sharing'), bool) else None,
+                    'what': 'games' if f.get('what') == 'games' else 'desktop', 'ask': f.get('ask') is not False})
+    c = v.get('connected') if isinstance(v.get('connected'), dict) else None
+    conn = {'name': text(c.get('name'), 40), 'relay': c.get('relay') is True, 'until': _num(c.get('until'))} if c else None
+    return {'friends': out, 'connected': conn, 'moonlight': v.get('moonlight') is True}
+
+
+def clean_share(v):
+    """This PC's side, in short: on or not, and who is connected now (never the people list or any code)."""
+    v = v if isinstance(v, dict) else {}
+    s = v.get('session') if isinstance(v.get('session'), dict) else None
+    sess = {'who': text(s.get('who'), 40), 'what': 'games' if s.get('what') == 'games' else 'desktop', 'until': _num(s.get('until')),
+            'connected': s.get('connected') is True} if s else None
+    return {'on': v.get('on') is True, 'session': sess}
+
+
 def _num(v):
     return v if isinstance(v, (int, float)) and not isinstance(v, bool) else None
 
@@ -719,10 +760,20 @@ def toast_take(line):
         v = json.loads(line)
     except ValueError:
         return None
+    if isinstance(v, dict) and isinstance(v.get('closed'), int):
+        # The app took its notification back (the disc came out): its buttons go.
+        for t in TOASTS:
+            if t.get('id') == v['closed']:
+                t['actions'] = []
+        return None
     if not isinstance(v, dict) or not (v.get('title') or v.get('body')):
         return None
     TOAST_SEQ[0] += 1
     t = {'seq': TOAST_SEQ[0], 'app': text(v.get('app'), 40), 'title': text(v.get('title'), 120), 'body': text(v.get('body'), 240)}
+    if isinstance(v.get('id'), int):
+        t['id'] = v['id']
+    acts = v.get('actions') if isinstance(v.get('actions'), list) else []
+    t['actions'] = [[text(a[0], 20), text(a[1], 40)] for a in acts if isinstance(a, list) and len(a) == 2 and re.fullmatch(r'[\w.-]{1,20}', str(a[0]))][:3]
     TOASTS.append(t)
     del TOASTS[:-20]
     return t
@@ -798,6 +849,20 @@ class Plugin:
     async def discord_toasts(self, seq=0):
         return toasts_since(seq)
 
+    async def notification_action(self, nid, key):
+        """A toast's or Quick Access's button for a notification ("A disc was inserted": Play disc, Eject): sent to the
+        app through the bridge. Only buttons the notification itself has."""
+        t = next((x for x in TOASTS if x.get('id') == nid), None)
+        if not t or not any(a[0] == key for a in t.get('actions', [])):
+            return {'ok': False}
+        p = getattr(self, '_bridge', None)
+        if not p or not p.stdin:
+            return {'ok': False}
+        p.stdin.write(('action %d %s\n' % (int(nid), key)).encode())
+        await p.stdin.drain()
+        t['actions'] = []
+        return {'ok': True}
+
     async def _notify_bridge(self):
         """Discord's (and other apps') notifications while Steam Game Mode runs: hearth-discord notify-bridge, only
         while Hearth's core service answers (it runs next to Steam in Steam Game Mode and nowhere else) and only when
@@ -814,7 +879,7 @@ class Plugin:
         try:
             env = clean_env()
             p = await asyncio.create_subprocess_exec(shutil.which('python3', path=env['PATH']) or '/usr/bin/python3', prog, 'notify-bridge', '--while', core,
-                                                     stdin=asyncio.subprocess.DEVNULL, stdout=asyncio.subprocess.PIPE,
+                                                     stdin=asyncio.subprocess.PIPE, stdout=asyncio.subprocess.PIPE,
                                                      stderr=asyncio.subprocess.DEVNULL, env=env)
             self._bridge = p
             while True:

@@ -62,6 +62,36 @@ main { grid-template-rows:auto 1fr; gap:.7em; }
 .rc-job { margin:.6em 0; }
 .rc-notes { white-space:pre-wrap; color:var(--muted); font-size:.88em; line-height:1.5; }
 .dlg h3 { margin:1.1em 0 .4em; font-size:1em; }
+/* A library card's menu (right-click, the ⋯ on a card, the Menu key, or Start on a controller): next to its card. */
+.tilebox { position:relative; display:flex; }
+.tilebox .tile { flex:1; min-width:0; }
+.tilebox .more { position:absolute; top:.75em; right:.75em; width:2em; height:2em; border-radius:50%; border:1px solid rgba(255,255,255,.18); background:rgba(10,7,5,.72);
+  color:#fff; font-size:1em; line-height:1; display:grid; place-items:center; opacity:0; transition:opacity .12s; cursor:pointer; }
+.tilebox:hover .more, .tilebox:focus-within .more, .tilebox .more.on { opacity:1; }
+.tile .deskmark { position:absolute; top:.45em; right:.45em; }
+.veil.menuveil { background:rgba(8,5,4,.25); backdrop-filter:none; display:block; padding:0; }
+.dlg.cardmenu { position:fixed; width:auto; min-width:15em; max-width:22em; padding:.4em; border-radius:min(14px, var(--corner, 14px)); }
+.cardmenu .mh { padding:.45em .7em .35em; font-weight:700; font-size:.92em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.cardmenu .mi { display:flex; align-items:center; gap:.7em; width:100%; padding:.6em .7em; border-radius:min(10px, var(--corner, 10px)); background:transparent; border:1px solid transparent; color:inherit; text-align:left; font:inherit; cursor:pointer; }
+.cardmenu .mi:hover, .cardmenu .mi:focus { background:var(--panel2); border-color:color-mix(in srgb, var(--ember) 30%, var(--line)); outline:none; }
+.cardmenu .mi .g { width:1.4em; text-align:center; color:var(--ember); flex:none; }
+.cardmenu .mi small { display:block; color:var(--muted); font-size:.78em; margin-top:.1em; }
+.cardmenu .mi.danger .g, .cardmenu .mi.danger { color:var(--danger, #ff6b5b); }
+.cardmenu hr { border:0; border-top:1px solid var(--line); margin:.3em .4em; }
+/* The install's "Add a desktop icon" tick box. */
+.tick { display:flex; align-items:center; gap:.7em; padding:.55em .7em; margin:.2em 0 .8em; border-radius:min(10px, var(--corner, 10px)); background:transparent; border:1px solid var(--line); color:inherit; font:inherit; cursor:pointer; text-align:left; }
+.tick i { width:1.25em; height:1.25em; border-radius:.3em; border:1.5px solid rgba(255,255,255,.5); display:grid; place-items:center; flex:none; font-style:normal; font-size:.85em; font-weight:800; }
+.tick.on i { background:var(--accent, #f0a840); border-color:var(--accent, #f0a840); color:#1a1206; }
+.tick.on i::after { content:"✓"; }
+.tick small { display:block; color:var(--muted); font-size:.8em; }
+/* Family and friends (Moonlight through Hearth Link) */
+.fam { display:flex; flex-direction:column; gap:.7em; max-width:52em; }
+.fam .pc { display:flex; align-items:center; gap:1em; padding:.8em 1em; }
+.fam .pc > span { flex:1; display:flex; flex-direction:column; }
+.fam .pc small { color:var(--muted); }
+.fam .dot { width:.6em; height:.6em; border-radius:50%; background:var(--muted); display:inline-block; margin-left:.5em; }
+.fam .dot.on { background:#5fd38a; }
+.fam .join { display:flex; gap:.6em; align-items:center; }
 </style>
 </head>
 <body>
@@ -70,7 +100,7 @@ main { grid-template-rows:auto 1fr; gap:.7em; }
     <h1><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M9.5 8V6.5a2.5 2.5 0 0 1 5 0V8"/><path d="M6.5 8h11l1 11.5a1.5 1.5 0 0 1-1.5 1.5H7a1.5 1.5 0 0 1-1.5-1.5Z"/><path d="M10.5 11.5v5l4-2.5Z" fill="currentColor"/></svg>Hearth Games</h1>
     <span class="sub" id="sub"></span>
     <span class="spacer"></span>
-    <div class="tabs" id="tabs"><span class="lbrb">LB</span><button class="tab f" data-tab="library">Library</button><button class="tab f" data-tab="downloads">Downloads</button><button class="tab f" data-tab="stores">Stores</button><button class="tab f" data-tab="recomps">Recomps</button><span class="lbrb">RB</span></div>
+    <div class="tabs" id="tabs"><span class="lbrb">LB</span><button class="tab f" data-tab="library">Library</button><button class="tab f" data-tab="downloads">Downloads</button><button class="tab f" data-tab="stores">Stores</button><button class="tab f" data-tab="recomps">Recomps</button><button class="tab f" data-tab="family">Family and friends</button><span class="lbrb">RB</span></div>
   </header>
   <main id="main"></main>
   <footer id="foot"></footer>
@@ -79,6 +109,7 @@ main { grid-template-rows:auto 1fr; gap:.7em; }
 <script src="osk/hearth-osk.js"></script>
 <script src="kit.js"></script>
 <script src="recomps.js"></script>
+<script src="vkbasalt.js"></script>
 <script src="games.js"></script>
 </body>
 </html>

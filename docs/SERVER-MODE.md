@@ -278,3 +278,30 @@ builds are Apache-2.0.
 the Light mode and firewall parts in `hearth-home-server` (`colibriOn`, `colibriPause`) and `hearth-home-server-helper`
 (`USER_APPS`); the tile in `hearth-server-mode`; Send logs in `hosts/hearth-core/src/logs.rs`. Tests:
 `hosts/linux/test/test_hearth_colibri.py` (a stand-in `coli` and OpenAI server); screenshots: `.github/workflows/colibri.yml`.
+
+## On the Fedora edition (1.16)
+
+The Fedora edition has no labwc and no Quickshell (before 1.16 Server mode fell back to Game Mode at every start there).
+Its dashboard is **hearth-server-app** (`hosts/hearth-ui/apps/server`, pure Rust): server-mode.qml and ServerDash.qml
+ported, with the same helper (`hearth-server-mode dash`, `go`, `service`, `power`, `idle-power`, `cancel`, `ithil-*`),
+the same files and marks (`hearth-server-dash-up`, `hearth-server-dash-alive`, `hearth-server/countdown.json`), the
+controller through hearth-pad and Settings through hearth-settings (it opens above the dashboard). It runs full screen
+in **cage**, a kiosk compositor (one app on the screen, it ends when that app's watcher ends): chosen over a KWin kiosk
+setup because it is exactly labwc's role here (the session waits for the dashboard, ends the compositor to switch, and
+cage ends by itself when the watcher gives up), small, and draws through Nvidia's GBM / EGL like labwc (software cursor
+on Nvidia, `WLR_NO_HARDWARE_CURSORS=1`). `desktop/server/cage/run` watches the dashboard as labwc's autostart does
+(three quick closes: it gives up; no alive mark for 45 s: restarted; after two quick closes it draws with the processor).
+nimbus-session (`server_display`) uses labwc whenever labwc and Quickshell are there, else cage when cage and
+hearth-server-app are; every fallback is the same, and while Game Mode is off on this PC a failed Server mode opens
+Desktop Mode instead. The home server's services are system and user units and keep running whatever the screen shows.
+Its own pages for the AI team (the live mesh), Ithil (her 3D / 4D brain, ported from ithil-brain.js), the game download
+cache, the ad blocker and quiet hours & rules are Mantel's. The AIs' cores move as on Mantel (ServerCore.qml's motions
+at the screen's rate, the "ready" breathing and the dim screen's faint cores too; the owner, Nov 20: "smooth like
+Mantel"), but never while the screen is off, another window is in front or Reduce motion is on. Only when the app has
+to draw with the processor (no graphics card, or the watcher's fallback after two quick closes) do they move in the
+light way: 5 times a second, and only while something is at work. The "ready" breathing alone never runs faster than 30 times a
+second. **The never-lag guard**: while the cores move, the dashboard measures its own CPU time over about 10 seconds;
+over 3 % of one core it goes to 30 a second, still over it goes to the light way, and over the light way's 8 % the
+AIs stand still. Each step lasts the rest of that session (nothing is saved, no setting changes), and the dashboard
+says "Smooth motion turned down to keep this PC fast" with **Try smooth again**. Guide or ☰ while Settings or Ithil's app is in front
+brings the dashboard back: it opens its window again (exit 42, restarted at once by the watcher), and cage shows it on top.

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Family and friends
+Comment=Connect to family and friends' PCs with Moonlight
+Exec=hearth-family-app
+TryExec=hearth-family-app
+Icon=preferences-remote-desktop
+Categories=Network;RemoteAccess;
+Keywords=moonlight;family;friends;dad;connect;remote;help;
+StartupWMClass=hearth-family

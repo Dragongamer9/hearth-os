@@ -1,0 +1,1 @@
+[["Server Name", "PulseAudio (on PipeWire 1.4.9)"], ["Default Sink", "alsa_output.pci-0000_04_00.6.analog-stereo"], ["Default Source", "alsa_input.pci-0000_04_00.6.analog-stereo"], ["Sound card 0", "HD-Audio Generic at 0xfcd48000 irq 85"], ["Sound card 1", "Navi 31 HDMI/DP Audio"]]

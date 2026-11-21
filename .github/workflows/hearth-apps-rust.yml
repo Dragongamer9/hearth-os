@@ -1,0 +1,344 @@
+# Hearth's pure-Rust apps (hosts/hearth-ui: Task Manager, System Restore, Reliability history, Settings; docs/APPS-ANATASE.md).
+# Built and tested only here, in Fedora 45 as Hearth OS, Fedora edition is:
+#   build     the workspace: cargo build --release and the tests (errors as annotations)
+#   run       each app on a headless Wayland screen (sway, software drawing) as an ordinary user: time to its first
+#             frame, memory and CPU at rest (limits in .github/scripts/hearth-apps-rust-test.sh), and pictures
+#   pictures  each picture as SHOT notices (one job each: GitHub keeps 50 notices a job)
+name: Hearth apps (pure Rust)
+
+on:
+  push:
+    branches: ['feature/hearth-apps-rust']
+    paths: ['hosts/hearth-ui/**', 'hosts/hearth-core/src/settings_file.rs', 'hosts/linux/desktop/theme/palettes.json',
+            '.github/workflows/hearth-apps-rust.yml', '.github/scripts/hearth-apps-rust-*', '.github/scripts/hearth-ui-build.sh']
+  workflow_dispatch:
+    inputs:
+      only:
+        description: 'Only these apps'' pictures: their shots.d names, a comma list (like "family,notes"; "kwin" also runs the KWin jobs: "capture" Capture on KWin, "files" dragging out of Hearth Files); empty: every app'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+concurrency:
+  group: hearth-apps-rust-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: registry.fedoraproject.org/fedora:45
+    steps:
+      - name: Rust and the libraries iced uses
+        run: |
+          dnf -y install git tar zstd gcc pkgconf-pkg-config rust cargo libxkbcommon-devel wayland-devel fontconfig-devel freetype-devel python3 >/dev/null
+          echo "::notice title=toolchain::$(rustc --version) · $(cargo --version) · $(. /etc/os-release; echo $PRETTY_NAME)"
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            hosts/hearth-ui/target
+          key: hearth-ui-f45-${{ hashFiles('hosts/hearth-ui/**/Cargo.toml') }}-${{ github.sha }}
+          restore-keys: hearth-ui-f45-${{ hashFiles('hosts/hearth-ui/**/Cargo.toml') }}-
+      - name: Build
+        run: |
+          set -o pipefail
+          cd hosts/hearth-ui
+          if ! cargo build --release --workspace 2>&1 | tee ../../build.log; then
+            grep -E '^(error|warning: unused)' -A12 ../../build.log | grep -v '^--$' | head -400 > ../../errs.txt
+            n=0
+            awk '/^error/{if (b) print b; b=$0; next} {b=b "|" $0} END{print b}' ../../errs.txt | head -30 | while read -r l; do
+              echo "::error title=cargo build::$(echo "$l" | cut -c1-3800)"
+            done
+            exit 1
+          fi
+          ls -la target/release/ | grep hearth-
+          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app; do
+            echo "::notice title=size::$b $(du -h target/release/$b | cut -f1)"
+          done
+      - name: Tests
+        run: |
+          cd hosts/hearth-ui
+          cargo test --release --workspace -- --test-threads=1 2>&1 | tee ../../test.log || { grep -E "panicked|FAILED|^error" ../../test.log | head -10 | while read -r l; do echo "::error title=cargo test::$l"; done; exit 1; }
+          echo "::notice title=cargo test::$(grep -E '^test result' ../../test.log | tr '\n' ' ' | cut -c1-500)"
+      - name: Gather
+        run: |
+          mkdir -p bin
+          cp hosts/hearth-ui/target/release/hearth-task-manager hosts/hearth-ui/target/release/hearth-system-restore hosts/hearth-ui/target/release/hearth-reliability-history hosts/hearth-ui/target/release/hearth-settings-app hosts/hearth-ui/target/release/hearth-files-app hosts/hearth-ui/target/release/hearth-file-chooser hosts/hearth-ui/target/release/hearth-capture-app hosts/hearth-ui/target/release/hearth-pad-host hosts/hearth-ui/target/release/hearth-g15 hosts/hearth-ui/target/release/hearth-g15-app hosts/hearth-ui/target/release/hearth-store-app hosts/hearth-ui/target/release/hearth-server-app hosts/hearth-ui/target/release/hearth-resmon-app hosts/hearth-ui/target/release/hearth-family-app hosts/hearth-ui/target/release/hearth-notes-app bin/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-apps-rust
+          path: bin
+          retention-days: 7
+
+  # The same build as base-anatase.yml's "hearth-ui" job, inside the Fedora edition's own base image (what the image
+  # links), so a problem there shows here first.
+  inside-base:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build inside the Fedora edition's base
+        run: |
+          mkdir -p /tmp/out
+          base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+          docker pull -q "$base"
+          docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-ui-build.sh 2>&1 | tail -60
+          test -s /tmp/out/hearth-ui.tar
+
+  # Dragging a file out of Hearth Files into another app's window (apps/files/src/dragout.rs), on KDE's own KWin
+  # (virtual screen) with KWin's fake input moving the pointer: the Qt app must get the file's URI, and Files must stay
+  # at rest. Pictures as SHOT notices, one step each.
+  drag-out:
+    needs: build
+    # The one "only" input (a comma list): this job runs when it's empty or names files or kwin.
+    if: ${{ !inputs.only || contains(format(',{0},', inputs.only), ',files,') || contains(format(',{0},', inputs.only), ',kwin,') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: registry.fedoraproject.org/fedora:45
+      options: --privileged -v /dev:/dev
+    steps:
+      - name: KWin, Qt, the fake input's tools (as plasma-pad.yml's KDE session)
+        run: |
+          dnf -y install python3 python3-dbus python3-pillow procps-ng dbus-daemon dbus-tools glib2 \
+            plasma-workspace kwin plasma-breeze breeze-icon-theme xorg-x11-server-Xwayland mesa-dri-drivers \
+            qt6-qtdeclarative qt6-qtdeclarative-devel qt6-qtwayland kf6-kconfig rsms-inter-fonts google-noto-sans-fonts \
+            libxkbcommon fontconfig gcc pkgconf-pkg-config wayland-devel plasma-wayland-protocols-devel >/dev/null
+          for b in kwin_wayland wayland-scanner gcc; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed"; done
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: hearth-apps-rust
+          path: bin
+      - name: Drag a file out of Hearth Files into a Qt app
+        timeout-minutes: 10
+        run: |
+          chmod +x bin/*
+          bash .github/scripts/files-drag-out.sh "$PWD/bin" shots
+          [ ! -f shots/FAILED ]
+      - name: Picture files-36-drag-out-start
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py files-36-drag-out-start
+      - name: Picture files-37-dragging
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py files-37-dragging
+      - name: Picture files-38-dropped
+        if: always()
+        run: python3 .github/scripts/firehold-shot.py files-38-dropped
+
+  run:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    container: registry.fedoraproject.org/fedora:45
+    outputs:
+      shots: ${{ steps.list.outputs.shots }}
+      shots2: ${{ steps.list.outputs.shots2 }}
+      shots3: ${{ steps.list.outputs.shots3 }}
+    steps:
+      - name: A screen in memory (sway), grim, fonts, Python
+        run: |
+          dnf -y install --skip-unavailable git sway cage wlopm grim procps-ng python3 python3-pillow util-linux shadow-utils libxkbcommon libwayland-client libwayland-cursor \
+            mesa-vulkan-drivers vulkan-loader mesa-dri-drivers mesa-libEGL mesa-libgbm libglvnd-egl \
+            fontconfig rsms-inter-fonts google-noto-sans-fonts google-noto-sans-symbols-fonts dejavu-sans-fonts dejavu-sans-mono-fonts systemd kdialog qt6-qtwayland >/dev/null
+          for b in sway cage wlopm grim swaymsg runuser; do command -v $b >/dev/null || echo "::warning title=setup::$b isn't installed"; done
+          fc-list | grep -qi inter && echo "::notice title=fonts::Inter is here" || echo "::warning title=fonts::no Inter (the mockups' font)"
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: hearth-apps-rust
+          path: bin
+      - name: Start each app, measure it, picture it
+        timeout-minutes: 40
+        run: |
+          chmod +x bin/*
+          printf '%s' "${{ inputs.only }}" > /tmp/shots-only
+          HEARTH_REPORT_LATER=1 bash .github/scripts/hearth-apps-rust-test.sh
+      - name: The measurements (first frame, memory, CPU at rest, scrolling) and their limits
+        if: always()
+        run: bash .github/scripts/hearth-apps-rust-test.sh --report
+      # A step's notices stop at ten, and the apps' own fill the step above: Resource Monitor's measurements and the
+      # Fedora menu's dialogs get their own (written by .github/scripts/hearth-apps-rust-shots.d/resmon.sh, fedora-menu.sh).
+      - name: Resource Monitor at rest, and the Fedora menu's dialogs
+        if: always()
+        run: |
+          [ -f shots/resmon-results.txt ] || { echo "::warning title=resmon::no measurements (resmon.sh didn't run)"; exit 0; }
+          head -n 8 shots/resmon-results.txt | while read -r l; do echo "::notice title=resmon::$l"; done
+          rm -f shots/resmon-results.txt
+      - name: The pictures taken (each posted by its own job)
+        id: list
+        if: always()
+        run: |
+          # A matrix holds at most 256 jobs, so the pictures go out in three of them (250 each; any beyond 750 are said).
+          ls shots/*.png 2>/dev/null | xargs -r -n1 basename | sed 's/\.png$//' > /tmp/shots.txt || true
+          ONLY=$(printf '%s' "${{ inputs.only }}" | tr -d ' ' | tr ',' '|')
+          if [ -n "$ONLY" ]; then grep -E "$ONLY" /tmp/shots.txt > /tmp/shots-only.txt || true; mv /tmp/shots-only.txt /tmp/shots.txt; fi
+          echo "shots=$(python3 -c 'import json,sys; print(json.dumps([l.strip() for l in open(sys.argv[1]) if l.strip()][:250]))' /tmp/shots.txt)" >> "$GITHUB_OUTPUT"
+          echo "shots2=$(python3 -c 'import json,sys; print(json.dumps([l.strip() for l in open(sys.argv[1]) if l.strip()][250:500]))' /tmp/shots.txt)" >> "$GITHUB_OUTPUT"
+          echo "shots3=$(python3 -c 'import json,sys; print(json.dumps([l.strip() for l in open(sys.argv[1]) if l.strip()][500:750]))' /tmp/shots.txt)" >> "$GITHUB_OUTPUT"
+          n=$(grep -c . /tmp/shots.txt || true); [ "${n:-0}" -le 750 ] || echo "::warning title=pictures::$n pictures taken; only the first 750 are posted"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-apps-rust-shots
+          path: |
+            shots
+            results.txt
+          retention-days: 14
+
+  # Capture on KDE's own KWin (docs/mockups/checklists/capture-rust.md): installed as the Fedora image installs it
+  # (os-bases/anatase/build.sh "Capture (Rust)"), KWin's permission checks on, keys through KWin's fake input:
+  # KWin's screenshots through Capture's entry, Print Screen, Super+Shift+S with one picker on every screen, the
+  # pills' and the dot's places, and recording through KDE's screen-sharing portal (.github/scripts/hearth-apps-rust-kwin.sh).
+  kwin:
+    needs: build
+    # The one "only" input (a comma list): this job runs when it's empty or names capture or kwin.
+    if: ${{ !inputs.only || contains(format(',{0},', inputs.only), ',capture,') || contains(format(',{0},', inputs.only), ',kwin,') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: registry.fedoraproject.org/fedora:45
+      options: --privileged
+    outputs:
+      shots: ${{ steps.list.outputs.shots }}
+    steps:
+      - name: KWin, KDE's portal, PipeWire, GStreamer, the checking tools
+        run: |
+          dnf -y install git python3 python3-dbus python3-gobject python3-pillow procps-ng dbus-daemon dbus-tools kwin \
+            plasma-workspace xdg-desktop-portal xdg-desktop-portal-kde pipewire wireplumber pipewire-pulseaudio pipewire-gstreamer \
+            gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugins-base-tools xorg-x11-server-Xwayland \
+            mesa-dri-drivers gcc pkgconf-pkg-config wayland-devel plasma-wayland-protocols libnotify wl-clipboard \
+            google-noto-sans-fonts rsms-inter-fonts dejavu-sans-fonts breeze-icon-theme kf6-kservice libxkbcommon >/dev/null
+          dnf -y install --skip-unavailable libkscreen kscreen gstreamer1-plugin-openh264 qt6-qtwayland xdg-user-dirs >/dev/null || true
+          for b in kwin_wayland kscreen-doctor gst-launch-1.0 /usr/libexec/xdg-desktop-portal-kde; do command -v $b >/dev/null || [ -x "$b" ] || echo "::warning title=setup::$b isn't installed"; done
+          echo "::notice title=KWin::$(rpm -q kwin xdg-desktop-portal-kde libkscreen pipewire-gstreamer | tr '\n' ' ')"
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: hearth-apps-rust
+          path: bin
+      - name: Capture where the Fedora image puts it (build.sh "Capture (Rust)")
+        run: |
+          install -m755 bin/hearth-capture-app bin/hearth-task-manager /usr/bin/
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          # As in the image: root's, nobody else can change them (Capture's `shot` answers only a root-owned hearth-screens).
+          chown -R root:root /usr/share/nimbus && chmod -R go-w /usr/share/nimbus
+          mkdir -p /usr/share/applications /usr/share/kglobalaccel
+          sed -n '/^# >>> Capture (Rust)/,/^# <<< Capture (Rust)/p' os-bases/anatase/build.sh > /tmp/capture-build.sh
+          bash -e /tmp/capture-build.sh 2>&1 | tail -5
+          ls -l /usr/share/applications/hearth-capture.desktop /usr/share/kglobalaccel/hearth-capture.desktop /usr/bin/hearth-capture /usr/bin/hearth-screenshot
+          bash .github/scripts/ci-kwin-tools.sh install
+      - name: Capture on KWin
+        timeout-minutes: 25
+        shell: bash
+        run: bash .github/scripts/hearth-apps-rust-kwin.sh shots
+      - name: The pictures taken
+        id: list
+        if: always()
+        run: |
+          ls shots/*.png 2>/dev/null | xargs -r -n1 basename | sed 's/\.png$//' > /tmp/shots.txt || true
+          echo "shots=$(python3 -c 'import json,sys; print(json.dumps([l.strip() for l in open(sys.argv[1]) if l.strip()][:200]))' /tmp/shots.txt)" >> "$GITHUB_OUTPUT"
+          for f in shots/kw-windows-*.txt; do [ -f "$f" ] && echo "::notice title=$(basename "$f" .txt)::$(grep -v '^----\|^====' "$f" | tr '\n' '|' | cut -c1-900)"; done
+          [ ! -e shots/FAILED ]
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: hearth-apps-rust-kwin-shots
+          path: shots
+          retention-days: 14
+
+  pictures-kwin:
+    needs: kwin
+    if: always() && needs.kwin.result != 'skipped' && needs.kwin.outputs.shots != '[]' && needs.kwin.outputs.shots != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: ${{ fromJSON(needs.kwin.outputs.shots || '[]') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: hearth-apps-rust-kwin-shots
+          path: shots
+      - name: Picture ${{ matrix.shot }}
+        run: |
+          python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow >/dev/null 2>&1 || python3 -m pip install --quiet pillow >/dev/null
+          python3 .github/scripts/firehold-shot.py ${{ matrix.shot }}
+
+  pictures:
+    needs: run
+    if: always() && needs.run.result != 'skipped' && needs.run.outputs.shots != '[]' && needs.run.outputs.shots != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: ${{ fromJSON(needs.run.outputs.shots || '[]') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: hearth-apps-rust-shots
+          path: .
+      - name: Picture ${{ matrix.shot }}
+        run: |
+          python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow >/dev/null 2>&1 || python3 -m pip install --quiet pillow >/dev/null
+          python3 .github/scripts/firehold-shot.py ${{ matrix.shot }}
+
+  pictures-2:
+    needs: run
+    if: always() && needs.run.result != 'skipped' && needs.run.outputs.shots2 != '[]' && needs.run.outputs.shots2 != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: ${{ fromJSON(needs.run.outputs.shots2 || '[]') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: hearth-apps-rust-shots
+          path: .
+      - name: Picture ${{ matrix.shot }}
+        run: |
+          python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow >/dev/null 2>&1 || python3 -m pip install --quiet pillow >/dev/null
+          python3 .github/scripts/firehold-shot.py ${{ matrix.shot }}
+
+  pictures-3:
+    needs: run
+    if: always() && needs.run.result != 'skipped' && needs.run.outputs.shots3 != '[]' && needs.run.outputs.shots3 != ''
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: ${{ fromJSON(needs.run.outputs.shots3 || '[]') }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: hearth-apps-rust-shots
+          path: .
+      - name: Picture ${{ matrix.shot }}
+        run: |
+          python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow >/dev/null 2>&1 || python3 -m pip install --quiet pillow >/dev/null
+          python3 .github/scripts/firehold-shot.py ${{ matrix.shot }}

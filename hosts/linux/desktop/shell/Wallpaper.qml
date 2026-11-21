@@ -36,7 +36,10 @@ PanelWindow {
     // still drawn every frame.
     readonly property bool covered: !!front && front.minimized !== true && (front.fullscreen === true || front.maximized === true)
     // 1.14: and after 3 minutes without input (DeskState.idle): a laptop left on all night drew it every frame.
-    readonly property bool moving: !Settings.reduceMotion && !covered && !onBattery && !DeskState.locked && !DeskState.screenOff && !DeskState.idle
+    // 1.16 (the rest fixes, docs/LABWC-FEDORA.md): and while any window is open on top of it (the wallpaper redrew the
+    // whole screen every frame behind every window: the lag on the laptop and the Ally), and after 30 s without input.
+    readonly property bool anyOpen: (WinList.toplevels && WinList.toplevels.values ? WinList.toplevels.values : []).some(t => !!t && t.minimized !== true)
+    readonly property bool moving: !Settings.reduceMotion && !covered && !anyOpen && !onBattery && !DeskState.locked && !DeskState.screenOff && !DeskState.idle
     readonly property bool gpu: gpuProbe.gpu
     Item { id: gpuProbe; readonly property bool gpu: GraphicsInfo.api !== GraphicsInfo.Software && GraphicsInfo.api !== GraphicsInfo.Unknown }
     readonly property bool slateMoving: moving && gpu

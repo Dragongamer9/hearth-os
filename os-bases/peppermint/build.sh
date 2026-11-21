@@ -593,6 +593,10 @@ UNIT
     || { mkdir -p /etc/systemd/user/default.target.wants && ln -sf /usr/lib/systemd/user/hearth-time.service /etc/systemd/user/default.target.wants/hearth-time.service; }
 fi
 # ---- end of Hearth Time
+# The "a disc was inserted" notice for Hearth Player (hearth-disc-notify, asleep on udev; docs/PLAYER-DISCS.md); its
+# unit only starts where Hearth Player is installed.
+install -d /usr/lib/systemd/user/default.target.wants
+ln -sf ../hearth-disc-notify.service /usr/lib/systemd/user/default.target.wants/hearth-disc-notify.service
 # ---- Hearth Tools (hosts/hearth-tools): Disk Usage, System Info, Logs, Network Tools, Passwords & Keys, Printers &
 # Scanner and Welcome & Tips in one program (/usr/bin/hearth-tools --app NAME), built with the app (base-peppermint.yml)
 # and carried in os/nimbus-app/hearth-tools/ with its menu entries (hearth-*.desktop; their icons come with Hearth's icon set). What the
@@ -1298,6 +1302,36 @@ if [ -x /usr/bin/hearth-text ]; then
   command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
 fi
 # ---- end of Hearth Text
+# ---- Logitech G15 (hearth-g15, docs/G15.md): the keyboard's user service and command line, and its app (hearth-g15-app,
+# menu entry hearth-g15-app.desktop from os/system_files), built by CI next to the
+# Hearth app (base-peppermint.yml) and carried in os/nimbus-app. Its udev rule (70-hearth-g15.rules), user unit
+# (hearth-g15.service: nothing waits for it, skipped without a G15) and sign-in entry come from os/system_files.
+if [ -x /ctx/nimbus-app/hearth-g15 ]; then
+  for b in hearth-g15 hearth-g15-app; do
+    [ -x "/ctx/nimbus-app/$b" ] || continue
+    install -Dm755 "/ctx/nimbus-app/$b" "/usr/bin/$b"
+    if ldd "/usr/bin/$b" | grep 'not found'; then
+      echo "::warning title=$b::it needs libraries this image doesn't have, so it's left out"
+      rm -f "/usr/bin/$b"
+    fi
+  done
+else
+  echo "::warning title=hearth-g15::the Hearth app's build didn't carry hearth-g15 (os/nimbus-app), so this image has no G15 support"
+fi
+# ---- end of hearth-g15
+# ---- Family and friends with Moonlight (hearth-family-app, docs/HEARTH-LINK.md): the question, the notice with Stop
+# sharing now and the list of PCs that let this one connect, built by CI next to the Hearth app (base-peppermint.yml).
+# Without it Hearth Link asks and tells with notifications (Allow / Deny, Stop sharing now).
+if [ -x /ctx/nimbus-app/hearth-family-app ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-family-app /usr/bin/hearth-family-app
+  if ldd /usr/bin/hearth-family-app | grep 'not found'; then
+    echo "::warning title=hearth-family-app::it needs libraries this image doesn't have, so it's left out"
+    rm -f /usr/bin/hearth-family-app
+  fi
+else
+  echo "::warning title=hearth-family-app::the Hearth app's build didn't carry it, so Family and friends asks with notifications"
+fi
+# ---- end of hearth-family-app
 cat > /usr/share/applications/hearth-tasks.desktop <<DESKTOP
 [Desktop Entry]
 Name=Task Manager

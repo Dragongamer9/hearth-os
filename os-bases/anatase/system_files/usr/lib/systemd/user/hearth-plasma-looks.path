@@ -1,0 +1,11 @@
+[Unit]
+Description=Hearth's look in Plasma follows Hearth's Settings (and a Hearth OS Global Theme picked in System Settings)
+PartOf=graphical-session.target
+
+[Path]
+PathChanged=%h/.local/share/nimbus/desktop.json
+PathChanged=%h/.config/kdeglobals
+Unit=hearth-plasma-looks.service
+
+[Install]
+WantedBy=plasma-workspace.target

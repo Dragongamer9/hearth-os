@@ -79,8 +79,9 @@ Scope {
     }
     // 1.14 (the owner's laptop: the shell drew the moving wallpaper all night): after 3 minutes without input the moving
     // wallpaper holds still (DeskState.idle); any input brings it back. Nothing else changes.
+    // 1.16 (the rest fixes, docs/LABWC-FEDORA.md): after 30 seconds, not 3 minutes.
     IdleMonitor {
-        timeout: 180
+        timeout: 30
         respectInhibitors: false
         onIsIdleChanged: DeskState.idle = isIdle
     }

@@ -272,6 +272,13 @@ function visibleParts(rects, cuts) {
     }
     return parts;
 }
+// A game's wide picture for a tile `phys` pixels wide on the screen: Steam's "wide" is its 460 x 215 header, which a
+// big tile on a sharp screen (the Ally at 2.1) would stretch soft, so past that the high-resolution hero comes first.
+function wideArt(g, phys) {
+    if (!g) return "";
+    if (phys > 470 && g.hero) return g.hero;
+    return g.wide || g.hero || g.cover || "";
+}
 // The order windows are stacked in, top first: the ones you went to last (KWin raises a window you activate), then the
 // rest, newest first. recent: window ids, most recent first.
 function stackOrder(wins, recent, idOf) {

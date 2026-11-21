@@ -273,6 +273,29 @@ class SystemLists(unittest.TestCase):
         self.s = load(SHELL / 'hearth-system', 'hearth_system_defaults_system')
         self.hf = self.s.load_files_helper()
 
+    def test_one_type_in_a_system_list(self):
+        # default-system-set (build.sh: Plasma's folders to Hearth Files, then Dolphin): only the image's system lists,
+        # that type's line replaced, the rest kept.
+        lst = os.path.join(self.tmp, 'kde-mimeapps.list')
+        write(lst, '[Default Applications]\ninode/directory=org.kde.dolphin.desktop;\ntext/plain=org.kde.kate.desktop;\n\n[Added Associations]\nx/y=a.desktop;\n')
+        files = {'/etc/xdg/kde-mimeapps.list': lst}
+        real_read, real_write = self.s.read, self.s.write_atomic
+        self.s.read = lambda path, default='': real_read(files.get(path, path), default)
+        self.s.write_atomic = lambda path, text, mode=0o644: real_write(files[path], text, mode)
+        try:
+            r = self.s.default_system_set('/etc/xdg/kde-mimeapps.list', 'inode/directory', 'hearth-files.desktop;org.kde.dolphin.desktop')
+            self.assertEqual(r['apps'], ['hearth-files.desktop', 'org.kde.dolphin.desktop'])
+            for bad in (('/home/chris/.config/mimeapps.list', 'inode/directory', 'a.desktop'), ('/etc/xdg/kde-mimeapps.list', 'not a type', 'a.desktop'),
+                        ('/etc/xdg/kde-mimeapps.list', 'inode/directory', 'rm -rf'), ('/etc/xdg/../home/x/mimeapps.list', 'a/b', 'a.desktop')):
+                with self.assertRaises(self.s.Fail):
+                    self.s.default_system_set(*bad)
+        finally:
+            self.s.read, self.s.write_atomic = real_read, real_write
+        text = read(lst)
+        self.assertEqual(self.s.ml_read(text, 'inode/directory'), ['hearth-files.desktop', 'org.kde.dolphin.desktop'])
+        self.assertEqual(self.s.ml_read(text, 'text/plain'), ['org.kde.kate.desktop'])
+        self.assertIn('x/y=a.desktop;', text)
+
     def test_rank_and_desktops(self):
         apps = os.path.join(self.tmp, 'usr/share/applications')
         write(os.path.join(apps, 'hearth-photos.desktop'), entry('Photos', 'image/png;image/heic;'))
@@ -412,7 +435,11 @@ class RepositoryApps(unittest.TestCase):
             text = (ROOT / 'os-bases' / base / 'build.sh').read_text()
             for line in text.splitlines():
                 if 'mimeapps.list' in line and not line.lstrip().startswith('#'):
-                    self.assertTrue('hearth-system' in line or line.lstrip().startswith('echo'), (base, line))
+                    # Plasma's own staging tree ($PK) takes a copy of the image's KDE lists, and hearth-app-kinds'
+                    # result for Plasma is copied back: only whole-file copies between the two, at build time.
+                    copy = line.lstrip().startswith('for f in ') and (
+                        'cp "$f" "$PK/etc/xdg/"' in line or 'cp "$PK/etc/xdg/$f" "/etc/xdg/$f"' in line)
+                    self.assertTrue('hearth-system' in line or line.lstrip().startswith('echo') or copy, (base, line))
             self.assertIn('hearth-system defaults-system', text)
         self.assertNotIn('mimeapps.list"', (ROOT / 'hosts' / 'hearth-office' / 'linux' / 'install.sh').read_text())
 

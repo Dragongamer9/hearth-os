@@ -96,7 +96,7 @@ PanelWindow {
     // Not the Hearth app itself (nimbus.desktop, "Hearth"): that's the archived Game Mode in a window, hidden everywhere
     // people look (docs/SETTINGS-MOVE.md); HEARTH_LEGACY_GAME_MODE=1 (the developer switch) shows it again.
     readonly property bool legacyGame: Quickshell.env("HEARTH_LEGACY_GAME_MODE") === "1"
-    readonly property var apps: Array.from(DesktopEntries.applications.values)
+    readonly property var apps: AppEntries.values
         .filter(a => !a.noDisplay && !root.hiddenIds[a.id] && !/^(qt5ct|qt6ct)$/.test(a.id || "") && (root.legacyGame || !/^nimbus(\.desktop)?$/.test(a.id || "")))
         .sort((a, b) => a.name.localeCompare(b.name))
     // Hearth's own apps (and Beacon, Xodus Nexus, and Bazaar, the app store Hearth OS picks): never in the folder.
@@ -842,7 +842,7 @@ PanelWindow {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: 10
-                ActionButton { label: "Game Mode"; icon: "pad"; primary: true; command: ["nimbus-mode", "game"] }
+                ActionButton { visible: !Settings.gameModeOff; label: "Game Mode"; icon: "pad"; primary: true; command: ["nimbus-mode", "game"] }
                 ActionButton { label: "Settings"; icon: "gear"; command: [] }
                 ActionButton { label: "Sleep"; icon: "sleep"; command: ["python3", Buttons.helper, "sleep", "Desktop Mode: menu"] }
                 ActionButton { label: "Restart"; icon: "restart"; command: ["systemctl", "reboot"] }

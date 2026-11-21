@@ -1,0 +1,6 @@
+[General]
+Source=Times
+
+[Times]
+SunsetStart=19:30:00
+SunriseStart=07:00:00

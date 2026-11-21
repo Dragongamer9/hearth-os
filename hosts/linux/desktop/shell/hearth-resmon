@@ -200,6 +200,8 @@ def card_static(sys_root='/sys'):
         except OSError:
             continue
     mesa = _cmd_out(['dpkg-query', '-W', '-f=${Version}', 'mesa-vulkan-drivers']) or _cmd_out(['dpkg-query', '-W', '-f=${Version}', 'libgl1-mesa-dri'])
+    # The Fedora edition (dnf / rpm; its Resource Monitor is hosts/hearth-ui/apps/resmon): Mesa's own package there
+    mesa = mesa or _cmd_out(['rpm', '-q', '--qf', '%{VERSION}', 'mesa-dri-drivers']) or _cmd_out(['rpm', '-q', '--qf', '%{VERSION}', 'mesa-vulkan-drivers'])
     mesa = re.sub(r'^\d+:', '', mesa).split('-')[0].split('~')[0]
     vk = re.search(r'apiVersion\s*=\s*([\d.]+)', _cmd_out(['vulkaninfo', '--summary']))
     gl = re.search(r'OpenGL (?:core profile )?version string:\s*([\d.]+)', _cmd_out(['eglinfo', '-B']) or _cmd_out(['glxinfo', '-B']))
@@ -2268,7 +2270,7 @@ def drives_info(sys_root='/sys', mounts_text=None):
         out.append({'name': d['name'], 'label': d['label'], 'letters': d['letters'], 'type': d['type'], 'model': d['model'],
                     'fs': fs_of(mp, mounts_text) if mp else '', 'free': free, 'total': total or d['size'],
                     'pct': round(100.0 * (total - free) / total, 1) if total and free is not None else None,
-                    'temp': drive_temp(d['name'], sys_root), 'system': d['system']})
+                    'temp': drive_temp(d['name'], sys_root), 'system': d['system'], 'mounts': d['mounts']})
     return out
 
 

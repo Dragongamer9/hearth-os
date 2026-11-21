@@ -1,0 +1,15 @@
+# The Hearth Store's daily look for updates (docs/HEARTH-STORE.md, "Finding updates"): a few small requests (each
+# app's newest release on GitHub and its SHA256SUMS.txt; the signed list from hearthos.fun when Hearth OS has the
+# owner's key), and one notice per new version when "Tell me when an update is ready" is on. It does nothing while a
+# game runs, on a metered connection, or when Store settings says "Only when the Store opens". It downloads no app and
+# writes only the Store's cache (~/.cache/hearth/store). Never touches booting, the system or the session.
+[Unit]
+Description=Hearth Store: look for updates (once a day)
+ConditionPathExists=/usr/bin/hearth-store-app
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/hearth-store-app --check
+TimeoutStartSec=3min
+Nice=10
+IOSchedulingClass=idle

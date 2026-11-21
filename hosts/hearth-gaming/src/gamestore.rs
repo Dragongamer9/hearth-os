@@ -39,10 +39,18 @@ pub const CALLS: &[(&str, &[&str])] = &[
     ("recomps.list", &[]), ("recomps.details", &["id", "fresh"]), ("recomps.places", &[]), ("recomps.checkUpdates", &[]),
     ("recomps.install", &["id", "place"]), ("recomps.cancel", &["id"]), ("recomps.uninstall", &["id", "keep"]),
     ("recomps.pickGame", &["id"]), ("recomps.useGame", &["id", "path", "anyway"]), ("recomps.skip", &["id", "tag"]),
+    // Sharper graphics (hearth-core vkbasalt.rs): a game's switch and its parts (strength "0".."100"), and the launch
+    // options to copy for Steam and Faugus Launcher's own games (vkbasalt.shared makes the conf that one names).
+    ("game.vkbasalt", &["id"]), ("game.setVkbasalt", &["id", "on", "strength", "smaa", "vibrance", "key"]),
+    ("vkbasalt.info", &[]), ("vkbasalt.shared", &[]),
+    // Family and friends with Moonlight (hearth-link moonlight.rs): the PCs that let this one connect, straight to the
+    // Hearth Link service (ids are its devices', 64 hex). Turning sharing on and adding people: Settings only.
+    ("moonlight.friends", &["check"]), ("moonlight.connect", &["id"]), ("moonlight.disconnect", &[]), ("moonlight.forget", &["id"]),
+    ("moonlight.join", &["code"]),
 ];
 
 /// The tabs the window has (`--tab <name>` opens on one).
-pub const TABS: &[&str] = &["library", "downloads", "stores", "recomps"];
+pub const TABS: &[&str] = &["library", "downloads", "stores", "recomps", "family"];
 
 /// A port's id in Hearth Recomps' catalogue: the same rule as hearth-core recomps.rs (lowercase letters, digits, '-').
 pub fn recomp_id_ok(id: &str) -> bool {
@@ -102,9 +110,11 @@ pub fn check(method: &str, args: &Value) -> Result<(String, Value), String> {
         if !STORES.contains(&s) { return Err("Hearth Games signs in to GOG, Epic Games and Amazon".into()); }
     }
     let recomp = m.starts_with("recomps.");
+    let link = m.starts_with("moonlight.");
     if keys.contains(&"id") {
         let id = out.get("id").and_then(Value::as_str).unwrap_or("");
-        if recomp { if !recomp_id_ok(id) { return Err("That isn't one of Hearth Recomps' ports".into()); } }
+        if link { if !(id.len() == 64 && id.chars().all(|c| c.is_ascii_hexdigit())) { return Err("That isn't one of your family and friends' PCs".into()); } }
+        else if recomp { if !recomp_id_ok(id) { return Err("That isn't one of Hearth Recomps' ports".into()); } }
         else if !game_id_ok(id) { return Err("That isn't a GOG, Epic, Amazon or Battle.net game".into()); }
     }
     // A DLC is one of the game's own store's ids (or "": all of them).
@@ -134,6 +144,25 @@ pub fn only_ours(mut lib: Value) -> Value {
     }
     lib
 }
+
+/// The library's answer with each game's desktop icon (desktop_icons::status): `onDesktop` (Hearth's icon is on the
+/// desktop now), `iconOnInstall` (the install's tick box asked for one), and `desktop` {available, tickDefault} for
+/// the page (no Desktop folder to use: no Add to desktop).
+pub fn mark_desktop(mut lib: Value, status: &Value, tick_default: bool) -> Value {
+    let has = |k: &str, id: &str| status[k].as_array().map(|a| a.iter().any(|v| v == id)).unwrap_or(false);
+    if let Some(a) = lib["games"].as_array_mut() {
+        for g in a.iter_mut() {
+            let id = g["id"].as_str().unwrap_or("").to_string();
+            g["onDesktop"] = json!(has("on", &id));
+            g["iconOnInstall"] = json!(has("onInstall", &id));
+        }
+    }
+    if lib.is_object() { lib["desktop"] = json!({"available": status["available"] == true, "tickDefault": tick_default}); }
+    lib
+}
+
+/// Which games can get a desktop icon: an installed one of this app's stores (not Battle.net's own app entry).
+pub fn desktop_icon_ok(id: &str) -> bool { game_id_ok(id) && id != "battlenet:app" }
 
 /// The downloads' answer with only this app's games.
 pub fn only_our_downloads(mut d: Value) -> Value {
@@ -233,6 +262,20 @@ mod tests {
     }
 
     #[test]
+    fn family_and_friends_calls_only_with_a_devices_id() {
+        let dad = "3f".repeat(32);
+        assert!(check("moonlight.friends", &json!({"check": true})).is_ok());
+        assert!(check("moonlight.connect", &json!({"id": dad})).is_ok());
+        assert!(check("moonlight.connect", &json!({"id": "gog:1207658924"})).is_err());
+        assert!(check("moonlight.forget", &json!({"id": "../x"})).is_err());
+        assert!(check("moonlight.join", &json!({"code": "K7M-4QX-92HC"})).is_ok());
+        // Sharing this PC (turning it on, adding and removing people) is Settings' only.
+        for m in ["moonlight.share.set", "moonlight.share.invite", "moonlight.share.remove", "moonlight.share.person", "moonlight.stop"] {
+            assert!(check(m, &json!({})).is_err(), "{m}");
+        }
+    }
+
+    #[test]
     fn recomps_calls_go_to_the_engine_with_their_own_ids() {
         assert!(check("recomps.list", &json!({})).is_ok());
         assert!(check("recomps.details", &json!({"id": "zelda64", "fresh": true})).is_ok());
@@ -305,6 +348,21 @@ mod tests {
     }
 
     #[test]
+    fn library_cards_know_their_desktop_icons() {
+        let st = json!({"available": true, "on": ["gog:1"], "onInstall": ["epic:2"]});
+        let v = mark_desktop(json!({"games": [{"id": "gog:1"}, {"id": "epic:2"}, {"id": "amazon:3"}]}), &st, false);
+        assert_eq!(v["games"][0]["onDesktop"], true);
+        assert_eq!(v["games"][1]["onDesktop"], false);
+        assert_eq!(v["games"][1]["iconOnInstall"], true);
+        assert_eq!(v["games"][2]["iconOnInstall"], false);
+        assert_eq!(v["desktop"], json!({"available": true, "tickDefault": false}));
+        let v = mark_desktop(json!({"games": []}), &json!({"available": false}), true);
+        assert_eq!(v["desktop"], json!({"available": false, "tickDefault": true}));
+        assert!(desktop_icon_ok("gog:1") && desktop_icon_ok("battlenet:wow"));
+        assert!(!desktop_icon_ok("battlenet:app") && !desktop_icon_ok("steam:620") && !desktop_icon_ok("recomp:zelda64"));
+    }
+
+    #[test]
     fn ids() {
         assert!(game_id_ok("gog:1207658924") && game_id_ok("epic:Sugar") && game_id_ok("battlenet:wow") && game_id_ok("battlenet:app"));
         assert!(!game_id_ok("steam:620") && !game_id_ok("gog:") && !game_id_ok("gog") && !game_id_ok("gog:../x") && !game_id_ok("epic:a b"));
@@ -317,5 +375,21 @@ mod tests {
         assert_eq!(ids, vec!["gog:1", "battlenet:app"]);
         let d = only_our_downloads(json!({"active": [{"id": "steam:2"}, {"id": "epic:x"}]}));
         assert_eq!(d["active"].as_array().unwrap().len(), 1);
+    }
+}
+
+#[cfg(test)]
+mod vkbasalt_tests {
+    use super::*;
+
+    #[test]
+    fn sharper_graphics_calls() {
+        let (m, a) = check("game.setVkbasalt", &json!({"id": "gog:1207658924", "on": true, "strength": "55", "smaa": false, "path": "/etc"})).unwrap();
+        assert_eq!(m, "game.setVkbasalt");
+        assert_eq!(a, json!({"id": "gog:1207658924", "on": true, "strength": "55", "smaa": false}));
+        assert!(check("game.vkbasalt", &json!({"id": "battlenet:wow"})).is_ok());
+        assert!(check("game.vkbasalt", &json!({"id": "steam:620"})).is_err(), "Steam's games keep Steam's launch options");
+        assert!(check("game.setVkbasalt", &json!({"id": "gog:1", "strength": 55})).is_err(), "numbers go as text");
+        assert!(check("vkbasalt.info", &json!({})).is_ok() && check("vkbasalt.shared", &json!({})).is_ok());
     }
 }

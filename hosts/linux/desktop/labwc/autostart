@@ -89,6 +89,13 @@ give_up() {
     kill -TERM "$HEARTH_DESKTOP_PID" 2>/dev/null
     return 0
   fi
+  # >>> labwc on the Fedora edition (1.16): not Game Mode but KDE Plasma (nimbus-session run_fedora_labwc reads why).
+  if [ "${HEARTH_FEDORA_LABWC:-}" = 1 ] && [ -n "$HEARTH_DESKTOP_PID" ]; then
+    echo "$1" >"$RUN/hearth-labwc-shell-failed"
+    kill -TERM "$HEARTH_DESKTOP_PID" 2>/dev/null
+    return 0
+  fi
+  # <<< labwc on the Fedora edition
   # Game Mode couldn't start a moment ago (the session fell back to here): asking for it again would only come
   # straight back to Desktop Mode and fail again, restarting it about once a minute. Stay, and say why (the
   # desktop's right-click menu still switches modes and logs out).
@@ -100,7 +107,8 @@ give_up() {
       || kdialog --title Hearth --error "$msg" 2>/dev/null ) >/dev/null 2>&1 &
     return 0
   fi
-  nimbus-mode game
+  # (Game Mode on this PC off: still allowed, Game Mode stays available for recovery.)
+  HEARTH_GM_RECOVERY=1 nimbus-mode game
 }
 if [ ! -f "$SHARE/desktop/shell/shell.qml" ]; then
   give_up "The Desktop Mode files are missing ($SHARE/desktop/shell)."

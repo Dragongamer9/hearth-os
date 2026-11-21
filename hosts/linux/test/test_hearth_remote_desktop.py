@@ -119,6 +119,21 @@ class Firewall(Patch):
         self.env('PKEXEC_UID', str(os.getuid()))
         self.assertEqual(hh.main(['x', 'remote-fw', 'load']), 1, 'not through pkexec')
 
+    def test_family_and_friends_rule_lets_in_only_this_pc(self):
+        t = hh.rd_nft_text(local=True)
+        self.assertIn('iifname "lo" accept', t)
+        self.assertNotIn('tailscale0', t)
+        self.assertIn('(local-only)', t)
+        r = hh.remote_fw('local', '47989')
+        self.assertEqual(r['firewall'], 'local-only')
+        self.assertEqual(open(hh.RD_MARK).read().strip(), 'local-only')
+        self.assertIn(hh.RD_UNIT, self.enabled, 'loaded again at boot')
+        # At boot the saved rule says which it is.
+        self.assertEqual(hh.rd_load()['firewall'], 'local-only')
+        hh.remote_fw('tailscale', '47989')
+        self.assertEqual(hh.rd_load()['firewall'], 'tailscale-only')
+        self.assertEqual(hh.main(['x', 'remote-fw', 'local', '47989']), 0)
+
     def test_the_boot_unit_never_holds_up_the_boot(self):
         t = (SYSTEMD / 'system' / 'hearth-remote-desktop-firewall.service').read_text()
         self.assertIn('ExecStart=-/usr/bin/python3 /usr/libexec/nimbus/hearth-home-server-helper remote-fw load', t)
@@ -306,6 +321,88 @@ class Helper(Patch):
         with self.assertRaises(rd.Fail):
             rd.set_cmd('on', 'on')
         self.assertFalse(self.roots)
+
+    # ---- Family and friends (Hearth Link's switch; this only does Sunshine's part)
+    def family(self, on):
+        f = os.path.join(self.d, 'c/nimbus/family-moonlight.json')
+        os.makedirs(os.path.dirname(f), exist_ok=True)
+        json.dump({'on': on}, open(f, 'w'))
+        self.patch(rd, 'FAMILY', f)
+        self.patch(rd, 'FAMILY_SESSION', os.path.join(self.d, 'run-link/moonlight-session.json'))
+
+    def test_family_on_keeps_sunshine_to_this_pc_and_doesnt_start_it(self):
+        self.family(True)
+        unit = 'app-dev.lizardbyte.app.Sunshine.service'
+        r = rd.family_cmd(['on'])
+        self.assertTrue(r['ok'])
+        self.assertEqual(self.roots[0], ['remote-fw', 'local', '47989'], 'the rule first')
+        self.assertIn(' gate', open(rd.dropin_path(unit)).read())
+        self.assertIn('encoder = nvenc', self.conf())
+        self.assertNotIn(unit, self.active, 'nothing runs at rest')
+        self.assertFalse(os.path.lexists(rd.wants_link(unit)), "doesn't start with the session")
+        self.assertFalse(rd.load()['on'], "Use this PC from anywhere's switch is its own")
+        # Someone let in: started then, and stopped again when they're gone (it ran only for them).
+        r = rd.family_cmd(['start'])
+        self.assertEqual((r['port'], r['running']), (47989, True))
+        self.patch(rd, 'api', lambda *a, **k: {})
+        rd.family_cmd(['idle'])
+        self.assertNotIn(unit, self.active)
+        # Off: undone like Use this PC from anywhere's off.
+        self.family(False)
+        rd.family_cmd(['off'])
+        self.assertEqual(self.roots[-1], ['remote-fw', 'off'])
+        self.assertFalse(os.path.exists(rd.dropin_path(unit)))
+        self.assertNotIn('nvenc', self.conf())
+
+    def test_family_on_with_use_from_anywhere_keeps_its_rule(self):
+        rd.set_cmd('on', 'on')
+        self.family(True)
+        n = len(self.roots)
+        rd.family_cmd(['on'])
+        self.assertEqual(len(self.roots), n, 'Tailscale only already includes this PC')
+        # Use this PC from anywhere off while Family and friends is on: only this PC can reach Sunshine now, and
+        # Hearth's values stay for it.
+        rd.set_cmd('on', 'off')
+        self.assertEqual(self.roots[-1], ['remote-fw', 'local', '47989'])
+        self.assertIn('encoder = nvenc', self.conf())
+        self.assertFalse(os.path.lexists(rd.wants_link('app-dev.lizardbyte.app.Sunshine.service')))
+
+    def test_family_on_fails_safe(self):
+        self.family(True)
+        self.root_fail = "nftables (nft) isn't installed"
+        with self.assertRaises(rd.Fail):
+            rd.family_cmd(['on'])
+        self.assertFalse(os.path.exists(rd.SUN_CONF), 'nothing changed without the rule')
+        with self.assertRaises(rd.Fail):
+            rd.family_cmd(['paired', 'Hearth $(x)'])
+        self.assertEqual(rd.main(['x', 'family', 'nonsense']), 1)
+
+    def test_family_paired_and_forget_by_name(self):
+        self.patch(rd, 'clients', lambda: ([{'name': 'Hearth ab12cd34', 'uuid': 'u-1'}, {'name': 'Work laptop', 'uuid': 'u-2'}], False))
+        gone = []
+        self.patch(rd, 'unpair', lambda u: gone.append(u) or {'ok': True})
+        self.assertTrue(rd.family_cmd(['paired', 'Hearth ab12cd34'])['paired'])
+        self.assertFalse(rd.family_cmd(['paired', 'Hearth 00000000'])['paired'])
+        self.assertEqual(rd.family_cmd(['forget', 'Hearth ab12cd34'])['removed'], 1)
+        self.assertEqual(gone, ['u-1'], 'only that person\'s Moonlight')
+
+    def test_games_only_refuses_the_desktop(self):
+        self.family(True)
+        os.makedirs(os.path.dirname(rd.FAMILY_SESSION), exist_ok=True)
+        json.dump({'who': 'Chris', 'what': 'games'}, open(rd.FAMILY_SESSION, 'w'))
+        self.env('SUNSHINE_APP_NAME', 'Desktop')
+        self.assertFalse(rd.session('start')['ok'])
+        self.assertEqual(rd.main(['x', 'session', 'start']), 1, 'Sunshine stops Desktop for them')
+        self.env('SUNSHINE_APP_NAME', 'Steam Big Picture')
+        self.assertEqual(rd.session('start'), {'ok': True})
+        json.dump({'who': 'Chris', 'what': 'desktop'}, open(rd.FAMILY_SESSION, 'w'))
+        self.env('SUNSHINE_APP_NAME', 'Desktop')
+        self.assertEqual(rd.session('start'), {'ok': True})
+
+    def test_gate_takes_either_rule(self):
+        open(rd.FW_MARK, 'w').write('local-only\n')
+        self.assertEqual(rd.gate(wait=3, sleep=lambda s: None), {'ok': True})
+        self.assertEqual(rd.fw_state(), 'local-only')
 
     def test_gate_waits_for_the_rule(self):
         with self.assertRaises(rd.Fail):

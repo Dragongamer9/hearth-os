@@ -71,14 +71,38 @@ Everything Mantel and Hearth use today on labwc or KWin, and where each stands. 
 | wlr-output-management | wlr-randr, Settings › Display (resolution, refresh, scale, rotation) | **phase 2** (v4): modes, position, rotation, scale; make, model and serial from the screen's EDID; nothing saved by the compositor (Settings saves display.sh); turning a screen off is refused for now |
 | gamma control, or Hearth's own night light and colour filters | Night light (wlsunset), hearth-gamma (inverted colours) | **phase 2**: wlr-gamma-control on real screens (the card's colour ramp; one app per screen, as on labwc; back to normal when it lets go); nested there's no ramp (apps are told "failed"). Hearth's own built-in filters: stage 3 |
 | screencast for the portal (PipeWire) | screen sharing in Discord, browsers, OBS | stage 3: the path is there (xdg-desktop-portal-wlr's screencast uses wlr-screencopy with damage, now offered); the portal's config for Firehold and dmabuf copies come with it |
-| tearing-control | games that want no vsync | **phase 2**: offered and the hint kept per surface; frames still wait for the screen until Smithay can flip asynchronously (0.7 can't): stage 3 |
+| tearing-control | games that want no vsync | **phase 3** (1.15): offered and the hint kept per surface; the Guide's **Allow tearing** (per game, off by default) lets the fullscreen game draw without waiting for the screen (its frame callbacks and FIFO barrier as soon as it hands in a frame; the newest frame is shown at each refresh). A real mid-scan flip waits for a Smithay that can flip asynchronously (0.7 can't) |
 | VRR (FreeSync / G-Sync) | games | **game rows**: on for a screen while a fullscreen game is on it (per game, on by default), only on screens that switch without a modeset; see "Games: the Guide's rows" |
 | Frame limit, resolution scaling, direct scanout | the Guide over a game (mockup 3) | **game rows**: see "Games: the Guide's rows" |
 | multi-GPU, Nvidia | gaming laptops, the owner's RTX 5070 PC | from Anvil (it renders on one GPU and copies to the others); needs proving on Nvidia: stage 3 |
 | HDR and colour management | HDR screens | stage 4 (Smithay's support is still young) |
 | multi-seat (hearth-seats: a second player's own screen, keyboard and pad) | Couch co-op | stage 4 (stays on labwc until then) |
-| workspaces / desktops | Super+Ctrl+Left/Right, Mantel's switcher | stage 3 |
-| window previews and Alt+Tab with pictures | Mantel's switcher | stage 3 (Alt/Super+Tab cycles windows in phase 1) |
+| workspaces / desktops | Super+Ctrl+Left/Right, Mantel's desktop buttons, the pager, the search's desktops plugin | **phase 3** (1.15): rc.xml's `<desktops>` (names and number), GoToDesktop / SendToDesktop keys, and through Mantel's window IPC: go, move a window, add, remove, rename. Windows on the other desktops step aside (like minimized ones) and stay on the taskbar; activating one goes to its desktop |
+| window previews and Alt+Tab with pictures | Everything open's cards, the dock | **phase 3** (1.15): a picture of one window (its frame included, nothing over it), as a PNG in `$XDG_RUNTIME_DIR`, through the window IPC's `shot` (Everything open takes them every 3 s while it's up; the dock's and the taskbar's hover label shows the app's windows' pictures, WinPreviewTip.qml) |
+| Mantel's window list with ids, frames, stacking and desktops | WinList (what KWin's hearthwindows script gives on KWin) | **phase 3** (1.15): the window IPC below |
+| Firehold's own title bars (mockup 2) | the Desk | **phase 3** (1.15): drawn by the compositor itself while Mantel's Desk is up (`frames.rs`, `shell/ssd.rs`), named by Mantel |
+
+## Mantel's window IPC (1.15)
+
+`$XDG_RUNTIME_DIR/firehold-wm-<wayland socket>.sock` (`ipc.rs`): one JSON object a line both ways. Mantel's side is
+`desktop/shell/hearth-firehold-bridge serve --stdio`, which WinList.qml runs under `HEARTH_WM=firehold` exactly as it
+runs hearth-kwin-bridge on KWin, so the taskbar, the dock, the pager, the desktop buttons, Everything open and the rest
+work the same on both. Until the bridge talks (or if it stops) WinList keeps the taskbar protocol (wlr-foreign-toplevel),
+as before. `firehold-comp ctl COMMAND` sends one command by hand (tests).
+
+- `watch`: the window list whenever it changes: `{"t": "windows", "windows": [{id, appId, title, activated, minimized,
+  maximized, fullscreen, desktops, output, pid, frame: {x, y, w, h}, ssd, stack}], "active", "desktops": [{name,
+  active}], "stack": [ids, top first], "frames"}`.
+- `activate`, `close`, `minimize`, `maximize`, `fullscreen`, `snap` (left-half, right-half, maximize), `desktop` (a
+  window to desktop n), `goDesktop`, `addDesktop`, `removeDesktop`, `renameDesktop`.
+- `shot {id, path, max}`: the window's picture, answered `{"t": "shot", ...}` after the next frame. Only into
+  `$XDG_RUNTIME_DIR`, only `.png`, never while the screen is locked.
+- `frames {style: "firehold", names, colours}`: Firehold's own title bars (FireholdFramesComp.qml sends it while the Desk
+  is up). They go back to Hearth's plain frames when Mantel says so or its connection ends; nothing is saved.
+
+Nothing of it can stop Firehold from starting: a socket that can't be made is logged and skipped. Screen scales are
+snapped to the 1/120ths apps are told in (wlr-randr's 2.1 arrives as 2.09765625; without it every app was stretched
+by a hair and looked soft).
 
 ## The lock screen (phase 2)
 
@@ -243,3 +267,43 @@ Building and testing happen only in GitHub Actions.
 - Settings: `hosts/linux/desktop/shell/hearth-your-desktop` and `SetYourDesktop.qml`; the card: `DesktopNotice.qml`.
 - No version number is in the crate: the owner picks every one (Cargo reads a missing one as 0.0.0). When it goes into
   a release, its `Cargo.toml` joins the release's list of files to bump.
+
+## Firehold on Plasma (a test, Nov 18, 2026)
+
+The owner (Nov 18): Hearth moves to Fedora (Anatase) once he has tested it, and Firehold is built two ways so he can
+try both. This is the first way: **Firehold as a KDE Plasma interface on KDE's own KWin 6.8**, the way KDE builds Plasma
+Bigscreen and Plasma Mobile. Nothing of KWin is patched and nothing comes back from `archive/kwin`; only public,
+supported pieces: plasmashell shell packages, Plasma's QML (its task model, Kirigami, Plasma's data sources, KDE's
+LayerShellQt), Plasma's scripting interface, and one KWin script through KWin's script API.
+
+Code: `hosts/linux/desktop/firehold-plasma` (installed into the Anatase image by `install.sh` from `build.sh`).
+Checklist: `docs/mockups/checklists/firehold-plasma-test.md`. CI: `.github/workflows/firehold-plasma.yml` (pictures on the
+branch `ci/firehold-plasma-shots-<branch>`, and ten minutes at rest next to plain Plasma).
+
+- **Couch** is the shell package `org.hearthos.firehold`; its desktop is the containment `org.hearthos.firehold.couch`
+  (Home, Library, Apps, Store, Everything open, Settings › Couch and Desk, and the Guide in a layer over the game).
+  Games come from `desktop/shell/hearth-firehold` and the rules from `desktop/shell/firehold.js`, the same as Mantel's
+  Firehold; windows from Plasma's own task model.
+- **Desk** is Plasma's own desktop: the shell package `org.hearthos.firehold.desk` is Plasma's `org.kde.plasma.desktop`
+  copied when the image is built, with Firehold's first layout (a top bar with the app's name, its menus, the date and
+  clock, the posture pill and Wi-Fi · battery, and a dock). It keeps its own layout file, so plain Plasma's panels are
+  never touched.
+- **Switching** restarts only plasmashell with the other shell package (KDE's own user service when it runs, else
+  `plasmashell --replace`): KWin, the session and every app and game stay open. The Guide button (or Meta+Ctrl+G) on the
+  Desk goes to the Couch; on the Couch it opens the Guide, twice Everything open. With Automatic, the mouse or keyboard
+  goes to the Desk. The KWin script (loaded for the session over D-Bus, never from kwinrc) puts a game full screen on
+  the Couch and back in its window on the Desk.
+- **The controller**: `hearth-firehold-plasma session` reads controllers (never grabs them) and, only while the Couch
+  or the Guide is in front, sends the D-pad, A, B, X, Y, LB/RB and LT/RT as keys through its own "Hearth Firehold keys"
+  device. The Guide button always works.
+- **Opt-in and safe to fail**: "Firehold (Plasma, test)" in Plasma's menu (and Settings › System in the Couch) picks it;
+  it's saved as `HEARTH_PLASMA_DESKTOP=firehold` in `~/.config/nimbus/session.conf` (that line only, through
+  `hearth_settings_io`; no line is plain KDE Plasma) and nothing changes it by itself. If the Couch or the Desk doesn't
+  say it's up within 45 s, plain KDE Plasma starts in its place for that session, with everything still open, and a
+  notification says so; the choice stays. nimbus-session clears Plasma's shell variable before every Plasma start, so
+  plain Plasma never gets Firehold's shell, and Game Mode's own fallbacks are unchanged.
+- **Settings** are Firehold's `~/.config/nimbus/firehold.json`, shared with Mantel's Firehold, written a key at a time
+  and only when changed. Opening a page writes nothing.
+- **Performance**: no QML Timer and no animation anywhere (a test checks); the clock is Plasma's time source once a
+  minute; window pictures stream only while Everything open is on screen; the helper sleeps in `select` (it wakes every
+  10 s to look for new controllers).

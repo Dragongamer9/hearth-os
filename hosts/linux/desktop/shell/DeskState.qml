@@ -44,7 +44,7 @@ Singleton {
     property double padSeen: 0             // when the controller was last used for Hearth's menus (the hint strip)
     property bool locked: false            // the lock screen is up (Lock.qml): moving wallpapers pause
     property bool screenOff: false         // the screen was turned off for idling (IdlePower.qml): they pause too
-    property bool idle: false              // nothing typed, clicked or moved for 3 minutes (IdlePower.qml, 1.14): they pause too
+    property bool idle: false              // nothing typed, clicked or moved for 30 seconds (IdlePower.qml; 3 minutes before 1.16): they pause too
     property var shownDesktop: null        // Show desktop: {windows, front} that were minimized for it
     property double previewAt: 0           // KWin's window previews last shown or hidden (the dock's and taskbar's, so moving between apps is quick)
 
@@ -174,7 +174,9 @@ Singleton {
         try { const v = n.hints ? n.hints["value"] : undefined; return v === undefined || v === null || v === "" ? -1 : Math.max(0, Math.min(100, Number(v))); } catch (e) { return -1; }
     }
     function itemFrom(n, key, onLock) {
-        const img = String(n.image || "");
+        // (its picture: Quickshell's image, else the image-path hint itself, 1.16: a recorded clip's picture on its card)
+        let img = String(n.image || "");
+        try { if (!/^(file:\/\/|\/)/.test(img) && n.hints) img = String(n.hints["image-path"] || n.hints["image_path"] || img); } catch (e) {}
         let cat = "";
         try { cat = String((n.hints && n.hints["category"]) || ""); } catch (e) {}
         return {
@@ -252,7 +254,7 @@ Singleton {
         }
         const h = history.find(x => x.key === key);
         if (id === "default" && h && h.entry) {
-            const e = DesktopEntries.byId(h.entry);
+            const e = AppEntries.byId(h.entry);
             if (e) { e.execute(); forget(key, false); return true; }
         }
         return false;

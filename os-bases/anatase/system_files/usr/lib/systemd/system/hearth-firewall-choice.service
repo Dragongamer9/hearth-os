@@ -1,0 +1,14 @@
+# One firewall on the Fedora edition (usr/libexec/hearth-firewall-choice): decides once, before firewalld and ufw
+# start, whether this device keeps ufw (installed before 1.15, ufw on) or uses firewalld (everyone else). Pulled in by
+# both units' drop-ins (hearth-one-firewall.conf); quick, never waits for anything, and can't hold the start up.
+[Unit]
+Description=Hearth: one firewall (firewalld, or ufw where it was already on)
+DefaultDependencies=no
+After=local-fs.target
+Before=firewalld.service ufw.service network-pre.target
+ConditionPathExists=!/var/lib/hearth/firewall-chosen
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/hearth-firewall-choice
+TimeoutStartSec=15

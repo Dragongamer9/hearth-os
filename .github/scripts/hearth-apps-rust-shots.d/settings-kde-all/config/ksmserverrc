@@ -1,0 +1,4 @@
+[General]
+loginMode=emptySession
+excludeApps=konsole,xterm
+shutdownType=2

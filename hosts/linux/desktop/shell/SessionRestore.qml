@@ -20,7 +20,7 @@ Scope {
     // The .desktop ids of the apps open now (Hearth's own windows and games left out).
     readonly property var openIds: {
         const out = [];
-        void DesktopEntries.applications.values.length;
+        void AppEntries.rev;
         for (const t of (wins || [])) {
             const a = t.appId || "";
             if (!a || /quickshell/i.test(a) || skip.test(a)) continue;
@@ -77,7 +77,7 @@ Scope {
             const id = root.queue[0];
             root.queue = root.queue.slice(1);
             if (root.openIds.indexOf(id) >= 0) return;        // already open (it started by itself)
-            const e = DesktopEntries.byId(id);
+            const e = AppEntries.byId(id);
             if (e) e.execute();
         }
     }

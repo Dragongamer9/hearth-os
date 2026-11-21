@@ -1,10 +1,19 @@
-// The blur for Glass's faux frost (Frost.qml). Its own file so a system without QtQuick.Effects only loses the blur.
+// Glass's frost (Frost.qml) cut to its island's round corners, on the graphics card. Its own file so a system without
+// QtQuick.Effects (or drawing with the processor) only keeps the frost square under the round milky fill.
 import QtQuick
 import QtQuick.Effects
 
 MultiEffect {
-    blurEnabled: true
-    blur: 1.0
-    blurMax: 48
-    saturation: 0.15
+    maskEnabled: true
+    maskSource: shape
+    maskThresholdMin: 0.5
+    maskSpreadAtMin: 1.0
+    Rectangle {
+        id: shape
+        anchors.fill: parent
+        visible: false
+        layer.enabled: true
+        antialiasing: true
+        radius: Math.min(height / 2, Theme.r(18))
+    }
 }

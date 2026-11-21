@@ -54,6 +54,9 @@ PanelWindow {
 
     OskBoard {
         id: board
+        // (1.16, the rest fixes: hidden with its window, so its glow animation doesn't keep running while it's closed;
+        // it woke the shell 60 times a second all day)
+        visible: root.open
         anchors { fill: parent; leftMargin: 8; rightMargin: 8; topMargin: cfg.position === "top" ? 0 : 6; bottomMargin: cfg.position === "top" ? 6 : 0 }
         vm: root.vm
         looks: OskThemes.themes

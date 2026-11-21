@@ -9,10 +9,15 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
   hearth-admin hostname NAME         the device's name on the network
   hearth-admin password              change your password; stdin: {"old": "...", "new": "..."}
                                      (the current password is checked first)
-  hearth-admin update-status         JSON: the running version, a downloaded update, an available one
-  hearth-admin update-check          look for an update, then the same JSON
+  hearth-admin update-status         JSON: the running version, a downloaded update, an available one, and
+                                     where updates come from ("channel": released, a test tag, other)
+  hearth-admin update-check          look for an update, then the same JSON. On the Fedora edition a device that
+                                     follows a test tag (test-1.15) whose version is out as a release is offered
+                                     that release (channel.moveTo: ghcr.io/dragongamer9/hearth-os:stable)
   hearth-admin update                download and stage the update (applies at restart), and update the
-                                     system Flatpak apps; progress lines, then the JSON
+                                     system Flatpak apps; progress lines, then the JSON. Moving to the released
+                                     channel is this same update (bootc switch to :stable instead of bootc
+                                     upgrade), so the version it starts from stays the one to go back to
   hearth-admin rollback              go back to the previous version (bootc's rollback deployment) at the next
                                      restart; run again before restarting, it undoes that. Refused while an update
                                      waits for a restart or when there's no previous version; then the JSON
@@ -56,9 +61,13 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      a new Hearth OS as a clean install that keeps your games (Bazzite-based
                                      Hearth only): writes /var/lib/hearth/clean-install.json (what the new
                                      system's first start keeps, for which account, when), then switches to the
-                                     edition's image (fixed list, NEW_OS_EDITIONS): anatase (the default)
-                                     ghcr.io/dragongamer9/hearth-os:latest (:testing with --testing); peppermint
-                                     (Beta Experimental) hearth-peppermint:testing. Ubuntu and CachyOS are
+                                     edition's image (fixed list, NEW_OS_EDITIONS): anatase (the Fedora
+                                     edition, the main one from 1.16) ghcr.io/dragongamer9/hearth-os:stable only
+                                     (never :latest or :testing); peppermint (Debian, archived in 1.16: the way
+                                     back) hearth-peppermint:testing.
+                                     To or from the Fedora edition the home folder is left as it is, the Debian
+                                     version is pinned so it stays in the boot menu, and going back to Debian
+                                     starts that very version again when it's still there. Ubuntu and CachyOS are
                                      archived: refused. Download progress like update; the new system
                                      starts at the next restart
   hearth-admin firewall-status|firewall-on|firewall-off|firewall-allow|firewall-remove|firewall-incoming deny|allow
@@ -100,6 +109,11 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      given back to you when root or a deleted account owns them, and a container
                                      id range for you (see hearth-home-repair). No arguments: only ever the
                                      account that ran pkexec
+  hearth-admin dvd-decoding-add | dvd-decoding-remove
+                                     Hearth Player's "Add DVD decoding" (only after you said yes there): libdvdcss from
+                                     RPM Fusion's free-tainted repository on the Fedora edition, layered with rpm-ostree
+                                     (see hearth-dvd-decoding, docs/PLAYER-DISCS.md). Always asks for an administrator's
+                                     password (49-hearth-admin.rules)
   ---- system tools (hosts/hearth-tools: Logs, Passwords & Keys, Printers & Scanner)
   hearth-admin confirm-password      check your own password before a saved password is shown; stdin:
                                      {"password": "..."}
@@ -217,7 +231,7 @@ def bootc_status(quiet=False):
             return None
         img = entry.get('image') or {}
         return {'version': img.get('version'), 'timestamp': img.get('timestamp'),
-                'image': ((img.get('image') or {}).get('image'))}
+                'image': ((img.get('image') or {}).get('image')), 'digest': img.get('imageDigest')}
 
     booted = st.get('booted') or {}
     cached = booted.get('cachedUpdate')
@@ -229,6 +243,8 @@ def bootc_status(quiet=False):
         # The version before this one, kept by bootc (Settings › Updates › Go back), and whether it starts next.
         'rollback': info(st.get('rollback')),
         'rollbackQueued': bool(st.get('rollbackQueued')),
+        # Where this device's updates come from (no network asked here: update-check asks the registry).
+        'channel': channel_of((info(booted) or {}).get('image')),
     }
 
 
@@ -274,7 +290,7 @@ UNLOCK_ACTIONS = {'on': '--unlock', 'off': '--lock', 'resume': '--resume', 'dism
 def unlock(args):
     """Peppermint's writable system: everything is hearth-unlock's own (it checks its input too)."""
     if not os.access(UNLOCK, os.X_OK):
-        fail('this edition is always locked (Hearth OS on Anatase is the immutable one)')
+        fail('this edition is always locked (Hearth OS, Fedora edition is the immutable one)')
     os.execv(UNLOCK, [UNLOCK] + args)
 
 
@@ -292,6 +308,123 @@ def run_logged(cmd):
         fail(last or ' '.join(cmd) + ' failed')
 
 
+# ---------------------------------------------------------------------- the release channel (Fedora edition, 1.16)
+# Hearth OS's releases on the Fedora edition: ghcr.io/dragongamer9/hearth-os:stable, published by base-anatase.yml
+# with each release on main (plus a stable-<version> copy; docs/BASE-ANATASE.md, "Release channel"). Test builds go to
+# test-<version> tags, which only devices the owner switches follow. A device on a test tag whose version is out as a
+# release (test-1.15 once 1.15 or newer is on :stable) moves to :stable by itself with its next update: that update
+# is `bootc switch` to :stable instead of `bootc upgrade` (rpm-ostree rebase where packages are layered), so it is one
+# new version like any update, the version it starts from stays the one to go back to (bootc rollback, the boot
+# menu), and nothing changes until the restart. Never Debian's images, never a test of a version that isn't released
+# yet, and when the registry can't be asked the update goes on exactly as before.
+FEDORA_REPO = 'ghcr.io/dragongamer9/hearth-os'
+STABLE_TAG = 'stable'
+FEDORA_STABLE = FEDORA_REPO + ':' + STABLE_TAG
+TEST_TAG = re.compile(r'^ghcr\.io/dragongamer9/hearth-os:test-(\d+(?:\.\d+)*)$')
+REGISTRY = os.environ.get('HEARTH_REGISTRY', 'https://ghcr.io')
+REG_MANIFESTS = ', '.join([
+    'application/vnd.oci.image.index.v1+json', 'application/vnd.docker.distribution.manifest.list.v2+json',
+    'application/vnd.oci.image.manifest.v1+json', 'application/vnd.docker.distribution.manifest.v2+json'])
+
+
+def ver_key(v):
+    """'1.16.0' / '1.16' / 'v1.15' -> (1, 16, 0, 0); anything else -> None."""
+    m = re.match(r'^v?(\d+(?:\.\d+)*)', str(v or '').strip())
+    if not m:
+        return None
+    p = [int(x) for x in m.group(1).split('.')][:4]
+    return tuple(p + [0] * (4 - len(p)))
+
+
+def channel_of(ref):
+    """Where an image reference's updates come from: {"following": ref, "channel": "stable" | "test" | "other",
+    "testOf": "1.15"} (no network)."""
+    ref = ref or ''
+    if ref == FEDORA_STABLE:
+        return {'following': ref, 'channel': 'stable'}
+    m = TEST_TAG.match(ref)
+    if m:
+        return {'following': ref, 'channel': 'test', 'testOf': m.group(1)}
+    return {'following': ref, 'channel': 'other'}
+
+
+def registry_json(path, accept=None, timeout=8):
+    """GET from GitHub's registry, anonymously (a pull token for hearth-os): (headers, body)."""
+    import urllib.request
+    tok_url = REGISTRY + '/token?scope=repository:dragongamer9/hearth-os:pull'
+    with urllib.request.urlopen(tok_url, timeout=timeout) as r:
+        token = (json.load(r) or {}).get('token') or ''
+    req = urllib.request.Request(REGISTRY + path)
+    if accept:
+        req.add_header('Accept', accept)
+    # Not sent on to where a blob redirects (the storage behind the registry).
+    req.add_unredirected_header('Authorization', 'Bearer ' + token)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return {k.lower(): v for k, v in r.headers.items()}, r.read()
+
+
+def stable_release(get=registry_json):
+    """The released Fedora edition (:stable): {"version": "1.16.0", "digests": [...]}, or None when it isn't
+    published or the registry can't be asked (offline: the update then goes on as before)."""
+    import hashlib
+    try:
+        h, body = get('/v2/dragongamer9/hearth-os/manifests/' + STABLE_TAG, REG_MANIFESTS)
+        digests = [h.get('docker-content-digest') or 'sha256:' + hashlib.sha256(body).hexdigest()]
+        m = json.loads(body)
+        if 'manifests' in m:     # an index: the PC's own image in it
+            pick = next((x for x in m['manifests'] if (x.get('platform') or {}).get('os') == 'linux'
+                         and (x.get('platform') or {}).get('architecture') == 'amd64'), None)
+            if not pick:
+                return None
+            digests.append(pick['digest'])
+            _, body = get('/v2/dragongamer9/hearth-os/manifests/' + pick['digest'], REG_MANIFESTS)
+            m = json.loads(body)
+        _, cfg = get('/v2/dragongamer9/hearth-os/blobs/' + m['config']['digest'])
+        labels = (json.loads(cfg).get('config') or {}).get('Labels') or {}
+        version = labels.get('org.opencontainers.image.version') or ''
+        return {'version': version, 'digests': [d for d in digests if d]} if ver_key(version) else None
+    except Exception as e:     # offline, not published yet, an answer that isn't an image: no move, never a failure
+        print('log: couldn\'t ask about the released Hearth OS (%s)' % str(e)[:160], flush=True)
+        return None
+
+
+def release_channel(st, ask=stable_release):
+    """channel_of() for the running version, plus whether its next update moves it to the released channel:
+    "moveTo" (ghcr.io/dragongamer9/hearth-os:stable) and "release" (its version) when this device follows a test tag
+    whose version has been released; "same": that release is what's running already (it came through the test tag),
+    so there's nothing to download and the move waits for the next release (no extra version in the boot menu)."""
+    booted = (st or {}).get('booted') or {}
+    ch = channel_of(booted.get('image'))
+    if ch['channel'] != 'test':
+        return ch
+    rel = ask()
+    if not rel or ver_key(rel.get('version')) is None or ver_key(rel['version']) < ver_key(ch['testOf']):
+        return ch     # not released yet (a test of a newer version stays on its test tag)
+    # The same image (its digest), or the release's own version on an older test tag: only a release can be that, as
+    # base-anatase.yml publishes each one to BRIDGE_TAGS too (should a tag's copy have come out compressed differently).
+    same = (bool(booted.get('digest')) and booted.get('digest') in rel.get('digests', [])) or \
+        (ver_key(booted.get('version')) == ver_key(rel['version']) and ver_key(ch['testOf']) < ver_key(rel['version']))
+    return {**ch, 'moveTo': FEDORA_STABLE, 'release': rel['version'], 'same': bool(same)}
+
+
+def channel_move(ch, stage):
+    """The update that moves a device to the released channel: bootc switch to :stable (rpm-ostree rebase with
+    layered packages), with the update's progress. True when it's staged; False when it couldn't (the update then
+    goes on from the test tag, as before)."""
+    print('log: Hearth OS %s is out: this update moves this device from %s to Hearth OS releases (%s). The version '
+          'it starts from stays in the boot menu to go back to.' % (ch.get('release'), ch.get('following'), FEDORA_STABLE), flush=True)
+    try:
+        if layered():
+            rpm_ostree_upgrade(stage, ['rpm-ostree', 'rebase', 'ostree-unverified-registry:' + FEDORA_STABLE])
+        else:
+            with_retries(lambda: bootc_upgrade_with_progress(0, 90, stage, ['bootc', 'switch', FEDORA_STABLE]))
+        return True
+    except (UpgradeFailed, SystemExit) as e:
+        print('log: moving to Hearth OS releases didn\'t work (%s); updating from %s as before' % (str(e)[:200], ch.get('following')), flush=True)
+        return False
+
+
+
 def update_check():
     if layered():
         # rpm-ostree: exit 77 means there's nothing new.
@@ -301,7 +434,7 @@ def update_check():
                 print('log: ' + line.strip()[:300], flush=True)
         if r.returncode not in (0, 77):
             fail((r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip() else 'rpm-ostree upgrade --check failed')
-        print(json.dumps(bootc_status()))
+        print(json.dumps(offer_release(bootc_status())))
         return
     run_logged(['bootc', 'upgrade', '--check'])
     st = bootc_status()
@@ -313,9 +446,20 @@ def update_check():
                 print('log: rpm-ostree found a newer version', flush=True)
         except UpgradeFailed as e:
             print('log: ' + str(e)[:200], flush=True)
+    offer_release(st)
     print(json.dumps(st))
-    return
-    print(json.dumps(bootc_status()))
+
+
+def offer_release(st, ask=stable_release):
+    """A device on a test tag whose version is released: that release is the update on offer (Update moves it to
+    Hearth OS releases). Nothing when an update already waits for a restart."""
+    ch = release_channel(st, ask)
+    st['channel'] = ch
+    if ch.get('moveTo') and not ch.get('same') and not st.get('staged'):
+        st['available'] = {'version': ch['release'], 'timestamp': None, 'channel': STABLE_TAG}
+        print('log: Hearth OS %s is out as a release: updating moves this device from %s to %s'
+              % (ch['release'], ch['following'], ch['moveTo']), flush=True)
+    return st
 
 
 def progress(pct, what):
@@ -654,7 +798,15 @@ def mirror_disable(why):
         pass
 
 
-def system_upgrade(stage):
+def system_upgrade(stage, ask=stable_release):
+    # A device on a test tag whose version is released: this update is the move to Hearth OS releases.
+    try:
+        st = bootc_status(quiet=True)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        st = None
+    ch = release_channel(st, ask) if st and not st.get('staged') else {}
+    if ch.get('moveTo') and not ch.get('same') and channel_move(ch, stage):
+        return
     if layered():
         print('log: This system has extra packages installed on top, so it updates through rpm-ostree', flush=True)
         rpm_ostree_upgrade(stage)
@@ -1910,14 +2062,22 @@ NEW_OS_IMAGE = 'ghcr.io/dragongamer9/hearth-os'
 # The editions the old Hearth can move to: edition -> (image, tags it has). Never a free-form image. The Beta
 # Experimental editions only have :testing, so that's what they get with or without --testing.
 NEW_OS_EDITIONS = {
-    'anatase': (NEW_OS_IMAGE, ('latest', 'testing')),
+    # 1.16: the Fedora edition's releases (:stable, published with each release on main; FEDORA_STABLE). Never
+    # :latest or :testing, which hold the old pre-archive build. 1.15 switched to its test tag, test-1.15.
+    'anatase': (NEW_OS_IMAGE, (STABLE_TAG,)),
     'ubuntu': ('ghcr.io/dragongamer9/hearth-ubuntu', ('testing',)),
     'cachyos': ('ghcr.io/dragongamer9/hearth-cachyos', ('testing',)),
     'peppermint': ('ghcr.io/dragongamer9/hearth-peppermint', ('testing',)),
 }
-# Archived editions (October 2026; Anatase November 2026): no longer built or offered. Still known (a system on one is recognised and can
-# switch away), but nothing switches to them.
-ARCHIVED_EDITIONS = ('ubuntu', 'cachyos', 'anatase')
+# Archived editions (October 2026): no longer built or offered. Still known (a system on one is recognised and can
+# switch away), but nothing switches to them. (Anatase, archived in November 2026, is back as a test in 1.15.)
+ARCHIVED_EDITIONS = ('ubuntu', 'cachyos')
+# Editions a switch to or from keeps the whole home folder for (1.15: Anatase, tried beside Debian; 1.16: the Fedora
+# edition, the main one, which the owner's Debian PCs move to by hand), and the version you came from is pinned so it
+# stays in the boot menu (ostree would otherwise drop it after two updates). (The name is from 1.15's test.)
+TEST_EDITIONS = ('anatase',)
+DEBIAN_REPO = 'ghcr.io/dragongamer9/hearth-peppermint'
+
 # CachyOS' image is built for x86-64-v3: these processor features (the ones /proc/cpuinfo names) must be there.
 X86_64_V3_FLAGS = ('avx2', 'bmi2', 'fma', 'movbe')
 CLEAN_INSTALL = '/var/lib/hearth/clean-install.json'
@@ -1978,8 +2138,140 @@ def new_os_image(edition, testing=False):
     if edition not in NEW_OS_EDITIONS:
         return None
     repo, tags = NEW_OS_EDITIONS[edition]
+    if 'latest' not in tags and 'testing' not in tags:
+        return repo + ':' + tags[0]          # a test edition: its own tag, whatever --testing says
     tag = 'testing' if testing or 'latest' not in tags else 'latest'
     return repo + ':' + tag
+
+
+def keeps_home(edition, from_edition):
+    """A switch to or from a test edition leaves the home folder as it is (newos.rs keeps_home)."""
+    return edition in TEST_EDITIONS or from_edition in TEST_EDITIONS
+
+
+def ostree_deployments(text, sysroot='/sysroot'):
+    """`ostree admin status` → [{index, booted, pinned, rollback, origin}] in ostree's order (its index for pin and
+    set-default). A deployment line is "* stateroot <checksum>.<serial> (flags)"; the lines under it may say
+    "Pinned: yes". The image each one came from is read from its own .origin file (container-image-reference=...),
+    which ostree's status doesn't always print for container deployments."""
+    out = []
+    for line in text.splitlines():
+        m = re.match(r'^(\*|\s)\s+(\S+)\s+([0-9a-f]{64}\.\d+)(.*)$', line)
+        if m:
+            flags = m.group(4)
+            out.append({'index': len(out), 'booted': m.group(1) == '*', 'pinned': '(pinned)' in flags,
+                        'staged': '(staged)' in flags, 'rollback': '(rollback)' in flags,
+                        'stateroot': m.group(2), 'deploy': m.group(3), 'origin': ''})
+            continue
+        if out and re.match(r'^\s+Pinned:\s*yes', line):
+            out[-1]['pinned'] = True
+        o = re.match(r'^\s+(?:origin refspec|origin):\s*(\S+)', line)
+        if o and out and not out[-1]['origin'] and ':' in o.group(1):
+            out[-1]['origin'] = o.group(1)
+    for d in out:
+        try:
+            with open(os.path.join(sysroot, 'ostree', 'deploy', d['stateroot'], 'deploy', d['deploy'] + '.origin')) as f:
+                for line in f:
+                    if line.startswith(('container-image-reference=', 'refspec=')):
+                        d['origin'] = line.split('=', 1)[1].strip()
+        except OSError:
+            pass
+    return out
+
+
+def read_deployments():
+    try:
+        r = subprocess.run(['ostree', 'admin', 'status'], capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    return ostree_deployments(r.stdout) if r.returncode == 0 else []
+
+
+def pin_booted(deps=None):
+    """Keep the running version in the boot menu for good (ostree admin pin), before a test switch. Never fatal."""
+    deps = read_deployments() if deps is None else deps
+    b = next((d for d in deps if d['booted']), None)
+    if not b:
+        print('log: couldn\'t tell which version is running; not pinned', flush=True)
+        return False
+    if b['pinned']:
+        return True
+    try:
+        ok = subprocess.run(['ostree', 'admin', 'pin', str(b['index'])], capture_output=True, text=True, timeout=60).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        ok = False
+    print('log: ' + ('This version is kept in the boot menu (pinned)' if ok else 'Couldn\'t pin this version (it stays in the boot menu until two more updates)'), flush=True)
+    return ok
+
+
+ESP = '/boot/efi'
+
+
+def esp_guard(esp=ESP):
+    """Every boot loader folder on the EFI partition with a GRUB (EFI/<name>/grubx64.efi) but no grub.cfg and
+    bootuuid.cfg beside it gets the ones another folder has (bootupd's static EFI config: it finds /boot by its UUID and
+    loads /boot/grub2/grub.cfg). The owner's laptop, Nov 17: EFI/anatase without them stopped at "grub>". Only adds
+    those two files; never removes or changes anything else, never the boot order. Returns the files added."""
+    efi = os.path.join(esp, 'EFI')
+    if not os.path.isdir(efi):
+        return []
+    names = sorted(os.listdir(efi))
+    src = next((os.path.join(efi, n) for n in ['debian', 'fedora', 'anatase'] + names
+                if os.path.isfile(os.path.join(efi, n, 'grub.cfg')) and os.path.isfile(os.path.join(efi, n, 'bootuuid.cfg'))), None)
+    if not src:
+        return []
+    added = []
+    for n in names:
+        d = os.path.join(efi, n)
+        if not os.path.isfile(os.path.join(d, 'grubx64.efi')):
+            continue
+        for f in ('grub.cfg', 'bootuuid.cfg'):
+            if os.path.exists(os.path.join(d, f)):
+                continue
+            try:
+                tmp = os.path.join(d, '.' + f + '.hearth-tmp')
+                shutil.copyfile(os.path.join(src, f), tmp)
+                os.replace(tmp, os.path.join(d, f))
+                added.append(os.path.join('EFI', n, f))
+            except OSError as e:
+                print('log: couldn\'t give %s its %s (%s)' % (d, f, e), flush=True)
+    for a in added:
+        print('log: The boot loader in %s finds the boot menu now' % os.path.dirname(a), flush=True)
+    return added
+
+
+def debian_deployment(deps):
+    """The newest Debian deployment that isn't the running one (the version a test switch came from), or None."""
+    for d in deps:
+        if not d['booted'] and not d.get('staged') and DEBIAN_REPO in d['origin']:
+            return d
+    return None
+
+
+def back_to_debian(deps):
+    """From the Anatase test back to the Debian version it came from, exactly as it was: bootc rollback when it's the
+    rollback, else ostree admin set-default to it. False when neither can (then a fresh switch is made)."""
+    d = debian_deployment(deps)
+    if not d:
+        return False
+    if any(x.get('staged') for x in deps):
+        print('log: an update is waiting for a restart; getting Debian fresh instead of going back directly', flush=True)
+        return False
+    try:
+        rb = (bootc_status(quiet=True) or {}).get('rollback') or {}
+        if d.get('rollback') or DEBIAN_REPO in (rb.get('image') or ''):
+            print('log: Going back to the Debian version you came from (bootc rollback)', flush=True)
+            r = subprocess.run(['bootc', 'rollback'], capture_output=True, text=True, timeout=300)
+        else:
+            print('log: Going back to the Debian version you came from (ostree admin set-default %d)' % d['index'], flush=True)
+            r = subprocess.run(['ostree', 'admin', 'set-default', str(d['index'])], capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.SubprocessError) as e:
+        print('log: couldn\'t go back directly (%s); getting Debian fresh instead' % e, flush=True)
+        return False
+    if r.returncode != 0:
+        print('log: couldn\'t go back directly (%s); getting Debian fresh instead' % ((r.stderr or r.stdout).strip()[-200:]), flush=True)
+        return False
+    return True
 
 
 def move_args(args):
@@ -2032,6 +2324,8 @@ def clean_install_plan(user, flatpaks, image, now=None, edition='anatase', from_
         'keep': CLEAN_INSTALL_KEEPS,
         'removeFlatpaks': flatpaks,
         'oldFilesDays': 30,
+        # A test switch (to or from Anatase, 1.15): the home folder is left exactly as it is.
+        'keepHome': keeps_home(edition, from_edition),
     }
 
 
@@ -2095,7 +2389,26 @@ def move_to_new_os(edition='peppermint', testing=False):
             ok = False
         if not ok:
             fail('Hearth OS on CachyOS needs a newer processor (x86-64-v3: AVX2, BMI2, FMA, MOVBE)')
+    # Back from the Anatase test to Debian: the very Debian version you came from, when it's still there.
+    if current in TEST_EDITIONS and edition == 'peppermint':
+        try:
+            os.remove(CLEAN_INSTALL)
+        except OSError:
+            pass
+        if back_to_debian(read_deployments()):
+            try:
+                esp_guard()
+            except Exception as e:
+                print('log: couldn\'t check the EFI partition (%s)' % e, flush=True)
+            done = 'Done. Restart to start Hearth OS on Debian again, as you left it.'
+            progress(100, done)
+            st = bootc_status(quiet=True) or {}
+            st.update({'moved': True, 'restart': True, 'image': image, 'back': True})
+            print(json.dumps(st))
+            return
     print('log: Moving to ' + image, flush=True)
+    if edition in TEST_EDITIONS:
+        pin_booted()
     plan = clean_install_plan(user, bazzite_flatpaks() if current is None else [], image, edition=edition, from_edition=current)
     # A plan left from a switch that didn't finish goes now; this one is written only once the new system is
     # really there (/var is shared by both systems: written before, a switch stopped halfway left a plan that the
@@ -2104,7 +2417,10 @@ def move_to_new_os(edition='peppermint', testing=False):
         os.remove(CLEAN_INSTALL)
     except OSError:
         pass
-    print('log: The new Hearth OS will keep your games and saves; your other files are put aside for 30 days', flush=True)
+    if plan['keepHome']:
+        print('log: Your home folder stays exactly as it is', flush=True)
+    else:
+        print('log: The new Hearth OS will keep your games and saves; your other files are put aside for 30 days', flush=True)
     progress(0, 'Getting the new Hearth OS')
     ensure_podman()
     if current is not None:
@@ -2120,6 +2436,11 @@ def move_to_new_os(edition='peppermint', testing=False):
             with_retries(lambda: bootc_upgrade_with_progress(0, 100, stage, ['bootc', 'switch', image]))
     except UpgradeFailed as e:
         fail("couldn't get the new Hearth OS: " + failure_text(e))
+    # Red flag 2: whichever boot loader the firmware starts next has to find the boot menu.
+    try:
+        esp_guard()
+    except Exception as e:  # never in the way of the switch
+        print('log: couldn\'t check the EFI partition (%s)' % e, flush=True)
     os.makedirs(os.path.dirname(CLEAN_INSTALL), mode=0o755, exist_ok=True)
     tmp = CLEAN_INSTALL + '.tmp'
     with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), 'w') as f:
@@ -2944,6 +3265,12 @@ def main(argv):
     elif cmd in ('decky-start', 'decky-stop') and len(argv) == 2:
         helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-decky')
         os.execv(sys.executable, [sys.executable, helper, cmd[6:]])
+    elif cmd in ('dvd-decoding-add', 'dvd-decoding-remove') and len(argv) == 2:
+        # Hearth Player's DVD decoding (libdvdcss, RPM Fusion free-tainted): its own script; asks for an administrator's
+        # password (49-hearth-admin.rules). Only ever after the person said yes in the player.
+        caller()
+        helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-dvd-decoding')
+        os.execv(sys.executable, [sys.executable, helper, cmd[len('dvd-decoding-'):]])
     elif cmd in ('import-scan', 'import-run', 'import-unmount', 'takeover-plan', 'takeover-run'):
         # Bringing games and files over from other drives, and removing the old system afterwards: their own
         # scripts, run as root like the rest.
@@ -2951,7 +3278,7 @@ def main(argv):
         helper = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'hearth-' + name)
         os.execv(sys.executable, [sys.executable, helper, sub])
     else:
-        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME | write-file PATH | home-repair | unlock on|off|resume|dismiss|reapply | deb-install FILE.deb | deb-remove PACKAGE | driver-install PACKAGE | usb-check|usb-raw|usb-prepare|usb-ventoy|usb-finish DEVICE ... | decky-install | decky-remove | decky-start | decky-stop')
+        fail('usage: hearth-admin autologin on|off | hostname NAME | password | update-status | update-check | update | tdp-info | tdp WATTS | seats-setup | seats-remove [--delete-users] | seats-acl | seats-start | seats-stop | space-status | space-grow --from DEV|free --gb N [--dry-run] | space-clear-journal | move-to-new-os [--edition anatase|ubuntu|cachyos|peppermint] [--testing] | timezone ZONE | ntp on|off | time-set "YYYY-MM-DD HH:MM" | user-add NAME standard|admin | user-remove NAME keep-home|delete-home | user-picture | printer-discover | printer-add NAME URI [--info TEXT] | printer-remove NAME | printer-default NAME | write-file PATH | home-repair | unlock on|off|resume|dismiss|reapply | deb-install FILE.deb | deb-remove PACKAGE | driver-install PACKAGE | usb-check|usb-raw|usb-prepare|usb-ventoy|usb-finish DEVICE ... | decky-install | decky-remove | decky-start | decky-stop | dvd-decoding-add | dvd-decoding-remove')
 
 
 if __name__ == '__main__':

@@ -2,18 +2,20 @@
 # image with the Hearth session, from os-bases/peppermint (see docs/BASE-PEPPERMINT.md). Published as
 # ghcr.io/dragongamer9/hearth-peppermint:testing (never :latest: this isn't the main Hearth).
 # Failures show up as annotations on the run (the end of the failing step's output), so the full log isn't needed.
+# ARCHIVED (Nov 19, 2026, the owner: "Only Fedora, Archive Debian"; docs/ARCHIVED.md): Hearth OS is Fedora-based from
+# 1.15 and the Debian edition was merged into it. This no longer runs on pushes (it used to publish :testing and a dated
+# testing-<version>-<date> copy on every push to main and linux-host): by hand only, and publish is off by default, so
+# Debian devices (on :testing or a pinned testing-1.13.0-… tag) get nothing new and keep the version they have.
 name: Hearth OS (Peppermint base)
 
 on:
   workflow_dispatch:
     inputs:
       publish:
-        description: 'Publish the image (off: build and check it only, e.g. to test a branch before merging)'
+        description: 'Publish the image to hearth-peppermint:testing (ARCHIVED: Debian devices follow it; only on the owner''s word). Off: build and check only'
         type: boolean
-        default: true
-  push:
-    branches: [linux-host, main]
-    paths: ['.github/scripts/**', 'os-bases/peppermint/**', 'os/system_files/**', 'hosts/hearth-core/**', 'hosts/hearth-apptheme/**', 'hosts/hearth-rs/**', 'hosts/hearthfetch/**', 'hosts/linux/**', 'hosts/hearth-browser/**', 'hosts/electron/**', 'hosts/hearth-qml/**', 'ui/**', '.github/workflows/base-peppermint.yml', 'hosts/hearth-terminal/**', 'hosts/hearth-disks/**', 'branding/icons/**', 'hosts/hearth-tools/**', 'hosts/hearth-gaming/**', 'hosts/hearth-photos/**', 'hosts/hearth-documents/**', 'hosts/hearth-text/**', 'hosts/hearth-contacts/**', 'hosts/hearth-maps/**', 'hosts/hearth-time/**', 'hosts/hearth-player/**', 'hosts/hearth-calculator/**', 'hosts/hearth-office/**', 'hosts/hearth-paint/**', 'hosts/hearth-emoji/**', 'hosts/hearth-fonts/**', 'hosts/hearth-gamma/**', 'hosts/hearth-theater/**', 'hosts/hearth-media/**', 'hosts/hearth-recorder/**', 'hosts/hearth-camera/**', 'hosts/hearth-share/**', 'hosts/hearth-steam/**', 'hosts/hearth-kde/**', 'hosts/firehold-comp/**', '.github/scripts/hearth-kde-build.sh', 'tools/app-bundle.py', 'os/app-abi']
+        default: false
+  # Archived Nov 19, 2026: no push trigger (it was push to linux-host and main, on the image's paths).
 
 env:
   IMAGE: ghcr.io/dragongamer9/hearth-peppermint
@@ -204,6 +206,33 @@ jobs:
           mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-text" /tmp/app/hearth-text
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of Hearth Text
+      # ---- Logitech G15 (hosts/hearth-ui/apps/g15, docs/G15.md): hearth-g15, the keyboard's user service and command
+      # line, built the same way and put beside the app in hearth-app.tar (build.sh installs it as /usr/bin/hearth-g15;
+      # its udev rule, user unit and autostart entry come from os/system_files). Not fatal: without it the image is
+      # made as before (the unit's ConditionPathExists skips it).
+      - name: Build hearth-g15 (Logitech G15)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          apt-get install -y -qq libxkbcommon-dev libwayland-dev libfontconfig-dev libfreetype-dev >/dev/null
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          (cd hosts/hearth-ui && cargo build --release -p hearth-g15) || { echo "::warning title=hearth-g15::it didn't build, so this image is made without G15 support"; exit 1; }
+          mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-g15" "$CARGO_TARGET_DIR/release/hearth-g15-app" /tmp/app/
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of hearth-g15
+      # ---- Family and friends with Moonlight (hosts/hearth-ui/apps/family, docs/HEARTH-LINK.md): hearth-family-app, the
+      # "wants to connect" question, the "is connected" notice with Stop sharing now, and the list of PCs that let this
+      # one connect. Not fatal: without it Hearth Link asks and tells with notifications instead.
+      - name: Build hearth-family-app (Family and friends)
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          apt-get install -y -qq libxkbcommon-dev libwayland-dev libfontconfig-dev libfreetype-dev >/dev/null
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          (cd hosts/hearth-ui && cargo build --release -p hearth-family) || { echo "::warning title=hearth-family-app::it didn't build, so this image asks with notifications instead"; exit 1; }
+          mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-family-app" /tmp/app/
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+      # ---- end of hearth-family-app
       # ---- Hearth Photos and Hearth Documents (hosts/hearth-photos, hosts/hearth-documents): the picture viewer and
       # the PDF / e-book / comic reader, built the same way and put beside the app in hearth-app.tar (build.sh installs
       # them, with their menu entries and file types; their icons come with the Hearth icon set). Not fatal.
@@ -479,7 +508,7 @@ jobs:
       packages: write
       actions: read     # the last build's update-manifest artifact (Update size)
     env:
-      PUBLISH: ${{ (github.event_name == 'workflow_dispatch' && inputs.publish) || (github.event_name == 'push' && (github.ref == 'refs/heads/linux-host' || github.ref == 'refs/heads/main')) }}
+      PUBLISH: ${{ github.event_name == 'workflow_dispatch' && inputs.publish }}
     steps:
       - uses: actions/checkout@v4
 

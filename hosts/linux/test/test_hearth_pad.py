@@ -5,6 +5,7 @@ import importlib.machinery
 import json
 import importlib.util
 import pathlib
+import time
 import unittest
 
 PATH = pathlib.Path(__file__).resolve().parent.parent / 'desktop' / 'shell' / 'hearth-pad'
@@ -498,6 +499,72 @@ class PlasmaTest(unittest.TestCase):
         pad.tick(5.0, 0.01)
         self.assertEqual(out.log[-1], ('KEY_LEFTALT', False))
 
+    def front(self, pad, cls):
+        pad.command({'cmd': 'window', 'cls': cls, 'caption': 'x', 'fullscreen': False, 'kind': 'normal'})
+
+    def test_rust_settings_reads_its_own_buttons(self):
+        """Settings (hearth-settings) reads A, B, X, Y, LB, RB, the D-pad and the menu button itself (pad.rs): the
+        helper sends nothing for them (no Alt+Tab, no Enter / Esc, no click), so nothing happens twice."""
+        pad, out = self.make()
+        self.front(pad, 'hearth-settings')
+        for i, b in enumerate(('lb', 'rb', 'a', 'b', 'x', 'y', 'up', 'down', 'left', 'right', 'menu')):
+            press(pad, b, 0.5 * i)
+        pad.tick(20.0, 0.01)
+        self.assertEqual(out.log, [])
+        self.assertNotIn({'t': 'launcher'}, out.sent)
+        press(pad, 'rt', 30.0)                                   # RT still clicks where the pointer is
+        self.assertEqual(out.log, [('BTN_LEFT', True), ('BTN_LEFT', False)])
+        pad.axes(0, 0, 1.0, 0); pad.tick(30.2, 0.05)             # and the stick still moves the pointer
+        self.assertGreater(out.moved[0], 0)
+
+    def test_rust_settings_release_after_switching_in(self):
+        pad, out = self.make()
+        self.front(pad, 'firefox')
+        pad.button('a', True, 0.0)                               # a click held down over another window...
+        self.front(pad, 'hearth-settings')
+        pad.button('a', False, 0.1)                              # ...is let go, not left stuck
+        self.assertEqual(out.log, [('BTN_LEFT', True), ('BTN_LEFT', False)])
+
+    def test_rust_tab_apps_lb_rb_switch_tabs(self):
+        for cls in ('hearth-g15-app', 'hearth-tasks', 'hearth-files', 'hearth-file-chooser', 'hearth-capture'):
+            pad, out = self.make()
+            self.front(pad, cls)
+            press(pad, 'rb', 0.0); press(pad, 'lb', 0.2)
+            pad.tick(10.0, 0.01)
+            self.assertEqual(out.log, [('KEY_LEFTCTRL', True), ('KEY_PAGEDOWN', True), ('KEY_PAGEDOWN', False), ('KEY_LEFTCTRL', False),
+                                       ('KEY_LEFTCTRL', True), ('KEY_PAGEUP', True), ('KEY_PAGEUP', False), ('KEY_LEFTCTRL', False)], cls)
+            self.assertNotIn('KEY_LEFTALT', [n for n, d in out.log], cls)
+            out.log.clear()
+            press(pad, 'a', 1.0); press(pad, 'b', 1.2)           # A clicks, B is Esc: once each
+            self.assertEqual([n for n, d in out.log if d], ['BTN_LEFT', 'KEY_ESC'], cls)
+
+    def test_rust_apps_without_tabs_switch_windows(self):
+        for cls in ('hearth-restore', 'hearth-reliability'):
+            pad, out = self.make()
+            self.front(pad, cls)
+            press(pad, 'rb', 0.0)
+            self.assertEqual(out.log[:3], [('KEY_LEFTALT', True), ('KEY_TAB', True), ('KEY_TAB', False)], cls)
+
+    def test_rust_apps_plasma_overlay_takes_over(self):
+        """The taskbar (View + A) over Settings has the keys: the helper drives it, not Settings."""
+        pad, out = self.make()
+        self.front(pad, 'hearth-settings')
+        pad.button('view', True, 0.0); press(pad, 'a', 0.1); pad.button('view', False, 0.2)
+        out.log.clear()
+        press(pad, 'right', 0.3)
+        self.assertEqual([n for n, d in out.log if d], ['KEY_RIGHT'])
+
+    def test_rust_apps_listed_match_their_app_ids(self):
+        root = PATH.parent.parent.parent.parent.parent / 'hosts' / 'hearth-ui' / 'apps'
+        ids = {'hearth-settings': 'settings/src/main.rs', 'hearth-g15-app': 'g15/src/app/main.rs', 'hearth-tasks': 'task-manager/src/main.rs',
+               'hearth-files': 'files/src/app.rs', 'hearth-file-chooser': 'files/src/app.rs', 'hearth-capture': 'capture/src/main.rs',
+               'hearth-restore': 'system-restore/src/main.rs', 'hearth-reliability': 'reliability/src/main.rs'}
+        for i, f in ids.items():
+            self.assertIn('"%s"' % i, (root / f).read_text(), i)
+        self.assertIn('Subscription::run(pad::presses)', (root / 'settings/src/main.rs').read_text())
+        for f in ('task-manager/src/main.rs', 'capture/src/main.rs'):
+            self.assertIn('Named::PageDown', (root / f).read_text(), f)
+
     def test_menus_take_keys(self):
         pad, out = self.make()
         pad.command({'cmd': 'window', 'cls': 'plasmashell', 'caption': '', 'fullscreen': False, 'kind': 'popup'})
@@ -576,6 +643,51 @@ class PlasmaTest(unittest.TestCase):
         pad.command({'cmd': 'window', 'cls': 'org.kde.krunner', 'caption': '', 'fullscreen': False, 'kind': 'normal', 'now': 50.5})
         self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
 
+    def test_password_prompts_get_the_password_keyboard(self):
+        # Plasma's own password prompts (KDE's polkit agent...): the keyboard opens in its password mode (Mantel's
+        # over Hearth's own prompt), by itself when the controller brought the prompt up, and switches back after.
+        pad, out = self.make()
+        pad.command({'cmd': 'window', 'cls': 'org.kde.dolphin', 'caption': 'Home', 'fullscreen': False, 'kind': 'normal', 'now': 0.0})
+        press(pad, 'a', 10.0)
+        pad.command({'cmd': 'window', 'cls': 'org.kde.polkit-kde-authentication-agent-1', 'caption': 'Authentication Required',
+                     'fullscreen': False, 'kind': 'normal', 'now': 10.5})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True, 'mode': 'password'})
+        pad.command({'cmd': 'osk', 'open': True})
+        press(pad, 'y', 11.0)
+        pad.command({'cmd': 'window', 'cls': 'org.kde.dolphin', 'caption': 'Home', 'fullscreen': False, 'kind': 'normal', 'now': 12.0})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True, 'mode': 'text'})
+        pad.command({'cmd': 'osk', 'open': False})
+        # Y over a prompt that came up without the controller: the password keyboard too; elsewhere the plain one.
+        pad.command({'cmd': 'window', 'cls': 'ksshaskpass', 'caption': '', 'fullscreen': False, 'kind': 'normal', 'now': 60.0})
+        self.assertNotIn({'t': 'osk', 'open': True, 'mode': 'password'}, out.sent[-1:])
+        pad.want_osk()
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True, 'mode': 'password'})
+
+    def test_touching_a_text_field_opens_the_keyboard(self):
+        # KWin's panel shown (a touch on a text field): it opens, long after any controller use; hidden: nothing.
+        pad, out = self.make()
+        pad.command({'cmd': 'window', 'cls': 'org.kde.dolphin', 'caption': 'Home', 'fullscreen': False, 'kind': 'normal', 'now': 0.0})
+        n = len(out.sent)
+        pad.command({'cmd': 'touchfield', 'on': False})
+        self.assertEqual(len(out.sent), n)
+        pad.command({'cmd': 'touchfield', 'on': True})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        pad.command({'cmd': 'osk', 'open': True})
+        pad.command({'cmd': 'touchfield', 'on': True})   # already open: once
+        self.assertEqual(len(out.sent), n + 1)
+        # Closed (B): KWin's panel shown again as the windows make room doesn't bring it back; a touch later does.
+        pad.command({'cmd': 'osk', 'open': False})
+        t = time.monotonic()
+        pad.command({'cmd': 'touchfield', 'on': True, 'now': t + 1.0})
+        self.assertEqual(len(out.sent), n + 1)
+        pad.command({'cmd': 'touchfield', 'on': True, 'now': t + 5.0})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+        # Over a fullscreen app too (a fullscreen browser on the Ally): touch opens it there, as KDE's keyboard did.
+        pad.command({'cmd': 'osk', 'open': False})
+        pad.command({'cmd': 'window', 'cls': 'firefox', 'caption': 'Hearth Browser', 'fullscreen': True, 'kind': 'normal'})
+        pad.command({'cmd': 'touchfield', 'on': True, 'now': t + 20.0})
+        self.assertEqual(out.sent[-1], {'t': 'osk', 'open': True})
+
     def test_hearth_apps_like_mantels(self):
         pad, out = self.make()
         def win(cls):
@@ -615,6 +727,32 @@ class PlasmaTest(unittest.TestCase):
             for act in app.values():
                 if isinstance(act, tuple):
                     self.assertTrue(set(act) <= set(hp.KEYS_USED), act)
+
+    def test_controller_apps_own_the_controller_on_plasma(self):
+        # The Fedora edition's Plasma (hearth-pad-host): KWin's window in front decides who has the controller, as
+        # Pad.qml's focus does in Hearth Classic, so a controller app isn't driven twice.
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as d:
+            lst = os.path.join(d, 'controller-apps.json')
+            with open(lst, 'w') as f:
+                json.dump({'apps': ['steam']}, f)
+            out = Out()
+            pad = hp.Pad(out, plasma=True, owners=hp.Owners(lst, dirs=[]))
+            pad.command({'cmd': 'window', 'cls': 'steam', 'caption': 'Steam', 'fullscreen': False, 'kind': 'normal'})
+            self.assertEqual(pad.owner, 'steam')
+            self.assertIn({'t': 'owner', 'app': 'steam', 'mouse': False}, out.sent)
+            out.log.clear()
+            press(pad, 'a', 0.0); press(pad, 'down', 0.1)
+            self.assertEqual(out.log, [])                # the app reads the controller itself
+            press(pad, 'guide', 0.2)
+            self.assertEqual(out.sent[-1], {'t': 'radial', 'open': True, 'sel': -1})   # the Hearth menu still opens
+            self.assertTrue(pad.wants_grab)
+            press(pad, 'b', 0.3)
+            pad.command({'cmd': 'window', 'cls': 'firefox', 'caption': 'x', 'fullscreen': False, 'kind': 'normal'})
+            self.assertEqual(pad.owner, '')
+            press(pad, 'a', 1.0)
+            self.assertEqual([n for n, dn in out.log if dn], ['BTN_LEFT'])
 
     def test_plasma_commands_ignored_elsewhere(self):
         out = Out()

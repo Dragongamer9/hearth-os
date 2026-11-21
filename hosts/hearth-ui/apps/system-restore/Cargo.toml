@@ -1,0 +1,18 @@
+# System Restore: Hearth and its settings back to an earlier point (pure Rust, hearth-ui; docs/APPS-ANATASE.md). No version line: the owner picks every version number.
+[package]
+name = "hearth-system-restore"
+edition = "2021"
+description = "System Restore: Hearth and its settings back to an earlier point"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-system-restore"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }

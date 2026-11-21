@@ -718,13 +718,23 @@ def notify_bridge(while_sock):
 
     def call(conn, sender, path, iface, method, params, inv):
         if method == 'Notify':
-            app, replaces, _icon, summary, body = params.unpack()[:5]
+            p = params.unpack()
+            app, replaces, _icon, summary, body = p[:5]
             count[0] += 1
             nid = replaces or count[0]
-            print(json.dumps(toast_line(nid, app, summary, body)), flush=True)
+            line = toast_line(nid, app, summary, body)
+            # Buttons ("A disc was inserted": Play disc, Eject): the plugin's toast and Quick Access press them.
+            acts = list(p[5]) if len(p) > 5 else []
+            line['actions'] = [[str(acts[i])[:20], str(acts[i + 1])[:40]] for i in range(0, len(acts) - 1, 2)][:3]
+            print(json.dumps(line), flush=True)
             inv.return_value(GLib.Variant('(u)', (nid,)))
+        elif method == 'CloseNotification':
+            nid = params.unpack()[0]
+            print(json.dumps({'closed': int(nid)}), flush=True)
+            conn.emit_signal(None, '/org/freedesktop/Notifications', 'org.freedesktop.Notifications', 'NotificationClosed', GLib.Variant('(uu)', (nid, 3)))
+            inv.return_value(None)
         elif method == 'GetCapabilities':
-            inv.return_value(GLib.Variant('(as)', (['body'],)))
+            inv.return_value(GLib.Variant('(as)', (['body', 'actions'],)))
         elif method == 'GetServerInformation':
             inv.return_value(GLib.Variant('(ssss)', ('Hearth', 'Hearth OS', '1', '1.2')))
         else:
@@ -737,6 +747,22 @@ def notify_bridge(while_sock):
     flags = Gio.BusNameOwnerFlags.DO_NOT_QUEUE | Gio.BusNameOwnerFlags.ALLOW_REPLACEMENT
     Gio.bus_own_name_on_connection(bus, 'org.freedesktop.Notifications', flags, None, lambda *a: loop.quit())
     GLib.timeout_add_seconds(3, lambda: alive(while_sock) or loop.quit())
+
+    # The plugin presses a button: "action ID KEY" on stdin, sent on as the notification spec's ActionInvoked.
+    def pressed(src, cond):
+        if cond & (GLib.IO_HUP | GLib.IO_ERR):
+            return False
+        line = src.readline()
+        if not line:
+            return False
+        parts = line.split()
+        if len(parts) == 3 and parts[0] == 'action' and parts[1].isdigit() and re.fullmatch(r'[\w.-]{1,20}', parts[2]):
+            nid = int(parts[1])
+            bus.emit_signal(None, '/org/freedesktop/Notifications', 'org.freedesktop.Notifications', 'ActionInvoked', GLib.Variant('(us)', (nid, parts[2])))
+            bus.emit_signal(None, '/org/freedesktop/Notifications', 'org.freedesktop.Notifications', 'NotificationClosed', GLib.Variant('(uu)', (nid, 2)))
+        return True
+    if not sys.stdin.isatty():
+        GLib.io_add_watch(sys.stdin, GLib.PRIORITY_DEFAULT, GLib.IO_IN | GLib.IO_HUP | GLib.IO_ERR, pressed)
     loop.run()
     return {'stopped': True}
 

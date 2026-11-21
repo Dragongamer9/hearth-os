@@ -70,6 +70,29 @@ Keyboard, mouse and touch work as usual.
 - **Battle.net games:** install them in Battle.net, and they show up here and in Steam Game Mode. Play starts them
   through Battle.net, so its sign-in and the game's licence work as on Windows.
 
+## Desktop icons (1.16)
+
+The owner, Nov 19: "for the Hearth games add the ability to add desktop icons, for games that you install".
+
+- **Add to desktop** is on an installed game's card menu (right-click the card, its ⋯, the Menu key, or Start on a
+  controller) and on its page. **Remove from desktop** takes it off again. Cards with an icon say "On desktop".
+- **Installing:** the game's page has an **Add a desktop icon** tick box under Install. It's off until you tick it;
+  after that it remembers what you chose last (`~/.config/nimbus/hearth-games.json`, written only when you change it).
+  The icon is made when the install is done, whichever part of Hearth finishes it.
+- **The icon** is a launcher in your Desktop folder (`xdg-user-dir DESKTOP`, else `~/Desktop`) named after the game,
+  with the game's art as its picture (a copy kept in `~/.local/share/nimbus/desktop-icons`), and it starts the game
+  the way Play does (`nimbus --play-now <id>`). It's executable, so KDE Plasma opens it without asking whether to trust
+  it. Hearth never adds icons when your Desktop folder is your home folder.
+- **Where it goes:** the desktop puts it in the next free spot; your other icons keep their saved places (Mantel's
+  hearth-desk, and Plasma's own desktop when you've arranged your icons yourself; a Plasma desktop sorted by name keeps
+  that order).
+- **Only Hearth's own icon is ever removed.** Hearth notes each icon it makes (`desktop-icons/made.json`: the file and a
+  fingerprint of exactly what it wrote). Remove from desktop and uninstalling the game take off that file only while
+  it's still exactly that; a file you made, copied, renamed over it or changed is left (you're told). A game removed
+  in its own store's app (Battle.net) keeps its icon until you remove it.
+- Desktops: Mantel's desktop (labwc, KWin), Hearth's panel on Plasma (Mantel's desktop over Plasma's), KDE Plasma's own
+  desktop, and Firehold on Plasma (its Desk is Plasma's desktop). CI: `games-desktop-icons.yml`.
+
 ## Recomps
 
 The Recomps tab is a window on Hearth Recomps, the engine in hearth-core (`recomps.rs`). Hearth Games doesn't have its
@@ -139,3 +162,11 @@ first time, with the same checksum check.
   `legendary install <dlc>`; GOG: `gogdl info` (dlcs) and `gogdl download --with-dlcs --dlcs …` into the game's own
   folder (GOG's DLC goes with its game: uninstalling the game removes it). One DLC job at a time; the page looks
   again every few seconds while one runs.
+
+## Family and friends
+
+The **Family and friends** tab (`hearth-gamestore --tab family`; Firehold's Couch opens it where hearth-family-app
+isn't) lists the PCs that let this one connect with Moonlight through Hearth Link (docs/HEARTH-LINK.md "Family and
+friends with Moonlight"): online or not, Connect, Remove, Disconnect, and Add with a code. The calls go straight to the
+Hearth Link service (`moonlight.friends`, `moonlight.connect`, `moonlight.disconnect`, `moonlight.forget`,
+`moonlight.join`, checked in gamestore.rs); sharing this PC is Settings' only.

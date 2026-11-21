@@ -1,0 +1,9 @@
+[Daemon]
+Timeout=10
+LockGrace=30
+
+[Greeter]
+WallpaperPlugin=org.kde.image
+
+[Greeter][Wallpaper][org.kde.image][General]
+Image=file:///usr/share/wallpapers/Next/contents/images/1920x1080.png

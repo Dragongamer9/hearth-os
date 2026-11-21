@@ -1,0 +1,7 @@
+#!/bin/sh
+# Quick ACKs on the loopback again when lo (or the network) comes back up: NetworkManager can reset lo's routes.
+# Quick and never fails (hearth-loopback-quickack).
+case "$2" in
+  up|connectivity-change|reapply) exec timeout 10 /usr/libexec/nimbus/hearth-loopback-quickack >/dev/null 2>&1 ;;
+esac
+exit 0

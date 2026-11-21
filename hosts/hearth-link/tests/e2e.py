@@ -10,11 +10,17 @@ home folder, driven over their sockets the way Hearth's UI does (`hearth-link ca
                     changed chunks, every file's hash compared, Hearth data synced both ways, quiet while playing,
                     unpairing, Hearth Storage (shared folder, media link, game archive there and back, backups),
                     Continue on this device, updating every device at once, local AI over Hearth Link
-  e2e.py family     pair once for all your devices, friends' devices, and Send to TV (a PC to a Hearth TV)
+  e2e.py family     pair once for all your devices, friends' devices, Send to TV (a PC to a Hearth TV), a family
+                    member's device (shared among your devices, nothing personal until its own switches say so), and
+                    Family and friends with Moonlight (moonlight.rs): off until turned on, a person added with a code,
+                    asked every time (no, then yes), Moonlight's TCP and UDP through Hearth Link to a stand-in
+                    Sunshine from Moonlight's own private network, its PIN, Stop sharing now, Always allow with Games
+                    only and a time limit, turning it off ending the session at once, removing the person
   e2e.py internet   both devices behind their own NAT, a local iroh relay in between: pairing with a short code
                     (found through a pkarr relay on the "internet" too, nothing else typed), a copy
                     through the relay with direct UDP blocked (speed posted, the copy says it's relayed), then with
-                    UDP allowed (hole punching; posted as information)
+                    UDP allowed (hole punching; posted as information); Moonlight's tunnel through the relay and
+                    then hole punched (TCP speed, UDP packets and how many came back, posted)
 
 Environment: LINK_BIN (the hearth-link binary), RELAY_BIN (iroh-relay, for internet), SCALE (game size factor, 1.0).
 """
@@ -1021,7 +1027,14 @@ def internet():
     time.sleep(2)
     url = 'http://198.18.1.1:3340'
     pk, pk_url = pkarr_relay('inet', '198.18.1.1')
-    env = {'HEARTH_LINK_RELAY': url, 'HEARTH_LINK_NO_DNS': '1', 'HEARTH_LINK_PKARR': pk_url}
+    fakes = {}
+    for name, text in (('remote', FAKE_REMOTE),):
+        fakes[name] = os.path.join(ROOT, 'fake-%s.py' % name)
+        with open(fakes[name], 'w') as f:
+            f.write(text)
+    env = {'HEARTH_LINK_RELAY': url, 'HEARTH_LINK_NO_DNS': '1', 'HEARTH_LINK_PKARR': pk_url, 'HEARTH_REMOTE_DESKTOP': fakes['remote'],
+           'FAKE_HOST_PIN': os.path.join(ROOT, 'B', 'home', 'pin-got.json')}
+    env.update(moon_env())
     a, b = Dev('A', 'hiA', env), Dev('B', 'hiB', env)
     sa = steam_library(a.home)
     steam_library(b.home)
@@ -1051,6 +1064,26 @@ def internet():
         notice('relay', 'the copy says it was direct although UDP between the NATs was blocked: %s' % j)
     rmbs = report('relay copy', j, t0, size)
     same_tree(g, os.path.join(b.steam, 'steamapps/common/Net Game'), 'the game copied through the relay')
+    # Moonlight through the relay: B lets A connect (B's short code typed on A, A already paired keeps being one of
+    # B's devices), Always allow, then A's Moonlight's speed through it.
+    sun = fake_sunshine('hiB', 'B')
+    b.call('moonlight.share.set', {'on': True})
+    net = b.call('moonlight.share.invite', timeout=60)['invite'].get('netCode') or ''
+    if not CODE_RE.match(net):
+        fail('a short code to add A: %r' % net)
+    r = a.call('moonlight.join', {'code': net}, timeout=90)
+    if r.get('relation') != 'mine':
+        fail('A added to B\'s family and friends with a short code (already one of B\'s devices): %s' % r)
+    wait_for('B to list A', lambda: any(p['id'] == a.id for p in b.call('moonlight.share.status')['people']), 20)
+    b.call('moonlight.share.person', {'id': a.id, 'always': True})
+    wait_for('A to list B', lambda: any(f['id'] == b.id for f in a.call('moonlight.friends', {'check': True}, timeout=30)['friends']), 30)
+    res, _ = moon_session(a, b, 'B')
+    relayed = a.call('moonlight.friends')['connected'] or {}
+    if '--bitrate' in res.get('args', []):
+        fail('Moonlight through the relay should keep its own settings, but was started with: %s' % res.get('args'))
+    notice('moonlight: through the relay', 'Moonlight\'s connections through the iroh relay (UDP between the NATs blocked): %.1f MB/s TCP, %d of %d video-sized packets back (%s)' % (res['tcpMBps'], res['udpBack'], res['udpSent'], 'said relayed, Moonlight\'s own settings' if relayed.get('relay') else 'not said relayed'))
+    a.call('moonlight.disconnect')
+    wait_for('A\'s Moonlight to stop', lambda: os.path.exists(os.path.join(a.home, 'ml-ended.json')), 20)
     # Direct: UDP allowed again; a fresh copy (hole punching through both NATs, if they allow it).
     sh('ip netns exec inet iptables -D FORWARD -p udp -j DROP')
     a.kill(signal.SIGTERM)
@@ -1065,6 +1098,10 @@ def internet():
     dmbs = report('internet copy (UDP allowed)', j, t0, size)
     same_tree(g, os.path.join(b.steam, 'steamapps/common/Net Game'), 'the game copied over the internet path')
     notice('internet summary', 'through the relay: %.0f MB/s; with UDP open between the NATs: %.0f MB/s (%s)' % (rmbs, dmbs, 'direct, hole punched' if not j.get('relay') else 'still relayed'))
+    res, _ = moon_session(a, b, 'B')
+    notice('moonlight: hole punched', 'Moonlight\'s connections with UDP open between the NATs: %.1f MB/s TCP, %d of %d video-sized packets back (%s)' % (res['tcpMBps'], res['udpBack'], res['udpSent'], 'relayed' if (a.call('moonlight.friends')['connected'] or {}).get('relay') else 'direct'))
+    a.call('moonlight.disconnect')
+    sun.terminate()
     a.kill(signal.SIGTERM)
     b.kill(signal.SIGTERM)
     relay.terminate()
@@ -1176,6 +1213,507 @@ def send_to_tv(a, b, c):
            'a handheld, a text file and a missing file were refused' % (len(data) / 1e6, took))
 
 
+FAKE_STATUS = """import json, sys
+print(json.dumps({'protocol': 1, 'shared': True, 'mode': 'desktop', 'cpu': {'use': 7}}))
+"""
+FAKE_REMOTE = """import json, os, sys
+a = sys.argv[1:]
+if a == ['status']:
+    print(json.dumps({'installed': True, 'on': True, 'running': True, 'address': {'name': 'dads-pc', 'dns': 'dads-pc.tail.ts.net', 'ip': '100.64.0.7'},
+                      'tailscale': {'running': True}, 'clients': [{'name': 'secret'}], 'stream': {'connected': False}}))
+elif a and a[0] == 'pin':
+    open(os.path.join(os.environ['HOME'], 'pin-got.json'), 'w').write(json.dumps(a))
+    print(json.dumps({'ok': True}))
+elif a and a[0] == 'family':
+    # One line each (two can run at once: the session's end and turning it off).
+    with open(os.path.join(os.environ['HOME'], 'family-calls.jsonl'), 'a') as f:
+        f.write(json.dumps(a) + chr(10))
+    if a[1:2] == ['start']:
+        print(json.dumps({'ok': True, 'port': 47989, 'running': True}))
+    elif a[1:2] == ['paired']:
+        print(json.dumps({'paired': os.path.exists(os.path.join(os.environ['HOME'], 'pin-got.json'))}))
+    else:
+        print(json.dumps({'ok': True}))
+else:
+    print('error: unknown')
+    sys.exit(1)
+"""
+
+
+def family_member(a, b, c):
+    """A family member's device (family.rs): C (Dad's PC) paired with A as A family member's device. B (A's other
+    device) has it too without a code, and C hears B's name only from A. It shows in Your devices with its status (C's
+    on by default, A's toward C off until A turns it on), A and B can use its remote desktop and send Moonlight's PIN;
+    nothing personal goes either way until C's own switches say so: Use Hearth Storage and Share my game library each
+    on and off (only that kind, only from C's side, the library never with settings). Removing it on A removes it
+    everywhere."""
+    a.call('unpair', {'id': c.id})
+    wait_for('C to forget A', lambda: not peer_of(c, a), 30)
+    code = a.call('pair.open', {'as': 'family'})['code']
+    wait_for('C to list A as ready to pair', lambda: any(n['id'] == a.id and n['pairing'] for n in c.status()['nearby']), 20)
+    r = c.call('pair.join', {'id': a.id, 'code': code, 'as': 'mine'}, timeout=90)
+    if r.get('relation') != 'family' or r.get('familySide') != 'helper' or r.get('friend') is not False:
+        fail('pairing C with A picking A family member\'s device: %s' % r)
+    pa, pc = peer_of(a, c), peer_of(c, a)
+    if (pa or {}).get('relation') != 'family' or pa.get('familySide') != 'member' or (pc or {}).get('familySide') != 'helper':
+        fail('the family marks: %s / %s' % (pa, pc))
+    if pc['shares'] != {'status': True, 'library': False, 'saves': False, 'storage': False, 'backup': False} or pa['shares']['status'] is not False:
+        fail('the switches to start with: on C %s, on A %s' % (pc['shares'], pa['shares']))
+    # Shared among your devices: B from A, and C hears B's name from A.
+    wait_for('B to have C as a family member\'s device', lambda: (peer_of(b, c) or {}).get('relation') == 'family', 60)
+    wait_for('C to know B (from A)', lambda: (peer_of(c, b) or {}).get('familySide') == 'helper', 60)
+    pb, pcb = peer_of(b, c), peer_of(c, b)
+    if pb.get('familySide') != 'member' or pb.get('introducedBy') != 'A' or pcb.get('introducedBy') != 'A':
+        fail('C on B / B on C: %s / %s' % (pb, pcb))
+    notice('family: shared', "C paired with A as a family member's device: B has it too (through A, no code) and C knows B only from A")
+    # Your devices: C's status on A and B; A's not on C until A turns it on for C.
+    def row(dev, other):
+        return next((d for d in dev.call('status.devices')['devices'] if d['id'] == other.id), None)
+    wait_for('C\'s status on B', lambda: (row(b, c) or {}).get('shared') is True, 40)
+    if (row(a, c) or {}).get('shared') is not True or (row(a, c) or {}).get('relation') != 'family':
+        fail('C on A\'s Your devices: %s' % row(a, c))
+    ra = row(c, a) or {}
+    if ra.get('shared') is not False or "doesn't share" not in (ra.get('error') or ''):
+        fail('A\'s status on C before A turned it on: %s' % ra)
+    a.call('peer.set', {'id': c.id, 'shares': {'status': True}})
+    if (row(c, a) or {}).get('shared') is not True:
+        fail('A\'s status on C after A turned it on for C: %s' % row(c, a))
+    if (row(c, b) or {}).get('shared') is True:
+        fail('B shares its status with C without B turning it on: %s' % row(c, b))
+    notice('family: status', "C's status shows on A and B; A's showed on C only once A turned it on for C; B's still doesn't")
+    # Remote desktop and its PIN, from A and B; never the other way.
+    rd = a.call('peer.remote', {'id': c.id})
+    if rd.get('host') != 'dads-pc' or rd.get('on') is not True or 'clients' in rd:
+        fail('C\'s remote desktop on A: %s' % rd)
+    if b.call('peer.remote', {'id': c.id}).get('host') != 'dads-pc':
+        fail('C\'s remote desktop on B')
+    a.call('peer.remote.pin', {'id': c.id, 'pin': '4821', 'name': 'Chris desktop'})
+    got = read_json(os.path.join(c.home, 'pin-got.json'))
+    if got != ['pin', '4821', 'Chris desktop']:
+        fail('Moonlight\'s PIN on C: %s' % got)
+    r = c.call('peer.remote', {'id': a.id}, ok=False)
+    if 'error' not in r:
+        fail('C used A\'s remote desktop: %s' % r)
+    r = a.call('peer.wake', {'id': c.id}, ok=False)
+    if 'only for your own' in json.dumps(r):
+        fail('waking C: %s' % r)
+    notice('family: help', 'A and B see how to reach C\'s desktop in Moonlight and sent it Moonlight\'s PIN; C can\'t do that to A')
+    # Nothing personal until C says so.
+    r = a.call('sync.now', {'peer': c.id}, ok=False)
+    if 'Share my game library' not in json.dumps(r):
+        fail('sync with C before its library switch: %s' % r)
+    a.call('storage.set', {'server': True})
+    vids = os.path.join(a.home, 'FamilyShare')
+    os.makedirs(vids, exist_ok=True)
+    write_random(os.path.join(vids, 'photo.jpg'), 4096)
+    share = a.call('storage.share.add', {'path': vids})['share']['id']
+    r = c.call('storage.ls', {'server': a.id, 'share': share, 'path': ''}, ok=False)
+    if 'Use Hearth Storage' not in json.dumps(r):
+        fail('C using A\'s Hearth Storage before its switch: %s' % r)
+    r = a.call('peer.set', {'id': c.id, 'shares': {'storage': True}}, ok=False)
+    if 'Only the family member' not in json.dumps(r):
+        fail('A turning on C\'s switch: %s' % r)
+    c.call('peer.set', {'id': a.id, 'shares': {'storage': True}})
+    wait_for('A to hear C turned on Use Hearth Storage', lambda: (peer_of(a, c) or {}).get('theirShares', {}).get('storage') is True, 20)
+    top = [e['name'] for e in c.call('storage.ls', {'server': a.id, 'share': share, 'path': ''})['entries']]
+    if top != ['photo.jpg']:
+        fail('C listing A\'s shared folder with its switch on: %s' % top)
+    r = a.call('sync.now', {'peer': c.id}, ok=False)
+    if 'Share my game library' not in json.dumps(r):
+        fail('Use Hearth Storage let the library through: %s' % r)
+    c.call('peer.set', {'id': a.id, 'shares': {'storage': False}})
+    r = c.call('storage.ls', {'server': a.id, 'share': share, 'path': ''}, ok=False)
+    if 'Use Hearth Storage' not in json.dumps(r):
+        fail('C still using A\'s Hearth Storage after turning it off: %s' % r)
+    notice('family: storage', "C couldn't use A's Hearth Storage until C turned on Use Hearth Storage (A can't turn it on); then only that; off again stopped it at once")
+    # The library, never settings, both ways, only while C's switch is on.
+    write_json(os.path.join(c.data, 'library.json'), {'favorites': ['steam:77'], 'profile': {'name': 'Dad'}})
+    write_json(os.path.join(c.link, 'ui.json'), {'local': {'nimbus.look': {'layout': 'dad-layout'}}})
+    write_json(os.path.join(a.data, 'library.json'), {'favorites': ['gog:5'], 'profile': {'name': 'Chris'}})
+    write_json(os.path.join(a.link, 'ui.json'), {'local': {'nimbus.look': {'layout': 'chris-layout'}}})
+    c.call('peer.set', {'id': a.id, 'shares': {'library': True}})
+    wait_for('A to hear C turned on Share my game library', lambda: (peer_of(a, c) or {}).get('theirShares', {}).get('library') is True, 20)
+    r = a.call('sync.now', {'peer': c.id})
+    if 'error' in (r.get(c.id) or {}):
+        fail('library sync with C: %s' % r)
+    ia, ic = read_json(os.path.join(a.link, 'inbox.json')) or {}, read_json(os.path.join(c.link, 'inbox.json')) or {}
+    sa, sc = ia.get('profiles', {}).get('main', {}).get('set', {}), ic.get('profiles', {}).get('main', {}).get('set', {})
+    bad = []
+    if sa.get('fav/steam:77') is not True: bad.append("C's favorite on A")
+    if sc.get('fav/gog:5') is not True: bad.append("A's favorite on C")
+    if 'profile' in sa or 'profile' in sc: bad.append('a profile went across')
+    if ((read_json(os.path.join(c.link, 'ui.json')) or {}).get('local', {}).get('nimbus.look', {}).get('layout')) != 'dad-layout': bad.append("A's appearance reached C")
+    if ((read_json(os.path.join(a.link, 'ui.json')) or {}).get('local', {}).get('nimbus.look', {}).get('layout')) != 'chris-layout': bad.append("C's appearance reached A")
+    if bad:
+        fail('library with C: %s; inbox on A %s, on C %s' % (bad, ia, ic))
+    c.call('peer.set', {'id': a.id, 'shares': {'library': False}})
+    r = a.call('sync.now', {'peer': c.id}, ok=False)
+    if 'Share my game library' not in json.dumps(r):
+        fail('sync after C turned its library off: %s' % r)
+    notice('family: library', "with C's Share my game library on, favorites went both ways and no profile or appearance did; off again, nothing syncs")
+    # Never: making it yours from one side.
+    r = a.call('peer.set', {'id': c.id, 'relation': 'mine'}, ok=False)
+    if 'both' not in json.dumps(r):
+        fail('making C yours from A alone: %s' % r)
+    # Removing it on A removes it everywhere.
+    a.call('unpair', {'id': c.id})
+    wait_for('C to forget A', lambda: not peer_of(c, a), 30)
+    wait_for('B to drop C (removed on A)', lambda: not peer_of(b, c), 60)
+    wait_for('C to forget B too', lambda: not peer_of(c, b), 30)
+    notice('family: removing', 'removed C on A: B dropped it by itself and told C, which forgot both')
+
+
+# ------------------------------------------------------------------ Family and friends with Moonlight (moonlight.rs)
+
+FAKE_SUNSHINE = r"""import socket, sys, threading
+tag = sys.argv[1].encode()
+def serve(c):
+    first = True
+    while True:
+        try:
+            d = c.recv(65536)
+        except OSError:
+            break
+        if not d:
+            break
+        if first:
+            c.sendall(tag + b':')
+            first = False
+        c.sendall(d)
+    c.close()
+def tcp(port):
+    s = socket.socket()
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    s.bind(('127.0.0.1', port))
+    s.listen(16)
+    while True:
+        c, _ = s.accept()
+        threading.Thread(target=serve, args=(c,), daemon=True).start()
+def udp(port):
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.bind(('127.0.0.1', port))
+    while True:
+        d, a = s.recvfrom(65536)
+        s.sendto(tag + b':' + d, a)
+for p in (47984, 47989, 48010):
+    threading.Thread(target=tcp, args=(p,), daemon=True).start()
+for p in (47998, 47999, 48000):
+    threading.Thread(target=udp, args=(p,), daemon=True).start()
+threading.Event().wait()
+"""
+
+# Moonlight, as Hearth starts it in its private network: `pair HOST --pin PIN`, then `stream HOST APP` (Moonlight's own settings).
+# Writes what it saw in its HOME (the connecting device's), then stays connected until the tunnel goes away.
+FAKE_MOONLIGHT = r"""#!/usr/bin/env python3
+import json, os, signal, socket, sys, threading, time
+home = os.environ['HOME']
+a = sys.argv[1:]
+def out(name, v):
+    with open(os.path.join(home, name + '.tmp'), 'w') as f:
+        f.write(json.dumps(v))
+    os.replace(os.path.join(home, name + '.tmp'), os.path.join(home, name))
+if a[:1] == ['pair']:
+    out('ml-pair.json', {'host': a[1], 'pin': a[3] if len(a) > 3 else '', 'env': 'HEARTH_MOON_PIN' in os.environ})
+    f = os.environ.get('FAKE_HOST_PIN', '')
+    for _ in range(300):
+        if f and os.path.exists(f):
+            break
+        time.sleep(0.1)
+    sys.exit(0)
+if a[:1] != ['stream']:
+    sys.exit(2)
+host, app = a[1], a[2]
+nets = [l.split(':')[0].strip() for l in open('/proc/net/dev').read().splitlines()[2:]]
+r = {'host': host, 'app': app, 'args': a, 'nets': nets, 'pinInEnv': 'HEARTH_MOON_PIN' in os.environ}
+def ended(*_):
+    out('ml-ended.json', {'at': time.time()})
+    os._exit(0)
+signal.signal(signal.SIGTERM, ended)
+def tcp(port, data, timeout=15):
+    s = socket.create_connection((host, port), timeout=timeout)
+    s.sendall(data)
+    got = b''
+    while len(got) < len(data) + 2:
+        d = s.recv(65536)
+        if not d:
+            break
+        got += d
+    s.close()
+    return got
+try:
+    r['tcp'] = {str(p): tcp(p, b'hello %d' % p).decode('latin1') for p in (47984, 47989, 48010)}
+    u = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    u.settimeout(5)
+    r['udp'] = {}
+    for p, size in ((47998, 5), (47999, 5), (48000, 5), (47998, 1400), (47998, 3000)):
+        payload = os.urandom(size)
+        u.sendto(payload, (host, p))
+        try:
+            d, _ = u.recvfrom(65536)
+            r['udp']['%d/%d' % (p, size)] = {'tag': d[:2].decode('latin1'), 'same': d[2:] == payload}
+        except socket.timeout:
+            r['udp']['%d/%d' % (p, size)] = None
+    # Speed: 16 MB echoed through RTSP's port; 1500 video-sized packets, how many come back.
+    big = os.urandom(16 << 20)
+    s = socket.create_connection((host, 48010), timeout=30)
+    t0 = time.time()
+    def send():
+        s.sendall(big)
+    th = threading.Thread(target=send)
+    th.start()
+    got = 0
+    while got < len(big) + 2:
+        d = s.recv(1 << 20)
+        if not d:
+            break
+        got += len(d)
+    th.join()
+    r['tcpMBps'] = round((len(big) / (1 << 20)) / max(time.time() - t0, 0.001), 1)
+    r['tcpOk'] = got == len(big) + 2
+    s.close()
+    u.settimeout(0.2)
+    # Paced like a stream: 1000 packets a second (about 10 Mbit/s each way), read back as they come.
+    n, back = 1500, 0
+    u.setblocking(False)
+    t0 = time.time()
+    for i in range(n):
+        while time.time() < t0 + i / 1000.0:
+            try:
+                u.recvfrom(65536)
+                back += 1
+            except (BlockingIOError, OSError):
+                time.sleep(0.0002)
+        u.sendto(i.to_bytes(4, 'big') + os.urandom(1196), (host, 47998))
+    u.setblocking(True)
+    u.settimeout(0.2)
+    end = time.time() + 3
+    while time.time() < end and back < n:
+        try:
+            u.recvfrom(65536)
+            back += 1
+        except socket.timeout:
+            pass
+    r['udpBack'] = back
+    r['udpSent'] = n
+    try:
+        socket.create_connection(('10.78.0.3', 47989), timeout=2).close()
+        r['outside'] = 'reached'
+    except OSError as e:
+        r['outside'] = str(e)
+except Exception as e:
+    r['error'] = '%s: %s' % (type(e).__name__, e)
+out('ml-result.json', r)
+for _ in range(1200):
+    try:
+        tcp(47989, b'ping', 3)
+    except Exception:
+        ended()
+    time.sleep(0.3)
+ended()
+"""
+
+FAKE_ASK = r"""#!/usr/bin/env python3
+import json, os, sys
+home = os.environ['HOME']
+log = os.path.join(home, 'asked.json')
+l = json.load(open(log)) if os.path.exists(log) else []
+l.append(sys.argv[1:])
+open(log, 'w').write(json.dumps(l))
+f = os.path.join(home, 'ask-answer')
+print(open(f).read().strip() if os.path.exists(f) else 'deny')
+"""
+
+FAKE_NOTICE = r"""#!/usr/bin/env python3
+import json, os, sys, time
+open(os.path.join(os.environ['HOME'], 'notice.json'), 'w').write(json.dumps({'args': sys.argv[1:], 'pid': os.getpid()}))
+time.sleep(900)
+"""
+
+
+def moon_env():
+    """The stand-ins every device gets (written once per run)."""
+    env = {}
+    for name, text, var in (('moonlight', FAKE_MOONLIGHT, 'HEARTH_MOONLIGHT'), ('ask', FAKE_ASK, 'HEARTH_FAMILY_ASK'), ('notice', FAKE_NOTICE, 'HEARTH_FAMILY_NOTICE')):
+        f = os.path.join(ROOT, 'fake-%s' % name)
+        with open(f, 'w') as fh:
+            fh.write(text)
+        os.chmod(f, 0o755)
+        env[var] = f
+    env['HEARTH_LINK_MOON_MINUTE_MS'] = '600'
+    return env
+
+
+def fake_sunshine(ns, tag):
+    f = os.path.join(ROOT, 'fake-sunshine.py')
+    with open(f, 'w') as fh:
+        fh.write(FAKE_SUNSHINE)
+    return subprocess.Popen(['ip', 'netns', 'exec', ns, sys.executable, f, tag], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def rm(*paths):
+    for p in paths:
+        try:
+            os.remove(p)
+        except OSError:
+            pass
+
+
+def family_calls(dev):
+    try:
+        return [json.loads(l) for l in open(os.path.join(dev.home, 'family-calls.jsonl')) if l.strip()]
+    except OSError:
+        return []
+
+
+def moon_session(a, host, tag, what='desktop'):
+    """A connects to HOST; checks what its stand-in Moonlight saw. Returns that."""
+    rm(os.path.join(a.home, 'ml-result.json'), os.path.join(a.home, 'ml-ended.json'))
+    t0 = time.time()
+    r = a.call('moonlight.connect', {'id': host.id}, timeout=150)
+    if r.get('ok') is not True:
+        fail('connecting: %s' % r)
+    res = wait_for("A's Moonlight to finish its checks", lambda: read_json(os.path.join(a.home, 'ml-result.json')), 120)
+    took = time.time() - t0
+    bad = []
+    if res.get('error'):
+        bad.append(res['error'])
+    if res.get('app') != ('Steam Big Picture' if what == 'games' else 'Desktop'):
+        bad.append('app %s' % res.get('app'))
+    if res.get('nets') != ['lo']:
+        bad.append('Moonlight\'s network has %s (only lo expected)' % res.get('nets'))
+    if res.get('pinInEnv'):
+        bad.append('the PIN was still in Moonlight\'s environment while streaming')
+    for p in ('47984', '47989', '48010'):
+        if (res.get('tcp') or {}).get(p) != '%s:hello %s' % (tag, p):
+            bad.append('TCP %s: %r' % (p, (res.get('tcp') or {}).get(p)))
+    for k, v in (res.get('udp') or {}).items():
+        if not v or v.get('tag') != tag + ':' or not v.get('same'):
+            bad.append('UDP %s: %s' % (k, v))
+    if not res.get('tcpOk'):
+        bad.append('the 16 MB came back wrong')
+    if 'reached' == res.get('outside'):
+        bad.append('Moonlight reached the network outside its own')
+    if bad:
+        fail('Moonlight through Hearth Link: %s (%s)' % ('; '.join(bad), res))
+    return res, took
+
+
+def moon_family(a, b, c):
+    """C is a friend's PC that lets A connect: off until C turns it on; A added with a code; asked every time."""
+    sun = fake_sunshine('hfC', 'C')
+    rm(os.path.join(c.home, 'pin-got.json'), os.path.join(c.home, 'family-calls.jsonl'))
+    st = c.call('moonlight.share.status')
+    if st.get('on') is not False or st.get('people'):
+        fail('Family and friends before C turned it on: %s' % st)
+    r = c.call('moonlight.share.invite', ok=False)
+    if 'Turn on' not in json.dumps(r):
+        fail('adding a person while off: %s' % r)
+    c.call('moonlight.share.set', {'on': True})
+    calls = family_calls(c)
+    if ['family', 'on'] not in calls:
+        fail('turning it on didn\'t set Sunshine up: %s' % calls)
+    if (read_json(os.path.join(c.home, '.config/nimbus/family-moonlight.json')) or {}).get('on') is not True:
+        fail('the switch wasn\'t saved')
+    # Add a person: C shows a code, A types it (and picks C on the network).
+    inv = c.call('moonlight.share.invite')['invite']
+    code = inv.get('code')
+    if not code:
+        fail('no code to add a person: %s' % inv)
+    wait_for('A to see C ready to pair', lambda: any(n['id'] == c.id and n['pairing'] for n in a.status()['nearby']), 20)
+    r = a.call('moonlight.join', {'id': c.id, 'code': code}, timeout=90)
+    if r.get('relation') != 'friend':
+        fail('A added with a code: %s' % r)
+    wait_for('C to list A', lambda: any(p['id'] == a.id for p in c.call('moonlight.share.status')['people']), 20)
+    pa = next(p for p in c.call('moonlight.share.status')['people'] if p['id'] == a.id)
+    if pa.get('always') is not False or pa.get('what') != 'desktop' or pa.get('limitMinutes') != 0:
+        fail('a new person\'s choices: %s' % pa)
+    fr = wait_for('A to list C', lambda: next((f for f in a.call('moonlight.friends', {'check': True}, timeout=30)['friends'] if f['id'] == c.id), None), 30)
+    if fr.get('online') is not True or fr.get('sharing') is not True:
+        fail('C on A\'s list: %s' % fr)
+    if any(f['id'] == c.id for f in b.call('moonlight.friends', {'check': True}, timeout=30)['friends']):
+        fail('B (never added) lists C')
+    notice('moonlight: adding', 'C turned on Let family and friends connect (Sunshine set up), showed a code, A typed it: A is on C\'s list (asked every time, Whole desktop, no limit) and C is on A\'s, online; B never hears of it')
+    # Asked every time: no first.
+    with open(os.path.join(c.home, 'ask-answer'), 'w') as f:
+        f.write('deny')
+    r = a.call('moonlight.connect', {'id': c.id}, timeout=120, ok=False)
+    if 'said no' not in json.dumps(r):
+        fail('C said no: %s' % r)
+    asked = read_json(os.path.join(c.home, 'asked.json')) or []
+    if not asked or asked[-1][:3] != ['--ask', '--name', 'A']:
+        fail('the question on C: %s' % asked)
+    # Then yes: Moonlight pairs with a one-time PIN and its connections go through.
+    with open(os.path.join(c.home, 'ask-answer'), 'w') as f:
+        f.write('allow')
+    res, took = moon_session(a, c, 'C')
+    mp = read_json(os.path.join(a.home, 'ml-pair.json')) or {}
+    got = read_json(os.path.join(c.home, 'pin-got.json')) or []
+    if not mp.get('pin') or got[:2] != ['pin', mp['pin']] or not str(got[2]).startswith('Hearth '):
+        fail('Moonlight\'s PIN: A\'s Moonlight had %s, C\'s Sunshine got %s' % (mp, got))
+    if not mp.get('host', '').startswith('127.77.'):
+        fail('Moonlight\'s address for C: %s' % mp)
+    log_a = tail(os.path.join(ROOT, 'A.log'), 400000) + tail(os.path.join(ROOT, 'C.log'), 400000)
+    if mp['pin'] in log_a:
+        fail('the PIN is in a log')
+    st = c.call('moonlight.share.status')
+    if (st.get('session') or {}).get('who') != 'A' or not os.path.exists(os.path.join(c.run, 'moonlight-session.json')):
+        fail('C\'s session: %s' % st.get('session'))
+    nt = read_json(os.path.join(c.home, 'notice.json')) or {}
+    if nt.get('args', [])[:3] != ['--notice', '--name', 'A']:
+        fail('the notice on C: %s' % nt)
+    notice('moonlight: connected', 'C asked (no, then yes); A\'s Moonlight paired with C\'s Sunshine with a one-time PIN (never logged) and its TCP (HTTPS, HTTP, RTSP) and UDP (video, control, audio; a 3000-byte packet split and put back) reached C\'s stand-in Sunshine from a network with only lo; %.1f MB/s TCP, %d of %d packets back; C shows the notice and says A is connected; %.1f s from Connect' % (res['tcpMBps'], res['udpBack'], res['udpSent'], took))
+    # Stop sharing now.
+    t0 = time.time()
+    c.call('moonlight.stop')
+    wait_for('A\'s Moonlight to be cut off', lambda: os.path.exists(os.path.join(a.home, 'ml-ended.json')), 20)
+    stop_s = time.time() - t0
+    wait_for('A to say it isn\'t connected', lambda: a.call('moonlight.friends')['connected'] is None, 20)
+    if os.path.exists(os.path.join(c.run, 'moonlight-session.json')):
+        fail('the session file stayed after Stop sharing now')
+    try:
+        os.kill(nt['pid'], 0)
+        if open('/proc/%d/stat' % nt['pid']).read().split()[2] != 'Z':
+            fail('the notice stayed after Stop sharing now')
+    except (OSError, KeyError):
+        pass
+    # Always allow, Games only, a 30-minute limit (18 s here): no question, Steam Big Picture, ends by itself.
+    c.call('moonlight.share.person', {'id': a.id, 'always': True, 'what': 'games', 'limitMinutes': 30})
+    n_asked = len(read_json(os.path.join(c.home, 'asked.json')) or [])
+    t0 = time.time()
+    moon_session(a, c, 'C', 'games')
+    if len(read_json(os.path.join(c.home, 'asked.json')) or []) != n_asked:
+        fail('C asked although A is set to Always allow')
+    if (read_json(os.path.join(a.home, 'ml-pair.json')) or {}).get('pin') != mp['pin']:
+        fail('Moonlight was paired again although C\'s Sunshine knew it')
+    wait_for('the time limit to end it', lambda: os.path.exists(os.path.join(a.home, 'ml-ended.json')), 40)
+    limit_s = time.time() - t0
+    # Turning it off ends a session at once and lets nobody new in.
+    c.call('moonlight.share.person', {'id': a.id, 'limitMinutes': 0, 'what': 'desktop'})
+    moon_session(a, c, 'C')
+    t0 = time.time()
+    c.call('moonlight.share.set', {'on': False})
+    wait_for('turning it off to cut A off', lambda: os.path.exists(os.path.join(a.home, 'ml-ended.json')), 20)
+    off_s = time.time() - t0
+    if ['family', 'off'] not in (family_calls(c)):
+        fail('turning it off didn\'t undo Sunshine\'s setup')
+    r = a.call('moonlight.connect', {'id': c.id}, timeout=60, ok=False)
+    if "isn't letting anyone" not in json.dumps(r):
+        fail('connecting while it\'s off: %s' % r)
+    notice('moonlight: stopping', 'Stop sharing now cut A off in %.1f s; Always allow asked nothing and Games only started Steam Big Picture, the 30-minute limit (18 s here) ended it after %.1f s; turning the switch off cut A off in %.1f s and then refused A' % (stop_s, limit_s, off_s))
+    # Removing the person: C forgets A (Sunshine's pairing too), and A's list drops C.
+    c.call('moonlight.share.set', {'on': True})
+    c.call('moonlight.share.remove', {'id': a.id})
+    if ['family', 'forget', 'Hearth ' + a.id[:8]] not in (family_calls(c)):
+        fail('removing A didn\'t unpair its Moonlight from Sunshine')
+    wait_for('A to drop C', lambda: not any(f['id'] == c.id for f in a.call('moonlight.friends', {'check': True}, timeout=30)['friends']), 30)
+    r = a.call('moonlight.connect', {'id': c.id}, timeout=60, ok=False)
+    if 'error' not in r:
+        fail('connecting after being removed: %s' % r)
+    notice('moonlight: removing', 'C removed A: its Moonlight unpaired from Sunshine, C gone from A\'s list, A can\'t connect')
+    c.call('moonlight.share.set', {'on': False})
+    sun.terminate()
+
+
 def family():
     """Pair once for all your devices: A-B, then B-C, and A and C are paired with no code. Removing C on A removes
     it from B too. A friend's device pairs with one device only and nobody else hears of it."""
@@ -1183,7 +1721,15 @@ def family():
     os.makedirs(ROOT)
     family_network()
     pk, pk_url = pkarr_relay('hfA', '10.78.0.1')
-    env = {'HEARTH_LINK_RELAY': 'off', 'HEARTH_LINK_NO_DNS': '1', 'HEARTH_LINK_PKARR': pk_url, 'HEARTH_LINK_NO_FIREWALL': '1'}
+    fakes = {}
+    for name, text in (('status', FAKE_STATUS), ('remote', FAKE_REMOTE)):
+        fakes[name] = os.path.join(ROOT, 'fake-%s.py' % name)
+        with open(fakes[name], 'w') as f:
+            f.write(text)
+    env = {'HEARTH_LINK_RELAY': 'off', 'HEARTH_LINK_NO_DNS': '1', 'HEARTH_LINK_PKARR': pk_url, 'HEARTH_LINK_NO_FIREWALL': '1',
+           'HEARTH_DEVICE_STATUS': fakes['status'], 'HEARTH_REMOTE_DESKTOP': fakes['remote'],
+           'FAKE_HOST_PIN': os.path.join(ROOT, 'C', 'home', 'pin-got.json')}
+    env.update(moon_env())
     # C is a Hearth TV (Hearth TV runs Hearth Link with kind tv): Send to TV is tried on it (send_to_tv()).
     a, b, c = Dev('A', 'hfA', dict(env, HEARTH_LINK_KIND='desktop')), Dev('B', 'hfB', dict(env, HEARTH_LINK_KIND='handheld')), Dev('C', 'hfC', dict(env, HEARTH_LINK_KIND='tv', HEARTH_LINK_EDITION='Hearth TV'))
     for d in (a, b, c):
@@ -1233,6 +1779,8 @@ def family():
     if 'your paired devices' not in json.dumps(r):
         fail("Send to TV to a friend's TV: %s" % r)
     notice('Send to TV: friends', "a friend's TV can't be sent to")
+    family_member(a, b, c)
+    moon_family(a, b, c)
     for d in (a, b, c):
         d.kill(signal.SIGTERM)
     pk.terminate()
@@ -1241,6 +1789,15 @@ def family():
 
 if __name__ == '__main__':
     what = sys.argv[1] if len(sys.argv) > 1 else 'lan'
+    # Moonlight's private network (moonlight.rs) runs hearth-link again inside a user namespace where only root is
+    # mapped: the runner's home (0750, its own user) can't be entered from there, so the binary is run from /tmp. On a
+    # device the person's own user is mapped and hearth-link is /usr/bin/hearth-link.
+    if os.path.exists(BIN) and not BIN.startswith('/usr/'):
+        os.makedirs('/tmp/hl-bin', exist_ok=True)
+        os.chmod('/tmp/hl-bin', 0o755)
+        shutil.copy(BIN, '/tmp/hl-bin/hearth-link')
+        os.chmod('/tmp/hl-bin/hearth-link', 0o755)
+        BIN = '/tmp/hl-bin/hearth-link'
     try:
         try:
             {'lan': lan, 'internet': internet, 'family': family}[what]()

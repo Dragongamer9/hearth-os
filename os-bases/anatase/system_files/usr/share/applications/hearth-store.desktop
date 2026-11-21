@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth Store
+GenericName=App store for Hearth's own apps
+Comment=Install, update and repair Dragongamer9's apps for Hearth OS (Hearth AI, AI Command Center)
+Exec=/usr/bin/hearth-store-app
+TryExec=/usr/bin/hearth-store-app
+Icon=hearth-store
+Categories=System;PackageManager;
+Keywords=store;apps;install;update;repair;uninstall;hearth;ai;command center;appimage;
+StartupWMClass=hearth-store
+Actions=updates;
+
+[Desktop Action updates]
+Name=Updates
+Exec=/usr/bin/hearth-store-app --page updates

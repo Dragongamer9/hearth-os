@@ -17,6 +17,12 @@
  *   W                 watch: the state now, then a line "active ..." every time it changes (a text field got or
  *                     lost the keyboard), for the on-screen keyboard to open by itself
  * It never reads the text fields (surrounding text is ignored) and keeps nothing.
+ *
+ * --panel (the Fedora edition's hearth-kwin-im-launch): also gives KWin an input panel, an empty 1x1 surface nobody
+ * sees. KWin shows an input method's panel when a text field gets the keyboard from a touch (or a pen), as it does
+ * for KDE's plasma-keyboard, and says so on D-Bus (org.kde.kwin.VirtualKeyboard visible): hearth-pad --plasma then
+ * opens Hearth's on-screen keyboard. A mouse click or the keyboard doesn't show it. Without a panel (or when KWin
+ * won't take one) typing works the same; only that touch signal is missing.
  */
 #define _GNU_SOURCE
 #include <errno.h>
@@ -27,6 +33,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -51,6 +58,12 @@ static struct zwp_input_method_v1 *im;
 static struct zwp_input_method_context_v1 *ctx;
 static uint32_t ctx_serial, ctx_purpose, ctx_hint;
 static struct client *clients[MAX_CLIENTS];
+/* --panel */
+static int want_panel;
+static struct wl_compositor *compositor;
+static struct wl_shm *shm;
+static struct wl_output *output;
+static struct zwp_input_panel_v1 *panel;
 static char sock_path[sizeof(((struct sockaddr_un *)0)->sun_path)];
 
 /* Never blocks: a client that doesn't read its answers (a full socket) is dropped, so the input method never stalls
@@ -139,6 +152,14 @@ static void reg_global(void *d, struct wl_registry *r, uint32_t name, const char
     if (strcmp(iface, zwp_input_method_v1_interface.name) == 0 && !im) {
         im = wl_registry_bind(r, name, &zwp_input_method_v1_interface, 1);
         zwp_input_method_v1_add_listener(im, &im_listener, NULL);
+    } else if (want_panel && strcmp(iface, zwp_input_panel_v1_interface.name) == 0 && !panel) {
+        panel = wl_registry_bind(r, name, &zwp_input_panel_v1_interface, 1);
+    } else if (want_panel && strcmp(iface, wl_compositor_interface.name) == 0 && !compositor) {
+        compositor = wl_registry_bind(r, name, &wl_compositor_interface, 1);
+    } else if (want_panel && strcmp(iface, wl_shm_interface.name) == 0 && !shm) {
+        shm = wl_registry_bind(r, name, &wl_shm_interface, 1);
+    } else if (want_panel && strcmp(iface, wl_output_interface.name) == 0 && !output) {
+        output = wl_registry_bind(r, name, &wl_output_interface, 1);
     }
 }
 static void reg_remove(void *d, struct wl_registry *r, uint32_t name) { (void)d; (void)r; (void)name; }
@@ -224,10 +245,37 @@ static int listen_socket(void) {
     return fd;
 }
 
+/* --panel: one fully transparent pixel as the input panel (KWin shows and hides it; nothing is ever drawn again). */
+static void make_panel(void) {
+    if (!panel || !compositor || !shm) {
+        fprintf(stderr, "hearth-kwin-im: no input panel here (touch won't open Hearth's keyboard by itself)\n");
+        return;
+    }
+    int fd = memfd_create("hearth-kwin-im-panel", MFD_CLOEXEC);
+    if (fd < 0 || ftruncate(fd, 4) < 0) {
+        if (fd >= 0) close(fd);
+        fprintf(stderr, "hearth-kwin-im: no buffer for the input panel\n");
+        return;
+    }
+    struct wl_shm_pool *pool = wl_shm_create_pool(shm, fd, 4);   /* ftruncate's zeros: transparent */
+    struct wl_buffer *buf = wl_shm_pool_create_buffer(pool, 0, 1, 1, 4, WL_SHM_FORMAT_ARGB8888);
+    wl_shm_pool_destroy(pool);
+    close(fd);
+    struct wl_surface *surf = wl_compositor_create_surface(compositor);
+    struct zwp_input_panel_surface_v1 *ps = zwp_input_panel_v1_get_input_panel_surface(panel, surf);
+    if (output) zwp_input_panel_surface_v1_set_toplevel(ps, output, ZWP_INPUT_PANEL_SURFACE_V1_POSITION_CENTER_BOTTOM);
+    else zwp_input_panel_surface_v1_set_overlay_panel(ps);
+    wl_surface_attach(surf, buf, 0, 0);
+    wl_surface_commit(surf);
+    wl_display_roundtrip(display);
+    fprintf(stderr, "hearth-kwin-im: input panel ready (touch opens Hearth's keyboard)\n");
+}
+
 static volatile sig_atomic_t stop;
 static void on_signal(int s) { (void)s; stop = 1; }
 
-int main(void) {
+int main(int argc, char **argv) {
+    for (int i = 1; i < argc; i++) if (strcmp(argv[i], "--panel") == 0) want_panel = 1;
     signal(SIGTERM, on_signal);
     signal(SIGINT, on_signal);
     signal(SIGPIPE, SIG_IGN);
@@ -241,6 +289,7 @@ int main(void) {
                         "starts itself: kwinrc [Wayland] InputMethod)\n");
         return 2;
     }
+    if (want_panel) make_panel();
     int lfd = listen_socket();
     if (lfd < 0) { fprintf(stderr, "hearth-kwin-im: can't make %s: %s\n", sock_path, strerror(errno)); return 1; }
     fprintf(stderr, "hearth-kwin-im: ready (%s)\n", sock_path);

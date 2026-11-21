@@ -1,0 +1,12 @@
+{
+    "KPackageStructure": "Plasma/Shell",
+    "KPlugin": {
+        "Authors": [{ "Name": "Hearth OS" }],
+        "Description": "Firehold's Couch: the controller, big tiles, full-screen apps and the Guide (a test)",
+        "Id": "org.hearthos.firehold",
+        "License": "GPL-2.0+",
+        "Name": "Firehold Couch",
+        "Version": "0.1"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

@@ -1,0 +1,158 @@
+# Hearth's panel on KDE Plasma (Hearth Classic on Plasma; docs/mockups/checklists/plasma-hearth-bar.md): Mantel's bar,
+# dock, app menus, Quick settings and dashboard in Plasma's panels, on Fedora 44 (what Anatase is built on).
+#   1. check: the packages are built from Mantel's files (install.sh), Plasma finds them (kpackagetool6), Hearth's own
+#      QML parses (qmlformat), the helper compiles, the mockup checklists are well formed.
+#   2. pictures (.github/scripts/plasma-hearth-shots.sh): plain Plasma, Hearth's panel put in, every look (desktop,
+#      Quick settings, app menu, dashboard), the five app menus, bar layouts, and back to KDE's panel. Pictures and
+#      logs go to the branch ci/plasma-hearth-shots-<branch>.
+# Failures are ::error:: annotations. On pushes to its own branch (a workflow can only be started by hand once it's on
+# the default branch), and by hand.
+name: Hearth's panel on Plasma
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['feature/plasma-hearth-menu']
+    paths: ['hosts/linux/desktop/plasma-hearth/**', 'hosts/linux/test/test_plasma_hearth.py', 'hosts/linux/test/test_hearth_desk.py', 'hosts/linux/desktop/shell/hearth-desk', '.github/workflows/plasma-hearth.yml', '.github/scripts/plasma-hearth-shots.sh',
+            'docs/mockups/checklists/plasma-hearth-bar.md', '.github/scripts/ci-kwin-tools.sh', '.github/scripts/ci-fake-input.c',
+            '.github/scripts/plasma-hearth-fixtures.py']
+
+permissions:
+  contents: write    # the screenshots branch
+
+concurrency:
+  group: plasma-hearth-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PLASMA_PKGS: >-
+    git python3 python3-dbus python3-pillow procps-ng dbus-daemon dbus-tools
+    plasma-workspace kwin plasma-desktop plasma-breeze breeze-icon-theme google-noto-sans-fonts
+    qt6-qtdeclarative-devel kf6-kpackage xorg-x11-server-Xwayland mesa-dri-drivers
+  PLASMA_EXTRA: >-
+    libnotify qt6-qtdeclarative kf6-kirigami layer-shell-qt pipewire wireplumber kactivitymanagerd plasma-integration
+    kglobalacceld plasma-nm plasma-pa plasma5support qt6-qttools dolphin konsole kate kde-cli-tools rsms-inter-fonts
+    dejavu-sans-fonts dejavu-sans-mono-fonts wtype qt6-qtwayland kf6-kconfig qt6-qt5compat python3-gobject kscreenlocker
+
+jobs:
+  screens:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      options: --privileged
+    steps:
+      - name: Install Plasma (what the Anatase image has) and the checking tools
+        run: |
+          dnf -y install $PLASMA_PKGS >/dev/null
+          dnf -y install --skip-unavailable $PLASMA_EXTRA >/dev/null || true
+          for b in kwin_wayland plasmashell kpackagetool6; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
+          echo "::notice title=Plasma::$(rpm -q plasma-workspace kwin layer-shell-qt plasma-pa plasma-nm | tr '\n' ' ')"
+
+      - uses: actions/checkout@v4
+
+      - name: Put Hearth's panel where the image puts it
+        run: |
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          mkdir -p /usr/share/backgrounds/hearth && cp os/branding/wallpapers/hearth-*.jpg /usr/share/backgrounds/hearth/
+          for d in branding/icons/png/*x*; do mkdir -p "/usr/share/icons/hicolor/$(basename "$d")/apps" && cp "$d"/*.png "/usr/share/icons/hicolor/$(basename "$d")/apps/"; done
+          # Hearth's looks as Plasma Global Themes (the Fedora image's hearth-plasma-looks: KDE apps in each look's colours)
+          mkdir -p /usr/libexec/nimbus && install -m755 os-bases/anatase/system_files/usr/libexec/nimbus/hearth-plasma-looks /usr/libexec/nimbus/
+          logo=$(ls branding/icons/apps/hearth.svg branding/icons/apps/*.svg 2>/dev/null | head -1); mkdir -p /usr/share/icons/hicolor/scalable/apps; [ -n "$logo" ] && cp "$logo" /usr/share/icons/hicolor/scalable/apps/hearth.svg
+          python3 /usr/libexec/nimbus/hearth-plasma-looks build > /tmp/looks.json 2>/tmp/looks.err || echo "::warning title=looks::$(tail -3 /tmp/looks.err | tr '\n' ' ' | cut -c1-400)"
+          mkdir -p /usr/share/kwin/tabbox && cp -a os/system_files/usr/share/kwin/tabbox/org.hearth.switcher /usr/share/kwin/tabbox/
+          bash /usr/share/nimbus/desktop/plasma-hearth/install.sh / | tee /tmp/install.log
+          grep -q "installed with gaps" /tmp/install.log && echo "::warning title=install::$(tr '\n' ' ' </tmp/install.log | cut -c1-600)"
+          ls -la /usr/share/plasma/plasmoids/ /usr/bin/hearth-plasma-panel
+
+      - name: Check (packages, QML, the helper, the checklists)
+        timeout-minutes: 10
+        shell: bash
+        run: |
+          set +e +o pipefail
+          fail=0
+          QMLFORMAT=$(command -v qmlformat || ls /usr/lib64/qt6/bin/qmlformat 2>/dev/null | head -1)
+          for f in hosts/linux/desktop/plasma-hearth/shim/*.qml hosts/linux/desktop/plasma-hearth/package/*.qml; do
+            [ -n "$QMLFORMAT" ] && { "$QMLFORMAT" "$f" >/dev/null 2>/tmp/fmt.err || { echo "::error file=$f,title=QML doesn't parse::$(tr '\n' ' ' </tmp/fmt.err | cut -c1-600)"; fail=1; }; }
+          done
+          for t in org.hearthos.panel org.hearthos.appmenu; do
+            kpackagetool6 --type Plasma/Applet --show "$t" >/tmp/kp.out 2>&1 || { echo "::error title=package $t::kpackagetool6 doesn't find it: $(tr '\n' ' ' </tmp/kp.out | cut -c1-400)"; fail=1; }
+          done
+          python3 -m py_compile hosts/linux/desktop/plasma-hearth/hearth-plasma-panel hosts/linux/desktop/plasma-hearth/transform.py || fail=1
+          bash -n hosts/linux/desktop/plasma-hearth/install.sh .github/scripts/plasma-hearth-shots.sh || fail=1
+          timeout 300 python3 -m unittest hosts/linux/test/test_mockups.py hosts/linux/test/test_plasma_hearth.py hosts/linux/test/test_hearth_desk.py >/tmp/py.out 2>&1 \
+            || { echo "::error title=tests::$(grep -E '^(FAIL|ERROR|AssertionError|[A-Za-z]*Error)' /tmp/py.out | head -8 | tr '\n' '|' | cut -c1-900)"; fail=1; }
+          python3 /usr/share/nimbus/desktop/plasma-hearth/hearth-plasma-panel apps | python3 -c 'import json,sys; a=json.load(sys.stdin); print("::notice title=apps::%d apps, e.g. %s" % (len(a), ", ".join(x["name"] for x in a[:8])))'
+          exit $fail
+
+      - name: Draw Hearth's panel (every look, the menus, Quick settings, the dashboard)
+        if: always()
+        timeout-minutes: 30
+        shell: bash
+        run: bash .github/scripts/plasma-hearth-shots.sh shots
+
+      - name: Publish screenshots to a branch
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          ls shots/*.png >/dev/null 2>&1 || exit 0
+          git config --global --add safe.directory "$PWD"
+          to="ci/plasma-hearth-shots-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+          mkdir -p pub && cp shots/*.png shots/*.log shots/*.txt shots/*.json pub/ 2>/dev/null
+          printf '# Hearth on Plasma, %s\n\n' "${GITHUB_SHA::7}" > pub/README.md
+          for f in pub/*.png; do printf '## %s\n\n![%s](%s)\n\n' "$(basename "$f" .png)" "$(basename "$f")" "$(basename "$f")" >> pub/README.md; done
+          cd pub && git init -q -b "$to" && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth on Plasma screenshots ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
+          echo "::notice title=Screenshots::branch $to"
+          cd .. && [ ! -e shots/FAILED ]
+
+  # Glass's frosted blur, Alt+Tab held down, apps' tray icons and what's playing (plasma-hearth-shots.sh extras):
+  # KWin draws with OpenGL on a vgem render node (Mesa in software), so Plasma draws as on a PC with a graphics card;
+  # keys through KWin's fake input (ci-kwin-tools.sh). Pictures to ci/plasma-hearth-extras-<branch>.
+  extras:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: registry.fedoraproject.org/fedora:44
+      options: --privileged -v /dev:/dev -v /lib/modules:/lib/modules:ro
+    steps:
+      - name: Install Plasma (what the Anatase image has) and the checking tools
+        run: |
+          dnf -y install $PLASMA_PKGS kmod gcc pkgconf-pkg-config wayland-devel plasma-wayland-protocols kf6-kded >/dev/null
+          dnf -y install --skip-unavailable $PLASMA_EXTRA >/dev/null || true
+          for b in kwin_wayland plasmashell kpackagetool6 wayland-scanner; do command -v $b >/dev/null || echo "::error title=setup::$b isn't installed"; done
+      - uses: actions/checkout@v4
+      - name: Put Hearth's panel where the image puts it
+        run: |
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          mkdir -p /usr/share/backgrounds/hearth && cp os/branding/wallpapers/hearth-*.jpg /usr/share/backgrounds/hearth/
+          for d in branding/icons/png/*x*; do mkdir -p "/usr/share/icons/hicolor/$(basename "$d")/apps" && cp "$d"/*.png "/usr/share/icons/hicolor/$(basename "$d")/apps/"; done
+          mkdir -p /usr/libexec/nimbus && install -m755 os-bases/anatase/system_files/usr/libexec/nimbus/hearth-plasma-looks /usr/libexec/nimbus/
+          logo=$(ls branding/icons/apps/hearth.svg branding/icons/apps/*.svg 2>/dev/null | head -1); mkdir -p /usr/share/icons/hicolor/scalable/apps; [ -n "$logo" ] && cp "$logo" /usr/share/icons/hicolor/scalable/apps/hearth.svg
+          python3 /usr/libexec/nimbus/hearth-plasma-looks build > /tmp/looks.json 2>/tmp/looks.err || echo "::warning title=looks::$(tail -3 /tmp/looks.err | tr '\n' ' ' | cut -c1-400)"
+          mkdir -p /usr/share/kwin/tabbox && cp -a os/system_files/usr/share/kwin/tabbox/org.hearth.switcher /usr/share/kwin/tabbox/
+          [ -d /usr/share/kwin-wayland ] && mkdir -p /usr/share/kwin-wayland/tabbox && cp -a os/system_files/usr/share/kwin/tabbox/org.hearth.switcher /usr/share/kwin-wayland/tabbox/
+          bash /usr/share/nimbus/desktop/plasma-hearth/install.sh / | tee /tmp/install.log
+          bash .github/scripts/ci-kwin-tools.sh install
+      - name: Glass's blur, Alt+Tab, tray icons, now playing
+        timeout-minutes: 25
+        shell: bash
+        run: bash .github/scripts/plasma-hearth-shots.sh shots extras
+      - name: Publish screenshots to a branch
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          ls shots/*.png >/dev/null 2>&1 || exit 0
+          git config --global --add safe.directory "$PWD"
+          to="ci/plasma-hearth-extras-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+          mkdir -p pub && cp shots/*.png shots/*.log shots/*.txt shots/*.json pub/ 2>/dev/null
+          printf '# Hearth on Plasma (extras), %s\n\n' "${GITHUB_SHA::7}" > pub/README.md
+          for f in pub/*.png; do printf '## %s\n\n![%s](%s)\n\n' "$(basename "$f" .png)" "$(basename "$f")" "$(basename "$f")" >> pub/README.md; done
+          cd pub && git init -q -b "$to" && git add -A
+          git -c user.name=ci -c user.email=ci@localhost commit -qm "Hearth on Plasma extras ${GITHUB_SHA::7}"
+          git push -qf "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }}" "$to"
+          echo "::notice title=Screenshots::branch $to"
+          cd .. && [ ! -e shots/FAILED ]

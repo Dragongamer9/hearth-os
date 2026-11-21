@@ -151,6 +151,10 @@ jobs:
           HOME="$G" XDG_RUNTIME_DIR="$RUNNER_TEMP/gamestore/run" dbus-run-session -- ./target/release/hearth-gamestore --tab recomps >> gamestore.log 2>&1 &
           sleep 10; front "Hearth Games"; shot gamestore-recomps-opened
           pkill -f target/release/hearth-gamestore || true
+          # Family and friends (docs/HEARTH-LINK.md): the tab on its own (no Hearth Link here: it says so).
+          HOME="$G" XDG_RUNTIME_DIR="$RUNNER_TEMP/gamestore/run" dbus-run-session -- ./target/release/hearth-gamestore --tab family >> gamestore.log 2>&1 &
+          sleep 10; front "Hearth Games"; shot gamestore-family
+          pkill -f target/release/hearth-gamestore || true
           echo "::notice title=Windows open at each screenshot::$(tr '\n' '|' < windows.txt)"
           echo "::notice title=App output::$(tail -c 1200 saves.log mods.log lab.log | tr '\n' '|')"
       - name: What the screenshots show (size and how much is drawn, so a blank window shows up here)

@@ -8,21 +8,98 @@
 #   nimbus-mode server    go to Server mode (docs/SERVER-MODE.md; Game Mode instead when it's off or can't start)
 #   nimbus-mode logout    end the session (back to the login screen)
 #   nimbus-mode current   print the mode you're in
+#   nimbus-mode hearth-page PAGE   Hearth Game Mode at one of its pages (Settings' links to what has no app of its
+#                         own yet: Library sources, Import, Move games...). Hearth's screens are a mode, never a window
+#                         on the desktop (the owner, Nov 19: "hearth game mode cant be an app that Opens, needs to just
+#                         be game mode").
+#   nimbus-mode gamemodes status|apply   "Game Mode on this PC" (Settings › System › Startup; desktop.json's
+#                         gameModeOff, written only by Settings through hearth_settings_io.py): prints on or off, or
+#                         shows / hides Plasma's Back to Game Mode entries to match it (apply, run by Settings after a
+#                         change and by nimbus-session as Plasma starts).
+# Game Mode off: game, steam, hearth and hearth-page do nothing but say so (Desktop Mode stays), unless
+# HEARTH_GM_RECOVERY=1 (the desktop's own "it couldn't start" fallback: Game Mode stays available for recovery).
 
 RUN="${XDG_RUNTIME_DIR:-/tmp}"
 # Desktop Mode (Mantel) on KWin (1.14), labwc or (2.0 preview) Hearth's own compositor: HEARTH_DESKTOP_PID is the window manager's process id (set for both by
 # nimbus-session and the autostart; labwc's own LABWC_PID for anything older that only has that). labwc's own commands
 # (labwc --exit) only under labwc: they signal LABWC_PID, which is never set under KWin.
 desk_pid="${HEARTH_DESKTOP_PID:-$LABWC_PID}"
+# 1.15, the Anatase test: Desktop Mode is KDE Plasma, started by nimbus-session (its process id in hearth-plasma.pid).
+plasma_pid=$(cat "$RUN/hearth-plasma.pid" 2>/dev/null)
+plasma_up() { [ -n "$plasma_pid" ] && kill -0 "$plasma_pid" 2>/dev/null; }
 # Steam Game Mode (nimbus-session's run_steam_mode) leaves the session's process id here while it runs.
 steam_pid=$(cat "$RUN/hearth-steam-mode.pid" 2>/dev/null)
 steam_up() { [ -n "$steam_pid" ] && kill -0 "$steam_pid" 2>/dev/null; }
+# ---- Game Mode on this PC (On unless you turned it off; missing = On, so nothing changes for anyone who doesn't).
+# The live USB (its installer is Hearth's app) and extra multi-seat players always have it.
+gm_json() { echo "${HEARTH_DESKTOP_JSON:-${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/desktop.json}"; }
+game_modes_off() {
+  [ -e "${HEARTH_LIVE_FLAG:-/etc/hearth-live}" ] || [ "${USER:-}" = liveuser ] || [ -n "${HEARTH_SEAT:-}" ] && return 1
+  grep -Eq '"gameModeOff"[[:space:]]*:[[:space:]]*true' "$(gm_json)" 2>/dev/null
+}
+# Plasma's "Back to Game Mode" (menu, pinned launcher, Super+G) hidden while it's off: a Hidden copy of its entry in
+# this sign-in's runtime folder, which nimbus-session puts first in Plasma's XDG_DATA_DIRS. Nothing in your own
+# folders is written; turning it on again removes the copy and the entries come back.
+GM_HIDE="$RUN/hearth-gm-hidden/applications"
+gm_apply() {
+  mkdir -p "$GM_HIDE" 2>/dev/null || return 0
+  if game_modes_off; then
+    printf '[Desktop Entry]\nType=Application\nName=Back to Game Mode\nExec=nimbus-mode game\nHidden=true\nNoDisplay=true\n' >"$GM_HIDE/.hearth-gamemode.desktop.tmp" \
+      && mv -f "$GM_HIDE/.hearth-gamemode.desktop.tmp" "$GM_HIDE/hearth-gamemode.desktop"
+  else
+    rm -f "$GM_HIDE/hearth-gamemode.desktop"
+  fi
+  # Plasma's menu and shortcuts read the change (in the background, never longer than 30 s).
+  if [ -n "$plasma_pid" ] && command -v kbuildsycoca6 >/dev/null 2>&1; then
+    setsid sh -c 'timeout 30 kbuildsycoca6 >/dev/null 2>&1' >/dev/null 2>&1 </dev/null &
+  fi
+  plasma_up && gm_pin
+  return 0
+}
+# The pinned Back to Game Mode on Plasma's taskbar: taken off while Game Mode is off (and remembered), put back first
+# when it's on again, only if it was there before (your own unpinning is kept). Plasma's own scripting, 10 s at most.
+GM_PINNED="${XDG_STATE_HOME:-$HOME/.local/state}/hearth/gm-launcher-unpinned"
+gm_pin() {
+  q=""; for b in qdbus6 qdbus; do command -v "$b" >/dev/null 2>&1 && { q="$b"; break; }; done
+  [ -n "$q" ] || return 0
+  widgets='panels().forEach(function (p) { p.widgets(["org.kde.plasma.icontasks", "org.kde.plasma.taskmanager"]).forEach(function (w) { w.currentConfigGroup = ["General"]; var l = String(w.readConfig("launchers", "")).split(",").filter(function (x) { return x; });'
+  if game_modes_off; then
+    out=$(timeout 10 "$q" org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "$widgets"' var i = l.indexOf("applications:hearth-gamemode.desktop"); if (i >= 0) { l.splice(i, 1); w.writeConfig("launchers", l.join(",")); print("had"); } }); });' 2>/dev/null)
+    case "$out" in *had*) mkdir -p "$(dirname "$GM_PINNED")" && : >"$GM_PINNED" ;; esac
+  elif [ -e "$GM_PINNED" ]; then
+    timeout 10 "$q" org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript "$widgets"' if (l.indexOf("applications:hearth-gamemode.desktop") < 0) { l.unshift("applications:hearth-gamemode.desktop"); w.writeConfig("launchers", l.join(",")); } }); });' >/dev/null 2>&1 \
+      && rm -f "$GM_PINNED"
+  fi
+  return 0
+}
+gm_refuse() {
+  echo "nimbus-mode: Game Mode is off on this PC (Settings › System › Startup); staying in Desktop Mode" >&2
+  ( command -v notify-send >/dev/null 2>&1 && timeout 5 notify-send -a Hearth -i hearth "Game Mode is off on this PC" \
+      "Turn it back on in Settings › System › Startup." ) >/dev/null 2>&1 &
+  exit 3
+}
 case "$1" in
   current)
     server_pid=$(cat "$RUN/hearth-server-mode.pid" 2>/dev/null)
     if [ "$HEARTH_SERVER_MODE" = 1 ] || { [ -n "$server_pid" ] && kill -0 "$server_pid" 2>/dev/null && [ "$(cat "$RUN/nimbus-mode-now" 2>/dev/null)" = server ]; }; then echo server
-    elif [ -n "$desk_pid" ]; then echo desktop; elif steam_up; then echo steam; elif [ -n "$GAMESCOPE_WAYLAND_DISPLAY" ]; then echo game; else echo none; fi ;;
+    elif [ -n "$desk_pid" ] || plasma_up; then echo desktop; elif steam_up; then echo steam; elif [ -n "$GAMESCOPE_WAYLAND_DISPLAY" ]; then echo game; else echo none; fi ;;
+  gamemodes)
+    case "$2" in
+      status) if game_modes_off; then echo off; else echo on; fi ;;
+      apply) gm_apply; if game_modes_off; then echo off; else echo on; fi ;;
+      *) echo "usage: nimbus-mode gamemodes status|apply" >&2; exit 2 ;;
+    esac ;;
+  hearth-page)
+    # Only Hearth's own page names (hearth-core start_page has the same list).
+    case "$2" in
+      sources|import|diskspace|storage|system|stores|library|downloads|recomps|shop|settings|hhd) ;;
+      *) echo "nimbus-mode: no such page: $2" >&2; exit 2 ;;
+    esac
+    [ "${HEARTH_GM_RECOVERY:-0}" = 1 ] || ! game_modes_off || gm_refuse
+    printf '%s\n' "$2" >"$RUN/hearth-start-page"
+    exec sh "$0" hearth ;;
   game|desktop|logout|steam|server|hearth)
+    case "$1" in game|steam|hearth) [ "${HEARTH_GM_RECOVERY:-0}" = 1 ] || ! game_modes_off || gm_refuse ;; esac
     # (logout is written too: the session ends on anything that isn't a mode, and Steam Game Mode then knows it was
     # asked for and isn't started again.)
     # 1.14, Game Mode beside the desktop (off unless you turned it on): from Mantel, Steam Game Mode is shown on its
@@ -31,7 +108,14 @@ case "$1" in
     if [ -n "$desk_pid" ] && [ -x "$side" ] && { [ "$1" = steam ] || { [ "$1" = game ] && [ "$(python3 "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell/hearth-game-mode" choice 2>/dev/null || echo steam)" = steam ]; }; } \
       && "$side" game >/dev/null 2>&1; then exit 0; fi
     echo "$1" >"$RUN/nimbus-next"
-    if [ -n "$desk_pid" ]; then
+    if plasma_up; then
+      # KDE Plasma: logged out the way its own menu does (apps asked to close), then ended for it after 10 s so the
+      # switch can't hang.
+      gdbus call --session --dest org.kde.Shutdown --object-path /Shutdown --method org.kde.Shutdown.logout >/dev/null 2>&1 \
+        || qdbus6 org.kde.Shutdown /Shutdown org.kde.Shutdown.logout >/dev/null 2>&1 || kill -TERM "$plasma_pid"
+      me=$(id -u); pid="$plasma_pid"
+      setsid sh -c "sleep 10; kill -0 $pid 2>/dev/null && { pkill -TERM -u $me -x kwin_wayland; kill -TERM $pid; sleep 4; kill -KILL $pid; }" >/dev/null 2>&1 </dev/null &
+    elif [ -n "$desk_pid" ]; then
       if [ "${HEARTH_WM:-labwc}" != kwin ] && [ -n "$LABWC_PID" ]; then labwc --exit 2>/dev/null || kill -TERM "$desk_pid"
       else kill -TERM "$desk_pid"; fi
       # If an app keeps the desktop from closing, close it anyway so the switch can't hang.
@@ -51,5 +135,5 @@ case "$1" in
              && { me=$(id -u); setsid sh -c "sleep 4; pkill -KILL -u $me -x kwin_wayland" >/dev/null 2>&1 </dev/null & }; } \
         || pkill -TERM -u "$(id -u)" -x firehold-comp 2>/dev/null
     fi ;;
-  *) echo "usage: nimbus-mode game|desktop|steam|hearth|server|logout|current" >&2; exit 2 ;;
+  *) echo "usage: nimbus-mode game|desktop|steam|hearth|server|logout|current|hearth-page PAGE|gamemodes status|apply" >&2; exit 2 ;;
 esac

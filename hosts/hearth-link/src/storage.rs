@@ -902,14 +902,17 @@ impl Node {
     }
 
     pub(crate) async fn storage_request(self: &Arc<Self>, id: &str, req: &Value) -> Result<Value, String> {
-        if !crate::lock(&self.peers).is_mine(id) { return Err("Not a paired device".into()); }
+        // Your devices; a family device for what its family member's switches let through (family.rs).
+        let op = req["op"].as_str().unwrap_or("");
+        { let ps = crate::lock(&self.peers); match ps.get(id) { None => return Err("Not a paired device".into()), Some(p) if !crate::family::may_ask(p, op) => return Err(crate::family::refusal(Some(p), op)), _ => {} } }
         self.storage_reach(id).await?;
         self.request(id, req).await.map_err(|e| e.trim_start_matches("connection: ").to_string())
     }
 
     /// Asks every paired device (or one) whether it's a Hearth Storage server; remembers how to wake the ones that are.
     pub async fn storage_refresh(self: &Arc<Self>, only: Option<&str>) -> Value {
-        let ids: Vec<String> = match only { Some(i) => vec![i.to_string()], None => crate::lock(&self.peers).mine().map(|p| p.id.clone()).collect() };
+        // Your devices, and family devices this one uses Hearth Storage with (their family member's switches).
+        let ids: Vec<String> = match only { Some(i) => vec![i.to_string()], None => crate::lock(&self.peers).list.iter().filter(|p| crate::family::may_ask(p, "storage.info")).map(|p| p.id.clone()).collect() };
         let mut set = tokio::task::JoinSet::new();
         for id in ids {
             let n = self.clone();
@@ -943,7 +946,7 @@ impl Node {
     pub fn storage_status(&self) -> Value {
         let c = self.st();
         let live = crate::lock(&self.storage.servers).clone();
-        let peers: Vec<(String, String)> = crate::lock(&self.peers).mine().map(|p| (p.id.clone(), p.name.clone())).collect();
+        let peers: Vec<(String, String)> = crate::lock(&self.peers).list.iter().filter(|p| crate::family::may_ask(p, "storage.info")).map(|p| (p.id.clone(), p.name.clone())).collect();
         let mut servers = Vec::new();
         for (id, name) in &peers {
             let l = live.get(id);
@@ -1040,7 +1043,7 @@ impl Node {
             let now = crate::now_ms();
             let due = !c.backup_to.is_empty() && (c.backup_saves || c.backup_shots) && now.saturating_sub(c.last_backup) > c.backup_hours * 3_600_000
                 && now.saturating_sub(self.storage.backup_try.load(Ordering::Relaxed)) > 30 * 60_000 && !crate::game_running();
-            if due && crate::lock(&self.peers).is_mine(&c.backup_to) {
+            if due && crate::lock(&self.peers).may_ask(&c.backup_to, "backup.offer") {
                 match self.storage_backup_now().await {
                     Ok(_) => eprintln!("hearth-link: storage: backup started"),
                     Err(e) => eprintln!("hearth-link: storage: backup: {e}"),
@@ -1190,7 +1193,8 @@ impl Node {
                 let before = self.st();
                 let mut c = before.clone();
                 c.apply(a, &home)?;
-                if !c.backup_to.is_empty() && !crate::lock(&self.peers).is_mine(&c.backup_to) { return Err("That isn't a paired device".into()); }
+                // One of yours, or a family device (backing up to it goes only while the family member's switch is on).
+                if !c.backup_to.is_empty() && !crate::lock(&self.peers).get(&c.backup_to).map(|p| p.mine() || p.family()).unwrap_or(false) { return Err("That isn't a paired device".into()); }
                 self.st_save(c.clone())?;
                 if c.server != before.server { eprintln!("hearth-link: storage: this device is {} Hearth Storage", if c.server { "now" } else { "no longer" }); }
                 if c.server && !before.server { self.storage_setup_wake(); }
@@ -1251,7 +1255,7 @@ impl Node {
             "storage.get" => {
                 // A file or folder of a shared folder copied here (Downloads unless a folder is given).
                 let server = s("server")?;
-                if !crate::lock(&self.peers).is_mine(&server) { return Err("Not a paired device".into()); }
+                if !crate::lock(&self.peers).may_ask(&server, "storage.read") { return Err("Not a paired device".into()); }
                 let share = s("share")?;
                 let rel = a["path"].as_str().unwrap_or("").trim_matches('/').to_string();
                 if share.contains(':') { return Err("That isn't a shared folder".into()); }

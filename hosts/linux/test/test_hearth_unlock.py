@@ -773,7 +773,7 @@ class Admin(unittest.TestCase):
     def test_anatase_is_always_locked(self):
         code, out, ex = self.main(['hearth-admin', 'unlock', 'on'], have=False)
         self.assertEqual(code, 1)
-        self.assertIn('Anatase', out)
+        self.assertIn('Fedora edition', out)
         self.assertEqual(ex, [])
 
 

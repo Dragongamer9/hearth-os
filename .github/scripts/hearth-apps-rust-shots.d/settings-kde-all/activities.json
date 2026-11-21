@@ -1,0 +1,1 @@
+{"running": true, "current": "a1", "list": [{"id": "a1", "name": "Default", "icon": "activities", "private": false, "shortcut": ["Meta+Ctrl+1"]}, {"id": "a2", "name": "Work", "icon": "applications-office", "private": false, "shortcut": []}, {"id": "a3", "name": "Games", "icon": "applications-games", "private": true, "shortcut": ["Meta+Ctrl+3"]}]}

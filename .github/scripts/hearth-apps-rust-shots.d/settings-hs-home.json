@@ -1,0 +1,1876 @@
+{
+ "hearth-home-server status": {
+  "host": "chris-hearth",
+  "user": "chris",
+  "helper": true,
+  "playing": false,
+  "settings": {
+   "lightMode": true,
+   "setupDone": true,
+   "tsOnly": false,
+   "snapshots": true,
+   "showHidden": false,
+   "ccDays": 30,
+   "smbPasswordSet": 1793327710000,
+   "keep": {
+    "hourly": 24,
+    "daily": 14,
+    "weekly": 8
+   },
+   "guard": {
+    "on": true,
+    "limit": 1000
+   },
+   "alerts": {
+    "on": true,
+    "smart": true,
+    "full": true,
+    "fullPct": 90,
+    "backup": true,
+    "mirror": false,
+    "tailscale": true,
+    "peers": [
+     "rog-ally.tail1234.ts.net"
+    ]
+   },
+   "power": {
+    "sleepIdle": 60,
+    "keepAwake": true,
+    "schedule": true,
+    "sleepAt": "01:00",
+    "wakeAt": "07:00",
+    "spinDown": 20,
+    "night": true,
+    "nightAt": "03:30",
+    "history": true,
+    "ups": false
+   },
+   "wakeFromAway": true,
+   "receive": {
+    "on": true,
+    "path": "/var/mnt/games/Backups",
+    "devices": [
+     {
+      "name": "rog-ally",
+      "user": "ally-3f9a",
+      "at": 1794623710000
+     }
+    ]
+   }
+  },
+  "shares": [
+   {
+    "id": "s1",
+    "name": "Photos",
+    "path": "/home/chris/Pictures",
+    "on": true,
+    "write": true,
+    "reach": "home",
+    "recycle": true,
+    "there": true,
+    "snapshots": true,
+    "snapOk": true,
+    "people": {
+     "mia": "read",
+     "sam": "write"
+    },
+    "how": {
+     "windows": "\\\\chris-hearth\\Photos",
+     "phone": "smb://chris-hearth/Photos",
+     "mac": "smb://chris-hearth/Photos",
+     "away": "smb://chris-hearth.tail1234.ts.net/Photos"
+    }
+   },
+   {
+    "id": "s2",
+    "name": "Videos",
+    "path": "/home/chris/Videos",
+    "on": true,
+    "write": false,
+    "reach": "tailscale",
+    "there": true,
+    "snapshots": false,
+    "snapOk": true,
+    "how": {}
+   },
+   {
+    "id": "s3",
+    "name": "Games SSD",
+    "path": "/var/mnt/games",
+    "on": true,
+    "write": false,
+    "whole": "drive",
+    "there": true,
+    "snapshots": false,
+    "snapOk": false,
+    "snapWhy": "Snapshots need a btrfs drive: this one is ext4",
+    "how": {}
+   }
+  ],
+  "usage": {
+   "used": 301000000000.0,
+   "total": 1000000000000.0
+  },
+  "tailscale": {
+   "installed": true,
+   "running": true,
+   "state": "Running",
+   "dns": "chris-hearth.tail1234.ts.net",
+   "peers": [
+    {
+     "name": "rog-ally",
+     "dns": "rog-ally.tail1234.ts.net",
+     "online": true,
+     "os": "linux"
+    },
+    {
+     "name": "chris-phone",
+     "online": true,
+     "os": "android"
+    },
+    {
+     "name": "work-laptop",
+     "online": false,
+     "os": "windows"
+    }
+   ]
+  },
+  "tools": {
+   "samba": true,
+   "restic": true,
+   "smartctl": true,
+   "hdparm": true,
+   "nut": false
+  },
+  "people": [
+   {
+    "name": "mia",
+    "folder": "/home/chris/People/mia",
+    "quotaGb": 200,
+    "pwSet": 1794796510000
+   },
+   {
+    "name": "sam",
+    "pwSet": 1794278110000
+   }
+  ],
+  "backups": [
+   {
+    "id": "b1",
+    "name": "To backup drive",
+    "shares": [
+     "s1",
+     "s2"
+    ],
+    "target": {
+     "kind": "drive",
+     "path": "/var/mnt/backup"
+    },
+    "every": "daily",
+    "at": "03:00",
+    "on": true,
+    "keep": {
+     "daily": 14
+    },
+    "state": {
+     "lastOk": 1795030510,
+     "count": 12,
+     "last": {
+      "ok": true,
+      "files": 18234,
+      "bytes": 212000000000.0
+     },
+     "checked": {
+      "at": 1794882910,
+      "ok": true
+     }
+    }
+   },
+   {
+    "id": "b2",
+    "name": "To the cloud",
+    "shares": [
+     "s1"
+    ],
+    "target": {
+     "kind": "cloud",
+     "provider": "b2",
+     "path": "hearth-photos/chris"
+    },
+    "every": "weekly",
+    "at": "05:00",
+    "on": true,
+    "state": {
+     "lastOk": 1794537310,
+     "last": {
+      "ok": true,
+      "files": 9120,
+      "bytes": 61000000000.0
+     },
+     "count": 4
+    }
+   }
+  ],
+  "services": {
+   "media": {
+    "on": true
+   },
+   "web": {
+    "on": true
+   },
+   "ai": {
+    "on": true
+   },
+   "pictures": {
+    "on": false
+   },
+   "voices": {
+    "on": true
+   },
+   "links": 2,
+   "guardTripped": false
+  },
+  "alerts": {
+   "active": [],
+   "at": 1795054510
+  },
+  "seen": {
+   "commandCenter": {
+    "shown": true
+   },
+   "camera": {
+    "shown": false
+   },
+   "ups": {
+    "shown": false
+   }
+  },
+  "wired": [
+   {
+    "iface": "enp5s0"
+   }
+  ],
+  "power": {
+   "quietSince": 1795052110
+  },
+  "hiddenCount": 2,
+  "applied": {
+   "ok": true
+  }
+ },
+ "hearth-home-server drives": {
+  "drives": [
+   {
+    "model": "Samsung 990 PRO 1TB",
+    "system": true,
+    "sizeText": "1 TB",
+    "kind": "NVMe SSD",
+    "total": 1000000000000.0,
+    "used": 301000000000.0,
+    "mounts": [
+     "/",
+     "/var"
+    ],
+    "smart": {
+     "passed": true,
+     "temp": 41
+    }
+   },
+   {
+    "model": "Crucial P3 2TB",
+    "sizeText": "2 TB",
+    "kind": "NVMe SSD",
+    "total": 2000000000000.0,
+    "used": 1600000000000.0,
+    "mounts": [
+     "/var/mnt/games"
+    ],
+    "smart": {
+     "passed": true,
+     "temp": 38
+    }
+   },
+   {
+    "model": "WD Elements 4TB",
+    "path": "/dev/sda",
+    "sizeText": "4 TB",
+    "kind": "USB hard drive",
+    "mounts": [],
+    "empty": true,
+    "smart": {
+     "passed": true,
+     "temp": 33,
+     "level": "ok"
+    }
+   }
+  ]
+ },
+ "hearth-home-server candidates": {
+  "candidates": [
+   {
+    "name": "Documents",
+    "path": "/home/chris/Documents"
+   },
+   {
+    "name": "Music",
+    "path": "/home/chris/Music"
+   },
+   {
+    "name": "Downloads",
+    "path": "/home/chris/Downloads"
+   }
+  ],
+  "drives": [
+   {
+    "name": "Games SSD",
+    "path": "/var/mnt/games"
+   }
+  ]
+ },
+ "hearth-server-apps quick": {
+  "on": 2
+ },
+ "hearth-home-server files": {
+  "links": [
+   {
+    "id": "l1",
+    "label": "Holiday 2026",
+    "for": "Grandma",
+    "expires": 1795487710000,
+    "pw": true,
+    "count": 3,
+    "max": 0,
+    "urls": [
+     "https://chris-hearth.tail1234.ts.net:8443/l/x7Kq"
+    ]
+   }
+  ],
+  "shares": [
+   {
+    "id": "s1",
+    "name": "Photos",
+    "path": "/home/chris/Pictures"
+   },
+   {
+    "id": "s2",
+    "name": "Videos",
+    "path": "/home/chris/Videos"
+   }
+  ],
+  "urls": [
+   "https://chris-hearth.tail1234.ts.net:8443"
+  ],
+  "web": {
+   "reach": "tailscale"
+  },
+  "dropoff": {
+   "on": true,
+   "path": "/home/chris/Drop-off",
+   "urls": [
+    "https://chris-hearth.tail1234.ts.net:8443/drop/9fQ2"
+   ]
+  },
+  "recycled": [],
+  "scan": {
+   "at": 1795044910,
+   "screenshots": {
+    "count": 48,
+    "bytes": 210000000.0,
+    "items": []
+   },
+   "big": {
+    "count": 12,
+    "bytes": 61000000000.0,
+    "items": []
+   },
+   "duplicates": {
+    "count": 31,
+    "bytes": 4200000000.0,
+    "items": []
+   },
+   "old": {
+    "count": 904,
+    "bytes": 88000000000.0,
+    "items": []
+   },
+   "recent": {
+    "count": 2,
+    "items": [
+     {
+      "path": "/home/chris/Pictures/2026/beach.jpg",
+      "share": "Photos",
+      "mtime": 1794969310,
+      "size": 4100000.0
+     },
+     {
+      "path": "/home/chris/Videos/clip.mp4",
+      "share": "Videos",
+      "mtime": 1794882910,
+      "size": 310000000.0
+     }
+    ]
+   },
+   "sizes": {
+    "s1": 212000000000.0,
+    "s2": 89000000000.0
+   }
+  }
+ },
+ "hearth-home-server family": {
+  "family": {
+   "path": "/home/chris/Family",
+   "write": true,
+   "people": {
+    "mia": "write",
+    "sam": "write"
+   }
+  },
+  "people": [
+   {
+    "name": "mia",
+    "folder": "/home/chris/People/mia",
+    "quotaGb": 200,
+    "pwSet": 1794796510000
+   },
+   {
+    "name": "sam",
+    "pwSet": 1794278110000
+   }
+  ],
+  "cameras": [],
+  "camerasAt": 1794882910000,
+  "seen": {
+   "camera": {
+    "shown": false
+   }
+  }
+ },
+ "hearth-home-server services": {
+  "media": {
+   "installed": true,
+   "on": true,
+   "active": true,
+   "version": "10.10.3",
+   "reach": "home",
+   "pause": true,
+   "urls": [
+    "http://chris-hearth:8096",
+    "http://chris-hearth.tail1234.ts.net:8096"
+   ]
+  },
+  "web": {
+   "on": true,
+   "active": true,
+   "pwSet": true,
+   "reach": "tailscale",
+   "urls": [
+    "https://chris-hearth.tail1234.ts.net:8443"
+   ]
+  },
+  "ai": {
+   "installed": true,
+   "on": true,
+   "active": true,
+   "version": "0.12.6"
+  },
+  "pictures": {
+   "installed": true,
+   "on": false,
+   "version": "0.3.62",
+   "tag": "v0.3.62",
+   "modelFiles": [
+    "sdxl_base_1.0.safetensors"
+   ],
+   "models": "/home/chris/ComfyUI/models",
+   "listen": [
+    "127.0.0.1"
+   ],
+   "local": "http://127.0.0.1:8188",
+   "video": {
+    "installed": false
+   },
+   "pause": true,
+   "torch": "2.8.0",
+   "gpu": "RTX 5070"
+  },
+  "voices": {
+   "installed": true,
+   "on": true,
+   "active": true,
+   "healthy": true,
+   "voices": 67,
+   "version": "v0.2.4",
+   "tag": "v0.2.4",
+   "url": "http://chris-hearth.tail1234.ts.net:8880/v1",
+   "local": "http://127.0.0.1:8880/v1",
+   "listen": [
+    "127.0.0.1",
+    "100.64.0.7"
+   ],
+   "pause": false
+  },
+  "studio": {
+   "installed": false,
+   "installing": false
+  },
+  "remote": true,
+  "syncs": 1,
+  "storage": true
+ },
+ "hearth-home-server ai": {
+  "ai": {
+   "installed": true,
+   "on": true,
+   "active": true,
+   "version": "0.12.6",
+   "unload": true,
+   "pause": false
+  },
+  "commandCenter": {
+   "shown": true,
+   "lastSeen": 1795048510000,
+   "device": "rog-ally"
+  },
+  "ccDays": 30,
+  "models": [
+   {
+    "id": "qwen3:30b-a3b",
+    "label": "Qwen3 30B A3B",
+    "note": "Best all-round for 12 GB",
+    "size": "18 GB",
+    "have": true,
+    "loaded": true,
+    "recommended": true
+   },
+   {
+    "id": "qwen3:14b",
+    "label": "Qwen3 14B",
+    "note": "Fast, fits on the card",
+    "size": "9.3 GB",
+    "have": true
+   },
+   {
+    "id": "gemma3:12b",
+    "label": "Gemma 3 12B",
+    "note": "Good with pictures",
+    "size": "8.1 GB",
+    "have": false
+   }
+  ],
+  "loaded": [
+   "qwen3:30b-a3b"
+  ],
+  "showAdult": false,
+  "address": "http://chris-hearth.tail1234.ts.net:11434/v1",
+  "local": "http://127.0.0.1:11434/v1",
+  "pictures": {
+   "installed": true,
+   "on": false,
+   "modelFiles": [
+    "sdxl_base_1.0.safetensors"
+   ],
+   "local": "http://127.0.0.1:8188"
+  },
+  "voices": {
+   "installed": true,
+   "on": true,
+   "active": true,
+   "healthy": true,
+   "url": "http://chris-hearth.tail1234.ts.net:8880/v1",
+   "local": "http://127.0.0.1:8880/v1"
+  },
+  "studio": {
+   "installed": false
+  }
+ },
+ "hearth-ai-share status": {
+  "settings": {
+   "on": true,
+   "share": {
+    "chat": true,
+    "voice": true
+   },
+   "pluggedOnly": false,
+   "notWhilePlaying": true,
+   "lan": false,
+   "codeOn": false,
+   "hub": true,
+   "router": true,
+   "priority": []
+  },
+  "running": true,
+  "reason": "",
+  "tailscale": true,
+  "firewall": true,
+  "device": "chris-hearth",
+  "server": true,
+  "commandCenter": "http://chris-hearth.tail1234.ts.net:47900",
+  "local": "http://127.0.0.1:47900",
+  "found": [
+   {
+    "kind": "chat",
+    "label": "Ollama chat",
+    "engine": "ollama",
+    "port": 11434,
+    "healthy": true,
+    "reachable": true,
+    "models": [
+     "qwen3:30b-a3b",
+     "qwen3:14b"
+    ]
+   },
+   {
+    "kind": "voice",
+    "label": "Kokoro voices",
+    "engine": "kokoro",
+    "port": 8880,
+    "healthy": true,
+    "reachable": true,
+    "voices": [
+     "af_heart",
+     "am_adam"
+    ]
+   }
+  ]
+ },
+ "hearth-ai-share devices": {
+  "devices": [
+   {
+    "rank": 1,
+    "device": "chris-hearth",
+    "name": "chris-hearth",
+    "via": "this device",
+    "online": true,
+    "available": true,
+    "gpu": {
+     "vendor": "nvidia"
+    },
+    "services": [
+     {
+      "kind": "chat",
+      "engine": "ollama",
+      "healthy": true,
+      "models": [
+       "qwen3:30b-a3b",
+       "qwen3:14b"
+      ]
+     }
+    ]
+   },
+   {
+    "rank": 2,
+    "device": "rog-ally",
+    "name": "rog-ally",
+    "online": true,
+    "gaming": true,
+    "battery": {
+     "percent": 64
+    },
+    "pluggedIn": false,
+    "gpu": {
+     "vendor": "amd"
+    },
+    "services": [
+     {
+      "kind": "stt",
+      "engine": "whisper",
+      "healthy": true
+     }
+    ]
+   }
+  ]
+ },
+ "hearth-server-apps list": {
+  "podman": true,
+  "apps": [
+   {
+    "id": "minecraft",
+    "kind": "game",
+    "name": "Minecraft",
+    "icon": "pad",
+    "installed": true,
+    "on": true,
+    "running": true,
+    "reach": "home",
+    "addresses": [
+     {
+      "where": "Home network",
+      "url": "chris-hearth:25565"
+     },
+     {
+      "where": "Tailscale",
+      "url": "chris-hearth.tail1234.ts.net:25565"
+     }
+    ],
+    "eula": true,
+    "eulaUrl": "https://aka.ms/MinecraftEULA",
+    "opts": [
+     {
+      "key": "MODE",
+      "label": "Game mode",
+      "choices": [
+       "SURVIVAL",
+       "CREATIVE"
+      ],
+      "value": "SURVIVAL"
+     },
+     {
+      "key": "MOTD",
+      "label": "Message of the day",
+      "text": true,
+      "value": "Chris's world"
+     }
+    ],
+    "data": "/home/chris/Server apps/minecraft"
+   },
+   {
+    "id": "valheim",
+    "kind": "game",
+    "name": "Valheim",
+    "icon": "pad",
+    "installed": false,
+    "desc": "Viking survival with friends",
+    "size": "about 1.5 GB",
+    "opts": []
+   },
+   {
+    "id": "vaultwarden",
+    "kind": "app",
+    "name": "Vaultwarden",
+    "icon": "lock",
+    "installed": true,
+    "on": true,
+    "running": true,
+    "reach": "tailscale",
+    "addresses": [
+     {
+      "where": "Tailscale",
+      "url": "https://chris-hearth.tail1234.ts.net:8222"
+     }
+    ],
+    "opts": [],
+    "password": {
+     "set": true,
+     "min": 12,
+     "required": true
+    },
+    "data": "/home/chris/Server apps/vaultwarden"
+   },
+   {
+    "id": "immich",
+    "kind": "app",
+    "name": "Immich",
+    "icon": "image",
+    "installed": false,
+    "desc": "Your own Google Photos",
+    "size": "about 2 GB",
+    "opts": []
+   }
+  ]
+ },
+ "hearth-server-apps worlds": {
+  "settings": {
+   "on": true,
+   "at": "04:30",
+   "keep": 7
+  },
+  "servers": [
+   {
+    "id": "minecraft",
+    "name": "Minecraft",
+    "backups": [
+     {
+      "file": "w1.tar.zst",
+      "at": 1794983710,
+      "why": "nightly",
+      "size": 820000000.0
+     },
+     {
+      "file": "w0.tar.zst",
+      "at": 1794897310,
+      "why": "nightly",
+      "size": 815000000.0
+     }
+    ]
+   }
+  ]
+ },
+ "hearth-server-apps ntfy": {
+  "settings": {
+   "topic": "hearth-9f2c71d0a4",
+   "server": "https://ntfy.sh",
+   "on": true,
+   "alerts": true,
+   "apps": true
+  },
+  "url": "https://ntfy.sh/hearth-9f2c71d0a4",
+  "last": {
+   "ok": true
+  }
+ },
+ "hearth-home-server gaming": {
+  "games": {
+   "name": "Games",
+   "path": "/home/chris/Games",
+   "write": false
+  },
+  "tsName": "chris-hearth",
+  "storage": true,
+  "remote": true,
+  "lightMode": true,
+  "playing": false,
+  "snapshots": true,
+  "backups": 2,
+  "ai": {
+   "on": true,
+   "unload": true,
+   "pause": false
+  },
+  "media": {
+   "on": true,
+   "pause": true
+  },
+  "pictures": {
+   "on": false
+  },
+  "voices": {
+   "on": true,
+   "pause": false
+  },
+  "syncs": 1
+ },
+ "hearth-home-server sync-status": {
+  "installed": true,
+  "id": "MFZWI3D-BONSGYC-YLTMRWG-C43ENR5-QXGZDMM-FZWI3DP-BONSGYY-LTMRWAD",
+  "folders": [
+   {
+    "id": "f1",
+    "label": "Notes",
+    "path": "/home/chris/Notes",
+    "peer": "rog-ally",
+    "connected": true,
+    "completion": 100
+   }
+  ],
+  "offers": []
+ },
+ "hearth-home-server safety": {
+  "findings": [
+   {
+    "id": "ts-only",
+    "level": "info",
+    "title": "Your shares answer your home network too",
+    "sub": "Anyone on your Wi-Fi with a password can try",
+    "fix": "make everything Tailscale only"
+   }
+  ],
+  "done": [
+   {
+    "id": "guard",
+    "at": 1794710110000,
+    "steps": [
+     1
+    ]
+   }
+  ],
+  "tsOnly": false,
+  "tailscale": "Running",
+  "firewall": "loaded",
+  "lastBackup": 1795030510,
+  "backups": 2,
+  "smb": {
+   "known": true,
+   "smb3": true,
+   "noGuests": true
+  },
+  "snapshots": true,
+  "guard": {
+   "on": true,
+   "limit": 1000
+  },
+  "reach": [
+   {
+    "what": "Shared folders",
+    "where": "home",
+    "who": "you, mia and sam with a password"
+   },
+   {
+    "what": "Media server",
+    "where": "home",
+    "who": "anyone with a Jellyfin account"
+   },
+   {
+    "what": "AI chat",
+    "where": "tailscale",
+    "who": "your devices"
+   }
+  ],
+  "ports": [
+   {
+    "what": "Samba (shared folders)",
+    "proto": "tcp",
+    "port": 445,
+    "where": "home"
+   },
+   {
+    "what": "Jellyfin",
+    "proto": "tcp",
+    "port": 8096,
+    "where": "home"
+   },
+   {
+    "what": "Ollama",
+    "proto": "tcp",
+    "port": 11434,
+    "where": "tailscale"
+   }
+  ]
+ },
+ "sh cat /var/lib/hearth/home-server-night.json*": {
+  "at": 1794994510,
+  "steps": [
+   {
+    "step": "TRIM",
+    "ok": true
+   },
+   {
+    "step": "Logs",
+    "ok": true
+   },
+   {
+    "step": "Flatpak",
+    "ok": true
+   }
+  ]
+ },
+ "sh cat /var/lib/hearth/power-history.json*": {
+  "points": [
+   [
+    1794969310,
+    18,
+    140
+   ],
+   [
+    1794971110,
+    34,
+    40
+   ],
+   [
+    1794972910,
+    50,
+    40
+   ],
+   [
+    1794974710,
+    26,
+    40
+   ],
+   [
+    1794976510,
+    42,
+    40
+   ],
+   [
+    1794978310,
+    18,
+    40
+   ],
+   [
+    1794980110,
+    34,
+    40
+   ],
+   [
+    1794981910,
+    50,
+    40
+   ],
+   [
+    1794983710,
+    26,
+    40
+   ],
+   [
+    1794985510,
+    42,
+    140
+   ],
+   [
+    1794987310,
+    18,
+    40
+   ],
+   [
+    1794989110,
+    34,
+    40
+   ],
+   [
+    1794990910,
+    50,
+    40
+   ],
+   [
+    1794992710,
+    26,
+    40
+   ],
+   [
+    1794994510,
+    42,
+    40
+   ],
+   [
+    1794996310,
+    18,
+    40
+   ],
+   [
+    1794998110,
+    34,
+    40
+   ],
+   [
+    1794999910,
+    50,
+    40
+   ],
+   [
+    1795001710,
+    26,
+    140
+   ],
+   [
+    1795003510,
+    42,
+    40
+   ],
+   [
+    1795005310,
+    18,
+    40
+   ],
+   [
+    1795007110,
+    34,
+    40
+   ],
+   [
+    1795008910,
+    50,
+    40
+   ],
+   [
+    1795010710,
+    26,
+    40
+   ],
+   [
+    1795012510,
+    42,
+    40
+   ],
+   [
+    1795014310,
+    18,
+    40
+   ],
+   [
+    1795016110,
+    34,
+    40
+   ],
+   [
+    1795017910,
+    50,
+    140
+   ],
+   [
+    1795019710,
+    26,
+    40
+   ],
+   [
+    1795021510,
+    42,
+    40
+   ],
+   [
+    1795023310,
+    18,
+    40
+   ],
+   [
+    1795025110,
+    34,
+    40
+   ],
+   [
+    1795026910,
+    50,
+    40
+   ],
+   [
+    1795028710,
+    26,
+    40
+   ],
+   [
+    1795030510,
+    42,
+    40
+   ],
+   [
+    1795032310,
+    18,
+    40
+   ],
+   [
+    1795034110,
+    34,
+    140
+   ],
+   [
+    1795035910,
+    50,
+    40
+   ],
+   [
+    1795037710,
+    26,
+    40
+   ],
+   [
+    1795039510,
+    42,
+    40
+   ],
+   [
+    1795041310,
+    18,
+    40
+   ],
+   [
+    1795043110,
+    34,
+    40
+   ],
+   [
+    1795044910,
+    50,
+    40
+   ],
+   [
+    1795046710,
+    26,
+    40
+   ],
+   [
+    1795048510,
+    42,
+    40
+   ],
+   [
+    1795050310,
+    18,
+    140
+   ],
+   [
+    1795052110,
+    34,
+    40
+   ],
+   [
+    1795053910,
+    50,
+    40
+   ]
+  ]
+ },
+ "hearth-server-mode status": {
+  "settings": {
+   "on": true,
+   "idlePower": true,
+   "idleMinutes": 10,
+   "gpuWatts": 120,
+   "dim": 2,
+   "off": 10,
+   "web": {
+    "on": true,
+    "perms": {
+     "services": true,
+     "modes": true,
+     "power": false,
+     "devices": true
+    }
+   }
+  },
+  "pauses": {
+   "lightMode": true,
+   "picturesOn": false,
+   "aiOn": true,
+   "ai": "small",
+   "small": "qwen3:14b",
+   "voicesOn": true,
+   "voices": "keep",
+   "mediaOn": true,
+   "media": "keep"
+  },
+  "now": "desktop",
+  "startIn": "game",
+  "nvidia": true,
+  "wlopm": true,
+  "spinDown": 20,
+  "sleepIdle": 0,
+  "pin": true,
+  "webActive": true,
+  "tsIp": "100.64.0.7",
+  "url": "http://chris-hearth:8460"
+ },
+ "hearth-colibri status": {
+  "installed": true,
+  "version": "0.9.2",
+  "on": true,
+  "active": true,
+  "engine": "both",
+  "default": "ollama",
+  "pause": true,
+  "model": "qwen3-235b-a22b-q4",
+  "modelDownloaded": true,
+  "server": {
+   "health": "ready",
+   "tokensPerSecond": 9.4
+  },
+  "openai": "http://127.0.0.1:8000/v1",
+  "modelsDir": "/var/mnt/games/colibri-models",
+  "download": {
+   "running": false
+  }
+ },
+ "hearth-colibri catalog": {
+  "source": "Colibri's catalog",
+  "hardware": {
+   "ramGb": 32,
+   "gpu": "RTX 5070",
+   "vramGb": 12,
+   "diskFreeGb": 420
+  },
+  "models": [
+   {
+    "id": "qwen3-30b-a3b-q4",
+    "name": "Qwen3 30B A3B",
+    "group": "standard",
+    "summary": "Quick and capable",
+    "downloadGb": 18,
+    "diskGb": 20,
+    "why": "fits in memory",
+    "measured": "38 tokens/s",
+    "fit": "good",
+    "fitLabel": "Runs well",
+    "have": true
+   },
+   {
+    "id": "qwen3-235b-a22b-q4",
+    "name": "Qwen3 235B A22B",
+    "group": "standard",
+    "summary": "Far smarter, slower",
+    "downloadGb": 132,
+    "diskGb": 140,
+    "why": "experts streamed from the NVMe drive",
+    "measured": "6–10 tokens/s",
+    "fit": "slow",
+    "fitLabel": "Slow but works",
+    "have": true,
+    "chosen": true,
+    "recommended": true
+   },
+   {
+    "id": "deepseek-v3-q2",
+    "name": "DeepSeek V3",
+    "group": "standard",
+    "summary": "The biggest",
+    "downloadGb": 240,
+    "diskGb": 250,
+    "why": "needs 250 GB free",
+    "measured": "3 tokens/s",
+    "fit": "very-slow",
+    "fitLabel": "Very slow"
+   },
+   {
+    "id": "huihui-qwen3-30b-q4",
+    "name": "Qwen3 30B abliterated Q4_K_M",
+    "family": "qwen3-30b-abl",
+    "familyName": "Qwen3 30B A3B abliterated",
+    "group": "uncensored",
+    "quant": "Q4_K_M",
+    "summary": "Answers anything",
+    "downloadGb": 18.6,
+    "diskGb": 20,
+    "why": "fits in memory",
+    "measured": "36 tokens/s",
+    "fit": "good",
+    "fitLabel": "Runs well"
+   },
+   {
+    "id": "huihui-qwen3-30b-q8",
+    "name": "Qwen3 30B abliterated Q8_0",
+    "family": "qwen3-30b-abl",
+    "familyName": "Qwen3 30B A3B abliterated",
+    "group": "uncensored",
+    "quant": "Q8_0",
+    "summary": "Answers anything",
+    "downloadGb": 32.5,
+    "diskGb": 34,
+    "why": "most in memory",
+    "measured": "24 tokens/s",
+    "fit": "good",
+    "fitLabel": "Runs well"
+   }
+  ]
+ },
+ "hearth-colibri plan qwen3-235b-a22b-q4": {
+  "id": "qwen3-235b-a22b-q4",
+  "vramGb": 11,
+  "ramGb": 26,
+  "diskGb": 95,
+  "bottleneck": "the NVMe drive",
+  "hitRate": 0.82,
+  "doctor": "all good"
+ },
+ "hearth-link-settings status": {
+  "me": {
+   "name": "chris-hearth",
+   "kind": "desktop",
+   "edition": "Fedora edition",
+   "ticket": "hearth1q8zr0c7…f3k9"
+  },
+  "peers": [
+   {
+    "id": "a1",
+    "name": "rog-ally",
+    "online": true,
+    "kind": "mine"
+   },
+   {
+    "id": "a2",
+    "name": "chris-laptop",
+    "online": false,
+    "lastSeen": 1794969310000
+   },
+   {
+    "id": "a3",
+    "name": "mia-pc",
+    "online": true,
+    "kind": "family"
+   },
+   {
+    "id": "a4",
+    "name": "sam-deck",
+    "online": false,
+    "lastSeen": 1794796510000,
+    "friend": true
+   }
+  ],
+  "nearby": [
+   {
+    "id": "n1",
+    "name": "living-room-tv",
+    "kind": "tv",
+    "pairing": true
+   }
+  ],
+  "transfers": [
+   {
+    "id": "t1",
+    "title": "Hades II",
+    "from": "rog-ally",
+    "state": "done",
+    "note": "18 GB copied"
+   }
+  ],
+  "settings": {
+   "sync": true,
+   "alwaysAccept": false,
+   "relay": "default"
+  },
+  "shortCodes": true,
+  "storage": {
+   "config": {
+    "server": true,
+    "away": true,
+    "smb": false,
+    "backups": true,
+    "shares": [
+     {
+      "id": "h1",
+      "name": "Games",
+      "path": "/home/chris/Games"
+     }
+    ]
+   }
+  }
+ },
+ "hearth-link-settings devices": {
+  "devices": [
+   {
+    "id": "me",
+    "name": "chris-hearth",
+    "me": true,
+    "server": true,
+    "free": 699000000000.0,
+    "version": "1.14"
+   },
+   {
+    "id": "a1",
+    "name": "rog-ally",
+    "online": true,
+    "battery": {
+     "percent": 64
+    },
+    "free": 201000000000.0,
+    "lastBackup": 1795052110000,
+    "version": "1.14"
+   }
+  ]
+ },
+ "hearth-device-status devices": {
+  "devices": [
+   {
+    "id": "a1",
+    "name": "rog-ally",
+    "online": true,
+    "shared": true,
+    "status": {
+     "kind": "handheld",
+     "mode": "game",
+     "playing": {
+      "title": "Hades II"
+     },
+     "battery": {
+      "percent": 64,
+      "charging": false
+     },
+     "cpu": {
+      "use": 42,
+      "temp": 71
+     },
+     "gpu": {
+      "vendor": "amd",
+      "use": 88,
+      "temp": 68
+     },
+     "ram": {
+      "used": 9.1,
+      "total": 16
+     },
+     "version": "1.14",
+     "uptime": 13000,
+     "drives": [
+      {
+       "name": "Internal",
+       "used": 311,
+       "total": 512
+      }
+     ],
+     "history": [
+      {
+       "t": 0,
+       "cpu": 30,
+       "gpu": 50,
+       "ram": 55,
+       "battery": 90
+      },
+      {
+       "t": 1,
+       "cpu": 43,
+       "gpu": 57,
+       "ram": 56,
+       "battery": 90
+      },
+      {
+       "t": 2,
+       "cpu": 56,
+       "gpu": 64,
+       "ram": 57,
+       "battery": 89
+      },
+      {
+       "t": 3,
+       "cpu": 69,
+       "gpu": 71,
+       "ram": 58,
+       "battery": 89
+      },
+      {
+       "t": 4,
+       "cpu": 42,
+       "gpu": 78,
+       "ram": 59,
+       "battery": 88
+      },
+      {
+       "t": 5,
+       "cpu": 55,
+       "gpu": 85,
+       "ram": 55,
+       "battery": 88
+      },
+      {
+       "t": 6,
+       "cpu": 68,
+       "gpu": 92,
+       "ram": 56,
+       "battery": 87
+      },
+      {
+       "t": 7,
+       "cpu": 41,
+       "gpu": 54,
+       "ram": 57,
+       "battery": 87
+      },
+      {
+       "t": 8,
+       "cpu": 54,
+       "gpu": 61,
+       "ram": 58,
+       "battery": 86
+      },
+      {
+       "t": 9,
+       "cpu": 67,
+       "gpu": 68,
+       "ram": 59,
+       "battery": 86
+      },
+      {
+       "t": 10,
+       "cpu": 40,
+       "gpu": 75,
+       "ram": 55,
+       "battery": 85
+      },
+      {
+       "t": 11,
+       "cpu": 53,
+       "gpu": 82,
+       "ram": 56,
+       "battery": 85
+      },
+      {
+       "t": 12,
+       "cpu": 66,
+       "gpu": 89,
+       "ram": 57,
+       "battery": 84
+      },
+      {
+       "t": 13,
+       "cpu": 39,
+       "gpu": 51,
+       "ram": 58,
+       "battery": 84
+      },
+      {
+       "t": 14,
+       "cpu": 52,
+       "gpu": 58,
+       "ram": 59,
+       "battery": 83
+      },
+      {
+       "t": 15,
+       "cpu": 65,
+       "gpu": 65,
+       "ram": 55,
+       "battery": 83
+      },
+      {
+       "t": 16,
+       "cpu": 38,
+       "gpu": 72,
+       "ram": 56,
+       "battery": 82
+      },
+      {
+       "t": 17,
+       "cpu": 51,
+       "gpu": 79,
+       "ram": 57,
+       "battery": 82
+      },
+      {
+       "t": 18,
+       "cpu": 64,
+       "gpu": 86,
+       "ram": 58,
+       "battery": 81
+      },
+      {
+       "t": 19,
+       "cpu": 37,
+       "gpu": 93,
+       "ram": 59,
+       "battery": 81
+      },
+      {
+       "t": 20,
+       "cpu": 50,
+       "gpu": 55,
+       "ram": 55,
+       "battery": 80
+      },
+      {
+       "t": 21,
+       "cpu": 63,
+       "gpu": 62,
+       "ram": 56,
+       "battery": 80
+      },
+      {
+       "t": 22,
+       "cpu": 36,
+       "gpu": 69,
+       "ram": 57,
+       "battery": 79
+      },
+      {
+       "t": 23,
+       "cpu": 49,
+       "gpu": 76,
+       "ram": 58,
+       "battery": 79
+      },
+      {
+       "t": 24,
+       "cpu": 62,
+       "gpu": 83,
+       "ram": 59,
+       "battery": 78
+      },
+      {
+       "t": 25,
+       "cpu": 35,
+       "gpu": 90,
+       "ram": 55,
+       "battery": 78
+      },
+      {
+       "t": 26,
+       "cpu": 48,
+       "gpu": 52,
+       "ram": 56,
+       "battery": 77
+      },
+      {
+       "t": 27,
+       "cpu": 61,
+       "gpu": 59,
+       "ram": 57,
+       "battery": 77
+      },
+      {
+       "t": 28,
+       "cpu": 34,
+       "gpu": 66,
+       "ram": 58,
+       "battery": 76
+      },
+      {
+       "t": 29,
+       "cpu": 47,
+       "gpu": 73,
+       "ram": 59,
+       "battery": 76
+      },
+      {
+       "t": 30,
+       "cpu": 60,
+       "gpu": 80,
+       "ram": 55,
+       "battery": 75
+      },
+      {
+       "t": 31,
+       "cpu": 33,
+       "gpu": 87,
+       "ram": 56,
+       "battery": 75
+      },
+      {
+       "t": 32,
+       "cpu": 46,
+       "gpu": 94,
+       "ram": 57,
+       "battery": 74
+      },
+      {
+       "t": 33,
+       "cpu": 59,
+       "gpu": 56,
+       "ram": 58,
+       "battery": 74
+      },
+      {
+       "t": 34,
+       "cpu": 32,
+       "gpu": 63,
+       "ram": 59,
+       "battery": 73
+      },
+      {
+       "t": 35,
+       "cpu": 45,
+       "gpu": 70,
+       "ram": 55,
+       "battery": 73
+      },
+      {
+       "t": 36,
+       "cpu": 58,
+       "gpu": 77,
+       "ram": 56,
+       "battery": 72
+      },
+      {
+       "t": 37,
+       "cpu": 31,
+       "gpu": 84,
+       "ram": 57,
+       "battery": 72
+      },
+      {
+       "t": 38,
+       "cpu": 44,
+       "gpu": 91,
+       "ram": 58,
+       "battery": 71
+      },
+      {
+       "t": 39,
+       "cpu": 57,
+       "gpu": 53,
+       "ram": 59,
+       "battery": 71
+      }
+     ]
+    },
+    "shares": []
+   },
+   {
+    "id": "a2",
+    "name": "chris-laptop",
+    "online": false,
+    "lastSeen": 1794969310000,
+    "wake": true,
+    "status": {
+     "kind": "laptop"
+    }
+   },
+   {
+    "id": "a3",
+    "name": "mia-pc",
+    "online": true,
+    "shared": true,
+    "status": {
+     "kind": "desktop",
+     "mode": "desktop",
+     "cpu": {
+      "use": 8,
+      "temp": 44
+     },
+     "ram": {
+      "used": 6.2,
+      "total": 32
+     }
+    }
+   }
+  ]
+ },
+ "hearth-files prefs": {
+  "showDevices": true
+ },
+ "hearth-home-server quick": {
+  "available": true,
+  "host": "chris-hearth",
+  "shares": 3,
+  "backups": {
+   "count": 2
+  },
+  "people": 2,
+  "ai": {
+   "on": true
+  },
+  "paused": []
+ },
+ "hearth-admin update-status": {
+  "booted": {
+   "version": "1.15.0",
+   "image": "ghcr.io/dragongamer9/hearth-os:test-1.15",
+   "timestamp": "2026-11-18T20:00:00Z"
+  },
+  "available": {
+   "version": "1.16.0",
+   "channel": "stable"
+  },
+  "rollback": {
+   "version": "1.14.0"
+  },
+  "staged": null,
+  "channel": {
+   "following": "ghcr.io/dragongamer9/hearth-os:test-1.15",
+   "channel": "test",
+   "testOf": "1.15",
+   "moveTo": "ghcr.io/dragongamer9/hearth-os:stable",
+   "release": "1.16.0",
+   "same": false
+  }
+ },
+ "sh [ -x /usr/libexec/nimbus/hearth-admin*": {
+  "ok": true
+ },
+ "sh [ -x /usr/bin/hearth-unlock*": null,
+ "sh [ -f /usr/libexec/nimbus/hearth-decky*": {
+  "auto": false,
+  "installNew": false,
+  "lastCheck": 1795037710,
+  "available": {
+   "decky-hearth-sync": "1.4.2"
+  },
+  "plugins": {
+   "decky-hearth-sync": {
+    "installed": "1.4.1",
+    "builtin": "1.4.1",
+    "source": "built-in"
+   },
+   "decky-hearth-link": {
+    "installed": "1.2.0",
+    "builtin": "1.1.0",
+    "source": "downloaded"
+   }
+  },
+  "new": {
+   "decky-hearth-music": {
+    "name": "Hearth Music",
+    "description": "Your music in Game Mode",
+    "version": "0.3.0"
+   }
+  }
+ },
+ "nimbus --settings-call backup.status {}": {
+  "ok": true,
+  "value": {
+   "destinations": [
+    {
+     "path": "/run/media/chris/USB",
+     "label": "USB stick (32 GB)"
+    }
+   ],
+   "backups": [
+    {
+     "name": "hearth-2026-11-10"
+    }
+   ]
+  }
+ }
+}

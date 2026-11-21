@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=Hearth's menu entry check
+Comment=Once at sign-in: your own menu entries that point to a program that isn't here (left from Debian), with the system's working one offered. Nothing changes without your click
+Exec=/usr/share/nimbus/desktop/shell/hearth-stale-launchers check
+NoDisplay=true
+X-KDE-autostart-phase=2

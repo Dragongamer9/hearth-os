@@ -1,0 +1,13 @@
+# Once a day (and soon after signing in, if a day was missed while the PC was off or asleep). See
+# hearth-store-check.service.
+[Unit]
+Description=Hearth Store: look for updates once a day
+
+[Timer]
+OnCalendar=daily
+RandomizedDelaySec=2h
+Persistent=true
+OnStartupSec=20min
+
+[Install]
+WantedBy=timers.target

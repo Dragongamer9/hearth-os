@@ -50,7 +50,7 @@ Singleton {
     readonly property var index: {
         const byId = {}, byClass = {}, byFlatpak = {}, byExec = {}, byLast = {};
         const put = (map, k, e) => { if (k && !map[k]) map[k] = e; };
-        for (const e of Array.from(DesktopEntries.applications.values)) {
+        for (const e of AppEntries.values) {
             const id = lower(e.id);
             if (!id) continue;
             put(byId, id, e);
@@ -75,7 +75,7 @@ Singleton {
         const a = raw.toLowerCase(), x = index;
         const hit = x.byId[a] || x.byClass[a] || x.byFlatpak[a] || x.byExec[a];
         if (hit) return hit;
-        try { const h = DesktopEntries.heuristicLookup(raw); if (h) return h; } catch (e) {}
+        try { const h = AppEntries.wrap(DesktopEntries.heuristicLookup(raw)); if (h) return h; } catch (e) {}
         return x.byLast[a.split(".").pop()] || null;
     }
 

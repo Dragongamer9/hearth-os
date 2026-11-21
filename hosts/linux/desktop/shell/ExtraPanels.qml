@@ -215,8 +215,9 @@ Scope {
     }
     Component {
         id: cGame
-        Rectangle {   // Game Mode, always one press away in a panel too (down a side: the controller only)
+        Rectangle {   // Game Mode, always one press away in a panel too (down a side: the controller only); hidden while it's off
             property var panel: null
+            visible: !Settings.gameModeOff
             readonly property bool vert: !!panel && panel.vertical
             implicitWidth: vert ? 34 : gr.implicitWidth + 24; implicitHeight: vert ? 34 : 30
             radius: Theme.r(15)

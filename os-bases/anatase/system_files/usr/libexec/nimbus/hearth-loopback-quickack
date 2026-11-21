@@ -1,0 +1,37 @@
+#!/bin/sh
+# Quick ACKs on the loopback (1.16, the Fedora edition). Some older Windows games under Proton talk to themselves over
+# 127.0.0.1 TCP in small writes and then wait for an answer (Trains 2010's asset database, TADDaemon: write, write,
+# write, write, read): Nagle and Linux's delayed ACK then hold every request for about 40 ms, so loading a route took
+# 3½ minutes on the owner's dad's PC. With quickack on lo's routes the same load takes 25–30 seconds. Only the local
+# routes of lo change (nothing that leaves this PC); a restart puts them back as the kernel makes them.
+# Run by hearth-loopback-quickack.service after network.target, and again by NetworkManager's dispatcher when lo or
+# the network comes up again (90-hearth-loopback-quickack). Never fails: anything that doesn't apply is logged and it
+# exits 0, so it can't hold up starting the PC.
+IP="${HEARTH_IP:-ip}"
+log() { echo "hearth-loopback-quickack: $*" >&2; }
+command -v "$IP" >/dev/null 2>&1 || { log "no ip command; nothing done"; exit 0; }
+done_any=0
+# IPv4: the loopback network and 127.0.0.1 itself (only when the route is there and doesn't have it yet).
+for dst in 127.0.0.0/8 127.0.0.1; do
+  cur=$(timeout 5 "$IP" route show table local exact "$dst" dev lo 2>/dev/null | head -n1)
+  [ -n "$cur" ] || { log "no local route for $dst; left alone"; continue; }
+  case "$cur" in *quickack*) continue ;; esac
+  if timeout 5 "$IP" route change local "$dst" dev lo proto kernel scope host src 127.0.0.1 table local quickack 1 2>/dev/null; then
+    done_any=1
+  else
+    log "couldn't set quickack on $dst ($cur)"
+  fi
+done
+# IPv6 ::1, where this PC has it.
+cur6=$(timeout 5 "$IP" -6 route show table local ::1 dev lo 2>/dev/null | head -n1)
+if [ -n "$cur6" ]; then
+  case "$cur6" in
+    *quickack*) ;;
+    *)
+      if timeout 5 "$IP" -6 route change local ::1 dev lo proto kernel metric 0 table local quickack 1 2>/dev/null \
+         || timeout 5 "$IP" -6 route change local ::1 dev lo table local quickack 1 2>/dev/null; then done_any=1
+      else log "couldn't set quickack on ::1 ($cur6)"; fi ;;
+  esac
+fi
+[ "$done_any" = 1 ] && log "quick ACKs on the loopback"
+exit 0

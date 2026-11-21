@@ -1,0 +1,19 @@
+# Resource Monitor: what each program uses, live, and this PC's parts (pure Rust, hearth-ui; the Fedora edition's
+# Resource Monitor; Mantel's ResourceMonitorView.qml ported, docs/mockups/checklists/resource-monitor.md). No version
+# line: the owner picks every version number.
+[package]
+name = "hearth-resmon-app"
+edition = "2021"
+description = "Resource Monitor: per-program tables and live graphs for the processor, memory, disk, network and graphics"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-resmon-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+iced = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }

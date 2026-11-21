@@ -83,9 +83,9 @@ PanelWindow {
     }
     readonly property var taskItems: {
         const out = [], byKey = {};
-        void DesktopEntries.applications.values.length;
+        void AppEntries.rev;
         for (const id of DeskState.pins) {
-            const entry = DesktopEntries.byId(id);
+            const entry = AppEntries.byId(id);
             if (!entry || byKey[id]) continue;
             byKey[id] = { key: id, id: id, entry: entry, pinned: true, own: false, windows: [] };
             out.push(byKey[id]);
@@ -188,7 +188,7 @@ PanelWindow {
         menu.popup(screen, Math.max(8, p.x - menu.cardWidth / 2), (screen ? screen.height : 1080) - dock.height + body.y - 2, { title: title, above: true }, list);
     }
     function moveToDesktop(win, n) {
-        if (WinList.kwin) { WinList.moveToDesktop(win, n); return; }     // KWin: straight there, no keys typed
+        if (WinList.wmDesktops) { WinList.moveToDesktop(win, n); return; }     // KWin, Firehold: straight there, no keys typed
         win.activate();
         mover.command = ["sh", "-c", "sleep 0.25; exec wtype -M logo -M alt -k \"$0\" -m alt -m logo", String(n)];
         mover.running = true;
@@ -573,16 +573,11 @@ PanelWindow {
             anchor.item: btn
             anchor.rect.x: Math.round(btn.width / 2 - implicitWidth / 2)
             anchor.rect.y: -implicitHeight - 14
-            implicitWidth: tipText.implicitWidth + 20
-            implicitHeight: tipText.implicitHeight + 12
+            implicitWidth: tipBox.implicitWidth
+            implicitHeight: tipBox.implicitHeight
             color: "transparent"
-            Rectangle {
-                anchors.fill: parent
-                radius: Theme.r(8)
-                color: Theme.panel2
-                border.color: Theme.line
-                Text { id: tipText; anchors.centerIn: parent; text: btn.tip; color: Theme.text; font.pixelSize: 12; font.family: Theme.font }
-            }
+            // Firehold's own compositor: the app's windows' pictures above the label (WinPreviewTip.qml).
+            WinPreviewTip { id: tipBox; anchors.fill: parent; text: btn.tip; shown: parent.visible; wins: WinList.firehold && WinList.pictures ? btn.previewWins : [] }
         }
     }
 }

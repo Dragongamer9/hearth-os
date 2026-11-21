@@ -1,0 +1,12 @@
+[General]
+ColorScheme=BreezeDark
+AccentColor=146,110,228
+
+[KDE]
+LookAndFeelPackage=org.kde.breezedark.desktop
+SingleClick=true
+DoubleClickInterval=500
+widgetStyle=Breeze
+
+[Toolbar style]
+ToolButtonStyle=TextUnderIcon

@@ -1,14 +1,15 @@
 #!/bin/bash
-# Turns Anatase (Fedora 45, bootc) into Hearth OS. Runs once, inside the image build (os-bases/anatase/Containerfile).
-# The Hearth parts follow os/build_files/build.sh (the Bazzite build) as closely as possible: Anatase is Fedora
-# too, so the same packages and the same steps. What's different is said where it happens:
-#  - Handheld Daemon (HHD), already in Anatase, runs the built-in controller, power limit, fan and lights (Bazzite
-#    has InputPlumber); Hearth talks to it (hosts/hearth-core/src/hhd.rs, desktop/shell/hearth-hhd).
-#  - Steam is installed as Bazzite has it (the steam package, RPM Fusion), so a Bazzite home folder's Steam games
-#    (~/.local/share/Steam) are found right after the move; Flathub's Steam at first boot if that can't be had.
-#  - /usr/share/nimbus/image-info.json says this is the Anatase edition (Hearth's edition(); the move from the
-#    Bazzite-based Hearth checks it), and hearth-clean-install finishes that move at the first start.
-# See docs/archive/BASE-ANATASE.md.
+# Turns Anatase (Fedora, bootc) into Hearth OS on Anatase: 1.15's test edition beside Debian (the owner, Nov 17: "Bring
+# Anatase back and up to speed on 1.15 so i can test it"). Runs once, inside the image build
+# (os-bases/anatase/Containerfile). The same Hearth as the Debian edition (os-bases/peppermint/build.sh) in Fedora's form:
+#  - Game Mode: Steam Game Mode with Hearth Sync (Decky built in), Hearth Game Mode as the choice it is on Debian.
+#  - Desktop Mode: stock KDE Plasma (plasmashell on KDE's own KWin), with Hearth's apps as ordinary apps in Plasma's
+#    menu (the owner, Nov 17: "Just Have KDE plasma on it. with our apps"). No labwc and no Mantel in this image;
+#    Firehold isn't offered here (its shell needs Mantel).
+#  - Handheld Daemon (HHD), already in Anatase, runs the built-in controller, power limit, fan and lights.
+#  - "Unlock the file system" (hearth-unlock, dnf form): off unless turned on in Settings.
+#  - /usr/share/nimbus/image-info.json says this is the Anatase edition; Switch edition moves to and from it.
+# See docs/BASE-ANATASE.md.
 set -ouex pipefail
 
 FEDORA=$(rpm -E %fedora)
@@ -18,6 +19,43 @@ echo "Anatase on Fedora $FEDORA"
 # Hearth's (os/system_files, shared with the Bazzite build), then this image's Anatase-specific ones on top.
 cp -avf /ctx/system_files/. /
 cp -avf /ctx/anatase_files/. /
+# Hearth's typing (hearth-kwin-im, the owner, Nov 20, 2026: accents and any character from Hearth's on-screen keyboard
+# reach apps), built in the Containerfile's kwinim stage, as KWin's input method by default: KWin starts it through
+# hearth-kwin-im-launch, which falls back to KDE's own keyboard (plasma-keyboard) by itself when it's missing, crashes
+# or doesn't get the input-method protocol. The default goes in the system's /etc/xdg/kwinrc (merged: only keys not
+# set there); anyone's own System Settings › Virtual keyboard choice wins and is never written. hearth-kwin-cast
+# (screen casting) stays Debian's: Plasma uses KDE's own here.
+if [ -x /ctx/kwin-im/hearth-kwin-im ] && [ -f /usr/share/applications/hearth-kwin-im.desktop ]; then
+  install -Dm755 /ctx/kwin-im/hearth-kwin-im /usr/libexec/hearth/hearth-kwin-im
+  chmod 755 /usr/libexec/hearth/hearth-kwin-im-launch /usr/libexec/hearth/hearth-kwin-im-default
+  sed -i 's|^Exec=.*|Exec=/usr/libexec/hearth/hearth-kwin-im-launch|' /usr/share/applications/hearth-kwin-im.desktop
+  echo "::notice title=Hearth's typing::$(python3 /usr/libexec/hearth/hearth-kwin-im-default /etc/xdg/kwinrc); fallback: $(ls /usr/share/applications/org.kde.plasma.keyboard.desktop 2>/dev/null || echo 'no plasma-keyboard')"
+else
+  echo "::warning title=Hearth's typing::hearth-kwin-im isn't in this image: KDE's own keyboard stays KWin's input method (accents from Hearth's keyboard won't reach apps)"
+fi
+for k in im cast; do [ -x "/usr/libexec/hearth/hearth-kwin-$k" ] || rm -f "/usr/share/applications/hearth-kwin-$k.desktop"; done
+chmod 755 /usr/libexec/hearth/hearth-winapps-open /usr/libexec/hearth/hearth-join 2>/dev/null || true
+# From the Debian edition, as they are (os-bases/peppermint/system_files): Hearth's boot menu writer and its units (only
+# active on a PC whose boot menu is Hearth's, i.e. one that came here from Debian: their 10-hearth-anatase.conf drop-ins),
+# GRUB's Hearth theme, the writable system's units and their "run from the image's /usr" drop-ins, the /etc guard.
+PF=/peppermint_files
+[ -d "$PF" ] || PF=/ctx/peppermint_files
+install -Dm755 "$PF/usr/libexec/nimbus/hearth-bls-grub" /usr/libexec/nimbus/hearth-bls-grub
+mkdir -p /usr/share/hearth && cp -a "$PF/usr/share/hearth/grub-theme" /usr/share/hearth/
+for u in hearth-bls-grub.service hearth-bls-grub-refresh.service hearth-bls-grub-refresh.path \
+         hearth-unlock.service hearth-unlock-good.service hearth-unlock-units.service hearth-unlock-reapply.service hearth-unlock-ldcache.service; do
+  install -Dm644 "$PF/usr/lib/systemd/system/$u" "/usr/lib/systemd/system/$u"
+done
+for d in "$PF"/usr/lib/systemd/system/*.service.d/20-hearth-image-usr.conf; do
+  install -Dm644 "$d" "/usr/lib/systemd/system/$(basename "$(dirname "$d")")/20-hearth-image-usr.conf"
+done
+install -Dm755 "$PF/usr/lib/systemd/system-generators/hearth-etc-guard" /usr/lib/systemd/system-generators/hearth-etc-guard
+# Hearth Plasma's old look (Hearth's look-and-feel, desktop theme and plasmoids in the shared system files): not here.
+# Desktop Mode is stock KDE Plasma.
+rm -rf /usr/share/plasma/look-and-feel/org.hearth.desktop /usr/share/plasma/desktoptheme/hearth \
+  /usr/share/hearth-plasma /usr/share/hearth-cosmic /usr/share/gnome-shell/modes/hearth.json
+rm -rf /usr/share/plasma/plasmoids/org.hearth.* /usr/share/gnome-shell/extensions/*@hearthos.fun
+rm -f /usr/share/applications/hearth-cosmic-*.desktop
 
 # ------------------------------------------------------------------ Hearth icon set (branding/icons)
 # Every Hearth app's icon (Hearth, Settings, Files, Terminal, Disks, Browser, Task Manager, Apps, the installer and
@@ -59,7 +97,7 @@ if [ -x /ctx/nimbus-app/hearth ]; then
   # (docs/RENDERERS.md). Built by CI inside this image's base (.github/scripts/hearth-qml-build.sh), so it links this Qt.
   # Its packages: the same list as hearth-qml-build.sh runtime_pkgs.
   if [ -x /ctx/nimbus-app/qml/hearth-qml ]; then
-    dnf5 -y install --skip-unavailable qt6-qtbase-gui qt6-qtdeclarative qt6-qtimageformats SDL2 || echo "warning: some of the Qt renderer's packages didn't install"
+    dnf5 -y install --skip-unavailable --skip-broken qt6-qtbase-gui qt6-qtdeclarative qt6-qtimageformats SDL2 || echo "warning: some of the Qt renderer's packages didn't install"
     mkdir -p /usr/lib/hearth-qml && cp -a /ctx/nimbus-app/qml/. /usr/lib/hearth-qml/
     chmod 755 /usr/lib/hearth-qml/hearth-qml
   fi
@@ -70,18 +108,41 @@ test -x /usr/lib/nimbus/nimbus
 ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
 # ---- hearthfetch (hosts/hearthfetch): Hearth OS's system summary for the terminal, built with the app.
 if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
-# ---- The Hearth Decky plugin (archive/hosts/decky-hearth; Steam Game Mode, Experimental, docs/STEAM-GAME-MODE.md): only files,
-# copied into Decky's plugins folder when you install Decky from Settings › System (hearth-admin decky-install). No
-# service is enabled here and nothing runs at boot. Not in this build: skipped with a warning.
-if [ -f /ctx/nimbus-app/decky-hearth/plugin.json ] && [ -f /ctx/nimbus-app/decky-hearth/dist/index.js ]; then
-  mkdir -p /usr/share/hearth && rm -rf /usr/share/hearth/decky-hearth && cp -a /ctx/nimbus-app/decky-hearth /usr/share/hearth/decky-hearth \
-    && chmod -R a+rX /usr/share/hearth/decky-hearth && echo "Hearth Decky plugin added" \
-    || { echo "warning: the Hearth Decky plugin didn't copy; Steam Game Mode goes without it"; rm -rf /usr/share/hearth/decky-hearth; }
-else
-  echo "warning: the Hearth Decky plugin isn't in this build; Steam Game Mode goes without it"
-fi
+# ---- Hearth Sync (hosts/decky-hearth-sync, docs/HEARTH-SYNC.md): the Decky plugin that keeps Hearth's non-Steam games
+# in Steam's library, as on Debian. Only files, copied into Decky's plugins folder by the built-in Decky's service
+# (hearth-decky run) each time Steam Game Mode starts. Not in this build: skipped with a warning.
+for pl in decky-hearth-sync decky-hearth-music decky-hearth-link; do
+  if [ -f "/ctx/nimbus-app/$pl/plugin.json" ] && [ -f "/ctx/nimbus-app/$pl/dist/index.js" ]; then
+    mkdir -p /usr/share/hearth && rm -rf "/usr/share/hearth/$pl" && cp -a "/ctx/nimbus-app/$pl" "/usr/share/hearth/$pl" \
+      && chmod -R a+rX "/usr/share/hearth/$pl" && echo "$pl (Decky plugin) added" \
+      || { echo "warning: $pl didn't copy; Steam Game Mode goes without it"; rm -rf "/usr/share/hearth/$pl"; }
+  else
+    echo "warning: $pl isn't in this build; Steam Game Mode goes without it"
+  fi
+done
+# ---- Decky Loader, built in (docs/STEAM-GAME-MODE.md): the same pinned release as the Debian edition, checked against
+# its SHA-256, in /usr/lib/hearth-decky. It runs only while Steam Game Mode does (hearth-decky@<you>.service, started by
+# nimbus-session, not enabled; 49-hearth-decky.rules). Bump all three lines together with os-bases/peppermint/build.sh.
+DECKY_VERSION=v3.3.1
+DECKY_SHA256=7bb73b0502c49e7194f34f9ce4ddb6777764e9277d7a5e54665f66460d50c315
+DECKY_SIZE=35277600
+curl -fsSL --retry 3 -o /tmp/PluginLoader "https://github.com/SteamDeckHomebrew/decky-loader/releases/download/$DECKY_VERSION/PluginLoader"
+echo "$DECKY_SHA256  /tmp/PluginLoader" | sha256sum -c -
+test "$(stat -c %s /tmp/PluginLoader)" = "$DECKY_SIZE"
+test "$(head -c 4 /tmp/PluginLoader | od -An -tx1 | tr -d ' \n')" = 7f454c46
+install -Dm755 /tmp/PluginLoader /usr/lib/hearth-decky/PluginLoader
+echo "$DECKY_VERSION" > /usr/lib/hearth-decky/version
+rm -f /tmp/PluginLoader
+test -f /usr/lib/systemd/system/hearth-decky@.service
+echo "Decky Loader $DECKY_VERSION built in"
 # ---- end Hearth Decky plugin
 # ---- end hearthfetch
+# CI builds the app in a debian:trixie container (base-anatase.yml, as for Debian), so every library it links must be
+# here under the same name (Fedora's are newer).
+dnf5 -y install --skip-unavailable --skip-broken webkit2gtk4.1 gtk3 libsoup3 libxdo openssl-libs || true
+if ldd /usr/lib/nimbus/nimbus | grep "not found"; then
+  echo "::error title=Hearth app::it needs libraries this image doesn't have: $(ldd /usr/lib/nimbus/nimbus | grep 'not found' | tr -s ' \t' ' ' | tr '\n' '|')"; exit 1
+fi
 # ---- hearth-steam (hosts/hearth-steam): the lightweight Steam engine, experimental and off by default. Hearth starts its
 # user service (hearth-steam-engine.service, not enabled) only while Settings › Library › Steam engine is Lightweight.
 # Not in this build, or it doesn't install: skipped with a warning (Hearth then always uses the normal Steam client).
@@ -105,7 +166,7 @@ fi
 # rebuilt so the SVG loader is in it.
 dnf5 -y install librsvg2 gdk-pixbuf2
 # Newer gdk-pixbuf loads SVG (and other images) through glycin's loaders instead.
-dnf5 -y install --skip-unavailable glycin-loaders || true
+dnf5 -y install --skip-unavailable --skip-broken glycin-loaders || true
 for q in /usr/bin/gdk-pixbuf-query-loaders /usr/bin/gdk-pixbuf-query-loaders-64 /usr/lib/*/gdk-pixbuf-2.0/gdk-pixbuf-query-loaders; do
   [ -x "$q" ] && { "$q" --update-cache || true; break; }
 done
@@ -169,8 +230,8 @@ fi
 #  - GStreamer with PipeWire's plugin: Game Mode (gamescope's own stream) without gpu-screen-recorder, and Share there
 #  - pactl and pw-dump (sound sources, gamescope's stream), v4l-utils (cameras), qrencode (Share's QR code)
 command -v ffmpeg >/dev/null || dnf5 -y install ffmpeg-free || dnf5 -y install ffmpeg || echo "warning: no ffmpeg, so Recorder, Camera and Share can't encode"
-dnf5 -y install --skip-unavailable --setopt=fedora-cisco-openh264.enabled=1 openh264 gstreamer1-plugin-openh264 || true
-dnf5 -y install --skip-unavailable wf-recorder slurp pulseaudio-utils pipewire-utils pipewire-gstreamer gstreamer1-plugins-good \
+dnf5 -y install --skip-unavailable --skip-broken --setopt=fedora-cisco-openh264.enabled=1 openh264 gstreamer1-plugin-openh264 || true
+dnf5 -y install --skip-unavailable --skip-broken wf-recorder slurp pulseaudio-utils pipewire-utils pipewire-gstreamer gstreamer1-plugins-good \
   gstreamer1-plugins-bad-free gstreamer1-plugin-libav v4l-utils libnotify qrencode libcap || true
 # CI builds it inside Anatase itself (base-anatase.yml, gsr/ next to the app); the COPR package is the fallback.
 if [ -x /ctx/nimbus-app/gsr/gpu-screen-recorder ] && ! command -v gpu-screen-recorder >/dev/null; then
@@ -430,7 +491,7 @@ fi
 # control this PC's music, wl-clipboard/wtype give Hearth Connect the clipboard and typing in Desktop Mode, and
 # notify-send's library its notifications. Their firewall helper and polkit rule come from os/system_files
 # (hearth-link-firewall, 49-hearth-link.rules): ports open only while the apps listen, and only to local addresses.
-dnf5 -y install --skip-unavailable playerctl wl-clipboard wtype libnotify || true
+dnf5 -y install --skip-unavailable --skip-broken playerctl wl-clipboard wtype libnotify || true
 for app in hearth-nearby hearth-connect; do
   if [ -x "/ctx/nimbus-app/$app" ]; then
     install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
@@ -441,6 +502,24 @@ chmod 755 /usr/libexec/nimbus/hearth-link-firewall 2>/dev/null || true
 # Hearth Storage's root helper (Windows sharing, waking from the network; 49-hearth-storage.rules).
 chmod 755 /usr/libexec/nimbus/hearth-storage-helper 2>/dev/null || true
 rpm -q firewalld >/dev/null 2>&1 && echo "firewalld is in this image: Nearby Share and Hearth Connect open their ports with it" || echo "no firewalld in this image: nothing to open"
+# ONE firewall (the owner's laptop had firewalld.service and ufw.service both turned on, ufw the one running):
+# firewalld, Fedora's own and what hearth-firewall / hearth-link-firewall prefer. New installs get firewalld only;
+# a device that already ran ufw keeps it as it was (hearth-firewall-choice.service decides once, at the first start of
+# this version; anatase_files). ufw.service is NOT turned off here: removing its link from the image's /etc would
+# take it away from those devices too at the update (bootc's /etc merge), so it's skipped by a drop-in instead.
+rpm -q firewalld >/dev/null 2>&1 || dnf5 -y install firewalld || echo "warning: firewalld isn't available"
+if rpm -q firewalld >/dev/null 2>&1; then
+  systemctl enable firewalld.service
+  chmod 755 /usr/libexec/hearth-firewall-choice
+  for f in /usr/lib/systemd/system/hearth-firewall-choice.service /usr/lib/systemd/system/firewalld.service.d/hearth-one-firewall.conf \
+           /usr/lib/systemd/system/ufw.service.d/hearth-one-firewall.conf; do
+    [ -f "$f" ] || { echo "::error::$f is missing (one firewall)"; exit 1; }
+  done
+  echo "::notice title=Firewall::firewalld ($(rpm -q firewalld)); ufw $(rpm -q ufw >/dev/null 2>&1 && echo "installed, kept only where it already ran" || echo "not installed")"
+else
+  # No firewalld: leave ufw (if any) as the base has it, and don't let the drop-ins switch it off.
+  rm -f /usr/lib/systemd/system/ufw.service.d/hearth-one-firewall.conf /usr/lib/systemd/system/firewalld.service.d/hearth-one-firewall.conf
+fi
 install -d /usr/share/applications /usr/lib/systemd/user
 if [ -x /usr/bin/hearth-nearby ]; then
   cat > /usr/share/applications/hearth-nearby.desktop <<DESKTOP
@@ -605,7 +684,7 @@ update-desktop-database /usr/share/applications >/dev/null 2>&1 || true
 # Scanner and Welcome & Tips in one program (/usr/bin/hearth-tools --app NAME), built with the app (base-anatase.yml)
 # and carried in os/nimbus-app/hearth-tools/ with its menu entries (hearth-*.desktop; their icons come with Hearth's icon set). What the
 # tools run: SANE's scanimage and sane-airscan (network scanners), traceroute and tracepath, iw (Wi-Fi link details).
-dnf5 -y install --skip-unavailable sane-backends sane-backends-drivers-scanners sane-airscan traceroute iputils iw || true
+dnf5 -y install --skip-unavailable --skip-broken sane-backends sane-backends-drivers-scanners sane-airscan traceroute iputils iw || true
 if [ -x /ctx/nimbus-app/hearth-tools/hearth-tools ]; then
   install -Dm755 /ctx/nimbus-app/hearth-tools/hearth-tools /usr/bin/hearth-tools
   if ldd /usr/bin/hearth-tools | grep "not found"; then echo "warning: Hearth Tools is missing the libraries above"; fi
@@ -617,13 +696,23 @@ fi
 # only its libaio engine, without the weak dependencies that pull in Ceph and RDMA), glmark2 (OpenGL and the
 # game-style scenes) and vkmark (Vulkan). Each is optional: a missing one is a warning here and a skipped test in the
 # app, never a failed image.
-dnf5 -y install --skip-unavailable --setopt=install_weak_deps=False 7zip fio fio-engine-libaio glmark2 vkmark \
+dnf5 -y install --skip-unavailable --skip-broken --setopt=install_weak_deps=False 7zip fio fio-engine-libaio glmark2 vkmark \
   || echo "warning: Hearth Benchmark: some benchmark programs couldn't be installed"
 command -v 7z >/dev/null || command -v 7zz >/dev/null || command -v 7za >/dev/null \
-  || dnf5 -y install --skip-unavailable --setopt=install_weak_deps=False p7zip p7zip-plugins || true
+  || dnf5 -y install --skip-unavailable --skip-broken --setopt=install_weak_deps=False p7zip p7zip-plugins || true
 for p in fio glmark2 vkmark; do command -v "$p" >/dev/null || echo "warning: Hearth Benchmark: $p isn't installed (its test will be skipped)"; done
 command -v 7z >/dev/null || command -v 7zz >/dev/null || command -v 7za >/dev/null || echo "warning: Hearth Benchmark: 7-Zip isn't installed (the processor tests will be skipped)"
 # ---- end Hearth Benchmark
+# ---- Sharper graphics (the owner, Nov 20 01:36; hearth-core vkbasalt.rs): Fedora's vkBasalt, the Vulkan layer that
+# sharpens a game's picture (CAS), with SMAA and a colour boost. It does nothing until a game's "Sharper graphics" is
+# turned on in Hearth Games (or ENABLE_VKBASALT=1 is in a game's launch options): the layer only loads when that's set.
+# The 32-bit one too, for 32-bit games through Proton. Optional: a missing package is a warning here, never a failed
+# image, and the switch then says vkBasalt isn't installed.
+dnf5 -y install --skip-unavailable --skip-broken vkBasalt vkBasalt.i686 || echo "warning: vkBasalt couldn't be installed (Sharper graphics will say it isn't available)"
+ls /usr/share/vulkan/implicit_layer.d/ 2>/dev/null | grep -qi '^vkbasalt' \
+  && echo "vkBasalt: $(rpm -q vkBasalt 2>/dev/null | tr '\n' ' ')" \
+  || echo "::warning title=vkBasalt::not installed (Fedora $FEDORA has no vkBasalt package?): Sharper graphics says it isn't available"
+# ---- end Sharper graphics
 
 # The session (Game Mode + Desktop Mode), installed to the system paths instead of /usr/local.
 install -Dm755 /ctx/session/nimbus-session /usr/bin/nimbus-session
@@ -631,29 +720,93 @@ install -Dm755 /ctx/session/nimbus-mode /usr/bin/nimbus-mode
 install -Dm755 /ctx/session/nimbus-watchdog /usr/libexec/nimbus/nimbus-watchdog
 mkdir -p /usr/share/wayland-sessions /usr/share/nimbus
 sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/nimbus.desktop > /usr/share/wayland-sessions/nimbus.desktop
-# The login screen's desktop choice (saved as yours; "Hearth" itself starts the saved one): Hearth Classic, and Hearth
-# Plasma and Hearth GNOME (hidden by their TryExec where they aren't installed).
-for s in hearth-classic hearth-plasma hearth-gnome; do
-  [ -f "/ctx/session/$s.desktop" ] || continue   # hearth-gnome.desktop: archived in 1.14 (archive/desktops-kde-gnome)
-  sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' "/ctx/session/$s.desktop" > "/usr/share/wayland-sessions/$s.desktop"
-done
-# Hearth COSMIC (docs/archive/COSMIC.md), hidden by its TryExec if COSMIC didn't install.
-sed 's#/usr/local/bin/nimbus-session#/usr/bin/nimbus-session#g' /ctx/session/hearth-cosmic.desktop > /usr/share/wayland-sessions/hearth-cosmic.desktop
+# On the login screen: only "Hearth" (Game Mode, and Desktop Mode = KDE Plasma from inside it). Hearth Classic, Hearth
+# Plasma, Hearth GNOME and Hearth COSMIC entries aren't here. KDE's own "Plasma" entry is moved aside so the login
+# screen can't start Plasma without Hearth's session (Back to Game Mode and the fallback need it).
+rm -f /usr/share/wayland-sessions/hearth-classic.desktop /usr/share/wayland-sessions/hearth-plasma.desktop \
+  /usr/share/wayland-sessions/hearth-gnome.desktop /usr/share/wayland-sessions/hearth-cosmic.desktop
 cp -a /ctx/desktop /usr/share/nimbus/desktop
-chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh
+# Hearth's helpers in desktop/shell (Settings' helpers, Files' backends, Discord, Proton...) are used by Hearth's apps
+# outside Mantel too; Mantel itself (Quickshell) isn't installed here, so nothing runs its QML.
+chmod 755 /usr/share/nimbus/desktop/open.sh /usr/share/nimbus/desktop/theme/apply.sh
 find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +
 chmod 755 /usr/bin/hearth-filemanager /usr/bin/hearth-settings /usr/bin/hearth-wallpaper /usr/bin/hearth-browser /usr/bin/hearth-send-logs /usr/bin/hearth-install-package
+for f in /usr/bin/hearth-winapps /usr/bin/hearth-proton-run /usr/bin/hearth-screenshot /usr/share/nimbus/desktop/shell/hearth_proton_run.py; do [ -e "$f" ] && chmod 755 "$f"; done
+mkdir -p /usr/share/sounds && ln -sfn /usr/share/nimbus/desktop/sounds/hearth /usr/share/sounds/hearth || true
+# Desktop Mode is KDE Plasma (nimbus-session run_plasma reads this file; the Debian image has none).
+test "$(cat /usr/share/nimbus/desktop-mode)" = plasma
+if [ -f /usr/share/nimbus/desktop/shell/hearth_accounts.py ]; then
+  chmod 755 /usr/share/nimbus/desktop/shell/hearth_accounts.py
+  ln -sfn /usr/share/nimbus/desktop/shell/hearth_accounts.py /usr/bin/hearth-accounts
+fi
+# Hearth OS's player count (anonymous; off in Settings › About › Privacy) and Hearth Files' "Connect automatically",
+# user timers as on Debian (nothing waits for them).
+install -d /usr/lib/systemd/user/timers.target.wants
+cat > /usr/lib/systemd/user/hearth-counter.service <<'UNIT'
+[Unit]
+Description=Hearth OS player count (anonymous; off in Settings › About › Privacy)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-counter ping
+TimeoutStartSec=30
+UNIT
+cat > /usr/lib/systemd/user/hearth-counter.timer <<'UNIT'
+[Unit]
+Description=Hearth OS player count, every 10 minutes while you're signed in
+
+[Timer]
+OnActiveSec=20s
+OnUnitActiveSec=10min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
+UNIT
+ln -sf ../hearth-counter.timer /usr/lib/systemd/user/timers.target.wants/hearth-counter.timer
+cat > /usr/lib/systemd/user/hearth-files-autoconnect.service <<'UNIT'
+[Unit]
+Description=Hearth Files: open the shared folders that connect by themselves
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-files net-autoconnect
+TimeoutStartSec=90
+Nice=10
+UNIT
+cat > /usr/lib/systemd/user/hearth-files-autoconnect.timer <<'UNIT'
+[Unit]
+Description=Hearth Files: connect shared folders by themselves while you're signed in
+
+[Timer]
+OnActiveSec=30s
+OnUnitActiveSec=3min
+AccuracySec=30s
+
+[Install]
+WantedBy=timers.target
+UNIT
+ln -sf ../hearth-files-autoconnect.timer /usr/lib/systemd/user/timers.target.wants/hearth-files-autoconnect.timer
 # hearth-debbox (.deb files through Hearth's Debian box) for terminal users too.
 ln -sfn /usr/share/nimbus/desktop/shell/hearth-debbox /usr/bin/hearth-debbox
 chmod 755 /usr/libexec/nimbus/*
 echo "${NIMBUS_VERSION:-0.0.0}" > /usr/share/nimbus/version
 # Which Hearth this is (the Bazzite build has /usr/share/ublue-os/image-info.json for the same; the other editions
 # write this same file).
+# "image-tag": the tag it's published to (base-anatase.yml: stable for a release, test-<version> for a test build);
+# "channel": stable or test (hearth-admin's release channel).
+HEARTH_CHANNEL=${HEARTH_CHANNEL:-stable}
+case "$HEARTH_CHANNEL" in
+  stable) CH_KIND=stable; CH_TEST=false ;;
+  test-[0-9]*) CH_KIND=test; CH_TEST=true ;;
+  *) echo "unknown channel $HEARTH_CHANNEL (stable or test-<version>)"; exit 1 ;;
+esac
 cat > /usr/share/nimbus/image-info.json <<INFO
-{"image-name": "hearth-os", "image-ref": "ghcr.io/dragongamer9/hearth-os", "image-tag": "testing", "base": "anatase", "base-detail": "Anatase (Fedora ${FEDORA})", "base-image": "${BASE_IMAGE:-i.anatase.org/anatase:stable}", "version": "${NIMBUS_VERSION:-0.0.0}"}
+{"image-name": "hearth-os", "image-ref": "ghcr.io/dragongamer9/hearth-os", "image-tag": "${HEARTH_CHANNEL}", "channel": "${CH_KIND}", "test": ${CH_TEST}, "desktop": "plasma", "base": "anatase", "base-detail": "Anatase (Fedora ${FEDORA})", "base-image": "${BASE_IMAGE:-i.anatase.org/anatase:stable}", "version": "${NIMBUS_VERSION:-0.0.0}"}
 INFO
 
-# Hearth's app menu entry for Desktop Mode / Plasma too.
+# The Hearth app itself (the archived Game Mode in a window): hidden from menus as on Debian; Hearth Settings opens it at
+# its Settings page.
 cat > /usr/share/applications/nimbus.desktop <<DESKTOP
 [Desktop Entry]
 Name=Hearth
@@ -662,18 +815,120 @@ Exec=/usr/bin/nimbus --windowed
 Icon=hearth
 Type=Application
 Categories=Game;
+NoDisplay=true
 DESKTOP
 
-# ------------------------------------------------------------------ Desktop Mode: labwc + Quickshell
-# (gamescope comes with Anatase.)
-dnf5 -y install labwc grim brightnessctl wlr-randr wlsunset python3-evdev \
-  qt6ct qt5ct xdg-desktop-portal-wlr xdg-desktop-portal-gtk xprop xwininfo xdotool gnome-keyring cpio rsync
-# Quickshell: Fedora's own package when it has one, else the COPR the Bazzite build uses.
-if ! dnf5 -y install quickshell; then
-  dnf5 -y copr enable errornointernet/quickshell
-  dnf5 -y install quickshell
-  dnf5 -y copr disable errornointernet/quickshell
+# ------------------------------------------------------------------ Desktop Mode: stock KDE Plasma (1.15)
+# The owner (Nov 17): "Just Have KDE plasma on it. with our apps." Plasma as Fedora's KDE edition has it, recommends
+# included, so KWin's Overview and effects, Breeze and Aurorae window frames, the lock screen (kscreenlocker), the
+# network, sound, Bluetooth and power applets, KDE's display settings and Discover's backends are all there. No labwc,
+# no Quickshell, no Mantel. Plasma never takes the login screen: Anatase's own stays, with Hearth's autologin into
+# "Hearth" (Game Mode), and Desktop Mode starts Plasma from inside Hearth's session (nimbus-session run_plasma).
+plasma_before=$(du -sxm /usr | cut -f1)
+dm_before=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
+dnf5 -y install plasma-workspace plasma-desktop kwin
+dnf5 -y install --skip-unavailable plasma-workspace-wayland || true
+# xrdb: applying a Global Theme (plasma-apply-lookandfeel, System Settings) also gives X11 apps the colours and cursor
+# through it; without it, it says "/usr/sbin/xrdb: No such file or directory" each time.
+dnf5 -y install xrdb || dnf5 -y install xorg-x11-server-utils || echo "::warning title=xrdb::not installed (a Global Theme still applies; X11 apps miss its colours)"
+dnf5 -y install --skip-unavailable --skip-broken plasma-nm plasma-pa plasma-systemmonitor powerdevil kscreen libkscreen kscreenlocker \
+  bluedevil polkit-kde xdg-desktop-portal-kde plasma-breeze breeze-icon-theme breeze-cursor-theme kde-cli-tools \
+  plasma-systemsettings kinfocenter kf6-kirigami kwin-effects kdecoration aurorae plasma-milou milou kmenuedit \
+  khotkeys kglobalacceld plasma-integration plasma-discover-flatpak kwalletmanager5 kwallet-pam ksshaskpass \
+  dolphin konsole kate okular spectacle ark gwenview kcalc kdialog kde-gtk-config plasma-thunderbolt \
+  xwaylandvideobridge wl-clipboard iio-sensor-proxy || true
+# Fedora's KDE comps group, if this Anatase has it, for anything the list above misses (never fails the image).
+dnf5 -y group install --skip-unavailable --skip-broken kde-desktop >/tmp/kde-group.log 2>&1 || echo "note: the kde-desktop group didn't install as a whole ($(tail -n1 /tmp/kde-group.log | cut -c1-200))"
+# Not here: Plasma's first-run welcome (Hearth has its own first-time setup) and KDE Connect, whose daemon would take
+# the port Hearth Connect (KDE Connect's protocol, Hearth's app) listens on.
+for p in plasma-welcome kde-connect kdeconnectd kde-connect-libs; do rpm -q "$p" >/dev/null 2>&1 && dnf5 -y remove "$p" || true; done
+rm -f /etc/xdg/autostart/org.kde.plasma-welcome.desktop /etc/xdg/autostart/org.kde.kdeconnect.daemon.desktop
+for b in startplasma-wayland kwin_wayland plasmashell kscreen-doctor; do command -v "$b" >/dev/null || { echo "::error title=KDE Plasma::$b is missing"; exit 1; }; done
+# Plasma's menu needs a menu file (KService's applications.menu, or Fedora's prefixed one; nimbus-session tells
+# Plasma which with XDG_MENU_PREFIX): without one the menu is empty.
+ls /etc/xdg/menus/applications.menu /etc/xdg/menus/*-applications.menu 2>/dev/null | grep -q . \
+  || { echo "::error title=KDE Plasma::no applications.menu in /etc/xdg/menus: Plasma's menu would be empty"; exit 1; }
+echo "Plasma's menu file: $(ls /etc/xdg/menus/*applications.menu | tr '\n' ' ')"
+# The lock screen's greeter must be there (a lock that can't show its screen would be a lockout).
+rpm -q kscreenlocker >/dev/null 2>&1 || dnf5 -y install kscreenlocker
+greet=$(find /usr/libexec /usr/lib64 /usr/lib /usr/bin -name kscreenlocker_greet -type f 2>/dev/null | head -1)
+[ -n "$greet" ] || { echo "::error title=KDE Plasma::kscreenlocker_greet is missing ($(rpm -q kscreenlocker; rpm -ql kscreenlocker 2>/dev/null | grep -i greet | head -3 | tr '\n' ' ')): the lock screen couldn't show"; exit 1; }
+echo "::notice title=KDE Plasma lock screen::$greet ($(rpm -q kscreenlocker))"
+echo "::notice title=KDE Plasma packages::$(rpm -q plasma-nm plasma-pa powerdevil kscreen bluedevil polkit-kde xdg-desktop-portal-kde kwin plasma-workspace 2>&1 | tr '\n' ' ' | cut -c1-900)"
+# KDE's own "Plasma" login entries start Plasma without Hearth's session: moved aside (Hearth's session starts it).
+mkdir -p /usr/share/hearth/desktop-sessions
+for f in /usr/share/wayland-sessions/plasma.desktop /usr/share/wayland-sessions/plasmawayland.desktop /usr/share/xsessions/plasma.desktop /usr/share/xsessions/plasmax11.desktop; do
+  if [ -e "$f" ]; then mv "$f" "/usr/share/hearth/desktop-sessions/$(basename "$(dirname "$f")")-$(basename "$f")"; fi
+done
+dm_after=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
+if [ "$dm_before" != "$dm_after" ]; then
+  echo "Plasma's packages changed the display manager ($dm_before -> $dm_after): put back"
+  if [ -n "$dm_before" ]; then ln -sfn "$dm_before" /etc/systemd/system/display-manager.service; else rm -f /etc/systemd/system/display-manager.service; fi
 fi
+echo "::notice title=KDE Plasma::installed ($(rpm -q --qf '%{VERSION}' plasma-workspace)); it adds about $(( $(du -sxm /usr | cut -f1) - plasma_before )) MB"
+# ---- Firehold on Plasma (a test; docs/FIREHOLD.md "Firehold on Plasma"): Firehold's Couch as a Plasma shell package
+# (the way Plasma Bigscreen and Plasma Mobile are made) and its Desk as Plasma's own desktop in Firehold's layout, on
+# KDE's own KWin through its public interfaces only (no KWin patches, nothing from archive/kwin). Opt-in only
+# ("Firehold (Plasma, test)" in Plasma's menu; no line in session.conf is plain KDE Plasma); never fails the image.
+dnf5 -y install --skip-unavailable layer-shell-qt kpipewire python3-evdev >/dev/null 2>&1 || true
+bash /usr/share/nimbus/desktop/firehold-plasma/install.sh / || echo "::warning title=Firehold on Plasma::not installed"
+for f in /usr/share/plasma/shells/org.hearthos.firehold/metadata.json /usr/share/plasma/plasmoids/org.hearthos.firehold.couch/contents/ui/firehold.js \
+  /usr/share/plasma/shells/org.hearthos.firehold.desk/contents/layout.js /usr/bin/hearth-firehold-plasma; do
+  [ -e "$f" ] || echo "::warning title=Firehold on Plasma::$f is missing (Desktop Mode stays plain KDE Plasma)"
+done
+# ---- Hearth Classic on Plasma (hosts/linux/desktop/plasma-hearth; docs/mockups/checklists/plasma-hearth-bar.md): Mantel's
+# bar, dock, app menus, Quick settings and notifications as Plasma packages (org.hearthos.panel, .appmenu, .quicksettings,
+# .notifications), the shared Quick settings backend (/usr/libexec/hearth/hearth-quick) and hearth-plasma-panel.
+# Also Mantel's lock screen for KDE's screen locker (org.hearthos.mantel-lock, picked only while Hearth's panel is in use
+# and only after the locker's own test run shows it). A new account's first sign-in gets Hearth's panel (the owner,
+# Nov 19: /etc/skel's mark); nobody else's panel changes until they pick it in Settings › Bar and dock, and a panel that
+# doesn't come up gives way to KDE's own. Never fails the image.
+bash /usr/share/nimbus/desktop/plasma-hearth/install.sh / || echo "::warning title=Hearth's panel::not installed"
+for f in /usr/share/plasma/plasmoids/org.hearthos.panel/metadata.json /usr/share/plasma/plasmoids/org.hearthos.appmenu/contents/ui/Launcher.qml /usr/libexec/hearth/hearth-quick; do
+  [ -e "$f" ] || echo "::warning title=Hearth's panel::$f is missing (KDE's own panel is unchanged)"
+done
+# Tools Hearth's apps and helpers use (screenshots, brightness, the clipboard, X11 helpers for Game Mode's pickers).
+dnf5 -y install --skip-unavailable --skip-broken grim slurp brightnessctl wlr-randr python3-evdev xprop xwininfo xdotool gnome-keyring cpio rsync || true
+# The session's own message bus when the login gave none (nimbus-session ensure_session_bus: dbus-run-session), and
+# the controller-mouse helper's evdev (hearth-pad-plasma, Plasma's autostart).
+dnf5 -y install --skip-unavailable dbus-tools dbus-daemon python3-evdev || true
+echo "::notice title=Session bus::$(command -v dbus-run-session || echo 'no dbus-run-session'); controller mouse: $(python3 -c 'import evdev; print("evdev ok")' 2>&1 | tail -1)"
+
+# >>> labwc on the Fedora edition (1.16, feature/labwc-fedora; docs/LABWC-FEDORA.md): Mantel (Hearth Classic) and
+# Firehold on labwc as Desktop Mode choices in Settings › Your desktop, only when picked, never a fallback (nimbus-session
+# run_fedora_labwc; anything wrong: KDE Plasma, with a notification). Quickshell v0.3.2 from the Containerfile's own
+# stage (this image's Qt), labwc and Mantel's packages by Fedora's names (labwc-install.sh). If any of it can't be put
+# in, the choice isn't offered (hearth-labwc-desktop left out) and the image is still built: KDE Plasma is unchanged.
+QS=/quickshell; [ -d "$QS" ] || QS=/ctx/quickshell
+LWI=/labwc-install.sh; [ -f "$LWI" ] || LWI=/ctx/labwc-install.sh
+lw_ok=1
+if [ -x "$QS/usr/bin/quickshell" ]; then cp -a "$QS/." /; else echo "::warning title=labwc on Fedora::Quickshell wasn't built"; lw_ok=0; fi
+bash "$LWI" || lw_ok=0
+bash "$LWI" --check || lw_ok=0
+# labwc's own login entry starts labwc without Hearth's session: moved aside, like Plasma's (Desktop Mode starts it).
+for f in /usr/share/wayland-sessions/labwc.desktop; do
+  [ -e "$f" ] && mkdir -p /usr/share/hearth/desktop-sessions && mv "$f" "/usr/share/hearth/desktop-sessions/wayland-sessions-$(basename "$f")"
+done
+chmod 755 /usr/share/nimbus/desktop/labwc/autostart /usr/share/nimbus/desktop/shell/hearth-pad /usr/share/nimbus/desktop/shell/hearth-buttons 2>/dev/null || true
+# Firehold on labwc's approved Couch: Firehold on Plasma's own pages, copied into the shell folder (install-couch.sh).
+bash /usr/share/nimbus/desktop/labwc-fedora/install-couch.sh /usr/share/nimbus/desktop || true
+if [ "$lw_ok" = 1 ] && [ -f /usr/share/nimbus/desktop/shell/shell.qml ]; then
+  install -Dm755 /usr/share/nimbus/desktop/labwc-fedora/hearth-labwc-desktop /usr/bin/hearth-labwc-desktop
+  echo "::notice title=labwc on Fedora::Mantel and Firehold on labwc can be picked ($(rpm -q labwc), Quickshell $(cat /usr/share/hearth/quickshell-ref 2>/dev/null))"
+else
+  rm -f /usr/bin/hearth-labwc-desktop
+  echo "::warning title=labwc on Fedora::not offered in this image (see the lines above); KDE Plasma and Firehold on Plasma as before"
+fi
+# <<< labwc on the Fedora edition
+
+# ------------------------------------------------------------------ Firehold (Rust, test): archived
+# The owner (Nov 19): "focus on the Plasma Firehold for the moment and archive the Rust Firehold". firehold-shell, its
+# build and its Plasma-menu choice are in archive/ (docs/ARCHIVED.md); this image has neither firehold-shell nor
+# firehold-comp. A device that had picked it gets Firehold on Plasma instead (nimbus-session, once said in a notice;
+# its saved pick is left as it is until you pick again). Make sure no old copy is left in the image's /usr.
+rm -f /usr/bin/firehold-shell /usr/libexec/hearth/firehold-comp /usr/bin/hearth-desktop-choice \
+  /usr/share/applications/hearth-desktop-firehold.desktop /usr/share/applications/hearth-desktop-plasma.desktop
+rm -rf /usr/share/hearth/firehold-rust
 # Couch Co-op (Beta Experimental), Move games / Make Hearth bigger, Proton for games added by hand: not fatal,
 # Hearth says what's missing.
 dnf5 -y install 7zip || dnf5 -y install p7zip p7zip-plugins || true
@@ -728,73 +983,6 @@ fi
 # The move's first start (hearth-clean-install) reads Lutris' database with Python's sqlite3, and the controller
 # on the login screen needs evdev (above).
 python3 -c 'import sqlite3, json'
-
-# ------------------------------------------------------------------ Hearth Plasma (docs/archive/PLASMA.md)
-# KDE Plasma 6 as Desktop Mode's second desktop, in Hearth's look (os/system_files/usr/share/plasma and
-# /usr/share/hearth-plasma). Only the workspace: no KDE app bundle (Dolphin and the rest come with Anatase or not at
-# all). Hearth Classic (labwc + Mantel, above) stays installed and is the fallback whenever Plasma can't start.
-dnf5 -y install --setopt=install_weak_deps=False plasma-workspace kwin plasma-desktop
-dnf5 -y install --skip-unavailable --setopt=install_weak_deps=False plasma-nm plasma-pa powerdevil kscreen kscreenlocker \
-  bluedevil polkit-kde xdg-desktop-portal-kde plasma-breeze breeze-icon-theme kde-cli-tools plasma-systemsettings \
-  kf6-kirigami plasma-workspace-wayland spectacle || true
-for b in startplasma-wayland kwin_wayland plasmashell; do command -v "$b" >/dev/null || { echo "::error title=Hearth Plasma::$b is missing"; exit 1; }; done
-# What Plasma's packages may switch on that Hearth doesn't want: the login screen stays Anatase's (Plasma Login
-# Manager, Hearth's autologin), nothing else becomes the display manager.
-echo "display manager: $(readlink -f /etc/systemd/system/display-manager.service 2>/dev/null || echo none)"
-
-# ------------------------------------------------------------------ Hearth GNOME (docs/archive/GNOME.md)
-# GNOME Shell (Fedora's current release) as Desktop Mode's third desktop, in Hearth's look through Hearth's own Shell
-# extensions (os/system_files/usr/share/gnome-shell). Only the shell, its session, its Settings and portal, plus GNOME's
-# own apps for the kinds it has (Files, Console, Text Editor: one app of each kind per desktop, through the
-# app-kinds table's GNOME entries below). No GNOME app bundle, no weak dependencies, no GDM: the login screen stays. Hearth Classic stays the
-# fallback whenever GNOME can't start. The size it adds is noted for the image check.
-gnome_before=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
-dm_before=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
-dnf5 -y install --setopt=install_weak_deps=False gnome-shell mutter gnome-session gnome-control-center
-dnf5 -y install --skip-unavailable --setopt=install_weak_deps=False xdg-desktop-portal-gnome gnome-settings-daemon \
-  nautilus gnome-console gnome-text-editor || true
-for b in gnome-shell gnome-session; do command -v "$b" >/dev/null || { echo "::error title=Hearth GNOME::$b is missing"; exit 1; }; done
-# Nothing of GNOME's takes the login screen (the display manager is put back if a package changed it) or brings a
-# first-sign-in assistant.
-rpm -q gnome-initial-setup >/dev/null 2>&1 && dnf5 -y remove gnome-initial-setup || true
-rpm -q gnome-tour >/dev/null 2>&1 && dnf5 -y remove gnome-tour || true
-dm_after=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
-if [ "$dm_before" != "$dm_after" ]; then
-  if [ -n "$dm_before" ]; then ln -sfn "$dm_before" /etc/systemd/system/display-manager.service; else rm -f /etc/systemd/system/display-manager.service; fi
-fi
-gnome_after=$(du -sxm /usr /etc 2>/dev/null | awk '{s += $1} END {print s}')
-mkdir -p /usr/share/nimbus && echo "$((gnome_after - gnome_before))" > /usr/share/nimbus/hearth-gnome-size-mb
-echo "::notice title=Hearth GNOME::installed; it adds about $((gnome_after - gnome_before)) MB to the image"
-# ------------------------------------------------------------------ Hearth COSMIC (docs/archive/COSMIC.md)
-# System76's COSMIC as another Desktop Mode desktop, in Hearth's look (desktop/cosmic, desktop/shell/desk-cosmic.qml).
-# COSMIC's workspace with its own Files, Terminal and Edit (each desktop shows one app of each kind; in COSMIC these
-# take the place of Hearth's). Not its store, player, wallpapers or system monitor. Its login screen (greetd +
-# cosmic-greeter) and first-run wizard come with Fedora's cosmic-session but are never used: the display manager stays
-# Anatase's (checked below), the wizard's autostart entry goes. Never fails the image: without COSMIC, Settings says
-# "not available" and Hearth Classic and Plasma are unchanged.
-cosmic_before=$(du -sxm /usr | cut -f1)
-dm_before=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
-# The list (and what's left out) is desktop/cosmic/fedora-packages, shared with cosmic-test.yml.
-cosmic_pkgs=$(grep -v '^#' /usr/share/nimbus/desktop/cosmic/fedora-packages | grep -v '^-' | tr '\n' ' ')
-cosmic_ex=$(grep '^-' /usr/share/nimbus/desktop/cosmic/fedora-packages | sed 's/^-/--exclude=/' | tr '\n' ' ')
-# shellcheck disable=SC2086
-if dnf5 -y install --setopt=install_weak_deps=False $cosmic_ex $cosmic_pkgs; then
-  chmod 755 /usr/share/nimbus/desktop/cosmic/hearth-cosmic /usr/share/nimbus/desktop/cosmic/hearth-cosmic-defaults
-  HEARTH_COSMIC_OK=1     # Hearth's COSMIC defaults are made further down, once every app's menu entry is in place
-else
-  echo "::warning title=Hearth COSMIC::COSMIC couldn't be installed; this image goes without Hearth COSMIC"
-fi
-# Hearth COSMIC is the way into COSMIC here (Hearth's look, Game Mode, the fallback): COSMIC's own session entry and
-# first-run wizard stay out, and nothing of COSMIC's becomes the display manager.
-rm -f /usr/share/wayland-sessions/cosmic.desktop /etc/xdg/autostart/com.system76.CosmicInitialSetup.desktop
-systemctl disable cosmic-greeter.service greetd.service >/dev/null 2>&1 || true
-dm_after=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
-if [ "$dm_after" != "$dm_before" ]; then
-  echo "COSMIC changed the display manager ($dm_before -> $dm_after): put back"
-  if [ -n "$dm_before" ]; then ln -sf "$dm_before" /etc/systemd/system/display-manager.service; else rm -f /etc/systemd/system/display-manager.service; fi
-fi
-echo "Hearth COSMIC: $(( $(du -sxm /usr | cut -f1) - cosmic_before )) MB added to /usr"
-# ---- end Hearth COSMIC
 
 # ------------------------------------------------------------------ Steam
 # As on the Bazzite-based Hearth OS: Steam installed in the system, its games in ~/.local/share/Steam. Anatase's
@@ -979,17 +1167,7 @@ if [ -x /usr/bin/hearth-text ]; then
   command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
 fi
 # ---- end of Hearth Text
-cat > /usr/share/applications/hearth-tasks.desktop <<DESKTOP
-[Desktop Entry]
-Name=Task Manager
-Comment=See what's running, close apps that stopped responding, and check performance
-Exec=quickshell ipc -p /usr/share/nimbus/desktop/shell call tasks open
-Icon=hearth-tasks
-Type=Application
-Categories=System;Monitor;
-Keywords=task;process;end;kill;cpu;memory;gpu;performance;startup;
-OnlyShowIn=Nimbus;
-DESKTOP
+# (Task Manager is Mantel's, so it isn't here: KDE's System Monitor is Desktop Mode's.)
 cat > /usr/share/applications/hearth-settings.desktop <<DESKTOP
 [Desktop Entry]
 Name=Hearth Settings
@@ -1062,8 +1240,31 @@ if [ ${#RPMF[@]} -gt 0 ]; then
   rpm -q ffmpeg >/dev/null 2>&1 || dnf5 -y install --allowerasing "${RPMF[@]}" ffmpeg || true
   dnf5 -y install --allowerasing --skip-unavailable "${RPMF[@]}" gstreamer1-plugins-bad-freeworld gstreamer1-plugins-ugly gstreamer1-libav libavcodec-freeworld || true
 fi
-dnf5 -y install --skip-unavailable gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugin-libav gstreamer1-plugin-openh264 gstreamer1-plugin-dav1d gstreamer1-plugins-base-tools || true
+dnf5 -y install --skip-unavailable --skip-broken gstreamer1 gstreamer1-plugins-base gstreamer1-plugins-good gstreamer1-plugins-bad-free gstreamer1-plugin-libav gstreamer1-plugin-openh264 gstreamer1-plugin-dav1d gstreamer1-plugins-base-tools || true
 command -v ffmpeg >/dev/null || dnf5 -y install ffmpeg-free || echo "warning: no ffmpeg in this image: Hearth Player can't edit or convert"
+# Discs (docs/PLAYER-DISCS.md): libdvdread reads DVDs (Hearth Player loads it when it's there), libdvdnav comes with it
+# for other players, udisks mounts data discs, eject opens the tray. libdvdcss (locked shop DVDs) is NOT installed:
+# Fedora can't ship it and neither does Hearth OS; Hearth Player offers to add it from RPM Fusion free-tainted only
+# when a locked disc goes in and you say yes (hearth-dvd-decoding).
+dnf5 -y install --skip-unavailable --skip-broken libdvdread libdvdnav udisks2 util-linux-core || true
+# The "a disc was inserted" notice (Play disc, Eject) for every user: hearth-disc-notify, asleep on udev until a disc
+# goes in (its unit only starts where Hearth Player is installed).
+install -d /usr/lib/systemd/user/default.target.wants
+ln -sf ../hearth-disc-notify.service /usr/lib/systemd/user/default.target.wants/hearth-disc-notify.service
+rpm -q libdvdcss >/dev/null 2>&1 && { echo "warning: libdvdcss came into the image with something else; removing it (it's added only when asked)"; rpm -e --nodeps libdvdcss || true; }
+echo "::notice title=Hearth Player discs::$(rpm -q libdvdread libdvdnav 2>/dev/null | tr '\n' ' ') libdvdcss: $(rpm -q libdvdcss >/dev/null 2>&1 && echo in || echo 'not in (added on request)'); ffmpeg mpeg demuxer: $(ffmpeg -hide_banner -demuxers 2>/dev/null | grep -qw mpeg && echo yes || echo no)"
+# Video decoded by the graphics chip (VA-API), so browsers and players don't decode on the processor: the owner's
+# laptop (Intel UHD, Nov 18) played Firefox video on the CPU on Debian (its RDD process at 80%). Intel: RPM Fusion's
+# intel-media-driver (iHD, every codec), else Fedora's libva-intel-media-driver; AMD: mesa-va-drivers-freeworld
+# (H.264/H.265), else Fedora's mesa-va-drivers. Nvidia decodes through its own driver (nvidia-vaapi-driver).
+# Never --allowerasing here: a forced swap of Mesa's VA driver once let dnf remove about 390 packages (WebKit and
+# the graphics stack with them). These only add packages; one that would remove anything just doesn't install.
+dnf5 -y install --skip-unavailable "${RPMF[@]}" intel-media-driver libva-utils || dnf5 -y install --skip-unavailable libva-intel-media-driver libva-utils || true
+dnf5 -y install --skip-unavailable mesa-va-drivers || true
+rpm -q mesa-va-drivers-freeworld >/dev/null 2>&1 || dnf5 -y swap "${RPMF[@]}" mesa-va-drivers mesa-va-drivers-freeworld || echo "::notice title=Video decoding::kept Fedora's mesa-va-drivers (RPM Fusion's freeworld build wouldn't swap in cleanly)"
+dnf5 -y install --skip-unavailable nvidia-vaapi-driver || true
+va=$( { ls /usr/lib64/dri/iHD_drv_video.so /usr/lib64/dri/radeonsi_drv_video.so /usr/lib64/dri/nvidia_drv_video.so 2>/dev/null || true; } | xargs -r -n1 basename | tr '\n' ' ')
+echo "::notice title=Video by the graphics chip::VA-API drivers: ${va:-none}; $(rpm -q intel-media-driver libva-intel-media-driver mesa-va-drivers-freeworld mesa-va-drivers nvidia-vaapi-driver 2>/dev/null | grep -v 'not installed' | tr '\n' ' ')"
 # The RPM Fusion repositories stay off on the installed system (the image brings updates).
 for r in /etc/yum.repos.d/rpmfusion-*.repo; do
   if [ -f "$r" ]; then sed -i 's/^enabled=1/enabled=0/' "$r"; fi
@@ -1107,9 +1308,9 @@ echo "::notice title=Hearth Player codecs::$(tr '\n' ' ' < /usr/share/nimbus/med
 # Their menu entries and file types are set here, and they're the default apps for pictures and documents (Hearth's
 # default apps, after the last app).
 # libheif's tools let Photos open HEIC pictures from phones; wl-clipboard is how it copies a picture.
-dnf5 -y install --skip-unavailable libheif-tools wl-clipboard || true
+dnf5 -y install --skip-unavailable --skip-broken libheif-tools wl-clipboard || true
 # HEIC needs an HEVC decoder for libheif: RPM Fusion's libheif-freeworld where RPM Fusion is on.
-dnf5 -y install --skip-unavailable libheif-freeworld 2>/dev/null || true
+dnf5 -y install --skip-unavailable --skip-broken libheif-freeworld 2>/dev/null || true
 for app in hearth-photos hearth-documents; do
   if [ -x "/ctx/nimbus-app/$app" ]; then
     install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
@@ -1176,10 +1377,9 @@ mkdir -p /usr/share/xdg-desktop-portal
 cat > /usr/share/xdg-desktop-portal/nimbus-portals.conf <<PORTALS
 [preferred]
 default=gtk
-org.freedesktop.impl.portal.ScreenCast=wlr
-org.freedesktop.impl.portal.Screenshot=wlr
-org.freedesktop.impl.portal.FileChooser=hearth
 PORTALS
+# (Anatase: Hearth's own file chooser is Mantel's QML picker, which needs Quickshell; Game Mode's file dialogs are GTK's
+# and Plasma's are KDE's.)
 # ---- Hearth Files: every app's file chooser, and the file manager apps open (desktop/shell/hearth-portal, picker.qml)
 # Open / Save dialogs: xdg-desktop-portal's FileChooser is Hearth's in Hearth's session (above; XDG_CURRENT_DESKTOP is
 # Nimbus in both modes), the rest stays on the backends it had. hearth.portal and the D-Bus service files come from
@@ -1254,14 +1454,20 @@ update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # the session starts the same). Nothing of Discord is installed here: the owner picks the app (Flathub), the web window
 # or Dorion himself. Invite links a friend pastes in Discord (hearthos.fun/join → hearth://join/...) open Hearth's
 # helper, which finds the game or starts Play together. libsecret stays (other apps use the keyring; it was here before).
-"${APT[@]}" libsecret-1-0 || true
+dnf5 -y install --skip-unavailable --skip-broken libsecret || true
 if [ -f /usr/share/nimbus/desktop/shell/hearth-discord ]; then chmod 755 /usr/share/nimbus/desktop/shell/hearth-discord; fi
+# The Fedora edition (the owner, Nov 19): it shows in Plasma's menu as Join a friend's game, which asks for the invite
+# link (KDE's dialog) when it's opened from the menu (/usr/libexec/hearth/hearth-join, os-bases/anatase/system_files).
 cat > /usr/share/applications/hearth-join.desktop <<'DESKTOP'
 [Desktop Entry]
 Type=Application
-Name=Hearth (game invites)
-NoDisplay=true
-Exec=python3 /usr/share/nimbus/desktop/shell/hearth-discord join --link %u
+Name=Join a friend's game
+Comment=Open the invite link a friend sent you from Discord: their game, or Play together
+Exec=/usr/libexec/hearth/hearth-join %u
+TryExec=/usr/libexec/hearth/hearth-join
+Icon=hearth-connect
+Categories=Game;Network;
+Keywords=join;invite;discord;friend;play together;link;
 MimeType=x-scheme-handler/hearth;
 DESKTOP
 update-desktop-database -q /usr/share/applications 2>/dev/null || true
@@ -1271,7 +1477,7 @@ update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # hearth-slides are links to it), the menu entries and the .hslides file type (the icons are in Hearth's icon set); they're
 # the default apps for office files with the others (Hearth's default apps, below). Fonts with
 # the same sizes as Office's (Calibri, Cambria, Arial, Times New Roman), so documents keep their layout.
-dnf5 -y install --skip-unavailable google-carlito-fonts google-crosextra-caladea-fonts liberation-sans-fonts liberation-serif-fonts liberation-mono-fonts || true
+dnf5 -y install --skip-unavailable --skip-broken google-carlito-fonts google-crosextra-caladea-fonts liberation-sans-fonts liberation-serif-fonts liberation-mono-fonts || true
 if [ -x /ctx/nimbus-app/office/hearth-office ]; then sh /ctx/nimbus-app/office/install.sh
 else echo "Hearth Office wasn't built; this image goes without it"; fi
 # ---- end of Hearth Office
@@ -1282,16 +1488,35 @@ else echo "Hearth Office wasn't built; this image goes without it"; fi
 # in every KDE app) from CI's build inside this base (os/nimbus-app/hearth-kde.tar), only when they built, passed their
 # tests and start here (otherwise the old Hearth Files stays the file manager). The old Terminal, Text Editor and
 # Calculator stay installed as "… (classic)". Never stops the image build.
+# KDE Frameworks to Fedora's current ones first: the base image's are older than the KDE apps Fedora ships today
+# (Fedora's own Kate 26.08 failed with "undefined symbol: KConfig::copyFrom", run 44296110901), and RPM only asks for
+# the library's major version, so nothing else catches that.
+kf_before=$(rpm -q --qf '%{VERSION}' kf6-kconfig 2>/dev/null || true)
+dnf5 -y upgrade --refresh 'kf6-*' || echo "::warning title=KDE Frameworks::couldn't upgrade kf6-*"
+echo "::notice title=KDE Frameworks::kf6-kconfig ${kf_before:-?} -> $(rpm -q --qf '%{VERSION}' kf6-kconfig 2>/dev/null || true)"
 bash /ctx/hearth-kde/install.sh /ctx/nimbus-app/hearth-kde.tar || echo "warning: Hearth's KDE apps didn't install"
-
-# ------------------------------------------------------------------ Hearth COSMIC's defaults (docs/archive/COSMIC.md)
-# Made from COSMIC's own now that every Hearth app's menu entry exists (the panel's pinned apps are only the installed
-# ones). Without them, Hearth COSMIC counts as not installed and Hearth Classic opens instead.
-if [ "${HEARTH_COSMIC_OK:-0}" = 1 ]; then
-  python3 /usr/share/nimbus/desktop/cosmic/hearth-cosmic-defaults /usr/share/cosmic /usr/share/hearth-cosmic/data/cosmic \
-    || { echo "::warning title=Hearth COSMIC::Hearth's COSMIC defaults couldn't be made; Hearth COSMIC is left out"; rm -rf /usr/share/hearth-cosmic/data; }
+# Hearth Files' own Dolphin build has to match the KDE Frameworks this image really has. The owner's laptop (Nov 18):
+# "symbol lookup error: libdolphinprivate.so.6: undefined symbol: KConfig::copyFrom" (built against KF 6.32, the
+# image's KConfig older): Files didn't open. install.sh only checks for missing libraries, so here every library of
+# the build is resolved too (ldd -r). Anything unresolved: the build and kio-hearth are left out, and Files is
+# Fedora's own Dolphin (hearth-files-kde falls back to it: Hearth's name and places, KDE's program).
+# (|| true: a library with nothing unresolved makes grep "fail", which stopped the whole build under set -e/pipefail.)
+unresolved() { { LD_LIBRARY_PATH="$2" ldd -r "$1" 2>&1 | grep -E 'undefined symbol|not found' | head -3; } || true; }
+if [ -d /usr/lib/hearth-files ]; then
+  bad=""
+  for f in /usr/lib/hearth-files/bin/dolphin $(find /usr/lib/hearth-files -name '*.so*' -type f 2>/dev/null); do
+    u=$(unresolved "$f" /usr/lib/hearth-files/lib); if [ -n "$u" ]; then bad="$bad ${f##*/}: $u;"; fi
+  done
+  if [ -n "$bad" ]; then
+    echo "::warning title=Hearth Files::its Dolphin build doesn't match this image's KDE Frameworks ($(echo "$bad" | cut -c1-600)): Fedora's own Dolphin is Files here"
+    rm -rf /usr/lib/hearth-files
+  fi
 fi
-# ---- end Hearth COSMIC's defaults
+for k in $(find /usr/lib /usr/lib64 -path '*/plugins/kf6/kio/hearth.so' 2>/dev/null); do
+  u=$(unresolved "$k" ""); if [ -n "$u" ]; then echo "::warning title=kio-hearth::left out, it doesn't match this image's KDE Frameworks: $u"; rm -f "$k"; fi
+done
+rpm -q dolphin >/dev/null 2>&1 || dnf5 -y install dolphin
+command -v dolphin >/dev/null || { echo "::error title=Files::no Dolphin in the image: Plasma's Files wouldn't open"; exit 1; }
 
 # ------------------------------------------------------------------ Hearth's default apps
 # Every Hearth app in the image is the default for the files and links it opens (its .desktop file's MimeType), in
@@ -1316,10 +1541,681 @@ update-desktop-database -q /usr/share/applications 2>/dev/null || true
 # first in XDG_DATA_DIRS, so the packages' own files are never edited), each desktop's default apps
 # (/etc/xdg/<desktop>-mimeapps.list), and stops the build if a desktop would show two apps of one kind or none
 # where one is needed. Runs after Hearth's default apps (above), once every app is in.
-python3 /usr/libexec/hearth-app-kinds apply --root / > /tmp/hearth-app-kinds.json || { cat /tmp/hearth-app-kinds.json; echo "::error title=app kinds::a desktop would show two apps of one kind, or none (above)"; exit 1; }
+# (Anatase: Plasma's session leaves these copies out, so both Hearth's apps and KDE's show in Plasma's menu; they're
+# still made for Game Mode's lists. A conflict here is only a warning.)
+python3 /usr/libexec/hearth-app-kinds apply --root / > /tmp/hearth-app-kinds.json || { cat /tmp/hearth-app-kinds.json; echo "::warning title=app kinds::a desktop would show two apps of one kind, or none (above); Plasma doesn't use these copies"; }
 echo "::notice title=One app of each kind::$(python3 -c 'import json; d=json.load(open("/tmp/hearth-app-kinds.json")); print("; ".join("%s: %s" % (k, ", ".join("%s=%s" % (a, b) for a, b in sorted(v["apps"].items()) if b)) for k, v in d["desktops"].items() if v["present"]))' 2>/dev/null)" || true
 chmod 755 /usr/libexec/hearth-app-kinds
 # <<< app kinds
+
+# >>> Hearth's apps in Plasma (feature/hearth-apps-rust; docs/APPS-ANATASE.md)
+# Hearth's pure-Rust apps (hosts/hearth-ui, built inside this base by base-anatase.yml's "hearth-ui" job): Task
+# Manager, System Restore and Reliability history, the ones that ran only inside Mantel. They take those apps' own
+# menu entries and commands here (this edition has no Mantel), and are left out, with their entries as before, when
+# they weren't built or can't start.
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app; do
+  [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
+  install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/bin/$b"
+  # (grep -c, not -q: under pipefail an early grep -q could cut ldd off and hide the match)
+  if [ "$(ldd "/usr/bin/$b" 2>&1 | grep -c 'not found' || true)" != 0 ]; then
+    echo "::warning title=Hearth's pure-Rust apps::$b can't start here (missing $(ldd /usr/bin/$b | grep 'not found' | awk '{print $1}' | tr '\n' ' ')), left out"
+    rm -f "/usr/bin/$b"
+  fi
+done
+# Server mode on this edition (docs/SERVER-MODE.md, "On the Fedora edition"): no labwc or Quickshell here, so its
+# dashboard is hearth-server-app, full screen in cage (a kiosk compositor: one app on the screen, nothing else; it ends
+# when the dashboard's watcher ends). wlopm turns the screen off after idle. Missing: Server mode falls back as before.
+dnf5 -y install --skip-unavailable cage wlopm || true
+echo "::notice title=Server mode (cage)::$(for b in cage wlopm hearth-server-app; do command -v $b >/dev/null 2>&1 && printf '%s ' "$b" || printf 'no-%s ' "$b"; done)$(rpm -q cage 2>/dev/null | head -1)"
+dnf5 -y install --skip-unavailable rsms-inter-fonts >/dev/null 2>&1 || true
+if [ -x /usr/bin/hearth-task-manager ]; then
+  cat > /usr/share/applications/hearth-tasks.desktop <<DESKTOP
+[Desktop Entry]
+Name=Task Manager
+Comment=See what's running, close apps that stopped responding, and check performance
+Exec=/usr/bin/hearth-task-manager
+TryExec=/usr/bin/hearth-task-manager
+Icon=hearth-tasks
+Type=Application
+Categories=System;Monitor;
+Keywords=task;process;end;kill;cpu;memory;gpu;performance;startup;services;
+StartupWMClass=hearth-tasks
+Actions=performance;startup;
+
+[Desktop Action performance]
+Name=Performance
+Exec=/usr/bin/hearth-task-manager --page performance
+
+[Desktop Action startup]
+Name=Startup apps
+Exec=/usr/bin/hearth-task-manager --page startup
+DESKTOP
+fi
+# System Restore and Reliability history: their entries (OnlyShowIn=Nimbus) and commands open the Rust apps.
+for pair in restore:hearth-system-restore reliability:hearth-reliability-history; do
+  id=${pair%%:*}; b=${pair#*:}
+  [ -x "/usr/bin/$b" ] || continue
+  f=/usr/share/applications/hearth-$id.desktop
+  if [ -f "$f" ]; then
+    sed -i -e '/^OnlyShowIn=/d' -e "s|^Exec=/usr/bin/hearth-$id\b|Exec=/usr/bin/$b|" "$f"
+    grep -q '^StartupWMClass=' "$f" || sed -i "0,/^Exec=/s||StartupWMClass=hearth-$id\nExec=|" "$f"
+  fi
+  ln -sf "$b" "/usr/bin/hearth-$id"
+done
+# >>> Hearth Store (feature/hearth-store; docs/HEARTH-STORE.md)
+# The Hearth Store (hearth-store-app) is only here, in the Fedora image (the owner, Nov 19: "built into Hearth OS and not
+# available elsewhere"). Its list of apps (/usr/share/hearth/store/catalog.json), menu entry, icon and the daily-check
+# user timer come from os-bases/anatase/system_files. The timer is turned on only when the app is here; it only reads
+# release pages and writes the Store's cache (never booting, the session or the system). The signing key's public half
+# (/usr/share/hearth/store/catalog-key.pub) is put here only once the owner has made one (docs/HEARTH-STORE.md).
+if [ -x /usr/bin/hearth-store-app ]; then
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["apps"], "no apps"' /usr/share/hearth/store/catalog.json \
+    || { echo "::error title=Hearth Store::its list of apps (catalog.json) can't be read"; exit 1; }
+  install -d /usr/lib/systemd/user/timers.target.wants
+  ln -sf ../hearth-store-check.timer /usr/lib/systemd/user/timers.target.wants/hearth-store-check.timer
+  echo "::notice title=Hearth Store::$(python3 -c 'import json; d=json.load(open("/usr/share/hearth/store/catalog.json")); print("%d apps in its list (serial %d)" % (len(d["apps"]), d.get("serial", 0)))')$( [ -s /usr/share/hearth/store/catalog-key.pub ] && echo ', signing key built in' || echo ', no signing key yet: the built-in list only')"
+else
+  rm -f /usr/share/applications/hearth-store.desktop /usr/lib/systemd/user/hearth-store-check.service /usr/lib/systemd/user/hearth-store-check.timer
+fi
+# <<< Hearth Store
+# >>> Resource Monitor (Rust) (feature/resmon-rust; hosts/hearth-ui/apps/resmon, docs/mockups/checklists/resource-monitor.md)
+# Mantel's Resource Monitor runs only inside Mantel (Quickshell), which this edition doesn't have, so its menu entry
+# (hearth-resmon.desktop, OnlyShowIn=Nimbus) was hidden under Plasma. Here it's the pure-Rust hearth-resmon-app, with
+# the same helper (desktop/shell/hearth-resmon) and the same files. Its entry shows under KDE and opens it; the
+# hearth-resmon command opens it too (a tab name opens that tab; the helper's own words still go to the helper).
+# Debian's entry and command stay Mantel's (os/system_files, untouched).
+if [ -x /usr/bin/hearth-resmon-app ]; then
+  cat > /usr/share/applications/hearth-resmon.desktop <<DESKTOP
+[Desktop Entry]
+Name=Resource Monitor
+Comment=See inside this PC: its board, every part and port, and what each program uses, live
+Exec=/usr/bin/hearth-resmon-app
+TryExec=/usr/bin/hearth-resmon-app
+Icon=hearth-resmon
+Type=Application
+Categories=System;Monitor;
+Keywords=resource;monitor;resmon;hardware;motherboard;memory;ram;cpu;gpu;disk;network;ports;slots;sensors;temperature;
+StartupWMClass=hearth-resmon
+Actions=overview;processor;memory;disk;network;graphics;
+
+[Desktop Action overview]
+Name=Overview
+Exec=/usr/bin/hearth-resmon-app --page overview
+
+[Desktop Action processor]
+Name=Processor
+Exec=/usr/bin/hearth-resmon-app --page cpu
+
+[Desktop Action memory]
+Name=Memory
+Exec=/usr/bin/hearth-resmon-app --page memory
+
+[Desktop Action disk]
+Name=Disk
+Exec=/usr/bin/hearth-resmon-app --page disk
+
+[Desktop Action network]
+Name=Network
+Exec=/usr/bin/hearth-resmon-app --page network
+
+[Desktop Action graphics]
+Name=Graphics
+Exec=/usr/bin/hearth-resmon-app --page gpu
+DESKTOP
+  cat > /usr/bin/hearth-resmon <<'SH'
+#!/bin/sh
+# Opens Resource Monitor on the Fedora edition (hearth-resmon-app, pure Rust; os-bases/anatase/build.sh "Resource
+# Monitor (Rust)"). `hearth-resmon TAB` opens a tab (pc overview cpu memory disk network gpu); anything else goes to
+# the helper (hearth-resmon pc, sample…), as on Debian.
+case "${1:-}" in
+  "") exec /usr/bin/hearth-resmon-app ;;
+  open) exec /usr/bin/hearth-resmon-app ${2:+--page "$2"} ;;
+  pc|overview|cpu|memory|disk|network|gpu) exec /usr/bin/hearth-resmon-app --page "$1" ;;
+  *) exec python3 /usr/share/nimbus/desktop/shell/hearth-resmon "$@" ;;
+esac
+SH
+  chmod 755 /usr/bin/hearth-resmon
+fi
+# <<< Resource Monitor (Rust)
+# >>> Hearth Notes (feature/hearth-notes; docs/HEARTH-NOTES.md)
+# Hearth Notes (hearth-notes-app) is built into this image (the Store lists it as Built in, its rule for Hearth's own
+# hearth-ui apps): its menu entry and icon come from os-bases/anatase/system_files. No service, no timer: it syncs only
+# while it's open. Not built: its entry goes too.
+[ -x /usr/bin/hearth-notes-app ] || rm -f /usr/share/applications/hearth-notes.desktop
+# <<< Hearth Notes
+echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app; do [ -x /usr/bin/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/bin/$b | cut -f1)"; done)"
+# The owner (Nov 18): every Hearth app that runs under Plasma is installed and shown in Plasma's menu, and Hearth's own
+# apps are the defaults there (menu and file types); KDE's apps stay installed but never take Hearth's place. So, for
+# Plasma (KDE) only, each kind's list becomes Hearth's own first (in Hearth Classic's order), then the Hearth KDE
+# builds, then KDE's as the fallback. Apps that run only inside Mantel (Quickshell, not in this image) are never put
+# first: they couldn't open. hearth-app-kinds then writes Plasma's menu copies and kde-mimeapps.list again; only when
+# its check passes is Plasma told to use the copies (the marker below, read by nimbus-session's run_plasma), so a
+# problem here leaves Plasma's menu as it was. Your own choices (~/.config/mimeapps.list, Default Applications) always
+# come first and are never written here.
+# Plasma's own copies, made apart from Hearth Classic's: in a staging tree (/tmp/hearth-plasma-kinds) holding a copy
+# of the menu entries and of the table with each kind's KDE list reordered, and with Hearth Classic's "own apps" rule
+# (which hides Hearth's apps under KDE) off in that tree only. The real table, Hearth Classic's copies and
+# /etc/hearth/desktops.json are never changed. Only when its check passes do the copies go to
+# /usr/share/hearth/app-kinds-plasma (nimbus-session's run_plasma puts it first for Plasma) and its default apps to
+# /etc/xdg/kde-mimeapps.list; otherwise Plasma stays as before.
+hearth_plasma_apps() {
+  python3 - "$1" <<'PY'
+import json, os, re, sys
+p = sys.argv[1]
+t = json.load(open(p))
+# Mantel-only entries can't start in this image: the ones still shown only in Mantel (OnlyShowIn=Nimbus alone), and
+# Files and Capture. A pure-Rust port, once in, takes the entry (above) and stops being one.
+mantel_only = set()
+for d in ('/usr/share/applications',):
+    for n in os.listdir(d):
+        if not n.endswith('.desktop'):
+            continue
+        try:
+            txt = open(os.path.join(d, n), encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue
+        only = re.search(r'^OnlyShowIn=(.*)$', txt, re.M)
+        if only and [x for x in only.group(1).split(';') if x] == ['Nimbus']:
+            mantel_only.add(n)
+mantel_only |= {'hearth-files.desktop', 'hearth-capture.desktop'} & set(os.listdir('/usr/share/applications'))
+changed = []
+for k, kind in t['kinds'].items():
+    apps = kind.get('apps') or {}
+    if 'KDE' not in apps:
+        continue
+    old = list(apps['KDE'])
+    first = [i for i in (apps.get('Nimbus') or []) if i.startswith('hearth-') and i not in mantel_only]
+    builds = [i for i in old if i.startswith('hearth-') and i not in mantel_only]
+    new = []
+    for i in first + builds + [i for i in old if not i.startswith('hearth-')] + [i for i in old if i in mantel_only]:
+        if i not in new:
+            new.append(i)
+    if new != old:
+        apps['KDE'] = new
+        changed.append('%s: %s' % (k, ', '.join(new)))
+with open(p, 'w') as f:
+    json.dump(t, f, indent=1, ensure_ascii=False)
+    f.write('\n')
+print('::notice title=Plasma: Hearth first::' + ('; '.join(changed) or 'no change'))
+PY
+}
+PK=/tmp/hearth-plasma-kinds
+rm -rf "$PK" /usr/share/hearth/app-kinds-plasma
+mkdir -p "$PK/usr/share/hearth" "$PK/etc/hearth" "$PK/etc/xdg"
+cp -a /usr/share/applications "$PK/usr/share/"
+cp /usr/share/hearth/app-kinds.json "$PK/usr/share/hearth/app-kinds.json"
+echo '{"ownApps": false}' > "$PK/etc/hearth/desktops.json"
+for f in /etc/xdg/kde-mimeapps.list /etc/xdg/kde-xdg-terminals.list; do if [ -f "$f" ]; then cp "$f" "$PK/etc/xdg/"; fi; done
+# Programs (TryExec, the desktops' sessions) are looked for where they really are.
+for d in usr/bin usr/sbin usr/libexec usr/local usr/games bin sbin; do if [ -e "/$d" ]; then ln -sfn "/$d" "$PK/$d"; fi; done
+if hearth_plasma_apps "$PK/usr/share/hearth/app-kinds.json" && python3 /usr/libexec/hearth-app-kinds apply --root "$PK" > /tmp/hearth-app-kinds-plasma.json \
+   && python3 /usr/libexec/hearth-app-kinds check --root "$PK" >/dev/null; then
+  mkdir -p /usr/share/hearth/app-kinds-plasma
+  cp -a "$PK/usr/share/hearth/app-kinds/applications" /usr/share/hearth/app-kinds-plasma/
+  for f in kde-mimeapps.list kde-xdg-terminals.list; do if [ -f "$PK/etc/xdg/$f" ]; then cp "$PK/etc/xdg/$f" "/etc/xdg/$f"; fi; done
+  # One entry per app in Plasma's menu (the owner saw Calculator, Terminal and Text Editor twice): where Hearth's own
+  # app shows, its KDE build (hearth-X-kde, the fallback) is kept installed but out of the menu.
+  PA=/usr/share/hearth/app-kinds-plasma/applications; twins=""
+  for k in "$PA"/hearth-*-kde.desktop /usr/share/applications/hearth-*-kde.desktop; do
+    [ -f "$k" ] || continue; id=$(basename "$k"); main="hearth-${id#hearth-}"; main="${main%-kde.desktop}.desktop"
+    m="$PA/$main"; [ -f "$m" ] || m="/usr/share/applications/$main"; [ -f "$m" ] || continue
+    if grep -qE '^NoDisplay=true|^Hidden=true' "$m" || grep -qE '^NotShowIn=.*KDE' "$m" \
+       || { grep -q '^OnlyShowIn=' "$m" && ! grep -qE '^OnlyShowIn=.*KDE' "$m"; }; then continue; fi
+    [ -f "$PA/$id" ] || cp "$k" "$PA/$id"
+    grep -q '^NoDisplay=' "$PA/$id" && sed -i 's/^NoDisplay=.*/NoDisplay=true/' "$PA/$id" || sed -i '0,/^\[Desktop Entry\]/s//[Desktop Entry]\nNoDisplay=true/' "$PA/$id"
+    case " $twins " in *" $id "*) ;; *) twins="$twins $id" ;; esac
+  done
+  echo "::notice title=Plasma's apps::KDE builds kept out of the menu (Hearth's own app shows):${twins:- none}"
+  echo "::notice title=Plasma's apps::$(python3 -c 'import json; d=json.load(open("/tmp/hearth-app-kinds-plasma.json")); v=d["desktops"].get("KDE",{}); print(", ".join("%s=%s" % (a, b) for a, b in sorted(v.get("apps",{}).items()) if b))' 2>/dev/null)"
+else
+  echo "::warning title=Plasma's apps::hearth-app-kinds didn't pass for Plasma, so Plasma's menu shows both Hearth's and KDE's apps, as before: $(head -c 1500 /tmp/hearth-app-kinds-plasma.json 2>/dev/null | tr '\n' ' ')"
+fi
+rm -rf "$PK"
+# Every Hearth menu entry whose program isn't here or can't start (a missing library) is named, so nothing is missing
+# from Plasma's menu without a reason in the build's notices.
+for f in /usr/share/applications/hearth-*.desktop; do
+  prog=$(sed -n 's/^TryExec=//p' "$f" | head -1); [ -n "$prog" ] || prog=$(sed -n 's/^Exec=//p' "$f" | head -1 | awk '{print $1}')
+  case "$prog" in ''|env|sh|bash|python3) continue ;; esac
+  path=$(command -v "$prog" 2>/dev/null) || { echo "::warning title=Plasma menu::$(basename "$f"): its program $prog isn't in this image"; continue; }
+  if [ "$(ldd "$path" 2>/dev/null | grep -c 'not found' || true)" != 0 ]; then
+    echo "::warning title=Plasma menu::$(basename "$f"): $prog can't start, missing $(ldd "$path" | grep 'not found' | awk '{print $1}' | tr '\n' ' ')"
+  fi
+done
+# <<< Hearth's apps in Plasma
+
+# >>> Hearth Files (Rust) (feature/files-rust; hosts/hearth-ui/apps/files, docs/mockups/checklists/files-rust.md)
+# Hearth Files and Hearth's Open / Save window as pure-Rust apps (installed just above with Hearth's other Rust apps),
+# so KDE Plasma gets Hearth's own Files instead of Dolphin: Mantel's Files needs Quickshell, which this edition doesn't
+# have. Only when both were built, have every library and start (--version, no screen needed): then they get the menu
+# entry, the hearth-files and hearth-filemanager commands, Plasma's default for folders and (through hearth-portal)
+# apps' Open / Save window. Otherwise nothing here changes anything: Dolphin stays Files and KDE's own dialog stays
+# the Open / Save window. Dolphin stays installed either way, and hearth-filemanager opens it whenever Hearth Files
+# can't start. The check's marker (/usr/share/hearth/files-rust.ok) is what hearth-portal looks for.
+rm -f /usr/share/hearth/files-rust.ok
+fr_bad=""
+for b in hearth-files-app hearth-file-chooser; do
+  if [ ! -x "/usr/bin/$b" ]; then fr_bad="$fr_bad $b isn't in the image;"; continue; fi
+  timeout 10 "/usr/bin/$b" --version >/dev/null 2>&1 || fr_bad="$fr_bad $b doesn't start;"
+done
+[ -f /usr/share/nimbus/desktop/shell/hearth-files ] || fr_bad="$fr_bad its backend (desktop/shell/hearth-files) is missing;"
+if [ -z "$fr_bad" ]; then
+  mkdir -p /usr/share/hearth
+  echo "Hearth Files (Rust) checked when the image was built" > /usr/share/hearth/files-rust.ok
+  cat > /usr/bin/hearth-files <<'SH'
+#!/bin/sh
+# Hearth Files (the pure-Rust one, Hearth OS Fedora edition): a folder, a file (its folder, with it picked) or Home.
+exec /usr/bin/hearth-files-app "$@"
+SH
+  chmod 755 /usr/bin/hearth-files
+  # hearth-filemanager (os/system_files' one asks Mantel, which isn't here, then Dolphin): Hearth Files first; Dolphin
+  # when Hearth Files can't start (it ends with an error before its window is up).
+  cat > /usr/bin/hearth-filemanager <<'SH'
+#!/bin/sh
+# Opens Hearth Files at a folder, or at a file's folder with it picked; Home with nothing (Fedora edition: the
+# pure-Rust Hearth Files, os-bases/anatase/build.sh "Hearth Files (Rust)"). Dolphin when it can't start.
+target="${1:-$HOME}"
+case "$target" in /*|*://*) ;; *) target="$PWD/$target" ;; esac
+if [ -x /usr/bin/hearth-files-app ] && [ -e /usr/share/hearth/files-rust.ok ]; then
+  /usr/bin/hearth-files-app "$target" && exit 0
+fi
+for fm in dolphin nautilus thunar pcmanfm-qt nemo; do command -v "$fm" >/dev/null 2>&1 && exec "$fm" "$@"; done
+exit 1
+SH
+  chmod 755 /usr/bin/hearth-filemanager
+  # Its menu entry: shown in Plasma too (it was Mantel-only), with the window's own app id for the taskbar icon.
+  f=/usr/share/applications/hearth-files.desktop
+  if [ -f "$f" ]; then
+    sed -i -e '/^OnlyShowIn=/d' -e '/^NotShowIn=/d' -e '/^NoDisplay=/d' "$f"
+    grep -q '^StartupWMClass=' "$f" || sed -i '0,/^Exec=/s||StartupWMClass=hearth-files\nExec=|' "$f"
+    grep -q '^Actions=' "$f" || printf 'Actions=thispc;\n\n[Desktop Action thispc]\nName=This PC\nExec=/usr/bin/hearth-files-app --page thispc\n' >> "$f"
+  fi
+  # Plasma's menu copies (hearth-app-kinds, above): Hearth Files shows, Dolphin and Hearth's Dolphin build stay
+  # installed but out of the menu (one Files, as the owner wants).
+  PA=/usr/share/hearth/app-kinds-plasma/applications
+  if [ -d "$PA" ] && [ -f "$f" ]; then
+    cp "$f" "$PA/hearth-files.desktop"
+    for k in org.kde.dolphin.desktop hearth-files-kde.desktop; do
+      src="$PA/$k"; [ -f "$src" ] || src="/usr/share/applications/$k"; [ -f "$src" ] || continue
+      [ "$src" = "$PA/$k" ] || cp "$src" "$PA/$k"
+      if grep -q '^NoDisplay=' "$PA/$k"; then sed -i 's/^NoDisplay=.*/NoDisplay=true/' "$PA/$k"; else sed -i '0,/^\[Desktop Entry\]/s//[Desktop Entry]\nNoDisplay=true/' "$PA/$k"; fi
+    done
+  fi
+  # Plasma's default for folders (kde-mimeapps.list, read before every other list in Plasma): Hearth Files, then
+  # Dolphin. Your own choice (~/.config/mimeapps.list, Default Applications) still comes first and is never written.
+  for m in inode/directory x-directory/normal; do
+    python3 /usr/share/nimbus/desktop/shell/hearth-system default-system-set /etc/xdg/kde-mimeapps.list "$m" 'hearth-files.desktop;org.kde.dolphin.desktop' >/dev/null \
+      || echo "::warning title=Hearth Files (Rust)::couldn't make it Plasma's default for folders ($m)"
+  done
+  # Apps' Open / Save window on Plasma: xdg-desktop-portal's FileChooser is Hearth's (hearth-portal, which opens
+  # hearth-file-chooser where there's no Quickshell), KDE's when Hearth's portal isn't there. The rest stays KDE's.
+  # (Flatpak apps, Firefox, Chromium and Electron apps use the portal; KDE's own apps do too, below.)
+  if [ -f /usr/share/xdg-desktop-portal/portals/hearth.portal ] && python3 -c 'import gi' 2>/dev/null; then
+    mkdir -p /etc/xdg/xdg-desktop-portal
+    printf '[preferred]\ndefault=kde\norg.freedesktop.impl.portal.FileChooser=hearth;kde\n' > /etc/xdg/xdg-desktop-portal/kde-portals.conf
+    # The owner (Nov 18): "our apps will be the default ones": KDE's own apps (Kate, Okular, Gwenview...) ask the
+    # portal for their Open / Save window too, so they get Hearth's (KDE's plasma-integration reads this; with
+    # Hearth's portal missing or failing, the portal answers with KDE's own dialog, as before).
+    mkdir -p /usr/lib/environment.d
+    printf '# Hearth Files (Rust): KDE apps use the portal for Open / Save, which is Hearth'"'"'s file chooser\nPLASMA_INTEGRATION_USE_PORTAL=1\n' > /usr/lib/environment.d/60-hearth-file-chooser.conf
+  else
+    echo "::warning title=Hearth Files (Rust)::Hearth's portal isn't in this image, so apps keep KDE's Open / Save window"
+  fi
+  command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
+  echo "::notice title=Hearth Files (Rust)::Hearth Files is Plasma's file manager and Open / Save window (Dolphin and KDE's dialog stay as the fallback)"
+else
+  echo "::warning title=Hearth Files (Rust)::left out:$fr_bad Dolphin stays Files and KDE's dialog the Open / Save window"
+fi
+# <<< Hearth Files (Rust)
+
+# >>> Capture (Rust) (feature/capture-rust; hosts/hearth-ui/apps/capture, docs/mockups/checklists/capture-rust.md)
+# Hearth's own Capture on KDE Plasma: Mantel's Capture (screenshots of an area, a window, a screen or all of them,
+# scrolling captures, the markup editor, Recent, Record) as the pure-Rust hearth-capture-app, installed above. Only
+# when it was built and starts here; otherwise nothing below happens and Capture stays KDE's Spectacle with Hearth's
+# name (hearth-capture-kde.desktop), with Spectacle's own Print Screen.
+#  - Its menu entry, hearth-capture.desktop (Mantel's, OnlyShowIn=Nimbus, can't open here), is the app's. KWin gives
+#    org.kde.KWin.ScreenShot2 only to a program whose .desktop file asks for it, found by its path (Exec): this one
+#    asks, as Spectacle's does, so Capture's pictures come from KWin itself, the way Plasma means it.
+#  - hearth-screens (Capture's helper, Print Screen, hearth-screenshot) asks KWin through Debian's small trusted
+#    hearth-kwin-cast, which this edition doesn't build: here it uses `hearth-capture-app shot` (HEARTH_KWIN_CAST,
+#    the same command and answer; it too answers only Hearth's root-owned hearth-screens).
+#  - Print Screen saves the whole screen right away and Super+Shift+S picks an area, as in Mantel (KDE's global
+#    shortcuts, /usr/share/kglobalaccel): Spectacle's copy there gives up Print; its other keys stay.
+#  - Record: hearth-record (KDE's screen-sharing portal, PipeWire, GStreamer's encoder) when GStreamer can read
+#    PipeWire here; else the helper starts Hearth Recorder.
+cap_ok=0
+if [ -x /usr/bin/hearth-capture-app ] && timeout 10 /usr/bin/hearth-capture-app --version >/dev/null 2>&1 \
+   && [ -f /usr/share/nimbus/desktop/shell/hearth-capture-helper ] && [ -f /usr/share/nimbus/desktop/shell/hearth-screens ]; then
+  cap_ok=1
+fi
+if [ "$cap_ok" = 1 ]; then
+  cat > /usr/share/applications/hearth-capture.desktop <<'DESKTOP'
+[Desktop Entry]
+# Hearth Capture on KDE Plasma (hosts/hearth-ui/apps/capture, pure Rust): Mantel's Capture, in place of Spectacle.
+# X-KDE-DBUS-Restricted-Interfaces: KWin lets this program (Exec) take screenshots (org.kde.KWin.ScreenShot2).
+Name=Capture
+GenericName=Screenshot Tool
+Comment=Take screenshots of the screen, a window or an area, and mark them up
+Exec=/usr/bin/hearth-capture-app
+TryExec=/usr/bin/hearth-capture-app
+Icon=hearth-capture
+Type=Application
+Categories=Utility;Graphics;
+Keywords=screenshot;capture;snip;snipping tool;print screen;screen;window;area;markup;ocr;qr;record;
+StartupWMClass=hearth-capture
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
+Actions=area;window;recent;
+
+[Desktop Action area]
+Name=Capture an area
+Exec=/usr/bin/hearth-capture-app area
+
+[Desktop Action window]
+Name=Capture the window in front
+Exec=/usr/bin/hearth-capture-app window
+
+[Desktop Action recent]
+Name=Recent screenshots
+Exec=/usr/bin/hearth-capture-app --page recent
+DESKTOP
+  # Plasma's own menu copies (Hearth's apps in Plasma, above): Capture there too, and Spectacle's two entries kept
+  # installed but out of the menu (one Capture in the menu).
+  PA=/usr/share/hearth/app-kinds-plasma/applications
+  if [ -d "$PA" ]; then
+    cp /usr/share/applications/hearth-capture.desktop "$PA/hearth-capture.desktop"
+    for k in org.kde.spectacle.desktop hearth-capture-kde.desktop; do
+      src="$PA/$k"; [ -f "$src" ] || src="/usr/share/applications/$k"; [ -f "$src" ] || continue
+      [ "$src" = "$PA/$k" ] || cp "$src" "$PA/$k"
+      if grep -q '^NoDisplay=' "$PA/$k"; then sed -i 's/^NoDisplay=.*/NoDisplay=true/' "$PA/$k"
+      else sed -i '0,/^\[Desktop Entry\]/s//[Desktop Entry]\nNoDisplay=true/' "$PA/$k"; fi
+    done
+  fi
+  # hearth-capture (Mantel's opens Capture through Quickshell, not here): the app's own window and modes, and --print
+  # for Print Screen (open.sh's "screenshot": saved in Pictures › Screenshots, copied, a notification).
+  cat > /usr/bin/hearth-capture <<'SH'
+#!/bin/sh
+# Opens Hearth Capture on KDE Plasma (hearth-capture-app, pure Rust; os-bases/anatase/build.sh "Capture (Rust)").
+#   hearth-capture            the window (take, recent, edit)
+#   hearth-capture MODE       straight to taking one: area | window | screen | all | scroll
+#   hearth-capture --recent   the recent screenshots
+#   hearth-capture --print    the whole screen saved right away (Print Screen)
+case "$1" in
+  "")        exec /usr/bin/hearth-capture-app ;;
+  --recent)  exec /usr/bin/hearth-capture-app --page recent ;;
+  area|window|screen|all|scroll) exec /usr/bin/hearth-capture-app "$1" ;;
+  --print)
+    [ -x /usr/libexec/hearth/hearth-kwin-cast ] || export HEARTH_KWIN_CAST=/usr/bin/hearth-capture-app
+    HEARTH_WM=kwin exec sh "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/open.sh" screenshot ;;
+  *) echo "usage: hearth-capture [area|window|screen|all|scroll|--recent|--print]" >&2; exit 2 ;;
+esac
+SH
+  chmod 755 /usr/bin/hearth-capture
+  # hearth-screenshot (grim's way, docs/SCREENS.md): under KWin through Capture where hearth-kwin-cast isn't here.
+  cat > /usr/bin/hearth-screenshot <<'SH'
+#!/bin/sh
+# A screenshot, grim's way, on both of Hearth's compositors (docs/SCREENS.md):
+#   hearth-screenshot [-g "X,Y WxH"] [-o SCREEN] [-c] FILE|-      (PNG; - writes it to the output)
+# Under KWin hearth-screens asks KWin's org.kde.KWin.ScreenShot2 through the program KWin trusts for it: Debian's
+# hearth-kwin-cast, or on the Fedora edition Hearth Capture (hearth-capture-app shot, trusted by its menu entry).
+SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+[ -f "$SHELL_DIR/hearth-screens" ] || SHELL_DIR=/usr/share/nimbus/desktop/shell
+kwin=0
+if [ "${HEARTH_WM:-}" = kwin ]; then kwin=1
+elif [ -z "${HEARTH_WM:-}" ]; then case "${XDG_CURRENT_DESKTOP:-}" in *KDE*) kwin=1 ;; esac
+fi
+if [ "$kwin" = 1 ]; then
+  [ -x /usr/libexec/hearth/hearth-kwin-cast ] || [ -n "${HEARTH_KWIN_CAST:-}" ] || export HEARTH_KWIN_CAST=/usr/bin/hearth-capture-app
+  HEARTH_WM=kwin exec python3 "$SHELL_DIR/hearth-screens" shot "$@"
+fi
+exec grim "$@"
+SH
+  chmod 755 /usr/bin/hearth-screenshot
+  # Print Screen and Super+Shift+S (KDE's global shortcuts): Capture's; Spectacle's copy gives up Print.
+  mkdir -p /usr/share/kglobalaccel
+  cat > /usr/share/kglobalaccel/hearth-capture.desktop <<'DESKTOP'
+[Desktop Entry]
+# Hearth Capture's keys on KDE Plasma (os-bases/anatase/build.sh "Capture (Rust)"), as in Mantel. No NoDisplay
+# here: KDE's shortcuts skip a file in this folder that has it (kglobalacceld loadSettings), and menus never read it.
+Type=Application
+Name=Capture
+Icon=hearth-capture
+Exec=/usr/bin/hearth-capture-app
+Actions=print;area;
+
+[Desktop Action print]
+Name=Save a screenshot of the whole screen
+Exec=/usr/bin/hearth-capture --print
+X-KDE-Shortcuts=Print
+
+[Desktop Action area]
+Name=Capture an area
+Exec=/usr/bin/hearth-capture-app area
+X-KDE-Shortcuts=Meta+Shift+S
+DESKTOP
+  sk=/usr/share/kglobalaccel/org.kde.spectacle.desktop
+  if [ -e "$sk" ]; then
+    real=$(readlink -f "$sk"); [ -f "$real" ] && { cp --remove-destination "$real" "$sk.new" && mv -f "$sk.new" "$sk"; }
+    sed -i -e 's/^X-KDE-Shortcuts=Print$/X-KDE-Shortcuts=/' -e 's/^X-KDE-Shortcuts=Print,/X-KDE-Shortcuts=/' "$sk"
+  fi
+  # Record: hearth-record when GStreamer can read PipeWire (the portal's stream) here.
+  rec=/usr/share/nimbus/desktop/shell/hearth-record
+  if [ -f "$rec" ] && command -v gst-inspect-1.0 >/dev/null 2>&1 && timeout 30 gst-inspect-1.0 pipewiresrc >/dev/null 2>&1; then
+    chmod 755 "$rec"; ln -sf "$rec" /usr/bin/hearth-record; rec_by="hearth-record (PipeWire + GStreamer)"
+  else
+    rec_by="Hearth Recorder (no GStreamer PipeWire source here)"
+  fi
+  grep -qx 'Exec=/usr/bin/hearth-capture-app' /usr/share/applications/hearth-capture.desktop
+  grep -qx 'X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2' /usr/share/applications/hearth-capture.desktop
+  echo "::notice title=Capture (Rust)::Capture is Hearth's own on Plasma ($(du -h /usr/bin/hearth-capture-app | cut -f1)); KWin's screenshots through its entry; Print and Super+Shift+S; Record: $rec_by; Spectacle stays installed as the fallback"
+else
+  echo "::warning title=Capture (Rust)::hearth-capture-app wasn't built or can't start here, so Capture on Plasma is KDE's Spectacle (hearth-capture-kde)"
+fi
+# <<< Capture (Rust)
+
+# ------------------------------------------------------------------ 1.15: Desktop Mode's way back to Game Mode
+# Plasma's menu and taskbar have "Back to Game Mode" (os/system_files' hearth-gamemode.desktop, KDE only, Super+G;
+# pinned once per account by the Plasma update script hearth-game-mode-launcher.js): nimbus-mode game logs Plasma out
+# and Hearth's session starts Game Mode.
+sed -i 's/^Name=Game Mode$/Name=Back to Game Mode/' /usr/share/applications/hearth-gamemode.desktop
+grep -qx 'Name=Back to Game Mode' /usr/share/applications/hearth-gamemode.desktop
+test -f /usr/share/plasma/shells/org.kde.plasma.desktop/contents/updates/hearth-game-mode-launcher.js
+
+# ------------------------------------------------------------------ what the Debian edition gained since Anatase was archived
+# (os-bases/peppermint/build.sh, in Fedora's form; each one optional unless it says otherwise)
+# Hearth Files' shared folders (gio + gvfs SMB + FUSE, secret-tool), locked Briefcases (gocryptfs, required as on
+# Debian), PDF text and previews, the light sensor for auto-brightness, Capture's text and QR reading (Spectacle on
+# Plasma), Task Manager's dump files and memory slots, sensors' names, spell checking, Thunderbolt, OpenVPN files,
+# notification sounds, the phone's files (sshfs).
+dnf5 -y install --skip-unavailable --skip-broken glib2 gvfs gvfs-smb gvfs-fuse libsecret poppler-utils iio-sensor-proxy tesseract \
+  tesseract-langpack-eng zbar gdb dmidecode lm_sensors hunspell-en-US bolt NetworkManager-openvpn sound-theme-freedesktop \
+  sshfs avahi-tools || true
+dnf5 -y install gocryptfs
+command -v gocryptfs || { echo "::error::gocryptfs isn't in the image: Briefcases couldn't be locked or unlocked"; exit 1; }
+command -v gio && command -v secret-tool
+# Hearth Games: Hearth Games (the store app) next to Controller Lab, Saves and Mods.
+if [ -x /ctx/nimbus-app/hearth-gamestore ]; then
+  install -Dm755 /ctx/nimbus-app/hearth-gamestore /usr/bin/hearth-gamestore
+  if ldd /usr/bin/hearth-gamestore | grep "not found"; then echo "warning: hearth-gamestore needs the libraries above; left out"; rm -f /usr/bin/hearth-gamestore; fi
+fi
+gaming_entry hearth-gamestore "Hearth Games" "Game Store" "Your GOG, Epic Games and Battle.net games: sign in, install, play and uninstall" "gog;epic;epic games;battle.net;battlenet;blizzard;store;games;library;install;heroic;"
+
+# ------------------------------------------------------------------ Hearth home server (Settings › Home server, docs/HOME-SERVER.md)
+# Samba, smartmontools, nftables, restic, rclone, Syncthing, hdparm, NUT, git and Python's venv, and Tailscale from its own
+# repository. Every service they bring is off: nothing listens or runs until the owner turns it on in Settings.
+chmod 755 /usr/libexec/nimbus/hearth-home-server-helper 2>/dev/null || true
+dnf5 -y install --skip-unavailable --skip-broken samba smartmontools nftables restic rclone syncthing hdparm nut nut-client git python3-virtualenv || true
+if curl -fsSL --retry 3 -o /etc/yum.repos.d/tailscale.repo https://pkgs.tailscale.com/stable/fedora/tailscale.repo \
+   && dnf5 -y install tailscale; then echo "Tailscale installed"
+else echo "::warning::couldn't install Tailscale: Settings › Home server says so"; rm -f /etc/yum.repos.d/tailscale.repo; fi
+if [ -f /etc/yum.repos.d/tailscale.repo ]; then sed -i 's/^enabled=1/enabled=0/' /etc/yum.repos.d/tailscale.repo; fi
+if [ -d /etc/samba ]; then cat > /etc/samba/smb.conf <<'SMBCONF'
+# Hearth OS: Samba starts with nothing shared. Settings › Home server › Shared folders and Hearth Storage's Windows
+# sharing add their shares from their own files, included below by their helpers. Change shares there.
+[global]
+   workgroup = WORKGROUP
+   server string = Hearth OS
+   server role = standalone server
+   server min protocol = SMB3
+   map to guest = Never
+   restrict anonymous = 2
+   usershare allow guests = no
+   disable netbios = yes
+   smb ports = 445
+   load printers = no
+   printing = bsd
+   printcap name = /dev/null
+   passdb backend = tdbsam
+   logging = systemd
+SMBCONF
+fi
+HS_TIMERS="hearth-home-server-snapshots.timer hearth-home-server-backup.timer hearth-home-server-alerts.timer hearth-home-server-power.timer hearth-home-server-wake.timer hearth-home-server-receive.timer hearth-home-server-services.timer hearth-ollama.timer hearth-jellyfin.timer"
+for u in smb.service nmb.service samba.service tailscaled.service smartd.service nftables.service nut-server.service nut-monitor.service \
+         nut-driver-enumerator.service syncthing-resume.service $HS_TIMERS; do
+  systemctl disable "$u" 2>/dev/null || true
+done
+systemctl disable nut.target nut-driver.target nut-driver-enumerator.path hearth-ai-share-firewall.timer hearth-remote-desktop-firewall.service lactd.service 2>/dev/null || true
+systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service \
+  hearth-comfyui.timer hearth-kokoro.timer hearth-voice-studio.timer hearth-colibri.timer hearth-ai-share.service hearth-vnc.service sunshine.service 2>/dev/null || true
+for u in smb.service nmb.service tailscaled.service smartd.service nftables.service nut-server.service nut-monitor.service \
+         hearth-ai-share-firewall.timer hearth-remote-desktop-firewall.service $HS_TIMERS; do
+  if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u is on in the image: it stays off until the owner turns it on"; exit 1; fi
+done
+for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-ai-share.service hearth-vnc.service sunshine.service; do
+  if [ "$(systemctl --global is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u (a user service) is on in the image"; exit 1; fi
+done
+printf '%s\n' '# Settings › Home server: the state of backups and alerts, and the restic cache.' \
+  'd /var/lib/hearth 0755 root root -' 'd /var/cache/hearth-restic 0700 root root -' > /usr/lib/tmpfiles.d/hearth-home-server.conf
+chmod 755 /usr/share/nimbus/desktop/shell/hearth-remote-desktop /usr/share/nimbus/desktop/shell/hearth-vnc /usr/share/nimbus/desktop/shell/hearth-record 2>/dev/null || true
+
+# ------------------------------------------------------------------ LACT (GPU tuning) and Ludusavi (saved games), 1.11
+# The same pinned versions as Debian. LACT's Fedora package from its release (lactd off until you turn tuning on).
+LACT_VER=0.10.1
+LACT_RPM_URL="$(curl -fsSL --retry 3 "https://api.github.com/repos/ilya-zlobintsev/LACT/releases/tags/v${LACT_VER}" 2>/dev/null \
+  | python3 -c 'import json, sys; f = sys.argv[1]; a = [x["browser_download_url"] for x in json.load(sys.stdin).get("assets", []) if x["name"].endswith(".rpm") and "fedora" in x["name"] and "x86_64" in x["name"] and "headless" not in x["name"]]; a.sort(key=lambda u: (("fedora-" + f) not in u, u)); print(a[0] if a else "")' "$FEDORA" 2>/dev/null || true)"
+if [ -n "$LACT_RPM_URL" ] && dnf5 -y install "$LACT_RPM_URL"; then
+  systemctl disable lactd.service 2>/dev/null || true; echo "LACT $LACT_VER installed ($LACT_RPM_URL)"
+else echo "warning: couldn't install LACT $LACT_VER; GPU tuning stays unavailable"; fi
+LUDU_VER=0.31.0
+if curl -fsSL --retry 3 -o /tmp/ludusavi.tar.gz "https://github.com/mtkennerly/ludusavi/releases/download/v${LUDU_VER}/ludusavi-v${LUDU_VER}-linux.tar.gz" \
+   && mkdir -p /tmp/ludusavi && tar -xzf /tmp/ludusavi.tar.gz -C /tmp/ludusavi && install -Dm755 /tmp/ludusavi/ludusavi /usr/bin/ludusavi; then
+  echo "Ludusavi $LUDU_VER installed"
+else echo "warning: couldn't install Ludusavi $LUDU_VER; Saved games stays unavailable"; fi
+rm -rf /tmp/ludusavi /tmp/ludusavi.tar.gz
+
+# ------------------------------------------------------------------ Hearth Games' engines: gogdl, legendary, nile (the same pins as Debian)
+hearth_tool() {   # file, url, sha256
+  local tmp="/tmp/hearth-tool-$1"
+  if curl -fsSL --retry 3 -o "$tmp" "$2" && echo "$3  $tmp" | sha256sum -c - >/dev/null; then
+    install -Dm755 "$tmp" "/usr/lib/hearth/tools/$1" && echo "$1 put in the image ($2)"
+  else
+    echo "warning: couldn't get $1 ($2), or its checksum didn't match; Hearth downloads it on first use instead"
+  fi
+  rm -f "$tmp"
+}
+hearth_tool gogdl https://github.com/Heroic-Games-Launcher/heroic-gogdl/releases/download/v1.3.0/gogdl_linux_x86_64 cba013d42767c808237c437335ab1d56f58405d07e8f37b3324d264ea5c49655
+hearth_tool legendary https://github.com/legendary-gl/legendary/releases/download/0.21.1/legendary_linux_x64 dbed33bbe96031e65858233e4badf0a1d401bb6cb0cc995d1237cf3a0c826a45
+hearth_tool nile https://github.com/imLinguin/nile/releases/download/v1.2.0/nile_linux_x86_64 d73519514df9d52c50c6feec629373cc3a0d9504e087b6c7372a8ca8a95e7bfe
+
+# ------------------------------------------------------------------ GE-Proton, built in (docs/WINDOWS-APPS.md): the same pin as Debian, required
+GE_PROTON=GE-Proton11-3
+GE_PROTON_SHA256=861c2edc8d40d051fb1e7a692deb953be52bd339c46d90f2b7dde50ddad91266
+if ! curl -fsSL --retry 5 --retry-delay 10 -o /tmp/ge-proton.tar.gz \
+     "https://github.com/GloriousEggroll/proton-ge-custom/releases/download/$GE_PROTON/$GE_PROTON.tar.gz"; then
+  echo "::error title=GE-Proton::couldn't download $GE_PROTON"; exit 1
+fi
+echo "$GE_PROTON_SHA256  /tmp/ge-proton.tar.gz" | sha256sum -c - || { echo "::error title=GE-Proton::$GE_PROTON's checksum didn't match the pinned one"; exit 1; }
+mkdir -p /usr/share/hearth/proton /usr/share/steam/compatibilitytools.d
+tar -xzf /tmp/ge-proton.tar.gz -C /usr/share/hearth/proton
+rm -f /tmp/ge-proton.tar.gz
+test -f "/usr/share/hearth/proton/$GE_PROTON/proton" || { echo "::error title=GE-Proton::$GE_PROTON has no proton script"; exit 1; }
+ln -sfn "/usr/share/hearth/proton/$GE_PROTON" "/usr/share/steam/compatibilitytools.d/$GE_PROTON"
+if [ "$(HOME=/nonexistent /usr/bin/hearth-proton-run --print-proton | cut -f1)" != "$GE_PROTON" ]; then
+  echo "::error title=GE-Proton::hearth-proton-run doesn't pick the built-in $GE_PROTON: $(HOME=/nonexistent /usr/bin/hearth-proton-run --print-proton 2>&1)"; exit 1
+fi
+dnf5 -y install --skip-unavailable --skip-broken icoutils minigalaxy || true
+
+# ------------------------------------------------------------------ 1.14: VPN plugins, fingerprints, CryFS (optional)
+dnf5 -y install --skip-unavailable --skip-broken NetworkManager-strongswan NetworkManager-l2tp NetworkManager-pptp NetworkManager-openconnect \
+  NetworkManager-sstp NetworkManager-fortisslvpn fprintd fprintd-pam cryfs || true
+systemctl disable strongswan.service strongswan-starter.service ipsec.service xl2tpd.service 2>/dev/null || true
+# RED FLAG (docs/FINGERPRINT.md): a fingerprint is never the only way in, and never in front of every password. Fedora
+# turns fprintd on through authselect's with-fingerprint feature: it stays off here.
+if command -v authselect >/dev/null && authselect current 2>/dev/null | grep -q with-fingerprint; then authselect disable-feature with-fingerprint || true; fi
+if grep -qs pam_fprintd /etc/pam.d/system-auth /etc/pam.d/password-auth; then
+  echo "::error::system-auth asks for a fingerprint: that would put the reader in front of every password"; exit 1
+fi
+
+# ------------------------------------------------------------------ memory, guards and the rest of Hearth's services (as on Debian)
+chmod 755 /usr/libexec/nimbus/hearth-memory /usr/libexec/nimbus/hearth-hwset /usr/libexec/nimbus/hearth-diskguard /usr/libexec/nimbus/hearth-screen-psr /usr/libexec/nimbus/hearth-oem-account 2>/dev/null || true
+systemctl enable hearth-memory.service hearth-memguard.service hearth-hwset.service hearth-diskguard.service hearth-gamecores.service hearth-app-rules.service
+systemctl enable hearth-screen-psr.service hearth-oem-account.service hearth-dns-client.service
+# Quick ACKs on the loopback (1.16): older Windows games that talk to themselves over 127.0.0.1 (Trains 2010's
+# TADDaemon) load far faster. A oneshot after network.target that never fails, plus NetworkManager's dispatcher hook
+# when lo comes back up (anatase_files: usr/libexec/nimbus/hearth-loopback-quickack).
+chmod 755 /usr/libexec/nimbus/hearth-loopback-quickack /usr/lib/NetworkManager/dispatcher.d/90-hearth-loopback-quickack
+systemctl enable hearth-loopback-quickack.service || echo "::warning title=loopback quickack::not enabled"
+systemctl --global enable hearth-oem-notice.service
+# Low battery (1.11): UPower warns at 10%, is critical at 5%, and at 2% shuts down cleanly.
+if [ -f /etc/UPower/UPower.conf ]; then
+  sed -i -E 's/^#?\s*UsePercentageForPolicy=.*/UsePercentageForPolicy=true/; s/^#?\s*PercentageLow=.*/PercentageLow=10.0/;
+    s/^#?\s*PercentageCritical=.*/PercentageCritical=5.0/; s/^#?\s*PercentageAction=.*/PercentageAction=2.0/;
+    s/^#?\s*CriticalPowerAction=.*/CriticalPowerAction=PowerOff/' /etc/UPower/UPower.conf
+fi
+# Hearth's terminal speaks C:\ (1.11) in every interactive bash.
+grep -q 'hearth/shell/windows-commands.bash' /etc/bashrc 2>/dev/null || \
+  printf '\n# Hearth: the common Windows commands and C:\\ paths (HEARTH_WINDOWS_COMMANDS=0 turns them off)\n[ -r /usr/share/hearth/shell/windows-commands.bash ] && . /usr/share/hearth/shell/windows-commands.bash\n' >> /etc/bashrc
+getent group netdev >/dev/null || groupadd -r netdev
+# Settings › Region & language: every language's formats (Fedora's langpacks).
+dnf5 -y install --skip-unavailable --skip-broken glibc-all-langpacks || true
+
+# ------------------------------------------------------------------ the boot menu on a PC that came from Debian (red flag 2)
+# Such a PC starts through Debian's signed shim and GRUB, which read Hearth's menu (/boot/grub2/hearth-bls.cfg) instead of
+# ostree's entries: hearth-bls-grub keeps that menu following Anatase's updates and a rollback to Debian. Its units only
+# run where that menu is (their 10-hearth-anatase.conf drop-ins), and bootupd never writes Fedora's loader over Debian's
+# there (bootloader-update.service's drop-in). On a PC installed with Anatase's own loader nothing of this runs.
+chmod 755 /usr/libexec/nimbus/hearth-bls-grub
+systemctl enable hearth-bls-grub.service hearth-bls-grub-refresh.path
+# The owner's laptop (Nov 17): after the move from Debian, Fedora's bootupd updated the EFI partition by itself:
+# Debian's shim and GRUB were removed, Anatase's put in EFI/anatase WITHOUT grub.cfg and bootuuid.cfg (bootupd only
+# writes those at install), the fallback loader made an "Anatase" firmware entry, and the PC stopped at "grub>".
+# So on a PC whose boot menu is Hearth's: (1) bootupctl never updates or adopts the boot loader there (whoever asks:
+# bootloader-update.service, HHD, Anatase's own updaters; HEARTH_BOOTUPD_ALLOW=1 for a person who means it), so
+# Debian's loader stays and the previous version stays startable; (2) hearth-esp-guard gives every loader folder
+# that lacks them the grub.cfg and bootuuid.cfg that find /boot's menu (repairs a PC that already got there).
+if [ -e /usr/bin/bootupctl ]; then
+  real=$(readlink -f /usr/bin/bootupctl)
+  [ "$real" = /usr/bin/bootupctl ] && { mv /usr/bin/bootupctl /usr/libexec/nimbus/bootupctl.real; real=/usr/libexec/nimbus/bootupctl.real; }
+  rm -f /usr/bin/bootupctl
+  cat > /usr/bin/bootupctl <<WRAP
+#!/bin/bash
+# Hearth OS on Anatase: see os-bases/anatase/build.sh ("the boot menu on a PC that came from Debian"). On a PC whose
+# boot menu is Hearth's own (/boot/grub2/hearth-bls.cfg), the boot loader is never updated or adopted by bootupd.
+case " \$* " in
+  *" update "*|*" adopt-and-update "*)
+    if [ -e /boot/grub2/hearth-bls.cfg ] && [ "\${HEARTH_BOOTUPD_ALLOW:-}" != 1 ]; then
+      echo "bootupctl: left as it is on this PC: it starts through Hearth OS on Debian's boot loader and menu (red flag 2). HEARTH_BOOTUPD_ALLOW=1 to do it anyway." >&2
+      exit 0
+    fi ;;
+esac
+exec -a bootupctl $real "\$@"
+WRAP
+  chmod 755 /usr/bin/bootupctl
+  bootupctl --version >/dev/null 2>&1 || bootupctl --help >/dev/null 2>&1 || { echo "::error title=bootupctl::the wrapper doesn't start bootupd ($real)"; exit 1; }
+fi
+echo "::notice title=bootupd callers::units that run bootupctl: $(grep -rls bootupctl /usr/lib/systemd/system /usr/lib/systemd/user /etc/systemd 2>/dev/null | tr '\n' ' ')"
+chmod 755 /usr/libexec/nimbus/hearth-esp-guard
+systemctl enable hearth-esp-guard.service
+if command -v grub2-mkfont >/dev/null; then for sz in 18 22; do grub2-mkfont -n Hearth -s "$sz" -o "/usr/share/hearth/grub-theme/hearth-regular-$sz.pf2" "$(fc-match -f '%{file}' 'Inter:style=Regular' 2>/dev/null || fc-match -f '%{file}' sans)" || true; done; fi
+
+# ------------------------------------------------------------------ Unlock the file system (1.15, hearth-unlock, dnf form)
+# Off unless turned on (Settings › Updates & Recovery, or sudo hearth-unlock): then this version's own writable layer
+# goes over /usr at every start, and what you install with dnf comes back after an update. The boot chain stays the
+# image's (dnf excludes it; every plan is checked). See /usr/bin/hearth-unlock for what survives what.
+chmod 755 /usr/bin/hearth-unlock /usr/lib/systemd/system-generators/hearth-etc-guard
+python3 -m py_compile /usr/bin/hearth-unlock && rm -rf /usr/bin/__pycache__
+install -Dm644 /usr/share/hearth/unlock/dnf-boot-chain.conf /etc/dnf/libdnf5.conf.d/20-hearth-boot-chain.conf
+rm -f /etc/hearth/system-unlocked
+systemctl enable hearth-unlock.service hearth-unlock-units.service hearth-unlock-good.service hearth-unlock-reapply.service \
+  hearth-unlock-ldcache.service hearth-unlock-record.path
 
 # ------------------------------------------------------------------ boot straight into Hearth
 # nimbus-autologin writes the login screen's autologin: Plasma Login Manager's /etc/plasmalogin.conf on Anatase
@@ -1395,9 +2291,146 @@ else
   echo "Nvidia's sleep helpers (nvidia-suspend/hibernate/resume.service) aren't in this image: the driver handles sleep and hibernation itself"
 fi
 
+# ------------------------------------------------------------------ Hearth's look, not Anatase's or Fedora's (1.15)
+# The owner (Nov 18): "also just look like anatase with their logos" — it must look like Hearth. Everywhere a person sees
+# a logo: the name (os-release, with "based on Anatase" only in About's details), the boot splash and its presets, the
+# distribution icons (Plasma's menu button, KInfoCenter's About, anything asking for the distributor's logo), Plasma's
+# wallpaper and lock screen and its start-up splash. Packages' licence and trademark files stay where they are; only
+# the pictures a person sees are Hearth's. Users' own choices are never touched: these are only the system's defaults
+# (/etc/xdg, the look-and-feel defaults) and, once per account, Plasma's settings that were never picked
+# (hearth-look-defaults.js).
+FEDORA_N=$FEDORA
+HEARTH_SVG=/usr/share/icons/hicolor/scalable/apps/hearth.svg
+test -f "$HEARTH_SVG"
+hearth_png() {  # hearth_png SIZE: the Hearth logo PNG closest to SIZE (the icon set's own sizes)
+  local best="" d
+  for d in 16 22 24 32 48 64 96 128 256; do
+    if [ -f "/usr/share/icons/hicolor/${d}x${d}/apps/hearth.png" ]; then best=$d; if [ "$d" -ge "${1:-256}" ]; then break; fi; fi
+  done
+  echo "/usr/share/icons/hicolor/${best}x${best}/apps/hearth.png"
+}
+swapped=0
+while IFS= read -r f; do
+  case "$f" in *.svg|*.svgz) cp -f "$HEARTH_SVG" "$f" ;;
+    *.png) sz=$(echo "$f" | grep -oE '/[0-9]+x[0-9]+/' | head -1 | tr -d / | cut -dx -f1 || true); cp -f "$(hearth_png "${sz:-256}")" "$f" ;;
+    *) continue ;; esac
+  swapped=$((swapped + 1))
+done < <(find /usr/share/icons /usr/share/pixmaps -type f \( -iname '*fedora*logo*' -o -iname '*anatase*' -o -iname 'start-here*' \
+           -o -iname 'distributor-logo*' -o -iname 'system-logo*' -o -iname 'fedora-logo*' \) 2>/dev/null)
+for n in start-here start-here-kde distributor-logo; do
+  install -Dm644 "$HEARTH_SVG" "/usr/share/icons/hicolor/scalable/apps/$n.svg"
+  install -Dm644 "$HEARTH_SVG" "/usr/share/icons/hicolor/scalable/places/$n.svg"
+done
+gtk-update-icon-cache -f -t /usr/share/icons/hicolor >/dev/null 2>&1 || true
+echo "::notice title=Hearth's look::$swapped distribution logo files now show Hearth's logo"
+# The base's own wallpapers carry its code name (Anatase, Anatase_Current ...): the owner wants no Anatase name
+# anywhere. Hearth's looks bring their own wallpapers; a folder something still points at (Default) is kept.
+# A Default that is a link to one of them becomes a real folder first, so it keeps working without the name.
+if [ -L /usr/share/wallpapers/Default ]; then
+  cp -aL /usr/share/wallpapers/Default /usr/share/wallpapers/.Default.new && rm -f /usr/share/wallpapers/Default \
+    && mv /usr/share/wallpapers/.Default.new /usr/share/wallpapers/Default || true
+fi
+gone=0
+for d in /usr/share/wallpapers/[Aa]natase* /usr/share/backgrounds/[Aa]natase*; do
+  [ -e "$d" ] || continue
+  rm -rf "$d" && gone=$((gone + 1))
+done
+# Plasma's Global Themes from the base (shown as "Anatase", "Anatase Light"): Hearth's eight are the system's; the
+# default (org.hearthos.hearth, set below) is never one of these. Breeze stays.
+for d in /usr/share/plasma/look-and-feel/*; do
+  [ -d "$d" ] || continue; case "$(basename "$d")" in org.hearthos.*|org.kde.*) continue ;; esac
+  if grep -qis 'anatase' "$d/metadata.json" "$d/metadata.desktop"; then rm -rf "$d" && gone=$((gone + 1)); fi
+done
+echo "::notice title=Hearth's look::removed $gone wallpaper folders and Global Themes named after the base"
+# KInfoCenter's About this System: Hearth's logo, name and website; the base in its details.
+mkdir -p /etc/xdg
+cat > /etc/xdg/kcm-about-distrorc <<KCM
+[General]
+LogoPath=$(hearth_png 256)
+Website=https://hearthos.fun
+Variant=Fedora edition (test) · Fedora ${FEDORA_N}
+KCM
+# Plasma's wallpaper and lock screen by default: Hearth's (Fireside, from the wallpapers installed above), in every
+# look-and-feel's defaults and the lock screen's system default. Your own choice in ~/.config always wins.
+HW=/usr/share/wallpapers/Hearth-fireside
+test -f "$HW/metadata.json"
+for d in /usr/share/plasma/look-and-feel/*/contents/defaults; do
+  [ -f "$d" ] || continue
+  python3 - "$d" "$HW" <<'PY'
+import sys, configparser
+p, w = sys.argv[1], sys.argv[2]
+c = configparser.RawConfigParser(strict=False, interpolation=None); c.optionxform = str
+c.read(p)
+if not c.has_section('Wallpaper'):
+    c.add_section('Wallpaper')
+c.set('Wallpaper', 'Image', w.rsplit('/', 1)[1])
+with open(p, 'w') as f:
+    c.write(f, space_around_delimiters=False)
+PY
+done
+cat > /etc/xdg/kscreenlockerrc <<LOCK
+[Greeter][Wallpaper][org.kde.image][General]
+Image=file://$HW/contents/images/3840x2160.jpg
+PreviewImage=file://$HW/contents/images/3840x2160.jpg
+LOCK
+# Hearth's looks as Plasma Global Themes: every look in palettes.json (Hearth, Steam-style, Gaming, Zen, Glass,
+# Synthwave, Cabin, Console) becomes "Hearth OS · <name>" in System Settings › Global Theme, generated here from its
+# palette so it never drifts from Mantel's (hearth-plasma-looks build): dark and light colour schemes (plus one pair per
+# sub theme, System Settings › Colors), a Plasma style in its colours, Breeze window frames in its colours, Breeze icons
+# and cursor, its wallpaper and a start-up splash in its colours with Hearth's logo. The accent is Plasma's own setting.
+chmod 755 /usr/libexec/nimbus/hearth-plasma-looks
+python3 /usr/libexec/nimbus/hearth-plasma-looks build --logo "$HEARTH_SVG" > /tmp/hearth-plasma-looks.json
+n=$(python3 -c 'import json,sys; print(len(json.load(open(sys.argv[1]))))' /tmp/hearth-plasma-looks.json)
+test "$n" -ge 8
+for l in hearth steam gaming zen glass synthwave cabin console; do
+  test -f "/usr/share/plasma/look-and-feel/org.hearthos.$l/contents/defaults"
+  test -f "/usr/share/plasma/look-and-feel/org.hearthos.$l/contents/splash/Splash.qml"
+  test -f "/usr/share/color-schemes/HearthOS-$l-Dark.colors" && test -f "/usr/share/color-schemes/HearthOS-$l-Light.colors"
+  test -f "/usr/share/plasma/desktoptheme/hearth-$l/metadata.json"
+  w=$(sed -n 's/^Image=//p' "/usr/share/plasma/look-and-feel/org.hearthos.$l/contents/defaults")
+  test -f "/usr/share/wallpapers/$w/metadata.json"
+done
+echo "::notice title=Hearth's looks::$n Plasma Global Themes from palettes.json ($(ls /usr/share/color-schemes/HearthOS-*.colors | wc -l) colour schemes)"
+# Hearth is the default for everyone who hasn't chosen a look in KDE (KDE's system defaults; a choice of yours in
+# ~/.config always wins). The splash is the look's (Plasma's own splash shows after Hearth's boot splash).
+# (Merged into the distribution's /etc/xdg files: their other keys stay.)
+python3 - <<'PY2'
+import configparser, os
+def merge(p, changes):
+    c = configparser.RawConfigParser(strict=False, interpolation=None); c.optionxform = str
+    if os.path.exists(p):
+        c.read(p)
+    for g, kv in changes.items():
+        if not c.has_section(g):
+            c.add_section(g)
+        for k, v in kv.items():
+            c.set(g, k, v)
+    with open(p, 'w') as f:
+        c.write(f, space_around_delimiters=False)
+merge('/etc/xdg/kdeglobals', {'KDE': {'LookAndFeelPackage': 'org.hearthos.hearth', 'widgetStyle': 'Breeze'},
+                              'General': {'ColorScheme': 'HearthOS-hearth-Dark'}, 'Icons': {'Theme': 'breeze-dark'}})
+merge('/etc/xdg/plasmarc', {'Theme': {'name': 'hearth-hearth'}})
+PY2
+grep -qx 'LookAndFeelPackage=org.hearthos.hearth' /etc/xdg/kdeglobals
+printf '[KSplash]\nEngine=KSplashQML\nTheme=org.hearthos.hearth\n' > /etc/xdg/ksplashrc
+# In the session: the first time, Hearth's look (or, when you already chose one in KDE, a notification asking once);
+# afterwards the look picked in Hearth's Settings (desktop.json) and a Hearth OS Global Theme picked in System Settings
+# stay in step, one source of truth (docs/BASE-ANATASE.md).
+systemctl --global enable hearth-plasma-looks.path
+
 # ------------------------------------------------------------------ boot splash
 dnf5 -y install plymouth-plugin-script
 plymouth-set-default-theme hearth
+# Settings › Boot & startup's presets (hearth-boot-look), in the initramfs as on Debian: picking one only adds
+# plymouth.splash=<preset> to the boot menu's entries; a missing one shows the default (Plymouth falls back).
+chmod 755 /usr/libexec/nimbus/hearth-boot-look 2>/dev/null || true
+mkdir -p /usr/lib/dracut/dracut.conf.d
+{
+  echo "# Written by os-bases/anatase/build.sh: Hearth's boot splash presets in the initramfs (hearth-boot-look)."
+  printf 'install_items+=" %s "\n' "$(find /usr/share/plymouth/themes/hearth-steam /usr/share/plymouth/themes/hearth-minimal \
+    /usr/share/plymouth/themes/hearth-aurora /usr/share/plymouth/themes/hearth-starlight /usr/share/plymouth/themes/hearth-orbit \
+    -type f 2>/dev/null | sort | tr '\n' ' ')"
+} > /usr/lib/dracut/dracut.conf.d/50-hearth-splash.conf
 KVER=$(ls /usr/lib/modules | sort -V | tail -1)
 export DRACUT_NO_XATTR=1
 dracut --no-hostonly --kver "$KVER" --reproducible --zstd --add ostree --add plymouth \
@@ -1405,12 +2438,29 @@ dracut --no-hostonly --kver "$KVER" --reproducible --zstd --add ostree --add ply
 chmod 0600 "/usr/lib/modules/$KVER/initramfs.img"
 
 # ------------------------------------------------------------------ name
+# "Hearth OS" everywhere a name is shown (the login prompt, hostnamectl, KInfoCenter, fastfetch); ID stays Anatase's so
+# tools still know what's underneath, and "based on Anatase" is only in the variant (About's details).
 sed -i \
-  -e 's/^NAME=.*/NAME="Hearth"/' \
-  -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Hearth OS (based on Anatase)"/' \
+  -e 's/^NAME=.*/NAME="Hearth OS"/' \
+  -e 's/^PRETTY_NAME=.*/PRETTY_NAME="Hearth OS"/' \
+  -e '/^LOGO=/d' -e '/^VARIANT=/d' -e '/^VARIANT_ID=/d' -e '/^HOME_URL=/d' \
   /usr/lib/os-release
+printf 'LOGO=hearth\nVARIANT="Fedora edition (test), Fedora %s"\nVARIANT_ID=hearth-anatase\nHOME_URL="https://hearthos.fun"\n' "$FEDORA" >> /usr/lib/os-release
+grep -qx 'PRETTY_NAME="Hearth OS"' /usr/lib/os-release && grep -qx 'LOGO=hearth' /usr/lib/os-release
 
+# Font and icon caches made here, once, for every font and icon the image has (1.16, Firehold on labwc: a cache that's
+# out of date is made again by the desktop itself, a one-off stall of the shell): never on the PC.
+fc-cache -s -f >/dev/null 2>&1 || true
+for t in /usr/share/icons/*/; do [ -f "$t/index.theme" ] && gtk-update-icon-cache -q -f -t "$t" >/dev/null 2>&1; done; true
 dnf5 clean all
+# Unlock the file system: the image's own packages (the start of the record of yours: hearth-unlock --record).
+rpm -qa --qf '%{NAME}\n' | grep -vx gpg-pubkey | sort -u > /usr/share/hearth/rpm-baseline.list
+test -s /usr/share/hearth/rpm-baseline.list
+# Anything that left a repository on for the installed system (the image brings updates; dnf on an unlocked system
+# uses Fedora's own repositories and Anatase's).
+for r in /etc/yum.repos.d/rpmfusion-*.repo /etc/yum.repos.d/tailscale.repo /etc/yum.repos.d/_copr*.repo; do
+  if [ -f "$r" ]; then sed -i 's/^enabled=1/enabled=0/' "$r"; fi
+done
 
 # bootc keeps images in podman's storage (imgstorage): without podman, updates and Switch edition fail
 # ("podman executable not found in PATH"). Peppermint 0.3.0 shipped without it.

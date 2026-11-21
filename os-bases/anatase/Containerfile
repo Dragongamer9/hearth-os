@@ -1,13 +1,27 @@
-# Hearth OS on Anatase: the next Hearth OS. Anatase (Fedora 45, bootc; one image for AMD, Intel and Nvidia, with
-# Handheld Daemon, Valve's gamescope and its own SteamOS Manager) with the Hearth session (Game Mode + Desktop Mode)
-# as what it boots into. Replaces the Bazzite build (os/Containerfile) once it's been tried on devices; until then
-# it's published as ghcr.io/dragongamer9/hearth-os:testing. See docs/archive/BASE-ANATASE.md.
+# Hearth OS, Fedora edition (internally Anatase; the main edition from 1.16). Anatase (Fedora, bootc; one image for
+# AMD, Intel and Nvidia, with Handheld Daemon and Valve's gamescope) with the Hearth session: Steam Game Mode with
+# Hearth Sync, and stock KDE Plasma as Desktop Mode with Hearth's apps. Published by base-anatase.yml: releases (main)
+# to ghcr.io/dragongamer9/hearth-os:stable, owner-approved tests to test-<version>. See docs/BASE-ANATASE.md.
 # Built by .github/workflows/base-anatase.yml from the repository root:
 #   podman build -f os-bases/anatase/Containerfile -t hearth-os .
 # os/nimbus-app must hold the Hearth app build (hearth, browser/, and browser-cef/ if built); CI puts it there.
 
 # i.anatase.org/anatase:stable (also :rolling, :testing), signed by Anatase with cosign.
 ARG BASE_IMAGE=i.anatase.org/anatase:stable
+
+# Hearth's typing for KWin (hearth-kwin-im, the same as Debian's: hosts/linux/desktop/kwin-helpers), built against
+# this base's own libraries in a stage of its own, so no compiler ends up in the image. Never fails the build: without
+# it the image simply has no hearth-kwin-im, and KDE's own keyboard stays KWin's input method (hearth-kwin-im-launch).
+FROM ${BASE_IMAGE} AS kwinim
+COPY hosts/linux/desktop/kwin-helpers /src
+RUN mkdir -p /out && { dnf5 -y install gcc pkgconf-pkg-config wayland-devel wayland-protocols-devel >/dev/null 2>&1 \
+      && HEARTH_IM_ONLY=1 bash /src/build.sh /out; } || echo "hearth-kwin-im wasn't built: KDE's own keyboard stays KWin's input method"
+# >>> labwc on the Fedora edition (1.16, docs/LABWC-FEDORA.md): Quickshell v0.3.2 for Mantel, built against this very
+# base image's Qt (Quickshell uses Qt's private API), in a stage of its own: only its files reach the image.
+FROM ${BASE_IMAGE} AS quickshell
+COPY os-bases/anatase/quickshell-build.sh /quickshell-build.sh
+RUN --mount=type=cache,dst=/var/cache bash /quickshell-build.sh /out
+# <<< labwc on the Fedora edition
 
 # Files the build script needs, kept out of the final image (the same as os/Containerfile, plus this image's own).
 FROM scratch AS ctx
@@ -20,11 +34,20 @@ COPY hosts/linux/session /session
 COPY hosts/linux/desktop /desktop
 COPY branding/icons /icons
 COPY hosts/hearth-kde /hearth-kde
+# Pieces of the Debian edition this image uses as they are: its boot menu writer (for a PC that came from Debian and
+# starts through Debian's GRUB), the writable system's units and drop-ins, the /etc guard (build.sh picks them).
+COPY os-bases/peppermint/system_files /peppermint_files
+COPY --from=kwinim /out /kwin-im
+# labwc on the Fedora edition: Quickshell (above) and what Mantel needs (labwc-install.sh, run by build.sh).
+COPY --from=quickshell /out /quickshell
+COPY os-bases/anatase/labwc-install.sh /labwc-install.sh
 
 FROM ${BASE_IMAGE}
 
 ARG NIMBUS_VERSION=0.0.0
 ARG BASE_IMAGE
+# The tag this image is published to (image-info.json's "image-tag"): stable (a release) or test-<version>.
+ARG HEARTH_CHANNEL=stable
 LABEL org.opencontainers.image.title="Hearth OS" \
       org.opencontainers.image.description="Hearth OS: Anatase with a controller-first Game Mode and Desktop Mode" \
       org.opencontainers.image.source="https://github.com/Dragongamer9/hearth-os" \
@@ -35,7 +58,7 @@ LABEL org.opencontainers.image.title="Hearth OS" \
 RUN --mount=type=bind,from=ctx,source=/,target=/ctx \
     --mount=type=cache,dst=/var/cache \
     --mount=type=tmpfs,dst=/tmp \
-    BASE_IMAGE="${BASE_IMAGE}" NIMBUS_VERSION="${NIMBUS_VERSION}" /ctx/build.sh
+    BASE_IMAGE="${BASE_IMAGE}" NIMBUS_VERSION="${NIMBUS_VERSION}" HEARTH_CHANNEL="${HEARTH_CHANNEL}" /ctx/build.sh
 
 # /var belongs to the installed system, not the image (Anatase's template does the same; tmpfiles.d recreates
 # what's needed at boot).

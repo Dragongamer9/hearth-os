@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Firehold on Plasma
+Comment=Firehold's KWin script, the controller in the Couch and Automatic posture (only in a Firehold session)
+Exec=hearth-firehold-plasma session
+OnlyShowIn=KDE;
+NoDisplay=true
+X-KDE-autostart-phase=2

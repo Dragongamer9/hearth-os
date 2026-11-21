@@ -4,7 +4,7 @@
 // was copied here, and only while Steam has it.
 import { ButtonItem, DropdownItem, Field, PanelSection, PanelSectionRow, ProgressBarWithInfo, TextField, ToggleField, staticClasses } from "@decky/ui";
 import { definePlugin, toaster } from "@decky/api";
-import { Component, ReactNode, useEffect, useRef, useState } from "react";
+import { Component, Fragment, ReactNode, useEffect, useRef, useState } from "react";
 import { FaNetworkWired } from "react-icons/fa";
 import {
   Answer, Down, Game, Job, POLL, STORAGE_POLL, Status, afterCopy, active, ago, bytes, canWake, deviceLine, healthSummary, hasStorage,
@@ -14,7 +14,7 @@ import {
 import { HearthOnly, hearthOs } from "./hearth-only";
 import { StorageInfo, deckyInstall, fetchPlugin, games, getStatus, getStorage, linkCall, restartSteam, setSync, startLink, steamCanRestart, syncInfo,
   homeServer, homeServerLight, homeServerResume } from "./link";
-import { DiscordQuick, discordOpen, discordSet, discordSetup, discordStatus, discordToasts } from "./link";
+import { DiscordQuick, Toast, discordOpen, discordSet, discordSetup, discordStatus, discordToasts, notificationAction } from "./link";
 import { ServerShort, servers } from "./link";
 
 const warn = { color: "#ffb37a" };
@@ -465,19 +465,128 @@ function DiscordSection() {
 /** Discord's notifications (and other apps') while Steam Game Mode runs, as Decky toasts: the backend's notification
  *  bridge collects them; only what each notification itself says. */
 let toastSeq = 0;
+// The newest notification with buttons (Hearth Player's "A disc was inserted": Play disc, Eject), for Quick Access.
+let withButtons: Toast | null = null;
+const buttonWatchers = new Set<() => void>();
+function setWithButtons(t: Toast | null) { withButtons = t; buttonWatchers.forEach((f) => f()); }
+async function press(t: Toast, key: string) {
+  await notificationAction(t.id ?? 0, key).catch(() => null);
+  if (withButtons === t) setWithButtons(null);
+}
 function startToasts(): () => void {
   let first = true;
   const t = setInterval(async () => {
     const list = await discordToasts(toastSeq).catch(() => []);
     for (const n of list || []) {
       toastSeq = Math.max(toastSeq, n.seq);
-      if (!first) { try { toaster.toast({ title: n.title || n.app, body: n.body || n.app }); } catch { /* Decky has no toaster */ } }
+      const acts = n.actions || [];
+      if (acts.length && n.id) setWithButtons(n);
+      if (!first) {
+        // A toast with buttons does the first one when pressed (Play disc); all of them are in Quick Access too.
+        const body = acts.length ? `${n.body || n.app} · Press to ${acts[0][1].toLowerCase()} (Quick Access › Hearth Link: ${acts.map((a) => a[1]).join(", ")})` : (n.body || n.app);
+        try { toaster.toast({ title: n.title || n.app, body, onClick: acts.length ? () => { press(n, acts[0][0]); } : undefined }); } catch { /* Decky has no toaster */ }
+      }
     }
     first = false;
   }, 3000);
   return () => clearInterval(t);
 }
+
+/** Quick Access › Hearth Link: the newest notification that has buttons (a disc that went in: Play disc, Eject). */
+function NoticeButtons() {
+  const [, redraw] = useState(0);
+  useEffect(() => { const f = () => redraw((x) => x + 1); buttonWatchers.add(f); return () => { buttonWatchers.delete(f); }; }, []);
+  const t = withButtons;
+  if (!t || !(t.actions || []).length) return null;
+  return (
+    <PanelSection title={t.title || t.app}>
+      <Line>{t.body}</Line>
+      {(t.actions || []).map(([key, label]) => (
+        <PanelSectionRow key={key}>
+          <ButtonItem layout="below" onClick={() => press(t, key)}>{label}</ButtonItem>
+        </PanelSectionRow>
+      ))}
+    </PanelSection>
+  );
+}
 // ---- end Discord
+
+// ---- Family and friends with Moonlight (docs/HEARTH-LINK.md): the PCs that let this one connect (online or not: each is
+// asked once when the panel opens, nothing polls), Connect (Moonlight through Hearth Link) and Remove; and when someone
+// is connected to this PC, who, with Stop sharing now. Turning it on and adding people: Settings › Gaming › Family and friends.
+type Friend = { id: string; name: string; online: boolean; sharing: boolean | null; what: string; ask: boolean };
+type Friends = { friends: Friend[]; connected: { name: string; relay: boolean; until: number | null } | null; moonlight: boolean };
+type Share = { on: boolean; session: { who: string; what: string; until: number | null; connected: boolean } | null };
+const whatWord = (w: string) => (w === "games" ? "Games only" : "Whole desktop");
+const minsLeft = (until: number | null | undefined) => {
+  if (!until) return "";
+  const m = Math.max(0, Math.ceil((until - Date.now()) / 60000));
+  return m >= 60 ? ` · ${Math.floor(m / 60)} h ${m % 60} min left` : ` · ${m} min left`;
+};
+function friendLine(p: Friend): string {
+  if (!p.online) return "Offline";
+  if (p.sharing === false) return "Online · not letting anyone connect right now";
+  return `Online · ${whatWord(p.what)}${p.ask ? " · they're asked first" : ""}`;
+}
+function FamilySection() {
+  const [f, setF] = useState<Friends | null>(null);
+  const [mine, setMine] = useState<Share | null>(null);
+  const [msg, setMsg] = useState("");
+  const [busy, setBusy] = useState("");
+  const alive = useRef(true);
+  const load = (check: boolean) => {
+    linkCall("moonlight.friends", check ? { check: true } : {}).then((r) => { if (alive.current && r && r.ok) setF(r.data as Friends); }).catch(() => {});
+    linkCall("moonlight.share.status", {}).then((r) => { if (alive.current && r && r.ok) setMine(r.data as Share); }).catch(() => {});
+  };
+  useEffect(() => { load(true); return () => { alive.current = false; }; }, []);
+  // Only while something's connected: the time left and whether it ended.
+  const live = !!(mine?.session || f?.connected);
+  useEffect(() => { if (!live) return; const t = setInterval(() => load(false), 20000); return () => clearInterval(t); }, [live]);
+  const act = async (key: string, cmd: string, args: Record<string, unknown>, said: string) => {
+    setBusy(key); setMsg(key.startsWith("connect:") ? "Asking… they may need to say yes on their PC" : "");
+    const r = await linkCall(cmd, args).catch(() => ({ ok: false, error: "Hearth Link didn't answer" }));
+    if (!alive.current) return;
+    setBusy(""); setMsg(r.ok ? said : r.error || "That didn't work"); load(true);
+  };
+  const list = f?.friends || [];
+  const sess = mine?.session;
+  if (!list.length && !sess && !f?.connected) return null;
+  return (
+    <PanelSection title="Family and friends">
+      {sess && (
+        <>
+          <Line>{`${sess.who} is connected to this PC`}</Line>
+          <Line style={dim}>{`They can see and control it and hear its sound · ${whatWord(sess.what)}${minsLeft(sess.until)}`}</Line>
+          <PanelSectionRow>
+            <ButtonItem layout="below" disabled={busy === "stop"} onClick={() => act("stop", "moonlight.stop", {}, "Stopped: they were disconnected")}>Stop sharing now</ButtonItem>
+          </PanelSectionRow>
+        </>
+      )}
+      {f?.connected && (
+        <PanelSectionRow>
+          <ButtonItem layout="below" description={`Moonlight is open${f.connected.relay ? " · through Hearth Link's relay" : ""}${minsLeft(f.connected.until)}`}
+            onClick={() => act("disconnect", "moonlight.disconnect", {}, "Disconnected")}>{`Disconnect from ${f.connected.name}`}</ButtonItem>
+        </PanelSectionRow>
+      )}
+      {list.map((p) => (
+        <Fragment key={p.id}>
+          <PanelSectionRow>
+            <ButtonItem layout="below" description={friendLine(p)} disabled={!p.online || p.sharing === false || !!f?.connected || !!busy}
+              onClick={() => act(`connect:${p.id}`, "moonlight.connect", { id: p.id }, `Connected to ${p.name}: Moonlight is opening`)}>
+              {busy === `connect:${p.id}` ? `Asking ${p.name}…` : `Connect to ${p.name}`}
+            </ButtonItem>
+          </PanelSectionRow>
+          <PanelSectionRow>
+            <ButtonItem layout="inline" disabled={!!busy} onClick={() => act(`remove:${p.id}`, "moonlight.forget", { id: p.id }, `${p.name} is off your list`)}>{`Remove ${p.name}`}</ButtonItem>
+          </PanelSectionRow>
+        </Fragment>
+      ))}
+      {f && !f.moonlight && list.length > 0 && <Line style={warn}>Moonlight isn't installed: Desktop Mode › Settings › Gaming › Remote play › Moonlight</Line>}
+      {msg && <Line style={dim}>{msg}</Line>}
+    </PanelSection>
+  );
+}
+// ---- end Family and friends
 
 export default definePlugin(() => {
   let stop: (() => void) | null = null;
@@ -486,7 +595,7 @@ export default definePlugin(() => {
   return {
     name: "Hearth Link",
     titleView: <div className={staticClasses.Title}>Hearth Link</div>,
-    content: <HearthOnly name="Hearth Link" what="Your saves, plugins and settings on every Hearth device."><Guard><HomeServer /></Guard><Guard><YourServers /></Guard><Panel /><Guard><DiscordSection /></Guard></HearthOnly>,
+    content: <HearthOnly name="Hearth Link" what="Your saves, plugins and settings on every Hearth device."><NoticeButtons /><Guard><HomeServer /></Guard><Guard><YourServers /></Guard><Panel /><Guard><FamilySection /></Guard><Guard><DiscordSection /></Guard></HearthOnly>,
     icon: <FaNetworkWired />,
     onDismount() { gone = true; if (stop) stop(); },
   };

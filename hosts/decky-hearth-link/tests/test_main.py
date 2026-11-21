@@ -178,6 +178,31 @@ class Backend(unittest.TestCase):
         self.assertEqual([x['cmd'] for x in link.got], ['transfer.pause', 'send', 'local.games'], 'unpair never reached Hearth Link')
         self.assertEqual(link.got[0]['args'], {'id': '0123456789abcdef'})
 
+    def test_family_and_friends_in_short(self):
+        link = FakeLink(self.sock, {
+            'moonlight.friends': {'ok': True, 'data': {'friends': [{'id': B, 'name': "Dad's PC", 'online': True, 'sharing': True, 'what': 'games', 'ask': False, 'secret': 'x'},
+                                                                    {'id': '../x', 'name': 'bad'}],
+                                                       'connected': {'peer': B, 'name': "Dad's PC", 'relay': True, 'until': 5, 'pid': 77}, 'moonlight': True}},
+            'moonlight.share.status': {'ok': True, 'data': {'on': True, 'people': [{'id': A, 'name': 'Chris'}], 'invite': {'code': '482913', 'netCode': 'K7M-4QX-92HC'},
+                                                            'session': {'peer': A, 'who': 'Chris', 'what': 'desktop', 'until': 9, 'connected': True}}},
+            'moonlight.stop': {'ok': True, 'data': {'on': True, 'session': None}},
+            'moonlight.connect': {'ok': False, 'error': "Dad's PC said no"}})
+        try:
+            f = self.m.call('moonlight.friends', {'check': True})['data']
+            self.assertEqual(f['friends'], [{'id': B, 'name': "Dad's PC", 'online': True, 'sharing': True, 'what': 'games', 'ask': False}])
+            self.assertEqual(f['connected'], {'name': "Dad's PC", 'relay': True, 'until': 5})
+            sh = self.m.call('moonlight.share.status', {})['data']
+            self.assertEqual(sh, {'on': True, 'session': {'who': 'Chris', 'what': 'desktop', 'until': 9, 'connected': True}}, 'never the people or the code')
+            self.assertEqual(self.m.call('moonlight.stop', {})['data'], {'on': True, 'session': None})
+            self.assertEqual(self.m.call('moonlight.connect', {'id': B}), {'ok': False, 'error': "Dad's PC said no"})
+            for bad in ('moonlight.share.set', 'moonlight.share.invite', 'moonlight.share.remove', 'moonlight.share.person', 'moonlight.join'):
+                self.assertEqual(self.m.call(bad, {'on': True})['error'], self.m.NOT_ALLOWED, bad)
+            self.assertIn('error', self.m.call('moonlight.connect', {'id': '../../x'}))
+        finally:
+            link.close()
+        self.assertEqual([x['cmd'] for x in link.got], ['moonlight.friends', 'moonlight.share.status', 'moonlight.stop', 'moonlight.connect'],
+                         'turning it on, adding and removing people are only in Settings')
+
     def test_storage_sections(self):
         link = FakeLink(self.sock, {
             'storage.cache.status': {'ok': True, 'data': {'enabled': True, 'using': {'id': B, 'name': 'Desk'}, 'jobs': [],
@@ -315,6 +340,32 @@ class DiscordQuickAccess(unittest.TestCase):
         self.assertEqual(self.m.toasts_since(last), [])
         self.assertEqual([t['body'] for t in self.m.toasts_since(last - 2)], ['msg 23', 'msg 24'])
         self.assertEqual(self.m.toasts_since('bad')[0]['body'], 'msg 5')
+
+    def test_notice_buttons(self):
+        # Hearth Player's "A disc was inserted": its buttons come with the toast, a press goes to the bridge, and a
+        # notification taken back (the disc came out) loses them.
+        import asyncio
+        self.m.TOASTS.clear()
+        t = self.m.toast_take(json.dumps({'id': 7, 'app': 'Hearth Player', 'title': 'A disc was inserted', 'body': 'Film · DVD film',
+                                          'actions': [['play', 'Play disc'], ['eject', 'Eject'], ['bad key!', 'x']]}))
+        self.assertEqual(t['actions'], [['play', 'Play disc'], ['eject', 'Eject']])
+        sent = []
+
+        class Stdin:
+            def write(self, b): sent.append(b)
+            async def drain(self): pass
+
+        class Bridge:
+            stdin = Stdin()
+        plugin = self.m.Plugin()
+        plugin._bridge = Bridge()
+        self.assertEqual(asyncio.run(plugin.notification_action(7, 'format')), {'ok': False}, 'only its own buttons')
+        self.assertEqual(asyncio.run(plugin.notification_action(7, 'play')), {'ok': True})
+        self.assertEqual(sent, [b'action 7 play\n'])
+        self.assertEqual(self.m.TOASTS[-1]['actions'], [], 'pressed once')
+        self.m.toast_take(json.dumps({'id': 8, 'app': 'Hearth Player', 'title': 'A disc was inserted', 'body': 'x', 'actions': [['eject', 'Eject']]}))
+        self.assertIsNone(self.m.toast_take(json.dumps({'closed': 8})))
+        self.assertEqual(self.m.TOASTS[-1]['actions'], [])
 
 
 if __name__ == '__main__':

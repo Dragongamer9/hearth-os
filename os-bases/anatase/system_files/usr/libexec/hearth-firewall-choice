@@ -1,0 +1,32 @@
+#!/bin/sh
+# hearth-firewall-choice (Hearth OS on Anatase, the Fedora edition; hearth-firewall-choice.service): ONE firewall.
+# The image ships firewalld (Fedora's own, and what hearth-firewall and hearth-link-firewall prefer). Some devices
+# installed before 1.15 had both firewalld.service and ufw.service turned on, with ufw the one running (and Hearth
+# Link's rules in it). This runs once per device, at the start before either firewall, and decides for good:
+#   - a device that had already started Hearth (/var/lib/hearth/boot-good.json) and has ufw turned on keeps ufw,
+#     exactly as it was: its rules, its on / off; firewalld stays off there (it wasn't running anyway). Nothing
+#     changes by itself (red flag: settings never change by themselves). Turning the firewall on with firewalld later
+#     in Settings › Privacy & security › Firewall moves it to firewalld (hearth-firewall removes the mark).
+#   - every other device (new installs) uses firewalld only; ufw.service is skipped.
+# The answer is kept in /var/lib/hearth/firewall-chosen; /var/lib/hearth/firewall-ufw marks "keep ufw" (the two
+# units' drop-ins read it). Nothing here can stop the PC from starting: no waiting, and on any error ufw is kept
+# where it was on (the safer side).
+D=${HEARTH_FWC_STATE:-/var/lib/hearth}
+UFW_CONF=${HEARTH_FWC_UFW_CONF:-/etc/ufw/ufw.conf}   # (both only for the tests)
+[ -e "$D/firewall-chosen" ] && exit 0
+mkdir -p "$D" || exit 0
+ufw_on=no
+if [ -e "$UFW_CONF" ] && grep -qsE '^[[:space:]]*ENABLED[[:space:]]*=[[:space:]]*yes' "$UFW_CONF" \
+   && [ "$(systemctl is-enabled ufw.service 2>/dev/null)" = enabled ]; then
+  ufw_on=yes
+fi
+if [ "$ufw_on" = yes ] && [ -e "$D/boot-good.json" ]; then
+  : > "$D/firewall-ufw"
+  echo ufw > "$D/firewall-chosen"
+  echo "hearth-firewall-choice: this PC keeps ufw, as before (its rules and settings unchanged); firewalld stays off"
+else
+  rm -f "$D/firewall-ufw"
+  echo firewalld > "$D/firewall-chosen"
+  echo "hearth-firewall-choice: firewalld is this PC's firewall"
+fi
+exit 0

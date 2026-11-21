@@ -99,7 +99,7 @@ Scope {
         watchChanges: true
         onFileChanged: reload()
         onLoaded: { try { rp.live = JSON.parse(text()); } catch (e) {} }
-        onLoadFailed: rp.live = { state: "idle" }
+        onLoadFailed: if (!rp.live || rp.live.state !== "idle" || Object.keys(rp.live).length !== 1) rp.live = { state: "idle" }   // (1.16: only when it changed)
     }
     Timer { interval: 1000; running: rp.shown && rp.recording; repeat: true; onTriggered: clock.text = rp.elapsed() }
     // A file that isn't there yet can't be watched: read again every 2 seconds (as the bar's capture dot does), so a

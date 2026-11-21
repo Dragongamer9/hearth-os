@@ -120,3 +120,12 @@ It encodes on the graphics card (NVENC, VA-API) when GStreamer can, else x264 (a
 the first seconds is replaced by itself), into an MP4 written in fragments, so a power cut doesn't lose the recording.
 Recordings go to Videos/Recordings with a notification. Its helper is hearth-record; your choices are in
 `~/.config/nimbus/record.json`, written only when you change one.
+
+## Family and friends (Moonlight through Hearth Link)
+
+Settings › Gaming › **Family and friends** lets the people you add connect with Moonlight without Tailscale or router
+ports: Moonlight's connections go through Hearth Link (docs/HEARTH-LINK.md "Family and friends with Moonlight"). It uses
+the same Sunshine and the same helper (`hearth-remote-desktop family ...`); its rule (`remote-fw local`) keeps Sunshine to
+this PC itself, and Use this PC from anywhere's Tailscale rule (which lets this PC in too) works with it. Turning Use
+this PC from anywhere off while Family and friends is on keeps Hearth's Sunshine values and changes the rule to this PC
+only.

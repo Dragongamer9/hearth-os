@@ -63,10 +63,15 @@ Scope {
         o[key] = value;
         writer.merge(o);
     }
-    readonly property bool unlocked: (cfg.firehold && typeof cfg.firehold === "object" && cfg.firehold.unlocked === true) || cfg["firehold.unlocked"] === true
+    // >>> Firehold on labwc (Fedora edition, 1.16; docs/LABWC-FEDORA.md): picked in Settings › Your desktop, the session
+    // says so (HEARTH_FIREHOLD_SESSION=1) and Firehold is on for that sign-in only. firehold.json is never written for it.
+    readonly property bool sessionPicked: Quickshell.env("HEARTH_FIREHOLD_SESSION") === "1"
+    // <<< Firehold on labwc
+    readonly property bool unlocked: sessionPicked || (cfg.firehold && typeof cfg.firehold === "object" && cfg.firehold.unlocked === true) || cfg["firehold.unlocked"] === true
     readonly property string mode: ["auto", "couch", "desk"].indexOf(cfg.posture) >= 0 ? cfg.posture : "auto"
     readonly property var perScreen: cfg.perScreen && typeof cfg.perScreen === "object" ? cfg.perScreen : ({})
-    readonly property string startIn: ["couch", "desk", "last"].indexOf(cfg.startIn) >= 0 ? cfg.startIn : "desk"
+    // (Firehold on labwc starts in the Couch unless you chose otherwise in Settings › Couch and Desk.)
+    readonly property string startIn: ["couch", "desk", "last"].indexOf(cfg.startIn) >= 0 ? cfg.startIn : (sessionPicked ? "couch" : "desk")
     readonly property string guideButton: ["quick", "open"].indexOf(cfg.guide) >= 0 ? cfg.guide : "quick"
     readonly property string gamesOpen: ["follow", "fullscreen", "window"].indexOf(cfg.games) >= 0 ? cfg.games : "follow"
     readonly property bool bigPicture: cfg.bigPicture === true
@@ -82,6 +87,9 @@ Scope {
         if (!unlocked) return;
         posture = F.startPosture(startIn, mode, lastPosture.text().trim());
         loadLibrary(true);
+        // Firehold on labwc: every screen starts in that posture in the live modes (never a setting), then they're read.
+        if (sharedCouch) liveModes.helper(["switch", posture, "--why", "start"], function () { fhs.modesReady = true; liveModes.readModes(); });
+        else modesReady = true;
     }
     // "Start in: Where you left off": the posture you were in, as state (not a setting) in $XDG_RUNTIME_DIR's
     // neighbour ~/.local/state, written only when you switch.
@@ -89,14 +97,28 @@ Scope {
     onPostureChanged: if (unlocked && started) Quickshell.execDetached(["sh", "-c", 'mkdir -p "$(dirname "$1")" && printf %s "$2" > "$1.tmp" && mv -f "$1.tmp" "$1"', "sh", lastPosture.path, posture])
     onModeChanged: if (unlocked && started && mode !== "auto") switchTo(mode, "")
 
-    function postureOf(scr) { return F.screenPosture(perScreen, scr ? scr.name : "", posture); }
-    function postureOfName(n) { return F.screenPosture(perScreen, n, posture); }
-    readonly property bool anyCouch: unlocked && (posture === "couch" || Object.keys(perScreen).some(k => perScreen[k] === "couch"))
+    // 1.16, Firehold on labwc: each screen's mode is the live modes' (FhModes.qml: Couch, Desk or Away, never a
+    // setting); an Away screen shows the Couch's Away page.
+    property bool modesReady: false
+    FhModes { id: liveModes; fh: fhs; active: fhs.unlocked && fhs.sharedCouch && fhs.modesReady }
+    property alias modes: liveModes
+    function liveMode(n) { if (!sharedCouch || !liveModes.read) return ""; const m = liveModes.modeOf(n); return m === "away" ? "couch" : m; }
+    function postureOf(scr) { return postureOfName(scr ? scr.name : ""); }
+    function postureOfName(n) { return liveMode(n) || F.screenPosture(perScreen, n, posture); }
+    readonly property bool anyCouch: unlocked && (posture === "couch" || Object.keys(perScreen).some(k => perScreen[k] === "couch")
+                                                  || (sharedCouch && liveModes.read && liveModes.modes.screens.some(s => s.mode !== "desk")))
+    // The Desk's bar and dock go on the first screen that's Desk (the TV can be Couch while the monitor is Desk).
+    readonly property var deskScreen: Quickshell.screens.find(s => postureOfName(s.name) === "desk") || Quickshell.screens[0] || null
+    // The modes changed (the Modes card, Away, the helper): Mantel's posture follows, nothing is written back.
+    property bool following: false
+    function followModes(p) { if (p === posture) return; following = true; switchTo(p, ""); following = false; }
 
     // why: "pad" | "mouse" | "keys" | "" (a choice in Settings, or the Guide panel's "Put it in a window").
     function switchTo(p, why) {
         if (!unlocked || p === posture) return;
         posture = p;
+        // (Firehold on labwc: every screen to that mode in the live modes too, unless this came from them)
+        if (sharedCouch && !following) liveModes.helper(["switch", p, "--why", why || "pick"]);
         if (p === "desk") {
             guideShown = false;
             view = "home";
@@ -146,16 +168,31 @@ Scope {
     readonly property bool couchUp: anyCouch && view === "home"
     Binding { target: SettingsNav; property: "fireholdShown"; value: fhs.couchUp || fhs.guideShown || fhs.settingsShown }
     Binding { target: SettingsNav; property: "fireholdCouch"; value: fhs.anyCouch }
-    Component.onCompleted: SettingsNav.fireholdPad = (b, down) => fhs.padButton(b, down)
+    Component.onCompleted: { SettingsNav.fireholdPad = (b, down) => fhs.padButton(b, down); syncLists(); }
     Component.onDestruction: { SettingsNav.fireholdPad = null; SettingsNav.fireholdShown = false; SettingsNav.fireholdCouch = false; }
 
     function closeAll() { guideShown = false; settingsShown = false; page = "tabs"; view = "home"; }
 
     // ------------------------------------------------------------------ windows and games
-    readonly property var wins: WinList.toplevels ? WinList.toplevels.values : []
+    // (a window that closed can stay in the list as null for a moment: left out, nothing reads a window that's gone)
+    readonly property var wins: WinList.toplevels ? WinList.toplevels.values.filter(t => !!t) : []
     function entryName(w) { const e = AppIcons.entryFor(w.appId); return e ? e.name : ""; }
-    readonly property var openList: F.openItems(wins, library, fhs.entryName)
-    readonly property var playing: F.playingIds(wins, library)
+    // 1.16 (the busy minute in the Fedora image, docs/LABWC-FEDORA.md): the lists the Couch is built from change only
+    // when what they hold changes. Any window coming or going (a notification's helper, a password prompt, a dialog)
+    // made new ones, and a new list rebuilds every tile and loads every picture again: 1.4 s of the processor at rest.
+    readonly property var openFresh: F.openItems(wins, library, fhs.entryName)
+    readonly property var playingFresh: F.playingIds(wins, library)
+    property var openList: []
+    property var playing: []
+    function openSig(l) { return l.map(o => o.kind + "\u0001" + o.name + "\u0001" + o.sub + "\u0001" + (WinList.widOf(o.win) || "")).join("\u0002"); }
+    property string openListSig: ""
+    function syncLists() {
+        const g = openSig(openFresh);
+        if (g !== openListSig || !openList.every(o => wins.indexOf(o.win) >= 0)) { openListSig = g; openList = openFresh; }
+        if (playingFresh.join("\u0001") !== playing.join("\u0001")) playing = playingFresh;
+    }
+    onOpenFreshChanged: syncLists()
+    onPlayingFreshChanged: syncLists()
     function games() { return wins.filter(w => F.isGame(w, library)); }
     function frontGame() {
         const a = WinList.activeToplevel;
@@ -216,13 +253,14 @@ Scope {
     function couchHome() { couchTab("home"); }
     function couchTab(t) { if (!unlocked) return; switchTo("couch", ""); home(); tab = t; }
 
-    // ------------------------------------------------------------------ Everything open's window pictures (KWin)
-    // KWin takes a picture of each window (hearth-firehold pictures → hearth-screens shot --window) every 3 seconds
-    // while Everything open is on screen; labwc can't, so there the cards stay their colour. Runtime files only.
+    // ------------------------------------------------------------------ Everything open's window pictures
+    // KWin (hearth-firehold pictures → hearth-screens shot --window) or Firehold's own compositor (hearth-firehold
+    // pictures → its window IPC's shot) takes a picture of each window every 3 seconds while Everything open is on
+    // screen; labwc can't, so there the cards stay their colour. Runtime files only.
     property var pictures: ({})
     property int pictureTick: 0
     readonly property string pictureDir: (Quickshell.env("XDG_RUNTIME_DIR") || "/tmp") + "/hearth-firehold/pictures"
-    readonly property bool picturesWanted: unlocked && WinList.kwin && couchUp && page === "switcher"
+    readonly property bool picturesWanted: unlocked && WinList.pictures && couchUp && page === "switcher"
     Timer { interval: 3000; repeat: true; triggeredOnStart: true; running: fhs.picturesWanted; onTriggered: if (!picProc.running) { picProc.command = ["python3", fhs.libHelper, "pictures", fhs.pictureDir].concat(fhs.openList.map(o => WinList.widOf(o.win)).filter(i => i !== "")); picProc.running = true; } }
     Process {
         id: picProc
@@ -247,8 +285,10 @@ Scope {
         let d;
         try { d = JSON.parse(text.trim().split("\n").pop()); } catch (e) { return; }
         if (!d || !Array.isArray(d.games)) return;
-        library = d.games;
-        counts = d.counts || ({});
+        // 1.16 (the rest fixes): only when it changed. A new list rebuilds every tile and reloads every picture (seconds
+        // of work on a handheld), and the answer is usually the same as the cached one.
+        if (JSON.stringify(d.games) !== JSON.stringify(library)) library = d.games;
+        if (JSON.stringify(d.counts || {}) !== JSON.stringify(counts)) counts = d.counts || ({});
         libraryLoaded = true;
     }
     Process { id: cacheProc; command: ["python3", fhs.libHelper, "cached"]; stdout: StdioCollector { onStreamFinished: if (!fhs.libraryLoaded) fhs.takeLibrary(text) } }
@@ -297,14 +337,68 @@ Scope {
             home();
             return;
         }
-        if (quick) quick.toggle();
+        toggleQuick();
     }
     // Every other button goes to what's in front: the Guide panel or the Couch screen on the main screen.
     property var activeCouch: null
+    property double handAt: 0
+    property var deskBar: null          // Firehold on labwc's Desk bar (FhpDeskBar.qml) while it's up
+
+    // ------------------------------------------------------------------ Quick Settings and notifications (labwc, 1.16)
+    // Firehold on labwc's are Firehold on Plasma's own (FireholdQuick, FireholdCards, FireholdHistory: mockups 07-10),
+    // on the screen you're using (the TV's Couch, or the Desk's screen); elsewhere Mantel's Quick Access as before.
+    readonly property var panelScreen: {
+        const n = anyCouch && posture === "couch" ? padScreen : (deskScreen ? deskScreen.name : padScreen);
+        return Quickshell.screens.find(s => s.name === n) || Quickshell.screens[0] || null;
+    }
+    Binding { target: Hearth; property: "screen"; when: fhs.sharedCouch && !!fhs.panelScreen; value: fhs.panelScreen ? { name: fhs.panelScreen.name, width: fhs.panelScreen.width, height: fhs.panelScreen.height } : ({}) }
+    Binding { target: Hearth; property: "panelSize"; when: fhs.sharedCouch; value: fhs.posture === "desk" && fhs.panelScreen === fhs.deskScreen ? Math.round(44 * Math.min(fhs.panelScreen.width / 1920, fhs.panelScreen.height / 1080)) : 0 }
+    Binding { target: SettingsNav; property: "fireholdCards"; value: fhs.unlocked && fhs.sharedCouch && !!fhCards.item }
+    FhPanel { id: fhQuick; name: "hearth-firehold-quick"; source: "FireholdQuick.qml"; screen: fhs.panelScreen }
+    FhPanel { id: fhList; name: "hearth-firehold-notifications"; source: "FireholdHistory.qml"; screen: fhs.panelScreen }
+    Connections { target: fhQuick.content; ignoreUnknownSignals: true; function onOpenNotifications() { fhQuick.close(); fhList.toggle(); } }
+    // (by file name: the cards are copied in when the image is built; without them Mantel's own pop-ups stay)
+    LazyLoader {
+        id: fhCards
+        active: fhs.unlocked && fhs.sharedCouch
+        source: "FireholdCards.qml"
+        onItemChanged: if (item) { item.screen = Qt.binding(() => fhs.panelScreen); item.openList.connect(() => fhList.toggle()); }
+    }
+    function toggleQuick() { if (sharedCouch) { fhList.close(); fhQuick.toggle(); } else if (quick) quick.toggle(); }
+    function toggleList() { if (sharedCouch) { fhQuick.close(); fhList.toggle(); } }
+    readonly property bool panelShown: sharedCouch && (fhQuick.shown || fhList.shown)
+    // The controller in an open panel: its keys (FireholdQuick's keyDown/keyUp; the list closes with B).
+    function panelPress(b, down) {
+        const k = { up: Qt.Key_Up, down: Qt.Key_Down, left: Qt.Key_Left, right: Qt.Key_Right, a: Qt.Key_Return, b: Qt.Key_Escape,
+                    lb: Qt.Key_PageUp, rb: Qt.Key_PageDown }[b];
+        if (fhQuick.shown) {
+            if (b === "menu") { if (down) fhQuick.close(); return; }
+            if (k !== undefined) { if (down) fhQuick.content.keyDown(k, false); else fhQuick.content.keyUp(k, false); }
+            return;
+        }
+        if (fhList.shown && down && (b === "b" || b === "menu")) fhList.close();
+    }
+    // (Firehold on labwc: every screen's Couch, for requests that are for all of them, and the screen the controller
+    // drives: a TV that's Couch, else the first screen)
+    property var couches: []
+    readonly property string padScreen: {
+        const tv = sharedCouch && liveModes.read ? liveModes.modes.screens.find(s => s.tv && s.mode !== "desk") : null;
+        return tv ? tv.name : (Quickshell.screens.length ? Quickshell.screens[0].name : "");
+    }
     property var guidePanel: null
     property var settingsPanel: null
     function padButton(b, down) {
         if (!unlocked) return;
+        if (panelShown && b !== "guide") { panelPress(b, down); return; }
+        // Firehold on labwc, a controller on the Desk (mockup 12): View opens the bar's menus for the app in front;
+        // another button says, once in a while, what the controller can do here (as under Plasma).
+        if (sharedCouch && down && b !== "guide" && !couchUp && !guideShown && !settingsShown && deskBar) {
+            if (b === "view") { deskBar.openNamed("window"); return; }
+            if (Date.now() - handAt > 600000) {
+                handAt = Date.now();
+                Quickshell.execDetached(["notify-send", "-a", "Firehold", "-i", "input-gaming", "-t", "15000", "A controller is in your hand", "Press ≡ for the Couch on this screen, or View for these menus with the controller"]);
+            }
+        }
         if (b === "guide") { if (down) { guidePresses++; guideWait.restart(); } return; }
         if (!down) return;
         if (settingsShown && settingsPanel) { settingsPanel.press(b); return; }
@@ -320,10 +414,25 @@ Scope {
     Timer { id: noticeTimer; interval: 6000; onTriggered: fhs.noticeShown = false }
 
     // ------------------------------------------------------------------ the screens
+    // 1.16: Firehold on labwc's Couch is the approved one (FhpCouch.qml: the same pages as Firehold on Plasma). Under
+    // KWin or Firehold's own compositor, or if it can't load, Firehold's own Couch (FireholdCouch.qml).
+    property bool sharedCouchFailed: false
+    readonly property bool sharedCouch: sessionPicked && WinList.wm === "labwc" && !sharedCouchFailed
     Variants {
-        model: fhs.unlocked ? Quickshell.screens : []
+        model: fhs.unlocked && !fhs.sharedCouch ? Quickshell.screens : []
         delegate: Component {
             FireholdCouch {
+                required property var modelData
+                screen: modelData
+                scrName: modelData.name
+                fh: fhs
+            }
+        }
+    }
+    Variants {
+        model: fhs.unlocked && fhs.sharedCouch ? Quickshell.screens : []
+        delegate: Component {
+            FhpCouch {
                 required property var modelData
                 screen: modelData
                 scrName: modelData.name
@@ -348,10 +457,15 @@ Scope {
         active: fhs.unlocked && fhs.started && fhs.posture === "desk"
         FireholdDesk { fh: fhs }
     }
-    // Every window's title bar in Firehold's look (KWin tells where the windows are).
+    // Every window's title bar in Firehold's look: drawn over KWin's (KWin tells where the windows are), or by
+    // Firehold's own compositor itself, named by Mantel (FireholdFramesComp.qml).
     LazyLoader {
         active: fhs.unlocked && fhs.started && fhs.posture === "desk" && WinList.kwin
         FireholdFrames { fh: fhs }
+    }
+    LazyLoader {
+        active: fhs.unlocked && fhs.started && fhs.posture === "desk" && WinList.firehold && WinList.fhReady
+        FireholdFramesComp { fh: fhs }
     }
     LazyLoader {
         active: fhs.unlocked && fhs.settingsShown
@@ -365,13 +479,24 @@ Scope {
             return JSON.stringify({ unlocked: fhs.unlocked, posture: fhs.posture, mode: fhs.mode, view: fhs.view, tab: fhs.tab, page: fhs.page,
                                     guide: fhs.guideShown, settings: fhs.settingsShown, couchUp: fhs.couchUp, games: fhs.library.length,
                                     counts: fhs.counts, playing: fhs.playing, open: fhs.openList.map(o => ({ kind: o.kind, name: o.name, sub: o.sub })),
-                                    notice: fhs.noticeShown ? fhs.noticeTitle : "", filter: fhs.libFilter, query: fhs.libQuery });
+                                    notice: fhs.noticeShown ? fhs.noticeTitle : "", filter: fhs.libFilter, query: fhs.libQuery,
+                                    pictures: Object.keys(fhs.pictures).length, picturesWanted: fhs.picturesWanted,
+                                    guideRows: fhs.guidePanel ? fhs.guidePanel.rows.map(r => ({ name: r[0], sub: r[1], value: r[2], works: r[4] })) : [] });
         }
         function couch(): void { if (fhs.unlocked) { fhs.switchTo("couch", "pad"); fhs.home(); } }
         function desk(): void { fhs.switchTo("desk", ""); }
         // As if a real mouse moved (Automatic) or a key was typed: checks of the Desk switch.
         function input(kind: string): void { fhs.input(kind); }
-        function tab(name: string): void { if (fhs.unlocked && ["home", "library", "apps", "store"].indexOf(name) >= 0) { fhs.home(); fhs.tab = name; } }
+        function tab(name: string): void { if (fhs.unlocked && ["home", "library", "apps", "store"].concat(fhs.sharedCouch ? ["media"] : []).indexOf(name) >= 0) { fhs.home(); fhs.tab = name; } }
+        // The approved Couch (FhpCouch.qml, Firehold on labwc): a request as hearth-firehold-plasma ask gives it under
+        // Plasma (cards, settings, modes, key:a ...).
+        function ask(cmd: string): void {
+            if (!/^[a-z]+(:[a-z0-9_.-]{1,40})?$/.test(cmd)) return;
+            if (cmd === "modes") liveModes.readModes();
+            // modes, cards, identify: every screen's Couch; the rest (keys, tabs): the one the controller drives
+            const all = ["modes", "cards", "identify", "identify-off"].indexOf(cmd) >= 0;
+            for (const c of (all ? fhs.couches : [fhs.activeCouch])) if (c && c.couch) c.couch.handle(cmd);
+        }
         function open(what: string): void {
             if (!fhs.unlocked) return;
             if (what === "switcher") { fhs.guideShown = false; fhs.view = "home"; fhs.page = "switcher"; }
@@ -386,13 +511,29 @@ Scope {
             fhs.goTo(w, false);
             return true;
         }
-        function press(button: string): void { fhs.padButton(button, true); fhs.padButton(button, false); }
+        function press(button: string): void {
+            if (fhs.sharedCouch) console.info("firehold: press " + button + " couchUp " + fhs.couchUp + " couch " + (fhs.activeCouch ? fhs.activeCouch.scrName : "none"));
+            fhs.padButton(button, true); fhs.padButton(button, false);
+        }
         function filter(key: string): void { fhs.libFilter = key; }
         function search(text: string): void { fhs.libQuery = text; }
         function library(): void { fhs.loadLibrary(false); }
         function close(): void { fhs.closeAll(); fhs.deskMenu = ""; }
         // Checks: the Desk bar's File, Edit or View menu open ("" closes it).
         function menu(name: string): void { fhs.deskMenu = name; }
+        // Firehold on labwc's Quick Settings and notification list (mockups 07-10), open or closed.
+        function quick(): void { fhs.toggleQuick(); }
+        function list(): void { fhs.toggleList(); }
+        function panels(): string { return JSON.stringify({ quick: fhQuick.shown, list: fhList.shown, cards: !!fhCards.item, screen: fhs.panelScreen ? fhs.panelScreen.name : "" }); }
+        // The Desk bar's Modes card (Firehold on labwc), open or closed.
+        function modes(open: bool): void { liveModes.popupOpen = open && fhs.sharedCouch; }
+        // Checks: the window with this title in front without the Couch stepping aside, and the screen it's on.
+        function focus(title: string): bool { const w = fhs.wins.find(t => t.title === title); if (!w) return false; w.activate(); return true; }
+        function screenOf(title: string): string { const w = fhs.wins.find(t => t.title === title); return w && w.screens && w.screens.length ? String(w.screens[0].name) : ""; }
+        // The Desk bar's menus by name (File, Window, help, move; "" closes) and its first-run tip.
+        function barmenu(name: string): void { if (fhs.deskBar) fhs.deskBar.openNamed(name); }
+        function bartip(show: bool): void { if (fhs.deskBar) fhs.deskBar.tipShown = show; }
+        function bar(): string { const b = fhs.deskBar; return JSON.stringify(b ? { app: b.appName, own: b.ownMenus, menus: b.ownMenus ? b.globalMenu.menus.map(m => m.label) : [], open: b.open, tip: b.tipShown } : {}); }
         // Checks: every Couch screen drawn again whole (CI's software renderer under labwc headless can leave a partial
         // repaint shifted in a screenshot; a real screen draws whole frames).
         function redraw(): void { fhs.redraws++; }

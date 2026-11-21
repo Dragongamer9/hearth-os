@@ -1,0 +1,12 @@
+# Plasma's "a disc was inserted" pop-up (Disks & Devices): DVDs and Video CDs offer "Play disc in Hearth Player".
+# Plasma passes the drive (%d); Hearth Player reads the disc from it (docs/PLAYER-DISCS.md).
+[Desktop Entry]
+X-KDE-Solid-Predicate=[ IS OpticalDisc AND [ OpticalDisc.availableContent & 'VideoDvd' OR [ OpticalDisc.availableContent & 'VideoCd' OR OpticalDisc.availableContent & 'SuperVideoCd' ] ] ]
+Type=Service
+Actions=hearth-player-play;
+X-KDE-Priority=TopLevel
+
+[Desktop Action hearth-player-play]
+Name=Play disc in Hearth Player
+Icon=hearth-player
+Exec=hearth-player --disc %d

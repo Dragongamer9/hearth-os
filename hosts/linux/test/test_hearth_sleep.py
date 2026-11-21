@@ -45,7 +45,7 @@ class Logind(unittest.TestCase):
 
     def test_hearth_takes_the_button_while_its_session_runs(self):
         # Without the inhibitor logind would act on the same press as Hearth: two handlers.
-        s = (ROOT / 'hosts/linux/session/nimbus-session').read_text()
+        s = (ROOT / 'hosts/linux/session/nimbus-session').read_text(encoding='utf-8')
         self.assertRegex(s, r'systemd-inhibit --what=handle-power-key')
         self.assertIn('--mode=block', s)
 

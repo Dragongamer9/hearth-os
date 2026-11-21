@@ -1,0 +1,11 @@
+[Desktop Entry]
+# Hearth OS on Anatase (test): Send logs as an app in Plasma's menu (Mantel had it in its own menus).
+Name=Send logs
+GenericName=Send logs to Hearth
+Comment=Send this PC's logs so a problem can be looked at (you get a code to pass on)
+Exec=sh -c "/usr/bin/hearth-send-logs; echo; echo 'Press Enter to close'; read x"
+Terminal=true
+Icon=hearth-settings
+Type=Application
+Categories=System;Utility;
+Keywords=logs;report;bug;problem;support;send;

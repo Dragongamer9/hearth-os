@@ -5,6 +5,7 @@
 // too, and moving the mouse is Desk (Automatic).
 import QtQuick
 import QtQuick.Shapes
+import QtQuick.Window
 import Quickshell
 import Quickshell.Io
 import Quickshell.Wayland
@@ -40,7 +41,7 @@ PanelWindow {
         if (shown) { shownAt = Date.now(); if (primary || !fh.activeCouch) fh.activeCouch = cw; keys.forceActiveFocus(); }
         else if (fh.activeCouch === cw) fh.activeCouch = null;
     }
-    Component.onCompleted: if (shown && (primary || !fh.activeCouch)) fh.activeCouch = cw
+    Component.onCompleted: { syncApps(); if (shown && (primary || !fh.activeCouch)) fh.activeCouch = cw; }
     Component.onDestruction: if (fh.activeCouch === cw) fh.activeCouch = null
     property double shownAt: 0
 
@@ -318,19 +319,8 @@ PanelWindow {
     readonly property var batt: UPower.displayDevice
     readonly property string battery: batt && batt.isLaptopBattery ? Math.round(batt.percentage * 100) + "%" : ""
     readonly property string initial: (Quickshell.env("USER") || "H").charAt(0).toUpperCase()
-    property string net: ""
-    Timer { interval: 15000; running: cw.shown; repeat: true; triggeredOnStart: true; onTriggered: netProc.running = true }
-    Process {
-        id: netProc
-        command: ["nmcli", "-t", "-f", "TYPE,STATE", "device"]
-        stdout: StdioCollector {
-            onStreamFinished: {
-                let k = "";
-                for (const l of text.split("\n")) { const f = l.split(":"); if (f[1] === "connected" && (f[0] === "wifi" || f[0] === "ethernet")) { k = f[0]; break; } }
-                cw.net = k === "wifi" ? "Wi-Fi" : k === "ethernet" ? "Wired" : "Offline";
-            }
-        }
-    }
+    // 1.16: from NetBtWatch.qml, when the network changes (no polling).
+    readonly property string net: NetBtWatch.netKind === "wifi" ? "Wi-Fi" : NetBtWatch.netKind === "ethernet" ? "Wired" : "Offline"
 
     // ================================================================== Home
     readonly property var recentList: F.recent(fh.library, 7, hero.game ? hero.game.id : "")
@@ -362,7 +352,7 @@ PanelWindow {
             Item {
                 id: art
                 x: parent.width - 60 * cw.k - width; y: 50 * cw.k; width: 640 * cw.k; height: 340 * cw.k
-                FhArt { id: heroArt; anchors.fill: parent; radius: 18 * cw.k; source: hero.game ? (hero.game.wide || hero.game.hero || hero.game.cover || "") : "" }
+                FhArt { id: heroArt; anchors.fill: parent; radius: 18 * cw.k; source: F.wideArt(hero.game, width * Screen.devicePixelRatio) }
                 Shape {
                     anchors.fill: parent; visible: !heroArt.ready
                     ShapePath {
@@ -429,7 +419,7 @@ PanelWindow {
                         Rectangle {
                             width: parent.width; height: 128 * cw.k; radius: 14 * cw.k; color: F.toneFor(rc.modelData.id)
                             border.width: rc.ring ? 3 * cw.k : 0; border.color: cw.pal.accent
-                            FhArt { anchors.fill: parent; anchors.margins: rc.ring ? 3 * cw.k : 0; radius: 12 * cw.k; source: rc.modelData.wide || rc.modelData.hero || "" }
+                            FhArt { anchors.fill: parent; anchors.margins: rc.ring ? 3 * cw.k : 0; radius: 12 * cw.k; source: F.wideArt(rc.modelData, width * Screen.devicePixelRatio) }
                             Rectangle {
                                 visible: !!(rc.modelData.wide || rc.modelData.hero)
                                 anchors { left: parent.left; bottom: parent.bottom; margins: 6 * cw.k }
@@ -470,7 +460,8 @@ PanelWindow {
                             x: 22 * cw.k; anchors.verticalCenter: parent.verticalCenter; width: 40 * cw.k; height: width; radius: 10 * cw.k
                             color: oc.modelData.kind === "game" ? "#5b2b1a" : F.WINDOW_CARDS[oc.index % F.WINDOW_CARDS.length]
                             Image {
-                                anchors.centerIn: parent; width: 26 * cw.k; height: width; sourceSize.width: width; asynchronous: true
+                                anchors.centerIn: parent; width: 26 * cw.k; height: width; asynchronous: true; smooth: true; mipmap: true
+                                sourceSize.width: Math.ceil(width * Screen.devicePixelRatio); sourceSize.height: Math.ceil(height * Screen.devicePixelRatio)
                                 source: AppIcons.find("", oc.modelData.win ? oc.modelData.win.appId : "")
                                 visible: status === Image.Ready
                             }
@@ -579,11 +570,22 @@ PanelWindow {
     }
 
     // ================================================================== Apps (your apps, as big tiles)
-    readonly property var appList: {
-        const all = DesktopEntries.applications ? DesktopEntries.applications.values : [];
+    // (1.16, the rest fixes: a new list only when the apps themselves changed, not each time the app folders are
+    // looked at again, so the tiles and their icons aren't all made again for nothing.)
+    readonly property var appFresh: {
+        const all = AppEntries.values;
         return all.filter(e => !e.noDisplay && e.name)
                   .slice().sort((a, b) => a.name.toLowerCase() < b.name.toLowerCase() ? -1 : 1);
     }
+    property var appList: []
+    property string appSig: ""
+    function syncApps() {
+        const g = appFresh.map(e => (e.id || "") + "\u0001" + e.name + "\u0001" + (e.icon || "")).join("\u0002");
+        // (also when an entry was made again: a tile never keeps an entry Quickshell let go)
+        const live = new Set(appFresh);
+        if (g !== appSig || appList.some(e => !live.has(e))) { appSig = g; appList = appFresh; }
+    }
+    onAppFreshChanged: syncApps()
     component TileGrid: GridView {
         id: tg
         property var owner: null
@@ -604,8 +606,10 @@ PanelWindow {
                 width: parent.width; height: 170 * tg.kk; radius: 16 * tg.kk; color: F.C.glass
                 border.width: at.ring ? 3 * tg.kk : 1; border.color: at.ring ? F.C.accent : F.C.line
                 Image {
-                    anchors.centerIn: parent; width: 88 * tg.kk; height: width; sourceSize.width: width; asynchronous: true
-                    source: at.modelData.iconUrl || AppIcons.find(at.modelData.icon || "", at.modelData.id || "")
+                    anchors.centerIn: parent; width: 88 * tg.kk; height: width; asynchronous: true; smooth: true; mipmap: true
+                    sourceSize.width: Math.ceil(width * Screen.devicePixelRatio); sourceSize.height: Math.ceil(height * Screen.devicePixelRatio)
+                    // (only while its tab is showing: a hidden tab holds no icons)
+                    source: tg.visible && tg.parent && tg.parent.visible ? (at.modelData.iconUrl || AppIcons.find(at.modelData.icon || "", at.modelData.id || "")) : ""
                 }
                 TapHandler { onTapped: { tg.currentIndex = at.index; tg.owner.zone = "grid"; tg.activate(at.index); } }
             }

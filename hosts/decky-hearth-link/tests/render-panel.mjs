@@ -103,6 +103,11 @@ const shots = [
   // Discord (since 1.6, replacing Hearth Friends): shown here in the home-server states' stand-in.
   ["hearth-link-discord", "home-server", async () => show("Discord"),
     ["Open Discord", "Show what I'm playing on Discord", "Let friends ask to join", "Play together PIN 4821"]],
+  // Family and friends with Moonlight: the PCs that let this one connect, and someone connected to this one.
+  ["hearth-link-family", "family", async () => { await show("Family and friends"); await focus("Connect to Dad's PC"); },
+    ["Family and friends", "Connect to Dad's PC", "Online · Whole desktop · they're asked first", "Connect to Sam's Deck", "Offline", "Remove Dad's PC"]],
+  ["hearth-link-family-sharing", "family-sharing", async () => { await show("Family and friends"); await focus("Stop sharing now"); },
+    ["Chris's PC is connected to this PC", "Whole desktop · 42 min left", "Stop sharing now"]],
 ];
 for (const [name, st, act, wants] of shots) {
   const html = page0(st);

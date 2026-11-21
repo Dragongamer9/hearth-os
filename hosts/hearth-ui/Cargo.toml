@@ -1,0 +1,57 @@
+# hearth-ui: what every pure-Rust Hearth app shares (docs/APPS-ANATASE.md, "Pure Rust apps"): Hearth's look read from
+# hosts/linux/desktop/theme/palettes.json and the person's chosen look (~/.local/share/nimbus/desktop.json, followed
+# while the app is open), the common widgets, and settings_file.rs (red flag 9). The apps are this workspace's
+# members (apps/*), so CI builds iced once for all of them.
+#
+# The toolkit is iced 0.14, the same as Firehold's Rust shell (hosts/firehold-shell), drawn with the graphics card
+# (wgpu: Vulkan or OpenGL ES) where it starts and with tiny-skia (the CPU) otherwise, iced's own fallback; app.rs
+# renderer() picks, once, before iced starts (the owner, Nov 19: scrolling was slow with tiny-skia alone). smol, the
+# smallest executor, runs the subscriptions. hearth-pad-host stays on tiny-skia (its see-through overlays need the
+# vendored softbuffer's alpha). No version line: the owner picks every version number.
+[package]
+name = "hearth-ui"
+edition = "2021"
+description = "Hearth's look and widgets for its pure-Rust apps (iced)"
+license = "GPL-3.0-or-later"
+publish = false
+
+[lib]
+path = "src/lib.rs"
+
+[workspace]
+members = ["apps/task-manager", "apps/system-restore", "apps/reliability", "apps/settings", "apps/files", "apps/capture", "apps/pad", "apps/g15", "apps/store", "apps/server", "apps/resmon", "apps/family", "apps/notes"]
+resolver = "2"
+
+[workspace.dependencies]
+iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "wayland", "x11", "canvas", "crisp", "smol"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+futures = "0.3"
+libc = "0.2"
+
+[dependencies]
+iced = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }
+# app.rs: the one line saying which graphics card iced's wgpu picked (its log).
+log = "0.4"
+# settings_file.rs (shared with hearth-core, included by path) needs these two.
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+sha1_smol = "1"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = true
+panic = "abort"
+
+# softbuffer (tiny-skia's way to the screen) with one change: HEARTH_SOFTBUFFER_ALPHA=1 gives Wayland buffers with
+# alpha, which hearth-pad-host's see-through overlays need (vendor/README.md). Without that variable it's upstream's.
+[patch.crates-io]
+softbuffer = { path = "vendor/softbuffer" }

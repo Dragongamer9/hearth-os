@@ -1297,6 +1297,11 @@ var ENTRIES = [
 "i": "grid"
 },
 {
+"t": "Logitech G15",
+"p": "g15",
+"i": "kbd"
+},
+{
 "t": "Resolution",
 "p": "gameperf",
 "i": "window"
@@ -3450,7 +3455,7 @@ var ENTRIES = [
 "i": "lock"
 },
 {
-"t": "Pairing a friend's device",
+"t": "The next device you pair is",
 "p": "link",
 "i": "users"
 },
@@ -3469,6 +3474,73 @@ var ENTRIES = [
 "t": "Other ways: this device's long link",
 "p": "link",
 "i": "info"
+},
+{
+"t": "Make it a family member's device",
+"p": "link",
+"d": "It stays on your devices and you can help on it, but it stops getting your settings, library, saves and status right away",
+"i": "users"
+},
+{
+"t": "Make it a friend's device",
+"p": "link",
+"d": "This device stops sharing anything with it but game copies, right away",
+"i": "user"
+},
+{
+"t": "Make it one of my devices",
+"p": "link",
+"d": "Both devices have to agree: unpair it, then pair again and pick My device on both",
+"i": "display"
+},
+{
+"t": "Let it see this device's status",
+"p": "link",
+"i": "eye"
+},
+{
+"t": "Share my game library",
+"p": "link",
+"i": "store"
+},
+{
+"t": "Back up my saves",
+"p": "link",
+"d": "Game saves kept on their Hearth Storage, and saves follow you there",
+"i": "update"
+},
+{
+"t": "Use Hearth Storage (shared folders, the game archive, backups)",
+"p": "link",
+"d": "Their shared folders, their game archive and their download caches, from this device",
+"i": "store"
+},
+{
+"t": "Back up this PC",
+"p": "link",
+"d": "This PC's saves and screenshots backed up to their Hearth Storage",
+"i": "update"
+},
+{
+"t": "What they share with you",
+"p": "link",
+"i": "info"
+},
+{
+"t": "Remote desktop",
+"p": "link",
+"i": "play"
+},
+{
+"t": "Wake it",
+"p": "link",
+"d": "Wake-on-LAN (it has to be set to wake from the network)",
+"i": "power"
+},
+{
+"t": "Unpair it",
+"p": "link",
+"i": "trash"
 },
 {
 "t": "Your devices",
@@ -4876,6 +4948,11 @@ var ENTRIES = [
 "p": "startup",
 "d": "Start in one mode every time, or follow a schedule",
 "i": "power"
+},
+{
+"t": "Game Mode on this PC",
+"p": "startup",
+"i": "pad"
 },
 {
 "t": "Add a change",

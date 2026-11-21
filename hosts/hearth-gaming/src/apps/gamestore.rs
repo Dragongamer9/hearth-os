@@ -167,14 +167,18 @@ mod linux {
                 let job = with_bridge(|b| b.recomps.jobs.lock().map(|j| j.get(id).cloned()).ok().flatten()).unwrap_or(Value::Null);
                 if !gamestore::use_game_ok(&job, a["path"].as_str().unwrap_or("")) { return Err("Choose your copy again first.".into()); }
             }
+            // Family and friends with Moonlight: straight to the Hearth Link service (connecting waits for the other
+            // PC's answer, up to about three minutes).
+            if m.starts_with("moonlight.") { return hearth_core::link::call(&m, &a, if m == "moonlight.connect" { 200 } else { 40 }); }
             let v = bridge_call(&m, &a)?;
             Ok(match m.as_str() {
-                "library.get" => gamestore::only_ours(v),
+                "library.get" => gamestore::mark_desktop(gamestore::only_ours(v), &hearth_core::desktop_icons::status(), hearth_core::desktop_icons::tick_default()),
                 "library.downloads" => {
                     DOWNLOADING.store(v["active"].as_array().map(|a| a.iter().any(|g| g["id"].as_str().map(gamestore::game_id_ok).unwrap_or(false))).unwrap_or(false), Ordering::SeqCst);
                     gamestore::only_our_downloads(v)
                 }
-                "game.uninstall" => gamestore::only_ours(v),
+                // Uninstalling took off the game's desktop icon (only Hearth's own: hearth-core desktop_icons.rs).
+                "game.uninstall" => gamestore::mark_desktop(gamestore::only_ours(v), &hearth_core::desktop_icons::status(), hearth_core::desktop_icons::tick_default()),
                 _ => v,
             })
         }).await.map_err(|e| e.to_string())?
@@ -188,6 +192,30 @@ mod linux {
     #[tauri::command]
     async fn use_drive(mount: String) -> Result<Value, String> {
         tauri::async_runtime::spawn_blocking(move || with_bridge(|b| gamestore::use_drive(&mut b.library, &mount))).await.map_err(|e| e.to_string())?
+    }
+
+    /// "Add to desktop" / "Remove from desktop" on a game's card and page (hearth-core desktop_icons.rs): a launcher in
+    /// your Desktop folder that starts the game the way Play does; removing takes off only the one Hearth made.
+    #[tauri::command]
+    async fn desktop_icon(id: String, on: bool) -> Result<Value, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            if !gamestore::desktop_icon_ok(&id) { return Err("Only GOG, Epic, Amazon and Battle.net games get a desktop icon here.".to_string()); }
+            if !on { return hearth_core::desktop_icons::remove(&id); }
+            let g = with_bridge(|b| b.library.games.get(&id).cloned()).ok_or("That game isn't in your library anymore.")?;
+            hearth_core::desktop_icons::add(&g)
+        }).await.map_err(|e| e.to_string())?
+    }
+
+    /// The install's "Add a desktop icon" tick box: the icon is made when the install is done; `remember` keeps the
+    /// choice for the next install (hearth-games.json, only when you change the tick box).
+    #[tauri::command]
+    async fn desktop_on_install(id: String, on: bool, remember: bool) -> Result<Value, String> {
+        tauri::async_runtime::spawn_blocking(move || {
+            if !gamestore::desktop_icon_ok(&id) { return Err("Only GOG, Epic, Amazon and Battle.net games get a desktop icon here.".to_string()); }
+            hearth_core::desktop_icons::set_on_install(&id, on)?;
+            if remember && hearth_core::desktop_icons::tick_default() != on { hearth_core::desktop_icons::set_tick_default(on)?; }
+            Ok(json!({"ok": true}))
+        }).await.map_err(|e| e.to_string())?
     }
 
     /// The Hearth app (the session's NIMBUS_APP, or the installed one), the same search as hearth-games' app().
@@ -323,7 +351,7 @@ mod linux {
                 if let Some(tx) = SIGNIN.lock().unwrap().take() { let _ = tx.send(hearth_core::http::query_param(&u, "code")); }
                 tauri::http::Response::builder().status(200).body(Vec::new()).unwrap()
             })
-            .invoke_handler(tauri::generate_handler![call, drives, use_drive, play, open_store, info, close_window])
+            .invoke_handler(tauri::generate_handler![call, drives, use_drive, play, open_store, info, close_window, desktop_icon, desktop_on_install])
             .setup(move |app| {
                 let _ = APP.set(app.handle().clone());
                 listen(app.handle().clone());

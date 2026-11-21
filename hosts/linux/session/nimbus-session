@@ -52,6 +52,42 @@ mkdir -p "$(dirname "$LOG")"
 [ -f "$LOG" ] && [ "$(wc -c <"$LOG")" -gt 2000000 ] && mv -f "$LOG" "$LOG.old"
 log() { echo "$(date '+%F %T') $*" >>"$LOG"; }
 
+# The session's message bus (D-Bus): Plasma and Steam both quit at once without one ("Could not start D-Bus"). The
+# login normally gives the session one; on the Fedora edition's first start after switching from Debian it once didn't
+# (the owner's ROG Ally, Nov 18: Plasma and Steam took turns failing every 3 s on a black screen). So: find it, else
+# start the account's own (systemd --user), else run the whole session inside a private one (dbus-run-session).
+# Never fatal: without any, the session goes on as before.
+session_bus_ok() {
+  timeout 4 busctl --user call org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus GetId >/dev/null 2>&1
+}
+ensure_session_bus() {
+  # Only on the Fedora edition (KDE Plasma's image), never for an extra multi-seat player, and before anything else
+  # here changes the environment (a run inside dbus-run-session starts this script again from the top).
+  [ "${HEARTH_NO_BUS_CHECK:-}" = 1 ] && return 0
+  [ -z "${HEARTH_SEAT:-}" ] || return 0
+  [ "$(cat "${HEARTH_DESKTOP_MODE_FILE:-/usr/share/nimbus/desktop-mode}" 2>/dev/null)" = plasma ] || return 0
+  command -v busctl >/dev/null 2>&1 || return 0
+  rt="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+  [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] || { [ -S "$rt/bus" ] && export DBUS_SESSION_BUS_ADDRESS="unix:path=$rt/bus"; }
+  session_bus_ok && return 0
+  log "session bus: not answering (${DBUS_SESSION_BUS_ADDRESS:-none}); starting the account's own"
+  command -v systemctl >/dev/null 2>&1 && timeout 10 systemctl --user start dbus.socket dbus-broker.service dbus.service >/dev/null 2>&1
+  i=0
+  while [ "$i" -lt 20 ]; do
+    [ -S "$rt/bus" ] && { export DBUS_SESSION_BUS_ADDRESS="unix:path=$rt/bus"; session_bus_ok && { log "session bus: up ($DBUS_SESSION_BUS_ADDRESS)"; return 0; }; }
+    sleep 0.5; i=$((i + 1))
+  done
+  if [ -z "${HEARTH_BUS_WRAPPED:-}" ] && command -v dbus-run-session >/dev/null 2>&1; then
+    log "session bus: none came up; the session runs inside its own (dbus-run-session)"
+    export HEARTH_BUS_WRAPPED=1
+    unset DBUS_SESSION_BUS_ADDRESS
+    exec dbus-run-session -- "$0" "$@"
+  fi
+  log "session bus: none (Plasma and Steam may not start)"
+  return 0
+}
+ensure_session_bus "$@"
+
 # ---- The desktop for Desktop Mode is Mantel. 1.13's KDE Plasma and GNOME choices were retired in 1.14 (the owner,
 # Nov 16: "archive the KDE and GNOME choices, since we're migrating to KWin"; code in archive/desktops-kde-gnome,
 # docs/archive/DESKTOPS-KDE-GNOME.md). The login screen's old entries passed --desktop=kde|gnome: Mantel, and the
@@ -165,7 +201,7 @@ rm -f "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/game-mode" "${XDG_STATE_HOME:-$H
 
 can_game() { have gamescope && [ -n "$NIMBUS_APP" ] && [ -x "$NIMBUS_APP" ]; }
 can_desktop() {   # Mantel: on KWin (1.14), labwc the fallback (run_classic); or the 2.0 preview, when it's turned on
-  have labwc || have "${HEARTH_KWIN_BIN:-kwin_wayland}" || { [ "$(desktop_wm_choice)" = firehold ] && firehold_bin >/dev/null; }
+  { plasma_image && have startplasma-wayland; } || have labwc || have "${HEARTH_KWIN_BIN:-kwin_wayland}" || { [ "$(desktop_wm_choice)" = firehold ] && firehold_bin >/dev/null; }
 }
 
 # Apps that keep sign-ins in the system's password store (Xodus Nexus, browsers) need one running, and on a
@@ -272,6 +308,13 @@ run_game() {
     NIMBUS_GAMESCOPE_ARGS=$(printf ' %s\n' "$NIMBUS_GAMESCOPE_ARGS" | sed -E "s/$MODE_ARGS_RE/\\1/g")
   fi
   panel_script
+  # Hearth Game Mode at one of its pages (nimbus-mode hearth-page: Settings' links to what has no app of its own yet),
+  # for this start only; the watchdog gives it to Hearth's first start (a restart after a crash opens as usual).
+  HEARTH_START_PAGE=""
+  if [ -z "$HEARTH_SEAT" ] && [ -s "$RUN/hearth-start-page" ]; then HEARTH_START_PAGE="$(head -c 32 "$RUN/hearth-start-page" | tr -cd 'a-z')"; fi
+  rm -f "$RUN/hearth-start-page"
+  [ -n "$HEARTH_START_PAGE" ] && log "hearth game mode: opening at $HEARTH_START_PAGE"
+  export HEARTH_START_PAGE
   [ -n "$HEARTH_SEAT" ] && [ -n "$ENV_GAMESCOPE_ARGS" ] && NIMBUS_GAMESCOPE_ARGS="$NIMBUS_GAMESCOPE_ARGS $ENV_GAMESCOPE_ARGS"
   # shellcheck disable=SC2086
   # Performance overlay (Quick Access › Performance): mangoapp draws it and reloads this file when Hearth writes it.
@@ -403,6 +446,16 @@ run_desktop() {
   fi
   # 1.13's KDE Plasma or GNOME still picked: they were retired in 1.14, so Mantel opens, and Mantel tells you once
   # (desktop/shell/DesktopNotice.qml through hearth-your-desktop notice; desktop-retired-told then keeps it quiet).
+  # 1.15, the Anatase test (the owner, Nov 17): Desktop Mode there is stock KDE Plasma with Hearth's apps; that image
+  # has no Mantel or labwc (run_plasma).
+  # >>> labwc on the Fedora edition (1.16, feature/labwc-fedora): Mantel or Firehold on labwc, only when picked;
+  # if it doesn't come up, KDE Plasma (run_fedora_labwc). Plasma failing never comes here.
+  if plasma_image && [ -z "$HEARTH_SEAT" ]; then
+    lw=$(fedora_labwc_choice)
+    if [ "$lw" != none ]; then run_fedora_labwc "$lw"; lrc=$?; [ "$lrc" -ne 200 ] && return "$lrc"; fi
+  fi
+  # <<< labwc on the Fedora edition
+  if plasma_image && [ -z "$HEARTH_SEAT" ]; then run_plasma; return $?; fi
   d=$(retired_desktop)
   if [ -n "$d" ] && [ -z "$HEARTH_SEAT" ] && [ ! -e "$DESK_STATE/desktop-retired-told" ]; then
     log "$d: KDE Plasma and GNOME were retired in 1.14; Mantel instead (the notice says so once)"
@@ -410,6 +463,188 @@ run_desktop() {
   fi
   run_classic
 }
+
+# ---- 1.15: Desktop Mode on the Anatase test is stock KDE Plasma (plasmashell on KDE's own KWin), with Hearth's apps
+# as ordinary apps in Plasma's menu. Only where the image says so (/usr/share/nimbus/desktop-mode is "plasma"; the
+# Debian image has none, so nothing changes there). Your saved Desktop Mode choice (session.conf's
+# HEARTH_DESKTOP_WM: Mantel on labwc, KWin or Firehold) is never read or changed here, so it's still yours when you
+# go back to Debian; Plasma says once that it took its place. Back to Game Mode: "Back to Game Mode" in Plasma's menu
+# and on its taskbar (nimbus-mode game, which logs Plasma out). Plasma ending without asking for a mode within 20 s
+# of starting (it couldn't start): Steam Game Mode, never no screen.
+plasma_image() { [ "$(cat "${HEARTH_DESKTOP_MODE_FILE:-/usr/share/nimbus/desktop-mode}" 2>/dev/null)" = plasma ]; }
+# The Desktop Mode choice on the Plasma image: "firehold" (Firehold on Plasma, a test) or "plasma" (no line). Read only.
+firehold_plasma_choice() {
+  c=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_PLASMA_DESKTOP=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
+  [ "$c" = firehold ] && echo firehold || echo plasma
+}
+run_plasma() {
+  log "desktop mode: KDE Plasma (the Anatase test)"
+  if ! have startplasma-wayland; then
+    log "desktop: KDE Plasma (startplasma-wayland) isn't installed; Steam Game Mode instead"
+    echo steam >"$NEXT"; return 1
+  fi
+  if [ -n "${HEARTH_DESKTOP_WM:-}" ] && [ ! -e "$DESK_STATE/plasma-instead-told" ] && have notify-send; then
+    mkdir -p "$DESK_STATE" && : >"$DESK_STATE/plasma-instead-told"
+    ( sleep 25; notify-send -a "Hearth" -i hearth "Desktop Mode is KDE Plasma here" \
+        "This test edition has KDE Plasma instead of Mantel. Your Desktop Mode choice is kept for when you go back to Debian." ) >/dev/null 2>&1 &
+  fi
+  # Firehold on Plasma (a test: docs/FIREHOLD.md "Firehold on Plasma"), only when it's your Desktop Mode choice
+  # (HEARTH_PLASMA_DESKTOP=firehold in your session settings, from "Firehold (Plasma, test)" in Plasma's menu; no line: KDE
+  # Plasma) and its packages are in the image. plasmashell is told which shell package to start (PLASMA_DEFAULT_SHELL);
+  # KWin is KDE's own, unchanged. KDE's user services keep that variable between Plasma starts, so it's cleared first
+  # and plain Plasma never gets it. Anything missing or failing: plain KDE Plasma (hearth-firehold-plasma checks the
+  # shell came up and says so); the choice itself is never changed here.
+  fh_shell=""
+  if have systemctl; then systemctl --user unset-environment PLASMA_DEFAULT_SHELL HEARTH_FIREHOLD_PLASMA >/dev/null 2>&1 || true; fi
+  fh_pick=$(firehold_plasma_choice)
+  if [ "$fh_pick" != firehold ] && firehold_rust_saved; then
+    # "Firehold (Rust, test)" was archived (Nov 19): a device that had picked it gets Firehold on Plasma instead.
+    # Its saved pick is read, never rewritten here; picking again (Settings › Your desktop, or Plasma's menu) replaces
+    # it. Said once.
+    fh_pick=firehold
+    log "desktop mode: your pick was Firehold (Rust, test), which was retired for now: Firehold on Plasma instead"
+    if [ ! -e "$DESK_STATE/firehold-rust-retired-told" ] && have notify-send; then
+      mkdir -p "$DESK_STATE" && : >"$DESK_STATE/firehold-rust-retired-told"
+      ( sleep 25; notify-send -a "Hearth" -i hearth "Firehold (Rust) was retired for now" \
+          "You're on Firehold on Plasma instead. Change it in Settings › Your desktop." ) >/dev/null 2>&1 &
+    fi
+  fi
+  if [ "$fh_pick" = firehold ] && have hearth-firehold-plasma && [ -f /usr/share/plasma/shells/org.hearthos.firehold/metadata.json ]; then
+    fh_shell=$(timeout 10 hearth-firehold-plasma start-shell 2>/dev/null | tail -n 1)
+    case "$fh_shell" in
+      org.hearthos.firehold|org.hearthos.firehold.desk) timeout 10 hearth-firehold-plasma begin "$fh_shell" >/dev/null 2>&1 || true ;;
+      *) fh_shell="" ;;
+    esac
+    log "desktop mode: Firehold on Plasma (${fh_shell:-no shell to start: plain KDE Plasma})"
+  fi
+  started=$(date +%s)
+  (
+    if [ -n "$fh_shell" ]; then export PLASMA_DEFAULT_SHELL="$fh_shell" HEARTH_FIREHOLD_PLASMA=1; else unset PLASMA_DEFAULT_SHELL HEARTH_FIREHOLD_PLASMA; fi
+    # Plasma's menus: Hearth Classic's one-app-of-each-kind copies (made for Mantel) are left out. Plasma has its own
+    # (/usr/share/hearth/app-kinds-plasma: Hearth's own apps first, KDE's never in their place), made by the Fedora
+    # edition's build only when they passed its check; without them Hearth's apps and KDE's both show, as before.
+    dd=""; IFS=:; for d in $XDG_DATA_DIRS; do [ "$d" = /usr/share/hearth/app-kinds ] || [ "$d" = /usr/share/hearth/app-kinds-plasma ] || dd="${dd:+$dd:}$d"; done; unset IFS
+    if [ -d /usr/share/hearth/app-kinds-plasma/applications ]; then dd="/usr/share/hearth/app-kinds-plasma:$dd"; fi
+    # Game Mode on this PC off: Back to Game Mode hidden (its Hidden copy first; nimbus-mode gamemodes apply keeps it
+    # in step with Settings while Plasma runs).
+    gm_hide_prepare; dd="$GM_HIDE_DIR:$dd"
+    export XDG_DATA_DIRS="$dd"
+    # Fedora names KDE's menu file with a prefix (the 1.14 "applications.menu not found"): Plasma is told which.
+    if [ ! -e /etc/xdg/menus/applications.menu ]; then
+      for m in /etc/xdg/menus/*-applications.menu; do [ -e "$m" ] && { export XDG_MENU_PREFIX="$(basename "$m" applications.menu)"; break; }; done
+    fi
+    export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE DESKTOP_SESSION=plasma KDE_FULL_SESSION=true HEARTH_WM=plasma
+    unset QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE HEARTH_DESKTOP_PID LABWC_PID
+    exec startplasma-wayland
+  ) >>"$LOG" 2>&1 &
+  pid=$!
+  echo "$pid" >"$RUN/hearth-plasma.pid"
+  wait "$pid"; code=$?
+  rm -f "$RUN/hearth-plasma.pid"
+  log "desktop mode: KDE Plasma ended (code $code)"
+  if [ ! -s "$NEXT" ] && [ $(( $(date +%s) - started )) -lt 20 ]; then
+    log "desktop: KDE Plasma ended within 20 s of starting; Steam Game Mode instead"
+    echo steam >"$NEXT"
+  fi
+  return 0
+}
+
+# ---- "Firehold (Rust, test)" (1.15's test on Anatase, the owner's Nov 18) was archived on Nov 19 (docs/ARCHIVED.md,
+# archive/hosts/firehold-shell): its pick (~/.config/nimbus/firehold-rust.json {"desktop": "firehold"}, written only by
+# the person's pick) is read here so that device opens Firehold on Plasma instead of a desktop that's gone (run_plasma).
+# Read only; hearth-firehold-plasma's next pick sets it back to plasma.
+firehold_rust_saved() {
+  grep -qs '"desktop"[[:space:]]*:[[:space:]]*"firehold"' "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/firehold-rust.json"
+}
+
+# >>> labwc on the Fedora edition (1.16; docs/LABWC-FEDORA.md). The owner (Nov 19): "port over the entire labwc as well,
+# have it as a selection ... Don't have it as a fallback either", and "a Firehold version that uses labwc". Two choices
+# in Settings › Your desktop (hearth-labwc-desktop): session.conf's HEARTH_PLASMA_DESKTOP=classic (Mantel, Hearth
+# Classic) or =classicfirehold (Firehold on labwc: Mantel's Firehold, on for that sign-in only). Read only here.
+#  - Only when picked: nothing else in this file starts labwc on this image; Plasma or Firehold on Plasma failing stays
+#    as it was (Steam Game Mode, recovery).
+#  - When it doesn't come up (labwc or Quickshell missing, labwc ending within HEARTH_LABWC_EARLY_SECS (15 s), Mantel not
+#    saying it's up within HEARTH_LABWC_UP_SECS (45 s), Mantel giving up: hearth-labwc-shell-failed): KDE Plasma for the
+#    rest of this sign-in, and a notification says why. Twice in a row: KDE Plasma until it's picked again. Never a loop:
+#    one try per Desktop Mode start, none again after a failure this sign-in. The choice itself is never changed here.
+fedora_labwc_choice() {
+  c=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_PLASMA_DESKTOP=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
+  case "$c" in classic) echo classic ;; classicfirehold) echo firehold ;; *) echo none ;; esac
+}
+LABWC_UP_SECS="${HEARTH_LABWC_UP_SECS:-45}"
+LABWC_EARLY_SECS="${HEARTH_LABWC_EARLY_SECS:-15}"
+LABWC_GOOD_SECS="${HEARTH_LABWC_GOOD_SECS:-60}"
+fedora_labwc_failed() {   # $1: why (plain words, for the person)
+  : >"$RUN/hearth-labwc-failed"; desk_fails_add labwc
+  mkdir -p "$DESK_STATE"; printf '%s\n' "$1" >"$DESK_STATE/labwc-why.tmp" && mv -f "$DESK_STATE/labwc-why.tmp" "$DESK_STATE/labwc-why"
+  if [ "$(desk_fails labwc)" -ge 2 ]; then
+    t="$FEDORA_LABWC_NAME didn't start twice in a row"; b="$1 KDE Plasma opens instead until you pick it again in Settings › Your desktop."
+  else
+    t="$FEDORA_LABWC_NAME didn't start"; b="$1 KDE Plasma opened instead for now. Your choice is kept."
+  fi
+  log "desktop: $t ($1); KDE Plasma instead"
+  if have notify-send; then ( sleep 25; notify-send -a "Hearth" -i hearth "$t" "$b" ) >/dev/null 2>&1 & fi
+}
+run_fedora_labwc() {   # $1: classic | firehold. 200: didn't come up (the caller opens KDE Plasma); else labwc's end.
+  if [ "$1" = firehold ]; then FEDORA_LABWC_NAME="Firehold on labwc"; else FEDORA_LABWC_NAME="Hearth Classic (labwc)"; fi
+  if [ -e "$RUN/hearth-labwc-failed" ]; then log "desktop: $FEDORA_LABWC_NAME didn't start earlier this sign-in; KDE Plasma"; return 200; fi
+  if [ "$(desk_fails labwc)" -ge 2 ]; then log "desktop: $FEDORA_LABWC_NAME didn't start twice in a row; KDE Plasma until it's picked again"; return 200; fi
+  miss=""
+  have labwc || miss="labwc"
+  have quickshell || miss="${miss:+$miss and }Quickshell"
+  [ -f "$SHARE/desktop/shell/shell.qml" ] || miss="${miss:+$miss and }Mantel's files"
+  if [ -n "$miss" ]; then fedora_labwc_failed "This Hearth OS is missing $miss."; return 200; fi
+  log "desktop mode: $FEDORA_LABWC_NAME"
+  CONF="$SHARE/desktop/labwc"
+  if [ -f "$SHARE/desktop/shell/hearth-system" ] && have python3; then
+    CONF="$(timeout 10 python3 "$SHARE/desktop/shell/hearth-system" labwc-config 2>/dev/null)" || CONF="$SHARE/desktop/labwc"
+    [ -f "$CONF/rc.xml" ] || CONF="$SHARE/desktop/labwc"
+  fi
+  LABWC_LOG="$(dirname "$LOG")/labwc.log"
+  [ -f "$LABWC_LOG" ] && [ "$(wc -c <"$LABWC_LOG")" -gt 1000000 ] && mv -f "$LABWC_LOG" "$LABWC_LOG.old"
+  echo "--- $(date '+%F %T') Desktop Mode ($FEDORA_LABWC_NAME)" >>"$LABWC_LOG"
+  rm -f "$RUN/hearth-shell-up" "$RUN/hearth-labwc-shell-failed"
+  (
+    if [ -d /sys/module/nvidia_drm ]; then export WLR_NO_HARDWARE_CURSORS=1; fi
+    unset PLASMA_DEFAULT_SHELL HEARTH_FIREHOLD_PLASMA HEARTH_FIREHOLD_SESSION
+    [ "$1" = firehold ] && export HEARTH_FIREHOLD_SESSION=1
+    export HEARTH_WM=labwc HEARTH_FEDORA_LABWC=1
+    exec sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec labwc -C "$1"' sh "$CONF"
+  ) >>"$LABWC_LOG" 2>&1 &
+  lpid=$!
+  echo "$lpid" >"$RUN/hearth-labwc.pid"
+  started=$(date +%s); up=0
+  while kill -0 "$lpid" 2>/dev/null; do
+    [ -e "$RUN/hearth-shell-up" ] && { up=1; break; }
+    [ -s "$NEXT" ] || [ -e "$RUN/hearth-labwc-shell-failed" ] && break
+    [ $(( $(date +%s) - started )) -ge "$LABWC_UP_SECS" ] && break
+    sleep 1
+  done
+  if [ "$up" = 0 ] && [ ! -s "$NEXT" ]; then
+    why=$(head -c 200 "$RUN/hearth-labwc-shell-failed" 2>/dev/null)
+    if [ -z "$why" ]; then
+      if ! kill -0 "$lpid" 2>/dev/null; then why="labwc ended right after it started."
+      else why="Its taskbar and menus didn't come up within $LABWC_UP_SECS seconds."; fi
+    fi
+    kill -TERM "$lpid" 2>/dev/null
+    i=0; while kill -0 "$lpid" 2>/dev/null && [ "$i" -lt 10 ]; do sleep 0.5; i=$((i + 1)); done
+    kill -KILL "$lpid" 2>/dev/null
+    wait "$lpid" 2>/dev/null
+    rm -f "$RUN/hearth-labwc.pid"
+    fedora_labwc_failed "$why"; return 200
+  fi
+  wait "$lpid"; code=$?
+  rm -f "$RUN/hearth-labwc.pid"
+  ran=$(( $(date +%s) - started ))
+  log "desktop mode: $FEDORA_LABWC_NAME ended (code $code, after ${ran} s)"
+  if [ ! -s "$NEXT" ] && { [ -e "$RUN/hearth-labwc-shell-failed" ] || [ "$ran" -lt "$LABWC_EARLY_SECS" ]; }; then
+    fedora_labwc_failed "$(head -c 200 "$RUN/hearth-labwc-shell-failed" 2>/dev/null || echo "It closed right after it started.")"
+    return 200
+  fi
+  [ "$ran" -ge "$LABWC_GOOD_SECS" ] && desk_fails_reset labwc
+  return 0
+}
+# <<< labwc on the Fedora edition
 
 # ---- Desktop Mode's notices: why Mantel started the way it did. Lines "<what> <why> <when>" in
 # ~/.local/state/hearth/desktop-notice; Mantel shows it once (DesktopNotice.qml) and Settings › System › Your desktop
@@ -1449,6 +1684,18 @@ steam_auto_after() {
 SERVER_HELPER="${HEARTH_SERVER_HELPER:-$SHARE/desktop/shell/hearth-server-mode}"
 SERVER_QML="${HEARTH_SERVER_QML:-$SHARE/desktop/shell/server-mode.qml}"
 SERVER_LABWC="${HEARTH_SERVER_LABWC:-$SHARE/desktop/server/labwc}"
+# The Fedora edition (1.16): no labwc or Quickshell there, so the dashboard is hearth-server-app (pure Rust, the same
+# helper and files) full screen in cage, a kiosk compositor, run through desktop/server/cage/run (the watcher, like
+# labwc's autostart). Debian's labwc path is used whenever labwc and Quickshell are there, exactly as before.
+SERVER_APP="${HEARTH_SERVER_APP:-hearth-server-app}"
+SERVER_CAGE="${HEARTH_SERVER_CAGE:-cage}"
+SERVER_CAGE_RUN="${HEARTH_SERVER_CAGE_RUN:-$SHARE/desktop/server/cage/run}"
+# labwc (Debian), cage (Fedora) or nothing.
+server_display() {
+  if have labwc && have quickshell; then echo labwc
+  elif have "$SERVER_CAGE" && { have "$SERVER_APP" || [ -x "$SERVER_APP" ]; }; then echo cage
+  fi
+}
 SERVER_UP_SECS="${SERVER_UP_SECS:-60}"
 SERVER_GOOD_SECS="${SERVER_GOOD_SECS:-120}"
 SERVER_WINDOW="${SERVER_WINDOW:-600}"
@@ -1459,16 +1706,23 @@ server_helper() { [ -f "$SERVER_HELPER" ] && have python3 && timeout 15 python3 
 server_enabled() { [ -z "$HEARTH_SEAT" ] && [ "$(server_helper session-check)" = on ]; }
 server_cant_reason() {
   if [ -n "$HEARTH_SEAT" ]; then echo "Server mode is only for the first player"
-  elif ! have labwc || ! have quickshell; then echo "labwc or Quickshell isn't installed"
-  elif [ ! -f "$SERVER_QML" ] || [ ! -f "$SERVER_LABWC/rc.xml" ] || [ ! -f "$SERVER_LABWC/autostart" ]; then echo "Server mode's files are missing"
+  elif [ -z "$(server_display)" ]; then echo "labwc or Quickshell isn't installed (nor cage with Hearth's Server mode app)"
+  elif [ "$(server_display)" = labwc ] && { [ ! -f "$SERVER_QML" ] || [ ! -f "$SERVER_LABWC/rc.xml" ] || [ ! -f "$SERVER_LABWC/autostart" ]; }; then echo "Server mode's files are missing"
+  elif [ "$(server_display)" = cage ] && [ ! -f "$SERVER_CAGE_RUN" ]; then echo "Server mode's files are missing"
   elif ! server_enabled; then echo "Server mode is off (Settings › Home server › Server mode)"
   fi
 }
-# Server mode can't run or failed: Game Mode, always (never no screen, never back to Server mode by itself).
+# Server mode can't run or failed: Game Mode, always (never no screen, never back to Server mode by itself); while
+# Game Mode is off on this PC (game modes off block), Desktop Mode instead (whose own fallbacks still reach Game Mode).
 server_failed() {
-  log "server mode: $1; Game Mode instead"
   echo "$1" >"$RUN/hearth-server-mode-failed" 2>/dev/null
-  echo game >"$NEXT"
+  if command -v game_modes_off >/dev/null 2>&1 && game_modes_off; then
+    log "server mode: $1; Desktop Mode instead (Game Mode is off on this PC)"
+    echo desktop >"$NEXT"
+  else
+    log "server mode: $1; Game Mode instead"
+    echo game >"$NEXT"
+  fi
 }
 server_recent_fails() {
   now=$(date +%s)
@@ -1524,7 +1778,16 @@ run_server() {
   [ -f "$SERVER_LOG" ] && [ "$(wc -c <"$SERVER_LOG")" -gt 1000000 ] && mv -f "$SERVER_LOG" "$SERVER_LOG.old"
   echo "--- $(date '+%F %T') Server mode" >>"$SERVER_LOG"
   [ -d /sys/module/nvidia_drm ] && export WLR_NO_HARDWARE_CURSORS=1
-  HEARTH_SERVER_MODE=1 HEARTH_SERVER_QML="$SERVER_QML" HEARTH_SERVER_LOG="$SERVER_LOG" labwc -C "$SERVER_LABWC" >>"$SERVER_LOG" 2>&1 &
+  sdisp="$(server_display)"
+  if [ "$sdisp" = cage ]; then
+    # Fedora: cage with the watcher as its one client (-s: switching to another console still works). On Nvidia, cage
+    # (wlroots) draws through the driver's GBM / EGL like labwc does; the cursor is drawn in software (above).
+    log "server mode: the dashboard in cage (hearth-server-app)"
+    HEARTH_SERVER_MODE=1 HEARTH_SERVER_APP="$SERVER_APP" HEARTH_SERVER_HELPER="$SERVER_HELPER" HEARTH_SERVER_LOG="$SERVER_LOG" \
+      "$SERVER_CAGE" -s -- sh "$SERVER_CAGE_RUN" >>"$SERVER_LOG" 2>&1 &
+  else
+    HEARTH_SERVER_MODE=1 HEARTH_SERVER_QML="$SERVER_QML" HEARTH_SERVER_LOG="$SERVER_LOG" labwc -C "$SERVER_LABWC" >>"$SERVER_LOG" 2>&1 &
+  fi
   lpid=$!
   # The dashboard must say it's up (server-mode.qml writes $RUN/hearth-server-dash-up) within SERVER_UP_SECS, or labwc is
   # closed and Game Mode starts: a black screen never stays.
@@ -1543,6 +1806,7 @@ run_server() {
   kill "$wpid" 2>/dev/null
   [ -n "$ipid" ] && kill "$ipid" 2>/dev/null
   rm -f "$RUN/hearth-server-mode.pid" "$RUN/hearth-server-dash-up"
+  # (cage: its watcher ends by itself within 5 s once cage is gone, and the dashboard with its screen.)
   # Power limits back to how they were, the screen on (never waited on for long, never fatal).
   server_helper leaving >/dev/null
   ran=$(( $(date +%s) - started ))
@@ -1850,6 +2114,50 @@ setup_pending() {
   [ "${HEARTH_LEGACY_SETUP:-0}" = 1 ] || return 1
   ! grep -Eq '"setupDone"[[:space:]]*:[[:space:]]*[1-9t]' "${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/library.json" 2>/dev/null
 }
+# ---- Game Mode on this PC (Settings › System › Startup, the owner, Nov 19: "need to add a option that turns off the
+# game modes"). desktop.json's gameModeOff, written only by Settings (hearth_settings_io.py merge --history); missing:
+# On, so nothing changes for anyone who doesn't turn it off. Off: the PC always starts in Desktop Mode (whatever Start
+# in says: that choice is kept for when it's on again), nimbus-mode's game / steam / hearth do nothing but say so, and
+# Plasma's Back to Game Mode entries are hidden (nimbus-mode gamemodes apply). Never off for the live USB or an extra
+# multi-seat player. First-time setup still runs as now. Game Mode stays available for recovery: every fallback of
+# this session (Desktop Mode that can't start: run_plasma's Steam Game Mode, "desktop mode unavailable", Mantel's
+# own give_up with HEARTH_GM_RECOVERY=1) still goes to Steam Game Mode or Hearth's own, so there's always a screen.
+# (test_game_modes_off.py runs these lines, between the >>> and <<< marks.)
+# >>> game modes off
+game_modes_off() {
+  [ -e "${HEARTH_LIVE_FLAG:-/etc/hearth-live}" ] || [ "${USER:-}" = liveuser ] || [ -n "${HEARTH_SEAT:-}" ] && return 1
+  grep -Eq '"gameModeOff"[[:space:]]*:[[:space:]]*true' "${HEARTH_DESKTOP_JSON:-${XDG_DATA_HOME:-$HOME/.local/share}/nimbus/desktop.json}" 2>/dev/null
+}
+# Where the session starts: Desktop Mode instead of Game Mode while it's off (first-time setup that's pending still
+# runs: "game" stays and resolve_mode makes it setup). Server mode isn't a Game Mode and stays as you set it.
+gm_start_mode() {
+  if [ "$1" = game ] && game_modes_off && ! { command -v setup_pending >/dev/null 2>&1 && setup_pending; }; then
+    log "start: Game Mode is off on this PC (Settings › System › Startup); Desktop Mode"
+    echo desktop
+  else
+    echo "$1"
+  fi
+}
+# Where first-time setup goes when it's over: Steam Game Mode (as before), or Desktop Mode while Game Mode is off.
+gm_after_setup() {
+  case "$1" in
+    ''|game|steam|hearth) if game_modes_off; then echo desktop; else echo "${1:-steam}"; fi ;;
+    *) echo "$1" ;;
+  esac
+}
+# The folder Plasma's hidden Back to Game Mode lives in (nimbus-mode gamemodes apply fills or empties it); made at
+# every Plasma start so a change in Settings shows at once. Never fails.
+GM_HIDE_DIR="$RUN/hearth-gm-hidden"
+gm_hide_prepare() {
+  mkdir -p "$GM_HIDE_DIR/applications" 2>/dev/null || return 0
+  if game_modes_off; then
+    printf '[Desktop Entry]\nType=Application\nName=Back to Game Mode\nExec=nimbus-mode game\nHidden=true\nNoDisplay=true\n' >"$GM_HIDE_DIR/applications/hearth-gamemode.desktop" 2>/dev/null
+  else
+    rm -f "$GM_HIDE_DIR/applications/hearth-gamemode.desktop"
+  fi
+  return 0
+}
+# <<< game modes off
 # What a request for a mode means: "game" is the Game Mode you picked (game_mode_choice: Steam Game Mode unless you
 # picked Hearth Game Mode; first-time setup while it's pending; Hearth Game Mode on the live USB, its installer).
 # "hearth" is Hearth Game Mode asked for by you (Switch now, Try again): its pause ends first.
@@ -1883,6 +2191,10 @@ if [ "${HEARTH_SIDE:-}" = 1 ]; then
     || log "side by side: couldn't show the desktop or another session of yours again"
   exit 0
 fi
+
+# Modes that end within seconds one after another (a broken piece every mode needs) must never flip forever on a
+# black screen: after 6 quick ends in a row the session waits 15 s between tries and says so.
+QUICK_ENDS=0
 reset_controllers
 mode="${NIMBUS_START_MODE:-game}"
 case "$mode" in desktop|server) ;; *) mode=game ;; esac
@@ -1894,6 +2206,9 @@ if [ -z "$HEARTH_SEAT" ] && [ -f "$SERVER_HELPER" ] && { [ "$mode" = server ] ||
   case "$sm" in game|desktop|server) [ "$sm" != "$mode" ] && log "start: $sm (Server mode's choices)"; mode="$sm" ;; esac
 fi
 [ "$mode" = server ] && mode="$(server_start_mode)"
+# Game Mode on this PC off: Desktop Mode (first-time setup still runs; Server mode stays).
+[ -z "$HEARTH_SEAT" ] && mode="$(gm_start_mode "$mode")"
+rm -f "$RUN/hearth-start-page"
 # Hearth Recovery on the device › Desktop Mode this time (until the next restart).
 [ -f /run/hearth/start-desktop ] && [ -z "$HEARTH_SEAT" ] && mode=desktop
 # Extra multi-seat players have Hearth's Game Mode only (multi-seat is dropped for now; kept for HEARTH_LEGACY_MULTIPLAYER).
@@ -1929,6 +2244,7 @@ while :; do
   steam_only_env
   SWITCH_WATCH=""; switch_watch "$mode"
   sd=""; [ "$mode" = steam ] && ! live_session && { steam_auto_before; sd=1; }
+  mode_started=$(date +%s)
   # Hearth Game Mode you picked (game_mode_choice): run_hearth_mode, with its fallback (Steam Game Mode, then Mantel).
   if [ "$mode" = game ] && [ -z "$HEARTH_SEAT" ] && ! live_session; then run_hearth_mode; code=$?
   elif [ "$mode" = game ] || [ "$mode" = setup ]; then
@@ -1940,11 +2256,20 @@ while :; do
   else steam_notice_other; run_desktop; code=$?; fi
   [ -n "$sd" ] && steam_auto_after
   [ -n "$SWITCH_WATCH" ] && kill "$SWITCH_WATCH" 2>/dev/null
+  if [ $(( $(date +%s) - mode_started )) -lt 10 ]; then QUICK_ENDS=$((QUICK_ENDS + 1)); else QUICK_ENDS=0; fi
+  if [ "$QUICK_ENDS" -ge 6 ]; then
+    log "modes keep ending at once ($QUICK_ENDS in a row): waiting 15 s before the next try (Send logs has why)"
+    sleep 15
+  fi
   STEAM_GAME_APPID=""   # a one-game Steam Game Mode is over, whatever comes next
 
   next="$(cat "$NEXT" 2>/dev/null)"; rm -f "$NEXT"
   # First-time setup that ended without asking for anything (Hearth closed or gave up): Steam Game Mode, never no screen.
   [ "$mode" = setup ] && [ -z "$next" ] && { log "first-time setup ended (code $code); Steam Game Mode next"; next=steam; }
+  # ...or Desktop Mode, when Game Mode is off on this PC.
+  if [ "$mode" = setup ] && [ -z "$HEARTH_SEAT" ] && [ "$(gm_after_setup "$next")" != "$next" ]; then
+    log "first-time setup over; Game Mode is off on this PC, so Desktop Mode next"; next=desktop
+  fi
   [ -n "$HEARTH_SEAT" ] && [ "$next" = desktop ] && next=game   # extra multi-seat players have Game Mode only
   [ -n "$HEARTH_SEAT" ] && [ "$next" = steam ] && next=game     # ...and never Steam Game Mode
   [ -n "$HEARTH_SEAT" ] && [ "$next" = server ] && next=game    # ...and never Server mode

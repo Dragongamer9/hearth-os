@@ -1,0 +1,25 @@
+#!/bin/sh
+# Hearth OS on Anatase (test, 1.15), on a PC that came here from Hearth OS on Debian (its boot menu is Hearth's own:
+# /boot/grub2/hearth-bls.cfg). Red flag 2: the firmware's boot loader must always find the boot menu.
+# Every boot loader folder on the EFI partition that has a GRUB (EFI/<name>/grubx64.efi) but no grub.cfg next to it
+# gets the one another folder has (bootupd's static EFI config: it finds /boot by its UUID, bootuuid.cfg, and loads
+# /boot/grub2/grub.cfg). That is what left the owner's laptop at "grub>" on Nov 17: Fedora's bootupd had put Anatase's
+# shim and GRUB in EFI/anatase without them. Only ever adds those two files; never removes or changes anything else.
+set -u
+ESP=${HEARTH_ESP:-/boot/efi}
+EFI="$ESP/EFI"
+[ -d "$EFI" ] || exit 0
+src=""
+for d in "$EFI"/debian "$EFI"/fedora "$EFI"/anatase "$EFI"/*; do
+  if [ -f "$d/grub.cfg" ] && [ -f "$d/bootuuid.cfg" ]; then src=$d; break; fi
+done
+[ -n "$src" ] || { echo "hearth-esp-guard: no grub.cfg with bootuuid.cfg on the EFI partition to copy; nothing changed"; exit 0; }
+for d in "$EFI"/*; do
+  [ -d "$d" ] && [ -f "$d/grubx64.efi" ] || continue
+  [ -f "$d/grub.cfg" ] && [ -f "$d/bootuuid.cfg" ] && continue
+  for f in grub.cfg bootuuid.cfg; do
+    if [ ! -f "$d/$f" ]; then cp "$src/$f" "$d/.$f.hearth-tmp" && mv "$d/.$f.hearth-tmp" "$d/$f" && echo "hearth-esp-guard: $d/$f from $src (the boot menu is found from there now)"; fi
+  done
+done
+sync
+exit 0

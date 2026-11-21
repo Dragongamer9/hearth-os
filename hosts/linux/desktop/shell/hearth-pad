@@ -59,7 +59,8 @@ of labwc's, all typed through this helper's uinput keyboard (KWin has no wtype):
 A KWin script (/usr/share/kwin/scripts/hearthpad) says which window is in front over D-Bus (org.hearth.Pad, served
 here with GLib's D-Bus when python3-gi is there): Plasma's popups (the launcher, the tray, Quick Access), the taskbar,
 KRunner, Dolphin, System Settings and the lock screen get the keys (A Enter, B Esc, X the Menu key; RT / LT still
-click), a fullscreen window pauses the controller as in Classic. A text field that KWin reports right after you used
+click), a fullscreen window pauses the controller as in Classic, and a controller app in front owns the controller as in
+Classic (owner {app}). The Fedora edition's host is hearth-pad-host (hosts/hearth-ui/apps/pad), which draws the same. A text field that KWin reports right after you used
 the controller (KRunner, KDE apps) opens the on-screen keyboard. Without python3-gi it still works, A just clicks.
 
 --gnome: Hearth GNOME (GNOME Shell's hearth-pad@hearthos.fun extension starts it and draws what it asks for;
@@ -72,6 +73,11 @@ X the context menu, Y search (Files) and the keyboard, LB / RB tabs, LT / RT scr
 --standalone: nobody reads what this prints or writes commands to it (hearth-companion gnome starts it when GNOME
 Shell's controller extension didn't start hearth-pad --gnome): Desktop Mode's pointer, clicks, scrolling and keys
 without the shell's menus; stdin isn't read, so it doesn't end when stdin closes.
+
+Pointer speed: Mantel's Pad.qml sends speed {value} from Hearth Settings › Controller. On KDE Plasma (--plasma, under
+hearth-pad-host) and --standalone nothing sends it, so there it's read from the same setting, desktop.json's
+pointerSpeed (the Rust Settings app saves it there), when this starts and again within 2 s of it changing (one stat of
+the file every 2 s; never written here).
 
 --game: Game Mode's controller mouse (started by Hearth, hearth-core padmouse.rs). Only the mouse: right stick,
 A / RT click, X / LT right-click, L3 middle-click, left stick scroll, B Esc, D-pad arrows, R3 precise. Guide, Menu,
@@ -127,8 +133,8 @@ ARROWS = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_
 # Hearth Settings' own shortcuts (SettingsFrame.qml): Y search, LB / RB previous / next category, ☰ close.
 SETTINGS_KEYS = {'y': ('KEY_LEFTCTRL', 'KEY_F'), 'x': ('KEY_LEFTCTRL', 'KEY_D'), 'lb': ('KEY_LEFTCTRL', 'KEY_PAGEUP'), 'rb': ('KEY_LEFTCTRL', 'KEY_PAGEDOWN'),
                  'menu': ('KEY_LEFTCTRL', 'KEY_W')}
-# Hearth windows whose tabs LB / RB switch with Ctrl+Page Up / Down (their own shortcuts).
-TAB_WINDOWS = ('Resource Monitor',)
+# Hearth windows whose tabs (or pages: the Logitech G15 app) LB / RB switch with Ctrl+Page Up / Down (their own shortcuts).
+TAB_WINDOWS = ('Resource Monitor', 'Logitech G15')
 SNAP = {'up': 'KEY_UP', 'down': 'KEY_DOWN', 'left': 'KEY_LEFT', 'right': 'KEY_RIGHT'}  # with Super
 
 KEYS_USED = sorted({k for k, _ in CHARS.values()} | set(ARROWS.values()) |
@@ -163,6 +169,18 @@ PLASMA_SHELL = ('plasmashell', 'org.kde.plasmashell')
 PLASMA_KEY_APPS = ('krunner', 'org.kde.krunner', 'dolphin', 'org.kde.dolphin', 'systemsettings',
                    'org.kde.systemsettings', 'kscreenlocker_greet', 'org.kde.kscreenlocker_greet')
 PLASMA_SEARCH = ('krunner', 'org.kde.krunner', 'konsole', 'org.kde.konsole')   # open the keyboard when they come up
+# Plasma's own password prompts (KDE's polkit agent, KDE Wallet and the secret service, ssh / GnuPG / kdesu asking for a
+# passphrase), by window class. Over them the on-screen keyboard is in its password mode (no suggestions, nothing
+# learned, no emoji), as Mantel's is over Hearth's own password prompt (Pad.qml: SettingsNav.polkitShown), and it
+# opens by itself when one comes up after the controller was used: Plasma's prompts don't tell Hearth anything else.
+PLASMA_PASSWORD = ('org.kde.polkit-kde-authentication-agent-1', 'polkit-kde-authentication-agent-1',
+                   'org.kde.polkit-kde-authentication-agent', 'org.kde.ksecretd', 'ksecretd', 'org.kde.kwalletd6',
+                   'kwalletd6', 'org.kde.kwalletd5', 'kwalletd5', 'org.kde.ksshaskpass', 'ksshaskpass', 'pinentry-qt',
+                   'org.gnupg.pinentry-qt', 'pinentry-qt5', 'org.kde.kdesu', 'kdesu', 'org.kde.kdesudo')
+
+
+def plasma_password(cls):
+    return (cls or '').strip().lower() in PLASMA_PASSWORD
 # Hearth Plasma's own apps (the KDE-based Hearth Files, Terminal, Text, Reader, Capture, Calculator), like Mantel's: D-pad
 # moves, A opens, B back, X the context menu, Y search, LB / RB tabs, LT / RT scroll. Only what differs from that per
 # app; None: the app does it itself (Hearth Files from Dolphin reads the controller for those: hearthgamepad.cpp),
@@ -180,9 +198,40 @@ PLASMA_APPS = {
 }
 
 
+# Hearth's pure-Rust apps (hosts/hearth-ui; the Fedora edition on KDE Plasma), by Wayland app id. Each button has ONE
+# owner there, so a press never does two things (the owner on the Ally, Nov 19: LB / RB switched Settings' tabs and
+# windows at once):
+# - PLASMA_PAD_READERS: the app reads the controller itself (Settings' pad.rs: A, B, X, Y, LB, RB, the D-pad and ☰ are
+#   its own), so the helper sends nothing for those buttons there; the sticks (pointer, scroll), RT / LT (clicks),
+#   L3 / R3, View (and View + a button) and Guide stay the helper's.
+# - PLASMA_TAB_APPS: apps with tabs or pages that don't read the controller: LB / RB are their previous / next tab
+#   (Ctrl+Page Up / Down, each app's own shortcut) instead of switching windows; everything else as on the desktop.
+# The other Rust apps (System Restore, Reliability history) have no tabs: LB / RB switch windows there, as anywhere.
+PLASMA_PAD_READERS = {
+    'hearth-settings': ('a', 'b', 'x', 'y', 'lb', 'rb', 'up', 'down', 'left', 'right', 'menu'),
+    # The Hearth Store (feature/hearth-store): reads the controller as Settings does (apps/store/src/pad.rs).
+    'hearth-store': ('a', 'b', 'x', 'y', 'lb', 'rb', 'up', 'down', 'left', 'right', 'menu'),
+    # Hearth Notes (feature/hearth-notes): its controller layout (apps/notes/src/pad.rs), with the triggers too.
+    'hearth-notes': ('a', 'b', 'x', 'y', 'lb', 'rb', 'lt', 'rt', 'up', 'down', 'left', 'right', 'menu'),
+}
+PLASMA_TAB_APPS = ('hearth-g15-app', 'hearth-tasks', 'hearth-files', 'hearth-file-chooser', 'hearth-capture')
+
+
+def plasma_rust_owner(cls, name):
+    """Who has this button over the window in front: 'app' (it reads the controller itself), 'tabs' (LB / RB are its
+    tabs, typed as Ctrl+Page Up / Down) or None (the helper, as everywhere)."""
+    c = app_key(cls)
+    if name in PLASMA_PAD_READERS.get(c, ()):
+        return 'app'
+    if c in PLASMA_TAB_APPS and name in ('lb', 'rb'):
+        return 'tabs'
+    return None
+
+
 def plasma_app(cls):
     c = (cls or '').lower()
     return PLASMA_APPS.get(c[len('org.kde.'):] if c.startswith('org.kde.') else c)
+PLASMA_TOUCH_AFTER_CLOSE = 3.0   # s: a touch-shown panel doesn't reopen the keyboard this soon after it closed
 PLASMA_OSK_RECENT = 8.0      # s: a text field opens the keyboard by itself only this soon after the controller was used
 
 
@@ -205,6 +254,50 @@ def app_key(app):
     """A window's app id or a .desktop id, compared without case and without ".desktop"."""
     a = str(app or '').strip().lower()
     return a[:-len('.desktop')] if a.endswith('.desktop') else a
+
+
+def desktop_json_path():
+    home = os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share')
+    return os.path.join(home, 'nimbus', 'desktop.json')
+
+
+def saved_pointer_speed(path=None):
+    """Hearth Settings › Controller's pointer speed (desktop.json's pointerSpeed, kept to 0.2–3×), or None when it
+    isn't set or the file can't be read (the speed then stays as it is)."""
+    try:
+        with open(path or desktop_json_path(), encoding='utf-8') as f:
+            v = json.load(f).get('pointerSpeed')
+    except (OSError, ValueError, AttributeError):
+        return None
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v:
+        return None
+    return max(0.2, min(3.0, float(v)))
+
+
+class SpeedWatch:
+    """desktop.json's pointerSpeed for --plasma and --standalone (no shell sends speed there): read at the start and
+    whenever the file has changed, looked at once every `every` seconds."""
+
+    def __init__(self, path=None, every=2.0):
+        self.path = path or desktop_json_path()
+        self.every = every
+        self.next = 0.0
+        self.seen = None
+
+    def poll(self, now):
+        """The new speed when the file changed since the last look, else None."""
+        if now < self.next:
+            return None
+        self.next = now + self.every
+        try:
+            st = os.stat(self.path)
+            key = (st.st_mtime_ns, st.st_size)
+        except OSError:
+            key = None
+        if key == self.seen:
+            return None
+        self.seen = key
+        return saved_pointer_speed(self.path) if key is not None else None
 
 
 def desktop_dirs():
@@ -330,6 +423,7 @@ class Pad:
         self.win = ('', '', False, '')   # --plasma: the window in front (class, title, fullscreen, kind), from KWin
         self.key_overlay = False   # --plasma: the taskbar / Overview / a popup has the keys until a window says otherwise
         self.textfield = False     # --plasma: KWin says a text field has the focus
+        self.osk_closed_at = -1e9  # --plasma: when the on-screen keyboard last closed (a touch reopens it only later)
         self.last_input = -1e9     # when a controller button last went down
         self.guide_from = None     # what was open when Guide went down (Guide + X closes the keyboard if it was)
         self.done = False          # --game: turned off with View + Menu
@@ -477,8 +571,12 @@ class Pad:
             self.repeat.clear()
 
     def want_osk(self):
-        """Y: asks the shell for the on-screen keyboard (it answers osk {open: true})."""
-        self.out.send({'t': 'osk', 'open': True})
+        """Y: asks the shell for the on-screen keyboard (it answers osk {open: true}). On Plasma, over one of its
+        password prompts, in the keyboard's password mode."""
+        if self.plasma and plasma_password(self.win[0]):
+            self.out.send({'t': 'osk', 'open': True, 'mode': 'password'})
+        else:
+            self.out.send({'t': 'osk', 'open': True})
 
     def open_osk(self, split=False):
         self.set_mode('osk')
@@ -488,6 +586,7 @@ class Pad:
     def close_osk(self):
         self.set_mode('desk')
         self.osk_split = False
+        self.osk_closed_at = time.monotonic()
 
     def open_radial(self):
         self.set_mode('radial')
@@ -913,6 +1012,8 @@ class Pad:
                                str(m.get('kind', '')), m.get('now'))
         elif c == 'textfield' and self.plasma:
             self.plasma_textfield(bool(m.get('on')), m.get('now'))
+        elif c == 'touchfield' and self.plasma:
+            self.plasma_touchfield(bool(m.get('on')), m.get('now'))
 
     # ------------------------------------------------------------------ Hearth Plasma (--plasma)
     def plasma_keys(self):
@@ -939,6 +1040,13 @@ class Pad:
             if down:
                 self.view_used = True
                 self.plasma_do(PLASMA_VIEW[name])
+            return
+        own = None if self.key_overlay else plasma_rust_owner(self.win[0], name)
+        if own == 'app' and down:
+            return            # the app reads this button itself (a release still ends what the helper began)
+        if own == 'tabs':
+            if down:
+                self.tap('KEY_LEFTCTRL', 'KEY_PAGEDOWN' if name == 'rb' else 'KEY_PAGEUP')
             return
         if not self.keys_ctx:
             return self.desk_button(name, down, now)
@@ -972,6 +1080,9 @@ class Pad:
         self.win = (cls, caption, fullscreen, kind)
         self.key_overlay = False
         self.plasma_sync_keys()
+        # A controller app in front (Steam, a game, Hearth's own: controller-apps.json, .desktop files, claims) reads
+        # the controller itself: as in Hearth Classic, the helper stands aside (KWin's class is the Wayland app id).
+        self.set_front(cls, caption)
         fs = fullscreen and kind not in ('desktop', 'dock') and cls.lower() not in PLASMA_SHELL
         if fs != self.fs_pause:
             self.fs_pause = fs
@@ -981,6 +1092,14 @@ class Pad:
             note('in front: %r (%s)%s%s' % (cls, kind or '?', ', fullscreen: paused' if fs else '', ', keys' if self.keys_ctx else ''))
         if cls.lower() in PLASMA_SEARCH and before[0].lower() not in PLASMA_SEARCH:
             self.plasma_auto_osk(now)
+        pw = plasma_password(cls)
+        if pw != plasma_password(before[0]):
+            if self.mode == 'osk':
+                # The keyboard is open: it switches to (or back from) its password mode with the prompt.
+                self.out.send({'t': 'osk', 'open': True, 'mode': 'password' if pw else 'text'})
+            elif pw:
+                note('a password prompt is in front (%r)' % cls)
+                self.plasma_auto_osk(now)
 
     def plasma_textfield(self, on, now=None):
         """KWin: a text field got (or lost) the focus. Like Hearth Classic's own text fields, the keyboard opens by
@@ -990,6 +1109,17 @@ class Pad:
         self.textfield = on
         if on and not was and self.win[0].lower() not in PLASMA_SHELL:
             self.plasma_auto_osk(now)
+
+    def plasma_touchfield(self, on, now=None):
+        """KWin showed its input panel: a text field was touched (KDE's keyboard would pop up here). Hearth's keyboard
+        opens, whenever the controller was last used (the controller rule above is for focus that came from it), over
+        fullscreen apps too (KWin shows the panel only for touch or a pen, so games asking for text input don't). Not
+        right after you closed it (B, its hide key): KWin shows its panel again when the windows make room back, and
+        the keyboard must stay closed then."""
+        now = time.monotonic() if now is None else now
+        if on and self.mode != 'osk' and now - self.osk_closed_at >= PLASMA_TOUCH_AFTER_CLOSE:
+            note('a text field was touched: the keyboard opens')
+            self.want_osk()
 
     def plasma_auto_osk(self, now):
         if self.mode == 'desk' and not self.paused and now - self.last_input < PLASMA_OSK_RECENT:
@@ -1505,12 +1635,33 @@ def deliver(pad, state, pressed, taps, names, now):
     return state
 
 
+# Devices already looked at that aren't controllers (keyboards, the touchpad, the power button...), by path and the
+# device node's identity: they're not opened again at every scan (1.16, the rest fixes: every input device was opened
+# and asked for its capabilities every 1-3 s, all day). A device plugged in again gets a new node and is looked at.
+_NOT_PADS = {}
+
+
+def _node_id(path):
+    try:
+        st = os.stat(path)
+        return (st.st_ino, st.st_rdev, st.st_ctime_ns)
+    except OSError:
+        return None
+
+
 def gamepads(evdev, known):
     e = evdev.ecodes
     found = {}
-    for path in evdev.list_devices():
+    paths = evdev.list_devices()
+    for p in list(_NOT_PADS):
+        if p not in paths:
+            _NOT_PADS.pop(p, None)
+    for path in paths:
         if path in known:
             found[path] = known[path]
+            continue
+        nid = _node_id(path)
+        if nid is not None and _NOT_PADS.get(path) == nid:
             continue
         try:
             d = evdev.InputDevice(path)
@@ -1522,6 +1673,8 @@ def gamepads(evdev, known):
             caps = d.capabilities()
             if d.name.startswith('Hearth ') or e.BTN_SOUTH not in caps.get(e.EV_KEY, []) or e.EV_ABS not in caps:
                 d.close()
+                if nid is not None:
+                    _NOT_PADS[path] = nid
                 continue
             found[path] = Controller(d, e)
             found[path].bmap = button_map(e, getattr(getattr(d, 'info', None), 'vendor', 0))
@@ -1796,6 +1949,19 @@ def plasma_bus(inbox):
             bus.signal_subscribe('org.kde.KWin', 'org.kde.kwin.VirtualKeyboard', 'activeChanged', '/VirtualKeyboard',
                                  None, Gio.DBusSignalFlags.NONE, text_field)
 
+            # KWin shows its input method's panel when a text field got the keyboard from a touch (or a pen), never
+            # for the mouse or the keyboard: Hearth's typing (hearth-kwin-im --panel) has an invisible one, so this
+            # is when Hearth's keyboard opens for touch, as KDE's keyboard did.
+            def touch_field(conn, sender, path, iface, signal, params):
+                try:
+                    on = call(bus, 'org.kde.KWin', '/VirtualKeyboard', 'org.freedesktop.DBus.Properties', 'Get',
+                              GLib.Variant('(ss)', ('org.kde.kwin.VirtualKeyboard', 'visible')), '(v)').unpack()[0]
+                    inbox.put({'cmd': 'touchfield', 'on': bool(on)})
+                except GLib.Error:
+                    pass
+            bus.signal_subscribe('org.kde.KWin', 'org.kde.kwin.VirtualKeyboard', 'visibleChanged', '/VirtualKeyboard',
+                                 None, Gio.DBusSignalFlags.NONE, touch_field)
+
             def first():
                 try:
                     if os.path.isfile(PLASMA_REPORT_JS):
@@ -1863,13 +2029,14 @@ def main():
         real_move(dx, dy)
     out.move = counted_move
     cosmic = '--cosmic' in sys.argv[1:]
-    # Hearth Classic (Mantel): controller apps own the controller while they're in front (docs/CONTROLLER-FOCUS.md).
+    # Hearth Classic (Mantel), and Plasma (KWin's hearthpad script says what's in front): controller apps own the
+    # controller while they're in front (docs/CONTROLLER-FOCUS.md).
     classic = not (game or plasma or gnome or osk_only or cosmic)
-    owners = Owners() if classic else None
+    owners = Owners() if (classic or plasma) else None
     pad = CosmicPad(out) if cosmic else Pad(out, game=game, osk_only=osk_only, plasma=plasma, gnome=gnome, owners=owners)
     standalone = '--standalone' in sys.argv[1:]
     olink = None
-    if classic and not standalone:
+    if (classic or plasma) and not standalone:
         try:
             olink = OwnerLink(owner_socket_path())
         except OSError as err:
@@ -1880,6 +2047,8 @@ def main():
         note('Game Mode controller mouse')
     if standalone:
         note('standalone: nobody draws the menus, the controller is a mouse and keyboard')
+    # Hearth Settings › Controller's pointer speed where no shell sends it (KDE Plasma, standalone).
+    speed_watch = SpeedWatch() if (plasma or standalone) and not cosmic else None
     inbox = queue.Queue()      # --plasma: what KWin says (plasma_bus's thread) for the main loop
     if plasma:
         note('Hearth Plasma controller')
@@ -1951,6 +2120,11 @@ def main():
             next_scan = now + (3 if pads else 1)
         if sim is not None:
             stats['events'] += sim.poll()
+        if speed_watch is not None:
+            sp = speed_watch.poll(now)
+            if sp is not None and hasattr(pad, 'speed') and abs(sp - pad.speed) > 1e-6:
+                pad.speed = sp
+                note('pointer speed %.1fx (Settings > Controller)' % sp)
         while plasma and not inbox.empty():
             m = inbox.get_nowait()
             if m.get('cmd') == 'probe':
@@ -1971,7 +2145,13 @@ def main():
         try:
             link_fds = set(link.fds()) if link else set()
             olink_fds = set(olink.fds()) if olink else set()
-            ready, _, _ = select.select(list(fds) + list(olink_fds) + (list(link_fds) if link else [] if standalone else [sys.stdin.fileno()]), [], [], 0.008)
+            # 1.16 (the rest fixes): 125 times a second only while something is held or a stick or trigger is off
+            # centre; otherwise it sleeps until a press (the device wakes it at once), a message, or a quarter second.
+            srcs = list(pads.values()) + ([sim] if sim is not None else [])
+            busy = bool(pressed) or sim is not None or any(abs(c.ax[k]) >= DEAD for c in srcs for k in ('lx', 'ly', 'rx', 'ry')) \
+                or any(getattr(c, 'trig', {}).get(k) for c in srcs for k in ('lt', 'rt')) or getattr(pad, 'trig', {}).get('lt') or getattr(pad, 'trig', {}).get('rt')
+            wait = 0.008 if busy else max(0.008, min(0.25, next_scan - time.monotonic()))
+            ready, _, _ = select.select(list(fds) + list(olink_fds) + (list(link_fds) if link else [] if standalone else [sys.stdin.fileno()]), [], [], wait)
         except (OSError, ValueError):
             ready, link_fds, olink_fds = [], set(), set()
         for fd in ready:

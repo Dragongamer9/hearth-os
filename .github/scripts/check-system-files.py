@@ -19,6 +19,9 @@ for base in sys.argv[1:] or ['os-bases/peppermint', 'os-bases/anatase']:
         continue
     text = open(script).read()
     trees = ['os/system_files', base + '/system_files']
+    # Anatase (1.15) takes some of the Debian edition's files as they are (its Containerfile copies them to /peppermint_files).
+    if base.rstrip('/').endswith('anatase') and '/peppermint_files' in text:
+        trees.append('os-bases/peppermint/system_files')
     want = set()
     for line in text.splitlines():
         line = line.split('#', 1)[0] if not line.lstrip().startswith('#') else ''

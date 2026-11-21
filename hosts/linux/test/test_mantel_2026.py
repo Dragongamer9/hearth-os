@@ -221,9 +221,10 @@ class GameModeEverywhere(unittest.TestCase):
         isl = code((SHELL / 'Islands.qml').read_text())
         comp = block(isl, 'component GameModeButton')
         self.assertIn('Quickshell.execDetached(["nimbus-mode", "game"])', comp)
-        # The component itself is never hidden, and it's used in the band, outside any look-specific Loader.
+        # The component itself is hidden only by Game Mode on this PC being off (Settings › System › Startup; the owner,
+        # Nov 19), and it's used in the band, outside any look-specific Loader.
         head = comp.split('Repeater')[0]
-        self.assertNotRegex(head, r'\n\s{8}visible:')
+        self.assertEqual(re.findall(r'\n\s{8}visible:.*', head), ['\n        visible: !Settings.gameModeOff'])
         self.assertEqual(len(re.findall(r'\bGameModeButton \{', isl)), 1)
         band = isl[isl.index('id: bandItem'):isl.index('component Island:')]
         use = band.index('GameModeButton {')
@@ -242,7 +243,7 @@ class GameModeEverywhere(unittest.TestCase):
         self.assertIn('case "game": run(["nimbus-mode", "game"]); break;', qa)
         self.assertIn('rows = [["settings", "lock", "power"], ["game"]', qa)
         la = (SHELL / 'Launcher.qml').read_text()
-        self.assertIn('ActionButton { label: "Game Mode"; icon: "pad"; primary: true; command: ["nimbus-mode", "game"] }', la)
+        self.assertIn('ActionButton { visible: !Settings.gameModeOff; label: "Game Mode"; icon: "pad"; primary: true; command: ["nimbus-mode", "game"] }', la)
 
 
 class AlwaysStarts(unittest.TestCase):

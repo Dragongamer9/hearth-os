@@ -139,6 +139,11 @@ the list) load it straight from `ui/pad` (pad-sync's `PAGES`; no copy).
 
 - **The loop can't die**: an error in the app's handler is logged and the next frame comes anyway; frames come from
   `requestAnimationFrame`, and from a 100 ms timer when WebKitGTK stops giving frames.
+- **Nothing at rest** (Nov 20, 2026; an app asking for every frame sat at 1-2 % of a core doing nothing): every frame
+  only for 3 s after the page opens, gets the focus back or a controller connects, and for 10 s after a press or a
+  stick move (over 0.15); a controller there but untouched is looked at 10 times a second (a press brings every frame
+  back at once); no controller, or no focus: nothing runs until one connects or the focus comes back. Tested in
+  `hosts/linux/test/hearth-gamepad.test.js`.
 - **No frozen presses**: while the window isn't focused or is hidden, `pads()` is empty (held buttons are let go in the
   app); a page that never saw a `blur` counts as focused, so a WebKit build whose `hasFocus()` is wrong can't lock the
   controller out.

@@ -120,6 +120,9 @@ class CacheNumbers(Base):
             f.write(line % ('epicgames', '192.168.1.30', '/Builds/x', 2 ** 30, 'MISS'))
             f.write('garbage line\n')
         dns.steam_game = lambda path, cache: 'Baldur\'s Gate 3'
+        orig_lookup = dns.socket.gethostbyaddr                         # no real reverse DNS: the runner's network names some addresses
+        dns.socket.gethostbyaddr = lambda ip: (_ for _ in ()).throw(OSError('no name'))
+        self.addCleanup(setattr, dns.socket, 'gethostbyaddr', orig_lookup)
         now = time.time()
         stats = dns.cache_tick({}, conf, {}, now)
         v = dns.cache_view(stats, conf, {'100.64.0.9': 'ally'}, now)

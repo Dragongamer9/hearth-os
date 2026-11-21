@@ -71,11 +71,11 @@ class Bluetooth(Home):
         self.assertEqual(os.path.basename(self.b.unique(self.home, 'a.jpg')), 'a (2).jpg')
 
     def test_watcher_is_off_until_turned_on_and_always_asks(self):
-        src = (SHELL / 'BtReceive.qml').read_text()
+        src = (SHELL / 'BtReceive.qml').read_text(encoding='utf-8')
         self.assertIn('Settings.loaded && Settings.btReceive', src)
         self.assertIn('o.trusted && Settings.btReceiveTrusted', src)
         self.assertIn('if (!ask.answered) br.answer(ask.id, false)', src)   # a notice closed without an answer is a no
-        self.assertIn('GLib.timeout_add_seconds(60, lambda: answer(False))', (SHELL / 'hearth-bt-receive').read_text())
+        self.assertIn('GLib.timeout_add_seconds(60, lambda: answer(False))', (SHELL / 'hearth-bt-receive').read_text(encoding='utf-8'))
 
 
 class InfoCenter(Home):
@@ -173,7 +173,7 @@ class Ink(unittest.TestCase):
         m = ink.markers(ink.parse(fake.answer(req)))
         self.assertEqual([(x['name'], x['level'], x['color']) for x in m][:2], [('Cyan', 64, '00ffff'), ('Magenta', 8, 'ff00ff')])
         self.assertEqual(m[1]['low'], 10)
-        src = (SHELL / 'InkWatch.qml').read_text()
+        src = (SHELL / 'InkWatch.qml').read_text(encoding='utf-8')
         self.assertIn('if (Settings.inkNotify', src)
         self.assertIn('m.level > (m.low || 15) + 10) ch[key] = false', src)   # told again only after a refill
 
@@ -237,30 +237,30 @@ class Pages(unittest.TestCase):
     KEYS = ['btReceive', 'btReceiveFolder', 'btReceiveTrusted', 'inkNotify']
 
     def test_registered(self):
-        reg = (SHELL / 'settings-pages.js').read_text()
+        reg = (SHELL / 'settings-pages.js').read_text(encoding='utf-8')
         for pid in self.NEW:
             m = re.search(r'\{ id: "%s", file: "([^"]+)"' % re.escape(pid), reg)
             self.assertTrue(m, pid)
             self.assertTrue((SHELL / m.group(1)).exists(), m.group(1))
-        idx = (SHELL / 'settings-index.js').read_text()
+        idx = (SHELL / 'settings-index.js').read_text(encoding='utf-8')
         for pid in ('bluetooth-receive', 'scan-pdf', 'ink-levels', 'language-packs'):
             self.assertIn('"%s"' % pid, idx)
 
     def test_settings_keys_saved_one_by_one(self):
-        src = (SHELL / 'Settings.qml').read_text()
+        src = (SHELL / 'Settings.qml').read_text(encoding='utf-8')
         for k in self.KEYS:
             self.assertIn('"%s"' % k, src)
             self.assertIn('on%s%sChanged: save("%s")' % (k[0].upper(), k[1:], k), src)
         self.assertIn('property bool btReceive: false', src)        # receiving is off until you turn it on
 
     def test_watchers_loaded_by_file_name(self):
-        shell = (SHELL / 'shell.qml').read_text()
+        shell = (SHELL / 'shell.qml').read_text(encoding='utf-8')
         for f in ('BtReceive.qml', 'InkWatch.qml'):
             self.assertIn('Loader { source: "%s"' % f, shell)
 
     def test_opening_pages_writes_nothing(self):
         for f in ('SetBtReceive', 'SetScanPdf', 'SetInkLevels', 'SetLanguagePacks', 'SetFirmwareHistory', 'SetInfoCenter'):
-            src = (SHELL / (f + '.qml')).read_text()
+            src = (SHELL / (f + '.qml')).read_text(encoding='utf-8')
             for m in re.finditer(r'Component\.onCompleted:([^\n]*(?:\n(?!\s{4}\S)[^\n]*)*)', src):
                 self.assertNotRegex(m.group(1), r'Settings\.\w+\s*=[^=]', f)
                 self.assertNotRegex(m.group(1), r'"(rename|reset-name|page|feeder|save|clear|remove|get|flatpak-off|remove-dict)"', f)

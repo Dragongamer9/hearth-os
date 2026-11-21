@@ -16,7 +16,8 @@ name: Firehold
 
 on:
   push:
-    branches: ['feature/hearth-compositor', 'feature/firehold', 'feature/firehold-*', feature/kwin-1.14]
+    # (feature/firehold-rust has its own workflow, firehold-rust.yml: the Rust shell, not Mantel.)
+    branches: ['feature/hearth-compositor', 'feature/firehold', 'feature/firehold-*', '!feature/firehold-rust', feature/kwin-1.14]
     paths: ['hosts/firehold-comp/**', 'hosts/linux/session/**', 'hosts/linux/desktop/firehold/**',
             'hosts/linux/desktop/labwc/autostart', 'hosts/linux/desktop/shell/hearth-your-desktop',
             'hosts/linux/desktop/shell/SetYourDesktop.qml', 'hosts/linux/desktop/shell/DesktopNotice.qml',
@@ -25,7 +26,8 @@ on:
             '.github/workflows/firehold.yml', '.github/scripts/firehold-test.sh', '.github/scripts/firehold-headless-test.sh',
             '.github/scripts/firehold-game-test.sh', '.github/scripts/firehold-game-client.py', '.github/scripts/firehold-shot.py',
             '.github/scripts/firehold-comp-shell-test.sh', '.github/scripts/firehold-fixtures.py', 'hosts/linux/desktop/shell/Firehold*.qml',
-            'hosts/linux/desktop/shell/firehold.js']
+            'hosts/linux/desktop/shell/firehold.js', 'hosts/linux/desktop/shell/hearth-firehold-bridge', 'hosts/linux/desktop/shell/hearth-firehold',
+            'hosts/linux/desktop/shell/WinList.qml', 'hosts/linux/desktop/shell/FhArt.qml']
   workflow_dispatch:
 
 permissions:
@@ -167,7 +169,7 @@ jobs:
           # One step per picture later (GitHub keeps 10 notices a step, 50 a job): at most 8 pieces of 3800.
           for name in ('firehold-1-empty', 'firehold-2-mantel', 'firehold-3-window', 'firehold-4-minimized', 'firehold-5-snapped', 'firehold-5b-resized', 'firehold-6-your-desktop',
                        'firehold-7-locked', 'firehold-8-lock-prompt', 'firehold-9-unlocked', 'firehold-10-grim', 'firehold-11-display',
-                       'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice', 'firehold-13-guide'):
+                       'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice', 'firehold-13-guide', 'firehold-14-window-picture'):
               p = 'shots/%s.png' % name
               if not os.path.exists(p):
                   print('::warning title=pictures::no %s' % name); continue
@@ -292,7 +294,7 @@ jobs:
         run: |
           dnf -y install dnf5-plugins git xorg-x11-server-Xwayland mesa-dri-drivers mesa-libEGL libinput libseat \
             libxkbcommon labwc qt6-qtsvg procps-ng python3 python3-pillow foot dbus-daemon dbus-tools grim \
-            google-noto-sans-fonts dejavu-sans-fonts adwaita-icon-theme breeze-icon-theme hicolor-icon-theme fontconfig libnotify >/dev/null
+            google-noto-sans-fonts dejavu-sans-fonts adwaita-icon-theme breeze-icon-theme hicolor-icon-theme fontconfig libnotify wlr-randr >/dev/null
           dnf -y install --skip-unavailable rsms-inter-fonts wl-clipboard wtype >/dev/null || true
           dnf -y copr enable errornointernet/quickshell >/dev/null
           dnf -y install quickshell >/dev/null
@@ -304,27 +306,36 @@ jobs:
       - name: The Firehold shell on firehold-comp, headless
         timeout-minutes: 15
         run: bash .github/scripts/firehold-comp-shell-test.sh
-      - name: Picture firehold-c1-couch-home
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py firehold-c1-couch-home
-      - name: Picture firehold-c2-library
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py firehold-c2-library
-      - name: Picture firehold-c3-guide
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py firehold-c3-guide
-      - name: Picture firehold-c4-everything-open
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py firehold-c4-everything-open
-      - name: Picture firehold-c5-desk
-        if: always()
-        run: python3 .github/scripts/firehold-shot.py firehold-c5-desk
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: firehold-comp-shell-shots
           path: shots
           retention-days: 14
+
+  # The shell job's pictures, one job each (GitHub keeps only 50 notices a job, and each picture takes up to 9).
+  shell-pictures:
+    needs: shell
+    if: always()
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shot: ['firehold-c1-couch-home', 'firehold-c2-library', 'firehold-c3-guide', 'firehold-c4-everything-open', 'firehold-c5-desk',
+               'firehold-c6-desktop-2', 'firehold-c7-dock-2x --native', 'firehold-c8-home-2x --native']
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: .github/scripts
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: firehold-comp-shell-shots
+          path: shots
+      - name: Picture ${{ matrix.shot }}
+        run: |
+          python3 -c 'import PIL' 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow >/dev/null 2>&1 || python3 -m pip install --quiet pillow >/dev/null
+          python3 .github/scripts/firehold-shot.py ${{ matrix.shot }}
 
   pictures:
     needs: nested
@@ -335,7 +346,7 @@ jobs:
       matrix:
         name: ['firehold-1-empty', 'firehold-2-mantel', 'firehold-3-window', 'firehold-4-minimized', 'firehold-5-snapped', 'firehold-5b-resized', 'firehold-6-your-desktop',
                'firehold-7-locked', 'firehold-8-lock-prompt', 'firehold-9-unlocked', 'firehold-10-grim', 'firehold-11-display',
-               'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice', 'firehold-13-guide']
+               'firehold-6c-hidden', 'firehold-6d-unlocked', 'firehold-6e-switch', 'firehold-12-notice', 'firehold-13-guide', 'firehold-14-window-picture']
     steps:
       - uses: actions/download-artifact@v4
         continue-on-error: true

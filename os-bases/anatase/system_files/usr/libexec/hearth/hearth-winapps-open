@@ -1,0 +1,12 @@
+#!/bin/sh
+# Windows apps on the Fedora edition's Plasma menu (os-bases/anatase/build.sh "Fedora's menu: Windows apps, Join").
+# With a .exe or .msi (Open with, a double-click in Files): hearth-winapps opens it with the Proton built into Hearth
+# OS, as on Debian (docs/WINDOWS-APPS.md). From the menu, with no file: your Windows apps (Settings › Apps › Windows
+# apps, the pure-Rust Settings here: open one, its Proton, remove it).
+if [ -n "${1:-}" ]; then
+  exec /usr/bin/hearth-winapps open "$1"
+fi
+if command -v hearth-settings-app >/dev/null 2>&1; then
+  exec hearth-settings-app --page winapps
+fi
+exec /usr/bin/hearth-settings

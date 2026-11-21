@@ -79,6 +79,29 @@ class Flathub(unittest.TestCase):
         self.assertEqual(self.urls[-1][1], {'query': 'gimp editor', 'filters': []})
         self.assertEqual(self.mod.search('g', getter=self.web)['apps'], [])
 
+    def test_pictures_saved_once_for_the_rust_settings_app(self):
+        got = []
+
+        def web(url):
+            got.append(url)
+            if 'missing' in url:
+                raise OSError('404')
+            return b'\x89PNG picture of ' + url.encode()
+        urls = ['https://dl.flathub.org/a/icon.png', 'https://x/s1248.png', 'https://dl.flathub.org/missing.png',
+                'http://plain/no.png', 'file:///etc/passwd', 'https://x/s1248.png']
+        r = self.mod.pictures(urls, getter=web)['pics']
+        self.assertEqual(sorted(r), ['https://dl.flathub.org/a/icon.png', 'https://x/s1248.png'])
+        for u, f in r.items():
+            self.assertTrue(f.startswith(os.path.join(self.tmp.name, 'pics')) and f.endswith('.png'), f)
+            with open(f, 'rb') as fh:
+                self.assertEqual(fh.read(), b'\x89PNG picture of ' + u.encode())
+        self.assertEqual(len(got), 3)          # only https://, each once
+        # Asked again (or offline): the saved ones, nothing downloaded.
+        r2 = self.mod.pictures(urls, getter=lambda u: (_ for _ in ()).throw(OSError('offline')))['pics']
+        self.assertEqual(r2, r)
+        self.assertEqual(os.listdir(os.path.join(self.tmp.name, 'pics')).count('x'), 0)
+        self.assertFalse([n for n in os.listdir(os.path.join(self.tmp.name, 'pics')) if n.endswith('.tmp')])
+
     def test_app_page(self):
         a = self.mod.app('org.kde.krita', getter=self.web)
         self.assertEqual(a['description'], 'Paint & draw.\n• Brushes\n• Layers')

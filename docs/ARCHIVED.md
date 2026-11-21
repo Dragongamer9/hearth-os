@@ -1,6 +1,6 @@
 # Archived parts of Hearth OS
 
-Parts that aren't in Hearth OS 1.0 but are kept in the repository so they can come back later. Archived code isn't
+Parts that aren't in Hearth OS (1.0 on; from 1.16 Hearth OS is Fedora-based) but are kept in the repository so they can come back later. Archived code isn't
 built, shipped or tested automatically; its workflows run by hand only (some ask you to type "archived" first). Code
 that was moved lives in `archive/` under its old path, and its docs in `docs/archive/`.
 
@@ -8,8 +8,8 @@ that was moved lives in `archive/` under its old path, and its docs in `docs/arc
 
 | Part | Archived | Code | Docs |
 |---|---|---|---|
-| Hearth OS on Anatase (Fedora, image-based) | November 2026 (1.0); installs keep their last version | `os-bases/anatase` (stays: it shares checks and scripts with the Debian build); workflow `base-anatase.yml` | [BASE-ANATASE](archive/BASE-ANATASE.md) |
 | Hearth OS on Ubuntu and on CachyOS | 2026-10-22 | `archive/os-bases/ubuntu`, `archive/os-bases/cachyos`; `base-ubuntu.yml` / `base-cachyos.yml` (by hand, type "archived") | [BASE-UBUNTU](archive/BASE-UBUNTU.md), [BASE-CACHYOS](archive/BASE-CACHYOS.md) |
+| Hearth OS on Debian (Peppermint, `hearth-peppermint`) | 1.16 (the owner, Nov 19: "Fedora (Anatase) is the only edition. Debian is archived and is no longer offered"): merged into the Fedora edition | stays in place (`os-bases/peppermint`, `base-peppermint.yml`): no longer offered by the installer, the website or Hearth Disks; Switch edition still goes back to the Debian version a PC came from, Recovery still reinstalls a Debian PC as Debian, and Debian's own channel (`:testing`) is left as it is (the owner moves his Debian PCs by hand) | [BASE-ANATASE](BASE-ANATASE.md) |
 | Hearth OS on Bazzite | 0.1.3 was its last update | `os/build_files`, `os/Containerfile` (stay: `os/` also holds the shared system files, the installer and Recovery) | |
 | Multi-seat and Couch Co-op | 1.0 (hidden) | stays in place (`hosts/hearth-core`, `os/system_files/usr/libexec/nimbus/hearth-seats`, `hearth-coop`) | [MULTI-SEAT](archive/MULTI-SEAT.md), [COUCH-COOP](archive/COUCH-COOP.md) |
 | Hearth Plasma, Hearth GNOME, Hearth COSMIC, Hearth Deepin | 1.0: Mantel is the only desktop | stays in place for now (`hosts/linux/desktop/{plasma,gnome,cosmic}`, their parts in `os/system_files`): the image build, tests and Hearth's core still refer to them | [PLASMA](archive/PLASMA.md), [GNOME](archive/GNOME.md), [COSMIC](archive/COSMIC.md), [DEEPIN](archive/DEEPIN.md) |
@@ -19,6 +19,7 @@ that was moved lives in `archive/` under its old path, and its docs in `docs/arc
 | The ARM build of Hearth OS on Debian (hearth-peppermint-arm64) | 1.12: paused by the owner | the branch `feature/arm64` (kept as it is; its images are no longer built) | |
 | The small online installer | 1.0: the offline Debian USB and the Recovery USB are offered | stays in place (`os/installer`); `installer-iso.yml` by hand | |
 | Hearth's app store (Apps) | 2026-10-24: Bazaar replaced it | `archive/app-store` | below |
+| Firehold (Rust, test): firehold-shell (Couch, Desk, the Guide in iced) on firehold-comp, Desktop Mode's choice on the Fedora edition | 2026-11-19: the owner, "focus on the Plasma Firehold for the moment and archive the Rust Firehold" | `archive/hosts/firehold-shell`, `archive/.github/workflows/firehold-rust.yml` and its scripts (`archive/.github/scripts/firehold-rust-*.sh`), the Plasma-menu choice (`archive/os-bases/anatase/system_files`: hearth-desktop-choice, its two menu entries, its keys rc.xml). `hosts/firehold-comp` stays in place: Debian's Firehold preview (Settings › Your desktop) builds it. A Fedora device that had picked it opens Firehold on Plasma instead and is told once; its pick (`~/.config/nimbus/firehold-rust.json`) is only read, and the next pick replaces it | [FIREHOLD-RUST](archive/FIREHOLD-RUST.md), checklist `docs/archive/checklists/firehold-rust.md` |
 | Hearth Friends (Matrix) | 1.6: replaced by Discord, with the owner's okay | `archive/hosts/hearth-friends`, `archive/hosts/hearth-core/src/matrix_friends.rs`, `archive/hosts/linux/desktop/shell/Friends.qml`, `archive/tools/friends-*.py`; `friends.yml` (by hand, type "archived") | [FRIENDS](archive/FRIENDS.md), below |
 
 ## Back from the archive
@@ -26,6 +27,7 @@ that was moved lives in `archive/` under its old path, and its docs in `docs/arc
 | Part | Archived | Back | Docs |
 |---|---|---|---|
 | Hearth Game Mode (Hearth's own Game Mode) | 1.0: Steam Game Mode replaced it (its code stayed in place: `ui/`, `hosts/hearth-rs`, `hosts/hearth-core`) | 1.10: a choice in Settings › Gaming › Game Mode next to Steam Game Mode (the default); falls back to Steam Game Mode, then Mantel, when it can't start | [HEARTH-GAME-MODE](HEARTH-GAME-MODE.md) |
+| Hearth OS on Anatase (Fedora, image-based) | November 2026 (1.0) | 1.16, as the only edition (decided with 1.15's work; 1.15 itself wasn't released; the owner, Nov 19: "Only Fedora, Archive Debian"; it came back as a test on Nov 17): shown as **Fedora**, image `ghcr.io/dragongamer9/hearth-os:test-1.15` (what the owner's ROG Ally and laptop follow), stock KDE Plasma as Desktop Mode, Unlock the file system. `os-bases/anatase`, `base-anatase.yml` (by hand, publishes only from main or to an owner-approved test tag) | [BASE-ANATASE](BASE-ANATASE.md) |
 
 ## Hearth's app store (Apps): archived 2026-10-24
 

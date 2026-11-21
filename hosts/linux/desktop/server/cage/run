@@ -1,0 +1,50 @@
+#!/bin/sh
+# Server mode on the Fedora edition (docs/SERVER-MODE.md): run by cage (nimbus-session run_server: cage -- sh this file),
+# the only thing on the screen. It runs the dashboard (hearth-server-app) and watches it exactly as labwc's autostart
+# watches the Quickshell one on Debian: three closes within 20 seconds of starting and it gives up, leaves the reason in
+# $XDG_RUNTIME_DIR/hearth-server-dash-failed and ends (which ends cage; nimbus-session then opens Game Mode, or Desktop
+# Mode while Game Mode is off). A dashboard that stops drawing (no alive mark for 45 s) is restarted. After two quick
+# closes the next try draws with the processor (HEARTH_RENDERER=cpu), in case the graphics driver is what fails.
+RUN="${XDG_RUNTIME_DIR:-/tmp}"
+APP="${HEARTH_SERVER_APP:-hearth-server-app}"
+DATA="${XDG_DATA_HOME:-$HOME/.local/share}/nimbus"
+mkdir -p "$DATA" 2>/dev/null
+DASH_LOG="$DATA/server-dash.log"
+[ -f "$DASH_LOG" ] && mv -f "$DASH_LOG" "$DATA/server-dash.log.old" 2>/dev/null
+ALIVE="$RUN/hearth-server-dash-alive"
+CAGE_PID="$PPID"
+# What the dashboard and what it starts are told (nimbus-mode ends cage, HEARTH_DESKTOP_PID, for a switch).
+export HEARTH_SERVER_MODE=1 HEARTH_WM=cage HEARTH_DESKTOP_PID="$CAGE_PID"
+export XDG_CURRENT_DESKTOP="${XDG_CURRENT_DESKTOP:-Hearth:wlroots}" XDG_SESSION_TYPE=wayland
+{ dbus-update-activation-environment --systemd WAYLAND_DISPLAY XDG_CURRENT_DESKTOP XDG_SESSION_TYPE HEARTH_SERVER_MODE >/dev/null 2>&1 & } 2>/dev/null
+give_up() {
+  { echo "$1"; echo; tail -n 12 "$DASH_LOG" 2>/dev/null; } >"$RUN/hearth-server-dash-failed"
+  exit 0
+}
+command -v "$APP" >/dev/null 2>&1 || [ -x "$APP" ] || give_up "Server mode's dashboard (hearth-server-app) isn't installed."
+: >"$DASH_LOG"
+fails=0
+while :; do
+  kill -0 "$CAGE_PID" 2>/dev/null || exit 0
+  started=$(date +%s)
+  rm -f "$ALIVE"
+  if [ "$fails" -ge 2 ]; then HEARTH_RENDERER=cpu "$APP" >>"$DASH_LOG" 2>&1 &
+  else "$APP" >>"$DASH_LOG" 2>&1 & fi
+  apid=$!
+  while kill -0 "$apid" 2>/dev/null; do
+    sleep 5
+    if [ -e "$ALIVE" ] && [ $(( $(date +%s) - $(stat -c %Y "$ALIVE" 2>/dev/null || date +%s) )) -gt 45 ]; then
+      echo "--- $(date '+%F %T') the dashboard stopped drawing (no alive mark for 45 s): restarting it" >>"$DASH_LOG"
+      kill -TERM "$apid" 2>/dev/null; sleep 3; kill -KILL "$apid" 2>/dev/null
+      started=0
+    fi
+  done
+  wait "$apid" 2>/dev/null; code=$?
+  # 42: Guide pressed while Settings or Ithil's app was in front: the dashboard opens its window again at once, so
+  # cage shows it in front (not a failure).
+  if [ "$code" = 42 ] && [ $(( $(date +%s) - started )) -ge 2 ]; then echo "--- $(date '+%F %T') back to the front (Guide)" >>"$DASH_LOG"; continue; fi
+  if [ $(($(date +%s) - started)) -lt 20 ]; then fails=$((fails + 1)); else fails=0; fi
+  [ "$fails" -ge 3 ] && give_up "Server mode's dashboard keeps closing right after it starts."
+  echo "--- restarting the dashboard" >>"$DASH_LOG"
+  sleep 1
+done

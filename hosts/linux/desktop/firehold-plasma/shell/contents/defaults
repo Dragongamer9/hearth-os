@@ -1,0 +1,12 @@
+[Desktop]
+Containment=org.hearthos.firehold.couch
+ToolBox=
+
+[Desktop][ContainmentActions]
+
+[Panel]
+Containment=org.kde.panel
+ToolBox=
+
+[Theme]
+Theme=default

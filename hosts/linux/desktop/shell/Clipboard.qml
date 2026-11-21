@@ -33,6 +33,7 @@ Scope {
     property string qrPath: ""
     property string sheetMsg: ""
     property var browsers: []             // [{id, name, icon, default}] for "Open in…"
+    property var tvs: []                  // [{id, name, online}]: Hearth TVs paired with this PC, for "Send to TV"
     property string editText: ""
     property bool confirmClear: false
     property real now: Date.now() / 1000
@@ -200,6 +201,8 @@ Scope {
         if (!it || it.kind !== "text") return [];
         const a = [];
         if (it.link) for (const b of browsers) a.push({ k: "open", app: b.id, label: "Open in " + b.name + (b.default ? " (default)" : ""), icon: "globe" });
+        // Send to TV: the link plays on a Hearth TV paired with this PC (docs/HEARTH-TV.md).
+        if (it.link) for (const t of tvs) a.push({ k: "tv", tv: t.id, label: "Send to TV (" + t.name + ")", icon: "display" });
         a.push({ k: "qr", label: "Show as a QR code", icon: "grid" });
         a.push({ k: "edit", label: "Edit the text", icon: "edit" });
         return a;
@@ -208,12 +211,13 @@ Scope {
         const it = items[i];
         if (!it || it.kind !== "text") return;
         current = i; column = 3; sheetItem = it; sheetRow = 0; sheetMsg = ""; sheet = "more";
-        if (it.link) job(["browsers"], r => cb.browsers = r.browsers || []);
+        if (it.link) { job(["browsers"], r => cb.browsers = r.browsers || []); job(["tvs"], r => cb.tvs = r.tvs || []); }
     }
     function back() { sheet = ""; sheetMsg = ""; keys.forceActiveFocus(); }
     function doAction(a) {
         if (!a || !sheetItem) return;
         if (a.k === "open") { const id = sheetItem.id; close(); job(["open", id, a.app], r => { if (r.error) { console.warn("clipboard: Open in: " + r.error); SettingsNav.toast(r.error); } }); }
+        else if (a.k === "tv") { const id = sheetItem.id, name = a.label.replace(/^Send to TV \((.*)\)$/, "$1"); close(); SettingsNav.toast("Sending it to " + name + "…"); job(["send-tv", id, a.tv], r => SettingsNav.toast(r.error ? r.error : "Playing on " + (r.tv || name))); }
         else if (a.k === "qr") showQr(sheetItem);
         else if (a.k === "edit") startEdit(sheetItem);
     }
