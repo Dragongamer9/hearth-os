@@ -216,13 +216,20 @@ class AppListAtRest(unittest.TestCase):
         users = [p.name for p in SHELL.glob('*.qml') if 'DesktopEntries.applications' in p.read_text() and p.name != 'AppEntries.qml']
         self.assertEqual(users, [])
 
+    def test_nothing_keeps_a_live_entry(self):
+        # (the image check's crash, Nov 20: a list kept an entry Quickshell had deleted) lists keep copies, looked up by id
+        users = [p.name for p in SHELL.glob('*.qml') if re.search(r'DesktopEntries\.byId\(', p.read_text()) and p.name != 'AppEntries.qml']
+        self.assertEqual(users, [])
+        t = (SHELL / 'AppEntries.qml').read_text()
+        self.assertIn('r.execute = function', t)
+        self.assertIn('DesktopEntries.byId(id)', t)
+
     def test_it_settles_and_compares(self):
         t = (SHELL / 'AppEntries.qml').read_text()
         self.assertIn('pragma Singleton', t)
         self.assertIn('settle.restart()', t)
         self.assertIn('interval: 1500', t)
         self.assertIn('.sort().join', t)          # the same apps in another order are no change
-        self.assertIn('had.has(e)', t)            # the same entries are kept
 
     def test_the_rest_check_changes_an_entry(self):
         t = (ROOT / '.github/scripts/labwc-fedora-rest.sh').read_text()

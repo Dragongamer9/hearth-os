@@ -75,6 +75,30 @@ eval "$(sed -n '/^# >>> data dirs/,/^# <<< data dirs/p' "${SESSION_FILE:-/usr/bi
 mkdir -p "$HOME/Desktop"
 # The one-time "Pick your browser" question answered, so it isn't over the pictures and Files' timing.
 python3 "$SH/hearth-browser" asked >/dev/null 2>&1 || true
+# Menu entries coming, changing and going while the shell starts and in its first seconds (the image check of Nov 20:
+# the app folders looked at again at the start, and a list that kept an entry Quickshell had deleted crashed the
+# shell, three times in a row): churn SECONDS adds, rewrites with a new name and removes entries in your own folder.
+churn() {
+  python3 - "${XDG_DATA_HOME:-$HOME/.local/share}/applications" "$1" <<'PY' &
+import os, sys, time
+d, secs = sys.argv[1], float(sys.argv[2]); os.makedirs(d, exist_ok=True); t0 = time.time(); n = 0
+def put(name, title):
+    tmp = os.path.join(d, '.churn.tmp')
+    with open(tmp, 'w') as f:
+        f.write('[Desktop Entry]\nType=Application\nName=%s\nExec=true\nIcon=applications-other\n' % title)
+    os.replace(tmp, os.path.join(d, name))
+while time.time() - t0 < secs:
+    n += 1
+    put('hearth-churn-%d.desktop' % (n % 12), 'Churn %d' % n)                 # comes, or changes (a new entry)
+    put('hearth-churn-keep.desktop', 'Churn kept %d' % n)                     # the same file, a new name each time
+    old = os.path.join(d, 'hearth-churn-%d.desktop' % ((n + 6) % 12))
+    if os.path.exists(old): os.remove(old)                                   # goes
+    time.sleep(0.25)
+for f in os.listdir(d):
+    if f.startswith('hearth-churn-'): os.remove(os.path.join(d, f))
+PY
+}
+churn 25
 t0=$(date +%s.%N)
 sh -c 'HEARTH_DESKTOP_PID=$$; export HEARTH_DESKTOP_PID; exec labwc -C "$1"' sh "$SHARE/desktop/labwc" >"$OUT/labwc.log" 2>&1 &
 LPID=$!
@@ -341,6 +365,8 @@ for t in notify quick; do WAIT=0 ipc "$t" close; done
 # launcher or Hearth's own entries do): the shell makes its app lists again once for each real change, after the
 # folder has settled, never for a file written again the same. Over 40 s: at most 1 s of the processor, memory back.
 APPS_HOME="${XDG_DATA_HOME:-$HOME/.local/share}/applications"; mkdir -p "$APPS_HOME"
+aes() { timeout 10 quickshell ipc -p "$SH" call appentries state 2>/dev/null | tail -1; }
+ae0=$(aes)
 t0d=$(ticks "$qs"); md0=$(rss "$qs")
 printf '[Desktop Entry]\nType=Application\nName=Rest Check App\nExec=true\nIcon=applications-games\n' >"$APPS_HOME/hearth-rest-check.desktop"; sleep 8
 for i in 1 2 3 4 5; do cp "$APPS_HOME/hearth-rest-check.desktop" "$APPS_HOME/.rc.tmp" && mv "$APPS_HOME/.rc.tmp" "$APPS_HOME/hearth-rest-check.desktop"; sleep 1; done; sleep 6
@@ -349,7 +375,8 @@ rm -f "$APPS_HOME/hearth-rest-check.desktop"; sleep 10
 evd=$(( ($(ticks "$qs") - t0d) * 100 / HZ )); md1=$(rss "$qs")
 note "an app's menu entry added, written again 5 times unchanged, renamed and removed: the shell used $(printf "%d.%02d s" $((evd / 100)) $((evd % 100))) of the processor (memory ${md0} → ${md1} MB)"
 [ "$evd" -le 100 ] || err "an app's menu entry coming, written again, changing and going cost the shell $(printf "%d.%02d s" $((evd / 100)) $((evd % 100))) of the processor (limit 1 s): the app lists are made again for nothing"
-[ $((md1 - md0)) -le 10 ] || err "an app's menu entry coming and going left the shell ${md0} → ${md1} MB: something made for the app list isn't let go"
+# (the first new list can grow the shell once, by a few MB: Firehold's app tiles made for the first time; whether
+# each new list keeps something is measured over the eight below)
 # ...and the app lists really made again, eight times (one of the 300 entries renamed each time, every entry written
 # again too: a whole folder looked at again, as an update does): memory stays where it was (the integration image
 # check of Nov 20: Firehold 460 → 576 MB at rest, a leak per rebuild would fit), each rebuild well under a second.
@@ -362,6 +389,11 @@ done
 sleep 10
 evr=$(( ($(ticks "$qs") - t0r) * 100 / HZ )); mr1=$(rss "$qs")
 note "the app lists made again 8 times (300 entries written again, one renamed): the shell used $(printf "%d.%02d s" $((evr / 100)) $((evr % 100))) of the processor, memory ${mr0} → ${mr1} MB"
+ae1=$(aes)
+note "the shell's app lists (AppEntries) before the entry changes: ${ae0:-no answer}; after: ${ae1:-no answer}"
+kill -0 "$qs" 2>/dev/null || err "the shell ended while the app entries changed (crashed or restarted)"
+r0=$(echo "$ae0" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read() or "{}").get("rev", -1))' 2>/dev/null); r1=$(echo "$ae1" | python3 -c 'import json,sys; print(json.loads(sys.stdin.read() or "{}").get("rev", -1))' 2>/dev/null)
+[ -n "$r0" ] && [ -n "$r1" ] && [ "$r1" -gt "$r0" ] 2>/dev/null || err "the shell's app list didn't follow the entry changes (AppEntries ${ae0:-no answer} → ${ae1:-no answer}): Quickshell didn't look at the folder again, or the list got stuck"
 [ "$evr" -le 400 ] || err "the app lists made again 8 times cost the shell $(printf "%d.%02d s" $((evr / 100)) $((evr % 100))) (limit 4 s, half a second each)"
 [ $((mr1 - mr0)) -le 15 ] || err "the app lists made again 8 times left the shell ${mr0} → ${mr1} MB: each rebuild keeps something"
 
@@ -446,5 +478,16 @@ PY
 grep -v -E 'Frame rendered|Frame prepared' "$SLOG" | tail -c 200000 >"$OUT/shell.log" 2>/dev/null
 grep -E 'Frame rendered|Frame prepared' "$SLOG" | tail -n 200 >"$OUT/frames-tail.log" 2>/dev/null
 cp "$OUT/rest.md" "$OUT/rest-notes.txt" 2>/dev/null || true     # (the image's looks branch keeps .txt, not .md)
+# Last (its new starts would count as programs started at rest): the shell started again three times with entries coming, changing and going meanwhile: it stays up each time.
+for r in 1 2 3; do
+  rm -f "$XDG_RUNTIME_DIR/hearth-shell-up"; churn 20; pkill -x quickshell 2>/dev/null
+  for i in $(seq 60); do [ -e "$XDG_RUNTIME_DIR/hearth-shell-up" ] && break; sleep 1; done
+  sleep 22
+done
+qs=$(pgrep -u "$(id -u)" -x quickshell | head -1)
+segv=$(grep -c 'Segmentation fault\|core dumped' "$OUT/labwc.log" 2>/dev/null); segv=${segv:-0}
+note "the shell started again 3 times while menu entries came, changed and went (and once at the start): crashes ${segv}, running now: $([ -n "$qs" ] && echo yes || echo no), app lists $(aes)"
+[ "$segv" -eq 0 ] || err "the shell crashed ${segv} times ($(grep -m3 'Segmentation fault\|core dumped' "$OUT/labwc.log" | tr '\n' '|' | cut -c1-300)): a list kept an app entry that was gone"
+[ -n "$qs" ] || err "the shell isn't running after starting again with menu entries changing"
 kill "$LPID" 2>/dev/null; sleep 2; pkill -u "$(id -u)" -x quickshell 2>/dev/null
 exit "$fail"

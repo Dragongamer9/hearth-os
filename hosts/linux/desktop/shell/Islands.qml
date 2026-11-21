@@ -592,7 +592,7 @@ PanelWindow {
             Icon { anchors.centerIn: parent; name: "rocket"; size: 18 * isl.k }
         }
     }
-    function appLabel(id) { const e = id ? DesktopEntries.byId(id) : null; return e ? e.name : String(id || "An app").split(".").pop(); }
+    function appLabel(id) { const e = id ? AppEntries.byId(id) : null; return e ? e.name : String(id || "An app").split(".").pop(); }
     // ---- the camera or the microphone in use: always shown while they are (never hidden by compact screens)
     Component {
         id: cPrivacy
