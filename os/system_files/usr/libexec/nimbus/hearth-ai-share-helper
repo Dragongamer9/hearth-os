@@ -8,7 +8,9 @@ active, in the wheel group, without a prompt), and by hearth-ai-share-firewall.s
                   else), written to /etc/hearth/ai-share.nft, loaded now and again by hearth-ai-share-firewall.timer
                   (15 s after the PC starts, then every 5 minutes, enabled only while sharing is on)
   firewall off    the table, its file and the timer go
-  firewall-load   the timer's run: the table loaded again from its file (nothing when there's no file)
+  firewall-load   the table loaded again from its file (nothing when there's no file)
+  firewall-default the timer's run (1.17: sharing is on by default, only to your own Tailscale devices): the rule
+                  written when it was never turned off here (no /etc/hearth/ai-share.off), then loaded
 
 It only ever writes its own table and file, and /run/hearth/ai-share-firewall.json (whether the rule is loaded, which
 the sharing service reads before it listens on the Tailscale address). Nothing goes through a shell; no argument
@@ -23,6 +25,8 @@ import time
 
 sys.dont_write_bytecode = True
 NFT_FILE = '/etc/hearth/ai-share.nft'
+# Sharing turned off (or opened to the home network) on this PC: the rule isn't put back by default.
+OFF_MARK = '/etc/hearth/ai-share.off'
 NFT_TABLE = 'hearth_ai_share'
 STATE = '/run/hearth/ai-share-firewall.json'
 TIMER = 'hearth-ai-share-firewall.timer'
@@ -96,11 +100,13 @@ def load():
 
 def firewall(on):
     if on:
+        remove(OFF_MARK)
         write(NFT_FILE, nft_text())
         res = load()
         run(['systemctl', 'enable', '--now', TIMER])
         return res
     had = remove(NFT_FILE)
+    write(OFF_MARK, 'Share this device\'s AI: the Tailscale-only rule was turned off here (Settings).\n')
     if which('nft'):
         run([which('nft'), 'delete', 'table', 'inet', NFT_TABLE])
     remove(STATE)
@@ -117,7 +123,11 @@ def main(argv):
         return firewall(False)
     if argv == ['firewall-load']:
         return load()
-    return {'ok': False, 'error': 'usage: hearth-ai-share-helper firewall on|off | firewall-load'}
+    if argv == ['firewall-default']:
+        if not os.path.exists(NFT_FILE) and not os.path.exists(OFF_MARK):
+            write(NFT_FILE, nft_text())
+        return load() if os.path.exists(NFT_FILE) else {'ok': True, 'off': True}
+    return {'ok': False, 'error': 'usage: hearth-ai-share-helper firewall on|off | firewall-load | firewall-default'}
 
 
 if __name__ == '__main__':

@@ -74,7 +74,7 @@ APPS_DIR = '/var/lib/hearth/apps'
 UNIT = 'hearth-ai-share.service'
 SYS_ROOT = os.environ.get('HEARTH_AI_SHARE_SYS', '')                          # tests: a stand-in /sys and /proc
 
-DEFAULTS = {'on': False, 'hub': False, 'router': False, 'lan': False, 'pluggedOnly': True, 'notWhilePlaying': True, 'codeOn': False,
+DEFAULTS = {'on': True, 'hub': False, 'router': False, 'lan': False, 'pluggedOnly': True, 'notWhilePlaying': True, 'codeOn': False,
             'share': {'chat': True, 'voice': True, 'image': True, 'stt': True}, 'priority': []}
 BOOL_KEYS = ('on', 'hub', 'router', 'lan', 'pluggedOnly', 'notWhilePlaying', 'codeOn')
 KINDS = ('chat', 'voice', 'image', 'stt')
@@ -99,15 +99,35 @@ class Fail(Exception):
 
 # ------------------------------------------------------------------ settings
 
+def _unreadable():
+    """The settings file is there but can't be read (and nothing was put back from its .bak)."""
+    try:
+        with open(SETTINGS, encoding='utf-8') as f:
+            json.load(f)
+        return False
+    except FileNotFoundError:
+        return False
+    except (OSError, ValueError):
+        return True
+
+
+def _safe(d):
+    # 1.17: sharing is on by default. A damaged file might have said off, so it's off until the file is put right
+    # (in memory only: nothing is written over it, red flag 9).
+    if not d and _unreadable():
+        return {'on': False}
+    return d
+
+
 def load():
     """Your choices with defaults filled in (in memory only)."""
-    return sio.with_defaults(sio.load_json(SETTINGS, {}), DEFAULTS)
+    return sio.with_defaults(_safe(sio.load_json(SETTINGS, {})), DEFAULTS)
 
 
 def peek():
     """Your choices, read only (the server: never repairs or writes anything)."""
     d = sio.load_json(SETTINGS, {}, repair=False) if os.path.exists(SETTINGS) else {}
-    return sio.with_defaults(d if isinstance(d, dict) else {}, DEFAULTS)
+    return sio.with_defaults(_safe(d if isinstance(d, dict) else {}), DEFAULTS)
 
 
 def set_key(key, raw):

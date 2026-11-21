@@ -2079,16 +2079,24 @@ for u in smb.service nmb.service samba.service tailscaled.service smartd.service
          nut-driver-enumerator.service syncthing-resume.service $HS_TIMERS; do
   systemctl disable "$u" 2>/dev/null || true
 done
-systemctl disable nut.target nut-driver.target nut-driver-enumerator.path hearth-ai-share-firewall.timer hearth-remote-desktop-firewall.service lactd.service 2>/dev/null || true
+systemctl disable nut.target nut-driver.target nut-driver-enumerator.path hearth-remote-desktop-firewall.service lactd.service 2>/dev/null || true
 systemctl --global disable hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-server-mode-web.service \
-  hearth-comfyui.timer hearth-kokoro.timer hearth-voice-studio.timer hearth-colibri.timer hearth-ai-share.service hearth-vnc.service sunshine.service 2>/dev/null || true
+  hearth-comfyui.timer hearth-kokoro.timer hearth-voice-studio.timer hearth-colibri.timer hearth-vnc.service sunshine.service 2>/dev/null || true
 for u in smb.service nmb.service tailscaled.service smartd.service nftables.service nut-server.service nut-monitor.service \
-         hearth-ai-share-firewall.timer hearth-remote-desktop-firewall.service $HS_TIMERS; do
+         hearth-remote-desktop-firewall.service $HS_TIMERS; do
   if [ "$(systemctl is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u is on in the image: it stays off until the owner turns it on"; exit 1; fi
 done
-for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-ai-share.service hearth-vnc.service sunshine.service; do
+for u in hearth-taildrop.service syncthing.service hearth-home-server-web.service hearth-vnc.service sunshine.service; do
   if [ "$(systemctl --global is-enabled "$u" 2>/dev/null)" = enabled ]; then echo "::error::$u (a user service) is on in the image"; exit 1; fi
 done
+# 1.17 (the owner, Nov 21: "All these connections need to be automatic"): Share this device's AI is on by default,
+# only to your own Tailscale devices: the sharing service is on for every account (it stops at once where sharing is
+# off in ai-share.json), and the firewall rule's timer is on (it writes the Tailscale-only rule unless sharing was
+# turned off on this PC, /etc/hearth/ai-share.off). Neither is part of starting the PC, the session or Game Mode.
+systemctl enable hearth-ai-share-firewall.timer
+systemctl --global enable hearth-ai-share.service
+[ "$(systemctl is-enabled hearth-ai-share-firewall.timer 2>/dev/null)" = enabled ] && [ "$(systemctl --global is-enabled hearth-ai-share.service 2>/dev/null)" = enabled ] \
+  || { echo "::error::Share this device's AI isn't on by default in the image"; exit 1; }
 printf '%s\n' '# Settings › Home server: the state of backups and alerts, and the restic cache.' \
   'd /var/lib/hearth 0755 root root -' 'd /var/cache/hearth-restic 0700 root root -' > /usr/lib/tmpfiles.d/hearth-home-server.conf
 chmod 755 /usr/share/nimbus/desktop/shell/hearth-remote-desktop /usr/share/nimbus/desktop/shell/hearth-vnc /usr/share/nimbus/desktop/shell/hearth-record 2>/dev/null || true
