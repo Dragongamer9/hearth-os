@@ -13,8 +13,9 @@ import pathlib
 import subprocess
 import sys
 import tarfile
-
-import pytest
+import tempfile
+import unittest
+import urllib.request
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
 TOOL = REPO / "os-bases/anatase/system_files/usr/libexec/hearth/hearth-part"
@@ -33,6 +34,21 @@ def load(tmp_path, version="1.17"):
     return m
 
 
+
+class raises:
+    """Like pytest.raises: the block must raise one of these (CI runs the tests with plain unittest)."""
+
+    def __init__(self, kind):
+        self.kind = kind
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, kind, value, tb):
+        if kind is None:
+            raise AssertionError(f"{self.kind.__name__} wasn't raised")
+        return issubclass(kind, self.kind)
+
 def put(tmp_path, pid="files", version="1.17.1", made_for="1.17", body="#!/bin/sh\nexit 0\n"):
     d = tmp_path / "parts" / pid / version
     d.mkdir(parents=True, exist_ok=True)
@@ -43,8 +59,7 @@ def put(tmp_path, pid="files", version="1.17.1", made_for="1.17", body="#!/bin/s
     return str(prog)
 
 
-@pytest.fixture
-def builtin(tmp_path):
+def make_builtin(tmp_path):
     b = tmp_path / "builtin"
     b.write_text("#!/bin/sh\necho built-in \"$@\"\n")
     b.chmod(0o755)
@@ -167,12 +182,12 @@ def test_install_checks_the_sha256_and_switches_in_one_go(tmp_path, builtin):
     m = load(tmp_path)
     data = tarball({"app": (b"#!/bin/sh\nexit 0\n", 0o755)})
     m.urllib.request.urlopen = lambda url, timeout=0: Resp(data)
-    with pytest.raises(SystemExit):
+    with raises(SystemExit):
         m.install("files", "1.17.1", "https://x/files.tar.gz", "00" * 32, "1.17", "app")
     assert m.chosen("files", builtin) == builtin  # a wrong download changes nothing
     m.install("files", "1.17.1", "https://x/files.tar.gz", hashlib.sha256(data).hexdigest(), "1.17", "app")
     assert m.chosen("files", builtin).endswith("/parts/files/1.17.1/app")
-    with pytest.raises(SystemExit):
+    with raises(SystemExit):
         m.install("files", "1.17.2", "http://x/files.tar.gz", hashlib.sha256(data).hexdigest(), "1.17", "app")
     assert not [p for p in (tmp_path / "parts/files").iterdir() if p.name.startswith(".")]  # nothing half done left
 
@@ -181,7 +196,7 @@ def test_install_never_writes_outside_its_folder(tmp_path):
     m = load(tmp_path)
     data = tarball({"../../evil": (b"x", 0o644)})
     m.urllib.request.urlopen = lambda url, timeout=0: Resp(data)
-    with pytest.raises(Exception):
+    with raises(Exception):
         m.install("files", "1.17.1", "https://x/f.tar.gz", hashlib.sha256(data).hexdigest(), "1.17", "app")
     assert not (tmp_path / "evil").exists() and not (tmp_path / "parts/evil").exists()
 
@@ -193,3 +208,32 @@ def test_mantel_and_the_rust_apps_start_through_it():
     build = (REPO / "os-bases/anatase/build.sh").read_text()
     assert 'install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/libexec/hearth/apps/$b"' in build
     assert 'exec /usr/libexec/hearth/apps/%s "$@"' in build
+
+
+class HearthPart(unittest.TestCase):
+    """Runs every test_ function above with a fresh folder (tmp_path) and built-in program (builtin)."""
+
+
+def _case(fn):
+    def run(self):
+        saved_env, saved_open = dict(os.environ), urllib.request.urlopen
+        try:
+            with tempfile.TemporaryDirectory() as d:
+                tmp_path = pathlib.Path(d)
+                names = fn.__code__.co_varnames[:fn.__code__.co_argcount]
+                args = {"tmp_path": tmp_path}
+                if "builtin" in names:
+                    args["builtin"] = make_builtin(tmp_path)
+                fn(**{n: args[n] for n in names})
+        finally:
+            os.environ.clear()
+            os.environ.update(saved_env)
+            urllib.request.urlopen = saved_open
+    run.__name__ = fn.__name__
+    return run
+
+
+for _n, _f in list(globals().items()):
+    if _n.startswith("test_") and callable(_f):
+        setattr(HearthPart, _n, _case(_f))
+        del globals()[_n]
