@@ -1,0 +1,5 @@
+0 errors, 4 warnings, 9 pages at 390/820/1440 px, 8 links to other sites; front page: 305 KB at first, 305 KB once scrolled through (budgets 1200 / 4096 KB)
+warn  index.html phone light: low contrast: "News" 3.54:1, "Hearth OS 1.16 is out" 1.20:1, "1.15's work and much more, now" 1.76:1, "Fedora is Hearth OS" 1.20:1, "The Fedora edition, with KDE P" 1.76:1, "Hearth's look on Plasma" 1.20:1, "Hearth's own panel, menus, Qui" 1.76:1, "New apps" 1.20:1, "The Hearth Store, Hearth Notes" 1.76:1
+warn  index.html desktop light: low contrast: "Hearth OS" 1.20:1, "News" 1.76:1, "Games" 1.76:1, "Apps" 1.76:1, "Updates" 1.76:1, "Roadmap" 1.76:1, "Music" 1.76:1, "Docs" 1.76:1, "News" 3.54:1
+warn  link to another site doesn't answer (404): https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-anatase.iso
+warn  link to another site doesn't answer (404): https://pub-f59beb6fa21c421ca4435ee7f42b3de4.r2.dev/hearth-os-anatase.iso.sha256
