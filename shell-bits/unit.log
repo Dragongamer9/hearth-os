@@ -1,0 +1,18 @@
+test_mixed_tones_are_unicodes (test_shell_bits_114.EmojiPicker.test_mixed_tones_are_unicodes) ... ok
+test_size_is_saved_by_itself (test_shell_bits_114.EmojiPicker.test_size_is_saved_by_itself) ... ok
+test_bad_colour_and_status (test_shell_bits_114.KeyboardLights.test_bad_colour_and_status) ... ok
+test_damaged_settings_count_as_off (test_shell_bits_114.KeyboardLights.test_damaged_settings_count_as_off) ... ok
+test_mantel_runs_it_only_when_on (test_shell_bits_114.KeyboardLights.test_mantel_runs_it_only_when_on) ... ok
+test_off_by_default_writes_nothing (test_shell_bits_114.KeyboardLights.test_off_by_default_writes_nothing) ... ok
+test_on_colours_in_the_kernels_order_and_scale (test_shell_bits_114.KeyboardLights.test_on_colours_in_the_kernels_order_and_scale) ... ok
+test_openrgb_only_keyboards (test_shell_bits_114.KeyboardLights.test_openrgb_only_keyboards) ... ok
+test_every_menu_logs_out_through_leave (test_shell_bits_114.LeaveOptions.test_every_menu_logs_out_through_leave) ... ok
+test_rows_on_startup (test_shell_bits_114.LeaveOptions.test_rows_on_startup) ... ok
+test_settings_keys (test_shell_bits_114.LeaveOptions.test_settings_keys) ... ok
+test_long_touch_slide_and_lift_and_holding_a (test_shell_bits_114.OskAccents.test_long_touch_slide_and_lift_and_holding_a) ... ok
+test_touch_slides_in_mantel_and_on_web_pages (test_shell_bits_114.OskAccents.test_touch_slides_in_mantel_and_on_web_pages) ... ok
+
+----------------------------------------------------------------------
+Ran 13 tests in 0.454s
+
+OK

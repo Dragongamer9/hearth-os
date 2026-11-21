@@ -1,0 +1,7 @@
+total 20
+drwx------ 2 root root 4096 Nov 21 06:05 .
+drwxr-xr-x 4 root root 4096 Nov 21 06:04 ..
+-rw------- 1 root root    0 Nov 21 06:04 .index.json.lock
+-rw------- 1 root root   43 Nov 21 06:04 1795241093032891.txt
+-rw-r--r-- 1 root root  431 Nov 21 06:05 index.json
+-rw------- 1 root root 1572 Nov 21 06:05 index.json.bak
