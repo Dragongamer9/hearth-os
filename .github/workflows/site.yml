@@ -64,9 +64,18 @@ jobs:
           python3 tools/store-check.py site/store/catalog.json "$built"
           umask 077
           printf '%s\n' "$KEY" > "$RUNNER_TEMP/store-key.pem"
-          openssl pkeyutl -sign -inkey "$RUNNER_TEMP/store-key.pem" -rawin -in site/store/catalog.json -out "$RUNNER_TEMP/store.sig"
-          openssl pkey -in "$RUNNER_TEMP/store-key.pem" -pubout -out "$RUNNER_TEMP/store-pub.pem"
-          openssl pkeyutl -verify -pubin -inkey "$RUNNER_TEMP/store-pub.pem" -rawin -in site/store/catalog.json -sigfile "$RUNNER_TEMP/store.sig"
+          # A key that can't sign never stops the website: no list is published (the Store keeps using the one in
+          # Hearth OS) and the reason is posted. openssl's messages name the problem, never the key.
+          : > "$RUNNER_TEMP/store-err"
+          if ! openssl pkeyutl -sign -inkey "$RUNNER_TEMP/store-key.pem" -rawin -in site/store/catalog.json -out "$RUNNER_TEMP/store.sig" 2>>"$RUNNER_TEMP/store-err" \
+             || ! openssl pkey -in "$RUNNER_TEMP/store-key.pem" -pubout -out "$RUNNER_TEMP/store-pub.pem" 2>>"$RUNNER_TEMP/store-err" \
+             || ! openssl pkeyutl -verify -pubin -inkey "$RUNNER_TEMP/store-pub.pem" -rawin -in site/store/catalog.json -sigfile "$RUNNER_TEMP/store.sig" >/dev/null 2>>"$RUNNER_TEMP/store-err"; then
+            why=$(grep -v -i 'private\|BEGIN\|END' "$RUNNER_TEMP/store-err" | head -3 | tr '\n' ' ' | cut -c1-300)
+            rm -rf site/store "$RUNNER_TEMP/store-key.pem" "$RUNNER_TEMP/store.sig" "$RUNNER_TEMP/store-pub.pem" "$RUNNER_TEMP/store-err"
+            echo "::warning title=Hearth Store list::HEARTH_STORE_SIGNING_KEY couldn't sign the list, so none is published (the Store uses the one in Hearth OS). It must be an Ed25519 private key in PEM form (openssl genpkey -algorithm ed25519), the whole file with its BEGIN and END lines. openssl: $why"
+            exit 0
+          fi
+          rm -f "$RUNNER_TEMP/store-err"
           od -An -v -tx1 "$RUNNER_TEMP/store.sig" | tr -d ' \n' > site/store/catalog.json.sig
           pub=$(openssl pkey -in "$RUNNER_TEMP/store-key.pem" -pubout -outform DER | tail -c 32 | od -An -v -tx1 | tr -d ' \n')
           rm -f "$RUNNER_TEMP/store-key.pem" "$RUNNER_TEMP/store.sig" "$RUNNER_TEMP/store-pub.pem"
