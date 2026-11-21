@@ -5,7 +5,8 @@ Release: 1.17
 
 The owner (Nov 21): "add that to the files app in the downloads section a auto sort downloads button". The same five
 folders as the Nov 15 tidy (hearth-workspace other/assets/downloads-tidy): Hearth, Installers, Media, Documents,
-_to_delete. Only moves, never deletes or overwrites; one Undo puts everything back.
+_to_delete. Pictured in CI (hearth-apps-rust 44896710335): files-30-sort-downloads and files-31-sorted, opened
+next to the mockups on Nov 21. Only moves, never deletes or overwrites; one Undo puts everything back.
 
 ## 1. The preview
 - [x] ✦ Sort my Downloads on the command bar's right, only in Downloads (accent) — hosts/hearth-ui/apps/files/src/view.rs: "fn sort_button"
