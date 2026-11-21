@@ -5,6 +5,7 @@ import android.app.Activity
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -14,6 +15,7 @@ import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowInsets
 import android.view.ViewConfiguration
 import android.view.inputmethod.InputMethodManager
 import android.webkit.CookieManager
@@ -270,16 +272,32 @@ class ViewerActivity : Activity() {
         if (!cancel) ui.postDelayed({ keyboardIfTyping() }, 380)
     }
 
-    /** A tap that lands on a text field opens the TV's keyboard. */
-    private fun keyboardIfTyping() {
+    /** A tap that lands on a text field opens the TV's keyboard, and keeps it open (the owner, Nov 21: on a search bar it
+     *  came up for a split second and went away). The page no longer gets smaller under the keyboard (adjustPan, so
+     *  sites don't close their search box when the page resizes), the keyboard is asked for as one you asked for (not
+     *  an "implicit" one Chromium hides again), and if it's gone within a second while the field still has the cursor,
+     *  it's asked for again (twice at most). */
+    private fun keyboardIfTyping(tries: Int = 2) {
         if (full != null) return
         web.evaluateJavascript(EDITING) { r ->
             if (r != null && r.contains("edit")) {
-                web.requestFocus()
-                getSystemService(InputMethodManager::class.java)?.showSoftInput(web, InputMethodManager.SHOW_IMPLICIT)
+                if (!web.hasFocus()) web.requestFocus()
+                showKeyboard()
+                if (tries > 0) ui.postDelayed({ if (!keyboardShown()) keyboardIfTyping(tries - 1) }, 900)
             }
         }
     }
+
+    private fun showKeyboard() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            web.windowInsetsController?.show(WindowInsets.Type.ime())
+        }
+        getSystemService(InputMethodManager::class.java)?.showSoftInput(web, 0)
+    }
+
+    private fun keyboardShown(): Boolean =
+        if (Build.VERSION.SDK_INT >= 30) web.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == true
+        else getSystemService(InputMethodManager::class.java)?.isAcceptingText == true
 
     /** What pointer.js asks for (window.HearthPointerNative); [fx], [fy] are fractions of the screen. */
     inner class Native {

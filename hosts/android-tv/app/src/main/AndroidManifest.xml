@@ -68,6 +68,7 @@
         <activity
             android:name=".ViewerActivity"
             android:exported="false"
+            android:windowSoftInputMode="adjustPan|stateUnchanged"
             android:screenOrientation="landscape"
             android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|smallestScreenSize|uiMode|density"
             android:theme="@style/Theme.HearthTV" />
