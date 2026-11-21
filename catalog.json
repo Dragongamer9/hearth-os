@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 3,
+  "serial": 4,
   "apps": [
     {
       "id": "command-center",
@@ -120,7 +120,8 @@
       "from": "#f5a742",
       "to": "#d9731e",
       "kind": "builtin",
-      "open": "hearth-g15-app"
+      "open": "hearth-g15-app",
+      "partId": "hearth-g15-app"
     },
     {
       "id": "hearth-notes",
@@ -132,7 +133,8 @@
       "from": "#ff8a3d",
       "to": "#d9531e",
       "kind": "builtin",
-      "open": "hearth-notes-app"
+      "open": "hearth-notes-app",
+      "partId": "hearth-notes-app"
     },
     {
       "id": "beacon",
@@ -168,6 +170,145 @@
       "from": "#f472b6",
       "to": "#db2777",
       "kind": "coming"
+    },
+    {
+      "id": "mantel",
+      "name": "Mantel (Hearth Classic)",
+      "short": "Mantel",
+      "card": "Hearth's own desktop: taskbar, menus and Quick Access",
+      "tagline": "Hearth's own desktop: taskbar, menus and Quick Access",
+      "about": "Hearth's own desktop: taskbar, menus and Quick Access. It's part of Hearth OS and gets quick updates here, between Hearth OS updates.",
+      "icon": "M",
+      "from": "#ff9a4d",
+      "to": "#c2410c",
+      "kind": "builtin",
+      "partId": "mantel"
+    },
+    {
+      "id": "files",
+      "name": "Hearth Files",
+      "short": "Files",
+      "card": "Your files, drives and network",
+      "tagline": "Your files, drives and network",
+      "about": "Your files, drives and network. It's part of Hearth OS and gets quick updates here, between Hearth OS updates.",
+      "icon": "▤",
+      "from": "#f2c14e",
+      "to": "#b7791f",
+      "kind": "builtin",
+      "partId": "hearth-files-app",
+      "open": "hearth-files-app"
+    },
+    {
+      "id": "settings",
+      "name": "Hearth Settings",
+      "short": "Settings",
+      "card": "Everything about this PC in one place",
+      "tagline": "Everything about this PC in one place",
+      "about": "Everything about this PC in one place. It's part of Hearth OS and gets quick updates here, between Hearth OS updates.",
+      "icon": "⚙",
+      "from": "#9aa3b2",
+      "to": "#4b5563",
+      "kind": "builtin",
+      "partId": "hearth-settings-app",
+      "open": "hearth-settings-app"
+    },
+    {
+      "id": "task-manager",
+      "name": "Task Manager",
+      "short": "Task Manager",
+      "card": "What's running, and how the PC is doing",
+      "tagline": "What's running, and how the PC is doing",
+      "about": "What's running, and how the PC is doing. It's part of Hearth OS and gets quick updates here, between Hearth OS updates.",
+      "icon": "TM",
+      "from": "#7dd3fc",
+      "to": "#0369a1",
+      "kind": "builtin",
+      "partId": "hearth-task-manager",
+      "open": "hearth-task-manager"
+    },
+    {
+      "id": "capture",
+      "name": "Capture",
+      "short": "Capture",
+      "card": "Screenshots and screen recordings",
+      "tagline": "Screenshots and screen recordings",
+      "about": "Screenshots and screen recordings. It's part of Hearth OS and gets quick updates here, between Hearth OS updates.",
+      "icon": "◉",
+      "from": "#fca5a5",
+      "to": "#b91c1c",
+      "kind": "builtin",
+      "partId": "hearth-capture-app",
+      "open": "hearth-capture-app"
+    },
+    {
+      "id": "family",
+      "name": "Family and friends",
+      "short": "Family",
+      "card": "Accounts and time limits for everyone here",
+      "tagline": "Accounts and time limits for everyone here",
+      "about": "Accounts and time limits for everyone here. It's part of Hearth OS and gets quick updates here, between Hearth OS updates.",
+      "icon": "♥",
+      "from": "#f9a8d4",
+      "to": "#be185d",
+      "kind": "builtin",
+      "partId": "hearth-family-app",
+      "open": "hearth-family-app"
+    },
+    {
+      "id": "server",
+      "name": "Server mode",
+      "short": "Server mode",
+      "card": "Turn this PC into a home server",
+      "tagline": "Turn this PC into a home server",
+      "about": "Turn this PC into a home server. It's part of Hearth OS and gets quick updates here, between Hearth OS updates.",
+      "icon": "S",
+      "from": "#86efac",
+      "to": "#15803d",
+      "kind": "builtin",
+      "partId": "hearth-server-app",
+      "open": "hearth-server-app"
+    },
+    {
+      "id": "system-restore",
+      "name": "System Restore",
+      "short": "System Restore",
+      "card": "Go back to how this PC was",
+      "tagline": "Go back to how this PC was",
+      "about": "Go back to how this PC was. It's part of Hearth OS and gets quick updates here, between Hearth OS updates.",
+      "icon": "↺",
+      "from": "#c4b5fd",
+      "to": "#6d28d9",
+      "kind": "builtin",
+      "partId": "hearth-system-restore",
+      "open": "hearth-system-restore"
+    },
+    {
+      "id": "reliability",
+      "name": "Reliability history",
+      "short": "Reliability",
+      "card": "What went wrong, and when",
+      "tagline": "What went wrong, and when",
+      "about": "What went wrong, and when. It's part of Hearth OS and gets quick updates here, between Hearth OS updates.",
+      "icon": "R",
+      "from": "#fde68a",
+      "to": "#b45309",
+      "kind": "builtin",
+      "partId": "hearth-reliability-history",
+      "open": "hearth-reliability-history"
+    },
+    {
+      "id": "resmon",
+      "name": "Resource monitor",
+      "short": "Resource monitor",
+      "card": "CPU, memory, disk and network in detail",
+      "tagline": "CPU, memory, disk and network in detail",
+      "about": "CPU, memory, disk and network in detail. It's part of Hearth OS and gets quick updates here, between Hearth OS updates.",
+      "icon": "RM",
+      "from": "#a5f3fc",
+      "to": "#0e7490",
+      "kind": "builtin",
+      "partId": "hearth-resmon-app",
+      "open": "hearth-resmon-app"
     }
   ]
 }
