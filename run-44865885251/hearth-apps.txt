@@ -1,0 +1,62 @@
+Accessibility                            hearth-accessibility.desktop
+Back to Game Mode                        hearth-gamemode.desktop
+Calculator                               hearth-calculator-kde.desktop
+Calculator                               hearth-calculator.desktop
+Calendar                                 hearth-calendar.desktop
+Camera                                   hearth-camera.desktop
+Capture                                  hearth-capture-kde.desktop
+Capture                                  hearth-capture.desktop
+Clock                                    hearth-clock.desktop
+Contacts                                 hearth-contacts.desktop
+Controller Lab                           hearth-controller-lab.desktop
+Disk Usage                               hearth-disk-usage.desktop
+Disks                                    hearth-disks.desktop
+Documents                                hearth-documents.desktop
+Emoji & Symbols                          hearth-emoji.desktop
+Family and friends                       hearth-family.desktop
+Files                                    hearth-files-kde.desktop
+Files                                    hearth-files.desktop
+Firehold (Plasma, test)                  org.hearthos.firehold.choose.desktop
+Fonts                                    hearth-fonts.desktop
+Get Claude                               hearth-get-claude.desktop
+Hearth Benchmark                         hearth-benchmark.desktop
+Hearth Browser                           hearth-browser.desktop
+Hearth Connect                           hearth-connect.desktop
+Hearth Games                             hearth-gamestore.desktop
+Hearth Player                            hearth-player.desktop
+Hearth Settings                          hearth-settings.desktop
+Hearth Sheets                            hearth-sheets.desktop
+Hearth Slides                            hearth-slides.desktop
+Hearth Store                             hearth-store.desktop
+Hearth Write                             hearth-write.desktop
+Join a friend's game                     hearth-join.desktop
+Logitech G15                             hearth-g15-app.desktop
+Logs                                     hearth-logs.desktop
+Make a Bootable USB                      hearth-usb-maker.desktop
+Maps                                     hearth-maps.desktop
+Mods                                     hearth-mods.desktop
+Nearby Share                             hearth-nearby.desktop
+Network Tools                            hearth-network.desktop
+Notes                                    hearth-notes.desktop
+Paint                                    hearth-paint.desktop
+Passwords & Keys                         hearth-passwords.desktop
+Photos                                   hearth-photos.desktop
+Printers & Scanner                       hearth-printers.desktop
+Reader                                   hearth-reader.desktop
+Recorder                                 hearth-recorder.desktop
+Reliability history                      hearth-reliability.desktop
+Resource Monitor                         hearth-resmon.desktop
+Saves                                    hearth-saves.desktop
+Send logs                                hearth-send-logs.desktop
+Share Screen                             hearth-share.desktop
+System Info                              hearth-system-info.desktop
+System Restore                           hearth-restore.desktop
+Task Manager                             hearth-tasks.desktop
+Terminal                                 hearth-terminal-kde.desktop
+Terminal                                 hearth-terminal.desktop
+Text Editor                              hearth-text-kde.desktop
+Text Editor                              hearth-text.desktop
+Theater                                  hearth-theater.desktop
+Weather                                  hearth-weather.desktop
+Welcome & Tips                           hearth-welcome.desktop
+Windows apps                             hearth-winapps.desktop

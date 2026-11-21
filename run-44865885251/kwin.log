@@ -1,0 +1,3054 @@
+---- kwin (06:22:46)
+Failed to gain real time thread priority (See CAP_SYS_NICE in the capabilities(7) man page). error: Operation not permitted
+KWIN environment variables: QList("KWIN_SCREENSHOT_NO_PERMISSION_CHECKS=1")
+Accepting client connections on sockets: QList("wayland-hearth")
+kwin_vulkan: Device llvmpipe (LLVM 23.1.2, 256 bits) misses required Vulkan extensions
+kwin_vulkan: VK_EXT_image_drm_format_modifier
+kwin_xkbcommon: XKB: [XKB-107] inet:442:58: unrecognized keysym "XF86ElectronicPrivacyScreenOn"
+kwin_xkbcommon: XKB: [XKB-107] inet:443:58: unrecognized keysym "XF86ElectronicPrivacyScreenOff"
+kwin_xkbcommon: XKB: [XKB-107] inet:444:58: unrecognized keysym "XF86ActionOnSelection"
+kwin_xkbcommon: XKB: [XKB-107] inet:445:58: unrecognized keysym "XF86ContextualInsert"
+kwin_xkbcommon: XKB: [XKB-107] inet:446:58: unrecognized keysym "XF86ContextualQuery"
+kwin_screencast: Failed to connect PipeWire context
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+hearth-kwin-im: input panel ready (touch opens Hearth's keyboard)
+hearth-kwin-im: ready (/tmp/xdg-ci/hearth/im.sock)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_screencast: Failed to connect PipeWire context
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)
+kwin_core: Failed to find a working output layer configuration: Rendering a layer failed
+kwin_core: Enabled layers:
+kwin_core: src KWin::RectF(0,0 1920x1080) -> dst KWin::Rect(0,0 1920x1080)

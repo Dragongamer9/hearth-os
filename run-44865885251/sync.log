@@ -1,0 +1,66 @@
+---- first start
+hearth-plasma-looks: Global Theme org.hearthos.hearth: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-hearth-Dark: exit 0 The requested theme "HearthOS-hearth-Dark" is already set as the theme for the current Plasma session.
+hearth-plasma-looks: colours HearthOS-hearth-Dark again (after HearthOS-hearth-Light): exit 0 Successfully applied the color scheme HearthOS-hearth-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-hearth: exit 0
+hearth-plasma-looks: wallpaper Hearth-fireside: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795242181.131734 sender=:1.7 -> destination=:1.21 serial=464 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.hearth", "scheme": "HearthOS-hearth-Dark", "style": "hearth-hearth", "colours": true}
+hearth-plasma-looks: Hearth's apps follow HearthOS-hearth-Dark (dark)
+hearth-plasma-looks: Hearth's apps follow HearthOS-hearth-Dark (dark)
+hearth-plasma-looks: Global Theme org.hearthos.steam: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-steam-Dark: exit 0 Successfully applied the color scheme HearthOS-steam-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-steam: exit 0
+hearth-plasma-looks: wallpaper Hearth-ridge: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795242269.588727 sender=:1.7 -> destination=:1.83 serial=478 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.steam", "scheme": "HearthOS-steam-Dark", "style": "hearth-steam", "colours": true}
+hearth-plasma-looks: Hearth's apps follow HearthOS-steam-Dark (dark)
+hearth-plasma-looks: Global Theme org.hearthos.gaming: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-gaming-Dark: exit 0 Successfully applied the color scheme HearthOS-gaming-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-gaming: exit 0
+hearth-plasma-looks: wallpaper Hearth-forge: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795242276.556658 sender=:1.7 -> destination=:1.92 serial=486 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.gaming", "scheme": "HearthOS-gaming-Dark", "style": "hearth-gaming", "colours": true}
+hearth-plasma-looks: Hearth's apps follow HearthOS-gaming-Dark (dark)
+hearth-plasma-looks: Global Theme org.hearthos.zen: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-zen-Dark: exit 0 Successfully applied the color scheme HearthOS-zen-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-zen: exit 0
+hearth-plasma-looks: wallpaper Hearth-peaks: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795242283.524179 sender=:1.7 -> destination=:1.102 serial=494 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.zen", "scheme": "HearthOS-zen-Dark", "style": "hearth-zen", "colours": true}
+hearth-plasma-looks: Hearth's apps follow HearthOS-zen-Dark (dark)
+hearth-plasma-looks: Global Theme org.hearthos.glass: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-glass-Dark: exit 0 Successfully applied the color scheme HearthOS-glass-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-glass: exit 0
+hearth-plasma-looks: wallpaper Hearth-bloom: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795242290.522582 sender=:1.7 -> destination=:1.111 serial=502 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.glass", "scheme": "HearthOS-glass-Dark", "style": "hearth-glass", "colours": true}
+hearth-plasma-looks: Hearth's apps follow HearthOS-glass-Dark (dark)
+hearth-plasma-looks: Global Theme org.hearthos.synthwave: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-synthwave-Dark: exit 0 Successfully applied the color scheme HearthOS-synthwave-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-synthwave: exit 0
+hearth-plasma-looks: wallpaper Hearth-fox: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795242297.567654 sender=:1.7 -> destination=:1.120 serial=510 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.synthwave", "scheme": "HearthOS-synthwave-Dark", "style": "hearth-synthwave", "colours": true}
+hearth-plasma-looks: Hearth's apps follow HearthOS-synthwave-Dark (dark)
+hearth-plasma-looks: Global Theme org.hearthos.cabin: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-cabin-Dark: exit 0 Successfully applied the color scheme HearthOS-cabin-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-cabin: exit 0
+hearth-plasma-looks: wallpaper Hearth-cabin: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795242304.559733 sender=:1.7 -> destination=:1.130 serial=518 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.cabin", "scheme": "HearthOS-cabin-Dark", "style": "hearth-cabin", "colours": true}
+hearth-plasma-looks: Hearth's apps follow HearthOS-cabin-Dark (dark)
+hearth-plasma-looks: Global Theme org.hearthos.console: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-console-Dark: exit 0 Successfully applied the color scheme HearthOS-console-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-console: exit 0
+hearth-plasma-looks: wallpaper Hearth-embers: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795242311.506658 sender=:1.7 -> destination=:1.139 serial=526 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.console", "scheme": "HearthOS-console-Dark", "style": "hearth-console", "colours": true}
+hearth-plasma-looks: Hearth's apps follow HearthOS-console-Dark (dark)
+hearth-plasma-looks: Global Theme org.hearthos.hearth: exit 0 /usr/sbin/xrdb: Can't open display '' | xcb_connect() failed
+hearth-plasma-looks: colours HearthOS-hearth-Dark: exit 0 Successfully applied the color scheme HearthOS-hearth-Dark to your current Plasma session
+hearth-plasma-looks: Plasma style hearth-hearth: exit 0
+hearth-plasma-looks: wallpaper Hearth-fireside: exit 0
+hearth-plasma-looks: menu icon and wallpaper defaults: exit 0 method return time=1795242318.454665 sender=:1.7 -> destination=:1.148 serial=533 reply_serial=2 |    string ""
+hearth-plasma-looks: applied: KDE now has {"lnf": "org.hearthos.hearth", "scheme": "HearthOS-hearth-Dark", "style": "hearth-hearth", "colours": true}
+hearth-plasma-looks: Hearth's apps follow HearthOS-hearth-Dark (dark)

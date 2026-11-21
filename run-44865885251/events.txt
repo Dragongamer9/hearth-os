@@ -1,0 +1,32 @@
+FIRSTOK Hearth's look applied and recorded (sync exit 0): {"kde": {"lnf": "org.hearthos.hearth", "scheme": "HearthOS-hearth-Dark", "style": "hearth-hearth", "colours": true}, "state": {"applied": {"look": "hearth", "mode": "dark", "accent": "", "sub": ""}, "kde": "org.hearthos.hearth"}, "plasma": true}
+OK the menu button has Hearth's logo (org.kde.plasma.kickoff=hearth )
+SHOT hearth-desktop
+SHOT hearth-app-menu
+SHOT hearth-apps-krunner
+APPS 62 Hearth apps in KDE's menu
+SHOT hearth-dolphin
+SHOT hearth-system-settings-global-theme
+SHOT hearth-system-settings-colours
+OK hearth applied
+SHOT look-hearth
+OK steam applied
+SHOT look-steam
+OK gaming applied
+SHOT look-gaming
+OK zen applied
+SHOT look-zen
+OK glass applied
+SHOT look-glass
+OK synthwave applied
+SHOT look-synthwave
+OK cabin applied
+SHOT look-cabin
+OK console applied
+SHOT look-console
+OK hearth applied
+SHOT colour-schemes-sheet
+SHOT firehold-couch
+SHOT firehold-guide
+SHOT firehold-open-now
+WARN plasmashell had ended (before the picture firehold-desk, exit 0): kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"|kpipewire_logging: error: "Failed to connect to PipeWire" 0|qml: firehold: modes on the Desk bar (Virtual-0): ["Virtual-0=desk"]|qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself|qml: plasma-hearth: notifyd: Plasma shows copy and download progress itself|kpipewire_logging: error: "Failed to connect to PipeWire" 0|
+SHOT firehold-desk

@@ -1,0 +1,1 @@
+{"kind": "firehold", "up_s": "6.6", "shell_pct": 0.21, "worst_minute_pct": 0.25, "labwc_pct": 0.0, "shell_mb_start": 332, "shell_mb_end": 342, "frames": 20, "procs": [30, 26], "secs": 600}

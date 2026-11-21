@@ -1,0 +1,150 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 30  of event 'task-clock:ppp'
+# Event count (approx.): 60120240
+#
+# Overhead  Shared Object                Symbol                                                                                                                        
+# ........  ...........................  ..............................................................................................................................
+#
+     6.67%  libjemalloc.so.2             [.] free
+            |
+            ---free
+               |          
+               |--3.33%--QV4::BlockAllocator::sweep()
+               |          QV4::(anonymous namespace)::doSweep(QV4::GCStateMachine*, std::variant<std::monostate, QV4::GCIteratorStorage>&)
+               |          QV4::GCStateMachine::transition()
+               |          QObject::event(QEvent*)
+               |          QApplicationPrivate::notify_helper(QObject*, QEvent*)
+               |          QCoreApplication::notifyInternal2(QObject*, QEvent*)
+               |          QCoreApplicationPrivate::sendPostedEvents(QObject*, int, QThreadData*)
+               |          postEventSourceDispatch(_GSource*, int (*)(void*), void*)
+               |          g_main_context_dispatch_unlocked
+               |          g_main_context_iterate_unlocked.isra.0
+               |          g_main_context_iteration
+               |          QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+               |          QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+               |          QCoreApplication::exec()
+               |          qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+               |          0x78e25080dc00
+               |          QApplication::qt_metacast(char const*)
+               |          0xe9097400387f8348
+               |          
+                --3.33%--__tzset
+                          qLocalTime(long, tm*)
+                          QLocalTime::utcToLocal(long long)
+                          QDateTimePrivate::expressUtcAsLocal(long long)
+                          QDateTime::setMSecsSinceEpoch(long long)
+                          QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+                          QDateTime::currentDateTime(QTimeZone const&)
+                          QDateTime::currentDateTime()
+                          QString::toUtf8() const & (inlined)
+                          qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+                          0x78e226124210
+                          0x77
+     3.33%  [kernel.kallsyms]            [k] __virt_addr_valid
+            |
+            ---__virt_addr_valid
+               check_heap_object
+               __check_object_size
+               strncpy_from_user
+               do_getname
+               getname_flags
+               do_sys_openat2
+               __x64_sys_openat
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               __open64_nocancel
+               _IO_file_open
+               _IO_file_fopen@@GLIBC_2.2.5
+               __fopen_internal
+               __tzfile_read
+               tzset_internal
+               __tzset
+               qLocalTime(long, tm*)
+               QLocalTime::utcToLocal(long long)
+               QDateTimePrivate::expressUtcAsLocal(long long)
+               QDateTime::setMSecsSinceEpoch(long long)
+               QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+               QDateTime::currentDateTime(QTimeZone const&)
+               QDateTime::currentDateTime()
+               QString::toUtf8() const & (inlined)
+               qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+               0x78e2221af010
+               0x77
+     3.33%  [kernel.kallsyms]            [k] init_file
+            |
+            ---init_file
+               path_openat
+               do_file_open
+               do_sys_openat2
+               __x64_sys_openat
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               __open64_nocancel
+               _IO_file_open
+               _IO_file_fopen@@GLIBC_2.2.5
+               __fopen_internal
+               __tzfile_read
+               tzset_internal
+               __tzset
+               qLocalTime(long, tm*)
+               QLocalTime::utcToLocal(long long)
+               QDateTimePrivate::expressUtcAsLocal(long long)
+               QDateTime::setMSecsSinceEpoch(long long)
+               QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+               QDateTime::currentDateTime(QTimeZone const&)
+               QDateTime::currentDateTime()
+               QString::toUtf8() const & (inlined)
+               qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+               0x78e224bdf410
+               0x77
+     3.33%  [kernel.kallsyms]            [k] kmem_cache_free
+            |
+            ---kmem_cache_free
+               putname
+               do_sys_openat2
+               __x64_sys_openat
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               __open64_nocancel
+               _IO_file_open
+               _IO_file_fopen@@GLIBC_2.2.5
+               __fopen_internal
+               __tzfile_read
+               tzset_internal
+               __tzset
+               mktime
+               qMkTime(tm*)
+               (anonymous namespace)::resolveLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               QLocalTime::mapLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               QDateTimePrivate::localStateAtMillis(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               QDateTime::toMSecsSinceEpoch() const
+               QDateTime::toSecsSinceEpoch() const
+               qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               0x78e250965d60
+               0x78e23d6281c0
+               QFile::qt_metacast(char const*)
+               0xe9097400387f8348
+     3.33%  [kernel.kallsyms]            [k] ovl_i_path_real
+            |
+            ---ovl_i_path_real
+               ovl_file_end_write
+               backing_file_write_iter
+               ovl_write_iter
+               vfs_write
+               ksys_write
+               __x64_sys_write
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               __syscall_cancel_arch
+               QFSFileEnginePrivate::writeFdFh(char const*, long long)
+               QFileDevice::writeData(char const*, long long)
+               QIODevice::write(char const*, long long)
+               QIODevice::write(QByteArray const&)

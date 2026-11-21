@@ -1,0 +1,150 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 34  of event 'task-clock:ppp'
+# Event count (approx.): 68136272
+#
+# Overhead  Shared Object            Symbol                                                                 
+# ........  .......................  .......................................................................
+#
+     8.82%  [kernel.kallsyms]        [k] _raw_spin_unlock_irqrestore
+            |
+            ---_raw_spin_unlock_irqrestore
+               |          
+               |--5.88%--try_to_wake_up
+               |          wake_up_q
+               |          futex_wake
+               |          do_futex
+               |          __x64_sys_futex
+               |          x64_sys_call
+               |          do_syscall_64
+               |          entry_SYSCALL_64_after_hwframe
+               |          syscall
+               |          |          
+               |          |--2.94%--qLocalTime(long, tm*)
+               |          |          QLocalTime::utcToLocal(long long)
+               |          |          QDateTimePrivate::expressUtcAsLocal(long long)
+               |          |          QDateTime::setMSecsSinceEpoch(long long)
+               |          |          QDateTime::fromSecsSinceEpoch(long long, QTimeZone const&)
+               |          |          QDateTime::fromSecsSinceEpoch(long long)
+               |          |          void std::swap<QDateTime::ShortData>(QDateTime::ShortData&, QDateTime::ShortData&) requires ((!std::__is_tuple_like<QDateTime::ShortData>::value)&&(is_move_constructible_v<QDateTime::ShortData>))&&(is_move_assignable_v<QDateTime::ShortData>) (inlined)
+               |          |          QDateTime::Data::swap(QDateTime::Data&) (inlined)
+               |          |          QDateTime::swap(QDateTime&) (inlined)
+               |          |          QDateTime::operator=(QDateTime&&) (inlined)
+               |          |          qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               |          |          0x7c8f8a608160
+               |          |          0x7c8f8a6281c0
+               |          |          QFile::qt_metacast(char const*)
+               |          |          0xe9097400387f8348
+               |          |          
+               |           --2.94%--qMkTime(tm*)
+               |                     (anonymous namespace)::resolveLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |                     QLocalTime::mapLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |                     QDateTimePrivate::localStateAtMillis(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |                     QDateTime::toMSecsSinceEpoch() const
+               |                     QDateTime::msecsTo(QDateTime const&) const
+               |                     QDateTime::secsTo(QDateTime const&) const
+               |                     QByteArray::size() const (inlined)
+               |                     QByteArray::append(QByteArrayView) (inlined)
+               |                     QByteArray::append(char const*, long long) (inlined)
+               |                     qs::log::WriteBuffer::writeBytes(char const*, long long) (inlined)
+               |                     qs::log::WriteBuffer::writeU8(unsigned char) (inlined)
+               |                     qs::log::EncodedLogWriter::writeOp(qs::log::EncodedLogOpcode) (inlined)
+               |                     qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               |                     0
+               |                     0x7c8f8a6281c0
+               |                     QFile::qt_metacast(char const*)
+               |                     0xe9097400387f8348
+               |          
+                --2.94%--__wake_up_sync_key
+                          anon_pipe_write
+                          vfs_write
+                          ksys_write
+                          __x64_sys_write
+                          x64_sys_call
+                          do_syscall_64
+                          entry_SYSCALL_64_after_hwframe
+                          __syscall_cancel_arch
+                          QProcessPrivate::writeToStdin()
+                          QProcessPrivate::_q_canWrite()
+                          void doActivate<false>(QObject*, int, void**)
+                          QSocketNotifier::activated(QSocketDescriptor, QSocketNotifier::Type, QSocketNotifier::QPrivateSignal)
+                          QSocketNotifier::event(QEvent*)
+                          QApplicationPrivate::notify_helper(QObject*, QEvent*)
+                          QCoreApplication::notifyInternal2(QObject*, QEvent*)
+                          socketNotifierSourceDispatch(_GSource*, int (*)(void*), void*)
+                          g_main_context_dispatch_unlocked
+                          g_main_context_iterate_unlocked.isra.0
+                          g_main_context_iteration
+                          QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+                          QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+                          QCoreApplication::exec()
+                          qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+                          0x7c8f9d80dc00
+                          QApplication::qt_metacast(char const*)
+                          0xe9097400387f8348
+     5.88%  [kernel.kallsyms]        [k] do_syscall_64
+            |
+            ---do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               |          
+               |--2.94%--__open64_nocancel
+               |          _IO_file_open
+               |          _IO_file_fopen@@GLIBC_2.2.5
+               |          __fopen_internal
+               |          __tzfile_read
+               |          tzset_internal
+               |          __tzset
+               |          qLocalTime(long, tm*)
+               |          QLocalTime::utcToLocal(long long)
+               |          QDateTimePrivate::expressUtcAsLocal(long long)
+               |          QDateTime::setMSecsSinceEpoch(long long)
+               |          QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+               |          QDateTime::currentDateTime(QTimeZone const&)
+               |          QDateTime::currentDateTime()
+               |          QString::toUtf8() const & (inlined)
+               |          qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+               |          0x7c8f7d34f910
+               |          0x77
+               |          
+                --2.94%--__GI___geteuid
+                          file_status
+                          find_in_path_element.isra.0
+                          find_user_command_in_path.lto_priv.0
+                          search_for_command
+                          execute_disk_command
+                          execute_simple_command.lto_priv.0
+                          execute_command_internal
+                          execute_pipeline
+                          execute_command_internal
+                          execute_command_internal
+                          execute_command
+                          execute_command_internal
+                          execute_command
+                          execute_command_internal
+                          parse_and_execute
+                          run_one_command.isra.0
+                          main
+                          __libc_start_call_main
+                          __libc_start_main@@GLIBC_2.34
+                          _start
+     5.88%  ld-linux-x86-64.so.2     [.] _dl_relocate_object_no_relro
+            |          
+            |--2.94%--elf_dynamic_is_Rela_irelative (inlined)
+            |          elf_dynamic_do_Rela (inlined)
+            |          _dl_relocate_object_no_relro
+            |          _dl_relocate_object
+            |          dl_main
+            |          _dl_sysdep_start
+            |          _dl_start_final (inlined)
+            |          _dl_start
+            |          _dl_start_user
+            |          
+             --2.94%--dl_symbol_visibility_binds_local_p (inlined)
+                       resolve_map (inlined)
+                       elf_machine_rela (inlined)
+                       elf_dynamic_do_Rela (inlined)
+                       _dl_relocate_object_no_relro
+                       _dl_relocate_object

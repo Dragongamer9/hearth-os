@@ -1,0 +1,3 @@
+OK Hearth Files (cold) 0.28 s
+OK Hearth Files (warm) 0.26 s
+OK Hearth Files (warm2) 0.23 s

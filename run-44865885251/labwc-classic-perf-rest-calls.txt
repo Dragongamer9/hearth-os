@@ -1,0 +1,400 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 251  of event 'task-clock:ppp'
+# Event count (approx.): 1261306375
+#
+# Children      Self  Symbol                                                                                                                                                                                                                                               
+# ........  ........  .....................................................................................................................................................................................................................................................
+#
+    33.07%     0.00%  [.] __libc_start_call_main
+            |          
+             --31.87%--__libc_start_main@@GLIBC_2.34
+                       |          
+                       |--17.13%--_start
+                       |          
+                       |--11.55%--_start
+                       |          
+                       |--1.20%--_start
+                       |          
+                        --0.80%--_start
+    31.87%     0.00%  [.] __libc_start_main@@GLIBC_2.34
+            |          
+            |--17.13%--_start
+            |          
+            |--11.55%--_start
+            |          
+            |--1.20%--_start
+            |          
+             --0.80%--_start
+    29.48%     0.00%  [.] entry_SYSCALL_64_after_hwframe
+            |          
+            |--9.96%--__syscall_cancel_arch
+            |          |          
+            |          |--4.38%--QFSFileEnginePrivate::writeFdFh(char const*, long long)
+            |          |          QFileDevice::writeData(char const*, long long)
+            |          |          QIODevice::write(char const*, long long)
+            |          |          QIODevice::write(QByteArray const&)
+            |          |          qs::log::WriteBuffer::flush() (inlined)
+            |          |          qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+            |          |          |          
+            |          |           --3.98%--0x78e250965d60
+            |          |                     0x78e23d6281c0
+            |          |                     QFile::qt_metacast(char const*)
+            |          |                     0xe9097400387f8348
+            |          |          
+            |          |--3.19%--g_main_context_iterate_unlocked.isra.0
+            |          |          g_main_context_iteration
+            |          |          QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+            |          |          QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+            |          |          |          
+            |          |          |--2.39%--QCoreApplication::exec()
+            |          |          |          qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+            |          |          |          0x78e25080dc00
+            |          |          |          QApplication::qt_metacast(char const*)
+            |          |          |          0xe9097400387f8348
+            |          |          |          
+            |          |           --0.80%--QThread::exec()
+            |          |                     QThreadPrivate::start(void*)
+            |          |                     start_thread
+            |          |                     __GI___clone3
+            |          |          
+            |           --0.80%--g_wakeup_acknowledge
+            |                     g_main_context_check_unlocked
+            |                     g_main_context_iterate_unlocked.isra.0
+            |                     g_main_context_iteration
+            |                     QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+            |                     QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+            |                     QCoreApplication::exec()
+            |                     qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+            |                     0x78e25080dc00
+            |                     QApplication::qt_metacast(char const*)
+            |                     0xe9097400387f8348
+            |          
+            |--4.38%--syscall
+            |          |          
+            |          |--1.59%--qLocalTime(long, tm*)
+            |          |          QLocalTime::utcToLocal(long long)
+            |          |          QDateTimePrivate::expressUtcAsLocal(long long)
+            |          |          QDateTime::setMSecsSinceEpoch(long long)
+            |          |          |          
+            |          |           --1.20%--QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+            |          |                     QDateTime::currentDateTime(QTimeZone const&)
+            |          |                     QDateTime::currentDateTime()
+            |          |                     QString::toUtf8() const & (inlined)
+            |          |                     qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+            |          |                     |          
+            |          |                      --0.80%--0x78e229ea9210
+            |          |                                0x77
+            |          |          
+            |           --1.20%--qMkTime(tm*)
+            |                     (anonymous namespace)::resolveLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+            |                     QLocalTime::mapLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+            |                     QDateTimePrivate::localStateAtMillis(long long, QFlags<QDateTimePrivate::TransitionOption>)
+            |                     QDateTime::toMSecsSinceEpoch() const
+            |                     QDateTime::msecsTo(QDateTime const&) const
+            |                     QDateTime::secsTo(QDateTime const&) const
+            |                     |          
+            |                      --0.80%--QByteArray::size() const (inlined)
+            |                                QByteArray::append(QByteArrayView) (inlined)
+            |                                QByteArray::append(char const*, long long) (inlined)
+            |                                qs::log::WriteBuffer::writeBytes(char const*, long long) (inlined)
+            |                                qs::log::WriteBuffer::writeU8(unsigned char) (inlined)
+            |                                qs::log::EncodedLogWriter::writeOp(qs::log::EncodedLogOpcode) (inlined)
+            |                                qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+            |                                0
+            |                                0x78e23d6281c0
+            |                                QFile::qt_metacast(char const*)
+            |                                0xe9097400387f8348
+            |          
+            |--3.98%--__open64_nocancel
+            |          _IO_file_open
+            |          _IO_file_fopen@@GLIBC_2.2.5
+            |          __fopen_internal
+            |          __tzfile_read
+            |          tzset_internal
+            |          __tzset
+            |          |          
+            |          |--2.39%--mktime
+            |          |          qMkTime(tm*)
+            |          |          (anonymous namespace)::resolveLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+            |          |          QLocalTime::mapLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+            |          |          QDateTimePrivate::localStateAtMillis(long long, QFlags<QDateTimePrivate::TransitionOption>)
+            |          |          QDateTime::toMSecsSinceEpoch() const
+            |          |          |          
+            |          |           --1.99%--QDateTime::msecsTo(QDateTime const&) const
+            |          |                     |          
+            |          |                      --1.59%--QDateTime::secsTo(QDateTime const&) const
+            |          |                                QByteArray::size() const (inlined)
+            |          |                                QByteArray::append(QByteArrayView) (inlined)
+            |          |                                QByteArray::append(char const*, long long) (inlined)
+            |          |                                qs::log::WriteBuffer::writeBytes(char const*, long long) (inlined)
+            |          |                                qs::log::WriteBuffer::writeU8(unsigned char) (inlined)
+            |          |                                qs::log::EncodedLogWriter::writeOp(qs::log::EncodedLogOpcode) (inlined)
+            |          |                                qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+            |          |                                0
+            |          |                                0x78e23d6281c0
+            |          |                                QFile::qt_metacast(char const*)
+            |          |                                0xe9097400387f8348
+            |          |          
+            |           --1.59%--qLocalTime(long, tm*)
+            |                     QLocalTime::utcToLocal(long long)
+            |                     QDateTimePrivate::expressUtcAsLocal(long long)
+            |                     QDateTime::setMSecsSinceEpoch(long long)
+            |                     |          
+            |                      --1.20%--QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+            |                                QDateTime::currentDateTime(QTimeZone const&)
+            |                                QDateTime::currentDateTime()
+            |                                QString::toUtf8() const & (inlined)
+            |                                qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+            |                                |          
+            |                                 --0.80%--0x78e22eddcf10
+            |                                           0x77
+            |          
+            |--2.79%--statx
+            |          |          
+            |          |--1.20%--g_local_file_query_info
+            |          |          flatpak_dir_get_if_deployed
+            |          |          flatpak_dir_get_deploy_data
+            |          |          flatpak_builtin_remote_ls
+            |          |          main
+            |          |          __libc_start_call_main
+            |          |          __libc_start_main@@GLIBC_2.34
+            |          |          _start
+            |          |          
+            |           --0.80%--QFileInfo::isDir() const
+            |                     QInotifyFileSystemWatcherEngine::addPaths(QList<QString> const&, QList<QString>*, QList<QString>*)
+            |                     QFileSystemWatcher::addPaths(QList<QString> const&)
+            |                     QFileSystemWatcher::addPath(QString const&)
+            |                     QArrayDataPointer<char16_t>::QArrayDataPointer(QArrayDataPointer<char16_t> const&) (inlined)
+            |                     QString::QString(QString const&) (inlined)
+            |                     qs::io::FileView::updateWatchedFiles()
+            |                     qs::io::FileView::qt_metacall(QMetaObject::Call, int, void**)
+            |          
+            |--1.59%--__mmap64 (inlined)
+            |          mmap64
+            |          _dl_map_segments (inlined)
+            |          _dl_map_object_from_fd (inlined)
+            |          _dl_map_new_object
+            |          |          
+            |           --1.20%--openaux
+            |                     set_catch (inlined)
+            |                     _dl_catch_exception
+            |                     dl_scratch_buffer_free (inlined)
+            |                     _dl_map_object_deps
+            |                     |          
+            |                      --0.80%--dl_open_worker_begin
+            |                                set_catch (inlined)
+            |                                _dl_catch_exception
+            |                                dl_open_worker
+            |                                set_catch (inlined)
+            |                                _dl_catch_exception
+            |                                _dl_open
+            |                                dlopen_doit
+            |                                set_catch (inlined)
+            |                                _dl_catch_exception
+            |                                _dl_catch_error
+            |                                _dlerror_run
+            |                                dlopen@GLIBC_2.2.5
+            |          
+            |--1.20%--__GI___getdents64
+            |          os_listdir.lto_priv.0
+            |          _Py_BuiltinCallFastWithKeywords_StackRef
+            |          _PyEval_EvalFrameDefault.cold
+            |          _PyEval_Vector
+            |          object_vacall.lto_priv.0
+            |          PyObject_CallMethodObjArgs
+            |          import_find_and_load_with_name.isra.0
+            |          PyImport_ImportModuleLevelObject
+            |          |          
+            |           --0.80%--_PyEval_EvalFrameDefault.cold
+            |                     _PyEval_Vector
+            |                     object_vacall.lto_priv.0
+            |                     PyObject_CallMethodObjArgs
+            |                     PyImport_ImportModuleLevelObject
+            |                     _PyEval_ImportName
+            |                     _PyEval_EvalFrameDefault.cold
+            |                     _PyEval_Vector.constprop.0
+            |                     PyEval_EvalCode
+            |                     builtin_exec.lto_priv.0
+            |                     _PyEval_EvalFrameDefault.cold
+            |                     _PyEval_Vector
+            |                     object_vacall.lto_priv.0
+            |                     PyObject_CallMethodObjArgs
+            |          
+            |--0.80%--mprotect
+            |          dl_main
+            |          _dl_sysdep_start
+            |          _dl_start_final (inlined)
+            |          _dl_start
+            |          _dl_start_user
+            |          
+            |--0.80%--__madvise
+            |          
+             --0.80%--__GI___fstatat64
+    29.08%     1.20%  [.] do_syscall_64
+            |
+            ---entry_SYSCALL_64_after_hwframe
+               |          
+               |--9.96%--__syscall_cancel_arch
+               |          |          
+               |          |--4.38%--QFSFileEnginePrivate::writeFdFh(char const*, long long)
+               |          |          QFileDevice::writeData(char const*, long long)
+               |          |          QIODevice::write(char const*, long long)
+               |          |          QIODevice::write(QByteArray const&)
+               |          |          qs::log::WriteBuffer::flush() (inlined)
+               |          |          qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               |          |          |          
+               |          |           --3.98%--0x78e250965d60
+               |          |                     0x78e23d6281c0
+               |          |                     QFile::qt_metacast(char const*)
+               |          |                     0xe9097400387f8348
+               |          |          
+               |          |--3.19%--g_main_context_iterate_unlocked.isra.0
+               |          |          g_main_context_iteration
+               |          |          QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+               |          |          QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+               |          |          |          
+               |          |          |--2.39%--QCoreApplication::exec()
+               |          |          |          qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+               |          |          |          0x78e25080dc00
+               |          |          |          QApplication::qt_metacast(char const*)
+               |          |          |          0xe9097400387f8348
+               |          |          |          
+               |          |           --0.80%--QThread::exec()
+               |          |                     QThreadPrivate::start(void*)
+               |          |                     start_thread
+               |          |                     __GI___clone3
+               |          |          
+               |           --0.80%--g_wakeup_acknowledge
+               |                     g_main_context_check_unlocked
+               |                     g_main_context_iterate_unlocked.isra.0
+               |                     g_main_context_iteration
+               |                     QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+               |                     QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+               |                     QCoreApplication::exec()
+               |                     qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+               |                     0x78e25080dc00
+               |                     QApplication::qt_metacast(char const*)
+               |                     0xe9097400387f8348
+               |          
+               |--3.98%--syscall
+               |          |          
+               |          |--1.59%--qLocalTime(long, tm*)
+               |          |          QLocalTime::utcToLocal(long long)
+               |          |          QDateTimePrivate::expressUtcAsLocal(long long)
+               |          |          QDateTime::setMSecsSinceEpoch(long long)
+               |          |          |          
+               |          |           --1.20%--QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+               |          |                     QDateTime::currentDateTime(QTimeZone const&)
+               |          |                     QDateTime::currentDateTime()
+               |          |                     QString::toUtf8() const & (inlined)
+               |          |                     qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+               |          |                     |          
+               |          |                      --0.80%--0x78e229ea9210
+               |          |                                0x77
+               |          |          
+               |           --1.20%--qMkTime(tm*)
+               |                     (anonymous namespace)::resolveLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |                     QLocalTime::mapLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |                     QDateTimePrivate::localStateAtMillis(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |                     QDateTime::toMSecsSinceEpoch() const
+               |                     QDateTime::msecsTo(QDateTime const&) const
+               |                     QDateTime::secsTo(QDateTime const&) const
+               |                     |          
+               |                      --0.80%--QByteArray::size() const (inlined)
+               |                                QByteArray::append(QByteArrayView) (inlined)
+               |                                QByteArray::append(char const*, long long) (inlined)
+               |                                qs::log::WriteBuffer::writeBytes(char const*, long long) (inlined)
+               |                                qs::log::WriteBuffer::writeU8(unsigned char) (inlined)
+               |                                qs::log::EncodedLogWriter::writeOp(qs::log::EncodedLogOpcode) (inlined)
+               |                                qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               |                                0
+               |                                0x78e23d6281c0
+               |                                QFile::qt_metacast(char const*)
+               |                                0xe9097400387f8348
+               |          
+               |--3.98%--__open64_nocancel
+               |          _IO_file_open
+               |          _IO_file_fopen@@GLIBC_2.2.5
+               |          __fopen_internal
+               |          __tzfile_read
+               |          tzset_internal
+               |          __tzset
+               |          |          
+               |          |--2.39%--mktime
+               |          |          qMkTime(tm*)
+               |          |          (anonymous namespace)::resolveLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |          |          QLocalTime::mapLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |          |          QDateTimePrivate::localStateAtMillis(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               |          |          QDateTime::toMSecsSinceEpoch() const
+               |          |          |          
+               |          |           --1.99%--QDateTime::msecsTo(QDateTime const&) const
+               |          |                     |          
+               |          |                      --1.59%--QDateTime::secsTo(QDateTime const&) const
+               |          |                                QByteArray::size() const (inlined)
+               |          |                                QByteArray::append(QByteArrayView) (inlined)
+               |          |                                QByteArray::append(char const*, long long) (inlined)
+               |          |                                qs::log::WriteBuffer::writeBytes(char const*, long long) (inlined)
+               |          |                                qs::log::WriteBuffer::writeU8(unsigned char) (inlined)
+               |          |                                qs::log::EncodedLogWriter::writeOp(qs::log::EncodedLogOpcode) (inlined)
+               |          |                                qs::log::EncodedLogWriter::write(qs::log::LogMessage const&)
+               |          |                                0
+               |          |                                0x78e23d6281c0
+               |          |                                QFile::qt_metacast(char const*)
+               |          |                                0xe9097400387f8348
+               |          |          
+               |           --1.59%--qLocalTime(long, tm*)
+               |                     QLocalTime::utcToLocal(long long)
+               |                     QDateTimePrivate::expressUtcAsLocal(long long)
+               |                     QDateTime::setMSecsSinceEpoch(long long)
+               |                     |          
+               |                      --1.20%--QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+               |                                QDateTime::currentDateTime(QTimeZone const&)
+               |                                QDateTime::currentDateTime()
+               |                                QString::toUtf8() const & (inlined)
+               |                                qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+               |                                |          
+               |                                 --0.80%--0x78e22eddcf10
+               |                                           0x77
+               |          
+               |--2.79%--statx
+               |          |          
+               |          |--1.20%--g_local_file_query_info
+               |          |          flatpak_dir_get_if_deployed
+               |          |          flatpak_dir_get_deploy_data
+               |          |          flatpak_builtin_remote_ls
+               |          |          main
+               |          |          __libc_start_call_main
+               |          |          __libc_start_main@@GLIBC_2.34
+               |          |          _start
+               |          |          
+               |           --0.80%--QFileInfo::isDir() const
+               |                     QInotifyFileSystemWatcherEngine::addPaths(QList<QString> const&, QList<QString>*, QList<QString>*)
+               |                     QFileSystemWatcher::addPaths(QList<QString> const&)
+               |                     QFileSystemWatcher::addPath(QString const&)
+               |                     QArrayDataPointer<char16_t>::QArrayDataPointer(QArrayDataPointer<char16_t> const&) (inlined)
+               |                     QString::QString(QString const&) (inlined)
+               |                     qs::io::FileView::updateWatchedFiles()
+               |                     qs::io::FileView::qt_metacall(QMetaObject::Call, int, void**)
+               |          
+               |--1.59%--__mmap64 (inlined)
+               |          mmap64
+               |          _dl_map_segments (inlined)
+               |          _dl_map_object_from_fd (inlined)
+               |          _dl_map_new_object
+               |          |          
+               |           --1.20%--openaux
+               |                     set_catch (inlined)
+               |                     _dl_catch_exception
+               |                     dl_scratch_buffer_free (inlined)
+               |                     _dl_map_object_deps
+               |                     |          
+               |                      --0.80%--dl_open_worker_begin
+               |                                set_catch (inlined)
+               |                                _dl_catch_exception
+               |                                dl_open_worker
+               |                                set_catch (inlined)
+               |                                _dl_catch_exception

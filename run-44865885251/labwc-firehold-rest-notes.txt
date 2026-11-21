@@ -1,0 +1,13 @@
+up in 6.6 s
+the start's game lists answered after 0 s more
+font caches: 232 cache files, 29 font folders, 0 newer than the caches
+the app and desktop folders didn't change at rest
+the busiest second at rest (perf): 3251,  7.41% libglib-2.0.so.0.9000.1 [.] sha256_transform| 4.94% ld-linux-x86-64.so.2 [.] do_lookup_x| 3.70% [kernel.kallsyms] [k] finish_task_switch.isra.0| |--2.47%--0x7c8f77224e10| --1.23%--0x7c8f8534b490| 3.70% libglib-2.0.so.0.9000.1 [.] g_variant_serialised_is_normal|
+the busiest 5 s at rest:     5s shell  12 ticks | threads Thread (pooled) 5, quickshell 4, QThread 3 | others perf record -q -F 199 -g -p 154 -o /tmp/perf-rest-firehold.data -- sleep 600  46, fatrace -t -f CWDO  9, grep --line-buffered -E /applications/|/Desktop/|\.desktop$|/flatpak/exports  3 | new children - | log 281→281
+Firehold after the rest: {"unlocked":true,"posture":"couch","mode":"auto","view":"home","tab":"home","page":"tabs","guide":false,"settings":false,"couchUp":true,"games":11,"counts":{"al
+the drive while at rest: 96G free of 145G; the shell's memory: Rss: 342 MB, Pss_File: 72 MB, Shared_Clean: 22 MB, Private_Dirty: 197 MB, Anonymous: 189 MB, 
+at rest over 600 s: shell 0.21 % of a core (worst minute 0.25 %; minutes: 25 8 8 10 8 10 23 8 8 10), labwc 0.00 %, shell memory 332 → 342 MB, 20 frames drawn, processes 30 → 26
+a notification and a window coming and going at rest: the shell used 0.18 s of the processor (326 MB, was 342 MB)
+an app's menu entry added, written again 5 times unchanged, renamed and removed: the shell used 0.66 s of the processor (memory 326 → 332 MB)
+the app lists made again 8 times (300 entries written again, one renamed): the shell used 1.08 s of the processor, memory 332 → 328 MB
+the shell's app lists (AppEntries) before the entry changes: {"rev":3,"apps":418,"live":418}; after: {"rev":14,"apps":418,"live":418}

@@ -1,0 +1,150 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 81  of event 'task-clock:ppp' (time slices: 3247,3255)
+# Event count (approx.): 407035125
+#
+# Overhead  Shared Object               Symbol                                                                                                                                                                                                                                                                                        
+# ........  ..........................  ..............................................................................................................................................................................................................................................................................................
+#
+     7.41%  libglib-2.0.so.0.9000.1     [.] sha256_transform
+            |
+            ---sha256_transform
+               sha256_sum_update.part.0
+               g_compute_checksum_for_data
+               flatpak_remote_state_ensure_subsummary
+               _flatpak_dir_get_remote_state.constprop.0
+               get_remote_state
+               flatpak_builtin_remote_ls
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+     4.94%  ld-linux-x86-64.so.2        [.] do_lookup_x
+            |
+            ---do_lookup_x
+               _dl_lookup_symbol_x
+               resolve_map (inlined)
+               elf_machine_rela (inlined)
+               elf_dynamic_do_Rela (inlined)
+               _dl_relocate_object_no_relro
+               _dl_relocate_object
+               dl_main
+               _dl_sysdep_start
+               _dl_start_final (inlined)
+               _dl_start
+               _dl_start_user
+     3.70%  [kernel.kallsyms]           [k] finish_task_switch.isra.0
+            |
+            ---finish_task_switch.isra.0
+               __schedule
+               schedule
+               futex_do_wait
+               __futex_wait
+               futex_wait
+               do_futex
+               __x64_sys_futex
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               syscall
+               qLocalTime(long, tm*)
+               QLocalTime::utcToLocal(long long)
+               QDateTimePrivate::expressUtcAsLocal(long long)
+               QDateTime::setMSecsSinceEpoch(long long)
+               QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+               QDateTime::currentDateTime(QTimeZone const&)
+               QDateTime::currentDateTime()
+               QString::toUtf8() const & (inlined)
+               qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+               |          
+               |--2.47%--0x7c8f77224e10
+               |          0x37
+               |          
+                --1.23%--0x7c8f8534b490
+                          0x37
+     3.70%  libglib-2.0.so.0.9000.1     [.] g_variant_serialised_is_normal
+            |
+            ---g_variant_serialised_is_normal
+               g_variant_serialised_is_normal
+               |          
+               |--2.47%--g_variant_serialised_is_normal
+               |          g_variant_serialised_is_normal
+               |          g_variant_serialised_is_normal
+               |          g_variant_serialised_is_normal
+               |          g_variant_is_normal_form
+               |          summary_new_from_bytes_checked.lto_priv.0
+               |          flatpak_remote_state_ensure_subsummary
+               |          _flatpak_dir_get_remote_state.constprop.0
+               |          get_remote_state
+               |          flatpak_builtin_remote_ls
+               |          main
+               |          __libc_start_call_main
+               |          __libc_start_main@@GLIBC_2.34
+               |          _start
+               |          
+                --1.23%--g_variant_is_normal_form
+                          summary_new_from_bytes_checked.lto_priv.0
+                          flatpak_remote_state_ensure_subsummary
+                          _flatpak_dir_get_remote_state.constprop.0
+                          get_remote_state
+                          flatpak_builtin_remote_ls
+                          main
+                          __libc_start_call_main
+                          __libc_start_main@@GLIBC_2.34
+                          _start
+     3.70%  libpython3.15.so.1.0        [.] _PyEval_EvalFrameDefault.cold
+            |
+            ---_PyEval_EvalFrameDefault.cold
+               _PyEval_Vector
+               object_vacall.lto_priv.0
+               PyObject_CallMethodObjArgs
+               import_find_and_load_with_name.isra.0
+               PyImport_ImportModuleLevelObject
+               _PyEval_ImportName
+               _PyEval_EvalFrameDefault.cold
+               _PyEval_Vector.constprop.0
+               PyEval_EvalCode
+               |          
+               |--2.47%--builtin_exec.lto_priv.0
+               |          |          
+               |          |--1.23%--_Py_VectorCallInstrumentation_StackRefSteal.constprop.0
+               |          |          _PyEval_EvalFrameDefault.cold
+               |          |          _PyEval_Vector
+               |          |          object_vacall.lto_priv.0
+               |          |          PyObject_CallMethodObjArgs
+               |          |          import_find_and_load_with_name.isra.0
+               |          |          PyImport_ImportModuleLevelObject
+               |          |          _PyEval_ImportName
+               |          |          _PyEval_EvalFrameDefault.cold
+               |          |          _PyEval_Vector
+               |          |          _PyObject_VectorcallTstate.constprop.5
+               |          |          PyObject_CallMethod
+               |          |          init_interp_main.lto_priv.0
+               |          |          pyinit_main.lto_priv.0
+               |          |          Py_InitializeFromConfig
+               |          |          pymain_init
+               |          |          pymain_main.lto_priv.0
+               |          |          Py_BytesMain
+               |          |          __libc_start_call_main
+               |          |          __libc_start_main@@GLIBC_2.34
+               |          |          _start
+               |          |          
+               |           --1.23%--_PyEval_EvalFrameDefault.cold
+               |                     _PyEval_Vector
+               |                     object_vacall.lto_priv.0
+               |                     PyObject_CallMethodObjArgs
+               |                     import_find_and_load_with_name.isra.0
+               |                     PyImport_ImportModuleLevelObject
+               |                     _PyEval_ImportName
+               |                     _PyEval_EvalFrameDefault.cold
+               |                     _PyEval_Vector.constprop.0
+               |                     PyEval_EvalCode
+               |                     builtin_exec.lto_priv.0
+               |                     _PyEval_EvalFrameDefault.cold
+               |                     _PyEval_Vector
+               |                     object_vacall.lto_priv.0
+               |                     PyObject_CallMethodObjArgs
+               |                     import_find_and_load_with_name.isra.0

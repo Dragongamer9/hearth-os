@@ -1,0 +1,33 @@
+1 0 timeout 1800 bash .github/scripts/labwc-fedora-rest.sh classic /out/classic 600 
+1057 0 /usr/sbin/wl-paste --watch python3 /usr/share/nimbus/desktop/shell/hearth-clipboard store 
+1061 9 /usr/sbin/python3 /usr/share/nimbus/desktop/shell/hearth-files watch /tmp/home-classic/Desktop 
+116 1 /usr/libexec/gvfsd 
+1169 0 sleep 2 
+1180 0 inotifywait -m -r -q -e create,modify,close_write,moved_to,moved_from,delete,attrib --timefmt %s --format %T %e %w%f /tm
+1181 3 fatrace -t -f CWDO 
+1182 0 grep --line-buffered -E /applications/|/Desktop/|\.desktop$|/flatpak/exports 
+122 0 /usr/libexec/gvfsd-fuse /tmp/xdg-classic/gvfs -f 
+125 0 /usr/libexec/dconf-service 
+147 0 sh /usr/share/nimbus/desktop/labwc/autostart 
+148 6 sh /usr/share/nimbus/desktop/shell/hearth-polkit-fallback 73 
+166 5 /usr/libexec/xdg-desktop-portal 
+178 0 /usr/libexec/xdg-permission-store 
+194 2 /usr/libexec/xdg-document-portal 
+204 0 fusermount3 --auto-unmount -- /tmp/xdg-classic/doc 
+210 9 /usr/libexec/xdg-desktop-portal-gtk 
+226 1 /usr/libexec/at-spi-bus-launcher 
+232 0 /usr/bin/dbus-daemon --config-file=/usr/share/defaults/at-spi2/accessibility.conf --nofork --print-address 11 --address=
+234 0 /usr/libexec/at-spi2-registryd --use-gnome-session 
+240 13 /usr/bin/python3 /usr/share/nimbus/desktop/shell/hearth-portal filechooser 
+269 11 /usr/sbin/python3 /usr/share/nimbus/desktop/shell/hearth-buttons 
+287 0 /usr/sbin/udevadm monitor --udev --property --subsystem-match=block --subsystem-match=usb 
+377 0 /usr/sbin/wl-paste --watch python3 /usr/share/nimbus/desktop/shell/hearth-clipboard store 
+55 11 bash .github/scripts/labwc-fedora-rest.sh classic /out/classic 600 
+65 7 dbus-daemon --session --fork --address=unix:path=/tmp/xdg-classic/bus 
+73 65 labwc -C /usr/share/nimbus/desktop/labwc 
+843 0 /usr/libexec/gvfs-udisks2-volume-monitor 
+964 243 quickshell -p /usr/share/nimbus/desktop/shell 
+981 10 /usr/sbin/python3 /usr/share/nimbus/desktop/shell/hearth-buttons 
+983 23 /usr/sbin/python3 /usr/share/nimbus/desktop/shell/hearth-notifyd serve --stdio 
+987 19 /usr/sbin/python3 /usr/share/nimbus/desktop/shell/hearth-pad 
+999 0 /usr/sbin/udevadm monitor --udev --property --subsystem-match=block --subsystem-match=usb 

@@ -1,0 +1,9 @@
+00:00:00.019 [ERROR] [../src/config/rcxml.c:1324] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:00:00.019 [ERROR] [../src/config/rcxml.c:1332] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:00:00.019 [ERROR] [../src/config/rcxml.c:1348] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+00:00:00.198 [ERROR] [../src/config/rcxml.c:1324] <windowSwitcher show="" /> is deprecated. Use <windowSwitcher><osd show="" />
+00:00:00.198 [ERROR] [../src/config/rcxml.c:1332] <windowSwitcher style="" /> is deprecated. Use <windowSwitcher><osd style="" />
+00:00:00.198 [ERROR] [../src/config/rcxml.c:1348] <windowSwitcher allWorkspaces="" /> is deprecated. Use <action name="NextWindow" workspace=""> instead.
+Terminated                 quickshell -p "$SHARE/desktop/shell" >> "$SHELL_LOG" 2>&1
+Terminated                 quickshell -p "$SHARE/desktop/shell" >> "$SHELL_LOG" 2>&1
+Terminated                 quickshell -p "$SHARE/desktop/shell" >> "$SHELL_LOG" 2>&1

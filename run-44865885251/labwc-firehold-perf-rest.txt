@@ -1,0 +1,198 @@
+# To display the perf.data header info, please use --header/--header-only options.
+#
+#
+# Total Lost Samples: 0
+#
+# Samples: 236  of event 'task-clock:ppp'
+# Event count (approx.): 1185929500
+#
+# Overhead  Shared Object               Symbol                                                                                                                                                                                                                                                                                        
+# ........  ..........................  ..............................................................................................................................................................................................................................................................................................
+#
+     4.24%  libpython3.15.so.1.0        [.] _PyEval_EvalFrameDefault.cold
+            |
+            ---_PyEval_EvalFrameDefault.cold
+               |          
+                --3.81%--_PyEval_Vector
+                          object_vacall.lto_priv.0
+                          PyObject_CallMethodObjArgs
+                          import_find_and_load_with_name.isra.0
+                          PyImport_ImportModuleLevelObject
+                          |          
+                           --3.39%--_PyEval_ImportName
+                                     _PyEval_EvalFrameDefault.cold
+                                     _PyEval_Vector.constprop.0
+                                     PyEval_EvalCode
+                                     |          
+                                      --2.97%--builtin_exec.lto_priv.0
+                                                |          
+                                                 --2.12%--_PyEval_EvalFrameDefault.cold
+                                                           _PyEval_Vector
+                                                           object_vacall.lto_priv.0
+                                                           PyObject_CallMethodObjArgs
+                                                           import_find_and_load_with_name.isra.0
+                                                           PyImport_ImportModuleLevelObject
+                                                           |          
+                                                            --1.69%--_PyEval_ImportName
+                                                                      _PyEval_EvalFrameDefault.cold
+                                                                      _PyEval_Vector.constprop.0
+                                                                      PyEval_EvalCode
+                                                                      |          
+                                                                       --1.27%--builtin_exec.lto_priv.0
+                                                                                 _PyEval_EvalFrameDefault.cold
+                                                                                 _PyEval_Vector
+                                                                                 object_vacall.lto_priv.0
+                                                                                 PyObject_CallMethodObjArgs
+                                                                                 import_find_and_load_with_name.isra.0
+                                                                                 PyImport_ImportModuleLevelObject
+                                                                                 _PyEval_ImportName
+                                                                                 _PyEval_EvalFrameDefault.cold
+                                                                                 _PyEval_Vector.constprop.0
+                                                                                 PyEval_EvalCode
+     3.81%  ld-linux-x86-64.so.2        [.] do_lookup_x
+            |
+            ---do_lookup_x
+               _dl_lookup_symbol_x
+               resolve_map (inlined)
+               elf_machine_rela (inlined)
+               elf_dynamic_do_Rela (inlined)
+               _dl_relocate_object_no_relro
+               _dl_relocate_object
+               dl_main
+               _dl_sysdep_start
+               _dl_start_final (inlined)
+               _dl_start
+               _dl_start_user
+     3.39%  [kernel.kallsyms]           [k] _raw_spin_unlock_irqrestore
+            |
+            ---_raw_spin_unlock_irqrestore
+               |          
+               |--1.69%--try_to_wake_up
+               |          wake_up_q
+               |          futex_wake
+               |          do_futex
+               |          __x64_sys_futex
+               |          x64_sys_call
+               |          do_syscall_64
+               |          entry_SYSCALL_64_after_hwframe
+               |          syscall
+               |          
+                --1.27%--__wake_up
+                          fsnotify_insert_event
+                          fanotify_handle_event
+                          send_to_group
+                          fsnotify
+                          __fsnotify_parent
+     2.54%  libglib-2.0.so.0.9000.1     [.] sha256_transform
+            |
+            ---sha256_transform
+               sha256_sum_update.part.0
+               g_compute_checksum_for_data
+               flatpak_remote_state_ensure_subsummary
+               _flatpak_dir_get_remote_state.constprop.0
+               get_remote_state
+               flatpak_builtin_remote_ls
+               main
+               __libc_start_call_main
+               __libc_start_main@@GLIBC_2.34
+               _start
+     2.12%  [kernel.kallsyms]           [k] do_syscall_64
+            |
+            ---do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+     2.12%  [kernel.kallsyms]           [k] finish_task_switch.isra.0
+            |
+            ---finish_task_switch.isra.0
+               __schedule
+               schedule
+               futex_do_wait
+               __futex_wait
+               futex_wait
+               do_futex
+               __x64_sys_futex
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               syscall
+               |          
+                --1.69%--qLocalTime(long, tm*)
+                          QLocalTime::utcToLocal(long long)
+                          QDateTimePrivate::expressUtcAsLocal(long long)
+                          QDateTime::setMSecsSinceEpoch(long long)
+                          QDateTime::fromMSecsSinceEpoch(long long, QTimeZone const&)
+                          QDateTime::currentDateTime(QTimeZone const&)
+                          QDateTime::currentDateTime()
+                          QString::toUtf8() const & (inlined)
+                          qs::log::LogManager::messageHandler(QtMsgType, QMessageLogContext const&, QString const&)
+     2.12%  ld-linux-x86-64.so.2        [.] strcmp
+            |
+            ---strcmp
+     1.69%  [kernel.kallsyms]           [k] kmem_cache_free
+            |
+            ---kmem_cache_free
+     1.69%  libjemalloc.so.2            [.] free
+            |
+            ---free
+     1.69%  libpython3.15.so.1.0        [.] _Py_dict_lookup
+            |
+            ---_Py_dict_lookup
+     1.27%  [kernel.kallsyms]           [k] __fget_files
+            |
+            ---__fget_files
+               fdget
+               do_poll.constprop.0
+               do_sys_poll
+               __x64_sys_ppoll
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               __syscall_cancel_arch
+               g_main_context_iterate_unlocked.isra.0
+               g_main_context_iteration
+               QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+               QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+               QCoreApplication::exec()
+               qs::launch::launch(qs::launch::LaunchArgs const&, char**)
+               0x7c8f9d80dc00
+               QApplication::qt_metacast(char const*)
+               0xe9097400387f8348
+     1.27%  [kernel.kallsyms]           [k] do_poll.constprop.0
+            |
+            ---do_poll.constprop.0
+               do_sys_poll
+               __x64_sys_ppoll
+               x64_sys_call
+               do_syscall_64
+               entry_SYSCALL_64_after_hwframe
+               __syscall_cancel_arch
+               g_main_context_iterate_unlocked.isra.0
+               g_main_context_iteration
+               QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+               QEventLoop::exec(QFlags<QEventLoop::ProcessEventsFlag>)
+     1.27%  [kernel.kallsyms]           [k] inode_permission
+            |
+            ---inode_permission
+               may_lookup
+               link_path_walk
+     1.27%  ld-linux-x86-64.so.2        [.] _dl_relocate_object_no_relro
+     1.27%  libc.so.6                   [.] __offtime
+            |
+            ---__offtime
+               __tz_convert
+               __mktime_internal
+               qMkTime(tm*)
+               (anonymous namespace)::resolveLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               QLocalTime::mapLocalTime(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               QDateTimePrivate::localStateAtMillis(long long, QFlags<QDateTimePrivate::TransitionOption>)
+               refreshZonedDateTime(QDateTime::Data&, QTimeZone const&, QFlags<QDateTimePrivate::TransitionOption>)
+               QDateTime::setTime(QTime, QDateTime::TransitionResolution)
+     1.27%  libglib-2.0.so.0.9000.1     [.] g_variant_serialised_is_normal
+            |
+            ---g_variant_serialised_is_normal
+               g_variant_serialised_is_normal
+     1.27%  libpython3.15.so.1.0        [.] _Py_hashtable_get
+            |
+            ---_Py_hashtable_get
+#
+# (Tip: Use parent filter to see specific call path: perf report -p <regex>)
+#

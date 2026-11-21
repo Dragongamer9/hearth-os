@@ -1,0 +1,16 @@
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+org.kde.libkbolt: Failed to connect to Bolt manager DBus interface: Not connected to D-Bus server
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+org.kde.libkwindevices: Error getting device list from KWin "No such object path '/org/kde/KWin/InputDevice'"
+org.kde.libkwindevices: Error getting device list from KWin "No such object path '/org/kde/KWin/InputDevice'"
+org.kde.libkwindevices: Error getting device list from KWin "No such object path '/org/kde/KWin/InputDevice'"
+
+** (process:402): CRITICAL **: 06:23:39.023: polkit_system_bus_name_new: assertion 'g_dbus_is_unique_name (name)' failed
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+org.kde.libkbolt: Failed to connect to Bolt manager DBus interface: Not connected to D-Bus server
+kf.solid.backends.udisks2: Failed to fetch all devices "org.freedesktop.DBus.Error.Disconnected" "Not connected to D-Bus server"
+org.kde.libkwindevices: Error getting device list from KWin "No such object path '/org/kde/KWin/InputDevice'"
+org.kde.libkwindevices: Error getting device list from KWin "No such object path '/org/kde/KWin/InputDevice'"
+org.kde.libkwindevices: Error getting device list from KWin "No such object path '/org/kde/KWin/InputDevice'"
+
+** (process:438): CRITICAL **: 06:23:56.944: polkit_system_bus_name_new: assertion 'g_dbus_is_unique_name (name)' failed
