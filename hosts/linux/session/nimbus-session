@@ -531,7 +531,7 @@ run_plasma() {
     export XDG_DATA_DIRS="$dd"
     # Fedora names KDE's menu file with a prefix (the 1.14 "applications.menu not found"): Plasma is told which.
     if [ ! -e /etc/xdg/menus/applications.menu ]; then
-      for m in /etc/xdg/menus/*-applications.menu; do [ -e "$m" ] && { export XDG_MENU_PREFIX="$(basename "$m" applications.menu)"; break; }; done
+      for m in /etc/xdg/menus/*-applications.menu; do [ -e "$m" ] && { XDG_MENU_PREFIX="$(basename "$m" applications.menu)"; export XDG_MENU_PREFIX; break; }; done
     fi
     export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE DESKTOP_SESSION=plasma KDE_FULL_SESSION=true HEARTH_WM=plasma
     unset QT_QPA_PLATFORMTHEME QT_STYLE_OVERRIDE HEARTH_DESKTOP_PID LABWC_PID
