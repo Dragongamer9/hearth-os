@@ -551,6 +551,9 @@ fn entry_icon<'a>(a: &'a App, e: &Entry, size: f32) -> El<'a> {
     // A Briefcase: its style in its colour, its badge, a padlock when it's locked.
     let base: El = if e.briefcase.is_object() {
         crate::briefcase::bc_icon(a, &e.briefcase, e.briefcase.get("locked").and_then(Value::as_bool).unwrap_or(false), size)
+    } else if e.dir && crate::sortdl::here(a) && crate::sortdl::TOP.contains(&e.name.as_str()) {
+        // Sort my Downloads' five folders, each in its colour (mockup 2).
+        crate::sortdl::folder_icon(&e.name, size)
     } else {
         ico(icons::file_icon(model::kind_of(e), &e.name), a.p.text, size)
     };

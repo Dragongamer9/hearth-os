@@ -16,7 +16,7 @@ _to_delete. Only moves, never deletes or overwrites; one Undo puts everything ba
 - [x] Show every file, Cancel, Sort N items — hosts/hearth-ui/apps/files/src/sortdl.rs: "Show every file"
 
 ## 2. Sorted
-- [ ] The five folders, each with its colour and count (Files' own folder icons; the colours are the preview's)
+- [x] The five folders, each with its colour and count — hosts/hearth-ui/apps/files/src/view.rs: "Sort my Downloads' five folders, each in its colour"
 - [x] The button back to plain (not accent) once nothing is loose — hosts/hearth-ui/apps/files/src/view.rs: "let lit = crate::sortdl::loose(a) > 0;"
 - [x] The status bar: "5 folders · nothing loose" — hosts/hearth-ui/apps/files/src/view.rs: "· nothing loose"
 - [x] The note: "✓ Sorted N items into 5 folders." with Undo, and "Ctrl+Z also puts them back" — hosts/hearth-ui/apps/files/src/sortdl.rs: "Ctrl+Z also puts them back"

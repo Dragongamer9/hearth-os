@@ -251,6 +251,12 @@ fn swatch<'a>(c: (u8, u8, u8), size: f32) -> Element<'a, Msg> {
     container(Space::new().width(Length::Fixed(size)).height(Length::Fixed(size))).style(ui::boxed(iced::Color::from_rgb8(c.0, c.1, c.2), size * 0.24, None)).into()
 }
 
+/// One of the five folders' icon in Downloads: its colour, as the mockups show them.
+pub fn folder_icon<'a>(name: &str, size: f32) -> Element<'a, Msg> {
+    let g = TOP.iter().position(|t| *t == name).unwrap_or(0);
+    container(swatch(COLOURS[g], (size * 0.86).max(8.0))).center_x(Length::Fixed(size)).center_y(Length::Fixed(size)).into()
+}
+
 /// The preview (mockup 1).
 pub fn dialog(a: &App) -> Element<'_, Msg> {
     let p = a.p;
