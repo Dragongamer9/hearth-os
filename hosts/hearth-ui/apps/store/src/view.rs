@@ -904,7 +904,7 @@ fn updates(a: &App) -> E<'_, Msg> {
         }
         let go = btn(&p, if busy { "Updating…" } else { "Update" }, B::Primary, false, false, if a.offline() || busy { None } else { Some(Msg::PartUpdate(e.id.clone())) });
         let icon = app_icon(e, z(if big { 64.0 } else { 54.0 }));
-        let rowx = row![icon, body.spacing(z(4.0)).width(Length::Fill), row![pill, go].spacing(z(10.0)).align_y(iced::Center)].spacing(z(20.0)).align_y(if big { iced::Top } else { iced::Center });
+        let rowx = row![icon, body.spacing(z(4.0)).width(Length::Fill), row![pill, go].spacing(z(10.0)).align_y(iced::Center)].spacing(z(20.0)).align_y(if big { iced::alignment::Vertical::Top } else { iced::alignment::Vertical::Center });
         let pad = if big { z(24.0) } else { z(18.0) };
         list = list.push(ring(lit(a, &id), 10.0, container(rowx).padding(look::pad(pad, z(24.0), pad, z(24.0))).width(Length::Fill).style(look::bx(tn.card, 10.0, None))));
     }

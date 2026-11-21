@@ -258,7 +258,8 @@ impl App {
     fn new() -> (App, Task<Msg>) {
         let cat = catalog::load();
         let (hearth, edition) = this_pc();
-        let here = cat.apps.iter().filter(|e| e.kind == Kind::BuiltIn && which(&e.open)).map(|e| e.id.clone()).collect();
+        // Mantel has no program to open: it's here when its desktop is (Quickshell and its shell).
+        let here = cat.apps.iter().filter(|e| e.kind == Kind::BuiltIn && (which(&e.open) || (e.id == "mantel" && which("quickshell")))).map(|e| e.id.clone()).collect();
         let mut a = App {
             p: hearth_ui::theme::load(),
             seen: release::read_seen(),
@@ -644,7 +645,9 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::Launch(id) => {
             let Some(e) = a.entry(&id).cloned() else { return Task::none() };
             if e.kind == Kind::BuiltIn {
-                if which(&e.open) {
+                if e.id == "mantel" {
+                    a.say("Mantel is Hearth's own desktop: Settings › Your desktop picks it.", false);
+                } else if which(&e.open) {
                     detached(&e.open);
                 } else {
                     a.say(format!("{} isn't on this PC.", e.name), true);
