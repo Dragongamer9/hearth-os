@@ -4,9 +4,9 @@
 either"; docs/LABWC-FEDORA.md). Settings › Your desktop (Rust Settings) asks this.
 
   choice                         "classic", "firehold" or "none" (another desktop: KDE Plasma or Firehold on Plasma)
-  choose classic|firehold|plasma save it: session.conf's HEARTH_PLASMA_DESKTOP (classic / classicfirehold), the one line
-                                 every Fedora desktop choice lives in. "plasma" writes only when one of these two is
-                                 saved (so picking KDE Plasma really moves off labwc); otherwise nothing is written.
+  choose classic|firehold|plasma save it: session.conf's HEARTH_PLASMA_DESKTOP (classic / classicfirehold / plasma), the
+                                 one line every Fedora desktop choice lives in. No line is Mantel (1.17's default), so
+                                 "plasma" writes its line unless it's already there.
                                  Picking one of these again also clears "didn't start twice in a row" for it.
   status                         one JSON line: {"choice", "available", "missing", "fails", "why"}
 
@@ -58,7 +58,12 @@ def raw():
 
 
 def choice():
-    return NAMES.get(raw(), 'none')
+    """What Desktop Mode opens: your pick; with none saved, Mantel (1.17, the owner: "Put the default Desktop
+    enviroment as Hearth Clasic labwc"), unless the archived Firehold (Rust) was picked (Firehold on Plasma then)."""
+    r = raw()
+    if r == '' and not rust_picked():
+        return 'classic'
+    return NAMES.get(r, 'none')
 
 
 def fails():
@@ -133,7 +138,8 @@ def choose(v):
             return
         io.update_text(session_conf(), lambda t: io.conf_set_text(t, KEY, VALUES[v]))
     elif v == 'plasma':
-        if raw() in NAMES:
+        # No line is Mantel now (1.17), so picking KDE Plasma always saves its line.
+        if raw() != 'plasma':
             io.update_text(session_conf(), lambda t: io.conf_set_text(t, KEY, 'plasma'))
     else:
         raise ValueError('classic, firehold or plasma')

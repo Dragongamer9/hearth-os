@@ -51,9 +51,13 @@ class Helper(unittest.TestCase):
 
     def test_the_choice_is_opt_in_and_only_its_line(self):
         self.assertEqual(self.h.choice(), 'plasma')
+        # Reading writes nothing; with no line (Mantel since 1.17) picking KDE Plasma saves its line.
+        self.assertFalse(self.conf().exists())
         self.h.choose('plasma')
-        self.assertFalse(self.conf().exists(), 'choosing what it already is writes nothing')
-        self.conf().parent.mkdir(parents=True)
+        self.assertEqual(self.conf().read_text(), 'HEARTH_PLASMA_DESKTOP=plasma\n')
+        before = self.conf().stat().st_mtime_ns
+        self.h.choose('plasma')
+        self.assertEqual(self.conf().stat().st_mtime_ns, before, 'choosing what it already is writes nothing')
         self.conf().write_text('# mine\nHEARTH_DESKTOP_WM=kwin\nGAMESCOPE_ARGS="-W 1920"\n')
         self.h.choose('firehold')
         text = self.conf().read_text()

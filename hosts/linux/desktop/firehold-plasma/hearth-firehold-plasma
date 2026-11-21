@@ -249,8 +249,8 @@ def choose(v):
         # Your pick now replaces the archived Firehold (Rust)'s (only on a pick, its one key, merged: red flag 9).
         io.merge_json(rust_pick_path(), {'desktop': 'plasma'})
         log('the old Firehold (Rust, test) pick replaced by your pick: %s' % v)
-    if choice() == v:
-        return   # already that (no line is plasma): nothing written
+    if raw_choice() == v:
+        return   # already that line: nothing written (no line is Mantel since 1.17, so KDE Plasma writes its line)
     io.update_text(session_conf(), lambda t: io.conf_set_text(t, 'HEARTH_PLASMA_DESKTOP', v))
     log('Desktop Mode choice saved: %s' % v)
 

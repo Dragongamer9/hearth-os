@@ -548,17 +548,24 @@ fn your_desktop(a: &App) -> El<'_> {
     let p = a.sh.p;
     let st = &a.system;
     let d = &st.desk;
-    let mut opts: Vec<(&'static str, &'static str, &'static str)> = vec![("plasma", "KDE Plasma", "The desktop, with Hearth's look (the default)")];
-    if d.plasma_fh {
-        opts.push(("firehold-plasma", "Firehold (Plasma, test)", "Firehold's Couch and Desk on KDE Plasma"));
-    }
-    // >>> labwc on the Fedora edition (1.16, feature/labwc-fedora): only what you pick; never a fallback
+    // 1.17 (the owner, Nov 21): "Put the default Desktop enviroment as Hearth Clasic labwc", and "hide Fire hold and KDE,
+    // dont have to uninstall them just hide them": Mantel is the one choice shown where labwc is in the image. KDE
+    // Plasma and Firehold stay installed (and a device that picked one keeps it); KDE Plasma is still the safe start.
+    let mut opts: Vec<(&'static str, &'static str, &'static str)> = Vec::new();
     if d.labwc {
-        opts.push(("classic", "Mantel (Hearth Classic, labwc)", "Hearth's own desktop: the bar, the dock, Quick Access and all of Hearth's apps, on labwc"));
-        opts.push(("firehold-labwc", "Firehold on labwc (test)", "Mantel's Firehold: the Couch for the controller, the Desk for the mouse, on labwc"));
+        opts.push(("classic", "Mantel (Hearth Classic)", "Hearth's own desktop: the bar, the dock, Quick Access and all of Hearth's apps (the default)"));
+    } else {
+        opts.push(("plasma", "KDE Plasma", "The desktop, with Hearth's look"));
+        if d.plasma_fh {
+            opts.push(("firehold-plasma", "Firehold (Plasma, test)", "Firehold's Couch and Desk on KDE Plasma"));
+        }
     }
-    // <<< labwc on the Fedora edition
     let mut c = Column::new().spacing(10.0).push(t("What Desktop Mode opens. Nothing changes until you switch to Desktop Mode again.", sz(14.0), p.muted));
+    // A device that picked a desktop that's now hidden keeps it (red flag 9), and says so here.
+    let hidden_now = match d.chosen.as_str() { "plasma" if d.labwc => Some("KDE Plasma"), "firehold-plasma" if d.labwc => Some("Firehold on Plasma"), "firehold-labwc" => Some("Firehold on labwc"), _ => None };
+    if let Some(n) = hidden_now {
+        c = c.push(info_row(&p, G::Info, "Right now", format!("This PC opens {n}, your earlier pick. Use Mantel to switch to Hearth Classic.")));
+    }
     for (id, name, sub) in opts {
         let on = d.chosen == id;
         c = c.push(srow(&p, G::Grid, name, sub, if on { t1("Picked", sz(13.0), p.accent).into() } else { btn(&p, "Use", Kind::Normal, false, Some(Msg::Desktop(id))) }));
@@ -569,7 +576,7 @@ fn your_desktop(a: &App) -> El<'_> {
             btn(&p, "Switch now", Kind::Primary, false, Some(Msg::SwitchNow))
         ].spacing(10.0).align_y(iced::Center)));
     }
-    c = c.push(value_row(&p, G::Shield, "Safe start", "If a test desktop doesn't start, KDE Plasma opens for that sign-in and Hearth tells you why. Your choice stays saved.", "always on", true));
+    c = c.push(value_row(&p, G::Shield, "Safe start", "If Mantel doesn't start, KDE Plasma opens for that sign-in and Hearth tells you why. Your choice stays saved.", "always on", true));
     // >>> labwc on the Fedora edition
     if d.labwc && !d.labwc_missing.is_empty() {
         c = c.push(info_row(&p, G::Info, "Mantel can't start on this PC yet", format!("This Hearth OS is missing {}. If you pick it, KDE Plasma opens instead and tells you why.", d.labwc_missing)));

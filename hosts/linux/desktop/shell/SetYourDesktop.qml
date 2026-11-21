@@ -160,11 +160,10 @@ SetPage {
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap
     }
     Repeater {
+        // 1.17 (the owner, Nov 21): Mantel is the default and the one choice shown; KDE Plasma and Firehold are hidden,
+        // not removed, and a device that picked one keeps it (the note below says so).
         model: page.fedora ? [
-            { id: "plasma", name: "KDE Plasma", sub: "The desktop, with Hearth's look (the default)" },
-            { id: "firehold-plasma", name: "Firehold (Plasma, test)", sub: "Firehold's Couch and Desk on KDE Plasma" },
-            { id: "classic", name: "Mantel (Hearth Classic, labwc)", sub: "Hearth's own desktop: the bar, the dock, Quick Access and all of Hearth's apps, on labwc" },
-            { id: "firehold-labwc", name: "Firehold on labwc (test)", sub: "Mantel's Firehold: the Couch for the controller, the Desk for the mouse, on labwc" }] : []
+            { id: "classic", name: "Mantel (Hearth Classic)", sub: "Hearth's own desktop: the bar, the dock, Quick Access and all of Hearth's apps (the default)" }] : []
         delegate: SetRow {
             required property var modelData
             icon: "desktops"; title: modelData.name; sub: modelData.sub
@@ -175,9 +174,16 @@ SetPage {
         }
     }
     SetRow {
+        // A device that picked a desktop that's hidden now keeps it (red flag 9) and is told here.
+        visible: page.fedora && page.fpick === "firehold-labwc"
+        icon: "info"; title: "Right now"
+        sub: "This PC opens Firehold on labwc, your earlier pick. Use Mantel to switch to Hearth Classic."
+        interactive: false
+    }
+    SetRow {
         visible: page.fedora
         title: "Safe start"
-        sub: "If Mantel or Firehold on labwc doesn't start, KDE Plasma opens for that sign-in and Hearth tells you why. Twice in a row, KDE Plasma opens until you pick it again. Your choice stays saved."
+        sub: "If Mantel doesn't start, KDE Plasma opens for that sign-in and Hearth tells you why. Twice in a row, KDE Plasma opens until you pick it again. Your choice stays saved."
         chip: "always on"; chipKind: "ok"
         interactive: false
     }

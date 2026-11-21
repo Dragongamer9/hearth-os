@@ -573,7 +573,13 @@ firehold_rust_saved() {
 #    one try per Desktop Mode start, none again after a failure this sign-in. The choice itself is never changed here.
 fedora_labwc_choice() {
   c=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_PLASMA_DESKTOP=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
-  case "$c" in classic) echo classic ;; classicfirehold) echo firehold ;; *) echo none ;; esac
+  # 1.17 (the owner, Nov 21: "Put the default Desktop enviroment as Hearth Clasic labwc"): no pick saved is Mantel,
+  # except on a device that had picked the archived Firehold (Rust), which keeps Firehold on Plasma (run_plasma).
+  case "$c" in
+    classic) echo classic ;; classicfirehold) echo firehold ;;
+    "") if firehold_rust_saved; then echo none; else echo classic; fi ;;
+    *) echo none ;;
+  esac
 }
 LABWC_UP_SECS="${HEARTH_LABWC_UP_SECS:-45}"
 LABWC_EARLY_SECS="${HEARTH_LABWC_EARLY_SECS:-15}"
