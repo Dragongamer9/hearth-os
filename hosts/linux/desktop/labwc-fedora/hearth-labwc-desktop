@@ -4,9 +4,9 @@
 either"; docs/LABWC-FEDORA.md). Settings › Your desktop (Rust Settings) asks this.
 
   choice                         "classic", "firehold" or "none" (another desktop: KDE Plasma or Firehold on Plasma)
-  choose classic|firehold|plasma save it: session.conf's HEARTH_PLASMA_DESKTOP (classic / classicfirehold), the one line
-                                 every Fedora desktop choice lives in. "plasma" writes only when one of these two is
-                                 saved (so picking KDE Plasma really moves off labwc); otherwise nothing is written.
+  choose classic|firehold|plasma save it: session.conf's HEARTH_PLASMA_DESKTOP (classic / classicfirehold / plasma), the
+                                 one line every Fedora desktop choice lives in. No line is Mantel (1.17's default), so
+                                 "plasma" writes its line unless it's already there.
                                  Picking one of these again also clears "didn't start twice in a row" for it.
   status                         one JSON line: {"choice", "available", "missing", "fails", "why"}
 
@@ -58,7 +58,12 @@ def raw():
 
 
 def choice():
-    return NAMES.get(raw(), 'none')
+    """What Desktop Mode opens: your pick; with none saved, Mantel (1.17, the owner: "Put the default Desktop
+    enviroment as Hearth Clasic labwc"), unless the archived Firehold (Rust) was picked (Firehold on Plasma then)."""
+    r = raw()
+    if r == '' and not rust_picked():
+        return 'classic'
+    return NAMES.get(r, 'none')
 
 
 def fails():
@@ -109,15 +114,32 @@ def why():
         return ''
 
 
+def rust_pick_path():
+    return os.path.join(os.environ.get('XDG_CONFIG_HOME') or os.path.join(home(), '.config'), 'nimbus', 'firehold-rust.json')
+
+
+def rust_picked():
+    try:
+        with open(rust_pick_path(), encoding='utf-8') as f:
+            return json.load(f).get('desktop') == 'firehold'
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
 def choose(v):
     import hearth_settings_io as io
+    if v in VALUES and rust_picked():
+        # Your pick replaces the archived Firehold (Rust, test)'s, as hearth-firehold-plasma's does (only on a pick, its
+        # one key, merged: red flag 9), so it can never come back as Firehold on Plasma.
+        io.merge_json(rust_pick_path(), {'desktop': 'plasma'})
     if v in VALUES:
         reset_fails()
         if raw() == VALUES[v]:
             return
         io.update_text(session_conf(), lambda t: io.conf_set_text(t, KEY, VALUES[v]))
     elif v == 'plasma':
-        if raw() in NAMES:
+        # No line is Mantel now (1.17), so picking KDE Plasma always saves its line.
+        if raw() != 'plasma':
             io.update_text(session_conf(), lambda t: io.conf_set_text(t, KEY, 'plasma'))
     else:
         raise ValueError('classic, firehold or plasma')

@@ -145,7 +145,13 @@ pub fn view(a: &App) -> El<'_> {
         }
         Some(Overlay::Props(pr)) => ui::dialog(base, props_dialog(a, pr), None),
         Some(Overlay::Bc) => ui::dialog(base, crate::briefcase::dialog(a), None),
+        Some(Overlay::Sort) => ui::dialog(base, crate::sortdl::dialog(a), Some(Msg::Sort(crate::sortdl::SMsg::Cancel))),
         Some(ov) => ui::dialog(base, dialog(a, ov), None),
+        None => base,
+    };
+    // Sort my Downloads' note, with Undo (sortdl.rs), low in the middle of the window.
+    let base: El = match crate::sortdl::note(a) {
+        Some(n) => stack![base, container(opaque(n)).center_x(Length::Fill).align_bottom(Length::Fill).padding(pad(0.0, 0.0, 58.0, 0.0))].into(),
         None => base,
     };
     ui::edges(base, Msg::Resize)
@@ -304,6 +310,20 @@ fn nav_row(a: &App) -> El<'_> {
 }
 
 // ------------------------------------------------------------------ the command bar
+/// Sort my Downloads on the bar, only in Downloads: in the accent while something is loose (mockup 1), plain once
+/// nothing is (mockup 2).
+fn sort_button(a: &App) -> El<'_> {
+    let p = a.p;
+    if !crate::sortdl::here(a) || a.picking() {
+        return Space::new().width(Length::Shrink).into();
+    }
+    let lit = crate::sortdl::loose(a) > 0;
+    let c = if lit { Color::from_rgb8(0x1d, 0x12, 0x0c) } else { p.text };
+    let inner = row![t1("✦", 14.0, c), t1("Sort my Downloads", 14.0, c).font(ui::weight(if lit { iced::font::Weight::Bold } else { iced::font::Weight::Normal }))].spacing(7.0).align_y(iced::Center);
+    let bx = container(inner).padding(pad(6.0, 14.0, 6.0, 14.0)).style(ui::boxed(if lit { p.accent } else { Color::TRANSPARENT }, 8.0, if lit { None } else { Some((p.line, 1.0)) }));
+    container(mouse_area(bx).on_press(Msg::Sort(crate::sortdl::SMsg::Open)).interaction(mouse::Interaction::Pointer)).padding(pad(0.0, 8.0, 0.0, 4.0)).into()
+}
+
 fn command_bar(a: &App) -> El<'_> {
     let p = a.p;
     let has = !a.targets().is_empty();
@@ -334,6 +354,7 @@ fn command_bar(a: &App) -> El<'_> {
         lb(Ic::ViewList, "View", true, true, "view"),
         bc_tools(a),
         Space::new().width(Length::Fill),
+        sort_button(a),
         {
             let c = if a.details_pane { p.accent } else { p.text };
             flat(&p, row![t1("Details", 14.0, c), ico(Ic::Pane, c, 16.0)].spacing(7.0).align_y(iced::Center).into(), Some(Msg::Cmd("details")), pad(6.0, 10.0, 6.0, 10.0))
@@ -499,6 +520,24 @@ fn main_area(a: &App) -> El<'_> {
 }
 
 /// The scrollable every long view sits in (its offset is kept for drawing only the rows on screen).
+/// The file view's empty space: a press clears the picks and starts drag to select; the band is drawn over the files.
+fn bg_area<'a>(a: &'a App, content: El<'a>) -> El<'a> {
+    let inner: El = match a.band_rect() {
+        Some(r) => stack![
+            content,
+            pin(container(Space::new().width(Length::Fixed(r.width.max(1.0))).height(Length::Fixed(r.height.max(1.0)))).style({
+                let c = a.p.accent;
+                move |_: &Theme| container::Style { background: Some(Background::Color(Pal::a(c, 0.18))), border: Border { color: Pal::a(c, 0.8), width: 1.0, radius: 2.0.into() }, ..container::Style::default() }
+            }))
+            .x(r.x)
+            .y(r.y)
+        ]
+        .into(),
+        None => content,
+    };
+    mouse_area(inner).on_press(Msg::BgPress).on_right_press(Msg::BgRight).on_move(Msg::BandMove).into()
+}
+
 fn scroller<'a>(inner: El<'a>) -> El<'a> {
     scrollable(inner).id(SCROLL_ID).on_scroll(|v| Msg::Scrolled(v.absolute_offset().y)).height(Length::Fill).width(Length::Fill).into()
 }
@@ -512,6 +551,9 @@ fn entry_icon<'a>(a: &'a App, e: &Entry, size: f32) -> El<'a> {
     // A Briefcase: its style in its colour, its badge, a padlock when it's locked.
     let base: El = if e.briefcase.is_object() {
         crate::briefcase::bc_icon(a, &e.briefcase, e.briefcase.get("locked").and_then(Value::as_bool).unwrap_or(false), size)
+    } else if e.dir && crate::sortdl::here(a) && crate::sortdl::TOP.contains(&e.name.as_str()) {
+        // Sort my Downloads' five folders, each in its colour (mockup 2).
+        crate::sortdl::folder_icon(&e.name, size)
     } else {
         ico(icons::file_icon(model::kind_of(e), &e.name), a.p.text, size)
     };
@@ -673,8 +715,7 @@ fn details_list(a: &App) -> El<'_> {
         if last < total {
             col = col.push(gap(1.0, (total - last) as f32 * rh));
         }
-        let bg = mouse_area(container(col).width(Length::Fill)).on_press(Msg::BgPress).on_right_press(Msg::BgRight);
-        scroller(bg.into())
+        scroller(bg_area(a, container(col).width(Length::Fill).into()))
     });
     column![header, body].into()
 }
@@ -708,7 +749,7 @@ fn compact_list(a: &App) -> El<'_> {
         }
         a.cols.set(1);
         let _ = p;
-        scrollable(mouse_area(cols).on_press(Msg::BgPress).on_right_press(Msg::BgRight))
+        scrollable(bg_area(a, cols.into()))
             .direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::new()))
             .width(Length::Fill)
             .height(Length::Fill)
@@ -750,8 +791,7 @@ fn icon_grid(a: &App, v: View) -> El<'_> {
             col = col.push(gap(1.0, (nrows - last) as f32 * rh));
         }
         let _ = p;
-        let bg = mouse_area(container(col).width(Length::Fill)).on_press(Msg::BgPress).on_right_press(Msg::BgRight);
-        scroller(bg.into())
+        scroller(bg_area(a, container(col).width(Length::Fill).into()))
     })
     .into()
 }
@@ -1137,6 +1177,14 @@ fn status_bar(a: &App) -> El<'_> {
     let n = a.entries.len();
     let left = if !a.note.is_empty() {
         t1(a.note.clone(), 13.0, if a.note_err { p.danger } else { p.text })
+    } else if crate::sortdl::here(a) && a.marked.is_empty() && a.search.is_none() {
+        // Downloads (Sort my Downloads' mockups): what's loose, or the folders and "nothing loose".
+        let loose = crate::sortdl::loose(a);
+        if loose > 0 {
+            t1(format!("{} loose in Downloads", model::plural(loose, "item", "items")), 13.0, p.muted)
+        } else {
+            t1(format!("{} · nothing loose", model::plural(n, "folder", "folders")), 13.0, p.muted)
+        }
     } else {
         let mut s = model::plural(n, "item", "items");
         let sel: Vec<&Entry> = a.entries.iter().filter(|e| a.marked.contains(&e.path)).collect();

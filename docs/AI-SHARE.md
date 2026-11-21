@@ -6,7 +6,10 @@ pictures (ComfyUI), the ROG Ally does voices (Kokoro) or a small chat model when
 every device's AI in one place, and the **Hearth AI Command Center** reads that list to pick the best device for each
 job: the Nvidia PC first, the others when it's busy, playing or off.
 
-It's **off by default** on every device, and nothing new starts with the PC.
+Since 1.17 it's **on by default** (the owner: every connection automatic), and only to your own Tailscale account's
+devices: never your home network or the internet unless you choose that. A PC where you turned it off keeps it off
+(ai-share.json says so, and /etc/hearth/ai-share.off keeps the firewall rule from coming back), and a damaged settings
+file counts as off. Nothing in it is part of starting the PC, the session or Game Mode.
 
 ## What you see
 
@@ -190,7 +193,7 @@ nimbus-session.
 
 ## Tests
 
-`hosts/linux/test/test_hearth_ai_share.py` (run by home-server.yml): settings off by default and per key, never
+`hosts/linux/test/test_hearth_ai_share.py` (run by home-server.yml): settings on by default (Tailscale only) and per key, never
 defaults over a damaged file, the share code as a hash only; finding each service by asking it (and not mistaking
 something else on its port), a service on this device only, busy; the document (playing, on battery, plugged in, the
 per-service switches, no secrets); every device in order, offline ones from before, Hearth Link's, moving and resetting

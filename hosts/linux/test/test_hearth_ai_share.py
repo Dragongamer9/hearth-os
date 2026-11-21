@@ -92,21 +92,26 @@ class Base(unittest.TestCase):
 
 
 class Settings(Base):
-    def test_off_by_default_and_nothing_written(self):
+    def test_on_by_default_tailscale_only_and_nothing_written(self):
+        # 1.17 (the owner: every connection automatic): on by default, never on the home network by default.
         cfg = ais.load()
-        self.assertFalse(cfg['on'] or cfg['hub'] or cfg['lan'] or cfg['codeOn'])
+        self.assertTrue(cfg['on'])
+        self.assertFalse(cfg['hub'] or cfg['lan'] or cfg['codeOn'])
         self.assertTrue(cfg['pluggedOnly'] and cfg['notWhilePlaying'])
-        doc = ais.document(cfg, TS, self.found())
-        self.assertEqual((doc['reason'], doc['services'], doc['available']), ('off', [], False))
         self.assertFalse(os.path.exists(ais.SETTINGS), 'reading never writes')
+        ais.set_key('on', 'off')
+        doc = ais.document(ais.load(), TS, self.found())
+        self.assertEqual((doc['reason'], doc['services'], doc['available']), ('off', [], False))
+        self.assertEqual(self.settings(), {'on': False}, 'turned off stays off')
 
     def test_only_the_changed_key_is_written(self):
         self.assertFalse(ais.set_key('notWhilePlaying', 'on'), 'a default you already have is not written')
         self.assertFalse(os.path.exists(ais.SETTINGS))
-        self.assertTrue(ais.set_key('on', 'on'))
-        self.assertEqual(self.settings(), {'on': True})
+        self.assertFalse(ais.set_key('on', 'on'), 'on is the default now: nothing to write')
+        self.assertTrue(ais.set_key('on', 'off'))
+        self.assertEqual(self.settings(), {'on': False})
         self.assertTrue(ais.set_key('voice', 'off'))
-        self.assertEqual(self.settings(), {'on': True, 'share': {'voice': False}})
+        self.assertEqual(self.settings(), {'on': False, 'share': {'voice': False}})
         self.assertFalse(ais.set_key('voice', 'off'))
         for k, v in (('nope', 'on'), ('on', 'yes'), ('on', ''), ('priority', 'on')):
             with self.assertRaises(ais.Fail):
@@ -115,12 +120,13 @@ class Settings(Base):
 
     def test_merge_keeps_what_others_wrote(self):
         self.write('config/nimbus/ai-share.json', json.dumps({'lan': True, 'future': 7}))
-        ais.set_key('on', 'on')
-        self.assertEqual(self.settings(), {'lan': True, 'future': 7, 'on': True})
+        ais.set_key('on', 'off')
+        self.assertEqual(self.settings(), {'lan': True, 'future': 7, 'on': False})
 
     def test_never_defaults_over_a_damaged_file(self):
         self.write('config/nimbus/ai-share.json', '{"on": tr')
-        self.assertFalse(ais.peek()['on'])
+        self.assertFalse(ais.peek()['on'], 'a damaged file might have said off: off until it is put right')
+        self.assertFalse(ais.load()['on'])
         with open(ais.SETTINGS) as f:
             self.assertEqual(f.read(), '{"on": tr', 'the server only reads: a damaged file stays as it is')
         self.write('config/nimbus/ai-share.json.bak', json.dumps({'on': True, 'hub': True}))
@@ -461,6 +467,7 @@ class ServerTest(Base):
         self.assertEqual(ais.want_addresses(cfg, dict(TS, ips=['192.168.1.5']), True), ['127.0.0.1'])
 
     def test_serve_stops_when_sharing_is_off(self):
+        ais.set_key('on', 'off')
         self.assertEqual(ais.serve(port=0, once=True), {})
 
     def test_firewall_state_is_read_only(self):
@@ -481,6 +488,7 @@ class Apply(Base):
         self.assertEqual(self.calls, [['root', 'firewall', 'on'], ['user', 'enable', '--now', 'hearth-ai-share.service']])
 
     def test_off_stops_and_never_asks_root_for_nothing(self):
+        ais.set_key('on', 'off')
         ais.apply(ais.load())
         self.assertEqual(self.calls, [['user', 'disable', '--now', 'hearth-ai-share.service']])
         self.write('etc/ai-share.nft', 'x')
@@ -490,7 +498,7 @@ class Apply(Base):
 
     def test_a_failed_rule_never_changes_a_setting(self):
         self.patch(ais, 'root', lambda a: {'ok': False, 'error': 'no nft'})
-        ais.set_key('on', 'on')
+        ais.set_key('notWhilePlaying', 'off')
         before = self.settings()
         r = ais.apply()
         self.assertEqual(r['firewall'], 'failed')
@@ -501,7 +509,7 @@ class Apply(Base):
 class RootHelper(Base):
     def setUp(self):
         super().setUp()
-        for k, v in (('NFT_FILE', 'etc/hearth/ai-share.nft'), ('STATE', 'run/hearth/ai-share-firewall.json')):
+        for k, v in (('NFT_FILE', 'etc/hearth/ai-share.nft'), ('STATE', 'run/hearth/ai-share-firewall.json'), ('OFF_MARK', 'etc/hearth/ai-share.off')):
             self.patch(helper, k, os.path.join(self.d, v))
         self.ran = []
         self.code = 0
@@ -537,6 +545,21 @@ class RootHelper(Base):
         with open(helper.STATE) as f:
             self.assertFalse(json.load(f)['ok'])
 
+    def test_on_by_default_unless_turned_off_here(self):
+        # 1.17: the timer's run writes the Tailscale-only rule and loads it...
+        self.assertTrue(helper.main(['firewall-default'])['ok'])
+        self.assertTrue(os.path.exists(helper.NFT_FILE))
+        self.assertIn(['/usr/sbin/nft', '-f', helper.NFT_FILE], self.ran)
+        # ...but never again once sharing was turned off (or opened to the home network) on this PC.
+        helper.main(['firewall', 'off'])
+        self.assertTrue(os.path.exists(helper.OFF_MARK))
+        self.ran.clear()
+        self.assertEqual(helper.main(['firewall-default']), {'ok': True, 'off': True})
+        self.assertFalse(os.path.exists(helper.NFT_FILE))
+        self.assertEqual(self.ran, [])
+        helper.main(['firewall', 'on'])
+        self.assertFalse(os.path.exists(helper.OFF_MARK))
+
     def test_load_without_a_file_does_nothing(self):
         self.assertEqual(helper.main(['firewall-load']), {'ok': True, 'loaded': False})
         self.assertEqual(self.ran, [])
@@ -554,7 +577,7 @@ class Wiring(unittest.TestCase):
         self.assertNotRegex(user, r'(?m)^(Requires|Before|RequiredBy)=')
         fw = self.read('os/system_files/usr/lib/systemd/system/hearth-ai-share-firewall.service')
         self.assertNotIn('[Install]', fw, 'only its timer starts it')
-        self.assertIn('ConditionPathExists=/etc/hearth/ai-share.nft', fw)
+        self.assertIn('firewall-default', fw, '1.17: the rule is written unless sharing was turned off here')
         self.assertNotRegex(fw, r'(?m)^(Requires|Before|WantedBy|RequiredBy)=')
         timer = self.read('os/system_files/usr/lib/systemd/system/hearth-ai-share-firewall.timer')
         self.assertIn('OnBootSec=15s', timer)

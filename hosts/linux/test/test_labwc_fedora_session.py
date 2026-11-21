@@ -11,6 +11,7 @@ import sys
 sys.dont_write_bytecode = True
 import importlib.machinery
 import importlib.util
+import json
 import os
 import pathlib
 import re
@@ -72,15 +73,35 @@ class FedoraLabwc(Base):
                 os.remove(p)
         return self.session('NIMBUS_START_MODE=desktop\n' + line, **kw)
 
-    def test_no_pick_is_kde_plasma_and_never_labwc(self):
-        for line in ('', 'HEARTH_PLASMA_DESKTOP=plasma\n', 'HEARTH_DESKTOP_WM=labwc\n'):
+    def test_no_pick_is_mantel_and_a_plasma_pick_stays_plasma(self):
+        # 1.17 (the owner, Nov 21): "Put the default Desktop enviroment as Hearth Clasic labwc". No pick saved (or only
+        # Debian's old window manager line) is Mantel; a saved KDE Plasma pick stays KDE Plasma.
+        def clean():
             for f in ('labwc-ran', 'plasma-ran'):
                 p = os.path.join(self.home, f)
                 if os.path.exists(p):
                     os.remove(p)
+        for line in ('', 'HEARTH_DESKTOP_WM=labwc\n'):
+            clean()
             r, log = self.run_with(line)
-            self.assertEqual(self.lines('labwc-ran'), [], (line, log))
-            self.assertEqual(self.lines('plasma-ran'), ['plasma'], (line, log))
+            self.assertIn('desktop mode: Hearth Classic (labwc)', log, line)
+            self.assertEqual(len(self.lines('labwc-ran')), 1, (line, log))
+            self.assertIn('fh=unset', self.lines('labwc-ran')[0])
+            self.assertEqual(self.lines('plasma-ran'), [], (line, log))
+        clean()
+        r, log = self.run_with('HEARTH_PLASMA_DESKTOP=plasma\n')
+        self.assertEqual(self.lines('labwc-ran'), [], log)
+        self.assertEqual(self.lines('plasma-ran'), ['plasma'], log)
+        # A device that had picked the archived Firehold (Rust) and nothing since keeps Firehold on Plasma.
+        clean()
+        rust = os.path.join(self.home, '.config', 'nimbus', 'firehold-rust.json')
+        os.makedirs(os.path.dirname(rust), exist_ok=True)
+        with open(rust, 'w') as f:
+            f.write('{"desktop": "firehold"}')
+        r, log = self.run_with('')
+        self.assertEqual(self.lines('labwc-ran'), [], log)
+        self.assertEqual(self.lines('plasma-ran'), ['plasma'], log)
+        os.remove(rust)
 
     def test_classic_runs_mantel_on_labwc_only(self):
         r, log = self.run_with('HEARTH_PLASMA_DESKTOP=classic\n')
@@ -102,7 +123,7 @@ class FedoraLabwc(Base):
 
     def test_plasma_failing_never_starts_labwc(self):
         self.write_bin('startplasma-wayland', PLASMA_CRASHES)
-        for line in ('', 'HEARTH_PLASMA_DESKTOP=firehold\n'):
+        for line in ('HEARTH_PLASMA_DESKTOP=plasma\n', 'HEARTH_PLASMA_DESKTOP=firehold\n'):
             r, log = self.run_with(line)
             self.assertEqual(self.lines('labwc-ran'), [], log)
 
@@ -163,10 +184,13 @@ class Picker(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_reading_writes_nothing(self):
-        self.assertEqual(self.p.choice(), 'none')
+        self.assertEqual(self.p.choice(), 'classic', 'no pick is Mantel (1.17)')
         self.p.main(['x', 'status'])
-        self.p.choose('plasma')
         self.assertFalse(self.conf.exists())
+        # Picking KDE Plasma (now hidden) when nothing is saved writes its line, so it really opens KDE Plasma.
+        self.p.choose('plasma')
+        self.assertEqual(self.conf.read_text(), 'HEARTH_PLASMA_DESKTOP=plasma\n')
+        self.assertEqual(self.p.choice(), 'none')
 
     def test_one_line_and_back_to_plasma(self):
         self.conf.parent.mkdir(parents=True)
@@ -183,6 +207,25 @@ class Picker(unittest.TestCase):
         before = self.conf.read_text()
         self.p.choose('plasma')
         self.assertEqual(self.conf.read_text(), before)
+
+    def test_a_labwc_pick_replaces_the_firehold_rust_pick(self):
+        rust = pathlib.Path(self.p.rust_pick_path())
+        rust.parent.mkdir(parents=True)
+        rust.write_text('{"desktop": "firehold", "mine": 1}')
+        self.p.choose('classic')
+        self.assertEqual(json.loads(rust.read_text()), {'desktop': 'plasma', 'mine': 1}, 'merged: only its key changed')
+        self.assertEqual(self.p.choice(), 'classic')
+
+    def test_mantel_classic_is_never_firehold(self):
+        # The owner (Nov 21): Mantel (Hearth Classic) picked, Firehold came up: an old "Firehold unlocked" in
+        # firehold.json (Debian's Mantel) turned it on. On the Fedora edition Firehold is only "Firehold on labwc".
+        qml = (ROOT / 'hosts/linux/desktop/shell/Firehold.qml').read_text()
+        line = [l for l in qml.splitlines() if 'readonly property bool unlocked:' in l][0]
+        self.assertIn('sessionPicked || (!fedoraLabwc && (', line)
+        self.assertIn('Quickshell.env("HEARTH_FEDORA_LABWC") === "1"', qml)
+        s = SESSION.read_text()
+        self.assertIn('export HEARTH_WM=labwc HEARTH_FEDORA_LABWC=1', s)
+        self.assertIn('[ "$1" = firehold ] && export HEARTH_FIREHOLD_SESSION=1', s)
 
     def test_other_readers_never_take_these_for_firehold_on_plasma(self):
         fhp = load(FHP, 'hearth_firehold_plasma_t')

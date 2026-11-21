@@ -114,7 +114,14 @@ Item {
                             hoverEnabled: true
                             acceptedButtons: Qt.LeftButton | Qt.RightButton
                             cursorShape: Qt.PointingHandCursor
-                            onClicked: mouse => { ms.current = rowItem.index; if (mouse.button === Qt.RightButton) ms.options(); else ms.activate(); }
+                            // Opened on the press, with this row's own result: file results arrive while you type
+                            // and rebuild the rows, which used to drop a click between press and release (Nov 21).
+                            onPressed: mouse => {
+                                const r = rowItem.modelData;
+                                ms.current = rowItem.index;
+                                if (mouse.button === Qt.RightButton) ms.options();
+                                else if (ms.menu && r) ms.menu.openRow(r);
+                            }
                         }
                     }
                 }

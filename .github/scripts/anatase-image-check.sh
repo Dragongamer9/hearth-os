@@ -189,6 +189,13 @@ for b in hearth-settings hearth-send-logs hearth-browser hearth-filemanager; do 
 for b in hearth-disks hearth-text hearth-time hearth-photos hearth-documents hearth-player hearth-calculator hearth-tools hearth-recorder hearth-link hearth-connect hearth-gamestore; do
   warn "$b is installed with every library it links" "test -x /usr/bin/$b && ! ldd /usr/bin/$b | grep -q 'not found'"
 done
+# 1.17 quick updates (docs/HEARTH-STORE.md): each Rust app's start uses the built-in program unless the Store installed
+# a copy, and the helper that decides works.
+check "hearth-part (Store quick updates) works" "test -x /usr/libexec/hearth/hearth-part && HOME=/nonexistent /usr/libexec/hearth/hearth-part status | grep -qx '{}'"
+for b in hearth-files-app hearth-settings-app hearth-task-manager hearth-store-app; do
+  [ -e "/usr/libexec/hearth/apps/$b" ] || continue
+  check "$b starts the built-in program without a Store copy" "sh -n /usr/bin/$b && grep -q 'exec /usr/libexec/hearth/apps/$b \"\$@\"' /usr/bin/$b && HOME=/nonexistent /usr/libexec/hearth/hearth-part path $b /usr/libexec/hearth/apps/$b | grep -qx /usr/libexec/hearth/apps/$b"
+done
 check "Hearth Settings opens the Hearth app's Settings without Mantel" "grep -q 'nimbus --windowed --settings' /usr/bin/hearth-settings"
 check "Game Mode's file dialogs aren't Mantel's picker here (it needs Quickshell)" "! grep -q 'FileChooser=hearth' /usr/share/xdg-desktop-portal/nimbus-portals.conf"
 
@@ -238,9 +245,11 @@ check "nimbus-session takes a Firehold (Rust) pick as Firehold on Plasma" "grep 
 warn "one firewall: firewalld with its choice unit and drop-ins" "rpm -q firewalld && systemctl is-enabled firewalld.service && test -x /usr/libexec/hearth-firewall-choice && test -f /usr/lib/systemd/system/firewalld.service.d/hearth-one-firewall.conf"
 
 echo "--- services stay off until asked for"
-for u in smb.service tailscaled.service hearth-ai-share-firewall.timer hearth-remote-desktop-firewall.service lactd.service; do
+for u in smb.service tailscaled.service hearth-remote-desktop-firewall.service lactd.service; do
   check "$u is off" "[ \"\$(systemctl is-enabled $u 2>/dev/null)\" != enabled ]"
 done
+# 1.17: Share this device's AI is on by default, only to your own Tailscale devices (its Tailscale-only rule's timer).
+check "AI sharing is on by default, Tailscale only" "systemctl is-enabled hearth-ai-share-firewall.timer && systemctl --global is-enabled hearth-ai-share.service && grep -q firewall-default /usr/lib/systemd/system/hearth-ai-share-firewall.service"
 check "memory, guards and Hearth's own services are on (as on Debian)" "systemctl is-enabled hearth-memory.service hearth-memguard.service hearth-hwset.service hearth-diskguard.service nimbus-autologin.service hearth-flatpak-setup.service"
 check "no fingerprint in front of every password" "! grep -qs pam_fprintd /etc/pam.d/system-auth /etc/pam.d/password-auth"
 

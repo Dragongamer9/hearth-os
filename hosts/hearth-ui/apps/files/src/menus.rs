@@ -1326,6 +1326,7 @@ pub fn dialog_ok(a: &mut App) -> Task<Msg> {
             run_yes(a, c.yes)
         }
         Some(Overlay::Bc) => crate::briefcase::update(a, crate::briefcase::BMsg::Ok),
+        Some(Overlay::Sort) => crate::sortdl::update(a, crate::sortdl::SMsg::Go),
         Some(Overlay::Apps(d)) => open_with(a, Some(d.sel)),
         Some(Overlay::Preview(pv)) => {
             a.overlay = None;
@@ -1831,6 +1832,14 @@ pub fn key(a: &mut App, ev: KEvent) -> Task<Msg> {
             }
             Overlay::Bc => {
                 return crate::briefcase::key(a, named, shift);
+            }
+            Overlay::Sort => {
+                match named {
+                    Some(Named::Enter) => return crate::sortdl::update(a, crate::sortdl::SMsg::Go),
+                    Some(Named::Escape) | Some(Named::Backspace) => return crate::sortdl::update(a, crate::sortdl::SMsg::Cancel),
+                    _ => {}
+                }
+                return Task::none();
             }
             Overlay::Input(_) | Overlay::Props(_) => {
                 if let Some(Named::Escape) = named {

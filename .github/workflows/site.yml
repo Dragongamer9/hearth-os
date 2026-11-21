@@ -48,7 +48,20 @@ jobs:
             exit 0
           fi
           mkdir -p site/store
-          cp os-bases/anatase/system_files/usr/share/hearth/store/catalog.json site/store/catalog.json
+          # The live list is the `store` branch's (published by "Publish the Hearth Store list" without a release);
+          # until that branch exists, the one built into Hearth OS. Either way it's checked before it's signed.
+          built=os-bases/anatase/system_files/usr/share/hearth/store/catalog.json
+          # The higher serial wins, so a release that brought the built-in list past the branch never stops the site.
+          cp "$built" site/store/catalog.json
+          if git fetch --depth=1 origin store 2>/dev/null && git show FETCH_HEAD:catalog.json > "$RUNNER_TEMP/live.json" 2>/dev/null; then
+            if python3 -c 'import json,sys; a,b=(json.load(open(f)).get("serial",0) for f in sys.argv[1:]); sys.exit(0 if a>=b else 1)' "$RUNNER_TEMP/live.json" "$built"; then
+              cp "$RUNNER_TEMP/live.json" site/store/catalog.json
+              echo "::notice title=Hearth Store list::from the store branch"
+            else
+              echo "::warning title=Hearth Store list::the store branch's list is older than the one built into Hearth OS, so the built-in one is published: bring the branch up to it"
+            fi
+          fi
+          python3 tools/store-check.py site/store/catalog.json "$built"
           umask 077
           printf '%s\n' "$KEY" > "$RUNNER_TEMP/store-key.pem"
           openssl pkeyutl -sign -inkey "$RUNNER_TEMP/store-key.pem" -rawin -in site/store/catalog.json -out "$RUNNER_TEMP/store.sig"
@@ -57,8 +70,8 @@ jobs:
           od -An -v -tx1 "$RUNNER_TEMP/store.sig" | tr -d ' \n' > site/store/catalog.json.sig
           pub=$(openssl pkey -in "$RUNNER_TEMP/store-key.pem" -pubout -outform DER | tail -c 32 | od -An -v -tx1 | tr -d ' \n')
           rm -f "$RUNNER_TEMP/store-key.pem" "$RUNNER_TEMP/store.sig" "$RUNNER_TEMP/store-pub.pem"
-          built=$(grep -v '^#' os-bases/anatase/system_files/usr/share/hearth/store/catalog-key.pub 2>/dev/null | tr -d ' \n')
-          if [ "$built" != "$pub" ]; then
+          builtkey=$(grep -v '^#' os-bases/anatase/system_files/usr/share/hearth/store/catalog-key.pub 2>/dev/null | tr -d ' \n')
+          if [ "$builtkey" != "$pub" ]; then
             echo "::warning title=Hearth Store list::signed, but the public key in Hearth OS (os-bases/anatase/system_files/usr/share/hearth/store/catalog-key.pub) isn't this key's: Hearth OS will ignore the list until it is ($pub)"
           fi
           echo "::notice title=Hearth Store list::site/store/catalog.json signed ($(wc -c < site/store/catalog.json) bytes)"

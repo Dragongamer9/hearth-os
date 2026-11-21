@@ -22,7 +22,13 @@ Settings › System › Your desktop on the Fedora edition offers four desktops 
   only when you pick (hearth-labwc-desktop / hearth-firehold-plasma, through hearth_settings_io: atomic, a .bak, only
   that line). Letters only, because the other readers take `[a-z]*`. Firehold on labwc never writes firehold.json:
   `HEARTH_FIREHOLD_SESSION=1` turns it on for that sign-in (Firehold.qml `sessionPicked`).
-- **Never a fallback.** nimbus-session starts labwc only when it's picked (one call, in its marked block before
+- **Mantel (Hearth Classic) is plain Mantel.** On the Fedora edition Firehold.qml turns Firehold on only for "Firehold on
+  labwc" (`HEARTH_FEDORA_LABWC=1` and no `HEARTH_FIREHOLD_SESSION`: off), never from an older "Firehold unlocked" in
+  firehold.json (Debian's Mantel), which is kept as it is. A Mantel or Firehold on labwc pick also wins over the
+  archived Firehold (Rust)'s pick when KDE Plasma opens instead (the owner, Nov 21).
+- **The default since 1.17** (the owner, Nov 21): no pick saved is Mantel (Hearth Classic), and Settings › Your desktop
+  shows only Mantel (KDE Plasma and Firehold are hidden, not removed; a PC that picked one keeps it).
+- **Never a fallback.** nimbus-session starts labwc only when it's picked or nothing is picked (one call, in its marked block before
   `run_plasma`). KDE Plasma or Firehold on Plasma failing stays as it was (Steam Game Mode, recovery).
 - **If it doesn't come up** (labwc or Quickshell missing, labwc ending within 15 s, Mantel not up within 45 s, Mantel
   giving up: `hearth-labwc-shell-failed` from labwc/autostart): KDE Plasma for the rest of that sign-in and a notification

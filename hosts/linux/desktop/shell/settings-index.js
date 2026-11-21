@@ -5502,6 +5502,12 @@ var ENTRIES = [
 "d": "Retired in Hearth 1.14: Mantel is the desktop. A KDE Plasma or GNOME pick from before opens Mantel, and Hearth tells you once."
 },
 {
+"t": "Right now",
+"p": "your-desktop",
+"d": "This PC opens Firehold on labwc, your earlier pick. Use Mantel to switch to Hearth Classic.",
+"i": "info"
+},
+{
 "t": "Clean up",
 "p": "home",
 "d": "Old shader caches and finished downloads",

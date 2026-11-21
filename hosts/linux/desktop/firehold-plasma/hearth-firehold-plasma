@@ -205,7 +205,7 @@ def start_posture(s=None):
     return 'couch' if read_small(state_path()) == 'couch' else 'desk'
 
 
-def choice():
+def raw_choice():
     v = ''
     try:
         with open(session_conf(), encoding='utf-8', errors='replace') as f:
@@ -215,7 +215,11 @@ def choice():
                     v = m.group(1)
     except OSError:
         pass
-    return 'firehold' if v == 'firehold' else 'plasma'
+    return v
+
+
+def choice():
+    return 'firehold' if raw_choice() == 'firehold' else 'plasma'
 
 
 def rust_pick_path():
@@ -234,7 +238,7 @@ def rust_picked():
 def effective_choice():
     """What Desktop Mode opens: your pick, or Firehold on Plasma for a device that had picked the archived Firehold
     (Rust) and hasn't picked again (nimbus-session's firehold_rust_saved, the same rule)."""
-    return 'firehold' if choice() == 'firehold' or rust_picked() else 'plasma'
+    return 'firehold' if choice() == 'firehold' or (rust_picked() and raw_choice() not in ('classic', 'classicfirehold')) else 'plasma'
 
 
 def choose(v):
@@ -245,8 +249,8 @@ def choose(v):
         # Your pick now replaces the archived Firehold (Rust)'s (only on a pick, its one key, merged: red flag 9).
         io.merge_json(rust_pick_path(), {'desktop': 'plasma'})
         log('the old Firehold (Rust, test) pick replaced by your pick: %s' % v)
-    if choice() == v:
-        return   # already that (no line is plasma): nothing written
+    if raw_choice() == v:
+        return   # already that line: nothing written (no line is Mantel since 1.17, so KDE Plasma writes its line)
     io.update_text(session_conf(), lambda t: io.conf_set_text(t, 'HEARTH_PLASMA_DESKTOP', v))
     log('Desktop Mode choice saved: %s' % v)
 

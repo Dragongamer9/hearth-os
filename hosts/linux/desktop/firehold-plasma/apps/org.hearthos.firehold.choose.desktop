@@ -1,4 +1,6 @@
 [Desktop Entry]
+# Hidden (the owner, Nov 21: "hide Fire hold and KDE, dont have to uninstall them just hide them").
+NoDisplay=true
 Type=Application
 Name=Firehold (Plasma, test)
 Comment=Desktop Mode: KDE Plasma, or Firehold's Couch and Desk on Plasma (a test)

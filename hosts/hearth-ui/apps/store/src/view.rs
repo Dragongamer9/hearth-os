@@ -5,7 +5,7 @@
 use crate::look::{self, app_icon, btn, bullets, card, chip, click, f, hint, hint2, icon_box, kv, ring, sec, seg, srow, switch, tone, z, Chip, B, E, ORANGE, ORANGE2, PURPLE};
 use crate::{App, JobKind, Msg, Page, State, SEARCH_ID};
 use hearth_store::catalog::{Entry, Kind};
-use hearth_store::{mb, paths, short_version};
+use hearth_store::{mb, parts, paths, short_version};
 use hearth_ui::ui::{self, gap, t, t1, tb, tm, ts};
 use hearth_ui::Pal;
 use iced::widget::{canvas, column, container, image, row, scrollable, stack, text_input, Column, Row, Space};
@@ -54,7 +54,16 @@ pub fn new_shown(a: &App, id: &str) -> bool {
     if a.hidden_new.contains(id) {
         return false;
     }
+    // The first update on the page shows what's new: a quick update first (they're listed first), else an app's.
+    if let Some((e, _)) = a.part_offers().first() {
+        return e.id == id;
+    }
     a.ready().iter().find(|(e, _, _)| !e.self_updates).map(|(e, _, _)| e.id == id).unwrap_or(false)
+}
+
+/// Hearth's own apps and Mantel that went back to the built-in one (their update didn't start twice).
+fn parts_gave_up(a: &App) -> Vec<Entry> {
+    a.cat.apps.iter().filter(|e| e.part.is_some() && a.parts.get(&e.id).map(|h| h.gave_up()).unwrap_or(false)).cloned().collect()
 }
 
 fn installed(a: &App) -> Vec<Entry> {
@@ -125,6 +134,10 @@ pub fn targets(a: &App) -> Vec<Target> {
         }
         Page::Updates => {
             let mut r = 0u16;
+            for (e, _) in a.part_offers() {
+                v.push(tg(format!("upd-{}", e.id), r, Some(Msg::PartUpdate(e.id.clone()))));
+                r += 1;
+            }
             for (e, _, _) in a.ready().into_iter().filter(|(e, _, _)| !e.self_updates) {
                 v.push(tg(format!("upd-{}", e.id), r, Some(Msg::Start(e.id.clone(), JobKind::Update))));
                 r += 1;
@@ -134,8 +147,12 @@ pub fn targets(a: &App) -> Vec<Target> {
                 v.push(tg(format!("self-{}", e.id), r, if matches!(s, State::Ready(..)) { Some(Msg::Launch(e.id.clone())) } else { None }));
                 r += 1;
             }
-            v.push(tg("builtin-link", r, Some(Msg::OpenHearthUpdates)));
-            v.push(tg("test-link", r + 1, Some(Msg::Go(Page::Settings))));
+            for e in parts_gave_up(a) {
+                v.push(tg(format!("retry-{}", e.id), r, Some(Msg::PartRetry(e.id.clone()))));
+                v.push(tg(format!("rm-{}", e.id), r, Some(Msg::PartRemove(e.id.clone()))));
+                r += 1;
+            }
+            v.push(tg("test-link", r, Some(Msg::Go(Page::Settings))));
         }
         Page::Settings => {
             v.push(tg("s-daily", 0, Some(Msg::SetDaily(!a.prefs.daily))));
@@ -152,6 +169,10 @@ pub fn targets(a: &App) -> Vec<Target> {
                 v.push(tg("open", 0, primary(e, &s)));
                 if a.inst.contains_key(id) {
                     v.push(tg("more", 0, Some(Msg::Menu)));
+                }
+                if e.part.is_some() {
+                    v.push(tg("builtin-one", 1, Some(Msg::PartRemove(id.clone()))));
+                    v.push(tg("whats-new", 1, Some(Msg::ToggleNew(id.clone()))));
                 }
             }
         }
@@ -338,7 +359,7 @@ fn search_box(a: &App) -> E<'_, Msg> {
 fn sidebar(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
-    let n_up = a.ready().len();
+    let n_up = a.ready().len() + a.part_offers().len();
     let mut nav = Column::new().spacing(z(6.0));
     for (pg, icon, label) in [(Page::Home, "⌂", "Home"), (Page::Yours, "▦", "Your apps"), (Page::Updates, "⟳", "Updates"), (Page::BuiltIn, "▣", "Built into Hearth"), (Page::Settings, "⚙", "Store settings")] {
         let here = a.page == pg
@@ -669,7 +690,13 @@ fn app_head<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let st = a.state(e);
-    let line = if e.tagline.is_empty() { e.author.clone() } else { format!("{} · {}", e.author, e.tagline) };
+    let line = if e.part.is_some() {
+        format!("Built into Hearth OS · by {}", e.author)
+    } else if e.tagline.is_empty() {
+        e.author.clone()
+    } else {
+        format!("{} · {}", e.author, e.tagline)
+    };
     let mut right = Row::new().spacing(z(12.0));
     if a.dlg.is_none() {
         let on = if matches!(st, State::Coming) { None } else { primary(e, &st) };
@@ -680,7 +707,11 @@ fn app_head<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     }
     let head = row![
         app_icon(e, z(104.0)),
-        column![tb(e.name.clone(), f(38.0), tn.text), container(t(line, f(17.0), tn.muted)).padding(look::pad(z(6.0), 0.0, z(12.0), 0.0)), app_chips(a, e, &st)].width(Length::Fill),
+        if e.part.is_some() {
+            column![tb(e.name.clone(), f(38.0), tn.text), container(t(line, f(17.0), tn.muted)).padding(look::pad(z(6.0), 0.0, 0.0, 0.0))].width(Length::Fill)
+        } else {
+            column![tb(e.name.clone(), f(38.0), tn.text), container(t(line, f(17.0), tn.muted)).padding(look::pad(z(6.0), 0.0, z(12.0), 0.0)), app_chips(a, e, &st)].width(Length::Fill)
+        },
         container(right).padding(look::pad(z(10.0), 0.0, 0.0, 0.0)),
     ]
     .spacing(z(26.0))
@@ -688,7 +719,53 @@ fn app_head<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     column![back_link(a), container(head).padding(look::pad(0.0, 0.0, z(22.0), 0.0))].into()
 }
 
+/// One of Hearth's own apps or Mantel (mockup 1.17-quick-updates 2): what a quick update is, which one runs, and
+/// going back to the built-in one.
+fn part_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
+    let p = a.p;
+    let tn = tone(&p);
+    let have = a.parts.get(&e.id);
+    let mut left = Column::new().push(container(ts("Quick updates", f(21.0), tn.text)).padding(look::pad(0.0, 0.0, z(10.0), 0.0)));
+    left = left.push(t("Fixes for Hearth's own apps and desktops come here as soon as they're ready, without waiting for the next Hearth OS update. The new version goes in your home folder, next to the one built into Hearth OS, which is never changed.", f(16.0), Pal::mix(tn.text, tn.muted, 0.12)));
+    left = left.push(container(bullets(&p, &[
+        "Used only when it's signed with Dragongamer9's key and made for your Hearth OS.".to_string(),
+        "If it doesn't start, the built-in one opens instead, right away, and you're told once.".to_string(),
+        "Your settings stay as they are: the app reads the same settings files either way.".to_string(),
+    ], f(16.0))).padding(look::pad(z(12.0), 0.0, 0.0, 0.0)));
+    if new_shown(a, &e.id) {
+        if let Some(pt) = e.part.as_ref().filter(|pt| !pt.notes.is_empty()) {
+            left = left.push(container(ts(format!("What's new in {}", pt.version), f(18.0), tn.text)).padding(look::pad(z(18.0), 0.0, z(8.0), 0.0))).push(bullets(&p, &pt.notes, f(16.0)));
+        }
+    }
+    let running = parts::running(have, &a.hearth);
+    let quick = have.map(|h| h.version == running && running != a.hearth).unwrap_or(false);
+    let run_line = if quick {
+        let day = have.map(|h| day_time(h.installed)).unwrap_or_default();
+        let day = day.split(" at ").next().unwrap_or("").trim().to_string();
+        if day.is_empty() { format!("{running} · quick update") } else { format!("{running} · quick update, {day}") }
+    } else {
+        format!("{running} · built into Hearth OS")
+    };
+    let mut facts = Column::new();
+    facts = facts.push(kv(&p, "Running", run_line, None, false));
+    facts = facts.push(kv(&p, "Built into Hearth OS", if a.hearth.is_empty() { "Hearth OS".to_string() } else { a.hearth.clone() }, None, false));
+    facts = facts.push(kv(&p, "Installs as", "Files in your home folder", Some("no password, no restart".into()), false));
+    facts = facts.push(kv(&p, "Checked with", "The signed list from hearthos.fun", None, true));
+    let busy = a.part_busy.contains(&e.id);
+    let buttons = row![
+        btn(&p, "Use the built-in one", B::Normal, false, lit(a, "builtin-one"), if quick && !busy { Some(Msg::PartRemove(e.id.clone())) } else { None }),
+        btn(&p, "What's new", B::Normal, false, lit(a, "whats-new"), Some(Msg::ToggleNew(e.id.clone())))
+    ]
+    .spacing(z(10.0));
+    facts = facts.push(container(buttons).padding(look::pad(z(16.0), 0.0, 0.0, 0.0)));
+    let lower = row![card(&p, left, false).into_width(140), card(&p, facts, false).into_width(100)].spacing(z(18.0));
+    Column::new().push(app_head(a, e)).push(lower).into()
+}
+
 fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
+    if e.part.is_some() {
+        return part_page(a, e);
+    }
     let p = a.p;
     let tn = tone(&p);
     let st = a.state(e);
@@ -792,13 +869,45 @@ fn updates(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let ready: Vec<_> = a.ready().into_iter().filter(|(e, _, _)| !e.self_updates).collect();
-    let n = ready.len();
+    let offers = a.part_offers();
+    let n = ready.len() + offers.len();
     let mut c = Column::new();
     c = c.push(h1(&p, "Updates", Some(btn(&p, format!("Update all ({n})"), B::Primary, true, false, if n > 0 && !a.offline() { Some(Msg::UpdateAll) } else { None }))));
     let when = if a.offline() { format!("You're offline. Last checked {}.", day_time(a.seen.checked)) } else { format!("Checked {}.", ago_long(a, a.seen.checked)) };
     let how = if a.prefs.daily { "The Store looks again when you open it, and at most once a day." } else { "The Store looks again when you open it." };
     c = c.push(container(t(format!("{when} {how}"), f(16.0), tn.muted)).padding(look::pad(0.0, 0.0, z(20.0), 0.0)));
     let mut list = Column::new().spacing(z(10.0));
+    // Quick updates for Hearth's own apps and Mantel (mockup 1.17-quick-updates 1): first, the first one open.
+    for (e, pt) in &offers {
+        let id = format!("upd-{}", e.id);
+        let shown = new_shown(a, &e.id);
+        let busy = a.part_busy.contains(&e.id);
+        let from = parts::running(a.parts.get(&e.id), &a.hearth);
+        let how = if pt.id == "mantel" { "quick update: no Hearth OS update, no restart" } else { "quick update · opens with it next time" };
+        let pill = click(
+            container(t(if shown { "Hide what's new ▴" } else { "What's new ▾" }, f(14.0), Pal::mix(tn.text, tn.muted, 0.2))).padding(look::pad(z(8.0), z(14.0), z(8.0), z(14.0))).style(look::bx(Color::TRANSPARENT, 14.0, Some((Pal::mix(tn.line, tn.text, 0.08), 1.0)))),
+            Some(Msg::ToggleNew(e.id.clone())),
+        );
+        let big = shown;
+        let mut body = Column::new().push(t(e.name.clone(), f(if big { 22.0 } else { 19.0 }), tn.text)).push(t(format!("{from} → {} · {} · {how}", pt.version, mb(pt.size, false)), f(15.0), tn.muted));
+        if shown {
+            body = body.push(container(ts(format!("What's new in {}", pt.version), f(18.0), tn.text)).padding(look::pad(z(22.0), 0.0, z(8.0), 0.0)));
+            if !pt.notes.is_empty() {
+                body = body.push(bullets(&p, &pt.notes, f(16.0)));
+            }
+            let note = if pt.id == "mantel" {
+                format!("Your desktop restarts in a moment to use it: open windows stay open, your settings stay as they are. If it doesn't start, the Mantel built into Hearth OS {} comes back by itself.", a.hearth)
+            } else {
+                format!("Your settings stay as they are. If it doesn't start, the {} built into Hearth OS {} opens instead.", e.name, a.hearth)
+            };
+            body = body.push(container(t(note, f(15.0), tn.muted)).padding(look::pad(z(14.0), 0.0, 0.0, 0.0)));
+        }
+        let go = btn(&p, if busy { "Updating…" } else { "Update" }, B::Primary, false, false, if a.offline() || busy { None } else { Some(Msg::PartUpdate(e.id.clone())) });
+        let icon = app_icon(e, z(if big { 64.0 } else { 54.0 }));
+        let rowx = row![icon, body.spacing(z(4.0)).width(Length::Fill), row![pill, go].spacing(z(10.0)).align_y(iced::Center)].spacing(z(20.0)).align_y(if big { iced::alignment::Vertical::Top } else { iced::alignment::Vertical::Center });
+        let pad = if big { z(24.0) } else { z(18.0) };
+        list = list.push(ring(lit(a, &id), 10.0, container(rowx).padding(look::pad(pad, z(24.0), pad, z(24.0))).width(Length::Fill).style(look::bx(tn.card, 10.0, None))));
+    }
     for (e, i, r) in &ready {
         let id = format!("upd-{}", e.id);
         let shown = new_shown(a, &e.id);
@@ -837,11 +946,34 @@ fn updates(a: &App) -> E<'_, Msg> {
         list = list.push(srow(&p, app_icon(&e, z(54.0)), e.name.clone(), format!("{v} · AppImage in your home folder"), chip(&p, "Up to date", Chip::Ok), false, None));
     }
     c = c.push(list);
-    let built: Vec<&Entry> = a.cat.apps.iter().filter(|e| e.kind == Kind::BuiltIn).collect();
-    if let Some(first) = built.first() {
-        c = c.push(sec(&p, "Built into Hearth", None));
-        let names: Vec<String> = built.iter().map(|e| e.name.clone()).collect();
-        c = c.push(srow(&p, app_icon(first, z(46.0)), names.join(" · "), format!("These come with {} and update with it", if a.hearth.is_empty() { "Hearth OS".into() } else { format!("Hearth OS {}", a.hearth) }), btn(&p, "Settings › Updates & recovery ›", B::Normal, false, lit(a, "builtin-link"), Some(Msg::OpenHearthUpdates)), false, None));
+    // Hearth's own apps and desktops (mockup 1.17-quick-updates 1): the ones up to date in one row, and each one
+    // that went back to the built-in one, with Try it again and Remove the update.
+    let gave_up = parts_gave_up(a);
+    let up: Vec<&Entry> = a.cat.apps.iter().filter(|e| e.kind == Kind::BuiltIn && a.part_offer(e).is_none() && !gave_up.iter().any(|g| g.id == e.id)).collect();
+    if !up.is_empty() || !gave_up.is_empty() {
+        c = c.push(sec(&p, "Hearth's own apps and desktops", None));
+        let os = if a.hearth.is_empty() { "Hearth OS".to_string() } else { format!("Hearth OS {}", a.hearth) };
+        if let Some(first) = up.first() {
+            let names: Vec<String> = up.iter().take(6).map(|e| e.name.clone()).collect();
+            let mut title = names.join(" · ");
+            if up.len() > 6 {
+                title = format!("{title} and {} more", up.len() - 6);
+            }
+            c = c.push(srow(&p, app_icon(first, z(46.0)), title, format!("Up to date for {os} · they get quick updates here, between Hearth OS updates"), chip(&p, "Up to date", Chip::Ok), false, None));
+        }
+        for e in &gave_up {
+            let v = a.parts.get(&e.id).map(|h| h.version.clone()).unwrap_or_default();
+            let busy = a.part_busy.contains(&e.id);
+            let end: E<Msg> = row![
+                btn(&p, "Try it again", B::Normal, false, lit(a, &format!("retry-{}", e.id)), if busy { None } else { Some(Msg::PartRetry(e.id.clone())) }),
+                btn(&p, "Remove the update", B::Normal, false, lit(a, &format!("rm-{}", e.id)), if busy { None } else { Some(Msg::PartRemove(e.id.clone())) })
+            ]
+            .spacing(z(10.0))
+            .align_y(iced::Center)
+            .into();
+            let short = if e.short.is_empty() { e.name.clone() } else { e.short.clone() };
+            c = c.push(srow(&p, app_icon(e, z(46.0)), format!("{} {v} · went back to the built-in one", e.name), format!("Its update didn't start twice, so the {short} built into Hearth OS is used until the next update"), end, false, None));
+        }
     }
     c = c.push(sec(&p, "Test versions", None));
     let (tt, ss) = if a.prefs.test {
@@ -1160,7 +1292,7 @@ fn rel_card<'a>(a: &'a App, id: &'static str, sym: &'static str, title: &'static
 fn pad_frame(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
-    let n_up = a.ready().len();
+    let n_up = a.ready().len() + a.part_offers().len();
     let pill = |s: &'static str| -> E<'static, Msg> { container(tb(s, f(13.0), Pal::mix(tn.text, tn.muted, 0.2))).padding(look::pad(z(2.0), z(10.0), z(2.0), z(10.0))).style(look::bx(Color::TRANSPARENT, 12.0, Some((tn.muted, 1.5)))).into() };
     let mut tabs = Row::new().spacing(z(8.0)).align_y(iced::Center).push(pill("LB"));
     for (pg, label) in [(Page::Home, "Home"), (Page::Yours, "Your apps"), (Page::Updates, "Updates"), (Page::BuiltIn, "Built in"), (Page::Settings, "Settings")] {

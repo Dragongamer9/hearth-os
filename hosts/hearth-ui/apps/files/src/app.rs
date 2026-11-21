@@ -289,6 +289,8 @@ pub enum Overlay {
     Props(Props),
     /// The Briefcase's dialogs (briefcase.rs keeps what they show).
     Bc,
+    /// Sort my Downloads' preview (sortdl.rs).
+    Sort,
 }
 
 /// A change Hearth Files made that Undo can take back (the last 50, this session).
@@ -299,6 +301,8 @@ pub enum Op {
     Trash { paths: Vec<String> },
     Copy { items: Vec<String> },
     Move { items: Vec<String>, srcs: Vec<String>, dest: String, back: String },
+    /// Sort my Downloads: (from, to) of everything it moved.
+    Sort { moves: Vec<(String, String)> },
 }
 
 #[derive(Debug, Clone)]
@@ -435,6 +439,11 @@ pub enum Msg {
     Right(usize),
     Middle(usize),
     BgPress,
+    /// Sort my Downloads (sortdl.rs), and its note going after a while.
+    Sort(crate::sortdl::SMsg),
+    SortNoteGone(u64),
+    /// The pointer moved over the file view (its own coordinates): drag to select.
+    BandMove(Point),
     BgRight,
     Scrolled(f32),
     Cmd(&'static str),
@@ -585,6 +594,17 @@ pub struct App {
     pub versions: Vec<String>,
     pub versions_of: String,
     pub cursor: Point,
+    /// Drag to select (the rubber band): where it started and is now, in the file view's own coordinates, and what
+    /// was picked before it (kept with Ctrl or Shift).
+    pub band: Option<(Point, Point, HashSet<String>)>,
+    /// The last place the pointer was over the file view's empty space (the band starts there).
+    pub band_at: Point,
+    /// Sort my Downloads: what it would move (the preview), Show every file, and the note after it sorted
+    /// (moved, folders, left where they were).
+    pub sort_plan: Option<crate::sortdl::Plan>,
+    pub sort_every: bool,
+    pub sorted: Option<(usize, usize, usize)>,
+    pub sorted_seq: u64,
     pub mods: Modifiers,
     pub scroll_y: f32,
     pub area: Cell<(f32, f32)>,
@@ -699,6 +719,12 @@ impl App {
             versions: vec![],
             versions_of: String::new(),
             cursor: Point::new(400.0, 300.0),
+            band: None,
+            band_at: Point::ORIGIN,
+            sort_plan: None,
+            sort_every: false,
+            sorted: None,
+            sorted_seq: 0,
             mods: Modifiers::default(),
             scroll_y: 0.0,
             area: Cell::new((900.0, 560.0)),
@@ -1110,6 +1136,74 @@ impl App {
                     5 + (n.year - hearth_ui::time::local(t).year) as i64
                 }
             }
+        }
+    }
+
+    /// Where each file sits in the file view (its own coordinates), worked out the way view.rs lays them out:
+    /// Details' rows (group headings take a row), Compact's columns, and the icon views' grid.
+    pub fn item_rects(&self) -> Vec<(usize, iced::Rectangle)> {
+        let (w, h) = self.area.get();
+        let mut out = Vec::with_capacity(self.entries.len());
+        match self.view {
+            View::Details => {
+                let rh = ROW_H + 2.0;
+                let (mut k, mut last) = (0usize, String::new());
+                for (i, e) in self.entries.iter().enumerate() {
+                    if self.group != "none" {
+                        let g = self.group_name(e);
+                        if g != last {
+                            k += 1;
+                            last = g;
+                        }
+                    }
+                    out.push((i, iced::Rectangle { x: 12.0, y: 4.0 + k as f32 * rh, width: (w - 24.0).max(1.0), height: ROW_H }));
+                    k += 1;
+                }
+            }
+            View::Compact => {
+                let per = ((h - 12.0) / ROW_H).floor().max(1.0) as usize;
+                for i in 0..self.entries.len() {
+                    let (c, j) = (i / per, i % per);
+                    out.push((i, iced::Rectangle { x: 6.0 + c as f32 * 236.0, y: 6.0 + j as f32 * ROW_H, width: 230.0, height: ROW_H }));
+                }
+            }
+            v => {
+                let (cw, ch) = v.cell();
+                let cols = self.cols.get().max(1);
+                for i in 0..self.entries.len() {
+                    let (r, c) = (i / cols, i % cols);
+                    out.push((i, iced::Rectangle { x: 12.0 + c as f32 * (cw + 8.0), y: 10.0 + r as f32 * (ch + 8.0), width: cw, height: ch }));
+                }
+            }
+        }
+        out
+    }
+
+    /// The band's rectangle, once it's been dragged a few pixels (a plain click on empty space stays a click).
+    pub fn band_rect(&self) -> Option<iced::Rectangle> {
+        let (a, b, _) = self.band.as_ref()?;
+        let r = iced::Rectangle { x: a.x.min(b.x), y: a.y.min(b.y), width: (a.x - b.x).abs(), height: (a.y - b.y).abs() };
+        (r.width > 4.0 || r.height > 4.0).then_some(r)
+    }
+
+    /// What the band covers is picked, with what was picked before it when Ctrl or Shift was held.
+    pub fn band_select(&mut self) {
+        let Some(r) = self.band_rect() else { return };
+        let mut m = self.band.as_ref().map(|b| b.2.clone()).unwrap_or_default();
+        let mut first = None;
+        for (i, ir) in self.item_rects() {
+            if ir.intersects(&r) {
+                if let Some(e) = self.entries.get(i) {
+                    m.insert(e.path.clone());
+                    first.get_or_insert(i);
+                }
+            }
+        }
+        self.marked = m;
+        self.touched = true;
+        if let Some(i) = first {
+            self.cur = i;
+            self.anchor = Some(i);
         }
     }
 
@@ -1743,6 +1837,14 @@ impl App {
             self.touched = true;
             self.cursor = Point::new(382.0, 236.0);
             self.open_menu(false);
+        } else if has("sort") && self.overlay.is_none() {
+            // Sort my Downloads' preview (mockup sort-downloads-1), or with sorted: done, with its note (mockup 2).
+            let then = has("sorted");
+            self.show.clear();
+            tasks.push(crate::sortdl::update(self, crate::sortdl::SMsg::Open));
+            if then {
+                tasks.push(crate::sortdl::update(self, crate::sortdl::SMsg::Go));
+            }
         } else if has("view") && self.overlay.is_none() {
             self.show.clear();
             self.cursor = Point::new(422.0, 116.0);
@@ -2288,6 +2390,7 @@ impl App {
             Op::Rename { to, .. } => vec![to.clone()],
             Op::Create { items } | Op::Copy { items } | Op::Move { items, .. } => items.clone(),
             Op::Trash { paths } => paths.clone(),
+            Op::Sort { moves } => moves.iter().map(|m| m.1.clone()).collect(),
         };
         let what = if n.len() == 1 { format!("“{}”", base(&n[0])) } else { format!("{} items", n.len()) };
         match op {
@@ -2296,6 +2399,7 @@ impl App {
             Op::Trash { .. } => format!("Trash {what}"),
             Op::Copy { .. } => format!("Copy {what}"),
             Op::Move { .. } => format!("Move {what}"),
+            Op::Sort { .. } => format!("Sort my Downloads ({what})"),
         }
     }
 
@@ -2329,6 +2433,15 @@ impl App {
                     JobReq { verb: "move".into(), paths: srcs.clone(), dest: dest.clone(), decide: Map::new(), fmt: String::new(), archive: String::new(), here: false, undo: Some((op.clone(), false)) }
                 };
                 self.start_job(req)
+            }
+            Op::Sort { moves } => {
+                // Quick renames inside Downloads, done here; each only when nothing of that name is in its way.
+                let n = crate::sortdl::swap(moves, is_undo);
+                if is_undo { self.redo.push(op.clone()) } else { self.undo.push(op.clone()) }
+                self.sorted = None;
+                let msg = format!("{}{} ({} of {})", if is_undo { "Undone: " } else { "Redone: " }, App::op_name(&op), n, moves.len());
+                let say = self.say(&msg, false);
+                Task::batch(vec![self.reload(), say])
             }
         }
     }
@@ -2953,6 +3066,9 @@ fn update_inner(app: &mut App, m: Msg) -> Task<Msg> {
             if !app.mods.control() && !app.mods.shift() {
                 app.marked.clear();
             }
+            if app.renaming.is_none() {
+                app.band = Some((app.band_at, app.band_at, app.marked.clone()));
+            }
             if app.renaming.is_some() {
                 return crate::menus::finish_rename(app);
             }
@@ -3080,7 +3196,25 @@ fn update_inner(app: &mut App, m: Msg) -> Task<Msg> {
         Msg::Fx(m) => return crate::extras::update(app, m),
         Msg::Bc(m) => return crate::briefcase::update(app, m),
         Msg::Pad(m) => return crate::pad::update(app, m),
-        Msg::Dnd(m) => return crate::dnd::update(app, m),
+        Msg::Sort(m) => return crate::sortdl::update(app, m),
+        Msg::SortNoteGone(n) => {
+            if app.sorted_seq == n {
+                app.sorted = None;
+            }
+        }
+        Msg::BandMove(p) => {
+            app.band_at = p;
+            if let Some(b) = app.band.as_mut() {
+                b.1 = p;
+                app.band_select();
+            }
+        }
+        Msg::Dnd(m) => {
+            if matches!(m, crate::dnd::DMsg::Release) {
+                app.band = None;
+            }
+            return crate::dnd::update(app, m);
+        }
         Msg::WinOpened(id, w, h) => {
             app.win = (w, h);
             // Dragging out to other apps: on the window's own Wayland connection (dragout.rs).

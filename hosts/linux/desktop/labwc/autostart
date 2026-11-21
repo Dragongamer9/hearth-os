@@ -122,8 +122,23 @@ else
       # Desktop Mode ended (labwc or KWin gone): stop watching, or the "keeps closing" fallback would fire in Game Mode.
       if [ -n "$HEARTH_DESKTOP_PID" ] && ! kill -0 "$HEARTH_DESKTOP_PID" 2>/dev/null; then exit 0; fi
       started=$(date +%s)
-      quickshell -p "$SHARE/desktop/shell" >>"$SHELL_LOG" 2>&1
-      if [ $(($(date +%s) - started)) -lt 20 ]; then fails=$((fails + 1)); else fails=0; fi
+      # A newer Mantel from the Hearth Store (hearth-part, docs/HEARTH-STORE.md "Quick updates") when there's one that
+      # may be used; else, and whenever anything about it is off, the one built into Hearth OS.
+      shell_dir="$SHARE/desktop/shell"
+      if [ -x /usr/libexec/hearth/hearth-part ]; then
+        pick=$(/usr/libexec/hearth/hearth-part path mantel "$shell_dir" 2>/dev/null) || pick="$shell_dir"
+        [ -n "$pick" ] && [ -f "$pick/shell.qml" ] || pick="$shell_dir"
+      else
+        pick="$shell_dir"
+      fi
+      quickshell -p "$pick" >>"$SHELL_LOG" 2>&1
+      if [ $(($(date +%s) - started)) -lt 20 ]; then
+        # The Store's copy closing right away: the built-in one next time (hearth-part says so), not counted here.
+        if [ "$pick" != "$shell_dir" ]; then /usr/libexec/hearth/hearth-part failed mantel 2>/dev/null; echo "--- the Store's Mantel closed right away; the built-in one" >>"$SHELL_LOG"; else fails=$((fails + 1)); fi
+      else
+        fails=0
+        if [ "$pick" != "$shell_dir" ]; then /usr/libexec/hearth/hearth-part ok mantel 2>/dev/null; fi
+      fi
       if [ "$fails" -ge 3 ]; then give_up "Desktop Mode's taskbar and menus (Quickshell) keep closing right after they start."; exit 0; fi
       echo "--- restarting the shell" >>"$SHELL_LOG"
       sleep 1

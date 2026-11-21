@@ -66,7 +66,7 @@ Wording changed from the mockups by the owner's decisions (Nov 19):
 - [x] Hearth AI's update, outlined: "0.5.0 → 0.6.0 · about 120 MB · AppImage in your home folder", Hide what's new ▴, Update — hosts/hearth-ui/apps/store/src/view.rs: "\"Hide what's new ▴\""
 - [x] "What's new in 0.6" with its points, and "Her memories and settings stay as they are. Hearth AI closes for the update and opens again after." — os-bases/anatase/system_files/usr/share/hearth/store/catalog.json: "Her memories and settings stay as they are. Hearth AI closes for the update and opens again after."
 - [x] Command Center: "3.13.0 · this app updates itself. When it has a new version, the button here is "Open to update"." and Up to date — hosts/hearth-ui/apps/store/src/view.rs: "this app updates itself. When it has a new version, the button here is"
-- [x] "Built into Hearth": "Logitech G15 · Beacon · Hearth USB maker", "These come with Hearth OS 1.16 and update with it", "Settings › Updates & recovery ›" — hosts/hearth-ui/apps/store/src/view.rs: "\"Settings › Updates & recovery ›\""
+- [x] "Built into Hearth": built in 1.16; in 1.17 the approved quick-updates mockup puts "Hearth's own apps and desktops" there instead (checklist quick-updates.md) — hosts/hearth-ui/apps/store/src/view.rs: "Hearth's own apps and desktops"
 - [x] "Test versions": "Test versions are off on this PC", its line, "Store settings ›" — hosts/hearth-ui/apps/store/src/view.rs: "\"Test versions are off on this PC\""
 - [x] Bar: A Update, B Back, X Update all, Y What's new — hosts/hearth-ui/apps/store/src/view.rs: "hint(&p, \"Y\", \"What's new\")"
 

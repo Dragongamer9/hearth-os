@@ -2,19 +2,28 @@ package dev.hearthos.tv
 
 import android.annotation.SuppressLint
 import android.app.Activity
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.Message
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.WindowInsets
 import android.view.ViewConfiguration
 import android.view.inputmethod.InputMethodManager
+import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
+import android.webkit.PermissionRequest
+import android.webkit.RenderProcessGoneDetail
+import android.webkit.WebResourceError
+import android.webkit.WebSettings
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -22,6 +31,9 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.FrameLayout
 import androidx.webkit.WebViewAssetLoader
+import androidx.webkit.WebViewCompat
+import androidx.webkit.WebViewFeature
+import kotlin.concurrent.thread
 import org.json.JSONObject
 
 /**
@@ -55,6 +67,8 @@ class ViewerActivity : Activity() {
     private var pressView: View? = null
     private var pressX = 0f
     private var pressY = 0f
+    /** The page's own site (never blocked), kept here because the ad check runs off the window's thread. */
+    @Volatile private var pageSite = ""
 
     private fun video(js: String) = web.evaluateJavascript(
         "(function(){var v=[].slice.call(document.querySelectorAll('video')).sort(function(a,b){return b.clientWidth*b.clientHeight-a.clientWidth*a.clientHeight})[0];if(!v)return false;$js;return true})()", null)
@@ -68,17 +82,78 @@ class ViewerActivity : Activity() {
         web = WebView(this)
         web.isFocusable = true
         web.isFocusableInTouchMode = true
+        // Videos on the saved links (the owner, Nov 21: they didn't load, showed an error screen, went to a random other
+        // website or played black): the TV's own Chrome as the user agent (no "; wv", which some players refuse),
+        // pages from http and https mixed, other sites' players' cookies, pop-ups never opened, and where a page may go
+        // decided by WebNav.
         with(web.settings) {
             javaScriptEnabled = true; domStorageEnabled = true; mediaPlaybackRequiresUserGesture = false
-            userAgentString = Net.UA.replace("Android 12; Hearth TV", "Android 12")
+            userAgentString = WebNav.userAgent(try { WebSettings.getDefaultUserAgent(this@ViewerActivity) } catch (_: Exception) { null })
+            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            setSupportMultipleWindows(true)
+            javaScriptCanOpenWindowsAutomatically = false
+            loadWithOverviewMode = true; useWideViewPort = true
         }
-        web.webViewClient = WebViewClient()
+        try { CookieManager.getInstance().setAcceptThirdPartyCookies(web, true) } catch (_: Exception) {}
+        web.setBackgroundColor(Color.BLACK)
+        // Ads and trackers stopped before they load, and other sites' layers over the video taken away, in every
+        // frame (AdBlock.kt; the owner, Nov 21: QR-code and VPN-deal pop-ups over the videos).
+        thread(isDaemon = true) { AdBlock.load(applicationContext) }
+        pageSite = WebNav.site(Uri.parse(intent.getStringExtra("url") ?: "").host)
+        val everyFrame = try {
+            if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) { WebViewCompat.addDocumentStartJavaScript(web, AdBlock.CLEAN_JS, setOf("*")); true } else false
+        } catch (e: Exception) { Logs.add("adblock: no page cleaner in every frame (${e.message})"); false }
+        web.webViewClient = object : WebViewClient() {
+            override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                if (request.isForMainFrame) return null
+                return if (AdBlock.blocked(request.url.host, pageSite)) AdBlock.empty() else null
+            }
+            override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
+                pageSite = WebNav.site(Uri.parse(url ?: "").host)
+            }
+            override fun onPageFinished(view: WebView, url: String?) {
+                if (!everyFrame) view.evaluateJavascript(AdBlock.CLEAN_JS, null)
+            }
+            override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                if (!request.isForMainFrame) return false
+                val url = request.url.toString()
+                return when (val g = WebNav.decide(url, view.url, request.hasGesture(), request.isRedirect)) {
+                    WebNav.Go.Allow -> false
+                    WebNav.Go.Block -> { Logs.add("theater: stopped going to ${url.take(160)}"); true }
+                    is WebNav.Go.Instead -> { view.loadUrl(g.url); true }
+                }
+            }
+            override fun onReceivedError(view: WebView, request: WebResourceRequest, error: WebResourceError) {
+                if (request.isForMainFrame) Logs.add("theater: ${error.errorCode} ${error.description} at ${request.url.toString().take(160)}")
+            }
+            // The page's renderer crashed (a heavy video page): the page again instead of a dead, black screen.
+            override fun onRenderProcessGone(view: WebView, detail: RenderProcessGoneDetail): Boolean {
+                Logs.add("theater: the page's renderer stopped (crashed=${detail.didCrash()}); opening it again")
+                val url = view.url ?: intent.getStringExtra("url")
+                ui.post { recreateWith(url) }
+                return true
+            }
+        }
         web.webChromeClient = object : WebChromeClient() {
             override fun onShowCustomView(view: View, callback: CustomViewCallback) {
-                full = view; fullCallback = callback; root.addView(view)
+                full = view; fullCallback = callback
+                view.setBackgroundColor(Color.BLACK)
+                root.addView(view, FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT))
                 layer?.bringToFront()           // the pointer stays over the video's full screen
             }
             override fun onHideCustomView() { full?.let { root.removeView(it) }; full = null; fullCallback = null; web.requestFocus() }
+            // Pop-ups and pop-unders are never opened (they were the "random other website").
+            override fun onCreateWindow(view: WebView, isDialog: Boolean, isUserGesture: Boolean, resultMsg: Message): Boolean {
+                Logs.add("theater: a pop-up wasn't opened")
+                return false
+            }
+            // Videos that need DRM (Widevine) may use it; nothing else (camera, microphone) is ever allowed.
+            override fun onPermissionRequest(request: PermissionRequest) {
+                val ok = request.resources.filter { it == PermissionRequest.RESOURCE_PROTECTED_MEDIA_ID }
+                if (ok.isNotEmpty()) request.grant(ok.toTypedArray()) else request.deny()
+            }
+            // No grey "play" picture before a video starts: black, like a TV.
+            override fun getDefaultVideoPoster(): Bitmap? = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply { eraseColor(Color.BLACK) }
         }
         root.addView(web)
 
@@ -92,6 +167,13 @@ class ViewerActivity : Activity() {
         setContentView(root)
         web.loadUrl(intent.getStringExtra("url") ?: "about:blank")
         web.requestFocus()
+    }
+
+    /** The page again after its renderer stopped: a new view, so it plays instead of staying black. */
+    private fun recreateWith(url: String?) {
+        if (isFinishing) return
+        intent.putExtra("url", url ?: "about:blank")
+        recreate()
     }
 
     /** The see-through layer with the pointer (Hearth's own page from the APK, never part of the website). */
@@ -212,16 +294,32 @@ class ViewerActivity : Activity() {
         if (!cancel) ui.postDelayed({ keyboardIfTyping() }, 380)
     }
 
-    /** A tap that lands on a text field opens the TV's keyboard. */
-    private fun keyboardIfTyping() {
+    /** A tap that lands on a text field opens the TV's keyboard, and keeps it open (the owner, Nov 21: on a search bar it
+     *  came up for a split second and went away). The page no longer gets smaller under the keyboard (adjustPan, so
+     *  sites don't close their search box when the page resizes), the keyboard is asked for as one you asked for (not
+     *  an "implicit" one Chromium hides again), and if it's gone within a second while the field still has the cursor,
+     *  it's asked for again (twice at most). */
+    private fun keyboardIfTyping(tries: Int = 2) {
         if (full != null) return
         web.evaluateJavascript(EDITING) { r ->
             if (r != null && r.contains("edit")) {
-                web.requestFocus()
-                getSystemService(InputMethodManager::class.java)?.showSoftInput(web, InputMethodManager.SHOW_IMPLICIT)
+                if (!web.hasFocus()) web.requestFocus()
+                showKeyboard()
+                if (tries > 0) ui.postDelayed({ if (!keyboardShown()) keyboardIfTyping(tries - 1) }, 900)
             }
         }
     }
+
+    private fun showKeyboard() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            web.windowInsetsController?.show(WindowInsets.Type.ime())
+        }
+        getSystemService(InputMethodManager::class.java)?.showSoftInput(web, 0)
+    }
+
+    private fun keyboardShown(): Boolean =
+        if (Build.VERSION.SDK_INT >= 30) web.rootWindowInsets?.isVisible(WindowInsets.Type.ime()) == true
+        else getSystemService(InputMethodManager::class.java)?.isAcceptingText == true
 
     /** What pointer.js asks for (window.HearthPointerNative); [fx], [fy] are fractions of the screen. */
     inner class Native {
