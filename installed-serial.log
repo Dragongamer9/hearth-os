@@ -1,0 +1,7 @@
+[2J[001;001H[=3h[2J[001;001H[2J[001;001H[8;042;160t[2J[001;001H[2J[001;001H[8;056;240t[2J[001;001HBdsDxe: loading Boot0002 "Hearth OS" from HD(1,GPT,ECD96012-1A7E-46B7-BEA4-5F4A9AE5B670,0x800,0x12C000)/\EFI\anatase\shimx64.efi
+BdsDxe: starting Boot0002 "Hearth OS" from HD(1,GPT,ECD96012-1A7E-46B7-BEA4-5F4A9AE5B670,0x800,0x12C000)/\EFI\anatase\shimx64.efi
+P+q6E616D65\[18t7[32766;32766H[6n8[!p]104\[0m[?7h[1G[0J]3008;start=a9f843824156491fbebb59ddc3e3647a;user=root;hostname=anatase;machineid=d64421e1431842c6b474be5173d24d0b;bootid=f27cb204b38b4286b6798f702bfd2f08;pid=1;pidfdid=1;comm=systemd;type=boot\[!p]104\[0m[?7h[1G[0J7[32766;32766H[6n8[!p]104\[0m[?7h[1G[0J7[32766;32766H[6n8]3008;start=338e430d1dd14f4bbe89416b11d2698b;user=root;hostname=tester-hearth;machineid=289d3ce272054d2b8afce9b165cd8748;bootid=f27cb204b38b4286b6798f702bfd2f08;pid=1566;pidfdid=8603;comm=(agetty);servicename=serial-getty@ttyS0.service;invocationid=471a5a3eb3c847f8b0de0f13c6306463;type=service\P+q6E616D65\
+Hearth OS
+Kernel 7.3.4-an02.fc45.x86_64 on x86_64 (ttyS0)
+
+tester-hearth login: 
