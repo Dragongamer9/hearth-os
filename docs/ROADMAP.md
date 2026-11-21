@@ -8,6 +8,7 @@ number. Work lands on `bughunt` and goes out on `main` when it's tested. What's 
 
 ## Planned for 1.17
 
+- [x] The Store list publishes on its own, without a Hearth OS release (the owner, Nov 21: "do it"): the live list is the `store` branch's catalog.json; Actions › Publish the Hearth Store list checks it (tools/store-check.py), and the website workflow signs and publishes it (docs/HEARTH-STORE.md). Works once 1.17 is on main (needs testing on a device)
 - [ ] Hearth Files does everything Windows 11's File Explorer does (the owner, Nov 21: "add to 1.17 EVERYTHING the windows file manager can do our Files app needs to be able to do"). Mockups first for every new screen, approved by the owner, then a checklist (docs/mockups/checklists/files-explorer.md) with every part below, each pictured in CI; the owner's earlier choices stay unless he says (no Gallery or separate Home server in the left menu, Nov 19). In the Rust Files (hosts/hearth-ui/apps/files) and, where Mantel's QML Files lacks it, there too:
   - [ ] Windows and tabs: new window (Ctrl+N), new / close / duplicate tab (Ctrl+T, Ctrl+W), reopen a closed tab, drag a tab out into its own window or onto another window, drag files onto a tab
   - [ ] Panes: navigation (show all folders, expand to the open folder, drag to resize), preview pane (Alt+P: pictures, video, sound, PDF, text and code, documents), details pane (Alt+Shift+P: size, dates, dimensions, length, tags; edit what can be edited)

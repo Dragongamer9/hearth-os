@@ -1,0 +1,40 @@
+# Publish the Hearth Store list (docs/HEARTH-STORE.md): the live list on the `store` branch, checked, then signed and
+# put on hearthos.fun/store/catalog.json by the website workflow, without a Hearth OS release. Run by hand only, on
+# the owner's okay (Actions › Publish the Hearth Store list › Run workflow). Devices take the list only when it's
+# signed with the owner's key and its serial is higher than theirs, so a list that's wrong can't reach them unsigned.
+name: Publish the Hearth Store list
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: write      # starts the website workflow on main
+
+concurrency:
+  group: store-list
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Check the list
+        run: |
+          git fetch --depth=1 origin store
+          git show FETCH_HEAD:catalog.json > "$RUNNER_TEMP/catalog.json"
+          python3 tools/store-check.py "$RUNNER_TEMP/catalog.json" os-bases/anatase/system_files/usr/share/hearth/store/catalog.json
+          live=$(curl -fsS https://hearthos.fun/store/catalog.json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("serial",0))' 2>/dev/null || echo 0)
+          new=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["serial"])' "$RUNNER_TEMP/catalog.json")
+          if [ "$new" -le "$live" ]; then
+            echo "::error title=Hearth Store list::serial $new isn't higher than the published list's ($live): raise it by one on the store branch, or devices keep the old list"
+            exit 1
+          fi
+          echo "::notice title=Hearth Store list::serial $live -> $new"
+      - name: Sign and publish it (the website workflow on main)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run site.yml --ref main -R "$GITHUB_REPOSITORY"

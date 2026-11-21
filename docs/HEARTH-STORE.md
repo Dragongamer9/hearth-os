@@ -62,6 +62,12 @@ SHA-256 once, matches it with the newest release and shows that version.
   from the web: it uses the built-in one. A list that isn't signed, is signed by another key, or was changed is ignored.
 - The website workflow (`.github/workflows/site.yml`) publishes and signs the list from the repository secret
   `HEARTH_STORE_SIGNING_KEY`; without the secret it publishes nothing (the Store is fine with the built-in list).
+- **The live list is the `store` branch's `catalog.json`** (1.17), so apps are added or changed without a Hearth OS
+  release: change it there, raise its `serial` by one, then Actions › **Publish the Hearth Store list** (only on the
+  owner's okay). That checks it (`tools/store-check.py`: valid, a serial higher than the published one and the
+  built-in one, every app whole) and starts the website workflow on main, which signs and publishes it. Every website
+  publish signs whichever of the branch's list and the built-in list has the higher serial, and each Hearth OS release
+  brings the built-in list up to the branch's.
 - Each app's newest version comes from its **public GitHub release page** (no account, no sign-in, no token): stable is
   the newest published release (never drafts; pre-releases only with "Get test versions" on). The list may instead
   pin a version with its SHA-256 (`"pin": {"version", "url", "sha256", "size"}`).
