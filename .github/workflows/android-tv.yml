@@ -146,13 +146,23 @@ jobs:
           name: hearth-tv-${{ steps.v.outputs.version }}
           path: hosts/android-tv/out/*.apk
           if-no-files-found: error
-      - name: Add the APK to the newest release
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      # The release of the Hearth OS this commit is (release.yml makes it from the same push, so it's waited for up to
+      # 30 minutes), else the newest published one. Never a draft: Hearth TV's own update check only sees published
+      # releases (Nov 21: 1.2 went on 1.14's, which was then made a draft, so TVs couldn't find it).
+      - name: Add the APK to this Hearth OS's release
+        if: github.ref == 'refs/heads/main'
         env:
           GH_TOKEN: ${{ github.token }}
           V: ${{ steps.v.outputs.version }}
         run: |
-          tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null || true)
+          os=$(python3 -c 'import json; print(json.load(open("hosts/linux/package.json"))["version"])')
+          tag=""
+          for i in $(seq 1 60); do
+            t=$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v$os" --jq 'select(.draft == false) | .tag_name' 2>/dev/null || true)
+            [ -n "$t" ] && { tag=$t; break; }
+            sleep 30
+          done
+          [ -n "$tag" ] || tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name 2>/dev/null || true)
           [ -n "$tag" ] || { echo "::warning title=No release::the APK stays an artifact"; exit 0; }
           gh release upload "$tag" "out/hearth-tv-$V.apk" --clobber --repo "$GITHUB_REPOSITORY"
           echo "::notice title=Released::hearth-tv-$V.apk on $tag"
