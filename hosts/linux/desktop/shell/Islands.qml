@@ -57,7 +57,10 @@ PanelWindow {
     readonly property int band: islandH + gapOut + gapIn
     readonly property bool gaming: Theme.look === "gaming"
     // The clock in the middle of a horizontal bar; in a bar with your apps, or down a side, a compact clock at the end.
-    readonly property bool pillCentred: !vertical && !holdsApps && !shelf
+    readonly property bool pillCentred: !vertical && !holdsApps && !shelf && !centred
+    // Desktop layouts (hearth-layout): blocks in the middle of a bar across the top or bottom (Windows 11-style: the
+    // flame, Search, Task view and your apps, centred). Down a side they go at the start.
+    readonly property bool centred: !vertical && !shelf && (BarLayout.layout.centre || []).length > 0
 
     // ---- auto-hide
     readonly property bool autoHide: Theme.barAutoHide && !shelf
@@ -246,6 +249,9 @@ PanelWindow {
                 rowSpacing: isl.floating ? 10 : 6
                 columnSpacing: isl.floating ? 10 : 6
 
+                // ---- Game Mode first (a layout's choice: Windows 11-style)
+                Loader { active: Settings.gameModeAt === "start"; visible: active && !Settings.gameModeOff; sourceComponent: cGameMode; Layout.alignment: Qt.AlignCenter; Layout.preferredHeight: isl.vertical ? isl.islandH - 6 : isl.style === "bar" ? isl.islandH - 8 : isl.islandH; Layout.preferredWidth: isl.vertical ? isl.islandH - 6 : (item ? item.implicitWidth : 0) }
+
                 // ---- start island: the flame, the desktops, the window in front
                 Island {
                     id: leftIsland
@@ -266,12 +272,12 @@ PanelWindow {
 
                 // ---- your apps (floating app menu off): the dock attached to the bar
                 Island {
-                    visible: isl.holdsApps && apps.status === Loader.Ready
+                    visible: isl.holdsApps && !isl.centred && apps.status === Loader.Ready
                     along: apps.item ? (isl.vertical ? apps.item.implicitHeight : apps.item.implicitWidth) + (isl.floating ? 16 : 4) : 0
                     Loader {
                         id: apps
                         anchors.centerIn: parent
-                        active: isl.holdsApps
+                        active: isl.holdsApps && !isl.centred
                         source: "TaskStrip.qml"
                         onLoaded: {
                             item.menu = Qt.binding(() => isl.menu);
@@ -329,6 +335,9 @@ PanelWindow {
                     }
                 }
 
+                // ---- Game Mode before the status island (a layout's choice: macOS-style)
+                Loader { active: Settings.gameModeAt === "before-status"; visible: active && !Settings.gameModeOff; sourceComponent: cGameMode; Layout.alignment: Qt.AlignCenter; Layout.preferredHeight: isl.vertical ? isl.islandH - 6 : isl.style === "bar" ? isl.islandH - 8 : isl.islandH; Layout.preferredWidth: isl.vertical ? isl.islandH - 6 : (item ? item.implicitWidth : 0) }
+
                 // ---- the status island
                 Island {
                     id: statusIsland
@@ -347,8 +356,41 @@ PanelWindow {
                     }
                 }
 
-                // ---- Game Mode: always here, in every look and on every edge, the biggest target in the bar
-                GameModeButton { Layout.preferredHeight: isl.vertical ? isl.islandH - 6 : isl.style === "bar" ? isl.islandH - 8 : isl.islandH; Layout.preferredWidth: isl.vertical ? isl.islandH - 6 : implicitWidth }
+                // ---- Game Mode: always here, in every look and on every edge, the biggest target in the bar (last, unless
+                // a layout put it first or before the status island: one of the three is always on)
+                Loader { active: Settings.gameModeAt !== "start" && Settings.gameModeAt !== "before-status"; visible: active && !Settings.gameModeOff; sourceComponent: cGameMode; Layout.alignment: Qt.AlignCenter; Layout.preferredHeight: isl.vertical ? isl.islandH - 6 : isl.style === "bar" ? isl.islandH - 8 : isl.islandH; Layout.preferredWidth: isl.vertical ? isl.islandH - 6 : (item ? item.implicitWidth : 0) }
+            }
+
+            // ---- the middle of the bar (desktop layouts): the blocks put there, then your apps when the bar holds them
+            Island {
+                id: centreIsland
+                visible: isl.centred
+                anchors.horizontalCenter: parent.horizontalCenter
+                height: parent.height
+                width: centreRow.implicitWidth + (isl.floating ? 16 : 4)
+                RowLayout {
+                    id: centreRow
+                    anchors.centerIn: parent
+                    spacing: 8 * isl.k
+                    Repeater { model: isl.centred ? isl.zoneItems("centre") : []; delegate: BarSlot {} }
+                    Loader {
+                        id: centreApps
+                        Layout.alignment: Qt.AlignCenter
+                        active: isl.holdsApps && isl.centred
+                        source: "TaskStrip.qml"
+                        onLoaded: {
+                            item.menu = Qt.binding(() => isl.menu);
+                            item.screen = Qt.binding(() => isl.screen);
+                            item.vertical = false;
+                            item.edge = Qt.binding(() => isl.edge);
+                            item.side = Qt.binding(() => Math.max(30, isl.islandH - (isl.floating ? 10 : 8)));
+                            item.barW = Qt.binding(() => isl.width);
+                            item.barH = Qt.binding(() => isl.height);
+                            item.primary = Qt.binding(() => isl.primary);
+                        }
+                        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: your apps couldn't load in the middle of the bar (TaskStrip.qml)")
+                    }
+                }
             }
 
             // ---- the centre pill: the clock, what's playing, the newest notification
@@ -416,7 +458,9 @@ PanelWindow {
     // Each can go at the start or the end of the bar, in any order, or be hidden (BarLayout.qml; Settings › Bar and
     // dock › Arrange the bar, or right-click the bar). Game Mode always stays, last.
     function zoneItems(z) {
-        const l = BarLayout.layout[z] || [];
+        // down a side, a layout's middle blocks go at the start
+        const l = z === "start" && !isl.centred ? (BarLayout.layout.start || []).concat(isl.vertical || isl.shelf ? (BarLayout.layout.centre || []) : [])
+            : BarLayout.layout[z] || [];
         const out = [];
         for (const id of l) {
             out.push(id);
@@ -446,6 +490,12 @@ PanelWindow {
         case "volume": return cVolume;
         case "battery": return cBattery;
         case "notifications": return cNotifications;
+        case "overview": return cBlock;
+        case "taskview": return cBlock;
+        case "appname": return cBlock;
+        case "appmenus": return cBlock;
+        case "quickaccess": return cBlock;
+        case "showdesktop": return cBlock;
         }
         return null;
     }
@@ -454,9 +504,25 @@ PanelWindow {
         Layout.alignment: Qt.AlignCenter
         visible: status === Loader.Ready && !!item && item.wanted !== false
         sourceComponent: isl.compFor(modelData)
+        onLoaded: if (item && item.objectName === "layoutBlock") item.kind = modelData
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the bar's " + modelData + " couldn't load")
     }
 
+    // Desktop layouts' own blocks (LayoutBlock.qml: the same in the extra panels)
+    Component {
+        id: cBlock
+        LayoutBlock {
+            objectName: "layoutBlock"
+            side: Math.max(26, isl.islandH - 12)
+            vertical: isl.vertical
+            edge: isl.edge
+            menu: isl.menu
+        }
+    }
+    Component {
+        id: cGameMode
+        GameModeButton {}
+    }
     Component {
         id: cMenu
         IslandButton {

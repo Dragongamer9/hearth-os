@@ -25,6 +25,8 @@ pub const DESKTOP_KEYS: &[(&str, &[&str])] = &[
     ("appMenu", &["", "hearth", "centred", "tiles", "start", "classic"]),
     ("menuStyle", &["", "today", "windows", "compact", "tiles"]),
     ("barStyle", &["", "floating", "bar"]),
+    // Game Mode in the main bar: last (""), first ("start": Windows 11-style) or before the status island (macOS-style)
+    ("gameModeAt", &["", "start", "before-status"]),
 ];
 
 pub const EDGES: &[&str] = &["top", "bottom", "left", "right"];

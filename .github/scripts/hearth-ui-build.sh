@@ -10,7 +10,7 @@ mkdir -p /tmp/w/hosts/linux/desktop/theme /tmp/w/cargo
 # A bootc base's /root is a link to /var/roothome, which isn't there in a plain container: cargo's home goes to /tmp.
 export HOME=/tmp/w CARGO_HOME=/tmp/w/cargo
 # hearth-ui includes hearth-core's settings_file.rs by path, and carries palettes.json as its built-in look.
-cp -a /src/hosts/hearth-ui /src/hosts/hearth-core /tmp/w/hosts/
+cp -a /src/hosts/hearth-ui /src/hosts/hearth-core /src/hosts/hearth-layout /tmp/w/hosts/
 cp /src/hosts/linux/desktop/theme/palettes.json /tmp/w/hosts/linux/desktop/theme/
 # Settings' KDE pages (cats/kde.rs draws them from the same file hearth-kde-settings checks against).
 mkdir -p /tmp/w/hosts/linux/desktop/shell && cp /src/hosts/linux/desktop/shell/kde-settings.json /tmp/w/hosts/linux/desktop/shell/
@@ -22,7 +22,12 @@ if ! cargo build --release --workspace > /tmp/w/build.log 2>&1; then
   done
   grep -q '^error' /tmp/w/build.log || echo "::error title=Hearth's pure-Rust apps build::$(tail -c 3000 /tmp/w/build.log | tr '\n' '|')"
 fi
+# Desktop layouts (hosts/hearth-layout): its command, which both Mantels' Settings use (Settings' Rust page uses its library)
+if ! cargo build --release --manifest-path /tmp/w/hosts/hearth-layout/Cargo.toml > /tmp/w/build-layout.log 2>&1; then
+  grep -A8 '^error' /tmp/w/build-layout.log | head -40 | tr '\n' '|' | cut -c1-3500 | while read -r l; do echo "::error title=hearth-layout build::$l"; done
+fi
 mkdir -p /tmp/w/out
+cp /tmp/w/hosts/hearth-layout/target/release/hearth-layout /tmp/w/out/ || { echo "::error title=hearth-layout build::hearth-layout didn't build"; exit 1; }
 for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app; do
   test -x "target/release/$b" || { echo "::error title=Hearth's pure-Rust apps build::$b didn't build"; exit 1; }
   cp "target/release/$b" /tmp/w/out/

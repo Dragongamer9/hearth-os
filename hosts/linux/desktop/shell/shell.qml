@@ -176,7 +176,26 @@ ShellRoot {
         }
     }
     // ---- Taskbar & desktop: right-click menus, the desktop's small dialogs, the clock's calendar and notifications.
-    PopMenu { id: popMenu }
+    PopMenu { id: popMenu; Component.onCompleted: DeskState.popMenu = popMenu }
+    // The overview for desktop layouts where KWin's isn't there (labwc; Overview.qml, loaded by file name and only once
+    // it's asked for, so a problem in it never touches the rest).
+    Loader {
+        id: overview
+        active: false
+        source: "Overview.qml"
+        onLoaded: {
+            item.searchRequested.connect(q => { if (q === "") launcher.shown = true; else launcher.searchFor(q); });
+            item.open();
+        }
+        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the overview couldn't load (Overview.qml)")
+        function toggle() { if (!active) active = true; else if (item) item.toggle(); }
+    }
+    IpcHandler {
+        target: "overview"
+        function toggle(): void { overview.toggle(); }
+        function close(): void { if (overview.item) overview.item.close(); }
+        function shown(): bool { return !!overview.item && overview.item.shown; }
+    }
     DeskDialog { id: deskDialog }
     ClockPanel { id: calendar }
     Binding { target: DeskState; property: "overlayShown"; value: popMenu.shown || deskDialog.shown || calendar.shown }
