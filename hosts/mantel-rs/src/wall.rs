@@ -131,6 +131,43 @@ impl Canvas {
 /// moving ones with Reduce motion or without a GPU).
 pub fn compose(l: &Look, size: Size) -> Handle {
     let (w, h) = (size.width.max(1.0).round() as u32, size.height.max(1.0).round() as u32);
+    // Kept as a file (~/.cache/hearth), drawn from there: no second copy of the picture stays in memory once it's on
+    // the screen, and the next start uses it at once.
+    let key = {
+        use std::hash::{Hash, Hasher};
+        let mut hs = std::collections::hash_map::DefaultHasher::new();
+        let sc = scene(l);
+        let when = match &sc {
+            Scene::Picture(f) => std::fs::metadata(f).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs()).unwrap_or(0),
+            _ => 0,
+        };
+        (format!("{sc:?}"), when, l.name.as_str(), l.p.dark, format!("{:?}", l.p.bg2), w, h, 2u8).hash(&mut hs);
+        hs.finish()
+    };
+    let dir = std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).unwrap_or_else(|| std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default().join(".cache")).join("hearth");
+    let file = dir.join(format!("mantel-wall-{key:016x}.png"));
+    if file.exists() {
+        return Handle::from_path(file);
+    }
+    let pixels = draw(l, w, h);
+    let _ = std::fs::create_dir_all(&dir);
+    // older ones go (one per look and screen size is kept)
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            let n = e.file_name().to_string_lossy().to_string();
+            if n.starts_with("mantel-wall-") && n.ends_with(".png") {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
+    let tmp = dir.join(format!(".mantel-wall-{key:016x}.png"));
+    match image::save_buffer(&tmp, &pixels, w, h, image::ExtendedColorType::Rgba8).and_then(|_| std::fs::rename(&tmp, &file).map_err(image::ImageError::IoError)) {
+        Ok(()) => Handle::from_path(file),
+        Err(_) => Handle::from_rgba(w, h, pixels),
+    }
+}
+
+fn draw(l: &Look, w: u32, h: u32) -> Vec<u8> {
     let (wf, hf) = (w as f32, h as f32);
     let img = |f: &str| look::shell_file(&format!("images/{f}"));
     let mut c = Canvas::new(w, h, l.p.bg);
@@ -163,7 +200,7 @@ pub fn compose(l: &Look, size: Size) -> Handle {
             c.gradient(&[(0.0, Color::TRANSPARENT), (0.55, Color::TRANSPARENT), (1.0, argb("#80090c12"))]);
         }
     }
-    Handle::from_rgba(w, h, c.rgba())
+    c.rgba()
 }
 
 /// A picture with its opacity blended in (the menu's glow), made once per file and opacity.

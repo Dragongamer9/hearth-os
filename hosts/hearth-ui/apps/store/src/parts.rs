@@ -86,6 +86,17 @@ pub fn running(h: Option<&Have>, hearth: &str) -> String {
     }
 }
 
+/// A test version's update: only once you've got it, made for this Hearth OS, newer than yours.
+pub fn test_offer<'a>(p: &'a Part, h: Option<&Have>, hearth: &str) -> Option<&'a Part> {
+    let h = h?;
+    (fits(&p.os, hearth) && h.version != p.version && crate::newer(&p.version, &h.version)).then_some(p)
+}
+
+/// A test version can be got here: made for this Hearth OS (whatever its own number).
+pub fn test_fits(p: &Part, hearth: &str) -> bool {
+    fits(&p.os, hearth)
+}
+
 /// The update to offer: made for this Hearth OS and newer than what runs (and than the built-in one).
 pub fn offer<'a>(p: &'a Part, h: Option<&Have>, hearth: &str) -> Option<&'a Part> {
     if !fits(&p.os, hearth) {
@@ -113,7 +124,7 @@ fn helper_run(args: &[&str]) -> Result<(), String> {
 /// Mantel, its desktop restarts to use it (labwc's autostart starts it again at once; windows stay open).
 pub fn install(p: &Part) -> Result<(), String> {
     helper_run(&["install", &p.id, &p.version, &p.url, &p.sha256, &p.os, &p.path])?;
-    if p.id == "mantel" {
+    if p.id == "mantel" || p.id == "mantel-rust" {
         restart_mantel();
     }
     Ok(())
@@ -122,7 +133,7 @@ pub fn install(p: &Part) -> Result<(), String> {
 /// Back to the built-in one for good (the copy goes to the Trash).
 pub fn remove(id: &str) -> Result<(), String> {
     helper_run(&["remove", id])?;
-    if id == "mantel" {
+    if id == "mantel" || id == "mantel-rust" {
         restart_mantel();
     }
     Ok(())
@@ -137,6 +148,8 @@ fn restart_mantel() {
     // Only Mantel's own shell (quickshell -p …/shell), only yours; the session's loop starts it again right away.
     let uid = unsafe { libc::getuid() }.to_string();
     let _ = std::process::Command::new("pkill").args(["-u", &uid, "-f", "quickshell -p .*/shell$"]).status();
+    // Mantel in Rust (test): its one program; labwc's autostart then starts whichever may be used.
+    let _ = std::process::Command::new("pkill").args(["-u", &uid, "-f", "/hearth-mantel session$"]).status();
 }
 
 #[cfg(test)]
@@ -145,6 +158,17 @@ mod tests {
 
     fn part(v: &str, os: &str) -> Part {
         Part { id: "hearth-files-app".into(), version: v.into(), os: os.into(), path: "hearth-files-app".into(), url: "https://x/y".into(), sha256: "0".repeat(64), size: 1, notes: vec![] }
+    }
+
+    #[test]
+    fn a_test_version_is_only_updated_once_you_have_it() {
+        let p = part("1.17.2", "1.17");
+        assert!(test_offer(&p, None, "1.17").is_none(), "not got: no update offered");
+        let h = Have { version: "1.17.1".into(), os: "1.17".into(), ..Default::default() };
+        assert!(test_offer(&p, Some(&h), "1.17.4").is_some(), "its own number, not the Hearth OS one");
+        let same = Have { version: "1.17.2".into(), os: "1.17".into(), ..Default::default() };
+        assert!(test_offer(&p, Some(&same), "1.17").is_none());
+        assert!(test_fits(&p, "1.17.3") && !test_fits(&p, "1.18"));
     }
 
     #[test]

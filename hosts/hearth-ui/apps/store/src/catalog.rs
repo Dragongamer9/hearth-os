@@ -77,6 +77,9 @@ pub struct Entry {
     /// A quick update for one of Hearth's own apps or Mantel (parts.rs, hearth-part): its newer copy, for the Hearth
     /// OS it names, with the SHA-256 this signed list vouches for.
     pub part: Option<Part>,
+    /// A test version (Mantel in Rust): shown only with "Get test versions" on (or while it's installed), got and
+    /// removed by hand, never offered as an update to a built-in app.
+    pub test: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -152,6 +155,7 @@ impl Entry {
         });
         let short = s(v, "short");
         Some(Entry {
+            test: v.get("test").and_then(Value::as_bool).unwrap_or(false) || v.get("part").and_then(|x| x.get("test")).and_then(Value::as_bool).unwrap_or(false),
             part,
             short: if short.is_empty() { name.clone() } else { short },
             tagline: s(v, "tagline"),
@@ -275,6 +279,9 @@ pub fn load() -> Catalog {
             cat.apps.push(e);
         }
     }
+    // Test versions: only with "Get test versions" on, or while one is installed (so it can be removed).
+    let test = crate::prefs::load().test;
+    cat.apps.retain(|e| !e.test || test || e.part.as_ref().map(|p| crate::parts::have(&p.id).is_some()).unwrap_or(false));
     cat
 }
 
