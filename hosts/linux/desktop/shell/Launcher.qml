@@ -75,10 +75,18 @@ PanelWindow {
         menuRequested(e, p.x, p.y);
     }
 
-    visible: shown
+    // 1.17 fix (the owner's dad's PC, Nov 21): the menu's window stays up, empty and click-through, for a while after
+    // it closes instead of going away at once. Hiding it while its pictures and icons were still loading crashed
+    // Quickshell on Fedora's Qt about two seconds after the menu closed (a redraw queued for a part of the closed
+    // window: QQuickItemPrivate::addToDirtyList). Nothing is drawn or clickable in that time.
+    visible: shown || linger.running
+    Timer { id: linger; interval: 20000 }
+    mask: Region { item: root.shown ? hitAll : null }
+    Item { id: hitAll; anchors.fill: parent }
+    contentItem.visible: root.shown
     onShownChanged: {
         if (shown) freshRates();
-        if (!shown) { fileHits = []; return; }
+        if (!shown) { linger.restart(); fileHits = []; return; }
         search.text = ""; folderOpen = false; grid.currentIndex = 0; tabFocus = false; loadGames(); systemList.running = true;
         if (styled) { styleLoader.item.opened(); readRecentFiles(); if (styleLoader.item.wantsLive) readLive(); }
         else search.forceActiveFocus();
@@ -90,7 +98,7 @@ PanelWindow {
     WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
     anchors { top: true; bottom: true; left: true; right: true }
-    color: styled ? styleLoader.item.scrim : Qt.rgba(0.02, 0.02, 0.03, 0.72)
+    color: !shown ? "transparent" : styled ? styleLoader.item.scrim : Qt.rgba(0.02, 0.02, 0.03, 0.72)
 
     // Every app with a .desktop file, A–Z, filtered by what you type.
     // Not the Hearth app itself (nimbus.desktop, "Hearth"): that's the archived Game Mode in a window, hidden everywhere

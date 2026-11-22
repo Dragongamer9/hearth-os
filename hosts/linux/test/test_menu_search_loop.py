@@ -31,3 +31,14 @@ class NoItemParticles(unittest.TestCase):
                 text = open(os.path.join(SHELL, name), encoding='utf-8').read()
                 code = '\n'.join(l for l in text.splitlines() if not l.strip().startswith('//'))
                 self.assertNotIn('ItemParticle {', code, name)
+
+
+class MenuWindowLingers(unittest.TestCase):
+    """The app menu's window stays up (empty, click-through) for a while after the menu closes: hiding it at once
+    while its icons were still loading crashed Quickshell (the owner's dad's PC, Nov 21, 2026)."""
+    def test_lingers_click_through(self):
+        src = open(os.path.join(SHELL, 'Launcher.qml'), encoding='utf-8').read()
+        self.assertIn('visible: shown || linger.running', src)
+        self.assertIn('mask: Region { item: root.shown ? hitAll : null }', src)
+        self.assertIn('contentItem.visible: root.shown', src)
+        self.assertIn('linger.restart()', src)
