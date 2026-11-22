@@ -267,7 +267,11 @@ PanelWindow {
     function freshRates() { if (root.searchPrefs.currencyOnline !== false) Quickshell.execDetached(["python3", root.searchHelper, "rates", "--if-old"]); }
     function answersFor(raw) {
         const off = (root.searchPrefs && typeof root.searchPrefs.pluginsOff === "object" && root.searchPrefs.pluginsOff) || {};
-        sources.lookup(raw);
+        // 1.17 fix (the owner's dad's PC, Nov 21): lookup() starts a timer and reads whether it runs, and this is called
+        // inside the menus' result bindings, so the binding watched that timer: every 50 ms it ran again ("Binding loop
+        // detected for property result"), and the result list was thrown away and built again 20 times a second, which
+        // crashed Quickshell on Fedora's Qt. Done right after the binding instead, where nothing watches it.
+        Qt.callLater(sources.lookup, raw);
         return Runners.run(raw, { rates: root.rates, recent: root.recentFiles, windows: root.windowList || [], src: sources.src, off: off });
     }
     // 1.14: the data of the newer plugins (bookmarks, desktops, kill, world clock, spelling, media, store, contacts,
