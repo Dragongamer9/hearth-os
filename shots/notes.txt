@@ -1,0 +1,8 @@
+qml Mantel at rest for 60 s: 0.12% of one CPU, 243 MB in memory (1 processes)
+rust Mantel at rest for 60 s: 0.08% of one CPU, 262 MB in memory (1 processes)
+hearth-dark-1-desktop: 0.2% different
+hearth-dark-2-menu: 0.7% different
+hearth-light-1-desktop: 0.3% different
+hearth-light-2-menu: 1.9% different
+steam-dark-1-desktop: 0.3% different
+steam-dark-2-menu: 0.7% different
