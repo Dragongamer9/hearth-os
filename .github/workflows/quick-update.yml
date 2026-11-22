@@ -111,9 +111,17 @@ jobs:
                   break
           else:
               e = {"id": "part-" + app, "name": names.get(app, app), "kind": "builtin", "part": part}
-              if app != "mantel":
+              if app not in ("mantel", "mantel-rust"):
                   e["open"] = app
               d["apps"].append(e)
+          # Mantel in Rust is a test version: shown only with "Get test versions" on, got and removed by hand.
+          if app == "mantel-rust":
+              e["test"] = True
+              e.setdefault("short", "Mantel in Rust")
+              e.setdefault("card", "Mantel drawn in Rust: lighter and quicker. A test.")
+              e.setdefault("icon", "Rs")
+              e.setdefault("from", "#ff8a3d")
+              e.setdefault("to", "#b7410e")
           d["serial"] = int(d.get("serial", 0)) + 1
           tmp = p + ".tmp"
           with open(tmp, "w", encoding="utf-8") as f:

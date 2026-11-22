@@ -421,6 +421,7 @@ fn status_chip<'a>(a: &App, e: &Entry, st: &State, focused_btn: bool) -> E<'a, M
     match st {
         State::UpToDate(_) => chip(&p, "Installed", Chip::Ok),
         State::Ready(..) => click(chip(&p, if e.self_updates { "Open to update" } else { "Update" }, Chip::Up), primary(e, st)),
+        State::BuiltIn if e.test => chip(&p, "TEST", Chip::Test),
         State::BuiltIn => chip(&p, "Built in", Chip::Built),
         State::Coming => look::dashed(chip(&p, "Coming", Chip::Coming), 13.0, tone(&p).line),
         State::Get(_) => btn(&p, "Install", B::Normal, false, focused_btn, if a.offline() { None } else { primary(e, st) }),
@@ -632,6 +633,13 @@ fn built_in(a: &App) -> E<'_, Msg> {
     for e in a.cat.apps.iter().filter(|e| e.kind == Kind::BuiltIn) {
         let here = a.here.contains(&e.id);
         let id = format!("b-{}", e.id);
+        if e.test {
+            // a test version: marked TEST, opened to its own page (Get / Remove)
+            let got = a.parts.contains_key(&e.id);
+            let end: E<Msg> = row![chip(&p, "TEST", Chip::Test), btn(&p, if got { "Remove…" } else { "Get…" }, B::Normal, false, false, Some(Msg::OpenApp(e.id.clone())))].spacing(z(10.0)).align_y(iced::Center).into();
+            c = c.push(srow(&p, app_icon(e, z(54.0)), e.name.clone(), e.card.clone(), end, lit(a, &id), Some(Msg::OpenApp(e.id.clone()))));
+            continue;
+        }
         let end: E<Msg> = row![chip(&p, "Built in", Chip::Built), btn(&p, "Open", B::Normal, false, false, if here { Some(Msg::Launch(e.id.clone())) } else { None })].spacing(z(10.0)).align_y(iced::Center).into();
         c = c.push(srow(&p, app_icon(e, z(54.0)), e.name.clone(), if here { e.card.clone() } else { format!("{} · not on this PC", e.card) }, end, lit(a, &id), Some(Msg::OpenApp(e.id.clone()))));
     }
@@ -656,6 +664,7 @@ fn app_chips<'a>(a: &App, e: &Entry, st: &State) -> E<'a, Msg> {
     match st {
         State::UpToDate(i) => r = r.push(chip(&p, format!("Installed · {}", i.version), Chip::Ok)),
         State::Ready(i, _) => r = r.push(chip(&p, format!("Installed · {}", i.version), Chip::Ok)).push(chip(&p, "Update ready", Chip::Up)),
+        State::BuiltIn if e.test => r = r.push(chip(&p, "TEST", Chip::Test)),
         State::BuiltIn => r = r.push(chip(&p, "Built in", Chip::Built)),
         State::Coming => r = r.push(look::dashed(chip(&p, "Coming", Chip::Coming), 13.0, tone(&p).line)),
         State::Get(_) => {}
@@ -690,7 +699,9 @@ fn app_head<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let st = a.state(e);
-    let line = if e.part.is_some() {
+    let line = if e.test {
+        format!("Test version · by {}", e.author)
+    } else if e.part.is_some() {
         format!("Built into Hearth OS · by {}", e.author)
     } else if e.tagline.is_empty() {
         e.author.clone()
@@ -698,7 +709,9 @@ fn app_head<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
         format!("{} · {}", e.author, e.tagline)
     };
     let mut right = Row::new().spacing(z(12.0));
-    if a.dlg.is_none() {
+    if e.test {
+        right = right.push(look::chip(&p, "TEST", look::Chip::Test));
+    } else if a.dlg.is_none() {
         let on = if matches!(st, State::Coming) { None } else { primary(e, &st) };
         right = right.push(btn(&p, open_label(e, &st), B::Primary, true, lit(a, "open"), if a.offline() && matches!(st, State::Get(_) | State::Ready(..)) && !e.self_updates { None } else { on }));
         if a.inst.contains_key(&e.id) {
@@ -721,6 +734,63 @@ fn app_head<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
 
 /// One of Hearth's own apps or Mantel (mockup 1.17-quick-updates 2): what a quick update is, which one runs, and
 /// going back to the built-in one.
+/// A test version (Mantel in Rust): what it is, Get or Remove. Shown only with "Get test versions" on.
+fn test_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
+    let p = a.p;
+    let tn = tone(&p);
+    let have = a.parts.get(&e.id);
+    let pt = e.part.clone();
+    let mut left = Column::new().push(container(ts("A test version", f(21.0), tn.text)).padding(look::pad(0.0, 0.0, z(10.0), 0.0)));
+    let about = if e.about.is_empty() {
+        "Mantel drawn in Rust: the same bar, dock, wallpaper and app menu, lighter and quicker. Still being built: Quick Access, notifications, tray icons and right-click menus aren't in it yet.".to_string()
+    } else {
+        e.about.clone()
+    };
+    left = left.push(t(about, f(16.0), Pal::mix(tn.text, tn.muted, 0.12)));
+    left = left.push(container(bullets(&p, &[
+        "Only on this PC, only when you get it here: the usual one stays in Hearth OS, unchanged.".to_string(),
+        "If it doesn't start, the usual one starts instead, right away.".to_string(),
+        "Remove it here any time: the usual one is back at once. Your settings stay as they are.".to_string(),
+    ], f(16.0))).padding(look::pad(z(12.0), 0.0, 0.0, 0.0)));
+    if let Some(pt) = pt.as_ref().filter(|pt| !pt.notes.is_empty()) {
+        left = left.push(container(ts(format!("What's new in {}", pt.version), f(18.0), tn.text)).padding(look::pad(z(18.0), 0.0, z(8.0), 0.0))).push(bullets(&p, &pt.notes, f(16.0)));
+    }
+    let mut facts = Column::new();
+    let status = match have {
+        Some(h) if h.gave_up() => format!("{} · didn't start, the usual one is used", h.version),
+        Some(h) if h.failed_now => format!("{} · didn't start this time", h.version),
+        Some(h) => format!("{} · in use", h.version),
+        None => "Not got".to_string(),
+    };
+    facts = facts.push(kv(&p, "This PC", status, None, false));
+    if let Some(pt) = pt.as_ref() {
+        facts = facts.push(kv(&p, "Newest", pt.version.clone(), Some(format!("for Hearth OS {}", pt.os)), false));
+    }
+    facts = facts.push(kv(&p, "Installs as", "Files in your home folder", Some("no password, no restart".into()), false));
+    facts = facts.push(kv(&p, "Checked with", "The signed list from hearthos.fun", None, true));
+    let busy = a.part_busy.contains(&e.id);
+    let fits = pt.as_ref().map(|pt| parts::test_fits(pt, &a.hearth)).unwrap_or(false);
+    let mut buttons = Row::new().spacing(z(10.0));
+    if have.is_some() {
+        if let Some(up) = a.part_offer(e) {
+            buttons = buttons.push(btn(&p, if busy { "Updating…" } else { "Update" }, B::Primary, false, lit(a, "test-update"), if busy || a.offline() { None } else { Some(Msg::PartUpdate(e.id.clone())) }));
+            let _ = up;
+        }
+        if have.map(|h| h.gave_up() || h.failed_now).unwrap_or(false) {
+            buttons = buttons.push(btn(&p, "Try it again", B::Normal, false, lit(a, "test-retry"), if busy { None } else { Some(Msg::PartRetry(e.id.clone())) }));
+        }
+        buttons = buttons.push(btn(&p, if busy { "Removing…" } else { "Remove" }, B::Normal, false, lit(a, "test-remove"), if busy { None } else { Some(Msg::PartRemove(e.id.clone())) }));
+    } else {
+        buttons = buttons.push(btn(&p, if busy { "Getting…" } else { "Get" }, B::Primary, false, lit(a, "test-get"), if busy || a.offline() || !fits { None } else { Some(Msg::PartGet(e.id.clone())) }));
+        if !fits {
+            buttons = buttons.push(t(format!("Not made for Hearth OS {} yet", a.hearth), f(15.0), tn.muted));
+        }
+    }
+    facts = facts.push(container(buttons).padding(look::pad(z(16.0), 0.0, 0.0, 0.0)));
+    let lower = row![card(&p, left, false).into_width(140), card(&p, facts, false).into_width(100)].spacing(z(18.0));
+    Column::new().push(app_head(a, e)).push(lower).into()
+}
+
 fn part_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let p = a.p;
     let tn = tone(&p);
@@ -763,6 +833,9 @@ fn part_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
 }
 
 fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
+    if e.test {
+        return test_page(a, e);
+    }
     if e.part.is_some() {
         return part_page(a, e);
     }
@@ -949,7 +1022,7 @@ fn updates(a: &App) -> E<'_, Msg> {
     // Hearth's own apps and desktops (mockup 1.17-quick-updates 1): the ones up to date in one row, and each one
     // that went back to the built-in one, with Try it again and Remove the update.
     let gave_up = parts_gave_up(a);
-    let up: Vec<&Entry> = a.cat.apps.iter().filter(|e| e.kind == Kind::BuiltIn && a.part_offer(e).is_none() && !gave_up.iter().any(|g| g.id == e.id)).collect();
+    let up: Vec<&Entry> = a.cat.apps.iter().filter(|e| e.kind == Kind::BuiltIn && !e.test && a.part_offer(e).is_none() && !gave_up.iter().any(|g| g.id == e.id)).collect();
     if !up.is_empty() || !gave_up.is_empty() {
         c = c.push(sec(&p, "Hearth's own apps and desktops", None));
         let os = if a.hearth.is_empty() { "Hearth OS".to_string() } else { format!("Hearth OS {}", a.hearth) };

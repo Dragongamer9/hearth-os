@@ -162,6 +162,8 @@ pub enum Msg {
     Details,
     /// Quick updates (parts.rs): update, back to the built-in one, try a copy that failed again, and when it's done.
     PartUpdate(String),
+    /// Get a test version (Mantel in Rust): it isn't an update to anything built in.
+    PartGet(String),
     PartRemove(String),
     PartRetry(String),
     PartDone(String, Result<String, String>),
@@ -366,7 +368,7 @@ impl App {
 
     /// A quick update to offer for this entry (made for this Hearth OS, newer than what runs).
     pub fn part_offer(&self, e: &Entry) -> Option<catalog::Part> {
-        e.part.as_ref().and_then(|p| parts::offer(p, self.parts.get(&e.id), &self.hearth).cloned())
+        e.part.as_ref().and_then(|p| if e.test { parts::test_offer(p, self.parts.get(&e.id), &self.hearth).cloned() } else { parts::offer(p, self.parts.get(&e.id), &self.hearth).cloned() })
     }
 
     /// Every quick update ready (Updates, Update all, the sidebar's count).
@@ -674,13 +676,31 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             };
             return Task::perform(net::off(move || parts::install(&pt).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("The update stopped; nothing changed.".into()))));
         }
+        Msg::PartGet(id) => {
+            let Some(e) = a.entry(&id).cloned() else { return Task::none() };
+            let Some(pt) = e.part.clone().filter(|p| e.test && parts::test_fits(p, &a.hearth)) else { return Task::none() };
+            if a.offline() || !a.part_busy.insert(id.clone()) {
+                return Task::none();
+            }
+            a.say(format!("Getting {} {}…", e.name, pt.version), false);
+            let done = if pt.id == "mantel-rust" {
+                format!("{} {} is in: your desktop restarts with it in a moment. Remove it here to go back.", e.name, pt.version)
+            } else {
+                format!("{} {} is in.", e.name, pt.version)
+            };
+            return Task::perform(net::off(move || parts::install(&pt).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("It didn't install; nothing changed.".into()))));
+        }
         Msg::PartRemove(id) => {
             let Some(e) = a.entry(&id).cloned() else { return Task::none() };
             let Some(pid) = e.part.as_ref().map(|p| p.id.clone()) else { return Task::none() };
             if !a.part_busy.insert(id.clone()) {
                 return Task::none();
             }
-            let done = format!("{} is back to the one built into Hearth OS. Its update is in the Trash.", e.name);
+            let done = if e.test {
+                format!("{} is removed (it's in the Trash): the usual one is back.", e.name)
+            } else {
+                format!("{} is back to the one built into Hearth OS. Its update is in the Trash.", e.name)
+            };
             return Task::perform(net::off(move || parts::remove(&pid).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("Nothing changed.".into()))));
         }
         Msg::PartRetry(id) => {
@@ -1101,6 +1121,9 @@ fn set_pref(a: &mut App, k: &'static str, on: bool) -> Task<Msg> {
             let test_changed = p.test != a.prefs.test;
             a.prefs = p;
             if test_changed {
+                // test versions show or hide with it
+                a.cat = catalog::load();
+                a.read_installed();
                 return a.check_now();
             }
         }
