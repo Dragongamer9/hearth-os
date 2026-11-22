@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 5,
+  "serial": 6,
   "apps": [
     {
       "id": "command-center",
@@ -185,14 +185,15 @@
       "partId": "mantel",
       "part": {
         "id": "mantel",
-        "version": "1.17.1",
+        "version": "1.17.2",
         "os": "1.17",
         "path": "shell",
-        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-1.17.1/mantel-1.17.1.tar.gz",
-        "sha256": "9962ed351b6d7eb53a5dde9ee40bd54257d27177da0c793d770de97289efdd97",
-        "size": 9171411,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-1.17.2/mantel-1.17.2.tar.gz",
+        "sha256": "261377712fef801e013d67f40221bd987f01ca6a649723a708155063f5adb8e4",
+        "size": 9676275,
         "notes": [
-          "The bar no longer disappears: the menu search stopped rebuilding itself 20 times a second, which crashed Mantel on the Fedora edition"
+          "Your look (Glass, Zen and the rest) shows again: 1.17.1 left the looks and sounds out",
+          "The bar no longer disappears (the menu search stopped rebuilding itself 20 times a second)"
         ]
       }
     },
