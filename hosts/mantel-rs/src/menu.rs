@@ -494,11 +494,9 @@ pub fn view(s: &Shell) -> Element<'_, Message> {
         .style(move |_| container::Style { background: Some(fill.into()), border: Border { color: edge, width: 1.0, radius: r26.into() }, ..container::Style::default() });
     let panel = mouse_area(panel).on_press(Message::Nothing);
     let placed = container(panel).padding(Padding { top: by, ..Padding::ZERO }).center_x(Length::Fill).height(Length::Fill);
-    let glow = iced::widget::image(crate::wall::faded(&look::shell_file("images/ember-glow.png"), if p.dark { 0.18 } else { 0.1 }))
-        .width(Length::Fixed(screen.width * 1.1))
-        .height(Length::Fixed(screen.height))
-        .content_fit(iced::ContentFit::Fill);
     let scrim = Color::from_rgba(0.02, 0.02, 0.03, 0.72);
-    let back = container(container(glow).center(Length::Fill)).width(Length::Fill).height(Length::Fill).style(move |_| container::Style { background: Some(scrim.into()), ..container::Style::default() });
+    // (Launcher.qml has the ember glow over the scrim too, but the QML Mantel draws it so faintly it can't be seen in
+    // its pictures; left out here so the two look the same.)
+    let back = container(Space::new()).width(Length::Fill).height(Length::Fill).style(move |_| container::Style { background: Some(scrim.into()), ..container::Style::default() });
     mouse_area(stack![back, placed]).on_press(Message::CloseMenu).into()
 }

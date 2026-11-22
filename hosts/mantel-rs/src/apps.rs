@@ -174,7 +174,8 @@ pub fn icon_themes() -> &'static Vec<String> {
             .or_else(|| key_in(cfg.join("kdeglobals"), "Icons", "Theme"))
             .or_else(|| key_in(cfg.join("gtk-3.0/settings.ini"), "Settings", "gtk-icon-theme-name"));
         let mut out: Vec<String> = Vec::new();
-        let mut todo: Vec<String> = first.into_iter().collect();
+        // Nothing set: Adwaita, as Fedora's Qt picks (and what it inherits: AdwaitaLegacy's full-colour app icons).
+        let mut todo: Vec<String> = vec![first.unwrap_or_else(|| "Adwaita".to_string())];
         while let Some(t) = todo.pop() {
             if out.contains(&t) || out.len() > 8 {
                 continue;
@@ -188,10 +189,8 @@ pub fn icon_themes() -> &'static Vec<String> {
                 }
             }
         }
-        for t in ["hicolor", "Adwaita"] {
-            if !out.iter().any(|x| x == t) {
-                out.push(t.to_string());
-            }
+        if !out.iter().any(|x| x == "hicolor") {
+            out.push("hicolor".to_string());
         }
         out
     })

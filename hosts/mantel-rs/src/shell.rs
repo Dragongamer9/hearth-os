@@ -305,7 +305,11 @@ fn update(s: &mut Shell, m: Message) -> Task<Message> {
             s.menu.system_ids = sysids;
             s.menu.hidden = hidden;
         }
-        Message::WallReady(h) => s.wall_img = Some(h),
+        Message::WallReady(h) => {
+            s.wall_img = Some(h);
+            // the blending's working memory back to the system at once
+            unsafe { libc::malloc_trim(0) };
+        }
         Message::Nothing => {}
         _ => {}
     }
