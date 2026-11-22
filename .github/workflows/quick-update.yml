@@ -14,7 +14,7 @@ on:
         type: choice
         options: [mantel, hearth-files-app, hearth-settings-app, hearth-task-manager, hearth-capture-app, hearth-notes-app,
                   hearth-g15-app, hearth-family-app, hearth-server-app, hearth-resmon-app, hearth-system-restore,
-                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host, hearth-store-app]
+                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host, hearth-store-app, mantel-rust]
       version:
         description: "Its version (the owner's number, like 1.17.1)"
         required: true
@@ -65,6 +65,14 @@ jobs:
             rm -rf /tmp/part/theme/__pycache__
             test -f /tmp/part/theme/palettes.json
             echo "INNER=shell" >> "$GITHUB_ENV"
+          elif [ "$APP" = mantel-rust ]; then
+            # Mantel in Rust (test, docs/MANTEL-RUST.md): the one program, built in the image's own base; the
+            # autostart runs <its folder>/hearth-mantel when it's installed.
+            base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+            docker pull -q "$base"
+            docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/mantel-rust-build.sh 2>&1 | tail -40
+            mkdir -p /tmp/part/mantel-rust && install -m755 /tmp/out/hearth-mantel /tmp/part/mantel-rust/hearth-mantel
+            echo "INNER=mantel-rust" >> "$GITHUB_ENV"
           else
             base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
             docker pull -q "$base"
@@ -100,13 +108,13 @@ jobs:
               "hearth-g15-app": "Logitech G15", "hearth-family-app": "Family and friends", "hearth-server-app": "Server mode",
               "hearth-resmon-app": "Resource monitor", "hearth-system-restore": "System Restore",
               "hearth-reliability-history": "Reliability history", "hearth-file-chooser": "File chooser",
-              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store"}
+              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "mantel-rust": "Mantel in Rust (test)"}
           part = {"id": app, "version": os.environ["VER"], "os": os.environ["OS"], "path": os.environ["INNER"],
                   "url": os.environ["URL"], "sha256": os.environ["SHA"], "size": int(os.environ["SIZE"]),
                   "notes": [l.strip() for l in os.environ.get("NOTES", "").split("|") if l.strip()]}
           # The app's own entry when the list has one (its part, or the program it opens), else a new one.
           for e in d["apps"]:
-              if (e.get("part") or {}).get("id") == app or e.get("partId") == app or (app != "mantel" and e.get("open") == app):
+              if (e.get("part") or {}).get("id") == app or e.get("partId") == app or (app not in ("mantel", "mantel-rust") and e.get("open") == app):
                   e["part"] = part
                   break
           else:

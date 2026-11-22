@@ -1,0 +1,41 @@
+# Mantel in Rust (test; docs/MANTEL-RUST.md): Hearth Classic's desktop drawn with iced on wlr-layer-shell
+# (iced_layershell), the way the archived Rust Firehold drew its bar and dock. Opt in only: the Hearth Store's test
+# "Mantel in Rust" part; the QML Mantel (hosts/linux/desktop/shell) stays the default and the fallback.
+# No version line: the owner picks every version number (Cargo reads a missing one as 0.0.0).
+[package]
+name = "hearth-mantel"
+edition = "2021"
+description = "Mantel (Hearth Classic) in Rust, test: the bar, the dock, the wallpaper and the app menu"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-mantel"
+path = "src/main.rs"
+
+[dependencies]
+# Hearth's look, shared with Hearth's pure-Rust apps (palettes.json and desktop.json, followed while it runs).
+hearth-ui = { path = "../hearth-ui" }
+# The same iced as hearth-ui and the archived Rust Firehold: wgpu where there's a GPU, tiny-skia where there isn't.
+iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "wayland", "image", "svg", "canvas", "thread-pool", "crisp", "smol"] }
+iced_layershell = { version = "0.19", default-features = false }
+# iced_layershell's devtools were written for winit-core 0.31.0-beta.2; beta.4 broke them (held there, as Firehold did).
+winit-core = "=0.31.0-beta.2"
+# The windows and desktops (wm.rs): wlr-foreign-toplevel and ext-workspace, which labwc has.
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client", "staging"] }
+wayland-protocols-wlr = { version = "0.3", features = ["client"] }
+futures = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 4
+strip = true
