@@ -58,6 +58,12 @@ jobs:
           if [ "$APP" = mantel ]; then
             test -f hosts/linux/desktop/shell/shell.qml
             cp -a hosts/linux/desktop/shell /tmp/part/shell
+            # Mantel reads its looks and sounds next to its own folder (Theme.qml: shellDir/../theme/palettes.json;
+            # Sounds.qml: shellDir/../sounds), so they come along; without them every look showed as Hearth's
+            # (Mantel 1.17.1 on the owner's dad's PC, Nov 21).
+            for d in theme sounds; do cp -a "hosts/linux/desktop/$d" "/tmp/part/$d"; done
+            rm -rf /tmp/part/theme/__pycache__
+            test -f /tmp/part/theme/palettes.json
             echo "INNER=shell" >> "$GITHUB_ENV"
           else
             base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
