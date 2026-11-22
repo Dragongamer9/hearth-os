@@ -1,14 +1,19 @@
 # Desktop layouts' shared part (hosts/hearth-layout; docs/mockups/checklists/desktop-layouts.md): the layout files and
 # their check, putting one in place with Undo, Describe it's feature recipes and ideas. Both Mantels and Hearth's apps
 # use it. Built and tested here only, in Fedora 45 as the image is; the ready-made layouts are checked by its tests.
+#   labwc   each ready-made layout put in place and the QML Mantel pictured next to its approved mockup
+#           (branch ci/layouts-shots, pair-*.jpg), with Mantel's log checked for errors from the layouts' parts
 name: Desktop layouts (shared part)
 
 on:
   push:
     branches: ['feature/desktop-layouts', 'bughunt']
     paths: ['hosts/hearth-layout/**', 'hosts/linux/desktop/layouts/**', 'hosts/hearth-core/src/settings_file.rs',
-            'hosts/linux/desktop/shell/widget-tools.js', '.github/workflows/hearth-layout.yml']
+            'hosts/linux/desktop/shell/**', '.github/workflows/hearth-layout.yml', '.github/scripts/layouts-run.sh']
   workflow_dispatch:
+
+permissions:
+  contents: write
 
 concurrency:
   group: hearth-layout-${{ github.ref }}
@@ -55,3 +60,74 @@ jobs:
           b=hosts/hearth-layout/target/release/hearth-layout
           $b list | while read -r l; do echo "::notice title=layout::$l"; done
           $b apply plasma && $b current | grep -qx plasma && $b undo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-layout
+          path: hosts/hearth-layout/target/release/hearth-layout
+          retention-days: 5
+
+  # The QML Mantel's Quickshell, as the image builds it (kept between runs: it only changes with the build script).
+  quickshell:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:45
+    timeout-minutes: 40
+    steps:
+      - run: dnf5 -y install git tar gzip zstd >/dev/null
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: qc
+        with:
+          path: /tmp/quickshell.tgz
+          key: quickshell-f45-${{ hashFiles('os-bases/anatase/quickshell-build.sh') }}
+      - name: Build
+        if: steps.qc.outputs.cache-hit != 'true'
+        run: |
+          set -o pipefail
+          bash os-bases/anatase/quickshell-build.sh /tmp/qs 2>&1 | tail -n 60 > /tmp/qs.log || { echo "::error title=Quickshell::$(tail -c 1500 /tmp/qs.log | tr '\n' ' ')"; exit 1; }
+          tar -C /tmp/qs -czf /tmp/quickshell.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quickshell-fedora
+          path: /tmp/quickshell.tgz
+          retention-days: 3
+
+  labwc:
+    needs: [build, quickshell]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: registry.fedoraproject.org/fedora:45
+      options: --cap-add=SYS_PTRACE --security-opt seccomp=unconfined
+    steps:
+      - run: dnf5 -y install git >/dev/null
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: hearth-layout
+          path: /tmp/hl
+      - uses: actions/download-artifact@v4
+        with:
+          name: quickshell-fedora
+          path: /tmp/qsa
+      - name: labwc, as the image has it
+        run: |
+          tar -C / -xzf /tmp/qsa/quickshell.tgz
+          dnf5 -y install git python3 wlr-randr mesa-vulkan-drivers vulkan-loader python3-pillow procps-ng dbus-daemon dbus-tools findutils foot google-noto-sans-fonts rsms-inter-fonts >/dev/null 2>&1 || true
+          bash os-bases/anatase/labwc-install.sh 2>&1 | grep -E '::|^Error' || true
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          install -Dm755 /tmp/hl/hearth-layout /usr/local/bin/hearth-layout
+          chmod 755 /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/open.sh 2>/dev/null
+          find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +
+          install -Dm755 hosts/linux/session/nimbus-mode /usr/bin/nimbus-mode
+      - name: On labwc
+        run: bash .github/scripts/layouts-run.sh /tmp/out
+      - name: Pictures to ci/layouts-shots
+        if: always()
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
+          git checkout -q --orphan ci/layouts-shots
+          git rm -rfq --cached . >/dev/null
+          rm -rf shots && mkdir shots && cp /tmp/out/*.jpg /tmp/out/*.log /tmp/out/*.txt shots/ 2>/dev/null
+          git add -f shots
+          git commit -qm "Desktop layouts pictures ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/layouts-shots || true
