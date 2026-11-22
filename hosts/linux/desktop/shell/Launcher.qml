@@ -534,7 +534,10 @@ PanelWindow {
         id: styleLoader
         anchors.fill: parent
         z: 2
-        active: root.style !== "hearth" && root.styleFiles[root.style] !== undefined
+        // Loaded only while the menu is open (1.17 fix, the owner's dad's PC): a loaded menu left in the window when
+        // the window went away was resized later on its own (Loader → setSize) and crashed Quickshell on Fedora's Qt.
+        // It's put away as the menu closes, while the window is still up (see linger), so nothing of it is left.
+        active: root.shown && root.style !== "hearth" && root.styleFiles[root.style] !== undefined
         source: active ? root.styleFiles[root.style] : ""
         onLoaded: { item.menu = root; if (root.shown) { item.opened(); root.readRecentFiles(); if (item.wantsLive) root.readLive(); } }
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the " + root.style + " app menu couldn't load; showing the Hearth menu")
@@ -552,7 +555,7 @@ PanelWindow {
         y: topRoom + Math.max(10, (parent.height - topRoom - bottomRoom - height) / 2)
         MouseArea { anchors.fill: parent } // clicks inside don't close
         Rectangle { anchors.fill: parent; radius: Theme.r(26); color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.96); border.color: Theme.line; visible: frame.status !== Loader.Ready }
-        Loader { id: frame; anchors.fill: parent; source: "Frame.qml"; onLoaded: { item.solid = true; item.rad = Qt.binding(() => Theme.r(26)); } }
+        Loader { id: frame; anchors.fill: parent; active: root.shown; source: "Frame.qml"; onLoaded: { item.solid = true; item.rad = Qt.binding(() => Theme.r(26)); } }
 
         ColumnLayout {
             anchors { fill: parent; margins: 30 }

@@ -42,3 +42,12 @@ class MenuWindowLingers(unittest.TestCase):
         self.assertIn('mask: Region { item: root.shown ? hitAll : null }', src)
         self.assertIn('contentItem.visible: root.shown', src)
         self.assertIn('linger.restart()', src)
+
+
+class MenuUnloadsWhenClosed(unittest.TestCase):
+    """The menu's own parts are loaded only while it's open, so none is left in the window when it goes away (a
+    Loader resizing its item in a window that was gone crashed Quickshell: the owner's dad's PC, Nov 21, 2026)."""
+    def test_loaders_follow_shown(self):
+        src = open(os.path.join(SHELL, 'Launcher.qml'), encoding='utf-8').read()
+        self.assertIn('active: root.shown && root.style !== "hearth"', src)
+        self.assertIn('Loader { id: frame; anchors.fill: parent; active: root.shown;', src)
