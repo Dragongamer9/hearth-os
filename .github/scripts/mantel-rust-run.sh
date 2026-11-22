@@ -8,7 +8,9 @@ OUT=${1:?out}; mkdir -p "$OUT"
 export XDG_RUNTIME_DIR=/tmp/xdg; mkdir -p "$XDG_RUNTIME_DIR"; chmod 700 "$XDG_RUNTIME_DIR"
 export WLR_BACKENDS=headless WLR_RENDERER=pixman WLR_LIBINPUT_NO_DEVICES=1 WLR_HEADLESS_OUTPUTS=1
 export HOME=/tmp/home; mkdir -p "$HOME/.local/share/nimbus" "$HOME/.config/nimbus"
-export ICED_BACKEND=tiny-skia
+# wgpu on Mesa's software Vulkan (lavapipe), as a PC draws it: see-through parts stay see-through (tiny-skia's
+# software path has no alpha on Wayland, so the bar's and dock's gaps came out black).
+export ICED_BACKEND=${ICED_BACKEND:-wgpu}
 printf '{"pins":["foot","org.hearth.files"]}\n' > "$HOME/.config/nimbus/desk.json"
 printf '{"look":"hearth","mode":"dark"}\n' > "$HOME/.local/share/nimbus/desktop.json"
 mkdir -p /tmp/rc && cat > /tmp/rc/rc.xml <<'XML'
@@ -48,11 +50,18 @@ shot rs-04-desktop-hearth-light
 printf '{"look":"hearth","mode":"dark"}\n' > "$HOME/.local/share/nimbus/desktop.json"; sleep 2
 # ---- a minute at rest: CPU (ticks) and memory of every hearth-mantel process
 pids=$(pgrep -f 'hearth-mantel (bar|dock|wallpaper|session)' | tr '\n' ' ')
-t0=$(for p in $pids; do awk '{print $14+$15}' /proc/$p/stat 2>/dev/null; done | paste -sd+ | bc 2>/dev/null || echo 0)
-sleep 60
-t1=$(for p in $pids; do awk '{print $14+$15}' /proc/$p/stat 2>/dev/null; done | paste -sd+ | bc 2>/dev/null || echo 0)
-rss=$(for p in $pids; do awk '/VmRSS/{print $2}' /proc/$p/status 2>/dev/null; done | paste -sd+ | bc 2>/dev/null || echo 0)
-cpu=$(python3 -c "print(round(($t1-$t0)/100/60*100, 2))")
+read -r cpu rss < <(python3 - $pids <<'PY'
+import sys, time
+def ticks(p):
+    try: f = open(f'/proc/{p}/stat').read().rsplit(')', 1)[1].split(); return int(f[11]) + int(f[12])
+    except Exception: return 0
+def rss(p):
+    try: return int([l for l in open(f'/proc/{p}/status') if l.startswith('VmRSS')][0].split()[1])
+    except Exception: return 0
+ps = sys.argv[1:]; t0 = sum(ticks(p) for p in ps); time.sleep(60); t1 = sum(ticks(p) for p in ps)
+print(round((t1 - t0) / 100 / 60 * 100, 2), sum(rss(p) for p in ps))
+PY
+)
 note "at rest for 60 s: ${cpu}% of one CPU, ${rss} kB in memory (bar, dock, wallpaper and the session together)"
 python3 -c "import sys; sys.exit(0 if $cpu < 3 else 1)" || err "not quiet at rest: ${cpu}% CPU"
 cp /tmp/out-session.log "$OUT/session.log" 2>/dev/null
