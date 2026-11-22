@@ -1,7 +1,7 @@
 # Mantel in Rust (test; docs/MANTEL-RUST.md): hosts/mantel-rs, Mantel's bar, dock, wallpaper and app menu drawn with
 # iced on wlr-layer-shell, opt in through the Hearth Store. Built and checked only here, in Fedora 45 as the image is.
 #   build    cargo build --release and cargo test (errors as annotations), and `hearth-mantel check` (what it reads)
-#   labwc    `hearth-mantel session` on labwc on a virtual screen (software drawing): pictures as SHOT notices, then a
+#   labwc    `hearth-mantel session` on labwc on a virtual screen (software drawing): pictures pushed to the ci/mantel-rust-shots branch, then a
 #            minute at rest with its CPU and memory (it must be quiet), and the same for the QML Mantel's numbers
 name: Mantel in Rust (test)
 
@@ -13,7 +13,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: mantel-rust-${{ github.ref }}
@@ -82,12 +82,23 @@ jobs:
           path: /tmp/hm
       - name: labwc, as the image has it
         run: |
-          dnf5 -y install python3 python3-pillow procps-ng dbus-daemon dbus-tools findutils foot google-noto-sans-fonts rsms-inter-fonts >/dev/null 2>&1 || true
+          dnf5 -y install git python3 python3-pillow procps-ng dbus-daemon dbus-tools findutils foot google-noto-sans-fonts rsms-inter-fonts >/dev/null 2>&1 || true
           bash os-bases/anatase/labwc-install.sh 2>&1 | grep -E '::|^Error' || true
           mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
           install -Dm755 /tmp/hm/hearth-mantel /usr/local/bin/hearth-mantel
       - name: On labwc
         run: bash .github/scripts/mantel-rust-run.sh /tmp/out
+      # The pictures (and the logs) on their own branch, to look at: notices hold only ten per step.
+      - name: Pictures to ci/mantel-rust-shots
+        if: always()
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
+          git checkout -q --orphan ci/mantel-rust-shots
+          git rm -rfq --cached . >/dev/null
+          rm -rf shots && mkdir shots && cp /tmp/out/*.jpg /tmp/out/*.log /tmp/out/*.txt shots/ 2>/dev/null
+          git add -f shots
+          git commit -qm "Mantel in Rust pictures ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/mantel-rust-shots || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
