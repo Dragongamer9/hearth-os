@@ -13,6 +13,9 @@ path = "src/main.rs"
 
 [dependencies]
 hearth-ui = { path = "../.." }
+# Desktop layouts (hosts/hearth-layout): the layout files, their check and the blocks, read here; changes go through its
+# command (hearth-layout apply-json) so they're put in place exactly as Mantel's own Settings does it.
+hearth-layout = { path = "../../../hearth-layout" }
 # image: the scanners' test picture and the pages of Scan to PDF (Bluetooth & devices); qr_code: Tailscale's sign-in
 # link as a big QR code to photograph with a phone (Network & internet).
 # "advanced": the window's outer widget (nav.rs Gate) and finding the focused row on the screen to scroll it into view.

@@ -156,26 +156,7 @@ pub fn save(name: &str) -> Result<PathBuf, String> {
     if !crate::is_slug(&id) {
         return Err("Give it a name with some letters or digits.".into());
     }
-    let s = snapshot();
-    let mut desktop = Map::new();
-    for (k, _) in DESKTOP_KEYS {
-        if let Some(v) = s["desktop"].get(*k).and_then(Value::as_str) {
-            desktop.insert((*k).into(), Value::String(v.into()));
-        }
-    }
-    let bar = s["bar"].get("items").filter(|v| v.is_object()).and_then(|v| serde_json::from_value(v.clone()).ok());
-    let mut panels = Vec::new();
-    if let Some(m) = s["bar"].as_object() {
-        let mut keys: Vec<&String> = m.keys().filter(|k| k.starts_with("p:")).collect();
-        keys.sort();
-        for k in keys {
-            if let Ok(p) = serde_json::from_value::<layout::Panel>(m[k].clone()) {
-                panels.push(p);
-            }
-        }
-    }
-    let window_buttons = s["desktop"].get("windowButtons").and_then(Value::as_str).and_then(from_titlebar);
-    let l = Layout { format: 1, id: id.clone(), name: name.trim().chars().take(60).collect(), about: String::new(), desktop, bar, panels, window_buttons };
+    let l = today(&id, name);
     let errs = layout::check(&l);
     if !errs.is_empty() {
         return Err(errs.join(" "));
@@ -184,6 +165,48 @@ pub fn save(name: &str) -> Result<PathBuf, String> {
     std::fs::create_dir_all(paths::layouts_dir()).map_err(|e| e.to_string())?;
     sf::write_json(&p, &serde_json::to_value(&l).unwrap()).map_err(|e| e.to_string())?;
     Ok(p)
+}
+
+/// Today's desktop as a layout (what Settings' Desktop layout page starts from when no layout is in place, and what
+/// Save as my own keeps). Blocks this Hearth doesn't know are left out, as both Mantels leave them out.
+pub fn today(id: &str, name: &str) -> Layout {
+    let s = snapshot();
+    let mut desktop = Map::new();
+    for (k, _) in DESKTOP_KEYS {
+        if let Some(v) = s["desktop"].get(*k).and_then(Value::as_str) {
+            if !v.is_empty() {
+                desktop.insert((*k).into(), Value::String(v.into()));
+            }
+        }
+    }
+    let bar: Option<layout::Bar> = s["bar"].get("items").filter(|v| v.is_object()).and_then(|v| serde_json::from_value(v.clone()).ok()).map(|mut b: layout::Bar| {
+        let mut seen: Vec<String> = Vec::new();
+        for z in [&mut b.start, &mut b.centre, &mut b.end, &mut b.hidden] {
+            z.retain(|id| {
+                let ok = crate::blocks::in_bar(id) && !seen.contains(id);
+                seen.push(id.clone());
+                ok
+            });
+        }
+        b.hidden.retain(|id| !crate::blocks::find(id).map(|x| x.keep).unwrap_or(false));
+        b
+    });
+    let mut panels = Vec::new();
+    if let Some(m) = s["bar"].as_object() {
+        let mut keys: Vec<&String> = m.keys().filter(|k| k.starts_with("p:")).collect();
+        keys.sort();
+        for k in keys {
+            if let Ok(mut p) = serde_json::from_value::<layout::Panel>(m[k].clone()) {
+                p.items.retain(|id| crate::blocks::in_panel(id));
+                p.size = p.size.clamp(28, 96);
+                if !p.items.is_empty() {
+                    panels.push(p);
+                }
+            }
+        }
+    }
+    let window_buttons = s["desktop"].get("windowButtons").and_then(Value::as_str).and_then(from_titlebar);
+    Layout { format: 1, id: id.into(), name: name.trim().chars().take(60).collect(), about: String::new(), desktop, bar, panels, window_buttons }
 }
 
 /// labwc's titlebar text back to buttons.

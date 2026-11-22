@@ -15,6 +15,7 @@ pub mod desk;
 pub mod fonts;
 pub mod kit;
 pub mod kwin;
+pub mod layout;
 pub mod looks;
 
 use crate::shared::Shared;
@@ -24,7 +25,7 @@ use iced::{Element, Subscription, Task};
 use kwin::{KMsg, Kw};
 use serde_json::Value;
 
-pub const PAGES: &[&str] = &["appearance", "bar-dock", "fonts", "wallpaper-more", "my-looks", "look-more", "kwin-effects", "kwin-desktops", "kwin-tiling", "kwin-edges", "kwin-behaviour"];
+pub const PAGES: &[&str] = &["appearance", "desktop-layout", "bar-dock", "fonts", "wallpaper-more", "my-looks", "look-more", "kwin-effects", "kwin-desktops", "kwin-tiling", "kwin-edges", "kwin-behaviour"];
 
 /// What a file picker was opened for.
 #[derive(Debug, Clone, PartialEq)]
@@ -52,6 +53,8 @@ pub struct State {
     pub hue: Option<f32>,
     pub kbd: Option<Value>,
     pub picking: bool,
+    // Desktop layout
+    pub lay: layout::Lay,
     // Bar and dock
     pub panels: Option<Value>,
     pub panel_err: String,
@@ -108,6 +111,8 @@ pub enum Msg {
     Close,
     K(KMsg),
     Go(&'static str),
+    // Desktop layout
+    Lay(layout::LMsg),
     // Bar and dock
     Panels(run::Output),
     Panel(usize),
@@ -182,6 +187,7 @@ pub fn open(sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
             Task::perform(kit::run_in(kit::job("hearth-kbd-lights", &["status"]), String::new()), Msg::KbdSt),
         ]),
         "bar-dock" => desk::read_panels(),
+        "desktop-layout" => layout::open(&mut st.lay),
         "fonts" => Task::perform(kit::run_in(kit::job("hearth-lookset", &["status"]), String::new()), Msg::Fonts),
         "wallpaper-more" => desk::read_walls(),
         "my-looks" => {
@@ -218,6 +224,7 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
             }
         }
         Msg::Set(v) => return save(sh, v),
+        Msg::Lay(l) => return layout::update(&mut st.lay, l),
         Msg::K(k) => {
             if let KMsg::Go(id) = k {
                 sh.go(id);
@@ -250,6 +257,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
         "my-looks" => looks::my_looks_page(a),
         "look-more" => looks::look_more(a),
         "bar-dock" => desk::bar_dock(a),
+        "desktop-layout" => layout::page(a),
         "wallpaper-more" => desk::wallpaper_more(a),
         "fonts" => fonts::page(a),
         "kwin-effects" => kwin::effects(&p, &st.kw).map(Msg::K),

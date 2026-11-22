@@ -8,6 +8,9 @@
 //!   hearth-layout current            the layout in place
 //!   hearth-layout list --json        the same as JSON, for Settings' Desktop layout page (with each layout whole)
 //!   hearth-layout blocks --json      every block, where it may go and whether both Mantels draw it yet
+//!   hearth-layout now --json         today's desktop as a layout (the editor starts from it when none is in place)
+//!   hearth-layout apply-json JSON    put this layout in place (the editor's changes, as you make them)
+//!   hearth-layout check-json JSON    {"ok": bool, "problems": [...], "coming": [...]}
 //! After apply and undo the window buttons are put on (hearth-system window-buttons: labwc or KWin).
 
 use hearth_layout::{apply, feature, layout};
@@ -26,6 +29,26 @@ fn main() {
             println!("{}", serde_json::to_string(&v).unwrap());
             0
         }
+        "now" => {
+            println!("{}", serde_json::to_string(&apply::today("mine", "Your desktop")).unwrap());
+            0
+        }
+        "check-json" => {
+            let (ok, problems, coming) = match layout::parse(&arg(1)) {
+                Ok(l) => (true, Vec::new(), l.not_built()),
+                Err(e) => (false, e, Vec::new()),
+            };
+            println!("{}", serde_json::json!({ "ok": ok, "problems": problems, "coming": coming }));
+            if ok { 0 } else { 1 }
+        }
+        "apply-json" => match layout::parse(&arg(1)).map_err(|e| e.join(" ")).and_then(|l| apply::apply(&l).map(|_| l)) {
+            Ok(l) => {
+                window_buttons();
+                println!("{} is in place.", l.name);
+                0
+            }
+            Err(e) => fail(&e),
+        },
         "blocks" => {
             let v: Vec<serde_json::Value> = hearth_layout::blocks::BLOCKS
                 .iter()
