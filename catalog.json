@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 6,
+  "serial": 7,
   "apps": [
     {
       "id": "command-center",
@@ -185,15 +185,16 @@
       "partId": "mantel",
       "part": {
         "id": "mantel",
-        "version": "1.17.2",
+        "version": "1.17.3",
         "os": "1.17",
         "path": "shell",
-        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-1.17.2/mantel-1.17.2.tar.gz",
-        "sha256": "261377712fef801e013d67f40221bd987f01ca6a649723a708155063f5adb8e4",
-        "size": 9676275,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-1.17.3/mantel-1.17.3.tar.gz",
+        "sha256": "537d30c9b075cbcdbf9f1afe710647f4271e6a090e920201353f4f8105c38790",
+        "size": 9676456,
         "notes": [
-          "Your look (Glass, Zen and the rest) shows again: 1.17.1 left the looks and sounds out",
-          "The bar no longer disappears (the menu search stopped rebuilding itself 20 times a second)"
+          "The bar no longer closes and comes back on the Fedora edition: the app menu no longer leaves parts behind when it closes",
+          "The wallpaper sparks are lighter to draw",
+          "Includes 1.17.1 and 1.17.2 (the menu search fix, and your look and sounds)"
         ]
       }
     },
