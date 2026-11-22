@@ -21,6 +21,12 @@ on:
       os:
         description: 'The Hearth OS it is for (like 1.17: fits 1.17 and 1.17.x)'
         required: true
+      channel:
+        description: 'main (everyone with the app) or test (only with Get test versions on, got by hand)'
+        required: false
+        type: choice
+        options: [main, test]
+        default: main
       notes:
         description: "What's new, one line each, separated by |"
         required: false
@@ -42,6 +48,7 @@ jobs:
       VER: ${{ inputs.version }}
       OS: ${{ inputs.os }}
       NOTES: ${{ inputs.notes }}
+      CHANNEL: ${{ inputs.channel }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -100,23 +107,30 @@ jobs:
               "hearth-g15-app": "Logitech G15", "hearth-family-app": "Family and friends", "hearth-server-app": "Server mode",
               "hearth-resmon-app": "Resource monitor", "hearth-system-restore": "System Restore",
               "hearth-reliability-history": "Reliability history", "hearth-file-chooser": "File chooser",
-              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store"}
+              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "mantel-rust": "Mantel in Rust (test)"}
           part = {"id": app, "version": os.environ["VER"], "os": os.environ["OS"], "path": os.environ["INNER"],
                   "url": os.environ["URL"], "sha256": os.environ["SHA"], "size": int(os.environ["SIZE"]),
                   "notes": [l.strip() for l in os.environ.get("NOTES", "").split("|") if l.strip()]}
           # The app's own entry when the list has one (its part, or the program it opens), else a new one.
-          for e in d["apps"]:
-              if (e.get("part") or {}).get("id") == app or e.get("partId") == app or (app != "mantel" and e.get("open") == app):
+          # Test versions (Mantel in Rust) go in their own list, "tests": Stores before 1.17.1 only read "apps", so they
+          # can never offer a test version to everyone.
+          # Red flag 13 (the owner, Nov 22): any app can have a test version (Channel: test).
+          test = app == "mantel-rust" or os.environ.get("CHANNEL") == "test"
+          if test:
+              d.setdefault("tests", [])
+          for e in d["tests"] if test else d["apps"]:
+              if (e.get("part") or {}).get("id") == app or e.get("partId") == app or (app not in ("mantel", "mantel-rust") and e.get("open") == app):
                   e["part"] = part
                   break
           else:
-              e = {"id": "part-" + app, "name": names.get(app, app), "kind": "builtin", "part": part}
+              e = {"id": ("test-" if test and app != "mantel-rust" else "part-") + app, "name": names.get(app, app) + (" (test)" if test and app != "mantel-rust" else ""), "kind": "builtin", "part": part}
               if app not in ("mantel", "mantel-rust"):
                   e["open"] = app
-              d["apps"].append(e)
-          # Mantel in Rust is a test version: shown only with "Get test versions" on, got and removed by hand.
-          if app == "mantel-rust":
+              (d["tests"] if test else d["apps"]).append(e)
+          # A test version: shown only with "Get test versions" on, got and removed by hand.
+          if test:
               e["test"] = True
+          if app == "mantel-rust":
               e.setdefault("short", "Mantel in Rust")
               e.setdefault("card", "Mantel drawn in Rust: lighter and quicker. A test.")
               e.setdefault("icon", "Rs")
