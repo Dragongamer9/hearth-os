@@ -369,6 +369,18 @@ fn tile_view<'a>(s: &'a Shell, l: &Look, t: &Tile<'a>, i: usize, cell_w: f32, ce
         .into()
 }
 
+/// font.letterSpacing: 1.3 (iced has no letter spacing): a hair space between the letters.
+fn spaced(t: &str) -> String {
+    let mut o = String::new();
+    for (i, c) in t.chars().enumerate() {
+        if i > 0 {
+            o.push('\u{200A}');
+        }
+        o.push(c);
+    }
+    o
+}
+
 pub fn view(s: &Shell) -> Element<'_, Message> {
     let l = &s.look;
     let p = l.p;
@@ -447,7 +459,7 @@ pub fn view(s: &Shell) -> Element<'_, Message> {
 
     let mut col = column![header, search].spacing(16);
     if !games && q.is_empty() {
-        col = col.push(text(if s.menu.folder_open { "SYSTEM APPS" } else { "ALL APPS" }).size(12).color(p.muted).font(l.semi()));
+        col = col.push(text(spaced(if s.menu.folder_open { "SYSTEM APPS" } else { "ALL APPS" })).size(12).color(p.muted).font(l.semi()));
     }
     let line = p.line;
     let mut actions = row![].spacing(10).align_y(Alignment::Center);
@@ -482,11 +494,10 @@ pub fn view(s: &Shell) -> Element<'_, Message> {
         .style(move |_| container::Style { background: Some(fill.into()), border: Border { color: edge, width: 1.0, radius: r26.into() }, ..container::Style::default() });
     let panel = mouse_area(panel).on_press(Message::Nothing);
     let placed = container(panel).padding(Padding { top: by, ..Padding::ZERO }).center_x(Length::Fill).height(Length::Fill);
-    let glow = iced::widget::image(look::image_handle(&look::shell_file("images/ember-glow.png")))
+    let glow = iced::widget::image(crate::wall::faded(&look::shell_file("images/ember-glow.png"), if p.dark { 0.18 } else { 0.1 }))
         .width(Length::Fixed(screen.width * 1.1))
         .height(Length::Fixed(screen.height))
-        .content_fit(iced::ContentFit::Fill)
-        .opacity(if p.dark { 0.18 } else { 0.1 });
+        .content_fit(iced::ContentFit::Fill);
     let scrim = Color::from_rgba(0.02, 0.02, 0.03, 0.72);
     let back = container(container(glow).center(Length::Fill)).width(Length::Fill).height(Length::Fill).style(move |_| container::Style { background: Some(scrim.into()), ..container::Style::default() });
     mouse_area(stack![back, placed]).on_press(Message::CloseMenu).into()

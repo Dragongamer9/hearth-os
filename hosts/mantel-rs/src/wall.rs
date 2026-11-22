@@ -4,9 +4,8 @@
 //! other moving ones as their still pictures. This test draws every scene at rest (the QML Mantel holds them still
 //! too with Reduce motion, behind windows, on battery and without a GPU): drawn once, nothing runs while you work.
 
-use iced::widget::canvas::{self, gradient, Cache, Frame, Geometry};
 use iced::widget::image::Handle;
-use iced::{mouse, Color, Point, Rectangle, Renderer, Size, Theme};
+use iced::{Color, Size};
 use std::path::PathBuf;
 
 use crate::look::{self, Look};
@@ -52,92 +51,145 @@ fn argb(s: &str) -> Color {
     Color::from_rgba8(((v >> 16) & 255) as u8, ((v >> 8) & 255) as u8, (v & 255) as u8, ((v >> 24) & 255) as f32 / 255.0)
 }
 
-pub struct Wall<'a> {
-    pub look: Look,
-    pub cache: &'a Cache,
-}
-
-fn vertical(frame: &mut Frame, s: Size, stops: &[(f32, Color)]) {
-    let mut g = gradient::Linear::new(Point::new(0.0, 0.0), Point::new(0.0, s.height));
-    for (o, c) in stops {
-        g = g.add_stop(*o, *c);
-    }
-    frame.fill_rectangle(Point::ORIGIN, s, g);
-}
-
-fn pic(frame: &mut Frame, file: &str, x: f32, y: f32, w: f32, h: f32, opacity: f32) {
-    let h_ = look::image_handle(&look::shell_file(&format!("images/{file}")));
-    frame.draw_image(Rectangle { x, y, width: w, height: h }, canvas::Image::new(h_).opacity(opacity));
-}
-
-/// PreserveAspectCrop: the picture filling the screen, cut at the sides or top and bottom.
-fn crop(frame: &mut Frame, s: Size, f: &std::path::Path) {
-    let handle: Handle = look::image_handle(f);
-    let (iw, ih) = image_size(f).unwrap_or((s.width as u32, s.height as u32));
-    let k = (s.width / iw as f32).max(s.height / ih as f32);
-    let (w, h) = (iw as f32 * k, ih as f32 * k);
-    frame.draw_image(Rectangle { x: (s.width - w) / 2.0, y: (s.height - h) / 2.0, width: w, height: h }, canvas::Image::new(handle));
-}
+// ---------------------------------------------------------------- blended once, as Qt blends it
 
 /// A JPEG's or PNG's size from its header (no decoding).
 pub fn image_size(f: &std::path::Path) -> Option<(u32, u32)> {
-    let b = std::fs::read(f).ok()?;
-    if b.starts_with(b"\x89PNG") && b.len() > 24 {
-        return Some((u32::from_be_bytes(b[16..20].try_into().ok()?), u32::from_be_bytes(b[20..24].try_into().ok()?)));
-    }
-    let mut i = 2;
-    while i + 9 < b.len() {
-        if b[i] != 0xFF {
-            i += 1;
-            continue;
-        }
-        let m = b[i + 1];
-        let len = u16::from_be_bytes([b[i + 2], b[i + 3]]) as usize;
-        if (0xC0..=0xCF).contains(&m) && m != 0xC4 && m != 0xC8 && m != 0xCC {
-            let h = u16::from_be_bytes([b[i + 5], b[i + 6]]) as u32;
-            let w = u16::from_be_bytes([b[i + 7], b[i + 8]]) as u32;
-            return Some((w, h));
-        }
-        i += 2 + len;
-    }
-    None
+    image::image_dimensions(f).ok()
 }
 
-impl<'a, M> canvas::Program<M> for Wall<'a> {
-    type State = ();
-    fn draw(&self, _: &(), renderer: &Renderer, _: &Theme, bounds: Rectangle, _: mouse::Cursor) -> Vec<Geometry> {
-        let l = &self.look;
-        let g = self.cache.draw(renderer, bounds.size(), |frame| {
-            let s = frame.size();
-            let (w, h) = (s.width, s.height);
-            frame.fill_rectangle(Point::ORIGIN, s, l.p.bg);
-            match scene(l) {
-                Scene::Picture(f) => crop(frame, s, &f),
-                Scene::Fireside => {
-                    vertical(frame, s, &[(0.0, hex("#0b0807")), (0.6, l.p.bg2), (1.0, hex("#1f140e"))]);
-                    // the fire's light, and its smaller, hotter core (their resting brightness)
-                    let (gw, gh) = (w * 1.5, h * 1.1);
-                    pic(frame, "ember-glow.png", (w - gw) / 2.0, h - gh * 0.45, gw, gh, 0.32);
-                    let (cw, ch) = (w * 0.7, h * 0.6);
-                    pic(frame, "ember-glow.png", (w - cw) / 2.0, h - ch * 0.42, cw, ch, 0.22);
-                }
-                Scene::Tide => {
-                    vertical(frame, s, &[(0.0, hex("#0e131b")), (1.0, hex("#1b2838"))]);
-                    for (src, x, y, sz, o) in [
-                        ("blob-blue.png", 0.22, 0.64, 0.62, 0.55),
-                        ("blob-slate.png", 0.52, 0.32, 0.70, 0.7),
-                        ("blob-sky.png", 0.76, 0.62, 0.46, 0.35),
-                        ("blob-blue.png", 0.84, 0.20, 0.40, 0.45),
-                    ] {
-                        let d = h * sz * 1.7;
-                        pic(frame, src, w * x - d / 2.0, h * y - d / 2.0, d, d, o);
-                    }
-                    vertical(frame, s, &[(0.0, Color::TRANSPARENT), (0.55, Color::TRANSPARENT), (1.0, argb("#80090c12"))]);
-                }
-            }
-        });
-        vec![g]
+fn over(dst: &mut [f32; 3], src: [f32; 4], k: f32) {
+    let a = src[3] * k;
+    for i in 0..3 {
+        dst[i] = src[i] * a + dst[i] * (1.0 - a);
     }
+}
+
+fn lerp(a: Color, b: Color, t: f32) -> [f32; 4] {
+    [a.r + (b.r - a.r) * t, a.g + (b.g - a.g) * t, a.b + (b.b - a.b) * t, a.a + (b.a - a.a) * t]
+}
+
+/// A vertical gradient's colour at y (0..1) through its stops.
+fn at(stops: &[(f32, Color)], y: f32) -> [f32; 4] {
+    if y <= stops[0].0 {
+        let c = stops[0].1;
+        return [c.r, c.g, c.b, c.a];
+    }
+    for w in stops.windows(2) {
+        if y <= w[1].0 {
+            let t = if w[1].0 > w[0].0 { (y - w[0].0) / (w[1].0 - w[0].0) } else { 1.0 };
+            return lerp(w[0].1, w[1].1, t);
+        }
+    }
+    let c = stops[stops.len() - 1].1;
+    [c.r, c.g, c.b, c.a]
+}
+
+struct Canvas {
+    w: u32,
+    h: u32,
+    px: Vec<[f32; 3]>,
+}
+
+impl Canvas {
+    fn new(w: u32, h: u32, c: Color) -> Canvas {
+        Canvas { w, h, px: vec![[c.r, c.g, c.b]; (w * h) as usize] }
+    }
+    fn gradient(&mut self, stops: &[(f32, Color)]) {
+        for y in 0..self.h {
+            let c = at(stops, y as f32 / (self.h.max(2) - 1) as f32);
+            for x in 0..self.w {
+                over(&mut self.px[(y * self.w + x) as usize], c, 1.0);
+            }
+        }
+    }
+    /// A picture scaled into (x, y, w, h) at this opacity (smooth scaling, straight alpha, as Qt's Image).
+    fn picture(&mut self, file: &std::path::Path, x: f32, y: f32, w: f32, h: f32, opacity: f32) {
+        let Ok(img) = image::open(file) else { return };
+        let (tw, th) = (w.round().max(1.0) as u32, h.round().max(1.0) as u32);
+        let img = image::imageops::resize(&img.to_rgba8(), tw, th, image::imageops::FilterType::Triangle);
+        let (x0, y0) = (x.round() as i64, y.round() as i64);
+        for (ix, iy, p) in img.enumerate_pixels() {
+            let (sx, sy) = (x0 + ix as i64, y0 + iy as i64);
+            if sx < 0 || sy < 0 || sx >= self.w as i64 || sy >= self.h as i64 || p[3] == 0 {
+                continue;
+            }
+            let s = [p[0] as f32 / 255.0, p[1] as f32 / 255.0, p[2] as f32 / 255.0, p[3] as f32 / 255.0];
+            over(&mut self.px[(sy as u64 * self.w as u64 + sx as u64) as usize], s, opacity);
+        }
+    }
+    fn rgba(&self) -> Vec<u8> {
+        let mut v = Vec::with_capacity(self.px.len() * 4);
+        for p in &self.px {
+            v.extend([(p[0].clamp(0.0, 1.0) * 255.0).round() as u8, (p[1].clamp(0.0, 1.0) * 255.0).round() as u8, (p[2].clamp(0.0, 1.0) * 255.0).round() as u8, 255]);
+        }
+        v
+    }
+}
+
+/// The wallpaper for this look and screen size, blended into one picture (drawn once; at rest, like the QML Mantel's
+/// moving ones with Reduce motion or without a GPU).
+pub fn compose(l: &Look, size: Size) -> Handle {
+    let (w, h) = (size.width.max(1.0).round() as u32, size.height.max(1.0).round() as u32);
+    let (wf, hf) = (w as f32, h as f32);
+    let img = |f: &str| look::shell_file(&format!("images/{f}"));
+    let mut c = Canvas::new(w, h, l.p.bg);
+    match scene(l) {
+        Scene::Picture(f) => {
+            // PreserveAspectCrop: filling the screen, cut at the sides or top and bottom
+            let (iw, ih) = image_size(&f).unwrap_or((w, h));
+            let k = (wf / iw as f32).max(hf / ih as f32);
+            let (pw, ph) = (iw as f32 * k, ih as f32 * k);
+            c.picture(&f, (wf - pw) / 2.0, (hf - ph) / 2.0, pw, ph, 1.0);
+        }
+        Scene::Fireside => {
+            c.gradient(&[(0.0, hex("#0b0807")), (0.6, l.p.bg2), (1.0, hex("#1f140e"))]);
+            let (gw, gh) = (wf * 1.5, hf * 1.1);
+            c.picture(&img("ember-glow.png"), (wf - gw) / 2.0, hf - gh * 0.45, gw, gh, 0.32);
+            let (cw, ch) = (wf * 0.7, hf * 0.6);
+            c.picture(&img("ember-glow.png"), (wf - cw) / 2.0, hf - ch * 0.42, cw, ch, 0.22);
+        }
+        Scene::Tide => {
+            c.gradient(&[(0.0, hex("#0e131b")), (1.0, hex("#1b2838"))]);
+            for (src, x, y, sz, o) in [
+                ("blob-blue.png", 0.22, 0.64, 0.62, 0.55),
+                ("blob-slate.png", 0.52, 0.32, 0.70, 0.7),
+                ("blob-sky.png", 0.76, 0.62, 0.46, 0.35),
+                ("blob-blue.png", 0.84, 0.20, 0.40, 0.45),
+            ] {
+                let d = hf * sz * 1.7;
+                c.picture(&img(src), wf * x - d / 2.0, hf * y - d / 2.0, d, d, o);
+            }
+            c.gradient(&[(0.0, Color::TRANSPARENT), (0.55, Color::TRANSPARENT), (1.0, argb("#80090c12"))]);
+        }
+    }
+    Handle::from_rgba(w, h, c.rgba())
+}
+
+/// A picture with its opacity blended in (the menu's glow), made once per file and opacity.
+pub fn faded(file: &std::path::Path, opacity: f32) -> Handle {
+    use std::collections::HashMap;
+    use std::sync::{Mutex, OnceLock};
+    static CACHE: OnceLock<Mutex<HashMap<(PathBuf, u32), Handle>>> = OnceLock::new();
+    let key = (file.to_path_buf(), (opacity * 1000.0) as u32);
+    let m = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Some(h) = m.lock().ok().and_then(|g| g.get(&key).cloned()) {
+        return h;
+    }
+    let h = match image::open(file) {
+        Ok(i) => {
+            let mut i = i.to_rgba8();
+            for p in i.pixels_mut() {
+                p[3] = (p[3] as f32 * opacity).round() as u8;
+            }
+            Handle::from_rgba(i.width(), i.height(), i.into_raw())
+        }
+        Err(_) => Handle::from_path(file),
+    };
+    if let Ok(mut g) = m.lock() {
+        g.insert(key, h.clone());
+    }
+    h
 }
 
 #[cfg(test)]

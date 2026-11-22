@@ -5,7 +5,6 @@
 //! so it costs far less memory than a program per surface. If it can't start or keeps closing, labwc's autostart
 //! marks the Store's copy as failed (hearth-part) and starts the QML Mantel, so Desktop Mode always comes up.
 
-use iced::widget::canvas::Cache;
 use iced::window::Id;
 use iced::{keyboard, Color, Element, Size, Subscription, Task};
 use iced_layershell::build_pattern::daemon;
@@ -13,7 +12,6 @@ use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer, NewLayerSh
 use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
 use iced_layershell::to_layer_message;
 use std::collections::HashSet;
-use std::time::Duration;
 
 use crate::apps::{self, App};
 use crate::look::{self, Look};
@@ -26,6 +24,7 @@ pub enum Message {
     Look,
     Tick,
     Resized(Id, Size),
+    WallReady(iced::widget::image::Handle),
     Cmd(String),
     // bar
     Flame,
@@ -59,7 +58,7 @@ enum Surf {
 pub struct Shell {
     surfs: Vec<(Id, Surf)>,
     pub look: Look,
-    pub wall_cache: Cache,
+    pub wall_img: Option<iced::widget::image::Handle>,
     pub apps: Vec<App>,
     pub pins: Vec<String>,
     pub wm: wm::Snapshot,
@@ -111,7 +110,7 @@ fn boot() -> (Shell, Task<Message>) {
         bar_band: bar::band(&l, false),
         dock_h: dock::height(&l, false),
         look: l,
-        wall_cache: Cache::new(),
+        wall_img: None,
         apps: apps::all(),
         pins: sys::pins(),
         wm: wm::Snapshot::default(),
@@ -166,6 +165,15 @@ fn refit(s: &mut Shell) -> Task<Message> {
     Task::batch(t)
 }
 
+/// The wallpaper blended again (in the background: it takes a moment), for this look and screen.
+fn redraw_wall(s: &Shell) -> Task<Message> {
+    if s.screen.width <= 0.0 {
+        return Task::none();
+    }
+    let (l, size) = (s.look.clone(), s.screen);
+    Task::perform(async move { wall::compose(&l, size) }, Message::WallReady)
+}
+
 fn open_menu(s: &mut Shell) -> Task<Message> {
     if let Some(id) = s.id_of(Surf::Menu) {
         return close_menu(s, id);
@@ -195,15 +203,14 @@ fn update(s: &mut Shell, m: Message) -> Task<Message> {
         Message::Wm(w) => s.wm = w,
         Message::Look => {
             s.look = look::get();
-            s.wall_cache.clear();
             s.clock = sys::clock_text();
-            return refit(s);
+            return Task::batch([refit(s), redraw_wall(s)]);
         }
         Message::Tick => {
             s.tick = s.tick.wrapping_add(1);
             s.clock = sys::clock_text();
             s.date = sys::date_text();
-            let vol = s.tick % 3 == 0;
+            let vol = true;
             let mut st = sys::Status::read(vol);
             if !vol {
                 st.volume = s.status.volume;
@@ -215,7 +222,7 @@ fn update(s: &mut Shell, m: Message) -> Task<Message> {
         Message::Resized(id, size) => {
             if s.surf(id) == Some(Surf::Wall) && size != s.screen {
                 s.screen = size;
-                return refit(s);
+                return Task::batch([refit(s), redraw_wall(s)]);
             }
         }
         Message::Cmd(c) => {
@@ -298,6 +305,7 @@ fn update(s: &mut Shell, m: Message) -> Task<Message> {
             s.menu.system_ids = sysids;
             s.menu.hidden = hidden;
         }
+        Message::WallReady(h) => s.wall_img = Some(h),
         Message::Nothing => {}
         _ => {}
     }
@@ -306,7 +314,13 @@ fn update(s: &mut Shell, m: Message) -> Task<Message> {
 
 fn view(s: &Shell, id: Id) -> Element<'_, Message> {
     match s.surf(id) {
-        Some(Surf::Wall) => iced::widget::canvas(wall::Wall { look: s.look.clone(), cache: &s.wall_cache }).width(iced::Length::Fill).height(iced::Length::Fill).into(),
+        Some(Surf::Wall) => match &s.wall_img {
+            Some(h) => iced::widget::image(h.clone()).width(iced::Length::Fill).height(iced::Length::Fill).content_fit(iced::ContentFit::Fill).into(),
+            None => {
+                let bg = s.look.p.bg;
+                iced::widget::container(iced::widget::Space::new()).width(iced::Length::Fill).height(iced::Length::Fill).style(move |_| iced::widget::container::Style { background: Some(bg.into()), ..Default::default() }).into()
+            }
+        },
         Some(Surf::Bar) => bar::view(s),
         Some(Surf::Dock) => dock::view(s),
         Some(Surf::Menu) => menu::view(s),
@@ -319,8 +333,9 @@ fn subscription(s: &Shell) -> Subscription<Message> {
         Subscription::run(wm::stream).map(Message::Wm),
         Subscription::run(look::changes).map(|_| Message::Look),
         Subscription::run(sys::commands).map(Message::Cmd),
-        // the clock, the status icons and the pins: every 5 s (volume every 15 s; at once after you change it)
-        iced::time::every(Duration::from_secs(5)).map(|_| Message::Tick),
+        // the clock, the status icons and the pins: once a minute, on the minute (the volume at once after you change
+        // it). Every wake-up redraws the shell, so there's nothing in between: it stays asleep while you work.
+        Subscription::run(sys::minutes).map(|_| Message::Tick),
         iced::window::resize_events().map(|(id, size)| Message::Resized(id, size)),
     ];
     if s.menu_open() {

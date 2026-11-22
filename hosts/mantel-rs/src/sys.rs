@@ -147,6 +147,20 @@ impl Bt {
     }
 }
 
+/// A wake-up on every new minute (one sleeping thread).
+pub fn minutes() -> futures::channel::mpsc::UnboundedReceiver<()> {
+    let (tx, rx) = futures::channel::mpsc::unbounded();
+    let _ = std::thread::Builder::new().name("mantel-clock".into()).spawn(move || loop {
+        let now = chrono::Local::now();
+        let into = chrono::Timelike::second(&now) as u64 * 1000 + (chrono::Timelike::nanosecond(&now) / 1_000_000) as u64 % 1000;
+        std::thread::sleep(std::time::Duration::from_millis(60_000u64.saturating_sub(into).max(200) + 50));
+        if tx.unbounded_send(()).is_err() {
+            return;
+        }
+    });
+    rx
+}
+
 /// Commands for the running shell (`hearth-mantel menu` and labwc's keys): lines through a pipe in the runtime folder.
 pub fn cmd_pipe() -> PathBuf {
     run_dir().join("hearth-mantel.cmd")

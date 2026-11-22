@@ -134,7 +134,71 @@ pub fn for_window<'a>(apps: &'a [App], app_id: &str) -> Option<&'a App> {
         .or_else(|| apps.iter().find(|a| a.id.rsplit('.').next().map(|s| s.to_lowercase() == low).unwrap_or(false)))
 }
 
-/// An icon's file: a path as it is, else the theme folders (Mantel's icon set, hicolor, Adwaita), PNG or SVG.
+fn icon_roots() -> Vec<PathBuf> {
+    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    let mut roots = vec![home.join(".icons"), home.join(".local/share/icons")];
+    for d in data_dirs() {
+        roots.push(d.join("icons"));
+    }
+    roots
+}
+
+/// The icon theme in use (as Qt picks it: qt6ct's, else KDE's kdeglobals, else GTK's), then what it inherits, then
+/// hicolor; Adwaita behind them (Fedora's Qt finds it there when nothing is set).
+pub fn icon_themes() -> &'static Vec<String> {
+    static T: std::sync::OnceLock<Vec<String>> = std::sync::OnceLock::new();
+    T.get_or_init(|| {
+        let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+        let cfg = std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".config"));
+        let key_in = |f: PathBuf, sect: &str, key: &str| -> Option<String> {
+            let t = std::fs::read_to_string(f).ok()?;
+            let mut inside = sect.is_empty();
+            for l in t.lines() {
+                let l = l.trim();
+                if l.starts_with('[') {
+                    inside = l == format!("[{sect}]");
+                    continue;
+                }
+                if inside {
+                    if let Some(v) = l.strip_prefix(&format!("{key}=")) {
+                        let v = v.trim().trim_matches('"').to_string();
+                        if !v.is_empty() {
+                            return Some(v);
+                        }
+                    }
+                }
+            }
+            None
+        };
+        let first = key_in(cfg.join("qt6ct/qt6ct.conf"), "Appearance", "icon_theme")
+            .or_else(|| key_in(cfg.join("kdeglobals"), "Icons", "Theme"))
+            .or_else(|| key_in(cfg.join("gtk-3.0/settings.ini"), "Settings", "gtk-icon-theme-name"));
+        let mut out: Vec<String> = Vec::new();
+        let mut todo: Vec<String> = first.into_iter().collect();
+        while let Some(t) = todo.pop() {
+            if out.contains(&t) || out.len() > 8 {
+                continue;
+            }
+            out.push(t.clone());
+            let inh = icon_roots().into_iter().find_map(|r| key_in(r.join(&t).join("index.theme"), "Icon Theme", "Inherits"));
+            for x in inh.unwrap_or_default().split(',').rev() {
+                let x = x.trim().to_string();
+                if !x.is_empty() {
+                    todo.push(x);
+                }
+            }
+        }
+        for t in ["hicolor", "Adwaita"] {
+            if !out.iter().any(|x| x == t) {
+                out.push(t.to_string());
+            }
+        }
+        out
+    })
+}
+
+/// An icon's file: a path as it is, else the icon theme in use and what it inherits (as Qt looks), PNG or SVG,
+/// else /usr/share/pixmaps.
 pub fn icon_path(name: &str) -> Option<PathBuf> {
     if name.is_empty() {
         return None;
@@ -143,31 +207,31 @@ pub fn icon_path(name: &str) -> Option<PathBuf> {
     if p.is_absolute() {
         return p.exists().then(|| p.to_path_buf());
     }
-    let mut roots: Vec<PathBuf> = Vec::new();
-    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
-    roots.push(home.join(".local/share/icons"));
-    for d in data_dirs() {
-        roots.push(d.join("icons"));
-    }
-    let themes = ["Hearth", "Papirus-Dark", "Papirus", "breeze-dark", "breeze", "Adwaita", "hicolor"];
-    let sizes = ["scalable", "256x256", "128x128", "96x96", "64x64", "48x48", "symbolic"];
-    for r in &roots {
-        for th in themes {
+    let name = name.trim_end_matches(".png").trim_end_matches(".svg");
+    let roots = icon_roots();
+    let sizes = ["scalable", "512x512", "256x256", "128x128", "96x96", "64x64", "48x48", "32x32", "24x24", "16x16", "symbolic"];
+    for th in icon_themes() {
+        for r in &roots {
+            let base = r.join(th);
+            if !base.is_dir() {
+                continue;
+            }
             for sz in sizes {
-                for sub in ["apps", "places", "devices", "categories", "mimetypes"] {
+                for sub in ["apps", "places", "devices", "categories", "mimetypes", "legacy", "actions", "status", "emblems"] {
                     for ext in ["svg", "png"] {
-                        let f = r.join(th).join(sz).join(sub).join(format!("{name}.{ext}"));
-                        if f.exists() {
-                            return Some(f);
+                        for f in [base.join(sz).join(sub).join(format!("{name}.{ext}")), base.join(sub).join(sz).join(format!("{name}.{ext}"))] {
+                            if f.exists() {
+                                return Some(f);
+                            }
                         }
                     }
                 }
             }
         }
     }
-    for ext in ["svg", "png", "xpm"] {
+    for ext in ["svg", "png"] {
         let f = PathBuf::from(format!("/usr/share/pixmaps/{name}.{ext}"));
-        if f.exists() && ext != "xpm" {
+        if f.exists() {
             return Some(f);
         }
     }
