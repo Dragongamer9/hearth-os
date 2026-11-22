@@ -15,14 +15,25 @@ installed and `hearth-part` says it may be used: signed, made for this Hearth OS
 starts, the same rule as a failed Store copy of Mantel (red flag 2). Removing it in the Store brings the QML Mantel
 back at the next sign-in. The QML Mantel stays the default and the safe start the whole time.
 
+**Exactly like Mantel** (the owner, Nov 22: "that looks rough, Needs to look 100% like mantel"): every size, gap,
+colour, corner and font is taken from the QML Mantel's own files (Islands.qml, Dock.qml, Launcher.qml, Wallpaper.qml,
+Theme.qml, Frame.qml), and its icons are drawn from the same icon-data.js. CI starts both Mantels with the same
+settings on the same screen and puts their pictures side by side (QML above, Rust below) with how far apart they are:
+the branch `ci/mantel-rust-shots`, `pair-*.jpg`. A piece is done only when its pairs match.
+
+**One program** (Nov 22): the wallpaper, the bar, the dock and the app menu are surfaces of one `hearth-mantel
+session`, as the QML Mantel is one Quickshell: one graphics context instead of four (the first test, a program per
+surface, used about 500 MB with software drawing). `hearth-mantel menu` opens or closes the running shell's menu.
+
 ## The plan, piece by piece
 
 Each piece looks like the QML Mantel's (pictured side by side in CI), passes the smoothness check at rest, and uses
 less memory than the QML part it stands in for before the next one starts.
 
-1. [x] The bar (islands: the flame, the desktops, the clock pill, Wi-Fi / volume / battery, Game Mode), the dock
-   (pins and open apps, dots, click to open or bring to the front), the wallpaper, a first app menu (search and grid),
-   the session that keeps them up (built and checked in CI: mantel-rust.yml)
+1. [ ] The bar (Islands.qml: the flame, the desktops, the window in front, the clock pill, the status island, Game
+   Mode), the dock (Dock.qml: the flame, pins and open apps, dots, Show desktop), the wallpaper (Hearth's fireside,
+   Slate Tide, pictures), the Hearth app menu (Launcher.qml: Apps and Games, search, ALL APPS and the System apps
+   folder, the power row, the controller hints), as one program: in code; done when CI's pairs match
 2. [ ] The Hearth Store's test entry ("Get test versions" on: Get / Remove, marked TEST); a quick update of it needs
    the owner's version number (Actions › Quick update for an app › mantel-rust)
 3. [ ] Notifications (Mantel is the notification server) and the notification centre on the clock pill
@@ -37,5 +48,7 @@ less memory than the QML part it stands in for before the next one starts.
 
 - Notifications, Quick Access, the lock screen and the on-screen keyboard (pieces 3, 4 and 6): password prompts use
   the classic agent (hearth-polkit-fallback starts it when Mantel's isn't there).
-- The animated wallpapers show as their still pictures; Neon, Zen, Glass and Synthwave as the look's colours.
+- The moving wallpapers are drawn at rest (as the QML Mantel holds them with Reduce motion or without a GPU).
+- Apps' tray icons, the clock pill's music and notifications, the Gaming look's cut corners, Console's shelf.
+- labwc's Super key still asks Quickshell for the menu (the flame opens it; `hearth-mantel menu` too).
 - Right-click menus on the dock and the bar.
