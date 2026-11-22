@@ -113,7 +113,12 @@ jobs:
                   "url": os.environ["URL"], "sha256": os.environ["SHA"], "size": int(os.environ["SIZE"]),
                   "notes": [l.strip() for l in os.environ.get("NOTES", "").split("|") if l.strip()]}
           # The app's own entry when the list has one (its part, or the program it opens), else a new one.
-          for e in d["apps"]:
+          # Test versions (Mantel in Rust) go in their own list, "tests": Stores before 1.17.1 only read "apps", so they
+          # can never offer a test version to everyone.
+          test = app == "mantel-rust"
+          if test:
+              d.setdefault("tests", [])
+          for e in d["tests"] if test else d["apps"]:
               if (e.get("part") or {}).get("id") == app or e.get("partId") == app or (app not in ("mantel", "mantel-rust") and e.get("open") == app):
                   e["part"] = part
                   break
@@ -121,7 +126,7 @@ jobs:
               e = {"id": "part-" + app, "name": names.get(app, app), "kind": "builtin", "part": part}
               if app not in ("mantel", "mantel-rust"):
                   e["open"] = app
-              d["apps"].append(e)
+              (d["tests"] if test else d["apps"]).append(e)
           # Mantel in Rust is a test version: shown only with "Get test versions" on, got and removed by hand.
           if app == "mantel-rust":
               e["test"] = True
