@@ -1,28 +1,17 @@
-//! The dock (Mantel 2026, along the bottom): the app grid button (the menu), your pinned apps (desk.json, the QML
-//! Mantel's, only read here) and then every other open app, each app's windows sharing one button. A running app has
-//! a dot, the one in front a long accent dot. Click: open it, or bring its window to the front (in front already:
-//! minimize it); middle-click: open another one.
+//! The dock along the bottom, drawn as the QML Mantel's Dock.qml (Mantel 2026): floating and rounded (most looks) or
+//! attached to the edge as one flat strip (Steam-style, Zen). The Hearth flame (the app menu), a line, your pinned
+//! apps (desk.json, the QML Mantel's, only read here) and then every other open app, each app's windows sharing one
+//! button, and the thin Show desktop strip at the end. A running app has a dot, the one in front a long accent dot.
+//! Click: open it, bring it to the front (in front already: minimize it; several windows: the next one);
+//! middle-click: open another one.
 
-use iced::widget::{button, column, container, image, mouse_area, row, svg, Space};
-use iced::{border, Alignment, Color, Element, Length, Padding, Subscription, Task};
-use iced_layershell::reexport::{Anchor, KeyboardInteractivity, Layer};
-use iced_layershell::settings::{LayerShellSettings, Settings, StartMode};
-use iced_layershell::to_layer_message;
+use iced::widget::{button, column, container, mouse_area, row, stack, Space};
+use iced::{border, Alignment, Background, Element, Length, Padding};
 
 use crate::apps::{self, App};
-use crate::look::{self, a, icon, tb, Pal, Tone};
-use crate::{sys, wm};
-
-#[to_layer_message]
-#[derive(Debug, Clone)]
-pub enum Message {
-    Wm(wm::Snapshot),
-    Look,
-    Pins,
-    Menu,
-    Click(usize),
-    Middle(usize),
-}
+use crate::look::{self, a, Look};
+use crate::shell::{Message, Shell};
+use crate::wm;
 
 /// One button: the app (when it's installed), its windows, pinned or not.
 #[derive(Debug, Clone, PartialEq)]
@@ -34,26 +23,20 @@ pub struct Item {
     pub pinned: bool,
 }
 
-struct Dock {
-    apps: Vec<App>,
-    pins: Vec<String>,
-    wm: wm::Snapshot,
-}
-
-pub const H: u32 = 64 + 10 + 6;
-
 /// The buttons, in order: pins first (in pin order), then the other open apps by when they opened.
 pub fn items(apps: &[App], pins: &[String], wins: &[wm::Win]) -> Vec<Item> {
     let mut v: Vec<Item> = Vec::new();
     for p in pins {
-        let app = apps::find(apps, p).cloned();
-        let Some(app) = app else { continue };
+        let Some(app) = apps::find(apps, p).cloned() else { continue };
+        if v.iter().any(|i| i.key == app.id) {
+            continue;
+        }
         v.push(Item { key: app.id.clone(), name: app.name.clone(), app: Some(app), wins: Vec::new(), pinned: true });
     }
     for w in wins {
         let app = apps::for_window(apps, &w.app_id);
-        let key = app.map(|x| x.id.clone()).unwrap_or_else(|| w.app_id.clone());
-        if key.is_empty() || key.contains("hearth-mantel") {
+        let key = app.map(|x| x.id.clone()).unwrap_or_else(|| format!("app:{}", if w.app_id.is_empty() { &w.title } else { &w.app_id }));
+        if key == "app:" || key.contains("hearth-mantel") {
             continue;
         }
         if let Some(it) = v.iter_mut().find(|i| i.key == key) {
@@ -65,102 +48,135 @@ pub fn items(apps: &[App], pins: &[String], wins: &[wm::Win]) -> Vec<Item> {
     v
 }
 
-fn update(s: &mut Dock, m: Message) -> Task<Message> {
-    match m {
-        Message::Wm(w) => s.wm = w,
-        Message::Look => {}
-        Message::Pins => s.pins = sys::pins(),
-        Message::Menu => crate::menu::toggle(),
-        Message::Click(i) => {
-            if let Some(it) = items(&s.apps, &s.pins, &s.wm.wins).get(i) {
-                match it.wins.iter().find(|w| w.active) {
-                    Some(w) if it.wins.len() == 1 => wm::minimize(w.id),
-                    _ => match it.wins.first() {
-                        Some(w) => wm::activate(w.id),
-                        None => {
-                            if let Some(a) = &it.app {
-                                apps::launch(a);
-                            }
-                        }
-                    },
-                }
-            }
+/// A click (and Super+number): open it, bring it to the front, or (in front) minimize it; several windows: the next.
+pub fn cycle(it: &Item) {
+    let ws = &it.wins;
+    if ws.is_empty() {
+        if let Some(a) = &it.app {
+            apps::launch(a);
         }
-        Message::Middle(i) => {
-            if let Some(a) = items(&s.apps, &s.pins, &s.wm.wins).get(i).and_then(|it| it.app.clone()) {
-                apps::launch(&a);
-            }
-        }
-        _ => {}
+        return;
     }
-    Task::none()
-}
-
-fn pic<'a>(p: Pal, it: &Item, size: f32) -> Element<'a, Message> {
-    match it.app.as_ref().and_then(|a| a.icon_path.clone()) {
-        Some(f) if f.extension().and_then(|e| e.to_str()) == Some("svg") => svg(svg::Handle::from_path(f)).width(size).height(size).into(),
-        Some(f) => image(image::Handle::from_path(f)).width(size).height(size).into(),
-        None => container(tb(it.name.chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "?".into()), size * 0.45, p.ink))
-            .center(Length::Fixed(size))
-            .style(look::boxed(p.accent, p.r(size / 4.0)))
-            .into(),
-    }
-}
-
-fn view(s: &Dock) -> Element<'_, Message> {
-    let p = look::pal();
-    let h = 64.0;
-    let flat = look::bar_style() != "floating";
-    let btn_style = move |_: &iced::Theme, st: button::Status| button::Style {
-        background: matches!(st, button::Status::Hovered | button::Status::Pressed).then(|| p.hover().into()),
-        border: border::rounded(p.r(12.0)),
-        text_color: p.text,
-        ..button::Style::default()
-    };
-    let grid = button(container(icon("grid", Tone::Light, 26.0)).center(Length::Fixed(h - 14.0))).padding(0).style(btn_style).on_press(Message::Menu);
-    let mut r = row![grid].spacing(4).align_y(Alignment::Center);
-    for (i, it) in items(&s.apps, &s.pins, &s.wm.wins).into_iter().enumerate() {
-        let front = it.wins.iter().any(|w| w.active);
-        let dot: Element<'_, Message> = if it.wins.is_empty() {
-            Space::new().height(Length::Fixed(4.0)).into()
+    let i = ws.iter().position(|w| w.active);
+    if ws.len() == 1 {
+        if i == Some(0) {
+            wm::minimize(ws[0].id);
         } else {
-            container(Space::new().width(Length::Fixed(if front { 18.0 } else { 5.0 })).height(Length::Fixed(4.0))).style(look::boxed(if front { p.accent } else { a(p.text, 0.7) }, 2.0)).into()
-        };
-        let face = column![pic(p, &it, 38.0), dot].spacing(4).align_x(Alignment::Center);
-        let b = button(container(face).center_x(Length::Fixed(h - 10.0)).padding(Padding { top: 6.0, bottom: 2.0, ..Padding::ZERO })).padding(0).style(btn_style).on_press(Message::Click(i));
-        r = r.push(mouse_area(b).on_middle_press(Message::Middle(i)));
+            wm::activate(ws[0].id);
+        }
+    } else {
+        let next = i.map(|i| (i + 1) % ws.len()).unwrap_or(0);
+        wm::activate(ws[next].id);
     }
-    let shelf = container(r).padding(Padding::from([0.0, 8.0])).height(h).align_y(Alignment::Center).style(look::island(p, if flat { 0.0 } else { 18.0 }, false));
-    container(shelf).center_x(Length::Fill).padding(Padding { top: 6.0, bottom: 10.0, ..Padding::ZERO }).height(Length::Fill).into()
 }
 
-fn subscription(_s: &Dock) -> Subscription<Message> {
-    Subscription::batch([
-        Subscription::run(wm::stream).map(Message::Wm),
-        Subscription::run(look::changes).map(|_| Message::Look),
-        // desk.json: pins change when the QML Mantel (or Settings) pins an app; a cheap read every 5 s.
-        iced::time::every(std::time::Duration::from_secs(5)).map(|_| Message::Pins),
-    ])
+pub struct Geom {
+    pub attached: bool,
+    pub tile: f32,
+    pub icon: f32,
+    pub body_h: f32,
+    pub gap: f32,
 }
 
-pub fn run() -> i32 {
-    iced_layershell::disable_clipboard();
-    let layer_settings = LayerShellSettings {
-        anchor: Anchor::Bottom | Anchor::Left | Anchor::Right,
-        layer: Layer::Top,
-        exclusive_zone: H as i32,
-        size: Some((0, H)),
-        keyboard_interactivity: KeyboardInteractivity::None,
-        start_mode: StartMode::Active,
-        ..Default::default()
+impl Geom {
+    pub fn new(l: &Look, compact: bool) -> Geom {
+        // Console's shelf of big tiles isn't in this test yet: it's drawn as the floating dock.
+        let attached = l.style == "bar";
+        let tile = if compact { 68.0 } else { 56.0 };
+        Geom { attached, tile, icon: if compact { 46.0 } else { 38.0 }, body_h: if attached { tile + 8.0 } else { tile + 16.0 }, gap: if attached { 0.0 } else { 10.0 } }
+    }
+}
+
+/// The dock's surface height and the space it keeps at the bottom.
+pub fn height(l: &Look, compact: bool) -> u32 {
+    let g = Geom::new(l, compact);
+    (g.body_h + g.gap + 2.0).round() as u32
+}
+pub fn reserved(l: &Look, compact: bool) -> u32 {
+    let g = Geom::new(l, compact);
+    (g.body_h + g.gap + if g.attached { 0.0 } else { 2.0 }).round() as u32
+}
+
+fn dock_button<'a>(l: &Look, g: &Geom, face: Element<'a, Message>, active: bool, running: bool, count: usize, msg: Message) -> Element<'a, Message> {
+    let p = l.p;
+    let r = l.r(14.0);
+    let tile = g.tile;
+    // the running dot under the icon: long and lit when in front
+    let dot: Element<'a, Message> = if active || running {
+        let len = if active { 18.0 } else if count > 1 { 10.0 } else { 5.0 };
+        let c = if active { p.accent } else { p.muted };
+        container(Space::new().width(Length::Fixed(len)).height(Length::Fixed(4.0))).style(move |_| container::Style { background: Some(c.into()), border: border::rounded(2.0), ..container::Style::default() }).into()
+    } else {
+        Space::new().height(Length::Fixed(4.0)).into()
     };
-    let boot = || Dock { apps: apps::all(), pins: sys::pins(), wm: wm::Snapshot::default() };
-    let r = iced_layershell::application(boot, || "hearth-dock".to_string(), update, view)
-        .style(|_s: &Dock, _t: &iced::Theme| iced::theme::Style { background_color: Color::TRANSPARENT, text_color: look::pal().text })
-        .subscription(subscription)
-        .settings(Settings { layer_settings, default_font: look::INTER, ..Default::default() })
-        .run();
-    crate::ended("dock", r)
+    let layers = stack![
+        container(face).center(Length::Fixed(tile)),
+        container(column![Space::new().height(Length::Fill), container(dot).center_x(Length::Fill), Space::new().height(Length::Fixed(2.0))]).width(Length::Fixed(tile)).height(Length::Fixed(tile)),
+    ];
+    button(layers)
+        .padding(0)
+        .width(Length::Fixed(tile))
+        .height(Length::Fixed(tile))
+        .on_press(msg)
+        .style(move |_, st| button::Style {
+            background: if matches!(st, button::Status::Hovered | button::Status::Pressed) {
+                Some(Background::Color(p.panel3))
+            } else if active {
+                Some(Background::Color(a(p.text, 0.08)))
+            } else {
+                None
+            },
+            border: border::rounded(r),
+            text_color: p.text,
+            ..button::Style::default()
+        })
+        .into()
+}
+
+pub fn view(s: &Shell) -> Element<'_, Message> {
+    let l = &s.look;
+    let p = l.p;
+    let g = Geom::new(l, s.compact());
+
+    let mut r = row![dock_button(l, &g, look::flame(28.0), false, false, 0, Message::Flame)].spacing(8).align_y(Alignment::Center);
+    let line = p.line;
+    r = r.push(container(Space::new().width(Length::Fixed(1.0)).height(Length::Fixed(g.tile * 0.6))).style(move |_| container::Style { background: Some(line.into()), ..container::Style::default() }));
+    for (i, it) in items(&s.apps, &s.pins, &s.wm.wins).into_iter().enumerate() {
+        let active = it.wins.iter().any(|w| w.active);
+        let face = look::app_pic(it.app.as_ref().and_then(|a| a.icon_path.as_deref()), g.icon);
+        let b = dock_button(l, &g, face, active, !it.wins.is_empty(), it.wins.len(), Message::Task(i));
+        r = r.push(mouse_area(b).on_middle_press(Message::TaskMiddle(i)));
+    }
+    // Show desktop: the thin strip at the end
+    let (txt, p3) = (p.text, p.panel3);
+    let strip = button(Space::new().width(Length::Fixed(8.0)).height(Length::Fixed(g.tile * 0.62)))
+        .padding(0)
+        .on_press(Message::ShowDesktop)
+        .style(move |_, st| button::Style {
+            background: Some(Background::Color(if matches!(st, button::Status::Hovered | button::Status::Pressed) { p3 } else { a(txt, 0.12) })),
+            border: border::rounded(3.0),
+            ..button::Style::default()
+        });
+    r = r.push(strip);
+
+    let glass = l.glass();
+    if g.attached {
+        // attached to the edge: one flat strip, a line along its top
+        let body = column![
+            container(Space::new()).width(Length::Fill).height(Length::Fixed(1.0)).style(move |_| container::Style { background: Some(line.into()), ..container::Style::default() }),
+            container(r).center_x(Length::Fill).center_y(Length::Fill),
+        ];
+        let strip = container(body).width(Length::Fill).height(Length::Fixed(g.body_h)).style(move |_| container::Style { background: Some(glass.into()), ..container::Style::default() });
+        column![Space::new().height(Length::Fill), strip].into()
+    } else {
+        let g2 = crate::bar::Geom::new(l, s.compact());
+        let shelf = container(r)
+            .padding(Padding { left: 10.0, right: 10.0, ..Padding::ZERO })
+            .height(Length::Fixed(g.body_h))
+            .align_y(Alignment::Center)
+            .style(crate::bar::frame(l, &crate::bar::Geom { floating: true, ..g2 }, if l.gaming() { 0.0 } else { l.r(22.0) }, false));
+        container(shelf).center_x(Length::Fill).padding(Padding { bottom: g.gap, ..Padding::ZERO }).height(Length::Fill).align_y(Alignment::End).into()
+    }
 }
 
 #[cfg(test)]
@@ -184,5 +200,16 @@ mod tests {
         assert_eq!(v.iter().map(|i| i.key.as_str()).collect::<Vec<_>>(), ["firefox", "steam"]);
         assert!(v[0].pinned && v[0].wins.len() == 1);
         assert_eq!(v[1].wins.len(), 2);
+    }
+
+    #[test]
+    fn steam_style_dock_is_attached_and_hearth_floats() {
+        let mut l = crate::look::get();
+        l.style = "bar".into();
+        assert_eq!(height(&l, false), 66);
+        assert_eq!(reserved(&l, false), 64);
+        l.style = "floating".into();
+        assert_eq!(height(&l, false), 84);
+        assert_eq!(reserved(&l, false), 84);
     }
 }

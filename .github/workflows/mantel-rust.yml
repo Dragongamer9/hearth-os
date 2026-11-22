@@ -1,15 +1,16 @@
 # Mantel in Rust (test; docs/MANTEL-RUST.md): hosts/mantel-rs, Mantel's bar, dock, wallpaper and app menu drawn with
 # iced on wlr-layer-shell, opt in through the Hearth Store. Built and checked only here, in Fedora 45 as the image is.
 #   build    cargo build --release and cargo test (errors as annotations), and `hearth-mantel check` (what it reads)
-#   labwc    `hearth-mantel session` on labwc on a virtual screen (software drawing): pictures pushed to the ci/mantel-rust-shots branch, then a
-#            minute at rest with its CPU and memory (it must be quiet), and the same for the QML Mantel's numbers
+#   labwc    the QML Mantel and `hearth-mantel session` on labwc on a virtual screen, the same settings: pictures side by
+#            side (ci/mantel-rust-shots branch), how far apart they are, and a minute at rest for each (CPU, memory)
 name: Mantel in Rust (test)
 
 on:
   push:
     branches: ['feature/mantel-rust']
     paths: ['hosts/mantel-rs/**', 'hosts/hearth-ui/src/**', 'hosts/linux/desktop/labwc/autostart',
-            '.github/workflows/mantel-rust.yml', '.github/scripts/mantel-rust-run.sh', '.github/scripts/cargo-build-annotate.sh']
+            '.github/workflows/mantel-rust.yml', '.github/scripts/mantel-rust-run.sh', '.github/scripts/cargo-build-annotate.sh',
+            'hosts/linux/desktop/shell/**']
   workflow_dispatch:
 
 permissions:
@@ -67,10 +68,35 @@ jobs:
           path: hosts/mantel-rs/target/release/hearth-mantel
           retention-days: 5
 
-  labwc:
-    needs: build
+  # The QML Mantel's Quickshell, as the image builds it (kept between runs: it only changes with the build script).
+  quickshell:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    container: registry.fedoraproject.org/fedora:45
+    timeout-minutes: 40
+    steps:
+      - run: dnf5 -y install git tar gzip zstd >/dev/null
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: qc
+        with:
+          path: /tmp/quickshell.tgz
+          key: quickshell-f45-${{ hashFiles('os-bases/anatase/quickshell-build.sh') }}
+      - name: Build
+        if: steps.qc.outputs.cache-hit != 'true'
+        run: |
+          set -o pipefail
+          bash os-bases/anatase/quickshell-build.sh /tmp/qs 2>&1 | tail -n 60 > /tmp/qs.log || { echo "::error title=Quickshell::$(tail -c 1500 /tmp/qs.log | tr '\n' ' ')"; exit 1; }
+          tar -C /tmp/qs -czf /tmp/quickshell.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quickshell-fedora
+          path: /tmp/quickshell.tgz
+          retention-days: 3
+
+  labwc:
+    needs: [build, quickshell]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
     container:
       image: registry.fedoraproject.org/fedora:45
       options: --cap-add=SYS_PTRACE --security-opt seccomp=unconfined
@@ -82,12 +108,20 @@ jobs:
         with:
           name: hearth-mantel
           path: /tmp/hm
+      - uses: actions/download-artifact@v4
+        with:
+          name: quickshell-fedora
+          path: /tmp/qsa
       - name: labwc, as the image has it
         run: |
-          dnf5 -y install git python3 mesa-vulkan-drivers vulkan-loader python3-pillow procps-ng dbus-daemon dbus-tools findutils foot google-noto-sans-fonts rsms-inter-fonts >/dev/null 2>&1 || true
+          tar -C / -xzf /tmp/qsa/quickshell.tgz
+          dnf5 -y install git python3 wlr-randr mesa-vulkan-drivers vulkan-loader python3-pillow procps-ng dbus-daemon dbus-tools findutils foot google-noto-sans-fonts rsms-inter-fonts >/dev/null 2>&1 || true
           bash os-bases/anatase/labwc-install.sh 2>&1 | grep -E '::|^Error' || true
           mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
           install -Dm755 /tmp/hm/hearth-mantel /usr/local/bin/hearth-mantel
+          chmod 755 /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/open.sh 2>/dev/null
+          find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +
+          install -Dm755 hosts/linux/session/nimbus-mode /usr/bin/nimbus-mode
       - name: On labwc
         run: bash .github/scripts/mantel-rust-run.sh /tmp/out
       # The pictures (and the logs) on their own branch, to look at: notices hold only ten per step.

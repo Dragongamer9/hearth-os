@@ -24,7 +24,7 @@ pub fn clock_text() -> String {
     }
 }
 
-/// "Sat 22 Nov".
+/// "Sat 22 Nov" (Qt's "ddd d MMM").
 pub fn date_text() -> String {
     chrono::Local::now().format("%a %-d %b").to_string()
 }
@@ -124,7 +124,66 @@ pub fn volume_mute() {
     let _ = std::process::Command::new("wpctl").args(["set-mute", "@DEFAULT_AUDIO_SINK@", "toggle"]).status();
 }
 
-/// The runtime folder (the menu's pid file).
+/// Bluetooth (the bar's button): an adapter there, and on (rfkill not blocking it). Read from /sys, no D-Bus.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Bt {
+    pub present: bool,
+    pub powered: bool,
+}
+
+impl Bt {
+    pub fn read() -> Bt {
+        let present = std::fs::read_dir("/sys/class/bluetooth").map(|mut d| d.next().is_some()).unwrap_or(false);
+        let mut powered = present;
+        if let Ok(rd) = std::fs::read_dir("/sys/class/rfkill") {
+            for e in rd.flatten() {
+                let d = e.path();
+                if read(d.join("type")) == "bluetooth" && (read(d.join("soft")) == "1" || read(d.join("hard")) == "1") {
+                    powered = false;
+                }
+            }
+        }
+        Bt { present, powered }
+    }
+}
+
+/// Commands for the running shell (`hearth-mantel menu` and labwc's keys): lines through a pipe in the runtime folder.
+pub fn cmd_pipe() -> PathBuf {
+    run_dir().join("hearth-mantel.cmd")
+}
+
+/// Each line written to the pipe, as it comes (one thread, asleep until something is written).
+pub fn commands() -> futures::channel::mpsc::UnboundedReceiver<String> {
+    let (tx, rx) = futures::channel::mpsc::unbounded();
+    let p = cmd_pipe();
+    let _ = std::fs::remove_file(&p);
+    if let Ok(c) = std::ffi::CString::new(p.to_string_lossy().as_bytes()) {
+        unsafe { libc::mkfifo(c.as_ptr(), 0o600) };
+    }
+    let _ = std::thread::Builder::new().name("mantel-cmd".into()).spawn(move || loop {
+        use std::io::BufRead;
+        // Opening waits for a writer; each writer's lines, then open again.
+        let Ok(f) = std::fs::File::open(&p) else { return };
+        for l in std::io::BufReader::new(f).lines().map_while(Result::ok) {
+            if tx.unbounded_send(l).is_err() {
+                return;
+            }
+        }
+    });
+    rx
+}
+
+/// Sends a command to the running shell; false when none is listening.
+pub fn send_command(c: &str) -> bool {
+    use std::io::Write;
+    use std::os::unix::fs::OpenOptionsExt;
+    match std::fs::OpenOptions::new().write(true).custom_flags(libc::O_NONBLOCK).open(cmd_pipe()) {
+        Ok(mut f) => f.write_all(format!("{c}\n").as_bytes()).is_ok(),
+        Err(_) => false,
+    }
+}
+
+/// The runtime folder.
 pub fn run_dir() -> PathBuf {
     std::env::var_os("XDG_RUNTIME_DIR").map(PathBuf::from).unwrap_or_else(|| PathBuf::from("/tmp"))
 }
