@@ -3,7 +3,11 @@
 The owner, Nov 22: "I want to add the ability to create any desktop layout and look … KDE look or a Gnome look",
 "type what you want while editing your layout and it makes what you want", "Ok it can use ai", "add that Describe it
 to all our apps as well", "it should be able to add features as well … features that are new should be sent to us",
-"Same for Mantel", then "I like it let's do it". Built in Mantel in Rust (docs/MANTEL-RUST.md) and hearth-ui's apps.
+"Same for Mantel", then "I like it let's do it", and "This go into both mantel versions": built in both Mantels, the QML
+Mantel (hosts/linux/desktop/shell) and Mantel in Rust (hosts/mantel-rs), and in hearth-ui's apps. One shared core for
+all of them (the layout files, the blocks' names, the Describe it helper that turns words, sketches and the AI's answer
+into a layout or a feature recipe and checks it, sending ideas); each Mantel only draws it. A part is ticked when it's
+in both Mantels.
 
 Mockups: desktop-layouts/layouts-1-plasma-style.png, desktop-layouts/layouts-2-gnome-style.png, desktop-layouts/layouts-3-gnome-style-overview.png, desktop-layouts/layouts-4-windows-11-style.png, desktop-layouts/layouts-5-macos-style.png, desktop-layouts/layouts-6-layout-editor.png, desktop-layouts/layouts-7-describe-it.png, desktop-layouts/layouts-8-describe-it-new-feature.png, desktop-layouts/layouts-9-describe-it-send-idea.png, desktop-layouts/layouts-10-ideas-inbox.png, desktop-layouts/layouts-11-describe-it-in-files.png
 Release: next
