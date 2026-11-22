@@ -20,3 +20,14 @@ class MenuSearchLoop(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class NoItemParticles(unittest.TestCase):
+    """Mantel's wallpapers draw particles as one image layer: ItemParticle (an item per particle, made and thrown away
+    all the time) crashed Quickshell on Fedora's Qt (the owner's dad's PC, Nov 21, 2026)."""
+    def test_no_item_particle(self):
+        for name in os.listdir(SHELL):
+            if name.endswith('.qml'):
+                text = open(os.path.join(SHELL, name), encoding='utf-8').read()
+                code = '\n'.join(l for l in text.splitlines() if not l.strip().startswith('//'))
+                self.assertNotIn('ItemParticle {', code, name)
