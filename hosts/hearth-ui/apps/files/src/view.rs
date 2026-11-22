@@ -160,9 +160,42 @@ pub fn view(a: &App) -> El<'_> {
 fn menu_place(a: &App, m: &Menu) -> (f32, f32) {
     let items_h: f32 = m.items.iter().map(|i| if i.sep { 9.0 } else if i.heading { 28.0 } else if i.quick && m.short { 0.0 } else { 30.0 }).sum();
     let h = items_h + if m.short { 46.0 } else { 34.0 } + 10.0;
-    let x = m.at.x.min(1600.0).max(4.0);
-    let y = if m.at.y + h > 760.0 { (m.at.y - h).max(40.0).min(m.at.y) } else { m.at.y };
-    (x, y.max(4.0))
+    menu_xy(m.at.x, m.at.y, m.width.max(200.0), h, a.win)
+}
+
+/// Where a right-click menu opens (Windows 11's rule): at the pointer, below and to the right of it; above it when
+/// there's no room below, to its left when there's no room on the right; and only when it fits neither way, moved
+/// just enough to stay in the window, never further from the pointer than that. (1.17 fix: it used a fixed 760-pixel
+/// window, so a long menu jumped to the top of the window.)
+pub fn menu_xy(px: f32, py: f32, mw: f32, mh: f32, win: (f32, f32)) -> (f32, f32) {
+    let (ww, wh) = if win.0 > 50.0 && win.1 > 50.0 { win } else { (1600.0, 900.0) };
+    let m = 4.0;
+    let x = if px + mw <= ww - m { px } else if px - mw >= m { px - mw } else { (ww - mw - m).max(m) };
+    let y = if py + mh <= wh - m { py } else if py - mh >= m { py - mh } else { (wh - mh - m).clamp(m, py.max(m)) };
+    (x.max(m), y.max(m))
+}
+
+#[cfg(test)]
+mod menu_place_tests {
+    use super::menu_xy;
+    #[test]
+    fn opens_at_the_pointer() {
+        assert_eq!(menu_xy(300.0, 200.0, 260.0, 300.0, (1366.0, 768.0)), (300.0, 200.0));
+    }
+    #[test]
+    fn flips_up_when_no_room_below() {
+        assert_eq!(menu_xy(300.0, 600.0, 260.0, 300.0, (1366.0, 768.0)), (300.0, 300.0));
+    }
+    #[test]
+    fn flips_left_when_no_room_on_the_right() {
+        assert_eq!(menu_xy(1300.0, 200.0, 260.0, 300.0, (1366.0, 768.0)).0, 1040.0);
+    }
+    #[test]
+    fn a_tall_menu_moves_only_as_much_as_needed() {
+        // 600 tall at y = 300 in a 768 window: fits neither way, so its bottom sits at the window's edge (y 164),
+        // not at the top of the window.
+        assert_eq!(menu_xy(300.0, 300.0, 260.0, 600.0, (1366.0, 768.0)).1, 164.0);
+    }
 }
 
 // ------------------------------------------------------------------ the tabs (the window's title bar)
