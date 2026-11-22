@@ -28,3 +28,4 @@ tools/*-shots/
 *.swp
 .DS_Store
 hosts/hearth-ui/target/
+hosts/hearth-layout/target/

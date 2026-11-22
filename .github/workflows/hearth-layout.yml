@@ -1,0 +1,57 @@
+# Desktop layouts' shared part (hosts/hearth-layout; docs/mockups/checklists/desktop-layouts.md): the layout files and
+# their check, putting one in place with Undo, Describe it's feature recipes and ideas. Both Mantels and Hearth's apps
+# use it. Built and tested here only, in Fedora 45 as the image is; the ready-made layouts are checked by its tests.
+name: Desktop layouts (shared part)
+
+on:
+  push:
+    branches: ['feature/desktop-layouts', 'bughunt']
+    paths: ['hosts/hearth-layout/**', 'hosts/linux/desktop/layouts/**', 'hosts/hearth-core/src/settings_file.rs',
+            'hosts/linux/desktop/shell/widget-tools.js', '.github/workflows/hearth-layout.yml']
+  workflow_dispatch:
+
+concurrency:
+  group: hearth-layout-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: registry.fedoraproject.org/fedora:45
+    steps:
+      - name: Rust
+        run: |
+          dnf -y install git tar zstd gcc rust cargo python3 >/dev/null
+          echo "::notice title=toolchain::$(rustc --version)"
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            hosts/hearth-layout/target
+          key: hearth-layout-f45-${{ hashFiles('hosts/hearth-layout/Cargo.toml') }}-${{ github.sha }}
+          restore-keys: hearth-layout-f45-${{ hashFiles('hosts/hearth-layout/Cargo.toml') }}-
+      - name: Build
+        id: b
+        continue-on-error: true
+        run: bash .github/scripts/cargo-build-annotate.sh hosts/hearth-layout
+      - name: More errors
+        if: steps.b.outcome == 'failure'
+        run: |
+          [ -f errors-hearth-layout.txt ] && sed -n '11,30p' errors-hearth-layout.txt
+          exit 1
+      - name: Tests
+        run: |
+          cd hosts/hearth-layout
+          cargo test --release -- --test-threads=1 > ../../test.log 2>&1 || { grep -E "^test .* FAILED|panicked at|^error" ../../test.log | head -10 | while read -r l; do echo "::error title=cargo test::$l"; done; exit 1; }
+          echo "::notice title=cargo test::$(grep -E '^test result' ../../test.log | tr '\n' ' ' | cut -c1-300)"
+      - name: The ready-made layouts, as the command line shows them
+        run: |
+          export HOME=$(mktemp -d) NIMBUS_SHARE=$PWD/hosts/linux
+          b=hosts/hearth-layout/target/release/hearth-layout
+          $b list | while read -r l; do echo "::notice title=layout::$l"; done
+          $b apply plasma && $b current | grep -qx plasma && $b undo

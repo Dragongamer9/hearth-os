@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "id": "macos",
+  "name": "macOS-style",
+  "about": "Like macOS: a menu bar along the top with the app in front and its menus, and a floating dock.",
+  "desktop": { "barStyle": "bar", "dockFloat": "on" },
+  "bar": {
+    "start": ["menu", "appname", "appmenus"],
+    "end": ["battery", "network", "search", "quickaccess", "notifications"],
+    "hidden": ["desktops", "activity", "window"]
+  },
+  "panels": [],
+  "windowButtons": { "side": "left", "buttons": ["close", "iconify", "max"] }
+}

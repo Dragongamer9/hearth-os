@@ -1,0 +1,25 @@
+[package]
+name = "hearth-layout"
+edition = "2021"
+description = "Desktop layouts, Describe it's feature recipes and ideas: the part both Mantels and Hearth's apps share"
+license = "GPL-3.0-or-later"
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "hearth-layout"
+path = "src/main.rs"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

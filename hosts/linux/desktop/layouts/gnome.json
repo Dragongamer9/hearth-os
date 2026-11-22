@@ -1,0 +1,14 @@
+{
+  "format": 1,
+  "id": "gnome",
+  "name": "GNOME-style",
+  "about": "Like GNOME: a thin bar along the top with the time in the middle, and the overview for your windows and apps.",
+  "desktop": { "barLayout": "one", "barEdge": "top", "dockFloat": "off", "barStyle": "bar" },
+  "bar": {
+    "start": ["overview", "menu"],
+    "end": ["network", "volume", "battery"],
+    "hidden": ["search", "desktops", "activity", "window", "background", "discord", "keyboard", "layout"]
+  },
+  "panels": [],
+  "windowButtons": { "side": "right", "buttons": ["close"] }
+}

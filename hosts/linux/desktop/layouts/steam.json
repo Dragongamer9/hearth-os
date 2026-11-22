@@ -1,0 +1,9 @@
+{
+  "format": 1,
+  "id": "steam",
+  "name": "Steam-style",
+  "about": "Like the Steam Deck's desktop: one bar along the bottom with your apps in it, and a menu of tiles.",
+  "desktop": { "barLayout": "one", "barEdge": "bottom", "dockFloat": "off", "appMenu": "tiles" },
+  "panels": [],
+  "windowButtons": { "side": "right", "buttons": ["iconify", "max", "close"] }
+}
