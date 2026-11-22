@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 4,
+  "serial": 5,
   "apps": [
     {
       "id": "command-center",
@@ -309,6 +309,45 @@
       "kind": "builtin",
       "partId": "hearth-resmon-app",
       "open": "hearth-resmon-app"
+    },
+    {
+      "id": "store",
+      "name": "Hearth Store",
+      "short": "Store",
+      "card": "Hearth's apps and their quick updates, Hearth Store itself included",
+      "tagline": "Hearth's apps and their quick updates, Hearth Store itself included",
+      "about": "Hearth's apps and their quick updates, Hearth Store itself included. It's part of Hearth OS and gets quick updates here, between Hearth OS updates.",
+      "icon": "★",
+      "from": "#fbbf24",
+      "to": "#b45309",
+      "kind": "builtin",
+      "partId": "hearth-store-app"
+    },
+    {
+      "id": "controller",
+      "name": "Controller",
+      "short": "Controller",
+      "card": "Your controller as a mouse and keyboard on the desktop",
+      "tagline": "Your controller as a mouse and keyboard on the desktop",
+      "about": "Your controller as a mouse and keyboard on the desktop. It's part of Hearth OS and gets quick updates here, between Hearth OS updates.",
+      "icon": "⊕",
+      "from": "#a78bfa",
+      "to": "#6d28d9",
+      "kind": "builtin",
+      "partId": "hearth-pad-host"
+    },
+    {
+      "id": "file-chooser",
+      "name": "File chooser",
+      "short": "File chooser",
+      "card": "The open and save windows every app uses",
+      "tagline": "The open and save windows every app uses",
+      "about": "The open and save windows every app uses. It's part of Hearth OS and gets quick updates here, between Hearth OS updates.",
+      "icon": "⧉",
+      "from": "#fde68a",
+      "to": "#ca8a04",
+      "kind": "builtin",
+      "partId": "hearth-file-chooser"
     }
   ]
 }

@@ -665,7 +665,13 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 return Task::none();
             }
             a.say(format!("Updating {} to {}…", e.name, pt.version), false);
-            let done = if pt.id == "mantel" { format!("{} is on {}: your desktop restarts with it in a moment.", e.name, pt.version) } else { format!("{} is on {}: it opens with it next time.", e.name, pt.version) };
+            let done = if pt.id == "mantel" {
+                format!("{} is on {}: your desktop restarts with it in a moment.", e.name, pt.version)
+            } else if pt.id == "hearth-store-app" {
+                format!("The Hearth Store is on {}: close it and open it again to use it.", pt.version)
+            } else {
+                format!("{} is on {}: it opens with it next time.", e.name, pt.version)
+            };
             return Task::perform(net::off(move || parts::install(&pt).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("The update stopped; nothing changed.".into()))));
         }
         Msg::PartRemove(id) => {
