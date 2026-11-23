@@ -79,7 +79,9 @@ pub const FILES: AppSchema = AppSchema {
         ("bar", "the button bar (under the top bar)", &["new", "sep", "cut", "copy", "paste", "rename", "share", "delete", "sep", "sort", "view", "tools", "spacer", "sortdl", "features", "details", "more"]),
         ("bottom", "a bar at the bottom (above the status bar)", &[]),
     ],
-    keep: &["view", "close"],
+    // nothing has to stay (the owner, Nov 22: "it can be Whatever they want it to be"): a window without Close still
+    // closes with Alt+F4 or Super+Q, and Describe it and Back to the original are also on the right-click of empty space
+    keep: &[],
 };
 
 /// Every app with Describe it, by its id (hearth-layout describe-app <app>).
@@ -475,8 +477,7 @@ mod tests {
         let chips: Vec<&str> = r["chips"].as_array().unwrap().iter().map(|c| c["text"].as_str().unwrap()).collect();
         assert!(chips.contains(&"Layout: no tabs") && chips.iter().any(|c| c.starts_with("Layout: a bar at the bottom: back, forward, up")), "{chips:?}");
         let bad = |z: Value| check_answer(&FILES, &json!({"kind": "app", "layout": {"zones": z}}), "x", false).is_err();
-        assert!(bad(json!({"hidden": ["view"]})), "View stays: the way back");
-        assert!(bad(json!({"hidden": ["close"]})), "a window can always be closed");
+        assert!(!bad(json!({"hidden": ["view", "close", "minimize"]})), "anything can go: the ways back are elsewhere too");
         assert!(!bad(json!({"titlebar": ["close", "minimize", "maximize", "spacer", "title"]})), "macOS-style: the buttons on the left");
         assert!(bad(json!({"top": ["search"], "bottom": ["search"]})), "one place only");
         assert!(bad(json!({"top": ["rocket"]})));

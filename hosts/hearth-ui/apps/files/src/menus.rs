@@ -265,6 +265,14 @@ impl App {
                 items.push(MenuItem::new("termpanel", if self.term.on { "Hide the terminal panel" } else { "Terminal panel" }).key("F4").icon(Ic::Terminal));
                 items.push(MenuItem::new("splitview", if self.split.is_some() { "Close split view" } else { "Split view" }).key("F9").icon(Ic::Split));
             }
+            if e.is_none() && !self.picking() {
+                // Describe it is here too, so a Files with its View button hidden can always be changed back
+                items.push(MenuItem::sep());
+                items.push(MenuItem::new("describe", "Describe it…"));
+                if self.describe.has_kept() {
+                    items.push(MenuItem::new("layout-original", "Back to the original layout"));
+                }
+            }
             if e.is_some() || !self.on_home() {
                 items.push(MenuItem::sep());
                 items.push(MenuItem::new("props", if e.is_some() { "Properties" } else { "Folder properties" }).key("Alt+Enter").icon(Ic::Info));

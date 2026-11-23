@@ -443,12 +443,9 @@ pub fn zone_items(a: &App, zone: &str) -> Vec<String> {
         "bar" => BAR,
         _ => &[],
     };
-    let mut v: Vec<String> = own.iter().filter(|i| **i == "sep" || **i == "spacer" || !placed.iter().any(|x| x == *i)).map(|i| i.to_string()).collect();
-    // Close (in the title bar) and View (and View › Layout, Back to the original) are never lost: back in the button bar when it was taken out of it
-    // and put nowhere else
-    if zone == "bar" && !placed.iter().any(|x| x == "view") && !v.iter().any(|x| x == "view") {
-        v.push("view".into());
-    }
+    let v: Vec<String> = own.iter().filter(|i| **i == "sep" || **i == "spacer" || !placed.iter().any(|x| x == *i)).map(|i| i.to_string()).collect();
+    // a piece an answer took out of its own zone without putting it anywhere (not even "hidden") stays where it was:
+    // only what was asked for changes
     v
 }
 
