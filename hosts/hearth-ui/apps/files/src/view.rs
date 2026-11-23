@@ -303,7 +303,7 @@ fn zone_titlebar(a: &App) -> El<'_> {
     let mut r = Row::new().align_y(iced::Center).padding(pad(0.0, 0.0, 0.0, 10.0));
     let mut dragged = false;
     for i in &items {
-        r = r.push(match i.as_str() {
+        let el: El<'_> = match i.as_str() {
             "tabs" => container(tabs_row(a)).height(Length::Fixed(40.0)).align_bottom(Length::Fixed(40.0)).into(),
             "newtab" => container(flat(&p, ico(Ic::Plus, p.muted, 15.0), Some(Msg::NewTab), pad(6.0, 8.0, 6.0, 8.0))).padding(pad(0.0, 0.0, 0.0, 4.0)).into(),
             "title" => container(t1(format!("{} — Hearth Files", a.title_of(&a.path)), 13.0, p.text)).padding(pad(0.0, 8.0, 0.0, 6.0)).into(),
@@ -316,7 +316,8 @@ fn zone_titlebar(a: &App) -> El<'_> {
                 Some(e) => e,
                 None => continue,
             },
-        });
+        };
+        r = r.push(el);
         if i == "title" || i == "newtab" || i == "tabs" {
             if a.describe.open && !items.iter().skip_while(|x| *x != i).skip(1).any(|x| x == "title" || x == "tabs" || x == "newtab") {
                 r = r.push(container(hearth_ui::describe::editing::<Msg>(&p)).padding(pad(0.0, 0.0, 0.0, 10.0)));
