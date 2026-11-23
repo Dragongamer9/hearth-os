@@ -875,14 +875,14 @@ PanelWindow {
             id: ls
             readonly property var blk: parent.blk
             readonly property var st: parent.st
-            readonly property bool right: (blk.x || 0) > scr.cols / 2
+            readonly property bool atRight: (blk.x || 0) > scr.cols / 2
             spacing: 6
             Repeater {
                 model: ls.blk.shows === "games" || ls.blk.shows === "recent" ? (ls.blk.shows === "recent" ? scr.recentGames : scr.games).slice(0, ls.blk.count || 6).map(g => ({ label: g.title.toUpperCase(), g: g }))
                                                                               : (ls.blk.items || []).map(i => scr.itemOf(i))
                 delegate: Text {
                     required property var modelData
-                    width: ls.width; horizontalAlignment: ls.right ? Text.AlignRight : Text.AlignLeft
+                    width: ls.width; horizontalAlignment: ls.atRight ? Text.AlignRight : Text.AlignLeft
                     text: modelData.label; color: ls.st.text || scr.ink; font.family: scr.fontFor(ls.st.font || "Noto Sans Mono"); font.pixelSize: ls.st.size || 15
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { scr.sound(ls.st.sound); if (modelData.g) scr.play(modelData.g); else scr.act(modelData.action, modelData.target); } }
                 }
