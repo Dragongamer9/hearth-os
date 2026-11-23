@@ -552,7 +552,8 @@ PanelWindow {
         id: cSearch
         Rectangle {   // the Tiles menu's search field: click to search (what you type shows here)
             objectName: "menuSearchField"
-            readonly property bool wanted: isl.menuSearchShown
+            // the Tiles menu's field; with a desktop layout that put Search in the bar, every menu's (Windows 11-style)
+            readonly property bool wanted: isl.menuSearchShown || (Settings.layout !== "" && !isl.vertical && !isl.shelf && !isl.compact)
             implicitWidth: 300; implicitHeight: Math.max(26, isl.islandH - 14)
             radius: Theme.r(8)
             color: msa.containsMouse ? Theme.panel3 : Qt.rgba(Theme.bg2.r, Theme.bg2.g, Theme.bg2.b, 0.85)
