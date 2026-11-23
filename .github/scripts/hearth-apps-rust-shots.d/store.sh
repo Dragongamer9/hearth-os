@@ -79,3 +79,17 @@ export HEARTH_PARTS="$QW/parts-b/parts" HEARTH_PARTS_STATE="$QW/parts-b/state"
 run store-15-quick-app-page hearth-store 0 "$BIN/hearth-store-app" --page built-in --app files
 unset HEARTH_PARTS HEARTH_PARTS_STATE
 store_done
+
+# The Windows 11 Store's look (approved Nov 22; mockups docs/mockups/store-win11, checklist store-win11.md): Home, Apps
+# and Library in the new frame (the title bar's search, the rail, the page's rounded layer), on the quick-update world
+# (Mantel and Hearth Files with updates waiting), with Get test versions on for the rail's Tests.
+store_home home-a quick-world
+mkdir -p "$XDG_CONFIG_HOME/nimbus"
+cp "$XDG_CONFIG_HOME/nimbus/hearth-store.json" /tmp/store-prefs.bak 2>/dev/null || true
+echo '{"testVersions": true}' > "$XDG_CONFIG_HOME/nimbus/hearth-store.json"
+run store-w11-1-home hearth-store 15 "$BIN/hearth-store-app"
+run store-w11-2-apps hearth-store 0 "$BIN/hearth-store-app" --page apps
+run store-w11-4-library hearth-store 0 "$BIN/hearth-store-app" --page library
+run store-w11-tests hearth-store 0 "$BIN/hearth-store-app" --page tests
+rm -f "$XDG_CONFIG_HOME/nimbus/hearth-store.json"
+store_done

@@ -14,6 +14,7 @@
 mod look;
 mod pad;
 mod view;
+mod w11;
 
 use hearth_store::catalog::{self, Catalog, Entry, Kind};
 use hearth_store::check;
@@ -37,6 +38,9 @@ pub const SEARCH_ID: &str = "store-search";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Page {
     Home,
+    /// The Windows 11 Store's rail (store-win11): every app with filter pills, and the test versions.
+    Apps,
+    Tests,
     Yours,
     Updates,
     BuiltIn,
@@ -167,6 +171,9 @@ pub enum Msg {
     PartRemove(String),
     PartRetry(String),
     PartDone(String, Result<String, String>),
+    /// Apps' filter pills, Library's Apps / Hearth parts / Tests (store-win11)
+    Filter(String),
+    LibTab(String),
 }
 
 pub struct App {
@@ -203,6 +210,9 @@ pub struct App {
     /// Quick updates installed in your home folder (by the entry's id), and the ones being worked on.
     pub parts: BTreeMap<String, parts::Have>,
     pub part_busy: BTreeSet<String>,
+    /// Apps' filter ("" all) and Library's list ("" apps), store-win11
+    pub filter: String,
+    pub lib_tab: String,
 }
 
 /// Where an app is: what its buttons say and do.
@@ -246,7 +256,9 @@ fn which(cmd: &str) -> bool {
 fn page_of(s: &str) -> Page {
     match s {
         "yours" | "your-apps" => Page::Yours,
-        "updates" => Page::Updates,
+        "updates" | "library" => Page::Updates,
+        "apps" => Page::Apps,
+        "tests" => Page::Tests,
         "built-in" | "builtin" => Page::BuiltIn,
         "settings" => Page::Settings,
         "work" | "updating" => Page::Work,
@@ -291,6 +303,8 @@ impl App {
             all: false,
             parts: BTreeMap::new(),
             part_busy: BTreeSet::new(),
+            filter: String::new(),
+            lib_tab: String::new(),
             cat,
         };
         pad::PAD_LOOK.store(a.pad, std::sync::atomic::Ordering::Relaxed);
@@ -712,6 +726,10 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             let done = format!("{} tries its update again the next time it starts.", e.name);
             return Task::perform(net::off(move || parts::retry(&pid).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("Nothing changed.".into()))));
         }
+        Msg::Filter(c) => {
+            a.filter = if c == "All" { String::new() } else { c };
+        }
+        Msg::LibTab(t) => a.lib_tab = t,
         Msg::PartDone(id, r) => {
             a.part_busy.remove(&id);
             a.read_installed();
