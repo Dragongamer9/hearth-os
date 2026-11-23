@@ -39,6 +39,26 @@ class MantelIpc(unittest.TestCase):
             pathlib.Path(run, "hearth-mantel-shell").write_text("/nowhere")
             self.assertEqual(self.run_ipc(run, "/x"), "ipc -p /x/desktop/shell call launcher toggle", "a folder without Mantel: the built-in one")
 
+    def test_a_store_mantel_answers_for_the_built_in_one(self):
+        ans = ROOT / "hosts/linux/desktop/shell/hearth-mantel-answer"
+        import hashlib
+        md5 = lambda p: hashlib.md5((p + "/shell.qml").encode()).hexdigest()
+        with tempfile.TemporaryDirectory() as run, tempfile.TemporaryDirectory() as store:
+            q = pathlib.Path(run, "quickshell")
+            (q / "by-path").mkdir(parents=True)
+            (q / "by-shell" / md5(store)).mkdir(parents=True)
+            (q / "by-path" / md5(store)).symlink_to(q / "by-shell" / md5(store))
+            env = dict(os.environ, XDG_RUNTIME_DIR=run, NIMBUS_SHARE="/usr/share/nimbus")
+            subprocess.run(["sh", str(ans), store + "/"], env=env, check=True)
+            link = q / "by-path" / md5("/usr/share/nimbus/desktop/shell")
+            self.assertEqual(os.readlink(link), str(q / "by-shell" / md5(store)))
+            self.assertEqual(pathlib.Path(run, "hearth-mantel-shell").read_text(), store)
+            # the built-in Mantel itself: nothing done
+            os.remove(link)
+            subprocess.run(["sh", str(ans), "/usr/share/nimbus/desktop/shell"], env=env, check=True)
+            self.assertFalse(link.exists() or link.is_symlink())
+        self.assertIn('Quickshell.shellDir + "/hearth-mantel-answer"', (ROOT / "hosts/linux/desktop/shell/shell.qml").read_text())
+
 
 if __name__ == "__main__":
     unittest.main()
