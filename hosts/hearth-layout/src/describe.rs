@@ -14,16 +14,19 @@
 
 use serde_json::{json, Value};
 use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
 use std::process::{Command, Stdio};
 
 use crate::{blocks, feature, idea, layout};
 
 /// Who answers.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Engine {
     pub base: String,
     pub model: String,
     pub label: String,
+    /// an online AI's key, read from the system's password store when it's used (never kept in a file or a log)
+    pub key: String,
 }
 
 fn share() -> std::path::PathBuf {
@@ -38,10 +41,10 @@ pub const NO_AI: &str = "No AI is answering. Turn on Ollama in Settings › Home
 /// only search (nomic-embed-text and the like) is never picked for writing. None answering: None (NO_AI says why).
 pub fn engine() -> Option<Engine> {
     if std::env::var_os("HEARTH_DESCRIBE_FAKE").is_some() {
-        return Some(Engine { base: String::new(), model: String::new(), label: "the answer given for this check".into() });
+        return Some(Engine { base: String::new(), model: String::new(), label: "the answer given for this check".into(), ..Default::default() });
     }
     if let Ok(u) = std::env::var("HEARTH_DESCRIBE_URL") {
-        return Some(Engine { base: u, model: std::env::var("HEARTH_DESCRIBE_MODEL").unwrap_or_default(), label: "the AI set for this test".into() });
+        return Some(Engine { base: u, model: std::env::var("HEARTH_DESCRIBE_MODEL").unwrap_or_default(), label: "the AI set for this test".into(), ..Default::default() });
     }
     let own = crate::settings_file::read_json(&crate::paths::home().join(".config/nimbus/describe.json"));
     if let Some(u) = own.get("url").and_then(Value::as_str).filter(|u| u.starts_with("http://") || u.starts_with("https://")) {
@@ -50,7 +53,7 @@ pub fn engine() -> Option<Engine> {
         if model.is_empty() {
             model = models(&base).map(|m| pick_model(&m)).unwrap_or_default();
         }
-        return Some(Engine { base, model, label: own.get("label").and_then(Value::as_str).unwrap_or("your AI").to_string() });
+        return Some(Engine { base, model, label: own.get("label").and_then(Value::as_str).unwrap_or("your AI").to_string(), ..Default::default() });
     }
     // Hearth's engines on this PC, the default first (hearth_ai_engines.py list), then Hearth Link's share
     let mut tries: Vec<(String, String, String)> = Vec::new();
@@ -70,9 +73,33 @@ pub fn engine() -> Option<Engine> {
         if model.is_empty() {
             continue;
         }
-        return Some(Engine { base, model, label });
+        return Some(Engine { base, model, label, ..Default::default() });
     }
-    None
+    online()
+}
+
+/// An online AI with your own key (Settings › AI: ~/.config/nimbus/ai-online.json {"provider", "model"}; the key in the
+/// system's password store: secret-tool, service hearth-ai, account <provider>). Last, after every AI of your own.
+pub const ONLINE: &[(&str, &str, &str)] = &[
+    ("claude", "https://api.anthropic.com/v1", "Claude"),
+    ("chatgpt", "https://api.openai.com/v1", "ChatGPT"),
+    ("gemini", "https://generativelanguage.googleapis.com/v1beta/openai", "Gemini"),
+];
+
+fn online() -> Option<Engine> {
+    let c = crate::settings_file::read_json(&crate::paths::home().join(".config/nimbus/ai-online.json"));
+    let provider = c.get("provider").and_then(Value::as_str)?;
+    let (_, base, label) = ONLINE.iter().find(|(p, _, _)| *p == provider)?;
+    let model = c.get("model").and_then(Value::as_str).unwrap_or("").to_string();
+    if model.is_empty() {
+        return None;
+    }
+    let out = Command::new("secret-tool").args(["lookup", "service", "hearth-ai", "account", provider]).stderr(Stdio::null()).output().ok()?;
+    let key = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if key.is_empty() {
+        return None;
+    }
+    Some(Engine { base: base.to_string(), model, label: format!("{label} (online, your key)"), key })
 }
 
 /// The models an OpenAI-style address has (GET /models, 3 s at most); None when nothing answers there.
@@ -148,15 +175,40 @@ pub fn chat(e: &Engine, system: &str, user: &str, sketch: Option<&std::path::Pat
     // "/no_think": Qwen3 answers at once instead of thinking out loud first (other models pass over it)
     let system = format!("{system}\n/no_think");
     let body = json!({ "model": e.model, "temperature": 0.2, "messages": [{ "role": "system", "content": system }, { "role": "user", "content": content }] });
-    let mut child = Command::new("curl")
-        .args(["-sS", "--max-time", "180", "-H", "Content-Type: application/json", "--data-binary", "@-", &format!("{}/chat/completions", e.base)])
+    // an online AI's key goes in a header file only this user can read, gone right after (never in the command line)
+    let hdr = (!e.key.is_empty()).then(|| {
+        let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let f = dir.join(format!("hearth-describe-{}.h", std::process::id()));
+        let _ = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&f).and_then(|mut h| writeln!(h, "Authorization: Bearer {}", e.key));
+        f
+    });
+    let mut args: Vec<String> = ["-sS", "--max-time", "180", "-H", "Content-Type: application/json"].iter().map(|s| s.to_string()).collect();
+    if let Some(f) = &hdr {
+        args.push("-H".into());
+        args.push(format!("@{}", f.display()));
+    }
+    args.extend(["--data-binary".to_string(), "@-".to_string(), format!("{}/chat/completions", e.base)]);
+    let child = Command::new("curl")
+        .args(&args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("Couldn't reach your AI ({e})."))?;
+        .spawn();
+    let mut child = match child {
+        Ok(c) => c,
+        Err(x) => {
+            if let Some(f) = &hdr {
+                let _ = std::fs::remove_file(f);
+            }
+            return Err(format!("Couldn't reach your AI ({x})."));
+        }
+    };
     child.stdin.take().map(|mut i| i.write_all(body.to_string().as_bytes()));
-    let out = child.wait_with_output().map_err(|e| e.to_string())?;
+    let out = child.wait_with_output().map_err(|e| e.to_string());
+    if let Some(f) = &hdr {
+        let _ = std::fs::remove_file(f);
+    }
+    let out = out?;
     if !out.status.success() {
         return Err(format!("Your AI didn't answer ({}).", String::from_utf8_lossy(&out.stderr).trim()));
     }
@@ -268,8 +320,16 @@ pub fn describe_screen(text: &str, sketch: Option<&std::path::Path>, current: &V
     if text.is_empty() && sketch.is_none() {
         return json!({ "ok": false, "error": "Say what you'd like, or add a sketch." });
     }
+    // Hearth's own first: the common things, offline and at once (offline.rs), only when it understood all of it
+    if sketch.is_none() {
+        if let Some(v) = crate::offline::screen(&text, current) {
+            if let Ok(s) = crate::screen::parse(&v["screen"]) {
+                return json!({ "ok": true, "kind": "screen", "screen": s, "made": [], "asks": [], "changes": v["changes"], "engine": "Hearth (no AI needed)" });
+            }
+        }
+    }
     let Some(e) = engine() else {
-        return json!({ "ok": false, "error": NO_AI });
+        return json!({ "ok": false, "error": format!("{NO_AI} {}", crate::offline::KNOWS) });
     };
     let system = format!(
         "You build a whole screen for Hearth OS's desktop (or Game Mode) from Hearth's own blocks, for its owner. It can look like anything they ask (\"like a console\", \"a cabin\", \"my first PC\"), \

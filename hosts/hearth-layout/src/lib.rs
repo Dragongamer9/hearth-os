@@ -20,6 +20,7 @@ pub mod feature;
 pub mod idea;
 pub mod layout;
 pub mod made;
+pub mod offline;
 pub mod screen;
 
 #[path = "../../hearth-core/src/settings_file.rs"]
