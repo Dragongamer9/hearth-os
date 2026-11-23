@@ -2443,7 +2443,8 @@ command -v podman >/dev/null || { echo "podman is missing: bootc upgrade and boo
 
 # ------------------------------------------------------------------ no KDE came back (1.18)
 # Anything installed after KDE was removed (above) that brought a piece of KDE back with it: named, with what needs it,
-# so it can be replaced (the image check fails while any is here).
+# so it can be replaced (the image check fails while any is here). Only reports: nothing in it can stop the build.
+set +e +o pipefail
 kde_back=$(rpm -qa --qf '%{NAME}\n' | { grep -E "$KDE_RE" || true; } | sort -u)
 if [ -n "$kde_back" ]; then
   why=""; for k in $kde_back; do why="$why $k<-$(rpm -q --whatrequires "$k" --qf '%{NAME},' 2>/dev/null | { grep -v 'no package' || true; } | tr -d '\n' | cut -c1-80);"; done
@@ -2452,3 +2453,4 @@ if [ -n "$kde_back" ]; then
   echo "::warning title=No KDE::KDE's libraries are used by: ${users:-(nothing found)}"
   echo "::warning title=No KDE::KDE came back with later installs:$(echo "$why" | cut -c1-3000)"
 fi
+set -e -o pipefail
