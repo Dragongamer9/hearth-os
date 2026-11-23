@@ -26,3 +26,14 @@ cat > /tmp/describe-files.json <<'JSON'
 JSON
 SHOT_WAIT=4 run files-describe-it hearth-files 15 env PATH="$BIN:$PATH" HEARTH_DESCRIBE_FAKE=/tmp/describe-files.json "$BIN/hearth-files-app" "$H/Downloads" \
   --describe "Sidebar icons only, the preview on the right and bigger, and in Downloads add buttons that count my pictures and old files"
+
+# The whole app rearranged (the owner, Nov 22: "they need to be able to edit the top bar as well, basicly the enditre
+# app"): no tabs, the address and search alone on top, Back, Forward, Up, New, Sort and View in a bar at the bottom,
+# Share and Rename hidden, icons only on the buttons; each changed bar outlined.
+cat > /tmp/describe-files-2.json <<'JSON'
+{"kind": "app", "layout": {"tabs": "hidden", "toolbar": "compact",
+  "zones": {"top": ["address", "spacer", "search"], "bottom": ["back", "forward", "up", "sep", "new", "sort", "view", "spacer", "details"], "hidden": ["share", "rename", "refresh"]}},
+ "changes": ["No tabs", "The address and search alone at the top", "Back, Forward, Up, New, Sort and View at the bottom", "Share and Rename hidden"]}
+JSON
+SHOT_WAIT=4 run files-describe-it-2-whole-app hearth-files 0 env PATH="$BIN:$PATH" HEARTH_DESCRIBE_FAKE=/tmp/describe-files-2.json "$BIN/hearth-files-app" "$H/Downloads" \
+  --describe "No tabs, just the address and search on top, and put back, forward, up, new, sort and view in a bar at the bottom; hide share and rename"

@@ -26,6 +26,13 @@ pub struct AppSchema {
     pub parts: &'static [(&'static str, &'static str)],
     pub sources: &'static [(&'static str, &'static str)],
     pub actions: &'static [(&'static str, &'static str)],
+    /// every piece of the app's own bars (the whole app can be rearranged: the owner, Nov 22, "they need to be able to
+    /// edit the top bar as well, basicly the enditre app"): (id, what it is)
+    pub items: &'static [(&'static str, &'static str)],
+    /// where pieces can go: (zone, what it is, its pieces by default, in order); "hidden" is always there too
+    pub zones: &'static [(&'static str, &'static str, &'static [&'static str])],
+    /// pieces that can't be hidden (the way to View › Layout, Back to the original)
+    pub keep: &'static [&'static str],
 }
 
 /// Hearth Files (board 11).
@@ -36,7 +43,10 @@ pub const FILES: AppSchema = AppSchema {
         Knob { key: "sidebar", what: "the sidebar", values: &[("", "sidebar as it is"), ("icons", "sidebar icons only"), ("hidden", "no sidebar")] },
         Knob { key: "preview", what: "the preview of the picked file", values: &[("", "preview as it is"), ("right", "preview on the right"), ("right-big", "preview right, bigger"), ("off", "no preview")] },
         Knob { key: "view", what: "how files are shown", values: &[("", "view as it is"), ("icons", "big icons"), ("list", "a list"), ("details", "details")] },
-        Knob { key: "toolbar", what: "the top bar", values: &[("", "top bar as it is"), ("compact", "a smaller top bar")] },
+        Knob { key: "toolbar", what: "the buttons' labels", values: &[("", "buttons as they are"), ("compact", "icons only on the buttons")] },
+        Knob { key: "tabs", what: "the tabs along the top", values: &[("", "tabs as they are"), ("hidden", "no tabs")] },
+        Knob { key: "status", what: "the status bar at the bottom", values: &[("", "status bar as it is"), ("hidden", "no status bar")] },
+        Knob { key: "density", what: "how roomy it is", values: &[("", "as roomy as it is"), ("roomy", "roomier"), ("compact", "tighter")] },
     ],
     parts: &[("downloads", "the Downloads folder's own bar (next to Sort my Downloads)"), ("folder", "every folder's bar, at the top")],
     sources: &[
@@ -53,6 +63,19 @@ pub const FILES: AppSchema = AppSchema {
         ("select-old", "select the files here older than a month"),
         ("select-big", "select the files here over 1 GB"),
     ],
+    items: &[
+        ("back", "Back"), ("forward", "Forward"), ("up", "Up a folder"), ("refresh", "Refresh"), ("address", "the address (where you are)"),
+        ("search", "the search field"), ("new", "New"), ("cut", "Cut"), ("copy", "Copy"), ("paste", "Paste"), ("rename", "Rename"),
+        ("share", "Share"), ("delete", "Delete"), ("sort", "Sort"), ("view", "View (and View › Layout)"), ("details", "Details (the preview)"),
+        ("more", "More (⋯)"), ("sortdl", "Sort my Downloads (in Downloads)"), ("features", "your features' buttons"),
+        ("tools", "a Briefcase's own buttons"), ("sep", "a divider"), ("spacer", "empty space that pushes the rest to the end"),
+    ],
+    zones: &[
+        ("top", "the top bar (under the tabs)", &["back", "forward", "up", "refresh", "address", "search"]),
+        ("bar", "the button bar (under the top bar)", &["new", "sep", "cut", "copy", "paste", "rename", "share", "delete", "sep", "sort", "view", "tools", "spacer", "sortdl", "features", "details", "more"]),
+        ("bottom", "a bar at the bottom (above the status bar)", &[]),
+    ],
+    keep: &["view"],
 };
 
 /// Every app with Describe it, by its id (hearth-layout describe-app <app>).
@@ -73,6 +96,9 @@ pub fn rules(a: &AppSchema) -> String {
 Answer with ONE JSON object and nothing else, one of:\n\
 1. {{\"kind\": \"app\", \"layout\": {{<knob>: <value>, ...only the ones that change}}, \"features\": [<feature>, ...up to 3], \"changes\": [\"short plain sentences of what changed\"]}}\n\
    knobs: {knobs}\n\
+   and \"zones\": {{<zone>: [pieces in order], ..., \"hidden\": [...]}} to move, reorder or hide the app's own pieces (only the zones that change; a piece in one place only; \"sep\" and \"spacer\" as often as you like)\n\
+   zones: {zones}\n\
+   pieces: {items}\n\
    <feature> = {{\"format\": 1, \"id\": \"<lowercase-dashes>\", \"name\": \"...\", \"part\": <a place>, \"shows\": [{{\"source\", \"label\"}}], \"every\": seconds, \"click\": {{\"action\", \"target\"}}}}\n\
    places: {parts}\n\
    sources: {sources}\n\
@@ -81,6 +107,8 @@ Answer with ONE JSON object and nothing else, one of:\n\
 Never write code, commands or file paths. Use plain words for the owner in \"changes\".",
         name = a.name,
         knobs = knobs.join("; "),
+        zones = a.zones.iter().map(|(z, w, d)| format!("{z} ({w}; now {})", d.join(", "))).collect::<Vec<_>>().join("; "),
+        items = a.items.iter().map(|(i, w)| format!("{i} ({w})")).collect::<Vec<_>>().join(", "),
         parts = parts.join(", "),
         sources = sources.join(", "),
         actions = actions.join(", ")
@@ -124,6 +152,15 @@ pub fn check_layout(a: &AppSchema, l: &Map<String, Value>) -> Result<Map<String,
     let mut out = Map::new();
     let mut errs = Vec::new();
     for (k, v) in l {
+        if k == "zones" {
+            match check_zones(a, v) {
+                Ok(z) => {
+                    out.insert(k.clone(), z);
+                }
+                Err(mut e) => errs.append(&mut e),
+            }
+            continue;
+        }
         let Some(knob) = a.knobs.iter().find(|x| x.key == k) else {
             errs.push(format!("{} has no \"{k}\" to change.", a.name));
             continue;
@@ -138,6 +175,39 @@ pub fn check_layout(a: &AppSchema, l: &Map<String, Value>) -> Result<Map<String,
     if errs.is_empty() { Ok(out) } else { Err(errs) }
 }
 
+/// The app's pieces moved, reordered or hidden, checked: known pieces and zones, each piece in one place (dividers and
+/// space as often as wanted), and the pieces that must stay somewhere still there.
+pub fn check_zones(a: &AppSchema, v: &Value) -> Result<Value, Vec<String>> {
+    let Some(m) = v.as_object() else { return Err(vec!["The app's bars couldn't be read.".into()]) };
+    let mut errs = Vec::new();
+    let mut seen: Vec<String> = Vec::new();
+    let mut out = Map::new();
+    for (z, items) in m {
+        if z != "hidden" && !a.zones.iter().any(|(id, _, _)| id == z) {
+            errs.push(format!("{} has no place called \"{z}\".", a.name));
+            continue;
+        }
+        let list: Vec<String> = items.as_array().map(|x| x.iter().filter_map(|i| i.as_str().map(str::to_string)).collect()).unwrap_or_default();
+        for i in &list {
+            if !a.items.iter().any(|(id, _)| id == i) {
+                errs.push(format!("{} has no \"{i}\" to move.", a.name));
+            } else if i != "sep" && i != "spacer" {
+                if seen.contains(i) {
+                    errs.push(format!("\"{i}\" can be in one place only."));
+                }
+                seen.push(i.clone());
+                if z == "hidden" && a.keep.contains(&i.as_str()) {
+                    errs.push(format!("\"{i}\" stays (it's the way back to the original)."));
+                }
+            }
+        }
+        out.insert(z.clone(), json!(list));
+    }
+    // a piece that leaves its zone without being placed elsewhere stays where it was: the app fills it in, so nothing is
+    // lost by a half answer; only the zones named change
+    if errs.is_empty() { Ok(Value::Object(out)) } else { Err(errs) }
+}
+
 /// The chips under the words (board 11): "Layout: sidebar icons only", "New feature: counts in Downloads".
 pub fn chips(a: &AppSchema, layout: &Map<String, Value>, features: &[feature::Feature]) -> Vec<Value> {
     let mut v = Vec::new();
@@ -146,6 +216,14 @@ pub fn chips(a: &AppSchema, layout: &Map<String, Value>, features: &[feature::Fe
             if let Some((_, l)) = k.values.iter().find(|(x, _)| *x == s) {
                 v.push(json!({"kind": "layout", "text": format!("Layout: {l}")}));
             }
+        }
+    }
+    if let Some(z) = layout.get("zones").and_then(Value::as_object) {
+        for (zone, items) in z {
+            let what = a.zones.iter().find(|(id, _, _)| id == zone).map(|(_, w, _)| *w).unwrap_or(if zone == "hidden" { "hidden" } else { "" });
+            let names: Vec<&str> = items.as_array().map(|x| x.iter().filter_map(Value::as_str).filter(|i| *i != "sep" && *i != "spacer").collect()).unwrap_or_default();
+            let what = what.split(" (").next().unwrap_or(what);
+            v.push(json!({"kind": "layout", "text": if zone == "hidden" { format!("Layout: hide {}", names.join(", ")) } else { format!("Layout: {what}: {}", names.join(", ")) }}));
         }
     }
     for f in features {
@@ -264,6 +342,15 @@ pub fn keep(a: &AppSchema, change: &Value) -> Result<Value, String> {
         let before = json!({"layout": m.get("layout").cloned().unwrap_or(json!({})), "features": m.get("features").cloned().unwrap_or(json!([]))});
         let mut l = m.get("layout").and_then(Value::as_object).cloned().unwrap_or_default();
         for (k, v) in layout {
+            if k == "zones" {
+                // the zones named replace those zones; the others stay
+                let mut z = l.get("zones").and_then(Value::as_object).cloned().unwrap_or_default();
+                for (zn, items) in v.as_object().cloned().unwrap_or_default() {
+                    z.insert(zn, items);
+                }
+                l.insert(k, Value::Object(z));
+                continue;
+            }
             if v.as_str() == Some("") {
                 l.remove(&k);
             } else {
@@ -374,6 +461,20 @@ mod tests {
         assert_eq!(get("files")["layout"], json!({}));
         assert!(std::path::Path::new(&format!("{}.bak", file("files").display())).exists() || file("files").exists());
         assert!(keep(&FILES, &json!({"layout": {"sidebar": "floating"}})).is_err());
+    }
+
+    #[test]
+    fn the_whole_app_can_be_rearranged() {
+        let v = json!({"kind": "app", "layout": {"tabs": "hidden", "zones": {"top": ["address", "spacer", "search"], "bottom": ["back", "forward", "up"], "hidden": ["share", "rename"]}}, "changes": ["x"]});
+        let r = check_answer(&FILES, &v, "x", false).unwrap();
+        let chips: Vec<&str> = r["chips"].as_array().unwrap().iter().map(|c| c["text"].as_str().unwrap()).collect();
+        assert!(chips.contains(&"Layout: no tabs") && chips.iter().any(|c| c.starts_with("Layout: a bar at the bottom: back, forward, up")), "{chips:?}");
+        let bad = |z: Value| check_answer(&FILES, &json!({"kind": "app", "layout": {"zones": z}}), "x", false).is_err();
+        assert!(bad(json!({"hidden": ["view"]})), "View stays: the way back");
+        assert!(bad(json!({"top": ["search"], "bottom": ["search"]})), "one place only");
+        assert!(bad(json!({"top": ["rocket"]})));
+        assert!(bad(json!({"sky": ["back"]})));
+        assert!(!bad(json!({"top": ["sep", "sep", "spacer", "spacer"]})));
     }
 
     #[test]

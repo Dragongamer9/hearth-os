@@ -80,6 +80,32 @@ impl Describe {
         self.kept.pointer(&format!("/layout/{key}")).and_then(Value::as_str).unwrap_or("").to_string()
     }
 
+    /// One of the app's zones (its bars' pieces, in order): what's being tried, else what's kept, else None (the app's
+    /// own). A piece the zones don't name anywhere stays in its own zone.
+    pub fn zone(&self, zone: &str) -> Option<Vec<String>> {
+        let get = |v: &Value| v.pointer(&format!("/layout/zones/{zone}")).and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect::<Vec<_>>());
+        self.trying().and_then(get).or_else(|| get(&self.kept))
+    }
+
+    /// Every piece placed somewhere by the zones (tried, else kept): a piece named here leaves its own zone.
+    pub fn placed(&self) -> Vec<String> {
+        let all = |v: &Value| -> Vec<String> {
+            v.pointer("/layout/zones").and_then(Value::as_object).map(|m| m.values().flat_map(|a| a.as_array().cloned().unwrap_or_default()).filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default()
+        };
+        let mut out = self.trying().map(all).unwrap_or_default();
+        for x in all(&self.kept) {
+            if !out.contains(&x) {
+                out.push(x);
+            }
+        }
+        out
+    }
+
+    /// Is this zone being changed right now (its dashed outline)?
+    pub fn zone_changing(&self, zone: &str) -> bool {
+        self.open && self.trying().and_then(|r| r.pointer(&format!("/layout/zones/{zone}"))).is_some()
+    }
+
     /// Is this knob being changed right now (the dashed outline goes round its part)?
     pub fn changing(&self, key: &str) -> bool {
         self.open && self.trying().and_then(|r| r.pointer(&format!("/layout/{key}"))).is_some()

@@ -85,8 +85,13 @@ pub fn view(a: &App) -> El<'_> {
     if picking {
         col = col.push(pick_head(a));
     } else {
-        let bar = hearth_ui::describe::outline(&p, a.describe.changing("toolbar") || a.describe.open && a.describe.trying().map(|r| r.get("features").and_then(Value::as_array).map(|f| !f.is_empty()).unwrap_or(false)).unwrap_or(false), command_bar(a));
-        col = col.push(tab_strip(a)).push(nav_row(a)).push(bar);
+        // Describe it: no tabs (the window's own buttons stay, on a thin strip), and every bar from its pieces
+        col = col.push(if a.describe.knob("tabs") == "hidden" { tab_strip_bare(a) } else { tab_strip(a) });
+        for z in ["top", "bar"] {
+            if let Some(r) = zone_row(a, z) {
+                col = col.push(r);
+            }
+        }
     }
     col = col.push(hline(p.line));
     let mut body = Row::new().height(Length::Fill);
@@ -136,7 +141,12 @@ pub fn view(a: &App) -> El<'_> {
             col = col.push(responsive(move |size: Size| crate::osk_view::keyboard(a, Size::new(size.width, h))).height(Length::Fixed(h + 6.0)));
         }
     } else {
-        col = col.push(status_bar(a));
+        if let Some(r) = zone_row(a, "bottom") {
+            col = col.push(hline(p.line)).push(r);
+        }
+        if a.describe.knob("status") != "hidden" {
+            col = col.push(status_bar(a));
+        }
     }
     let base: El = container(col).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
     let base: El = mouse_area(base).on_move(Msg::Cursor).on_release(Msg::Dnd(crate::dnd::DMsg::Release)).into();
@@ -208,9 +218,19 @@ mod menu_place_tests {
 
 // ------------------------------------------------------------------ the tabs (the window's title bar)
 fn tab_strip(a: &App) -> El<'_> {
+    tab_strip_with(a, true)
+}
+/// Describe it's "no tabs": the folder's name, EDITING, and the window's buttons on the same strip.
+fn tab_strip_bare(a: &App) -> El<'_> {
+    tab_strip_with(a, false)
+}
+fn tab_strip_with(a: &App, tabs: bool) -> El<'_> {
     let p = a.p;
     let mut r = Row::new().spacing(2.0).align_y(iced::Bottom).padding(pad(0.0, 0.0, 0.0, 10.0));
-    for (i, tb_) in a.tabs.iter().enumerate() {
+    if !tabs {
+        r = r.push(container(t1(format!("{} — Hearth Files", a.title_of(&a.path)), 13.0, p.text)).padding(pad(0.0, 0.0, 11.0, 6.0)));
+    }
+    for (i, tb_) in a.tabs.iter().enumerate().filter(|_| tabs) {
         let on = i == a.tab_index;
         let path = if on { a.path.clone() } else { tb_.path.clone() };
         let label = a.title_of(&path);
@@ -228,7 +248,9 @@ fn tab_strip(a: &App) -> El<'_> {
         });
         r = r.push(drop_on(a, &path, mouse_area(tab).on_press(Msg::Tab(i)).on_middle_press(Msg::CloseTab(i)).into()));
     }
-    r = r.push(container(flat(&p, ico(Ic::Plus, p.muted, 15.0), Some(Msg::NewTab), pad(6.0, 8.0, 6.0, 8.0))).padding(pad(0.0, 0.0, 2.0, 4.0)));
+    if tabs {
+        r = r.push(container(flat(&p, ico(Ic::Plus, p.muted, 15.0), Some(Msg::NewTab), pad(6.0, 8.0, 6.0, 8.0))).padding(pad(0.0, 0.0, 2.0, 4.0)));
+    }
     if a.describe.open {
         r = r.push(container(hearth_ui::describe::editing::<Msg>(&p)).padding(pad(0.0, 0.0, 9.0, 10.0)));
     }
@@ -324,34 +346,6 @@ fn drop_lit(a: &App, path: &str) -> bool {
     a.drag.is_some() && crate::dnd::target(a).as_deref() == Some(path)
 }
 
-fn nav_row(a: &App) -> El<'_> {
-    let p = a.p;
-    let nb = |ic: Ic, on: bool, msg: Msg| -> El<'static> { flat(&p, ico(ic, if on { p.text } else { Pal::a(p.muted, 0.6) }, 17.0), if on { Some(msg) } else { None }, pad(7.0, 8.0, 7.0, 8.0)) };
-    let place = if a.found.is_some() { format!("Found “{}”", a.found_query) } else if a.on_home() { "Search Home".into() } else if a.on_this_pc() { "Search".into() } else { format!("Search {}", a.title_of(&a.path)) };
-    let mut sr = Row::new().align_y(iced::Center).push(
-        text_input(&place, &a.search_text).id(SEARCH_ID).on_input(Msg::SearchText).on_submit(Msg::SearchGo).size(14.0).padding(pad(6.0, 10.0, 6.0, 12.0)).style(input_style(p, true)),
-    );
-    if !a.search_text.is_empty() || a.found.is_some() {
-        sr = sr.push(flat(&p, ico(Ic::Close, p.muted, 12.0), Some(Msg::SearchClear), pad(6.0, 6.0, 6.0, 6.0)));
-    }
-    let search = container(sr).width(Length::Fixed(if a.area.get().0 < 700.0 { 170.0 } else { 240.0 }));
-    container(
-        row![
-            nb(Ic::Back, !a.back.is_empty(), Msg::Back),
-            nb(Ic::Forward, !a.fwd.is_empty(), Msg::Forward),
-            nb(Ic::Up, !(a.path == "/" || a.on_home()), Msg::Up),
-            nb(Ic::Refresh, true, Msg::Refresh),
-            gap(10.0, 1.0),
-            address(a, 32.0),
-            gap(8.0, 1.0),
-            search,
-        ]
-        .align_y(iced::Center)
-        .spacing(4.0),
-    )
-    .padding(pad(8.0, 12.0, 6.0, 12.0))
-    .into()
-}
 
 // ------------------------------------------------------------------ the command bar
 /// Sort my Downloads on the bar, only in Downloads: in the accent while something is loose (mockup 1), plain once
@@ -368,12 +362,39 @@ fn sort_button(a: &App) -> El<'_> {
     container(mouse_area(bx).on_press(Msg::Sort(crate::sortdl::SMsg::Open)).interaction(mouse::Interaction::Pointer)).padding(pad(0.0, 8.0, 0.0, 4.0)).into()
 }
 
-fn command_bar(a: &App) -> El<'_> {
+
+/// The default pieces of Files' bars (hearth-layout app.rs FILES.zones), and what Describe it changed: a zone it names
+/// is its pieces in that order; a piece it put somewhere else (or hid) leaves its own zone (the owner, Nov 22: "they need
+/// to be able to edit the top bar as well, basicly the enditre app").
+const TOP: &[&str] = &["back", "forward", "up", "refresh", "address", "search"];
+const BAR: &[&str] = &["new", "sep", "cut", "copy", "paste", "rename", "share", "delete", "sep", "sort", "view", "tools", "spacer", "sortdl", "features", "details", "more"];
+
+pub fn zone_items(a: &App, zone: &str) -> Vec<String> {
+    if let Some(z) = a.describe.zone(zone) {
+        return z;
+    }
+    let placed = a.describe.placed();
+    let own: &[&str] = match zone {
+        "top" => TOP,
+        "bar" => BAR,
+        _ => &[],
+    };
+    let mut v: Vec<String> = own.iter().filter(|i| **i == "sep" || **i == "spacer" || !placed.iter().any(|x| x == *i)).map(|i| i.to_string()).collect();
+    // View (and View › Layout, Back to the original) is never lost: back in the button bar when it was taken out of it
+    // and put nowhere else
+    if zone == "bar" && !placed.iter().any(|x| x == "view") && !v.iter().any(|x| x == "view") {
+        v.push("view".into());
+    }
+    v
+}
+
+/// One piece of Files' bars.
+fn piece<'a>(a: &'a App, id: &str) -> Option<El<'a>> {
     let p = a.p;
     let has = !a.targets().is_empty();
     let w = a.writable();
     let compact = a.describe.knob("toolbar") == "compact";
-    let sep = || -> El<'static> { container(vline::<Msg>(p.line)).height(Length::Fixed(20.0)).padding(pad(0.0, 6.0, 0.0, 6.0)).into() };
+    let nb = |ic: Ic, on: bool, msg: Msg| -> El<'static> { flat(&p, ico(ic, if on { p.text } else { Pal::a(p.muted, 0.6) }, 17.0), if on { Some(msg) } else { None }, pad(7.0, 8.0, 7.0, 8.0)) };
     let ib = |ic: Ic, on: bool, cmd: &'static str| -> El<'static> {
         flat(&p, ico(ic, if on { p.text } else { Pal::a(p.muted, 0.55) }, 17.0), if on { Some(Msg::Cmd(cmd)) } else { None }, pad(7.0, 11.0, 7.0, 11.0))
     };
@@ -388,34 +409,73 @@ fn command_bar(a: &App) -> El<'_> {
         }
         flat(&p, r.into(), if on { Some(Msg::Cmd(cmd)) } else { None }, pad(6.0, 10.0, 6.0, 10.0))
     };
-    let r = row![
-        lb(Ic::Plus, "New", true, w, "new"),
-        sep(),
-        ib(Ic::Cut, has && w, "cut"),
-        ib(Ic::Copy, has, "copy"),
-        ib(Ic::Paste, w, "paste"),
-        ib(Ic::Rename, a.current().is_some() && !a.on_special() && !a.on_home() && w, "rename"),
-        ib(Ic::Share, has || !a.on_home(), "share"),
-        ib(Ic::Delete, has && (w || a.in_trash()), "delete"),
-        sep(),
-        lb(Ic::Sort, "Sort", true, true, "sort"),
-        lb(Ic::ViewList, "View", true, true, "view"),
-        bc_tools(a),
-        Space::new().width(Length::Fill),
-        sort_button(a),
-        match crate::ldescribe::buttons(a) {
+    Some(match id {
+        "back" => nb(Ic::Back, !a.back.is_empty(), Msg::Back),
+        "forward" => nb(Ic::Forward, !a.fwd.is_empty(), Msg::Forward),
+        "up" => nb(Ic::Up, !(a.path == "/" || a.on_home()), Msg::Up),
+        "refresh" => nb(Ic::Refresh, true, Msg::Refresh),
+        "address" => container(address(a, 32.0)).padding(pad(0.0, 4.0, 0.0, 6.0)).width(Length::Fill).into(),
+        "search" => {
+            let place = if a.found.is_some() { format!("Found “{}”", a.found_query) } else if a.on_home() { "Search Home".into() } else if a.on_this_pc() { "Search".into() } else { format!("Search {}", a.title_of(&a.path)) };
+            let mut sr = Row::new().align_y(iced::Center).push(
+                text_input(&place, &a.search_text).id(SEARCH_ID).on_input(Msg::SearchText).on_submit(Msg::SearchGo).size(14.0).padding(pad(6.0, 10.0, 6.0, 12.0)).style(input_style(p, true)),
+            );
+            if !a.search_text.is_empty() || a.found.is_some() {
+                sr = sr.push(flat(&p, ico(Ic::Close, p.muted, 12.0), Some(Msg::SearchClear), pad(6.0, 6.0, 6.0, 6.0)));
+            }
+            container(sr).width(Length::Fixed(if a.area.get().0 < 700.0 { 170.0 } else { 240.0 })).padding(pad(0.0, 0.0, 0.0, 4.0)).into()
+        }
+        "new" => lb(Ic::Plus, "New", true, w, "new"),
+        "cut" => ib(Ic::Cut, has && w, "cut"),
+        "copy" => ib(Ic::Copy, has, "copy"),
+        "paste" => ib(Ic::Paste, w, "paste"),
+        "rename" => ib(Ic::Rename, a.current().is_some() && !a.on_special() && !a.on_home() && w, "rename"),
+        "share" => ib(Ic::Share, has || !a.on_home(), "share"),
+        "delete" => ib(Ic::Delete, has && (w || a.in_trash()), "delete"),
+        "sort" => lb(Ic::Sort, "Sort", true, true, "sort"),
+        "view" => lb(Ic::ViewList, "View", true, true, "view"),
+        "tools" => bc_tools(a),
+        "sortdl" => sort_button(a),
+        "features" => match crate::ldescribe::buttons(a) {
             Some(b) => container(b).padding(pad(0.0, 8.0, 0.0, 0.0)).into(),
-            None => El::from(Space::new().width(Length::Shrink)),
+            None => return None,
         },
-        {
+        "details" => {
             let c = if a.details_pane { p.accent } else { p.text };
-            flat(&p, row![t1("Details", 14.0, c), ico(Ic::Pane, c, 16.0)].spacing(7.0).align_y(iced::Center).into(), Some(Msg::Cmd("details")), pad(6.0, 10.0, 6.0, 10.0))
-        },
-        ib(Ic::Dots, true, "more"),
-    ]
-    .align_y(iced::Center)
-    .spacing(2.0);
-    container(r).padding(pad(2.0, 12.0, 6.0, 12.0)).width(Length::Fill).into()
+            let mut r = Row::new().spacing(7.0).align_y(iced::Center);
+            if !compact {
+                r = r.push(t1("Details", 14.0, c));
+            }
+            flat(&p, r.push(ico(Ic::Pane, c, 16.0)).into(), Some(Msg::Cmd("details")), pad(6.0, 10.0, 6.0, 10.0))
+        }
+        "more" => ib(Ic::Dots, true, "more"),
+        "sep" => container(vline::<Msg>(p.line)).height(Length::Fixed(20.0)).padding(pad(0.0, 6.0, 0.0, 6.0)).into(),
+        "spacer" => Space::new().width(Length::Fill).into(),
+        _ => return None,
+    })
+}
+
+/// A zone of Files' bars (top: the address row; bar: the buttons; bottom: a bar above the status bar), with Describe
+/// it's dashed outline while it's being changed; None when it's empty.
+fn zone_row(a: &App, zone: &str) -> Option<El<'_>> {
+    let items = zone_items(a, zone);
+    if items.iter().all(|i| i == "sep" || i == "spacer") {
+        return None;
+    }
+    let mut r = Row::new().align_y(iced::Center).spacing(if zone == "top" { 4.0 } else { 2.0 });
+    for i in &items {
+        if let Some(e) = piece(a, i) {
+            r = r.push(e);
+        }
+    }
+    let (t, b) = match a.describe.knob("density").as_str() {
+        "roomy" => (12.0, 10.0),
+        "compact" => (2.0, 2.0),
+        _ => if zone == "top" { (8.0, 6.0) } else { (2.0, 6.0) },
+    };
+    let feats = zone == "bar" && a.describe.open && a.describe.trying().map(|r| r.get("features").and_then(Value::as_array).map(|f| !f.is_empty()).unwrap_or(false)).unwrap_or(false);
+    let on = a.describe.zone_changing(zone) || (zone == "bar" && a.describe.changing("toolbar")) || feats;
+    Some(hearth_ui::describe::outline(&a.p, on, container(r).padding(pad(t, 12.0, b, 12.0)).width(Length::Fill).into()))
 }
 
 /// Inside a Briefcase, the command bar's own buttons: Update All, Unlock or Lock, Customize (FileManager.qml).
