@@ -395,7 +395,7 @@ pub fn describe(a: &AppSchema, text: &str, sketch: Option<&std::path::Path>) -> 
         return json!({"ok": false, "error": "Type what you'd like, or add a sketch."});
     }
     let Some(e) = crate::describe::engine() else {
-        return json!({"ok": false, "error": "No AI is set for Describe it: pick one in Settings › Personalization › Desktop layout, or turn on an AI engine in Settings › Home server."});
+        return json!({"ok": false, "error": crate::describe::NO_AI});
     };
     let system = rules(a);
     let mut user = format!("Now: {}\nThe owner asks: {}", get(a.app), text);

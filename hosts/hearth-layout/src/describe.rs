@@ -30,7 +30,12 @@ fn share() -> std::path::PathBuf {
     std::env::var_os("NIMBUS_SHARE").map(std::path::PathBuf::from).unwrap_or_else(|| "/usr/share/nimbus".into())
 }
 
-/// Describe it's AI: your choice, else Hearth's default engine, else none (the page says how to pick one).
+/// When no AI answers: what to do, in plain words (Settings › AI's own words once it's built).
+pub const NO_AI: &str = "No AI is answering. Turn on Ollama in Settings › Home server, or use your PC's AI: Settings › Hearth Link › Local AI › Use its AI.";
+
+/// Describe it's AI: your choice (describe.json), else the first engine that answers: Hearth's default engine, then
+/// the other one on this PC, then another device's AI shared over Hearth Link (127.0.0.1:11435). A model that can
+/// only search (nomic-embed-text and the like) is never picked for writing. None answering: None (NO_AI says why).
 pub fn engine() -> Option<Engine> {
     if std::env::var_os("HEARTH_DESCRIBE_FAKE").is_some() {
         return Some(Engine { base: String::new(), model: String::new(), label: "the answer given for this check".into() });
@@ -40,16 +45,59 @@ pub fn engine() -> Option<Engine> {
     }
     let own = crate::settings_file::read_json(&crate::paths::home().join(".config/nimbus/describe.json"));
     if let Some(u) = own.get("url").and_then(Value::as_str).filter(|u| u.starts_with("http://") || u.starts_with("https://")) {
-        return Some(Engine {
-            base: u.trim_end_matches('/').to_string(),
-            model: own.get("model").and_then(Value::as_str).unwrap_or("").to_string(),
-            label: own.get("label").and_then(Value::as_str).unwrap_or("your AI").to_string(),
-        });
+        let base = u.trim_end_matches('/').to_string();
+        let mut model = own.get("model").and_then(Value::as_str).unwrap_or("").to_string();
+        if model.is_empty() {
+            model = models(&base).map(|m| pick_model(&m)).unwrap_or_default();
+        }
+        return Some(Engine { base, model, label: own.get("label").and_then(Value::as_str).unwrap_or("your AI").to_string() });
     }
-    let out = Command::new("python3").arg(share().join("desktop/shell/hearth_ai_engines.py")).arg("default").stderr(Stdio::null()).output().ok()?;
+    // Hearth's engines on this PC, the default first (hearth_ai_engines.py list), then Hearth Link's share
+    let mut tries: Vec<(String, String, String)> = Vec::new();
+    if let Some(v) = Command::new("python3").arg(share().join("desktop/shell/hearth_ai_engines.py")).arg("list").stderr(Stdio::null()).output().ok().and_then(|o| serde_json::from_slice::<Value>(&o.stdout).ok()) {
+        let mut list: Vec<&Value> = v.get("engines").and_then(Value::as_array).map(|a| a.iter().collect()).unwrap_or_default();
+        list.sort_by_key(|e| e.get("default") != Some(&json!(true)));
+        for e in list {
+            if let Some(b) = e.get("openai").or_else(|| e.get("base")).and_then(Value::as_str) {
+                tries.push((b.trim_end_matches('/').to_string(), e.get("model").and_then(Value::as_str).unwrap_or("").to_string(), e.get("label").and_then(Value::as_str).unwrap_or("Hearth's AI engine").to_string()));
+            }
+        }
+    }
+    tries.push(("http://127.0.0.1:11435/v1".into(), String::new(), "your other device's AI (Hearth Link)".into()));
+    for (base, model, label) in tries {
+        let Some(have) = models(&base) else { continue };
+        let model = if !model.is_empty() && have.iter().any(|m| *m == model) { model } else { pick_model(&have) };
+        if model.is_empty() {
+            continue;
+        }
+        return Some(Engine { base, model, label });
+    }
+    None
+}
+
+/// The models an OpenAI-style address has (GET /models, 3 s at most); None when nothing answers there.
+fn models(base: &str) -> Option<Vec<String>> {
+    let out = Command::new("curl").args(["-sS", "-m", "3", &format!("{base}/models")]).stderr(Stdio::null()).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
     let v: Value = serde_json::from_slice(&out.stdout).ok()?;
-    let base = v.get("openai").or_else(|| v.get("base")).and_then(Value::as_str)?.trim_end_matches('/').to_string();
-    Some(Engine { base, model: v.get("model").and_then(Value::as_str).unwrap_or("").to_string(), label: v.get("label").and_then(Value::as_str).unwrap_or("Hearth's AI engine").to_string() })
+    Some(v.get("data").and_then(Value::as_array)?.iter().filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string)).collect())
+}
+
+/// A model that can write: never one only for search or speech; Qwen, Llama, Gemma or Mistral first; else the first.
+pub fn pick_model(have: &[String]) -> String {
+    let writes = |m: &&String| {
+        let l = m.to_lowercase();
+        !["embed", "nomic", "bge", "minilm", "rerank", "whisper", "clip", "tts"].iter().any(|w| l.contains(w))
+    };
+    let ok: Vec<&String> = have.iter().filter(writes).collect();
+    for want in ["qwen3", "qwen2.5", "llama3", "gemma", "mistral", "qwen", "llama"] {
+        if let Some(m) = ok.iter().find(|m| m.to_lowercase().contains(want)) {
+            return (*m).clone();
+        }
+    }
+    ok.first().map(|m| (*m).clone()).unwrap_or_default()
 }
 
 /// What the AI is told: the rules and every part it may use.
@@ -221,7 +269,7 @@ pub fn describe_screen(text: &str, sketch: Option<&std::path::Path>, current: &V
         return json!({ "ok": false, "error": "Say what you'd like, or add a sketch." });
     }
     let Some(e) = engine() else {
-        return json!({ "ok": false, "error": "No AI is set for Describe it: pick one in Settings › Personalization › Desktop layout, or turn on an AI engine in Settings › Home server." });
+        return json!({ "ok": false, "error": NO_AI });
     };
     let system = format!(
         "You build a whole screen for Hearth OS's desktop (or Game Mode) from Hearth's own blocks, for its owner. It can look like anything they ask (\"like a console\", \"a cabin\", \"my first PC\"), \
@@ -298,7 +346,7 @@ pub fn describe(part: &str, text: &str, sketch: Option<&std::path::Path>, curren
         return json!({ "ok": false, "error": "Type what you'd like, or add a sketch." });
     }
     let Some(e) = engine() else {
-        return json!({ "ok": false, "error": "No AI is set for Describe it: pick one in Settings › Personalization › Desktop layout, or turn on an AI engine in Settings › Home server." });
+        return json!({ "ok": false, "error": NO_AI });
     };
     let system = rules(part);
     let mut user = format!("Now: {}\nThe owner asks: {}", current, text);
@@ -326,6 +374,14 @@ pub fn describe(part: &str, text: &str, sketch: Option<&std::path::Path>, curren
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_model_that_writes_is_picked() {
+        let have: Vec<String> = ["nomic-embed-text:latest", "huihui_ai/qwen3-abliterated:8b-v2", "qwen3:30b-a3b"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(pick_model(&have), "huihui_ai/qwen3-abliterated:8b-v2");
+        assert_eq!(pick_model(&["nomic-embed-text:latest".to_string()]), "");
+        assert_eq!(pick_model(&["phi4".to_string()]), "phi4");
+    }
 
     #[test]
     fn the_json_is_found_in_the_ais_words() {

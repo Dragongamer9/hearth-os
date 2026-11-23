@@ -174,7 +174,7 @@ pub fn make(asked: &str) -> Value {
         return json!({ "ok": false, "error": "Say what the block should show." });
     }
     let Some(e) = crate::describe::engine() else {
-        return json!({ "ok": false, "error": "No AI is set for Describe it: pick one in Settings › Personalization › Desktop layout, or turn on an AI engine in Settings › Home server." });
+        return json!({ "ok": false, "error": crate::describe::NO_AI });
     };
     let system = format!("You make one new block for Hearth OS's desktop. Answer with ONE JSON object and nothing else.\n{}", rules());
     let mut user = format!("The owner asks: {asked}");
