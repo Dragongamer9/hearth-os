@@ -223,7 +223,7 @@ PanelWindow {
                     Btn { label: "Send this feature to Hearth…"; icon: "share"; onClicked: dz.sharing = true }
                     Text { visible: dz.sharing && dz.sent === ""; width: parent.width; wrapMode: Text.WordWrap; font.family: "monospace"; font.pixelSize: 12; color: Theme.text
                         text: "Idea for: " + dz.partName(dz.part) + "\nAsked: \"" + dz.text + "\"\nThe feature: " + (dz.isFeature ? dz.result.described : "") + "\nNo name, no files, no account, nothing else." }
-                    Btn { visible: dz.sharing && dz.sent === ""; primary: true; label: "Send"; onClicked: dz.sendIdea({ format: 1, part: dz.part, asked: dz.text, needs: [], closest: dz.result.feature, sketch: dz.sketch !== "", hearth: "", app: "" }) }
+                    Btn { visible: dz.sharing && dz.sent === ""; primary: true; label: "Send"; onClicked: dz.sendIdea({ format: 1, part: dz.part, asked: dz.text, needs: [], closest: dz.result.feature, sketch: dz.sketch !== "", hearth: "", app: "", kept: dz.kept }) }
                     Text { visible: dz.sent !== ""; text: dz.sent; color: Theme.good || "#6fd38a"; font.family: Theme.font; font.pixelSize: 13 } }
             }
         }
@@ -275,7 +275,7 @@ PanelWindow {
                 Row { anchors.right: parent.right; spacing: 10
                     Text { visible: dz.sent !== ""; anchors.verticalCenter: parent.verticalCenter; text: dz.sent; color: Theme.good || "#6fd38a"; font.family: Theme.font; font.pixelSize: 13 }
                     Btn { visible: dz.sent === ""; label: "Not now"; onClicked: dz.result = null }
-                    Btn { visible: dz.sent === ""; primary: true; icon: "share"; label: "Send this idea to Hearth"; onClicked: dz.sendIdea(dz.result.idea) } }
+                    Btn { visible: dz.sent === ""; primary: true; icon: "share"; label: "Send this idea to Hearth"; onClicked: dz.sendIdea(Object.assign({}, dz.result.idea, { kept: dz.kept })) } }
             }
         }
     }

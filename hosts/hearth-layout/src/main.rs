@@ -83,7 +83,7 @@ fn main() {
         "send-idea" => match serde_json::from_str::<hearth_layout::idea::Idea>(&arg(1)) {
             // cleaned again here: whatever comes in, only what idea.rs keeps goes out
             Ok(i) => {
-                let i = hearth_layout::idea::Idea::new(&i.part, &i.asked, i.needs.clone(), i.closest.clone(), i.sketch, &i.hearth, &i.app);
+                let i = hearth_layout::idea::Idea { kept: i.kept, ..hearth_layout::idea::Idea::new(&i.part, &i.asked, i.needs.clone(), i.closest.clone(), i.sketch, &i.hearth, &i.app) };
                 let url = std::env::var("HEARTH_IDEAS_URL").unwrap_or_else(|_| "https://hearth-counter.game305-cl.workers.dev/v1/idea".into());
                 let out = std::process::Command::new("curl")
                     .args(["-sS", "-m", "30", "-H", "Content-Type: application/json", "--data-binary", &i.to_json(), &url])

@@ -1,0 +1,22 @@
+# Hearth Ideas (pure Rust, hearth-ui; docs/mockups/checklists/hearth-ideas.md, the approved boards
+# docs/mockups/hearth-ideas and desktop-layouts board 10): the ideas people sent from Describe it, and building one
+# with the owner's AI team (the Hearth AI Command Center). On the owner's devices only, with his own gh sign-in.
+# No version line: the owner picks every version number.
+[package]
+name = "hearth-ideas"
+edition = "2021"
+description = "Hearth Ideas: the ideas people sent from Describe it, built with your AI team"
+license = "GPL-3.0-or-later"
+publish = false
+
+[[bin]]
+name = "hearth-ideas-app"
+path = "src/main.rs"
+
+[dependencies]
+hearth-ui = { path = "../.." }
+hearth-layout = { path = "../../../hearth-layout" }
+iced = { workspace = true, features = ["image"] }
+serde_json = { workspace = true }
+futures = { workspace = true }
+libc = { workspace = true }

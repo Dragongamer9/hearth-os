@@ -14,7 +14,7 @@ on:
         type: choice
         options: [mantel, hearth-files-app, hearth-settings-app, hearth-task-manager, hearth-capture-app, hearth-notes-app,
                   hearth-g15-app, hearth-family-app, hearth-server-app, hearth-resmon-app, hearth-system-restore,
-                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host, hearth-store-app, mantel-rust]
+                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host, hearth-store-app, mantel-rust, hearth-ideas-app]
       version:
         description: "Its version (the owner's number, like 1.17.1)"
         required: true
@@ -108,7 +108,7 @@ jobs:
               "hearth-g15-app": "Logitech G15", "hearth-family-app": "Family and friends", "hearth-server-app": "Server mode",
               "hearth-resmon-app": "Resource monitor", "hearth-system-restore": "System Restore",
               "hearth-reliability-history": "Reliability history", "hearth-file-chooser": "File chooser",
-              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "mantel-rust": "Mantel in Rust (test)"}
+              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "hearth-ideas-app": "Hearth Ideas", "mantel-rust": "Mantel in Rust (test)"}
           part = {"id": app, "version": os.environ["VER"], "os": os.environ["OS"], "path": os.environ["INNER"],
                   "url": os.environ["URL"], "sha256": os.environ["SHA"], "size": int(os.environ["SIZE"]),
                   "notes": [l.strip() for l in os.environ.get("NOTES", "").split("|") if l.strip()]}

@@ -293,7 +293,7 @@ async function putIdea(req, env, ctx) {
   try { b = await req.json(); } catch { return json({ error: 'bad json' }, 400); }
   if (!b || b.format !== 1 || typeof b.part !== 'string' || typeof b.asked !== 'string' || !Array.isArray(b.needs)) return json({ error: 'not an idea' }, 400);
   const idea = { format: 1, part: clean(b.part, 40), asked: clean(b.asked, 1000), needs: b.needs.slice(0, 8).map(x => clean(x, 120)),
-                 closest: b.closest && typeof b.closest === 'object' ? b.closest : null, sketch: b.sketch === true, hearth: clean(b.hearth, 20), app: clean(b.app, 20) };
+                 closest: b.closest && typeof b.closest === 'object' ? b.closest : null, sketch: b.sketch === true, hearth: clean(b.hearth, 20), app: clean(b.app, 20), kept: b.kept === true };
   await env.DB.prepare('CREATE TABLE IF NOT EXISTS ideas (key TEXT PRIMARY KEY, first INTEGER NOT NULL, last INTEGER NOT NULL, count INTEGER NOT NULL, issue INTEGER, body TEXT NOT NULL)').run();
   const recent = await env.DB.prepare('SELECT COUNT(*) AS n FROM ideas WHERE last > ?').bind(Date.now() - 3600e3).first();
   if (recent && recent.n > 120) return json({ error: 'busy, try again later' }, 429);
@@ -311,7 +311,7 @@ function ideaTitle(idea, count) {
 async function ideaToGitHub(env, key, idea, count, issue) {
   const repo = env.LOGS_REPO || 'Dragongamer9/hearth-logs';
   if (issue) {
-    await gh(env, 'POST', `/repos/${repo}/issues/${issue}/comments`, { body: `Asked again (${count} times now): "${noFence(idea.asked)}" · Hearth OS ${idea.hearth || '?'}${idea.sketch ? ' · with a sketch' : ''}` });
+    await gh(env, 'POST', `/repos/${repo}/issues/${issue}/comments`, { body: `Asked again (${count} times now): "${noFence(idea.asked)}" · Hearth OS ${idea.hearth || '?'}${idea.sketch ? ' · with a sketch' : ''}${idea.kept ? ' · kept what Describe it made' : ''}` });
     await gh(env, 'PATCH', `/repos/${repo}/issues/${issue}`, { title: ideaTitle(idea, count) });
     return;
   }

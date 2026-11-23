@@ -22,6 +22,9 @@ pub struct Idea {
     pub sketch: bool,
     pub hearth: String,
     pub app: String,
+    /// they kept what Describe it made instead (Hearth Ideas counts them: "kept by 15 of them")
+    #[serde(default)]
+    pub kept: bool,
 }
 
 /// Up to 1000 letters, with email addresses, logins in web addresses and home folders blanked.
@@ -41,7 +44,7 @@ pub fn clean(text: &str) -> String {
 
 impl Idea {
     pub fn new(part: &str, asked: &str, needs: Vec<String>, closest: Option<Feature>, sketch: bool, hearth: &str, app: &str) -> Idea {
-        Idea { format: 1, part: part.into(), asked: clean(asked), needs, closest, sketch, hearth: hearth.into(), app: app.into() }
+        Idea { format: 1, part: part.into(), asked: clean(asked), needs, closest, sketch, hearth: hearth.into(), app: app.into(), kept: false }
     }
 
     /// Exactly what will be sent, in words (board 9's "Send it as an idea · exactly what goes"). The rest of the

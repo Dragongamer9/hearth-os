@@ -312,6 +312,8 @@ pub enum G {
     Sync,
     Pencil,
     Help,
+    // hearth-ideas-app (apps/ideas): its mark.
+    Bell,
 }
 
 struct Glyph {
@@ -401,6 +403,13 @@ fn lines(g: G) -> (Vec<Vec<(f32, f32)>>, Vec<(f32, f32, f32)>) {
         G::Asterisk => (vec![v(&[(12.0, 3.0), (12.0, 21.0)]), v(&[(4.2, 7.5), (19.8, 16.5)]), v(&[(19.8, 7.5), (4.2, 16.5)])], vec![]),
         G::Sync => (vec![v(&[(8.0, 20.0), (8.0, 4.0)]), v(&[(4.0, 8.0), (8.0, 4.0), (12.0, 8.0)]), v(&[(16.0, 4.0), (16.0, 20.0)]), v(&[(12.0, 16.0), (16.0, 20.0), (20.0, 16.0)])], vec![]),
         G::Pencil => (vec![v(&[(4.0, 20.0), (5.0, 15.0), (16.0, 4.0), (20.0, 8.0), (9.0, 19.0), (4.0, 20.0)]), v(&[(14.0, 6.0), (18.0, 10.0)])], vec![]),
+        G::Bell => {
+            let dome: Vec<(f32, f32)> = (0..=12).map(|i| { let a = std::f32::consts::PI * (1.0 + i as f32 / 12.0); (12.0 + 6.0 * a.cos(), 11.0 + 6.0 * a.sin()) }).collect();
+            let mut b = vec![(4.5, 17.0), (6.0, 15.0)];
+            b.extend(std::iter::once((6.0, 11.0)).chain(dome).chain(std::iter::once((18.0, 11.0))));
+            b.extend([(18.0, 15.0), (19.5, 17.0), (4.5, 17.0)]);
+            (vec![b], vec![(12.0, 19.5, 1.6)])
+        }
         G::Help => {
             let arc: Vec<(f32, f32)> = (0..=14).map(|i| { let a = std::f32::consts::PI * (1.0 + 1.25 * i as f32 / 14.0); (12.0 + 4.5 * a.cos(), 9.0 + 4.5 * a.sin()) }).collect();
             let mut q = arc;
