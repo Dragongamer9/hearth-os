@@ -460,3 +460,36 @@ pub fn with_bar<'a, M: Clone + 'a>(base: Element<'a, M>, p: &Pal, d: &'a Describ
     }
     column![container(base).height(Length::Fill), container(bar(p, d, map)).padding(12.0)].into()
 }
+
+/// A piece's id from its label ("Efficiency mode ✓" is efficiency-mode, "Set priority ▸" set-priority).
+pub fn slug(label: &str) -> String {
+    label.to_lowercase().chars().map(|c| if c.is_alphanumeric() { c } else { ' ' }).collect::<String>().split_whitespace().collect::<Vec<_>>().join("-")
+}
+
+/// Pieces as Describe it left them (any app's bar, side or menu): the ones in "hidden" left out, the zone's own order
+/// first, then the rest as they were. A piece with an empty id (a menu's line) always stays.
+pub fn arrange<T>(d: &Describe, zone: &str, items: Vec<(String, T)>) -> Vec<T> {
+    let hidden = d.zone("hidden").unwrap_or_default();
+    let mut rest: Vec<(String, T)> = items.into_iter().filter(|(id, _)| id.is_empty() || !hidden.contains(id)).collect();
+    let mut out = Vec::new();
+    if let Some(order) = d.zone(zone) {
+        for id in order {
+            if let Some(k) = rest.iter().position(|(i, _)| *i == id) {
+                out.push(rest.remove(k).1);
+            }
+        }
+    }
+    out.extend(rest.into_iter().map(|x| x.1));
+    out
+}
+
+#[cfg(test)]
+mod arrange_tests {
+    #[test]
+    fn slugs() {
+        assert_eq!(super::slug("Efficiency mode ✓"), "efficiency-mode");
+        assert_eq!(super::slug("Set priority ▸"), "set-priority");
+        assert_eq!(super::slug("Limit CPU / memory…"), "limit-cpu-memory");
+        assert_eq!(super::slug("+ New task"), "new-task");
+    }
+}

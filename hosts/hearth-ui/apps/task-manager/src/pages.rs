@@ -81,7 +81,11 @@ pub fn view(a: &App) -> Element<'_, Msg> {
     .into();
     let title = hearth_ui::describe::title_bar(&p, &a.describe, G::Tasks, "Task Manager", Some(search), TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: Some(Msg::Minimize), close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.25), Msg::Describe(hearth_ui::describe::DMsg::Open));
 
-    let body = row![rail(a), ui::vline(p.line), container(page(a)).width(Length::Fill).height(Length::Fill)].height(Length::Fill);
+    let body: Element<Msg> = if a.describe.knob("rail") == "hidden" {
+        container(page(a)).width(Length::Fill).height(Length::Fill).into()
+    } else {
+        row![rail(a), ui::vline(p.line), container(page(a)).width(Length::Fill).height(Length::Fill)].height(Length::Fill).into()
+    };
     let base: Element<Msg> = container(column![title, hline(p.line), body]).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
 
     // The cursor's place (where a right-click menu opens): only while the pointer moves over the window.
@@ -104,7 +108,9 @@ pub fn view(a: &App) -> Element<'_, Msg> {
 
 fn rail(a: &App) -> Element<'_, Msg> {
     let p = a.p;
-    let folded = a.pref_b("railFolded");
+    // Describe it's "rail" knob: icons only, or no side at all
+    let knob = a.describe.knob("rail");
+    let folded = a.pref_b("railFolded") || knob == "icons";
     let item = |pg: Page, g: G| -> Element<'static, Msg> {
         let on = a.page == pg;
         let fg = if on { p.text } else { p.muted };
@@ -129,26 +135,35 @@ fn rail(a: &App) -> Element<'_, Msg> {
     let fold = mouse_area(container(glyph(G::List, p.muted, 18.0, 2.0)).padding(Padding { top: 8.0, right: 0.0, bottom: 8.0, left: 14.0 }))
         .on_press(Msg::Pref("railFolded", Value::Bool(!folded)))
         .interaction(mouse::Interaction::Pointer);
-    let col = column![
-        fold,
-        item(Page::Processes, G::Grid),
-        item(Page::Performance, G::Pulse),
-        item(Page::History, G::Clock),
-        item(Page::Startup, G::Rocket),
-        item(Page::Users, G::Users),
-        item(Page::Details, G::List),
-        item(Page::Services, G::Cog),
-        item(Page::Tasks, G::Clock),
-        Space::new().height(Length::Fill),
-        item(Page::Settings, G::Gear),
-    ]
-    .spacing(2.0)
-    .padding(6.0);
+    // the pages as Describe it left them (zone "rail": reordered, hidden, the spacer moved)
+    let pieces: Vec<(String, Element<'_, Msg>)> = vec![
+        ("fold".into(), fold.into()),
+        ("processes".into(), item(Page::Processes, G::Grid)),
+        ("performance".into(), item(Page::Performance, G::Pulse)),
+        ("history".into(), item(Page::History, G::Clock)),
+        ("startup".into(), item(Page::Startup, G::Rocket)),
+        ("users".into(), item(Page::Users, G::Users)),
+        ("details".into(), item(Page::Details, G::List)),
+        ("services".into(), item(Page::Services, G::Cog)),
+        ("tasks".into(), item(Page::Tasks, G::Clock)),
+        ("spacer".into(), Space::new().height(Length::Fill).into()),
+        ("settings".into(), item(Page::Settings, G::Gear)),
+    ];
+    let mut col = Column::new().spacing(2.0).padding(6.0);
+    for e in hearth_ui::describe::arrange(&a.describe, "rail", pieces) {
+        col = col.push(e);
+    }
     container(col).width(Length::Fixed(if folded { 64.0 } else { 210.0 })).height(Length::Fill).style(ui::boxed(Pal::mix(p.bg, p.panel, 0.4), 0.0, None)).into()
 }
 
+/// A page's button with its id (its label's: "End task" is end-task), for Describe it's zone "bar".
+fn pb<'a>(p: &Pal, label: impl Into<String>, kind: Kind, focused: bool, on: Option<Msg>) -> (String, Element<'a, Msg>) {
+    let l: String = label.into();
+    (hearth_ui::describe::slug(&l), btn(p, l, kind, focused, on))
+}
+
 /// A page's head: its title, a line under it, tabs and its buttons on the right.
-fn head<'a>(a: &'a App, title: &'a str, sub: String, tabs: Option<Element<'a, Msg>>, buttons: Vec<Element<'a, Msg>>) -> Element<'a, Msg> {
+fn head<'a>(a: &'a App, title: &'a str, sub: String, tabs: Option<Element<'a, Msg>>, buttons: Vec<(String, Element<'a, Msg>)>) -> Element<'a, Msg> {
     let p = a.p;
     let mut left = Column::new().spacing(2.0).push(ts(title, 20.0, p.text));
     if !sub.is_empty() {
@@ -159,7 +174,8 @@ fn head<'a>(a: &'a App, title: &'a str, sub: String, tabs: Option<Element<'a, Ms
         r = r.push(tb);
         r = r.push(gap(12.0, 1.0));
     }
-    for b in buttons {
+    // the page's buttons as Describe it left them (zone "bar": moved, reordered, hidden)
+    for b in hearth_ui::describe::arrange(&a.describe, "bar", buttons) {
         r = r.push(b);
     }
     container(r).padding(Padding { top: 14.0, right: 20.0, bottom: 10.0, left: 22.0 }).width(Length::Fill).into()
@@ -516,10 +532,10 @@ fn processes(a: &App) -> Element<'_, Msg> {
     let has_exe = tgt.as_ref().map(|g| !g.exe.is_empty()).unwrap_or(false);
     let view_id = a.pref_s("procView", "groups");
     let buttons = vec![
-        btn(&p, "Run new task", Kind::Primary, false, Some(Msg::RunNew)),
-        btn(&p, if is_eco { "Efficiency mode ✓" } else { "Efficiency mode" }, Kind::Normal, false, if can_end { Some(Msg::TopEco) } else { None }),
-        btn(&p, "Open file location", Kind::Normal, false, if has_exe { Some(Msg::TopWhere) } else { None }),
-        btn(&p, "End task", Kind::Normal, false, if can_end { Some(Msg::TopEnd) } else { None }),
+        pb(&p, "Run new task", Kind::Primary, false, Some(Msg::RunNew)),
+        pb(&p, if is_eco { "Efficiency mode ✓" } else { "Efficiency mode" }, Kind::Normal, false, if can_end { Some(Msg::TopEco) } else { None }),
+        pb(&p, "Open file location", Kind::Normal, false, if has_exe { Some(Msg::TopWhere) } else { None }),
+        pb(&p, "End task", Kind::Normal, false, if can_end { Some(Msg::TopEnd) } else { None }),
     ];
     let tabs_el = tabs(a, &[("groups", "Apps & groups"), ("all", "All processes")], if view_id == "all" { "all" } else { "groups" }, Msg::ProcView);
     let mut list = Column::new();
@@ -616,8 +632,8 @@ fn details(a: &App) -> Element<'_, Msg> {
     let p = a.p;
     let sel_mine = a.sel.as_ref().and_then(|k| k.parse::<i32>().ok()).and_then(|pid| a.sample.as_ref()?.details.iter().find(|r| r.pid == pid).map(|r| r.mine)).unwrap_or(false);
     let buttons = vec![
-        btn(&p, "Columns…", Kind::Normal, false, Some(Msg::DetailCols)),
-        btn(&p, "End task", Kind::Normal, false, if sel_mine { Some(Msg::TopEnd) } else { None }),
+        pb(&p, "Columns…", Kind::Normal, false, Some(Msg::DetailCols)),
+        pb(&p, "End task", Kind::Normal, false, if sel_mine { Some(Msg::TopEnd) } else { None }),
     ];
     // "Columns…": any column but Name on or off (remembered).
     let hidden = details_hidden(a);
@@ -758,7 +774,7 @@ fn list_page(a: &App) -> Element<'_, Msg> {
             let since = a.lists.get("history").and_then(|v| v.get("since")).and_then(Value::as_i64).unwrap_or(0);
             (
                 if since > 0 { format!("Processor time and disk use per app since {}", hearth_ui::time::when(since)) } else { "Processor time and disk use per app".into() },
-                vec![btn(&p, "Delete usage history", Kind::Normal, false, Some(Msg::ClearHistory))],
+                vec![pb(&p, "Delete usage history", Kind::Normal, false, Some(Msg::ClearHistory))],
             )
         }
         Page::Startup => {
@@ -767,8 +783,8 @@ fn list_page(a: &App) -> Element<'_, Msg> {
             (
                 boot.map(|b| format!("Last start: {} s (desktop ready)", b.round())).unwrap_or_default(),
                 vec![
-                    btn(&p, "Enable", Kind::Primary, false, if can && !on { Some(Msg::ListAct("startup", sid.clone(), "on".into())) } else { None }),
-                    btn(&p, "Disable", Kind::Normal, false, if can && on { Some(Msg::ListAct("startup", sid.clone(), "off".into())) } else { None }),
+                    pb(&p, "Enable", Kind::Primary, false, if can && !on { Some(Msg::ListAct("startup", sid.clone(), "on".into())) } else { None }),
+                    pb(&p, "Disable", Kind::Normal, false, if can && on { Some(Msg::ListAct("startup", sid.clone(), "off".into())) } else { None }),
                 ],
             )
         }
@@ -778,9 +794,9 @@ fn list_page(a: &App) -> Element<'_, Msg> {
             (
                 "Yours can be started and stopped; the system's are shown read only".into(),
                 vec![
-                    btn(&p, "Start", Kind::Primary, false, if can && !running { Some(Msg::ListAct("services", sid.clone(), "start".into())) } else { None }),
-                    btn(&p, "Stop", Kind::Normal, false, if can && running { Some(Msg::ListAct("services", sid.clone(), "stop".into())) } else { None }),
-                    btn(&p, "Restart", Kind::Normal, false, if can && running { Some(Msg::ListAct("services", sid.clone(), "restart".into())) } else { None }),
+                    pb(&p, "Start", Kind::Primary, false, if can && !running { Some(Msg::ListAct("services", sid.clone(), "start".into())) } else { None }),
+                    pb(&p, "Stop", Kind::Normal, false, if can && running { Some(Msg::ListAct("services", sid.clone(), "stop".into())) } else { None }),
+                    pb(&p, "Restart", Kind::Normal, false, if can && running { Some(Msg::ListAct("services", sid.clone(), "restart".into())) } else { None }),
                 ],
             )
         }
@@ -789,9 +805,9 @@ fn list_page(a: &App) -> Element<'_, Msg> {
             (
                 "What runs by itself at set times, like Windows' Task Scheduler".into(),
                 vec![
-                    btn(&p, "+ New task", Kind::Primary, false, Some(Msg::NewTask)),
-                    btn(&p, "Turn on", Kind::Normal, false, if can && !on { Some(Msg::ListAct("timers", sid.clone(), "on".into())) } else { None }),
-                    btn(&p, "Turn off", Kind::Normal, false, if can && on { Some(Msg::ListAct("timers", sid.clone(), "off".into())) } else { None }),
+                    pb(&p, "+ New task", Kind::Primary, false, Some(Msg::NewTask)),
+                    pb(&p, "Turn on", Kind::Normal, false, if can && !on { Some(Msg::ListAct("timers", sid.clone(), "on".into())) } else { None }),
+                    pb(&p, "Turn off", Kind::Normal, false, if can && on { Some(Msg::ListAct("timers", sid.clone(), "off".into())) } else { None }),
                 ],
             )
         }

@@ -106,6 +106,44 @@ pub const WINDOW_ITEMS: &[(&str, &str)] = &[
 ];
 pub const WINDOW_ZONES: &[(&str, &str, &[&str])] = &[("titlebar", "the window's own bar at the very top", &["mark", "title", "spacer", "middle", "spacer", "minimize", "maximize", "close"])];
 
+/// Task Manager (the owner, Nov 22: "EVERY one of our apps needs this", "Modular app menues and right clicks as well"):
+/// its window bar, the side rail of pages, each page's buttons and its right-click menus.
+pub const TASK_MANAGER: AppSchema = AppSchema {
+    app: "task-manager",
+    name: "Task Manager",
+    knobs: &[
+        Knob { key: "winbuttons", what: "how the window's own buttons look", values: &[("", "window buttons as they are"), ("dots", "window buttons as coloured dots"), ("square", "square window buttons")] },
+        Knob { key: "density", what: "how roomy it is", values: &[("", "as roomy as it is"), ("roomy", "roomier"), ("compact", "tighter")] },
+        Knob { key: "rail", what: "the pages down the side", values: &[("", "the side as it is"), ("icons", "icons only down the side"), ("hidden", "no side")] },
+    ],
+    parts: &[("window", "the app's window, in its own bar")],
+    sources: &[],
+    actions: &[],
+    items: &[
+        ("mark", "the app's icon"), ("title", "the app's name"), ("middle", "the search"), ("spacer", "empty space"),
+        ("minimize", "the window's Minimize"), ("maximize", "the window's Maximize"), ("close", "the window's Close"),
+        ("fold", "the ☰ that folds the side"), ("processes", "Processes"), ("performance", "Performance"), ("history", "App history"),
+        ("startup", "Startup apps"), ("users", "Users"), ("details", "Details"), ("services", "Services"), ("tasks", "Scheduled tasks"),
+        ("settings", "Settings"),
+        ("run-new-task", "Run new task"), ("efficiency-mode", "Efficiency mode"), ("open-file-location", "Open file location"),
+        ("end-task", "End task"), ("columns", "Columns… (Details)"), ("delete-usage-history", "Delete usage history"), ("enable", "Enable"),
+        ("disable", "Disable"), ("start", "Start"), ("stop", "Stop"), ("restart", "Restart"), ("new-task", "+ New task"),
+        ("turn-on", "Turn on"), ("turn-off", "Turn off"),
+        ("expand", "Expand (right-click)"), ("collapse", "Collapse (right-click)"), ("end-process-tree", "End process tree"),
+        ("set-priority", "Set priority"), ("run-on-these-cores", "Run on these cores…"), ("limit-cpu-memory", "Limit CPU / memory…"),
+        ("resume", "Resume"), ("suspend", "Suspend"), ("keep-this-running-checkpoint", "Keep this running (checkpoint)"),
+        ("never-close-when-memory-runs-out", "Never close when memory runs out"), ("go-to-details", "Go to details"),
+        ("search-online", "Search online"), ("properties", "Properties"), ("set-affinity", "Set affinity"), ("create-dump-file", "Create dump file"),
+    ],
+    zones: &[
+        ("titlebar", "the window's own bar at the very top", &["mark", "title", "spacer", "middle", "spacer", "minimize", "maximize", "close"]),
+        ("rail", "the pages down the side, top to bottom (spacer pushes the rest to the bottom)", &["fold", "processes", "performance", "history", "startup", "users", "details", "services", "tasks", "spacer", "settings"]),
+        ("bar", "the page's buttons, on the right of its title", &["run-new-task", "efficiency-mode", "open-file-location", "end-task"]),
+    ],
+    keep: &[],
+    menus: &[("row", "the right-click menu on a process (Processes)"), ("details", "the right-click menu on a process (Details)"), ("list", "the right-click menu on the other pages' rows")],
+};
+
 /// An app that has, so far, its window's bar and new features in it (its own bars come per app, as Files' did).
 macro_rules! window_app {
     ($name:ident, $id:literal, $title:literal) => {
@@ -125,7 +163,6 @@ macro_rules! window_app {
 }
 window_app!(SETTINGS, "settings", "Hearth Settings");
 window_app!(STORE, "store", "Hearth Store");
-window_app!(TASK_MANAGER, "task-manager", "Task Manager");
 window_app!(NOTES, "notes", "Hearth Notes");
 window_app!(CAPTURE, "capture", "Capture");
 window_app!(RESMON, "resmon", "Resource Monitor");
