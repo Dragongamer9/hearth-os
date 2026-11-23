@@ -91,7 +91,16 @@ pub fn target(l: &Layout) -> Value {
         match &l.bar {
             None => Value::Null,
             Some(b) => {
-                let mut o = json!({ "start": b.start, "end": b.end, "hidden": b.hidden });
+                // the bar's other items hidden, so the bar is exactly the layout's (Mantel would put a missing one
+                // back in its default place)
+                let placed: Vec<&String> = b.start.iter().chain(&b.centre).chain(&b.end).collect();
+                let mut hidden = b.hidden.clone();
+                for it in crate::blocks::bar_items() {
+                    if !it.keep && !placed.iter().any(|x| *x == it.id) && !hidden.iter().any(|x| x == it.id) {
+                        hidden.push(it.id.to_string());
+                    }
+                }
+                let mut o = json!({ "start": b.start, "end": b.end, "hidden": hidden });
                 if !b.centre.is_empty() {
                     o["centre"] = json!(b.centre);
                 }
@@ -220,11 +229,16 @@ pub fn from_titlebar(t: &str) -> Option<layout::WindowButtons> {
 /// Every layout to pick from: Hearth's own, then yours (yours win on the same id). Files that can't be used are
 /// left out and named in the second list with why.
 pub fn all() -> (Vec<(Layout, bool)>, Vec<(PathBuf, String)>) {
+    // Hearth's own in this order (the editor's pictures), then yours by name
+    const ORDER: &[&str] = &["hearth", "steam", "plasma", "gnome", "windows11", "macos"];
     let mut out: Vec<(Layout, bool)> = Vec::new();
     let mut bad = Vec::new();
     for (dir, mine) in [(paths::builtin_dir(), false), (paths::layouts_dir(), true)] {
         let mut files: Vec<PathBuf> = std::fs::read_dir(&dir).map(|r| r.flatten().map(|e| e.path()).collect()).unwrap_or_default();
-        files.sort();
+        files.sort_by_key(|f| {
+            let stem = f.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+            (ORDER.iter().position(|x| *x == stem).unwrap_or(ORDER.len()), stem)
+        });
         for f in files {
             if f.extension().and_then(|x| x.to_str()) != Some("json") || f.file_name().map(|n| n == "undo.json").unwrap_or(false) {
                 continue;

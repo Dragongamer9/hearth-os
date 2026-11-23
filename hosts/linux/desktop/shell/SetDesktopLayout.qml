@@ -113,7 +113,7 @@ SetPage {
     // ---- the bars as the editor shows them: the main bar's blocks with its middle and end marked, a panel's in order
     readonly property var d: draft && draft.desktop ? draft.desktop : ({})
     readonly property string mainEdge: d.barLayout === "one" ? (d.barEdge || "bottom") : "top"
-    readonly property bool dockOn: d.barLayout !== "one" || d.dockFloat !== "off"
+    readonly property bool dockOn: d.dockFloat !== "off" && d.dockFloat !== "none"
     readonly property var panels: draft && draft.panels ? draft.panels : []
     function mainTokens() {
         const b = draft && draft.bar ? draft.bar : { start: ["menu"], centre: [], end: [] };

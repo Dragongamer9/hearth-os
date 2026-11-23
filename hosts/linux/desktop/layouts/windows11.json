@@ -7,10 +7,11 @@
     "barLayout": "one",
     "barEdge": "bottom",
     "dockFloat": "off",
-    "appMenu": "start",
+    "appMenu": "centred",
     "menuStyle": "windows",
     "barStyle": "bar",
-    "gameModeAt": "start"
+    "gameModeAt": "start",
+    "clockAt": "end"
   },
   "bar": {
     "start": [],

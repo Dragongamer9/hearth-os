@@ -9,7 +9,7 @@ Rectangle {
     readonly property var d: lay && lay.desktop ? lay.desktop : ({})
     readonly property bool one: d.barLayout === "one"
     readonly property string mainEdge: one ? (d.barEdge || "bottom") : "top"
-    readonly property bool dock: !one || d.dockFloat !== "off"
+    readonly property bool dock: d.dockFloat !== "off" && d.dockFloat !== "none"
     readonly property bool barStyle: d.barStyle === "bar"
     readonly property var bar: lay && lay.bar ? lay.bar : ({ start: ["menu"], end: ["network", "volume", "battery"] })
     readonly property real t: Math.max(5, height * 0.065)

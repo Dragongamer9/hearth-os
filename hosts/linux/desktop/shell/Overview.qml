@@ -17,6 +17,8 @@ PanelWindow {
     visible: shown
     anchors { top: true; bottom: true; left: true; right: true }
     exclusionMode: ExclusionMode.Ignore
+    // under the main bar, which stays (GNOME-style: the bar shows over the overview)
+    margins.top: DeskState.barTop
     color: "transparent"
     WlrLayershell.namespace: "hearth-overview"
     WlrLayershell.layer: WlrLayer.Overlay
@@ -35,7 +37,7 @@ PanelWindow {
     readonly property int deskCount: deskData.item ? deskData.item.sets.length : 1
     readonly property int deskAt: deskData.item ? Math.max(0, deskData.item.activeIndex) : 0
 
-    Rectangle { anchors.fill: parent; color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.94) }
+    Rectangle { anchors.fill: parent; color: Qt.rgba(Theme.bg.r, Theme.bg.g, Theme.bg.b, 0.98) }
     MouseArea { anchors.fill: parent; onClicked: ov.close() }
 
     Item {

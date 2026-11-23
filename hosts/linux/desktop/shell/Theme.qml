@@ -94,14 +94,16 @@ Singleton {
     readonly property bool oneBar: Settings.barLayout === "one"
     readonly property string barEdge: oneBar ? (["bottom", "top", "left", "right"].indexOf(Settings.barEdge) >= 0 ? Settings.barEdge : "bottom") : "top"
     readonly property bool barVertical: barEdge === "left" || barEdge === "right"
-    readonly property bool dockFloats: Settings.dockFloat !== "off"
+    readonly property bool dockFloats: Settings.dockFloat !== "off" && Settings.dockFloat !== "none"
+    // a layout with no dock and no apps in the bar (GNOME-style: they're in the overview's dash)
+    readonly property bool appsNowhere: Settings.dockFloat === "none"
     // Auto-hide hides the dock (as before) and, in One main bar or when the apps are in the bar, the main bar too.
     readonly property bool barAutoHide: dockAutoHide && (oneBar || !dockFloats)
     // The main bar's style: the look's (floating islands, one full-width bar); Console's big status row only sits over
     // its shelf of tiles, so a bar that holds the apps or isn't at the top is a full-width bar there.
     readonly property string mainStyle: islandStyle === "shelf" && (oneBar || !dockFloats) ? "bar" : islandStyle
     // When this changes, shell.qml builds the bar and the dock again (so nothing keeps space reserved on the old edge).
-    readonly property string barKey: barEdge + "/" + (dockFloats ? "dock" : "nodock")
+    readonly property string barKey: barEdge + "/" + (dockFloats ? "dock" : appsNowhere ? "none" : "nodock")
 
     // ---- App menu (Settings › Appearance › Bar and dock › App menu): Hearth (the centred launcher), Centred,
     // Tiles, Start screen or Classic. Not chosen: Hearth, except Start screen on a handheld that was installed with

@@ -3,12 +3,39 @@
   "id": "gnome",
   "name": "GNOME-style",
   "about": "Like GNOME: a thin bar along the top with the time in the middle, and the overview for your windows and apps.",
-  "desktop": { "barLayout": "one", "barEdge": "top", "dockFloat": "off", "barStyle": "bar" },
+  "desktop": {
+    "barLayout": "one",
+    "barEdge": "top",
+    "dockFloat": "none",
+    "barStyle": "bar",
+    "gameModeAt": "before-status"
+  },
   "bar": {
-    "start": ["overview", "menu"],
-    "end": ["network", "volume", "battery"],
-    "hidden": ["search", "desktops", "activity", "window", "background", "discord", "keyboard", "layout"]
+    "start": [
+      "overview",
+      "menu"
+    ],
+    "end": [
+      "network",
+      "volume",
+      "battery"
+    ],
+    "hidden": [
+      "search",
+      "desktops",
+      "activity",
+      "window",
+      "background",
+      "discord",
+      "keyboard",
+      "layout"
+    ]
   },
   "panels": [],
-  "windowButtons": { "side": "right", "buttons": ["close"] }
+  "windowButtons": {
+    "side": "right",
+    "buttons": [
+      "close"
+    ]
+  }
 }

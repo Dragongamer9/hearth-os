@@ -6,7 +6,8 @@
   "desktop": {
     "barStyle": "bar",
     "dockFloat": "on",
-    "gameModeAt": "before-status"
+    "gameModeAt": "before-status",
+    "clockAt": "end-one"
   },
   "bar": {
     "start": [

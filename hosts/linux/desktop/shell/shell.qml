@@ -60,7 +60,7 @@ ShellRoot {
                         return;
                     }
                     builtKey = Theme.barKey;
-                    islandsWin = ci.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu, edge: Theme.barEdge, holdsApps: !wantDock });
+                    islandsWin = ci.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu, edge: Theme.barEdge, holdsApps: !wantDock && !Theme.appsNowhere });
                     dockWin = wantDock ? cd.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu }) : null;
                     if (!islandsWin || wantDock && !dockWin) {
                         console.warn("Mantel: the top islands or the dock couldn't start; using the classic taskbar");

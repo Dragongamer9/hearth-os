@@ -20,13 +20,17 @@ use crate::blocks;
 pub const DESKTOP_KEYS: &[(&str, &[&str])] = &[
     ("barLayout", &["", "split", "one"]),
     ("barEdge", &["", "bottom", "top", "left", "right"]),
-    ("dockFloat", &["", "on", "off"]),
+    // "none": no dock and no apps in the bar (GNOME-style: your apps are in the overview's dash)
+    ("dockFloat", &["", "on", "off", "none"]),
     ("dockMode", &["", "shown", "autohide"]),
     ("appMenu", &["", "hearth", "centred", "tiles", "start", "classic"]),
     ("menuStyle", &["", "today", "windows", "compact", "tiles"]),
     ("barStyle", &["", "floating", "bar"]),
     // Game Mode in the main bar: last (""), first ("start": Windows 11-style) or before the status island (macOS-style)
     ("gameModeAt", &["", "start", "before-status"]),
+    // the clock: "" (the look's own: the pill in the middle, or at the end with your apps in the bar), "end" (at the
+    // end, the time over the date: Plasma-, Windows 11-style), "end-one" (at the end on one line: macOS-style)
+    ("clockAt", &["", "end", "end-one"]),
 ];
 
 pub const EDGES: &[&str] = &["top", "bottom", "left", "right"];
@@ -104,7 +108,7 @@ impl Layout {
     /// The floating dock along the bottom is on (Split, or One bar with the dock floating).
     pub fn dock_on(&self) -> bool {
         let s = |k: &str| self.desktop.get(k).and_then(Value::as_str).unwrap_or("");
-        s("barLayout") != "one" || s("dockFloat") != "off"
+        s("dockFloat") != "off" && s("dockFloat") != "none"
     }
     /// The blocks this layout names that neither Mantel draws yet (shown in the editor: "coming").
     pub fn not_built(&self) -> Vec<String> {

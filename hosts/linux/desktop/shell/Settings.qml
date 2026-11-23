@@ -99,9 +99,10 @@ Singleton {
     property string layout: ""           // the layout in place: "" (none chosen), "hearth", "plasma", your own…
     property string gameModeAt: ""       // Game Mode in the main bar: "" (last) | "start" (first) | "before-status"
     property string windowButtons: ""    // labwc's titlebar text (hearth-system window-buttons puts it on)
+    property string clockAt: ""          // the main bar's clock: "" (the look's own) | "end" | "end-one" (one line)
     // A layout's keys go back to their default when the file doesn't have them (a layout put in place, or Undo), so the
     // desktop follows the file; every other key keeps what it had (the file is never written from this).
-    readonly property var layoutKeys: ["barLayout", "barEdge", "dockFloat", "dockMode", "appMenu", "menuStyle", "barStyle", "layout", "gameModeAt", "windowButtons"]
+    readonly property var layoutKeys: ["barLayout", "barEdge", "dockFloat", "dockMode", "appMenu", "menuStyle", "barStyle", "layout", "gameModeAt", "windowButtons", "clockAt"]
     property bool loaded: false
     // Which defaults this file was made with (its "defaults" key, read only, never written by Hearth): 2 = made for a new
     // install (/etc/skel), whose Steam-style look gets the Sky accent by default (Theme.qml); files without it keep the
@@ -125,7 +126,7 @@ Singleton {
         .concat(["wallPotd", "wallPair", "appsFollow"])
         .concat(["btReceive", "btReceiveFolder", "btReceiveTrusted", "inkNotify"])
         .concat(["netSpeed"])
-        .concat(["layout", "gameModeAt", "windowButtons"])
+        .concat(["layout", "gameModeAt", "windowButtons", "clockAt"])
     onNightLightChanged: save("nightLight")
     onNightTempChanged: save("nightTemp")
     onNightModeChanged: save("nightMode")
