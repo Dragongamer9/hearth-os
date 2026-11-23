@@ -14,7 +14,7 @@ on:
         type: choice
         options: [mantel, hearth-files-app, hearth-settings-app, hearth-task-manager, hearth-capture-app, hearth-notes-app,
                   hearth-g15-app, hearth-family-app, hearth-server-app, hearth-resmon-app, hearth-system-restore,
-                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host, hearth-store-app, mantel-rust, hearth-ideas-app]
+                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host, hearth-store-app, mantel-rust, hearth-ideas-app, hearth-link]
       version:
         description: "Its version (the owner's number, like 1.17.1)"
         required: true
@@ -83,6 +83,14 @@ jobs:
             docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-ui-build.sh 2>&1 | tail -20
             mkdir -p /tmp/part/bin && tar -C /tmp/part/bin -xf /tmp/out/hearth-ui.tar ./hearth-layout && test -x /tmp/part/bin/hearth-layout
             echo "INNER=shell" >> "$GITHUB_ENV"
+          elif [ "$APP" = hearth-link ]; then
+            # Hearth Link (1.18: every Hearth part from the Store): its one program; /usr/bin/hearth-link starts the
+            # Store's copy through hearth-part, so its user service stays as it is.
+            base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+            docker pull -q "$base"
+            docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-link-build.sh 2>&1 | tail -40
+            mkdir -p /tmp/part && install -m755 /tmp/out/hearth-link /tmp/part/hearth-link
+            echo "INNER=hearth-link" >> "$GITHUB_ENV"
           elif [ "$APP" = mantel-rust ]; then
             # Mantel in Rust (test, docs/MANTEL-RUST.md): the one program, built in the image's own base; the
             # autostart runs <its folder>/hearth-mantel when it's installed.
@@ -129,7 +137,7 @@ jobs:
               "hearth-g15-app": "Logitech G15", "hearth-family-app": "Family and friends", "hearth-server-app": "Server mode",
               "hearth-resmon-app": "Resource monitor", "hearth-system-restore": "System Restore",
               "hearth-reliability-history": "Reliability history", "hearth-file-chooser": "File chooser",
-              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "hearth-ideas-app": "Hearth Ideas", "mantel-rust": "Mantel in Rust (test)"}
+              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "hearth-link": "Hearth Link", "hearth-ideas-app": "Hearth Ideas", "mantel-rust": "Mantel in Rust (test)"}
           part = {"id": app, "version": os.environ["VER"], "os": os.environ["OS"], "path": os.environ["INNER"],
                   "url": os.environ["URL"], "sha256": os.environ["SHA"], "size": int(os.environ["SIZE"]),
                   "notes": [l.strip() for l in os.environ.get("NOTES", "").split("|") if l.strip()]}
@@ -144,12 +152,12 @@ jobs:
           if test:
               d.setdefault("tests", [])
           for e in d["tests"] if test else d["apps"]:
-              if (e.get("part") or {}).get("id") == app or e.get("partId") == app or (app not in ("mantel", "mantel-rust") and e.get("open") == app):
+              if (e.get("part") or {}).get("id") == app or e.get("partId") == app or (app not in ("mantel", "mantel-rust", "hearth-link") and e.get("open") == app):
                   e["part"] = part
                   break
           else:
               e = {"id": ("test-" if test and app != "mantel-rust" else "part-") + app, "name": names.get(app, app) + (" (test)" if test and app != "mantel-rust" else ""), "kind": "builtin", "part": part}
-              if app not in ("mantel", "mantel-rust"):
+              if app not in ("mantel", "mantel-rust", "hearth-link"):
                   e["open"] = app
               (d["tests"] if test else d["apps"]).append(e)
           # A test version: shown only with "Get test versions" on, got and removed by hand.
