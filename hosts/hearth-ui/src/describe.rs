@@ -322,7 +322,8 @@ pub fn bar<'a, M: Clone + 'a>(p: &Pal, d: &'a Describe, map: impl Fn(DMsg) -> M 
     } else {
         t(note, 13.0, p.muted).into()
     };
-    let body: Column<'a, M> = column![input, row![chips, Space::new().width(Length::Fill), buttons].align_y(iced::Center), status].spacing(14.0);
+    // the chips wrap onto more lines (a whole app rearranged makes many); the buttons stay on the right under them
+    let body: Column<'a, M> = column![input, chips.wrap(), row![container(status).width(Length::Fill), buttons].spacing(16.0).align_y(iced::Center)].spacing(14.0);
     let close = mouse_area(t("✕", 14.0, p.muted)).on_press(map(DMsg::Close)).interaction(mouse::Interaction::Pointer);
     container(stack![
         container(body).padding(Padding { top: 18.0, right: 22.0, bottom: 16.0, left: 22.0 }),
