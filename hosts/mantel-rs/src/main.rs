@@ -8,15 +8,18 @@
 
 mod apps;
 mod bar;
+mod desk;
 mod dock;
 mod look;
 mod menu;
+mod overview;
+mod panels;
 mod shell;
 mod sys;
 mod wall;
 mod wm;
 
-const USAGE: &str = "usage: hearth-mantel session | menu | check";
+const USAGE: &str = "usage: hearth-mantel session | menu | overview | check";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -24,6 +27,9 @@ fn main() {
         Some("session") => shell::run(),
         Some("menu") => {
             if sys::send_command("menu") { 0 } else { 1 }
+        }
+        Some("overview") => {
+            if sys::send_command("overview") { 0 } else { 1 }
         }
         Some("check") => check(),
         _ => {
@@ -39,7 +45,7 @@ fn check() -> i32 {
     let l = look::get();
     println!("look {} style={} dark={} accent={:?} glass={} font={:?}", l.name, l.style, l.p.dark, l.p.accent, l.glass_a, l.font);
     println!("wallpaper {:?}", wall::scene(&l));
-    println!("bar band {} · dock {} (keeps {})", bar::band(&l, false), dock::height(&l, false), dock::reserved(&l, false));
+    println!("bar band {} · dock {} (keeps {})", bar::band(&l, false, false), dock::height(&l, false), dock::reserved(&l, false));
     println!("icons {}", ["bell", "kbd", "wifi", "pad", "search", "gear"].iter().filter(|n| look::icon_handle(n, l.p.text).is_some()).count());
     let a = apps::all();
     println!("apps {}", a.len());

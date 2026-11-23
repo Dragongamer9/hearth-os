@@ -16,6 +16,8 @@ path = "src/main.rs"
 [dependencies]
 # Hearth's look, shared with Hearth's pure-Rust apps (palettes.json and desktop.json, followed while it runs).
 hearth-ui = { path = "../hearth-ui" }
+# Desktop layouts' blocks (hosts/hearth-layout): their names and where each may go, as the QML Mantel has them.
+hearth-layout = { path = "../hearth-layout" }
 # The same iced as hearth-ui and the archived Rust Firehold: wgpu where there's a GPU, tiny-skia where there isn't.
 iced = { version = "0.14", default-features = false, features = ["wgpu", "tiny-skia", "wayland", "image", "svg", "canvas", "thread-pool", "crisp", "smol"] }
 iced_layershell = { version = "0.19", default-features = false }

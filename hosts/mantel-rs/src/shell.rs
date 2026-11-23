@@ -15,7 +15,7 @@ use std::collections::HashSet;
 
 use crate::apps::{self, App};
 use crate::look::{self, Look};
-use crate::{bar, dock, menu, sys, wall, wm};
+use crate::{bar, desk, dock, menu, overview, panels, sys, wall, wm};
 
 #[to_layer_message(multi)]
 #[derive(Debug, Clone)]
@@ -37,6 +37,14 @@ pub enum Message {
     Task(usize),
     TaskMiddle(usize),
     ShowDesktop,
+    // desktop layouts (desk.rs)
+    DeskCheck,
+    Overview,
+    OverviewClose,
+    OverviewOpen(u32),
+    OverviewLaunch(String),
+    OverviewApps,
+    Win(u32),
     // menu
     Key(keyboard::Event),
     Open(usize),
@@ -53,6 +61,8 @@ enum Surf {
     Bar,
     Dock,
     Menu,
+    Panel(usize),
+    Overview,
 }
 
 pub struct Shell {
@@ -72,8 +82,11 @@ pub struct Shell {
     /// Show desktop: the windows it minimized (and the one in front), to bring back
     shown_desktop: Option<(Vec<u32>, Option<u32>)>,
     tick: u32,
-    bar_band: u32,
+    pub bar_band: u32,
     dock_h: u32,
+    /// the desktop's layout (desk.rs): the bar's edge and blocks, the dock, the extra panels
+    pub desk: desk::Desk,
+    pub overview: overview::State,
 }
 
 impl Shell {
@@ -88,6 +101,9 @@ impl Shell {
     }
     pub fn menu_open(&self) -> bool {
         self.id_of(Surf::Menu).is_some()
+    }
+    pub fn overview_open(&self) -> bool {
+        self.id_of(Surf::Overview).is_some()
     }
 }
 
@@ -105,9 +121,10 @@ fn layer(size: (u32, u32), anchor: Anchor, layer: Layer, zone: i32, keys: Keyboa
 
 fn boot() -> (Shell, Task<Message>) {
     let l = look::get();
+    let dk = desk::read();
     let st = Shell {
         surfs: Vec::new(),
-        bar_band: bar::band(&l, false),
+        bar_band: bar::band(&l, false, dk.vertical()),
         dock_h: dock::height(&l, false),
         look: l,
         wall_img: None,
@@ -122,35 +139,100 @@ fn boot() -> (Shell, Task<Message>) {
         menu: menu::State::default(),
         shown_desktop: None,
         tick: 0,
+        desk: dk,
+        overview: overview::State::default(),
     };
     let mut st = st;
-    let (w, b, d) = (Id::unique(), Id::unique(), Id::unique());
-    st.surfs = vec![(w, Surf::Wall), (b, Surf::Bar), (d, Surf::Dock)];
+    let w = Id::unique();
+    st.surfs = vec![(w, Surf::Wall)];
     let all = Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right;
-    let t = Task::batch([
-        Task::done(Message::NewLayerShell { settings: layer((0, 0), all, Layer::Background, -1, KeyboardInteractivity::None, "hearth-wallpaper"), id: w }),
-        Task::done(Message::NewLayerShell {
-            settings: layer((0, st.bar_band), Anchor::Top | Anchor::Left | Anchor::Right, Layer::Top, st.bar_band as i32, KeyboardInteractivity::None, "hearth-islands"),
-            id: b,
-        }),
-        Task::done(Message::NewLayerShell {
-            settings: layer((0, st.dock_h), Anchor::Bottom | Anchor::Left | Anchor::Right, Layer::Top, dock::reserved(&st.look, false) as i32, KeyboardInteractivity::None, "hearth-dock"),
+    let mut t = vec![Task::done(Message::NewLayerShell { settings: layer((0, 0), all, Layer::Background, -1, KeyboardInteractivity::None, "hearth-wallpaper"), id: w })];
+    t.extend(build_bars(&mut st));
+    t.push(Task::perform(async { menu::system_lists() }, |(s, h)| Message::System(s, h)));
+    (st, Task::batch(t))
+}
+
+/// The main bar on its edge, the dock (when the layout has one) and the extra panels: made again whenever the
+/// layout's surfaces change (an edge, the dock, a panel), so no space stays kept on an old edge.
+fn build_bars(s: &mut Shell) -> Vec<Task<Message>> {
+    let mut t = Vec::new();
+    for (id, k) in s.surfs.clone() {
+        if matches!(k, Surf::Bar | Surf::Dock | Surf::Panel(_)) {
+            t.push(Task::done(Message::RemoveWindow(id)));
+        }
+    }
+    s.surfs.retain(|x| !matches!(x.1, Surf::Bar | Surf::Dock | Surf::Panel(_)));
+    let c = s.compact();
+    let vert = s.desk.vertical();
+    s.bar_band = bar::band(&s.look, c, vert);
+    let band = s.bar_band;
+    let (anchor, size) = edge_anchor(&s.desk.edge, band);
+    let b = Id::unique();
+    s.surfs.push((b, Surf::Bar));
+    t.push(Task::done(Message::NewLayerShell { settings: layer(size, anchor, Layer::Top, band as i32, KeyboardInteractivity::None, "hearth-islands"), id: b }));
+    if s.desk.dock {
+        let d = Id::unique();
+        s.dock_h = dock::height(&s.look, c);
+        s.surfs.push((d, Surf::Dock));
+        t.push(Task::done(Message::NewLayerShell {
+            settings: layer((0, s.dock_h), Anchor::Bottom | Anchor::Left | Anchor::Right, Layer::Top, dock::reserved(&s.look, c) as i32, KeyboardInteractivity::None, "hearth-dock"),
             id: d,
-        }),
-        Task::perform(async { menu::system_lists() }, |(s, h)| Message::System(s, h)),
-    ]);
-    (st, t)
+        }));
+    }
+    for (i, p) in s.desk.panels.iter().enumerate() {
+        let th = panels::thickness(p);
+        let (anchor, size) = edge_anchor(&p.edge, th);
+        let id = Id::unique();
+        s.surfs.push((id, Surf::Panel(i)));
+        t.push(Task::done(Message::NewLayerShell { settings: layer(size, anchor, Layer::Top, if p.auto_hide { 0 } else { th as i32 }, KeyboardInteractivity::None, "hearth-panel"), id }));
+    }
+    t
+}
+
+/// A bar's anchors and size along `edge`, `band` thick.
+fn edge_anchor(edge: &str, band: u32) -> (Anchor, (u32, u32)) {
+    match edge {
+        "bottom" => (Anchor::Bottom | Anchor::Left | Anchor::Right, (0, band)),
+        "left" => (Anchor::Left | Anchor::Top | Anchor::Bottom, (band, 0)),
+        "right" => (Anchor::Right | Anchor::Top | Anchor::Bottom, (band, 0)),
+        _ => (Anchor::Top | Anchor::Left | Anchor::Right, (0, band)),
+    }
+}
+
+fn open_overview(s: &mut Shell) -> Task<Message> {
+    if let Some(id) = s.id_of(Surf::Overview) {
+        s.surfs.retain(|x| x.0 != id);
+        return Task::done(Message::RemoveWindow(id));
+    }
+    let id = Id::unique();
+    s.surfs.push((id, Surf::Overview));
+    s.overview = overview::State::default();
+    let all = Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right;
+    // under a bar along the top, which stays
+    let top = if s.desk.edge == "top" { s.bar_band as i32 } else { 0 };
+    let settings = NewLayerShellSettings { margin: Some((top, 0, 0, 0)), ..layer((0, 0), all, Layer::Overlay, -1, KeyboardInteractivity::Exclusive, "hearth-overview") };
+    Task::done(Message::NewLayerShell { settings, id })
+}
+fn close_overview(s: &mut Shell) -> Task<Message> {
+    match s.id_of(Surf::Overview) {
+        Some(id) => {
+            s.surfs.retain(|x| x.0 != id);
+            Task::done(Message::RemoveWindow(id))
+        }
+        None => Task::none(),
+    }
 }
 
 /// After a change of look or screen: the bar's and dock's heights and reserved space, when they changed.
 fn refit(s: &mut Shell) -> Task<Message> {
     let mut t = Vec::new();
     let c = s.compact();
-    let band = bar::band(&s.look, c);
+    let vert = s.desk.vertical();
+    let band = bar::band(&s.look, c, vert);
     if band != s.bar_band {
         s.bar_band = band;
         if let Some(id) = s.id_of(Surf::Bar) {
-            t.push(Task::done(Message::SizeChange { id, size: (0, band) }));
+            t.push(Task::done(Message::SizeChange { id, size: if vert { (band, 0) } else { (0, band) } }));
             t.push(Task::done(Message::ExclusiveZoneChange { id, zone_size: band as i32 }));
         }
     }
@@ -229,8 +311,41 @@ fn update(s: &mut Shell, m: Message) -> Task<Message> {
             if c.trim() == "menu" || c.trim() == "launcher" {
                 return open_menu(s);
             }
+            if c.trim() == "overview" {
+                return open_overview(s);
+            }
         }
         Message::Flame => return open_menu(s),
+        Message::DeskCheck => {
+            let nd = desk::read();
+            if nd != s.desk {
+                let rebuild = nd.surfaces_key() != s.desk.surfaces_key();
+                s.desk = nd;
+                if rebuild {
+                    return Task::batch(build_bars(s));
+                }
+            }
+        }
+        Message::Overview => return open_overview(s),
+        Message::OverviewClose => return close_overview(s),
+        Message::OverviewOpen(id) => {
+            wm::activate(id);
+            return close_overview(s);
+        }
+        Message::OverviewLaunch(app) => {
+            if let Some(a) = apps::find(&s.apps, &app).cloned() {
+                apps::launch(&a);
+            }
+            return close_overview(s);
+        }
+        Message::OverviewApps => return Task::batch([close_overview(s), open_menu(s)]),
+        Message::Win(id) => {
+            if s.wm.wins.iter().any(|w| w.id == id && w.active && !w.minimized) {
+                wm::minimize(id);
+            } else {
+                wm::activate(id);
+            }
+        }
         Message::Desk(id) => wm::go_desk(id),
         Message::GameMode => run_cmd("nimbus-mode game"),
         Message::VolScroll(up) => {
@@ -270,6 +385,22 @@ fn update(s: &mut Shell, m: Message) -> Task<Message> {
             }
         }
         Message::Key(k) => {
+            if s.overview_open() {
+                return match overview::key(s, k) {
+                    overview::KeyResult::Close => close_overview(s),
+                    overview::KeyResult::Open(w) => {
+                        wm::activate(w);
+                        close_overview(s)
+                    }
+                    overview::KeyResult::Search(q) => {
+                        let t = close_overview(s);
+                        let m = open_menu(s);
+                        s.menu.q = q;
+                        Task::batch([t, m])
+                    }
+                    overview::KeyResult::None => Task::none(),
+                };
+            }
             if let Some(id) = s.id_of(Surf::Menu) {
                 match menu::key(s, k) {
                     menu::KeyResult::Close => return close_menu(s, id),
@@ -328,6 +459,8 @@ fn view(s: &Shell, id: Id) -> Element<'_, Message> {
         Some(Surf::Bar) => bar::view(s),
         Some(Surf::Dock) => dock::view(s),
         Some(Surf::Menu) => menu::view(s),
+        Some(Surf::Panel(i)) => panels::view(s, i),
+        Some(Surf::Overview) => overview::view(s),
         None => iced::widget::Space::new().into(),
     }
 }
@@ -337,12 +470,13 @@ fn subscription(s: &Shell) -> Subscription<Message> {
         Subscription::run(wm::stream).map(Message::Wm),
         Subscription::run(look::changes).map(|_| Message::Look),
         Subscription::run(sys::commands).map(Message::Cmd),
+        Subscription::run(desk::changes).map(|_| Message::DeskCheck),
         // the clock, the status icons and the pins: once a minute, on the minute (the volume at once after you change
         // it). Every wake-up redraws the shell, so there's nothing in between: it stays asleep while you work.
         Subscription::run(sys::minutes).map(|_| Message::Tick),
         iced::window::resize_events().map(|(id, size)| Message::Resized(id, size)),
     ];
-    if s.menu_open() {
+    if s.menu_open() || s.overview_open() {
         v.push(keyboard::listen().map(Message::Key));
     }
     Subscription::batch(v)

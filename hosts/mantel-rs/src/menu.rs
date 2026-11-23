@@ -385,8 +385,11 @@ pub fn view(s: &Shell) -> Element<'_, Message> {
     let l = &s.look;
     let p = l.p;
     let screen = if s.screen.width > 0.0 { s.screen } else { iced::Size::new(1920.0, 1080.0) };
-    let top = crate::bar::band(l, s.compact()) as f32;
-    let bottom = crate::dock::reserved(l, s.compact()) as f32;
+    // the room the bar and the dock keep (on the edges they're on: desktop layouts)
+    let band = crate::bar::band(l, s.compact(), s.desk.vertical()) as f32;
+    let dock = if s.desk.dock { crate::dock::reserved(l, s.compact()) as f32 } else { 0.0 };
+    let top = if s.desk.edge == "top" { band } else { 0.0 };
+    let bottom = dock.max(if s.desk.edge == "bottom" { band } else { 0.0 });
     let (top_room, bottom_room) = (top.max(20.0), bottom.max(20.0));
     let bw = (screen.width - 60.0).min(1240.0);
     let bh = (screen.height - top_room - bottom_room - 30.0).min(860.0);
