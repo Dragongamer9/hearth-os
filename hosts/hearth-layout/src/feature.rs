@@ -280,6 +280,9 @@ pub fn part_label(part: &str) -> String {
         "store" => "Hearth Store".into(),
         "music" => "Hearth Music".into(),
         "monitor" => "Resource Monitor".into(),
+        "taskmanager" => "Task Manager".into(),
+        "capture" => "Capture".into(),
+        "notes" => "Hearth Notes".into(),
         x => x.chars().take(40).collect(),
     }
 }

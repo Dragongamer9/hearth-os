@@ -222,7 +222,7 @@ pub fn kind_of(i: &Idea, asks: &[Ask]) -> &'static str {
     } else if i.first.sketch || asks.iter().any(|a| a.sketch) {
         "Has a sketch"
     } else {
-        "Built from Hearth's parts already"
+        "Built by people already"
     }
 }
 

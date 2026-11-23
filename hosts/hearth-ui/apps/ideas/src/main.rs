@@ -846,7 +846,7 @@ fn kind_chip<'a>(p: &Pal, kind: &'static str) -> Element<'a, Msg> {
         "Has a sketch" => (p.text, p.line),
         _ => (p.good, p.good),
     };
-    container(t(kind, 12.0, fg)).padding(Padding { top: 2.0, right: 10.0, bottom: 2.0, left: 10.0 }).style(ui::boxed(Pal::a(line, 0.08), 11.0, Some((Pal::a(line, 0.7), 1.0)))).into()
+    container(t(kind, 12.0, fg).wrapping(iced::widget::text::Wrapping::None)).padding(Padding { top: 2.0, right: 10.0, bottom: 2.0, left: 10.0 }).style(ui::boxed(Pal::a(line, 0.08), 11.0, Some((Pal::a(line, 0.7), 1.0)))).into()
 }
 
 fn list_page(a: &App) -> Element<'_, Msg> {
@@ -879,7 +879,7 @@ fn list_page(a: &App) -> Element<'_, Msg> {
         line.push(match kind {
             "Needs something new" => "needs something new".to_string(),
             "Has a sketch" => "has a sketch".to_string(),
-            _ => if i.closest.is_empty() { "made from Hearth's parts · ready to add as it is".to_string() } else { format!("{} · ready to add as it is", i.closest) },
+            _ => if i.closest.is_empty() { "a feature people made from Hearth's parts · ready to add as it is".to_string() } else { format!("{} · made from Hearth's parts · ready to add as it is", i.closest) },
         });
         let d = data::day(&i.created);
         if !d.is_empty() && k == 0 {
@@ -939,7 +939,7 @@ fn quote<'a>(p: &Pal, words: &str) -> Element<'a, Msg> {
 }
 
 fn pill<'a>(p: &Pal, s: impl Into<String>) -> Element<'a, Msg> {
-    container(tm(s.into(), 13.0, p.text)).padding(Padding { top: 4.0, right: 11.0, bottom: 4.0, left: 11.0 }).style(ui::boxed(Color::TRANSPARENT, 13.0, Some((p.line, 1.0)))).into()
+    container(tm(s.into(), 13.0, p.text).wrapping(iced::widget::text::Wrapping::None)).padding(Padding { top: 4.0, right: 11.0, bottom: 4.0, left: 11.0 }).style(ui::boxed(Color::TRANSPARENT, 13.0, Some((p.line, 1.0)))).into()
 }
 
 fn idea_page(a: &App) -> Element<'_, Msg> {
@@ -1183,7 +1183,7 @@ fn ship_box<'a>(a: &'a App) -> Option<Element<'a, Msg>> {
     let hint = if !version_ok { "Ship it lights up once the version number is filled in" } else if !s.matches { "Tick Pictures match the mockup once you've looked at them" } else { "" };
     let ready_chip = container(t("Ready to ship", 12.0, p.good)).padding(Padding { top: 3.0, right: 10.0, bottom: 3.0, left: 10.0 }).style(ui::boxed(Pal::a(p.good, 0.06), 12.0, Some((Pal::a(p.good, 0.7), 1.0))));
     let body = column![
-        row![ready_chip, tb(format!("Ship {}", data::title_of(i).to_lowercase()), 26.0, p.text)].spacing(12.0).align_y(iced::Center),
+        row![ready_chip, tb(format!("Ship {}", a.sent.get(&s.number).map(|x| x.2.trim_start_matches("idea/").replace('-', " ")).filter(|x| !x.is_empty()).unwrap_or_else(|| data::title_of(i).to_lowercase())), 26.0, p.text)].spacing(12.0).align_y(iced::Center),
         chips,
         row![lbl("Goes out as"), how].align_y(iced::Center),
         row![lbl("What updates"), t(what, 15.0, p.text)].align_y(iced::Center),
