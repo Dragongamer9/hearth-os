@@ -16,8 +16,10 @@ jobs:
       - name: Survey the base
         run: |
           base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
-          podman pull -q "$base" >/dev/null
+          echo "::notice title=base::$base"
+          podman pull -q "$base" >/dev/null 2>/tmp/pull.err || { echo "::error title=pull::$(tail -c 600 /tmp/pull.err)"; exit 1; }
           podman run --rm "$base" bash -c '
+            set +e
             q() { rpm -qa --qf "%{NAME}\n" | grep -E "$1" | sort | tr "\n" " "; }
             echo "::notice title=display manager::$(readlink /etc/systemd/system/display-manager.service) | $(rpm -qa | grep -iE "plasmalogin|sddm|greetd|gdm|lightdm" | tr "\n" " ")"
             echo "::notice title=KDE and Plasma packages ($(q "^(plasma|kwin|kde|kf6|kf5|breeze|kscreen|powerdevil|bluedevil|polkit-kde|xdg-desktop-portal-kde|dolphin|konsole|kate|okular|spectacle|ark|gwenview|kwallet|kio|kirigami|qqc2|layer-shell-qt|libplasma|plasmalogin|sddm|discover)" | wc -w))::$(q "^(plasma|kwin|kde|breeze|kscreen|powerdevil|bluedevil|polkit-kde|xdg-desktop-portal-kde|dolphin|konsole|kate|okular|spectacle|ark|gwenview|kwallet|plasmalogin|sddm|discover)" | cut -c1-3500)"
