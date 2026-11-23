@@ -834,6 +834,8 @@ DESKTOP
 # before). The image isn't built if anything Hearth needs went too, or if there's no way to sign in.
 kde_before=$(du -sxm /usr | cut -f1)
 KDE_RE='^(plasma|kwin|kde|kf6-|kf5-|breeze|kscreen|powerdevil|bluedevil|polkit-kde|xdg-desktop-portal-kde|dolphin|konsole|kate|okular|spectacle|ark|gwenview|kwallet|discover|libplasma|kpipewire|kglobalacceld|kmenuedit|milou|kinfocenter|systemsettings|kio|kirigami|qqc2|layer-shell-qt|kdecoration|kdsoap|kaccounts|signon|plasma5support|ksystemstats|libkscreen|libksysguard|kuserfeedback|kcm-|aurorae|ocean-sound|oxygen|phonon|baloo|akonadi|kdeconnect|kactivitymanagerd|kded|kscreenlocker|sddm|plasmalogin|maliit|krdp|flatpak-kcm|ksshaskpass|kde-settings|kcalc|xwaylandvideobridge|pinentry-qt|pam-kwallet)'
+# What Hearth needs that the base has now (Steam comes later, in its own section): each must still be here after.
+keep=""; for need in gamescope hhd NetworkManager pipewire wireplumber flatpak mesa-vulkan-drivers nvidia-driver steam; do rpm -q "$need" >/dev/null 2>&1 && keep="$keep $need"; done
 kde_pkgs=$(rpm -qa --qf '%{NAME}\n' | grep -E "$KDE_RE" | sort -u || true)
 if [ -n "$kde_pkgs" ]; then
   # shellcheck disable=SC2086
@@ -841,10 +843,10 @@ if [ -n "$kde_pkgs" ]; then
 fi
 left=$(rpm -qa --qf '%{NAME}\n' | { grep -E "$KDE_RE" || true; } | tr '\n' ' ')
 [ -z "$left" ] || { echo "::error title=No KDE::still here: $left"; exit 1; }
-for need in steam gamescope NetworkManager pipewire wireplumber flatpak; do
+for need in $keep; do
   rpm -q "$need" >/dev/null 2>&1 || { echo "::error title=No KDE::$need went with KDE"; exit 1; }
 done
-rpm -q hhd >/dev/null 2>&1 || echo "::warning title=No KDE::Handheld Daemon isn't in this image"
+echo "::notice title=No KDE::still here after removing KDE:$keep"
 # What KDE gave that Hearth still needs: portals (file picking and screen sharing on labwc), GPG's password prompt,
 # icons for GTK apps, the ISO tool Hearth Disks uses, and greetd for signing in.
 dnf5 -y install --skip-unavailable xdg-desktop-portal-wlr xdg-desktop-portal-gtk pinentry-gnome3 pinentry-tty adwaita-icon-theme \
@@ -854,7 +856,7 @@ dnf5 -y install --skip-unavailable greetd-selinux cage || true
 # KDE's leftovers that name a desktop that's gone.
 rm -f /etc/xdg/autostart/org.kde.* /etc/xdg/autostart/*plasma* /usr/share/wayland-sessions/plasma*.desktop /usr/share/xsessions/plasma*.desktop
 rm -rf /usr/share/hearth/desktop-sessions/*plasma* /etc/xdg/plasma-workspace /etc/plasmalogin.conf /etc/plasmalogin.conf.d
-echo "::notice title=No KDE::removed $(echo "$kde_pkgs" | wc -l) packages, $(( kde_before - $(du -sxm /usr | cut -f1) )) MB; Steam $(rpm -q --qf '%{VERSION}' steam), gamescope $(rpm -q --qf '%{VERSION}' gamescope), greetd $(rpm -q --qf '%{VERSION}' greetd)"
+echo "::notice title=No KDE::removed $(echo "$kde_pkgs" | wc -l) packages, $(( kde_before - $(du -sxm /usr | cut -f1) )) MB; gamescope $(rpm -q --qf '%{VERSION}' gamescope), greetd $(rpm -q --qf '%{VERSION}' greetd)"
 # Tools Hearth's apps and helpers use (screenshots, brightness, the clipboard, X11 helpers for Game Mode's pickers).
 dnf5 -y install --skip-unavailable --skip-broken grim slurp brightnessctl wlr-randr python3-evdev xprop xwininfo xdotool gnome-keyring cpio rsync || true
 # The session's own message bus when the login gave none (nimbus-session ensure_session_bus: dbus-run-session), and
