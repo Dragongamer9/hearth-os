@@ -119,7 +119,19 @@ pub fn load_games() -> Vec<Game> {
                     let s = |k: &str| g.get(k).and_then(Value::as_str).unwrap_or("").to_string();
                     (!s("title").is_empty()).then(|| Game { id: s("id"), title: s("title"), cover: s("cover"), wide: s("wide"), update: g.get("update") == Some(&json!(true)) })
                 })
-                .collect()
+                .collect::<Vec<Game>>()
+        })
+        .map(|games| {
+            // their art read now, here off the UI thread, so the tiles have it the first time they're drawn
+            for g in games.iter().take(40) {
+                for p in [&g.cover, &g.wide] {
+                    let p = p.trim_start_matches("file://");
+                    if !p.is_empty() {
+                        look::preload_image(std::path::Path::new(p), 1280);
+                    }
+                }
+            }
+            games
         })
         .unwrap_or_default()
 }

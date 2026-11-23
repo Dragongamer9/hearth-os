@@ -312,11 +312,31 @@ pub fn icon<'a, M: 'a>(name: &str, size: f32, c: Color) -> iced::Element<'a, M> 
 }
 
 /// An image file as a handle, made once (the flame, the generic app picture, the wallpaper's layers).
-pub fn image_handle(path: &std::path::Path) -> iced::widget::image::Handle {
+fn image_cache() -> &'static Mutex<HashMap<std::path::PathBuf, iced::widget::image::Handle>> {
     static CACHE: OnceLock<Mutex<HashMap<std::path::PathBuf, iced::widget::image::Handle>>> = OnceLock::new();
-    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
-    let mut g = cache.lock().unwrap_or_else(|e| e.into_inner());
+    CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub fn image_handle(path: &std::path::Path) -> iced::widget::image::Handle {
+    let mut g = image_cache().lock().unwrap_or_else(|e| e.into_inner());
     g.entry(path.to_path_buf()).or_insert_with(|| iced::widget::image::Handle::from_path(path)).clone()
+}
+
+/// A picture read and decoded now (call it off the UI thread: the games' art is read with the games list), at most
+/// `max` pixels on its long side, so it's on screen the first time it's drawn: a file handle is read later, in the
+/// background, and the bottom layer isn't drawn again until something changes (the Rust Mantel's empty game tiles).
+pub fn preload_image(path: &std::path::Path, max: u32) {
+    if image_cache().lock().map(|g| g.contains_key(path)).unwrap_or(false) {
+        return;
+    }
+    let Ok(img) = image::open(path) else { return };
+    let img = if img.width().max(img.height()) > max { img.thumbnail(max, max) } else { img };
+    let rgba = img.to_rgba8();
+    let (w, h) = rgba.dimensions();
+    let handle = iced::widget::image::Handle::from_rgba(w, h, rgba.into_raw());
+    if let Ok(mut g) = image_cache().lock() {
+        g.insert(path.to_path_buf(), handle);
+    }
 }
 
 pub fn svg_file(path: &std::path::Path) -> svg::Handle {
