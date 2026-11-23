@@ -803,7 +803,7 @@ PanelWindow {
             color: st.colour || Qt.rgba(0.07, 0.11, 0.09, 0.97)
             MouseArea { anchors.fill: parent }
             Column {
-                id: gc
+                id: guideCol
                 anchors { fill: parent; margins: 30 }
                 spacing: 6
                 Text { text: "THE GUIDE · HOME BUTTON"; color: Qt.lighter(scr.accent, 1.2); font.family: scr.fontName; font.pixelSize: 13; font.letterSpacing: 1.5; bottomPadding: 18 }
@@ -817,7 +817,7 @@ PanelWindow {
                     delegate: Rectangle {
                         required property var modelData
                         required property int index
-                        width: gc.width; height: 48; radius: 4
+                        width: guideCol.width; height: 48; radius: 4
                         color: index === 0 || gm.containsMouse ? scr.accent : "transparent"
                         Text { anchors { left: parent.left; leftMargin: 16; verticalCenter: parent.verticalCenter } text: modelData.t; font.family: scr.fontName; font.pixelSize: 17; color: index === 0 || gm.containsMouse ? "#0b1a10" : "#e8efe9" }
                         MouseArea { id: gm; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: { scr.guideOpen = false; scr.sound(""); if (modelData.a !== "guide") scr.act(modelData.a, modelData.arg); } }
