@@ -134,6 +134,10 @@ pub fn run_own(id: &str, once: bool) -> Value {
     c.output().ok().and_then(|o| String::from_utf8_lossy(&o.stdout).trim().lines().last().and_then(|l| serde_json::from_str(l).ok())).unwrap_or(json!({ "ok": false, "error": "It stopped by itself (too big or too slow)." }))
 }
 pub fn layout_bin() -> PathBuf {
+    // the Store's copy of Mantel in Rust carries its own, next to it
+    if let Some(p) = std::env::current_exe().ok().and_then(|e| e.parent().map(|d| d.join("hearth-layout"))).filter(|p| p.exists()) {
+        return p;
+    }
     let own = look::shell_file("../bin/hearth-layout");
     if own.exists() {
         own
@@ -384,7 +388,10 @@ fn block<'a>(sh: &'a Shell, b: &Value, stv: &Value, rec: &[Game], bw: f32, bh: f
             let body: Element<Message> = if blk == "list" {
                 col.into()
             } else if shows == "sticky" {
-                container(col).padding(20).width(Length::Fill).height(Length::Fill).style(move |_| container::Style { background: Some(colour(s(stv, "colour"), Color::from_rgb8(0xff, 0xf3, 0xa0)).into()), ..Default::default() }).into()
+                {
+                let paper = colour(s(stv, "colour"), Color::from_rgb8(0xff, 0xf3, 0xa0));
+                container(col).padding(20).width(Length::Fill).height(Length::Fill).style(move |_| container::Style { background: Some(paper.into()), ..Default::default() }).into()
+            }
             } else {
                 r.height(Length::Fill).into()
             };
@@ -476,7 +483,8 @@ fn block<'a>(sh: &'a Shell, b: &Value, stv: &Value, rec: &[Game], bw: f32, bh: f
         }
         "picture" => {
             if shows == "fire" {
-                let glow = container(Space::new()).width(bw * 0.7).height(bh * 0.8).style(|_| container::Style { background: Some(iced::Gradient::Linear(iced::gradient::Linear::new(std::f32::consts::PI).add_stop(0.0, Color::from_rgb8(0xff, 0xcf, 0x7a)).add_stop(0.45, Color::from_rgb8(0xff, 0x7a, 0x2f)).add_stop(1.0, Color::TRANSPARENT)).into()), border: border::rounded(bw), ..Default::default() });
+                let gr = bw;
+                let glow = container(Space::new()).width(bw * 0.7).height(bh * 0.8).style(move |_| container::Style { background: Some(iced::Gradient::Linear(iced::gradient::Linear::new(std::f32::consts::PI).add_stop(0.0, Color::from_rgb8(0xff, 0xcf, 0x7a)).add_stop(0.45, Color::from_rgb8(0xff, 0x7a, 0x2f)).add_stop(1.0, Color::TRANSPARENT)).into()), border: border::rounded(gr), ..Default::default() });
                 container(glow).center_x(Length::Fill).center_y(Length::Fill).style(move |_| container::Style { background: Some(Color::from_rgb8(0x2a, 0x14, 0x08).into()), border: border::rounded(corners), ..Default::default() }).into()
             } else {
                 pic(&s(b, "value").replacen('~', &hearth_ui::paths::home().to_string_lossy(), 1), bw, bh)

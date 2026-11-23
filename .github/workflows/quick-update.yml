@@ -21,8 +21,18 @@ on:
       os:
         description: 'The Hearth OS it is for (like 1.17: fits 1.17 and 1.17.x)'
         required: true
+      channel:
+        description: 'main (everyone with the app) or test (only with Get test versions on, got by hand)'
+        required: false
+        type: choice
+        options: [main, test]
+        default: main
       notes:
         description: "What's new, one line each, separated by |"
+        required: false
+        default: ''
+      missing:
+        description: "A test version's Not in it yet, one line each, separated by | (the Store shows it on its page)"
         required: false
         default: ''
 
@@ -42,6 +52,8 @@ jobs:
       VER: ${{ inputs.version }}
       OS: ${{ inputs.os }}
       NOTES: ${{ inputs.notes }}
+      MISSING: ${{ inputs.missing }}
+      CHANNEL: ${{ inputs.channel }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +76,12 @@ jobs:
             for d in theme sounds; do cp -a "hosts/linux/desktop/$d" "/tmp/part/$d"; done
             rm -rf /tmp/part/theme/__pycache__
             test -f /tmp/part/theme/palettes.json
+            # Build anything needs a newer hearth-layout than the Hearth OS it goes on may have (describe-screen,
+            # the blocks your AI makes): Mantel's own copy goes next to it (ScreenLayout.qml uses bin/ first).
+            base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+            docker pull -q "$base"
+            docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-ui-build.sh 2>&1 | tail -20
+            mkdir -p /tmp/part/bin && tar -C /tmp/part/bin -xf /tmp/out/hearth-ui.tar ./hearth-layout && test -x /tmp/part/bin/hearth-layout
             echo "INNER=shell" >> "$GITHUB_ENV"
           elif [ "$APP" = mantel-rust ]; then
             # Mantel in Rust (test, docs/MANTEL-RUST.md): the one program, built in the image's own base; the
@@ -72,6 +90,9 @@ jobs:
             docker pull -q "$base"
             docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/mantel-rust-build.sh 2>&1 | tail -40
             mkdir -p /tmp/part/mantel-rust && install -m755 /tmp/out/hearth-mantel /tmp/part/mantel-rust/hearth-mantel
+            # its own hearth-layout next to it (your AI's blocks run as `hearth-layout run-block`)
+            docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-ui-build.sh 2>&1 | tail -20
+            tar -C /tmp/part/mantel-rust -xf /tmp/out/hearth-ui.tar ./hearth-layout && test -x /tmp/part/mantel-rust/hearth-layout
             echo "INNER=mantel-rust" >> "$GITHUB_ENV"
           else
             base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
@@ -112,10 +133,14 @@ jobs:
           part = {"id": app, "version": os.environ["VER"], "os": os.environ["OS"], "path": os.environ["INNER"],
                   "url": os.environ["URL"], "sha256": os.environ["SHA"], "size": int(os.environ["SIZE"]),
                   "notes": [l.strip() for l in os.environ.get("NOTES", "").split("|") if l.strip()]}
+          missing = [l.strip() for l in os.environ.get("MISSING", "").split("|") if l.strip()]
+          if missing:
+              part["missing"] = missing
           # The app's own entry when the list has one (its part, or the program it opens), else a new one.
           # Test versions (Mantel in Rust) go in their own list, "tests": Stores before 1.17.1 only read "apps", so they
           # can never offer a test version to everyone.
-          test = app == "mantel-rust"
+          # Red flag 13 (the owner, Nov 22): any app can have a test version (Channel: test).
+          test = app == "mantel-rust" or os.environ.get("CHANNEL") == "test"
           if test:
               d.setdefault("tests", [])
           for e in d["tests"] if test else d["apps"]:
@@ -123,11 +148,13 @@ jobs:
                   e["part"] = part
                   break
           else:
-              e = {"id": "part-" + app, "name": names.get(app, app), "kind": "builtin", "part": part}
+              e = {"id": ("test-" if test and app != "mantel-rust" else "part-") + app, "name": names.get(app, app) + (" (test)" if test and app != "mantel-rust" else ""), "kind": "builtin", "part": part}
               if app not in ("mantel", "mantel-rust"):
                   e["open"] = app
               (d["tests"] if test else d["apps"]).append(e)
-          # Mantel in Rust is a test version: shown only with "Get test versions" on, got and removed by hand.
+          # A test version: shown only with "Get test versions" on, got and removed by hand.
+          if test:
+              e["test"] = True
           if app == "mantel-rust":
               e["test"] = True
               e.setdefault("short", "Mantel in Rust")
