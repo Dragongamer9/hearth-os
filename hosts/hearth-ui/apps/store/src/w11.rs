@@ -44,7 +44,7 @@ pub fn frame<'a>(a: &'a App, body: E<'a, Msg>) -> E<'a, Msg> {
     container(column![title_bar(a), main]).width(Length::Fill).height(Length::Fill).style(look::bx(tn.page, 0.0, None)).into()
 }
 
-fn title_bar(a: &App) -> E<'_, Msg> {
+fn title_bar<'a>(a: &'a App) -> E<'a, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let name = row![gap(z(18.0), 1.0), look::mark(z(22.0)), gap(z(12.0), 1.0), t("Hearth Store", f(14.0), tn.text)].align_y(iced::Center);
