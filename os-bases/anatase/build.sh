@@ -2446,6 +2446,9 @@ command -v podman >/dev/null || { echo "podman is missing: bootc upgrade and boo
 # so it can be replaced (the image check fails while any is here).
 kde_back=$(rpm -qa --qf '%{NAME}\n' | { grep -E "$KDE_RE" || true; } | sort -u)
 if [ -n "$kde_back" ]; then
-  why=""; for k in $kde_back; do why="$why $k<-$(rpm -q --whatrequires "$k" --qf '%{NAME},' 2>/dev/null | grep -v 'no package' | tr -d '\n' | cut -c1-80);"; done
+  why=""; for k in $kde_back; do why="$why $k<-$(rpm -q --whatrequires "$k" --qf '%{NAME},' 2>/dev/null | { grep -v 'no package' || true; } | tr -d '\n' | cut -c1-80);"; done
+  # who needs the KDE Frameworks libraries (an app's, not the desktop): every package, by the libraries it links
+  users=$(for k in $kde_back; do rpm -ql "$k" 2>/dev/null | grep -E '\.so\.[0-9]+$' | xargs -r -n1 basename; done | sort -u | while read -r so; do rpm -q --whatrequires "$so()(64bit)" --qf '%{NAME}\n' 2>/dev/null; done | { grep -vE "no package|$KDE_RE" || true; } | sort -u | tr '\n' ' ')
+  echo "::warning title=No KDE::KDE's libraries are used by: ${users:-(nothing found)}"
   echo "::warning title=No KDE::KDE came back with later installs:$(echo "$why" | cut -c1-3000)"
 fi

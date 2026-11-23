@@ -168,7 +168,8 @@ fi
 
 if [ -n "$NOKDE" ]; then
   echo "--- no KDE (1.18): Mantel on labwc, greetd, Hearth's own apps"
-  nokde_check "no KDE packages left" "! rpm -qa --qf '%{NAME}\\n' | grep -qE '^(plasma|kwin|kf6-|dolphin|konsole|kate|okular|spectacle|kscreenlocker|plasma-login-manager|sddm)'"
+  nokde_check "no KDE desktop, apps or login screen left" "! rpm -qa --qf '%{NAME}\\n' | grep -qE '^(plasma|kwin|dolphin|konsole|kate|okular|spectacle|kscreenlocker|kglobalacceld|kded|sddm|xdg-desktop-portal-kde|polkit-kde|powerdevil|bluedevil|kscreen|discover)'"
+  warn "no KDE libraries either (an app that needs them is named by the build)" "! rpm -qa --qf '%{NAME}\\n' | grep -qE '^(kf6-|kf5-|breeze)'"
   nokde_check "Mantel on labwc: labwc, a working Quickshell, Mantel's shell and its picker" \
     "command -v labwc && command -v quickshell && ! ldd \"\$(command -v quickshell)\" | grep -q 'not found' && test -f /usr/share/nimbus/desktop/shell/shell.qml && test -x /usr/bin/hearth-labwc-desktop"
   nokde_check "signing in: greetd and its text sign-in are the display manager" \
