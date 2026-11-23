@@ -28,6 +28,8 @@ PanelWindow {
     property var preview: null
     signal editRequested()
     readonly property var lay: preview || ScreenLayout.screen || ({ blocks: [] })
+    Component.onCompleted: if (!preview) ScreenLayout.drawn++
+    Component.onDestruction: if (!preview) ScreenLayout.drawn--
 
     WlrLayershell.layer: preview ? WlrLayer.Top : WlrLayer.Bottom
     WlrLayershell.namespace: "hearth-screen"

@@ -26,6 +26,8 @@ Singleton {
     property bool chosen: false
     // Screen.qml couldn't be drawn this time: Mantel's bar and dock come back (nothing is written).
     property bool failed: false
+    // how many Screen.qml windows are up (for `quickshell ipc call screen state`)
+    property int drawn: 0
     // the Guide asked for from elsewhere (the controller's Home button, `quickshell ipc call screen guide`)
     property int guideAsk: 0
     // The desktop covers Mantel's bar and dock only when it has its own way to everything they do (a guide, a menu or a

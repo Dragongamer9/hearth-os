@@ -171,7 +171,7 @@ fn primary_screen_name() -> String {
 pub fn changes() -> futures::channel::mpsc::UnboundedReceiver<()> {
     let (tx, rx) = futures::channel::mpsc::unbounded();
     let _ = std::thread::Builder::new().name("mantel-desk".into()).stack_size(64 * 1024).spawn(move || loop {
-        let files = [hearth_ui::theme::desktop_json(), bar_json()];
+        let files = [hearth_ui::theme::desktop_json(), bar_json(), crate::screen::file()];
         let fd = unsafe { libc::inotify_init1(libc::IN_CLOEXEC) };
         if fd < 0 {
             return;
@@ -197,7 +197,8 @@ pub fn changes() -> futures::channel::mpsc::UnboundedReceiver<()> {
                 break;
             }
             let text = String::from_utf8_lossy(&buf[..r as usize]);
-            if text.contains("desktop.json") || text.contains("bar.json") {
+            // your whole-screen desktop (screen.json, Build anything) too: Settings or the other Mantel may change it
+            if text.contains("desktop.json") || text.contains("bar.json") || text.contains("screen.json") {
                 if tx.unbounded_send(()).is_err() {
                     unsafe { libc::close(fd) };
                     return;

@@ -133,6 +133,7 @@ PY
     shot "qml-anything-$id"
     st=$(timeout 20 quickshell ipc -p "$SH" call screen state 2>/dev/null)
     note "screen $id: $st"
+    echo "$st" | grep -q '"drawn":0' && err "screen $id: on, but not drawn ($st)"
     echo "$st" | grep -q '"on":true' || err "screen $id: didn't come on ($st)"
     echo "$st" | grep -q '"failed":true' && err "screen $id: Screen.qml couldn't be drawn"
   done
@@ -152,7 +153,8 @@ PY
   timeout 20 quickshell ipc -p "$SH" call settings page your-desktop >/dev/null 2>&1; sleep 5; shot "qml-anything-settings"
   python3 -c "import json,os;d=json.load(open(os.path.expanduser('~/.local/share/nimbus/screen.json')));assert d.get('on') is False and d.get('chosen') is True, d" 2>>"$OUT/notes.txt" || err "screen: Back to Hearth OS Mantel wasn't kept"
   grep -v -e MESA -e '^$' "$XDG_RUNTIME_DIR/shell.log" >"$OUT/qml-screens-shell.log" 2>/dev/null
-  local bad; bad=$(grep -E 'Screen.qml|FirstStart|ScreenLayout|SetYourDesktop|ScreenEditor|OwnBlock' "$OUT/qml-screens-shell.log" | grep -v -e 'File does not exist' -e 'QML Image at' | grep -iE 'error|TypeError|ReferenceError|is not defined|Cannot|Unable|failed|not a type' | sort -u | head -8 | tr '\n' '|' | cut -c1-1500)
+  note "screens log: $(grep -E 'Mantel:|shell.qml|Screen.qml' "$OUT/qml-screens-shell.log" | sort -u | head -12 | tr '\n' '|' | cut -c1-1800)"
+  local bad; bad=$(grep -E 'Screen.qml|shell.qml|FirstStart|ScreenLayout|SetYourDesktop|ScreenEditor|OwnBlock' "$OUT/qml-screens-shell.log" | grep -v -e 'File does not exist' -e 'QML Image at' | grep -iE 'error|TypeError|ReferenceError|is not defined|Cannot|Unable|failed|not a type' | sort -u | head -8 | tr '\n' '|' | cut -c1-1500)
   [ -n "$bad" ] && err "screens: the log: $bad"
   kill "$lw" 2>/dev/null; sleep 1; pkill -x quickshell 2>/dev/null; pkill -f dbus-daemon 2>/dev/null; sleep 1
   unset XDG_CACHE_HOME

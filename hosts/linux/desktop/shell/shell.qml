@@ -130,7 +130,7 @@ ShellRoot {
                     if (screenWin) { screenWin.destroy(); screenWin = null; }
                     if (!perScreen.primary || !ScreenLayout.on || ScreenLayout.failed) return;
                     const c = Qt.createComponent("Screen.qml");
-                    if (c.status !== Component.Ready) { console.warn("Mantel: your desktop (Screen.qml) couldn't load; the bar and dock stay: " + c.errorString()); ScreenLayout.failed = true; return; }
+                    if (c.status !== Component.Ready) { console.warn("Mantel: your desktop (Screen.qml) couldn't load (error), the bar and dock stay: " + c.errorString()); ScreenLayout.failed = true; return; }
                     screenWin = c.createObject(perScreen, { screen: perScreen.modelData, launcher: launcher, quick: quick, settingsApp: settings, filesApp: files, powerMenu: powerMenu });
                     if (screenWin) screenWin.editRequested.connect(() => screenEditor.open(null, ""));
                     if (!screenWin) { console.warn("Mantel: your desktop (Screen.qml) couldn't start; the bar and dock stay"); ScreenLayout.failed = true; }
@@ -138,6 +138,7 @@ ShellRoot {
                 Connections {
                     target: ScreenLayout
                     function onLiveChanged() { perScreen.makeScreen(); if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); }
+                    function onScreenChanged() { if (!perScreen.screenWin && ScreenLayout.on) { perScreen.makeScreen(); if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); } }
                     function onFailedChanged() { if (ScreenLayout.failed && perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); }
                     function onHidesBarsChanged() { if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); }
                     function onLoadedChanged() { if (ScreenLayout.loaded) { perScreen.makeScreen(); if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); } }
@@ -245,7 +246,7 @@ ShellRoot {
         function editorState(): string { return JSON.stringify({ shown: screenEditor.shown, blocks: (screenEditor.draft.blocks || []).length, pick: screenEditor.pick, made: !!screenEditor.made }); }
         function editorPick(i: int): void { screenEditor.pick = i; }
         function editorSay(text: string): void { screenEditor.say(text); }
-        function state(): string { return JSON.stringify({ on: ScreenLayout.on, from: ScreenLayout.from, chosen: ScreenLayout.chosen, failed: ScreenLayout.failed, hidesBars: ScreenLayout.hidesBars }); }
+        function state(): string { return JSON.stringify({ on: ScreenLayout.on, from: ScreenLayout.from, chosen: ScreenLayout.chosen, failed: ScreenLayout.failed, hidesBars: ScreenLayout.hidesBars, drawn: ScreenLayout.drawn }); }
     }
     IpcHandler {
         target: "describe"
