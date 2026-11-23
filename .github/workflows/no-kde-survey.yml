@@ -4,7 +4,7 @@ name: No KDE survey
 on:
   push:
     branches: ['fix/no-kde']
-    paths: ['.github/workflows/no-kde-survey.yml']
+    paths: ['.github/workflows/no-kde-survey.yml', '.github/scripts/no-kde-survey.sh']
 permissions:
   contents: read
 jobs:
@@ -18,17 +18,4 @@ jobs:
           base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
           echo "::notice title=base::$base"
           podman pull -q "$base" >/dev/null 2>/tmp/pull.err || { echo "::error title=pull::$(tail -c 600 /tmp/pull.err)"; exit 1; }
-          podman run --rm "$base" bash -c '
-            set +e
-            q() { rpm -qa --qf "%{NAME}\n" | grep -E "$1" | sort | tr "\n" " "; }
-            echo "::notice title=display manager::$(readlink /etc/systemd/system/display-manager.service) | $(rpm -qa | grep -iE "plasmalogin|sddm|greetd|gdm|lightdm" | tr "\n" " ")"
-            echo "::notice title=KDE and Plasma packages ($(q "^(plasma|kwin|kde|kf6|kf5|breeze|kscreen|powerdevil|bluedevil|polkit-kde|xdg-desktop-portal-kde|dolphin|konsole|kate|okular|spectacle|ark|gwenview|kwallet|kio|kirigami|qqc2|layer-shell-qt|libplasma|plasmalogin|sddm|discover)" | wc -w))::$(q "^(plasma|kwin|kde|breeze|kscreen|powerdevil|bluedevil|polkit-kde|xdg-desktop-portal-kde|dolphin|konsole|kate|okular|spectacle|ark|gwenview|kwallet|plasmalogin|sddm|discover)" | cut -c1-3500)"
-            echo "::notice title=KDE Frameworks::$(q "^kf6-" | wc -w) kf6 packages, $(q "^kf5-" | wc -w) kf5"
-            for p in hhd gamescope steam gamescope-session-plus gamescope-session-steam mesa-vulkan-drivers nvidia-driver akmod-nvidia kmod-nvidia; do
-              rpm -q "$p" >/dev/null 2>&1 && echo "::notice title=keeps $p::needs KDE: $(rpm -q --requires "$p" | grep -iE "kf6|plasma|kwin|kde|qt6" | tr "\n" " " | cut -c1-400)"
-            done
-            echo "::notice title=what needs kwin or plasma-workspace::$(rpm -q --whatrequires kwin plasma-workspace kf6-kcoreaddons 2>/dev/null | grep -v "no package" | sort -u | tr "\n" " " | cut -c1-3000)"
-            echo "::notice title=Anatase's own::$(rpm -qa --qf "%{NAME} %{VENDOR}\n" | grep -i anatase | cut -d" " -f1 | tr "\n" " " | cut -c1-2500)"
-            echo "::notice title=size::/usr $(du -sxm /usr | cut -f1) MB; KDE files: $(rpm -ql $(rpm -qa | grep -E "^(plasma|kwin|kf6|kde|breeze)") 2>/dev/null | xargs -d "\n" du -cm 2>/dev/null | tail -1 | cut -f1) MB"
-            ls /usr/lib/systemd/system | grep -iE "plasma|sddm|greet|anatase" | tr "\n" " " | sed "s/^/::notice title=units::/"; echo
-          '
+          podman run --rm -v "$PWD/.github/scripts/no-kde-survey.sh:/s.sh:ro,z" "$base" bash /s.sh
