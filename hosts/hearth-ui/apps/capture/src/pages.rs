@@ -124,7 +124,7 @@ pub fn recent_key(a: &mut App, key: &Key) -> Task<Msg> {
 // ------------------------------------------------------------------ the window
 pub fn main_view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
-    let title = ui::title_bar(&p, G::Camera, "Capture", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: Some(Msg::Minimize), close: Msg::Close }, p.bg2);
+    let title = hearth_ui::describe::title_bar(&p, &a.describe, G::Camera, "Capture", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: Some(Msg::Minimize), close: Msg::Close }, p.bg2, Msg::Describe(hearth_ui::describe::DMsg::Open));
     let body: Element<'_, Msg> = match a.page {
         Page::Take => take_page(a),
         Page::Edit => crate::editor::view(&a.ed, &p, &a.tools, &a.scroll_note, &a.shot),

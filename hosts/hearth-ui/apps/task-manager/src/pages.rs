@@ -79,7 +79,7 @@ pub fn view(a: &App) -> Element<'_, Msg> {
     .width(Length::Fixed(440.0))
     .style(ui::boxed(p.panel2, p.r(6.0), Some((p.line, 1.0))))
     .into();
-    let title = ui::title_bar(&p, G::Tasks, "Task Manager", Some(search), TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: Some(Msg::Minimize), close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.25));
+    let title = hearth_ui::describe::title_bar(&p, &a.describe, G::Tasks, "Task Manager", Some(search), TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: Some(Msg::Minimize), close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.25), Msg::Describe(hearth_ui::describe::DMsg::Open));
 
     let body = row![rail(a), ui::vline(p.line), container(page(a)).width(Length::Fill).height(Length::Fill)].height(Length::Fill);
     let base: Element<Msg> = container(column![title, hline(p.line), body]).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();

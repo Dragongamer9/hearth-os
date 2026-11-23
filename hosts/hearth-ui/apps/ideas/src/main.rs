@@ -52,6 +52,8 @@ enum K {
 
 #[derive(Debug, Clone)]
 enum Msg {
+    /// Describe it (hearth_ui::describe; every Hearth app has it)
+    Describe(hearth_ui::describe::DMsg),
     Theme,
     Tick,
     Got(K, run::Output),
@@ -106,6 +108,7 @@ struct Ship {
 }
 
 struct App {
+    pub describe: hearth_ui::describe::Describe,
     p: Pal,
     ideas: Vec<Idea>,
     loading: bool,
@@ -184,6 +187,7 @@ impl App {
             _ => Page::Idea,
         };
         let a = App {
+            describe: hearth_ui::describe::Describe::new("ideas", "Hearth Ideas"),
             p: hearth_ui::theme::load(),
             ideas: Vec::new(),
             loading: true,
@@ -378,6 +382,7 @@ fn roadmap_add(text: &str, line: &str) -> String {
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     a.now = now();
     match m {
+        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Tick => {
             // being built: read it again (once a minute, only while one is open)
@@ -1217,7 +1222,7 @@ fn view(a: &App) -> Element<'_, Msg> {
     if let Some(dlg) = ship_box(a) {
         base = ui::dialog(base, dlg, None);
     }
-    let bar = ui::title_bar(&p, G::Bell, "Hearth Ideas", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Max, minimize: Some(Msg::Min), close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3));
+    let bar = hearth_ui::describe::title_bar(&p, &a.describe, G::Bell, "Hearth Ideas", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Max, minimize: Some(Msg::Min), close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3), Msg::Describe(hearth_ui::describe::DMsg::Open));
     let all = container(column![bar, base]).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, p.window_corner, Some((p.line, 1.0))));
     ui::edges(all.into(), Msg::Resize)
 }
@@ -1252,7 +1257,7 @@ fn main() -> iced::Result {
             (a, t)
         },
         update,
-        view,
+        |a: &App| hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe),
     )
     .title(|_: &App| "Hearth Ideas".to_string())
     .subscription(subscription)

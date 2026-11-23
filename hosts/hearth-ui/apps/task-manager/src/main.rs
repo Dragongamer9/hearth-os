@@ -233,6 +233,8 @@ pub struct Sheet {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Describe it (hearth_ui::describe; every Hearth app has it)
+    Describe(hearth_ui::describe::DMsg),
     Theme,
     Sample(Arc<Sample>),
     List(&'static str, run::Output),
@@ -292,6 +294,7 @@ pub enum Msg {
 }
 
 pub struct App {
+    pub describe: hearth_ui::describe::Describe,
     pub p: Pal,
     pub page: Page,
     pub sample: Option<Arc<Sample>>,
@@ -369,6 +372,7 @@ impl App {
             }
         }
         let a = App {
+            describe: hearth_ui::describe::Describe::new("task-manager", "Task Manager"),
             p: hearth_ui::theme::load(),
             page,
             sample: None,
@@ -767,6 +771,7 @@ pub fn pick_any(a: &mut App, key: &str, v: &str) -> Task<Msg> {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Sample(s) => {
             a.take_sample(s);
@@ -1215,7 +1220,7 @@ fn main() -> iced::Result {
     ) {
         return Ok(());
     }
-    iced::application(App::new, update, view)
+    iced::application(App::new, update, |a: &App| hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe))
         .title("Task Manager")
         .subscription(subscription)
         .theme(|a: &App| app::iced_theme(&a.p))

@@ -34,6 +34,8 @@ enum Mode {
 
 #[derive(Debug, Clone)]
 enum Msg {
+    /// Describe it (hearth_ui::describe; every Hearth app has it)
+    Describe(hearth_ui::describe::DMsg),
     Theme,
     Tick,
     Key(KEvent),
@@ -54,6 +56,7 @@ enum Msg {
 }
 
 struct App {
+    pub describe: hearth_ui::describe::Describe,
     p: Pal,
     mode: Mode,
     big: bool,
@@ -128,6 +131,7 @@ impl App {
         let big = matches!(layout.as_str(), "b" | "controller" | "pad");
         let name: String = app::arg("--name").unwrap_or_else(|| "Someone".into()).chars().filter(|c| !c.is_control()).take(40).collect();
         let a = App {
+            describe: hearth_ui::describe::Describe::new("family", "Family and friends"),
             p: hearth_ui::theme::load(),
             mode,
             big,
@@ -220,6 +224,7 @@ impl App {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Tick => {
             if a.mode == Mode::Ask && now_ms().saturating_sub(a.started) > 60_000 {
@@ -369,7 +374,7 @@ fn key_press(a: &mut App, key: Key) -> Task<Msg> {
 fn frame<'a>(a: &'a App, title: &'static str, mark: G, body: Element<'a, Msg>, hints: Element<'a, Msg>, closable: bool) -> Element<'a, Msg> {
     let p = a.p;
     let bar: Element<'a, Msg> = if closable {
-        ui::title_bar(&p, mark, title, None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Nothing, minimize: None, close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3))
+        hearth_ui::describe::title_bar(&p, &a.describe, mark, title, None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Nothing, minimize: None, close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3), Msg::Describe(hearth_ui::describe::DMsg::Open))
     } else {
         // The notice: no close button (it's never hidden); it can still be moved.
         mouse_area(
@@ -540,7 +545,7 @@ fn main() -> iced::Result {
         w.level = iced::window::Level::AlwaysOnTop;
         w.resizable = false;
     }
-    iced::application(App::new, update, view)
+    iced::application(App::new, update, |a: &App| hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe))
         .title(move |_: &App| title.clone())
         .subscription(subscription)
         .theme(|a: &App| app::iced_theme(&a.p))

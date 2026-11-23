@@ -64,7 +64,9 @@ pub fn read_kept(app: &str) -> Value {
 
 impl Describe {
     pub fn new(app: &'static str, name: &'static str) -> Describe {
-        Describe { app, name, open: false, text: String::new(), busy: false, result: None, error: String::new(), said: String::new(), kept: read_kept(app) }
+        // HEARTH_DESCRIBE_OPEN=<app> opens the box at start (the CI pictures).
+        let open = std::env::var("HEARTH_DESCRIBE_OPEN").map(|v| v == app).unwrap_or(false);
+        Describe { app, name, open, text: String::new(), busy: false, result: None, error: String::new(), said: String::new(), kept: read_kept(app) }
     }
 
     /// A change being tried (an "app" answer), not yet kept.
@@ -360,4 +362,101 @@ mod tests {
         let f = json!({"name": "Counts", "shows": [{"source": "folder-pictures", "label": "Pictures here"}]});
         assert_eq!(feature_text(&f, &|s| if s == "folder-pictures" { "38".into() } else { String::new() }), "Pictures here: 38");
     }
+}
+
+// ------------------------------------------------------------------ the window's own bar, for every app
+/// The window's own bar as Describe it left it, for any Hearth app (the owner, Nov 22: "EVERY one of our apps needs
+/// this"): the app's mark and name, anything in the middle, Minimize, Maximize and Close, in the order of the zone
+/// "titlebar" (pieces: mark, title, middle, spacer, minimize, maximize, close), with their look ("winbuttons": "" | dots
+/// | square). A right-click on it opens Describe it, so even an app without menus can be changed. The window can always
+/// be moved (what's left of the bar moves it), and a window without Close still closes with Alt+F4 or Super+Q.
+pub fn title_bar<'a, M: Clone + 'a>(p: &Pal, d: &Describe, mark: ui::G, title: &'a str, middle: Option<Element<'a, M>>, m: ui::TitleMsgs<M>, bg: Color, open: M) -> Element<'a, M> {
+    use iced::widget::button;
+    let p = *p;
+    let style = d.knob("winbuttons");
+    let wbtn = |id: &str| -> Element<'a, M> {
+        let (g, msg, red, c) = match id {
+            "minimize" => (ui::G::Minimize, m.minimize.clone().unwrap_or(m.close.clone()), false, Color::from_rgb8(0xfe, 0xbc, 0x2e)),
+            "maximize" => (ui::G::Maximize, m.maximize.clone(), false, Color::from_rgb8(0x28, 0xc8, 0x40)),
+            _ => (ui::G::Close, m.close.clone(), true, Color::from_rgb8(0xff, 0x5f, 0x57)),
+        };
+        if style == "dots" {
+            let dot = container(Space::new()).width(Length::Fixed(12.0)).height(Length::Fixed(12.0)).style(ui::boxed(c, 6.0, None));
+            return mouse_area(container(dot).center_x(Length::Fixed(22.0)).center_y(Length::Fixed(40.0))).on_press(msg).interaction(mouse::Interaction::Pointer).into();
+        }
+        let sq = style == "square";
+        button(container(ui::glyph(g, p.muted, 10.0, 2.2)).center_x(Length::Fixed(if sq { 40.0 } else { 46.0 })).center_y(Length::Fixed(if sq { 32.0 } else { 40.0 })))
+            .padding(0.0)
+            .on_press(msg)
+            .style(move |_: &Theme, st: button::Status| button::Style {
+                background: Some(iced::Background::Color(match st {
+                    button::Status::Hovered | button::Status::Pressed if red => Color::from_rgb8(0xc4, 0x2b, 0x1c),
+                    button::Status::Hovered | button::Status::Pressed => p.hover(),
+                    _ if sq => Pal::a(p.text, 0.06),
+                    _ => Color::TRANSPARENT,
+                })),
+                text_color: p.text,
+                border: iced::Border { radius: if sq { 4.0.into() } else { 0.0.into() }, ..iced::Border::default() },
+                shadow: iced::Shadow::default(),
+                snap: true,
+            })
+            .into()
+    };
+    let has_min = m.minimize.is_some();
+    let own: Vec<String> = ["mark", "title", "spacer", "middle", "spacer", "minimize", "maximize", "close"].iter().filter(|x| has_min || !matches!(**x, "minimize" | "maximize")).map(|x| x.to_string()).collect();
+    let placed = d.placed();
+    let items: Vec<String> = match d.zone("titlebar") {
+        Some(z) => z,
+        None => own.iter().filter(|i| *i == "spacer" || !placed.contains(i)).cloned().collect(),
+    };
+    let drag = || -> Element<'a, M> { mouse_area(container(Space::new()).width(Length::Fill).height(Length::Fixed(40.0))).on_press(m.drag.clone()).on_double_click(m.maximize.clone()).on_right_press(open.clone()).into() };
+    let mut r = Row::new().align_y(iced::Center);
+    let mut middle = middle;
+    let mut dragged = false;
+    for i in &items {
+        match i.as_str() {
+            "mark" => r = r.push(container(ui::glyph(mark, p.accent, 16.0, 2.0)).padding(Padding { top: 0.0, right: 10.0, bottom: 0.0, left: 14.0 })),
+            "title" => {
+                let mut tr = Row::new().align_y(iced::Center).push(ui::tm(title, 13.0, p.text).wrapping(iced::widget::text::Wrapping::None));
+                if d.open {
+                    tr = tr.push(container(editing::<M>(&p)).padding(Padding { top: 0.0, right: 0.0, bottom: 0.0, left: 10.0 }));
+                }
+                r = r.push(mouse_area(container(tr).padding(Padding { top: 0.0, right: 8.0, bottom: 0.0, left: 4.0 }).center_y(Length::Fixed(40.0))).on_press(m.drag.clone()).on_right_press(open.clone()));
+            }
+            "middle" => {
+                if let Some(mid) = middle.take() {
+                    r = r.push(mid);
+                }
+            }
+            "spacer" => {
+                dragged = true;
+                r = r.push(drag());
+            }
+            "minimize" | "maximize" if !has_min => {}
+            "minimize" | "maximize" | "close" => r = r.push(wbtn(i)),
+            _ => {}
+        }
+    }
+    if !dragged {
+        r = r.push(drag());
+    }
+    // the window's buttons an answer took out without putting them anywhere: back at the end
+    for b in ["minimize", "maximize", "close"] {
+        if (has_min || b == "close") && !items.iter().any(|x| x == b) && !placed.iter().any(|x| x == b) {
+            r = r.push(wbtn(b));
+        }
+    }
+    if let Some(fm) = ui::frame_meter() {
+        r = r.push(fm);
+    }
+    let bar: Element<'a, M> = container(r).width(Length::Fill).height(Length::Fixed(40.0)).style(ui::boxed(bg, 0.0, None)).into();
+    outline(&p, d.zone_changing("titlebar") || d.changing("winbuttons"), bar)
+}
+
+/// An app's whole window with Describe it's box under it while it's open (every app takes this around its view).
+pub fn with_bar<'a, M: Clone + 'a>(base: Element<'a, M>, p: &Pal, d: &'a Describe, map: impl Fn(DMsg) -> M + Clone + 'a) -> Element<'a, M> {
+    if !d.open {
+        return base;
+    }
+    column![container(base).height(Length::Fill), container(bar(p, d, map)).padding(12.0)].into()
 }

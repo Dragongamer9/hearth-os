@@ -176,7 +176,7 @@ fn frame_a(a: &App) -> Element<'_, Msg> {
     let main = Column::new().push(crumbs(a)).push(Space::new().height(Length::Fixed(18.0))).push(page_column(a, true));
     let main = container(main).padding(Padding { top: 18.0, right: 36.0, bottom: 0.0, left: 44.0 }).width(Length::Fill).height(Length::Fill);
 
-    let titlebar = ui::title_bar(&p, G::Gear, "Hearth Settings", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: Some(Msg::Minimize), close: Msg::Close }, rail_bg);
+    let titlebar = hearth_ui::describe::title_bar(&p, &a.describe, G::Gear, "Hearth Settings", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: Some(Msg::Minimize), close: Msg::Close }, rail_bg, Msg::Describe(hearth_ui::describe::DMsg::Open));
     let page = column![titlebar, row![rail, main].height(Length::Fill), hline(p.line), hints(a)];
     let base: Element<Msg> = container(page).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
     ui::edges(with_dialogs(a, base), Msg::Resize)

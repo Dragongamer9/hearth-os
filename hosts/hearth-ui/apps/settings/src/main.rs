@@ -85,6 +85,7 @@ pub enum Action {
 macro_rules! define {
     ($(($f:ident, $v:ident, $m:ident)),*) => {
         pub struct App {
+    pub describe: hearth_ui::describe::Describe,
             pub sh: Shared,
             pub cat: usize,
             pub page: &'static str,
@@ -106,6 +107,8 @@ macro_rules! define {
 
         #[derive(Debug, Clone)]
         pub enum Msg {
+    /// Describe it (hearth_ui::describe; every Hearth app has it)
+    Describe(hearth_ui::describe::DMsg),
             Theme,
             Info(run::Output),
             History(run::Output),
@@ -137,6 +140,7 @@ macro_rules! define {
             let mut sh = Shared::new();
             sh.part = part;
             App {
+                describe: hearth_ui::describe::Describe::new("settings", "Hearth Settings"),
                 sh,
                 cat: registry::cat_of(first),
                 page: first,
@@ -303,6 +307,9 @@ fn set_layout(a: &mut App, b: bool) {
 }
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
+    if let Msg::Describe(dm) = m {
+        return a.describe.update(dm).map(Msg::Describe);
+    }
     let t = match m {
         Msg::Theme => {
             a.sh.p = hearth_ui::theme::load();
@@ -723,7 +730,7 @@ fn main() -> iced::Result {
     ) {
         return Ok(());
     }
-    iced::application(App::new, update, view)
+    iced::application(App::new, update, |a: &App| hearth_ui::describe::with_bar(view(a), &a.sh.p, &a.describe, Msg::Describe))
         .title("Hearth Settings")
         .subscription(subscription)
         .theme(|a: &App| app::iced_theme(&a.sh.p))

@@ -94,8 +94,50 @@ pub const FILES: AppSchema = AppSchema {
     menus: &[("context", "the right-click menu (on files and on empty space)"), ("view", "View"), ("sort", "Sort and group"), ("new", "New"), ("more", "More (⋯)")],
 };
 
+/// What every Hearth app has: its window's own bar (hearth_ui::describe::title_bar) and how its buttons look.
+pub const WINDOW_KNOBS: &[Knob] = &[
+    Knob { key: "winbuttons", what: "how the window's own buttons look", values: &[("", "window buttons as they are"), ("dots", "window buttons as coloured dots"), ("square", "square window buttons")] },
+    Knob { key: "density", what: "how roomy it is", values: &[("", "as roomy as it is"), ("roomy", "roomier"), ("compact", "tighter")] },
+];
+pub const WINDOW_ITEMS: &[(&str, &str)] = &[
+    ("mark", "the app's icon"), ("title", "the app's name"), ("middle", "what the app has in its bar's middle"),
+    ("spacer", "empty space (it moves the window)"), ("minimize", "the window's Minimize"), ("maximize", "the window's Maximize"),
+    ("close", "the window's Close"),
+];
+pub const WINDOW_ZONES: &[(&str, &str, &[&str])] = &[("titlebar", "the window's own bar at the very top", &["mark", "title", "spacer", "middle", "spacer", "minimize", "maximize", "close"])];
+
+/// An app that has, so far, its window's bar and new features in it (its own bars come per app, as Files' did).
+macro_rules! window_app {
+    ($name:ident, $id:literal, $title:literal) => {
+        pub const $name: AppSchema = AppSchema {
+            app: $id,
+            name: $title,
+            knobs: WINDOW_KNOBS,
+            parts: &[("window", "the app's window, in its own bar")],
+            sources: &[],
+            actions: &[],
+            items: WINDOW_ITEMS,
+            zones: WINDOW_ZONES,
+            keep: &[],
+            menus: &[],
+        };
+    };
+}
+window_app!(SETTINGS, "settings", "Hearth Settings");
+window_app!(STORE, "store", "Hearth Store");
+window_app!(TASK_MANAGER, "task-manager", "Task Manager");
+window_app!(NOTES, "notes", "Hearth Notes");
+window_app!(CAPTURE, "capture", "Capture");
+window_app!(RESMON, "resmon", "Resource Monitor");
+window_app!(FAMILY, "family", "Family and friends");
+window_app!(SERVER, "server", "Server mode");
+window_app!(RESTORE, "system-restore", "System Restore");
+window_app!(RELIABILITY, "reliability", "Reliability history");
+window_app!(G15, "g15", "Logitech G15");
+window_app!(IDEAS, "ideas", "Hearth Ideas");
+
 /// Every app with Describe it, by its id (hearth-layout describe-app <app>).
-pub const APPS: &[&AppSchema] = &[&FILES];
+pub const APPS: &[&AppSchema] = &[&FILES, &SETTINGS, &STORE, &TASK_MANAGER, &NOTES, &CAPTURE, &RESMON, &FAMILY, &SERVER, &RESTORE, &RELIABILITY, &G15, &IDEAS];
 
 pub fn find(app: &str) -> Option<&'static AppSchema> {
     APPS.iter().copied().find(|a| a.app == app)
@@ -509,6 +551,15 @@ mod tests {
         assert!(bad(json!({"top": ["rocket"]})));
         assert!(bad(json!({"sky": ["back"]})));
         assert!(!bad(json!({"top": ["sep", "sep", "spacer", "spacer"]})));
+    }
+
+    #[test]
+    fn every_app_has_its_window_bar() {
+        for a in APPS {
+            assert!(a.zones.iter().any(|(z, _, _)| *z == "titlebar"), "{}", a.app);
+            let v = json!({"kind": "app", "layout": {"winbuttons": "dots", "zones": {"titlebar": ["close", "minimize", "maximize", "spacer", "title"]}}});
+            assert!(check_answer(a, &v, "like a Mac", false).is_ok(), "{}", a.app);
+        }
     }
 
     #[test]
