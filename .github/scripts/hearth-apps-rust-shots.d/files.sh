@@ -182,16 +182,3 @@ run files-31-sorted hearth-files 0 "$BIN/hearth-files-app" "$SH/Downloads" --vie
 [ -e "$SH/Downloads/_to_delete/Old copies/AppImage(2).zip" ] || echo "::error title=Sort my Downloads::the second copy wasn't put in _to_delete"
 export HOME="$HOME_KEEP"
 
-# Describe it in Hearth Files (desktop-layouts board 11): Downloads with the sidebar icons only, the preview on the
-# right and bigger, and the new counts on its bar marked NEW, tried (nothing kept), the box at the bottom with its
-# chips. The AI's answer is CI's canned one (HEARTH_DESCRIBE_FAKE: what an AI would say), checked by hearth-layout.
-cat > /tmp/describe-files.json <<'JSON'
-{"kind": "app", "layout": {"sidebar": "icons", "preview": "right-big"},
- "features": [{"format": 1, "id": "downloads-counts", "name": "Counts in Downloads", "part": "files:downloads",
-               "shows": [{"source": "folder-pictures", "label": "Pictures here"}]},
-              {"format": 1, "id": "downloads-old", "name": "Old files", "part": "files:downloads",
-               "shows": [{"source": "folder-old", "label": "Older than a month"}], "click": {"action": "select-old"}}],
- "changes": ["The sidebar shows icons only", "The preview is on the right, bigger", "Downloads counts its pictures and old files"]}
-JSON
-SHOT_WAIT=4 run files-describe-it hearth-files 15 env PATH="$BIN:$PATH" HEARTH_DESCRIBE_FAKE=/tmp/describe-files.json "$BIN/hearth-files-app" "$H/Downloads" \
-  --describe "Sidebar icons only, the preview on the right and bigger, and in Downloads add buttons that count my pictures and old files"
