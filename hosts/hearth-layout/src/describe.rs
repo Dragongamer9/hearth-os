@@ -97,6 +97,8 @@ pub fn chat(e: &Engine, system: &str, user: &str, sketch: Option<&std::path::Pat
         let mime = if s.extension().and_then(|x| x.to_str()).map(|x| x.eq_ignore_ascii_case("png")).unwrap_or(false) { "image/png" } else { "image/jpeg" };
         content = json!([{ "type": "text", "text": user }, { "type": "image_url", "image_url": { "url": format!("data:{mime};base64,{}", b64(&b)) } }]);
     }
+    // "/no_think": Qwen3 answers at once instead of thinking out loud first (other models pass over it)
+    let system = format!("{system}\n/no_think");
     let body = json!({ "model": e.model, "temperature": 0.2, "messages": [{ "role": "system", "content": system }, { "role": "user", "content": content }] });
     let mut child = Command::new("curl")
         .args(["-sS", "--max-time", "180", "-H", "Content-Type: application/json", "--data-binary", "@-", &format!("{}/chat/completions", e.base)])
@@ -130,9 +132,22 @@ fn b64(b: &[u8]) -> String {
     s
 }
 
-/// The first JSON object in the AI's words (it may wrap it in ``` or a sentence).
+/// The first JSON object in the AI's words (it may wrap it in ``` or a sentence, or think out loud first: Qwen3's and
+/// DeepSeek's <think>…</think> is skipped, and a `{` in its words that isn't a whole object is passed over).
 pub fn first_object(t: &str) -> Option<Value> {
-    let start = t.find('{')?;
+    let t = match t.rfind("</think>") { Some(i) => &t[i + 8..], None => t };
+    let mut from = 0;
+    while let Some(i) = t[from..].find('{') {
+        if let Some(v) = object_at(&t[from + i..]) {
+            return Some(v);
+        }
+        from += i + 1;
+    }
+    None
+}
+
+fn object_at(t: &str) -> Option<Value> {
+    let start = 0;
     let mut depth = 0i32;
     let mut in_str = false;
     let mut esc = false;
@@ -317,6 +332,11 @@ mod tests {
         let v = first_object("Sure! ```json\n{\"kind\": \"needs\", \"needs\": [\"moon {phase}\"]}\n``` hope that helps").unwrap();
         assert_eq!(v["needs"][0], "moon {phase}");
         assert!(first_object("no json here").is_none());
+        // a thinking model's words first, with a stray brace in them
+        let v = first_object("<think>The user wants {a cabin}. I'll make {\"kind\"...</think>\n{\"kind\": \"screen\"}").unwrap();
+        assert_eq!(v["kind"], "screen");
+        let v = first_object("I'd use {this} or {\"kind\": \"layout\"}").unwrap();
+        assert_eq!(v["kind"], "layout");
     }
 
     #[test]
