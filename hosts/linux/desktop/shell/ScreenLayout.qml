@@ -30,6 +30,8 @@ Singleton {
     property int guideAsk: 0
     // The desktop covers Mantel's bar and dock only when it has its own way to everything they do (a guide, a menu or a
     // Game Mode block), and only while it's drawn.
+    // (a property called "on" can't be listened to by name in QML: Mantel listens to this one)
+    readonly property bool live: on
     readonly property bool hidesBars: on && !failed && !!screen && screen.bars === "hidden"
     // The ready-made desktops, in the order the gallery shows them.
     readonly property var readyMade: [

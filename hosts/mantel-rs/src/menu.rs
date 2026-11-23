@@ -215,7 +215,7 @@ pub enum KeyResult {
 
 /// Columns in the grid now (GridView: as many 140 px cells as fit).
 fn cols(s: &Shell) -> usize {
-    let (bw, _) = box_size(s.screen);
+    let (bw, _) = box_size(s.screen_size);
     let cw = bw - 60.0;
     ((cw / if s.menu.tab == Tab::Games { 150.0 } else { 140.0 }).floor() as usize).max(1)
 }
@@ -384,7 +384,7 @@ fn spaced(t: &str) -> String {
 pub fn view(s: &Shell) -> Element<'_, Message> {
     let l = &s.look;
     let p = l.p;
-    let screen = if s.screen.width > 0.0 { s.screen } else { iced::Size::new(1920.0, 1080.0) };
+    let screen = if s.screen_size.width > 0.0 { s.screen_size } else { iced::Size::new(1920.0, 1080.0) };
     // the room the bar and the dock keep (on the edges they're on: desktop layouts)
     let band = crate::bar::band(l, s.compact(), s.desk.vertical()) as f32;
     let dock = if s.desk.dock { crate::dock::reserved(l, s.compact(), &s.desk.dock_style) as f32 } else { 0.0 };

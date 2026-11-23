@@ -159,6 +159,48 @@ PY
 }
 command -v quickshell >/dev/null && run_screens
 
+# The same in Mantel in Rust: the first start, each ready-made desktop (put in screen.json as Settings › Your desktop
+# does: this home is the run's own), the block editor, and back to Hearth OS Mantel.
+run_screens_rust() {
+  export XDG_RUNTIME_DIR=/tmp/xdg-screens-rs HOME=/tmp/home-screens-rs XDG_CACHE_HOME=/tmp/home-screens-rs/.cache
+  rm -rf "$XDG_RUNTIME_DIR" "$HOME"; mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" "$HOME/.config/nimbus" "$XDG_CACHE_HOME/hearth"; chmod 700 "$XDG_RUNTIME_DIR"
+  cp -a /tmp/home-screens/.cache/hearth/. "$XDG_CACHE_HOME/hearth/" 2>/dev/null
+  python3 -c "import json,os,sys;d=json.load(open(sys.argv[1]));[g.update({k:g[k].replace('/tmp/home-screens/','/tmp/home-screens-rs/')}) for g in d for k in ('cover','wide')];json.dump(d,open(sys.argv[1],'w'))" "$XDG_CACHE_HOME/hearth/desktop-games.json" 2>/dev/null
+  : >"$HOME/.local/share/nimbus/welcome-done"
+  printf '{"look":"hearth","mode":"dark","screenOffMinutes":0,"defaults":2}\n' >"$HOME/.local/share/nimbus/desktop.json"
+  printf '{"pins":["foot"],"recent":["game:pixel-rally"]}\n' >"$HOME/.config/nimbus/desk.json"
+  mkdir -p /tmp/rc-screens-rs && printf '<?xml version="1.0"?>\n<labwc_config><desktops number="4"/></labwc_config>\n' >/tmp/rc-screens-rs/rc.xml
+  printf 'hearth-mantel session >%s/shell.log 2>&1 &\n' "$XDG_RUNTIME_DIR" >/tmp/rc-screens-rs/autostart
+  dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+  labwc -C /tmp/rc-screens-rs >"$OUT/labwc-screens-rs.log" 2>&1 &
+  local lw=$!
+  for i in $(seq 60); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 0.5; done
+  export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+  wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 >/dev/null 2>&1 || true
+  sleep 10
+  shot "rust-anything-7-first-start"
+  for id in console iconrow cockpit cabin notebook retro; do
+    python3 - "$id" <<'PY'
+import json, os, sys
+f = os.path.expanduser("~/.local/share/nimbus/screen.json")
+d = json.load(open(f)) if os.path.exists(f) else {}
+scr = json.load(open("hosts/linux/desktop/shell/screens/%s.json" % sys.argv[1]))
+d.update({"on": True, "chosen": True, "from": sys.argv[1], "screen": scr, "said": scr.get("said", "")})
+json.dump(d, open(f + ".tmp", "w")); os.replace(f + ".tmp", f)
+PY
+    sleep 4; shot "rust-anything-$id"
+  done
+  hearth-mantel guide >/dev/null 2>&1; sleep 2; shot "rust-anything-console-guide"
+  hearth-mantel guide >/dev/null 2>&1
+  hearth-mantel edit >/dev/null 2>&1; sleep 3; shot "rust-anything-4-block-editor"
+  pgrep -f 'hearth-mantel session' >/dev/null || err "Mantel in Rust with a whole-screen desktop isn't running: $(grep -v MESA "$XDG_RUNTIME_DIR/shell.log" | tail -c 700 | tr '\n' ' ')"
+  grep -v -e MESA -e '^$' "$XDG_RUNTIME_DIR/shell.log" >"$OUT/rust-screens-shell.log" 2>/dev/null
+  grep -q panicked "$OUT/rust-screens-shell.log" && err "Mantel in Rust: $(grep -m1 -A2 panicked "$OUT/rust-screens-shell.log" | tr '\n' ' ' | cut -c1-600)"
+  kill "$lw" 2>/dev/null; sleep 1; pkill -f 'hearth-mantel session' 2>/dev/null; pkill -f dbus-daemon 2>/dev/null; sleep 1
+  unset XDG_CACHE_HOME
+}
+command -v hearth-mantel >/dev/null && run_screens_rust
+
 # next to the approved mockups: mockup above, Mantel below
 python3 - "$OUT" "$MOCK" <<'PY' >>"$OUT/notes.txt"
 import os, sys
@@ -170,7 +212,7 @@ mock = {'plasma-1-desktop': 'layouts-1-plasma-style.png', 'gnome-1-desktop': 'la
         'describe-feature': 'layouts-8-describe-it-new-feature.png', 'describe-needs': 'layouts-9-describe-it-send-idea.png',
         'anything-7-first-start': '../build-anything/anything-7-first-start.png', 'anything-console-guide': '../build-anything/anything-2-console-dashboard.png',
         'anything-iconrow': '../build-anything/anything-3-icon-row-home.png', 'anything-4-block-editor': '../build-anything/anything-4-block-editor.png',
-        'anything-5-ai-made-block': '../build-anything/anything-5-ai-made-block.png'}
+        'anything-5-ai-made-block': '../build-anything/anything-5-ai-made-block.png', 'anything-console': '../build-anything/anything-1-no-two-alike.png'}
 W, H = 1280, 720
 names = sorted({f[4:-4] if f.startswith('qml-') else f[5:-4] for f in os.listdir(o) if f.endswith('.png') and (f.startswith('qml-') or f.startswith('rust-'))})
 for name in names:

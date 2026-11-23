@@ -15,7 +15,7 @@ use std::collections::HashSet;
 
 use crate::apps::{self, App};
 use crate::look::{self, Look};
-use crate::{bar, desk, dock, menu, overview, panels, sys, wall, wm};
+use crate::{bar, desk, dock, menu, overview, panels, screen, sys, wall, wm};
 
 #[to_layer_message(multi)]
 #[derive(Debug, Clone)]
@@ -55,6 +55,18 @@ pub enum Message {
     CloseMenu,
     Games(Vec<menu::Game>),
     System(HashSet<String>, HashSet<String>),
+    // Build anything (screen.rs): your whole-screen desktop and the first start
+    ScreenAct(String, String, String),
+    ScreenPick(usize),
+    ScreenTab(String),
+    ScreenGuideAct(String, String),
+    ScreenGames(Vec<screen::Game>),
+    ScreenEdit,
+    OwnTick,
+    OwnOut(String, serde_json::Value),
+    OwnAllow(String, String),
+    FirstChoose(String),
+    Editor(crate::editor::EMsg),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -65,6 +77,9 @@ enum Surf {
     Menu,
     Panel(usize),
     Overview,
+    Screen,
+    First,
+    Editor,
 }
 
 pub struct Shell {
@@ -79,7 +94,11 @@ pub struct Shell {
     pub clock: String,
     pub date: String,
     /// the screen's size (the wallpaper covers it all)
-    pub screen: Size,
+    pub screen_size: Size,
+    /// Build anything: your whole-screen desktop (screen.rs)
+    pub screen: screen::State,
+    /// the block editor (editor.rs), while it's open
+    pub editor: crate::editor::Editor,
     pub menu: menu::State,
     /// Show desktop: the windows it minimized (and the one in front), to bring back
     shown_desktop: Option<(Vec<u32>, Option<u32>)>,
@@ -99,7 +118,7 @@ impl Shell {
         self.surfs.iter().find(|x| x.0 == id).map(|x| x.1)
     }
     pub fn compact(&self) -> bool {
-        self.screen.width > 0.0 && self.screen.width <= 1440.0
+        self.screen_size.width > 0.0 && self.screen_size.width <= 1440.0
     }
     pub fn menu_open(&self) -> bool {
         self.id_of(Surf::Menu).is_some()
@@ -137,7 +156,9 @@ fn boot() -> (Shell, Task<Message>) {
         bt: sys::Bt::read(),
         clock: sys::clock_text(),
         date: sys::date_text(),
-        screen: Size::ZERO,
+        screen_size: Size::ZERO,
+        screen: { let mut st = screen::State::default(); screen::read(&mut st); st },
+        editor: crate::editor::Editor::default(),
         menu: menu::State::default(),
         shown_desktop: None,
         tick: 0,
@@ -150,7 +171,9 @@ fn boot() -> (Shell, Task<Message>) {
     let all = Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right;
     let mut t = vec![Task::done(Message::NewLayerShell { settings: layer((0, 0), all, Layer::Background, -1, KeyboardInteractivity::None, "hearth-wallpaper"), id: w })];
     t.extend(build_bars(&mut st));
+    t.extend(build_screen(&mut st));
     t.push(Task::perform(async { menu::system_lists() }, |(s, h)| Message::System(s, h)));
+    t.push(Task::perform(async { screen::load_games() }, Message::ScreenGames));
     (st, Task::batch(t))
 }
 
@@ -164,6 +187,10 @@ fn build_bars(s: &mut Shell) -> Vec<Task<Message>> {
         }
     }
     s.surfs.retain(|x| !matches!(x.1, Surf::Bar | Surf::Dock | Surf::Panel(_)));
+    // Build anything: a whole-screen desktop with its own Guide, menu and Game Mode covers the bar and dock
+    if s.screen.hides_bars() {
+        return t;
+    }
     let c = s.compact();
     let vert = s.desk.vertical();
     s.bar_band = bar::band(&s.look, c, vert);
@@ -189,6 +216,77 @@ fn build_bars(s: &mut Shell) -> Vec<Task<Message>> {
         t.push(Task::done(Message::NewLayerShell { settings: layer(size, anchor, Layer::Top, if p.auto_hide { 0 } else { th as i32 }, KeyboardInteractivity::None, "hearth-panel"), id }));
     }
     t
+}
+
+/// Your whole-screen desktop on the bottom layer (under the windows) and, once on a new install, the first start.
+fn build_screen(s: &mut Shell) -> Vec<Task<Message>> {
+    let mut t = Vec::new();
+    for (id, k) in s.surfs.clone() {
+        if matches!(k, Surf::Screen) || (matches!(k, Surf::First) && !screen::first_due(&s.screen)) {
+            t.push(Task::done(Message::RemoveWindow(id)));
+            s.surfs.retain(|x| x.0 != id);
+        }
+    }
+    let all = Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right;
+    if s.screen.on {
+        let id = Id::unique();
+        s.surfs.push((id, Surf::Screen));
+        t.push(Task::done(Message::NewLayerShell { settings: layer((0, 0), all, Layer::Bottom, -1, KeyboardInteractivity::OnDemand, "hearth-screen"), id }));
+    }
+    if screen::first_due(&s.screen) && s.id_of(Surf::First).is_none() {
+        let id = Id::unique();
+        s.surfs.push((id, Surf::First));
+        t.push(Task::done(Message::NewLayerShell { settings: layer((0, 0), all, Layer::Overlay, -1, KeyboardInteractivity::Exclusive, "hearth-first-start"), id }));
+    }
+    t
+}
+
+/// The block editor (board 4), full screen over everything while it's open.
+fn open_editor(s: &mut Shell, from: Option<serde_json::Value>, name: &str) -> Task<Message> {
+    if s.id_of(Surf::Editor).is_some() {
+        return Task::none();
+    }
+    s.editor = crate::editor::Editor::start(from.unwrap_or_else(|| s.screen.screen.clone()), name);
+    let id = Id::unique();
+    s.surfs.push((id, Surf::Editor));
+    let all = Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right;
+    Task::done(Message::NewLayerShell { settings: layer((0, 0), all, Layer::Overlay, -1, KeyboardInteractivity::Exclusive, "hearth-screen-editor"), id })
+}
+/// Try it full screen: the editor steps aside and the draft is drawn as your desktop; Escape brings the editor back.
+pub fn try_full(s: &mut Shell, on: bool) -> Task<Message> {
+    let mut t = Vec::new();
+    let all = Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right;
+    if on {
+        if let Some(id) = s.id_of(Surf::Editor) {
+            s.surfs.retain(|x| x.0 != id);
+            t.push(Task::done(Message::RemoveWindow(id)));
+        }
+        if s.id_of(Surf::Screen).is_none() {
+            let id = Id::unique();
+            s.surfs.push((id, Surf::Screen));
+            t.push(Task::done(Message::NewLayerShell { settings: layer((0, 0), all, Layer::Top, -1, KeyboardInteractivity::Exclusive, "hearth-screen"), id }));
+        }
+    } else {
+        if !s.screen.on {
+            if let Some(id) = s.id_of(Surf::Screen) {
+                s.surfs.retain(|x| x.0 != id);
+                t.push(Task::done(Message::RemoveWindow(id)));
+            }
+        }
+        let id = Id::unique();
+        s.surfs.push((id, Surf::Editor));
+        t.push(Task::done(Message::NewLayerShell { settings: layer((0, 0), all, Layer::Overlay, -1, KeyboardInteractivity::Exclusive, "hearth-screen-editor"), id }));
+    }
+    Task::batch(t)
+}
+pub fn close_editor(s: &mut Shell) -> Task<Message> {
+    match s.id_of(Surf::Editor) {
+        Some(id) => {
+            s.surfs.retain(|x| x.0 != id);
+            Task::done(Message::RemoveWindow(id))
+        }
+        None => Task::none(),
+    }
 }
 
 /// A bar's anchors and size along `edge`, `band` thick.
@@ -251,10 +349,10 @@ fn refit(s: &mut Shell) -> Task<Message> {
 
 /// The wallpaper blended again (in the background: it takes a moment), for this look and screen.
 fn redraw_wall(s: &Shell) -> Task<Message> {
-    if s.screen.width <= 0.0 {
+    if s.screen_size.width <= 0.0 {
         return Task::none();
     }
-    let (l, size) = (s.look.clone(), s.screen);
+    let (l, size) = (s.look.clone(), s.screen_size);
     Task::perform(async move { wall::compose(&l, size) }, Message::WallReady)
 }
 
@@ -304,8 +402,8 @@ fn update(s: &mut Shell, m: Message) -> Task<Message> {
             s.pins = sys::pins();
         }
         Message::Resized(id, size) => {
-            if s.surf(id) == Some(Surf::Wall) && size != s.screen {
-                s.screen = size;
+            if s.surf(id) == Some(Surf::Wall) && size != s.screen_size {
+                s.screen_size = size;
                 return Task::batch([refit(s), redraw_wall(s)]);
             }
         }
@@ -316,9 +414,35 @@ fn update(s: &mut Shell, m: Message) -> Task<Message> {
             if c.trim() == "overview" {
                 return open_overview(s);
             }
+            // hearth-mantel guide | edit | first (Build anything)
+            match c.trim() {
+                "guide" => s.screen.guide = !s.screen.guide,
+                "edit" => return open_editor(s, None, ""),
+                "first" => {
+                    if s.id_of(Surf::First).is_none() {
+                        let id = Id::unique();
+                        s.surfs.push((id, Surf::First));
+                        let all = Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right;
+                        return Task::done(Message::NewLayerShell { settings: layer((0, 0), all, Layer::Overlay, -1, KeyboardInteractivity::Exclusive, "hearth-first-start"), id });
+                    }
+                }
+                _ => {}
+            }
         }
         Message::Flame => return open_menu(s),
         Message::DeskCheck => {
+            let (was_on, was_hidden, was_from) = (s.screen.on, s.screen.hides_bars(), s.screen.from.clone());
+            screen::read(&mut s.screen);
+            let mut t = Vec::new();
+            if s.screen.on != was_on || s.screen.from != was_from || s.id_of(Surf::First).is_some() != screen::first_due(&s.screen) {
+                t.extend(build_screen(s));
+            }
+            if s.screen.hides_bars() != was_hidden {
+                t.extend(build_bars(s));
+            }
+            if !t.is_empty() {
+                return Task::batch(t);
+            }
             let nd = desk::read();
             if nd != s.desk {
                 let rebuild = nd.surfaces_key() != s.desk.surfaces_key();
@@ -388,6 +512,21 @@ fn update(s: &mut Shell, m: Message) -> Task<Message> {
             }
         }
         Message::Key(k) => {
+            if s.id_of(Surf::Editor).is_some() {
+                return crate::editor::key(s, k);
+            }
+            if s.screen.on && !s.menu_open() && !s.overview_open() {
+                if let keyboard::Event::KeyPressed { key: keyboard::Key::Named(nk), .. } = &k {
+                    match nk {
+                        keyboard::key::Named::Home => s.screen.guide = !s.screen.guide,
+                        keyboard::key::Named::Escape => s.screen.guide = false,
+                        keyboard::key::Named::ArrowLeft => s.screen.picked = s.screen.picked.saturating_sub(1),
+                        keyboard::key::Named::ArrowRight => s.screen.picked = (s.screen.picked + 1).min(s.screen.games.len().saturating_sub(1)),
+                        keyboard::key::Named::Enter => return screen::act(s, "play", ""),
+                        _ => {}
+                    }
+                }
+            }
             if s.overview_open() {
                 return match overview::key(s, k) {
                     overview::KeyResult::Close => close_overview(s),
@@ -439,6 +578,54 @@ fn update(s: &mut Shell, m: Message) -> Task<Message> {
             s.menu.system_ids = sysids;
             s.menu.hidden = hidden;
         }
+        Message::ScreenAct(a, arg, snd) => {
+            screen::sound(&snd);
+            return screen::act(s, &a, &arg);
+        }
+        Message::ScreenGuideAct(a, arg) => {
+            s.screen.guide = false;
+            if a != "guide" {
+                return screen::act(s, &a, &arg);
+            }
+        }
+        Message::ScreenPick(i) => s.screen.picked = i,
+        Message::ScreenTab(t) => s.screen.tab = t,
+        Message::ScreenGames(g) => s.screen.games = g,
+        Message::ScreenEdit => return open_editor(s, None, ""),
+        Message::OwnTick => {
+            let ids = s.screen.own_ids().into_iter().chain(s.editor.own_ids()).collect::<Vec<_>>();
+            return Task::batch(ids.into_iter().map(|id| Task::perform(async move { let v = screen::run_own(&id, false); (id, v) }, |(id, v)| Message::OwnOut(id, v))));
+        }
+        Message::OwnOut(id, v) => {
+            s.screen.own.insert(id, v);
+        }
+        Message::OwnAllow(id, ans) => {
+            if ans == "once" {
+                return Task::perform(async move { let v = screen::run_own(&id, true); (id, v) }, |(id, v)| Message::OwnOut(id, v));
+            }
+            let bin = screen::layout_bin();
+            let _ = std::process::Command::new(bin).args(["block-allow", &id, &ans]).status();
+            return Task::done(Message::OwnTick);
+        }
+        Message::FirstChoose(what) => {
+            match what.as_str() {
+                "build" => {
+                    screen::choose(&mut s.screen, "later");
+                    let v: serde_json::Value = serde_json::from_str(hearth_layout::screen::READY[0].1).unwrap_or_default();
+                    return Task::batch([Task::batch(build_screen(s)), open_editor(s, Some(v), "Console dashboard")]);
+                }
+                "nothing" => {
+                    screen::choose(&mut s.screen, "later");
+                    let v = serde_json::json!({ "grid": { "cols": 24, "rows": 14 }, "background": { "kind": "gradient", "from": "#1a1410", "to": "#0c0907" }, "look": {}, "blocks": [] });
+                    return Task::batch([Task::batch(build_screen(s)), open_editor(s, Some(v), "Start from nothing")]);
+                }
+                w => screen::choose(&mut s.screen, w),
+            }
+            let mut t = build_screen(s);
+            t.extend(build_bars(s));
+            return Task::batch(t);
+        }
+        Message::Editor(m) => return crate::editor::update(s, m),
         Message::WallReady(h) => {
             s.wall_img = Some(h);
             // the blending's working memory back to the system at once
@@ -464,6 +651,9 @@ fn view(s: &Shell, id: Id) -> Element<'_, Message> {
         Some(Surf::Menu) => menu::view(s),
         Some(Surf::Panel(i)) => panels::view(s, i),
         Some(Surf::Overview) => overview::view(s),
+        Some(Surf::Screen) => screen::view(s),
+        Some(Surf::First) => screen::first_view(s),
+        Some(Surf::Editor) => crate::editor::view(s),
         None => iced::widget::Space::new().into(),
     }
 }
@@ -479,8 +669,12 @@ fn subscription(s: &Shell) -> Subscription<Message> {
         Subscription::run(sys::minutes).map(|_| Message::Tick),
         iced::window::resize_events().map(|(id, size)| Message::Resized(id, size)),
     ];
-    if s.menu_open() || s.overview_open() {
+    if s.menu_open() || s.overview_open() || s.screen.on || s.id_of(Surf::Editor).is_some() {
         v.push(keyboard::listen().map(Message::Key));
+    }
+    // your AI's blocks: a look every 10 s while they're on screen (each its own boxed-in program)
+    if (s.screen.on && !s.screen.own_ids().is_empty()) || !s.editor.own_ids().is_empty() {
+        v.push(Subscription::run(screen::ten_seconds).map(|_| Message::OwnTick));
     }
     Subscription::batch(v)
 }

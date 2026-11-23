@@ -137,7 +137,7 @@ ShellRoot {
                 }
                 Connections {
                     target: ScreenLayout
-                    function onOnChanged() { perScreen.makeScreen(); if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); }
+                    function onLiveChanged() { perScreen.makeScreen(); if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); }
                     function onFailedChanged() { if (ScreenLayout.failed && perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); }
                     function onHidesBarsChanged() { if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); }
                     function onLoadedChanged() { if (ScreenLayout.loaded) { perScreen.makeScreen(); if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); } }

@@ -157,13 +157,17 @@ PanelWindow {
                 ed.pick = ed.draft.blocks.length ? 0 : -1;
                 if (r.made && r.made.length) {
                     const m = r.made[0];
-                    ed.made = { block: m, asks: (r.asks || [])[0] || null, asked: describeP.asked, all: r.made };
-                    for (const b of r.made) Quickshell.execDetached(ScreenLayout.layoutCmd(["keep-block", JSON.stringify(b)]));
                     ed.pick = ed.draft.blocks.findIndex(b => b.block === "own:" + m.id);
+                    // kept first (so it can run and ask), then shown
+                    keepBlockP.next = { block: m, asks: (r.asks || [])[0] || null, asked: describeP.asked, all: r.made };
+                    keepBlockP.command = ScreenLayout.layoutCmd(["keep-block", JSON.stringify(m)]);
+                    keepBlockP.running = true;
+                    for (const b of r.made.slice(1)) Quickshell.execDetached(ScreenLayout.layoutCmd(["keep-block", JSON.stringify(b)]));
                 }
             }
         }
     }
+    Process { id: keepBlockP; property var next: null; onExited: { ed.made = next; ed.refreshMine(); } }
     // your blocks (made by your AI, kept) and what people shared with Hearth
     property var mine: []
     function refreshMine() { mineP.command = ScreenLayout.layoutCmd(["blocks-mine"]); mineP.running = true; }
@@ -539,7 +543,7 @@ PanelWindow {
                         delegate: Rectangle {
                             required property var modelData
                             readonly property string c: modelData === "more" ? "" : modelData
-                            readonly property bool on: !!ed.cur && ed.cur.style && ed.cur.style.colour === c
+                            readonly property bool on: !!(ed.cur && ed.cur.style && ed.cur.style.colour === c)
                             width: 28; height: 28; radius: 14
                             color: modelData === "more" ? "transparent" : modelData
                             border.width: on ? 3 : (modelData === "more" ? 0 : 1); border.color: on ? "#ff7a2f" : Qt.rgba(1, 1, 1, 0.3)

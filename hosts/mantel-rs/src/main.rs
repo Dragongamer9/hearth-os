@@ -4,22 +4,25 @@
 //!   hearth-mantel session      Desktop Mode's shell, one program: the wallpaper, the bar, the dock and the app menu
 //!                              (labwc's autostart runs it in place of Quickshell when the Store's copy is installed)
 //!   hearth-mantel menu         opens or closes the app menu of the running shell (labwc's Super key)
+//!   hearth-mantel guide | edit | first   your desktop's Guide, the block editor, the first start (Build anything)
 //!   hearth-mantel check        what it would show, as text (tests): the look, the apps, the pins, the status
 
 mod apps;
 mod bar;
 mod desk;
 mod dock;
+mod editor;
 mod look;
 mod menu;
 mod overview;
 mod panels;
+mod screen;
 mod shell;
 mod sys;
 mod wall;
 mod wm;
 
-const USAGE: &str = "usage: hearth-mantel session | menu | overview | check";
+const USAGE: &str = "usage: hearth-mantel session | menu | overview | guide | edit | first | check";
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -30,6 +33,10 @@ fn main() {
         }
         Some("overview") => {
             if sys::send_command("overview") { 0 } else { 1 }
+        }
+        // Build anything: the Guide (Home), the block editor, the first start's choice
+        Some(c @ ("guide" | "edit" | "first")) => {
+            if sys::send_command(c) { 0 } else { 1 }
         }
         Some("check") => check(),
         _ => {
