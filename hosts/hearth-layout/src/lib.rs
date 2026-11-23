@@ -19,6 +19,7 @@ pub mod describe;
 pub mod feature;
 pub mod idea;
 pub mod layout;
+pub mod screen;
 
 #[path = "../../hearth-core/src/settings_file.rs"]
 #[allow(dead_code)]

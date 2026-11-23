@@ -227,7 +227,7 @@ pub fn update(st: &mut Lay, m: LMsg) -> Task<Msg> {
         }
         LMsg::Empty => {
             st.base.clear();
-            let mut d = Layout { format: 1, id: "empty-mine".into(), name: "My own layout".into(), about: String::new(), desktop: Default::default(), bar: None, panels: vec![], window_buttons: None };
+            let mut d = Layout { format: 1, id: "empty-mine".into(), name: "My own layout".into(), about: String::new(), desktop: Default::default(), bar: None, panels: vec![], window_buttons: None, screen: None };
             set(&mut d, "barLayout", "one");
             set(&mut d, "barEdge", "bottom");
             set(&mut d, "dockFloat", "off");

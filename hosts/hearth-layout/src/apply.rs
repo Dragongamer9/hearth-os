@@ -215,7 +215,7 @@ pub fn today(id: &str, name: &str) -> Layout {
         }
     }
     let window_buttons = s["desktop"].get("windowButtons").and_then(Value::as_str).and_then(from_titlebar);
-    Layout { format: 1, id: id.into(), name: name.trim().chars().take(60).collect(), about: String::new(), desktop, bar, panels, window_buttons }
+    Layout { format: 1, id: id.into(), name: name.trim().chars().take(60).collect(), about: String::new(), desktop, bar, panels, window_buttons, screen: None }
 }
 
 /// labwc's titlebar text back to buttons.

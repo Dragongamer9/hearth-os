@@ -94,6 +94,9 @@ pub struct Layout {
     pub panels: Vec<Panel>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub window_buttons: Option<WindowButtons>,
+    /// a whole-screen layout of blocks (screen.rs; build-anything boards 1-4)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub screen: Option<crate::screen::Screen>,
 }
 
 impl Layout {
@@ -144,6 +147,9 @@ pub fn parse(text: &str) -> Result<Layout, Vec<String>> {
 /// Everything wrong with a layout, in plain words; empty = it can be used.
 pub fn check(l: &Layout) -> Vec<String> {
     let mut e = Vec::new();
+    if let Some(s) = &l.screen {
+        e.extend(crate::screen::check(s));
+    }
     if l.format != 1 {
         e.push(format!("It's made for a newer Hearth (layout format {}).", l.format));
     }
