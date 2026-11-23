@@ -457,7 +457,7 @@ fn piece<'a>(a: &'a App, id: &str) -> Option<El<'a>> {
 
 /// A zone of Files' bars (top: the address row; bar: the buttons; bottom: a bar above the status bar), with Describe
 /// it's dashed outline while it's being changed; None when it's empty.
-fn zone_row(a: &App, zone: &str) -> Option<El<'_>> {
+fn zone_row<'a>(a: &'a App, zone: &str) -> Option<El<'a>> {
     let items = zone_items(a, zone);
     if items.iter().all(|i| i == "sep" || i == "spacer") {
         return None;
