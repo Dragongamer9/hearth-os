@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 11,
+  "serial": 12,
   "apps": [
     {
       "id": "command-center",
@@ -371,6 +371,34 @@
       "icon": "Rs",
       "from": "#ff8a3d",
       "to": "#b7410e"
+    },
+    {
+      "id": "test-mantel",
+      "name": "Mantel (Hearth Classic) (test)",
+      "kind": "builtin",
+      "part": {
+        "id": "mantel",
+        "version": "1.17.5",
+        "os": "1.17",
+        "path": "shell",
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-1.17.5/mantel-1.17.5.tar.gz",
+        "sha256": "dbce5c49295cd0738e8124132c119a6d525fd0f82637851b84081355c6b7b4a1",
+        "size": 10356601,
+        "notes": [
+          "Build anything: your desktop as one screen of blocks, under your windows",
+          "Six ready-made desktops: console dashboard, icon row home, cockpit, cabin, paper notebook, 1995 computer",
+          "The first-start choice: Hearth OS Mantel or build your own",
+          "The block editor: drag blocks onto the screen, size them, change their look, sound and animation, Try it full screen, Keep this",
+          "Or say it: describe a change or a block that isn't there and your AI makes it, boxed in, asking before it reaches anything",
+          "Settings › Your desktop: how your desktop looks, your blocks, back to Hearth OS Mantel any time"
+        ],
+        "missing": [
+          "Game Mode blocks (board 6) in Hearth's own Game Mode",
+          "Blocks made by people (shared blocks, once Hearth's makers have checked them)",
+          "Weather until you pick your place in Settings › Display"
+        ]
+      },
+      "test": true
     }
   ]
 }
