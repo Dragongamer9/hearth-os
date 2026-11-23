@@ -480,8 +480,18 @@ firehold_plasma_choice() {
 run_plasma() {
   log "desktop mode: KDE Plasma (the Anatase test)"
   if ! have startplasma-wayland; then
-    log "desktop: KDE Plasma (startplasma-wayland) isn't installed; Steam Game Mode instead"
-    echo steam >"$NEXT"; return 1
+    # Never back and forth: Steam Game Mode that already failed this sign-in (it sends Desktop Mode here when Steam
+    # isn't set up yet) isn't tried again; Hearth's own Game Mode is the last resort, as in the main loop.
+    if [ ! -s "$RUN/hearth-steam-mode-failed" ]; then
+      log "desktop: no KDE Plasma in this image and Mantel didn't come up; Steam Game Mode instead"
+      echo steam >"$NEXT"; return 1
+    fi
+    if can_game && [ ! -s "$HGM_NOTE" ]; then
+      log "desktop: Mantel didn't come up and Steam Game Mode failed this sign-in; last resort: Hearth's Game Mode"
+      echo game >"$NEXT"; return 1
+    fi
+    log "desktop: Mantel, Steam Game Mode and Hearth's Game Mode can't start; nothing left to open (Send logs has why)"
+    exit 1
   fi
   if [ -n "${HEARTH_DESKTOP_WM:-}" ] && [ ! -e "$DESK_STATE/plasma-instead-told" ] && have notify-send; then
     mkdir -p "$DESK_STATE" && : >"$DESK_STATE/plasma-instead-told"
@@ -571,7 +581,21 @@ firehold_rust_saved() {
 #    saying it's up within HEARTH_LABWC_UP_SECS (45 s), Mantel giving up: hearth-labwc-shell-failed): KDE Plasma for the
 #    rest of this sign-in, and a notification says why. Twice in a row: KDE Plasma until it's picked again. Never a loop:
 #    one try per Desktop Mode start, none again after a failure this sign-in. The choice itself is never changed here.
+# 1.18 (the owner, Nov 23: "completely remove KDE"): an image with no KDE Plasma. Mantel on labwc is Desktop Mode
+# then, whatever was picked (a Firehold pick: Firehold on labwc), and when it doesn't come up Steam Game Mode opens
+# (run_plasma, never no screen) and a notification says why. Each press of Desktop Mode tries it once: never a loop,
+# and never locked out of Desktop Mode by earlier failures (there's nothing else to open).
+kde_here() { have startplasma-wayland; }
 fedora_labwc_choice() {
+  if ! kde_here; then
+    c=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_PLASMA_DESKTOP=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
+    case "$c" in
+      classicfirehold|firehold) echo firehold ;;
+      "") if firehold_rust_saved; then echo firehold; else echo classic; fi ;;
+      *) echo classic ;;
+    esac
+    return 0
+  fi
   c=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_PLASMA_DESKTOP=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
   # 1.17 (the owner, Nov 21: "Put the default Desktop enviroment as Hearth Clasic labwc"): no pick saved is Mantel,
   # except on a device that had picked the archived Firehold (Rust), which keeps Firehold on Plasma (run_plasma).
@@ -587,18 +611,20 @@ LABWC_GOOD_SECS="${HEARTH_LABWC_GOOD_SECS:-60}"
 fedora_labwc_failed() {   # $1: why (plain words, for the person)
   : >"$RUN/hearth-labwc-failed"; desk_fails_add labwc
   mkdir -p "$DESK_STATE"; printf '%s\n' "$1" >"$DESK_STATE/labwc-why.tmp" && mv -f "$DESK_STATE/labwc-why.tmp" "$DESK_STATE/labwc-why"
-  if [ "$(desk_fails labwc)" -ge 2 ]; then
+  if ! kde_here; then
+    t="$FEDORA_LABWC_NAME didn't start"; b="$1 Game Mode opened instead. Press Desktop Mode to try again, or send logs from Game Mode."
+  elif [ "$(desk_fails labwc)" -ge 2 ]; then
     t="$FEDORA_LABWC_NAME didn't start twice in a row"; b="$1 KDE Plasma opens instead until you pick it again in Settings › Your desktop."
   else
     t="$FEDORA_LABWC_NAME didn't start"; b="$1 KDE Plasma opened instead for now. Your choice is kept."
   fi
-  log "desktop: $t ($1); KDE Plasma instead"
+  if kde_here; then log "desktop: $t ($1); KDE Plasma instead"; else log "desktop: $t ($1); Steam Game Mode instead (no KDE in this image)"; fi
   if have notify-send; then ( sleep 25; notify-send -a "Hearth" -i hearth "$t" "$b" ) >/dev/null 2>&1 & fi
 }
 run_fedora_labwc() {   # $1: classic | firehold. 200: didn't come up (the caller opens KDE Plasma); else labwc's end.
   if [ "$1" = firehold ]; then FEDORA_LABWC_NAME="Firehold on labwc"; else FEDORA_LABWC_NAME="Hearth Classic (labwc)"; fi
-  if [ -e "$RUN/hearth-labwc-failed" ]; then log "desktop: $FEDORA_LABWC_NAME didn't start earlier this sign-in; KDE Plasma"; return 200; fi
-  if [ "$(desk_fails labwc)" -ge 2 ]; then log "desktop: $FEDORA_LABWC_NAME didn't start twice in a row; KDE Plasma until it's picked again"; return 200; fi
+  if kde_here && [ -e "$RUN/hearth-labwc-failed" ]; then log "desktop: $FEDORA_LABWC_NAME didn't start earlier this sign-in; KDE Plasma"; return 200; fi
+  if kde_here && [ "$(desk_fails labwc)" -ge 2 ]; then log "desktop: $FEDORA_LABWC_NAME didn't start twice in a row; KDE Plasma until it's picked again"; return 200; fi
   miss=""
   have labwc || miss="labwc"
   have quickshell || miss="${miss:+$miss and }Quickshell"

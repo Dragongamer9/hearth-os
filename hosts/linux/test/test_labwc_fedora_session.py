@@ -242,3 +242,49 @@ class Picker(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class NoKde(FedoraLabwc):
+    """1.18 (the owner, Nov 23: "completely remove KDE"): no KDE Plasma in the image. Mantel on labwc is Desktop Mode
+    whatever was picked; when it doesn't come up, Steam Game Mode (never no screen), never back and forth, and the next
+    sign-in tries Mantel again."""
+
+    OWN = ('test_any_pick_is_mantel_or_firehold_on_labwc', 'test_failing_goes_to_game_mode_never_back_and_forth')
+
+    def setUp(self):
+        if self._testMethodName not in self.OWN:
+            self.skipTest('a test of the image with KDE Plasma')
+        super().setUp()
+        os.remove(os.path.join(self.bin, 'startplasma-wayland'))
+
+    def test_any_pick_is_mantel_or_firehold_on_labwc(self):
+        for line, want in (('', 'fh=unset'), ('HEARTH_PLASMA_DESKTOP=plasma\n', 'fh=unset'), ('HEARTH_PLASMA_DESKTOP=firehold\n', 'fh=1'),
+                           ('HEARTH_PLASMA_DESKTOP=classicfirehold\n', 'fh=1')):
+            p = os.path.join(self.home, 'labwc-ran')
+            if os.path.exists(p):
+                os.remove(p)
+            r, log = self.run_with(line)
+            ran = self.lines('labwc-ran')
+            self.assertEqual(len(ran), 1, (line, log))
+            self.assertIn(want, ran[0], line)
+
+    def test_failing_goes_to_game_mode_never_back_and_forth(self):
+        # Mantel crashes; Steam Game Mode can't start here (no gamescope): Desktop Mode → Steam Game Mode → Desktop Mode
+        # once more → nothing left, and the session stops instead of switching forever.
+        self.write_bin('labwc', LABWC_CRASHES)
+        r, log = self.run_with('HEARTH_PLASMA_DESKTOP=classic\n')
+        self.assertIn('Steam Game Mode instead (no KDE in this image)', log)
+        self.assertIn('nothing left to open', log)
+        self.assertNotEqual(r.returncode, 0)
+        self.assertLessEqual(len(self.lines('labwc-ran')), 2, log)
+        self.assertEqual(self.lines('plasma-ran'), [])
+        self.assertIn('HEARTH_PLASMA_DESKTOP=classic', open(self.conf).read(), 'the choice is never changed')
+        # The next sign-in tries Mantel again (it's the only desktop there is).
+        for f in ('hearth-steam-mode-failed',):
+            p = os.path.join(self.run_dir, f)
+            if os.path.exists(p):
+                os.remove(p)
+        self.write_bin('labwc', LABWC_WORKS)
+        os.remove(os.path.join(self.home, 'labwc-ran'))
+        r, log = self.run_with('HEARTH_PLASMA_DESKTOP=classic\n')
+        self.assertEqual(len(self.lines('labwc-ran')), 1, log)
