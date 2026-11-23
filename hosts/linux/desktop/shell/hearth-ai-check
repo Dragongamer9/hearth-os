@@ -1,0 +1,189 @@
+#!/usr/bin/python3 -I
+"""hearth-ai-check: which AI answers on this device, and what's wrong when none does (Settings › AI, the approved
+mockups docs/mockups/settings-cleanup ai-1 to ai-4; the owner, Nov 23, 2026: "fix the AI problem"). Read only: it asks,
+it never changes a setting or starts anything.
+
+  hearth-ai-check status   JSON: {"answering": {...} | null, "engines": [...], "link": {...}, "online": {...},
+                            "problems": [...]} — the same order Describe it tries (hearth-layout describe.rs):
+                            your own choice (describe.json), Hearth's engines on this device (the default first),
+                            another device's AI over Hearth Link (127.0.0.1:11435), an online AI with your key
+  hearth-ai-check test     JSON: {"ok", "seconds", "engine", "model", "error"}: one short question to the AI that
+                            answers, timed (Settings › AI › Test it)
+
+A model only for search or speech (nomic-embed-text, whisper…) is never "the model for writing". Problems are said in
+plain words with what fixes them: a home server service that couldn't start (Fedora's SELinux keeping it from running
+its program: "Fix it" runs hearth-home-server-helper app-fix through Settings), an engine that's off, no model that can
+write. Nothing here needs root; nothing prints a key.
+"""
+import json
+import os
+import re
+import subprocess
+import sys
+import time
+import urllib.request
+
+sys.dont_write_bytecode = True
+HERE = os.path.dirname(os.path.realpath(__file__))
+sys.path.insert(0, HERE)
+
+CONFIG = os.environ.get('XDG_CONFIG_HOME') or os.path.expanduser('~/.config')
+DESCRIBE = os.path.join(CONFIG, 'nimbus', 'describe.json')
+ONLINE = os.path.join(CONFIG, 'nimbus', 'ai-online.json')
+LINK = os.environ.get('HEARTH_AI_LINK', 'http://127.0.0.1:11435/v1')
+ONLINE_BASES = {'claude': ('https://api.anthropic.com/v1', 'Claude'), 'chatgpt': ('https://api.openai.com/v1', 'ChatGPT'),
+                'gemini': ('https://generativelanguage.googleapis.com/v1beta/openai', 'Gemini')}
+NOT_WRITING = ('embed', 'nomic', 'bge', 'minilm', 'rerank', 'whisper', 'clip', 'tts')
+PREFER = ('qwen3', 'qwen2.5', 'llama3', 'gemma', 'mistral', 'qwen', 'llama')
+SERVICES = {'hearth-ollama': 'Ollama', 'hearth-jellyfin': 'Jellyfin'}
+
+
+def writes(m):
+    return not any(w in m.lower() for w in NOT_WRITING)
+
+
+def pick_model(models):
+    """The same choice as describe.rs pick_model: one that can write, Qwen/Llama/Gemma/Mistral first."""
+    ok = [m for m in models if writes(m)]
+    for want in PREFER:
+        for m in ok:
+            if want in m.lower():
+                return m
+    return ok[0] if ok else ''
+
+
+def models(base, timeout=3.0):
+    """The models an OpenAI-style address has; None when nothing answers there."""
+    try:
+        with urllib.request.urlopen(base.rstrip('/') + '/models', timeout=timeout) as r:
+            d = json.loads(r.read().decode('utf-8', 'replace'))
+        return [m.get('id') for m in d.get('data', []) if isinstance(m, dict) and isinstance(m.get('id'), str)]
+    except Exception:
+        return None
+
+
+def read_json(path):
+    try:
+        with open(path, encoding='utf-8') as f:
+            d = json.load(f)
+        return d if isinstance(d, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def engines():
+    try:
+        import hearth_ai_engines as ae
+        d = ae.load()
+        return d['default'], ae.engines(d)
+    except Exception:
+        return 'ollama', []
+
+
+def service_problem(unit, name):
+    """A home server service that couldn't start, in plain words (None when it's fine or not set up)."""
+    try:
+        out = subprocess.run(['systemctl', 'show', unit + '.service', '-p', 'ActiveState,Result,ExecMainStatus,LoadState'],
+                             capture_output=True, text=True, timeout=5).stdout
+    except Exception:
+        return None
+    st = dict(l.split('=', 1) for l in out.splitlines() if '=' in l)
+    if st.get('LoadState') != 'loaded' or st.get('ActiveState') == 'active' or st.get('Result') in ('', 'success', None):
+        return None
+    why = ''
+    try:
+        j = subprocess.run(['journalctl', '-u', unit + '.service', '-b', '-n', '20', '--no-pager', '-o', 'cat'],
+                           capture_output=True, text=True, timeout=5).stdout
+    except Exception:
+        j = ''
+    if 'Permission denied' in j and ('203' in st.get('ExecMainStatus', '') or 'EXEC' in j):
+        why = 'selinux'
+    return {'id': unit, 'what': '%s couldn\'t start' % name,
+            'why': ('Fedora\'s security (SELinux) wouldn\'t let it run from where it was installed. Your models and settings are fine.'
+                    if why == 'selinux' else 'It stopped with an error (%s). Send logs has the details.' % (st.get('Result') or 'failed')),
+            'fix': 'app-fix' if why == 'selinux' else 'restart', 'kind': why or 'failed'}
+
+
+def status():
+    out = {'answering': None, 'engines': [], 'link': {}, 'online': {}, 'problems': [], 'own': {}}
+    own = read_json(DESCRIBE)
+    if isinstance(own.get('url'), str) and own['url'].startswith(('http://', 'https://')):
+        base = own['url'].rstrip('/')
+        have = models(base)
+        out['own'] = {'url': base, 'label': own.get('label') or 'your AI', 'answering': have is not None}
+        if have is not None:
+            m = own.get('model') or pick_model(have)
+            out['answering'] = {'from': 'own', 'label': out['own']['label'], 'base': base, 'model': m}
+    default, es = engines()
+    for e in sorted(es, key=lambda e: e.get('id') != default):
+        base = e.get('openai') or e.get('base') or ''
+        have = models(base) if base else None
+        item = {'id': e.get('id'), 'label': e.get('label'), 'on': bool(e.get('on')), 'default': e.get('id') == default,
+                'answering': have is not None, 'models': have or [], 'writing': pick_model(have or [])}
+        out['engines'].append(item)
+        if have is not None and not item['writing']:
+            out['problems'].append({'id': e.get('id'), 'what': '%s has no model that can write' % e.get('label'),
+                                    'why': 'It only has search models (%s). Get one in Settings › AI › Models.' % ', '.join(have[:3]),
+                                    'fix': 'models', 'kind': 'no-model'})
+        if out['answering'] is None and have is not None and item['writing']:
+            m = e.get('model') if e.get('model') in (have or []) else item['writing']
+            out['answering'] = {'from': 'engine', 'label': e.get('label'), 'base': base, 'model': m}
+    have = models(LINK)
+    out['link'] = {'base': LINK, 'answering': have is not None, 'models': have or [], 'writing': pick_model(have or [])}
+    if out['answering'] is None and have is not None and out['link']['writing']:
+        out['answering'] = {'from': 'link', 'label': 'your other device\'s AI (Hearth Link)', 'base': LINK, 'model': out['link']['writing']}
+    o = read_json(ONLINE)
+    p = o.get('provider') if o.get('provider') in ONLINE_BASES else ''
+    if p:
+        try:
+            has_key = subprocess.run(['secret-tool', 'lookup', 'service', 'hearth-ai', 'account', p], capture_output=True, timeout=5).returncode == 0
+        except Exception:
+            has_key = False
+        out['online'] = {'provider': p, 'label': ONLINE_BASES[p][1], 'model': o.get('model') or '', 'key': has_key}
+        if out['answering'] is None and has_key and o.get('model'):
+            out['answering'] = {'from': 'online', 'label': '%s (online, your key)' % ONLINE_BASES[p][1], 'base': ONLINE_BASES[p][0], 'model': o['model']}
+    for unit, name in SERVICES.items():
+        pr = service_problem(unit, name)
+        if pr:
+            out['problems'].insert(0, pr)
+    if out['answering'] is None:
+        out['problems'].append({'id': 'none', 'what': 'No AI is answering',
+                                'why': 'Describe it, Ithil and AI photos need one. Use your PC\'s AI (Hearth Link), turn on Ollama here, or add an online AI with your key.',
+                                'fix': 'choose', 'kind': 'none'})
+    return out
+
+
+def test():
+    a = status().get('answering')
+    if not a:
+        return {'ok': False, 'error': 'No AI is answering.'}
+    if a['from'] == 'online':
+        return {'ok': False, 'error': 'Online AIs are tested from Settings (your key stays in the password store).', 'engine': a['label']}
+    body = json.dumps({'model': a['model'], 'temperature': 0, 'max_tokens': 8,
+                       'messages': [{'role': 'system', 'content': 'Answer with one word. /no_think'}, {'role': 'user', 'content': 'Say ok.'}]}).encode()
+    req = urllib.request.Request(a['base'].rstrip('/') + '/chat/completions', data=body, headers={'Content-Type': 'application/json'})
+    t = time.monotonic()
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            d = json.loads(r.read().decode('utf-8', 'replace'))
+        words = (d.get('choices') or [{}])[0].get('message', {}).get('content', '')
+        return {'ok': True, 'seconds': round(time.monotonic() - t, 1), 'engine': a['label'], 'model': a['model'],
+                'said': re.sub(r'<think>.*?</think>', '', words, flags=re.S).strip()[:40]}
+    except Exception as e:
+        return {'ok': False, 'error': 'It didn\'t answer (%s).' % str(e)[:120], 'engine': a['label'], 'model': a['model']}
+
+
+def main(argv):
+    if argv[:1] == ['status']:
+        print(json.dumps(status()))
+        return 0
+    if argv[:1] == ['test']:
+        r = test()
+        print(json.dumps(r))
+        return 0 if r.get('ok') else 1
+    print('usage: hearth-ai-check status | test')
+    return 2
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))
