@@ -1236,6 +1236,11 @@ fn subscription(a: &App) -> Subscription<Msg> {
     Subscription::batch(s)
 }
 
+/// The app with Describe it's box under it when it's open (every Hearth app has it).
+fn shown(a: &App) -> Element<'_, Msg> {
+    hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe)
+}
+
 fn main() -> iced::Result {
     if app::handle_cli(
         "hearth-ideas-app",
@@ -1257,7 +1262,7 @@ fn main() -> iced::Result {
             (a, t)
         },
         update,
-        |a: &App| hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe),
+        shown,
     )
     .title(|_: &App| "Hearth Ideas".to_string())
     .subscription(subscription)

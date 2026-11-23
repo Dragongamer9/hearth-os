@@ -519,6 +519,11 @@ fn subscription(a: &App) -> Subscription<Msg> {
     Subscription::batch([Subscription::run(hearth_ui::theme::watch).map(|_| Msg::Theme), iced::keyboard::listen().map(Msg::Key), tick])
 }
 
+/// The app with Describe it's box under it when it's open (every Hearth app has it).
+fn shown(a: &App) -> Element<'_, Msg> {
+    hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe)
+}
+
 fn main() -> iced::Result {
     if app::handle_cli(
         "hearth-family-app",
@@ -545,7 +550,7 @@ fn main() -> iced::Result {
         w.level = iced::window::Level::AlwaysOnTop;
         w.resizable = false;
     }
-    iced::application(App::new, update, |a: &App| hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe))
+    iced::application(App::new, update, shown)
         .title(move |_: &App| title.clone())
         .subscription(subscription)
         .theme(|a: &App| app::iced_theme(&a.p))

@@ -719,6 +719,11 @@ fn view(a: &App) -> Element<'_, Msg> {
     frame::frame(a)
 }
 
+/// The app with Describe it's box under it when it's open (every Hearth app has it).
+fn shown(a: &App) -> Element<'_, Msg> {
+    hearth_ui::describe::with_bar(view(a), &a.sh.p, &a.describe, Msg::Describe)
+}
+
 fn main() -> iced::Result {
     // Display › Identify outside KDE Plasma: this program again, showing each screen's number for 3 s (identify.rs).
     if let Some(spec) = app::arg("--identify") {
@@ -730,7 +735,7 @@ fn main() -> iced::Result {
     ) {
         return Ok(());
     }
-    iced::application(App::new, update, |a: &App| hearth_ui::describe::with_bar(view(a), &a.sh.p, &a.describe, Msg::Describe))
+    iced::application(App::new, update, shown)
         .title("Hearth Settings")
         .subscription(subscription)
         .theme(|a: &App| app::iced_theme(&a.sh.p))

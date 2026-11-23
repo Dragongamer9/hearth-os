@@ -535,11 +535,16 @@ fn subscription(_a: &App) -> Subscription<Msg> {
     Subscription::batch([Subscription::run(hearth_ui::theme::watch).map(|_| Msg::Theme), iced::keyboard::listen().map(Msg::Key)])
 }
 
+/// The app with Describe it's box under it when it's open (every Hearth app has it).
+fn shown(a: &App) -> Element<'_, Msg> {
+    hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe)
+}
+
 fn main() -> iced::Result {
     if app::handle_cli("hearth-reliability-history", "Reliability history: how Hearth has been running.\n  --weeks         open week by week\n  --show details  open the picked day's first event (pictures)") {
         return Ok(());
     }
-    iced::application(App::new, update, |a: &App| hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe))
+    iced::application(App::new, update, shown)
         .title("Reliability history")
         .subscription(subscription)
         .theme(|a: &App| app::iced_theme(&a.p))
