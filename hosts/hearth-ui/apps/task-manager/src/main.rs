@@ -1213,6 +1213,11 @@ fn subscription(a: &App) -> Subscription<Msg> {
     Subscription::batch(subs)
 }
 
+/// The app with Describe it's box under it when it's open (every Hearth app has it).
+fn shown(a: &App) -> Element<'_, Msg> {
+    hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe)
+}
+
 fn main() -> iced::Result {
     if app::handle_cli(
         "hearth-task-manager",
@@ -1220,7 +1225,7 @@ fn main() -> iced::Result {
     ) {
         return Ok(());
     }
-    iced::application(App::new, update, |a: &App| hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe))
+    iced::application(App::new, update, shown)
         .title("Task Manager")
         .subscription(subscription)
         .theme(|a: &App| app::iced_theme(&a.p))
