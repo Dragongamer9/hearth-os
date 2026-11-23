@@ -99,3 +99,18 @@ Release: next
 - [ ] What it'll do as chips (layout ones and the new feature)
 - [ ] Undo, Try again, Keep this
 - [ ] "what its buttons do stays the same", Back to the original: View › Layout
+
+## 12. Every Hearth app (the owner, Nov 22: "i want EVERY Hearth app i make to be able to be included in the modular stuff")
+Each one gets Describe it as Hearth Files has it (part 11): its own parts rearranged, new features from Hearth's own
+parts (hearth-layout feature.rs), what needs something new sent as an idea. One shared core, so a new app gets it by
+taking the core, and a Hearth app isn't done without it. Ticked per app when it's in that app.
+- [ ] Mantel (QML) and Mantel in Rust: the bars, the dock, the app menu, Quick Access, the calendar (parts 1-8)
+- [ ] Hearth Settings (Mantel's and the Rust one)
+- [ ] Hearth Files
+- [ ] Hearth Store
+- [ ] Task Manager, Resource Monitor, System Restore, Reliability history
+- [ ] Capture, Hearth Notes, Hearth Family, Hearth Server, Logitech G15, the controller (hearth-pad-host)
+- [ ] Hearth Ideas
+- [ ] Hearth AI Command Center and Hearth AI (Ithil) (their own repos, the same core through hearth-layout)
+- [ ] Beacon, Capture Card, Console Remote Play, Hearth TV, Hearth Buddy, Hearth OS CAD, Trains 2010 (their own repos)
+- [ ] Every new Hearth app from now on
