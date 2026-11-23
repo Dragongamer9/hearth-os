@@ -111,6 +111,7 @@ taking the core, and a Hearth app isn't done without it. Ticked per app when it'
 - [ ] Task Manager, Resource Monitor, System Restore, Reliability history
 - [ ] Capture, Hearth Notes, Hearth Family, Hearth Server, Logitech G15, the controller (hearth-pad-host)
 - [ ] Hearth Ideas
+- [ ] Hearth Game Mode (ui/index.html; the owner, Nov 22: "I even want to make Hearth Game mode Fully modular as well"): its Home built from blocks like Mantel's bars (the 15 Home layouts become ready-made ones), its top bar, Quick Access and Library, with Describe it by controller (on-screen keyboard or voice); mockups first
 - [ ] Hearth AI Command Center and Hearth AI (Ithil) (their own repos, the same core through hearth-layout)
 - [ ] Beacon, Capture Card, Console Remote Play, Hearth TV, Hearth Buddy, Hearth OS CAD, Trains 2010 (their own repos)
 - [ ] Every new Hearth app from now on
