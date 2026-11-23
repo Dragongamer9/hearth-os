@@ -280,6 +280,18 @@ ShellRoot {
     }
     RadialMenu { id: radial; mouseOn: pad.mouseOn }
     Keyboard { id: keyboard }
+    // A Mantel from the Hearth Store runs from its own folder, but Hearth OS's shortcuts (Super, Super+V, …) and apps
+    // call `quickshell ipc -p $NIMBUS_SHARE/desktop/shell`, which Quickshell finds by that folder's name
+    // (<run>/quickshell/by-path/<md5 of its shell.qml>). So this copy answers to that name too: the name points at this
+    // copy's own (by-shell) folder. The built-in Mantel puts its own back whenever it runs, so nothing is left wrong.
+    Process {
+        id: ipcAlias
+        readonly property string own: Quickshell.shellDir.replace(/\/$/, "") + "/shell.qml"
+        readonly property string builtIn: (Quickshell.env("NIMBUS_SHARE") || "/usr/local/share/nimbus").replace(/\/$/, "") + "/desktop/shell/shell.qml"
+        command: ["sh", "-c", 'd="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/quickshell/by-path"; t=$(readlink "$d/$1") || exit 0; [ -n "$t" ] && [ "$1" != "$2" ] && ln -sfn "$t" "$d/$2"', "sh", Qt.md5(own), Qt.md5(builtIn)]
+    }
+    Timer { interval: 3000; running: ipcAlias.own !== ipcAlias.builtIn; onTriggered: ipcAlias.running = true }
+
     Help { id: help }
     SettingsApp { id: settings }
     // Mantel on KWin: a window menu's More actions › "Special window settings…" opens Window rules for that window.

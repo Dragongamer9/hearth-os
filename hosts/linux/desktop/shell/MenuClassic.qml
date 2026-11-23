@@ -94,7 +94,7 @@ Item {
                         required property var modelData
                         required property int index
                         readonly property bool lit: st.zone === "left" && st.cur === index || st.jumpFor === modelData && st.zone === "jump"
-                        readonly property bool jl: !st.allOpen && st.menu && st.menu.hasJumpList(modelData)
+                        readonly property bool jl: !!(!st.allOpen && st.menu && st.menu.hasJumpList(modelData))
                         width: ListView.view.width
                         height: st.allOpen ? 36 : 48
                         radius: Theme.r(4)
