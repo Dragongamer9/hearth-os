@@ -4,7 +4,7 @@
 //! top-left corner, and the pages: Home, Apps, Library and Tests (the app's page, a test version's page and Settings
 //! are view.rs's, drawn in this frame).
 
-use crate::look::{self, app_icon, btn, chip, click, f, tone, z, Chip, B, E, ORANGE, PURPLE};
+use crate::look::{self, app_icon, btn, bullets, chip, click, f, tone, z, Chip, B, E, ORANGE, PURPLE};
 use crate::view;
 use crate::{App, Msg, Page, State, SEARCH_ID};
 use hearth_store::catalog::{Entry, Kind};
