@@ -188,7 +188,7 @@ fn side_tile<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let p = a.p;
     let from = look::hex(&e.from, ORANGE);
     let to = look::hex(&e.to, ORANGE);
-    let kicker: E<'a, Msg> = if e.test { chip_test() } else { ts(if e.tagline.is_empty() { category(e).to_uppercase() } else { e.tagline.to_uppercase() }, f(12.0), Pal::mix(Color::WHITE, from, 0.3)).into() };
+    let kicker: E<'a, Msg> = if e.test { chip_test() } else { ts(if e.tagline.is_empty() { category(e).to_uppercase() } else { e.tagline.split([':', ',', '.']).next().unwrap_or("").trim().to_uppercase() }, f(12.0), Pal::mix(Color::WHITE, from, 0.3)).into() };
     let ver = a.seen.rel(&e.id).map(|r| format!(" {}", hearth_store::short_version(&r.version))).or_else(|| a.inst.get(&e.id).map(|i| format!(" {}", hearth_store::short_version(&i.version)))).unwrap_or_default();
     let name = if e.test { e.short.trim_end_matches(" (test)").to_string() } else { format!("{}{ver}", e.short) };
     let words = column![Space::new().height(Length::Fill), kicker, tb(name, f(20.0), Color::WHITE)].spacing(z(6.0));
@@ -705,7 +705,8 @@ pub fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     }
     let left = side_card(a, l);
     // The right: Screenshots, then What's new and Description, and Additional information
-    let mut r = Column::new().push(Space::new().height(Length::Fixed(z(250.0)))).push(container(ts("Screenshots", f(20.0), tn.text)).padding(look::pad(0.0, 0.0, z(14.0), 0.0)));
+    let top = iced::widget::stack![backdrop(e, z(300.0)), column![Space::new().height(Length::Fixed(z(250.0))), ts("Screenshots", f(20.0), tn.text)]];
+    let mut r = Column::new().push(top).push(gap(1.0, z(14.0)));
     let shots: Vec<&iced::widget::image::Handle> = e.pictures.iter().filter_map(|u| a.pics.get(u)).take(3).collect();
     let mut sr = Row::new().spacing(z(16.0));
     if shots.is_empty() {
@@ -741,7 +742,7 @@ pub fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let boxed = |c: E<'a, Msg>, w: u16| -> E<'a, Msg> { container(c).padding(z(22.0)).width(Length::FillPortion(w)).style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.04), 8.0, Some((tn.line, 1.0)))).into() };
     r = r.push(row![boxed(words.into(), 58), boxed(info.into(), 42)].spacing(z(20.0)));
     let page = row![container(left).padding(look::pad(z(30.0), 0.0, 0.0, 0.0)), container(r).width(Length::Fill)].spacing(z(28.0));
-    with_note(a, iced::widget::stack![container(backdrop(e, z(300.0))).padding(look::pad(0.0, 0.0, 0.0, z(440.0))), page].into())
+    with_note(a, page.into())
 }
 
 // ------------------------------------------------------------------ 5. A test version's page
@@ -808,7 +809,8 @@ pub fn test_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
         .width(Length::Fill)
         .style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.04), 8.0, Some((tn.line, 1.0))));
     let r = column![
-        Space::new().height(Length::Fixed(z(290.0))),
+        backdrop(e, z(250.0)),
+        gap(1.0, z(16.0)),
         row![boxed("What's in it", lines(&notes, "What this test version brings is on its release page.")), boxed("Not in it yet", lines(&missing, "Nothing left out that we know of."))].spacing(z(20.0)),
         gap(1.0, z(24.0)),
         click(row![ts("More test versions", f(20.0), tn.text), t("  ›", f(20.0), tn.muted)].align_y(iced::Center), Some(Msg::Go(Page::Tests))),
@@ -816,7 +818,7 @@ pub fn test_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
         more
     ];
     let page = column![notice, gap(1.0, z(26.0)), row![left, container(r).width(Length::Fill)].spacing(z(28.0))];
-    with_note(a, iced::widget::stack![container(backdrop(e, z(420.0))).padding(look::pad(0.0, 0.0, 0.0, z(880.0))), page].into())
+    with_note(a, page.into())
 }
 
 // ------------------------------------------------------------------ 6. Settings
