@@ -99,7 +99,8 @@ Item {
         id: loader
         anchors.centerIn: parent
         sourceComponent: blk.kind === "overview" ? cOverview : blk.kind === "taskview" ? cTask : blk.kind === "appname" ? cName
-            : blk.kind === "appmenus" ? cMenus : blk.kind === "quickaccess" ? cQuick : blk.kind === "showdesktop" ? cShow : null
+            : blk.kind === "appmenus" ? cMenus : blk.kind === "quickaccess" ? cQuick : blk.kind === "showdesktop" ? cShow
+            : blk.kind === "power" ? cPower : null
     }
 
     component Btn: Item {
@@ -203,6 +204,10 @@ Item {
     Component {
         id: cQuick
         Btn { tip: "Quick Access"; onClicked: blk.ipc("quick", "toggle"); Icon { anchors.centerIn: parent; name: "grid"; size: blk.side * 0.5 } }
+    }
+    Component {
+        id: cPower
+        Btn { tip: "Power"; onClicked: blk.ipc("leave", "powermenu"); Icon { anchors.centerIn: parent; name: "power"; size: blk.side * 0.5 } }
     }
     Component {
         id: cShow

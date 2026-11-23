@@ -38,6 +38,10 @@ pub struct Desk {
     /// the layout in place ("" none chosen) and the app menu's style (the Search block shows with a layout or Tiles)
     pub layout: String,
     pub app_menu: String,
+    /// the dock: "" (the look's own) | "floating" | "attached"
+    pub dock_style: String,
+    /// the status icons in a rounded pill even in a full-width bar
+    pub status_pill: bool,
 }
 
 impl Default for Desk {
@@ -53,7 +57,7 @@ impl Desk {
     /// What the surfaces depend on: a change here makes the bar, the dock and the panels again.
     pub fn surfaces_key(&self) -> String {
         let p: Vec<String> = self.panels.iter().map(|p| format!("{}:{}:{}:{}", p.key, p.edge, p.size, p.style)).collect();
-        format!("{}/{}/{}", self.edge, self.dock, p.join(","))
+        format!("{}/{}/{}/{}", self.edge, self.dock, self.dock_style, p.join(","))
     }
 }
 
@@ -154,7 +158,7 @@ pub fn from(d: &Map<String, Value>, bar: &Map<String, Value>) -> Desk {
             style: p.get("style").and_then(Value::as_str).filter(|v| ["floating", "centred"].contains(v)).unwrap_or("").to_string(),
         });
     }
-    Desk { edge, dock, apps_in_bar: !dock && df != "none", start, centre, end, game_at: s("gameModeAt"), clock_at: s("clockAt"), panels, layout: s("layout"), app_menu: s("appMenu") }
+    Desk { edge, dock, apps_in_bar: !dock && df != "none", start, centre, end, game_at: s("gameModeAt"), clock_at: s("clockAt"), panels, layout: s("layout"), app_menu: s("appMenu"), dock_style: s("dockStyle"), status_pill: s("statusPill") == "on" }
 }
 
 /// The main screen's name, when labwc says it (WAYLAND output names aren't read here yet: every panel with a screen

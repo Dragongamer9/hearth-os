@@ -270,6 +270,10 @@ pub fn block<'a>(s: &'a Shell, l: &Look, g: &Geom, vert: bool, id: &str) -> Opti
             if vert || compact || g.shelf || s.desk.layout.is_empty() && s.desk.app_menu != "tiles" {
                 return None;
             }
+            // at the end of the bar (macOS-style) only its magnifier
+            if s.desk.end.iter().any(|x| x == "search") {
+                return simple("search", 18.0, p.text, Message::Flame);
+            }
             let (bg, line, muted) = (a(p.bg2, 0.85), p.line, p.muted);
             let r = l.r(8.0);
             let face = row![look::icon("search", 14.0, muted), l.t("Search", 13.0, muted)].spacing(8).align_y(Alignment::Center);
@@ -370,6 +374,7 @@ pub fn block<'a>(s: &'a Shell, l: &Look, g: &Geom, vert: bool, id: &str) -> Opti
             Some(line(false, items, 2.0))
         }
         "quickaccess" => simple("grid", 18.0, p.text, Message::Nothing),
+        "power" => simple("power", 18.0, p.text, Message::Power),
         "showdesktop" => {
             let (txt, p3) = (p.text, p.panel3);
             let (w, h) = if vert { (side, 8.0) } else { (8.0, side) };
@@ -479,7 +484,9 @@ pub fn view(s: &Shell) -> Element<'_, Message> {
         main.push(game_mode(l, &g));
     }
     if !end.is_empty() {
-        main.push(island_v(l, &g, vert, line(vert, end, if g.shelf { 12.0 } else { 2.0 }), false));
+        // a layout's status pill: framed even in a full-width bar (GNOME-style)
+        let gp = if d.status_pill && !g.floating { Geom { floating: true, ..Geom::for_edge(l, s.compact(), vert) } } else { Geom::for_edge(l, s.compact(), vert) };
+        main.push(island_v(l, &gp, vert, line(vert, end, if g.shelf { 12.0 } else { 2.0 }), false));
     }
     if !pill_centred && !g.shelf && clock_last {
         main.push(clock(s, l, &g, vert));

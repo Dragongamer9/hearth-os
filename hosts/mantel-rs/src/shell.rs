@@ -45,6 +45,8 @@ pub enum Message {
     OverviewLaunch(String),
     OverviewApps,
     Win(u32),
+    /// the Power block: the app menu, whose foot has Sign out, Restart and Shut down (no power menu of its own yet)
+    Power,
     // menu
     Key(keyboard::Event),
     Open(usize),
@@ -125,7 +127,7 @@ fn boot() -> (Shell, Task<Message>) {
     let st = Shell {
         surfs: Vec::new(),
         bar_band: bar::band(&l, false, dk.vertical()),
-        dock_h: dock::height(&l, false),
+        dock_h: dock::height(&l, false, &dk.dock_style),
         look: l,
         wall_img: None,
         apps: apps::all(),
@@ -172,10 +174,10 @@ fn build_bars(s: &mut Shell) -> Vec<Task<Message>> {
     t.push(Task::done(Message::NewLayerShell { settings: layer(size, anchor, Layer::Top, band as i32, KeyboardInteractivity::None, "hearth-islands"), id: b }));
     if s.desk.dock {
         let d = Id::unique();
-        s.dock_h = dock::height(&s.look, c);
+        s.dock_h = dock::height(&s.look, c, &s.desk.dock_style);
         s.surfs.push((d, Surf::Dock));
         t.push(Task::done(Message::NewLayerShell {
-            settings: layer((0, s.dock_h), Anchor::Bottom | Anchor::Left | Anchor::Right, Layer::Top, dock::reserved(&s.look, c) as i32, KeyboardInteractivity::None, "hearth-dock"),
+            settings: layer((0, s.dock_h), Anchor::Bottom | Anchor::Left | Anchor::Right, Layer::Top, dock::reserved(&s.look, c, &s.desk.dock_style) as i32, KeyboardInteractivity::None, "hearth-dock"),
             id: d,
         }));
     }
@@ -236,12 +238,12 @@ fn refit(s: &mut Shell) -> Task<Message> {
             t.push(Task::done(Message::ExclusiveZoneChange { id, zone_size: band as i32 }));
         }
     }
-    let dh = dock::height(&s.look, c);
+    let dh = dock::height(&s.look, c, &s.desk.dock_style);
     if dh != s.dock_h {
         s.dock_h = dh;
         if let Some(id) = s.id_of(Surf::Dock) {
             t.push(Task::done(Message::SizeChange { id, size: (0, dh) }));
-            t.push(Task::done(Message::ExclusiveZoneChange { id, zone_size: dock::reserved(&s.look, c) as i32 }));
+            t.push(Task::done(Message::ExclusiveZoneChange { id, zone_size: dock::reserved(&s.look, c, &s.desk.dock_style) as i32 }));
         }
     }
     Task::batch(t)
@@ -339,6 +341,7 @@ fn update(s: &mut Shell, m: Message) -> Task<Message> {
             return close_overview(s);
         }
         Message::OverviewApps => return Task::batch([close_overview(s), open_menu(s)]),
+        Message::Power => return open_menu(s),
         Message::Win(id) => {
             if s.wm.wins.iter().any(|w| w.id == id && w.active && !w.minimized) {
                 wm::minimize(id);

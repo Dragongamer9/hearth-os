@@ -79,21 +79,22 @@ pub struct Geom {
 }
 
 impl Geom {
-    pub fn new(l: &Look, compact: bool) -> Geom {
+    /// `style`: a layout's dockStyle ("" the look's own, "floating", "attached").
+    pub fn new(l: &Look, compact: bool, style: &str) -> Geom {
         // Console's shelf of big tiles isn't in this test yet: it's drawn as the floating dock.
-        let attached = l.style == "bar";
+        let attached = style == "attached" || (style.is_empty() && l.style == "bar");
         let tile = if compact { 68.0 } else { 56.0 };
         Geom { attached, tile, icon: if compact { 46.0 } else { 38.0 }, body_h: if attached { tile + 8.0 } else { tile + 16.0 }, gap: if attached { 0.0 } else { 10.0 } }
     }
 }
 
 /// The dock's surface height and the space it keeps at the bottom.
-pub fn height(l: &Look, compact: bool) -> u32 {
-    let g = Geom::new(l, compact);
+pub fn height(l: &Look, compact: bool, style: &str) -> u32 {
+    let g = Geom::new(l, compact, style);
     (g.body_h + g.gap + 2.0).round() as u32
 }
-pub fn reserved(l: &Look, compact: bool) -> u32 {
-    let g = Geom::new(l, compact);
+pub fn reserved(l: &Look, compact: bool, style: &str) -> u32 {
+    let g = Geom::new(l, compact, style);
     (g.body_h + g.gap + if g.attached { 0.0 } else { 2.0 }).round() as u32
 }
 
@@ -136,7 +137,7 @@ fn dock_button<'a>(l: &Look, g: &Geom, face: Element<'a, Message>, active: bool,
 pub fn view(s: &Shell) -> Element<'_, Message> {
     let l = &s.look;
     let p = l.p;
-    let g = Geom::new(l, s.compact());
+    let g = Geom::new(l, s.compact(), &s.desk.dock_style);
 
     let mut r = row![dock_button(l, &g, look::flame(28.0), false, false, 0, Message::Flame)].spacing(8).align_y(Alignment::Center);
     let line = p.line;
@@ -206,10 +207,11 @@ mod tests {
     fn steam_style_dock_is_attached_and_hearth_floats() {
         let mut l = crate::look::get();
         l.style = "bar".into();
-        assert_eq!(height(&l, false), 66);
-        assert_eq!(reserved(&l, false), 64);
+        assert_eq!(height(&l, false, ""), 66);
+        assert_eq!(reserved(&l, false, ""), 64);
+        assert_eq!(height(&l, false, "floating"), 84, "a layout's floating dock in a bar look");
         l.style = "floating".into();
-        assert_eq!(height(&l, false), 84);
-        assert_eq!(reserved(&l, false), 84);
+        assert_eq!(height(&l, false, ""), 84);
+        assert_eq!(reserved(&l, false, ""), 84);
     }
 }

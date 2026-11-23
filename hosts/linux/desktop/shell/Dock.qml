@@ -32,7 +32,7 @@ PanelWindow {
     onReservedChanged: { claim(); refit(); }
 
     readonly property bool shelf: Theme.islandStyle === "shelf"
-    readonly property bool attached: Theme.islandStyle === "bar"
+    readonly property bool attached: Settings.dockStyle === "attached" || (Settings.dockStyle === "" && Theme.islandStyle === "bar")
     readonly property bool compact: screen && screen.width <= 1440
     readonly property int tile: shelf ? Math.round(Math.min(212, (screen ? screen.height : 1080) * 0.17)) : compact ? 68 : 56
     readonly property int iconSize: shelf ? 64 : compact ? 46 : 38

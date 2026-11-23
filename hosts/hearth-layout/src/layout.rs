@@ -31,6 +31,10 @@ pub const DESKTOP_KEYS: &[(&str, &[&str])] = &[
     // the clock: "" (the look's own: the pill in the middle, or at the end with your apps in the bar), "end" (at the
     // end, the time over the date: Plasma-, Windows 11-style), "end-one" (at the end on one line: macOS-style)
     ("clockAt", &["", "end", "end-one"]),
+    // the dock floating or attached to the edge whatever the look says ("": the look's own; macOS-style: floating)
+    ("dockStyle", &["", "floating", "attached"]),
+    // the status icons in a rounded pill even in a full-width bar (GNOME-style)
+    ("statusPill", &["", "on"]),
 ];
 
 pub const EDGES: &[&str] = &["top", "bottom", "left", "right"];

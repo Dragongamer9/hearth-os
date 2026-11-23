@@ -8,7 +8,8 @@
     "barEdge": "top",
     "dockFloat": "none",
     "barStyle": "bar",
-    "gameModeAt": "before-status"
+    "gameModeAt": "before-status",
+    "statusPill": "on"
   },
   "bar": {
     "start": [
@@ -18,7 +19,8 @@
     "end": [
       "network",
       "volume",
-      "battery"
+      "battery",
+      "power"
     ],
     "hidden": [
       "search",

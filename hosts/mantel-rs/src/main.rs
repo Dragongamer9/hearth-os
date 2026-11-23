@@ -45,7 +45,7 @@ fn check() -> i32 {
     let l = look::get();
     println!("look {} style={} dark={} accent={:?} glass={} font={:?}", l.name, l.style, l.p.dark, l.p.accent, l.glass_a, l.font);
     println!("wallpaper {:?}", wall::scene(&l));
-    println!("bar band {} · dock {} (keeps {})", bar::band(&l, false, false), dock::height(&l, false), dock::reserved(&l, false));
+    println!("bar band {} · dock {} (keeps {})", bar::band(&l, false, false), dock::height(&l, false, ""), dock::reserved(&l, false, ""));
     println!("icons {}", ["bell", "kbd", "wifi", "pad", "search", "gear"].iter().filter(|n| look::icon_handle(n, l.p.text).is_some()).count());
     let a = apps::all();
     println!("apps {}", a.len());

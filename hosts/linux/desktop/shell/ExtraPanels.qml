@@ -114,7 +114,7 @@ Scope {
 
     // ------------------------------------------------------------------ what a panel can hold
     // Desktop layouts' own blocks: LayoutBlock.qml, the same as in the main bar
-    readonly property var blocks: ["overview", "taskview", "appname", "appmenus", "quickaccess", "showdesktop"]
+    readonly property var blocks: ["overview", "taskview", "appname", "appmenus", "quickaccess", "showdesktop", "power"]
     Component {
         id: cBlock
         LayoutBlock {

@@ -74,6 +74,7 @@ pub const BLOCKS: &[Block] = &[
     b("quickaccess", "Quick Access", Both, "", false, false),
     b("showdesktop", "Show desktop", Both, "", false, false),
     b("taskview", "Task view", Both, "", false, false),
+    b("power", "Power (shut down, restart, sign out)", Both, "", false, false),
 ];
 
 pub fn find(id: &str) -> Option<&'static Block> {

@@ -159,7 +159,8 @@ var BAR_ITEMS = [
     { id: "appname", name: "The app in front, by name", icon: "window", zone: "start", extra: true },
     { id: "appmenus", name: "App menus (File, Edit…)", icon: "menu", zone: "start", extra: true },
     { id: "quickaccess", name: "Quick Access", icon: "grid", zone: "end", extra: true },
-    { id: "showdesktop", name: "Show desktop", icon: "desktops", zone: "end", extra: true }
+    { id: "showdesktop", name: "Show desktop", icon: "desktops", zone: "end", extra: true },
+    { id: "power", name: "Power (shut down, restart, sign out)", icon: "power", zone: "end", extra: true }
 ];
 function barItem(id) { for (var i = 0; i < BAR_ITEMS.length; i++) if (BAR_ITEMS[i].id === id) return BAR_ITEMS[i]; return null; }
 // The saved order ({start: [...], end: [...], hidden: [...]}, or nothing) → the full layout: every known item exactly
@@ -229,7 +230,8 @@ var PANEL_ITEMS = [
     { id: "appname", name: "The app in front, by name", icon: "window" },
     { id: "appmenus", name: "App menus (File, Edit…)", icon: "menu" },
     { id: "quickaccess", name: "Quick Access", icon: "grid" },
-    { id: "showdesktop", name: "Show desktop", icon: "desktops" }
+    { id: "showdesktop", name: "Show desktop", icon: "desktops" },
+    { id: "power", name: "Power (shut down, restart, sign out)", icon: "power" }
 ];
 function panelItem(id) { for (var i = 0; i < PANEL_ITEMS.length; i++) if (PANEL_ITEMS[i].id === id) return PANEL_ITEMS[i]; return null; }
 var EDGES = ["top", "bottom", "left", "right"];

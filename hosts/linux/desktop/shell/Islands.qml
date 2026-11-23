@@ -325,6 +325,7 @@ PanelWindow {
                 Island {
                     id: statusIsland
                     lit: isl.quickOpen
+                    pill: Settings.statusPill === "on"
                     along: (isl.vertical ? statusRow.implicitHeight : statusRow.implicitWidth) + (isl.floating ? 16 : 4)
                     MouseArea { anchors.fill: parent; onClicked: isl.quickRequested() }   // the island's gaps open Quick settings too
                     GridLayout {
@@ -487,6 +488,7 @@ PanelWindow {
         case "appmenus": return cBlock;
         case "quickaccess": return cBlock;
         case "showdesktop": return cBlock;
+        case "power": return cBlock;
         }
         return null;
     }
@@ -558,13 +560,16 @@ PanelWindow {
             objectName: "menuSearchField"
             // the Tiles menu's field; with a desktop layout that put Search in the bar, every menu's (Windows 11-style)
             readonly property bool wanted: isl.menuSearchShown || (Settings.layout !== "" && !isl.vertical && !isl.shelf && !isl.compact)
-            implicitWidth: 300; implicitHeight: Math.max(26, isl.islandH - 14)
+            // at the end of the bar (macOS-style) only its magnifier
+            readonly property bool iconOnly: (BarLayout.layout.end || []).indexOf("search") >= 0
+            implicitWidth: iconOnly ? Math.max(26, isl.islandH - 12) : 300; implicitHeight: Math.max(26, isl.islandH - 14)
             radius: Theme.r(8)
-            color: msa.containsMouse ? Theme.panel3 : Qt.rgba(Theme.bg2.r, Theme.bg2.g, Theme.bg2.b, 0.85)
-            border.width: isl.menuQuery !== "" ? 2 : 1
+            color: msa.containsMouse ? Theme.panel3 : iconOnly ? "transparent" : Qt.rgba(Theme.bg2.r, Theme.bg2.g, Theme.bg2.b, 0.85)
+            border.width: iconOnly ? 0 : isl.menuQuery !== "" ? 2 : 1
             border.color: isl.menuQuery !== "" ? Theme.accent : Theme.line
-            Icon { x: 12; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 15; color: Theme.muted }
+            Icon { x: parent.iconOnly ? (parent.width - width) / 2 : 12; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: parent.iconOnly ? 18 : 15; color: parent.iconOnly ? Theme.text : Theme.muted }
             Text {
+                visible: !parent.iconOnly
                 anchors { left: parent.left; right: parent.right; leftMargin: 36; rightMargin: 10; verticalCenter: parent.verticalCenter }
                 text: isl.menuQuery !== "" ? isl.menuQuery : "Type to search"
                 color: isl.menuQuery !== "" ? Theme.text : Theme.muted
@@ -881,11 +886,12 @@ PanelWindow {
         property bool lit: false
         property real along: 0
         property real rad: isl.gaming ? 0 : Theme.r(isl.islandH / 2.4)
+        property bool pill: false              // framed even in a full-width bar (a layout's status pill)
         Layout.fillHeight: !isl.vertical
         Layout.fillWidth: isl.vertical
         Layout.preferredWidth: isl.vertical ? (isl.islandH || 52) : along
         Layout.preferredHeight: isl.vertical ? along : (isl.islandH || 52)
-        Frame { anchors.fill: parent; flat: !isl.floating; lit: parent.lit; rad: parent.rad }
+        Frame { anchors.fill: parent; flat: !isl.floating && !parent.pill; lit: parent.lit; rad: parent.pill && !isl.floating ? Theme.r(height / 2) : parent.rad }
     }
 
     // Back to Game Mode: dressed per look, hidden only while Game Mode is off on this PC (Settings › System › Startup).

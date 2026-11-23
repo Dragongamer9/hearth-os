@@ -7,7 +7,8 @@
     "barStyle": "bar",
     "dockFloat": "on",
     "gameModeAt": "before-status",
-    "clockAt": "end-one"
+    "clockAt": "end-one",
+    "dockStyle": "floating"
   },
   "bar": {
     "start": [
@@ -19,8 +20,7 @@
       "battery",
       "network",
       "search",
-      "quickaccess",
-      "notifications"
+      "quickaccess"
     ],
     "hidden": [
       "desktops",
