@@ -44,17 +44,17 @@ impl Idea {
         Idea { format: 1, part: part.into(), asked: clean(asked), needs, closest, sketch, hearth: hearth.into(), app: app.into() }
     }
 
-    /// Exactly what will be sent, in words (the "What's sent" box).
+    /// Exactly what will be sent, in words (board 9's "Send it as an idea · exactly what goes"). The rest of the
+    /// idea (what it needs, the closest recipe) is Hearth's own words about it, nothing of yours.
     pub fn preview(&self) -> String {
-        let mut t = format!("Asked in: {}\nAsked for: {}\n", self.part, self.asked);
-        if !self.needs.is_empty() {
-            t += &format!("Needs new work: {}\n", self.needs.join("; "));
-        }
-        if let Some(c) = &self.closest {
-            t += &format!("Closest Hearth could make: {}\n", crate::feature::describe(c));
-        }
-        t += &format!("Sketch: {}\nHearth OS {} · {} {}\n", if self.sketch { "yes" } else { "no" }, self.hearth, self.part, self.app);
-        t + "Nothing else is sent: no name, account, files or device details."
+        format!(
+            "Idea for: {}\nAsked: \"{}\"\nHearth OS {}{}\nSketch: {}\nNo name, no files, no account, nothing else.",
+            crate::feature::part_label(&self.part),
+            self.asked,
+            if self.hearth.is_empty() { "?" } else { self.hearth.as_str() },
+            if self.app.is_empty() { String::new() } else { format!(" · {}", self.app) },
+            if self.sketch { "yes" } else { "none" }
+        )
     }
 
     pub fn to_json(&self) -> String {
@@ -77,9 +77,8 @@ mod tests {
 
     #[test]
     fn the_preview_is_what_is_sent() {
-        let i = Idea::new("calendar", "Show moon phases", vec!["showing \"moon-phase\"".into()], None, true, "1.17", "1.17.1");
-        let p = i.preview();
-        assert!(p.contains("Show moon phases") && p.contains("moon-phase") && p.contains("Sketch: yes") && p.contains("Hearth OS 1.17"));
+        let i = Idea::new("quickaccess", "Add a button that records the last 30 seconds", vec!["keeping the last moments".into()], None, false, "1.17", "Mantel in Rust 1.17.1");
+        assert_eq!(i.preview(), "Idea for: Quick Access (Mantel)\nAsked: \"Add a button that records the last 30 seconds\"\nHearth OS 1.17 · Mantel in Rust 1.17.1\nSketch: none\nNo name, no files, no account, nothing else.");
         let back: Idea = serde_json::from_str(&i.to_json()).unwrap();
         assert_eq!(back, i);
     }

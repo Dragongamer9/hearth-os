@@ -210,3 +210,76 @@ mod tests {
         assert!(check(&base(r#"{"action":"open-url","target":"https://hearthos.fun"}"#)).usable());
     }
 }
+
+/// Your features (Keep this): one file each in ~/.config/nimbus/features, with "on" (Settings › Your features turns
+/// one off). Saved through settings_file (atomic, .bak).
+pub fn keep(f: &Feature) -> Result<std::path::PathBuf, String> {
+    let c = check(f);
+    if !c.usable() {
+        return Err(c.problems.into_iter().chain(c.needs.into_iter().map(|n| format!("needs {n}"))).collect::<Vec<_>>().join(" "));
+    }
+    let dir = crate::paths::features_dir();
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let p = dir.join(format!("{}.json", f.id));
+    let mut v = serde_json::to_value(f).map_err(|e| e.to_string())?;
+    v["on"] = serde_json::json!(true);
+    crate::settings_file::write_json(&p, &v).map_err(|e| e.to_string())?;
+    Ok(p)
+}
+
+/// Every feature you kept (with "on"), checked again; files that can't be used are left out.
+pub fn yours() -> Vec<(Feature, bool)> {
+    let mut v = Vec::new();
+    let mut files: Vec<std::path::PathBuf> = std::fs::read_dir(crate::paths::features_dir()).map(|r| r.flatten().map(|e| e.path()).collect()).unwrap_or_default();
+    files.sort();
+    for f in files {
+        if f.extension().and_then(|x| x.to_str()) != Some("json") {
+            continue;
+        }
+        let j = crate::settings_file::read_json(&f);
+        let on = j.get("on").and_then(serde_json::Value::as_bool) != Some(false);
+        if let Ok(ft) = serde_json::from_value::<Feature>(j) {
+            if check(&ft).usable() {
+                v.push((ft, on));
+            }
+        }
+    }
+    v
+}
+
+/// Turns one of your features on or off (only its "on"; the rest of its file stays).
+pub fn set_on(id: &str, on: bool) -> Result<(), String> {
+    if !crate::is_slug(id) {
+        return Err("That isn't one of your features.".into());
+    }
+    let p = crate::paths::features_dir().join(format!("{id}.json"));
+    if !p.exists() {
+        return Err("That isn't one of your features.".into());
+    }
+    crate::settings_file::update_json(&p, |m| {
+        m.insert("on".into(), serde_json::json!(on));
+    })
+    .map(|_| ())
+    .map_err(|e| e.to_string())
+}
+
+/// A part's name as people see it (an idea's "Idea for:").
+pub fn part_label(part: &str) -> String {
+    match part {
+        "bar" => "The bar (Mantel)".into(),
+        "panel" => "A panel (Mantel)".into(),
+        "dock" => "The dock (Mantel)".into(),
+        "menu" => "The app menu (Mantel)".into(),
+        "quickaccess" => "Quick Access (Mantel)".into(),
+        "calendar" => "The clock's calendar (Mantel)".into(),
+        "notifications" => "Notifications (Mantel)".into(),
+        "desktop" => "The desktop (Mantel)".into(),
+        "lockscreen" => "The lock screen (Mantel)".into(),
+        "files" => "Hearth Files".into(),
+        "settings" => "Hearth Settings".into(),
+        "store" => "Hearth Store".into(),
+        "music" => "Hearth Music".into(),
+        "monitor" => "Resource Monitor".into(),
+        x => x.chars().take(40).collect(),
+    }
+}

@@ -35,7 +35,7 @@ run_one() {
 <labwc_config><theme><titlebar><layout>$tb</layout></titlebar></theme><desktops number="4"><names><name>1</name><name>2</name><name>3</name><name>4</name></names></desktops></labwc_config>
 XML
   if [ "$which" = qml ]; then
-    printf 'quickshell -p %s >%s/shell.log 2>&1 &\n' "$SH" "$XDG_RUNTIME_DIR" >/tmp/rc-$id/autostart
+    printf 'HEARTH_DESCRIBE_FAKE=/tmp/describe-answer.json quickshell -p %s >%s/shell.log 2>&1 &\n' "$SH" "$XDG_RUNTIME_DIR" >/tmp/rc-$id/autostart
   else
     printf 'hearth-mantel session >%s/shell.log 2>&1 &\n' "$XDG_RUNTIME_DIR" >/tmp/rc-$id/autostart
   fi
@@ -53,6 +53,15 @@ XML
   if [ "$id" = gnome ]; then
     if [ "$which" = qml ]; then ipc overview toggle; else hearth-mantel overview; fi; sleep 4; shot "$which-$id-3-overview"
     if [ "$which" = qml ]; then ipc overview toggle; else hearth-mantel overview; fi; sleep 1
+  fi
+  # Describe it (QML Mantel): a layout, a new feature and something that needs new work, with the AI's answers
+  # given here (HEARTH_DESCRIBE_FAKE: the AI isn't in CI)
+  if [ "$which" = qml ] && [ "$id" = plasma ]; then
+    for k in layout feature needs; do
+      cp "$PWD/.github/scripts/describe-$k.json" /tmp/describe-answer.json
+      timeout 20 quickshell ipc -p "$SH" call describe ask "$( [ $k = needs ] && echo quickaccess || echo bar )" "$(python3 -c "import json;print(json.load(open('/tmp/describe-answer.json'))['_asked'])")" >/dev/null 2>&1
+      sleep 6; shot "$which-describe-$k"; timeout 20 quickshell ipc -p "$SH" call describe close >/dev/null 2>&1; sleep 1
+    done
   fi
   [ "$which" = rust ] && { pgrep -f 'hearth-mantel session' >/dev/null || err "$id: Mantel in Rust isn't running: $(grep -v MESA "$XDG_RUNTIME_DIR/shell.log" | tail -c 700 | tr '\n' ' ')"; }
   # undo puts back what was there (the look stays), then the layout again
@@ -75,7 +84,8 @@ from PIL import Image, ImageDraw
 o, m = sys.argv[1:3]
 mock = {'plasma-1-desktop': 'layouts-1-plasma-style.png', 'gnome-1-desktop': 'layouts-2-gnome-style.png',
         'gnome-3-overview': 'layouts-3-gnome-style-overview.png', 'windows11-2-menu': 'layouts-4-windows-11-style.png',
-        'macos-1-desktop': 'layouts-5-macos-style.png'}
+        'macos-1-desktop': 'layouts-5-macos-style.png', 'describe-layout': 'layouts-7-describe-it.png',
+        'describe-feature': 'layouts-8-describe-it-new-feature.png', 'describe-needs': 'layouts-9-describe-it-send-idea.png'}
 W, H = 1280, 720
 names = sorted({f[4:-4] if f.startswith('qml-') else f[5:-4] for f in os.listdir(o) if f.endswith('.png') and (f.startswith('qml-') or f.startswith('rust-'))})
 for name in names:

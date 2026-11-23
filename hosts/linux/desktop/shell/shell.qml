@@ -190,6 +190,24 @@ ShellRoot {
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the overview couldn't load (Overview.qml)")
         function toggle() { if (!active) active = true; else if (item) item.toggle(); }
     }
+    // Describe it (DescribeIt.qml, loaded the first time it's asked for)
+    Loader {
+        id: describe
+        active: false
+        source: "DescribeIt.qml"
+        property string pending: "bar"
+        property string ask: ""
+        onLoaded: { item.open(pending); if (ask !== "") { item.text = ask; ask = ""; item.make(); } }
+        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Describe it couldn't load (DescribeIt.qml)")
+        function openAt(p) { pending = p || "bar"; if (!active) active = true; else if (item) item.open(pending); }
+    }
+    IpcHandler {
+        target: "describe"
+        function open(part: string): void { describe.openAt(part); }
+        // For checks and for apps that open it with words already typed: opens at PART and asks your AI.
+        function ask(part: string, text: string): void { if (describe.item) { describe.openAt(part); describe.item.text = text; describe.item.make(); } else { describe.ask = text; describe.openAt(part); } }
+        function close(): void { if (describe.item) describe.item.close(); }
+    }
     IpcHandler {
         target: "overview"
         function toggle(): void { overview.toggle(); }

@@ -11,6 +11,10 @@
 //!   hearth-layout now --json         today's desktop as a layout (the editor starts from it when none is in place)
 //!   hearth-layout apply-json JSON    put this layout in place (the editor's changes, as you make them)
 //!   hearth-layout check-json JSON    {"ok": bool, "problems": [...], "coming": [...]}
+//!   hearth-layout describe PART TEXT [SKETCH]   Describe it: your AI's suggestion, checked (JSON; nothing is put in place)
+//!   hearth-layout keep-feature JSON  keep a new feature (Keep this)
+//!   hearth-layout features           your features (JSON) · feature-on ID true|false
+//!   hearth-layout send-idea JSON     send an idea to Hearth's makers (only on Send; exactly the idea shown)
 //! After apply and undo the window buttons are put on (hearth-system window-buttons: labwc or KWin).
 
 use hearth_layout::{apply, feature, layout};
@@ -48,6 +52,52 @@ fn main() {
                 0
             }
             Err(e) => fail(&e),
+        },
+        "describe" => {
+            let sketch = args.get(3).filter(|s| !s.is_empty()).map(std::path::PathBuf::from);
+            let current = if arg(1) == "bar" || arg(1) == "panel" || arg(1) == "desktop" {
+                serde_json::to_value(apply::today("mine", "Your desktop")).unwrap_or_default()
+            } else {
+                serde_json::Value::Null
+            };
+            let r = hearth_layout::describe::describe(&arg(1), &arg(2), sketch.as_deref(), &current);
+            println!("{r}");
+            if r["ok"] == true { 0 } else { 1 }
+        }
+        "keep-feature" => match feature::parse(&arg(1)).and_then(|f| feature::keep(&f)) {
+            Ok(p) => {
+                println!("Kept: {}", p.display());
+                0
+            }
+            Err(e) => fail(&e),
+        },
+        "features" => {
+            let v: Vec<serde_json::Value> = feature::yours().into_iter().map(|(f, on)| serde_json::json!({ "feature": f, "on": on, "described": feature::describe(&f) })).collect();
+            println!("{}", serde_json::to_string(&v).unwrap());
+            0
+        }
+        "feature-on" => match feature::set_on(&arg(1), arg(2) == "true") {
+            Ok(()) => 0,
+            Err(e) => fail(&e),
+        },
+        "send-idea" => match serde_json::from_str::<hearth_layout::idea::Idea>(&arg(1)) {
+            // cleaned again here: whatever comes in, only what idea.rs keeps goes out
+            Ok(i) => {
+                let i = hearth_layout::idea::Idea::new(&i.part, &i.asked, i.needs.clone(), i.closest.clone(), i.sketch, &i.hearth, &i.app);
+                let url = std::env::var("HEARTH_IDEAS_URL").unwrap_or_else(|_| "https://hearth-counter.game305-cl.workers.dev/v1/idea".into());
+                let out = std::process::Command::new("curl")
+                    .args(["-sS", "-m", "30", "-H", "Content-Type: application/json", "--data-binary", &i.to_json(), &url])
+                    .output();
+                match out {
+                    Ok(o) if o.status.success() && String::from_utf8_lossy(&o.stdout).contains("\"key\"") => {
+                        println!("{}", String::from_utf8_lossy(&o.stdout).trim());
+                        0
+                    }
+                    Ok(o) => fail(&format!("It couldn't be sent ({}{}). Nothing else was sent.", String::from_utf8_lossy(&o.stdout).trim(), String::from_utf8_lossy(&o.stderr).trim())),
+                    Err(e) => fail(&format!("It couldn't be sent ({e}).")),
+                }
+            }
+            Err(e) => fail(&format!("That isn't an idea ({e}).")),
         },
         "blocks" => {
             let v: Vec<serde_json::Value> = hearth_layout::blocks::BLOCKS

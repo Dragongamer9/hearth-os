@@ -222,6 +222,8 @@ PanelWindow {
                 onClicked: mouse => isl.statusMenu(inner, "The bar", [
                     { label: "Arrange the bar…", icon: "grid", run: () => BarLayout.arranging = true },
                     { label: "Add a panel…", icon: "plus", run: () => { BarLayout.arranging = true; BarLayout.arrangeTab = "panels"; } },
+                    { label: "Describe it…", icon: "sparkle", run: () => Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "describe", "open", "bar"]) },
+                    { label: "Desktop layout…", icon: "desktops", run: () => isl.settingsRequested("desktop-layout") },
                     { label: "Bar and dock settings", icon: "gear", run: () => isl.settingsRequested("bar-dock") }
                 ])
             }
@@ -395,6 +397,8 @@ PanelWindow {
                     id: pillRow
                     anchors.centerIn: parent
                     spacing: 12
+                    // your features in the bar (Describe it: Features.qml)
+                    Repeater { model: Features.inPart("bar"); FeaturePill { required property var modelData; feature: modelData; side: isl.islandH - 16 } }
                     // the newest notification, for a few seconds
                     RowLayout {
                         visible: isl.flash !== null

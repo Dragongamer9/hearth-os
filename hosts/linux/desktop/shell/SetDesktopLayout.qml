@@ -180,6 +180,7 @@ SetPage {
                 SetButton { icon: "share"; text: "Share…"; onActivated: page.share() }
                 SetButton { text: "Open a layout file…"; onActivated: openFile.running = true }
                 SetButton { visible: page.baseId !== "" && !!page.draft && /-mine$/.test(page.draft.id); text: "Back to " + page.baseName(); onActivated: page.use(page.baseId) }
+                SetButton { icon: "sparkle"; text: "Describe it…"; onActivated: Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "describe", "open", "bar"]) }
                 SetButton { primary: true; text: "Save as my own…"; onActivated: { page.naming = true; nameField.forceActiveFocus(); } }
             }
             RowLayout {

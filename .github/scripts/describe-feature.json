@@ -1,0 +1,4 @@
+{"_asked": "Show my GPU temperature in the bar. Clicking it should open Task Manager.",
+ "kind": "feature", "changes": ["A GPU temperature pill in the bar"],
+ "feature": {"format": 1, "id": "gpu-glance", "name": "GPU at a glance", "part": "bar", "shows": [{"source": "gpu-temp", "label": "GPU"}], "every": 30,
+             "click": {"action": "open-app", "target": "hearth-tasks"}}}

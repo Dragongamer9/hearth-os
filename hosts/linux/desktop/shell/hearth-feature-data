@@ -1,0 +1,133 @@
+#!/usr/bin/python3
+"""hearth-feature-data: what your features show (hosts/hearth-layout feature.rs SOURCES), read only while a feature is
+on the screen, for both Mantels. Reads the system as it is; changes nothing.
+
+  hearth-feature-data SOURCE...     JSON: {"<source>": "<short text>", ...}; "" for what isn't there here
+
+time, date, battery, volume, network, bluetooth, cpu, memory, gpu-temp, cpu-temp, disk-free, now-playing,
+game-running, updates, downloads, weather, link-device, text.
+"""
+import glob
+import json
+import os
+import shutil
+import subprocess
+import sys
+import time
+
+
+def run(cmd, timeout=3):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, timeout=timeout).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return ''
+
+
+def read(path):
+    try:
+        with open(path) as f:
+            return f.read().strip()
+    except OSError:
+        return ''
+
+
+def battery():
+    for b in glob.glob('/sys/class/power_supply/BAT*'):
+        c = read(b + '/capacity')
+        if c:
+            return c + '%' + (' ⚡' if read(b + '/status') == 'Charging' else '')
+    return ''
+
+
+def cpu():
+    def snap():
+        f = read('/proc/stat').split('\n')[0].split()[1:]
+        v = [int(x) for x in f] if f else [0]
+        return sum(v), v[3] + (v[4] if len(v) > 4 else 0)
+    t0, i0 = snap()
+    time.sleep(0.25)
+    t1, i1 = snap()
+    return '%d%%' % round(100 * (1 - (i1 - i0) / max(1, t1 - t0)))
+
+
+def memory():
+    m = {}
+    for line in read('/proc/meminfo').split('\n'):
+        k, _, v = line.partition(':')
+        if v:
+            m[k] = int(v.split()[0])
+    if not m.get('MemTotal'):
+        return ''
+    return '%d%%' % round(100 * (1 - m.get('MemAvailable', 0) / m['MemTotal']))
+
+
+def temp_of(pattern):
+    best = None
+    for h in glob.glob('/sys/class/hwmon/hwmon*'):
+        if read(h + '/name') in pattern:
+            v = read(h + '/temp1_input')
+            if v.isdigit():
+                best = max(best or 0, int(v) // 1000)
+    return '%d°' % best if best is not None else ''
+
+
+def gpu_temp():
+    t = run(['nvidia-smi', '--query-gpu=temperature.gpu', '--format=csv,noheader,nounits']) if shutil.which('nvidia-smi') else ''
+    return (t.split('\n')[0] + '°') if t else temp_of(('amdgpu', 'nouveau', 'i915', 'xe'))
+
+
+def volume():
+    out = run(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@'])
+    if not out:
+        return ''
+    try:
+        v = round(float(out.split()[1]) * 100)
+    except (IndexError, ValueError):
+        return ''
+    return 'muted' if 'MUTED' in out else '%d%%' % v
+
+
+def network():
+    out = run(['nmcli', '-t', '-f', 'TYPE,STATE,CONNECTION', 'device'])
+    for line in out.split('\n'):
+        p = line.split(':')
+        if len(p) >= 3 and p[1] == 'connected':
+            return p[2]
+    return 'offline' if out else ''
+
+
+SOURCES = {
+    'time': lambda: time.strftime('%-I:%M %p'),
+    'date': lambda: time.strftime('%a %-d %b'),
+    'battery': battery,
+    'volume': volume,
+    'network': network,
+    'bluetooth': lambda: 'on' if 'Powered: yes' in run(['bluetoothctl', 'show']) else 'off',
+    'cpu': cpu,
+    'memory': memory,
+    'gpu-temp': gpu_temp,
+    'cpu-temp': lambda: temp_of(('k10temp', 'coretemp', 'zenpower', 'cpu_thermal')),
+    'disk-free': lambda: '%d GB free' % (shutil.disk_usage(os.path.expanduser('~')).free // 10**9),
+    'now-playing': lambda: run(['playerctl', 'metadata', '--format', '{{title}} · {{artist}}']),
+    'game-running': lambda: '',
+    'updates': lambda: '',
+    'downloads': lambda: '',
+    'weather': lambda: '',
+    'link-device': lambda: '',
+    'text': lambda: '',
+}
+
+
+def main(argv):
+    out = {}
+    for s in argv[:8]:
+        f = SOURCES.get(s)
+        try:
+            out[s] = f() if f else ''
+        except Exception:  # one source that can't be read never stops the others
+            out[s] = ''
+    print(json.dumps(out))
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
