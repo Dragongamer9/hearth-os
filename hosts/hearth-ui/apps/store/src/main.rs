@@ -174,6 +174,10 @@ pub enum Msg {
     /// Apps' filter pills, Library's Apps / Hearth parts / Tests (store-win11)
     Filter(String),
     LibTab(String),
+    /// Settings › Where apps go › Change…: pick a folder, then every app moves there.
+    AppsDir,
+    AppsDirPicked(Option<std::path::PathBuf>),
+    AppsDirMoved(Result<String, String>),
 }
 
 pub struct App {
@@ -203,6 +207,8 @@ pub struct App {
     pub now: i64,
     /// Pictures on this PC (cache): url → its picture.
     pub pics: BTreeMap<String, image::Handle>,
+    /// The apps are being moved to another folder (Settings › Where apps go).
+    pub moving: bool,
     /// Built-in apps that are here (their program exists).
     pub here: BTreeSet<String>,
     /// Update all is going through the updates one after another.
@@ -288,6 +294,7 @@ impl App {
             edition,
             now: files::now(),
             pics: BTreeMap::new(),
+            moving: false,
             here,
             all: false,
             parts: BTreeMap::new(),
@@ -728,6 +735,9 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             }
         }
         Msg::Start(id, kind) => {
+            if a.moving {
+                return Task::none();
+            }
             if a.prefs.metered {
                 return a.start(&id, kind);
             }
@@ -1084,6 +1094,28 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             }
         }
         Msg::TryAgain => return a.check_now(),
+        Msg::AppsDir => {
+            if a.job.is_some() || !a.part_busy.is_empty() || a.moving {
+                a.say("Wait for the install or update to finish, then move your apps.", true);
+                return Task::none();
+            }
+            return Task::perform(net::off(files::pick_folder), |r| Msg::AppsDirPicked(r.flatten()));
+        }
+        Msg::AppsDirPicked(Some(dir)) => {
+            a.moving = true;
+            a.say(format!("Moving your apps to {}…", paths::tilde(&dir)), false);
+            let apps = a.cat.apps.clone();
+            return Task::perform(net::off(move || files::move_apps(&apps, &dir)), |r| Msg::AppsDirMoved(r.unwrap_or_else(|| Err("The move stopped; everything is where it was.".into()))));
+        }
+        Msg::AppsDirPicked(None) => {}
+        Msg::AppsDirMoved(r) => {
+            a.moving = false;
+            match r {
+                Ok(s) => a.say(s, false),
+                Err(s) => a.say(s, true),
+            }
+            a.read_installed();
+        }
         Msg::Checked(s, refreshed) => {
             a.checking = false;
             a.seen = *s;

@@ -38,6 +38,9 @@ pub fn load() -> Prefs {
         settings_file::Read::Unreadable => Prefs { unreadable: true, ..d },
         r => {
             let m = r.map().unwrap_or_default();
+            // Where apps go (Settings › Where apps go › Change…): only a folder in the home folder that's there.
+            let at = m.get("appsDir").and_then(Value::as_str).map(std::path::PathBuf::from).filter(|p| p.is_absolute() && p.starts_with(hearth_ui::paths::home()) && p.is_dir());
+            crate::paths::set_apps(at);
             Prefs { daily: b(&m, "daily", d.daily), notify: b(&m, "notify", d.notify), metered: b(&m, "metered", d.metered), test: b(&m, "testVersions", d.test), auto: b(&m, "autoInstall", d.auto), unreadable: false }
         }
     }
@@ -58,6 +61,18 @@ pub fn set(key: &str, on: bool) -> Result<Prefs, String> {
     m.insert(k.to_string(), Value::Bool(on));
     settings_file::merge_json(&crate::paths::prefs(), &m).map_err(|e| format!("Couldn't save it: {e}"))?;
     Ok(load())
+}
+
+/// Where apps go, changed by the person (files::move_apps, once every app is in its new folder): merged into the file.
+pub fn set_apps_dir(dir: &std::path::Path) -> Result<(), String> {
+    if load().unreadable {
+        return Err("The Store's settings file couldn't be read, so nothing was written over it.".into());
+    }
+    let mut m = Map::new();
+    m.insert("appsDir".to_string(), Value::String(dir.display().to_string()));
+    settings_file::merge_json(&crate::paths::prefs(), &m).map_err(|e| format!("Couldn't save it: {e}"))?;
+    crate::paths::set_apps(Some(dir.to_path_buf()));
+    Ok(())
 }
 
 #[cfg(test)]

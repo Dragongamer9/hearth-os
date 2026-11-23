@@ -17,9 +17,25 @@ pub fn cache_home() -> PathBuf {
     xdg("XDG_CACHE_HOME", ".cache")
 }
 
-/// ~/.local/share/hearth/store/apps: one folder per app (its AppImage and store.json, what the Store put there).
-pub fn apps() -> PathBuf {
+/// Where the person moved the Store's apps (Settings › Where apps go › Change…), read from the Store's settings by
+/// prefs::load; None: the usual place.
+static APPS_AT: std::sync::RwLock<Option<PathBuf>> = std::sync::RwLock::new(None);
+
+pub fn set_apps(p: Option<PathBuf>) {
+    if let Ok(mut g) = APPS_AT.write() {
+        *g = p;
+    }
+}
+
+/// ~/.local/share/hearth/store/apps: where apps go unless the person picked another folder.
+pub fn default_apps() -> PathBuf {
     data().join("hearth/store/apps")
+}
+
+/// One folder per app (its AppImage and store.json, what the Store put there): the folder picked in Settings, else
+/// ~/.local/share/hearth/store/apps.
+pub fn apps() -> PathBuf {
+    APPS_AT.read().ok().and_then(|g| g.clone()).unwrap_or_else(default_apps)
 }
 pub fn app_dir(id: &str) -> PathBuf {
     apps().join(id)

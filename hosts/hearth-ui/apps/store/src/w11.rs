@@ -864,7 +864,7 @@ pub fn settings(a: &App) -> E<'_, Msg> {
     };
     let trusted: E<Msg> = if a.cat.source == "hearthos.fun" || a.cat.serial > 0 { chip(&p, "Trusted", Chip::Ok) } else { Space::new().into() };
     let more = group(a, "More", vec![
-        srow_w11(a, G::Folder, "Where apps go", format!("{} (your home folder: no password, nothing system-wide)", hearth_store::paths::tilde(&hearth_store::paths::apps())), btn(&p, "Change…", B::Normal, false, false, Some(Msg::OpenFolder)), None),
+        srow_w11(a, G::Folder, "Where apps go", format!("{} (your home folder: no password, nothing system-wide)", hearth_store::paths::tilde(&hearth_store::paths::apps())), btn(&p, if a.moving { "Moving…" } else { "Change…" }, B::Normal, false, false, (!a.moving).then_some(Msg::AppsDir)), None),
         srow_w11(a, G::Shield, "The app list", signed, trusted, None),
         srow_w11(a, G::Gear, "About Hearth Store", format!("{} · This PC: {}", store_version(a), view::this_pc_pub(a)), Space::new().into(), None),
     ]);
