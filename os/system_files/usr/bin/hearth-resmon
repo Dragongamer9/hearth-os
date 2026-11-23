@@ -3,6 +3,8 @@
 # docs/RESOURCE-MONITOR.md. The Run box and Super+X can call this name; `hearth-resmon TAB` opens a tab
 # (pc overview cpu memory disk network gpu). Anything else goes to the helper (hearth-resmon pc, sample…).
 SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+# the Mantel that\'s running (a quick update runs from your home folder; hearth-mantel-ipc)
+_m=$(head -c 4096 "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hearth-mantel-shell" 2>/dev/null); [ -n "$_m" ] && [ -f "$_m/shell.qml" ] && SHELL_DIR="$_m"
 case "${1:-}" in
   ""|pc|overview|cpu|memory|disk|network|gpu)
     if [ -n "${1:-}" ]; then set -- tab "$1"; else set -- open; fi

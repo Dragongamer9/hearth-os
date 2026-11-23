@@ -4,6 +4,8 @@
 #   hearth-capture MODE       straight to taking one: area | window | screen | all
 #   hearth-capture --recent   the recent screenshots
 SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+# the Mantel that\'s running (a quick update runs from your home folder; hearth-mantel-ipc)
+_m=$(head -c 4096 "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hearth-mantel-shell" 2>/dev/null); [ -n "$_m" ] && [ -f "$_m/shell.qml" ] && SHELL_DIR="$_m"
 case "$1" in
   "")        set -- open ;;
   --recent)  set -- recent ;;

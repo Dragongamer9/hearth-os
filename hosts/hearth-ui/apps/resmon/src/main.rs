@@ -651,7 +651,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         }
         Msg::OpenTm => {
             // The Fedora edition's Task Manager is hearth-task-manager (pure Rust); Mantel's is hearth-tasks open.
-            run::detached(&["sh", "-c", "command -v hearth-task-manager >/dev/null 2>&1 && exec hearth-task-manager; exec quickshell ipc -p /usr/share/nimbus/desktop/shell call tasks open"]);
+            run::detached(&["sh", "-c", "command -v hearth-task-manager >/dev/null 2>&1 && exec hearth-task-manager; command -v hearth-mantel-ipc >/dev/null 2>&1 && exec hearth-mantel-ipc call tasks open; exec quickshell ipc -p /usr/share/nimbus/desktop/shell call tasks open"]);
         }
         Msg::Out(kind, o) => {
             a.busy.remove(kind);
