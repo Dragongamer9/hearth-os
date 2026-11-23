@@ -1,0 +1,91 @@
+{
+ "said": "A starship cockpit: a big clock in the middle, my last game and my apps on glowing panels",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "bars": "",
+ "background": {
+  "kind": "gradient",
+  "from": "#062a33",
+  "to": "#02080c"
+ },
+ "look": {
+  "accent": "#4fd1e8",
+  "text": "#bff4ff"
+ },
+ "blocks": [
+  {
+   "id": "clock",
+   "block": "clock",
+   "x": 8,
+   "y": 1,
+   "w": 8,
+   "h": 2,
+   "style": {
+    "size": 64,
+    "weight": 300
+   }
+  },
+  {
+   "id": "hero",
+   "block": "hero",
+   "x": 1,
+   "y": 4,
+   "w": 9,
+   "h": 5,
+   "style": {
+    "corners": 2,
+    "colour": "#0b3a44",
+    "focus": "glow"
+   }
+  },
+  {
+   "id": "apps",
+   "block": "tilerow",
+   "x": 11,
+   "y": 4,
+   "w": 12,
+   "h": 5,
+   "items": [
+    {
+     "glyph": "🎮",
+     "label": "Games",
+     "action": "games"
+    },
+    {
+     "glyph": "🛒",
+     "label": "Hearth Store",
+     "action": "store"
+    },
+    {
+     "glyph": "📁",
+     "label": "Files",
+     "action": "files"
+    },
+    {
+     "glyph": "🌐",
+     "label": "Browser",
+     "action": "browser"
+    }
+   ],
+   "style": {
+    "corners": 2,
+    "colour": "#0b3a44",
+    "focus": "outline"
+   }
+  },
+  {
+   "id": "media",
+   "block": "media",
+   "x": 1,
+   "y": 10,
+   "w": 9,
+   "h": 2,
+   "style": {
+    "corners": 2,
+    "colour": "#0b3a44"
+   }
+  }
+ ]
+}

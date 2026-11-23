@@ -1,0 +1,87 @@
+{
+ "said": "A paper notebook: cream paper, dark ink, my apps as a list of notes",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "bars": "",
+ "background": {
+  "kind": "colour",
+  "from": "#efe6cf"
+ },
+ "look": {
+  "accent": "#3b5bdb",
+  "text": "#2b2b2b",
+  "font": "Noto Serif"
+ },
+ "blocks": [
+  {
+   "id": "title",
+   "block": "text",
+   "x": 1,
+   "y": 1,
+   "w": 12,
+   "h": 2,
+   "value": "Today",
+   "style": {
+    "size": 44
+   }
+  },
+  {
+   "id": "clock",
+   "block": "clock",
+   "x": 18,
+   "y": 1,
+   "w": 5,
+   "h": 1
+  },
+  {
+   "id": "apps",
+   "block": "tilerow",
+   "x": 1,
+   "y": 4,
+   "w": 20,
+   "h": 3,
+   "items": [
+    {
+     "glyph": "🎮",
+     "label": "Games",
+     "action": "games"
+    },
+    {
+     "glyph": "🛒",
+     "label": "Hearth Store",
+     "action": "store"
+    },
+    {
+     "glyph": "📁",
+     "label": "Files",
+     "action": "files"
+    },
+    {
+     "glyph": "🌐",
+     "label": "Browser",
+     "action": "browser"
+    },
+    {
+     "glyph": "🎵",
+     "label": "Music",
+     "action": "music"
+    }
+   ],
+   "style": {
+    "corners": 0,
+    "colour": "#e4d8bb",
+    "focus": "outline"
+   }
+  },
+  {
+   "id": "wins",
+   "block": "windows",
+   "x": 1,
+   "y": 8,
+   "w": 10,
+   "h": 5
+  }
+ ]
+}

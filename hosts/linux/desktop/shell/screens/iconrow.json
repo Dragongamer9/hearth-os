@@ -1,0 +1,78 @@
+{
+ "said": "An icon-row home: tabs across the top, my games as a row of icons, the picked one's art filling the screen, Play, and what I did",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "bars": "hidden",
+ "background": {
+  "kind": "art",
+  "from": "#2a1a3e",
+  "to": "#0e0812"
+ },
+ "look": {
+  "accent": "#7aa2ff"
+ },
+ "blocks": [
+  {
+   "id": "tabs",
+   "block": "tabs",
+   "x": 0,
+   "y": 0,
+   "w": 10,
+   "h": 1,
+   "items": [
+    "Games",
+    "Media",
+    "Desktop"
+   ]
+  },
+  {
+   "id": "corner",
+   "block": "status",
+   "x": 17,
+   "y": 0,
+   "w": 7,
+   "h": 1
+  },
+  {
+   "id": "icons",
+   "block": "iconrow",
+   "x": 0,
+   "y": 1,
+   "w": 16,
+   "h": 3
+  },
+  {
+   "id": "play",
+   "block": "play",
+   "x": 0,
+   "y": 4,
+   "w": 14,
+   "h": 3
+  },
+  {
+   "id": "acts",
+   "block": "activity",
+   "x": 0,
+   "y": 8,
+   "w": 15,
+   "h": 3,
+   "style": {
+    "corners": 10,
+    "colour": "#2a2236"
+   }
+  },
+  {
+   "id": "home",
+   "block": "guide",
+   "x": 23,
+   "y": 13,
+   "w": 1,
+   "h": 1,
+   "shows": {
+    "label": "☰"
+   }
+  }
+ ]
+}

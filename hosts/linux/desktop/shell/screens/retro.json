@@ -1,0 +1,69 @@
+{
+ "said": "A 1995 computer: teal screen, square grey buttons, the clock in the corner",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "bars": "",
+ "background": {
+  "kind": "colour",
+  "from": "#008080"
+ },
+ "look": {
+  "accent": "#000080",
+  "text": "#ffffff"
+ },
+ "blocks": [
+  {
+   "id": "apps",
+   "block": "tilerow",
+   "x": 0,
+   "y": 0,
+   "w": 16,
+   "h": 2,
+   "items": [
+    {
+     "glyph": "🎮",
+     "label": "Games",
+     "action": "games"
+    },
+    {
+     "glyph": "🛒",
+     "label": "Hearth Store",
+     "action": "store"
+    },
+    {
+     "glyph": "📁",
+     "label": "Files",
+     "action": "files"
+    },
+    {
+     "glyph": "🌐",
+     "label": "Browser",
+     "action": "browser"
+    },
+    {
+     "glyph": "🎵",
+     "label": "Music",
+     "action": "music"
+    }
+   ],
+   "style": {
+    "corners": 0,
+    "colour": "#008080",
+    "focus": "outline"
+   }
+  },
+  {
+   "id": "clock",
+   "block": "clock",
+   "x": 20,
+   "y": 13,
+   "w": 4,
+   "h": 1,
+   "style": {
+    "size": 16
+   }
+  }
+ ]
+}

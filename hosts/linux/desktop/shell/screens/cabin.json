@@ -1,0 +1,59 @@
+{
+ "said": "A cabin by the fire: warm wood colours, the time, what's playing and my games",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "bars": "",
+ "background": {
+  "kind": "gradient",
+  "from": "#4a2f17",
+  "to": "#140c06"
+ },
+ "look": {
+  "accent": "#ff9a52",
+  "text": "#fbe9d6"
+ },
+ "blocks": [
+  {
+   "id": "clock",
+   "block": "clock",
+   "x": 0,
+   "y": 1,
+   "w": 6,
+   "h": 2,
+   "style": {
+    "size": 48
+   }
+  },
+  {
+   "id": "games",
+   "block": "tilerow",
+   "x": 0,
+   "y": 4,
+   "w": 18,
+   "h": 5,
+   "shows": {
+    "source": "games",
+    "count": 4,
+    "title": "By the fire"
+   },
+   "style": {
+    "corners": 14,
+    "focus": "lift"
+   }
+  },
+  {
+   "id": "media",
+   "block": "media",
+   "x": 0,
+   "y": 10,
+   "w": 8,
+   "h": 2,
+   "style": {
+    "corners": 14,
+    "colour": "#3a2414"
+   }
+  }
+ ]
+}

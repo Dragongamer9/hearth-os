@@ -52,6 +52,9 @@ ShellRoot {
                 property string builtKey: ""
                 function makeNew() {
                     dropNew();
+                    // Build anything: a whole-screen desktop that does what the bar and dock do (its guide, menu and
+                    // Game Mode) has them away while it's drawn; they come back the moment it isn't.
+                    if (perScreen.primary && ScreenLayout.hidesBars && perScreen.screenWin) { builtKey = Theme.barKey; newFailed = false; return; }
                     const wantDock = Theme.dockFloats;
                     const ci = Qt.createComponent("Islands.qml"), cd = wantDock ? Qt.createComponent("Dock.qml") : null;
                     if (ci.status !== Component.Ready || cd && cd.status !== Component.Ready) {
@@ -102,8 +105,8 @@ ShellRoot {
                 }
                 Timer { id: rebuild; interval: 300; onTriggered: if (!perScreen.portrait && Theme.barKey !== perScreen.builtKey) perScreen.makeNew() }
                 onPortraitChanged: { if (portrait) dropNew(); else if (settingsReady) makeNew(); }
-                Component.onCompleted: { makeHints(); if (!portrait && settingsReady) makeNew(); }   // the hints first: Console's strip sits at the very bottom, the dock above it
-                Component.onDestruction: { dropNew(); if (hintWin) hintWin.destroy(); }
+                Component.onCompleted: { makeHints(); if (ScreenLayout.loaded) makeScreen(); if (!portrait && settingsReady) makeNew(); }   // the hints first: Console's strip sits at the very bottom, the dock above it
+                Component.onDestruction: { dropNew(); if (hintWin) hintWin.destroy(); if (screenWin) screenWin.destroy(); }
                 // The classic taskbar: upright screens, and the safe fallback.
                 Loader {
                     active: perScreen.portrait || perScreen.newFailed
@@ -119,6 +122,24 @@ ShellRoot {
                             onCalendarRequested: calendar.toggle(perScreen.modelData, portrait)
                         }
                     }
+                }
+                // Build anything (Screen.qml): your whole-screen desktop on the main screen, under the windows, made from its
+                // file so a problem in it only brings Mantel's bar and dock back (ScreenLayout.failed).
+                property var screenWin: null
+                function makeScreen() {
+                    if (screenWin) { screenWin.destroy(); screenWin = null; }
+                    if (!perScreen.primary || !ScreenLayout.on || ScreenLayout.failed) return;
+                    const c = Qt.createComponent("Screen.qml");
+                    if (c.status !== Component.Ready) { console.warn("Mantel: your desktop (Screen.qml) couldn't load; the bar and dock stay: " + c.errorString()); ScreenLayout.failed = true; return; }
+                    screenWin = c.createObject(perScreen, { screen: perScreen.modelData, launcher: launcher, quick: quick, settingsApp: settings, filesApp: files, powerMenu: powerMenu });
+                    if (!screenWin) { console.warn("Mantel: your desktop (Screen.qml) couldn't start; the bar and dock stay"); ScreenLayout.failed = true; }
+                }
+                Connections {
+                    target: ScreenLayout
+                    function onOnChanged() { perScreen.makeScreen(); if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); }
+                    function onFailedChanged() { if (ScreenLayout.failed && perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); }
+                    function onHidesBarsChanged() { if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); }
+                    function onLoadedChanged() { if (ScreenLayout.loaded) { perScreen.makeScreen(); if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); } }
                 }
                 // The controller's button hints (Console: always; other looks: after using the controller).
                 property var hintWin: null
@@ -200,6 +221,21 @@ ShellRoot {
         onLoaded: { item.open(pending); if (ask !== "") { item.text = ask; ask = ""; item.make(); } }
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Describe it couldn't load (DescribeIt.qml)")
         function openAt(p) { pending = p || "bar"; if (!active) active = true; else if (item) item.open(pending); }
+    }
+    // Build anything: the first start's "How do you want your desktop?" (once, on a new install) and your desktop's IPC.
+    FirstStart {
+        id: firstStart
+        settingsApp: settings
+        readonly property bool due: ScreenLayout.loaded && Settings.loaded && !ScreenLayout.chosen && !ScreenLayout.unreadable && Settings.defaultsGen === 2
+        onDueChanged: if (due) open()
+    }
+    IpcHandler {
+        target: "screen"
+        function use(name: string): void { ScreenLayout.use(name); }
+        function mantel(): void { ScreenLayout.useMantel(); }
+        function firstStart(): void { firstStart.open(); }
+        function guide(): void { ScreenLayout.guideAsk++; }
+        function state(): string { return JSON.stringify({ on: ScreenLayout.on, from: ScreenLayout.from, chosen: ScreenLayout.chosen, failed: ScreenLayout.failed, hidesBars: ScreenLayout.hidesBars }); }
     }
     IpcHandler {
         target: "describe"

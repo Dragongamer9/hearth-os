@@ -153,6 +153,10 @@ SKIP_DIRS = {'archive', 'node_modules', 'target', '.git', 'vendor', 'site', 'doc
 SKIP_PARTS = ('os-bases/ubuntu', 'os-bases/cachyos', '/test/', '/tests/', 'hosts/android/')
 # Places that still do it, each with its reason (fix them and take them off; never add to this list lightly).
 ALLOWED = {
+    # CI's pictures: each run starts Mantel in a throwaway home made for that run (no one's settings to lose).
+    '.github/scripts/layouts-run.sh',
+    '.github/scripts/mantel-rust-run.sh',
+    '.github/scripts/hearth-apps-rust-shots.d/settings-layout.sh',
     # The recovery menu (reached from the boot menu): a booting file, left for the owner to change.
     'os/system_files/usr/libexec/nimbus/hearth-recovery',
     'os/recovery/src/hearth-recovery',

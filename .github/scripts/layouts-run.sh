@@ -77,6 +77,66 @@ for id in plasma gnome windows11 macos steam hearth; do
   command -v hearth-mantel >/dev/null && run_one rust "$id"
 done
 
+# Build anything (docs/mockups/checklists/build-anything.md): the QML Mantel with pretend games, each ready-made
+# whole-screen desktop put in place as Settings › Your desktop does (quickshell ipc call screen use ID), the first-start
+# choice, and back to Hearth OS Mantel (the bar and dock must come back).
+run_screens() {
+  export XDG_RUNTIME_DIR=/tmp/xdg-screens HOME=/tmp/home-screens XDG_CACHE_HOME=/tmp/home-screens/.cache
+  rm -rf "$XDG_RUNTIME_DIR" "$HOME"; mkdir -p "$XDG_RUNTIME_DIR" "$HOME/.local/share/nimbus" "$HOME/.config/nimbus" "$HOME/.local/share/applications" "$XDG_CACHE_HOME/hearth"; chmod 700 "$XDG_RUNTIME_DIR"
+  : >"$HOME/.local/share/nimbus/welcome-done"
+  printf '{"look":"hearth","mode":"dark","screenOffMinutes":0,"defaults":2}\n' >"$HOME/.local/share/nimbus/desktop.json"
+  python3 - "$XDG_CACHE_HOME/hearth" <<'PY'
+import json, os, sys
+from PIL import Image, ImageDraw
+d = sys.argv[1]
+games = [("ember-trails", "Ember Trails", (40, 70, 110), (140, 70, 40)), ("quad-mech", "Quad Mech", (20, 90, 40), (10, 40, 30)),
+         ("gravesleep", "Gravesleep", (130, 45, 20), (40, 10, 10)), ("pixel-rally", "Pixel Rally", (60, 30, 140), (20, 90, 140)),
+         ("trains-2010", "Trains 2010", (150, 100, 20), (60, 40, 10)), ("tributary", "Tributary", (150, 20, 60), (60, 10, 30))]
+out = []
+for gid, title, a, b in games:
+    for kind, size in (("cover", (600, 900)), ("wide", (1920, 620))):
+        im = Image.new("RGB", size); dr = ImageDraw.Draw(im)
+        for y in range(size[1]):
+            t = y / size[1]; dr.line([(0, y), (size[0], y)], fill=tuple(int(a[i] * (1 - t) + b[i] * t) for i in range(3)))
+        im.save(os.path.join(d, gid + "-" + kind + ".png"))
+    out.append({"id": gid, "title": title, "source": "steam", "cover": "file://" + os.path.join(d, gid + "-cover.png"), "wide": "file://" + os.path.join(d, gid + "-wide.png"), "icon": ""})
+json.dump(out, open(os.path.join(d, "desktop-games.json"), "w"))
+PY
+  printf '{"pins":["foot"],"recent":["game:pixel-rally"]}\n' >"$HOME/.config/nimbus/desk.json"
+  mkdir -p /tmp/rc-screens && printf '<?xml version="1.0"?>\n<labwc_config><desktops number="4"/></labwc_config>\n' >/tmp/rc-screens/rc.xml
+  printf 'quickshell -p %s >%s/shell.log 2>&1 &\n' "$SH" "$XDG_RUNTIME_DIR" >/tmp/rc-screens/autostart
+  dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
+  labwc -C /tmp/rc-screens >"$OUT/labwc-screens.log" 2>&1 &
+  local lw=$!
+  for i in $(seq 60); do ls "$XDG_RUNTIME_DIR"/wayland-? >/dev/null 2>&1 && break; sleep 0.5; done
+  export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
+  wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 >/dev/null 2>&1 || true
+  sleep 25
+  # a new install: the first-start choice comes up by itself
+  shot "qml-anything-7-first-start"
+  timeout 20 quickshell ipc -p "$SH" call screen mantel >/dev/null 2>&1; sleep 3
+  for id in console iconrow cockpit cabin notebook retro; do
+    timeout 20 quickshell ipc -p "$SH" call screen use "$id" >/dev/null 2>&1; sleep 6
+    shot "qml-anything-$id"
+    st=$(timeout 20 quickshell ipc -p "$SH" call screen state 2>/dev/null)
+    note "screen $id: $st"
+    echo "$st" | grep -q '"on":true' || err "screen $id: didn't come on ($st)"
+    echo "$st" | grep -q '"failed":true' && err "screen $id: Screen.qml couldn't be drawn"
+  done
+  timeout 20 quickshell ipc -p "$SH" call screen use console >/dev/null 2>&1; sleep 4
+  timeout 20 quickshell ipc -p "$SH" call screen guide >/dev/null 2>&1; sleep 2; shot "qml-anything-console-guide"
+  timeout 20 quickshell ipc -p "$SH" call screen mantel >/dev/null 2>&1; sleep 6
+  shot "qml-anything-back-to-mantel"
+  timeout 20 quickshell ipc -p "$SH" call settings page your-desktop >/dev/null 2>&1; sleep 5; shot "qml-anything-settings"
+  python3 -c "import json,os;d=json.load(open(os.path.expanduser('~/.local/share/nimbus/screen.json')));assert d.get('on') is False and d.get('chosen') is True, d" 2>>"$OUT/notes.txt" || err "screen: Back to Hearth OS Mantel wasn't kept"
+  grep -v -e MESA -e '^$' "$XDG_RUNTIME_DIR/shell.log" >"$OUT/qml-screens-shell.log" 2>/dev/null
+  local bad; bad=$(grep -E 'Screen.qml|FirstStart|ScreenLayout|SetYourDesktop' "$OUT/qml-screens-shell.log" | grep -iE 'error|TypeError|ReferenceError|is not defined|Cannot|Unable|failed|not a type' | sort -u | head -8 | tr '\n' '|' | cut -c1-1500)
+  [ -n "$bad" ] && err "screens: the log: $bad"
+  kill "$lw" 2>/dev/null; sleep 1; pkill -x quickshell 2>/dev/null; pkill -f dbus-daemon 2>/dev/null; sleep 1
+  unset XDG_CACHE_HOME
+}
+command -v quickshell >/dev/null && run_screens
+
 # next to the approved mockups: mockup above, Mantel below
 python3 - "$OUT" "$MOCK" <<'PY' >>"$OUT/notes.txt"
 import os, sys
@@ -85,7 +145,9 @@ o, m = sys.argv[1:3]
 mock = {'plasma-1-desktop': 'layouts-1-plasma-style.png', 'gnome-1-desktop': 'layouts-2-gnome-style.png',
         'gnome-3-overview': 'layouts-3-gnome-style-overview.png', 'windows11-2-menu': 'layouts-4-windows-11-style.png',
         'macos-1-desktop': 'layouts-5-macos-style.png', 'describe-layout': 'layouts-7-describe-it.png',
-        'describe-feature': 'layouts-8-describe-it-new-feature.png', 'describe-needs': 'layouts-9-describe-it-send-idea.png'}
+        'describe-feature': 'layouts-8-describe-it-new-feature.png', 'describe-needs': 'layouts-9-describe-it-send-idea.png',
+        'anything-7-first-start': '../build-anything/anything-7-first-start.png', 'anything-console-guide': '../build-anything/anything-2-console-dashboard.png',
+        'anything-iconrow': '../build-anything/anything-3-icon-row-home.png'}
 W, H = 1280, 720
 names = sorted({f[4:-4] if f.startswith('qml-') else f[5:-4] for f in os.listdir(o) if f.endswith('.png') and (f.startswith('qml-') or f.startswith('rust-'))})
 for name in names:

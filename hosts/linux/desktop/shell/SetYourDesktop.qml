@@ -188,5 +188,56 @@ SetPage {
         interactive: false
     }
     // <<< labwc on the Fedora edition
+
+    // >>> Build anything (build-anything boards 1-3, 7): how your desktop looks. Hearth OS Mantel, or a whole-screen
+    // desktop of blocks (ScreenLayout.qml), changed at once (no restart) and back to Mantel any time.
+    Text {
+        Layout.fillWidth: true; Layout.topMargin: 18
+        text: "How your desktop looks"
+        color: Theme.text; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold
+    }
+    Text {
+        Layout.fillWidth: true; Layout.bottomMargin: 4
+        text: "Hearth OS Mantel, or a whole desktop of your own: start from one of these and change anything. Either way it's Hearth underneath, and your windows, Files and Alt+Tab work the same."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap
+    }
+    SetRow {
+        icon: "desktops"; title: "Hearth OS Mantel"
+        sub: "The bar, the dock, Quick Access and Game Mode one press away"
+        chip: !ScreenLayout.on ? "Using now" : ""
+        chevron: ScreenLayout.on
+        interactive: ScreenLayout.on
+        onActivated: { const e = ScreenLayout.useMantel(); page.say(e || "Back to Hearth OS Mantel ✓", !!e); }
+    }
+    Repeater {
+        model: ScreenLayout.readyMade
+        delegate: SetRow {
+            required property var modelData
+            icon: "palette"; title: modelData.name
+            sub: modelData.id === "console" ? "Your profile and the time in the corners, your last game big, rows of games and apps, a Guide on Home"
+               : modelData.id === "iconrow" ? "Tabs across the top, your games as icons, the picked one's art filling the screen, Play"
+               : modelData.id === "cockpit" ? "A big clock in the middle, your last game and your apps on glowing panels"
+               : modelData.id === "cabin" ? "Warm wood colours, the time, what's playing and your games"
+               : modelData.id === "notebook" ? "Cream paper and dark ink, your apps and windows as notes"
+               : "A teal screen, square buttons, the clock in the corner"
+            chip: ScreenLayout.on && ScreenLayout.from === modelData.id ? "Using now" : ""
+            chevron: !(ScreenLayout.on && ScreenLayout.from === modelData.id)
+            interactive: chevron
+            onActivated: { const e = ScreenLayout.use(modelData.id); page.say(e || modelData.name + " is your desktop now. Home opens its Guide; Settings › Your desktop goes back ✓", !!e); }
+        }
+    }
+    SetRow {
+        visible: ScreenLayout.failed
+        icon: "warn"; title: "Your desktop couldn't be drawn"
+        sub: "Mantel's bar and dock are back so nothing's lost. Pick it again to try once more."
+        interactive: false
+    }
+    SetRow {
+        icon: "info"; title: "Show the first-start choice"
+        sub: "The full-screen \"How do you want your desktop?\" a new install opens with"
+        chevron: true
+        onActivated: Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "screen", "firstStart"])
+    }
+    // <<< Build anything
     Text { visible: page.msg !== ""; Layout.fillWidth: true; text: page.msg; color: page.bad ? SetStyle.warn : Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
 }
