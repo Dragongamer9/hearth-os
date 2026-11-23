@@ -15,7 +15,7 @@ PanelWindow {
     property var settingsApp: null
     // 0 = Hearth OS Mantel; 1-6 = a ready-made desktop; 7 = start from nothing
     property int sel: 0
-    readonly property var tiles: ScreenLayout.readyMade.slice(0, 5)
+    readonly property var tiles: ["console", "iconrow", "cockpit", "cabin", "retro"].map(id => ScreenLayout.readyMade.find(r => r.id === id))
     visible: shown
     WlrLayershell.layer: WlrLayer.Overlay
     WlrLayershell.namespace: "hearth-first-start"
@@ -25,6 +25,8 @@ PanelWindow {
     color: "#140d09"
 
     function open() { sel = 0; shown = true; }
+    // a choice made anywhere else (Settings, the screen's IPC) closes it
+    Connections { target: ScreenLayout; function onChosenChanged() { if (ScreenLayout.chosen) fs.shown = false; } }
     function choose(i) {
         if (i === 0) ScreenLayout.useMantel();
         else if (i <= tiles.length) ScreenLayout.use(tiles[i - 1].id);
@@ -80,7 +82,7 @@ PanelWindow {
                 Rectangle {
                     anchors { top: parent.top; left: parent.left; right: parent.right; margins: 18 }
                     height: 32; radius: 10; color: Qt.rgba(0, 0, 0, 0.45)
-                    Text { anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter } text: "🔥  Files  ·  Games"; color: "#e8ddd4"; font.family: Theme.font; font.pixelSize: 13 }
+                    Text { anchors { left: parent.left; leftMargin: 14; verticalCenter: parent.verticalCenter } text: "Files  ·  Games"; color: "#e8ddd4"; font.family: Theme.font; font.pixelSize: 13 }
                     Rectangle {
                         anchors { right: parent.right; rightMargin: 60; verticalCenter: parent.verticalCenter }
                         width: 88; height: 22; radius: 11; color: "#ff7a2f"
@@ -141,7 +143,7 @@ PanelWindow {
                         border.color: fs.sel === index + 1 ? "white" : "#ff7a2f"
                         Gradient { id: g; GradientStop { position: 0; color: tl ? tl.from : "black" } GradientStop { position: 1; color: tl ? tl.to : "black" } }
                         Text { visible: !nothing; anchors { left: parent.left; bottom: parent.bottom; margins: 12 } text: tl ? tl.name : ""; color: tl && tl.id === "notebook" ? "#2b2b2b" : "white"; font.family: Theme.font; font.pixelSize: 13; font.bold: true }
-                        Text { visible: nothing; anchors.centerIn: parent; text: "✦\nStart from nothing"; horizontalAlignment: Text.AlignHCenter; color: "#ff7a2f"; font.family: Theme.font; font.pixelSize: 15 }
+                        Text { visible: nothing; anchors.centerIn: parent; text: "+\nStart from nothing"; horizontalAlignment: Text.AlignHCenter; color: "#ff7a2f"; font.family: Theme.font; font.pixelSize: 15 }
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { fs.sel = index + 1; } onDoubleClicked: fs.choose(index + 1) }
                     }
                 }
@@ -160,7 +162,7 @@ PanelWindow {
                     }
                     Rectangle {
                         width: 160; height: 48; radius: 6; color: Qt.rgba(1, 1, 1, 0.06); border.color: Qt.rgba(1, 1, 1, 0.18)
-                        Text { anchors.centerIn: parent; text: "🎤  Describe it"; color: "white"; font.family: Theme.font; font.pixelSize: 17 }
+                        Row { anchors.centerIn: parent; spacing: 8; Icon { name: "mic"; size: 18; color: "white"; anchors.verticalCenter: parent.verticalCenter } Text { text: "Describe it"; color: "white"; font.family: Theme.font; font.pixelSize: 17 } }
                         MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: fs.choose(fs.tiles.length + 1) }
                     }
                 }

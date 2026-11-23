@@ -43,6 +43,8 @@ pub const SCREEN_BLOCKS: &[(&str, &str)] = &[
     ("search", "the search field"),
     ("menu", "the app menu (the flame)"),
     ("gamemode", "Game Mode"),
+    ("list", "a plain list of words: your games, your apps (a HUD's readout, a notebook's lines)"),
+    ("icons", "desktop icons of Hearth's things (My Hearth, the Bin, Files, Games)"),
 ];
 
 /// What a block's look may be (build-anything board 4: Look).
@@ -50,7 +52,7 @@ pub const FOCUS: &[&str] = &["", "grow", "outline", "glow", "lift", "none"];
 pub const SOUNDS: &[&str] = &["", "click", "soft", "pop", "chime", "wood", "retro", "none"];
 pub const ANIMATIONS: &[&str] = &["", "slide-left", "slide-right", "slide-up", "slide-down", "fade", "zoom", "flip", "none"];
 pub const FONTS: &[&str] = &["", "Inter", "Inter Display", "Noto Serif", "Noto Sans Mono", "Comic Neue", "Pixel", "Rounded", "Condensed"];
-pub const BACKGROUNDS: &[&str] = &["", "art", "colour", "gradient", "picture", "moving", "wallpaper", "none"];
+pub const BACKGROUNDS: &[&str] = &["", "art", "colour", "gradient", "paper", "picture", "moving", "wallpaper", "none"];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct Grid {
@@ -114,14 +116,40 @@ pub struct Placed {
     /// a text block's words, a picture's file (in the layout's own folder)
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub value: String,
+    /// the words over a row ("Jump back in", "Your apps and things")
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub title: String,
+    /// a row of games: how many to leave out from the start (the hero has the first) and how many to show (0: all)
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub skip: u32,
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub count: u32,
 }
+
+fn is_zero(n: &u32) -> bool {
+    *n == 0
+}
+
+/// What a row's `items` may name: Hearth's own things, or an app by its menu entry ("app:org.gnome.Rhythmbox3").
+pub const ITEMS: &[(&str, &str)] = &[
+    ("games", "Games (the app menu's games)"), ("store", "Hearth Store"), ("files", "Files"), ("browser", "the web browser"),
+    ("music", "Music"), ("friends", "Family and friends"), ("downloads", "downloads and updates"), ("settings", "Settings"),
+    ("capture", "Capture"), ("notes", "Hearth Notes"), ("gamemode", "Game Mode"), ("power", "Power"), ("quick", "Quick settings"),
+    ("search", "Search"), ("menu", "the app menu"), ("windows", "your windows"), ("bin", "the Bin"), ("home", "your home folder"),
+];
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
 pub struct Background {
     #[serde(default)]
     pub kind: String,
+    /// a picture's file
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub value: String,
+    /// a colour, or a gradient's two colours (top to bottom)
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub from: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub to: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
@@ -150,6 +178,12 @@ pub struct Screen {
     /// where it's for: "desktop" (the default) or "gamemode"
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub r#for: String,
+    /// "hidden": the screen does what Mantel's bar and dock do (its Guide, menu, Game Mode) and covers them; "": they stay
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub bars: String,
+    /// the words that made it, kept with it
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub said: String,
 }
 
 fn colour_ok(s: &str) -> bool {
@@ -169,8 +203,14 @@ pub fn check(s: &Screen) -> Vec<String> {
     if !BACKGROUNDS.contains(&s.background.kind.as_str()) {
         e.push(format!("\"{}\" isn't a background Hearth can draw.", s.background.kind));
     }
-    if s.background.kind == "colour" && !colour_ok(&s.background.value) {
+    if !colour_ok(&s.background.from) || !colour_ok(&s.background.to) || s.background.kind == "colour" && s.background.from.is_empty() {
         e.push("A colour is written like #1e3a5f.".into());
+    }
+    if !["", "hidden"].contains(&s.bars.as_str()) {
+        e.push("The bar and dock either stay (\"\") or are \"hidden\".".into());
+    }
+    if s.said.chars().count() > 2000 {
+        e.push("What made it is up to 2000 letters.".into());
     }
     if s.background.value.contains("..") || s.background.value.starts_with('/') && s.background.kind != "picture" {
         e.push("A background picture is a file of yours, named plainly.".into());
@@ -222,12 +262,18 @@ pub fn check(s: &Screen) -> Vec<String> {
                 e.extend(c.needs.into_iter().map(|x| format!("\"{name}\" needs {x}.")));
             }
         }
-        if b.value.chars().count() > 2000 || b.value.contains("..") {
+        if b.value.chars().count() > 2000 || b.value.contains("..") || b.title.chars().count() > 80 {
             e.push(format!("\"{name}\": its words or picture can't be used."));
+        }
+        for i in &b.items {
+            let ok = ITEMS.iter().any(|(id, _)| id == i) || i.strip_prefix("app:").map(|a| !a.is_empty() && a.len() < 120 && a.chars().all(|c| c.is_ascii_alphanumeric() || "-_.".contains(c))).unwrap_or(false);
+            if !ok {
+                e.push(format!("\"{name}\": \"{i}\" isn't something Hearth has to put in a row."));
+            }
         }
     }
     // the way back to everything else: the app menu or the Guide, and Game Mode (Game Mode itself needn't have it)
-    if s.r#for != "gamemode" {
+    if s.r#for != "gamemode" && s.bars == "hidden" {
         let has = |k: &str| s.blocks.iter().any(|b| b.block == k || b.items.iter().any(|i| i == k));
         if !has("menu") && !has("guide") && !has("bar") && !has("dock") {
             e.push("Keep a way to your apps: the app menu, the Guide, a bar or a dock.".into());
@@ -252,7 +298,8 @@ pub fn rect(s: &Screen, b: &Placed, w: f32, h: f32) -> (f32, f32, f32, f32) {
 pub fn rules() -> String {
     let blocks: Vec<String> = SCREEN_BLOCKS.iter().map(|(id, n)| format!("{id} ({n})")).collect();
     format!(
-        "A whole screen: \"screen\": {{\"grid\": {{\"cols\": 24, \"rows\": 14}}, \"background\": {{\"kind\": {bg}, \"value\"}}, \"look\": {{\"font\", \"accent\": \"#rrggbb\", \"text\", \"sound\", \"animation\"}}, \"blocks\": [{{\"id\", \"block\", \"x\", \"y\", \"w\", \"h\", \"style\": {{\"colour\", \"background\", \"text\", \"corners\" 0-64, \"seeThrough\" 0-100, \"font\", \"weight\", \"size\", \"focus\": {fo}, \"sound\": {so}, \"animation\": {an}, \"aboveWindows\"}}, \"shows\", \"press\": {{\"action\", \"target\"}}, \"items\", \"value\"}}]}}\n\
+        "A whole screen: \"screen\": {{\"grid\": {{\"cols\": 24, \"rows\": 14}}, \"background\": {{\"kind\": {bg}, \"value\"}}, \"look\": {{\"font\", \"accent\": \"#rrggbb\", \"text\", \"sound\", \"animation\"}}, \"blocks\": [{{\"id\", \"block\", \"x\", \"y\", \"w\", \"h\", \"style\": {{\"colour\", \"background\", \"text\", \"corners\" 0-64, \"seeThrough\" 0-100, \"font\", \"weight\", \"size\", \"focus\": {fo}, \"sound\": {so}, \"animation\": {an}, \"aboveWindows\"}}, \"shows\", \"title\", \"skip\", \"count\", \"press\": {{\"action\", \"target\"}}, \"items\", \"value\"}}], \"bars\": \"\"|\"hidden\"}}\n\
+   background: {{\"kind\", \"from\": \"#rrggbb\", \"to\": \"#rrggbb\", \"value\": a picture}}; a row's items: {items}; with \"bars\": \"hidden\" keep a guide or menu block.\n\
    screen blocks: {b}; a block Hearth hasn't got: \"own:<name>\" plus a \"make\" entry saying what it should do.\n\
    fonts: {fonts}. Use Hearth's own icons and sounds; never another company's logos, names or sounds.",
         bg = BACKGROUNDS.iter().filter(|x| !x.is_empty()).map(|x| format!("\"{x}\"")).collect::<Vec<_>>().join("|"),
@@ -260,9 +307,21 @@ pub fn rules() -> String {
         so = SOUNDS.iter().filter(|x| !x.is_empty()).map(|x| format!("\"{x}\"")).collect::<Vec<_>>().join("|"),
         an = ANIMATIONS.iter().filter(|x| !x.is_empty()).map(|x| format!("\"{x}\"")).collect::<Vec<_>>().join("|"),
         b = blocks.join(", "),
+        items = ITEMS.iter().map(|(i, _)| *i).collect::<Vec<_>>().join(", "),
         fonts = FONTS.iter().filter(|x| !x.is_empty()).copied().collect::<Vec<_>>().join(", "),
     )
 }
+
+/// Mantel's ready-made desktops (build-anything board 1), one copy for both Mantels: the QML Mantel reads the files,
+/// Mantel in Rust and the checks have them built in.
+pub const READY: &[(&str, &str)] = &[
+    ("console", include_str!("../../linux/desktop/shell/screens/console.json")),
+    ("iconrow", include_str!("../../linux/desktop/shell/screens/iconrow.json")),
+    ("cockpit", include_str!("../../linux/desktop/shell/screens/cockpit.json")),
+    ("cabin", include_str!("../../linux/desktop/shell/screens/cabin.json")),
+    ("notebook", include_str!("../../linux/desktop/shell/screens/notebook.json")),
+    ("retro", include_str!("../../linux/desktop/shell/screens/retro.json")),
+];
 
 /// A screen from JSON (a layout's "screen").
 pub fn parse(v: &Value) -> Result<Screen, Vec<String>> {
@@ -315,6 +374,8 @@ mod tests {
         assert!(parse(&v).is_err());
         let mut v = console();
         v["blocks"] = json!([{"id": "c", "block": "clock", "x": 0, "y": 0, "w": 4, "h": 2}]);
+        assert!(parse(&v).is_ok(), "with Mantel's bar and dock still there, that's the way to your apps");
+        v["bars"] = json!("hidden");
         assert!(parse(&v).unwrap_err().iter().any(|e| e.contains("a way to your apps")));
         v["for"] = json!("gamemode");
         assert!(parse(&v).is_ok(), "Game Mode is its own way back");
@@ -327,5 +388,15 @@ mod tests {
             assert!(r.contains(b));
         }
         assert!(r.contains("own:<name>"));
+    }
+
+    /// Mantel's ready-made desktops (hosts/linux/desktop/shell/screens, both Mantels read them) are all good screens.
+    #[test]
+    fn the_ready_made_desktops_are_good_screens() {
+        for (id, text) in READY {
+            let v: Value = serde_json::from_str(text).unwrap_or_else(|e| panic!("{id}: {e}"));
+            let s = parse(&v).unwrap_or_else(|e| panic!("{id}: {e:?}"));
+            assert!(!s.said.is_empty(), "{id}: the words that made it");
+        }
     }
 }

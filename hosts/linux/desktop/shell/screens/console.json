@@ -1,5 +1,5 @@
 {
- "said": "A console dashboard: my profile and the time in the corners, the last game big, rows of games and apps, a Guide on the Home button",
+ "said": "Make it like a console dashboard: my profile and the time in the corners, my last game big, rows of games and my apps, a Guide on the Home button",
  "grid": {
   "cols": 24,
   "rows": 14
@@ -7,11 +7,14 @@
  "bars": "hidden",
  "background": {
   "kind": "gradient",
-  "from": "#0f2236",
-  "to": "#1c0f08"
+  "from": "#10243a",
+  "to": "#1a0d07"
  },
  "look": {
-  "accent": "#2f9e5a"
+  "accent": "#2f9e5a",
+  "font": "Inter",
+  "sound": "soft",
+  "animation": "slide-left"
  },
  "blocks": [
   {
@@ -31,27 +34,22 @@
    "h": 1
   },
   {
-   "id": "jump",
-   "block": "text",
-   "x": 0,
-   "y": 1,
-   "w": 6,
-   "h": 1,
-   "value": "Jump back in",
-   "style": {
-    "size": 17
-   }
-  },
-  {
    "id": "hero",
    "block": "hero",
    "x": 0,
    "y": 2,
    "w": 8,
    "h": 5,
+   "title": "Jump back in",
+   "shows": "recent",
+   "press": {
+    "action": "play"
+   },
    "style": {
     "corners": 8,
-    "focus": "grow"
+    "focus": "grow",
+    "sound": "soft",
+    "animation": "slide-left"
    }
   },
   {
@@ -61,14 +59,16 @@
    "y": 2,
    "w": 16,
    "h": 5,
-   "shows": {
-    "source": "games",
-    "skip": 1,
-    "count": 3
+   "shows": "recent",
+   "skip": 1,
+   "count": 3,
+   "press": {
+    "action": "play"
    },
    "style": {
     "corners": 6,
-    "focus": "grow"
+    "focus": "grow",
+    "sound": "soft"
    }
   },
   {
@@ -78,63 +78,32 @@
    "y": 8,
    "w": 24,
    "h": 4,
-   "shows": {
-    "title": "Your apps and things"
-   },
+   "title": "Your apps and things",
    "items": [
-    {
-     "glyph": "🎮",
-     "label": "Games",
-     "action": "games"
-    },
-    {
-     "glyph": "🛒",
-     "label": "Hearth Store",
-     "action": "store"
-    },
-    {
-     "glyph": "📁",
-     "label": "Files",
-     "action": "files"
-    },
-    {
-     "glyph": "🌐",
-     "label": "Browser",
-     "action": "browser"
-    },
-    {
-     "glyph": "🎵",
-     "label": "Music",
-     "action": "music"
-    },
-    {
-     "label": "Friends",
-     "sub": "Family and friends: who's around",
-     "action": "app",
-     "arg": "hearth-family",
-     "wide": true
-    },
-    {
-     "glyph": "⬇",
-     "label": "Downloads",
-     "action": "store"
-    }
+    "games",
+    "store",
+    "files",
+    "browser",
+    "music",
+    "friends",
+    "downloads"
    ],
    "style": {
     "corners": 4,
     "colour": "#1f3a2e",
-    "focus": "grow"
+    "focus": "grow",
+    "sound": "soft"
    }
   },
   {
-   "id": "home",
+   "id": "guide",
    "block": "guide",
-   "x": 23,
-   "y": 13,
-   "w": 1,
-   "h": 1,
-   "shows": {
-    "label": "☰"
+   "x": 18,
+   "y": 0,
+   "w": 6,
+   "h": 14,
+   "style": {
+    "colour": "#122019"
    }
   }
  ]

@@ -198,6 +198,76 @@ pub fn check_answer(v: &Value, part: &str, asked: &str, sketch: bool) -> Result<
     }
 }
 
+/// Describe it for a whole screen (build-anything boards 4-6): your words (and a sketch) and the screen as it is now, to
+/// a new screen by your AI, with any blocks it had to make (made.rs), all checked. Nothing is put in place here.
+pub fn describe_screen(text: &str, sketch: Option<&std::path::Path>, current: &Value) -> Value {
+    let text: String = text.trim().chars().take(2000).collect();
+    if text.is_empty() && sketch.is_none() {
+        return json!({ "ok": false, "error": "Say what you'd like, or add a sketch." });
+    }
+    let Some(e) = engine() else {
+        return json!({ "ok": false, "error": "No AI is set for Describe it: pick one in Settings › Personalization › Desktop layout, or turn on an AI engine in Settings › Home server." });
+    };
+    let system = format!(
+        "You build a whole screen for Hearth OS's desktop (or Game Mode) from Hearth's own blocks, for its owner. It can look like anything they ask (\"like a console\", \"a cabin\", \"my first PC\"), \
+always made of Hearth's own icons, sounds and fonts: never another company's logos or names. Answer with ONE JSON object and nothing else:\n\
+{{\"kind\": \"screen\", \"screen\": <screen>, \"make\": [<new block>, ...], \"changes\": [\"short plain sentences of what changed\"]}}\n{}\n{}\n\
+Start from the screen they have now (given) and change what they asked; keep the rest. Use \"make\" only for blocks Hearth hasn't got (their id is the own:<id> in the screen).",
+        crate::screen::rules(),
+        crate::made::rules()
+    );
+    let mut user = format!("The screen now: {current}\nThe owner asks: {text}");
+    for attempt in 0..2 {
+        let reply = match chat(&e, &system, &user, sketch) {
+            Ok(r) => r,
+            Err(m) => return json!({ "ok": false, "error": m, "engine": e.label }),
+        };
+        let Some(v) = first_object(&reply) else {
+            user = format!("{user}\nYour last answer wasn't one JSON object. Answer again with only the JSON object.");
+            continue;
+        };
+        let mut errs = Vec::new();
+        let screen = crate::screen::parse(&v.get("screen").cloned().unwrap_or(Value::Null));
+        let mut made = Vec::new();
+        for b in v.get("make").and_then(Value::as_array).cloned().unwrap_or_default() {
+            match crate::made::parse(&b) {
+                Ok(mut m) => {
+                    m.asked = text.clone();
+                    if m.by.is_empty() {
+                        m.by = e.label.clone();
+                    }
+                    made.push(m);
+                }
+                Err(x) => errs.extend(x),
+            }
+        }
+        match screen {
+            Ok(mut s) => {
+                for own in crate::screen::own_blocks(&s) {
+                    if !made.iter().any(|m| m.id == own) && crate::made::get(&own).is_none() {
+                        errs.push(format!("own:{own} is used but not made."));
+                    }
+                }
+                if errs.is_empty() {
+                    if s.said.is_empty() {
+                        s.said = text.clone();
+                    }
+                    let changes: Vec<String> = v.get("changes").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.chars().take(200).collect())).take(12).collect()).unwrap_or_default();
+                    let asks: Vec<Value> = made.iter().map(crate::made::asks).filter(|a| !a.is_null()).collect();
+                    return json!({ "ok": true, "kind": "screen", "screen": s, "made": made, "asks": asks, "changes": changes, "engine": e.label });
+                }
+            }
+            Err(x) => errs.extend(x),
+        }
+        if attempt == 0 {
+            user = format!("{user}\nYour last answer can't be used: {}. Answer again, fixed.", errs.join(" "));
+        } else {
+            return json!({ "ok": false, "error": format!("Your AI's screen couldn't be used: {}", errs.join(" ")), "engine": e.label });
+        }
+    }
+    json!({ "ok": false, "error": "Your AI didn't give a screen Hearth can use. Try again, or say it another way.", "engine": e.label })
+}
+
 /// This Hearth OS's version (os-release), for the idea.
 pub fn hearth_version() -> String {
     std::fs::read_to_string("/etc/os-release")

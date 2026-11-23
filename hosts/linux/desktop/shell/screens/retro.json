@@ -1,68 +1,67 @@
 {
- "said": "A 1995 computer: teal screen, square grey buttons, the clock in the corner",
+ "said": "Like my first PC: icons on a teal screen, a notes window, and a Start bar with the clock",
  "grid": {
   "cols": 24,
   "rows": 14
  },
- "bars": "",
+ "bars": "hidden",
  "background": {
   "kind": "colour",
   "from": "#008080"
  },
  "look": {
   "accent": "#000080",
-  "text": "#ffffff"
+  "text": "#ffffff",
+  "font": "Pixel",
+  "sound": "retro",
+  "animation": "none"
  },
  "blocks": [
   {
-   "id": "apps",
-   "block": "tilerow",
+   "id": "icons",
+   "block": "icons",
    "x": 0,
    "y": 0,
-   "w": 16,
-   "h": 2,
+   "w": 6,
+   "h": 6,
    "items": [
-    {
-     "glyph": "🎮",
-     "label": "Games",
-     "action": "games"
-    },
-    {
-     "glyph": "🛒",
-     "label": "Hearth Store",
-     "action": "store"
-    },
-    {
-     "glyph": "📁",
-     "label": "Files",
-     "action": "files"
-    },
-    {
-     "glyph": "🌐",
-     "label": "Browser",
-     "action": "browser"
-    },
-    {
-     "glyph": "🎵",
-     "label": "Music",
-     "action": "music"
-    }
-   ],
+    "home",
+    "bin",
+    "files",
+    "games"
+   ]
+  },
+  {
+   "id": "notes",
+   "block": "notes",
+   "x": 12,
+   "y": 2,
+   "w": 10,
+   "h": 7,
+   "title": "Hearth Notes",
+   "value": "Everything still works; it just looks like 1995.",
    "style": {
-    "corners": 0,
-    "colour": "#008080",
-    "focus": "outline"
+    "colour": "#c0c0c0",
+    "text": "#000000",
+    "size": 15,
+    "corners": 0
    }
   },
   {
-   "id": "clock",
-   "block": "clock",
-   "x": 20,
+   "id": "start",
+   "block": "bar",
+   "x": 0,
    "y": 13,
-   "w": 4,
+   "w": 24,
    "h": 1,
+   "items": [
+    "menu",
+    "windows"
+   ],
    "style": {
-    "size": 16
+    "colour": "#c0c0c0",
+    "text": "#000000",
+    "corners": 0
    }
   }
  ]

@@ -1,87 +1,66 @@
 {
- "said": "A paper notebook: cream paper, dark ink, my apps as a list of notes",
+ "said": "Just my lists on paper, my apps on a sticky note",
  "grid": {
   "cols": 24,
   "rows": 14
  },
  "bars": "",
  "background": {
-  "kind": "colour",
-  "from": "#efe6cf"
+  "kind": "paper",
+  "from": "#f3ecdc",
+  "to": "#e9dfc8"
  },
  "look": {
-  "accent": "#3b5bdb",
+  "accent": "#c0392b",
   "text": "#2b2b2b",
-  "font": "Noto Serif"
+  "font": "Noto Serif",
+  "sound": "soft",
+  "animation": "fade"
  },
  "blocks": [
   {
-   "id": "title",
-   "block": "text",
-   "x": 1,
+   "id": "list",
+   "block": "notes",
+   "x": 3,
    "y": 1,
    "w": 12,
-   "h": 2,
-   "value": "Today",
+   "h": 8,
+   "title": "to do today",
+   "value": "☐ pick a game for tonight\n☑ make this desktop mine\n☐ tidy my Downloads",
    "style": {
-    "size": 44
+    "size": 26,
+    "colour": "#00000000"
+   }
+  },
+  {
+   "id": "sticky",
+   "block": "tilerow",
+   "x": 18,
+   "y": 1,
+   "w": 4,
+   "h": 4,
+   "items": [
+    "files",
+    "store",
+    "games"
+   ],
+   "shows": "sticky",
+   "style": {
+    "colour": "#fff3a0",
+    "text": "#2b2b2b",
+    "size": 18
    }
   },
   {
    "id": "clock",
    "block": "clock",
    "x": 18,
-   "y": 1,
+   "y": 12,
    "w": 5,
-   "h": 1
-  },
-  {
-   "id": "apps",
-   "block": "tilerow",
-   "x": 1,
-   "y": 4,
-   "w": 20,
-   "h": 3,
-   "items": [
-    {
-     "glyph": "🎮",
-     "label": "Games",
-     "action": "games"
-    },
-    {
-     "glyph": "🛒",
-     "label": "Hearth Store",
-     "action": "store"
-    },
-    {
-     "glyph": "📁",
-     "label": "Files",
-     "action": "files"
-    },
-    {
-     "glyph": "🌐",
-     "label": "Browser",
-     "action": "browser"
-    },
-    {
-     "glyph": "🎵",
-     "label": "Music",
-     "action": "music"
-    }
-   ],
+   "h": 1,
    "style": {
-    "corners": 0,
-    "colour": "#e4d8bb",
-    "focus": "outline"
+    "size": 18
    }
-  },
-  {
-   "id": "wins",
-   "block": "windows",
-   "x": 1,
-   "y": 8,
-   "w": 10,
-   "h": 5
   }
  ]
 }

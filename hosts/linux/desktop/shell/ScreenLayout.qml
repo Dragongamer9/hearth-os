@@ -41,6 +41,10 @@ Singleton {
         { id: "retro", name: "1995 computer", from: "#008080", to: "#006a6a" }
     ]
 
+    // hearth-layout: the one next to this Mantel (a Store update of Mantel carries its own, bin/), else Hearth OS's.
+    function layoutCmd(args) {
+        return ["sh", "-c", 'b="$1/../bin/hearth-layout"; [ -x "$b" ] || b=hearth-layout; shift; exec "$b" "$@"', "sh", Quickshell.shellDir].concat(args);
+    }
     function readyFile(id) { return decodeURIComponent(Qt.resolvedUrl("screens/" + id + ".json").toString().replace(/^file:\/\//, "")); }
 
     // Use one of the ready-made desktops (read from its file, then kept in yours: changing it later changes your copy).

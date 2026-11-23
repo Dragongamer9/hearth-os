@@ -17,6 +17,10 @@
 //!   hearth-layout describe-app APP TEXT [SKETCH]   Describe it in a Hearth app (files, …): its layout and features, checked
 //!   hearth-layout app-get APP · app-keep APP JSON · app-undo APP · app-reset APP   what an app keeps (Keep this, Undo, Back to the original)
 //!   hearth-layout send-idea JSON     send an idea to Hearth's makers (only on Send; exactly the idea shown)
+//!   hearth-layout describe-screen TEXT SCREEN_JSON [SKETCH]   a whole screen by your AI (with any blocks it made), checked
+//!   hearth-layout check-screen JSON · ready-screens   is this screen usable · Mantel's ready-made desktops
+//!   hearth-layout make-block TEXT · keep-block JSON · run-block ID [--once] · block-allow ID always|no|ask · blocks-mine · block-on ID true|false
+//!                                    the blocks your AI makes (made.rs): made, kept, one boxed-in look, what you said to its ask
 //! After apply and undo the window buttons are put on (hearth-system window-buttons: labwc or KWin).
 
 use hearth_layout::{apply, feature, layout};
@@ -87,6 +91,48 @@ fn main() {
                 Err(e) => fail(&e),
             }
         }
+        // Build anything (screen.rs, made.rs): whole screens and the blocks your AI makes.
+        "describe-screen" => {
+            let sketch = args.get(3).filter(|s| !s.is_empty()).map(std::path::PathBuf::from);
+            let current: serde_json::Value = serde_json::from_str(&arg(2)).unwrap_or(serde_json::Value::Null);
+            let r = hearth_layout::describe::describe_screen(&arg(1), sketch.as_deref(), &current);
+            println!("{r}");
+            if r["ok"] == true { 0 } else { 1 }
+        }
+        "check-screen" => match serde_json::from_str::<serde_json::Value>(&arg(1)).map_err(|e| vec![e.to_string()]).and_then(|v| hearth_layout::screen::parse(&v)) {
+            Ok(_) => { println!("{}", serde_json::json!({ "ok": true, "problems": [] })); 0 }
+            Err(e) => { println!("{}", serde_json::json!({ "ok": false, "problems": e })); 1 }
+        },
+        "ready-screens" => {
+            let v: Vec<serde_json::Value> = hearth_layout::screen::READY.iter().map(|(id, t)| serde_json::json!({ "id": id, "screen": serde_json::from_str::<serde_json::Value>(t).unwrap_or_default() })).collect();
+            println!("{}", serde_json::Value::from(v));
+            0
+        }
+        "make-block" => {
+            let r = hearth_layout::made::make(&arg(1));
+            println!("{r}");
+            if r["ok"] == true { 0 } else { 1 }
+        }
+        "keep-block" => match serde_json::from_str::<serde_json::Value>(&arg(1)).map_err(|e| vec![e.to_string()]).and_then(|v| hearth_layout::made::parse(&v)).map_err(|e| e.join(" ")).and_then(|m| hearth_layout::made::keep(&m)) {
+            Ok(()) => 0,
+            Err(e) => fail(&e),
+        },
+        "run-block" => {
+            // its own small program: boxed in (made.rs box_in), and ended after 10 s whatever it's doing
+            std::thread::spawn(|| { std::thread::sleep(std::time::Duration::from_secs(10)); println!("{}", serde_json::json!({ "ok": false, "error": "It took too long, so it was stopped." })); std::process::exit(3); });
+            let r = hearth_layout::made::run(&arg(1), arg(2) == "--once");
+            println!("{r}");
+            0
+        }
+        "block-allow" => match hearth_layout::made::allow(&arg(1), match arg(2).as_str() { "always" => "always", "no" => "no", _ => "" }) {
+            Ok(()) => 0,
+            Err(e) => fail(&e),
+        },
+        "blocks-mine" => { println!("{}", hearth_layout::made::mine()); 0 }
+        "block-on" => match hearth_layout::made::set_on(&arg(1), arg(2) == "true") {
+            Ok(()) => 0,
+            Err(e) => fail(&e),
+        },
         "keep-feature" => match feature::parse(&arg(1)).and_then(|f| feature::keep(&f)) {
             Ok(p) => {
                 println!("Kept: {}", p.display());

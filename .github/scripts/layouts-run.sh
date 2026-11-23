@@ -103,6 +103,7 @@ for gid, title, a, b in games:
 json.dump(out, open(os.path.join(d, "desktop-games.json"), "w"))
 PY
   printf '{"pins":["foot"],"recent":["game:pixel-rally"]}\n' >"$HOME/.config/nimbus/desk.json"
+  python3 "$SH/hearth-browser" asked >/dev/null 2>&1 || true   # the 1.12 "Pick your browser" was answered long ago
   mkdir -p /tmp/rc-screens && printf '<?xml version="1.0"?>\n<labwc_config><desktops number="4"/></labwc_config>\n' >/tmp/rc-screens/rc.xml
   printf 'quickshell -p %s >%s/shell.log 2>&1 &\n' "$SH" "$XDG_RUNTIME_DIR" >/tmp/rc-screens/autostart
   dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"

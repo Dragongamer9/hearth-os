@@ -14,6 +14,8 @@ cp -a /src/hosts/hearth-ui /src/hosts/hearth-core /src/hosts/hearth-layout /tmp/
 cp /src/hosts/linux/desktop/theme/palettes.json /tmp/w/hosts/linux/desktop/theme/
 # Settings' KDE pages (cats/kde.rs draws them from the same file hearth-kde-settings checks against).
 mkdir -p /tmp/w/hosts/linux/desktop/shell && cp /src/hosts/linux/desktop/shell/kde-settings.json /tmp/w/hosts/linux/desktop/shell/
+# hearth-layout carries Mantel's ready-made desktops (screen.rs READY: one copy for both Mantels).
+cp -a /src/hosts/linux/desktop/shell/screens /tmp/w/hosts/linux/desktop/shell/
 cd /tmp/w/hosts/hearth-ui
 if ! cargo build --release --workspace > /tmp/w/build.log 2>&1; then
   # The first errors as annotations (the build's log can't be read from here).

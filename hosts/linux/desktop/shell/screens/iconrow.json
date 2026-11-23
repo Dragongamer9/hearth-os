@@ -1,5 +1,5 @@
 {
- "said": "An icon-row home: tabs across the top, my games as a row of icons, the picked one's art filling the screen, Play, and what I did",
+ "said": "Like an icon-row home: tabs across the top, my games as a row of icons with the picked one's art filling the screen, Play, and cards of what I did",
  "grid": {
   "cols": 24,
   "rows": 14
@@ -11,7 +11,10 @@
   "to": "#0e0812"
  },
  "look": {
-  "accent": "#7aa2ff"
+  "accent": "#7aa2ff",
+  "font": "Inter",
+  "sound": "pop",
+  "animation": "fade"
  },
  "blocks": [
   {
@@ -22,9 +25,9 @@
    "w": 10,
    "h": 1,
    "items": [
-    "Games",
-    "Media",
-    "Desktop"
+    "games",
+    "music",
+    "windows"
    ]
   },
   {
@@ -41,7 +44,12 @@
    "x": 0,
    "y": 1,
    "w": 16,
-   "h": 3
+   "h": 3,
+   "shows": "games",
+   "count": 7,
+   "style": {
+    "sound": "pop"
+   }
   },
   {
    "id": "play",
@@ -58,20 +66,22 @@
    "y": 8,
    "w": 15,
    "h": 3,
+   "title": "Your activity",
    "style": {
     "corners": 10,
     "colour": "#2a2236"
    }
   },
   {
-   "id": "home",
+   "id": "guide",
    "block": "guide",
-   "x": 23,
-   "y": 13,
-   "w": 1,
-   "h": 1,
-   "shows": {
-    "label": "☰"
+   "x": 18,
+   "y": 0,
+   "w": 6,
+   "h": 14,
+   "style": {
+    "colour": "#1a1426",
+    "aboveWindows": false
    }
   }
  ]
