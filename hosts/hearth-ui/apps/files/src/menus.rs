@@ -412,6 +412,15 @@ impl App {
         items.push(MenuItem::new("exts", "File name extensions").check(self.show_ext));
         items.push(MenuItem::new("hidden", "Hidden items").key("Ctrl+H").check(self.hidden));
         if !self.picking() {
+            // Describe it (board 11): say how you'd like Files laid out; Back to the original undoes all of it
+            items.push(MenuItem::sep());
+            items.push(MenuItem::heading("LAYOUT"));
+            items.push(MenuItem::new("describe", "Describe it…"));
+            if self.describe.has_kept() {
+                items.push(MenuItem::new("layout-original", "Back to the original"));
+            }
+        }
+        if !self.picking() {
             items.push(MenuItem::new("cset:linuxFolders=toggle", "Linux folders (/, /home, /usr…)").check(self.c_linux()));
             items.push(MenuItem::new("cset:addressBar=toggle", "Linux paths in the address bar").check(self.addr_linux()));
             items.push(MenuItem::sep());
@@ -1043,6 +1052,8 @@ pub fn run_menu(a: &mut App, id: &str) -> Task<Msg> {
             let t1 = a.remember_view_pub();
             return Task::batch(vec![t1, a.details_lookups()]);
         }
+        "describe" => return a.describe.update(hearth_ui::describe::DMsg::Open).map(Msg::Describe),
+        "layout-original" => return a.describe.update(hearth_ui::describe::DMsg::Reset).map(Msg::Describe),
         "navpane" => {
             let on = !a.nav_shown();
             return a.set_files_pref("navPane", json!(on));

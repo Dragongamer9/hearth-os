@@ -85,12 +85,14 @@ pub fn view(a: &App) -> El<'_> {
     if picking {
         col = col.push(pick_head(a));
     } else {
-        col = col.push(tab_strip(a)).push(nav_row(a)).push(command_bar(a));
+        let bar = hearth_ui::describe::outline(&p, a.describe.changing("toolbar") || a.describe.open && a.describe.trying().map(|r| r.get("features").and_then(Value::as_array).map(|f| !f.is_empty()).unwrap_or(false)).unwrap_or(false), command_bar(a));
+        col = col.push(tab_strip(a)).push(nav_row(a)).push(bar);
     }
     col = col.push(hline(p.line));
     let mut body = Row::new().height(Length::Fill);
-    if a.nav_shown() {
-        body = body.push(nav_pane(a)).push(vline(p.line));
+    // Describe it's sidebar: "icons" (icons only) or "hidden", with the dashed outline while it's being tried
+    if a.nav_shown() && a.describe.knob("sidebar") != "hidden" {
+        body = body.push(hearth_ui::describe::outline(&p, a.describe.changing("sidebar"), nav_pane(a))).push(vline(p.line));
     }
     // The folder, with Act as administrator's red bar above it and the terminal panel (F4) under it.
     let mut mid = Column::new().width(Length::FillPortion(64)).height(Length::Fill);
@@ -113,12 +115,18 @@ pub fn view(a: &App) -> El<'_> {
     if a.split.is_some() && !picking {
         body = body.push(vline(p.line)).push(container(crate::split::view(a)).width(Length::FillPortion(36)).height(Length::Fill));
     }
-    if a.details_pane && !picking {
-        body = body.push(vline(p.line)).push(details_pane(a));
+    // Describe it's preview: "right" / "right-big" (on the right, bigger) shows it, "off" hides it
+    let preview = a.describe.knob("preview");
+    if (a.details_pane || preview.starts_with("right")) && preview != "off" && !picking {
+        body = body.push(vline(p.line)).push(hearth_ui::describe::outline(&p, a.describe.changing("preview"), details_pane(a)));
     }
     col = col.push(body);
     if let Some(j) = &a.job {
         col = col.push(hline(p.line)).push(job_bar(a, j));
+    }
+    // Describe it's box at the bottom (board 11)
+    if a.describe.open && !picking {
+        col = col.push(container(hearth_ui::describe::bar(&p, &a.describe, Msg::Describe)).padding(pad(12.0, 16.0, 12.0, 16.0)));
     }
     if picking {
         col = col.push(hline(p.line)).push(pick_bar(a));
@@ -221,6 +229,9 @@ fn tab_strip(a: &App) -> El<'_> {
         r = r.push(drop_on(a, &path, mouse_area(tab).on_press(Msg::Tab(i)).on_middle_press(Msg::CloseTab(i)).into()));
     }
     r = r.push(container(flat(&p, ico(Ic::Plus, p.muted, 15.0), Some(Msg::NewTab), pad(6.0, 8.0, 6.0, 8.0))).padding(pad(0.0, 0.0, 2.0, 4.0)));
+    if a.describe.open {
+        r = r.push(container(hearth_ui::describe::editing::<Msg>(&p)).padding(pad(0.0, 0.0, 9.0, 10.0)));
+    }
     let drag = mouse_area(Space::new().width(Length::Fill).height(Length::Fixed(40.0))).on_press(Msg::Drag).on_double_click(Msg::Maximize);
     let wbtn = |ic: Ic, msg: Msg, red: bool| -> El<'static> {
         button(container(ico::<Msg>(ic, p.muted, 13.0)).center_x(Length::Fixed(46.0)).center_y(Length::Fixed(40.0)))
@@ -361,13 +372,17 @@ fn command_bar(a: &App) -> El<'_> {
     let p = a.p;
     let has = !a.targets().is_empty();
     let w = a.writable();
+    let compact = a.describe.knob("toolbar") == "compact";
     let sep = || -> El<'static> { container(vline::<Msg>(p.line)).height(Length::Fixed(20.0)).padding(pad(0.0, 6.0, 0.0, 6.0)).into() };
     let ib = |ic: Ic, on: bool, cmd: &'static str| -> El<'static> {
         flat(&p, ico(ic, if on { p.text } else { Pal::a(p.muted, 0.55) }, 17.0), if on { Some(Msg::Cmd(cmd)) } else { None }, pad(7.0, 11.0, 7.0, 11.0))
     };
     let lb = |ic: Ic, label: &'static str, more: bool, on: bool, cmd: &'static str| -> El<'static> {
         let c = if on { p.text } else { Pal::a(p.muted, 0.55) };
-        let mut r = Row::new().spacing(7.0).align_y(iced::Center).push(ico(ic, c, 16.0)).push(t1(label, 14.0, c));
+        let mut r = Row::new().spacing(7.0).align_y(iced::Center).push(ico(ic, c, 16.0));
+        if !compact {
+            r = r.push(t1(label, 14.0, c));
+        }
         if more {
             r = r.push(ico(Ic::ChevDown, c, 9.0));
         }
@@ -388,6 +403,10 @@ fn command_bar(a: &App) -> El<'_> {
         bc_tools(a),
         Space::new().width(Length::Fill),
         sort_button(a),
+        match crate::ldescribe::buttons(a) {
+            Some(b) => container(b).padding(pad(0.0, 8.0, 0.0, 0.0)).into(),
+            None => El::from(Space::new().width(Length::Shrink)),
+        },
         {
             let c = if a.details_pane { p.accent } else { p.text };
             flat(&p, row![t1("Details", 14.0, c), ico(Ic::Pane, c, 16.0)].spacing(7.0).align_y(iced::Center).into(), Some(Msg::Cmd("details")), pad(6.0, 10.0, 6.0, 10.0))
@@ -422,7 +441,8 @@ fn bc_tools(a: &App) -> El<'_> {
 // ------------------------------------------------------------------ the left menu
 fn nav_pane(a: &App) -> El<'_> {
     let p = a.p;
-    let wide = a.nav_w >= 200.0;
+    let icons_only = a.describe.knob("sidebar") == "icons";
+    let wide = a.nav_w >= 200.0 && !icons_only;
     let mut col = Column::new().spacing(1.0).padding(pad(10.0, 4.0, 10.0, 4.0));
     let mut last_section = String::new();
     for (i, q) in a.places.iter().enumerate() {
@@ -457,6 +477,17 @@ fn nav_pane(a: &App) -> El<'_> {
             (_, Some(l)) => crate::briefcase::bc_icon(a, l, false, 16.0),
             _ => ico(ic, p.text, 16.0),
         };
+        if icons_only {
+            // board 11: one icon per place, its name as the tooltip's place would be (top-level places only)
+            if q.depth > 0 {
+                continue;
+            }
+            let here = !q.path.is_empty() && a.path == q.path;
+            let bg = if here { p.sel() } else { Color::TRANSPARENT };
+            let cell = container(lead).center_x(Length::Fixed(40.0)).center_y(Length::Fixed(36.0)).style(ui::boxed(bg, p.r(6.0), None));
+            col = col.push(container(mouse_area(cell).on_press(Msg::Place(i)).on_right_press(Msg::PlaceRight(i)).interaction(mouse::Interaction::Pointer)).center_x(Length::Fill));
+            continue;
+        }
         let mut r = Row::new()
             .spacing(0.0)
             .align_y(iced::Center)
@@ -502,7 +533,7 @@ fn nav_pane(a: &App) -> El<'_> {
         let tgt = if q.kind == "trash" { a.trash_path() } else { q.path.clone() };
         col = col.push(drop_on(a, &tgt, mouse_area(cell).on_press(Msg::Place(i)).on_right_press(Msg::PlaceRight(i)).on_middle_press(Msg::PlaceMiddle(i)).interaction(mouse::Interaction::Pointer).into()));
     }
-    container(scrollable(col).height(Length::Fill)).width(Length::Fixed(a.nav_w)).height(Length::Fill).into()
+    container(scrollable(col).height(Length::Fill)).width(Length::Fixed(if icons_only { 64.0 } else { a.nav_w })).height(Length::Fill).into()
 }
 
 // ------------------------------------------------------------------ the folder
@@ -1128,7 +1159,8 @@ fn apps_page(a: &App) -> El<'_> {
 // ------------------------------------------------------------------ the details pane (mockup files-6)
 fn details_pane(a: &App) -> El<'_> {
     let p = a.p;
-    let w = 262.0;
+    // Describe it's "preview right, bigger" (board 11)
+    let w = if a.describe.knob("preview") == "right-big" { 420.0 } else { 262.0 };
     let mut col = Column::new().spacing(10.0).padding(pad(14.0, 14.0, 14.0, 14.0)).width(Length::Fixed(w));
     let sel: Vec<&Entry> = a.entries.iter().filter(|e| a.marked.contains(&e.path)).collect();
     if sel.len() > 1 {

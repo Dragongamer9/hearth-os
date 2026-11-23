@@ -6,11 +6,13 @@
 //! * [`apply`]: putting a layout in place through Mantel's own settings (desktop.json, bar.json), with Undo;
 //! * [`feature`]: a new feature as a recipe of Hearth's own parts (what it shows, what a click does), and its check;
 //! * [`idea`]: what's sent to Hearth's makers when something needs new work, exactly as it's shown first;
+//! * [`app`]: Describe it in Hearth's own apps (their knobs, places, sources and actions; what you kept, with Undo);
 //! * [`describe`]: Describe it: your words (and a sketch) to a layout or a feature by your AI, checked here.
 //!
 //! Nothing here runs code that came in a file: a layout or a feature only names blocks, sources and actions Hearth
 //! already has, and anything else is refused with a plain reason (or becomes an idea to send).
 
+pub mod app;
 pub mod apply;
 pub mod blocks;
 pub mod describe;

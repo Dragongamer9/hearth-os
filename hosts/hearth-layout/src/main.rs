@@ -14,6 +14,8 @@
 //!   hearth-layout describe PART TEXT [SKETCH]   Describe it: your AI's suggestion, checked (JSON; nothing is put in place)
 //!   hearth-layout keep-feature JSON  keep a new feature (Keep this)
 //!   hearth-layout features           your features (JSON) · feature-on ID true|false
+//!   hearth-layout describe-app APP TEXT [SKETCH]   Describe it in a Hearth app (files, …): its layout and features, checked
+//!   hearth-layout app-get APP · app-keep APP JSON · app-undo APP · app-reset APP   what an app keeps (Keep this, Undo, Back to the original)
 //!   hearth-layout send-idea JSON     send an idea to Hearth's makers (only on Send; exactly the idea shown)
 //! After apply and undo the window buttons are put on (hearth-system window-buttons: labwc or KWin).
 
@@ -63,6 +65,27 @@ fn main() {
             let r = hearth_layout::describe::describe(&arg(1), &arg(2), sketch.as_deref(), &current);
             println!("{r}");
             if r["ok"] == true { 0 } else { 1 }
+        }
+        "describe-app" | "app-get" | "app-keep" | "app-undo" | "app-reset" => {
+            use hearth_layout::app;
+            let Some(a) = app::find(&arg(1)) else { std::process::exit(fail(&format!("\"{}\" has no Describe it yet.", arg(1)))) };
+            let r = match arg(0).as_str() {
+                "describe-app" => {
+                    let sketch = args.get(3).filter(|s| !s.is_empty()).map(std::path::PathBuf::from);
+                    Ok(app::describe(a, &arg(2), sketch.as_deref()))
+                }
+                "app-get" => Ok(app::get(a.app)),
+                "app-keep" => serde_json::from_str::<serde_json::Value>(&arg(2)).map_err(|e| e.to_string()).and_then(|v| app::keep(a, &v)),
+                "app-undo" => app::undo(a.app),
+                _ => app::reset(a.app),
+            };
+            match r {
+                Ok(v) => {
+                    println!("{v}");
+                    if v.get("ok") == Some(&serde_json::json!(false)) { 1 } else { 0 }
+                }
+                Err(e) => fail(&e),
+            }
         }
         "keep-feature" => match feature::parse(&arg(1)).and_then(|f| feature::keep(&f)) {
             Ok(p) => {

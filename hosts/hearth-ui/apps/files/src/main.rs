@@ -1,5 +1,5 @@
 //! Hearth Files: the file manager (Mantel's Hearth Files, in pure Rust for the Fedora edition; see lib.rs).
-//!   hearth-files-app [FOLDER | FILE | C:\… | smb://… ] [--props] [--page home|thispc|apps|c|PATH] [--view NAME] [--show menu|view|pane|tabs|select|props|rename]
+//!   hearth-files-app [FOLDER | FILE | C:\… | smb://… ] [--props] [--page home|thispc|apps|c|PATH] [--view NAME] [--show menu|view|pane|tabs|select|props|rename] [--describe WORDS]
 //! A file opens its folder with it picked; --props shows only its Properties. --show is for CI's pictures.
 
 fn main() -> iced::Result {
@@ -13,7 +13,7 @@ fn main() -> iced::Result {
     let mut open = String::new();
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
-        if matches!(a.as_str(), "--page" | "--view" | "--show") {
+        if matches!(a.as_str(), "--page" | "--view" | "--show" | "--describe") {
             let _ = it.next();
             continue;
         }
