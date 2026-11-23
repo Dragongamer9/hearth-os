@@ -13,6 +13,7 @@ PanelWindow {
     id: fs
     property bool shown: false
     property var settingsApp: null
+    property var editor: null
     // 0 = Hearth OS Mantel; 1-6 = a ready-made desktop; 7 = start from nothing
     property int sel: 0
     readonly property var tiles: ["console", "iconrow", "cockpit", "cabin", "retro"].map(id => ScreenLayout.readyMade.find(r => r.id === id))
@@ -30,7 +31,7 @@ PanelWindow {
     function choose(i) {
         if (i === 0) ScreenLayout.useMantel();
         else if (i <= tiles.length) ScreenLayout.use(tiles[i - 1].id);
-        else { ScreenLayout.markChosen(); if (settingsApp) settingsApp.open("your-desktop"); }
+        else { ScreenLayout.markChosen(); if (editor) editor.open({ grid: { cols: 24, rows: 14 }, background: { kind: "gradient", from: "#1a1410", to: "#0c0907" }, look: {}, blocks: [] }, "Start from nothing"); }
         shown = false;
     }
     function later() { ScreenLayout.markChosen(); shown = false; }
@@ -158,7 +159,14 @@ PanelWindow {
                     Rectangle {
                         width: 170; height: 48; radius: 6; color: Qt.rgba(1, 1, 1, 0.06); border.color: Qt.rgba(1, 1, 1, 0.18)
                         Text { anchors.centerIn: parent; text: fs.sel > 0 && fs.sel <= fs.tiles.length ? "Use this one" : "Build my own"; color: "white"; font.family: Theme.font; font.pixelSize: 17 }
-                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: fs.choose(fs.sel > 0 ? fs.sel : 1) }
+                        MouseArea {
+                            anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (fs.sel > 0 && fs.sel <= fs.tiles.length) { fs.choose(fs.sel); return; }
+                                ScreenLayout.markChosen(); fs.shown = false;
+                                if (fs.editor) fs.editor.openReady(fs.tiles[0].id);
+                            }
+                        }
                     }
                     Rectangle {
                         width: 160; height: 48; radius: 6; color: Qt.rgba(1, 1, 1, 0.06); border.color: Qt.rgba(1, 1, 1, 0.18)

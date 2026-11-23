@@ -7,6 +7,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 
 SetPage {
     id: page
@@ -19,7 +20,7 @@ SetPage {
     function run(args, done) { act.run(args, r => { page.st = r; if (done) page.say(done); }, e => { page.say(e, true); page.refresh(); }); }
     readonly property string wmName: !st ? "KWin" : st.wm === "labwc" ? "labwc" : "KWin"
     readonly property string nowName: !st || !st.wmNow ? "" : st.wmNow === "labwc" ? "labwc" : st.wmNow === "firehold" ? "Firehold" : "KWin"
-    Component.onCompleted: if (fedora) fRefresh(); else refresh()
+    Component.onCompleted: { if (fedora) fRefresh(); else refresh(); blocksRefresh(); }
     SetJob { id: job; helper: "hearth-your-desktop" }
     SetJob { id: act; helper: "hearth-your-desktop" }
 
@@ -227,6 +228,12 @@ SetPage {
         }
     }
     SetRow {
+        icon: "edit"; title: ScreenLayout.on ? "Change this desktop" : "Build your own"
+        sub: ScreenLayout.on ? "The block editor: move, size and restyle its blocks, add new ones, or say what you want" : "Start from nothing in the block editor, or from one of these"
+        chevron: true
+        onActivated: Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "screen", ScreenLayout.on ? "edit" : "editNothing"])
+    }
+    SetRow {
         visible: ScreenLayout.failed
         icon: "warn"; title: "Your desktop couldn't be drawn"
         sub: "Mantel's bar and dock are back so nothing's lost. Pick it again to try once more."
@@ -237,6 +244,40 @@ SetPage {
         sub: "The full-screen \"How do you want your desktop?\" a new install opens with"
         chevron: true
         onActivated: Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "screen", "firstStart"])
+    }
+    // Your blocks (build-anything board 5): the blocks your AI made, each on or off, and what you said to its ask.
+    property var myBlocks: []
+    function blocksRefresh() { blocksP.command = ScreenLayout.layoutCmd(["blocks-mine"]); blocksP.running = true; }
+    Process { id: blocksP; stdout: StdioCollector { onStreamFinished: { try { const v = JSON.parse(text.trim() || "[]"); if (Array.isArray(v)) page.myBlocks = v; } catch (e) {} } } }
+    Process { id: blockSet; onExited: page.blocksRefresh() }
+    Text {
+        Layout.fillWidth: true; Layout.topMargin: 18
+        text: "Your blocks"
+        color: Theme.text; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold
+    }
+    Text {
+        Layout.fillWidth: true; Layout.bottomMargin: 4
+        text: page.myBlocks.length ? "Made by your AI for your desktop. Each runs on its own and asks before it reaches anything. Press one to turn it off or on." : "None yet: in the block editor, describe a block Hearth hasn't got and your AI makes it."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap
+    }
+    Repeater {
+        model: page.myBlocks
+        delegate: SetRow {
+            required property var modelData
+            icon: "sparkle"; title: modelData.name
+            sub: (modelData.reach && modelData.reach.kind ? (modelData.allowed === "always" ? "Allowed to reach " : modelData.allowed === "no" ? "You said No to " : "Asks before it reaches ") + modelData.reach.value + " · " : "") + "\"" + modelData.asked + "\""
+            chip: modelData.on ? "On" : "Off"; chipKind: modelData.on ? "ok" : "warn"
+            chevron: true
+            onActivated: { blockSet.command = ScreenLayout.layoutCmd(["block-on", modelData.id, modelData.on ? "false" : "true"]); blockSet.running = true; }
+        }
+    }
+    SetRow {
+        visible: page.myBlocks.some(b => b.allowed !== "")
+        icon: "shield"; title: "Ask again before they reach anything"
+        sub: "Forgets every Allow and No you gave your blocks"
+        chevron: true
+        onActivated: { for (const b of page.myBlocks) Quickshell.execDetached(ScreenLayout.layoutCmd(["block-allow", b.id, "ask"])); refreshT.start(); }
+        Timer { id: refreshT; interval: 800; onTriggered: page.blocksRefresh() }
     }
     // <<< Build anything
     Text { visible: page.msg !== ""; Layout.fillWidth: true; text: page.msg; color: page.bad ? SetStyle.warn : Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }

@@ -105,7 +105,19 @@ PY
   printf '{"pins":["foot"],"recent":["game:pixel-rally"]}\n' >"$HOME/.config/nimbus/desk.json"
   python3 "$SH/hearth-browser" asked >/dev/null 2>&1 || true   # the 1.12 "Pick your browser" was answered long ago
   mkdir -p /tmp/rc-screens && printf '<?xml version="1.0"?>\n<labwc_config><desktops number="4"/></labwc_config>\n' >/tmp/rc-screens/rc.xml
-  printf 'quickshell -p %s >%s/shell.log 2>&1 &\n' "$SH" "$XDG_RUNTIME_DIR" >/tmp/rc-screens/autostart
+  # a pretend AI's answer for "Or say it" (board 5) and what the pretend printer at 192.168.1.40 says
+  mkdir -p /tmp/printer && printf '{"job":{"file":{"display":"Quad Mech base plate"}},"progress":{"completion":62,"printTimeLeft":6480},"temps":{"nozzle":205,"bed":60}}' >/tmp/printer/api_job
+  python3 - "$OUT" <<'PY'
+import json, sys
+scr = json.load(open("hosts/linux/desktop/shell/screens/console.json"))
+scr["blocks"].append({"id": "printer", "block": "own:printer-camera", "x": 18, "y": 9, "w": 6, "h": 4, "style": {"corners": 10}})
+made = {"format": 1, "id": "printer-camera", "name": "Printer camera", "asked": "",
+        "reach": {"kind": "address", "value": "192.168.1.40", "what": "your printer"}, "path": "/api/job",
+        "shows": {"title": "{job.file.display} · {progress.completion}%", "lines": ["{progress.printTimeLeft} s left · nozzle {temps.nozzle}° · bed {temps.bed}°"],
+                  "progress": "progress.completion", "picture": "/webcam/?action=snapshot", "chip": "Live · Anycubic Chiron"}, "every": 10}
+json.dump({"kind": "screen", "screen": scr, "make": [made], "changes": ["Your printer's camera and progress, in the corner"]}, open("/tmp/describe-screen.json", "w"))
+PY
+  printf 'HEARTH_DESCRIBE_FAKE=/tmp/describe-screen.json HEARTH_BLOCK_FAKE=/tmp/printer quickshell -p %s >%s/shell.log 2>&1 &\n' "$SH" "$XDG_RUNTIME_DIR" >/tmp/rc-screens/autostart
   dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"
   labwc -C /tmp/rc-screens >"$OUT/labwc-screens.log" 2>&1 &
   local lw=$!
@@ -126,12 +138,21 @@ PY
   done
   timeout 20 quickshell ipc -p "$SH" call screen use console >/dev/null 2>&1; sleep 4
   timeout 20 quickshell ipc -p "$SH" call screen guide >/dev/null 2>&1; sleep 2; shot "qml-anything-console-guide"
+  # the block editor (board 4) on the console dashboard, the hero tile picked
+  timeout 20 quickshell ipc -p "$SH" call screen editReady console >/dev/null 2>&1; sleep 4
+  timeout 20 quickshell ipc -p "$SH" call screen editorPick 2 >/dev/null 2>&1; sleep 2
+  shot "qml-anything-4-block-editor"
+  # board 5: your AI makes a block Hearth hasn't got (a pretend AI and a pretend printer), it asks first, then it's on the desktop
+  timeout 20 quickshell ipc -p "$SH" call screen editorSay "Add my 3D printer's camera and how far the print is, in the corner" >/dev/null 2>&1; sleep 8
+  shot "qml-anything-5-ai-made-block"
+  timeout 20 quickshell ipc -p "$SH" call screen editorState 2>/dev/null | grep -q '"made":true' || err "board 5: the made block didn't come up ($(timeout 20 quickshell ipc -p "$SH" call screen editorState 2>/dev/null))"
+  hearth-layout block-allow printer-camera always >/dev/null 2>&1
   timeout 20 quickshell ipc -p "$SH" call screen mantel >/dev/null 2>&1; sleep 6
   shot "qml-anything-back-to-mantel"
   timeout 20 quickshell ipc -p "$SH" call settings page your-desktop >/dev/null 2>&1; sleep 5; shot "qml-anything-settings"
   python3 -c "import json,os;d=json.load(open(os.path.expanduser('~/.local/share/nimbus/screen.json')));assert d.get('on') is False and d.get('chosen') is True, d" 2>>"$OUT/notes.txt" || err "screen: Back to Hearth OS Mantel wasn't kept"
   grep -v -e MESA -e '^$' "$XDG_RUNTIME_DIR/shell.log" >"$OUT/qml-screens-shell.log" 2>/dev/null
-  local bad; bad=$(grep -E 'Screen.qml|FirstStart|ScreenLayout|SetYourDesktop' "$OUT/qml-screens-shell.log" | grep -iE 'error|TypeError|ReferenceError|is not defined|Cannot|Unable|failed|not a type' | sort -u | head -8 | tr '\n' '|' | cut -c1-1500)
+  local bad; bad=$(grep -E 'Screen.qml|FirstStart|ScreenLayout|SetYourDesktop|ScreenEditor|OwnBlock' "$OUT/qml-screens-shell.log" | grep -v -e 'File does not exist' -e 'QML Image at' | grep -iE 'error|TypeError|ReferenceError|is not defined|Cannot|Unable|failed|not a type' | sort -u | head -8 | tr '\n' '|' | cut -c1-1500)
   [ -n "$bad" ] && err "screens: the log: $bad"
   kill "$lw" 2>/dev/null; sleep 1; pkill -x quickshell 2>/dev/null; pkill -f dbus-daemon 2>/dev/null; sleep 1
   unset XDG_CACHE_HOME
@@ -148,7 +169,8 @@ mock = {'plasma-1-desktop': 'layouts-1-plasma-style.png', 'gnome-1-desktop': 'la
         'macos-1-desktop': 'layouts-5-macos-style.png', 'describe-layout': 'layouts-7-describe-it.png',
         'describe-feature': 'layouts-8-describe-it-new-feature.png', 'describe-needs': 'layouts-9-describe-it-send-idea.png',
         'anything-7-first-start': '../build-anything/anything-7-first-start.png', 'anything-console-guide': '../build-anything/anything-2-console-dashboard.png',
-        'anything-iconrow': '../build-anything/anything-3-icon-row-home.png'}
+        'anything-iconrow': '../build-anything/anything-3-icon-row-home.png', 'anything-4-block-editor': '../build-anything/anything-4-block-editor.png',
+        'anything-5-ai-made-block': '../build-anything/anything-5-ai-made-block.png'}
 W, H = 1280, 720
 names = sorted({f[4:-4] if f.startswith('qml-') else f[5:-4] for f in os.listdir(o) if f.endswith('.png') and (f.startswith('qml-') or f.startswith('rust-'))})
 for name in names:

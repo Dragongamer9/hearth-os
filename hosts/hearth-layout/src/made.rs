@@ -327,6 +327,11 @@ fn box_in() {
 }
 
 fn fetch(url: &str) -> Result<Vec<u8>, String> {
+    // CI's pictures: what the address would answer, from a folder of files (HEARTH_BLOCK_FAKE: "<dir>", the URL's path)
+    if let Ok(d) = std::env::var("HEARTH_BLOCK_FAKE") {
+        let name = url.split("://").nth(1).and_then(|r| r.split_once('/')).map(|(_, p)| p.replace(['/', '?', '&', '='], "_")).unwrap_or_default();
+        return std::fs::read(std::path::Path::new(&d).join(name)).map_err(|e| e.to_string());
+    }
     let out = Command::new("curl")
         .args(["-sS", "--max-time", "6", "--max-filesize", "2000000", "--proto", "=http,https", "--max-redirs", "0", url])
         .output()

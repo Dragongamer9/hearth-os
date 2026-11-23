@@ -132,6 +132,7 @@ ShellRoot {
                     const c = Qt.createComponent("Screen.qml");
                     if (c.status !== Component.Ready) { console.warn("Mantel: your desktop (Screen.qml) couldn't load; the bar and dock stay: " + c.errorString()); ScreenLayout.failed = true; return; }
                     screenWin = c.createObject(perScreen, { screen: perScreen.modelData, launcher: launcher, quick: quick, settingsApp: settings, filesApp: files, powerMenu: powerMenu });
+                    if (screenWin) screenWin.editRequested.connect(() => screenEditor.open(null, ""));
                     if (!screenWin) { console.warn("Mantel: your desktop (Screen.qml) couldn't start; the bar and dock stay"); ScreenLayout.failed = true; }
                 }
                 Connections {
@@ -223,9 +224,11 @@ ShellRoot {
         function openAt(p) { pending = p || "bar"; if (!active) active = true; else if (item) item.open(pending); }
     }
     // Build anything: the first start's "How do you want your desktop?" (once, on a new install) and your desktop's IPC.
+    ScreenEditor { id: screenEditor; launcher: launcher; quick: quick; settingsApp: settings; filesApp: files; powerMenu: powerMenu }
     FirstStart {
         id: firstStart
         settingsApp: settings
+        editor: screenEditor
         readonly property bool due: ScreenLayout.loaded && Settings.loaded && !ScreenLayout.chosen && !ScreenLayout.unreadable && Settings.defaultsGen === 2
         onDueChanged: if (due) open()
     }
@@ -235,6 +238,13 @@ ShellRoot {
         function mantel(): void { ScreenLayout.useMantel(); }
         function firstStart(): void { firstStart.open(); }
         function guide(): void { ScreenLayout.guideAsk++; }
+        // the block editor: your desktop as it is, a ready-made one, or nothing
+        function edit(): void { screenEditor.open(null, ""); }
+        function editReady(name: string): void { screenEditor.openReady(name); }
+        function editNothing(): void { screenEditor.open({ grid: { cols: 24, rows: 14 }, background: { kind: "gradient", from: "#1a1410", to: "#0c0907" }, look: {}, blocks: [] }, "Start from nothing"); }
+        function editorState(): string { return JSON.stringify({ shown: screenEditor.shown, blocks: (screenEditor.draft.blocks || []).length, pick: screenEditor.pick, made: !!screenEditor.made }); }
+        function editorPick(i: int): void { screenEditor.pick = i; }
+        function editorSay(text: string): void { screenEditor.say(text); }
         function state(): string { return JSON.stringify({ on: ScreenLayout.on, from: ScreenLayout.from, chosen: ScreenLayout.chosen, failed: ScreenLayout.failed, hidesBars: ScreenLayout.hidesBars }); }
     }
     IpcHandler {
