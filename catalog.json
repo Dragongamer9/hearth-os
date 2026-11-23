@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 12,
+  "serial": 13,
   "apps": [
     {
       "id": "command-center",
@@ -352,17 +352,25 @@
       "kind": "builtin",
       "part": {
         "id": "mantel-rust",
-        "version": "1.17.1",
+        "version": "1.17.2",
         "os": "1.17",
         "path": "mantel-rust",
-        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-rust-1.17.1/mantel-rust-1.17.1.tar.gz",
-        "sha256": "4ac30e84dfedb03987931e26b336cab3e19c9221b303e5aa7379bfcb7ce609a1",
-        "size": 8795138,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-mantel-rust-1.17.2/mantel-rust-1.17.2.tar.gz",
+        "sha256": "ad3d6e16e53f3edfe44b07efde4bd31775bbc5ec18ea67dee96b3d4212a93e40",
+        "size": 9825558,
         "notes": [
-          "A test: Mantel drawn in Rust, the same bar, dock, wallpaper and app menu, lighter and quicker",
-          "Not in it yet: Quick Access, notifications, tray icons, right-click menus",
-          "The Super key still opens the usual menu: use the flame",
-          "It starts once your Hearth OS has the update that can start it; until then the usual Mantel stays"
+          "Build anything: your desktop as one screen of blocks, under your windows",
+          "Six ready-made desktops: console dashboard, icon row home, cockpit, cabin, paper notebook, 1995 computer",
+          "The first-start choice: Hearth OS Mantel or build your own",
+          "The block editor: drag blocks onto the screen, size them, change their look, sound and animation, Try it full screen, Keep this",
+          "Or say it: describe a change or a block that isn't there and your AI makes it, boxed in, asking before it reaches anything",
+          "Settings › Your desktop: how your desktop looks, your blocks, back to Hearth OS Mantel any time"
+        ],
+        "missing": [
+          "Game Mode blocks (board 6) in Hearth's own Game Mode",
+          "Blocks made by people (shared blocks, once Hearth's makers have checked them)",
+          "Weather until you pick your place in Settings › Display",
+          "Some animations and the media and weather blocks' live parts"
         ]
       },
       "test": true,
