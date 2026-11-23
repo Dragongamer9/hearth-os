@@ -554,7 +554,7 @@ pub fn view(sh: &Shell) -> Element<'_, Message> {
     }
     let canvas = mouse_area(stack(layers).width(cw).height(ch)).on_move(|p| e(EMsg::Moved(p))).on_release(e(EMsg::Drop));
     let note: Element<Message> = if ed.busy { l.t("Your AI is making it…", 14.0, muted).into() } else if !ed.error.is_empty() { l.t(ed.error.clone(), 14.0, Color::from_rgb8(0xff, 0x9a, 0x52)).into() } else { Space::new().into() };
-    let say = container(text_input("Or say it: \"make the hero tile bigger and add my printer's camera in the corner\"…", &ed.say).on_input(|t| e(EMsg::Say(t))).on_submit(e(EMsg::SayGo)).size(16).padding(14).font(l.font))
+    let say = container(text_input("Or say it: \"make the hero tile bigger and add my printer's camera in the corner\"…", &ed.say).on_input(|t| e(EMsg::Say(t))).on_submit(e(EMsg::SayGo)).size(16).padding(14).font(l.font).style(field))
         .width(cw)
         .style(move |_| container::Style { background: Some(Color::from_rgb8(0x21, 0x1c, 0x19).into()), border: iced::Border { color: orange, width: 2.0, radius: 10.0.into() }, ..Default::default() });
     let middle = container(column![canvas, note, Space::new().height(Length::Fill), say].spacing(12).align_x(iced::Center)).padding(30).width(Length::Fill).height(Length::Fill);
@@ -575,11 +575,11 @@ pub fn view(sh: &Shell) -> Element<'_, Message> {
             }
             if ["notes", "text", "tilerow", "hero", "windows", "activity"].contains(&blk.as_str()) {
                 let t = b.get("title").and_then(Value::as_str).unwrap_or("").to_string();
-                c = c.push(text_input("Its title (\"Jump back in\")", &t).on_input(|v| e(EMsg::Field("title".into(), json!(v)))).size(13).padding(8));
+                c = c.push(text_input("Its title (\"Jump back in\")", &t).on_input(|v| e(EMsg::Field("title".into(), json!(v)))).size(13).padding(8).style(field));
             }
             if ["notes", "text"].contains(&blk.as_str()) {
                 let v = b.get("value").and_then(Value::as_str).unwrap_or("").to_string();
-                c = c.push(text_input("Your words", &v).on_input(|v| e(EMsg::Field("value".into(), json!(v)))).size(13).padding(8));
+                c = c.push(text_input("Your words", &v).on_input(|v| e(EMsg::Field("value".into(), json!(v)))).size(13).padding(8).style(field));
             }
             c = c.push(l.t("LOOK", 12.0, muted));
             let mut sw_r = Row::new().spacing(8);
@@ -659,4 +659,17 @@ fn made_view<'a>(sh: &'a Shell, made: &Value) -> Element<'a, Message> {
         .width(Length::Fill)
         .style(|_| container::Style { background: Some(Color::from_rgb8(0x21, 0x1c, 0x19).into()), ..Default::default() });
     container(column![top, container(row![left, r].spacing(60)).padding(Padding { left: 100.0, right: 100.0, top: 50.0, bottom: 0.0 })]).width(Length::Fill).height(Length::Fill).style(|_| container::Style { background: Some(Color::from_rgb8(0x1b, 0x17, 0x15).into()), ..Default::default() }).into()
+}
+
+/// The editor's text fields: dark, white words, as board 4 draws them (iced's own are white).
+fn field(_t: &iced::Theme, st: text_input::Status) -> text_input::Style {
+    let edge = if matches!(st, text_input::Status::Focused { .. }) { Color::from_rgb8(0xff, 0x7a, 0x2f) } else { Color::from_rgba8(0xff, 0xff, 0xff, 0.12) };
+    text_input::Style {
+        background: Color::from_rgb8(0x21, 0x1c, 0x19).into(),
+        border: iced::Border { color: edge, width: 1.0, radius: 8.0.into() },
+        icon: Color::WHITE,
+        placeholder: Color::from_rgba8(0xff, 0xff, 0xff, 0.45),
+        value: Color::WHITE,
+        selection: Color::from_rgba8(0xff, 0x7a, 0x2f, 0.4),
+    }
 }

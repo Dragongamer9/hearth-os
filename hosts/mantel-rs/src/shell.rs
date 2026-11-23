@@ -246,7 +246,9 @@ fn open_editor(s: &mut Shell, from: Option<serde_json::Value>, name: &str) -> Ta
     if s.id_of(Surf::Editor).is_some() {
         return Task::none();
     }
-    s.editor = crate::editor::Editor::start(from.unwrap_or_else(|| s.screen.screen.clone()), name);
+    // your own desktop keeps its name: a ready-made one you're changing is called what the gallery calls it
+    let own = if name.is_empty() && from.is_none() { screen::ready_name(&s.screen.from) } else { name };
+    s.editor = crate::editor::Editor::start(from.unwrap_or_else(|| s.screen.screen.clone()), own);
     let id = Id::unique();
     s.surfs.push((id, Surf::Editor));
     let all = Anchor::Top | Anchor::Bottom | Anchor::Left | Anchor::Right;
@@ -436,6 +438,9 @@ fn update(s: &mut Shell, m: Message) -> Task<Message> {
             let mut t = Vec::new();
             if s.screen.on != was_on || s.screen.from != was_from || s.id_of(Surf::First).is_some() != screen::first_due(&s.screen) {
                 t.extend(build_screen(s));
+                if s.screen.on && s.screen.games.is_empty() {
+                    t.push(Task::perform(async { screen::load_games() }, Message::ScreenGames));
+                }
             }
             if s.screen.hides_bars() != was_hidden {
                 t.extend(build_bars(s));

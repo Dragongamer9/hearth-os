@@ -180,6 +180,7 @@ run_screens_rust() {
   export WAYLAND_DISPLAY=$(basename "$(ls "$XDG_RUNTIME_DIR"/wayland-? 2>/dev/null | head -1)")
   wlr-randr --output HEADLESS-1 --custom-mode 1920x1080 >/dev/null 2>&1 || true
   sleep 10
+  note "rust: your games as Mantel reads them: $(python3 "$SH/hearth-games" cached 2>&1 | tail -c 300)"
   shot "rust-anything-7-first-start"
   for id in console iconrow cockpit cabin notebook retro; do
     python3 - "$id" <<'PY'

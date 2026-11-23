@@ -476,8 +476,19 @@ fn block<'a>(sh: &'a Shell, b: &Value, stv: &Value, rec: &[Game], bw: f32, bh: f
             } else if !title.is_empty() {
                 c = c.push(l.t(title, size(22.0) * 1.05, fg));
             }
+            // "☐ " / "☑ " lines are a checklist: Hearth draws the boxes (the fonts haven't got those signs)
+            let fs = size(18.0);
             for line in s(b, "value").lines() {
-                c = c.push(l.t(line.to_string(), size(18.0), fg));
+                let (mark, rest) = if let Some(r) = line.strip_prefix('☐') { (Some(false), r.trim_start()) } else if let Some(r) = line.strip_prefix('☑') { (Some(true), r.trim_start()) } else { (None, line) };
+                match mark {
+                    Some(done) => {
+                        let bx = fs * 0.8;
+                        let tick: Element<Message> = if done { container(Space::new()).width(bx * 0.55).height(bx * 0.55).style(move |_| container::Style { background: Some(fg.into()), border: border::rounded(2.0), ..Default::default() }).into() } else { Space::new().into() };
+                        let boxv = container(tick).width(bx).height(bx).center_x(bx).center_y(bx).style(move |_| container::Style { border: iced::Border { color: fg, width: 1.5, radius: 3.0.into() }, ..Default::default() });
+                        c = c.push(row![boxv, l.t(rest.to_string(), fs, fg)].spacing(fs * 0.5).align_y(iced::Center));
+                    }
+                    None => c = c.push(l.t(line.to_string(), fs, fg)),
+                }
             }
             if win { boxed(container(c).padding(6).into()) } else { c.into() }
         }
@@ -659,6 +670,19 @@ mod tests {
 
 /// Board 7: the first start after a fresh install, full screen, once (desktop.json made for a new install, nothing
 /// chosen yet): Hearth OS Mantel, or Build your own desktop (the ready-made ones, Start from nothing).
+/// What the gallery calls a ready-made desktop ("" for one of your own).
+pub fn ready_name(id: &str) -> &'static str {
+    match id {
+        "console" => "Console dashboard",
+        "iconrow" => "Icon row home",
+        "cockpit" => "Cockpit",
+        "cabin" => "Cabin",
+        "notebook" => "Paper notebook",
+        "retro" => "1995 computer",
+        _ => "",
+    }
+}
+
 pub fn first_due(st: &State) -> bool {
     !st.chosen && !st.unreadable && hearth_ui::settings_file::read_json(&hearth_ui::theme::desktop_json()).get("defaults").and_then(Value::as_i64) == Some(2)
 }
