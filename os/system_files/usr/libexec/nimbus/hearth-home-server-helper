@@ -2554,6 +2554,14 @@ def ups_status():
 # releases, checked against the SHA-256 their makers publish: never in the image, never at boot. They live in
 # /var/lib/hearth/apps/NAME (root's, read only for the services), their data next to it; removing one keeps its data.
 APPS_DIR = '/var/lib/hearth/apps'
+
+
+def label_program(path):
+    """Fedora's SELinux keeps services from running programs in /var/lib (they're marked as data there): the app is
+    marked as a program (its units do the same before each start, so an older install is put right too)."""
+    if not which('chcon') or not which('getenforce') or run(['getenforce'])[1].strip() == 'Disabled':
+        return
+    run(['chcon', '-R', '-t', 'bin_t', path])
 APP_STATE = '/var/lib/hearth/home-server-apps.json'       # installed versions and install progress (no secrets)
 SERVICES_STATE = '/run/hearth/home-server-services.json'  # what Light mode stopped or unloaded for your game
 SEEN_SYS = '/var/lib/hearth/home-server-seen.json'        # the Command Center seen using the AI service (hide-until-seen)
@@ -2873,6 +2881,7 @@ def app_install_run(name):
         os.rename(new, dest)
         if os.path.isdir(old):
             shutil.rmtree(old, ignore_errors=True)
+        label_program(dest)
         app_state_set(name, installing=False, progress=100, version=rel['version'], sha256=rel['sha256'], at=int(time.time()), error='')
         if os.path.exists(APP_DROPIN % APP_UNITS[name]):
             run(['systemctl', 'restart', APP_UNITS[name] + '.service'])

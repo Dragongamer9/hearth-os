@@ -15,6 +15,9 @@ StartLimitIntervalSec=600
 StartLimitBurst=5
 
 [Service]
+# Fedora's SELinux won't let a service run a program marked as data (/var/lib's own mark): Hearth marks the app as a
+# program before each start (as root, outside the sandbox; '-': nothing happens where there's no SELinux).
+ExecStartPre=-+/usr/bin/chcon -R -t bin_t /var/lib/hearth/apps/ollama
 ExecStart=/var/lib/hearth/apps/ollama/bin/ollama serve
 DynamicUser=yes
 SupplementaryGroups=video render
