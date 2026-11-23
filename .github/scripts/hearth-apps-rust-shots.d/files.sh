@@ -193,5 +193,5 @@ cat > /tmp/describe-files.json <<'JSON'
                "shows": [{"source": "folder-old", "label": "Older than a month"}], "click": {"action": "select-old"}}],
  "changes": ["The sidebar shows icons only", "The preview is on the right, bigger", "Downloads counts its pictures and old files"]}
 JSON
-SHOT_WAIT=4 run files-describe-it hearth-files 0 env PATH="$BIN:$PATH" HEARTH_DESCRIBE_FAKE=/tmp/describe-files.json "$BIN/hearth-files-app" "$H/Downloads" \
+SHOT_WAIT=4 run files-describe-it hearth-files 15 env PATH="$BIN:$PATH" HEARTH_DESCRIBE_FAKE=/tmp/describe-files.json "$BIN/hearth-files-app" "$H/Downloads" \
   --describe "Sidebar icons only, the preview on the right and bigger, and in Downloads add buttons that count my pictures and old files"
