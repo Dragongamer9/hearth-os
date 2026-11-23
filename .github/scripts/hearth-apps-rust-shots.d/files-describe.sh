@@ -37,3 +37,13 @@ cat > /tmp/describe-files-2.json <<'JSON'
 JSON
 SHOT_WAIT=4 run files-describe-it-2-whole-app hearth-files 0 env PATH="$BIN:$PATH" HEARTH_DESCRIBE_FAKE=/tmp/describe-files-2.json "$BIN/hearth-files-app" "$H/Downloads" \
   --describe "No tabs, just the address and search on top, and put back, forward, up, new, sort and view in a bar at the bottom; hide share and rename"
+
+# The window's own bar too (the owner, Nov 22: "even the top bar were the minimise maximise and the close button, The
+# entire APP"): macOS-style, the buttons as coloured dots on the left, then the folder's name; the tabs gone.
+cat > /tmp/describe-files-3.json <<'JSON'
+{"kind": "app", "layout": {"tabs": "hidden", "winbuttons": "dots",
+  "zones": {"titlebar": ["close", "minimize", "maximize", "spacer", "title", "spacer", "search"], "top": ["back", "forward", "address"]}},
+ "changes": ["The window's buttons on the left as coloured dots", "The folder's name in the middle", "Search up in the window's bar"]}
+JSON
+SHOT_WAIT=4 run files-describe-it-3-window-bar hearth-files 0 env PATH="$BIN:$PATH" HEARTH_DESCRIBE_FAKE=/tmp/describe-files-3.json "$BIN/hearth-files-app" "$H/Downloads" \
+  --describe "Make the window bar like a Mac: the close, minimise and maximise dots on the left, the folder name in the middle and search up there too"

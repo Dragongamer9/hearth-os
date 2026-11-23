@@ -86,7 +86,7 @@ pub fn view(a: &App) -> El<'_> {
         col = col.push(pick_head(a));
     } else {
         // Describe it: no tabs (the window's own buttons stay, on a thin strip), and every bar from its pieces
-        col = col.push(if a.describe.knob("tabs") == "hidden" { tab_strip_bare(a) } else { tab_strip(a) });
+        col = col.push(tab_strip(a));
         for z in ["top", "bar"] {
             if let Some(r) = zone_row(a, z) {
                 col = col.push(r);
@@ -218,19 +218,14 @@ mod menu_place_tests {
 
 // ------------------------------------------------------------------ the tabs (the window's title bar)
 fn tab_strip(a: &App) -> El<'_> {
-    tab_strip_with(a, true)
+    zone_titlebar(a)
 }
-/// Describe it's "no tabs": the folder's name, EDITING, and the window's buttons on the same strip.
-fn tab_strip_bare(a: &App) -> El<'_> {
-    tab_strip_with(a, false)
-}
-fn tab_strip_with(a: &App, tabs: bool) -> El<'_> {
+
+/// The tabs (each with its ✕), as they were drawn along the window's top.
+fn tabs_row(a: &App) -> El<'_> {
     let p = a.p;
-    let mut r = Row::new().spacing(2.0).align_y(iced::Bottom).padding(pad(0.0, 0.0, 0.0, 10.0));
-    if !tabs {
-        r = r.push(container(t1(format!("{} — Hearth Files", a.title_of(&a.path)), 13.0, p.text)).padding(pad(0.0, 0.0, 11.0, 6.0)));
-    }
-    for (i, tb_) in a.tabs.iter().enumerate().filter(|_| tabs) {
+    let mut r = Row::new().spacing(2.0).align_y(iced::Bottom);
+    for (i, tb_) in a.tabs.iter().enumerate() {
         let on = i == a.tab_index;
         let path = if on { a.path.clone() } else { tb_.path.clone() };
         let label = a.title_of(&path);
@@ -248,32 +243,99 @@ fn tab_strip_with(a: &App, tabs: bool) -> El<'_> {
         });
         r = r.push(drop_on(a, &path, mouse_area(tab).on_press(Msg::Tab(i)).on_middle_press(Msg::CloseTab(i)).into()));
     }
-    if tabs {
-        r = r.push(container(flat(&p, ico(Ic::Plus, p.muted, 15.0), Some(Msg::NewTab), pad(6.0, 8.0, 6.0, 8.0))).padding(pad(0.0, 0.0, 2.0, 4.0)));
-    }
-    if a.describe.open {
-        r = r.push(container(hearth_ui::describe::editing::<Msg>(&p)).padding(pad(0.0, 0.0, 9.0, 10.0)));
-    }
-    let drag = mouse_area(Space::new().width(Length::Fill).height(Length::Fixed(40.0))).on_press(Msg::Drag).on_double_click(Msg::Maximize);
-    let wbtn = |ic: Ic, msg: Msg, red: bool| -> El<'static> {
-        button(container(ico::<Msg>(ic, p.muted, 13.0)).center_x(Length::Fixed(46.0)).center_y(Length::Fixed(40.0)))
-            .padding(0.0)
-            .on_press(msg)
-            .style(move |_: &Theme, st: button::Status| button::Style {
-                background: Some(Background::Color(match st {
-                    button::Status::Hovered | button::Status::Pressed if red => Color::from_rgb8(0xc4, 0x2b, 0x1c),
-                    button::Status::Hovered | button::Status::Pressed => p.hover(),
-                    _ => Color::TRANSPARENT,
-                })),
-                text_color: p.text,
-                border: Border::default(),
-                shadow: Shadow::default(),
-                snap: true,
-            })
-            .into()
+    r.into()
+}
+
+/// One of the window's own buttons, in Describe it's look for them ("" Windows-style, dots: macOS-style coloured
+/// circles, square), wherever it's been put.
+fn win_button<'a>(a: &'a App, id: &str) -> El<'a> {
+    let p = a.p;
+    let (ic, msg, red) = match id {
+        "minimize" => (Ic::Minimize, Msg::Minimize, false),
+        "maximize" => (Ic::Maximize, Msg::Maximize, false),
+        _ => (Ic::Close, Msg::Close, true),
     };
-    let bar = row![r, drag, wbtn(Ic::Minimize, Msg::Minimize, false), wbtn(Ic::Maximize, Msg::Maximize, false), wbtn(Ic::Close, Msg::Close, true)].align_y(iced::Bottom);
-    container(bar).width(Length::Fill).height(Length::Fixed(40.0)).style(ui::boxed(Pal::mix(p.bg, Color::BLACK, if p.dark { 0.3 } else { 0.06 }), 0.0, None)).into()
+    match a.describe.knob("winbuttons").as_str() {
+        "dots" => {
+            let c = match id {
+                "close" => Color::from_rgb8(0xff, 0x5f, 0x57),
+                "minimize" => Color::from_rgb8(0xfe, 0xbc, 0x2e),
+                _ => Color::from_rgb8(0x28, 0xc8, 0x40),
+            };
+            let dot = container(Space::new()).width(Length::Fixed(12.0)).height(Length::Fixed(12.0)).style(ui::boxed(c, 6.0, None));
+            mouse_area(container(dot).center_x(Length::Fixed(22.0)).center_y(Length::Fixed(40.0))).on_press(msg).interaction(mouse::Interaction::Pointer).into()
+        }
+        look => {
+            let sq = look == "square";
+            button(container(ico::<Msg>(ic, p.muted, 13.0)).center_x(Length::Fixed(if sq { 40.0 } else { 46.0 })).center_y(Length::Fixed(if sq { 32.0 } else { 40.0 })))
+                .padding(0.0)
+                .on_press(msg)
+                .style(move |_: &Theme, st: button::Status| button::Style {
+                    background: Some(Background::Color(match st {
+                        button::Status::Hovered | button::Status::Pressed if red => Color::from_rgb8(0xc4, 0x2b, 0x1c),
+                        button::Status::Hovered | button::Status::Pressed => p.hover(),
+                        _ if sq => Pal::a(p.text, 0.06),
+                        _ => Color::TRANSPARENT,
+                    })),
+                    text_color: p.text,
+                    border: Border { radius: if sq { 4.0.into() } else { 0.0.into() }, ..Border::default() },
+                    shadow: Shadow::default(),
+                    snap: true,
+                })
+                .into()
+        }
+    }
+}
+
+/// The window's own bar (titlebar zone): the tabs, New tab, the folder's name, the window's buttons and empty space
+/// that moves the window, in Describe it's order (the owner, Nov 22: "even the top bar were the minimise maximise and
+/// the close button, The entire APP"). Other pieces put here are drawn as in any bar.
+fn zone_titlebar(a: &App) -> El<'_> {
+    let p = a.p;
+    let mut items = zone_items(a, "titlebar");
+    if a.describe.knob("tabs") == "hidden" {
+        items.retain(|i| i != "tabs" && i != "newtab");
+        if !items.iter().any(|i| i == "title") {
+            items.insert(0, "title".into());
+        }
+    }
+    let drag = || -> El<'_> { mouse_area(Space::new().width(Length::Fill).height(Length::Fixed(40.0))).on_press(Msg::Drag).on_double_click(Msg::Maximize).into() };
+    let mut r = Row::new().align_y(iced::Center).padding(pad(0.0, 0.0, 0.0, 10.0));
+    let mut dragged = false;
+    for i in &items {
+        r = r.push(match i.as_str() {
+            "tabs" => container(tabs_row(a)).height(Length::Fixed(40.0)).align_bottom(Length::Fixed(40.0)).into(),
+            "newtab" => container(flat(&p, ico(Ic::Plus, p.muted, 15.0), Some(Msg::NewTab), pad(6.0, 8.0, 6.0, 8.0))).padding(pad(0.0, 0.0, 0.0, 4.0)).into(),
+            "title" => container(t1(format!("{} — Hearth Files", a.title_of(&a.path)), 13.0, p.text)).padding(pad(0.0, 8.0, 0.0, 6.0)).into(),
+            "minimize" | "maximize" | "close" => win_button(a, i),
+            "spacer" => {
+                dragged = true;
+                drag()
+            }
+            other => match piece(a, other) {
+                Some(e) => e,
+                None => continue,
+            },
+        });
+        if i == "title" || i == "newtab" || i == "tabs" {
+            if a.describe.open && !items.iter().skip_while(|x| *x != i).skip(1).any(|x| x == "title" || x == "tabs" || x == "newtab") {
+                r = r.push(container(hearth_ui::describe::editing::<Msg>(&p)).padding(pad(0.0, 0.0, 0.0, 10.0)));
+            }
+        }
+    }
+    if !dragged {
+        // the window can always be moved: what's left of the bar moves it
+        r = r.push(drag());
+    }
+    // the window's own buttons taken out of the title bar and put nowhere come back here (close is never lost)
+    let placed = a.describe.placed();
+    for b in ["minimize", "maximize", "close"] {
+        if !items.iter().any(|x| x == b) && !placed.iter().any(|x| x == b) {
+            r = r.push(win_button(a, b));
+        }
+    }
+    let bar = container(r).width(Length::Fill).height(Length::Fixed(40.0)).style(ui::boxed(Pal::mix(p.bg, Color::BLACK, if p.dark { 0.3 } else { 0.06 }), 0.0, None));
+    hearth_ui::describe::outline(&p, a.describe.zone_changing("titlebar") || a.describe.changing("winbuttons") || a.describe.changing("tabs"), bar.into())
 }
 
 // ------------------------------------------------------------------ back, forward, up, refresh, the address, search
@@ -366,6 +428,7 @@ fn sort_button(a: &App) -> El<'_> {
 /// The default pieces of Files' bars (hearth-layout app.rs FILES.zones), and what Describe it changed: a zone it names
 /// is its pieces in that order; a piece it put somewhere else (or hid) leaves its own zone (the owner, Nov 22: "they need
 /// to be able to edit the top bar as well, basicly the enditre app").
+const TITLEBAR: &[&str] = &["tabs", "newtab", "spacer", "minimize", "maximize", "close"];
 const TOP: &[&str] = &["back", "forward", "up", "refresh", "address", "search"];
 const BAR: &[&str] = &["new", "sep", "cut", "copy", "paste", "rename", "share", "delete", "sep", "sort", "view", "tools", "spacer", "sortdl", "features", "details", "more"];
 
@@ -375,12 +438,13 @@ pub fn zone_items(a: &App, zone: &str) -> Vec<String> {
     }
     let placed = a.describe.placed();
     let own: &[&str] = match zone {
+        "titlebar" => TITLEBAR,
         "top" => TOP,
         "bar" => BAR,
         _ => &[],
     };
     let mut v: Vec<String> = own.iter().filter(|i| **i == "sep" || **i == "spacer" || !placed.iter().any(|x| x == *i)).map(|i| i.to_string()).collect();
-    // View (and View › Layout, Back to the original) is never lost: back in the button bar when it was taken out of it
+    // Close (in the title bar) and View (and View › Layout, Back to the original) are never lost: back in the button bar when it was taken out of it
     // and put nowhere else
     if zone == "bar" && !placed.iter().any(|x| x == "view") && !v.iter().any(|x| x == "view") {
         v.push("view".into());
@@ -451,6 +515,10 @@ fn piece<'a>(a: &'a App, id: &str) -> Option<El<'a>> {
         "more" => ib(Ic::Dots, true, "more"),
         "sep" => container(vline::<Msg>(p.line)).height(Length::Fixed(20.0)).padding(pad(0.0, 6.0, 0.0, 6.0)).into(),
         "spacer" => Space::new().width(Length::Fill).into(),
+        "minimize" | "maximize" | "close" => win_button(a, id),
+        "tabs" => tabs_row(a),
+        "newtab" => flat(&p, ico(Ic::Plus, p.muted, 15.0), Some(Msg::NewTab), pad(6.0, 8.0, 6.0, 8.0)),
+        "title" => t1(format!("{} — Hearth Files", a.title_of(&a.path)), 13.0, p.text).into(),
         _ => return None,
     })
 }

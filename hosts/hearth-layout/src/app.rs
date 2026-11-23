@@ -45,6 +45,7 @@ pub const FILES: AppSchema = AppSchema {
         Knob { key: "view", what: "how files are shown", values: &[("", "view as it is"), ("icons", "big icons"), ("list", "a list"), ("details", "details")] },
         Knob { key: "toolbar", what: "the buttons' labels", values: &[("", "buttons as they are"), ("compact", "icons only on the buttons")] },
         Knob { key: "tabs", what: "the tabs along the top", values: &[("", "tabs as they are"), ("hidden", "no tabs")] },
+        Knob { key: "winbuttons", what: "how the window's own buttons look", values: &[("", "window buttons as they are"), ("dots", "window buttons as coloured dots"), ("square", "square window buttons")] },
         Knob { key: "status", what: "the status bar at the bottom", values: &[("", "status bar as it is"), ("hidden", "no status bar")] },
         Knob { key: "density", what: "how roomy it is", values: &[("", "as roomy as it is"), ("roomy", "roomier"), ("compact", "tighter")] },
     ],
@@ -69,13 +70,16 @@ pub const FILES: AppSchema = AppSchema {
         ("share", "Share"), ("delete", "Delete"), ("sort", "Sort"), ("view", "View (and View › Layout)"), ("details", "Details (the preview)"),
         ("more", "More (⋯)"), ("sortdl", "Sort my Downloads (in Downloads)"), ("features", "your features' buttons"),
         ("tools", "a Briefcase's own buttons"), ("sep", "a divider"), ("spacer", "empty space that pushes the rest to the end"),
+        ("tabs", "the tabs"), ("newtab", "New tab (+)"), ("title", "the folder's name"), ("minimize", "the window's Minimize"),
+        ("maximize", "the window's Maximize"), ("close", "the window's Close"),
     ],
     zones: &[
+        ("titlebar", "the window's own bar at the very top (it moves the window)", &["tabs", "newtab", "spacer", "minimize", "maximize", "close"]),
         ("top", "the top bar (under the tabs)", &["back", "forward", "up", "refresh", "address", "search"]),
         ("bar", "the button bar (under the top bar)", &["new", "sep", "cut", "copy", "paste", "rename", "share", "delete", "sep", "sort", "view", "tools", "spacer", "sortdl", "features", "details", "more"]),
         ("bottom", "a bar at the bottom (above the status bar)", &[]),
     ],
-    keep: &["view"],
+    keep: &["view", "close"],
 };
 
 /// Every app with Describe it, by its id (hearth-layout describe-app <app>).
@@ -178,6 +182,7 @@ pub fn check_layout(a: &AppSchema, l: &Map<String, Value>) -> Result<Map<String,
 /// The app's pieces moved, reordered or hidden, checked: known pieces and zones, each piece in one place (dividers and
 /// space as often as wanted), and the pieces that must stay somewhere still there.
 pub fn check_zones(a: &AppSchema, v: &Value) -> Result<Value, Vec<String>> {
+    // (kept pieces taken out of their zone and put nowhere come back in their own place: the app does that)
     let Some(m) = v.as_object() else { return Err(vec!["The app's bars couldn't be read.".into()]) };
     let mut errs = Vec::new();
     let mut seen: Vec<String> = Vec::new();
@@ -471,6 +476,8 @@ mod tests {
         assert!(chips.contains(&"Layout: no tabs") && chips.iter().any(|c| c.starts_with("Layout: a bar at the bottom: back, forward, up")), "{chips:?}");
         let bad = |z: Value| check_answer(&FILES, &json!({"kind": "app", "layout": {"zones": z}}), "x", false).is_err();
         assert!(bad(json!({"hidden": ["view"]})), "View stays: the way back");
+        assert!(bad(json!({"hidden": ["close"]})), "a window can always be closed");
+        assert!(!bad(json!({"titlebar": ["close", "minimize", "maximize", "spacer", "title"]})), "macOS-style: the buttons on the left");
         assert!(bad(json!({"top": ["search"], "bottom": ["search"]})), "one place only");
         assert!(bad(json!({"top": ["rocket"]})));
         assert!(bad(json!({"sky": ["back"]})));
