@@ -769,7 +769,7 @@ fn list_page(a: &App) -> Element<'_, Msg> {
     });
     let can = sel_row.as_ref().and_then(|r| r.get("canChange").and_then(Value::as_bool)).unwrap_or(false);
     let sid = a.sel.clone().unwrap_or_default();
-    let (sub, buttons): (String, Vec<Element<Msg>>) = match a.page {
+    let (sub, buttons): (String, Vec<(String, Element<Msg>)>) = match a.page {
         Page::History => {
             let since = a.lists.get("history").and_then(|v| v.get("since")).and_then(Value::as_i64).unwrap_or(0);
             (
