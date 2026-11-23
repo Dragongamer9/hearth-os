@@ -711,7 +711,7 @@ jobs:
       - name: Hearth's look on the first Plasma start
         run: |
           r=$(cat /tmp/anatase-looks/first-start.txt 2>/dev/null || echo "FAIL the screenshots step left no result")
-          case "$r" in OK*) echo "::notice title=first start::$r" ;; *) echo "::error title=first start::Hearth's look didn't apply on the first Plasma start: $r"; exit 1 ;; esac
+          case "$r" in OK*|SKIP*) echo "::notice title=first start::$r" ;; *) echo "::error title=first start::Hearth's look didn't apply on the first Plasma start: $r"; exit 1 ;; esac
 
       # REQUIRED: "Unlock the file system" for real (overlay mounts, dnf, starts, an update and a rollback played out).
       - name: Unlock the file system (hearth-unlock, dnf)
@@ -757,7 +757,7 @@ jobs:
         continue-on-error: true
         timeout-minutes: 45
         run: |
-          IDLE_SECS=600 bash .github/scripts/desktop-idle-compare.sh localhost/hearth-os:anatase plasma | tee /tmp/idle.txt
+          IDLE_SECS=600 bash .github/scripts/desktop-idle-compare.sh localhost/hearth-os:anatase "$(sudo podman run --rm --entrypoint sh localhost/hearth-os:anatase -c 'command -v startplasma-wayland >/dev/null && echo plasma || echo mantel')" | tee /tmp/idle.txt
           sudo podman pull -q ghcr.io/dragongamer9/hearth-peppermint:testing >/dev/null && \
             IDLE_SECS=600 bash .github/scripts/desktop-idle-compare.sh ghcr.io/dragongamer9/hearth-peppermint:testing mantel | tee -a /tmp/idle.txt
           { echo '### Desktop Mode at rest (virtual screen, software drawing)'; echo; echo '```'; grep '^RESULT' /tmp/idle.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

@@ -31,6 +31,12 @@ echo "::notice title=looks render device::$(ls -l /dev/dri 2>&1 | tr '\n' ' ')"
 $P run -d --name "$NAME" --privileged --entrypoint sleep "$IMG" infinity >/dev/null \
   || { echo "FAIL couldn't start the image" > "$OUT/first-start.txt"; echo "::error title=looks::couldn't start the image"; exit 0; }
 trap '$P rm -f "$NAME" >/dev/null 2>&1' EXIT
+# 1.18 has no KDE (the owner, Nov 23: "No KDE either"): Desktop Mode is Mantel on labwc, so there's no Plasma to start.
+if ! $P exec "$NAME" bash -c 'command -v startplasma-wayland >/dev/null || command -v kwin_wayland >/dev/null'; then
+  echo "SKIP no KDE in this image (Desktop Mode is Mantel on labwc; its looks are checked in the labwc steps)" > "$OUT/first-start.txt"
+  echo "::notice title=looks::no KDE in this image: no Plasma looks to picture"
+  exit 0
+fi
 
 # Only for the pictures, in this throwaway container (never in the image): KWin's screenshot through dbus-python, the
 # sheet through qml. (python3-gobject, already in the image, is the fallback for the screenshots.)
