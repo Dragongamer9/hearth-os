@@ -834,12 +834,12 @@ DESKTOP
 # before). The image isn't built if anything Hearth needs went too, or if there's no way to sign in.
 kde_before=$(du -sxm /usr | cut -f1)
 KDE_RE='^(plasma|kwin|kde|kf6-|kf5-|breeze|kscreen|powerdevil|bluedevil|polkit-kde|xdg-desktop-portal-kde|dolphin|konsole|kate|okular|spectacle|ark|gwenview|kwallet|discover|libplasma|kpipewire|kglobalacceld|kmenuedit|milou|kinfocenter|systemsettings|kio|kirigami|qqc2|layer-shell-qt|kdecoration|kdsoap|kaccounts|signon|plasma5support|ksystemstats|libkscreen|libksysguard|kuserfeedback|kcm-|aurorae|ocean-sound|oxygen|phonon|baloo|akonadi|kdeconnect|kactivitymanagerd|kded|kscreenlocker|sddm|plasmalogin|maliit|krdp|flatpak-kcm|ksshaskpass|kde-settings|kcalc|xwaylandvideobridge|pinentry-qt|pam-kwallet)'
-kde_pkgs=$(rpm -qa --qf '%{NAME}\n' | grep -E "$KDE_RE" | sort -u)
+kde_pkgs=$(rpm -qa --qf '%{NAME}\n' | grep -E "$KDE_RE" | sort -u || true)
 if [ -n "$kde_pkgs" ]; then
   # shellcheck disable=SC2086
   dnf5 -y remove $kde_pkgs >/tmp/no-kde.log 2>&1 || { tail -n 30 /tmp/no-kde.log; echo "::error title=No KDE::removing KDE failed"; exit 1; }
 fi
-left=$(rpm -qa --qf '%{NAME}\n' | grep -E "$KDE_RE" | tr '\n' ' ')
+left=$(rpm -qa --qf '%{NAME}\n' | { grep -E "$KDE_RE" || true; } | tr '\n' ' ')
 [ -z "$left" ] || { echo "::error title=No KDE::still here: $left"; exit 1; }
 for need in steam gamescope NetworkManager pipewire wireplumber flatpak; do
   rpm -q "$need" >/dev/null 2>&1 || { echo "::error title=No KDE::$need went with KDE"; exit 1; }
