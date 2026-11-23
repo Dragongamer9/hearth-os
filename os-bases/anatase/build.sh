@@ -568,9 +568,16 @@ fi
 # (default.target): it answers only paired devices (and pairing while a code is showing), stays quiet while a game
 # runs (Hearth's hearth-playing file), and gives way to anything else under load (low CPU/IO weight). Its UDP ports
 # open to the local network only, through hearth-link-firewall.
+# 1.18 (the owner, Nov 23: everything Hearth makes updatable from the Hearth Store): the program in
+# /usr/libexec/hearth/apps and /usr/bin/hearth-link the two-line start the Store's apps have (hearth-part: the Store's
+# newer copy when one is installed for this Hearth OS and hasn't failed, else this one), so its service is unchanged.
 if [ -x "/ctx/nimbus-app/hearth-link" ]; then
-  install -Dm755 /ctx/nimbus-app/hearth-link /usr/bin/hearth-link
-  if ldd /usr/bin/hearth-link | grep "not found"; then echo "warning: hearth-link is missing the libraries above"; rm -f /usr/bin/hearth-link; fi
+  install -Dm755 /ctx/nimbus-app/hearth-link /usr/libexec/hearth/apps/hearth-link
+  if ldd /usr/libexec/hearth/apps/hearth-link | grep "not found"; then echo "warning: hearth-link is missing the libraries above"; rm -f /usr/libexec/hearth/apps/hearth-link
+  else
+    printf '#!/bin/sh\n# Hearth Link: the Hearth Store'"'"'s newer copy when one is installed (hearth-part), else the built-in program.\n[ -n "$HOME" ] && [ -e "$HOME/.local/share/hearth/parts/hearth-link/part.json" ] && [ -x /usr/libexec/hearth/hearth-part ] && exec /usr/libexec/hearth/hearth-part run hearth-link /usr/libexec/hearth/apps/hearth-link "$@"\nexec /usr/libexec/hearth/apps/hearth-link "$@"\n' > /usr/bin/hearth-link
+    chmod 755 /usr/bin/hearth-link
+  fi
 fi
 if [ -x /usr/bin/hearth-link ]; then
   install -d /usr/lib/systemd/user/default.target.wants
