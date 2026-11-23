@@ -43,6 +43,14 @@ their code lives: `docs/ARCHIVED.md` (code in `archive/`, docs in `docs/archive/
    is, what's waiting), and that repo is kept organized by its own rules (its CLAUDE.md; `tools/check.py` passes before
    every push). A reset once lost the older videos and their style.
 
+13. **RED FLAG: Every app Hearth makes, Mantel and Mantel in Rust included, can update both its main version and its
+   test version from the Hearth Store** (the owner, Nov 22, after the Windows key broke with the Store's Mantel 1.17.3).
+   A new app isn't done until it's in quick-update.yml (main and test) and works when run from the Store's copy in the
+   home folder: anything that finds an app by its built-in path must find the Store's copy too
+   (`hosts/linux/test/test_store_parts.py`). App update numbers (the owner, Nov 22): MAJOR.SMALL.N, where MAJOR.SMALL is
+   the Hearth OS version it's for and N counts that app's updates on it (Mantel's next on 1.17 is 1.17.4); a new Hearth
+   OS version starts N at 1 again (after 1.18, Mantel's next is 1.18.1). Each still needs the owner's go-ahead.
+
 ## Branches and releasing
 
 - Work lands on `bughunt` (feature work on `feature/*` branches, merged into bughunt when green). `main` is releases.
