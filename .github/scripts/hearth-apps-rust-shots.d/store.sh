@@ -64,6 +64,12 @@ for a in d["apps"]:
         a["part"] = part("hearth-files-app", "1.17.2", ["Sort my Downloads remembers where it put things."])
     if a["id"] == "g15":
         a["part"] = part("hearth-g15-app", "1.17.1", [])
+# A test version (Mantel in Rust) for the Windows 11 look's Tests and its page (store-w11-5)
+rust = part("mantel-rust", "1.17.1", ["Mantel drawn in Rust: the same bar, dock, wallpaper and app menu", "Lighter and quicker: one small program"])
+rust["missing"] = ["Quick Access, notifications, tray icons", "Right-click menus · the Super key opens the usual menu"]
+rust["size"] = 8810000
+d["tests"] = [{"id": "part-mantel-rust", "name": "Mantel in Rust (test)", "short": "Mantel in Rust", "kind": "builtin", "icon": "Rs",
+               "from": "#e8834a", "to": "#b5541f", "card": "Mantel drawn in Rust: lighter and quicker. A test.", "part": rust}]
 json.dump(d, open(os.path.join(w, "catalog.json"), "w"), indent=1)
 for name, have in (("parts-a", {"hearth-g15-app": ("1.17.1", 2)}), ("parts-b", {"hearth-files-app": ("1.17.2", 0)})):
     for pid, (v, fails) in have.items():
@@ -87,9 +93,13 @@ store_home home-a quick-world
 mkdir -p "$XDG_CONFIG_HOME/nimbus"
 cp "$XDG_CONFIG_HOME/nimbus/hearth-store.json" /tmp/store-prefs.bak 2>/dev/null || true
 echo '{"testVersions": true}' > "$XDG_CONFIG_HOME/nimbus/hearth-store.json"
+export HEARTH_STORE_CATALOG="$QW/catalog.json"
 run store-w11-1-home hearth-store 15 "$BIN/hearth-store-app"
 run store-w11-2-apps hearth-store 0 "$BIN/hearth-store-app" --page apps
 run store-w11-4-library hearth-store 0 "$BIN/hearth-store-app" --page library
 run store-w11-tests hearth-store 0 "$BIN/hearth-store-app" --page tests
+run store-w11-3-app-page hearth-store 0 "$BIN/hearth-store-app" --page apps --app command-center
+run store-w11-5-test-version hearth-store 0 "$BIN/hearth-store-app" --page tests --app part-mantel-rust
+run store-w11-6-settings hearth-store 0 "$BIN/hearth-store-app" --page settings
 rm -f "$XDG_CONFIG_HOME/nimbus/hearth-store.json"
 store_done

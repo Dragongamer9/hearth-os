@@ -95,6 +95,8 @@ pub struct Part {
     pub sha256: String,
     pub size: u64,
     pub notes: Vec<String>,
+    /// A test version's "Not in it yet" (store-w11-5), one line each.
+    pub missing: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -151,7 +153,7 @@ impl Entry {
             let ok_name = |x: &str| !x.is_empty() && x.len() <= 64 && x.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') && !x.starts_with('.');
             (sha.len() == 64 && sha.chars().all(|c| c.is_ascii_hexdigit()) && url.starts_with("https://") && ok_name(&pid) && ok_name(&version) && !os.is_empty()
                 && !path.is_empty() && !path.split('/').any(|x| x == ".." || x.is_empty()))
-            .then(|| Part { id: pid, version, os, path, url, sha256: sha, size: p.get("size").and_then(Value::as_u64).unwrap_or(0), notes: list(p, "notes") })
+            .then(|| Part { id: pid, version, os, path, url, sha256: sha, size: p.get("size").and_then(Value::as_u64).unwrap_or(0), notes: list(p, "notes"), missing: list(p, "missing") })
         });
         let short = s(v, "short");
         Some(Entry {

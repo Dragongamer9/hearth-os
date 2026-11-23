@@ -228,18 +228,7 @@ pub enum State {
 }
 
 fn this_pc() -> (String, String) {
-    if let Some(f) = paths::fixture() {
-        if let Ok(v) = std::fs::read(f.join("this-pc.json")).map(|b| serde_json::from_slice::<serde_json::Value>(&b).unwrap_or_default()) {
-            let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
-            return (s("hearth"), s("edition"));
-        }
-    }
-    let info: serde_json::Value = std::fs::read("/usr/share/nimbus/image-info.json").ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-    let ver = std::fs::read_to_string("/usr/share/nimbus/version").map(|s| s.trim().to_string()).unwrap_or_default();
-    let ver = if ver.is_empty() { info.get("version").and_then(|x| x.as_str()).unwrap_or("").to_string() } else { ver };
-    let base = info.get("base").and_then(|x| x.as_str()).unwrap_or("");
-    let edition = if base == "anatase" || std::path::Path::new("/usr/bin/rpm-ostree").exists() || std::path::Path::new("/usr/bin/dnf5").exists() { "Fedora edition" } else { "" };
-    (hearth_store::short_version(&ver), edition.to_string())
+    hearth_store::this_pc()
 }
 
 fn which(cmd: &str) -> bool {
@@ -1106,7 +1095,15 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             if a.focus.is_empty() || !view::targets(a).iter().any(|t| t.id == a.focus) {
                 a.focus = view::first_target(a);
             }
-            return a.reconcile();
+            // "Install updates by themselves" (store-w11-6, off unless turned on): Hearth parts only, never test
+            // versions, never while a game runs.
+            let mut tasks = vec![a.reconcile()];
+            if a.prefs.auto && !a.offline() && !net::game_running() {
+                for (e, _) in a.part_offers().into_iter().filter(|(e, _)| !e.test && !a.part_busy.contains(&e.id)) {
+                    tasks.push(Task::done(Msg::PartUpdate(e.id.clone())));
+                }
+            }
+            return Task::batch(tasks);
         }
         Msg::Reconciled(id, i) => {
             if let Some(i) = i {

@@ -246,7 +246,7 @@ fn day_time(ts: i64) -> String {
     }
 }
 
-fn released(date: &str) -> String {
+pub fn released(date: &str) -> String {
     match hearth_ui::time::parse_date(date) {
         Some((y, m, d)) => format!("released {} {d}, {y}", hearth_ui::time::month(m)),
         None => String::new(),
@@ -299,6 +299,12 @@ pub fn view(a: &App) -> E<'_, Msg> {
         Page::Apps => w11::apps(a),
         Page::Updates | Page::Yours => w11::library(a),
         Page::Tests => w11::tests(a),
+        Page::Settings => w11::settings(a),
+        Page::App(id) if a.dlg.is_none() => match a.entry(id) {
+            Some(e) if e.test => w11::test_page(a, e),
+            Some(e) if e.part.is_none() => w11::app_page(a, e),
+            _ => page_body(a),
+        },
         _ => page_body(a),
     };
     let body: E<Msg> = if a.note.is_empty() || matches!(a.page, Page::App(_) | Page::Work | Page::Repair(_) | Page::Settings | Page::BuiltIn) {
@@ -713,7 +719,7 @@ fn app_chips<'a>(a: &App, e: &Entry, st: &State) -> E<'a, Msg> {
     r.into()
 }
 
-fn open_label(e: &Entry, st: &State) -> &'static str {
+pub fn open_label(e: &Entry, st: &State) -> &'static str {
     match st {
         State::Get(_) => "Install",
         State::Ready(..) if e.self_updates => "Open to update",

@@ -10,7 +10,7 @@ use crate::{App, Msg, Page, State, SEARCH_ID};
 use hearth_store::catalog::{Entry, Kind};
 use hearth_ui::ui::{self, gap, t, tb, ts, G};
 use hearth_ui::Pal;
-use iced::widget::{column, container, mouse_area, row, scrollable, text_input, Column, Row, Space};
+use iced::widget::{canvas, column, container, mouse_area, row, scrollable, text_input, Column, Row, Space};
 use iced::{Color, Length, Theme};
 
 /// What an app is, for the filter pills (Apps) and the tiles' second line.
@@ -170,32 +170,104 @@ fn foot<'a>(a: &App, e: &Entry) -> E<'a, Msg> {
 }
 
 /// A tile (Home's Your apps): icon, name, kind, and its chip at the foot.
-fn tile<'a>(a: &'a App, e: &Entry, w: f32) -> E<'a, Msg> {
+fn tile<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let kind = if e.test { "Test version".to_string() } else if e.part.is_some() || e.kind == Kind::BuiltIn { format!("Hearth part{}", if e.card.is_empty() { String::new() } else { String::new() }) } else { category(e).to_string() };
     let kind = if !e.tagline.is_empty() && e.kind == Kind::Install { format!("{} · {}", e.tagline, category(e)) } else { kind };
     let c = container(column![app_icon(e, z(64.0)), gap(1.0, z(22.0)), tb(e.name.clone(), f(14.0), tn.text), t(kind, f(12.0), tn.muted), Space::new().height(Length::Fill), foot(a, e)].spacing(z(3.0)))
         .padding(z(18.0))
-        .width(Length::Fixed(w))
+        .width(Length::Fill)
         .height(Length::Fixed(z(272.0)))
         .style(look::bx(look::tone(&p).card, 8.0, Some((tn.line, 1.0))));
     click(c, Some(Msg::OpenApp(e.id.clone())))
 }
 
-/// A side tile on Home (the Command Center, a test version): its colours, kicker and name.
+/// A side tile on Home (the Command Center, a test version): its colours and picture, kicker and name.
 fn side_tile<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let p = a.p;
     let from = look::hex(&e.from, ORANGE);
     let to = look::hex(&e.to, ORANGE);
-    let kicker: E<'a, Msg> = if e.test { chip(&p, "TEST", Chip::Test) } else { ts(e.tagline.to_uppercase(), f(12.0), Pal::mix(Color::WHITE, from, 0.3)).into() };
-    let ver = a.seen.rel(&e.id).map(|r| format!(" {}", hearth_store::short_version(&r.version))).unwrap_or_default();
-    let inner = column![Space::new().height(Length::Fill), kicker, tb(format!("{}{ver}", e.short), f(20.0), Color::WHITE)].spacing(z(6.0));
-    let c = container(inner).padding(z(22.0)).width(Length::Fill).height(Length::Fill).style(look::grad(150.0, Pal::mix(to, Color::BLACK, 0.2), Pal::mix(from, Color::BLACK, 0.55), 8.0, Some((Pal::a(Color::WHITE, 0.12), 1.0))));
+    let kicker: E<'a, Msg> = if e.test { chip_test() } else { ts(if e.tagline.is_empty() { category(e).to_uppercase() } else { e.tagline.to_uppercase() }, f(12.0), Pal::mix(Color::WHITE, from, 0.3)).into() };
+    let ver = a.seen.rel(&e.id).map(|r| format!(" {}", hearth_store::short_version(&r.version))).or_else(|| a.inst.get(&e.id).map(|i| format!(" {}", hearth_store::short_version(&i.version)))).unwrap_or_default();
+    let name = if e.test { e.short.trim_end_matches(" (test)").to_string() } else { format!("{}{ver}", e.short) };
+    let words = column![Space::new().height(Length::Fill), kicker, tb(name, f(20.0), Color::WHITE)].spacing(z(6.0));
+    let art = iced::widget::canvas(Pic { kind: pic_of(e), from, to }).width(Length::Fill).height(Length::Fill);
+    let inner = iced::widget::stack![art, container(words).padding(z(22.0)).width(Length::Fill).height(Length::Fill)];
+    let c = container(inner).width(Length::Fill).height(Length::Fill).clip(true).style(look::grad(150.0, Pal::mix(to, Color::BLACK, 0.25), Pal::mix(from, Color::BLACK, 0.55), 8.0, Some((Pal::a(Color::WHITE, 0.12), 1.0))));
+    let _ = p;
     click(c, Some(Msg::OpenApp(e.id.clone())))
 }
 
+/// The yellow TEST chip, filled (store-w11-1's side tile, store-w11-5's notice).
+fn chip_test<'a>() -> E<'a, Msg> {
+    container(tb("TEST", f(12.0), look::INK).wrapping(iced::widget::text::Wrapping::None)).padding(look::pad(z(3.0), z(10.0), z(3.0), z(10.0))).style(look::bx(look::WARN, 11.0, None)).into()
+}
+
 // ------------------------------------------------------------------ 1. Home
+/// The featured app, big (store-w11-1): the carousel's dots, its icon, NEW VERSION and its name, its line, Update and
+/// See details, and its picture filling the right half.
+fn hero<'a>(a: &'a App, e: &Entry, st: &State) -> E<'a, Msg> {
+    let p = a.p;
+    let from = look::hex(&e.from, PURPLE);
+    let to = look::hex(&e.to, PURPLE);
+    let (kicker, title, button) = match st {
+        State::Ready(_, r) => ("NEW VERSION", format!("{} {}", e.name, hearth_store::short_version(&r.version)), view::open_label(e, st)),
+        State::Get(r) => ("NEW IN THE STORE", format!("{} {}", e.name, hearth_store::short_version(&r.version)), "Get"),
+        _ => ("YOUR APP", e.name.clone(), "Open"),
+    };
+    let line = if e.hero.is_empty() {
+        match st {
+            State::Ready(_, r) | State::Get(r) => r.notes.first().cloned().unwrap_or_else(|| e.about.clone()),
+            _ => e.about.clone(),
+        }
+    } else {
+        e.hero.clone()
+    };
+    let line = if e.tagline.is_empty() || line.starts_with(&e.tagline) { line } else { format!("{}. {line}", e.tagline.trim_end_matches('.')) };
+    let dots = row![
+        container(Space::new()).width(Length::Fixed(z(22.0))).height(Length::Fixed(z(4.0))).style(look::bx(Color::WHITE, 2.0, None)),
+        container(Space::new()).width(Length::Fixed(z(6.0))).height(Length::Fixed(z(4.0))).style(look::bx(Pal::a(Color::WHITE, 0.35), 2.0, None)),
+        container(Space::new()).width(Length::Fixed(z(6.0))).height(Length::Fixed(z(4.0))).style(look::bx(Pal::a(Color::WHITE, 0.35), 2.0, None)),
+    ]
+    .spacing(z(6.0));
+    let left = column![
+        dots,
+        Space::new().height(Length::Fill),
+        row![app_icon(e, z(72.0)), column![ts(kicker, f(13.0), PURPLE), tb(title, f(40.0), Color::WHITE)].spacing(z(2.0))].spacing(z(16.0)).align_y(iced::Center),
+        container(t(line, f(17.0), Pal::mix(Color::WHITE, tone(&p).muted, 0.25))).max_width(z(620.0)).padding(look::pad(z(18.0), 0.0, z(22.0), 0.0)),
+        row![btn(&p, button, B::Primary, false, false, view::primary(e, st)), btn(&p, "See details", B::Normal, false, false, Some(Msg::OpenApp(e.id.clone())))].spacing(z(12.0)),
+    ];
+    let left = container(left).padding(look::pad(z(24.0), z(44.0), z(44.0), z(44.0))).width(Length::FillPortion(55)).height(Length::Fill);
+    let art = container(iced::widget::canvas(look::Brain).width(Length::Fill).height(Length::Fill)).width(Length::FillPortion(45)).height(Length::Fill);
+    let inner = container(row![left, art]).width(Length::Fill).height(Length::Fill).clip(true).style(look::grad(110.0, Pal::mix(Color::from_rgb8(0x1c, 0x14, 0x2c), from, 0.10), Pal::mix(Color::from_rgb8(0x24, 0x14, 0x30), to, 0.14), 8.0, Some((Pal::a(Color::WHITE, 0.08), 1.0))));
+    click(inner, Some(Msg::OpenApp(e.id.clone())))
+}
+
+/// Which two apps get the side tiles (store-w11-1): one of yours that isn't featured, then a test version (with Get
+/// test versions on), else the next app.
+fn side_picks<'a>(a: &'a App, feat: Option<&str>) -> Vec<&'a Entry> {
+    let ok = |e: &&Entry| Some(e.id.as_str()) != feat;
+    let mut out: Vec<&Entry> = Vec::new();
+    if let Some(e) = a.cat.apps.iter().filter(ok).find(|e| e.kind == Kind::Install && a.inst.contains_key(&e.id)) {
+        out.push(e);
+    }
+    if a.prefs.test {
+        if let Some(e) = a.cat.apps.iter().filter(ok).find(|e| e.test) {
+            out.push(e);
+        }
+    }
+    for e in a.cat.apps.iter().filter(ok).filter(|e| e.kind == Kind::Install) {
+        if out.len() >= 2 {
+            break;
+        }
+        if !out.iter().any(|x| x.id == e.id) {
+            out.push(e);
+        }
+    }
+    out
+}
+
 pub fn home(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
@@ -204,27 +276,25 @@ pub fn home(a: &App) -> E<'_, Msg> {
         return search_results(a, c);
     }
     let feat = view::featured(a);
-    let mut sides: Vec<&Entry> = a.cat.apps.iter().filter(|e| Some(e.id.as_str()) != feat.as_ref().map(|f| f.0.id.as_str()) && (e.kind == Kind::Install || e.test) && (!e.test || a.prefs.test)).collect();
-    sides.sort_by_key(|e| !e.test);
-    sides.reverse();
-    let sides: Vec<&Entry> = sides.into_iter().take(2).collect();
-    let mut right = Column::new().spacing(z(16.0)).width(Length::Fixed(z(400.0)));
-    for e in &sides {
-        right = right.push(container(side_tile(a, e)).height(Length::Fixed(z(202.0))));
+    let mut right = Column::new().spacing(z(16.0)).width(Length::FillPortion(30)).height(Length::Fill);
+    for e in side_picks(a, feat.as_ref().map(|f| f.0.id.as_str())) {
+        right = right.push(container(side_tile(a, e)).height(Length::FillPortion(1)));
     }
     let big: E<Msg> = match &feat {
-        Some((e, st)) => view::hero_pub(a, e, st),
+        Some((e, st)) => hero(a, e, st),
         None => Space::new().into(),
     };
-    c = c.push(row![container(big).width(Length::Fill).height(Length::Fixed(z(420.0))), right].spacing(z(16.0)));
-    let mine: Vec<&Entry> = a.cat.apps.iter().filter(|e| (e.kind == Kind::Install && a.inst.contains_key(&e.id)) || (e.kind == Kind::BuiltIn && !e.test && a.here.contains(&e.id)) || a.parts.contains_key(&e.id)).collect();
+    c = c.push(row![container(big).width(Length::FillPortion(100)).height(Length::Fill), right].spacing(z(16.0)).height(Length::Fixed(z(420.0))));
+    let mine: Vec<&Entry> = a.cat.apps.iter().filter(|e| !e.test && ((e.kind == Kind::Install && a.inst.contains_key(&e.id)) || (e.kind == Kind::BuiltIn && a.here.contains(&e.id)) || a.parts.contains_key(&e.id))).collect();
     c = c.push(container(click(row![ts("Your apps", f(20.0), tn.text), t("  ›", f(20.0), tn.muted)].align_y(iced::Center), Some(Msg::Go(Page::Updates)))).padding(look::pad(z(34.0), 0.0, z(14.0), 0.0)));
     let mut r = Row::new().spacing(z(16.0));
     for e in mine.iter().take(8) {
-        r = r.push(tile(a, e, z(205.0)));
+        r = r.push(container(tile(a, e)).width(Length::FillPortion(1)));
     }
-    c = c.push(scrollable(r).direction(scrollable::Direction::Horizontal(scrollable::Scrollbar::new().width(0.0).scroller_width(0.0))));
-    c.into()
+    for _ in mine.len().min(8)..8 {
+        r = r.push(Space::new().width(Length::FillPortion(1)));
+    }
+    c.push(r).into()
 }
 
 fn search_results<'a>(a: &'a App, mut c: Column<'a, Msg>) -> E<'a, Msg> {
@@ -455,3 +525,370 @@ pub fn tests(a: &App) -> E<'_, Msg> {
     c.push(cards(a, &list)).into()
 }
 
+
+// ------------------------------------------------------------------ the pictures behind tiles and pages
+/// What's drawn behind an app's side tile and the top of its page (store-w11-1, -3, -5): the AI team round one task
+/// (the Command Center), Ithil's brain (Hearth AI), a desktop with its bar and dock (Mantel and its test), or soft
+/// rings in the app's colours.
+fn pic_of(e: &Entry) -> &'static str {
+    match e.id.as_str() {
+        "command-center" => "orbit",
+        "hearth-ai" => "brain",
+        id if id.contains("mantel") => "desk",
+        _ => "rings",
+    }
+}
+
+struct Pic {
+    kind: &'static str,
+    from: Color,
+    to: Color,
+}
+
+impl canvas::Program<Msg> for Pic {
+    type State = canvas::Cache;
+    fn draw(&self, cache: &canvas::Cache, renderer: &iced::Renderer, th: &Theme, b: iced::Rectangle, cur: iced::mouse::Cursor) -> Vec<canvas::Geometry> {
+        use canvas::{Path, Stroke, Text};
+        use iced::Point;
+        if self.kind == "brain" {
+            return <look::Brain as canvas::Program<Msg>>::draw(&look::Brain, cache, renderer, th, b, cur);
+        }
+        vec![cache.draw(renderer, b.size(), |fr: &mut canvas::Frame| {
+            let (w, h) = (b.width, b.height);
+            match self.kind {
+                "orbit" => {
+                    // One task in the middle, the team round it on a dashed ring (on the right of the tile or page).
+                    let c = Point::new(w * 0.66, h * 0.5);
+                    let r = (h * 0.40).min(w * 0.28);
+                    let ring = Stroke::default().with_color(Pal::a(Color::WHITE, 0.18)).with_width(1.2);
+                    for k in 0..48 {
+                        if k % 2 == 0 {
+                            let a0 = k as f32 / 48.0 * std::f32::consts::TAU;
+                            let a1 = (k + 1) as f32 / 48.0 * std::f32::consts::TAU;
+                            fr.stroke(&Path::line(Point::new(c.x + r * a0.cos(), c.y + r * a0.sin()), Point::new(c.x + r * a1.cos(), c.y + r * a1.sin())), ring);
+                        }
+                    }
+                    let pill = Path::rounded_rectangle(Point::new(c.x - r * 0.5, c.y - r * 0.2), iced::Size::new(r, r * 0.4), (r * 0.08).into());
+                    fr.fill(&pill, Color::from_rgb8(0x2b, 0x5c, 0xe6));
+                    fr.fill_text(Text { content: "One task".into(), position: c, color: Color::WHITE, size: (r * 0.16).max(11.0).into(), align_x: iced::widget::text::Alignment::Center, align_y: iced::alignment::Vertical::Center, ..Text::default() });
+                    for (name, ang, col) in [("Ithil", -2.0f32, Color::from_rgb8(0x8b, 0x6c, 0xf0)), ("Claude", -0.55, Color::from_rgb8(0xd9, 0x77, 0x57)), ("Gemini", 2.55, Color::from_rgb8(0x4f, 0x8c, 0xf0)), ("ChatGPT", 1.15, Color::from_rgb8(0x3f, 0xb3, 0x8a))] {
+                        let q = Point::new(c.x + r * ang.cos(), c.y + r * ang.sin());
+                        let rr = r * 0.25;
+                        fr.fill(&Path::circle(q, rr), Pal::a(col, 0.28));
+                        fr.stroke(&Path::circle(q, rr), Stroke::default().with_color(Pal::a(col, 0.9)).with_width(1.5));
+                        fr.fill_text(Text { content: name.into(), position: q, color: Pal::a(Color::WHITE, 0.85), size: (rr * 0.42).max(10.0).into(), align_x: iced::widget::text::Alignment::Center, align_y: iced::alignment::Vertical::Center, ..Text::default() });
+                    }
+                }
+                "desk" => {
+                    // A desktop: the bar with its orange button, a window, the dock's coloured icons.
+                    let x0 = w * 0.42;
+                    let dw = w - x0 - w * 0.04;
+                    fr.fill(&Path::rounded_rectangle(Point::new(x0, h * 0.10), iced::Size::new(dw, h * 0.11), (h * 0.055).into()), Pal::a(Color::WHITE, 0.08));
+                    fr.fill(&Path::circle(Point::new(x0 + h * 0.06, h * 0.155), h * 0.035), self.from);
+                    fr.fill(&Path::rounded_rectangle(Point::new(x0 + dw * 0.28, h * 0.32), iced::Size::new(dw * 0.44, h * 0.34), (h * 0.03).into()), Pal::a(Color::WHITE, 0.07));
+                    fr.stroke(&Path::rounded_rectangle(Point::new(x0 + dw * 0.28, h * 0.32), iced::Size::new(dw * 0.44, h * 0.34), (h * 0.03).into()), Stroke::default().with_color(Pal::a(Color::WHITE, 0.12)).with_width(1.0));
+                    let dock = [Color::from_rgb8(0xe8, 0x83, 0x4a), Color::from_rgb8(0x4f, 0x8c, 0xf0), Color::from_rgb8(0x2f, 0xb8, 0x8f), Color::from_rgb8(0xf2, 0xc1, 0x4e), Color::from_rgb8(0xa7, 0x8b, 0xfa)];
+                    let dx = x0 + dw * 0.30;
+                    let step = dw * 0.4 / dock.len() as f32;
+                    fr.fill(&Path::rounded_rectangle(Point::new(dx - step * 0.4, h * 0.76), iced::Size::new(step * (dock.len() as f32 + 0.3), h * 0.10), (h * 0.05).into()), Pal::a(Color::WHITE, 0.08));
+                    for (k, c) in dock.iter().enumerate() {
+                        fr.fill(&Path::circle(Point::new(dx + step * (k as f32 + 0.25), h * 0.81), h * 0.03), *c);
+                    }
+                }
+                _ => {
+                    for k in 0..4 {
+                        let c = Point::new(w * 0.78, h * 0.45);
+                        fr.stroke(&Path::circle(c, h * (0.18 + 0.12 * k as f32)), Stroke::default().with_color(Pal::a(Pal::mix(self.from, self.to, k as f32 / 3.0), 0.22)).with_width(1.4));
+                    }
+                }
+            }
+        })]
+    }
+}
+
+// ------------------------------------------------------------------ 3. An app's page
+/// A number and what it is under it (3.15.0 Installed · 129 MB Download · Stable Channel).
+fn stat<'a>(tn: &look::Tone, v: String, k: &str) -> E<'a, Msg> {
+    column![tb(v, f(18.0), tn.text), t(k.to_string(), f(12.0), tn.muted)].spacing(z(1.0)).into()
+}
+
+/// A line with a small mark in front ("Checked with the release's SHA-256 list").
+fn note_line<'a>(tn: &look::Tone, g: G, s: impl Into<String>) -> E<'a, Msg> {
+    row![ui::glyph(g, tn.muted, z(14.0), 1.5), t(s.into(), f(13.0), tn.muted)].spacing(z(12.0)).align_y(iced::Center).into()
+}
+
+/// The big box on a page's left: the icon, name, who made it, the buttons, the numbers and the notes under them.
+fn side_card<'a>(a: &'a App, body: Column<'a, Msg>) -> E<'a, Msg> {
+    let tn = tone(&a.p);
+    container(body.spacing(z(4.0))).padding(z(28.0)).width(Length::Fixed(z(420.0))).style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.08), 8.0, Some((tn.line, 1.0)))).into()
+}
+
+/// A wide button (Open, Get test version).
+fn wide<'a>(a: &'a App, label: &str, k: B, m: Option<Msg>) -> E<'a, Msg> {
+    let p = a.p;
+    let tn = tone(&p);
+    let enabled = m.is_some();
+    let (bg, line, fg) = match k {
+        B::Primary => (ORANGE, ORANGE, look::INK),
+        _ => (Pal::a(Color::WHITE, 0.05), Pal::mix(tn.line, tn.text, 0.1), tn.text),
+    };
+    let (bg, fg) = if enabled { (bg, fg) } else { (Pal::a(bg, 0.4), Pal::a(fg, 0.5)) };
+    click(container(tb(label.to_string(), f(16.0), fg)).center_x(Length::Fill).padding(look::pad(z(10.0), 0.0, z(10.0), 0.0)).style(look::bx(bg, 6.0, Some((line, 1.0)))), m)
+}
+
+/// The art across the top of a page, behind its right side (the app's own colours and picture).
+fn backdrop<'a>(e: &Entry, h: f32) -> E<'a, Msg> {
+    let from = look::hex(&e.from, ORANGE);
+    let to = look::hex(&e.to, ORANGE);
+    let art = iced::widget::canvas(Pic { kind: pic_of(e), from, to }).width(Length::Fill).height(Length::Fill);
+    container(art).width(Length::Fill).height(Length::Fixed(h)).style(look::grad(180.0, Pal::mix(from, Color::BLACK, 0.55), Pal::a(Pal::mix(to, Color::BLACK, 0.75), 0.0), 0.0, None)).into()
+}
+
+/// A sketch of an app's window, for Screenshots when no picture of it is kept yet (the mockup's three).
+fn sketch<'a>(tn: &look::Tone, c: Color) -> E<'a, Msg> {
+    let bar = |w: f32| -> E<'a, Msg> { container(Space::new()).width(Length::Fixed(z(w))).height(Length::Fixed(z(7.0))).style(look::bx(Pal::a(Color::WHITE, 0.08), 3.0, None)).into() };
+    let blk = |w: Length, h: f32, col: Color| -> E<'a, Msg> { container(Space::new()).width(w).height(Length::Fixed(z(h))).style(look::bx(col, 6.0, None)).into() };
+    let side = container(column![bar(60.0), bar(76.0), bar(88.0), bar(60.0), bar(76.0)].spacing(z(16.0))).padding(z(16.0)).width(Length::FillPortion(25)).height(Length::Fill).style(look::bx(Pal::a(Color::BLACK, 0.15), 0.0, None));
+    let main = container(column![blk(Length::Fill, 60.0, Pal::a(c, 0.55)), blk(Length::FillPortion(1), 42.0, Pal::a(Color::WHITE, 0.05)), blk(Length::FillPortion(1), 42.0, Pal::a(Color::WHITE, 0.05))].spacing(z(16.0)))
+        .padding(z(28.0))
+        .width(Length::FillPortion(75))
+        .height(Length::Fill);
+    container(row![side, main]).width(Length::Fill).height(Length::Fixed(z(236.0))).clip(true).style(look::bx(Pal::mix(tn.card, c, 0.12), 6.0, Some((tn.line, 1.0)))).into()
+}
+
+pub fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
+    let p = a.p;
+    let tn = tone(&p);
+    let st = a.state(e);
+    let rel = match &st {
+        State::Get(r) | State::Ready(_, r) => Some(r.clone()),
+        _ => a.seen.rel(&e.id),
+    };
+    // The card on the left
+    let mut l = Column::new().push(app_icon(e, z(112.0))).push(gap(1.0, z(18.0)));
+    l = l.push(tb(e.name.clone(), f(28.0), tn.text)).push(t(e.author.clone(), f(15.0), look::hex("#8fb2ff", ORANGE)));
+    l = l.push(gap(1.0, z(18.0)));
+    let main: E<Msg> = match &st {
+        State::BuiltIn => wide(a, "Open", B::Primary, Some(Msg::Launch(e.id.clone()))),
+        State::Coming => wide(a, "Coming", B::Normal, None),
+        _ => wide(a, match &st { State::Get(_) => "Get", _ => view::open_label(e, &st) }, B::Primary, if a.offline() && matches!(st, State::Get(_) | State::Ready(..)) && !e.self_updates { None } else { view::primary(e, &st) }),
+    };
+    l = l.push(main).push(gap(1.0, z(10.0)));
+    let more: E<Msg> = if a.inst.contains_key(&e.id) { btn(&p, "⋯", B::Normal, false, a.menu, Some(Msg::Menu)) } else { Space::new().into() };
+    l = l.push(row![container(wide(a, "⟳  Check for updates", B::Normal, (!a.checking).then_some(Msg::TryAgain))).width(Length::Fill), more].spacing(z(8.0)).align_y(iced::Center));
+    l = l.push(container(ui::hline(tn.line)).padding(look::pad(z(22.0), 0.0, z(18.0), 0.0)));
+    let (ver, ver_k, size) = match (&st, rel.as_ref()) {
+        (State::UpToDate(i), _) => (i.version.clone(), "Installed", i.size),
+        (State::Ready(i, r), _) => (i.version.clone(), "Installed", r.size),
+        (State::Get(r), _) => (r.version.clone(), "Newest", r.size),
+        (State::BuiltIn, _) => (if a.hearth.is_empty() { "Hearth OS".into() } else { a.hearth.clone() }, "Comes with Hearth OS", 0),
+        (_, Some(r)) => (r.version.clone(), "Newest", r.size),
+        _ => ("Not out yet".into(), "Version", 0),
+    };
+    let test_rel = rel.as_ref().map(|r| r.test).unwrap_or(false);
+    let mut stats = Row::new().spacing(z(26.0)).push(stat(&tn, ver, ver_k));
+    if size > 0 {
+        stats = stats.push(stat(&tn, hearth_store::mb(size, false), "Download"));
+    }
+    stats = stats.push(stat(&tn, if test_rel { "Test".into() } else { "Stable".into() }, "Channel"));
+    l = l.push(stats).push(gap(1.0, z(14.0)));
+    match &st {
+        State::BuiltIn => {
+            l = l.push(note_line(&tn, G::Shield, "Part of Hearth OS, checked with it")).push(gap(1.0, z(6.0))).push(note_line(&tn, G::Sync, "Updates with Hearth OS"));
+        }
+        _ => {
+            l = l.push(note_line(&tn, G::Shield, if e.pin.is_some() { "Checked with the SHA-256 in Hearth OS's list" } else { "Checked with the release's SHA-256 list" }));
+            if e.self_updates {
+                l = l.push(gap(1.0, z(6.0))).push(note_line(&tn, G::Sync, "Updates itself, from its own release"));
+            }
+        }
+    }
+    let left = side_card(a, l);
+    // The right: Screenshots, then What's new and Description, and Additional information
+    let mut r = Column::new().push(Space::new().height(Length::Fixed(z(250.0)))).push(container(ts("Screenshots", f(20.0), tn.text)).padding(look::pad(0.0, 0.0, z(14.0), 0.0)));
+    let shots: Vec<&iced::widget::image::Handle> = e.pictures.iter().filter_map(|u| a.pics.get(u)).take(3).collect();
+    let mut sr = Row::new().spacing(z(16.0));
+    if shots.is_empty() {
+        for c in [look::hex(&e.from, ORANGE), PURPLE, look::OK_DOT] {
+            sr = sr.push(container(sketch(&tn, c)).width(Length::FillPortion(1)));
+        }
+    } else {
+        for h in shots {
+            let im = iced::widget::image(h.clone()).width(Length::Fill).height(Length::Fill).content_fit(iced::ContentFit::Cover);
+            sr = sr.push(container(im).width(Length::FillPortion(1)).height(Length::Fixed(z(236.0))).clip(true).style(look::bx(Color::from_rgb8(0x0f, 0x11, 0x15), 6.0, Some((tn.line, 1.0)))));
+        }
+    }
+    r = r.push(sr).push(gap(1.0, z(26.0)));
+    let mut words = Column::new().spacing(z(8.0));
+    if let Some(rl) = rel.as_ref().filter(|r| !r.notes.is_empty()) {
+        words = words.push(ts(format!("What's new in {}", hearth_store::short_version(&rl.version)), f(18.0), tn.text)).push(bullets(&p, &rl.notes, f(14.0))).push(gap(1.0, z(12.0)));
+    }
+    words = words.push(ts("Description", f(18.0), tn.text)).push(t(if e.about.is_empty() { e.card.clone() } else { e.about.clone() }, f(14.0), Pal::mix(tn.text, tn.muted, 0.15)));
+    let info_kv = |k: &str, v: String| -> E<'a, Msg> { column![t(k.to_string(), f(13.0), tn.muted), t(v, f(14.0), tn.text)].spacing(z(2.0)).width(Length::FillPortion(1)).into() };
+    let date = rel.as_ref().map(|r| view::released(&r.date)).unwrap_or_default();
+    let needs = format!("{} · no password", if a.hearth.is_empty() { "Hearth OS".to_string() } else { format!("Hearth OS {}", a.hearth) });
+    let (installs, updates, source) = match &st {
+        State::BuiltIn => ("Part of Hearth OS".to_string(), "With Hearth OS".to_string(), "Hearth OS".to_string()),
+        _ => ("AppImage in your home folder".to_string(), if e.self_updates { "By itself".to_string() } else { "From the Store, when you say so".to_string() }, if e.pin.is_some() { "Hearth OS's list".to_string() } else { "GitHub release".to_string() }),
+    };
+    let info = column![
+        ts("Additional information", f(18.0), tn.text),
+        row![info_kv("Made by", e.author.clone()), info_kv("Released", if date.is_empty() { "—".into() } else { date })].spacing(z(20.0)),
+        row![info_kv("Installs as", installs), info_kv("Needs", needs)].spacing(z(20.0)),
+        row![info_kv("Updates", updates), info_kv("Source", source)].spacing(z(20.0)),
+    ]
+    .spacing(z(16.0));
+    let boxed = |c: E<'a, Msg>, w: u16| -> E<'a, Msg> { container(c).padding(z(22.0)).width(Length::FillPortion(w)).style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.04), 8.0, Some((tn.line, 1.0)))).into() };
+    r = r.push(row![boxed(words.into(), 58), boxed(info.into(), 42)].spacing(z(20.0)));
+    let page = row![container(left).padding(look::pad(z(30.0), 0.0, 0.0, 0.0)), container(r).width(Length::Fill)].spacing(z(28.0));
+    with_note(a, iced::widget::stack![container(backdrop(e, z(300.0))).padding(look::pad(0.0, 0.0, 0.0, z(440.0))), page].into())
+}
+
+// ------------------------------------------------------------------ 5. A test version's page
+pub fn test_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
+    let p = a.p;
+    let tn = tone(&p);
+    let have = a.parts.get(&e.id);
+    let pt = e.part.clone();
+    let usual = if e.id.contains("mantel") { "Mantel".to_string() } else { e.name.trim_end_matches(" (test)").to_string() };
+    let notice = container(
+        row![chip_test(), t(format!("A test version: it may change from week to week. Your usual {usual} stays one click away, and it comes back by itself if this one doesn't start."), f(14.0), tn.text).width(Length::Fill)]
+            .spacing(z(14.0))
+            .align_y(iced::Center),
+    )
+    .padding(look::pad(z(12.0), z(18.0), z(12.0), z(18.0)))
+    .width(Length::Fixed(z(900.0)))
+    .style(look::bx(Pal::a(look::WARN, 0.10), 6.0, Some((Pal::a(look::WARN, 0.55), 1.0))));
+    let name = e.short.trim_end_matches(" (test)").to_string();
+    let mut l = Column::new().push(app_icon(e, z(112.0))).push(gap(1.0, z(18.0)));
+    l = l.push(tb(name, f(28.0), tn.text)).push(t(format!("{} · Hearth part", e.author), f(15.0), look::ORANGE2)).push(gap(1.0, z(18.0)));
+    let busy = a.part_busy.contains(&e.id);
+    let fits = pt.as_ref().map(|pt| hearth_store::parts::test_fits(pt, &a.hearth)).unwrap_or(false);
+    if have.is_some() {
+        if a.part_offer(e).is_some() {
+            l = l.push(wide(a, if busy { "Updating…" } else { "Update test version" }, B::Primary, if busy || a.offline() { None } else { Some(Msg::PartUpdate(e.id.clone())) })).push(gap(1.0, z(8.0)));
+        }
+        if have.map(|h| h.gave_up() || h.failed_now).unwrap_or(false) {
+            l = l.push(wide(a, "Try it again", B::Normal, if busy { None } else { Some(Msg::PartRetry(e.id.clone())) })).push(gap(1.0, z(8.0)));
+        }
+        l = l.push(wide(a, if busy { "Removing…" } else { "Remove" }, B::Normal, if busy { None } else { Some(Msg::PartRemove(e.id.clone())) }));
+    } else {
+        l = l.push(wide(a, if busy { "Getting…" } else { "Get test version" }, B::Primary, if busy || a.offline() || !fits { None } else { Some(Msg::PartGet(e.id.clone())) }));
+        if !fits && pt.is_some() {
+            l = l.push(container(t(format!("Not made for Hearth OS {} yet", a.hearth), f(13.0), tn.muted)).padding(look::pad(z(8.0), 0.0, 0.0, 0.0)));
+        }
+    }
+    l = l.push(container(ui::hline(tn.line)).padding(look::pad(z(22.0), 0.0, z(18.0), 0.0)));
+    if let Some(pt) = pt.as_ref() {
+        let mut stats = Row::new().spacing(z(26.0)).push(stat(&tn, have.map(|h| h.version.clone()).unwrap_or_else(|| pt.version.clone()), if have.is_some() { "In use" } else { "Test" }));
+        if pt.size > 0 {
+            stats = stats.push(stat(&tn, hearth_store::mb(pt.size, false), "Download"));
+        }
+        l = l.push(stats.push(stat(&tn, pt.os.clone(), "For Hearth OS"))).push(gap(1.0, z(14.0)));
+    }
+    l = l.push(note_line(&tn, G::Shield, "Signed and checked before it starts"));
+    if let Some(h) = have.filter(|h| h.gave_up() || h.failed_now) {
+        l = l.push(gap(1.0, z(6.0))).push(note_line(&tn, G::Info, format!("{} didn't start, so the usual one is used", h.version)));
+    }
+    let left = side_card(a, l);
+    let lines = |v: &[String], none: &str| -> Vec<String> { if v.is_empty() { vec![none.to_string()] } else { v.to_vec() } };
+    let notes = pt.as_ref().map(|p| p.notes.clone()).unwrap_or_default();
+    let missing = pt.as_ref().map(|p| p.missing.clone()).unwrap_or_default();
+    let boxed = |title: &str, v: Vec<String>| -> E<'a, Msg> {
+        container(column![ts(title.to_string(), f(18.0), tn.text), bullets(&p, &v, f(14.0))].spacing(z(10.0))).padding(z(22.0)).width(Length::FillPortion(1)).style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.04), 8.0, Some((tn.line, 1.0)))).into()
+    };
+    let others: Vec<&Entry> = a.cat.apps.iter().filter(|x| x.test && x.id != e.id).collect();
+    let more_line = if others.is_empty() {
+        format!("Only {} for now. Test versions show here while Get test versions is on in Settings.", e.short.trim_end_matches(" (test)"))
+    } else {
+        format!("Also: {}. Test versions show here while Get test versions is on in Settings.", others.iter().map(|x| x.short.trim_end_matches(" (test)").to_string()).collect::<Vec<_>>().join(", "))
+    };
+    let more = container(row![t(more_line, f(13.0), tn.muted).width(Length::Fill), btn(&p, "Settings", B::Normal, false, false, Some(Msg::Go(Page::Settings)))].align_y(iced::Center))
+        .padding(look::pad(z(12.0), z(18.0), z(12.0), z(18.0)))
+        .width(Length::Fill)
+        .style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.04), 8.0, Some((tn.line, 1.0))));
+    let r = column![
+        Space::new().height(Length::Fixed(z(290.0))),
+        row![boxed("What's in it", lines(&notes, "What this test version brings is on its release page.")), boxed("Not in it yet", lines(&missing, "Nothing left out that we know of."))].spacing(z(20.0)),
+        gap(1.0, z(24.0)),
+        click(row![ts("More test versions", f(20.0), tn.text), t("  ›", f(20.0), tn.muted)].align_y(iced::Center), Some(Msg::Go(Page::Tests))),
+        gap(1.0, z(14.0)),
+        more
+    ];
+    let page = column![notice, gap(1.0, z(26.0)), row![left, container(r).width(Length::Fill)].spacing(z(28.0))];
+    with_note(a, iced::widget::stack![container(backdrop(e, z(420.0))).padding(look::pad(0.0, 0.0, 0.0, z(880.0))), page].into())
+}
+
+// ------------------------------------------------------------------ 6. Settings
+fn srow_w11<'a>(a: &'a App, g: G, title: &str, sub: String, end: E<'a, Msg>, m: Option<Msg>) -> E<'a, Msg> {
+    let tn = tone(&a.p);
+    let r = row![ui::glyph(g, tn.text, z(18.0), 1.5), column![tb(title.to_string(), f(14.0), tn.text), t(sub, f(13.0), tn.muted)].spacing(z(2.0)).width(Length::Fill), end].spacing(z(20.0)).align_y(iced::Center);
+    click(container(r).padding(look::pad(z(14.0), z(20.0), z(14.0), z(20.0))).width(Length::Fill), m)
+}
+
+fn group<'a>(a: &'a App, title: &str, rows: Vec<E<'a, Msg>>) -> E<'a, Msg> {
+    let tn = tone(&a.p);
+    let mut c = Column::new();
+    for (k, r) in rows.into_iter().enumerate() {
+        if k > 0 {
+            c = c.push(ui::hline(tn.line));
+        }
+        c = c.push(r);
+    }
+    column![container(tb(title.to_string(), f(14.0), tn.text)).padding(look::pad(z(26.0), 0.0, z(12.0), 0.0)), container(c).width(Length::Fill).style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.04), 6.0, Some((tn.line, 1.0))))].into()
+}
+
+fn toggle<'a>(a: &'a App, on: bool, m: Msg) -> E<'a, Msg> {
+    let p = a.p;
+    let tn = tone(&p);
+    row![t(if on { "On" } else { "Off" }, f(13.0), tn.muted), look::switch(&p, on, false, Some(m))].spacing(z(14.0)).align_y(iced::Center).into()
+}
+
+pub fn settings(a: &App) -> E<'_, Msg> {
+    let p = a.p;
+    let tn = tone(&p);
+    let n = a.ready().len() + a.part_offers().len();
+    let last = if a.seen.checked > 0 { format!("Last checked {}", view::day_time_pub(a.seen.checked)) } else { "Not checked yet".to_string() };
+    let ready = if n == 0 { "everything is up to date".to_string() } else { format!("{n} update{} ready", if n == 1 { "" } else { "s" }) };
+    let check = btn(&p, if a.checking { "Checking…" } else { "Check now" }, B::Primary, false, false, (!a.checking).then_some(Msg::TryAgain));
+    let updates = group(a, "Updates", vec![
+        srow_w11(a, G::Sync, "Check for updates", format!("{last} · {ready}"), check, None),
+        srow_w11(a, G::Down, "Look for updates every day", "Once a day in the background, and tells you when some are ready".into(), toggle(a, a.prefs.daily, Msg::SetDaily(!a.prefs.daily)), Some(Msg::SetDaily(!a.prefs.daily))),
+        srow_w11(a, G::Grid, "Install updates by themselves", "Only Hearth parts and apps that update themselves anyway; never while you play".into(), toggle(a, a.prefs.auto, Msg::SetFlag("auto", !a.prefs.auto)), Some(Msg::SetFlag("auto", !a.prefs.auto))),
+    ]);
+    let tests = group(a, "Test versions", vec![srow_w11(a, G::Pulse, "Get test versions", "Shows test versions (marked TEST) under Tests, with Get and Remove. Your usual version always stays.".into(), toggle(a, a.prefs.test, Msg::SetFlag("test", !a.prefs.test)), Some(Msg::SetFlag("test", !a.prefs.test)))]);
+    let signed = if a.cat.source == "hearthos.fun" {
+        format!("Signed by Dragongamer9 · list {} · checked {}", a.cat.serial, view::day_time_pub(a.cat.signed_at).split(" at ").next().unwrap_or("").to_lowercase())
+    } else {
+        format!("Built into {}", if a.hearth.is_empty() { "Hearth OS".to_string() } else { format!("Hearth OS {}", a.hearth) })
+    };
+    let trusted: E<Msg> = if a.cat.source == "hearthos.fun" || a.cat.serial > 0 { chip(&p, "Trusted", Chip::Ok) } else { Space::new().into() };
+    let more = group(a, "More", vec![
+        srow_w11(a, G::Folder, "Where apps go", format!("{} (your home folder: no password, nothing system-wide)", hearth_store::paths::tilde(&hearth_store::paths::apps())), btn(&p, "Change…", B::Normal, false, false, Some(Msg::OpenFolder)), None),
+        srow_w11(a, G::Shield, "The app list", signed, trusted, None),
+        srow_w11(a, G::Gear, "About Hearth Store", format!("{} · This PC: {}", store_version(a), view::this_pc_pub(a)), Space::new().into(), None),
+    ]);
+    let mut c = column![ts("Settings", f(30.0), tn.text), updates, tests, more].width(Length::Fixed(z(1010.0)));
+    if a.prefs.unreadable {
+        c = c.push(container(t("The Store's settings file couldn't be read, so nothing is written over it (it's left for you to look at).", f(14.0), look::BAD)).padding(look::pad(z(14.0), 0.0, 0.0, 0.0)));
+    }
+    if !a.note.is_empty() {
+        c = c.push(container(t(a.note.clone(), f(14.0), if a.note_bad { look::BAD } else { look::ORANGE2 })).padding(look::pad(z(14.0), 0.0, 0.0, 0.0)));
+    }
+    c.into()
+}
+
+/// The Store's own version: its quick update when that's what runs, else the Hearth OS it came with.
+fn store_version(a: &App) -> String {
+    let have = a.cat.apps.iter().find(|e| e.part.as_ref().map(|p| p.id == "hearth-store-app").unwrap_or(false)).and_then(|e| a.parts.get(&e.id));
+    let v = hearth_store::parts::running(have, &a.hearth);
+    if v.is_empty() { "Built into Hearth OS".into() } else { v }
+}
+
+/// What the Store just said ("Updating Mantel to 1.17.4…", what went wrong), over a page that has no place of its own.
+fn with_note<'a>(a: &'a App, page: E<'a, Msg>) -> E<'a, Msg> {
+    if a.note.is_empty() {
+        return page;
+    }
+    column![container(t(a.note.clone(), f(14.0), if a.note_bad { look::BAD } else { look::ORANGE2 })).padding(look::pad(0.0, 0.0, z(12.0), 0.0)), page].into()
+}

@@ -31,6 +31,10 @@ on:
         description: "What's new, one line each, separated by |"
         required: false
         default: ''
+      missing:
+        description: "A test version's Not in it yet, one line each, separated by | (the Store shows it on its page)"
+        required: false
+        default: ''
 
 permissions:
   contents: write     # the part's release and the store branch
@@ -48,6 +52,7 @@ jobs:
       VER: ${{ inputs.version }}
       OS: ${{ inputs.os }}
       NOTES: ${{ inputs.notes }}
+      MISSING: ${{ inputs.missing }}
       CHANNEL: ${{ inputs.channel }}
       GH_TOKEN: ${{ github.token }}
     steps:
@@ -111,6 +116,9 @@ jobs:
           part = {"id": app, "version": os.environ["VER"], "os": os.environ["OS"], "path": os.environ["INNER"],
                   "url": os.environ["URL"], "sha256": os.environ["SHA"], "size": int(os.environ["SIZE"]),
                   "notes": [l.strip() for l in os.environ.get("NOTES", "").split("|") if l.strip()]}
+          missing = [l.strip() for l in os.environ.get("MISSING", "").split("|") if l.strip()]
+          if missing:
+              part["missing"] = missing
           # The app's own entry when the list has one (its part, or the program it opens), else a new one.
           # Test versions (Mantel in Rust) go in their own list, "tests": Stores before 1.17.1 only read "apps", so they
           # can never offer a test version to everyone.

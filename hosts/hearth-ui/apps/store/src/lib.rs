@@ -18,6 +18,22 @@ pub mod paths;
 pub mod prefs;
 pub mod release;
 
+/// This PC's Hearth OS version ("1.17") and edition ("Fedora edition"); the Store's pictures read the fixture's.
+pub fn this_pc() -> (String, String) {
+    if let Some(f) = paths::fixture() {
+        if let Ok(v) = std::fs::read(f.join("this-pc.json")).map(|b| serde_json::from_slice::<serde_json::Value>(&b).unwrap_or_default()) {
+            let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
+            return (s("hearth"), s("edition"));
+        }
+    }
+    let info: serde_json::Value = std::fs::read("/usr/share/nimbus/image-info.json").ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
+    let ver = std::fs::read_to_string("/usr/share/nimbus/version").map(|s| s.trim().to_string()).unwrap_or_default();
+    let ver = if ver.is_empty() { info.get("version").and_then(|x| x.as_str()).unwrap_or("").to_string() } else { ver };
+    let base = info.get("base").and_then(|x| x.as_str()).unwrap_or("");
+    let edition = if base == "anatase" || std::path::Path::new("/usr/bin/rpm-ostree").exists() || std::path::Path::new("/usr/bin/dnf5").exists() { "Fedora edition" } else { "" };
+    (short_version(&ver), edition.to_string())
+}
+
 /// A version as numbers ("0.6.0" < "0.10.1"; "3.13.0" == "v3.13.0").
 pub fn newer(a: &str, b: &str) -> bool {
     cmp_versions(a, b) == std::cmp::Ordering::Greater
