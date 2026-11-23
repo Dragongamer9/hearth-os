@@ -176,7 +176,52 @@ PanelWindow {
         }
     }
 
-    // ---- a new feature (board 8)
+    // ---- a new feature (board 8): your bar as it'll be, the new feature lit in its place (nothing kept yet)
+    Item {
+        id: featBar
+        visible: dz.isFeature
+        anchors { top: strip.bottom; topMargin: 14; left: parent.left; right: parent.right; leftMargin: 8; rightMargin: 8 }
+        height: 56
+        readonly property var f: dz.isFeature ? dz.result.feature : null
+        // start: the flame and the desktops
+        Rectangle {
+            anchors { left: parent.left; verticalCenter: parent.verticalCenter }
+            width: fbStart.implicitWidth + 24; height: 44; radius: 22; color: Theme.panel; border.color: Theme.line
+            Row { id: fbStart; anchors.centerIn: parent; spacing: 12
+                Image { anchors.verticalCenter: parent.verticalCenter; width: 22; height: 22; source: Qt.resolvedUrl("images/hearth-logo.png"); smooth: true; mipmap: true }
+                Repeater { model: 3
+                    Rectangle { required property int index; anchors.verticalCenter: parent.verticalCenter; width: index === 0 ? 28 : 18; height: 18; radius: 9; color: index === 0 ? Theme.accent : "transparent"
+                        Text { anchors.centerIn: parent; text: index + 1; color: index === 0 ? Theme.accentInk : Theme.muted; font.family: Theme.font; font.pixelSize: 11 } } } }
+        }
+        // the new feature, lit
+        Rectangle {
+            anchors.centerIn: parent
+            width: fbPill.implicitWidth + 28; height: 46; radius: 23; color: Theme.panel; border.color: Theme.accent; border.width: 2
+            Rectangle { anchors.fill: parent; anchors.margins: -5; radius: 28; color: "transparent"; border.color: Qt.rgba(Theme.accent.r, Theme.accent.g, Theme.accent.b, 0.35); border.width: 3 }
+            Row { id: fbPill; anchors.centerIn: parent; spacing: 10
+                Rectangle { anchors.verticalCenter: parent.verticalCenter; width: 24; height: 24; radius: 12; color: Theme.accent
+                    Text { anchors.centerIn: parent; text: featBar.f ? featBar.f.name.charAt(0).toUpperCase() : ""; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 12; font.weight: Font.DemiBold } }
+                Column { anchors.verticalCenter: parent.verticalCenter
+                    Text { text: featBar.f ? featBar.f.name : ""; color: Theme.text; font.family: Theme.font; font.pixelSize: 13; font.weight: Font.DemiBold }
+                    Text { text: featBar.f ? (featBar.f.shows || []).map(s => s.label || s.source).join(" · ") : ""; color: Theme.muted; font.family: Theme.font; font.pixelSize: 11 } }
+                Rectangle { anchors.verticalCenter: parent.verticalCenter; width: newT.implicitWidth + 16; height: 20; radius: 10; color: "transparent"; border.color: Theme.accent
+                    Text { id: newT; anchors.centerIn: parent; text: "NEW"; color: Theme.accent; font.family: Theme.font; font.pixelSize: 11 } } }
+        }
+        // end: the status icons and Game Mode
+        Row {
+            anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+            spacing: 8
+            Rectangle { width: fbEnd.implicitWidth + 26; height: 44; radius: 22; color: Theme.panel; border.color: Theme.line
+                Row { id: fbEnd; anchors.centerIn: parent; spacing: 12
+                    Icon { name: "wifi"; size: 17; color: Theme.text }
+                    Icon { name: "vol"; size: 17; color: Theme.text }
+                    Icon { name: "bell"; size: 17; color: Theme.text } } }
+            Rectangle { width: gmT.implicitWidth + 50; height: 44; radius: 22; color: Theme.accent
+                Row { anchors.centerIn: parent; spacing: 8
+                    Icon { name: "pad"; size: 18; color: Theme.accentInk }
+                    Text { id: gmT; text: "Game Mode"; color: Theme.accentInk; font.family: Theme.font; font.pixelSize: 14; font.weight: Font.DemiBold } } }
+        }
+    }
     Item {
         visible: dz.isFeature
         anchors { top: strip.bottom; topMargin: 130; left: parent.left; right: parent.right; leftMargin: 150; rightMargin: 120 }
@@ -286,7 +331,8 @@ PanelWindow {
     // ---- the box to type in, with the sketch (board 7, bottom)
     Rectangle {
         id: box
-        visible: !dz.isNeeds
+        // under a result it's hidden (boards 8 and 9); Change it… and Try again bring it back
+        visible: !dz.isNeeds && !dz.isFeature
         anchors { left: parent.left; right: parent.right; bottom: parent.bottom; leftMargin: 150; rightMargin: 50; bottomMargin: 40 }
         height: 182
         radius: Theme.r(16); color: Theme.panel; border.color: Theme.accent; border.width: 2
