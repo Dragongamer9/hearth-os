@@ -442,7 +442,8 @@ fn bc_tools(a: &App) -> El<'_> {
 fn nav_pane(a: &App) -> El<'_> {
     let p = a.p;
     let icons_only = a.describe.knob("sidebar") == "icons";
-    let wide = a.nav_w >= 200.0 && !icons_only;
+    let wide = a.nav_w >= 200.0;
+    let wide = wide && !icons_only;
     let mut col = Column::new().spacing(1.0).padding(pad(10.0, 4.0, 10.0, 4.0));
     let mut last_section = String::new();
     for (i, q) in a.places.iter().enumerate() {

@@ -7,7 +7,7 @@ cators to what the user wants", "on a fresh install a full screen popup comes up
 Other be Build your own Desktop", then "looks good". Builds on desktop-layouts.md (the shared core, Describe it).
 Sources: hearth-workspace `hearth/mockups/build-anything`.
 
-Mockups: build-anything/anything-1-no-two-alike.png … anything-7-first-start.png
+Mockups: build-anything/anything-1-no-two-alike.png, build-anything/anything-2-console-dashboard.png, build-anything/anything-3-icon-row-home.png, build-anything/anything-4-block-editor.png, build-anything/anything-5-ai-made-block.png, build-anything/anything-6-game-mode-blocks.png, build-anything/anything-7-first-start.png
 Release: next
 
 ## 1. No two desktops are the same
