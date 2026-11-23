@@ -77,6 +77,37 @@ pub fn buttons(a: &App) -> Option<Element<'_, Msg>> {
     Some(r.into())
 }
 
+/// A menu as Describe it left it: the ids its zone "menu:<kind>" names first, in that order ("sep" a line), then the
+/// rest as they were; ids in "hidden" left out; features for "menu-<kind>" added at the end as items.
+pub fn arrange_menu(a: &App, kind: &str, items: Vec<crate::app::MenuItem>) -> Vec<crate::app::MenuItem> {
+    let hidden = a.describe.zone("hidden").unwrap_or_default();
+    let mut rest: Vec<crate::app::MenuItem> = items.into_iter().filter(|i| i.id.is_empty() || !hidden.contains(&i.id)).collect();
+    let mut out: Vec<crate::app::MenuItem> = Vec::new();
+    if let Some(order) = a.describe.zone(&format!("menu:{kind}")) {
+        for id in order {
+            if id == "sep" {
+                out.push(crate::app::MenuItem::sep());
+            } else if let Some(k) = rest.iter().position(|i| i.id == id) {
+                out.push(rest.remove(k));
+            }
+        }
+        if !out.is_empty() && !rest.is_empty() {
+            out.push(crate::app::MenuItem::sep());
+        }
+    }
+    out.append(&mut rest);
+    let feats = a.describe.features(&format!("menu-{kind}"));
+    if !feats.is_empty() {
+        out.push(crate::app::MenuItem::sep());
+        for (f, new) in feats {
+            let label = describe::feature_text(&f, &|s| value_of(a, s));
+            let act = f.pointer("/click/action").and_then(Value::as_str).unwrap_or("none");
+            out.push(crate::app::MenuItem::new(&format!("feat:{act}"), &format!("{label}{}", if new { "  · NEW" } else { "" })));
+        }
+    }
+    out
+}
+
 /// A feature's button pressed: one of Files' own actions (or Hearth's open-folder / open-app).
 pub fn act(a: &mut App, action: &str) -> Task<Msg> {
     let pick = |a: &mut App, f: &dyn Fn(&Entry) -> bool| {

@@ -17,6 +17,15 @@ fn sv(v: &Value, k: &str) -> String {
 
 impl App {
     pub fn show_menu(&mut self, title: &str, items: Vec<MenuItem>, short: bool) {
+        // Describe it's order for this menu, the items it hid, and features added as items (ldescribe.rs)
+        let kind = match title {
+            "View" => "view",
+            "Sort and group" => "sort",
+            "New" => "new",
+            "More" => "more",
+            _ => "context",
+        };
+        let items = crate::ldescribe::arrange_menu(self, kind, items);
         // No separator first, last or twice in a row.
         let mut out: Vec<MenuItem> = Vec::new();
         for it in items {
@@ -710,6 +719,11 @@ impl App {
 }
 
 pub fn run_menu(a: &mut App, id: &str) -> Task<Msg> {
+    // a feature added to a menu with Describe it: its own action (ldescribe.rs)
+    if let Some(act) = id.strip_prefix("feat:") {
+        a.overlay = None;
+        return crate::ldescribe::act(a, act);
+    }
     a.overlay = None;
     let on_folder = a.menu_on_folder;
     a.menu_on_folder = false;

@@ -33,6 +33,9 @@ pub struct AppSchema {
     pub zones: &'static [(&'static str, &'static str, &'static [&'static str])],
     /// pieces that can't be hidden (the way to View › Layout, Back to the original)
     pub keep: &'static [&'static str],
+    /// the app's menus and right-click menus (the owner, Nov 22: "Modular app menues and right clicks as well"): their
+    /// items reordered or hidden through the zone "menu:<id>", new items from features in the place "<app>:menu-<id>"
+    pub menus: &'static [(&'static str, &'static str)],
 }
 
 /// Hearth Files (board 11).
@@ -49,7 +52,13 @@ pub const FILES: AppSchema = AppSchema {
         Knob { key: "status", what: "the status bar at the bottom", values: &[("", "status bar as it is"), ("hidden", "no status bar")] },
         Knob { key: "density", what: "how roomy it is", values: &[("", "as roomy as it is"), ("roomy", "roomier"), ("compact", "tighter")] },
     ],
-    parts: &[("downloads", "the Downloads folder's own bar (next to Sort my Downloads)"), ("folder", "every folder's bar, at the top")],
+    parts: &[
+        ("downloads", "the Downloads folder's own bar (next to Sort my Downloads)"),
+        ("folder", "every folder's bar, at the top"),
+        ("menu-context", "the right-click menu, as a new item"),
+        ("menu-view", "the View menu, as a new item"),
+        ("menu-more", "the More (⋯) menu, as a new item"),
+    ],
     sources: &[
         ("folder-pictures", "how many pictures are in this folder"),
         ("folder-videos", "how many videos are in this folder"),
@@ -82,6 +91,7 @@ pub const FILES: AppSchema = AppSchema {
     // nothing has to stay (the owner, Nov 22: "it can be Whatever they want it to be"): a window without Close still
     // closes with Alt+F4 or Super+Q, and Describe it and Back to the original are also on the right-click of empty space
     keep: &[],
+    menus: &[("context", "the right-click menu (on files and on empty space)"), ("view", "View"), ("sort", "Sort and group"), ("new", "New"), ("more", "More (⋯)")],
 };
 
 /// Every app with Describe it, by its id (hearth-layout describe-app <app>).
@@ -104,6 +114,7 @@ Answer with ONE JSON object and nothing else, one of:\n\
    knobs: {knobs}\n\
    and \"zones\": {{<zone>: [pieces in order], ..., \"hidden\": [...]}} to move, reorder or hide the app's own pieces (only the zones that change; a piece in one place only; \"sep\" and \"spacer\" as often as you like)\n\
    zones: {zones}\n\
+   menus (zone \"menu:<id>\": the items' ids in the order wanted, the rest after them; ids in \"hidden\" leave every menu and bar): {menus}\n\
    pieces: {items}\n\
    <feature> = {{\"format\": 1, \"id\": \"<lowercase-dashes>\", \"name\": \"...\", \"part\": <a place>, \"shows\": [{{\"source\", \"label\"}}], \"every\": seconds, \"click\": {{\"action\", \"target\"}}}}\n\
    places: {parts}\n\
@@ -114,6 +125,7 @@ Never write code, commands or file paths. Use plain words for the owner in \"cha
         name = a.name,
         knobs = knobs.join("; "),
         zones = a.zones.iter().map(|(z, w, d)| format!("{z} ({w}; now {})", d.join(", "))).collect::<Vec<_>>().join("; "),
+        menus = a.menus.iter().map(|(m, w)| format!("{m} ({w})")).collect::<Vec<_>>().join(", "),
         items = a.items.iter().map(|(i, w)| format!("{i} ({w})")).collect::<Vec<_>>().join(", "),
         parts = parts.join(", "),
         sources = sources.join(", "),
@@ -190,6 +202,19 @@ pub fn check_zones(a: &AppSchema, v: &Value) -> Result<Value, Vec<String>> {
     let mut seen: Vec<String> = Vec::new();
     let mut out = Map::new();
     for (z, items) in m {
+        if let Some(menu) = z.strip_prefix("menu:") {
+            // a menu's items: its own ids (any of the menu's, by name), in the order wanted; "sep" for a line
+            if !a.menus.iter().any(|(id, _)| *id == menu) {
+                errs.push(format!("{} has no menu called \"{menu}\".", a.name));
+                continue;
+            }
+            let list: Vec<String> = items.as_array().map(|x| x.iter().filter_map(|i| i.as_str().map(str::to_string)).collect()).unwrap_or_default();
+            if list.iter().any(|i| i.is_empty() || i.len() > 48 || !i.chars().all(|c| c.is_ascii_alphanumeric() || "-_:=.".contains(c))) {
+                errs.push(format!("A menu item is named by its id (\"{menu}\")."));
+            }
+            out.insert(z.clone(), json!(list));
+            continue;
+        }
         if z != "hidden" && !a.zones.iter().any(|(id, _, _)| id == z) {
             errs.push(format!("{} has no place called \"{z}\".", a.name));
             continue;
@@ -227,7 +252,8 @@ pub fn chips(a: &AppSchema, layout: &Map<String, Value>, features: &[feature::Fe
     }
     if let Some(z) = layout.get("zones").and_then(Value::as_object) {
         for (zone, items) in z {
-            let what = a.zones.iter().find(|(id, _, _)| id == zone).map(|(_, w, _)| *w).unwrap_or(if zone == "hidden" { "hidden" } else { "" });
+            let menu = zone.strip_prefix("menu:").and_then(|m| a.menus.iter().find(|(id, _)| *id == m)).map(|(_, w)| *w);
+            let what = a.zones.iter().find(|(id, _, _)| id == zone).map(|(_, w, _)| *w).or(menu).unwrap_or(if zone == "hidden" { "hidden" } else { "" });
             let names: Vec<&str> = items.as_array().map(|x| x.iter().filter_map(Value::as_str).filter(|i| *i != "sep" && *i != "spacer").collect()).unwrap_or_default();
             let what = what.split(" (").next().unwrap_or(what);
             v.push(json!({"kind": "layout", "text": if zone == "hidden" { format!("Layout: hide {}", names.join(", ")) } else { format!("Layout: {what}: {}", names.join(", ")) }}));
@@ -483,6 +509,14 @@ mod tests {
         assert!(bad(json!({"top": ["rocket"]})));
         assert!(bad(json!({"sky": ["back"]})));
         assert!(!bad(json!({"top": ["sep", "sep", "spacer", "spacer"]})));
+    }
+
+    #[test]
+    fn menus_can_be_rearranged() {
+        let ok = check_answer(&FILES, &json!({"kind": "app", "layout": {"zones": {"menu:context": ["props", "sep", "copypath"], "hidden": ["share"]}}}), "x", false);
+        assert!(ok.is_ok(), "{ok:?}");
+        assert!(check_answer(&FILES, &json!({"kind": "app", "layout": {"zones": {"menu:start": ["x"]}}}), "x", false).is_err());
+        assert!(check_answer(&FILES, &json!({"kind": "app", "layout": {"zones": {"menu:view": ["rm -rf"]}}}), "x", false).is_err());
     }
 
     #[test]
