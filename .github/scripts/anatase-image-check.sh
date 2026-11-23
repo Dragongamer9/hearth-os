@@ -3,8 +3,13 @@
 #   podman run --rm -v $PWD:/src:ro IMAGE bash /src/.github/scripts/anatase-image-check.sh).
 # REQUIRED checks fail the job (::error); nice-to-haves are ::warning. A short summary goes out as ::notice lines.
 fail=0
-check() { if bash -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::error title=check::$1"; fail=1; fi; }
-warn() { if bash -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::warning title=check::$1"; fi; }
+# 1.18 (the owner, Nov 23: "completely remove KDE"): an image with no KDE skips the checks of KDE's own pieces and
+# runs the no-KDE ones below instead.
+NOKDE=""; command -v startplasma-wayland >/dev/null 2>&1 || NOKDE=1
+kde_only() { [ -n "$NOKDE" ] && echo "$1" | grep -qE 'Plasma|KDE|KWin|KInfoCenter|Global Theme|org\.hearthos\.|System Settings|kde-|Firehold on Plasma'; }
+check() { if kde_only "$1"; then echo "skip (no KDE): $1"; return; fi; if bash -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::error title=check::$1"; fail=1; fi; }
+warn() { if kde_only "$1"; then echo "skip (no KDE): $1"; return; fi; if bash -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::warning title=check::$1"; fi; }
+nokde_check() { if bash -c "$2" >/dev/null 2>&1; then echo "ok: $1"; else echo "::error title=check::$1"; fail=1; fi; }
 
 echo "--- the base"
 check "it's Fedora $(rpm -E %fedora) (45 or newer)" "[ \"\$(rpm -E %fedora)\" -ge 45 ]"
@@ -161,8 +166,24 @@ if command -v kbuildsycoca6 >/dev/null; then
   fi
 fi
 
-echo "--- every Hearth KDE app starts (the laptop's Files: symbol lookup error)"
-for b in hearth-files-kde konsole kate okular spectacle kcalc dolphin; do
+if [ -n "$NOKDE" ]; then
+  echo "--- no KDE (1.18): Mantel on labwc, greetd, Hearth's own apps"
+  nokde_check "no KDE packages left" "! rpm -qa --qf '%{NAME}\\n' | grep -qE '^(plasma|kwin|kf6-|dolphin|konsole|kate|okular|spectacle|kscreenlocker|plasma-login-manager|sddm)'"
+  nokde_check "Mantel on labwc: labwc, a working Quickshell, Mantel's shell and its picker" \
+    "command -v labwc && command -v quickshell && ! ldd \"\$(command -v quickshell)\" | grep -q 'not found' && test -f /usr/share/nimbus/desktop/shell/shell.qml && test -x /usr/bin/hearth-labwc-desktop"
+  nokde_check "signing in: greetd and its text sign-in are the display manager" \
+    "command -v greetd && { test -x /usr/bin/agreety || test -x /usr/sbin/agreety; } && readlink -f /etc/systemd/system/display-manager.service | grep -q hearth-login-text.service && test -f /etc/pam.d/greetd"
+  nokde_check "Hearth's own login screen can be picked (greetd, cage, the greeter, select)" \
+    "test -x /usr/libexec/nimbus/hearth-login-screen && test -x /usr/libexec/nimbus/hearth-greeter && systemctl is-enabled hearth-login-select.service && test -f /usr/lib/systemd/system/hearth-greetd.service"
+  nokde_check "automatic sign-in into Game Mode is written where greetd reads it" "grep -q sddm.conf.d /usr/libexec/nimbus/nimbus-autologin && systemctl is-enabled nimbus-autologin.service"
+  nokde_check "file picking and screen sharing on labwc (portals)" "test -f /usr/share/xdg-desktop-portal/portals/wlr.portal && test -f /usr/share/xdg-desktop-portal/portals/gtk.portal"
+  nokde_check "Steam, gamescope and Game Mode are still here" "command -v steam && command -v gamescope && command -v nimbus-session"
+  apps="hearth-files-app hearth-terminal hearth-text hearth-capture-app"
+else
+  apps="hearth-files-kde konsole kate okular spectacle kcalc dolphin"
+fi
+echo "--- every Hearth app for files, terminal, text and capture starts (the laptop's Files: symbol lookup error)"
+for b in $apps; do
   p=$(command -v "$b") || { echo "::error title=check::$b isn't installed"; fail=1; continue; }
   case "$(head -c 4 "$p" | od -An -c | tr -d ' ')" in
     *ELF*) u=$(ldd -r "$p" 2>&1 | grep -E 'undefined symbol|not found' | head -3) ;;

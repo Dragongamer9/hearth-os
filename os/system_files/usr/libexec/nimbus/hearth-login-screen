@@ -102,6 +102,13 @@ MAX_FAILS = 2
 VT = 7
 UNIT = 'hearth-greetd.service'
 SDDM_UNIT = 'sddm.service'
+# 1.18, no KDE (the owner, Nov 23: "completely remove KDE"): with no SDDM or Plasma Login Manager in the image, the
+# login screen to fall back to is greetd's own text sign-in (agreety), with the same automatic sign-in: it needs
+# nothing but greetd, so it's there whenever Hearth's own can't be. It's the display manager on such an image.
+TEXT_UNIT = 'hearth-login-text.service'
+TEXT_CONF = RUN + '/greetd-text.toml'
+AGREETY_BINS = ['/usr/bin/agreety', '/usr/sbin/agreety']
+GREETER_USERS = ['_greetd', 'greetd', 'greeter']
 
 
 def log(msg):
@@ -396,8 +403,57 @@ def safe(what, fn, *args, **kw):
         return None
 
 
+def fallback_unit():
+    """SDDM where the image has it, else greetd's text sign-in (1.18, no KDE)."""
+    have = lambda u: any(os.path.exists(P(os.path.join(d, u))) for d in ('/usr/lib/systemd/system', '/etc/systemd/system'))
+    return TEXT_UNIT if have(TEXT_UNIT) and not have(SDDM_UNIT) else SDDM_UNIT
+
+
+def text_config(auto):
+    """greetd's text sign-in: agreety asks for the name and password, then Hearth's session; with automatic sign-in on,
+    straight into that session first (as SDDM would). An automatic sign-in that can't be used is left out (the text
+    sign-in still shows), never an error: this is the last login screen there is."""
+    user = next((u for u in GREETER_USERS if _has_user(u)), 'greeter')
+    agreety = first(AGREETY_BINS) or '/usr/bin/agreety'
+    out = ['# Hearth: the text sign-in (greetd), written by hearth-login-screen at every start (not a setting).',
+           '[terminal]', 'vt = %d' % VT, '',
+           '[default_session]', 'command = ' + toml_str(shlex.join([agreety, '--cmd', SESSION_START + ' nimbus.desktop'])),
+           'user = ' + toml_str(user), '']
+    if auto:
+        try:
+            a_user, session, relogin = auto
+            pwd.getpwnam(a_user)
+            if find_session(session)[0] == 'wayland':
+                cmd = [SESSION_START] + (['--relogin'] if relogin else []) + [os.path.basename(session if session.endswith('.desktop') else session + '.desktop')]
+                out += ['[initial_session]', 'command = ' + toml_str(shlex.join(cmd)), 'user = ' + toml_str(a_user), '']
+        except (KeyError, ValueError, TypeError):
+            pass
+    return '\n'.join(out)
+
+
+def _has_user(name):
+    try:
+        pwd.getpwnam(name)
+        return True
+    except KeyError:
+        return False
+
+
+def cmd_run_text():
+    exe = first(GREETD_BINS)
+    if not exe:
+        log('greetd is missing: no text sign-in either')
+        return 1
+    try:
+        auto = sddm_autologin()
+    except Exception:
+        auto = None
+    write_run(TEXT_CONF, text_config(auto))
+    os.execv(P(exe), [exe, '--config', TEXT_CONF])
+
+
 def start_sddm(why):
-    """SDDM now. Only systemctl calls and removing a file in /run: nothing that can fail on a full or damaged drive."""
+    """SDDM now (or greetd's text sign-in where there's no SDDM: fallback_unit). Only systemctl calls and removing a file in /run: nothing that can fail on a full or damaged drive."""
     try:
         rm(FLAG)
     except OSError as e:
@@ -408,8 +464,9 @@ def start_sddm(why):
         systemctl('stop', '--no-block', UNIT, timeout=10)
     else:
         systemctl('stop', UNIT, timeout=40)
-    rc, out = systemctl('start', '--no-block', SDDM_UNIT)
-    log('SDDM started instead (%s)%s' % (why, '' if rc == 0 else ': systemctl said ' + out))
+    unit = fallback_unit()
+    rc, out = systemctl('start', '--no-block', unit)
+    log('%s started instead (%s)%s' % ('SDDM' if unit == SDDM_UNIT else 'The text sign-in', why, '' if rc == 0 else ': systemctl said ' + out))
 
 
 def cmd_fallback(why):
@@ -678,7 +735,7 @@ def main(argv):
         return cmd_preview()
     if cmd == 'notice':
         return cmd_notice()
-    if cmd in ('select', 'watch', 'fallback', 'wait', 'run-greetd'):
+    if cmd in ('select', 'watch', 'fallback', 'wait', 'run-greetd', 'run-text'):
         # The start-up steps run from systemd only (pkexec's rule allows on/off only, too).
         if not os.environ.get('INVOCATION_ID') and not ROOT:
             print('error: %s runs from systemd' % cmd)
@@ -696,6 +753,8 @@ def main(argv):
             return cmd_fallback(' '.join(argv[2:]) or 'greetd failed')
         if cmd == 'wait':
             return cmd_wait()
+        if cmd == 'run-text':
+            return cmd_run_text()
         return cmd_run_greetd()
     print('usage: hearth-login-screen status | on | off | preview | notice')
     return 2

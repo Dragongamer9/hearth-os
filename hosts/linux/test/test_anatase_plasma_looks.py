@@ -197,7 +197,7 @@ class Wiring(unittest.TestCase):
         self.assertIn("'LookAndFeelPackage': 'org.hearthos.hearth'", b)
         self.assertIn('systemctl --global enable hearth-plasma-looks.path', b)
         self.assertNotIn('Engine=none', b)
-        self.assertIn('dnf5 -y install xrdb', b)
+        # (1.18, no KDE: xrdb isn't installed for Plasma any more)
 
     def test_first_start_is_required(self):
         for wf in ('base-anatase.yml', 'anatase-looks.yml'):

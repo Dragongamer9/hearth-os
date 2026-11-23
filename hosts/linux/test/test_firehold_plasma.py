@@ -189,7 +189,8 @@ class RustRetired(unittest.TestCase):
             os.makedirs(bin_)
             pathlib.Path(bin_, 'notify-send').write_text('#!/bin/sh\necho "$@" >> "%s/notices"\n' % d)
             os.chmod(os.path.join(bin_, 'notify-send'), 0o755)
-            script = '\n'.join([fn, fr, lw, lp, 'log() { echo "$*" >> "%s/log"; }' % d, 'have() { command -v "$1" >/dev/null 2>&1; }',
+            # (the image with KDE Plasma: 1.18's no-KDE image never runs Firehold on Plasma, test_labwc_fedora_session.py)
+            script = '\n'.join(['kde_here() { return 0; }', fn, fr, lw, lp, 'log() { echo "$*" >> "%s/log"; }' % d, 'have() { command -v "$1" >/dev/null 2>&1; }',
                                  'DESK_STATE="%s/state"' % d, run, 'wait', 'echo "PICK=$fh_pick"'])
             env = {'SESSION_CONF': conf, 'HOME': d, 'XDG_CONFIG_HOME': cfg, 'PATH': bin_ + ':' + os.environ['PATH']}
             out = subprocess.run(['sh', '-c', script.replace('sleep 25; ', '')], env=env, capture_output=True, text=True, timeout=20).stdout
