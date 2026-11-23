@@ -99,10 +99,10 @@ for gid, title, a, b in games:
         for y in range(size[1]):
             t = y / size[1]; dr.line([(0, y), (size[0], y)], fill=tuple(int(a[i] * (1 - t) + b[i] * t) for i in range(3)))
         im.save(os.path.join(d, gid + "-" + kind + ".png"))
-    out.append({"id": gid, "title": title, "source": "steam", "cover": "file://" + os.path.join(d, gid + "-cover.png"), "wide": "file://" + os.path.join(d, gid + "-wide.png"), "icon": ""})
+    out.append({"id": "steam:" + gid, "title": title, "source": "steam", "cover": "file://" + os.path.join(d, gid + "-cover.png"), "wide": "file://" + os.path.join(d, gid + "-wide.png"), "icon": ""})
 json.dump(out, open(os.path.join(d, "desktop-games.json"), "w"))
 PY
-  printf '{"pins":["foot"],"recent":["game:pixel-rally"]}\n' >"$HOME/.config/nimbus/desk.json"
+  printf '{"pins":["foot"],"recent":["game:steam:pixel-rally"]}\n' >"$HOME/.config/nimbus/desk.json"
   python3 "$SH/hearth-browser" asked >/dev/null 2>&1 || true   # the 1.12 "Pick your browser" was answered long ago
   mkdir -p /tmp/rc-screens && printf '<?xml version="1.0"?>\n<labwc_config><desktops number="4"/></labwc_config>\n' >/tmp/rc-screens/rc.xml
   # a pretend AI's answer for "Or say it" (board 5) and what the pretend printer at 192.168.1.40 says
@@ -170,7 +170,7 @@ run_screens_rust() {
   python3 -c "import json,os,sys;d=json.load(open(sys.argv[1]));[g.update({k:g[k].replace('/tmp/home-screens/','/tmp/home-screens-rs/')}) for g in d for k in ('cover','wide')];json.dump(d,open(sys.argv[1],'w'))" "$XDG_CACHE_HOME/hearth/desktop-games.json" 2>/dev/null
   : >"$HOME/.local/share/nimbus/welcome-done"
   printf '{"look":"hearth","mode":"dark","screenOffMinutes":0,"defaults":2}\n' >"$HOME/.local/share/nimbus/desktop.json"
-  printf '{"pins":["foot"],"recent":["game:pixel-rally"]}\n' >"$HOME/.config/nimbus/desk.json"
+  printf '{"pins":["foot"],"recent":["game:steam:pixel-rally"]}\n' >"$HOME/.config/nimbus/desk.json"
   mkdir -p /tmp/rc-screens-rs && printf '<?xml version="1.0"?>\n<labwc_config><desktops number="4"/></labwc_config>\n' >/tmp/rc-screens-rs/rc.xml
   printf 'hearth-mantel session >%s/shell.log 2>&1 &\n' "$XDG_RUNTIME_DIR" >/tmp/rc-screens-rs/autostart
   dbus-daemon --session --fork --address="unix:path=$XDG_RUNTIME_DIR/bus" && export DBUS_SESSION_BUS_ADDRESS="unix:path=$XDG_RUNTIME_DIR/bus"

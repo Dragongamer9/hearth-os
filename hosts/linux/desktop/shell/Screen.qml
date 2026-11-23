@@ -756,11 +756,22 @@ PanelWindow {
                 Text { visible: !nt.win && !!nt.blk.title; text: nt.blk.title || ""; color: nt.st.text || scr.ink; font.family: scr.fontFor(nt.st.font); font.pixelSize: (nt.st.size || 22) * 1.05 }
                 Repeater {
                     model: nt.lines
+                    // "☐ " / "☑ " lines are a checklist: Hearth draws the boxes (the fonts haven't got those signs)
                     delegate: Text {
+                        id: ntLine
                         required property var modelData
                         required property int index
-                        text: modelData; color: nt.st.text || scr.ink; font.family: scr.fontFor(nt.st.font); font.pixelSize: nt.st.size || 18
+                        readonly property bool box: modelData.startsWith("☐") || modelData.startsWith("☑")
+                        readonly property real fs: nt.st.size || 18
+                        text: box ? modelData.slice(1).trim() : modelData; color: nt.st.text || scr.ink; font.family: scr.fontFor(nt.st.font); font.pixelSize: fs
+                        leftPadding: box ? fs * 1.3 : 0
                         width: ntCol.width; wrapMode: Text.WordWrap
+                        Rectangle {
+                            visible: ntLine.box
+                            width: ntLine.fs * 0.8; height: width; radius: 3; color: "transparent"; border.width: 1.5; border.color: ntLine.color
+                            y: (ntLine.fs * 1.25 - height) / 2
+                            Rectangle { anchors.centerIn: parent; width: parent.width * 0.55; height: width; radius: 2; color: ntLine.color; visible: ntLine.modelData.startsWith("☑") }
+                        }
                         MouseArea {
                             anchors.fill: parent
                             enabled: modelData.startsWith("☐") || modelData.startsWith("☑")
@@ -900,11 +911,16 @@ PanelWindow {
             columns: 2; columnSpacing: 30; rowSpacing: 22
             Repeater {
                 model: (ic.blk.items || []).map(i => scr.itemOf(i))
-                delegate: Column {
+                delegate: Item {
+                    id: icItem
                     required property var modelData
-                    spacing: 4; width: 90
-                    Icon { anchors.horizontalCenter: parent.horizontalCenter; name: modelData.glyph || "home"; size: 30; color: ic.st.text || scr.ink }
-                    Text { anchors.horizontalCenter: parent.horizontalCenter; text: modelData.label; color: ic.st.text || scr.ink; font.family: scr.fontFor(ic.st.font); font.pixelSize: ic.st.size || 14 }
+                    width: 90; height: icCol.implicitHeight
+                    Column {
+                        id: icCol
+                        width: parent.width; spacing: 4
+                        Icon { anchors.horizontalCenter: parent.horizontalCenter; name: icItem.modelData.glyph || "home"; size: 30; color: ic.st.text || scr.ink }
+                        Text { anchors.horizontalCenter: parent.horizontalCenter; text: icItem.modelData.label; color: ic.st.text || scr.ink; font.family: scr.fontFor(ic.st.font); font.pixelSize: ic.st.size || 14 }
+                    }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onDoubleClicked: { scr.sound(ic.st.sound); scr.act(modelData.action, modelData.target); } onClicked: scr.sound(ic.st.sound) }
                 }
             }
