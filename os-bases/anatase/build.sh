@@ -2440,3 +2440,12 @@ done
 # bootc keeps images in podman's storage (imgstorage): without podman, updates and Switch edition fail
 # ("podman executable not found in PATH"). Peppermint 0.3.0 shipped without it.
 command -v podman >/dev/null || { echo "podman is missing: bootc upgrade and bootc switch need it"; exit 1; }
+
+# ------------------------------------------------------------------ no KDE came back (1.18)
+# Anything installed after KDE was removed (above) that brought a piece of KDE back with it: named, with what needs it,
+# so it can be replaced (the image check fails while any is here).
+kde_back=$(rpm -qa --qf '%{NAME}\n' | { grep -E "$KDE_RE" || true; } | sort -u)
+if [ -n "$kde_back" ]; then
+  why=""; for k in $kde_back; do why="$why $k<-$(rpm -q --whatrequires "$k" --qf '%{NAME},' 2>/dev/null | grep -v 'no package' | tr -d '\n' | cut -c1-80);"; done
+  echo "::warning title=No KDE::KDE came back with later installs:$(echo "$why" | cut -c1-3000)"
+fi
