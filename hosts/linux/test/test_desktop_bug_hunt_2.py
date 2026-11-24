@@ -24,6 +24,24 @@ def feed_of(name, prop):
     return m.group(1)[1:-1]
 
 
+class SettingsControlsHaveWhatPagesSet(unittest.TestCase):
+    def test_inset_only_on_controls_that_have_it(self):
+        """SetDesktopLayout.qml set inset on a SetDropdown that had no such property: the whole page didn't load."""
+        own = {f.stem for f in SHELL.glob('Set*.qml') if re.search(r'property bool inset\b', f.read_text())}
+        root = {}
+        for f in SHELL.glob('Set*.qml'):
+            m = re.search(r'^([A-Z]\w*)\s*\{', f.read_text(), re.M)
+            root[f.stem] = m.group(1) if m else ''
+        def has_inset(t, seen=()):
+            return t in own or (t in root and t not in seen and has_inset(root[t], seen + (t,)))
+        has = {t for t in root if has_inset(t)}
+        for f in sorted(SHELL.glob('*.qml')):
+            t = f.read_text()
+            for m in re.finditer(r'\b(Set[A-Z]\w*)\s*\{\s*\n?\s*([^\n]*)', t):
+                if re.search(r'\binset\s*:', m.group(2)):
+                    self.assertIn(m.group(1), has, '%s: %s sets inset but has no such property' % (f.name, m.group(1)))
+
+
 class NoEnvironmentObjects(unittest.TestCase):
     def test_no_process_environment_object_in_the_shell(self):
         for f in sorted(SHELL.glob('*.qml')):
@@ -31,6 +49,8 @@ class NoEnvironmentObjects(unittest.TestCase):
                 if line.lstrip().startswith('//'):
                     continue
                 self.assertIsNone(re.search(r'^\s*environment\s*:', line), '%s:%d %s' % (f.name, n, line.strip()))
+                # ...nor assigned later (DescribeIt.qml, Nov 24: "Cannot assign QJSValue to QVariantHash", nothing ran)
+                self.assertIsNone(re.search(r'\.environment\s*=[^=]', line), '%s:%d %s' % (f.name, n, line.strip()))
 
     def test_the_writers_send_on_stdin(self):
         for f, proc in (('SetJob.qml', 'proc'), ('FileManager.qml', 'procIn'), ('SetSignin.qml', 'admin')):

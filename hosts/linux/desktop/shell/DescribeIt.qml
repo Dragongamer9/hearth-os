@@ -65,8 +65,10 @@ PanelWindow {
         }
     }
     function run(argv, cb, env) {
-        const p = runComp.createObject(dz, { command: argv, cb: cb || null });
-        if (env) p.environment = env;
+        // The environment through `env` on the command line: assigning a JS object to Process.environment throws
+        // ("Cannot assign QJSValue to QVariantHash") and nothing ran (the owner's laptop, Debian test-1.18, Nov 24).
+        const pre = env ? ["env"].concat(Object.keys(env).map(k => k + "=" + env[k])) : [];
+        const p = runComp.createObject(dz, { command: pre.concat(argv), cb: cb || null });
         if (p) p.running = true;
     }
     function make() {
