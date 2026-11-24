@@ -673,6 +673,27 @@ jobs:
           retention-days: 30
 
       # REQUIRED: a failure here stops the image from being published.
+      # The owner, Nov 24: "lets start doing that, i can test it while your testing as well". With a test tag, the image
+      # goes up as <tag>-candidate as soon as it's made (the owner can try it at his own risk while the checks run);
+      # <tag> itself only moves to it once every check passed (the publish step at the end: a relabel, no new upload).
+      - name: Upload the candidate (<test tag>-candidate, before the checks)
+        if: github.event_name == 'workflow_dispatch' && inputs.test_tag != ''
+        env:
+          TEST_TAG: ${{ inputs.test_tag }}
+        run: |
+          set -o pipefail
+          echo "$TEST_TAG" | grep -Eqx 'test-[0-9]+(\.[0-9]+)*' || { echo "::error title=candidate::refusing tag '$TEST_TAG': only test-<version>"; exit 1; }
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+          c="$IMAGE:$TEST_TAG-candidate"
+          if [ "${CHUNKED:-}" = 1 ] && [ -f /mnt/hearth-chunked/img/index.json ]; then
+            sudo rm -f /var/lib/containers/cache/blob-info-cache-v1.sqlite /var/lib/containers/cache/blob-info-cache-v1.boltdb
+            sudo skopeo copy -q --preserve-digests --authfile /run/containers/0/auth.json oci:/mnt/hearth-chunked/img "docker://$c" \
+              || sudo podman push hearth-peppermint:latest "$c"
+          else
+            sudo podman push hearth-peppermint:latest "$c"
+          fi
+          echo "::notice title=candidate::$c is up (not checked yet: the checks are running)"
+
       - name: Check the image
         run: |
           # pipefail: without it `bootc container lint | tee` below always passed, even when lint failed.
@@ -1195,6 +1216,12 @@ jobs:
           if [ -n "${TEST_TAG:-}" ]; then
             echo "$TEST_TAG" | grep -Eqx 'test-[0-9]+(\.[0-9]+)*' || { echo "::error title=publish::refusing tag '$TEST_TAG': only test-<version>"; exit 1; }
             [ "${PUBLISH:-}" = true ] || tags="$TEST_TAG"
+          fi
+          # Only a test tag: the candidate checked above gets the tag's own name (the same image, no new upload).
+          if [ -n "${TEST_TAG:-}" ] && [ "${PUBLISH:-}" != true ] && sudo skopeo inspect --authfile /run/containers/0/auth.json "docker://$IMAGE:$TEST_TAG-candidate" >/dev/null 2>&1; then
+            sudo skopeo copy -q --preserve-digests --authfile /run/containers/0/auth.json "docker://$IMAGE:$TEST_TAG-candidate" "docker://$IMAGE:$TEST_TAG"
+            echo "::notice title=published::$IMAGE:$TEST_TAG (the checked candidate)"
+            exit 0
           fi
           for tag in $tags; do
             # 1.13: the rechunked image exactly as made (its layers' digests are what devices already have).
