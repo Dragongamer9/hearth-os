@@ -15,6 +15,14 @@ on:
         description: 'Publish the image to hearth-peppermint:testing (ARCHIVED: Debian devices follow it; only on the owner''s word). Off: build and check only'
         type: boolean
         default: false
+      test_tag:
+        description: 'Owner-approved test tag to publish to from this branch once every check passes (test-<version> only, e.g. test-1.18): only devices switched to it by hand follow it. Empty: none'
+        type: string
+        default: ''
+      rest_minutes:
+        description: 'Minutes at rest in the desktop test (default 60)'
+        type: string
+        default: '60'
   # Archived Nov 19, 2026: no push trigger (it was push to linux-host and main, on the image's paths).
 
 env:
@@ -1100,6 +1108,8 @@ jobs:
       # and the numbers: the ci/debian-desktop branch.
       - name: Signs in and opens the desktop in a virtual PC (screenshots, an hour at rest)
         timeout-minutes: 120
+        env:
+          REST_SECS: ${{ github.event_name == 'workflow_dispatch' && format('{0}', fromJSON(inputs.rest_minutes || '60') * 60) || '3600' }}
         run: bash .github/scripts/debian-desktop-vm.sh localhost/hearth-peppermint:latest "$PWD/debian-desktop"
       - name: Publish the desktop screenshots (ci/debian-desktop)
         if: always()
@@ -1169,14 +1179,22 @@ jobs:
             -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-peppermint:latest bash /box.sh flatpak || echo "::warning title=box check::the flatpak check didn't finish"
 
       - name: Publish to GitHub Container Registry
-        if: env.PUBLISH == 'true'
+        if: env.PUBLISH == 'true' || (github.event_name == 'workflow_dispatch' && inputs.test_tag != '')
+        env:
+          TEST_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.test_tag || '' }}
         run: |
           set -o pipefail
           exec > >(tee /tmp/step.log) 2>&1
           trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -20 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=publish::$msg"' ERR
           v="${{ needs.app.outputs.version }}"
           echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
-          for tag in testing "testing-$v-$(date -u +%Y%m%d)"; do
+          tags="testing testing-$v-$(date -u +%Y%m%d)"
+          # A test tag given by hand (the owner's okay): only that tag, never :testing (red flag 5).
+          if [ -n "${TEST_TAG:-}" ]; then
+            echo "$TEST_TAG" | grep -Eqx 'test-[0-9]+(\.[0-9]+)*' || { echo "::error title=publish::refusing tag '$TEST_TAG': only test-<version>"; exit 1; }
+            [ "${PUBLISH:-}" = true ] || tags="$TEST_TAG"
+          fi
+          for tag in $tags; do
             # 1.13: the rechunked image exactly as made (its layers' digests are what devices already have).
             if [ "${CHUNKED:-}" = 1 ] && [ -f /mnt/hearth-chunked/img/index.json ]; then
               # 1.13's first publish failed here: skopeo's blob cache tried to reuse a layer from another repository
@@ -1190,4 +1208,4 @@ jobs:
               sudo podman push hearth-peppermint:latest "$IMAGE:$tag"
             fi
           done
-          echo "::notice title=published::$IMAGE:testing"
+          echo "::notice title=published::$IMAGE: $tags"
