@@ -152,9 +152,31 @@ PY
   shot "qml-anything-back-to-mantel"
   timeout 20 quickshell ipc -p "$SH" call settings page your-desktop >/dev/null 2>&1; sleep 5; shot "qml-anything-settings"
   python3 -c "import json,os;d=json.load(open(os.path.expanduser('~/.local/share/nimbus/screen.json')));assert d.get('on') is False and d.get('chosen') is True, d" 2>>"$OUT/notes.txt" || err "screen: Back to Hearth OS Mantel wasn't kept"
+  # The lock screen made of blocks (docs/mockups/checklists/lock-screen-blocks.md): its editor (board 3), then locked for
+  # real with Hearth's own blocks (board 1) and in the 1995 look (board 2). A wrong password must keep it locked; the
+  # right one (this run's own, set here) unlocks through PAM as always.
+  ipc screen editLock; sleep 5; shot "qml-lock-3-the-editor"
+  note "lock editor: $(timeout 20 quickshell ipc -p "$SH" call screen lockState 2>/dev/null)"
+  timeout 20 quickshell ipc -p "$SH" call screen lockState 2>/dev/null | grep -q '"lockMode":true' || err "lock editor: didn't open in lock mode"
+  ipc screen editorClose; sleep 2
+  LOCKPW=hearthtest42
+  echo "$(id -un):$LOCKPW" | chpasswd 2>>"$OUT/notes.txt" || note "lock: couldn't set this run's password"
+  python3 "$SH/hearth-lockscreen" match >/dev/null 2>&1 || err "hearth-lockscreen match failed"
+  lock_shot() {
+    ipc lock lock; sleep 6; shot "$1"
+    timeout 20 quickshell ipc -p "$SH" call lock state 2>/dev/null | grep -q '"locked":true' || err "$1: it didn't lock ($(timeout 20 quickshell ipc -p "$SH" call lock state 2>&1 | tail -1))"
+    wtype "not-the-password" 2>/dev/null; wtype -k Return 2>/dev/null; sleep 5
+    timeout 20 quickshell ipc -p "$SH" call lock state 2>/dev/null | grep -q '"locked":false' && err "$1: a wrong password unlocked it"
+    wtype "$LOCKPW" 2>/dev/null; wtype -k Return 2>/dev/null; sleep 6
+    if timeout 20 quickshell ipc -p "$SH" call lock state 2>/dev/null | grep -q '"locked":false'; then note "$1: the right password unlocked it"
+    else note "$1: still locked after the right password (typing into the lock screen may not reach it here); restarting Mantel"; fi
+  }
+  lock_shot "qml-lock-1-made-of-blocks"
+  ipc screen use retro; sleep 5
+  lock_shot "qml-lock-2-in-the-1995-look"
   grep -v -e MESA -e '^$' "$XDG_RUNTIME_DIR/shell.log" >"$OUT/qml-screens-shell.log" 2>/dev/null
   note "screens log: $(grep -E 'Mantel:|shell.qml|Screen.qml' "$OUT/qml-screens-shell.log" | sort -u | head -12 | tr '\n' '|' | cut -c1-1800)"
-  local bad; bad=$(grep -E 'Screen.qml|shell.qml|FirstStart|ScreenLayout|SetYourDesktop|ScreenEditor|OwnBlock' "$OUT/qml-screens-shell.log" | grep -v -e 'File does not exist' -e 'QML Image at' | grep -iE 'error|TypeError|ReferenceError|is not defined|Cannot|Unable|failed|not a type' | sort -u | head -8 | tr '\n' '|' | cut -c1-1500)
+  local bad; bad=$(grep -E 'Screen.qml|shell.qml|FirstStart|ScreenLayout|SetYourDesktop|ScreenEditor|OwnBlock|Lock.qml|LockBlocks|LockPassword' "$OUT/qml-screens-shell.log" | grep -v -e 'File does not exist' -e 'QML Image at' | grep -iE 'error|TypeError|ReferenceError|is not defined|Cannot|Unable|failed|not a type' | sort -u | head -8 | tr '\n' '|' | cut -c1-1500)
   [ -n "$bad" ] && err "screens: the log: $bad"
   kill "$lw" 2>/dev/null; sleep 1; pkill -x quickshell 2>/dev/null; pkill -f dbus-daemon 2>/dev/null; sleep 1
   unset XDG_CACHE_HOME
@@ -215,7 +237,9 @@ mock = {'plasma-1-desktop': 'layouts-1-plasma-style.png', 'gnome-1-desktop': 'la
         'describe-feature': 'layouts-8-describe-it-new-feature.png', 'describe-needs': 'layouts-9-describe-it-send-idea.png',
         'anything-7-first-start': '../build-anything/anything-7-first-start.png', 'anything-console-guide': '../build-anything/anything-2-console-dashboard.png',
         'anything-iconrow': '../build-anything/anything-3-icon-row-home.png', 'anything-4-block-editor': '../build-anything/anything-4-block-editor.png',
-        'anything-5-ai-made-block': '../build-anything/anything-5-ai-made-block.png', 'anything-console': '../build-anything/anything-1-no-two-alike.png'}
+        'anything-5-ai-made-block': '../build-anything/anything-5-ai-made-block.png', 'anything-console': '../build-anything/anything-1-no-two-alike.png',
+        'lock-1-made-of-blocks': '../lock-screen-blocks/lock-1-made-of-blocks.png', 'lock-2-in-the-1995-look': '../lock-screen-blocks/lock-2-in-the-1995-look.png',
+        'lock-3-the-editor': '../lock-screen-blocks/lock-3-the-editor.png'}
 W, H = 1280, 720
 names = sorted({f[4:-4] if f.startswith('qml-') else f[5:-4] for f in os.listdir(o) if f.endswith('.png') and (f.startswith('qml-') or f.startswith('rust-'))})
 for name in names:

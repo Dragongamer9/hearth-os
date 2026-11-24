@@ -5,6 +5,12 @@
 // changes the screen (hearth-layout describe-screen) and, when Hearth hasn't got a block for it, makes one (board 5:
 // MADE FOR YOU BY YOUR AI, what you asked, how it's boxed in, its ask, Keep this / Change it / Try again / Undo / Share).
 // Undo, Try it full screen, Share it, Keep this. Nothing changes your desktop until Keep this (ScreenLayout.keep).
+// 1.18, lock mode (openLock; docs/mockups/checklists/lock-screen-blocks.md board 3): the same editor for the lock
+// screen. Only blocks that show things (Clock, Date, Weather, Media, Notifications, Downloads, Battery, Calendar,
+// Picture, Words, Friends online, your AI's own); the password block always there (moved, sized and styled, never
+// removed or covered); Match your desktop; Undo, Try it (locks for real), Keep this; Or say it; the picked block's
+// Shows, Look and the Privacy of the whole lock screen. hearth-lockscreen makes every layout safe before it's tried or
+// kept (nothing on it can open an app, a file or a setting) and keeps it (atomic, merged, a .bak kept).
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
@@ -36,6 +42,22 @@ PanelWindow {
     property bool busy: false
     property var made: null              // board 5: what your AI made ({block, asks, asked})
     property var previewWin: null
+    // ---- lock mode
+    property bool lockMode: false
+    property bool lockMatch: false
+    property string lockFrom: ""
+    readonly property string lockHelper: decodeURIComponent(Qt.resolvedUrl("hearth-lockscreen").toString().replace(/^file:\/\//, ""))
+    readonly property string deskName: ScreenLayout.on ? ((ScreenLayout.readyMade.find(r => r.id === ScreenLayout.from) || { name: "your desktop" }).name) : "Hearth OS Mantel"
+    readonly property var lockCatalog: [
+        { b: "clock", t: "Clock" }, { b: "date", t: "Date" }, { b: "weather", t: "Weather" }, { b: "media", t: "Media" },
+        { b: "notifications", t: "Notifications" }, { b: "downloads", t: "Downloads" }, { b: "battery", t: "Battery" },
+        { b: "calendar", t: "Calendar" }, { b: "picture", t: "Picture" }, { b: "text", t: "Words" }, { b: "friends", t: "Friends online" },
+        { b: "own", t: "Your AI's own..." }
+    ]
+    readonly property var lockNames: ({ date: "Date", notifications: "Notifications", calendar: "Calendar", password: "Password and fingerprint", bar: "Locked bar" })
+    readonly property var privNotes: [["names", "names only"], ["messages", "messages too"], ["count", "just how many"], ["none", "hidden"]]
+    readonly property var lockSizes: ({ clock: [8, 3], date: [8, 1], weather: [5, 2], media: [5, 2], notifications: [5, 3], downloads: [6, 2], battery: [6, 1],
+                                        calendar: [5, 3], picture: [6, 4], text: [8, 1], friends: [5, 3] })
     readonly property var cur: pick >= 0 && pick < (draft.blocks || []).length ? draft.blocks[pick] : null
 
     // ---- what each block is called, and what it may show (the editor's Shows chip goes round them)
@@ -71,7 +93,11 @@ PanelWindow {
         { b: "search", t: "Search", shows: [["", "Search"]] },
         { b: "downloads", t: "Downloads", shows: [["", "Downloads and updates"]] }
     ]
-    function info(b) { return catalog.concat(more).find(c => c.b === b) || { b: b, t: String(b).startsWith("own:") ? "Made by your AI" : b, shows: [] }; }
+    function info(b) {
+        if (lockMode && lockNames[b]) return { b: b, t: lockNames[b], shows: [] };
+        if (lockMode && b === "friends") return { b: b, t: "Friends online", shows: [] };
+        if (lockMode && b === "text") return { b: b, t: "Words", shows: [] };
+        return catalog.concat(more).find(c => c.b === b) || { b: b, t: String(b).startsWith("own:") ? "Made by your AI" : b, shows: [] }; }
     readonly property var colours: ["#ffffff", "#2f9e5a", "#ff7a2f", "#5b8cff", "#b07cff", "#f2c14e", "#e05a6a", "#0b3a44", "#1f3a2e", "#00000000"]
     readonly property var fonts: ["", "Inter", "Inter Display", "Noto Serif", "Noto Sans Mono", "Pixel", "Rounded", "Condensed"]
     readonly property var focuses: [["grow", "Grows, white outline"], ["outline", "White outline"], ["glow", "Glows"], ["lift", "Lifts"], ["none", "Nothing"]]
@@ -81,6 +107,7 @@ PanelWindow {
 
     function copy(o) { return JSON.parse(JSON.stringify(o)); }
     function open(screenObj, title) {
+        lockMode = false;
         draft = copy(screenObj || ScreenLayout.screen || { grid: { cols: 24, rows: 14 }, background: { kind: "gradient", from: "#10243a", to: "#1a0d07" }, look: {}, blocks: [] });
         if (!draft.grid) draft.grid = { cols: 24, rows: 14 };
         if (!draft.blocks) draft.blocks = [];
@@ -89,6 +116,118 @@ PanelWindow {
         undoStack = []; pick = draft.blocks.length ? 0 : -1; error = ""; made = null; sayField.text = "";
         shown = true;
         refreshMine();
+    }
+    // The lock screen editor: your own lock screen as kept, else the one matching your desktop.
+    FileView { id: lockView; path: Quickshell.env("HOME") + "/.local/share/nimbus/lock-screen.json"; blockLoading: true; watchChanges: false }
+    function openLock() {
+        let o = null;
+        try { lockView.reload(); const t = lockView.text(); o = t && t.trim() ? JSON.parse(t) : null; } catch (e) { o = null; }
+        lockMatch = !!o && o.match === true;
+        if (o && o.on === true && o.match !== true && o.screen && Array.isArray(o.screen.blocks)) { lockOpenWith(o.screen, o.screen.name || "Your own", o.from || ""); return; }
+        lockReady(ScreenLayout.on && ScreenLayout.from ? ScreenLayout.from : "hearth");
+    }
+    function lockReady(id) { lockReadyP.wanted = id; lockReadyP.command = ["python3", lockHelper, "ready", id]; lockReadyP.running = true; }
+    Process {
+        id: lockReadyP
+        property string wanted: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let o = null;
+                try { o = JSON.parse(text.trim().split("\n").pop() || "{}"); } catch (e) { o = null; }
+                if (!o || !Array.isArray(o.blocks)) { ed.error = "The lock screen couldn't be read."; return; }
+                ed.lockOpenWith(o, o.name || lockReadyP.wanted, lockReadyP.wanted);
+            }
+        }
+    }
+    function lockOpenWith(o, title, from) {
+        lockMode = true;
+        draft = copy(o);
+        if (!draft.grid) draft.grid = { cols: 24, rows: 14 };
+        if (!draft.privacy) draft.privacy = { notifications: "names", media: true };
+        name = title || "Your own"; lockFrom = from || "";
+        said = draft.said || "";
+        undoStack = []; error = ""; made = null; sayField.text = "";
+        pick = Math.max(0, draft.blocks.findIndex(b => b.block === "weather"));
+        shown = true;
+    }
+    function matchDesktop() { lockMatch = true; lockReady(ScreenLayout.on && ScreenLayout.from ? ScreenLayout.from : "hearth"); }
+    function pwIndex() { return (draft.blocks || []).findIndex(b => b.block === "password"); }
+    // a block moved or sized over the password block: not allowed (it's never covered)
+    function coversPw(b, i) {
+        if (!lockMode || !b || b.block === "password") return false;
+        const p = draft.blocks[pwIndex()];
+        return !!p && i !== pwIndex() && b.x < p.x + p.w && p.x < b.x + b.w && b.y < p.y + p.h && p.y < b.y + b.h;
+    }
+    function setPrivacy(k, v) { change(d => { d.privacy = Object.assign({ notifications: "names", media: true }, d.privacy || {}); d.privacy[k] = v; }); }
+    function lockCheck(o, after) { lockCheckP.after = after; lockCheckP.command = ["python3", lockHelper, "check", JSON.stringify(o)]; lockCheckP.running = true; }
+    Process {
+        id: lockCheckP
+        property string after: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let r = null;
+                try { r = JSON.parse(text.trim().split("\n").pop() || "{}"); } catch (e) { r = null; }
+                if (!r || r.ok !== true) { ed.error = (r && (r.error || (r.problems || []).join(" "))) || "That lock screen couldn't be checked."; return; }
+                if (lockCheckP.after === "said") {
+                    ed.change(d => { for (const k in d) delete d[k]; for (const k in r.screen) d[k] = r.screen[k]; });
+                    ed.pick = Math.max(0, ed.draft.blocks.length - 1);
+                    ed.error = (r.problems || []).join(" ");
+                }
+            }
+        }
+    }
+    function lockTry() {
+        lockTryP.command = ["python3", lockHelper, "try", JSON.stringify(draft)];
+        lockTryP.running = true;
+    }
+    Process {
+        id: lockTryP
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let r = null;
+                try { r = JSON.parse(text.trim().split("\n").pop() || "{}"); } catch (e) { r = null; }
+                if (!r || r.ok !== true) { ed.error = (r && r.error) || "It couldn't be tried."; return; }
+                // locks for real: Hearth's own lock (Lock.qml) with this layout, once; your password unlocks as always
+                Quickshell.execDetached(["loginctl", "lock-session"]);
+            }
+        }
+    }
+    function lockKeep() {
+        lockKeepP.command = ["python3", lockHelper, "keep", JSON.stringify({ screen: Object.assign(copy(draft), { name: name, said: said || draft.said || "" }), match: lockMatch, from: lockFrom })];
+        lockKeepP.running = true;
+    }
+    Process {
+        id: lockKeepP
+        stdout: StdioCollector {
+            onStreamFinished: {
+                let r = null;
+                try { r = JSON.parse(text.trim().split("\n").pop() || "{}"); } catch (e) { r = null; }
+                if (!r || r.ok !== true) { ed.error = (r && r.error) || "Your lock screen couldn't be kept."; return; }
+                ed.shown = false;
+                SettingsNav.toast("Your lock screen is kept ✓ (Super+L to see it)");
+            }
+        }
+    }
+    // the weather block's Place: looked up by name (Open-Meteo, through hearth-widgets)
+    Process {
+        id: placeP
+        property string asked: ""
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const o = JSON.parse(text.trim().split("\n").pop() || "{}");
+                    const p = (o.places || [])[0];
+                    if (!p) { ed.error = "No place called \"" + placeP.asked + "\" was found."; return; }
+                    ed.change(d => { const b = d.blocks[ed.pick]; b.place = p.name; b.lat = p.lat; b.lon = p.lon; });
+                } catch (e) { ed.error = "The place couldn't be looked up."; }
+            }
+        }
+    }
+    function findPlace(t) {
+        if (!t.trim()) return;
+        placeP.asked = t.trim();
+        placeP.command = ["python3", decodeURIComponent(Qt.resolvedUrl("hearth-widgets").toString().replace(/^file:\/\//, "")), "places", t.trim()];
+        placeP.running = true;
     }
     function openReady(id) {
         const r = ScreenLayout.readyMade.find(x => x.id === id);
@@ -100,6 +239,7 @@ PanelWindow {
     function setStyle(k, v) { if (!cur) return; change(d => { const b = d.blocks[pick]; b.style = b.style || {}; if (v === "" || v === undefined) delete b.style[k]; else b.style[k] = v; }); }
     function setField(k, v) { if (!cur) return; change(d => { const b = d.blocks[pick]; if (v === "" || v === undefined) delete b[k]; else b[k] = v; }); }
     function nextOf(list, v) { const i = list.findIndex(x => (Array.isArray(x) ? x[0] : x) === (v || "")); const n = list[(i + 1) % list.length]; return Array.isArray(n) ? n[0] : n; }
+    function nextNum(list, v) { const i = list.indexOf(v); return list[(i + 1) % list.length]; }
     function labelOf(list, v) { const x = list.find(x => x[0] === (v || "")); return x ? x[1] : String(v || ""); }
     function freeSpot(w, h) {
         const c = draft.grid.cols, r = draft.grid.rows;
@@ -110,7 +250,7 @@ PanelWindow {
     }
     function add(b, gx, gy) {
         if (b === "own") { sayField.text = "A block that "; sayField.forceActiveFocus(); return; }
-        const size = ({ hero: [8, 5], tilerow: [16, 4], iconrow: [14, 3], tabs: [10, 1], guide: [6, 14], clock: [5, 1], profile: [6, 1], battery: [3, 1], bar: [24, 1],
+        const size = lockMode ? (lockSizes[b] || [4, 2]) : ({ hero: [8, 5], tilerow: [16, 4], iconrow: [14, 3], tabs: [10, 1], guide: [6, 14], clock: [5, 1], profile: [6, 1], battery: [3, 1], bar: [24, 1],
                         dock: [10, 2], media: [8, 2], friends: [6, 3], notes: [8, 6], weather: [8, 1], windows: [8, 6], status: [7, 1], play: [14, 3], activity: [15, 3],
                         widget: [6, 4], list: [6, 5], icons: [6, 6], text: [8, 1], picture: [8, 6], menu: [2, 2], gamemode: [4, 1], search: [6, 1], downloads: [4, 3] })[b] || [4, 2];
         const w = Math.min(size[0], draft.grid.cols), h = Math.min(size[1], draft.grid.rows);
@@ -127,10 +267,17 @@ PanelWindow {
         if (b === "widget") nb.shows = "system";
         if (b === "iconrow" || b === "list") nb.shows = "games";
         if (b === "hero") nb.shows = "recent";
-        change(d => d.blocks.push(nb));
+        if (lockMode && b === "weather") nb.tonight = true;
+        if (lockMode && b === "text") nb.value = "Back soon.";
+        if (lockMode && coversPw(nb, -1)) { error = "There's no room there: nothing can cover the password block."; return; }
+        // the password block stays last: always on top
+        change(d => { const i = d.blocks.findIndex(x => x.block === "password"); if (lockMode && i >= 0) d.blocks.splice(i, 0, nb); else d.blocks.push(nb); });
+        if (lockMode) { pick = draft.blocks.findIndex(x => x.id === id); return; }
         pick = draft.blocks.length - 1;
     }
-    function remove() { if (!cur) return; const i = pick; change(d => d.blocks.splice(i, 1)); pick = Math.min(i, draft.blocks.length - 1); }
+    function remove() {
+        if (!cur) return;
+        if (lockMode && cur.block === "password") { error = "The password block is always there: it can be moved, sized and styled, never removed."; return; } const i = pick; change(d => d.blocks.splice(i, 1)); pick = Math.min(i, draft.blocks.length - 1); }
 
     // ---- your AI: the screen changed (and blocks made) from your words
     function say(t) { sayField.text = t; sayIt(); }
@@ -140,7 +287,8 @@ PanelWindow {
         busy = true; error = "";
         // Which app is asking (Describe it's notes), passed with env: no environment object on the Process
         // (test_desktop_bug_hunt_2).
-        describeP.command = ["env", "HEARTH_DESCRIBE_APP=Mantel " + (Quickshell.env("HEARTH_MANTEL_VERSION") || "")].concat(ScreenLayout.layoutCmd(["describe-screen", t, JSON.stringify(draft)]));
+        const asked = lockMode ? "This is the LOCK SCREEN, not the desktop: only blocks that show things (clock, date, weather, media, notifications, downloads, battery, calendar, picture, text, friends), nothing pressed opens anything, and the password block stays. " + t : t;
+        describeP.command = ["env", "HEARTH_DESCRIBE_APP=Mantel " + (Quickshell.env("HEARTH_MANTEL_VERSION") || "")].concat(ScreenLayout.layoutCmd(["describe-screen", asked, JSON.stringify(draft)]));
         describeP.asked = t;
         describeP.running = true;
     }
@@ -153,6 +301,12 @@ PanelWindow {
                 let r = null;
                 try { r = JSON.parse(text.trim().split("\n").pop() || "{}"); } catch (e) { r = null; }
                 if (!r || r.ok !== true) { ed.error = (r && r.error) || "Your AI didn't answer."; return; }
+                if (ed.lockMode) {
+                    // made safe first (hearth-lockscreen check): the password block kept, nothing that opens anything
+                    ed.said = describeP.asked;
+                    ed.lockCheck(Object.assign({}, r.screen || {}, { privacy: ed.draft.privacy, name: ed.name }), "said");
+                    return;
+                }
                 ed.change(d => { const s = r.screen; for (const k in d) delete d[k]; for (const k in s) d[k] = s[k]; });
                 ed.said = describeP.asked;
                 ed.pick = ed.draft.blocks.length ? 0 : -1;
@@ -210,7 +364,7 @@ PanelWindow {
         focus: ed.shown
         Keys.onPressed: e => {
         if (e.key === Qt.Key_Escape) { if (ed.made) ed.made = null; else ed.shown = false; e.accepted = true; }
-        else if ((e.key === Qt.Key_Delete || e.key === Qt.Key_Backspace) && !sayField.activeFocus && ed.cur) { ed.remove(); e.accepted = true; }
+        else if ((e.key === Qt.Key_Delete || e.key === Qt.Key_Backspace) && !sayField.activeFocus && !placeField.activeFocus && ed.cur) { ed.remove(); e.accepted = true; }
         else if (e.key === Qt.Key_Z && (e.modifiers & Qt.ControlModifier)) { ed.undo(); e.accepted = true; }
         }
     }
@@ -251,6 +405,19 @@ PanelWindow {
         }
     }
 
+    // a row: its name on the left, its value on the right (lock mode's panel)
+    component Kv: Item {
+        property string label: ""
+        property string value: ""
+        property bool interactive: true
+        signal clicked()
+        width: parent ? parent.width : 336; height: 38
+        Rectangle { anchors { left: parent.left; right: parent.right; top: parent.top } height: 1; color: Qt.rgba(1, 1, 1, 0.08) }
+        Text { anchors { left: parent.left; verticalCenter: parent.verticalCenter } text: parent.label; color: "#e8ddd4"; font.family: Theme.font; font.pixelSize: 15 }
+        Text { anchors { right: parent.right; verticalCenter: parent.verticalCenter } text: parent.value; color: "#c9bfb6"; font.family: Theme.font; font.pixelSize: 15 }
+        MouseArea { anchors.fill: parent; z: -1; enabled: parent.interactive; cursorShape: Qt.PointingHandCursor; onClicked: parent.clicked() }
+    }
+
     // ================================================================ the top bar
     Rectangle {
         id: top
@@ -259,7 +426,7 @@ PanelWindow {
         Row {
             anchors { left: parent.left; leftMargin: 24; verticalCenter: parent.verticalCenter }
             spacing: 14
-            Text { text: ed.made ? "Editing your desktop" : "Your desktop"; color: "white"; font.family: Theme.font; font.pixelSize: 17; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
+            Text { text: ed.made ? "Editing your desktop" : ed.lockMode ? "Lock screen" : "Your desktop"; color: "white"; font.family: Theme.font; font.pixelSize: 17; font.bold: true; anchors.verticalCenter: parent.verticalCenter }
             Rectangle {
                 visible: !ed.made
                 height: 28; width: nameT.implicitWidth + 26; radius: 14; color: "transparent"; border.color: Qt.rgba(1, 1, 1, 0.25)
@@ -272,7 +439,7 @@ PanelWindow {
             anchors { right: parent.right; rightMargin: 24; verticalCenter: parent.verticalCenter }
             spacing: 12
             Repeater {
-                model: ed.made ? [{ t: "Done", a: "done" }] : [{ t: "Undo", a: "undo" }, { t: "Try it full screen", a: "full" }, { t: "Share it", a: "share" }, { t: "Keep this", a: "keep" }]
+                model: ed.made ? [{ t: "Done", a: "done" }] : ed.lockMode ? [{ t: "Undo", a: "undo" }, { t: "Try it (locks for real)", a: "locktry" }, { t: "Keep this", a: "keep" }] : [{ t: "Undo", a: "undo" }, { t: "Try it full screen", a: "full" }, { t: "Share it", a: "share" }, { t: "Keep this", a: "keep" }]
                 delegate: Rectangle {
                     required property var modelData
                     readonly property bool primary: modelData.a === "keep"
@@ -282,7 +449,7 @@ PanelWindow {
                     Text { id: bt; anchors.centerIn: parent; text: modelData.t; color: parent.primary ? "#1b1006" : "white"; font.family: Theme.font; font.pixelSize: 15; font.bold: true }
                     MouseArea {
                         anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                        onClicked: modelData.a === "undo" ? ed.undo() : modelData.a === "full" ? ed.tryFull() : modelData.a === "share" ? ed.share() : modelData.a === "keep" ? ed.keep() : (ed.made = null)
+                        onClicked: modelData.a === "undo" ? ed.undo() : modelData.a === "full" ? ed.tryFull() : modelData.a === "locktry" ? ed.lockTry() : modelData.a === "share" ? ed.share() : modelData.a === "keep" ? (ed.lockMode ? ed.lockKeep() : ed.keep()) : (ed.made = null)
                     }
                 }
             }
@@ -295,7 +462,62 @@ PanelWindow {
         visible: !ed.made
         anchors { left: parent.left; top: top.bottom; bottom: parent.bottom }
         width: 300; color: "#1f1a17"
+        // lock mode: "Your lock screen", its blocks, Always there, Match your desktop
         Flickable {
+            visible: ed.lockMode
+            anchors { fill: parent; margins: 20 }
+            contentHeight: lkc.implicitHeight; clip: true
+            Column {
+                id: lkc
+                width: parent.width
+                spacing: 12
+                Text { text: "Your lock screen"; color: "white"; font.family: Theme.font; font.pixelSize: 19; font.bold: true }
+                Text { text: "BLOCKS · DRAG ONTO IT"; color: "#a59a91"; font.family: Theme.font; font.pixelSize: 12; font.letterSpacing: 1.4 }
+                Flow {
+                    width: lkc.width; spacing: 8
+                    Repeater {
+                        model: ed.lockCatalog
+                        delegate: Rectangle {
+                            id: lchip
+                            required property var modelData
+                            width: lct.implicitWidth + 26; height: 34; radius: 8; color: "#2a2420"; border.color: Qt.rgba(1, 1, 1, 0.08)
+                            Text { id: lct; anchors.centerIn: parent; text: lchip.modelData.t; color: "#e8ddd4"; font.family: Theme.font; font.pixelSize: 14 }
+                            MouseArea {
+                                anchors.fill: parent; cursorShape: Qt.OpenHandCursor
+                                property bool moved: false
+                                onPressed: { moved = false; ghost.label = lchip.modelData.t; ghost.kind = lchip.modelData.b; }
+                                onPositionChanged: mouse => {
+                                    const p = mapToItem(null, mouse.x, mouse.y);
+                                    if (!moved && (Math.abs(mouse.x - width / 2) > 6 || Math.abs(mouse.y - height / 2) > 6)) moved = true;
+                                    if (moved) { ghost.x = p.x - ghost.width / 2; ghost.y = p.y - ghost.height / 2; ghost.visible = true; }
+                                }
+                                onReleased: mouse => {
+                                    ghost.visible = false;
+                                    if (!moved) { ed.add(lchip.modelData.b); return; }
+                                    const p = mapToItem(canvas, mouse.x, mouse.y);
+                                    if (p.x >= 0 && p.y >= 0 && p.x <= canvas.width && p.y <= canvas.height) ed.add(lchip.modelData.b, Math.floor(p.x / canvas.cw), Math.floor(p.y / canvas.ch));
+                                }
+                            }
+                        }
+                    }
+                }
+                Text { text: "ALWAYS THERE"; color: "#a59a91"; font.family: Theme.font; font.pixelSize: 12; font.letterSpacing: 1.4; topPadding: 6 }
+                Rectangle {
+                    width: pwt.implicitWidth + 28; height: 36; radius: 8; color: Qt.rgba(1, 0.48, 0.18, 0.1); border.color: "#ff7a2f"
+                    Text { id: pwt; anchors.centerIn: parent; text: "🔒 Password and fingerprint"; color: "#ffb27a"; font.family: Theme.font; font.pixelSize: 14 }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ed.pick = ed.pwIndex() }
+                }
+                Text { width: lkc.width; wrapMode: Text.WordWrap; text: "It can be moved, sized and styled, never removed or covered. Unlocking is Hearth's own, whatever the look."; color: "#a59a91"; font.family: Theme.font; font.pixelSize: 13 }
+                Text { text: "MATCH YOUR DESKTOP"; color: "#a59a91"; font.family: Theme.font; font.pixelSize: 12; font.letterSpacing: 1.4; topPadding: 6 }
+                Rectangle {
+                    width: Math.min(lkc.width, mdt.implicitWidth + 28); height: 36; radius: 8; color: ed.lockMatch ? Qt.rgba(1, 1, 1, 0.12) : "#2a2420"; border.color: ed.lockMatch ? "#ff7a2f" : Qt.rgba(1, 1, 1, 0.08)
+                    Text { id: mdt; anchors.centerIn: parent; width: Math.min(implicitWidth, lkc.width - 20); elide: Text.ElideRight; text: "Same as " + ed.deskName; color: "#e8ddd4"; font.family: Theme.font; font.pixelSize: 14 }
+                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ed.matchDesktop() }
+                }
+            }
+        }
+        Flickable {
+            visible: !ed.lockMode
             anchors { fill: parent; margins: 20 }
             contentHeight: lc.implicitHeight; clip: true
             Column {
@@ -394,9 +616,31 @@ PanelWindow {
                 GradientStop { position: 0; color: (ed.draft.background && ed.draft.background.from) || "#10243a" }
                 GradientStop { position: 1; color: (ed.draft.background && (ed.draft.background.kind === "colour" ? ed.draft.background.from : ed.draft.background.to)) || "#1a0d07" }
             }
+            // lock mode: the lock screen as it will look (LockBlocks.qml at full size, scaled down), its password block too
+            Item {
+                id: lockPrev
+                visible: ed.lockMode
+                width: 1920; height: 1080
+                scale: canvasBox.width / 1920; transformOrigin: Item.TopLeft
+                Loader {
+                    id: lockBlocksPrev
+                    anchors.fill: parent
+                    active: ed.lockMode && ed.shown
+                    source: "LockBlocks.qml"
+                    onLoaded: { item.editing = true; item.preview = Qt.binding(() => ed.draft); }
+                }
+                Loader {
+                    active: lockBlocksPrev.status === Loader.Ready && !!lockBlocksPrev.item && lockBlocksPrev.item.ready
+                    source: "LockPassword.qml"
+                    x: active ? lockBlocksPrev.item.pwRect.x : 0; y: active ? lockBlocksPrev.item.pwRect.y : 0
+                    width: active ? lockBlocksPrev.item.pwRect.width : 0; height: active ? lockBlocksPrev.item.pwRect.height : 0
+                    onLoaded: { item.preview = true; item.retro = Qt.binding(() => lockBlocksPrev.item.pwRetro); item.st = Qt.binding(() => lockBlocksPrev.item.pwBlock.style); }
+                }
+            }
             Item {
                 id: canvas
                 anchors.fill: parent
+                anchors.margins: ed.lockMode ? Math.round(Math.min(canvasBox.width, canvasBox.height) * 0.035) : 0
                 readonly property real cw: width / ed.draft.grid.cols
                 readonly property real ch: height / ed.draft.grid.rows
                 // the grid
@@ -413,17 +657,17 @@ PanelWindow {
                         x: modelData.x * canvas.cw + 4; y: modelData.y * canvas.ch + 4
                         width: modelData.w * canvas.cw - 8; height: modelData.h * canvas.ch - 8
                         radius: Math.min(10, (modelData.style && modelData.style.corners) || 6)
-                        color: modelData.style && modelData.style.colour && modelData.style.colour !== "#00000000" ? Qt.rgba(Qt.color(modelData.style.colour).r, Qt.color(modelData.style.colour).g, Qt.color(modelData.style.colour).b, 0.45) : Qt.rgba(0, 0, 0, 0.25)
-                        border.width: on ? 2 : 1
+                        color: ed.lockMode ? "transparent" : modelData.style && modelData.style.colour && modelData.style.colour !== "#00000000" ? Qt.rgba(Qt.color(modelData.style.colour).r, Qt.color(modelData.style.colour).g, Qt.color(modelData.style.colour).b, 0.45) : Qt.rgba(0, 0, 0, 0.25)
+                        border.width: on ? 2 : (ed.lockMode ? 0 : 1)
                         border.color: on ? "#ff7a2f" : Qt.rgba(1, 1, 1, 0.35)
                         Text {
                             anchors { left: parent.left; bottom: parent.bottom; margins: 12 }
-                            visible: blkBox.modelData.block === "hero"
+                            visible: blkBox.modelData.block === "hero" && !ed.lockMode
                             text: "Hero tile · your last game"; color: "white"; font.family: Theme.font; font.pixelSize: 16; font.bold: true
                         }
                         Text {
                             anchors.centerIn: parent; width: parent.width - 16; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
-                            visible: blkBox.modelData.block !== "hero"
+                            visible: blkBox.modelData.block !== "hero" && !ed.lockMode
                             text: ed.info(blkBox.modelData.block).t + (blkBox.modelData.title ? " · " + blkBox.modelData.title : blkBox.modelData.items ? " · " + blkBox.modelData.items.length + " things" : "")
                             color: "white"; font.family: Theme.font; font.pixelSize: 14
                         }
@@ -435,7 +679,7 @@ PanelWindow {
                             onPositionChanged: mouse => {
                                 const dx = Math.round((mouse.x - sx) / canvas.cw), dy = Math.round((mouse.y - sy) / canvas.ch);
                                 const nx = Math.max(0, Math.min(ed.draft.grid.cols - blkBox.modelData.w, ox + dx)), ny = Math.max(0, Math.min(ed.draft.grid.rows - blkBox.modelData.h, oy + dy));
-                                if (nx !== blkBox.modelData.x || ny !== blkBox.modelData.y) {
+                                if ((nx !== blkBox.modelData.x || ny !== blkBox.modelData.y) && !ed.coversPw(Object.assign({}, blkBox.modelData, { x: nx, y: ny }), blkBox.index)) {
                                     if (!dragged) { ed.undoStack = ed.undoStack.concat([JSON.stringify(ed.draft)]); dragged = true; }
                                     const d = ed.copy(ed.draft); d.blocks[blkBox.index].x = nx; d.blocks[blkBox.index].y = ny; ed.draft = d;
                                 }
@@ -459,7 +703,7 @@ PanelWindow {
                                         const g = ed.draft.grid; const b = ed.copy(o);
                                         if (parent.modelData === "br") { b.w = Math.max(1, Math.min(g.cols - b.x, o.w + dx)); b.h = Math.max(1, Math.min(g.rows - b.y, o.h + dy)); }
                                         else { const nx = Math.max(0, Math.min(o.x + o.w - 1, o.x + dx)), ny = Math.max(0, Math.min(o.y + o.h - 1, o.y + dy)); b.w = o.w + (o.x - nx); b.h = o.h + (o.y - ny); b.x = nx; b.y = ny; }
-                                        if (b.x !== blkBox.modelData.x || b.y !== blkBox.modelData.y || b.w !== blkBox.modelData.w || b.h !== blkBox.modelData.h) {
+                                        if ((b.x !== blkBox.modelData.x || b.y !== blkBox.modelData.y || b.w !== blkBox.modelData.w || b.h !== blkBox.modelData.h) && !ed.coversPw(b, blkBox.index)) {
                                             if (!dragged) { ed.undoStack = ed.undoStack.concat([JSON.stringify(ed.draft)]); dragged = true; }
                                             const d = ed.copy(ed.draft); d.blocks[blkBox.index] = b; ed.draft = d;
                                         }
@@ -488,7 +732,7 @@ PanelWindow {
                 verticalAlignment: TextInput.AlignVCenter
                 color: "white"; font.family: Theme.font; font.pixelSize: 16; clip: true
                 onAccepted: ed.sayIt()
-                Text { anchors.fill: parent; verticalAlignment: Text.AlignVCenter; visible: !sayField.text && !sayField.activeFocus; text: "Or say it: \"make the hero tile bigger and add my printer's camera in the corner\"…"; color: "#a59a91"; font.family: Theme.font; font.pixelSize: 16 }
+                Text { anchors.fill: parent; verticalAlignment: Text.AlignVCenter; visible: !sayField.text && !sayField.activeFocus; text: ed.lockMode ? "Or say it: \"put the weather under the clock and hide my notifications\"" : "Or say it: \"make the hero tile bigger and add my printer's camera in the corner\"…"; color: "#a59a91"; font.family: Theme.font; font.pixelSize: 16 }
             }
         }
     }
@@ -500,8 +744,67 @@ PanelWindow {
         anchors { right: parent.right; top: top.bottom; bottom: parent.bottom }
         width: 380; color: "#1f1a17"
         Text { visible: !ed.cur; anchors.centerIn: parent; width: parent.width - 60; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; text: "Pick a block on the screen, or add one from the left."; color: "#a59a91"; font.family: Theme.font; font.pixelSize: 14 }
+        // lock mode: the picked block's Shows and Look, the lock screen's Privacy, and the rule
         Flickable {
-            visible: !!ed.cur
+            visible: !!ed.cur && ed.lockMode
+            anchors { fill: parent; margins: 22 }
+            contentHeight: lrc.implicitHeight; clip: true
+            Column {
+                id: lrc
+                width: parent.width
+                spacing: 2
+                readonly property var st: ed.cur && ed.cur.style ? ed.cur.style : ({})
+                readonly property var pv: ed.draft.privacy || ({ notifications: "names", media: true })
+                Text { text: ed.cur ? ed.info(ed.cur.block).t : ""; color: "white"; font.family: Theme.font; font.pixelSize: 17; font.bold: true; bottomPadding: 6 }
+                Head { text: "SHOWS" }
+                // Weather: its place (looked up by name) and tonight's line
+                Kv {
+                    visible: !!ed.cur && ed.cur.block === "weather"
+                    label: "Place"; value: ""
+                    TextInput {
+                        id: placeField
+                        anchors { right: parent.right; verticalCenter: parent.verticalCenter }
+                        width: parent.width * 0.55; horizontalAlignment: TextInput.AlignRight; clip: true
+                        text: ed.cur && ed.cur.place ? ed.cur.place + " ▾" : (Settings.nightPlace ? Settings.nightPlace + " ▾" : "Type a place ▾")
+                        color: "#c9bfb6"; font.family: Theme.font; font.pixelSize: 15
+                        onActiveFocusChanged: if (activeFocus) selectAll()
+                        onAccepted: { ed.findPlace(text.replace(/ ▾$/, "")); focus = false; }
+                    }
+                }
+                Kv { visible: !!ed.cur && ed.cur.block === "weather"; label: "Tonight too"; value: ed.cur && ed.cur.tonight === false ? "off" : "on"; onClicked: ed.setField("tonight", !(ed.cur.tonight !== false)) }
+                Kv { visible: !!ed.cur && ed.cur.block === "clock"; label: "Shows"; value: ed.cur && ed.cur.shows === "ring" ? "the time in a ring" : "the time"; onClicked: ed.setField("shows", ed.cur.shows === "ring" ? "" : "ring") }
+                Kv { visible: !!ed.cur && ed.cur.block === "password"; label: "Look"; value: ed.cur && ed.cur.shows === "window" ? "a 1995 window" : "Hearth's card"; onClicked: ed.setField("shows", ed.cur.shows === "window" ? "" : "window") }
+                Kv { visible: !!ed.cur && ["date", "media", "notifications", "downloads", "battery", "calendar", "friends"].indexOf(ed.cur.block) >= 0
+                     label: "Shows"; value: !ed.cur ? "" : ({ date: "today's date", media: "what's playing", notifications: "while you were away", downloads: "your downloads",
+                                                              battery: "this device and controllers", calendar: "today and what's next", friends: "who's online" })[ed.cur.block] || ""; interactive: false }
+                Rectangle {
+                    visible: !!ed.cur && (ed.cur.block === "text" || ed.cur.block === "picture")
+                    width: lrc.width; height: ed.cur && ed.cur.block === "text" ? 70 : 34; radius: 6; color: "#2a2420"
+                    TextEdit {
+                        anchors { fill: parent; margins: 8 } clip: true; wrapMode: TextEdit.WordWrap
+                        text: ed.cur ? (ed.cur.value || "") : ""; color: "white"; font.family: Theme.font; font.pixelSize: 13
+                        onActiveFocusChanged: if (!activeFocus && ed.cur && text !== (ed.cur.value || "")) ed.setField("value", text)
+                        Text { anchors.fill: parent; visible: !parent.text; text: ed.cur && ed.cur.block === "picture" ? "A picture of yours (~/Pictures/…)" : "Your words"; color: "#8a8079"; font.family: Theme.font; font.pixelSize: 13 }
+                    }
+                }
+                Head { text: "LOOK" }
+                Kv { label: "Corners"; value: String(lrc.st.corners !== undefined ? lrc.st.corners : 18); onClicked: ed.setStyle("corners", ed.nextNum([0, 6, 12, 18, 24, 32], lrc.st.corners !== undefined ? lrc.st.corners : 18)) }
+                Kv { label: "See-through"; value: (lrc.st.seeThrough || 0) + "%"; onClicked: ed.setStyle("seeThrough", ed.nextNum([0, 25, 40, 55, 70, 85], lrc.st.seeThrough || 0)) }
+                Kv { label: "Font"; value: lrc.st.font || "The look's own"; onClicked: ed.setStyle("font", ed.nextOf(ed.fonts, lrc.st.font || "")) }
+                Head { text: "PRIVACY" }
+                Kv { label: "Notifications"; value: ed.labelOf(ed.privNotes, lrc.pv.notifications || "names"); onClicked: ed.setPrivacy("notifications", ed.nextOf(ed.privNotes, lrc.pv.notifications || "names")) }
+                Kv { label: "Media controls"; value: lrc.pv.media === false ? "off" : "on"; onClicked: ed.setPrivacy("media", lrc.pv.media === false) }
+                Text {
+                    width: lrc.width; wrapMode: Text.WordWrap; topPadding: 18
+                    text: "Nothing on the lock screen can open an app, a file or a setting. Blocks only show; the password block unlocks."
+                    color: "#a59a91"; font.family: Theme.font; font.pixelSize: 14
+                }
+                Item { width: 1; height: 14 }
+                Pill { visible: !!ed.cur && ed.cur.block !== "password"; text: "Remove this block"; onClicked: ed.remove() }
+            }
+        }
+        Flickable {
+            visible: !!ed.cur && !ed.lockMode
             anchors { fill: parent; margins: 22 }
             contentHeight: rc.implicitHeight; clip: true
             Column {

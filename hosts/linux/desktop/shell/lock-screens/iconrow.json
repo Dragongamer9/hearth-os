@@ -1,0 +1,92 @@
+{
+ "name": "Icon row home",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "background": {
+  "kind": "gradient",
+  "from": "#2a1a44",
+  "to": "#120c18"
+ },
+ "look": {
+  "text": "#ffffff"
+ },
+ "privacy": {
+  "notifications": "names",
+  "media": true
+ },
+ "blocks": [
+  {
+   "id": "clock",
+   "block": "clock",
+   "x": 0,
+   "y": 0,
+   "w": 10,
+   "h": 3,
+   "style": {
+    "size": 140,
+    "weight": 200
+   }
+  },
+  {
+   "id": "date",
+   "block": "date",
+   "x": 0,
+   "y": 3,
+   "w": 10,
+   "h": 1,
+   "style": {
+    "size": 28
+   }
+  },
+  {
+   "id": "media",
+   "block": "media",
+   "x": 0,
+   "y": 9,
+   "w": 8,
+   "h": 2,
+   "style": {
+    "colour": "#2c2238",
+    "corners": 14
+   }
+  },
+  {
+   "id": "downloads",
+   "block": "downloads",
+   "x": 9,
+   "y": 9,
+   "w": 7,
+   "h": 2,
+   "style": {
+    "colour": "#2c2238",
+    "corners": 14
+   }
+  },
+  {
+   "id": "battery",
+   "block": "battery",
+   "x": 18,
+   "y": 0,
+   "w": 6,
+   "h": 1,
+   "style": {
+    "colour": "#2c2238",
+    "corners": 14
+   }
+  },
+  {
+   "id": "password",
+   "block": "password",
+   "x": 17,
+   "y": 8,
+   "w": 6,
+   "h": 5,
+   "style": {
+    "colour": "#1a1424",
+    "corners": 28
+   }
+  }
+ ]
+}
