@@ -376,7 +376,7 @@ fn sidebar(a: &App) -> E<'_, Msg> {
     }
     let foot = column![
         t(format!("This PC: {}", this_pc(a)), f(14.0), Pal::mix(tn.text, tn.muted, 0.35)),
-        t("Apps made for Hearth by Dragongamer9.", f(14.0), tn.muted)
+        t("Apps for Hearth OS: Dragongamer9's own, and open-source apps from other makers.", f(14.0), tn.muted)
     ]
     .spacing(3.0);
     container(column![search_box(a), gap(1.0, z(14.0)), nav, Space::new().height(Length::Fill), container(foot).padding(z(12.0))])
