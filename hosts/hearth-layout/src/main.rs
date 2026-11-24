@@ -18,6 +18,7 @@
 //!   hearth-layout app-get APP · app-keep APP JSON · app-undo APP · app-reset APP   what an app keeps (Keep this, Undo, Back to the original)
 //!   hearth-layout send-idea JSON     send an idea to Hearth's makers (only on Send; exactly the idea shown)
 //!   hearth-layout describe-screen TEXT SCREEN_JSON [SKETCH]   a whole screen by your AI (with any blocks it made), checked
+//!   hearth-layout sort-ask JSON      Sort my Downloads: {"names": [...]} → {"places": {name: folder}} by its AI (names only)
 //!   hearth-layout check-screen JSON · ready-screens   is this screen usable · Mantel's ready-made desktops
 //!   hearth-layout make-block TEXT · keep-block JSON · run-block ID [--once] · block-allow ID always|no|ask · blocks-mine · block-on ID true|false
 //!                                    the blocks your AI makes (made.rs): made, kept, one boxed-in look, what you said to its ask
@@ -96,6 +97,14 @@ fn main() {
             let sketch = args.get(3).filter(|s| !s.is_empty()).map(std::path::PathBuf::from);
             let current: serde_json::Value = serde_json::from_str(&arg(2)).unwrap_or(serde_json::Value::Null);
             let r = hearth_layout::describe::describe_screen(&arg(1), sketch.as_deref(), &current);
+            println!("{r}");
+            if r["ok"] == true { 0 } else { 1 }
+        }
+        // Sort my Downloads (Hearth Files): where what its rules don't know goes, by its AI (Settings › AI)
+        "sort-ask" => {
+            let v: serde_json::Value = serde_json::from_str(&arg(1)).unwrap_or(serde_json::Value::Null);
+            let names: Vec<String> = v.get("names").and_then(|n| n.as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+            let r = hearth_layout::describe::sort_ask(&names);
             println!("{r}");
             if r["ok"] == true { 0 } else { 1 }
         }

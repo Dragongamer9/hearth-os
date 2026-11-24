@@ -36,37 +36,92 @@ fn share() -> std::path::PathBuf {
 /// When no AI answers: what to do, in plain words (Settings › AI's own words once it's built).
 pub const NO_AI: &str = "No AI is answering. Turn on Ollama in Settings › Home server, or use your PC's AI: Settings › Hearth Link › Local AI › Use its AI.";
 
-/// Describe it's AI: your choice (describe.json), else the first engine that answers: Hearth's default engine, then
-/// the other one on this PC, then another device's AI shared over Hearth Link (127.0.0.1:11435). A model that can
-/// only search (nomic-embed-text and the like) is never picked for writing. None answering: None (NO_AI says why).
+/// Describe it's AI: engine_for("describe").
 pub fn engine() -> Option<Engine> {
+    engine_for("describe")
+}
+
+/// Settings › AI's own picks (~/.config/nimbus/ai-uses.json, written only by Settings through hearth_settings_io):
+/// {"uses": {USE: {"url", "model", "label"} | {"online": provider}}, "order": ["here", "link", "online"]}.
+fn uses_file() -> (Value, Vec<String>) {
+    let v = crate::settings_file::read_json(&crate::paths::home().join(".config/nimbus/ai-uses.json"));
+    let mut order: Vec<String> = v.get("order").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).filter(|x| ORDER.contains(x)).map(str::to_string).collect()).unwrap_or_default();
+    for k in ORDER {
+        if !order.iter().any(|o| o == k) {
+            order.push(k.to_string());
+        }
+    }
+    (v.get("uses").cloned().unwrap_or(Value::Null), order)
+}
+
+/// Where Hearth's AI comes from, first that answers (Settings › AI › Where your AI comes from): this device's engines,
+/// your devices over Hearth Link, an online AI with your key, unless you dragged them into another order.
+pub const ORDER: [&str; 3] = ["here", "link", "online"];
+
+/// The AI one use goes to (describe: Describe it and Build anything; sortdl: Sort my Downloads; photos; ithil): its own
+/// pick in Settings › AI when that answers (Describe it's older describe.json too), else Hearth's AI. A model that can
+/// only search (nomic-embed-text and the like) is never picked for writing. None answering: None (NO_AI says why).
+pub fn engine_for(use_: &str) -> Option<Engine> {
     if std::env::var_os("HEARTH_DESCRIBE_FAKE").is_some() {
         return Some(Engine { base: String::new(), model: String::new(), label: "the answer given for this check".into(), ..Default::default() });
     }
     if let Ok(u) = std::env::var("HEARTH_DESCRIBE_URL") {
         return Some(Engine { base: u, model: std::env::var("HEARTH_DESCRIBE_MODEL").unwrap_or_default(), label: "the AI set for this test".into(), ..Default::default() });
     }
-    let own = crate::settings_file::read_json(&crate::paths::home().join(".config/nimbus/describe.json"));
-    if let Some(u) = own.get("url").and_then(Value::as_str).filter(|u| u.starts_with("http://") || u.starts_with("https://")) {
-        let base = u.trim_end_matches('/').to_string();
-        let mut model = own.get("model").and_then(Value::as_str).unwrap_or("").to_string();
-        if model.is_empty() {
-            model = models(&base).map(|m| pick_model(&m)).unwrap_or_default();
-        }
-        return Some(Engine { base, model, label: own.get("label").and_then(Value::as_str).unwrap_or("your AI").to_string(), ..Default::default() });
+    let (uses, order) = uses_file();
+    let mut pick = uses.get(use_).cloned().filter(Value::is_object);
+    if pick.is_none() && use_ == "describe" {
+        pick = Some(crate::settings_file::read_json(&crate::paths::home().join(".config/nimbus/describe.json"))).filter(|v| v.get("url").is_some());
     }
-    // Hearth's engines on this PC, the default first (hearth_ai_engines.py list), then Hearth Link's share
-    let mut tries: Vec<(String, String, String)> = Vec::new();
-    if let Some(v) = Command::new("python3").arg(share().join("desktop/shell/hearth_ai_engines.py")).arg("list").stderr(Stdio::null()).output().ok().and_then(|o| serde_json::from_slice::<Value>(&o.stdout).ok()) {
-        let mut list: Vec<&Value> = v.get("engines").and_then(Value::as_array).map(|a| a.iter().collect()).unwrap_or_default();
-        list.sort_by_key(|e| e.get("default") != Some(&json!(true)));
-        for e in list {
-            if let Some(b) = e.get("openai").or_else(|| e.get("base")).and_then(Value::as_str) {
-                tries.push((b.trim_end_matches('/').to_string(), e.get("model").and_then(Value::as_str).unwrap_or("").to_string(), e.get("label").and_then(Value::as_str).unwrap_or("Hearth's AI engine").to_string()));
+    if let Some(p) = pick {
+        if let Some(provider) = p.get("online").and_then(Value::as_str) {
+            if let Some(e) = online().filter(|_| online_provider().as_deref() == Some(provider)) {
+                return Some(e);
+            }
+        } else if let Some(u) = p.get("url").and_then(Value::as_str).filter(|u| u.starts_with("http://") || u.starts_with("https://")) {
+            let base = u.trim_end_matches('/').to_string();
+            if let Some(have) = models(&base) {
+                let want = p.get("model").and_then(Value::as_str).unwrap_or("").to_string();
+                let model = if !want.is_empty() && have.iter().any(|m| *m == want) { want } else { pick_model(&have) };
+                if !model.is_empty() {
+                    return Some(Engine { base, model, label: p.get("label").and_then(Value::as_str).unwrap_or("your AI").to_string(), ..Default::default() });
+                }
             }
         }
+        // its own pick isn't answering: Hearth's AI answers instead
     }
-    tries.push(("http://127.0.0.1:11435/v1".into(), String::new(), "your other device's AI (Hearth Link)".into()));
+    hearths_ai(&order)
+}
+
+/// Hearth's AI: the first that answers, in your order.
+fn hearths_ai(order: &[String]) -> Option<Engine> {
+    for k in order {
+        let found = match k.as_str() {
+            "here" => {
+                // Hearth's engines on this PC, the default first (hearth_ai_engines.py list)
+                let mut tries: Vec<(String, String, String)> = Vec::new();
+                if let Some(v) = Command::new("python3").arg(share().join("desktop/shell/hearth_ai_engines.py")).arg("list").stderr(Stdio::null()).output().ok().and_then(|o| serde_json::from_slice::<Value>(&o.stdout).ok()) {
+                    let mut list: Vec<&Value> = v.get("engines").and_then(Value::as_array).map(|a| a.iter().collect()).unwrap_or_default();
+                    list.sort_by_key(|e| e.get("default") != Some(&json!(true)));
+                    for e in list {
+                        if let Some(b) = e.get("openai").or_else(|| e.get("base")).and_then(Value::as_str) {
+                            tries.push((b.trim_end_matches('/').to_string(), e.get("model").and_then(Value::as_str).unwrap_or("").to_string(), e.get("label").and_then(Value::as_str).unwrap_or("Hearth's AI engine").to_string()));
+                        }
+                    }
+                }
+                first_answering(tries)
+            }
+            "link" => first_answering(vec![("http://127.0.0.1:11435/v1".into(), String::new(), "your other device's AI (Hearth Link)".into())]),
+            _ => online(),
+        };
+        if found.is_some() {
+            return found;
+        }
+    }
+    None
+}
+
+fn first_answering(tries: Vec<(String, String, String)>) -> Option<Engine> {
     for (base, model, label) in tries {
         let Some(have) = models(&base) else { continue };
         let model = if !model.is_empty() && have.iter().any(|m| *m == model) { model } else { pick_model(&have) };
@@ -75,7 +130,11 @@ pub fn engine() -> Option<Engine> {
         }
         return Some(Engine { base, model, label, ..Default::default() });
     }
-    online()
+    None
+}
+
+fn online_provider() -> Option<String> {
+    crate::settings_file::read_json(&crate::paths::home().join(".config/nimbus/ai-online.json")).get("provider").and_then(Value::as_str).map(str::to_string)
 }
 
 /// An online AI with your own key (Settings › AI: ~/.config/nimbus/ai-online.json {"provider", "model"}; the key in the
@@ -321,7 +380,8 @@ pub fn describe_screen(text: &str, sketch: Option<&std::path::Path>, current: &V
         return json!({ "ok": false, "error": "Say what you'd like, or add a sketch." });
     }
     // Hearth's own first: the common things, offline and at once (offline.rs), only when it understood all of it
-    if sketch.is_none() {
+    // (Settings › AI › Test it asks the AI itself: HEARTH_DESCRIBE_ASK_AI)
+    if sketch.is_none() && std::env::var_os("HEARTH_DESCRIBE_ASK_AI").is_none() {
         if let Some(v) = crate::offline::screen(&text, current) {
             if let Ok(s) = crate::screen::parse(&v["screen"]) {
                 return json!({ "ok": true, "kind": "screen", "screen": s, "made": [], "asks": [], "changes": v["changes"], "engine": "Hearth (no AI needed)" });
@@ -389,6 +449,42 @@ Start from the screen they have now (given) and change what they asked; keep the
         }
     }
     json!({ "ok": false, "error": "Your AI didn't give a screen Hearth can use. Try again, or say it another way.", "engine": e.label })
+}
+
+/// Where Sort my Downloads may put what its own rules don't know (Hearth Files sortdl.rs; never Hearth's own folders
+/// or _to_delete: those only by the rules).
+pub const SORT_PLACES: &[&str] = &["Installers", "Installers/Archives", "Media/Images", "Media/Videos", "Media/Sound", "Documents", "Documents/Scripts", "Documents/Unsorted"];
+
+/// Sort my Downloads' AI (Settings › AI: its own pick, else Hearth's AI): for names its rules leave in
+/// Documents/Unsorted, which of SORT_PLACES each goes to. Only names are sent, never what's in the files; an answer
+/// outside SORT_PLACES is dropped (the rules' place stays).
+pub fn sort_ask(names: &[String]) -> Value {
+    let names: Vec<String> = names.iter().take(40).map(|n| n.chars().take(200).collect()).collect();
+    if names.is_empty() {
+        return json!({ "ok": true, "places": {} });
+    }
+    let Some(e) = engine_for("sortdl") else { return json!({ "ok": false, "error": NO_AI }) };
+    let system = format!(
+        "You sort files in someone's Downloads folder by their names only. Answer with ONE JSON object and nothing else: {{\"places\": {{\"<file name>\": \"<folder>\"}}}}. The folder is one of: {}. Use Documents/Unsorted when you can't tell.",
+        SORT_PLACES.join(", ")
+    );
+    let user = format!("The files: {}", serde_json::to_string(&names).unwrap_or_default());
+    let reply = match chat(&e, &system, &user, None) {
+        Ok(r) => r,
+        Err(m) => return json!({ "ok": false, "error": m, "engine": e.label }),
+    };
+    let v = first_object(&reply).unwrap_or(Value::Null);
+    let mut places = serde_json::Map::new();
+    if let Some(m) = v.get("places").and_then(Value::as_object) {
+        for (k, p) in m {
+            if let Some(p) = p.as_str().filter(|p| SORT_PLACES.contains(p)) {
+                if names.iter().any(|n| n == k) {
+                    places.insert(k.clone(), json!(p));
+                }
+            }
+        }
+    }
+    json!({ "ok": true, "places": places, "engine": e.label })
 }
 
 /// This Hearth OS's version (os-release), for the idea.
