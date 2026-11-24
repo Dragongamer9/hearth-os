@@ -771,7 +771,8 @@ pub fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
 pub fn test_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let p = a.p;
     let tn = tone(&p);
-    let have = a.parts.get(&e.id);
+    let have_owned = a.have_of(e);
+    let have = have_owned.as_ref();
     let pt = e.part.clone();
     let usual = if e.id.contains("mantel") { "Mantel".to_string() } else { e.name.trim_end_matches(" (test)").to_string() };
     let notice = container(

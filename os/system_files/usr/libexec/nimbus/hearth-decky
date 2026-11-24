@@ -154,6 +154,11 @@ def refresh_plugins(home, out, say_missing=False):
             out[key] = 'couldn\'t retire (%s)' % e
             continue
         try:
+            if apply_system_part(home, n, out, key):
+                continue
+        except (OSError, ValueError) as e:
+            out[key + 'Test'] = 'test version not used (%s)' % e
+        try:
             if apply_downloaded(home, n, out, key):
                 continue
         except (OSError, ValueError) as e:
@@ -1456,6 +1461,12 @@ def check_trials(home, out, final=False):
             del t[name]
             out.setdefault('trial', {})[name] = 'loaded'
         elif final or (tr.get('runs') or 0) >= 2:
+            if tr.get('systemPart') and os.access(SYSTEM_PART, os.X_OK) and valid_id(name):
+                # The Store's test version didn't load: never used again (the one before it, else the usual one).
+                try:
+                    subprocess.run([SYSTEM_PART, 'bad', name, str(tr.get('version'))], capture_output=True, timeout=30)
+                except (OSError, subprocess.SubprocessError):
+                    pass
             try:
                 out.setdefault('trial', {})[name] = roll_back(home, name, tr.get('version'),
                                                               'didn\'t load (no sign from it %s)' % ('in its first run' if final else 'in two starts'))
@@ -1483,6 +1494,63 @@ def apply_downloaded(home, name, out, key):
     t[name] = {'version': meta['version'], 'at': int(time.time()), 'runs': 1}
     save_trials(home, t)
     out[key] = 'updated (downloaded %s)' % meta['version']
+    return True
+
+
+# ---- test versions from the Hearth Store (red flag 13: every Hearth app has a main and a test version)
+# A plugin's test version is a root-owned system part (hearth-system-part, docs/STORE-SYSTEM-PARTS.md): installed with
+# the admin password, only the copy the signed list names, checked with its SHA-256, kept in
+# /var/lib/hearth/system-parts/<plugin>/<version>/<plugin>, never anything from your home folder. Here (as root, before
+# Decky starts) it's put in Decky's folder like a downloaded update (swap_in: the copy checked again, the one before kept
+# as ~/homebrew/hearth-prev/<name>.prev) and goes on trial: no load mark and it goes back to the one before by itself,
+# and hearth-system-part never offers that version again.
+SYSTEM_PART = os.environ.get('HEARTH_SYSTEM_PART_BIN', '/usr/libexec/hearth/hearth-system-part')
+SP_MARKER = '.hearth-system-part.json'
+
+
+def system_part_copy(name):
+    """The root-owned test copy of NAME hearth-system-part says to use, or None (the usual one)."""
+    if not valid_id(name) or not os.access(SYSTEM_PART, os.X_OK):
+        return None
+    builtin = shipped_plugin(name)
+    try:
+        r = subprocess.run([SYSTEM_PART, 'path', name, builtin], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    p = r.stdout.strip()
+    if r.returncode != 0 or not p or p == builtin or not os.path.isdir(p) or os.path.islink(p):
+        return None
+    if not all(os.path.isfile(os.path.join(p, f)) for f in ('plugin.json', 'main.py', 'package.json', 'dist/index.js')):
+        return None
+    return p
+
+
+def apply_system_part(home, name, out, key):
+    """True when the Store's test version of NAME is (now) the one in Decky's folder."""
+    src = system_part_copy(name)
+    if not src:
+        return False
+    v = folder_version(src)
+    if not safe_version(v):
+        return False
+    tree = tree_hash(src, skip=(MARKER, SP_MARKER))
+    if not tree:
+        return False
+    inst = installed_dir(home, name)
+    cur = read_json(os.path.join(inst, SP_MARKER), {})
+    if cur.get('tree') == tree and tree_hash(inst, skip=(MARKER, SP_MARKER)) == tree:
+        return True
+    swap_in(home, name, src, {'version': v, 'tree': tree})
+    marker = os.path.join(inst, SP_MARKER)
+    with open(marker + '.tmp', 'w') as f:
+        json.dump({'version': v, 'tree': tree, 'from': src}, f)
+    os.replace(marker + '.tmp', marker)
+    if os.geteuid() == 0:
+        os.chown(marker, 0, 0)
+    t = trials(home)
+    t[name] = {'version': v, 'at': int(time.time()), 'runs': 1, 'systemPart': True}
+    save_trials(home, t)
+    out[key] = 'test version %s (from the Hearth Store)' % v
     return True
 
 

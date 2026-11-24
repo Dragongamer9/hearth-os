@@ -466,6 +466,13 @@ if [ -x /ctx/nimbus-app/hearth-steam/hearth-steam ] && [ -f /ctx/nimbus-app/hear
   if mkdir -p /usr/lib/hearth-steam && cp -a /ctx/nimbus-app/hearth-steam/. /usr/lib/hearth-steam/ \
      && install -Dm644 /usr/lib/hearth-steam/hearth-steam-engine.service /usr/lib/systemd/user/hearth-steam-engine.service; then
     chmod 755 /usr/lib/hearth-steam/hearth-steam
+    # The Hearth Store's newer copy when one is installed (1.18; hearth_part_start is defined further down, so the
+    # same two lines here): its user service starts /usr/libexec/hearth/start/hearth-steam.
+    install -d /usr/libexec/hearth/start
+    printf '#!/bin/sh\n# Hearth'"'"'s lightweight Steam engine: the Hearth Store'"'"'s newer copy when one is installed (hearth-part), else the built-in one.\n[ -n "$HOME" ] && [ -e "$HOME/.local/share/hearth/parts/hearth-steam/part.json" ] && [ -x /usr/libexec/hearth/hearth-part ] && exec /usr/libexec/hearth/hearth-part run hearth-steam /usr/lib/hearth-steam/hearth-steam "$@"\nexec /usr/lib/hearth-steam/hearth-steam "$@"\n' > /usr/libexec/hearth/start/hearth-steam
+    chmod 755 /usr/libexec/hearth/start/hearth-steam
+    sh -n /usr/libexec/hearth/start/hearth-steam
+    sed -i 's#^ExecStart=/usr/lib/hearth-steam/hearth-steam#ExecStart=/usr/libexec/hearth/start/hearth-steam#' /usr/lib/systemd/user/hearth-steam-engine.service
     echo "hearth-steam installed: $(du -sh /usr/lib/hearth-steam | cut -f1)"
   else
     echo "warning: hearth-steam didn't install; this image goes without the lightweight Steam engine"
@@ -847,11 +854,28 @@ fi
 # Settings › Accessibility uses Orca (the screen reader, with speech-dispatcher and eSpeak NG) and xprop (gamescope's
 # zoom and colour filters in Game Mode). Each app is left out if it didn't build or can't find its libraries.
 optional orca speech-dispatcher espeak-ng at-spi2-core fontconfig wtype wl-clipboard x11-utils
+# hearth_part_start NAME BUILT-IN [START]: START (default /usr/bin/NAME) is the Hearth Store's two-line start (1.18, every
+# Hearth part in the Store): the Store's newer copy only when you installed one (hearth-part: made for this Hearth OS,
+# hasn't failed, never as root; one that closes right after starting goes back to the built-in one at once), else the
+# built-in program exactly as before.
+hearth_part_start() {
+  _s="${3:-/usr/bin/$1}"
+  install -d "$(dirname "$_s")"
+  printf '#!/bin/sh\n# Hearth %s: the Hearth Store'"'"'s newer copy when one is installed (hearth-part), else the built-in program.\n[ -n "$HOME" ] && [ -e "$HOME/.local/share/hearth/parts/%s/part.json" ] && [ -x /usr/libexec/hearth/hearth-part ] && exec /usr/libexec/hearth/hearth-part run %s %s "$@"\nexec %s "$@"\n' "$1" "$1" "$1" "$2" "$2" > "$_s"
+  chmod 755 "$_s"
+  sh -n "$_s"
+}
 for app in hearth-paint hearth-emoji hearth-fonts hearth-gamma hearth-theater; do
   [ -x "/ctx/nimbus-app/$app" ] || { echo "warning: $app wasn't built, so it's left out"; continue; }
   install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
   if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app needs libraries this image doesn't have (above); left out"; rm -f "/usr/bin/$app"; fi
 done
+# hearth-gamma (Desktop Mode's colour filter, a Hearth gaming piece) updates from the Hearth Store: the program in
+# /usr/libexec/hearth/apps, /usr/bin/hearth-gamma its two-line start.
+if [ -x /usr/bin/hearth-gamma ]; then
+  install -Dm755 /usr/bin/hearth-gamma /usr/libexec/hearth/apps/hearth-gamma
+  hearth_part_start hearth-gamma /usr/libexec/hearth/apps/hearth-gamma
+fi
 install -d /usr/share/applications
 if [ -x /usr/bin/hearth-paint ]; then
   cat > /usr/share/applications/hearth-paint.desktop <<DESKTOP
@@ -1051,10 +1075,12 @@ StartupWMClass=$1
 DESKTOP
 }
 install -d /usr/share/applications
+# Each one updates from the Hearth Store (1.18): the program in /usr/libexec/hearth/apps, /usr/bin/<app> its two-line start.
 for app in hearth-controller-lab hearth-saves hearth-mods hearth-gamestore; do
   [ -x "/ctx/nimbus-app/$app" ] || { echo "warning: $app wasn't built, so this image goes without it"; continue; }
-  install -Dm755 "/ctx/nimbus-app/$app" "/usr/bin/$app"
-  if ldd "/usr/bin/$app" | grep "not found"; then echo "warning: $app needs the libraries above; left out"; rm -f "/usr/bin/$app"; continue; fi
+  install -Dm755 "/ctx/nimbus-app/$app" "/usr/libexec/hearth/apps/$app"
+  if ldd "/usr/libexec/hearth/apps/$app" | grep "not found"; then echo "warning: $app needs the libraries above; left out"; rm -f "/usr/libexec/hearth/apps/$app"; continue; fi
+  hearth_part_start "$app" "/usr/libexec/hearth/apps/$app"
 done
 gaming_entry hearth-controller-lab "Controller Lab" "Controller Tester" "Test every button, stick, trigger, gyro and rumble; measure stick drift and calibrate" "controller;gamepad;joystick;test;tester;calibrate;drift;deadzone;rumble;gyro;battery;"
 gaming_entry hearth-saves "Saves" "Game Save Backup" "Back up and restore your games' saves, and move them to another PC" "save;saves;backup;restore;game;steam;proton;usb;"

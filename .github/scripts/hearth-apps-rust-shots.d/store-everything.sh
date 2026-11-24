@@ -69,3 +69,22 @@ store_home home-a everything-world/updating
 export HEARTH_STORE_CATALOG="$EW/catalog.json"
 run store-e3-updating hearth-store 0 "$BIN/hearth-store-app" --page library --demo-system 148:214 --demo-done mantel,home-server-helper
 store_done
+
+# A Decky plugin's test version (red flag 13): a system part from the list's tests, with Get test versions on.
+python3 - "$EW/catalog.json" <<'PY'
+import json, sys
+p = sys.argv[1]; d = json.load(open(p))
+part = {"id": "decky-hearth-sync", "version": "1.18.1", "os": "1.18", "path": "decky-hearth-sync", "system": True, "sha256": "0" * 64, "size": 400000,
+        "url": "https://github.com/Dragongamer9/hearth-os/releases/download/part-decky-hearth-sync-1.18.1/decky-hearth-sync-1.18.1.tar.gz",
+        "notes": ["Your non-Steam games keep their artwork after Steam updates"], "missing": ["Collections sync"]}
+d["tests"] = [{"id": "test-decky-hearth-sync", "name": "Hearth Sync (Decky) (test)", "short": "Hearth Sync (Decky)", "kind": "builtin", "icon": "HS",
+               "from": "#5b9dff", "to": "#2563eb", "card": "in Steam's Game Mode", "group": "gamemode", "part": part}]
+json.dump(d, open(p, "w"), indent=1)
+PY
+store_home home-d everything-world
+export HEARTH_STORE_CATALOG="$EW/catalog.json"
+mkdir -p "$XDG_CONFIG_HOME/nimbus"
+echo '{"testVersions": true}' > "$XDG_CONFIG_HOME/nimbus/hearth-store.json"
+run store-e4-decky-test hearth-store 0 "$BIN/hearth-store-app" --page tests --app test-decky-hearth-sync
+rm -f "$XDG_CONFIG_HOME/nimbus/hearth-store.json"
+store_done

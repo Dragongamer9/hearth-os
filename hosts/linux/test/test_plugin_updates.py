@@ -647,6 +647,70 @@ class NewPlugins(Base):
         self.assertIn('installNew', qml)
 
 
+
+class StoreTestVersions(Base):
+    """A plugin's test version from the Hearth Store (red flag 13): a root-owned system part (hearth-system-part) that
+    hearth-decky puts in Decky's folder on trial, and that goes back to the one before by itself when it doesn't load."""
+    SP = ROOT / 'os/system_files/usr/libexec/hearth/hearth-system-part'
+
+    def setUp(self):
+        super().setUp()
+        self.sys = os.path.join(self.tmp, 'sys')
+        os.makedirs(self.sys, mode=0o755)
+        os.chmod(self.tmp, 0o755)
+        allowed = os.path.join(self.tmp, 'allowed.json')
+        with open(allowed, 'w') as f:
+            json.dump({'parts': {n: {'name': n, 'builtin': '/usr/share/hearth/' + n, 'decky': True} for n in PLUGINS}}, f)
+        os.environ.update(HEARTH_SYSTEM_PARTS=os.path.join(self.sys, 'parts'), HEARTH_SYSTEM_PARTS_ALLOWED=allowed,
+                          HEARTH_SYSTEM_PARTS_OWNER=str(os.geteuid()), HEARTH_VERSION_FILE=os.path.join(self.root, 'usr/share/nimbus/version'))
+        self.m.SYSTEM_PART = str(self.SP)
+
+    def put_test(self, version, previous=None):
+        base = os.path.join(self.sys, 'parts', 'decky-hearth-sync')
+        d = os.path.join(base, version, 'decky-hearth-sync')
+        for rel, text in plugin_files('decky-hearth-sync', version).items():
+            self.w(rel, text, d)
+        for b, dirs, files in os.walk(os.path.join(self.sys, 'parts')):
+            os.chmod(b, 0o755)
+            for x in files:
+                os.chmod(os.path.join(b, x), 0o644)
+        with open(os.path.join(base, 'part.json'), 'w') as f:
+            json.dump({'id': 'decky-hearth-sync', 'version': version, 'os': '1.1', 'path': 'decky-hearth-sync', 'previous': previous}, f)
+
+    def mark(self, version):
+        self.w('homebrew/data/decky-hearth-sync/hearth-loaded.json', json.dumps({'version': version, 'at': 4102444800}), self.home)
+
+    def test_the_test_version_goes_in_on_trial_and_stays_once_it_loads(self):
+        self.prepare()
+        self.put_test('1.1.0.7')
+        r = self.prepare()
+        self.assertIn('test version 1.1.0.7', r['plugin'])
+        self.assertEqual(self.installed('decky-hearth-sync'), '1.1.0.7')
+        self.assertTrue(self.m.trials(self.home)['decky-hearth-sync']['systemPart'])
+        self.mark('1.1.0.7')
+        self.prepare()
+        self.prepare()
+        self.assertEqual(self.installed('decky-hearth-sync'), '1.1.0.7')
+
+    def test_a_test_version_that_does_not_load_goes_back_and_is_never_used_again(self):
+        self.prepare()
+        self.put_test('1.1.0.7')
+        self.prepare()   # start 1: on trial
+        self.prepare()   # start 2: still no sign
+        r = self.prepare()   # start 3: back to the one before
+        self.assertIn('didn\'t load', r['trial']['decky-hearth-sync'])
+        st = json.load(open(os.path.join(self.sys, 'parts/decky-hearth-sync/state.json')))
+        self.assertEqual(st['bad'], ['1.1.0.7'])
+        self.prepare()
+        self.assertEqual(self.installed('decky-hearth-sync'), '1.1.0', 'the usual one, from now on')
+
+    def test_a_copy_anyone_else_can_change_is_never_used(self):
+        self.prepare()
+        self.put_test('1.1.0.7')
+        os.chmod(os.path.join(self.sys, 'parts/decky-hearth-sync/1.1.0.7/decky-hearth-sync/main.py'), 0o666)
+        self.prepare()
+        self.assertEqual(self.installed('decky-hearth-sync'), '1.1.0')
+
 class PublishWorkflow(unittest.TestCase):
     """decky-plugins-release.yml builds every hosts/decky-hearth-*/ plugin (tools/decky_plugins.py finds them)."""
 

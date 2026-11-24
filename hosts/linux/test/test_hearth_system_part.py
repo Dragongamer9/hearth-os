@@ -94,7 +94,9 @@ class SystemPart(unittest.TestCase):
         names = json.loads(ALLOWED_FILE.read_text())["parts"]
         for bad in ("boot", "grub", "recovery", "greet", "login", "session"):
             self.assertFalse(any(bad in k for k in names), f"{bad}: what starts the PC is never a system part")
-        self.assertEqual(sorted(names), sorted(HELPERS))
+        self.assertEqual(sorted(k for k, v in names.items() if not v.get("decky")), sorted(HELPERS))
+        # Decky plugins only for their test versions, put in Decky's folder by hearth-decky (test_plugin_updates.py).
+        self.assertEqual(sorted(k for k, v in names.items() if v.get("decky")), ["decky-hearth-link", "decky-hearth-music", "decky-hearth-sync"])
 
     def test_a_copy_anyone_else_can_change_is_never_used(self):
         p = self.put()

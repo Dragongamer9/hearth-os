@@ -473,6 +473,9 @@ impl App {
             if p.system {
                 // A system part: what hearth-system-part has (made for this Hearth OS), else the built-in one.
                 let h = self.sys_parts.get(&p.id).filter(|h| !h.os.is_empty()).map(|h| parts::Have { os: self.hearth.clone(), ..h.clone() });
+                if e.test {
+                    return parts::test_offer(p, h.as_ref(), &self.hearth).cloned();
+                }
                 return parts::offer(p, h.as_ref(), &self.hearth).cloned();
             }
             if e.test { parts::test_offer(p, self.parts.get(&e.id), &self.hearth).cloned() } else { parts::offer(p, self.parts.get(&e.id), &self.hearth).cloned() }
@@ -504,6 +507,14 @@ impl App {
             }
         }
         self.hearth.clone()
+    }
+
+    /// What's installed of an entry's part: the system part's (root-owned) or the copy in your home folder.
+    pub fn have_of(&self, e: &Entry) -> Option<parts::Have> {
+        match e.part.as_ref() {
+            Some(p) if p.system => self.sys_parts.get(&p.id).cloned(),
+            _ => self.parts.get(&e.id).cloned(),
+        }
     }
 
     /// A Decky plugin's newer version on offer (after a look).
@@ -887,8 +898,13 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
         Msg::PartRemove(id) => {
             let Some(e) = a.entry(&id).cloned() else { return Task::none() };
             let Some(pid) = e.part.as_ref().map(|p| p.id.clone()) else { return Task::none() };
+            let system = e.part.as_ref().map(|p| p.system).unwrap_or(false);
             if !a.part_busy.insert(id.clone()) {
                 return Task::none();
+            }
+            if system {
+                let done = format!("{} is back to the usual one.", e.name);
+                return Task::perform(net::off(move || parts::system_cmd("system-part-remove", &pid).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("Nothing changed.".into()))));
             }
             let done = if e.test {
                 format!("{} is removed (it's in the Trash): the usual one is back.", e.name)
@@ -904,6 +920,9 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 return Task::none();
             }
             let done = format!("{} tries its update again the next time it starts.", e.name);
+            if e.part.as_ref().map(|p| p.system).unwrap_or(false) {
+                return Task::perform(net::off(move || parts::system_cmd("system-part-retry", &pid).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("Nothing changed.".into()))));
+            }
             return Task::perform(net::off(move || parts::retry(&pid).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("Nothing changed.".into()))));
         }
         Msg::Filter(c) => {

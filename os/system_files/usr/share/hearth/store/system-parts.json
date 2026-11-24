@@ -1,5 +1,5 @@
 {
-  "_comment": "Hearth's helpers that run as root and may be updated from the Hearth Store as system parts (hearth-system-part, docs/STORE-SYSTEM-PARTS.md). Only these ids are ever installed as root-owned parts; nothing that starts the PC (boot menu, Recovery, the login screen, units in the boot chain) is ever listed here: those come only with system updates.",
+  "_comment": "Hearth's helpers that run as root and may be updated from the Hearth Store as system parts (hearth-system-part, docs/STORE-SYSTEM-PARTS.md). Only these ids are ever installed as root-owned parts; nothing that starts the PC (boot menu, Recovery, the login screen, units in the boot chain) is ever listed here: those come only with system updates. Decky plugins (decky: true) are here only for their test versions (red flag 13): hearth-decky puts the root-owned copy into Decky's plugins folder at Decky's next start, on trial, and a copy that doesn't load goes back to the one before by itself.",
   "parts": {
     "hearth-home-server-helper": {
       "name": "Home server helper",
@@ -17,6 +17,24 @@
     "hearth-ai-share-helper": {
       "name": "AI sharing helper",
       "builtin": "/usr/libexec/nimbus/hearth-ai-share-helper",
+      "services": []
+    },
+    "decky-hearth-sync": {
+      "name": "Hearth Sync (Decky)",
+      "builtin": "/usr/share/hearth/decky-hearth-sync",
+      "decky": true,
+      "services": []
+    },
+    "decky-hearth-link": {
+      "name": "Hearth Link (Decky)",
+      "builtin": "/usr/share/hearth/decky-hearth-link",
+      "decky": true,
+      "services": []
+    },
+    "decky-hearth-music": {
+      "name": "Hearth Music (Decky)",
+      "builtin": "/usr/share/hearth/decky-hearth-music",
+      "decky": true,
       "services": []
     }
   }

@@ -9,7 +9,8 @@
 # and a test channel, built in the image's own base (Debian trixie for Hearth OS on Debian), and the helpers that run
 # as root are system parts (hearth-system-part: installed root-owned with the admin password, never into a home
 # folder). Anything that starts the PC (the boot menu, Recovery, the login screen) is never a part: system updates only.
-# The Decky plugins (Hearth Sync, Hearth Link, Hearth Music) have their own release (decky-plugins-release.yml).
+# The Decky plugins' main versions keep their own release (decky-plugins-release.yml, picked up by hearth-decky); their
+# test versions come from here, as system parts (root-owned, put in Decky's folder by hearth-decky on trial).
 name: Quick update for an app
 
 on:
@@ -22,7 +23,9 @@ on:
         options: [mantel, hearth-files-app, hearth-settings-app, hearth-task-manager, hearth-capture-app, hearth-notes-app,
                   hearth-g15-app, hearth-family-app, hearth-server-app, hearth-resmon-app, hearth-system-restore,
                   hearth-reliability-history, hearth-file-chooser, hearth-pad-host, hearth-store-app, mantel-rust, hearth-ideas-app, hearth-link,
-                  hearth-layout, hearth-game-mode, hearth-home-server-helper, hearth-storage-helper, hearth-ai-share-helper]
+                  hearth-layout, hearth-game-mode, hearth-home-server-helper, hearth-storage-helper, hearth-ai-share-helper,
+                  hearth-controller-lab, hearth-saves, hearth-mods, hearth-gamestore, hearth-gamma, hearth-steam,
+                  decky-hearth-sync, decky-hearth-link, decky-hearth-music]
       version:
         description: "Its version (the owner's number, like 1.17.1)"
         required: true
@@ -69,9 +72,20 @@ jobs:
         run: |
           echo "$VER" | grep -Eq '^[0-9]+(\.[0-9]+){1,3}$' || { echo "::error title=Quick update::'$VER' isn't a version like 1.17.1"; exit 1; }
           echo "$OS" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$' || { echo "::error title=Quick update::'$OS' isn't a Hearth OS version like 1.17"; exit 1; }
+          case "$APP" in decky-hearth-*)
+            [ "$CHANNEL" = test ] || { echo "::error title=Quick update::a Decky plugin's main version comes from Decky plugins release; here only its test version (Channel: test)"; exit 1; } ;;
+          esac
           if gh api "repos/$GITHUB_REPOSITORY/releases/tags/part-$APP-$VER" >/dev/null 2>&1; then
             echo "::error title=Quick update::$APP $VER is already out; pick another number"; exit 1
           fi
+      - uses: actions/setup-dotnet@v4
+        if: inputs.app == 'hearth-steam'
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        if: startsWith(inputs.app, 'decky-hearth-')
+        with:
+          node-version: '22'
       - name: Build it
         run: |
           mkdir -p /tmp/part /tmp/out
@@ -106,6 +120,39 @@ jobs:
             python3 -m py_compile "$src"
             python3 -c 'import json,sys; assert sys.argv[1] in json.load(open("os/system_files/usr/share/hearth/store/system-parts.json"))["parts"]' "$APP"
             mkdir -p /tmp/part && install -m755 "$src" "/tmp/part/$APP"
+            echo "INNER=$APP" >> "$GITHUB_ENV"
+          elif [ "$APP" = hearth-controller-lab ] || [ "$APP" = hearth-saves ] || [ "$APP" = hearth-mods ] || [ "$APP" = hearth-gamestore ]; then
+            # Hearth's gaming apps (hosts/hearth-gaming): /usr/bin/<app> starts the Store's copy through hearth-part.
+            base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/peppermint/Containerfile | head -1)
+            docker pull -q "$base"
+            docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/cargo-part-build.sh hearth-gaming "$APP" webkit 2>&1 | tail -40
+            mkdir -p /tmp/part && install -m755 "/tmp/out/$APP" "/tmp/part/$APP"
+            echo "INNER=$APP" >> "$GITHUB_ENV"
+          elif [ "$APP" = hearth-gamma ]; then
+            # Desktop Mode's colour filter (hosts/hearth-gamma): /usr/bin/hearth-gamma starts the Store's copy.
+            base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/peppermint/Containerfile | head -1)
+            docker pull -q "$base"
+            docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/cargo-part-build.sh hearth-gamma hearth-gamma 2>&1 | tail -40
+            mkdir -p /tmp/part && install -m755 /tmp/out/hearth-gamma /tmp/part/hearth-gamma
+            echo "INNER=hearth-gamma" >> "$GITHUB_ENV"
+          elif [ "$APP" = hearth-steam ]; then
+            # The lightweight Steam engine (hosts/hearth-steam, self-contained, built as base-peppermint.yml builds it):
+            # its user service starts the Store's copy through hearth-part.
+            bash hosts/hearth-steam/publish.sh /tmp/part/hearth-steam
+            test -x /tmp/part/hearth-steam/hearth-steam
+            echo "INNER=hearth-steam/hearth-steam" >> "$GITHUB_ENV"
+          elif [ "${APP#decky-hearth-}" != "$APP" ]; then
+            # A Decky plugin's test version (a system part): built as decky-plugins-release.yml builds it, with this
+            # version in its package.json (its load mark carries it, so hearth-decky's trial knows it loaded).
+            test -f "hosts/$APP/package.sh"
+            npm install -g pnpm@9 >/dev/null
+            ( cd "hosts/$APP"
+              sed -i "s/\"version\": \".*\"/\"version\": \"$VER\"/" package.json
+              pnpm install --no-frozen-lockfile >/dev/null 2>&1
+              pnpm build > /tmp/build.log 2>&1 || { echo "::error title=$APP build::$(tail -30 /tmp/build.log | tr '\n' '|' | cut -c1-3500)"; exit 1; }
+              ./package.sh /tmp/pkg )
+            for f in plugin.json main.py package.json dist/index.js; do test -s "/tmp/pkg/$APP/$f"; done
+            mkdir -p /tmp/part && cp -a "/tmp/pkg/$APP" "/tmp/part/$APP"
             echo "INNER=$APP" >> "$GITHUB_ENV"
           elif [ "$APP" = hearth-link ]; then
             # Hearth Link (1.18: every Hearth part from the Store): its one program; /usr/bin/hearth-link starts the
@@ -163,9 +210,13 @@ jobs:
               "hearth-reliability-history": "Reliability history", "hearth-file-chooser": "File chooser",
               "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "hearth-link": "Hearth Link", "hearth-ideas-app": "Hearth Ideas", "mantel-rust": "Mantel in Rust",
               "hearth-layout": "Desktop layouts", "hearth-game-mode": "Game Mode host", "hearth-home-server-helper": "Home server helper",
-              "hearth-storage-helper": "Hearth Storage helper", "hearth-ai-share-helper": "AI sharing helper"}
-          system_parts = ("hearth-home-server-helper", "hearth-storage-helper", "hearth-ai-share-helper")
-          groups = {"mantel": "desktop", "mantel-rust": "desktop", "hearth-layout": "desktop", "hearth-game-mode": "gamemode", "hearth-link": "services"}
+              "hearth-storage-helper": "Hearth Storage helper", "hearth-ai-share-helper": "AI sharing helper",
+              "hearth-controller-lab": "Controller Lab", "hearth-saves": "Saves", "hearth-mods": "Mods", "hearth-gamestore": "Hearth Games",
+              "hearth-gamma": "Colour filter", "hearth-steam": "Lightweight Steam engine",
+              "decky-hearth-sync": "Hearth Sync (Decky)", "decky-hearth-link": "Hearth Link (Decky)", "decky-hearth-music": "Hearth Music (Decky)"}
+          system_parts = ("hearth-home-server-helper", "hearth-storage-helper", "hearth-ai-share-helper", "decky-hearth-sync", "decky-hearth-link", "decky-hearth-music")
+          groups = {"mantel": "desktop", "mantel-rust": "desktop", "hearth-layout": "desktop", "hearth-game-mode": "gamemode", "hearth-link": "services",
+                    "hearth-gamma": "desktop", "hearth-steam": "gamemode", "decky-hearth-sync": "gamemode", "decky-hearth-link": "gamemode", "decky-hearth-music": "gamemode"}
           part = {"id": app, "version": os.environ["VER"], "os": os.environ["OS"], "path": os.environ["INNER"],
                   "url": os.environ["URL"], "sha256": os.environ["SHA"], "size": int(os.environ["SIZE"]),
                   "notes": [l.strip() for l in os.environ.get("NOTES", "").split("|") if l.strip()]}
@@ -192,8 +243,8 @@ jobs:
                   break
           else:
               e = {"id": ("test-" if test else "part-") + app, "name": names.get(app, app) + (" (test)" if test else ""), "kind": "builtin", "part": part,
-                   "group": "services" if app in system_parts else groups.get(app, "apps")}
-              if app not in ("mantel", "mantel-rust", "hearth-link", "hearth-layout", "hearth-game-mode") + system_parts:
+                   "group": groups.get(app, "services" if app in system_parts else "apps")}
+              if app not in ("mantel", "mantel-rust", "hearth-link", "hearth-layout", "hearth-game-mode", "hearth-gamma", "hearth-steam") + system_parts:
                   e["open"] = app
               (d["tests"] if test else d["apps"]).append(e)
           # A test version: shown only with "Get test versions" on, got and removed by hand.

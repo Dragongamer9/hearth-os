@@ -59,8 +59,14 @@ its own updates (1.18.1, 1.18.2…), and each keeps a main and a test version (r
   Looks, sounds and the AI engines live in Mantel's folder, so they come with Mantel's part; Hearth core is built into
   the Game Mode host and the apps, so it comes with them; the Store says so ("with Mantel").
 - **The Decky plugins are not home parts:** Decky runs them from a root process, so a copy from your home folder
-  would be a way to root. They keep their own channel (hearth-decky plugins-*, the plugins release, checked and put in
-  place by root), and the Store shows and starts it. They have no test channel yet.
+  would be a way to root. Their main versions keep their own channel (hearth-decky plugins-*, the plugins release,
+  checked and put in place by root), which the Store shows and starts. Their **test versions** are system parts
+  (quick-update.yml, Channel: test): installed root-owned with the admin password, only the copy the signed list names;
+  at Decky's next start hearth-decky puts that copy in Decky's folder on trial (apply_system_part), and one that gives
+  no load mark goes back to the one before by itself and is never used again (`hearth-system-part bad`).
+- **Gaming pieces:** Controller Lab, Saves, Mods, Hearth Games, the colour filter (hearth-gamma) and the lightweight
+  Steam engine (hearth-steam) are user parts with main and test versions; their /usr/bin starts (and the Steam
+  engine's service) use the Store's copy only when one is installed.
 - **Step 2:** `hearth-system-part` (path, run, install, remove, retry, status), `system-parts.json` (only the home
   server, storage and AI sharing helpers), hearth-admin `system-part-install ID [test]` (admin password,
   49-hearth-admin.rules); the three helpers re-start through it only when a copy is installed. Tests:

@@ -18,7 +18,7 @@ Release: next
 - [x] Services: Home server helper (with what the update fixes), Hearth Link, AI engines, Hearth core, Recovery and Safe start ("with system updates") — hosts/hearth-ui/apps/store/src/w11.rs: "chip(&p, \"with system updates\", Chip::Plain)"
 - [x] Each row: its letter icon, name, a short line, installed version, Up to date or the new version with Update — hosts/hearth-ui/apps/store/src/w11.rs: "end = end.push(chip(&p, \"Up to date\", Chip::Ok));"
 - [x] The note: every part checked with SHA-256 against the signed list; anything that touches starting the PC only comes with a system update — hosts/hearth-ui/apps/store/src/w11.rs: "Every part is checked with SHA-256 against the signed list."
-- [ ] Every Hearth part, not only those drawn: apps, Decky plugins, helpers, services, gaming pieces, looks and sounds
+- [x] Every Hearth part, not only those drawn: apps, Decky plugins, helpers, services, gaming pieces, looks and sounds — .github/workflows/quick-update.yml: "hearth-controller-lab, hearth-saves, hearth-mods, hearth-gamestore, hearth-gamma, hearth-steam,"
 
 ## 2. Library › Hearth OS
 - [x] Title "Library › Hearth OS" with Check for updates — hosts/hearth-ui/apps/store/src/w11.rs: "ts(\"Hearth OS\", f(30.0), tn.text)"

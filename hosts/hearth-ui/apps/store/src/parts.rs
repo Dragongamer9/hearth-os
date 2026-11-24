@@ -231,6 +231,17 @@ pub fn install_system(p: &Part, test: bool) -> Result<(), String> {
     }
 }
 
+/// Remove or try again a system part (the admin password: hearth-admin through pkexec).
+pub fn system_cmd(cmd: &str, id: &str) -> Result<(), String> {
+    let out = std::process::Command::new("pkexec").args(["/usr/libexec/nimbus/hearth-admin", cmd, id]).stdin(std::process::Stdio::null()).output().map_err(|e| format!("The admin helper couldn't start ({e})."))?;
+    let text = String::from_utf8_lossy(&out.stdout);
+    if out.status.success() && !text.lines().any(|l| l.starts_with("error: ")) {
+        Ok(())
+    } else {
+        Err(text.lines().rev().find_map(|l| l.strip_prefix("error: ")).map(|s| format!("{s}; nothing changed.")).unwrap_or_else(|| "It needs the admin password; nothing changed.".into()))
+    }
+}
+
 // ------------------------------------------------------------------ Decky plugins (Hearth Sync, Hearth Link, Hearth Music)
 pub const DECKY: &str = "/usr/libexec/nimbus/hearth-decky";
 

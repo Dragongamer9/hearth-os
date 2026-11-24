@@ -10,6 +10,8 @@ a restart. The image itself is never touched.
                                                            carry the Store's refreshed list: {"catalog": text, "sig": hex}
     hearth-system-part remove <id>                         (root) back to the built-in one for good
     hearth-system-part retry <id>                          (root) a copy that failed is tried again
+    hearth-system-part bad <id> <version>                  (root) that version didn't work (a Decky plugin that didn't
+                                                           load): never used again; the one before it is
     hearth-system-part status                              what's installed, as JSON (anyone may read it)
 
 Why this is its own kind (the plan's rule): a program that runs as root must never run a file from your home folder,
@@ -407,6 +409,9 @@ def install(pid, extra=None, opener=None, test=False):
         if not prog or not os.path.exists(prog):
             shutil.rmtree(dest, ignore_errors=True)
             raise SystemExit("hearth-system-part: the download doesn't have the program it should, so nothing changed")
+        if allowed()[pid].get("decky") and not decky_plugin_ok(prog, version):
+            shutil.rmtree(dest, ignore_errors=True)
+            raise SystemExit("hearth-system-part: the download isn't a whole Decky plugin of that version, so nothing changed")
         _write_json(os.path.join(base, "part.json"),
                     {"id": pid, "version": version, "os": made_for, "path": inner, "sha256": sha.lower(), "url": url,
                      "installed": int(time.time()), "previous": old if old != version else None})
@@ -424,6 +429,31 @@ def install(pid, extra=None, opener=None, test=False):
         shutil.rmtree(unpack, ignore_errors=True)
     restart_services(pid)
     return version
+
+
+def decky_plugin_ok(d, version):
+    """A Decky plugin folder: plugin.json, main.py, dist/index.js, and package.json saying this very version (its load
+    mark carries it: hearth-decky's trial)."""
+    if not os.path.isdir(d) or not all(os.path.isfile(os.path.join(d, f)) for f in ("plugin.json", "main.py", "package.json", "dist/index.js")):
+        return False
+    try:
+        with open(os.path.join(d, "package.json"), encoding="utf-8") as f:
+            return json.load(f).get("version") == version
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def mark_bad(pid, version):
+    """That version is left out from now on (the one before it, else the built-in one, is used)."""
+    if os.geteuid() != OWNER:
+        raise SystemExit("hearth-system-part: needs root")
+    if not (_safe_id(pid) and _safe_id(version) and pid in allowed() and os.path.isdir(os.path.join(ROOT, pid))):
+        return
+    st = state(pid)
+    bad = st.get("bad") if isinstance(st.get("bad"), list) else []
+    if version not in bad:
+        bad.append(version)
+    _write_json(os.path.join(ROOT, pid, "state.json"), {"fails": st.get("fails") or {}, "bad": bad, "at": int(time.time())})
 
 
 def restart_services(pid):
@@ -496,6 +526,10 @@ def main(argv):
         return 0
     if cmd == "retry" and len(argv) == 3:
         retry(argv[2])
+        print(json.dumps({"ok": True}))
+        return 0
+    if cmd == "bad" and len(argv) == 4:
+        mark_bad(argv[2], argv[3])
         print(json.dumps({"ok": True}))
         return 0
     if cmd == "status":
