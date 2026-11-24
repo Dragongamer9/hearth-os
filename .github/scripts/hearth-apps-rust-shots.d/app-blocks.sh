@@ -41,18 +41,18 @@ J
 # A file that can't be read: the app opens as it always looks (never a broken app).
 echo '{"format": 1, "layout": {"blocks": {"window": {"side": {"x": 40}}}}' > "$BC/nimbus/apps/g15.json"
 
-run blocks-01-task-manager hearth-tasks 10 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-task-manager"
-run blocks-02-reliability hearth-reliability 0 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-reliability-history"
-run blocks-03-system-restore hearth-restore 0 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-system-restore"
-run blocks-04-store hearth-store 0 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-store-app"
-run blocks-05-g15-broken-file-is-the-original hearth-g15-app 0 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-g15-app"
+run app-blocks-01-task-manager hearth-tasks 10 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-task-manager"
+run app-blocks-02-reliability hearth-reliability 0 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-reliability-history"
+run app-blocks-03-system-restore hearth-restore 0 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-system-restore"
+run app-blocks-04-store hearth-store 0 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-store-app"
+run app-blocks-05-g15-broken-file-is-the-original hearth-g15-app 0 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-g15-app"
 
 # Arrange open: the grid, each block's bar (drag it to move, ✕ hides) and corner (drag it to size), the picked block's
 # Look (corners, see-through, font, text size, accent), Undo, Back to the original, Done, Keep this.
-run blocks-06-arrange-task-manager hearth-tasks 0 env XDG_CONFIG_HOME="$BC" HEARTH_ARRANGE_OPEN=task-manager:processes HEARTH_ARRANGE_PICK=head "$BIN/hearth-task-manager"
-run blocks-07-arrange-restore-hidden-heading hearth-restore 0 env XDG_CONFIG_HOME="$BC" HEARTH_ARRANGE_OPEN=system-restore:main HEARTH_ARRANGE_PICK=aside "$BIN/hearth-system-restore"
-run blocks-08-arrange-files hearth-files 0 env XDG_CONFIG_HOME=/tmp/blocks-empty HEARTH_ARRANGE_OPEN=files:window HEARTH_ARRANGE_PICK=folder "$BIN/hearth-files-app" "$HOME"
-run blocks-09-arrange-settings-home hearth-settings 0 env XDG_CONFIG_HOME=/tmp/blocks-empty HEARTH_ARRANGE_OPEN=settings:home HEARTH_ARRANGE_PICK=storage "$BIN/hearth-settings-app"
-run blocks-10-arrange-notes hearth-notes 0 env XDG_CONFIG_HOME=/tmp/blocks-empty HEARTH_ARRANGE_OPEN=notes:window "$BIN/hearth-notes-app"
+run app-blocks-06-arrange-task-manager hearth-tasks 0 env XDG_CONFIG_HOME="$BC" HEARTH_ARRANGE_OPEN=task-manager:processes HEARTH_ARRANGE_PICK=head "$BIN/hearth-task-manager"
+run app-blocks-07-arrange-restore-hidden-heading hearth-restore 0 env XDG_CONFIG_HOME="$BC" HEARTH_ARRANGE_OPEN=system-restore:main HEARTH_ARRANGE_PICK=aside "$BIN/hearth-system-restore"
+run app-blocks-08-arrange-files hearth-files 0 env XDG_CONFIG_HOME=/tmp/blocks-empty HEARTH_ARRANGE_OPEN=files:window HEARTH_ARRANGE_PICK=folder "$BIN/hearth-files-app" "$HOME"
+run app-blocks-09-arrange-settings-home hearth-settings 0 env XDG_CONFIG_HOME=/tmp/blocks-empty HEARTH_ARRANGE_OPEN=settings:home HEARTH_ARRANGE_PICK=storage "$BIN/hearth-settings-app"
+run app-blocks-10-arrange-notes hearth-notes 0 env XDG_CONFIG_HOME=/tmp/blocks-empty HEARTH_ARRANGE_OPEN=notes:window "$BIN/hearth-notes-app"
 # Describe it's box with Move and resize blocks beside Done
-run blocks-11-describe-box hearth-capture 0 env XDG_CONFIG_HOME=/tmp/blocks-empty HEARTH_DESCRIBE_OPEN=capture "$BIN/hearth-capture-app"
+run app-blocks-11-describe-box hearth-capture 0 env XDG_CONFIG_HOME=/tmp/blocks-empty HEARTH_DESCRIBE_OPEN=capture "$BIN/hearth-capture-app"
