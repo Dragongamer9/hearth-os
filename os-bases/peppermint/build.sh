@@ -405,7 +405,13 @@ else
 fi
 test -x /usr/lib/nimbus/nimbus
 if [ -f /usr/lib/nimbus/chrome-sandbox ]; then chown root:root /usr/lib/nimbus/chrome-sandbox && chmod 4755 /usr/lib/nimbus/chrome-sandbox; fi
-ln -sf /usr/lib/nimbus/nimbus /usr/bin/nimbus
+# /usr/bin/nimbus: the Game Mode host (1.18, every Hearth part in the Store): the Hearth Store's newer copy only when
+# you installed one (hearth-part: made for this Hearth OS, hasn't failed, never as root; one that closes right after
+# starting goes back to the built-in one at once), else the built-in /usr/lib/nimbus/nimbus exactly as before.
+rm -f /usr/bin/nimbus
+printf '#!/bin/sh\n# Hearth'"'"'s Game Mode host: the Hearth Store'"'"'s newer copy when one is installed (hearth-part), else the built-in one.\n[ -n "$HOME" ] && [ -e "$HOME/.local/share/hearth/parts/hearth-game-mode/part.json" ] && [ -x /usr/libexec/hearth/hearth-part ] && exec /usr/libexec/hearth/hearth-part run hearth-game-mode /usr/lib/nimbus/nimbus "$@"\nexec /usr/lib/nimbus/nimbus "$@"\n' > /usr/bin/nimbus
+chmod 755 /usr/bin/nimbus
+sh -n /usr/bin/nimbus
 # ---- hearthfetch (hosts/hearthfetch): Hearth OS's system summary for the terminal, built with the app.
 if [ -x /ctx/nimbus-app/hearthfetch ]; then install -Dm755 /ctx/nimbus-app/hearthfetch /usr/bin/hearthfetch; fi
 # ---- Hearth Sync (hosts/decky-hearth-sync, docs/HEARTH-SYNC.md): the Decky plugin that keeps Hearth's non-Steam games

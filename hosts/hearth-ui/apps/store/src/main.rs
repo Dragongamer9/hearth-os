@@ -843,7 +843,8 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             } else {
                 format!("{} is on {}: it opens with it next time.", e.name, pt.version)
             };
-            return Task::perform(net::off(move || parts::install(&pt).map(|secs| (done, secs))), move |r| Msg::PartUpdated(id.clone(), r.unwrap_or_else(|| Err("The update stopped; nothing changed.".into()))));
+            let test = e.test;
+            return Task::perform(net::off(move || parts::install_channel(&pt, test).map(|secs| (done, secs))), move |r| Msg::PartUpdated(id.clone(), r.unwrap_or_else(|| Err("The update stopped; nothing changed.".into()))));
         }
         Msg::PartUpdated(id, r) => {
             match r {
@@ -873,7 +874,7 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             } else {
                 format!("{} {} is in.", e.name, pt.version)
             };
-            return Task::perform(net::off(move || parts::install(&pt).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("It didn't install; nothing changed.".into()))));
+            return Task::perform(net::off(move || parts::install_channel(&pt, true).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("It didn't install; nothing changed.".into()))));
         }
         Msg::PartRemove(id) => {
             let Some(e) = a.entry(&id).cloned() else { return Task::none() };

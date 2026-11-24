@@ -25,7 +25,7 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      unless you turn it on (the owner, Nov 23: "nothing updates by its self"): then
                                      bootc's timer downloads in the background and the update applies at your next
                                      restart; it never restarts the PC. /etc/hearth/auto-update, then {"auto": bool}
-  hearth-admin system-part-install ID | system-part-remove ID | system-part-retry ID
+  hearth-admin system-part-install ID [test] | system-part-remove ID | system-part-retry ID
                                      a root-owned system part from the Hearth Store (hearth-system-part,
                                      docs/STORE-SYSTEM-PARTS.md): only an id Hearth names, only the copy the signed
                                      list names (stdin may carry the Store's refreshed list, checked here). Always
@@ -931,13 +931,13 @@ SYSTEM_PART = '/usr/libexec/hearth/hearth-system-part'
 SYSTEM_PART_ID = re.compile(r'[a-z0-9][a-z0-9-]{0,63}')
 
 
-def system_part(cmd, pid):
+def system_part(cmd, pid, test=False):
     if not SYSTEM_PART_ID.fullmatch(pid or ''):
         fail('a bad name')
     if not os.access(SYSTEM_PART, os.X_OK):
         fail('this Hearth OS has no system parts yet')
     data = sys.stdin.buffer.read(4 << 20) if cmd == 'install' and not sys.stdin.isatty() else b''
-    r = subprocess.run([SYSTEM_PART, cmd, pid], input=data, capture_output=True)
+    r = subprocess.run([SYSTEM_PART, cmd, pid] + (['test'] if test and cmd == 'install' else []), input=data, capture_output=True)
     sys.stdout.write(r.stdout.decode(errors='replace'))
     if r.returncode != 0:
         fail((r.stderr.decode(errors='replace').strip().splitlines() or ['it didn\'t install'])[-1].replace('hearth-system-part: ', ''))
@@ -3339,6 +3339,8 @@ def main(argv):
         auto_update(argv[2])
     elif cmd in ('system-part-install', 'system-part-remove', 'system-part-retry') and len(argv) == 3:
         system_part(cmd[len('system-part-'):], argv[2])
+    elif cmd == 'system-part-install' and len(argv) == 4 and argv[3] == 'test':
+        system_part('install', argv[2], test=True)
     elif cmd == 'tdp' and len(argv) == 3:
         tdp(argv[2])
     elif cmd == 'hibernate-setup':

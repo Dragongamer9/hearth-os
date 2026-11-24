@@ -124,8 +124,13 @@ fn helper_run(args: &[&str]) -> Result<(), String> {
 /// Mantel, its desktop restarts to use it (labwc's autostart starts it again at once; windows stay open).
 /// Ok(Some(seconds)) for Mantel: how long its desktop took to come back with the new one (None: not seen within 15 s).
 pub fn install(p: &Part) -> Result<Option<u64>, String> {
+    install_channel(p, false)
+}
+
+/// The same, for the main or the test version (a system part's test version comes from the list's "tests").
+pub fn install_channel(p: &Part, test: bool) -> Result<Option<u64>, String> {
     if p.system {
-        install_system(p)?;
+        install_system(p, test)?;
         return Ok(None);
     }
     helper_run(&["install", &p.id, &p.version, &p.url, &p.sha256, &p.os, &p.path])?;
@@ -197,7 +202,7 @@ pub fn system_status() -> std::collections::BTreeMap<String, Have> {
 /// A system part's update: the admin password (pkexec, 49-hearth-admin.rules), then hearth-system-part checks the
 /// signed list itself (the built-in one, or the Store's refreshed one, given here only as text it checks) and installs
 /// only the copy that list names. Its services start again with it; the PC doesn't restart.
-pub fn install_system(p: &Part) -> Result<(), String> {
+pub fn install_system(p: &Part, test: bool) -> Result<(), String> {
     use std::io::Write;
     let (cj, cs) = crate::catalog::cached_paths();
     let extra = match (std::fs::read_to_string(&cj), std::fs::read_to_string(&cs)) {
@@ -206,6 +211,7 @@ pub fn install_system(p: &Part) -> Result<(), String> {
     };
     let mut child = std::process::Command::new("pkexec")
         .args(["/usr/libexec/nimbus/hearth-admin", "system-part-install", &p.id])
+        .args(if test { &["test"][..] } else { &[][..] })
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())

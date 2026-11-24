@@ -3,8 +3,9 @@
 # Fedora edition's base image (base-anatase.yml "hearth-ui"; docs/APPS-ANATASE.md), so they link exactly the libraries
 # the image has. The source is /src (read only); out: /out/hearth-ui.tar.
 set -eu
-DNF=$(command -v dnf5 || command -v dnf)
-$DNF -y install gcc pkgconf-pkg-config rust cargo libxkbcommon-devel wayland-devel fontconfig-devel freetype-devel >/dev/null
+# The image's own base: Debian trixie for Hearth OS on Debian, Fedora's dnf for the archived edition (part-build-tools.sh).
+. "$(dirname "$0")/part-build-tools.sh"
+part_tools
 echo "::notice title=Hearth's pure-Rust apps build::$(rustc --version) · $(. /etc/os-release; echo "$PRETTY_NAME")"
 mkdir -p /tmp/w/hosts/linux/desktop/theme /tmp/w/cargo
 # A bootc base's /root is a link to /var/roothome, which isn't there in a plain container: cargo's home goes to /tmp.

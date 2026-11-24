@@ -5,7 +5,8 @@ a restart. The image itself is never touched.
 
     hearth-system-part path <id> <built-in path>           prints the path to start: the Store's copy or the built-in one
     hearth-system-part run <id> <built-in program> [args]  starts the Store's copy, or the built-in program
-    hearth-system-part install <id>                        (root) the newest copy the signed list names; stdin may
+    hearth-system-part install <id> [test]                 (root) the copy the signed list names (its test version with
+                                                           "test", from the list's "tests"); stdin may
                                                            carry the Store's refreshed list: {"catalog": text, "sig": hex}
     hearth-system-part remove <id>                         (root) back to the built-in one for good
     hearth-system-part retry <id>                          (root) a copy that failed is tried again
@@ -319,11 +320,11 @@ def verify(key, text, sig_hex):
         return r.returncode == 0
 
 
-def signed_list(extra=None):
+def signed_list(extra=None, test=False):
     """The list to install from: the built-in one (root's, in the image), or the Store's refreshed one when it's signed
-    with the built-in key and newer. Returns (serial, entries)."""
+    with the built-in key and newer. Returns (serial, entries): its "apps", or its "tests" for a test version."""
     def entries(d):
-        return [e for e in (d.get("apps") or []) + (d.get("tests") or []) if isinstance(e, dict)]
+        return [e for e in (d.get("tests" if test else "apps") or []) if isinstance(e, dict)]
     built = _read_json(CATALOG) or {}
     best = (int(built.get("serial", 0) or 0), entries(built))
     if extra and isinstance(extra, dict) and isinstance(extra.get("catalog"), str):
@@ -346,12 +347,12 @@ def newer(a, b):
     return x + [0] * (n - len(x)) > y + [0] * (n - len(y))
 
 
-def install(pid, extra=None, opener=None):
+def install(pid, extra=None, opener=None, test=False):
     if os.geteuid() != OWNER:
         raise SystemExit("hearth-system-part: installing a system part needs root (the Store asks for the admin password)")
     if not _safe_id(pid) or pid not in allowed():
         raise SystemExit("hearth-system-part: that isn't one of Hearth's system parts")
-    _, apps = signed_list(extra)
+    _, apps = signed_list(extra, test)
     part = None
     for e in apps:
         pt = e.get("part") if isinstance(e.get("part"), dict) else {}
@@ -475,14 +476,14 @@ def main(argv):
     if cmd == "run" and len(argv) >= 4:
         run(argv[2], argv[3], argv[4:])
         return 0
-    if cmd == "install" and len(argv) == 3:
+    if cmd == "install" and (len(argv) == 3 or (len(argv) == 4 and argv[3] == "test")):
         extra = None
         if not sys.stdin.isatty():
             try:
                 extra = json.loads(sys.stdin.read(4 << 20) or "null")
             except ValueError:
                 extra = None
-        print(json.dumps({"ok": True, "id": argv[2], "version": install(argv[2], extra)}))
+        print(json.dumps({"ok": True, "id": argv[2], "version": install(argv[2], extra, test=len(argv) == 4)}))
         return 0
     if cmd == "remove" and len(argv) == 3:
         remove(argv[2])

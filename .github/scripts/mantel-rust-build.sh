@@ -3,8 +3,9 @@
 # exactly the libraries the image has (as hearth-ui-build.sh does for Hearth's apps). Source /src (read only);
 # out: /out/hearth-mantel.
 set -eu
-DNF=$(command -v dnf5 || command -v dnf)
-$DNF -y install gcc pkgconf-pkg-config rust cargo libxkbcommon-devel wayland-devel fontconfig-devel freetype-devel >/dev/null
+# The image's own base: Debian trixie for Hearth OS on Debian, Fedora's dnf for the archived edition (part-build-tools.sh).
+. "$(dirname "$0")/part-build-tools.sh"
+part_tools
 echo "::notice title=Mantel in Rust build::$(rustc --version) · $(. /etc/os-release; echo "$PRETTY_NAME")"
 mkdir -p /tmp/w/hosts/linux/desktop/theme /tmp/w/hosts/linux/desktop/shell /tmp/w/cargo
 export HOME=/tmp/w CARGO_HOME=/tmp/w/cargo

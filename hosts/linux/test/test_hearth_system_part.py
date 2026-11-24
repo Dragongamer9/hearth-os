@@ -164,6 +164,17 @@ class SystemPart(unittest.TestCase):
         self.assertFalse(mode & 0o6000, "no set-id bits")
         self.assertEqual(self.m.chosen("helper", "x"), str(p))
 
+    def test_a_test_version_comes_only_from_the_lists_tests(self):
+        data = tarball({"helper": (b"#!/bin/sh\necho test\n", 0o755)})
+        sha = hashlib.sha256(data).hexdigest()
+        main = {"id": "helper", "system": True, "version": "1.18.1", "os": "1.18", "path": "helper", "url": "https://x/main", "sha256": "1" * 64}
+        test = dict(main, version="1.18.2", url="https://x/test", sha256=sha)
+        (self.t / "catalog.json").write_text(json.dumps({"serial": 5, "apps": [{"id": "part-helper", "name": "H", "part": main}],
+                                                         "tests": [{"id": "test-helper", "name": "H (test)", "part": test}]}))
+        got = []
+        v = self.m.install("helper", opener=lambda url, timeout: (got.append(url), Resp(data))[1], test=True)
+        self.assertEqual((v, got), ("1.18.2", ["https://x/test"]))
+
     def test_install_refuses_a_wrong_sha(self):
         data = tarball({"helper": (b"#!/bin/sh\n", 0o755)})
         self.catalog({"id": "helper", "system": True, "version": "1.18.1", "os": "1.18", "path": "helper", "url": "https://x/h.tar.gz", "sha256": "0" * 64})
@@ -206,6 +217,11 @@ class SystemPart(unittest.TestCase):
             src = (REPO / "os/system_files/usr/libexec/nimbus" / h).read_text()
             self.assertIn(f'_hsp_os.path.isfile("/var/lib/hearth/system-parts/{h}/part.json")', src)
             self.assertIn('_hsp_os.environ.get("HEARTH_SYSTEM_PART") != "1"', src)
+
+    def test_the_game_mode_host_starts_through_hearth_part_only_with_a_copy(self):
+        build = (REPO / "os-bases/peppermint/build.sh").read_text()
+        self.assertIn('[ -e "$HOME/.local/share/hearth/parts/hearth-game-mode/part.json" ] && [ -x /usr/libexec/hearth/hearth-part ] && exec /usr/libexec/hearth/hearth-part run hearth-game-mode /usr/lib/nimbus/nimbus', build)
+        self.assertIn('exec /usr/lib/nimbus/nimbus "$@"', build)
 
     def test_hearth_part_never_runs_a_home_copy_as_root(self):
         src = (REPO / "os/system_files/usr/libexec/hearth/hearth-part").read_text()
