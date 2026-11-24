@@ -563,7 +563,7 @@ fn rows_of<'a>(p: &Pal, v: &'a Map<String, Value>, list: &'static [R], kde: bool
                 V::N => vrow(p, x.label, x.line, value_chev(p, ""), Some(Msg::Go(x.go)), last),
                 V::C(key) => {
                     let c = s(v, key);
-                    vrow(p, x.label, x.line, if c.is_empty() { value_chev(p, "") } else { chip(p, &c, true) }, Some(Msg::Go(x.go)), last)
+                    vrow(p, x.label, x.line, if c.is_empty() { value_chev(p, "") } else { sec_chip(p, &c, true) }, Some(Msg::Go(x.go)), last)
                 }
                 V::S(val, key) => {
                     let o = on(v, val);
@@ -633,7 +633,7 @@ fn top<'a>(p: &Pal, st: &'a State, sec: &str) -> Option<Element<'a, Msg>> {
                 .filter(|x| !x.is_empty())
                 .collect::<Vec<_>>()
                 .join(" · ");
-            banner(p, dot(if ok { p.good } else { p.warn }), if ok { format!("Connected · {name}") } else { "Not connected".into() }, line, vec![b(0, "Details", false), b(1, "Share Wi-Fi (QR code)", false)])
+            sec_banner(p, sec_dot(if ok { p.good } else { p.warn }), if ok { format!("Connected · {name}") } else { "Not connected".into() }, line, vec![b(0, "Details", false), b(1, "Share Wi-Fi (QR code)", false)])
         }
         "bt" => tiles(vec![
             ("Bluetooth", g("bt_on"), g("bt_line"), "bluetooth"),
@@ -641,10 +641,10 @@ fn top<'a>(p: &Pal, st: &'a State, sec: &str) -> Option<Element<'a, Msg>> {
             ("Phone", or(g("phone"), "none"), g("phone_line"), "phone"),
             ("Printer", or(g("printer"), "none"), g("printers"), "printers"),
         ]),
-        "link" => banner(p, dot(p.good), format!("{} paired", or(g("link_count"), "No devices")), "Encrypted over your home network and Tailscale · nothing opened to the internet".into(), vec![b(0, "Pair a device", true)]),
+        "link" => sec_banner(p, sec_dot(p.good), format!("{} paired", or(g("link_count"), "No devices")), "Encrypted over your home network and Tailscale · nothing opened to the internet".into(), vec![b(0, "Pair a device", true)]),
         "pers" => {
             let sw = container(Space::new()).width(Length::Fixed(42.0)).height(Length::Fixed(42.0)).style(hearth_ui::ui::boxed(p.accent, 10.0, None));
-            banner(p, sw.into(), or(g("look"), "Hearth"), format!("Your desktop: {}{}", or(g("layout"), "Mantel"), if g("wallpaper").is_empty() { String::new() } else { format!(" · wallpaper: {}", g("wallpaper")) }), vec![b(0, "My looks", false), b(1, "Change the look", true)])
+            sec_banner(p, sw.into(), or(g("look"), "Hearth"), format!("Your desktop: {}{}", or(g("layout"), "Mantel"), if g("wallpaper").is_empty() { String::new() } else { format!(" · wallpaper: {}", g("wallpaper")) }), vec![b(0, "My looks", false), b(1, "Change the look", true)])
         }
         "apps" => tiles(vec![
             ("Installed", g("apps_count"), g("apps_line"), "apps"),
@@ -652,13 +652,13 @@ fn top<'a>(p: &Pal, st: &'a State, sec: &str) -> Option<Element<'a, Msg>> {
             ("Starting with you", g("autostart_line"), g("autostart_names"), "autostart"),
             ("Updates", or(g("store_updates"), "none"), "in the Hearth Store".into(), "store"),
         ]),
-        "gaming" => banner(p, dot(p.good), "Steam Game Mode with Hearth Sync".into(), [g("decky_line"), g("games_line")].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · "), vec![b(0, "Switch to Game Mode", false)]),
+        "gaming" => sec_banner(p, sec_dot(p.good), "Steam Game Mode with Hearth Sync".into(), [g("decky_line"), g("games_line")].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · "), vec![b(0, "Switch to Game Mode", false)]),
         "accounts" => {
             let initial = g("real").chars().next().map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "·".into());
             let pic = container(tb(initial, 24.0, Color::WHITE)).center_x(Length::Fixed(64.0)).center_y(Length::Fixed(64.0)).style(hearth_ui::ui::boxed(p.accent, 32.0, None));
-            banner(p, pic.into(), or(g("real"), "You"), g("account_line"), vec![b(0, "Change picture", false)])
+            sec_banner(p, pic.into(), or(g("real"), "You"), g("account_line"), vec![b(0, "Change picture", false)])
         }
-        "hs" => banner(p, dot(p.good), format!("{} services running", g("server_count").trim_end_matches(" running")), format!("{} — all reached privately through Tailscale", g("server_line")), vec![b(0, "Dashboard", false), b(1, "Server mode", false)]),
+        "hs" => sec_banner(p, sec_dot(p.good), format!("{} services running", g("server_count").trim_end_matches(" running")), format!("{} — all reached privately through Tailscale", g("server_line")), vec![b(0, "Dashboard", false), b(1, "Server mode", false)]),
         "privacy" => tiles(vec![
             ("Firewall", or(g("firewall"), "off"), g("firewall_line"), "firewall"),
             ("Secure Boot", or(g("secure_boot"), "off"), g("tpm"), "firmware"),
@@ -669,7 +669,7 @@ fn top<'a>(p: &Pal, st: &'a State, sec: &str) -> Option<Element<'a, Msg>> {
             if st.later || g("ready_title").is_empty() {
                 return None;
             }
-            banner(p, dot(p.warn), g("ready_title"), g("ready_line"), vec![b(0, "Later", false), b(1, "Get it now", true)])
+            sec_banner(p, sec_dot(p.warn), g("ready_title"), g("ready_line"), vec![b(0, "Later", false), b(1, "Get it now", true)])
         }
         _ => return None,
     })
@@ -734,7 +734,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
                 for n in nets {
                     let name = n.get("name").and_then(Value::as_str).unwrap_or("").to_string();
                     let line = n.get("line").and_then(Value::as_str).unwrap_or("").to_string();
-                    let right = if n.get("connected").and_then(Value::as_bool) == Some(true) { chip(&p, "connected", true) } else { value_chev(&p, "") };
+                    let right = if n.get("connected").and_then(Value::as_bool) == Some(true) { sec_chip(&p, "connected", true) } else { value_chev(&p, "") };
                     l.push(vrow(&p, &name, &line, right, Some(Msg::Go("wifi")), false));
                 }
                 let o = on(v, "wifi_on");
@@ -744,7 +744,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
                 for acc in v.get("online").and_then(Value::as_array).cloned().unwrap_or_default() {
                     let name = acc.get("name").and_then(Value::as_str).unwrap_or("").to_string();
                     let line = acc.get("line").and_then(Value::as_str).unwrap_or("").to_string();
-                    l.push(vrow(&p, &name, &line, chip(&p, "signed in", true), Some(Msg::Go("online-accounts")), false));
+                    l.push(vrow(&p, &name, &line, sec_chip(&p, "signed in", true), Some(Msg::Go("online-accounts")), false));
                 }
                 l.push(vrow(&p, "Add an account", "Microsoft, CalDAV, IMAP...", value_chev(&p, ""), Some(Msg::Go("online-accounts")), true));
             }

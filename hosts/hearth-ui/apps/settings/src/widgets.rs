@@ -456,7 +456,7 @@ pub fn value_chev<'a, M: 'a>(p: &Pal, v: &str) -> E<'a, M> {
 }
 
 /// A small chip on a row (connected, signed in, online).
-pub fn chip<'a, M: 'a>(p: &Pal, s: &str, good: bool) -> E<'a, M> {
+pub fn sec_chip<'a, M: 'a>(p: &Pal, s: &str, good: bool) -> E<'a, M> {
     let c = if good { p.good } else { p.muted };
     container(t1(s.to_string(), 12.0, c)).padding(Padding { top: 2.0, right: 10.0, bottom: 2.0, left: 10.0 }).style(ui::boxed(Pal::a(c, 0.12), 12.0, Some((Pal::a(c, 0.5), 1.0)))).into()
 }
@@ -472,7 +472,7 @@ pub fn scard<'a, M: 'a>(p: &Pal, head: &str, rows: Vec<E<'a, M>>) -> E<'a, M> {
 }
 
 /// The banner across a section's top: a coloured dot (or a picture), the title, the line under it, its buttons.
-pub fn banner<'a, M: 'a>(p: &Pal, lead: E<'a, M>, title: String, line: String, buttons: Vec<E<'a, M>>) -> E<'a, M> {
+pub fn sec_banner<'a, M: 'a>(p: &Pal, lead: E<'a, M>, title: String, line: String, buttons: Vec<E<'a, M>>) -> E<'a, M> {
     nav::flush();
     let mut r = Row::new().spacing(18.0).align_y(iced::Center).push(lead).push(column![tb(title, 22.0, p.text), t(line, 14.0, p.muted)].spacing(4.0).width(Length::Fill));
     for b in buttons {
@@ -482,7 +482,7 @@ pub fn banner<'a, M: 'a>(p: &Pal, lead: E<'a, M>, title: String, line: String, b
 }
 
 /// The banner's dot: green (fine), yellow (something waits for you), red (something's wrong).
-pub fn dot<'a, M: 'a>(c: Color) -> E<'a, M> {
+pub fn sec_dot<'a, M: 'a>(c: Color) -> E<'a, M> {
     let inner = container(Space::new()).width(Length::Fixed(14.0)).height(Length::Fixed(14.0)).style(ui::boxed(c, 7.0, None));
     container(inner).center_x(Length::Fixed(30.0)).center_y(Length::Fixed(30.0)).style(ui::boxed(Pal::a(c, 0.18), 15.0, None)).into()
 }

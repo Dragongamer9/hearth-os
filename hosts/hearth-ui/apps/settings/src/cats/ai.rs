@@ -225,11 +225,11 @@ fn top<'a>(p: &Pal, st: &'a State, host: &str) -> Column<'a, Msg> {
         if let Some(m) = fix_msg {
             btns.push(btn(p, "Fix it", BtnKind::Primary, false, if st.busy { None } else { Some(m) }));
         }
-        c = c.push(tinted(p, p.danger, dot(p.danger), what, why, btns));
+        c = c.push(tinted(p, p.danger, sec_dot(p.danger), what, why, btns));
     }
     let answering = !st.st["answering"].is_null();
     if !answering && b(&st.hs, "pictures.on") {
-        c = c.push(tinted(p, p.warn, dot(p.warn), "AI photos is waiting for your AI".into(), "It starts by itself once an AI answers. Nothing to do.".into(), vec![chip(p, "waiting", false)]));
+        c = c.push(tinted(p, p.warn, sec_dot(p.warn), "AI photos is waiting for your AI".into(), "It starts by itself once an AI answers. Nothing to do.".into(), vec![sec_chip(p, "waiting", false)]));
     }
     // The hero: which AI answers.
     let model = answering_model(st);
@@ -244,7 +244,7 @@ fn top<'a>(p: &Pal, st: &'a State, host: &str) -> Column<'a, Msg> {
     if answering && from == "link" {
         let pc = arr(&st.link, "servers").first().map(|x| s(x, "name")).unwrap_or_else(|| "your PC".into());
         let line = [Some("Over Hearth Link".to_string()), Some(model.clone()), (!tested.is_empty()).then(|| tested.clone())].into_iter().flatten().collect::<Vec<_>>().join(" · ");
-        c = c.push(banner(p, dot(p.good), format!("Using {pc}'s AI"), line, vec![test_btn, btn(p, "Use another", BtnKind::Normal, false, Some(Msg::Go("link")))]));
+        c = c.push(sec_banner(p, sec_dot(p.good), format!("Using {pc}'s AI"), line, vec![test_btn, btn(p, "Use another", BtnKind::Normal, false, Some(Msg::Go("link")))]));
     } else if answering {
         let where_ = if from == "engine" { format!("{} on this PC", s(&st.st, "answering.label")) } else { s(&st.st, "answering.label") };
         let mut bits = vec![where_, model.clone()];
@@ -255,9 +255,9 @@ fn top<'a>(p: &Pal, st: &'a State, host: &str) -> Column<'a, Msg> {
             bits.push(format!("shared with {shared_with} of your devices"));
         }
         let change = btn(p, "Change model", BtnKind::Primary, false, if from == "engine" { Some(Msg::Pick(true)) } else { None });
-        c = c.push(banner(p, dot(p.good), "Your AI is answering".into(), bits.join(" · "), vec![test_btn, change]));
+        c = c.push(sec_banner(p, sec_dot(p.good), "Your AI is answering".into(), bits.join(" · "), vec![test_btn, change]));
     } else {
-        c = c.push(banner(p, dot(p.danger), "No AI is answering".into(), "Describe it, Ithil and AI photos need one. Pick whichever is easiest below.".into(), vec![test_btn]));
+        c = c.push(sec_banner(p, sec_dot(p.danger), "No AI is answering".into(), "Describe it, Ithil and AI photos need one. Pick whichever is easiest below.".into(), vec![test_btn]));
     }
     let _ = host;
     c
@@ -288,14 +288,14 @@ fn engines_card<'a>(p: &Pal, st: &'a State, gpu: &str) -> Element<'a, Msg> {
             }
             line.push("starts a minute after the PC does".into());
             let mut name = Row::new().spacing(8.0).align_y(iced::Center).push(tb(label.clone(), 15.0, p.text));
-            name = name.push(chip(p, if ans { "running" } else if on { "starting" } else { "off" }, ans));
+            name = name.push(sec_chip(p, if ans { "running" } else if on { "starting" } else { "off" }, ans));
             if b(e, "default") {
                 name = name.push(container(t("Hearth's AI uses this", 12.0, p.accent)).padding(Padding { top: 2.0, right: 10.0, bottom: 2.0, left: 10.0 }).style(ui::boxed(Pal::a(p.accent, 0.12), 12.0, Some((Pal::a(p.accent, 0.5), 1.0)))));
             }
             let sw = switch(p, on, if st.busy { None } else { Some(Msg::Ollama(!on)) });
             rows.push(engine_row(p, "O", name.into(), line.join(" · "), sw));
         } else {
-            let name = row![tb(label.clone(), 15.0, p.text), chip(p, if ans { "running" } else { "off" }, ans)].spacing(8.0).align_y(iced::Center);
+            let name = row![tb(label.clone(), 15.0, p.text), sec_chip(p, if ans { "running" } else { "off" }, ans)].spacing(8.0).align_y(iced::Center);
             let line = if s(e, "writing").is_empty() && !ans { "Faster on big models · pick a model to turn it on".to_string() } else { s(e, "writing") };
             rows.push(engine_row(p, "C", name.into(), line, btn(p, "Pick a model", BtnKind::Normal, false, Some(Msg::Go("hs-ai")))));
         }
@@ -334,7 +334,7 @@ fn sharing_card<'a>(p: &Pal, st: &'a State) -> Element<'a, Msg> {
         let when = ago(now, x["last"].as_u64().unwrap_or(0));
         let line = [if model.is_empty() { None } else { Some(model) }, if when.is_empty() { None } else { Some(format!("last asked {when}")) }].into_iter().flatten().collect::<Vec<_>>().join(" · ");
         let name = s(x, "name");
-        let title_el = row![tb(name.clone(), 15.0, p.text), chip(p, if stopped { "stopped" } else { "using it" }, !stopped)].spacing(8.0).align_y(iced::Center);
+        let title_el = row![tb(name.clone(), 15.0, p.text), sec_chip(p, if stopped { "stopped" } else { "using it" }, !stopped)].spacing(8.0).align_y(iced::Center);
         let r = row![column![title_el, t(line, 13.0, p.muted)].spacing(3.0).width(Length::Fill), btn(p, if stopped { "Let it again" } else { "Stop" }, BtnKind::Normal, false, Some(Msg::Stop(id, !stopped)))].spacing(14.0).align_y(iced::Center);
         rows.push(column![container(r).padding(Padding { top: 12.0, right: 6.0, bottom: 12.0, left: 6.0 }), ui::hline(Pal::a(p.text, 0.07))].into());
     }
@@ -352,13 +352,13 @@ fn sources_card<'a>(p: &Pal, st: &'a State) -> Element<'a, Msg> {
     for sv in arr(&st.link, "servers") {
         let id = s(sv, "id");
         let models = arr(sv, "models").len();
-        let name = row![tb(format!("{} (your PC)", s(sv, "name")), 15.0, p.text), chip(p, "answering", true)].spacing(8.0).align_y(iced::Center);
-        let right: Element<'a, Msg> = if id == using { chip(p, "using", false) } else { Space::new().into() };
+        let name = row![tb(format!("{} (your PC)", s(sv, "name")), 15.0, p.text), sec_chip(p, "answering", true)].spacing(8.0).align_y(iced::Center);
+        let right: Element<'a, Msg> = if id == using { sec_chip(p, "using", false) } else { Space::new().into() };
         rows.push(numbered(p, n, name.into(), format!("{models} models · paired in Hearth Link"), right));
         n += 1;
     }
     let here = arr(&st.st, "engines").iter().any(|e| b(e, "answering"));
-    let name = row![tb("This device".to_string(), 15.0, p.text), chip(p, if here { "answering" } else { "no engine" }, here)].spacing(8.0).align_y(iced::Center);
+    let name = row![tb("This device".to_string(), 15.0, p.text), sec_chip(p, if here { "answering" } else { "no engine" }, here)].spacing(8.0).align_y(iced::Center);
     rows.push(numbered(p, n, name.into(), if here { "An engine on this device".into() } else { "Ollama isn't installed · small models only on this device".into() }, if here { Space::new().into() } else { btn(p, "Install Ollama", BtnKind::Normal, false, Some(Msg::Go("hs-ai"))) }));
     rows.push(container(t("If your PC is asleep or away, Hearth tries the next one, and says which answered.", 13.0, p.muted)).padding(Padding { top: 10.0, right: 6.0, bottom: 0.0, left: 6.0 }).into());
     titled(p, "Where your AI comes from", "First that answers", rows)
@@ -375,13 +375,13 @@ fn test_card<'a>(p: &Pal, st: &'a State) -> Element<'a, Msg> {
     match &st.test {
         Some(v) if b(v, "ok") => {
             rows.push(vrow(p, "\"Say ok.\"", &format!("sent to {} · {}", s(v, "engine"), s(v, "model")), Space::new().into(), None, false));
-            let r = row![chip(p, "ok", true), column![tb(format!("It answered in {} s", s(v, "seconds")), 15.0, p.text), t(format!("\"{}\" · checked by Hearth · nothing changed", s(v, "said")), 13.0, p.muted)].spacing(3.0).width(Length::Fill)].spacing(14.0).align_y(iced::Center);
+            let r = row![sec_chip(p, "ok", true), column![tb(format!("It answered in {} s", s(v, "seconds")), 15.0, p.text), t(format!("\"{}\" · checked by Hearth · nothing changed", s(v, "said")), 13.0, p.muted)].spacing(3.0).width(Length::Fill)].spacing(14.0).align_y(iced::Center);
             rows.push(column![container(r).padding(Padding { top: 12.0, right: 6.0, bottom: 12.0, left: 6.0 }), ui::hline(Pal::a(p.text, 0.07))].into());
         }
         Some(v) => rows.push(vrow(p, "It didn't answer", &s(v, "error"), Space::new().into(), None, false)),
         None => rows.push(vrow(p, "Not tested yet", "Test it asks your AI one short question and times the answer", btn(p, "Test it", BtnKind::Normal, false, Some(Msg::Test)), None, false)),
     }
-    rows.push(vrow(p, "Thinking models", "Qwen3 is asked to answer straight away; its thinking is skipped", chip(p, "on", true), None, true));
+    rows.push(vrow(p, "Thinking models", "Qwen3 is asked to answer straight away; its thinking is skipped", sec_chip(p, "on", true), None, true));
     titled(p, "Test it", "", rows)
 }
 
@@ -403,7 +403,7 @@ fn uses_card<'a>(p: &Pal, st: &'a State, laptop: bool) -> Element<'a, Msg> {
         if !laptop {
             col = col.push(t(line.to_string(), 13.0, p.muted));
         }
-        col = col.push(Space::new().height(Length::Fixed(8.0))).push(row![picker, chip(p, if answering { "ready" } else { "waiting" }, answering)].spacing(10.0).align_y(iced::Center));
+        col = col.push(Space::new().height(Length::Fixed(8.0))).push(row![picker, sec_chip(p, if answering { "ready" } else { "waiting" }, answering)].spacing(10.0).align_y(iced::Center));
         r = r.push(container(col).padding(18.0).width(Length::FillPortion(1)).style(ui::boxed(Pal::mix(p.panel, p.text, 0.02), p.r(12.0), Some((Pal::a(p.text, 0.07), 1.0)))));
     }
     let mut c = Column::new().spacing(12.0).push(container(row![tb("WHAT USES YOUR AI", 12.5, p.muted), Space::new().width(Length::Fill), tb(if laptop { "" } else { "EACH ONE CAN HAVE ITS OWN" }, 12.5, p.muted)]).padding(Padding { top: 0.0, right: 6.0, bottom: 0.0, left: 6.0 })).push(r);
@@ -424,7 +424,7 @@ fn none_card<'a>(p: &Pal, st: &'a State) -> Element<'a, Msg> {
             .into()
     };
     let mut r = Row::new().spacing(12.0);
-    if let Some((name, n)) = pc {
+    if let Some((name, n)) = pc.clone() {
         r = r.push(opt("Use your PC's AI", format!("{name} is paired and has {n} models."), "Use it", Msg::Go("link"), true));
     }
     r = r.push(opt("Turn on Ollama here", "About 2 GB, then a model. Slower on this device.".into(), "Install", Msg::Go("hs-ai"), pc.is_none()));
@@ -440,19 +440,19 @@ fn checked_card<'a>(p: &Pal, st: &'a State) -> Element<'a, Msg> {
         let id = s(e, "id");
         let pr = problems.iter().find(|x| s(x, "id").trim_start_matches("hearth-") == id);
         let (label, good) = if b(e, "answering") { ("answering".to_string(), true) } else if let Some(x) = pr { (format!("couldn't start{}", if s(x, "kind") == "selinux" { ": SELinux" } else { "" }), false) } else { ("off".to_string(), false) };
-        rows.push(vrow(p, &format!("{} on this PC", s(e, "label")), "", chip(p, &label, good), None, false));
+        rows.push(vrow(p, &format!("{} on this PC", s(e, "label")), "", sec_chip(p, &label, good), None, false));
     }
     if b(&st.st, "link.answering") {
         let pc = arr(&st.link, "servers").first().map(|x| s(x, "name")).unwrap_or_else(|| "Your PC".into());
-        rows.push(vrow(p, &format!("{pc} over Hearth Link"), "", chip(p, "answering", true), None, false));
+        rows.push(vrow(p, &format!("{pc} over Hearth Link"), "", sec_chip(p, "answering", true), None, false));
     }
     let m = answering_model(st);
     if !m.is_empty() {
-        rows.push(vrow(p, "Model for writing", "", chip(p, &m, true), None, false));
+        rows.push(vrow(p, "Model for writing", "", sec_chip(p, &m, true), None, false));
     }
     for x in arr(&st.models, "models") {
         if x["writes"].as_bool() == Some(false) {
-            rows.push(vrow(p, &s(x, "name"), "", chip(p, "search only, not for writing", false), None, false));
+            rows.push(vrow(p, &s(x, "name"), "", sec_chip(p, "search only, not for writing", false), None, false));
         }
     }
     rows.push(t("Send logs adds this list, so a problem can be found without terminal commands.", 13.0, p.muted).into());
@@ -523,11 +523,11 @@ pub fn dialog<'a>(a: &'a App) -> Option<(Element<'a, Msg>, Option<Msg>)> {
         let radio = container(if on { container(Space::new()).width(Length::Fixed(10.0)).height(Length::Fixed(10.0)).style(ui::boxed(p.accent, 5.0, None)).into() } else { Element::from(Space::new()) }).center_x(Length::Fixed(22.0)).center_y(Length::Fixed(22.0)).style(ui::boxed(Color::TRANSPARENT, 11.0, Some((if on { p.accent } else { p.muted }, 2.0))));
         let mut title = Row::new().spacing(8.0).align_y(iced::Center).push(tb(name.clone(), 16.0, col));
         if b(m, "best") {
-            title = title.push(chip(&p, "best here", true));
+            title = title.push(sec_chip(&p, "best here", true));
         }
         let mut line = Row::new().spacing(10.0).align_y(iced::Center).push(radio).push(column![title, t(bits.join(" · "), 13.0, p.muted)].spacing(3.0).width(Length::Fill));
         if b(m, "thinks") {
-            line = line.push(chip(&p, "thinks · skipped", false));
+            line = line.push(sec_chip(&p, "thinks · skipped", false));
         }
         let boxed = container(line).padding(14.0).width(Length::Fill).style(ui::boxed(if on { Pal::mix(p.panel, p.accent, 0.06) } else { Color::TRANSPARENT }, p.r(10.0), if on { Some((p.accent, 1.5)) } else { None }));
         c = c.push(if writes { Element::from(mouse_area(boxed).on_press(Msg::PickModel(name.clone())).interaction(mouse::Interaction::Pointer)) } else { boxed.into() });
