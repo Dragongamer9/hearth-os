@@ -14,6 +14,7 @@
 mod look;
 mod pad;
 mod view;
+mod w11;
 
 use hearth_store::catalog::{self, Catalog, Entry, Kind};
 use hearth_store::check;
@@ -37,6 +38,9 @@ pub const SEARCH_ID: &str = "store-search";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Page {
     Home,
+    /// The Windows 11 Store's rail (store-win11): every app with filter pills, and the test versions.
+    Apps,
+    Tests,
     Yours,
     Updates,
     BuiltIn,
@@ -167,6 +171,13 @@ pub enum Msg {
     PartRemove(String),
     PartRetry(String),
     PartDone(String, Result<String, String>),
+    /// Apps' filter pills, Library's Apps / Hearth parts / Tests (store-win11)
+    Filter(String),
+    LibTab(String),
+    /// Settings › Where apps go › Change…: pick a folder, then every app moves there.
+    AppsDir,
+    AppsDirPicked(Option<std::path::PathBuf>),
+    AppsDirMoved(Result<String, String>),
 }
 
 pub struct App {
@@ -196,6 +207,8 @@ pub struct App {
     pub now: i64,
     /// Pictures on this PC (cache): url → its picture.
     pub pics: BTreeMap<String, image::Handle>,
+    /// The apps are being moved to another folder (Settings › Where apps go).
+    pub moving: bool,
     /// Built-in apps that are here (their program exists).
     pub here: BTreeSet<String>,
     /// Update all is going through the updates one after another.
@@ -203,6 +216,9 @@ pub struct App {
     /// Quick updates installed in your home folder (by the entry's id), and the ones being worked on.
     pub parts: BTreeMap<String, parts::Have>,
     pub part_busy: BTreeSet<String>,
+    /// Apps' filter ("" all) and Library's list ("" apps), store-win11
+    pub filter: String,
+    pub lib_tab: String,
 }
 
 /// Where an app is: what its buttons say and do.
@@ -218,18 +234,7 @@ pub enum State {
 }
 
 fn this_pc() -> (String, String) {
-    if let Some(f) = paths::fixture() {
-        if let Ok(v) = std::fs::read(f.join("this-pc.json")).map(|b| serde_json::from_slice::<serde_json::Value>(&b).unwrap_or_default()) {
-            let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
-            return (s("hearth"), s("edition"));
-        }
-    }
-    let info: serde_json::Value = std::fs::read("/usr/share/nimbus/image-info.json").ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-    let ver = std::fs::read_to_string("/usr/share/nimbus/version").map(|s| s.trim().to_string()).unwrap_or_default();
-    let ver = if ver.is_empty() { info.get("version").and_then(|x| x.as_str()).unwrap_or("").to_string() } else { ver };
-    let base = info.get("base").and_then(|x| x.as_str()).unwrap_or("");
-    let edition = if base == "anatase" || std::path::Path::new("/usr/bin/rpm-ostree").exists() || std::path::Path::new("/usr/bin/dnf5").exists() { "Fedora edition" } else { "" };
-    (hearth_store::short_version(&ver), edition.to_string())
+    hearth_store::this_pc()
 }
 
 fn which(cmd: &str) -> bool {
@@ -246,7 +251,9 @@ fn which(cmd: &str) -> bool {
 fn page_of(s: &str) -> Page {
     match s {
         "yours" | "your-apps" => Page::Yours,
-        "updates" => Page::Updates,
+        "updates" | "library" => Page::Updates,
+        "apps" => Page::Apps,
+        "tests" => Page::Tests,
         "built-in" | "builtin" => Page::BuiltIn,
         "settings" => Page::Settings,
         "work" | "updating" => Page::Work,
@@ -287,10 +294,13 @@ impl App {
             edition,
             now: files::now(),
             pics: BTreeMap::new(),
+            moving: false,
             here,
             all: false,
             parts: BTreeMap::new(),
             part_busy: BTreeSet::new(),
+            filter: String::new(),
+            lib_tab: String::new(),
             cat,
         };
         pad::PAD_LOOK.store(a.pad, std::sync::atomic::Ordering::Relaxed);
@@ -712,6 +722,10 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             let done = format!("{} tries its update again the next time it starts.", e.name);
             return Task::perform(net::off(move || parts::retry(&pid).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("Nothing changed.".into()))));
         }
+        Msg::Filter(c) => {
+            a.filter = if c == "All" { String::new() } else { c };
+        }
+        Msg::LibTab(t) => a.lib_tab = t,
         Msg::PartDone(id, r) => {
             a.part_busy.remove(&id);
             a.read_installed();
@@ -721,6 +735,9 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             }
         }
         Msg::Start(id, kind) => {
+            if a.moving {
+                return Task::none();
+            }
             if a.prefs.metered {
                 return a.start(&id, kind);
             }
@@ -1077,6 +1094,28 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             }
         }
         Msg::TryAgain => return a.check_now(),
+        Msg::AppsDir => {
+            if a.job.is_some() || !a.part_busy.is_empty() || a.moving {
+                a.say("Wait for the install or update to finish, then move your apps.", true);
+                return Task::none();
+            }
+            return Task::perform(net::off(files::pick_folder), |r| Msg::AppsDirPicked(r.flatten()));
+        }
+        Msg::AppsDirPicked(Some(dir)) => {
+            a.moving = true;
+            a.say(format!("Moving your apps to {}…", paths::tilde(&dir)), false);
+            let apps = a.cat.apps.clone();
+            return Task::perform(net::off(move || files::move_apps(&apps, &dir)), |r| Msg::AppsDirMoved(r.unwrap_or_else(|| Err("The move stopped; everything is where it was.".into()))));
+        }
+        Msg::AppsDirPicked(None) => {}
+        Msg::AppsDirMoved(r) => {
+            a.moving = false;
+            match r {
+                Ok(s) => a.say(s, false),
+                Err(s) => a.say(s, true),
+            }
+            a.read_installed();
+        }
         Msg::Checked(s, refreshed) => {
             a.checking = false;
             a.seen = *s;
@@ -1088,7 +1127,15 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             if a.focus.is_empty() || !view::targets(a).iter().any(|t| t.id == a.focus) {
                 a.focus = view::first_target(a);
             }
-            return a.reconcile();
+            // "Install updates by themselves" (store-w11-6, off unless turned on): Hearth parts only, never test
+            // versions, never while a game runs.
+            let mut tasks = vec![a.reconcile()];
+            if a.prefs.auto && !a.offline() && !net::game_running() {
+                for (e, _) in a.part_offers().into_iter().filter(|(e, _)| !e.test && !a.part_busy.contains(&e.id)) {
+                    tasks.push(Task::done(Msg::PartUpdate(e.id.clone())));
+                }
+            }
+            return Task::batch(tasks);
         }
         Msg::Reconciled(id, i) => {
             if let Some(i) = i {

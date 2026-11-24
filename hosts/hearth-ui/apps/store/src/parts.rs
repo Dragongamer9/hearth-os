@@ -157,7 +157,18 @@ mod tests {
     use super::*;
 
     fn part(v: &str, os: &str) -> Part {
-        Part { id: "hearth-files-app".into(), version: v.into(), os: os.into(), path: "hearth-files-app".into(), url: "https://x/y".into(), sha256: "0".repeat(64), size: 1, notes: vec![] }
+        Part { id: "hearth-files-app".into(), version: v.into(), os: os.into(), path: "hearth-files-app".into(), url: "https://x/y".into(), sha256: "0".repeat(64), size: 1, notes: vec![], missing: vec![] }
+    }
+
+    #[test]
+    fn a_test_version_is_only_updated_once_you_have_it() {
+        let p = part("1.17.2", "1.17");
+        assert!(test_offer(&p, None, "1.17").is_none(), "not got: no update offered");
+        let h = Have { version: "1.17.1".into(), os: "1.17".into(), ..Default::default() };
+        assert!(test_offer(&p, Some(&h), "1.17.4").is_some(), "its own number, not the Hearth OS one");
+        let same = Have { version: "1.17.2".into(), os: "1.17".into(), ..Default::default() };
+        assert!(test_offer(&p, Some(&same), "1.17").is_none());
+        assert!(test_fits(&p, "1.17.3") && !test_fits(&p, "1.18"));
     }
 
     #[test]

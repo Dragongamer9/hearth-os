@@ -3,7 +3,7 @@
 //! the controller look (store-7) and the buttons' hints at the bottom.
 
 use crate::look::{self, app_icon, btn, bullets, card, chip, click, f, hint, hint2, icon_box, kv, ring, sec, seg, srow, switch, tone, z, Chip, B, E, ORANGE, ORANGE2, PURPLE};
-use crate::{App, JobKind, Msg, Page, State, SEARCH_ID};
+use crate::{w11, App, JobKind, Msg, Page, State, SEARCH_ID};
 use hearth_store::catalog::{Entry, Kind};
 use hearth_store::{mb, parts, paths, short_version};
 use hearth_ui::ui::{self, gap, t, t1, tb, tm, ts};
@@ -188,6 +188,7 @@ pub fn targets(a: &App) -> Vec<Target> {
                 }
             }
         }
+        Page::Apps | Page::Tests => {}
         Page::Repair(_) => {
             v.push(tg("repair-now", 0, Some(Msg::RepairNow)));
             v.push(tg("not-now", 0, Some(Msg::Back)));
@@ -245,7 +246,7 @@ fn day_time(ts: i64) -> String {
     }
 }
 
-fn released(date: &str) -> String {
+pub fn released(date: &str) -> String {
     match hearth_ui::time::parse_date(date) {
         Some((y, m, d)) => format!("released {} {d}, {y}", hearth_ui::time::month(m)),
         None => String::new(),
@@ -257,9 +258,24 @@ fn this_pc(a: &App) -> String {
     if a.edition.is_empty() { v } else { format!("{v} · {}", a.edition) }
 }
 
+pub fn day_time_pub(ts: i64) -> String {
+    day_time(ts)
+}
+pub fn ago_pub(a: &App, ts: i64) -> String {
+    ago(a, ts)
+}
+pub fn this_pc_pub(a: &App) -> String {
+    this_pc(a)
+}
+pub fn hero_pub<'a>(a: &'a App, e: &Entry, st: &State) -> E<'a, Msg> {
+    hero(a, e, st)
+}
+
 fn page_name(pg: &Page, a: &App) -> String {
     match pg {
         Page::Home => "Home".into(),
+        Page::Apps => "Apps".into(),
+        Page::Tests => "Tests".into(),
         Page::Yours => "Your apps".into(),
         Page::Updates => "Updates".into(),
         Page::BuiltIn => "Built into Hearth".into(),
@@ -277,12 +293,28 @@ pub fn view(a: &App) -> E<'_, Msg> {
     if a.pad {
         return ui::edges(pad_frame(a), Msg::Resize);
     }
-    let body = page_body(a);
-    let area: E<Msg> = container(scrollable(container(body).padding(look::pad(z(30.0), z(50.0), z(30.0), z(50.0))).width(Length::Fill)).height(Length::Fill)).width(Length::Fill).height(Length::Fill).style(look::bx(tn.page, 0.0, None)).into();
-    let area = overlays(a, area);
-    let main = row![sidebar(a), area].height(Length::Fill);
-    let all = column![title_bar(a), ui::hline(tn.line), main, bottom(a)];
-    ui::edges(container(all).width(Length::Fill).height(Length::Fill).style(look::bx(tn.page, 0.0, None)).into(), Msg::Resize)
+    // The Windows 11 Store's frame (store-win11): the title bar with the search, the rail, the page on its layer
+    let body: E<Msg> = match &a.page {
+        Page::Home => w11::home(a),
+        Page::Apps => w11::apps(a),
+        Page::Updates | Page::Yours => w11::library(a),
+        Page::Tests => w11::tests(a),
+        Page::Settings => w11::settings(a),
+        Page::App(id) if a.dlg.is_none() => match a.entry(id) {
+            Some(e) if e.test => w11::test_page(a, e),
+            Some(e) if e.part.is_none() => w11::app_page(a, e),
+            _ => page_body(a),
+        },
+        _ => page_body(a),
+    };
+    let body: E<Msg> = if a.note.is_empty() || matches!(a.page, Page::App(_) | Page::Work | Page::Repair(_) | Page::Settings | Page::BuiltIn) {
+        body
+    } else {
+        let c = if a.note_bad { look::BAD } else { ORANGE2 };
+        column![container(t(a.note.clone(), f(15.0), c)).padding(look::pad(0.0, 0.0, z(14.0), 0.0)), body].into()
+    };
+    let _ = (tn, sidebar as fn(&App) -> E<'_, Msg>, title_bar as fn(&App) -> E<'_, Msg>, bottom as fn(&App) -> E<'_, Msg>);
+    ui::edges(overlays(a, w11::frame(a, body)), Msg::Resize)
 }
 
 /// The ⋯ menu and the uninstall dialog, over the page (the sidebar stays as it is, as in store-2 and store-6).
@@ -297,6 +329,8 @@ fn overlays<'a>(a: &'a App, area: E<'a, Msg>) -> E<'a, Msg> {
 fn page_body(a: &App) -> E<'_, Msg> {
     let content: E<Msg> = match &a.page {
         Page::Home => home(a),
+        Page::Apps => w11::apps(a),
+        Page::Tests => w11::tests(a),
         Page::Yours => yours(a),
         Page::Updates => updates(a),
         Page::BuiltIn => built_in(a),
@@ -395,7 +429,7 @@ fn bottom(a: &App) -> E<'_, Msg> {
     } else {
         match &a.page {
             Page::Home if a.offline() => (vec![hint(&p, "A", "Try again"), hint(&p, "B", "Back")], vec![pages()]),
-            Page::Home | Page::Yours | Page::BuiltIn => (vec![hint(&p, "A", "Select"), hint(&p, "B", "Back"), hint(&p, "Y", "Search"), hint(&p, "X", "Update all")], vec![pages()]),
+            Page::Home | Page::Yours | Page::BuiltIn | Page::Apps | Page::Tests => (vec![hint(&p, "A", "Select"), hint(&p, "B", "Back"), hint(&p, "Y", "Search"), hint(&p, "X", "Update all")], vec![pages()]),
             Page::Updates => (vec![hint(&p, "A", "Update"), hint(&p, "B", "Back"), hint(&p, "X", "Update all"), hint(&p, "Y", "What's new")], vec![pages()]),
             Page::Settings => (vec![hint(&p, "A", "Toggle"), hint(&p, "B", "Back")], vec![pages()]),
             Page::App(_) => (vec![hint(&p, "A", "Select"), hint(&p, "B", "Back"), hint(&p, "≡", "More")], vec![hint2(&p, "LB", "RB", "Previous / next app")]),
@@ -686,7 +720,7 @@ fn app_chips<'a>(a: &App, e: &Entry, st: &State) -> E<'a, Msg> {
     r.into()
 }
 
-fn open_label(e: &Entry, st: &State) -> &'static str {
+pub fn open_label(e: &Entry, st: &State) -> &'static str {
     match st {
         State::Get(_) => "Install",
         State::Ready(..) if e.self_updates => "Open to update",
