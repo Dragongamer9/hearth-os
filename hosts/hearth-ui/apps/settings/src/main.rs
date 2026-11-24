@@ -284,6 +284,12 @@ impl App {
             "system" | "bt" | "apps-home" | "accounts" | "privacy" | "ai" => cats::sections::page_for(registry::CATEGORIES[registry::cat_of(id)].0).unwrap_or(id),
             _ => id,
         };
+        // Home's "You use these most": one more opening of this page, counted in a small state file (not a
+        // setting) by hearth-settings-values, in the background. Section front pages and Home aren't counted.
+        if id != "home" && !id.starts_with("sec-") && registry::page(id).is_some() {
+            let helper = run::shell_helper("hearth-settings-values");
+            run::detached(&["python3", helper.as_str(), "opened", id]);
+        }
         self.page = id;
         self.cat = registry::cat_of(id);
         self.query.clear();

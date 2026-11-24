@@ -21,7 +21,8 @@ through `hearth-link call` (its socket, only this user's).
   hearth-link-settings remote ID              that device's remote desktop: on or not, its name for Moonlight
   hearth-link-settings remote-pin ID [NAME]   Moonlight's 4 numbers (on stdin) sent to that device's remote desktop
   hearth-link-settings unpair ID
-  hearth-link-settings set KEY VALUE          KEY: name, sync, alwaysAccept, relay, relayUrl
+  hearth-link-settings set KEY VALUE          KEY: name, sync, alwaysAccept, relay, relayUrl, clipboard (on|off:
+                                              the clipboard's text with your own devices, off by default)
   hearth-link-settings sync
   hearth-link-settings pause|resume|cancel ID   a copy
   hearth-link-settings storage-set KEY on|off Hearth Storage (KEY: server, away, smb, archive, backups, media,
@@ -42,7 +43,7 @@ import sys
 
 BIN = os.environ.get('HEARTH_LINK_BIN', '/usr/bin/hearth-link')
 ID_RE = re.compile(r'^[0-9a-f]{16,64}(@\S{1,300})?$')
-KEYS = {'name': str, 'sync': bool, 'alwaysAccept': bool, 'relay': str, 'relayUrl': str}
+KEYS = {'name': str, 'sync': bool, 'alwaysAccept': bool, 'relay': str, 'relayUrl': str, 'clipboard': bool}
 STORAGE_KEYS = ('server', 'away', 'smb', 'archive', 'backups', 'media', 'backupSaves', 'backupShots', 'savesFollow')
 SHARE_RE = re.compile(r'^[0-9a-f]{4,32}$')
 SWITCHES = ('status', 'library', 'saves', 'storage', 'backup')
