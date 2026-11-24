@@ -12,7 +12,7 @@ on:
   push:
     branches: [main]
     paths: ['site/**', 'tools/build-docs.py', 'tools/site-check.js', 'docs/ROADMAP.md', 'hosts/windows/Nimbus.Host/Nimbus.Host.csproj', '.github/workflows/site.yml',
-            'os-bases/anatase/system_files/usr/share/hearth/store/catalog.json']
+            'os/system_files/usr/share/hearth/store/catalog.json']
 
 permissions:
   contents: write     # the screenshots branch
@@ -50,7 +50,7 @@ jobs:
           mkdir -p site/store
           # The live list is the `store` branch's (published by "Publish the Hearth Store list" without a release);
           # until that branch exists, the one built into Hearth OS. Either way it's checked before it's signed.
-          built=os-bases/anatase/system_files/usr/share/hearth/store/catalog.json
+          built=os/system_files/usr/share/hearth/store/catalog.json
           # The higher serial wins, so a release that brought the built-in list past the branch never stops the site.
           cp "$built" site/store/catalog.json
           if git fetch --depth=1 origin store 2>/dev/null && git show FETCH_HEAD:catalog.json > "$RUNNER_TEMP/live.json" 2>/dev/null; then
@@ -79,9 +79,9 @@ jobs:
           od -An -v -tx1 "$RUNNER_TEMP/store.sig" | tr -d ' \n' > site/store/catalog.json.sig
           pub=$(openssl pkey -in "$RUNNER_TEMP/store-key.pem" -pubout -outform DER | tail -c 32 | od -An -v -tx1 | tr -d ' \n')
           rm -f "$RUNNER_TEMP/store-key.pem" "$RUNNER_TEMP/store.sig" "$RUNNER_TEMP/store-pub.pem"
-          builtkey=$(grep -v '^#' os-bases/anatase/system_files/usr/share/hearth/store/catalog-key.pub 2>/dev/null | tr -d ' \n')
+          builtkey=$(grep -v '^#' os/system_files/usr/share/hearth/store/catalog-key.pub 2>/dev/null | tr -d ' \n')
           if [ "$builtkey" != "$pub" ]; then
-            echo "::warning title=Hearth Store list::signed, but the public key in Hearth OS (os-bases/anatase/system_files/usr/share/hearth/store/catalog-key.pub) isn't this key's: Hearth OS will ignore the list until it is ($pub)"
+            echo "::warning title=Hearth Store list::signed, but the public key in Hearth OS (os/system_files/usr/share/hearth/store/catalog-key.pub) isn't this key's: Hearth OS will ignore the list until it is ($pub)"
           fi
           echo "::notice title=Hearth Store list::site/store/catalog.json signed ($(wc -c < site/store/catalog.json) bytes)"
       # The display face (Anybody, SIL Open Font License) is served from the site itself, never from a font CDN.

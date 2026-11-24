@@ -1325,6 +1325,19 @@ for b in hearth-task-manager hearth-system-restore hearth-reliability-history he
   sh -n "/usr/bin/$b"
 done
 echo "::notice title=Hearth's pure-Rust apps::$(ls /usr/libexec/hearth/apps 2>/dev/null | tr '\n' ' ')"
+# The Hearth Store on Debian (1.18; it was only in the Fedora image before): its list of apps, menu entry, icon and the
+# daily-check user timer come from os/system_files; the timer is turned on only when the app is here (it only reads
+# release pages and writes the Store's cache). Without the app, its entry and units go.
+if [ -x /usr/bin/hearth-store-app ]; then
+  python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d["apps"], "no apps"' /usr/share/hearth/store/catalog.json \
+    || { echo "::error title=Hearth Store::its list of apps (catalog.json) can't be read"; exit 1; }
+  install -d /usr/lib/systemd/user/timers.target.wants
+  ln -sf ../hearth-store-check.timer /usr/lib/systemd/user/timers.target.wants/hearth-store-check.timer
+  echo "::notice title=Hearth Store::$(python3 -c 'import json; d=json.load(open("/usr/share/hearth/store/catalog.json")); print("%d apps in its list (serial %d)" % (len(d["apps"]), d.get("serial", 0)))')"
+else
+  rm -f /usr/share/applications/hearth-store.desktop /usr/lib/systemd/user/hearth-store-check.service /usr/lib/systemd/user/hearth-store-check.timer
+fi
+[ -x /usr/bin/hearth-notes-app ] || rm -f /usr/share/applications/hearth-notes.desktop
 
 # ---- Logitech G15 (hearth-g15, docs/G15.md): the keyboard's user service and command line, and its app (hearth-g15-app,
 # menu entry hearth-g15-app.desktop from os/system_files), built by CI next to the

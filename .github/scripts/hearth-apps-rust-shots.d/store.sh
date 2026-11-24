@@ -4,7 +4,7 @@
 # hearth-apps-rust-test.sh inside its headless screen; run() pictures each one.
 SF=/tmp/store-fixture
 rm -rf "$SF"
-python3 "$ROOT/.github/scripts/hearth-store-fixture.py" "$SF" "$ROOT/os-bases/anatase/system_files/usr/share/hearth/store/catalog.json" || echo "::error title=store fixture::it couldn't be made"
+python3 "$ROOT/.github/scripts/hearth-store-fixture.py" "$SF" "$ROOT/os/system_files/usr/share/hearth/store/catalog.json" || echo "::error title=store fixture::it couldn't be made"
 STORE_LOOK="$HOME/.local/share/nimbus/desktop.json"
 store_home() { # NAME [WORLD]
   export HOME_BEFORE_STORE="${HOME_BEFORE_STORE:-$HOME}"

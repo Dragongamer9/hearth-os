@@ -26,7 +26,7 @@ jobs:
         run: |
           git fetch --depth=1 origin store
           git show FETCH_HEAD:catalog.json > "$RUNNER_TEMP/catalog.json"
-          python3 tools/store-check.py "$RUNNER_TEMP/catalog.json" os-bases/anatase/system_files/usr/share/hearth/store/catalog.json
+          python3 tools/store-check.py "$RUNNER_TEMP/catalog.json" os/system_files/usr/share/hearth/store/catalog.json
           live=$(curl -fsS https://hearthos.fun/store/catalog.json 2>/dev/null | python3 -c 'import json,sys; print(json.load(sys.stdin).get("serial",0))' 2>/dev/null || echo 0)
           new=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["serial"])' "$RUNNER_TEMP/catalog.json")
           if [ "$new" -le "$live" ]; then

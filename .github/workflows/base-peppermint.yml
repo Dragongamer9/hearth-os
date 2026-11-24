@@ -1101,6 +1101,7 @@ jobs:
               ldd /usr/libexec/hearth/apps/$b 2>/dev/null | grep -q "not found" && bad="$bad $b(libraries)"
             done
             command -v labwc >/dev/null || bad="$bad labwc"
+            test -f /usr/share/applications/hearth-store.desktop && test -s /usr/share/hearth/store/catalog.json || bad="$bad hearth-store(menu entry or list)"
             echo "apps: $(ls /usr/libexec/hearth/apps 2>/dev/null | tr "\n" " ")"
             [ -z "$bad" ] || { echo "::error title=Debian again::missing from the image:$bad"; exit 1; }' | tee /tmp/apps.txt
           echo "::notice title=Debian again::$(tail -1 /tmp/apps.txt)"
