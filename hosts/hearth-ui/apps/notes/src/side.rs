@@ -9,6 +9,13 @@ use hearth_ui::Pal;
 use iced::widget::{column, container, mouse_area, row, scrollable, stack, text, Column, Space};
 use iced::{Color, Length, Theme};
 
+/// Hearth Notes' blocks (hearth_ui::blocks).
+pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+    id: "window",
+    title: "Hearth Notes",
+    blocks: &[hearth_ui::blocks::bl("rail", "The icon rail", 0, 0, 1, 12), hearth_ui::blocks::bl("side", "The sidebar", 1, 0, 3, 12), hearth_ui::blocks::bl("page", "The page", 4, 0, 8, 12)],
+}];
+
 pub fn window(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
@@ -16,7 +23,16 @@ pub fn window(a: &App) -> E<'_, Msg> {
         VaultState::Ready => page(a),
         _ => first_run(a),
     };
-    let main = row![rail(a), sidebar(a), container(body).width(Length::Fill).height(Length::Fill)].height(Length::Fill);
+    // its blocks (hearth_ui::blocks): the rail, the sidebar and the page, moved, sized, hidden or restyled; as it was
+    // when nothing is
+    let main = hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "window",
+        vec![("rail", rail(a)), ("side", sidebar(a)), ("page", container(body).width(Length::Fill).height(Length::Fill).into())],
+        |ps| row![ps.take("rail"), ps.take("side"), ps.take("page")].height(Length::Fill).into(),
+        Msg::Describe,
+    );
     let mut col = column![title(a), ui::hline(tn.line), main, hints_for(a)];
     if !a.note.is_empty() {
         col = col.push(container(t(a.note.clone(), f(15.0), if a.note_bad { look::BAD } else { tn.muted })).padding(pad(4.0, z(30.0), 6.0, z(30.0))).width(Length::Fill).style(bx(tn.page, 0.0, None)));
@@ -68,7 +84,7 @@ fn title(a: &App) -> E<'_, Msg> {
             .into()
     };
     let name = row![gap(z(22.0), 1.0), look::mark(&p, z(34.0)), gap(z(16.0), 1.0), tb("Hearth Notes", f(19.0), tn.text), gap(z(10.0), 1.0), t1(format!("· {}", a.vault_name()), f(15.0), tn.muted)].align_y(iced::Center);
-    let drag = mouse_area(container(row![name, Space::new().width(Length::Fill)].align_y(iced::Center)).width(Length::Fill).center_y(Length::Fixed(z(60.0)))).on_press(Msg::Drag).on_double_click(Msg::Maximize);
+    let drag = mouse_area(container(row![name, Space::new().width(Length::Fill)].align_y(iced::Center)).width(Length::Fill).center_y(Length::Fixed(z(60.0)))).on_press(Msg::Drag).on_double_click(Msg::Maximize).on_right_press(Msg::Describe(hearth_ui::describe::DMsg::Open));
     let mut r = row![drag, wbtn(G::Minimize, Msg::Minimize, false), wbtn(G::Maximize, Msg::Maximize, false), wbtn(G::Close, Msg::Close, true)].align_y(iced::Center);
     if let Some(fm) = ui::frame_meter() {
         r = r.push(fm);

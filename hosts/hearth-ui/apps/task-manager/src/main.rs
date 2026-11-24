@@ -372,7 +372,7 @@ impl App {
             }
         }
         let a = App {
-            describe: hearth_ui::describe::Describe::new("task-manager", "Task Manager"),
+            describe: hearth_ui::describe::Describe::new("task-manager", "Task Manager").with_pages(pages::BLOCKS),
             p: hearth_ui::theme::load(),
             page,
             sample: None,

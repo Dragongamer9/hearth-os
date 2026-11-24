@@ -195,6 +195,7 @@ Answer with ONE JSON object and nothing else, one of:\n\
    zones: {zones}\n\
    menus (zone \"menu:<id>\": the items' ids in the order wanted, the rest after them; ids in \"hidden\" leave every menu and bar): {menus}\n\
    pieces: {items}\n\
+{blocks}\
    <feature> = {{\"format\": 1, \"id\": \"<lowercase-dashes>\", \"name\": \"...\", \"part\": <a place>, \"shows\": [{{\"source\", \"label\"}}], \"every\": seconds, \"click\": {{\"action\", \"target\"}}}}\n\
    places: {parts}\n\
    sources: {sources}\n\
@@ -206,9 +207,27 @@ Never write code, commands or file paths. Use plain words for the owner in \"cha
         zones = a.zones.iter().map(|(z, w, d)| format!("{z} ({w}; now {})", d.join(", "))).collect::<Vec<_>>().join("; "),
         menus = a.menus.iter().map(|(m, w)| format!("{m} ({w})")).collect::<Vec<_>>().join(", "),
         items = a.items.iter().map(|(i, w)| format!("{i} ({w})")).collect::<Vec<_>>().join(", "),
+        blocks = block_rules(&catalog()),
         parts = parts.join(", "),
         sources = sources.join(", "),
         actions = actions.join(", ")
+    )
+}
+
+/// What the AI is told of the app's blocks (none when the app didn't say).
+pub fn block_rules(cat: &Value) -> String {
+    let Some(pages) = cat.get("pages").and_then(Value::as_array).filter(|p| !p.is_empty()) else { return String::new() };
+    let list: Vec<String> = pages
+        .iter()
+        .map(|p| {
+            let bl: Vec<String> = p.get("blocks").and_then(Value::as_array).map(|l| l.iter().map(|b| format!("{} ({}; now x {} y {} w {} h {})", b["id"].as_str().unwrap_or(""), b["title"].as_str().unwrap_or(""), b["x"], b["y"], b["w"], b["h"])).collect()).unwrap_or_default();
+            format!("{} ({}): {}", p["id"].as_str().unwrap_or(""), p["title"].as_str().unwrap_or(""), bl.join(", "))
+        })
+        .collect();
+    format!(
+        "   and \"blocks\": {{<page>: {{<block>: {{\"x\", \"y\", \"w\", \"h\" on a 12 x 12 grid (x + w and y + h at most 12), \"hidden\": true|false, \"corners\" 0-48, \"seeThrough\" 0-90, \"font\": {}, \"size\": \"\"|\"smaller\"|\"bigger\", \"accent\": \"#rrggbb\"}}}}}} to move, size, hide, add back (hidden false) or restyle the app's blocks (only the blocks that change; {{}} for a page puts it back as it was)\n   pages and blocks: {}\n",
+        BLOCK_FONTS.iter().map(|f| format!("\"{f}\"")).collect::<Vec<_>>().join("|"),
+        list.join("; ")
     )
 }
 
@@ -249,6 +268,15 @@ pub fn check_layout(a: &AppSchema, l: &Map<String, Value>) -> Result<Map<String,
     let mut out = Map::new();
     let mut errs = Vec::new();
     for (k, v) in l {
+        if k == "blocks" {
+            match check_blocks(a, v, &catalog()) {
+                Ok(b) => {
+                    out.insert(k.clone(), b);
+                }
+                Err(mut e) => errs.append(&mut e),
+            }
+            continue;
+        }
         if k == "zones" {
             match check_zones(a, v) {
                 Ok(z) => {
@@ -319,6 +347,99 @@ pub fn check_zones(a: &AppSchema, v: &Value) -> Result<Value, Vec<String>> {
     if errs.is_empty() { Ok(Value::Object(out)) } else { Err(errs) }
 }
 
+/// The app's pages made of blocks, as the app itself tells (hearth_ui blocks.rs catalog, in HEARTH_APP_BLOCKS when the
+/// app runs hearth-layout): {"cols", "rows", "pages": [{"id", "title", "blocks": [{"id", "title", "x", "y", "w", "h"}]}]}.
+/// Null when the app didn't say (then only the shape of a block is checked).
+pub fn catalog() -> Value {
+    std::env::var("HEARTH_APP_BLOCKS").ok().and_then(|s| serde_json::from_str(&s).ok()).unwrap_or(Value::Null)
+}
+
+pub const BLOCK_FONTS: &[&str] = &["", "Noto Serif", "Noto Sans Mono", "Inter Display"];
+
+/// Blocks moved, sized, hidden or restyled, checked (hearth_ui blocks.rs reads the same): {page: {block: {x, y, w, h,
+/// hidden, corners 0-48, seeThrough 0-90, font, size "" | smaller | bigger, accent "#rrggbb"}}} on a 12 × 12 grid. An
+/// empty page is "that page as the app has it".
+pub fn check_blocks(a: &AppSchema, v: &Value, cat: &Value) -> Result<Value, Vec<String>> {
+    let Some(pages) = v.as_object() else { return Err(vec!["The app's blocks couldn't be read.".into()]) };
+    let cols = cat.get("cols").and_then(Value::as_u64).unwrap_or(12);
+    let rows = cat.get("rows").and_then(Value::as_u64).unwrap_or(12);
+    let idok = |s: &str| !s.is_empty() && s.len() <= 48 && s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-');
+    let mut errs = Vec::new();
+    let mut out = Map::new();
+    for (pg, bl) in pages {
+        let known = cat.get("pages").and_then(Value::as_array).map(|ps| ps.iter().find(|p| p.get("id").and_then(Value::as_str) == Some(pg.as_str())).cloned());
+        let page = match known {
+            Some(None) => {
+                errs.push(format!("{} has no page called \"{pg}\".", a.name));
+                continue;
+            }
+            Some(Some(p)) => Some(p),
+            None if idok(pg) => None,
+            None => {
+                errs.push(format!("A page is named by its id (\"{pg}\")."));
+                continue;
+            }
+        };
+        let Some(bm) = bl.as_object() else {
+            errs.push(format!("The blocks of \"{pg}\" couldn't be read."));
+            continue;
+        };
+        let mut po = Map::new();
+        for (id, b) in bm {
+            let def = page.as_ref().map(|p| p.get("blocks").and_then(Value::as_array).and_then(|l| l.iter().find(|x| x.get("id").and_then(Value::as_str) == Some(id.as_str())).cloned()));
+            let def = match def {
+                Some(None) => {
+                    errs.push(format!("\"{pg}\" has no block called \"{id}\"."));
+                    continue;
+                }
+                Some(Some(d)) => d,
+                None if idok(id) => json!({}),
+                None => {
+                    errs.push(format!("A block is named by its id (\"{id}\")."));
+                    continue;
+                }
+            };
+            let Some(o) = b.as_object() else {
+                errs.push(format!("\"{id}\" couldn't be read."));
+                continue;
+            };
+            let mut bo = Map::new();
+            for (k, x) in o {
+                let n = x.as_u64();
+                let ok = match k.as_str() {
+                    "x" => n.map(|n| n < cols).unwrap_or(false),
+                    "y" => n.map(|n| n < rows).unwrap_or(false),
+                    "w" => n.map(|n| (1..=cols).contains(&n)).unwrap_or(false),
+                    "h" => n.map(|n| (1..=rows).contains(&n)).unwrap_or(false),
+                    "hidden" => x.is_boolean(),
+                    "corners" => n.map(|n| n <= 48).unwrap_or(false),
+                    "seeThrough" => n.map(|n| n <= 90).unwrap_or(false),
+                    "font" => x.as_str().map(|f| BLOCK_FONTS.contains(&f)).unwrap_or(false),
+                    "size" => x.as_str().map(|f| ["", "smaller", "bigger"].contains(&f)).unwrap_or(false),
+                    "accent" => x.as_str().map(|c| c.is_empty() || (c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|h| h.is_ascii_hexdigit()))).unwrap_or(false),
+                    _ => {
+                        errs.push(format!("A block has no \"{k}\" to change."));
+                        continue;
+                    }
+                };
+                if !ok {
+                    errs.push(format!("\"{id}\" can't have {k} {x}."));
+                } else {
+                    bo.insert(k.clone(), if k == "accent" { json!(x.as_str().unwrap_or("").to_lowercase()) } else { x.clone() });
+                }
+            }
+            // it stays on the grid (its own place for what isn't named)
+            let g = |k: &str, d: u64| bo.get(k).and_then(Value::as_u64).or_else(|| def.get(k).and_then(Value::as_u64)).unwrap_or(d);
+            if g("x", 0) + g("w", 1) > cols || g("y", 0) + g("h", 1) > rows {
+                errs.push(format!("\"{id}\" would go off the page."));
+            }
+            po.insert(id.clone(), Value::Object(bo));
+        }
+        out.insert(pg.clone(), Value::Object(po));
+    }
+    if errs.is_empty() { Ok(Value::Object(out)) } else { Err(errs) }
+}
+
 /// The chips under the words (board 11): "Layout: sidebar icons only", "New feature: counts in Downloads".
 pub fn chips(a: &AppSchema, layout: &Map<String, Value>, features: &[feature::Feature]) -> Vec<Value> {
     let mut v = Vec::new();
@@ -336,6 +457,39 @@ pub fn chips(a: &AppSchema, layout: &Map<String, Value>, features: &[feature::Fe
             let names: Vec<&str> = items.as_array().map(|x| x.iter().filter_map(Value::as_str).filter(|i| *i != "sep" && *i != "spacer").collect()).unwrap_or_default();
             let what = what.split(" (").next().unwrap_or(what);
             v.push(json!({"kind": "layout", "text": if zone == "hidden" { format!("Layout: hide {}", names.join(", ")) } else { format!("Layout: {what}: {}", names.join(", ")) }}));
+        }
+    }
+    if let Some(b) = layout.get("blocks").and_then(Value::as_object) {
+        let cat = catalog();
+        let title = |pg: &str, id: Option<&str>| -> String {
+            let p = cat.get("pages").and_then(Value::as_array).and_then(|ps| ps.iter().find(|p| p.get("id").and_then(Value::as_str) == Some(pg)).cloned());
+            match id {
+                None => p.and_then(|p| p.get("title").and_then(Value::as_str).map(str::to_string)).unwrap_or_else(|| pg.to_string()),
+                Some(id) => p
+                    .and_then(|p| p.get("blocks").and_then(Value::as_array).and_then(|l| l.iter().find(|x| x.get("id").and_then(Value::as_str) == Some(id)).and_then(|x| x.get("title").and_then(Value::as_str)).map(str::to_string)))
+                    .unwrap_or_else(|| id.to_string())
+                    .to_lowercase(),
+            }
+        };
+        for (pg, bl) in b {
+            let m = bl.as_object().cloned().unwrap_or_default();
+            if m.is_empty() {
+                v.push(json!({"kind": "layout", "text": format!("Layout: {} as it was", title(pg, None))}));
+                continue;
+            }
+            let hidden: Vec<String> = m.iter().filter(|(_, x)| x.get("hidden") == Some(&json!(true))).map(|(id, _)| title(pg, Some(id))).collect();
+            let moved: Vec<String> = m.iter().filter(|(_, x)| ["x", "y", "w", "h"].iter().any(|k| x.get(*k).is_some()) && x.get("hidden") != Some(&json!(true))).map(|(id, _)| title(pg, Some(id))).collect();
+            let looks: Vec<String> = m.iter().filter(|(_, x)| ["corners", "seeThrough", "font", "size", "accent"].iter().any(|k| x.get(*k).is_some())).map(|(id, _)| title(pg, Some(id))).collect();
+            let t = title(pg, None);
+            if !moved.is_empty() {
+                v.push(json!({"kind": "layout", "text": format!("Layout: {t}: {} moved", moved.join(", "))}));
+            }
+            if !hidden.is_empty() {
+                v.push(json!({"kind": "layout", "text": format!("Layout: {t}: hide {}", hidden.join(", "))}));
+            }
+            if !looks.is_empty() {
+                v.push(json!({"kind": "layout", "text": format!("Look: {t}: {}", looks.join(", "))}));
+            }
         }
     }
     for f in features {
@@ -454,6 +608,28 @@ pub fn keep(a: &AppSchema, change: &Value) -> Result<Value, String> {
         let before = json!({"layout": m.get("layout").cloned().unwrap_or(json!({})), "features": m.get("features").cloned().unwrap_or(json!([]))});
         let mut l = m.get("layout").and_then(Value::as_object).cloned().unwrap_or_default();
         for (k, v) in layout {
+            if k == "blocks" {
+                // the pages named: their blocks named replace those blocks; an empty page is the app's own again
+                let mut b = l.get("blocks").and_then(Value::as_object).cloned().unwrap_or_default();
+                for (pg, bl) in v.as_object().cloned().unwrap_or_default() {
+                    let named = bl.as_object().cloned().unwrap_or_default();
+                    if named.is_empty() {
+                        b.remove(&pg);
+                        continue;
+                    }
+                    let mut page = b.get(&pg).and_then(Value::as_object).cloned().unwrap_or_default();
+                    for (id, x) in named {
+                        page.insert(id, x);
+                    }
+                    b.insert(pg, Value::Object(page));
+                }
+                if b.is_empty() {
+                    l.remove("blocks");
+                } else {
+                    l.insert(k, Value::Object(b));
+                }
+                continue;
+            }
             if k == "zones" {
                 // the zones named replace those zones; the others stay
                 let mut z = l.get("zones").and_then(Value::as_object).cloned().unwrap_or_default();
@@ -597,6 +773,37 @@ mod tests {
             let v = json!({"kind": "app", "layout": {"winbuttons": "dots", "zones": {"titlebar": ["close", "minimize", "maximize", "spacer", "title"]}}});
             assert!(check_answer(a, &v, "like a Mac", false).is_ok(), "{}", a.app);
         }
+    }
+
+    #[test]
+    fn blocks_are_checked_and_kept_page_by_page() {
+        let cat = json!({"cols": 12, "rows": 12, "pages": [{"id": "main", "title": "Main", "blocks": [
+            {"id": "rail", "title": "Pages", "x": 0, "y": 0, "w": 2, "h": 12}, {"id": "page", "title": "The page", "x": 2, "y": 0, "w": 10, "h": 12}]}]});
+        let ok = |v: Value| check_blocks(&TASK_MANAGER, &v, &cat);
+        assert!(ok(json!({"main": {"page": {"x": 0, "w": 12, "corners": 16, "accent": "#FF7A2F"}, "rail": {"hidden": true}}})).is_ok());
+        assert_eq!(ok(json!({"main": {"page": {"accent": "#FF7A2F"}}})).unwrap()["main"]["page"]["accent"], "#ff7a2f");
+        assert!(ok(json!({"main": {}})).is_ok(), "a page back as it was");
+        assert!(ok(json!({"main": {"page": {"x": 4}}})).is_err(), "its own width 10 from 4 goes off the page");
+        assert!(ok(json!({"main": {"page": {"w": 0}}})).is_err());
+        assert!(ok(json!({"main": {"page": {"font": "Wingdings"}}})).is_err());
+        assert!(ok(json!({"main": {"page": {"run": "rm"}}})).is_err());
+        assert!(ok(json!({"main": {"sky": {"x": 0}}})).is_err(), "a block the page hasn't got");
+        assert!(ok(json!({"other": {"page": {"x": 0}}})).is_err(), "a page the app hasn't got");
+        assert!(check_blocks(&TASK_MANAGER, &json!({"main": {"page": {"x": 0, "w": 12}}}), &Value::Null).is_ok(), "no catalog: only the shape");
+
+        let d = tempfile::tempdir().unwrap();
+        std::env::set_var("XDG_CONFIG_HOME", d.path());
+        keep(&TASK_MANAGER, &json!({"layout": {"blocks": {"main": {"rail": {"hidden": true}}}}})).unwrap();
+        keep(&TASK_MANAGER, &json!({"layout": {"blocks": {"main": {"page": {"x": 0, "w": 12}}}}})).unwrap();
+        let g = get("task-manager");
+        assert_eq!(g["layout"]["blocks"]["main"]["rail"]["hidden"], true, "a block not named stays as kept");
+        assert_eq!(g["layout"]["blocks"]["main"]["page"]["w"], 12);
+        undo("task-manager").unwrap();
+        assert!(get("task-manager")["layout"]["blocks"]["main"].get("page").is_none());
+        keep(&TASK_MANAGER, &json!({"layout": {"blocks": {"main": {}}}})).unwrap();
+        assert!(get("task-manager")["layout"].get("blocks").is_none(), "an empty page: the app's own again");
+        let chips = chips(&TASK_MANAGER, &check_layout(&TASK_MANAGER, &json!({"blocks": {"main": {"rail": {"hidden": true}, "page": {"x": 0, "w": 12}}}}).as_object().cloned().unwrap()).unwrap(), &[]);
+        assert_eq!(chips.len(), 2, "{chips:?}");
     }
 
     #[test]

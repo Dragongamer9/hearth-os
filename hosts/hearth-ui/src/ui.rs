@@ -7,22 +7,44 @@ use iced::{border, font, mouse, Background, Border, Color, Element, Font, Length
 use crate::app::INTER;
 use crate::theme::Pal;
 
+// A block's own font (blocks.rs Look: Font and Text size): set only while that block's view is being made, so the
+// text it makes takes it; everywhere else it's Inter at the size asked (no change).
+thread_local! {
+    static FACE: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+    static SCALE: std::cell::Cell<f32> = const { std::cell::Cell::new(1.0) };
+}
+
+/// `f` made with this font family (None: Inter) and text size (1.0: as asked); what it was is put back after.
+pub fn with_face<R>(face: Option<&'static str>, scale: f32, f: impl FnOnce() -> R) -> R {
+    let before = (FACE.with(|x| x.replace(face)), SCALE.with(|x| x.replace(scale)));
+    let r = f();
+    FACE.with(|x| x.set(before.0));
+    SCALE.with(|x| x.set(before.1));
+    r
+}
+fn scaled(size: f32) -> f32 {
+    size * SCALE.with(|x| x.get())
+}
+
 pub fn weight(w: font::Weight) -> Font {
-    Font { weight: w, ..INTER }
+    match FACE.with(|x| x.get()) {
+        Some(n) => Font { weight: w, ..Font::with_name(n) },
+        None => Font { weight: w, ..INTER },
+    }
 }
 
 /// Text in Inter at this size and colour.
 pub fn t<'a>(s: impl text::IntoFragment<'a>, size: f32, c: Color) -> Text<'a> {
-    text(s).size(size).color(c).font(INTER)
+    text(s).size(scaled(size)).color(c).font(weight(font::Weight::Normal))
 }
 pub fn tm<'a>(s: impl text::IntoFragment<'a>, size: f32, c: Color) -> Text<'a> {
-    text(s).size(size).color(c).font(weight(font::Weight::Medium))
+    text(s).size(scaled(size)).color(c).font(weight(font::Weight::Medium))
 }
 pub fn ts<'a>(s: impl text::IntoFragment<'a>, size: f32, c: Color) -> Text<'a> {
-    text(s).size(size).color(c).font(weight(font::Weight::Semibold))
+    text(s).size(scaled(size)).color(c).font(weight(font::Weight::Semibold))
 }
 pub fn tb<'a>(s: impl text::IntoFragment<'a>, size: f32, c: Color) -> Text<'a> {
-    text(s).size(size).color(c).font(weight(font::Weight::Bold))
+    text(s).size(scaled(size)).color(c).font(weight(font::Weight::Bold))
 }
 /// One line, never wrapped (cells, titles): the cell clips what doesn't fit.
 pub fn t1<'a>(s: impl text::IntoFragment<'a>, size: f32, c: Color) -> Text<'a> {
@@ -90,7 +112,7 @@ pub fn btn<'a, M: Clone + 'a>(p: &Pal, label: impl text::IntoFragment<'a>, kind:
         Kind::Normal => if enabled { p.text } else { p.muted },
     };
     let semi = kind != Kind::Normal;
-    let lbl = text(label).size(13.0).color(fg).font(if semi { weight(font::Weight::Semibold) } else { INTER }).wrapping(text::Wrapping::None);
+    let lbl = text(label).size(scaled(13.0)).color(fg).font(weight(if semi { font::Weight::Semibold } else { font::Weight::Normal })).wrapping(text::Wrapping::None);
     let r = p.r(6.0);
     let b = button(container(lbl).center_y(Length::Fixed(20.0)))
         .padding(Padding { top: 7.0, right: if semi { 18.0 } else { 14.0 }, bottom: 7.0, left: if semi { 18.0 } else { 14.0 } })

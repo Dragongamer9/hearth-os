@@ -75,6 +75,17 @@ fn heading<'a>(p: &Pal, s: &str) -> El<'a> {
 }
 
 // ------------------------------------------------------------------ the window
+/// Hearth Files' blocks (hearth_ui::blocks), and the file chooser's.
+const FILE_BLOCKS: &[hearth_ui::blocks::BlockDef] = &[
+    hearth_ui::blocks::bl("sidebar", "The sidebar", 0, 0, 2, 12),
+    hearth_ui::blocks::bl("folder", "The folder", 2, 0, 7, 12),
+    hearth_ui::blocks::bl("preview", "The preview", 9, 0, 3, 12),
+];
+pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[
+    hearth_ui::blocks::PageDef { id: "window", title: "Hearth Files", blocks: FILE_BLOCKS },
+    hearth_ui::blocks::PageDef { id: "chooser", title: "The file chooser", blocks: FILE_BLOCKS },
+];
+
 pub fn view(a: &App) -> El<'_> {
     let p = a.p;
     let picking = a.picking();
@@ -94,10 +105,11 @@ pub fn view(a: &App) -> El<'_> {
         }
     }
     col = col.push(hline(p.line));
-    let mut body = Row::new().height(Length::Fill);
     // Describe it's sidebar: "icons" (icons only) or "hidden", with the dashed outline while it's being tried
-    if a.nav_shown() && a.describe.knob("sidebar") != "hidden" {
-        body = body.push(hearth_ui::describe::outline(&p, a.describe.changing("sidebar"), nav_pane(a))).push(vline(p.line));
+    let has_nav = a.nav_shown() && a.describe.knob("sidebar") != "hidden";
+    let mut pieces: Vec<(&'static str, El)> = Vec::new();
+    if has_nav {
+        pieces.push(("sidebar", hearth_ui::describe::outline(&p, a.describe.changing("sidebar"), nav_pane(a))));
     }
     // The folder, with Act as administrator's red bar above it and the terminal panel (F4) under it.
     let mut mid = Column::new().width(Length::FillPortion(64)).height(Length::Fill);
@@ -115,16 +127,38 @@ pub fn view(a: &App) -> El<'_> {
         let h = (a.area.get().1 * 0.4).clamp(150.0, 260.0);
         mid = mid.push(crate::terminal::view(a, h));
     }
-    body = body.push(mid);
+    let mut folder_row = Row::new().height(Length::Fill).push(mid);
     // Split view (F9): a second folder beside this one.
     if a.split.is_some() && !picking {
-        body = body.push(vline(p.line)).push(container(crate::split::view(a)).width(Length::FillPortion(36)).height(Length::Fill));
+        folder_row = folder_row.push(vline(p.line)).push(container(crate::split::view(a)).width(Length::FillPortion(36)).height(Length::Fill));
     }
+    pieces.push(("folder", folder_row.into()));
     // Describe it's preview: "right" / "right-big" (on the right, bigger) shows it, "off" hides it
     let preview = a.describe.knob("preview");
-    if (a.details_pane || preview.starts_with("right")) && preview != "off" && !picking {
-        body = body.push(vline(p.line)).push(hearth_ui::describe::outline(&p, a.describe.changing("preview"), details_pane(a)));
+    let has_preview = (a.details_pane || preview.starts_with("right")) && preview != "off" && !picking;
+    if has_preview {
+        pieces.push(("preview", hearth_ui::describe::outline(&p, a.describe.changing("preview"), details_pane(a))));
     }
+    // its blocks (hearth_ui::blocks): the sidebar, the folder and the preview, moved, sized, hidden or restyled; the
+    // file chooser has its own; as it was when nothing is
+    let body = hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        if picking { "chooser" } else { "window" },
+        pieces,
+        move |ps| {
+            let mut body = Row::new().height(Length::Fill);
+            if has_nav {
+                body = body.push(ps.take("sidebar")).push(vline(p.line));
+            }
+            body = body.push(ps.take("folder"));
+            if has_preview {
+                body = body.push(vline(p.line)).push(ps.take("preview"));
+            }
+            body.into()
+        },
+        Msg::Describe,
+    );
     col = col.push(body);
     if let Some(j) = &a.job {
         col = col.push(hline(p.line)).push(job_bar(a, j));

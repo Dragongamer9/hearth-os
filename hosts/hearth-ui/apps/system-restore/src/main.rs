@@ -95,7 +95,7 @@ impl App {
     fn new() -> (App, Task<Msg>) {
         let helper = std::env::var("HEARTH_RESTORE_HELPER").unwrap_or_else(|_| run::shell_helper("hearth_restore.py"));
         let mut a = App {
-            describe: hearth_ui::describe::Describe::new("system-restore", "System Restore"),
+            describe: hearth_ui::describe::Describe::new("system-restore", "System Restore").with_pages(BLOCKS),
             p: hearth_ui::theme::load(),
             helper,
             ov: None,
@@ -453,6 +453,18 @@ fn changes(a: &App) -> Vec<Change> {
     out
 }
 
+/// System Restore's blocks (hearth_ui::blocks).
+const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+    id: "main",
+    title: "System Restore",
+    blocks: &[
+        hearth_ui::blocks::bl("header", "Heading", 0, 0, 12, 2),
+        hearth_ui::blocks::bl("list", "Restore points", 0, 2, 8, 9),
+        hearth_ui::blocks::bl("aside", "What will change", 8, 2, 4, 9),
+        hearth_ui::blocks::bl("footer", "Buttons", 0, 11, 12, 1),
+    ],
+}];
+
 fn view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
     let title = hearth_ui::describe::title_bar(&p, &a.describe, G::Restore, "System Restore", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: None, close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3), Msg::Describe(hearth_ui::describe::DMsg::Open));
@@ -524,7 +536,6 @@ fn view(a: &App) -> Element<'_, Msg> {
     aside = aside.push(container(btn(&p, "See every changed setting", Kind::Normal, a.zone == Zone::Aside, if can_see { Some(Msg::SeeChanges) } else { None })).center_x(Length::Fill));
     let aside = container(aside).padding(16.0).width(Length::Fixed(300.0)).height(Length::Fill).style(ui::boxed(p.panel, p.r(10.0), Some((p.line, 1.0))));
 
-    let body = row![left, aside].spacing(16.0).padding(Padding { top: 16.0, right: 22.0, bottom: 16.0, left: 22.0 }).height(Length::Fill);
 
     let make_label = if a.phase == Phase::Working { "Working…" } else { "Make a restore point now" };
     let footer = container(
@@ -542,11 +553,23 @@ fn view(a: &App) -> Element<'_, Msg> {
     .width(Length::Fill)
     .style(ui::boxed(p.bg2, 0.0, None));
 
-    let mut page = column![title, header, hline(p.line), body];
-    if !a.error.is_empty() {
-        page = page.push(container(t(a.error.clone(), 13.0, p.danger)).padding(Padding { top: 0.0, right: 22.0, bottom: 8.0, left: 22.0 }));
-    }
-    page = page.push(hline(p.line)).push(footer);
+    // its blocks (hearth_ui::blocks): moved, sized, hidden or restyled; as it was when nothing is
+    let blocks = hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "main",
+        vec![("header", header.into()), ("list", left.into()), ("aside", aside.into()), ("footer", footer.into())],
+        |ps| {
+            let body = row![ps.take("list"), ps.take("aside")].spacing(16.0).padding(Padding { top: 16.0, right: 22.0, bottom: 16.0, left: 22.0 }).height(Length::Fill);
+            let mut page = column![ps.take("header"), hline(p.line), body];
+            if !a.error.is_empty() {
+                page = page.push(container(t(a.error.clone(), 13.0, p.danger)).padding(Padding { top: 0.0, right: 22.0, bottom: 8.0, left: 22.0 }));
+            }
+            page.push(hline(p.line)).push(ps.take("footer")).into()
+        },
+        Msg::Describe,
+    );
+    let page = column![title, blocks];
     let base: Element<Msg> = container(page).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
 
     let base = if matches!(a.phase, Phase::Confirm | Phase::Changes | Phase::Working | Phase::Done) { ui::dialog(base, dialog(a), None) } else { base };
