@@ -28,7 +28,7 @@ Release: next
 ## 02. System
 - [ ] Screen and sound: Display, Sound, Notifications, Couch Desk and Away (each with its value)
 - [ ] Power and storage: Power & battery, Memory, Storage, Drives & folders
-- [ ] Starting and the desktop: Startup, Your desktop, Boot splash, Install Hearth
+- [ ] Starting and the desktop: Startup, Your desktop, Boot splash (Install Hearth only on the live USB: the owner, Nov 24, "remove the annouying install hearth os in the settings")
 - [ ] Language and time: Date & time, Region & language, Clipboard, Search
 - [ ] Reaching this PC: Remote desktop (VNC through Tailscale), Remote desktop (RDP)
 - [ ] About: About, System information (processor, graphics, sensors, USB, PCI)
