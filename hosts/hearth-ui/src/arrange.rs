@@ -57,8 +57,23 @@ pub fn page<'a, M: Clone + 'a>(
     block: impl Fn(&'static str) -> Element<'a, M> + 'a,
     map: impl Fn(DMsg) -> M + Clone + 'a,
 ) -> Element<'a, M> {
+    page_in(d, pal, page, None, original, block, map)
+}
+
+/// [`page`] for a page that sits in something that scrolls (Settings' pages): laid out or arranged, its blocks take
+/// this height (a grid in a scroll has no height of its own).
+pub fn page_in<'a, M: Clone + 'a>(
+    d: &'a Describe,
+    pal: &Pal,
+    page: &'static str,
+    height: Option<f32>,
+    original: impl FnOnce() -> Element<'a, M>,
+    block: impl Fn(&'static str) -> Element<'a, M> + 'a,
+    map: impl Fn(DMsg) -> M + Clone + 'a,
+) -> Element<'a, M> {
+    let h = height.map(Length::Fixed).unwrap_or(Length::Fill);
     if let Some(a) = d.arr.as_ref().filter(|a| a.page == page) {
-        return editor(d, a, pal, &block, map);
+        return editor(d, a, pal, &block, map, h);
     }
     let Some(placed) = d.laid(page) else { return original() };
     let mut layers: Vec<Element<'a, M>> = Vec::with_capacity(placed.len());
@@ -66,7 +81,7 @@ pub fn page<'a, M: Clone + 'a>(
         let el = dressed(pal, pl, &block);
         layers.push(place(pl, outline(pal, d.block_changing(page, pl.id), el)));
     }
-    stack(layers).width(Length::Fill).height(Length::Fill).into()
+    stack(layers).width(Length::Fill).height(h).into()
 }
 
 struct GridLines(Color);
@@ -100,7 +115,7 @@ fn chip<'a, M: Clone + 'a>(p: &Pal, label: String, on: bool, msg: M) -> Element<
 }
 
 /// Arranging: the grid, the blocks with their bars and corners, Arrange's bar over the page.
-fn editor<'a, M: Clone + 'a>(d: &'a Describe, a: &'a Arrange, pal: &Pal, block: &dyn Fn(&'static str) -> Element<'a, M>, map: impl Fn(DMsg) -> M + Clone + 'a) -> Element<'a, M> {
+fn editor<'a, M: Clone + 'a>(d: &'a Describe, a: &'a Arrange, pal: &Pal, block: &dyn Fn(&'static str) -> Element<'a, M>, map: impl Fn(DMsg) -> M + Clone + 'a, h: Length) -> Element<'a, M> {
     let p = *pal;
     let mut layers: Vec<Element<'a, M>> = vec![canvas::Canvas::new(GridLines(Pal::a(p.text, 0.07))).width(Length::Fill).height(Length::Fill).into()];
     for pl in a.placed.iter().filter(|x| !x.hidden) {
@@ -136,9 +151,9 @@ fn editor<'a, M: Clone + 'a>(d: &'a Describe, a: &'a Arrange, pal: &Pal, block: 
         }
         layers.push(rows.into());
     }
-    let board = mouse_area(container(stack(layers).width(Length::Fill).height(Length::Fill)).width(Length::Fill).height(Length::Fill).style(ui::boxed(Pal::a(p.bg2, 0.6), 0.0, None)))
+    let board = mouse_area(container(stack(layers).width(Length::Fill).height(Length::Fill)).width(Length::Fill).height(h).style(ui::boxed(Pal::a(p.bg2, 0.6), 0.0, None)))
         .on_release(map(DMsg::Drop));
-    column![bar(d, a, &p, map), board].spacing(8.0).width(Length::Fill).height(Length::Fill).into()
+    column![bar(d, a, &p, map), board].spacing(8.0).width(Length::Fill).into()
 }
 
 /// Arrange's bar: which page, the hidden blocks to add back, the picked block's Look, and Undo / Back to the original /
@@ -152,11 +167,14 @@ fn bar<'a, M: Clone + 'a>(d: &'a Describe, a: &'a Arrange, p: &Pal, map: impl Fn
             top = top.push(chip(&p, pg.title.to_string(), pg.id == a.page, map(DMsg::Arrange(Some(pg.id)))));
         }
     }
-    top = top.push(Space::new().width(Length::Fill));
-    top = top.push(ui::btn(&p, "Undo", ui::Kind::Normal, false, Some(map(DMsg::ArrUndo))));
-    top = top.push(ui::btn(&p, "Back to the original", ui::Kind::Normal, false, Some(map(DMsg::ArrReset))));
-    top = top.push(ui::btn(&p, "Done", ui::Kind::Normal, false, Some(map(DMsg::Arrange(None)))));
-    top = top.push(ui::btn(&p, "Keep this", ui::Kind::Primary, false, Some(map(DMsg::ArrKeep))));
+    let buttons = row![
+        ui::btn(&p, "Undo", ui::Kind::Normal, false, Some(map(DMsg::ArrUndo))),
+        ui::btn(&p, "Back to the original", ui::Kind::Normal, false, Some(map(DMsg::ArrReset))),
+        ui::btn(&p, "Done", ui::Kind::Normal, false, Some(map(DMsg::Arrange(None)))),
+        ui::btn(&p, "Keep this", ui::Kind::Primary, false, Some(map(DMsg::ArrKeep))),
+    ]
+    .spacing(10.0)
+    .align_y(iced::Center);
 
     let mut add = Row::new().spacing(8.0).align_y(iced::Center).push(t("Drag a block by its bar to move it, by its corner to size it; ✕ hides it.", 12.0, p.muted));
     let hidden: Vec<&Placed> = a.placed.iter().filter(|x| x.hidden).collect();
@@ -166,7 +184,7 @@ fn bar<'a, M: Clone + 'a>(d: &'a Describe, a: &'a Arrange, p: &Pal, map: impl Fn
             add = add.push(chip(&p, format!("+ {}", h.title), false, map(DMsg::Show(h.id))));
         }
     }
-    let mut body = column![top, add.wrap()].spacing(10.0);
+    let mut body = column![top.wrap(), add.wrap()].spacing(10.0);
     match a.pick.and_then(|id| a.placed.iter().find(|x| x.id == id)) {
         Some(pl) => {
             let mut look = Row::new().spacing(8.0).align_y(iced::Center).push(ts(format!("Look of {}:", pl.title), 12.0, p.text));
@@ -187,11 +205,14 @@ fn bar<'a, M: Clone + 'a>(d: &'a Describe, a: &'a Arrange, p: &Pal, map: impl Fn
         }
         None => body = body.push(t("Pick a block (press its bar) to change its look.", 12.0, p.muted)),
     }
-    if !d.error.is_empty() {
-        body = body.push(t(d.error.clone(), 12.0, p.danger));
+    let status: Element<'a, M> = if !d.error.is_empty() {
+        t(d.error.clone(), 12.0, p.danger).into()
     } else if !d.said.is_empty() {
-        body = body.push(t(d.said.clone(), 12.0, p.good));
-    }
+        t(d.said.clone(), 12.0, p.good).into()
+    } else {
+        Space::new().into()
+    };
+    body = body.push(row![container(status).width(Length::Fill), buttons].spacing(12.0).align_y(iced::Center));
     container(body).padding(Padding { top: 12.0, right: 16.0, bottom: 12.0, left: 16.0 }).width(Length::Fill).style(ui::boxed(p.panel, p.r(12.0), Some((p.accent, 2.0)))).into()
 }
 
@@ -217,7 +238,20 @@ pub fn parts<'a, M: Clone + 'a>(
     original: impl FnOnce(&mut Parts<'a, M>) -> Element<'a, M>,
     map: impl Fn(DMsg) -> M + Clone + 'a,
 ) -> Element<'a, M> {
+    parts_in(d, pal, page_id, None, items, original, map)
+}
+
+/// [`parts`] for a page in something that scrolls ([`page_in`]).
+pub fn parts_in<'a, M: Clone + 'a>(
+    d: &'a Describe,
+    pal: &Pal,
+    page_id: &'static str,
+    height: Option<f32>,
+    items: Vec<(&'static str, Element<'a, M>)>,
+    original: impl FnOnce(&mut Parts<'a, M>) -> Element<'a, M>,
+    map: impl Fn(DMsg) -> M + Clone + 'a,
+) -> Element<'a, M> {
     let cell = std::rc::Rc::new(std::cell::RefCell::new(Parts { items: items.into_iter().map(|(i, e)| (i, Some(e))).collect() }));
     let c2 = cell.clone();
-    page(d, pal, page_id, move || original(&mut cell.borrow_mut()), move |id| c2.borrow_mut().take(id), map)
+    page_in(d, pal, page_id, height, move || original(&mut cell.borrow_mut()), move |id| c2.borrow_mut().take(id), map)
 }

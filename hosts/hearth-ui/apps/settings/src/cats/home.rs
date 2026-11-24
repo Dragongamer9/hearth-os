@@ -405,10 +405,12 @@ fn home_view<'a>(a: &'a App) -> Element<'a, Msg> {
         );
     }
     let changed = titled_card(&p, "Changed lately", Some(("All changes", Msg::Go("changes"))), changed);
-    hearth_ui::arrange::parts(
+    // Home scrolls: laid out or arranged, its blocks take a window's worth of height
+    hearth_ui::arrange::parts_in(
         &a.describe,
         &p,
         "home",
+        Some(680.0),
         vec![("pc", pc), ("tiles", tiles.into()), ("recommended", rec.into()), ("storage", storage.into()), ("changed", changed.into())],
         |ps| {
             let top = row![container(ps.take("pc")).width(Length::FillPortion(13)), ps.take("tiles")].spacing(18.0);
