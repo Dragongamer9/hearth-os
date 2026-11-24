@@ -194,7 +194,11 @@ def retry(pid):
 
 
 def run(pid, builtin, args):
-    p = chosen(pid, builtin)
+    # Red flag 2: whatever is wrong with a part's files, the built-in one starts (this runs Game Mode's host too).
+    try:
+        p = chosen(pid, builtin)
+    except Exception:
+        p = builtin
     if p == builtin:
         os.execv(builtin, [builtin] + args)
     started = time.monotonic()
