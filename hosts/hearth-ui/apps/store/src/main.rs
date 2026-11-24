@@ -985,7 +985,7 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             }
             let w = if on { "on" } else { "off" };
             return Task::perform(
-                net::off(move || {
+                net::off(move || -> Result<bool, String> {
                     let o = std::process::Command::new("pkexec").args([system::ADMIN, "auto-update", w]).stdin(std::process::Stdio::null()).output().map_err(|e| e.to_string())?;
                     let s = String::from_utf8_lossy(&o.stdout).to_string();
                     if o.status.success() { Ok(s.contains("\"auto\": true")) } else { Err(s.lines().rev().find_map(|l| l.strip_prefix("error: ")).unwrap_or("it needs an administrator").to_string()) }
