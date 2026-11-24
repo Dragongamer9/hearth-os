@@ -18,6 +18,10 @@ A copy is used only when all of these hold (red flag 2: an update never leaves a
   * it hasn't failed in this sign-in (a failed start: the built-in one until you sign in again, said once);
   * it hasn't failed twice in a row (then the built-in one until the Store installs another version, said once).
 Anything wrong or missing in here means the built-in one: this never stops an app from starting.
+
+Run as root (sudo with your HOME kept, a root service), the Store's copy is never used: it lives in your home folder,
+which anything running as you can change, so starting it as root would let any program become root. Root's programs
+come only from the system, or from root-owned system parts (hearth-system-part, docs/STORE-SYSTEM-PARTS.md).
 """
 import hashlib
 import json
@@ -36,6 +40,7 @@ ROOT = os.environ.get("HEARTH_PARTS", os.path.join(HOME, ".local/share/hearth/pa
 STATE = os.environ.get("HEARTH_PARTS_STATE", os.path.join(HOME, ".local/state/hearth/parts"))
 RUN = os.environ.get("XDG_RUNTIME_DIR") or os.path.join("/tmp", f"hearth-{os.getuid()}")
 VERSION_FILE = os.environ.get("HEARTH_VERSION_FILE", "/usr/share/nimbus/version")
+_euid = os.geteuid  # (the tests stand in for a person's account when they run as root)
 QUICK = float(os.environ.get("HEARTH_PART_QUICK", "15"))  # closing within this many seconds counts as not starting
 
 
@@ -111,7 +116,7 @@ def _failed_now(pid):
 def chosen(pid, builtin):
     """The Store's copy when it may be used, else the built-in path (never raises)."""
     try:
-        if not _safe_id(pid):
+        if _euid() == 0 or not _safe_id(pid):
             return builtin
         i = info(pid)
         if not i or not isinstance(i.get("version"), str) or not _safe_id(i["version"]):

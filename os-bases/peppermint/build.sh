@@ -344,6 +344,9 @@ cp -avf /ctx/system_files/. /
 cp -avf /ctx/peppermint_files/. /
 # The Hearth Store's quick updates (1.18 on Debian: hearth-part, shared with the Fedora edition before).
 chmod 755 /usr/libexec/hearth/hearth-part
+# Root-owned system parts (1.18, docs/STORE-SYSTEM-PARTS.md): newer copies of the helpers that run as root, never
+# from a home folder; anything wrong and the built-in helper runs.
+chmod 755 /usr/libexec/hearth/hearth-system-part
 # Hearth Plasma's, Hearth GNOME's and Hearth COSMIC's old pieces in the shared system files (still used by other
 # bases): not in this image. (1.13's KDE Plasma and GNOME choices, with their own Hearth pieces, were retired in 1.14:
 # archive/desktops-kde-gnome, docs/archive/DESKTOPS-KDE-GNOME.md.)

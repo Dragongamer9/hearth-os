@@ -75,6 +75,15 @@ is a folder inside your Home (not Home itself) or on a drive mounted under /run/
 /var/mnt that isn't the system drive; never /, /etc, /usr, /boot, /sysroot, /ostree, nothing hidden on the way.
 One JSON line on stdout: {"ok": true, ...} or {"ok": false, "error": "..."}.
 """
+# A newer copy from the Hearth Store (a root-owned system part, hearth-system-part; docs/STORE-SYSTEM-PARTS.md) is
+# used only when one is installed in /var/lib/hearth/system-parts and every check there passes; else this one runs.
+import os as _hsp_os, sys as _hsp_sys  # noqa: E401
+if _hsp_os.environ.get("HEARTH_SYSTEM_PART") != "1" and _hsp_os.path.isfile("/var/lib/hearth/system-parts/hearth-home-server-helper/part.json") \
+        and _hsp_os.access("/usr/libexec/hearth/hearth-system-part", _hsp_os.X_OK):
+    try:
+        _hsp_os.execv("/usr/libexec/hearth/hearth-system-part", ["hearth-system-part", "run", "hearth-home-server-helper", _hsp_os.path.realpath(__file__)] + _hsp_sys.argv[1:])
+    except OSError:
+        pass
 import hashlib
 import importlib.machinery
 import importlib.util

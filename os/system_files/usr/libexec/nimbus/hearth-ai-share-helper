@@ -16,6 +16,15 @@ It only ever writes its own table and file, and /run/hearth/ai-share-firewall.js
 the sharing service reads before it listens on the Tailscale address). Nothing goes through a shell; no argument
 names a path. One JSON line on stdout: {"ok": true, ...} or {"ok": false, "error": "..."}.
 """
+# A newer copy from the Hearth Store (a root-owned system part, hearth-system-part; docs/STORE-SYSTEM-PARTS.md) is
+# used only when one is installed in /var/lib/hearth/system-parts and every check there passes; else this one runs.
+import os as _hsp_os, sys as _hsp_sys  # noqa: E401
+if _hsp_os.environ.get("HEARTH_SYSTEM_PART") != "1" and _hsp_os.path.isfile("/var/lib/hearth/system-parts/hearth-ai-share-helper/part.json") \
+        and _hsp_os.access("/usr/libexec/hearth/hearth-system-part", _hsp_os.X_OK):
+    try:
+        _hsp_os.execv("/usr/libexec/hearth/hearth-system-part", ["hearth-system-part", "run", "hearth-ai-share-helper", _hsp_os.path.realpath(__file__)] + _hsp_sys.argv[1:])
+    except OSError:
+        pass
 import json
 import os
 import shutil

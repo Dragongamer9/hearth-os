@@ -18,6 +18,18 @@ which a handheld with no keyboard couldn't answer. Each command does one narrow 
                                      system Flatpak apps; progress lines, then the JSON. Moving to the released
                                      channel is this same update (bootc switch to :stable instead of bootc
                                      upgrade), so the version it starts from stays the one to go back to
+  hearth-admin update-pause          the Hearth Store's Pause: stops an update that's downloading (bootc keeps what
+                                     it already has, so Get it now carries on from there). Nothing staged changes
+  hearth-admin auto-update on|off|status
+                                     the Hearth Store's "system updates by themselves" (Library › Hearth OS). Off
+                                     unless you turn it on (the owner, Nov 23: "nothing updates by its self"): then
+                                     bootc's timer downloads in the background and the update applies at your next
+                                     restart; it never restarts the PC. /etc/hearth/auto-update, then {"auto": bool}
+  hearth-admin system-part-install ID | system-part-remove ID | system-part-retry ID
+                                     a root-owned system part from the Hearth Store (hearth-system-part,
+                                     docs/STORE-SYSTEM-PARTS.md): only an id Hearth names, only the copy the signed
+                                     list names (stdin may carry the Store's refreshed list, checked here). Always
+                                     asks for an administrator's password (49-hearth-admin.rules)
   hearth-admin rollback              go back to the previous version (bootc's rollback deployment) at the next
                                      restart; run again before restarting, it undoes that. Refused while an update
                                      waits for a restart or when there's no previous version; then the JSON
@@ -146,6 +158,7 @@ import os
 import pwd
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import threading
@@ -854,7 +867,84 @@ def update_room(path='/sysroot'):
     return None
 
 
+# ---------------------------------------------------------------------- the Hearth Store's system updates (1.18)
+UPDATE_PID = '/run/hearth/update.pid'
+AUTO_UPDATE = '/etc/hearth/auto-update'
+NO_AUTO_UPDATE = '/etc/hearth/no-auto-update'
+
+
+def update_mark():
+    """update(): its own process group, named in /run/hearth/update.pid, so the Store's Pause can stop it."""
+    try:
+        os.setpgid(0, 0)
+    except OSError:
+        pass
+    try:
+        os.makedirs(os.path.dirname(UPDATE_PID), mode=0o755, exist_ok=True)
+        with open(UPDATE_PID, 'w') as f:
+            f.write(str(os.getpid()))
+    except OSError:
+        pass
+
+
+def update_pause():
+    """Stops the update that's downloading: only a hearth-admin update process named in the pid file."""
+    try:
+        pid = int(open(UPDATE_PID).read().strip())
+        cmd = open('/proc/%d/cmdline' % pid, 'rb').read().split(b'\0')
+    except (OSError, ValueError):
+        print(json.dumps({'ok': True, 'paused': False}))
+        return
+    if not any(c.endswith(b'hearth-admin') for c in cmd) or b'update' not in cmd:
+        print(json.dumps({'ok': True, 'paused': False}))
+        return
+    try:
+        os.killpg(os.getpgid(pid), signal.SIGTERM)
+    except OSError as e:
+        fail('couldn\'t pause the update (%s)' % e)
+    print(json.dumps({'ok': True, 'paused': True}))
+
+
+def auto_update(what):
+    """The Store's switch. On: bootc's timer may download (its drop-in needs /etc/hearth/auto-update); off: nothing
+    downloads until you press Get it now. Never restarts the PC either way."""
+    if what in ('on', 'off'):
+        os.makedirs('/etc/hearth', mode=0o755, exist_ok=True)
+        if what == 'on':
+            tmp = AUTO_UPDATE + '.tmp'
+            with open(tmp, 'w') as f:
+                f.write('# The Hearth Store: system updates download by themselves and apply at your next restart.\n')
+            os.replace(tmp, AUTO_UPDATE)
+            try:
+                os.unlink(NO_AUTO_UPDATE)
+            except OSError:
+                pass
+        else:
+            try:
+                os.unlink(AUTO_UPDATE)
+            except OSError:
+                pass
+    print(json.dumps({'ok': True, 'auto': os.path.exists(AUTO_UPDATE) and not os.path.exists(NO_AUTO_UPDATE)}))
+
+
+SYSTEM_PART = '/usr/libexec/hearth/hearth-system-part'
+SYSTEM_PART_ID = re.compile(r'[a-z0-9][a-z0-9-]{0,63}')
+
+
+def system_part(cmd, pid):
+    if not SYSTEM_PART_ID.fullmatch(pid or ''):
+        fail('a bad name')
+    if not os.access(SYSTEM_PART, os.X_OK):
+        fail('this Hearth OS has no system parts yet')
+    data = sys.stdin.buffer.read(4 << 20) if cmd == 'install' and not sys.stdin.isatty() else b''
+    r = subprocess.run([SYSTEM_PART, cmd, pid], input=data, capture_output=True)
+    sys.stdout.write(r.stdout.decode(errors='replace'))
+    if r.returncode != 0:
+        fail((r.stderr.decode(errors='replace').strip().splitlines() or ['it didn\'t install'])[-1].replace('hearth-system-part: ', ''))
+
+
 def update():
+    update_mark()
     stage = Stage()
     progress(0, 'Starting')
     # 1.11: a drive filled up by an update can leave the PC unable to start properly. Stop before downloading.
@@ -3243,6 +3333,12 @@ def main(argv):
         unlock(['--remove-package', argv[2]])
     elif cmd == 'update':
         update()
+    elif cmd == 'update-pause' and len(argv) == 2:
+        update_pause()
+    elif cmd == 'auto-update' and len(argv) == 3 and argv[2] in ('on', 'off', 'status'):
+        auto_update(argv[2])
+    elif cmd in ('system-part-install', 'system-part-remove', 'system-part-retry') and len(argv) == 3:
+        system_part(cmd[len('system-part-'):], argv[2])
     elif cmd == 'tdp' and len(argv) == 3:
         tdp(argv[2])
     elif cmd == 'hibernate-setup':
