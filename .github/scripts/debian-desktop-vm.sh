@@ -62,7 +62,7 @@ as "$mode" desktop >/dev/null 2>&1 &
 for i in $(seq 90); do [ -e /run/user/$uid/hearth-shell-up ] && break; sleep 2; done
 sleep 25
 echo "HEARTH-CI-desktop up=$([ -e /run/user/$uid/hearth-shell-up ] && echo yes || echo no) · $(pgrep -a -u $u 'labwc|kwin_wayland|quickshell' 2>/dev/null | cut -c1-80 | head -5 | tr '\n' ';')"
-echo "HEARTH-CI-SHOT desktop"; sleep 10
+echo "HEARTH-CI-SHOT desktop"; sleep 30
 # At rest: Mantel (quickshell) and labwc, every minute: seconds, Mantel's memory (kB), labwc's, Mantel's CPU over the
 # minute (% of a core), memory in use (MB).
 hz=$(getconf CLK_TCK); last=""; start=$SECONDS
@@ -112,7 +112,13 @@ done_shots=" "; t0=$(date +%s); limit=$((REST + 1800))
 while kill -0 $q 2>/dev/null; do
   sleep 3
   for n in $(said 2>/dev/null | sed -n 's/^HEARTH-CI-SHOT //p'); do
-    case "$done_shots" in *" $n "*) ;; *) shot "$n"; done_shots="$done_shots$n " ;; esac
+    case "$done_shots" in *" $n "*) ;; *)
+      # The end: wake the screen first (it turns off when you're away, as it should; the rest shots show that).
+      [ "$n" = end ] && { mon "sendkey shift"; sleep 3; }
+      shot "$n"; done_shots="$done_shots$n "
+      # Mantel itself: the first sign-in's welcome closed (Esc, as "Not now"), then the desktop behind it.
+      if [ "$n" = desktop ]; then mon "sendkey esc"; sleep 2; mon "sendkey esc"; sleep 4; shot mantel; fi ;;
+    esac
   done
   if [ $(( $(date +%s) - t0 )) -gt $limit ]; then shot timeout; ann warning "the virtual PC didn't finish in time; stopped"; kill $q; break; fi
 done
@@ -121,7 +127,7 @@ said > "$OUT/job.txt" 2>/dev/null
 said | grep '^HEARTH-CI-mem ' | cut -d' ' -f2- > "$OUT/memory.txt"
 
 # ---- the verdicts
-v() { grep -a "^$1" "$OUT/job.txt" | tail -1; }
+v() { grep -a "^$1 " "$OUT/job.txt" | tail -1; }   # the space: HEARTH-CI-desktop-END isn't HEARTH-CI-desktop
 ann notice "signed in: $(v HEARTH-CI-session) · login screen: $(v HEARTH-CI-login)"
 ann notice "Game Mode: $(v HEARTH-CI-game)"
 ann notice "Desktop Mode: $(v HEARTH-CI-desktop)"
@@ -134,7 +140,7 @@ import os, sys
 from PIL import Image, ImageStat
 out = sys.argv[1]
 bad = []
-for n in ('game', 'desktop'):
+for n in ('game', 'desktop', 'mantel'):
     p = os.path.join(out, n + '.png')
     if not os.path.exists(p):
         bad.append('%s: no screenshot' % n); continue
