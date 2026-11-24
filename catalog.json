@@ -1,6 +1,6 @@
 {
   "_comment": "The Hearth Store's list of apps, built into Hearth OS (Fedora edition) and updated with each Hearth OS release (docs/HEARTH-STORE.md). Raise 'serial' whenever it changes: a list from hearthos.fun/store is used only when it's signed with the owner's key and its serial is higher. Never put the owner's private apps here (they're in ~/.config/nimbus/store-private.json on his own devices).",
-  "serial": 14,
+  "serial": 15,
   "apps": [
     {
       "id": "command-center",
@@ -632,6 +632,36 @@
       "file": "Craft Anything.AppImage",
       "maker": "other",
       "site": "https://getartcraft.com/apps/craft-anything"
+    },
+    {
+      "id": "artcraft",
+      "name": "Artcraft",
+      "author": "ArtCraft",
+      "tagline": "",
+      "card": "Open source, written in Rust",
+      "about": "Artcraft: a Craft app, open source (MIT or Apache-2.0). Made by ArtCraft, not by Hearth: the Hearth Store gets its newest release from its GitHub page and checks it against its SHA-256 list before installing.",
+      "icon": "Ar",
+      "from": "#787878",
+      "to": "#484848",
+      "github": "storytold/artcraft",
+      "asset": "linux-x86_64.AppImage",
+      "sums": "SHA256SUMS.txt",
+      "file": "Artcraft.AppImage"
+    },
+    {
+      "id": "solidcraft",
+      "name": "SolidCraft",
+      "author": "Tangency Labs",
+      "tagline": "Parametric 3D CAD",
+      "card": "Parametric 3D CAD, open source and written in Rust",
+      "about": "SolidCraft: parametric 3d cad, open source (MIT or Apache-2.0). Made by Tangency Labs, not by Hearth: the Hearth Store gets its newest release from its GitHub page and checks it against its SHA-256 list before installing.",
+      "icon": "So",
+      "from": "#46a1fb",
+      "to": "#2a6096",
+      "github": "tangency-labs/solidcraft",
+      "asset": "linux-x86_64.AppImage",
+      "sums": "SHA256SUMS.txt",
+      "file": "SolidCraft.AppImage"
     }
   ],
   "tests": [
