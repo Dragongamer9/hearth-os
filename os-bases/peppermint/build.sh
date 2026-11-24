@@ -342,6 +342,8 @@ fi
 # Hearth's (os/system_files, shared with the Bazzite build), then this image's Debian-specific ones on top.
 cp -avf /ctx/system_files/. /
 cp -avf /ctx/peppermint_files/. /
+# The Hearth Store's quick updates (1.18 on Debian: hearth-part, shared with the Fedora edition before).
+chmod 755 /usr/libexec/hearth/hearth-part
 # Hearth Plasma's, Hearth GNOME's and Hearth COSMIC's old pieces in the shared system files (still used by other
 # bases): not in this image. (1.13's KDE Plasma and GNOME choices, with their own Hearth pieces, were retired in 1.14:
 # archive/desktops-kde-gnome, docs/archive/DESKTOPS-KDE-GNOME.md.)
@@ -1302,6 +1304,28 @@ if [ -x /usr/bin/hearth-text ]; then
   command -v update-desktop-database >/dev/null && update-desktop-database -q /usr/share/applications || true
 fi
 # ---- end of Hearth Text
+# ---- Hearth's pure-Rust apps (1.18, Debian again; base-peppermint.yml builds them in trixie): the ones the Fedora
+# edition had (Settings, Files, Task Manager, Store, Resource monitor, System Restore, Reliability history, Capture,
+# Notes, Server, the file chooser, the controller, Ideas) and hearth-layout. Each program in /usr/libexec/hearth/apps,
+# and /usr/bin/<name> the Store's two-line start: the Hearth Store's newer copy only when one is installed (hearth-part
+# checks it's for this Hearth OS and hasn't failed), else the built-in one. Mantel's own apps keep their names; these
+# are the -app ones Mantel in Rust and the Store open. One that wasn't built or can't start is left out.
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-store-app hearth-server-app hearth-resmon-app hearth-notes-app hearth-ideas-app hearth-layout; do
+  [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
+  # (Mantel's own command of the same name, if there is one, stays: the Rust one is used only where nothing else is.)
+  [ -e "/usr/bin/$b" ] && { echo "note: /usr/bin/$b is already Mantel's; the Rust one goes to /usr/libexec/hearth/apps only"; install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/libexec/hearth/apps/$b"; continue; }
+  install -Dm755 "/ctx/nimbus-app/hearth-ui/$b" "/usr/libexec/hearth/apps/$b"
+  if [ "$(ldd "/usr/libexec/hearth/apps/$b" 2>&1 | grep -c 'not found' || true)" != 0 ]; then
+    echo "::warning title=Hearth's pure-Rust apps::$b can't start here (missing $(ldd /usr/libexec/hearth/apps/$b | grep 'not found' | awk '{print $1}' | tr '\n' ' ')), left out"
+    rm -f "/usr/libexec/hearth/apps/$b"
+    continue
+  fi
+  printf '#!/bin/sh\n# Hearth %s: the Hearth Store'"'"'s newer copy when one is installed (hearth-part), else the built-in program.\n[ -n "$HOME" ] && [ -e "$HOME/.local/share/hearth/parts/%s/part.json" ] && [ -x /usr/libexec/hearth/hearth-part ] && exec /usr/libexec/hearth/hearth-part run %s /usr/libexec/hearth/apps/%s "$@"\nexec /usr/libexec/hearth/apps/%s "$@"\n' "$b" "$b" "$b" "$b" "$b" > "/usr/bin/$b"
+  chmod 755 "/usr/bin/$b"
+  sh -n "/usr/bin/$b"
+done
+echo "::notice title=Hearth's pure-Rust apps::$(ls /usr/libexec/hearth/apps 2>/dev/null | tr '\n' ' ')"
+
 # ---- Logitech G15 (hearth-g15, docs/G15.md): the keyboard's user service and command line, and its app (hearth-g15-app,
 # menu entry hearth-g15-app.desktop from os/system_files), built by CI next to the
 # Hearth app (base-peppermint.yml) and carried in os/nimbus-app. Its udev rule (70-hearth-g15.rules), user unit

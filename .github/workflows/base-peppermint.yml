@@ -233,6 +233,28 @@ jobs:
           mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-family-app" /tmp/app/
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of hearth-family-app
+      # ---- Hearth's pure-Rust apps (hosts/hearth-ui, hosts/hearth-layout; 1.18, Debian again: the ones the Fedora edition
+      # had) built inside trixie, so they link what the image has, and put in hearth-app.tar's hearth-ui/ (build.sh
+      # installs each in /usr/libexec/hearth/apps with the Store's two-line start). Mantel in Rust and the Store use
+      # them. Not fatal: without them the image is made as before (Mantel's own apps stay as they are).
+      - name: Build Hearth's pure-Rust apps
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          apt-get install -y -qq libxkbcommon-dev libwayland-dev libfontconfig-dev libfreetype-dev >/dev/null
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          if ! (cd hosts/hearth-ui && cargo build --release --workspace) > /tmp/rust-apps.log 2>&1; then
+            awk '/^error/{if (b) print b; b=$0; n=0; next} b && n < 14 {b=b "|" $0; n++} END{if (b) print b}' /tmp/rust-apps.log | head -8 | while read -r l; do echo "::error title=Hearth's pure-Rust apps::$(echo "$l" | cut -c1-3000)"; done
+            exit 1
+          fi
+          (cd hosts/hearth-layout && cargo build --release) >> /tmp/rust-apps.log 2>&1 || { echo "::error title=hearth-layout::$(grep -A8 '^error' /tmp/rust-apps.log | head -30 | tr '\n' '|' | cut -c1-3000)"; exit 1; }
+          mkdir -p /tmp/app/hearth-ui
+          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-store-app hearth-server-app hearth-resmon-app hearth-notes-app hearth-ideas-app hearth-layout; do
+            cp "$CARGO_TARGET_DIR/release/$b" /tmp/app/hearth-ui/ || { echo "::error title=Hearth's pure-Rust apps::$b didn't build"; exit 1; }
+          done
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+          echo "::notice title=Hearth's pure-Rust apps::$(ls /tmp/app/hearth-ui | tr '\n' ' ')"
+      # ---- end of Hearth's pure-Rust apps
       # ---- Hearth Photos and Hearth Documents (hosts/hearth-photos, hosts/hearth-documents): the picture viewer and
       # the PDF / e-book / comic reader, built the same way and put beside the app in hearth-app.tar (build.sh installs
       # them, with their menu entries and file types; their icons come with the Hearth icon set). Not fatal.
@@ -1033,6 +1055,22 @@ jobs:
       # apt, starts played out: unlocked by default, an apt install (and a .deb file) survives a restart, an update
       # starts clean and the reapply puts the packages back, the previous version keeps its own, lock and unlock, a
       # safe start, the boot-chain pin, and the boot guard's tests in the image's Python.
+      # REQUIRED (1.18, Debian again): the Hearth Store's quick updates (hearth-part) and Hearth's pure-Rust apps are in the
+      # image, each started through the Store's two-line start, and Desktop Mode is Mantel on labwc.
+      - name: Store updates and the pure-Rust apps are in the image
+        run: |
+          sudo podman run --rm --entrypoint bash localhost/hearth-peppermint:latest -c '
+            bad=""
+            test -x /usr/libexec/hearth/hearth-part || bad="$bad hearth-part"
+            for b in hearth-settings-app hearth-files-app hearth-task-manager hearth-store-app hearth-resmon-app hearth-layout; do
+              test -x /usr/libexec/hearth/apps/$b || bad="$bad $b"
+              ldd /usr/libexec/hearth/apps/$b 2>/dev/null | grep -q "not found" && bad="$bad $b(libraries)"
+            done
+            command -v labwc >/dev/null || bad="$bad labwc"
+            echo "apps: $(ls /usr/libexec/hearth/apps 2>/dev/null | tr "\n" " ")"
+            [ -z "$bad" ] || { echo "::error title=Debian again::missing from the image:$bad"; exit 1; }' | tee /tmp/apps.txt
+          echo "::notice title=Debian again::$(tail -1 /tmp/apps.txt)"
+
       - name: Writable system (hearth-unlock)
         timeout-minutes: 30
         run: bash .github/scripts/hearth-unlock-check.sh localhost/hearth-peppermint:latest image

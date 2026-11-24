@@ -18,7 +18,7 @@ import unittest
 import urllib.request
 
 REPO = pathlib.Path(__file__).resolve().parents[3]
-TOOL = REPO / "os-bases/anatase/system_files/usr/libexec/hearth/hearth-part"
+TOOL = REPO / "os/system_files/usr/libexec/hearth/hearth-part"
 
 
 def load(tmp_path, version="1.17"):
