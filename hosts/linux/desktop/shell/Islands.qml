@@ -58,11 +58,11 @@ PanelWindow {
     readonly property bool gaming: Theme.look === "gaming"
     // The clock in the middle of a horizontal bar; in a bar with your apps, or down a side, a compact clock at the end.
     readonly property bool pillCentred: !vertical && !holdsApps && !shelf && !centred && Settings.clockAt === ""
-    // a layout's clock at the end, after the status island (Plasma-, Windows 11-, macOS-style); "end-one": one line
+    // a layout's clock at the end, after the status island (like other desktops); "end-one": one line
     readonly property bool clockLast: Settings.clockAt === "end" || Settings.clockAt === "end-one"
     // a layout's Show desktop strip at the very end, after Game Mode (Plasma-, Windows-style)
     readonly property bool showLast: { const e = BarLayout.layout.end || []; return e.length > 0 && e[e.length - 1] === "showdesktop"; }
-    // Desktop layouts (hearth-layout): blocks in the middle of a bar across the top or bottom (Windows 11-style: the
+    // Desktop layouts (hearth-layout): blocks in the middle of a bar across the top or bottom (centred, the
     // flame, Search, Task view and your apps, centred). Down a side they go at the start.
     readonly property bool centred: !vertical && !shelf && (BarLayout.layout.centre || []).length > 0
 
@@ -255,7 +255,7 @@ PanelWindow {
                 rowSpacing: isl.floating ? 10 : 6
                 columnSpacing: isl.floating ? 10 : 6
 
-                // ---- Game Mode first (a layout's choice: Windows 11-style)
+                // ---- Game Mode first (a layout's choice)
                 Loader { active: Settings.gameModeAt === "start"; visible: active && !Settings.gameModeOff; sourceComponent: cGameMode; Layout.alignment: Qt.AlignCenter; Layout.preferredHeight: isl.vertical ? isl.islandH - 6 : isl.style === "bar" ? isl.islandH - 8 : isl.islandH; Layout.preferredWidth: isl.vertical ? isl.islandH - 6 : (item ? item.implicitWidth : 0) }
 
                 // ---- start island: the flame, the desktops, the window in front
@@ -318,7 +318,7 @@ PanelWindow {
                 // ---- the compact clock (with your apps in the bar, or down a side): click for the dashboard
                 Loader { active: !isl.pillCentred && !isl.shelf && !isl.clockLast; visible: active; sourceComponent: cClock; Layout.fillHeight: !isl.vertical; Layout.fillWidth: isl.vertical; Layout.preferredWidth: isl.vertical ? (isl.islandH || 52) : (item ? item.along : 0); Layout.preferredHeight: isl.vertical ? (item ? item.along : 0) : (isl.islandH || 52) }
 
-                // ---- Game Mode before the status island (a layout's choice: macOS-style)
+                // ---- Game Mode before the status island (a layout's choice)
                 Loader { active: Settings.gameModeAt === "before-status"; visible: active && !Settings.gameModeOff; sourceComponent: cGameMode; Layout.alignment: Qt.AlignCenter; Layout.preferredHeight: isl.vertical ? isl.islandH - 6 : isl.style === "bar" ? isl.islandH - 8 : isl.islandH; Layout.preferredWidth: isl.vertical ? isl.islandH - 6 : (item ? item.implicitWidth : 0) }
 
                 // ---- the status island
@@ -558,9 +558,9 @@ PanelWindow {
         id: cSearch
         Rectangle {   // the Tiles menu's search field: click to search (what you type shows here)
             objectName: "menuSearchField"
-            // the Tiles menu's field; with a desktop layout that put Search in the bar, every menu's (Windows 11-style)
+            // the Tiles menu's field; with a desktop layout that put Search in the bar, every menu's
             readonly property bool wanted: isl.menuSearchShown || (Settings.layout !== "" && !isl.vertical && !isl.shelf && !isl.compact)
-            // at the end of the bar (macOS-style) only its magnifier
+            // at the end of the bar only its magnifier
             readonly property bool iconOnly: (BarLayout.layout.end || []).indexOf("search") >= 0
             implicitWidth: iconOnly ? Math.max(26, isl.islandH - 12) : 300; implicitHeight: Math.max(26, isl.islandH - 14)
             radius: Theme.r(8)

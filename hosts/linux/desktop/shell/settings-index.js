@@ -5511,29 +5511,48 @@ var ENTRIES = [
 "p": "winapps"
 },
 {
-"t": "Window manager",
-"p": "your-desktop",
-"d": "What draws, moves and snaps Mantel's windows, from the next time Desktop Mode starts. KWin (KDE's) is the default from Hearth 1.14; labwc is the one Mantel used before."
-},
-{
 "t": "Running now",
 "p": "your-desktop"
 },
 {
 "t": "Safe start",
 "p": "your-desktop",
-"d": "If KWin doesn't start, Mantel opens on labwc for that sign-in and tells you why. Twice in a row, it stays on labwc until you pick KWin again. Your choice stays saved."
+"d": "If Mantel in Rust closes right after it starts, Mantel opens instead for that sign-in. Your choice stays saved."
 },
 {
-"t": "KDE Plasma and GNOME",
+"t": "KWin, Firehold, KDE Plasma and GNOME",
 "p": "your-desktop",
-"d": "Retired in Hearth 1.14: Mantel is the desktop. A KDE Plasma or GNOME pick from before opens Mantel, and Hearth tells you once."
+"d": "Not used since Hearth 1.18: Desktop Mode is Mantel or Mantel in Rust, on labwc. A pick from before opens Mantel, and Hearth tells you once."
 },
 {
 "t": "Right now",
 "p": "your-desktop",
 "d": "This PC opens Firehold on labwc, your earlier pick. Use Mantel to switch to Hearth Classic.",
 "i": "info"
+},
+{
+"t": "Hearth OS Mantel",
+"p": "your-desktop",
+"d": "The bar, the dock, Quick Access and Game Mode one press away",
+"i": "desktops"
+},
+{
+"t": "Your desktop couldn't be drawn",
+"p": "your-desktop",
+"d": "Mantel's bar and dock are back so nothing's lost. Pick it again to try once more.",
+"i": "warn"
+},
+{
+"t": "Show the first-start choice",
+"p": "your-desktop",
+"d": "The full-screen \"How do you want your desktop?\" a new install opens with",
+"i": "info"
+},
+{
+"t": "Ask again before they reach anything",
+"p": "your-desktop",
+"d": "Forgets every Allow and No you gave your blocks",
+"i": "shield"
 },
 {
 "t": "Clean up",

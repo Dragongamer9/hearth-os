@@ -224,7 +224,7 @@ class BarOnEveryEdge(unittest.TestCase):
         self.assertIn('active: perScreen.portrait || perScreen.newFailed', sh)
         self.assertIn('newFailed = true;', sh)
         t = read('Theme.qml')
-        self.assertIn('readonly property string barKey: barEdge + "/" + (dockFloats ? "dock" : "nodock")', t)
+        self.assertIn('readonly property string barKey: barEdge + "/" + (dockFloats ? "dock" : appsNowhere ? "none" : "nodock")', t)
 
     def test_the_game_mode_button_on_every_edge(self):
         i = code(read('Islands.qml'))
