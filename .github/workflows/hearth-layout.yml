@@ -155,7 +155,7 @@ jobs:
       - name: labwc, as the image has it
         run: |
           tar -C / -xzf /tmp/qsa/quickshell.tgz
-          dnf5 -y install git python3 wlr-randr mesa-vulkan-drivers vulkan-loader python3-pillow procps-ng dbus-daemon dbus-tools findutils foot google-noto-sans-fonts rsms-inter-fonts >/dev/null 2>&1 || true
+          dnf5 -y install git python3 wlr-randr mesa-vulkan-drivers vulkan-loader python3-pillow procps-ng dbus-daemon dbus-tools findutils foot google-noto-sans-fonts rsms-inter-fonts wtype shadow-utils >/dev/null 2>&1 || true
           bash os-bases/anatase/labwc-install.sh 2>&1 | grep -E '::|^Error' || true
           mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
           install -Dm755 /tmp/hl/hearth-layout /usr/local/bin/hearth-layout
@@ -174,4 +174,6 @@ jobs:
           git rm -rfq --cached . >/dev/null
           rm -rf shots && mkdir shots && cp /tmp/out/*.jpg /tmp/out/*.log /tmp/out/*.txt shots/ 2>/dev/null
           git add -f shots
-          git commit -qm "Desktop layouts pictures ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/layouts-shots || true
+          to=ci/layouts-shots; [ "$GITHUB_REF_NAME" = feature/desktop-layouts ] || to="ci/layouts-shots-$(printf '%s' "$GITHUB_REF_NAME" | tr -c 'A-Za-z0-9._-' '-')"
+          git commit -qm "Desktop layouts pictures ($GITHUB_RUN_ID)" && git push -f -q origin "HEAD:refs/heads/$to" || true
+          echo "::notice title=pictures::branch $to"

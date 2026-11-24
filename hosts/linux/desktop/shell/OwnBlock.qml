@@ -17,6 +17,8 @@ Rectangle {
     property var out: null
     property bool once: false
     property int every: 30
+    // false: its ask isn't drawn on the block (the editor's board 5 asks beside it); it waits for the answer instead
+    property bool askHere: true
     radius: st.corners !== undefined ? st.corners : 10
     color: st.colour || "#121212"
     border.width: 2; border.color: Qt.rgba(1, 0.48, 0.18, 0.55)
@@ -36,6 +38,9 @@ Rectangle {
         onExited: (code) => { if (code !== 0 && !ob.out) ob.out = { ok: false, error: "It stopped by itself (too big or too slow)." }; }
     }
     Timer { interval: Math.max(5, ob.every) * 1000; running: ob.visible && !!ob.out && ob.out.ok === true; repeat: true; onTriggered: ob.look() }
+    // while it waits for Allow / Just this once / No (here or beside it), it looks again every few seconds: once
+    // allowed it's live (run-block reaches nothing before that)
+    Timer { interval: 3000; running: ob.visible && !!ob.out && !!ob.out.asks && !ob.out.no && ob.out.ok !== true; repeat: true; onTriggered: ob.look() }
     Component.onCompleted: look()
 
     // what it read
@@ -73,7 +78,7 @@ Rectangle {
     Column {
         anchors { fill: parent; margins: 16 }
         spacing: 8
-        visible: !!ob.out && !!ob.out.asks && !ob.out.no
+        visible: ob.askHere && !!ob.out && !!ob.out.asks && !ob.out.no
         Text { width: parent.width; wrapMode: Text.WordWrap; text: ob.out && ob.out.asks ? ob.out.asks.title : ""; color: "white"; font.family: ob.fontName; font.pixelSize: 15; font.weight: Font.DemiBold }
         Text { width: parent.width; wrapMode: Text.WordWrap; text: ob.out && ob.out.asks ? ob.out.asks.sub : ""; color: Qt.rgba(1, 1, 1, 0.7); font.family: ob.fontName; font.pixelSize: 12 }
         Row {
@@ -100,8 +105,8 @@ Rectangle {
     Process { id: allowP; onExited: ob.look() }
     Text {
         anchors.centerIn: parent; width: parent.width - 30; horizontalAlignment: Text.AlignHCenter; wrapMode: Text.WordWrap
-        visible: !!ob.out && ob.out.ok !== true && (!ob.out.asks || ob.out.no)
-        text: !ob.out ? "" : ob.out.no ? (ob.out.asks ? "You said No to " + ob.out.asks.value + ". Settings › Your desktop › Your blocks asks again." : "")
+        visible: !!ob.out && ob.out.ok !== true && (!ob.out.asks || ob.out.no || !ob.askHere)
+        text: !ob.out ? "" : (!ob.askHere && ob.out.asks && !ob.out.no) ? "It shows here once you answer its ask: Allow or Just this once" : ob.out.no ? (ob.out.asks ? "You said No to " + ob.out.asks.value + ". Settings › Your desktop › Your blocks asks again." : "")
               : ob.out.off ? "Off (Settings › Your desktop › Your blocks)" : (ob.out.error || "")
         color: Qt.rgba(1, 1, 1, 0.7); font.family: ob.fontName; font.pixelSize: 13
     }

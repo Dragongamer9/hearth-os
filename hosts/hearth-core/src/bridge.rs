@@ -516,6 +516,20 @@ impl Bridge {
                 crate::space::answer_later_to(self.cur_id.clone(), Some(self.cur_label.clone()), move || crate::hearth_mods::call(&name, &args, start));
                 Ok(json!(DEFERRED))
             }
+            // ---- Game Mode made of blocks (build-anything board 6): Describe it (your AI changes the page, through
+            // hearth-layout) and Say it (your words heard), by desktop/shell/hearth-gm-blocks; answered when done.
+            "gmblocks.describe" | "gmblocks.listen" => {
+                let helper = paths::desktop_dir().join("shell/hearth-gm-blocks");
+                let args: Vec<String> = if method == "gmblocks.listen" { vec!["listen".to_string()] } else {
+                    vec!["describe".to_string(), a["page"].as_str().unwrap_or("home").chars().take(20).collect(),
+                         a["text"].as_str().unwrap_or("").chars().take(1000).collect(), a["screen"].to_string()]
+                };
+                crate::space::answer_later_to(self.cur_id.clone(), Some(self.cur_label.clone()), move || {
+                    let r: Vec<&str> = args.iter().map(|x| x.as_str()).collect();
+                    helper_run(&helper, &r, &mut |_, _| {})
+                });
+                Ok(json!(DEFERRED))
+            }
             // ---- end of Hearth's gaming apps
             // ---- Bazaar, Hearth OS's app store (bazaar.rs): Game Mode's menu › Apps
             "bazaar.open" => crate::bazaar::open(crate::signin_handoff::game_mode()),
