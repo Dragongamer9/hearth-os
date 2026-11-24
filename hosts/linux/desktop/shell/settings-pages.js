@@ -19,6 +19,7 @@ var CATEGORIES = [
     { id: "pers", icon: "palette", label: "Personalization", landing: "appearance" },
     { id: "apps", icon: "store", label: "Apps", landing: "apps-home" },
     { id: "gaming", icon: "pad", label: "Gaming", landing: "gaming" },
+    { id: "ai", icon: "ai", label: "AI", landing: "ai" },
     { id: "accounts", icon: "user", label: "Accounts", landing: "accounts" },
     { id: "hs", icon: "server", label: "Home server", landing: "hs-overview" },
     { id: "privacy", icon: "shield", label: "Privacy & security", landing: "privacy" },
@@ -158,6 +159,9 @@ var PAGES = [
     { id: "handheld", file: "SetHandheld.qml", cat: "gaming", label: "Handheld", icon: "bolt", desc: "Power limit, fans, lights and back buttons (Handheld Daemon)", words: "hhd tdp rgb lights fans", old: "Handheld" },
 
     // ---- Accounts
+    // ---- AI (1.18, the owner's approved mockups settings-cleanup ai-1 to ai-4: everything AI in one place; the Rust
+    // Settings draws it, from hearth-ai-check)
+    { id: "ai", file: "SetCategory.qml", cat: "ai", label: "AI", icon: "ai", landing: true, words: "ai ollama colibri model qwen llm describe ithil photos share engine" },
     { id: "accounts", file: "SetCategory.qml", cat: "accounts", label: "Accounts", icon: "user", landing: true },
     { id: "users", file: "SetUsers.qml", cat: "accounts", label: "Your account and other people", icon: "users", desc: "Your picture and name, other people on this PC", words: "accounts users people family", old: "Users" },
     { id: "signin", file: "SetSignin.qml", cat: "accounts", label: "Sign-in options", icon: "lock", desc: "Sign in automatically, password, lock after sleep", words: "password login autologin lock", old: "Sign-in" },

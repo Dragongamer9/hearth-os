@@ -115,7 +115,7 @@ mod tests {
     use super::*;
     #[test]
     fn every_category_and_page_is_there() {
-        assert_eq!(CATEGORIES.len(), 13);
+        assert_eq!(CATEGORIES.len(), 14);
         for c in CATEGORIES {
             assert!(page(c.2).is_some(), "{} has no landing page {}", c.0, c.2);
         }

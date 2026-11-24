@@ -8,7 +8,7 @@ Other be Build your own Desktop", then "looks good". Builds on desktop-layouts.m
 Sources: hearth-workspace `hearth/mockups/build-anything`.
 
 Mockups: build-anything/anything-1-no-two-alike.png, build-anything/anything-2-console-dashboard.png, build-anything/anything-3-icon-row-home.png, build-anything/anything-4-block-editor.png, build-anything/anything-5-ai-made-block.png, build-anything/anything-6-game-mode-blocks.png, build-anything/anything-7-first-start.png
-Release: next
+Release: 1.18
 
 ## 1. No two desktops are the same
 - [ ] Any desktop made from blocks, each person's own, on the same Hearth (apps, games, updates, settings)
