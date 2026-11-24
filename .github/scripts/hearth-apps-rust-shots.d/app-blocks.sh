@@ -5,6 +5,8 @@
 BC=/tmp/blocks-cfg
 rm -rf "$BC"; mkdir -p "$BC/nimbus/apps"
 
+# (Not measured at rest here: Task Manager samples every second, and its at-rest reading moved 0.1–0.4% between
+# runs of the same build; describe-everywhere.sh and task-manager.sh measure it.)
 # Task Manager: the side wider on rounded cards with the orange edge; on Processes the title and buttons at the bottom,
 # see-through, in Noto Serif.
 cat > "$BC/nimbus/apps/task-manager.json" <<'J'
@@ -41,7 +43,7 @@ J
 # A file that can't be read: the app opens as it always looks (never a broken app).
 echo '{"format": 1, "layout": {"blocks": {"window": {"side": {"x": 40}}}}' > "$BC/nimbus/apps/g15.json"
 
-run app-blocks-01-task-manager hearth-tasks 10 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-task-manager"
+run app-blocks-01-task-manager hearth-tasks 0 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-task-manager"
 run app-blocks-02-reliability hearth-reliability 0 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-reliability-history"
 run app-blocks-03-system-restore hearth-restore 0 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-system-restore"
 run app-blocks-04-store hearth-store 0 env XDG_CONFIG_HOME="$BC" "$BIN/hearth-store-app"
