@@ -593,6 +593,9 @@ def available():
         # Dwell click (hearth-dwell): Mantel on KWin, with python3-evdev for its virtual mouse.
         'dwell': mode() == 'kwin' and evdev_there(),
         'dwellKinds': list(DWELL_KINDS),
+        # Sticky keys, slow keys and mouse keys: KWin's own (Mantel on KWin). labwc has none of them, so on Hearth's
+        # desktop (labwc) they're saved and Settings says plainly they aren't on this desktop.
+        'keys': mode() == 'kwin',
     }
 
 

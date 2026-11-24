@@ -15,13 +15,16 @@ pub struct Prefs {
     pub metered: bool,
     /// "Get test versions" (off; on only on the owner's devices, by him).
     pub test: bool,
+    /// "Hearth parts by themselves" (Settings › Updates & recovery; off by default, the owner Nov 23: nothing updates
+    /// by itself until you turn it on): the daily check puts ready updates in place for apps that aren't open.
+    pub auto: bool,
     /// The file couldn't be read (and its .bak neither): nothing is written over it.
     pub unreadable: bool,
 }
 
 impl Default for Prefs {
     fn default() -> Self {
-        Prefs { daily: true, notify: true, metered: false, test: false, unreadable: false }
+        Prefs { daily: true, notify: true, metered: false, test: false, auto: false, unreadable: false }
     }
 }
 
@@ -35,7 +38,7 @@ pub fn load() -> Prefs {
         settings_file::Read::Unreadable => Prefs { unreadable: true, ..d },
         r => {
             let m = r.map().unwrap_or_default();
-            Prefs { daily: b(&m, "daily", d.daily), notify: b(&m, "notify", d.notify), metered: b(&m, "metered", d.metered), test: b(&m, "testVersions", d.test), unreadable: false }
+            Prefs { daily: b(&m, "daily", d.daily), notify: b(&m, "notify", d.notify), metered: b(&m, "metered", d.metered), test: b(&m, "testVersions", d.test), auto: b(&m, "autoParts", d.auto), unreadable: false }
         }
     }
 }
@@ -48,6 +51,7 @@ pub fn set(key: &str, on: bool) -> Result<Prefs, String> {
     }
     let k = match key {
         "test" => "testVersions",
+        "auto" => "autoParts",
         k => k,
     };
     let mut m = Map::new();
@@ -66,7 +70,7 @@ mod tests {
         std::env::set_var("HOME", d.path());
         std::env::set_var("XDG_CONFIG_HOME", d.path().join(".config"));
         let p = load();
-        assert!(p.daily && p.notify && !p.metered && !p.test, "update notice on by default (the owner)");
+        assert!(p.daily && p.notify && !p.metered && !p.test && !p.auto, "update notice on by default (the owner)");
         assert!(!crate::paths::prefs().exists(), "reading writes nothing");
         std::fs::create_dir_all(crate::paths::prefs().parent().unwrap()).unwrap();
         std::fs::write(crate::paths::prefs(), r#"{"notify": false, "other": 1}"#).unwrap();

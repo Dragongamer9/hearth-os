@@ -3,6 +3,9 @@
 
   hearth-settings-values <section>          JSON: {"key": "value shown on the row", ...} for one section
   hearth-settings-values set <key> <on|off> turns a switch on a section page on or off, through the tool that owns it
+  hearth-settings-values opened <page>      counts one opening of a Settings page (Home's "You use these most"): a
+                                            small state file (~/.local/state/hearth/settings-opens.json), never a
+                                            setting, written with hearth_settings_io (atomic)
 
 Every value is read from this PC: a value that can't be read is left out (the row then shows none), never made up.
 Each read has a short time limit and runs beside the others, so a slow tool can't hold the page. Nothing here writes
@@ -192,7 +195,7 @@ def r_wifi():
     rc, o, _ = run(['nmcli', '-t', '-f', 'WIFI', 'radio'])
     if rc == 0:
         put(wifi_on='on' if 'enabled' in o else 'off')
-    rc, o, _ = run(['nmcli', '-t', '-f', 'IN-USE,SSID,SIGNAL,SECURITY,FREQ', 'device', 'wifi', 'list', '--rescan', 'no'])
+    rc, o, _ = run(['nmcli', '-t', '-f', 'IN-USE,SSID,SIGNAL,SECURITY,FREQ,RATE', 'device', 'wifi', 'list', '--rescan', 'no'])
     nets, seen = [], set()
     saved = set()
     rc2, o2, _ = run(['nmcli', '-t', '-f', 'NAME,TYPE', 'connection', 'show'])
@@ -212,6 +215,8 @@ def r_wifi():
         if p[0] == '*':
             line = ' · '.join(x for x in ('connected', strength, sec) if x)
             put(wifi_name=p[1].replace('\\:', ':'))
+            if len(p) > 5 and p[5]:
+                put(wifi_rate=p[5].replace('Mbit/s', 'Mb/s'))
             nets.insert(0, {'name': p[1], 'line': line, 'connected': True})
         elif p[1] in saved:
             nets.append({'name': p[1], 'line': 'saved · ' + band, 'connected': False})
@@ -224,9 +229,27 @@ def r_wifi():
         if len(p) >= 4 and p[2] == 'connected' and p[1] in ('wifi', 'ethernet'):
             rc3, o3, _ = run(['nmcli', '-t', '-g', 'IP4.ADDRESS,GENERAL.METERED', 'device', 'show', p[0]])
             ip = o3.splitlines()[0].split('/')[0] if o3 else ''
-            put(net_name=p[3], net_kind='Wi-Fi' if p[1] == 'wifi' else 'Wired', net_ip=ip,
+            with LOCK:
+                rate = OUT.get('wifi_rate', '')
+            kind = 'Wi-Fi' if p[1] == 'wifi' else 'Wired'
+            put(net_name=p[3], net_kind=kind + (' · ' + rate if rate and p[1] == 'wifi' else ''), net_ip=ip,
                 metered='on' if 'yes' in o3.lower() else 'off')
             break
+
+
+def r_net_more():
+    if has('nmcli'):
+        rc, o, _ = run(['nmcli', '-t', '-f', 'NAME,TYPE', 'connection', 'show', '--active'])
+        vpn = [l.rsplit(':', 1)[0] for l in o.splitlines() if l.rsplit(':', 1)[-1] in ('vpn', 'wireguard')]
+        put(vpn=vpn[0][:24] if vpn else 'none')
+        hot = False
+        for l in o.splitlines():
+            if l.endswith(':802-11-wireless'):
+                rc2, o2, _ = run(['nmcli', '-t', '-g', '802-11-wireless.mode', 'connection', 'show', l.rsplit(':', 1)[0]])
+                hot = hot or o2.strip() == 'ap'
+        put(hotspot='on' if hot else 'off')
+    proxy = os.environ.get('https_proxy') or os.environ.get('HTTPS_PROXY') or os.environ.get('http_proxy') or ''
+    put(proxy='set' if proxy else 'none')
 
 
 def r_tailscale():
@@ -279,18 +302,54 @@ def r_time():
     put(region=names.get(lang.split('.')[0], lang.split('.')[0]))
 
 
+KINDS = {'laptop': 'Laptop', 'handheld': 'Handheld', 'desktop': 'Desktop', 'tv': 'TV', 'server': 'Home server'}
+
+
 def r_link():
-    j = helper('hearth-link-settings', 'status')
+    j = helper('hearth-link-settings', 'status', timeout=8)
     if not isinstance(j, dict):
         return
+    st = j.get('settings') or {}
+    put(link_files='on', link_clipboard='on' if st.get('clipboard') else 'off', link_library='on' if st.get('sync', True) else 'off')
+    mine = [p for p in j.get('peers') or [] if isinstance(p, dict) and (p.get('relation') or 'mine') == 'mine' and not p.get('friend')]
+    health = helper('hearth-device-status', 'devices', timeout=8)
+    by_id = {}
+    if isinstance(health, dict):
+        for d in health.get('devices') or []:
+            if isinstance(d, dict) and d.get('id'):
+                by_id[d['id']] = d
+    users = {}
+    ai = helper('hearth-link-settings', 'ai-status', timeout=8)
+    if isinstance(ai, dict):
+        for c in ai.get('clients') or []:
+            if isinstance(c, dict) and not c.get('stopped'):
+                users[c.get('id')] = True
+        put(ai_share='sharing' if ai.get('serve') else 'off',
+            ai_users=', '.join(c.get('name', '') for c in ai.get('clients') or [] if isinstance(c, dict) and not c.get('stopped'))[:60])
     devs = []
-    for d in j.get('paired') or j.get('devices') or []:
-        if not isinstance(d, dict):
-            continue
-        devs.append({'name': d.get('name', ''), 'kind': d.get('kind', ''), 'online': bool(d.get('online')),
-                     'line': d.get('doing', '') or d.get('status', '')})
-    put(link_devices=devs, link_count='%d device%s' % (len(devs), '' if len(devs) == 1 else 's'),
-        link_names=', '.join(d['name'] for d in devs[:3]))
+    for p in mine:
+        d = by_id.get(p.get('id'), {})
+        stt = d.get('status') if isinstance(d.get('status'), dict) else {}
+        kind = KINDS.get(stt.get('kind') or p.get('kind') or '', '')
+        bits = [kind]
+        bat = stt.get('battery') if isinstance(stt.get('battery'), dict) else None
+        if bat and bat.get('percent') is not None:
+            bits.append('%d%%' % round(bat['percent']))
+        cpu = stt.get('cpu') if isinstance(stt.get('cpu'), dict) else {}
+        if cpu.get('temp'):
+            bits.append('%d °C' % round(cpu['temp']))
+        playing = stt.get('playing') if isinstance(stt.get('playing'), dict) else None
+        if playing and playing.get('title'):
+            bits.append('playing ' + str(playing['title'])[:30])
+        elif p.get('online') and stt:
+            bits.append('idle')
+        mode = {'game': 'in Game Mode', 'desktop': 'in Desktop Mode', 'server': 'in Server mode'}.get(stt.get('mode') or '', '')
+        uses = "using this PC's AI" if users.get(p.get('id')) else mode
+        name = p.get('name') or 'Device'
+        devs.append({'id': p.get('id', ''), 'name': name, 'letter': name[:1].upper(), 'line': ' · '.join(b for b in bits if b),
+                     'uses': uses, 'online': bool(p.get('online'))})
+    n = len(devs)
+    put(link_devices=devs, link_count='%d device%s' % (n, '' if n == 1 else 's'), link_names=', '.join(d['name'] for d in devs[:3]))
 
 
 def r_ai():
@@ -299,12 +358,9 @@ def r_ai():
         return
     a = j.get('answering')
     if isinstance(a, dict):
-        put(ai_state='answering', ai_model=a.get('model', ''), ai_engine=a.get('engine', ''))
+        put(ai_state='answering', ai_model=a.get('model', ''), ai_engine=a.get('label', ''))
     else:
         put(ai_state='not answering')
-    sh = j.get('share') or {}
-    if isinstance(sh, dict):
-        put(ai_share='sharing' if sh.get('on') else 'off')
 
 
 def r_server():
@@ -334,10 +390,13 @@ def r_apps():
 def r_privacy():
     if has('ufw'):
         rc, o, _ = run(['ufw', 'status'])
-        put(firewall='on' if 'active' in o and 'inactive' not in o else 'off')
+        if rc == 0:
+            on = 'active' in o and 'inactive' not in o
+            ports = len([l for l in o.splitlines() if 'ALLOW' in l and '(v6)' not in l])
+            put(firewall='on' if on else 'off', firewall_line='ufw · %d open' % ports if on else 'ufw')
     elif has('firewall-cmd'):
         rc, o, _ = run(['firewall-cmd', '--state'])
-        put(firewall='on' if 'running' in o else 'off')
+        put(firewall='on' if 'running' in o else 'off', firewall_line='firewalld')
     if has('mokutil'):
         rc, o, _ = run(['mokutil', '--sb-state'])
         put(secure_boot='on' if 'enabled' in o else 'off')
@@ -349,6 +408,8 @@ def r_access():
     j = helper('hearth-access', 'status')
     if isinstance(j, dict) and isinstance(j.get('settings'), dict):
         put(access=j['settings'])
+        av = j.get('available') if isinstance(j.get('available'), dict) else {}
+        put(access_keys='yes' if av.get('keys') else 'no')
 
 
 
@@ -368,7 +429,11 @@ def r_look():
     put(reduce_motion='on' if d.get('reduceMotion') else 'off')
     look = (d.get('look') or 'hearth').replace('-', ' ').title()
     mode = d.get('mode') or ('light' if d.get('light') else 'dark')
-    put(look='%s · %s' % (look, mode.capitalize()), mode=mode)
+    accents = {'#ff7a33': 'Ember', '#e24a4a': 'Red', '#40b5fc': 'Sky', '#5cd18c': 'Green', '#b08cfa': 'Purple',
+               '#fcd44a': 'Yellow', '#fa8fc7': 'Pink', '#9ea8ba': 'Grey'}
+    # The accent's name when it's one of the swatches; otherwise only the look and mode (never a guessed name).
+    acc = accents.get(str(d.get('accent') or '').lower())
+    put(look='%s · %s' % (look, mode.capitalize()) + (' · %s accent' % acc if acc else ''), mode=mode)
     wp = d.get('wallpaper')
     if isinstance(wp, str) and wp:
         put(wallpaper=Path(wp).stem.replace('-', ' ').replace('_', ' ').title()[:24])
@@ -461,7 +526,7 @@ def r_apps_more():
     j = helper('hearth-store', 'updates', timeout=8)
     if isinstance(j, dict):
         n = len(j.get('updates') or [])
-        put(store_updates='%d updates' % n if n else 'up to date', parts_ready='%d ready' % n if n else 'up to date')
+        put(flathub_state='%d update%s' % (n, '' if n == 1 else 's') if n else 'up to date')
 
 
 def r_gaming():
@@ -562,19 +627,188 @@ def r_privacy_more():
             pass
 
 
+def xdg(var, rest):
+    v = os.environ.get(var)
+    return Path(v) if v else HOME / rest
+
+
+def store_prefs_path():
+    """The Hearth Store's own settings (hosts/hearth-ui/apps/store prefs.rs): testVersions, autoParts."""
+    return xdg('XDG_CONFIG_HOME', '.config') / 'nimbus' / 'hearth-store.json'
+
+
+def version_key(v):
+    out = []
+    for p in re.split(r'[.\-+]', str(v).lstrip('vV')):
+        m = re.match(r'\d+', p)
+        out.append(int(m.group(0)) if m else 0)
+    return out
+
+
+def newer(a, b):
+    x, y = version_key(a), version_key(b)
+    n = max(len(x), len(y))
+    return x + [0] * (n - len(x)) > y + [0] * (n - len(y))
+
+
+def r_parts():
+    """Hearth parts with an update the Hearth Store has seen (its last look, ~/.cache/hearth/hearth-store/releases.json),
+    next to the version it installed (~/.local/share/hearth/store/apps/<id>/store.json). Read only."""
+    try:
+        seen = json.loads((xdg('XDG_CACHE_HOME', '.cache') / 'hearth/hearth-store/releases.json').read_text()).get('apps') or {}
+    except Exception:
+        return
+    names = {}
+    try:
+        for e in json.loads(Path(os.environ.get('HEARTH_STORE_CATALOG', '/usr/share/hearth/store/catalog.json')).read_text()).get('apps') or []:
+            if isinstance(e, dict):
+                names[e.get('id')] = e.get('name') or e.get('id')
+    except Exception:
+        pass
+    ready = []
+    apps = xdg('XDG_DATA_HOME', '.local/share') / 'hearth/store/apps'
+    for app_id, rel in seen.items():
+        try:
+            have = json.loads((apps / app_id / 'store.json').read_text()).get('version', '')
+        except Exception:
+            continue
+        v = (rel or {}).get('version', '') if isinstance(rel, dict) else ''
+        if v and have and newer(v, have):
+            ready.append('%s %s' % (names.get(app_id, app_id), v))
+    put(parts_ready='%d ready' % len(ready) if ready else 'up to date', parts_list=ready)
+
+
+def r_os_update():
+    """Hearth OS's own update state (hearth-admin update-status: bootc's view; through pkexec, which Hearth's polkit
+    rule lets the person at the PC use without a prompt). Left out when it can't be asked."""
+    admin = '/usr/libexec/nimbus/hearth-admin'
+    if not (Path(admin).exists() and has('pkexec')):
+        return
+    rc, o, _ = run(['pkexec', admin, 'update-status'], 8)
+    try:
+        j = json.loads(o) if rc == 0 else None
+    except Exception:
+        j = None
+    if not isinstance(j, dict):
+        return
+    def ver(k):
+        x = j.get(k)
+        return (x.get('version') or 'a new version') if isinstance(x, dict) else ''
+    staged, avail, back = ver('staged'), ver('available'), ver('rollback')
+    if staged:
+        put(os_state='restart to finish', os_ready=staged, os_staged='on')
+    elif avail:
+        put(os_state='%s ready' % avail, os_ready=avail)
+    else:
+        put(os_state='up to date')
+    if back:
+        put(os_previous=back)
+
+
 def r_updates():
     r_pc()
     with LOCK:
         ver = OUT.get('hearth', '')
     if ver:
         short = '.'.join(ver.split('.')[:2]) if ver.endswith('.0') else ver
-        put(hearth_os='Hearth OS %s' % short, os_state='up to date', debian_state='with Hearth OS')
+        put(hearth_os='Hearth OS %s' % short, hearth_short=short)
     try:
-        st = json.loads((HOME / '.config/nimbus/store.json').read_text())
-        put(test_versions='on' if st.get('test') else 'off', parts_auto='on' if st.get('auto') else 'off')
+        sp = json.loads(store_prefs_path().read_text())
+        sp = sp if isinstance(sp, dict) else {}
+    except FileNotFoundError:
+        sp = {}
     except Exception:
-        put(test_versions='off', parts_auto='off')
-    put(os_auto='off')
+        sp = None
+    if sp is not None:
+        # The Store's own defaults when a key isn't there: both off.
+        put(test_versions='on' if sp.get('testVersions') else 'off', parts_auto='on' if sp.get('autoParts') else 'off')
+    # Hearth OS downloads and stages its updates in the background (bootc's timer; they apply at your next restart)
+    # unless /etc/hearth/no-auto-update is there (hearth-admin auto-update).
+    put(os_auto='off' if Path('/etc/hearth/no-auto-update').exists() else 'on')
+    r_parts()
+    r_os_update()
+    with LOCK:
+        short, prev = OUT.get('hearth_short', ''), OUT.get('os_previous', '')
+    put(os_line=('%s · when Dragongamer9 releases one' % short) if short else 'When Dragongamer9 releases one',
+        os_prev_line=('Start Hearth OS %s' % prev) if prev else 'The version before, in the boot menu')
+    with LOCK:
+        os_ready, parts, staged = OUT.get('os_ready', ''), OUT.get('parts_list') or [], OUT.get('os_staged')
+        base = OUT.get('base', '')
+    debian = 'Debian' in base
+    under = 'Debian' if debian else (base.split(' ')[0] if base else '')
+    put(debian_state=('comes with %s' % os_ready) if os_ready else 'with Hearth OS', base_name=under)
+    needs = []
+    if os_ready:
+        needs.append('Hearth OS %s %s' % (os_ready, 'is ready: restart to finish' if staged else 'is ready to get'))
+    if parts:
+        needs.append('%s can be installed now (no restart)' % ', '.join(parts[:2]) + (' and %d more' % (len(parts) - 2) if len(parts) > 2 else ''))
+    if needs:
+        put(needs=needs, needs_count=str(len(needs)))
+    if os_ready:
+        bits = []
+        if under:
+            bits.append("%s's updates come with it" % under)
+        bits.append('the one before stays in the boot menu')
+        if parts:
+            bits.append('%s can be installed now' % parts[0])
+        put(ready_title='Hearth OS %s %s' % (os_ready, 'is ready: restart to finish' if staged else 'is ready to get'), ready_line=' · '.join(bits))
+    elif parts:
+        put(ready_title='%d Hearth part%s ready' % (len(parts), '' if len(parts) == 1 else 's'), ready_line=' · '.join(parts[:3]) + ' · no restart')
+
+
+def r_games_size():
+    """Games' size on this PC (Steam's own numbers in its appmanifests; nothing walks the drives)."""
+    total = 0
+    for lib in (HOME / '.local/share/Steam/steamapps', HOME / '.steam/steam/steamapps'):
+        if not lib.exists():
+            continue
+        for m in lib.glob('appmanifest_*.acf'):
+            try:
+                x = re.search(r'"SizeOnDisk"\s+"(\d+)"', m.read_text(errors='replace'))
+                total += int(x.group(1)) if x else 0
+            except OSError:
+                pass
+        break
+    if total:
+        put(games_size='games ' + human(total))
+
+
+def opens_path():
+    return xdg('XDG_STATE_HOME', '.local/state') / 'hearth' / 'settings-opens.json'
+
+
+def r_most_used():
+    try:
+        j = json.loads(opens_path().read_text())
+    except Exception:
+        return
+    counts = j.get('pages') if isinstance(j, dict) else None
+    if isinstance(counts, dict):
+        top = sorted(((v, k) for k, v in counts.items() if isinstance(v, int) and v > 0), key=lambda x: (-x[0], x[1]))[:5]
+        put(most_used=[k for _, k in top])
+
+
+def opened(page):
+    """One more opening of PAGE (Home's "You use these most"): a state file, not a setting; hearth_settings_io's
+    atomic write under its lock. Only page ids (letters, digits, dashes)."""
+    if not re.fullmatch(r'[a-z0-9-]{1,40}', page or ''):
+        return {'ok': False, 'error': 'not a page'}
+    sys.path.insert(0, str(HERE))
+    try:
+        import hearth_settings_io as sio
+        os.makedirs(opens_path().parent, exist_ok=True)
+
+        def bump(d):
+            pages = d.get('pages') if isinstance(d.get('pages'), dict) else {}
+            pages[page] = int(pages.get(page, 0) or 0) + 1
+            # Kept small: the 60 most opened.
+            if len(pages) > 60:
+                pages = dict(sorted(pages.items(), key=lambda x: -x[1])[:60])
+            d['pages'] = pages
+        sio.update_json(str(opens_path()), bump)
+        return {'ok': True}
+    except Exception as e:
+        return {'ok': False, 'error': str(e)[:200]}
 
 
 def r_access_more():
@@ -586,13 +820,14 @@ def r_access_more():
 
 
 READERS = {
-    'home': [r_pc, r_storage, r_memory, r_gpu, r_display, r_sound, r_brightness, r_wifi, r_bt, r_desktop, r_ai, r_server, r_link],
+    'home': [r_pc, r_storage, r_memory, r_gpu, r_display, r_sound, r_brightness, r_wifi, r_bt, r_desktop, r_ai, r_server, r_link,
+             r_updates, r_games_size, r_most_used, r_time, r_system_more, r_look],
     'system': [r_pc, r_display, r_sound, r_memory, r_storage, r_desktop, r_time, r_system_more, r_updates],
-    'net': [r_wifi, r_tailscale],
+    'net': [r_wifi, r_tailscale, r_net_more],
     'bt': [r_bt, r_devices],
     'link': [r_link, r_ai],
     'pers': [r_desktop, r_look],
-    'apps': [r_apps, r_apps_more],
+    'apps': [r_apps, r_apps_more, r_parts],
     'gaming': [r_bt, r_gaming],
     'ai': [r_ai, r_link],
     'accounts': [r_accounts, r_hs_more],
@@ -606,6 +841,13 @@ READERS = {
 def read(section):
     if has('systemsettings') or has('kwin_wayland'):
         put(kde='yes')
+    # The live USB (Install Hearth shows only there): the same signs Settings › System uses.
+    try:
+        cmd = Path('/proc/cmdline').read_text()
+    except OSError:
+        cmd = ''
+    if Path('/run/hearth-live').exists() or Path('/etc/hearth-live').exists() or 'rd.live.image' in cmd or 'boot=live' in cmd:
+        put(live='yes')
     ts = [threading.Thread(target=f, daemon=True) for f in READERS.get(section, [])]
     for t in ts:
         t.start()
@@ -655,6 +897,26 @@ def set_switch(key, on):
             return {'ok': True, 'error': ''}
         except Exception as e:
             return {'ok': False, 'error': str(e)[:200]}
+    if key in ('test_versions', 'parts_auto'):
+        # The Hearth Store's own settings file (prefs.rs reads the same keys), merged: only that key changes.
+        sys.path.insert(0, str(HERE))
+        try:
+            import hearth_settings_io as sio
+            path = store_prefs_path()
+            if path.exists():
+                try:
+                    if not isinstance(json.loads(path.read_text()), dict):
+                        raise ValueError
+                except Exception:
+                    return {'ok': False, 'error': 'The Store\'s settings file couldn\'t be read, so nothing was written over it.'}
+            os.makedirs(path.parent, exist_ok=True)
+            sio.merge_json(str(path), {'testVersions' if key == 'test_versions' else 'autoParts': on}, who='you')
+            return {'ok': True, 'error': ''}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)[:200]}
+    if key == 'os_auto':
+        rc, o, e = run(['pkexec', '/usr/libexec/nimbus/hearth-admin', 'auto-update', 'on' if on else 'off'], 30)
+        return {'ok': rc == 0, 'error': '' if rc == 0 else (e or o).strip()[:200] or 'That didn\'t change.'}
     if key == 'link_clipboard':
         r = helper('hearth-link-settings', 'set', 'clipboard', 'on' if on else 'off', timeout=8)
         return {'ok': r is not None, 'error': '' if r is not None else 'Hearth Link didn\'t take it.'}
@@ -665,6 +927,9 @@ def set_switch(key, on):
 
 
 def main(argv):
+    if len(argv) == 3 and argv[1] == 'opened':
+        print(json.dumps(opened(argv[2])))
+        return 0
     if len(argv) >= 4 and argv[1] == 'set':
         print(json.dumps(set_switch(argv[2], argv[3] == 'on')))
         return 0

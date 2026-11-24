@@ -26,7 +26,8 @@ OLD_IDS = ['install', 'wifi', 'bluetooth', 'link', 'remote', 'hs-overview', 'hs-
            'notifications', 'display', 'appearance', 'boot', 'power', 'controller', 'handheld', 'keyboard', 'mouse', 'printers',
            'datetime', 'accessibility', 'defaults', 'apps', 'games', 'storage', 'steam', 'clipboard', 'users', 'signin', 'browser',
            'claude', 'updates', 'about']
-CATEGORIES = ['home', 'system', 'net', 'bt', 'link', 'pers', 'apps', 'gaming', 'accounts', 'hs', 'privacy', 'a11y', 'updates']
+# AI between Gaming and Accounts: the approved Settings cleanup (docs/mockups/settings-cleanup, Nov 23, 2026).
+CATEGORIES = ['home', 'system', 'net', 'bt', 'link', 'pers', 'apps', 'gaming', 'ai', 'accounts', 'hs', 'privacy', 'a11y', 'updates']
 
 
 def pages():
@@ -60,7 +61,7 @@ class Registry(unittest.TestCase):
         cats = categories()
         self.assertEqual([c['id'] for c in cats], CATEGORIES)
         self.assertEqual([c['label'] for c in cats], ['Home', 'System', 'Network & internet', 'Bluetooth & devices', 'Hearth Link',
-                                                       'Personalization', 'Apps', 'Gaming', 'Accounts', 'Home server',
+                                                       'Personalization', 'Apps', 'Gaming', 'AI', 'Accounts', 'Home server',
                                                        'Privacy & security', 'Accessibility', 'Updates & recovery'])
         ps = pages()
         for c in cats:

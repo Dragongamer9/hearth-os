@@ -12,8 +12,11 @@ use hearth_ui::run;
 use hearth_ui::ui::{t, tb, Kind as BtnKind};
 use hearth_ui::Pal;
 use iced::widget::{column, container, mouse_area, row, Column, Row, Space};
-use iced::{mouse, Color, Element, Length, Subscription, Task};
+use iced::{mouse, Color, Element, Length, Padding, Subscription, Task};
 use serde_json::{Map, Value};
+
+/// Not a Settings page: the Hearth Store app (hearth-store-app), Hearth's own apps and parts with their updates.
+pub const STORE: &str = "@store";
 
 pub const PAGES: &[&str] = &["sec-system", "sec-net", "sec-bt", "sec-link", "sec-pers", "sec-apps", "sec-gaming", "sec-accounts", "sec-hs", "sec-privacy", "sec-a11y", "sec-updates"];
 
@@ -91,6 +94,8 @@ const SECS: &[Sec] = &[
                 r("startup", "Startup", "Game Mode, Desktop Mode or Server mode", V::K("startup")),
                 r("your-desktop", "Your desktop", "Mantel or Mantel in Rust", V::K("your_desktop")),
                 r("boot", "Boot splash", "While Hearth OS starts", V::K("boot_splash")),
+                // Only on the live USB (the owner, Nov 24: "remove the annouying install hearth os in the settings").
+                r("install", "Install Hearth", "Next to Windows or on its own", V::N),
             ]),
             ("Language and time", &[
                 r("datetime", "Date & time", "Time zone, 24-hour clock", V::K("datetime")),
@@ -218,7 +223,7 @@ const SECS: &[Sec] = &[
         cards: &[
             ("Your apps", &[
                 r("apps", "Installed apps", "Uninstall, move, repair", V::K("apps_n")),
-                r("store", "Hearth Store", "Hearth's apps and parts, updates", V::K("store_updates")),
+                r(STORE, "Hearth Store", "Hearth's apps and parts, updates", V::K("parts_ready")),
                 r("store", "App store (Flathub)", "Find and install apps", V::N),
                 r("winapps", "Windows apps", "Programs with Proton", V::K("winapps")),
             ]),
@@ -367,19 +372,19 @@ const SECS: &[Sec] = &[
         cols: 3,
         cards: &[
             ("Updates", &[
-                r("updates", "Hearth OS", "", V::K("os_state")),
+                r("updates", "Hearth OS", "@os_line", V::K("os_state")),
                 r("updates", "Debian updates", "Come with each Hearth OS update · security and drivers", V::K("debian_state")),
-                r("store", "Hearth parts", "Mantel, apps, services · no restart", V::K("parts_ready")),
+                r(STORE, "Hearth parts", "Mantel, apps, services · no restart", V::K("parts_ready")),
                 r("store", "Apps (Flathub)", "Through the Hearth Store", V::K("flathub_state")),
             ]),
             ("How they come", &[
-                r("updates", "Hearth OS by itself", "Off: only when you press Get it now", V::S("os_auto", "os_auto")),
-                r("store", "Hearth parts by themselves", "Off: only when you press Update", V::S("parts_auto", "parts_auto")),
-                r("store", "Get test versions", "Try new parts before everyone", V::S("test_versions", "test_versions")),
+                r("updates", "Hearth OS updates by themselves", "Downloaded in the background, in at your next restart (Debian's come with them)", V::S("os_auto", "os_auto")),
+                r(STORE, "Hearth parts by themselves", "Off: only when you press Update", V::S("parts_auto", "parts_auto")),
+                r(STORE, "Get test versions", "Try new parts before everyone", V::S("test_versions", "test_versions")),
                 k("kde-updates", "App updates (Discover)", "KDE's own reminders", V::K("discover")),
             ]),
             ("Recovery and help", &[
-                r("updates", "Previous version", "", V::B("Use it", Act::Go("updates"))),
+                r("updates", "Previous version", "@os_prev_line", V::B("Use it", Act::Go("updates"))),
                 r("backup", "Backup and restore Hearth", "Your settings and looks", V::N),
                 r("backup", "Send logs", "To Dragongamer9 in one press", V::B("Send", Act::Run(&["nimbus", "--send-logs", "Sent from Settings › Updates & recovery"]))),
                 r("backup", "Recovery USB", "Make one for this PC", V::N),
@@ -388,6 +393,24 @@ const SECS: &[Sec] = &[
         kde: None,
     },
 ];
+
+/// A page's name and its value as the section pages show it (Home's "You use these most"): the first row that opens
+/// it, with the value under its key in `v` (empty when the PC can't tell).
+pub fn row_of(page: &str, v: &Map<String, Value>) -> Option<(&'static str, String)> {
+    for sec in SECS {
+        for (_, rows) in sec.cards.iter() {
+            if let Some(x) = rows.iter().find(|x| x.go == page) {
+                let val = match x.v {
+                    V::K(k) | V::C(k) => s(v, k),
+                    V::S(k, _) => if on(v, k) { "on".into() } else { "off".into() },
+                    _ => String::new(),
+                };
+                return Some((x.label, val));
+            }
+        }
+    }
+    None
+}
 
 #[derive(Debug, Default)]
 pub struct State {
@@ -439,6 +462,7 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
                 }
             }
         }
+        Msg::Go(id) if id == STORE => run::detached(&["hearth-store-app"]),
         Msg::Go(id) => sh.go(id),
         Msg::Run(cmd) => return act(sh, st, Act::Run(cmd)),
         Msg::Banner(i) => return banner_act(sh, st, i),
@@ -478,6 +502,7 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
 
 fn act(sh: &mut Shared, st: &mut State, a: Act) -> Task<Msg> {
     match a {
+        Act::Go(id) if id == STORE => run::detached(&["hearth-store-app"]),
         Act::Go(id) => sh.go(id),
         Act::Run(cmd) => {
             let v: Vec<String> = cmd.iter().map(|s| s.to_string()).collect();
@@ -506,6 +531,7 @@ fn banner_acts(sec: &str) -> Vec<Act> {
         "accounts" => vec![Act::Go("users")],
         "hs" => vec![Act::Go("hs-overview"), Act::Go("hs-server")],
         "updates" => vec![Act::Later, Act::Go("updates")],
+        "home" => vec![Act::Later, Act::Go(STORE)],
         _ => vec![],
     }
 }
@@ -522,7 +548,7 @@ pub fn back(_st: &mut State) -> bool {
     false
 }
 
-fn s<'a>(v: &'a Map<String, Value>, k: &str) -> String {
+pub fn s<'a>(v: &'a Map<String, Value>, k: &str) -> String {
     match v.get(k) {
         Some(Value::String(x)) => x.clone(),
         Some(Value::Number(n)) => n.to_string(),
@@ -551,24 +577,32 @@ pub fn title<'a, M: 'a>(p: &Pal, page: &str) -> Option<Element<'a, M>> {
 }
 
 fn rows_of<'a>(p: &Pal, v: &'a Map<String, Value>, list: &'static [R], kde: bool) -> Vec<Element<'a, Msg>> {
-    let shown: Vec<&R> = list.iter().filter(|x| !x.kde || kde).collect();
+    let live = v.contains_key("live");
+    let shown: Vec<&R> = list.iter().filter(|x| (!x.kde || kde) && (x.go != "install" || live)).collect();
     let n = shown.len();
     shown
         .into_iter()
         .enumerate()
         .map(|(j, x)| {
             let last = j + 1 == n;
+            // "@key": the line is a value read from the PC (Hearth OS's version, the version before).
+            let mut line_v = x.line.strip_prefix('@').map(|k| s(v, k));
+            // Sticky, slow and mouse keys: labwc (Hearth's desktop) has none of them; said plainly, the switch saves it.
+            if matches!(x.v, V::S("a.stickyKeys" | "a.slowKeys" | "a.mouseKeys", _)) && s(v, "access_keys") == "no" {
+                line_v = Some("Not on this desktop yet (labwc has no such keys): saved for when it is".into());
+            }
+            let line = line_v.as_deref().unwrap_or(x.line);
             match x.v {
-                V::K(key) => vrow(p, x.label, x.line, value_chev(p, &s(v, key)), Some(Msg::Go(x.go)), last),
-                V::N => vrow(p, x.label, x.line, value_chev(p, ""), Some(Msg::Go(x.go)), last),
+                V::K(key) => vrow(p, x.label, line, value_chev(p, &s(v, key)), Some(Msg::Go(x.go)), last),
+                V::N => vrow(p, x.label, line, value_chev(p, ""), Some(Msg::Go(x.go)), last),
                 V::C(key) => {
                     let c = s(v, key);
-                    vrow(p, x.label, x.line, if c.is_empty() { value_chev(p, "") } else { sec_chip(p, &c, true) }, Some(Msg::Go(x.go)), last)
+                    vrow(p, x.label, line, if c.is_empty() { value_chev(p, "") } else { sec_chip(p, &c, true) }, Some(Msg::Go(x.go)), last)
                 }
                 V::S(val, key) => {
                     let o = on(v, val);
                     let sw = switch(p, o, Some(Msg::Switch(val, key, !o)));
-                    vrow(p, x.label, x.line, sw, None, last)
+                    vrow(p, x.label, line, sw, None, last)
                 }
                 V::B(label, a) => {
                     let m = match a {
@@ -577,7 +611,7 @@ fn rows_of<'a>(p: &Pal, v: &'a Map<String, Value>, list: &'static [R], kde: bool
                         Act::Later => Msg::Banner(99),
                     };
                     let b = btn(p, label, BtnKind::Normal, false, Some(m));
-                    vrow(p, x.label, x.line, b, None, last)
+                    vrow(p, x.label, line, b, None, last)
                 }
             }
         })
@@ -650,7 +684,7 @@ fn top<'a>(p: &Pal, st: &'a State, sec: &str) -> Option<Element<'a, Msg>> {
             ("Installed", g("apps_count"), g("apps_line"), "apps"),
             ("Windows apps", or(g("winapps"), "0"), ".exe with Proton".into(), "winapps"),
             ("Starting with you", g("autostart_line"), g("autostart_names"), "autostart"),
-            ("Updates", or(g("store_updates"), "none"), "in the Hearth Store".into(), "store"),
+            ("Updates", or(g("parts_ready"), "up to date"), "in the Hearth Store".into(), STORE),
         ]),
         "gaming" => sec_banner(p, sec_dot(p.good), "Steam Game Mode with Hearth Sync".into(), [g("decky_line"), g("games_line")].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · "), vec![b(0, "Switch to Game Mode", false)]),
         "accounts" => {
@@ -673,6 +707,24 @@ fn top<'a>(p: &Pal, st: &'a State, sec: &str) -> Option<Element<'a, Msg>> {
         }
         _ => return None,
     })
+}
+
+/// A paired device's card (settings-05): its letter, name, what it is with battery, temperature and what it's doing,
+/// online, a line of what it uses; Send files, Help them, More.
+fn link_card<'a>(p: &Pal, d: &Value) -> Element<'a, Msg> {
+    let g = |k: &str| d.get(k).and_then(Value::as_str).unwrap_or("").to_string();
+    let online = d.get("online").and_then(Value::as_bool) == Some(true);
+    let letter = container(tb(or(g("letter"), "·"), 18.0, p.text)).center_x(Length::Fixed(46.0)).center_y(Length::Fixed(46.0)).style(hearth_ui::ui::boxed(Pal::mix(p.panel, p.text, 0.06), 10.0, None));
+    let head = row![
+        letter,
+        column![tb(g("name"), 17.0, p.text), t(g("line"), 13.0, p.muted)].spacing(2.0).width(Length::Fill),
+        sec_chip(p, if online { "online" } else { "offline" }, online)
+    ]
+    .spacing(14.0)
+    .align_y(iced::Center);
+    let b = |label: &'static str, go: &'static str| btn(p, label, BtnKind::Normal, false, Some(Msg::Go(go)));
+    let body = column![head, t(g("uses"), 14.0, p.muted), row![b("Send files", "link"), b("Help them", "remote"), b("More", "devices")].spacing(10.0)].spacing(14.0);
+    container(body).padding(Padding { top: 22.0, right: 20.0, bottom: 18.0, left: 20.0 }).width(Length::Fill).style(hearth_ui::ui::boxed(p.panel, p.r(14.0), Some((Pal::a(p.text, 0.06), 1.0)))).into()
 }
 
 fn or(s: String, d: &str) -> String {
@@ -711,6 +763,13 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
     }
     if let Some(t) = top(&p, st, sec.id) {
         c = c.push(t);
+    }
+    if sec.id == "link" {
+        let devs = v.get("link_devices").and_then(Value::as_array).cloned().unwrap_or_default();
+        if !devs.is_empty() {
+            let cards: Vec<Element<'a, Msg>> = devs.iter().map(|d| link_card(&p, d)).collect();
+            c = c.push(grid(cards, 3));
+        }
     }
     if sec.id == "pers" {
         let mut r = Row::new().spacing(14.0).align_y(iced::Center);

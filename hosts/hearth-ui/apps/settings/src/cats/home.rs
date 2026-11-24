@@ -1,6 +1,9 @@
-//! Home (settings-A1-home-mouse.png): the PC card with Rename and About this PC, the Wi-Fi, Bluetooth, Updates and
-//! Hearth Link tiles, Recommended settings (Night light, Light mode while you play, Do not disturb, Start in),
-//! Storage and Changed lately with Undo. Quick (SetQuick.qml, the big tiles of settings-B1 in this look, with Pin to
+//! Home (the approved Settings cleanup, docs/mockups/settings-cleanup/settings-01-home.png, Nov 23, 2026; it replaced
+//! settings-A1's Home): "N things need you" (Hearth OS updates ready, Hearth parts to install) with Later and Open the
+//! Store, four tiles (Storage, Your AI, Home server, Hearth Link), Quick (Wi-Fi, Bluetooth, Night light and Do not
+//! disturb switches, Volume and Brightness sliders), You use these most (the five pages you open most, counted in a
+//! small state file by hearth-settings-values, never a setting) and This PC (Name with Rename, Hearth OS, Graphics,
+//! Memory, Send logs with Send). Every value is read from this PC (hearth-settings-values home). Quick (SetQuick.qml, the big tiles of settings-B1 in this look, with Pin to
 //! Quick) and All changes (SetChangesPage.qml, the whole change history with Undo). Its own short reads.
 //!
 //! Do not disturb: on KDE Plasma (the Fedora edition) it is Plasma's own (plasmanotifyrc's DoNotDisturb Until, a year
@@ -13,7 +16,7 @@ use crate::shared::{io_helper, Shared};
 use crate::widgets::*;
 use crate::App;
 use hearth_ui::run;
-use hearth_ui::ui::{self, hline, t, ts, Kind, G};
+use hearth_ui::ui::{self, t, ts, Kind, G};
 use crate::widgets::btn;
 use hearth_ui::Pal;
 use iced::widget::{column, container, mouse_area, row, Column, Row, Space};
@@ -58,6 +61,11 @@ pub struct State {
     pub history: Value,
     pub pinned: Option<Vec<String>>,
     pub picking: bool,
+    /// hearth-settings-values home: what this PC says (left out when it can't tell).
+    pub vals: serde_json::Map<String, Value>,
+    /// "N things need you": Later hides it until Settings opens again.
+    pub later: bool,
+    pub sent: String,
 }
 
 #[derive(Debug, Clone)]
@@ -81,6 +89,24 @@ pub enum Msg {
     BrightSet,
     Vol(f32),
     VolSet,
+    Vals(run::Output),
+    Later,
+    Store,
+    /// A Quick switch through hearth-settings-values set (Wi-Fi: nmcli, Bluetooth: bluetoothctl).
+    Sw(&'static str, &'static str, bool),
+    NightSaved(run::Output),
+    SendLogs,
+    Sent(run::Output),
+}
+
+fn values_cmd(args: &[&str]) -> Vec<String> {
+    let mut v = vec!["python3".to_string(), run::shell_helper("hearth-settings-values")];
+    v.extend(args.iter().map(|x| x.to_string()));
+    v
+}
+
+fn load_vals() -> Task<Msg> {
+    Task::perform(run::spawn(values_cmd(&["home"])), Msg::Vals)
 }
 
 pub const TILES: [&str; 10] = ["lightmode", "wifi", "bt", "brightness", "volume", "startin", "updates", "power", "night", "dnd"];
@@ -159,7 +185,7 @@ pub fn open(_sh: &mut Shared, st: &mut State, page: &'static str) -> Task<Msg> {
             }
             Task::batch([Src::Wifi, Src::Bt, Src::Display, Src::Updates, Src::Hs, Src::Dnd, Src::Bright, Src::Sound, Src::Power].map(read))
         }
-        _ => Task::batch([Src::Wifi, Src::Bt, Src::Storage, Src::Display, Src::Updates, Src::Hs, Src::Link, Src::Dnd, Src::History].map(read)),
+        _ => Task::batch([Src::Dnd, Src::Bright, Src::Sound].map(read).into_iter().chain([load_vals()])),
     }
 }
 
@@ -192,12 +218,43 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
         },
         Msg::Did(what, o) => {
             sh.result(what, &o);
-            return Task::batch([read(Src::Display), read(Src::Hs), read(Src::Dnd), read(Src::History)]);
+            return Task::batch([read(Src::Hs), read(Src::Dnd), read(Src::History), load_vals()]);
         }
+        // Night light is desktop.json's nightLight (hearth_settings_io, with the change history), put on the screens by
+        // hearth-screens night, as Settings › Display does.
         Msg::Night(on) => {
             st.night = on;
-            sh.reread_history = true;
-            return Task::perform(run::spawn(data::night_cmd(on)), |o| Msg::Did("Couldn't change Night light", o));
+            let cmd = sh.desktop_cmd(json!({ "nightLight": on }));
+            return Task::perform(run::spawn(cmd), Msg::NightSaved);
+        }
+        Msg::NightSaved(o) => {
+            if !o.ok {
+                sh.result("Couldn't change Night light", &o);
+                return Task::none();
+            }
+            return Task::perform(run::spawn(vec!["python3".into(), run::shell_helper("hearth-screens"), "night".into()]), |o| Msg::Did("Couldn't change Night light", o));
+        }
+        Msg::Vals(o) => {
+            if let Some(Value::Object(v)) = o.json() {
+                st.vals = v;
+            }
+        }
+        Msg::Later => st.later = true,
+        Msg::Store => run::detached(&["hearth-store-app"]),
+        Msg::Sw(val, key, on) => {
+            st.vals.insert(val.to_string(), Value::String(if on { "on" } else { "off" }.into()));
+            return Task::perform(run::spawn(values_cmd(&["set", key, if on { "on" } else { "off" }])), |o| {
+                let ok = o.json().and_then(|v| v.get("ok").and_then(Value::as_bool)).unwrap_or(false);
+                Msg::Did("Couldn't change it", run::Output { ok: o.ok && ok, ..o })
+            });
+        }
+        Msg::SendLogs => {
+            st.sent = "Sending…".into();
+            return Task::perform(run::spawn(vec!["nimbus".into(), "--send-logs".into(), "Sent from Settings › Home".into()]), Msg::Sent);
+        }
+        Msg::Sent(o) => {
+            st.sent = if o.ok { "Sent".into() } else { String::new() };
+            sh.result("Couldn't send the logs", &o);
         }
         Msg::Light(on) => {
             return Task::perform(kit::spawn(H::Hs, kit::sv(&["set", "lightMode", if on { "on" } else { "off" }]), None, 30), |o| Msg::Did("Couldn't change Light mode", o));
@@ -308,90 +365,112 @@ fn start_in_items(sh: &Shared, st: &State) -> Vec<(String, bool, Option<Msg>)> {
     vec![("Game Mode".into(), st.start == "game", Some(Msg::StartIn("game"))), ("Desktop Mode".into(), st.start == "desktop", Some(Msg::StartIn("desktop")))]
 }
 
+fn v<'a>(st: &'a State, k: &str) -> String {
+    crate::cats::sections::s(&st.vals, k)
+}
+
+/// Night light's line: when it comes on (Settings › Display's times).
+fn night_line(sh: &Shared) -> String {
+    match sh.d_str("nightMode").as_str() {
+        "always" => "on all the time".into(),
+        "times" => format!("from {}", if sh.d_str("nightFrom").is_empty() { "20:00".to_string() } else { sh.d_str("nightFrom") }),
+        _ => "on at sunset".into(),
+    }
+}
+
 fn home_view<'a>(a: &'a App) -> Element<'a, Msg> {
     let sh = &a.sh;
     let st = &a.home;
     let p = sh.p;
-    let i = &sh.info;
-    let shot = container(Space::new()).width(Length::Fixed(220.0)).height(Length::Fixed(124.0)).style(ui::boxed(Pal::mix(p.bg2, p.accent, 0.18), p.r(8.0), Some((Color::BLACK, 6.0))));
-    let booted = st.updates.as_ref().map(|u| data::shown_version(&u.booted)).unwrap_or_default();
-    let mut facts = vec![if booted.is_empty() { "Hearth OS".to_string() } else { format!("Hearth OS {booted}") }, "Desktop Mode".to_string()];
-    if !i.gpu.is_empty() {
-        facts.push(i.gpu.clone());
+    let mut out = Column::new().spacing(18.0);
+    // N things need you (yellow dot): what hearth-settings-values found waiting; hidden when nothing is, or after Later.
+    let needs: Vec<String> = st.vals.get("needs").and_then(Value::as_array).map(|x| x.iter().filter_map(Value::as_str).map(String::from).collect()).unwrap_or_default();
+    if !needs.is_empty() && !st.later {
+        let n = needs.len();
+        out = out.push(sec_banner(
+            &p,
+            sec_dot(p.warn),
+            format!("{n} {} need{} you", if n == 1 { "thing" } else { "things" }, if n == 1 { "s" } else { "" }),
+            needs.join(" · "),
+            vec![btn(&p, "Later", Kind::Normal, false, Some(Msg::Later)), btn(&p, "Open the Store", Kind::Primary, false, Some(Msg::Store))],
+        ));
     }
-    if !i.cpu.is_empty() {
-        facts.push(data::short_cpu(&i.cpu));
-    }
-    let pc: Element<Msg> = match &st.rename {
-        Some(n) => card(&p, row![shot, rename_box(&p, n, Msg::RenameText, Msg::RenameSave, Msg::RenameCancel)].spacing(26.0).align_y(iced::Center)),
-        None => card(&p, row![shot, column![
-            big_title(&p, if i.host.is_empty() { "This PC".to_string() } else { i.host.clone() }),
-            t(facts.join(" · "), sz(14.0), p.muted),
-            row![pill(&p, "Rename", true, Some(Msg::Rename)), pill(&p, "About this PC", false, Some(Msg::Go("about")))].spacing(10.0)
-        ].spacing(8.0)].spacing(26.0).align_y(iced::Center)),
-    };
-    let bt_s = match &st.bt {
-        None => "…".to_string(),
-        Some(b) if !b.has => "No Bluetooth".into(),
-        Some(b) if !b.on => "Off".into(),
-        Some(b) => format!("On · {} connected", b.devs.iter().filter(|d| d.connected).count()),
-    };
-    let up_s = match &st.updates {
-        None => "…".to_string(),
-        Some(u) if !u.staged.is_empty() => "Restart to update".into(),
-        Some(u) if !u.available.is_empty() => format!("{} available", data::shown_version(&u.available)),
-        Some(u) if u.booted.is_empty() => "See what's new".into(),
-        Some(u) => format!("Up to date · {}", data::shown_version(&u.booted)),
-    };
-    let tiles = column![
-        row![tile(&p, G::Wifi, "Wi-Fi", wifi_text(st), Msg::Go("wifi")), tile(&p, G::Bt, "Bluetooth", bt_s, Msg::Go("bluetooth"))].spacing(16.0),
-        row![tile(&p, G::Update, "Updates", up_s, Msg::Go("updates")), tile(&p, G::Link, "Hearth Link", crate::cats::link::summary_of(&st.link), Msg::Go("link"))].spacing(16.0)
+    // Four tiles.
+    let small = |a: String, b: String| [a, b].into_iter().filter(|x| !x.is_empty()).collect::<Vec<_>>().join(" · ");
+    let tiles = row![
+        container(stile(&p, "Storage", v(st, "storage_free"), small(v(st, "storage_total"), v(st, "games_size")), Some(Msg::Go("storage")))).width(Length::FillPortion(1)),
+        container(stile(&p, "Your AI", v(st, "ai_state"), v(st, "ai_model"), Some(Msg::Go("sec-ai")))).width(Length::FillPortion(1)),
+        container(stile(&p, "Home server", v(st, "server_count"), v(st, "server_names"), Some(Msg::Go("sec-hs")))).width(Length::FillPortion(1)),
+        container(stile(&p, "Hearth Link", v(st, "link_count"), v(st, "link_names"), Some(Msg::Go("sec-link")))).width(Length::FillPortion(1)),
     ]
-    .spacing(16.0)
-    .width(Length::FillPortion(9));
-    let top = row![container(pc).width(Length::FillPortion(13)), tiles].spacing(18.0);
+    .spacing(18.0);
+    out = out.push(tiles);
 
-    let mut rec = Column::new().spacing(10.0).push(inner_row(&p, G::Moon, "Night light", "Warmer colours from sunset to sunrise", switch(&p, st.night, Some(Msg::Night(!st.night)))));
-    if let Some(on) = light_mode(st) {
-        rec = rec.push(hline(p.line)).push(inner_row(&p, G::Pad, "Light mode while you play", "Big home server jobs wait until your game ends", switch(&p, on, Some(Msg::Light(!on)))));
+    // Quick: the switches and sliders right here.
+    let wifi_on = v(st, "wifi_on") == "on";
+    let bt_on = v(st, "bt_on") == "on";
+    let night = sh.d_bool("nightLight", false);
+    let mut quick: Vec<Element<Msg>> = Vec::new();
+    if st.vals.contains_key("wifi_on") {
+        quick.push(vrow(&p, "Wi-Fi", &v(st, "wifi_name"), switch(&p, wifi_on, Some(Msg::Sw("wifi_on", "wifi", !wifi_on))), None, false));
     }
-    rec = rec.push(hline(p.line)).push(row![
-        kit::ibox(&p, kit::I::BellOff, None),
-        column![ui::tm("Do not disturb", sz(15.0), p.text), t("Hold notifications until you turn it off", sz(13.0), p.muted)].spacing(2.0).width(Length::Fill),
-        switch(&p, st.dnd, Some(Msg::Dnd(!st.dnd)))
-    ].spacing(16.0).align_y(iced::Center));
-    rec = rec.push(hline(p.line)).push(inner_row(&p, G::Power, "Start in", "What this PC opens when it turns on", seg(&p, start_in_items(sh, st))));
-    let rec = titled_card(&p, "Recommended settings", Some(("See more", Msg::Go("quick"))), rec);
-    let storage = titled_card(&p, "Storage", Some(("Manage", Msg::Go("storage"))), drive_rows(&p, &st.storage));
-    // The last three changes, in settings-changes.js's words (this page's own read of the history; the frame's
-    // until it has come).
-    let mut lines: Vec<(String, String, i64)> = shown_changes(&st.history).iter().take(3).map(|ch| {
-        let key = kit::s(ch, "key");
-        let who = if kit::s(ch, "who").is_empty() { "you".to_string() } else { kit::s(ch, "who") };
-        (format!("{} → {}", name_of(&key), value_words(&key, kit::at(ch, "to"))), format!("{who} · {}", ago_words(kit::n(ch, "at") as i64)), kit::n(ch, "id") as i64)
-    }).collect();
-    if st.history.is_null() {
-        lines = sh.history.iter().take(3).map(|c| (format!("{} → {}", data::setting_name(&c.key), c.to), format!("{} · {}", c.who, ago_words(c.at)), c.id)).collect();
+    if st.vals.contains_key("bt_on") {
+        quick.push(vrow(&p, "Bluetooth", &if bt_on { v(st, "bt_connected") } else { String::new() }, switch(&p, bt_on, Some(Msg::Sw("bt_on", "bt", !bt_on))), None, false));
     }
-    let mut changed = Column::new().spacing(10.0);
-    if lines.is_empty() {
-        changed = changed.push(t("Nothing changed yet. What you change in Settings shows here, with Undo.", sz(13.0), p.muted));
+    quick.push(vrow(&p, "Night light", &night_line(sh), switch(&p, night, Some(Msg::Night(!night))), None, false));
+    quick.push(vrow(&p, "Do not disturb", "", switch(&p, st.dnd, Some(Msg::Dnd(!st.dnd))), None, false));
+    if let Some(s) = &st.sound {
+        let vol = s.vol.min(1.0);
+        let sl: Element<Msg> = container(iced::widget::slider(0.0..=1.0f32, vol, Msg::Vol).step(0.01f32).on_release(Msg::VolSet)).width(Length::Fixed(190.0)).into();
+        quick.push(vrow(&p, "Volume", "", sl, None, st.bright.is_none()));
     }
-    for (n, (what, who, id)) in lines.into_iter().enumerate() {
-        if n > 0 {
-            changed = changed.push(hline(p.line));
-        }
-        changed = changed.push(
-            row![
-                column![t(what, sz(15.0), p.text), t(who, sz(13.0), p.muted)].spacing(2.0).width(Length::Fill),
-                btn(&p, "Undo", Kind::Normal, false, Some(Msg::Undo(id)))
-            ]
-            .align_y(iced::Center),
-        );
+    if let Some(b) = st.bright {
+        let sl: Element<Msg> = container(iced::widget::slider(1..=100u32, b, Msg::Bright).on_release(Msg::BrightSet)).width(Length::Fixed(190.0)).into();
+        quick.push(vrow(&p, "Brightness", "", sl, None, true));
     }
-    let changed = titled_card(&p, "Changed lately", Some(("All changes", Msg::Go("changes"))), changed);
-    let lower = row![container(rec).width(Length::FillPortion(1)), column![storage, changed].spacing(18.0).width(Length::FillPortion(1))].spacing(18.0);
-    column![top, lower].spacing(18.0).into()
+
+    // You use these most: the five pages opened most here, each with its value.
+    let mut most: Vec<Element<Msg>> = Vec::new();
+    let ids: Vec<String> = st.vals.get("most_used").and_then(Value::as_array).map(|x| x.iter().filter_map(Value::as_str).map(String::from).collect()).unwrap_or_default();
+    let shown: Vec<(&'static str, &'static str, String)> = ids
+        .iter()
+        .filter_map(|id| crate::registry::page(id).map(|pg| (pg.id, crate::cats::sections::row_of(pg.id, &st.vals).unwrap_or((pg.label, String::new())))))
+        .map(|(id, (label, val))| (id, label, val))
+        .take(5)
+        .collect();
+    let n = shown.len();
+    for (i, (id, label, val)) in shown.into_iter().enumerate() {
+        most.push(vrow(&p, label, &val, value_chev(&p, ""), Some(Msg::Go(id)), i + 1 == n));
+    }
+    if most.is_empty() {
+        most.push(container(t("The pages you open most show here, with their values.", sz(13.0), p.muted)).padding(6.0).into());
+    }
+
+    // This PC.
+    let host = if sh.info.host.is_empty() { v(st, "host") } else { sh.info.host.clone() };
+    let mut pc: Vec<Element<Msg>> = Vec::new();
+    match &st.rename {
+        Some(n) => pc.push(container(rename_box(&p, n, Msg::RenameText, Msg::RenameSave, Msg::RenameCancel)).padding(6.0).into()),
+        None => pc.push(vrow(&p, "Name", &host, btn(&p, "Rename", Kind::Normal, false, Some(Msg::Rename)), None, false)),
+    }
+    let os = small(v(st, "hearth_short"), v(st, "base"));
+    pc.push(vrow(&p, "Hearth OS", &os, value_chev(&p, ""), Some(Msg::Go("about")), false));
+    if !v(st, "graphics").is_empty() {
+        pc.push(vrow(&p, "Graphics", &v(st, "graphics"), value_chev(&p, ""), Some(Msg::Go("about")), false));
+    }
+    if !v(st, "memory_use").is_empty() {
+        pc.push(vrow(&p, "Memory", &v(st, "memory_use"), value_chev(&p, ""), Some(Msg::Go("memory")), false));
+    }
+    let send_line = if st.sent.is_empty() { "to Dragongamer9 in one press".to_string() } else { st.sent.clone() };
+    pc.push(vrow(&p, "Send logs", &send_line, btn(&p, "Send", Kind::Normal, false, if st.sent == "Sending…" { None } else { Some(Msg::SendLogs) }), None, true));
+
+    let cards = row![
+        container(scard(&p, "Quick", quick)).width(Length::FillPortion(1)),
+        container(scard(&p, "You use these most", most)).width(Length::FillPortion(1)),
+        container(scard(&p, "This PC", pc)).width(Length::FillPortion(1)),
+    ]
+    .spacing(18.0);
+    out.push(cards).into()
 }
 
 /// settings-changes.js ago(): "just now", "2 min ago", "3 hours ago", "yesterday", "Nov 12".

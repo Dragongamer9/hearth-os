@@ -53,11 +53,13 @@ pub struct Config {
     pub compress: String,
     /// Parallel streams for a copy.
     pub streams: usize,
+    /// Share the clipboard's text with your own devices (clipboard.rs); off until the person turns it on.
+    pub clipboard: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { name: String::new(), relay: Relay::Default, relay_url: String::new(), always_accept: false, sync: true, compress: "auto".into(), streams: 16 }
+        Config { name: String::new(), relay: Relay::Default, relay_url: String::new(), always_accept: false, sync: true, compress: "auto".into(), streams: 16, clipboard: false }
     }
 }
 
@@ -90,6 +92,7 @@ impl Config {
         if self.relay == Relay::Custom && self.relay_url.is_empty() { return Err("Enter your relay's address first".into()); }
         if let Some(b) = a.get("alwaysAccept").and_then(Value::as_bool) { self.always_accept = b; }
         if let Some(b) = a.get("sync").and_then(Value::as_bool) { self.sync = b; }
+        if let Some(b) = a.get("clipboard").and_then(Value::as_bool) { self.clipboard = b; }
         if let Some(c) = a.get("compress").and_then(Value::as_str) {
             if c != "auto" && c != "off" { return Err("Compression is auto or off".into()); }
             self.compress = c.into();
@@ -99,7 +102,7 @@ impl Config {
     }
     pub fn to_json(&self) -> Value {
         json!({"name": self.display_name(), "customName": self.name, "relay": self.relay, "relayUrl": self.relay_url, "alwaysAccept": self.always_accept,
-               "sync": self.sync, "compress": self.compress, "streams": self.streams})
+               "sync": self.sync, "compress": self.compress, "streams": self.streams, "clipboard": self.clipboard})
     }
 }
 

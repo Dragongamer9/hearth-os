@@ -178,6 +178,7 @@ impl Node {
         let n = self.clone(); tokio::spawn(async move { n.accept_loop().await });
         let n = self.clone(); tokio::spawn(async move { n.discovery_loop().await });
         let n = self.clone(); tokio::spawn(async move { n.sync_loop().await });
+        let n = self.clone(); tokio::spawn(async move { n.clipboard_loop().await });
         self.storage_start();
         self.status_start();
         self.family_start();
@@ -626,6 +627,7 @@ impl Node {
             o if o.starts_with("update.") => self.clone().fleet_answer(peer, op, req).await,
             o if o.starts_with("ai.") => self.clone().ai_answer(peer, op, req).await,
             o if o.starts_with("tv.") => self.clone().tv_answer(peer, op, req).await,
+            o if o.starts_with("clip.") => self.clone().clipboard_answer(peer, op, req).await,
             o if o.starts_with("status.") => self.clone().status_answer(peer, op, req).await,
             o if o.starts_with("decky.") => self.clone().decky_answer(peer, op, req).await,
             o if o.starts_with("storage.") || o.starts_with("archive.") || o.starts_with("backup.") || o.starts_with("cache.") || o.starts_with("updates.") => self.clone().storage_answer(peer, op, req).await,
