@@ -289,6 +289,10 @@ impl App {
 
 /// Shows the controller look (B) or the keyboard-and-mouse look (A). The page and the focused row stay.
 fn set_layout(a: &mut App, b: bool) {
+    // 1.18 (the owner, Nov 23: "get rid of the settings app controller mode as well, sitck with the normal settings
+    // app"): always the keyboard-and-mouse look; a controller moves through it as it is.
+    let _ = b;
+    let b = false;
     if a.sh.big != b || !nav::look_said() {
         // One line when the look changes (CI checks the controller's own pointer doesn't flip it).
         eprintln!("hearth-settings: look: {}", if b { "controller" } else { "keyboard and mouse" });

@@ -164,7 +164,7 @@ class Search(unittest.TestCase):
 class Frame(unittest.TestCase):
     def test_settings_always_opens(self):
         app = (SHELL / 'SettingsApp.qml').read_text()
-        self.assertIn('property string want: SettingsNav.input === "pad" && !bFailed ? "SettingsFrameB.qml" : "SettingsFrame.qml"', app)
+        self.assertIn('property string want: "SettingsFrame.qml"', app)
         self.assertIn('setSource(Qt.resolvedUrl("SettingsSimple.qml"), { app: app })', app)
         self.assertIn('status === Loader.Error && !fellBack', app)
         self.assertIn('title: "Hearth Settings"', app)          # Pad.qml gives this window the controller's keys

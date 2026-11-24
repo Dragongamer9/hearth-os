@@ -85,7 +85,9 @@ Scope {
                 anchors.fill: parent
                 property bool fellBack: false
                 property bool bFailed: false
-                property string want: SettingsNav.input === "pad" && !bFailed ? "SettingsFrameB.qml" : "SettingsFrame.qml"
+                // 1.18 (the owner, Nov 23: "get rid of the settings app controller mode as well, sitck with the normal settings
+                // app"): always the normal Settings; a controller moves through it as it is.
+                property string want: "SettingsFrame.qml"
                 property string keep: ""
                 function focusedTitle() {
                     for (let it = frameLoader.Window.activeFocusItem; it; it = it.parent)
