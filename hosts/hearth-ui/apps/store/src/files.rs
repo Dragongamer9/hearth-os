@@ -13,7 +13,7 @@
 //!
 //! Never touches the system, boot files, sessions or services, and never an app's settings.
 
-use crate::catalog::Entry;
+use crate::catalog::{Entry, Kind};
 use crate::paths;
 use serde_json::{json, Value};
 use std::io::{Read, Write};
@@ -442,6 +442,125 @@ pub fn start(e: &Entry) -> bool {
     c.stdin(std::process::Stdio::null()).stdout(std::process::Stdio::null()).stderr(std::process::Stdio::null()).spawn().is_ok()
 }
 
+// ------------------------------------------------------------------ Settings › Where apps go › Change…
+/// A folder moved as it is: renamed when it's on the same drive, else copied (permissions and times kept), every
+/// file checked against the original, and only then the original removed.
+fn move_dir(src: &Path, dst: &Path) -> std::io::Result<()> {
+    if std::fs::rename(src, dst).is_ok() {
+        return Ok(());
+    }
+    let tmp = dst.with_file_name(format!(".{}.moving", dst.file_name().and_then(|n| n.to_str()).unwrap_or("app")));
+    let _ = std::fs::remove_dir_all(&tmp);
+    let r = copy_tree(src, &tmp).and_then(|_| same_tree(src, &tmp)).and_then(|_| std::fs::rename(&tmp, dst));
+    if let Err(e) = r {
+        let _ = std::fs::remove_dir_all(&tmp);
+        return Err(e);
+    }
+    std::fs::remove_dir_all(src)
+}
+
+fn copy_tree(src: &Path, dst: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dst)?;
+    for x in std::fs::read_dir(src)? {
+        let x = x?;
+        let (from, to) = (x.path(), dst.join(x.file_name()));
+        let ft = x.file_type()?;
+        if ft.is_symlink() {
+            std::os::unix::fs::symlink(std::fs::read_link(&from)?, &to)?;
+        } else if ft.is_dir() {
+            copy_tree(&from, &to)?;
+        } else {
+            std::fs::copy(&from, &to)?;
+            let m = std::fs::metadata(&from)?;
+            std::fs::File::options().write(true).open(&to)?.set_modified(m.modified()?)?;
+        }
+    }
+    Ok(())
+}
+
+/// Every file in `b` is the same as in `a` (sizes and SHA-256).
+fn same_tree(a: &Path, b: &Path) -> std::io::Result<()> {
+    for x in std::fs::read_dir(a)? {
+        let x = x?;
+        let (pa, pb) = (x.path(), b.join(x.file_name()));
+        let ft = x.file_type()?;
+        if ft.is_dir() {
+            same_tree(&pa, &pb)?;
+        } else if ft.is_file() && (std::fs::metadata(&pb)?.len() != x.metadata()?.len() || sha256_file(&pa)? != sha256_file(&pb)?) {
+            return Err(std::io::Error::other(format!("{} didn't copy right", pa.display())));
+        }
+    }
+    Ok(())
+}
+
+/// Moves every app the Store installed into `to` (a folder in the home folder), then remembers it and points the
+/// menu entries there. Nothing is lost on the way: an app that's open stops it before anything moves, and if any
+/// step fails, what was moved goes back and the setting isn't changed.
+pub fn move_apps(apps: &[Entry], to: &Path) -> Result<String, String> {
+    let from = paths::apps();
+    let home = hearth_ui::paths::home();
+    if !to.is_absolute() || !to.starts_with(&home) || to == home {
+        return Err("Pick a folder inside your home folder: the Store never puts apps anywhere else.".into());
+    }
+    if to == from || to.starts_with(&from) {
+        return Err("That's where your apps already are.".into());
+    }
+    let installed: Vec<&Entry> = apps.iter().filter(|e| e.kind == Kind::Install && read_installed(&e.id).is_some()).collect();
+    if let Some(e) = installed.iter().find(|e| !running(e).is_empty()) {
+        return Err(format!("Close {} first: an app can't move while it's open. Nothing was moved.", e.name));
+    }
+    std::fs::create_dir_all(to).map_err(|e| format!("Couldn't make {}: {e}", paths::tilde(to)))?;
+    let mut names = Vec::new();
+    if let Ok(rd) = std::fs::read_dir(&from) {
+        for x in rd.flatten() {
+            if x.file_type().map(|t| t.is_dir()).unwrap_or(false) && !x.file_name().to_string_lossy().starts_with('.') {
+                names.push(x.file_name());
+            }
+        }
+    }
+    if let Some(n) = names.iter().find(|n| to.join(n).exists()) {
+        return Err(format!("{} already has a folder called {}; pick another one. Nothing was moved.", paths::tilde(to), n.to_string_lossy()));
+    }
+    let mut moved: Vec<(PathBuf, PathBuf)> = Vec::new();
+    let undo = |moved: &[(PathBuf, PathBuf)]| {
+        for (a, b) in moved.iter().rev() {
+            let _ = move_dir(b, a);
+        }
+    };
+    for n in &names {
+        let (a, b) = (from.join(n), to.join(n));
+        if let Err(e) = move_dir(&a, &b) {
+            undo(&moved);
+            return Err(format!("{} couldn't move ({e}); everything is back where it was.", n.to_string_lossy()));
+        }
+        moved.push((a, b));
+    }
+    if let Err(e) = crate::prefs::set_apps_dir(to) {
+        undo(&moved);
+        crate::paths::set_apps(None);
+        return Err(format!("{e} Everything is back where it was."));
+    }
+    for e in &installed {
+        let _ = write_menu(e);
+    }
+    let _ = std::fs::remove_dir(&from);
+    Ok(format!("Your apps are in {} now{}.", paths::tilde(to), if names.is_empty() { "; new ones go there too".to_string() } else { format!(" ({} moved)", names.len()) }))
+}
+
+/// The folder picker: Hearth's file chooser, else KDE's or GTK's.
+pub fn pick_folder() -> Option<PathBuf> {
+    for cmd in [vec!["hearth-file-chooser", "--folder"], vec!["kdialog", "--getexistingdirectory"], vec!["zenity", "--file-selection", "--directory"]] {
+        let Ok(o) = std::process::Command::new(cmd[0]).args(&cmd[1..]).output() else { continue };
+        if o.status.success() {
+            let p = PathBuf::from(String::from_utf8_lossy(&o.stdout).trim());
+            if p.is_dir() {
+                return Some(p);
+            }
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -577,5 +696,22 @@ mod tests {
         assert!(t.contains(&format!("Exec=\"{}\" %U", app_file(&e).display())), "{t}");
         assert!(desktop_text(&e, false).contains("APPIMAGE_EXTRACT_AND_RUN=1"));
         assert!(icon_svg(&e).contains("#a78bfa") && icon_svg(&e).contains("☾"));
+    }
+
+    #[test]
+    fn moving_the_apps_keeps_every_file_and_can_go_back() {
+        let d = tempfile::tempdir().unwrap();
+        let a = d.path().join("a/one");
+        std::fs::create_dir_all(a.join("sub")).unwrap();
+        std::fs::write(a.join("app.AppImage"), b"bytes").unwrap();
+        std::fs::write(a.join("sub/x"), b"y").unwrap();
+        let tmp = d.path().join("b");
+        std::fs::create_dir_all(&tmp).unwrap();
+        copy_tree(&a, &tmp.join("one")).unwrap();
+        same_tree(&a, &tmp.join("one")).unwrap();
+        std::fs::write(tmp.join("one/sub/x"), b"z").unwrap();
+        assert!(same_tree(&a, &tmp.join("one")).is_err(), "a changed file is caught");
+        move_dir(&a, &d.path().join("c")).unwrap();
+        assert!(!a.exists() && d.path().join("c/app.AppImage").exists());
     }
 }

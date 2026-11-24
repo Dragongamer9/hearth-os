@@ -245,6 +245,10 @@ ShellRoot {
         function editNothing(): void { screenEditor.open({ grid: { cols: 24, rows: 14 }, background: { kind: "gradient", from: "#1a1410", to: "#0c0907" }, look: {}, blocks: [] }, "Start from nothing"); }
         function editorState(): string { return JSON.stringify({ shown: screenEditor.shown, blocks: (screenEditor.draft.blocks || []).length, pick: screenEditor.pick, made: !!screenEditor.made }); }
         function editorPick(i: int): void { screenEditor.pick = i; }
+        // the lock screen's editor (lock-screen-blocks board 3)
+        function editLock(): void { screenEditor.openLock(); }
+        function editorClose(): void { screenEditor.shown = false; }
+        function lockState(): string { return JSON.stringify({ shown: screenEditor.shown, lockMode: screenEditor.lockMode, blocks: (screenEditor.draft.blocks || []).length, pw: screenEditor.pwIndex(), error: screenEditor.error }); }
         function editorSay(text: string): void { screenEditor.say(text); }
         function state(): string { return JSON.stringify({ on: ScreenLayout.on, from: ScreenLayout.from, chosen: ScreenLayout.chosen, failed: ScreenLayout.failed, hidesBars: ScreenLayout.hidesBars, drawn: ScreenLayout.drawn }); }
     }
@@ -529,6 +533,7 @@ ShellRoot {
     IpcHandler {
         target: "lock"
         function lock(): void { lockScreen.lock(); }
+        function state(): string { return JSON.stringify({ locked: lockScreen.locked }); }
     }
     // Where the keys go (checks: kwin-windows.yml types into each panel with a real keyboard).
     IpcHandler {

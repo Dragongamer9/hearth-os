@@ -2,8 +2,9 @@
 # Builds Hearth Link (hosts/hearth-link) inside the Fedora edition's base image, for a Hearth Store part (quick-update.yml;
 # the owner, Nov 23: everything Hearth makes updatable from the Store). Source /src (read only); out: /out/hearth-link.
 set -eu
-DNF=$(command -v dnf5 || command -v dnf)
-$DNF -y install gcc pkgconf-pkg-config rust cargo >/dev/null
+# The image's own base: Debian trixie for Hearth OS on Debian, Fedora's dnf for the archived edition (part-build-tools.sh).
+. "$(dirname "$0")/part-build-tools.sh"
+part_tools
 mkdir -p /tmp/w/hosts /tmp/w/cargo
 export HOME=/tmp/w CARGO_HOME=/tmp/w/cargo
 cp -a /src/hosts/hearth-link /tmp/w/hosts/

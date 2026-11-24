@@ -188,7 +188,9 @@ function explore() {
     }));
     fs.mkdirSync(path.join(OUT, size), { recursive: true });
     // Looks ("look-<id>"): drawn with that look on, the layouts above with the default one.
-    const jobs = [...sets.home.map(id => ['home', id]), ...sets.lib.map(id => ['library', id]), ['home', 'look-dragonfire'], ['settings', 'look-dragonfire-updates']]
+    // Game Mode made of blocks (ui/gm-blocks.js, build-anything board 6): Home, Library, the editor with Describe it.
+    const jobs = [...sets.home.map(id => ['home', id]), ...sets.lib.map(id => ['library', id]), ['home', 'look-dragonfire'], ['settings', 'look-dragonfire-updates'],
+      ['home', 'gm-blocks'], ['library', 'gm-blocks'], ['home', 'gm-blocks-edit'], ['home', 'gm-blocks-quick']]
       .filter(([, id]) => !only || id.includes(only));
     for (const [view, id] of jobs) {
       for (const [w, h] of VIEWS) {
@@ -199,9 +201,13 @@ function explore() {
             window.__auditView = view;
             closeAll(); S.history = []; S.tab = 'all'; S.lfilter = ''; S.sort = 'recent';
             LOOK.style = 'classic';
-            if (id.startsWith('look-')) { LOOK.style = id.split('-')[1]; LOOK.layout = 'shelf'; LOOK.libLayout = ''; }
+            if (typeof GMB !== 'undefined') { GMB.edit = false; GMB.sayOpen = false; }
+            if (id.startsWith('gm-blocks')) { LOOK.layout = 'blocks'; LOOK.libLayout = ''; }
+            else if (id.startsWith('look-')) { LOOK.style = id.split('-')[1]; LOOK.layout = 'shelf'; LOOK.libLayout = ''; }
             else if (view === 'home') { LOOK.layout = id; } else { LOOK.layout = 'shelf'; LOOK.libLayout = id; }
             saveLook(); navigate(view, view === 'settings' ? { settingsTab: 'updates' } : {}, false);
+            if (id === 'gm-blocks-edit') { gmbEdit(true); GMB.held = true; GMB.sayOpen = true; GMB.say = 'make the big tile fill the screen and put my friends on the right'; render('gmb-make', true); }
+            if (id === 'gm-blocks-quick') { S.qtab = 'quick'; toggleLayer('qam'); }
           }, [view, id]);
           await page.waitForTimeout(350);
         } catch (e) { errors.push(`draw: ${e.message.split('\n')[0]}`); }

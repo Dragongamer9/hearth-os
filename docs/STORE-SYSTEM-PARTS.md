@@ -49,3 +49,26 @@ its own updates (1.18.1, 1.18.2…), and each keeps a main and a test version (r
 3. The Store: the Hearth parts page grouped as the mockup (Desktop, Apps, Game Mode, Services, Looks and sounds), the
    system parts asking for the admin password, Library › Hearth OS with Fedora updates by date.
 4. The release: every part built and listed at 1.18.0 with the Hearth OS 1.18 release, when the owner says push.
+
+## Built (Nov 24, feature/store-118)
+
+- **Step 1:** quick-update.yml has every Hearth part with a main and a test channel: the apps, Mantel, Mantel in Rust,
+  Desktop layouts (hearth-layout), the Game Mode host (`hearth-game-mode`: /usr/bin/nimbus starts the Store's copy
+  through hearth-part only when one is installed, else /usr/lib/nimbus/nimbus as before), Hearth Link, and the three
+  root helpers as system parts. Every part is built in Debian trixie, the image's own base (part-build-tools.sh).
+  Looks, sounds and the AI engines live in Mantel's folder, so they come with Mantel's part; Hearth core is built into
+  the Game Mode host and the apps, so it comes with them; the Store says so ("with Mantel").
+- **The Decky plugins are not home parts:** Decky runs them from a root process, so a copy from your home folder
+  would be a way to root. They keep their own channel (hearth-decky plugins-*, the plugins release, checked and put in
+  place by root), and the Store shows and starts it. They have no test channel yet.
+- **Step 2:** `hearth-system-part` (path, run, install, remove, retry, status), `system-parts.json` (only the home
+  server, storage and AI sharing helpers), hearth-admin `system-part-install ID [test]` (admin password,
+  49-hearth-admin.rules); the three helpers re-start through it only when a copy is installed. Tests:
+  hosts/linux/test/test_hearth_system_part.py. hearth-part never uses a home copy when run as root.
+- **Step 3:** the Store's Hearth parts page, Library › Hearth OS and Library while updating (checklist
+  store-everything.md). On Debian the system's updates are newer Hearth OS images named by date (bootc, through
+  hearth-admin update); "by themselves" is off unless turned on (`hearth-admin auto-update`, /etc/hearth/auto-update:
+  bootc's timer runs only then), and nothing ever restarts the PC by itself.
+- **Waiting:** the `store` branch's live list needs the new entries (groups, system parts) before 1.18.0 parts are
+  published; the release workflow should fill the list's `system` block (date, packages, what they fix, size, the
+  package changes) for each dated image.

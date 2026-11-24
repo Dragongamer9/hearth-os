@@ -29,11 +29,11 @@ Wording changed from the mockups by the owner's decisions (Nov 19):
 - [x] Title bar: the orange S, "Hearth Store", "· Hearth", minimize, maximize, close — hosts/hearth-ui/apps/store/src/view.rs: "ts(\"Hearth Store\", f(18.0), tn.text), gap(z(10.0), 1.0), t(\"· Hearth\""
 - [x] Sidebar search "Search apps" with the Y key cap — hosts/hearth-ui/apps/store/src/view.rs: "text_input(\"Search apps\", &a.search)"
 - [x] Sidebar pages with their icons: Home, Your apps, Updates (the orange count), Built into Hearth, Store settings; the open one lit with the orange mark — hosts/hearth-ui/apps/store/src/view.rs: "(Page::BuiltIn, \"▣\", \"Built into Hearth\"), (Page::Settings, \"⚙\", \"Store settings\")"
-- [x] Sidebar foot: "This PC: Hearth OS 1.16 · Fedora edition", "Apps made for Hearth by Dragongamer9." (one line of text, not bold: the bold word wrapped apart at this size) — hosts/hearth-ui/apps/store/src/view.rs: "t(\"Apps made for Hearth by Dragongamer9.\", f(14.0), tn.muted)"
+- [x] Sidebar foot: "This PC: Hearth OS 1.16 · Fedora edition", "Apps made for Hearth by Dragongamer9." (one line of text, not bold: the bold word wrapped apart at this size) — hosts/hearth-ui/apps/store/src/view.rs: "t(\"Apps for Hearth OS: Dragongamer9's own, and open-source apps from other makers.\", f(14.0), tn.muted)"
 - [x] The controller's bar at the bottom with each page's buttons, and LB RB Previous / next page — hosts/hearth-ui/apps/store/src/view.rs: "hint2(&p, \"LB\", \"RB\", \"Previous / next page\")"
 - [x] Mouse, keyboard and controller: arrows / D-pad move the orange focus ring, Enter / A, Esc / B, Ctrl+F / Y, X Update all, Ctrl+Page Up / Down and LB / RB pages — hosts/hearth-ui/apps/store/src/main.rs: "P::Rb => page_step(a, 1),"
 - [x] Settings › Apps › App store: a "Hearth's own apps" row that opens the Hearth Store — hosts/hearth-ui/apps/settings/src/cats/apps/store.rs: "group(p, \"Hearth's own apps\""
-- [x] In the Fedora image's menu (Plasma): "Hearth Store", with its icon — os-bases/anatase/system_files/usr/share/applications/hearth-store.desktop: "Name=Hearth Store"
+- [x] In the image's menu (Debian from 1.18; Plasma on Fedora before): "Hearth Store", with its icon — os/system_files/usr/share/applications/hearth-store.desktop: "Name=Hearth Store"
 
 ## 1. Home (store-1)
 - [x] "Hearth Store" and "Checked for updates 2 min ago" — hosts/hearth-ui/apps/store/src/view.rs: "format!(\"Checked for updates {}\", ago(a, a.seen.checked))"
@@ -130,4 +130,4 @@ Wording changed from the mockups by the owner's decisions (Nov 19):
 - [x] Command Center: installed from its GitHub release (checked against SHA256SUMS.txt), then "Updates itself · Open to update", its files never replaced — hosts/hearth-ui/apps/store/src/view.rs: "State::Ready(..) if e.self_updates => Some(Msg::Launch(e.id.clone())),"
 - [x] Hearth AI: read from its latest GitHub release (Dragongamer9/Hearth-AI, release workflow on its ci/releases branch) — os/system_files/usr/share/hearth/store/catalog.json: "\"github\": \"Dragongamer9/Hearth-AI\""
 - [x] Looks for updates only when it opens and at most once a day (a user timer), not while a game runs or on a metered connection — hosts/hearth-ui/apps/store/src/check.rs: "println!(\"hearth-store: a game is running; looking later\");"
-- [x] In the Fedora image: built, installed, its timer on only when it's there — os-bases/anatase/build.sh: "ln -sf ../hearth-store-check.timer /usr/lib/systemd/user/timers.target.wants/hearth-store-check.timer"
+- [x] In the image (Debian from 1.18; Fedora before): built, installed, its timer on only when it's there — os-bases/peppermint/build.sh: "ln -sf ../hearth-store-check.timer /usr/lib/systemd/user/timers.target.wants/hearth-store-check.timer"

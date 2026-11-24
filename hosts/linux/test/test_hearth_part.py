@@ -31,6 +31,7 @@ def load(tmp_path, version="1.17"):
     m = importlib.util.module_from_spec(spec)
     loader.exec_module(m)
     m._notify = lambda text: None
+    m._euid = lambda: 1000  # a person's account, even when the tests run as root
     return m
 
 
@@ -145,6 +146,8 @@ def env(tmp_path):
 
 
 def test_run_a_copy_that_fails_goes_straight_to_the_built_in_one(tmp_path, builtin):
+    if os.geteuid() == 0:
+        return  # as root the Store's copy is never used (the test below); CI runs these as a person
     load(tmp_path)
     put(tmp_path, body="#!/bin/sh\nexit 3\n")
     r = subprocess.run([sys.executable, str(TOOL), "run", "files", builtin, "--page", "x"], capture_output=True, text=True, env=env(tmp_path))
@@ -153,10 +156,22 @@ def test_run_a_copy_that_fails_goes_straight_to_the_built_in_one(tmp_path, built
 
 
 def test_run_a_good_copy(tmp_path, builtin):
+    if os.geteuid() == 0:
+        return  # as root the Store's copy is never used (the test below); CI runs these as a person
     load(tmp_path)
     put(tmp_path, body="#!/bin/sh\necho store \"$@\"\n")
     r = subprocess.run([sys.executable, str(TOOL), "run", "files", builtin, "a"], capture_output=True, text=True, env=env(tmp_path))
     assert r.stdout.strip() == "store a" and r.returncode == 0
+
+
+def test_root_never_runs_a_copy_from_a_home_folder(tmp_path, builtin):
+    """Run as root (sudo keeping your HOME, a root service), the copy in the home folder is never started."""
+    m = load(tmp_path)
+    put(tmp_path)
+    m._euid = lambda: 0
+    assert m.chosen("files", builtin) == builtin
+    src = TOOL.read_text()
+    assert "if _euid() == 0 or not _safe_id(pid):" in src
 
 
 def tarball(files):

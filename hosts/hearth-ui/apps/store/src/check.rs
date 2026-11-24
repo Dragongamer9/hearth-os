@@ -96,40 +96,6 @@ pub fn ready(cat: &Catalog, seen: &Seen) -> Vec<(String, String, bool)> {
     v
 }
 
-/// "Hearth parts by themselves" (on only when the person turned it on in Settings › Updates & recovery): every ready
-/// update of an app that isn't open, whose download's SHA-256 is known, is downloaded, checked and put in place the
-/// same way the Store's Update button does it (the version before is kept to go back to). An app that's open, or
-/// that updates itself, is left for you. Says what it did in a notice.
-pub fn auto_update(cat: &Catalog, seen: &Seen) -> Vec<String> {
-    let mut said = Vec::new();
-    for e in cat.apps.iter().filter(|e| e.kind == Kind::Install && !e.self_updates) {
-        let (Some(i), Some(r)) = (crate::files::read_installed(&e.id), seen.rel(&e.id)) else { continue };
-        if !crate::newer(&r.version, &i.version) || r.sha256.len() != 64 || r.url.is_empty() || !crate::files::running(e).is_empty() {
-            continue;
-        }
-        let part = crate::files::part_file(e);
-        let done = (|| -> Result<(), String> {
-            net::download(&r.url, &part, &net::Cancel::default()).map_err(|f| f.words())?;
-            crate::files::check_download(&part, &r.sha256)?;
-            crate::files::put_in_place(e, &part).map_err(|x| x.to_string())?;
-            crate::files::record(e, &r.version, &r.sha256, r.size, &r.url, &r.page).map_err(|x| x.to_string())?;
-            crate::files::write_menu(e).map_err(|x| x.to_string())?;
-            Ok(())
-        })();
-        match done {
-            Ok(()) => {
-                let _ = net::run_short(5, &["notify-send", "-a", "Hearth Store", "-i", "system-software-update", &format!("{} {} is installed", e.name, r.version), "Updated by itself (Hearth parts by themselves is on). The version before is kept in the Store."]);
-                said.push(format!("hearth-store: {} updated to {}", e.id, r.version));
-            }
-            Err(why) => {
-                let _ = std::fs::remove_file(&part);
-                said.push(format!("hearth-store: {} not updated: {why}", e.id));
-            }
-        }
-    }
-    said
-}
-
 /// The daily check (`hearth-store-app --check`, from the user timer): nothing while a game runs or on a metered
 /// connection, or when "Look for updates" is "Only when the Store opens". One notice per new version, if "Tell me
 /// when an update is ready" is on. Writes only the Store's cache. Prints what it did.
@@ -152,11 +118,6 @@ pub fn daily() -> i32 {
         cat = catalog::load();
     }
     let mut seen = check_all(&cat, prefs.test);
-    if prefs.auto {
-        for line in auto_update(&cat, &seen) {
-            println!("{line}");
-        }
-    }
     let mut new_told = Vec::new();
     if prefs.notify {
         for (name, ver, own) in ready(&cat, &seen) {
@@ -171,6 +132,24 @@ pub fn daily() -> i32 {
         }
     }
     seen.told.extend(new_told);
+    // "Install updates by themselves" (store-w11-6; off unless the person turned it on): Hearth parts' quick updates
+    // only (each signed and checked by hearth-part, the built-in one kept to fall back on), never test versions, never
+    // while a game runs (checked above), and the person is told what changed.
+    if prefs.auto && !seen.offline {
+        let (hearth, _) = crate::this_pc();
+        for e in cat.apps.iter().filter(|e| !e.test) {
+            // (never system parts: they ask for the admin password, so only when you press Update)
+            let Some(p) = e.part.as_ref().filter(|p| !p.system) else { continue };
+            let Some(up) = crate::parts::offer(p, crate::parts::have(&p.id).as_ref(), &hearth) else { continue };
+            match crate::parts::install(up) {
+                Ok(_) => {
+                    println!("hearth-store: {} updated to {} by itself", e.name, up.version);
+                    let _ = net::run_short(5, &["notify-send", "-a", "Hearth Store", "-i", "system-software-update", &format!("{} is on {}", e.name, up.version), "Updated by itself (Store settings › Install updates by themselves)."]);
+                }
+                Err(err) => println!("hearth-store: {} {} didn't install: {err}", e.name, up.version),
+            }
+        }
+    }
     let _ = release::write_seen(&seen);
     println!("hearth-store: checked {} apps{}", seen.apps.len(), if seen.offline { " (offline)" } else { "" });
     0

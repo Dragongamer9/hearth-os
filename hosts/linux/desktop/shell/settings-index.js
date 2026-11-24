@@ -5549,6 +5549,17 @@ var ENTRIES = [
 "i": "info"
 },
 {
+"t": "Plain lock screen",
+"p": "your-desktop",
+"d": "The time, the date and the password box",
+"i": "lock"
+},
+{
+"t": "Match your desktop",
+"p": "your-desktop",
+"i": "palette"
+},
+{
 "t": "Ask again before they reach anything",
 "p": "your-desktop",
 "d": "Forgets every Allow and No you gave your blocks",

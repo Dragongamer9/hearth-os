@@ -7,7 +7,7 @@ The owner's choice: Settings shows layout A while you use a keyboard and mouse, 
 when it sees a controller being used (and back when the mouse or keyboard is used). Every page works in both.
 
 ## Switching between them
-- [x] A while the keyboard or mouse was used last, B while a controller was used last, switching live without losing your place — hosts/linux/desktop/shell/SettingsApp.qml: "property string want: SettingsNav.input === \"pad\" && !bFailed ? \"SettingsFrameB.qml\" : \"SettingsFrame.qml\""
+- [x] A while the keyboard or mouse was used last, B while a controller was used last, switching live without losing your place (built in 1.14; the controller look B was removed in 1.18 on the owner's decision, Nov 23: "get rid of the settings app controller mode", so it's always A and a controller moves through it) — hosts/linux/desktop/shell/SettingsApp.qml: "get rid of the settings app controller mode as well, sitck with the normal settings"
 - [x] the page and the setting you were on stay picked across the switch — hosts/linux/desktop/shell/SettingsApp.qml: "item.restoreFocus(keep)"
 
 ## A: Home (settings-A1)

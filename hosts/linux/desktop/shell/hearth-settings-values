@@ -640,7 +640,7 @@ def xdg(var, rest):
 
 
 def store_prefs_path():
-    """The Hearth Store's own settings (hosts/hearth-ui/apps/store prefs.rs): testVersions, autoParts."""
+    """The Hearth Store's own settings (hosts/hearth-ui/apps/store prefs.rs): testVersions, autoInstall."""
     return xdg('XDG_CONFIG_HOME', '.config') / 'nimbus' / 'hearth-store.json'
 
 
@@ -728,7 +728,7 @@ def r_updates():
         sp = None
     if sp is not None:
         # The Store's own defaults when a key isn't there: both off.
-        put(test_versions='on' if sp.get('testVersions') else 'off', parts_auto='on' if sp.get('autoParts') else 'off')
+        put(test_versions='on' if sp.get('testVersions') else 'off', parts_auto='on' if sp.get('autoInstall') else 'off')
     # Hearth OS downloads and stages its updates in the background (bootc's timer; they apply at your next restart)
     # unless /etc/hearth/no-auto-update is there (hearth-admin auto-update).
     put(os_auto='off' if Path('/etc/hearth/no-auto-update').exists() else 'on')
@@ -917,7 +917,7 @@ def set_switch(key, on):
                 except Exception:
                     return {'ok': False, 'error': 'The Store\'s settings file couldn\'t be read, so nothing was written over it.'}
             os.makedirs(path.parent, exist_ok=True)
-            sio.merge_json(str(path), {'testVersions' if key == 'test_versions' else 'autoParts': on}, who='you')
+            sio.merge_json(str(path), {'testVersions' if key == 'test_versions' else 'autoInstall': on}, who='you')
             return {'ok': True, 'error': ''}
         except Exception as e:
             return {'ok': False, 'error': str(e)[:200]}

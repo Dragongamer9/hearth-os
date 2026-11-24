@@ -61,6 +61,13 @@ polkit.addRule(function (action, subject) {
         /^\S+\s+firewall-(off|allow|incoming)(\s|$)/.test(action.lookup("command_line") || "")) {
         return polkit.Result.AUTH_ADMIN;
     }
+    // A Hearth Store system part (1.18, hearth-system-part: a newer copy of one of Hearth's helpers that run as root)
+    // goes on the system itself: always an administrator's password (docs/STORE-SYSTEM-PARTS.md).
+    if (action.id == "org.freedesktop.policykit.exec" &&
+        action.lookup("program") == "/usr/libexec/nimbus/hearth-admin" &&
+        /^\S+\s+system-part-\S+(\s|$)/.test(action.lookup("command_line") || "")) {
+        return polkit.Result.AUTH_ADMIN;
+    }
     // Installing or removing a .deb on the system itself (Peppermint unlocked) runs the package's own scripts as
     // root: always an administrator's password, like sudo apt.
     if (action.id == "org.freedesktop.policykit.exec" &&
