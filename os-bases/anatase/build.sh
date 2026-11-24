@@ -908,6 +908,8 @@ chmod 755 /usr/libexec/nimbus/hearth-login-screen /usr/libexec/nimbus/hearth-gre
 systemctl disable greetd.service plasmalogin.service >/dev/null 2>&1 || true
 ln -sfn /usr/lib/systemd/system/hearth-login-text.service /etc/systemd/system/display-manager.service
 systemctl enable hearth-login-select.service hearth-greetd.service
+# 1.18: Fedora is abandoned; a PC on it moves to Hearth OS on Debian by itself, once (the owner: "Move them automatically").
+systemctl enable hearth-auto-move-to-debian.timer
 systemctl --global enable hearth-login-notice.service || true
 getent passwd greetd >/dev/null || getent passwd greeter >/dev/null || getent passwd _greetd >/dev/null || useradd -r -M -s /sbin/nologin -d /var/lib/greetd greetd
 [ -f /etc/pam.d/greetd ] || printf '#%%PAM-1.0\nauth       substack     system-auth\nauth       include      postlogin\naccount    required     pam_nologin.so\naccount    include      system-auth\npassword   include      system-auth\nsession    required     pam_selinux.so close\nsession    required     pam_loginuid.so\nsession    required     pam_selinux.so open\nsession    optional     pam_keyinit.so force revoke\nsession    include      system-auth\nsession    include      postlogin\n' > /etc/pam.d/greetd

@@ -2289,6 +2289,58 @@ def back_to_debian(deps):
     return True
 
 
+AUTO_MOVE_DONE = '/var/lib/hearth/auto-move-to-debian.json'
+AUTO_MOVE_TRIES = 3
+
+
+def auto_move_to_debian():
+    """1.18 (the owner, Nov 24: "Move them automatically"; Fedora is abandoned): a PC on Hearth OS on Fedora moves to
+    Hearth OS on Debian by itself, once, with the same move as Settings › Updates › Switch edition (the very Debian
+    version it came from when that's still there, else Debian fresh, keeping the home folder). Run as root by
+    hearth-auto-move-to-debian.service a few minutes after the PC starts; it never restarts the PC: the move is used
+    at the next restart, and Fedora stays in the boot menu (red flag 2). Gives up after AUTO_MOVE_TRIES starts that
+    didn't work, and says so."""
+    if own_edition() != 'anatase':
+        print(json.dumps({'skipped': 'not the Fedora edition'}))
+        return
+    st = {}
+    try:
+        with open(AUTO_MOVE_DONE) as f:
+            st = json.load(f)
+    except (OSError, ValueError):
+        st = {}
+    if st.get('done') or int(st.get('tries') or 0) >= AUTO_MOVE_TRIES:
+        print(json.dumps({'skipped': 'already done' if st.get('done') else 'gave up after %d tries' % AUTO_MOVE_TRIES}))
+        return
+    # Whose move it is: the account that signs in by itself, else the first person's account on this PC.
+    users = [p for p in pwd.getpwall() if 1000 <= p.pw_uid < 60000 and p.pw_dir.startswith('/home/') and os.path.isdir(p.pw_dir)]
+    if not users:
+        print(json.dumps({'skipped': 'no account yet (first start not done)'}))
+        return
+    users.sort(key=lambda p: p.pw_uid)
+    os.environ['PKEXEC_UID'] = str(users[0].pw_uid)
+    st['tries'] = int(st.get('tries') or 0) + 1
+    st['at'] = int(time.time())
+    os.makedirs(os.path.dirname(AUTO_MOVE_DONE), mode=0o755, exist_ok=True)
+    write_atomic_json(AUTO_MOVE_DONE, st)
+    try:
+        move_to_new_os('peppermint')
+    except SystemExit as e:
+        if e.code not in (0, None):
+            raise
+    st['done'] = True
+    write_atomic_json(AUTO_MOVE_DONE, st)
+
+
+def write_atomic_json(path, obj):
+    tmp = path + '.tmp'
+    with open(tmp, 'w') as f:
+        json.dump(obj, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
 def move_args(args):
     """move-to-new-os's options: [--edition NAME] [--testing], each at most once. (edition, testing), or None."""
     edition, testing, i = 'peppermint', False, 0
@@ -3197,6 +3249,10 @@ def main(argv):
         hibernate_setup()
     elif cmd == 'hibernate-reboot' and len(argv) == 2:
         hibernate_reboot()
+    elif cmd == 'auto-move-to-debian' and len(argv) == 2:
+        if os.geteuid() != 0:
+            fail('run as root (hearth-auto-move-to-debian.service)')
+        auto_move_to_debian()
     elif cmd == 'move-to-new-os' and move_args(argv[2:]):
         move_to_new_os(*move_args(argv[2:]))
     elif cmd == 'seats-setup':

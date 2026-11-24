@@ -1,0 +1,16 @@
+# 1.18 (the owner, Nov 24: "Move them automatically"): Hearth OS on Fedora moves itself to Hearth OS on Debian, once
+# (hearth-admin auto-move-to-debian: the same move as Settings › Updates › Switch edition, keeping the home folder).
+# Started only by its timer, five minutes after the PC starts: never part of starting the PC, the session or Game
+# Mode, and it never restarts the PC. The move is used at the next restart; Fedora stays in the boot menu.
+[Unit]
+Description=Hearth OS: move from Fedora to Debian (once)
+ConditionPathExists=/run/ostree-booted
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /usr/libexec/nimbus/hearth-admin auto-move-to-debian
+Nice=10
+IOSchedulingClass=idle
+TimeoutStartSec=3h
