@@ -776,6 +776,9 @@ pub fn done_line(e: &Entry, secs: Option<u64>) -> String {
         }
     } else if !e.decky.is_empty() {
         "Downloaded · Steam's Game Mode uses it from Decky's next start".into()
+    } else if pid == "hearth-home-server-helper" {
+        // system-parts.json: hearth-system-part runs hearth-home-server-services.service again with it
+        "Installed · the home server's services started again with it".into()
     } else if e.part.as_ref().map(|p| p.system).unwrap_or(false) {
         "Installed · used from its next job, no restart".into()
     } else if pid == "hearth-store-app" {

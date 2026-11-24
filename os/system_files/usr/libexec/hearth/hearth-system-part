@@ -428,9 +428,14 @@ def install(pid, extra=None, opener=None, test=False):
 
 def restart_services(pid):
     """Its services start again with the new copy (no restart of the PC); only the ones that are running."""
-    for unit in allowed().get(pid, {}).get("services") or []:
+    a = allowed().get(pid, {})
+    for unit in a.get("services") or []:
         if isinstance(unit, str) and unit.endswith((".service", ".socket")) and "/" not in unit:
             subprocess.run(["systemctl", "try-restart", unit], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    # One-shot services the helper does its work in (the home server's services check): run once now with the new copy.
+    for unit in a.get("run") or []:
+        if isinstance(unit, str) and unit.endswith(".service") and "/" not in unit:
+            subprocess.run(["systemctl", "start", "--no-block", unit], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def remove(pid):
