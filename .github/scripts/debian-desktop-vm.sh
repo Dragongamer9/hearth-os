@@ -135,7 +135,7 @@ v HEARTH-CI-session | grep -q ' tester ' || fail "nobody was signed in: no sessi
 v HEARTH-CI-login | grep -qiE 'unable to exec|panicked|Permission denied' && fail "the sign-in failed: $(v HEARTH-CI-login)"
 v HEARTH-CI-desktop | grep -q 'up=yes' || fail "Mantel didn't come up after Desktop Mode was asked for: $(v HEARTH-CI-desktop) · $(grep -a '^HEARTH-CI-log' "$OUT/job.txt" | tail -8 | cut -c15-)"
 v HEARTH-CI-desktop | grep -q 'labwc' || fail "Desktop Mode isn't on labwc (1.13's, the smooth one): $(v HEARTH-CI-desktop)"
-python3 - "$OUT" <<'PY' || FAILED=1
+REST="$REST" python3 - "$OUT" <<'PY' || FAILED=1
 import os, sys
 from PIL import Image, ImageStat
 out = sys.argv[1]
@@ -152,7 +152,9 @@ for line in open(os.path.join(out, 'memory.txt')):
     f = line.split()
     if len(f) >= 4 and f[1].isdigit():
         rows.append((int(f[0]), int(f[1]), int(f[2]) if f[2].isdigit() else 0, int(f[3]) if f[3].lstrip('-').isdigit() else None))
-if len(rows) < 12:
+# The rest asked for (REST seconds), less a minute for the first reading: a shorter test run is measured as asked.
+want = max(5, min(12, int(os.environ.get('REST', '3600')) // 60 - 1))
+if len(rows) < want:
     bad.append('at rest: only %d minutes measured' % len(rows))
 else:
     first = sum(r[1] for r in rows[:10]) / 10; last = sum(r[1] for r in rows[-10:]) / 10
