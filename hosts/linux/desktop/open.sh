@@ -61,15 +61,15 @@ case "$1" in
   files)      first "/usr/bin/hearth-filemanager" 'xdg-open "$HOME"' dolphin nautilus thunar pcmanfm-qt pcmanfm nemo ;;
   # A file's folder in the file manager (the screenshot notification's "Show in folder").
   files-at)   export FILE="$2"; DIR=$(dirname "$2"); export DIR
-              first 'quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call files open "$FILE"' \
+              first 'hearth-mantel-ipc call files open "$FILE"' \
                     'dbus-send --session --dest=org.freedesktop.FileManager1 --type=method_call /org/freedesktop/FileManager1 org.freedesktop.FileManager1.ShowItems array:string:"file://$FILE" string:""' \
                     'xdg-open "$DIR"' ;;
   # Hearth Capture (Capture.qml): Mantel's own, in place of KDE's Spectacle.
-  capture)    cap_ipc() { quickshell ipc -p "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell" call capture "$@" >/dev/null 2>&1; }
+  capture)    cap_ipc() { hearth-mantel-ipc call capture "$@" >/dev/null 2>&1; }
               if [ -n "$2" ]; then cap_ipc take "$2" && exit 0; else cap_ipc open && exit 0; fi
               notify-send -a Capture "Capture" "Capture is part of Hearth's desktop (Mantel), which isn't running" 2>/dev/null; exit 1 ;;
   capture-region)
-              quickshell ipc -p "${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell" call capture take area >/dev/null 2>&1 && exit 0
+              hearth-mantel-ipc call capture take area >/dev/null 2>&1 && exit 0
               exec sh "$0" screenshot-region ;;
   screenshot)
               # Nothing to grab with (no grim, not KWin): Hearth Capture takes it, in place of KDE's Spectacle.
@@ -97,7 +97,7 @@ case "$1" in
   record|record-area|replay-save)
               if ! have hearth-recorder; then
                 if [ "$1" = record ] && have quickshell && [ -f "$NIMBUS_SHARE/desktop/shell/Recorder.qml" ]; then
-                  exec quickshell ipc -p "$NIMBUS_SHARE/desktop/shell" call record startStop
+                  exec hearth-mantel-ipc call record startStop
                 fi
                 notify-send -a Recorder "Recorder" "Hearth Recorder isn't installed" 2>/dev/null; exit 1
               fi

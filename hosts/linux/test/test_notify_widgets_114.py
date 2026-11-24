@@ -281,7 +281,7 @@ class Notifications(unittest.TestCase):
 
     def test_dnd_shortcut_on_both(self):
         rc = (DESK / 'labwc' / 'rc.xml').read_text()
-        self.assertIn('<keybind key="W-A-n"><action name="Execute" command="sh -c \'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call notifications dnd toggle\'" /></keybind>', rc)
+        self.assertIn('<keybind key="W-A-n"><action name="Execute" command="sh -c \'hearth-mantel-ipc call notifications dnd toggle\'" /></keybind>', rc)
         sc = json.loads((DESK / 'kwin' / 'windows' / 'shortcuts.json').read_text())
         dnd = [s for s in sc['shortcuts'] if s['id'] == 'dnd']
         self.assertEqual(len(dnd), 1)

@@ -517,7 +517,7 @@ ShellRoot {
     // How long Mantel took (the Ally's Firehold start was slower than KWin's: the log says where the time went):
     // when this file started being read, when it was all loaded, and when "up" was written.
     readonly property double loadStartedAt: Date.now()
-    Timer { interval: 3000; running: true; onTriggered: { console.info("Mantel: up " + (Date.now() - loadStartedAt) + " ms after it started loading"); Quickshell.execDetached(["sh", "-c", ': > "${XDG_RUNTIME_DIR:-/tmp}/hearth-shell-up"']); } }
+    Timer { interval: 3000; running: true; onTriggered: { console.info("Mantel: up " + (Date.now() - loadStartedAt) + " ms after it started loading"); Quickshell.execDetached(["sh", "-c", ': > "${XDG_RUNTIME_DIR:-/tmp}/hearth-shell-up"']); Quickshell.execDetached(["sh", Quickshell.shellDir + "/hearth-mantel-answer", Quickshell.shellDir]); } }
     // labwc's key bindings for the volume and power keys (a backup for what hearth-buttons can't read).
     IpcHandler {
         target: "buttons"

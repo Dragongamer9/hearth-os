@@ -149,6 +149,9 @@ else
       else
         pick="$shell_dir"
       fi
+      # The folder this Mantel runs from, for the shortcuts and helpers (hearth-mantel-ipc): the Store's copy is in your
+      # home folder, and a call to the built-in one would find nothing (the Windows key did nothing after 1.17.3).
+      printf '%s' "$pick" > "${XDG_RUNTIME_DIR:-/tmp}/hearth-mantel-shell" 2>/dev/null || true
       quickshell -p "$pick" >>"$SHELL_LOG" 2>&1
       if [ $(($(date +%s) - started)) -lt 20 ]; then
         # The Store's copy closing right away: the built-in one next time (hearth-part says so), not counted here.

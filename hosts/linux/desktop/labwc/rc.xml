@@ -73,47 +73,47 @@
   <keyboard>
     <default />
     <!-- Super opens the Nimbus launcher, like the Start/Steam button. -->
-    <keybind key="Super_L" onRelease="yes"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher toggle'" /></keybind>
-    <keybind key="W-space"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher toggle'" /></keybind>
+    <keybind key="Super_L" onRelease="yes"><action name="Execute" command="sh -c 'hearth-mantel-ipc call launcher toggle'" /></keybind>
+    <keybind key="W-space"><action name="Execute" command="sh -c 'hearth-mantel-ipc call launcher toggle'" /></keybind>
     <!-- Clipboard history (Settings › Clipboard) -->
-    <keybind key="W-v"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call clipboard toggle'" /></keybind>
+    <keybind key="W-v"><action name="Execute" command="sh -c 'hearth-mantel-ipc call clipboard toggle'" /></keybind>
     <keybind key="W-Return"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh terminal'" /></keybind>
     <keybind key="C-A-t"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh terminal'" /></keybind>
     <!-- Like Windows 11: Super+I Settings, Super+A Quick Access, Super+N notifications and the calendar,
          Super+S the app menu's search, Super+R the Run box, Super+X the quick links menu (Device Manager, Disk
          Management, Terminal, Task Manager…; WinTools.qml), Super+1-9 the apps on the taskbar (open, or switch to). -->
-    <keybind key="W-i"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call settings open'" /></keybind>
-    <keybind key="W-a"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call quick toggle'" /></keybind>
-    <keybind key="W-n"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call calendar toggle'" /></keybind>
+    <keybind key="W-i"><action name="Execute" command="sh -c 'hearth-mantel-ipc call settings open'" /></keybind>
+    <keybind key="W-a"><action name="Execute" command="sh -c 'hearth-mantel-ipc call quick toggle'" /></keybind>
+    <keybind key="W-n"><action name="Execute" command="sh -c 'hearth-mantel-ipc call calendar toggle'" /></keybind>
     <!-- 1.14: Do not disturb on or off (Settings › Notifications) -->
-    <keybind key="W-A-n"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call notifications dnd toggle'" /></keybind>
-    <keybind key="W-s"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher open'" /></keybind>
-    <keybind key="W-r"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call run toggle'" /></keybind>
+    <keybind key="W-A-n"><action name="Execute" command="sh -c 'hearth-mantel-ipc call notifications dnd toggle'" /></keybind>
+    <keybind key="W-s"><action name="Execute" command="sh -c 'hearth-mantel-ipc call launcher open'" /></keybind>
+    <keybind key="W-r"><action name="Execute" command="sh -c 'hearth-mantel-ipc call run toggle'" /></keybind>
     <!-- 1.14: the search bar (SearchBar.qml, like KRunner): Alt+Space and Alt+F2. When Settings › Keyboard switches layouts
          with Alt+Space, hearth-system labwc-config leaves the Alt+Space line out (the layout switch wins). labwc's own
          Alt+Space window menu moves to Alt+F3 (as on KDE). -->
-    <keybind key="A-space"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call searchbar key'" /></keybind>
-    <keybind key="A-F2"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call searchbar toggle'" /></keybind>
+    <keybind key="A-space"><action name="Execute" command="sh -c 'hearth-mantel-ipc call searchbar key'" /></keybind>
+    <keybind key="A-F2"><action name="Execute" command="sh -c 'hearth-mantel-ipc call searchbar toggle'" /></keybind>
     <keybind key="A-F3"><action name="ShowMenu" menu="client-menu" atCursor="no" /></keybind>
-    <keybind key="W-x"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call winx toggle'" /></keybind>
-    <keybind key="W-1"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 1'" /></keybind>
-    <keybind key="W-2"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 2'" /></keybind>
-    <keybind key="W-3"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 3'" /></keybind>
-    <keybind key="W-4"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 4'" /></keybind>
-    <keybind key="W-5"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 5'" /></keybind>
-    <keybind key="W-6"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 6'" /></keybind>
-    <keybind key="W-7"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 7'" /></keybind>
-    <keybind key="W-8"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 8'" /></keybind>
-    <keybind key="W-9"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 9'" /></keybind>
+    <keybind key="W-x"><action name="Execute" command="sh -c 'hearth-mantel-ipc call winx toggle'" /></keybind>
+    <keybind key="W-1"><action name="Execute" command="sh -c 'hearth-mantel-ipc call taskbar activate 1'" /></keybind>
+    <keybind key="W-2"><action name="Execute" command="sh -c 'hearth-mantel-ipc call taskbar activate 2'" /></keybind>
+    <keybind key="W-3"><action name="Execute" command="sh -c 'hearth-mantel-ipc call taskbar activate 3'" /></keybind>
+    <keybind key="W-4"><action name="Execute" command="sh -c 'hearth-mantel-ipc call taskbar activate 4'" /></keybind>
+    <keybind key="W-5"><action name="Execute" command="sh -c 'hearth-mantel-ipc call taskbar activate 5'" /></keybind>
+    <keybind key="W-6"><action name="Execute" command="sh -c 'hearth-mantel-ipc call taskbar activate 6'" /></keybind>
+    <keybind key="W-7"><action name="Execute" command="sh -c 'hearth-mantel-ipc call taskbar activate 7'" /></keybind>
+    <keybind key="W-8"><action name="Execute" command="sh -c 'hearth-mantel-ipc call taskbar activate 8'" /></keybind>
+    <keybind key="W-9"><action name="Execute" command="sh -c 'hearth-mantel-ipc call taskbar activate 9'" /></keybind>
     <!-- Super+Tab and Alt+Tab both switch windows (labwc's own Alt+Tab). -->
     <keybind key="W-Tab"><action name="NextWindow" /></keybind>
     <keybind key="W-S-Tab"><action name="PreviousWindow" /></keybind>
     <!-- Ctrl+Alt+Delete: the power menu (lock, sign out, restart, shut down). -->
-    <keybind key="C-A-Delete"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call power menu'" /></keybind>
+    <keybind key="C-A-Delete"><action name="Execute" command="sh -c 'hearth-mantel-ipc call power menu'" /></keybind>
     <keybind key="W-e"><action name="Execute" command="sh -c 'sh $NIMBUS_SHARE/desktop/open.sh files'" /></keybind>
-    <keybind key="C-S-Escape"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call tasks toggle'" /></keybind>
+    <keybind key="C-S-Escape"><action name="Execute" command="sh -c 'hearth-mantel-ipc call tasks toggle'" /></keybind>
     <keybind key="W-g"><action name="Execute" command="nimbus-mode game" /></keybind>
-    <keybind key="W-l"><action name="Execute" command="sh -c 'quickshell ipc -p &quot;$NIMBUS_SHARE/desktop/shell&quot; call lock lock'" /></keybind>
+    <keybind key="W-l"><action name="Execute" command="sh -c 'hearth-mantel-ipc call lock lock'" /></keybind>
     <keybind key="W-q"><action name="Close" /></keybind>
     <!-- Snapping from the keyboard (View + D-pad on the controller): Left/Right for halves; Up/Down on a half
          makes it a quarter, on a quarter back to the half; Up maximizes, Down restores, then minimizes. -->
@@ -149,8 +149,8 @@
     </keybind>
     <!-- Show the desktop, then the windows again (the taskbar's strip at the end does the same). The shell does it,
          since labwc's own ToggleShowDesktop only came in 0.20. -->
-    <keybind key="W-d"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar showDesktop'" /></keybind>
-    <keybind key="W-m"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar showDesktop'" /></keybind>
+    <keybind key="W-d"><action name="Execute" command="sh -c 'hearth-mantel-ipc call taskbar showDesktop'" /></keybind>
+    <keybind key="W-m"><action name="Execute" command="sh -c 'hearth-mantel-ipc call taskbar showDesktop'" /></keybind>
     <!-- Two or more screens: Super+Shift+Left/Right moves the window to the next screen that way. -->
     <!-- Keep above others (Firehold on labwc's Desk bar › Window, 1.16; also Super+Alt+T) -->
     <keybind key="W-A-t"><action name="ToggleAlwaysOnTop" /></keybind>
@@ -191,19 +191,19 @@
     <!-- ==== end of Hearth Recorder -->
     <!-- Volume and power keys go to the shell (volume bar, over-amplification, Settings › Power button);
          wpctl directly if the shell isn't running. -->
-    <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons up || wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+'" /></keybind>
-    <keybind key="XF86AudioLowerVolume"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons down || wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-'" /></keybind>
-    <keybind key="XF86AudioMute"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons mute || wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle'" /></keybind>
-    <keybind key="XF86PowerOff"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons power'" /></keybind>
-    <keybind key="XF86MonBrightnessUp"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call brightness up || brightnessctl set 5%+'" /></keybind>
-    <keybind key="XF86MonBrightnessDown"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call brightness down || brightnessctl set 5%-'" /></keybind>
+    <keybind key="XF86AudioRaiseVolume"><action name="Execute" command="sh -c 'hearth-mantel-ipc call buttons up || wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+'" /></keybind>
+    <keybind key="XF86AudioLowerVolume"><action name="Execute" command="sh -c 'hearth-mantel-ipc call buttons down || wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-'" /></keybind>
+    <keybind key="XF86AudioMute"><action name="Execute" command="sh -c 'hearth-mantel-ipc call buttons mute || wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle'" /></keybind>
+    <keybind key="XF86PowerOff"><action name="Execute" command="sh -c 'hearth-mantel-ipc call buttons power'" /></keybind>
+    <keybind key="XF86MonBrightnessUp"><action name="Execute" command="sh -c 'hearth-mantel-ipc call brightness up || brightnessctl set 5%+'" /></keybind>
+    <keybind key="XF86MonBrightnessDown"><action name="Execute" command="sh -c 'hearth-mantel-ipc call brightness down || brightnessctl set 5%-'" /></keybind>
     <keybind key="XF86AudioMicMute"><action name="Execute" command="wpctl set-mute @DEFAULT_AUDIO_SOURCE@ toggle" /></keybind>
     <!-- Media keys: whatever is playing (MPRIS: browsers, Spotify, music and video players). -->
-    <keybind key="XF86AudioPlay"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media playPause'" /></keybind>
-    <keybind key="XF86AudioPause"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media playPause'" /></keybind>
-    <keybind key="XF86AudioNext"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media next'" /></keybind>
-    <keybind key="XF86AudioPrev"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media previous'" /></keybind>
-    <keybind key="XF86AudioStop"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media stop'" /></keybind>
+    <keybind key="XF86AudioPlay"><action name="Execute" command="sh -c 'hearth-mantel-ipc call media playPause'" /></keybind>
+    <keybind key="XF86AudioPause"><action name="Execute" command="sh -c 'hearth-mantel-ipc call media playPause'" /></keybind>
+    <keybind key="XF86AudioNext"><action name="Execute" command="sh -c 'hearth-mantel-ipc call media next'" /></keybind>
+    <keybind key="XF86AudioPrev"><action name="Execute" command="sh -c 'hearth-mantel-ipc call media previous'" /></keybind>
+    <keybind key="XF86AudioStop"><action name="Execute" command="sh -c 'hearth-mantel-ipc call media stop'" /></keybind>
     <!-- The sleep key (the session holds it so the power button stays Hearth's, so it's done here), through
          hearth-buttons: who asked goes to the journal, and a key that just woke the device doesn't put it back to sleep. -->
     <keybind key="XF86Sleep"><action name="Execute" command="sh -c 'python3 $NIMBUS_SHARE/desktop/shell/hearth-buttons sleep &quot;Desktop Mode: sleep key (labwc)&quot;'" /></keybind>
@@ -225,9 +225,9 @@
          layouts…" in its title bar menu, does too). Picking a zone presses Super+Left / Super+Right (the halves) or one
          of the Super+Ctrl+Shift+F1–F11 keys below, each snapping the window to a region above. snap-layouts.js says
          which key is which zone; test_shell_extras.py checks they agree. -->
-    <keybind key="W-z"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call snap toggle'" /></keybind>
+    <keybind key="W-z"><action name="Execute" command="sh -c 'hearth-mantel-ipc call snap toggle'" /></keybind>
     <!-- Super+P: the screen switcher (one screen, extend; ScreenSwitcher.qml) -->
-    <keybind key="W-p"><action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call screens switcher'" /></keybind>
+    <keybind key="W-p"><action name="Execute" command="sh -c 'hearth-mantel-ipc call screens switcher'" /></keybind>
     <keybind key="W-C-S-F1"><action name="SnapToRegion" region="left-two-thirds" /></keybind>
     <keybind key="W-C-S-F2"><action name="SnapToRegion" region="right-third" /></keybind>
     <keybind key="W-C-S-F3"><action name="SnapToRegion" region="left-third" /></keybind>
@@ -255,7 +255,7 @@
     <context name="Maximize">
       <mousebind button="Right" action="Click">
         <action name="Focus" />
-        <action name="Execute" command="sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call snap open'" />
+        <action name="Execute" command="sh -c 'hearth-mantel-ipc call snap open'" />
       </mousebind>
     </context>
   </mouse>
