@@ -649,7 +649,8 @@ def apply(s, changed=None, where=None):
         p = apply_mono(s['monoAudio'])
         if p:
             problems['monoAudio'] = p
-    if where in ('desktop', 'kwin'):
+    # Only the ones you changed (at the start of a mode KWin and labwc already have theirs).
+    if where in ('desktop', 'kwin') and changed is not None:
         problems.update(apply_keys(s, keys, where))
     if 'screenReader' in keys and where in ('game', 'desktop', 'kwin') and (changed is not None or s['screenReader']):
         try:

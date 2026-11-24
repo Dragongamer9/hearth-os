@@ -49,9 +49,12 @@ class DebianImageArchived(unittest.TestCase):
         pushes = [(name, s) for name, j in data['jobs'].items() for s in j.get('steps', [])
                   if re.search(r'podman push|skopeo copy[^\n]*docker://', s.get('run', '') or '')]
         self.assertTrue(pushes, 'expected the (hand-run) publish step')
+        # 1.18 (Debian again): the image goes up only when publish was ticked, or to an owner-approved test tag
+        # (test-<version>, and its -candidate while the checks run: the owner, Nov 24).
         for name, s in pushes:
-            self.assertEqual(str(s.get('if', '')).strip(), "env.PUBLISH == 'true'",
-                             '%s: a step that uploads the image must only run when publish was ticked' % name)
+            cond = str(s.get('if', '')).strip()
+            self.assertTrue(cond == "env.PUBLISH == 'true'" or "inputs.test_tag != ''" in cond,
+                            '%s: a step that uploads the image must only run when publish was ticked or a test tag given' % name)
 
     def test_never_touches_fedora_or_latest(self):
         text, data, _ = load()

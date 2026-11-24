@@ -83,7 +83,7 @@ class Shortcuts(unittest.TestCase):
             self.assertNotIn(s['id'], ids)
             self.assertTrue(('run' in s) != ('win' in s), s['id'] + ': a command or a window action, one of them')
             if 'run' in s:
-                self.assertTrue(s['run'].startswith("sh -c 'quickshell ipc"), s['id'])
+                self.assertTrue(s['run'].startswith("sh -c 'hearth-mantel-ipc") or s['run'].startswith("sh -c 'quickshell ipc"), s['id'])
                 self.assertEqual(kb.command_for(s['id'], self.table), s['run'])
             else:
                 base = s['win'].split(':')[0] + (':' if ':' in s['win'] else '')
