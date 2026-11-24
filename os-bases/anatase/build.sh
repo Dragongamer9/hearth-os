@@ -852,7 +852,10 @@ echo "::notice title=No KDE::still here after removing KDE:$keep"
 dnf5 -y install --skip-unavailable xdg-desktop-portal-wlr xdg-desktop-portal-gtk pinentry-gnome3 pinentry-tty adwaita-icon-theme \
   hicolor-icon-theme xorriso || true
 dnf5 -y install greetd || { echo "::error title=No KDE::greetd isn't installable: no way to sign in"; exit 1; }
-dnf5 -y install --skip-unavailable greetd-selinux cage || true
+# greetd-selinux gives greetd the login screen's SELinux domain: without it no session can start ("unable to exec:
+# EACCES", the owner's laptop on test-1.18, Nov 23), so it's required.
+dnf5 -y install greetd-selinux || { echo "::error title=No KDE::greetd-selinux isn't installable: no session could start"; exit 1; }
+dnf5 -y install --skip-unavailable cage || true
 # KDE's leftovers that name a desktop that's gone.
 rm -f /etc/xdg/autostart/org.kde.* /etc/xdg/autostart/*plasma* /usr/share/wayland-sessions/plasma*.desktop /usr/share/xsessions/plasma*.desktop
 rm -rf /usr/share/hearth/desktop-sessions/*plasma* /etc/xdg/plasma-workspace /etc/plasmalogin.conf /etc/plasmalogin.conf.d
@@ -911,7 +914,9 @@ getent passwd greetd >/dev/null || getent passwd greeter >/dev/null || getent pa
 { command -v greetd >/dev/null && { [ -x /usr/bin/agreety ] || [ -x /usr/sbin/agreety ]; } && [ -f /etc/pam.d/greetd ] \
   && [ "$(readlink -f /etc/systemd/system/display-manager.service)" = /usr/lib/systemd/system/hearth-login-text.service ]; } \
   || { echo "::error title=Signing in::greetd, agreety or its PAM file is missing: no way to sign in"; exit 1; }
-echo "::notice title=Signing in::greetd $(rpm -q --qf '%{VERSION}' greetd), text sign-in as the display manager; Hearth's own login screen: $(command -v cage >/dev/null && echo 'can be turned on' || echo 'no cage')"
+gctx=$({ matchpathcon -n /usr/sbin/greetd 2>/dev/null || matchpathcon -n /usr/bin/greetd 2>/dev/null || grep -hE 'bin/greetd' /etc/selinux/targeted/contexts/files/file_contexts* 2>/dev/null; } | head -1 || true)
+case "$gctx" in *xdm_exec_t*|*greetd_exec_t*) ;; *) echo "::error title=Signing in::greetd isn't labelled as a login screen for SELinux ($gctx): no session could start"; exit 1 ;; esac
+echo "::notice title=Signing in::greetd $(rpm -q --qf '%{VERSION}' greetd), text sign-in as the display manager (SELinux: ${gctx:-?}); Hearth's own login screen: $(command -v cage >/dev/null && echo 'can be turned on' || echo 'no cage')"
 
 # ------------------------------------------------------------------ Firehold (Rust, test): archived
 # The owner (Nov 19): "focus on the Plasma Firehold for the moment and archive the Rust Firehold". firehold-shell, its

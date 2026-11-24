@@ -174,6 +174,8 @@ if [ -n "$NOKDE" ]; then
     "command -v labwc && command -v quickshell && ! ldd \"\$(command -v quickshell)\" | grep -q 'not found' && test -f /usr/share/nimbus/desktop/shell/shell.qml && test -x /usr/bin/hearth-labwc-desktop"
   nokde_check "signing in: greetd and its text sign-in are the display manager" \
     "command -v greetd && { test -x /usr/bin/agreety || test -x /usr/sbin/agreety; } && readlink -f /etc/systemd/system/display-manager.service | grep -q hearth-login-text.service && test -f /etc/pam.d/greetd"
+  nokde_check "greetd is started by systemd and labelled as a login screen (SELinux), so a session can start" \
+    "{ matchpathcon -n /usr/sbin/greetd 2>/dev/null; matchpathcon -n /usr/bin/greetd 2>/dev/null; grep -hE bin/greetd /etc/selinux/targeted/contexts/files/file_contexts* 2>/dev/null; } | grep -Eq 'xdm_exec_t|greetd_exec_t' && grep -q '^ExecStart=/usr/sbin/greetd' /usr/lib/systemd/system/hearth-login-text.service /usr/lib/systemd/system/hearth-greetd.service"
   nokde_check "Hearth's own login screen can be picked (greetd, cage, the greeter, select)" \
     "test -x /usr/libexec/nimbus/hearth-login-screen && test -x /usr/libexec/nimbus/hearth-greeter && systemctl is-enabled hearth-login-select.service && test -f /usr/lib/systemd/system/hearth-greetd.service"
   nokde_check "automatic sign-in into Game Mode is written where greetd reads it" "grep -q sddm.conf.d /usr/libexec/nimbus/nimbus-autologin && systemctl is-enabled nimbus-autologin.service"

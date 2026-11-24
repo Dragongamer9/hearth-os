@@ -439,16 +439,30 @@ def _has_user(name):
         return False
 
 
-def cmd_run_text():
-    exe = first(GREETD_BINS)
-    if not exe:
-        log('greetd is missing: no text sign-in either')
-        return 1
+def cmd_text_config():
+    """Writes the text sign-in's settings (hearth-login-text.service's ExecStartPre). greetd itself is the unit's
+    ExecStart, started by systemd, never from here: only then does Fedora's SELinux give it the login screen's own
+    domain (xdm_t), which may start your session as you. Started from this script, greetd kept the script's domain and
+    every sign-in failed with "unable to exec: EACCES" (the owner's laptop, test-1.18, Nov 23)."""
     try:
         auto = sddm_autologin()
     except Exception:
         auto = None
-    write_run(TEXT_CONF, text_config(auto))
+    try:
+        write_run(TEXT_CONF, text_config(auto))
+    except Exception as e:
+        log('could not write the text sign-in with automatic sign-in (%s): without it' % e)
+        write_run(TEXT_CONF, text_config(None))
+    return 0
+
+
+def cmd_run_text():
+    """Older units' ExecStart (kept so an image with the old unit still signs in where SELinux is off)."""
+    exe = first(GREETD_BINS)
+    if not exe:
+        log('greetd is missing: no text sign-in either')
+        return 1
+    cmd_text_config()
     os.execv(P(exe), [exe, '--config', TEXT_CONF])
 
 
@@ -735,7 +749,7 @@ def main(argv):
         return cmd_preview()
     if cmd == 'notice':
         return cmd_notice()
-    if cmd in ('select', 'watch', 'fallback', 'wait', 'run-greetd', 'run-text'):
+    if cmd in ('select', 'watch', 'fallback', 'wait', 'run-greetd', 'run-text', 'text-config'):
         # The start-up steps run from systemd only (pkexec's rule allows on/off only, too).
         if not os.environ.get('INVOCATION_ID') and not ROOT:
             print('error: %s runs from systemd' % cmd)
@@ -755,6 +769,8 @@ def main(argv):
             return cmd_wait()
         if cmd == 'run-text':
             return cmd_run_text()
+        if cmd == 'text-config':
+            return cmd_text_config()
         return cmd_run_greetd()
     print('usage: hearth-login-screen status | on | off | preview | notice')
     return 2

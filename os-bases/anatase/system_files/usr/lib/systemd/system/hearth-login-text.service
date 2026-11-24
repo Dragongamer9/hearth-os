@@ -1,5 +1,5 @@
 # Signing in on Hearth OS with no KDE (1.18; the owner, Nov 23: "completely remove KDE"): greetd's own text sign-in,
-# with automatic sign-in into Hearth's session as before (hearth-login-screen run-text writes /run/hearth/greetd-text.toml
+# with automatic sign-in into Hearth's session as before (hearth-login-screen text-config writes /run/hearth/greetd-text.toml
 # at every start from the automatic sign-in nimbus-autologin keeps). It's the display manager on this image, and the
 # login screen Hearth's own falls back to (hearth-login-screen fallback). It needs nothing but greetd, and it restarts
 # itself if it ever ends, so there's always a way to sign in.
@@ -12,7 +12,10 @@ Conflicts=getty@tty7.service
 [Service]
 Type=simple
 ExecStartPre=-/usr/bin/plymouth quit --retain-splash
-ExecStart=/usr/libexec/nimbus/hearth-login-screen run-text
+ExecStartPre=/usr/libexec/nimbus/hearth-login-screen text-config
+# greetd straight from systemd: Fedora's SELinux gives it the login screen's domain only then, so it may start your
+# session as you (from a script it couldn't: "unable to exec: EACCES", Nov 23).
+ExecStart=/usr/sbin/greetd --config /run/hearth/greetd-text.toml
 Restart=always
 RestartSec=2
 IgnoreSIGPIPE=no

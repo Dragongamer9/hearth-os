@@ -12,7 +12,9 @@ Wants=hearth-login-watch.service
 [Service]
 Type=simple
 ExecStartPre=-/usr/bin/plymouth quit --retain-splash
-ExecStart=/usr/libexec/nimbus/hearth-login-screen run-greetd
+# greetd straight from systemd (on Fedora, SELinux gives it the login screen's domain only then; Nov 23). Its settings
+# are written by hearth-login-select; with none, greetd fails and the fallback starts the other login screen.
+ExecStart=/usr/sbin/greetd --config /run/hearth/greetd.toml
 Restart=no
 IgnoreSIGPIPE=no
 SendSIGHUP=yes
