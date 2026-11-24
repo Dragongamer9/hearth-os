@@ -100,9 +100,9 @@ Release: 1.18
 - [x] What leaves this PC: Player count (switch), Send logs (only when you press it), KDE user feedback (switch) (KDE user feedback shows only where KDE is installed) — hosts/hearth-ui/apps/settings/src/cats/sections.rs: "k(\"kde-feedback\", \"KDE user feedback\""
 
 ## 13. Accessibility
-- [x] Seeing: Text size slider, Bigger cursor, High contrast, Reduce motion, Zoom (switches), Colour filters — hosts/hearth-ui/apps/settings/src/cats/sections.rs: "slider_f32(text, 1.0..=2.0, 0.25, Msg::TextSize, Msg::TextSizeDone)"
+- [x] Seeing: Text size slider, Bigger cursor, High contrast, Reduce motion, Zoom (switches), Colour filters — hosts/hearth-ui/apps/settings/src/cats/sections.rs: "container(slider_f32(text, 1.0..=2.0, 0.25, Msg::TextSize, Msg::TextSizeDone)).width(Length::Fixed(190.0))"
 - [x] Hearing: Mono audio, Flash the screen for alerts (switches), Live captions — hosts/hearth-ui/apps/settings/src/cats/sections.rs: "r(\"accessibility\", \"Live captions\""
-- [x] Using: Sticky keys, Slow keys, Mouse keys (switches), On-screen keyboard, Screen reader (Orca) (switch) (on labwc, Hearth's desktop, sticky/slow/mouse keys are saved and the page says plainly they aren't on this desktop yet) — hosts/hearth-ui/apps/settings/src/cats/sections.rs: "Not on this desktop yet (labwc has no such keys)"
+- [x] Using: Sticky keys, Slow keys, Mouse keys (switches), On-screen keyboard, Screen reader (Orca) (switch) (on labwc, Hearth's desktop, sticky/slow/mouse keys are saved and the page says plainly they aren't on this desktop yet) — hosts/hearth-ui/apps/settings/src/cats/sections.rs: "Not on this desktop yet (saved)"
 
 ## 14. Updates & recovery
 - [x] Banner: Fedora updates · <date> are ready to get, the packages, the one before stays in the boot menu, a Hearth part to install; Later, Get it now (on Debian: Hearth OS <version> is ready to get, Debian's updates come with it) — hosts/linux/desktop/shell/hearth-settings-values: "bits.append('the one before stays in the boot menu')"

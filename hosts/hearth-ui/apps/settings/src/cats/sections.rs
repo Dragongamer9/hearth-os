@@ -373,12 +373,12 @@ const SECS: &[Sec] = &[
         cards: &[
             ("Updates", &[
                 r("updates", "Hearth OS", "@os_line", V::K("os_state")),
-                r("updates", "Debian updates", "Come with each Hearth OS update · security and drivers", V::K("debian_state")),
+                r("updates", "Debian updates", "With Hearth OS · security, drivers", V::K("debian_state")),
                 r(STORE, "Hearth parts", "Mantel, apps, services · no restart", V::K("parts_ready")),
                 r("store", "Apps (Flathub)", "Through the Hearth Store", V::K("flathub_state")),
             ]),
             ("How they come", &[
-                r("updates", "Hearth OS updates by themselves", "Downloaded in the background, in at your next restart (Debian's come with them)", V::S("os_auto", "os_auto")),
+                r("updates", "Hearth OS updates by themselves", "In at your next restart", V::S("os_auto", "os_auto")),
                 r(STORE, "Hearth parts by themselves", "Off: only when you press Update", V::S("parts_auto", "parts_auto")),
                 r(STORE, "Get test versions", "Try new parts before everyone", V::S("test_versions", "test_versions")),
                 k("kde-updates", "App updates (Discover)", "KDE's own reminders", V::K("discover")),
@@ -589,7 +589,7 @@ fn rows_of<'a>(p: &Pal, v: &'a Map<String, Value>, list: &'static [R], kde: bool
             let mut line_v = x.line.strip_prefix('@').map(|k| s(v, k));
             // Sticky, slow and mouse keys: labwc (Hearth's desktop) has none of them; said plainly, the switch saves it.
             if matches!(x.v, V::S("a.stickyKeys" | "a.slowKeys" | "a.mouseKeys", _)) && s(v, "access_keys") == "no" {
-                line_v = Some("Not on this desktop yet (labwc has no such keys): saved for when it is".into());
+                line_v = Some("Not on this desktop yet (saved)".into());
             }
             let line = line_v.as_deref().unwrap_or(x.line);
             match x.v {
@@ -809,8 +809,8 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
             }
             ("a11y", "Seeing") => {
                 let text = v.get("access").and_then(|x| x.get("textScale")).and_then(Value::as_f64).unwrap_or(1.0) as f32;
-                let slider = slider_f32(text, 1.0..=2.0, 0.25, Msg::TextSize, Msg::TextSizeDone);
-                l.push(vrow(&p, "Text size", "", slider, None, false));
+                let slider = container(slider_f32(text, 1.0..=2.0, 0.25, Msg::TextSize, Msg::TextSizeDone)).width(Length::Fixed(190.0));
+                l.push(vrow(&p, "Text size", "", slider.into(), None, false));
                 for &(label, line, val, set) in SEEING {
                     let o = on(v, val);
                     l.push(vrow(&p, label, line, switch(&p, o, Some(Msg::Switch(val, set, !o))), None, false));
