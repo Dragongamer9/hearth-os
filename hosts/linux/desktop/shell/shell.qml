@@ -242,6 +242,8 @@ ShellRoot {
         // the block editor: your desktop as it is, a ready-made one, or nothing
         function edit(): void { screenEditor.open(null, ""); }
         function editReady(name: string): void { screenEditor.openReady(name); }
+        // Settings › AI › Test it › Show it: a screen your AI made, opened in the editor; nothing is kept unless Keep this
+        function editJson(text: string, title: string): void { try { screenEditor.open(JSON.parse(text), title); } catch (e) {} }
         function editNothing(): void { screenEditor.open({ grid: { cols: 24, rows: 14 }, background: { kind: "gradient", from: "#1a1410", to: "#0c0907" }, look: {}, blocks: [] }, "Start from nothing"); }
         function editorState(): string { return JSON.stringify({ shown: screenEditor.shown, blocks: (screenEditor.draft.blocks || []).length, pick: screenEditor.pick, made: !!screenEditor.made }); }
         function editorPick(i: int): void { screenEditor.pick = i; }

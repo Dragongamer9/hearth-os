@@ -79,7 +79,7 @@ Release: 1.18
 - [x] Banner: Your AI is answering, engine, model, shared with; Test it, Change model — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "sec_banner(p, sec_dot(p.good), \"Your AI is answering\".into()"
 - [x] Engines on this PC: Ollama (state, models, switch), Colibri (state, Pick a model), Models — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "btn(p, \"Pick a model\", BtnKind::Normal, false, Some(Msg::Go(\"hs-ai\")))"
 - [x] Sharing: Share this PC's AI (switch), each device using it, the Command Center address with Copy — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "vrow(p, \"Hearth AI Command Center\", &addr, btn(p, \"Copy\""
-- [x] What uses it: Describe it, Ithil, AI photos, Sort my Downloads, each with its AI and ready — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "(\"Sort my Downloads\", \"Hearth Files\", which.clone(), \"ai\")"
+- [x] What uses it: Describe it, Ithil, AI photos, Sort my Downloads, each with its AI and ready — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "(\"Sort my Downloads\", \"Hearth Files\", \"sortdl\"),"
 
 ## 10. Accounts
 - [x] Banner: your picture, name, account kind, how you sign in; Change picture — hosts/hearth-ui/apps/settings/src/cats/sections.rs: "b(0, \"Change picture\", false)"
@@ -115,14 +115,14 @@ Release: 1.18
 - [x] Hero: green dot, Your AI is answering, engine, model, test time, shared with N devices; Test it, Change model — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "format!(\"shared with {shared_with} of your devices\")"
 - [x] Engines on this PC with the graphics card and its memory: Ollama (running, Hearth's AI uses this, models and size, starts a minute after the PC, switch), Colibri (off, Pick a model), Models (names, search-only marked) with Manage — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "titled(p, \"Engines on this PC\", &head_right, rows)"
 - [x] Sharing: Share this PC's AI with my devices (switch, over Hearth Link, nothing opened on your network), each device using it (name, what for, last asked, Stop), Hearth AI Command Center address with Copy — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "\"Over Hearth Link, encrypted · nothing opened on your network\""
-- [ ] What uses your AI: Describe it, Ithil, AI photos, Sort my Downloads as cards, each with its own AI picker and ready; "Hearth's AI" explained, nothing changes by itself
+- [x] What uses your AI: Describe it, Ithil, AI photos, Sort my Downloads as cards, each with its own AI picker and ready; "Hearth's AI" explained, nothing changes by itself (each pick saved in ai-uses.json by hearth-ai-check use, and honoured: Describe it by hearth-layout engine_for, Sort my Downloads by hearth-layout sort-ask, AI photos by hearth_photos_ai.py chosen_vision, Ithil reads it with hearth-ai-check for ithil) — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "list = list.push(item(which.clone(), !own, Msg::UseFor(id, \"hearth\".into())));"
 
 ## AI 2. On the laptop
 - [x] Hero: Using <PC>'s AI, over Hearth Link, engine, model, test time; Test it, Use another — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "btn(p, \"Use another\", BtnKind::Normal, false, Some(Msg::Go(\"link\")))"
-- [ ] Where your AI comes from (first that answers): your PC (answering, using), this laptop (no engine, Install Ollama), another device (not sharing); drag to change the order; tries the next when one is away
-- [ ] Test it: what was asked, where it went, ok with the time, blocks, checked by Hearth, nothing changed, Show it
+- [x] Where your AI comes from (first that answers): your PC (answering, using), this laptop (no engine, Install Ollama), another device (not sharing); drag to change the order; tries the next when one is away (the order saved by hearth-ai-check order; hearth-ai-check status and Describe it follow it) — hosts/hearth-ui/apps/settings/src/cats/ai.rs: ".on_press(Msg::DragStart(kind.clone())).interaction(mouse::Interaction::Grab)"
+- [x] Test it: what was asked, where it went, ok with the time, blocks, checked by Hearth, nothing changed, Show it (hearth-layout describe-screen asked of the AI itself; Show it opens it in the editor, not kept) — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "A whole desktop came back in {:.1} s"
 - [x] Thinking models: Qwen3 asked to answer straight away, its thinking skipped (on) — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "\"Qwen3 is asked to answer straight away; its thinking is skipped\""
-- [x] What uses your AI with each one's AI and ready — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "sec_chip(p, if answering { \"ready\" } else { \"waiting\" }, answering)"
+- [x] What uses your AI with each one's AI and ready — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "sec_chip(p, if ready { \"ready\" } else { \"waiting\" }, ready)"
 
 ## AI 3. When something's wrong
 - [x] Red banner: what couldn't start and why in plain words (SELinux), your models and settings are fine; Show what happened, Fix it — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "btn(p, \"Fix it\", BtnKind::Primary, false"
@@ -133,5 +133,5 @@ Release: 1.18
 
 ## AI 4. Pick a model
 - [x] A sheet over the page: Model for Hearth's AI and what it's for; ones that can't write greyed out — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "\"What Describe it, Ithil and the rest write with. Ones that can't write are greyed out.\""
-- [ ] Each model: name, best here, size, fits in memory / on the graphics card, speed, thinks (skipped), uncensored
+- [x] Each model: name, best here, size, fits in memory / on the graphics card, speed, thinks (skipped), uncensored (speed measured by hearth-ai-check speed from Ollama's own eval_duration; "speed not measured yet" until then) — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "about {} words a second"
 - [x] Get another model…, Cancel, Use <model> — hosts/hearth-ui/apps/settings/src/cats/ai.rs: "btn(&p, \"Get another model…\""

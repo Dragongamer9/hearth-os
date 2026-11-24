@@ -5,6 +5,10 @@
 //! Documents and _to_delete (copies of a download that are the same size as it, "name (1).ext", for you to empty).
 //! It only moves: never deletes, never overwrites (a name that's already there is left where it is), and one Undo
 //! (the note's button, or Ctrl+Z) puts everything back.
+//!
+//! What the rules don't know (Documents/Unsorted) is asked of Sort my Downloads' AI while the sheet is open (Settings ›
+//! AI › What uses your AI: its own pick, else Hearth's AI; `hearth-layout sort-ask`, names only, nothing in the files):
+//! its answer moves those to Installers, Media or Documents' folders. No AI, or no answer: the rules' place stays.
 
 use crate::app::{App, Msg, Op, Overlay};
 use hearth_ui::ui::{self, btn, t1, ts, Kind};
@@ -20,6 +24,8 @@ const TITLES: [&str; 5] = ["Hearth", "Installers", "Media", "Documents", "To del
 #[derive(Debug, Clone)]
 pub enum SMsg {
     Open,
+    /// Sort my Downloads' AI answered for what the rules don't know (hearth-layout sort-ask)
+    Ai(hearth_ui::run::Output),
     Every,
     Go,
     Cancel,
@@ -146,6 +152,13 @@ pub fn place(dir: &Path, name: &str, is_dir: bool) -> (String, usize) {
     ("Documents/Unsorted".into(), 3)
 }
 
+/// A place Sort my Downloads' AI may give (hearth-layout describe.rs SORT_PLACES) and its group; anything else: none.
+pub fn ai_place(p: &str) -> Option<(&'static str, usize)> {
+    [("Installers", 1), ("Installers/Archives", 1), ("Media/Images", 2), ("Media/Videos", 2), ("Media/Sound", 2), ("Documents", 3), ("Documents/Scripts", 3), ("Documents/Unsorted", 3)]
+        .into_iter()
+        .find(|(x, _)| *x == p)
+}
+
 /// What would move, from what's in the folder now (read again, not from the window's list).
 pub fn plan(dir: &str) -> Plan {
     let d = Path::new(dir);
@@ -216,9 +229,30 @@ pub fn update(a: &mut App, m: SMsg) -> Task<Msg> {
             if p.moves.is_empty() {
                 return a.say("Nothing is loose in Downloads", false);
             }
+            let unknown: Vec<String> = p.moves.iter().filter(|m| m.1.ends_with("Documents/Unsorted")).filter_map(|m| Path::new(&m.0).file_name().map(|n| n.to_string_lossy().into_owned())).collect();
             a.sort_plan = Some(p);
             a.sort_every = false;
             a.overlay = Some(Overlay::Sort);
+            if !unknown.is_empty() {
+                let ask = serde_json::json!({ "names": unknown }).to_string();
+                return Task::perform(hearth_ui::run::spawn(vec!["hearth-layout".into(), "sort-ask".into(), ask]), |o| Msg::Sort(SMsg::Ai(o)));
+            }
+        }
+        SMsg::Ai(o) => {
+            let places = o.json().and_then(|v| v.get("places").and_then(|x| x.as_object()).cloned()).unwrap_or_default();
+            if let Some(p) = a.sort_plan.as_mut() {
+                for m in p.moves.iter_mut() {
+                    if !m.1.ends_with("Documents/Unsorted") {
+                        continue;
+                    }
+                    let name = Path::new(&m.0).file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+                    if let Some((to, g)) = places.get(&name).and_then(|x| x.as_str()).and_then(ai_place) {
+                        let base = Path::new(&m.0).parent().map(|d| d.to_path_buf()).unwrap_or_default();
+                        m.1 = base.join(to).to_string_lossy().into_owned();
+                        m.2 = g;
+                    }
+                }
+            }
         }
         SMsg::Every => a.sort_every = !a.sort_every,
         SMsg::Cancel => {

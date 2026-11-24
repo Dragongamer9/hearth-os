@@ -34,7 +34,29 @@ pub struct State {
     pub picking: Option<String>,
     pub msg: String,
     pub busy: bool,
+    /// Your paired devices (hearth-link-settings status): the ones not sharing their AI show in Where your AI comes from.
+    pub peers: Value,
+    /// What uses your AI: whose picker is open.
+    pub menu: Option<&'static str>,
+    /// Where your AI comes from: the group being dragged, and the one it's over.
+    pub drag: Option<String>,
+    pub over: Option<String>,
+    /// Test it as Describe it does it (a laptop's view): when it was asked, and what came back.
+    pub dtest: Option<Value>,
+    pub dstart: Option<std::time::Instant>,
+    pub dsecs: f32,
 }
+
+/// What Test it asks (ai-2): a whole desktop, as Describe it would.
+pub const TEST_ASK: &str = "make it like a cozy cabin with a clock and my games";
+
+/// The uses with their own AI picker (ai-1): name, line, their id in ai-uses.json (hearth-ai-check use).
+pub const USES: [(&str, &str, &str); 4] = [
+    ("Describe it", "Desktop, panels and blocks", "describe"),
+    ("Ithil", "Hearth AI on this PC", "ithil"),
+    ("AI photos", "Finds people and things in Photos", "photos"),
+    ("Sort my Downloads", "Hearth Files", "sortdl"),
+];
 
 #[derive(Debug, Clone)]
 pub enum Msg {
@@ -56,6 +78,16 @@ pub enum Msg {
     Go(&'static str),
     Open(Vec<String>),
     Copy(String),
+    Peers(run::Output),
+    Menu(Option<&'static str>),
+    /// A use's AI picked: "hearth" or the AI's JSON (hearth-ai-check use USE …)
+    UseFor(&'static str, String),
+    DragStart(String),
+    DragOver(String),
+    DragEnd,
+    DTested(run::Output),
+    ShowIt,
+    Speed(run::Output),
 }
 
 fn py(name: &str, args: &[&str]) -> Vec<String> {
@@ -71,6 +103,7 @@ fn load() -> Task<Msg> {
         Task::perform(run::spawn(py("hearth-link-settings", &["ai-status"])), Msg::Link),
         Task::perform(run::spawn(py("hearth-ai-check", &["models"])), Msg::Models),
         Task::perform(run::spawn(py("hearth-home-server", &["status"])), Msg::Hs),
+        Task::perform(run::spawn(py("hearth-link-settings", &["status"])), Msg::Peers),
     ])
 }
 
@@ -93,14 +126,72 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
         Msg::Hs(o) => st.hs = json_of(&o),
         Msg::Test => {
             st.testing = true;
+            if !here_engine(st) {
+                // A device without an engine of its own (ai-2): Describe it's own ask, to the AI that answers, its
+                // screen checked by Hearth (hearth-layout describe-screen); nothing is put in place.
+                st.dstart = Some(std::time::Instant::now());
+                return Task::perform(run::spawn(vec!["env".into(), "HEARTH_DESCRIBE_ASK_AI=1".into(), "hearth-layout".into(), "describe-screen".into(), TEST_ASK.into(), "null".into()]), Msg::DTested);
+            }
             return Task::perform(run::spawn(py("hearth-ai-check", &["test"])), Msg::Tested);
         }
         Msg::Tested(o) => {
             st.testing = false;
             st.test = Some(json_of(&o));
+            // the answering model's speed, measured now that it's loaded (Change model shows it)
+            return Task::perform(run::spawn(py("hearth-ai-check", &["speed"])), Msg::Speed);
+        }
+        Msg::DTested(o) => {
+            st.testing = false;
+            st.dsecs = st.dstart.take().map(|t| t.elapsed().as_secs_f32()).unwrap_or(0.0);
+            let mut v = json_of(&o);
+            if v.is_null() {
+                v = serde_json::json!({ "ok": false, "error": if o.why().is_empty() { "hearth-layout didn't answer".to_string() } else { o.why() } });
+            }
+            st.dtest = Some(v);
+        }
+        Msg::ShowIt => {
+            // the editor (Build anything) opens with it; nothing is kept unless you press Keep this there
+            if let Some(scr) = st.dtest.as_ref().map(|v| v["screen"].clone()).filter(|x| x.is_object()) {
+                let dir = run::shell_dir().to_string_lossy().to_string();
+                let j = scr.to_string();
+                run::detached(&["quickshell", "ipc", "-p", &dir, "call", "screen", "editJson", &j, "Your AI's test"]);
+            }
         }
         Msg::Pick(open) => {
             st.picking = if open { Some(answering_model(st)) } else { None };
+            if open {
+                // the models already loaded are timed (nothing new is loaded for it); the others say so
+                return Task::perform(run::spawn(py("hearth-ai-check", &["speed"])), Msg::Speed);
+            }
+        }
+        Msg::Speed(_) => return Task::perform(run::spawn(py("hearth-ai-check", &["models"])), Msg::Models),
+        Msg::Peers(o) => st.peers = json_of(&o),
+        Msg::Menu(m) => st.menu = if st.menu == m { None } else { m },
+        Msg::UseFor(u, what) => {
+            st.menu = None;
+            st.busy = true;
+            return Task::perform(run::spawn(py("hearth-ai-check", &["use", u, &what])), Msg::Did);
+        }
+        Msg::DragStart(k) => {
+            st.drag = Some(k.clone());
+            st.over = Some(k);
+        }
+        Msg::DragOver(k) => {
+            if st.drag.is_some() {
+                st.over = Some(k);
+            }
+        }
+        Msg::DragEnd => {
+            let (Some(d), Some(o)) = (st.drag.take(), st.over.take()) else { return Task::none() };
+            let mut order = order_of(st);
+            if d != o {
+                if let (Some(i), Some(j)) = (order.iter().position(|x| *x == d), order.iter().position(|x| *x == o)) {
+                    let x = order.remove(i);
+                    order.insert(j, x);
+                    st.busy = true;
+                    return Task::perform(run::spawn(py("hearth-ai-check", &["order", &order.join(",")])), Msg::Did);
+                }
+            }
         }
         Msg::PickModel(m) => st.picking = Some(m),
         Msg::UseModel => {
@@ -174,6 +265,17 @@ fn b(v: &Value, k: &str) -> bool {
 
 fn arr<'a>(v: &'a Value, k: &str) -> Vec<&'a Value> {
     v[k].as_array().map(|a| a.iter().collect()).unwrap_or_default()
+}
+
+/// Where Hearth's AI comes from, first that answers (hearth-ai-check status "order").
+fn order_of(st: &State) -> Vec<String> {
+    let mut o: Vec<String> = arr(&st.st, "order").iter().filter_map(|x| x.as_str()).filter(|x| ["here", "link", "online"].contains(x)).map(str::to_string).collect();
+    for k in ["here", "link", "online"] {
+        if !o.iter().any(|x| x == k) {
+            o.push(k.into());
+        }
+    }
+    o
 }
 
 fn answering_model(st: &State) -> String {
@@ -349,18 +451,64 @@ fn sources_card<'a>(p: &Pal, st: &'a State) -> Element<'a, Msg> {
     let mut rows: Vec<Element<'a, Msg>> = Vec::new();
     let mut n = 1;
     let using = s(&st.link, "using.server");
-    for sv in arr(&st.link, "servers") {
-        let id = s(sv, "id");
-        let models = arr(sv, "models").len();
-        let name = row![tb(format!("{} (your PC)", s(sv, "name")), 15.0, p.text), sec_chip(p, "answering", true)].spacing(8.0).align_y(iced::Center);
-        let right: Element<'a, Msg> = if id == using { sec_chip(p, "using", false) } else { Space::new().into() };
-        rows.push(numbered(p, n, name.into(), format!("{models} models · paired in Hearth Link"), right));
-        n += 1;
+    for kind in order_of(st) {
+        let mut g = Column::new();
+        match kind.as_str() {
+            "link" => {
+                let start = n;
+                let servers = arr(&st.link, "servers");
+                for sv in &servers {
+                    let id = s(sv, "id");
+                    let models = arr(sv, "models").len();
+                    let name = row![tb(format!("{} (your PC)", s(sv, "name")), 15.0, p.text), sec_chip(p, "answering", true)].spacing(8.0).align_y(iced::Center);
+                    let right: Element<'a, Msg> = if id == using { sec_chip(p, "using", false) } else { Space::new().into() };
+                    g = g.push(numbered(p, n, name.into(), format!("{models} models · paired in Hearth Link"), right));
+                    n += 1;
+                }
+                // your other devices that don't share their AI
+                for pe in arr(&st.peers, "peers") {
+                    if s(pe, "relation") != "mine" && !s(pe, "relation").is_empty() {
+                        continue;
+                    }
+                    let id = s(pe, "id");
+                    if servers.iter().any(|x| s(x, "id") == id) {
+                        continue;
+                    }
+                    let nm = s(pe, "name");
+                    let name = row![tb(nm.clone(), 15.0, p.text), sec_chip(p, "not sharing", false)].spacing(8.0).align_y(iced::Center);
+                    g = g.push(numbered(p, n, name.into(), format!("Turn on sharing on the {nm} to use it here"), Space::new().into()));
+                    n += 1;
+                }
+                if n == start {
+                    g = g.push(numbered(p, n, tb("Your devices (Hearth Link)".to_string(), 15.0, p.text).into(), "None shares its AI with this device yet".into(), Space::new().into()));
+                    n += 1;
+                }
+            }
+            "here" => {
+                let here = arr(&st.st, "engines").iter().any(|e| b(e, "answering"));
+                let name = row![tb("This device".to_string(), 15.0, p.text), sec_chip(p, if here { "answering" } else { "no engine" }, here)].spacing(8.0).align_y(iced::Center);
+                g = g.push(numbered(p, n, name.into(), if here { "An engine on this device".into() } else { "Ollama isn't installed · small models only on this device".into() }, if here { Space::new().into() } else { btn(p, "Install Ollama", BtnKind::Normal, false, Some(Msg::Go("hs-ai"))) }));
+                n += 1;
+            }
+            _ => {
+                let on = &st.st["online"];
+                let (label, line, ok) = if s(on, "provider").is_empty() {
+                    ("An online AI".to_string(), "With your own key (Settings › Home server › AI chat)".to_string(), false)
+                } else {
+                    (format!("{} (online)", s(on, "label")), if b(on, "key") { format!("{} · your key", s(on, "model")) } else { "Its key isn't in the password store".into() }, b(on, "key"))
+                };
+                let name = row![tb(label, 15.0, p.text), sec_chip(p, if ok { "ready" } else { "off" }, ok)].spacing(8.0).align_y(iced::Center);
+                g = g.push(numbered(p, n, name.into(), line, Space::new().into()));
+                n += 1;
+            }
+        }
+        // drag it by its handle onto another to change the order (saved: hearth-ai-check order)
+        let lit = st.over.as_deref() == Some(kind.as_str()) && st.drag.is_some();
+        let handle = mouse_area(container(t("⠿", 18.0, p.muted)).padding(Padding { top: 0.0, right: 4.0, bottom: 0.0, left: 0.0 })).on_press(Msg::DragStart(kind.clone())).interaction(mouse::Interaction::Grab);
+        let body = container(row![handle, g.width(Length::Fill)].spacing(6.0).align_y(iced::Center)).style(ui::boxed(if lit { Pal::mix(p.panel, p.accent, 0.08) } else { Color::TRANSPARENT }, p.r(10.0), None));
+        rows.push(mouse_area(body).on_enter(Msg::DragOver(kind.clone())).on_release(Msg::DragEnd).into());
     }
-    let here = arr(&st.st, "engines").iter().any(|e| b(e, "answering"));
-    let name = row![tb("This device".to_string(), 15.0, p.text), sec_chip(p, if here { "answering" } else { "no engine" }, here)].spacing(8.0).align_y(iced::Center);
-    rows.push(numbered(p, n, name.into(), if here { "An engine on this device".into() } else { "Ollama isn't installed · small models only on this device".into() }, if here { Space::new().into() } else { btn(p, "Install Ollama", BtnKind::Normal, false, Some(Msg::Go("hs-ai"))) }));
-    rows.push(container(t("If your PC is asleep or away, Hearth tries the next one, and says which answered.", 13.0, p.muted)).padding(Padding { top: 10.0, right: 6.0, bottom: 0.0, left: 6.0 }).into());
+    rows.push(container(t("If your PC is asleep or away, Hearth tries the next one, and says which answered. Drag to change the order.", 13.0, p.muted)).padding(Padding { top: 10.0, right: 6.0, bottom: 0.0, left: 6.0 }).into());
     titled(p, "Where your AI comes from", "First that answers", rows)
 }
 
@@ -372,38 +520,64 @@ fn numbered<'a>(p: &Pal, n: usize, name: Element<'a, Msg>, line: String, right: 
 
 fn test_card<'a>(p: &Pal, st: &'a State) -> Element<'a, Msg> {
     let mut rows: Vec<Element<'a, Msg>> = Vec::new();
-    match &st.test {
+    match &st.dtest {
         Some(v) if b(v, "ok") => {
-            rows.push(vrow(p, "\"Say ok.\"", &format!("sent to {} · {}", s(v, "engine"), s(v, "model")), Space::new().into(), None, false));
-            let r = row![sec_chip(p, "ok", true), column![tb(format!("It answered in {} s", s(v, "seconds")), 15.0, p.text), t(format!("\"{}\" · checked by Hearth · nothing changed", s(v, "said")), 13.0, p.muted)].spacing(3.0).width(Length::Fill)].spacing(14.0).align_y(iced::Center);
+            rows.push(vrow(p, &format!("\"{TEST_ASK}\""), &format!("Describe it, sent to {}", s(v, "engine")), Space::new().into(), None, false));
+            let blocks = v["screen"]["blocks"].as_array().map(|a| a.len()).unwrap_or(0);
+            let r = row![
+                sec_chip(p, "ok", true),
+                column![tb(format!("A whole desktop came back in {:.1} s", st.dsecs), 15.0, p.text), t(format!("{blocks} blocks · checked by Hearth · nothing changed on your desktop"), 13.0, p.muted)].spacing(3.0).width(Length::Fill),
+                btn(p, "Show it", BtnKind::Normal, false, Some(Msg::ShowIt))
+            ]
+            .spacing(14.0)
+            .align_y(iced::Center);
             rows.push(column![container(r).padding(Padding { top: 12.0, right: 6.0, bottom: 12.0, left: 6.0 }), ui::hline(Pal::a(p.text, 0.07))].into());
         }
-        Some(v) => rows.push(vrow(p, "It didn't answer", &s(v, "error"), Space::new().into(), None, false)),
-        None => rows.push(vrow(p, "Not tested yet", "Test it asks your AI one short question and times the answer", btn(p, "Test it", BtnKind::Normal, false, Some(Msg::Test)), None, false)),
+        Some(v) => rows.push(vrow(p, "It didn't come back", &s(v, "error"), btn(p, "Test it", BtnKind::Normal, false, Some(Msg::Test)), None, false)),
+        None => rows.push(vrow(p, if st.testing { "Testing…" } else { "Not tested yet" }, &format!("Test it asks your AI \"{TEST_ASK}\", as Describe it does, and checks what comes back"), btn(p, "Test it", BtnKind::Normal, false, if st.testing { None } else { Some(Msg::Test) }), None, false)),
     }
     rows.push(vrow(p, "Thinking models", "Qwen3 is asked to answer straight away; its thinking is skipped", sec_chip(p, "on", true), None, true));
     titled(p, "Test it", "", rows)
 }
 
-/// What uses your AI: Describe it, Ithil, AI photos, Sort my Downloads, each with the AI it uses and whether it's ready.
+/// What uses your AI (ai-1, ai-2): Describe it, Ithil, AI photos, Sort my Downloads, each with its own AI picker
+/// (Hearth's AI, or any AI that answers: this device's engines, your devices' over Hearth Link, an online AI with your
+/// key; saved in ai-uses.json by hearth-ai-check use) and whether it's ready.
 fn uses_card<'a>(p: &Pal, st: &'a State, laptop: bool) -> Element<'a, Msg> {
-    let answering = !st.st["answering"].is_null();
     let which = if laptop { format!("{}'s AI", arr(&st.link, "servers").first().map(|x| s(x, "name")).unwrap_or_else(|| "Your PC".into())) } else { "Hearth's AI".to_string() };
-    let items: [(&str, &str, String, &'static str); 4] = [
-        ("Describe it", "Desktop, panels and blocks", which.clone(), "desktop-layout"),
-        ("Ithil", "Hearth AI on this PC", which.clone(), "ai"),
-        ("AI photos", "Finds people and things in Photos", format!("nomic-embed-text + {which}"), "hs-services"),
-        ("Sort my Downloads", "Hearth Files", which.clone(), "ai"),
-    ];
+    let choices = arr(&st.st, "choices");
     let mut r = Row::new().spacing(14.0);
-    for (name, line, ai, go) in items {
+    for (name, line, id) in USES {
+        let u = &st.st["uses"][id];
+        let own = b(u, "own");
+        let ai = if own { s(u, "label") } else { which.clone() };
+        let ready = if u.is_object() { b(u, "ready") } else { !st.st["answering"].is_null() };
         let picker = container(t(format!("{ai} ▾"), 14.0, p.text)).padding(Padding { top: 8.0, right: 14.0, bottom: 8.0, left: 14.0 }).style(ui::boxed(Pal::mix(p.panel, p.text, 0.05), p.r(8.0), Some((Pal::a(p.text, 0.1), 1.0))));
-        let picker = mouse_area(picker).on_press(Msg::Go(go)).interaction(mouse::Interaction::Pointer);
+        let picker = mouse_area(picker).on_press(Msg::Menu(Some(id))).interaction(mouse::Interaction::Pointer);
         let mut col = Column::new().spacing(4.0).push(tb(name.to_string(), 15.0, p.text));
         if !laptop {
             col = col.push(t(line.to_string(), 13.0, p.muted));
         }
-        col = col.push(Space::new().height(Length::Fixed(8.0))).push(row![picker, sec_chip(p, if answering { "ready" } else { "waiting" }, answering)].spacing(10.0).align_y(iced::Center));
+        col = col.push(Space::new().height(Length::Fixed(8.0))).push(row![picker, sec_chip(p, if ready { "ready" } else { "waiting" }, ready)].spacing(10.0).align_y(iced::Center));
+        if st.menu == Some(id) {
+            // the picker's list: Hearth's AI first, then each AI that answers now
+            let mut list = Column::new().spacing(2.0);
+            let item = |label: String, on: bool, m: Msg| -> Element<'a, Msg> {
+                let c = container(t(format!("{}{label}", if on { "✓ " } else { "" }), 14.0, if on { p.accent } else { p.text })).padding(Padding { top: 6.0, right: 10.0, bottom: 6.0, left: 10.0 }).width(Length::Fill);
+                mouse_area(c).on_press(m).interaction(mouse::Interaction::Pointer).into()
+            };
+            list = list.push(item(which.clone(), !own, Msg::UseFor(id, "hearth".into())));
+            for c in &choices {
+                let label = if s(c, "from") == "online" { s(c, "label") } else { format!("{} · {}", s(c, "label"), s(c, "model")) };
+                let pick = if s(c, "from") == "online" { serde_json::json!({ "online": s(c, "provider") }) } else { serde_json::json!({ "url": s(c, "base"), "model": s(c, "model"), "label": s(c, "label") }) };
+                let on = own && s(u, "url").trim_end_matches('/') == s(c, "base").trim_end_matches('/') && (s(c, "from") == "online") == !s(u, "online").is_empty();
+                list = list.push(item(label, on, Msg::UseFor(id, pick.to_string())));
+            }
+            if choices.is_empty() {
+                list = list.push(t("No other AI answers right now", 13.0, p.muted));
+            }
+            col = col.push(container(list).padding(6.0).width(Length::Fill).style(ui::boxed(p.panel, p.r(8.0), Some((Pal::a(p.text, 0.12), 1.0)))));
+        }
         r = r.push(container(col).padding(18.0).width(Length::FillPortion(1)).style(ui::boxed(Pal::mix(p.panel, p.text, 0.02), p.r(12.0), Some((Pal::a(p.text, 0.07), 1.0)))));
     }
     let mut c = Column::new().spacing(12.0).push(container(row![tb("WHAT USES YOUR AI", 12.5, p.muted), Space::new().width(Length::Fill), tb(if laptop { "" } else { "EACH ONE CAN HAVE ITS OWN" }, 12.5, p.muted)]).padding(Padding { top: 0.0, right: 6.0, bottom: 0.0, left: 6.0 })).push(r);
@@ -514,6 +688,11 @@ pub fn dialog<'a>(a: &'a App) -> Option<(Element<'a, Msg>, Option<Msg>)> {
                 bits.push("fits with your RAM".into());
             } else {
                 bits.push("too big for this PC".into());
+            }
+            // measured here (hearth-ai-check speed: Ollama's own eval_duration), never guessed
+            match m["speed"].as_f64() {
+                Some(w) => bits.push(format!("about {} words a second", w.round() as i64)),
+                None => bits.push("speed not measured yet".into()),
             }
             if b(m, "uncensored") {
                 bits.push("uncensored".into());

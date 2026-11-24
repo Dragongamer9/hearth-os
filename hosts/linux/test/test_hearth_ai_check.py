@@ -46,6 +46,8 @@ class AiCheck(unittest.TestCase):
         self.tmp = tempfile.mkdtemp()
         self.m.DESCRIBE = os.path.join(self.tmp, 'describe.json')
         self.m.ONLINE = os.path.join(self.tmp, 'ai-online.json')
+        self.m.USES_FILE = os.path.join(self.tmp, 'ai-uses.json')
+        self.m.SPEED = os.path.join(self.tmp, 'ai-speed.json')
         self.m.LINK = 'http://127.0.0.1:9/v1'
         self.m.SERVICES = {}
 
@@ -87,16 +89,52 @@ class AiCheck(unittest.TestCase):
         none = [p for p in st['problems'] if p['kind'] == 'none']
         self.assertTrue(none and 'Hearth Link' in none[0]['why'])
 
-    def test_your_own_choice_comes_first(self):
+    def test_describe_its_own_choice_is_its_own(self):
+        # describe.json is Describe it's own pick (Settings › AI › What uses your AI), not Hearth's AI for everything
         s, base = server(['llama3.2'])
         pathlib.Path(self.m.DESCRIBE).write_text(json.dumps({'url': base, 'model': '', 'label': 'My PC'}))
         try:
             with self.engines():
                 st = self.m.status()
+                for_d = self.m.for_use('describe')
         finally:
             s.shutdown()
-        self.assertEqual(st['answering']['label'], 'My PC')
-        self.assertEqual(st['answering']['model'], 'llama3.2')
+        self.assertEqual(st['uses']['describe']['label'], 'My PC')
+        self.assertTrue(st['uses']['describe']['ready'])
+        self.assertEqual(st['uses']['describe']['model'], 'llama3.2')
+        self.assertEqual((for_d['label'], for_d['model']), ('My PC', 'llama3.2'))
+        self.assertFalse(st['uses']['photos']['own'])
+
+    def test_each_use_and_the_order_are_saved_and_followed(self):
+        a, base_a = server(['qwen3:8b'])
+        l, base_l = server(['llama3.2'])
+        self.m.LINK = base_l
+        here = {'id': 'ollama', 'label': 'Ollama', 'on': True, 'openai': base_a}
+        try:
+            with self.engines(here):
+                self.assertEqual(self.m.status()['answering']['label'], 'Ollama')     # this device first by default
+                self.assertTrue(self.m.set_order('link,here,online')['ok'])
+                st = self.m.status()
+                self.assertEqual(st['order'], ['link', 'here', 'online'])
+                self.assertEqual(st['answering']['from'], 'link')                    # your order is followed
+                self.assertFalse(self.m.set_order('link,link,online')['ok'])
+                self.assertTrue(self.m.set_use('sortdl', json.dumps({'url': base_a, 'model': 'qwen3:8b', 'label': 'Ollama'}))['ok'])
+                self.assertEqual(self.m.for_use('sortdl')['url'], base_a.rstrip('/'))
+                self.assertEqual(self.m.for_use('ithil')['from'], 'link')            # the rest stay on Hearth's AI
+                self.assertTrue(self.m.set_use('sortdl', 'hearth')['ok'])
+                self.assertEqual(self.m.for_use('sortdl')['from'], 'link')
+                self.assertFalse(self.m.set_use('sortdl', json.dumps({'url': 'file:///etc'}))['ok'])
+        finally:
+            a.shutdown()
+            l.shutdown()
+        saved = json.loads(pathlib.Path(self.m.USES_FILE).read_text())
+        self.assertEqual(saved['order'], ['link', 'here', 'online'])
+        self.assertNotIn('sortdl', saved['uses'])
+
+    def test_speed_is_only_shown_when_measured(self):
+        self.assertEqual(self.m.read_speeds(), {})
+        pathlib.Path(self.m.SPEED).write_text(json.dumps({'qwen3:8b': {'words': 31.4, 'at': 1}}))
+        self.assertEqual(self.m.read_speeds()['qwen3:8b']['words'], 31.4)
 
     def test_it_never_prints_a_key(self):
         text = TOOL.read_text()
