@@ -126,9 +126,13 @@ function gmbBlock(b, i, page){
     default: return '';
   }
 }
-// the + tile: in the first free 3×3 spot
-function gmbFree(page, w, h){
+// the + tile: in the first free 3×3 spot (from the bottom row of blocks: next to the last row, as you'd add one)
+function gmbFree(page, w, h, fromLast){
   const L = gmbBlocks(page);
+  if(fromLast && L.length){
+    const y0 = Math.max(...L.map(b => b.y)), row = L.filter(b => b.y === y0), x0 = Math.max(...row.map(b => b.x + b.w)) + 1;
+    for(let x = x0; x + w <= 24; x++) if(y0 + h <= 14 && !L.some(b => x < b.x + b.w && b.x < x + w && y0 < b.y + b.h && b.y < y0 + h)) return [x, y0];
+  }
   for(let y = 0; y + h <= 14; y++) for(let x = 0; x + w <= 24; x++) if(!L.some(b => x < b.x + b.w && b.x < x + w && y < b.y + b.h && b.y < y + h)) return [x, y];
   return [21, 11];
 }
@@ -136,7 +140,7 @@ function gmbGrid(page){
   const L = gmbBlocks(page);
   let h = L.map((b, i) => gmbBlock(b, i, page)).join('');
   if(GMB.edit && GMB.page === page){
-    const [x, y] = gmbFree(page, 3, 3), on = GMB.pick === L.length;
+    const [x, y] = gmbFree(page, 3, 3, true), on = GMB.pick === L.length;
     h += `<div class="gmb-b gmb-add${on ? ' picked' : ''}" style="grid-column:${x + 1} / span 3;grid-row:${y + 1} / span 3">+</div>`;
   }
   return `<div class="gmb${GMB.edit ? ' gmb-editing' : ''}">${h}</div>`;
@@ -168,7 +172,7 @@ function gmbEditor(){
     <div class="gmb-hints"><span><i class="gb a">A</i>Pick up / put down</span><span><i class="gb x">X</i>Its look</span><span><i class="gb y">Y</i>Describe it</span><span><i class="gb b">B</i>Done</span>
       <span><i class="gb lr">LB RB</i>Home · Library · Quick Access</span><span class="gmb-r">Hold the right stick: resize</span></div>`;
 }
-function gmbRedraw(){ if(typeof render === 'function') render(GMB.sayOpen ? 'gmb-make' : null, true); }
+function gmbRedraw(){ document.body.classList.toggle('gmb-on', !!GMB.edit); if(typeof render === 'function') render(GMB.sayOpen ? 'gmb-make' : null, true); }
 function gmbEdit(on = true){
   if(!GMB.pages) gmbLoad();
   GMB.edit = on; GMB.held = false; GMB.sayOpen = false; GMB.err = ''; GMB.pick = 0;
@@ -295,6 +299,7 @@ document.addEventListener('click', e => {
 .gmb-li{display:block;width:100%;text-align:left;background:transparent;border:0;color:var(--text);padding:7px 4px;font:inherit;border-radius:8px}
 .gmb-scroll{overflow:auto}.gmb-qa{font-size:20px;font-weight:600}.gmb-words{font-size:clamp(18px,2vw,30px)}
 .gmb-qgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px}
+body.gmb-on #footer{visibility:hidden}
 .gmb-editbtn{position:fixed;right:24px;bottom:60px;z-index:3;background:var(--panel2);color:var(--text);border:1px solid var(--line);border-radius:999px;padding:8px 16px;font:inherit;font-size:13px}
 .gmb-edhead{display:flex;align-items:center;gap:14px;padding:12px 3vw;border-bottom:1px solid var(--line)}
 .gmb-edhead b{font-size:18px}.gmb-tag{border:1px solid #ff7a2f;color:#ff9a52;border-radius:999px;padding:2px 10px;font-size:12px}

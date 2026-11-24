@@ -151,7 +151,36 @@ PanelWindow {
             onStreamFinished: { try { const v = JSON.parse(text.trim().split("\n").pop() || "[]"); if (Array.isArray(v)) scr.games = v; } catch (e) {} }
         }
     }
-    Timer { interval: 600000; repeat: true; running: scr.visible; onTriggered: { gamesProc.running = false; gamesProc.running = true; } }
+    Timer { interval: 600000; repeat: true; running: scr.visible; onTriggered: { gamesProc.running = false; gamesProc.running = true; playedP.running = false; playedP.running = true; } }
+    // When you last played each game (Steam's own record, through hearth-lockscreen played) and how many friends are
+    // playing (Steam's friends list on this device and their public profiles): the hero tile's "2 h ago · on Steam" and
+    // the profile's "Online · 2 friends playing". Nothing made up: without them those words are left out.
+    readonly property string lockHelper: decodeURIComponent(Qt.resolvedUrl("hearth-lockscreen").toString().replace(/^file:\/\//, ""))
+    property var played: ({})
+    property int friendsPlaying: -1
+    Process {
+        id: playedP
+        command: ["python3", scr.lockHelper, "played"]
+        running: true
+        stdout: StdioCollector { onStreamFinished: { try { const v = JSON.parse(text.trim().split("\n").pop() || "{}"); if (v && typeof v === "object") scr.played = v; } catch (e) {} } }
+    }
+    Process {
+        id: friendsP
+        command: ["python3", scr.lockHelper, "friends"]
+        stdout: StdioCollector { onStreamFinished: { try { const v = JSON.parse(text.trim().split("\n").pop() || "{}"); if (v && Array.isArray(v.online)) scr.friendsPlaying = v.online.filter(f => !!f.game).length; } catch (e) {} } }
+    }
+    Timer { interval: 300000; repeat: true; running: scr.visible && (scr.lay.blocks || []).some(b => b.block === "profile"); triggeredOnStart: true; onTriggered: { friendsP.running = false; friendsP.running = true; } }
+    function whenWhere(g) {
+        if (!g) return "";
+        const t = (scr.played.last || {})[g.id] || 0, parts = [];
+        if (t > 0) {
+            const m = Math.max(1, Math.round((Date.now() / 1000 - t) / 60));
+            parts.push(m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : m < 2880 ? "yesterday" : Math.round(m / 1440) + " days ago");
+        } else if ((DeskState.recent || []).some(r => String(r).startsWith("game:"))) parts.push("Played last");
+        const src = ({ steam: "Steam", heroic: "Heroic", epic: "Epic", gog: "GOG", lutris: "Lutris", xbox: "Xbox Cloud", manual: "this PC", emu: "an emulator" })[g.source || ""];
+        if (src && parts.length) parts.push("on " + src);
+        return parts.join(" · ");
+    }
 
     // On the windows tab only the band with the tabs and the clock takes the pointer: your desktop's icons and files
     // under it work as always.
@@ -317,13 +346,15 @@ PanelWindow {
                 id: hb
                 anchors.fill: parent
                 st: hi.st
+                // the focused tile, as a controller leaves it: grown, with its white outline
+                hot: true
                 action: scr.pressOf(hi.blk, "play")[0]; arg: scr.pressOf(hi.blk, "play", hi.g)[1]
                 clip: true
                 color: hi.st.colour || "#1d2a3a"
                 Image { anchors.fill: parent; source: hi.g ? (hi.g.wide || hi.g.cover || "") : ""; fillMode: Image.PreserveAspectCrop; asynchronous: true }
                 Rectangle { anchors.fill: parent; radius: hb.radius; gradient: Gradient { GradientStop { position: 0.45; color: "transparent" } GradientStop { position: 1; color: Qt.rgba(0, 0, 0, 0.7) } } }
                 Label { anchors { left: parent.left; bottom: parent.bottom; margins: 18 } text: hi.g ? hi.g.title : "Your games show here"; font.pixelSize: hi.st.size || 26; font.bold: true; width: parent.width * 0.6 }
-                Label { anchors { right: parent.right; bottom: parent.bottom; margins: 20 } text: hi.g && (DeskState.recent || []).length ? "Played last" : ""; font.pixelSize: 14; opacity: 0.85 }
+                Label { anchors { right: parent.right; bottom: parent.bottom; margins: 20 } text: scr.whenWhere(hi.g); font.pixelSize: 14; opacity: 0.85 }
             }
         }
     }
@@ -515,7 +546,7 @@ PanelWindow {
             Column {
                 anchors.verticalCenter: parent.verticalCenter
                 Label { text: scr.userName; font.pixelSize: 17; font.bold: true }
-                Label { text: "Online"; font.pixelSize: 13; opacity: 0.8 }
+                Label { text: "Online" + (scr.friendsPlaying > 0 ? " · " + scr.friendsPlaying + (scr.friendsPlaying === 1 ? " friend playing" : " friends playing") : ""); font.pixelSize: 13; opacity: 0.8 }
             }
         }
     }
@@ -641,11 +672,17 @@ PanelWindow {
                 anchors { top: acT.bottom; topMargin: 12; bottom: parent.bottom; left: parent.left; right: parent.right }
                 spacing: 18
                 Repeater {
-                    model: [
-                        { k: "Played last", v: scr.recentGames.length && (DeskState.recent || []).some(r => String(r).startsWith("game:")) ? scr.recentGames[0].title : "—", s: "" },
-                        { k: "Your games", v: String(scr.games.length), s: "in Hearth's library" },
-                        { k: "Next up", v: scr.games.some(g => g.update) ? "An update is waiting" : "All up to date", s: "" }
-                    ]
+                    // the picked game's: when you played it last, how long these two weeks (Steam's own record), what's next
+                    model: {
+                        const g = scr.pickedGame, mins = g ? (scr.played.twoWeeks || {})[g.id] || 0 : 0, when = scr.whenWhere(g);
+                        return [
+                            g && when ? { k: "Played last", v: when.split(" · ")[0], s: when.split(" · ").slice(1).join(" · ") }
+                                      : { k: "Played last", v: scr.recentGames.length && (DeskState.recent || []).some(r => String(r).startsWith("game:")) ? scr.recentGames[0].title : "—", s: "" },
+                            mins > 0 ? { k: "Played", v: (mins >= 60 ? Math.round(mins / 60) + " h" : mins + " min"), s: "these two weeks" }
+                                     : { k: "Your games", v: String(scr.games.length), s: "in Hearth's library" },
+                            { k: "Next up", v: g && g.update ? "An update for " + g.title : scr.games.some(x => x.update) ? "An update is waiting" : "All up to date", s: "" }
+                        ];
+                    }
                     delegate: Box {
                         required property var modelData
                         width: (avRow.width - 36) / 3; height: avRow.height

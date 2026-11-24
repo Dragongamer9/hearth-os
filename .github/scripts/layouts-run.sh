@@ -145,6 +145,8 @@ PY
   shot "qml-anything-4-block-editor"
   # board 5: your AI makes a block Hearth hasn't got (a pretend AI and a pretend printer), it asks first, then it's on the desktop
   timeout 20 quickshell ipc -p "$SH" call screen editorSay "Add my 3D printer's camera and how far the print is, in the corner" >/dev/null 2>&1; sleep 8
+  # answered Allow (as its ask's Allow does): the block goes live in the editor
+  hearth-layout block-allow printer-camera always >/dev/null 2>&1; sleep 7
   shot "qml-anything-5-ai-made-block"
   timeout 20 quickshell ipc -p "$SH" call screen editorState 2>/dev/null | grep -q '"made":true' || err "board 5: the made block didn't come up ($(timeout 20 quickshell ipc -p "$SH" call screen editorState 2>/dev/null))"
   hearth-layout block-allow printer-camera always >/dev/null 2>&1

@@ -9840,7 +9840,8 @@ function qdCapture(g){
 // ---- Quick settings (volume, brightness, mute, Wi-Fi, Bluetooth, airplane mode, sounds; notifications under them)
 function qdQuick(){
   const w=S.sys.wifi, a=S.sys.audio;
-  let h=`<div class="qd-qs"><div class="wide">${sliderCtl('vol',a.muted?'mute':'vol','Volume',0,volMax())}</div>${S.sys.display.supported?`<div class="wide">${sliderCtl('bright','sun','Brightness')}</div>`:''}
+  // Game Mode made of blocks (gm-blocks.js): your Quick Access page's blocks first
+  let h=(LOOK.layout==='blocks' && typeof gmbQuick==='function' ? gmbQuick() : '')+`<div class="qd-qs"><div class="wide">${sliderCtl('vol',a.muted?'mute':'vol','Volume',0,volMax())}</div>${S.sys.display.supported?`<div class="wide">${sliderCtl('bright','sun','Brightness')}</div>`:''}
     <button class="ctl tg" data-f data-k="q-mute" data-act="mute">${a.muted?I.mute:I.vol}<span class="tgl">Mute</span><div class="sw ${a.muted?'on':''}"></div></button>
     ${qRadio('wifi','wifi','Wi-Fi', w.on ? (w.ssid||'Not connected') : 'Off')}
     ${qRadio('bt','bt','Bluetooth', S.sys.bt.on?'On':'Off')}
@@ -9859,7 +9860,7 @@ function qdQuick(){
   h += `<div class="qd-more">${more.join('')}</div>`;
   if(NOTIFS.length) h += `<h4>Notifications</h4>` + NOTIFS.map((n,i)=>`<button class="notif" data-f data-k="${n.expired?'n-exp-'+n.expired:'n-'+i}" ${n.mf?`data-act="mfNotif" data-room="${esc(n.mf)}"`:n.expired?`data-act="expSignIn" data-s="${n.expired}"`:n.go?`data-act="goset" data-tab="${n.go}"`:`data-act="dismiss" data-i="${i}"`} style="width:100%;margin:0"><div class="ni">${I[n.i]||I.bell}</div><div><b>${esc(n.t)}</b><small>${esc(n.s)}</small></div></button>`).join('')
     + `<div class="qd-more"><button class="qd-mini" data-f data-k="n-clear" data-act="clearnotifs">Clear all</button></div>`;
-  if(!S.running) h += qamQuick();
+  if(!S.running){ const L=QR.list.map(q=>G(q.id)).filter(Boolean); if(L.length) h += qamQuickResume(L); }
   return h;
 }
 

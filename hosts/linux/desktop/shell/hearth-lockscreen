@@ -16,6 +16,8 @@ nothing here touches it). The password block is always there, exactly once, big 
   hearth-lockscreen match          Settings: the lock screen matching your desktop (on, match)
   hearth-lockscreen plain          Settings: the plain lock screen (off; your own layout stays in the file)
   hearth-lockscreen downloads      what Steam is downloading on this device: {"items": [{"name", "percent"}]}
+  hearth-lockscreen played         when each Steam game was last played here, and its minutes these two weeks (the
+                                   desktop's hero tile and activity cards): {"last": {"steam:ID": time}, "twoWeeks": {...}}
   hearth-lockscreen friends        friends online, from Steam's own list on this device and their public profiles
                                    (kept 5 minutes): {"online": [{"name", "game"}]}
 """
@@ -266,6 +268,32 @@ def friends_known():
     return out[:40]
 
 
+def played():
+    """When you last played each Steam game on this device and for how long these two weeks (Steam's own LastPlayed and
+    Playtime2wks): {"last": {"steam:APPID": unix seconds}, "twoWeeks": {"steam:APPID": minutes}}."""
+    out, weeks = {}, {}
+    for r in steam_dirs():
+        ud = os.path.join(os.path.dirname(r), 'userdata')
+        try:
+            accts = [a for a in os.listdir(ud) if a.isdigit() and a != '0']
+        except OSError:
+            continue
+        for a in accts:
+            try:
+                t = open(os.path.join(ud, a, 'config', 'localconfig.vdf'), errors='replace').read()
+            except OSError:
+                continue
+            for app, body in re.findall(r'"(\d+)"\s*\{([^{}]*)\}', t):
+                k = 'steam:' + app
+                m = re.search(r'"LastPlayed"\s+"(\d+)"', body)
+                if m:
+                    out[k] = max(out.get(k, 0), int(m.group(1)))
+                m = re.search(r'"Playtime2wks"\s+"(\d+)"', body)
+                if m:
+                    weeks[k] = max(weeks.get(k, 0), int(m.group(1)))
+    return {'last': out, 'twoWeeks': weeks}
+
+
 def friends(fetch=None):
     cache = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(home(), '.cache'), 'hearth', 'lock-friends.json')
     try:
@@ -327,6 +355,8 @@ def main(argv):
             print(json.dumps({'ok': True}))
         elif cmd == 'downloads':
             print(json.dumps(downloads()))
+        elif cmd == 'played':
+            print(json.dumps(played()))
         elif cmd == 'friends':
             print(json.dumps(friends()))
         else:

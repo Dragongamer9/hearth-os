@@ -120,12 +120,16 @@ Item {
             id: cell
             required property var modelData
             readonly property var b: modelData
-            x: lb.margin + Math.max(0, b.x || 0) * lb.cellW
-            y: lb.margin + Math.max(0, b.y || 0) * lb.cellH
-            width: Math.max(1, b.w || 1) * lb.cellW
-            height: Math.max(1, b.h || 1) * lb.cellH
+            // a bar across the whole top row reaches the screen's edges (the 1995 look's "Hearth is locked")
+            readonly property bool edge: b.block === "bar" && (b.x || 0) === 0 && (b.y || 0) === 0 && (b.w || 0) >= lb.cols
+            x: edge ? 0 : lb.margin + Math.max(0, b.x || 0) * lb.cellW
+            y: edge ? 0 : lb.margin + Math.max(0, b.y || 0) * lb.cellH
+            width: edge ? lb.width : Math.max(1, b.w || 1) * lb.cellW
+            height: edge ? lb.margin + lb.cellH * 0.7 : Math.max(1, b.h || 1) * lb.cellH
             Loader {
                 anchors.fill: parent
+                // a little room between blocks
+                anchors.margins: cell.edge ? 0 : Math.round(Math.min(lb.cellW, lb.cellH) * 0.09)
                 property var blk: cell.b
                 property var st: cell.b.style || ({})
                 sourceComponent: String(cell.b.block).startsWith("own:") ? ownC
@@ -169,7 +173,8 @@ Item {
             }
             Ink {
                 anchors.fill: parent
-                text: ck.blk.block === "date" ? Qt.formatDate(lb.now, "dddd, d MMMM") : Qt.formatTime(lb.now, Settings.clock24 || ck.ring ? "HH:mm" : "h:mm")
+                // 12-hour without AM / PM ("7:58"), or 24-hour when that's your choice (Settings › Date & time)
+                text: ck.blk.block === "date" ? Qt.formatDate(lb.now, "dddd, d MMMM") : Settings.clock24 || ck.ring ? Qt.formatTime(lb.now, "HH:mm") : Qt.formatTime(lb.now, "h:mm AP").replace(/\s*[AP]M$/i, "")
                 font.pixelSize: ck.st.size || (ck.blk.block === "date" ? 28 : 120); font.weight: ck.st.weight || Font.Normal; font.family: lb.fontFor(ck.st.font)
                 color: ck.st.text || lb.ink
                 horizontalAlignment: ck.ring ? Text.AlignHCenter : (ck.blk.x || 0) > lb.cols / 2 ? Text.AlignRight : Text.AlignLeft

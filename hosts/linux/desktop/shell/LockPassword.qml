@@ -70,10 +70,11 @@ Item {
         }
     }
 
-    // ---- the 1995 look's window: "Welcome back to Hearth"
+    // ---- the 1995 look's window: "Welcome back to Hearth" (as tall as it needs, at the top of its place)
     Rectangle {
         visible: pw.retro
-        anchors.fill: parent
+        anchors { left: parent.left; right: parent.right; top: parent.top }
+        height: Math.min(parent.height, 220)
         color: "#c0c0c0"; border.width: 2; border.color: "#ffffff"
         Rectangle { anchors { right: parent.right; bottom: parent.bottom } width: parent.width; height: 2; color: "#404040" }
         Rectangle { anchors { right: parent.right; bottom: parent.bottom } width: 2; height: parent.height; color: "#404040" }

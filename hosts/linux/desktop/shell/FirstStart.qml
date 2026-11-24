@@ -171,7 +171,7 @@ PanelWindow {
                     Rectangle {
                         width: 160; height: 48; radius: 6; color: Qt.rgba(1, 1, 1, 0.06); border.color: Qt.rgba(1, 1, 1, 0.18)
                         Row { anchors.centerIn: parent; spacing: 8; Icon { name: "mic"; size: 18; color: "white"; anchors.verticalCenter: parent.verticalCenter } Text { text: "Describe it"; color: "white"; font.family: Theme.font; font.pixelSize: 17 } }
-                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: fs.choose(fs.tiles.length + 1) }
+                        MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { ScreenLayout.markChosen(); fs.shown = false; if (fs.editor) fs.editor.describeNew(); } }
                     }
                 }
             }

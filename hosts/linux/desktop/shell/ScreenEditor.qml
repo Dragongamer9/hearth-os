@@ -38,6 +38,8 @@ PanelWindow {
     property string name: ""
     property int pick: -1
     property string said: ""
+    // a sketch or a picture to make the screen from (Or say it's "Add a sketch"; hearth-layout describe-screen's sketch)
+    property string sketch: ""
     property string error: ""
     property bool busy: false
     property var made: null              // board 5: what your AI made ({block, asks, asked})
@@ -113,7 +115,7 @@ PanelWindow {
         if (!draft.blocks) draft.blocks = [];
         name = title || (ScreenLayout.readyMade.find(r => r.id === ScreenLayout.from) || { name: draft.blocks.length ? "Your desktop" : "Start from nothing" }).name;
         said = draft.said || "";
-        undoStack = []; pick = draft.blocks.length ? 0 : -1; error = ""; made = null; sayField.text = "";
+        undoStack = []; pick = draft.blocks.length ? 0 : -1; error = ""; made = null; sayField.text = ""; sketch = "";
         shown = true;
         refreshMine();
     }
@@ -281,14 +283,24 @@ PanelWindow {
 
     // ---- your AI: the screen changed (and blocks made) from your words
     function say(t) { sayField.text = t; sayIt(); }
+    // the first start's Describe it: a new screen from your words (or a sketch)
+    function describeNew() {
+        open({ grid: { cols: 24, rows: 14 }, background: { kind: "gradient", from: "#1a1410", to: "#0c0907" }, look: {}, blocks: [] }, "Start from nothing");
+        sayField.forceActiveFocus();
+    }
+    Process {
+        id: sketchPick
+        command: ["sh", "-c", "if command -v kdialog >/dev/null; then kdialog --title 'Add a sketch or a picture' --getopenfilename \"$HOME/Pictures\" 'image/png image/jpeg'; elif command -v zenity >/dev/null; then zenity --file-selection --title='Add a sketch or a picture' --filename=\"$HOME/Pictures/\" --file-filter='Pictures | *.png *.jpg *.jpeg'; else exit 3; fi"]
+        stdout: StdioCollector { onStreamFinished: { const f = text.trim(); if (f !== "") ed.sketch = f; } }
+    }
     function sayIt() {
-        const t = sayField.text.trim();
+        const t = sayField.text.trim() || (sketch ? "Make it like this sketch" : "");
         if (!t || busy) return;
         busy = true; error = "";
         // Which app is asking (Describe it's notes), passed with env: no environment object on the Process
         // (test_desktop_bug_hunt_2).
         const asked = lockMode ? "This is the LOCK SCREEN, not the desktop: only blocks that show things (clock, date, weather, media, notifications, downloads, battery, calendar, picture, text, friends), nothing pressed opens anything, and the password block stays. " + t : t;
-        describeP.command = ["env", "HEARTH_DESCRIBE_APP=Mantel " + (Quickshell.env("HEARTH_MANTEL_VERSION") || "")].concat(ScreenLayout.layoutCmd(["describe-screen", asked, JSON.stringify(draft)]));
+        describeP.command = ["env", "HEARTH_DESCRIBE_APP=Mantel " + (Quickshell.env("HEARTH_MANTEL_VERSION") || "")].concat(ScreenLayout.layoutCmd(["describe-screen", asked, JSON.stringify(draft)].concat(sketch ? [sketch] : [])));
         describeP.asked = t;
         describeP.running = true;
     }
@@ -503,8 +515,9 @@ PanelWindow {
                 }
                 Text { text: "ALWAYS THERE"; color: "#a59a91"; font.family: Theme.font; font.pixelSize: 12; font.letterSpacing: 1.4; topPadding: 6 }
                 Rectangle {
-                    width: pwt.implicitWidth + 28; height: 36; radius: 8; color: Qt.rgba(1, 0.48, 0.18, 0.1); border.color: "#ff7a2f"
-                    Text { id: pwt; anchors.centerIn: parent; text: "🔒 Password and fingerprint"; color: "#ffb27a"; font.family: Theme.font; font.pixelSize: 14 }
+                    width: pwt.implicitWidth + 50; height: 36; radius: 8; color: Qt.rgba(1, 0.48, 0.18, 0.1); border.color: "#ff7a2f"
+                    Icon { anchors { left: parent.left; leftMargin: 12; verticalCenter: parent.verticalCenter } name: "lock"; size: 16; color: "#ffb27a" }
+                    Text { id: pwt; anchors { left: parent.left; leftMargin: 36; verticalCenter: parent.verticalCenter } text: "Password and fingerprint"; color: "#ffb27a"; font.family: Theme.font; font.pixelSize: 14 }
                     MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: ed.pick = ed.pwIndex() }
                 }
                 Text { width: lkc.width; wrapMode: Text.WordWrap; text: "It can be moved, sized and styled, never removed or covered. Unlocking is Hearth's own, whatever the look."; color: "#a59a91"; font.family: Theme.font; font.pixelSize: 13 }
@@ -634,7 +647,7 @@ PanelWindow {
                     source: "LockPassword.qml"
                     x: active ? lockBlocksPrev.item.pwRect.x : 0; y: active ? lockBlocksPrev.item.pwRect.y : 0
                     width: active ? lockBlocksPrev.item.pwRect.width : 0; height: active ? lockBlocksPrev.item.pwRect.height : 0
-                    onLoaded: { item.preview = true; item.retro = Qt.binding(() => lockBlocksPrev.item.pwRetro); item.st = Qt.binding(() => lockBlocksPrev.item.pwBlock.style); }
+                    onLoaded: { item.preview = true; item.retro = Qt.binding(() => !!lockBlocksPrev.item && lockBlocksPrev.item.pwRetro); item.st = Qt.binding(() => lockBlocksPrev.item ? lockBlocksPrev.item.pwBlock.style : ({})); }
                 }
             }
             Item {
@@ -657,7 +670,9 @@ PanelWindow {
                         x: modelData.x * canvas.cw + 4; y: modelData.y * canvas.ch + 4
                         width: modelData.w * canvas.cw - 8; height: modelData.h * canvas.ch - 8
                         radius: Math.min(10, (modelData.style && modelData.style.corners) || 6)
-                        color: ed.lockMode ? "transparent" : modelData.style && modelData.style.colour && modelData.style.colour !== "#00000000" ? Qt.rgba(Qt.color(modelData.style.colour).r, Qt.color(modelData.style.colour).g, Qt.color(modelData.style.colour).b, 0.45) : Qt.rgba(0, 0, 0, 0.25)
+                        // the Guide opens over the screen on Home: under the other blocks here, so they can be picked
+                        z: modelData.block === "guide" ? 0 : 1
+                        color: ed.lockMode || modelData.block === "guide" ? "transparent" : modelData.style && modelData.style.colour && modelData.style.colour !== "#00000000" ? Qt.rgba(Qt.color(modelData.style.colour).r, Qt.color(modelData.style.colour).g, Qt.color(modelData.style.colour).b, 0.45) : Qt.rgba(0, 0, 0, 0.25)
                         border.width: on ? 2 : (ed.lockMode ? 0 : 1)
                         border.color: on ? "#ff7a2f" : Qt.rgba(1, 1, 1, 0.35)
                         Text {
@@ -668,7 +683,7 @@ PanelWindow {
                         Text {
                             anchors.centerIn: parent; width: parent.width - 16; horizontalAlignment: Text.AlignHCenter; elide: Text.ElideRight
                             visible: blkBox.modelData.block !== "hero" && !ed.lockMode
-                            text: ed.info(blkBox.modelData.block).t + (blkBox.modelData.title ? " · " + blkBox.modelData.title : blkBox.modelData.items ? " · " + blkBox.modelData.items.length + " things" : "")
+                            text: blkBox.modelData.block === "guide" ? "Guide menu · opens on Home" : ed.info(blkBox.modelData.block).t + (blkBox.modelData.title ? " · " + blkBox.modelData.title : blkBox.modelData.items ? " · " + blkBox.modelData.items.length + " things" : "")
                             color: "white"; font.family: Theme.font; font.pixelSize: 14
                         }
                         // move it
@@ -726,9 +741,18 @@ PanelWindow {
         Rectangle {
             anchors { bottom: parent.bottom; left: canvasBox.left; right: canvasBox.right }
             height: 52; radius: 10; color: "#211c19"; border.width: 2; border.color: "#ff7a2f"
+            // a sketch or a picture to make it from
+            Rectangle {
+                id: sketchBtn
+                visible: !ed.lockMode
+                anchors { right: parent.right; rightMargin: 8; verticalCenter: parent.verticalCenter }
+                width: skT.implicitWidth + 24; height: 36; radius: 8; color: ed.sketch ? Qt.rgba(1, 0.48, 0.18, 0.18) : Qt.rgba(1, 1, 1, 0.07)
+                Text { id: skT; anchors.centerIn: parent; text: ed.sketch ? "✓ Sketch added (press to remove)" : "Add a sketch"; color: "#e8ddd4"; font.family: Theme.font; font.pixelSize: 13 }
+                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: { if (ed.sketch) ed.sketch = ""; else sketchPick.running = true; } }
+            }
             TextInput {
                 id: sayField
-                anchors { fill: parent; leftMargin: 18; rightMargin: 18 }
+                anchors { fill: parent; leftMargin: 18; rightMargin: sketchBtn.visible ? sketchBtn.width + 26 : 18 }
                 verticalAlignment: TextInput.AlignVCenter
                 color: "white"; font.family: Theme.font; font.pixelSize: 16; clip: true
                 onAccepted: ed.sayIt()
@@ -891,10 +915,11 @@ PanelWindow {
             spacing: 14
             Text { text: "MADE FOR YOU BY YOUR AI · NEW"; color: "#ff7a2f"; font.family: Theme.font; font.pixelSize: 14; font.bold: true; font.letterSpacing: 1.2 }
             Loader {
+                id: madePrev
                 width: parent.width; height: width * 0.52
                 active: !!ed.made
                 sourceComponent: Component {
-                    OwnBlock { blk: ({ block: "own:" + ed.made.block.id }); st: ({ corners: 12 }); ink: "white" }
+                    OwnBlock { blk: ({ block: "own:" + ed.made.block.id }); st: ({ corners: 12 }); ink: "white"; askHere: false }
                 }
             }
             Text {
@@ -942,7 +967,11 @@ PanelWindow {
                                 Text { id: at; anchors.centerIn: parent; text: modelData.t; color: index === 0 ? "#1b1006" : "white"; font.family: Theme.font; font.pixelSize: 15; font.bold: true }
                                 MouseArea {
                                     anchors.fill: parent; cursorShape: Qt.PointingHandCursor
-                                    onClicked: if (modelData.a !== "once") Quickshell.execDetached(ScreenLayout.layoutCmd(["block-allow", ed.made.block.id, modelData.a]))
+                                    onClicked: {
+                                        if (modelData.a !== "once") Quickshell.execDetached(ScreenLayout.layoutCmd(["block-allow", ed.made.block.id, modelData.a]));
+                                        else if (madePrev.item) { madePrev.item.once = true; madePrev.item.look(); madePrev.item.once = false; }
+                                        ed.made = Object.assign({}, ed.made, { asks: null, answered: modelData.t });
+                                    }
                                 }
                             }
                         }

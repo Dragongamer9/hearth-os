@@ -169,6 +169,19 @@ class WhatTheBlocksRead(unittest.TestCase):
         finally:
             os.environ['HOME'] = old
 
+    def test_played_from_steams_own_record(self):
+        home = tempfile.mkdtemp()
+        os.makedirs(os.path.join(home, '.local', 'share', 'Steam', 'steamapps'))
+        cfg = os.path.join(home, '.local', 'share', 'Steam', 'userdata', '5', 'config')
+        os.makedirs(cfg)
+        open(os.path.join(cfg, 'localconfig.vdf'), 'w').write('"apps"\n{\n "440"\n {\n  "LastPlayed" "1700000000"\n  "Playtime2wks" "840"\n }\n "570"\n {\n  "Playtime" "3"\n }\n}\n')
+        old = os.environ.get('HOME')
+        os.environ['HOME'] = home
+        try:
+            self.assertEqual(LS.played(), {'last': {'steam:440': 1700000000}, 'twoWeeks': {'steam:440': 840}})
+        finally:
+            os.environ['HOME'] = old
+
     def test_friends_online_only(self):
         home = tempfile.mkdtemp()
         steam = os.path.join(home, '.local', 'share', 'Steam')
