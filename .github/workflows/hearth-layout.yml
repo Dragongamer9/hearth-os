@@ -1,0 +1,177 @@
+# Desktop layouts' shared part (hosts/hearth-layout; docs/mockups/checklists/desktop-layouts.md): the layout files and
+# their check, putting one in place with Undo, Describe it's feature recipes and ideas. Both Mantels and Hearth's apps
+# use it. Built and tested here only, in Fedora 45 as the image is; the ready-made layouts are checked by its tests.
+#   labwc   each ready-made layout put in place and the QML Mantel pictured next to its approved mockup
+#           (branch ci/layouts-shots, pair-*.jpg), with Mantel's log checked for errors from the layouts' parts
+name: Desktop layouts (shared part)
+
+on:
+  push:
+    branches: ['feature/desktop-layouts', 'bughunt']
+    paths: ['hosts/hearth-layout/**', 'hosts/linux/desktop/layouts/**', 'hosts/hearth-core/src/settings_file.rs',
+            'hosts/linux/desktop/shell/**', '.github/workflows/hearth-layout.yml', '.github/scripts/layouts-run.sh', 'hosts/mantel-rs/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hearth-layout-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: registry.fedoraproject.org/fedora:45
+    steps:
+      - name: Rust
+        run: |
+          dnf -y install git tar zstd gcc rust cargo python3 >/dev/null
+          echo "::notice title=toolchain::$(rustc --version)"
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            hosts/hearth-layout/target
+          key: hearth-layout-f45-${{ hashFiles('hosts/hearth-layout/Cargo.toml') }}-${{ github.sha }}
+          restore-keys: hearth-layout-f45-${{ hashFiles('hosts/hearth-layout/Cargo.toml') }}-
+      - name: Build
+        id: b
+        continue-on-error: true
+        run: bash .github/scripts/cargo-build-annotate.sh hosts/hearth-layout
+      - name: More errors
+        if: steps.b.outcome == 'failure'
+        run: |
+          [ -f errors-hearth-layout.txt ] && sed -n '11,30p' errors-hearth-layout.txt
+          exit 1
+      - name: Tests
+        run: |
+          cd hosts/hearth-layout
+          cargo test --release -- --test-threads=1 > ../../test.log 2>&1 || { grep -E "^test .* FAILED|panicked at|^error" ../../test.log | head -10 | while read -r l; do echo "::error title=cargo test::$l"; done; exit 1; }
+          echo "::notice title=cargo test::$(grep -E '^test result' ../../test.log | tr '\n' ' ' | cut -c1-300)"
+      - name: The ready-made layouts, as the command line shows them
+        run: |
+          export HOME=$(mktemp -d) NIMBUS_SHARE=$PWD/hosts/linux
+          b=hosts/hearth-layout/target/release/hearth-layout
+          $b list | while read -r l; do echo "::notice title=layout::$l"; done
+          $b apply plasma && $b current | grep -qx plasma && $b undo
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-layout
+          path: hosts/hearth-layout/target/release/hearth-layout
+          retention-days: 5
+
+  # Mantel in Rust, to picture each layout on it too (as mantel-rust.yml builds it)
+  mantel-rs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: registry.fedoraproject.org/fedora:45
+    steps:
+      - name: Rust and the libraries iced uses
+        run: |
+          dnf -y install git tar zstd gcc gcc-c++ pkgconf-pkg-config rust cargo libxkbcommon-devel wayland-devel \
+            mesa-libEGL-devel fontconfig-devel freetype-devel python3 >/dev/null
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            hosts/mantel-rs/target
+          key: mantel-rust-f45-${{ hashFiles('hosts/mantel-rs/Cargo.toml', 'hosts/hearth-ui/Cargo.toml') }}-${{ github.sha }}
+          restore-keys: mantel-rust-f45-${{ hashFiles('hosts/mantel-rs/Cargo.toml', 'hosts/hearth-ui/Cargo.toml') }}-
+      - name: Build
+        id: b
+        continue-on-error: true
+        run: bash .github/scripts/cargo-build-annotate.sh hosts/mantel-rs
+      - name: More errors
+        if: steps.b.outcome == 'failure'
+        run: |
+          [ -f errors-mantel-rs.txt ] && sed -n '11,30p' errors-mantel-rs.txt
+          exit 1
+      - name: Tests
+        run: |
+          cd hosts/mantel-rs
+          cargo test --release -- --test-threads=1 > ../../test.log 2>&1 || { grep -E "^test .* FAILED|panicked at|^error" ../../test.log | head -10 | while read -r l; do echo "::error title=cargo test::$l"; done; exit 1; }
+          echo "::notice title=cargo test::$(grep -E '^test result' ../../test.log | tr '\n' ' ' | cut -c1-300)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-mantel
+          path: hosts/mantel-rs/target/release/hearth-mantel
+          retention-days: 5
+
+  # The QML Mantel's Quickshell, as the image builds it (kept between runs: it only changes with the build script).
+  quickshell:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:45
+    timeout-minutes: 40
+    steps:
+      - run: dnf5 -y install git tar gzip zstd >/dev/null
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: qc
+        with:
+          path: /tmp/quickshell.tgz
+          key: quickshell-f45-${{ hashFiles('os-bases/anatase/quickshell-build.sh') }}
+      - name: Build
+        if: steps.qc.outputs.cache-hit != 'true'
+        run: |
+          set -o pipefail
+          bash os-bases/anatase/quickshell-build.sh /tmp/qs 2>&1 | tail -n 60 > /tmp/qs.log || { echo "::error title=Quickshell::$(tail -c 1500 /tmp/qs.log | tr '\n' ' ')"; exit 1; }
+          tar -C /tmp/qs -czf /tmp/quickshell.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quickshell-fedora
+          path: /tmp/quickshell.tgz
+          retention-days: 3
+
+  labwc:
+    needs: [build, quickshell, mantel-rs]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: registry.fedoraproject.org/fedora:45
+      options: --cap-add=SYS_PTRACE --security-opt seccomp=unconfined
+    steps:
+      - run: dnf5 -y install git >/dev/null
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: hearth-layout
+          path: /tmp/hl
+      - uses: actions/download-artifact@v4
+        with:
+          name: quickshell-fedora
+          path: /tmp/qsa
+      - uses: actions/download-artifact@v4
+        with:
+          name: hearth-mantel
+          path: /tmp/hm
+      - name: labwc, as the image has it
+        run: |
+          tar -C / -xzf /tmp/qsa/quickshell.tgz
+          dnf5 -y install git python3 wlr-randr mesa-vulkan-drivers vulkan-loader python3-pillow procps-ng dbus-daemon dbus-tools findutils foot google-noto-sans-fonts rsms-inter-fonts >/dev/null 2>&1 || true
+          bash os-bases/anatase/labwc-install.sh 2>&1 | grep -E '::|^Error' || true
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          install -Dm755 /tmp/hl/hearth-layout /usr/local/bin/hearth-layout
+          install -Dm755 /tmp/hm/hearth-mantel /usr/local/bin/hearth-mantel
+          chmod 755 /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/open.sh 2>/dev/null
+          find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +
+          install -Dm755 hosts/linux/session/nimbus-mode /usr/bin/nimbus-mode
+      - name: On labwc
+        run: bash .github/scripts/layouts-run.sh /tmp/out
+      - name: Pictures to ci/layouts-shots
+        if: always()
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
+          git checkout -q --orphan ci/layouts-shots
+          git rm -rfq --cached . >/dev/null
+          rm -rf shots && mkdir shots && cp /tmp/out/*.jpg /tmp/out/*.log /tmp/out/*.txt shots/ 2>/dev/null
+          git add -f shots
+          git commit -qm "Desktop layouts pictures ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/layouts-shots || true

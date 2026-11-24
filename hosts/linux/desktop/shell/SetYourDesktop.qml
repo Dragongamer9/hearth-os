@@ -7,6 +7,7 @@
 import QtQuick
 import QtQuick.Layouts
 import Quickshell
+import Quickshell.Io
 
 SetPage {
     id: page
@@ -19,7 +20,7 @@ SetPage {
     function run(args, done) { act.run(args, r => { page.st = r; if (done) page.say(done); }, e => { page.say(e, true); page.refresh(); }); }
     readonly property string wmName: !st ? "KWin" : st.wm === "labwc" ? "labwc" : "KWin"
     readonly property string nowName: !st || !st.wmNow ? "" : st.wmNow === "labwc" ? "labwc" : st.wmNow === "firehold" ? "Firehold" : "KWin"
-    Component.onCompleted: if (fedora) fRefresh(); else refresh()
+    Component.onCompleted: { if (fedora) fRefresh(); else refresh(); blocksRefresh(); }
     SetJob { id: job; helper: "hearth-your-desktop" }
     SetJob { id: act; helper: "hearth-your-desktop" }
 
@@ -188,5 +189,96 @@ SetPage {
         interactive: false
     }
     // <<< labwc on the Fedora edition
+
+    // >>> Build anything (build-anything boards 1-3, 7): how your desktop looks. Hearth OS Mantel, or a whole-screen
+    // desktop of blocks (ScreenLayout.qml), changed at once (no restart) and back to Mantel any time.
+    Text {
+        Layout.fillWidth: true; Layout.topMargin: 18
+        text: "How your desktop looks"
+        color: Theme.text; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold
+    }
+    Text {
+        Layout.fillWidth: true; Layout.bottomMargin: 4
+        text: "Hearth OS Mantel, or a whole desktop of your own: start from one of these and change anything. Either way it's Hearth underneath, and your windows, Files and Alt+Tab work the same."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap
+    }
+    SetRow {
+        icon: "desktops"; title: "Hearth OS Mantel"
+        sub: "The bar, the dock, Quick Access and Game Mode one press away"
+        chip: !ScreenLayout.on ? "Using now" : ""
+        chevron: ScreenLayout.on
+        interactive: ScreenLayout.on
+        onActivated: { const e = ScreenLayout.useMantel(); page.say(e || "Back to Hearth OS Mantel ✓", !!e); }
+    }
+    Repeater {
+        model: ScreenLayout.readyMade
+        delegate: SetRow {
+            required property var modelData
+            icon: "palette"; title: modelData.name
+            sub: modelData.id === "console" ? "Your profile and the time in the corners, your last game big, rows of games and apps, a Guide on Home"
+               : modelData.id === "iconrow" ? "Tabs across the top, your games as icons, the picked one's art filling the screen, Play"
+               : modelData.id === "cockpit" ? "A big clock in the middle, your last game and your apps on glowing panels"
+               : modelData.id === "cabin" ? "Warm wood colours, the time, what's playing and your games"
+               : modelData.id === "notebook" ? "Cream paper and dark ink, your apps and windows as notes"
+               : "A teal screen, square buttons, the clock in the corner"
+            chip: ScreenLayout.on && ScreenLayout.from === modelData.id ? "Using now" : ""
+            chevron: !(ScreenLayout.on && ScreenLayout.from === modelData.id)
+            interactive: chevron
+            onActivated: { const e = ScreenLayout.use(modelData.id); page.say(e || modelData.name + " is your desktop now. Home opens its Guide; Settings › Your desktop goes back ✓", !!e); }
+        }
+    }
+    SetRow {
+        icon: "edit"; title: ScreenLayout.on ? "Change this desktop" : "Build your own"
+        sub: ScreenLayout.on ? "The block editor: move, size and restyle its blocks, add new ones, or say what you want" : "Start from nothing in the block editor, or from one of these"
+        chevron: true
+        onActivated: Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "screen", ScreenLayout.on ? "edit" : "editNothing"])
+    }
+    SetRow {
+        visible: ScreenLayout.failed
+        icon: "warn"; title: "Your desktop couldn't be drawn"
+        sub: "Mantel's bar and dock are back so nothing's lost. Pick it again to try once more."
+        interactive: false
+    }
+    SetRow {
+        icon: "info"; title: "Show the first-start choice"
+        sub: "The full-screen \"How do you want your desktop?\" a new install opens with"
+        chevron: true
+        onActivated: Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "screen", "firstStart"])
+    }
+    // Your blocks (build-anything board 5): the blocks your AI made, each on or off, and what you said to its ask.
+    property var myBlocks: []
+    function blocksRefresh() { blocksP.command = ScreenLayout.layoutCmd(["blocks-mine"]); blocksP.running = true; }
+    Process { id: blocksP; stdout: StdioCollector { onStreamFinished: { try { const v = JSON.parse(text.trim() || "[]"); if (Array.isArray(v)) page.myBlocks = v; } catch (e) {} } } }
+    Process { id: blockSet; onExited: page.blocksRefresh() }
+    Text {
+        Layout.fillWidth: true; Layout.topMargin: 18
+        text: "Your blocks"
+        color: Theme.text; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold
+    }
+    Text {
+        Layout.fillWidth: true; Layout.bottomMargin: 4
+        text: page.myBlocks.length ? "Made by your AI for your desktop. Each runs on its own and asks before it reaches anything. Press one to turn it off or on." : "None yet: in the block editor, describe a block Hearth hasn't got and your AI makes it."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap
+    }
+    Repeater {
+        model: page.myBlocks
+        delegate: SetRow {
+            required property var modelData
+            icon: "sparkle"; title: modelData.name
+            sub: (modelData.reach && modelData.reach.kind ? (modelData.allowed === "always" ? "Allowed to reach " : modelData.allowed === "no" ? "You said No to " : "Asks before it reaches ") + modelData.reach.value + " · " : "") + "\"" + modelData.asked + "\""
+            chip: modelData.on ? "On" : "Off"; chipKind: modelData.on ? "ok" : "warn"
+            chevron: true
+            onActivated: { blockSet.command = ScreenLayout.layoutCmd(["block-on", modelData.id, modelData.on ? "false" : "true"]); blockSet.running = true; }
+        }
+    }
+    SetRow {
+        visible: page.myBlocks.some(b => b.allowed !== "")
+        icon: "shield"; title: "Ask again before they reach anything"
+        sub: "Forgets every Allow and No you gave your blocks"
+        chevron: true
+        onActivated: { for (const b of page.myBlocks) Quickshell.execDetached(ScreenLayout.layoutCmd(["block-allow", b.id, "ask"])); refreshT.start(); }
+        Timer { id: refreshT; interval: 800; onTriggered: page.blocksRefresh() }
+    }
+    // <<< Build anything
     Text { visible: page.msg !== ""; Layout.fillWidth: true; text: page.msg; color: page.bad ? SetStyle.warn : Theme.muted; font.family: Theme.font; font.pixelSize: 13; wrapMode: Text.WordWrap }
 }

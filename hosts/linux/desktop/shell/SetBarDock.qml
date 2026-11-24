@@ -16,6 +16,8 @@ SetPage {
         color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap
     }
     SetHeader { text: "Bar and dock"; Layout.topMargin: 0 }
+    // Desktop layouts: the whole desktop at once (Plasma-, GNOME-, Windows 11-, macOS-style or your own)
+    SetLinkCard { target: "desktop-layout"; value: "" }
     Loader { Layout.fillWidth: true; source: "BarLayoutPicker.qml" }
     SetChoice {
         icon: "window"

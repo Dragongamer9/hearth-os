@@ -77,6 +77,9 @@ pub struct Entry {
     /// A quick update for one of Hearth's own apps or Mantel (parts.rs, hearth-part): its newer copy, for the Hearth
     /// OS it names, with the SHA-256 this signed list vouches for.
     pub part: Option<Part>,
+    /// A test version (Mantel in Rust): shown only with "Get test versions" on (or while it's installed), got and
+    /// removed by hand, never offered as an update to a built-in app.
+    pub test: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -152,6 +155,7 @@ impl Entry {
         });
         let short = s(v, "short");
         Some(Entry {
+            test: v.get("test").and_then(Value::as_bool).unwrap_or(false) || v.get("part").and_then(|x| x.get("test")).and_then(Value::as_bool).unwrap_or(false),
             part,
             short: if short.is_empty() { name.clone() } else { short },
             tagline: s(v, "tagline"),
@@ -201,8 +205,31 @@ pub struct Catalog {
 pub fn parse(text: &[u8]) -> Option<(u64, Vec<Entry>)> {
     let v: Value = serde_json::from_slice(text).ok()?;
     let serial = v.get("serial").and_then(Value::as_u64).unwrap_or(0);
-    let apps: Vec<Entry> = v.get("apps")?.as_array()?.iter().filter_map(|a| Entry::from_json(a, false)).collect();
+    let mut apps: Vec<Entry> = v.get("apps")?.as_array()?.iter().filter_map(|a| Entry::from_json(a, false)).collect();
+    // Test versions (Mantel in Rust) are in their own list, "tests": a Store from before 1.17.1 only reads "apps", so it
+    // can never show a test version to everyone as an ordinary update.
+    if let Some(t) = v.get("tests").and_then(Value::as_array) {
+        for e in t.iter().filter_map(|a| Entry::from_json(a, false)) {
+            if !apps.iter().any(|x| x.id == e.id) {
+                apps.push(Entry { test: true, ..e });
+            }
+        }
+    }
     Some((serial, apps))
+}
+
+#[cfg(test)]
+mod test_versions {
+    #[test]
+    fn test_versions_come_from_their_own_list() {
+        let j = br#"{"serial": 3, "apps": [{"id": "hearth-files", "name": "Hearth Files", "kind": "builtin"}],
+            "tests": [{"id": "part-mantel-rust", "name": "Mantel in Rust (test)", "kind": "builtin",
+                       "part": {"id": "mantel-rust", "version": "1.17.1", "os": "1.17", "path": "mantel-rust", "url": "https://x/y", "sha256": "00"}}]}"#;
+        let (_, apps) = super::parse(j).unwrap();
+        let t = apps.iter().find(|e| e.id == "part-mantel-rust").unwrap();
+        assert!(t.test, "an entry from tests is a test version");
+        assert!(!apps.iter().find(|e| e.id == "hearth-files").unwrap().test);
+    }
 }
 
 /// The private list (only on the owner's devices). Its apps never replace a public one with the same id.
@@ -275,6 +302,9 @@ pub fn load() -> Catalog {
             cat.apps.push(e);
         }
     }
+    // Test versions: only with "Get test versions" on, or while one is installed (so it can be removed).
+    let test = crate::prefs::load().test;
+    cat.apps.retain(|e| !e.test || test || e.part.as_ref().map(|p| crate::parts::have(&p.id).is_some()).unwrap_or(false));
     cat
 }
 

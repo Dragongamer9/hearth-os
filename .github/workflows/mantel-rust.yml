@@ -1,0 +1,143 @@
+# Mantel in Rust (test; docs/MANTEL-RUST.md): hosts/mantel-rs, Mantel's bar, dock, wallpaper and app menu drawn with
+# iced on wlr-layer-shell, opt in through the Hearth Store. Built and checked only here, in Fedora 45 as the image is.
+#   build    cargo build --release and cargo test (errors as annotations), and `hearth-mantel check` (what it reads)
+#   labwc    the QML Mantel and `hearth-mantel session` on labwc on a virtual screen, the same settings: pictures side by
+#            side (ci/mantel-rust-shots branch), how far apart they are, and a minute at rest for each (CPU, memory)
+name: Mantel in Rust (test)
+
+on:
+  push:
+    branches: ['feature/mantel-rust']
+    paths: ['hosts/mantel-rs/**', 'hosts/hearth-ui/src/**', 'hosts/linux/desktop/labwc/autostart',
+            '.github/workflows/mantel-rust.yml', '.github/scripts/mantel-rust-run.sh', '.github/scripts/cargo-build-annotate.sh',
+            'hosts/linux/desktop/shell/**']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mantel-rust-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container: registry.fedoraproject.org/fedora:45
+    steps:
+      - name: Rust and the libraries iced uses
+        run: |
+          dnf -y install git tar zstd gcc gcc-c++ pkgconf-pkg-config rust cargo libxkbcommon-devel wayland-devel \
+            mesa-libEGL-devel fontconfig-devel freetype-devel python3 >/dev/null
+          echo "::notice title=toolchain::$(rustc --version) · $(cargo --version)"
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            hosts/mantel-rs/target
+          key: mantel-rust-f45-${{ hashFiles('hosts/mantel-rs/Cargo.toml', 'hosts/hearth-ui/Cargo.toml') }}-${{ github.sha }}
+          restore-keys: mantel-rust-f45-${{ hashFiles('hosts/mantel-rs/Cargo.toml', 'hosts/hearth-ui/Cargo.toml') }}-
+      - name: Build
+        id: b
+        continue-on-error: true
+        run: bash .github/scripts/cargo-build-annotate.sh hosts/mantel-rs
+      - name: More errors
+        if: steps.b.outcome == 'failure'
+        run: |
+          [ -f errors-mantel-rs.txt ] && sed -n '11,30p' errors-mantel-rs.txt
+          exit 1
+      - name: Tests
+        run: |
+          cd hosts/mantel-rs
+          cargo test --release -- --test-threads=1 > ../../test.log 2>&1 || { grep -E "^test .* FAILED|panicked at|^error" ../../test.log | head -10 | while read -r l; do echo "::error title=cargo test::$l"; done; exit 1; }
+          echo "::notice title=cargo test::$(grep -E '^test result' ../../test.log | tr '\n' ' ' | cut -c1-300)"
+      - name: What it reads
+        run: |
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          hosts/mantel-rs/target/release/hearth-mantel check | head -30 | while read -r l; do echo "::notice title=check::$l"; done
+          ls -la hosts/mantel-rs/target/release/hearth-mantel | awk '{print "::notice title=size::" $5 " bytes"}'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hearth-mantel
+          path: hosts/mantel-rs/target/release/hearth-mantel
+          retention-days: 5
+
+  # The QML Mantel's Quickshell, as the image builds it (kept between runs: it only changes with the build script).
+  quickshell:
+    runs-on: ubuntu-latest
+    container: registry.fedoraproject.org/fedora:45
+    timeout-minutes: 40
+    steps:
+      - run: dnf5 -y install git tar gzip zstd >/dev/null
+      - uses: actions/checkout@v4
+      - uses: actions/cache@v4
+        id: qc
+        with:
+          path: /tmp/quickshell.tgz
+          key: quickshell-f45-${{ hashFiles('os-bases/anatase/quickshell-build.sh') }}
+      - name: Build
+        if: steps.qc.outputs.cache-hit != 'true'
+        run: |
+          set -o pipefail
+          bash os-bases/anatase/quickshell-build.sh /tmp/qs 2>&1 | tail -n 60 > /tmp/qs.log || { echo "::error title=Quickshell::$(tail -c 1500 /tmp/qs.log | tr '\n' ' ')"; exit 1; }
+          tar -C /tmp/qs -czf /tmp/quickshell.tgz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quickshell-fedora
+          path: /tmp/quickshell.tgz
+          retention-days: 3
+
+  labwc:
+    needs: [build, quickshell]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    container:
+      image: registry.fedoraproject.org/fedora:45
+      options: --cap-add=SYS_PTRACE --security-opt seccomp=unconfined
+    steps:
+      # git before checkout, so the checkout is a real repository (the pictures' branch is pushed from it).
+      - run: dnf5 -y install git >/dev/null
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: hearth-mantel
+          path: /tmp/hm
+      - uses: actions/download-artifact@v4
+        with:
+          name: quickshell-fedora
+          path: /tmp/qsa
+      - name: labwc, as the image has it
+        run: |
+          tar -C / -xzf /tmp/qsa/quickshell.tgz
+          dnf5 -y install git python3 wlr-randr mesa-vulkan-drivers vulkan-loader python3-pillow procps-ng dbus-daemon dbus-tools findutils foot google-noto-sans-fonts rsms-inter-fonts >/dev/null 2>&1 || true
+          bash os-bases/anatase/labwc-install.sh 2>&1 | grep -E '::|^Error' || true
+          mkdir -p /usr/share/nimbus && cp -a hosts/linux/desktop /usr/share/nimbus/desktop
+          install -Dm755 /tmp/hm/hearth-mantel /usr/local/bin/hearth-mantel
+          chmod 755 /usr/share/nimbus/desktop/theme/apply.sh /usr/share/nimbus/desktop/open.sh 2>/dev/null
+          find /usr/share/nimbus/desktop/shell -maxdepth 1 -type f -name 'hearth-*' -exec chmod 755 {} +
+          install -Dm755 hosts/linux/session/nimbus-mode /usr/bin/nimbus-mode
+      - name: On labwc
+        run: bash .github/scripts/mantel-rust-run.sh /tmp/out
+      # The pictures (and the logs) on their own branch, to look at: notices hold only ten per step.
+      - name: Pictures to ci/mantel-rust-shots
+        if: always()
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "Hearth CI"; git config user.email "ci@users.noreply.github.com"
+          git checkout -q --orphan ci/mantel-rust-shots
+          git rm -rfq --cached . >/dev/null
+          rm -rf shots && mkdir shots && cp /tmp/out/*.jpg /tmp/out/*.log /tmp/out/*.txt shots/ 2>/dev/null
+          git add -f shots
+          git commit -qm "Mantel in Rust pictures ($GITHUB_RUN_ID)" && git push -f -q origin HEAD:refs/heads/ci/mantel-rust-shots || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: mantel-rust-labwc
+          path: /tmp/out
+          retention-days: 5

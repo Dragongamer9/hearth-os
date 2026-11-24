@@ -775,6 +775,34 @@ var ENTRIES = [
 "p": "defaults"
 },
 {
+"t": "Edge",
+"p": "desktop-layout"
+},
+{
+"t": "Style",
+"p": "desktop-layout"
+},
+{
+"t": "Height",
+"p": "desktop-layout"
+},
+{
+"t": "Hide until the pointer touches the edge",
+"p": "desktop-layout"
+},
+{
+"t": "App menu",
+"p": "desktop-layout"
+},
+{
+"t": "Dock",
+"p": "desktop-layout"
+},
+{
+"t": "Window buttons",
+"p": "desktop-layout"
+},
+{
 "t": "Let my other devices see this device's status",
 "p": "devices",
 "d": "Battery, use, temperatures, drives and what's playing, only for devices paired with this one (Hearth Link). Never the internet.",

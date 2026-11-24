@@ -41,20 +41,37 @@ Scope {
                 readonly property var p: modelData
                 readonly property bool vertical: p.edge === "left" || p.edge === "right"
                 readonly property int size: p.size
+                // desktop layouts' panel styles: "" full width, "floating" (off the edge, rounded), "centred" (only as
+                // long as what it holds, in the middle of its edge)
+                readonly property bool floats: p.style === "floating" || p.style === "centred"
+                readonly property int gap: floats ? 8 : 0
                 screen: root.screenFor(p.screen || root.mainScreen)
                 anchors { top: p.edge !== "bottom"; bottom: p.edge !== "top"; left: p.edge !== "right"; right: p.edge !== "left" }
-                implicitHeight: vertical ? 0 : size
-                implicitWidth: vertical ? size : 0
-                exclusiveZone: size
+                implicitHeight: vertical ? 0 : size + gap * 2
+                implicitWidth: vertical ? size + gap * 2 : 0
+                exclusiveZone: size + gap * 2
+                // only the panel itself takes clicks (a centred one's empty sides don't)
+                mask: Region { item: body }
                 color: "transparent"
                 WlrLayershell.namespace: "hearth-panel"
                 WlrLayershell.layer: WlrLayer.Top
                 WlrLayershell.keyboardFocus: WlrKeyboardFocus.None
 
                 Rectangle {
-                    anchors.fill: parent
+                    id: body
+                    readonly property real along: pw.vertical ? pw.height : pw.width
+                    readonly property real want: (pw.vertical ? row.implicitHeight : row.implicitWidth) + 24
+                    readonly property real len: pw.p.style === "centred" ? Math.min(along - pw.gap * 2, want) : along - pw.gap * 2
+                    x: pw.vertical ? pw.gap : (pw.width - width) / 2
+                    y: pw.vertical ? (pw.height - height) / 2 : pw.gap
+                    width: pw.vertical ? pw.size : len
+                    height: pw.vertical ? len : pw.size
+                    radius: pw.floats ? Theme.r(Math.min(14, pw.size / 2)) : 0
+                    border.width: pw.floats ? 1 : 0
+                    border.color: Theme.line
                     color: Theme.glass
                     Rectangle {   // the line toward the windows
+                        visible: !pw.floats
                         color: Theme.line
                         width: pw.vertical ? 1 : parent.width
                         height: pw.vertical ? parent.height : 1
@@ -64,12 +81,13 @@ Scope {
                     Loader { anchors.fill: parent; active: Theme.frame === "frost"; source: "Frame.qml" }
                 }
                 MouseArea {
-                    anchors.fill: parent
+                    anchors.fill: body
                     acceptedButtons: Qt.RightButton
                     onClicked: { BarLayout.arrangeTab = "panels"; BarLayout.arranging = true; }
                 }
                 GridLayout {
-                    anchors { fill: parent; leftMargin: pw.vertical ? 4 : 8; rightMargin: pw.vertical ? 4 : 8; topMargin: pw.vertical ? 8 : 4; bottomMargin: pw.vertical ? 8 : 4 }
+                    id: row
+                    anchors { fill: body; leftMargin: pw.vertical ? 4 : 8; rightMargin: pw.vertical ? 4 : 8; topMargin: pw.vertical ? 8 : 4; bottomMargin: pw.vertical ? 8 : 4 }
                     flow: pw.vertical ? GridLayout.TopToBottom : GridLayout.LeftToRight
                     rows: pw.vertical ? -1 : 1
                     columns: pw.vertical ? 1 : -1
@@ -84,7 +102,7 @@ Scope {
                             sourceComponent: modelData === "spacer" ? cSpacer : modelData === "menu" ? cMenu : modelData === "apps" ? cApps
                                 : modelData === "windows" ? cWindows : modelData === "clock" ? cClock : modelData === "tray" ? cTray
                                 : modelData === "status" ? cStatus : modelData === "notifications" ? cNotes : modelData === "layout" ? cLayout
-                                : modelData === "gamemode" ? cGame : cWidget
+                                : modelData === "gamemode" ? cGame : root.blocks.indexOf(modelData) >= 0 ? cBlock : cWidget
                             onLoaded: { if (item.panel !== undefined) item.panel = pw; if (item.kind !== undefined) item.kind = modelData; }
                             onStatusChanged: if (status === Loader.Error) console.warn("panels: " + modelData + " couldn't load")
                         }
@@ -95,6 +113,17 @@ Scope {
     }
 
     // ------------------------------------------------------------------ what a panel can hold
+    // Desktop layouts' own blocks: LayoutBlock.qml, the same as in the main bar
+    readonly property var blocks: ["overview", "taskview", "appname", "appmenus", "quickaccess", "showdesktop", "power"]
+    Component {
+        id: cBlock
+        LayoutBlock {
+            property var panel: null
+            side: panel ? panel.size - 10 : 34
+            vertical: !!panel && panel.vertical
+            edge: panel ? panel.p.edge : "bottom"
+        }
+    }
     Component { id: cSpacer; Item { implicitWidth: 8; implicitHeight: 8 } }
     Component {
         id: cMenu

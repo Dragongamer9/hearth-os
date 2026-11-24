@@ -1,0 +1,68 @@
+{
+ "said": "Like my first PC: icons on a teal screen, a notes window, and a Start bar with the clock",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "bars": "hidden",
+ "background": {
+  "kind": "colour",
+  "from": "#008080"
+ },
+ "look": {
+  "accent": "#000080",
+  "text": "#ffffff",
+  "font": "Pixel",
+  "sound": "retro",
+  "animation": "none"
+ },
+ "blocks": [
+  {
+   "id": "icons",
+   "block": "icons",
+   "x": 0,
+   "y": 0,
+   "w": 6,
+   "h": 6,
+   "items": [
+    "home",
+    "bin",
+    "files",
+    "games"
+   ]
+  },
+  {
+   "id": "notes",
+   "block": "notes",
+   "x": 12,
+   "y": 2,
+   "w": 10,
+   "h": 7,
+   "title": "Hearth Notes",
+   "value": "Everything still works; it just looks like 1995.",
+   "style": {
+    "colour": "#c0c0c0",
+    "text": "#000000",
+    "size": 15,
+    "corners": 0
+   }
+  },
+  {
+   "id": "start",
+   "block": "bar",
+   "x": 0,
+   "y": 13,
+   "w": 24,
+   "h": 1,
+   "items": [
+    "menu",
+    "windows"
+   ],
+   "style": {
+    "colour": "#c0c0c0",
+    "text": "#000000",
+    "corners": 0
+   }
+  }
+ ]
+}

@@ -1,0 +1,73 @@
+{
+ "said": "A starship cockpit, sketched, then glowing like a sci-fi HUD: readouts in the corners, a round clock in the middle, my games down the right",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "bars": "",
+ "background": {
+  "kind": "gradient",
+  "from": "#05262e",
+  "to": "#02090c"
+ },
+ "look": {
+  "accent": "#4fd1e8",
+  "text": "#9fe9f5",
+  "font": "Noto Sans Mono",
+  "sound": "retro",
+  "animation": "zoom"
+ },
+ "blocks": [
+  {
+   "id": "readout",
+   "block": "widget",
+   "x": 0,
+   "y": 0,
+   "w": 6,
+   "h": 4,
+   "shows": "system",
+   "style": {
+    "size": 15,
+    "colour": "#00000000"
+   }
+  },
+  {
+   "id": "clock",
+   "block": "clock",
+   "x": 8,
+   "y": 2,
+   "w": 8,
+   "h": 8,
+   "shows": "ring",
+   "style": {
+    "size": 54,
+    "weight": 300
+   }
+  },
+  {
+   "id": "games",
+   "block": "list",
+   "x": 18,
+   "y": 0,
+   "w": 6,
+   "h": 5,
+   "shows": "games",
+   "count": 5,
+   "style": {
+    "size": 15
+   }
+  },
+  {
+   "id": "menu",
+   "block": "menu",
+   "x": 0,
+   "y": 12,
+   "w": 2,
+   "h": 2,
+   "style": {
+    "corners": 32,
+    "colour": "#0b3a44"
+   }
+  }
+ ]
+}

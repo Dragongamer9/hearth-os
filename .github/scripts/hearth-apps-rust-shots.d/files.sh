@@ -181,3 +181,4 @@ run files-31-sorted hearth-files 0 "$BIN/hearth-files-app" "$SH/Downloads" --vie
 [ -e "$SH/Downloads/Installers/Capture-Card-1.1.0-x86_64.AppImage" ] || echo "::error title=Sort my Downloads::the AppImage wasn't moved into Installers"
 [ -e "$SH/Downloads/_to_delete/Old copies/AppImage(2).zip" ] || echo "::error title=Sort my Downloads::the second copy wasn't put in _to_delete"
 export HOME="$HOME_KEEP"
+

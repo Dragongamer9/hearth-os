@@ -52,6 +52,9 @@ ShellRoot {
                 property string builtKey: ""
                 function makeNew() {
                     dropNew();
+                    // Build anything: a whole-screen desktop that does what the bar and dock do (its guide, menu and
+                    // Game Mode) has them away while it's drawn; they come back the moment it isn't.
+                    if (perScreen.primary && ScreenLayout.hidesBars && perScreen.screenWin) { builtKey = Theme.barKey; newFailed = false; return; }
                     const wantDock = Theme.dockFloats;
                     const ci = Qt.createComponent("Islands.qml"), cd = wantDock ? Qt.createComponent("Dock.qml") : null;
                     if (ci.status !== Component.Ready || cd && cd.status !== Component.Ready) {
@@ -60,7 +63,7 @@ ShellRoot {
                         return;
                     }
                     builtKey = Theme.barKey;
-                    islandsWin = ci.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu, edge: Theme.barEdge, holdsApps: !wantDock });
+                    islandsWin = ci.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu, edge: Theme.barEdge, holdsApps: !wantDock && !Theme.appsNowhere });
                     dockWin = wantDock ? cd.createObject(perScreen, { screen: perScreen.modelData, primary: perScreen.primary, menu: popMenu }) : null;
                     if (!islandsWin || wantDock && !dockWin) {
                         console.warn("Mantel: the top islands or the dock couldn't start; using the classic taskbar");
@@ -102,8 +105,8 @@ ShellRoot {
                 }
                 Timer { id: rebuild; interval: 300; onTriggered: if (!perScreen.portrait && Theme.barKey !== perScreen.builtKey) perScreen.makeNew() }
                 onPortraitChanged: { if (portrait) dropNew(); else if (settingsReady) makeNew(); }
-                Component.onCompleted: { makeHints(); if (!portrait && settingsReady) makeNew(); }   // the hints first: Console's strip sits at the very bottom, the dock above it
-                Component.onDestruction: { dropNew(); if (hintWin) hintWin.destroy(); }
+                Component.onCompleted: { makeHints(); if (ScreenLayout.loaded) makeScreen(); if (!portrait && settingsReady) makeNew(); }   // the hints first: Console's strip sits at the very bottom, the dock above it
+                Component.onDestruction: { dropNew(); if (hintWin) hintWin.destroy(); if (screenWin) screenWin.destroy(); }
                 // The classic taskbar: upright screens, and the safe fallback.
                 Loader {
                     active: perScreen.portrait || perScreen.newFailed
@@ -119,6 +122,26 @@ ShellRoot {
                             onCalendarRequested: calendar.toggle(perScreen.modelData, portrait)
                         }
                     }
+                }
+                // Build anything (Screen.qml): your whole-screen desktop on the main screen, under the windows, made from its
+                // file so a problem in it only brings Mantel's bar and dock back (ScreenLayout.failed).
+                property var screenWin: null
+                function makeScreen() {
+                    if (screenWin) { screenWin.destroy(); screenWin = null; }
+                    if (!perScreen.primary || !ScreenLayout.on || ScreenLayout.failed) return;
+                    const c = Qt.createComponent("Screen.qml");
+                    if (c.status !== Component.Ready) { console.warn("Mantel: your desktop (Screen.qml) couldn't load (error), the bar and dock stay: " + c.errorString()); ScreenLayout.failed = true; return; }
+                    screenWin = c.createObject(perScreen, { screen: perScreen.modelData, launcher: launcher, quick: quick, settingsApp: settings, filesApp: files, powerMenu: powerMenu });
+                    if (screenWin) screenWin.editRequested.connect(() => screenEditor.open(null, ""));
+                    if (!screenWin) { console.warn("Mantel: your desktop (Screen.qml) couldn't start; the bar and dock stay"); ScreenLayout.failed = true; }
+                }
+                Connections {
+                    target: ScreenLayout
+                    function onLiveChanged() { perScreen.makeScreen(); if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); }
+                    function onScreenChanged() { if (!perScreen.screenWin && ScreenLayout.on) { perScreen.makeScreen(); if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); } }
+                    function onFailedChanged() { if (ScreenLayout.failed && perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); }
+                    function onHidesBarsChanged() { if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); }
+                    function onLoadedChanged() { if (ScreenLayout.loaded) { perScreen.makeScreen(); if (perScreen.settingsReady && !perScreen.portrait) perScreen.makeNew(); } }
                 }
                 // The controller's button hints (Console: always; other looks: after using the controller).
                 property var hintWin: null
@@ -176,7 +199,68 @@ ShellRoot {
         }
     }
     // ---- Taskbar & desktop: right-click menus, the desktop's small dialogs, the clock's calendar and notifications.
-    PopMenu { id: popMenu }
+    PopMenu { id: popMenu; Component.onCompleted: DeskState.popMenu = popMenu }
+    // The overview for desktop layouts where KWin's isn't there (labwc; Overview.qml, loaded by file name and only once
+    // it's asked for, so a problem in it never touches the rest).
+    Loader {
+        id: overview
+        active: false
+        source: "Overview.qml"
+        onLoaded: {
+            item.searchRequested.connect(q => { if (q === "") launcher.shown = true; else launcher.searchFor(q); });
+            item.open();
+        }
+        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the overview couldn't load (Overview.qml)")
+        function toggle() { if (!active) active = true; else if (item) item.toggle(); }
+    }
+    // Describe it (DescribeIt.qml, loaded the first time it's asked for)
+    Loader {
+        id: describe
+        active: false
+        source: "DescribeIt.qml"
+        property string pending: "bar"
+        property string ask: ""
+        onLoaded: { item.open(pending); if (ask !== "") { item.text = ask; ask = ""; item.make(); } }
+        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: Describe it couldn't load (DescribeIt.qml)")
+        function openAt(p) { pending = p || "bar"; if (!active) active = true; else if (item) item.open(pending); }
+    }
+    // Build anything: the first start's "How do you want your desktop?" (once, on a new install) and your desktop's IPC.
+    ScreenEditor { id: screenEditor; launcher: launcher; quick: quick; settingsApp: settings; filesApp: files; powerMenu: powerMenu }
+    FirstStart {
+        id: firstStart
+        settingsApp: settings
+        editor: screenEditor
+        readonly property bool due: ScreenLayout.loaded && Settings.loaded && !ScreenLayout.chosen && !ScreenLayout.unreadable && Settings.defaultsGen === 2
+        onDueChanged: if (due) open()
+    }
+    IpcHandler {
+        target: "screen"
+        function use(name: string): void { ScreenLayout.use(name); }
+        function mantel(): void { ScreenLayout.useMantel(); }
+        function firstStart(): void { firstStart.open(); }
+        function guide(): void { ScreenLayout.guideAsk++; }
+        // the block editor: your desktop as it is, a ready-made one, or nothing
+        function edit(): void { screenEditor.open(null, ""); }
+        function editReady(name: string): void { screenEditor.openReady(name); }
+        function editNothing(): void { screenEditor.open({ grid: { cols: 24, rows: 14 }, background: { kind: "gradient", from: "#1a1410", to: "#0c0907" }, look: {}, blocks: [] }, "Start from nothing"); }
+        function editorState(): string { return JSON.stringify({ shown: screenEditor.shown, blocks: (screenEditor.draft.blocks || []).length, pick: screenEditor.pick, made: !!screenEditor.made }); }
+        function editorPick(i: int): void { screenEditor.pick = i; }
+        function editorSay(text: string): void { screenEditor.say(text); }
+        function state(): string { return JSON.stringify({ on: ScreenLayout.on, from: ScreenLayout.from, chosen: ScreenLayout.chosen, failed: ScreenLayout.failed, hidesBars: ScreenLayout.hidesBars, drawn: ScreenLayout.drawn }); }
+    }
+    IpcHandler {
+        target: "describe"
+        function open(part: string): void { describe.openAt(part); }
+        // For checks and for apps that open it with words already typed: opens at PART and asks your AI.
+        function ask(part: string, text: string): void { if (describe.item) { describe.openAt(part); describe.item.text = text; describe.item.make(); } else { describe.ask = text; describe.openAt(part); } }
+        function close(): void { if (describe.item) describe.item.close(); }
+    }
+    IpcHandler {
+        target: "overview"
+        function toggle(): void { overview.toggle(); }
+        function close(): void { if (overview.item) overview.item.close(); }
+        function shown(): bool { return !!overview.item && overview.item.shown; }
+    }
     DeskDialog { id: deskDialog }
     ClockPanel { id: calendar }
     Binding { target: DeskState; property: "overlayShown"; value: popMenu.shown || deskDialog.shown || calendar.shown }
@@ -196,6 +280,18 @@ ShellRoot {
     }
     RadialMenu { id: radial; mouseOn: pad.mouseOn }
     Keyboard { id: keyboard }
+    // A Mantel from the Hearth Store runs from its own folder, but Hearth OS's shortcuts (Super, Super+V, …) and apps
+    // call `quickshell ipc -p $NIMBUS_SHARE/desktop/shell`, which Quickshell finds by that folder's name
+    // (<run>/quickshell/by-path/<md5 of its shell.qml>). So this copy answers to that name too: the name points at this
+    // copy's own (by-shell) folder. The built-in Mantel puts its own back whenever it runs, so nothing is left wrong.
+    Process {
+        id: ipcAlias
+        readonly property string own: Quickshell.shellDir.replace(/\/$/, "") + "/shell.qml"
+        readonly property string builtIn: (Quickshell.env("NIMBUS_SHARE") || "/usr/local/share/nimbus").replace(/\/$/, "") + "/desktop/shell/shell.qml"
+        command: ["sh", "-c", 'd="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/quickshell/by-path"; t=$(readlink "$d/$1") || exit 0; [ -n "$t" ] && [ "$1" != "$2" ] && ln -sfn "$t" "$d/$2"', "sh", Qt.md5(own), Qt.md5(builtIn)]
+    }
+    Timer { interval: 3000; running: ipcAlias.own !== ipcAlias.builtIn; onTriggered: ipcAlias.running = true }
+
     Help { id: help }
     SettingsApp { id: settings }
     // Mantel on KWin: a window menu's More actions › "Special window settings…" opens Window rules for that window.

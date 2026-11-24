@@ -94,6 +94,17 @@ Singleton {
     property string btReceiveFolder: ""  // where received files go ("" = ~/Downloads)
     property bool btReceiveTrusted: false     // take files from trusted devices without asking
     property bool inkNotify: true        // a notice when ink or toner runs low (Printers › Ink & toner)
+    // ---- Desktop layouts (hosts/hearth-layout; Settings › Personalization › Desktop layout). Only a layout writes these
+    // (through hearth-layout, with Undo); never saved from here.
+    property string layout: ""           // the layout in place: "" (none chosen), "hearth", "plasma", your own…
+    property string gameModeAt: ""       // Game Mode in the main bar: "" (last) | "start" (first) | "before-status"
+    property string windowButtons: ""    // labwc's titlebar text (hearth-system window-buttons puts it on)
+    property string clockAt: ""          // the main bar's clock: "" (the look's own) | "end" | "end-one" (one line)
+    property string dockStyle: ""        // the dock: "" (the look's own) | "floating" | "attached"
+    property string statusPill: ""       // the status icons in a pill in a full-width bar: "" | "on"
+    // A layout's keys go back to their default when the file doesn't have them (a layout put in place, or Undo), so the
+    // desktop follows the file; every other key keeps what it had (the file is never written from this).
+    readonly property var layoutKeys: ["barLayout", "barEdge", "dockFloat", "dockMode", "appMenu", "menuStyle", "barStyle", "layout", "gameModeAt", "windowButtons", "clockAt", "dockStyle", "statusPill"]
     property bool loaded: false
     // Which defaults this file was made with (its "defaults" key, read only, never written by Hearth): 2 = made for a new
     // install (/etc/skel), whose Steam-style look gets the Sky accent by default (Theme.qml); files without it keep the
@@ -117,6 +128,7 @@ Singleton {
         .concat(["wallPotd", "wallPair", "appsFollow"])
         .concat(["btReceive", "btReceiveFolder", "btReceiveTrusted", "inkNotify"])
         .concat(["netSpeed"])
+        .concat(["layout", "gameModeAt", "windowButtons", "clockAt", "dockStyle", "statusPill"])
     onNightLightChanged: save("nightLight")
     onNightTempChanged: save("nightTemp")
     onNightModeChanged: save("nightMode")
@@ -215,6 +227,7 @@ Singleton {
             }
             root.applying = true;
             root.defaultsGen = typeof o.defaults === "number" ? o.defaults : 1;
+            if (root.loaded) for (const k of root.layoutKeys) if (o[k] === undefined && root[k] !== "" && !writer.owns(k)) root[k] = "";
             for (const k of root.keys) if (o[k] !== undefined && typeof o[k] === typeof root[k] && Array.isArray(o[k]) === Array.isArray(root[k]) && !writer.owns(k)) root[k] = o[k];
             root.applying = false;
             root.loaded = true;

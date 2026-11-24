@@ -57,7 +57,14 @@ PanelWindow {
     readonly property int band: islandH + gapOut + gapIn
     readonly property bool gaming: Theme.look === "gaming"
     // The clock in the middle of a horizontal bar; in a bar with your apps, or down a side, a compact clock at the end.
-    readonly property bool pillCentred: !vertical && !holdsApps && !shelf
+    readonly property bool pillCentred: !vertical && !holdsApps && !shelf && !centred && Settings.clockAt === ""
+    // a layout's clock at the end, after the status island (Plasma-, Windows 11-, macOS-style); "end-one": one line
+    readonly property bool clockLast: Settings.clockAt === "end" || Settings.clockAt === "end-one"
+    // a layout's Show desktop strip at the very end, after Game Mode (Plasma-, Windows-style)
+    readonly property bool showLast: { const e = BarLayout.layout.end || []; return e.length > 0 && e[e.length - 1] === "showdesktop"; }
+    // Desktop layouts (hearth-layout): blocks in the middle of a bar across the top or bottom (Windows 11-style: the
+    // flame, Search, Task view and your apps, centred). Down a side they go at the start.
+    readonly property bool centred: !vertical && !shelf && (BarLayout.layout.centre || []).length > 0
 
     // ---- auto-hide
     readonly property bool autoHide: Theme.barAutoHide && !shelf
@@ -215,6 +222,8 @@ PanelWindow {
                 onClicked: mouse => isl.statusMenu(inner, "The bar", [
                     { label: "Arrange the bar…", icon: "grid", run: () => BarLayout.arranging = true },
                     { label: "Add a panel…", icon: "plus", run: () => { BarLayout.arranging = true; BarLayout.arrangeTab = "panels"; } },
+                    { label: "Describe it…", icon: "sparkle", run: () => Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "describe", "open", "bar"]) },
+                    { label: "Desktop layout…", icon: "desktops", run: () => isl.settingsRequested("desktop-layout") },
                     { label: "Bar and dock settings", icon: "gear", run: () => isl.settingsRequested("bar-dock") }
                 ])
             }
@@ -246,6 +255,9 @@ PanelWindow {
                 rowSpacing: isl.floating ? 10 : 6
                 columnSpacing: isl.floating ? 10 : 6
 
+                // ---- Game Mode first (a layout's choice: Windows 11-style)
+                Loader { active: Settings.gameModeAt === "start"; visible: active && !Settings.gameModeOff; sourceComponent: cGameMode; Layout.alignment: Qt.AlignCenter; Layout.preferredHeight: isl.vertical ? isl.islandH - 6 : isl.style === "bar" ? isl.islandH - 8 : isl.islandH; Layout.preferredWidth: isl.vertical ? isl.islandH - 6 : (item ? item.implicitWidth : 0) }
+
                 // ---- start island: the flame, the desktops, the window in front
                 Island {
                     id: leftIsland
@@ -266,12 +278,12 @@ PanelWindow {
 
                 // ---- your apps (floating app menu off): the dock attached to the bar
                 Island {
-                    visible: isl.holdsApps && apps.status === Loader.Ready
+                    visible: isl.holdsApps && !isl.centred && apps.status === Loader.Ready
                     along: apps.item ? (isl.vertical ? apps.item.implicitHeight : apps.item.implicitWidth) + (isl.floating ? 16 : 4) : 0
                     Loader {
                         id: apps
                         anchors.centerIn: parent
-                        active: isl.holdsApps
+                        active: isl.holdsApps && !isl.centred
                         source: "TaskStrip.qml"
                         onLoaded: {
                             item.menu = Qt.binding(() => isl.menu);
@@ -304,35 +316,16 @@ PanelWindow {
                 Item { Layout.fillWidth: !isl.vertical; Layout.fillHeight: isl.vertical }
 
                 // ---- the compact clock (with your apps in the bar, or down a side): click for the dashboard
-                Island {
-                    id: clockIsland
-                    visible: !isl.pillCentred && !isl.shelf
-                    lit: isl.calendarOpen
-                    along: (isl.vertical ? clockCol.implicitHeight : clockCol.implicitWidth) + (isl.vertical ? 16 : 24)
-                    MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: isl.calendarRequested() }
-                    ColumnLayout {
-                        id: clockCol
-                        anchors.centerIn: parent
-                        spacing: 0
-                        Text {
-                            Layout.alignment: Qt.AlignHCenter
-                            text: Qt.formatTime(clock.date, Settings.clock24 ? "HH:mm" : (isl.vertical ? "h:mm" : "h:mm AP"))
-                            color: Theme.text; font.family: Theme.font; font.weight: Font.DemiBold
-                            font.pixelSize: isl.vertical ? 14 : (isl.islandH > 40 ? 14 : 13)
-                        }
-                        Text {
-                            Layout.alignment: Qt.AlignHCenter
-                            visible: isl.vertical ? !Settings.clock24 : isl.islandH > 40
-                            text: isl.vertical ? Qt.formatTime(clock.date, "AP") : Qt.formatDate(clock.date, "ddd d MMM")
-                            color: Theme.muted; font.family: Theme.font; font.pixelSize: 11
-                        }
-                    }
-                }
+                Loader { active: !isl.pillCentred && !isl.shelf && !isl.clockLast; visible: active; sourceComponent: cClock; Layout.fillHeight: !isl.vertical; Layout.fillWidth: isl.vertical; Layout.preferredWidth: isl.vertical ? (isl.islandH || 52) : (item ? item.along : 0); Layout.preferredHeight: isl.vertical ? (item ? item.along : 0) : (isl.islandH || 52) }
+
+                // ---- Game Mode before the status island (a layout's choice: macOS-style)
+                Loader { active: Settings.gameModeAt === "before-status"; visible: active && !Settings.gameModeOff; sourceComponent: cGameMode; Layout.alignment: Qt.AlignCenter; Layout.preferredHeight: isl.vertical ? isl.islandH - 6 : isl.style === "bar" ? isl.islandH - 8 : isl.islandH; Layout.preferredWidth: isl.vertical ? isl.islandH - 6 : (item ? item.implicitWidth : 0) }
 
                 // ---- the status island
                 Island {
                     id: statusIsland
                     lit: isl.quickOpen
+                    pill: Settings.statusPill === "on"
                     along: (isl.vertical ? statusRow.implicitHeight : statusRow.implicitWidth) + (isl.floating ? 16 : 4)
                     MouseArea { anchors.fill: parent; onClicked: isl.quickRequested() }   // the island's gaps open Quick settings too
                     GridLayout {
@@ -347,8 +340,46 @@ PanelWindow {
                     }
                 }
 
-                // ---- Game Mode: always here, in every look and on every edge, the biggest target in the bar
-                GameModeButton { Layout.preferredHeight: isl.vertical ? isl.islandH - 6 : isl.style === "bar" ? isl.islandH - 8 : isl.islandH; Layout.preferredWidth: isl.vertical ? isl.islandH - 6 : implicitWidth }
+                // ---- Game Mode: always here, in every look and on every edge, the biggest target in the bar (last, unless
+                // a layout put it first or before the status island: one of the three is always on)
+                // ---- a layout's clock at the end
+                Loader { active: !isl.pillCentred && !isl.shelf && isl.clockLast; visible: active; sourceComponent: cClock; Layout.fillHeight: !isl.vertical; Layout.fillWidth: isl.vertical; Layout.preferredWidth: isl.vertical ? (isl.islandH || 52) : (item ? item.along : 0); Layout.preferredHeight: isl.vertical ? (item ? item.along : 0) : (isl.islandH || 52) }
+
+                Loader { active: Settings.gameModeAt !== "start" && Settings.gameModeAt !== "before-status"; visible: active && !Settings.gameModeOff; sourceComponent: cGameMode; Layout.alignment: Qt.AlignCenter; Layout.preferredHeight: isl.vertical ? isl.islandH - 6 : isl.style === "bar" ? isl.islandH - 8 : isl.islandH; Layout.preferredWidth: isl.vertical ? isl.islandH - 6 : (item ? item.implicitWidth : 0) }
+                // ---- a layout's Show desktop strip, last
+                Loader { active: isl.showLast; visible: active; sourceComponent: cBlock; Layout.alignment: Qt.AlignCenter; onLoaded: item.kind = "showdesktop" }
+            }
+
+            // ---- the middle of the bar (desktop layouts): the blocks put there, then your apps when the bar holds them
+            Island {
+                id: centreIsland
+                visible: isl.centred
+                anchors.horizontalCenter: parent.horizontalCenter
+                height: parent.height
+                width: centreRow.implicitWidth + (isl.floating ? 16 : 4)
+                RowLayout {
+                    id: centreRow
+                    anchors.centerIn: parent
+                    spacing: 8 * isl.k
+                    Repeater { model: isl.centred ? isl.zoneItems("centre") : []; delegate: BarSlot {} }
+                    Loader {
+                        id: centreApps
+                        Layout.alignment: Qt.AlignCenter
+                        active: isl.holdsApps && isl.centred
+                        source: "TaskStrip.qml"
+                        onLoaded: {
+                            item.menu = Qt.binding(() => isl.menu);
+                            item.screen = Qt.binding(() => isl.screen);
+                            item.vertical = false;
+                            item.edge = Qt.binding(() => isl.edge);
+                            item.side = Qt.binding(() => Math.max(30, isl.islandH - (isl.floating ? 10 : 8)));
+                            item.barW = Qt.binding(() => isl.width);
+                            item.barH = Qt.binding(() => isl.height);
+                            item.primary = Qt.binding(() => isl.primary);
+                        }
+                        onStatusChanged: if (status === Loader.Error) console.warn("Mantel: your apps couldn't load in the middle of the bar (TaskStrip.qml)")
+                    }
+                }
             }
 
             // ---- the centre pill: the clock, what's playing, the newest notification
@@ -367,6 +398,8 @@ PanelWindow {
                     id: pillRow
                     anchors.centerIn: parent
                     spacing: 12
+                    // your features in the bar (Describe it: Features.qml)
+                    Repeater { model: Features.inPart("bar"); FeaturePill { required property var modelData; feature: modelData; side: isl.islandH - 16 } }
                     // the newest notification, for a few seconds
                     RowLayout {
                         visible: isl.flash !== null
@@ -416,7 +449,10 @@ PanelWindow {
     // Each can go at the start or the end of the bar, in any order, or be hidden (BarLayout.qml; Settings › Bar and
     // dock › Arrange the bar, or right-click the bar). Game Mode always stays, last.
     function zoneItems(z) {
-        const l = BarLayout.layout[z] || [];
+        // down a side, a layout's middle blocks go at the start
+        const l = z === "start" && !isl.centred ? (BarLayout.layout.start || []).concat(isl.vertical || isl.shelf ? (BarLayout.layout.centre || []) : [])
+            : z === "end" && isl.showLast ? (BarLayout.layout.end || []).slice(0, -1)
+            : BarLayout.layout[z] || [];
         const out = [];
         for (const id of l) {
             out.push(id);
@@ -446,6 +482,13 @@ PanelWindow {
         case "volume": return cVolume;
         case "battery": return cBattery;
         case "notifications": return cNotifications;
+        case "overview": return cBlock;
+        case "taskview": return cBlock;
+        case "appname": return cBlock;
+        case "appmenus": return cBlock;
+        case "quickaccess": return cBlock;
+        case "showdesktop": return cBlock;
+        case "power": return cBlock;
         }
         return null;
     }
@@ -454,9 +497,52 @@ PanelWindow {
         Layout.alignment: Qt.AlignCenter
         visible: status === Loader.Ready && !!item && item.wanted !== false
         sourceComponent: isl.compFor(modelData)
+        onLoaded: if (item && item.objectName === "layoutBlock") item.kind = modelData
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the bar's " + modelData + " couldn't load")
     }
 
+    // Desktop layouts' own blocks (LayoutBlock.qml: the same in the extra panels)
+    Component {
+        id: cBlock
+        LayoutBlock {
+            objectName: "layoutBlock"
+            side: Math.max(26, isl.islandH - 12)
+            vertical: isl.vertical
+            edge: isl.edge
+            menu: isl.menu
+        }
+    }
+    // the compact clock (a component, so a layout can put it at the end)
+    Component {
+        id: cClock
+        Island {
+            id: clockIsland
+            lit: isl.calendarOpen
+            along: (isl.vertical ? clockCol.implicitHeight : clockCol.implicitWidth) + (isl.vertical ? 16 : 24)
+            MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: isl.calendarRequested() }
+            ColumnLayout {
+                id: clockCol
+                anchors.centerIn: parent
+                spacing: 0
+                Text {
+                    Layout.alignment: Qt.AlignHCenter
+                    text: (Settings.clockAt === "end-one" && !isl.vertical ? Qt.formatDate(clock.date, "ddd d MMM") + "  " : "") + Qt.formatTime(clock.date, Settings.clock24 ? "HH:mm" : (isl.vertical ? "h:mm" : "h:mm AP"))
+                    color: Theme.text; font.family: Theme.font; font.weight: Font.DemiBold
+                    font.pixelSize: isl.vertical ? 14 : (isl.islandH > 40 ? 14 : 13)
+                }
+                Text {
+                    Layout.alignment: Qt.AlignHCenter
+                    visible: Settings.clockAt === "end-one" && !isl.vertical ? false : isl.vertical ? !Settings.clock24 : isl.islandH > 40
+                    text: isl.vertical ? Qt.formatTime(clock.date, "AP") : Qt.formatDate(clock.date, "ddd d MMM")
+                    color: Theme.muted; font.family: Theme.font; font.pixelSize: 11
+                }
+            }
+        }
+    }
+    Component {
+        id: cGameMode
+        GameModeButton {}
+    }
     Component {
         id: cMenu
         IslandButton {
@@ -472,14 +558,18 @@ PanelWindow {
         id: cSearch
         Rectangle {   // the Tiles menu's search field: click to search (what you type shows here)
             objectName: "menuSearchField"
-            readonly property bool wanted: isl.menuSearchShown
-            implicitWidth: 300; implicitHeight: Math.max(26, isl.islandH - 14)
+            // the Tiles menu's field; with a desktop layout that put Search in the bar, every menu's (Windows 11-style)
+            readonly property bool wanted: isl.menuSearchShown || (Settings.layout !== "" && !isl.vertical && !isl.shelf && !isl.compact)
+            // at the end of the bar (macOS-style) only its magnifier
+            readonly property bool iconOnly: (BarLayout.layout.end || []).indexOf("search") >= 0
+            implicitWidth: iconOnly ? Math.max(26, isl.islandH - 12) : 300; implicitHeight: Math.max(26, isl.islandH - 14)
             radius: Theme.r(8)
-            color: msa.containsMouse ? Theme.panel3 : Qt.rgba(Theme.bg2.r, Theme.bg2.g, Theme.bg2.b, 0.85)
-            border.width: isl.menuQuery !== "" ? 2 : 1
+            color: msa.containsMouse ? Theme.panel3 : iconOnly ? "transparent" : Qt.rgba(Theme.bg2.r, Theme.bg2.g, Theme.bg2.b, 0.85)
+            border.width: iconOnly ? 0 : isl.menuQuery !== "" ? 2 : 1
             border.color: isl.menuQuery !== "" ? Theme.accent : Theme.line
-            Icon { x: 12; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: 15; color: Theme.muted }
+            Icon { x: parent.iconOnly ? (parent.width - width) / 2 : 12; anchors.verticalCenter: parent.verticalCenter; name: "search"; size: parent.iconOnly ? 18 : 15; color: parent.iconOnly ? Theme.text : Theme.muted }
             Text {
+                visible: !parent.iconOnly
                 anchors { left: parent.left; right: parent.right; leftMargin: 36; rightMargin: 10; verticalCenter: parent.verticalCenter }
                 text: isl.menuQuery !== "" ? isl.menuQuery : "Type to search"
                 color: isl.menuQuery !== "" ? Theme.text : Theme.muted
@@ -796,11 +886,12 @@ PanelWindow {
         property bool lit: false
         property real along: 0
         property real rad: isl.gaming ? 0 : Theme.r(isl.islandH / 2.4)
+        property bool pill: false              // framed even in a full-width bar (a layout's status pill)
         Layout.fillHeight: !isl.vertical
         Layout.fillWidth: isl.vertical
         Layout.preferredWidth: isl.vertical ? (isl.islandH || 52) : along
         Layout.preferredHeight: isl.vertical ? along : (isl.islandH || 52)
-        Frame { anchors.fill: parent; flat: !isl.floating; lit: parent.lit; rad: parent.rad }
+        Frame { anchors.fill: parent; flat: !isl.floating && !parent.pill; lit: parent.lit; rad: parent.pill && !isl.floating ? Theme.r(height / 2) : parent.rad }
     }
 
     // Back to Game Mode: dressed per look, hidden only while Game Mode is off on this PC (Settings › System › Startup).

@@ -118,19 +118,25 @@ class WidgetTools(unittest.TestCase):
         r = run_js('widget-tools.js', '''const d = barLayout(null);
             console.log(JSON.stringify([d, barLayout({start: ["window", "menu", "menu"], end: ["notifications", "volume"], hidden: ["tray", "zzz", "menu"]}),
               barMove(null, "volume", -1), barMove(null, "network", 0, "start"), barMove(null, "menu", 0, "hidden"), isDefaultLayout(null),
-              BAR_ITEMS.map(b => b.id)]));''')
-        d, odd, up, moved, hid, isdef, ids = r
-        self.assertEqual(sorted(d['start'] + d['end']), sorted(ids))
+              BAR_ITEMS.map(b => b.id), BAR_ITEMS.filter(b => b.extra).map(b => b.id),
+              barLayout({centre: ["menu", "taskview"], start: [], end: ["showdesktop"]})]));''')
+        d, odd, up, moved, hid, isdef, ids, extra, lay = r
+        # desktop layouts' own blocks (hearth-layout) are never added by themselves: hidden until a layout puts them
+        self.assertEqual(sorted(d['start'] + d['end']), sorted(set(ids) - set(extra)))
+        self.assertEqual(d['centre'], [])
+        self.assertEqual(lay['centre'], ['menu', 'taskview'])
+        self.assertEqual(lay['end'][-1], 'showdesktop')
+        self.assertNotIn('showdesktop', lay['hidden'])
         self.assertEqual(d['start'][0], 'menu')
         self.assertEqual(d['end'][-1], 'notifications')
-        self.assertEqual(d['hidden'], [])
+        self.assertEqual(d['hidden'], extra)
         self.assertEqual(odd['start'][:2], ['window', 'menu'])              # your order is kept
-        self.assertEqual(odd['hidden'], ['tray'])                           # the flame can't be hidden, unknown ids go
+        self.assertEqual(odd['hidden'], ['tray'] + extra)                   # the flame can't be hidden, unknown ids go
         self.assertEqual(sorted(odd['start'] + odd['end'] + odd['hidden']), sorted(ids))
         self.assertLess(up['end'].index('volume'), up['end'].index('bluetooth'))
         self.assertIn('network', moved['start'])
         self.assertNotIn('network', moved['end'])
-        self.assertEqual(hid['hidden'], [])
+        self.assertEqual(hid['hidden'], extra)
         self.assertTrue(isdef)
 
     def test_panels(self):

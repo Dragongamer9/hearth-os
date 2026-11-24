@@ -233,6 +233,8 @@ pub struct Sheet {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Describe it (hearth_ui::describe; every Hearth app has it)
+    Describe(hearth_ui::describe::DMsg),
     Theme,
     Sample(Arc<Sample>),
     List(&'static str, run::Output),
@@ -292,6 +294,7 @@ pub enum Msg {
 }
 
 pub struct App {
+    pub describe: hearth_ui::describe::Describe,
     pub p: Pal,
     pub page: Page,
     pub sample: Option<Arc<Sample>>,
@@ -369,6 +372,7 @@ impl App {
             }
         }
         let a = App {
+            describe: hearth_ui::describe::Describe::new("task-manager", "Task Manager"),
             p: hearth_ui::theme::load(),
             page,
             sample: None,
@@ -548,7 +552,25 @@ impl App {
         items.push(MenuItem::sep());
         items.push(MenuItem::new("Properties", Act::Props).on(!g.exe.is_empty()));
         let target = Target { gid: g.id.clone(), pid, name: if child { cname } else { g.name.clone() }, path: g.exe.clone(), child, protected: g.protected, unit: proc_name, list_id: String::new() };
+        let items = self.arrange_menu("row", items);
         self.menu = Some(Menu { title: target.name.clone(), items, at: self.cursor, target, sel: 0 });
+    }
+
+    /// A right-click menu as Describe it left it (zone "menu:<kind>": reordered, items in "hidden" left out), with no
+    /// line left at either end or twice in a row.
+    fn arrange_menu(&self, kind: &str, items: Vec<MenuItem>) -> Vec<MenuItem> {
+        let v = items.into_iter().map(|i| (if i.act.is_none() { String::new() } else { hearth_ui::describe::slug(&i.label) }, i)).collect();
+        let mut out: Vec<MenuItem> = Vec::new();
+        for i in hearth_ui::describe::arrange(&self.describe, &format!("menu:{kind}"), v) {
+            if i.act.is_none() && out.last().map(|l| l.act.is_none()).unwrap_or(true) {
+                continue;
+            }
+            out.push(i);
+        }
+        while out.last().map(|l| l.act.is_none()).unwrap_or(false) {
+            out.pop();
+        }
+        out
     }
 
     fn details_menu(&mut self, pid: i32) {
@@ -569,6 +591,7 @@ impl App {
             MenuItem::new("Properties", Act::Props).on(!r.path.is_empty()),
         ];
         let target = Target { pid, name: r.name.clone(), path: r.path.clone(), child: true, protected: !ok, ..Target::default() };
+        let items = self.arrange_menu("details", items);
         self.menu = Some(Menu { title: format!("{} · {}", r.name, r.pid), items, at: self.cursor, target, sel: 0 });
     }
 
@@ -605,6 +628,7 @@ impl App {
             }
         };
         let target = Target { name: name.clone(), unit, list_id: id.to_string(), ..Target::default() };
+        let items = self.arrange_menu("list", items);
         self.menu = Some(Menu { title: name, items, at: self.cursor, target, sel: 0 });
     }
 
@@ -767,6 +791,7 @@ pub fn pick_any(a: &mut App, key: &str, v: &str) -> Task<Msg> {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Sample(s) => {
             a.take_sample(s);
@@ -1208,6 +1233,11 @@ fn subscription(a: &App) -> Subscription<Msg> {
     Subscription::batch(subs)
 }
 
+/// The app with Describe it's box under it when it's open (every Hearth app has it).
+fn shown(a: &App) -> Element<'_, Msg> {
+    hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe)
+}
+
 fn main() -> iced::Result {
     if app::handle_cli(
         "hearth-task-manager",
@@ -1215,7 +1245,7 @@ fn main() -> iced::Result {
     ) {
         return Ok(());
     }
-    iced::application(App::new, update, view)
+    iced::application(App::new, update, shown)
         .title("Task Manager")
         .subscription(subscription)
         .theme(|a: &App| app::iced_theme(&a.p))

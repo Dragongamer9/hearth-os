@@ -41,3 +41,14 @@ CREATE TABLE IF NOT EXISTS cmd_votes (
   at INTEGER NOT NULL,
   PRIMARY KEY (device, cmd)
 );
+
+-- Ideas from Describe it (POST /v1/idea): the same part and needs from several people is one row with a count; its
+-- issue (label "idea") in the private logs repository, which Hearth Ideas reads.
+CREATE TABLE IF NOT EXISTS ideas (
+  key TEXT PRIMARY KEY,
+  first INTEGER NOT NULL,
+  last INTEGER NOT NULL,
+  count INTEGER NOT NULL,
+  issue INTEGER,
+  body TEXT NOT NULL
+);

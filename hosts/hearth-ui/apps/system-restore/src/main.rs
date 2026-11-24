@@ -40,6 +40,8 @@ enum Zone {
 
 #[derive(Debug, Clone)]
 enum Msg {
+    /// Describe it (hearth_ui::describe; every Hearth app has it)
+    Describe(hearth_ui::describe::DMsg),
     Theme,
     Overview(run::Output),
     Snapped(run::Output),
@@ -61,6 +63,7 @@ enum Msg {
 }
 
 struct App {
+    pub describe: hearth_ui::describe::Describe,
     p: Pal,
     helper: String,
     ov: Option<Value>,
@@ -92,6 +95,7 @@ impl App {
     fn new() -> (App, Task<Msg>) {
         let helper = std::env::var("HEARTH_RESTORE_HELPER").unwrap_or_else(|_| run::shell_helper("hearth_restore.py"));
         let mut a = App {
+            describe: hearth_ui::describe::Describe::new("system-restore", "System Restore"),
             p: hearth_ui::theme::load(),
             helper,
             ov: None,
@@ -239,6 +243,7 @@ impl App {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Overview(o) => {
             match o.json() {
@@ -450,7 +455,7 @@ fn changes(a: &App) -> Vec<Change> {
 
 fn view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
-    let title = ui::title_bar(&p, G::Restore, "System Restore", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: None, close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3));
+    let title = hearth_ui::describe::title_bar(&p, &a.describe, G::Restore, "System Restore", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: None, close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3), Msg::Describe(hearth_ui::describe::DMsg::Open));
     let header = container(
         column![
             ts("Restore Hearth to an earlier point", 18.0, p.text),
@@ -615,11 +620,16 @@ fn subscription(_a: &App) -> Subscription<Msg> {
     Subscription::batch([Subscription::run(hearth_ui::theme::watch).map(|_| Msg::Theme), iced::keyboard::listen().map(Msg::Key)])
 }
 
+/// The app with Describe it's box under it when it's open (every Hearth app has it).
+fn shown(a: &App) -> Element<'_, Msg> {
+    hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe)
+}
+
 fn main() -> iced::Result {
     if app::handle_cli("hearth-system-restore", "System Restore: Hearth and its settings back to an earlier restore point.\n  --show confirm|changes   open with that dialog (pictures)\n  --older                  show older restore points") {
         return Ok(());
     }
-    iced::application(App::new, update, view)
+    iced::application(App::new, update, shown)
         .title("System Restore")
         .subscription(subscription)
         .theme(|a: &App| app::iced_theme(&a.p))
