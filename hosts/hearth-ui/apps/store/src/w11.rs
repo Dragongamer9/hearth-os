@@ -96,7 +96,7 @@ fn rail_of(pg: &Page, a: &App) -> &'static str {
         Page::Apps => "apps",
         Page::BuiltIn => "parts",
         Page::Tests => "tests",
-        Page::Updates | Page::Yours | Page::Work => "library",
+        Page::Updates | Page::Yours | Page::Work | Page::System => "library",
         Page::Settings => "settings",
         Page::App(id) | Page::Repair(id) => match a.entry(id) {
             Some(e) if e.test => "tests",
@@ -111,7 +111,7 @@ fn rail(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let here = rail_of(&a.page, a);
-    let n_up = a.ready().len() + a.part_offers().len();
+    let n_up = a.ready().len() + a.parts_ready();
     let item = |id: &'static str, g: G, label: &'static str, pg: Page, badge: usize| -> E<'_, Msg> {
         let on = here == id;
         let bar = container(Space::new()).width(Length::Fixed(3.0)).height(Length::Fixed(z(22.0))).style(look::bx(if on { ORANGE } else { Color::TRANSPARENT }, 2.0, None));
@@ -144,7 +144,7 @@ fn rail(a: &App) -> E<'_, Msg> {
 fn head<'a>(a: &'a App, title: &str, big_check: bool) -> E<'a, Msg> {
     let p = a.p;
     let tn = tone(&p);
-    let n = a.ready().len() + a.part_offers().len();
+    let n = a.ready().len() + a.parts_ready();
     let checked = if a.checking { "Checking…".to_string() } else if big_check { format!("Last checked: {}", view::day_time_pub(a.seen.checked)) } else { format!("Checked {}{}", view::ago_pub(a, a.seen.checked), if n > 0 { format!(" · {n} update{}", if n == 1 { "" } else { "s" }) } else { String::new() }) };
     let check = btn(&p, "⟳  Check for updates", if big_check { B::Primary } else { B::Normal }, big_check, false, (!a.checking).then_some(Msg::TryAgain));
     container(row![ts(title.to_string(), f(30.0), tn.text), Space::new().width(Length::Fill), t(checked, f(13.0), tn.muted), gap(z(14.0), 1.0), check].align_y(iced::Center)).padding(look::pad(0.0, 0.0, z(18.0), 0.0)).width(Length::Fill).into()
@@ -386,7 +386,7 @@ pub fn apps(a: &App) -> E<'_, Msg> {
         .style(look::grad(110.0, Color::from_rgb8(0x2a, 0x1d, 0x4a), Color::from_rgb8(0x14, 0x2a, 0x55), 8.0, None));
         c = c.push(banner).push(gap(1.0, z(22.0)));
     }
-    let list: Vec<&Entry> = a.cat.apps.iter().filter(|e| !e.test && e.part.is_none() && (filter.is_empty() || filter == "All" || category(e) == filter)).collect();
+    let list: Vec<&Entry> = a.cat.apps.iter().filter(|e| !e.test && e.part.is_none() && e.group_of() == "apps" && (filter.is_empty() || filter == "All" || category(e) == filter)).collect();
     c = c.push(cards(a, &list));
     let flat = container(
         row![
@@ -403,6 +403,9 @@ pub fn apps(a: &App) -> E<'_, Msg> {
 
 // ------------------------------------------------------------------ 4. Library
 pub fn library(a: &App) -> E<'_, Msg> {
+    if let Some(u) = updating(a) {
+        return u;
+    }
     let p = a.p;
     let tn = tone(&p);
     let mut c = Column::new().push(head(a, "Library", true));
@@ -502,7 +505,8 @@ pub fn library(a: &App) -> E<'_, Msg> {
         mine = mine.push(container(t("Nothing here yet.", f(14.0), tn.muted)).padding(z(18.0)));
     }
     c = c.push(container(mine).width(Length::Fill).style(look::bx(tn.card, 8.0, Some((tn.line, 1.0)))));
-    c = c.push(container(row![Space::new().width(Length::Fill), t(format!("This PC: {}", view::this_pc_pub(a)), f(12.0), tn.muted)]).padding(look::pad(z(18.0), 0.0, 0.0, 0.0)));
+    // This PC's Hearth OS: Library › Hearth OS (store-everything/store-2), the system underneath and its updates.
+    c = c.push(container(row![Space::new().width(Length::Fill), click(t(format!("This PC: {} ›", view::this_pc_pub(a)), f(12.0), tn.muted), Some(Msg::Go(Page::System)))]).padding(look::pad(z(18.0), 0.0, 0.0, 0.0)));
     c.into()
 }
 
@@ -893,4 +897,371 @@ fn with_note<'a>(a: &'a App, page: E<'a, Msg>) -> E<'a, Msg> {
         return page;
     }
     column![container(t(a.note.clone(), f(14.0), if a.note_bad { look::BAD } else { look::ORANGE2 })).padding(look::pad(0.0, 0.0, z(12.0), 0.0)), page].into()
+}
+
+// ------------------------------------------------------------------ Hearth parts (store-everything/store-1)
+/// A tile with letters or a mark in two colours (the system card's H, the Fedora / Debian card's letter).
+fn tile_mark<'a>(inner: E<'a, Msg>, from: Color, to: Color, size: f32) -> E<'a, Msg> {
+    container(inner).center_x(Length::Fixed(size)).center_y(Length::Fixed(size)).style(look::grad(135.0, from, to, (size * 0.22).round(), None)).into()
+}
+
+fn letters<'a>(s: &str, size: f32) -> E<'a, Msg> {
+    tile_mark(tb(s.to_string(), f(size * 0.42), Color::WHITE).into(), look::ORANGE2, Color::from_rgb8(0xd9, 0x53, 0x1e), size)
+}
+
+/// The parts page's groups: (id, pill, section title)
+const GROUPS: [(&str, &str, &str); 5] = [("desktop", "Desktop", "DESKTOP"), ("apps", "Apps", "APPS"), ("gamemode", "Game Mode", "GAME MODE"), ("services", "Services", "SERVICES · run in the background"), ("looks", "Looks and sounds", "LOOKS AND SOUNDS")];
+
+fn in_group(e: &Entry, g: &str) -> bool {
+    let mine = e.group_of();
+    // Looks and sounds sit with the desktop in the drawn sections, and have their own pill.
+    mine == g || (g == "desktop" && mine == "looks")
+}
+
+/// One part's row: its letter icon, name and short line, the version in use, then Up to date, or the new version with
+/// Update, or what it comes with ("with system updates").
+fn part_row<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
+    let p = a.p;
+    let tn = tone(&p);
+    let line = if e.card.is_empty() { e.tagline.clone() } else { e.card.clone() };
+    let ver = a.part_version(e);
+    let busy = a.part_busy.contains(&e.id) || (!e.decky.is_empty() && a.decky_busy);
+    let gave_up = e.part.as_ref().map(|pt| if pt.system { a.sys_parts.get(&pt.id).map(|h| h.gave_up()).unwrap_or(false) } else { a.parts.get(&e.id).map(|h| h.gave_up() || h.failed_now).unwrap_or(false) }).unwrap_or(false);
+    let mut end = Row::new().spacing(z(14.0)).align_y(iced::Center);
+    let mut fix = String::new();
+    if let Some(o) = a.part_offer(e) {
+        fix = o.notes.first().cloned().unwrap_or_default();
+        end = end.push(chip(&p, o.version.clone(), Chip::Up)).push(btn(&p, if busy { "Updating…" } else { "Update" }, B::Normal, false, false, (!busy && !a.offline()).then(|| Msg::PartUpdate(e.id.clone()))));
+    } else if let Some(v) = (!e.decky.is_empty()).then(|| a.decky_offer(e)).flatten() {
+        end = end.push(chip(&p, v, Chip::Up)).push(btn(&p, if busy { "Updating…" } else { "Update" }, B::Normal, false, false, (!busy && !a.offline()).then_some(Msg::DeckyUpdate)));
+    } else if e.with == "system" {
+        end = end.push(chip(&p, "with system updates", Chip::Plain));
+    } else if !e.with.is_empty() {
+        let carrier = a.cat.apps.iter().find(|x| x.id == e.with || x.part.as_ref().map(|pt| pt.id == e.with).unwrap_or(false)).map(|x| x.short.clone()).unwrap_or_else(|| e.with.clone());
+        end = end.push(chip(&p, format!("with {carrier}"), Chip::Plain));
+    } else if gave_up {
+        end = end.push(chip(&p, "back to the one before", Chip::Warn));
+    } else {
+        end = end.push(chip(&p, "Up to date", Chip::Ok));
+    }
+    let mut r = row![
+        app_icon(e, z(44.0)),
+        column![tb(e.short.clone(), f(15.0), tn.text), t(line, f(13.0), tn.muted)].spacing(z(3.0)).width(Length::Fill),
+        container(t(ver, f(13.0), tn.muted)).width(Length::Fixed(z(70.0))),
+        end
+    ]
+    .spacing(z(16.0))
+    .align_y(iced::Center);
+    if !fix.is_empty() {
+        r = r.push(container(t(fix, f(13.0), tn.muted)).max_width(z(220.0)));
+    }
+    click(container(r).padding(look::pad(z(14.0), z(18.0), z(14.0), z(18.0))).width(Length::Fill), Some(Msg::OpenApp(e.id.clone())))
+}
+
+fn section<'a>(a: &'a App, title: &str, list: Vec<&Entry>) -> Option<E<'a, Msg>> {
+    if list.is_empty() {
+        return None;
+    }
+    let tn = tone(&a.p);
+    let mut c = Column::new();
+    for (k, e) in list.iter().enumerate() {
+        if k > 0 {
+            c = c.push(ui::hline(tn.line));
+        }
+        c = c.push(part_row(a, e));
+    }
+    let (head, rest) = title.split_once(" · ").map(|(h, r)| (h.to_string(), format!(" · {r}"))).unwrap_or((title.to_string(), String::new()));
+    Some(
+        column![
+            container(row![t(head, f(13.0), tn.muted), t(rest, f(13.0), tn.muted)]).padding(look::pad(z(18.0), 0.0, z(8.0), z(4.0))),
+            container(c).width(Length::Fill).style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.04), 8.0, Some((tn.line, 1.0))))
+        ]
+        .into(),
+    )
+}
+
+pub fn parts(a: &App) -> E<'_, Msg> {
+    let p = a.p;
+    let tn = tone(&p);
+    let all: Vec<&Entry> = a.cat.apps.iter().filter(|e| e.is_hearth_part()).collect();
+    let n = a.parts_ready();
+    // Title, when it last looked, Check for updates and Update all
+    let checked = if a.checking { "Checking…".to_string() } else { format!("Checked {}{}", view::ago_pub(a, a.seen.checked), if n > 0 { format!(" · {n} update{} · none needs a restart", if n == 1 { "" } else { "s" }) } else { " · everything is up to date".to_string() }) };
+    let head = row![
+        ts("Hearth parts", f(30.0), tn.text),
+        Space::new().width(Length::Fill),
+        t(checked, f(13.0), tn.muted),
+        gap(z(14.0), 1.0),
+        btn(&p, "⟳  Check for updates", B::Normal, false, false, (!a.checking).then_some(Msg::TryAgain)),
+        gap(z(14.0), 1.0),
+        btn(&p, "Update all", B::Primary, false, false, (n > 0 && !a.offline()).then_some(Msg::UpdateAll))
+    ]
+    .align_y(iced::Center);
+    let mut c = Column::new().push(head).push(container(t("Everything Hearth makes, each with its own updates: fixes reach you the day they're made, no system update and no restart. A part that doesn't start goes back to the one before by itself.", f(14.0), Pal::mix(tn.text, tn.muted, 0.3))).padding(look::pad(z(4.0), 0.0, z(16.0), 0.0)));
+    // The filter pills with their counts
+    let f_on = a.parts_filter.clone();
+    let mut pills = Row::new().spacing(z(10.0)).align_y(iced::Center);
+    let count = |g: &str| all.iter().filter(|e| if g == "desktop" { e.group_of() == "desktop" } else { e.group_of() == g }).count();
+    let mut items: Vec<(String, String)> = vec![("all".into(), format!("All {}", all.len()))];
+    for (id, pill, _) in GROUPS {
+        items.push((id.to_string(), format!("{pill} {}", count(id))));
+    }
+    for (id, label) in items {
+        let on = f_on == id || (f_on.is_empty() && id == "all");
+        let pill = container(if on { tb(label, f(14.0), look::INK) } else { t(label, f(14.0), tn.text) })
+            .padding(look::pad(z(6.0), z(16.0), z(6.0), z(16.0)))
+            .style(look::bx(if on { ORANGE } else { Pal::a(Color::WHITE, 0.03) }, 16.0, Some((if on { Color::TRANSPARENT } else { Pal::mix(tn.line, tn.text, 0.1) }, 1.0))));
+        pills = pills.push(click(pill, Some(Msg::PartsFilter(id))));
+    }
+    c = c.push(pills);
+    let pick = |g: &str| -> Vec<&Entry> {
+        all.iter().copied().filter(|e| if f_on.is_empty() || f_on == "all" { in_group(e, g) } else if f_on == "desktop" { g == "desktop" && in_group(e, g) } else { g == f_on && e.group_of() == g }).collect()
+    };
+    let note = container(
+        row![ui::glyph(G::Shield, tn.muted, z(18.0), 1.5), t("Every part is checked with SHA-256 against the signed list. Anything that touches starting the PC (boot menu, Recovery) only comes with a system update, so the one before always stays startable.", f(13.0), Pal::mix(tn.text, tn.muted, 0.2)).width(Length::Fill)]
+            .spacing(z(14.0))
+            .align_y(iced::Center),
+    )
+    .padding(look::pad(z(16.0), z(20.0), z(16.0), z(20.0)))
+    .width(Length::Fill)
+    .style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.04), 8.0, Some((tn.line, 1.0))));
+    let mut left = Column::new().width(Length::FillPortion(1));
+    let mut right = Column::new().width(Length::FillPortion(1));
+    for (id, _, title) in [GROUPS[0], GROUPS[2], GROUPS[1]] {
+        if let Some(s) = section(a, title, pick(id)) {
+            left = left.push(s);
+        }
+    }
+    if f_on == "looks" {
+        if let Some(s) = section(a, GROUPS[4].2, pick("looks")) {
+            left = left.push(s);
+        }
+    }
+    if let Some(s) = section(a, GROUPS[3].2, pick("services")) {
+        right = right.push(s);
+    }
+    right = right.push(gap(1.0, z(18.0))).push(note);
+    c = c.push(row![left, right].spacing(z(18.0)));
+    with_note(a, c.into())
+}
+
+// ------------------------------------------------------------------ Library › Hearth OS (store-everything/store-2)
+fn sys_ver_words(v: &hearth_store::system::Ver) -> String {
+    let d = v.day();
+    format!("Hearth OS {}{}", hearth_store::short_version(&v.version), if d.is_empty() { String::new() } else { format!(" · {d}") })
+}
+
+pub fn system<'a>(a: &'a App) -> E<'a, Msg> {
+    let p = a.p;
+    let tn = tone(&p);
+    let word = hearth_store::system::base_word(&a.sys_base);
+    let info = a.cat.system.clone().unwrap_or_default();
+    let st = a.sys.clone().unwrap_or_default();
+    let avail = st.available.clone();
+    let staged = st.staged.clone();
+    let day = avail.as_ref().or(staged.as_ref()).map(|v| v.day()).unwrap_or_default();
+    let info = if info.date.is_empty() || hearth_store::system::day_words(&info.date) == day { info } else { hearth_store::system::SysInfo { next: info.next.clone(), next_out: info.next_out, ..Default::default() } };
+    let prog = a.sys_prog();
+    let running = prog.as_ref().map(|g| g.end.is_none()).unwrap_or(false);
+    // Title
+    let head = row![
+        click(ts("Library", f(30.0), tn.text), Some(Msg::Go(Page::Updates))),
+        t("  ›  ", f(26.0), tn.muted),
+        ts("Hearth OS", f(30.0), tn.text),
+        Space::new().width(Length::Fill),
+        btn(&p, if a.sys_looking { "Checking…" } else { "⟳  Check for updates" }, B::Normal, false, false, (!a.sys_looking && !a.checking).then_some(Msg::TryAgain))
+    ]
+    .align_y(iced::Center);
+    // The system card
+    let kicker = format!("THE SYSTEM · {} · HEARTH OS {}", a.sys_base.to_uppercase(), if a.hearth.is_empty() { "".to_string() } else { a.hearth.clone() });
+    let title = if staged.is_some() && avail.is_none() {
+        format!("{word} updates{} · ready", if day.is_empty() { String::new() } else { format!(" · {day}") })
+    } else if avail.is_some() {
+        format!("{word} updates{}", if day.is_empty() { String::new() } else { format!(" · {day}") })
+    } else if a.sys.is_none() {
+        format!("{word} updates")
+    } else {
+        format!("{word} is up to date")
+    };
+    let mut bits: Vec<String> = Vec::new();
+    if info.packages > 0 {
+        bits.push(format!("{} packages", info.packages));
+    }
+    if !info.fixes.is_empty() {
+        bits.push(info.fixes.clone());
+    }
+    if info.size > 0 {
+        bits.push(format!("{} (only what changed)", hearth_store::mb(info.size, false)));
+    }
+    let line = if bits.is_empty() {
+        if avail.is_some() {
+            format!("{word}'s newest fixes, built into Hearth OS {} and tested by Hearth · only what changed is downloaded", a.hearth)
+        } else if a.sys.is_none() {
+            "Check for updates looks for a newer one (it asks bootc through Hearth's admin helper)".to_string()
+        } else {
+            format!("Hearth OS {} on {} has every fix that's out", a.hearth, a.sys_base)
+        }
+    } else {
+        bits.join(" · ")
+    };
+    let mins = if info.size > 0 { format!("About {} min to download · ", (info.size / 60_000_000).max(1)) } else { String::new() };
+    let right = column![
+        btn(&p, if running { "Downloading…" } else { "Get it now" }, B::Primary, true, false, (avail.is_some() && !running && !a.offline()).then_some(Msg::SysGet)),
+        t(format!("{mins}applies on your next restart"), f(12.0), tn.muted)
+    ]
+    .spacing(z(10.0))
+    .align_x(iced::Right);
+    let card = container(
+        row![
+            letters("H", z(88.0)),
+            column![ts(kicker, f(13.0), ORANGE), tb(title, f(32.0), tn.text), t(line, f(16.0), Pal::mix(tn.text, tn.muted, 0.25))].spacing(z(4.0)).width(Length::Fill),
+            right
+        ]
+        .spacing(z(24.0))
+        .align_y(iced::Center),
+    )
+    .padding(look::pad(z(24.0), z(28.0), z(24.0), z(28.0)))
+    .width(Length::Fill)
+    .style(look::grad(100.0, Pal::mix(tn.card, ORANGE, 0.10), Pal::mix(tn.card, Color::BLACK, 0.06), 8.0, Some((tn.line, 1.0))));
+    // Three kinds of update
+    let kind_row = |mark: E<'a, Msg>, name: String, tag: &str, tag_ok: bool, sub: String, end: E<'a, Msg>, m: Option<Msg>| -> E<'a, Msg> {
+        let tagc = container(t(tag.to_string(), f(13.0), if tag_ok { look::OK_TX } else { Pal::mix(tn.text, tn.muted, 0.3) })).padding(look::pad(z(2.0), z(9.0), z(2.0), z(9.0))).style(look::bx(Color::TRANSPARENT, 10.0, Some((if tag_ok { look::OK_LINE } else { tn.line }, 1.0))));
+        let r = row![mark, column![row![tb(name, f(15.0), tn.text), tagc].spacing(z(8.0)).align_y(iced::Center), t(sub, f(13.0), tn.muted)].spacing(z(4.0)).width(Length::Fill), end].spacing(z(16.0)).align_y(iced::Center);
+        click(container(r).padding(look::pad(z(14.0), z(18.0), z(14.0), z(18.0))).width(Length::Fill), m)
+    };
+    let bolt = tile_mark(ui::glyph(G::Update, Color::WHITE, z(20.0), 2.0), look::ORANGE2, Color::from_rgb8(0xd9, 0x53, 0x1e), z(44.0));
+    let base_mark = tile_mark(tb(word.chars().next().unwrap_or('S').to_string(), f(20.0), Color::WHITE).into(), Color::from_rgb8(0x4f, 0x8c, 0xff), Color::from_rgb8(0x25, 0x5f, 0xe0), z(44.0));
+    let h_mark = tile_mark(tb("H", f(20.0), Color::WHITE).into(), Color::from_rgb8(0x3a, 0x2a, 0x22), Color::from_rgb8(0x1c, 0x14, 0x10), z(44.0));
+    let sys_state: E<Msg> = if staged.is_some() { chip(&p, "ready", Chip::Up) } else if running { chip(&p, "downloading", Chip::Plain) } else if avail.is_some() { chip(&p, "out", Chip::Up) } else { chip(&p, "up to date", Chip::Ok) };
+    let next_name = if info.next.is_empty() { "The next Hearth OS".to_string() } else { format!("Hearth OS {}", info.next) };
+    let next_state: E<Msg> = if info.next_out { chip(&p, "out", Chip::Up) } else { chip(&p, "not yet", Chip::Plain) };
+    let n_parts = a.parts_ready();
+    let parts_end: E<Msg> = if n_parts > 0 { chip(&p, format!("{n_parts} ready"), Chip::Up) } else { chip(&p, "up to date", Chip::Ok) };
+    let kinds = column![
+        container(t("THREE KINDS OF UPDATE", f(13.0), tn.muted)).padding(look::pad(z(16.0), z(18.0), z(12.0), z(18.0))),
+        ui::hline(tn.line),
+        kind_row(bolt, "Hearth parts".into(), "seconds · no restart", true, "Mantel, the apps, the services: on the Hearth parts page, each on its own".into(), parts_end, Some(Msg::Go(Page::BuiltIn))),
+        ui::hline(tn.line),
+        kind_row(base_mark, format!("{word} updates"), "minutes · next restart", false, format!("Security and driver fixes, built and tested by Hearth the day {word} ships them, named by date{}, downloaded when you say", if day.is_empty() { String::new() } else { format!(" ({day})") }), sys_state, None),
+        ui::hline(tn.line),
+        kind_row(h_mark, next_name, "bigger · next restart", false, "A new Hearth OS: comes when Dragongamer9 releases it".into(), next_state, None),
+    ];
+    let boxed = |c: E<'a, Msg>, w: u16| -> E<'a, Msg> { container(c).width(Length::FillPortion(w)).style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.04), 8.0, Some((tn.line, 1.0)))).into() };
+    // Safe every time
+    let before = st.rollback.as_ref().filter(|_| staged.is_none()).or(st.booted.as_ref()).map(sys_ver_words).unwrap_or_else(|| format!("Hearth OS {}", a.hearth));
+    let safe_row = |g: G, title: &str, sub: String| -> E<'a, Msg> { container(row![ui::glyph(g, tn.text, z(20.0), 1.6), column![tb(title.to_string(), f(15.0), tn.text), t(sub, f(13.0), tn.muted)].spacing(z(3.0)).width(Length::Fill)].spacing(z(18.0)).align_y(iced::Center)).padding(look::pad(z(14.0), z(18.0), z(14.0), z(18.0))).width(Length::Fill).into() };
+    let safe = column![
+        container(t("SAFE EVERY TIME", f(13.0), tn.muted)).padding(look::pad(z(16.0), z(18.0), z(12.0), z(18.0))),
+        ui::hline(tn.line),
+        safe_row(G::Shield, "The one before stays startable", format!("{before} stays in the boot menu")),
+        ui::hline(tn.line),
+        safe_row(G::Chevron, "Back by itself", "If the new one doesn't reach Game Mode twice, the one before starts and Hearth tells you why".into()),
+        ui::hline(tn.line),
+        safe_row(G::List, "Your settings, apps and parts stay", "Only the system underneath changes".into()),
+    ];
+    let two = row![boxed(kinds.into(), 55), boxed(safe.into(), 45)].spacing(z(18.0));
+    // What's in this one, and the switch
+    let all_shown = a.shown_new.contains("system-changes");
+    let shown: Vec<String> = if all_shown { info.changes.clone() } else { info.changes.iter().take(4).cloned().collect() };
+    let more = info.changes.len().saturating_sub(shown.len());
+    let total = (info.packages as usize).max(info.changes.len());
+    let changes_line = if shown.is_empty() {
+        if avail.is_some() { "The list of what changed comes with the update's notes on its release".to_string() } else { "Nothing new to download".to_string() }
+    } else {
+        format!("{}{}", shown.join(" · "), if more > 0 || total > shown.len() { format!(" · and {} more", total.saturating_sub(shown.len())) } else { String::new() })
+    };
+    let see_all: E<Msg> = if info.changes.len() > 4 || total > shown.len() { btn(&p, if all_shown { "Show fewer".to_string() } else { format!("See all {total}") }, B::Normal, false, false, Some(Msg::ToggleNew("system-changes".into()))) } else { Space::new().into() };
+    let whats = container(row![column![tb("What's in this one", f(15.0), tn.text), t(changes_line, f(13.0), tn.muted)].spacing(z(4.0)).width(Length::Fill), see_all].align_y(iced::Center)).padding(look::pad(z(14.0), z(18.0), z(14.0), z(18.0))).width(Length::Fill);
+    let auto = container(
+        row![
+            column![tb(format!("{word} updates by themselves"), f(15.0), tn.text), t("Off: nothing downloads until you press Get it now. On: downloads in the background, applies when you restart. Never restarts on its own.", f(13.0), tn.muted)].spacing(z(4.0)).width(Length::Fill),
+            look::switch(&p, a.sys_auto, false, Some(Msg::SysAuto(!a.sys_auto)))
+        ]
+        .align_y(iced::Center),
+    )
+    .padding(look::pad(z(14.0), z(18.0), z(14.0), z(18.0)))
+    .width(Length::Fill);
+    let bottom = container(column![whats, ui::hline(tn.line), auto]).width(Length::Fill).style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.04), 8.0, Some((tn.line, 1.0))));
+    let c = column![head, gap(1.0, z(18.0)), card, gap(1.0, z(18.0)), two, gap(1.0, z(18.0)), bottom];
+    with_note(a, c.into())
+}
+
+// ------------------------------------------------------------------ Library, updating (store-everything/store-3)
+/// Library while something updates or just did: the system download (Pause), the parts done, ready for the next
+/// restart (Later, Restart now), and Done before.
+pub fn updating(a: &App) -> Option<E<'_, Msg>> {
+    let prog = a.sys_prog();
+    let staged = a.sys.as_ref().and_then(|s| s.staged.clone());
+    let show_ready = staged.is_some() && !a.sys_later;
+    if prog.is_none() && a.done_now.is_empty() && !show_ready {
+        return None;
+    }
+    let p = a.p;
+    let tn = tone(&p);
+    let word = hearth_store::system::base_word(&a.sys_base);
+    let day = a.sys.as_ref().and_then(|s| s.available.as_ref().or(s.staged.as_ref())).map(|v| v.day()).unwrap_or_default();
+    let mut c = Column::new().push(head(a, "Library", true));
+    let mut box_ = Column::new();
+    let base_mark = |size: f32| tile_mark(tb(word.chars().next().unwrap_or('S').to_string(), f(size * 0.42), Color::WHITE).into(), Color::from_rgb8(0x4f, 0x8c, 0xff), Color::from_rgb8(0x25, 0x5f, 0xe0), size);
+    let mut rows = 0;
+    if let Some(g) = prog.as_ref().filter(|g| g.end.is_none()) {
+        let amount = if g.total > 0 { format!("{} of {}", hearth_store::mb(g.done, false).trim_end_matches(" MB"), hearth_store::mb(g.total, false)) } else { format!("{:.0} %", g.pct) };
+        let what = if g.desc.is_empty() { "downloading what changed".to_string() } else { g.desc.to_lowercase() };
+        let frac = if g.total > 0 { g.done as f32 / g.total as f32 } else { g.pct / 100.0 };
+        let r = row![
+            base_mark(z(50.0)),
+            column![
+                tb(format!("{word} updates{}", if day.is_empty() { String::new() } else { format!(" · {day}") }), f(15.0), tn.text),
+                t(format!("You pressed Get it now · {what} · {amount} · you can keep playing"), f(13.0), tn.muted),
+                container(look::progress(&p, frac.clamp(0.0, 1.0), z(4.0), Length::Fixed(z(440.0)))).padding(look::pad(z(6.0), 0.0, 0.0, 0.0))
+            ]
+            .spacing(z(3.0))
+            .width(Length::Fill),
+            btn(&p, if g.paused { "Pausing…" } else { "Pause" }, B::Normal, false, false, (!g.paused).then_some(Msg::SysPause))
+        ]
+        .spacing(z(16.0))
+        .align_y(iced::Center);
+        box_ = box_.push(container(r).padding(look::pad(z(14.0), z(18.0), z(14.0), z(18.0))).width(Length::Fill));
+        rows += 1;
+    }
+    for d in &a.done_now {
+        let Some(e) = a.entry(&d.id) else { continue };
+        if rows > 0 {
+            box_ = box_.push(ui::hline(tn.line));
+        }
+        let r = row![app_icon(e, z(50.0)), column![tb(d.title.clone(), f(15.0), tn.text), t(d.line.clone(), f(13.0), tn.muted)].spacing(z(3.0)).width(Length::Fill), chip(&p, "Done", Chip::Ok)].spacing(z(16.0)).align_y(iced::Center);
+        box_ = box_.push(container(r).padding(look::pad(z(14.0), z(18.0), z(14.0), z(18.0))).width(Length::Fill));
+        rows += 1;
+    }
+    if rows > 0 {
+        c = c.push(container(box_).width(Length::Fill).style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.04), 8.0, Some((tn.line, 1.0)))));
+    }
+    if show_ready {
+        let booted = a.sys.as_ref().and_then(|s| s.booted.clone());
+        let before = booted.map(|v| { let d = v.day(); format!("Hearth OS {}{}", hearth_store::short_version(&v.version), if d.is_empty() { String::new() } else { format!(" ({d})") }) }).unwrap_or_else(|| format!("Hearth OS {}", a.hearth));
+        let banner = container(
+            row![
+                ui::glyph(G::Shield, tn.text, z(30.0), 1.6),
+                column![tb(format!("{word} updates are ready for your next restart"), f(22.0), tn.text), t(format!("Nothing restarts by itself. {before} stays in the boot menu, and comes back by itself if the new one doesn't start."), f(15.0), Pal::mix(tn.text, tn.muted, 0.25))].spacing(z(4.0)).width(Length::Fill),
+                btn(&p, "Later", B::Normal, false, false, Some(Msg::SysLater)),
+                btn(&p, "Restart now", B::Primary, true, false, Some(Msg::SysRestart))
+            ]
+            .spacing(z(20.0))
+            .align_y(iced::Center),
+        )
+        .padding(look::pad(z(22.0), z(28.0), z(22.0), z(28.0)))
+        .width(Length::Fill)
+        .style(look::bx(Pal::mix(tn.card, ORANGE, 0.05), 8.0, Some((Pal::a(ORANGE, 0.6), 1.0))));
+        c = c.push(gap(1.0, z(20.0))).push(banner);
+    }
+    let hist = hearth_store::system::history();
+    let all = a.shown_new.contains("history");
+    let words: Vec<String> = hist.iter().take(if all { 40 } else { 3 }).map(|d| { let day = view::day_time_pub(d.at); format!("{} · {}", d.what, day.split(" at ").next().unwrap_or("")) }).collect();
+    let line = if words.is_empty() { "Nothing yet".to_string() } else { words.join(" · ") };
+    let done_before = container(row![column![tb("Done before", f(15.0), tn.text), t(line, f(13.0), tn.muted)].spacing(z(4.0)).width(Length::Fill), btn(&p, if all { "Fewer" } else { "History" }, B::Normal, false, false, Some(Msg::ToggleNew("history".into())))].align_y(iced::Center))
+        .padding(look::pad(z(14.0), z(18.0), z(14.0), z(18.0)))
+        .width(Length::Fill)
+        .style(look::bx(Pal::mix(tn.card, Color::BLACK, 0.04), 8.0, Some((tn.line, 1.0))));
+    c = c.push(gap(1.0, z(20.0))).push(done_before);
+    Some(c.into())
 }

@@ -17,6 +17,7 @@ pub mod parts;
 pub mod paths;
 pub mod prefs;
 pub mod release;
+pub mod system;
 
 /// This PC's Hearth OS version ("1.17") and edition ("Fedora edition"); the Store's pictures read the fixture's.
 pub fn this_pc() -> (String, String) {
@@ -30,7 +31,13 @@ pub fn this_pc() -> (String, String) {
     let ver = std::fs::read_to_string("/usr/share/nimbus/version").map(|s| s.trim().to_string()).unwrap_or_default();
     let ver = if ver.is_empty() { info.get("version").and_then(|x| x.as_str()).unwrap_or("").to_string() } else { ver };
     let base = info.get("base").and_then(|x| x.as_str()).unwrap_or("");
-    let edition = if base == "anatase" || std::path::Path::new("/usr/bin/rpm-ostree").exists() || std::path::Path::new("/usr/bin/dnf5").exists() { "Fedora edition" } else { "" };
+    let edition = if base == "anatase" || std::path::Path::new("/usr/bin/rpm-ostree").exists() || std::path::Path::new("/usr/bin/dnf5").exists() {
+        "Fedora edition"
+    } else if base == "peppermint" || std::path::Path::new("/etc/debian_version").exists() {
+        "Debian edition"
+    } else {
+        ""
+    };
     (short_version(&ver), edition.to_string())
 }
 

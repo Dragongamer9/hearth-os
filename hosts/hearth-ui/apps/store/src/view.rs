@@ -188,7 +188,7 @@ pub fn targets(a: &App) -> Vec<Target> {
                 }
             }
         }
-        Page::Apps | Page::Tests => {}
+        Page::Apps | Page::Tests | Page::System => {}
         Page::Repair(_) => {
             v.push(tg("repair-now", 0, Some(Msg::RepairNow)));
             v.push(tg("not-now", 0, Some(Msg::Back)));
@@ -278,7 +278,8 @@ fn page_name(pg: &Page, a: &App) -> String {
         Page::Tests => "Tests".into(),
         Page::Yours => "Your apps".into(),
         Page::Updates => "Updates".into(),
-        Page::BuiltIn => "Built into Hearth".into(),
+        Page::BuiltIn => "Hearth parts".into(),
+        Page::System => "Library › Hearth OS".into(),
         Page::Settings => "Store settings".into(),
         Page::App(id) => a.entry(id).map(|e| e.name.clone()).unwrap_or_default(),
         Page::Work => "Installing".into(),
@@ -298,6 +299,8 @@ pub fn view(a: &App) -> E<'_, Msg> {
         Page::Home => w11::home(a),
         Page::Apps => w11::apps(a),
         Page::Updates | Page::Yours => w11::library(a),
+        Page::BuiltIn => w11::parts(a),
+        Page::System => w11::system(a),
         Page::Tests => w11::tests(a),
         Page::Settings => w11::settings(a),
         Page::App(id) if a.dlg.is_none() => match a.entry(id) {
@@ -334,6 +337,7 @@ fn page_body(a: &App) -> E<'_, Msg> {
         Page::Yours => yours(a),
         Page::Updates => updates(a),
         Page::BuiltIn => built_in(a),
+        Page::System => w11::system(a),
         Page::Settings => settings(a),
         Page::App(id) => match a.entry(id) {
             Some(e) => if a.dlg.is_some() { app_head(a, e) } else { app_page(a, e) },
@@ -430,6 +434,7 @@ fn bottom(a: &App) -> E<'_, Msg> {
         match &a.page {
             Page::Home if a.offline() => (vec![hint(&p, "A", "Try again"), hint(&p, "B", "Back")], vec![pages()]),
             Page::Home | Page::Yours | Page::BuiltIn | Page::Apps | Page::Tests => (vec![hint(&p, "A", "Select"), hint(&p, "B", "Back"), hint(&p, "Y", "Search"), hint(&p, "X", "Update all")], vec![pages()]),
+            Page::System => (vec![hint(&p, "A", "Select"), hint(&p, "B", "Back")], vec![pages()]),
             Page::Updates => (vec![hint(&p, "A", "Update"), hint(&p, "B", "Back"), hint(&p, "X", "Update all"), hint(&p, "Y", "What's new")], vec![pages()]),
             Page::Settings => (vec![hint(&p, "A", "Toggle"), hint(&p, "B", "Back")], vec![pages()]),
             Page::App(_) => (vec![hint(&p, "A", "Select"), hint(&p, "B", "Back"), hint(&p, "≡", "More")], vec![hint2(&p, "LB", "RB", "Previous / next app")]),
