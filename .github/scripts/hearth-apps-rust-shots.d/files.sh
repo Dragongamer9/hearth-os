@@ -178,7 +178,9 @@ done
 HOME_KEEP="$HOME"; export HOME="$SH"
 run files-30-sort-downloads hearth-files 0 "$BIN/hearth-files-app" "$SH/Downloads" --view details --show sort
 run files-31-sorted hearth-files 0 "$BIN/hearth-files-app" "$SH/Downloads" --view details --show sort,sorted
-[ -e "$SH/Downloads/Installers/Capture-Card-1.1.0-x86_64.AppImage" ] || echo "::error title=Sort my Downloads::the AppImage wasn't moved into Installers"
+# Hearth's own downloads go in Hearth (sortdl.rs: the Capture Card's AppImage in Hearth/Capture Card); other installers in Installers.
+[ -e "$SH/Downloads/Hearth/Capture Card/Capture-Card-1.1.0-x86_64.AppImage" ] || echo "::error title=Sort my Downloads::the Capture Card's AppImage wasn't moved into Hearth/Capture Card"
+[ -e "$SH/Downloads/Installers/lutris-installer.run" ] || echo "::error title=Sort my Downloads::the installer wasn't moved into Installers"
 [ -e "$SH/Downloads/_to_delete/Old copies/AppImage(2).zip" ] || echo "::error title=Sort my Downloads::the second copy wasn't put in _to_delete"
 export HOME="$HOME_KEEP"
 

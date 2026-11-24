@@ -139,7 +139,7 @@ jobs:
   run:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 50
+    timeout-minutes: 80
     container: registry.fedoraproject.org/fedora:45
     outputs:
       shots: ${{ steps.list.outputs.shots }}
@@ -159,7 +159,7 @@ jobs:
           name: hearth-apps-rust
           path: bin
       - name: Start each app, measure it, picture it
-        timeout-minutes: 40
+        timeout-minutes: 70
         run: |
           chmod +x bin/*
           printf '%s' "${{ inputs.only }}" > /tmp/shots-only
