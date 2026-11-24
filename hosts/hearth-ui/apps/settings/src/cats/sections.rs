@@ -407,6 +407,8 @@ pub enum Msg {
     Done(run::Output),
     Accent(&'static str),
     Saved(run::Output),
+    TextSize(f32),
+    TextSizeDone,
 }
 
 fn helper() -> String {
@@ -456,6 +458,16 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
         Msg::Accent(c) => {
             let cmd = sh.desktop_cmd(serde_json::json!({ "accent": c }));
             return Task::perform(run::spawn(cmd), Msg::Saved);
+        }
+        Msg::TextSize(x) => {
+            if let Some(Value::Object(a)) = st.vals.get_mut("access") {
+                a.insert("textScale".into(), serde_json::json!(x));
+            }
+        }
+        Msg::TextSizeDone => {
+            let x = st.vals.get("access").and_then(|a| a.get("textScale")).cloned().unwrap_or(serde_json::json!(1.0));
+            let j = serde_json::json!({ "textScale": x }).to_string();
+            return Task::perform(run::spawn(vec!["python3".into(), run::shell_helper("hearth-access"), "set".into(), j]), Msg::Saved);
         }
         Msg::Saved(o) => {
             st.msg = if o.ok { String::new() } else { o.why() };
@@ -669,10 +681,10 @@ fn or(s: String, d: &str) -> String {
 
 /// Accessibility › Seeing's switches: the name, its line, where its state is, what changes it (hearth-access).
 const SEEING: &[(&str, &str, &str, &str)] = &[
-    ("Bigger cursor", "", "a.bigCursor", "access.bigCursor"),
+    ("Bigger cursor", "", "a.largePointer", "access.largePointer"),
     ("High contrast", "", "a.highContrast", "access.highContrast"),
-    ("Reduce motion", "Fewer animations, no wobbly windows", "a.reduceMotion", "access.reduceMotion"),
-    ("Zoom", "Super + plus", "a.magnifier", "access.magnifier"),
+    ("Reduce motion", "Fewer animations, no wobbly windows", "reduce_motion", "reduce_motion"),
+    ("Zoom", "Super + plus", "zoom", "zoom"),
 ];
 
 /// The accent swatches (settings-06): Hearth's ember first; the picked one ringed.
@@ -738,8 +750,8 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<Element<'a, Msg>> {
             }
             ("a11y", "Seeing") => {
                 let text = v.get("access").and_then(|x| x.get("textScale")).and_then(Value::as_f64).unwrap_or(1.0) as f32;
-                let _ = text;
-                l.push(vrow(&p, "Text size", "", value_chev(&p, &format!("{}%", (text * 100.0).round())), Some(Msg::Go("accessibility")), false));
+                let slider = slider_f32(text, 1.0..=2.0, 0.25, Msg::TextSize, Msg::TextSizeDone);
+                l.push(vrow(&p, "Text size", "", slider, None, false));
                 for &(label, line, val, set) in SEEING {
                     let o = on(v, val);
                     l.push(vrow(&p, label, line, switch(&p, o, Some(Msg::Switch(val, set, !o))), None, false));

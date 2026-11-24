@@ -3059,7 +3059,48 @@ def services_switch(svc, res):
 def services_timer_needed(plan):
     ai, media, guard = clean_ai(plan.get('ai')), clean_media(plan.get('media')), clean_guard(plan.get('guard'))
     apps = [clean_user_app(plan.get(key), pdef) for key, _, pdef in USER_APPS.values()]
-    return ai['on'] or (media['on'] and media['pause']) or guard['on'] or any(a['on'] and a['pause'] for a in apps)
+    # 1.18 (Everything connects by itself): also whenever a service is on, so it comes back by itself after an update
+    # or a restart (bring_back).
+    return ai['on'] or media['on'] or guard['on'] or any(a['on'] for a in apps)
+
+
+BACK_TRIES = 5            # starts in BACK_WINDOW seconds, then it waits (as hearth-ollama.service's own start limit)
+BACK_WINDOW = 600
+
+
+def bring_back(plan, playing, paused, did, st, now):
+    """1.18, Everything connects by itself (the owner, Nov 21: "should just launch ... and pick the stuff up"): a
+    service you turned on that isn't running (after an update, a restart, or it stopped) is started again, unless
+    you're playing and it waits for your game, a rule or quiet hours hold it, or it already tried BACK_TRIES times in
+    BACK_WINDOW (then Settings › AI says so and Try again starts it). It never turns on anything you turned off."""
+    if playing:
+        return
+    tries = st.setdefault('back', {})
+
+    def may(name):
+        t = [x for x in tries.get(name, []) if now - x < BACK_WINDOW]
+        tries[name] = t
+        if len(t) >= BACK_TRIES:
+            return False
+        t.append(int(now))
+        return True
+    ai, media = clean_ai(plan.get('ai')), clean_media(plan.get('media'))
+    for name, want in (('ollama', ai['on']), ('jellyfin', media['on'])):
+        unit = APP_UNITS[name] + '.service'
+        if want and name not in paused and app_installed(name) and os.path.exists(APP_DROPIN % APP_UNITS[name]) \
+                and not unit_active(unit) and may(name):
+            run(['systemctl', 'start', unit])
+            did.append('started %s again (it was on)' % name)
+    user = plan.get('user')
+    for name, (key, unit, pdef) in USER_APPS.items():
+        cfg = clean_user_app(plan.get(key), pdef)
+        if not cfg['on'] or name in paused or (name in RULE_OF and rule_wait(RULE_OF[name])):
+            continue
+        code, _ = user_systemctl(user, 'is-active', unit)
+        pw = getpw(user) if isinstance(user, str) and ACCOUNT_RE.fullmatch(user) else None
+        if code != 0 and pw and os.path.exists(USER_RUN % pw.pw_uid + '/bus') and may(name):
+            user_systemctl(user, 'start', unit)
+            did.append('started %s again (it was on)' % name)
 
 
 def ollama_api(method, path, body=None, timeout=10):
@@ -3325,6 +3366,7 @@ def services_run(now=None):
         paused.append('jellyfin')
     user_apps_light(plan, playing, paused, did, st, now)
     rules_light(plan, playing, paused, did, st, now)
+    bring_back(plan, playing, paused, did, st, now)
     for key, port, pdef in (('voices', KOKORO_PORT, False), ('studio', STUDIO_PORT, True)):
         if not playing and clean_user_app(plan.get(key), pdef)['on']:
             users = ai_clients(port)     # the Command Center's voice settings talking to AI voices or Voice Studio

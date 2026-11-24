@@ -342,11 +342,7 @@ def r_privacy():
         rc, o, _ = run(['mokutil', '--sb-state'])
         put(secure_boot='on' if 'enabled' in o else 'off')
     put(tpm='TPM 2.0 ready' if Path('/sys/class/tpm/tpm0').exists() else 'no TPM')
-    cnt = HOME / '.config/nimbus/counter.json'
-    try:
-        put(player_count='on' if json.loads(cnt.read_text()).get('enabled', True) else 'off')
-    except Exception:
-        pass
+    put(player_count='on' if desktop_json().get('countMe', True) else 'off')
 
 
 def r_access():
@@ -355,25 +351,261 @@ def r_access():
         put(access=j['settings'])
 
 
+
+# ------------------------------------------------------------------ more readers (each from its own tool or file)
+
+def desktop_json():
+    for f in (HOME / '.local/share/nimbus/desktop.json', HOME / '.config/nimbus/desktop.json'):
+        try:
+            return json.loads(f.read_text())
+        except Exception:
+            continue
+    return {}
+
+
+def r_look():
+    d = desktop_json()
+    put(reduce_motion='on' if d.get('reduceMotion') else 'off')
+    look = (d.get('look') or 'hearth').replace('-', ' ').title()
+    mode = d.get('mode') or ('light' if d.get('light') else 'dark')
+    put(look='%s · %s' % (look, mode.capitalize()), mode=mode)
+    wp = d.get('wallpaper')
+    if isinstance(wp, str) and wp:
+        put(wallpaper=Path(wp).stem.replace('-', ' ').replace('_', ' ').title()[:24])
+    edge = d.get('barEdge') or 'bottom'
+    dock = d.get('dockMode') or ''
+    put(bar='%s%s' % (edge, ' · ' + dock + ' dock' if dock else ''))
+    lay = d.get('layout') or d.get('desktopLayout')
+    if isinstance(lay, str) and lay:
+        put(layout=lay.replace('-', ' ').capitalize())
+    looks = HOME / '.local/share/nimbus/looks'
+    if looks.exists():
+        n = len(list(looks.glob('*.json')))
+        put(my_looks='%d saved' % n)
+    fonts = d.get('fontSize')
+    put(font=('%s pt' % fonts) if fonts else '')
+    put(frames='on' if d.get('accentFrames', True) else 'off', splash=(d.get('signinSplash') or 'Ember').capitalize())
+
+
+def r_system_more():
+    j = helper('hearth-vnc', 'status')
+    if isinstance(j, dict):
+        put(vnc='on' if j.get('on') else 'off')
+    j = helper('hearth-search', 'status')
+    if isinstance(j, dict):
+        put(search='paused' if j.get('paused') else ('indexing done' if j.get('files') else 'on'))
+    clip = HOME / '.local/share/nimbus/clipboard.json'
+    try:
+        items = json.loads(clip.read_text())
+        n = len(items if isinstance(items, list) else items.get('items', []))
+        put(clipboard='on · %d items' % n)
+    except Exception:
+        pass
+    j = helper('hearth-notify', 'get')
+    sc = session_conf()
+    dnd = sc.get('HEARTH_DND', '')
+    put(notifications='do not disturb' if dnd == '1' else 'on')
+    try:
+        st = json.loads((HOME / '.config/nimbus/power.json').read_text())
+        m = st.get('screenOff')
+        if m:
+            put(power='off after %s min' % m)
+    except Exception:
+        pass
+
+
+def r_devices():
+    if has('setxkbmap') or True:
+        lay = os.environ.get('XKB_DEFAULT_LAYOUT', '')
+        if not lay:
+            try:
+                for l in Path('/etc/default/keyboard').read_text().splitlines():
+                    if l.startswith('XKBLAYOUT='):
+                        lay = l.split('=', 1)[1].strip('"')
+            except OSError:
+                pass
+        put(kbd_layout=lay.upper()[:12])
+    if has('lpstat'):
+        rc, o, _ = run(['lpstat', '-p'])
+        n = len([l for l in o.splitlines() if l.startswith('printer ')])
+        names = [l.split()[1] for l in o.splitlines() if l.startswith('printer ')]
+        if n:
+            put(printers='%d ready' % n, printer=' + '.join(names[:2])[:30])
+    j = helper('hearth-thunderbolt', 'status')
+    if isinstance(j, dict):
+        put(thunderbolt='%d' % len(j.get('devices') or []) if j.get('devices') else ('none' if j.get('available') else 'not on this PC'))
+    if has('kdeconnect-cli'):
+        rc, o, _ = run(['kdeconnect-cli', '-a', '--name-only'])
+        if o.strip():
+            put(phone=o.splitlines()[0][:20], phone_line='linked')
+    tablets = [d for d in Path('/dev/input/by-id').glob('*') if re.search(r'wacom|tablet|pen', d.name, re.I)] if Path('/dev/input/by-id').exists() else []
+    put(tablet='%d' % len(tablets) if tablets else 'none')
+    put(g15='connected' if any('G15' in d.name for d in Path('/dev/input/by-id').glob('*')) else 'not plugged in') if Path('/dev/input/by-id').exists() else None
+    put(usb='ask')
+
+
+def r_apps_more():
+    j = helper('hearth-winapps', 'list')
+    if isinstance(j, dict):
+        put(winapps=str(len(j.get('apps') or [])))
+    j = helper('hearth-services', 'list')
+    if isinstance(j, dict):
+        put(services=str(len([x for x in j.get('services') or [] if x.get('running')])))
+    rc, o, _ = run(['xdg-settings', 'get', 'default-web-browser'])
+    if rc == 0 and o.strip():
+        put(browser=o.strip().replace('.desktop', '').replace('org.hearthos.', '').replace('-', ' ').title()[:24])
+    auto = HOME / '.config/autostart'
+    if auto.exists():
+        names = [p.stem for p in auto.glob('*.desktop')]
+        put(autostart_names=', '.join(n.split('.')[-1].capitalize() for n in names[:2]) + ('...' if len(names) > 2 else ''))
+    j = helper('hearth-store', 'updates', timeout=8)
+    if isinstance(j, dict):
+        n = len(j.get('updates') or [])
+        put(store_updates='%d updates' % n if n else 'up to date', parts_ready='%d ready' % n if n else 'up to date')
+
+
+def r_gaming():
+    decky = Path.home() / 'homebrew/plugins'
+    if decky.exists():
+        n = len([p for p in decky.iterdir() if p.is_dir()])
+        put(decky='on', decky_line='Decky Loader on · %d plugins' % n)
+    else:
+        put(decky='Steam Game Mode')
+    j = helper('hearth-saves', 'status')
+    if isinstance(j, dict) and j.get('last'):
+        put(saves='last: %s' % j['last'])
+    j = helper('hearth-discord', 'status')
+    if isinstance(j, dict):
+        put(discord='on' if j.get('running') or j.get('chosen') else 'off')
+    j = helper('hearth-controller', 'status')
+    try:
+        dmi = Path('/sys/class/dmi/id/product_name').read_text().strip()
+    except OSError:
+        dmi = ''
+    hand = re.search(r'ally|steam deck|legion go|ayaneo|gpd|msi claw', dmi, re.I)
+    put(handheld=dmi[:20] if hand else 'not a handheld')
+    j = helper('hearth-remote-desktop', 'status')
+    if isinstance(j, dict):
+        put(remote='Moonlight on' if j.get('on') else 'off')
+
+
+def r_accounts():
+    import pwd
+    try:
+        pw = pwd.getpwuid(os.getuid())
+        real = pw.pw_gecos.split(',')[0] or pw.pw_name
+        groups = subprocess.run(['id', '-nG'], capture_output=True, text=True).stdout.split()
+        admin = 'sudo' in groups or 'wheel' in groups
+        others = [p.pw_gecos.split(',')[0] or p.pw_name for p in pwd.getpwall() if 1000 <= p.pw_uid < 60000 and p.pw_uid != os.getuid()]
+        j = helper('hearth-loginscreen', 'status')
+        auto = isinstance(j, dict) and j.get('autologin')
+        put(real=real, account_line='%s · %s · %s' % (pw.pw_name, 'administrator' if admin else 'standard account', 'signs in automatically' if auto else 'signs in with a password'),
+            others=', '.join(others[:2]) if others else 'none', signin='automatic' if auto else 'password')
+        if isinstance(j, dict) and j.get('background'):
+            put(login_pic=Path(j['background']).stem.replace('-', ' ').title()[:20])
+    except Exception:
+        pass
+    j = helper('hearth-fingerprint', 'status')
+    if isinstance(j, dict):
+        put(fingerprint=('%d set' % len(j.get('fingers') or [])) if j.get('fingers') else ('not set' if j.get('reader') else 'no reader'))
+    accs = []
+    goa = HOME / '.config/goa-1.0/accounts.conf'
+    try:
+        cur = None
+        for l in goa.read_text().splitlines():
+            if l.startswith('[Account '):
+                cur = {}
+                accs.append(cur)
+            elif cur is not None and '=' in l:
+                k, v = l.split('=', 1)
+                if k == 'Provider':
+                    cur['name'] = v.capitalize()
+                elif k == 'Identity':
+                    cur['line'] = v
+    except OSError:
+        pass
+    put(online=[a for a in accs if a.get('name')][:4])
+
+
+def r_hs_more():
+    j = helper('hearth-home-server', 'status', timeout=8)
+    if not isinstance(j, dict):
+        return
+    shares = j.get('shares') or []
+    put(shares=str(len([x for x in shares if x.get('on', True)])))
+    st = j.get('settings') or j
+    def on(k):
+        v = st.get(k)
+        return isinstance(v, dict) and v.get('on')
+    put(hs_files='on' if on('web') else 'off', hs_safety='on' if on('guard') else 'off',
+        hs_alerts='phone alerts on' if (st.get('alerts') or {}).get('on') else 'off', hs_family='on' if on('family') else 'off')
+    people = j.get('people') or st.get('people') or []
+    if isinstance(people, list):
+        put(family=str(len(people)))
+
+
+def r_privacy_more():
+    j = helper('hearth-vaults', 'list')
+    if isinstance(j, dict):
+        vs = j.get('vaults') or []
+        locked = [v for v in vs if not v.get('open')]
+        put(vaults=str(len(vs)), vaults_locked='%d locked' % len(locked) if locked else ('none' if not vs else 'all open'), vault_names=', '.join(v.get('name', '') for v in locked[:2]))
+    put(keyring='unlocked' if os.environ.get('GNOME_KEYRING_CONTROL') or Path('/run/user/%d/keyring' % os.getuid()).exists() else 'locked')
+    rec = HOME / '.local/share/recently-used.xbel'
+    put(recent='on' if rec.exists() else 'off')
+    if has('fwupdmgr'):
+        rc, o, _ = run(['fwupdmgr', 'get-updates', '--json'], 6)
+        try:
+            n = sum(len(d.get('Releases') or []) for d in json.loads(o).get('Devices') or [])
+            put(firmware='%d update%s' % (n, '' if n == 1 else 's') if n else 'up to date')
+        except Exception:
+            pass
+
+
+def r_updates():
+    r_pc()
+    with LOCK:
+        ver = OUT.get('hearth', '')
+    if ver:
+        short = '.'.join(ver.split('.')[:2]) if ver.endswith('.0') else ver
+        put(hearth_os='Hearth OS %s' % short, os_state='up to date', debian_state='with Hearth OS')
+    try:
+        st = json.loads((HOME / '.config/nimbus/store.json').read_text())
+        put(test_versions='on' if st.get('test') else 'off', parts_auto='on' if st.get('auto') else 'off')
+    except Exception:
+        put(test_versions='off', parts_auto='off')
+    put(os_auto='off')
+
+
+def r_access_more():
+    j = helper('hearth-access', 'status')
+    if isinstance(j, dict):
+        sv = j.get('settings') or {}
+        put(osk={'pad': 'with a controller', 'always': 'always', 'off': 'off'}.get(str(sv.get('osk', 'pad')), 'with a controller'),
+            filter=str(sv.get('colorFilter') or 'none'), captions='on' if sv.get('captions') else 'off')
+
+
 READERS = {
     'home': [r_pc, r_storage, r_memory, r_gpu, r_display, r_sound, r_brightness, r_wifi, r_bt, r_desktop, r_ai, r_server, r_link],
-    'system': [r_pc, r_display, r_sound, r_memory, r_storage, r_desktop, r_time],
+    'system': [r_pc, r_display, r_sound, r_memory, r_storage, r_desktop, r_time, r_system_more, r_updates],
     'net': [r_wifi, r_tailscale],
-    'bt': [r_bt],
+    'bt': [r_bt, r_devices],
     'link': [r_link, r_ai],
-    'pers': [r_desktop],
-    'apps': [r_apps],
-    'gaming': [r_bt],
+    'pers': [r_desktop, r_look],
+    'apps': [r_apps, r_apps_more],
+    'gaming': [r_bt, r_gaming],
     'ai': [r_ai, r_link],
-    'accounts': [],
-    'hs': [r_server],
-    'privacy': [r_privacy],
-    'a11y': [r_access],
-    'updates': [r_pc],
+    'accounts': [r_accounts, r_hs_more],
+    'hs': [r_server, r_hs_more],
+    'privacy': [r_privacy, r_privacy_more, r_system_more],
+    'a11y': [r_access, r_access_more, r_look],
+    'updates': [r_updates, r_apps_more],
 }
 
 
 def read(section):
+    if has('systemsettings') or has('kwin_wayland'):
+        put(kde='yes')
     ts = [threading.Thread(target=f, daemon=True) for f in READERS.get(section, [])]
     for t in ts:
         t.start()
@@ -393,6 +625,39 @@ def set_switch(key, on):
     if key in SWITCHES:
         rc, o, e = run(SWITCHES[key](on), 10)
         return {'ok': rc == 0, 'error': '' if rc == 0 else (e or o).strip()[:200]}
+    if key == 'zoom':
+        r = helper('hearth-access', 'magnifier', 'in' if on else 'off', timeout=6)
+        return {'ok': r is not None, 'error': '' if r is not None else 'The magnifier didn\'t start.'}
+    if key == 'reduce_motion':
+        sys.path.insert(0, str(HERE))
+        try:
+            import hearth_settings_io as sio
+            sio.merge_json(str(HOME / '.local/share/nimbus/desktop.json'), {'reduceMotion': on}, who='you')
+            return {'ok': True, 'error': ''}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)[:200]}
+    if key in ('metered', 'private_net'):
+        rc, o, _ = run(['nmcli', '-t', '-f', 'NAME,DEVICE', 'connection', 'show', '--active'])
+        name = next((l.split(':')[0] for l in o.splitlines() if l and not l.endswith(':lo')), '')
+        if not name:
+            return {'ok': False, 'error': 'Not connected.'}
+        if key == 'metered':
+            cmd = ['nmcli', 'connection', 'modify', name, 'connection.metered', 'yes' if on else 'no']
+        else:
+            cmd = ['nmcli', 'connection', 'modify', name, 'connection.zone', 'home' if on else 'public']
+        rc, o, e = run(cmd, 10)
+        return {'ok': rc == 0, 'error': '' if rc == 0 else (e or o).strip()[:200]}
+    if key == 'player_count':
+        sys.path.insert(0, str(HERE))
+        try:
+            import hearth_settings_io as sio
+            sio.merge_json(str(HOME / '.local/share/nimbus/desktop.json'), {'countMe': on}, who='you')
+            return {'ok': True, 'error': ''}
+        except Exception as e:
+            return {'ok': False, 'error': str(e)[:200]}
+    if key == 'link_clipboard':
+        r = helper('hearth-link-settings', 'set', 'clipboard', 'on' if on else 'off', timeout=8)
+        return {'ok': r is not None, 'error': '' if r is not None else 'Hearth Link didn\'t take it.'}
     if key.startswith('access.'):
         r = helper('hearth-access', 'set', json.dumps({key.split('.', 1)[1]: on}), timeout=10)
         return {'ok': r is not None, 'error': '' if r is not None else 'Accessibility didn\'t take the change.'}
