@@ -1,0 +1,66 @@
+hearth-settings: layout plasma put in place (undo: /tmp/home-qml-plasma/.config/nimbus/layouts/undo.json)
+Plasma-style is in place. Undo: hearth-layout undo
+hearth-settings: layout plasma put in place (undo: /tmp/home-rust-plasma/.config/nimbus/layouts/undo.json)
+Plasma-style is in place. Undo: hearth-layout undo
+hearth-settings: layout gnome put in place (undo: /tmp/home-qml-gnome/.config/nimbus/layouts/undo.json)
+GNOME-style is in place. Undo: hearth-layout undo
+hearth-settings: layout gnome put in place (undo: /tmp/home-rust-gnome/.config/nimbus/layouts/undo.json)
+GNOME-style is in place. Undo: hearth-layout undo
+hearth-settings: layout windows11 put in place (undo: /tmp/home-qml-windows11/.config/nimbus/layouts/undo.json)
+Windows 11-style is in place. Undo: hearth-layout undo
+hearth-settings: layout windows11 put in place (undo: /tmp/home-rust-windows11/.config/nimbus/layouts/undo.json)
+Windows 11-style is in place. Undo: hearth-layout undo
+hearth-settings: layout macos put in place (undo: /tmp/home-qml-macos/.config/nimbus/layouts/undo.json)
+macOS-style is in place. Undo: hearth-layout undo
+hearth-settings: layout macos put in place (undo: /tmp/home-rust-macos/.config/nimbus/layouts/undo.json)
+macOS-style is in place. Undo: hearth-layout undo
+hearth-settings: layout steam put in place (undo: /tmp/home-qml-steam/.config/nimbus/layouts/undo.json)
+Steam-style is in place. Undo: hearth-layout undo
+hearth-settings: layout steam put in place (undo: /tmp/home-rust-steam/.config/nimbus/layouts/undo.json)
+Steam-style is in place. Undo: hearth-layout undo
+hearth-settings: layout hearth put in place (undo: /tmp/home-qml-hearth/.config/nimbus/layouts/undo.json)
+Hearth is in place. Undo: hearth-layout undo
+hearth-settings: layout hearth put in place (undo: /tmp/home-rust-hearth/.config/nimbus/layouts/undo.json)
+Hearth is in place. Undo: hearth-layout undo
+screen console: {"on":true,"from":"console","chosen":true,"failed":false,"hidesBars":true,"drawn":1}
+screen iconrow: {"on":true,"from":"iconrow","chosen":true,"failed":false,"hidesBars":true,"drawn":1}
+screen cockpit: {"on":true,"from":"cockpit","chosen":true,"failed":false,"hidesBars":false,"drawn":1}
+screen cabin: {"on":true,"from":"cabin","chosen":true,"failed":false,"hidesBars":false,"drawn":1}
+screen notebook: {"on":true,"from":"notebook","chosen":true,"failed":false,"hidesBars":false,"drawn":1}
+screen retro: {"on":true,"from":"retro","chosen":true,"failed":false,"hidesBars":true,"drawn":1}
+lock editor: {"shown":true,"lockMode":true,"blocks":8,"pw":7,"error":""}
+/usr/share/cracklib/pw_dict.pwd.gz: No such file or directory
+BAD PASSWORD: The password fails the dictionary check - error loading dictionary
+qml-lock-1-made-of-blocks: the right password unlocked it
+qml-lock-2-in-the-1995-look: the right password unlocked it
+screens log: [32m  INFO[0m: Launching config: "/usr/share/nimbus/desktop/shell/shell.qml"|[32m  INFO[97m qml[0m: Mantel: loaded in 306 ms (labwc)|[32m  INFO[97m qml[0m: Mantel: the memory watch reads /proc directly|[32m  INFO[97m qml[0m: Mantel: up 3623 ms after it started loading|[33m  WARN[97m quickshell.qmlscanner[0m: Ignoring unresolvable import "/usr/share/nimbus/desktop/shell/fhcouch" from "/usr/share/nimbus/desktop/shell/FhpDeskBar.qml"|[33m  WARN[97m quickshell.qmlscanner[0m: Ignoring unresolvable import "/usr/share/nimbus/desktop/shell/fhcouch/deskmenus.js" from "/usr/share/nimbus/desktop/shell/FhpDeskBar.qml"|[33m  WARN[97m quickshell.qmlscanner[0m: Ignoring unresolvable import "/usr/share/nimbus/desktop/shell/fhcouch/fhp.js" from "/usr/share/nimbus/desktop/shell/FhpDeskBar.qml"|[33m  WARN[97m scene[0m: QML FileView at @shell.qml[505:9]: Read of /tmp/home-screens/.config/nimbus/screens.json failed: File does not exist.|[33m  WARN[97m scene[0m: QML Image at @Screen.qml[543:17]: Cannot open: file:///tmp/home-screens/.face|
+rust: your games as Mantel reads them: rth/trains-2010-wide.png", "icon": "", "update": false}, {"id": "steam:tributary", "title": "Tributary", "source": "steam", "cover": "file:///tmp/home-screens-rs/.cache/hearth/tributary-cover.png", "wide": "file:///tmp/home-screens-rs/.cache/hearth/tributary-wide.png", "icon": "", "update": false}]
+pair anything-4-block-editor
+pair anything-5-ai-made-block
+pair anything-7-first-start
+pair anything-cabin
+pair anything-cockpit
+pair anything-console
+pair anything-console-guide
+pair anything-iconrow
+pair anything-notebook
+pair anything-retro
+pair describe-feature
+pair describe-layout
+pair describe-needs
+pair gnome-1-desktop
+pair gnome-2-menu
+pair gnome-3-overview
+pair hearth-1-desktop
+pair hearth-2-menu
+pair lock-1-made-of-blocks
+pair lock-2-in-the-1995-look
+pair lock-3-the-editor
+pair macos-1-desktop
+pair macos-2-menu
+pair plasma-1-desktop
+pair plasma-2-menu
+pair steam-1-desktop
+pair steam-2-menu
+pair windows11-1-desktop
+pair windows11-2-menu
