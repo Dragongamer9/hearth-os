@@ -138,10 +138,11 @@ pub fn daily() -> i32 {
     if prefs.auto && !seen.offline {
         let (hearth, _) = crate::this_pc();
         for e in cat.apps.iter().filter(|e| !e.test) {
-            let Some(p) = e.part.as_ref() else { continue };
+            // (never system parts: they ask for the admin password, so only when you press Update)
+            let Some(p) = e.part.as_ref().filter(|p| !p.system) else { continue };
             let Some(up) = crate::parts::offer(p, crate::parts::have(&p.id).as_ref(), &hearth) else { continue };
             match crate::parts::install(up) {
-                Ok(()) => {
+                Ok(_) => {
                     println!("hearth-store: {} updated to {} by itself", e.name, up.version);
                     let _ = net::run_short(5, &["notify-send", "-a", "Hearth Store", "-i", "system-software-update", &format!("{} is on {}", e.name, up.version), "Updated by itself (Store settings › Install updates by themselves)."]);
                 }
