@@ -1,0 +1,18 @@
+# The owner, Nov 24, 2026: "publish the store links automatically from now on". A push to the store branch that
+# changes catalog.json runs "Publish the Hearth Store list" (store.yml on main), which checks the list (serial
+# higher than the live one, every entry sound) before the website workflow signs and publishes it.
+name: Publish the Hearth Store list when it changes
+on:
+  push:
+    branches: [store]
+    paths: [catalog.json]
+permissions:
+  actions: write
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Start "Publish the Hearth Store list" on main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run store.yml --ref main -R "$GITHUB_REPOSITORY"
