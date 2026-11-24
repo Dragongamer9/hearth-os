@@ -28,10 +28,10 @@ PAGES = [
 ]
 
 
-# Hearth OS is Fedora-based from 1.16 (edition id 'anatase', shown as "Fedora"; the owner, Nov 19, 2026). Debian (edition
-# id 'peppermint') is merged into it and archived; Ubuntu and CachyOS since October 2026. (id, name, base; base '' when
-# the name already says it)
-EDITIONS = [('anatase', 'Fedora', ''), ('peppermint', 'Debian', 'archived')]
+# Hearth OS is Debian-based again from 1.18 (edition id 'peppermint', shown as "Debian"; the owner, Nov 23, 2026: "were
+# not coming back to fedora"). Fedora (edition id 'anatase', 1.16 and 1.17) moves its PCs to Debian by themselves;
+# Ubuntu and CachyOS archived since October 2026. (id, name, base; base '' when the name already says it)
+EDITIONS = [('peppermint', 'Debian', ''), ('anatase', 'Fedora', 'moving to Debian')]
 # Sections (by heading id) that only apply to some editions; everything else is for all of them.
 SECTION_EDS = {
     'podman': 'ubuntu cachyos peppermint',
@@ -178,12 +178,12 @@ An update can't half-install, and the version you had before stays on the drive 
 <p>Hearth looks and works the same on every edition. What changes is the Linux underneath it.</p>
 <div class="tbl"><table>
 <tr><th>Edition</th><th>Built on</th><th>Status</th><th>Good for</th></tr>
-<tr><td><b>Fedora</b></td><td>Fedora (Anatase)</td><td>Recommended</td><td>Everyone. The main edition, the one that gets updates. Locked by default and updated in one piece; the file system can be unlocked in Settings.</td></tr>
-<tr><td><b>Debian</b></td><td>Debian 13</td><td>Archived</td><td>Merged into the Fedora edition. Installs keep working; switch to Fedora to keep getting updates.</td></tr>
+<tr><td><b>Debian</b></td><td>Debian 13</td><td>Recommended</td><td>Everyone. The main edition again from 1.18, the one that gets updates. Locked by default and updated in one piece; the file system can be unlocked in Settings.</td></tr>
+<tr><td><b>Fedora</b></td><td>Fedora (Anatase)</td><td>Moving to Debian</td><td>Hearth OS 1.16 and 1.17. A Fedora PC moves itself to Debian with the 1.18 update, keeping your home folder.</td></tr>
 </table></div>
 <p>Both have the automatic fallback (an update that doesn't start goes back by itself) and Hearth Recovery. You can <a href="updates.html#switch">switch edition</a> later without a USB stick. Your games and saves come along.</p>
-<div class="note"><p><b>Fedora is the main version of Hearth OS.</b> The Debian edition has been merged into it and archived, as Ubuntu and
-CachyOS were before. Already on Debian? <a href="updates.html#switch">Switch to Fedora</a>: your home folder stays as it is, and Debian stays in the boot menu so you can go back.</p></div>
+<div class="note"><p><b>Debian is the main version of Hearth OS again from 1.18.</b> A Fedora PC moves itself over a few minutes after it
+starts the 1.18 update: your home folder, accounts and Wi-Fi stay as they are, and Fedora stays in the boot menu so you can go back.</p></div>
 
 {h2('yours', 'About your edition')}
 <p class="ed" data-ed="all">Pick your edition above to see what's particular about it.</p>
@@ -202,9 +202,8 @@ INSTALL = f'''
 {h2('download', 'Downloads')}
 <p>The <b>offline USB</b> carries the whole system and installs without internet. Keep a <b>Recovery USB</b> too,
 for a device that won't start.</p>
-<div class="note"><p><b>A new USB installer comes with 1.16.</b> Hearth OS is Fedora-based from 1.16, but the USB files here
-are still the Debian ones: they install the Debian edition, which is archived and gets no more updates.
-The Fedora USB installer and Recovery USB come with 1.16.</p></div>
+<div class="note"><p><b>The offline USB is still the Fedora one from 1.16.</b> Hearth OS is on Debian again from 1.18: a PC installed from
+this USB moves itself to Debian once it has updated. The Recovery USB is the Debian one.</p></div>
 <div class="tbl"><table>
 <tr><th>Download</th><th>Size</th><th>Internet while installing</th></tr>
 <tr><td><a href="{R2}hearth-os-anatase.iso">Hearth OS, offline USB</a> (the Fedora edition)</td><td>about 9 GB</td><td>Not needed</td></tr>
@@ -281,9 +280,9 @@ can be moved with the D-pad or volume buttons.</p>
 <p>Then restart. The next update moves you forward again.</p>
 
 {h2('switch', 'Switching edition')}
-<p>Move from Hearth OS on Debian (archived) to the Fedora edition, the main one, without a USB stick: <b>Settings › System › Updates › Switch edition</b>.</p>
-<div class="note warn"><p>Don't switch a Debian PC to Fedora by hand (with <code>bootc switch</code>): the switch in Settings first
-clears what would make Fedora start to a black screen, and warns when Secure Boot has to be turned off.</p></div>
+<p>From 1.18 a Fedora PC moves itself to Debian, the main edition again, a few minutes after it starts the 1.18 update; <b>Settings › System › Updates › Switch edition</b> does the same move by hand, without a USB stick.</p>
+<div class="note warn"><p>Don't switch editions by hand (with <code>bootc switch</code>): the move in Settings first
+clears what would make the new edition start to a black screen, and warns when Secure Boot has to be turned off.</p></div>
 <ul>
 <li><b>Kept:</b> your whole home folder, exactly as it is: your account, games, saves, store libraries, files and settings.</li>
 <li><b>Kept in the boot menu:</b> the Debian version you came from (pinned), so you can go back to it. Switch edition on Fedora takes you back to that very version, as you left it.</li>
@@ -642,7 +641,7 @@ Don't include passwords.</p>
     <textarea name="what" rows="5" maxlength="4000" required placeholder="What you did, what you expected, and what happened instead. Error messages word for word help a lot."></textarea></label>
   <div class="row2">
     <label>Edition
-      <select name="edition"><option value="">Not sure</option><option>Fedora</option><option>Debian (archived)</option><option>Ember (Windows)</option></select></label>
+      <select name="edition"><option value="">Not sure</option><option>Debian</option><option>Fedora</option><option>Ember (Windows)</option></select></label>
     <label>Hearth version <input name="version" maxlength="20" placeholder="e.g. 0.3.1 (Settings › Updates)"></label>
   </div>
   <div class="row2">
@@ -680,7 +679,7 @@ REQUESTS = f'''
     <label>What kind of request?
       <select name="type"><option>New feature</option><option>Change something</option><option>New edition</option><option>Device support</option><option>Other</option></select></label>
     <label>For which edition?
-      <select name="edition"><option value="">Every edition</option><option>Fedora</option><option>Debian (archived)</option><option>Ember (Windows)</option><option>A new edition</option></select></label>
+      <select name="edition"><option value="">Every edition</option><option>Debian</option><option>Fedora</option><option>Ember (Windows)</option><option>A new edition</option></select></label>
   </div>
   <label><span>In a few words <span class="req">(needed)</span></span>
     <input name="title" maxlength="120" required placeholder="e.g. Hearth OS on openSUSE, or a battery saver for handhelds"></label>

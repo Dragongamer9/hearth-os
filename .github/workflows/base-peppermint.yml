@@ -1209,7 +1209,8 @@ jobs:
         run: |
           set -o pipefail
           exec > >(tee /tmp/step.log) 2>&1
-          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -20 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=publish::$msg"' ERR
+          # The error also goes to the run's summary: a job past GitHub's 50 notes drops it (1.18's test tag).
+          trap 'sleep 1; { echo "### Publish failed"; echo; echo "\`\`\`"; grep -v -e "^\s*$" /tmp/step.log | tail -20 | cut -c1-300; echo "\`\`\`"; } >> "$GITHUB_STEP_SUMMARY"; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -20 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=publish::$msg"' ERR
           v="${{ needs.app.outputs.version }}"
           echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
           tags="testing testing-$v-$(date -u +%Y%m%d)"
@@ -1220,9 +1221,13 @@ jobs:
           fi
           # Only a test tag: the candidate checked above gets the tag's own name (the same image, no new upload).
           if [ -n "${TEST_TAG:-}" ] && [ "${PUBLISH:-}" != true ] && sudo skopeo inspect --authfile /run/containers/0/auth.json "docker://$IMAGE:$TEST_TAG-candidate" >/dev/null 2>&1; then
-            sudo skopeo copy -q --preserve-digests --authfile /run/containers/0/auth.json "docker://$IMAGE:$TEST_TAG-candidate" "docker://$IMAGE:$TEST_TAG"
-            echo "::notice title=published::$IMAGE:$TEST_TAG (the checked candidate)"
-            exit 0
+            # 1.18: this copy failed once with no note left; then the same image goes up the usual way below.
+            sudo rm -f /var/lib/containers/cache/blob-info-cache-v1.sqlite /var/lib/containers/cache/blob-info-cache-v1.boltdb
+            if sudo skopeo copy -q --preserve-digests --authfile /run/containers/0/auth.json "docker://$IMAGE:$TEST_TAG-candidate" "docker://$IMAGE:$TEST_TAG"; then
+              echo "::notice title=published::$IMAGE:$TEST_TAG (the checked candidate)"
+              exit 0
+            fi
+            echo "copying the candidate to $TEST_TAG failed; uploading the same image instead" | tee -a "$GITHUB_STEP_SUMMARY"
           fi
           for tag in $tags; do
             # 1.13: the rechunked image exactly as made (its layers' digests are what devices already have).

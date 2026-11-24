@@ -225,20 +225,20 @@ class EveryPlacePointsAtTheRelease(unittest.TestCase):
         docs = (REPO / 'tools' / 'build-docs.py').read_text()
         self.assertIn('{R2}hearth-os-anatase.iso', docs)
 
-    def test_no_page_offers_debian(self):
+    def test_the_pages_say_debian_again(self):
+        # 1.18 (the owner, Nov 23: "were not coming back to fedora"): Debian is the edition again and Fedora PCs move
+        # over by themselves. The offline USB on the download site is still 1.16's Fedora one (test_download_links).
         pages = [REPO / 'site' / 'index.html', REPO / 'site' / 'whats-new' / 'index.html', REPO / 'site' / 'arm-devices' / 'index.html',
                  REPO / 'tools' / 'build-docs.py'] + sorted(p for p in (REPO / 'site' / 'docs').glob('*.html') if p.name != 'releases.html')
         # (releases.html is the history of every release, from docs/ROADMAP.md: what each one said at the time.)
         for p in pages:
             t = p.read_text()
             self.assertNotIn('hearth-os-peppermint.iso', t, p)
-            self.assertNotIn('Debian-based', t, p)
-            self.assertNotIn('switch to Debian', t, p)
-            self.assertNotIn('install Hearth OS on Debian', t, p)
-        for p in pages[:3]:
-            self.assertIn('Fedora', p.read_text(), p)
-            self.assertRegex(p.read_text(), r'Debian edition has been merged into it and archived', p)
-
+            self.assertNotIn('Fedora-based', t, p)
+            self.assertNotIn('Debian (archived)', t, p)
+            self.assertNotIn('Debian edition has been merged into it and archived', t, p)
+        self.assertIn('Debian-based', pages[0].read_text())
+        self.assertIn('moves itself', pages[0].read_text())
 
 if __name__ == '__main__':
     unittest.main()
