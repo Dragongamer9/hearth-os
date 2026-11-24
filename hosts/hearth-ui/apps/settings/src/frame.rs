@@ -257,7 +257,7 @@ fn search_page(a: &App) -> Element<'_, Msg> {
     let q = a.query.to_lowercase();
     let mut c = Column::new().spacing(8.0);
     let mut n = 0;
-    for pg in PAGES.iter().filter(|x| !x.desc.is_empty() || x.landing) {
+    for pg in PAGES.iter().filter(|x| (!x.desc.is_empty() || x.landing) && !x.live) {
         let hay = format!("{} {} {}", pg.label, pg.desc, pg.words).to_lowercase();
         if !q.split_whitespace().all(|w| hay.contains(w)) {
             continue;
@@ -289,7 +289,7 @@ pub fn category(a: &App) -> Element<'_, Msg> {
         }
     }
     let mut unbuilt = Vec::new();
-    for pg in PAGES.iter().filter(|x| x.cat == cat && !x.hidden && x.parent.is_empty() && !x.desc.is_empty()) {
+    for pg in PAGES.iter().filter(|x| x.cat == cat && !x.hidden && !x.live && x.parent.is_empty() && !x.desc.is_empty()) {
         if registry::built(pg.id) {
             c = c.push(link_row(&p, page_glyph(pg.id), pg.label, pg.desc, Msg::Go(pg.id)));
         } else {
