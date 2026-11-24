@@ -1,0 +1,124 @@
+{
+ "name": "Hearth",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "background": {
+  "kind": "gradient",
+  "from": "#4a2210",
+  "to": "#120c0a"
+ },
+ "look": {
+  "text": "#f6ece4"
+ },
+ "privacy": {
+  "notifications": "names",
+  "media": true
+ },
+ "blocks": [
+  {
+   "id": "clock",
+   "block": "clock",
+   "x": 0,
+   "y": 0,
+   "w": 8,
+   "h": 3,
+   "style": {
+    "size": 170,
+    "weight": 300
+   }
+  },
+  {
+   "id": "date",
+   "block": "date",
+   "x": 0,
+   "y": 3,
+   "w": 8,
+   "h": 1,
+   "style": {
+    "size": 30,
+    "text": "#f3d9c0"
+   }
+  },
+  {
+   "id": "weather",
+   "block": "weather",
+   "x": 0,
+   "y": 4,
+   "w": 5,
+   "h": 2,
+   "tonight": true,
+   "style": {
+    "colour": "#1c130f",
+    "seeThrough": 25,
+    "corners": 18
+   }
+  },
+  {
+   "id": "media",
+   "block": "media",
+   "x": 0,
+   "y": 6,
+   "w": 5,
+   "h": 2,
+   "style": {
+    "colour": "#1c130f",
+    "seeThrough": 25,
+    "corners": 18
+   }
+  },
+  {
+   "id": "notifications",
+   "block": "notifications",
+   "x": 0,
+   "y": 8,
+   "w": 5,
+   "h": 3,
+   "style": {
+    "colour": "#1c130f",
+    "seeThrough": 25,
+    "corners": 18
+   }
+  },
+  {
+   "id": "downloads",
+   "block": "downloads",
+   "x": 18,
+   "y": 0,
+   "w": 6,
+   "h": 2,
+   "style": {
+    "colour": "#1c130f",
+    "seeThrough": 25,
+    "corners": 18
+   }
+  },
+  {
+   "id": "battery",
+   "block": "battery",
+   "x": 18,
+   "y": 2,
+   "w": 6,
+   "h": 1,
+   "style": {
+    "colour": "#1c130f",
+    "seeThrough": 25,
+    "corners": 18
+   }
+  },
+  {
+   "id": "password",
+   "block": "password",
+   "x": 17,
+   "y": 8,
+   "w": 6,
+   "h": 5,
+   "style": {
+    "colour": "#1c130f",
+    "seeThrough": 25,
+    "corners": 18
+   }
+  }
+ ]
+}

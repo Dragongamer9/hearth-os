@@ -1,0 +1,62 @@
+{
+ "name": "1995 computer",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "background": {
+  "kind": "colour",
+  "from": "#008080"
+ },
+ "look": {
+  "text": "#ffffff",
+  "font": "Inter"
+ },
+ "privacy": {
+  "notifications": "count",
+  "media": true
+ },
+ "blocks": [
+  {
+   "id": "bar",
+   "block": "bar",
+   "x": 0,
+   "y": 0,
+   "w": 24,
+   "h": 1,
+   "value": "Hearth is locked",
+   "style": {
+    "colour": "#c0c0c0",
+    "text": "#000000",
+    "corners": 0
+   }
+  },
+  {
+   "id": "icons",
+   "block": "icons",
+   "x": 0,
+   "y": 1,
+   "w": 2,
+   "h": 3,
+   "items": [
+    "home",
+    "bin"
+   ],
+   "style": {
+    "text": "#ffffff"
+   }
+  },
+  {
+   "id": "password",
+   "block": "password",
+   "x": 8,
+   "y": 5,
+   "w": 8,
+   "h": 3,
+   "shows": "window",
+   "style": {
+    "corners": 0
+   }
+  }
+ ]
+}

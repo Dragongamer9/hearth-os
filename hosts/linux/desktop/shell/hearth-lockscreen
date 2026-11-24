@@ -1,0 +1,372 @@
+#!/usr/bin/env python3
+"""The lock screen made of blocks (docs/mockups/checklists/lock-screen-blocks.md): what Mantel's lock screen may show.
+
+The lock screen is drawn from the same screen format as Build anything (hearth-layout's screen.rs: grid, background,
+look, blocks), but only blocks that SHOW things are allowed, and nothing on it can open an app, a file or a setting:
+every block's press is dropped, and only the password block unlocks (that is Hearth's own lock, Lock.qml, through PAM:
+nothing here touches it). The password block is always there, exactly once, big enough and inside the screen.
+
+  hearth-lockscreen check JSON     {"ok", "problems", "screen"}: the layout made safe (what the editor keeps)
+  hearth-lockscreen ready ID       a ready-made desktop's matching lock screen (console, iconrow, cockpit, cabin,
+                                   notebook, retro, hearth), made safe
+  hearth-lockscreen try JSON       the editor's Try it: the layout made safe, put where the next lock reads it once
+                                   ($XDG_RUNTIME_DIR/hearth-lock-try.json); the lock screen removes it when it's done
+  hearth-lockscreen keep JSON      the editor's Keep this: merged into ~/.local/share/nimbus/lock-screen.json
+                                   (hearth_settings_io: atomic, a .bak kept, never over a file that couldn't be read)
+  hearth-lockscreen match          Settings: the lock screen matching your desktop (on, match)
+  hearth-lockscreen plain          Settings: the plain lock screen (off; your own layout stays in the file)
+  hearth-lockscreen downloads      what Steam is downloading on this device: {"items": [{"name", "percent"}]}
+  hearth-lockscreen played         when each Steam game was last played here, and its minutes these two weeks (the
+                                   desktop's hero tile and activity cards): {"last": {"steam:ID": time}, "twoWeeks": {...}}
+  hearth-lockscreen friends        friends online, from Steam's own list on this device and their public profiles
+                                   (kept 5 minutes): {"online": [{"name", "game"}]}
+"""
+import json
+import os
+import re
+import sys
+import time
+import urllib.request
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+READY = ('hearth', 'console', 'iconrow', 'cockpit', 'cabin', 'notebook', 'retro')
+# What each lock block is (the editor's names): only things to look at.
+BLOCKS = {
+    'clock': 'Clock', 'date': 'Date', 'weather': 'Weather', 'media': 'Media', 'notifications': 'Notifications',
+    'downloads': 'Downloads', 'battery': 'Battery', 'calendar': 'Calendar', 'picture': 'Picture', 'text': 'Words',
+    'friends': 'Friends online', 'icons': 'Desktop icons', 'bar': 'Locked bar', 'password': 'Password and fingerprint',
+}
+STYLE_KEYS = {'colour', 'background', 'text', 'corners', 'seeThrough', 'font', 'weight', 'size', 'animation'}
+BACKGROUNDS = {'', 'gradient', 'colour', 'paper', 'picture', 'wallpaper', 'none'}
+ICON_ITEMS = {'home', 'bin', 'files', 'games', 'store', 'music', 'notes', 'settings'}
+PRIVACY_NOTES = ('names', 'messages', 'count', 'none')
+SLUG = re.compile(r'^[a-z0-9][a-z0-9-]{0,47}$')
+COLOUR = re.compile(r'^#[0-9a-fA-F]{6}([0-9a-fA-F]{2})?$')
+PW_MIN = (5, 4)
+
+
+def home():
+    return os.environ.get('HOME') or os.path.expanduser('~')
+
+
+def lock_file():
+    return os.path.join(home(), '.local', 'share', 'nimbus', 'lock-screen.json')
+
+
+def try_file():
+    run = os.environ.get('XDG_RUNTIME_DIR') or '/tmp'
+    return os.path.join(run, 'hearth-lock-try.json')
+
+
+def _int(v, lo, hi, dflt):
+    try:
+        n = int(round(float(v)))
+    except (TypeError, ValueError):
+        return dflt
+    return max(lo, min(hi, n))
+
+
+def _text(v, n=400):
+    return v[:n] if isinstance(v, str) else ''
+
+
+def _style(st, problems, name):
+    out = {}
+    if not isinstance(st, dict):
+        return out
+    for k, v in st.items():
+        if k not in STYLE_KEYS:
+            if k in ('sound', 'focus', 'aboveWindows'):
+                continue        # a lock screen has nothing to press or hover
+            problems.append('%s: its "%s" isn\'t something a lock screen block has, so it was left out' % (name, k))
+            continue
+        if k in ('colour', 'background', 'text'):
+            if isinstance(v, str) and COLOUR.match(v):
+                out[k] = v
+        elif k in ('corners', 'size'):
+            out[k] = _int(v, 0, 200, 0)
+        elif k == 'seeThrough':
+            out[k] = _int(v, 0, 100, 0)
+        elif k == 'weight':
+            out[k] = _int(v, 100, 900, 400)
+        else:
+            out[k] = _text(v, 40)
+    return out
+
+
+def sanitize(v):
+    """The layout as the lock screen may show it, and what was changed to get there."""
+    problems = []
+    if not isinstance(v, dict):
+        v = {}
+        problems.append("It wasn't a lock screen, so the plain one was used")
+    g = v.get('grid') if isinstance(v.get('grid'), dict) else {}
+    cols, rows = _int(g.get('cols'), 4, 48, 24), _int(g.get('rows'), 4, 48, 14)
+    bg = v.get('background') if isinstance(v.get('background'), dict) else {}
+    kind = bg.get('kind') if bg.get('kind') in BACKGROUNDS else 'gradient'
+    out_bg = {'kind': kind}
+    for k in ('from', 'to'):
+        if isinstance(bg.get(k), str) and COLOUR.match(bg[k]):
+            out_bg[k] = bg[k]
+    if kind == 'picture' and isinstance(bg.get('value'), str):
+        out_bg['value'] = _text(bg['value'], 500)
+    look = v.get('look') if isinstance(v.get('look'), dict) else {}
+    out_look = {k: _text(look[k], 40) for k in ('font', 'accent', 'text') if isinstance(look.get(k), str)}
+    pv = v.get('privacy') if isinstance(v.get('privacy'), dict) else {}
+    privacy = {'notifications': pv.get('notifications') if pv.get('notifications') in PRIVACY_NOTES else 'names',
+               'media': pv.get('media') is not False}
+    blocks, ids, pw = [], set(), None
+    for b in v.get('blocks') if isinstance(v.get('blocks'), list) else []:
+        if not isinstance(b, dict):
+            continue
+        name = b.get('block')
+        own = isinstance(name, str) and name.startswith('own:') and bool(SLUG.match(name[4:]))
+        if name not in BLOCKS and not own:
+            problems.append('"%s" can\'t be on a lock screen (only blocks that show things), so it was left out' % name)
+            continue
+        if name == 'password' and pw is not None:
+            problems.append('There can only be one password block')
+            continue
+        w, h = _int(b.get('w'), 1, cols, 4), _int(b.get('h'), 1, rows, 2)
+        if name == 'password':
+            w, h = max(w, min(PW_MIN[0], cols)), max(h, min(PW_MIN[1], rows))
+        x, y = _int(b.get('x'), 0, cols - w, 0), _int(b.get('y'), 0, rows - h, 0)
+        bid = b.get('id') if isinstance(b.get('id'), str) and SLUG.match(b.get('id')) else name.replace(':', '-')
+        n = 2
+        base = bid
+        while bid in ids:
+            bid = '%s-%d' % (base, n)
+            n += 1
+        ids.add(bid)
+        nb = {'id': bid, 'block': name, 'x': x, 'y': y, 'w': w, 'h': h}
+        for k in ('title', 'shows', 'value', 'place'):
+            if isinstance(b.get(k), str) and b.get(k):
+                nb[k] = _text(b[k], 2000 if k == 'value' else 120)
+        for k in ('lat', 'lon'):
+            if isinstance(b.get(k), (int, float)) and not isinstance(b.get(k), bool):
+                nb[k] = round(float(b[k]), 4)
+        if isinstance(b.get('tonight'), bool):
+            nb['tonight'] = b['tonight']
+        if name == 'icons':
+            nb['items'] = [i for i in (b.get('items') or []) if i in ICON_ITEMS][:8]
+        if b.get('press'):
+            problems.append('%s: nothing on the lock screen opens anything, so what it did when pressed was left out' % BLOCKS.get(name, name))
+        nb['style'] = _style(b.get('style'), problems, BLOCKS.get(name, name))
+        if name == 'password':
+            pw = nb
+        else:
+            blocks.append(nb)
+    if pw is None:
+        w, h = min(7, cols), min(5, rows)
+        pw = {'id': 'password', 'block': 'password', 'x': cols - w, 'y': max(0, rows - h - 1), 'w': w, 'h': h, 'style': {}}
+        problems.append('The password block is always there, so it was put back')
+    # always on top: drawn last
+    blocks.append(pw)
+    screen = {'grid': {'cols': cols, 'rows': rows}, 'background': out_bg, 'look': out_look, 'privacy': privacy,
+              'line': v.get('line') is not False, 'blocks': blocks}
+    if isinstance(v.get('name'), str):
+        screen['name'] = _text(v['name'], 60)
+    if isinstance(v.get('said'), str):
+        screen['said'] = _text(v['said'], 1000)
+    return screen, problems
+
+
+def ready(name):
+    name = name if name in READY else 'hearth'
+    with open(os.path.join(HERE, 'lock-screens', name + '.json')) as f:
+        return sanitize(json.load(f))[0]
+
+
+def write_atomic(path, obj):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = '%s.tmp.%d' % (path, os.getpid())
+    with open(tmp, 'w') as f:
+        json.dump(obj, f)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, path)
+
+
+def keep(screen, match=False, src=''):
+    sys.path.insert(0, HERE)
+    import hearth_settings_io as io  # noqa: E402  (the shared, safe settings writer)
+    changes = {'on': True, 'match': bool(match), 'from': src if src in READY else '', 'screen': screen}
+    return io.merge_json(lock_file(), changes, who="you")
+
+
+# ---------------------------------------------------------------- what the blocks read
+def steam_dirs():
+    roots = [os.path.join(home(), p) for p in ('.local/share/Steam', '.steam/steam', '.var/app/com.valvesoftware.Steam/.local/share/Steam')]
+    seen, out = set(), []
+    for r in roots:
+        lib = os.path.join(r, 'steamapps')
+        if not os.path.isdir(lib):
+            continue
+        cands = [lib]
+        try:
+            vdf = open(os.path.join(lib, 'libraryfolders.vdf'), errors='replace').read()
+            cands += [os.path.join(p.replace('\\\\', '\\'), 'steamapps') for p in re.findall(r'"path"\s+"([^"]+)"', vdf)]
+        except OSError:
+            pass
+        for c in cands:
+            rc = os.path.realpath(c)
+            if rc not in seen and os.path.isdir(rc):
+                seen.add(rc)
+                out.append(rc)
+    return out
+
+
+def acf_value(text, key):
+    m = re.search(r'"%s"\s+"([^"]*)"' % re.escape(key), text)
+    return m.group(1) if m else ''
+
+
+def downloads():
+    items = []
+    for lib in steam_dirs():
+        try:
+            names = os.listdir(lib)
+        except OSError:
+            continue
+        for n in names:
+            if not (n.startswith('appmanifest_') and n.endswith('.acf')):
+                continue
+            try:
+                t = open(os.path.join(lib, n), errors='replace').read(65536)
+            except OSError:
+                continue
+            try:
+                total, done = int(acf_value(t, 'BytesToDownload') or 0), int(acf_value(t, 'BytesDownloaded') or 0)
+            except ValueError:
+                continue
+            if total > 0 and done < total:
+                items.append({'name': acf_value(t, 'name') or n[12:-4], 'percent': int(done * 100 / total)})
+    items.sort(key=lambda i: -i['percent'])
+    return {'items': items[:5]}
+
+
+def friends_known():
+    out = []
+    for r in steam_dirs():
+        steam = os.path.dirname(r)
+        ud = os.path.join(steam, 'userdata')
+        try:
+            accts = [a for a in os.listdir(ud) if a.isdigit() and a != '0']
+        except OSError:
+            continue
+        for a in accts:
+            try:
+                t = open(os.path.join(ud, a, 'config', 'localconfig.vdf'), errors='replace').read()
+            except OSError:
+                continue
+            i = t.find('"friends"')
+            if i < 0:
+                continue
+            for acc, name in re.findall(r'"(\d{3,12})"\s*\{\s*"name"\s+"([^"]+)"', t[i:i + 400000]):
+                if acc != a:
+                    out.append((76561197960265728 + int(acc), name))
+    return out[:40]
+
+
+def played():
+    """When you last played each Steam game on this device and for how long these two weeks (Steam's own LastPlayed and
+    Playtime2wks): {"last": {"steam:APPID": unix seconds}, "twoWeeks": {"steam:APPID": minutes}}."""
+    out, weeks = {}, {}
+    for r in steam_dirs():
+        ud = os.path.join(os.path.dirname(r), 'userdata')
+        try:
+            accts = [a for a in os.listdir(ud) if a.isdigit() and a != '0']
+        except OSError:
+            continue
+        for a in accts:
+            try:
+                t = open(os.path.join(ud, a, 'config', 'localconfig.vdf'), errors='replace').read()
+            except OSError:
+                continue
+            for app, body in re.findall(r'"(\d+)"\s*\{([^{}]*)\}', t):
+                k = 'steam:' + app
+                m = re.search(r'"LastPlayed"\s+"(\d+)"', body)
+                if m:
+                    out[k] = max(out.get(k, 0), int(m.group(1)))
+                m = re.search(r'"Playtime2wks"\s+"(\d+)"', body)
+                if m:
+                    weeks[k] = max(weeks.get(k, 0), int(m.group(1)))
+    return {'last': out, 'twoWeeks': weeks}
+
+
+def friends(fetch=None):
+    cache = os.path.join(os.environ.get('XDG_CACHE_HOME') or os.path.join(home(), '.cache'), 'hearth', 'lock-friends.json')
+    try:
+        c = json.load(open(cache))
+        if time.time() - c.get('at', 0) < 300:
+            return {'online': c.get('online', [])}
+    except (OSError, ValueError, AttributeError):
+        pass
+
+    def get(i):
+        req = urllib.request.Request('https://steamcommunity.com/profiles/%d/?xml=1' % i, headers={'User-Agent': 'Hearth'})
+        return urllib.request.urlopen(req, timeout=4).read(200000).decode('utf-8', 'replace')
+    fetch = fetch or get
+    online = []
+    for i, name in friends_known():
+        try:
+            x = fetch(i)
+        except Exception:
+            continue
+        st = re.search(r'<onlineState>(.*?)</onlineState>', x or '')
+        if not st or st.group(1).strip() not in ('online', 'in-game'):
+            continue
+        g = re.search(r'<gameName><!\[CDATA\[(.*?)\]\]></gameName>', x or '')
+        online.append({'name': name, 'game': g.group(1) if g else ''})
+    try:
+        write_atomic(cache, {'at': time.time(), 'online': online})
+    except OSError:
+        pass
+    return {'online': online}
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    arg = argv[2] if len(argv) > 2 else ''
+    try:
+        if cmd == 'check':
+            try:
+                v = json.loads(arg)
+            except ValueError:
+                print(json.dumps({'ok': False, 'problems': ["That isn't a lock screen"], 'screen': sanitize({})[0]}))
+                return 1
+            s, p = sanitize(v)
+            print(json.dumps({'ok': True, 'problems': p, 'screen': s}))
+        elif cmd == 'ready':
+            print(json.dumps(ready(arg)))
+        elif cmd == 'try':
+            s, p = sanitize(json.loads(arg))
+            write_atomic(try_file(), s)
+            print(json.dumps({'ok': True, 'problems': p}))
+        elif cmd == 'keep':
+            o = json.loads(arg)
+            s, p = sanitize(o.get('screen') if 'screen' in o else o)
+            keep(s, o.get('match') is True, o.get('from') or '')
+            print(json.dumps({'ok': True, 'problems': p, 'screen': s}))
+        elif cmd in ('match', 'plain'):
+            sys.path.insert(0, HERE)
+            import hearth_settings_io as io  # noqa: E402
+            io.merge_json(lock_file(), {'on': cmd == 'match', 'match': True} if cmd == 'match' else {'on': False}, who='you')
+            print(json.dumps({'ok': True}))
+        elif cmd == 'downloads':
+            print(json.dumps(downloads()))
+        elif cmd == 'played':
+            print(json.dumps(played()))
+        elif cmd == 'friends':
+            print(json.dumps(friends()))
+        else:
+            print(__doc__)
+            return 2
+    except Exception as e:  # always an answer the QML can read
+        print(json.dumps({'ok': False, 'error': str(e)}))
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

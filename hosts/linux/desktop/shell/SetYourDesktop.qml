@@ -217,6 +217,51 @@ SetPage {
         chevron: true
         onActivated: Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "screen", "firstStart"])
     }
+    // >>> The lock screen made of blocks (lock-screen-blocks.md): plain, matching your desktop, or your own (the editor).
+    // Only what you press here changes it (hearth-lockscreen: merged, atomic, a .bak kept).
+    property var lockSt: null
+    FileView {
+        id: lockFileV
+        path: Quickshell.env("HOME") + "/.local/share/nimbus/lock-screen.json"
+        watchChanges: true; onFileChanged: reload()
+        onLoaded: { try { const t = text(); page.lockSt = t && t.trim() ? JSON.parse(t) : null; } catch (e) { page.lockSt = null; } }
+        onLoadFailed: page.lockSt = null
+    }
+    // what the lock screen is now: no file follows a ready-made desktop, else plain (as LockBlocks.qml decides)
+    readonly property string lockNow: page.lockSt ? (page.lockSt.on !== true ? "plain" : page.lockSt.match === true ? "match" : "own") : (ScreenLayout.on ? "match" : "plain")
+    Process { id: lockSet; onExited: lockFileV.reload() }
+    Text {
+        Layout.fillWidth: true; Layout.topMargin: 18
+        text: "Your lock screen"
+        color: Theme.text; font.family: Theme.font; font.pixelSize: 17; font.weight: Font.DemiBold
+    }
+    Text {
+        Layout.fillWidth: true; Layout.bottomMargin: 4
+        text: "Made of the same blocks as your desktop. Nothing on it can open an app, a file or a setting; only your password (or fingerprint) unlocks, whatever it looks like."
+        color: Theme.muted; font.family: Theme.font; font.pixelSize: 14; wrapMode: Text.WordWrap
+    }
+    SetRow {
+        icon: "lock"; title: "Plain lock screen"
+        sub: "The time, the date and the password box"
+        chip: page.lockNow === "plain" ? "Using now" : ""
+        chevron: page.lockNow !== "plain"; interactive: chevron
+        onActivated: { lockSet.command = ["python3", Qt.resolvedUrl("hearth-lockscreen").toString().replace(/^file:\/\//, ""), "plain"]; lockSet.running = true; page.say("The plain lock screen from the next lock ✓"); }
+    }
+    SetRow {
+        icon: "palette"; title: "Match your desktop"
+        sub: ScreenLayout.on ? "The lock screen made for " + ((ScreenLayout.readyMade.find(r => r.id === ScreenLayout.from) || { name: "your desktop" }).name) : "Hearth's own lock screen of blocks: the clock, the weather, what's playing, while you were away, downloads and the battery"
+        chip: page.lockNow === "match" ? "Using now" : ""
+        chevron: page.lockNow !== "match"; interactive: chevron
+        onActivated: { lockSet.command = ["python3", Qt.resolvedUrl("hearth-lockscreen").toString().replace(/^file:\/\//, ""), "match"]; lockSet.running = true; page.say("Your lock screen matches your desktop from the next lock ✓"); }
+    }
+    SetRow {
+        icon: "edit"; title: page.lockNow === "own" ? "Change your lock screen" : "Make your own lock screen"
+        sub: "The block editor for the lock screen: move, size and restyle its blocks, or say what you want"
+        chip: page.lockNow === "own" ? "Using now" : ""
+        chevron: true
+        onActivated: Quickshell.execDetached(["quickshell", "ipc", "-p", Quickshell.shellDir, "call", "screen", "editLock"])
+    }
+    // <<< the lock screen
     // Your blocks (build-anything board 5): the blocks your AI made, each on or off, and what you said to its ask.
     property var myBlocks: []
     function blocksRefresh() { blocksP.command = ScreenLayout.layoutCmd(["blocks-mine"]); blocksP.running = true; }
