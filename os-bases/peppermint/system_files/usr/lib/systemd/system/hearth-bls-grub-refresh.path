@@ -1,11 +1,17 @@
 # ostree swaps /boot/loader (a link to loader.0 or loader.1) whenever the boot entries change while the system
 # runs: `bootc rollback`, kernel argument changes. Rewrite the menu then too, not only at shutdown.
+# (Hearth's own rollbacks also rewrite it themselves, right after: hearth-boot-guard, hearth-admin, hearth-recovery.)
 [Unit]
 Description=Hearth: watch ostree's boot entries
 
 [Path]
 PathChanged=/boot/loader
 PathChanged=/boot/loader/entries
+# /boot/loader is a link, and a watch on it follows it into the old loader.N, which a rollback doesn't touch: the
+# laptop's menu wasn't rewritten after the boot guard's rollback (Nov 23). /boot itself and /ostree (where loader.N and
+# boot.N are made and swapped) see every swap.
+PathChanged=/boot
+PathChanged=/sysroot/ostree
 Unit=hearth-bls-grub-refresh.service
 
 [Install]

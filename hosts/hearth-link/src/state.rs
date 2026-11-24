@@ -53,20 +53,52 @@ pub struct Config {
     pub compress: String,
     /// Parallel streams for a copy.
     pub streams: usize,
+    /// Share the clipboard's text with your own devices (clipboard.rs); off until the person turns it on.
+    pub clipboard: bool,
+    /// config.json was there but couldn't be read (and had no good .bak): these are defaults, so saving writes only
+    /// what the person changes and never defaults over their file (red flag 9; settings_file.rs keeps it aside).
+    #[serde(skip)]
+    pub unreadable: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { name: String::new(), relay: Relay::Default, relay_url: String::new(), always_accept: false, sync: true, compress: "auto".into(), streams: 16 }
+        Config { name: String::new(), relay: Relay::Default, relay_url: String::new(), always_accept: false, sync: true, compress: "auto".into(), streams: 16, clipboard: false, unreadable: false }
     }
 }
 
 impl Config {
+    /// Red flag 9 (settings never change by themselves), through hearth-core's settings_file.rs: a damaged file is put
+    /// back from config.json.bak; one that can't be read at all leaves Config marked `unreadable` (defaults shown,
+    /// nothing written over it).
     pub fn load(dir: &Path) -> Config {
-        std::fs::read(dir.join("config.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+        use hearth_core::settings_file::{read, Read};
+        match read(&dir.join("config.json")) {
+            Read::Ok(m) | Read::Restored(m) => match serde_json::from_value::<Config>(Value::Object(m)) {
+                Ok(c) => c,
+                Err(e) => {
+                    hearth_core::settings_file::log_event(&format!("Hearth Link: config.json has a value it can't use ({e}); nothing is written over it"));
+                    Config { unreadable: true, ..Config::default() }
+                }
+            },
+            Read::Missing => Config::default(),
+            Read::Unreadable => Config { unreadable: true, ..Config::default() },
+        }
     }
+    /// Atomic, with config.json.bak, merged under the lock with what's on disk (other keys stay). After a file that
+    /// couldn't be read, only what the person changed (what differs from the defaults) is written, never the defaults.
     pub fn save(&self, dir: &Path) -> Result<(), String> {
-        crate::write_atomic(&dir.join("config.json"), serde_json::to_string_pretty(self).unwrap().as_bytes())
+        let Ok(Value::Object(mine)) = serde_json::to_value(self) else { return Err("Couldn't save Hearth Link's settings".into()) };
+        let changed: serde_json::Map<String, Value> = if self.unreadable {
+            let Ok(Value::Object(def)) = serde_json::to_value(Config::default()) else { return Err("Couldn't save Hearth Link's settings".into()) };
+            mine.into_iter().filter(|(k, v)| def.get(k) != Some(v)).collect()
+        } else {
+            mine
+        };
+        if changed.is_empty() {
+            return Ok(());
+        }
+        hearth_core::settings_file::merge_json(&dir.join("config.json"), &changed).map(|_| ()).map_err(|e| format!("Couldn't save Hearth Link's settings: {e}"))
     }
     pub fn display_name(&self) -> String {
         let n = self.name.trim();
@@ -90,6 +122,7 @@ impl Config {
         if self.relay == Relay::Custom && self.relay_url.is_empty() { return Err("Enter your relay's address first".into()); }
         if let Some(b) = a.get("alwaysAccept").and_then(Value::as_bool) { self.always_accept = b; }
         if let Some(b) = a.get("sync").and_then(Value::as_bool) { self.sync = b; }
+        if let Some(b) = a.get("clipboard").and_then(Value::as_bool) { self.clipboard = b; }
         if let Some(c) = a.get("compress").and_then(Value::as_str) {
             if c != "auto" && c != "off" { return Err("Compression is auto or off".into()); }
             self.compress = c.into();
@@ -99,7 +132,7 @@ impl Config {
     }
     pub fn to_json(&self) -> Value {
         json!({"name": self.display_name(), "customName": self.name, "relay": self.relay, "relayUrl": self.relay_url, "alwaysAccept": self.always_accept,
-               "sync": self.sync, "compress": self.compress, "streams": self.streams})
+               "sync": self.sync, "compress": self.compress, "streams": self.streams, "clipboard": self.clipboard})
     }
 }
 
@@ -301,6 +334,53 @@ impl Peers {
                 p.addrs.truncate(4);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod config_file {
+    use super::*;
+
+    #[test]
+    fn saving_keeps_a_bak_and_the_keys_it_does_not_know() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("config.json");
+        std::fs::write(&p, r#"{"name": "Den", "sync": false, "fromNewer": 7}"#).unwrap();
+        let mut c = Config::load(d.path());
+        assert_eq!((c.name.as_str(), c.sync, c.unreadable), ("Den", false, false));
+        c.apply(&json!({"alwaysAccept": true})).unwrap();
+        c.save(d.path()).unwrap();
+        let v: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+        assert_eq!((v["alwaysAccept"].as_bool(), v["sync"].as_bool(), v["fromNewer"].as_i64()), (Some(true), Some(false), Some(7)));
+        let bak: Value = serde_json::from_slice(&std::fs::read(d.path().join("config.json.bak")).unwrap()).unwrap();
+        assert_eq!(bak["name"], "Den", "the copy before is kept as config.json.bak");
+    }
+
+    #[test]
+    fn a_damaged_file_comes_back_from_its_bak() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("config.json"), b"{\"name\": \"De").unwrap();
+        std::fs::write(d.path().join("config.json.bak"), br#"{"name": "Den", "clipboard": true}"#).unwrap();
+        let c = Config::load(d.path());
+        assert_eq!((c.name.as_str(), c.clipboard, c.unreadable), ("Den", true, false));
+    }
+
+    #[test]
+    fn defaults_never_go_over_a_file_that_could_not_be_read() {
+        let d = tempfile::tempdir().unwrap();
+        let p = d.path().join("config.json");
+        std::fs::write(&p, b"{not json, and no bak").unwrap();
+        let mut c = Config::load(d.path());
+        assert!(c.unreadable);
+        // Saving with nothing changed writes nothing at all.
+        c.save(d.path()).unwrap();
+        assert_eq!(std::fs::read(&p).unwrap(), b"{not json, and no bak");
+        // The person changes one thing: only that is written (the damaged file is kept aside), no defaults.
+        c.apply(&json!({"clipboard": true})).unwrap();
+        c.save(d.path()).unwrap();
+        let v: Value = serde_json::from_slice(&std::fs::read(&p).unwrap()).unwrap();
+        assert_eq!(v, json!({"clipboard": true}));
+        assert!(std::fs::read_dir(d.path()).unwrap().any(|e| e.unwrap().file_name().to_string_lossy().starts_with("config.json.broken-")));
     }
 }
 

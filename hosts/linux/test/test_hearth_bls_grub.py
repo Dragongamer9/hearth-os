@@ -89,6 +89,18 @@ class Menu(unittest.TestCase):
             self.assertIn("--id 'ostree-1'", f.menu.split('menuentry')[1])
             grub_check(self, f.boot / 'grub2/hearth-bls.cfg')
 
+    def test_only_this_version_and_the_one_before(self):
+        """The owner, Nov 23: only the current and the previous version in the menu; older ones only on request."""
+        with tempfile.TemporaryDirectory() as d:
+            f = Fixture(d, versions=('1.18.0', '1.17.0', '1.14.0', '1.13.0'))
+            self.assertEqual(f.run().returncode, 0)
+            titles = [l.split("'")[1] for l in f.menu.splitlines() if l.startswith('menuentry')]
+            self.assertEqual(titles, ['Hearth OS 1.18', 'Hearth OS 1.17 (previous version)'])
+            r = f.run(HEARTH_MENU_ALL=str(f.d / 'all'))
+            (f.d / 'all').write_text('')
+            f.run(HEARTH_MENU_ALL=str(f.d / 'all'))
+            self.assertEqual(sum(1 for l in f.menu.splitlines() if l.startswith('menuentry')), 4)
+
     def test_no_version_file_keeps_ostree_title(self):
         with tempfile.TemporaryDirectory() as d:
             f = Fixture(d, versions=('', '0.6.63'))

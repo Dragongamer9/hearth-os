@@ -147,7 +147,7 @@ fn frame_a(a: &App) -> Element<'_, Msg> {
         Some(h) => container(crate::pics::round(h, 56.0)).width(Length::Fixed(56.0)).height(Length::Fixed(56.0)).into(),
         None => container(tb(initial, 22.0, p.ink)).center_x(Length::Fixed(56.0)).center_y(Length::Fixed(56.0)).style(ui::boxed(p.accent, 28.0, None)).into(),
     };
-    let who = column![
+    let who: Column<'_, Msg> = column![
         tb(if a.sh.info.real.is_empty() { "You".to_string() } else { a.sh.info.real.clone() }, 16.0, p.text),
         t(format!("{} · {}", if a.sh.info.admin { "Administrator" } else { "Standard account" }, a.sh.info.host), 13.0, p.muted),
     ]
@@ -167,7 +167,10 @@ fn frame_a(a: &App) -> Element<'_, Msg> {
                 .interaction(mouse::Interaction::Pointer),
         );
     }
-    let rail = container(column![row![avatar, who].spacing(14.0).align_y(iced::Center), Space::new().height(Length::Fixed(18.0)), search, Space::new().height(Length::Fixed(14.0)), scrollable(cats).height(Length::Fill)])
+    // The redesign (settings-cleanup, Nov 23): Hearth's flame and "Settings" over the search, not your picture.
+    let _ = (avatar, who);
+    let flame = container(Space::new()).width(Length::Fixed(32.0)).height(Length::Fixed(32.0)).style(ui::boxed(p.accent, 9.0, None));
+    let rail = container(column![row![flame, tb("Settings", 24.0, p.text)].spacing(14.0).align_y(iced::Center), Space::new().height(Length::Fixed(18.0)), search, Space::new().height(Length::Fixed(14.0)), scrollable(cats).height(Length::Fill)])
         .padding(Padding { top: 20.0, right: 18.0, bottom: 12.0, left: 18.0 })
         .width(Length::Fixed(320.0))
         .height(Length::Fill)
@@ -176,8 +179,10 @@ fn frame_a(a: &App) -> Element<'_, Msg> {
     let main = Column::new().push(crumbs(a)).push(Space::new().height(Length::Fixed(18.0))).push(page_column(a, true));
     let main = container(main).padding(Padding { top: 18.0, right: 36.0, bottom: 0.0, left: 44.0 }).width(Length::Fill).height(Length::Fill);
 
-    let titlebar = ui::title_bar(&p, G::Gear, "Hearth Settings", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: Some(Msg::Minimize), close: Msg::Close }, rail_bg);
-    let page = column![titlebar, row![rail, main].height(Length::Fill), hline(p.line), hints(a)];
+    let titlebar = hearth_ui::describe::title_bar(&p, &a.describe, G::Gear, "Hearth Settings", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: Some(Msg::Minimize), close: Msg::Close }, rail_bg, Msg::Describe(hearth_ui::describe::DMsg::Open));
+    // No button hints along the bottom any more (the redesign has none; the controller look is gone, 1.18).
+    let _ = hints;
+    let page = column![titlebar, row![rail, main].height(Length::Fill)];
     let base: Element<Msg> = container(page).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
     ui::edges(with_dialogs(a, base), Msg::Resize)
 }
@@ -186,6 +191,22 @@ fn crumbs(a: &App) -> Element<'_, Msg> {
     let p = a.sh.p;
     if !a.query.is_empty() {
         return tb("Search", 34.0, p.text).into();
+    }
+    // A section's front page: "Settings › System" and its line (cats/sections.rs); Home: "Home" and this PC.
+    if let Some(t) = crate::cats::sections::title(&p, a.page) {
+        return t;
+    }
+    if a.page == "home" {
+        let i = &a.sh.info;
+        let mut bits = vec![i.host.clone()];
+        // Hearth OS's own version (the image writes it) and what's underneath ("Hearth OS (Debian 13)" → Debian 13).
+        let ver = std::fs::read_to_string("/usr/share/nimbus/version").map(|v| crate::data::shown_version(v.trim())).unwrap_or_default();
+        let under = i.os.split('(').nth(1).map(|x| x.trim_end_matches(')').to_string()).unwrap_or_default();
+        if !ver.is_empty() && ver != "0.0" {
+            bits.push(if under.is_empty() { format!("Hearth OS {ver}") } else { format!("Hearth OS {ver} on {under}") });
+        }
+        bits.push("what needs you first, then what you use most".into());
+        return column![tb("Home", 34.0, p.accent), t(bits.join(" · "), 15.0, p.muted)].spacing(6.0).into();
     }
     let cat = CATEGORIES[a.cat];
     let mut chain = registry::chain(a.page);
@@ -257,7 +278,7 @@ fn search_page(a: &App) -> Element<'_, Msg> {
     let q = a.query.to_lowercase();
     let mut c = Column::new().spacing(8.0);
     let mut n = 0;
-    for pg in PAGES.iter().filter(|x| !x.desc.is_empty() || x.landing) {
+    for pg in PAGES.iter().filter(|x| (!x.desc.is_empty() || x.landing) && !x.live) {
         let hay = format!("{} {} {}", pg.label, pg.desc, pg.words).to_lowercase();
         if !q.split_whitespace().all(|w| hay.contains(w)) {
             continue;
@@ -289,7 +310,7 @@ pub fn category(a: &App) -> Element<'_, Msg> {
         }
     }
     let mut unbuilt = Vec::new();
-    for pg in PAGES.iter().filter(|x| x.cat == cat && !x.hidden && x.parent.is_empty() && !x.desc.is_empty()) {
+    for pg in PAGES.iter().filter(|x| x.cat == cat && !x.hidden && !x.live && x.parent.is_empty() && !x.desc.is_empty()) {
         if registry::built(pg.id) {
             c = c.push(link_row(&p, page_glyph(pg.id), pg.label, pg.desc, Msg::Go(pg.id)));
         } else {

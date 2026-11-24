@@ -1,0 +1,104 @@
+{
+ "name": "Console dashboard",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "background": {
+  "kind": "gradient",
+  "from": "#10243a",
+  "to": "#3a1a0e"
+ },
+ "look": {
+  "text": "#ffffff"
+ },
+ "privacy": {
+  "notifications": "names",
+  "media": true
+ },
+ "blocks": [
+  {
+   "id": "clock",
+   "block": "clock",
+   "x": 16,
+   "y": 0,
+   "w": 8,
+   "h": 2,
+   "style": {
+    "size": 96,
+    "weight": 400
+   }
+  },
+  {
+   "id": "date",
+   "block": "date",
+   "x": 16,
+   "y": 2,
+   "w": 8,
+   "h": 1,
+   "style": {
+    "size": 24
+   }
+  },
+  {
+   "id": "downloads",
+   "block": "downloads",
+   "x": 0,
+   "y": 0,
+   "w": 6,
+   "h": 2,
+   "style": {
+    "colour": "#1f3a2e",
+    "corners": 6
+   }
+  },
+  {
+   "id": "friends",
+   "block": "friends",
+   "x": 0,
+   "y": 2,
+   "w": 6,
+   "h": 3,
+   "style": {
+    "colour": "#1f3a2e",
+    "corners": 6
+   }
+  },
+  {
+   "id": "media",
+   "block": "media",
+   "x": 0,
+   "y": 10,
+   "w": 7,
+   "h": 2,
+   "style": {
+    "colour": "#1f3a2e",
+    "corners": 6
+   }
+  },
+  {
+   "id": "battery",
+   "block": "battery",
+   "x": 0,
+   "y": 12,
+   "w": 6,
+   "h": 1,
+   "style": {
+    "colour": "#1f3a2e",
+    "corners": 6
+   }
+  },
+  {
+   "id": "password",
+   "block": "password",
+   "x": 9,
+   "y": 5,
+   "w": 6,
+   "h": 5,
+   "style": {
+    "colour": "#0e1a14",
+    "corners": 6
+   }
+  }
+ ]
+}

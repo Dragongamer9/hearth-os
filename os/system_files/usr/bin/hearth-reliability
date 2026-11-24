@@ -2,6 +2,8 @@
 # Opens Reliability history (how Hearth has been running, day by day) in Hearth's
 # desktop (Mantel): docs/SYSTEM-RESTORE.md. The Run box and Super+X can call this name.
 SHELL_DIR="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+# the Mantel that\'s running (a quick update runs from your home folder; hearth-mantel-ipc)
+_m=$(head -c 4096 "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/hearth-mantel-shell" 2>/dev/null); [ -n "$_m" ] && [ -f "$_m/shell.qml" ] && SHELL_DIR="$_m"
 if command -v quickshell >/dev/null 2>&1 && quickshell ipc -p "$SHELL_DIR" call reliability open >/dev/null 2>&1; then exit 0; fi
 echo "hearth-reliability: Hearth's desktop (Mantel) isn't running; open it from Desktop Mode." >&2
 exit 1

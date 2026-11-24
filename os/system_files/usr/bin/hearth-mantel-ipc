@@ -1,0 +1,13 @@
+#!/bin/sh
+# hearth-mantel-ipc ARGS…: `quickshell ipc` to the Mantel that's actually running. With a quick update from the Hearth
+# Store, Mantel runs from your home folder (hearth-part), not from the copy built into Hearth OS, and a call to the
+# built-in folder finds nothing: the Windows key, Super+Space and every other shortcut did nothing (the owner, Nov 22,
+# after Mantel 1.17.3). labwc's autostart writes the folder it started in $XDG_RUNTIME_DIR/hearth-mantel-shell; without
+# it (or when it's gone), the built-in one, as before.
+run="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+dir=""
+[ -r "$run/hearth-mantel-shell" ] && dir=$(head -c 4096 "$run/hearth-mantel-shell" 2>/dev/null)
+if [ -z "$dir" ] || [ ! -f "$dir/shell.qml" ]; then
+  dir="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+fi
+exec quickshell ipc -p "$dir" "$@"

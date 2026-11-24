@@ -68,6 +68,13 @@ SOUNDS = {
     'camera-shutter': lambda: seq(tone([G6], 0.03, 0.18, attack=0.001, decay=0.01), tone([E6], 0.05, 0.16, attack=0.001, decay=0.02), gap=0.03),
     'desktop-login': lambda: mix(mix(tone([G4], 0.5, 0.2), tone([C5], 0.5, 0.2), 0.12), tone([E5, G5], 0.8, 0.2), 0.24),
     'trash-empty': lambda: tone([E5], 0.25, 0.2, bend=-0.3, attack=0.002),
+    # Build anything (a block's Sound, screen.rs SOUNDS): what a block plays when it's pressed or picked.
+    'block-click': lambda: tone([C6], 0.05, 0.2, attack=0.002, decay=0.015),
+    'block-soft': lambda: tone([E5], 0.12, 0.16, attack=0.006, decay=0.05),
+    'block-pop': lambda: tone([G5], 0.09, 0.22, attack=0.002, decay=0.03, bend=0.25),
+    'block-chime': lambda: mix(tone([C6], 0.4, 0.16, harmonics=(1.0, 0.3, 0.1)), tone([G6], 0.4, 0.1), 0.05),
+    'block-wood': lambda: tone([A4, E5], 0.08, 0.26, attack=0.001, decay=0.02, harmonics=(1.0, 0.5, 0.25, 0.12)),
+    'block-retro': lambda: seq(tone([C6], 0.04, 0.2, harmonics=(1.0, 0.0, 0.33, 0.0, 0.2)), tone([G6], 0.05, 0.2, harmonics=(1.0, 0.0, 0.33, 0.0, 0.2))),
 }
 
 

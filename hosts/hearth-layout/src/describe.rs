@@ -1,0 +1,587 @@
+//! Describe it (docs/mockups/desktop-layouts boards 7-9): what you type (and a sketch or picture, when you add one)
+//! turned into a layout or a new feature by your AI, then checked here before anything is shown. Every Hearth app
+//! uses this same part: Mantel's bars and panels, and each app's own parts (the "part" asked about).
+//!
+//! The AI is yours: Describe it's own choice in Settings (~/.config/nimbus/describe.json: {"url", "model", "label"},
+//! any OpenAI-style address: Hearth AI on your Nvidia PC through Hearth Link, a local engine, another AI), else the
+//! default engine Hearth already has (Settings › AI engines: hearth_ai_engines.py default). Nothing is sent anywhere
+//! else, and nothing is put in place here: the answer is only a suggestion, shown as NEW next to NOW, until Keep this.
+//!
+//! The AI may only answer with Hearth's own parts: the layout's settings and blocks (layout.rs, blocks.rs), or a
+//! feature's sources and actions (feature.rs). Its answer is checked like any layout file; a wrong one is asked for
+//! once more with the reasons, and anything Hearth can't do yet comes back as "needs something new" with the
+//! closest it can make and the idea to send (idea.rs), never as code.
+
+use serde_json::{json, Value};
+use std::io::Write;
+use std::os::unix::fs::OpenOptionsExt;
+use std::process::{Command, Stdio};
+
+use crate::{blocks, feature, idea, layout};
+
+/// Who answers.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Engine {
+    pub base: String,
+    pub model: String,
+    pub label: String,
+    /// an online AI's key, read from the system's password store when it's used (never kept in a file or a log)
+    pub key: String,
+}
+
+fn share() -> std::path::PathBuf {
+    std::env::var_os("NIMBUS_SHARE").map(std::path::PathBuf::from).unwrap_or_else(|| "/usr/share/nimbus".into())
+}
+
+/// When no AI answers: what to do, in plain words (Settings › AI's own words once it's built).
+pub const NO_AI: &str = "No AI is answering. Turn on Ollama in Settings › Home server, or use your PC's AI: Settings › Hearth Link › Local AI › Use its AI.";
+
+/// Describe it's AI: engine_for("describe").
+pub fn engine() -> Option<Engine> {
+    engine_for("describe")
+}
+
+/// Settings › AI's own picks (~/.config/nimbus/ai-uses.json, written only by Settings through hearth_settings_io):
+/// {"uses": {USE: {"url", "model", "label"} | {"online": provider}}, "order": ["here", "link", "online"]}.
+fn uses_file() -> (Value, Vec<String>) {
+    let v = crate::settings_file::read_json(&crate::paths::home().join(".config/nimbus/ai-uses.json"));
+    let mut order: Vec<String> = v.get("order").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).filter(|x| ORDER.contains(x)).map(str::to_string).collect()).unwrap_or_default();
+    for k in ORDER {
+        if !order.iter().any(|o| o == k) {
+            order.push(k.to_string());
+        }
+    }
+    (v.get("uses").cloned().unwrap_or(Value::Null), order)
+}
+
+/// Where Hearth's AI comes from, first that answers (Settings › AI › Where your AI comes from): this device's engines,
+/// your devices over Hearth Link, an online AI with your key, unless you dragged them into another order.
+pub const ORDER: [&str; 3] = ["here", "link", "online"];
+
+/// The AI one use goes to (describe: Describe it and Build anything; sortdl: Sort my Downloads; photos; ithil): its own
+/// pick in Settings › AI when that answers (Describe it's older describe.json too), else Hearth's AI. A model that can
+/// only search (nomic-embed-text and the like) is never picked for writing. None answering: None (NO_AI says why).
+pub fn engine_for(use_: &str) -> Option<Engine> {
+    if std::env::var_os("HEARTH_DESCRIBE_FAKE").is_some() {
+        return Some(Engine { base: String::new(), model: String::new(), label: "the answer given for this check".into(), ..Default::default() });
+    }
+    if let Ok(u) = std::env::var("HEARTH_DESCRIBE_URL") {
+        return Some(Engine { base: u, model: std::env::var("HEARTH_DESCRIBE_MODEL").unwrap_or_default(), label: "the AI set for this test".into(), ..Default::default() });
+    }
+    let (uses, order) = uses_file();
+    let mut pick = uses.get(use_).cloned().filter(Value::is_object);
+    if pick.is_none() && use_ == "describe" {
+        pick = Some(crate::settings_file::read_json(&crate::paths::home().join(".config/nimbus/describe.json"))).filter(|v| v.get("url").is_some());
+    }
+    if let Some(p) = pick {
+        if let Some(provider) = p.get("online").and_then(Value::as_str) {
+            if let Some(e) = online().filter(|_| online_provider().as_deref() == Some(provider)) {
+                return Some(e);
+            }
+        } else if let Some(u) = p.get("url").and_then(Value::as_str).filter(|u| u.starts_with("http://") || u.starts_with("https://")) {
+            let base = u.trim_end_matches('/').to_string();
+            if let Some(have) = models(&base) {
+                let want = p.get("model").and_then(Value::as_str).unwrap_or("").to_string();
+                let model = if !want.is_empty() && have.iter().any(|m| *m == want) { want } else { pick_model(&have) };
+                if !model.is_empty() {
+                    return Some(Engine { base, model, label: p.get("label").and_then(Value::as_str).unwrap_or("your AI").to_string(), ..Default::default() });
+                }
+            }
+        }
+        // its own pick isn't answering: Hearth's AI answers instead
+    }
+    hearths_ai(&order)
+}
+
+/// Hearth's AI: the first that answers, in your order.
+fn hearths_ai(order: &[String]) -> Option<Engine> {
+    for k in order {
+        let found = match k.as_str() {
+            "here" => {
+                // Hearth's engines on this PC, the default first (hearth_ai_engines.py list)
+                let mut tries: Vec<(String, String, String)> = Vec::new();
+                if let Some(v) = Command::new("python3").arg(share().join("desktop/shell/hearth_ai_engines.py")).arg("list").stderr(Stdio::null()).output().ok().and_then(|o| serde_json::from_slice::<Value>(&o.stdout).ok()) {
+                    let mut list: Vec<&Value> = v.get("engines").and_then(Value::as_array).map(|a| a.iter().collect()).unwrap_or_default();
+                    list.sort_by_key(|e| e.get("default") != Some(&json!(true)));
+                    for e in list {
+                        if let Some(b) = e.get("openai").or_else(|| e.get("base")).and_then(Value::as_str) {
+                            tries.push((b.trim_end_matches('/').to_string(), e.get("model").and_then(Value::as_str).unwrap_or("").to_string(), e.get("label").and_then(Value::as_str).unwrap_or("Hearth's AI engine").to_string()));
+                        }
+                    }
+                }
+                first_answering(tries)
+            }
+            "link" => first_answering(vec![("http://127.0.0.1:11435/v1".into(), String::new(), "your other device's AI (Hearth Link)".into())]),
+            _ => online(),
+        };
+        if found.is_some() {
+            return found;
+        }
+    }
+    None
+}
+
+fn first_answering(tries: Vec<(String, String, String)>) -> Option<Engine> {
+    for (base, model, label) in tries {
+        let Some(have) = models(&base) else { continue };
+        let model = if !model.is_empty() && have.iter().any(|m| *m == model) { model } else { pick_model(&have) };
+        if model.is_empty() {
+            continue;
+        }
+        return Some(Engine { base, model, label, ..Default::default() });
+    }
+    None
+}
+
+fn online_provider() -> Option<String> {
+    crate::settings_file::read_json(&crate::paths::home().join(".config/nimbus/ai-online.json")).get("provider").and_then(Value::as_str).map(str::to_string)
+}
+
+/// An online AI with your own key (Settings › AI: ~/.config/nimbus/ai-online.json {"provider", "model"}; the key in the
+/// system's password store: secret-tool, service hearth-ai, account <provider>). Last, after every AI of your own.
+pub const ONLINE: &[(&str, &str, &str)] = &[
+    ("claude", "https://api.anthropic.com/v1", "Claude"),
+    ("chatgpt", "https://api.openai.com/v1", "ChatGPT"),
+    ("gemini", "https://generativelanguage.googleapis.com/v1beta/openai", "Gemini"),
+];
+
+fn online() -> Option<Engine> {
+    let c = crate::settings_file::read_json(&crate::paths::home().join(".config/nimbus/ai-online.json"));
+    let provider = c.get("provider").and_then(Value::as_str)?;
+    let (_, base, label) = ONLINE.iter().find(|(p, _, _)| *p == provider)?;
+    let model = c.get("model").and_then(Value::as_str).unwrap_or("").to_string();
+    if model.is_empty() {
+        return None;
+    }
+    let out = Command::new("secret-tool").args(["lookup", "service", "hearth-ai", "account", provider]).stderr(Stdio::null()).output().ok()?;
+    let key = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if key.is_empty() {
+        return None;
+    }
+    Some(Engine { base: base.to_string(), model, label: format!("{label} (online, your key)"), key })
+}
+
+/// The models an OpenAI-style address has (GET /models, 3 s at most); None when nothing answers there.
+fn models(base: &str) -> Option<Vec<String>> {
+    let out = Command::new("curl").args(["-sS", "-m", "3", &format!("{base}/models")]).stderr(Stdio::null()).output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let v: Value = serde_json::from_slice(&out.stdout).ok()?;
+    Some(v.get("data").and_then(Value::as_array)?.iter().filter_map(|m| m.get("id").and_then(Value::as_str).map(str::to_string)).collect())
+}
+
+/// A model that can write: never one only for search or speech; Qwen, Llama, Gemma or Mistral first; else the first.
+pub fn pick_model(have: &[String]) -> String {
+    let writes = |m: &&String| {
+        let l = m.to_lowercase();
+        !["embed", "nomic", "bge", "minilm", "rerank", "whisper", "clip", "tts"].iter().any(|w| l.contains(w))
+    };
+    let ok: Vec<&String> = have.iter().filter(writes).collect();
+    for want in ["qwen3", "qwen2.5", "llama3", "gemma", "mistral", "qwen", "llama"] {
+        if let Some(m) = ok.iter().find(|m| m.to_lowercase().contains(want)) {
+            return (*m).clone();
+        }
+    }
+    ok.first().map(|m| (*m).clone()).unwrap_or_default()
+}
+
+/// What the AI is told: the rules and every part it may use.
+pub fn rules(part: &str) -> String {
+    let keys: Vec<String> = layout::DESKTOP_KEYS.iter().map(|(k, v)| format!("{k}: {}", v.iter().map(|x| format!("\"{x}\"")).collect::<Vec<_>>().join(" | "))).collect();
+    let blocks: Vec<String> = blocks::BLOCKS.iter().map(|b| format!("{} ({}; {})", b.id, b.name, match b.place {
+        blocks::Where::Bar => "main bar",
+        blocks::Where::Panel => "panels",
+        blocks::Where::Both => "main bar or panels",
+    })).collect();
+    let sources: Vec<String> = feature::SOURCES.iter().map(|(id, n)| format!("{id} ({n})")).collect();
+    let actions: Vec<String> = feature::ACTIONS.iter().map(|(id, n)| format!("{id} ({n})")).collect();
+    format!(
+        "You change Hearth OS's desktop for its owner, using only Hearth's own parts. The part being changed: {part}.\n\
+Answer with ONE JSON object and nothing else, one of:\n\
+1. A layout: {{\"kind\": \"layout\", \"layout\": <layout>, \"changes\": [\"short plain sentences of what changed\"]}}\n\
+   <layout> = {{\"format\": 1, \"id\": \"<lowercase-dashes>\", \"name\": \"...\", \"desktop\": {{...}}, \"bar\": {{\"start\": [...], \"centre\": [...], \"end\": [...]}}, \"panels\": [{{\"edge\", \"items\", \"size\" 28-96, \"autoHide\", \"style\" \"\"|\"floating\"|\"centred\"}}], \"windowButtons\": {{\"side\": \"left\"|\"right\", \"buttons\": [\"iconify\", \"max\", \"close\"]}}}}\n\
+   desktop keys: {}\n\
+   blocks: {}\n\
+   Rules: the app menu (menu) and Game Mode always stay; up to four panels, none on the main bar's edge or on the dock's (bottom), one per edge; windows keep a close button.\n\
+2. A new feature: {{\"kind\": \"feature\", \"feature\": {{\"format\": 1, \"id\", \"name\", \"part\", \"shows\": [{{\"source\", \"label\"}}], \"every\": seconds, \"click\": {{\"action\", \"target\"}}}}, \"changes\": [...]}}\n\
+   sources: {}\n\
+   actions: {}\n\
+3. When it needs something Hearth doesn't have: {{\"kind\": \"needs\", \"needs\": [\"what's missing, in a few words\"], \"why\": \"one or two plain sentences why Hearth can't do it yet\", \"closest\": <feature or null>, \"changes\": []}}\n\
+Never write code, commands or file paths. Use plain words for the owner in \"changes\".",
+        keys.join("; "),
+        blocks.join(", "),
+        sources.join(", "),
+        actions.join(", ")
+    )
+}
+
+/// One OpenAI-style chat call through curl (no password or key: your own AI on your own network), or the CI's
+/// canned answer (HEARTH_DESCRIBE_FAKE: a file with what the AI would say).
+pub fn chat(e: &Engine, system: &str, user: &str, sketch: Option<&std::path::Path>) -> Result<String, String> {
+    if let Ok(f) = std::env::var("HEARTH_DESCRIBE_FAKE") {
+        return std::fs::read_to_string(f).map_err(|e| e.to_string());
+    }
+    let mut content: Value = json!(user);
+    if let Some(s) = sketch {
+        let b = std::fs::read(s).map_err(|e| format!("The sketch couldn't be read ({e})."))?;
+        if b.len() > 6 * 1024 * 1024 {
+            return Err("The sketch is too big (6 MB at most).".into());
+        }
+        let mime = if s.extension().and_then(|x| x.to_str()).map(|x| x.eq_ignore_ascii_case("png")).unwrap_or(false) { "image/png" } else { "image/jpeg" };
+        content = json!([{ "type": "text", "text": user }, { "type": "image_url", "image_url": { "url": format!("data:{mime};base64,{}", b64(&b)) } }]);
+    }
+    // "/no_think": Qwen3 answers at once instead of thinking out loud first (other models pass over it)
+    let system = format!("{system}\n/no_think");
+    let body = json!({ "model": e.model, "temperature": 0.2, "messages": [{ "role": "system", "content": system }, { "role": "user", "content": content }] });
+    // an online AI's key goes in a header file only this user can read, gone right after (never in the command line)
+    let hdr = (!e.key.is_empty()).then(|| {
+        let dir = std::env::var_os("XDG_RUNTIME_DIR").map(std::path::PathBuf::from).unwrap_or_else(std::env::temp_dir);
+        let f = dir.join(format!("hearth-describe-{}.h", std::process::id()));
+        let _ = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(&f).and_then(|mut h| writeln!(h, "Authorization: Bearer {}", e.key));
+        f
+    });
+    let mut args: Vec<String> = ["-sS", "--max-time", "180", "-H", "Content-Type: application/json"].iter().map(|s| s.to_string()).collect();
+    if let Some(f) = &hdr {
+        args.push("-H".into());
+        args.push(format!("@{}", f.display()));
+    }
+    args.extend(["--data-binary".to_string(), "@-".to_string(), format!("{}/chat/completions", e.base)]);
+    let child = Command::new("curl")
+        .args(&args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+    let mut child = match child {
+        Ok(c) => c,
+        Err(x) => {
+            if let Some(f) = &hdr {
+                let _ = std::fs::remove_file(f);
+            }
+            return Err(format!("Couldn't reach your AI ({x})."));
+        }
+    };
+    child.stdin.take().map(|mut i| i.write_all(body.to_string().as_bytes()));
+    let out = child.wait_with_output().map_err(|e| e.to_string());
+    if let Some(f) = &hdr {
+        let _ = std::fs::remove_file(f);
+    }
+    let out = out?;
+    if !out.status.success() {
+        return Err(format!("Your AI didn't answer ({}).", String::from_utf8_lossy(&out.stderr).trim()));
+    }
+    let v: Value = serde_json::from_slice(&out.stdout).map_err(|_| "Your AI's answer couldn't be read.".to_string())?;
+    v.pointer("/choices/0/message/content").and_then(Value::as_str).map(str::to_string).ok_or_else(|| "Your AI answered with nothing.".into())
+}
+
+fn b64(b: &[u8]) -> String {
+    const T: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut s = String::with_capacity(b.len() * 4 / 3 + 4);
+    for c in b.chunks(3) {
+        let n = (c[0] as u32) << 16 | (*c.get(1).unwrap_or(&0) as u32) << 8 | *c.get(2).unwrap_or(&0) as u32;
+        for i in 0..4 {
+            if i <= c.len() {
+                s.push(T[(n >> (18 - 6 * i) & 63) as usize] as char);
+            } else {
+                s.push('=');
+            }
+        }
+    }
+    s
+}
+
+/// The first JSON object in the AI's words (it may wrap it in ``` or a sentence, or think out loud first: Qwen3's and
+/// DeepSeek's <think>…</think> is skipped, and a `{` in its words that isn't a whole object is passed over).
+pub fn first_object(t: &str) -> Option<Value> {
+    let t = match t.rfind("</think>") { Some(i) => &t[i + 8..], None => t };
+    let mut from = 0;
+    while let Some(i) = t[from..].find('{') {
+        if let Some(v) = object_at(&t[from + i..]) {
+            return Some(v);
+        }
+        from += i + 1;
+    }
+    None
+}
+
+fn object_at(t: &str) -> Option<Value> {
+    let start = 0;
+    let mut depth = 0i32;
+    let mut in_str = false;
+    let mut esc = false;
+    for (i, ch) in t[start..].char_indices() {
+        if in_str {
+            match (esc, ch) {
+                (true, _) => esc = false,
+                (false, '\\') => esc = true,
+                (false, '"') => in_str = false,
+                _ => {}
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_str = true,
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return serde_json::from_str(&t[start..start + i + 1]).ok();
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// What came back, checked: ready to show as NEW, or what's needed and the idea to send.
+pub fn check_answer(v: &Value, part: &str, asked: &str, sketch: bool) -> Result<Value, Vec<String>> {
+    let changes: Vec<String> = v.get("changes").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.chars().take(200).collect())).take(12).collect()).unwrap_or_default();
+    // the app asking and its version ("Mantel in Rust 1.17.1"), given by the app that runs Describe it
+    let versions = (hearth_version(), std::env::var("HEARTH_DESCRIBE_APP").unwrap_or_default().chars().take(40).collect::<String>());
+    match v.get("kind").and_then(Value::as_str) {
+        Some("layout") => {
+            let l: layout::Layout = serde_json::from_value(v.get("layout").cloned().unwrap_or(Value::Null)).map_err(|e| vec![format!("The layout couldn't be read ({e}).")])?;
+            let errs = layout::check(&l);
+            if !errs.is_empty() {
+                return Err(errs);
+            }
+            Ok(json!({ "ok": true, "kind": "layout", "layout": l, "changes": changes, "coming": l.not_built() }))
+        }
+        Some("feature") => {
+            let f: feature::Feature = serde_json::from_value(v.get("feature").cloned().unwrap_or(Value::Null)).map_err(|e| vec![format!("The feature couldn't be read ({e}).")])?;
+            let c = feature::check(&f);
+            if !c.problems.is_empty() {
+                return Err(c.problems);
+            }
+            if !c.needs.is_empty() {
+                let i = idea::Idea::new(part, asked, c.needs.clone(), Some(f.clone()), sketch, &versions.0, &versions.1);
+                return Ok(json!({ "ok": true, "kind": "needs", "needs": c.needs, "closest": f, "idea": i, "preview": i.preview(), "changes": changes }));
+            }
+            Ok(json!({ "ok": true, "kind": "feature", "feature": f, "described": feature::describe(&f), "changes": changes }))
+        }
+        Some("needs") => {
+            let needs: Vec<String> = v.get("needs").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.chars().take(120).collect())).take(8).collect()).unwrap_or_default();
+            let closest: Option<feature::Feature> = v.get("closest").cloned().and_then(|c| serde_json::from_value(c).ok()).filter(|f| feature::check(f).usable());
+            let why: String = v.get("why").and_then(Value::as_str).unwrap_or("").chars().take(400).collect();
+            let i = idea::Idea::new(part, asked, needs.clone(), closest.clone(), sketch, &versions.0, &versions.1);
+            Ok(json!({ "ok": true, "kind": "needs", "needs": needs, "why": why, "closest": closest, "closestDescribed": closest.as_ref().map(feature::describe), "idea": i, "preview": i.preview(), "changes": changes }))
+        }
+        _ => Err(vec!["The answer wasn't a layout, a feature or what's needed.".into()]),
+    }
+}
+
+/// Describe it for a whole screen (build-anything boards 4-6): your words (and a sketch) and the screen as it is now, to
+/// a new screen by your AI, with any blocks it had to make (made.rs), all checked. Nothing is put in place here.
+pub fn describe_screen(text: &str, sketch: Option<&std::path::Path>, current: &Value) -> Value {
+    let text: String = text.trim().chars().take(2000).collect();
+    if text.is_empty() && sketch.is_none() {
+        return json!({ "ok": false, "error": "Say what you'd like, or add a sketch." });
+    }
+    // Hearth's own first: the common things, offline and at once (offline.rs), only when it understood all of it
+    // (Settings › AI › Test it asks the AI itself: HEARTH_DESCRIBE_ASK_AI)
+    if sketch.is_none() && std::env::var_os("HEARTH_DESCRIBE_ASK_AI").is_none() {
+        if let Some(v) = crate::offline::screen(&text, current) {
+            if let Ok(s) = crate::screen::parse(&v["screen"]) {
+                return json!({ "ok": true, "kind": "screen", "screen": s, "made": [], "asks": [], "changes": v["changes"], "engine": "Hearth (no AI needed)" });
+            }
+        }
+    }
+    let Some(e) = engine() else {
+        return json!({ "ok": false, "error": format!("{NO_AI} {}", crate::offline::KNOWS) });
+    };
+    let system = format!(
+        "You build a whole screen for Hearth OS's desktop (or Game Mode) from Hearth's own blocks, for its owner. It can look like anything they ask (\"like a console\", \"a cabin\", \"my first PC\"), \
+always made of Hearth's own icons, sounds and fonts: never another company's logos or names. Answer with ONE JSON object and nothing else:\n\
+{{\"kind\": \"screen\", \"screen\": <screen>, \"make\": [<new block>, ...], \"changes\": [\"short plain sentences of what changed\"]}}\n{}\n{}\n\
+Start from the screen they have now (given) and change what they asked; keep the rest. Use \"make\" only for blocks Hearth hasn't got (their id is the own:<id> in the screen).",
+        crate::screen::rules(),
+        crate::made::rules()
+    );
+    let mut user = format!("The screen now: {current}\nThe owner asks: {text}");
+    for attempt in 0..2 {
+        let reply = match chat(&e, &system, &user, sketch) {
+            Ok(r) => r,
+            Err(m) => return json!({ "ok": false, "error": m, "engine": e.label }),
+        };
+        let Some(v) = first_object(&reply) else {
+            user = format!("{user}\nYour last answer wasn't one JSON object. Answer again with only the JSON object.");
+            continue;
+        };
+        let mut errs = Vec::new();
+        let screen = crate::screen::parse(&v.get("screen").cloned().unwrap_or(Value::Null));
+        let mut made = Vec::new();
+        for b in v.get("make").and_then(Value::as_array).cloned().unwrap_or_default() {
+            match crate::made::parse(&b) {
+                Ok(mut m) => {
+                    m.asked = text.clone();
+                    if m.by.is_empty() {
+                        m.by = e.label.clone();
+                    }
+                    made.push(m);
+                }
+                Err(x) => errs.extend(x),
+            }
+        }
+        match screen {
+            Ok(mut s) => {
+                for own in crate::screen::own_blocks(&s) {
+                    if !made.iter().any(|m| m.id == own) && crate::made::get(&own).is_none() {
+                        errs.push(format!("own:{own} is used but not made."));
+                    }
+                }
+                if errs.is_empty() {
+                    if s.said.is_empty() {
+                        s.said = text.clone();
+                    }
+                    let changes: Vec<String> = v.get("changes").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| x.as_str().map(|s| s.chars().take(200).collect())).take(12).collect()).unwrap_or_default();
+                    let asks: Vec<Value> = made.iter().map(crate::made::asks).filter(|a| !a.is_null()).collect();
+                    return json!({ "ok": true, "kind": "screen", "screen": s, "made": made, "asks": asks, "changes": changes, "engine": e.label });
+                }
+            }
+            Err(x) => errs.extend(x),
+        }
+        if attempt == 0 {
+            user = format!("{user}\nYour last answer can't be used: {}. Answer again, fixed.", errs.join(" "));
+        } else {
+            return json!({ "ok": false, "error": format!("Your AI's screen couldn't be used: {}", errs.join(" ")), "engine": e.label });
+        }
+    }
+    json!({ "ok": false, "error": "Your AI didn't give a screen Hearth can use. Try again, or say it another way.", "engine": e.label })
+}
+
+/// Where Sort my Downloads may put what its own rules don't know (Hearth Files sortdl.rs; never Hearth's own folders
+/// or _to_delete: those only by the rules).
+pub const SORT_PLACES: &[&str] = &["Installers", "Installers/Archives", "Media/Images", "Media/Videos", "Media/Sound", "Documents", "Documents/Scripts", "Documents/Unsorted"];
+
+/// Sort my Downloads' AI (Settings › AI: its own pick, else Hearth's AI): for names its rules leave in
+/// Documents/Unsorted, which of SORT_PLACES each goes to. Only names are sent, never what's in the files; an answer
+/// outside SORT_PLACES is dropped (the rules' place stays).
+pub fn sort_ask(names: &[String]) -> Value {
+    let names: Vec<String> = names.iter().take(40).map(|n| n.chars().take(200).collect()).collect();
+    if names.is_empty() {
+        return json!({ "ok": true, "places": {} });
+    }
+    let Some(e) = engine_for("sortdl") else { return json!({ "ok": false, "error": NO_AI }) };
+    let system = format!(
+        "You sort files in someone's Downloads folder by their names only. Answer with ONE JSON object and nothing else: {{\"places\": {{\"<file name>\": \"<folder>\"}}}}. The folder is one of: {}. Use Documents/Unsorted when you can't tell.",
+        SORT_PLACES.join(", ")
+    );
+    let user = format!("The files: {}", serde_json::to_string(&names).unwrap_or_default());
+    let reply = match chat(&e, &system, &user, None) {
+        Ok(r) => r,
+        Err(m) => return json!({ "ok": false, "error": m, "engine": e.label }),
+    };
+    let v = first_object(&reply).unwrap_or(Value::Null);
+    let mut places = serde_json::Map::new();
+    if let Some(m) = v.get("places").and_then(Value::as_object) {
+        for (k, p) in m {
+            if let Some(p) = p.as_str().filter(|p| SORT_PLACES.contains(p)) {
+                if names.iter().any(|n| n == k) {
+                    places.insert(k.clone(), json!(p));
+                }
+            }
+        }
+    }
+    json!({ "ok": true, "places": places, "engine": e.label })
+}
+
+/// This Hearth OS's version (os-release), for the idea.
+pub fn hearth_version() -> String {
+    std::fs::read_to_string("/etc/os-release")
+        .ok()
+        .and_then(|t| t.lines().find_map(|l| l.strip_prefix("HEARTH_VERSION=").or_else(|| l.strip_prefix("VERSION_ID=")).map(|v| v.trim_matches('"').to_string())))
+        .unwrap_or_default()
+}
+
+/// The whole of Describe it: ask, check, ask once more with the reasons when the answer was wrong.
+pub fn describe(part: &str, text: &str, sketch: Option<&std::path::Path>, current: &Value) -> Value {
+    let text: String = text.trim().chars().take(2000).collect();
+    if text.is_empty() && sketch.is_none() {
+        return json!({ "ok": false, "error": "Type what you'd like, or add a sketch." });
+    }
+    let Some(e) = engine() else {
+        return json!({ "ok": false, "error": NO_AI });
+    };
+    let system = rules(part);
+    let mut user = format!("Now: {}\nThe owner asks: {}", current, text);
+    for attempt in 0..2 {
+        let reply = match chat(&e, &system, &user, sketch) {
+            Ok(r) => r,
+            Err(m) => return json!({ "ok": false, "error": m, "engine": e.label }),
+        };
+        let Some(v) = first_object(&reply) else {
+            user = format!("{user}\nYour last answer wasn't one JSON object. Answer again with only the JSON object.");
+            continue;
+        };
+        match check_answer(&v, part, &text, sketch.is_some()) {
+            Ok(mut ok) => {
+                ok["engine"] = json!(e.label);
+                return ok;
+            }
+            Err(why) if attempt == 0 => user = format!("{user}\nYour last answer can't be used: {}. Answer again, fixed.", why.join(" ")),
+            Err(why) => return json!({ "ok": false, "error": format!("Your AI's answer couldn't be used: {}", why.join(" ")), "engine": e.label }),
+        }
+    }
+    json!({ "ok": false, "error": "Your AI didn't give an answer Hearth can use. Try again, or say it another way.", "engine": e.label })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_model_that_writes_is_picked() {
+        let have: Vec<String> = ["nomic-embed-text:latest", "huihui_ai/qwen3-abliterated:8b-v2", "qwen3:30b-a3b"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(pick_model(&have), "huihui_ai/qwen3-abliterated:8b-v2");
+        assert_eq!(pick_model(&["nomic-embed-text:latest".to_string()]), "");
+        assert_eq!(pick_model(&["phi4".to_string()]), "phi4");
+    }
+
+    #[test]
+    fn the_json_is_found_in_the_ais_words() {
+        let v = first_object("Sure! ```json\n{\"kind\": \"needs\", \"needs\": [\"moon {phase}\"]}\n``` hope that helps").unwrap();
+        assert_eq!(v["needs"][0], "moon {phase}");
+        assert!(first_object("no json here").is_none());
+        // a thinking model's words first, with a stray brace in them
+        let v = first_object("<think>The user wants {a cabin}. I'll make {\"kind\"...</think>\n{\"kind\": \"screen\"}").unwrap();
+        assert_eq!(v["kind"], "screen");
+        let v = first_object("I'd use {this} or {\"kind\": \"layout\"}").unwrap();
+        assert_eq!(v["kind"], "layout");
+    }
+
+    #[test]
+    fn a_layout_answer_is_checked_like_a_file() {
+        let good = json!({"kind": "layout", "changes": ["Bar at the bottom"], "layout": {"format": 1, "id": "mine", "name": "Mine", "desktop": {"barLayout": "one", "barEdge": "bottom", "dockFloat": "off"}}});
+        let r = check_answer(&good, "bar", "bar at the bottom", false).unwrap();
+        assert_eq!(r["kind"], "layout");
+        let bad = json!({"kind": "layout", "layout": {"format": 1, "id": "mine", "name": "Mine", "bar": {"hidden": ["menu"]}}});
+        assert!(check_answer(&bad, "bar", "hide the flame", false).is_err());
+    }
+
+    #[test]
+    fn what_hearth_cant_do_becomes_an_idea() {
+        let v = json!({"kind": "feature", "feature": {"format": 1, "id": "moon", "name": "Moon", "part": "calendar", "shows": [{"source": "moon-phase"}]}});
+        let r = check_answer(&v, "calendar", "show moon phases, mail me@example.com", true).unwrap();
+        assert_eq!(r["kind"], "needs");
+        assert!(r["preview"].as_str().unwrap().contains("Sketch: yes"));
+        assert!(!r["preview"].as_str().unwrap().contains("me@example.com"));
+    }
+
+    #[test]
+    fn base64_as_everyone_writes_it() {
+        assert_eq!(b64(b"Man"), "TWFu");
+        assert_eq!(b64(b"Ma"), "TWE=");
+        assert_eq!(b64(b"M"), "TQ==");
+    }
+
+    #[test]
+    fn the_rules_name_every_part() {
+        let r = rules("bar");
+        for b in blocks::BLOCKS {
+            assert!(r.contains(b.id));
+        }
+        assert!(r.contains("gpu-temp") && r.contains("open-app"));
+    }
+}

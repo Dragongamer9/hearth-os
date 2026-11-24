@@ -156,6 +156,10 @@ sort -t "$TAB" -k1,1nr "$TMP.list" | {
   echo "set default=0"
   n=0
   while IFS="$TAB" read -r _ f; do
+    # Only this version and the one before (the owner, Nov 23: "needs to only show the previous version and the
+    # current version"). Older ones stay on the drive (pinned); sudo touch /etc/hearth/boot-menu-all
+    # shows them all again.
+    if [ "$n" -ge 2 ] && [ ! -e "${HEARTH_MENU_ALL:-/etc/hearth/boot-menu-all}" ]; then break; fi
     title=$(sed -n 's/^title[[:space:]]\{1,\}//p' "$f" | head -1)
     linux=$(sed -n 's/^linux[[:space:]]\{1,\}//p' "$f" | head -1)
     opts=$(fix_ostree "$(sed -n 's/^options[[:space:]]\{1,\}//p' "$f" | head -1)")

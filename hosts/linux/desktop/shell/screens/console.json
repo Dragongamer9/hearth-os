@@ -1,0 +1,110 @@
+{
+ "said": "Make it like a console dashboard: my profile and the time in the corners, my last game big, rows of games and my apps, a Guide on the Home button",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "bars": "hidden",
+ "background": {
+  "kind": "gradient",
+  "from": "#10243a",
+  "to": "#1a0d07"
+ },
+ "look": {
+  "accent": "#2f9e5a",
+  "font": "Inter",
+  "sound": "soft",
+  "animation": "slide-left"
+ },
+ "blocks": [
+  {
+   "id": "me",
+   "block": "profile",
+   "x": 0,
+   "y": 0,
+   "w": 6,
+   "h": 1
+  },
+  {
+   "id": "corner",
+   "block": "status",
+   "x": 17,
+   "y": 0,
+   "w": 7,
+   "h": 1
+  },
+  {
+   "id": "hero",
+   "block": "hero",
+   "x": 0,
+   "y": 2,
+   "w": 8,
+   "h": 5,
+   "title": "Jump back in",
+   "shows": "recent",
+   "press": {
+    "action": "play"
+   },
+   "style": {
+    "corners": 8,
+    "focus": "grow",
+    "sound": "soft",
+    "animation": "slide-left"
+   }
+  },
+  {
+   "id": "more",
+   "block": "tilerow",
+   "x": 8,
+   "y": 2,
+   "w": 16,
+   "h": 5,
+   "shows": "recent",
+   "skip": 1,
+   "count": 3,
+   "press": {
+    "action": "play"
+   },
+   "style": {
+    "corners": 6,
+    "focus": "grow",
+    "sound": "soft"
+   }
+  },
+  {
+   "id": "things",
+   "block": "tilerow",
+   "x": 0,
+   "y": 8,
+   "w": 24,
+   "h": 4,
+   "title": "Your apps and things",
+   "items": [
+    "games",
+    "store",
+    "files",
+    "browser",
+    "music",
+    "friends",
+    "downloads"
+   ],
+   "style": {
+    "corners": 4,
+    "colour": "#1f3a2e",
+    "focus": "grow",
+    "sound": "soft"
+   }
+  },
+  {
+   "id": "guide",
+   "block": "guide",
+   "x": 18,
+   "y": 0,
+   "w": 6,
+   "h": 14,
+   "style": {
+    "colour": "#122019"
+   }
+  }
+ ]
+}

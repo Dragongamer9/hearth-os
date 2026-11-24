@@ -1,0 +1,25 @@
+# What KDE is in Anatase's base image, and what needs it (the owner, Nov 23: "completely remove KDE"). Read only: it
+# pulls the base, lists packages and dependencies, and posts them as notices. Runs on pushes to fix/no-kde only.
+name: No KDE survey
+on:
+  push:
+    branches: ['fix/no-kde']
+    paths: ['.github/workflows/no-kde-survey.yml', '.github/scripts/no-kde-survey.sh', '.github/scripts/no-kde-dryrun.sh']
+permissions:
+  contents: read
+jobs:
+  survey:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - name: Survey the base
+        run: |
+          base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+          echo "::notice title=base::$base"
+          podman pull -q "$base" >/dev/null 2>/tmp/pull.err || { echo "::error title=pull::$(tail -c 600 /tmp/pull.err)"; exit 1; }
+          podman run --rm -v "$PWD/.github/scripts/no-kde-survey.sh:/s.sh:ro,z" "$base" bash /s.sh
+      - name: Dry run of removing all of KDE
+        run: |
+          base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+          podman run --rm -v "$PWD/.github/scripts/no-kde-dryrun.sh:/s.sh:ro,z" "$base" bash /s.sh

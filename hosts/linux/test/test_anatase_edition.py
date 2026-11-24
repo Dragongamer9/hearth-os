@@ -223,7 +223,8 @@ class Workflow(unittest.TestCase):
     def test_build_script(self):
         b = (ANATASE / 'build.sh').read_text()
         self.assertEqual(subprocess.run(['bash', '-n', str(ANATASE / 'build.sh')]).returncode, 0)
-        for need in ('plasma-workspace', 'startplasma-wayland', 'DECKY_VERSION=', 'decky-hearth-sync', 'GE_PROTON=',
+        # 1.18 (the owner, Nov 23: "completely remove KDE"): KDE removed, greetd signs in
+        for need in ('KDE_RE=', 'dnf5 -y remove $kde_pkgs', 'hearth-login-text.service', 'DECKY_VERSION=', 'decky-hearth-sync', 'GE_PROTON=',
                      'hearth-unlock.service', 'rpm-baseline.list', 'hearth-bls-grub.service', 'Back to Game Mode'):
             self.assertIn(need, b)
         # (1.16: labwc and Quickshell come back only as a choice, in their own marked block: test_labwc_fedora_session.py)

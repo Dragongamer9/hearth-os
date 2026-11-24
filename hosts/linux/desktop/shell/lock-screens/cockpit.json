@@ -1,0 +1,85 @@
+{
+ "name": "Cockpit",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "background": {
+  "kind": "gradient",
+  "from": "#062a33",
+  "to": "#04121a"
+ },
+ "look": {
+  "text": "#7fe6ff",
+  "font": "Noto Sans Mono",
+  "accent": "#2fd0ff"
+ },
+ "privacy": {
+  "notifications": "count",
+  "media": true
+ },
+ "blocks": [
+  {
+   "id": "clock",
+   "block": "clock",
+   "x": 8,
+   "y": 2,
+   "w": 8,
+   "h": 7,
+   "shows": "ring",
+   "style": {
+    "size": 64
+   }
+  },
+  {
+   "id": "battery",
+   "block": "battery",
+   "x": 0,
+   "y": 0,
+   "w": 6,
+   "h": 1,
+   "style": {
+    "colour": "#00000000",
+    "font": "Noto Sans Mono"
+   }
+  },
+  {
+   "id": "downloads",
+   "block": "downloads",
+   "x": 18,
+   "y": 0,
+   "w": 6,
+   "h": 2,
+   "style": {
+    "colour": "#06303a",
+    "corners": 4,
+    "font": "Noto Sans Mono"
+   }
+  },
+  {
+   "id": "weather",
+   "block": "weather",
+   "x": 0,
+   "y": 2,
+   "w": 6,
+   "h": 2,
+   "style": {
+    "colour": "#06303a",
+    "corners": 4,
+    "font": "Noto Sans Mono"
+   }
+  },
+  {
+   "id": "password",
+   "block": "password",
+   "x": 9,
+   "y": 9,
+   "w": 6,
+   "h": 5,
+   "style": {
+    "colour": "#05222b",
+    "corners": 4
+   }
+  }
+ ]
+}

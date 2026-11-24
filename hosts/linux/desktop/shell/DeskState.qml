@@ -45,6 +45,7 @@ Singleton {
     property bool locked: false            // the lock screen is up (Lock.qml): moving wallpapers pause
     property bool screenOff: false         // the screen was turned off for idling (IdlePower.qml): they pause too
     property bool idle: false              // nothing typed, clicked or moved for 30 seconds (IdlePower.qml; 3 minutes before 1.16): they pause too
+    property var popMenu: null             // the shared right-click menu (shell.qml), for desktop layouts' blocks (LayoutBlock.qml)
     property var shownDesktop: null        // Show desktop: {windows, front} that were minimized for it
     property double previewAt: 0           // KWin's window previews last shown or hidden (the dock's and taskbar's, so moving between apps is quick)
 

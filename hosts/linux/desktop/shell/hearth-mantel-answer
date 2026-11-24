@@ -1,0 +1,23 @@
+#!/bin/sh
+# hearth-mantel-answer SHELL_DIR: lets a Mantel from the Hearth Store answer the calls made to the built-in one.
+# Hearth OS 1.17's shortcuts (labwc's rc.xml: the Windows key, Super+Space…) and helpers call
+# `quickshell ipc -p /usr/share/nimbus/desktop/shell`, and Quickshell finds the instance for a path through
+# $XDG_RUNTIME_DIR/quickshell/by-path/<md5 of "<folder>/shell.qml"> → by-shell/<id> (checked on the owner's laptop, Nov 22).
+# A quick update runs Mantel from your home folder, so nothing answered (the owner, Nov 22: "windows button wont open
+# app menu" on Mantel 1.17.3). Mantel 1.17.4 points the built-in folder's link at itself, once it's up; never while the
+# built-in Mantel runs, and nothing outside Quickshell's own run folder (a tmpfs, gone at sign-out) is touched. From the
+# next Hearth OS update the shortcuts ask hearth-mantel-ipc instead, and this is only a backup.
+own_dir="${1%/}"
+builtin="${NIMBUS_SHARE:-/usr/share/nimbus}/desktop/shell"
+q="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/quickshell/by-path"
+[ -n "$own_dir" ] && [ "$own_dir" != "$builtin" ] && [ -d "$q" ] || exit 0
+h() { printf '%s' "$1/shell.qml" | md5sum | cut -c1-32; }
+own=$(h "$own_dir")
+blt=$(h "$builtin")
+[ -L "$q/$own" ] || exit 0
+# the built-in Mantel running (it answers for itself): leave its link alone
+pgrep -u "$(id -u)" -f "quickshell -p $builtin( |$)" >/dev/null 2>&1 && exit 0
+ln -sfn "$(readlink "$q/$own")" "$q/$blt" 2>/dev/null || exit 0
+# the next Hearth OS update's shortcuts read this (hearth-mantel-ipc); harmless before it
+printf '%s' "$own_dir" > "${XDG_RUNTIME_DIR:-/tmp}/hearth-mantel-shell" 2>/dev/null || true
+exit 0

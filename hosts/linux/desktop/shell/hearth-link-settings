@@ -21,7 +21,8 @@ through `hearth-link call` (its socket, only this user's).
   hearth-link-settings remote ID              that device's remote desktop: on or not, its name for Moonlight
   hearth-link-settings remote-pin ID [NAME]   Moonlight's 4 numbers (on stdin) sent to that device's remote desktop
   hearth-link-settings unpair ID
-  hearth-link-settings set KEY VALUE          KEY: name, sync, alwaysAccept, relay, relayUrl
+  hearth-link-settings set KEY VALUE          KEY: name, sync, alwaysAccept, relay, relayUrl, clipboard (on|off:
+                                              the clipboard's text with your own devices, off by default)
   hearth-link-settings sync
   hearth-link-settings pause|resume|cancel ID   a copy
   hearth-link-settings storage-set KEY on|off Hearth Storage (KEY: server, away, smb, archive, backups, media,
@@ -42,7 +43,7 @@ import sys
 
 BIN = os.environ.get('HEARTH_LINK_BIN', '/usr/bin/hearth-link')
 ID_RE = re.compile(r'^[0-9a-f]{16,64}(@\S{1,300})?$')
-KEYS = {'name': str, 'sync': bool, 'alwaysAccept': bool, 'relay': str, 'relayUrl': str}
+KEYS = {'name': str, 'sync': bool, 'alwaysAccept': bool, 'relay': str, 'relayUrl': str, 'clipboard': bool}
 STORAGE_KEYS = ('server', 'away', 'smb', 'archive', 'backups', 'media', 'backupSaves', 'backupShots', 'savesFollow')
 SHARE_RE = re.compile(r'^[0-9a-f]{4,32}$')
 SWITCHES = ('status', 'library', 'saves', 'storage', 'backup')
@@ -103,7 +104,12 @@ def request(argv, stdin=''):
         if len(rest) == 2:
             a['name'] = rest[1][:40]
         return 'peer.remote.pin', a
-    simple = {'status': 'status', 'pair-open': 'pair.open', 'pair-close': 'pair.close', 'sync': 'sync.now'}
+    simple = {'status': 'status', 'pair-open': 'pair.open', 'pair-close': 'pair.close', 'sync': 'sync.now', 'ai-status': 'ai.status'}
+    # Settings › AI: stop one paired device using this PC's AI, or let it again; share this PC's AI on or off.
+    if cmd in ('ai-stop', 'ai-allow') and len(rest) == 1:
+        return 'ai.set', {'stop' if cmd == 'ai-stop' else 'allow': device(rest[0])}
+    if cmd == 'ai-serve' and len(rest) == 1 and rest[0] in ('on', 'off'):
+        return 'ai.set', {'serve': rest[0] == 'on'}
     if cmd in simple and not rest:
         return simple[cmd], {}
     if cmd == 'pair-open-internet' and not rest:

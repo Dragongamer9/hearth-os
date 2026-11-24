@@ -1,0 +1,36 @@
+{
+  "format": 1,
+  "id": "plasma",
+  "name": "Plasma-style",
+  "about": "Like KDE Plasma: one full-width bar along the bottom, the app menu at the start, the clock at the end.",
+  "desktop": {
+    "barLayout": "one",
+    "barEdge": "bottom",
+    "dockFloat": "off",
+    "appMenu": "classic",
+    "barStyle": "bar",
+    "clockAt": "end"
+  },
+  "bar": {
+    "start": [
+      "menu"
+    ],
+    "end": [
+      "tray",
+      "network",
+      "volume",
+      "battery",
+      "notifications",
+      "showdesktop"
+    ]
+  },
+  "panels": [],
+  "windowButtons": {
+    "side": "right",
+    "buttons": [
+      "iconify",
+      "max",
+      "close"
+    ]
+  }
+}

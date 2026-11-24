@@ -1,0 +1,40 @@
+{
+  "format": 1,
+  "id": "windows11",
+  "name": "Windows 11-style",
+  "about": "Like Windows 11: a centred taskbar along the bottom with the Start menu, search and task view.",
+  "desktop": {
+    "barLayout": "one",
+    "barEdge": "bottom",
+    "dockFloat": "off",
+    "appMenu": "centred",
+    "menuStyle": "windows",
+    "barStyle": "bar",
+    "gameModeAt": "start",
+    "clockAt": "end"
+  },
+  "bar": {
+    "start": [],
+    "centre": [
+      "menu",
+      "search",
+      "taskview"
+    ],
+    "end": [
+      "tray",
+      "network",
+      "volume",
+      "battery",
+      "notifications"
+    ]
+  },
+  "panels": [],
+  "windowButtons": {
+    "side": "right",
+    "buttons": [
+      "iconify",
+      "max",
+      "close"
+    ]
+  }
+}

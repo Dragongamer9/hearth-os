@@ -1,0 +1,10 @@
+# Starts hearth-auto-move-to-debian.service five minutes after the PC starts (and then never again once it's done:
+# the service itself checks /var/lib/hearth/auto-move-to-debian.json).
+[Unit]
+Description=Hearth OS: move from Fedora to Debian, five minutes after starting
+
+[Timer]
+OnBootSec=5min
+
+[Install]
+WantedBy=timers.target

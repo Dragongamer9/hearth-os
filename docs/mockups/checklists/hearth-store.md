@@ -29,11 +29,11 @@ Wording changed from the mockups by the owner's decisions (Nov 19):
 - [x] Title bar: the orange S, "Hearth Store", "· Hearth", minimize, maximize, close — hosts/hearth-ui/apps/store/src/view.rs: "ts(\"Hearth Store\", f(18.0), tn.text), gap(z(10.0), 1.0), t(\"· Hearth\""
 - [x] Sidebar search "Search apps" with the Y key cap — hosts/hearth-ui/apps/store/src/view.rs: "text_input(\"Search apps\", &a.search)"
 - [x] Sidebar pages with their icons: Home, Your apps, Updates (the orange count), Built into Hearth, Store settings; the open one lit with the orange mark — hosts/hearth-ui/apps/store/src/view.rs: "(Page::BuiltIn, \"▣\", \"Built into Hearth\"), (Page::Settings, \"⚙\", \"Store settings\")"
-- [x] Sidebar foot: "This PC: Hearth OS 1.16 · Fedora edition", "Apps made for Hearth by Dragongamer9." (one line of text, not bold: the bold word wrapped apart at this size) — hosts/hearth-ui/apps/store/src/view.rs: "t(\"Apps made for Hearth by Dragongamer9.\", f(14.0), tn.muted)"
+- [x] Sidebar foot: "This PC: Hearth OS 1.16 · Fedora edition", "Apps made for Hearth by Dragongamer9." (one line of text, not bold: the bold word wrapped apart at this size) — hosts/hearth-ui/apps/store/src/view.rs: "t(\"Apps for Hearth OS: Dragongamer9's own, and open-source apps from other makers.\", f(14.0), tn.muted)"
 - [x] The controller's bar at the bottom with each page's buttons, and LB RB Previous / next page — hosts/hearth-ui/apps/store/src/view.rs: "hint2(&p, \"LB\", \"RB\", \"Previous / next page\")"
 - [x] Mouse, keyboard and controller: arrows / D-pad move the orange focus ring, Enter / A, Esc / B, Ctrl+F / Y, X Update all, Ctrl+Page Up / Down and LB / RB pages — hosts/hearth-ui/apps/store/src/main.rs: "P::Rb => page_step(a, 1),"
 - [x] Settings › Apps › App store: a "Hearth's own apps" row that opens the Hearth Store — hosts/hearth-ui/apps/settings/src/cats/apps/store.rs: "group(p, \"Hearth's own apps\""
-- [x] In the Fedora image's menu (Plasma): "Hearth Store", with its icon — os-bases/anatase/system_files/usr/share/applications/hearth-store.desktop: "Name=Hearth Store"
+- [x] In the image's menu (Debian from 1.18; Plasma on Fedora before): "Hearth Store", with its icon — os/system_files/usr/share/applications/hearth-store.desktop: "Name=Hearth Store"
 
 ## 1. Home (store-1)
 - [x] "Hearth Store" and "Checked for updates 2 min ago" — hosts/hearth-ui/apps/store/src/view.rs: "format!(\"Checked for updates {}\", ago(a, a.seen.checked))"
@@ -64,7 +64,7 @@ Wording changed from the mockups by the owner's decisions (Nov 19):
 - [x] "Updates" with "Update all (1)" — hosts/hearth-ui/apps/store/src/view.rs: "format!(\"Update all ({n})\")"
 - [x] "Checked 2 minutes ago. The Store looks again when you open it, and at most once a day." — hosts/hearth-ui/apps/store/src/view.rs: "\"The Store looks again when you open it, and at most once a day.\""
 - [x] Hearth AI's update, outlined: "0.5.0 → 0.6.0 · about 120 MB · AppImage in your home folder", Hide what's new ▴, Update — hosts/hearth-ui/apps/store/src/view.rs: "\"Hide what's new ▴\""
-- [x] "What's new in 0.6" with its points, and "Her memories and settings stay as they are. Hearth AI closes for the update and opens again after." — os-bases/anatase/system_files/usr/share/hearth/store/catalog.json: "Her memories and settings stay as they are. Hearth AI closes for the update and opens again after."
+- [x] "What's new in 0.6" with its points, and "Her memories and settings stay as they are. Hearth AI closes for the update and opens again after." — os/system_files/usr/share/hearth/store/catalog.json: "Her memories and settings stay as they are. Hearth AI closes for the update and opens again after."
 - [x] Command Center: "3.13.0 · this app updates itself. When it has a new version, the button here is "Open to update"." and Up to date — hosts/hearth-ui/apps/store/src/view.rs: "this app updates itself. When it has a new version, the button here is"
 - [x] "Built into Hearth": built in 1.16; in 1.17 the approved quick-updates mockup puts "Hearth's own apps and desktops" there instead (checklist quick-updates.md) — hosts/hearth-ui/apps/store/src/view.rs: "Hearth's own apps and desktops"
 - [x] "Test versions": "Test versions are off on this PC", its line, "Store settings ›" — hosts/hearth-ui/apps/store/src/view.rs: "\"Test versions are off on this PC\""
@@ -90,7 +90,7 @@ Wording changed from the mockups by the owner's decisions (Nov 19):
 ## 6. Uninstall (store-6)
 - [x] The app's page dimmed behind (the sidebar as it is) — hosts/hearth-ui/apps/store/src/view.rs: "Some(_) => ui::dialog(area, uninstall_dialog(a), Some(Msg::DlgCancel)),"
 - [x] The icon and "Uninstall Hearth AI?" — hosts/hearth-ui/apps/store/src/view.rs: "format!(\"Uninstall {}?\", e.name)"
-- [x] "Keep my settings and data" (outlined by the focus, on by default) with "Her memories, settings and chats stay in your home folder (2.3 GB) and are there again if you install her later" — os-bases/anatase/system_files/usr/share/hearth/store/catalog.json: "Her memories, settings and chats stay in your home folder ({size}) and are there again if you install her later"
+- [x] "Keep my settings and data" (outlined by the focus, on by default) with "Her memories, settings and chats stay in your home folder (2.3 GB) and are there again if you install her later" — os/system_files/usr/share/hearth/store/catalog.json: "Her memories, settings and chats stay in your home folder ({size}) and are there again if you install her later"
 - [x] "What goes": The app (Hearth AI 0.6.0 · AppImage in your home folder · 120 MB), Its menu entry and icon (Yes), Settings and data (Kept (turn the switch off to move them to the Trash)) — hosts/hearth-ui/apps/store/src/view.rs: "\"Kept (turn the switch off to move them to the Trash)\""
 - [x] Cancel and Uninstall (red) — hosts/hearth-ui/apps/store/src/view.rs: "btn(&p, \"Uninstall\", B::Danger"
 - [x] Really: kept by default, else to the Trash (never deleted) — hosts/hearth-ui/apps/store/src/files.rs: "fn uninstall_keeps_data_or_moves_it_to_the_trash"
@@ -99,7 +99,7 @@ Wording changed from the mockups by the owner's decisions (Nov 19):
 ## 7. With a controller (store-7)
 - [x] The controller look when a controller is used (read as Settings reads it) — hosts/hearth-ui/apps/store/src/main.rs: "Subscription::run(pad::presses).map(Msg::Pad)"
 - [x] The top: the S, "Hearth Store", LB, Home (lit) · Your apps · Updates (1) · Built in · Settings, RB, the clock — hosts/hearth-ui/apps/store/src/view.rs: "(Page::BuiltIn, \"Built in\"), (Page::Settings, \"Settings\")"
-- [x] The featured app's big tile, outlined: its icon, "Hearth AI", "0.5.0 → 0.6.0 · Colibri is her brain now", A Update, Y What's new — os-bases/anatase/system_files/usr/share/hearth/store/catalog.json: "\"heroShort\": \"Colibri is her brain now\""
+- [x] The featured app's big tile, outlined: its icon, "Hearth AI", "0.5.0 → 0.6.0 · Colibri is her brain now", A Update, Y What's new — os/system_files/usr/share/hearth/store/catalog.json: "\"heroShort\": \"Colibri is her brain now\""
 - [x] Three tall tiles: AI Command Center (3.13.0 · Installed), Logitech G15 (Built in), Beacon (Built in), tinted by their colours — hosts/hearth-ui/apps/store/src/view.rs: "format!(\"{} · Installed\", i.version)"
 - [x] "What's new in Hearth AI 0.6" (two points) beside Installs as / Download / Her memories and settings: Stay as they are — hosts/hearth-ui/apps/store/src/view.rs: "\"Stay as they are\""
 - [x] "More apps": Hearth Buddy, Hearth OS CAD, Trains 2010 (Coming), Hearth USB maker (Built in) — hosts/hearth-ui/apps/store/src/view.rs: "ts(\"More apps\", f(24.0), tn.text)"
@@ -116,7 +116,7 @@ Wording changed from the mockups by the owner's decisions (Nov 19):
 ## 9. Store settings (store-9)
 - [x] "Store settings", "Updates" — hosts/hearth-ui/apps/store/src/view.rs: "h1(&p, \"Store settings\", None)"
 - [x] Look for updates: "When the Store opens and once a day" (orange) / "Only when the Store opens" — hosts/hearth-ui/apps/store/src/view.rs: "(\"When the Store opens and once a day\".into(), a.prefs.daily, Msg::SetDaily(true))"
-- [x] Tell me when an update is ready (the bell; on by default): One notice, like "Hearth AI 0.6.0 is ready" — hosts/hearth-ui/apps/store/src/prefs.rs: "Prefs { daily: true, notify: true, metered: false, test: false, unreadable: false }"
+- [x] Tell me when an update is ready (the bell; on by default): One notice, like "Hearth AI 0.6.0 is ready" — hosts/hearth-ui/apps/store/src/prefs.rs: "Prefs { daily: true, notify: true, metered: false, test: false, auto: false, unreadable: false }"
 - [x] Download on metered connections (off): Phone hotspots and other connections marked metered — hosts/hearth-ui/apps/store/src/view.rs: "\"Phone hotspots and other connections marked metered\""
 - [x] Get test versions (off; outlined by the focus): "New versions reach this PC before everyone else, marked TEST. For trying them on your own devices first." — hosts/hearth-ui/apps/store/src/view.rs: "For trying them on your own devices first."
 - [x] "Where apps go on this PC": This PC, Apps install as (AppImages in your home folder (~/.local/share/hearth/store/apps), no password or restart), List of apps with its green dot and time — hosts/hearth-ui/apps/store/src/view.rs: "AppImages in your home folder ({}), no password or restart"
@@ -128,6 +128,6 @@ Wording changed from the mockups by the owner's decisions (Nov 19):
 - [x] The list of apps built into the image; a refresh from hearthos.fun used only when signed by the key built in — hosts/hearth-ui/apps/store/src/catalog.rs: "fn only_the_owners_signature_counts"
 - [x] The website signs the list with the repository secret HEARTH_STORE_SIGNING_KEY, and publishes nothing without it — .github/workflows/site.yml: "KEY: ${{ secrets.HEARTH_STORE_SIGNING_KEY }}"
 - [x] Command Center: installed from its GitHub release (checked against SHA256SUMS.txt), then "Updates itself · Open to update", its files never replaced — hosts/hearth-ui/apps/store/src/view.rs: "State::Ready(..) if e.self_updates => Some(Msg::Launch(e.id.clone())),"
-- [x] Hearth AI: read from its latest GitHub release (Dragongamer9/Hearth-AI, release workflow on its ci/releases branch) — os-bases/anatase/system_files/usr/share/hearth/store/catalog.json: "\"github\": \"Dragongamer9/Hearth-AI\""
+- [x] Hearth AI: read from its latest GitHub release (Dragongamer9/Hearth-AI, release workflow on its ci/releases branch) — os/system_files/usr/share/hearth/store/catalog.json: "\"github\": \"Dragongamer9/Hearth-AI\""
 - [x] Looks for updates only when it opens and at most once a day (a user timer), not while a game runs or on a metered connection — hosts/hearth-ui/apps/store/src/check.rs: "println!(\"hearth-store: a game is running; looking later\");"
-- [x] In the Fedora image: built, installed, its timer on only when it's there — os-bases/anatase/build.sh: "ln -sf ../hearth-store-check.timer /usr/lib/systemd/user/timers.target.wants/hearth-store-check.timer"
+- [x] In the image (Debian from 1.18; Fedora before): built, installed, its timer on only when it's there — os-bases/peppermint/build.sh: "ln -sf ../hearth-store-check.timer /usr/lib/systemd/user/timers.target.wants/hearth-store-check.timer"

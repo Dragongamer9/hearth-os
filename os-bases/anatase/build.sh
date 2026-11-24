@@ -568,9 +568,16 @@ fi
 # (default.target): it answers only paired devices (and pairing while a code is showing), stays quiet while a game
 # runs (Hearth's hearth-playing file), and gives way to anything else under load (low CPU/IO weight). Its UDP ports
 # open to the local network only, through hearth-link-firewall.
+# 1.18 (the owner, Nov 23: everything Hearth makes updatable from the Hearth Store): the program in
+# /usr/libexec/hearth/apps and /usr/bin/hearth-link the two-line start the Store's apps have (hearth-part: the Store's
+# newer copy when one is installed for this Hearth OS and hasn't failed, else this one), so its service is unchanged.
 if [ -x "/ctx/nimbus-app/hearth-link" ]; then
-  install -Dm755 /ctx/nimbus-app/hearth-link /usr/bin/hearth-link
-  if ldd /usr/bin/hearth-link | grep "not found"; then echo "warning: hearth-link is missing the libraries above"; rm -f /usr/bin/hearth-link; fi
+  install -Dm755 /ctx/nimbus-app/hearth-link /usr/libexec/hearth/apps/hearth-link
+  if ldd /usr/libexec/hearth/apps/hearth-link | grep "not found"; then echo "warning: hearth-link is missing the libraries above"; rm -f /usr/libexec/hearth/apps/hearth-link
+  else
+    printf '#!/bin/sh\n# Hearth Link: the Hearth Store'"'"'s newer copy when one is installed (hearth-part), else the built-in program.\n[ -n "$HOME" ] && [ -e "$HOME/.local/share/hearth/parts/hearth-link/part.json" ] && [ -x /usr/libexec/hearth/hearth-part ] && exec /usr/libexec/hearth/hearth-part run hearth-link /usr/libexec/hearth/apps/hearth-link "$@"\nexec /usr/libexec/hearth/apps/hearth-link "$@"\n' > /usr/bin/hearth-link
+    chmod 755 /usr/bin/hearth-link
+  fi
 fi
 if [ -x /usr/bin/hearth-link ]; then
   install -d /usr/lib/systemd/user/default.target.wants
@@ -818,75 +825,41 @@ Categories=Game;
 NoDisplay=true
 DESKTOP
 
-# ------------------------------------------------------------------ Desktop Mode: stock KDE Plasma (1.15)
-# The owner (Nov 17): "Just Have KDE plasma on it. with our apps." Plasma as Fedora's KDE edition has it, recommends
-# included, so KWin's Overview and effects, Breeze and Aurorae window frames, the lock screen (kscreenlocker), the
-# network, sound, Bluetooth and power applets, KDE's display settings and Discover's backends are all there. No labwc,
-# no Quickshell, no Mantel. Plasma never takes the login screen: Anatase's own stays, with Hearth's autologin into
-# "Hearth" (Game Mode), and Desktop Mode starts Plasma from inside Hearth's session (nimbus-session run_plasma).
-plasma_before=$(du -sxm /usr | cut -f1)
-dm_before=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
-dnf5 -y install plasma-workspace plasma-desktop kwin
-dnf5 -y install --skip-unavailable plasma-workspace-wayland || true
-# xrdb: applying a Global Theme (plasma-apply-lookandfeel, System Settings) also gives X11 apps the colours and cursor
-# through it; without it, it says "/usr/sbin/xrdb: No such file or directory" each time.
-dnf5 -y install xrdb || dnf5 -y install xorg-x11-server-utils || echo "::warning title=xrdb::not installed (a Global Theme still applies; X11 apps miss its colours)"
-dnf5 -y install --skip-unavailable --skip-broken plasma-nm plasma-pa plasma-systemmonitor powerdevil kscreen libkscreen kscreenlocker \
-  bluedevil polkit-kde xdg-desktop-portal-kde plasma-breeze breeze-icon-theme breeze-cursor-theme kde-cli-tools \
-  plasma-systemsettings kinfocenter kf6-kirigami kwin-effects kdecoration aurorae plasma-milou milou kmenuedit \
-  khotkeys kglobalacceld plasma-integration plasma-discover-flatpak kwalletmanager5 kwallet-pam ksshaskpass \
-  dolphin konsole kate okular spectacle ark gwenview kcalc kdialog kde-gtk-config plasma-thunderbolt \
-  xwaylandvideobridge wl-clipboard iio-sensor-proxy || true
-# Fedora's KDE comps group, if this Anatase has it, for anything the list above misses (never fails the image).
-dnf5 -y group install --skip-unavailable --skip-broken kde-desktop >/tmp/kde-group.log 2>&1 || echo "note: the kde-desktop group didn't install as a whole ($(tail -n1 /tmp/kde-group.log | cut -c1-200))"
-# Not here: Plasma's first-run welcome (Hearth has its own first-time setup) and KDE Connect, whose daemon would take
-# the port Hearth Connect (KDE Connect's protocol, Hearth's app) listens on.
-for p in plasma-welcome kde-connect kdeconnectd kde-connect-libs; do rpm -q "$p" >/dev/null 2>&1 && dnf5 -y remove "$p" || true; done
-rm -f /etc/xdg/autostart/org.kde.plasma-welcome.desktop /etc/xdg/autostart/org.kde.kdeconnect.daemon.desktop
-for b in startplasma-wayland kwin_wayland plasmashell kscreen-doctor; do command -v "$b" >/dev/null || { echo "::error title=KDE Plasma::$b is missing"; exit 1; }; done
-# Plasma's menu needs a menu file (KService's applications.menu, or Fedora's prefixed one; nimbus-session tells
-# Plasma which with XDG_MENU_PREFIX): without one the menu is empty.
-ls /etc/xdg/menus/applications.menu /etc/xdg/menus/*-applications.menu 2>/dev/null | grep -q . \
-  || { echo "::error title=KDE Plasma::no applications.menu in /etc/xdg/menus: Plasma's menu would be empty"; exit 1; }
-echo "Plasma's menu file: $(ls /etc/xdg/menus/*applications.menu | tr '\n' ' ')"
-# The lock screen's greeter must be there (a lock that can't show its screen would be a lockout).
-rpm -q kscreenlocker >/dev/null 2>&1 || dnf5 -y install kscreenlocker
-greet=$(find /usr/libexec /usr/lib64 /usr/lib /usr/bin -name kscreenlocker_greet -type f 2>/dev/null | head -1)
-[ -n "$greet" ] || { echo "::error title=KDE Plasma::kscreenlocker_greet is missing ($(rpm -q kscreenlocker; rpm -ql kscreenlocker 2>/dev/null | grep -i greet | head -3 | tr '\n' ' ')): the lock screen couldn't show"; exit 1; }
-echo "::notice title=KDE Plasma lock screen::$greet ($(rpm -q kscreenlocker))"
-echo "::notice title=KDE Plasma packages::$(rpm -q plasma-nm plasma-pa powerdevil kscreen bluedevil polkit-kde xdg-desktop-portal-kde kwin plasma-workspace 2>&1 | tr '\n' ' ' | cut -c1-900)"
-# KDE's own "Plasma" login entries start Plasma without Hearth's session: moved aside (Hearth's session starts it).
-mkdir -p /usr/share/hearth/desktop-sessions
-for f in /usr/share/wayland-sessions/plasma.desktop /usr/share/wayland-sessions/plasmawayland.desktop /usr/share/xsessions/plasma.desktop /usr/share/xsessions/plasmax11.desktop; do
-  if [ -e "$f" ]; then mv "$f" "/usr/share/hearth/desktop-sessions/$(basename "$(dirname "$f")")-$(basename "$f")"; fi
-done
-dm_after=$(readlink /etc/systemd/system/display-manager.service 2>/dev/null || true)
-if [ "$dm_before" != "$dm_after" ]; then
-  echo "Plasma's packages changed the display manager ($dm_before -> $dm_after): put back"
-  if [ -n "$dm_before" ]; then ln -sfn "$dm_before" /etc/systemd/system/display-manager.service; else rm -f /etc/systemd/system/display-manager.service; fi
+# ------------------------------------------------------------------ Desktop Mode: Mantel on labwc, no KDE (1.18)
+# The owner (Nov 23, 2026): "completely remove KDE". Anatase's base comes with KDE Plasma (80 KDE and Plasma packages,
+# 79 KDE Frameworks, its login screen Plasma Login Manager): all of it goes here, about 220 packages and 930 MB
+# (.github/workflows/no-kde-survey.yml: nothing Hearth needs goes with it). Desktop Mode is Mantel on labwc (below);
+# Hearth's own apps take the KDE ones' places (Files, Terminal, Text, Documents, Calculator, Capture); the login screen
+# is greetd (Hearth's own greeter when it's on, greetd's text sign-in otherwise; automatic sign-in into Game Mode as
+# before). The image isn't built if anything Hearth needs went too, or if there's no way to sign in.
+kde_before=$(du -sxm /usr | cut -f1)
+KDE_RE='^(plasma|kwin|kde|kf6-|kf5-|breeze|kscreen|powerdevil|bluedevil|polkit-kde|xdg-desktop-portal-kde|dolphin|konsole|kate|okular|spectacle|ark|gwenview|kwallet|discover|libplasma|kpipewire|kglobalacceld|kmenuedit|milou|kinfocenter|systemsettings|kio|kirigami|qqc2|layer-shell-qt|kdecoration|kdsoap|kaccounts|signon|plasma5support|ksystemstats|libkscreen|libksysguard|kuserfeedback|kcm-|aurorae|ocean-sound|oxygen|phonon|baloo|akonadi|kdeconnect|kactivitymanagerd|kded|kscreenlocker|sddm|plasmalogin|maliit|krdp|flatpak-kcm|ksshaskpass|kde-settings|kcalc|xwaylandvideobridge|pinentry-qt|pam-kwallet)'
+# What Hearth needs that the base has now (Steam comes later, in its own section): each must still be here after.
+keep=""; for need in gamescope hhd NetworkManager pipewire wireplumber flatpak mesa-vulkan-drivers nvidia-driver steam; do rpm -q "$need" >/dev/null 2>&1 && keep="$keep $need"; done
+kde_pkgs=$(rpm -qa --qf '%{NAME}\n' | grep -E "$KDE_RE" | sort -u || true)
+if [ -n "$kde_pkgs" ]; then
+  # shellcheck disable=SC2086
+  dnf5 -y remove $kde_pkgs >/tmp/no-kde.log 2>&1 || { tail -n 30 /tmp/no-kde.log; echo "::error title=No KDE::removing KDE failed"; exit 1; }
 fi
-echo "::notice title=KDE Plasma::installed ($(rpm -q --qf '%{VERSION}' plasma-workspace)); it adds about $(( $(du -sxm /usr | cut -f1) - plasma_before )) MB"
-# ---- Firehold on Plasma (a test; docs/FIREHOLD.md "Firehold on Plasma"): Firehold's Couch as a Plasma shell package
-# (the way Plasma Bigscreen and Plasma Mobile are made) and its Desk as Plasma's own desktop in Firehold's layout, on
-# KDE's own KWin through its public interfaces only (no KWin patches, nothing from archive/kwin). Opt-in only
-# ("Firehold (Plasma, test)" in Plasma's menu; no line in session.conf is plain KDE Plasma); never fails the image.
-dnf5 -y install --skip-unavailable layer-shell-qt kpipewire python3-evdev >/dev/null 2>&1 || true
-bash /usr/share/nimbus/desktop/firehold-plasma/install.sh / || echo "::warning title=Firehold on Plasma::not installed"
-for f in /usr/share/plasma/shells/org.hearthos.firehold/metadata.json /usr/share/plasma/plasmoids/org.hearthos.firehold.couch/contents/ui/firehold.js \
-  /usr/share/plasma/shells/org.hearthos.firehold.desk/contents/layout.js /usr/bin/hearth-firehold-plasma; do
-  [ -e "$f" ] || echo "::warning title=Firehold on Plasma::$f is missing (Desktop Mode stays plain KDE Plasma)"
+left=$(rpm -qa --qf '%{NAME}\n' | { grep -E "$KDE_RE" || true; } | tr '\n' ' ')
+[ -z "$left" ] || { echo "::error title=No KDE::still here: $left"; exit 1; }
+for need in $keep; do
+  rpm -q "$need" >/dev/null 2>&1 || { echo "::error title=No KDE::$need went with KDE"; exit 1; }
 done
-# ---- Hearth Classic on Plasma (hosts/linux/desktop/plasma-hearth; docs/mockups/checklists/plasma-hearth-bar.md): Mantel's
-# bar, dock, app menus, Quick settings and notifications as Plasma packages (org.hearthos.panel, .appmenu, .quicksettings,
-# .notifications), the shared Quick settings backend (/usr/libexec/hearth/hearth-quick) and hearth-plasma-panel.
-# Also Mantel's lock screen for KDE's screen locker (org.hearthos.mantel-lock, picked only while Hearth's panel is in use
-# and only after the locker's own test run shows it). A new account's first sign-in gets Hearth's panel (the owner,
-# Nov 19: /etc/skel's mark); nobody else's panel changes until they pick it in Settings › Bar and dock, and a panel that
-# doesn't come up gives way to KDE's own. Never fails the image.
-bash /usr/share/nimbus/desktop/plasma-hearth/install.sh / || echo "::warning title=Hearth's panel::not installed"
-for f in /usr/share/plasma/plasmoids/org.hearthos.panel/metadata.json /usr/share/plasma/plasmoids/org.hearthos.appmenu/contents/ui/Launcher.qml /usr/libexec/hearth/hearth-quick; do
-  [ -e "$f" ] || echo "::warning title=Hearth's panel::$f is missing (KDE's own panel is unchanged)"
-done
+echo "::notice title=No KDE::still here after removing KDE:$keep"
+# What KDE gave that Hearth still needs: portals (file picking and screen sharing on labwc), GPG's password prompt,
+# icons for GTK apps, the ISO tool Hearth Disks uses, and greetd for signing in.
+dnf5 -y install --skip-unavailable xdg-desktop-portal-wlr xdg-desktop-portal-gtk pinentry-gnome3 pinentry-tty adwaita-icon-theme \
+  hicolor-icon-theme xorriso || true
+dnf5 -y install greetd || { echo "::error title=No KDE::greetd isn't installable: no way to sign in"; exit 1; }
+# greetd-selinux gives greetd the login screen's SELinux domain: without it no session can start ("unable to exec:
+# EACCES", the owner's laptop on test-1.18, Nov 23), so it's required.
+dnf5 -y install greetd-selinux || { echo "::error title=No KDE::greetd-selinux isn't installable: no session could start"; exit 1; }
+dnf5 -y install --skip-unavailable cage || true
+# KDE's leftovers that name a desktop that's gone.
+rm -f /etc/xdg/autostart/org.kde.* /etc/xdg/autostart/*plasma* /usr/share/wayland-sessions/plasma*.desktop /usr/share/xsessions/plasma*.desktop
+rm -rf /usr/share/hearth/desktop-sessions/*plasma* /etc/xdg/plasma-workspace /etc/plasmalogin.conf /etc/plasmalogin.conf.d
+echo "::notice title=No KDE::removed $(echo "$kde_pkgs" | wc -l) packages, $(( kde_before - $(du -sxm /usr | cut -f1) )) MB; gamescope $(rpm -q --qf '%{VERSION}' gamescope), greetd $(rpm -q --qf '%{VERSION}' greetd)"
 # Tools Hearth's apps and helpers use (screenshots, brightness, the clipboard, X11 helpers for Game Mode's pickers).
 dnf5 -y install --skip-unavailable --skip-broken grim slurp brightnessctl wlr-randr python3-evdev xprop xwininfo xdotool gnome-keyring cpio rsync || true
 # The session's own message bus when the login gave none (nimbus-session ensure_session_bus: dbus-run-session), and
@@ -916,10 +889,36 @@ if [ "$lw_ok" = 1 ] && [ -f /usr/share/nimbus/desktop/shell/shell.qml ]; then
   install -Dm755 /usr/share/nimbus/desktop/labwc-fedora/hearth-labwc-desktop /usr/bin/hearth-labwc-desktop
   echo "::notice title=labwc on Fedora::Mantel and Firehold on labwc can be picked ($(rpm -q labwc), Quickshell $(cat /usr/share/hearth/quickshell-ref 2>/dev/null))"
 else
-  rm -f /usr/bin/hearth-labwc-desktop
-  echo "::warning title=labwc on Fedora::not offered in this image (see the lines above); KDE Plasma and Firehold on Plasma as before"
+  echo "::error title=labwc on Fedora::Mantel on labwc couldn't be put in (see the lines above): with no KDE there would be no Desktop Mode"
+  exit 1
 fi
 # <<< labwc on the Fedora edition
+
+# ------------------------------------------------------------------ signing in with no KDE (1.18)
+# Plasma Login Manager went with KDE. greetd signs in: its own text sign-in is the display manager
+# (hearth-login-text.service, restarts itself, needs nothing else), with automatic sign-in into Hearth's session as
+# before; Hearth's own login screen (greetd + cage + Hearth's greeter, Settings › Accounts) when it's turned on, falling
+# back to the text sign-in. The image isn't built without a way to sign in (red flag 2).
+for u in hearth-greetd.service hearth-login-select.service hearth-login-fallback.service hearth-login-wait.service hearth-login-watch.service; do
+  install -Dm644 "$PF/usr/lib/systemd/system/$u" "/usr/lib/systemd/system/$u"
+done
+install -Dm644 "$PF/usr/lib/systemd/user/hearth-login-notice.service" /usr/lib/systemd/user/hearth-login-notice.service
+sed -i 's/^Before=display-manager.service sddm.service hearth-greetd.service$/Before=display-manager.service sddm.service hearth-greetd.service hearth-login-text.service/' /usr/lib/systemd/system/hearth-login-select.service
+chmod 755 /usr/libexec/nimbus/hearth-login-screen /usr/libexec/nimbus/hearth-greeter /usr/libexec/nimbus/hearth-session-start /usr/share/hearth/greeter/greeter-info 2>/dev/null || true
+systemctl disable greetd.service plasmalogin.service >/dev/null 2>&1 || true
+ln -sfn /usr/lib/systemd/system/hearth-login-text.service /etc/systemd/system/display-manager.service
+systemctl enable hearth-login-select.service hearth-greetd.service
+# 1.18: Fedora is abandoned; a PC on it moves to Hearth OS on Debian by itself, once (the owner: "Move them automatically").
+systemctl enable hearth-auto-move-to-debian.timer
+systemctl --global enable hearth-login-notice.service || true
+getent passwd greetd >/dev/null || getent passwd greeter >/dev/null || getent passwd _greetd >/dev/null || useradd -r -M -s /sbin/nologin -d /var/lib/greetd greetd
+[ -f /etc/pam.d/greetd ] || printf '#%%PAM-1.0\nauth       substack     system-auth\nauth       include      postlogin\naccount    required     pam_nologin.so\naccount    include      system-auth\npassword   include      system-auth\nsession    required     pam_selinux.so close\nsession    required     pam_loginuid.so\nsession    required     pam_selinux.so open\nsession    optional     pam_keyinit.so force revoke\nsession    include      system-auth\nsession    include      postlogin\n' > /etc/pam.d/greetd
+{ command -v greetd >/dev/null && { [ -x /usr/bin/agreety ] || [ -x /usr/sbin/agreety ]; } && [ -f /etc/pam.d/greetd ] \
+  && [ "$(readlink -f /etc/systemd/system/display-manager.service)" = /usr/lib/systemd/system/hearth-login-text.service ]; } \
+  || { echo "::error title=Signing in::greetd, agreety or its PAM file is missing: no way to sign in"; exit 1; }
+gctx=$({ matchpathcon -n /usr/sbin/greetd 2>/dev/null || matchpathcon -n /usr/bin/greetd 2>/dev/null || grep -hE 'bin/greetd' /etc/selinux/targeted/contexts/files/file_contexts* 2>/dev/null; } | head -1 || true)
+case "$gctx" in *xdm_exec_t*|*greetd_exec_t*) ;; *) echo "::error title=Signing in::greetd isn't labelled as a login screen for SELinux ($gctx): no session could start"; exit 1 ;; esac
+echo "::notice title=Signing in::greetd $(rpm -q --qf '%{VERSION}' greetd), text sign-in as the display manager (SELinux: ${gctx:-?}); Hearth's own login screen: $(command -v cage >/dev/null && echo 'can be turned on' || echo 'no cage')"
 
 # ------------------------------------------------------------------ Firehold (Rust, test): archived
 # The owner (Nov 19): "focus on the Plasma Firehold for the moment and archive the Rust Firehold". firehold-shell, its
@@ -1482,41 +1481,9 @@ if [ -x /ctx/nimbus-app/office/hearth-office ]; then sh /ctx/nimbus-app/office/i
 else echo "Hearth Office wasn't built; this image goes without it"; fi
 # ---- end of Hearth Office
 
-# ------------------------------------------------------------------ Hearth's KDE apps (hosts/hearth-kde, docs/KDE-APPS.md)
-# Hearth Terminal (Konsole), Hearth Text (Kate), Reader (Okular), Capture (Spectacle) and Hearth Calculator (KCalc), the
-# base's own KDE packages with Hearth's names, icons and colors; Hearth Files built from Dolphin and kio-hearth (hearth:/
-# in every KDE app) from CI's build inside this base (os/nimbus-app/hearth-kde.tar), only when they built, passed their
-# tests and start here (otherwise the old Hearth Files stays the file manager). The old Terminal, Text Editor and
-# Calculator stay installed as "… (classic)". Never stops the image build.
-# KDE Frameworks to Fedora's current ones first: the base image's are older than the KDE apps Fedora ships today
-# (Fedora's own Kate 26.08 failed with "undefined symbol: KConfig::copyFrom", run 44296110901), and RPM only asks for
-# the library's major version, so nothing else catches that.
-kf_before=$(rpm -q --qf '%{VERSION}' kf6-kconfig 2>/dev/null || true)
-dnf5 -y upgrade --refresh 'kf6-*' || echo "::warning title=KDE Frameworks::couldn't upgrade kf6-*"
-echo "::notice title=KDE Frameworks::kf6-kconfig ${kf_before:-?} -> $(rpm -q --qf '%{VERSION}' kf6-kconfig 2>/dev/null || true)"
-bash /ctx/hearth-kde/install.sh /ctx/nimbus-app/hearth-kde.tar || echo "warning: Hearth's KDE apps didn't install"
-# Hearth Files' own Dolphin build has to match the KDE Frameworks this image really has. The owner's laptop (Nov 18):
-# "symbol lookup error: libdolphinprivate.so.6: undefined symbol: KConfig::copyFrom" (built against KF 6.32, the
-# image's KConfig older): Files didn't open. install.sh only checks for missing libraries, so here every library of
-# the build is resolved too (ldd -r). Anything unresolved: the build and kio-hearth are left out, and Files is
-# Fedora's own Dolphin (hearth-files-kde falls back to it: Hearth's name and places, KDE's program).
-# (|| true: a library with nothing unresolved makes grep "fail", which stopped the whole build under set -e/pipefail.)
-unresolved() { { LD_LIBRARY_PATH="$2" ldd -r "$1" 2>&1 | grep -E 'undefined symbol|not found' | head -3; } || true; }
-if [ -d /usr/lib/hearth-files ]; then
-  bad=""
-  for f in /usr/lib/hearth-files/bin/dolphin $(find /usr/lib/hearth-files -name '*.so*' -type f 2>/dev/null); do
-    u=$(unresolved "$f" /usr/lib/hearth-files/lib); if [ -n "$u" ]; then bad="$bad ${f##*/}: $u;"; fi
-  done
-  if [ -n "$bad" ]; then
-    echo "::warning title=Hearth Files::its Dolphin build doesn't match this image's KDE Frameworks ($(echo "$bad" | cut -c1-600)): Fedora's own Dolphin is Files here"
-    rm -rf /usr/lib/hearth-files
-  fi
-fi
-for k in $(find /usr/lib /usr/lib64 -path '*/plugins/kf6/kio/hearth.so' 2>/dev/null); do
-  u=$(unresolved "$k" ""); if [ -n "$u" ]; then echo "::warning title=kio-hearth::left out, it doesn't match this image's KDE Frameworks: $u"; rm -f "$k"; fi
-done
-rpm -q dolphin >/dev/null 2>&1 || dnf5 -y install dolphin
-command -v dolphin >/dev/null || { echo "::error title=Files::no Dolphin in the image: Plasma's Files wouldn't open"; exit 1; }
+# ------------------------------------------------------------------ Hearth's KDE apps: not here (1.18, no KDE)
+# Hearth Files from Dolphin, and Konsole, Kate, Okular, Spectacle and KCalc with Hearth's names, went with KDE (the
+# owner, Nov 23): Hearth's own Files, Terminal, Text, Documents, Capture and Calculator are the apps for those kinds.
 
 # ------------------------------------------------------------------ Hearth's default apps
 # Every Hearth app in the image is the default for the files and links it opens (its .desktop file's MimeType), in
@@ -1553,7 +1520,7 @@ chmod 755 /usr/libexec/hearth-app-kinds
 # Manager, System Restore and Reliability history, the ones that ran only inside Mantel. They take those apps' own
 # menu entries and commands here (this edition has no Mantel), and are left out, with their entries as before, when
 # they weren't built or can't start.
-for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app; do
+for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-ideas-app hearth-layout; do
   [ -x "/ctx/nimbus-app/hearth-ui/$b" ] || { echo "warning: $b wasn't built, so this image goes without it"; continue; }
   # 1.17, quick updates through the Hearth Store (docs/HEARTH-STORE.md): the program itself in /usr/libexec/hearth/apps,
   # and /usr/bin/$b a two-line start that uses the Store's newer copy only when one is installed (hearth-part checks
@@ -1690,7 +1657,7 @@ fi
 # while it's open. Not built: its entry goes too.
 [ -x /usr/bin/hearth-notes-app ] || rm -f /usr/share/applications/hearth-notes.desktop
 # <<< Hearth Notes
-echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app; do [ -x /usr/libexec/hearth/apps/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/libexec/hearth/apps/$b | cut -f1)"; done)"
+echo "::notice title=Hearth's pure-Rust apps::$(for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-g15 hearth-g15-app hearth-store-app hearth-server-app hearth-resmon-app hearth-family-app hearth-notes-app hearth-ideas-app hearth-layout; do [ -x /usr/libexec/hearth/apps/$b ] && printf '%s (%s) ' "$b" "$(du -h /usr/libexec/hearth/apps/$b | cut -f1)"; done)"
 # The owner (Nov 18): every Hearth app that runs under Plasma is installed and shown in Plasma's menu, and Hearth's own
 # apps are the defaults there (menu and file types); KDE's apps stay installed but never take Hearth's place. So, for
 # Plasma (KDE) only, each kind's list becomes Hearth's own first (in Hearth Classic's order), then the Hearth KDE
@@ -2480,3 +2447,17 @@ done
 # bootc keeps images in podman's storage (imgstorage): without podman, updates and Switch edition fail
 # ("podman executable not found in PATH"). Peppermint 0.3.0 shipped without it.
 command -v podman >/dev/null || { echo "podman is missing: bootc upgrade and bootc switch need it"; exit 1; }
+
+# ------------------------------------------------------------------ no KDE came back (1.18)
+# Anything installed after KDE was removed (above) that brought a piece of KDE back with it: named, with what needs it,
+# so it can be replaced (the image check fails while any is here). Only reports: nothing in it can stop the build.
+set +e +o pipefail
+kde_back=$(rpm -qa --qf '%{NAME}\n' | { grep -E "$KDE_RE" || true; } | sort -u)
+if [ -n "$kde_back" ]; then
+  why=""; for k in $kde_back; do why="$why $k<-$(rpm -q --whatrequires "$k" --qf '%{NAME},' 2>/dev/null | { grep -v 'no package' || true; } | tr -d '\n' | cut -c1-80);"; done
+  # who needs the KDE Frameworks libraries (an app's, not the desktop): every package, by the libraries it links
+  users=$(for k in $kde_back; do rpm -ql "$k" 2>/dev/null | grep -E '\.so\.[0-9]+$' | xargs -r -n1 basename; done | sort -u | while read -r so; do rpm -q --whatrequires "$so()(64bit)" --qf '%{NAME}\n' 2>/dev/null; done | { grep -vE "no package|$KDE_RE" || true; } | sort -u | tr '\n' ' ')
+  echo "::warning title=No KDE::KDE's libraries are used by: ${users:-(nothing found)}"
+  echo "::warning title=No KDE::KDE came back with later installs:$(echo "$why" | cut -c1-3000)"
+fi
+set -e -o pipefail

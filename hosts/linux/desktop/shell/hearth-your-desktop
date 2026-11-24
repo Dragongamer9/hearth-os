@@ -8,7 +8,10 @@
                                   (nimbus-session, before KWin starts) which of your own KDE settings Hearth's fixed
                                   KWin keys override (LOCKED below); the first time one is, a notice says which and
                                   why. Reads your files, never writes them. JSON {overridden, told}
-  hearth-your-desktop wm kwin|labwc|firehold|firehold-once
+  hearth-your-desktop mantel mantel|rust
+                                  Desktop Mode's desktop from its next start: Mantel, or Mantel in Rust (only when it's
+                                  installed from the Hearth Store). session.conf's HEARTH_MANTEL, only that line.
+  hearth-your-desktop wm labwc    (1.18: Desktop Mode is Mantel on labwc; kwin and firehold are refused)
   hearth-your-desktop unlock | relock
                                   Mantel's window manager from the next start of Desktop Mode (session.conf's
                                   HEARTH_DESKTOP_WM, only that line, through hearth_settings_io). Picking KWin also
@@ -114,6 +117,9 @@ def texts(what, why):
                         'opened on labwc, the one it used before 1.14. Everything works as before.'),
             'failed': ('KWin didn\'t start', 'Mantel opened on labwc instead, the window manager it used before 1.14, '
                        'for this sign-in. Next time Hearth tries KWin again.'),
+            'retired': ('Desktop Mode is Mantel on labwc', 'Hearth 1.18 has two desktops: Mantel and Mantel in Rust, both on '
+                        'labwc, the window manager 1.13 used. KWin and Firehold aren\'t used any more. Your apps, files '
+                        'and settings are all still here; Settings › System › Your desktop picks between the two.'),
             'twice': ('KWin didn\'t start twice in a row', 'Mantel uses labwc, the window manager it used before 1.14, '
                       'until you turn KWin back on. You can try it again here or in Settings › System › Your desktop.'),
         }.get(why, ('', ''))
@@ -319,7 +325,7 @@ def status():
     pending, seen = read_notices(NOTICE), read_notices(SHOWN)
     n, shown = (pending[0], False) if pending else ((seen[-1], True) if seen else (None, False))
     v = conf_value('HEARTH_DESKTOP_WM')
-    picked = v if v in ('labwc', 'firehold') else 'kwin'
+    picked = 'labwc'   # 1.18: Desktop Mode is Mantel on labwc whatever was picked before
     before = conf_value('HEARTH_DESKTOP_WM_BEFORE')
     fails = kwin_fails()
     hfails = kwin_fails('firehold')
@@ -338,6 +344,7 @@ def status():
             'kwinPaused': picked == 'kwin' and fails >= 2,
             'fireholdPreview': picked == 'firehold', 'wmBefore': before if before in ('kwin', 'labwc') else 'kwin',
             'fireholdHere': firehold_here(), 'fireholdFails': hfails, 'fireholdPaused': picked == 'firehold' and hfails >= 2,
+            'mantel': mantel_picked(), 'mantelRustHere': rust_here(), 'mantels': MANTELS,
             'kwinHere': bool(shutil.which('kwin_wayland')),
             'labwcHere': bool(shutil.which('labwc')),
             'safeGraphics': os.path.exists(E('HEARTH_SAFE_FLAG') or '/run/hearth/safe-graphics')}
@@ -365,7 +372,48 @@ def drop_once():
         pass
 
 
+MANTELS = {'mantel': 'Mantel', 'rust': 'Mantel in Rust'}
+
+
+def rust_here():
+    """Mantel in Rust's Store copy may be used here (hearth-part: from the signed list, made for this Hearth OS, not
+    failed). Read only."""
+    hp = '/usr/libexec/hearth/hearth-part'
+    if not os.access(hp, os.X_OK):
+        return False
+    try:
+        import subprocess
+        r = subprocess.run([hp, 'path', 'mantel-rust', ''], capture_output=True, text=True, timeout=10)
+        p = r.stdout.strip()
+        return r.returncode == 0 and bool(p) and os.access(os.path.join(p, 'hearth-mantel'), os.X_OK)
+    except Exception:
+        return False
+
+
+def mantel_picked():
+    """session.conf's HEARTH_MANTEL (mantel or rust). No line: Mantel in Rust when its Store copy is here (as before
+    1.18, when having it meant using it), else Mantel."""
+    v = conf_value('HEARTH_MANTEL')
+    if v in MANTELS:
+        return v
+    return 'rust' if rust_here() else 'mantel'
+
+
+def cmd_mantel(m):
+    """Settings › System › Your desktop: Mantel or Mantel in Rust, from the next start of Desktop Mode (only that line
+    of session.conf, through hearth_settings_io). Mantel in Rust only when it's installed from the Hearth Store."""
+    if m not in MANTELS:
+        raise Fail('mantel or rust')
+    if m == 'rust' and not rust_here():
+        raise Fail('Mantel in Rust isn\'t installed: get it in the Hearth Store first')
+    sio.update_text(SESSION_CONF, lambda t: sio.conf_set_text(t, 'HEARTH_MANTEL', m))
+    sio.log_event('desktop: %s from the next start of Desktop Mode' % MANTELS[m])
+    return status()
+
+
 def cmd_wm(w):
+    if w in ('kwin', 'firehold', 'firehold-once'):
+        raise Fail('Desktop Mode is Mantel on labwc since 1.18 (KWin and Firehold aren\'t used any more)')
     if w in ('firehold', 'firehold-once') and not unlocked():
         raise Fail('kwin or labwc')
     if w == 'firehold-once':
@@ -482,9 +530,9 @@ def main(argv):
         out = cmd_kwin_overrides()
     elif cmd in ('unlock', 'relock'):
         out = cmd_unlock(cmd == 'unlock')
-    elif cmd == 'wm' and len(argv) == 3:
+    elif cmd in ('wm', 'mantel') and len(argv) == 3:
         try:
-            out = cmd_wm(argv[2])
+            out = cmd_wm(argv[2]) if cmd == 'wm' else cmd_mantel(argv[2])
         except Fail as e:
             print('error: %s' % e, flush=True)
             return 1

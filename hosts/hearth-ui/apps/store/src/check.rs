@@ -132,6 +132,24 @@ pub fn daily() -> i32 {
         }
     }
     seen.told.extend(new_told);
+    // "Install updates by themselves" (store-w11-6; off unless the person turned it on): Hearth parts' quick updates
+    // only (each signed and checked by hearth-part, the built-in one kept to fall back on), never test versions, never
+    // while a game runs (checked above), and the person is told what changed.
+    if prefs.auto && !seen.offline {
+        let (hearth, _) = crate::this_pc();
+        for e in cat.apps.iter().filter(|e| !e.test) {
+            // (never system parts: they ask for the admin password, so only when you press Update)
+            let Some(p) = e.part.as_ref().filter(|p| !p.system) else { continue };
+            let Some(up) = crate::parts::offer(p, crate::parts::have(&p.id).as_ref(), &hearth) else { continue };
+            match crate::parts::install(up) {
+                Ok(_) => {
+                    println!("hearth-store: {} updated to {} by itself", e.name, up.version);
+                    let _ = net::run_short(5, &["notify-send", "-a", "Hearth Store", "-i", "system-software-update", &format!("{} is on {}", e.name, up.version), "Updated by itself (Store settings › Install updates by themselves)."]);
+                }
+                Err(err) => println!("hearth-store: {} {} didn't install: {err}", e.name, up.version),
+            }
+        }
+    }
     let _ = release::write_seen(&seen);
     println!("hearth-store: checked {} apps{}", seen.apps.len(), if seen.offline { " (offline)" } else { "" });
     0

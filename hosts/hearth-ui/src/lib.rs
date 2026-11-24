@@ -4,9 +4,14 @@
 //! * [`ui`]: text, buttons, cards, chips, lines, the window's own title bar and a dimmed dialog;
 //! * [`run`]: helpers that run a program (Hearth's Python helpers) off the window's thread;
 //! * [`app`]: the window every app opens (its id, size, the probe CI measures);
+//! * [`describe`]: Describe it in an app (the box, the chips, Keep this and Undo; hearth-layout does the asking);
+//! * [`blocks`], [`arrange`]: every app's pages made of blocks, moved, sized, hidden, added and restyled (Arrange);
 //! * [`settings_file`]: hearth-core's settings_file.rs, the one safe way to write a setting (red flag 9).
 
 pub mod app;
+pub mod arrange;
+pub mod blocks;
+pub mod describe;
 pub mod run;
 pub mod theme;
 pub mod time;

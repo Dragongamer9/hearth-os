@@ -151,15 +151,24 @@ var BAR_ITEMS = [
     { id: "bluetooth", name: "Bluetooth", icon: "bt", zone: "end" },
     { id: "volume", name: "Volume", icon: "vol", zone: "end" },
     { id: "battery", name: "Battery", icon: "batt", zone: "end" },
-    { id: "notifications", name: "Notifications", icon: "bell", zone: "end" }
+    { id: "notifications", name: "Notifications", icon: "bell", zone: "end" },
+    // Desktop layouts (hosts/hearth-layout blocks.rs): in the bar only where a layout or you put them ("extra": never
+    // added by themselves, so a bar without them stays as it was)
+    { id: "overview", name: "Desktops pill (opens the overview)", icon: "desktops", zone: "start", extra: true },
+    { id: "taskview", name: "Task view", icon: "desktops", zone: "start", extra: true },
+    { id: "appname", name: "The app in front, by name", icon: "window", zone: "start", extra: true },
+    { id: "appmenus", name: "App menus (File, Edit…)", icon: "menu", zone: "start", extra: true },
+    { id: "quickaccess", name: "Quick Access", icon: "grid", zone: "end", extra: true },
+    { id: "showdesktop", name: "Show desktop", icon: "desktops", zone: "end", extra: true },
+    { id: "power", name: "Power (shut down, restart, sign out)", icon: "power", zone: "end", extra: true }
 ];
 function barItem(id) { for (var i = 0; i < BAR_ITEMS.length; i++) if (BAR_ITEMS[i].id === id) return BAR_ITEMS[i]; return null; }
 // The saved order ({start: [...], end: [...], hidden: [...]}, or nothing) → the full layout: every known item exactly
 // once, new items (a newer Hearth's) in their default place, unknown ids dropped, the flame never hidden.
 function barLayout(saved) {
     var o = saved && typeof saved === "object" ? saved : {};
-    var seen = {}, out = { start: [], end: [], hidden: [] };
-    ["start", "end", "hidden"].forEach(function (z) {
+    var seen = {}, out = { start: [], centre: [], end: [], hidden: [] };
+    ["start", "centre", "end", "hidden"].forEach(function (z) {
         var l = Array.isArray(o[z]) ? o[z] : [];
         for (var i = 0; i < l.length; i++) {
             var it = barItem(l[i]);
@@ -171,6 +180,7 @@ function barLayout(saved) {
     for (var k = 0; k < BAR_ITEMS.length; k++) {
         var b = BAR_ITEMS[k];
         if (seen[b.id]) continue;
+        if (b.extra) { out.hidden.push(b.id); continue; }   // a layout's own block: only where it's put
         // a new item goes next to the one before it in the default list, so it lands where it would by default
         var z = out[b.zone], at = -1;
         for (var p = k - 1; p >= 0 && at < 0; p--) at = z.indexOf(BAR_ITEMS[p].id);
@@ -181,7 +191,7 @@ function barLayout(saved) {
 function isDefaultLayout(l) { return JSON.stringify(barLayout(l)) === JSON.stringify(barLayout(null)); }
 // Move ID one place (dir -1 / +1) inside its zone, or to the other end of the bar (zone "start" | "end" | "hidden").
 function barMove(saved, id, dir, zone) {
-    var l = barLayout(saved), from = l.start.indexOf(id) >= 0 ? "start" : l.end.indexOf(id) >= 0 ? "end" : "hidden";
+    var l = barLayout(saved), from = l.start.indexOf(id) >= 0 ? "start" : l.centre.indexOf(id) >= 0 ? "centre" : l.end.indexOf(id) >= 0 ? "end" : "hidden";
     var it = barItem(id);
     if (!it) return l;
     if (zone && zone !== from) {
@@ -213,7 +223,15 @@ var PANEL_ITEMS = [
     { id: "widget:weather", name: "Weather", icon: "cloud" },
     { id: "widget:monitor", name: "System monitor", icon: "cpu" },
     { id: "widget:battery", name: "Battery", icon: "batt" },
-    { id: "widget:timer", name: "Timer", icon: "bell" }
+    { id: "widget:timer", name: "Timer", icon: "bell" },
+    // Desktop layouts' blocks (hearth-layout blocks.rs; Block*.qml, the same as in the main bar)
+    { id: "overview", name: "Desktops pill (opens the overview)", icon: "desktops" },
+    { id: "taskview", name: "Task view", icon: "desktops" },
+    { id: "appname", name: "The app in front, by name", icon: "window" },
+    { id: "appmenus", name: "App menus (File, Edit…)", icon: "menu" },
+    { id: "quickaccess", name: "Quick Access", icon: "grid" },
+    { id: "showdesktop", name: "Show desktop", icon: "desktops" },
+    { id: "power", name: "Power (shut down, restart, sign out)", icon: "power" }
 ];
 function panelItem(id) { for (var i = 0; i < PANEL_ITEMS.length; i++) if (PANEL_ITEMS[i].id === id) return PANEL_ITEMS[i]; return null; }
 var EDGES = ["top", "bottom", "left", "right"];
@@ -224,7 +242,9 @@ function panelOf(id, rec) {
     var items = (Array.isArray(rec.items) ? rec.items : []).filter(function (x) { return !!panelItem(x); });
     return { id: id, screen: typeof rec.screen === "string" ? rec.screen : "", edge: edge, items: items,
              size: typeof rec.size === "number" && rec.size >= 28 && rec.size <= 96 ? Math.round(rec.size) : 44,
-             autoHide: rec.autoHide === true };
+             autoHide: rec.autoHide === true,
+             // desktop layouts: "" full width, "floating" (off the edge, rounded), "centred" (only as long as it holds)
+             style: rec.style === "floating" || rec.style === "centred" ? rec.style : "" };
 }
 // The main bar as a panel's items (Clone the main bar).
 function cloneMain(layout) {

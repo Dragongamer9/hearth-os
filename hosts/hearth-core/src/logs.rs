@@ -384,6 +384,14 @@ pub fn report(version: &str) -> String {
         }
         if !body.trim().is_empty() { section("Server mode and its services", body); }
     }
+    // Settings › AI's "What Hearth checked" (hearth-ai-check status: which AI answers, each engine and device, the
+    // model for writing, problems in plain words). Read only; it prints no keys.
+    {
+        let helper = crate::paths::desktop_dir().join("shell/hearth-ai-check");
+        if helper.exists() {
+            section("AI: what Hearth checked (Settings › AI)", cap(&sh(&format!("timeout 25 python3 '{}' status 2>&1", helper.display())), 6000));
+        }
+    }
     // The older desktops (1.13's KDE Plasma and GNOME, Hearth Plasma, Hearth GNOME and Hearth COSMIC): each one's own log
     // if an old one is still there, and whether Quickshell is there.
     {

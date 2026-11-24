@@ -1,0 +1,87 @@
+{
+ "name": "Paper notebook",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "background": {
+  "kind": "paper",
+  "from": "#f3ecdc",
+  "to": "#e8dfc9"
+ },
+ "look": {
+  "text": "#2b2b2b",
+  "font": "Noto Serif"
+ },
+ "privacy": {
+  "notifications": "names",
+  "media": true
+ },
+ "blocks": [
+  {
+   "id": "clock",
+   "block": "clock",
+   "x": 3,
+   "y": 1,
+   "w": 8,
+   "h": 2,
+   "style": {
+    "size": 96,
+    "font": "Noto Serif",
+    "text": "#2b2b2b"
+   }
+  },
+  {
+   "id": "date",
+   "block": "date",
+   "x": 3,
+   "y": 3,
+   "w": 8,
+   "h": 1,
+   "style": {
+    "size": 26,
+    "font": "Noto Serif",
+    "text": "#2b2b2b"
+   }
+  },
+  {
+   "id": "calendar",
+   "block": "calendar",
+   "x": 3,
+   "y": 5,
+   "w": 6,
+   "h": 3,
+   "style": {
+    "font": "Noto Serif",
+    "text": "#2b2b2b"
+   }
+  },
+  {
+   "id": "words",
+   "block": "text",
+   "x": 3,
+   "y": 9,
+   "w": 8,
+   "h": 2,
+   "value": "Back soon.",
+   "style": {
+    "font": "Noto Serif",
+    "size": 26,
+    "text": "#2b2b2b"
+   }
+  },
+  {
+   "id": "password",
+   "block": "password",
+   "x": 16,
+   "y": 7,
+   "w": 6,
+   "h": 5,
+   "style": {
+    "colour": "#fff3a0",
+    "text": "#2b2b2b",
+    "corners": 2
+   }
+  }
+ ]
+}

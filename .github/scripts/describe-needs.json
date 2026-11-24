@@ -1,0 +1,4 @@
+{"_asked": "Add a button that records the last 30 seconds of my game, like the Xbox does.",
+ "kind": "needs", "needs": ["keeping the last moments of the screen all the time"],
+ "why": "Recording what already happened needs Hearth to keep the last moments of the screen all the time. Capture can only record from when you press it.",
+ "closest": {"format": 1, "id": "record-button", "name": "A Record button in Quick Access", "part": "quickaccess", "shows": [{"source": "text", "label": "Record"}], "click": {"action": "screenshot"}}, "changes": []}

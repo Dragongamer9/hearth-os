@@ -17,6 +17,8 @@ change as you (no root). The parts that need root go through /usr/libexec/nimbus
   hearth-system labwc-config         prepare Desktop Mode's labwc folder with your keyboard and mouse settings in it
                                      ($XDG_RUNTIME_DIR/hearth-labwc) and print its path (nimbus-session runs it)
   hearth-system shortcuts            JSON: Desktop Mode's keyboard shortcuts, from labwc's rc.xml
+  hearth-system window-buttons       put the window buttons a desktop layout chose (desktop.json "windowButtons",
+                                     hearth-layout) on labwc (its folder made again, then reloaded) or KWin
   hearth-system defaults             JSON: Settings › Default apps: for each kind (browser, files, text, image, video,
                                      music, ebooks, documents, sheets, slides, terminal, email, calendar, contacts,
                                      maps, archives, store) the app it opens in, Hearth's own, and the installed apps that can
@@ -518,12 +520,67 @@ def labwc_config(src=None, dest=None):
         rc = rc_with_pointer(rc, pointer_saved())
     rc = rc_with_theme(rc)
     rc = rc_with_search_key(rc, parse_env(env))
+    rc = rc_with_titlebar(rc, window_buttons_saved())
     # ---- Accessibility: the magnifier's size and steps, window titles at your text size
     if access:
         rc = access.rc_with_access(rc)
     # ---- end Accessibility
     write_atomic(os.path.join(dest, 'rc.xml'), rc)
     return dest
+
+
+# ---- Desktop layouts (hearth-layout, Settings › Personalization › Desktop layout): where the window buttons go
+TITLEBAR_RE = re.compile(r'^(?:icon:)?(?:(?:icon|iconify|max|close|shade|desk)(?:,(?:icon|iconify|max|close|shade|desk))*)?:?(?:(?:iconify|max|close|shade|desk)(?:,(?:iconify|max|close|shade|desk))*)?$')
+
+
+def window_buttons_saved():
+    """desktop.json's "windowButtons" (labwc's titlebar text, e.g. "icon:iconify,max,close" or "close,iconify,max:"),
+    or "" for Hearth's own. Anything that isn't a titlebar with a close button counts as "" (the file is never changed
+    here)."""
+    path = os.path.join(os.environ.get('XDG_DATA_HOME') or os.path.expanduser('~/.local/share'), 'nimbus', 'desktop.json')
+    try:
+        v = json.loads(read(path, '{}')).get('windowButtons', '')
+    except (ValueError, AttributeError):
+        return ''
+    if not isinstance(v, str) or ':' not in v or 'close' not in v.split(':')[0].split(',') + v.split(':')[1].split(',') or not TITLEBAR_RE.match(v):
+        return ''
+    return v
+
+
+def rc_with_titlebar(text, layout):
+    """rc.xml text with <titlebar><layout> set to LAYOUT (unchanged for "")."""
+    if not layout:
+        return text
+    return re.sub(r'(<titlebar>\s*<layout>)[^<]*(</layout>)', lambda m: m.group(1) + layout + m.group(2), text, count=1)
+
+
+def kwin_buttons(layout):
+    """labwc's titlebar text as KWin's ButtonsOnLeft / ButtonsOnRight (M: the window menu, I: minimise, A: maximise,
+    X: close, L: shade, S: on all desktops)."""
+    k = {'icon': 'M', 'iconify': 'I', 'max': 'A', 'close': 'X', 'shade': 'L', 'desk': 'S'}
+    left, right = layout.split(':', 1) if layout else ('icon', 'iconify,max,close')
+    word = lambda part: ''.join(k[b] for b in part.split(',') if b in k)
+    return word(left), word(right)
+
+
+def window_buttons():
+    """Puts the saved window buttons on: labwc's folder made again and labwc reloaded, or KWin's decoration."""
+    layout = window_buttons_saved()
+    if os.environ.get('HEARTH_WM') == 'kwin':
+        left, right = kwin_buttons(layout)
+        tool = shutil.which('kwriteconfig6')
+        if not tool:
+            raise Fail("KWin's settings tool isn't there")
+        for key, val in (('ButtonsOnLeft', left), ('ButtonsOnRight', right)):
+            run([tool, '--file', 'kwinrc', '--group', 'org.kde.kdecoration2', '--key', key, val])
+        run(['dbus-send', '--session', '--type=signal', '/KWin', 'org.kde.KWin.reloadConfig'])
+        return {'ok': True, 'kwin': True, 'left': left, 'right': right}
+    reloaded = False
+    if os.path.isdir(runtime_dir()):
+        labwc_config()
+        if os.environ.get('LABWC_PID') and os.environ.get('HEARTH_WM', 'labwc') == 'labwc' and shutil.which('labwc'):
+            reloaded = run(['labwc', '--reconfigure'])[0] == 0
+    return {'ok': True, 'layout': layout or 'icon:iconify,max,close', 'reloaded': reloaded}
 
 
 def rc_with_search_key(text, env):
@@ -1585,6 +1642,8 @@ def main(argv):
         return
     elif c == 'shortcuts' and not a:
         out = shortcuts()
+    elif c == 'window-buttons' and not a:
+        out = window_buttons()
     elif c == 'defaults' and not a:
         out = defaults()
     elif c == 'default-set' and len(a) == 2:
@@ -1611,7 +1670,7 @@ def main(argv):
         out = printer_test(a[0])
     else:
         print('usage: hearth-system time | timezones | keyboard | keyboard-layouts | keyboard-set | pointer | pointer-set | labwc-config | '
-              'shortcuts | defaults | default-set KIND APP_ID | default-reset [KIND] | defaults-tidy | defaults-system [ROOT] | '
+              'shortcuts | window-buttons | defaults | default-set KIND APP_ID | default-reset [KIND] | defaults-tidy | defaults-system [ROOT] | '
               'terminal-open | users | pictures | picture-set PATH | printers | '
               'printer-test NAME')
         sys.exit(2)

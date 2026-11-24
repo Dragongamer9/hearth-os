@@ -312,8 +312,7 @@ pub fn view<'a>(a: &'a App, page: &'static str) -> Option<E<'a>> {
     let rm = a.sh.d_bool("reduceMotion", false);
     c = c.push(irow(&p, Ic::Motion, "Reduce motion", "Still wallpapers and fewer animations (animated ones also hold still on battery and behind fullscreen games)", switch(&p, rm, Some(Msg::ReduceMotion(!rm)))));
     c = c.push(head(&p, "More"));
-    let lk = crate::look::current();
-    c = c.push(irow(&p, Ic::G(G::Pad), "Controller look in Settings", "Big rows and ‹ › choices for the controller. Automatic: while you use a controller, and back when you use the mouse or keyboard", seg(&p, [("Automatic", "auto"), ("Always", "always"), ("Never", "never")].iter().map(|(l, v)| (l.to_string(), lk == *v, Some(Msg::Look(*v)))).collect())));
+    // (Controller look in Settings: removed in 1.18, the owner, Nov 23; Settings always has its normal look.)
     c = c.push(iact(&p, Ic::Kbd, "Emoji and symbols", "Super+. opens the picker, in any app", false, Some(Msg::Emoji)));
     if !st.msg.is_empty() {
         c = c.push(said(&p, &st.msg, st.bad));

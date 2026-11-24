@@ -3,7 +3,7 @@
 //! the controller look (store-7) and the buttons' hints at the bottom.
 
 use crate::look::{self, app_icon, btn, bullets, card, chip, click, f, hint, hint2, icon_box, kv, ring, sec, seg, srow, switch, tone, z, Chip, B, E, ORANGE, ORANGE2, PURPLE};
-use crate::{App, JobKind, Msg, Page, State, SEARCH_ID};
+use crate::{w11, App, JobKind, Msg, Page, State, SEARCH_ID};
 use hearth_store::catalog::{Entry, Kind};
 use hearth_store::{mb, parts, paths, short_version};
 use hearth_ui::ui::{self, gap, t, t1, tb, tm, ts};
@@ -188,6 +188,7 @@ pub fn targets(a: &App) -> Vec<Target> {
                 }
             }
         }
+        Page::Apps | Page::Tests | Page::System => {}
         Page::Repair(_) => {
             v.push(tg("repair-now", 0, Some(Msg::RepairNow)));
             v.push(tg("not-now", 0, Some(Msg::Back)));
@@ -245,7 +246,7 @@ fn day_time(ts: i64) -> String {
     }
 }
 
-fn released(date: &str) -> String {
+pub fn released(date: &str) -> String {
     match hearth_ui::time::parse_date(date) {
         Some((y, m, d)) => format!("released {} {d}, {y}", hearth_ui::time::month(m)),
         None => String::new(),
@@ -257,12 +258,28 @@ fn this_pc(a: &App) -> String {
     if a.edition.is_empty() { v } else { format!("{v} · {}", a.edition) }
 }
 
+pub fn day_time_pub(ts: i64) -> String {
+    day_time(ts)
+}
+pub fn ago_pub(a: &App, ts: i64) -> String {
+    ago(a, ts)
+}
+pub fn this_pc_pub(a: &App) -> String {
+    this_pc(a)
+}
+pub fn hero_pub<'a>(a: &'a App, e: &Entry, st: &State) -> E<'a, Msg> {
+    hero(a, e, st)
+}
+
 fn page_name(pg: &Page, a: &App) -> String {
     match pg {
         Page::Home => "Home".into(),
+        Page::Apps => "Apps".into(),
+        Page::Tests => "Tests".into(),
         Page::Yours => "Your apps".into(),
         Page::Updates => "Updates".into(),
-        Page::BuiltIn => "Built into Hearth".into(),
+        Page::BuiltIn => "Hearth parts".into(),
+        Page::System => "Library › Hearth OS".into(),
         Page::Settings => "Store settings".into(),
         Page::App(id) => a.entry(id).map(|e| e.name.clone()).unwrap_or_default(),
         Page::Work => "Installing".into(),
@@ -271,18 +288,51 @@ fn page_name(pg: &Page, a: &App) -> String {
 }
 
 // ------------------------------------------------------------------ the frame
+/// The Store's blocks (hearth_ui::blocks).
+pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+    id: "window",
+    title: "Hearth Store",
+    // The Windows 11 frame draws the rail and the title bar itself (store-win11); the page is the block here.
+    blocks: &[hearth_ui::blocks::bl("page", "The page", 0, 0, 12, 12)],
+}];
+
+/// The Store with Describe it's box under it while it's open.
+pub fn shown(a: &App) -> E<'_, Msg> {
+    hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe)
+}
+
 pub fn view(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
     if a.pad {
         return ui::edges(pad_frame(a), Msg::Resize);
     }
-    let body = page_body(a);
-    let area: E<Msg> = container(scrollable(container(body).padding(look::pad(z(30.0), z(50.0), z(30.0), z(50.0))).width(Length::Fill)).height(Length::Fill)).width(Length::Fill).height(Length::Fill).style(look::bx(tn.page, 0.0, None)).into();
-    let area = overlays(a, area);
-    let main = row![sidebar(a), area].height(Length::Fill);
-    let all = column![title_bar(a), ui::hline(tn.line), main, bottom(a)];
-    ui::edges(container(all).width(Length::Fill).height(Length::Fill).style(look::bx(tn.page, 0.0, None)).into(), Msg::Resize)
+    // The Windows 11 Store's frame (store-win11): the title bar with the search, the rail, the page on its layer
+    let body: E<Msg> = match &a.page {
+        Page::Home => w11::home(a),
+        Page::Apps => w11::apps(a),
+        Page::Updates | Page::Yours => w11::library(a),
+        Page::BuiltIn => w11::parts(a),
+        Page::System => w11::system(a),
+        Page::Tests => w11::tests(a),
+        Page::Settings => w11::settings(a),
+        Page::App(id) if a.dlg.is_none() => match a.entry(id) {
+            Some(e) if e.test => w11::test_page(a, e),
+            Some(e) if e.part.is_none() => w11::app_page(a, e),
+            _ => page_body(a),
+        },
+        _ => page_body(a),
+    };
+    let body: E<Msg> = if a.note.is_empty() || matches!(a.page, Page::App(_) | Page::Work | Page::Repair(_) | Page::Settings | Page::BuiltIn) {
+        body
+    } else {
+        let c = if a.note_bad { look::BAD } else { ORANGE2 };
+        column![container(t(a.note.clone(), f(15.0), c)).padding(look::pad(0.0, 0.0, z(14.0), 0.0)), body].into()
+    };
+    let _ = (tn, sidebar as fn(&App) -> E<'_, Msg>, title_bar as fn(&App) -> E<'_, Msg>, bottom as fn(&App) -> E<'_, Msg>);
+    // Every Hearth app made of blocks (hearth_ui::blocks): the page moved, sized or restyled; as it was when nothing is.
+    let body = hearth_ui::arrange::parts(&a.describe, &p, "window", vec![("page", body)], |ps| ps.take("page"), Msg::Describe);
+    ui::edges(overlays(a, w11::frame(a, body)), Msg::Resize)
 }
 
 /// The ⋯ menu and the uninstall dialog, over the page (the sidebar stays as it is, as in store-2 and store-6).
@@ -297,9 +347,12 @@ fn overlays<'a>(a: &'a App, area: E<'a, Msg>) -> E<'a, Msg> {
 fn page_body(a: &App) -> E<'_, Msg> {
     let content: E<Msg> = match &a.page {
         Page::Home => home(a),
+        Page::Apps => w11::apps(a),
+        Page::Tests => w11::tests(a),
         Page::Yours => yours(a),
         Page::Updates => updates(a),
         Page::BuiltIn => built_in(a),
+        Page::System => w11::system(a),
         Page::Settings => settings(a),
         Page::App(id) => match a.entry(id) {
             Some(e) => if a.dlg.is_some() { app_head(a, e) } else { app_page(a, e) },
@@ -323,7 +376,8 @@ fn title_bar(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let name = row![gap(z(22.0), 1.0), look::mark(z(30.0)), gap(z(14.0), 1.0), ts("Hearth Store", f(18.0), tn.text), gap(z(10.0), 1.0), t("· Hearth", f(15.0), tn.muted)].align_y(iced::Center);
-    let drag = iced::widget::mouse_area(container(name).width(Length::Fill).center_y(Length::Fixed(z(56.0)))).on_press(Msg::Drag).on_double_click(Msg::Maximize);
+    // a right-click on the bar opens Describe it (and from it, Move and resize blocks)
+    let drag = iced::widget::mouse_area(container(name).width(Length::Fill).center_y(Length::Fixed(z(56.0)))).on_press(Msg::Drag).on_double_click(Msg::Maximize).on_right_press(Msg::Describe(hearth_ui::describe::DMsg::Open));
     let wbtn = |g: ui::G, m: Msg| -> E<'static, Msg> {
         click(container(ui::glyph(g, tn.muted, 10.0, 1.8)).center_x(Length::Fixed(z(56.0))).center_y(Length::Fixed(z(56.0))), Some(m))
     };
@@ -376,7 +430,7 @@ fn sidebar(a: &App) -> E<'_, Msg> {
     }
     let foot = column![
         t(format!("This PC: {}", this_pc(a)), f(14.0), Pal::mix(tn.text, tn.muted, 0.35)),
-        t("Apps made for Hearth by Dragongamer9.", f(14.0), tn.muted)
+        t("Apps for Hearth OS: Dragongamer9's own, and open-source apps from other makers.", f(14.0), tn.muted)
     ]
     .spacing(3.0);
     container(column![search_box(a), gap(1.0, z(14.0)), nav, Space::new().height(Length::Fill), container(foot).padding(z(12.0))])
@@ -395,7 +449,8 @@ fn bottom(a: &App) -> E<'_, Msg> {
     } else {
         match &a.page {
             Page::Home if a.offline() => (vec![hint(&p, "A", "Try again"), hint(&p, "B", "Back")], vec![pages()]),
-            Page::Home | Page::Yours | Page::BuiltIn => (vec![hint(&p, "A", "Select"), hint(&p, "B", "Back"), hint(&p, "Y", "Search"), hint(&p, "X", "Update all")], vec![pages()]),
+            Page::Home | Page::Yours | Page::BuiltIn | Page::Apps | Page::Tests => (vec![hint(&p, "A", "Select"), hint(&p, "B", "Back"), hint(&p, "Y", "Search"), hint(&p, "X", "Update all")], vec![pages()]),
+            Page::System => (vec![hint(&p, "A", "Select"), hint(&p, "B", "Back")], vec![pages()]),
             Page::Updates => (vec![hint(&p, "A", "Update"), hint(&p, "B", "Back"), hint(&p, "X", "Update all"), hint(&p, "Y", "What's new")], vec![pages()]),
             Page::Settings => (vec![hint(&p, "A", "Toggle"), hint(&p, "B", "Back")], vec![pages()]),
             Page::App(_) => (vec![hint(&p, "A", "Select"), hint(&p, "B", "Back"), hint(&p, "≡", "More")], vec![hint2(&p, "LB", "RB", "Previous / next app")]),
@@ -421,6 +476,7 @@ fn status_chip<'a>(a: &App, e: &Entry, st: &State, focused_btn: bool) -> E<'a, M
     match st {
         State::UpToDate(_) => chip(&p, "Installed", Chip::Ok),
         State::Ready(..) => click(chip(&p, if e.self_updates { "Open to update" } else { "Update" }, Chip::Up), primary(e, st)),
+        State::BuiltIn if e.test => chip(&p, "TEST", Chip::Test),
         State::BuiltIn => chip(&p, "Built in", Chip::Built),
         State::Coming => look::dashed(chip(&p, "Coming", Chip::Coming), 13.0, tone(&p).line),
         State::Get(_) => btn(&p, "Install", B::Normal, false, focused_btn, if a.offline() { None } else { primary(e, st) }),
@@ -445,7 +501,8 @@ fn tile<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let tn = tone(&p);
     let st = a.state(e);
     let id = format!("tile-{}", e.id);
-    let txt = column![ts(e.short.clone(), f(18.0), tn.text), container(t(tile_sub(a, e, &st), f(14.0), tn.muted)).padding(look::pad(z(4.0), 0.0, z(12.0), 0.0)), status_chip(a, e, &st, false)];
+    let title = if e.tag == "rust" { format!("{}  ·  Rust", e.short) } else { e.short.clone() };
+    let txt = column![ts(title, f(18.0), tn.text), container(t(tile_sub(a, e, &st), f(14.0), tn.muted)).padding(look::pad(z(4.0), 0.0, z(12.0), 0.0)), status_chip(a, e, &st, false)];
     let c = container(row![app_icon(e, z(56.0)), txt.width(Length::Fill)].spacing(z(16.0)).align_y(iced::Top))
         .padding(look::pad(z(18.0), z(20.0), z(18.0), z(20.0)))
         .width(Length::Fill)
@@ -632,6 +689,13 @@ fn built_in(a: &App) -> E<'_, Msg> {
     for e in a.cat.apps.iter().filter(|e| e.kind == Kind::BuiltIn) {
         let here = a.here.contains(&e.id);
         let id = format!("b-{}", e.id);
+        if e.test {
+            // a test version: marked TEST, opened to its own page (Get / Remove)
+            let got = a.parts.contains_key(&e.id);
+            let end: E<Msg> = row![chip(&p, "TEST", Chip::Test), btn(&p, if got { "Remove…" } else { "Get…" }, B::Normal, false, false, Some(Msg::OpenApp(e.id.clone())))].spacing(z(10.0)).align_y(iced::Center).into();
+            c = c.push(srow(&p, app_icon(e, z(54.0)), e.name.clone(), e.card.clone(), end, lit(a, &id), Some(Msg::OpenApp(e.id.clone()))));
+            continue;
+        }
         let end: E<Msg> = row![chip(&p, "Built in", Chip::Built), btn(&p, "Open", B::Normal, false, false, if here { Some(Msg::Launch(e.id.clone())) } else { None })].spacing(z(10.0)).align_y(iced::Center).into();
         c = c.push(srow(&p, app_icon(e, z(54.0)), e.name.clone(), if here { e.card.clone() } else { format!("{} · not on this PC", e.card) }, end, lit(a, &id), Some(Msg::OpenApp(e.id.clone()))));
     }
@@ -656,6 +720,7 @@ fn app_chips<'a>(a: &App, e: &Entry, st: &State) -> E<'a, Msg> {
     match st {
         State::UpToDate(i) => r = r.push(chip(&p, format!("Installed · {}", i.version), Chip::Ok)),
         State::Ready(i, _) => r = r.push(chip(&p, format!("Installed · {}", i.version), Chip::Ok)).push(chip(&p, "Update ready", Chip::Up)),
+        State::BuiltIn if e.test => r = r.push(chip(&p, "TEST", Chip::Test)),
         State::BuiltIn => r = r.push(chip(&p, "Built in", Chip::Built)),
         State::Coming => r = r.push(look::dashed(chip(&p, "Coming", Chip::Coming), 13.0, tone(&p).line)),
         State::Get(_) => {}
@@ -676,7 +741,7 @@ fn app_chips<'a>(a: &App, e: &Entry, st: &State) -> E<'a, Msg> {
     r.into()
 }
 
-fn open_label(e: &Entry, st: &State) -> &'static str {
+pub fn open_label(e: &Entry, st: &State) -> &'static str {
     match st {
         State::Get(_) => "Install",
         State::Ready(..) if e.self_updates => "Open to update",
@@ -690,7 +755,11 @@ fn app_head<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let st = a.state(e);
-    let line = if e.part.is_some() {
+    let line = if e.test {
+        format!("Test version · by {}", e.author)
+    } else if e.tag == "rust" {
+        format!("Rust · from the Hearth Store · by {}", e.author)
+    } else if e.part.is_some() {
         format!("Built into Hearth OS · by {}", e.author)
     } else if e.tagline.is_empty() {
         e.author.clone()
@@ -698,7 +767,9 @@ fn app_head<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
         format!("{} · {}", e.author, e.tagline)
     };
     let mut right = Row::new().spacing(z(12.0));
-    if a.dlg.is_none() {
+    if e.test {
+        right = right.push(look::chip(&p, "TEST", look::Chip::Test));
+    } else if a.dlg.is_none() {
         let on = if matches!(st, State::Coming) { None } else { primary(e, &st) };
         right = right.push(btn(&p, open_label(e, &st), B::Primary, true, lit(a, "open"), if a.offline() && matches!(st, State::Get(_) | State::Ready(..)) && !e.self_updates { None } else { on }));
         if a.inst.contains_key(&e.id) {
@@ -721,6 +792,63 @@ fn app_head<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
 
 /// One of Hearth's own apps or Mantel (mockup 1.17-quick-updates 2): what a quick update is, which one runs, and
 /// going back to the built-in one.
+/// A test version (Mantel in Rust): what it is, Get or Remove. Shown only with "Get test versions" on.
+fn test_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
+    let p = a.p;
+    let tn = tone(&p);
+    let have = a.parts.get(&e.id);
+    let pt = e.part.clone();
+    let mut left = Column::new().push(container(ts("A test version", f(21.0), tn.text)).padding(look::pad(0.0, 0.0, z(10.0), 0.0)));
+    let about = if e.about.is_empty() {
+        "Mantel drawn in Rust: the same bar, dock, wallpaper and app menu, lighter and quicker. Still being built: Quick Access, notifications, tray icons and right-click menus aren't in it yet.".to_string()
+    } else {
+        e.about.clone()
+    };
+    left = left.push(t(about, f(16.0), Pal::mix(tn.text, tn.muted, 0.12)));
+    left = left.push(container(bullets(&p, &[
+        "Only on this PC, only when you get it here: the usual one stays in Hearth OS, unchanged.".to_string(),
+        "If it doesn't start, the usual one starts instead, right away.".to_string(),
+        "Remove it here any time: the usual one is back at once. Your settings stay as they are.".to_string(),
+    ], f(16.0))).padding(look::pad(z(12.0), 0.0, 0.0, 0.0)));
+    if let Some(pt) = pt.as_ref().filter(|pt| !pt.notes.is_empty()) {
+        left = left.push(container(ts(format!("What's new in {}", pt.version), f(18.0), tn.text)).padding(look::pad(z(18.0), 0.0, z(8.0), 0.0))).push(bullets(&p, &pt.notes, f(16.0)));
+    }
+    let mut facts = Column::new();
+    let status = match have {
+        Some(h) if h.gave_up() => format!("{} · didn't start, the usual one is used", h.version),
+        Some(h) if h.failed_now => format!("{} · didn't start this time", h.version),
+        Some(h) => format!("{} · in use", h.version),
+        None => "Not got".to_string(),
+    };
+    facts = facts.push(kv(&p, "This PC", status, None, false));
+    if let Some(pt) = pt.as_ref() {
+        facts = facts.push(kv(&p, "Newest", pt.version.clone(), Some(format!("for Hearth OS {}", pt.os)), false));
+    }
+    facts = facts.push(kv(&p, "Installs as", "Files in your home folder", Some("no password, no restart".into()), false));
+    facts = facts.push(kv(&p, "Checked with", "The signed list from hearthos.fun", None, true));
+    let busy = a.part_busy.contains(&e.id);
+    let fits = pt.as_ref().map(|pt| parts::test_fits(pt, &a.hearth)).unwrap_or(false);
+    let mut buttons = Row::new().spacing(z(10.0));
+    if have.is_some() {
+        if let Some(up) = a.part_offer(e) {
+            buttons = buttons.push(btn(&p, if busy { "Updating…" } else { "Update" }, B::Primary, false, lit(a, "test-update"), if busy || a.offline() { None } else { Some(Msg::PartUpdate(e.id.clone())) }));
+            let _ = up;
+        }
+        if have.map(|h| h.gave_up() || h.failed_now).unwrap_or(false) {
+            buttons = buttons.push(btn(&p, "Try it again", B::Normal, false, lit(a, "test-retry"), if busy { None } else { Some(Msg::PartRetry(e.id.clone())) }));
+        }
+        buttons = buttons.push(btn(&p, if busy { "Removing…" } else { "Remove" }, B::Normal, false, lit(a, "test-remove"), if busy { None } else { Some(Msg::PartRemove(e.id.clone())) }));
+    } else {
+        buttons = buttons.push(btn(&p, if busy { "Getting…" } else { "Get" }, B::Primary, false, lit(a, "test-get"), if busy || a.offline() || !fits { None } else { Some(Msg::PartGet(e.id.clone())) }));
+        if !fits {
+            buttons = buttons.push(t(format!("Not made for Hearth OS {} yet", a.hearth), f(15.0), tn.muted));
+        }
+    }
+    facts = facts.push(container(buttons).padding(look::pad(z(16.0), 0.0, 0.0, 0.0)));
+    let lower = row![card(&p, left, false).into_width(140), card(&p, facts, false).into_width(100)].spacing(z(18.0));
+    Column::new().push(app_head(a, e)).push(lower).into()
+}
+
 fn part_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let p = a.p;
     let tn = tone(&p);
@@ -763,6 +891,9 @@ fn part_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
 }
 
 fn app_page<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
+    if e.test {
+        return test_page(a, e);
+    }
     if e.part.is_some() {
         return part_page(a, e);
     }
@@ -949,7 +1080,7 @@ fn updates(a: &App) -> E<'_, Msg> {
     // Hearth's own apps and desktops (mockup 1.17-quick-updates 1): the ones up to date in one row, and each one
     // that went back to the built-in one, with Try it again and Remove the update.
     let gave_up = parts_gave_up(a);
-    let up: Vec<&Entry> = a.cat.apps.iter().filter(|e| e.kind == Kind::BuiltIn && a.part_offer(e).is_none() && !gave_up.iter().any(|g| g.id == e.id)).collect();
+    let up: Vec<&Entry> = a.cat.apps.iter().filter(|e| e.kind == Kind::BuiltIn && !e.test && a.part_offer(e).is_none() && !gave_up.iter().any(|g| g.id == e.id)).collect();
     if !up.is_empty() || !gave_up.is_empty() {
         c = c.push(sec(&p, "Hearth's own apps and desktops", None));
         let os = if a.hearth.is_empty() { "Hearth OS".to_string() } else { format!("Hearth OS {}", a.hearth) };

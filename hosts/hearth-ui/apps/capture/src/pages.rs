@@ -124,7 +124,7 @@ pub fn recent_key(a: &mut App, key: &Key) -> Task<Msg> {
 // ------------------------------------------------------------------ the window
 pub fn main_view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
-    let title = ui::title_bar(&p, G::Camera, "Capture", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: Some(Msg::Minimize), close: Msg::Close }, p.bg2);
+    let title = hearth_ui::describe::title_bar(&p, &a.describe, G::Camera, "Capture", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: Some(Msg::Minimize), close: Msg::Close }, p.bg2, Msg::Describe(hearth_ui::describe::DMsg::Open));
     let body: Element<'_, Msg> = match a.page {
         Page::Take => take_page(a),
         Page::Edit => crate::editor::view(&a.ed, &p, &a.tools, &a.scroll_note, &a.shot),
@@ -257,8 +257,23 @@ fn take_page(a: &App) -> Element<'_, Msg> {
     right = right.push(Space::new().height(Length::Fill));
     right = right.push(label("Print Screen saves the whole screen right away · Super+Shift+S picks an area", 12.0, p.muted, false));
     let rpanel = container(right).padding(18.0).width(Length::Fill).height(Length::Fill).style(boxed(p.panel, p.r(16.0).max(8.0), Some((p.line, 1.0))));
-    container(row![left, rpanel].spacing(26.0)).padding(26.0).width(Length::Fill).height(Length::Fill).into()
+    // its blocks (hearth_ui::blocks): what to capture and Recent, moved, sized, hidden or restyled; as it was when nothing is
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "take",
+        vec![("what", left.into()), ("recent", rpanel.into())],
+        |ps| container(row![ps.take("what"), ps.take("recent")].spacing(26.0)).padding(26.0).width(Length::Fill).height(Length::Fill).into(),
+        Msg::Describe,
+    )
 }
+
+/// Capture's blocks (hearth_ui::blocks).
+pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+    id: "take",
+    title: "Take",
+    blocks: &[hearth_ui::blocks::bl("what", "What to capture", 0, 0, 6, 12), hearth_ui::blocks::bl("recent", "Recent", 6, 0, 6, 12)],
+}];
 
 /// A recent picture: its thumbnail, its name, and (big) when, its size and what you can do with it.
 fn thumb<'a>(a: &'a App, it: &'a crate::Item, i: usize, big: bool, current: bool) -> Element<'a, Msg> {

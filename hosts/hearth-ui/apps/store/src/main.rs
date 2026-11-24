@@ -14,6 +14,7 @@
 mod look;
 mod pad;
 mod view;
+mod w11;
 
 use hearth_store::catalog::{self, Catalog, Entry, Kind};
 use hearth_store::check;
@@ -22,6 +23,8 @@ use hearth_store::net::{self, Cancel, Fail};
 use hearth_store::parts;
 use hearth_store::prefs::{self, Prefs};
 use hearth_store::release::{self, Rel, Seen};
+use hearth_store::system::{self, SysState};
+use std::sync::{Arc, Mutex};
 use hearth_store::{newer, paths};
 use hearth_ui::app::{self, win};
 use hearth_ui::run;
@@ -37,10 +40,15 @@ pub const SEARCH_ID: &str = "store-search";
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Page {
     Home,
+    /// The Windows 11 Store's rail (store-win11): every app with filter pills, and the test versions.
+    Apps,
+    Tests,
     Yours,
     Updates,
     BuiltIn,
     Settings,
+    /// Library › Hearth OS (store-everything/store-2): the system underneath and its updates.
+    System,
     App(String),
     Work,
     Repair(String),
@@ -109,6 +117,8 @@ pub struct Uninst {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Describe it and its blocks (hearth_ui::describe, hearth_ui::blocks; every Hearth app has them)
+    Describe(hearth_ui::describe::DMsg),
     Theme,
     Key(KEvent),
     Pad(pad::Button),
@@ -162,12 +172,64 @@ pub enum Msg {
     Details,
     /// Quick updates (parts.rs): update, back to the built-in one, try a copy that failed again, and when it's done.
     PartUpdate(String),
+    /// Get a test version (Mantel in Rust): it isn't an update to anything built in.
+    PartGet(String),
     PartRemove(String),
     PartRetry(String),
     PartDone(String, Result<String, String>),
+    /// An update put in (with how long Mantel's desktop took to come back), then PartDone
+    PartUpdated(String, Result<(String, Option<u64>), String>),
+    /// Apps' filter pills, Library's Apps / Hearth parts / Tests (store-win11)
+    Filter(String),
+    LibTab(String),
+    /// Settings › Where apps go › Change…: pick a folder, then every app moves there.
+    AppsDir,
+    AppsDirPicked(Option<std::path::PathBuf>),
+    AppsDirMoved(Result<String, String>),
+    /// The system underneath (Library › Hearth OS, store-everything): look, Get it now, Pause, the switch, restart.
+    SysLook(bool),
+    SysSeen(Option<SysState>),
+    SysGet,
+    SysPause,
+    SysAuto(bool),
+    SysAutoDone(Result<bool, String>),
+    SysLater,
+    SysRestart,
+    /// Hearth parts' filter pills (store-1)
+    PartsFilter(String),
+    /// Decky plugins: what's there and newer (hearth-decky), and getting them
+    DeckySeen(BTreeMap<String, (String, String)>),
+    DeckyUpdate,
+    DeckyDone(Result<(), String>),
+    /// System parts: hearth-system-part's status
+    SysParts(BTreeMap<String, parts::Have>),
+    Noop,
+}
+
+/// A system update downloading (hearth-admin update, read line by line on its own thread).
+#[derive(Debug, Clone, Default)]
+pub struct SysProg {
+    pub pct: f32,
+    pub done: u64,
+    pub total: u64,
+    pub desc: String,
+    /// Some when it ended: Ok (staged, or nothing new), Err (what went wrong / paused)
+    pub end: Option<Result<(), String>>,
+    pub paused: bool,
+    /// CI's still picture (only with the pretend world)
+    pub demo: bool,
+}
+
+/// An update done in this window (Library, updating: "Mantel 1.18.1 · Installed · your desktop came back…").
+#[derive(Debug, Clone)]
+pub struct DoneNow {
+    pub id: String,
+    pub title: String,
+    pub line: String,
 }
 
 pub struct App {
+    pub describe: hearth_ui::describe::Describe,
     pub p: Pal,
     pub cat: Catalog,
     pub seen: Seen,
@@ -194,6 +256,8 @@ pub struct App {
     pub now: i64,
     /// Pictures on this PC (cache): url → its picture.
     pub pics: BTreeMap<String, image::Handle>,
+    /// The apps are being moved to another folder (Settings › Where apps go).
+    pub moving: bool,
     /// Built-in apps that are here (their program exists).
     pub here: BTreeSet<String>,
     /// Update all is going through the updates one after another.
@@ -201,6 +265,22 @@ pub struct App {
     /// Quick updates installed in your home folder (by the entry's id), and the ones being worked on.
     pub parts: BTreeMap<String, parts::Have>,
     pub part_busy: BTreeSet<String>,
+    /// Apps' filter ("" all) and Library's list ("" apps), store-win11
+    pub filter: String,
+    pub lib_tab: String,
+    /// The system underneath (bootc's view through hearth-admin), its download, and whether it downloads by itself.
+    pub sys: Option<SysState>,
+    pub sys_looking: bool,
+    pub sys_job: Option<Arc<Mutex<SysProg>>>,
+    pub sys_auto: bool,
+    pub sys_base: String,
+    /// Later on "ready for your next restart" (until the Store opens again)
+    pub sys_later: bool,
+    pub done_now: Vec<DoneNow>,
+    pub parts_filter: String,
+    pub decky: BTreeMap<String, (String, String)>,
+    pub decky_busy: bool,
+    pub sys_parts: BTreeMap<String, parts::Have>,
 }
 
 /// Where an app is: what its buttons say and do.
@@ -216,18 +296,7 @@ pub enum State {
 }
 
 fn this_pc() -> (String, String) {
-    if let Some(f) = paths::fixture() {
-        if let Ok(v) = std::fs::read(f.join("this-pc.json")).map(|b| serde_json::from_slice::<serde_json::Value>(&b).unwrap_or_default()) {
-            let s = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string();
-            return (s("hearth"), s("edition"));
-        }
-    }
-    let info: serde_json::Value = std::fs::read("/usr/share/nimbus/image-info.json").ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default();
-    let ver = std::fs::read_to_string("/usr/share/nimbus/version").map(|s| s.trim().to_string()).unwrap_or_default();
-    let ver = if ver.is_empty() { info.get("version").and_then(|x| x.as_str()).unwrap_or("").to_string() } else { ver };
-    let base = info.get("base").and_then(|x| x.as_str()).unwrap_or("");
-    let edition = if base == "anatase" || std::path::Path::new("/usr/bin/rpm-ostree").exists() || std::path::Path::new("/usr/bin/dnf5").exists() { "Fedora edition" } else { "" };
-    (hearth_store::short_version(&ver), edition.to_string())
+    hearth_store::this_pc()
 }
 
 fn which(cmd: &str) -> bool {
@@ -244,8 +313,11 @@ fn which(cmd: &str) -> bool {
 fn page_of(s: &str) -> Page {
     match s {
         "yours" | "your-apps" => Page::Yours,
-        "updates" => Page::Updates,
-        "built-in" | "builtin" => Page::BuiltIn,
+        "updates" | "library" => Page::Updates,
+        "apps" => Page::Apps,
+        "tests" => Page::Tests,
+        "built-in" | "builtin" | "parts" | "hearth-parts" => Page::BuiltIn,
+        "system" | "hearth-os" | "library-hearth-os" => Page::System,
         "settings" => Page::Settings,
         "work" | "updating" => Page::Work,
         x if x.starts_with("app:") => Page::App(x[4..].to_string()),
@@ -261,6 +333,7 @@ impl App {
         // Mantel has no program to open: it's here when its desktop is (Quickshell and its shell).
         let here = cat.apps.iter().filter(|e| e.kind == Kind::BuiltIn && (which(&e.open) || (e.id == "mantel" && which("quickshell")))).map(|e| e.id.clone()).collect();
         let mut a = App {
+            describe: hearth_ui::describe::Describe::new("store", "Hearth Store").with_pages(view::BLOCKS),
             p: hearth_ui::theme::load(),
             seen: release::read_seen(),
             prefs: prefs::load(),
@@ -285,15 +358,45 @@ impl App {
             edition,
             now: files::now(),
             pics: BTreeMap::new(),
+            moving: false,
             here,
             all: false,
             parts: BTreeMap::new(),
             part_busy: BTreeSet::new(),
+            filter: String::new(),
+            lib_tab: String::new(),
+            sys: None,
+            sys_looking: false,
+            sys_job: None,
+            sys_auto: system::auto_on(),
+            sys_base: system::base_name(),
+            sys_later: false,
+            done_now: Vec::new(),
+            parts_filter: String::new(),
+            decky: BTreeMap::new(),
+            decky_busy: false,
+            sys_parts: parts::system_status(),
             cat,
         };
         pad::PAD_LOOK.store(a.pad, std::sync::atomic::Ordering::Relaxed);
         a.read_installed();
-        let mut tasks = vec![a.reconcile()];
+        let mut tasks = vec![a.reconcile(), Task::done(Msg::SysLook(false)), Task::perform(net::off(parts::decky_status), |m| Msg::DeckySeen(m.unwrap_or_default()))];
+        // CI's pictures of updating (only with the pretend world): a system download under way, parts just done.
+        if paths::fixture().is_some() {
+            if let Some(x) = app::arg("--demo-system") {
+                let n: Vec<u64> = x.split(':').filter_map(|s| s.parse().ok()).collect();
+                let (got, total) = (n.first().copied().unwrap_or(148) * 1_000_000, n.get(1).copied().unwrap_or(214) * 1_000_000);
+                a.sys_job = Some(Arc::new(Mutex::new(SysProg { pct: 100.0 * got as f32 / total.max(1) as f32, done: got, total, desc: "Downloading what changed".into(), demo: true, ..Default::default() })));
+            }
+            if let Some(x) = app::arg("--demo-done") {
+                for id in x.split(',') {
+                    if let Some(e) = a.cat.apps.iter().find(|e| e.id == id).cloned() {
+                        let v = e.part.as_ref().map(|p| p.version.clone()).unwrap_or_default();
+                        a.done_now.push(DoneNow { id: e.id.clone(), title: format!("{} {v}", e.short), line: done_line(&e, Some(2)) });
+                    }
+                }
+            }
+        }
         if let Some(pg) = app::arg("--page") {
             let pg = page_of(&pg);
             tasks.push(a.go(pg));
@@ -366,7 +469,66 @@ impl App {
 
     /// A quick update to offer for this entry (made for this Hearth OS, newer than what runs).
     pub fn part_offer(&self, e: &Entry) -> Option<catalog::Part> {
-        e.part.as_ref().and_then(|p| parts::offer(p, self.parts.get(&e.id), &self.hearth).cloned())
+        e.part.as_ref().and_then(|p| {
+            if p.system {
+                // A system part: what hearth-system-part has (made for this Hearth OS), else the built-in one.
+                let h = self.sys_parts.get(&p.id).filter(|h| !h.os.is_empty()).map(|h| parts::Have { os: self.hearth.clone(), ..h.clone() });
+                if e.test {
+                    return parts::test_offer(p, h.as_ref(), &self.hearth).cloned();
+                }
+                return parts::offer(p, h.as_ref(), &self.hearth).cloned();
+            }
+            if e.test { parts::test_offer(p, self.parts.get(&e.id), &self.hearth).cloned() } else { parts::offer(p, self.parts.get(&e.id), &self.hearth).cloned() }
+        })
+    }
+
+    /// The version of a Hearth part in use now (the Hearth parts page): the Store's copy, the system part, the Decky
+    /// plugin's, or what it comes with; else the Hearth OS it came with.
+    pub fn part_version(&self, e: &Entry) -> String {
+        if !e.decky.is_empty() {
+            if let Some((v, _)) = self.decky.get(&e.decky).filter(|(v, _)| !v.is_empty()) {
+                return v.clone();
+            }
+        }
+        if let Some(p) = &e.part {
+            if p.system {
+                if let Some(h) = self.sys_parts.get(&p.id).filter(|h| !h.os.is_empty() && !h.gave_up()) {
+                    return h.version.clone();
+                }
+            } else {
+                return parts::running(self.parts.get(&e.id), &self.hearth);
+            }
+        }
+        if !e.with.is_empty() && e.with != "system" {
+            if let Some(c) = self.cat.apps.iter().find(|x| x.id == e.with || x.part.as_ref().map(|p| p.id == e.with).unwrap_or(false)) {
+                if c.id != e.id {
+                    return self.part_version(c);
+                }
+            }
+        }
+        self.hearth.clone()
+    }
+
+    /// What's installed of an entry's part: the system part's (root-owned) or the copy in your home folder.
+    pub fn have_of(&self, e: &Entry) -> Option<parts::Have> {
+        match e.part.as_ref() {
+            Some(p) if p.system => self.sys_parts.get(&p.id).cloned(),
+            _ => self.parts.get(&e.id).cloned(),
+        }
+    }
+
+    /// A Decky plugin's newer version on offer (after a look).
+    pub fn decky_offer(&self, e: &Entry) -> Option<String> {
+        self.decky.get(&e.decky).map(|(_, n)| n.clone()).filter(|n| !n.is_empty())
+    }
+
+    /// Every update ready on the Hearth parts page (quick updates and Decky plugins).
+    pub fn parts_ready(&self) -> usize {
+        self.part_offers().len() + self.cat.apps.iter().filter(|e| !e.decky.is_empty() && self.decky_offer(e).is_some()).count()
+    }
+
+    pub fn sys_prog(&self) -> Option<SysProg> {
+        self.sys_job.as_ref().and_then(|j| j.lock().ok().map(|g| g.clone()))
     }
 
     /// Every quick update ready (Updates, Update all, the sidebar's count).
@@ -375,6 +537,7 @@ impl App {
     }
 
     fn read_installed(&mut self) {
+        self.sys_parts = parts::system_status();
         self.parts.clear();
         for e in self.cat.apps.iter() {
             if let Some(h) = e.part.as_ref().and_then(|p| parts::have(&p.id)) {
@@ -451,6 +614,10 @@ impl App {
 
     pub fn go(&mut self, pg: Page) -> Task<Msg> {
         self.menu = false;
+        // Library's "done" rows are for the visit they happened in.
+        if self.page == Page::Updates && pg != Page::Updates {
+            self.done_now.clear();
+        }
         if self.page != pg && !matches!(self.page, Page::Work) {
             self.trail.push(self.page.clone());
             if self.trail.len() > 20 {
@@ -614,6 +781,28 @@ impl App {
     }
 }
 
+/// The line under an update done in this window (store-everything/store-3).
+pub fn done_line(e: &Entry, secs: Option<u64>) -> String {
+    let pid = e.part.as_ref().map(|p| p.id.as_str()).unwrap_or("");
+    if pid == "mantel" || pid == "mantel-rust" {
+        match secs {
+            Some(s) => format!("Installed · your desktop came back in {s} s with the new one"),
+            None => "Installed · your desktop starts again with the new one".into(),
+        }
+    } else if !e.decky.is_empty() {
+        "Downloaded · Steam's Game Mode uses it from Decky's next start".into()
+    } else if pid == "hearth-home-server-helper" {
+        // system-parts.json: hearth-system-part runs hearth-home-server-services.service again with it
+        "Installed · the home server's services started again with it".into()
+    } else if e.part.as_ref().map(|p| p.system).unwrap_or(false) {
+        "Installed · used from its next job, no restart".into()
+    } else if pid == "hearth-store-app" {
+        "Installed · used when you open the Store again".into()
+    } else {
+        "Installed · it opens with the new one next time".into()
+    }
+}
+
 fn tick() -> Task<Msg> {
     Task::perform(run::after(400), |_| Msg::Tick)
 }
@@ -630,6 +819,7 @@ fn detached(cmd: &str) {
 
 pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Key(ev) => return key(a, ev),
         Msg::Pad(b) => return pad_press(a, b),
@@ -665,16 +855,62 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 return Task::none();
             }
             a.say(format!("Updating {} to {}…", e.name, pt.version), false);
-            let done = if pt.id == "mantel" { format!("{} is on {}: your desktop restarts with it in a moment.", e.name, pt.version) } else { format!("{} is on {}: it opens with it next time.", e.name, pt.version) };
-            return Task::perform(net::off(move || parts::install(&pt).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("The update stopped; nothing changed.".into()))));
+            let done = if pt.id == "mantel" {
+                format!("{} is on {}: your desktop restarts with it in a moment.", e.name, pt.version)
+            } else if pt.id == "hearth-store-app" {
+                format!("The Hearth Store is on {}: close it and open it again to use it.", pt.version)
+            } else {
+                format!("{} is on {}: it opens with it next time.", e.name, pt.version)
+            };
+            let test = e.test;
+            return Task::perform(net::off(move || parts::install_channel(&pt, test).map(|secs| (done, secs))), move |r| Msg::PartUpdated(id.clone(), r.unwrap_or_else(|| Err("The update stopped; nothing changed.".into()))));
+        }
+        Msg::PartUpdated(id, r) => {
+            match r {
+                Ok((said, secs)) => {
+                    if let Some(e) = a.entry(&id).cloned() {
+                        a.part_busy.remove(&id);
+                        a.read_installed();
+                        let v = a.part_version(&e);
+                        system::add_history(&format!("{} {v}", e.short), files::now());
+                        a.done_now.retain(|d| d.id != id);
+                        a.done_now.push(DoneNow { id: id.clone(), title: format!("{} {v}", e.short), line: done_line(&e, secs) });
+                    }
+                    return update(a, Msg::PartDone(id, Ok(said)));
+                }
+                Err(s) => return update(a, Msg::PartDone(id, Err(s))),
+            }
+        }
+        Msg::PartGet(id) => {
+            let Some(e) = a.entry(&id).cloned() else { return Task::none() };
+            let Some(pt) = e.part.clone().filter(|p| e.test && parts::test_fits(p, &a.hearth)) else { return Task::none() };
+            if a.offline() || !a.part_busy.insert(id.clone()) {
+                return Task::none();
+            }
+            a.say(format!("Getting {} {}…", e.name, pt.version), false);
+            let done = if pt.id == "mantel-rust" {
+                format!("{} {} is in: your desktop restarts with it in a moment. Remove it here to go back.", e.name, pt.version)
+            } else {
+                format!("{} {} is in.", e.name, pt.version)
+            };
+            return Task::perform(net::off(move || parts::install_channel(&pt, true).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("It didn't install; nothing changed.".into()))));
         }
         Msg::PartRemove(id) => {
             let Some(e) = a.entry(&id).cloned() else { return Task::none() };
             let Some(pid) = e.part.as_ref().map(|p| p.id.clone()) else { return Task::none() };
+            let system = e.part.as_ref().map(|p| p.system).unwrap_or(false);
             if !a.part_busy.insert(id.clone()) {
                 return Task::none();
             }
-            let done = format!("{} is back to the one built into Hearth OS. Its update is in the Trash.", e.name);
+            if system {
+                let done = format!("{} is back to the usual one.", e.name);
+                return Task::perform(net::off(move || parts::system_cmd("system-part-remove", &pid).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("Nothing changed.".into()))));
+            }
+            let done = if e.test {
+                format!("{} is removed (it's in the Trash): the usual one is back.", e.name)
+            } else {
+                format!("{} is back to the one built into Hearth OS. Its update is in the Trash.", e.name)
+            };
             return Task::perform(net::off(move || parts::remove(&pid).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("Nothing changed.".into()))));
         }
         Msg::PartRetry(id) => {
@@ -684,8 +920,147 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 return Task::none();
             }
             let done = format!("{} tries its update again the next time it starts.", e.name);
+            if e.part.as_ref().map(|p| p.system).unwrap_or(false) {
+                return Task::perform(net::off(move || parts::system_cmd("system-part-retry", &pid).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("Nothing changed.".into()))));
+            }
             return Task::perform(net::off(move || parts::retry(&pid).map(|_| done)), move |r| Msg::PartDone(id.clone(), r.unwrap_or_else(|| Err("Nothing changed.".into()))));
         }
+        Msg::Filter(c) => {
+            a.filter = if c == "All" { String::new() } else { c };
+        }
+        Msg::LibTab(t) => a.lib_tab = t,
+        Msg::PartsFilter(c) => a.parts_filter = if c == "all" { String::new() } else { c },
+        Msg::SysLook(check) => {
+            if a.sys_looking {
+                return Task::none();
+            }
+            a.sys_looking = true;
+            return Task::perform(net::off(move || system::status(check)), |r| Msg::SysSeen(r.flatten()));
+        }
+        Msg::SysSeen(s) => {
+            a.sys_looking = false;
+            if s.is_some() {
+                a.sys = s;
+            }
+            a.sys_auto = system::auto_on();
+        }
+        Msg::SysGet => {
+            if a.sys_job.as_ref().map(|j| j.lock().map(|g| g.end.is_none()).unwrap_or(false)).unwrap_or(false) {
+                return Task::none();
+            }
+            let prog = Arc::new(Mutex::new(SysProg { desc: "Starting".into(), ..Default::default() }));
+            a.sys_job = Some(prog.clone());
+            a.sys_later = false;
+            std::thread::Builder::new()
+                .name("hearth-store-system".into())
+                .spawn(move || {
+                    use std::io::BufRead;
+                    let child = std::process::Command::new("pkexec").args([system::ADMIN, "update"]).stdin(std::process::Stdio::null()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::null()).spawn();
+                    let mut child = match child {
+                        Ok(c) => c,
+                        Err(e) => {
+                            if let Ok(mut g) = prog.lock() {
+                                g.end = Some(Err(format!("The system update couldn't start ({e}).")));
+                            }
+                            return;
+                        }
+                    };
+                    let mut err = String::new();
+                    if let Some(out) = child.stdout.take() {
+                        for l in std::io::BufReader::new(out).lines().map_while(Result::ok) {
+                            if let Some(x) = l.strip_prefix("error: ") {
+                                err = x.to_string();
+                            }
+                            if let Some(s) = system::parse_line(&l) {
+                                if let Ok(mut g) = prog.lock() {
+                                    if let Some(p) = s.pct {
+                                        g.pct = p;
+                                    }
+                                    if s.total > 0 {
+                                        g.done = s.done;
+                                        g.total = s.total;
+                                    }
+                                    if !s.desc.is_empty() {
+                                        g.desc = s.desc;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    let ok = child.wait().map(|s| s.success()).unwrap_or(false);
+                    if let Ok(mut g) = prog.lock() {
+                        g.end = Some(if ok { Ok(()) } else if g.paused { Err("Paused: Get it now carries on from where it stopped.".into()) } else if err.is_empty() { Err("The system update stopped; nothing changed.".into()) } else { Err(format!("{err}; nothing changed.")) });
+                    }
+                })
+                .ok();
+            return tick();
+        }
+        Msg::SysPause => {
+            if let Some(j) = &a.sys_job {
+                if let Ok(mut g) = j.lock() {
+                    if g.demo {
+                        return Task::none();
+                    }
+                    g.paused = true;
+                }
+                return Task::perform(net::off(|| net::run_short(30, &["pkexec", system::ADMIN, "update-pause"])), |_| Msg::Noop);
+            }
+        }
+        Msg::SysAuto(on) => {
+            if paths::fixture().is_some() {
+                return Task::none();
+            }
+            let w = if on { "on" } else { "off" };
+            return Task::perform(
+                net::off(move || -> Result<bool, String> {
+                    let o = std::process::Command::new("pkexec").args([system::ADMIN, "auto-update", w]).stdin(std::process::Stdio::null()).output().map_err(|e| e.to_string())?;
+                    let s = String::from_utf8_lossy(&o.stdout).to_string();
+                    if o.status.success() { Ok(s.contains("\"auto\": true")) } else { Err(s.lines().rev().find_map(|l| l.strip_prefix("error: ")).unwrap_or("it needs an administrator").to_string()) }
+                }),
+                |r| Msg::SysAutoDone(r.unwrap_or_else(|| Err("nothing changed".into()))),
+            );
+        }
+        Msg::SysAutoDone(r) => match r {
+            Ok(on) => a.sys_auto = on,
+            Err(e) => {
+                a.sys_auto = system::auto_on();
+                a.say(format!("The switch stayed as it was ({e})."), true);
+            }
+        },
+        Msg::SysLater => a.sys_later = true,
+        Msg::SysRestart => {
+            // Only when you press it: nothing ever restarts by itself.
+            if paths::fixture().is_none() {
+                run::detached(&["systemctl", "reboot"]);
+            }
+        }
+        Msg::DeckySeen(m) => a.decky = m,
+        Msg::DeckyUpdate => {
+            if a.decky_busy || paths::fixture().is_some() {
+                return Task::none();
+            }
+            a.decky_busy = true;
+            a.say("Getting the newer Hearth plugins for Steam's Game Mode…", false);
+            return Task::perform(net::off(parts::decky_update), |r| Msg::DeckyDone(r.unwrap_or_else(|| Err("Nothing changed.".into()))));
+        }
+        Msg::DeckyDone(r) => {
+            a.decky_busy = false;
+            match r {
+                Ok(()) => {
+                    let offered: Vec<Entry> = a.cat.apps.iter().filter(|e| !e.decky.is_empty() && a.decky_offer(e).is_some()).cloned().collect();
+                    for e in offered {
+                        let v = a.decky_offer(&e).unwrap_or_default();
+                        system::add_history(&format!("{} {v}", e.short), files::now());
+                        a.done_now.push(DoneNow { id: e.id.clone(), title: format!("{} {v}", e.short), line: done_line(&e, None) });
+                    }
+                    a.say("The Hearth plugins are downloaded: Steam's Game Mode uses them from Decky's next start.", false);
+                }
+                Err(s) => a.say(s, true),
+            }
+            return Task::perform(net::off(parts::decky_status), |m| Msg::DeckySeen(m.unwrap_or_default()));
+        }
+        Msg::SysParts(m) => a.sys_parts = m,
+        Msg::Noop => {}
         Msg::PartDone(id, r) => {
             a.part_busy.remove(&id);
             a.read_installed();
@@ -695,6 +1070,9 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             }
         }
         Msg::Start(id, kind) => {
+            if a.moving {
+                return Task::none();
+            }
             if a.prefs.metered {
                 return a.start(&id, kind);
             }
@@ -712,6 +1090,9 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             // are opened instead (their own updater), and the others one after another.
             let offers = a.part_offers();
             let mut tasks: Vec<Task<Msg>> = offers.iter().map(|(e, _)| update(a, Msg::PartUpdate(e.id.clone()))).collect();
+            if a.cat.apps.iter().any(|e| !e.decky.is_empty() && a.decky_offer(e).is_some()) {
+                tasks.push(update(a, Msg::DeckyUpdate));
+            }
             let ready = a.ready();
             if let Some((e, _, _)) = ready.iter().find(|(e, _, _)| !e.self_updates) {
                 a.all = true;
@@ -761,6 +1142,23 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
                     }
                     more = true;
                 }
+            }
+            let ended = a.sys_prog().and_then(|g| if g.demo { None } else { Some(g.end.clone()) });
+            match ended {
+                Some(None) => more = true,
+                Some(Some(r)) => {
+                    a.sys_job = None;
+                    match r {
+                        Ok(()) => {
+                            let word = system::base_word(&a.sys_base);
+                            let day = a.sys.as_ref().and_then(|s| s.available.as_ref()).map(|v| v.day()).unwrap_or_default();
+                            system::add_history(&format!("{word} updates{}", if day.is_empty() { String::new() } else { format!(" · {day}") }), files::now());
+                        }
+                        Err(e) => a.say(e, true),
+                    }
+                    return update(a, Msg::SysLook(false));
+                }
+                None => {}
             }
             if more {
                 return tick();
@@ -1050,7 +1448,37 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
                 run::detached(&["hearth-settings-app", "--page", "updates"]);
             }
         }
-        Msg::TryAgain => return a.check_now(),
+        Msg::TryAgain => {
+            let decky = Task::perform(net::off(|| {
+                if paths::fixture().is_none() && std::path::Path::new(parts::DECKY).exists() {
+                    let _ = net::run_short(120, &[parts::DECKY, "plugins-check"]);
+                }
+                parts::decky_status()
+            }), |m| Msg::DeckySeen(m.unwrap_or_default()));
+            return Task::batch([a.check_now(), update(a, Msg::SysLook(true)), decky]);
+        }
+        Msg::AppsDir => {
+            if a.job.is_some() || !a.part_busy.is_empty() || a.moving {
+                a.say("Wait for the install or update to finish, then move your apps.", true);
+                return Task::none();
+            }
+            return Task::perform(net::off(files::pick_folder), |r| Msg::AppsDirPicked(r.flatten()));
+        }
+        Msg::AppsDirPicked(Some(dir)) => {
+            a.moving = true;
+            a.say(format!("Moving your apps to {}…", paths::tilde(&dir)), false);
+            let apps = a.cat.apps.clone();
+            return Task::perform(net::off(move || files::move_apps(&apps, &dir)), |r| Msg::AppsDirMoved(r.unwrap_or_else(|| Err("The move stopped; everything is where it was.".into()))));
+        }
+        Msg::AppsDirPicked(None) => {}
+        Msg::AppsDirMoved(r) => {
+            a.moving = false;
+            match r {
+                Ok(s) => a.say(s, false),
+                Err(s) => a.say(s, true),
+            }
+            a.read_installed();
+        }
         Msg::Checked(s, refreshed) => {
             a.checking = false;
             a.seen = *s;
@@ -1062,7 +1490,16 @@ pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
             if a.focus.is_empty() || !view::targets(a).iter().any(|t| t.id == a.focus) {
                 a.focus = view::first_target(a);
             }
-            return a.reconcile();
+            // "Install updates by themselves" (store-w11-6, off unless turned on): Hearth parts only, never test
+            // versions, never while a game runs.
+            let mut tasks = vec![a.reconcile()];
+            if a.prefs.auto && !a.offline() && !net::game_running() {
+                // (never system parts: they ask for the admin password, so only when you press Update)
+                for (e, _) in a.part_offers().into_iter().filter(|(e, p)| !e.test && !p.system && !a.part_busy.contains(&e.id)) {
+                    tasks.push(Task::done(Msg::PartUpdate(e.id.clone())));
+                }
+            }
+            return Task::batch(tasks);
         }
         Msg::Reconciled(id, i) => {
             if let Some(i) = i {
@@ -1095,6 +1532,9 @@ fn set_pref(a: &mut App, k: &'static str, on: bool) -> Task<Msg> {
             let test_changed = p.test != a.prefs.test;
             a.prefs = p;
             if test_changed {
+                // test versions show or hide with it
+                a.cat = catalog::load();
+                a.read_installed();
                 return a.check_now();
             }
         }
@@ -1340,7 +1780,7 @@ fn main() -> iced::Result {
     if app::flag("--check") {
         std::process::exit(check::daily());
     }
-    iced::application(App::new, update, view::view)
+    iced::application(App::new, update, view::shown)
         .title("Hearth Store")
         .subscription(subscription)
         .theme(|a: &App| app::iced_theme(&a.p))

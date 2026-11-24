@@ -590,3 +590,48 @@ class EspGuard(unittest.TestCase):
         self.assertEqual(slurp(os.path.join(d, 'EFI/anatase/grub.cfg')), 'search --fs-uuid')
         self.assertFalse(os.path.exists(os.path.join(d, 'EFI/BOOT/grub.cfg')), 'a folder without a GRUB is left alone')
         self.assertEqual(ha.esp_guard('/nonexistent'), [])
+
+
+class AutoMoveToDebian(unittest.TestCase):
+    """1.18: a PC on the Fedora edition moves itself to Debian once (the owner: "Move them automatically")."""
+
+    def setUp(self):
+        self.d = tempfile.mkdtemp()
+        self.saved = (ha.AUTO_MOVE_DONE, ha.own_edition, ha.move_to_new_os, ha.pwd.getpwall)
+        ha.AUTO_MOVE_DONE = os.path.join(self.d, 'auto-move.json')
+        self.moves = []
+        home = os.path.join(self.d, 'home', 'chris')
+        os.makedirs(home)
+        user = types.SimpleNamespace(pw_uid=1000, pw_dir='/home/chris', pw_name='chris')
+        ha.pwd.getpwall = lambda: [user]
+        self._isdir = ha.os.path.isdir
+        ha.os.path.isdir = lambda p: True if p == '/home/chris' else self._isdir(p)
+        ha.move_to_new_os = lambda edition='peppermint', testing=False: self.moves.append((edition, os.environ.get('PKEXEC_UID')))
+
+    def tearDown(self):
+        ha.AUTO_MOVE_DONE, ha.own_edition, ha.move_to_new_os, ha.pwd.getpwall = self.saved
+        ha.os.path.isdir = self._isdir
+
+    def test_only_on_fedora_and_only_once(self):
+        ha.own_edition = lambda: 'peppermint'
+        ha.auto_move_to_debian()
+        self.assertEqual(self.moves, [], 'never on Debian')
+        ha.own_edition = lambda: 'anatase'
+        ha.auto_move_to_debian()
+        self.assertEqual(self.moves, [('peppermint', '1000')], 'moved, as the person on this PC')
+        ha.auto_move_to_debian()
+        self.assertEqual(len(self.moves), 1, 'only once')
+
+    def test_gives_up_after_its_tries(self):
+        ha.own_edition = lambda: 'anatase'
+
+        def broken(edition='peppermint', testing=False):
+            self.moves.append(edition)
+            ha.fail('no network')
+        ha.move_to_new_os = broken
+        for _ in range(ha.AUTO_MOVE_TRIES + 2):
+            try:
+                ha.auto_move_to_debian()
+            except SystemExit:
+                pass
+        self.assertEqual(len(self.moves), ha.AUTO_MOVE_TRIES, 'a move that keeps failing stops trying')

@@ -1,0 +1,85 @@
+{
+ "name": "Cabin",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "background": {
+  "kind": "gradient",
+  "from": "#4a2f17",
+  "to": "#1f140b"
+ },
+ "look": {
+  "text": "#f3e3c8",
+  "font": "Noto Serif"
+ },
+ "privacy": {
+  "notifications": "names",
+  "media": true
+ },
+ "blocks": [
+  {
+   "id": "clock",
+   "block": "clock",
+   "x": 0,
+   "y": 0,
+   "w": 8,
+   "h": 3,
+   "style": {
+    "size": 150,
+    "font": "Noto Serif"
+   }
+  },
+  {
+   "id": "date",
+   "block": "date",
+   "x": 0,
+   "y": 3,
+   "w": 8,
+   "h": 1,
+   "style": {
+    "size": 28,
+    "font": "Noto Serif"
+   }
+  },
+  {
+   "id": "weather",
+   "block": "weather",
+   "x": 0,
+   "y": 4,
+   "w": 5,
+   "h": 2,
+   "tonight": true,
+   "style": {
+    "colour": "#2a1a0d",
+    "corners": 18,
+    "seeThrough": 20
+   }
+  },
+  {
+   "id": "media",
+   "block": "media",
+   "x": 0,
+   "y": 6,
+   "w": 5,
+   "h": 2,
+   "style": {
+    "colour": "#2a1a0d",
+    "corners": 18,
+    "seeThrough": 20
+   }
+  },
+  {
+   "id": "password",
+   "block": "password",
+   "x": 17,
+   "y": 8,
+   "w": 6,
+   "h": 5,
+   "style": {
+    "colour": "#2a1a0d",
+    "corners": 18
+   }
+  }
+ ]
+}

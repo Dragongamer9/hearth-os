@@ -18,6 +18,11 @@
 //                   command work? (0 takes the vote back)
 //   GET  /v1/cmdvotes {"counts": {"fix-podman": {"up": 9, "down": 1}, ...}}
 //   GET  /v1/logs/<code>  the logs, as text, for whoever has the code (the person shows it to the developer).
+//   POST /v1/idea   {"format": 1, "part", "asked", "needs": [...], "closest", "sketch", "hearth", "app"}: an idea from
+//                   Describe it (hosts/hearth-layout idea.rs; sent only when the person presses Send, exactly as shown
+//                   to them, nothing personal in it). The same idea (the same part and needs) from several people is
+//                   one row with a count; each is an issue labelled "idea" in LOGS_REPO with its count (Hearth Ideas
+//                   reads them). Answers {"key", "count"}.
 //   Each log sent is also put in the private GitHub repository LOGS_REPO (a file plus an issue with the code,
 //   version, device, the person's note from X-Hearth-Note, and the error lines), once the worker has the secret
 //   LOGS_GITHUB_TOKEN (added by hand in Cloudflare's dashboard). The repository is private: logs name devices.
@@ -44,6 +49,7 @@ export default {
     if (url.pathname === '/v1/votes' && req.method === 'GET') return json({ counts: await voteCounts(env) }, 200, { 'cache-control': 'no-store' });
     if (url.pathname === '/v1/github-errors' && req.method === 'GET') return ghErrors(env);
     if (url.pathname.startsWith('/v1/logs/') && req.method === 'GET') return getLogs(url, env);
+    if (url.pathname === '/v1/idea' && req.method === 'POST') return putIdea(req, env, ctx);
     if (url.pathname === '/') return json({ service: 'Hearth OS player counter', stats: '/v1/stats' });
     return json({ error: 'not found' }, 404);
   },
@@ -272,4 +278,49 @@ async function putCmdVote(req, env) {
   if (v === 0) await env.DB.prepare('DELETE FROM cmd_votes WHERE device = ? AND cmd = ?').bind(id, cmd).run();
   else await env.DB.prepare('INSERT INTO cmd_votes (device, cmd, v, at) VALUES (?, ?, ?, ?) ON CONFLICT (device, cmd) DO UPDATE SET v = excluded.v, at = excluded.at').bind(id, cmd, v, Date.now()).run();
   return json({ ok: true, counts: await cmdCounts(env) });
+}
+
+// ---------------------------------------------------------------- ideas from Describe it (Hearth Ideas)
+const clean = (v, n) => String(v == null ? '' : v).replace(/[\u0000-\u001f]/g, ' ').trim().slice(0, n);
+const noFence = t => String(t).replace(/```/g, "'''");
+export function ideaKey(part, needs) {
+  const words = (needs || []).map(x => clean(x, 120).toLowerCase().replace(/[^a-z0-9 ]+/g, ' ').replace(/\s+/g, ' ').trim()).filter(Boolean).sort();
+  return clean(part, 40).toLowerCase() + ':' + (words.join('|') || 'other');
+}
+async function putIdea(req, env, ctx) {
+  if (Number(req.headers.get('content-length') || 0) > 20000) return json({ error: 'too big' }, 413);
+  let b;
+  try { b = await req.json(); } catch { return json({ error: 'bad json' }, 400); }
+  if (!b || b.format !== 1 || typeof b.part !== 'string' || typeof b.asked !== 'string' || !Array.isArray(b.needs)) return json({ error: 'not an idea' }, 400);
+  const idea = { format: 1, part: clean(b.part, 40), asked: clean(b.asked, 1000), needs: b.needs.slice(0, 8).map(x => clean(x, 120)),
+                 closest: b.closest && typeof b.closest === 'object' ? b.closest : null, sketch: b.sketch === true, hearth: clean(b.hearth, 20), app: clean(b.app, 20), kept: b.kept === true };
+  await env.DB.prepare('CREATE TABLE IF NOT EXISTS ideas (key TEXT PRIMARY KEY, first INTEGER NOT NULL, last INTEGER NOT NULL, count INTEGER NOT NULL, issue INTEGER, body TEXT NOT NULL)').run();
+  const recent = await env.DB.prepare('SELECT COUNT(*) AS n FROM ideas WHERE last > ?').bind(Date.now() - 3600e3).first();
+  if (recent && recent.n > 120) return json({ error: 'busy, try again later' }, 429);
+  const key = ideaKey(idea.part, idea.needs);
+  const row = await env.DB.prepare('SELECT count, issue FROM ideas WHERE key = ?').bind(key).first();
+  const count = row ? row.count + 1 : 1;
+  if (row) await env.DB.prepare('UPDATE ideas SET count = ?, last = ? WHERE key = ?').bind(count, Date.now(), key).run();
+  else await env.DB.prepare('INSERT INTO ideas (key, first, last, count, body) VALUES (?, ?, ?, 1, ?)').bind(key, Date.now(), Date.now(), JSON.stringify(idea)).run();
+  if (env.LOGS_GITHUB_TOKEN) ctx.waitUntil(ideaToGitHub(env, key, idea, count, row ? row.issue : null).catch(e => ghFailed(env, 'idea', e)));
+  return json({ key, count });
+}
+function ideaTitle(idea, count) {
+  return `Idea · ${idea.part} · ${(idea.needs.join('; ') || idea.asked).slice(0, 100)} · ${count} asked`;
+}
+async function ideaToGitHub(env, key, idea, count, issue) {
+  const repo = env.LOGS_REPO || 'Dragongamer9/hearth-logs';
+  if (issue) {
+    await gh(env, 'POST', `/repos/${repo}/issues/${issue}/comments`, { body: `Asked again (${count} times now): "${noFence(idea.asked)}" · Hearth OS ${idea.hearth || '?'}${idea.sketch ? ' · with a sketch' : ''}${idea.kept ? ' · kept what Describe it made' : ''}` });
+    await gh(env, 'PATCH', `/repos/${repo}/issues/${issue}`, { title: ideaTitle(idea, count) });
+    return;
+  }
+  const body = [
+    `**Asked in:** ${idea.part}`, `**Asked for:** ${noFence(idea.asked)}`,
+    `**Needs new work:** ${idea.needs.join('; ') || "(nothing: it can be made from Hearth's own parts)"}`,
+    `**Sketch:** ${idea.sketch ? 'yes' : 'no'} · Hearth OS ${idea.hearth || '?'} · ${idea.app || ''}`,
+    '', '```json', noFence(JSON.stringify(idea, null, 2)).slice(0, 50000), '```', '', 'key: `' + key + '`',
+  ].join('\n');
+  const r = await gh(env, 'POST', `/repos/${repo}/issues`, { title: ideaTitle(idea, 1), body, labels: ['idea', 'idea:' + idea.part] });
+  if (r && r.number) await env.DB.prepare('UPDATE ideas SET issue = ? WHERE key = ?').bind(r.number, key).run();
 }

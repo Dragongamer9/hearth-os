@@ -15,14 +15,14 @@
    "title": "Open the app menu",
    "keys": "Meta+Space",
    "labwc": "W-space",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher toggle'"
+   "run": "sh -c 'hearth-mantel-ipc call launcher toggle'"
   },
   {
    "id": "clipboard",
    "title": "Clipboard history",
    "keys": "Meta+V",
    "labwc": "W-v",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call clipboard toggle'"
+   "run": "sh -c 'hearth-mantel-ipc call clipboard toggle'"
   },
   {
    "id": "terminal",
@@ -43,133 +43,133 @@
    "title": "Open Settings",
    "keys": "Meta+I",
    "labwc": "W-i",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call settings open'"
+   "run": "sh -c 'hearth-mantel-ipc call settings open'"
   },
   {
    "id": "quick",
    "title": "Quick Access",
    "keys": "Meta+A",
    "labwc": "W-a",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call quick toggle'"
+   "run": "sh -c 'hearth-mantel-ipc call quick toggle'"
   },
   {
    "id": "calendar",
    "title": "Notifications and the calendar",
    "keys": "Meta+N",
    "labwc": "W-n",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call calendar toggle'"
+   "run": "sh -c 'hearth-mantel-ipc call calendar toggle'"
   },
   {
    "id": "dnd",
    "title": "Do not disturb on or off",
    "keys": "Meta+Alt+N",
    "labwc": "W-A-n",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call notifications dnd toggle'"
+   "run": "sh -c 'hearth-mantel-ipc call notifications dnd toggle'"
   },
   {
    "id": "search",
    "title": "Search the app menu",
    "keys": "Meta+S",
    "labwc": "W-s",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher open'"
+   "run": "sh -c 'hearth-mantel-ipc call launcher open'"
   },
   {
    "id": "run",
    "title": "Run box",
    "keys": "Meta+R",
    "labwc": "W-r",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call run toggle'"
+   "run": "sh -c 'hearth-mantel-ipc call run toggle'"
   },
   {
    "id": "searchbar",
    "title": "Search bar (like KRunner)",
    "keys": "Alt+Space",
    "labwc": "A-space",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call searchbar key'"
+   "run": "sh -c 'hearth-mantel-ipc call searchbar key'"
   },
   {
    "id": "searchbar-2",
    "title": "Search bar (like KRunner)",
    "keys": "Alt+F2",
    "labwc": "A-F2",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call searchbar toggle'"
+   "run": "sh -c 'hearth-mantel-ipc call searchbar toggle'"
   },
   {
    "id": "winx",
    "title": "Quick links menu",
    "keys": "Meta+X",
    "labwc": "W-x",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call winx toggle'"
+   "run": "sh -c 'hearth-mantel-ipc call winx toggle'"
   },
   {
    "id": "taskbar-1",
    "title": "Taskbar app 1",
    "keys": "Meta+1",
    "labwc": "W-1",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 1'"
+   "run": "sh -c 'hearth-mantel-ipc call taskbar activate 1'"
   },
   {
    "id": "taskbar-2",
    "title": "Taskbar app 2",
    "keys": "Meta+2",
    "labwc": "W-2",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 2'"
+   "run": "sh -c 'hearth-mantel-ipc call taskbar activate 2'"
   },
   {
    "id": "taskbar-3",
    "title": "Taskbar app 3",
    "keys": "Meta+3",
    "labwc": "W-3",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 3'"
+   "run": "sh -c 'hearth-mantel-ipc call taskbar activate 3'"
   },
   {
    "id": "taskbar-4",
    "title": "Taskbar app 4",
    "keys": "Meta+4",
    "labwc": "W-4",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 4'"
+   "run": "sh -c 'hearth-mantel-ipc call taskbar activate 4'"
   },
   {
    "id": "taskbar-5",
    "title": "Taskbar app 5",
    "keys": "Meta+5",
    "labwc": "W-5",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 5'"
+   "run": "sh -c 'hearth-mantel-ipc call taskbar activate 5'"
   },
   {
    "id": "taskbar-6",
    "title": "Taskbar app 6",
    "keys": "Meta+6",
    "labwc": "W-6",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 6'"
+   "run": "sh -c 'hearth-mantel-ipc call taskbar activate 6'"
   },
   {
    "id": "taskbar-7",
    "title": "Taskbar app 7",
    "keys": "Meta+7",
    "labwc": "W-7",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 7'"
+   "run": "sh -c 'hearth-mantel-ipc call taskbar activate 7'"
   },
   {
    "id": "taskbar-8",
    "title": "Taskbar app 8",
    "keys": "Meta+8",
    "labwc": "W-8",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 8'"
+   "run": "sh -c 'hearth-mantel-ipc call taskbar activate 8'"
   },
   {
    "id": "taskbar-9",
    "title": "Taskbar app 9",
    "keys": "Meta+9",
    "labwc": "W-9",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar activate 9'"
+   "run": "sh -c 'hearth-mantel-ipc call taskbar activate 9'"
   },
   {
    "id": "power-menu",
    "title": "Power menu",
    "keys": "Ctrl+Alt+Del",
    "labwc": "C-A-Delete",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call power menu'"
+   "run": "sh -c 'hearth-mantel-ipc call power menu'"
   },
   {
    "id": "files",
@@ -183,7 +183,7 @@
    "title": "Task Manager",
    "keys": "Ctrl+Shift+Esc",
    "labwc": "C-S-Escape",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call tasks toggle'"
+   "run": "sh -c 'hearth-mantel-ipc call tasks toggle'"
   },
   {
    "id": "game-mode",
@@ -197,7 +197,7 @@
    "title": "Lock the screen",
    "keys": "Meta+L",
    "labwc": "W-l",
-   "run": "sh -c 'quickshell ipc -p \"$NIMBUS_SHARE/desktop/shell\" call lock lock'"
+   "run": "sh -c 'hearth-mantel-ipc call lock lock'"
   },
   {
    "id": "close",
@@ -239,14 +239,14 @@
    "title": "Show the desktop",
    "keys": "Meta+D",
    "labwc": "W-d",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar showDesktop'"
+   "run": "sh -c 'hearth-mantel-ipc call taskbar showDesktop'"
   },
   {
    "id": "show-desktop-2",
    "title": "Show the desktop (Super+M)",
    "keys": "Meta+M",
    "labwc": "W-m",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call taskbar showDesktop'"
+   "run": "sh -c 'hearth-mantel-ipc call taskbar showDesktop'"
   },
   {
    "id": "desktop-1",
@@ -386,42 +386,42 @@
    "title": "Volume up",
    "keys": "Volume Up",
    "labwc": "XF86AudioRaiseVolume",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons up || wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+'"
+   "run": "sh -c 'hearth-mantel-ipc call buttons up || wpctl set-volume -l 1 @DEFAULT_AUDIO_SINK@ 5%+'"
   },
   {
    "id": "volume-down",
    "title": "Volume down",
    "keys": "Volume Down",
    "labwc": "XF86AudioLowerVolume",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons down || wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-'"
+   "run": "sh -c 'hearth-mantel-ipc call buttons down || wpctl set-volume @DEFAULT_AUDIO_SINK@ 5%-'"
   },
   {
    "id": "volume-mute",
    "title": "Mute",
    "keys": "Volume Mute",
    "labwc": "XF86AudioMute",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons mute || wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle'"
+   "run": "sh -c 'hearth-mantel-ipc call buttons mute || wpctl set-mute @DEFAULT_AUDIO_SINK@ toggle'"
   },
   {
    "id": "power-button",
    "title": "Power button",
    "keys": "Power Off",
    "labwc": "XF86PowerOff",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call buttons power'"
+   "run": "sh -c 'hearth-mantel-ipc call buttons power'"
   },
   {
    "id": "brightness-up",
    "title": "Brightness up",
    "keys": "Monitor Brightness Up",
    "labwc": "XF86MonBrightnessUp",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call brightness up || brightnessctl set 5%+'"
+   "run": "sh -c 'hearth-mantel-ipc call brightness up || brightnessctl set 5%+'"
   },
   {
    "id": "brightness-down",
    "title": "Brightness down",
    "keys": "Monitor Brightness Down",
    "labwc": "XF86MonBrightnessDown",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call brightness down || brightnessctl set 5%-'"
+   "run": "sh -c 'hearth-mantel-ipc call brightness down || brightnessctl set 5%-'"
   },
   {
    "id": "mic-mute",
@@ -435,35 +435,35 @@
    "title": "Play or pause",
    "keys": "Media Play",
    "labwc": "XF86AudioPlay",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media playPause'"
+   "run": "sh -c 'hearth-mantel-ipc call media playPause'"
   },
   {
    "id": "media-pause",
    "title": "Play or pause (Pause key)",
    "keys": "Media Pause",
    "labwc": "XF86AudioPause",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media playPause'"
+   "run": "sh -c 'hearth-mantel-ipc call media playPause'"
   },
   {
    "id": "media-next",
    "title": "Next track",
    "keys": "Media Next",
    "labwc": "XF86AudioNext",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media next'"
+   "run": "sh -c 'hearth-mantel-ipc call media next'"
   },
   {
    "id": "media-previous",
    "title": "Previous track",
    "keys": "Media Previous",
    "labwc": "XF86AudioPrev",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media previous'"
+   "run": "sh -c 'hearth-mantel-ipc call media previous'"
   },
   {
    "id": "media-stop",
    "title": "Stop playing",
    "keys": "Media Stop",
    "labwc": "XF86AudioStop",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call media stop'"
+   "run": "sh -c 'hearth-mantel-ipc call media stop'"
   },
   {
    "id": "sleep",
@@ -491,14 +491,14 @@
    "title": "Snap layouts",
    "keys": "Meta+Z",
    "labwc": "W-z",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call snap toggle'"
+   "run": "sh -c 'hearth-mantel-ipc call snap toggle'"
   },
   {
    "id": "screens-switch",
    "title": "Screen switcher (one screen, extend)",
    "keys": "Meta+P",
    "labwc": "W-p",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call screens switcher'"
+   "run": "sh -c 'hearth-mantel-ipc call screens switcher'"
   }
  ],
  "kwinOwn": [
@@ -660,13 +660,13 @@
    "id": "activities-next",
    "title": "Next activity",
    "keys": "Meta+Ctrl+Q",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call activities next'"
+   "run": "sh -c 'hearth-mantel-ipc call activities next'"
   },
   {
    "id": "activities-previous",
    "title": "Previous activity",
    "keys": "Meta+Ctrl+Shift+Q",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call activities previous'"
+   "run": "sh -c 'hearth-mantel-ipc call activities previous'"
   },
   {
    "id": "overview",
@@ -690,7 +690,7 @@
    "id": "kill-window",
    "title": "Force close a window that isn't responding",
    "keys": "Ctrl+Alt+Esc",
-   "run": "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call forceclose start'"
+   "run": "sh -c 'hearth-mantel-ipc call forceclose start'"
   }
  ],
  "kdeKeys": [

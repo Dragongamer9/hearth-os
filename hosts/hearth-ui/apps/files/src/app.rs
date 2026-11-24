@@ -441,6 +441,9 @@ pub enum Msg {
     BgPress,
     /// Sort my Downloads (sortdl.rs), and its note going after a while.
     Sort(crate::sortdl::SMsg),
+    /// Describe it (board 11) and what a feature made with it does when pressed
+    Describe(hearth_ui::describe::DMsg),
+    DescAct(String),
     SortNoteGone(u64),
     /// The pointer moved over the file view (its own coordinates): drag to select.
     BandMove(Point),
@@ -546,6 +549,8 @@ pub struct App {
     pub hidden: bool,
     pub show_ext: bool,
     pub details_pane: bool,
+    /// Describe it (board 11): the box, what's being tried and what was kept (hearth_ui::describe; hearth-layout app.rs)
+    pub describe: hearth_ui::describe::Describe,
     pub pc_view: String,
     pub nav_w: f32,
     pub raw_places: Vec<Value>,
@@ -649,6 +654,7 @@ impl App {
         };
         let mut s = App {
             p: hearth_ui::theme::load(),
+            describe: hearth_ui::describe::Describe::new("files", "Hearth Files").with_pages(crate::view::BLOCKS),
             home: home.clone(),
             user,
             pick_name: pick.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
@@ -757,6 +763,15 @@ impl App {
             crate::extras::refresh_tags(),
             crate::briefcase::refresh_known(),
         ]);
+        // --describe WORDS (CI's pictures; Describe it opened and asked at once)
+        let first = match hearth_ui::app::arg("--describe") {
+            Some(w) if !s.picking() => {
+                s.describe.open = true;
+                s.describe.text = w;
+                Task::batch(vec![first, Task::done(Msg::Describe(hearth_ui::describe::DMsg::Make))])
+            }
+            _ => first,
+        };
         (s, first)
     }
 
@@ -829,7 +844,16 @@ impl App {
         if self.picking() {
             return View::Details;
         }
-        if self.on_home() || self.on_cview() || self.on_apps() { View::Details } else { self.view }
+        if self.on_home() || self.on_cview() || self.on_apps() {
+            return View::Details;
+        }
+        // Describe it's "how files are shown" (what's tried, else kept), over the View menu's pick
+        match self.describe.knob("view").as_str() {
+            "icons" => View::Large,
+            "list" => View::Compact,
+            "details" => View::Details,
+            _ => self.view,
+        }
     }
 
     pub fn cdata_struct(&self) -> CData {
@@ -3197,6 +3221,8 @@ fn update_inner(app: &mut App, m: Msg) -> Task<Msg> {
         Msg::Bc(m) => return crate::briefcase::update(app, m),
         Msg::Pad(m) => return crate::pad::update(app, m),
         Msg::Sort(m) => return crate::sortdl::update(app, m),
+        Msg::Describe(m) => return app.describe.update(m).map(Msg::Describe),
+        Msg::DescAct(act) => return crate::ldescribe::act(app, &act),
         Msg::SortNoteGone(n) => {
             if app.sorted_seq == n {
                 app.sorted = None;

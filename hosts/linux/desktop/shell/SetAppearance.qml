@@ -316,6 +316,7 @@ SetPage {
     }
 
     SetHeader { text: "Desktop" }
+    SetLinkCard { target: "desktop-layout"; value: ({ hearth: "Hearth", steam: "Steam-style", plasma: "Plasma-style", gnome: "GNOME-style", windows11: "Windows 11-style", macos: "macOS-style" })[Settings.layout.replace(/-mine$/, "")] || (Settings.layout !== "" ? "Your own" : "") }
     SetLinkCard { target: "bar-dock"; value: Settings.barStyle === "" && Settings.dockMode === "" ? "Look's own" : [Settings.barStyle === "bar" ? "Full-width bar" : Settings.barStyle === "floating" ? "Islands" : "", Settings.dockMode === "autohide" ? "dock auto-hides" : Settings.dockMode === "shown" ? "dock shown" : ""].filter(x => x).join(", ") }
     SetChoice {
         icon: "clock"

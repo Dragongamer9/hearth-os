@@ -33,7 +33,7 @@ mod registry;
 mod shared;
 mod widgets;
 
-use cats::{a11y, accounts, apps, bt, couch, g15, gaming, home, hs, kde, link, net, pers, privacy, system, updates};
+use cats::{a11y, ai, accounts, apps, bt, couch, g15, gaming, home, hs, kde, link, net, pers, privacy, sections, system, updates};
 use hearth_ui::app::{self, win};
 use hearth_ui::run;
 use iced::keyboard::{key::Named, Event as KEvent, Key, Modifiers};
@@ -46,6 +46,8 @@ macro_rules! each_cat {
     ($mac:ident) => {
         $mac! {
             (home, Home, home),
+            (sections, Sections, sections),
+            (ai, Ai, ai),
             (quick, Quick, quick),
             (system, System, system),
             (couch, Couch, couch),
@@ -85,6 +87,7 @@ pub enum Action {
 macro_rules! define {
     ($(($f:ident, $v:ident, $m:ident)),*) => {
         pub struct App {
+    pub describe: hearth_ui::describe::Describe,
             pub sh: Shared,
             pub cat: usize,
             pub page: &'static str,
@@ -106,6 +109,8 @@ macro_rules! define {
 
         #[derive(Debug, Clone)]
         pub enum Msg {
+    /// Describe it (hearth_ui::describe; every Hearth app has it)
+    Describe(hearth_ui::describe::DMsg),
             Theme,
             Info(run::Output),
             History(run::Output),
@@ -137,6 +142,7 @@ macro_rules! define {
             let mut sh = Shared::new();
             sh.part = part;
             App {
+                describe: hearth_ui::describe::Describe::new("settings", "Hearth Settings").with_pages(home::BLOCKS),
                 sh,
                 cat: registry::cat_of(first),
                 page: first,
@@ -272,6 +278,18 @@ impl App {
     }
 
     fn open(&mut self, id: &'static str) -> Task<Msg> {
+        // The sections whose own page was only a list of their pages open their front page instead (a deep link to
+        // "system", "bt", Back from a page).
+        let id = match id {
+            "system" | "bt" | "apps-home" | "accounts" | "privacy" | "ai" => cats::sections::page_for(registry::CATEGORIES[registry::cat_of(id)].0).unwrap_or(id),
+            _ => id,
+        };
+        // Home's "You use these most": one more opening of this page, counted in a small state file (not a
+        // setting) by hearth-settings-values, in the background. Section front pages and Home aren't counted.
+        if id != "home" && !id.starts_with("sec-") && registry::page(id).is_some() {
+            let helper = run::shell_helper("hearth-settings-values");
+            run::detached(&["python3", helper.as_str(), "opened", id]);
+        }
         self.page = id;
         self.cat = registry::cat_of(id);
         self.query.clear();
@@ -285,6 +303,10 @@ impl App {
 
 /// Shows the controller look (B) or the keyboard-and-mouse look (A). The page and the focused row stay.
 fn set_layout(a: &mut App, b: bool) {
+    // 1.18 (the owner, Nov 23: "get rid of the settings app controller mode as well, sitck with the normal settings
+    // app"): always the keyboard-and-mouse look; a controller moves through it as it is.
+    let _ = b;
+    let b = false;
     if a.sh.big != b || !nav::look_said() {
         // One line when the look changes (CI checks the controller's own pointer doesn't flip it).
         eprintln!("hearth-settings: look: {}", if b { "controller" } else { "keyboard and mouse" });
@@ -303,6 +325,13 @@ fn set_layout(a: &mut App, b: bool) {
 }
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
+    if let Msg::Describe(dm) = m {
+        return a.describe.update(dm).map(Msg::Describe);
+    }
+    // Home's blocks are arranged by the app's Describe it (hearth_ui::blocks)
+    if let Msg::Home(home::Msg::Describe(dm)) = m {
+        return a.describe.update(dm).map(Msg::Describe);
+    }
     let t = match m {
         Msg::Theme => {
             a.sh.p = hearth_ui::theme::load();
@@ -319,7 +348,8 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         }
         Msg::Cat(i) => {
             if i < registry::CATEGORIES.len() {
-                a.open(registry::CATEGORIES[i].2)
+                // The section's front page (the Settings redesign), else its landing page (Home).
+                a.open(cats::sections::page_for(registry::CATEGORIES[i].0).unwrap_or(registry::CATEGORIES[i].2))
             } else {
                 Task::none()
             }
@@ -441,7 +471,8 @@ fn back(a: &mut App) -> Task<Msg> {
         }
         return Task::none();
     }
-    let landing = registry::CATEGORIES[registry::cat_of(p.id)].2;
+    let cat = registry::CATEGORIES[registry::cat_of(p.id)];
+    let landing = cats::sections::page_for(cat.0).unwrap_or(cat.2);
     if a.page != landing {
         nav::want(p.label);
         return a.open(landing);
@@ -712,6 +743,11 @@ fn view(a: &App) -> Element<'_, Msg> {
     frame::frame(a)
 }
 
+/// The app with Describe it's box under it when it's open (every Hearth app has it).
+fn shown(a: &App) -> Element<'_, Msg> {
+    hearth_ui::describe::with_bar(view(a), &a.sh.p, &a.describe, Msg::Describe)
+}
+
 fn main() -> iced::Result {
     // Display › Identify outside KDE Plasma: this program again, showing each screen's number for 3 s (identify.rs).
     if let Some(spec) = app::arg("--identify") {
@@ -723,7 +759,7 @@ fn main() -> iced::Result {
     ) {
         return Ok(());
     }
-    iced::application(App::new, update, view)
+    iced::application(App::new, update, shown)
         .title("Hearth Settings")
         .subscription(subscription)
         .theme(|a: &App| app::iced_theme(&a.sh.p))

@@ -23,7 +23,7 @@ anything. Open parts are listed as open (red flag 11).
 - [x] NEW tags on the menu's new items — hosts/hearth-ui/apps/task-manager/src/pages.rs: "chip(\"NEW\""
 - [x] Right-click: Go to details shows the PID on the right — hosts/hearth-ui/apps/task-manager/src/main.rs: "MenuItem::new(\"Go to details\", Act::Details).key(format!(\"PID {pid}\"))"
 - [x] Apps & groups / All processes switch at the top — hosts/hearth-ui/apps/task-manager/src/pages.rs: "(\"groups\", \"Apps & groups\"), (\"all\", \"All processes\")"
-- [x] Efficiency mode, Open file location and End task buttons at the top — hosts/hearth-ui/apps/task-manager/src/pages.rs: "btn(&p, \"Open file location\""
+- [x] Efficiency mode, Open file location and End task buttons at the top — hosts/hearth-ui/apps/task-manager/src/pages.rs: "pb(&p, \"Open file location\""
 - [x] Tags on rows: AI, bridge, Game · Proton, Hearth — hosts/hearth-ui/apps/task-manager/src/apps.rs: "\"Game · Proton\""
 - [x] Status: Quick Resume ⏸ for a suspended game — hosts/hearth-ui/apps/task-manager/src/pages.rs: "\"Quick Resume ⏸\""
 - [x] Search box: "Type a name, publisher or PID to search" (finds a PID) — hosts/hearth-ui/apps/task-manager/src/pages.rs: "Type a name, publisher or PID to search"

@@ -15,6 +15,14 @@ on:
         description: 'Publish the image to hearth-peppermint:testing (ARCHIVED: Debian devices follow it; only on the owner''s word). Off: build and check only'
         type: boolean
         default: false
+      test_tag:
+        description: 'Owner-approved test tag to publish to from this branch once every check passes (test-<version> only, e.g. test-1.18): only devices switched to it by hand follow it. Empty: none'
+        type: string
+        default: ''
+      rest_minutes:
+        description: 'Minutes at rest in the desktop test (default 60)'
+        type: string
+        default: '60'
   # Archived Nov 19, 2026: no push trigger (it was push to linux-host and main, on the image's paths).
 
 env:
@@ -233,6 +241,33 @@ jobs:
           mkdir -p /tmp/app && cp "$CARGO_TARGET_DIR/release/hearth-family-app" /tmp/app/
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
       # ---- end of hearth-family-app
+      # ---- Hearth's pure-Rust apps (hosts/hearth-ui, hosts/hearth-layout; 1.18, Debian again: the ones the Fedora edition
+      # had) built inside trixie, so they link what the image has, and put in hearth-app.tar's hearth-ui/ (build.sh
+      # installs each in /usr/libexec/hearth/apps with the Store's two-line start). Mantel in Rust and the Store use
+      # them. Not fatal: without them the image is made as before (Mantel's own apps stay as they are).
+      - name: Build Hearth's pure-Rust apps
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          apt-get install -y -qq libxkbcommon-dev libwayland-dev libfontconfig-dev libfreetype-dev >/dev/null
+          export CARGO_TARGET_DIR="$GITHUB_WORKSPACE/hosts/hearth-rs/target"
+          if ! (cd hosts/hearth-ui && cargo build --release --workspace) > /tmp/rust-apps.log 2>&1; then
+            awk '/^error/{if (b) print b; b=$0; n=0; next} b && n < 14 {b=b "|" $0; n++} END{if (b) print b}' /tmp/rust-apps.log | head -8 | while read -r l; do echo "::error title=Hearth's pure-Rust apps::$(echo "$l" | cut -c1-3000)"; done
+            exit 1
+          fi
+          (cd hosts/hearth-layout && cargo build --release) >> /tmp/rust-apps.log 2>&1 || { echo "::error title=hearth-layout::$(grep -A8 '^error' /tmp/rust-apps.log | head -30 | tr '\n' '|' | cut -c1-3000)"; exit 1; }
+          mkdir -p /tmp/app/hearth-ui
+          for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-store-app hearth-server-app hearth-resmon-app hearth-notes-app hearth-ideas-app hearth-layout; do
+            cp "$CARGO_TARGET_DIR/release/$b" /tmp/app/hearth-ui/ || { echo "::error title=Hearth's pure-Rust apps::$b didn't build"; exit 1; }
+          done
+          # G15 and Family and friends come from this same build when their own steps above couldn't (where build.sh
+          # looks for them, beside the app).
+          for b in hearth-g15 hearth-g15-app hearth-family-app; do
+            [ -x "/tmp/app/$b" ] || cp "$CARGO_TARGET_DIR/release/$b" /tmp/app/ 2>/dev/null || echo "::warning title=Hearth's pure-Rust apps::no $b"
+          done
+          tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
+          echo "::notice title=Hearth's pure-Rust apps::$(ls /tmp/app/hearth-ui | tr '\n' ' ') · beside the app: $(ls /tmp/app | grep -E 'g15|family' | tr '\n' ' ')"
+      # ---- end of Hearth's pure-Rust apps
       # ---- Hearth Photos and Hearth Documents (hosts/hearth-photos, hosts/hearth-documents): the picture viewer and
       # the PDF / e-book / comic reader, built the same way and put beside the app in hearth-app.tar (build.sh installs
       # them, with their menu entries and file types; their icons come with the Hearth icon set). Not fatal.
@@ -638,6 +673,27 @@ jobs:
           retention-days: 30
 
       # REQUIRED: a failure here stops the image from being published.
+      # The owner, Nov 24: "lets start doing that, i can test it while your testing as well". With a test tag, the image
+      # goes up as <tag>-candidate as soon as it's made (the owner can try it at his own risk while the checks run);
+      # <tag> itself only moves to it once every check passed (the publish step at the end: a relabel, no new upload).
+      - name: Upload the candidate (<test tag>-candidate, before the checks)
+        if: github.event_name == 'workflow_dispatch' && inputs.test_tag != ''
+        env:
+          TEST_TAG: ${{ inputs.test_tag }}
+        run: |
+          set -o pipefail
+          echo "$TEST_TAG" | grep -Eqx 'test-[0-9]+(\.[0-9]+)*' || { echo "::error title=candidate::refusing tag '$TEST_TAG': only test-<version>"; exit 1; }
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+          c="$IMAGE:$TEST_TAG-candidate"
+          if [ "${CHUNKED:-}" = 1 ] && [ -f /mnt/hearth-chunked/img/index.json ]; then
+            sudo rm -f /var/lib/containers/cache/blob-info-cache-v1.sqlite /var/lib/containers/cache/blob-info-cache-v1.boltdb
+            sudo skopeo copy -q --preserve-digests --authfile /run/containers/0/auth.json oci:/mnt/hearth-chunked/img "docker://$c" \
+              || sudo podman push hearth-peppermint:latest "$c"
+          else
+            sudo podman push hearth-peppermint:latest "$c"
+          fi
+          echo "::notice title=candidate::$c is up (not checked yet: the checks are running)"
+
       - name: Check the image
         run: |
           # pipefail: without it `bootc container lint | tee` below always passed, even when lint failed.
@@ -905,7 +961,7 @@ jobs:
           check "/etc/hosts maps the device's name at boot and after a rename (hearth-hosts)" "python3 -m py_compile /usr/libexec/nimbus/hearth-hosts && test -L /etc/systemd/system/multi-user.target.wants/hearth-hosts.service && test -L /etc/systemd/system/multi-user.target.wants/hearth-hosts.path && printf '127.0.0.1 localhost\n127.0.1.1 old-name\n' > /tmp/hosts.t && /usr/libexec/nimbus/hearth-hosts --file /tmp/hosts.t --hostname chris-hearth && grep -q '^127.0.1.1.*chris-hearth' /tmp/hosts.t && ! grep -q old-name /tmp/hosts.t && grep -q '^127.0.0.1.*localhost' /tmp/hosts.t"
           echo "--- Share this device's AI (docs/AI-SHARE.md): installed, off"
           check "AI sharing is installed and off (its user service, its firewall timer, no rule file)" "test -f /usr/lib/systemd/user/hearth-ai-share.service && test -f /usr/lib/systemd/system/hearth-ai-share-firewall.timer && ! grep -q '^\\[Install\\]' /usr/lib/systemd/system/hearth-ai-share-firewall.service && python3 -m py_compile /usr/share/nimbus/desktop/shell/hearth-ai-share /usr/libexec/nimbus/hearth-ai-share-helper && ! systemctl is-enabled hearth-ai-share-firewall.timer 2>/dev/null | grep -qx enabled && ! systemctl --global is-enabled hearth-ai-share.service 2>/dev/null | grep -qx enabled && ! ls /etc/systemd/user/*.wants/hearth-ai-share.service /etc/systemd/system/*.wants/hearth-ai-share-firewall.timer 2>/dev/null | grep -q . && ! test -e /etc/hearth/ai-share.nft && grep -q hearth-ai-share-helper /usr/share/polkit-1/rules.d/49-hearth-storage.rules"
-          check "the AI sharing helper answers with everything off" "HOME=/tmp/ais XDG_CONFIG_HOME=/tmp/ais/c XDG_STATE_HOME=/tmp/ais/s XDG_CACHE_HOME=/tmp/ais/k python3 /usr/share/nimbus/desktop/shell/hearth-ai-share info | grep -q '\"reason\": \"off\"' && ! test -e /tmp/ais/c/nimbus/ai-share.json"
+          check "the AI sharing helper answers on a new account (sharing is on by default since ea99cc786, only to your own devices; with no AI engine here: nothing to share)" "HOME=/tmp/ais XDG_CONFIG_HOME=/tmp/ais/c XDG_STATE_HOME=/tmp/ais/s XDG_CACHE_HOME=/tmp/ais/k python3 /usr/share/nimbus/desktop/shell/hearth-ai-share info | grep -Eq '\"reason\": \"(off|nothing)\"' && ! test -e /tmp/ais/c/nimbus/ai-share.json"
           warn "glibc's myhostname module answers for the device's name (nsswitch.conf)" "grep -Eq '^hosts:.*myhostname' /etc/nsswitch.conf"
           check "Flatpak's system installation set up / Bazaar installer runs every boot" "python3 -m py_compile /usr/libexec/nimbus/hearth-flatpak-setup && test -L /etc/systemd/system/multi-user.target.wants/hearth-flatpak-setup.service"
           check "nothing makes an empty /var/lib/flatpak/repo at boot (flatpak can't open one: openat(config))" "! grep -rqs 'var/lib/flatpak/repo' /usr/lib/tmpfiles.d /etc/tmpfiles.d"
@@ -1033,6 +1089,23 @@ jobs:
       # apt, starts played out: unlocked by default, an apt install (and a .deb file) survives a restart, an update
       # starts clean and the reapply puts the packages back, the previous version keeps its own, lock and unlock, a
       # safe start, the boot-chain pin, and the boot guard's tests in the image's Python.
+      # REQUIRED (1.18, Debian again): the Hearth Store's quick updates (hearth-part) and Hearth's pure-Rust apps are in the
+      # image, each started through the Store's two-line start, and Desktop Mode is Mantel on labwc.
+      - name: Store updates and the pure-Rust apps are in the image
+        run: |
+          sudo podman run --rm --entrypoint bash localhost/hearth-peppermint:latest -c '
+            bad=""
+            test -x /usr/libexec/hearth/hearth-part || bad="$bad hearth-part"
+            for b in hearth-settings-app hearth-files-app hearth-task-manager hearth-store-app hearth-resmon-app hearth-layout; do
+              test -x /usr/libexec/hearth/apps/$b || bad="$bad $b"
+              ldd /usr/libexec/hearth/apps/$b 2>/dev/null | grep -q "not found" && bad="$bad $b(libraries)"
+            done
+            command -v labwc >/dev/null || bad="$bad labwc"
+            test -f /usr/share/applications/hearth-store.desktop && test -s /usr/share/hearth/store/catalog.json || bad="$bad hearth-store(menu entry or list)"
+            echo "apps: $(ls /usr/libexec/hearth/apps 2>/dev/null | tr "\n" " ")"
+            [ -z "$bad" ] || { echo "::error title=Debian again::missing from the image:$bad"; exit 1; }' | tee /tmp/apps.txt
+          echo "::notice title=Debian again::$(tail -1 /tmp/apps.txt)"
+
       - name: Writable system (hearth-unlock)
         timeout-minutes: 30
         run: bash .github/scripts/hearth-unlock-check.sh localhost/hearth-peppermint:latest image
@@ -1051,6 +1124,26 @@ jobs:
           git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com add -A
           git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "Boot look ($GITHUB_RUN_ID)" || exit 0
           git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/boot-look || true
+
+      # REQUIRED (the owner, Nov 23, 2026: nothing reaches a device until a virtual PC shows it working): installed,
+      # signed in by itself, Game Mode, then Mantel on labwc, at rest for an hour (Mantel's memory and CPU). Screenshots
+      # and the numbers: the ci/debian-desktop branch.
+      - name: Signs in and opens the desktop in a virtual PC (screenshots, an hour at rest)
+        timeout-minutes: 120
+        env:
+          REST_MIN: ${{ github.event_name == 'workflow_dispatch' && inputs.rest_minutes || '60' }}
+        run: |
+          case "$REST_MIN" in ''|*[!0-9]*) REST_MIN=60 ;; esac
+          REST_SECS=$((REST_MIN * 60)) bash .github/scripts/debian-desktop-vm.sh localhost/hearth-peppermint:latest "$PWD/debian-desktop"
+      - name: Publish the desktop screenshots (ci/debian-desktop)
+        if: always()
+        run: |
+          [ -d debian-desktop ] || exit 0
+          mkdir -p /tmp/dd-pub/run-$GITHUB_RUN_ID && cd /tmp/dd-pub
+          find "$GITHUB_WORKSPACE/debian-desktop" -maxdepth 1 -type f \( -name '*.png' -o -name 'memory.txt' -o -name 'job.txt' \) -size -5M -exec cp {} run-$GITHUB_RUN_ID/ \;
+          git init -q -b ci/debian-desktop && git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com add -A
+          git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com commit -qm "Debian desktop, run $GITHUB_RUN_ID" || exit 0
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/debian-desktop || true
 
       - name: Check the Qt renderer in the image
         continue-on-error: true
@@ -1110,14 +1203,33 @@ jobs:
             -v "$PWD/hosts/linux/test/make_test_deb.py:/make_test_deb.py:ro" hearth-peppermint:latest bash /box.sh flatpak || echo "::warning title=box check::the flatpak check didn't finish"
 
       - name: Publish to GitHub Container Registry
-        if: env.PUBLISH == 'true'
+        if: env.PUBLISH == 'true' || (github.event_name == 'workflow_dispatch' && inputs.test_tag != '')
+        env:
+          TEST_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.test_tag || '' }}
         run: |
           set -o pipefail
           exec > >(tee /tmp/step.log) 2>&1
-          trap 'sleep 1; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -20 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=publish::$msg"' ERR
+          # The error also goes to the run's summary: a job past GitHub's 50 notes drops it (1.18's test tag).
+          trap 'sleep 1; { echo "### Publish failed"; echo; echo "\`\`\`"; grep -v -e "^\s*$" /tmp/step.log | tail -20 | cut -c1-300; echo "\`\`\`"; } >> "$GITHUB_STEP_SUMMARY"; msg=$(grep -v -e "^\s*$" /tmp/step.log | tail -20 | cut -c1-300 | sed -e "s/%/%25/g" | sed -e ":a;N;\$!ba;s/\n/%0A/g"); echo "::error title=publish::$msg"' ERR
           v="${{ needs.app.outputs.version }}"
           echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ghcr.io -u "${{ github.actor }}" --password-stdin
-          for tag in testing "testing-$v-$(date -u +%Y%m%d)"; do
+          tags="testing testing-$v-$(date -u +%Y%m%d)"
+          # A test tag given by hand (the owner's okay): only that tag, never :testing (red flag 5).
+          if [ -n "${TEST_TAG:-}" ]; then
+            echo "$TEST_TAG" | grep -Eqx 'test-[0-9]+(\.[0-9]+)*' || { echo "::error title=publish::refusing tag '$TEST_TAG': only test-<version>"; exit 1; }
+            [ "${PUBLISH:-}" = true ] || tags="$TEST_TAG"
+          fi
+          # Only a test tag: the candidate checked above gets the tag's own name (the same image, no new upload).
+          if [ -n "${TEST_TAG:-}" ] && [ "${PUBLISH:-}" != true ] && sudo skopeo inspect --authfile /run/containers/0/auth.json "docker://$IMAGE:$TEST_TAG-candidate" >/dev/null 2>&1; then
+            # 1.18: this copy failed once with no note left; then the same image goes up the usual way below.
+            sudo rm -f /var/lib/containers/cache/blob-info-cache-v1.sqlite /var/lib/containers/cache/blob-info-cache-v1.boltdb
+            if sudo skopeo copy -q --preserve-digests --authfile /run/containers/0/auth.json "docker://$IMAGE:$TEST_TAG-candidate" "docker://$IMAGE:$TEST_TAG"; then
+              echo "::notice title=published::$IMAGE:$TEST_TAG (the checked candidate)"
+              exit 0
+            fi
+            echo "copying the candidate to $TEST_TAG failed; uploading the same image instead" | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+          for tag in $tags; do
             # 1.13: the rechunked image exactly as made (its layers' digests are what devices already have).
             if [ "${CHUNKED:-}" = 1 ] && [ -f /mnt/hearth-chunked/img/index.json ]; then
               # 1.13's first publish failed here: skopeo's blob cache tried to reuse a layer from another repository
@@ -1131,4 +1243,4 @@ jobs:
               sudo podman push hearth-peppermint:latest "$IMAGE:$tag"
             fi
           done
-          echo "::notice title=published::$IMAGE:testing"
+          echo "::notice title=published::$IMAGE: $tags"

@@ -121,12 +121,26 @@ def can_go_back():
     return len(d) >= 2 and d[0].startswith('*')
 
 
+def refresh_boot_menu():
+    """Hearth's own boot menu (/boot/grub2/hearth-bls.cfg, on a PC that came from Debian) rewritten right after the
+    default version changed. bootc rollback swaps /ostree/boot.0 and boot.1 at once, and a menu still naming the one
+    that's gone starts nothing (the owner's laptop, Nov 23: every entry went to "Couldn't find specified OSTree root").
+    Never fails the step it follows."""
+    if not os.path.isfile('/boot/grub2/hearth-bls.cfg') or not os.access('/usr/libexec/nimbus/hearth-bls-grub', os.X_OK):
+        return
+    try:
+        subprocess.run(['/usr/libexec/nimbus/hearth-bls-grub'], capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def act_back(say):
     say('Going back to the previous version…')
     r = subprocess.run(['bootc', 'rollback'], capture_output=True, text=True)
     if r.returncode != 0:
         say('Couldn\'t: ' + (r.stderr or r.stdout).strip()[-200:])
         return False
+    refresh_boot_menu()
     say('Done. Restarting…')
     time.sleep(2)
     subprocess.run(['systemctl', 'reboot'])

@@ -75,10 +75,18 @@ PanelWindow {
         menuRequested(e, p.x, p.y);
     }
 
-    visible: shown
+    // 1.17 fix (the owner's dad's PC, Nov 21): the menu's window stays up, empty and click-through, for a while after
+    // it closes instead of going away at once. Hiding it while its pictures and icons were still loading crashed
+    // Quickshell on Fedora's Qt about two seconds after the menu closed (a redraw queued for a part of the closed
+    // window: QQuickItemPrivate::addToDirtyList). Nothing is drawn or clickable in that time.
+    visible: shown || linger.running
+    Timer { id: linger; interval: 20000 }
+    mask: Region { item: root.shown ? hitAll : null }
+    Item { id: hitAll; anchors.fill: parent }
+    contentItem.visible: root.shown
     onShownChanged: {
         if (shown) freshRates();
-        if (!shown) { fileHits = []; return; }
+        if (!shown) { linger.restart(); fileHits = []; return; }
         search.text = ""; folderOpen = false; grid.currentIndex = 0; tabFocus = false; loadGames(); systemList.running = true;
         if (styled) { styleLoader.item.opened(); readRecentFiles(); if (styleLoader.item.wantsLive) readLive(); }
         else search.forceActiveFocus();
@@ -90,7 +98,7 @@ PanelWindow {
     WlrLayershell.keyboardFocus: shown ? WlrKeyboardFocus.Exclusive : WlrKeyboardFocus.None
     exclusionMode: ExclusionMode.Ignore
     anchors { top: true; bottom: true; left: true; right: true }
-    color: styled ? styleLoader.item.scrim : Qt.rgba(0.02, 0.02, 0.03, 0.72)
+    color: !shown ? "transparent" : styled ? styleLoader.item.scrim : Qt.rgba(0.02, 0.02, 0.03, 0.72)
 
     // Every app with a .desktop file, A–Z, filtered by what you type.
     // Not the Hearth app itself (nimbus.desktop, "Hearth"): that's the archived Game Mode in a window, hidden everywhere
@@ -267,7 +275,11 @@ PanelWindow {
     function freshRates() { if (root.searchPrefs.currencyOnline !== false) Quickshell.execDetached(["python3", root.searchHelper, "rates", "--if-old"]); }
     function answersFor(raw) {
         const off = (root.searchPrefs && typeof root.searchPrefs.pluginsOff === "object" && root.searchPrefs.pluginsOff) || {};
-        sources.lookup(raw);
+        // 1.17 fix (the owner's dad's PC, Nov 21): lookup() starts a timer and reads whether it runs, and this is called
+        // inside the menus' result bindings, so the binding watched that timer: every 50 ms it ran again ("Binding loop
+        // detected for property result"), and the result list was thrown away and built again 20 times a second, which
+        // crashed Quickshell on Fedora's Qt. Done right after the binding instead, where nothing watches it.
+        Qt.callLater(sources.lookup, raw);
         return Runners.run(raw, { rates: root.rates, recent: root.recentFiles, windows: root.windowList || [], src: sources.src, off: off });
     }
     // 1.14: the data of the newer plugins (bookmarks, desktops, kill, world clock, spelling, media, store, contacts,
@@ -522,7 +534,10 @@ PanelWindow {
         id: styleLoader
         anchors.fill: parent
         z: 2
-        active: root.style !== "hearth" && root.styleFiles[root.style] !== undefined
+        // Loaded only while the menu is open (1.17 fix, the owner's dad's PC): a loaded menu left in the window when
+        // the window went away was resized later on its own (Loader → setSize) and crashed Quickshell on Fedora's Qt.
+        // It's put away as the menu closes, while the window is still up (see linger), so nothing of it is left.
+        active: root.shown && root.style !== "hearth" && root.styleFiles[root.style] !== undefined
         source: active ? root.styleFiles[root.style] : ""
         onLoaded: { item.menu = root; if (root.shown) { item.opened(); root.readRecentFiles(); if (item.wantsLive) root.readLive(); } }
         onStatusChanged: if (status === Loader.Error) console.warn("Mantel: the " + root.style + " app menu couldn't load; showing the Hearth menu")
@@ -540,7 +555,7 @@ PanelWindow {
         y: topRoom + Math.max(10, (parent.height - topRoom - bottomRoom - height) / 2)
         MouseArea { anchors.fill: parent } // clicks inside don't close
         Rectangle { anchors.fill: parent; radius: Theme.r(26); color: Qt.rgba(Theme.panel.r, Theme.panel.g, Theme.panel.b, 0.96); border.color: Theme.line; visible: frame.status !== Loader.Ready }
-        Loader { id: frame; anchors.fill: parent; source: "Frame.qml"; onLoaded: { item.solid = true; item.rad = Qt.binding(() => Theme.r(26)); } }
+        Loader { id: frame; anchors.fill: parent; active: root.shown; source: "Frame.qml"; onLoaded: { item.solid = true; item.rad = Qt.binding(() => Theme.r(26)); } }
 
         ColumnLayout {
             anchors { fill: parent; margins: 30 }

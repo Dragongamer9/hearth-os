@@ -54,7 +54,7 @@ SHA-256 once, matches it with the newest release and shows that version.
 
 ## The list of apps
 
-- Built in: `/usr/share/hearth/store/catalog.json` (source: `os-bases/anatase/system_files/usr/share/hearth/store/catalog.json`),
+- Built in: `/usr/share/hearth/store/catalog.json` (source: `os/system_files/usr/share/hearth/store/catalog.json`),
   updated with each Hearth OS release. Raise its `serial` whenever it changes.
 - Refreshed between releases from `https://hearthos.fun/store/catalog.json` only when it's **signed** by the owner's
   key and its serial is higher. The public half of the key is built into the image
@@ -77,7 +77,7 @@ SHA-256 once, matches it with the newest release and shows that version.
 1. On your own PC: `openssl genpkey -algorithm ed25519 -out hearth-store-key.pem` (keep this file private).
 2. The public half for Hearth OS:
    `openssl pkey -in hearth-store-key.pem -pubout -outform DER | tail -c 32 | od -An -v -tx1 | tr -d ' \n'`
-   and put those 64 characters in `os-bases/anatase/system_files/usr/share/hearth/store/catalog-key.pub` (it ships
+   and put those 64 characters in `os/system_files/usr/share/hearth/store/catalog-key.pub` (it ships
    with the next Hearth OS release).
 3. In GitHub: Settings › Secrets and variables › Actions › New repository secret `HEARTH_STORE_SIGNING_KEY`, with the
    whole content of `hearth-store-key.pem`.

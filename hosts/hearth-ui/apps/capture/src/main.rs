@@ -71,6 +71,8 @@ pub const MODES: [&str; 5] = ["area", "window", "screen", "all", "scroll"];
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Describe it (hearth_ui::describe; every Hearth app has it)
+    Describe(hearth_ui::describe::DMsg),
     Theme,
     Opened(window::Id),
     Closed(window::Id),
@@ -127,6 +129,7 @@ pub enum Msg {
 }
 
 pub struct App {
+    pub describe: hearth_ui::describe::Describe,
     pub p: Pal,
     pub main: Option<window::Id>,
     /// The area picker: one window on each screen (Mantel's), each with its still picture.
@@ -435,6 +438,7 @@ impl Ed {
 fn boot() -> (App, Task<Msg>) {
     let prefs = settings_file::read(&prefs_path()).map().unwrap_or_default();
     let mut a = App {
+            describe: hearth_ui::describe::Describe::new("capture", "Capture").with_pages(pages::BLOCKS),
         p: hearth_ui::theme::load(),
         main: None,
         screens: Vec::new(),
@@ -520,6 +524,7 @@ fn boot() -> (App, Task<Msg>) {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Opened(_) | Msg::Noop => {}
         Msg::Closed(id) => {
@@ -958,7 +963,7 @@ fn view(a: &App, id: window::Id) -> Element<'_, Msg> {
     if Some(id) == a.pill {
         return pages::pill_view(a);
     }
-    pages::main_view(a)
+    hearth_ui::describe::with_bar(pages::main_view(a), &a.p, &a.describe, Msg::Describe)
 }
 
 fn subscription(_a: &App) -> Subscription<Msg> {

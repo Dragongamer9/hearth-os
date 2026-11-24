@@ -3,6 +3,14 @@
 # releases are untouched), and added to the Store's live list on the `store` branch with its SHA-256. Nothing reaches
 # a device until "Publish the Hearth Store list" is run (the owner's okay), and then only on the Hearth OS it's for.
 # Run by hand only, with the owner's version number (red flag 1).
+#
+# 1.18 (the owner, Nov 23: "Every thing in Hearth OS that we made Needs to be in the hearth Store"; red flag 13: every
+# Hearth app updates both its main and its test version from the Store): every Hearth part is here, each with a main
+# and a test channel, built in the image's own base (Debian trixie for Hearth OS on Debian), and the helpers that run
+# as root are system parts (hearth-system-part: installed root-owned with the admin password, never into a home
+# folder). Anything that starts the PC (the boot menu, Recovery, the login screen) is never a part: system updates only.
+# The Decky plugins' main versions keep their own release (decky-plugins-release.yml, picked up by hearth-decky); their
+# test versions come from here, as system parts (root-owned, put in Decky's folder by hearth-decky on trial).
 name: Quick update for an app
 
 on:
@@ -14,15 +22,28 @@ on:
         type: choice
         options: [mantel, hearth-files-app, hearth-settings-app, hearth-task-manager, hearth-capture-app, hearth-notes-app,
                   hearth-g15-app, hearth-family-app, hearth-server-app, hearth-resmon-app, hearth-system-restore,
-                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host]
+                  hearth-reliability-history, hearth-file-chooser, hearth-pad-host, hearth-store-app, mantel-rust, hearth-ideas-app, hearth-link,
+                  hearth-layout, hearth-game-mode, hearth-home-server-helper, hearth-storage-helper, hearth-ai-share-helper,
+                  hearth-controller-lab, hearth-saves, hearth-mods, hearth-gamestore, hearth-gamma, hearth-steam,
+                  decky-hearth-sync, decky-hearth-link, decky-hearth-music]
       version:
         description: "Its version (the owner's number, like 1.17.1)"
         required: true
       os:
         description: 'The Hearth OS it is for (like 1.17: fits 1.17 and 1.17.x)'
         required: true
+      channel:
+        description: 'main (everyone with the app) or test (only with Get test versions on, got by hand)'
+        required: false
+        type: choice
+        options: [main, test]
+        default: main
       notes:
         description: "What's new, one line each, separated by |"
+        required: false
+        default: ''
+      missing:
+        description: "A test version's Not in it yet, one line each, separated by | (the Store shows it on its page)"
         required: false
         default: ''
 
@@ -42,6 +63,8 @@ jobs:
       VER: ${{ inputs.version }}
       OS: ${{ inputs.os }}
       NOTES: ${{ inputs.notes }}
+      MISSING: ${{ inputs.missing }}
+      CHANNEL: ${{ inputs.channel }}
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
@@ -49,18 +72,109 @@ jobs:
         run: |
           echo "$VER" | grep -Eq '^[0-9]+(\.[0-9]+){1,3}$' || { echo "::error title=Quick update::'$VER' isn't a version like 1.17.1"; exit 1; }
           echo "$OS" | grep -Eq '^[0-9]+\.[0-9]+(\.[0-9]+)?$' || { echo "::error title=Quick update::'$OS' isn't a Hearth OS version like 1.17"; exit 1; }
+          case "$APP" in decky-hearth-*)
+            [ "$CHANNEL" = test ] || { echo "::error title=Quick update::a Decky plugin's main version comes from Decky plugins release; here only its test version (Channel: test)"; exit 1; } ;;
+          esac
           if gh api "repos/$GITHUB_REPOSITORY/releases/tags/part-$APP-$VER" >/dev/null 2>&1; then
             echo "::error title=Quick update::$APP $VER is already out; pick another number"; exit 1
           fi
+      - uses: actions/setup-dotnet@v4
+        if: inputs.app == 'hearth-steam'
+        with:
+          dotnet-version: '10.0.x'
+      - uses: actions/setup-node@v4
+        if: startsWith(inputs.app, 'decky-hearth-')
+        with:
+          node-version: '22'
       - name: Build it
         run: |
           mkdir -p /tmp/part /tmp/out
           if [ "$APP" = mantel ]; then
             test -f hosts/linux/desktop/shell/shell.qml
             cp -a hosts/linux/desktop/shell /tmp/part/shell
+            # Mantel reads its looks and sounds next to its own folder (Theme.qml: shellDir/../theme/palettes.json;
+            # Sounds.qml: shellDir/../sounds), so they come along; without them every look showed as Hearth's
+            # (Mantel 1.17.1 on the owner's dad's PC, Nov 21).
+            for d in theme sounds; do cp -a "hosts/linux/desktop/$d" "/tmp/part/$d"; done
+            rm -rf /tmp/part/theme/__pycache__
+            test -f /tmp/part/theme/palettes.json
+            # Build anything needs a newer hearth-layout than the Hearth OS it goes on may have (describe-screen,
+            # the blocks your AI makes): Mantel's own copy goes next to it (ScreenLayout.qml uses bin/ first).
+            base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/peppermint/Containerfile | head -1)
+            docker pull -q "$base"
+            docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-ui-build.sh 2>&1 | tail -20
+            mkdir -p /tmp/part/bin && tar -C /tmp/part/bin -xf /tmp/out/hearth-ui.tar ./hearth-layout && test -x /tmp/part/bin/hearth-layout
             echo "INNER=shell" >> "$GITHUB_ENV"
+          elif [ "$APP" = hearth-game-mode ]; then
+            # Hearth's Game Mode host (hosts/hearth-rs, with the UI built in): /usr/bin/nimbus starts the Store's copy
+            # through hearth-part (never as root; one that closes right after starting goes back to the built-in one).
+            base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/peppermint/Containerfile | head -1)
+            docker pull -q "$base"
+            docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-rs-part-build.sh 2>&1 | tail -40
+            mkdir -p /tmp/part && install -m755 /tmp/out/nimbus /tmp/part/nimbus
+            echo "INNER=nimbus" >> "$GITHUB_ENV"
+          elif [ "$APP" = hearth-home-server-helper ] || [ "$APP" = hearth-storage-helper ] || [ "$APP" = hearth-ai-share-helper ]; then
+            # A system part (docs/STORE-SYSTEM-PARTS.md): the helper itself, checked; hearth-system-part installs it
+            # root-owned and uses it only when every check passes, else the built-in one.
+            src="os/system_files/usr/libexec/nimbus/$APP"
+            python3 -m py_compile "$src"
+            python3 -c 'import json,sys; assert sys.argv[1] in json.load(open("os/system_files/usr/share/hearth/store/system-parts.json"))["parts"]' "$APP"
+            mkdir -p /tmp/part && install -m755 "$src" "/tmp/part/$APP"
+            echo "INNER=$APP" >> "$GITHUB_ENV"
+          elif [ "$APP" = hearth-controller-lab ] || [ "$APP" = hearth-saves ] || [ "$APP" = hearth-mods ] || [ "$APP" = hearth-gamestore ]; then
+            # Hearth's gaming apps (hosts/hearth-gaming): /usr/bin/<app> starts the Store's copy through hearth-part.
+            base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/peppermint/Containerfile | head -1)
+            docker pull -q "$base"
+            docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/cargo-part-build.sh hearth-gaming "$APP" webkit 2>&1 | tail -40
+            mkdir -p /tmp/part && install -m755 "/tmp/out/$APP" "/tmp/part/$APP"
+            echo "INNER=$APP" >> "$GITHUB_ENV"
+          elif [ "$APP" = hearth-gamma ]; then
+            # Desktop Mode's colour filter (hosts/hearth-gamma): /usr/bin/hearth-gamma starts the Store's copy.
+            base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/peppermint/Containerfile | head -1)
+            docker pull -q "$base"
+            docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/cargo-part-build.sh hearth-gamma hearth-gamma 2>&1 | tail -40
+            mkdir -p /tmp/part && install -m755 /tmp/out/hearth-gamma /tmp/part/hearth-gamma
+            echo "INNER=hearth-gamma" >> "$GITHUB_ENV"
+          elif [ "$APP" = hearth-steam ]; then
+            # The lightweight Steam engine (hosts/hearth-steam, self-contained, built as base-peppermint.yml builds it):
+            # its user service starts the Store's copy through hearth-part.
+            bash hosts/hearth-steam/publish.sh /tmp/part/hearth-steam
+            test -x /tmp/part/hearth-steam/hearth-steam
+            echo "INNER=hearth-steam/hearth-steam" >> "$GITHUB_ENV"
+          elif [ "${APP#decky-hearth-}" != "$APP" ]; then
+            # A Decky plugin's test version (a system part): built as decky-plugins-release.yml builds it, with this
+            # version in its package.json (its load mark carries it, so hearth-decky's trial knows it loaded).
+            test -f "hosts/$APP/package.sh"
+            npm install -g pnpm@9 >/dev/null
+            ( cd "hosts/$APP"
+              sed -i "s/\"version\": \".*\"/\"version\": \"$VER\"/" package.json
+              pnpm install --no-frozen-lockfile >/dev/null 2>&1
+              pnpm build > /tmp/build.log 2>&1 || { echo "::error title=$APP build::$(tail -30 /tmp/build.log | tr '\n' '|' | cut -c1-3500)"; exit 1; }
+              ./package.sh /tmp/pkg )
+            for f in plugin.json main.py package.json dist/index.js; do test -s "/tmp/pkg/$APP/$f"; done
+            mkdir -p /tmp/part && cp -a "/tmp/pkg/$APP" "/tmp/part/$APP"
+            echo "INNER=$APP" >> "$GITHUB_ENV"
+          elif [ "$APP" = hearth-link ]; then
+            # Hearth Link (1.18: every Hearth part from the Store): its one program; /usr/bin/hearth-link starts the
+            # Store's copy through hearth-part, so its user service stays as it is.
+            base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/peppermint/Containerfile | head -1)
+            docker pull -q "$base"
+            docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-link-build.sh 2>&1 | tail -40
+            mkdir -p /tmp/part && install -m755 /tmp/out/hearth-link /tmp/part/hearth-link
+            echo "INNER=hearth-link" >> "$GITHUB_ENV"
+          elif [ "$APP" = mantel-rust ]; then
+            # Mantel in Rust (test, docs/MANTEL-RUST.md): the one program, built in the image's own base; the
+            # autostart runs <its folder>/hearth-mantel when it's installed.
+            base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/peppermint/Containerfile | head -1)
+            docker pull -q "$base"
+            docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/mantel-rust-build.sh 2>&1 | tail -40
+            mkdir -p /tmp/part/mantel-rust && install -m755 /tmp/out/hearth-mantel /tmp/part/mantel-rust/hearth-mantel
+            # its own hearth-layout next to it (your AI's blocks run as `hearth-layout run-block`)
+            docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-ui-build.sh 2>&1 | tail -20
+            tar -C /tmp/part/mantel-rust -xf /tmp/out/hearth-ui.tar ./hearth-layout && test -x /tmp/part/mantel-rust/hearth-layout
+            echo "INNER=mantel-rust" >> "$GITHUB_ENV"
           else
-            base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/anatase/Containerfile | head -1)
+            base=$(grep -oP '(?<=^ARG BASE_IMAGE=).*' os-bases/peppermint/Containerfile | head -1)
             docker pull -q "$base"
             docker run --rm -v "$PWD:/src:ro" -v /tmp/out:/out "$base" bash /src/.github/scripts/hearth-ui-build.sh 2>&1 | tail -40
             tar -C /tmp/part -xf /tmp/out/hearth-ui.tar "./$APP"
@@ -94,20 +208,55 @@ jobs:
               "hearth-g15-app": "Logitech G15", "hearth-family-app": "Family and friends", "hearth-server-app": "Server mode",
               "hearth-resmon-app": "Resource monitor", "hearth-system-restore": "System Restore",
               "hearth-reliability-history": "Reliability history", "hearth-file-chooser": "File chooser",
-              "hearth-pad-host": "Controller"}
+              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "hearth-link": "Hearth Link", "hearth-ideas-app": "Hearth Ideas", "mantel-rust": "Mantel in Rust",
+              "hearth-layout": "Desktop layouts", "hearth-game-mode": "Game Mode host", "hearth-home-server-helper": "Home server helper",
+              "hearth-storage-helper": "Hearth Storage helper", "hearth-ai-share-helper": "AI sharing helper",
+              "hearth-controller-lab": "Controller Lab", "hearth-saves": "Saves", "hearth-mods": "Mods", "hearth-gamestore": "Hearth Games",
+              "hearth-gamma": "Colour filter", "hearth-steam": "Lightweight Steam engine",
+              "decky-hearth-sync": "Hearth Sync (Decky)", "decky-hearth-link": "Hearth Link (Decky)", "decky-hearth-music": "Hearth Music (Decky)"}
+          system_parts = ("hearth-home-server-helper", "hearth-storage-helper", "hearth-ai-share-helper", "decky-hearth-sync", "decky-hearth-link", "decky-hearth-music")
+          groups = {"mantel": "desktop", "mantel-rust": "desktop", "hearth-layout": "desktop", "hearth-game-mode": "gamemode", "hearth-link": "services",
+                    "hearth-gamma": "desktop", "hearth-steam": "gamemode", "decky-hearth-sync": "gamemode", "decky-hearth-link": "gamemode", "decky-hearth-music": "gamemode"}
           part = {"id": app, "version": os.environ["VER"], "os": os.environ["OS"], "path": os.environ["INNER"],
                   "url": os.environ["URL"], "sha256": os.environ["SHA"], "size": int(os.environ["SIZE"]),
                   "notes": [l.strip() for l in os.environ.get("NOTES", "").split("|") if l.strip()]}
+          if app in system_parts:
+              part["system"] = True
+          missing = [l.strip() for l in os.environ.get("MISSING", "").split("|") if l.strip()]
+          if missing:
+              part["missing"] = missing
           # The app's own entry when the list has one (its part, or the program it opens), else a new one.
-          for e in d["apps"]:
-              if (e.get("part") or {}).get("id") == app or e.get("partId") == app or (app != "mantel" and e.get("open") == app):
+          # Test versions (Mantel in Rust) go in their own list, "tests": Stores before 1.17.1 only read "apps", so they
+          # can never offer a test version to everyone.
+          # Red flag 13 (the owner, Nov 22): any app can have a test version (Channel: test).
+          # 1.18 (the owner, Nov 23: "have the Rust Version marked with rust so its not a test version any more"):
+          # Mantel in Rust is an ordinary app with a main and a test version like the others, marked "rust"; its old
+          # test-only entry leaves the tests list once a main version is published.
+          test = os.environ.get("CHANNEL") == "test"
+          if app == "mantel-rust" and not test:
+              d["tests"] = [x for x in d.get("tests", []) if not (x.get("id") == "part-mantel-rust" or (x.get("part") or {}).get("id") == "mantel-rust" and x.get("id") != "test-mantel-rust")]
+          if test:
+              d.setdefault("tests", [])
+          for e in d["tests"] if test else d["apps"]:
+              if (e.get("part") or {}).get("id") == app or e.get("partId") == app or (app not in ("mantel", "mantel-rust", "hearth-link") + system_parts and e.get("open") == app):
                   e["part"] = part
                   break
           else:
-              e = {"id": "part-" + app, "name": names.get(app, app), "kind": "builtin", "part": part}
-              if app != "mantel":
+              e = {"id": ("test-" if test else "part-") + app, "name": names.get(app, app) + (" (test)" if test else ""), "kind": "builtin", "part": part,
+                   "group": groups.get(app, "services" if app in system_parts else "apps")}
+              if app not in ("mantel", "mantel-rust", "hearth-link", "hearth-layout", "hearth-game-mode", "hearth-gamma", "hearth-steam") + system_parts:
                   e["open"] = app
-              d["apps"].append(e)
+              (d["tests"] if test else d["apps"]).append(e)
+          # A test version: shown only with "Get test versions" on, got and removed by hand.
+          if test:
+              e["test"] = True
+          if app == "mantel-rust":
+              e["tag"] = "rust"
+              e["short"] = "Mantel in Rust"
+              e["card"] = "Mantel drawn in Rust: lighter and quicker. Pick it in Settings › System › Your desktop."
+              e.setdefault("icon", "Rs")
+              e.setdefault("from", "#ff8a3d")
+              e.setdefault("to", "#b7410e")
           d["serial"] = int(d.get("serial", 0)) + 1
           tmp = p + ".tmp"
           with open(tmp, "w", encoding="utf-8") as f:

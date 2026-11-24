@@ -14,6 +14,7 @@ pub mod dragout;
 pub mod drive;
 pub mod extras;
 pub mod icons;
+pub mod ldescribe;
 pub mod menus;
 pub mod model;
 pub mod osk_view;

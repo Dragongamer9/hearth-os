@@ -26,6 +26,8 @@ enum Zone {
 
 #[derive(Debug, Clone)]
 enum Msg {
+    /// Describe it (hearth_ui::describe; every Hearth app has it)
+    Describe(hearth_ui::describe::DMsg),
     Theme,
     Summary(run::Output),
     Sent(run::Output),
@@ -45,6 +47,7 @@ enum Msg {
 }
 
 struct App {
+    pub describe: hearth_ui::describe::Describe,
     p: Pal,
     helper: String,
     summary: Option<Value>,
@@ -94,6 +97,7 @@ impl App {
     fn new() -> (App, Task<Msg>) {
         let helper = std::env::var("HEARTH_RELIABILITY_HELPER").unwrap_or_else(|_| run::shell_helper("hearth_reliability.py"));
         let a = App {
+            describe: hearth_ui::describe::Describe::new("reliability", "Reliability history").with_pages(BLOCKS),
             p: hearth_ui::theme::load(),
             helper,
             summary: None,
@@ -197,6 +201,7 @@ impl App {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Summary(o) => {
             let d = o.json().filter(|d| d.get("rows").map(Value::is_array).unwrap_or(false));
@@ -353,10 +358,21 @@ fn mark<'a>(p: &Pal, k: &K, size: f32) -> Element<'a, Msg> {
 
 const LABEL_W: f32 = 150.0;
 
+/// Reliability history's blocks (hearth_ui::blocks).
+const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+    id: "main",
+    title: "Reliability history",
+    blocks: &[
+        hearth_ui::blocks::bl("header", "Heading", 0, 0, 12, 2),
+        hearth_ui::blocks::bl("chart", "The chart", 0, 2, 12, 5),
+        hearth_ui::blocks::bl("events", "The day's events", 0, 7, 12, 5),
+    ],
+}];
+
 fn view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
     let rows = a.rows();
-    let title = ui::title_bar(&p, G::Reliability, "Reliability history", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: None, close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3));
+    let title = hearth_ui::describe::title_bar(&p, &a.describe, G::Reliability, "Reliability history", None, TitleMsgs { drag: Msg::Drag, maximize: Msg::Maximize, minimize: None, close: Msg::Close }, Pal::mix(p.bg, Color::BLACK, 0.3), Msg::Describe(hearth_ui::describe::DMsg::Open));
 
     // ---- header with Days / Weeks
     let toggle_btn = |label: &'static str, w: bool| -> Element<'static, Msg> {
@@ -483,7 +499,16 @@ fn view(a: &App) -> Element<'_, Msg> {
     .height(Length::Fill)
     .style(ui::boxed(p.panel, p.r(10.0), Some((p.line, 1.0))));
 
-    let page = column![title, header, hline(p.line), chart, container(events).padding(Padding { top: 0.0, right: 20.0, bottom: 16.0, left: 20.0 }).height(Length::Fill)];
+    // its blocks (hearth_ui::blocks): moved, sized, hidden or restyled; as it was when nothing is
+    let blocks = hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "main",
+        vec![("header", header.into()), ("chart", chart.into()), ("events", events.into())],
+        |ps| column![ps.take("header"), hline(p.line), ps.take("chart"), container(ps.take("events")).padding(Padding { top: 0.0, right: 20.0, bottom: 16.0, left: 20.0 }).height(Length::Fill)].into(),
+        Msg::Describe,
+    );
+    let page = column![title, blocks];
     let base: Element<Msg> = container(page).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
     let base = match &a.details {
         Some(d) => ui::dialog(base, details(a, d), Some(Msg::CloseDetails)),
@@ -530,11 +555,16 @@ fn subscription(_a: &App) -> Subscription<Msg> {
     Subscription::batch([Subscription::run(hearth_ui::theme::watch).map(|_| Msg::Theme), iced::keyboard::listen().map(Msg::Key)])
 }
 
+/// The app with Describe it's box under it when it's open (every Hearth app has it).
+fn shown(a: &App) -> Element<'_, Msg> {
+    hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe)
+}
+
 fn main() -> iced::Result {
     if app::handle_cli("hearth-reliability-history", "Reliability history: how Hearth has been running.\n  --weeks         open week by week\n  --show details  open the picked day's first event (pictures)") {
         return Ok(());
     }
-    iced::application(App::new, update, view)
+    iced::application(App::new, update, shown)
         .title("Reliability history")
         .subscription(subscription)
         .theme(|a: &App| app::iced_theme(&a.p))

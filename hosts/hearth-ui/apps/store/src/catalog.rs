@@ -77,6 +77,22 @@ pub struct Entry {
     /// A quick update for one of Hearth's own apps or Mantel (parts.rs, hearth-part): its newer copy, for the Hearth
     /// OS it names, with the SHA-256 this signed list vouches for.
     pub part: Option<Part>,
+    /// A test version (Mantel in Rust): shown only with "Get test versions" on (or while it's installed), got and
+    /// removed by hand, never offered as an update to a built-in app.
+    pub test: bool,
+    /// A mark shown with its name: "rust" for Mantel in Rust (the owner, Nov 23: "have the Rust Version marked with
+    /// rust so its not a test version any more").
+    pub tag: String,
+    /// Where it sits on the Hearth parts page (store-everything/store-1): "desktop", "apps", "gamemode", "services" or
+    /// "looks". Empty: worked out from what it is (group_of).
+    pub group: String,
+    /// It updates with something else rather than on its own (shown as the chip "with …"): "system" (anything that
+    /// touches starting the PC: the boot menu, Recovery, Safe start), or the id of the part that carries it ("mantel":
+    /// the looks, sounds and AI engines are in Mantel's folder).
+    pub with: String,
+    /// A Decky plugin (its folder, "decky-hearth-sync"): updated through Hearth's plugin updates (hearth-decky
+    /// plugins-update, docs/PLUGIN-UPDATES.md), as you, between Hearth OS updates.
+    pub decky: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -92,6 +108,11 @@ pub struct Part {
     pub sha256: String,
     pub size: u64,
     pub notes: Vec<String>,
+    /// A test version's "Not in it yet" (store-w11-5), one line each.
+    pub missing: Vec<String>,
+    /// A system part (one of Hearth's helpers that run as root): installed root-owned by hearth-system-part, with the
+    /// admin password, never into your home folder (docs/STORE-SYSTEM-PARTS.md).
+    pub system: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -148,10 +169,15 @@ impl Entry {
             let ok_name = |x: &str| !x.is_empty() && x.len() <= 64 && x.chars().all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.') && !x.starts_with('.');
             (sha.len() == 64 && sha.chars().all(|c| c.is_ascii_hexdigit()) && url.starts_with("https://") && ok_name(&pid) && ok_name(&version) && !os.is_empty()
                 && !path.is_empty() && !path.split('/').any(|x| x == ".." || x.is_empty()))
-            .then(|| Part { id: pid, version, os, path, url, sha256: sha, size: p.get("size").and_then(Value::as_u64).unwrap_or(0), notes: list(p, "notes") })
+            .then(|| Part { id: pid, version, os, path, url, sha256: sha, size: p.get("size").and_then(Value::as_u64).unwrap_or(0), notes: list(p, "notes"), missing: list(p, "missing"), system: p.get("system").and_then(Value::as_bool).unwrap_or(false) })
         });
         let short = s(v, "short");
         Some(Entry {
+            group: s(v, "group"),
+            with: s(v, "with"),
+            decky: { let d = s(v, "decky"); if d.starts_with("decky-hearth-") && d.len() <= 60 && d.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') { d } else { String::new() } },
+            tag: { let t = s(v, "tag"); if t.is_empty() && v.get("part").and_then(|p| p.get("id")).and_then(Value::as_str) == Some("mantel-rust") { "rust".into() } else { t } },
+            test: v.get("test").and_then(Value::as_bool).unwrap_or(false) || v.get("part").and_then(|x| x.get("test")).and_then(Value::as_bool).unwrap_or(false),
             part,
             short: if short.is_empty() { name.clone() } else { short },
             tagline: s(v, "tagline"),
@@ -196,13 +222,67 @@ pub struct Catalog {
     pub signed_at: i64,
     /// Private apps were added from the owner's list.
     pub private: usize,
+    /// The system update on offer, as the signed list describes it (its "system"; system.rs).
+    pub system: Option<crate::system::SysInfo>,
+}
+
+impl Entry {
+    /// Its place on the Hearth parts page (store-1): its own "group", else what it is.
+    pub fn group_of(&self) -> &str {
+        if !self.group.is_empty() {
+            return &self.group;
+        }
+        let pid = self.part.as_ref().map(|p| p.id.as_str()).unwrap_or("");
+        if !self.decky.is_empty() {
+            "gamemode"
+        } else if pid == "mantel" || pid == "mantel-rust" || self.id == "mantel" {
+            "desktop"
+        } else if self.part.as_ref().map(|p| p.system).unwrap_or(false) {
+            "services"
+        } else {
+            "apps"
+        }
+    }
+    /// A Hearth part (on the Hearth parts page): built into Hearth OS, updated from the Store or with something else.
+    pub fn is_hearth_part(&self) -> bool {
+        !self.test && (self.kind == Kind::BuiltIn || self.part.is_some() || !self.decky.is_empty() || !self.with.is_empty())
+    }
 }
 
 pub fn parse(text: &[u8]) -> Option<(u64, Vec<Entry>)> {
     let v: Value = serde_json::from_slice(text).ok()?;
     let serial = v.get("serial").and_then(Value::as_u64).unwrap_or(0);
-    let apps: Vec<Entry> = v.get("apps")?.as_array()?.iter().filter_map(|a| Entry::from_json(a, false)).collect();
+    let mut apps: Vec<Entry> = v.get("apps")?.as_array()?.iter().filter_map(|a| Entry::from_json(a, false)).collect();
+    // Test versions (Mantel in Rust) are in their own list, "tests": a Store from before 1.17.1 only reads "apps", so it
+    // can never show a test version to everyone as an ordinary update.
+    if let Some(t) = v.get("tests").and_then(Value::as_array) {
+        for e in t.iter().filter_map(|a| Entry::from_json(a, false)) {
+            if !apps.iter().any(|x| x.id == e.id) {
+                apps.push(Entry { test: true, ..e });
+            }
+        }
+    }
     Some((serial, apps))
+}
+
+/// The list's "system": what the system update on offer brings (system.rs).
+pub fn parse_system(text: &[u8]) -> Option<crate::system::SysInfo> {
+    let v: Value = serde_json::from_slice(text).ok()?;
+    crate::system::parse_info(v.get("system"))
+}
+
+#[cfg(test)]
+mod test_versions {
+    #[test]
+    fn test_versions_come_from_their_own_list() {
+        let j = br#"{"serial": 3, "apps": [{"id": "hearth-files", "name": "Hearth Files", "kind": "builtin"}],
+            "tests": [{"id": "part-mantel-rust", "name": "Mantel in Rust (test)", "kind": "builtin",
+                       "part": {"id": "mantel-rust", "version": "1.17.1", "os": "1.17", "path": "mantel-rust", "url": "https://x/y", "sha256": "00"}}]}"#;
+        let (_, apps) = super::parse(j).unwrap();
+        let t = apps.iter().find(|e| e.id == "part-mantel-rust").unwrap();
+        assert!(t.test, "an entry from tests is a test version");
+        assert!(!apps.iter().find(|e| e.id == "hearth-files").unwrap().test);
+    }
 }
 
 /// The private list (only on the owner's devices). Its apps never replace a public one with the same id.
@@ -252,6 +332,7 @@ pub fn load() -> Catalog {
         if let Some((serial, apps)) = parse(&b) {
             cat.serial = serial;
             cat.apps = apps;
+            cat.system = parse_system(&b);
         }
     }
     if let Some(key) = built_in_key(&crate::paths::signing_key()) {
@@ -262,6 +343,7 @@ pub fn load() -> Catalog {
                     if serial > cat.serial && !apps.is_empty() {
                         cat.serial = serial;
                         cat.apps = apps;
+                        cat.system = parse_system(&b).or(cat.system.take());
                         cat.source = "hearthos.fun".into();
                         cat.signed_at = std::fs::metadata(&cj).ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0);
                     }
@@ -275,6 +357,9 @@ pub fn load() -> Catalog {
             cat.apps.push(e);
         }
     }
+    // Test versions: only with "Get test versions" on, or while one is installed (so it can be removed).
+    let test = crate::prefs::load().test;
+    cat.apps.retain(|e| !e.test || test || e.part.as_ref().map(|p| crate::parts::have(&p.id).is_some()).unwrap_or(false));
     cat
 }
 

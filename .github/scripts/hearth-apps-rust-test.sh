@@ -179,12 +179,20 @@ bench scroll-gpu-files-3000 hearth-files gpu touchpad "$BIN/hearth-files-app" "$
 HEARTH_RENDERER=gpu run gpu-settings-1-home hearth-settings 20 "$BIN/hearth-settings-app"
 HEARTH_RENDERER=gpu run gpu-files-1-details hearth-files 20 "$BIN/hearth-files-app" "$HOME/bench-3000" --view details
 fi
+# If a pictures file hangs, say which before the step's time limit (65 minutes in) ends it.
+( sleep 3900 >/dev/null 2>&1 </dev/null; echo "::error title=pictures files::still on $(cat /tmp/shots-now 2>/dev/null) after 65 minutes; done: $(tr '\n' ' ' < /tmp/shots-times 2>/dev/null)" ) &
+dog=$!
 # Each app's own pictures (one file per app or Settings category, so they're worked on apart): .d/NAME.sh uses run().
 for f in "$ROOT"/.github/scripts/hearth-apps-rust-shots.d/*.sh; do
   [ -f "$f" ] || continue
   if [ -n "$ONLY" ] && ! echo ",$ONLY," | grep -q ",$(basename "$f" .sh),"; then continue; fi
+  echo "$(basename "$f" .sh)" > /tmp/shots-now; t0=$SECONDS
   . "$f"
+  echo "$(basename "$f" .sh) $((SECONDS - t0))s" >> /tmp/shots-times
 done
+# How long each pictures file took, in one note (the step has a time limit; a file that hangs shows below).
+echo "::notice title=pictures files::$(sort -k2 -t' ' -rn /tmp/shots-times 2>/dev/null | head -12 | tr '\n' ' ')"
+kill $dog 2>/dev/null
 [ -n "$ONLY" ] && { kill %1 2>/dev/null; exit 0; }
 look steam dark
 look hearth light
@@ -212,7 +220,7 @@ grep -q '^RESULT' "$ROOT/results.txt" || { echo "::error title=apps::nothing was
 while read -r kind name rest; do
   [ "$kind" = RESULT ] || continue
   eval "$(echo "$rest" | tr ' ' '\n' | sed 's/^/r_/')"
-  lim_cpu=0.3; [ "${name#tm-}" != "$name" ] && lim_cpu=3
+  lim_cpu=0.3; case "$name" in tm-*|*-tm) lim_cpu=3;; esac   # Task Manager samples the processes every second, Describe it on it too
   # Server mode's dashboard while its AIs are at work (they move only then, and only while it's on the screen and in
   # front), drawn here by the CPU 5 times a second: live, like Task Manager, with its own limit (a PC draws it with
   # its graphics card). Nothing at work: the ordinary 0.3 % (server-quiet-*).

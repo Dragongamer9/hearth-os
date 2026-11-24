@@ -1,0 +1,99 @@
+{
+ "said": "Warm, wooden, like a cabin: the fire, the date, the time and the weather, my notes, music and games underneath",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "bars": "",
+ "background": {
+  "kind": "gradient",
+  "from": "#3b2412",
+  "to": "#120a05"
+ },
+ "look": {
+  "accent": "#ff9a52",
+  "text": "#fbe9d6",
+  "font": "Noto Serif",
+  "sound": "wood",
+  "animation": "fade"
+ },
+ "blocks": [
+  {
+   "id": "fire",
+   "block": "picture",
+   "x": 1,
+   "y": 1,
+   "w": 9,
+   "h": 7,
+   "shows": "fire",
+   "style": {
+    "corners": 6
+   }
+  },
+  {
+   "id": "date",
+   "block": "clock",
+   "x": 11,
+   "y": 1,
+   "w": 8,
+   "h": 1,
+   "shows": "date",
+   "style": {
+    "size": 22
+   }
+  },
+  {
+   "id": "time",
+   "block": "clock",
+   "x": 11,
+   "y": 2,
+   "w": 8,
+   "h": 2,
+   "style": {
+    "size": 56
+   }
+  },
+  {
+   "id": "weather",
+   "block": "weather",
+   "x": 11,
+   "y": 4,
+   "w": 8,
+   "h": 1,
+   "style": {
+    "size": 20
+   }
+  },
+  {
+   "id": "links",
+   "block": "tilerow",
+   "x": 1,
+   "y": 9,
+   "w": 14,
+   "h": 1,
+   "items": [
+    "notes",
+    "music",
+    "games"
+   ],
+   "shows": "words",
+   "style": {
+    "colour": "#00000000",
+    "size": 18,
+    "focus": "lift"
+   }
+  },
+  {
+   "id": "menu",
+   "block": "menu",
+   "x": 22,
+   "y": 12,
+   "w": 2,
+   "h": 2,
+   "style": {
+    "corners": 32,
+    "colour": "#4a2f17"
+   }
+  }
+ ]
+}

@@ -88,7 +88,15 @@ DEFAULTS = {
     'dwellDelay': 1000,           # how long it rests before the click (ms, 300..3000)
     'dwellClickType': 'left',     # left, double, right or middle
     'dwellTolerance': 10,         # how far it may wobble and still count as resting (px, 3..40)
+    # Settings › Accessibility's switches (the redesign, 1.18): hearing and using.
+    'monoAudio': False,           # both ears hear everything (a mono copy of the sound output, PipeWire)
+    'visualBell': False,          # Mantel flashes the screen for an alert sound
+    'stickyKeys': False,          # Mantel on KWin: KWin's own; labwc: not there yet (said on the page)
+    'slowKeys': False,
+    'mouseKeys': False,
 }
+KWIN_KEYS = {'stickyKeys': ('Keyboard', 'StickyKeys'), 'slowKeys': ('Keyboard', 'SlowKeys'), 'mouseKeys': ('Mouse', 'MouseKeys'),
+             'visualBell': ('Bell', 'VisibleBell')}
 DWELL_KINDS = ('left', 'double', 'right', 'middle')
 
 
@@ -149,7 +157,8 @@ def clean(raw):
             out[k] = int(round(max(lo, min(hi, float(v)))))
     if raw.get('dwellClickType') in DWELL_KINDS:
         out['dwellClickType'] = raw['dwellClickType']
-    for k in ('screenReader', 'highContrast', 'largePointer', 'invertWindow', 'dwellClick'):
+    for k in ('screenReader', 'highContrast', 'largePointer', 'invertWindow', 'dwellClick', 'monoAudio', 'visualBell',
+              'stickyKeys', 'slowKeys', 'mouseKeys'):
         if isinstance(raw.get(k), bool):
             out[k] = raw[k]
     return out
@@ -584,6 +593,9 @@ def available():
         # Dwell click (hearth-dwell): Mantel on KWin, with python3-evdev for its virtual mouse.
         'dwell': mode() == 'kwin' and evdev_there(),
         'dwellKinds': list(DWELL_KINDS),
+        # Sticky keys, slow keys and mouse keys: KWin's own (Mantel on KWin). labwc has none of them, so on Hearth's
+        # desktop (labwc) they're saved and Settings says plainly they aren't on this desktop.
+        'keys': mode() == 'kwin',
     }
 
 
@@ -633,11 +645,57 @@ def apply(s, changed=None, where=None):
             reload_labwc()
         if keys & {'textScale', 'highContrast', 'largePointer'}:
             apply_desktop_look(s)
+    if 'monoAudio' in keys and where in ('desktop', 'kwin') and (changed is not None or s['monoAudio']):
+        p = apply_mono(s['monoAudio'])
+        if p:
+            problems['monoAudio'] = p
+    # Only the ones you changed (at the start of a mode KWin and labwc already have theirs).
+    if where in ('desktop', 'kwin') and changed is not None:
+        problems.update(apply_keys(s, keys, where))
     if 'screenReader' in keys and where in ('game', 'desktop', 'kwin') and (changed is not None or s['screenReader']):
         try:
             screen_reader(s['screenReader'])
         except Fail as e:
             problems['screenReader'] = str(e)
+    return problems
+
+
+def apply_mono(on):
+    """Mono audio: a mono copy of the sound output made the default (PipeWire's pulse side); off puts it back."""
+    code, out = run(['pactl', 'list', 'short', 'modules'])
+    if code == 127:
+        return 'Mono audio needs PipeWire (pactl isn\'t here)'
+    ids = [l.split()[0] for l in out.splitlines() if 'module-remap-sink' in l and 'hearth_mono' in l]
+    if not on:
+        for i in ids:
+            run(['pactl', 'unload-module', i])
+        return None
+    if ids:
+        return None
+    code, out = run(['pactl', 'get-default-sink'])
+    master = out.strip()
+    if not master:
+        return 'No sound output to make mono'
+    code, _ = run(['pactl', 'load-module', 'module-remap-sink', 'sink_name=hearth_mono', 'master=' + master, 'channels=2',
+                   'channel_map=mono,mono', 'sink_properties=device.description=Mono'])
+    if code != 0:
+        return 'Mono audio didn\'t start'
+    run(['pactl', 'set-default-sink', 'hearth_mono'])
+    return None
+
+
+def apply_keys(s, keys, where):
+    """Sticky, slow and mouse keys and the screen flash: KWin's own (kaccessrc) on Mantel on KWin; on labwc Mantel does
+    the flash and the keys aren't there yet (said, never pretended)."""
+    problems = {}
+    for k in keys & set(KWIN_KEYS):
+        if where == 'kwin':
+            grp, key = KWIN_KEYS[k]
+            code, _ = run(['kwriteconfig6', '--file', 'kaccessrc', '--group', grp, '--key', key, 'true' if s[k] else 'false'])
+            if code != 0:
+                problems[k] = 'KWin didn\'t take it'
+        elif where == 'desktop' and k != 'visualBell' and s[k]:
+            problems[k] = 'Desktop Mode on labwc can\'t do this yet; it is saved and works on Mantel on KWin'
     return problems
 
 

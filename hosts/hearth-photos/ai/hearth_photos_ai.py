@@ -10,7 +10,9 @@ Faces: OpenCV's YuNet finds them and SFace describes each one; faces whose descr
 What's in it: a vision model in Ollama (your graphics card) when one is installed there, else a small picture
 classifier (MobileNet, on the processor). Results go to ~/.local/share/hearth/photos-ai/results.json, written whole
 and atomically after every few pictures; progress to progress.json. The pictures never leave the PC: Ollama is asked
-on 127.0.0.1 only.
+on 127.0.0.1 only, unless you picked another AI for AI photos in Settings › AI › What uses your AI (ai-uses.json
+"photos": an OpenAI-style address with a vision model, like your PC's over Hearth Link): then that one is asked, and
+only it. A pick without a vision model, or one that doesn't answer, falls back to this PC as before.
 """
 import base64, json, math, os, subprocess, sys, tempfile, time, urllib.request
 
@@ -62,6 +64,60 @@ def ollama_vision():
     return None
 
 
+def chosen_vision():
+    """AI photos' own pick (Settings › AI; ~/.config/nimbus/ai-uses.json uses.photos {url, model}): (base, vision
+    model) when it answers and has one, else None."""
+    cfg = os.environ.get('XDG_CONFIG_HOME') or os.path.join(HOME, '.config')
+    pick = (read_json(os.path.join(cfg, 'nimbus', 'ai-uses.json'), {}).get('uses') or {}).get('photos') or {}
+    base = str(pick.get('url') or '').rstrip('/')
+    if not base.startswith(('http://', 'https://')):
+        return None
+    try:
+        with urllib.request.urlopen(base + '/models', timeout=3) as r:
+            names = [m.get('id', '') for m in json.load(r).get('data', [])]
+    except Exception:
+        return None
+    want = pick.get('model') or ''
+    if want and want in names and any(want.startswith(v) for v in VISION):
+        return base, want
+    for v in VISION:
+        for n in names:
+            if n.startswith(v):
+                return base, n
+    return None
+
+
+def ask_chosen(chosen, img, cv2):
+    """The same question to AI photos' own pick, OpenAI-style (the picture as a data URL)."""
+    base, model = chosen
+    h, w = img.shape[:2]
+    k = min(1.0, 768 / max(h, w))
+    ok, jpg = cv2.imencode('.jpg', cv2.resize(img, (int(w * k), int(h * k))), [cv2.IMWRITE_JPEG_QUALITY, 85])
+    if not ok:
+        return None
+    url = 'data:image/jpeg;base64,' + base64.b64encode(jpg.tobytes()).decode()
+    body = json.dumps({'model': model, 'messages': [{'role': 'user', 'content': [
+        {'type': 'text', 'text': 'List 3 to 6 short tags (one or two words each) for what is in this photo: things, place, '
+                                 'time of day. Answer with the tags only, separated by commas.'},
+        {'type': 'image_url', 'image_url': {'url': url}}]}]}).encode()
+    try:
+        req = urllib.request.Request(base + '/chat/completions', data=body, headers={'Content-Type': 'application/json'})
+        with urllib.request.urlopen(req, timeout=120) as r:
+            text = (json.load(r).get('choices') or [{}])[0].get('message', {}).get('content', '')
+    except Exception:
+        return None
+    return tags_of(text)
+
+
+def tags_of(text):
+    tags = []
+    for t in text.replace('\n', ',').split(','):
+        t = t.strip(' .*-"\'').strip()
+        if 0 < len(t) <= 24 and len(t.split()) <= 3 and t.lower() not in (x.lower() for x in tags):
+            tags.append(t[:1].upper() + t[1:])
+    return tags[:6]
+
+
 def py():
     p = os.path.join(VENV, 'bin', 'python3')
     return p if os.path.exists(p) else None
@@ -71,7 +127,8 @@ def status():
     have = all(os.path.exists(os.path.join(MODELS, f)) for f in FILES)
     ready = bool(py()) and have
     r = read_json(RESULTS, {})
-    return {'ready': ready, 'models': have, 'venv': bool(py()), 'vision': ollama_vision(), 'seen': len(r.get('photos', {})),
+    ch = chosen_vision()
+    return {'ready': ready, 'models': have, 'venv': bool(py()), 'vision': ollama_vision(), 'chosen': {'url': ch[0], 'model': ch[1]} if ch else None, 'seen': len(r.get('photos', {})),
             'groups': len(r.get('groups', [])), 'progress': read_json(PROGRESS, None)}
 
 
@@ -126,6 +183,7 @@ def run(list_file):
     net = cv2.dnn.readNetFromONNX(os.path.join(MODELS, 'image_classification_mobilenetv2_2022apr.onnx'))
     labels = [l.strip() for l in open(os.path.join(MODELS, 'imagenet_classes.txt'))]
     vision = ollama_vision()
+    chosen = chosen_vision()
     with open(list_file) as f:
         todo = json.load(f)
     res = read_json(RESULTS, {})
@@ -136,7 +194,7 @@ def run(list_file):
     for k, t in enumerate(todo):
         progress('run', k, len(todo), f'Looking at your photos… {k} of {len(todo)}')
         try:
-            photos[t['path']] = look(t, cv2, np, det, rec, net, labels, vision, groups, faces_on)
+            photos[t['path']] = look(t, cv2, np, det, rec, net, labels, vision, groups, faces_on, chosen)
             errors.pop(t['path'], None)
         except Exception as e:  # one odd picture doesn't stop the rest; it's tried again next time
             errors[t['path']] = str(e)[:200]
@@ -149,7 +207,7 @@ def run(list_file):
     print(json.dumps({'done': len(todo)}))
 
 
-def look(t, cv2, np, det, rec, net, labels, vision, groups, faces_on):
+def look(t, cv2, np, det, rec, net, labels, vision, groups, faces_on, chosen=None):
     """One picture: its faces (each put in a group) and what's in it."""
     img = cv2.imread(t.get('thumb') or t['path'])
     if img is None:
@@ -172,8 +230,9 @@ def look(t, cv2, np, det, rec, net, labels, vision, groups, faces_on):
             v = v / (np.linalg.norm(v) or 1)
             gid = place_face(groups, [float(x) for x in v], t['path'])
             entry['faces'].append({'g': gid, 'box': [round(float(fc[0]) / w, 4), round(float(fc[1]) / h, 4), round(float(fc[2]) / w, 4), round(float(fc[3]) / h, 4)]})
-    entry['tags'] = (ask_ollama(vision, img, cv2) if vision else None) or classify(net, labels, img, cv2, np)
-    entry['by'] = 'gpu' if vision else 'cpu'
+    tags = ask_chosen(chosen, img, cv2) if chosen else None
+    entry['tags'] = tags or (ask_ollama(vision, img, cv2) if vision else None) or classify(net, labels, img, cv2, np)
+    entry['by'] = 'chosen' if tags else ('gpu' if vision else 'cpu')
     return entry
 
 
@@ -249,12 +308,7 @@ def ask_ollama(model, img, cv2):
             text = json.load(r).get('response', '')
     except Exception:
         return None
-    tags = []
-    for t in text.replace('\n', ',').split(','):
-        t = t.strip(' .*-"\'').strip()
-        if 0 < len(t) <= 24 and len(t.split()) <= 3 and t.lower() not in (x.lower() for x in tags):
-            tags.append(t[:1].upper() + t[1:])
-    return tags[:6]
+    return tags_of(text)
 
 
 def forget_faces():

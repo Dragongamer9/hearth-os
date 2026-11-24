@@ -46,6 +46,8 @@ pub enum Screen {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Describe it and its blocks (hearth_ui::describe, hearth_ui::blocks; every Hearth app has them)
+    Describe(hearth_ui::describe::DMsg),
     Dash(run::Output),
     Acted(run::Output, String),
     BackRead(run::Output),
@@ -80,6 +82,9 @@ pub enum Msg {
 }
 
 pub struct App {
+    pub describe: hearth_ui::describe::Describe,
+    /// Hearth's look, for Describe it's box and Arrange (the dashboard keeps its own colours)
+    pub pal: hearth_ui::Pal,
     pub helper: String,
     pub rundir: String,
     pub d: Option<Value>,
@@ -217,6 +222,8 @@ impl App {
             .unwrap_or(false);
         let t = now();
         let mut a = App {
+            describe: hearth_ui::describe::Describe::new("server", "Server mode").with_pages(view::BLOCKS),
+            pal: hearth_ui::theme::load(),
             helper,
             rundir,
             d: None,
@@ -1030,6 +1037,7 @@ impl App {
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     a.now = now();
     match m {
+        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
         Msg::Dash(o) => {
             a.reading = false;
             match o.json().filter(|v| v.get("tiles").map(Value::is_array).unwrap_or(false)) {
@@ -1548,7 +1556,7 @@ fn main() -> iced::Result {
     }
     let mut w = app::window("hearth-server", (1920.0, 1080.0), (640.0, 400.0));
     w.fullscreen = std::env::var("HEARTH_SERVER_WINDOWED").as_deref() != Ok("1");
-    iced::application(App::new, update, view::view)
+    iced::application(App::new, update, view::shown)
         .title("Server mode")
         .subscription(subscription)
         .theme(|_a: &App| iced::Theme::custom("Hearth server", iced::theme::Palette {

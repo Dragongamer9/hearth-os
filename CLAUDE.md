@@ -1,14 +1,19 @@
 # Working on Hearth OS
 
-Hearth OS is a Fedora-based, SteamOS-style OS (from 1.16): Steam Game Mode (Valve's Steam in gamescope, with the
-Hearth Sync Decky plugin in `hosts/decky-hearth-sync`) and Desktop Mode (stock KDE Plasma on KWin with Hearth's apps,
-`hosts/hearth-ui`, and Firehold on Plasma coming in 1.16). Hearth's own Game Mode (gamescope + the web UI in `ui/`) is
-archived but its code stays: it runs first-time setup and the fallback. Edition: **Fedora** (internally Anatase; Fedora
-bootc, `os-bases/anatase`, image `ghcr.io/dragongamer9/hearth-os:test-1.15`); Debian (Peppermint, `os-bases/peppermint`,
-Mantel on labwc/KWin) was archived and merged into Fedora on Nov 19, 2026 on the owner's word: nothing new is published
-for it, its devices keep what they have, and its folder stays because the Fedora build uses its `system_files`. Ember is
-the Windows 11 shell (`hosts/windows`). Website: hearthos.fun (`site/`, deployed from main). Archived parts and where
-their code lives: `docs/ARCHIVED.md` (code in `archive/`, docs in `docs/archive/`). The owner is Dragongamer9.
+Hearth OS is a Debian-based, SteamOS-style OS again (from 1.18; the owner, Nov 23, 2026: "were not coming back to
+fedora", "just do the debian one then we will double down on it"): Steam Game Mode (Valve's Steam in gamescope, with the
+Hearth Sync Decky plugin in `hosts/decky-hearth-sync`) and Desktop Mode: Mantel on labwc (QML), or Mantel in Rust, the
+only two desktops (Settings › System › Your desktop; KWin, Firehold, KDE Plasma and GNOME are retired). Hearth's own
+apps are pure Rust (`hosts/hearth-ui`). Hearth's own Game Mode (gamescope + the web UI in `ui/`) is archived but its code
+stays: it runs first-time setup and the fallback. Edition: **Debian** (internally Peppermint; Debian bootc,
+`os-bases/peppermint`, image `ghcr.io/dragongamer9/hearth-peppermint`, built by `base-peppermint.yml`). Fedora (Anatase,
+`os-bases/anatase`, `ghcr.io/dragongamer9/hearth-os`) is abandoned: its last image moves each Fedora PC to Debian by
+itself, once (hearth-admin auto-move-to-debian; the owner: "Move them automatically"). Ember is the Windows 11 shell
+(`hosts/windows`). Website: hearthos.fun (`site/`, deployed from main). Archived parts and where their code lives:
+`docs/ARCHIVED.md` (code in `archive/`, docs in `docs/archive/`). The owner is Dragongamer9.
+
+The Hearth Store list publishes by itself whenever it changes (the owner, Nov 24: "publish the store links
+automatically from now on"): a push to the `store` branch that changes catalog.json runs store.yml on main.
 
 ## The owner's rules (always)
 
@@ -42,6 +47,14 @@ their code lives: `docs/ARCHIVED.md` (code in `archive/`, docs in `docs/archive/
    made, with a daily work log there (`log/YYYY-MM-DD.md`: what was made or changed, what the owner decided, where it
    is, what's waiting), and that repo is kept organized by its own rules (its CLAUDE.md; `tools/check.py` passes before
    every push). A reset once lost the older videos and their style.
+
+13. **RED FLAG: Every app Hearth makes, Mantel and Mantel in Rust included, can update both its main version and its
+   test version from the Hearth Store** (the owner, Nov 22, after the Windows key broke with the Store's Mantel 1.17.3).
+   A new app isn't done until it's in quick-update.yml (main and test) and works when run from the Store's copy in the
+   home folder: anything that finds an app by its built-in path must find the Store's copy too
+   (`hosts/linux/test/test_store_parts.py`). App update numbers (the owner, Nov 22): MAJOR.SMALL.N, where MAJOR.SMALL is
+   the Hearth OS version it's for and N counts that app's updates on it (Mantel's next on 1.17 is 1.17.4); a new Hearth
+   OS version starts N at 1 again (after 1.18, Mantel's next is 1.18.1). Each still needs the owner's go-ahead.
 
 ## Branches and releasing
 

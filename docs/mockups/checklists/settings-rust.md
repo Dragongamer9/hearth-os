@@ -9,7 +9,7 @@ Manager (hosts/hearth-ui/apps/settings). It follows the Global Theme picked in K
 ## The frame
 - [x] left list: you (picture, name, Administrator · PC name) — hosts/hearth-ui/apps/settings/src/frame.rs: "\"Administrator\" } else { \"Standard account\" }"
 - [x] Search settings, finding pages by name and words — hosts/hearth-ui/apps/settings/src/frame.rs: "text_input(\"Search settings\", &a.query).id(nav::SEARCH)"
-- [x] the 13 categories with the picked one marked — hosts/hearth-ui/apps/settings/src/registry.rs: "assert_eq!(CATEGORIES.len(), 13);"
+- [x] the 13 categories with the picked one marked (14 since the approved Settings cleanup added AI, Nov 23) — hosts/hearth-ui/apps/settings/src/registry.rs: "assert_eq!(CATEGORIES.len(), 14);"
 - [x] the page's path as its title (System › Display) — hosts/hearth-ui/apps/settings/src/frame.rs: "fn crumbs(a: &App)"
 - [x] button hints: A Select, B Back, Y Search, LB/RB categories, Close — hosts/hearth-ui/apps/settings/src/frame.rs: "\"Previous / next category\""
 - [x] follows the Global Theme picked in KDE's System Settings, Hearth's looks or any other — hosts/hearth-ui/src/theme.rs: "fn from_plasma() -> Option<Pal>"
@@ -50,11 +50,13 @@ HDR, the second display) are the page modules'. Tests: `--layout a|b`, `--focus 
 down a"` (presses as if from the controller), pictured by .github/scripts/hearth-apps-rust-shots.d/settings-layout-b.sh.
 
 ## Home (settings-A1)
-- [x] the PC card: picture, name, Hearth OS version · mode · graphics card · processor, Rename and About this PC — hosts/hearth-ui/apps/settings/src/cats/home.rs: "pill(&p, \"About this PC\""
-- [x] four quick tiles: Wi-Fi, Bluetooth, Updates, Hearth Link with their state — hosts/hearth-ui/apps/settings/src/cats/home.rs: "tile(&p, G::Link, \"Hearth Link\""
-- [x] Recommended settings: Night light (switch), Start in (Game Mode / Desktop Mode; with Game Mode off on this PC, Desktop Mode and "Game Mode: off", Nov 19) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "\"What this PC opens when it turns on\", seg(&p, start_in_items(sh, st))"
-- [x] Recommended settings: Light mode while you play, Do not disturb — hosts/hearth-ui/apps/settings/src/cats/home.rs: "Hold notifications until you turn it off"
-- [x] Storage: each drive with its bar and used of total, Manage — hosts/hearth-ui/apps/settings/src/cats/home.rs: "Some((\"Manage\", Msg::Go(\"storage\")))"
+Home itself was replaced on Nov 23, 2026 by the approved Settings cleanup Home (settings-cleanup.md, "01. Home"); each
+part below names where it is now.
+- [x] the PC card: picture, name, Hearth OS version · mode · graphics card · processor, Rename and About this PC (now Home's This PC card: Name with Rename, Hearth OS and Graphics opening About) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "vrow(&p, \"Name\", &host, btn(&p, \"Rename\""
+- [x] four quick tiles: Wi-Fi, Bluetooth, Updates, Hearth Link with their state (now Home's Quick switches, "N things need you" and the Hearth Link tile) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "stile(&p, \"Hearth Link\""
+- [x] Recommended settings: Night light (switch), Start in (Game Mode / Desktop Mode; with Game Mode off on this PC, Desktop Mode and "Game Mode: off", Nov 19) (now Night light in Home's Quick card, Start in on the Quick page) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "seg(&p, start_in_items(&a.sh, st))"
+- [x] Recommended settings: Light mode while you play, Do not disturb (now Do not disturb in Home's Quick card, Light mode on the Quick page) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "vrow(&p, \"Do not disturb\", \"\", switch(&p, st.dnd"
+- [x] Storage: each drive with its bar and used of total, Manage (now Home's Storage tile, opening System › Storage with each drive's bar) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "stile(&p, \"Storage\""
 - [x] Changed lately: the last changes (what → to, who, when), each with Undo — hosts/hearth-ui/apps/settings/src/cats/home.rs: "btn(&p, \"Undo\""
 - [x] All changes (the full list page, each with Undo and what it was) — hosts/hearth-ui/apps/settings/src/cats/home.rs: "What was changed in Settings, newest first. Undo puts the old value back."
 - [x] Quick (See more): the big tiles of settings-B1 (Light mode while you play wide, Wi-Fi, Bluetooth, Brightness and Volume with sliders, Start in wide, Updates, Power, Night light, Do not disturb) and Pin to Quick — hosts/hearth-ui/apps/settings/src/cats/home.rs: "Pin to Quick: pick what's on this page"

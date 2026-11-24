@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""Hearth's Game Mode made of blocks (docs/mockups/checklists/build-anything.md board 6): Describe it and Say it.
+
+Game Mode's Home, Library and Quick Access are the same screen format as the desktop (hearth-layout's screen.rs:
+grid and blocks); Game Mode keeps them itself (uiprefs, ~/.config/nimbus/game-mode-ui.json). This helper only answers:
+
+  hearth-gm-blocks describe PAGE TEXT SCREEN   your AI changes the page (hearth-layout describe-screen), the answer
+                                              kept to the blocks Game Mode draws: {"ok": true, "screen": {...}}
+  hearth-gm-blocks listen                     Say it: a few seconds from the microphone (pw-record), heard by an AI
+                                              engine of yours that can (Settings › AI): {"ok": true, "text": "..."}
+  hearth-gm-blocks clean SCREEN               the page kept to what Game Mode draws (tests, and the answers above)
+
+Errors are an "error: ..." line (hearth-core's helper_run) and exit 1. Nothing here writes a setting.
+"""
+import json
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
+import urllib.request
+import uuid
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+PAGES = ('home', 'library', 'quick')
+BLOCKS = {'hero', 'tilerow', 'iconrow', 'widget', 'friends', 'downloads', 'clock', 'text', 'play', 'list', 'qa'}
+QA = ('perf', 'audio', 'display', 'power', 'wifi', 'friends', 'resume', 'music')
+LISTEN_SECONDS = 6
+
+
+def _int(v, lo, hi, d):
+    try:
+        return max(lo, min(hi, int(round(float(v)))))
+    except (TypeError, ValueError):
+        return d
+
+
+def clean(v):
+    v = v if isinstance(v, dict) else {}
+    g = v.get('grid') if isinstance(v.get('grid'), dict) else {}
+    cols, rows = _int(g.get('cols'), 4, 48, 24), _int(g.get('rows'), 4, 48, 14)
+    out, ids = [], set()
+    for b in v.get('blocks') if isinstance(v.get('blocks'), list) else []:
+        if not isinstance(b, dict) or b.get('block') not in BLOCKS:
+            continue
+        w, h = _int(b.get('w'), 1, cols, 4), _int(b.get('h'), 1, rows, 2)
+        nb = {'block': b['block'], 'x': _int(b.get('x'), 0, cols - w, 0), 'y': _int(b.get('y'), 0, rows - h, 0), 'w': w, 'h': h}
+        bid = str(b.get('id') or b['block'])[:40]
+        n = 2
+        while bid in ids:
+            bid = '%s-%d' % (str(b.get('id') or b['block'])[:36], n)
+            n += 1
+        ids.add(bid)
+        nb['id'] = bid
+        for k in ('shows', 'title', 'value'):
+            if isinstance(b.get(k), str) and b[k]:
+                nb[k] = b[k][:400]
+        if b['block'] == 'qa' and nb.get('shows') not in QA:
+            nb['shows'] = 'perf'
+        st = b.get('style') if isinstance(b.get('style'), dict) else {}
+        style = {}
+        if isinstance(st.get('colour'), str) and st['colour'].startswith('#') and len(st['colour']) in (7, 9):
+            style['colour'] = st['colour']
+        if 'corners' in st:
+            style['corners'] = _int(st.get('corners'), 0, 64, 12)
+        if 'seeThrough' in st:
+            style['seeThrough'] = _int(st.get('seeThrough'), 0, 100, 0)
+        if style:
+            nb['style'] = style
+        out.append(nb)
+    return {'grid': {'cols': cols, 'rows': rows}, 'blocks': out}
+
+
+def layout_cmd():
+    for c in (os.path.join(HERE, '..', 'bin', 'hearth-layout'), shutil.which('hearth-layout') or ''):
+        if c and os.access(c, os.X_OK):
+            return c
+    return None
+
+
+def describe(page, text, screen):
+    if page not in PAGES:
+        page = 'home'
+    exe = layout_cmd()
+    if not exe:
+        raise RuntimeError("Describe it needs Hearth's layout helper (hearth-layout), which isn't on this PC")
+    where = {'home': 'Home', 'library': 'Library', 'quick': 'Quick Access'}[page]
+    asked = ("This is Hearth's GAME MODE %s page, played with a controller, not the desktop. Only these blocks: %s. " % (where, ', '.join(sorted(BLOCKS)))) + text
+    env = dict(os.environ, HEARTH_DESCRIBE_APP='Hearth Game Mode')
+    r = subprocess.run([exe, 'describe-screen', asked, json.dumps(screen)], capture_output=True, text=True, timeout=240, env=env)
+    lines = [l for l in r.stdout.strip().splitlines() if l.strip().startswith('{')]
+    o = json.loads(lines[-1]) if lines else {}
+    if o.get('ok') is not True:
+        raise RuntimeError(o.get('error') or "Your AI didn't answer")
+    return {'ok': True, 'screen': clean(o.get('screen')), 'changes': o.get('changes') or []}
+
+
+def engines():
+    sys.path.insert(0, HERE)
+    try:
+        import hearth_ai_engines as e  # noqa: E402
+        return [x for x in e.engines() if x.get('on') and x.get('openai')]
+    except Exception:
+        return []
+
+
+def transcribe(path, base):
+    boundary = uuid.uuid4().hex
+    data = open(path, 'rb').read()
+    body = (('--%s\r\nContent-Disposition: form-data; name="model"\r\n\r\nwhisper-1\r\n' % boundary).encode()
+            + ('--%s\r\nContent-Disposition: form-data; name="file"; filename="say.wav"\r\nContent-Type: audio/wav\r\n\r\n' % boundary).encode()
+            + data + ('\r\n--%s--\r\n' % boundary).encode())
+    req = urllib.request.Request(base.rstrip('/') + '/audio/transcriptions', data=body, method='POST',
+                                 headers={'Content-Type': 'multipart/form-data; boundary=' + boundary})
+    with urllib.request.urlopen(req, timeout=60) as f:
+        return (json.loads(f.read().decode('utf-8', 'replace')).get('text') or '').strip()
+
+
+def listen():
+    rec = shutil.which('pw-record') or shutil.which('arecord')
+    if not rec:
+        raise RuntimeError("There's no microphone recorder here (PipeWire's pw-record): type it instead")
+    eng = engines()
+    if not eng:
+        raise RuntimeError("Say it needs an AI engine of yours that can hear (Settings › AI): type it instead")
+    d = tempfile.mkdtemp(prefix='hearth-say-')
+    wav = os.path.join(d, 'say.wav')
+    try:
+        cmd = [rec, '--rate', '16000', '--channels', '1', wav] if rec.endswith('pw-record') else [rec, '-q', '-f', 'S16_LE', '-r', '16000', '-c', '1', '-d', str(LISTEN_SECONDS), wav]
+        try:
+            subprocess.run(cmd, timeout=LISTEN_SECONDS, capture_output=True)
+        except subprocess.TimeoutExpired:
+            pass                                    # pw-record records until stopped: the time is up
+        if not os.path.exists(wav) or os.path.getsize(wav) < 2000:
+            raise RuntimeError("Nothing was heard from the microphone")
+        last = None
+        for e in eng:
+            try:
+                t = transcribe(wav, e.get('openai') or e.get('base'))
+                if t:
+                    return {'ok': True, 'text': t[:1000]}
+            except Exception as x:      # this engine can't hear: the next one
+                last = x
+        raise RuntimeError("None of your AI engines could hear it%s: type it instead" % ('' if last is None else ' (%s)' % str(last)[:80]))
+    finally:
+        shutil.rmtree(d, ignore_errors=True)
+
+
+def main(argv):
+    cmd = argv[1] if len(argv) > 1 else ''
+    try:
+        if cmd == 'describe' and len(argv) >= 4:
+            try:
+                scr = json.loads(argv[4]) if len(argv) > 4 else {}
+            except ValueError:
+                scr = {}
+            print(json.dumps(describe(argv[2], argv[3], clean(scr))))
+        elif cmd == 'listen':
+            print(json.dumps(listen()))
+        elif cmd == 'clean' and len(argv) > 2:
+            print(json.dumps(clean(json.loads(argv[2]))))
+        else:
+            print(__doc__)
+            return 2
+    except Exception as e:
+        print('error: %s' % e)
+        return 1
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))

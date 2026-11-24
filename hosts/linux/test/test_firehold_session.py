@@ -30,6 +30,7 @@ PREVIEW = 'NIMBUS_START_MODE=desktop\nHEARTH_DESKTOP_WM=firehold\n'
 LOCKED = PREVIEW
 
 
+@unittest.skip('Firehold retired as Desktop Mode in 1.18 (the owner, Nov 23): desktop_wm_choice is always labwc')
 class HearthCompositor(Base):
     def setUp(self):
         super().setUp()

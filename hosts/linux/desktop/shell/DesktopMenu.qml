@@ -20,7 +20,7 @@ Singleton {
     // here twice.
     readonly property var alreadyThere: ({ "Terminal": "Open a terminal here", "Files": "Open in Files" })
     readonly property var entries: [
-        { id: "apps", label: "Apps", icon: "grid", group: "Hearth", command: "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call launcher toggle'" },
+        { id: "apps", label: "Apps", icon: "grid", group: "Hearth", command: "sh -c 'hearth-mantel-ipc call launcher toggle'" },
         { separator: true },
         { id: "game-mode", label: "Return to Game Mode", short: "Game Mode", icon: "pad", quick: true, group: "Hearth", command: "nimbus-mode game" },
         { id: "reconfigure", label: "Reconfigure", icon: "restart", group: "Hearth",

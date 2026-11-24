@@ -23,7 +23,7 @@ Scope {
                                               "org.freedesktop.login1.Session", "SetLockedHint", "b", locked ? "true" : "false"]);
         // 1.14: vaults set to lock with the screen are locked (hearth-vaults), and the fingerprint (if you turned it on)
         // is asked for next to the password. Leaving the lock screen stops the fingerprint.
-        if (locked) { vaultLock.running = false; vaultLock.running = true; fpTries = 0; fpInfo = ""; if (!onKwin) { fpCheck.running = false; fpCheck.running = true; } }
+        if (locked) { keysShown = false; vaultLock.running = false; vaultLock.running = true; fpTries = 0; fpInfo = ""; if (!onKwin) { fpCheck.running = false; fpCheck.running = true; } }
         else {
             if (fpPam.active) fpPam.abort();
             // A vault that couldn't lock with the screen (files open in it): said once you're back, so it's not a surprise.
@@ -85,6 +85,9 @@ Scope {
         onError: root.fpInfo = ""
     }
     property string typed: ""
+    // 1.18: on a lock screen made of blocks the on-screen keys show when asked for (the password box, or the arrows /
+    // D-pad); typing on a keyboard always works.
+    property bool keysShown: false
     property string message: ""
     property bool busy: false
     // On KWin (HEARTH_WM=kwin) there's no ext-session-lock-v1, so WlSessionLock would cover nothing: KWin's own
@@ -184,24 +187,62 @@ Scope {
             }
             Image { anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; width: parent.width * 1.2; height: parent.height * 0.6; source: Qt.resolvedUrl("images/ember-glow.png"); opacity: 0.5 }
 
+            // 1.18: the lock screen made of blocks (docs/mockups/checklists/lock-screen-blocks.md). LockBlocks.qml only
+            // draws (no focus, nothing opens anything) and LockPassword.qml only shows what this file has; the password
+            // is still typed into and checked by this file (PAM, above). Either file failing to load, or no lock layout,
+            // leaves this plain lock screen as it always was: never a lock that can't be unlocked.
+            Loader {
+                id: blocksLoader
+                anchors.fill: parent
+                active: root.locked
+                source: "LockBlocks.qml"
+                onLoaded: item.lockedAt = Qt.binding(() => root.lockedAt)
+            }
+            readonly property bool blocksReady: blocksLoader.status === Loader.Ready && !!blocksLoader.item && blocksLoader.item.ready === true
+            readonly property bool blocksOn: blocksReady && pwLoader.status === Loader.Ready && !!pwLoader.item
+            Loader {
+                id: pwLoader
+                z: 5
+                active: surface.blocksReady
+                source: "LockPassword.qml"
+                x: surface.blocksReady ? blocksLoader.item.pwRect.x : 0
+                y: surface.blocksReady ? blocksLoader.item.pwRect.y : 0
+                width: surface.blocksReady ? blocksLoader.item.pwRect.width : 0
+                height: surface.blocksReady ? blocksLoader.item.pwRect.height : 0
+                onLoaded: {
+                    item.typed = Qt.binding(() => root.typed);
+                    item.busy = Qt.binding(() => root.busy);
+                    item.message = Qt.binding(() => root.message);
+                    item.hint = Qt.binding(() => root.fpInfo || (root.fpOn ? "Fingerprint, or your password" : "Your password"));
+                    item.retro = Qt.binding(() => surface.blocksReady && blocksLoader.item.pwRetro);
+                    item.st = Qt.binding(() => surface.blocksReady ? blocksLoader.item.pwBlock.style : ({}));
+                    item.unlock.connect(() => root.tryUnlock());
+                    item.keys.connect(() => { root.keysShown = !root.keysShown; kb.forceActiveFocus(); });
+                    item.shutDown.connect(() => Quickshell.execDetached(["systemctl", "poweroff"]));
+                }
+            }
+
             ColumnLayout {
-                anchors.centerIn: parent
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: surface.blocksOn ? parent.height - height - 30 : (parent.height - height) / 2
+                z: 6
                 width: Math.min(parent.width - 80, 760)
                 spacing: 14
 
                 Text {
                     id: clock
+                    visible: !surface.blocksOn
                     Layout.alignment: Qt.AlignHCenter
                     color: Theme.text; font.family: Theme.font; font.pixelSize: 84; font.weight: Font.DemiBold
                     text: Qt.formatTime(new Date(), "h:mm")
                     Timer { interval: 5000; running: root.locked; repeat: true; triggeredOnStart: true
                         onTriggered: { clock.text = Qt.formatTime(new Date(), "h:mm"); date.text = Qt.formatDate(new Date(), "dddd, MMMM d"); } }
                 }
-                Text { id: date; Layout.alignment: Qt.AlignHCenter; color: Theme.muted; font.family: Theme.font; font.pixelSize: 20 }
+                Text { id: date; visible: !surface.blocksOn; Layout.alignment: Qt.AlignHCenter; color: Theme.muted; font.family: Theme.font; font.pixelSize: 20 }
                 // Notifications from apps you let show here (Settings › Notifications, 1.14; none unless you turn it on
                 // for an app): the three newest since the screen locked, the app's name and the title only.
                 Repeater {
-                    model: root.locked ? DeskState.history.filter(h => h.lock && h.time >= root.lockedAt).slice(0, 3) : []
+                    model: root.locked && !surface.blocksOn ? DeskState.history.filter(h => h.lock && h.time >= root.lockedAt).slice(0, 3) : []
                     delegate: Rectangle {
                         required property var modelData
                         Layout.alignment: Qt.AlignHCenter
@@ -217,6 +258,7 @@ Scope {
                 }
 
                 Rectangle {
+                    visible: !surface.blocksOn
                     Layout.alignment: Qt.AlignHCenter; Layout.topMargin: 24
                     Layout.preferredWidth: 420; Layout.preferredHeight: 56; radius: 14
                     color: Theme.panel2; border.color: root.message ? Theme.danger : Theme.line; border.width: 2
@@ -226,10 +268,10 @@ Scope {
                         color: root.typed.length ? Theme.text : Theme.muted; font.family: Theme.font; font.pixelSize: 22
                     }
                 }
-                Text { Layout.alignment: Qt.AlignHCenter; visible: root.message !== ""; text: root.message; color: Theme.danger; font.family: Theme.font; font.pixelSize: 14 }
+                Text { Layout.alignment: Qt.AlignHCenter; visible: root.message !== "" && !surface.blocksOn; text: root.message; color: Theme.danger; font.family: Theme.font; font.pixelSize: 14 }
                 Row {
                     Layout.alignment: Qt.AlignHCenter
-                    visible: root.fpInfo !== ""
+                    visible: root.fpInfo !== "" && !surface.blocksOn
                     spacing: 8
                     Icon { anchors.verticalCenter: parent.verticalCenter; name: "fingerprint"; size: 20; color: Theme.accent }
                     Text { anchors.verticalCenter: parent.verticalCenter; text: root.fpInfo; color: Theme.muted; font.family: Theme.font; font.pixelSize: 14 }
@@ -240,7 +282,7 @@ Scope {
                     id: kb
                     Layout.alignment: Qt.AlignHCenter
                     Layout.preferredWidth: Math.min(surface.width - 80, 760)
-                    Layout.preferredHeight: 5 * 54
+                    Layout.preferredHeight: !surface.blocksOn || root.keysShown ? 5 * 54 : 0
                     focus: true
                     property bool upper: false
                     property bool sym: false
@@ -279,7 +321,7 @@ Scope {
                         else if (e.key === Qt.Key_Escape) root.typed = "";
                         else if (e.text && e.text.length === 1 && e.text >= " ") root.typed += e.text;   // a real keyboard
                         else return;
-                        if (e.key === Qt.Key_Left || e.key === Qt.Key_Right || e.key === Qt.Key_Up || e.key === Qt.Key_Down) navigating = true;
+                        if (e.key === Qt.Key_Left || e.key === Qt.Key_Right || e.key === Qt.Key_Up || e.key === Qt.Key_Down) { navigating = true; root.keysShown = true; }
                         else if (e.key !== Qt.Key_Return && e.key !== Qt.Key_Enter) navigating = false;
                         e.accepted = true;
                     }
@@ -287,6 +329,7 @@ Scope {
 
                     Column {
                         anchors.fill: parent
+                        visible: !surface.blocksOn || root.keysShown
                         spacing: 6
                         Repeater {
                             model: kb.rows
@@ -318,6 +361,7 @@ Scope {
                     }
                 }
                 Text {
+                    visible: !surface.blocksOn || root.keysShown
                     Layout.alignment: Qt.AlignHCenter
                     text: "Type your password, or pick keys with the D-pad / right stick and A"
                     color: Theme.muted; font.family: Theme.font; font.pixelSize: 13

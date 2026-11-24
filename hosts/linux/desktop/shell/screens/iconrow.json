@@ -1,0 +1,88 @@
+{
+ "said": "Like an icon-row home: tabs across the top, my games as a row of icons with the picked one's art filling the screen, Play, and cards of what I did",
+ "grid": {
+  "cols": 24,
+  "rows": 14
+ },
+ "bars": "hidden",
+ "background": {
+  "kind": "art",
+  "from": "#2a1a3e",
+  "to": "#0e0812"
+ },
+ "look": {
+  "accent": "#7aa2ff",
+  "font": "Inter",
+  "sound": "pop",
+  "animation": "fade"
+ },
+ "blocks": [
+  {
+   "id": "tabs",
+   "block": "tabs",
+   "x": 0,
+   "y": 0,
+   "w": 10,
+   "h": 1,
+   "items": [
+    "games",
+    "music",
+    "windows"
+   ]
+  },
+  {
+   "id": "corner",
+   "block": "status",
+   "x": 17,
+   "y": 0,
+   "w": 7,
+   "h": 1
+  },
+  {
+   "id": "icons",
+   "block": "iconrow",
+   "x": 0,
+   "y": 1,
+   "w": 16,
+   "h": 3,
+   "shows": "games",
+   "count": 7,
+   "style": {
+    "sound": "pop"
+   }
+  },
+  {
+   "id": "play",
+   "block": "play",
+   "x": 0,
+   "y": 4,
+   "w": 14,
+   "h": 3
+  },
+  {
+   "id": "acts",
+   "block": "activity",
+   "x": 0,
+   "y": 8,
+   "w": 15,
+   "h": 3,
+   "title": "Your activity",
+   "style": {
+    "corners": 10,
+    "colour": "#2a2236"
+   }
+  },
+  {
+   "id": "guide",
+   "block": "guide",
+   "x": 18,
+   "y": 0,
+   "w": 6,
+   "h": 14,
+   "style": {
+    "colour": "#1a1426",
+    "aboveWindows": false
+   }
+  }
+ ]
+}

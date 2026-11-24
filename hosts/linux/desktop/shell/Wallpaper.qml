@@ -248,10 +248,15 @@ PanelWindow {
             velocity: AngleDirection { angle: 275; angleVariation: 20; magnitude: root.height * 0.012; magnitudeVariation: root.height * 0.008 }
         }
         Wander { system: moteSys; xVariance: 30; pace: 12 }
-        ItemParticle {
+        // 1.17 fix (the owner's dad's PC, Nov 21): drawn as one image layer (ImageParticle), not one item per mote
+        // (ItemParticle): items made and thrown away all the time crashed Quickshell on Fedora's Qt (a redraw queued for
+        // a mote already gone: QQuickItemPrivate::addToDirtyList). The same soft dots, colours and fade.
+        ImageParticle {
             system: moteSys
-            fade: true
-            delegate: Rectangle { width: 4; height: 4; radius: 2; color: Math.random() > 0.6 ? "#c7e6fa" : "#66c0f4"; opacity: 0.6 }
+            source: "qrc:///particleresources/glowdot.png"
+            color: "#8ccff6"; colorVariation: 0.12
+            alpha: 0.6
+            entryEffect: ImageParticle.Fade
         }
         // Still (no motion, battery, software rendering): a fixed scatter of them instead.
         Repeater {
@@ -337,14 +342,13 @@ PanelWindow {
             acceleration: AngleDirection { angle: 270; magnitude: 2 }
         }
         Wander { system: sparks; xVariance: 40; pace: 30 }
-        ItemParticle {
+        // (One image layer, not an item per spark: see the motes above.)
+        ImageParticle {
             system: sparks
-            fade: true
-            delegate: Rectangle {
-                width: 4; height: 4; radius: 2
-                color: Math.random() > 0.5 ? Theme.ember : Theme.flame
-                opacity: 0.55
-            }
+            source: "qrc:///particleresources/glowdot.png"
+            color: Qt.tint(Theme.ember, Qt.rgba(Theme.flame.r, Theme.flame.g, Theme.flame.b, 0.5)); colorVariation: 0.1
+            alpha: 0.55
+            entryEffect: ImageParticle.Fade
         }
     }
 

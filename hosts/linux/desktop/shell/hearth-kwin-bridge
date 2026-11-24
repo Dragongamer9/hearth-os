@@ -78,7 +78,7 @@ PREVIEW_OPS = ('preview', 'previewHide')
 BRIDGE_OPS = ('pick', 'kill', 'pickCancel')
 # Extra commands the script's own menu entries ask for (not keys of their own).
 EXTRA = {
-    'snap-layouts-open': "sh -c 'quickshell ipc -p $NIMBUS_SHARE/desktop/shell call snap open'",
+    'snap-layouts-open': "sh -c 'hearth-mantel-ipc call snap open'",
 }
 
 

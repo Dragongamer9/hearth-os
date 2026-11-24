@@ -97,6 +97,8 @@ pub struct Menu {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Describe it and its blocks (hearth_ui::describe, hearth_ui::blocks; every Hearth app has them)
+    Describe(hearth_ui::describe::DMsg),
     Theme,
     Feed(feed::Ev),
     Tab(Tab),
@@ -129,6 +131,7 @@ pub enum Msg {
 }
 
 pub struct App {
+    pub describe: hearth_ui::describe::Describe,
     pub p: Pal,
     pub tab: Tab,
     pub sample: Option<Arc<Value>>,
@@ -203,6 +206,7 @@ impl App {
             }
         }
         let mut a = App {
+            describe: hearth_ui::describe::Describe::new("resmon", "Resource Monitor").with_pages(view::BLOCKS),
             p: hearth_ui::theme::load(),
             tab,
             sample: None,
@@ -549,6 +553,7 @@ fn open_location(path: &str) {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Feed(ev) => match ev {
             feed::Ev::Sample(d) => {
@@ -651,7 +656,7 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         }
         Msg::OpenTm => {
             // The Fedora edition's Task Manager is hearth-task-manager (pure Rust); Mantel's is hearth-tasks open.
-            run::detached(&["sh", "-c", "command -v hearth-task-manager >/dev/null 2>&1 && exec hearth-task-manager; exec quickshell ipc -p /usr/share/nimbus/desktop/shell call tasks open"]);
+            run::detached(&["sh", "-c", "command -v hearth-task-manager >/dev/null 2>&1 && exec hearth-task-manager; command -v hearth-mantel-ipc >/dev/null 2>&1 && exec hearth-mantel-ipc call tasks open; exec quickshell ipc -p /usr/share/nimbus/desktop/shell call tasks open"]);
         }
         Msg::Out(kind, o) => {
             a.busy.remove(kind);
@@ -877,7 +882,7 @@ fn subscription(a: &App) -> Subscription<Msg> {
 }
 
 fn view(a: &App) -> Element<'_, Msg> {
-    view::view(a)
+    hearth_ui::describe::with_bar(view::view(a), &a.p, &a.describe, Msg::Describe)
 }
 
 fn main() -> iced::Result {

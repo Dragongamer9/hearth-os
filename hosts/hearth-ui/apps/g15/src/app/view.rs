@@ -287,6 +287,18 @@ fn chip_btn<'a>(p: &Pal, label: impl Into<String>, picked: bool, focused: bool, 
 }
 
 // ------------------------------------------------------------------ the frame
+/// The G15 app's blocks (hearth_ui::blocks).
+pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+    id: "window",
+    title: "Logitech G15",
+    blocks: &[hearth_ui::blocks::bl("side", "The side", 0, 0, 3, 11), hearth_ui::blocks::bl("page", "The page", 3, 0, 9, 11), hearth_ui::blocks::bl("bottom", "The bar at the bottom", 0, 11, 12, 1)],
+}];
+
+/// The G15 app with Describe it's box under it while it's open.
+pub fn shown(a: &App) -> E<'_> {
+    hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe)
+}
+
 pub fn view(a: &App) -> E<'_> {
     let p = a.p;
     let bg = Pal::mix(p.bg, Color::BLACK, 0.15);
@@ -298,8 +310,17 @@ pub fn view(a: &App) -> E<'_> {
         Page::Editor => editor(a),
     };
     let page = container(scrollable(container(body).padding(Padding { top: 16.0, right: 30.0, bottom: 16.0, left: 32.0 })).height(Length::Fill)).width(Length::Fill).height(Length::Fill).style(ui::boxed(bg, 0.0, None));
-    let main = row![sidebar(a), page].height(Length::Fill);
-    let all = column![title_bar(a), hline(p.line), main, hline(p.line), bottom_bar(a)];
+    // its blocks (hearth_ui::blocks): the side, the page and the bar at the bottom, moved, sized, hidden or restyled;
+    // as it was when nothing is
+    let main = hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "window",
+        vec![("side", sidebar(a)), ("page", page.into()), ("bottom", bottom_bar(a))],
+        |ps| column![row![ps.take("side"), ps.take("page")].height(Length::Fill), hline(p.line), ps.take("bottom")].into(),
+        Msg::Describe,
+    );
+    let all = column![title_bar(a), hline(p.line), main];
     let base: E = container(all).width(Length::Fill).height(Length::Fill).style(ui::boxed(bg, 0.0, None)).into();
     let base = match &a.dlg {
         Some(d) => ui::dialog(base, dialog(a, d), Some(Msg::CloseDlg)),
@@ -312,7 +333,7 @@ fn title_bar(a: &App) -> E<'_> {
     let p = a.p;
     let badge = container(text("G").size(12.0).color(Color::WHITE).font(ui::weight(iced::font::Weight::Bold))).center_x(Length::Fixed(20.0)).center_y(Length::Fixed(20.0)).style(ui::boxed(Color::from_rgb8(0xff, 0x6a, 0x1a), 5.0, None));
     let name = row![gap(14.0, 1.0), badge, gap(10.0, 1.0), tm("Logitech G15", 14.0, p.text), gap(8.0, 1.0), t("· Hearth", 12.0, p.muted)].align_y(iced::Center);
-    let drag = mouse_area(container(name).width(Length::Fill).center_y(Length::Fixed(36.0))).on_press(Msg::Drag).on_double_click(Msg::Maximize);
+    let drag = mouse_area(container(name).width(Length::Fill).center_y(Length::Fixed(36.0))).on_press(Msg::Drag).on_double_click(Msg::Maximize).on_right_press(Msg::Describe(hearth_ui::describe::DMsg::Open));
     let wbtn = |g: G, m: Msg| -> E<'static> {
         mouse_area(container(glyph(g, p.muted, 10.0, 2.0)).center_x(Length::Fixed(40.0)).center_y(Length::Fixed(36.0))).on_press(m).interaction(mouse::Interaction::Pointer).into()
     };

@@ -116,6 +116,17 @@ class Base(unittest.TestCase):
         return json.loads(r.stdout.strip().splitlines()[-1])
 
 
+class Retired(Base):
+    """1.18 (the owner, Nov 23: "only 2 versions i want are Mantel and the Rust version of it"): Desktop Mode is Mantel
+    on labwc, whatever was picked before; a KWin pick is told once."""
+    def test_labwc_by_default_and_a_kwin_pick_is_told_once(self):
+        self.write_bin('kwin_wayland', KWIN_WORKS)
+        r, log = self.session()
+        self.assertIn('desktop mode: Mantel on labwc', log)
+        self.assertNotIn('Mantel on KWin', log)
+
+
+@unittest.skip('KWin retired as Desktop Mode in 1.18 (the owner, Nov 23): kept for its history; desktop_wm_choice is always labwc')
 class KWinStart(Base):
     def test_kwin_is_the_default(self):
         self.write_bin('kwin_wayland', KWIN_WORKS)
@@ -558,14 +569,24 @@ class Choice(Base):
         self.assertEqual(st['wm'], 'labwc')
         self.assertEqual(pathlib.Path(self.conf).read_text(), 'NIMBUS_START_MODE=desktop\nFOO=1\nHEARTH_DESKTOP_WM=labwc\n')
         self.assertEqual(pathlib.Path(self.conf + '.bak').read_text(), 'NIMBUS_START_MODE=desktop\nFOO=1\n')
-        self.assertEqual(self.helper('wm', 'kwin')['wm'], 'kwin')
-        self.assertIn('HEARTH_DESKTOP_WM=kwin\n', pathlib.Path(self.conf).read_text())
-        r = subprocess.run([sys.executable, str(HELPER), 'wm', 'sway'], env=self.env(), capture_output=True, text=True)
-        self.assertEqual(r.returncode, 1)
-        self.assertIn('HEARTH_DESKTOP_WM=kwin\n', pathlib.Path(self.conf).read_text())
+        # 1.18: KWin (and anything else) is refused, and nothing is written
+        for w in ('kwin', 'sway'):
+            r = subprocess.run([sys.executable, str(HELPER), 'wm', w], env=self.env(), capture_output=True, text=True)
+            self.assertEqual(r.returncode, 1)
+        self.assertIn('HEARTH_DESKTOP_WM=labwc\n', pathlib.Path(self.conf).read_text())
+
+    def test_mantel_or_mantel_in_rust(self):
+        """1.18: Settings' switcher writes HEARTH_MANTEL (only that line); Mantel in Rust only once it's installed."""
+        with open(self.conf, 'w') as f:
+            f.write('FOO=1\n')
+        self.assertEqual(self.helper('mantel', 'mantel')['mantel'], 'mantel')
+        self.assertEqual(pathlib.Path(self.conf).read_text(), 'FOO=1\nHEARTH_MANTEL=mantel\n')
+        r = subprocess.run([sys.executable, str(HELPER), 'mantel', 'rust'], env=self.env(), capture_output=True, text=True)
+        self.assertEqual(r.returncode, 1, 'Mantel in Rust isn\'t installed here')
+        self.assertEqual(pathlib.Path(self.conf).read_text(), 'FOO=1\nHEARTH_MANTEL=mantel\n')
 
     def test_status_reads_without_writing(self):
-        self.assertEqual(self.helper('status')['wm'], 'kwin')
+        self.assertEqual(self.helper('status')['wm'], 'labwc')
         self.assertFalse(os.path.exists(self.conf))
 
 

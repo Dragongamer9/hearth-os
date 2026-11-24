@@ -736,3 +736,36 @@ class GreeterInfo(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class NoKdeTextSignIn(Box):
+    """1.18, no KDE (the owner, Nov 23): no SDDM and no Plasma Login Manager. The login screen to fall back to is
+    greetd's own text sign-in, with the same automatic sign-in, and a broken automatic sign-in never stops it showing."""
+
+    def setUp(self):
+        super().setUp()
+        self.write('/usr/lib/systemd/system/hearth-login-text.service', '[Unit]\n')
+
+    def test_fallback_is_the_text_sign_in(self):
+        self.turn(True)
+        self.m.cmd_select()
+        self.m.cmd_fallback('the greeter crashed')
+        calls = self.systemctl_calls()
+        self.assertIn('start --no-block hearth-login-text.service', calls)
+        self.assertNotIn('sddm.service', calls)
+
+    def test_sddm_still_wins_where_it_is(self):
+        self.write('/usr/lib/systemd/system/sddm.service', '[Unit]\n')
+        self.assertEqual(self.m.fallback_unit(), 'sddm.service')
+
+    def test_text_config_signs_in_by_itself_and_asks_otherwise(self):
+        conf = self.m.text_config(('alex', 'nimbus.desktop', True))
+        self.assertIn('agreety', conf)
+        self.assertIn('--cmd', conf)
+        self.assertIn('user = "_greetd"', conf)
+        self.assertIn('[initial_session]\ncommand = "/usr/libexec/nimbus/hearth-session-start --relogin nimbus.desktop"\nuser = "alex"', conf)
+        # an automatic sign-in that can't be used: the text sign-in still shows, never an error
+        for auto in (('nobody-here', 'nimbus.desktop', True), ('alex', 'gone.desktop', False), None):
+            conf = self.m.text_config(auto)
+            self.assertIn('[default_session]', conf)
+            self.assertNotIn('initial_session', conf)

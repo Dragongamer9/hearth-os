@@ -64,12 +64,15 @@ class RootPart(Stage3):
         self.assertFalse(os.path.exists(hh.NFT_FILE), 'off: its rule goes')
 
     def test_the_services_timer_runs_only_when_light_mode_has_something_to_stop(self):
+        # 1.18 (Everything connects by itself): a service that's on needs the timer, so it comes back after a restart.
         hh.apply({'shares': [], 'voices': {'on': True}})
-        self.assertNotIn(hh.SERVICES_TIMER, self.rec.enabled, 'voices that keep running need no timer')
+        self.assertIn(hh.SERVICES_TIMER, self.rec.enabled, 'voices that are on come back by themselves')
+        hh.apply({'shares': []})
+        self.assertNotIn(hh.SERVICES_TIMER, self.rec.enabled, 'nothing on: no timer')
         hh.apply({'shares': [], 'pictures': {'on': True}})
         self.assertIn(hh.SERVICES_TIMER, self.rec.enabled)
         hh.apply({'shares': [], 'pictures': {'on': True, 'pause': False}})
-        self.assertNotIn(hh.SERVICES_TIMER, self.rec.enabled)
+        self.assertIn(hh.SERVICES_TIMER, self.rec.enabled, 'pictures that are on come back by themselves too')
 
     def test_comfyui_stops_when_a_game_starts_and_starts_again_after(self):
         self.plan()

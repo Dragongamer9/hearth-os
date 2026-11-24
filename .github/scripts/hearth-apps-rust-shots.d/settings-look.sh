@@ -18,12 +18,10 @@ sleep 0.5
 grim "$ROOT/shots/settings-look-2-mouse-again.png" 2>/dev/null || true
 kill $lk_pid 2>/dev/null; wait $lk_pid 2>/dev/null
 looks=$(grep 'look:' "$lk_log" | sed 's/.*look: //' | tr '\n' ',' )
-if ! grep -q 'look: controller' "$lk_log"; then
-  echo "::error title=settings look::the controller presses didn't switch to the controller look: $looks"
-elif [ "$n1" -gt 1 ]; then
-  echo "::error title=settings look::the controller's own pointer switched Settings back to the keyboard-and-mouse look: $looks"
-elif [ "$(grep -c 'look: keyboard and mouse' "$lk_log")" -lt 2 ]; then
-  echo "::warning title=settings look::a pointer move with the controller idle didn't go back to the keyboard-and-mouse look: $looks"
+# 1.18 (the owner, Nov 23: "get rid of the settings app controller mode as well, sitck with the normal settings app"):
+# the controller moves through the normal look; nothing ever switches it to a controller look.
+if grep -q 'look: controller' "$lk_log"; then
+  echo "::error title=settings look::Settings switched to a controller look (it was removed in 1.18): $looks"
 else
-  echo "::notice title=settings look::controller pointer kept the controller look; the mouse afterwards switched back ($looks)"
+  echo "::notice title=settings look::controller presses and its pointer kept the normal look ($looks)"
 fi

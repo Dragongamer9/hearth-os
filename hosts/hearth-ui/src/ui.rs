@@ -7,22 +7,44 @@ use iced::{border, font, mouse, Background, Border, Color, Element, Font, Length
 use crate::app::INTER;
 use crate::theme::Pal;
 
+// A block's own font (blocks.rs Look: Font and Text size): set only while that block's view is being made, so the
+// text it makes takes it; everywhere else it's Inter at the size asked (no change).
+thread_local! {
+    static FACE: std::cell::Cell<Option<&'static str>> = const { std::cell::Cell::new(None) };
+    static SCALE: std::cell::Cell<f32> = const { std::cell::Cell::new(1.0) };
+}
+
+/// `f` made with this font family (None: Inter) and text size (1.0: as asked); what it was is put back after.
+pub fn with_face<R>(face: Option<&'static str>, scale: f32, f: impl FnOnce() -> R) -> R {
+    let before = (FACE.with(|x| x.replace(face)), SCALE.with(|x| x.replace(scale)));
+    let r = f();
+    FACE.with(|x| x.set(before.0));
+    SCALE.with(|x| x.set(before.1));
+    r
+}
+fn scaled(size: f32) -> f32 {
+    size * SCALE.with(|x| x.get())
+}
+
 pub fn weight(w: font::Weight) -> Font {
-    Font { weight: w, ..INTER }
+    match FACE.with(|x| x.get()) {
+        Some(n) => Font { weight: w, ..Font::with_name(n) },
+        None => Font { weight: w, ..INTER },
+    }
 }
 
 /// Text in Inter at this size and colour.
 pub fn t<'a>(s: impl text::IntoFragment<'a>, size: f32, c: Color) -> Text<'a> {
-    text(s).size(size).color(c).font(INTER)
+    text(s).size(scaled(size)).color(c).font(weight(font::Weight::Normal))
 }
 pub fn tm<'a>(s: impl text::IntoFragment<'a>, size: f32, c: Color) -> Text<'a> {
-    text(s).size(size).color(c).font(weight(font::Weight::Medium))
+    text(s).size(scaled(size)).color(c).font(weight(font::Weight::Medium))
 }
 pub fn ts<'a>(s: impl text::IntoFragment<'a>, size: f32, c: Color) -> Text<'a> {
-    text(s).size(size).color(c).font(weight(font::Weight::Semibold))
+    text(s).size(scaled(size)).color(c).font(weight(font::Weight::Semibold))
 }
 pub fn tb<'a>(s: impl text::IntoFragment<'a>, size: f32, c: Color) -> Text<'a> {
-    text(s).size(size).color(c).font(weight(font::Weight::Bold))
+    text(s).size(scaled(size)).color(c).font(weight(font::Weight::Bold))
 }
 /// One line, never wrapped (cells, titles): the cell clips what doesn't fit.
 pub fn t1<'a>(s: impl text::IntoFragment<'a>, size: f32, c: Color) -> Text<'a> {
@@ -90,7 +112,7 @@ pub fn btn<'a, M: Clone + 'a>(p: &Pal, label: impl text::IntoFragment<'a>, kind:
         Kind::Normal => if enabled { p.text } else { p.muted },
     };
     let semi = kind != Kind::Normal;
-    let lbl = text(label).size(13.0).color(fg).font(if semi { weight(font::Weight::Semibold) } else { INTER }).wrapping(text::Wrapping::None);
+    let lbl = text(label).size(scaled(13.0)).color(fg).font(weight(if semi { font::Weight::Semibold } else { font::Weight::Normal })).wrapping(text::Wrapping::None);
     let r = p.r(6.0);
     let b = button(container(lbl).center_y(Length::Fixed(20.0)))
         .padding(Padding { top: 7.0, right: if semi { 18.0 } else { 14.0 }, bottom: 7.0, left: if semi { 18.0 } else { 14.0 } })
@@ -312,6 +334,8 @@ pub enum G {
     Sync,
     Pencil,
     Help,
+    // hearth-ideas-app (apps/ideas): its mark.
+    Bell,
 }
 
 struct Glyph {
@@ -401,6 +425,13 @@ fn lines(g: G) -> (Vec<Vec<(f32, f32)>>, Vec<(f32, f32, f32)>) {
         G::Asterisk => (vec![v(&[(12.0, 3.0), (12.0, 21.0)]), v(&[(4.2, 7.5), (19.8, 16.5)]), v(&[(19.8, 7.5), (4.2, 16.5)])], vec![]),
         G::Sync => (vec![v(&[(8.0, 20.0), (8.0, 4.0)]), v(&[(4.0, 8.0), (8.0, 4.0), (12.0, 8.0)]), v(&[(16.0, 4.0), (16.0, 20.0)]), v(&[(12.0, 16.0), (16.0, 20.0), (20.0, 16.0)])], vec![]),
         G::Pencil => (vec![v(&[(4.0, 20.0), (5.0, 15.0), (16.0, 4.0), (20.0, 8.0), (9.0, 19.0), (4.0, 20.0)]), v(&[(14.0, 6.0), (18.0, 10.0)])], vec![]),
+        G::Bell => {
+            let dome: Vec<(f32, f32)> = (0..=12).map(|i| { let a = std::f32::consts::PI * (1.0 + i as f32 / 12.0); (12.0 + 6.0 * a.cos(), 11.0 + 6.0 * a.sin()) }).collect();
+            let mut b = vec![(4.5, 17.0), (6.0, 15.0)];
+            b.extend(std::iter::once((6.0, 11.0)).chain(dome).chain(std::iter::once((18.0, 11.0))));
+            b.extend([(18.0, 15.0), (19.5, 17.0), (4.5, 17.0)]);
+            (vec![b], vec![(12.0, 19.5, 1.6)])
+        }
         G::Help => {
             let arc: Vec<(f32, f32)> = (0..=14).map(|i| { let a = std::f32::consts::PI * (1.0 + 1.25 * i as f32 / 14.0); (12.0 + 4.5 * a.cos(), 9.0 + 4.5 * a.sin()) }).collect();
             let mut q = arc;

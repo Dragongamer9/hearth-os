@@ -125,7 +125,8 @@ class Retired(unittest.TestCase):
         session = SESSION.read_text()
         # 1.15: the Anatase test's own Desktop Mode (stock KDE Plasma, run_plasma) is the one place Plasma starts.
         head, _, rest = session.partition('run_plasma() {')
-        session = '\n'.join(l for l in (head + rest.partition('\n}\n')[2]).splitlines() if 'plasma_image' not in l)
+        # (1.18: kde_here asks whether the image has KDE at all, only to open Mantel instead)
+        session = '\n'.join(l for l in (head + rest.partition('\n}\n')[2]).splitlines() if 'plasma_image' not in l and 'kde_here()' not in l)
         for gone in ('run_kde', 'run_gnome', 'startplasma-wayland', 'gnome-session', 'hearth-desktop-look', 'save_desktop_choice'):
             self.assertNotIn(gone, session)
         mode = (ROOT / 'hosts/linux/session/nimbus-mode').read_text()

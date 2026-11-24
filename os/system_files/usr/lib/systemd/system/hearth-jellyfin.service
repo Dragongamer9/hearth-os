@@ -10,8 +10,15 @@ Description=Hearth home server: the media server (Jellyfin)
 ConditionPathExists=/var/lib/hearth/apps/jellyfin/jellyfin/jellyfin
 ConditionPathExists=/etc/systemd/system/hearth-jellyfin.service.d/hearth.conf
 After=network.target
+# Tried 5 times in 10 minutes, then left stopped until the PC restarts or Settings starts it again (it used to
+# retry every 15 s for days: 8,990 times on the owner's PC, Nov 23).
+StartLimitIntervalSec=600
+StartLimitBurst=5
 
 [Service]
+# Fedora's SELinux won't let a service run a program marked as data (/var/lib's own mark): Hearth marks the app as a
+# program before each start (as root, outside the sandbox; '-': nothing happens where there's no SELinux).
+ExecStartPre=-+/usr/bin/chcon -R -t bin_t /var/lib/hearth/apps/jellyfin
 ExecStart=/bin/false
 Environment=HOME=/var/lib/hearth/jellyfin
 Restart=on-failure

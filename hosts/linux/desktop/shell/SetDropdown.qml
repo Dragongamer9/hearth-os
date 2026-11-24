@@ -15,6 +15,8 @@ ColumnLayout {
     property var current
     property bool open: false
     property int boxWidth: 300
+    // Inside a card with others (Desktop layout's cards), like SetChoice and SetSwitch: no card of its own.
+    property bool inset: false
     signal chosen(var value)
     readonly property alias head: head
     readonly property int idx: Math.max(0, options.findIndex(o => o.value === current))
@@ -36,6 +38,7 @@ ColumnLayout {
 
     SetBase {
         id: head
+        inset: dd.inset
         Layout.fillWidth: true
         usesLeftRight: true
         ownsEscape: dd.open                    // B on the card while the list is open closes the list

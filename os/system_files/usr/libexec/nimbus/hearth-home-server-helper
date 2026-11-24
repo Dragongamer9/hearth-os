@@ -47,6 +47,8 @@ Storage's shares in /etc/samba/hearth-storage.conf, the home server's in /etc/sa
   app-install NAME      ollama | jellyfin: the newest release from its maker, SHA-256 checked, into /var/lib/hearth/apps
                         (in its own transient unit; only when you ask, never at build or boot)
   app-remove NAME       the app goes; its data (models, libraries) stays
+  app-fix NAME          Settings › AI's Fix it: an installed app that couldn't start (Fedora's SELinux keeping it from
+                        running its program) marked as a program again, its failures cleared, started (1.18)
   services run          the services timer: Light mode for the AI service and the media server, the Command Center
                         noted when it uses the AI service, the ransomware guard, the Tailscale-only rule kept loaded;
                         also Light mode for AI pictures (ComfyUI), AI voices (Kokoro) and Voice Studio, your own user services
@@ -73,6 +75,15 @@ is a folder inside your Home (not Home itself) or on a drive mounted under /run/
 /var/mnt that isn't the system drive; never /, /etc, /usr, /boot, /sysroot, /ostree, nothing hidden on the way.
 One JSON line on stdout: {"ok": true, ...} or {"ok": false, "error": "..."}.
 """
+# A newer copy from the Hearth Store (a root-owned system part, hearth-system-part; docs/STORE-SYSTEM-PARTS.md) is
+# used only when one is installed in /var/lib/hearth/system-parts and every check there passes; else this one runs.
+import os as _hsp_os, sys as _hsp_sys  # noqa: E401
+if _hsp_os.environ.get("HEARTH_SYSTEM_PART") != "1" and _hsp_os.path.isfile("/var/lib/hearth/system-parts/hearth-home-server-helper/part.json") \
+        and _hsp_os.access("/usr/libexec/hearth/hearth-system-part", _hsp_os.X_OK):
+    try:
+        _hsp_os.execv("/usr/libexec/hearth/hearth-system-part", ["hearth-system-part", "run", "hearth-home-server-helper", _hsp_os.path.realpath(__file__)] + _hsp_sys.argv[1:])
+    except OSError:
+        pass
 import hashlib
 import importlib.machinery
 import importlib.util
@@ -2554,6 +2565,14 @@ def ups_status():
 # releases, checked against the SHA-256 their makers publish: never in the image, never at boot. They live in
 # /var/lib/hearth/apps/NAME (root's, read only for the services), their data next to it; removing one keeps its data.
 APPS_DIR = '/var/lib/hearth/apps'
+
+
+def label_program(path):
+    """Fedora's SELinux keeps services from running programs in /var/lib (they're marked as data there): the app is
+    marked as a program (its units do the same before each start, so an older install is put right too)."""
+    if not which('chcon') or not which('getenforce') or run(['getenforce'])[1].strip() == 'Disabled':
+        return
+    run(['chcon', '-R', '-t', 'bin_t', path])
 APP_STATE = '/var/lib/hearth/home-server-apps.json'       # installed versions and install progress (no secrets)
 SERVICES_STATE = '/run/hearth/home-server-services.json'  # what Light mode stopped or unloaded for your game
 SEEN_SYS = '/var/lib/hearth/home-server-seen.json'        # the Command Center seen using the AI service (hide-until-seen)
@@ -2873,6 +2892,7 @@ def app_install_run(name):
         os.rename(new, dest)
         if os.path.isdir(old):
             shutil.rmtree(old, ignore_errors=True)
+        label_program(dest)
         app_state_set(name, installing=False, progress=100, version=rel['version'], sha256=rel['sha256'], at=int(time.time()), error='')
         if os.path.exists(APP_DROPIN % APP_UNITS[name]):
             run(['systemctl', 'restart', APP_UNITS[name] + '.service'])
@@ -2884,6 +2904,21 @@ def app_install_run(name):
         for p in (work, new):
             if os.path.isdir(p):
                 shutil.rmtree(p, ignore_errors=True)
+
+
+def app_fix(name):
+    """Fix it (Settings › AI, the approved mockup ai-3): only an app Hearth installed, only its own unit, nothing else."""
+    caller()
+    if name not in APPS:
+        raise Fail('unknown app')
+    dest = os.path.join(APPS_DIR, name)
+    if not os.path.isdir(dest):
+        raise Fail('%s isn\'t installed' % APPS[name]['label'])
+    label_program(dest)
+    unit = APP_UNITS[name] + '.service'
+    run(['systemctl', 'reset-failed', unit])
+    code, out = run(['systemctl', 'restart', unit], timeout=90)
+    return {'ok': code == 0, 'fixed': name, 'error': '' if code == 0 else out.strip()[-200:]}
 
 
 def app_install(name):
@@ -3033,7 +3068,48 @@ def services_switch(svc, res):
 def services_timer_needed(plan):
     ai, media, guard = clean_ai(plan.get('ai')), clean_media(plan.get('media')), clean_guard(plan.get('guard'))
     apps = [clean_user_app(plan.get(key), pdef) for key, _, pdef in USER_APPS.values()]
-    return ai['on'] or (media['on'] and media['pause']) or guard['on'] or any(a['on'] and a['pause'] for a in apps)
+    # 1.18 (Everything connects by itself): also whenever a service is on, so it comes back by itself after an update
+    # or a restart (bring_back).
+    return ai['on'] or media['on'] or guard['on'] or any(a['on'] for a in apps)
+
+
+BACK_TRIES = 5            # starts in BACK_WINDOW seconds, then it waits (as hearth-ollama.service's own start limit)
+BACK_WINDOW = 600
+
+
+def bring_back(plan, playing, paused, did, st, now):
+    """1.18, Everything connects by itself (the owner, Nov 21: "should just launch ... and pick the stuff up"): a
+    service you turned on that isn't running (after an update, a restart, or it stopped) is started again, unless
+    you're playing and it waits for your game, a rule or quiet hours hold it, or it already tried BACK_TRIES times in
+    BACK_WINDOW (then Settings › AI says so and Try again starts it). It never turns on anything you turned off."""
+    if playing:
+        return
+    tries = st.setdefault('back', {})
+
+    def may(name):
+        t = [x for x in tries.get(name, []) if now - x < BACK_WINDOW]
+        tries[name] = t
+        if len(t) >= BACK_TRIES:
+            return False
+        t.append(int(now))
+        return True
+    ai, media = clean_ai(plan.get('ai')), clean_media(plan.get('media'))
+    for name, want in (('ollama', ai['on']), ('jellyfin', media['on'])):
+        unit = APP_UNITS[name] + '.service'
+        if want and name not in paused and app_installed(name) and os.path.exists(APP_DROPIN % APP_UNITS[name]) \
+                and not unit_active(unit) and may(name):
+            run(['systemctl', 'start', unit])
+            did.append('started %s again (it was on)' % name)
+    user = plan.get('user')
+    for name, (key, unit, pdef) in USER_APPS.items():
+        cfg = clean_user_app(plan.get(key), pdef)
+        if not cfg['on'] or name in paused or (name in RULE_OF and rule_wait(RULE_OF[name])):
+            continue
+        code, _ = user_systemctl(user, 'is-active', unit)
+        pw = getpw(user) if isinstance(user, str) and ACCOUNT_RE.fullmatch(user) else None
+        if code != 0 and pw and os.path.exists(USER_RUN % pw.pw_uid + '/bus') and may(name):
+            user_systemctl(user, 'start', unit)
+            did.append('started %s again (it was on)' % name)
 
 
 def ollama_api(method, path, body=None, timeout=10):
@@ -3299,6 +3375,7 @@ def services_run(now=None):
         paused.append('jellyfin')
     user_apps_light(plan, playing, paused, did, st, now)
     rules_light(plan, playing, paused, did, st, now)
+    bring_back(plan, playing, paused, did, st, now)
     for key, port, pdef in (('voices', KOKORO_PORT, False), ('studio', STUDIO_PORT, True)):
         if not playing and clean_user_app(plan.get(key), pdef)['on']:
             users = ai_clients(port)     # the Command Center's voice settings talking to AI voices or Voice Studio
@@ -3641,6 +3718,8 @@ def main(argv):
             res = app_install_run(a[2])
         elif len(a) == 2 and a[0] == 'app-remove':
             res = app_remove(a[1])
+        elif len(a) == 2 and a[0] == 'app-fix':
+            res = app_fix(a[1])
         elif a == ['services', 'run']:
             res = services_run()
         elif len(a) == 3 and a[0] == 'svc':

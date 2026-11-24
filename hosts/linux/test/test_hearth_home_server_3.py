@@ -145,10 +145,36 @@ class Reach(Stage3):
         self.assertNotIn(hh.SERVICES_TIMER, self.rec.enabled)
         hh.apply({'shares': [], 'guard': {'on': True}})
         self.assertIn(hh.SERVICES_TIMER, self.rec.enabled)
+        # 1.18 (Everything connects by itself): a service that's on needs the timer, to come back after a restart.
         hh.apply({'shares': [], 'media': {'on': True, 'pause': False}})
-        self.assertNotIn(hh.SERVICES_TIMER, self.rec.enabled, 'a media server that keeps streaming needs no timer')
+        self.assertIn(hh.SERVICES_TIMER, self.rec.enabled, 'a media server that is on comes back by itself')
         hh.apply({'shares': [], 'ai': {'on': True}})
         self.assertIn(hh.SERVICES_TIMER, self.rec.enabled)
+        hh.apply({'shares': []})
+        self.assertNotIn(hh.SERVICES_TIMER, self.rec.enabled, 'nothing on: no timer')
+
+    def test_a_service_that_is_on_comes_back_by_itself_but_not_forever(self):
+        started = []
+        orig = (hh.app_installed, hh.unit_active, hh.run)
+        hh.app_installed = lambda n: True
+        hh.unit_active = lambda u: False
+        hh.run = lambda cmd, *a, **k: (started.append(cmd), (0, '', ''))[1]
+        try:
+            os.makedirs(os.path.dirname(hh.APP_DROPIN % 'hearth-ollama'), exist_ok=True)
+            open(hh.APP_DROPIN % 'hearth-ollama', 'w').close()
+            st, did = {}, []
+            plan = {'ai': {'on': True}, 'media': {'on': False}}
+            for i in range(8):
+                hh.bring_back(plan, False, [], did, st, 1000 + i * 60)
+            n = len([c for c in started if c[:3] == ['systemctl', 'start', 'hearth-ollama.service']])
+            self.assertTrue(0 < n <= hh.BACK_TRIES, 'started again, but not more than its tries in ten minutes')
+            started.clear()
+            hh.bring_back(plan, True, [], did, {}, 5000)
+            self.assertFalse(started, 'never while you play')
+            hh.bring_back({'ai': {'on': False}, 'media': {'on': False}}, False, [], did, {}, 6000)
+            self.assertFalse(started, 'never something you turned off')
+        finally:
+            hh.app_installed, hh.unit_active, hh.run = orig
 
 
 # ---------------------------------------------------------------------------------------------------- verified installs

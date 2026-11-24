@@ -509,11 +509,15 @@ pub struct Desk {
     pub labwc: bool,
     pub labwc_missing: String,
     // <<< labwc on the Fedora edition
+    /// 1.18 (Debian): Mantel or Mantel in Rust (hearth-your-desktop's status): "mantel" / "rust"; empty where there's no
+    /// hearth-your-desktop (then the Fedora rows above).
+    pub mantel: String,
+    pub rust_here: bool,
 }
 
 // (Firehold (Rust, test) was archived on Nov 19: hearth-firehold-plasma's `choice` already answers "firehold" for a
 // device that had picked it, since that's what opens there now, and its next pick replaces that old pick.)
-pub const DESK: &str = "echo '#@fp'; command -v hearth-firehold-plasma >/dev/null && hearth-firehold-plasma choice 2>/dev/null; echo '#@has'; command -v hearth-firehold-plasma; command -v hearth-labwc-desktop; echo '#@lw'; command -v hearth-labwc-desktop >/dev/null && timeout 10 hearth-labwc-desktop status 2>/dev/null";
+pub const DESK: &str = "echo '#@yd'; y=/usr/share/nimbus/desktop/shell/hearth-your-desktop; [ -f \"$y\" ] || y=/usr/local/share/nimbus/desktop/shell/hearth-your-desktop; [ -f \"$y\" ] && timeout 15 python3 \"$y\" status 2>/dev/null; echo '#@fp'; command -v hearth-firehold-plasma >/dev/null && hearth-firehold-plasma choice 2>/dev/null; echo '#@has'; command -v hearth-firehold-plasma; command -v hearth-labwc-desktop; echo '#@lw'; command -v hearth-labwc-desktop >/dev/null && timeout 10 hearth-labwc-desktop status 2>/dev/null";
 
 pub fn desk(out: &str) -> Desk {
     let m = sections(out);
@@ -532,7 +536,10 @@ pub fn desk(out: &str) -> Desk {
     }
     let labwc_missing = lw.get("missing").and_then(|v| v.as_array()).map(|a| a.iter().filter_map(|x| x.as_str()).collect::<Vec<_>>().join(" and ")).unwrap_or_default();
     // <<< labwc on the Fedora edition
-    Desk { plasma_fh, chosen: chosen.into(), labwc, labwc_missing }
+    let yd: serde_json::Value = serde_json::from_str(sec(&m, "yd").trim()).unwrap_or(serde_json::Value::Null);
+    let mantel = yd.get("mantel").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let rust_here = yd.get("mantelRustHere").and_then(|v| v.as_bool()).unwrap_or(false);
+    Desk { plasma_fh, chosen: chosen.into(), labwc, labwc_missing, mantel, rust_here }
 }
 
 /// Saving a Desktop Mode choice: Firehold on Plasma's own helper saves its own line (hearth_settings_io).
@@ -541,6 +548,9 @@ pub fn desk_cmd(d: &Desk, pick: &str) -> Vec<String> {
     // >>> labwc on the Fedora edition: its picks, and KDE Plasma's pick moves off them (hearth-firehold-plasma alone
     // writes nothing when its reader already says plasma)
     let lw = |w: &str| if d.labwc { format!("hearth-labwc-desktop choose {w}") } else { "true".into() };
+    if pick == "mantel" || pick == "rust" {
+        return sh(&format!("y=/usr/share/nimbus/desktop/shell/hearth-your-desktop; [ -f \"$y\" ] || y=/usr/local/share/nimbus/desktop/shell/hearth-your-desktop; python3 \"$y\" mantel {pick} >/dev/null"));
+    }
     let s = match pick {
         "classic" => lw("classic"),
         "firehold-labwc" => lw("firehold"),

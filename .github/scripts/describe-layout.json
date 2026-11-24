@@ -1,0 +1,4 @@
+{"_asked": "Put the bar at the bottom like KDE, the clock at the end, and a show desktop strip",
+ "kind": "layout", "changes": ["One bar along the bottom, full width", "Your apps in the bar, no floating dock", "The clock at the end, then Game Mode and Show desktop"],
+ "layout": {"format": 1, "id": "mine", "name": "My desktop", "desktop": {"barLayout": "one", "barEdge": "bottom", "dockFloat": "off", "barStyle": "bar", "clockAt": "end"},
+            "bar": {"start": ["menu"], "end": ["tray", "network", "volume", "battery", "notifications", "showdesktop"]}}}

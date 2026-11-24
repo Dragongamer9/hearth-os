@@ -96,7 +96,7 @@ if [ -z "${STEAM_OVERLAY:-}" ] && [ -n "${HHD_MANAGED:-}" ]; then
           kill "$watcher" 2>/dev/null
           exit 1
         fi
-        if ! err=$(quickshell ipc -p "$SHARE/desktop/shell" call quick toggle 2>&1 >/dev/null); then
+        if ! err=$(quickshell ipc -p "$(m=$(head -c 4096 "${XDG_RUNTIME_DIR:-/tmp}/hearth-mantel-shell" 2>/dev/null); [ -n "$m" ] && [ -f "$m/shell.qml" ] && echo "$m" || echo "$SHARE/desktop/shell")" call quick toggle 2>&1 >/dev/null); then
           err=$(printf '%s' "$err" | tr '\n' ' ' | cut -c1-200)
           echo "hearth-overlay: Mantel's Quick Access didn't answer${err:+ ($err)}" >&2
         fi ;;

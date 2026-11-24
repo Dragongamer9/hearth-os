@@ -43,6 +43,7 @@
 //! - inputs.rs: controller layouts from your other devices (Hearth Input; pull only, checked here)
 //! - decky.rs: a Decky plugin's files for another of your devices (installed there only through Decky's own prompt)
 //! - tv.rs: Send to TV: a link, a video or a show from a Hearth PC to a Hearth TV, which plays it
+//! - clipboard.rs: the clipboard's text between your own devices ("Copy here, paste there"; off by default)
 //! - ai.rs: local AI over Hearth Link (a device's own model server, shared with the paired devices; off by default)
 //! - moonlight.rs: Family and friends with Moonlight: a friend's PC lets yours connect (its own switch, approval,
 //!   ask every time), Moonlight's connections carried over Hearth Link's (no router port)
@@ -50,6 +51,7 @@
 //! - ipc.rs: the UI's (and `hearth-link call`'s) way in: a Unix socket only this user can open
 
 pub mod ai;
+pub mod clipboard;
 pub mod decky;
 pub mod discovery;
 pub mod family;
