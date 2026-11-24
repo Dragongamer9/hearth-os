@@ -50,6 +50,8 @@ pub enum Dlg {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Describe it and its blocks (hearth_ui::describe, hearth_ui::blocks; every Hearth app has them)
+    Describe(hearth_ui::describe::DMsg),
     Theme,
     Tick,
     Live,
@@ -124,6 +126,7 @@ pub enum Msg {
 }
 
 pub struct App {
+    pub describe: hearth_ui::describe::Describe,
     pub p: Pal,
     pub root: Root,
     pub page: Page,
@@ -203,6 +206,7 @@ impl App {
         let set = app::arg("--set").and_then(|x| x.parse().ok()).filter(|&n: &u8| (1..=3).contains(&n)).unwrap_or_else(|| config::set_in_use(&cfg));
         let g = app::arg("--key").and_then(|x| x.parse().ok()).filter(|&n: &u8| (1..=18).contains(&n)).unwrap_or(5);
         let mut a = App {
+            describe: hearth_ui::describe::Describe::new("g15", "Logitech G15").with_pages(view::BLOCKS),
             p: hearth_ui::theme::load(),
             status: service::status(&root),
             prev: Previewer::new(root.clone()),
@@ -739,6 +743,7 @@ fn page_index(p: Page) -> usize {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Tick => {
             // Light at rest: the pictures are drawn again only when something changed (the live page has its own
@@ -1434,7 +1439,7 @@ fn main() -> iced::Result {
     if app::handle_cli("hearth-g15-app", "Logitech G15: G-keys and macros, the keyboard's screen, its lights.\n  --page overview|g-keys|screen|lighting|editor[:SCREEN]   the page to open\n  --key N  --set N   the G-key and key set the G-keys page opens at\n  --show hearth|apps|rename|games   a dialog (pictures)") {
         return Ok(());
     }
-    iced::application(App::new, update, view::view)
+    iced::application(App::new, update, view::shown)
         .title("Logitech G15")
         .subscription(subscription)
         .theme(|a: &App| app::iced_theme(&a.p))

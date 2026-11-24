@@ -187,7 +187,7 @@ impl App {
             _ => Page::Idea,
         };
         let a = App {
-            describe: hearth_ui::describe::Describe::new("ideas", "Hearth Ideas"),
+            describe: hearth_ui::describe::Describe::new("ideas", "Hearth Ideas").with_pages(BLOCKS),
             p: hearth_ui::theme::load(),
             ideas: Vec::new(),
             loading: true,
@@ -1210,6 +1210,13 @@ fn ship_box<'a>(a: &'a App) -> Option<Element<'a, Msg>> {
     Some(container(body).padding(32.0).width(Length::Fixed(900.0)).style(ui::boxed(p.panel, p.r(12.0), Some((p.line, 1.0)))).into())
 }
 
+/// Hearth Ideas' blocks (hearth_ui::blocks).
+const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+    id: "window",
+    title: "Hearth Ideas",
+    blocks: &[hearth_ui::blocks::bl("side", "The side", 0, 0, 2, 12), hearth_ui::blocks::bl("page", "The page", 2, 0, 10, 12)],
+}];
+
 fn view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
     let main: Element<'_, Msg> = match a.page {
@@ -1217,8 +1224,15 @@ fn view(a: &App) -> Element<'_, Msg> {
         Page::Idea => idea_page(a),
         Page::Built => built_page(a),
     };
-    let body = row![sidebar(a), container(main).padding(Padding { top: 28.0, right: 34.0, bottom: 24.0, left: 34.0 }).width(Length::Fill).height(Length::Fill)];
-    let mut base: Element<'_, Msg> = body.into();
+    // its blocks (hearth_ui::blocks): the side and the page, moved, sized, hidden or restyled; as it was when nothing is
+    let mut base: Element<'_, Msg> = hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "window",
+        vec![("side", sidebar(a)), ("page", container(main).padding(Padding { top: 28.0, right: 34.0, bottom: 24.0, left: 34.0 }).width(Length::Fill).height(Length::Fill).into())],
+        |ps| row![ps.take("side"), ps.take("page")].into(),
+        Msg::Describe,
+    );
     if let Some(dlg) = ship_box(a) {
         base = ui::dialog(base, dlg, None);
     }

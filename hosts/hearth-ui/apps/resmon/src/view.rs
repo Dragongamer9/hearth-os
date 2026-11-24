@@ -500,7 +500,7 @@ fn title_row(a: &App) -> E<'_> {
             })
             .into()
     };
-    let drag = |e: E<'static>| -> E<'static> { mouse_area(e).on_press(Msg::Drag).on_double_click(Msg::Maximize).into() };
+    let drag = |e: E<'static>| -> E<'static> { mouse_area(e).on_press(Msg::Drag).on_double_click(Msg::Maximize).on_right_press(Msg::Describe(hearth_ui::describe::DMsg::Open)).into() };
     let left = row![gap(14.0, 1.0), flame(), gap(8.0, 1.0), ts("Resource Monitor", 14.0, p.text).wrapping(text::Wrapping::None), gap(18.0, 1.0), t1(status.0, 13.0, status.1)].align_y(iced::Center);
     let r = row![
         drag(container(left).center_y(Length::Fixed(40.0)).into()),
@@ -545,20 +545,32 @@ fn tabs(a: &App) -> E<'_> {
     column![container(r).width(Length::Fill).height(Length::Fixed(41.0)).align_bottom(Length::Fixed(41.0)), hline(p.line)].into()
 }
 
+/// Resource Monitor's blocks (hearth_ui::blocks): each tab's tables and graphs.
+pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+    id: "tab",
+    title: "Overview, CPU, Memory, Disk, Network, GPU",
+    blocks: &[hearth_ui::blocks::bl("tables", "The tables", 0, 0, 9, 12), hearth_ui::blocks::bl("graphs", "The graphs", 9, 0, 3, 12)],
+}];
+
 pub fn view(a: &App) -> E<'_> {
     let p = a.p;
     let page: E = match a.tab {
         Tab::Pc => crate::board::page(a),
         _ => {
             let cw = 330.0;
-            row![
-                scrollable(container(left(a)).padding(Padding { top: 0.0, right: 6.0, bottom: 14.0, left: 0.0 })).height(Length::Fill).width(Length::Fill),
-                container(graphs(a)).width(Length::Fixed(cw)),
-            ]
-            .spacing(14.0)
-            .padding(Padding { top: 14.0, right: 16.0, bottom: 10.0, left: 16.0 })
-            .height(Length::Fill)
-            .into()
+            // its blocks (hearth_ui::blocks): the tables and the graphs, moved, sized, hidden or restyled; as it was
+            // when nothing is
+            hearth_ui::arrange::parts(
+                &a.describe,
+                &p,
+                "tab",
+                vec![
+                    ("tables", scrollable(container(left(a)).padding(Padding { top: 0.0, right: 6.0, bottom: 14.0, left: 0.0 })).height(Length::Fill).width(Length::Fill).into()),
+                    ("graphs", container(graphs(a)).width(Length::Fixed(cw)).into()),
+                ],
+                |ps| row![ps.take("tables"), ps.take("graphs")].spacing(14.0).padding(Padding { top: 14.0, right: 16.0, bottom: 10.0, left: 16.0 }).height(Length::Fill).into(),
+                Msg::Describe,
+            )
         }
     };
     let base: E = container(column![title_row(a), hline(Pal::a(p.line, 0.6)), tabs(a), page]).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();

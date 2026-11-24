@@ -106,6 +106,18 @@ fn panel<'a>(k: f32, title: &str, inner: E<'a>, h: Length) -> E<'a> {
         .into()
 }
 
+/// Server mode's blocks (hearth_ui::blocks).
+pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+    id: "dashboard",
+    title: "Server mode",
+    blocks: &[hearth_ui::blocks::bl("left", "Status and services", 0, 0, 9, 12), hearth_ui::blocks::bl("right", "Play and the rest", 9, 0, 3, 12)],
+}];
+
+/// Server mode with Describe it's box under it while it's open.
+pub fn shown(a: &App) -> E<'_> {
+    hearth_ui::describe::with_bar(view(a), &a.pal, &a.describe, Msg::Describe)
+}
+
 pub fn view(a: &App) -> E<'_> {
     let k = (a.size.width / 1920.0).min(a.size.height / 1080.0).max(0.55);
     let d = a.d.clone().unwrap_or(Value::Null);
@@ -147,10 +159,24 @@ pub fn view(a: &App) -> E<'_> {
         hline(G::line())
     ];
 
-    let body = row![left_column(a, &d, k), right_column(a, &d, k)]
-        .spacing(22.0 * k)
-        .padding(Padding { top: 14.0 * k, right: 36.0 * k, bottom: 12.0 * k, left: 36.0 * k })
-        .height(Length::Fill);
+    // its blocks (hearth_ui::blocks): the status and tiles, and Play with the rest, moved, sized, hidden or restyled;
+    // as it was when nothing is
+    let body = hearth_ui::arrange::parts(
+        &a.describe,
+        &a.pal,
+        "dashboard",
+        vec![("left", left_column(a, &d, k)), ("right", right_column(a, &d, k))],
+        move |ps| {
+            row![ps.take("left"), ps.take("right")]
+                .spacing(22.0 * k)
+                .padding(Padding { top: 14.0 * k, right: 36.0 * k, bottom: 12.0 * k, left: 36.0 * k })
+                .height(Length::Fill)
+                .into()
+        },
+        Msg::Describe,
+    );
+    // a right-click on the top line opens Describe it (and from it, Move and resize blocks)
+    let top = iced::widget::mouse_area(top).on_right_press(Msg::Describe(hearth_ui::describe::DMsg::Open));
 
     // ---- the buttons along the bottom
     let hint = |kk: &str, label: &str| -> E<'static> {

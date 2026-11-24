@@ -97,6 +97,8 @@ pub enum Msg {
     NightSaved(run::Output),
     SendLogs,
     Sent(run::Output),
+    /// Arrange this page's blocks (hearth_ui::blocks; the app's Describe it takes it: main.rs)
+    Describe(hearth_ui::describe::DMsg),
 }
 
 fn values_cmd(args: &[&str]) -> Vec<String> {
@@ -108,6 +110,19 @@ fn values_cmd(args: &[&str]) -> Vec<String> {
 fn load_vals() -> Task<Msg> {
     Task::perform(run::spawn(values_cmd(&["home"])), Msg::Vals)
 }
+
+/// Home's blocks (hearth_ui::blocks): moved, sized, hidden or restyled; as it was when nothing is.
+pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+    id: "home",
+    title: "Home",
+    blocks: &[
+        hearth_ui::blocks::bl("needs", "Things that need you", 0, 0, 12, 2),
+        hearth_ui::blocks::bl("tiles", "Storage, Your AI, Home server, Hearth Link", 0, 2, 12, 2),
+        hearth_ui::blocks::bls("quick", "Quick", 0, 4, 4, 8),
+        hearth_ui::blocks::bls("most", "You use these most", 4, 4, 4, 8),
+        hearth_ui::blocks::bls("pc", "This PC", 8, 4, 4, 8),
+    ],
+}];
 
 pub const TILES: [&str; 10] = ["lightmode", "wifi", "bt", "brightness", "volume", "startin", "updates", "power", "night", "dnd"];
 fn tile_name(id: &str) -> &'static str {
@@ -320,6 +335,7 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
                 s.vol = v;
             }
         }
+        Msg::Describe(_) => {}
         Msg::VolSet => {
             if let Some(s) = &st.sound {
                 return Task::perform(run::spawn(vec!["wpctl".into(), "set-volume".into(), "@DEFAULT_AUDIO_SINK@".into(), format!("{:.2}", s.vol)]), |o| Msg::Did("Couldn't change the volume", o));
@@ -404,7 +420,6 @@ fn home_view<'a>(a: &'a App) -> Element<'a, Msg> {
         container(stile(&p, "Hearth Link", v(st, "link_count"), v(st, "link_names"), Some(Msg::Go("sec-link")))).width(Length::FillPortion(1)),
     ]
     .spacing(18.0);
-    out = out.push(tiles);
 
     // Quick: the switches and sliders right here.
     let wifi_on = v(st, "wifi_on") == "on";
@@ -464,13 +479,26 @@ fn home_view<'a>(a: &'a App) -> Element<'a, Msg> {
     let send_line = if st.sent.is_empty() { "to Dragongamer9 in one press".to_string() } else { st.sent.clone() };
     pc.push(vrow(&p, "Send logs", &send_line, btn(&p, "Send", Kind::Normal, false, if st.sent == "Sending…" { None } else { Some(Msg::SendLogs) }), None, true));
 
-    let cards = row![
-        container(scard(&p, "Quick", quick)).width(Length::FillPortion(1)),
-        container(scard(&p, "You use these most", most)).width(Length::FillPortion(1)),
-        container(scard(&p, "This PC", pc)).width(Length::FillPortion(1)),
-    ]
-    .spacing(18.0);
-    out.push(cards).into()
+    // Home's blocks (hearth_ui::blocks): the banner, the four tiles, Quick, You use these most, This PC; laid out as
+    // the approved mockup draws them unless the person arranged them.
+    let banner: Element<Msg> = out.into();
+    hearth_ui::arrange::parts_in(
+        &a.describe,
+        &p,
+        "home",
+        Some(680.0),
+        vec![("needs", banner), ("tiles", tiles.into()), ("quick", scard(&p, "Quick", quick)), ("most", scard(&p, "You use these most", most)), ("pc", scard(&p, "This PC", pc))],
+        |ps| {
+            let cards = row![
+                container(ps.take("quick")).width(Length::FillPortion(1)),
+                container(ps.take("most")).width(Length::FillPortion(1)),
+                container(ps.take("pc")).width(Length::FillPortion(1)),
+            ]
+            .spacing(18.0);
+            column![ps.take("needs"), ps.take("tiles"), cards].spacing(18.0).into()
+        },
+        Msg::Describe,
+    )
 }
 
 /// settings-changes.js ago(): "just now", "2 min ago", "3 hours ago", "yesterday", "Nov 12".

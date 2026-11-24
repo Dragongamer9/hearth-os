@@ -97,7 +97,7 @@ impl App {
     fn new() -> (App, Task<Msg>) {
         let helper = std::env::var("HEARTH_RELIABILITY_HELPER").unwrap_or_else(|_| run::shell_helper("hearth_reliability.py"));
         let a = App {
-            describe: hearth_ui::describe::Describe::new("reliability", "Reliability history"),
+            describe: hearth_ui::describe::Describe::new("reliability", "Reliability history").with_pages(BLOCKS),
             p: hearth_ui::theme::load(),
             helper,
             summary: None,
@@ -358,6 +358,17 @@ fn mark<'a>(p: &Pal, k: &K, size: f32) -> Element<'a, Msg> {
 
 const LABEL_W: f32 = 150.0;
 
+/// Reliability history's blocks (hearth_ui::blocks).
+const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+    id: "main",
+    title: "Reliability history",
+    blocks: &[
+        hearth_ui::blocks::bl("header", "Heading", 0, 0, 12, 2),
+        hearth_ui::blocks::bl("chart", "The chart", 0, 2, 12, 5),
+        hearth_ui::blocks::bl("events", "The day's events", 0, 7, 12, 5),
+    ],
+}];
+
 fn view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
     let rows = a.rows();
@@ -488,7 +499,16 @@ fn view(a: &App) -> Element<'_, Msg> {
     .height(Length::Fill)
     .style(ui::boxed(p.panel, p.r(10.0), Some((p.line, 1.0))));
 
-    let page = column![title, header, hline(p.line), chart, container(events).padding(Padding { top: 0.0, right: 20.0, bottom: 16.0, left: 20.0 }).height(Length::Fill)];
+    // its blocks (hearth_ui::blocks): moved, sized, hidden or restyled; as it was when nothing is
+    let blocks = hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "main",
+        vec![("header", header.into()), ("chart", chart.into()), ("events", events.into())],
+        |ps| column![ps.take("header"), hline(p.line), ps.take("chart"), container(ps.take("events")).padding(Padding { top: 0.0, right: 20.0, bottom: 16.0, left: 20.0 }).height(Length::Fill)].into(),
+        Msg::Describe,
+    );
+    let page = column![title, blocks];
     let base: Element<Msg> = container(page).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
     let base = match &a.details {
         Some(d) => ui::dialog(base, details(a, d), Some(Msg::CloseDetails)),

@@ -654,7 +654,7 @@ impl App {
         };
         let mut s = App {
             p: hearth_ui::theme::load(),
-            describe: hearth_ui::describe::Describe::new("files", "Hearth Files"),
+            describe: hearth_ui::describe::Describe::new("files", "Hearth Files").with_pages(crate::view::BLOCKS),
             home: home.clone(),
             user,
             pick_name: pick.as_ref().map(|p| p.name.clone()).unwrap_or_default(),
