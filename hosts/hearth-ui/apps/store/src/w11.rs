@@ -174,7 +174,14 @@ fn tile<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let kind = if e.test { "Test version".to_string() } else if e.part.is_some() || e.kind == Kind::BuiltIn { format!("Hearth part{}", if e.card.is_empty() { String::new() } else { String::new() }) } else { category(e).to_string() };
-    let kind = if !e.tagline.is_empty() && e.kind == Kind::Install { format!("{} · {}", e.tagline, category(e)) } else { kind };
+    // An app's few words (store-w11-1: "Your AI team", "Ithil · AI"): its line up to the first ':' or ',', and what it
+    // is when those words don't say it already.
+    let kind = if !e.tagline.is_empty() && e.kind == Kind::Install {
+        let short = e.tagline.split([':', ',', '.']).next().unwrap_or("").trim().to_string();
+        if short.split_whitespace().any(|w| w == category(e)) { short } else { format!("{short} · {}", category(e)) }
+    } else {
+        kind
+    };
     let c = container(column![app_icon(e, z(64.0)), gap(1.0, z(22.0)), tb(e.name.clone(), f(14.0), tn.text), t(kind, f(12.0), tn.muted), Space::new().height(Length::Fill), foot(a, e)].spacing(z(3.0)))
         .padding(z(18.0))
         .width(Length::Fill)
@@ -482,6 +489,14 @@ pub fn library(a: &App) -> E<'_, Msg> {
             _ => !e.test && ((e.kind == Kind::Install && a.inst.contains_key(&e.id)) || (e.kind == Kind::BuiltIn && e.part.is_none() && a.here.contains(&e.id))),
         })
         .collect();
+    // When each changed (Sort by: Date updated, newest first): installed or updated by the Store, its quick update, or
+    // the Hearth OS it came with.
+    let os_day = std::fs::metadata("/usr/share/nimbus/version").ok().and_then(|m| m.modified().ok()).and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_secs() as i64).unwrap_or(0);
+    let when = |e: &Entry| -> i64 {
+        a.inst.get(&e.id).map(|i| i.when.max(i.mtime)).or_else(|| a.parts.get(&e.id).map(|h| h.installed)).filter(|w| *w > 0).unwrap_or(os_day)
+    };
+    let mut list = list;
+    list.sort_by_key(|e| std::cmp::Reverse(when(e)));
     let mut mine = Column::new();
     for (k, e) in list.iter().enumerate() {
         if k > 0 {
@@ -492,7 +507,10 @@ pub fn library(a: &App) -> E<'_, Msg> {
             _ if a.parts.contains_key(&e.id) => format!("Hearth part · {}", a.parts[&e.id].version),
             _ => format!("Built into {}", if a.hearth.is_empty() { "Hearth OS".to_string() } else { format!("Hearth OS {}", a.hearth) }),
         };
+        let w = when(e);
+        let day = if w > 0 { let d = view::day_time_pub(w); let d = d.split(" at ").next().unwrap_or("").to_string(); let mut c = d.chars(); c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default() } else { String::new() };
         let right: E<Msg> = row![
+            container(t(day, f(13.0), tn.muted)).width(Length::Fixed(z(130.0))),
             btn(&p, "Open", B::Normal, false, false, (e.kind != Kind::Coming).then(|| Msg::Launch(e.id.clone()))),
             gap(z(10.0), 1.0),
             btn(&p, "⋯", B::Normal, false, false, Some(Msg::OpenApp(e.id.clone())))
@@ -900,6 +918,30 @@ fn with_note<'a>(a: &'a App, page: E<'a, Msg>) -> E<'a, Msg> {
 }
 
 // ------------------------------------------------------------------ Hearth parts (store-everything/store-1)
+/// The lightning mark of "Hearth parts" (store-2's first kind of update), drawn (fonts may not have ⚡).
+struct Bolt;
+
+impl canvas::Program<Msg> for Bolt {
+    type State = canvas::Cache;
+    fn draw(&self, cache: &canvas::Cache, renderer: &iced::Renderer, _th: &Theme, b: iced::Rectangle, _c: iced::mouse::Cursor) -> Vec<canvas::Geometry> {
+        use iced::Point;
+        vec![cache.draw(renderer, b.size(), |fr: &mut canvas::Frame| {
+            let (w, h) = (b.width, b.height);
+            let pt = |x: f32, y: f32| Point::new(w * x, h * y);
+            let path = canvas::Path::new(|p| {
+                p.move_to(pt(0.58, 0.04));
+                p.line_to(pt(0.18, 0.56));
+                p.line_to(pt(0.47, 0.56));
+                p.line_to(pt(0.38, 0.96));
+                p.line_to(pt(0.82, 0.40));
+                p.line_to(pt(0.52, 0.40));
+                p.close();
+            });
+            fr.fill(&path, Color::WHITE);
+        })]
+    }
+}
+
 /// A tile with letters or a mark in two colours (the system card's H, the Fedora / Debian card's letter).
 fn tile_mark<'a>(inner: E<'a, Msg>, from: Color, to: Color, size: f32) -> E<'a, Msg> {
     container(inner).center_x(Length::Fixed(size)).center_y(Length::Fixed(size)).style(look::grad(135.0, from, to, (size * 0.22).round(), None)).into()
@@ -930,7 +972,9 @@ fn part_row<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let mut end = Row::new().spacing(z(14.0)).align_y(iced::Center);
     let mut fix = String::new();
     if let Some(o) = a.part_offer(e) {
-        fix = o.notes.first().cloned().unwrap_or_default();
+        if e.group_of() == "services" {
+            fix = o.notes.first().cloned().unwrap_or_default();
+        }
         end = end.push(chip(&p, o.version.clone(), Chip::Up)).push(btn(&p, if busy { "Updating…" } else { "Update" }, B::Normal, false, false, (!busy && !a.offline()).then(|| Msg::PartUpdate(e.id.clone()))));
     } else if let Some(v) = (!e.decky.is_empty()).then(|| a.decky_offer(e)).flatten() {
         end = end.push(chip(&p, v, Chip::Up)).push(btn(&p, if busy { "Updating…" } else { "Update" }, B::Normal, false, false, (!busy && !a.offline()).then_some(Msg::DeckyUpdate)));
@@ -1129,7 +1173,7 @@ pub fn system<'a>(a: &'a App) -> E<'a, Msg> {
         let r = row![mark, column![row![tb(name, f(15.0), tn.text), tagc].spacing(z(8.0)).align_y(iced::Center), t(sub, f(13.0), tn.muted)].spacing(z(4.0)).width(Length::Fill), end].spacing(z(16.0)).align_y(iced::Center);
         click(container(r).padding(look::pad(z(14.0), z(18.0), z(14.0), z(18.0))).width(Length::Fill), m)
     };
-    let bolt = tile_mark(ui::glyph(G::Update, Color::WHITE, z(20.0), 2.0), look::ORANGE2, Color::from_rgb8(0xd9, 0x53, 0x1e), z(44.0));
+    let bolt = tile_mark(canvas(Bolt).width(Length::Fixed(z(20.0))).height(Length::Fixed(z(22.0))).into(), look::ORANGE2, Color::from_rgb8(0xd9, 0x53, 0x1e), z(44.0));
     let base_mark = tile_mark(tb(word.chars().next().unwrap_or('S').to_string(), f(20.0), Color::WHITE).into(), Color::from_rgb8(0x4f, 0x8c, 0xff), Color::from_rgb8(0x25, 0x5f, 0xe0), z(44.0));
     let h_mark = tile_mark(tb("H", f(20.0), Color::WHITE).into(), Color::from_rgb8(0x3a, 0x2a, 0x22), Color::from_rgb8(0x1c, 0x14, 0x10), z(44.0));
     let sys_state: E<Msg> = if staged.is_some() { chip(&p, "ready", Chip::Up) } else if running { chip(&p, "downloading", Chip::Plain) } else if avail.is_some() { chip(&p, "out", Chip::Up) } else { chip(&p, "up to date", Chip::Ok) };
@@ -1200,7 +1244,8 @@ pub fn updating(a: &App) -> Option<E<'_, Msg>> {
     let tn = tone(&p);
     let word = hearth_store::system::base_word(&a.sys_base);
     let day = a.sys.as_ref().and_then(|s| s.available.as_ref().or(s.staged.as_ref())).map(|v| v.day()).unwrap_or_default();
-    let mut c = Column::new().push(head(a, "Library", true));
+    let check = btn(&p, if a.checking { "Checking…" } else { "⟳  Check for updates" }, B::Normal, false, false, (!a.checking).then_some(Msg::TryAgain));
+    let mut c = Column::new().push(container(row![ts("Library", f(30.0), tn.text), Space::new().width(Length::Fill), check].align_y(iced::Center)).padding(look::pad(0.0, 0.0, z(18.0), 0.0)).width(Length::Fill));
     let mut box_ = Column::new();
     let base_mark = |size: f32| tile_mark(tb(word.chars().next().unwrap_or('S').to_string(), f(size * 0.42), Color::WHITE).into(), Color::from_rgb8(0x4f, 0x8c, 0xff), Color::from_rgb8(0x25, 0x5f, 0xe0), size);
     let mut rows = 0;

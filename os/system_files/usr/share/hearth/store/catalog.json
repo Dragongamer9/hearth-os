@@ -541,7 +541,7 @@
       "from": "#a3acb9",
       "to": "#5b6472",
       "group": "services",
-      "with": "hearth-game-mode",
+      "with": "game-mode",
       "kind": "builtin",
       "short": "Hearth core",
       "tagline": "settings that never change by themselves",
