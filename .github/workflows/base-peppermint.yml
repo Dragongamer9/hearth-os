@@ -1052,6 +1052,22 @@ jobs:
           git -c user.name=github-actions -c user.email=github-actions@users.noreply.github.com commit -qm "Boot look ($GITHUB_RUN_ID)" || exit 0
           git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/boot-look || true
 
+      # REQUIRED (the owner, Nov 23, 2026: nothing reaches a device until a virtual PC shows it working): installed,
+      # signed in by itself, Game Mode, then Mantel on labwc, at rest for an hour (Mantel's memory and CPU). Screenshots
+      # and the numbers: the ci/debian-desktop branch.
+      - name: Signs in and opens the desktop in a virtual PC (screenshots, an hour at rest)
+        timeout-minutes: 120
+        run: bash .github/scripts/debian-desktop-vm.sh localhost/hearth-peppermint:latest "$PWD/debian-desktop"
+      - name: Publish the desktop screenshots (ci/debian-desktop)
+        if: always()
+        run: |
+          [ -d debian-desktop ] || exit 0
+          mkdir -p /tmp/dd-pub/run-$GITHUB_RUN_ID && cd /tmp/dd-pub
+          find "$GITHUB_WORKSPACE/debian-desktop" -maxdepth 1 -type f \( -name '*.png' -o -name 'memory.txt' -o -name 'job.txt' \) -size -5M -exec cp {} run-$GITHUB_RUN_ID/ \;
+          git init -q -b ci/debian-desktop && git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com add -A
+          git -c user.name=Dragongamer9 -c user.email=Dragongamer9@users.noreply.github.com commit -qm "Debian desktop, run $GITHUB_RUN_ID" || exit 0
+          git push -f -q "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" HEAD:refs/heads/ci/debian-desktop || true
+
       - name: Check the Qt renderer in the image
         continue-on-error: true
         run: |

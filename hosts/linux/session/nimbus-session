@@ -730,7 +730,7 @@ companion_stop() {
 # writes $XDG_RUNTIME_DIR/hearth-shell-up, shell.qml). Twice in a row → labwc until you turn KWin back on (Settings ›
 # System › Your desktop, or the notice's button: hearth-your-desktop wm kwin). Each time Mantel says why once
 # (desk_notice kwin missing|failed|twice, DesktopNotice.qml). session.conf's HEARTH_DESKTOP_WM=kwin|labwc picks (no
-# line: kwin); only hearth-your-desktop writes it. Safe graphics, a second player's seat (multi-seat) and Server mode
+# line: labwc since 1.18, after 1.14's freezes on KWin); only hearth-your-desktop writes it. Safe graphics, a second player's seat (multi-seat) and Server mode
 # stay on labwc. What Mantel and everything it starts are told: HEARTH_WM=kwin|labwc, and HEARTH_DESKTOP_PID (the
 # window manager's process id; labwc also sets LABWC_PID, which is never set under KWin: labwc --reconfigure would
 # send its signal to KWin).
@@ -761,8 +761,11 @@ desktop_wm_choice() {
       # (albireo, its name before, was only ever turned on by hand, before it was hidden: it counts as unlocked.)
       if [ "$w" = albireo ] || firehold_unlocked; then echo firehold
       else b=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP_WM_BEFORE=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
-           [ "$b" = labwc ] && echo labwc || echo kwin; fi ;;
-    *) echo kwin ;;
+           [ "$b" = kwin ] && echo kwin || echo labwc; fi ;;
+    kwin) echo kwin ;;
+    # No line: labwc (1.18, Debian again: KWin as Debian's default desktop froze and lagged the owner's laptop and ROG
+    # Ally on 1.14; labwc is what 1.13 ran smoothly). KWin only when it was picked in Settings › Your desktop.
+    *) echo labwc ;;
   esac
 }
 
@@ -805,7 +808,11 @@ desktop_wm() {
     log "desktop: Firehold (preview), tried once"
     choice=firehold
   fi
-  if [ "$choice" = labwc ]; then log "desktop: labwc (picked in Settings › Your desktop)"; echo labwc; return 0; fi
+  if [ "$choice" = labwc ]; then
+    if grep -q 'HEARTH_DESKTOP_WM=' "$SESSION_CONF" 2>/dev/null; then log "desktop: labwc (picked in Settings › Your desktop)"
+    else log "desktop: labwc (Hearth's default)"; fi
+    echo labwc; return 0
+  fi
   if [ -f "${HEARTH_SAFE_FLAG:-/run/hearth/safe-graphics}" ]; then log "desktop: safe graphics this time, labwc instead of KWin"; echo labwc; return 0; fi
   if [ "$choice" = firehold ] && firehold_ok; then echo firehold; return 0; fi
   if [ -e "$RUN/hearth-kwin-failed" ]; then log "desktop: KWin didn't start earlier this sign-in, labwc instead"; echo labwc; return 0; fi
