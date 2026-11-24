@@ -252,8 +252,13 @@ jobs:
           for b in hearth-task-manager hearth-system-restore hearth-reliability-history hearth-settings-app hearth-files-app hearth-file-chooser hearth-capture-app hearth-pad-host hearth-store-app hearth-server-app hearth-resmon-app hearth-notes-app hearth-ideas-app hearth-layout; do
             cp "$CARGO_TARGET_DIR/release/$b" /tmp/app/hearth-ui/ || { echo "::error title=Hearth's pure-Rust apps::$b didn't build"; exit 1; }
           done
+          # G15 and Family and friends come from this same build when their own steps above couldn't (where build.sh
+          # looks for them, beside the app).
+          for b in hearth-g15 hearth-g15-app hearth-family-app; do
+            [ -x "/tmp/app/$b" ] || cp "$CARGO_TARGET_DIR/release/$b" /tmp/app/ 2>/dev/null || echo "::warning title=Hearth's pure-Rust apps::no $b"
+          done
           tar -C /tmp/app -cf "$GITHUB_WORKSPACE/hearth-app.tar" .
-          echo "::notice title=Hearth's pure-Rust apps::$(ls /tmp/app/hearth-ui | tr '\n' ' ')"
+          echo "::notice title=Hearth's pure-Rust apps::$(ls /tmp/app/hearth-ui | tr '\n' ' ') · beside the app: $(ls /tmp/app | grep -E 'g15|family' | tr '\n' ' ')"
       # ---- end of Hearth's pure-Rust apps
       # ---- Hearth Photos and Hearth Documents (hosts/hearth-photos, hosts/hearth-documents): the picture viewer and
       # the PDF / e-book / comic reader, built the same way and put beside the app in hearth-app.tar (build.sh installs
