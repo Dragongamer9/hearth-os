@@ -138,14 +138,15 @@ PanelWindow {
         const t = sayField.text.trim();
         if (!t || busy) return;
         busy = true; error = "";
-        describeP.command = ScreenLayout.layoutCmd(["describe-screen", t, JSON.stringify(draft)]);
+        // Which app is asking (Describe it's notes), passed with env: no environment object on the Process
+        // (test_desktop_bug_hunt_2).
+        describeP.command = ["env", "HEARTH_DESCRIBE_APP=Mantel " + (Quickshell.env("HEARTH_MANTEL_VERSION") || "")].concat(ScreenLayout.layoutCmd(["describe-screen", t, JSON.stringify(draft)]));
         describeP.asked = t;
         describeP.running = true;
     }
     Process {
         id: describeP
         property string asked: ""
-        environment: ({ HEARTH_DESCRIBE_APP: "Mantel " + (Quickshell.env("HEARTH_MANTEL_VERSION") || "") })
         stdout: StdioCollector {
             onStreamFinished: {
                 ed.busy = false;

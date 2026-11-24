@@ -747,26 +747,13 @@ sys.exit(0 if f.get("unlocked") is True or d.get("firehold.unlocked") is True el
 }
 KWIN_GOOD_SECS="${HEARTH_KWIN_GOOD_SECS:-600}"   # a run this long before a crash starts the failure count over
 desktop_wm_choice() {
-  w=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP_WM=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
-  # albireo: Firehold's name before Nov 17, 2026 (a preview turned on then stays on); Settings' helper rewrites the
-  # line as firehold (atomically), never resetting it. The choice is read as Firehold either way.
-  if [ "$w" = albireo ] && [ -f "$SHARE/desktop/shell/hearth-your-desktop" ]; then
-    timeout 5 python3 "$SHARE/desktop/shell/hearth-your-desktop" status >/dev/null 2>&1 || true
-  fi
-  # Firehold stays as if it weren't there until it's unlocked on this device (firehold.json): then
-  # what was picked before it (or KWin).
-  case "$w" in
-    labwc) echo labwc ;;
-    firehold|albireo)
-      # (albireo, its name before, was only ever turned on by hand, before it was hidden: it counts as unlocked.)
-      if [ "$w" = albireo ] || firehold_unlocked; then echo firehold
-      else b=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP_WM_BEFORE=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1)
-           [ "$b" = kwin ] && echo kwin || echo labwc; fi ;;
-    kwin) echo kwin ;;
-    # No line: labwc (1.18, Debian again: KWin as Debian's default desktop froze and lagged the owner's laptop and ROG
-    # Ally on 1.14; labwc is what 1.13 ran smoothly). KWin only when it was picked in Settings › Your desktop.
-    *) echo labwc ;;
-  esac
+  # 1.18 (the owner, Nov 23: "only 2 versions i want are Mantel and the Rust version of it"): Desktop Mode is Mantel
+  # (or Mantel in Rust) on labwc, always. A KWin or Firehold pick from before is kept in session.conf as it is but not
+  # used (desktop_wm tells the person once).
+  echo labwc
+}
+desktop_wm_picked() {   # what session.conf says (kwin, firehold, labwc or nothing): only for telling the person
+  sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_DESKTOP_WM=["'"'"']*\([a-z]*\).*/\2/p' "$SESSION_CONF" 2>/dev/null | tail -n 1
 }
 
 # ---- 2.0 preview: Firehold, Hearth's own compositor (hosts/firehold-comp, docs/FIREHOLD.md). Only when it's turned on
@@ -809,8 +796,13 @@ desktop_wm() {
     choice=firehold
   fi
   if [ "$choice" = labwc ]; then
-    if grep -q 'HEARTH_DESKTOP_WM=' "$SESSION_CONF" 2>/dev/null; then log "desktop: labwc (picked in Settings › Your desktop)"
-    else log "desktop: labwc (Hearth's default)"; fi
+    was=$(desktop_wm_picked)
+    case "$was" in
+      kwin|firehold|albireo)
+        log "desktop: labwc ($was was picked before 1.18; Desktop Mode is Mantel on labwc now)"
+        [ -e "$DESK_STATE/wm-retired-told" ] || { mkdir -p "$DESK_STATE"; : >"$DESK_STATE/wm-retired-told"; desk_notice kwin retired; } ;;
+      *) log "desktop: labwc" ;;
+    esac
     echo labwc; return 0
   fi
   if [ -f "${HEARTH_SAFE_FLAG:-/run/hearth/safe-graphics}" ]; then log "desktop: safe graphics this time, labwc instead of KWin"; echo labwc; return 0; fi

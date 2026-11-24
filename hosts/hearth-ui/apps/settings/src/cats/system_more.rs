@@ -551,6 +551,28 @@ fn your_desktop(a: &App) -> El<'_> {
     // 1.17 (the owner, Nov 21): "Put the default Desktop enviroment as Hearth Clasic labwc", and "hide Fire hold and KDE,
     // dont have to uninstall them just hide them": Mantel is the one choice shown where labwc is in the image. KDE
     // Plasma and Firehold stay installed (and a device that picked one keeps it); KDE Plasma is still the safe start.
+    // 1.18 (the owner, Nov 23: "only 2 versions i want are Mantel and the Rust version of it, add a switcher in the
+    // Setting"): on Debian, Mantel or Mantel in Rust (marked Rust), both on labwc.
+    if !d.mantel.is_empty() {
+        let mut c = Column::new().spacing(10.0).push(t("What Desktop Mode opens. Nothing changes until you switch to Desktop Mode again.", sz(14.0), p.muted));
+        for (id, name, sub) in [("mantel", "Mantel", "Hearth's own desktop with all of Hearth's apps, built into Hearth OS"), ("rust", "Mantel in Rust", "The same desktop written in Rust, from the Hearth Store")] {
+            let on = d.mantel == id;
+            let here = id == "mantel" || d.rust_here;
+            let label = if id == "rust" { format!("{name}  ·  Rust") } else { name.to_string() };
+            let right: El<'_> = if on { t1("Picked", sz(13.0), p.accent).into() }
+                else if !here { t1("Get it in the Hearth Store", sz(13.0), p.muted).into() }
+                else { btn(&p, "Use", Kind::Normal, false, Some(Msg::Desktop(id))) };
+            c = c.push(srow(&p, G::Grid, label, sub, right));
+        }
+        if st.desk_saved {
+            c = c.push(card(&p, row![
+                column![ts("Saved", sz(15.0), p.text), t("It opens the next time you switch to Desktop Mode. Switching now closes open apps.", sz(13.0), p.muted)].spacing(2.0).width(Length::Fill),
+                btn(&p, "Switch now", Kind::Primary, false, Some(Msg::SwitchNow))
+            ].spacing(10.0).align_y(iced::Center)));
+        }
+        c = c.push(value_row(&p, G::Shield, "Safe start", "If Mantel in Rust closes right after it starts, Mantel opens instead for that sign-in. Your choice stays saved.", "always on", true));
+        return c.into();
+    }
     let mut opts: Vec<(&'static str, &'static str, &'static str)> = Vec::new();
     if d.labwc {
         opts.push(("classic", "Mantel (Hearth Classic)", "Hearth's own desktop: the bar, the dock, Quick Access and all of Hearth's apps (the default)"));

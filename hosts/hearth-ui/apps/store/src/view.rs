@@ -446,7 +446,8 @@ fn tile<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let tn = tone(&p);
     let st = a.state(e);
     let id = format!("tile-{}", e.id);
-    let txt = column![ts(e.short.clone(), f(18.0), tn.text), container(t(tile_sub(a, e, &st), f(14.0), tn.muted)).padding(look::pad(z(4.0), 0.0, z(12.0), 0.0)), status_chip(a, e, &st, false)];
+    let title = if e.tag == "rust" { format!("{}  ·  Rust", e.short) } else { e.short.clone() };
+    let txt = column![ts(title, f(18.0), tn.text), container(t(tile_sub(a, e, &st), f(14.0), tn.muted)).padding(look::pad(z(4.0), 0.0, z(12.0), 0.0)), status_chip(a, e, &st, false)];
     let c = container(row![app_icon(e, z(56.0)), txt.width(Length::Fill)].spacing(z(16.0)).align_y(iced::Top))
         .padding(look::pad(z(18.0), z(20.0), z(18.0), z(20.0)))
         .width(Length::Fill)
@@ -701,6 +702,8 @@ fn app_head<'a>(a: &'a App, e: &Entry) -> E<'a, Msg> {
     let st = a.state(e);
     let line = if e.test {
         format!("Test version · by {}", e.author)
+    } else if e.tag == "rust" {
+        format!("Rust · from the Hearth Store · by {}", e.author)
     } else if e.part.is_some() {
         format!("Built into Hearth OS · by {}", e.author)
     } else if e.tagline.is_empty() {

@@ -80,6 +80,9 @@ pub struct Entry {
     /// A test version (Mantel in Rust): shown only with "Get test versions" on (or while it's installed), got and
     /// removed by hand, never offered as an update to a built-in app.
     pub test: bool,
+    /// A mark shown with its name: "rust" for Mantel in Rust (the owner, Nov 23: "have the Rust Version marked with
+    /// rust so its not a test version any more").
+    pub tag: String,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -155,6 +158,7 @@ impl Entry {
         });
         let short = s(v, "short");
         Some(Entry {
+            tag: { let t = s(v, "tag"); if t.is_empty() && v.get("part").and_then(|p| p.get("id")).and_then(Value::as_str) == Some("mantel-rust") { "rust".into() } else { t } },
             test: v.get("test").and_then(Value::as_bool).unwrap_or(false) || v.get("part").and_then(|x| x.get("test")).and_then(Value::as_bool).unwrap_or(false),
             part,
             short: if short.is_empty() { name.clone() } else { short },

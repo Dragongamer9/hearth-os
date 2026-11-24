@@ -578,7 +578,7 @@ def window_buttons():
     reloaded = False
     if os.path.isdir(runtime_dir()):
         labwc_config()
-        if os.environ.get('LABWC_PID') and shutil.which('labwc'):
+        if os.environ.get('LABWC_PID') and os.environ.get('HEARTH_WM', 'labwc') == 'labwc' and shutil.which('labwc'):
             reloaded = run(['labwc', '--reconfigure'])[0] == 0
     return {'ok': True, 'layout': layout or 'icon:iconify,max,close', 'reloaded': reloaded}
 

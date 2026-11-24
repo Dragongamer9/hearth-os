@@ -122,13 +122,15 @@ else
       # Desktop Mode ended (labwc or KWin gone): stop watching, or the "keeps closing" fallback would fire in Game Mode.
       if [ -n "$HEARTH_DESKTOP_PID" ] && ! kill -0 "$HEARTH_DESKTOP_PID" 2>/dev/null; then exit 0; fi
       started=$(date +%s)
-      # Mantel in Rust (a test, docs/MANTEL-RUST.md): only when the Hearth Store's test copy is installed and may be
+      # Mantel in Rust (docs/MANTEL-RUST.md): only when the Hearth Store's copy is installed and may be
       # used (hearth-part: checked against the signed list, made for this Hearth OS, not failed). Closing within 20 s
       # marks it failed and the QML Mantel starts next, as with a failed Store copy of Mantel (red flag 2).
-      rs=""
-      if [ -x /usr/libexec/hearth/hearth-part ]; then rs=$(/usr/libexec/hearth/hearth-part path mantel-rust "" 2>/dev/null) || rs=""; fi
+      # 1.18: Settings › System › Your desktop picks Mantel or Mantel in Rust (session.conf's HEARTH_MANTEL); with no
+      # pick, Mantel in Rust when its Store copy is here (as before). Picked but not here (or failed): Mantel.
+      rs=""; pickm=$(sed -n 's/^[[:space:]]*\(export[[:space:]]*\)\{0,1\}HEARTH_MANTEL=["'"'"']*\([a-z]*\).*/\2/p' "${XDG_CONFIG_HOME:-$HOME/.config}/nimbus/session.conf" 2>/dev/null | tail -n 1)
+      if [ "$pickm" != mantel ] && [ -x /usr/libexec/hearth/hearth-part ]; then rs=$(/usr/libexec/hearth/hearth-part path mantel-rust "" 2>/dev/null) || rs=""; fi
       if [ -n "$rs" ] && [ -x "$rs/hearth-mantel" ]; then
-        echo "--- Mantel in Rust (test) from the Hearth Store: $rs" >>"$SHELL_LOG"
+        echo "--- Mantel in Rust from the Hearth Store: $rs" >>"$SHELL_LOG"
         "$rs/hearth-mantel" session >>"$SHELL_LOG" 2>&1
         if [ $(($(date +%s) - started)) -lt 20 ]; then
           /usr/libexec/hearth/hearth-part failed mantel-rust 2>/dev/null; echo "--- Mantel in Rust closed right away; the QML Mantel" >>"$SHELL_LOG"

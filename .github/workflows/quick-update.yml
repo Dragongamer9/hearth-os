@@ -137,7 +137,7 @@ jobs:
               "hearth-g15-app": "Logitech G15", "hearth-family-app": "Family and friends", "hearth-server-app": "Server mode",
               "hearth-resmon-app": "Resource monitor", "hearth-system-restore": "System Restore",
               "hearth-reliability-history": "Reliability history", "hearth-file-chooser": "File chooser",
-              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "hearth-link": "Hearth Link", "hearth-ideas-app": "Hearth Ideas", "mantel-rust": "Mantel in Rust (test)"}
+              "hearth-pad-host": "Controller", "hearth-store-app": "Hearth Store", "hearth-link": "Hearth Link", "hearth-ideas-app": "Hearth Ideas", "mantel-rust": "Mantel in Rust"}
           part = {"id": app, "version": os.environ["VER"], "os": os.environ["OS"], "path": os.environ["INNER"],
                   "url": os.environ["URL"], "sha256": os.environ["SHA"], "size": int(os.environ["SIZE"]),
                   "notes": [l.strip() for l in os.environ.get("NOTES", "").split("|") if l.strip()]}
@@ -148,7 +148,12 @@ jobs:
           # Test versions (Mantel in Rust) go in their own list, "tests": Stores before 1.17.1 only read "apps", so they
           # can never offer a test version to everyone.
           # Red flag 13 (the owner, Nov 22): any app can have a test version (Channel: test).
-          test = app == "mantel-rust" or os.environ.get("CHANNEL") == "test"
+          # 1.18 (the owner, Nov 23: "have the Rust Version marked with rust so its not a test version any more"):
+          # Mantel in Rust is an ordinary app with a main and a test version like the others, marked "rust"; its old
+          # test-only entry leaves the tests list once a main version is published.
+          test = os.environ.get("CHANNEL") == "test"
+          if app == "mantel-rust" and not test:
+              d["tests"] = [x for x in d.get("tests", []) if not (x.get("id") == "part-mantel-rust" or (x.get("part") or {}).get("id") == "mantel-rust" and x.get("id") != "test-mantel-rust")]
           if test:
               d.setdefault("tests", [])
           for e in d["tests"] if test else d["apps"]:
@@ -156,7 +161,7 @@ jobs:
                   e["part"] = part
                   break
           else:
-              e = {"id": ("test-" if test and app != "mantel-rust" else "part-") + app, "name": names.get(app, app) + (" (test)" if test and app != "mantel-rust" else ""), "kind": "builtin", "part": part}
+              e = {"id": ("test-" if test else "part-") + app, "name": names.get(app, app) + (" (test)" if test else ""), "kind": "builtin", "part": part}
               if app not in ("mantel", "mantel-rust", "hearth-link"):
                   e["open"] = app
               (d["tests"] if test else d["apps"]).append(e)
@@ -164,9 +169,9 @@ jobs:
           if test:
               e["test"] = True
           if app == "mantel-rust":
-              e["test"] = True
-              e.setdefault("short", "Mantel in Rust")
-              e.setdefault("card", "Mantel drawn in Rust: lighter and quicker. A test.")
+              e["tag"] = "rust"
+              e["short"] = "Mantel in Rust"
+              e["card"] = "Mantel drawn in Rust: lighter and quicker. Pick it in Settings › System › Your desktop."
               e.setdefault("icon", "Rs")
               e.setdefault("from", "#ff8a3d")
               e.setdefault("to", "#b7410e")
