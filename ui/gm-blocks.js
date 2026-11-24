@@ -130,7 +130,7 @@ function gmbBlock(b, i, page){
 function gmbFree(page, w, h, fromLast){
   const L = gmbBlocks(page);
   if(fromLast && L.length){
-    const y0 = Math.max(...L.map(b => b.y)), row = L.filter(b => b.y === y0), x0 = Math.max(...row.map(b => b.x + b.w)) + 1;
+    const y0 = Math.max(...L.map(b => b.y)), row = L.filter(b => b.y === y0), x0 = Math.max(...row.map(b => b.x + b.w));
     for(let x = x0; x + w <= 24; x++) if(y0 + h <= 14 && !L.some(b => x < b.x + b.w && b.x < x + w && y0 < b.y + b.h && b.y < y0 + h)) return [x, y0];
   }
   for(let y = 0; y + h <= 14; y++) for(let x = 0; x + w <= 24; x++) if(!L.some(b => x < b.x + b.w && b.x < x + w && y < b.y + b.h && b.y < y + h)) return [x, y];

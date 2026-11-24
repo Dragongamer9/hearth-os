@@ -176,7 +176,7 @@ PanelWindow {
         if (t > 0) {
             const m = Math.max(1, Math.round((Date.now() / 1000 - t) / 60));
             parts.push(m < 60 ? m + " min ago" : m < 1440 ? Math.round(m / 60) + " h ago" : m < 2880 ? "yesterday" : Math.round(m / 1440) + " days ago");
-        } else if ((DeskState.recent || []).some(r => String(r).startsWith("game:"))) parts.push("Played last");
+        } else if ((DeskState.recent || []).indexOf("game:" + g.id) === 0 || (DeskState.recent || []).filter(r => String(r).startsWith("game:"))[0] === "game:" + g.id) parts.push("Played last");
         const src = ({ steam: "Steam", heroic: "Heroic", epic: "Epic", gog: "GOG", lutris: "Lutris", xbox: "Xbox Cloud", manual: "this PC", emu: "an emulator" })[g.source || ""];
         if (src && parts.length) parts.push("on " + src);
         return parts.join(" · ");
@@ -674,9 +674,9 @@ PanelWindow {
                 Repeater {
                     // the picked game's: when you played it last, how long these two weeks (Steam's own record), what's next
                     model: {
-                        const g = scr.pickedGame, mins = g ? (scr.played.twoWeeks || {})[g.id] || 0 : 0, when = scr.whenWhere(g);
+                        const g = scr.pickedGame, mins = g ? (scr.played.twoWeeks || {})[g.id] || 0 : 0, when = g && (scr.played.last || {})[g.id] ? scr.whenWhere(g) : "";
                         return [
-                            g && when ? { k: "Played last", v: when.split(" · ")[0], s: when.split(" · ").slice(1).join(" · ") }
+                            when ? { k: "Played last", v: when.split(" · ")[0], s: when.split(" · ").slice(1).join(" · ") }
                                       : { k: "Played last", v: scr.recentGames.length && (DeskState.recent || []).some(r => String(r).startsWith("game:")) ? scr.recentGames[0].title : "—", s: "" },
                             mins > 0 ? { k: "Played", v: (mins >= 60 ? Math.round(mins / 60) + " h" : mins + " min"), s: "these two weeks" }
                                      : { k: "Your games", v: String(scr.games.length), s: "in Hearth's library" },
