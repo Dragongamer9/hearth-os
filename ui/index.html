@@ -2028,7 +2028,7 @@ try{ Object.assign(LOOK, JSON.parse(localStorage.getItem('nimbus.look')||'{}'));
 // Appearance and the button swaps are also kept in a file (uiprefs: ~/.config/nimbus/game-mode-ui.json), their one
 // source of truth on Hearth OS: WebKit's localStorage can lose its last changes in a power cut, or everything when its
 // folder is reset (docs/SETTINGS-PERSISTENCE.md). Older versions kept them only here: copied to the file once.
-const UIPREF_KEYS=['nimbus.look','nimbus.swapAB','nimbus.swapXY'];
+const UIPREF_KEYS=['nimbus.look','nimbus.swapAB','nimbus.swapXY','nimbus.gmblocks'];
 // Not saved to the file: say so (the file wins at the next start, so the change would have gone back by itself).
 function uiPrefSave(k, v){ if(host) call('uiprefs.set',{values:{[k]:v}}).catch(e=>{ if(LINUX && !ANDROID) toast("Couldn't save this setting: "+((e&&e.message)||'no answer')); }); }
 function uiPrefsLoad(){
@@ -2041,6 +2041,7 @@ function uiPrefsLoad(){
     if(Object.keys(missing).length) call('uiprefs.set',{values:missing}).catch(()=>{});
     if(!changed) return;
     try{ Object.assign(LOOK, JSON.parse(f['nimbus.look']||'{}')); }catch(e){}
+    if(typeof gmbLoad==='function') gmbLoad();   // Game Mode made of blocks (gm-blocks.js)
     if(typeof f['nimbus.swapAB']==='string') PAD.swapAB=f['nimbus.swapAB']==='1';
     if(typeof f['nimbus.swapXY']==='string') PAD.swapXY=f['nimbus.swapXY']==='1';
     applyLook(); refreshUI();
@@ -2050,6 +2051,8 @@ const LAYOUTS = [
   {id:'shelf', name:'Shelf', desc:'Big shelves of your games under the art of the last one you played, with the menu at the side.'},
   {id:'tiles', name:'Tiles', desc:'A dashboard: your latest game as a big tile, recent games and shortcuts around it, tabs along the top.'},
   {id:'spotlight', name:'Spotlight', desc:'One row of games across the top. Whichever you pick fills the screen, with Play right there.'},
+  // Build anything board 6 (ui/gm-blocks.js): Home, Library and Quick Access from the desktop's blocks, edited with the controller
+  {id:'blocks', name:'Your own (blocks)', desc:'Home, Library and Quick Access made of the same blocks as your desktop: move, size and restyle them with the controller, or describe it.'},
 ];
 const XLAYOUTS = [
   {id:'x-carousel', name:'Hearthside carousel', desc:'Your games in a carousel, the one you pick big in the middle with Play under it.'},
@@ -2109,6 +2112,7 @@ function renderTopNav(){
   if(k){ const el=n.querySelector(`[data-k="${k}"]`); if(el){ focused=el; el.classList.add('focus'); el.focus({preventScroll:true}); } }
 }
 function layoutPreview(id){
+  if(id==='blocks') return `<i class="glow" style="left:4%;top:6%;width:38%;height:50%"></i><i style="left:45%;top:6%;width:24%;height:23%"></i><i style="left:72%;top:6%;width:24%;height:23%"></i><i style="left:45%;top:33%;width:24%;height:23%"></i><i class="acc" style="left:72%;top:33%;width:24%;height:23%"></i>${[0,1,2,3].map(i=>`<i style="left:${4+i*15}%;top:64%;width:13%;height:24%"></i>`).join('')}<i style="left:64%;top:64%;width:13%;height:24%;background:none;border:1px dashed var(--text)"></i>`;
   if(id==='tiles') return `<i class="glow" style="left:6%;top:14%;width:36%;height:52%"></i>${[0,1,2,3].map(i=>`<i style="left:${45+(i%2)*25}%;top:${14+Math.floor(i/2)*27}%;width:22%;height:24%"></i>`).join('')}
     ${[0,1,2,3,4,5].map(i=>`<i style="left:${6+i*15}%;top:72%;width:13%;height:20%"></i>`).join('')}<i class="acc" style="left:6%;top:4%;width:12%;height:5%"></i>`;
   if(id==='spotlight') return `<i class="glow" style="left:0;top:0;width:100%;height:100%"></i>${[0,1,2,3,4,5].map(i=>`<i style="left:${6+i*11}%;top:${i?10:8}%;width:${i?9:12}%;height:${i?16:20}%;${i?'':'background:var(--text)'}"></i>`).join('')}
@@ -4547,6 +4551,7 @@ function viewHome(){
       ${LIB.loading?'':`<div class="muted" style="margin-bottom:18px">${LINUX?'Install a game in Steam or Heroic (Epic, GOG), stream one with Xbox Cloud Gaming, or add one yourself.':ANDROID?'Install a game or an emulator on this device, choose your ROMs folder in Settings › Games, or add an app yourself.':'Install a game in Steam, Epic, GOG or the Xbox app, or add one yourself.'}</div>
       <button class="pill" style="display:inline-flex" data-f data-k="h-add" data-act="addManual">＋ Add a game</button>`}</div>`;
   if(isX(LOOK.layout)) return homeX(V);
+  if(LOOK.layout==='blocks' && typeof gmbView==='function') return gmbView('home');   // Game Mode made of blocks (gm-blocks.js)
   if(LOOK.layout==='tiles') return nowPlayingBanner()+quickShelf()+homeTiles(V);
   if(LOOK.layout==='spotlight') return homeSpotlight(V);
   const recent=V.filter(g=>g.last).sort((a,b)=>b.last-a.last).slice(0,10);
@@ -4643,6 +4648,7 @@ function steamOpenLibPill(){
   return `<button class="pill" data-f data-k="lib-steamOpen" data-act="steamLibSignIn">${I.user}Sign in to Hearth's Steam client</button>`;
 }
 function viewLibrary(){
+  if(typeof gmbLibrary==='function' && gmbLibrary()) return gmbView('library');   // Game Mode made of blocks (gm-blocks.js)
   if(!libTabs().some(t=>t[0]===S.tab)) S.tab='all';
   if(mkKind()) return mkPage('library');   // Experimental · Keyboard & mouse: their own toolbar and sidebar
   const L=libGames();
@@ -9505,7 +9511,12 @@ function renderQam(){
 }
 function qamQuick(){
   const L=QR.list.map(q=>G(q.id)).filter(Boolean);
-  if(!L.length) return '';
+  const own = LOOK.layout==='blocks' && typeof gmbQuick==='function' ? gmbQuick() : '';   // Game Mode made of blocks (gm-blocks.js)
+  if(!L.length) return own;
+  if(own) return own+qamQuickResume(L);
+  return qamQuickResume(L);
+}
+function qamQuickResume(L){
   return `<h3 style="margin-top:16px">Quick Resume</h3>${L.map(g=>`<div class="qrrow"><button class="btn" data-f data-k="q-qr-${esc(g.id)}" data-act="quickres" data-id="${esc(g.id)}">${I.play}${esc(g.title)}</button><button class="btn sm danger" data-f data-k="q-qrx-${esc(g.id)}" data-act="quickclose" data-id="${esc(g.id)}" aria-label="Close ${esc(g.title)}">${I.stop}</button></div>`).join('')}
     <div class="muted" style="font-size:12px;margin-top:4px">Put-aside games stay frozen where you left them. ${!qrKeeps()?'Sleep keeps them; turning off closes them.':qrKeepsRestart()?'They\'re kept through sleep, Restart and Shut down.':'They\'re kept through sleep and Shut down; Restart closes them.'}</div>`;
 }
@@ -10358,7 +10369,8 @@ function act(el){
   if(ANDROID && /^an[A-Z]/.test(a) && typeof anAct==='function') return anAct(a, d, el);   // Hearth for Android's device settings (android-settings.js)
   if(/^stg[A-Z]/.test(a)) return stgAct(a, d);   // Hearth Storage
   if(/^mk[A-Z]/.test(a)) return mkAct(a, d, el);   // the keyboard & mouse layouts
-  if(/^qd[A-Z]/.test(a)) return qdAct(a, d);   // Quick Access over a game (the top dock)
+  if(/^qd[A-Z]/.test(a)) return qdAct(a, d);
+  if(/^gmb[A-Z]/.test(a) && typeof gmbAct==='function') return gmbAct(a, d, el);   // Game Mode made of blocks (gm-blocks.js)   // Quick Access over a game (the top dock)
   switch(a){
     case 'unlock': return lockUnlock();
     case 'loginWake': return call('login.setLockOnWake',{on:!(LOGIN.s&&LOGIN.s.lockOnWake)}).then(r=>{ LOGIN.s=r; refreshUI(); toast(r.lockOnWake?'Asks for your password after sleep':'Wakes without asking for a password'); }).catch(e=>toast(e.message));
@@ -14184,6 +14196,7 @@ function input(k){
   qaTrace(k);
   if(OVOSK.on) return ovoskInput(k);
   const top=S.layers.at(-1);
+  if(typeof gmbInput==='function' && gmbInput(k, top)) return;   // editing Game Mode's blocks with the controller (gm-blocks.js)
   // A / Enter just after Quick Access (or its Put aside question) opened isn't a choice; neither is a second Guide / View
   // (the press that opened it, delivered twice).
   if(k==='a' && (top==='qam' || (top==='sheet' && sheet && sheet.guard)) && qaGuarded('A / Enter')) return;
@@ -14544,6 +14557,7 @@ send({type:'ready'});
 </script>
 <!-- Discover, game details, achievements, pictures, other downloads, Find games, Activity, Integrations (docs/HYDRA-FEATURES.md) -->
 <script src="hearth-play.js"></script>
+<script src="gm-blocks.js"></script>
 <!-- Hearth for Android: the device's own settings inside Hearth's Settings (does nothing elsewhere; docs/ANDROID.md) -->
 <script src="android-settings.js"></script>
 </body>

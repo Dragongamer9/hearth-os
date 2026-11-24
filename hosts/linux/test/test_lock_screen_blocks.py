@@ -239,3 +239,50 @@ class TheLockStaysSafe(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class GameModeBlocks(unittest.TestCase):
+    """Build anything board 6: Hearth's Game Mode from the same blocks (ui/gm-blocks.js, desktop/shell/hearth-gm-blocks)."""
+    ui = (pathlib.Path(__file__).resolve().parents[3] / 'ui' / 'index.html').read_text()
+    js = (pathlib.Path(__file__).resolve().parents[3] / 'ui' / 'gm-blocks.js').read_text()
+
+    def gm(self):
+        loader = importlib.machinery.SourceFileLoader('hearth_gm_blocks', str(SHELL / 'hearth-gm-blocks'))
+        spec = importlib.util.spec_from_loader('hearth_gm_blocks', loader)
+        m = importlib.util.module_from_spec(spec)
+        loader.exec_module(m)
+        return m
+
+    def test_clean_keeps_only_game_mode_blocks(self):
+        c = self.gm().clean({'grid': {'cols': 24, 'rows': 14}, 'blocks': [
+            {'block': 'hero', 'x': 30, 'y': 0, 'w': 9, 'h': 6}, {'block': 'dock'}, {'block': 'own:x'},
+            {'block': 'qa', 'shows': 'rm -rf'}, {'block': 'tilerow', 'style': {'colour': 'url(x)', 'corners': 500}}]})
+        self.assertEqual([b['block'] for b in c['blocks']], ['hero', 'qa', 'tilerow'])
+        self.assertEqual(c['blocks'][0]['x'], 15)
+        self.assertEqual(c['blocks'][1]['shows'], 'perf')
+        self.assertEqual(c['blocks'][2]['style'], {'corners': 64})
+
+    def test_describe_without_hearth_layout_says_so(self):
+        env = dict(os.environ, PATH='/nonexistent')
+        r = subprocess.run([sys.executable, str(SHELL / 'hearth-gm-blocks'), 'describe', 'home', 'bigger', '{}'], capture_output=True, text=True, env=env)
+        self.assertEqual(r.returncode, 1)
+        self.assertTrue(r.stdout.startswith('error: '), r.stdout)
+
+    def test_hooks_are_guarded(self):
+        for hook in ("if(typeof gmbInput==='function' && gmbInput(k, top)) return;",
+                     "if(/^gmb[A-Z]/.test(a) && typeof gmbAct==='function') return gmbAct(a, d, el);",
+                     "if(LOOK.layout==='blocks' && typeof gmbView==='function') return gmbView('home');",
+                     "if(typeof gmbLibrary==='function' && gmbLibrary()) return gmbView('library');",
+                     '<script src="gm-blocks.js"></script>', "'nimbus.gmblocks'"):
+            self.assertIn(hook, self.ui)
+
+    def test_editor_controls_and_starting_points(self):
+        for part in ("case 'a': if(GMB.pick >= L.length){ gmbAdd(); return true; } GMB.held = !GMB.held;", "case 'x': gmbLook();",
+                     "case 'y': GMB.sayOpen = true;", "case 'lb': case 'rb':", "case 'rup': case 'rdown': gmbResize(", 'picked · move with the left stick',
+                     'Editing Game Mode', 'Same blocks as your desktop', "call('gmblocks.describe'", "call('gmblocks.listen'", '>Undo<', 'Make it'):
+            self.assertIn(part, self.js)
+        ids = re.findall(r"\{id:'([a-z-]+)', name:", self.ui.split('const MK_LAYOUTS')[0])
+        home15 = [i for i in ids if i != 'blocks']
+        self.assertEqual(len(home15), 15, home15)
+        for i in home15:
+            self.assertIn("'%s'" % i if '-' in i else i + ':', self.js, 'the %s Home layout as a starting point' % i)
