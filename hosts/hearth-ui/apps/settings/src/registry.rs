@@ -28,6 +28,10 @@ pub fn cat_index(cat: &str) -> usize {
 }
 
 pub fn cat_of(id: &str) -> usize {
+    // A section's front page (cats/sections.rs: "sec-system") is in its section.
+    if let Some(cat) = id.strip_prefix("sec-") {
+        return cat_index(cat);
+    }
     cat_index(page(id).map(|p| p.cat).unwrap_or("home"))
 }
 
@@ -106,6 +110,10 @@ pub fn resolve(arg: &str) -> Option<(&'static str, String)> {
     let part = it.next().unwrap_or("").to_string();
     if let Some(p) = page(id) {
         return Some((p.id, part));
+    }
+    // A section's front page ("sec-system", cats/sections.rs; "sec-ai", cats/ai.rs).
+    if let Some(sec) = crate::cats::sections::PAGES.iter().chain(crate::cats::ai::PAGES.iter()).find(|x| **x == id) {
+        return Some((sec, part));
     }
     PAGES.iter().find(|p| p.words.split(' ').any(|w| w == id)).map(|p| (p.id, part))
 }

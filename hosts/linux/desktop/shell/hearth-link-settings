@@ -103,7 +103,12 @@ def request(argv, stdin=''):
         if len(rest) == 2:
             a['name'] = rest[1][:40]
         return 'peer.remote.pin', a
-    simple = {'status': 'status', 'pair-open': 'pair.open', 'pair-close': 'pair.close', 'sync': 'sync.now'}
+    simple = {'status': 'status', 'pair-open': 'pair.open', 'pair-close': 'pair.close', 'sync': 'sync.now', 'ai-status': 'ai.status'}
+    # Settings › AI: stop one paired device using this PC's AI, or let it again; share this PC's AI on or off.
+    if cmd in ('ai-stop', 'ai-allow') and len(rest) == 1:
+        return 'ai.set', {'stop' if cmd == 'ai-stop' else 'allow': device(rest[0])}
+    if cmd == 'ai-serve' and len(rest) == 1 and rest[0] in ('on', 'off'):
+        return 'ai.set', {'serve': rest[0] == 'on'}
     if cmd in simple and not rest:
         return simple[cmd], {}
     if cmd == 'pair-open-internet' and not rest:

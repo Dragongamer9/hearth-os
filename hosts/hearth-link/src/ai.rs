@@ -37,9 +37,26 @@ const ANSWER_WAIT: Duration = Duration::from_secs(600);
 pub struct AiConfig {
     pub serve: bool,
     pub backend: String,
+    /// Paired devices you stopped from using this device's AI (Settings › AI › Stop). Empty: every paired device of
+    /// yours may, as before.
+    pub stopped: Vec<String>,
 }
 
-impl Default for AiConfig { fn default() -> Self { AiConfig { serve: false, backend: DEFAULT_BACKEND.into() } } }
+impl Default for AiConfig { fn default() -> Self { AiConfig { serve: false, backend: DEFAULT_BACKEND.into(), stopped: Vec::new() } } }
+
+/// Who used this device's AI (Settings › AI: each device using it, what for and when it last asked): kept in memory
+/// only, since Hearth Link started; nothing of what was asked is kept.
+#[derive(Debug, Clone, Default)]
+struct Use { last: u64, model: String, asks: u64 }
+fn uses() -> &'static Mutex<std::collections::HashMap<String, Use>> {
+    static U: OnceLock<Mutex<std::collections::HashMap<String, Use>>> = OnceLock::new();
+    U.get_or_init(|| Mutex::new(std::collections::HashMap::new()))
+}
+fn now_secs() -> u64 { std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0) }
+/// The model a request names ("model" in its JSON body), for the list; empty when it names none.
+pub fn model_in(body: &str) -> String {
+    serde_json::from_str::<Value>(body).ok().and_then(|v| v["model"].as_str().map(|m| m.chars().take(80).collect())).unwrap_or_default()
+}
 
 impl AiConfig {
     pub fn load(dir: &Path) -> AiConfig { std::fs::read(dir.join("ai.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default() }
@@ -171,7 +188,7 @@ fn using() -> &'static Mutex<Option<Using>> { static U: OnceLock<Mutex<Option<Us
 impl Node {
     fn ai_cfg(&self) -> AiConfig { AiConfig::load(&self.dir) }
 
-    pub async fn ai_answer(self: Arc<Self>, _peer: &str, op: &str, req: &Value) -> Result<Value, String> {
+    pub async fn ai_answer(self: Arc<Self>, peer: &str, op: &str, req: &Value) -> Result<Value, String> {
         let c = self.ai_cfg();
         match op {
             "ai.info" => {
@@ -181,6 +198,16 @@ impl Node {
             }
             "ai.http" => {
                 if !c.serve { return Err(format!("{} doesn't share its AI (Settings › Hearth Link › Local AI)", self.name())); }
+                if c.stopped.iter().any(|x| x == peer) { return Ok(json!({"status": 403, "ctype": "text/plain", "body": format!("{} stopped this device from using its AI (Settings › AI)", self.name())})); }
+                {
+                    let body = req["body"].as_str().unwrap_or("");
+                    let m = model_in(body);
+                    let mut u = crate::lock(uses());
+                    let e = u.entry(peer.to_string()).or_default();
+                    e.last = now_secs();
+                    e.asks += 1;
+                    if !m.is_empty() { e.model = m; }
+                }
                 let method = req["method"].as_str().unwrap_or("GET");
                 let path = req["path"].as_str().unwrap_or("");
                 if !path_ok(method, path) { return Ok(json!({"status": 403, "ctype": "text/plain", "body": "Not shared over Hearth Link"})); }
@@ -265,7 +292,10 @@ impl Node {
                 }
                 let here = if c.serve { let m = models(&c.backend).await; json!({"models": m.as_ref().ok(), "error": m.err(), "vram": vram()}) } else { Value::Null };
                 let u = crate::lock(using()).as_ref().map(|u| json!({"server": u.server, "name": u.name, "port": u.port, "url": format!("http://127.0.0.1:{}", u.port)}));
-                Ok(json!({"serve": c.serve, "backend": c.backend, "here": here, "servers": servers, "using": u}))
+                let names: std::collections::HashMap<String, String> = crate::lock(&self.peers).mine().map(|p| (p.id.clone(), p.name.clone())).collect();
+                let mut clients: Vec<Value> = crate::lock(uses()).iter().map(|(id, x)| json!({"id": id, "name": names.get(id).cloned().unwrap_or_else(|| id.clone()), "last": x.last, "model": x.model, "asks": x.asks, "stopped": c.stopped.contains(id)})).collect();
+                clients.sort_by(|a, b| b["last"].as_u64().cmp(&a["last"].as_u64()));
+                Ok(json!({"serve": c.serve, "backend": c.backend, "here": here, "servers": servers, "using": u, "clients": clients, "stopped": c.stopped, "now": now_secs()}))
             }
             "ai.set" => {
                 let mut c = self.ai_cfg();
@@ -276,6 +306,12 @@ impl Node {
                     c.backend = b;
                 }
                 if let Some(s) = a["serve"].as_bool() { c.serve = s; }
+                // Stop / let again one paired device use this device's AI (Settings › AI › Stop).
+                if let Some(id) = a["stop"].as_str() {
+                    if !crate::lock(&self.peers).is_mine(id) { return Err("Not a paired device".into()); }
+                    if !c.stopped.iter().any(|x| x == id) { c.stopped.push(id.to_string()); }
+                }
+                if let Some(id) = a["allow"].as_str() { c.stopped.retain(|x| x != id); }
                 c.save(&self.dir)?;
                 eprintln!("hearth-link: ai: sharing this device's AI {}", if c.serve { "on" } else { "off" });
                 Ok(json!({"serve": c.serve, "backend": c.backend}))
@@ -343,7 +379,18 @@ mod tests {
         let c = AiConfig::load(d.path());
         assert!(!c.serve, "off by default");
         assert_eq!(c.backend, DEFAULT_BACKEND);
-        AiConfig { serve: true, backend: "http://127.0.0.1:8080".into() }.save(d.path()).unwrap();
+        AiConfig { serve: true, backend: "http://127.0.0.1:8080".into(), stopped: Vec::new() }.save(d.path()).unwrap();
         assert!(AiConfig::load(d.path()).serve);
+    }
+
+    #[test]
+    fn who_used_it_and_stopped_devices() {
+        assert_eq!(model_in(r#"{"model":"qwen3:30b-a3b","messages":[]}"#), "qwen3:30b-a3b");
+        assert_eq!(model_in("not json"), "");
+        // A file from before "stopped" existed still loads, with nobody stopped.
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("ai.json"), r#"{"serve": true, "backend": "http://127.0.0.1:11434"}"#).unwrap();
+        let c = AiConfig::load(d.path());
+        assert!(c.serve && c.stopped.is_empty());
     }
 }

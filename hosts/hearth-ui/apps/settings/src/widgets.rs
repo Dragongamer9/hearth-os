@@ -423,3 +423,93 @@ mod tests {
         assert_eq!(percent(3.0, 0.0, 10.0), None);
     }
 }
+
+// ------------------------------------------------------------------ the section pages (settings-cleanup, Nov 23)
+
+/// A row on a section's front page: its name, the line under it, and on the right its value and › (or a switch, a
+/// button or a chip in the value's place). No icon; a faint line under every row but the last.
+pub fn vrow<'a, M: Clone + Send + 'static>(p: &Pal, title: &str, sub: &str, right: E<'a, M>, open: Option<M>, last: bool) -> E<'a, M> {
+    if let Some(m) = &open {
+        nav::control(Kind::Open, vec![act(m.clone())], Vec::new(), Vec::new(), String::new(), String::new());
+    }
+    let r = nav::item(title, sub, false);
+    let mut words = Column::new().spacing(3.0).push(tm(title.to_string(), 15.0, p.text));
+    if !sub.is_empty() {
+        words = words.push(t(sub.to_string(), 13.0, p.muted));
+    }
+    let line = row![words.width(Length::Fill), right].spacing(14.0).align_y(iced::Center);
+    let c = container(line).id(r.key).padding(Padding { top: 0.0, right: 6.0, bottom: 0.0, left: 6.0 }).width(Length::Fill).center_y(Length::Fixed(64.0)).style(row_style(*p, Color::TRANSPARENT, p.r(8.0), r.lit));
+    let el: E<'a, M> = match open {
+        Some(m) => mouse_area(c).on_press(m).interaction(mouse::Interaction::Pointer).into(),
+        None => c.into(),
+    };
+    if last {
+        el
+    } else {
+        column![el, ui::hline(Pal::a(p.text, 0.07))].into()
+    }
+}
+
+/// A row's value and › (the value may be empty: only ›).
+pub fn value_chev<'a, M: 'a>(p: &Pal, v: &str) -> E<'a, M> {
+    row![t1(v.to_string(), 13.0, p.muted), glyph(G::Chevron, p.muted, 13.0, 2.0)].spacing(10.0).align_y(iced::Center).into()
+}
+
+/// A small chip on a row (connected, signed in, online).
+pub fn chip<'a, M: 'a>(p: &Pal, s: &str, good: bool) -> E<'a, M> {
+    let c = if good { p.good } else { p.muted };
+    container(t1(s.to_string(), 12.0, c)).padding(Padding { top: 2.0, right: 10.0, bottom: 2.0, left: 10.0 }).style(ui::boxed(Pal::a(c, 0.12), 12.0, Some((Pal::a(c, 0.5), 1.0)))).into()
+}
+
+/// A card of rows with its heading in small capitals (SCREEN AND SOUND).
+pub fn scard<'a, M: 'a>(p: &Pal, head: &str, rows: Vec<E<'a, M>>) -> E<'a, M> {
+    nav::flush();
+    let mut c = Column::new().spacing(0.0).push(container(tb(head.to_uppercase(), 12.5, p.muted)).padding(Padding { top: 0.0, right: 0.0, bottom: 8.0, left: 6.0 }));
+    for r in rows {
+        c = c.push(r);
+    }
+    container(c).padding(Padding { top: 22.0, right: 18.0, bottom: 14.0, left: 18.0 }).width(Length::Fill).style(ui::boxed(p.panel, p.r(14.0), Some((Pal::a(p.text, 0.06), 1.0)))).into()
+}
+
+/// The banner across a section's top: a coloured dot (or a picture), the title, the line under it, its buttons.
+pub fn banner<'a, M: 'a>(p: &Pal, lead: E<'a, M>, title: String, line: String, buttons: Vec<E<'a, M>>) -> E<'a, M> {
+    nav::flush();
+    let mut r = Row::new().spacing(18.0).align_y(iced::Center).push(lead).push(column![tb(title, 22.0, p.text), t(line, 14.0, p.muted)].spacing(4.0).width(Length::Fill));
+    for b in buttons {
+        r = r.push(b);
+    }
+    container(r).padding(Padding { top: 20.0, right: 26.0, bottom: 20.0, left: 22.0 }).width(Length::Fill).style(ui::boxed(Pal::mix(p.panel, p.accent, 0.05), p.r(14.0), Some((Pal::a(p.accent, 0.18), 1.0)))).into()
+}
+
+/// The banner's dot: green (fine), yellow (something waits for you), red (something's wrong).
+pub fn dot<'a, M: 'a>(c: Color) -> E<'a, M> {
+    let inner = container(Space::new()).width(Length::Fixed(14.0)).height(Length::Fixed(14.0)).style(ui::boxed(c, 7.0, None));
+    container(inner).center_x(Length::Fixed(30.0)).center_y(Length::Fixed(30.0)).style(ui::boxed(Pal::a(c, 0.18), 15.0, None)).into()
+}
+
+/// A tile in a section's row of four (Storage 1.2 TB free, of 2 TB).
+pub fn stile<'a, M: Clone + Send + 'static>(p: &Pal, label: &str, big_v: String, small: String, open: Option<M>) -> E<'a, M> {
+    if let Some(m) = &open {
+        nav::control(Kind::Open, vec![act(m.clone())], Vec::new(), Vec::new(), String::new(), String::new());
+    }
+    let r = nav::item(label, &big_v, true);
+    let c = container(column![t(label.to_string(), 13.0, p.muted), tb(big_v, 22.0, p.text), t(small, 13.0, p.muted)].spacing(3.0))
+        .id(r.key)
+        .padding(Padding { top: 18.0, right: 20.0, bottom: 18.0, left: 20.0 })
+        .width(Length::Fill)
+        .style(row_style(*p, p.panel, p.r(14.0), r.lit));
+    match open {
+        Some(m) => mouse_area(c).on_press(m).interaction(mouse::Interaction::Pointer).into(),
+        None => c.into(),
+    }
+}
+
+/// The "More KDE settings" row at the bottom of a section: the KDE-only pages, listed, in one row.
+pub fn kde_more<'a, M: Clone + Send + 'static>(p: &Pal, list: &str, open: M) -> E<'a, M> {
+    nav::control(Kind::Open, vec![act(open.clone())], Vec::new(), Vec::new(), String::new(), String::new());
+    let r = nav::item("More KDE settings", list, false);
+    let line = row![tb("More KDE settings", 15.0, p.text), t(list.to_string(), 14.0, p.muted).width(Length::Fill), glyph(G::Chevron, p.muted, 13.0, 2.0)].spacing(16.0).align_y(iced::Center);
+    let c = container(line).id(r.key).padding(Padding { top: 16.0, right: 22.0, bottom: 16.0, left: 20.0 }).width(Length::Fill).style(row_style(*p, Pal::mix(p.bg, p.panel, 0.5), p.r(14.0), r.lit));
+    let c = container(c).style(ui::boxed(Color::TRANSPARENT, p.r(14.0), Some((Pal::a(p.text, 0.14), 1.0))));
+    mouse_area(c).on_press(open).interaction(mouse::Interaction::Pointer).into()
+}

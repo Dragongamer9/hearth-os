@@ -43,6 +43,8 @@ COLIBRI_PORT = int(os.environ.get('HEARTH_COLIBRI_PORT') or 11440)       # Colib
 ENGINE_IDS = ('ollama', 'colibri')
 DEFAULTS = {'default': 'ollama', 'colibri': {'model': '', 'modelsDir': ''}}
 MODEL_ID_RE = re.compile(r'^[a-z0-9][a-z0-9._-]{0,63}$')
+# An Ollama model name (qwen3:30b-a3b, huihui_ai/qwen3-abliterated:8b-v2): Settings › AI › Change model.
+OLLAMA_MODEL_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._/-]{0,100}(:[A-Za-z0-9._-]{1,60})?$')
 
 
 class Fail(Exception):
@@ -59,6 +61,9 @@ def load():
     model = c.get('model') if isinstance(c.get('model'), str) and MODEL_ID_RE.fullmatch(c.get('model') or '') else ''
     mdir = c.get('modelsDir') if isinstance(c.get('modelsDir'), str) and c.get('modelsDir', '').startswith('/') else ''
     d['colibri'] = {'model': model, 'modelsDir': mdir}
+    o = d.get('ollama') if isinstance(d.get('ollama'), dict) else {}
+    om = o.get('model') if isinstance(o.get('model'), str) and OLLAMA_MODEL_RE.fullmatch(o.get('model') or '') else ''
+    d['ollama'] = {'model': om}
     return d
 
 
@@ -82,7 +87,7 @@ def engines(d=None, on=None):
     out = [
         {'id': 'ollama', 'label': 'Ollama', 'on': bool(on.get('ollama')), 'port': OLLAMA_PORT,
          'base': 'http://%s:%d' % (lo, OLLAMA_PORT), 'openai': 'http://%s:%d/v1' % (lo, OLLAMA_PORT), 'native': 'ollama',
-         'model': ''},
+         'model': (d.get('ollama') or {}).get('model', '') if isinstance(d.get('ollama'), dict) else ''},
         {'id': 'colibri', 'label': 'Colibri', 'on': bool(on.get('colibri')), 'port': COLIBRI_PORT,
          'base': 'http://%s:%d' % (lo, COLIBRI_PORT), 'openai': 'http://%s:%d/v1' % (lo, COLIBRI_PORT),
          'anthropic': 'http://%s:%d' % (lo, COLIBRI_PORT), 'native': 'colibri', 'model': d['colibri']['model']},
@@ -103,7 +108,8 @@ COLI_SETUP_HOME = os.path.join(os.path.dirname(os.path.dirname(COLI)), 'setup')
 
 def listing(d):
     """The "engines" list written into the file for apps that only read it (Hearth AI / Ithil reads this shape)."""
-    return [{'id': 'ollama', 'label': 'Ollama', 'baseUrl': 'http://127.0.0.1:%d/v1' % OLLAMA_PORT, 'port': OLLAMA_PORT, 'model': ''},
+    om = (d.get('ollama') or {}).get('model', '') if isinstance(d.get('ollama'), dict) else ''
+    return [{'id': 'ollama', 'label': 'Ollama', 'baseUrl': 'http://127.0.0.1:%d/v1' % OLLAMA_PORT, 'port': OLLAMA_PORT, 'model': om},
             {'id': 'colibri', 'label': 'Colibri', 'baseUrl': 'http://127.0.0.1:%d/v1' % COLIBRI_PORT, 'port': COLIBRI_PORT,
              'anthropicUrl': 'http://127.0.0.1:%d' % COLIBRI_PORT, 'model': d['colibri']['model'], 'cli': COLI,
              'setupHome': COLI_SETUP_HOME, 'modelsDir': models_dir(d),
@@ -114,9 +120,11 @@ def _with_listing(f):
     """After a change you made: the file's "engines" list from the choices now in it (in the same locked write)."""
     d = sio.with_defaults(f, DEFAULTS)
     c = d.get('colibri') if isinstance(d.get('colibri'), dict) else {}
+    o = d.get('ollama') if isinstance(d.get('ollama'), dict) else {}
     d2 = {'default': d.get('default') if d.get('default') in ENGINE_IDS else 'ollama',
           'colibri': {'model': c.get('model') if MODEL_ID_RE.fullmatch(str(c.get('model') or '')) else '',
-                      'modelsDir': c.get('modelsDir') if str(c.get('modelsDir') or '').startswith('/') else ''}}
+                      'modelsDir': c.get('modelsDir') if str(c.get('modelsDir') or '').startswith('/') else ''},
+          'ollama': {'model': o.get('model') if OLLAMA_MODEL_RE.fullmatch(str(o.get('model') or '')) else ''}}
     f['engines'] = listing(d2)
 
 
@@ -157,7 +165,19 @@ def set_key(key, value):
             _with_listing(f)
         sio.update_json(SETTINGS, change2)
         return load()
-    raise Fail('default, colibriModel or colibriModelsDir')
+    if key == 'ollamaModel':
+        # The model Hearth's AI writes with on Ollama (Settings › AI › Change model; empty: Hearth picks one, as before).
+        if value and not OLLAMA_MODEL_RE.fullmatch(value):
+            raise Fail('not an Ollama model name')
+
+        def change3(f):
+            o = dict(f.get('ollama')) if isinstance(f.get('ollama'), dict) else {}
+            o['model'] = value
+            f['ollama'] = o
+            _with_listing(f)
+        sio.update_json(SETTINGS, change3)
+        return load()
+    raise Fail('default, colibriModel, colibriModelsDir or ollamaModel')
 
 
 def main(argv):

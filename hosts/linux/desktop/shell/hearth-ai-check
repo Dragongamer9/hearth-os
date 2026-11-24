@@ -7,6 +7,9 @@ it never changes a setting or starts anything.
                             "problems": [...]} — the same order Describe it tries (hearth-layout describe.rs):
                             your own choice (describe.json), Hearth's engines on this device (the default first),
                             another device's AI over Hearth Link (127.0.0.1:11435), an online AI with your key
+  hearth-ai-check models   JSON: [{"name", "size", "writes", "ram", "gpu"}]: Ollama's models on this device with their
+                            size, whether they can write, and whether they fit in memory and all on the graphics card
+                            (Settings › AI › Change model)
   hearth-ai-check test     JSON: {"ok", "seconds", "engine", "model", "error"}: one short question to the AI that
                             answers, timed (Settings › AI › Test it)
 
@@ -173,7 +176,51 @@ def test():
         return {'ok': False, 'error': 'It didn\'t answer (%s).' % str(e)[:120], 'engine': a['label'], 'model': a['model']}
 
 
+def vram_bytes():
+    """The biggest graphics card's own memory: Nvidia's from nvidia-smi, AMD's and Intel's from sysfs (0: unknown)."""
+    best = 0
+    try:
+        o = subprocess.run(['nvidia-smi', '--query-gpu=memory.total', '--format=csv,noheader,nounits'], capture_output=True, text=True, timeout=4).stdout
+        for l in o.split():
+            best = max(best, int(float(l)) * 1024 * 1024)
+    except Exception:
+        pass
+    import glob
+    for f in glob.glob('/sys/class/drm/card*/device/mem_info_vram_total'):
+        try:
+            best = max(best, int(open(f).read().strip()))
+        except Exception:
+            pass
+    return best
+
+
+def ollama_models():
+    try:
+        with urllib.request.urlopen('http://127.0.0.1:11434/api/tags', timeout=3) as r:
+            d = json.loads(r.read().decode('utf-8', 'replace'))
+    except Exception:
+        return []
+    try:
+        ram = int(open('/proc/meminfo').read().split('MemTotal:')[1].split()[0]) * 1024
+    except Exception:
+        ram = 0
+    vram = vram_bytes()
+    out = []
+    for m in d.get('models') or []:
+        name, size = m.get('name') or '', int(m.get('size') or 0)
+        out.append({'name': name, 'size': size, 'writes': writes(name),
+                    'gpu': bool(vram) and size < vram * 0.9, 'ram': bool(ram) and size < (ram + vram) * 0.8,
+                    'thinks': 'qwen3' in name.lower(), 'uncensored': 'abliterated' in name.lower() or 'uncensored' in name.lower()})
+    best = pick_model([m['name'] for m in out])
+    for m in out:
+        m['best'] = m['name'] == best
+    return out
+
+
 def main(argv):
+    if argv[:1] == ['models']:
+        print(json.dumps({'models': ollama_models(), 'vram': vram_bytes()}))
+        return 0
     if argv[:1] == ['status']:
         print(json.dumps(status()))
         return 0
@@ -181,7 +228,7 @@ def main(argv):
         r = test()
         print(json.dumps(r))
         return 0 if r.get('ok') else 1
-    print('usage: hearth-ai-check status | test')
+    print('usage: hearth-ai-check status | models | test')
     return 2
 
 

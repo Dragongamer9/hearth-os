@@ -33,7 +33,7 @@ mod registry;
 mod shared;
 mod widgets;
 
-use cats::{a11y, accounts, apps, bt, couch, g15, gaming, home, hs, kde, link, net, pers, privacy, system, updates};
+use cats::{a11y, ai, accounts, apps, bt, couch, g15, gaming, home, hs, kde, link, net, pers, privacy, sections, system, updates};
 use hearth_ui::app::{self, win};
 use hearth_ui::run;
 use iced::keyboard::{key::Named, Event as KEvent, Key, Modifiers};
@@ -46,6 +46,8 @@ macro_rules! each_cat {
     ($mac:ident) => {
         $mac! {
             (home, Home, home),
+            (sections, Sections, sections),
+            (ai, Ai, ai),
             (quick, Quick, quick),
             (system, System, system),
             (couch, Couch, couch),
@@ -276,6 +278,12 @@ impl App {
     }
 
     fn open(&mut self, id: &'static str) -> Task<Msg> {
+        // The sections whose own page was only a list of their pages open their front page instead (a deep link to
+        // "system", "bt", Back from a page).
+        let id = match id {
+            "system" | "bt" | "apps-home" | "accounts" | "privacy" | "ai" => cats::sections::page_for(registry::CATEGORIES[registry::cat_of(id)].0).unwrap_or(id),
+            _ => id,
+        };
         self.page = id;
         self.cat = registry::cat_of(id);
         self.query.clear();
@@ -330,7 +338,8 @@ fn update(a: &mut App, m: Msg) -> Task<Msg> {
         }
         Msg::Cat(i) => {
             if i < registry::CATEGORIES.len() {
-                a.open(registry::CATEGORIES[i].2)
+                // The section's front page (the Settings redesign), else its landing page (Home).
+                a.open(cats::sections::page_for(registry::CATEGORIES[i].0).unwrap_or(registry::CATEGORIES[i].2))
             } else {
                 Task::none()
             }
@@ -452,7 +461,8 @@ fn back(a: &mut App) -> Task<Msg> {
         }
         return Task::none();
     }
-    let landing = registry::CATEGORIES[registry::cat_of(p.id)].2;
+    let cat = registry::CATEGORIES[registry::cat_of(p.id)];
+    let landing = cats::sections::page_for(cat.0).unwrap_or(cat.2);
     if a.page != landing {
         nav::want(p.label);
         return a.open(landing);

@@ -1,0 +1,412 @@
+#!/usr/bin/python3 -I
+"""The values on Settings' section pages (docs/mockups/settings-cleanup, approved Nov 23, 2026).
+
+  hearth-settings-values <section>          JSON: {"key": "value shown on the row", ...} for one section
+  hearth-settings-values set <key> <on|off> turns a switch on a section page on or off, through the tool that owns it
+
+Every value is read from this PC: a value that can't be read is left out (the row then shows none), never made up.
+Each read has a short time limit and runs beside the others, so a slow tool can't hold the page. Nothing here writes
+a settings file itself: switches go through the tools that own them (hearth-access, nmcli, bluetoothctl, wpctl,
+hearth_settings_io.py), which keep red flag 9 (atomic, .bak, merged, the change history).
+"""
+import json
+import os
+import re
+import shutil
+import subprocess
+import sys
+import threading
+from pathlib import Path
+
+HOME = Path.home()
+HERE = Path(__file__).resolve().parent
+OUT = {}
+LOCK = threading.Lock()
+
+
+def run(cmd, timeout=3):
+    try:
+        p = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+        return p.returncode, p.stdout, p.stderr
+    except Exception as e:  # missing tool, time limit
+        return 127, '', str(e)
+
+
+def helper(name, *args, timeout=6):
+    path = HERE / name
+    if not path.exists():
+        path = Path('/usr/bin') / name
+    if not path.exists():
+        return None
+    rc, o, _ = run([sys.executable, str(path), *args], timeout)
+    if rc != 0:
+        return None
+    try:
+        return json.loads(o)
+    except Exception:
+        return None
+
+
+def put(**kv):
+    with LOCK:
+        for k, v in kv.items():
+            if v not in (None, ''):
+                OUT[k] = v
+
+
+def has(tool):
+    return shutil.which(tool) is not None
+
+
+def human(n):
+    n = float(n)
+    for unit in ('B', 'KB', 'MB', 'GB', 'TB'):
+        if n < 1000 or unit == 'TB':
+            return ('%.1f %s' % (n, unit)).replace('.0 ', ' ') if unit in ('TB',) else '%d %s' % (round(n), unit)
+        n /= 1000.0
+
+
+def session_conf():
+    out = {}
+    try:
+        for line in (HOME / '.config/nimbus/session.conf').read_text().splitlines():
+            if '=' in line and not line.lstrip().startswith('#'):
+                k, v = line.split('=', 1)
+                out[k.strip()] = v.strip().strip('"')
+    except OSError:
+        pass
+    return out
+
+
+def os_release():
+    out = {}
+    try:
+        for line in Path('/etc/os-release').read_text().splitlines():
+            if '=' in line:
+                k, v = line.split('=', 1)
+                out[k] = v.strip('"')
+    except OSError:
+        pass
+    return out
+
+
+# ------------------------------------------------------------------ readers (each puts what it could read)
+
+def r_pc():
+    host = (Path('/etc/hostname').read_text().strip() if Path('/etc/hostname').exists() else os.uname().nodename)
+    osr = os_release()
+    ver = ''
+    for f in ('/usr/share/nimbus/version', '/usr/share/hearth/version'):
+        try:
+            ver = Path(f).read_text().strip()
+            break
+        except OSError:
+            continue
+    base = osr.get('NAME', '').replace(' GNU/Linux', '')
+    if osr.get('VERSION_ID'):
+        base = '%s %s' % (base, osr['VERSION_ID'])
+    put(host=host, hearth=ver, base=base.strip())
+
+
+def r_storage():
+    try:
+        st = os.statvfs(str(HOME))
+        free, total = st.f_bavail * st.f_frsize, st.f_blocks * st.f_frsize
+        put(storage_free=human(free) + ' free', storage_total='of ' + human(total))
+    except OSError:
+        pass
+    rc, o, _ = run(['lsblk', '-dno', 'TYPE'])
+    if rc == 0:
+        n = sum(1 for x in o.split() if x == 'disk')
+        if n:
+            put(drives='%d drive%s' % (n, '' if n == 1 else 's'))
+
+
+def r_memory():
+    try:
+        m = dict(l.split(':', 1) for l in Path('/proc/meminfo').read_text().splitlines() if ':' in l)
+        total = int(m['MemTotal'].split()[0]) * 1024
+        avail = int(m['MemAvailable'].split()[0]) * 1024
+        gb = round(total / 1024 ** 3)
+        used = round(100 * (total - avail) / total)
+        zram = Path('/sys/block/zram0').exists()
+        put(memory='%d GB%s' % (gb, ' · zram on' if zram else ''), memory_use='%d GB · %d%% in use' % (gb, used))
+    except Exception:
+        pass
+
+
+def r_gpu():
+    rc, o, _ = run(['lspci'])
+    for line in o.splitlines():
+        if re.search(r'VGA|3D|Display', line):
+            name = line.split(':', 2)[-1].strip()
+            m = re.search(r'\[([^\]]+)\]\s*(\(rev.*)?$', name)
+            put(graphics=(m.group(1) if m else name)[:40])
+            break
+
+
+def r_display():
+    if has('wlr-randr'):
+        rc, o, _ = run(['wlr-randr'])
+        if rc == 0:
+            screens = [l for l in o.splitlines() if l and not l.startswith(' ')]
+            hz = re.findall(r'(\d+)x(\d+) px, ([\d.]+) Hz \(preferred, current\)|(\d+)x(\d+) px, ([\d.]+) Hz \(current\)', o)
+            rate = ''
+            for h in hz:
+                f = [x for x in h if x]
+                if len(f) == 3:
+                    rate = '%s Hz' % round(float(f[2]))
+                    break
+            n = len(screens)
+            if n:
+                put(display=('%d screens' % n if n > 1 else '1 screen') + (' · ' + rate if rate else ''))
+
+
+def r_sound():
+    if not has('wpctl'):
+        return
+    rc, o, _ = run(['wpctl', 'get-volume', '@DEFAULT_AUDIO_SINK@'])
+    m = re.search(r'Volume: ([\d.]+)', o)
+    if m:
+        vol = round(float(m.group(1)) * 100)
+        muted = 'MUTED' in o
+        rc2, o2, _ = run(['wpctl', 'inspect', '@DEFAULT_AUDIO_SINK@'])
+        nm = re.search(r'node\.nick = "([^"]+)"', o2) or re.search(r'node\.description = "([^"]+)"', o2)
+        name = (nm.group(1) if nm else 'Speakers')[:22]
+        put(sound='%s · %s' % (name, 'muted' if muted else '%d%%' % vol), volume=str(vol))
+
+
+def r_brightness():
+    for d in Path('/sys/class/backlight').glob('*'):
+        try:
+            b, mx = int((d / 'brightness').read_text()), int((d / 'max_brightness').read_text())
+            put(brightness=str(round(100 * b / mx)))
+            return
+        except Exception:
+            continue
+
+
+def r_wifi():
+    if not has('nmcli'):
+        return
+    rc, o, _ = run(['nmcli', '-t', '-f', 'WIFI', 'radio'])
+    if rc == 0:
+        put(wifi_on='on' if 'enabled' in o else 'off')
+    rc, o, _ = run(['nmcli', '-t', '-f', 'IN-USE,SSID,SIGNAL,SECURITY,FREQ', 'device', 'wifi', 'list', '--rescan', 'no'])
+    nets, seen = [], set()
+    saved = set()
+    rc2, o2, _ = run(['nmcli', '-t', '-f', 'NAME,TYPE', 'connection', 'show'])
+    for l in o2.splitlines():
+        p = l.rsplit(':', 1)
+        if len(p) == 2 and 'wireless' in p[1]:
+            saved.add(p[0])
+    for l in o.splitlines():
+        p = re.split(r'(?<!\\):', l)
+        if len(p) < 5 or not p[1] or p[1] in seen:
+            continue
+        seen.add(p[1])
+        sig = int(p[2] or 0)
+        strength = 'strong' if sig >= 67 else 'good' if sig >= 40 else 'weak'
+        sec = p[3].replace('WPA2 WPA3', 'WPA3').split(' ')[-1] if p[3] else ''
+        band = '5 GHz' if p[4].startswith('5') else '6 GHz' if p[4].startswith('6') else '2.4 GHz'
+        if p[0] == '*':
+            line = ' · '.join(x for x in ('connected', strength, sec) if x)
+            put(wifi_name=p[1].replace('\\:', ':'))
+            nets.insert(0, {'name': p[1], 'line': line, 'connected': True})
+        elif p[1] in saved:
+            nets.append({'name': p[1], 'line': 'saved · ' + band, 'connected': False})
+        elif not p[3]:
+            nets.append({'name': p[1], 'line': 'open · ' + strength, 'connected': False})
+    put(wifi_list=nets[:3])
+    rc, o, _ = run(['nmcli', '-t', '-f', 'DEVICE,TYPE,STATE,CONNECTION', 'device'])
+    for l in o.splitlines():
+        p = l.split(':')
+        if len(p) >= 4 and p[2] == 'connected' and p[1] in ('wifi', 'ethernet'):
+            rc3, o3, _ = run(['nmcli', '-t', '-g', 'IP4.ADDRESS,GENERAL.METERED', 'device', 'show', p[0]])
+            ip = o3.splitlines()[0].split('/')[0] if o3 else ''
+            put(net_name=p[3], net_kind='Wi-Fi' if p[1] == 'wifi' else 'Wired', net_ip=ip,
+                metered='on' if 'yes' in o3.lower() else 'off')
+            break
+
+
+def r_tailscale():
+    if not has('tailscale'):
+        return
+    rc, o, _ = run(['tailscale', 'status', '--json'], 4)
+    try:
+        j = json.loads(o)
+    except Exception:
+        return
+    on = j.get('BackendState') == 'Running'
+    peers = len(j.get('Peer') or {})
+    ip = ((j.get('Self') or {}).get('TailscaleIPs') or [''])[0]
+    put(tailscale=('on · %d devices' % (peers + 1)) if on else 'off', tailscale_ip=ip if on else '')
+
+
+def r_bt():
+    if not has('bluetoothctl'):
+        return
+    rc, o, _ = run(['bluetoothctl', 'show'])
+    on = 'Powered: yes' in o
+    rc, pd, _ = run(['bluetoothctl', 'devices', 'Paired'])
+    rc, cd, _ = run(['bluetoothctl', 'devices', 'Connected'])
+    paired = len([l for l in pd.splitlines() if l.startswith('Device')])
+    conn = [l.split(' ', 2)[2] for l in cd.splitlines() if l.startswith('Device') and len(l.split(' ', 2)) == 3]
+    put(bt_on='on' if on else 'off', bt_line='%d paired · %d connected' % (paired, len(conn)),
+        bt_connected='%d connected' % len(conn) if on else 'off')
+    pads = [n for n in conn if re.search(r'controller|xbox|dualsense|dualshock|pro controller|gamepad', n, re.I)]
+    if pads:
+        put(controller=pads[0][:24], controller_line='connected')
+
+
+def r_desktop():
+    sc = session_conf()
+    mantel = sc.get('HEARTH_MANTEL', '')
+    put(your_desktop='Mantel in Rust · labwc' if mantel == 'rust' else 'Mantel · labwc')
+    start = sc.get('HEARTH_START', sc.get('START', ''))
+    put(startup={'desktop': 'Desktop Mode', 'game': 'Game Mode', 'server': 'Server mode'}.get(start, ''))
+    rc, o, _ = run(['plymouth-set-default-theme'])
+    if rc == 0 and o.strip():
+        put(boot_splash=o.strip().replace('hearth-', '').capitalize())
+
+
+def r_time():
+    rc, o, _ = run(['timedatectl', 'show', '-p', 'Timezone', '--value'])
+    tz = o.strip().split('/')[-1].replace('_', ' ')
+    put(datetime=tz)
+    lang = os.environ.get('LANG', '')
+    names = {'en_US': 'English (US)', 'en_GB': 'English (UK)', 'de_DE': 'Deutsch', 'fr_FR': 'Français', 'es_ES': 'Español'}
+    put(region=names.get(lang.split('.')[0], lang.split('.')[0]))
+
+
+def r_link():
+    j = helper('hearth-link-settings', 'status')
+    if not isinstance(j, dict):
+        return
+    devs = []
+    for d in j.get('paired') or j.get('devices') or []:
+        if not isinstance(d, dict):
+            continue
+        devs.append({'name': d.get('name', ''), 'kind': d.get('kind', ''), 'online': bool(d.get('online')),
+                     'line': d.get('doing', '') or d.get('status', '')})
+    put(link_devices=devs, link_count='%d device%s' % (len(devs), '' if len(devs) == 1 else 's'),
+        link_names=', '.join(d['name'] for d in devs[:3]))
+
+
+def r_ai():
+    j = helper('hearth-ai-check', 'status', timeout=8)
+    if not isinstance(j, dict):
+        return
+    a = j.get('answering')
+    if isinstance(a, dict):
+        put(ai_state='answering', ai_model=a.get('model', ''), ai_engine=a.get('engine', ''))
+    else:
+        put(ai_state='not answering')
+    sh = j.get('share') or {}
+    if isinstance(sh, dict):
+        put(ai_share='sharing' if sh.get('on') else 'off')
+
+
+def r_server():
+    names = []
+    for unit, label in (('jellyfin', 'Jellyfin'), ('ollama', 'Ollama'), ('hearth-ai-photos', 'AI photos'), ('smbd', 'shares'),
+                        ('hearth-backups.timer', 'backups'), ('AdGuardHome', 'ad blocker')):
+        rc, o, _ = run(['systemctl', 'is-active', unit], 2)
+        if o.strip() == 'active':
+            names.append(label)
+    put(server_count='%d running' % len(names), server_names=', '.join(names), server_line=' · '.join(names))
+
+
+def r_apps():
+    n_flat = 0
+    if has('flatpak'):
+        rc, o, _ = run(['flatpak', 'list', '--app', '--columns=application'], 5)
+        n_flat = len([l for l in o.splitlines() if l.strip()])
+    n_hearth = len(list(Path('/usr/libexec/hearth/apps').glob('*'))) if Path('/usr/libexec/hearth/apps').exists() else 0
+    n_sys = len(list(Path('/usr/share/applications').glob('*.desktop')))
+    total = n_flat + n_sys
+    put(apps_count='%d apps' % total, apps_n=str(total),
+        apps_line='Flathub %d · Hearth %d · Debian %d' % (n_flat, n_hearth, max(0, n_sys - n_hearth)))
+    auto = [p.stem for p in (HOME / '.config/autostart').glob('*.desktop')] if (HOME / '.config/autostart').exists() else []
+    put(autostart=str(len(auto)), autostart_line='%d apps' % len(auto))
+
+
+def r_privacy():
+    if has('ufw'):
+        rc, o, _ = run(['ufw', 'status'])
+        put(firewall='on' if 'active' in o and 'inactive' not in o else 'off')
+    elif has('firewall-cmd'):
+        rc, o, _ = run(['firewall-cmd', '--state'])
+        put(firewall='on' if 'running' in o else 'off')
+    if has('mokutil'):
+        rc, o, _ = run(['mokutil', '--sb-state'])
+        put(secure_boot='on' if 'enabled' in o else 'off')
+    put(tpm='TPM 2.0 ready' if Path('/sys/class/tpm/tpm0').exists() else 'no TPM')
+    cnt = HOME / '.config/nimbus/counter.json'
+    try:
+        put(player_count='on' if json.loads(cnt.read_text()).get('enabled', True) else 'off')
+    except Exception:
+        pass
+
+
+def r_access():
+    j = helper('hearth-access', 'status')
+    if isinstance(j, dict) and isinstance(j.get('settings'), dict):
+        put(access=j['settings'])
+
+
+READERS = {
+    'home': [r_pc, r_storage, r_memory, r_gpu, r_display, r_sound, r_brightness, r_wifi, r_bt, r_desktop, r_ai, r_server, r_link],
+    'system': [r_pc, r_display, r_sound, r_memory, r_storage, r_desktop, r_time],
+    'net': [r_wifi, r_tailscale],
+    'bt': [r_bt],
+    'link': [r_link, r_ai],
+    'pers': [r_desktop],
+    'apps': [r_apps],
+    'gaming': [r_bt],
+    'ai': [r_ai, r_link],
+    'accounts': [],
+    'hs': [r_server],
+    'privacy': [r_privacy],
+    'a11y': [r_access],
+    'updates': [r_pc],
+}
+
+
+def read(section):
+    ts = [threading.Thread(target=f, daemon=True) for f in READERS.get(section, [])]
+    for t in ts:
+        t.start()
+    for t in ts:
+        t.join(9)
+    with LOCK:
+        return dict(OUT)
+
+
+SWITCHES = {
+    'wifi': lambda on: ['nmcli', 'radio', 'wifi', 'on' if on else 'off'],
+    'bt': lambda on: ['bluetoothctl', 'power', 'on' if on else 'off'],
+}
+
+
+def set_switch(key, on):
+    if key in SWITCHES:
+        rc, o, e = run(SWITCHES[key](on), 10)
+        return {'ok': rc == 0, 'error': '' if rc == 0 else (e or o).strip()[:200]}
+    if key.startswith('access.'):
+        r = helper('hearth-access', 'set', json.dumps({key.split('.', 1)[1]: on}), timeout=10)
+        return {'ok': r is not None, 'error': '' if r is not None else 'Accessibility didn\'t take the change.'}
+    return {'ok': False, 'error': 'That switch isn\'t one Settings can change here.'}
+
+
+def main(argv):
+    if len(argv) >= 4 and argv[1] == 'set':
+        print(json.dumps(set_switch(argv[2], argv[3] == 'on')))
+        return 0
+    section = argv[1] if len(argv) > 1 else 'home'
+    print(json.dumps(read(section)))
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv))
