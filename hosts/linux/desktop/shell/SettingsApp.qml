@@ -40,7 +40,28 @@ Scope {
     function groupOf(id) { const p = Reg.page(id); return p ? (Reg.category(p.cat) || {}).label || "" : ""; }
 
     Component.onCompleted: SettingsNav.settingsApp = app
+    // 1.18 (the owner, Nov 24: the new Settings look, "Get it in"): one Settings app. When Hearth's Rust Settings
+    // (hearth-settings-app, the one with the new design) is here, every way into Settings opens it at that page; this
+    // QML Settings stays only as the fallback where it isn't (or if it closes right away: rustFailed, this sign-in).
+    property bool rustHere: false
+    property bool rustFailed: false
+    Process { running: true; command: ["sh", "-c", "command -v hearth-settings-app"]; onExited: code => app.rustHere = code === 0 }
+    Process {
+        id: rustSettings
+        property double started: 0
+        onExited: code => { if (code !== 0 && Date.now() - started < 3000) { app.rustFailed = true; app.openQml(command[2] || ""); } }
+    }
     function open(p) {
+        if (rustHere && !rustFailed) {
+            if (rustSettings.running) { Quickshell.execDetached(["hearth-settings-app", "--page", p || "home"]); return; }
+            rustSettings.command = ["hearth-settings-app", "--page", p || "home"];
+            rustSettings.started = Date.now();
+            rustSettings.running = true;
+            return;
+        }
+        openQml(p);
+    }
+    function openQml(p) {
         p = p || "";
         if (Reg.ALIASES[p]) p = Reg.ALIASES[p];
         // "page:part" opens the page at a part of it (SettingsNav.pageAnchor; the page or its expander goes there).
@@ -59,7 +80,7 @@ Scope {
         open("kwin-rules");
     }
     function close() { shown = false; SettingsNav.pageAnchor = ""; SettingsNav.ruleFor = null; }
-    function toggle() { shown ? close() : open(""); }
+    function toggle() { if (rustHere && !rustFailed) open(""); else shown ? close() : open(""); }
 
     LazyLoader {
         active: app.shown
