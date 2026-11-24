@@ -1109,8 +1109,10 @@ jobs:
       - name: Signs in and opens the desktop in a virtual PC (screenshots, an hour at rest)
         timeout-minutes: 120
         env:
-          REST_SECS: ${{ github.event_name == 'workflow_dispatch' && format('{0}', fromJSON(inputs.rest_minutes || '60') * 60) || '3600' }}
-        run: bash .github/scripts/debian-desktop-vm.sh localhost/hearth-peppermint:latest "$PWD/debian-desktop"
+          REST_MIN: ${{ github.event_name == 'workflow_dispatch' && inputs.rest_minutes || '60' }}
+        run: |
+          case "$REST_MIN" in ''|*[!0-9]*) REST_MIN=60 ;; esac
+          REST_SECS=$((REST_MIN * 60)) bash .github/scripts/debian-desktop-vm.sh localhost/hearth-peppermint:latest "$PWD/debian-desktop"
       - name: Publish the desktop screenshots (ci/debian-desktop)
         if: always()
         run: |
