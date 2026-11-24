@@ -299,20 +299,6 @@ def rollback():
 NO_AUTO_UPDATE = '/etc/hearth/no-auto-update'
 
 
-def auto_update(state):
-    """The marker the bootc-fetch-apply-updates drop-in (10-hearth-no-reboot.conf) checks: only that file changes."""
-    if state == 'on':
-        if os.path.exists(NO_AUTO_UPDATE):
-            os.remove(NO_AUTO_UPDATE)
-    elif state == 'off':
-        os.makedirs(os.path.dirname(NO_AUTO_UPDATE), exist_ok=True)
-        with open(NO_AUTO_UPDATE, 'w') as f:
-            f.write('Hearth OS updates only when you press Get it now (Settings › Updates & recovery)\n')
-    else:
-        fail('on or off')
-    print(json.dumps({'ok': True, 'on': not os.path.exists(NO_AUTO_UPDATE)}))
-
-
 def recovery_next_start():
     """Settings › Updates & Recovery › Restart into Recovery: hearth-recovery's own --next-start (it sets a one-time
     flag in GRUB's environment block, which hearth-recovery clears when its menu opens). Nothing else about starting
@@ -945,7 +931,8 @@ def auto_update(what):
                 os.unlink(AUTO_UPDATE)
             except OSError:
                 pass
-    print(json.dumps({'ok': True, 'auto': os.path.exists(AUTO_UPDATE) and not os.path.exists(NO_AUTO_UPDATE)}))
+    on = os.path.exists(AUTO_UPDATE) and not os.path.exists(NO_AUTO_UPDATE)
+    print(json.dumps({'ok': True, 'auto': on, 'on': on}))
 
 
 SYSTEM_PART = '/usr/libexec/hearth/hearth-system-part'
@@ -3337,8 +3324,6 @@ def main(argv):
         update_check()
     elif cmd == 'rollback' and len(argv) == 2:
         rollback()
-    elif cmd == 'auto-update' and len(argv) == 3:
-        auto_update(argv[2])
     elif cmd == 'recovery-next-start' and len(argv) == 2:
         recovery_next_start()
     elif cmd == 'unlock' and len(argv) == 3 and argv[2] in UNLOCK_ACTIONS:

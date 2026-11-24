@@ -729,9 +729,9 @@ def r_updates():
     if sp is not None:
         # The Store's own defaults when a key isn't there: both off.
         put(test_versions='on' if sp.get('testVersions') else 'off', parts_auto='on' if sp.get('autoInstall') else 'off')
-    # Hearth OS downloads and stages its updates in the background (bootc's timer; they apply at your next restart)
-    # unless /etc/hearth/no-auto-update is there (hearth-admin auto-update).
-    put(os_auto='off' if Path('/etc/hearth/no-auto-update').exists() else 'on')
+    # Hearth OS downloads its updates by itself only when you turned that on (the owner: "nothing updates by its
+    # self"; hearth-admin auto-update writes /etc/hearth/auto-update, the Store's switch is the same one).
+    put(os_auto='on' if Path('/etc/hearth/auto-update').exists() and not Path('/etc/hearth/no-auto-update').exists() else 'off')
     r_parts()
     r_os_update()
     with LOCK:
