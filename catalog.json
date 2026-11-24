@@ -635,18 +635,18 @@
     },
     {
       "id": "artcraft",
-      "name": "Artcraft",
+      "name": "ArtCraft",
       "author": "ArtCraft",
-      "tagline": "",
-      "card": "Open source, written in Rust",
-      "about": "Artcraft: a Craft app, open source (MIT or Apache-2.0). Made by ArtCraft, not by Hearth: the Hearth Store gets its newest release from its GitHub page and checks it against its SHA-256 list before installing.",
+      "tagline": "A crafting engine for artists, designers and filmmakers",
+      "card": "A crafting engine for artists, designers and filmmakers, written in Rust",
+      "about": "ArtCraft: a crafting engine for artists, designers and filmmakers, open source and written in Rust. Made by the ArtCraft team, not by Hearth: the Hearth Store gets its newest release from its GitHub page and checks it against its SHA-256 list before installing.",
       "icon": "Ar",
-      "from": "#787878",
-      "to": "#484848",
+      "from": "#ff7a2f",
+      "to": "#a8481a",
       "github": "storytold/artcraft",
       "asset": "linux-x86_64.AppImage",
       "sums": "SHA256SUMS.txt",
-      "file": "Artcraft.AppImage"
+      "file": "ArtCraft.AppImage"
     },
     {
       "id": "solidcraft",
