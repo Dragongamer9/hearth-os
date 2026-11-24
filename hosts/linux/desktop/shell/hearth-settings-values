@@ -232,6 +232,13 @@ def r_wifi():
             with LOCK:
                 rate = OUT.get('wifi_rate', '')
             kind = 'Wi-Fi' if p[1] == 'wifi' else 'Wired'
+            if p[1] == 'wifi' and has('iw'):
+                # The Wi-Fi generation from the link's own rate words (iw): EHT 7, HE 6, VHT 5, HT 4.
+                rc4, o4, _ = run(['iw', 'dev', p[0], 'link'])
+                for word, gen in (('EHT', '7'), ('HE-', '6'), ('VHT', '5'), ('HT-', '4')):
+                    if word in o4:
+                        kind = 'Wi-Fi ' + gen
+                        break
             put(net_name=p[3], net_kind=kind + (' · ' + rate if rate and p[1] == 'wifi' else ''), net_ip=ip,
                 metered='on' if 'yes' in o3.lower() else 'off')
             break

@@ -116,7 +116,7 @@ Wording changed from the mockups by the owner's decisions (Nov 19):
 ## 9. Store settings (store-9)
 - [x] "Store settings", "Updates" — hosts/hearth-ui/apps/store/src/view.rs: "h1(&p, \"Store settings\", None)"
 - [x] Look for updates: "When the Store opens and once a day" (orange) / "Only when the Store opens" — hosts/hearth-ui/apps/store/src/view.rs: "(\"When the Store opens and once a day\".into(), a.prefs.daily, Msg::SetDaily(true))"
-- [x] Tell me when an update is ready (the bell; on by default): One notice, like "Hearth AI 0.6.0 is ready" — hosts/hearth-ui/apps/store/src/prefs.rs: "Prefs { daily: true, notify: true, metered: false, test: false, unreadable: false }"
+- [x] Tell me when an update is ready (the bell; on by default): One notice, like "Hearth AI 0.6.0 is ready" — hosts/hearth-ui/apps/store/src/prefs.rs: "Prefs { daily: true, notify: true, metered: false, test: false, auto: false, unreadable: false }"
 - [x] Download on metered connections (off): Phone hotspots and other connections marked metered — hosts/hearth-ui/apps/store/src/view.rs: "\"Phone hotspots and other connections marked metered\""
 - [x] Get test versions (off; outlined by the focus): "New versions reach this PC before everyone else, marked TEST. For trying them on your own devices first." — hosts/hearth-ui/apps/store/src/view.rs: "For trying them on your own devices first."
 - [x] "Where apps go on this PC": This PC, Apps install as (AppImages in your home folder (~/.local/share/hearth/store/apps), no password or restart), List of apps with its green dot and time — hosts/hearth-ui/apps/store/src/view.rs: "AppImages in your home folder ({}), no password or restart"
