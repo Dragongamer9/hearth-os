@@ -57,6 +57,17 @@ fn heat_bg(p: &Pal, level: usize) -> Color {
     Pal::mix(p.bg, warm, 0.07 + 0.09 * level as f32)
 }
 
+// ------------------------------------------------------------------ the blocks (hearth_ui::blocks: moved, sized, hidden, restyled)
+use hearth_ui::blocks::{bl, PageDef};
+pub const BLOCKS: &[PageDef] = &[
+    PageDef { id: "window", title: "The window", blocks: &[bl("rail", "Pages down the side", 0, 0, 2, 12), bl("page", "The page", 2, 0, 10, 12)] },
+    PageDef { id: "processes", title: "Processes", blocks: &[bl("head", "Title and buttons", 0, 0, 12, 1), bl("table", "The processes", 0, 1, 12, 11)] },
+    PageDef { id: "performance", title: "Performance", blocks: &[bl("head", "Title", 0, 0, 12, 1), bl("devices", "The devices", 0, 1, 3, 11), bl("graph", "The picked device", 3, 1, 9, 11)] },
+];
+fn dm(m: hearth_ui::describe::DMsg) -> Msg {
+    Msg::Describe(m)
+}
+
 // ------------------------------------------------------------------ the frame
 pub fn view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
@@ -84,7 +95,14 @@ pub fn view(a: &App) -> Element<'_, Msg> {
     let body: Element<Msg> = if a.describe.knob("rail") == "hidden" {
         container(page(a)).width(Length::Fill).height(Length::Fill).into()
     } else {
-        row![rail(a), ui::vline(p.line), container(page(a)).width(Length::Fill).height(Length::Fill)].height(Length::Fill).into()
+        hearth_ui::arrange::parts(
+            &a.describe,
+            &p,
+            "window",
+            vec![("rail", rail(a)), ("page", container(page(a)).width(Length::Fill).height(Length::Fill).into())],
+            |ps| row![ps.take("rail"), ui::vline(p.line), ps.take("page")].height(Length::Fill).into(),
+            dm,
+        )
     };
     let base: Element<Msg> = container(column![title, hline(p.line), body]).width(Length::Fill).height(Length::Fill).style(ui::boxed(p.bg, 0.0, None)).into();
 
@@ -549,12 +567,15 @@ fn processes(a: &App) -> Element<'_, Msg> {
         }
         list = list.push(row_view(a, r.key, &PROC_COLS[..10], r.cells, Some(r.lead), 34.0));
     }
-    column![
-        head(a, "Processes", String::new(), Some(tabs_el), buttons),
-        heads(a, "procs", &PROC_COLS[..10], a.sample.as_deref()),
-        scrollable(list).height(Length::Fill)
-    ]
-    .into()
+    let table: Element<Msg> = column![heads(a, "procs", &PROC_COLS[..10], a.sample.as_deref()), scrollable(list).height(Length::Fill)].into();
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "processes",
+        vec![("head", head(a, "Processes", String::new(), Some(tabs_el), buttons)), ("table", table)],
+        |ps| column![ps.take("head"), ps.take("table")].into(),
+        dm,
+    )
 }
 
 // ------------------------------------------------------------------ Details (mockup tm-2)
@@ -1041,11 +1062,14 @@ fn performance(a: &App) -> Element<'_, Msg> {
         .into()
     };
     let right = scrollable(container(column![head, detail].spacing(14.0)).padding(Padding { top: 12.0, right: 22.0, bottom: 22.0, left: 22.0 })).height(Length::Fill);
-    column![
-        head_bar(a),
-        row![container(scrollable(tiles)).width(Length::Fixed(240.0)).height(Length::Fill), ui::vline(p.line), right].height(Length::Fill)
-    ]
-    .into()
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "performance",
+        vec![("head", head_bar(a)), ("devices", container(scrollable(tiles)).width(Length::Fixed(240.0)).height(Length::Fill).into()), ("graph", right.into())],
+        |ps| column![ps.take("head"), row![ps.take("devices"), ui::vline(p.line), ps.take("graph")].height(Length::Fill)].into(),
+        dm,
+    )
 }
 
 fn head_bar(a: &App) -> Element<'_, Msg> {

@@ -288,6 +288,8 @@ pub struct SyncInfo {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Describe it and its blocks (hearth_ui::describe, hearth_ui::blocks; every Hearth app has them)
+    Describe(hearth_ui::describe::DMsg),
     Theme,
     Event(iced::Event),
     Pad(pad::Button),
@@ -441,6 +443,7 @@ pub enum Msg {
 }
 
 pub struct App {
+    pub describe: hearth_ui::describe::Describe,
     pub base: Pal,
     pub p: Pal,
     pub prefs: Prefs,
@@ -601,6 +604,7 @@ impl App {
         let today = day::log_day(now, prefs.day_start);
         let cpu = hearth_ui::app::renderer("hearth-notes") == "cpu";
         let mut a = App {
+            describe: hearth_ui::describe::Describe::new("notes", "Hearth Notes").with_pages(side::BLOCKS),
             p: themed(base, &prefs.theme),
             base,
             mode: Mode::of(&prefs.open_in),
@@ -1118,6 +1122,7 @@ fn continuation(line: &str) -> (String, bool) {
 
 pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
         Msg::Nothing => {}
         Msg::Theme => {
             a.base = hearth_ui::theme::load();
@@ -2191,7 +2196,7 @@ fn view(a: &App) -> iced::Element<'_, Msg> {
     if a.pad {
         return padview::view(a);
     }
-    side::window(a)
+    hearth_ui::describe::with_bar(side::window(a), &a.p, &a.describe, Msg::Describe)
 }
 
 fn main() -> iced::Result {

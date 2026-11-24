@@ -131,7 +131,7 @@ impl App {
         let big = matches!(layout.as_str(), "b" | "controller" | "pad");
         let name: String = app::arg("--name").unwrap_or_else(|| "Someone".into()).chars().filter(|c| !c.is_control()).take(40).collect();
         let a = App {
-            describe: hearth_ui::describe::Describe::new("family", "Family and friends"),
+            describe: hearth_ui::describe::Describe::new("family", "Family and friends").with_pages(BLOCKS),
             p: hearth_ui::theme::load(),
             mode,
             big,
@@ -393,6 +393,13 @@ fn frame<'a>(a: &'a App, title: &'static str, mark: G, body: Element<'a, Msg>, h
         .into()
 }
 
+/// Family and friends' blocks (hearth_ui::blocks).
+const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+    id: "friends",
+    title: "Family and friends",
+    blocks: &[hearth_ui::blocks::bls("people", "Their PCs", 0, 0, 12, 9), hearth_ui::blocks::bls("add", "Add with a code", 0, 9, 12, 3)],
+}];
+
 fn view(a: &App) -> Element<'_, Msg> {
     let p = a.p;
     match a.mode {
@@ -474,17 +481,29 @@ fn view(a: &App) -> Element<'_, Msg> {
                 c = c.push(t("Moonlight isn't installed yet: Settings › Gaming › Remote play › Moonlight › Install.", a.s(13.0), p.warn));
             }
             let focused = a.big && a.fr == ri;
+            let mut d = Column::new().spacing(a.s(10.0));
             let input = text_input("Add with a code: the code their PC shows (like 482 913 or K7M-4QX-92HC)", &a.code)
                 .on_input(Msg::Code)
                 .on_submit(Msg::Join)
                 .size(a.s(14.0))
                 .padding(a.s(10.0));
-            c = c.push(ui::ring(p, focused, 8.0, row![container(input).width(Length::Fill), a.b("Add", ui::Kind::Normal, false, Some(Msg::Join))].spacing(10.0).align_y(iced::Center).into()));
+            d = d.push(ui::ring(p, focused, 8.0, row![container(input).width(Length::Fill), a.b("Add", ui::Kind::Normal, false, Some(Msg::Join))].spacing(10.0).align_y(iced::Center).into()));
             if !a.said.0.is_empty() {
-                c = c.push(t(a.said.0.clone(), a.s(13.0), if a.said.1 { p.danger } else { p.flame }));
+                d = d.push(t(a.said.0.clone(), a.s(13.0), if a.said.1 { p.danger } else { p.flame }));
             }
-            c = c.push(t("The picture goes through Hearth Link's own connection, encrypted end to end. No router ports are opened.", a.s(12.0), p.muted));
-            frame(a, "Family and friends", G::Users, scrollable(c).height(Length::Fill).into(), a.hints(&[("A", "Connect"), ("← →", "Connect / Remove"), ("↑ ↓", "Move"), ("B", "Close")]), true)
+            d = d.push(t("The picture goes through Hearth Link's own connection, encrypted end to end. No router ports are opened.", a.s(12.0), p.muted));
+            // its blocks (hearth_ui::blocks): the people and adding one, moved, sized, hidden or restyled
+            let s10 = a.s(10.0);
+            let body = hearth_ui::arrange::parts(
+                &a.describe,
+                &p,
+                "friends",
+                vec![("people", c.into()), ("add", d.into())],
+                // as it was: one list that scrolls, the people then adding one
+                move |ps| scrollable(column![ps.take("people"), ps.take("add")].spacing(s10)).height(Length::Fill).into(),
+                Msg::Describe,
+            );
+            frame(a, "Family and friends", G::Users, body, a.hints(&[("A", "Connect"), ("← →", "Connect / Remove"), ("↑ ↓", "Move"), ("B", "Close")]), true)
         }
     }
 }

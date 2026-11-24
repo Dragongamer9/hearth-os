@@ -7,6 +7,7 @@
 //! An app holds a [`Describe`], sends it [`DMsg`]s, draws [`bar`] at its bottom while it's open, and lays itself out from
 //! [`Describe::layout`] and [`Describe::features`] (what's being tried, else what was kept).
 
+use crate::blocks;
 use crate::run;
 use crate::theme::Pal;
 use crate::ui::{self, t};
@@ -28,6 +29,34 @@ pub enum DMsg {
     Reset,
     Send,
     Sent(run::Output),
+    // Arrange (blocks.rs, arrange.rs): the app's pages as blocks, moved, sized, hidden, added back and restyled
+    /// open Arrange on this page (None: close it, nothing kept)
+    Arrange(Option<&'static str>),
+    Grab(&'static str, blocks::Grip),
+    /// the grid cell under the pointer while a block is held
+    Cell(u8, u8),
+    Drop,
+    Pick(&'static str),
+    Hide(&'static str),
+    Show(&'static str),
+    Look(blocks::LookPart),
+    ArrUndo,
+    ArrReset,
+    ArrKeep,
+}
+
+fn pos(a: &Arrange, id: &str) -> Option<usize> {
+    a.placed.iter().position(|p| p.id == id)
+}
+
+/// Arrange: the page being arranged, its blocks as they are now, and what Undo steps back through.
+pub struct Arrange {
+    pub page: &'static str,
+    pub placed: Vec<blocks::Placed>,
+    pub undo: Vec<Vec<blocks::Placed>>,
+    pub pick: Option<&'static str>,
+    /// the block being held: its id, the grip, the cell it was picked up in, and itself as it was
+    pub grab: Option<(&'static str, blocks::Grip, Option<(u8, u8)>, blocks::Placed)>,
 }
 
 pub struct Describe {
@@ -42,6 +71,12 @@ pub struct Describe {
     pub said: String,
     /// what's kept (the app's file)
     pub kept: Value,
+    /// the app's pages made of blocks (blocks.rs), and where their blocks go now (worked out once per change: None
+    /// is the app's own view)
+    pub pages: &'static [blocks::PageDef],
+    pub laid: Vec<(&'static str, Option<Vec<blocks::Placed>>)>,
+    pub arr: Option<Arrange>,
+    closing: bool,
 }
 
 /// `hearth-layout ARGS…`, or nothing when it isn't installed (said plainly).
@@ -66,7 +101,159 @@ impl Describe {
     pub fn new(app: &'static str, name: &'static str) -> Describe {
         // HEARTH_DESCRIBE_OPEN=<app> opens the box at start (the CI pictures).
         let open = std::env::var("HEARTH_DESCRIBE_OPEN").map(|v| v == app).unwrap_or(false);
-        Describe { app, name, open, text: String::new(), busy: false, result: None, error: String::new(), said: String::new(), kept: read_kept(app) }
+        Describe { app, name, open, text: String::new(), busy: false, result: None, error: String::new(), said: String::new(), kept: read_kept(app), pages: &[], laid: Vec::new(), arr: None, closing: false }
+    }
+
+    /// The app's pages made of blocks (every Hearth app names its own). HEARTH_ARRANGE_OPEN=<app>[:<page>] opens Arrange
+    /// at start (the CI pictures).
+    pub fn with_pages(mut self, pages: &'static [blocks::PageDef]) -> Describe {
+        self.pages = pages;
+        self.relayout();
+        if let Ok(v) = std::env::var("HEARTH_ARRANGE_OPEN") {
+            let (app, page) = v.split_once(':').unwrap_or((v.as_str(), ""));
+            if app == self.app {
+                if let Some(pg) = pages.iter().find(|p| p.id == page).or(pages.first()) {
+                    let _ = self.update(DMsg::Arrange(Some(pg.id)));
+                    if let Ok(b) = std::env::var("HEARTH_ARRANGE_PICK") {
+                        if let Some(d) = pg.blocks.iter().find(|d| d.id == b) {
+                            let _ = self.update(DMsg::Pick(d.id));
+                        }
+                    }
+                }
+            }
+        }
+        self
+    }
+
+    /// Where a page's blocks go now: tried over kept (None: the app's own view).
+    pub fn laid(&self, page: &str) -> Option<&Vec<blocks::Placed>> {
+        self.laid.iter().find(|(p, _)| *p == page).and_then(|(_, l)| l.as_ref())
+    }
+
+    /// Worked out again after a change (kept, tried), never per frame.
+    fn relayout(&mut self) {
+        let mut out = Vec::with_capacity(self.pages.len());
+        for pg in self.pages {
+            let ptr = format!("/layout/blocks/{}", pg.id);
+            let kept = self.kept.pointer(&ptr);
+            let tried = self.trying().and_then(|r| r.pointer(&ptr));
+            let m = blocks::merge(kept, tried);
+            out.push((pg.id, blocks::resolve(pg, m.as_ref())));
+        }
+        self.laid = out;
+    }
+
+    /// Is this block being changed by what Describe it is trying (its dashed outline)?
+    pub fn block_changing(&self, page: &str, id: &str) -> bool {
+        self.open && self.trying().and_then(|r| r.pointer(&format!("/layout/blocks/{page}/{id}"))).is_some()
+    }
+
+    fn page_def(&self, page: &str) -> Option<&'static blocks::PageDef> {
+        self.pages.iter().find(|p| p.id == page)
+    }
+
+    /// The env hearth-layout is run with: the app's name and its blocks (what your AI may move, and the check).
+    fn env(&self, c: Vec<String>) -> Vec<String> {
+        let mut e = vec!["env".to_string(), format!("HEARTH_DESCRIBE_APP={}", self.name)];
+        if !self.pages.is_empty() {
+            e.push(format!("HEARTH_APP_BLOCKS={}", blocks::catalog(self.pages)));
+        }
+        e.extend(c);
+        e
+    }
+
+    fn arrange(&mut self, m: DMsg) -> Task<DMsg> {
+        match m {
+            DMsg::Arrange(None) => self.arr = None,
+            DMsg::Arrange(Some(page)) => {
+                let Some(def) = self.page_def(page) else { return Task::none() };
+                let placed = self.laid(page).cloned().unwrap_or_else(|| blocks::defaults(def));
+                self.open = false;
+                self.result = None;
+                self.error.clear();
+                self.said.clear();
+                self.arr = Some(Arrange { page, placed, undo: Vec::new(), pick: None, grab: None });
+            }
+            DMsg::Keep | DMsg::Undo | DMsg::Reset => {}
+            m => {
+                let pages = self.pages;
+                let Some(a) = self.arr.as_mut() else { return Task::none() };
+                match m {
+                    DMsg::Grab(id, g) => {
+                        if let Some(i) = pos(a, id) {
+                            a.undo.push(a.placed.clone());
+                            a.grab = Some((id, g, None, a.placed[i].clone()));
+                            a.pick = Some(id);
+                        }
+                    }
+                    DMsg::Cell(c, r) => {
+                        if let Some((id, g, from, start)) = a.grab.as_mut() {
+                            let from = *from.get_or_insert((c, r));
+                            let moved = blocks::drag(start, *g, from, (c, r));
+                            let id = *id;
+                            if let Some(i) = pos(a, id) {
+                                a.placed[i] = moved;
+                            }
+                        }
+                    }
+                    DMsg::Drop => {
+                        if a.grab.take().is_some() && a.undo.last() == Some(&a.placed) {
+                            a.undo.pop();
+                        }
+                    }
+                    DMsg::Pick(id) => a.pick = Some(id),
+                    DMsg::Hide(id) => {
+                        let left = a.placed.iter().filter(|p| !p.hidden && p.id != id).count();
+                        if left == 0 {
+                            self.error = "One block stays, or the page would be empty.".into();
+                        } else if let Some(i) = pos(a, id) {
+                            a.undo.push(a.placed.clone());
+                            a.placed[i].hidden = true;
+                            if a.pick == Some(id) {
+                                a.pick = None;
+                            }
+                        }
+                    }
+                    DMsg::Show(id) => {
+                        if let Some(i) = pos(a, id) {
+                            a.undo.push(a.placed.clone());
+                            a.placed[i].hidden = false;
+                            a.pick = Some(id);
+                        }
+                    }
+                    DMsg::Look(part) => {
+                        if let Some(i) = a.pick.and_then(|id| pos(a, id)) {
+                            a.undo.push(a.placed.clone());
+                            a.placed[i].look = blocks::next_look(&a.placed[i].look, part);
+                        }
+                    }
+                    DMsg::ArrUndo => {
+                        if let Some(u) = a.undo.pop() {
+                            a.placed = u;
+                        } else {
+                            // nothing to step back here: the last Keep this undone
+                            return Task::perform(run::spawn(layout_cmd(vec!["app-undo".into(), self.app.into()])), DMsg::Kept);
+                        }
+                    }
+                    DMsg::ArrReset => {
+                        a.undo.push(a.placed.clone());
+                        return Task::perform(run::spawn(layout_cmd(vec!["app-reset".into(), self.app.into()])), DMsg::Kept);
+                    }
+                    DMsg::ArrKeep => {
+                        let Some(def) = pages.iter().find(|p| p.id == a.page) else { return Task::none() };
+                        let page = if blocks::is_default(def, &a.placed) { json!({}) } else { blocks::to_json(&a.placed) };
+                        let mut b = serde_json::Map::new();
+                        b.insert(a.page.to_string(), page);
+                        let change = json!({"layout": {"blocks": b}, "features": []});
+                        self.closing = true;
+                        let c = self.env(layout_cmd(vec!["app-keep".into(), self.app.into(), change.to_string()]));
+                        return Task::perform(run::spawn(c), DMsg::Kept);
+                    }
+                    _ => {}
+                }
+            }
+        }
+        Task::none()
     }
 
     /// A change being tried (an "app" answer), not yet kept.
@@ -136,7 +323,16 @@ impl Describe {
     }
 
     pub fn update(&mut self, m: DMsg) -> Task<DMsg> {
+        let t = self.update_inner(m);
+        self.relayout();
+        t
+    }
+
+    fn update_inner(&mut self, m: DMsg) -> Task<DMsg> {
         match m {
+            DMsg::Arrange(_) | DMsg::Grab(..) | DMsg::Cell(..) | DMsg::Drop | DMsg::Pick(_) | DMsg::Hide(_) | DMsg::Show(_) | DMsg::Look(_) | DMsg::ArrUndo | DMsg::ArrReset | DMsg::ArrKeep => {
+                return self.arrange(m);
+            }
             DMsg::Open => {
                 self.open = true;
                 self.error.clear();
@@ -156,7 +352,7 @@ impl Describe {
                 self.error.clear();
                 self.result = None;
                 let c = layout_cmd(vec!["describe-app".into(), self.app.into(), self.text.clone()]);
-                return Task::perform(run::spawn(with_app(c, self.name)), DMsg::Got);
+                return Task::perform(run::spawn(self.env(c)), DMsg::Got);
             }
             DMsg::Got(o) => {
                 self.busy = false;
@@ -169,16 +365,29 @@ impl Describe {
             DMsg::Keep => {
                 let Some(r) = self.trying() else { return Task::none() };
                 let change = json!({"layout": r.get("layout").cloned().unwrap_or(json!({})), "features": r.get("features").cloned().unwrap_or(json!([]))});
-                return Task::perform(run::spawn(layout_cmd(vec!["app-keep".into(), self.app.into(), change.to_string()])), DMsg::Kept);
+                return Task::perform(run::spawn(self.env(layout_cmd(vec!["app-keep".into(), self.app.into(), change.to_string()]))), DMsg::Kept);
             }
             DMsg::Kept(o) => {
+                let closing = std::mem::take(&mut self.closing);
                 if o.ok {
                     self.kept = read_kept(self.app);
                     self.result = None;
                     self.text.clear();
+                    self.error.clear();
                     self.said = "Kept. Undo is here, and View › Layout › Back to the original any time.".into();
+                    self.relayout();
+                    if closing {
+                        self.arr = None;
+                    } else if let Some(page) = self.arr.as_ref().map(|a| a.page) {
+                        // Arrange's Undo or Back to the original: the page as it's kept now
+                        let placed = self.laid(page).cloned().or_else(|| self.page_def(page).map(blocks::defaults)).unwrap_or_default();
+                        if let Some(a) = self.arr.as_mut() {
+                            a.placed = placed;
+                            a.grab = None;
+                        }
+                    }
                 } else {
-                    self.error = o.why();
+                    self.error = if o.err.contains("No such file") { "Keeping it needs hearth-layout, which comes with Hearth OS.".into() } else { o.why() };
                 }
             }
             DMsg::Undo => {
@@ -204,12 +413,6 @@ impl Describe {
         }
         Task::none()
     }
-}
-
-fn with_app(mut c: Vec<String>, name: &str) -> Vec<String> {
-    let mut e = vec!["env".to_string(), format!("HEARTH_DESCRIBE_APP={name}")];
-    e.append(&mut c);
-    e
 }
 
 /// "EDITING", for the title while the box is open (board 11).
@@ -313,6 +516,9 @@ pub fn bar<'a, M: Clone + 'a>(p: &Pal, d: &'a Describe, map: impl Fn(DMsg) -> M 
             if d.has_kept() {
                 buttons = buttons.push(ui::btn(&p, "Undo", ui::Kind::Normal, false, Some(map(DMsg::Undo))));
             }
+            if let Some(pg) = d.pages.first() {
+                buttons = buttons.push(ui::btn(&p, "Move and resize blocks", ui::Kind::Normal, false, Some(map(DMsg::Arrange(Some(pg.id))))));
+            }
             buttons = buttons.push(ui::btn(&p, "Done", ui::Kind::Normal, false, Some(map(DMsg::Close))));
             buttons = buttons.push(ui::btn(&p, if d.busy { "Making it…" } else { "Make it" }, ui::Kind::Primary, false, (!d.busy && !d.text.trim().is_empty()).then(|| map(DMsg::Make))));
         }
@@ -341,7 +547,10 @@ mod tests {
     use super::*;
 
     fn d() -> Describe {
-        Describe { app: "files", name: "Hearth Files", open: true, text: String::new(), busy: false, result: None, error: String::new(), said: String::new(), kept: json!({"layout": {"sidebar": "hidden"}, "features": []}) }
+        let mut d = Describe::new("files", "Hearth Files");
+        d.open = true;
+        d.kept = json!({"layout": {"sidebar": "hidden"}, "features": []});
+        d
     }
 
     #[test]

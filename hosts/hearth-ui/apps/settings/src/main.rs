@@ -142,7 +142,7 @@ macro_rules! define {
             let mut sh = Shared::new();
             sh.part = part;
             App {
-                describe: hearth_ui::describe::Describe::new("settings", "Hearth Settings"),
+                describe: hearth_ui::describe::Describe::new("settings", "Hearth Settings").with_pages(home::BLOCKS),
                 sh,
                 cat: registry::cat_of(first),
                 page: first,
@@ -320,6 +320,10 @@ fn set_layout(a: &mut App, b: bool) {
 
 fn update(a: &mut App, m: Msg) -> Task<Msg> {
     if let Msg::Describe(dm) = m {
+        return a.describe.update(dm).map(Msg::Describe);
+    }
+    // Home's blocks are arranged by the app's Describe it (hearth_ui::blocks)
+    if let Msg::Home(home::Msg::Describe(dm)) = m {
         return a.describe.update(dm).map(Msg::Describe);
     }
     let t = match m {

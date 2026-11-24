@@ -271,6 +271,18 @@ fn page_name(pg: &Page, a: &App) -> String {
 }
 
 // ------------------------------------------------------------------ the frame
+/// The Store's blocks (hearth_ui::blocks).
+pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+    id: "window",
+    title: "Hearth Store",
+    blocks: &[hearth_ui::blocks::bl("side", "The side", 0, 0, 3, 11), hearth_ui::blocks::bl("page", "The page", 3, 0, 9, 11), hearth_ui::blocks::bl("bottom", "The bar at the bottom", 0, 11, 12, 1)],
+}];
+
+/// The Store with Describe it's box under it while it's open.
+pub fn shown(a: &App) -> E<'_, Msg> {
+    hearth_ui::describe::with_bar(view(a), &a.p, &a.describe, Msg::Describe)
+}
+
 pub fn view(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
@@ -280,8 +292,17 @@ pub fn view(a: &App) -> E<'_, Msg> {
     let body = page_body(a);
     let area: E<Msg> = container(scrollable(container(body).padding(look::pad(z(30.0), z(50.0), z(30.0), z(50.0))).width(Length::Fill)).height(Length::Fill)).width(Length::Fill).height(Length::Fill).style(look::bx(tn.page, 0.0, None)).into();
     let area = overlays(a, area);
-    let main = row![sidebar(a), area].height(Length::Fill);
-    let all = column![title_bar(a), ui::hline(tn.line), main, bottom(a)];
+    // its blocks (hearth_ui::blocks): the side, the page and the bar at the bottom, moved, sized, hidden or restyled;
+    // as it was when nothing is
+    let main = hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "window",
+        vec![("side", sidebar(a)), ("page", area), ("bottom", bottom(a))],
+        |ps| column![row![ps.take("side"), ps.take("page")].height(Length::Fill), ps.take("bottom")].into(),
+        Msg::Describe,
+    );
+    let all = column![title_bar(a), ui::hline(tn.line), main];
     ui::edges(container(all).width(Length::Fill).height(Length::Fill).style(look::bx(tn.page, 0.0, None)).into(), Msg::Resize)
 }
 
@@ -323,7 +344,8 @@ fn title_bar(a: &App) -> E<'_, Msg> {
     let p = a.p;
     let tn = tone(&p);
     let name = row![gap(z(22.0), 1.0), look::mark(z(30.0)), gap(z(14.0), 1.0), ts("Hearth Store", f(18.0), tn.text), gap(z(10.0), 1.0), t("· Hearth", f(15.0), tn.muted)].align_y(iced::Center);
-    let drag = iced::widget::mouse_area(container(name).width(Length::Fill).center_y(Length::Fixed(z(56.0)))).on_press(Msg::Drag).on_double_click(Msg::Maximize);
+    // a right-click on the bar opens Describe it (and from it, Move and resize blocks)
+    let drag = iced::widget::mouse_area(container(name).width(Length::Fill).center_y(Length::Fixed(z(56.0)))).on_press(Msg::Drag).on_double_click(Msg::Maximize).on_right_press(Msg::Describe(hearth_ui::describe::DMsg::Open));
     let wbtn = |g: ui::G, m: Msg| -> E<'static, Msg> {
         click(container(ui::glyph(g, tn.muted, 10.0, 1.8)).center_x(Length::Fixed(z(56.0))).center_y(Length::Fixed(z(56.0))), Some(m))
     };

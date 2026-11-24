@@ -81,7 +81,22 @@ pub enum Msg {
     BrightSet,
     Vol(f32),
     VolSet,
+    /// Arrange this page's blocks (hearth_ui::blocks; the app's Describe it takes it: main.rs)
+    Describe(hearth_ui::describe::DMsg),
 }
+
+/// Home's blocks (hearth_ui::blocks): moved, sized, hidden or restyled; as it was when nothing is.
+pub const BLOCKS: &[hearth_ui::blocks::PageDef] = &[hearth_ui::blocks::PageDef {
+    id: "home",
+    title: "Home",
+    blocks: &[
+        hearth_ui::blocks::bl("pc", "This PC", 0, 0, 7, 4),
+        hearth_ui::blocks::bl("tiles", "Wi-Fi, Bluetooth, Updates, Hearth Link", 7, 0, 5, 4),
+        hearth_ui::blocks::bls("recommended", "Recommended settings", 0, 4, 6, 8),
+        hearth_ui::blocks::bls("storage", "Storage", 6, 4, 6, 4),
+        hearth_ui::blocks::bls("changed", "Changed lately", 6, 8, 6, 4),
+    ],
+}];
 
 pub const TILES: [&str; 10] = ["lightmode", "wifi", "bt", "brightness", "volume", "startin", "updates", "power", "night", "dnd"];
 fn tile_name(id: &str) -> &'static str {
@@ -263,6 +278,7 @@ pub fn update(sh: &mut Shared, st: &mut State, m: Msg) -> Task<Msg> {
                 s.vol = v;
             }
         }
+        Msg::Describe(_) => {}
         Msg::VolSet => {
             if let Some(s) = &st.sound {
                 return Task::perform(run::spawn(vec!["wpctl".into(), "set-volume".into(), "@DEFAULT_AUDIO_SINK@".into(), format!("{:.2}", s.vol)]), |o| Msg::Did("Couldn't change the volume", o));
@@ -349,7 +365,6 @@ fn home_view<'a>(a: &'a App) -> Element<'a, Msg> {
     ]
     .spacing(16.0)
     .width(Length::FillPortion(9));
-    let top = row![container(pc).width(Length::FillPortion(13)), tiles].spacing(18.0);
 
     let mut rec = Column::new().spacing(10.0).push(inner_row(&p, G::Moon, "Night light", "Warmer colours from sunset to sunrise", switch(&p, st.night, Some(Msg::Night(!st.night)))));
     if let Some(on) = light_mode(st) {
@@ -390,8 +405,18 @@ fn home_view<'a>(a: &'a App) -> Element<'a, Msg> {
         );
     }
     let changed = titled_card(&p, "Changed lately", Some(("All changes", Msg::Go("changes"))), changed);
-    let lower = row![container(rec).width(Length::FillPortion(1)), column![storage, changed].spacing(18.0).width(Length::FillPortion(1))].spacing(18.0);
-    column![top, lower].spacing(18.0).into()
+    hearth_ui::arrange::parts(
+        &a.describe,
+        &p,
+        "home",
+        vec![("pc", pc), ("tiles", tiles.into()), ("recommended", rec.into()), ("storage", storage.into()), ("changed", changed.into())],
+        |ps| {
+            let top = row![container(ps.take("pc")).width(Length::FillPortion(13)), ps.take("tiles")].spacing(18.0);
+            let lower = row![container(ps.take("recommended")).width(Length::FillPortion(1)), column![ps.take("storage"), ps.take("changed")].spacing(18.0).width(Length::FillPortion(1))].spacing(18.0);
+            column![top, lower].spacing(18.0).into()
+        },
+        Msg::Describe,
+    )
 }
 
 /// settings-changes.js ago(): "just now", "2 min ago", "3 hours ago", "yesterday", "Nov 12".

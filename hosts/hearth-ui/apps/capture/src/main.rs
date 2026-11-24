@@ -438,7 +438,7 @@ impl Ed {
 fn boot() -> (App, Task<Msg>) {
     let prefs = settings_file::read(&prefs_path()).map().unwrap_or_default();
     let mut a = App {
-            describe: hearth_ui::describe::Describe::new("capture", "Capture"),
+            describe: hearth_ui::describe::Describe::new("capture", "Capture").with_pages(pages::BLOCKS),
         p: hearth_ui::theme::load(),
         main: None,
         screens: Vec::new(),

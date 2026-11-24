@@ -109,6 +109,8 @@ pub struct Uninst {
 
 #[derive(Debug, Clone)]
 pub enum Msg {
+    /// Describe it and its blocks (hearth_ui::describe, hearth_ui::blocks; every Hearth app has them)
+    Describe(hearth_ui::describe::DMsg),
     Theme,
     Key(KEvent),
     Pad(pad::Button),
@@ -170,6 +172,7 @@ pub enum Msg {
 }
 
 pub struct App {
+    pub describe: hearth_ui::describe::Describe,
     pub p: Pal,
     pub cat: Catalog,
     pub seen: Seen,
@@ -263,6 +266,7 @@ impl App {
         // Mantel has no program to open: it's here when its desktop is (Quickshell and its shell).
         let here = cat.apps.iter().filter(|e| e.kind == Kind::BuiltIn && (which(&e.open) || (e.id == "mantel" && which("quickshell")))).map(|e| e.id.clone()).collect();
         let mut a = App {
+            describe: hearth_ui::describe::Describe::new("store", "Hearth Store").with_pages(view::BLOCKS),
             p: hearth_ui::theme::load(),
             seen: release::read_seen(),
             prefs: prefs::load(),
@@ -632,6 +636,7 @@ fn detached(cmd: &str) {
 
 pub fn update(a: &mut App, m: Msg) -> Task<Msg> {
     match m {
+        Msg::Describe(dm) => return a.describe.update(dm).map(Msg::Describe),
         Msg::Theme => a.p = hearth_ui::theme::load(),
         Msg::Key(ev) => return key(a, ev),
         Msg::Pad(b) => return pad_press(a, b),
@@ -1369,7 +1374,7 @@ fn main() -> iced::Result {
     if app::flag("--check") {
         std::process::exit(check::daily());
     }
-    iced::application(App::new, update, view::view)
+    iced::application(App::new, update, view::shown)
         .title("Hearth Store")
         .subscription(subscription)
         .theme(|a: &App| app::iced_theme(&a.p))
