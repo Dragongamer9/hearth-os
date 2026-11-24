@@ -162,6 +162,23 @@ def write_run(path, text, mode=0o644):
     os.replace(tmp, path)
 
 
+def label_for_greetd(path):
+    """greetd runs in the login screen's SELinux domain (xdm_t), which may not read /run's plain files (var_run_t):
+    "i/o error: Permission denied" and no sign-in at all (the owner's laptop, test-1.18, Nov 23). Its settings get
+    etc_t, which it may read. Nothing where SELinux is off (Debian); never fails."""
+    if not os.path.isdir('/sys/fs/selinux') or ROOT:
+        return
+    for chcon in ('/usr/bin/chcon', '/bin/chcon'):
+        if os.access(chcon, os.X_OK):
+            try:
+                r = subprocess.run([chcon, '-t', 'etc_t', path], capture_output=True, text=True, timeout=10)
+                if r.returncode != 0:
+                    log('could not label %s for greetd: %s' % (path, (r.stderr or r.stdout).strip()))
+            except (OSError, subprocess.SubprocessError) as e:
+                log('could not label %s for greetd: %s' % (path, e))
+            return
+
+
 def rm(path):
     try:
         os.remove(path)
@@ -360,6 +377,7 @@ def cmd_select():
         write_mode('sddm', str(e))
         return 0
     write_run(GREETD_CONF, conf + '\n')
+    label_for_greetd(GREETD_CONF)
     update_state(lambda st: st.__setitem__('pending', {'boot': boot, 'at': now(), 'shown': False}))
     write_mode('greetd', 'turned on in Settings')
     write_run(FLAG, now() + '\n')       # last: until here, SDDM
@@ -453,6 +471,7 @@ def cmd_text_config():
     except Exception as e:
         log('could not write the text sign-in with automatic sign-in (%s): without it' % e)
         write_run(TEXT_CONF, text_config(None))
+    label_for_greetd(TEXT_CONF)
     return 0
 
 
