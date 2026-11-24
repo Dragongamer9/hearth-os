@@ -177,6 +177,8 @@ grep -q "^_apt:" /etc/passwd && echo "HEARTH-CI-accounts debian" || echo "HEARTH
 for i in $(seq 90); do systemctl is-active -q graphical.target && break; sleep 2; done
 echo "HEARTH-CI-graphical $(systemctl is-active graphical.target)"
 for i in $(seq 30); do loginctl list-sessions --no-legend 2>/dev/null | grep -q tester && break; sleep 2; done
+bad=""; [ -f /boot/grub2/hearth-bls.cfg ] && for o in $(grep -o "ostree=/ostree/boot\.[01][^ ]*" /boot/grub2/hearth-bls.cfg | cut -d= -f2); do [ -e "/sysroot$o" ] || bad="$bad $o"; done
+echo "HEARTH-CI-menu ${bad:-ok}"
 echo "HEARTH-CI-signin $(loginctl list-sessions --no-legend 2>/dev/null | grep tester | head -1 | tr -s " ") · $(journalctl -b --no-pager -o cat -u hearth-login-text.service -u hearth-greetd.service -u sddm.service 2>/dev/null | grep -aE "unable to exec|panicked|EACCES" | head -2 | tr "\n" " ")"
 systemd-analyze 2>&1 | head -2 | sed "s/^/HEARTH-CI-time /"
 systemd-analyze critical-chain graphical.target --no-pager 2>&1 | sed "s/^/HEARTH-CI-chain /"
@@ -195,6 +197,7 @@ jobsaid 3-anatase | grep -q 'HEARTH-CI-accounts fedora' || ann warning "3: Debia
 # Hearth unit may hold the way to graphical.target. Allowed: hearth-recovery's own 1.5 s button window (it has to come
 # before the login screen) and the clean install, which runs once, at the first start after a switch.
 ann notice "3: signing in: $(said 3-anatase HEARTH-CI-signin)"
+jobsaid 3-anatase | grep -q 'HEARTH-CI-menu /' && fail "3: the boot menu names a version that isn't on the drive: $(said 3-anatase HEARTH-CI-menu)"
 jobsaid 3-anatase | grep 'HEARTH-CI-signin' | grep -qE 'unable to exec|panicked|EACCES' && fail "3: greetd couldn't start the session: $(said 3-anatase HEARTH-CI-signin)"
 jobsaid 3-anatase | grep -q 'HEARTH-CI-graphical active' || fail "3: Anatase didn't reach graphical.target: $(jobsaid 3-anatase | grep 'HEARTH-CI-graphical\|HEARTH-CI-time')"
 slow=$(jobsaid 3-anatase | sed -n 's/^HEARTH-CI-chain //p' | grep -oE 'hearth-[a-z0-9@.-]+\.service[^+]*\+[0-9.]+(ms|s)' | python3 -c '
