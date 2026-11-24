@@ -257,6 +257,19 @@ def record_good():
         log(f'noting this start for Hearth Storage: {e}')
 
 
+def refresh_boot_menu():
+    """Hearth's own boot menu (/boot/grub2/hearth-bls.cfg, on a PC that came from Debian) rewritten right after the
+    default version changed. bootc rollback swaps /ostree/boot.0 and boot.1 at once, and a menu still naming the one
+    that's gone starts nothing (the owner's laptop, Nov 23: every entry went to "Couldn't find specified OSTree root").
+    Never fails the step it follows."""
+    if not os.path.isfile('/boot/grub2/hearth-bls.cfg') or not os.access('/usr/libexec/nimbus/hearth-bls-grub', os.X_OK):
+        return
+    try:
+        subprocess.run(['/usr/libexec/nimbus/hearth-bls-grub'], capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def good_start():
     g = grub_dir()
     if not g:
@@ -270,6 +283,7 @@ def good_start():
             log('the new version didn\'t start twice, the previous one did: making it the default (bootc rollback)')
             r = subprocess.run(['bootc', 'rollback'], capture_output=True, text=True)
             ok = r.returncode == 0
+            refresh_boot_menu()
             log('done' if ok else f'bootc rollback failed: {(r.stderr or r.stdout).strip()}')
             os.makedirs(STATE, exist_ok=True)
             until = time.time() + PAUSE_DAYS * 86400

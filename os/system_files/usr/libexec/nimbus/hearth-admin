@@ -248,6 +248,19 @@ def bootc_status(quiet=False):
     }
 
 
+def refresh_boot_menu():
+    """Hearth's own boot menu (/boot/grub2/hearth-bls.cfg, on a PC that came from Debian) rewritten right after the
+    default version changed. bootc rollback swaps /ostree/boot.0 and boot.1 at once, and a menu still naming the one
+    that's gone starts nothing (the owner's laptop, Nov 23: every entry went to "Couldn't find specified OSTree root").
+    Never fails the step it follows."""
+    if not os.path.isfile('/boot/grub2/hearth-bls.cfg') or not os.access('/usr/libexec/nimbus/hearth-bls-grub', os.X_OK):
+        return
+    try:
+        subprocess.run(['/usr/libexec/nimbus/hearth-bls-grub'], capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def rollback():
     """Settings › Updates › Go back: the previous deployment becomes the default at the next restart (bootc
     rollback swaps the two; a second run before restarting swaps them back). Nothing changes until the restart."""
@@ -262,6 +275,7 @@ def rollback():
         run_logged(['rpm-ostree', 'rollback'])
     else:
         run_logged(['bootc', 'rollback'])
+    refresh_boot_menu()
     print(json.dumps(bootc_status()))
 
 
@@ -2271,6 +2285,7 @@ def back_to_debian(deps):
     if r.returncode != 0:
         print('log: couldn\'t go back directly (%s); getting Debian fresh instead' % ((r.stderr or r.stdout).strip()[-200:]), flush=True)
         return False
+    refresh_boot_menu()
     return True
 
 
