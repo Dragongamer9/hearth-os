@@ -538,7 +538,7 @@ pub fn view<'a>(sh: &'a Shared, st: &'a St) -> E<'a, M> {
     page(v)
 }
 
-fn discover<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut Vec<E<'a, M>>) {
+fn discover<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut crate::secs::SecVec<'a, M>) {
     // (feature/hearth-store) Hearth's own apps are in the Hearth Store (docs/HEARTH-STORE.md); Flathub's stay here.
     if std::path::Path::new("/usr/bin/hearth-store-app").exists() {
         v.push(group(p, "Hearth's own apps", vec![r(G::Store, "Hearth Store", "Dragongamer9's apps for Hearth: Hearth AI, AI Command Center and more").chev().on(M::HearthStore).view(p)]));
@@ -560,7 +560,7 @@ fn discover<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut Vec<E<'a, M>>) {
     }
 }
 
-fn app_page<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut Vec<E<'a, M>>) {
+fn app_page<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut crate::secs::SecVec<'a, M>) {
     let a = &st.app;
     if a.is_null() {
         return;
@@ -631,7 +631,7 @@ fn app_page<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut Vec<E<'a, M>>) {
     v.push(group(p, "About", about));
 }
 
-fn updates<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut Vec<E<'a, M>>) {
+fn updates<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut crate::secs::SecVec<'a, M>) {
     let mut g: Vec<E<M>> = Vec::new();
     let on = not_false(&st.prefs, "notifyUpdates");
     g.push(sw(p, G::Moon, "Tell me when app updates are there", if on { "A Hearth notice with Update all, every few hours when there's something new" } else { "Off: look here yourself" }, on, Some(M::Notify(!on))));
@@ -674,7 +674,7 @@ fn updates<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut Vec<E<'a, M>>) {
     v.push(group(p, "Updates", g));
 }
 
-fn sources<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut Vec<E<'a, M>>) {
+fn sources<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut crate::secs::SecVec<'a, M>) {
     let mut g: Vec<E<M>> = Vec::new();
     for s in &st.srcs {
         let name = gs(s, "name");
@@ -764,7 +764,7 @@ pub fn parse_drivers(out: &str) -> Vec<Value> {
     rows
 }
 
-fn drivers_view<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut Vec<E<'a, M>>) {
+fn drivers_view<'a>(p: &hearth_ui::Pal, st: &'a St, v: &mut crate::secs::SecVec<'a, M>) {
     v.push(words(p, "What your PC's parts need to work their best: graphics drivers, firmware for Wi-Fi, Bluetooth and sound, and fixes for the processor. Hearth OS comes with most of them.", false));
     let d = &st.drivers;
     if d.is_null() {
