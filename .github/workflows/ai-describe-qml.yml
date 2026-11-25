@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
   push:
     branches: [feature/ai-describe]
-    paths: ['hosts/linux/desktop/shell/DescribeIt.qml', 'hosts/linux/desktop/shell/SetAIDescribe.qml', 'hosts/linux/desktop/shell/hearth-ai-check',
+    paths: ['.github/scripts/ai-shared-fixtures.py', 'hosts/linux/desktop/shell/DescribeIt.qml', 'hosts/linux/desktop/shell/SetAIDescribe.qml', 'hosts/linux/desktop/shell/hearth-ai-check',
             'hosts/linux/test/test_hearth_ai_describe.py', '.github/workflows/ai-describe-qml.yml']
 
 concurrency:
@@ -64,6 +64,11 @@ jobs:
           python3 $SH/hearth-browser asked >/dev/null 2>&1 || true
           # stand-in AIs: this "laptop"'s slow Ollama and the PC's over Hearth Link (only their model lists)
           python3 .github/scripts/ai-standin.py 11434 dolphin3:8b & python3 .github/scripts/ai-standin.py 11435 qwen3:30b-a3b &
+          # Shared from your other devices (stand-in answers, read by hearth-ai-check; the shell started below inherits them)
+          python3 .github/scripts/ai-standin.py 11436 qwen3:30b-a3b huihui_ai/qwen3-abliterated:14b &
+          sleep 1
+          python3 .github/scripts/ai-shared-fixtures.py /tmp/ai-shared http://127.0.0.1:11436/v1
+          export HEARTH_AI_SHARED_FIXTURE=/tmp/ai-shared/devices.json HEARTH_AI_LINK_FIXTURE=/tmp/ai-shared/link.json
           # a stand-in hearth-layout: "now" answers {}, "describe" says who's answering (as the real one does) and waits
           mkdir -p /tmp/fakebin
           cat > /tmp/fakebin/hearth-layout <<'FAKE'
@@ -105,12 +110,18 @@ jobs:
           echo "$s" | grep -q '"busy":false' || FAIL "still busy after Cancel"
           shot da-03-cancelled 1
           q describe close
-          # ---- 3. Settings › AI › Describe it (the QML Settings: no Rust Settings here)
+          # ---- 3. Settings › AI › Describe it (the QML Settings: no Rust Settings here), with Shared from your other
+          # devices: the PC ready with an Nvidia card (Describe it uses it), the Ally playing, the office PC unconfirmed
           before=$(ls -la "$HOME/.config/nimbus" | md5sum)
-          q settings page ai-describe; shot da-04-settings-describe 6
-          [ "$before" = "$(ls -la "$HOME/.config/nimbus" | md5sum)" ] || echo "::warning title=describe waiting::the config folder changed while Settings opened: $(ls "$HOME/.config/nimbus")"
           python3 $SH/hearth-ai-check for describe | tee shots/for-describe.json
           grep -q '"from": "link"' shots/for-describe.json && SAY "Fastest available: the other device over this slow one" || FAIL "Fastest available didn't pick the other device: $(cat shots/for-describe.json)"
+          q settings page ai-describe; shot da-04-settings-describe 8
+          [ "$before" = "$(ls -la "$HOME/.config/nimbus" | md5sum)" ] || echo "::warning title=describe waiting::the config folder changed while Settings opened: $(ls "$HOME/.config/nimbus")"
+          python3 $SH/hearth-ai-check use-shared desktop | tee shots/use-shared.json
+          grep -q '"ok": true' shots/use-shared.json || FAIL "Use this for Describe it didn't save: $(cat shots/use-shared.json)"
+          python3 $SH/hearth-ai-check shared | tee shots/shared.json
+          grep -q '"unconfirmed"' shots/shared.json || FAIL "the office PC isn't shown as unconfirmed"
+          q settings close; sleep 1; q settings page ai-describe; shot da-05-shared-devices 8
           q settings close
           cp "$LOG" shots/shell.log 2>/dev/null
           P='(DescribeIt|SetAIDescribe|shell)\.qml'
@@ -136,7 +147,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        part: [0, 1]
+        part: [0, 1, 2]
     steps:
       - uses: actions/checkout@v4
         with:

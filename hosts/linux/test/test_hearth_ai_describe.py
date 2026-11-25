@@ -71,6 +71,56 @@ class DescribeUses(unittest.TestCase):
         self.assertFalse(st['uses']['describe']['ready'] and st['uses']['describe']['via'] == '')
 
 
+def fixtures(tmp, desktop_url):
+    """What hearth-ai-share devices and hearth-link-settings ai-status would say: the PC ready with an Nvidia card, the
+    Ally playing, and the office PC that Hearth Link couldn't confirm (its certificate didn't match)."""
+    devs = {'devices': [
+        {'device': 'laptop', 'name': 'laptop', 'via': 'this device', 'online': True, 'services': []},
+        {'device': 'desktop', 'name': 'Desktop', 'via': 'tailscale', 'online': True, 'available': True, 'gpu': {'vendor': 'nvidia', 'vramMB': 12288},
+         'services': [{'kind': 'chat', 'engine': 'ollama', 'openai': desktop_url, 'url': desktop_url[:-3], 'healthy': True,
+                       'models': ['qwen3:30b-a3b', 'nomic-embed-text:latest']}]},
+        {'device': 'rog-ally', 'name': 'ROG Ally', 'via': 'tailscale', 'online': True, 'gaming': True, 'reason': 'playing',
+         'gpu': {'vendor': 'amd', 'vramMB': 4096}, 'services': [{'kind': 'chat', 'engine': 'ollama', 'openai': 'http://100.64.0.3:11434/v1', 'models': ['llama3.2:3b']}]}]}
+    link = {'servers': [], 'unreached': [{'id': 'ab12', 'name': 'Office PC', 'mismatch': True}, {'id': 'cd34', 'name': 'Old laptop', 'mismatch': False}], 'using': None}
+    d, l = os.path.join(tmp, 'devs.json'), os.path.join(tmp, 'link.json')
+    pathlib.Path(d).write_text(json.dumps(devs))
+    pathlib.Path(l).write_text(json.dumps(link))
+    return d, l
+
+
+class SharedDevices(unittest.TestCase):
+    """Settings › AI › Shared from your other devices (the owner, Nov 24): every AI your devices share, read only."""
+    def setUp(self):
+        self.m = load()
+        self.tmp = tempfile.mkdtemp()
+        for k, f in (('DESCRIBE', 'describe.json'), ('ONLINE', 'ai-online.json'), ('USES_FILE', 'ai-uses.json'), ('SPEED', 'ai-speed.json')):
+            setattr(self.m, k, os.path.join(self.tmp, f))
+        self.m.LINK = 'http://127.0.0.1:9/v1'
+        self.m.SERVICES = {}
+
+    def test_the_list_and_using_one_for_describe_it(self):
+        pc, base = server(['qwen3:30b-a3b'])
+        d, l = fixtures(self.tmp, base)
+        try:
+            with mock.patch.dict(os.environ, {'HEARTH_AI_SHARED_FIXTURE': d, 'HEARTH_AI_LINK_FIXTURE': l}), \
+                    mock.patch.object(self.m, 'engines', return_value=('ollama', [])):
+                rows = {r['device']: r for r in self.m.shared()['devices']}
+                self.assertNotIn('laptop', rows)                                  # this device isn't "shared from"
+                self.assertEqual((rows['desktop']['state'], rows['desktop']['gpu'], rows['desktop']['models']), ('ready', 'nvidia', ['qwen3:30b-a3b']))
+                self.assertEqual(rows['rog-ally']['state'], 'playing')
+                self.assertEqual(rows['office-pc']['state'], 'unconfirmed')
+                self.assertFalse(rows['office-pc']['canUse'])
+                self.assertNotIn('old-laptop', rows)                              # just away: not listed as a problem
+                self.assertFalse(rows['desktop']['inUse'])
+                self.assertFalse(self.m.use_shared('office-pc')['ok'])
+                self.assertTrue(self.m.use_shared('desktop')['ok'])
+                saved = json.loads(pathlib.Path(self.m.USES_FILE).read_text())['uses']['describe']
+                self.assertEqual(saved, {'url': base.rstrip('/'), 'model': 'qwen3:30b-a3b', 'label': 'Desktop'})
+                self.assertTrue({r['device']: r for r in self.m.shared()['devices']}['desktop']['inUse'])
+        finally:
+            pc.shutdown()
+
+
 class OnPath(unittest.TestCase):
     """hearth-ai-check is a command (the owner had to type python3 /usr/share/nimbus/desktop/shell/hearth-ai-check)."""
     def test_both_images_put_it_on_path(self):

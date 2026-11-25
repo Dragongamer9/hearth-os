@@ -8,7 +8,7 @@
 pub mod kit;
 mod overview;
 mod safe;
-mod services;
+pub(crate) mod services;
 mod sharing;
 
 use crate::shared::Shared;
