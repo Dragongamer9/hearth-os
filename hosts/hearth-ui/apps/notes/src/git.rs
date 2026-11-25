@@ -190,7 +190,7 @@ pub fn parse_diff(text: &str) -> Vec<DiffLine> {
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Repo {
     pub branch: String,
-    /// "Dragongamer9/hearth-workspace" (from origin's address), or the address itself.
+    /// "Hearth-Organization/hearth-workspace" (from origin's address), or the address itself.
     pub remote: String,
     pub upstream: bool,
     pub ahead: u32,

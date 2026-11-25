@@ -7,7 +7,7 @@ rm -rf "$IFX"; mkdir -p "$IFX"
 python3 - "$IFX" "$ROOT/docs/mockups/hearth-ideas/ideas-2-being-built.png" <<'PY' || echo "::error title=ideas fixture::it couldn't be made"
 import base64, json, sys, os
 out, pic = sys.argv[1], sys.argv[2]
-L, R = "repos/Dragongamer9/hearth-logs", "repos/Dragongamer9/hearth-os"
+L, R = "repos/Hearth-Organization/hearth-logs", "repos/Dragongamer9/hearth-os"
 def body(part, asked, needs, closest=None, sketch=False, kept=False):
     j = {"format": 1, "part": part, "asked": asked, "needs": needs, "sketch": sketch, "hearth": "1.17", "app": "", "kept": kept}
     if closest: j["closest"] = {"name": closest}

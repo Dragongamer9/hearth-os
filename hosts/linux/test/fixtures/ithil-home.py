@@ -1,5 +1,5 @@
 """A stand-in ~/HearthAI for the Desktop Mode test's Server mode shots (1.13, Ithil): her state, settings, a sleep and an
-event log of the last hours, like her app (Dragongamer9/hearth-ai) writes them. python3 ithil-home.py <dir>"""
+event log of the last hours, like her app (Hearth-Organization/hearth-ai) writes them. python3 ithil-home.py <dir>"""
 import json
 import os
 import sqlite3

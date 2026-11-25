@@ -18,7 +18,7 @@ and a controller layout.
 
 | What | Where |
 |---|---|
-| The vault | Any folder (Settings › Repository › Change…); by default `~/hearth-workspace`. Missing: a first-run step clones `Dragongamer9/hearth-workspace` with this PC's Git sign-in |
+| The vault | Any folder (Settings › Repository › Change…); by default `~/hearth-workspace`. Missing: a first-run step clones `Hearth-Organization/hearth-workspace` with this PC's Git sign-in |
 | Settings | `~/.config/nimbus/hearth-notes.json` (settings_file.rs: atomic, .bak, merged; written only when you change one) |
 | A note's last good copy | `~/.local/share/hearth/notes/bak/<vault>/<note>.bak` (outside the vault, so nothing extra is committed) |
 | Productivity and habits | `~/.local/share/hearth/notes/trackers.json` (not `log/.trackers.json`: the workspace check allows only `log/YYYY-MM-DD.md` in `log/`, and the log's format never changes) |

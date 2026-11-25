@@ -43,7 +43,7 @@ automatically from now on"): a push to the `store` branch that changes catalog.j
    roadmap item for it is ticked only when its checklist is complete, and names the checklist. Before a release, open
    each page next to its mockup. `hosts/linux/test/test_mockups.py` fails a release whose mockups have open parts.
 12. **RED FLAG: Nothing made lives only in the session.** Everything made outside this repo (videos and their sources,
-   mockup sources, renders, research, notes) is pushed to the private repo `Dragongamer9/hearth-workspace` as it's
+   mockup sources, renders, research, notes) is pushed to the private repo `Hearth-Organization/hearth-workspace` as it's
    made, with a daily work log there (`log/YYYY-MM-DD.md`: what was made or changed, what the owner decided, where it
    is, what's waiting), and that repo is kept organized by its own rules (its CLAUDE.md; `tools/check.py` passes before
    every push). A reset once lost the older videos and their style.
@@ -86,9 +86,9 @@ automatically from now on"): a push to the `store` branch that changes catalog.j
 - CI logs can't be downloaded here: read `gh api repos/Dragongamer9/hearth-os/check-runs/<job id>/annotations`, and
   make tests post `::error` / `::notice` annotations with the useful details. GraphQL (`gh release list`) is blocked;
   use REST (`gh api repos/Dragongamer9/hearth-os/releases/latest`).
-- **Logs the owner sends** (Send logs) land in the private repo `Dragongamer9/hearth-logs`: an issue per log (code,
+- **Logs the owner sends** (Send logs) land in the private repo `Hearth-Organization/hearth-logs`: an issue per log (code,
   version, device, note, error lines) and the full text in `logs/<date>/<code>.txt`
-  (`gh api repos/Dragongamer9/hearth-logs/contents/logs/<date>/<code>.txt -H 'Accept: application/vnd.github.raw'`).
+  (`gh api repos/Hearth-Organization/hearth-logs/contents/logs/<date>/<code>.txt -H 'Accept: application/vnd.github.raw'`).
 
 ## Where things are
 

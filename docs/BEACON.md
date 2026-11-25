@@ -1,6 +1,6 @@
 # Beacon in Hearth
 
-[Beacon](https://github.com/Dragongamer9/beacon) is the Linux launcher for The Lord of the Rings: The Battle for
+[Beacon](https://github.com/Hearth-Organization/beacon) is the Linux launcher for The Lord of the Rings: The Battle for
 Middle-earth games (BFME, BFME II, The Rise of the Witch-king and their mods), the fan-made Age of the Ring,
 The Lord of the Rings: Conquest, and the community versions of Universe at War, Armies of Exigo, Rise of Nations:
 Rise of Legends and Star Wars: Galactic Battlegrounds. Hearth OS ships it, and Hearth shows its games in the
@@ -209,7 +209,7 @@ right away.
   for while the game plays: controller layout, frame-rate cap and power limit.
 - **Library › Stores:** Beacon's card shows whether it's installed and how many of its games are set up, with
   Open Beacon, Find games and Show games. When Beacon isn't installed it says how to get it: Hearth OS comes with it;
-  elsewhere **Get Beacon** opens https://github.com/Dragongamer9/beacon/releases (AppImage, .deb, .rpm).
+  elsewhere **Get Beacon** opens https://github.com/Hearth-Organization/beacon/releases (AppImage, .deb, .rpm).
 - **Opening Beacon:** `beacon-app --fullscreen` in Game Mode, `beacon-app` in Desktop Mode or in a windowed Hearth.
   It's a child of Hearth with no game number, so Game Mode puts its window in front like other apps Hearth opens
   (`gamemode.rs`, `APPS_ID`).

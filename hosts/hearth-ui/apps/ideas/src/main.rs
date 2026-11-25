@@ -5,7 +5,7 @@
 //! pictures and pull request), and Ship it with his own version number (never picked here).
 //!
 //! On the owner's devices only: everything is read and written with his own `gh` sign-in (the ideas are issues in
-//! the private Dragongamer9/hearth-logs). Nothing is saved on the device but the brief file handed to the Command
+//! the private Hearth-Organization/hearth-logs). Nothing is saved on the device but the brief file handed to the Command
 //! Center.
 //!
 //! `--open N` opens idea #N; `--page built|ship` with it opens its Being built page or the Ship box.

@@ -348,7 +348,7 @@ fn first_run(a: &App) -> E<'_, Msg> {
         ),
         _ => (
             "Your notes aren't on this PC yet".into(),
-            format!("Hearth Notes opens a folder of Markdown notes. Clone Dragongamer9/hearth-workspace into {where_} with this PC's Git sign-in (GitHub CLI or Git's own), or open any other folder. Hearth Notes never asks for or keeps a password or token."),
+            format!("Hearth Notes opens a folder of Markdown notes. Clone Hearth-Organization/hearth-workspace into {where_} with this PC's Git sign-in (GitHub CLI or Git's own), or open any other folder. Hearth Notes never asks for or keeps a password or token."),
             vec![look::btn(&p, "Clone hearth-workspace", look::B::Primary, true, false, Some(Msg::CloneNow)), look::btn(&p, "Use another folder…", look::B::Normal, true, false, Some(Msg::ChangeVault))],
         ),
     };

@@ -245,7 +245,7 @@ public static class Beacon
 
     /// <summary>Beacon's own Windows installer (latest release, from Beacon's GitHub), run silently: Beacon isn't part of
     /// Ember's update, so Library › Stores › Get Beacon installs it. Per user (NSIS /S), into %LOCALAPPDATA%\Beacon.</summary>
-    public const string InstallerUrl = "https://github.com/Dragongamer9/beacon/releases/latest/download/Beacon-x64-setup.exe";
+    public const string InstallerUrl = "https://github.com/Hearth-Organization/beacon/releases/latest/download/Beacon-x64-setup.exe";
     public static async Task InstallAsync()
     {
         var tmp = Path.Combine(Path.GetTempPath(), "Beacon-x64-setup-" + Environment.ProcessId + ".exe");

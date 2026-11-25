@@ -416,7 +416,7 @@ def write_diag(text, home_dir=None, now=None):
 
 # ---- "Send Hearth Eras log": its own diagnostics through Hearth's Send logs service (hearth-core logs.rs send_report:
 # POST text to SERVICE/v1/logs; the counter worker, counter/src/index.js, keeps it for 14 days under a code and files it
-# in the private repo Dragongamer9/hearth-logs). Only by hand, from the panel. Personal details are taken out first.
+# in the private repo Hearth-Organization/hearth-logs). Only by hand, from the panel. Personal details are taken out first.
 SEND_SERVICE = 'https://hearth-counter.game305-cl.workers.dev'
 SEND_MAX = 400 * 1024
 MANUAL_PER_DAY = 20

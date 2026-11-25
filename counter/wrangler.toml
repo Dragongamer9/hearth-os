@@ -7,7 +7,7 @@ workers_dev = true
 keep_vars = true
 
 [vars]
-LOGS_REPO = "Dragongamer9/hearth-logs"
+LOGS_REPO = "Hearth-Organization/hearth-logs"
 
 [triggers]
 crons = ["17 4 * * *"]

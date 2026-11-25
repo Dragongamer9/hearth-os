@@ -395,7 +395,7 @@ mod tests {
     #[test]
     fn entries_read_and_bad_ones_are_left_out() {
         let t = br#"{"serial": 3, "apps": [
-            {"id": "command-center", "name": "Hearth AI Command Center", "short": "AI Command Center", "github": "Dragongamer9/hearth-ai-command-center", "selfUpdates": true, "file": "Hearth-AI-Command-Center.AppImage"},
+            {"id": "command-center", "name": "Hearth AI Command Center", "short": "AI Command Center", "github": "Hearth-Organization/hearth-ai-command-center", "selfUpdates": true, "file": "Hearth-AI-Command-Center.AppImage"},
             {"id": "../etc", "name": "Bad"},
             {"id": "usb", "name": "Hearth USB maker", "kind": "builtin"},
             {"id": "x", "name": "X", "file": "../../.bashrc", "pin": {"version": "1", "url": "http://plain", "sha256": "00"}}

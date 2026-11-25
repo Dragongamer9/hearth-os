@@ -12352,7 +12352,7 @@ function beaconCard(){
   const st = !b.installed ? (b.app?'Needs an update':'Not installed') : `${b.setUp} of ${b.games} games set up`;
   return `<div class="scard" style="--sc:#8a5a1c">
     <div class="shd"><div class="smark">B</div><div class="sti"><b>Beacon</b><small class="${b.installed?'on':''}">${esc(st)}</small></div></div>
-    <div class="sblurb">The Battle for Middle-earth games, Age of the Ring, LOTR: Conquest and other classic strategy games, set up and started by Beacon. ${b.installed?`Set them up, change their settings and add mods right here: open a game in Library › Beacon, then Game setup or Mods.`:b.app?`This Beacon doesn't include its command-line tool, which ${APP} needs. Get the latest Beacon from its releases page.`:`Hearth OS comes with Beacon. Elsewhere, get it from Beacon's releases page (<code>github.com/Dragongamer9/beacon/releases</code>): the AppImage, .deb or .rpm. Its games show up here once it's installed.`}</div>
+    <div class="sblurb">The Battle for Middle-earth games, Age of the Ring, LOTR: Conquest and other classic strategy games, set up and started by Beacon. ${b.installed?`Set them up, change their settings and add mods right here: open a game in Library › Beacon, then Game setup or Mods.`:b.app?`This Beacon doesn't include its command-line tool, which ${APP} needs. Get the latest Beacon from its releases page.`:`Hearth OS comes with Beacon. Elsewhere, get it from Beacon's releases page (<code>github.com/Hearth-Organization/beacon/releases</code>): the AppImage, .deb or .rpm. Its games show up here once it's installed.`}</div>
     ${b.error?`<div class="serr">${esc(b.error)}</div>`:''}
     <div class="sbtns">${!b.installed?`<button class="sbtn pri" data-f data-k="sa-beacon-get" data-act="bcnGet">${I.globe}Get Beacon</button>`:''}${b.installed||b.app?`<button class="sbtn ${b.installed?'pri':''}" data-f data-k="sa-beacon-open" data-act="beaconOpen">${I.play}Open Beacon</button>`:''}${b.installed?`<button class="sbtn" data-f data-k="sa-beacon-scan" data-act="bcnJob" data-job="scan">${I.search}Find games</button>`:''}${b.installed&&b.games?`<button class="sbtn" data-f data-k="sa-beacon-show" data-act="accShow" data-s="beacon">${I.lib}Show games</button>`:''}</div></div>`;
 }
@@ -12404,7 +12404,7 @@ function bnetAct(a){
 // (beacon.set, beacon.setKey…) and the answer is the game's details read again; long jobs (Prepare the game, an
 // installer, looking for games or mods) report beacon.progress then beacon.done. One change at a time.
 const BC = {d:{}, err:{}, loading:{}, job:null, log:{}};
-const BC_RELEASES = 'https://github.com/Dragongamer9/beacon/releases';
+const BC_RELEASES = 'https://github.com/Hearth-Organization/beacon/releases';
 const BC_RES = ['1280x720','1280x800','1366x768','1600x900','1920x1080','1920x1200','2560x1440','2560x1600','3840x2160'];
 const bcSlug = g => String((g&&g.id)||g||'').replace(/^beacon:/,'');
 function bcCall(m, a={}, ms=60000){ return host ? call(m, a, ms) : BC_MOCK(m, a); }
